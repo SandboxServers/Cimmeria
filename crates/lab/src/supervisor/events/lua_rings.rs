@@ -1,6 +1,7 @@
-//! The lab's two Lua rings inside the client: combat text and chat lines.
+//! The lab's three Lua rings inside the client: combat text, chat lines
+//! and CEGUI window clicks.
 //!
-//! The stock UI already receives both, as `Events.UnitCombat` (subscribed
+//! The stock UI already receives the first two, as `Events.UnitCombat` (subscribed
 //! by `SCTMod.onUnitCombat`, the floating combat text) and
 //! `Events.MessageReceived` (subscribed by `ChatMod.onMessageReceived`).
 //! The lab wraps those two handlers: the wrapper appends a record to a
@@ -22,6 +23,36 @@
 //!
 //! A wrapper that finds itself nested (someone else wrapped ours and we
 //! wrapped theirs again) records once: `busy` guards re-entry.
+//!
+//! # The click ring (LR-10)
+//!
+//! A title-bar X or a tab click sends no server call, so nothing else the
+//! lab reads sees it. The click ring subscribes one handler to the CEGUI
+//! global event `Window/MouseClick` through the client's own Lua binding,
+//! `window:subscribeGlobal(namespace, event, 'Handler.name')`: three Lua
+//! strings (the tolua stub in SGW.exe, error text
+//! `error in function 'subscribeGlobal'`), used by the stock chat window
+//! for `RichTextItemEntry/LinkClicked` (`ChatWindow.lua:1317`). A global
+//! handler is called `(this, eventWindow, ...args)`, the MouseEventArgs
+//! unpacked as for a per-window `EventMouseClick` (`position, moveDelta,
+//! button, ...`; `ChatMod.onTabButtonClicked`). Evidence and limits:
+//! `docs/analysis/lab-record/worknotes/LR-10.md`.
+//!
+//! Each record is `{ window, button, mouse }`: `button` is the clicked
+//! window's name (`TutorialWin__auto_closebutton__`), `window` the
+//! top-level window holding it (the ancestor whose parent is `Root`, the
+//! same names `client_ui_state` lists), `mouse` `left`/`right`/`middle`.
+//! It is the lab's injected Lua only: nothing ships to players, nothing in
+//! the client is patched, and the handler returns nothing, so it never
+//! marks the click handled and the stock UI sees every click as before.
+//!
+//! The binding has no `unsubscribeGlobal`, so the subscription is made
+//! once per Lua state (`L.click_host`), never per pump: re-subscribing would
+//! stack handlers. An interface reload rebuilds the Lua state (a new
+//! `epoch`), which installs it again. In CEGUI 0.6 an unhandled
+//! `MouseClick` bubbles to the parents, firing the global event once per
+//! ancestor; a fire whose window is the last record's window or one of its
+//! ancestors, at the same UI time, is that bubble and is skipped.
 
 use serde_json::{json, Value};
 
@@ -35,8 +66,11 @@ pub const RING_CAP: u32 = 512;
 const RS: char = '\u{1e}';
 const US: char = '\u{1f}';
 
+/// Handler name the click ring subscribes by (resolved from `_G`).
+pub const CLICK_HANDLER: &str = "CimmeriaLab.on_click";
+
 /// Build the install-and-read chunk.
-pub fn pump_chunk(combat_after: u64, chat_after: u64, max: u32) -> String {
+pub fn pump_chunk(combat_after: u64, chat_after: u64, click_after: u64, max: u32) -> String {
     format!(
         r#"local L = rawget(_G, "CimmeriaLab")
 if type(L) ~= "table" then L = {{}} _G.CimmeriaLab = L end
@@ -125,11 +159,70 @@ if type(ChatMod) == "table" and type(ChatMod.onMessageReceived) == "function" th
     st_chat = oks and "installed" or "installed_no_resubscribe"
   end
 end
+local function wname(w)
+  if w == nil then return nil end
+  local ok, n = pcall(function() return w:getName() end)
+  if ok and n ~= nil then return tostring(n) end
+  return nil
+end
+local function wparent(w)
+  local ok, p = pcall(function() return w:getParent() end)
+  if ok then return p end
+  return nil
+end
+local function mouse_name(b)
+  if b == nil then return "" end
+  if type(CEGUI) == "table" then
+    if b == CEGUI.LeftButton then return "left" end
+    if b == CEGUI.RightButton then return "right" end
+    if b == CEGUI.MiddleButton then return "middle" end
+  end
+  return clean(b)
+end
+L.record_click = function(w, mouse)
+  local name = wname(w)
+  if name == nil then return end
+  local chain, top, p, depth = {{ name }}, name, wparent(w), 0
+  while p ~= nil and depth < 32 do
+    local pn = wname(p)
+    if pn == nil or pn == "Root" then break end
+    top = pn chain[#chain + 1] = pn
+    p = wparent(p) depth = depth + 1
+  end
+  local t = now()
+  local last = L.click_last
+  if type(last) == "table" and last.t == t then
+    for _, n in ipairs(last.chain) do if n == name then return end end
+  end
+  L.click_last = {{ t = t, chain = chain }}
+  push(ring("click"), {{ t = t, window = clean(top), button = clean(name), mouse = mouse_name(mouse) }})
+end
+L.on_click = function(this, window, position, moveDelta, button)
+  if L.click_busy then return end
+  L.click_busy = true
+  pcall(L.record_click, window, button)
+  L.click_busy = false
+end
+local st_click = "missing"
+if L.click_host ~= nil then st_click = "ok" else
+  local host = rawget(_G, "BackgroundWin")
+  if host == nil then local okw, w = pcall(getWindow, "Root") if okw then host = w end end
+  if host ~= nil then
+    local ns, ev = "Window", "MouseClick"
+    if type(CEGUI) == "table" and type(CEGUI.Window) == "table" then
+      ns = CEGUI.Window.EventNamespace or ns
+      ev = CEGUI.Window.EventMouseClick or ev
+    end
+    local oks = pcall(function() host:subscribeGlobal(ns, ev, "{click_handler}") end)
+    if oks then L.click_host = host st_click = "installed" else st_click = "failed" end
+  end
+end
 local out = {{}}
 local function add(...) out[#out + 1] = table.concat({{...}}, "\t") end
 add("epoch", clean(L.epoch))
 add("install", "combat", st_combat)
 add("install", "chat", st_chat)
+add("install", "click", st_click)
 local c, n = ring("combat"), 0
 for _, e in ipairs(c.items) do
   if e.seq > {combat_after} and n < {max} then
@@ -146,8 +239,17 @@ for _, e in ipairs(h.items) do
   end
 end
 add("head", "chat", h.seq)
+local k, q = ring("click"), 0
+for _, e in ipairs(k.items) do
+  if e.seq > {click_after} and q < {max} then
+    q = q + 1
+    add("click", e.seq, clean(e.t), e.window, e.button, e.mouse)
+  end
+end
+add("head", "click", k.seq)
 return unpack(out)"#,
         cap = RING_CAP,
+        click_handler = CLICK_HANDLER,
     )
 }
 
@@ -157,13 +259,17 @@ pub struct RingRead {
     pub epoch: String,
     /// `(ring, status)`: `ok` (already ours), `installed`,
     /// `installed_no_resubscribe`, or `missing` (the stock handler is not
-    /// loaded: the client is not in the world yet).
+    /// loaded: the client is not in the world yet). The click ring reports
+    /// `ok`, `installed`, `failed` (`subscribeGlobal` raised) or `missing`
+    /// (no host window yet).
     pub install: Vec<(String, String)>,
     /// `(ring seq, fields)` per record.
     pub combat: Vec<(u64, Value)>,
     pub chat: Vec<(u64, Value)>,
+    pub click: Vec<(u64, Value)>,
     pub combat_head: u64,
     pub chat_head: u64,
+    pub click_head: u64,
     /// Lines that did not parse (kept for the error report, never fatal).
     pub bad_lines: Vec<String>,
 }
@@ -207,6 +313,19 @@ pub fn parse_ring_read(lines: &[String]) -> RingRead {
             ["install", ring, status] => r.install.push((ring.to_string(), status.to_string())),
             ["head", "combat", n] => r.combat_head = n.parse().unwrap_or(0),
             ["head", "chat", n] => r.chat_head = n.parse().unwrap_or(0),
+            ["head", "click", n] => r.click_head = n.parse().unwrap_or(0),
+            ["click", seq, t, window, button, mouse] => match seq.parse::<u64>() {
+                Ok(seq) => r.click.push((
+                    seq,
+                    json!({
+                        "window": window,
+                        "button": button,
+                        "mouse": mouse,
+                        "ui_time": num(t),
+                    }),
+                )),
+                Err(_) => r.bad_lines.push(line.clone()),
+            },
             ["combat", seq, t, ability, ability_name, hit, hit_name, source, sp, target, tp, mortal, stats] => {
                 match seq.parse::<u64>() {
                     Ok(seq) => r.combat.push((
@@ -260,7 +379,7 @@ mod tests {
 
     #[test]
     fn chunk_wraps_both_handlers_and_reads_after_the_marks() {
-        let c = pump_chunk(12, 34, 50);
+        let c = pump_chunk(12, 34, 56, 50);
         assert!(c.contains("SCTMod.onUnitCombat = L.combat_wrapper"));
         assert!(c.contains("ChatMod.onMessageReceived = L.chat_wrapper"));
         // Re-subscribes by the stock name so a cached lookup is refreshed.
@@ -271,6 +390,82 @@ mod tests {
         assert!(c.contains("pcall(orig, window, abilityId, hitType, statList)"));
         // Lua sees the separators as decimal escapes.
         assert!(c.contains(r#""\31""#) && c.contains(r#""\30""#));
+    }
+
+    #[test]
+    fn chunk_subscribes_the_click_ring_globally_and_reads_after_its_mark() {
+        let c = pump_chunk(12, 34, 56, 50);
+        // CEGUI global event Window/MouseClick, through the stock binding,
+        // by the lab's handler name; bound constants preferred, literals
+        // as the fallback.
+        assert!(c.contains(r#"local ns, ev = "Window", "MouseClick""#));
+        assert!(c.contains("ns = CEGUI.Window.EventNamespace or ns"));
+        assert!(c.contains("ev = CEGUI.Window.EventMouseClick or ev"));
+        assert!(c.contains(r#"host:subscribeGlobal(ns, ev, "CimmeriaLab.on_click")"#));
+        assert!(c.contains("L.on_click = function(this, window, position, moveDelta, button)"));
+        // The record goes into its own capped ring.
+        assert!(c.contains(
+            r#"push(ring("click"), { t = t, window = clean(top), button = clean(name), mouse = mouse_name(mouse) })"#
+        ));
+        // The top-level window is the ancestor below Root.
+        assert!(c.contains(r#"if pn == nil or pn == "Root" then break end"#));
+        // Read after the click mark, bounded, with its head and status.
+        assert!(c.contains("e.seq > 56 and q < 50"));
+        assert!(c.contains(r#"add("head", "click", k.seq)"#));
+        assert!(c.contains(r#"add("install", "click", st_click)"#));
+        // The handler never returns a value: the click is never marked
+        // handled, so the stock UI still sees it.
+        let handler = &c[c.find("L.on_click = function").unwrap()..];
+        let handler = &handler[..handler.find("\nend").unwrap()];
+        assert!(!handler.contains("return true"), "{handler}");
+    }
+
+    /// The binding has no `unsubscribeGlobal`: a second subscribe would
+    /// stack a second handler. The chunk runs on every pump, so the
+    /// subscription must be gated on the per-Lua-state `L.click_host`, which
+    /// only a successful subscribe sets.
+    #[test]
+    fn the_click_install_is_idempotent() {
+        let c = pump_chunk(0, 0, 0, READ_MAX);
+        assert_eq!(c.matches("subscribeGlobal").count(), 1);
+        let gate = c
+            .find(r#"if L.click_host ~= nil then st_click = "ok" else"#)
+            .expect("install gate");
+        let sub = c.find("host:subscribeGlobal").unwrap();
+        let set = c
+            .find(r#"if oks then L.click_host = host st_click = "installed" else st_click = "failed" end"#)
+            .expect("host recorded only on success");
+        assert!(gate < sub && sub < set);
+        // A bubbled or repeated fire of one click is recorded once.
+        assert!(c.contains("if type(last) == \"table\" and last.t == t then"));
+        assert!(c.contains("for _, n in ipairs(last.chain) do if n == name then return end end"));
+        // The chunk is a pure function of its marks.
+        assert_eq!(c, pump_chunk(0, 0, 0, READ_MAX));
+    }
+
+    #[test]
+    fn click_records_parse_with_window_and_button() {
+        let r = parse_ring_read(&s(&[
+            "install\tclick\tinstalled",
+            "click\t2\t812.25\tTutorialWin\tTutorialWin__auto_closebutton__\tleft",
+            "click\t3\t813\tChatWin\tChatWin_Tab2\t",
+            "click\tnope\t1\ta\tb\tleft",
+            "head\tclick\t3",
+        ]));
+        assert_eq!(
+            r.install,
+            vec![("click".to_string(), "installed".to_string())]
+        );
+        assert_eq!(r.click_head, 3);
+        assert_eq!(r.click.len(), 2);
+        let (seq, ev) = &r.click[0];
+        assert_eq!(*seq, 2);
+        assert_eq!(ev["window"], "TutorialWin");
+        assert_eq!(ev["button"], "TutorialWin__auto_closebutton__");
+        assert_eq!(ev["mouse"], "left");
+        assert_eq!(ev["ui_time"], 812.25);
+        assert_eq!(r.click[1].1["mouse"], "");
+        assert_eq!(r.bad_lines, vec!["click\tnope\t1\ta\tb\tleft".to_string()]);
     }
 
     #[test]

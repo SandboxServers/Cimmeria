@@ -3,14 +3,14 @@
 //! - [`store`] — the seq-numbered, non-draining history and named cursors.
 //! - [`predicate`] — what a wait matches (kind, name, entity id, text,
 //!   fields), pure and tested.
-//! - [`lua_rings`] — the combat-text and chat rings the lab keeps inside
-//!   the client's UI Lua.
+//! - [`lua_rings`] — the combat-text, chat and window-click rings the lab
+//!   keeps inside the client's UI Lua.
 //! - [`wait`] — `client_wait_event`.
 //!
 //! A *pump* moves everything new into the store: the bridge ring
 //! (`events_read`: `cme.event`, `net.out`, `entity.*`, `cegui.log`,
-//! `lua.print`, `hook.hit`, ...) and, when asked, the two Lua rings
-//! (`combat.hit`, `chat.line`). The supervisor is the bridge ring's only
+//! `lua.print`, `hook.hit`, ...) and, when asked, the three Lua rings
+//! (`combat.hit`, `chat.line`, `ui.click`). The supervisor is the bridge ring's only
 //! drainer; `client_events_read` reads the store through its own cursor, so
 //! it still returns each event once without stealing from waits.
 
@@ -36,6 +36,8 @@ pub const EVENTS_READ_CURSOR: &str = "events_read";
 /// Kinds the Lua rings produce.
 pub const KIND_COMBAT: &str = "combat.hit";
 pub const KIND_CHAT: &str = "chat.line";
+/// A CEGUI window click (LR-10): `{ window, button, mouse, ui_time }`.
+pub const KIND_CLICK: &str = "ui.click";
 
 /// What one pump did.
 #[derive(Debug, Clone, Default)]
@@ -44,6 +46,7 @@ pub struct PumpReport {
     pub bridge_dropped: u64,
     pub combat: usize,
     pub chat: usize,
+    pub click: usize,
     /// `(ring, status)` from the Lua install step; empty when not pumped.
     pub lua_install: Vec<(String, String)>,
     /// The Lua step failed (not in the world, a Lua error); the bridge
@@ -61,6 +64,7 @@ impl PumpReport {
             "bridge_dropped": self.bridge_dropped,
             "combat": self.combat,
             "chat": self.chat,
+            "click": self.click,
             "lua_install": self.lua_install.iter()
                 .map(|(r, s)| json!({ "ring": r, "status": s }))
                 .collect::<Vec<_>>(),
@@ -95,49 +99,73 @@ pub fn ingest_bridge(st: &mut StoreInner, result: &Value) -> (usize, u64) {
     (n, dropped)
 }
 
+/// What one Lua ring read added to the store.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RingIngest {
+    pub combat: usize,
+    pub chat: usize,
+    pub click: usize,
+    /// The Lua state was rebuilt since the last read.
+    pub epoch_changed: bool,
+}
+
+/// Push one ring's records newer than its mark; returns the new mark and
+/// how many were pushed.
+fn ingest_ring(
+    st: &mut StoreInner,
+    kind: &str,
+    mark: &store::LuaRingMark,
+    epoch: &str,
+    records: &[(u64, Value)],
+    now: i64,
+) -> (store::LuaRingMark, usize) {
+    let after = mark.after(epoch);
+    let mut seq_max = after;
+    let mut n = 0;
+    for (seq, fields) in records {
+        if *seq > after {
+            let mut f = fields.clone();
+            f["ring_seq"] = json!(seq);
+            st.push(kind, now, f);
+            seq_max = seq_max.max(*seq);
+            n += 1;
+        }
+    }
+    (
+        store::LuaRingMark {
+            epoch: epoch.to_string(),
+            seq: seq_max,
+        },
+        n,
+    )
+}
+
 /// Fold one Lua ring read into the store, advancing the ring marks.
-/// Returns (combat records, chat records, epoch changed).
-pub fn ingest_rings(st: &mut StoreInner, r: &lua_rings::RingRead) -> (usize, usize, bool) {
-    let changed = !st.combat_mark.epoch.is_empty() && st.combat_mark.epoch != r.epoch;
+pub fn ingest_rings(st: &mut StoreInner, r: &lua_rings::RingRead) -> RingIngest {
+    let epoch_changed = !st.combat_mark.epoch.is_empty() && st.combat_mark.epoch != r.epoch;
     let now = now_ms();
-    let combat_after = st.combat_mark.after(&r.epoch);
-    let chat_after = st.chat_mark.after(&r.epoch);
-    let mut nc = 0;
-    let mut combat_seq = combat_after;
-    for (seq, fields) in &r.combat {
-        if *seq > combat_after {
-            let mut f = fields.clone();
-            f["ring_seq"] = json!(seq);
-            st.push(KIND_COMBAT, now, f);
-            combat_seq = combat_seq.max(*seq);
-            nc += 1;
-        }
+    let (combat_mark, chat_mark, click_mark) = (
+        st.combat_mark.clone(),
+        st.chat_mark.clone(),
+        st.click_mark.clone(),
+    );
+    let (m, combat) = ingest_ring(st, KIND_COMBAT, &combat_mark, &r.epoch, &r.combat, now);
+    st.combat_mark = m;
+    let (m, chat) = ingest_ring(st, KIND_CHAT, &chat_mark, &r.epoch, &r.chat, now);
+    st.chat_mark = m;
+    let (m, click) = ingest_ring(st, KIND_CLICK, &click_mark, &r.epoch, &r.click, now);
+    st.click_mark = m;
+    RingIngest {
+        combat,
+        chat,
+        click,
+        epoch_changed,
     }
-    let mut nh = 0;
-    let mut chat_seq = chat_after;
-    for (seq, fields) in &r.chat {
-        if *seq > chat_after {
-            let mut f = fields.clone();
-            f["ring_seq"] = json!(seq);
-            st.push(KIND_CHAT, now, f);
-            chat_seq = chat_seq.max(*seq);
-            nh += 1;
-        }
-    }
-    st.combat_mark = store::LuaRingMark {
-        epoch: r.epoch.clone(),
-        seq: combat_seq,
-    };
-    st.chat_mark = store::LuaRingMark {
-        epoch: r.epoch.clone(),
-        seq: chat_seq,
-    };
-    (nc, nh, changed)
 }
 
 impl Supervisor {
     /// Move new client events into the store. `lua` also installs/reads the
-    /// combat and chat rings (one extra `lua_eval`). A bridge failure is an
+    /// combat, chat and click rings (one extra `lua_eval`). A bridge failure is an
     /// error; a Lua failure is reported in the result.
     pub async fn pump_events(&self, lua: bool) -> Result<PumpReport, String> {
         let mut rep = PumpReport::default();
@@ -151,11 +179,12 @@ impl Supervisor {
             rep.bridge_dropped = d;
         }
         if lua {
-            let (combat_after, chat_after, epoch) = {
+            let (combat_after, chat_after, click_after, epoch) = {
                 let st = self.events.inner.lock().await;
                 (
                     st.combat_mark.seq,
                     st.chat_mark.seq,
+                    st.click_mark.seq,
                     st.combat_mark.epoch.clone(),
                 )
             };
@@ -163,9 +192,9 @@ impl Supervisor {
             // rebuilt Lua state restarts its ring at 1, so a read with the
             // old marks could skip records; that case re-reads from 0.
             let chunk = if epoch.is_empty() {
-                lua_rings::pump_chunk(0, 0, lua_rings::READ_MAX)
+                lua_rings::pump_chunk(0, 0, 0, lua_rings::READ_MAX)
             } else {
-                lua_rings::pump_chunk(combat_after, chat_after, lua_rings::READ_MAX)
+                lua_rings::pump_chunk(combat_after, chat_after, click_after, lua_rings::READ_MAX)
             };
             match self.lua_ring_read(&chunk).await {
                 Ok(mut read) => {
@@ -173,17 +202,18 @@ impl Supervisor {
                         // A new Lua state: its ring restarted at 1, so the
                         // marks we asked with may have skipped records.
                         if let Ok(full) = self
-                            .lua_ring_read(&lua_rings::pump_chunk(0, 0, lua_rings::READ_MAX))
+                            .lua_ring_read(&lua_rings::pump_chunk(0, 0, 0, lua_rings::READ_MAX))
                             .await
                         {
                             read = full;
                         }
                     }
                     let mut st = self.events.inner.lock().await;
-                    let (nc, nh, changed) = ingest_rings(&mut st, &read);
-                    rep.combat = nc;
-                    rep.chat = nh;
-                    rep.lua_epoch_changed = changed;
+                    let got = ingest_rings(&mut st, &read);
+                    rep.combat = got.combat;
+                    rep.chat = got.chat;
+                    rep.click = got.click;
+                    rep.lua_epoch_changed = got.epoch_changed;
                     rep.lua_install = read.install;
                 }
                 Err(e) => rep.lua_error = Some(e),
@@ -261,17 +291,21 @@ mod tests {
         }
     }
 
+    fn counts(g: RingIngest) -> (usize, usize, usize, bool) {
+        (g.combat, g.chat, g.click, g.epoch_changed)
+    }
+
     #[test]
     fn ring_records_are_ingested_once() {
         let mut st = StoreInner::with_cap(16);
         assert_eq!(
-            ingest_rings(&mut st, &read("e1", &[1, 2], &[1])),
-            (2, 1, false)
+            counts(ingest_rings(&mut st, &read("e1", &[1, 2], &[1]))),
+            (2, 1, 0, false)
         );
         // The same records again (a pump that re-read them) add nothing.
         assert_eq!(
-            ingest_rings(&mut st, &read("e1", &[1, 2, 3], &[1])),
-            (1, 0, false)
+            counts(ingest_rings(&mut st, &read("e1", &[1, 2, 3], &[1]))),
+            (1, 0, 0, false)
         );
         let kinds: Vec<String> = st.since(0, 10).events.into_iter().map(|e| e.kind).collect();
         assert_eq!(
@@ -285,9 +319,53 @@ mod tests {
     fn a_new_epoch_takes_the_restarted_ring_from_seq_one() {
         let mut st = StoreInner::with_cap(16);
         ingest_rings(&mut st, &read("e1", &[1, 2, 3, 4, 5], &[]));
-        let (nc, _, changed) = ingest_rings(&mut st, &read("e2", &[1, 2], &[]));
-        assert!(changed);
-        assert_eq!(nc, 2, "seqs 1 and 2 of the new ring are new events");
+        let got = ingest_rings(&mut st, &read("e2", &[1, 2], &[]));
+        assert!(got.epoch_changed);
+        assert_eq!(got.combat, 2, "seqs 1 and 2 of the new ring are new events");
         assert_eq!(st.combat_mark.seq, 2);
+    }
+
+    fn click(seq: u64, window: &str, button: &str) -> (u64, Value) {
+        (
+            seq,
+            json!({ "window": window, "button": button, "mouse": "left", "ui_time": 1 }),
+        )
+    }
+
+    /// LR-10: clicks land as `ui.click` with their fields, once, on their
+    /// own mark, and a rebuilt Lua state rereads the click ring from 1.
+    #[test]
+    fn click_records_land_as_ui_click_once() {
+        let mut st = StoreInner::with_cap(16);
+        let mut r = read("e1", &[], &[]);
+        r.click = vec![
+            click(1, "TutorialWin", "TutorialWin__auto_closebutton__"),
+            click(2, "ChatWin", "ChatWin_Tab2"),
+        ];
+        assert_eq!(counts(ingest_rings(&mut st, &r)), (0, 0, 2, false));
+        let evs = st.since(0, 10).events;
+        assert_eq!(evs.len(), 2);
+        assert_eq!(evs[0].kind, KIND_CLICK);
+        assert_eq!(evs[0].fields["window"], "TutorialWin");
+        assert_eq!(evs[0].fields["button"], "TutorialWin__auto_closebutton__");
+        assert_eq!(evs[0].fields["ring_seq"], 1);
+        assert_eq!(st.click_mark.seq, 2);
+        // Re-read with one more: only the new one lands; the other marks
+        // are untouched by click traffic.
+        r.click
+            .push(click(3, "BagWin", "BagWin__auto_closebutton__"));
+        assert_eq!(counts(ingest_rings(&mut st, &r)), (0, 0, 1, false));
+        assert_eq!(st.combat_mark.seq, 0);
+        // A new Lua state: its click ring restarted at 1.
+        let mut fresh = read("e2", &[], &[]);
+        fresh.click = vec![click(1, "TutorialWin", "TutorialWin__auto_closebutton__")];
+        assert_eq!(counts(ingest_rings(&mut st, &fresh)), (0, 0, 1, true));
+        assert_eq!(
+            st.click_mark,
+            store::LuaRingMark {
+                epoch: "e2".into(),
+                seq: 1
+            }
+        );
     }
 }
