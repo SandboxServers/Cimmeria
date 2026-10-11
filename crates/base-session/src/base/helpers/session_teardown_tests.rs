@@ -110,6 +110,55 @@ fn teardown_stops_the_cinematic_appearance_loop() {
     );
 }
 
+/// TG-NET-17: a teardown stamps the session's kind on both its rows, the
+/// `session.end` row and the "Client entities cleaned up" summary, so a lab
+/// run's disconnect filters out with one `cimmeria.session_kind` predicate.
+/// Fails with either `cimmeria.session_kind = hints.session_kind` field, or
+/// the `EndHints` snapshot of `c.session_kind`, removed.
+#[test]
+fn teardown_rows_carry_session_kind() {
+    use crate::test_support::LogCapture;
+
+    let addr: SocketAddr = "127.0.0.1:52505".parse().unwrap();
+    let mut state = test_default_connected_client_state();
+    state.player_entity_id = Some(52_505);
+    state.session_kind = Some("lab");
+    let connected: Connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
+
+    let capture = LogCapture::install();
+    destroy_client_entities(
+        &connected,
+        &Arc::new(Mutex::new(EntityManager::new())),
+        addr,
+        &None,
+        &Arc::new(Mutex::new(HashMap::new())),
+        &transport(),
+        &None,
+        "client_disconnect",
+    );
+
+    let rows = capture.all();
+    let end = rows
+        .iter()
+        .find(|c| c.target == "session.end" && c.message_contains("player session ended"))
+        .unwrap_or_else(|| panic!("no session.end row: {rows:#?}"));
+    assert!(
+        end.has_field("cimmeria.session_kind", "lab"),
+        "session.end lacks the session kind: {end:#?}"
+    );
+    let cleaned = rows
+        .iter()
+        .find(|c| {
+            c.message_contains("Client entities cleaned up")
+                && c.has_field("addr", "127.0.0.1:52505")
+        })
+        .unwrap_or_else(|| panic!("no cleanup row: {rows:#?}"));
+    assert!(
+        cleaned.has_field("cimmeria.session_kind", "lab"),
+        "the cleanup row lacks the session kind: {cleaned:#?}"
+    );
+}
+
 /// End to end through the loop: an old session's tick loop that times out
 /// after its address was taken over leaves the new session alone. Before
 /// the owner check, the loop's teardown keyed on the address alone and

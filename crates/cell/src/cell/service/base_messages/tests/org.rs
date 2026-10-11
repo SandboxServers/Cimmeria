@@ -241,6 +241,7 @@ async fn init_player_state_replays_the_squad() {
             looted_containers: Vec::new(),
             shown_tutorials: Vec::new(),
             entry_cause: crate::cell::messages::WorldEntryCause::Login,
+            session_kind: None,
         },
         &tx,
         &mut mgr,

@@ -15,6 +15,8 @@ mod relog_mission_resurrection;
 #[cfg(test)]
 mod session_start_cause;
 #[cfg(test)]
+mod session_start_kind;
+#[cfg(test)]
 mod system_options_assignment;
 #[cfg(test)]
 mod weapon_grant_at_entry;

@@ -205,6 +205,7 @@ pub(super) async fn handle_base_message(
             looted_containers,
             shown_tutorials,
             entry_cause,
+            session_kind,
         } => {
             init_grant_merge::merge_into_snapshot(
                 entity_id,
@@ -266,6 +267,19 @@ pub(super) async fn handle_base_message(
                 // stamped a player's level, so every player trained as
                 // level 1. `max(1)` keeps a corrupt row from reading as 0.
                 entity.level = level.max(1) as u32;
+                // Lab or player (TG-NET-17), for `session.start` below and
+                // the `playtest.friction` rows. Stamped here, not threaded
+                // into the argument-capped handler. Assigned as sent: the
+                // account, and so the flag, is the same on a travel re-entry.
+                entity.session_kind = session_kind;
+                // Fill the friction watch's row context now: `player_tick`
+                // first runs on movement, so a chain-fired friction row right
+                // after entry would otherwise carry no session kind.
+                crate::cell::playtest_friction::note_session(
+                    entity_id,
+                    crate::cell::space_manager::EntityNames::of(entity).entity_name,
+                    entity.session_kind,
+                );
             } else {
                 // The entity should already exist (ConnectEntity precedes
                 // InitPlayerState). If it doesn't, the name cache silently
@@ -365,7 +379,7 @@ pub(super) async fn handle_base_message(
             method_index,
             args,
         } => {
-            crate::cell::abilities::send_entity_method_to_witnesses(
+            let witness_count = crate::cell::abilities::send_entity_method_to_witnesses(
                 entity_id,
                 method_index,
                 args,
@@ -373,6 +387,26 @@ pub(super) async fn handle_base_message(
                 space_mgr,
             )
             .await;
+            // TG-AOI-02: the base-built appearance (equip, holster) reached
+            // `witness_count` observers. Zero means nobody saw the change.
+            let who = space_mgr.player_identity(entity_id);
+            tracing::debug!(
+                target: "aoi.appearance",
+                event = "appearance_rebroadcast",
+                entity_id,
+                entity_name = space_mgr.entity_label(entity_id),
+                account_id = who.account_id,
+                account_name = who.account_name,
+                player_id = who.player_id,
+                player_name = who.player_name,
+                method_index,
+                method_name = cimmeria_wire::names::entity_client_method(
+                    who.player_id.is_some(),
+                    method_index
+                ),
+                witness_count,
+                "BroadcastToWitnesses: entity method rebroadcast to witnesses"
+            );
         }
 
         BaseToCellMsg::LabConsoleExec {

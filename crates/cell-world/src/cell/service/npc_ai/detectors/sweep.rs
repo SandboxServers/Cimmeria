@@ -264,6 +264,7 @@ fn check_stuck(
         return;
     };
     let los = super::los::los_label(space_mgr.line_of_sight(npc_id, target_id));
+    let target_identity = space_mgr.player_identity(target_id);
     tracing::warn!(
         target: "npc_ai",
         event = "stuck",
@@ -276,6 +277,10 @@ fn check_stuck(
         space_id = ident.space_id,
         target_id,
         target_name = space_mgr.entity_label(target_id),
+        target_account_id = target_identity.account_id,
+        target_account_name = target_identity.account_name,
+        target_player_id = target_identity.player_id,
+        target_player_name = target_identity.player_name,
         npc_to_target_history = ?history,
         decision_outcome = outcome,
         nav_path_len,
