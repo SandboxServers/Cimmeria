@@ -6,6 +6,7 @@
 #   pwsh tools/ci-runners/deploy.ps1 -Nodes node2          # one node
 #   pwsh -c "& tools/ci-runners/deploy.ps1 -Nodes node5,node1"   # several (a bare
 #                                                          # `pwsh <script> -Nodes a,b` passes one string)
+#   pwsh tools/ci-runners/deploy.ps1 -Nodes node2 -Build   # after changing an image (recreates its runners)
 #   pwsh tools/ci-runners/deploy.ps1 -Nodes node5 -Down    # stop the stack
 #
 # A runner registers itself on first start with a one-hour registration token this
@@ -26,6 +27,10 @@ param(
     # The node whose compose `cache` serves every node's runners (a UniFi policy
     # admits TCP 6379 to it from the others). '' gives each node its own cache.
     [string]$CacheHost = 'node2',
+    # Rebuild the images (and pull their bases). A rebuild gives a new image ID even
+    # when every layer is cached, which recreates every runner, so it's opt-in;
+    # without it, images are built only when missing.
+    [switch]$Build,
     [switch]$Down
 )
 Set-StrictMode -Version Latest
@@ -105,7 +110,8 @@ foreach ($node in $Nodes) {
     if ($LASTEXITCODE -ne 0) { throw "${node}: writing the registration token failed" }
 
     Write-Host "== ${node}: building the images and starting the stack"
-    Invoke-Ssh $ssh "cd $dir && docker compose build --pull && docker compose up -d --remove-orphans" "${node}: compose up"
+    $buildCmd = if ($Build) { 'docker compose build --pull' } else { '{ docker image inspect cimmeria-gha-runner:latest cimmeria-egress-proxy:latest > /dev/null 2>&1 || docker compose build; }' }
+    Invoke-Ssh $ssh "cd $dir && $buildCmd && docker compose up -d --remove-orphans" "${node}: compose up"
     # Long enough for a new runner to register; the token is useless once emptied.
     Start-Sleep -Seconds 60
     Invoke-Ssh $ssh ": > $dir/runner-token" "${node}: emptying the registration token"

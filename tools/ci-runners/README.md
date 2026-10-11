@@ -71,6 +71,7 @@ pwsh tools/ci-runners/status.ps1   # per job: sccache hit rate, target/ size, fr
 pwsh tools/ci-runners/deploy.ps1                                   # every node, cache host first
 pwsh tools/ci-runners/deploy.ps1 -Nodes node2                      # one node
 pwsh -c "& tools/ci-runners/deploy.ps1 -Nodes node5,node1"         # several
+pwsh tools/ci-runners/deploy.ps1 -Nodes node2 -Build               # after changing an image
 pwsh tools/ci-runners/deploy.ps1 -Nodes node5 -Down                # stop a node's stack
 ```
 
@@ -81,8 +82,10 @@ mounted read-only; the script empties it a minute after the stack starts. It is 
 environment variable: a changed variable makes compose recreate every runner, which
 kills running jobs. Each runner keeps its registration in its `state` volume, so
 restarts and rebuilds don't re-register, and a deploy that changes nothing a runner
-uses leaves it running. Changing the image, `.env` or a runner's compose entry does
-recreate it, so deploy when the runners are idle.
+uses leaves it running. Images are built only when missing: a rebuild gives a new image
+ID even when every layer is cached, which recreates every runner, so it takes `-Build`.
+Changing the image, `.env` or a runner's compose entry recreates it, so do those when
+the runners are idle.
 
 The compose project lives in `/mnt/nvme/gha-runners` on node5 and `/var/lib/gha-runners`
 on node2 and node1; volumes go under each node's docker root, on NVMe. Watchtower is
