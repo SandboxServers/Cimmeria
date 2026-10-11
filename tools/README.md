@@ -28,10 +28,10 @@ Scripts for reverse-engineering the game client (UE3/BigWorld binaries).
 
 | Script | Purpose |
 |---|---|
-| `upk_parser.py` | Parse Unreal Package (.upk) files — extract assets, classes, object lists |
-| `kismet_extractor.py` | Extract Kismet sequence data from UPK files |
-| `extract_actors.py` | Extract actor placements from map packages |
-| `ue3_extract_cover_nodes.py` | Extract UE3 cover-node placements from map packages |
+| `upk_parser.py` | Parse Unreal Package (.upk) files — extract assets, classes, object lists. Python library imported by `extract_actors.py` and `kismet_extractor.py`; for a one-off package dump use the Rust `upk_info` binary (`pwsh tools/build-lane/lane.ps1 cargo run -p cimmeria-upk --bin upk_info -- <file> --classes`) |
+| `kismet_extractor.py` | Extract Kismet sequence data from UPK files. The Rust `extract_kismet` binary (`pwsh tools/build-lane/lane.ps1 cargo run -p cimmeria-upk --bin extract_kismet -- <zone_dir> --graph`) covers the survey and `--graph`; this script still owns `--sql` and `--json` |
+| `extract_actors.py` | Extract actor placements from map packages. The Rust `extract_actors` binary (`pwsh tools/build-lane/lane.ps1 cargo run -p cimmeria-upk --bin extract_actors -- <zone_dir> --json`) covers summary and `--json`; this script still owns SQL/CSV output, `--filter` and `--all-zones` |
+| `ue3_extract_cover_nodes.py` | Decode the `covernodes_*.pak` prefab cover templates. Superseded for world cover seeds by the Rust `cover_extract` binary (`pwsh tools/build-lane/lane.ps1 cargo run -p cimmeria-navmesh-extractor --bin cover_extract -- ...`); kept as the only decoder of the `.pak` format |
 | `pcap_dissect.py` | Dissect captured Mercury UDP network traffic |
 | `pcap_to_session.py` | Convert a pcap capture into a wireclient `session_trace` JSONL |
 | `wire_decoder_codegen.py` | Generate wire-format decoder code from the message catalog |
@@ -42,7 +42,7 @@ Scripts for reverse-engineering the game client (UE3/BigWorld binaries).
 | `backfill_template_speaker_ids.py` | Backfill dialog template speaker IDs |
 | `apply_speaker_id_inplace.py` | Apply resolved speaker IDs to dialog templates in place |
 | `add_doc_metadata.py` | Add/normalize front-matter metadata across docs |
-| `frag_debug.py` / `frag_debug2.py` | Debug Mercury packet fragmentation |
+| `frag_debug.py` | Debug Mercury server-to-client traffic in an encrypted pcap: reassemble fragment groups (default) or list every packet with `--dump [--seq-min N] [--seq-max N]` |
 | `investigate_corruption.py` | Investigate packet/data corruption patterns |
 | `re_parity.py` | LLM-free structural parity check for reverse-engineered functions — compares a reconstruction against Ghidra decompile/disasm (11 parity signals + objective call/control-flow gap verifier). Drives the re-verify reverser/checker loop in the `re-lookup` agent skill. Run `python tools/re_parity.py --selftest`. |
 | `re/ghidra-headless/Probe.java` | Read-only headless-Ghidra probe of `SGW.exe` (decompile, xrefs, string and function-name search, vtable dumps) run through `analyzeHeadless.bat -noanalysis -readOnly`, for when the Ghidra MCP bridge is unavailable. Java, not Python: see [re/ghidra-headless/README.md](re/ghidra-headless/README.md). |

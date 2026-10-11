@@ -12,6 +12,12 @@ Binary format details:
 - FNameEntry: FString (i32 len + ASCII) + u64 flags = variable length
 - FObjectImport: ClassPackage(FName) + ClassName(FName) + PackageIndex(i32) + ObjectName(FName) = 28 bytes fixed
 - FObjectExport: Variable length due to ComponentMap (TMap<FName,i32>) and GenNetObjCount (TArray<i32>)
+
+Rust counterpart: the `cimmeria-upk` crate and its `upk_info` binary
+(`pwsh tools/build-lane/lane.ps1 cargo run -p cimmeria-upk --bin upk_info -- <file> --classes`).
+This module is kept because it is a Python library: `extract_actors.py` and
+`kismet_extractor.py` import `PackageReader`, and ad-hoc RE scripts use it to
+read import tables and tagged properties (TemplatePrefab / StaticMesh names).
 """
 
 import struct
