@@ -27,8 +27,9 @@
 
     transform <recording id or folder> calls lab_record_transform: the same
     draft again from a raw log already on disk, with other -Section,
-    -CharacterExpr or -Profile. It needs the daemon running, but no lease and
-    no client. The folder must be under <uat root>\records\.
+    -CharacterExpr or -Profile, as <name>-2.toml, -3, ... when that draft
+    exists. It needs the daemon running, but no lease and no client. The
+    folder must be under <uat root>\records\, and the recording stopped.
 
     -SpecsDir names the spec folder the draft goes under (default: the
     checkout's docs\guides\uat-specs; away from a checkout, the daemon's).
@@ -56,7 +57,9 @@ param(
     [string]$Target,
     [string]$Instance,
     [string]$Character,
-    [Nullable[int]]$MaxMinutes,
+    # A string, checked by Test-RecordArguments, so `-MaxMinutes abc` exits 2
+    # with the command's own message (and one JSON line under -Json).
+    [string]$MaxMinutes,
     [string]$CharacterExpr,
     [string]$Profile,
     [string]$Section,
@@ -98,7 +101,7 @@ function Invoke-LabRecord {
     $out = Invoke-RecordAction $opt $ctx
     # Straight to the streams: a bare expression would join the return value.
     if ($Json) {
-        [Console]::Out.WriteLine((ConvertTo-RecordCompactJson $out.Body))
+        [Console]::Out.WriteLine((Hide-LeaseIds (ConvertTo-RecordCompactJson $out.Body)))
     } elseif ($out.Exit -eq 0) {
         [Console]::Out.WriteLine((Hide-LeaseIds $out.Text))
     } else {
@@ -108,5 +111,19 @@ function Invoke-LabRecord {
 }
 
 if ($MyInvocation.InvocationName -ne '.') {
-    exit (Invoke-LabRecord)
+    # Anything unexpected still keeps the contract: exit 1, and under -Json
+    # one {ok:false,exit:1,error} line. (An unknown switch fails earlier, at
+    # parameter binding, with PowerShell's own message and exit.)
+    $code = 1
+    try {
+        $code = Invoke-LabRecord
+    } catch {
+        $b = New-RecordFailure 1 "lab record: $($_.Exception.Message)"
+        if ($Json) {
+            [Console]::Out.WriteLine((ConvertTo-RecordCompactJson $b))
+        } else {
+            [Console]::Error.WriteLine($b.error)
+        }
+    }
+    exit $code
 }

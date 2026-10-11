@@ -13,9 +13,8 @@
     calls stubbed and no daemon.
 
     A tool refusal or failure is D-LR16's {"ok":false,"exit":N,"error":"..."};
-    it is printed as it comes back, except that a refusal because the
-    instance is busy (leased, already recording) says exit 4, as the command
-    exits.
+    it is printed as it comes back and the command exits with its exit (the
+    daemon answers 4 itself for a busy instance or a leased lab).
 
     Needs uat-lib.ps1 (Hide-LeaseIds) dot-sourced first. Never print the
     token or a lease id from here.
@@ -31,14 +30,17 @@ $script:RecordMaxMinutes = 30
 $script:RecordSectionPattern = '^[a-z0-9][a-z0-9-]{0,47}$'
 $script:RecordCharacterExprPattern = '^[A-Za-z0-9 _${}]{1,64}$'
 $script:RecordInstancePattern = '^[A-Za-z0-9_-]{1,32}$'
-# A tool refusal (exit 2) with one of these is "the instance is busy" (exit 4).
-$script:RecordBusyPattern = 'busy|leased|already running|is starting|still finishing'
 $script:RecordUsage = @'
 usage: lab record start <section> [-Instance p2] [-Character <name>] [-MaxMinutes 30] [-SpecsDir <dir>] [-Json]
        lab record status [-Instance p2] [-Json]
        lab record stop [-Instance p2] [-CharacterExpr 'Px${run_id}'] [-Profile <name>] [-NoDraft] [-RecordingId <id>] [-Json]
        lab record transform <recording id or folder> [-Section <id>] [-CharacterExpr ...] [-Profile ...] [-SpecsDir <dir>] [-Json]
 '@
+
+# Whether an option was given: not $null and not an empty string.
+function Test-RecordGiven($Value) {
+    return ($null -ne $Value -and [string]$Value -ne '')
+}
 
 # The argument checks that need no daemon: an error message, or $null.
 # $Opt holds the command's parameters (Action, Target, Instance, MaxMinutes,
@@ -57,9 +59,11 @@ function Test-RecordArguments([hashtable]$Opt) {
     }
     $instance = [string]$Opt['Instance']
     if ($instance -and $instance -cnotmatch $script:RecordInstancePattern) { return "-Instance: give an instance name like p2 ([A-Za-z0-9_-]); got '$instance'" }
-    if ($null -ne $Opt['MaxMinutes']) {
-        $m = [int]$Opt['MaxMinutes']
-        if ($m -lt 1 -or $m -gt $script:RecordMaxMinutes) { return "-MaxMinutes must be 1 to $script:RecordMaxMinutes" }
+    # Taken as a string by record.ps1, so `-MaxMinutes abc` exits 2 here
+    # rather than failing at parameter binding.
+    if (Test-RecordGiven $Opt['MaxMinutes']) {
+        $m = [string]$Opt['MaxMinutes']
+        if ($m -notmatch '^\d{1,9}$' -or [int]$m -lt 1 -or [int]$m -gt $script:RecordMaxMinutes) { return "-MaxMinutes must be 1 to $script:RecordMaxMinutes" }
     }
     $expr = [string]$Opt['CharacterExpr']
     if ($expr -and $expr -cnotmatch $script:RecordCharacterExprPattern) { return '-CharacterExpr: give ^[A-Za-z0-9 _${}]{1,64}$ (Px${run_id})' }
@@ -85,15 +89,20 @@ function Get-RecordStatePath([string]$LabHome, [string]$Instance) {
     return Join-Path $LabHome "record-$Instance.json"
 }
 
-function Save-RecordState([string]$Path, [string]$RecordingId, [string]$Instance) {
+# $SpecsDir is the spec folder the start sent (the daemon fixes it at
+# start), so the stop can print the draft's path; empty when the start sent
+# none and the daemon used its own.
+function Save-RecordState([string]$Path, [string]$RecordingId, [string]$Instance, [string]$SpecsDir) {
     $dir = Split-Path -Parent $Path
     if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
     $o = [ordered]@{ recording_id = $RecordingId; instance = $Instance }
+    if ($SpecsDir) { $o.specs_dir = $SpecsDir }
     Set-Content -LiteralPath $Path -Value ($o | ConvertTo-Json -Compress) -Encoding utf8NoBOM
 }
 
-# The state as an object (recording_id, instance), or $null when there is
-# none or it cannot be read.
+# The state as an object (recording_id, and instance and specs_dir when
+# present: read them with Get-RecordField), or $null when there is none or
+# it cannot be read.
 function Read-RecordState([string]$Path) {
     if (-not (Test-Path -LiteralPath $Path)) { return $null }
     try { $s = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json } catch { return $null }
@@ -131,9 +140,9 @@ function New-RecordFailure([int]$Exit, [string]$Message) {
 }
 
 # A thrown call error as @{ Exit; Body }: a tool error whose text is the
-# D-LR16 shape keeps its body, with exit 2 for busy turned into 4; any other
-# tool error is exit 1 (4 when it says leased); anything else is the daemon
-# not answering (3).
+# D-LR16 shape keeps its body and its exit (4 for busy comes from the
+# daemon); any other tool error is exit 1; anything else is the daemon not
+# answering (3).
 function ConvertFrom-RecordCallError([string]$Tool, [string]$Message) {
     $Message = Hide-LeaseIds $Message
     $prefix = "$Tool failed: "
@@ -147,12 +156,10 @@ function ConvertFrom-RecordCallError([string]$Tool, [string]$Message) {
     try { $body = $text | ConvertFrom-Json -AsHashtable } catch { }
     if ($body -is [hashtable] -and $body.ContainsKey('exit') -and $body.ContainsKey('error') -and $body['ok'] -eq $false) {
         $exit = [int]$body['exit']
-        if ($exit -eq 2 -and [string]$body['error'] -match $script:RecordBusyPattern) { $exit = 4 }
         $o = [ordered]@{ ok = $false; exit = $exit; error = [string]$body['error'] }
         return @{ Exit = $exit; Body = $o }
     }
-    $exit = if ($text -match $script:RecordBusyPattern) { 4 } else { 1 }
-    return @{ Exit = $exit; Body = New-RecordFailure $exit $text }
+    return @{ Exit = 1; Body = New-RecordFailure 1 $text }
 }
 
 # One tool call through $Call: @{ Exit = 0; Reply } or @{ Exit; Body }.
@@ -206,7 +213,7 @@ function Invoke-RecordAction([hashtable]$Opt, [hashtable]$Ctx) {
         'start' {
             $a.section = [string]$Opt['Target']
             if ($Opt['Character']) { $a.character = [string]$Opt['Character'] }
-            if ($null -ne $Opt['MaxMinutes']) { $a.max_minutes = [int]$Opt['MaxMinutes'] }
+            if (Test-RecordGiven $Opt['MaxMinutes']) { $a.max_minutes = [int][string]$Opt['MaxMinutes'] }
             if ($specs) { $a.specs_dir = $specs }
             $r = Invoke-RecordCall $Ctx.Call 'lab_record_start' $a 120
             if ($r.Exit) { return @{ Exit = $r.Exit; Body = $r.Body; Text = $r.Body.error } }
@@ -216,8 +223,14 @@ function Invoke-RecordAction([hashtable]$Opt, [hashtable]$Ctx) {
             if ($on -cnotmatch $script:RecordInstancePattern -or -not $id) {
                 return & $fail 1 "lab_record_start answered without a usable recording_id or instance; lab record status -Instance $on shows it"
             }
-            Save-RecordState (Get-RecordStatePath $Ctx.LabHome $on) $id $on
             $stopHint = if ($on -eq 'default') { 'lab record stop' } else { "lab record stop -Instance $on" }
+            # The recording runs on the daemon whatever happens here: a
+            # state file that cannot be written must still name it.
+            try {
+                Save-RecordState (Get-RecordStatePath $Ctx.LabHome $on) $id $on $specs
+            } catch {
+                return & $fail 1 "recording $id started on $on, but its state file could not be written ($($_.Exception.Message)); stop it with: $stopHint -RecordingId $id"
+            }
             return @{ Exit = 0; Body = $r.Reply; Text = "recording $id on $on (section $($a.section)); play, then: $stopHint" }
         }
         'status' {
@@ -234,7 +247,8 @@ function Invoke-RecordAction([hashtable]$Opt, [hashtable]$Ctx) {
         }
         'stop' {
             $a.recording_id = if ($Opt['RecordingId']) { [string]$Opt['RecordingId'] } else { [string]$state.recording_id }
-            if ($state -and -not $instance) { $a.instance = [string]$state.instance }
+            $savedOn = [string](Get-RecordField $state 'instance')
+            if ($savedOn -and -not $instance) { $a.instance = $savedOn }
             if ($Opt['CharacterExpr']) { $a.character_expr = [string]$Opt['CharacterExpr'] }
             if ($Opt['Profile']) { $a.profile = [string]$Opt['Profile'] }
             if ($Opt['NoDraft']) { $a.no_draft = $true }
@@ -242,11 +256,13 @@ function Invoke-RecordAction([hashtable]$Opt, [hashtable]$Ctx) {
             if ($r.Exit) {
                 # The recording stays on a failure (LR-07): keep the file so a retry needs no id.
                 $text = $r.Body.error
-                if ($r.Exit -eq 1 -and $state) { $text += "`nthe recording is kept; retry with lab record stop$(if ($instance) { " -Instance $instance" })" }
+                if ($r.Exit -in @(1, 3) -and $state) { $text += "`nthe recording is kept; retry with lab record stop$(if ($instance) { " -Instance $instance" })" }
                 return @{ Exit = $r.Exit; Body = $r.Body; Text = $text }
             }
             if ($statePath -and (Test-Path -LiteralPath $statePath)) { Remove-Item -LiteralPath $statePath -Force }
-            return @{ Exit = 0; Body = $r.Reply; Text = (Format-RecordDraftLine $r.Reply $specs $Ctx.UatRoot) }
+            # The draft went to the folder fixed at start; only the state file knows it.
+            $draftSpecs = [string](Get-RecordField $state 'specs_dir')
+            return @{ Exit = 0; Body = $r.Reply; Text = (Format-RecordDraftLine $r.Reply $draftSpecs $Ctx.UatRoot) }
         }
         'transform' {
             $dir = [string]$Opt['Target']

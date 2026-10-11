@@ -23,7 +23,7 @@ async fn start_refuses_a_second_recording_on_the_instance() {
     assert!(id_of(&a).ends_with("-p2"), "{a}");
 
     let err = lab.start(None).await.unwrap_err();
-    assert_eq!(err.exit, 2);
+    assert_eq!(err.exit, 4, "busy: {}", err.error);
     assert!(err.error.contains("already running"), "{}", err.error);
     assert_eq!(
         lab.server.count("server_packet_tap_start"),
@@ -46,7 +46,7 @@ async fn start_is_refused_while_the_lab_is_leased() {
         })
         .unwrap();
     let err = lab.start(None).await.unwrap_err();
-    assert_eq!(err.exit, 2, "{}", err.error);
+    assert_eq!(err.exit, 4, "busy: {}", err.error);
     assert!(lab.server.calls.lock().unwrap().is_empty());
     assert_eq!(lab.status()["recording"], false);
     // The refused start freed the slot.
@@ -267,7 +267,7 @@ fn a_failed_transform_keeps_the_raw_log_and_answers_the_failure_shape() {
         "row REC-01 \\ bad; ".repeat(100)
     );
 
-    let f = draft_outcome(&raw, Some(&specs), Err(long.clone())).unwrap_err();
+    let f = draft_outcome(&raw, Some(&specs), Err(long.clone()), false).unwrap_err();
     assert_eq!(f.exit, 1);
     let body = f.body();
     assert!(body.len() < BODY_CAP, "{} chars: {body}", body.len());

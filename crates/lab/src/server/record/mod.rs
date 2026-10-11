@@ -189,7 +189,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Transform a recording already on disk into a draft spec again, with other options: no client, no lease. dir is the recording id or its folder, directly under <uat root>/records/ (anything else is refused). section drafts it as another section. Writes <specs_dir>/drafts/<section>-<yyyyMMdd-HHmm>.toml, never over an existing file. Returns lab_record_stop's answer {ok, draft (file name), rows, steps, todo, dropped, raw (recording id)}; a failure is {ok:false, exit, error}."
+        description = "Transform a recording already on disk into a draft spec again, with other options: no client, no lease. dir is the recording id or its folder, directly under <uat root>/records/ (anything else is refused). section drafts it as another section. A recording without its stop line is refused: stop it first. Writes <specs_dir>/drafts/<section>-<yyyyMMdd-HHmm>.toml, or <name>-2.toml, -3, ... when that exists, never over an existing file. Returns lab_record_stop's answer {ok, draft (file name), rows, steps, todo, dropped, raw (recording id)}; a failure is {ok:false, exit, error}."
     )]
     async fn lab_record_transform(
         &self,
@@ -208,7 +208,11 @@ impl LabServer {
         // File reads and a transform: off the async workers.
         let out = tokio::task::spawn_blocking(move || transform::transform_dir(&records, req))
             .await
-            .unwrap_or_else(|e| Err(run::failed(format!("transform task: {e}"))));
+            .unwrap_or_else(|e| {
+                tracing::warn!(target: "lab.record", error = %e,
+                    "recording transform task panicked or was cancelled");
+                Err(run::failed(format!("transform task: {e}")))
+            });
         Ok(answer(out))
     }
 }

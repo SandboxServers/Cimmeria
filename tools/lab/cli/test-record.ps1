@@ -52,6 +52,8 @@ try {
     Check ($null -eq (Test-RecordArguments @{ Action = 'start'; Target = 'first-session'; Instance = 'p2'; MaxMinutes = 30 })) 'a good start passes'
     Check ((Test-RecordArguments @{ Action = 'start'; Target = 'fs'; MaxMinutes = 0 }) -like '-MaxMinutes must be 1 to 30') '-MaxMinutes 0 is refused'
     Check ((Test-RecordArguments @{ Action = 'start'; Target = 'fs'; MaxMinutes = 31 }) -like '-MaxMinutes must be 1 to 30') '-MaxMinutes 31 is refused'
+    Check ((Test-RecordArguments @{ Action = 'start'; Target = 'fs'; MaxMinutes = 'abc' }) -like '-MaxMinutes must be 1 to 30') '-MaxMinutes abc is refused'
+    Check ($null -eq (Test-RecordArguments @{ Action = 'start'; Target = 'fs'; MaxMinutes = '' })) 'an empty -MaxMinutes is not given'
     Check ((Test-RecordArguments @{ Action = 'status'; Instance = '..\x' }) -like '-Instance:*') 'a path-like instance is refused'
     Check ((Test-RecordArguments @{ Action = 'stop'; CharacterExpr = "x'; --" }) -like '-CharacterExpr:*') 'a quoting character_expr is refused'
     Check ($null -eq (Test-RecordArguments @{ Action = 'stop'; CharacterExpr = 'Px${run_id}' })) 'Px${run_id} passes'
@@ -120,17 +122,41 @@ try {
     $o = Run @{ Action = 'start'; Target = 'first-session' } @((Reply '{"ok":true,"recording_id":"x2","instance":"..\\evil"}'))
     Check ($o.Exit -eq 1 -and -not (Test-Path -LiteralPath (Join-Path $labHome '..\evil'))) 'a bad instance in the answer writes no file'
 
-    # --- exit-code mapping ---
-    $leased = 'lab_record_start failed: {"ok":false,"exit":2,"error":"the lab is leased to lab_uat (lease-0123456789abcdef). Wait for it"}'
+    # A state file that cannot be written after a good start: exit 1, and the
+    # error still names the recording and how to stop it.
+    $realSave = ${function:Save-RecordState}
+    ${function:Save-RecordState} = { throw 'disk full' }
+    try {
+        $o = Run @{ Action = 'start'; Target = 'first-session'; Instance = 'p4' } @(
+            (Reply "{`"ok`":true,`"recording_id`":`"$id`",`"instance`":`"p4`",`"section`":`"first-session`"}"))
+    } finally { ${function:Save-RecordState} = $realSave }
+    Check ($o.Exit -eq 1 -and $o.Body.ok -eq $false -and $o.Body.exit -eq 1) 'a state save failure after start exits 1'
+    Check ($o.Body.error -like "*$id*" -and $o.Body.error -like "*lab record stop -Instance p4 -RecordingId $id*" -and $o.Body.error -like '*disk full*') 'the save failure names the recording and the stop'
+
+    # A state file without instance (or specs_dir) still stops, under StrictMode.
+    $defaultState = Join-Path $labHome 'record-default.json'
+    Set-Content -LiteralPath $defaultState -Value "{`"recording_id`":`"$id`"}"
+    $o = Run @{ Action = 'stop' } @((Reply "{`"ok`":true,`"draft`":`"fs-20261012-1430.toml`",`"rows`":1,`"steps`":1,`"todo`":0,`"dropped`":0,`"raw`":`"$id`"}"))
+    Check ($o.Exit -eq 0 -and $script:calls[0].Args.recording_id -eq $id -and -not $script:calls[0].Args.ContainsKey('instance')) 'a state file with no instance stops unrouted'
+    Check ($o.Text -like 'draft <specs>/drafts/fs-20261012-1430.toml*') 'a spec folder unknown here prints <specs>, never a guessed path'
+
+    # A daemon that stops answering mid-stop (exit 3) keeps the state and offers the retry.
+    Save-RecordState $state $id 'p2' 'C:\repo\docs\guides\uat-specs'
+    $o = Run @{ Action = 'stop'; Instance = 'p2' } @('No connection could be made')
+    Check ($o.Exit -eq 3 -and (Test-Path -LiteralPath $state) -and $o.Text -like '*recording is kept; retry with lab record stop -Instance p2') 'exit 3 on stop offers the retry too'
+    Remove-Item -LiteralPath $state -Force
+
+    # --- exit-code mapping: the body's exit, straight through ---
+    $leased = 'lab_record_start failed: {"ok":false,"exit":4,"error":"the lab is leased to lab_uat (lease-0123456789abcdef). Wait for it"}'
     $o = Run @{ Action = 'start'; Target = 'first-session'; Instance = 'p3' } @($leased)
-    Check ($o.Exit -eq 4 -and $o.Body.exit -eq 4) 'a leased instance exits 4, and the body says so'
+    Check ($o.Exit -eq 4 -and $o.Body.exit -eq 4) 'a busy answer (exit 4) exits 4, and the body says so'
     Check ($o.Body.error -notmatch 'lease-[0-9a-f]{8,}' -and $o.Body.error -like '*lease-<redacted>*') 'lease ids are hidden'
-    $o = Run @{ Action = 'start'; Target = 'first-session'; Instance = 'p3' } @('lab_record_start failed: {"ok":false,"exit":2,"error":"recording a (b) is already running on this instance"}')
-    Check ($o.Exit -eq 4) 'an instance already recording exits 4'
+    $o = Run @{ Action = 'start'; Target = 'first-session'; Instance = 'p3' } @('lab_record_start failed: {"ok":false,"exit":2,"error":"the lab is leased; already running"}')
+    Check ($o.Exit -eq 2 -and $o.Body.exit -eq 2) 'an exit-2 body that mentions busy words stays 2 (no text rewrite)'
     $o = Run @{ Action = 'stop'; RecordingId = 'zz' } @('lab_record_stop failed: {"ok":false,"exit":2,"error":"that recording_id is not the running recording on instance default"}')
     Check ($o.Exit -eq 2 -and $o.Body.exit -eq 2) 'a wrong id exits 2'
     $o = Run @{ Action = 'status' } @('lab_record_status failed: the call needs a lease; the lab is leased to someone')
-    Check ($o.Exit -eq 4 -and $o.Body.ok -eq $false) 'a plain tool error that says leased exits 4'
+    Check ($o.Exit -eq 1 -and $o.Body.ok -eq $false) 'a plain tool error exits 1, whatever it says'
     $o = Run @{ Action = 'status' } @('lab_record_status failed: invalid params')
     Check ($o.Exit -eq 1) 'any other tool error exits 1'
     $o = Run @{ Action = 'status' } @('No connection could be made because the target machine actively refused it.')
@@ -174,6 +200,9 @@ try {
     Check ($code -eq 2 -and $lines.Count -eq 1 -and ($lines[0] | ConvertFrom-Json).exit -eq 2) 'record.ps1 -Json prints one failure line and exits 2'
     $null = & $pwshExe -NoProfile -File (Join-Path $PSScriptRoot 'record.ps1') 'bogus' 2>$null
     Check ($LASTEXITCODE -eq 2) 'an unknown action exits 2'
+    $lines = @(& $pwshExe -NoProfile -File (Join-Path $PSScriptRoot 'record.ps1') 'start' 'first-session' '-MaxMinutes' 'abc' '-Json' 2>$null)
+    $code = $LASTEXITCODE
+    Check ($code -eq 2 -and $lines.Count -eq 1 -and ($lines[0] | ConvertFrom-Json).error -like '-MaxMinutes must be 1 to 30') '-MaxMinutes abc exits 2 with one JSON line'
 } finally {
     Remove-Item -LiteralPath $labHome -Recurse -Force -ErrorAction SilentlyContinue
 }

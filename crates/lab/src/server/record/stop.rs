@@ -15,7 +15,7 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 use super::checks::check_character_expr;
-use super::run::{cut, failed, refused, Failure, RECORD_FILE, STOPPED};
+use super::run::{busy, cut, failed, refused, Failure, RECORD_FILE, STOPPED};
 use crate::supervisor::record_slot::{RecordHandle, RecordSlot};
 use crate::uat::record::emit::{Draft, TransformOptions};
 use crate::uat::record::log::{read_log, RecordLog};
@@ -94,7 +94,9 @@ pub(super) async fn stop(slot: &RecordSlot, req: StopReq) -> Result<Value, Failu
         ))
         .keeping(raw.display().to_string()));
     }
-    let mut handle = slot.take_ended(id, &req.instance).map_err(refused)?;
+    // Signalled and matched above, so a refusal here is a finish still
+    // under way (or a concurrent stop): busy, try again.
+    let mut handle = slot.take_ended(id, &req.instance).map_err(busy)?;
     let ended = handle.outcome().await.err();
     if let Some(e) = &ended {
         tracing::warn!(target: "lab.record", recording_id = %id, error = %e,
@@ -135,6 +137,7 @@ fn collect(h: &RecordHandle, req: &StopReq, ended: Option<&str>) -> Result<Value
             character_expr: req.character_expr.clone(),
             profile: req.profile.clone(),
             transform: req.transform,
+            suffix_on_exists: false,
         };
         write_draft(raw, &log, opts)?
     };
@@ -159,6 +162,9 @@ pub(super) struct DraftOpts<'a> {
     pub character_expr: Option<String>,
     pub profile: Option<String>,
     pub transform: TransformFn,
+    /// An existing draft by that name: the stop refuses (its draft name is
+    /// the recording's own), a re-transform tries `<name>-2.toml`, `-3`, ...
+    pub suffix_on_exists: bool,
 }
 
 /// Transform `log` with its section's meta as the base (when the spec
@@ -170,7 +176,7 @@ pub(super) fn write_draft(raw: &Path, log: &RecordLog, o: DraftOpts<'_>) -> Resu
         profile: o.profile,
         ..Default::default()
     };
-    draft_outcome(raw, o.specs, (o.transform)(log, &opts))
+    draft_outcome(raw, o.specs, (o.transform)(log, &opts), o.suffix_on_exists)
 }
 
 /// The named section's meta from `specs`, when it loads and holds it.
@@ -182,7 +188,7 @@ fn section_meta(specs: &Path, section: &str) -> Option<crate::uat::spec::Section
 }
 
 /// A failure that leads with the raw log's folder, logged.
-fn failed_at(raw: &Path, error: String) -> Failure {
+pub(super) fn failed_at(raw: &Path, error: String) -> Failure {
     tracing::warn!(target: "lab.record", raw = %raw.display(), %error,
         "recording: no draft; the raw log is kept");
     failed(error).keeping(raw.display().to_string())
@@ -197,6 +203,7 @@ pub(super) fn draft_outcome(
     raw: &Path,
     specs: Option<&Path>,
     result: Result<Draft, String>,
+    suffix_on_exists: bool,
 ) -> Result<Value, Failure> {
     let d = match result {
         Ok(d) => d,
@@ -216,18 +223,22 @@ pub(super) fn draft_outcome(
     let drafts = specs.join("drafts");
     std::fs::create_dir_all(&drafts)
         .map_err(|e| failed_at(raw, format!("{}: {e}", drafts.display())))?;
-    let path = drafts.join(&d.file_name);
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&path)
-        .map_err(|e| match e.kind() {
-            std::io::ErrorKind::AlreadyExists => failed_at(
-                raw,
-                format!("draft {} exists, not overwritten", d.file_name),
-            ),
-            _ => failed_at(raw, format!("{}: {e}", path.display())),
-        })?;
+    let tries = if suffix_on_exists { MAX_SUFFIX } else { 1 };
+    let (name, path, mut f) = open_new_draft(&drafts, &d.file_name, tries).map_err(|e| {
+        failed_at(
+            raw,
+            match e {
+                NewDraft::Exists if tries == 1 => {
+                    format!("draft {} exists, not overwritten", d.file_name)
+                }
+                NewDraft::Exists => format!(
+                    "drafts {} to -{MAX_SUFFIX} exist, not overwritten",
+                    d.file_name
+                ),
+                NewDraft::Io(path, e) => format!("{}: {e}", path.display()),
+            },
+        )
+    })?;
     if let Err(e) = f.write_all(d.text.as_bytes()).and_then(|()| f.flush()) {
         // A half-written draft would block the retry's `create_new`.
         drop(f);
@@ -240,11 +251,49 @@ pub(super) fn draft_outcome(
         .unwrap_or_default();
     Ok(json!({
         "ok": true,
-        "draft": d.file_name,
+        "draft": name,
         "rows": d.rows,
         "steps": d.actions,
         "todo": d.todos,
         "dropped": d.dropped_rows,
         "raw": id,
     }))
+}
+
+/// Most names a re-transform tries: `<name>.toml`, then `-2` to `-99`.
+const MAX_SUFFIX: u32 = 99;
+
+/// Why no draft file was opened.
+enum NewDraft {
+    /// Every name tried exists.
+    Exists,
+    Io(PathBuf, std::io::Error),
+}
+
+/// Open `<drafts>/<file_name>` with `create_new`, or with `tries > 1` the
+/// first free of `<stem>-2.toml` .. `<stem>-<tries>.toml`. Never over a file.
+fn open_new_draft(
+    drafts: &Path,
+    file_name: &str,
+    tries: u32,
+) -> Result<(String, PathBuf, std::fs::File), NewDraft> {
+    let stem = file_name.strip_suffix(".toml").unwrap_or(file_name);
+    for n in 1..=tries {
+        let name = if n == 1 {
+            file_name.to_string()
+        } else {
+            format!("{stem}-{n}.toml")
+        };
+        let path = drafts.join(&name);
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(f) => return Ok((name, path, f)),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(NewDraft::Io(path, e)),
+        }
+    }
+    Err(NewDraft::Exists)
 }

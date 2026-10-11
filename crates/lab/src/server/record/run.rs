@@ -43,7 +43,8 @@ pub(super) const STOPPED: &str = "stopped";
 pub(super) type Clock = Arc<dyn Fn() -> i64 + Send + Sync>;
 
 /// A refused or failed call, as D-LR16 prints it: exit 2 when nothing
-/// changed (bad arguments, busy, wrong id), 1 when something failed.
+/// changed (bad arguments, wrong id), 4 when the instance or the lab is
+/// busy (LR-08 review), 1 when something failed.
 #[derive(Debug)]
 pub(super) struct Failure {
     pub exit: u8,
@@ -56,6 +57,16 @@ pub(super) struct Failure {
 pub(super) fn refused(error: impl Into<String>) -> Failure {
     Failure {
         exit: 2,
+        error: error.into(),
+        keep: None,
+    }
+}
+
+/// Nothing changed because the instance is recording, a recording is
+/// starting or finishing there, or the lab is leased: try again later.
+pub(super) fn busy(error: impl Into<String>) -> Failure {
+    Failure {
+        exit: 4,
         error: error.into(),
         keep: None,
     }
@@ -186,13 +197,15 @@ pub(super) async fn start(rec: Recorder, req: StartReq) -> Result<Value, Failure
     let specs_dir = check_specs_dir(req.specs_dir)?;
     check_character(&req.character).map_err(refused)?;
     recording_id(0, &rec.instance).map_err(refused)?;
-    let reservation = rec.slot.reserve().map_err(refused)?;
+    let reservation = rec.slot.reserve().map_err(busy)?;
+    // The owner and purpose are fixed and non-empty, so the only refusal
+    // left is a lab leased to someone else.
     let lease = RunLease::acquire_own_as(
         rec.book.clone(),
         RECORD_OWNER,
         format!("recording a human: {}", req.section),
     )
-    .map_err(refused)?;
+    .map_err(busy)?;
 
     let ticks = Arc::new(AtomicU32::new(0));
     let anchors = Arc::new(AtomicU32::new(0));
@@ -259,7 +272,7 @@ pub(super) async fn start(rec: Recorder, req: StartReq) -> Result<Value, Failure
         done,
         ended: None,
     };
-    reservation.arm(handle).map_err(failed)?;
+    reservation.arm(handle).map_err(busy)?;
     tracing::info!(
         target: "lab.record",
         recording_id = %begun.recording_id, section = %req.section,

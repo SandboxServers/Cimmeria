@@ -2,7 +2,9 @@
 //! is already on disk into a draft again, with other options, without a
 //! client or a lease. It shares the stop's log read and draft writer
 //! ([`super::stop::write_draft`]), so the draft lands in the same place, is
-//! never written over an existing file, and the answer has the stop's shape.
+//! never written over an existing file (a re-transform takes `<name>-2.toml`
+//! and on), and the answer has the stop's shape. A log without its stop line
+//! is refused: stop the recording first.
 //!
 //! The folder must be a recording folder: a direct child of
 //! `<uat root>/records/`. A bare recording id names one; a path is
@@ -15,7 +17,7 @@ use serde_json::Value;
 
 use super::checks::{check_character_expr, check_section, check_specs_dir};
 use super::run::{refused, Failure};
-use super::stop::{read_raw, write_draft, DraftOpts, TransformFn};
+use super::stop::{failed_at, read_raw, write_draft, DraftOpts, TransformFn};
 
 /// What `lab_record_transform` asks for.
 pub(super) struct TransformReq {
@@ -43,6 +45,15 @@ pub(super) fn transform_dir(records: &Path, req: TransformReq) -> Result<Value, 
     let specs = check_specs_dir(req.specs_dir)?.or(req.default_specs);
     let raw = recording_folder(records, &req.dir)?;
     let mut log = read_raw(&raw)?;
+    // No stop line: still recording, or a recorder that died mid-write. A
+    // draft now would be partial, and its name would block that
+    // recording's own stop (`create_new`).
+    if log.stop.is_none() {
+        return Err(failed_at(
+            &raw,
+            "recording has no stop line; stop it first".into(),
+        ));
+    }
     if let Some(s) = req.section {
         log.start.section = s;
     }
@@ -54,6 +65,9 @@ pub(super) fn transform_dir(records: &Path, req: TransformReq) -> Result<Value, 
             character_expr: req.character_expr,
             profile: req.profile,
             transform: req.transform,
+            // A re-transform never refuses for an existing draft: it gets
+            // `<name>-2.toml`, `-3`, ...
+            suffix_on_exists: true,
         },
     );
     match &out {
@@ -184,8 +198,8 @@ mod tests {
     }
 
     /// A recording id, or its full folder path, writes a draft under the
-    /// spec directory's `drafts/` and answers like the stop; a second call
-    /// never overwrites it.
+    /// spec directory's `drafts/` and answers like the stop; a second and
+    /// third call take `-2` and `-3`, never overwriting the first.
     #[test]
     fn a_good_dir_writes_a_draft() {
         let id = "20261012-143000-p2";
@@ -193,16 +207,23 @@ mod tests {
         let v = transform_dir(&r.records, req(&r, id)).unwrap();
         assert_eq!(v["ok"], true);
         assert_eq!(v["raw"], id);
-        let name = v["draft"].as_str().unwrap();
-        assert!(r.specs.join("drafts").join(name).is_file(), "{v}");
+        let name = v["draft"].as_str().unwrap().to_string();
+        let first = r.specs.join("drafts").join(&name);
+        assert!(first.is_file(), "{v}");
         assert!(v["rows"].as_u64().is_some() && v["todo"].as_u64().is_some());
         assert!(v.to_string().len() < 400);
+        // Marked, so an overwrite would show.
+        std::fs::write(&first, "# first").unwrap();
 
-        // The same folder by full path: the draft exists, so it is refused.
+        // The same folder by full path: the draft exists, so it gets `-2`.
+        let stem = name.strip_suffix(".toml").unwrap();
         let full = r.records.join(id).display().to_string();
-        let f = transform_dir(&r.records, req(&r, &full)).unwrap_err();
-        assert_eq!(f.exit, 1);
-        assert!(f.error.contains("exists, not overwritten"), "{}", f.error);
+        let v = transform_dir(&r.records, req(&r, &full)).unwrap();
+        assert_eq!(v["draft"], format!("{stem}-2.toml"), "{v}");
+        let v = transform_dir(&r.records, req(&r, id)).unwrap();
+        assert_eq!(v["draft"], format!("{stem}-3.toml"), "{v}");
+        assert_eq!(std::fs::read_to_string(&first).unwrap(), "# first");
+        assert_eq!(drafts(&r), 3);
 
         // Another section names another draft.
         let v = transform_dir(
@@ -217,7 +238,54 @@ mod tests {
             v["draft"].as_str().unwrap().starts_with("other-section-"),
             "{v}"
         );
-        assert_eq!(drafts(&r), 2);
+        assert_eq!(drafts(&r), 4);
+    }
+
+    /// Regression guard: a log without its stop line (a recording still
+    /// running, or a dead recorder's) is refused and no draft is written,
+    /// so it cannot take the name the recording's own stop will need.
+    #[test]
+    fn a_recording_without_a_stop_line_is_refused() {
+        let id = "20261012-143000-p2";
+        let r = roots(id);
+        let unstopped: String = FIXTURE
+            .lines()
+            .filter(|l| !l.starts_with(r#"{"kind":"stop""#))
+            .map(|l| format!("{l}\n"))
+            .collect();
+        assert_ne!(
+            unstopped.len(),
+            FIXTURE.len(),
+            "the fixture has a stop line"
+        );
+        std::fs::write(r.records.join(id).join(RECORD_FILE), unstopped).unwrap();
+        let f = transform_dir(&r.records, req(&r, id)).unwrap_err();
+        assert_eq!(f.exit, 1, "{}", f.error);
+        assert!(f.error.contains("no stop line"), "{}", f.error);
+        assert_eq!(drafts(&r), 0);
+    }
+
+    /// A link inside `records/` that leads outside it is refused: the
+    /// folder is checked after canonicalizing, so the link is followed.
+    #[test]
+    fn a_link_inside_records_to_outside_is_refused() {
+        let r = roots("20261012-143000-p2");
+        let link = r.records.join("20261012-150000-p2");
+        #[cfg(windows)]
+        let made = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(&link)
+            .arg(&r.outside)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        #[cfg(unix)]
+        let made = std::os::unix::fs::symlink(&r.outside, &link).is_ok();
+        assert!(made, "could not make the link");
+        let f = transform_dir(&r.records, req(&r, "20261012-150000-p2")).unwrap_err();
+        assert_eq!(f.exit, 2, "{}", f.error);
+        assert!(f.error.contains("not a recording folder"), "{}", f.error);
+        assert_eq!(drafts(&r), 0);
     }
 
     #[test]
