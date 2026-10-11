@@ -7,9 +7,11 @@
 > flush tail drop). Packet specs: [work-packets.md](work-packets.md). ADR:
 > [wireclient.md](../../architecture/wireclient.md).
 >
-> **Campaign status (2026-10-10): wave 1 merged** (WC-01 #1358, WC-02 #1359,
-> WC-03 #1360). D-WC2, D-WC3, D-WC6 and D-WC7 are decided (option (a) each).
-> D-WC8 still waits on #1341. WC-04 and WC-05 (wave 2) are Ready.
+> **Campaign status (2026-10-10): waves 1 and 2 merged** (WC-01 #1358, WC-02
+> #1359, WC-03 #1360, WC-04 #1373, WC-05 #1369). D-WC2, D-WC3, D-WC6 and D-WC7
+> are decided (option (a) each). D-WC8 still waits on #1341. Wave 3 (WC-06 to
+> WC-10, WC-13) is Ready. WC-16 cannot go green until #1371 (the three chaos
+> tests fail on `main`) is fixed.
 
 ## Purpose
 
@@ -81,16 +83,16 @@ Against `main` @ `c05c0638a`. "Fixture #n" is the n-th record (0-based) of
 | WC-01 | Strict bundle decode, raw sub-slot byte, message offsets | packet-coder | S | 1 | none | Done (#1358) |
 | WC-02 | Tap fixture loader and client-call builders, pinned to the capture | packet-coder | M | 1 | D-WC10 (proposed) | Done (#1359) |
 | WC-03 | Runner: `wireclient-e2e` nextest profile and `--wireclient` mode in `test-live-db` | packet-coder | S | 1 | D-WC6 | Done (#1360) |
-| WC-04 | `tests/it` live-DB isolation: slot URL, test logging, no direct `DATABASE_URL` | packet-coder | M | 2 | WC-03 | Ready |
-| WC-05 | Semantic decoder skeleton, primitives, dialog family | packet-coder | M | 2 | WC-02 | Ready |
-| WC-06 | Mission family decoders | packet-coder | S | 3 | WC-05 | BlockedDependency |
-| WC-07 | Ability, sequence and movie decoders | packet-coder | S | 3 | WC-05 | BlockedDependency |
-| WC-08 | Inventory family decoders | packet-coder | S | 3 | WC-05 | BlockedDependency |
-| WC-09 | Entity-introduction and chat decoders | packet-coder | S | 3 | WC-05 | BlockedDependency |
-| WC-10 | Character creation on the wire, world entry split and recorded | packet-coder | M | 3 | WC-02, WC-04 | BlockedDependency |
+| WC-04 | `tests/it` live-DB isolation: slot URL, test logging, no direct `DATABASE_URL` | packet-coder | M | 2 | WC-03 | Done (#1373) |
+| WC-05 | Semantic decoder skeleton, primitives, dialog family | packet-coder | M | 2 | WC-02 | Done (#1369) |
+| WC-06 | Mission family decoders | packet-coder | S | 3 | WC-05 | Ready |
+| WC-07 | Ability, sequence and movie decoders | packet-coder | S | 3 | WC-05 | Ready |
+| WC-08 | Inventory family decoders | packet-coder | S | 3 | WC-05 | Ready |
+| WC-09 | Entity-introduction and chat decoders | packet-coder | S | 3 | WC-05 | Ready |
+| WC-10 | Character creation on the wire, world entry split and recorded | packet-coder | M | 3 | WC-02, WC-04 | Ready |
 | WC-11 | Entity mirror and query | packet-coder | M | 4 | WC-01, WC-05, WC-08, WC-09 | BlockedDependency |
 | WC-12 | `ScriptSession`: lossless event log, ordered waits, keep-alive | rust-gameserver-dev | M | 5 | WC-10, WC-11 | BlockedDependency |
-| WC-13 | CI workflow `wireclient.yml` (reporting, not gating) | packet-coder | S | 3 | WC-03, WC-04, D-WC7 | BlockedDependency |
+| WC-13 | CI workflow `wireclient.yml` (reporting, not gating) | packet-coder | S | 3 | WC-03, WC-04, D-WC7 | Ready |
 | WC-14 | Praxis-start end-to-end test | rust-gameserver-dev | L | 6 | WC-06, WC-07, WC-12, D-WC2, D-WC3 | BlockedDependency |
 | WC-15 | First-login flush-shape guard (#1341) | rust-gameserver-dev | M | 7 | WC-14, D-WC8, #1341's mitigation | BlockedDecision |
 | WC-16 | Shakedown, then gate merges on the job | packet-coder (coordinator runs the shakedown) | S | 7 | WC-13, WC-14 | BlockedDependency |
@@ -156,3 +158,13 @@ then the reference, not the spec.
   suite still reads `DATABASE_URL` (F14), so `--wireclient` runs it in the
   `live-db` group but against the template database, not the clones; the
   profile comment and TESTING.md say so, and WC-04 should drop that caveat.
+
+- **WC-04 (#1373).** Finished by the coordinator after the worker ran out
+  of context; see [worknotes/WC-04.md](worknotes/WC-04.md). The live
+  isolation test pins the slot suffix only; the source guard is what catches a
+  helper reading `DATABASE_URL`. The three chaos tests fail on `main` too
+  (#1371).
+- **WC-05 (#1369).** As specified, with `semantic::primitives` public (the
+  family packets call the `Reader` methods WC-05 does not). Review added
+  `dialog_display_reads_fields_in_wire_order` (the capture's mission flags
+  and id are both 0) and `dialog_arms_route_by_target_kind`.
