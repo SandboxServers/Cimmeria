@@ -1,6 +1,6 @@
-//! Effective launch settings of a verified adopted copy. Fresh installs keep the
-//! bundled patch contract; adoption consumes what the user reviewed, and only
-//! while every independent record of it still agrees.
+//! Effective launch settings of a verified adopted copy. Fresh installs follow
+//! the "Load client patches" preference; adoption consumes what the user
+//! reviewed, and only while every independent record of it still agrees.
 use super::*;
 use crate::storage::adoption::Provenance;
 
@@ -83,9 +83,15 @@ impl DesktopState {
     pub fn injection_policy(&self) -> Result<InjectionPolicy, StorageError> {
         let binding = self.effective_launch_binding()?;
         Ok(InjectionPolicy {
-            client_patches: binding
-                .as_ref()
-                .is_none_or(|binding| binding.client_patches_enabled),
+            // An adopted copy launches with the patch choice the player reviewed
+            // at adoption, whatever "Load client patches" says now: its binding
+            // is re-derived from the import record and admission enforces it, so
+            // the preference cannot override it. Everything else follows the
+            // preference.
+            client_patches: match binding {
+                Some(binding) => binding.client_patches_enabled,
+                None => self.preferences.client_patches_enabled,
+            },
             // The telemetry DLL goes only to an installation this launcher made,
             // for a player who opted in here. An adopted copy's imported
             // telemetry choice is still not honoured (see `adoption`), and an
@@ -97,7 +103,7 @@ impl DesktopState {
 
     /// The resources this installation may launch with, from the native bundle.
     /// Ok(None) means the policy injects patches and the bundle has no verified
-    /// patch artifact. A copy adopted with patches off never needs that artifact.
+    /// patch artifact. Patches off, by preference or by adoption, never needs it.
     pub fn resolve_play_resources(
         &self,
         bundled: launch::Resources,

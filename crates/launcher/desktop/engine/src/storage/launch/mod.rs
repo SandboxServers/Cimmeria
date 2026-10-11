@@ -127,7 +127,14 @@ impl DesktopState {
                 super::effective_settings::launch_binding(self, &installed.intent, &provenance)?,
                 &resources,
             )?,
-            None => resources.verify()?,
+            None => {
+                // "Load client patches" off: a host that skipped resolution must
+                // not inject the DLL anyway.
+                if resources.client_patches.is_some() && !self.preferences.client_patches_enabled {
+                    return Err(ContractError::IdentityConflict.into());
+                }
+                resources.verify()?
+            }
         }
         if !install_worker::content_valid(
             &installed.intent.destination.join("game"),

@@ -84,7 +84,12 @@ parser's rules or the save fails with `invalid_server_list` and writes nothing;
 an empty list means the default server. Play writes the saved list (or the
 default) into `LoginInternal.lua` and checks it again first; an adopted copy
 keeps the list its adoption reviewed, and every snapshot carries that list as
-`adopted_login_servers` (`null` otherwise) so Settings can say so. The opt-in
+`adopted_login_servers` (`null` otherwise) so Settings can say so. With
+`client_patches_enabled` off, Play on a copy this launcher installed injects no
+client-patches DLL, and admission refuses a launch request that carries one; the
+telemetry DLL still follows its own opt-in. An adopted copy keeps the patch
+setting its adoption reviewed, whatever the preference says; Settings still
+saves the preference there and says the copy keeps its setting. The opt-in
 telemetry session is minted from the same list Play writes. No command lets frontend callers set native operation outcomes or
 choose the state-directory root. The shell selects app data through Tauri's
 native resolver. Native first-install intent validation and worker dispatch are
