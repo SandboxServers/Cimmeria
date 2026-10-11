@@ -77,7 +77,7 @@ Status vocabulary: **Ready / BlockedDependency / BlockedDecision / Writing / Rev
 | LX-06 | 1 | Reset client cache and client state | packet-coder | LX-02 | Integrated ([#1418](https://github.com/SandboxServers/Cimmeria/pull/1418)) |
 | LX-07 | 1 | "Changes to your client" panel | packet-coder | LX-02 | Integrated ([#1414](https://github.com/SandboxServers/Cimmeria/pull/1414)) |
 | LX-08a | 1 | Telemetry transport: token refresh, queue, chunk upload | rust-gameserver-dev | LX-02 | Integrated ([#1425](https://github.com/SandboxServers/Cimmeria/pull/1425)) |
-| LX-08b | 2 | Telemetry session: log tailing, exit code, end-of-session bundle | rust-gameserver-dev | LX-08a | Review ([#1535](https://github.com/SandboxServers/Cimmeria/pull/1535)) |
+| LX-08b | 2 | Telemetry session: log tailing, exit code, end-of-session bundle | rust-gameserver-dev | LX-08a | Integrated ([#1535](https://github.com/SandboxServers/Cimmeria/pull/1535)) |
 | LX-08c | 2 | Telemetry events: install result, patch verdict, BM counts | packet-coder | LX-08a | Integrated ([#1482](https://github.com/SandboxServers/Cimmeria/pull/1482)) |
 | LX-09 | 1 | Single instance | packet-coder | LX-02 | Integrated ([#1405](https://github.com/SandboxServers/Cimmeria/pull/1405)) |
 | LX-10 | 1 | Windows in-place adoption | rust-gameserver-dev | LX-02 | Integrated ([#1446](https://github.com/SandboxServers/Cimmeria/pull/1446)) |
