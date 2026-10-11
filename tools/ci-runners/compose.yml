@@ -43,10 +43,11 @@ services:
   # The node's shared compile cache: every runner here uses it as its sccache
   # backend, so a crate compiled by any job on this node is a hit for the others.
   # A cache, not a store: no persistence (a restart means one cold run), LRU
-  # eviction at CACHE_MAXMEMORY. It lives on this compose network because the
-  # colo's networks are isolated from each other (a cache shared across nodes
-  # would need a gateway rule) and Docker drops traffic between its bridge
-  # networks. If it is down, sccache counts lookups as misses and compiles.
+  # eviction at CACHE_MAXMEMORY. One node's cache serves every node (deploy.ps1
+  # -CacheHost): that node's runners reach it here on the compose network (Docker
+  # drops traffic between its bridge networks, so not via the published port), the
+  # others via the published port. If it is down, sccache counts lookups as misses
+  # and compiles.
   cache:
     image: redis:7.4-alpine
     restart: unless-stopped
@@ -68,6 +69,11 @@ services:
       - --proto-max-bulk-len
       - 512mb
     mem_limit: ${CACHE_MEM_LIMIT:-18g}
+    # The cache host (deploy.ps1 -CacheHost) publishes it for the other nodes'
+    # runners (a UniFi policy admits TCP 6379 from their networks); elsewhere it
+    # is bound to loopback, i.e. not published.
+    ports:
+      - "${CACHE_PUBLISH:-127.0.0.1:6379}:6379"
   # The node's shared BuildKit daemon. pr-container.yml builds through it
   # (setup-buildx `driver: remote`), so image layers and the Dockerfile's cargo
   # cache mounts (registry, /build/target) persist across jobs and runners on this
@@ -117,7 +123,7 @@ services:
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
       DOCKER_HOST: unix:///run/dind/docker.sock
       SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
-      CACHE_ENDPOINT: redis://cache:6379
+      CACHE_ENDPOINT: ${CACHE_ENDPOINT:-redis://cache:6379}
       CACHE_PASSWORD: ${CACHE_PASSWORD:-}
       HTTPS_PROXY: http://egress:3128
       https_proxy: http://egress:3128
@@ -148,7 +154,7 @@ services:
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
       DOCKER_HOST: unix:///run/dind/docker.sock
       SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
-      CACHE_ENDPOINT: redis://cache:6379
+      CACHE_ENDPOINT: ${CACHE_ENDPOINT:-redis://cache:6379}
       CACHE_PASSWORD: ${CACHE_PASSWORD:-}
       HTTPS_PROXY: http://egress:3128
       https_proxy: http://egress:3128
@@ -179,7 +185,7 @@ services:
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
       DOCKER_HOST: unix:///run/dind/docker.sock
       SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
-      CACHE_ENDPOINT: redis://cache:6379
+      CACHE_ENDPOINT: ${CACHE_ENDPOINT:-redis://cache:6379}
       CACHE_PASSWORD: ${CACHE_PASSWORD:-}
       HTTPS_PROXY: http://egress:3128
       https_proxy: http://egress:3128
@@ -210,7 +216,7 @@ services:
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
       DOCKER_HOST: unix:///run/dind/docker.sock
       SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
-      CACHE_ENDPOINT: redis://cache:6379
+      CACHE_ENDPOINT: ${CACHE_ENDPOINT:-redis://cache:6379}
       CACHE_PASSWORD: ${CACHE_PASSWORD:-}
       HTTPS_PROXY: http://egress:3128
       https_proxy: http://egress:3128
@@ -241,7 +247,7 @@ services:
       RUNNER_TOKEN: ${RUNNER_TOKEN:-}
       DOCKER_HOST: unix:///run/dind/docker.sock
       SCCACHE_CACHE_SIZE: ${SCCACHE_CACHE_SIZE:-20G}
-      CACHE_ENDPOINT: redis://cache:6379
+      CACHE_ENDPOINT: ${CACHE_ENDPOINT:-redis://cache:6379}
       CACHE_PASSWORD: ${CACHE_PASSWORD:-}
       HTTPS_PROXY: http://egress:3128
       https_proxy: http://egress:3128

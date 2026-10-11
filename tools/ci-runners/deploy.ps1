@@ -17,6 +17,9 @@ param(
     # host:port of the exit proxy for 57.0.0.0/8 (README, "Colo egress"). Empty
     # keeps the value already in the node's .env.
     [string]$EgressExit = $env:CIMMERIA_EGRESS_EXIT,
+    # The node whose compose `cache` serves every node's runners (a UniFi policy
+    # admits TCP 6379 to it from the others). '' gives each node its own cache.
+    [string]$CacheHost = 'node2',
     [switch]$Down
 )
 Set-StrictMode -Version Latest
@@ -50,13 +53,22 @@ foreach ($node in $Nodes) {
     if ($LASTEXITCODE -ne 0) { throw "${node}: scp failed" }
     $exit = $EgressExit
     if (-not $exit) { $exit = (ssh $ssh "sed -n 's/^EGRESS_EXIT=//p' $dir/.env 2>/dev/null") -join '' }
-    # The node's compile-cache password: generated once, kept in its .env.
-    $cachePassword = (ssh $ssh "sed -n 's/^CACHE_PASSWORD=//p' $dir/.env 2>/dev/null") -join ''
+    # The compile cache: every node uses the cache host's password (generated once,
+    # kept in that node's .env). The cache host publishes its Redis; the others
+    # point their runners at it.
+    $pwFrom = if ($CacheHost) { $targets[$CacheHost] } else { $t }
+    $cachePassword = (ssh $pwFrom.Ssh "sed -n 's/^CACHE_PASSWORD=//p' $($pwFrom.Dir)/.env 2>/dev/null") -join ''
     if (-not $cachePassword) {
         $bytes = [byte[]]::new(24); [Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
         $cachePassword = [Convert]::ToHexString($bytes).ToLower()
     }
-    $envFile = "NODE=$node`nREPO_URL=https://github.com/$Repo`nRUNNER_MEM_LIMIT=$($t.Mem)`nSCCACHE_CACHE_SIZE=20G`nEGRESS_EXIT=$exit`nCACHE_PASSWORD=$cachePassword`nCACHE_MAXMEMORY=$($t.Cache)`nBUILDKIT_MAX_MB=$($t.BuildkitMb)`n"
+    $cacheEndpoint = ''; $cachePublish = ''
+    if ($CacheHost -and $node -eq $CacheHost) { $cachePublish = '0.0.0.0:6379' }
+    elseif ($CacheHost) {
+        $cacheIp = ((ssh -G $targets[$CacheHost].Ssh) | Where-Object { $_ -like 'hostname *' }) -replace '^hostname ', ''
+        $cacheEndpoint = "redis://${cacheIp}:6379"
+    }
+    $envFile = "NODE=$node`nREPO_URL=https://github.com/$Repo`nRUNNER_MEM_LIMIT=$($t.Mem)`nSCCACHE_CACHE_SIZE=20G`nEGRESS_EXIT=$exit`nCACHE_PASSWORD=$cachePassword`nCACHE_MAXMEMORY=$($t.Cache)`nCACHE_ENDPOINT=$cacheEndpoint`nCACHE_PUBLISH=$cachePublish`nBUILDKIT_MAX_MB=$($t.BuildkitMb)`n"
     $envFile | ssh $ssh "umask 077 && cat > $dir/.env && sed -i 's/\r$//' $dir/entrypoint.sh $dir/hooks/*.sh"
 
     $token = gh api -X POST "repos/$Repo/actions/runners/registration-token" --jq .token
