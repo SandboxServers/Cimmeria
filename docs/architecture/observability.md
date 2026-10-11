@@ -456,9 +456,8 @@ trace index. Estimated volume with five active players: ~75 inbound
 packets/s give ~1.4 `DECRYPT_OK` and ~1.4 `UDP_IN` samples/s. The AoI
 relay (~10 Hz per witness–entity pair, ~1,200/s at 3 players watching 40
 NPCs) sends ~12 samples/s to `cimmeria-server`, as it has since NA00.
-The remaining per-packet TRACE rows are **not** sampled: `encrypt` /
-`decrypt` in `cimmeria_mercury` (one per outbound and per inbound
-datagram), ACK queueing, `EntityMove` and
+The remaining per-packet TRACE rows are **not** sampled: ACK queueing,
+`EntityMove` and
 `AVATAR_UPDATE_EXPLICIT -> CellService` (one per player movement
 packet). They are a few fields each and arrive at about the rate of
 `mercury.packet`, which `cimmeria-network` already receives unsampled —
