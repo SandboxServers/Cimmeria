@@ -13,8 +13,8 @@
 //! The zip is deterministic (sorted entries, fixed timestamps), so the same
 //! overlay always packs to the same bytes and the same id.
 //!
-//! Compiled into the `pack-client-overlay` tool, and into the launcher only
-//! for its tests.
+//! Compiled into the `pack-client-overlay` tool, and into this crate's own
+//! library for its tests.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};

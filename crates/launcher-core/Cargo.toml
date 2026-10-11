@@ -4,7 +4,15 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 publish = false
-description = "Launcher logic shared by the egui sgw-launcher and the desktop launcher's engine: the signed manifest, install, unpack (zip, RAR, the 2009 cabinet set), client setup, install state, log bundles, the client-changes list and the dev-session telemetry pipeline."
+description = "Launcher logic shared by the egui sgw-launcher and the desktop launcher's engine: the signed manifest, install, unpack (zip, RAR, the 2009 cabinet set), client setup, install state, log bundles, the client-changes list, the dev-session telemetry pipeline and the client-overlay packer."
+
+# Release-side tool: packs crates/client-patches/overlay/ into a manifest
+# patch (BM-06). Its logic is src/overlay_pack.rs, whose tests run in this
+# crate's library test binary, so this target has none of its own.
+[[bin]]
+name = "pack-client-overlay"
+path = "src/bin/pack-client-overlay.rs"
+test = false
 
 [features]
 # Test fixtures other crates' tests build on: the archive fixtures in

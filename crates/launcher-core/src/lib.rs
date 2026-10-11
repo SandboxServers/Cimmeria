@@ -20,6 +20,7 @@ pub mod install_report;
 pub mod logs;
 pub mod manifest;
 pub mod overlay_meta;
+pub mod overlay_pack;
 pub mod patch_dest;
 pub mod state;
 pub mod telemetry;
