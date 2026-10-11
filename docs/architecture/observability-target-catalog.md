@@ -522,14 +522,14 @@ Covered by `OTEL_FILTER`'s `inventory=info` directive
 
 **Level:** INFO (`store_opened`, `transaction`, `refused`) / WARN (`failed`; the cell's protocol refusals)
 
-**Emitted from:** `base::world_entry::methods::vendor::telemetry::VendorLog`, called from `vendor::{store, purchase, sell, buyback, paid_repair, paid_recharge}`; `cell::cell_methods::player::vendor::{mod, session}`
+**Emitted from:** `base::world_entry::methods::vendor::telemetry::VendorLog`, called from `vendor::{store, purchase, sell, buyback, paid_repair, paid_recharge}`; `cell::cell_methods::player::vendor::store_ops`
 
 Vendor interactions (2026-09-29 playtest: no vendor row carried an account).
 Every row carries `action` (`open` | `buy` | `sell` | `buyback` | `repair` | `recharge`), `account_id` (from the session; absent when there is none), `player_id`, `entity_id`, `vendor_entity_id` (absent on repair/recharge, whose request carries only the template), `vendor_template_id`, and when the request names one item `item_type_id`, `item_id` (the inventory row), `quantity`, `price` (total cash). Each ID carries its Rule 6 name (`account_name`, `player_name`, `entity_name`, `vendor_template_name`, `item_name`); `vendor_entity_id` is the vendor NPC, which the base cannot name, so it is marked id-only and the template names the vendor (NT-22).
 `store_opened`: `buy_count`, `sell_count`, `buyback_count`, `repair_count`, `recharge_count`; also logged when the store is re-sent after a transaction.
 `transaction`: `lines`, `price`, `cash_before`, `cash_after`.
 `refused` (player-caused, nothing written): `reason` = `empty_request` | `not_on_vendor_list` | `negative_price` | `price_overflow` | `missing_item_cost` | `insufficient_cash` (with `cash`) | `bags_full` | `buyback_full` | `not_sellable` | `quantity_exceeds_stack` | `cash_overflow` | `not_in_buyback` | `vendor_buys_nothing` | `vendor_does_not_repair` | `vendor_does_not_recharge` | `not_repairable` | `not_rechargeable` | `no_vendor_template`;
-the cell's WARN refusals `no_vendor_session` | `malformed_args` | `template_mismatch` | `vendor_has_no_template` | `missing_template_id`.
+the cell's WARN refusals (message `vendor op refused`, with `item_count` and `vendor_entity_id`/`vendor_entity_name` when known) `no_vendor_session` | `vendor_has_no_template` (both also send the player a feedback line) | `malformed_args` (with `wire_reason` = `truncated_count` | `count_exceeds_payload` | `trailing_bytes` | `length_mismatch` | `non_positive_quantity`). The client sends no template id, so there is no client/server template comparison.
 `failed` (WARN, server-side, `error`): `no_database` | `db_error` | `inventory_lock_failed` | `player_missing` | `design_missing` | `template_not_found` | `template_query_failed` | `template_lookup_failed` | `rows_affected_zero` | `rows_affected_mismatch` | `buyback_slot_exhausted` | `main_slot_exhausted` | `outbox_enqueue_failed` | `commit_failed`; cell `base_channel_closed`.
 The `vendor.*` INFO spans are unchanged.
 Covered by `OTEL_FILTER`'s `vendor=info`
