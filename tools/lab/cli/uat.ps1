@@ -35,8 +35,19 @@
     (lab_uat_run `fixtures`; the daemon's default is auto: a fixture row
     continues a passing chain and starts from its fixture otherwise).
 
+    -DiffGolden compares every passing run with the section's committed
+    golden (<specs>/golden/<section>.json, made by lab golden record): the
+    runs are fingerprinted, lab_golden_diff is called for each passing run's
+    folder, and each gets a `golden` value: match, the first divergence as
+    one line, or error: <why>. A failed run is not compared. Rows' verdicts
+    do not change. Without a golden, or with one that cannot be read, it
+    stops before anything is driven (exit 2).
+
     Exit codes: 0 every run passed; 1 a run failed; 2 usage; 3 the pre-flight
-    or plan failed (nothing was driven); 4 a lane stopped early on its brake.
+    or plan failed (nothing was driven); 4 a lane stopped early on its brake;
+    5 every run passed but -DiffGolden did not match on one (a divergence, or
+    a run it could not compare); 8 a heal proposal was written (SV-12),
+    which wins over every other code, 5 included.
 
 .EXAMPLE
     lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5
@@ -44,6 +55,7 @@
     lab uat first-session -Instance p2 -PlanOnly
     lab uat first-session -Rows FS-P4 -RunsPerLease 20
     lab uat first-session -Rows FS-P5,FS-P3,FS-P4 -Fixtures always
+    lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -DiffGolden
     lab uat first-session -Leases 3 -RunsPerLease 10 -Json
 #>
 [CmdletBinding()]
@@ -61,6 +73,7 @@ param(
     [int]$RunTimeoutMinutes = 15,
     [int]$MaxConsecutiveFailures = 3,
     [string]$Fixtures,
+    [switch]$DiffGolden,
     # Used by lab golden: runs capture what a golden fingerprint needs.
     [switch]$Fingerprint,
     # Used by lab golden: progress lines go to stderr, even under -Json.
@@ -74,6 +87,7 @@ $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'common.ps1')
 . (Join-Path $PSScriptRoot 'uat-lib.ps1')
+. (Join-Path $PSScriptRoot 'golden-lib.ps1')
 
 # A usage or pre-flight failure: plain text on stderr, or under -Json one
 # object on stdout. Returns the exit code.
@@ -88,11 +102,22 @@ function Stop-Uat([int]$Code, [string]$Message) {
 
 function Invoke-LabUat {
     if (-not $Section) {
-        return Stop-Uat 2 'usage: lab uat <section> [-Rows FS-01,...] [-Leases 1-5] [-RunsPerLease 1-20] [-Instance p2] [-Fixtures auto|always|never] [-PlanOnly] [-Json]'
+        return Stop-Uat 2 'usage: lab uat <section> [-Rows FS-01,...] [-Leases 1-5] [-RunsPerLease 1-20] [-Instance p2] [-Fixtures auto|always|never] [-DiffGolden] [-PlanOnly] [-Json]'
     }
     # Argument checks come before the daemon is asked, so they exit 2 whatever its state.
     $shape = Test-UatArguments $Leases $RunsPerLease $Instance $StaggerSeconds $RunTimeoutMinutes $MaxConsecutiveFailures $Fixtures
     if ($shape) { return Stop-Uat 2 $shape }
+    $specs = if ($SpecsDir) { $SpecsDir } else { Get-DefaultSpecsDir }
+    # A diff needs a golden: without one, stop before anything is driven.
+    if ($DiffGolden) {
+        if (-not $specs) { return Stop-Uat 2 '-DiffGolden needs -SpecsDir (no spec folder found next to this checkout)' }
+        $goldenPath = Get-GoldenPath $specs $Section
+        if (-not (Test-Path -LiteralPath $goldenPath)) {
+            return Stop-Uat 2 "no golden for $Section; record one with lab golden record"
+        }
+        $unreadable = Test-UatGoldenFile $goldenPath
+        if ($unreadable) { return Stop-Uat 2 "golden for $Section cannot be read: $unreadable" }
+    }
     $requested = @(ConvertTo-UatRowIds $Rows)
     $progress = Get-UatProgressMode $Json $Quiet $ProgressToStderr
     $say = { param($m) Write-UatProgress $progress $m }
@@ -119,13 +144,14 @@ function Invoke-LabUat {
     }
 
     $url = Get-LabMcpUrl
-    $specs = if ($SpecsDir) { $SpecsDir } else { Get-DefaultSpecsDir }
     $baseArgs = @{ sections = @($Section) }
     if ($requested.Count) { $baseArgs.rows = $requested }
     if ($specs) { $baseArgs.specs_dir = $specs }
     if ($ServerVersion) { $baseArgs.server_version = $ServerVersion }
     if ($Fixtures) { $baseArgs.fixtures = $Fixtures }
-    if ($Fingerprint) { $baseArgs.fingerprint = $true }
+    if ($Fingerprint -or $DiffGolden) { $baseArgs.fingerprint = $true }
+    # lab_golden_diff's arguments less run_dir, or $null without -DiffGolden.
+    $diffArgs = if ($DiffGolden) { @{ section = $Section; specs_dir = $specs } } else { $null }
 
     # Plan once: a row that cannot run, or a requested row the spec lacks,
     # stops the batch before anything is driven.
@@ -202,6 +228,15 @@ function Invoke-LabUat {
                         $rec.Verdict = @{ Ok = $false; Row = $null; Result = $null; Reason = $rec.Error; Issue = $null }
                     }
                     $rec.Seconds = [int]((Get-Date) - $t0).TotalSeconds
+                    # -DiffGolden: compare a passing run's folder with the
+                    # golden. The run's verdict stays as it is (README D-GD7).
+                    $urlL = $using:url; $tokenL = $using:token
+                    $golden = Get-UatRunGolden $rec $using:diffArgs {
+                        param($ga)
+                        $gs = New-McpSession $urlL $tokenL
+                        try { Invoke-McpTool $gs 'lab_golden_diff' $ga 120 } finally { Close-McpSession $gs }
+                    }
+                    if ($null -ne $golden) { $rec.Golden = $golden }
                     $outcomes += $rec.Ok
                     # A run cut short here may still hold its lease on the
                     # daemon: wait for it, or the next run collides with it.

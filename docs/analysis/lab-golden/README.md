@@ -97,7 +97,7 @@ new Praxis character on 2026-10-10.
 | GD-06 | Runner capture in fingerprint mode: tap every row, late bind, entities, windows | rust-gameserver-dev | M | 2 | GD-01 | Integrated |
 | GD-07 | MCP tools `lab_golden_record` and `lab_golden_diff` | packet-coder | M | 4 | GD-04, GD-05, GD-06 | Integrated |
 | GD-08 | `lab golden record` command | general-purpose | M | 5 | GD-07, LW-02 | Integrated |
-| GD-09 | `lab uat -DiffGolden` | packet-coder | S | 6 | GD-08 | BlockedDependency |
+| GD-09 | `lab uat -DiffGolden` | packet-coder | S | 6 | GD-08 | Integrated |
 | GD-10 | Live acceptance: golden FS-01 to FS-P5 from five runs | coordinator (needs the user's OK for the lab) | S | 7 | GD-09, the user's OK for the lab | BlockedDependency |
 | GD-11 | Close-out: guides, tools README, unified UAT, status docs | documentation-writer | S | 8 | all | BlockedDependency |
 
@@ -275,3 +275,27 @@ then the reference, not the spec.
   maps a section id exactly as Rust's `path_safe` does (`v1.2` is
   `golden/v1_2.json`). `uat.ps1` gained `-Fingerprint` and
   `-ProgressToStderr` next to FX's `-Fixtures`.
+- **GD-09.** `lab uat -DiffGolden` refuses a missing golden (exit 2) right
+  after the argument checks, before the daemon is asked, and also refuses
+  when no spec folder is found (no `-SpecsDir`, no checkout) or the golden
+  is not JSON with `schema`, `section` and `fingerprint` ("golden for
+  <section> cannot be read: ..."). Only passing runs are diffed: a failed
+  run gets no `Golden` (review fix). A passing run's
+  `Golden` is `match`, the `first` line, or `error: <code>: <error>` for a
+  refusal (`no_golden`, `cannot_diff`), `error: <message>` for a call that
+  threw, or `error: ...` for a reply with no verdict; a passing run with no
+  run folder gets an error too. The per-run diff is the pure
+  `Get-UatRunGolden` (the MCP call passed in as a scriptblock), tested on
+  every branch and inside a `ForEach-Object -Parallel` runspace. The
+  summary's `golden` adds `errors` (runs
+  not compared) next to `match` and `diverged`, and **exit 5 also covers
+  errors**: a diff that could not be made is never read as a match. The
+  compact JSON shows `errors` only when non-zero; `first` is the most common
+  divergence, never an error line, and `error` (the most common error)
+  appears only when no run diverged. Both are capped at 120 characters, so
+  a 5-run batch with two 200-character divergences stays under 500
+  (review fix; it was 200, which broke that bound). `Get-UatExitCode` already returns 8
+  when the summary carries a non-empty `heal` list (SV-12's field, not on
+  `main` yet), and 8 wins over every other code, as SV-12's packet says;
+  `test-uat.ps1` pins 8 over 5 and over 1. The diff runs after the run's
+  `Seconds` are taken, so run times exclude it.
