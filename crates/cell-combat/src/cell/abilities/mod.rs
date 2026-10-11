@@ -66,6 +66,7 @@ pub use auto_cycle_state::send_auto_cycle_state;
 pub use cone_aoe::{collect_cone_targets, fan_out_cone_effects, log_effect_flag_categories};
 pub use cooldown_reset::{clear_cooldown_timer, reset_all_cooldowns, CooldownReset};
 pub use death::kill_npc_out_of_band;
+pub(crate) use death::npc_only_kill;
 #[cfg(any(test, feature = "test-support"))]
 #[doc(hidden)]
 pub use death::resolve_death_for_test;

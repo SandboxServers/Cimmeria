@@ -285,14 +285,43 @@ async fn registered_pet_dot_kill_without_owner_warns_no_credited_player() {
 
     assert_eq!(mob_hp(&mgr, mob), 0, "the kill itself still lands");
     assert_eq!(deaths(&recorder), vec![]);
+    let row = capture
+        .find_event(
+            tracing::Level::WARN,
+            "dot_kill_credit: killer credits no player — skipping EntityDeath event",
+            "no_credited_player",
+        )
+        .unwrap_or_else(|| panic!("no WARN row: {:#?}", capture.all()));
+    assert!(row.has_field("event", "kill_credit_no_player"), "{row:#?}");
+    assert!(row.has_field("source", "dot"), "{row:#?}");
+    assert!(row.has_field("target_id", &mob.to_string()), "{row:#?}");
+}
+
+/// **Guard (TG-NPC-13).** A plain NPC's DoT (not a player, no `PetState`)
+/// finishes a tagged mob. That is an NPC-only kill: the mob dies, nobody is
+/// credited, and no `kill_credit_no_player` row is written (abilities
+/// decision 32). Reverting the `npc_only_kill` skip in `pulse.rs` makes the
+/// row appear and fails the last assertion.
+#[tokio::test]
+async fn npc_dot_kill_stays_silent_when_nobody_is_credited() {
+    let (mut mgr, _pet, mob) = registered_pet_and_mob();
+    let npc = mgr.allocate_npc_id();
+    mgr.spawn_npc(npc, "Castle", [-4.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    arm_pet_dot(&mut mgr, npc, mob).await;
+    let recorder = RecordingContentEvents::new();
+    let (tx, _rx) = mpsc::channel(512);
+    let capture = crate::test_support::LogCapture::install();
+
+    effect_pulse_tick(&recorder, &tx, &mut mgr).await;
+
+    assert_eq!(mob_hp(&mgr, mob), 0, "the kill itself still lands");
+    assert_eq!(deaths(&recorder), vec![]);
     assert!(
-        capture
-            .find_event(
-                tracing::Level::WARN,
-                "dot_kill_credit: killer credits no player — skipping EntityDeath event",
-                "no_credited_player"
-            )
-            .is_some(),
+        !capture
+            .all()
+            .iter()
+            .any(|c| c.has_field("event", "kill_credit_no_player")),
         "{:#?}",
         capture.all()
     );

@@ -939,9 +939,9 @@ Guard: `left_aoi_unmapped_witness_warns_leave_send_failure` in `cell_dispatch/ao
 
 ## DoT kill with no credited player (TG-NPC-13)
 
-`effects/pulsing/pulse.rs` in `cimmeria-cell-combat`. When a damage-over-time pulse kills an NPC and `dot_kill_credit` finds no player to credit, the kill still lands but no mission or loot credit follows. This happens, for example, when a pet's owner is gone. That branch was silent; it now logs WARN `target: "abilities"`, `event = "kill_credit_no_player"`, `reason = "no_credited_player"`, `source = "dot"`, with the invoker's identity, `entity_id` + `entity_name`, `npc_tag` and `cast_id`. It mirrors the direct-hit row in `kill_credit.rs`.
+`effects/pulsing/pulse.rs` in `cimmeria-cell-combat`. When a damage-over-time pulse kills an NPC and `dot_kill_credit` finds no player to credit, the kill still lands but no mission or loot credit follows. This happens, for example, when a pet's owner is gone. That branch was silent; it now logs WARN `target: "abilities"`, `event = "kill_credit_no_player"`, `reason = "no_credited_player"`, `source = "dot"`, with the invoker's identity, `entity_id` + `entity_name`, `target_id` + `target_name`, `npc_tag` and `cast_id`. It mirrors the direct-hit row in `kill_credit.rs`. An NPC-only kill (a plain NPC invoker: not a player and no `PetState`; abilities decision 32) credits nobody by design and stays silent: it writes no `kill_credit_no_player` row. A pet whose owner has left, or a vanished invoker, still WARNs.
 
-Guard: `registered_pet_dot_kill_without_owner_warns_no_credited_player` in `use_ability/tests/registered_pet_kill_credit.rs`.
+Guards: `registered_pet_dot_kill_without_owner_warns_no_credited_player` (the WARN, with `source=dot`, `event=kill_credit_no_player` and `target_id`) and `npc_dot_kill_stays_silent_when_nobody_is_credited` (a plain NPC's DoT kill logs no `kill_credit_no_player` row), both in `use_ability/tests/registered_pet_kill_credit.rs`.
 
 ## Related
 

@@ -150,8 +150,13 @@ async fn dot_kill_credit(
     let Some((credited, player_id)) =
         crate::cell::abilities::credited_player(space_mgr, invoker_id)
     else {
-        // A pet whose owner has left kills through its DoT: the kill lands
-        // but credits nobody (mirrors `kill_credit.rs`).
+        // An NPC-only kill credits nobody by design (abilities decision 32)
+        // and stays silent. What is left is a pet whose owner has left, or
+        // an invoker that has vanished: the kill lands but credits nobody
+        // (mirrors `kill_credit.rs`), and that is the fault this WARN names.
+        if crate::cell::abilities::npc_only_kill(space_mgr, invoker_id) {
+            return;
+        }
         let who = space_mgr.player_identity(invoker_id);
         tracing::warn!(
             target: "abilities",
@@ -163,6 +168,8 @@ async fn dot_kill_credit(
             player_name = who.player_name,
             entity_id = invoker_id,
             entity_name = space_mgr.entity_label(invoker_id),
+            target_id,
+            target_name = space_mgr.entity_label(target_id),
             npc_tag = tag.as_str(),
             cast_id, // nt:id-only per-cast sequence number, no name exists
             reason = "no_credited_player",
