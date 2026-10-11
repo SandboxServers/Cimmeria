@@ -10,6 +10,7 @@
 //! The recorder is [`run`] (start and the sampler task) and [`stop`]
 //! (status, stop and the draft).
 
+mod checks;
 mod run;
 mod stop;
 
@@ -31,21 +32,23 @@ use crate::uat::invoke::{ServerInvoker, ServerTools};
 use crate::uat::record::log::TICK_MS;
 use crate::uat::record::sampler::SamplerConfig;
 use crate::uat::specs_dir;
-use run::{Failure, Recorder, StartReq};
-use stop::StopReq;
+use run::{refused, Failure, Recorder, StartReq};
+use stop::{StopReq, STOP_WAIT};
 
 /// Args for `lab_record_start`.
 #[derive(Debug, Default, serde::Deserialize, schemars::JsonSchema)]
 pub struct RecordStartArgs {
-    /// The section being played (`first-session`); it names the draft and,
-    /// when the spec directory holds it, its `[section]` is copied.
+    /// The section being played (`first-session`, `^[a-z0-9][a-z0-9-]{0,47}$`);
+    /// it names the draft and, when the spec directory holds it, its
+    /// `[section]` is copied.
     pub section: String,
     /// The character being played (default: the instance's lab-account
     /// character).
     #[serde(default)]
     pub character: Option<String>,
-    /// Spec directory the stop writes `drafts/` under (default:
-    /// CIMMERIA_LAB_UAT_SPECS, else the repo's docs/guides/uat-specs).
+    /// Spec directory the stop writes `drafts/` under: an existing local
+    /// directory, not a UNC or `\\?\` path (default: CIMMERIA_LAB_UAT_SPECS,
+    /// else the repo's docs/guides/uat-specs).
     #[serde(default)]
     pub specs_dir: Option<String>,
     /// Stop on its own after this many minutes (default 30, at most 30).
@@ -60,7 +63,8 @@ pub struct RecordStopArgs {
     /// recording keeps running.
     pub recording_id: String,
     /// Replaces the recorded character's name in the draft's SQL (default
-    /// `${character}`; `Px${run_id}` for a fresh character per run).
+    /// `${character}`; `Px${run_id}` for a fresh character per run;
+    /// `^[A-Za-z0-9 _${}]{1,64}$`).
     #[serde(default)]
     pub character_expr: Option<String>,
     /// The fixture profile (LR-09).
@@ -80,17 +84,14 @@ fn answer(out: Result<Value, Failure>) -> CallToolResult {
 }
 
 /// The failure shape for a refusal made before the recorder is reached.
-fn refusal(exit: u8, error: impl Into<String>) -> CallToolResult {
-    answer(Err(Failure {
-        exit,
-        error: error.into(),
-    }))
+fn refusal(error: impl Into<String>) -> CallToolResult {
+    answer(Err(refused(error)))
 }
 
 #[tool_router(router = record_router, vis = "pub(super)")]
 impl LabServer {
     #[tool(
-        description = "Start recording a person playing this lab instance by hand (lab-record): every 500 ms read the player's packet tap, server entity, camera readout, visible windows and dialog, and a DB snapshot after server activity, into <uat root>/records/<recording_id>/record.jsonl. Only reads: it never drives input, camera or focus. Takes a lease of its own (owner lab_record, purpose `recording a human: <section>`) and holds it until lab_record_stop, so no agent drives the client meanwhile; refused while anyone holds the lab or another recording runs on the instance. Stops by itself after max_minutes (default and at most 30) or when its lease is taken over (lease_lost). Do not call lab_timeline on this instance while recording: the recorder owns the player's tap. Returns {ok, recording_id, instance, section, dir}."
+        description = "Start recording a person playing this lab instance by hand (lab-record): every 500 ms read the player's packet tap, server entity, camera readout, visible windows and dialog, and a DB snapshot after server activity, into <uat root>/records/<recording_id>/record.jsonl. Only reads: it never drives input, camera or focus. Takes a lease of its own (owner lab_record, purpose `recording a human: <section>`) and holds it until lab_record_stop, so no agent drives the client meanwhile; refused while anyone holds the lab or another recording runs on the instance. Stops by itself after max_minutes (default and at most 30) or when its lease is taken over (lease_lost). Do not call lab_timeline on this instance while recording: the recorder owns the player's tap. Returns {ok, recording_id, instance, section}; the folder is <uat root>/records/<recording_id>/."
     )]
     async fn lab_record_start(
         &self,
@@ -98,7 +99,6 @@ impl LabServer {
     ) -> Result<CallToolResult, McpError> {
         let Some(server) = ServerTools::from_env() else {
             return Ok(refusal(
-                2,
                 "no server lab MCP: set CIMMERIA_LAB_MCP_URL and CIMMERIA_LAB_MCP_TOKEN",
             ));
         };
@@ -109,7 +109,6 @@ impl LabServer {
             {
                 Some(c) => c,
                 None => return Ok(refusal(
-                    2,
                     "no character: pass character, or name one in the instance's lab-account file",
                 )),
             };
@@ -146,7 +145,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Stop this instance's recording and write its draft spec. Gated by recording_id: a wrong id is refused and the recording keeps running. Waits for the recorder to write its stop line and release its lease, transforms the raw log (one row per interaction, `# TODO` for anything outside the mapping table), and writes <specs_dir>/drafts/<section>-<yyyyMMdd-HHmm>.toml, never over an existing file. The raw log is always kept. Returns {ok, draft, rows, steps, todo, dropped, raw}; a failure is {ok:false, exit, error} and keeps the raw log (a failed transform's whole error is in transform-error.txt beside it). no_draft stops and keeps the log only."
+        description = "Stop this instance's recording and write its draft spec. Gated by recording_id: a wrong id is refused and the recording keeps running. Waits (at most 60 s) for the recorder to write its stop line and release its lease, transforms the raw log (one row per interaction, `# TODO` for anything outside the mapping table), and writes <specs_dir>/drafts/<section>-<yyyyMMdd-HHmm>.toml, never over an existing file. The raw log is always kept. Returns {ok, draft (file name), rows, steps, todo, dropped, raw (recording id), ended?}; ended is why the recorder stopped early with an error. A failure is {ok:false, exit, error} naming the raw folder first (a failed transform's whole error is in transform-error.txt there); the recording then stays, so call lab_record_stop again, with other options if they were the problem. no_draft stops and keeps the log only."
     )]
     async fn lab_record_stop(
         &self,
@@ -158,6 +157,9 @@ impl LabServer {
             profile: a.profile,
             no_draft: a.no_draft,
             specs_dir: specs_dir(),
+            instance: self.supervisor.label().to_string(),
+            wait: STOP_WAIT,
+            transform: crate::uat::record::emit::transform,
         };
         Ok(answer(stop::stop(self.supervisor.record_slot(), req).await))
     }
@@ -165,5 +167,7 @@ impl LabServer {
 
 #[cfg(test)]
 mod fakes;
+#[cfg(test)]
+mod stop_tests;
 #[cfg(test)]
 mod tests;

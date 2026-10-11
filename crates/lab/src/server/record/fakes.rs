@@ -15,11 +15,14 @@ use super::stop::{status, stop, StopReq};
 use crate::lease::{permit, LeaseBook};
 use crate::supervisor::record_slot::RecordSlot;
 use crate::uat::invoke::{BoxedOutcome, ServerInvoker, ToolOutcome};
+use crate::uat::record::emit::transform;
 use crate::uat::record::log::{read_log, RecordLog};
 use crate::uat::record::sampler::{BoxedJson, ClientProbe, SamplerConfig};
 
 /// 2026-10-12 roughly; any fixed time works.
 pub(super) const T0: i64 = 1_791_800_000_000;
+/// A tap batch that makes the fake server panic when it is read.
+pub(super) const PANIC: &str = "panic";
 
 pub(super) fn ok(json: Value) -> ToolOutcome {
     ToolOutcome {
@@ -62,7 +65,11 @@ impl FakeServer {
             "server_db_query" => {
                 let sql = args["sql"].as_str().unwrap_or_default();
                 let rows = if sql.starts_with("SELECT player_id") {
-                    json!([{ "player_id": 42 }])
+                    if sql.ends_with("'Labone'") {
+                        json!([{ "player_id": 42 }])
+                    } else {
+                        json!([])
+                    }
                 } else if sql.starts_with("SELECT mission_id") {
                     json!([{ "mission_id": 622, "status": 1, "step": 2113, "repeats": 0 }])
                 } else if sql.starts_with("SELECT level") {
@@ -75,6 +82,10 @@ impl FakeServer {
             "server_packet_tap_start" => ok(json!({ "replaced_existing": false })),
             "server_packet_tap_read" => {
                 let rows = self.batches.lock().unwrap().pop_front();
+                // A scripted fault in the recorder's task (lock released).
+                if rows.as_ref().is_some_and(|r| r == PANIC) {
+                    panic!("fake server: scripted panic");
+                }
                 ok(json!({ "dropped": 0, "messages": rows.unwrap_or(json!([])) }))
             }
             "server_packet_tap_stop" => ok(json!({ "stopped": true })),
@@ -155,36 +166,57 @@ pub(super) struct Lab {
     pub(super) server: Arc<FakeServer>,
     pub(super) client: Arc<FakeClient>,
     pub(super) clock: Arc<AtomicI64>,
+    /// The instance label (`p2`); a test may lengthen it.
+    pub(super) instance: String,
+    /// `<root>/cimmeria-lab/uat-runs/records`, laid out like the real UAT
+    /// root so path lengths are realistic; a test may deepen it.
+    pub(super) records: PathBuf,
+    /// `<root>/docs/guides/uat-specs`, created (start checks it exists).
+    pub(super) specs: PathBuf,
     pub(super) root: tempfile::TempDir,
 }
 
 impl Lab {
     pub(super) fn new(server: FakeServer) -> Self {
+        let root = tempfile::tempdir().unwrap();
+        let records = root
+            .path()
+            .join("cimmeria-lab")
+            .join("uat-runs")
+            .join("records");
+        let specs = root.path().join("docs").join("guides").join("uat-specs");
+        std::fs::create_dir_all(&specs).unwrap();
         Self {
             slot: Arc::default(),
             book: Arc::default(),
             server: Arc::new(server),
             client: Arc::default(),
             clock: Arc::new(AtomicI64::new(T0)),
-            root: tempfile::tempdir().unwrap(),
+            instance: "p2".into(),
+            records,
+            // As a caller passes it: start canonicalizes it (on Windows to a
+            // `\\?\` path, which a caller may not pass).
+            specs,
+            root,
         }
     }
 
-    /// Laid out like the real UAT root, so path lengths are realistic.
     pub(super) fn records(&self) -> PathBuf {
-        self.root
-            .path()
-            .join("cimmeria-lab")
-            .join("uat-runs")
-            .join("records")
+        self.records.clone()
     }
 
     pub(super) fn specs(&self) -> PathBuf {
-        self.root
-            .path()
-            .join("docs")
-            .join("guides")
-            .join("uat-specs")
+        self.specs.clone()
+    }
+
+    /// A recording's folder.
+    pub(super) fn raw(&self, id: &str) -> PathBuf {
+        self.records.join(id)
+    }
+
+    /// A recording's log.
+    pub(super) fn log(&self, id: &str) -> RecordLog {
+        read_log(&std::fs::read_to_string(self.raw(id).join(RECORD_FILE)).unwrap()).unwrap()
     }
 
     pub(super) fn recorder(&self) -> Recorder {
@@ -194,7 +226,7 @@ impl Lab {
             book: self.book.clone(),
             server: self.server.clone(),
             client: self.client.clone(),
-            instance: "p2".into(),
+            instance: self.instance.clone(),
             records: self.records(),
             clock: Arc::new(move || clock.load(Ordering::SeqCst)),
             tick: Duration::from_millis(10),
@@ -202,29 +234,56 @@ impl Lab {
         }
     }
 
-    pub(super) async fn start(&self, max_minutes: Option<u32>) -> Result<Value, Failure> {
-        let req = StartReq {
+    /// The start this lab makes unless a test changes it.
+    pub(super) fn start_req(&self) -> StartReq {
+        StartReq {
             section: "first-session".into(),
             character: "Labone".into(),
             specs_dir: Some(self.specs()),
+            max_minutes: None,
+        }
+    }
+
+    pub(super) async fn start(&self, max_minutes: Option<u32>) -> Result<Value, Failure> {
+        let req = StartReq {
             max_minutes,
+            ..self.start_req()
         };
         start(self.recorder(), req).await
     }
 
-    pub(super) async fn stop(&self, id: &str, no_draft: bool) -> Result<Value, Failure> {
-        let req = StopReq {
+    pub(super) async fn start_with(&self, req: StartReq) -> Result<Value, Failure> {
+        start(self.recorder(), req).await
+    }
+
+    /// The stop this lab makes unless a test changes it.
+    pub(super) fn stop_req(&self, id: &str) -> StopReq {
+        StopReq {
             recording_id: id.into(),
             character_expr: None,
             profile: None,
-            no_draft,
+            no_draft: false,
             specs_dir: None,
+            instance: self.instance.clone(),
+            wait: Duration::from_secs(5),
+            transform,
+        }
+    }
+
+    pub(super) async fn stop(&self, id: &str, no_draft: bool) -> Result<Value, Failure> {
+        let req = StopReq {
+            no_draft,
+            ..self.stop_req(id)
         };
         stop(&self.slot, req).await
     }
 
+    pub(super) async fn stop_with(&self, req: StopReq) -> Result<Value, Failure> {
+        stop(&self.slot, req).await
+    }
+
     pub(super) fn status(&self) -> Value {
-        status(&self.slot, "p2", T0)
+        status(&self.slot, &self.instance, T0)
     }
 
     /// Wait (at most 5 s) until `f` holds.
@@ -241,11 +300,6 @@ impl Lab {
 
 pub(super) fn id_of(v: &Value) -> String {
     v["recording_id"].as_str().unwrap().to_string()
-}
-
-pub(super) fn log_at(raw: &Value) -> RecordLog {
-    let dir = PathBuf::from(raw.as_str().unwrap());
-    read_log(&std::fs::read_to_string(dir.join(RECORD_FILE)).unwrap()).unwrap()
 }
 
 /// Praxis record 19's `interact(Frost)`, an anchor.

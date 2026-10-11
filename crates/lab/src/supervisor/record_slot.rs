@@ -37,6 +37,24 @@ pub struct RecordHandle {
     pub stop: tokio::sync::watch::Sender<Option<String>>,
     /// The sampler task; its result is the log's path.
     pub done: tokio::task::JoinHandle<Result<PathBuf, String>>,
+    /// `done`'s result once a stop has awaited it. A `JoinHandle` gives its
+    /// result once, and a recording whose stop failed goes back into the
+    /// slot for a retry, so the result is kept here.
+    pub ended: Option<Result<PathBuf, String>>,
+}
+
+impl RecordHandle {
+    /// The task's result: awaited the first time, the kept copy after.
+    pub async fn outcome(&mut self) -> Result<PathBuf, String> {
+        if self.ended.is_none() {
+            let r = match (&mut self.done).await {
+                Ok(r) => r,
+                Err(e) => Err(format!("the recorder task failed: {e}")),
+            };
+            self.ended = Some(r);
+        }
+        self.ended.clone().expect("set above")
+    }
 }
 
 /// What `lab_record_status` reports about the slot.
@@ -104,27 +122,63 @@ impl RecordSlot {
     }
 
     /// Empty the slot whatever it holds (the tests; the stop uses
-    /// [`Self::take_if`]).
+    /// [`Self::take_ended`]).
     #[cfg(test)]
     pub fn take(&self) -> Option<RecordHandle> {
         self.lock().handle.take()
     }
 
-    /// Empty the slot only when it holds `recording_id`: the stop's gate.
-    /// Any other id leaves the recording armed and running, and the error
-    /// names what is there.
-    pub fn take_if(&self, recording_id: &str) -> Result<RecordHandle, String> {
+    /// The stop's first step: send `reason` to the recording
+    /// `recording_id`, which stays in the slot (so a start is still refused
+    /// while it finishes). Returns its folder. Any other id is refused and
+    /// the recording keeps running; the refusal names the instance, never
+    /// the live id. `instance` is this slot's label, for the refusals.
+    pub fn signal_stop(
+        &self,
+        recording_id: &str,
+        instance: &str,
+        reason: &str,
+    ) -> Result<PathBuf, String> {
+        let slot = self.lock();
+        let h = matching(&slot, recording_id, instance)?;
+        // Nobody listens once the task has ended by itself: that is fine.
+        let _ = h.stop.send(Some(reason.to_string()));
+        Ok(h.dir.clone())
+    }
+
+    /// Whether the recording `recording_id`'s task has ended; `None` once
+    /// the slot no longer holds it.
+    pub fn ended(&self, recording_id: &str) -> Option<bool> {
+        self.lock()
+            .handle
+            .as_ref()
+            .filter(|h| h.recording_id == recording_id)
+            .map(|h| h.done.is_finished())
+    }
+
+    /// Empty the slot once the recording `recording_id` has ended: the
+    /// stop's gate, refused like [`Self::signal_stop`]. A failed stop puts
+    /// it back with [`Self::restore`].
+    pub fn take_ended(&self, recording_id: &str, instance: &str) -> Result<RecordHandle, String> {
         let mut slot = self.lock();
-        match &slot.handle {
-            Some(h) if h.recording_id == recording_id => {
-                Ok(slot.handle.take().expect("matched above"))
-            }
-            Some(h) => Err(format!(
-                "recording {recording_id} is not this instance's; {} ({}) is",
-                h.recording_id, h.section
-            )),
-            None => Err("no recording on this instance".to_string()),
+        if !matching(&slot, recording_id, instance)?.done.is_finished() {
+            return Err(format!(
+                "the recording on instance {instance} is still finishing"
+            ));
         }
+        Ok(slot.handle.take().expect("matched above"))
+    }
+
+    /// Put back a recording whose stop failed before its draft was written,
+    /// so a second stop (perhaps with other options) can retry. A recording
+    /// armed meanwhile wins and `h` is dropped; its raw log stays on disk.
+    pub fn restore(&self, h: RecordHandle) -> bool {
+        let mut slot = self.lock();
+        if slot.handle.is_some() {
+            return false;
+        }
+        slot.handle = Some(h);
+        true
     }
 
     /// The camera pair the last good `camera_read` used.
@@ -169,6 +223,25 @@ impl RecordReservation {
 impl Drop for RecordReservation {
     fn drop(&mut self) {
         self.slot.lock().reserved = false;
+    }
+}
+
+/// The slot's recording when it is `recording_id`. The stop gate guards
+/// against accidents (a stale id, the wrong instance), not against a caller:
+/// `lab_record_status` hands the id to anyone who asks.
+fn matching<'a>(
+    slot: &'a Slot,
+    recording_id: &str,
+    instance: &str,
+) -> Result<&'a RecordHandle, String> {
+    match &slot.handle {
+        Some(h) if h.recording_id == recording_id => Ok(h),
+        Some(_) => Err(format!(
+            "that recording_id is not the running recording on instance {instance}"
+        )),
+        None => Err(format!(
+            "no recording on instance {instance}; pass `instance` to pick another"
+        )),
     }
 }
 
@@ -223,6 +296,7 @@ mod tests {
             anchors: Arc::new(AtomicU32::new(1)),
             stop: tokio::sync::watch::channel(None).0,
             done: task,
+            ended: None,
         }
     }
 
@@ -308,17 +382,52 @@ mod tests {
         slot.take().unwrap().done.abort();
     }
 
-    /// LR-07's stop gate: a wrong id leaves the recording armed.
+    /// LR-07's stop gate: a wrong id leaves the recording armed, and no
+    /// refusal names the live id; a running task is not taken out.
     #[tokio::test]
-    async fn only_the_running_id_empties_the_slot() {
+    async fn only_the_ended_running_id_empties_the_slot() {
         let slot = Arc::new(RecordSlot::default());
-        assert!(slot.take_if("a").unwrap_err().contains("no recording"));
-        slot.reserve().unwrap().arm(handle("a", forever())).unwrap();
-        let err = slot.take_if("b").unwrap_err();
-        assert!(err.contains("a (first-session) is"), "{err}");
-        assert_eq!(slot.status().unwrap().recording_id, "a");
-        slot.take_if("a").unwrap().done.abort();
-        assert!(slot.status().is_none());
+        let err = slot.signal_stop("a", "p2", "stopped").unwrap_err();
+        assert!(err.contains("no recording on instance p2"), "{err}");
+        let (tx, mut rx) = tokio::sync::watch::channel(None);
+        let mut h = handle("a-live", forever());
+        h.stop = tx;
+        slot.reserve().unwrap().arm(h).unwrap();
+        let err = slot.signal_stop("b", "p2", "stopped").unwrap_err();
+        assert!(err.contains("instance p2"), "{err}");
+        assert!(!err.contains("a-live"), "the live id leaked: {err}");
+        assert!(rx.borrow_and_update().is_none(), "a wrong id sent nothing");
+
+        slot.signal_stop("a-live", "p2", "stopped").unwrap();
+        assert_eq!(rx.borrow_and_update().as_deref(), Some("stopped"));
+        assert_eq!(slot.ended("a-live"), Some(false));
+        let err = slot.take_ended("a-live", "p2").unwrap_err();
+        assert!(err.contains("still finishing"), "{err}");
+        assert_eq!(slot.status().unwrap().recording_id, "a-live");
+        slot.take().unwrap().done.abort();
+        assert_eq!(slot.ended("a-live"), None);
+    }
+
+    /// A failed stop puts the recording back, and its result survives the
+    /// first await; a recording armed meanwhile is not displaced.
+    #[tokio::test]
+    async fn a_restored_recording_keeps_its_outcome() {
+        let slot = Arc::new(RecordSlot::default());
+        let ended = tokio::spawn(async { Err::<PathBuf, _>("write_failed".to_string()) });
+        while !ended.is_finished() {
+            tokio::task::yield_now().await;
+        }
+        slot.reserve().unwrap().arm(handle("a", ended)).unwrap();
+        let mut h = slot.take_ended("a", "p2").unwrap();
+        assert_eq!(h.outcome().await.unwrap_err(), "write_failed");
+        assert!(slot.restore(h));
+        let mut h = slot.take_ended("a", "p2").unwrap();
+        assert_eq!(h.outcome().await.unwrap_err(), "write_failed", "kept");
+
+        slot.reserve().unwrap().arm(handle("b", forever())).unwrap();
+        assert!(!slot.restore(h), "the newer recording wins");
+        assert_eq!(slot.status().unwrap().recording_id, "b");
+        slot.take().unwrap().done.abort();
     }
 
     #[tokio::test]

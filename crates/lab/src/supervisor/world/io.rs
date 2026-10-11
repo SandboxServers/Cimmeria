@@ -123,27 +123,14 @@ impl<'a> LiveWorld<'a> {
         self.camera
     }
 
-    /// The player's controller and camera: the cached pair while both
-    /// vtables still match, else a fresh actor scan.
+    /// The player's controller and camera: the cached pair while it is
+    /// still current, else a fresh actor scan
+    /// ([`super::camera_read::resolve_player_camera`]).
     async fn player_camera(&mut self) -> Result<PlayerCamera, String> {
         let slide = self.slide().await?;
-        let mut r = Reader(self.sup);
-        if let Some(c) = self.camera {
-            if memory::has_vtable(
-                &mut r,
-                c.controller,
-                memory::PLAYER_CONTROLLER_VTABLE_VA,
-                slide,
-            )
-            .await
-                && memory::has_vtable(&mut r, c.camera, memory::PLAYER_CAMERA_VTABLE_VA, slide)
-                    .await
-            {
-                return Ok(c);
-            }
-        }
-        self.camera = None;
-        let c = memory::find_player_camera(&mut r, slide).await?;
+        let cached = self.camera.take();
+        let c =
+            super::camera_read::resolve_player_camera(&mut Reader(self.sup), cached, slide).await?;
         self.camera = Some(c);
         Ok(c)
     }

@@ -17,6 +17,7 @@ use std::time::Duration;
 use serde_json::{json, Value};
 use tokio::sync::{oneshot, watch};
 
+use super::checks::{check_section, check_specs_dir};
 use crate::lease::run::RECORD_OWNER;
 use crate::lease::{permit, LeaseBook, RunLease};
 use crate::supervisor::record_slot::{RecordHandle, RecordSlot};
@@ -47,12 +48,16 @@ pub(super) type Clock = Arc<dyn Fn() -> i64 + Send + Sync>;
 pub(super) struct Failure {
     pub exit: u8,
     pub error: String,
+    /// Said before `error` and cut only when it alone does not fit: the raw
+    /// log's folder, so a cut answer still says where the log is.
+    pub keep: Option<String>,
 }
 
 pub(super) fn refused(error: impl Into<String>) -> Failure {
     Failure {
         exit: 2,
         error: error.into(),
+        keep: None,
     }
 }
 
@@ -60,24 +65,57 @@ pub(super) fn failed(error: impl Into<String>) -> Failure {
     Failure {
         exit: 1,
         error: error.into(),
+        keep: None,
     }
 }
 
 impl Failure {
-    /// `{"ok":false,"exit":N,"error":"..."}` under [`BODY_CAP`]: the error
-    /// is cut, never the shape. Paths count double once JSON escapes their
-    /// backslashes, so the cut is measured on the serialized text.
+    /// Lead the error with `keep` (`<raw dir>`, or `<raw dir>; see
+    /// transform-error.txt`).
+    pub fn keeping(mut self, keep: impl Into<String>) -> Self {
+        self.keep = Some(keep.into());
+        self
+    }
+
+    /// `{"ok":false,"exit":N,"error":"<keep>; <error>"}` under
+    /// [`BODY_CAP`]: the error is cut first, the kept part only if it alone
+    /// is too long, never the shape. Paths count double once JSON escapes
+    /// their backslashes, so the cut is measured on the serialized text.
     pub fn body(&self) -> String {
+        let keep = self.keep.as_deref().unwrap_or_default();
+        let render = |keep: &str, error: &str| {
+            let text = match (keep.is_empty(), error.is_empty()) {
+                (true, _) => error.to_string(),
+                (false, true) => keep.to_string(),
+                (false, false) => format!("{keep}; {error}"),
+            };
+            json!({ "ok": false, "exit": self.exit, "error": text }).to_string()
+        };
         let mut n = self.error.chars().count();
         loop {
-            let error: String = self.error.chars().take(n).collect();
-            let s = json!({ "ok": false, "exit": self.exit, "error": error }).to_string();
-            if s.len() < BODY_CAP || n == 0 {
+            let s = render(keep, &cut(&self.error, n));
+            if s.len() < BODY_CAP {
                 return s;
+            }
+            if n == 0 {
+                break;
             }
             n = n.saturating_sub((s.len() + 1 - BODY_CAP).max(1));
         }
+        let mut k = keep.chars().count();
+        loop {
+            let s = render(&cut(keep, k), "");
+            if s.len() < BODY_CAP || k == 0 {
+                return s;
+            }
+            k = k.saturating_sub((s.len() + 1 - BODY_CAP).max(1));
+        }
     }
+}
+
+/// The first `n` characters of `s`.
+pub(super) fn cut(s: &str, n: usize) -> String {
+    s.chars().take(n).collect()
 }
 
 /// One instance's recorder.
@@ -144,9 +182,8 @@ struct Job {
 /// before anything touches the server.
 pub(super) async fn start(rec: Recorder, req: StartReq) -> Result<Value, Failure> {
     let minutes = max_minutes_of(req.max_minutes)?;
-    if req.section.trim().is_empty() {
-        return Err(refused("section: give the section being played"));
-    }
+    check_section(&req.section)?;
+    let specs_dir = check_specs_dir(req.specs_dir)?;
     check_character(&req.character).map_err(refused)?;
     recording_id(0, &rec.instance).map_err(refused)?;
     let reservation = rec.slot.reserve().map_err(refused)?;
@@ -169,7 +206,7 @@ pub(super) async fn start(rec: Recorder, req: StartReq) -> Result<Value, Failure
         cfg,
         section: req.section.clone(),
         instance: rec.instance.clone(),
-        character: req.character,
+        character: req.character.clone(),
         records: rec.records,
         clock: rec.clock,
         tick: rec.tick,
@@ -202,25 +239,33 @@ pub(super) async fn start(rec: Recorder, req: StartReq) -> Result<Value, Failure
             return Err(failed(why));
         }
     };
+    // No folder path: the id names it (`<uat root>/records/<recording_id>`),
+    // and a deep path could push the answer past BODY_CAP.
     let out = json!({
         "ok": true,
         "recording_id": begun.recording_id,
         "instance": rec.instance,
         "section": req.section,
-        "dir": begun.dir.display().to_string(),
     });
     let handle = RecordHandle {
-        recording_id: begun.recording_id,
+        recording_id: begun.recording_id.clone(),
         dir: begun.dir,
-        section: req.section,
-        specs_dir: req.specs_dir,
+        section: req.section.clone(),
+        specs_dir,
         started_ms: begun.started_ms,
         ticks,
         anchors,
         stop: stop_tx,
         done,
+        ended: None,
     };
     reservation.arm(handle).map_err(failed)?;
+    tracing::info!(
+        target: "lab.record",
+        recording_id = %begun.recording_id, section = %req.section,
+        character = %req.character, instance = %rec.instance,
+        "recording started"
+    );
     Ok(out)
 }
 
@@ -237,6 +282,24 @@ async fn record(job: Job, lease: &RunLease) -> Result<PathBuf, String> {
     // Built before begin: an abort or panic from here on stops the tap.
     let guard = TapStopGuard::new(job.server.clone());
     let now = (job.clock)();
+    let fail =
+        |ready: oneshot::Sender<Result<Begun, String>>, e: String| -> Result<PathBuf, String> {
+            tracing::warn!(
+                target: "lab.record",
+                section = %job.section, character = %job.character,
+                instance = %job.instance, error = %e,
+                "recording: start failed"
+            );
+            let _ = ready.send(Err(e.clone()));
+            Err(e)
+        };
+    // The folder first, so begin's id is known to be free (a second start
+    // in the same second gets `-2`).
+    let claimed = recording_id(now, &job.instance).and_then(|id| claim_dir(&job.records, &id));
+    let (id, dir) = match claimed {
+        Ok(c) => c,
+        Err(e) => return fail(job.ready, e),
+    };
     let begun = Sampler::begin(
         &*job.server,
         &*job.client,
@@ -249,26 +312,25 @@ async fn record(job: Job, lease: &RunLease) -> Result<PathBuf, String> {
         &local_date(now),
     )
     .await;
-    let (mut sampler, start, t0) = match begun {
+    let (mut sampler, mut start, t0) = match begun {
         Ok(b) => b,
         Err(e) => {
-            let _ = job.ready.send(Err(e.clone()));
-            return Err(e);
+            // Still empty: nothing to keep.
+            let _ = std::fs::remove_dir(&dir);
+            return fail(job.ready, e);
         }
     };
-    let dir = job.records.join(&start.recording_id);
+    // Begin named it from the same clock and instance; a suffix is ours.
+    start.recording_id = id;
     let path = dir.join(RECORD_FILE);
-    let opened = open_log(&dir, &path).and_then(|mut f| {
+    let opened = open_log(&path).and_then(|mut f| {
         append(&mut f, &RecordLine::Start(start.clone()))?;
         append(&mut f, &RecordLine::Tick(t0.clone()))?;
         Ok(f)
     });
     let mut file = match opened {
         Ok(f) => f,
-        Err(e) => {
-            let _ = job.ready.send(Err(e.clone()));
-            return Err(e);
-        }
+        Err(e) => return fail(job.ready, e),
     };
     job.ticks.store(1, Ordering::Relaxed);
     job.anchors.store(count_anchors(&t0.tap), Ordering::Relaxed);
@@ -341,13 +403,35 @@ async fn record(job: Job, lease: &RunLease) -> Result<PathBuf, String> {
     }
 }
 
-/// The folder and its log. A folder that already exists is refused: a
-/// recording never writes over another's log.
-fn open_log(dir: &Path, path: &Path) -> Result<std::fs::File, String> {
-    if let Some(parent) = dir.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
+/// Claim `<records>/<id>` with `create_dir`, so two recordings never share
+/// a folder: a taken one becomes `<id>-2`, `<id>-3`, ... The suffix goes
+/// after the instance, so the id still starts `yyyyMMdd-HHmmss-` and LR-05's
+/// `draft_file_name` still finds its time stamp.
+pub(super) fn claim_dir(records: &Path, id: &str) -> Result<(String, PathBuf), String> {
+    std::fs::create_dir_all(records).map_err(|e| format!("{}: {e}", records.display()))?;
+    for n in 1..=MAX_CLAIMS {
+        let id = if n == 1 {
+            id.to_string()
+        } else {
+            format!("{id}-{n}")
+        };
+        let dir = records.join(&id);
+        match std::fs::create_dir(&dir) {
+            Ok(()) => return Ok((id, dir)),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(format!("{}: {e}", dir.display())),
+        }
     }
-    std::fs::create_dir(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    Err(format!(
+        "recording {id}: {MAX_CLAIMS} folders by that name already exist"
+    ))
+}
+
+/// Most folders [`claim_dir`] tries for one id.
+const MAX_CLAIMS: u32 = 99;
+
+/// The log in a freshly claimed folder, never over an existing file.
+fn open_log(path: &Path) -> Result<std::fs::File, String> {
     std::fs::OpenOptions::new()
         .append(true)
         .create_new(true)
