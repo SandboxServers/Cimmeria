@@ -21,6 +21,7 @@ use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::build_reset_entities;
 
 use super::super::ConnectedClientState;
+use super::lab_fixture;
 use super::methods::{query_player_load_data, query_world_entry};
 
 /// Send RESET_ENTITIES when the client calls `playCharacter` to begin world entry.
@@ -79,6 +80,17 @@ pub async fn handle_play_character(
         Some(a) => a,
         None => return Ok(()),
     };
+
+    // A staged lab fixture is written before the first world-entry read
+    // below, so the login and the cell's restore chains run on it.
+    lab_fixture::apply_at_play(
+        db_pool,
+        account_id,
+        account_name.as_deref(),
+        player_id,
+        access_level,
+    )
+    .await;
 
     // Query character data from DB and resolve space via CellService.
     // access_level selects the entity class id (SGWPlayer vs SGWGmPlayer).

@@ -12,8 +12,12 @@
 //! holds one subscription per event (`Options.lua` unsubscribes by event
 //! alone), which is why the lab chains instead of adding a second one.
 
+use serde_json::Value;
+
 use super::geometry::{Screen, Vec3};
 use crate::supervisor::flows::widgets::lua_quote;
+use crate::supervisor::ui::lua_json;
+use crate::supervisor::ui::window_read::WALK_FN;
 
 /// Stock `(window, module)` pairs whose PreRender the lab can chain, in
 /// order of preference. SCT is loaded for the whole in-world session.
@@ -258,6 +262,89 @@ pub fn parse_window_list(r: &[String]) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// Lua body (after the JSON prelude) returning the root's rect and
+/// `{name, rect}` for each visible top-level window, rects as
+/// `getUnclippedPixelRect` gives them (`left, top, right, bottom`), the same
+/// read `client_window_click` uses to aim. A full-screen window (a container
+/// the HUD may hang under) also carries its visible `children`, down to
+/// [`WINDOW_RECT_DEPTH`] levels below the root.
+pub fn window_rects_chunk() -> String {
+    format!(
+        r#"{WALK_FN}
+local root = __lab_find('Root')
+if root == nil then return __jenc({{ error = 'no Root window' }}) end
+local rr = __jcall(function() return root:getUnclippedPixelRect() end)
+local full = rr and math.max(rr.right - rr.left, 0) * math.max(rr.bottom - rr.top, 0) or 0
+local function kids(p, depth)
+  local out = {{}}
+  local n = __jcall(function() return p:getChildCount() end) or 0
+  for i = 0, n - 1 do
+    local w = __jcall(function() return p:getChildAtIdx(i) end)
+    if w and __jcall(function() return w:isVisible() end) then
+      local r = __jcall(function() return w:getUnclippedPixelRect() end)
+      if r then
+        local e = {{ name = __jcall(function() return w:getName() end), rect = {{ r.left, r.top, r.right, r.bottom }} }}
+        local a = math.max(r.right - r.left, 0) * math.max(r.bottom - r.top, 0)
+        if depth < {WINDOW_RECT_DEPTH} and full > 0 and a >= {BACKDROP_AREA_SHARE} * full then e.children = kids(w, depth + 1) end
+        out[#out + 1] = e
+      end
+    end
+  end
+  return out
+end
+return __jenc({{ root = rr and {{ rr.left, rr.top, rr.right, rr.bottom }}, windows = kids(root, 1) }})"#
+    )
+}
+
+/// A window covering this share of the root or more is the root itself or a
+/// full-screen backdrop: it never hides the 3D view from the cursor, but its
+/// children (a HUD parented under a full-screen container) may.
+pub const BACKDROP_AREA_SHARE: f64 = 0.9;
+/// How many levels below the root the rect walk goes (the root's children
+/// are level 1); only full-screen windows are descended into.
+pub const WINDOW_RECT_DEPTH: u32 = 4;
+
+/// The window rects from [`window_rects_chunk`]'s JSON, without backdrops
+/// but with the windows nested under them.
+pub fn parse_window_rects(v: &Value) -> Result<Vec<(String, [f64; 4])>, String> {
+    if let Some(e) = v.get("error").and_then(Value::as_str) {
+        return Err(e.to_string());
+    }
+    let root = rect_of(&v["root"]).ok_or("the root window has no rect")?;
+    let mut out = Vec::new();
+    collect_rects(&v["windows"], rect_area(root), 1, &mut out);
+    Ok(out)
+}
+
+fn rect_of(r: &Value) -> Option<[f64; 4]> {
+    let a = r.as_array()?;
+    let mut out = [0.0; 4];
+    for (o, x) in out.iter_mut().zip(a) {
+        *o = x.as_f64()?;
+    }
+    (a.len() == 4).then_some(out)
+}
+
+fn rect_area(r: [f64; 4]) -> f64 {
+    (r[2] - r[0]).max(0.0) * (r[3] - r[1]).max(0.0)
+}
+
+/// Keep each window under the backdrop share; replace each backdrop by its
+/// children, at most [`WINDOW_RECT_DEPTH`] levels down.
+fn collect_rects(list: &Value, full: f64, depth: u32, out: &mut Vec<(String, [f64; 4])>) {
+    for w in lua_json::list(list) {
+        let Some(r) = rect_of(&w["rect"]) else {
+            continue;
+        };
+        if full <= 0.0 || rect_area(r) < BACKDROP_AREA_SHARE * full {
+            let name = w["name"].as_str().unwrap_or("?").to_string();
+            out.push((name, r));
+        } else if depth < WINDOW_RECT_DEPTH {
+            collect_rects(&w["children"], full, depth + 1, out);
+        }
+    }
+}
+
 /// The stock UI's own targeting call on a pinned slot (the N3 fallback).
 pub fn target_unit_chunk(slot: i32) -> String {
     format!("targetUnit({slot}) return 'ok'")
@@ -304,6 +391,65 @@ mod tests {
         let c = unit_info_chunk(&[7700, 7701]);
         assert!(c.contains("ipairs({7700,7701})"));
         assert!(c.contains("unitHostilityToPlayer"));
+    }
+
+    /// The root and a full-screen backdrop never count as covering the view.
+    #[test]
+    fn window_rects_drop_the_root_and_backdrops() {
+        let v = serde_json::json!({
+            "root": [0, 0, 1000, 800],
+            "windows": [
+                { "name": "LoadingBackdrop", "rect": [0, 0, 1000, 800] },
+                { "name": "NearlyFull", "rect": [0, 0, 960, 760] },
+                { "name": "QuickBar", "rect": [300, 700, 700, 780] },
+            ],
+        });
+        let got = parse_window_rects(&v).unwrap();
+        assert_eq!(
+            got,
+            vec![("QuickBar".to_string(), [300.0, 700.0, 700.0, 780.0])]
+        );
+        // The encoder writes an empty window list as `{}`.
+        let empty = serde_json::json!({ "root": [0, 0, 1000, 800], "windows": {} });
+        assert!(parse_window_rects(&empty).unwrap().is_empty());
+        let none = serde_json::json!({ "error": "no Root window" });
+        assert_eq!(parse_window_rects(&none).unwrap_err(), "no Root window");
+        assert!(window_rects_chunk().contains("getUnclippedPixelRect"));
+    }
+
+    /// A HUD parented under a full-screen container still counts; the walk
+    /// stops [`WINDOW_RECT_DEPTH`] levels below the root.
+    #[test]
+    fn window_rects_descend_into_full_screen_containers() {
+        let full = [0, 0, 1000, 800];
+        let v = serde_json::json!({
+            "root": full,
+            "windows": [
+                { "name": "HudContainer", "rect": full, "children": [
+                    { "name": "QuickBar", "rect": [300, 700, 700, 780] },
+                    { "name": "Inner", "rect": full, "children": [
+                        { "name": "Level3", "rect": [10, 10, 50, 50] },
+                        { "name": "Deeper", "rect": full, "children": [
+                            { "name": "Level4", "rect": [20, 20, 60, 60] },
+                            { "name": "TooDeep", "rect": full, "children": [
+                                { "name": "Level5", "rect": [30, 30, 70, 70] },
+                            ] },
+                        ] },
+                    ] },
+                ] },
+            ],
+        });
+        let names: Vec<String> = parse_window_rects(&v)
+            .unwrap()
+            .into_iter()
+            .map(|(n, _)| n)
+            .collect();
+        assert_eq!(names, ["QuickBar", "Level3", "Level4"]);
+        let chunk = window_rects_chunk();
+        assert!(chunk.contains("e.children = kids(w, depth + 1)"));
+        assert!(chunk.contains(&format!("depth < {WINDOW_RECT_DEPTH}")));
+        assert!(chunk.contains(&format!("a >= {BACKDROP_AREA_SHARE} * full")));
+        assert!(chunk.contains("windows = kids(root, 1)"));
     }
 
     #[test]

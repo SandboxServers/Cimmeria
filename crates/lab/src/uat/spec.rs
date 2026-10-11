@@ -59,6 +59,11 @@ pub struct SectionMeta {
     /// Reusable fixture characters, by profile name (`[section.profiles.praxis]`).
     #[serde(default)]
     pub profiles: std::collections::BTreeMap<String, FreshCharacter>,
+    // lab-golden (GD-01)
+    /// The section-wide variance every row inherits (see [`GoldenSpec`]).
+    #[serde(default)]
+    pub golden: Option<GoldenSpec>,
+    // end lab-golden
 }
 
 fn default_account() -> String {
@@ -131,6 +136,11 @@ pub struct RowSpec {
     pub expect: Vec<ExpectSpec>,
     #[serde(default)]
     pub evidence: Vec<EvidenceSpec>,
+    // lab-golden (GD-01)
+    /// This row's variance, added to the section's (see [`GoldenSpec`]).
+    #[serde(default)]
+    pub golden: Option<GoldenSpec>,
+    // end lab-golden
     // lab-spec-vocab (SV-03)
     /// Interaction poses: where to stand and how to aim at a tagged target.
     #[serde(default)]
@@ -435,6 +445,37 @@ pub struct EvidenceSpec {
     pub client: Option<String>,
 }
 
+// lab-golden (GD-01)
+/// What may differ between runs that still agree (README D-GD5).
+/// `[section.golden]` applies to every row; `[row.golden]` adds to it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GoldenSpec {
+    /// Message-name globs (`*` only) dropped before comparing.
+    #[serde(default)]
+    pub ignore: Vec<String>,
+    /// Globs moved out of the ordered stream into a per-row sorted multiset.
+    #[serde(default)]
+    pub allow_unordered: Vec<String>,
+    /// Globs whose consecutive identical events count once.
+    #[serde(default)]
+    pub collapse: Vec<String>,
+    /// Window-name globs left out of the opened and closed sets.
+    #[serde(default)]
+    pub ignore_windows: Vec<String>,
+    /// Message name -> decoded fields to keep; replaces the built-in entry.
+    #[serde(default)]
+    pub key_args: std::collections::BTreeMap<String, Vec<String>>,
+    /// A tap bound after the row entered the world drops this many ms of
+    /// messages after its first one (default 1000).
+    #[serde(default)]
+    pub late_bind_settle_ms: Option<u64>,
+    /// Row only: leave the row out of every fingerprint (cleanup rows).
+    #[serde(default)]
+    pub skip: bool,
+}
+// end lab-golden
+
 // lab-spec-vocab (SV-03)
 /// How a pose aims the camera at its target.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, serde::Serialize)]
@@ -487,8 +528,6 @@ fn default_dy_m() -> f64 {
     0.1
 }
 
-// The calibrate and record packets (SV-07, SV-08) are the first non-test callers.
-#[cfg_attr(not(test), allow(dead_code))]
 impl PoseSpec {
     /// D-SV3: `target + radius * (cos b, 0, sin b)`, `y = target.y + dy_m`.
     pub fn stand_point(&self, target: [f64; 3]) -> [f64; 3] {
@@ -565,14 +604,12 @@ impl PoseSpec {
 }
 
 /// `v` rounded to `places` decimals, the value a `{:.N}` pose field holds.
-#[cfg_attr(not(test), allow(dead_code))]
 fn round_to(v: f64, places: i32) -> f64 {
     let k = 10f64.powi(places);
     (v * k).round() / k
 }
 
 /// A string as TOML writes it, escapes included.
-#[cfg_attr(not(test), allow(dead_code))]
 fn toml_string(s: &str) -> String {
     toml::Value::String(s.to_string()).to_string()
 }

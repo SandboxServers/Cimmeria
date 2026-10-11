@@ -25,7 +25,7 @@ use crate::supervisor::{instance, session_file, Supervisor, SupervisorConfig};
 use crate::uat::attest::{attest, AttestRequest};
 use crate::uat::evidence::{default_root, RunDir, Verdict};
 use crate::uat::invoke::{normalize_result, ServerInvoker, ServerTools, ToolInvoker, ToolOutcome};
-use crate::uat::runner::{client_fingerprint, RunRequest, Runner, SecondPlayer};
+use crate::uat::runner::{client_fingerprint, FixtureMode, RunRequest, Runner, SecondPlayer};
 use crate::uat::{latest_run, ledger, load_sections, specs_dir};
 
 /// Args for `lab_uat_run`.
@@ -57,6 +57,15 @@ pub struct UatRunArgs {
     /// The lab character (default: lab-account.json's `character`).
     #[serde(default)]
     pub character: Option<String>,
+    /// When a row's fixture is applied: `auto` (default), `always`, `never`.
+    #[serde(default)]
+    pub fixtures: FixtureMode,
+    /// Capture what a golden fingerprint needs: a packet tap on every
+    /// in-world row, bound late when the row enters the world, entity
+    /// snapshots and window samples. lab golden and lab uat -DiffGolden set
+    /// it.
+    #[serde(default)]
+    pub fingerprint: bool,
     /// Check specs and tool availability only; drive nothing (no lease).
     #[serde(default)]
     pub plan_only: bool,
@@ -115,8 +124,9 @@ pub struct UatAttestArgs {
     pub server_version: Option<String>,
 }
 
-/// Calls this server's tools in-process through its router.
-struct RouterInvoker<'a> {
+/// Calls this server's tools in-process through its router (also
+/// `lab_uat_calibrate`'s, `super::calibrate`).
+pub(super) struct RouterInvoker<'a> {
     server: &'a LabServer,
     ctx: RequestContext<RoleServer>,
     names: HashSet<String>,
@@ -124,6 +134,21 @@ struct RouterInvoker<'a> {
     /// touches it here: a long run stays leased, and a takeover stops the
     /// run at its next step. `None` only for `plan_only` (drives nothing).
     lease: Option<&'a RunLease>,
+}
+
+impl<'a> RouterInvoker<'a> {
+    pub(super) fn new(
+        server: &'a LabServer,
+        ctx: RequestContext<RoleServer>,
+        lease: Option<&'a RunLease>,
+    ) -> Self {
+        Self {
+            server,
+            ctx,
+            names: router_names(server),
+            lease,
+        }
+    }
 }
 
 /// Run `fut` under `lease`'s permit when the run took that lease itself; a
@@ -396,13 +421,11 @@ impl LabServer {
             operator: std::env::var("CIMMERIA_LAB_OPERATOR").unwrap_or_else(|_| "lab agent".into()),
             client,
             no_settle: false,
+            instance: Some(self.supervisor.label().to_string()),
+            fixtures: a.fixtures,
+            fingerprint: a.fingerprint,
         };
-        let inv = RouterInvoker {
-            server: self,
-            ctx: ctx.clone(),
-            names: router_names(self),
-            lease: run_lease.as_ref(),
-        };
+        let inv = RouterInvoker::new(self, ctx.clone(), run_lease.as_ref());
         // The second player is set up only when a row needs it.
         let wants_p2 = req
             .sections
@@ -439,13 +462,10 @@ impl LabServer {
         };
         // The second player's server: the hosted instance, else in-process.
         let p2_server = p2.as_ref().ok().map(|(name, _, _)| self.p2_lab(name));
-        let p2_inv = p2_server.as_ref().map(|server| RouterInvoker {
-            server,
-            ctx,
-            names: router_names(server),
-            // p2's own lease covers its steps when it is hosted; the run's
-            // lease (from p1's book) covers an in-process p2.
-            lease: p2_lease.as_ref().or(run_lease.as_ref()),
+        // p2's own lease covers its steps when it is hosted; the run's lease
+        // (from p1's book) covers an in-process p2.
+        let p2_inv = p2_server.as_ref().map(|server| {
+            RouterInvoker::new(server, ctx, p2_lease.as_ref().or(run_lease.as_ref()))
         });
         let second = match (&p2, &p2_inv) {
             (Ok((instance, account, character)), Some(inv)) => Ok(SecondPlayer {

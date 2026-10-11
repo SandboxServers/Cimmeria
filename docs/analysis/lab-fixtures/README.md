@@ -10,13 +10,14 @@
 > files: lab-spec-vocab (`SV-`, `spec.rs` and `first-session.toml`),
 > lab-golden, lab-record, lab-watch, client-limits and lab-chaos.
 >
-> **Campaign status (2026-10-10): decisions recorded, wave 1 running.** The
+> **Campaign status (2026-10-11): FX-01, FX-02 and FX-05 merged; FX-03,
+> FX-04 and FX-06 Writing.** The
 > owner settled D-FX1 to D-FX9 on 2026-10-10 and asked for one session per
 > row instead of relogs. That moved the fixture from an in-world console
 > command to a fixture **staged** on the lab endpoint and applied by the base
 > when the character next enters the world (F19 to F24). The packets below
 > are the revised set; the first plan (`.fixture` console family, cell
-> primitive, relog) is superseded. FX-01 is Writing.
+> primitive, relog) is superseded.
 
 ## Purpose
 
@@ -109,18 +110,18 @@ world-entry trace.
 | D-FX7 | **Decided** 2026-10-10 (owner) | **Exact item counts per listed design id.** For each `{ id, count, container }` the base deletes every carried instance (containers 1 to 15; never 16 to 20), then inserts `count` into `container` (`main` by default, or `mission`). Unlisted items are untouched. `count` is 0 to 10. | Stale items would make FS-P4 false-pass and FS-P5 ambiguous. |
 | D-FX8 | **Deferred** 2026-10-10 (owner asked whether partial rewind is worth it) | **Rewind (FX-11) waits** until FX-12 shows how isolated reruns feel. The snapshot half (FX-10) is built now because parity needs it. | With staged fixtures a rewind is "snapshot to fixture, new session"; whether to build it is a call to make after using fixtures. |
 | D-FX9 | **Decided** 2026-10-10 (owner) | **FS-01, FS-02, FS-P1 and FS-P2 stay chained**, and no fixture touches `sgw_player.first_login`. | FS-P2 is the first-login proof. |
-| D-FX10 | PROPOSED (coordinator, 2026-10-10) | **Fixture mode `auto`:** a row's fixture is applied unless the previous row of the same section ran in this run, passed, and left the client in world; then the row continues the chain in that session, its `${fixture_character}` is the chain's character, and the runner records **parity**: each mission, item and tutorial the fixture names must match the chain's state at the row boundary (mismatch fails the parity check, reported in the row JSON and the summary), and missions the chain has that the fixture does not name are listed as `unspecified`. `RunRequest.fixtures` takes `auto` (default), `always` and `never`. | Answers the owner's D-FX4 concern without a second run: a full run is the player route plus parity, a row run alone or after a failure starts clean (no cascade, F1). |
+| D-FX10 | **Proceeding** 2026-10-10 (coordinator proposal, reported to the owner with no objection; FX-06 builds it) | **Fixture mode `auto`:** a row's fixture is applied unless the previous row of the same section ran in this run, passed, and left the client in world; then the row continues the chain in that session, its `${fixture_character}` is the chain's character, and the runner records **parity**: each mission, item and tutorial the fixture names must match the chain's state at the row boundary (mismatch fails the parity check, reported in the row JSON and the summary), and missions the chain has that the fixture does not name are listed as `unspecified`. `RunRequest.fixtures` takes `auto` (default), `always` and `never`. | Answers the owner's D-FX4 concern without a second run: a full run is the player route plus parity, a row run alone or after a failure starts clean (no cascade, F1). |
 
 ## Packets
 
 | ID | Packet | Implementer | Size | Wave | Depends on | Status |
 |---|---|---|---|---|---|---|
-| FX-01 | Spec schema: `[row.fixture]`, `[section.profiles]`, validation | packet-coder | S | 1 | none | Writing |
-| FX-02 | Base: fixture store, apply at Play (missions, tutorials, world, position) | rust-gameserver-dev | L | 1 | D-FX1, D-FX2 | Ready |
-| FX-03 | Base: exact item counts in the staged apply | rust-gameserver-dev | M | 2 | FX-02 | BlockedDependency |
-| FX-04 | Lab endpoint tool `server_stage_fixture` | rust-gameserver-dev | M | 2 | FX-02 | BlockedDependency |
-| FX-05 | Runner plan: names, stage args, verify SQL, `RunRequest.instance` and `fixtures` | packet-coder | M | 2 | FX-01 | BlockedDependency |
-| FX-06 | Runner sessions: end, bootstrap, stage, Play; fixture mode | packet-coder | L | 3 | FX-05 | BlockedDependency |
+| FX-01 | Spec schema: `[row.fixture]`, `[section.profiles]`, validation | packet-coder | S | 1 | none | Integrated (#1408) |
+| FX-02 | Base: fixture store, apply at Play (missions, tutorials, world, position) | rust-gameserver-dev | L | 1 | D-FX1, D-FX2 | Integrated (#1421) |
+| FX-03 | Base: exact item counts in the staged apply | rust-gameserver-dev | M | 2 | FX-02 | Writing |
+| FX-04 | Lab endpoint tool `server_stage_fixture` | rust-gameserver-dev | M | 2 | FX-02 | Writing |
+| FX-05 | Runner plan: names, stage args, verify SQL, `RunRequest.instance` and `fixtures` | packet-coder | M | 2 | FX-01 | Integrated (#1420) |
+| FX-06 | Runner sessions: end, bootstrap, stage, Play; fixture mode | packet-coder | L | 3 | FX-05 | Writing |
 | FX-07 | Runner verify step and BLOCKED reasons | packet-coder | S | 4 | FX-06 | BlockedDependency |
 | FX-08 | `first-session.toml`: fixtures for FS-P3, FS-P4, FS-P5 | packet-coder | S | 5 | FX-04, FX-07 | BlockedDependency |
 | FX-09 | Docs: authoring guide, lab guide, endpoint tool | documentation-writer | S | 5 | FX-04, FX-07 | BlockedDependency |
@@ -191,5 +192,32 @@ Both campaigns add to `crates/lab/src/uat/spec.rs` and edit
 
 ## Review outcomes
 
-None yet. Where merged code differs from the packet specs, record it here;
-the code is then the reference, not the spec.
+Where merged code differs from the packet specs, it is recorded here; the
+code is then the reference, not the spec.
+
+- **FX-01 (#1408).** The fixture types and `check_fixture` live in
+  `crates/lab/src/uat/spec_fixture.rs`, tests in `spec_fixture_tests.rs`
+  (the rebase onto SV-03 put `spec.rs` over the 700-line cap). Only
+  `FixtureSpec` is re-exported from `uat::spec`. FX-05 tightened two rules:
+  `state = "active"` needs a `step`, and `[section.profiles]` keys are 1 to
+  8 lowercase letters (two keys must not collapse to one fixture name).
+- **FX-02 (#1421).** Security review: the take ran before the ownership
+  check, so any account's `playCharacter(<id>)` could burn another
+  character's staged fixture. `StagedFixture` gained `account_id` and
+  `take_fixture_for(player_id, account_id)` replaced `take_fixture`; a
+  mismatch leaves the fixture staged (WARN `account_mismatch`). The apply
+  splits into a precheck (missions planned, world, position, ownership,
+  items) and the writes, so a bad fixture writes nothing; mission writes are
+  read back (TG-DB-12's lock refuses them silently) and failures log
+  `precheck_refused` or `write_failed`. Completed rows are `repeats = 1`
+  with every step's objectives completed; steps order by
+  `resources.mission_steps.index`. Mission review: the row shape restores
+  exactly like a relog at that state for all 22 content-driven missions
+  (all advance linearly by `index`); a fixture is "relogged at X", so a row
+  must list the items and missions that the route to X grants (FS-P5's
+  pistol). FX-09 documents both rules.
+- **FX-05 (#1420).** Review: the verify SQL matched names by substring, and
+  `p1`'s `Fxpraxispb` is a prefix of `p10`'s `Fxpraxispba`. It now matches
+  the end of the name (`player_name ILIKE '% <name>'`); FX-08's clauses use
+  the same form (`'% ${fixture_character}'`), not `%...%`. Item checks
+  verify the requested container as well as the carried total.

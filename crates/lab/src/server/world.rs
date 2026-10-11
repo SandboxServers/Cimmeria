@@ -11,9 +11,10 @@ use super::LabServer;
 use crate::supervisor::world::camera::CameraRequest;
 use crate::supervisor::world::click::{ClickRequest, Expect};
 use crate::supervisor::world::find::FindRequest;
+use crate::supervisor::world::hover::HoverRequest;
 use crate::supervisor::world::io::LiveWorld;
 use crate::supervisor::world::movement::MoveRequest;
-use crate::supervisor::world::{camera, click, find, movement, WorldError};
+use crate::supervisor::world::{camera, click, find, hover, movement, WorldError};
 
 #[tool_router(router = world_router, vis = "pub(super)")]
 impl LabServer {
@@ -71,6 +72,17 @@ impl LabServer {
         let mut io = LiveWorld::new(&self.supervisor);
         world_result(camera::run(&mut io, a).await)
     }
+
+    #[tool(
+        description = "Hover a target or a world point with the cursor, without clicking, and score it: whether the client's mouse-over (and no HUD window) is right at the aim pixel and at 8 points around it, and how far the pixel is from the avatar and the screen edge. For calibrating spec poses."
+    )]
+    async fn client_hover_probe(
+        &self,
+        Parameters(a): Parameters<HoverRequest>,
+    ) -> Result<CallToolResult, McpError> {
+        let mut io = LiveWorld::new(&self.supervisor);
+        world_result(hover::run(&mut io, a).await)
+    }
 }
 
 /// A world tool's JSON as text, or its failure as an MCP error whose `data`
@@ -113,6 +125,7 @@ mod tests {
             "client_target",
             "client_move_to",
             "client_camera",
+            "client_hover_probe",
         ] {
             let t = s
                 .tool_router

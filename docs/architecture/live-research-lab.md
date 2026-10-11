@@ -1,6 +1,6 @@
 # ADR: Live Research Lab — MCP access to the running client and server
 
-> **Last updated**: 2026-10-10
+> **Last updated**: 2026-10-11
 > **Audience**: Engineers and AI agents (Claude Code) doing reverse engineering and live verification against a running SGW.exe and a running `cimmeria-server`
 > **Type**: Architecture decision record
 > **Status**: Proposed — owner decisions in §2 are settled; spikes in §8 gate Phases 2 and 3
@@ -15,7 +15,7 @@ Three pieces:
 
 1. **Client bridge.** An inbound command channel added to the already-injected `cimmeria-client-telemetry` DLL, behind a `lab-bridge` cargo feature. It evaluates Lua on the client main thread, reads and writes memory, installs non-freezing logging hooks at any address, and calls native functions. Lua eval is the hot-loadable probe layer: new client probes need no rebuild.
 2. **Lab supervisor** (`cimmeria-lab`). An MCP server on the dev box: one shared, token-gated loopback HTTP daemon for every session, with an enforced one-driver lease (§11; stdio per session is the older setup). It launches, injects, logs in, watches, screenshots, and restarts SGW.exe, and proxies tool calls to the bridge. It outlives client crashes, which is what makes unattended recovery possible.
-3. **Server lab endpoint** (`cimmeria-lab-mcp`). An MCP endpoint inside `cimmeria-server` with a fixed tool set: dot-console passthrough with captured output, live entity and witness queries, per-session packet taps, log tail, read-only SQL. Token-gated, bound only to an address the operator names, reachable on the colo over WireGuard only.
+3. **Server lab endpoint** (`cimmeria-lab-mcp`). An MCP endpoint inside `cimmeria-server` with a fixed tool set: dot-console passthrough with captured output, live entity and witness queries, per-session packet taps, log tail, read-only SQL, and one staging tool for UAT row fixtures. Token-gated, bound only to an address the operator names, reachable on the colo over WireGuard only.
 
 Sequencing is RE first: the client track (Phases 1 to 3) lands before the server track (Phases 4 and 5), though the two tracks are independent and can run in parallel.
 
@@ -125,6 +125,8 @@ A Windows-only MCP server, over stdio (one per session, the original setup) or a
 
 Results an MCP client receives are compacted in `call_tool` (one-line JSON, defaults left out, lists capped, no per-step trail; `verbose` / `fields` per call), and `tools/list` strips schema noise. The in-process UAT runner bypasses both and grades full results. The reason is cost: a lab-driving agent re-sends its whole context, schemas included, on every turn. Details: the operating guide, "Fewer calls".
 
+**Golden fingerprints (2026-10-11, [lab-golden](../analysis/lab-golden/README.md)).** A UAT run can be compared with known-good runs without a model reading it. In fingerprint mode the runner only captures raw data into the evidence bundle: a packet tap on every in-world row, entity snapshots and window samples. The fingerprint itself is computed offline from the bundle by pure code in `crates/lab/src/uat/golden/` (D-GD1), so it is unit-tested from fixture bundles, needs no lab, and can be recomputed from an old bundle when the rules change. Its event names and arguments come from the server packet tap (the `cimmeria-wire-log` names and `decoded` fields), through a fixed key-argument allowlist, not from the wireclient's decoders (D-GD2): the tap is the only data a lab run has, and a run-to-run diff puts both sides through the same decoder, so sharing it hides nothing. A golden is written only when five fresh runs, every row passing, agree exactly, and a later run's first divergence is reported in one line. Two open tools, `lab_golden_record` and `lab_golden_diff`, never drive the client, so "open" in the lease policy now means "never drives the client" rather than read-only. Operating detail: [automated-uat.md, Golden runs](../guides/automated-uat.md#golden-runs).
+
 Credentials live in `<install>/Binaries/sessions/lab-account.json`, gitignored, next to the existing session file.
 
 ### 3.5 Server lab endpoint (`crates/lab-mcp`, `cimmeria-lab-mcp`)
@@ -151,6 +153,9 @@ In-process, started from `crates/server/src/main.rs` beside the admin API but on
 | `server_log_tail` | Filtered read of the existing `LogBuffer`. |
 | `server_content_reload` | Existing `ReloadContentEngine` path. |
 | `server_db_query` | One statement in a read-only transaction with a row cap. |
+| `server_stage_fixture` | Stage a UAT row fixture (missions, item counts, tutorials, world, position) for an offline lab fixture character; the BaseApp writes it at that character's next Play (lab-fixtures FX-04). |
+
+**The one staging tool.** Every other tool reads, or drives the game the way a GM at the console could. `server_stage_fixture` exists because a UAT row has to start from a state nothing in game can reach: the native mission GM commands only move forward, and a tutorial shows once per character. Writing that state in world would also miss the `player_loaded` restore chains that bind mission dialogs, so the state must already be saved when the character enters the world. The owner chose a typed, server-side tool over a SQL write tool and over new GM commands (lab-fixtures D-FX1), with gates that keep it lab-only (D-FX2): only the token-gated endpoint can stage; the character's last name must be a lab fixture name (`Fx` followed by letters), so a real character, a GM's main included, is refused; its account must be a GM's when staged and the session a GM's when applied; the character must be offline; and one fixture per character is taken by its own account's next Play, applied once, and expires after 10 minutes. The tool writes no row: it fills an in-memory store, and the BaseApp's apply runs every check before its first write, so a refused fixture writes nothing. The rationale and findings are in the [lab-fixtures ledger](../analysis/lab-fixtures/README.md); the operating details are in the [guide](../guides/live-research-lab.md#staging-a-row-fixture-server_stage_fixture).
 
 ## 4. The experiment loop
 
