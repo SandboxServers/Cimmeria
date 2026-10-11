@@ -276,13 +276,16 @@ jobs:
         run: cargo test --doc -p cimmeria-commands
       # The live-DB suite, on the test binaries built above (the build-only
       # pass only compiles what `-p` feature resolution changes, if anything).
+      # `!cancelled()`: a failing no-DB pass still gets its live-DB results, as
+      # when the two tiers were separate jobs.
       - name: build live-DB test binaries
+        if: ${{ !cancelled() }}
         run: bash tools/test-live-db.sh --build-only
-        env:
-          DATABASE_URL: postgres://w-testing:w-testing@localhost:5432/sgw
       - name: wait for schema + seeds load
+        if: ${{ !cancelled() }}
         run: bash tools/live-db-schema-load.sh wait 300
       - name: cargo nextest run (live DB)
+        if: ${{ !cancelled() }}
         run: bash tools/test-live-db.sh
         env:
           DATABASE_URL: postgres://w-testing:w-testing@localhost:5432/sgw

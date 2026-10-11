@@ -18,8 +18,8 @@ merge: kind=docs (every changed file is *.md or under .claude/agent-memory/) mer
 with --admin, the owner's rule for Markdown and memory-only PRs. kind=code rebases with
 rebase-pr.sh only when GitHub says BEHIND or DIRTY (D-TP8), waits for the gating checks
 (fmt, clippy, build + nextest; `skipping` passes), plus any path-filtered lab or build-lane
-check the PR's changes made run (CONDITIONAL), and merges with --squash. Coverage and
-live-DB jobs are not waited for. --retire then runs `rm-worktree --no-prune NAME` (the .ps1 under
+check the PR's changes made run (CONDITIONAL), and merges with --squash. The build +
+nextest gate includes the live-DB tier (same job since 2026-10-11); coverage is not waited for. --retire then runs `rm-worktree --no-prune NAME` (the .ps1 under
 pwsh on Windows, the .sh under bash elsewhere).
 
 Output: one line, `status=... key=value ...`; a value with spaces is double-quoted. The full
