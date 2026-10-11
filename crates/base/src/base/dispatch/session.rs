@@ -244,7 +244,9 @@ pub(super) async fn handle_log_off(
         // `SGWPlayer::destroyed()` cleanup (`Chat.py`'s
         // `ChannelManager.leaveChannel(self, channelId, True)` for every
         // held membership).
-        cimmeria_base_session::base::user_channels::user_channel_registry().leave_all(entity_id);
+        let leaves = cimmeria_base_session::base::user_channels::user_channel_registry()
+            .leave_all(entity_id);
+        cimmeria_base_session::base::helpers::log_channel_leaves(addr, identity, &leaves);
     }
 
     // Fan out offline status to contact-list watchers and organization
