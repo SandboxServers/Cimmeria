@@ -123,6 +123,7 @@ mod follow_resume;
 mod lab_dummy;
 mod leash_reset;
 mod leash_walk;
+mod leg_rows;
 mod live_db_npc_vs_npc;
 mod melee_reach;
 mod no_route;
