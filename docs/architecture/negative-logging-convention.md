@@ -1009,6 +1009,17 @@ Guard: `a_closed_base_channel_logs_the_unsent_end_aid_wait` in `cell/respawn/tes
 
 Guard: `base_messages/tests/minigame.rs` `minigame_victory_for_unknown_entity_warns` (LogCapture: `reason`, `entity_id`, `chain_count`, `result`).
 
+## Duplicate minigame session (TG-MG-04)
+
+`crates/minigame/src/minigame/session.rs`, `SessionRegistry::register`. A second register for an entity that already has a session is refused. The row says why: `existing_connected` separates a double interact on a launch still loading (INFO) from a refusal while a game is live, or a launch that has sat past the 2 s window (WARN). The identity is the entity pair (`entity_id`, `entity_name`); the games are `existing_game` and `requested_game`. The ticket is never logged.
+
+| Level | `reason` | When | Fields |
+|---|---|---|---|
+| INFO | `duplicate_session` | A second register while the first session is unclaimed and under 2 s old | entity pair, `existing_connected = false`, `existing_age_ms`, `existing_game`, `requested_game` |
+| WARN | `duplicate_session` | A second register against a claimed session, or an unclaimed one older than 2 s (#1303) | entity pair, `existing_connected = true` or `false`, `existing_age_ms`, `existing_game`, `requested_game` |
+
+Guards: `session_tests.rs` `duplicate_register_while_pending_logs_info` and `duplicate_register_after_connect_logs_warn` (LogCapture: `reason`, `existing_connected`, `existing_game`, `requested_game`).
+
 ## Leave and invisible send failures (TG-AOI-08)
 
 `cell_dispatch/aoi.rs` in `cimmeria-base-world-entry`. `left_aoi` and `entity_invisible` each send one reliable packet to a witness. A non-`Sent` outcome leaves that witness showing the entity, so the outcome is kept and a failure logs WARN `target: "aoi.create_send_failed"`, `event = "create_send_failed"`, with `phase` = `leave` or `invisible`. The fields match the create seam: `witness_id` + `witness_name`, `entity_id` + `entity_name`, `phase`, `addr_resolved`, `reason`. A sent packet logs nothing new.
