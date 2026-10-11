@@ -71,6 +71,7 @@ fn pending(ticket: &str, account_id: u32, key: [u8; 32]) -> PendingLogin {
         account_id,
         account_name: format!("acct{account_id:x}"),
         access_level: 0,
+        test_account: false,
         ticket: ticket.to_string(),
         session_key: hex_key(key),
         client_ip: "127.0.0.1".parse().unwrap(),

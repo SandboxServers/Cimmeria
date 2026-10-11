@@ -40,8 +40,8 @@ test('approved tabs and settings work without inventing installed state', {timeo
     assert.equal(ui.get('settings').getAttribute('aria-expanded'), 'false');
     await app.settled();
     // The debug-log panel asks once at mount whether an upload can run (LX-05);
-    // the changes panel reads its list once, on the first snapshot (LX-07).
-    assert.deepEqual(calls, ['log_upload_command', 'launcher_command', 'client_changes_command', 'fetch_patch_notes']);
+    // the changes (LX-07) and PhysX (LX-12) panels each read once, on the first snapshot.
+    assert.deepEqual(calls, ['log_upload_command', 'launcher_command', 'client_changes_command', 'physx_command', 'fetch_patch_notes']);
   } finally { await app.dispose(); }
   ui.click('settings'); assert.equal(ui.get('gear').hidden, true, 'dispose removes handlers');
 });

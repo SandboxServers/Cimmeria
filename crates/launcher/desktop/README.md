@@ -141,6 +141,10 @@ redirected (OneDrive) Documents is followed. On macOS every request answers
 `profile_unavailable`: the Wine client writes inside its prefix, not under
 `$HOME/Documents`, and resetting there is not built yet. The other code is `io`.
 
+`physx_command` (`inspect`, `install`, LX-12) detects PhysX System Software on
+native Windows and runs the pinned vendor MSI elevated; its Settings panel is
+`physx-view.ts`. See [prerequisites](docs/prerequisites.md#native-windows-physx-system-software-lx-12).
+
 ## Effect workflows
 
 `frontend/` pins Effect **4.0.0** and uses its actual services, scopes,

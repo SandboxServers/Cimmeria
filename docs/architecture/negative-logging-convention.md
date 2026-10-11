@@ -831,6 +831,17 @@ World entry no longer falls back to "no saved missions" (that let a re-accept ov
 
 Guards: the live-DB test `live_db_unreadable_missions_block_reaccept` (`crates/services/src/mission_state_lock_tests.rs`) makes the read fail, re-accepts a completed mission and asserts the refusal, the feedback line, both WARNs and the unchanged row. `missions::state_lock::tests` (base) pins the retry count, the final ERROR, the persist WARN and the recovery unlock; `cell::missions::state_lock_tests` pins the cell refusal, the whole-chain drop and the recovery unlock.
 
+## Boot effect-script registration (TG-CMB-04)
+
+The cell's boot check of effect `script_name`s (`cell/service/startup.rs`) names only real missing registrations. `EffectScripts::unregistered` (`cell/effects/registry.rs` in `cimmeria-cell-world`) skips a blank `script_name` and the `NATIVE_EFFECT_NAMES` entries: `Reload` (effect 658) runs through the reload pipeline. Those rows are logged once at INFO, not WARN. The shipped seed has no unregistered script left, so a normal boot writes no WARN.
+
+| Level | Row | When |
+|---|---|---|
+| WARN | `event = "effect_script_unregistered"`, `reason = "no_registered_script"`, `count`, `scripts` | An effect row names a script no registered script answers (once per boot) |
+| INFO | `event = "effect_script_native"`, `reason = "native_or_blank"`, `count`, `scripts` (script name to effect ids) | Effect rows name a blank or native script, which needs no registered script (once per boot) |
+
+Guards: `unregistered_skips_blank_and_native` (`cell/effects/registry.rs` in `cimmeria-cell-world`) pins the skip; `every_seeded_script_name_is_registered` (`cell/effects/registry.rs` in `cimmeria-cell-effect-scripts`) pins an empty missing list on the seed.
+
 ## UDP connection-reset throttle (TG-MER-10)
 
 On Windows, a `send_to` to a closed port makes the next `recv_from` fail with WSAECONNRESET (10054). That error is per destination, not a socket failure, and the receive loop carries on. `log_connreset()` in `base/connect_loop/mod.rs` throttles it (Pattern D). The first reset writes at once. The resets inside the next 10 s are counted, and the next row carries them in `suppressed`. The throttle is process-wide, not keyed by entity or peer. Every reset, written or counted, bumps `udp_connreset_total`.

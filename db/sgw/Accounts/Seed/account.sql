@@ -27,12 +27,15 @@ INSERT INTO account (account_id, account_name, password, accesslevel, enabled) V
 -- lab account driven by the live research lab supervisor (lab_login /
 -- lab_create_character). Its characters are disposable test characters;
 -- the automation keeps it under the client's 8-character cap.
-INSERT INTO account (account_id, account_name, password, accesslevel, enabled) VALUES (10, 'lab',     'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3', 2, true);
+-- test_account = true marks every lab account (TG-NET-16, D-TG13): their
+-- server sessions resolve to session_kind "lab", every other account to
+-- "player".
+INSERT INTO account (account_id, account_name, password, accesslevel, enabled, test_account) VALUES (10, 'lab',     'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3', 2, true, true);
 -- extra lab accounts for multi-client (two-player) scenarios; same rules as lab.
-INSERT INTO account (account_id, account_name, password, accesslevel, enabled) VALUES (11, 'lab2',    'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3', 2, true);
-INSERT INTO account (account_id, account_name, password, accesslevel, enabled) VALUES (12, 'lab3',    'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3', 2, true);
-INSERT INTO account (account_id, account_name, password, accesslevel, enabled) VALUES (13, 'lab4',    'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3', 2, true);
-INSERT INTO account (account_id, account_name, password, accesslevel, enabled) VALUES (14, 'lab5',    'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3', 2, true);
+INSERT INTO account (account_id, account_name, password, accesslevel, enabled, test_account) VALUES (11, 'lab2',    'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3', 2, true, true);
+INSERT INTO account (account_id, account_name, password, accesslevel, enabled, test_account) VALUES (12, 'lab3',    'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3', 2, true, true);
+INSERT INTO account (account_id, account_name, password, accesslevel, enabled, test_account) VALUES (13, 'lab4',    'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3', 2, true, true);
+INSERT INTO account (account_id, account_name, password, accesslevel, enabled, test_account) VALUES (14, 'lab5',    'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3', 2, true, true);
 INSERT INTO account (account_id, account_name, password, accesslevel, enabled) VALUES (15, 'charlie', 'a94a8fe5ccb19ba61c4c0873d391e987982fbbd3', 2, true);
 
 --

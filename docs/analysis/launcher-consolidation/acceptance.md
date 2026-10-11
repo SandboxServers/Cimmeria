@@ -39,7 +39,7 @@ The owner runs steps 1-12 on a Windows machine with no launcher state, and step 
 |---|---|---|---|---|---|---|
 | 1 | Download and unzip from the stable link; first run with WebView2 present, an offline reopen, and once on a machine or VM without WebView2 | LX-11, LX-15 | G-01, G-14 | | | |
 | 2 | Fresh install from the archive.org RAR, cancelled once and restarted; patch notes open; Play enters the world | LX-15 | G-03, G-04, G-07, G-13 | | | |
-| 3 | PhysX missing: setup offers and installs it | LX-12 | G-03 | | | |
+| 3 | PhysX missing: setup offers and installs it; also with `PhysXCore Path` set but no `v2.6.3\PhysXCore.dll` beneath it (reads as missing), and on an adopted folder without the retained installer (the panel points to Repair or a manual install) | LX-12 | G-03 | | | |
 | 4 | Adopt an existing egui install in place; Play works without a reinstall | LX-10 | G-10, G-13 | | | |
 | 5 | Import egui settings; the server list carries over | LX-03 | G-10 | | | |
 | 6 | Server list edit, client-patches toggle off and on, both visible in "Changes to your client"; keyboard-only pass; forced failed save and restart | LX-03, LX-04, LX-07 | G-01, G-02 | | | |
