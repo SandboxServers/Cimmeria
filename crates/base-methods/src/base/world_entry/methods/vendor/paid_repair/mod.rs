@@ -51,20 +51,22 @@ pub async fn handle_paid_repair_inventory_items(
         player_id,
         None,
         Some(vendor_template_id),
+        transport,
         connected,
         entity_to_addr,
     );
     let pool = match db_pool {
         Some(p) => p,
         None => {
-            tel.failed("no_database", VendorItem::default(), &"no database pool");
+            tel.failed("no_database", VendorItem::default(), &"no database pool")
+                .await;
             return;
         }
     };
 
     let item_ids = normalize_item_ids(item_ids);
     if item_ids.is_empty() {
-        tel.refused("empty_request", VendorItem::default());
+        tel.refused("empty_request", VendorItem::default()).await;
         return;
     }
     // The single item a one-item request names, for the rows below.
@@ -76,18 +78,19 @@ pub async fn handle_paid_repair_inventory_items(
     let Some(template) =
         load_vendor_template_lists(pool, vendor_template_id, "RepairInventoryItems").await
     else {
-        tel.failed("template_lookup_failed", only, &"no vendor template lists");
+        tel.failed("template_lookup_failed", only, &"no vendor template lists")
+            .await;
         return;
     };
     let Some(repair_item_list) = template.repair_item_list else {
-        tel.refused("vendor_does_not_repair", only);
+        tel.refused("vendor_does_not_repair", only).await;
         return;
     };
 
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
         Err(e) => {
-            tel.failed("db_error", only, &e);
+            tel.failed("db_error", only, &e).await;
             return;
         }
     };
@@ -122,7 +125,7 @@ pub async fn handle_paid_repair_inventory_items(
         Ok(rows) => rows,
         Err(e) => {
             let _ = tx.rollback().await;
-            tel.failed("db_error", only, &e);
+            tel.failed("db_error", only, &e).await;
             return;
         }
     };
@@ -134,7 +137,8 @@ pub async fn handle_paid_repair_inventory_items(
         let Some(row) = rows_by_id.get(item_id) else {
             let _ = tx.rollback().await;
             // Not carried, a stack, already full, or not on this vendor's list.
-            tel.refused("not_repairable", VendorItem::row(*item_id));
+            tel.refused("not_repairable", VendorItem::row(*item_id))
+                .await;
             return;
         };
 
@@ -142,7 +146,7 @@ pub async fn handle_paid_repair_inventory_items(
             Some(total) => total,
             None => {
                 let _ = tx.rollback().await;
-                tel.refused("price_overflow", only);
+                tel.refused("price_overflow", only).await;
                 return;
             }
         };
@@ -157,20 +161,22 @@ pub async fn handle_paid_repair_inventory_items(
             Ok(balance) => balance,
             Err(e) => {
                 let _ = tx.rollback().await;
-                tel.failed("db_error", only, &e);
+                tel.failed("db_error", only, &e).await;
                 return;
             }
         };
 
     let Some(balance) = balance else {
         let _ = tx.rollback().await;
-        tel.failed("player_missing", only, &"no sgw_player row");
+        tel.failed("player_missing", only, &"no sgw_player row")
+            .await;
         return;
     };
 
     if balance < total_cost {
         let _ = tx.rollback().await;
-        tel.refused("insufficient_cash", only.price(total_cost).cash(balance));
+        tel.refused("insufficient_cash", only.price(total_cost).cash(balance))
+            .await;
         return;
     }
 
@@ -190,12 +196,13 @@ pub async fn handle_paid_repair_inventory_items(
                 "player_missing",
                 only,
                 &"player row gone before the cash update",
-            );
+            )
+            .await;
             return;
         }
         Err(e) => {
             let _ = tx.rollback().await;
-            tel.failed("db_error", only, &e);
+            tel.failed("db_error", only, &e).await;
             return;
         }
     };
@@ -221,18 +228,19 @@ pub async fn handle_paid_repair_inventory_items(
                 "rows_affected_mismatch",
                 only,
                 &format!("expected {}, updated {}", item_ids.len(), r.rows_affected()),
-            );
+            )
+            .await;
             return;
         }
         Err(e) => {
             let _ = tx.rollback().await;
-            tel.failed("db_error", only, &e);
+            tel.failed("db_error", only, &e).await;
             return;
         }
     }
 
     if let Err(e) = tx.commit().await {
-        tel.failed("commit_failed", only, &e);
+        tel.failed("commit_failed", only, &e).await;
         return;
     }
     tel.completed(

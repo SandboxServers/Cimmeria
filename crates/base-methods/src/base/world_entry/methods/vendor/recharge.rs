@@ -193,9 +193,10 @@ mod refusal_tests {
             .expect("naquadah_of")
     }
 
-    /// CAT-E-01. A recharge used to restore `charges` for free when the
-    /// request carried no vendor template. Now a recharge the vendor cannot
-    /// price (a vendor with no recharge list) leaves charges and cash alone.
+    /// A recharge the vendor cannot price (a vendor with no recharge list)
+    /// leaves charges and cash alone. Not the CAT-E-01 guard (it passes a
+    /// template, so the old code took the paid path too); see the note on
+    /// `repair::tests::live_db_repair_at_a_vendor_without_a_repair_list_is_refused`.
     #[tokio::test]
     async fn live_db_recharge_at_a_vendor_without_a_recharge_list_is_refused() {
         let pool = require_db_or_skip!();

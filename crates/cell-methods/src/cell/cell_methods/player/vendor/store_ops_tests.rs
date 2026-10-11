@@ -168,8 +168,12 @@ async fn stock_buyback_reaches_the_base() {
     }
 }
 
-/// A one-item repair is 8 bytes; it always carries the server's template,
-/// never "none" (CAT-E-01: a missing template used to mean a free repair).
+/// CAT-E-01 guard (with `stock_recharge_is_priced_by_the_open_vendor` and
+/// the `i32` type of `vendor_template_id`). A one-item stock repair is 8
+/// bytes and names no vendor; with a vendor session open, what reaches the
+/// base is a priced repair carrying the session's template. The free path
+/// was exactly this case: an open session plus a payload with no trailing
+/// template, forwarded as `vendor_template_id: None`.
 #[tokio::test]
 async fn stock_repair_of_one_item_is_priced_by_the_open_vendor() {
     let (mut mgr, _) = player(true, true);
@@ -222,10 +226,9 @@ async fn stock_recharge_is_priced_by_the_open_vendor() {
     }
 }
 
-/// CAT-E-01 regression guard. No vendor open: the request never reaches the
-/// base (the old cell forwarded a template-less repair, which the base
-/// performed for free), the player gets a feedback line, and the refusal is
-/// one WARN.
+/// No vendor open: the request never reaches the base, the player gets a
+/// feedback line, and the refusal is one WARN. The old cell refused a
+/// sessionless request too, so this is not the CAT-E-01 guard.
 #[tokio::test]
 async fn repair_without_vendor_session_is_refused() {
     let (mut mgr, _) = player(false, true);

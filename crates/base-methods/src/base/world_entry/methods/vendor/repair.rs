@@ -350,12 +350,17 @@ mod tests {
             .unwrap()
     }
 
-    /// CAT-E-01. `repairItems` used to repair for free when the request
-    /// carried no vendor template (`durability = 100`, no price, no debit).
-    /// The base now has no free path: a repair the vendor cannot price (here,
-    /// a vendor with no repair list) changes neither durability nor cash. The
-    /// cell refuses a request with no vendor session before it reaches the
-    /// base; that guard is `store_ops_tests::repair_without_vendor_session_is_refused`.
+    /// A repair the vendor cannot price (a vendor with no repair list)
+    /// changes neither durability nor cash.
+    ///
+    /// This is not the CAT-E-01 guard: it passes a template, so on the old
+    /// `Option<i32>` it took the paid path too. The free path needed an open
+    /// vendor session plus a payload with no trailing template. What closes
+    /// it is the type: `RepairInventoryItems.vendor_template_id` is a plain
+    /// `i32`, so no message can ask for "no template", and the cell fills it
+    /// from the vendor session (pinned by
+    /// `store_ops_tests::stock_repair_of_one_item_is_priced_by_the_open_vendor`
+    /// and `stock_recharge_is_priced_by_the_open_vendor`).
     #[tokio::test]
     async fn live_db_repair_at_a_vendor_without_a_repair_list_is_refused() {
         let pool = require_db_or_skip!();
