@@ -10,6 +10,7 @@ use serde_json::Value;
 use super::spec::{
     ActionKind, ActionSpec, AimMode, ExpectSpec, Op, RowSpec, SectionSpec, Source, SCHEMA,
 };
+use super::spec_fixture::check_fixture;
 use super::tools::{STAND_TOOL, TARGET_PLAYER_TOOL};
 
 /// Tools that take a `pose` argument (after `@` resolution).
@@ -49,6 +50,17 @@ pub fn validate(spec: &SectionSpec) -> Result<(), String> {
     }
     if !matches!(spec.section.account.as_str(), "gm" | "non-gm") {
         errs.push(format!("account {:?}: gm or non-gm", spec.section.account));
+    }
+    for (name, p) in &spec.section.profiles {
+        for (field, value) in [
+            ("alignment", &p.alignment),
+            ("archetype", &p.archetype),
+            ("gender", &p.gender),
+        ] {
+            if value.is_empty() {
+                errs.push(format!("section.profiles.{name}: {field} is empty"));
+            }
+        }
     }
     let mut ids = HashSet::new();
     for row in &spec.rows {
@@ -101,6 +113,9 @@ pub fn validate(spec: &SectionSpec) -> Result<(), String> {
         }
         check_players(row, &mut errs);
         check_poses(row, &mut errs);
+        if let Some(f) = &row.fixture {
+            check_fixture(r, f, spec, row, &mut errs);
+        }
     }
     if errs.is_empty() {
         Ok(())

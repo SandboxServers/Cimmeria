@@ -3,7 +3,7 @@
 
 use super::*;
 
-const MINI: &str = r#"
+pub(super) const MINI: &str = r#"
 schema = 1
 [section]
 id = "gm-parity"
