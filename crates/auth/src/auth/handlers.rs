@@ -155,9 +155,10 @@ pub(super) async fn handle_user_auth(
     // Only in developer mode with NO database configured are valid-format
     // credentials accepted without a check. A configured database whose pool
     // is missing refuses every login (fail closed).
-    let (account_id, access_level): (u32, u32) = if let Some(ref db) = state.db {
+    let (account_id, access_level, test_account): (u32, u32, bool) = if let Some(ref db) = state.db
+    {
         match validate_credentials(db, &req.account_name, credential).await {
-            Ok(acct) => (acct.account_id, acct.access_level),
+            Ok(acct) => (acct.account_id, acct.access_level, acct.test_account),
             Err(AuthCredError::InvalidCredentials) => {
                 tracing::info!(user = %req.account_name, "Invalid credentials");
                 audit!(LoginOutcome::InvalidCredentials);
@@ -193,7 +194,9 @@ pub(super) async fn handle_user_auth(
             "Developer mode with no database configured: accepting credentials \
              unchecked as account 1, access level 99"
         );
-        (1, 99) // dev mode, no database configured: max access level
+        // Dev mode, no database configured: max access level, and no
+        // `test_account` flag to read, so the session counts as a player.
+        (1, 99, false)
     } else {
         // Either a database is configured but no pool is wired (the
         // orchestrator refuses to start in that state, so this is a wiring
@@ -226,6 +229,7 @@ pub(super) async fn handle_user_auth(
             SessionRecord {
                 account_id,
                 access_level,
+                test_account,
                 account_name: req.account_name.clone(),
                 client_ip: addr.ip(),
                 created: Instant::now(),
@@ -356,6 +360,7 @@ pub(super) async fn handle_server_selection(
                 account_id: session.account_id,
                 account_name: session.account_name.clone(),
                 access_level: session.access_level,
+                test_account: session.test_account,
                 ticket: ticket.clone(),
                 session_key: session_key.clone(),
                 client_ip: addr.ip(),
@@ -679,6 +684,7 @@ mod tests {
             super::super::SessionRecord {
                 account_id: 0x4420_0001,
                 access_level: 0,
+                test_account: false,
                 account_name: "ipcheck".to_string(),
                 client_ip: "198.51.100.10".parse().unwrap(),
                 created: std::time::Instant::now(),

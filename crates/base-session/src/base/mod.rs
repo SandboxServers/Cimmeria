@@ -162,6 +162,12 @@ pub struct ConnectedClientState {
     /// `python/base/Chat.py::getSpeakerFlags`). 0=Player, 1=Moderator,
     /// 2=GameMaster per `crates/commands/src/permissions.rs::AccessLevel`.
     pub access_level: u32,
+    /// `"lab"` for an account flagged `test_account`, `"player"` otherwise
+    /// (TG-NET-16, owner decision D-TG13: the account flag alone decides,
+    /// never the client). Set at Phase 3 from the login ticket; `None` only
+    /// before Phase 3 resolves the account. Telemetry stamps it as
+    /// `cimmeria.session_kind`.
+    pub session_kind: Option<&'static str>,
     /// DND auto-reply message. `Some(_)` means DND is active and the
     /// chat dispatch sets `SPEAKER_DND` (0x04) on outgoing
     /// `onPlayerCommunication`; `None` means not in DND. Set/cleared
