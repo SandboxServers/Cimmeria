@@ -603,6 +603,23 @@ missing container with the out-of-range feedback line.
 
 The guard for the cash row is `loot/tests.rs`, `loot_cash_send_failure_warns`.
 
+## Loot roll outcome (TG-ITM-02)
+
+Target `abilities`, in `cell/abilities/loot_drop.rs` (`generate_loot_on_death`). A
+silent return on the on-death roll used to hide why an NPC dropped nothing. The
+no-table case is the normal path, so it is DEBUG. Every roll ends with a DEBUG
+`loot_rolled` row (`entries`, `dropped`, `loot_table_id` + `loot_table_name`); a
+zero `dropped` is a real result, not a miss. The two misses are WARN.
+
+| `event` (also the message prefix) | Level | `reason` | Fields |
+|---|---|---|---|
+| `loot_skipped` | DEBUG | `no_loot_table` | `target_eid` |
+| `loot_table_empty` | WARN | `table_has_no_rows` | `target_eid`, `loot_table_id`, `loot_table_name` |
+| `loot_skipped` | WARN | `entity_missing` | `target_eid`, `loot_table_id` |
+
+The guards are `abilities/loot_drop.rs`, `unknown_loot_table_warns_table_has_no_rows`
+and `probability_zero_logs_loot_rolled_with_no_drops`.
+
 ## Native consumable seams (decision 28)
 
 A heal or buff item used from the bags ([consumables.md](../gameplay/consumables.md)). The cell rows use the module's own target (`cimmeria_cell_content::cell::content::consumable_use`), the base rows `cimmeria_base_methods::...::consume_for_use`, the stat-buff rows `abilities`. Every row carries `entity_id`, `account_id` and `player_id`, each with its name; the cell's use rows also `item_type_id` + `item_name` (`type_id` before NT-21) and, when known, `instance_id` and `ability_id` + `ability_name`; the base rows carry `item_type_id` + `item_name` (NT-22).
