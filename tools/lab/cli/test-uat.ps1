@@ -609,5 +609,23 @@ Check ((Invoke-UatPlanWithChaos 'cpu', 'flush:pack' 6>$null) -eq 0 -and @($scrip
 Check ((Invoke-UatPlanWithChaos 'net:latency=120,loss=1' 6>$null) -eq 0 -and @($script:sentArgs.chaos).Count -eq 1 -and $script:sentArgs.chaos[0] -ceq 'net:latency=120,loss=1') 'a quoted multi-knob spec reaches the body as one element'
 Check ((Invoke-UatPlanWithChaos 6>$null) -eq 0 -and -not $script:sentArgs.ContainsKey('chaos')) 'without -Chaos the body has no chaos key'
 
+# Until CH-08, a real run refuses -Chaos before the daemon is asked.
+$script:sentArgs = $null
+$refused = & {
+    . $uatScript -Section 'first-session' -Chaos 'cpu'
+    # Stubbed so a reverted guard reaches the stub, never a live daemon.
+    function Get-LabToken { 'token' }
+    function Get-LabStatus { [pscustomobject]@{ instances = @([pscustomobject]@{ instance = 'default'; lease = [pscustomobject]@{ held = $false } }) } }
+    function Get-LabdEnv { @{} }
+    function Get-Process { }
+    function Get-LabMcpUrl { 'http://stub' }
+    function Get-DefaultSpecsDir { '' }
+    function New-McpSession($Url, $Token) { 'session' }
+    function Close-McpSession($Session) { }
+    function Invoke-McpTool($Session, $Name, $Arguments, $TimeoutSec) { $script:sentArgs = $Arguments; throw 'stub: no run' }
+    Invoke-LabUat
+} 2>$null 6>$null
+Check ($refused -eq 2 -and $null -eq $script:sentArgs) 'a real run with -Chaos exits 2 and sends nothing until CH-08'
+
 if ($script:failed) { Write-Host "$script:failed check(s) failed"; exit 1 }
 Write-Host 'all checks passed'
