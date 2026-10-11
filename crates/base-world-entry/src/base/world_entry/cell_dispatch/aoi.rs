@@ -127,6 +127,35 @@ fn log_create_emit(
     }
 }
 
+/// Failure side of the leave and invisible sends (`aoi.create_send_failed`,
+/// WARN, `phase` = `"leave"` or `"invisible"`). Both are single reliable
+/// packets, so a non-`Sent` outcome means the witness keeps the entity
+/// visible. Success stays silent; the caller's own DEBUG row covers it.
+fn log_visibility_send_failure(
+    witness_id: u32,
+    entity_id: u32,
+    phase: &'static str,
+    outcome: WitnessSendOutcome,
+    names: &AoiNames<'_>,
+) {
+    if matches!(outcome, WitnessSendOutcome::Sent { .. }) {
+        return;
+    }
+    tracing::warn!(
+        target: "aoi.create_send_failed",
+        event = "create_send_failed",
+        witness_id,
+        witness_name = names.player(witness_id),
+        entity_id,
+        entity_name = names.observee(entity_id),
+        phase,
+        addr_resolved = outcome.addr_resolved(),
+        reason = outcome.failure_reason().unwrap_or("unknown"),
+        "AoI leave or invisible packet NOT delivered to witness -- \
+         entity may stay visible until relog"
+    );
+}
+
 /// `CellToBaseMsg::EnteredAoI` — entity entered a witness's range.
 /// Emits CREATE_ENTITY + UPDATE_AVATAR (phase 1, BaseApp immediate) followed
 /// by the createOnClient() property cascade (phase 2, CellApp round-trip).
@@ -238,7 +267,7 @@ pub(super) async fn left_aoi(
         entity_id,  // nt:id-only per AoI event; naming it would take a session lock (hot-path rule)
         "AoI: entity left witness range"
     );
-    send_to_witness_reliable(
+    let outcome = send_to_witness_reliable(
         transport,
         connected,
         entity_to_addr,
@@ -246,6 +275,12 @@ pub(super) async fn left_aoi(
         |key, version, seq, acks| build_entity_leave(key, seq, acks, entity_id, version),
     )
     .await;
+    let names = AoiNames {
+        connected,
+        entity_to_addr,
+        npc_name_id: None,
+    };
+    log_visibility_send_failure(witness_id, entity_id, "leave", outcome, &names);
 }
 
 /// `CellToBaseMsg::EntityMoved` — per-tick position relay for a ghost
@@ -467,7 +502,7 @@ pub(super) async fn entity_invisible(
     );
     // RELIABLE — visibility-state change. Loss leaves the entity rendered
     // when it should be hidden.
-    send_to_witness_reliable(
+    let outcome = send_to_witness_reliable(
         transport,
         connected,
         entity_to_addr,
@@ -475,6 +510,12 @@ pub(super) async fn entity_invisible(
         |key, version, seq, acks| build_entity_invisible(key, seq, acks, entity_id, version),
     )
     .await;
+    let names = AoiNames {
+        connected,
+        entity_to_addr,
+        npc_name_id: None,
+    };
+    log_visibility_send_failure(witness_id, entity_id, "invisible", outcome, &names);
 }
 
 #[cfg(test)]
@@ -558,6 +599,44 @@ mod tests {
         );
         assert_eq!(sent[0].1, expected, "witness A leave bytes (seq 0)");
         assert_eq!(sent[1].1, expected, "witness B leave bytes (seq 0)");
+    }
+
+    /// Failure side of a leave: a witness with no `entity_to_addr` mapping
+    /// gets no packet, so `left_aoi` must WARN `phase=leave` naming the
+    /// leaving `entity_id`. Reverting the outcome plumbing or the WARN
+    /// trips this guard.
+    #[tokio::test]
+    async fn left_aoi_unmapped_witness_warns_leave_send_failure() {
+        let capture = LogCapture::install();
+        let transport = Arc::new(TestTransport::new());
+        let dyn_transport: Arc<dyn Transport> = transport.clone();
+        let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+        let entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>> =
+            Arc::new(Mutex::new(HashMap::new()));
+
+        left_aoi(999, 200, &dyn_transport, &connected, &entity_to_addr).await;
+
+        assert_eq!(
+            transport.len(),
+            0,
+            "no leave packet leaves the transport when the witness addr is unresolved"
+        );
+        let failed = capture
+            .find_message(Level::WARN, "NOT delivered to witness")
+            .expect("leave send failure must WARN");
+        assert!(
+            failed.has_field("phase", "leave"),
+            "failure WARN names the leave phase: {failed:#?}"
+        );
+        assert!(
+            failed.has_field("entity_id", "200"),
+            "failure WARN carries the leaving entity_id: {failed:#?}"
+        );
+        assert!(
+            failed.has_field("reason", "entity_to_addr_miss"),
+            "failure WARN carries the miss reason: {failed:#?}"
+        );
     }
 
     /// Build the single-witness IO triple used by the create-emit seam
