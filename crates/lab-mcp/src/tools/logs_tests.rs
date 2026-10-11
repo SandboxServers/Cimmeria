@@ -63,3 +63,39 @@ fn newest_ms_ignores_filters() {
     assert_eq!(reply["count"], 0);
     assert_eq!(reply["newest_ms"], 50);
 }
+
+#[test]
+fn limit_takes_the_newest_matches_not_the_newest_entries() {
+    let f = LogFilter {
+        contains: Some("released".to_string()),
+        ..LogFilter::default()
+    };
+    // Matches are 10, 30, 40; the newest two buffer entries (40, 50) hold one.
+    let reply = tail_reply(fixture(), &f, 2);
+    let got: Vec<u64> = reply["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| e["timestamp_ms"].as_u64().unwrap())
+        .collect();
+    assert_eq!(got, vec![30, 40]);
+}
+
+#[test]
+fn an_empty_buffer_has_no_newest_ms() {
+    let reply = tail_reply(vec![], &LogFilter::default(), 100);
+    assert_eq!(reply["count"], 0);
+    assert!(reply.get("newest_ms").is_none());
+}
+
+#[test]
+fn level_ands_with_the_other_filters() {
+    let mut entries = fixture();
+    entries[3].level = "WARN".to_string();
+    let f = LogFilter {
+        level: Some("info".to_string()),
+        contains: Some("released".to_string()),
+        ..LogFilter::default()
+    };
+    assert_eq!(timestamps(&filter_entries(entries, &f)), vec![10, 30]);
+}
