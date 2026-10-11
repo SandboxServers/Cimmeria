@@ -59,8 +59,12 @@ pub struct SectionMeta {
     /// Reusable fixture characters, by profile name (`[section.profiles.praxis]`).
     #[serde(default)]
     pub profiles: std::collections::BTreeMap<String, FreshCharacter>,
+    // lab-golden (GD-01)
+    /// The section-wide variance every row inherits (see [`GoldenSpec`]).
+    #[serde(default)]
+    pub golden: Option<GoldenSpec>,
+    // end lab-golden
 }
-
 fn default_account() -> String {
     "gm".into()
 }
@@ -131,7 +135,11 @@ pub struct RowSpec {
     pub expect: Vec<ExpectSpec>,
     #[serde(default)]
     pub evidence: Vec<EvidenceSpec>,
-    // lab-spec-vocab (SV-03)
+    // lab-golden (GD-01)
+    /// This row's variance, added to the section's (see [`GoldenSpec`]).
+    #[serde(default)]
+    pub golden: Option<GoldenSpec>,
+    // end lab-golden    // lab-spec-vocab (SV-03)
     /// Interaction poses: where to stand and how to aim at a tagged target.
     #[serde(default)]
     pub pose: Vec<PoseSpec>,
@@ -435,8 +443,38 @@ pub struct EvidenceSpec {
     pub client: Option<String>,
 }
 
-// lab-spec-vocab (SV-03)
-/// How a pose aims the camera at its target.
+// lab-golden (GD-01)
+/// What may differ between runs that still agree (README D-GD5).
+/// `[section.golden]` applies to every row; `[row.golden]` adds to it.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GoldenSpec {
+    /// Message-name globs (`*` only) dropped before comparing.
+    #[serde(default)]
+    pub ignore: Vec<String>,
+    /// Globs moved out of the ordered stream into a per-row sorted multiset.
+    #[serde(default)]
+    pub allow_unordered: Vec<String>,
+    /// Globs whose consecutive identical events count once.
+    #[serde(default)]
+    pub collapse: Vec<String>,
+    /// Window-name globs left out of the opened and closed sets.
+    #[serde(default)]
+    pub ignore_windows: Vec<String>,
+    /// Message name -> decoded fields to keep; replaces the built-in entry.
+    #[serde(default)]
+    pub key_args: std::collections::BTreeMap<String, Vec<String>>,
+    /// A tap bound after the row entered the world drops this many ms of
+    /// messages after its first one (default 1000).
+    #[serde(default)]
+    pub late_bind_settle_ms: Option<u64>,
+    /// Row only: leave the row out of every fingerprint (cleanup rows).
+    #[serde(default)]
+    pub skip: bool,
+}
+// end lab-golden
+
+// lab-spec-vocab (SV-03)/// How a pose aims the camera at its target.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AimMode {

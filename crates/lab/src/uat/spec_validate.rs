@@ -8,7 +8,8 @@ use std::collections::HashSet;
 use serde_json::Value;
 
 use super::spec::{
-    ActionKind, ActionSpec, AimMode, ExpectSpec, Op, RowSpec, SectionSpec, Source, SCHEMA,
+    ActionKind, ActionSpec, AimMode, ExpectSpec, GoldenSpec, Op, RowSpec, SectionSpec, Source,
+    SCHEMA,
 };
 use super::spec_fixture::check_fixture;
 use super::tools::{STAND_TOOL, TARGET_PLAYER_TOOL};
@@ -61,6 +62,9 @@ pub fn validate(spec: &SectionSpec) -> Result<(), String> {
                 errs.push(format!("section.profiles.{name}: {field} is empty"));
             }
         }
+    }
+    if let Some(g) = &spec.section.golden {
+        check_golden("[section.golden]", g, false, &mut errs);
     }
     let mut ids = HashSet::new();
     for row in &spec.rows {
@@ -116,11 +120,46 @@ pub fn validate(spec: &SectionSpec) -> Result<(), String> {
         if let Some(f) = &row.fixture {
             check_fixture(r, f, spec, row, &mut errs);
         }
+        if let Some(g) = &row.golden {
+            check_golden(&format!("{r}/golden"), g, true, &mut errs);
+        }
     }
     if errs.is_empty() {
         Ok(())
     } else {
         Err(errs.join("; "))
+    }
+}
+
+/// Golden variance rules (GD-01): `skip` only on a row, and every glob
+/// non-empty with no whitespace. A glob both ignored and unordered would be
+/// dropped and sorted at once, so it is refused.
+fn check_golden(at: &str, g: &GoldenSpec, row_level: bool, errs: &mut Vec<String>) {
+    if g.skip && !row_level {
+        errs.push(format!("{at}: skip is row-only"));
+    }
+    for glob in g
+        .ignore
+        .iter()
+        .chain(&g.allow_unordered)
+        .chain(&g.collapse)
+        .chain(&g.ignore_windows)
+    {
+        if glob.is_empty() || glob.chars().any(char::is_whitespace) {
+            errs.push(format!("{at}: bad glob {glob:?}"));
+        }
+    }
+    for glob in &g.ignore {
+        if g.allow_unordered.contains(glob) {
+            errs.push(format!("{at}: {glob:?} is both ignored and unordered"));
+        }
+    }
+    for (name, fields) in &g.key_args {
+        if name.trim().is_empty() || fields.is_empty() {
+            errs.push(format!(
+                "{at}: key_args {name:?} needs a name and at least one field"
+            ));
+        }
     }
 }
 
