@@ -217,9 +217,8 @@ pub struct RunningServer {
 /// because it always lands on the same absolute directory and none of
 /// the other modules resolves a CWD-relative path (`trace_load` finds
 /// its fixture through `CARGO_MANIFEST_DIR`, and `auth_smoke`'s
-/// `AuthService` runs with TLS off, so it reads no files). The live-DB
-/// modules also run serialised (`--test-threads=1` under `cargo test`,
-/// a process per test under nextest).
+/// `AuthService` runs with TLS off, so it reads no files). Under nextest
+/// each test is its own process, so the `chdir` is per test anyway.
 pub fn chdir_to_repo_root_for_entities_xml() {
     let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
     let repo_root = manifest_dir

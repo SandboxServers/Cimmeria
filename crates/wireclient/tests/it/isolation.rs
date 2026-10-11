@@ -43,6 +43,10 @@ fn tests_it_never_reads_database_url_directly() {
     );
 }
 
+/// The pool really is on a slot clone under the `live-db` group. A support
+/// helper that went back to reading the variable is caught by the source
+/// guard above, not here: `database_url()` writes the slot URL back into
+/// the environment, so such a helper would still see the clone.
 #[tokio::test]
 async fn isolation_live_db_resolves_the_slot_database() {
     let pool = cimmeria_test_support::require_db_or_skip!();

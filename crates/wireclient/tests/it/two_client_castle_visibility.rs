@@ -26,17 +26,9 @@
 //! ```text
 //! pwsh tools/build-lane/live-db-test.ps1 --wireclient two_client_castle_visibility
 //! ```
-//! Not currently wired into `.github/workflows/test.yml`'s `ci-live-db`
-//! job (which today runs `-p cimmeria-services --lib` only) -- see
-//! `docs/architecture/wireclient.md` for the follow-up to add a
-//! `wireclient-e2e` nextest profile. `--test-threads=1` matters here
-//! because every live-DB test in this binary (these two and the three
-//! in `two_client_castle_visibility_chaos.rs`) spawns its own
-//! `Orchestrator` against the *same* shared database; sentinel id
-//! ranges are kept disjoint between tests so they could in principle run
-//! concurrently, but serializing avoids surprising interactions on the
-//! account/sgw_player tables. nextest gives each test its own process
-//! but still runs them in parallel; `--profile ci-live-db` serialises.
+//! The `wireclient-e2e` nextest profile runs every live-DB test in this
+//! binary in the `live-db` group: each spawns its own `Orchestrator` in
+//! its own process, against its own database clone.
 
 use std::time::Duration;
 

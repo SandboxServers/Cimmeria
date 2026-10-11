@@ -15,7 +15,7 @@
 //!
 //! Run the live-DB ones with
 //! `pwsh tools/build-lane/live-db-test.ps1 --wireclient sparbot_duel`
-//! (add `--ignored` for the long one).
+//! (add `--run-ignored ignored-only` for the long one).
 
 use std::time::Duration;
 
