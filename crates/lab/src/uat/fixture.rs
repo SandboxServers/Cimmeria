@@ -10,8 +10,6 @@ use super::spec::FixtureSpec;
 use super::spec_fixture::FixtureMissionState;
 
 /// The variable a row's specs read for the fixture character's name.
-// Read by the FX-06 session step; no caller reads it yet (tests included).
-#[allow(dead_code)]
 pub const FIXTURE_CHARACTER_VAR: &str = "fixture_character";
 
 /// Containers a fixture counts as carried: main through crafting. This
@@ -41,8 +39,6 @@ pub struct FixtureCheck {
 /// the profile's letters (at most 8), then the instance label's letters
 /// (digits become `a` to `j`, at most 4). Letters only, so the name can
 /// be formatted into the SQL of [`verify_checks`] without escaping.
-// FX-06 is the first non-test caller.
-#[cfg_attr(not(test), allow(dead_code))]
 pub fn fixture_character_name(profile: &str, instance: &str) -> String {
     let p: String = profile
         .chars()
@@ -65,8 +61,6 @@ pub fn fixture_character_name(profile: &str, instance: &str) -> String {
 /// The `server_stage_fixture` arguments: `f` as JSON with `character` set
 /// to `name`. Null fields are dropped, so the tool sees only what the spec
 /// says (an absent `step` is not `"step": null`).
-// FX-06 is the first non-test caller.
-#[cfg_attr(not(test), allow(dead_code))]
 pub fn stage_args(f: &FixtureSpec, name: &str) -> Value {
     let mut v = serde_json::to_value(f).unwrap_or(Value::Null);
     drop_nulls(&mut v);
