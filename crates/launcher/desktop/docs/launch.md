@@ -396,11 +396,19 @@ session minted, the launcher also uploads, as the Windows launcher's runner
 does, through its own queue (`telemetry-queue.jsonl` in the state directory):
 
 - Before the helper spawns the game, every tailed file already on disk is taken
-  in at its end, so an earlier session's lines never go again. A file that
-  appears later is read from its first line.
+  in at its end, so an earlier session's lines never go again. A file created
+  later is read from its first line. An older file that only now matches (a log
+  rotated by rename) starts at its end, and a renamed tracked file keeps its
+  offset. A tick reads at most 1 MiB of each file and carries on next tick.
 - On the server's flush cadence it sends each new complete line of
-  `Binaries/SGWDebugLog*` (as `debug_log`) and `Binaries/sessions/*.log` and
-  `*.txt` (as `client_log`), with the Windows launcher's fields, then flushes.
+  `Binaries/SGWDebugLog*` (as `debug_log`) and every `.log` and `.txt` under
+  `Binaries/sessions` at any depth (as `client_log`; the files the bundle takes,
+  case ignored), with the Windows launcher's fields, then flushes.
+- One session at a time: the queue is shared, so a new Play waits for the
+  previous session's bundle and last flush before it queues anything (at most
+  35 seconds, after which the previous session is stopped and its unsent
+  events go with the new one). Without the wait, the old session's last flush
+  would send the new session's first events under the old session id.
 - The supervisor's exit observation ends it: a `session_meta` event of kind
   `game_exited` with `exit_code`, `pid` (the game's), `host_pid` (the helper's)
   and `early`, then the end-of-session bundle, then a last flush bounded to 30

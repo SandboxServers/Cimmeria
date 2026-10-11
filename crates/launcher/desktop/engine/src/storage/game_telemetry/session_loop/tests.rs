@@ -278,6 +278,178 @@ async fn a_launcher_restart_mid_session_ships_no_line_twice() {
     );
 }
 
+/// The bundle's files are the tail's: session logs below a subdirectory of
+/// `sessions`, and a `Sessions` directory spelt with a capital.
+#[tokio::test]
+async fn session_logs_at_any_depth_and_in_any_case_are_tailed() {
+    let root = tempfile::tempdir().unwrap();
+    let game = root.path().join("game");
+    let binaries = game.join("Working/Binaries");
+    std::fs::create_dir_all(binaries.join("Sessions/sub")).unwrap();
+    let server = MockServer::start().await;
+    mount(&server).await;
+    let state = opted_in(&root.path().join("state"));
+    let session = begin(&state, &server, &game).await;
+    append(
+        &binaries.join("Sessions/sub/x.log"),
+        "[t] [info] [UI] nested\n",
+    );
+    append(
+        &binaries.join("Sessions/y.TXT"),
+        "[t] [info] [UI] capitalised\n",
+    );
+    wait_for_line(&server, "nested").await;
+    wait_for_line(&server, "capitalised").await;
+    session.finish(None).await.unwrap();
+}
+
+/// Mints answer `tok-1`, then `tok-2`. A chunk sent on `slow_token` is
+/// answered after `slow`; everything else at once.
+async fn mount_two_sessions(server: &MockServer, slow_token: &str, slow: Duration) {
+    let expires = chrono::Utc::now().timestamp_millis() + 8 * 60 * 60 * 1000;
+    for (n, token) in [(1, "tok-1"), (2, "tok-2")] {
+        let mint = Mock::given(method("POST"))
+            .and(path("/api/auth/dev-session"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "session_id": format!("session-{n}"), "token": token, "expires_at_ms": expires,
+                "upload_endpoint": format!("{}/api/telemetry", server.uri()),
+                "chunk_max_bytes": 1_048_576, "flush_interval_ms": 250,
+            })));
+        let mint = if n == 1 {
+            mint.up_to_n_times(1).with_priority(1)
+        } else {
+            mint
+        };
+        mint.mount(server).await;
+    }
+    Mock::given(method("POST"))
+        .and(path(CHUNK))
+        .and(wiremock::matchers::header(
+            "authorization",
+            format!("Bearer {slow_token}").as_str(),
+        ))
+        .respond_with(ResponseTemplate::new(200).set_delay(slow))
+        .with_priority(1)
+        .mount(server)
+        .await;
+    for route in [CHUNK, BUNDLE] {
+        Mock::given(method("POST"))
+            .and(path(route))
+            .respond_with(ResponseTemplate::new(200))
+            .mount(server)
+            .await;
+    }
+}
+
+/// Play's mint and the session on it, through [`SessionLoop::start`] as
+/// the launch worker does: it waits for the previous session.
+async fn start_after_previous(
+    state: &DesktopState,
+    server: &MockServer,
+    game: &Path,
+) -> SessionLoop {
+    let consent = Consent::read(state).unwrap().expect("opted in");
+    let session = start(
+        &state.game_telemetry().unwrap().identity.unwrap(),
+        &servers(server),
+        &["desktop-launcher"],
+    )
+    .await
+    .unwrap();
+    let transport = Transport::open(consent, &session, &servers(server), game).unwrap();
+    SessionLoop::start(transport, game).await
+}
+
+/// The messages and session kinds of every chunk sent on `token`.
+async fn sent_on(server: &MockServer, token: &str) -> Vec<String> {
+    let bearer = format!("Bearer {token}");
+    let mut out = Vec::new();
+    for request in server.received_requests().await.unwrap() {
+        let on_token = request
+            .headers
+            .get("authorization")
+            .is_some_and(|value| value.to_str().unwrap() == bearer);
+        if request.url.path() != CHUNK || !on_token {
+            continue;
+        }
+        let mut text = String::new();
+        flate2::read::GzDecoder::new(request.body.as_slice())
+            .read_to_string(&mut text)
+            .unwrap();
+        for line in text.lines() {
+            let event: serde_json::Value = serde_json::from_str(line).unwrap();
+            let label = event["message"].as_str().or(event["kind"].as_str());
+            out.push(label.unwrap_or_default().to_string());
+        }
+    }
+    out
+}
+
+/// A second Play while the first session is still sending its last chunk:
+/// the new session queues nothing until the old one is done, so none of its
+/// events goes out under the old session's token.
+#[tokio::test]
+async fn a_new_play_waits_for_the_previous_session_to_finish_sending() {
+    let root = tempfile::tempdir().unwrap();
+    let (game, binaries) = game(root.path());
+    let debug = binaries.join("SGWDebugLog.log");
+    let server = MockServer::start().await;
+    mount_two_sessions(&server, "tok-1", Duration::from_millis(600)).await;
+    let state = opted_in(&root.path().join("state"));
+
+    let first = start_after_previous(&state, &server, &game).await;
+    append(&debug, "first play\n");
+    wait_for_line(&server, "first play").await;
+    let first = first.finish(Some(EXIT));
+    // The first session is now in its last, slow, chunk.
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    let second = start_after_previous(&state, &server, &game).await;
+    assert!(first.is_finished(), "the second session began first");
+    append(&debug, "second play\n");
+    wait_for_line(&server, "second play").await;
+    second.finish(None).await.unwrap();
+
+    let old = sent_on(&server, "tok-1").await;
+    assert_eq!(
+        old.iter().filter(|label| *label == "started").count(),
+        1,
+        "{old:?}"
+    );
+    assert!(!old.iter().any(|label| label == "second play"), "{old:?}");
+    assert_eq!(sent_on(&server, "tok-2").await, ["started", "second play"]);
+}
+
+/// A previous session still sending past the bound is stopped: the new one
+/// begins, and the old one sends nothing after that.
+#[tokio::test]
+async fn a_previous_session_stuck_past_the_bound_is_stopped() {
+    let root = tempfile::tempdir().unwrap();
+    let (game, binaries) = game(root.path());
+    let server = MockServer::start().await;
+    // Every chunk on the first token hangs.
+    mount_two_sessions(&server, "tok-1", Duration::from_secs(30)).await;
+    let state = opted_in(&root.path().join("state"));
+
+    let first = begin(&state, &server, &game).await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let first = first.finish(Some(EXIT));
+    let began = Instant::now();
+    settle_previous(state.state_root(), Duration::from_millis(300)).await;
+    assert!(began.elapsed() < Duration::from_secs(5));
+    assert!(first.await.unwrap_err().is_cancelled());
+    let second = begin(&state, &server, &game).await;
+    append(&binaries.join("SGWDebugLog.log"), "second play\n");
+    wait_for_line(&server, "second play").await;
+    second.finish(None).await.unwrap();
+    assert!(
+        !sent_on(&server, "tok-1")
+            .await
+            .iter()
+            .any(|l| l == "second play"),
+        "the stopped session sent the new one's line"
+    );
+}
+
 /// Opting out while the game runs stops the session: nothing written after
 /// the change is sent, no bundle goes, and no queue is left on disk, though
 /// the transport was opened on the earlier consent.

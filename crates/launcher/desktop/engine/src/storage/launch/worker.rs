@@ -165,8 +165,12 @@ async fn execute(
     }
     // Before the spawn, so the baseline holds only earlier sessions' lines.
     // Dropped on an early return below, which ends it without an exit.
-    let telemetry_session = telemetry_session
-        .and_then(|(session, servers)| telemetry::begin_session(&state, plan, &session, &servers));
+    let telemetry_session = match telemetry_session {
+        Some((session, servers)) => {
+            telemetry::begin_session(&state, plan, &session, &servers).await
+        }
+        None => None,
+    };
     let binaries = spec.directory.clone();
     // Lazy: nothing is spawned until `run_game` awaits it, after Running.
     let supervised = supervisor::run(spec, request, cancel.clone(), |observation| {

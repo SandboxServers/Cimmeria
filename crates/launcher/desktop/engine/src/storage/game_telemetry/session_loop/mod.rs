@@ -5,13 +5,20 @@
 //! - **Baseline.** [`SessionLoop::begin`] runs before the helper spawns the
 //!   game. Every tailed file already on disk is taken in at its end, so a
 //!   previous session's lines are never sent again (they went with that
-//!   session, or into its bundle). A file that appears later is this
-//!   session's and is read from its first line.
-//! - **Tailing.** On the server's flush cadence: `Binaries/SGWDebugLog*`
-//!   (any case, anywhere under `Binaries`) and `Binaries/sessions/*.log` /
-//!   `*.txt`, one event per complete line, converted by core's
-//!   [`line_to_event`] so the fields are the egui launcher's and SigNoz
-//!   queries keep working. Then a flush (at most eight chunks).
+//!   session, or into its bundle). A file created later is this session's
+//!   and is read from its first line; an older file that only now matches
+//!   (a log rotated by rename) starts at its end, and a renamed tracked
+//!   file keeps its offset. A tick reads at most a megabyte per file.
+//! - **Tailing.** On the server's flush cadence, the files core's
+//!   [`is_tailed`] matches (what the bundle takes): `SGWDebugLog*` anywhere
+//!   under `Binaries` and every `.log` / `.txt` under `Binaries/sessions` at
+//!   any depth, case ignored. One event per complete line, converted by
+//!   core's [`line_to_event`] so the fields are the egui launcher's and
+//!   SigNoz queries keep working. Then a flush (at most eight chunks).
+//! - **One session at a time.** The queue is shared, and a finishing
+//!   session flushes all of it under its token, so [`SessionLoop::start`]
+//!   waits for the previous session (at most [`PREVIOUS_BOUND`], then stops
+//!   it) before a new one queues anything.
 //! - **Exit.** Play's supervisor already watches the game: the launch worker
 //!   hands its exit to [`SessionLoop::finish`], and this loop does not watch
 //!   the process itself. Then one last tick, a `session_meta` event of kind
@@ -35,12 +42,14 @@ use cimmeria_launcher_core::install_layout::binaries_dir;
 use cimmeria_launcher_core::telemetry::events::{
     SessionMetaEvent, SessionMetaKind, TelemetryEvent,
 };
-use cimmeria_launcher_core::telemetry::runner::{is_debug_log, line_to_event};
+use cimmeria_launcher_core::telemetry::runner::{is_tailed, line_to_event};
 use cimmeria_launcher_core::telemetry::tail::Tailer;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::sync::Mutex;
+use std::time::{Duration, SystemTime};
 use tokio::sync::oneshot;
-use tokio::task::JoinHandle;
+use tokio::task::{AbortHandle, JoinHandle};
 
 /// The last flush of the whole backlog at game exit. Whatever it has not
 /// sent by then stays queued for the next session.
@@ -67,23 +76,51 @@ pub struct SessionEnd {
     pub withdrawn: bool,
 }
 
+/// How long a new Play waits for the previous session to finish its bundle
+/// and last flush. Past it the previous session is stopped, and what it had
+/// not sent goes with the new one.
+pub const PREVIOUS_BOUND: Duration = Duration::from_secs(35);
+
 /// A running session. Dropping it ends the session as a finish with no
 /// observed exit would (Play stopped before the game ran, or its outcome is
-/// unknown); the task itself is never aborted.
+/// unknown); the task itself is never aborted, except by the next session
+/// after [`PREVIOUS_BOUND`].
 pub struct SessionLoop {
     exit: oneshot::Sender<Option<GameExit>>,
     task: JoinHandle<SessionEnd>,
 }
 
 impl SessionLoop {
-    /// Take the baseline and start the loop. On the async runtime, before
-    /// the game is spawned. `game_dir` is the install's `game` directory.
+    /// Wait for the previous session on this queue to finish (see
+    /// [`PREVIOUS_BOUND`]), then [`SessionLoop::begin`]. The queue is
+    /// shared, and a finishing session flushes all of it under its own
+    /// token, so a new session's events queued while the old one is still
+    /// flushing would go out under the old session id.
+    pub async fn start(transport: Transport, game_dir: &Path) -> Self {
+        settle_previous(transport.queue_dir(), PREVIOUS_BOUND).await;
+        Self::begin(transport, game_dir)
+    }
+
+    /// Take the baseline and start the loop, with no wait for a previous
+    /// session: [`SessionLoop::start`] is the one Play uses. On the async
+    /// runtime, before the game is spawned. `game_dir` is the install's
+    /// `game` directory.
     pub fn begin(transport: Transport, game_dir: &Path) -> Self {
         let binaries = binaries_dir(game_dir);
+        let queue_dir = transport.queue_dir().to_path_buf();
+        // Before the first walk: a file created after this is the session's.
+        // A second early, because filesystems stamp creation times from a
+        // coarse clock (NTFS: the timer tick, up to ~16 ms behind a precise
+        // `now()`), so a file made just after this could read as older.
+        let baseline = SystemTime::now() - BASELINE_SLACK;
         let mut tailer = Tailer::new();
-        tailer.refresh(&binaries, |path| tailed(&binaries, path));
+        tailer.refresh(&binaries, |path| is_tailed(&binaries, path));
         let (exit, exited) = oneshot::channel();
-        let task = tokio::spawn(run(transport, tailer, binaries, exited));
+        let task = tokio::spawn(run(transport, tailer, binaries, baseline, exited));
+        previous_sessions()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(queue_dir, task.abort_handle());
         Self { exit, task }
     }
 
@@ -96,26 +133,54 @@ impl SessionLoop {
     }
 }
 
-/// The client's debug log anywhere under `Binaries`, and the session logs
-/// in `Binaries/sessions`. One walk with one predicate: two walks of
-/// overlapping roots would each drop the other's files from the tailer.
-fn tailed(binaries: &Path, path: &Path) -> bool {
-    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
-        return false;
-    };
-    if is_debug_log(name) {
-        return true;
-    }
-    path.parent() == Some(binaries.join("sessions").as_path())
-        && path
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("log") || ext.eq_ignore_ascii_case("txt"))
+/// The last session begun on each queue directory. In memory only: a
+/// session never outlives the process.
+fn previous_sessions() -> &'static Mutex<BTreeMap<PathBuf, AbortHandle>> {
+    static SESSIONS: Mutex<BTreeMap<PathBuf, AbortHandle>> = Mutex::new(BTreeMap::new());
+    &SESSIONS
 }
+
+/// Wait until the last session begun on `queue_dir` has finished, for at
+/// most `bound`; then stop it. A stopped session sends nothing more: what it
+/// had queued goes with the next session's flushes.
+async fn settle_previous(queue_dir: &Path, bound: Duration) {
+    let Some(previous) = previous_sessions()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(queue_dir)
+    else {
+        return;
+    };
+    let deadline = tokio::time::Instant::now() + bound;
+    while !previous.is_finished() {
+        if tokio::time::Instant::now() >= deadline {
+            tracing::warn!(
+                bound_s = bound.as_secs(),
+                "previous game telemetry session still sending; stopped it"
+            );
+            previous.abort();
+            // An abort lands at the task's next await point.
+            while !previous.is_finished() {
+                tokio::time::sleep(SETTLE_POLL).await;
+            }
+            return;
+        }
+        tokio::time::sleep(SETTLE_POLL).await;
+    }
+}
+
+const SETTLE_POLL: Duration = Duration::from_millis(50);
+
+/// How far before [`SessionLoop::begin`] the "created this session" line is
+/// drawn. Only an older log renamed into the tailed set in the last second
+/// before Play would be sent from its start.
+const BASELINE_SLACK: Duration = Duration::from_secs(1);
 
 async fn run(
     transport: Transport,
     mut tailer: Tailer,
     binaries: PathBuf,
+    baseline: SystemTime,
     mut exited: oneshot::Receiver<Option<GameExit>>,
 ) -> SessionEnd {
     let mut end = SessionEnd::default();
@@ -132,7 +197,7 @@ async fn run(
             biased;
             exit = &mut exited => break exit.ok().flatten(),
             _ = ticker.tick() => {
-                if tick(&transport, &mut tailer, &binaries, &mut end).await.is_err()
+                if tick(&transport, &mut tailer, &binaries, baseline, &mut end).await.is_err()
                     || transport.flush().await == Err(TransportError::NotOptedIn)
                 {
                     return withdrawn(end);
@@ -141,7 +206,7 @@ async fn run(
         }
     };
     end.exit = exit;
-    if tick(&transport, &mut tailer, &binaries, &mut end)
+    if tick(&transport, &mut tailer, &binaries, baseline, &mut end)
         .await
         .is_err()
     {
@@ -193,12 +258,13 @@ async fn tick(
     transport: &Transport,
     tailer: &mut Tailer,
     binaries: &Path,
+    baseline: SystemTime,
     end: &mut SessionEnd,
 ) -> Result<(), ()> {
     if !transport.consented() {
         return Err(());
     }
-    tailer.follow(binaries, |path| tailed(binaries, path));
+    tailer.follow(binaries, |path| is_tailed(binaries, path), baseline);
     for line in tailer.tick() {
         queue(transport, line_to_event(line), end).await?;
     }

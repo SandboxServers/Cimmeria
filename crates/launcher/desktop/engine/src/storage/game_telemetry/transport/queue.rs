@@ -80,11 +80,18 @@ impl Consent {
     /// write may have re-created a queue the change deleted, so delete it
     /// again. The change bumps the count before it deletes, so either the
     /// change's delete or this one comes after the write.
+    ///
+    /// The delete does not count as a change of choice: counting it would
+    /// stop a session opened on a newer consent (after an opt-out and an
+    /// opt-in). It does take that session's queued events with it, rather
+    /// than let this stale write ship under the newer consent.
     pub(super) fn undo_if_withdrawn(&self) -> Result<(), TransportError> {
         if self.current() {
             return Ok(());
         }
-        discard_queue(&self.queue_dir);
+        if DiskQueue::new(&self.queue_dir).discard().is_err() {
+            tracing::warn!("withdrawn game telemetry write not deleted");
+        }
         Err(TransportError::NotOptedIn)
     }
 }

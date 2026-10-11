@@ -236,6 +236,11 @@ impl Transport {
         self.consent.current()
     }
 
+    /// The queue (and state) directory this transport writes to.
+    pub(crate) fn queue_dir(&self) -> &Path {
+        &self.consent.queue_dir
+    }
+
     /// Send what is queued, at most eight chunks. Returns the events the
     /// server took; `Ok(0)` during a back-off. On an error, or if the future
     /// is dropped part-way (the launcher closing), the unsent events stay

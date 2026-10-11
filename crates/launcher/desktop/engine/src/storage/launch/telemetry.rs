@@ -50,8 +50,9 @@ pub(super) fn injected<'a>(plan: &'a Plan, session: Option<&Session>) -> Option<
 /// Start the launcher's half of the session (log tailing, exit, bundle) on
 /// the session Play minted, before the game is spawned. The choice is read
 /// again under the lock; a transport that cannot be opened costs only the
-/// telemetry, never the launch.
-pub(super) fn begin_session(
+/// telemetry, never the launch. Waits first for the previous Play's session
+/// to finish sending (bounded, see `SessionLoop::start`).
+pub(super) async fn begin_session(
     state: &Arc<Mutex<DesktopState>>,
     plan: &Plan,
     session: &Session,
@@ -60,7 +61,7 @@ pub(super) fn begin_session(
     let consent = Consent::read(&*state.lock().ok()?).ok().flatten()?;
     let game = plan.installation.destination.join("game");
     match Transport::open(consent, session, servers, &game) {
-        Ok(transport) => Some(SessionLoop::begin(transport, &game)),
+        Ok(transport) => Some(SessionLoop::start(transport, &game).await),
         Err(code) => {
             tracing::warn!(operation = %plan.id, ?code, "game telemetry session not started");
             None

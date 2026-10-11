@@ -309,6 +309,98 @@ async fn an_opted_out_player_sends_nothing() {
     server.verify().await;
 }
 
+/// Both writes refuse after an opt-out.
+async fn refuse_writes(transport: &Transport, consent: &Consent) {
+    assert_eq!(
+        transport.enqueue(event("after")).await,
+        Err(TransportError::NotOptedIn)
+    );
+    assert_eq!(
+        queue_without_session(consent, event("after")).await,
+        Err(TransportError::NotOptedIn)
+    );
+}
+
+/// A transport opened before an opt-out refuses everything after it and
+/// leaves no queue. A write that raced the opt-out's delete (put on disk
+/// here directly) is neither sent by a flush, shutdown or bundle nor added
+/// to: a refused write never touches the queue.
+#[tokio::test]
+async fn a_transport_from_before_an_opt_out_refuses_every_call() {
+    let root = tempfile::tempdir().unwrap();
+    let install = tempfile::tempdir().unwrap();
+    let sessions =
+        cimmeria_launcher_core::install_layout::binaries_dir(install.path()).join("sessions");
+    std::fs::create_dir_all(&sessions).unwrap();
+    std::fs::write(sessions.join("a.log"), "a session log\n").unwrap();
+    let server = MockServer::start().await;
+    mount_mint(&server, "tok-1").await;
+    for route in [CHUNK, "/api/telemetry/upload-bundle"] {
+        Mock::given(method("POST"))
+            .and(path(route))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(0)
+            .mount(&server)
+            .await;
+    }
+    let mut state = opted_in(root.path());
+    let transport = open(&state, &server, install.path()).await;
+    let consent = Consent::read(&state).unwrap().unwrap();
+
+    state.set_game_telemetry(false).unwrap();
+    assert!(!transport.consented());
+    refuse_writes(&transport, &consent).await;
+    for name in ["telemetry-queue.jsonl", "telemetry-queue.inflight.jsonl"] {
+        assert!(!root.path().join(name).exists(), "{name} left behind");
+    }
+
+    // A write that raced the opt-out's delete. Its own writer deletes it
+    // again; until then, nothing here sends it or adds to it.
+    let queue = DiskQueue::new(root.path());
+    queue.enqueue(&event("raced the opt-out")).unwrap();
+    assert!(matches!(
+        transport.upload_bundle(1).await,
+        Err(TransportError::NotOptedIn)
+    ));
+    assert_eq!(transport.flush().await, Err(TransportError::NotOptedIn));
+    refuse_writes(&transport, &consent).await;
+    assert_eq!(queue.pending_count::<TelemetryEvent>().unwrap(), 1);
+    assert_eq!(transport.shutdown().await, Err(TransportError::NotOptedIn));
+    assert_eq!(queue.pending_count::<TelemetryEvent>().unwrap(), 1);
+    server.verify().await;
+}
+
+/// Opt out, then back in, and a session on the new consent: the old
+/// transport's late clean-up (a write it finished after the opt-out) does
+/// not count as another change, so the new session keeps sending.
+#[tokio::test]
+async fn an_old_transports_late_undo_does_not_stop_a_newer_session() {
+    let root = tempfile::tempdir().unwrap();
+    let install = tempfile::tempdir().unwrap();
+    let server = MockServer::start().await;
+    mount_mint(&server, "tok-1").await;
+    mount_mint(&server, "tok-2").await;
+    Mock::given(method("POST"))
+        .and(path(CHUNK))
+        .respond_with(ResponseTemplate::new(200))
+        .mount(&server)
+        .await;
+    let mut state = opted_in(root.path());
+    let old = open(&state, &server, install.path()).await;
+    state.set_game_telemetry(false).unwrap();
+    state.set_game_telemetry(true).unwrap();
+    let new = open(&state, &server, install.path()).await;
+
+    assert_eq!(
+        old.consent.undo_if_withdrawn(),
+        Err(TransportError::NotOptedIn)
+    );
+    assert!(new.consented());
+    new.enqueue(event("on the new consent")).await.unwrap();
+    assert_eq!(new.flush().await, Ok(1));
+    assert_eq!(delivered(&server, "tok-2").await, ["on the new consent"]);
+}
+
 /// A queue an opted-out player still has at startup (an opt-out whose
 /// delete failed) is deleted unsent.
 #[tokio::test]

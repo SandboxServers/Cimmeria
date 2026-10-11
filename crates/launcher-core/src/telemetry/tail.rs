@@ -13,6 +13,12 @@
 use std::collections::HashMap;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
+
+/// The most one tick reads from one file. A file with more waiting (a
+/// large log that appeared since the last tick) is read over several
+/// ticks, so a tick never holds a whole log in memory.
+pub const MAX_READ_PER_TICK: u64 = 1024 * 1024;
 
 /// One file the tailer is watching. The (len, modified) pair is the
 /// fast-path "did anything change?" check; a full read only happens
@@ -24,15 +30,30 @@ struct TailedFile {
     /// Last observed size — a smaller size on the next tick means
     /// the file was truncated or rotated.
     last_len: u64,
+    /// The file's creation time, when the platform has one. A rename keeps
+    /// it, so a file that appears under a new name with a tracked file's
+    /// creation time is that file, and keeps its offset.
+    created: Option<SystemTime>,
 }
 
 impl TailedFile {
-    fn fresh(len: u64) -> Self {
+    fn fresh(len: u64, created: Option<SystemTime>) -> Self {
         Self {
             pos: len,
             last_len: len,
+            created,
         }
     }
+}
+
+/// Where [`Tailer::scan`] starts a file it has not seen before.
+#[derive(Debug, Clone, Copy)]
+enum Start {
+    /// At its end.
+    End,
+    /// At its start if it was created at or after this instant (it is the
+    /// session's), otherwise at its end.
+    NewSince(SystemTime),
 }
 
 /// One line read from a tailed file, with the source path so the
@@ -67,20 +88,27 @@ impl Tailer {
     /// file* so we don't ship the entire history of a pre-existing
     /// log on first tick — the legacy data goes into the end-of-
     /// session bundle instead.
+    ///
+    /// One call per tick covers every root: the files a walk did not
+    /// match are dropped, so two calls over different roots drop each
+    /// other's files. Give one root and a predicate that matches them all.
     pub fn refresh(&mut self, root: &Path, predicate: impl Fn(&Path) -> bool) {
-        self.scan(root, predicate, true);
+        self.scan(root, predicate, Start::End);
     }
 
-    /// Like [`Tailer::refresh`], except that a newly-discovered file is
-    /// read from its *start*. For a session whose pre-existing files were
-    /// already taken in by a `refresh` before the game started: any file
-    /// that appears after that was written by this session, so its first
-    /// lines belong in the stream too.
-    pub fn follow(&mut self, root: &Path, predicate: impl Fn(&Path) -> bool) {
-        self.scan(root, predicate, false);
+    /// Like [`Tailer::refresh`], except that a newly-discovered file
+    /// created at or after `baseline` is read from its *start*. For a
+    /// session whose pre-existing files were taken in by a `refresh` at
+    /// `baseline`, before the game started: a file created after that was
+    /// written by this session, so its first lines belong in the stream
+    /// too. An older file that only now matches (an earlier log rotated
+    /// by rename, say) starts at its end, so its history is not sent. A
+    /// platform with no creation time starts every new file at its end.
+    pub fn follow(&mut self, root: &Path, predicate: impl Fn(&Path) -> bool, baseline: SystemTime) {
+        self.scan(root, predicate, Start::NewSince(baseline));
     }
 
-    fn scan(&mut self, root: &Path, predicate: impl Fn(&Path) -> bool, start_at_end: bool) {
+    fn scan(&mut self, root: &Path, predicate: impl Fn(&Path) -> bool, start: Start) {
         let walker = match walkdir::WalkDir::new(root)
             .into_iter()
             .collect::<Result<Vec<_>, _>>()
@@ -89,6 +117,7 @@ impl Tailer {
             Err(_) => return,
         };
         let mut seen = std::collections::HashSet::new();
+        let mut discovered = Vec::new();
         for entry in walker {
             if !entry.file_type().is_file() {
                 continue;
@@ -98,14 +127,50 @@ impl Tailer {
                 continue;
             }
             seen.insert(path.clone());
-            self.files.entry(path.clone()).or_insert_with(|| {
-                let len = if start_at_end {
-                    std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0)
-                } else {
-                    0
-                };
-                TailedFile::fresh(len)
+            if !self.files.contains_key(&path) {
+                discovered.push(path);
+            }
+        }
+        // Tracked files that are gone, or whose name now holds a shorter
+        // file: the ones a new name can be a rename of. Two live files
+        // created in the same clock tick share a creation time, so only
+        // these are candidates.
+        let moved: Vec<TailedFile> = if discovered.is_empty() {
+            Vec::new()
+        } else {
+            self.files
+                .iter()
+                .filter(|(path, tracked)| {
+                    !seen.contains(*path)
+                        || std::fs::metadata(path).is_ok_and(|m| m.len() < tracked.last_len)
+                })
+                .map(|(_, tracked)| tracked.clone())
+                .collect()
+        };
+        for path in discovered {
+            let meta = std::fs::metadata(&path).ok();
+            let len = meta.as_ref().map_or(0, |m| m.len());
+            let created = meta.and_then(|m| m.created().ok());
+            // A tracked file renamed (a rotated log): the same file, so it
+            // carries on from where it was. NTFS also gives a name
+            // re-created right after the rename the old creation time; the
+            // file at that name has shrunk, and `tick` reads it from 0.
+            // A rename keeps the content, so the file holds at least what
+            // was read of it: that rules out a different file created in
+            // the same coarse clock tick.
+            let renamed = created.and_then(|created| {
+                moved
+                    .iter()
+                    .find(|tracked| tracked.created == Some(created) && len >= tracked.pos)
+                    .cloned()
             });
+            let file = renamed.unwrap_or_else(|| match start {
+                Start::NewSince(baseline) if created.is_some_and(|c| c >= baseline) => {
+                    TailedFile::fresh(0, created)
+                }
+                _ => TailedFile::fresh(len, created),
+            });
+            self.files.insert(path, file);
         }
         // Drop tracking for paths that disappeared so a long-running
         // session doesn't leak memory.
@@ -143,11 +208,11 @@ impl Tailer {
             if f.seek(SeekFrom::Start(tf.pos)).is_err() {
                 continue;
             }
-            let mut buf = Vec::with_capacity((len - tf.pos) as usize);
-            if f.read_to_end(&mut buf).is_err() {
+            let want = (len - tf.pos).min(MAX_READ_PER_TICK);
+            let mut buf = Vec::with_capacity(want as usize);
+            if (&mut f).take(want).read_to_end(&mut buf).is_err() {
                 continue;
             }
-            let consumed = buf.len() as u64;
             let source = path
                 .file_name()
                 .and_then(|s| s.to_str())
@@ -162,9 +227,14 @@ impl Tailer {
             // Advance only over the bytes that ended in a newline —
             // a partial final line gets replayed on the next tick so
             // its full content lands.
-            let advance = complete_line_bytes(&buf);
+            let mut advance = complete_line_bytes(&buf);
+            if advance == 0 && buf.len() as u64 == MAX_READ_PER_TICK {
+                // A whole read with no newline: not a log line, and waiting
+                // for its end would stall this file for good. Skip it.
+                advance = MAX_READ_PER_TICK;
+            }
             tf.pos += advance;
-            tf.last_len = tf.pos.max(consumed);
+            tf.last_len = len;
         }
         out
     }
@@ -324,22 +394,120 @@ mod tests {
     #[test]
     fn follow_reads_a_new_file_from_its_start_and_keeps_known_offsets() {
         let dir = tempfile::tempdir().unwrap();
+        if !has_creation_times(dir.path()) {
+            return;
+        }
         let old = dir.path().join("before.log");
         append(&old, "from an earlier session\n");
+        let baseline = past_the_clock_tick();
         let mut t = Tailer::new();
-        t.refresh(dir.path(), |p| p.extension().is_some_and(|e| e == "log"));
+        t.refresh(dir.path(), is_log);
         let new = dir.path().join("during.log");
         append(&new, "first line of the session\n");
         append(&old, "appended this session\n");
-        t.follow(dir.path(), |p| p.extension().is_some_and(|e| e == "log"));
+        t.follow(dir.path(), is_log, baseline);
         let mut messages: Vec<_> = t.tick().into_iter().map(|l| l.line).collect();
         messages.sort();
         assert_eq!(
             messages,
             vec!["appended this session", "first line of the session"]
         );
-        t.follow(dir.path(), |p| p.extension().is_some_and(|e| e == "log"));
+        t.follow(dir.path(), is_log, baseline);
         assert!(t.tick().is_empty(), "nothing ships twice");
+    }
+
+    // Rotation by rename: the client's debug log renamed aside (and a new
+    // one started), and an older non-log file renamed into the pattern.
+    // Neither is new to the session, so neither ships its history; only
+    // what is written after the rename goes.
+    #[test]
+    fn follow_never_resends_a_renamed_log_from_before_the_session() {
+        let dir = tempfile::tempdir().unwrap();
+        if !has_creation_times(dir.path()) {
+            return;
+        }
+        let debug = dir.path().join("SGWDebugLog.log");
+        append(&debug, &"earlier session history\n".repeat(50));
+        append(&dir.path().join("archive.bak"), "an archived log\n");
+        let baseline = past_the_clock_tick();
+        let mut t = Tailer::new();
+        t.refresh(dir.path(), is_log);
+        assert!(t.tick().is_empty());
+
+        let rotated = dir.path().join("SGWDebugLog_old.log");
+        std::fs::rename(&debug, &rotated).unwrap();
+        append(&rotated, "written to the old log after the rename\n");
+        append(&debug, "the new log's first line\n");
+        std::fs::rename(
+            dir.path().join("archive.bak"),
+            dir.path().join("archive.log"),
+        )
+        .unwrap();
+        let mut messages = Vec::new();
+        for _ in 0..3 {
+            t.follow(dir.path(), is_log, baseline);
+            messages.extend(t.tick().into_iter().map(|l| l.line));
+        }
+        messages.sort();
+        assert_eq!(
+            messages,
+            vec![
+                "the new log's first line",
+                "written to the old log after the rename"
+            ]
+        );
+    }
+
+    // A large file that appeared during the session is read a capped amount
+    // per tick, over several ticks, with every line exactly once.
+    #[test]
+    fn a_large_new_file_is_read_across_ticks_with_every_line_once() {
+        let dir = tempfile::tempdir().unwrap();
+        if !has_creation_times(dir.path()) {
+            return;
+        }
+        let baseline = past_the_clock_tick();
+        let mut t = Tailer::new();
+        t.refresh(dir.path(), is_log);
+        let expected: Vec<String> = (0..300_000).map(|n| format!("line {n:06}")).collect();
+        let mut text = expected.join("\n");
+        text.push('\n');
+        assert!(text.len() as u64 > 3 * MAX_READ_PER_TICK);
+        append(&dir.path().join("big.log"), &text);
+
+        let mut got = Vec::new();
+        let mut reads = 0;
+        loop {
+            t.follow(dir.path(), is_log, baseline);
+            let lines = t.tick();
+            if lines.is_empty() {
+                break;
+            }
+            reads += 1;
+            got.extend(lines.into_iter().map(|l| l.line));
+        }
+        assert!(reads >= 4, "read in {reads} ticks");
+        assert_eq!(got, expected);
+    }
+
+    fn is_log(path: &Path) -> bool {
+        path.extension().is_some_and(|e| e == "log")
+    }
+
+    /// `follow` needs creation times; a filesystem without them starts
+    /// every file at its end, which these tests do not cover.
+    fn has_creation_times(dir: &Path) -> bool {
+        std::fs::metadata(dir).is_ok_and(|m| m.created().is_ok())
+    }
+
+    /// A baseline with a pause either side: a filesystem stamps creation
+    /// times from a coarse clock, so a file made just before or after a
+    /// precise `now()` could land on the wrong side of it.
+    fn past_the_clock_tick() -> SystemTime {
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        let baseline = SystemTime::now();
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        baseline
     }
 
     #[test]
