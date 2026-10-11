@@ -29,6 +29,10 @@
     runs that finished; a run under way finishes on the daemon and releases
     its lease.
 
+    -Fixtures auto|always|never sets when a row's [row.fixture] is applied
+    (lab_uat_run `fixtures`; the daemon's default is auto: a fixture row
+    continues a passing chain and starts from its fixture otherwise).
+
     Exit codes: 0 every run passed; 1 a run failed; 2 usage; 3 the pre-flight
     or plan failed (nothing was driven); 4 a lane stopped early on its brake.
 
@@ -36,6 +40,8 @@
     lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5
     lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -Leases 2 -RunsPerLease 5
     lab uat first-session -Instance p2 -PlanOnly
+    lab uat first-session -Rows FS-P4 -RunsPerLease 20
+    lab uat first-session -Rows FS-P5,FS-P3,FS-P4 -Fixtures always
     lab uat first-session -Leases 3 -RunsPerLease 10 -Json
 #>
 [CmdletBinding()]
@@ -52,6 +58,7 @@ param(
     [int]$StaggerSeconds = 20,
     [int]$RunTimeoutMinutes = 15,
     [int]$MaxConsecutiveFailures = 3,
+    [string]$Fixtures,
     [switch]$Json,
     [switch]$Quiet
 )
@@ -75,10 +82,10 @@ function Stop-Uat([int]$Code, [string]$Message) {
 
 function Invoke-LabUat {
     if (-not $Section) {
-        return Stop-Uat 2 'usage: lab uat <section> [-Rows FS-01,...] [-Leases 1-5] [-RunsPerLease 1-20] [-Instance p2] [-PlanOnly] [-Json]'
+        return Stop-Uat 2 'usage: lab uat <section> [-Rows FS-01,...] [-Leases 1-5] [-RunsPerLease 1-20] [-Instance p2] [-Fixtures auto|always|never] [-PlanOnly] [-Json]'
     }
     # Argument checks come before the daemon is asked, so they exit 2 whatever its state.
-    $shape = Test-UatArguments $Leases $RunsPerLease $Instance $StaggerSeconds $RunTimeoutMinutes $MaxConsecutiveFailures
+    $shape = Test-UatArguments $Leases $RunsPerLease $Instance $StaggerSeconds $RunTimeoutMinutes $MaxConsecutiveFailures $Fixtures
     if ($shape) { return Stop-Uat 2 $shape }
     $requested = @(ConvertTo-UatRowIds $Rows)
     $quiet = $Quiet -or $Json
@@ -111,6 +118,7 @@ function Invoke-LabUat {
     if ($requested.Count) { $baseArgs.rows = $requested }
     if ($specs) { $baseArgs.specs_dir = $specs }
     if ($ServerVersion) { $baseArgs.server_version = $ServerVersion }
+    if ($Fixtures) { $baseArgs.fixtures = $Fixtures }
 
     # Plan once: a row that cannot run, or a requested row the spec lacks,
     # stops the batch before anything is driven.

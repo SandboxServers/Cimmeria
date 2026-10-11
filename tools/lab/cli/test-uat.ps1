@@ -104,6 +104,10 @@ Check ((Test-UatArguments 2 1 'p2') -like '-Instance runs one lane*') '-Instance
 Check ((Test-UatArguments 1 1 '' -5) -like '-StaggerSeconds must be*') 'a negative stagger is a usage error'
 Check ((Test-UatArguments 1 1 '' 20 0) -like '-RunTimeoutMinutes must be*') 'a zero timeout (no timeout at all) is a usage error'
 Check ((Test-UatArguments 1 1 '' 20 15 -1) -like '-MaxConsecutiveFailures must be*') 'a negative brake is a usage error'
+Check ($null -eq (Test-UatArguments 1 1 '' 20 15 3 'always')) '-Fixtures always is valid'
+Check ($null -eq (Test-UatArguments 1 1 '' 20 15 3 '')) 'no -Fixtures leaves the daemon default'
+Check ((Test-UatArguments 1 1 '' 20 15 3 'Always') -like '-Fixtures must be*') '-Fixtures is case-sensitive (the daemon takes snake_case)'
+Check ((Test-UatArguments 1 1 '' 20 15 3 'sometimes') -like '-Fixtures must be*') 'an unknown -Fixtures mode is a usage error'
 Check (((ConvertTo-UatRowIds @('FS-01, FS-02', 'FS-02', ' FS-P1 ')) -join '|') -eq 'FS-01|FS-02|FS-P1') 'row ids are trimmed and de-duplicated'
 Check ((Hide-LeaseIds 'lease lease-0a1b2c3d4e5f is not the current lease') -eq 'lease lease-<redacted> is not the current lease') 'lease ids are redacted'
 $v = Get-UatRunVerdict @((Row 'FS-01' 'PASS' '')) @('FS-01', 'FS-02')
