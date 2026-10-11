@@ -1,0 +1,133 @@
+name: wireclient
+
+# Path-filtered: the wire client's end-to-end tests (crates/wireclient/tests/it)
+# against a spawned server and a live Postgres. Every server change runs it
+# (docs/analysis/wireclient-ci, D-WC7). It gates merges through ship.py's
+# CONDITIONAL list once WC-16's shakedown has passed.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'crates/**'
+      - '!crates/launcher/**'
+      - '!crates/lab/**'
+      - '!crates/client-hookgate/**'
+      - '!crates/client-launch/**'
+      - '!crates/client-patches/**'
+      - '!crates/client-telemetry/**'
+      - '!crates/sgw-testhost/**'
+      - '!crates/start32/**'
+      - 'db/**'
+      - 'entities/**'
+      - 'data/spaces/**'
+      - 'data/cache/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.config/nextest.toml'
+      - '.cargo/config.toml'
+      - '.github/actions/rust-toolchain/**'
+      - 'tools/test-live-db.sh'
+      - 'tools/live-db-schema-load.sh'
+      - '.github/workflows/wireclient.yml'
+  pull_request:
+    paths:
+      - 'crates/**'
+      - '!crates/launcher/**'
+      - '!crates/lab/**'
+      - '!crates/client-hookgate/**'
+      - '!crates/client-launch/**'
+      - '!crates/client-patches/**'
+      - '!crates/client-telemetry/**'
+      - '!crates/sgw-testhost/**'
+      - '!crates/start32/**'
+      - 'db/**'
+      - 'entities/**'
+      - 'data/spaces/**'
+      - 'data/cache/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
+      - '.config/nextest.toml'
+      - '.cargo/config.toml'
+      - '.github/actions/rust-toolchain/**'
+      - 'tools/test-live-db.sh'
+      - 'tools/live-db-schema-load.sh'
+      - '.github/workflows/wireclient.yml'
+
+# Superseded PR runs are cancelled; main runs are not, so their rust-cache is saved.
+concurrency:
+  group: wireclient-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  # Pinned to match test.yml and setup.ps1 (bootstrap/CimmeriaBootstrap/Data/Dependencies.psd1).
+  RECAST_VERSION: "1.6.0"
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: wireclient e2e (live DB)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    services:
+      postgres:
+        # Match the bundled local Postgres in external/postgresql_server/.
+        image: postgres:17.9
+        env:
+          POSTGRES_USER: w-testing
+          POSTGRES_PASSWORD: w-testing
+          POSTGRES_DB: sgw
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://w-testing:w-testing@localhost:5432/sgw
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/rust-toolchain
+      - name: install clang + mold + psql
+        run: sudo apt-get update && sudo apt-get install -y clang mold postgresql-client
+      - name: start schema + seeds load (background)
+        # Loads db/database.sql into `sgw`, the template of the per-slot clones,
+        # while the steps below compile. The wait step fails the job if it failed.
+        run: bash tools/live-db-schema-load.sh start
+      - name: install nextest
+        uses: taiki-e/install-action@nextest
+      - name: hydrate external/recast
+        run: |
+          mkdir -p external
+          curl -sL --retry 3 \
+            -o /tmp/recast.zip \
+            "https://github.com/recastnavigation/recastnavigation/archive/refs/tags/v${RECAST_VERSION}.zip"
+          unzip -q /tmp/recast.zip -d /tmp/recast_extract
+          mv "/tmp/recast_extract/recastnavigation-${RECAST_VERSION}" external/recast
+          test -f external/recast/Detour/Source/DetourAssert.cpp
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: wireclient-e2e
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: build wireclient e2e test binaries
+        run: bash tools/test-live-db.sh --wireclient --build-only
+      - name: wait for schema + seeds load
+        run: bash tools/live-db-schema-load.sh wait 300
+      - name: cargo nextest run (wireclient e2e, live DB)
+        run: bash tools/test-live-db.sh --wireclient
+      - name: upload wireclient e2e results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: wireclient-e2e-junit
+          path: target/nextest/wireclient-e2e/junit.xml
+          retention-days: 14
