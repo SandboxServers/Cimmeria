@@ -139,6 +139,8 @@ In-process, started from `crates/server/src/main.rs` beside the admin API but on
 
 **Audit.** Every tool call emits one `info` event on target `lab.tool_call` with tool name, arguments, caller address, and outcome. That reaches SigNoz through the existing exporter, which is the whole audit trail per the owner's decision.
 
+**Labd call row.** The lab daemon (`cimmeria-lab`) writes one `info` row per `tools/call` on target `lab.call`: `tool`, `instance`, `lease_owner` (the lease holder when one is held, else absent), `outcome` (`ok`, `error`, or `refused` when the lease gate turned the call away), `duration_ms`, and `error` (capped at 200 characters, absent on success). Arguments are never logged, because they can carry Lua or chat text.
+
 **Getting at live state.** `SpaceManager` is owned by the cell loop task and `cell_tx` is fire-and-forget. The one existing precedent for a reply is `CreateEntity { reply_tx }`. The lab adds request/reply variants in the same style:
 
 - `BaseToCellMsg::LabQuery { query, reply_tx }` — read-only snapshots, answered between ticks.
