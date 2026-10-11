@@ -95,6 +95,8 @@ mod upload_gate;
 mod upload_slots;
 
 #[cfg(test)]
+mod client_pid_tests;
+#[cfg(test)]
 mod entity_labels_tests;
 #[cfg(test)]
 mod replay_names_tests;

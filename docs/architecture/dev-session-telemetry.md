@@ -76,7 +76,7 @@ client-side rows (`client.native`, `launcher.client_log`,
 `launcher.debug_log`, `launcher.session_meta`) to the SigNoz service
 `cimmeria-client` and nowhere else. Each row carries the token's
 `session_id` and `install_id`, `cimmeria.session_kind` (`lab` or
-`player`) and `lab`; `client.native` rows add the DLL's event name as
+`player`) and `lab`, and `client_pid` when the upload's `X-Cimmeria-Client-Pid` header carried one (absent from older DLLs, never 0); `client.native` rows add the DLL's event name as
 `client_target` and a few keys lifted out of its `fields` bag. The full
 table is in [observability.md](observability.md#log-indexes-and-parity-with-the-log-files).
 
