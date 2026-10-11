@@ -6,15 +6,15 @@
 > Packet specs: [work-packets.md](work-packets.md) (contract, LR-01 to LR-05)
 > and [work-packets-2.md](work-packets-2.md) (LR-06 to LR-17).
 >
-> **Campaign status (2026-10-11, evening): the transform is code-complete.**
+> **Campaign status (2026-10-11, evening): `lab record` is code-complete.**
 > The owner decided every decision on 2026-10-11 (D-LR12 (a), D-LR13 (a),
 > D-LR15: ask the user before each live packet; the rest as proposed).
 > Every sibling dependency has merged (SV-03, SV-04, GD-02, GD-03, GD-08,
-> FX-01, FX-08, LW-02). LR-01 to LR-04, LR-06 and LR-10 are on `main`.
-> LR-05 and this ledger update are local commits on
-> `lab-record/lr05-emit`, the campaign's single branch, while the owner's
-> PR freeze lasts. Next: LR-07, then LR-08 and LR-09; the live packets
-> LR-13 and LR-16 are left for a later UAT session.
+> FX-01, FX-08, LW-02). LR-01 to LR-04, LR-06 and LR-10 merged one PR each;
+> LR-05, LR-07, LR-08 and LR-09 ship together in one PR from
+> `lab-record/lr05-emit` (built during the owner's PR freeze). Next: LR-11
+> (window clicks), LR-12 (docs), then the `.bug spec` wave (LR-14, LR-15);
+> the live packets LR-13 and LR-16 wait for a UAT session with the user's OK.
 
 ## Purpose
 
@@ -79,7 +79,7 @@ Against `main` @ `6996c9403`. Paths are repo-relative.
 | D-LR13 | Decided (owner, 2026-10-11): **(a)** | **`.bug spec` feasibility.** (a) Lab instances only: a rolling recorder (`lab record start -Rolling 10`) keeps the last N minutes; when the tap shows the person's `.bug spec …` chat line and the server's `Bookmark <id> recorded` reply, the daemon writes `drafts/bug-<id>.toml` through the same transform and logs one `lab.record` event with `bookmark_id` and the path. No server change: the bookmark row already carries the note, and the path is named by its id. (b) Also for player sessions: not deterministic (F11), so the campaign would stop at `lab record`. | F10, F11. (a) needs no inference and no new server write. |
 | D-LR14 | Decided (owner, 2026-10-11) | **`.bug spec` gating and size.** Opt-in twice: the rolling recorder must be armed, and the person types `spec` as the first word. Output: no chat line beyond the server's existing bookmark reply; no board or issue post (the Discord GM-command line every `.bug` already gets is unchanged). Caps: the last 10 minutes (at most 30), movement and noise dropped, at most 30 actions across all rows (the latest rows that fit), at most 32 KiB; the header names what was dropped. | The handoff: opt-in, one line, no spam, about 30 steps. |
 | D-LR15 | Decided (user, 2026-10-11): ask before each run | **The live packets drive the lab.** LR-13 needs a person to play FS-P3 on `p2` and then runs the draft 5 times; LR-16 tries `.bug spec` once. Both run only with the user's OK, when the lab is free. | Repo rule: ask before any lab use. |
-| D-LR16 | Decided (owner, 2026-10-11) | **Output budget.** `lab record start/status/stop -Json` print one object under 400 characters with no nulls or empty values: `ok`, `recording`, `instance`, `section`, `age_s`, `ticks`, `anchors`; stop adds `draft`, `rows`, `steps`, `todo`, `dropped`. Failures: `{"ok":false,"exit":N,"error":"..."}`. | The `lab uat -Json` contract. |
+| D-LR16 | Decided (owner, 2026-10-11) | **Output budget.** `lab record start/status/stop -Json` print one object under 400 characters with no nulls or empty values: `ok`, `recording`, `instance`, `section`, `age_s`, `ticks`, `anchors`; stop adds `draft`, `rows`, `steps`, `todo`, `dropped`. Failures: `{"ok":false,"exit":N,"error":"..."}`. **Amended in review (LR-07, LR-08):** answers carry no paths (`draft` is a file name, `raw` the recording id) so they stay under 400 characters; exit 1 = failed, 2 = refused with nothing changed, 3 = no daemon (CLI), 4 = the instance is busy (from the server, not inferred from text). | The `lab uat -Json` contract. |
 | D-LR17 | Decided (owner, 2026-10-11) | **Acceptance without fixtures.** If FX-08 has not merged, LR-13 copies `first-session.toml` into a scratch spec folder, replaces FS-P3 with the recorded row (`-CharacterExpr 'Px${run_id}'`), and runs `FS-01,FS-02,FS-P1,FS-P2,REC-01` there. With FX-08, the draft row carries a fixture and runs alone. | Both prove the same thing; neither commits the scratch copy. |
 
 ## Packets
@@ -90,11 +90,11 @@ Against `main` @ `6996c9403`. Paths are repo-relative.
 | LR-02 | Inbound decoder and row segmenter | rust-gameserver-dev (Haiku ran out of context) | M | 2 | LR-01, GD-02 | Integrated (#1627) |
 | LR-03 | Pose and camera derivation | packet-coder | S | 1 | LR-01 (types and the `pose.rs` stub), SV-03 | Integrated (#1626) |
 | LR-04 | Clauses from snapshot diffs, packet clauses, timeouts | rust-gameserver-dev | M | 2 | LR-01, LR-02, SV-03 | Integrated (#1637) |
-| LR-05 | TOML emitter, TODO blocks, caps, the drafts guard | rust-gameserver-dev | M | 3 | LR-02, LR-03, LR-04, SV-04 | Review done; local on `lab-record/lr05-emit` (PR freeze) |
+| LR-05 | TOML emitter, TODO blocks, caps, the drafts guard | rust-gameserver-dev | M | 3 | LR-02, LR-03, LR-04, SV-04 | Review done; in the combined PR |
 | LR-06 | Recorder sampler and the daemon's read-only probes | rust-gameserver-dev | L | 2 | LR-01 | Integrated (#1634) |
-| LR-07 | MCP tools `lab_record_start`, `lab_record_status`, `lab_record_stop` | packet-coder | M | 4 | LR-05, LR-06 | Ready (after LR-05 lands; read the LR-06 outcome below first) |
-| LR-08 | `lab record` command and `test-record.ps1` | packet-coder | S | 5 | LR-07, LW-02 | BlockedDependency |
-| LR-09 | Optional `[row.fixture]` emission | packet-coder | S | 4 | LR-05, FX-01 | BlockedDependency |
+| LR-07 | MCP tools `lab_record_start`, `lab_record_status`, `lab_record_stop` | rust-gameserver-dev | M | 4 | LR-05, LR-06 | Review done; in the combined PR |
+| LR-08 | `lab record` command and `test-record.ps1` | rust-gameserver-dev | S | 5 | LR-07, LW-02 | Review done; in the combined PR |
+| LR-09 | Optional `[row.fixture]` emission | rust-gameserver-dev | S | 4 | LR-05, FX-01 | Review done; in the combined PR |
 | LR-10 | Lab Lua ring for CEGUI window clicks | rust-gameserver-dev | M | 1 | none | Integrated (#1521) |
 | LR-11 | Sampler and transform: window clicks become `@window_click` | packet-coder | S | 4 | LR-05, LR-06, LR-10 | BlockedDependency |
 | LR-12 | Docs: authoring guide, lab guide, tools README | documentation-writer | S | 6 | LR-08 | BlockedDependency |
@@ -238,3 +238,37 @@ code is then the reference, not the spec.
   (`camera_read` rescans actors every 500 ms); switch `named_target` to
   LR-02's `decode_call`. D-LR2's "only reads" holds for the database and
   input, but the pump installs LR-10's observer hooks in the client UI Lua.
+  **Fixed later on the combined branch:** the snapshot joined bare `items`,
+  which does not resolve (the table is `resources.items`; search path
+  `"$user", public`), so every live snapshot would have failed; and the item
+  count is now units (`sum(coalesce(stack_size,1))`), not stack rows, so a
+  partial stack use is a diff. Both checked read-only against the local
+  `sgw` database; `cimmeria-lab` has no live-DB test tier.
+- **LR-07.** All four carried items done (lease permit scope, `max_minutes`
+  wall clock capped at 30, camera cache re-checked against the controller's
+  camera pointer, `decode_call`). `lab_record_stop` signals, waits at most
+  60 s, and takes the recording out only once its task has ended; any
+  failure before the draft is written restores it, so a stop can be
+  retried. Inputs are checked at start: section `^[a-z0-9][a-z0-9-]{0,47}$`,
+  `specs_dir` a local existing directory (no UNC or `\\?\`), and
+  `character_expr` `^[A-Za-z0-9 _${}]{1,64}$`. The stop gate (the recording
+  id) guards against accidents only; it is not authorization in this
+  single-operator lab. Follow-ups (`worknotes/LR-07.md`): the same
+  `specs_dir` check for `lab_golden_record`, `lab_uat_run` and
+  `lab_uat_calibrate`; a random stop token; keep `lab_timeline` from
+  draining a recording instance's tap.
+- **LR-08.** `lab_record_transform` (open) reads only a recording folder
+  directly under `<uat root>\records\` (junctions refused) and never
+  transforms a log without a stop line; a re-transform writes
+  `<name>-2.toml`, `-3`, ... instead of colliding with the stop's draft.
+  Busy is exit 4 from the server. The CLI saves `{recording_id, instance,
+  specs_dir}` per instance, keeps it on a failed stop, and takes
+  `-RecordingId` when it is lost.
+- **LR-09.** `row_fixture` returns `RowFixture { spec, todos }`. With
+  `-Profile`, `[section.profiles.<name>]` is copied from the named section
+  (the validator needs it); `-Profile` with no named section, or with
+  `-CharacterExpr`, is an error. An item the fixture cannot set whole (a
+  stack outside bags 1 and 2, over 10 units, or in both bags) is left out
+  with a TODO, because staging clears every stack in bags 1 to 15; an item
+  with no start stack takes the bag it was gained in. A row that restores
+  nothing gets no fixture, only a TODO when it changed player fields.
