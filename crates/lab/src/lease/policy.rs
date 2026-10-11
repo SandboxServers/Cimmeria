@@ -2,8 +2,9 @@
 //!
 //! The rule: a tool that changes the client, drives its input or UI, runs
 //! client code chosen by the caller, or advances a shared read cursor needs
-//! the lease. A tool that only looks stays open, so any session can watch
-//! while one drives.
+//! the lease. A tool that does not drive the client stays open, so any
+//! session can watch while one drives; `lab_golden_record` is open although
+//! it writes a golden file, because it reads run bundles, not the client.
 //!
 //! Cursor reads: `client_events_read`, `client_wait_event`,
 //! `client_chat_log` and `client_combat_log` move named cursors in the one
@@ -28,7 +29,8 @@
 /// How a tool is gated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Gate {
-    /// Read-only: no lease needed.
+    /// Never drives the client: no lease needed. Not always read-only
+    /// (`lab_golden_record` writes a golden file).
     Open,
     /// Needs `lease_id`; a valid one renews the lease.
     Lease,
@@ -41,7 +43,9 @@ pub enum Gate {
 /// Tools that take a lease of their own when the caller passes none.
 pub const OWN_LEASE: &[&str] = &["lab_uat_run"];
 
-/// Tools that only look. Everything else needs the lease.
+/// Tools that do not drive the client. Most only look; `lab_golden_record`
+/// writes a golden file but touches no client. Everything else needs the
+/// lease.
 pub const OPEN: &[&str] = &[
     // The lease tools themselves (renew/release check their own id).
     "lab_lease_acquire",
@@ -53,6 +57,9 @@ pub const OPEN: &[&str] = &[
     "lab_crash_report",
     "lab_timeline",
     "lab_uat_report",
+    // Golden runs: read bundles, write only the golden file (no client).
+    "lab_golden_record",
+    "lab_golden_diff",
     // Pixels.
     "lab_screenshot",
     "lab_screenshot_region",

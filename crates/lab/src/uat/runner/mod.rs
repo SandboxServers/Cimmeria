@@ -16,6 +16,8 @@ mod cast_id;
 mod checks;
 mod clauses;
 mod client_events;
+mod fingerprint;
+mod fixture;
 mod lab_commands;
 mod packet;
 mod players;
@@ -25,6 +27,7 @@ mod session;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
+use rmcp::schemars;
 use serde_json::{json, Map, Value};
 
 use super::evidence::{
@@ -74,6 +77,39 @@ pub struct RunRequest {
     /// Skip the UI settle sleeps between chat keys (tests only: the live
     /// client needs them to open the chat box and show the reply).
     pub no_settle: bool,
+    /// The lab instance label this run drives (`default`, `p2`, ...).
+    pub instance: Option<String>,
+    /// When a row's fixture is applied (D-FX10). Default `Auto`.
+    pub fixtures: FixtureMode,
+    /// Capture what a golden fingerprint needs ([`fingerprint`]); never
+    /// changes a row's grade.
+    pub fingerprint: bool,
+}
+
+/// When a row's fixture is applied: `auto` (the row has one), `always`,
+/// or `never` (D-FX10).
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    serde::Deserialize,
+    serde::Serialize,
+    schemars::JsonSchema,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum FixtureMode {
+    /// Apply a row's fixture unless the previous row of the section passed
+    /// and left the client in world (D-FX10).
+    #[default]
+    Auto,
+    /// Apply a row's fixture even when the previous row left the client in
+    /// world.
+    Always,
+    /// Never apply a fixture; the row runs from wherever the client is.
+    Never,
 }
 
 /// A finished row, as the tool reports it.
@@ -134,6 +170,23 @@ pub(crate) struct RowCtx {
     /// Event-store seqs client_event clauses read from, per client and
     /// label (`Who::mark`; `""` is the row start), or why there is none.
     pub event_marks: HashMap<String, Result<u64, String>>,
+    /// Fingerprint-mode capture, when the run asked for it.
+    pub fp: Option<fingerprint::FpCapture>,
+    /// How a fixture row ran: `"fixture"` (its own staged session) or
+    /// `"chain"` (continued the previous row's session); `None` without a
+    /// fixture. Also the row's `fixture_mode` var.
+    pub fixture_mode: Option<&'static str>,
+    /// Errors from ending this row's fixture session. Each becomes a
+    /// `session end: ...` flag: visible, but never the row's result.
+    pub session_end: Vec<String>,
+}
+
+/// The last row the run finished, for fixture mode `auto` (D-FX10).
+#[derive(Debug, Clone)]
+pub(crate) struct LastRow {
+    pub(crate) section: String,
+    pub(crate) row_id: String,
+    pub(crate) passed: bool,
 }
 
 /// The runner. Holds the invokers, the run directory and its manifest.
@@ -155,6 +208,11 @@ pub struct Runner<'a, I: ToolInvoker> {
     pub(crate) p2_in_world_as: Option<String>,
     /// The lease-loss signal that stops the run ([`revocation`]).
     pub(crate) revoked: Option<revocation::Revocation>,
+    /// The row this run finished last.
+    pub(crate) last_row: Option<LastRow>,
+    /// A character an `end_session` could not drain; the next one drains
+    /// it before its own (F24).
+    pub(crate) pending_drain: Option<String>,
 }
 
 impl<'a, I: ToolInvoker> Runner<'a, I> {
@@ -211,6 +269,8 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             p2: Err(players::NO_P2.into()),
             p2_in_world_as: None,
             revoked: None,
+            last_row: None,
+            pending_drain: None,
         };
         for s in &runner.req.sections {
             let entry = json!({ "path": s.path, "sha256": s.sha256, "section": s.spec.section.id });
@@ -238,6 +298,11 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
                     }
                 }
                 let ev = self.run_row(&loaded.spec, row).await;
+                self.last_row = Some(LastRow {
+                    section: ev.section.clone(),
+                    row_id: ev.row_id.clone(),
+                    passed: ev.result == super::evidence::RowResult::Pass,
+                });
                 self.finish_row(&ev)?;
                 done.push(ev);
             }
@@ -318,6 +383,9 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             started_ms: now_ms(),
             tap: None,
             event_marks: HashMap::new(),
+            fp: None,
+            fixture_mode: None,
+            session_end: vec![],
         };
         ctx.blocked = self.static_blocks(spec, row);
         if let Some(r) = self.revocation_reason() {
@@ -337,11 +405,17 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             };
             if let Some(r) = lost {
                 ctx.blocked.push(format!("{}: {r}", revocation::REVOKED));
+                // The cut-off row's tap and capture are still in `ctx`.
+                self.tap_abandon(&mut ctx).await;
             }
         }
 
         let clauses: Vec<ClauseResult> = results.into_iter().flatten().collect();
         let mut g = grade(&ctx.blocked, &ctx.actions, &clauses, row.required_native);
+        // A failed session end does not change what the row proved, but the
+        // next login may meet the character still online: show it.
+        g.flags
+            .extend(ctx.session_end.iter().map(|e| format!("session end: {e}")));
         // Plan only: a row that could run is SKIPPED, not graded.
         let result = if planned {
             g.reasons = vec!["plan only: ready to run, nothing was driven".into()];
@@ -393,12 +467,40 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
         ctx: &mut RowCtx,
         results: &mut [Option<ClauseResult>],
     ) {
-        if let Err(e) = self.ensure_state(spec, &row.state, ctx).await {
-            ctx.blocked
-                .push(format!("could not reach state {}: {e}", row.state));
-            return;
+        if let Some(f) = &row.fixture {
+            if self.applies_fixture(spec, row) {
+                fixture::set_mode(ctx, fixture::MODE_FIXTURE);
+                if let Err(e) = self.establish_fixture(spec, f, ctx).await {
+                    ctx.blocked.push(format!("fixture not established: {e}"));
+                    if let Err(e) = self.end_session(ctx).await {
+                        ctx.session_end.push(e);
+                    }
+                    return;
+                }
+            } else {
+                // Continue the chain: the fixture names the state the chain
+                // should have produced (parity, FX-10).
+                fixture::set_mode(ctx, fixture::MODE_CHAIN);
+            }
         }
-        ctx.character = self.character_value(spec);
+        // The fixture path left the client in world as the fixture
+        // character, and `ctx.character` already names it.
+        if ctx.fixture_mode != Some(fixture::MODE_FIXTURE) {
+            if let Err(e) = self.ensure_state(spec, &row.state, ctx).await {
+                ctx.blocked
+                    .push(format!("could not reach state {}: {e}", row.state));
+                return;
+            }
+            ctx.character = self.character_value(spec);
+            if ctx.fixture_mode == Some(fixture::MODE_CHAIN) {
+                // After `ensure_state`, so `never` mode names the character
+                // the row really plays even on a run's first row.
+                if let Some(n) = self.in_world_as.clone() {
+                    ctx.vars
+                        .insert(crate::uat::fixture::FIXTURE_CHARACTER_VAR.into(), json!(n));
+                }
+            }
+        }
         if row.players == 2 {
             if let Err(e) = self.ensure_p2(ctx).await {
                 ctx.blocked
@@ -409,15 +511,22 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
         if row.state == "in_world" && row.anchor.unwrap_or(true) {
             self.anchor(ctx).await;
         }
-        let tapped = row.expect.iter().any(|c| c.source == Source::Packet);
-        if tapped {
+        // A row fixture (FX-06) is established before this point: the tap
+        // starts after it, then the steps.
+        let packet = row.expect.iter().any(|c| c.source == Source::Packet);
+        let fp = self.fp_wanted(row);
+        let tapped = packet || fp;
+        ctx.fp = fp.then(|| fingerprint::FpCapture::new(self.server.is_none(), !packet));
+        if packet {
             self.tap_start(ctx).await;
         }
+        self.fp_start(ctx).await;
         self.event_marks_at(row, None, ctx).await;
         let setup_ok = self.drive_steps(row, ctx, results).await;
         // Read and stop the tap before teardown, and on the failed-setup
         // path too: a tap left running would keep buffering this session.
         if tapped {
+            self.fp_before_tap_read(ctx).await;
             self.tap_finish(ctx).await;
             self.packet_clauses(row, ctx, results);
         }
@@ -425,6 +534,15 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             for a in &row.teardown {
                 let rec = self.exec(a, Role::Teardown, ctx).await;
                 ctx.actions.push(rec);
+            }
+        }
+        self.fp_write(ctx);
+        // The session ends with the row (D-FX5), on the failed-setup path
+        // too. A lease takeover drops this future before here; the next
+        // fixture row's `establish_fixture` ends that session instead.
+        if ctx.fixture_mode == Some(fixture::MODE_FIXTURE) {
+            if let Err(e) = self.end_session(ctx).await {
+                ctx.session_end.push(e);
             }
         }
     }
@@ -437,12 +555,13 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
         ctx: &mut RowCtx,
         results: &mut [Option<ClauseResult>],
     ) -> bool {
-        for a in &row.setup {
+        for (i, a) in row.setup.iter().enumerate() {
             let rec = self.exec(a, Role::Setup, ctx).await;
             let failed = !rec.ok && !a.optional;
             let what = rec.requested.clone();
             let err = rec.error.clone().unwrap_or_default();
             ctx.actions.push(rec);
+            self.fp_after_action(a, "setup", i, ctx).await;
             if failed {
                 ctx.blocked.push(format!("setup {what} failed: {err}"));
                 return false;
@@ -471,7 +590,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             .iter()
             .filter_map(|(w, s)| s.map(|s| (*w, s)))
             .collect();
-        for a in &row.steps {
+        for (i, a) in row.steps.iter().enumerate() {
             // `since = <label>` means "lines that arrived after this action
             // started": mark before it runs, so a fast reply is not missed.
             if let Some(label) = &a.label {
@@ -486,6 +605,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             let rec = self.exec(a, Role::Step, ctx).await;
             let stop = !rec.ok && !a.optional;
             ctx.actions.push(rec);
+            self.fp_after_action(a, "step", i, ctx).await;
             if let Some(label) = &a.label {
                 self.clauses_at(row, Some(label), ctx, results).await;
                 self.evidence_at(row, Some(label), ctx).await;
@@ -519,11 +639,16 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
         }
     }
 
-    fn base_vars(&self, spec: &SectionSpec, row: &RowSpec) -> Map<String, Value> {
+    /// The `${var}` values a row's specs see. Pub(crate) so the fixture
+    /// tests can read the instance var without a whole run.
+    pub(crate) fn base_vars(&self, spec: &SectionSpec, row: &RowSpec) -> Map<String, Value> {
         let mut v = self.req.vars.clone();
         v.insert("run_id".into(), json!(self.manifest.run_id));
         v.insert("row_id".into(), json!(row.id));
         v.insert("section".into(), json!(spec.section.id));
+        if let Some(i) = &self.req.instance {
+            v.insert("instance".into(), json!(i));
+        }
         if let Some(c) = self.character_name(spec) {
             v.insert("character".into(), json!(c));
         }
@@ -536,6 +661,12 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
 
 #[cfg(test)]
 mod ability_tests;
+#[cfg(test)]
+mod fingerprint_tests;
+#[cfg(test)]
+mod fixture_session_tests;
+#[cfg(test)]
+mod fixture_tests;
 #[cfg(test)]
 mod packet_tests;
 #[cfg(test)]

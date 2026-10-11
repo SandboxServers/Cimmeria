@@ -12,6 +12,9 @@ pub struct EntityLabels {
     known: HashMap<u32, String>,
     /// Ids met that no snapshot names; the index plus one is the `?<n>`.
     unknown: Vec<u32>,
+    /// Set on a [`Self::frozen`] copy: an id not yet numbered is `?` and
+    /// stays unnumbered.
+    frozen: bool,
 }
 
 impl EntityLabels {
@@ -40,6 +43,20 @@ impl EntityLabels {
             p2,
             known,
             unknown: Vec::new(),
+            frozen: false,
+        }
+    }
+
+    /// A copy that names every id this one has a label for, and writes `?`
+    /// for one it has not numbered, without numbering it. Used to sort
+    /// events by a rendering that does not depend on which came first.
+    pub fn frozen(&self) -> Self {
+        Self {
+            player: self.player,
+            p2: self.p2,
+            known: self.known.clone(),
+            unknown: self.unknown.clone(),
+            frozen: true,
         }
     }
 
@@ -60,6 +77,7 @@ impl EntityLabels {
         }
         let n = match self.unknown.iter().position(|&u| u == id) {
             Some(i) => i + 1,
+            None if self.frozen => return "?".to_string(),
             None => {
                 self.unknown.push(id);
                 self.unknown.len()

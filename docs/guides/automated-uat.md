@@ -143,6 +143,10 @@ Each row JSON holds:
 | `character`, `account_kind`, `started_utc`, `ended_utc`, `host_*_ms` | Who ran it and when, on both clocks |
 | `attestations[]` | Every `lab_uat_attest` applied to the row |
 
+`lab_uat_run` with `fingerprint: true` captures what a golden fingerprint needs (`lab golden` and `lab uat -DiffGolden` set it). Every row that reaches the world gets a packet tap, not only rows with a packet clause. When the character is not in the world at the row's start, the runner checks for its session after each action and starts the tap after the first action that brings it in. Those checks are not recorded; the tap start that succeeds is. A row marked `[row.golden] skip = true` is left out. Fingerprint mode never changes a grade: its server calls are added to `actions[]` as setup actions after the row ends, so step numbers in the reasons stay the same. It never sets `${player_entity_id}`, and it never starts a late tap for a row that has a packet clause.
+
+Each fingerprinted row gets three attachments, except a row blocked before its tap would start (it could not reach its state, or a two-player row could not bring p2 in), which gets none. A row cut off by a lost lease still gets them: the runner stops its tap and records whether the stop worked in `stopped`. `packet_tap` (`packet-tap.json`) gains `coverage` and `replaced_existing`. `coverage` is `full` when the tap started with the row, `late:<action>` when it started after that action (the action's label, else `setup#<i>` or `step#<i>`), `none` when it never started (with the `error`), and `unavailable` when no server lab MCP is configured. `replaced_existing: true` means another tap on the character was replaced, so its messages are gone. `entities` (`entities.json`) holds the player entity, its space and a snapshot of every entity in that space when the tap binds (`bind`) and before it is read (`finish`). Each snapshot keeps `entity_id`, `is_player`, `tag`, `spawn_id` and `template_id`. `windows` (`windows.json`) holds the visible windows from `client_ui_state` at the row's start and after every setup and step action; a sample whose read failed holds an `error` instead of `windows`. The [lab-golden contract](../analysis/lab-golden/contract.md) gives the exact shapes.
+
 ## Write a row spec
 
 Specs live in [docs/guides/uat-specs/](uat-specs/), one file per guide section. TOML, because the repo already reads TOML everywhere, it keeps comments and multi-line strings for the guide's prose, and `[[row]]` / `[[row.expect]]` tables read like the guide's own table.
@@ -342,6 +346,31 @@ contains = "${p2_character}"
 The runner does not put the two players in one place. Do that in the row's setup: `.summon <name>` always brings the player to the caller's instance and position, which also covers instanced maps such as `Castle_CellBlock`. Then add a visibility check before any targeting step, so a missing p2 FAILs on a clear clause rather than on a target click.
 
 p2's account and character come from `lab-account.p2.json`. The section's `character` and `fresh` settings apply to p1 only. The row is BLOCKED, naming the reason, when that file is missing or names no character, when it names p1's own account or character, ignoring case (the second login would evict the first), when `lab_uat_run` is itself running in instance p2, or when a tool a p2 action or clause needs is not routed on p2. Where p2 comes from depends on the daemon. In a daemon that hosts several instances (`CIMMERIA_LAB_INSTANCES`), the run drives the hosted `p2` instance and holds p2's lease for the length of the run, so another agent can't drive p2 mid-row. A single-instance daemon keeps its own in-process p2. Set-up: [Parallel clients](live-research-lab.md#parallel-clients-up-to-five). Both players need to be in the same world for targeting, and the row's setup moves them there.
+
+### Golden variance
+
+A section can say what may differ between runs that still agree. The `lab golden` commands compare run fingerprints with these tables; they arrive later in the [golden campaign](../analysis/lab-golden/README.md), so until then they only validate. `[section.golden]` applies to every row, and `[row.golden]` extends it: a row's lists add to the section's. Globs use `*` only and match message names unless a key says otherwise.
+
+- `ignore`: messages dropped before comparing. The built-in defaults `avatarUpdate*`, `perfStats` and `requestEntityUpdate` always apply; a spec's `ignore` only adds to them.
+- `allow_unordered`: messages moved out of the ordered stream into a sorted set per row, for streams the server does not order.
+- `collapse`: consecutive identical messages count once.
+- `ignore_windows`: window-name globs left out of the opened and closed sets.
+- `key_args`: a table from message name to the decoded fields to keep. An entry replaces the built-in one for that message, a row's entry replaces the section's for the same message, and each entry needs a name and at least one field.
+- `late_bind_settle_ms`: when the packet tap bound after the row entered the world, this many milliseconds of messages after its first one are dropped (default 1000).
+- `skip` (row only): leaves the row out of every fingerprint, for cleanup rows.
+
+```toml
+[section.golden]
+allow_unordered = ["onEffectResults"]
+
+[[row]]
+id = "FS-99"
+# ...
+[row.golden]
+skip = true
+```
+
+Validation rejects `skip` on the section, an empty glob or one with whitespace, a glob that is both ignored and unordered, and a `key_args` entry without a name or fields.
 
 ### The capability table
 

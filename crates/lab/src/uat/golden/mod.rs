@@ -9,13 +9,13 @@
 //! - [`event`] — the normalised event, the variance and the fingerprints.
 //! - [`labels`] — entity ids as stable names (`self`, `tag:…`, `?1`).
 //! - [`key_args`] — the outbound and inbound key-argument tables.
-//! - [`normalise`], [`build`], [`agree`], [`diff`], [`file`] — filled by
-//!   the later GD- packets.
-
-// `cimmeria-lab` is a binary crate, so its items are dead until the golden
-// tools are wired in (GD-07 removes this allow). It applies to test builds
-// too: the tests do not build every type.
-#![allow(dead_code)]
+//! - [`normalise`] — the variance model applied to a tap and window samples.
+//! - [`build`] — a run directory as a fingerprint.
+//! - [`agree`] — whether five runs may become a golden; [`diff`] — the
+//!   first place a run leaves it; [`file`] — the golden on disk.
+//!
+//! The tools are `lab_golden_record` and `lab_golden_diff`
+//! (`crate::server::golden`).
 
 pub mod agree;
 pub mod build;
@@ -27,6 +27,3 @@ pub mod labels;
 pub mod normalise;
 #[cfg(test)]
 pub(crate) mod testkit;
-
-#[allow(unused_imports)] // until GD-07 calls through them
-pub use event::{Dir, Event, RowFingerprint, RunFingerprint, Variance, FINGERPRINT_SCHEMA};

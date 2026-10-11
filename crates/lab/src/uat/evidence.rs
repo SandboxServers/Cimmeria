@@ -79,7 +79,9 @@ pub struct ActionRecord {
     pub index: usize,
     pub role: Role,
     pub label: Option<String>,
-    /// `tool`, `chat`, `wait`, `capture`.
+    /// `tool`, `chat`, `wait`, `wait_server`, `server` (a lab-endpoint
+    /// call), `capture`, or `fixture` (any call that set up or ended a
+    /// fixture session, re-marked so lab-golden can strip it).
     pub kind: String,
     /// What the spec asked for (tool name or the chat line).
     pub requested: String,

@@ -268,3 +268,21 @@ test('minimum-version rejection preserves state and reports update requirement',
  assert.equal(installs,1);assert.match(ui.get('install-status').textContent!,/Update the launcher/);assert.deepEqual(status,initial());
  }finally{await app.dispose();}
 });
+
+test('a finished operation is reported once, so Settings can re-read; one finished before mount is not',{timeout:5000},async()=>{
+ const ui=dom();let status=initial();let finished=0;
+ const done=(opId:string,kind:'install'|'uninstall'):InstallStatus=>({...status,native:{...status.native,
+   operation:{schema_version:1 as const,revision:status.native.operation.revision+1,operation:{id:opId,kind,intent_digest:Array(32).fill(0),state:'succeeded' as const}}}});
+ status=done('0d1f4a52-27b7-4f5b-9a1c-2b6e1f0c9a11','install');
+ const app=mountInstall(ui.document,async(_command,args)=>{
+   if((args!.request as InstallRequest).command==='uninstall')status=done(id,'uninstall');
+   return status;
+ },()=>id,()=>{finished++;});
+ try{await app.ready;await flush();assert.equal(finished,0,'already finished at startup');
+   await app.refresh();await flush();assert.equal(finished,0);
+   status={...status,uninstall:{installation_id:'i',directory:'/fixture',recovery:false}} as InstallStatus;await app.refresh();await flush();
+   ui.click('uninstall');ui.click('confirm-uninstall');await app.settled();await flush();
+   assert.equal(finished,1);
+   await app.refresh();await flush();assert.equal(finished,1,'a re-read of the same result is not a new finish');
+ }finally{await app.dispose();}
+});

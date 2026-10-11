@@ -25,7 +25,7 @@ use crate::supervisor::{instance, session_file, Supervisor, SupervisorConfig};
 use crate::uat::attest::{attest, AttestRequest};
 use crate::uat::evidence::{default_root, RunDir, Verdict};
 use crate::uat::invoke::{normalize_result, ServerInvoker, ServerTools, ToolInvoker, ToolOutcome};
-use crate::uat::runner::{client_fingerprint, RunRequest, Runner, SecondPlayer};
+use crate::uat::runner::{client_fingerprint, FixtureMode, RunRequest, Runner, SecondPlayer};
 use crate::uat::{latest_run, ledger, load_sections, specs_dir};
 
 /// Args for `lab_uat_run`.
@@ -57,6 +57,15 @@ pub struct UatRunArgs {
     /// The lab character (default: lab-account.json's `character`).
     #[serde(default)]
     pub character: Option<String>,
+    /// When a row's fixture is applied: `auto` (default), `always`, `never`.
+    #[serde(default)]
+    pub fixtures: FixtureMode,
+    /// Capture what a golden fingerprint needs: a packet tap on every
+    /// in-world row, bound late when the row enters the world, entity
+    /// snapshots and window samples. lab golden and lab uat -DiffGolden set
+    /// it.
+    #[serde(default)]
+    pub fingerprint: bool,
     /// Check specs and tool availability only; drive nothing (no lease).
     #[serde(default)]
     pub plan_only: bool,
@@ -396,6 +405,9 @@ impl LabServer {
             operator: std::env::var("CIMMERIA_LAB_OPERATOR").unwrap_or_else(|_| "lab agent".into()),
             client,
             no_settle: false,
+            instance: Some(self.supervisor.label().to_string()),
+            fixtures: a.fixtures,
+            fingerprint: a.fingerprint,
         };
         let inv = RouterInvoker {
             server: self,
