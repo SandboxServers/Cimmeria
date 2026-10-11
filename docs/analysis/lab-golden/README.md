@@ -96,7 +96,7 @@ new Praxis character on 2026-10-10.
 | GD-05 | Golden file format, size cap, committed-golden guard | packet-coder | S | 2 | GD-02 | Integrated |
 | GD-06 | Runner capture in fingerprint mode: tap every row, late bind, entities, windows | rust-gameserver-dev | M | 2 | GD-01 | Integrated |
 | GD-07 | MCP tools `lab_golden_record` and `lab_golden_diff` | packet-coder | M | 4 | GD-04, GD-05, GD-06 | Integrated |
-| GD-08 | `lab golden record` command | packet-coder | M | 5 | GD-07, LW-02 | BlockedDependency |
+| GD-08 | `lab golden record` command | general-purpose | M | 5 | GD-07, LW-02 | Integrated |
 | GD-09 | `lab uat -DiffGolden` | packet-coder | S | 6 | GD-08 | BlockedDependency |
 | GD-10 | Live acceptance: golden FS-01 to FS-P5 from five runs | coordinator (needs the user's OK for the lab) | S | 7 | GD-09, the user's OK for the lab | BlockedDependency |
 | GD-11 | Close-out: guides, tools README, unified UAT, status docs | documentation-writer | S | 8 | all | BlockedDependency |
@@ -263,3 +263,15 @@ then the reference, not the spec.
   omitting it. `lab_golden_record` is in `OPEN` although it writes the golden
   file: `OPEN` now means "never drives the client", not read-only. Two
   concurrent records of one section race; the last write wins.
+- **GD-08.** Implemented by a general-purpose (Opus) agent. `lab golden
+  record` exit codes: 0 recorded, 1 a run or row did not pass, 2 usage or a
+  golden exists without `-Rebless`, 3 the `lab uat` pre-flight or plan
+  failed, 6 the runs disagree, 7 cannot record (including `cannot_diff`, a
+  daemon failure after the runs, or `show` unable to read the golden). Every
+  failure after the runs names the `batch` folder. The child `lab uat` is
+  built by the pure `Get-GoldenBatchArgs` (`-Fingerprint`,
+  `-MaxConsecutiveFailures 1`, `-ProgressToStderr`), so its per-run progress
+  streams to the console while stdout stays one JSON line. `Get-GoldenPath`
+  maps a section id exactly as Rust's `path_safe` does (`v1.2` is
+  `golden/v1_2.json`). `uat.ps1` gained `-Fingerprint` and
+  `-ProgressToStderr` next to FX's `-Fixtures`.
