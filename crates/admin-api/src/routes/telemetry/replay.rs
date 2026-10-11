@@ -23,6 +23,7 @@
 //! | `cimmeria.session_kind` | `"lab"` or `"player"`, from the signed `kind` claim |
 //! | `lab` | `true` for a lab session |
 //! | `ts_ms`, `seq` | the uploader's clock and sequence number |
+//! | `client_pid` | the uploading process's id from its header; absent when the header is |
 //!
 //! A `client.native` row adds the DLL's event name (`client_target`, also
 //! the log body), its level string (`client_level`), the DLL's IDs lifted
@@ -42,7 +43,7 @@ use crate::routes::dev_session::TokenClaims;
 
 use super::dto::TelemetryEvent;
 use super::entity_labels::{name_chunk, EntityLabelLink, EntityLabels};
-use super::replay_native::{replay_client_native_named, ReplayNames};
+use super::replay_native::{replay_client_native_stamped, ReplayNames};
 
 /// One NDJSON line that did not parse as a [`TelemetryEvent`]. The whole
 /// chunk is refused at the first one, as before this module existed.
@@ -132,12 +133,25 @@ pub(super) fn parse_ndjson(ndjson: &str) -> Result<Vec<TelemetryEvent>, ReplayEr
 
 /// Replay the rows of a parsed chunk that `admitted` marks (by index; the
 /// rest are counted as suppressed), naming each row's entity IDs from
-/// `labels` (built for these `events`, in this order).
+/// `labels` (built for these `events`, in this order). No client pid.
 pub(super) fn replay_events(
     claims: &TokenClaims,
     events: Vec<TelemetryEvent>,
     labels: &EntityLabels,
     admitted: &[bool],
+) -> ReplayCounts {
+    replay_events_from_client(claims, events, labels, admitted, None)
+}
+
+/// [`replay_events`] for an upload: `client_pid` is the uploading process's
+/// id from its header, stamped on every replayed row as `client_pid`; `None`
+/// (no header, from an older DLL) leaves the attribute out.
+pub(super) fn replay_events_from_client(
+    claims: &TokenClaims,
+    events: Vec<TelemetryEvent>,
+    labels: &EntityLabels,
+    admitted: &[bool],
+    client_pid: Option<u32>,
 ) -> ReplayCounts {
     let mut counts = ReplayCounts {
         parsed: events.len() as u64,
@@ -149,6 +163,7 @@ pub(super) fn replay_events(
             let names = ReplayNames {
                 book: &book,
                 entity_label: &|id| labels.label(row, id),
+                client_pid,
             };
             replay_event(claims, ev, &names);
             counts.accepted += 1;
@@ -176,6 +191,7 @@ pub(super) fn replay_event(claims: &TokenClaims, ev: TelemetryEvent, names: &Rep
                 lab,
                 ts_ms = e.ts_ms,
                 seq = e.seq,
+                client_pid = names.client_pid,
                 source_file = %e.source_file,
                 level = %e.level,
                 category = %e.category,
@@ -192,6 +208,7 @@ pub(super) fn replay_event(claims: &TokenClaims, ev: TelemetryEvent, names: &Rep
                 lab,
                 ts_ms = e.ts_ms,
                 seq = e.seq,
+                client_pid = names.client_pid,
                 source_file = %e.source_file,
                 level = %e.level,
                 message = %e.message,
@@ -209,6 +226,7 @@ pub(super) fn replay_event(claims: &TokenClaims, ev: TelemetryEvent, names: &Rep
                 install_id = %claims.sub, // nt:id-only launcher install UUID from the token; it names nothing
                 ts_ms = e.ts_ms,
                 seq = e.seq,
+                client_pid = names.client_pid,
                 source_file = %e.source_file,
                 key_b64 = %e.key_b64,
             );
@@ -222,12 +240,19 @@ pub(super) fn replay_event(claims: &TokenClaims, ev: TelemetryEvent, names: &Rep
                 lab,
                 ts_ms = e.ts_ms,
                 seq = e.seq,
+                client_pid = names.client_pid,
                 kind = %e.kind,
                 fields = %serde_json::Value::Object(e.fields),
             );
         }
         TelemetryEvent::ClientNative(e) => {
-            replay_client_native_named(claims, e, names.book, names.entity_label);
+            replay_client_native_stamped(
+                claims,
+                e,
+                names.book,
+                names.entity_label,
+                names.client_pid,
+            );
         }
     }
 }

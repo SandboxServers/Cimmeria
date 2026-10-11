@@ -52,10 +52,12 @@ What that guide found, and why this page uses WoWSilicon:
 
 ## Step 1: make a WoWSilicon profile
 
-1. Download the newest `sgw-launcher-launcher-<date>-<commit>.exe` from the
+1. Download the newest `sgw-launcher-macos-wine-launcher-<date>-<commit>.exe` from the
    project's [GitHub Releases](https://github.com/SandboxServers/Cimmeria/releases)
    (the release marked **Latest** whose name starts with "Launcher"). Put it in
-   a folder of its own; the launcher keeps its settings next to itself.
+   a folder of its own; the launcher keeps its settings next to itself. It no
+   longer updates itself: download the newest one again when a release is out,
+   until the macOS desktop launcher replaces it.
 2. In WoWSilicon, create a **Non-WoW game (32-bit D3D9)** profile.
 3. Point the profile at the launcher `.exe`.
 4. Set the graphics backend to **d9vk** and leave x87 translation on

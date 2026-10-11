@@ -190,6 +190,13 @@ impl ScriptSession {
         }
     }
 
+    /// Move the cursor past everything logged so far, so the next wait can
+    /// only match what arrives after this point: a script calls it right
+    /// before a send whose answers must not be satisfied by earlier traffic.
+    pub fn skip_to_end(&mut self) {
+        self.cursor = self.log.len();
+    }
+
     /// The last `n` log entries, one line each, for failure messages.
     pub fn trail(&self, n: usize) -> String {
         format_trail(&self.log, n, self.mirror.own_id())
