@@ -97,6 +97,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [launcher-preferences-schema-change-fanout](launcher-preferences-schema-change-fanout.md) — desktop Preferences change: strict TS decode breaks ~10 fixtures; migrate in serde try_from; adoption Plan digest goes through `digest_form`.
 - [launcher-windows-adoption-path-traps](launcher-windows-adoption-path-traps.md) — Windows adoption: `<root>\game` invariant, verbatim-root joins, zip `enclosed_name` backslashes, Windows file identity, UAT binary path.
 - [desktop-repair-update-terminal-hooks](desktop-repair-update-terminal-hooks.md) — Repair/Update `finish_failure` runs after every commit (dropped handoff); run-end hooks must check the op was open.
+- [launcher-release-feed-traps](launcher-release-feed-traps.md) — release zip needs the exe at its root; key/sig base64 forms; Tauri CLI keys work; prove feeds with `examples/release_feed.rs`.
 
 ## Injected client DLLs
 

@@ -17,6 +17,15 @@ pub const RESTART_ARG: &str = "--launcher-update-restart";
 fn restart_args() -> Vec<String> {
     vec![RESTART_ARG.into(), std::process::id().to_string()]
 }
+/// D-LX3: the Windows package is the release zip, never an installer.
+pub(super) fn require_zip_url(url: &str) -> Result<(), Error> {
+    let url = reqwest::Url::parse(url).map_err(|_| Error::Package)?;
+    if !url.path().to_ascii_lowercase().ends_with(".zip") {
+        tracing::warn!(target: "launcher.update", event = "apply_refused", reason = "not_a_zip", "Windows launcher update package is not a zip");
+        return Err(Error::Package);
+    }
+    Ok(())
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -189,12 +198,7 @@ impl DesktopState {
                     return Err(Error::Platform);
                 }
                 bundle::plain(executable)?;
-                // D-LX3: the Windows package is the release zip, never an installer.
-                let url = reqwest::Url::parse(&offer.url).map_err(|_| Error::Package)?;
-                if !url.path().to_ascii_lowercase().ends_with(".zip") {
-                    tracing::warn!(target: "launcher.update", event = "apply_refused", reason = "not_a_zip", "Windows launcher update package is not a zip");
-                    return Err(Error::Package);
-                }
+                require_zip_url(&offer.url)?;
             }
         }
         let original_path = match &target.0 {

@@ -107,7 +107,11 @@ fn remove_marked(stage: &Path) -> std::io::Result<()> {
 
 /// Two passes: the whole namespace is validated before the stage exists.
 /// Returns the stage-relative files with the root executable's name first.
-pub(super) fn extract(bytes: &[u8], stage: &Path, owner: Uuid) -> Result<Vec<String>, Error> {
+pub(in crate::storage::updater) fn extract(
+    bytes: &[u8],
+    stage: &Path,
+    owner: Uuid,
+) -> Result<Vec<String>, Error> {
     let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).map_err(|error| {
         tracing::warn!(target: TARGET, event = "zip_refused", reason = "not_a_zip", %error, "update package is not a readable zip");
         Error::Package

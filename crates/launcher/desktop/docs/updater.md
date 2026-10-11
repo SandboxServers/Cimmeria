@@ -33,8 +33,9 @@ Verification follows [Tauri updater v2.13.1's pinned implementation](https://git
 the trusted comment. Exactly one tab-separated `version:` field must equal the
 announced SemVer. Thus an old signed artifact relabeled as a new release fails.
 The implementation rejects duplicate version fields, more strictly than Tauri's
-first-match parser. Release automation must still pin and test a Tauri CLI that
-emits this field; signing and publishing belong to the release workflow (LX-15).
+first-match parser. The release workflow signs with this field and checks the
+result with the engine's own verification before publishing (LX-15,
+[release](release.md#the-signed-feed)).
 
 Transport requires HTTPS, port 443, an exact native host allowlist, no URL
 credentials or fragments, and at most four followed redirects. Every redirect
