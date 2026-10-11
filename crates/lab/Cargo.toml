@@ -29,6 +29,15 @@ anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
+# The daemon's OTLP log export to SigNoz as `service.name = cimmeria-lab`
+# (TG-PIPE-17, D-TG2). The same OpenTelemetry stack and versions as
+# crates/server's exporter (`crates/server/src/otel.rs`); bump in lockstep.
+# Logs only: labd has no spans or metrics worth shipping.
+opentelemetry = "0.33"
+opentelemetry_sdk = { version = "0.33", features = ["rt-tokio", "logs"] }
+opentelemetry-otlp = { version = "0.33", features = ["grpc-tonic", "http-proto", "reqwest-blocking-client", "logs"] }
+opentelemetry-appender-tracing = "0.33"
+
 # Shared suspended-launch + inject pipeline (issue #685) — the same code
 # path sgw-launcher uses.
 cimmeria-client-launch = { path = "../client-launch" }
@@ -80,3 +89,5 @@ windows-sys = { version = "0.61", features = [
 tempfile = "3"
 # Paused time for the UAT keep-alive tests (lease::tests).
 tokio = { workspace = true, features = ["test-util"] }
+# In-memory log exporter for the OTLP redaction tests (otlp::tests).
+opentelemetry_sdk = { version = "0.33", features = ["logs", "testing"] }
