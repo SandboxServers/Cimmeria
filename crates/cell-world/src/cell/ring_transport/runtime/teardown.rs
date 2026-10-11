@@ -79,6 +79,20 @@ pub async fn dispatch_release_effects(
         match effect {
             Effect::ShowPlayer { entity_id } => {
                 send_visible(entity_id, true, tx, space_mgr).await;
+                let who = space_mgr.player_identity(entity_id);
+                tracing::info!(
+                    event = "ring.passenger_released",
+                    entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
+                    account_id = who.account_id,
+                    account_name = who.account_name,
+                    player_id = who.player_id,
+                    player_name = who.player_name,
+                    world = space_mgr
+                        .get_entity_space_id(entity_id)
+                        .and_then(|sid| space_mgr.world_name_for_space(sid)),
+                    "ring: passenger released from transport"
+                );
                 // An abort after the owner was already moved (the remote
                 // load wait timed out) still brings its pets; an abort
                 // before the move leaves them (pets PT-02).
@@ -103,5 +117,49 @@ pub async fn dispatch_release_effects(
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_fixtures::make_space_manager_with_player;
+    use crate::test_support::LogCapture;
+    use tracing::Level;
+
+    /// One release row per ring passenger: the `ShowPlayer` arm logs the
+    /// passenger's identity; the `UnlockMovement` arm adds nothing.
+    #[tokio::test]
+    async fn release_logs_one_row_per_passenger_with_account_id() {
+        let mut mgr = make_space_manager_with_player(7);
+        mgr.get_entity_mut(7).unwrap().account_id = Some(42);
+        let (tx, _rx) = mpsc::channel(8);
+        let capture = LogCapture::install();
+
+        dispatch_release_effects(
+            vec![
+                Effect::ShowPlayer { entity_id: 7 },
+                Effect::UnlockMovement { entity_id: 7 },
+            ],
+            &tx,
+            &mut mgr,
+        )
+        .await;
+
+        let rows: Vec<_> = capture
+            .all()
+            .into_iter()
+            .filter(|c| c.has_field("event", "ring.passenger_released"))
+            .collect();
+        assert_eq!(rows.len(), 1, "one release row per passenger: {rows:#?}");
+        assert_eq!(rows[0].level, Level::INFO);
+        assert!(
+            rows[0].has_field("account_id", "42"),
+            "release row must carry account_id: {rows:#?}"
+        );
+        assert!(
+            rows[0].has_field("world", "Agnos"),
+            "release row must carry world: {rows:#?}"
+        );
     }
 }

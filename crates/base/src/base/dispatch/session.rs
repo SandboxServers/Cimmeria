@@ -12,6 +12,7 @@ use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 use tokio::sync::mpsc;
 
+use cimmeria_base_session::base::helpers::{log_session_end, SessionEndRow};
 use cimmeria_base_session::base::plugin::{SessionEvent, SessionHookPoint};
 use cimmeria_base_session::base::session_presence::{spawn_offline, EndedSession};
 
@@ -31,7 +32,6 @@ pub(super) async fn handle_log_off(
     db_pool: &Option<Arc<PgPool>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let disconnect = if !payload.is_empty() { payload[0] } else { 0 };
-    tracing::info!(%addr, disconnect, "SGWPlayer.logOff");
 
     // Snapshot entity info before cleanup. Capture the session's wire-encryption
     // version (the logoff / reset-entities packets below must be built with the
@@ -47,7 +47,7 @@ pub(super) async fn handle_log_off(
     } else {
         "logoff_character_select"
     };
-    let (entity_id, enc_version, ended, plugins, identity) = {
+    let (entity_id, enc_version, ended, plugins, identity, session_secs) = {
         let mut clients = connected.lock().unwrap();
         match clients.get_mut(&addr) {
             Some(c) => {
@@ -55,6 +55,7 @@ pub(super) async fn handle_log_off(
                 // Snapshotted before the reset below clears the names
                 // (Rule 5 § "Resolve late, and before teardown").
                 let identity = super::super::session_identity::session_identity(c);
+                let session_secs = c.connected_at.elapsed().as_secs();
                 // Only a character that was in the world is announced
                 // offline, and only here: clearing the flag stops the
                 // teardown of a full exit from announcing it again.
@@ -69,6 +70,23 @@ pub(super) async fn handle_log_off(
                     _ => None,
                 };
                 c.listed_online = false;
+                // Return to character select keeps the session, so no
+                // teardown will see this character: this handler owns its
+                // `session.end`. Taking the entity id here, under the same
+                // lock that decides to emit, is what makes the ownership
+                // exclusive: a DISCONNECT or inactivity teardown that runs
+                // during the awaits below finds `player_entity_id` empty
+                // and writes no second row. The gate is the entity id, the
+                // same one teardown uses, not `listed_online`: a logOff(0)
+                // between the cell's `session.start` and `onClientReady`
+                // has a character in the world that was never listed.
+                // A full exit leaves the id for the teardown that follows
+                // the client's disconnect, which writes that session's row.
+                let entity_id = if disconnect == 0 {
+                    c.player_entity_id.take()
+                } else {
+                    c.player_entity_id
+                };
                 // The character leaves the world: the Team and Command
                 // invites it holds go too (D-ORG06). The session survives a
                 // return to character select, so this is not the teardown's
@@ -88,11 +106,12 @@ pub(super) async fn handle_log_off(
                     );
                 }
                 (
-                    c.player_entity_id,
+                    entity_id,
                     c.enc_version,
                     ended,
                     c.plugins.clone(),
                     identity,
+                    session_secs,
                 )
             }
             None => (
@@ -101,9 +120,31 @@ pub(super) async fn handle_log_off(
                 None,
                 Default::default(),
                 cimmeria_entity::cell_entity::PlayerIdentity::UNKNOWN,
+                0,
             ),
         }
     };
+    tracing::info!(
+        %addr,
+        disconnect,
+        account_id = identity.account_id,
+        account_name = identity.account_name,
+        player_id = identity.player_id,
+        player_name = identity.player_name,
+        "SGWPlayer.logOff"
+    );
+    // The row this handler owns (see the `take` above): written once the
+    // ownership is settled, before any await can interleave a teardown.
+    if let (0, Some(entity_id)) = (disconnect, entity_id) {
+        log_session_end(&SessionEndRow {
+            addr,
+            identity,
+            entity_id,
+            entity_name: identity.player_name,
+            disconnect_reason: "logoff_character_select",
+            session_secs,
+        });
+    }
 
     if let Some(entity_id) = entity_id {
         // Tell CellService to disconnect and destroy the entity

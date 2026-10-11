@@ -12,6 +12,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use cimmeria_common::EntityId;
+use cimmeria_entity::cell_entity::PlayerIdentity;
 use cimmeria_entity::manager::EntityManager;
 use cimmeria_mercury::transport::Transport;
 
@@ -19,6 +20,44 @@ use crate::cell::messages::BaseToCellMsg;
 
 use super::super::ConnectedClientState;
 use super::unmap_departed_witness;
+
+/// One `session.end` row: how a session ended, with its identity named
+/// (Rule 5 and Rule 6). Every session-end site builds one of these and
+/// passes it to [`log_session_end`]; later packets add fields here rather
+/// than a second `session.end` call.
+#[derive(Debug, Clone, Copy)]
+pub struct SessionEndRow {
+    /// The session's address.
+    pub addr: SocketAddr,
+    /// The session's identity, snapshotted before the session goes.
+    pub identity: PlayerIdentity,
+    /// The player entity the session held.
+    pub entity_id: u32,
+    /// The player entity's name (Rule 6).
+    pub entity_name: Option<&'static str>,
+    /// The canonical `disconnect_reason` (see the shared contract table).
+    pub disconnect_reason: &'static str,
+    /// Whole seconds since the session connected.
+    pub session_secs: u64,
+}
+
+/// The one emitter of `session.end`: target `session.end`, message
+/// `"player session ended"`.
+pub fn log_session_end(row: &SessionEndRow) {
+    tracing::info!(
+        target: "session.end",
+        addr = %row.addr,
+        entity_id = row.entity_id,
+        entity_name = row.entity_name,
+        account_id = row.identity.account_id,
+        account_name = row.identity.account_name,
+        player_id = row.identity.player_id,
+        player_name = row.identity.player_name,
+        disconnect_reason = row.disconnect_reason,
+        session_secs = row.session_secs,
+        "player session ended"
+    );
+}
 
 /// Destroy all entities associated with a disconnecting client and remove it from the map.
 ///
@@ -145,7 +184,6 @@ fn teardown_session(
         account_eid,
         player_eid,
         account_id,
-        player_name,
         discord_account,
         discord_character,
         session_secs,
@@ -220,7 +258,6 @@ fn teardown_session(
             account_eid,
             player_eid,
             account_id,
-            player_name,
             discord_account,
             discord_character,
             session_secs,
@@ -251,19 +288,14 @@ fn teardown_session(
             player_entity_name = identity.player_name,
             "Destroying Player entity"
         );
-        tracing::info!(
-            target: "session.end",
-            %addr,
-            entity_id = player_eid,
-            entity_name = identity.player_name,
-            account_id,
-            account_name = identity.account_name,
-            player_id = identity.player_id,
-            player_name = player_name.as_deref(),
-            disconnect_reason = reason,
+        log_session_end(&SessionEndRow {
+            addr,
+            identity,
+            entity_id: player_eid,
+            entity_name: identity.player_name,
+            disconnect_reason: reason,
             session_secs,
-            "player session ended"
-        );
+        });
 
         // Remove from entity->addr reverse index, and record the witness as
         // departed so the cell's in-flight sends to it log at DEBUG.
