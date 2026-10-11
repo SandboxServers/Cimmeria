@@ -11,6 +11,7 @@
 //! position means the safe level with `mode` overridden. With neither, any
 //! knob override makes the spec [`Level::Explicit`]; otherwise it is safe.
 
+pub mod cpu;
 pub mod levels;
 
 use std::collections::BTreeMap;
