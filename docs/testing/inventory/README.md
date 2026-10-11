@@ -52,7 +52,6 @@ above. Live per-crate counts are in [Live counts by crate](#live-counts-by-crate
 | Crate | Tests | File |
 |---|---:|---|
 | `services` | 773 | [services.md](services.md) |
-| `launcher` (`sgw-launcher`) | 176 | [launcher.md](launcher.md) — recatalogued 2026-07-25 |
 | `entity` | 160 | [entity.md](entity.md) |
 | `mercury` | 123 | [mercury.md](mercury.md) |
 | `content-engine` | 85 | [content-engine.md](content-engine.md) |
@@ -65,14 +64,16 @@ above. Live per-crate counts are in [Live counts by crate](#live-counts-by-crate
 | `tauri-app` | 6 | [tauri-app.md](tauri-app.md) |
 | `defs` | 5 | [defs.md](defs.md) |
 | `server` | 2 | [server.md](server.md) |
-| **Total** | **1513** | |
+| **Total** | **1337** | |
 
-> **Double-count fixed, 2026-07-25.** `launcher.md` used to carry 22 rows that
-> were a verbatim duplicate of a separate Tauri launcher's catalogue, all filed
-> under `crates/launcher/src/…` paths that never contained them. The old total
-> of 1,351 counted those 22 twice. `crates/launcher`'s real 176-test suite is
-> now in [launcher.md](launcher.md). The Tauri tree (`tools/SGWLauncher`) and
-> its 22 tests were removed in LX-19 (2026-10-10), so the total dropped to 1,513.
+> **Launcher rows removed, 2026-10-11.** The egui launcher crate
+> (`sgw-launcher`) and its 176-row catalogue, `launcher.md`, were deleted when
+> the launcher consolidation retired that launcher (LX-18, LX-23), so the total
+> dropped from 1,513 to 1,337. The Tauri tree (`tools/SGWLauncher`) and its 22
+> tests had gone in LX-19 (2026-10-10). Most of the egui crate's tests moved
+> with their code into `cimmeria-launcher-core` (LX-01); that crate, and the
+> desktop launcher's own workspace under `crates/launcher/desktop/`, are not
+> catalogued yet.
 
 ### Live counts by crate
 

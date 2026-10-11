@@ -1,5 +1,5 @@
 ---
-applyTo: "crates/launcher/**"
+applyTo: "crates/launcher/**,crates/launcher-core/**"
 ---
 
 # Launcher review rules
@@ -9,7 +9,9 @@ applyTo: "crates/launcher/**"
 every player on their next update, so call out any change to what an existing
 install does. It is a separate Cargo workspace with its own lockfile and its
 own workflow (`.github/workflows/launcher-desktop.yml`); the root workspace's
-fmt, clippy and hakari checks do not cover it.
+fmt, clippy and hakari checks do not cover it. Its install, manifest, extraction
+and telemetry code lives in the root-workspace crate `crates/launcher-core/`,
+which these rules cover too: a change there reaches players the same way.
 
 ## Integrity
 

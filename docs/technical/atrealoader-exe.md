@@ -264,4 +264,4 @@ All of those capabilities — pcap capture, AES key extraction, binary patch app
 | [docs/architecture/atrea-editor-bridge.md](../architecture/atrea-editor-bridge.md) | ADR for the MCP-server architecture proposal that drives the editor programmatically. |
 | [docs/drafts/spec/mercury-wire-format.md](../drafts/spec/mercury-wire-format.md) §S9 | Canonical source for the single-byte `--fix-aslr` patch and the binary-`.config`-vs-XML distinction. |
 | [docs/client/launcher-guide.md](../client/launcher-guide.md) | The CME `Launcher.exe`-driven player flow; cross-links here for "what Atrea actually does at runtime". |
-| [docs/client/sgw-launcher.md](../client/sgw-launcher.md) | The reimplementation launcher's view of the Atera/Atrea batch files. |
+| [docs/client/sgw-launcher.md](../client/sgw-launcher.md) | Archived: the retired egui launcher's view of the Atera/Atrea batch files. The current launcher has no Atera buttons (D-LX4). |

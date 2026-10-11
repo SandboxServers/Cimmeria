@@ -93,7 +93,7 @@ Status vocabulary: **Ready / BlockedDependency / BlockedDecision / Writing / Rev
 | LX-20 | 3 | `setup.ps1` and `bootstrap/` build the desktop launcher | packet-coder | LX-18 | Review (this PR) |
 | LX-21 | 3 | Comment and path references in other crates | packet-coder | LX-18 | Review (this PR) |
 | LX-22 | 4 | Player docs and announcement | documentation-writer | LX-15 | Review (this PR) |
-| LX-23 | 4 | Developer and operator docs | documentation-writer | LX-18 | BlockedDependency |
+| LX-23 | 4 | Developer and operator docs | documentation-writer | LX-18 | Review (this PR) |
 | LX-24 | 4 | Agent-memory sweep | documentation-writer | LX-18 | BlockedDependency |
 | LX-25 | 0 | Adopt the desktop launcher's open acceptance gates into this ledger | documentation-writer | | Done ([#1357](https://github.com/SandboxServers/Cimmeria/pull/1357)) |
 | LX-28 | 2 | macOS release: ad-hoc signed app from a macOS CI job | rust-gameserver-dev | LX-15; redistribution check | Review (this PR; [worknote](worknotes/lx-28-redistribution.md); LX-26 step 13) |

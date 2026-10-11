@@ -2,32 +2,41 @@
 title: "Launcher Distribution Setup"
 type: how-to
 audience: operators
-last_updated: 2026-09-29
+last_updated: 2026-10-11
+companion_docs:
+  - launcher-guide.md
+  - launcher-self-update.md
+  - ../../crates/launcher/desktop/docs/release.md
 ---
 
 # Launcher Distribution Setup
 
 Operational runbook for everything the launcher reads from or writes to
-remote services:
+remote services, and the three keys that protect them:
 
-- **Content distribution** — seed zip, patch zips, manifest, signature.
+- **Content distribution** — seed, patch zips, manifest, signature.
   Hosted on **GitHub Releases**. Anonymous read, generous bandwidth,
   zero infra to operate.
-- **Manifest signing** — Ed25519 keypair, private key kept offline,
-  pubkey baked into release builds via a GitHub Actions secret.
-- **Debug-log uploads** — single PUT per click into an Azure Blob
-  container scoped to a `logs/` prefix via a SAS token. The only
-  remaining piece of operator-managed infrastructure.
+- **Manifest signing** — an Ed25519 key pair. The private key is kept
+  offline; the public key is compiled into release builds from the
+  `LAUNCHER_MANIFEST_PUBKEY_HEX` secret.
+- **Launcher updates** — a Minisign key pair that signs the launcher zip and
+  its updater feed. The private key is in Key Vault and a GitHub environment;
+  the public key is compiled in from the `LAUNCHER_UPDATER_PUBKEY` variable.
+- **Debug-log uploads** — a single PUT per click into an Azure Blob
+  container, through a create-only SAS URL compiled in from the
+  `LAUNCHER_LOG_SAS_URL` secret. The only operator-managed infrastructure.
 
-Once-only setup. Re-read when rotating the manifest signing key, the
-log-upload SAS, or migrating to a new content release tag.
+Re-read this when rotating a key or the log-upload SAS, or when moving content
+to a new release tag. How a launcher release is built and published, job by job,
+is in the [desktop launcher release guide](../../crates/launcher/desktop/docs/release.md);
+this page covers the services and keys it depends on.
 
-> **Why this layout?** The MMO emulator already uses GitHub Releases
-> for the launcher binary itself, so reusing it for content keeps the
-> infra footprint minimal and gives us free signed-build provenance.
-> Log uploads can't sensibly live on GitHub Releases (per-player writes
-> from an unauthenticated client) so they stay on Azure Blob with a
-> create-only SAS — see Cady's review on PR #343 for the design
+> **Why this layout?** GitHub Releases already hosts the launcher itself, so
+> reusing it for content keeps the infra footprint minimal and gives us free
+> build provenance. Log uploads can't sensibly live on GitHub Releases
+> (per-player writes from an unauthenticated client), so they stay on Azure
+> Blob with a create-only SAS — see Cady's review on PR #343 for the design
 > discussion.
 
 ---
@@ -36,15 +45,14 @@ log-upload SAS, or migrating to a new content release tag.
 
 ### Layout
 
-Two release tag families:
+Two release tag families carry content:
 
 | Tag | Mutability | Contents |
 |---|---|---|
 | `content-current` | **mutable** (overwrite on each publish) | `manifest.json`, `manifest.json.sig` |
 | `content-YYYY-MM-DD-NNN` | **immutable** (never overwrite) | `seed.zip`, `patches/*.zip` |
 
-The launcher's default manifest URL points at the rolling
-`content-current` tag:
+The launcher reads the manifest from the rolling `content-current` tag:
 
 ```text
 https://github.com/SandboxServers/Cimmeria/releases/download/content-current/manifest.json
@@ -79,31 +87,28 @@ This split gives both properties at once:
   resume partial downloads safely — the bytes at a given URL never
   change once published.
 
-### Launcher releases and self-update
+### Launcher releases
 
-Launcher releases are a third tag family, `launcher-YYYYMMDD-<sha7>`,
-built and published by `launcher-release.yml` (manually, or with
-`/release-launcher` on a merged PR). Each release carries:
+Launcher releases are two more tag families, built and published by
+[`launcher-release.yml`](../../.github/workflows/launcher-release.yml) when a
+maintainer comments `/release-launcher` on a merged PR:
 
-| Asset | Purpose |
-|---|---|
-| `sgw-launcher-<tag>.exe` | the launcher |
-| `sgw-launcher-<tag>.exe.sha256` | its SHA-256 in `sha256sum` format (`<hex>  <file name>`). Launchers from the self-update release on verify their download against it, and never offer a release without it. |
-| overlay `.zip` + `.entry.json` | only when there is a client-patches UI overlay (below) |
+| Tag | Mutability | Contents |
+|---|---|---|
+| `launcher-YYYYMMDD-<sha7>` | **immutable**, one per release | `StargateWorlds-Launcher-windows-x64.zip` with its `.zip.sha256` and `.zip.sig`, `StargateWorlds-Launcher-macos-arm64.zip` with its `.zip.sha256`, and the client-patches UI overlay when one is committed |
+| `launcher-current` | **mutable**, refreshed by each signed release (D-LX7) | The two zips with their `.sha256`, the Windows `.zip.sig`, and the updater feed `latest.json` |
 
-Players' launchers find new releases through the GitHub API by the
-`launcher-` prefix, skipping drafts and prereleases, so neither server
-releases nor `content-current` get in the way. To hold a launcher
-release back from automatic updates, mark it as a prerelease (or delete
-its `.sha256`); to withdraw one, delete the release.
+Players and docs link to the stable `launcher-current` URLs. The launcher's
+updater reads `latest.json` there, which names the zip on the dated release
+([self-update](launcher-self-update.md)). `launcher-current` is refreshed only
+by a signed release that is the day's first, and is never marked as the
+repository's latest release. The [release guide](../../crates/launcher/desktop/docs/release.md#what-a-release-publishes)
+has the exact rules, and how to recover a failed or partial run.
 
-To make players update, set the manifest's optional `min_launcher` to the
-release's tag and re-sign the manifest; see
+To make players update, set the content manifest's optional `min_launcher` to
+the release's tag and re-sign the manifest; see
 [launcher-guide.md](launcher-guide.md#minimum-launcher-version-min_launcher).
 Publish the launcher release before the manifest that requires it.
-
-Launchers up to `launcher-20260929-f518b57` have no updater; those
-players download the first self-updating release by hand once.
 
 ### Publishing a content drop
 
@@ -125,11 +130,8 @@ gh release upload content-current --clobber `
   manifest.json manifest.json.sig
 ```
 
-The manifest references the immutable tag's assets by absolute URL,
-so it doesn't matter whether `content-current` or `content-YYYY-MM-DD-NNN`
-is created first — both must be live before any launcher resolves them.
-A safe ordering: create the immutable release **first**, then update
-`content-current` second.
+Create the immutable release **first** and update `content-current` second, so
+no launcher ever reads a manifest whose blobs don't exist yet.
 
 ### Initial setup
 
@@ -139,21 +141,19 @@ One-time:
 # Create the rolling tag. Empty release; we'll upload manifest.json on
 # the first content drop.
 gh release create content-current --notes "Rolling manifest pointer"
-
-# Optional: pin it as the repo's "latest" release for casual visibility.
-# Skip this if you'd rather have the launcher-XXXX release be the
-# user-facing one.
-# gh release edit content-current --latest
 ```
+
+`launcher-current` needs no setup: the first signed launcher release creates
+it.
 
 ### Publishing the client-patches UI overlay
 
-The client-patches DLL is embedded in the launcher, so a launcher
+The client-patches DLL ships inside the launcher zip
+(`windows\cimmeria_client_patches.dll`, pinned by checksum), so a launcher
 release ships it. Its UI overlay (the Lua and layout files under
-`crates/client-patches/overlay/`,
-listed in its `MANIFEST.txt`) ships as a content patch instead. Every
-launcher release packs it with `pack-client-overlay` and attaches two
-assets to the launcher's GitHub Release:
+`crates/client-patches/overlay/`, listed in its `MANIFEST.txt`) ships as a
+content patch instead. Every launcher release packs it with
+`pack-client-overlay` and attaches two assets to the dated launcher release:
 
 - `bm-ui-overlay-<hash>.zip`: the overlay files, laid out as they go
   under the client's `SGWGame/` directory. `<hash>` is the first 12 hex
@@ -180,13 +180,7 @@ cargo run -p cimmeria-launcher-core --bin pack-client-overlay -- \
 
 Run it at the commit the launcher release was built from, or the hash
 will not match the attached zip. The release notes say when an overlay
-was attached; with no overlay committed the release carries the exe
-alone.
-
-Players need a launcher that knows `"root"`. An older launcher extracts
-the overlay into the install directory, where the client never reads
-it; a newer launcher records `sgw_game` patches under `<id>@sgw_game`,
-so it applies the overlay again in the right place.
+was attached.
 
 ---
 
@@ -225,20 +219,21 @@ Actions secret:
 - Name: `LAUNCHER_MANIFEST_PUBKEY_HEX`
 - Value: the 64-hex-char public key string
 
-The release workflow ([`.github/workflows/launcher-release.yml`](../../.github/workflows/launcher-release.yml))
-injects it into the build via `env: LAUNCHER_MANIFEST_PUBKEY_HEX`,
-which the build picks up via `option_env!` in
-[`crates/launcher/src/manifest.rs`](../../crates/launcher/src/manifest.rs).
+The release workflow passes it to the launcher build steps only (the test
+suites use the development key and fail with it set). The build compiles it in
+through `option_env!` as `MANIFEST_SIGNING_PUBKEY` in
+[`crates/launcher-core/src/manifest.rs`](../../crates/launcher-core/src/manifest.rs).
+A release build without a usable key verifies nothing and fails closed.
 
 ### Signing a manifest
 
 Sign with `cargo run -p cimmeria-patchset -- sign manifest.json --key
 <key file>`, which writes `manifest.json.sig`, and check it with
 `cimmeria-patchset verify manifest.json --pubkey <hex>` before
-uploading. The launcher enforces the signature
-([`crates/launcher/src/manifest.rs`](../../crates/launcher/src/manifest.rs)::`verify_manifest_signature`),
-so an unsigned or wrongly-signed manifest is rejected outright with no
-fallback. Sign on the machine that holds the key; never put the key in CI.
+uploading. The launcher enforces the signature (`verify_manifest_signature`
+in `manifest.rs`), so an unsigned or wrongly-signed manifest is rejected
+outright with no fallback. Sign on the machine that holds the key; never put
+the key in CI.
 
 The signing operation is:
 
@@ -260,7 +255,7 @@ key is suspected compromised):
 1. Generate a new keypair (above).
 2. Update `LAUNCHER_MANIFEST_PUBKEY_HEX` repo secret with the new
    public key.
-3. Cut a new launcher release via `/release-launcher` ChatOps. The new
+3. Cut a new launcher release via `/release-launcher`. The new
    binary bakes in the new pubkey and accepts only manifests signed
    with the new private key.
 4. **Critical:** any existing launcher in the wild was built against
@@ -275,21 +270,56 @@ for zero-downtime rotation.
 
 ---
 
-## Part 3 — Debug-log uploads via Azure Blob
+## Part 3 — Launcher updater signing key
 
-This piece is unchanged from the original Azure-only design. Log
-uploads need a write-capable destination that the launcher can reach
+The launcher updates itself only from a zip whose Minisign signature verifies
+against the public key compiled into it (D-LX9). This key is separate from the
+manifest key: the manifest key says what game content to install, the updater
+key says which launcher binaries to run.
+
+Where it lives (generated on 2026-10-11):
+
+| What | Where |
+|---|---|
+| The encrypted secret key | Key Vault `cimmeria-kv`, secret `launcher-updater-minisign-key`; and the `LAUNCHER_UPDATER_MINISIGN_KEY` secret of the `launcher-release` GitHub environment |
+| Its password | Key Vault `cimmeria-kv`, secret `launcher-updater-minisign-password`; and the `LAUNCHER_UPDATER_MINISIGN_PASSWORD` environment secret |
+| The public key | Key Vault `cimmeria-kv`, secret `launcher-updater-pubkey`; and the repository variable `LAUNCHER_UPDATER_PUBKEY` |
+
+The two secrets are **environment** secrets, not repository secrets, so only the
+release workflow's `sign` job sees them, and the `launcher-release` environment
+admits the `main` branch only. The public key is a variable rather than a
+secret: it is public, and a visible value makes a mismatch easy to spot.
+
+Without the secrets a release still builds and publishes its dated release, but
+unsigned: no feed, no `launcher-current` refresh, so the stable links don't move.
+Without the variable, launchers build with their updater **Disabled**. The
+private key without the variable fails the `sign` job.
+
+To generate the pair for a new repository or a rotation, follow the
+[key holder steps](../../crates/launcher/desktop/docs/release.md#key-holder-steps-d-lx9)
+in the release guide. **Rotating strands every launcher built with the old public
+key**: it can no longer verify a release and never updates again, so its players
+replace it once by hand from the stable link. Rotate only if the key is
+compromised, and announce it as for the egui retirement
+([announcement](../analysis/launcher-consolidation/announcement.md)).
+
+---
+
+## Part 4 — Debug-log uploads via Azure Blob
+
+Log uploads need a write-capable destination that the launcher can reach
 without per-user credentials; GitHub Releases doesn't support
-unauthenticated writes.
+unauthenticated writes. The launcher's **Upload debug logs** button zips the
+game's logs and PUTs the zip once as `logs/<host>-<utc>-<digest>.zip` (D-LX11).
 
 ### One-time setup
 
 ```bash
-az group create --name cimmeria --location <region>
+az group create --name <resource-group> --location <region>
 
 az storage account create \
-  --name cimmeriastorage \
-  --resource-group cimmeria \
+  --name <storage-account> \
+  --resource-group <resource-group> \
   --sku Standard_LRS \
   --kind StorageV2
 
@@ -297,35 +327,39 @@ az storage account create \
 # anonymous reads needed; logs are only accessed by operators via the
 # Azure portal or `az storage blob` commands.
 az storage container create \
-  --name sgw \
-  --account-name cimmeriastorage
+  --name <container> \
+  --account-name <storage-account>
 ```
 
 ### Mint the log-upload SAS
 
-A SAS with **create-only** permission on the `logs/` prefix, valid for
-~1 year. Do not grant `r`, `l`, `d`, or `w` — only `c`.
+A SAS with **create-only** permission (`c`) on that one container, with an
+expiry about a year out. Do not grant `r`, `l`, `d`, or `w`: create cannot
+overwrite an existing blob, and every upload's name is unique, so a leaked SAS
+can add blobs but never replace other players' logs. Write (`w`) would let it
+overwrite them.
 
 ```bash
 EXPIRY=$(date -u -d "+365 days" +%Y-%m-%dT%H:%MZ)
 
-az storage account generate-sas \
-  --account-name cimmeriastorage \
-  --services b \
-  --resource-types co \
+az storage container generate-sas \
+  --account-name <storage-account> \
+  --name <container> \
   --permissions c \
   --expiry "$EXPIRY" \
   --https-only \
   --output tsv
 ```
 
-Build the SAS URL: `https://cimmeriastorage.blob.core.windows.net/sgw?<sas>`.
-Add as a GitHub Actions secret named `LAUNCHER_LOG_SAS_URL`.
+Build the SAS URL, `https://<storage-account>.blob.core.windows.net/<container>?<sas>`,
+and store it as the GitHub Actions secret `LAUNCHER_LOG_SAS_URL`. The release
+workflow passes it to the launcher build steps, and the desktop engine compiles
+it in with `option_env!` (`engine/src/storage/log_upload/store.rs`). A build
+without it hides the button.
 
 Higher-security alternative: use a user-delegation SAS bound to a
-service principal, with a stored access policy scoping it to the
-`logs/` prefix specifically. Skip if the threat model (Part 4 below)
-doesn't justify the extra ops.
+service principal, with a stored access policy. Skip if the threat model
+(Part 5 below) doesn't justify the extra ops.
 
 ### Optional lifecycle policy
 
@@ -339,7 +373,7 @@ Auto-delete uploaded log zips after 90 days to cap storage cost:
       "enabled": true,
       "type": "Lifecycle",
       "definition": {
-        "filters": { "blobTypes": ["blockBlob"], "prefixMatch": ["sgw/logs/"] },
+        "filters": { "blobTypes": ["blockBlob"], "prefixMatch": ["<container>/logs/"] },
         "actions": { "baseBlob": { "delete": { "daysAfterModificationGreaterThan": 90 } } }
       }
     }
@@ -349,13 +383,12 @@ Auto-delete uploaded log zips after 90 days to cap storage cost:
 
 ---
 
-## Part 4 — Threat model: SAS in the client binary
+## Part 5 — Threat model: secrets in the client binary
 
-The log-upload SAS is **baked into the released launcher .exe at
-compile time** via `option_env!("LAUNCHER_LOG_SAS_URL")` in
-[`crates/launcher/src/config.rs`](../../crates/launcher/src/config.rs).
-Anyone who can `strings` the binary or attach a debugger can extract
-and reuse the SAS URL.
+The log-upload SAS is **compiled into the released launcher** with
+`option_env!("LAUNCHER_LOG_SAS_URL")`. Anyone who can run `strings` on the
+binary or attach a debugger can extract and reuse the SAS URL. The two public
+keys are compiled in too, but they are public by design.
 
 This is a deliberate trade-off — the alternative is a server-issued
 short-lived upload token, which requires a server-side issuer endpoint
@@ -365,11 +398,13 @@ discussion).
 | Concern | Mitigation |
 |---|---|
 | Read other players' logs | SAS has `c` (create) permission only — no read/list/delete |
+| Overwrite other players' logs | Create cannot overwrite an existing blob, and every upload name is unique |
 | Tamper with seed / patches / manifest | **Closed by manifest signing** (Part 2). Even an attacker with full container write can't ship a valid signed manifest. |
-| Storage cost amplification (junk uploads) | Lifecycle policy auto-deletes after 90 days (Part 3, optional). Account-level spending cap on the storage account caps the worst case. |
+| Ship a malicious launcher update | **Closed by updater signing** (Part 3). The feed and zip must verify against the compiled-in Minisign key, and the signed version must match the offer. |
+| Storage cost amplification (junk uploads) | Lifecycle policy auto-deletes after 90 days (Part 4, optional). Account-level spending cap on the storage account caps the worst case. |
 | Identity exposure | None — SAS is a signed query string, doesn't carry account keys or AAD tokens. |
 
-### Operator action items before publishing the first launcher release
+### Operator action items before publishing a launcher release
 
 1. **Storage cost cap.** Subscription → Cost Management → Budgets →
    alert at the monthly budget you're comfortable with (e.g. $10/month).
@@ -388,23 +423,24 @@ credential.
 
 ### Rotation
 
-1. Generate a new SAS (Part 3).
+1. Generate a new SAS (Part 4).
 2. Update the `LAUNCHER_LOG_SAS_URL` GitHub secret with the new value.
 3. Cut a new launcher release via `/release-launcher`. The new binary
-   bakes in the new SAS.
+   bakes in the new SAS, and launchers update to it from Settings.
 4. Old launcher binaries continue working until the old SAS expires.
 
 There is no revocation pathway short of expiry unless you use a
 user-delegation SAS with a stored access policy whose validity you
-can shorten. Account SAS revocation requires rotating the storage
+can shorten. Account-key-signed SAS revocation requires rotating the storage
 account key, which would break any other use of the account.
 
 ---
 
 ## Cross-references
 
-- Launcher design: [docs/client/sgw-launcher.md](sgw-launcher.md)
-- User + operator guide: [docs/client/launcher-guide.md](launcher-guide.md)
-- Release workflow: [.github/workflows/launcher-release.yml](../../.github/workflows/launcher-release.yml)
-- Manifest signing code: [`crates/launcher/src/manifest.rs`](../../crates/launcher/src/manifest.rs) (`MANIFEST_SIGNING_PUBKEY`, `verify_manifest_signature`)
-- Log-upload code: [`crates/launcher/src/logs.rs`](../../crates/launcher/src/logs.rs) (`upload_blob`)
+- Player and operator guide: [docs/client/launcher-guide.md](launcher-guide.md)
+- Launcher self-update: [docs/client/launcher-self-update.md](launcher-self-update.md)
+- Release workflow and its jobs: [crates/launcher/desktop/docs/release.md](../../crates/launcher/desktop/docs/release.md), [.github/workflows/launcher-release.yml](../../.github/workflows/launcher-release.yml)
+- Manifest signing code: [`crates/launcher-core/src/manifest.rs`](../../crates/launcher-core/src/manifest.rs) (`MANIFEST_SIGNING_PUBKEY`, `verify_manifest_signature`)
+- Log-upload code: [`crates/launcher/desktop/engine/src/storage/log_upload/`](../../crates/launcher/desktop/engine/src/storage/log_upload/)
+- Updater code: [`crates/launcher/desktop/engine/src/storage/updater/`](../../crates/launcher/desktop/engine/src/storage/updater/)

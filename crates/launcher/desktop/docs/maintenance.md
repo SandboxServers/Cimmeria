@@ -52,7 +52,18 @@ dismissal, double-click protection, owned-folder targeting, acknowledged removal
 reinstall and unchanged consent; it does not prove native deletion. No app
 was opened and no visual UAT is claimed; native Windows validation remains a gate.
 
-## Planned repair
+## Adopted installs
 
-The [Repair design contract](repair.md) defines reconstruction, permanent ownership
-and recoverable replacement gates. Repair is not implemented or exposed in the UI.
+An install adopted in place on Windows (D-LX12) is never detached or deleted as a
+whole: Uninstall removes only the entries the launcher manages there (`game`, its
+Repair and Update work and backups, `content-ready.json` and the owner marker
+last), and files the release does not list stay. See
+[In-place adoption on Windows](migration.md#in-place-adoption-on-windows).
+
+## Repair
+
+Settings → **Repair game** reconstructs the recorded release and replaces game
+modifications, with precommit cancellation, explicit recovery and abandonment,
+and separate removal of the old backup. The [Repair contract](repair.md) defines
+reconstruction, ownership and the recoverable replacement gates; platform
+release validation is the LX-26 Windows UAT.

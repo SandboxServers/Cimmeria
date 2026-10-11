@@ -2,7 +2,7 @@
 
 > **Diátaxis type**: explanation (ADR)
 > **Audience**: engineers extending `cimmeria-client-patches`, or deciding where a new client-side fix belongs
-> **Last updated**: 2026-10-04
+> **Last updated**: 2026-10-11
 > **Status**: Accepted (decision D2 of the [Black Market plan](../analysis/black-market/README.md), 2026-09-26). The Black Market receive and send paths are built, and verified only statically and by unit tests. The launcher injects the DLL on every `SGW.exe` launch (BM-06), and the UI overlay lives in `crates/client-patches/overlay/` (BM-05).
 
 ## Context
@@ -89,27 +89,31 @@ The addresses and their evidence are in
 
 ## How the launcher loads it
 
-The launcher side is BM-06; the operator detail is in
-[sgw-launcher.md](../client/sgw-launcher.md#client-patches-dll).
+The launcher side was BM-06, built in the egui launcher that LX-18
+retired; the desktop launcher took it over (LX-04). The operator detail is
+in the desktop [launch contract](../../crates/launcher/desktop/docs/launch.md#patch-policy-per-installation).
 
-- **Always, with an opt-out.** **Launch SGW.exe** starts the game
-  suspended, injects the DLL and resumes it. The checkbox **Load client
-  patches** (`client_patches.enabled`, on by default) turns it off; the
-  telemetry opt-in has no effect on it. A launch without the DLL says
-  why in the launcher's status log.
-- **Shipped inside the launcher.** The release workflow builds the i686
-  DLL and embeds it in the launcher, which writes it to a
-  content-addressed directory beside itself at launch.
+- **Always, with an opt-out.** **Play** starts the game suspended,
+  injects the DLL and resumes it. The Settings checkbox **Load client
+  patches** (`client_patches_enabled`, on by default) turns it off; an
+  adopted install keeps the setting its adoption reviewed. The telemetry
+  opt-in has no effect on it. Settings → **Changes to your client** lists
+  the DLLs Play loads.
+- **Shipped beside the launcher.** The release workflow builds the i686
+  DLL and puts it in the launcher zip's `windows\` folder, and compiles
+  its SHA-256 into the launcher (`CIMMERIA_CLIENT_PATCHES_SHA256`); Play
+  refuses a copy that does not match.
 - **Injected through a 32-bit helper.** The launcher stays 64-bit.
   Injection hands a remote thread the injector's own `LoadLibraryW`,
   which only exists at the target's bitness, and a 64-bit process
   cannot reach the 32-bit one in `SGW.exe` (a suspended WOW64 process
   has no 32-bit kernel32 mapped yet, measured, and a thread it starts
-  there runs in 64-bit mode). So the launcher runs `sgw-start32.exe`, a
-  small i686 helper (crate `cimmeria-start32`) it also embeds and keeps
-  at a stable path beside itself: it starts `SGW.exe` suspended,
-  injects the DLLs in order, resumes, and reports the pid, which the
-  launcher follows. The contract is in the
+  there runs in 64-bit mode). So the launcher runs its i686 launch
+  worker, `cimmeria-launch-worker.exe` from the same `windows\` folder
+  (package `cimmeria-runtime-probe`, built on `cimmeria-client-launch`):
+  it starts `SGW.exe` suspended, injects the DLLs in order, resumes, and
+  the launcher follows the game. The lab does the same through the i686
+  `sgw-start32.exe` helper (crate `cimmeria-start32`). The contract is in the
   [client-launch README](../../crates/client-launch/README.md). A direct
   injection across bitness is refused with `BitnessMismatch`.
 - **Order.** When the telemetry DLL goes in as well, this DLL goes
@@ -127,8 +131,6 @@ The launcher side is BM-06; the operator detail is in
 - **The UI overlay** ships as a manifest patch with `"root":
   "sgw_game"`, extracted into the client's `SGWGame/` directory, packed
   by `pack-client-overlay` in the launcher release.
-- **Atera debug launches** do not load it: the bat starts `SGW.exe`
-  itself.
 
 ## Consequences
 

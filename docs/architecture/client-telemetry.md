@@ -2,11 +2,11 @@
 
 > **Diátaxis type**: explanation
 > **Audience**: engineers extending or reviewing the `cimmeria-client-telemetry` DLL and its launcher-side injector (issue #417)
-> **Last updated**: 2026-10-04
+> **Last updated**: 2026-10-11 (the desktop launcher is now the only launcher, LX-18)
 > **Engine capture (2026-09-28)**: adds the engine layer on top of the hooks below: log sinks for BigWorld, UE3, log4cxx and the OS, plus subsystem seams (actors, Matinee, level streaming, Bink, FMOD, PhysX, file I/O, D3D9, frame health): 6 inline, 4 vtable and 15 IAT hooks, a vectored exception handler and 3 D3D9 COM patches. See [Engine layer: log sinks and subsystem seams](#engine-layer-log-sinks-and-subsystem-seams). Statically verified, not yet run in a live client.
 > **Status**: Phases 2-5 substantially landed; the launcher injects the DLL for players who opt in to telemetry (see [Who gets the DLL](#who-gets-the-dll) and the fingerprint section). **68 hooks total** across 3 techniques: 57 inline JMP hooks (4 engine + state-flag dispatcher, anim notify A+B, console command, Bink tick, entity-method drop oracle, CME event-registry lookup, and 11 entity-lifecycle, inbound-message and outgoing-RPC hooks added 2026-09-28, 5 Mercury receive-path hooks added 2026-09-29, 3 SequenceManager drop hooks and 3 `Debug:log` hooks added 2026-09-29, and 24 ability hooks added 2026-10-04, partly seen live on 2026-10-04 (see [Ability telemetry](#ability-telemetry-clientability)): 12 for presses, sends and the sequence join ([AB-C1, AB-C2](#presses-and-sends-ab-c1-ab-c2)) and 12 for `client.ability.applied` and the `onSequence` net-in drop ([AB-C4, AB-C5](#what-the-client-applied-clientabilityapplied-ab-c4))), 8 IAT-swap hooks (3 Lua + 4 OS + raw `recvfrom`), 3 vtable-swap hooks (CEGUI logger, now with the line text + AActor::Tick + USequence::UpdateOp). The two CME subscribers (`onClientMapLoad`, `onClientReady`) were removed on 2026-09-28: the subscribe API they called is not one (see Hook taxonomy item 1). Every inline address is fingerprinted; the `recvfrom` IAT slot is checked against the loaded Winsock export before swapping. **Removed pending re-resolution (#989)**: `Mercury::Nub::handleMessage` and the cooked-data PAK load, whose anchors were not function entries. **Deferred**: CME RTTI auto-discovery (~270 more events; needs `.rdata` scanner), FMOD runtime vtable traversal, ProcessEvent slot search, PropertyNode<T> per-T enumeration, Phase 6 crash filter.
 
-How `cimmeria-client-telemetry.dll` is side-loaded into `SGW.exe` by `sgw-launcher`, what it observes, and how those observations flow into SigNoz alongside the server-side OTLP stream.
+How `cimmeria-client-telemetry.dll` is side-loaded into `SGW.exe` by the [desktop launcher](../../crates/launcher/desktop/docs/launch.md#opt-in-game-telemetry) (and by the lab supervisor), what it observes, and how those observations flow into SigNoz alongside the server-side OTLP stream.
 
 The per-anchor hook table lives in [`docs/reverse-engineering/findings/client-instrumentation-hookpoints.md`](../reverse-engineering/findings/client-instrumentation-hookpoints.md). This document is the design rationale and the stack-pick justification — read the anchor doc for "where do I hook function X?" and this doc for "why does the whole thing look like this?"
 
@@ -18,7 +18,7 @@ The motivating use case: the cold-relog freeze investigation (2026-05-26). Serve
 
 ## Trust model
 
-Same machine, same user, same launcher session. The launcher is already a trusted desktop app the developer installed — DLL injection doesn't escalate privileges. The DLL ships alongside `sgw-launcher.exe` (signed at deployment time; not per-injection). No remote-code-execution surface: the DLL itself only reads from SGW.exe's memory; outbound network traffic is HTTPS to the launcher's HMAC-protected `/api/telemetry/upload-chunk` endpoint.
+Same machine, same user, same launcher session. The launcher is already a trusted desktop app the developer installed — DLL injection doesn't escalate privileges. The DLL ships in the launcher zip's `windows\` folder, and the launcher refuses to inject a copy whose SHA-256 is not the one compiled into it (releases are not code-signed, D-LX10). No remote-code-execution surface: the DLL itself only reads from SGW.exe's memory; outbound network traffic is HTTPS to the launcher's HMAC-protected `/api/telemetry/upload-chunk` endpoint.
 
 **Project preference (issue #417):** authored from scratch. AteraLoader.exe / AtreaRL.dll are reverse-engineering references only — their behaviour in [`docs/technical/atrearl-loader.md`](../technical/atrearl-loader.md) is useful for "what hooks work in practice," not as code we extend or wrap.
 
@@ -28,21 +28,21 @@ Same machine, same user, same launcher session. The launcher is already a truste
 
 Owner decision, 2026-09-29: players get the DLL, but only when they opt in to telemetry in the launcher.
 
-- **Opt-in on.** **Launch SGW.exe** starts the telemetry session first: the dev-session handshake (at most 10 s) mints a player token and writes `current-session.json` next to `SGW.exe`, because the DLL reads its token and upload endpoint from that file as it boots. The game then starts through `sgw-start32` with the client-patches DLL and, after it, the telemetry DLL, the same order as the lab's `launch_request`. Both upload with the same player token.
-- **Opt-in off.** The launch is the non-telemetry launch: client patches only, no session, no telemetry DLL. The checkbox takes effect from the next launch.
-- **Never blocks play.** No session (server down, refused, timed out): the game starts without the DLL. DLL missing or refused: the game starts without it, and the status log and the launcher's `client.telemetry_dll.launch` event say why. A failed two-DLL injection is retried with the client patches alone, then plainly.
+- **Opt-in on.** **Play** starts the telemetry session first: the dev-session handshake against the installation's first login server (bounded to 8 s) mints a player token and writes `Working\Binaries\sessions\current-session.json`, because the DLL reads its token and upload endpoint from that file as it boots. The game then starts through the launcher's i686 launch worker (`cimmeria-launch-worker.exe`) with the client-patches DLL and, after it, the telemetry DLL, the same order as the lab's `launch_request`. Both upload with the same player token.
+- **Opt-in off.** The launch is the non-telemetry launch: client patches only, no session, no telemetry DLL. The setting ("Send game diagnostics while playing") takes effect from the next Play. An adopted install launches without the DLL for now.
+- **Never blocks play.** No session (server down, refused, timed out), a refused upload address or an unwritable session file: the DLL is left out and the game starts as it would with telemetry off. `game-telemetry-status.json` in the launcher's state directory records which (`attached`, `session_unavailable`, `endpoint_refused`, `session_not_written`), and Settings shows it.
 
-**Only the player build ships.** The release build compiles the DLL with default features (`tools/launcher-release/build.sh i686`), never `lab-bridge`, and embeds it in the launcher, which writes it to `<launcher dir>/client-telemetry/<sha256 prefix>/` at launch (a dev launcher uses a `cimmeria-client-telemetry.dll` beside itself). A `lab-bridge` build logs `cimmeria_client_telemetry::LAB_BRIDGE_MARKER` at boot, so the text is in its image; three checks refuse an image containing it: the launcher's `build.rs` will not embed it, the release `verify` stage fails, and the launcher will not inject one it finds at launch. The `sgw-testhost` boot tests pin the check against real builds (the lab build carries the marker, the default build does not and opens no port even with a `lab` block in its session). Every `client.dll.attached` event carries `dll_flavor` (`player` or `lab-bridge`).
+**Only the player build ships.** The release build compiles the DLL with default features (the `helpers` stage of `tools/launcher-release/build-desktop.sh`), never `lab-bridge`, stages it in `windows\` beside the launcher and compiles its SHA-256 into the launcher as `CIMMERIA_CLIENT_TELEMETRY_SHA256`. A `lab-bridge` build logs `cimmeria_client_telemetry::LAB_BRIDGE_MARKER` at boot, so the text is in its image; the image is refused by `tools/stage-helper.py --kind client-telemetry`, by the release `verify` stage, when the launcher resolves its bundle, and at Play admission ([launch contract](../../crates/launcher/desktop/docs/launch.md#opt-in-game-telemetry)). The `sgw-testhost` boot tests pin the check against real builds (the lab build carries the marker, the default build does not and opens no port even with a `lab` block in its session). Every `client.dll.attached` event carries `dll_flavor` (`player` or `lab-bridge`).
 
 **Known limit.** The DLL reads the session once, at boot, and never refreshes its token. Dev-session tokens live 8 hours, so a session longer than that stops uploading DLL events (the launcher's own uploads refresh and continue).
 
 ## Architecture
 
 ```text
-sgw-launcher (egui, 64-bit) -- Launch SGW.exe, telemetry opted in
-   1. POST /auth/dev-session (no session_kind -> player token)
+desktop launcher (Tauri, 64-bit) -- Play, game diagnostics on
+   1. POST /api/auth/dev-session (no session_kind -> player token)
       write <Binaries>/sessions/current-session.json
-   2. sgw-start32.exe (i686 helper, embedded in the launcher):
+   2. cimmeria-launch-worker.exe (i686 helper in the zip's windows\ folder):
      - spawn SGW.exe suspended
      - inject cimmeria-client-patches.dll, then cimmeria-client-telemetry.dll
      - resume
@@ -100,7 +100,7 @@ Choices made for issue #417 after 2026-current-best-practice research. Each row 
 | IAT hooks | Hand-rolled PE walk + `goblin` | Re-scan on `LoadLibraryW` for delay-loaded modules |
 | Vtable hooks | Single atomic pointer store, restore on detach | Standard UE3 modding idiom; atomic + re-entry-safe |
 | MPMC ring | `thingbuf` | `crossbeam-queue::ArrayQueue` is provably not lock-free |
-| Injection | `CreateProcess(SUSPENDED)` + `CreateRemoteThread(LoadLibraryW)` | Same pattern every ASI loader / ReShade / Special K uses; Defender-default-clean. The injector passes its own `LoadLibraryW` address, so it must be 32-bit like `SGW.exe`: the 64-bit launcher injects through the i686 `sgw-start32` helper ([client-launch README](../../crates/client-launch/README.md)), and a 64-bit direct injection is refused with `BitnessMismatch`. The launcher injects `cimmeria-client-patches` first when both DLLs go in ([client-patches.md](client-patches.md)) |
+| Injection | `CreateProcess(SUSPENDED)` + `CreateRemoteThread(LoadLibraryW)` | Same pattern every ASI loader / ReShade / Special K uses; Defender-default-clean. The injector passes its own `LoadLibraryW` address, so it must be 32-bit like `SGW.exe`: the 64-bit desktop launcher injects through its i686 launch worker (`cimmeria-launch-worker.exe`) and the lab through the i686 `sgw-start32` helper, both built on `cimmeria-client-launch` ([client-launch README](../../crates/client-launch/README.md)), and a 64-bit direct injection is refused with `BitnessMismatch`. The launcher injects `cimmeria-client-patches` first when both DLLs go in ([client-patches.md](client-patches.md)) |
 | HTTP from DLL | `ureq` + `rustls-tls` | No tokio runtime inside an injected DLL; no `opentelemetry-otlp` SDK |
 | ProcessEvent filter | `FName` integer allowlist (built once), thread-local re-entry guard | String compare in a function called millions of times/sec halts the game |
 | CME subscriber object | `#[repr(C)]` fake-vtable struct, `extern "thiscall"` slots, **static `.data` allocation** | Subscriber lifetime: process-lifetime mandatory (see below) |
@@ -152,7 +152,7 @@ The event variant on both sides is `ClientNative`:
 
 Wire shape pinned by paired tests:
 
-- Launcher side: [`crates/launcher/src/telemetry/events.rs`] `client_native_serializes_with_expected_shape`
+- Launcher side: [`crates/launcher-core/src/telemetry/events.rs`] `client_native_serializes_with_expected_shape`
 - Server side: [`crates/admin-api/src/routes/telemetry/`] `client_native_event_matches_launcher_shape`
 
 If either side renames a field, the symmetric test fails loudly.
@@ -649,7 +649,7 @@ To preserve "observe without changing behavior":
 
   The lab build must bind the session's loopback port, refuse a wrong token, accept the right one, and answer a request. With no `Tick` hook in the host, that answer is the dispatch timeout.
 - Main `.github/workflows/test.yml` excludes the Windows-only cdylib from the Linux workspace check.
-- `crates/launcher/`'s existing CI continues to cover the injector module via its own pipeline.
+- The injector lives in `cimmeria-client-launch`, which the `client-launch.yml` workflow covers; the desktop launcher's launch worker that calls it is covered by `launcher-desktop.yml`.
 
 ## Cross-references
 

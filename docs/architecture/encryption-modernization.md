@@ -54,7 +54,8 @@ Provide the **inline / IAT / vtable hooking** layer all client patching needs.
 **Status update (2026-06-20):** [#504](https://github.com/SandboxServers/Cimmeria/pull/504)
 (`cimmeria-client-telemetry` Phases 2–5) **built and shipped this layer** — it is
 no longer from-scratch work. #504 provides the injection vehicle
-(`crates/launcher/src/inject.rs::inject_dll`, LoadLibraryW-in-target) plus three
+(`inject_dll`, LoadLibraryW-in-target, since moved to
+`crates/client-launch/src/inject.rs`) plus three
 hook techniques in `crates/client-telemetry/src/hooks/`: `inline_hooks.rs`
 (trampoline detours), `iat_hooks.rs` (IAT-slot replace), and `vtable_hooks.rs`
 (vtable swap), all i686-CI-tested. They map 1:1 to the client patches below:

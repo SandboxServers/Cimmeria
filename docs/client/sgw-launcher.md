@@ -1,11 +1,26 @@
 ---
-title: "SGW Launcher"
+title: "SGW Launcher (retired)"
 type: explanation
 audience: engineers
-last_updated: 2026-10-04
+status: archived
+last_updated: 2026-10-11
 ---
 
-# SGW Launcher
+# SGW Launcher (retired)
+
+> [!WARNING]
+> **Archived 2026-10-11.** This describes the egui launcher (`sgw-launcher`,
+> `crates/launcher/src/`), which LX-18 of the
+> [launcher consolidation](../analysis/launcher-consolidation/README.md) deleted.
+> No release builds it, and the code paths below no longer exist. The launcher
+> is now the desktop launcher: read its
+> [README](../../crates/launcher/desktop/README.md) for how it works, the
+> [launcher guide](launcher-guide.md) for players and the
+> [release guide](../../crates/launcher/desktop/docs/release.md) for releases.
+> The shared install, manifest, client-setup and telemetry code this page
+> describes moved to [`crates/launcher-core/`](../../crates/launcher-core/)
+> (crate `cimmeria-launcher-core`). The page is kept unchanged below for its
+> design history.
 
 A standalone Windows .exe that installs the SGW client from GitHub
 Releases, applies declared patches in order, optionally launches the
