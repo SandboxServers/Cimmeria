@@ -233,6 +233,13 @@ switch is released. A session that ends while the switch is on loses
 its end-of-session bundle, which is not retried. The DLL keeps its
 batch, as for any failed upload.
 
+Each refused dev-session request logs one row on `cimmeria-server`, so a
+stream that stops has a line saying why: the switch is a WARN with
+`reason = dev_session_kill_switch`. A refresh refused for an expired token,
+for a session past its lifetime cap, or for a token that does not decode is
+an INFO with `reason = dev_session_expired`, `dev_session_lifetime_exceeded`
+or `dev_session_bad_token`.
+
 Every telemetry route checks the switch:
 
 | Route | Under the kill switch |
