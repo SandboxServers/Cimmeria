@@ -10,7 +10,7 @@ use axum::extract::{ConnectInfo, MatchedPath};
 use axum::http::Request;
 use axum::middleware::Next;
 use axum::response::Response;
-use tracing::Span;
+use tracing::{Level, Span};
 
 /// The span around one request: tower-http's `DefaultMakeSpan` at INFO
 /// (name `request`; fields `method`, `uri`, `version`), except that `uri`
@@ -78,28 +78,31 @@ pub(crate) async fn admin_request_row(request: Request<Body>, next: Next) -> Res
     let response = next.run(request).await;
     let latency_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
     let status = response.status().as_u16();
-    if status >= 500 {
-        tracing::warn!(
-            target: "admin.request",
-            method = %method,
-            path = %path,
-            status,
-            latency_ms,
-            peer = peer.as_deref(),
-            "admin request failed"
-        );
+    let message = if status >= 500 {
+        "admin request failed"
     } else {
-        tracing::info!(
-            target: "admin.request",
-            method = %method,
-            path = %path,
-            status,
-            latency_ms,
-            peer = peer.as_deref(),
-            "admin request"
-        );
-    }
+        "admin request"
+    };
+    tracing::event!(
+        target: "admin.request",
+        row_level(status),
+        method = %method,
+        path = %path,
+        status,
+        latency_ms,
+        peer = peer.as_deref(),
+        "{message}"
+    );
     response
+}
+
+/// The level of an `admin.request` row: WARN for a 5xx status, INFO otherwise.
+pub(crate) fn row_level(status: u16) -> Level {
+    if status >= 500 {
+        Level::WARN
+    } else {
+        Level::INFO
+    }
 }
 
 /// The recorder the request-span tests share.
@@ -148,6 +151,7 @@ pub(crate) mod recorder {
         fn on_event(&self, event: &Event<'_>, _: Context<'_, S>) {
             let mut lines = self.0.lock().unwrap();
             lines.push(format!("event target={}", event.metadata().target()));
+            lines.push(format!("event level={}", event.metadata().level()));
             event.record(&mut Lines(&mut lines));
         }
     }
@@ -167,9 +171,12 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::{TcpListener, TcpStream};
     use tokio::sync::broadcast;
+    use tracing::subscriber::DefaultGuard;
+    use tracing::Level;
     use tracing_subscriber::layer::SubscriberExt;
 
     use super::recorder::Shown;
+    use super::row_level;
     use crate::ws::broadcast_layer::LogBuffer;
     use cimmeria_services::audit::LoginEventBuffer;
     use cimmeria_services::orchestrator::Orchestrator;
@@ -185,16 +192,15 @@ mod tests {
         String::from_utf8_lossy(&response).into_owned()
     }
 
-    /// One `admin.request` row for `GET /api/players`, from the real admin
-    /// router served with connect info (so the peer is recorded). Reverting
-    /// the middleware layer in `build_router` leaves no such row.
-    #[tokio::test]
-    async fn admin_request_row_names_method_path_and_status() {
+    /// Records everything shown to a subscriber on this thread, and serves
+    /// the real admin router with connect info (so the peer is recorded).
+    /// The returned guards keep the recorder the thread default until dropped.
+    async fn serve_recorded() -> (SocketAddr, Shown, (tracing::Dispatch, DefaultGuard)) {
         let shown = Shown::default();
         // Two live subscribers stop a cached "nobody is listening" from
         // hiding the row; the thread default sees the listener's tasks.
-        let _second = tracing::Dispatch::new(tracing_subscriber::registry());
-        let _default =
+        let second = tracing::Dispatch::new(tracing_subscriber::registry());
+        let default =
             tracing::subscriber::set_default(tracing_subscriber::registry().with(shown.clone()));
 
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -216,6 +222,15 @@ mod tests {
             .await
             .unwrap();
         });
+        (addr, shown, (second, default))
+    }
+
+    /// One `admin.request` row for `GET /api/players`, from the real admin
+    /// router served with connect info (so the peer is recorded). Reverting
+    /// the middleware layer in `build_router` leaves no such row.
+    #[tokio::test]
+    async fn admin_request_row_names_method_path_and_status() {
+        let (addr, shown, _guards) = serve_recorded().await;
 
         let response = get(addr, "/api/players").await;
         assert!(response.starts_with("HTTP/1.1 200"), "{response:?}");
@@ -225,6 +240,7 @@ mod tests {
             .iter()
             .position(|line| line == "event target=admin.request")
             .unwrap_or_else(|| panic!("no admin.request row in {lines:#?}"));
+        assert_eq!(lines[row + 1], "event level=INFO", "{lines:#?}");
         let fields = &lines[row..];
         for wanted in [
             "method=GET",
@@ -242,5 +258,38 @@ mod tests {
             .filter(|line| *line == "event target=admin.request")
             .count();
         assert_eq!(rows, 1, "{lines:#?}");
+    }
+
+    /// A probe to no route: its row says `path=unmatched`, not the probe's
+    /// text, and the query string is written nowhere. The request span's own
+    /// `uri` is the path alone, so `zz-probe` appears in that one line only.
+    #[tokio::test]
+    async fn unmatched_probe_row_writes_no_raw_uri() {
+        let (addr, shown, _guards) = serve_recorded().await;
+
+        let response = get(addr, "/zz-probe?x=1").await;
+        assert!(response.starts_with("HTTP/1.1 404"), "{response:?}");
+
+        let lines = shown.lines();
+        let row = lines
+            .iter()
+            .position(|line| line == "event target=admin.request")
+            .unwrap_or_else(|| panic!("no admin.request row in {lines:#?}"));
+        let fields = &lines[row..];
+        assert!(fields.iter().any(|line| line == "path=unmatched"), "{lines:#?}");
+        assert!(fields.iter().any(|line| line == "status=404"), "{lines:#?}");
+        let probes: Vec<&String> = lines.iter().filter(|line| line.contains("zz-probe")).collect();
+        assert_eq!(probes, [&"uri=/zz-probe".to_owned()], "{lines:#?}");
+        assert!(lines.iter().all(|line| !line.contains("x=1")), "{lines:#?}");
+    }
+
+    /// The row level is INFO below 500 and WARN from 500 up.
+    #[test]
+    fn row_level_is_warn_only_for_a_5xx_status() {
+        assert_eq!(row_level(200), Level::INFO);
+        assert_eq!(row_level(404), Level::INFO);
+        assert_eq!(row_level(499), Level::INFO);
+        assert_eq!(row_level(500), Level::WARN);
+        assert_eq!(row_level(503), Level::WARN);
     }
 }
