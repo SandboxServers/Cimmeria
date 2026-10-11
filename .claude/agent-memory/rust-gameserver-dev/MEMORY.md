@@ -101,6 +101,8 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [launcher-windows-adoption-path-traps](launcher-windows-adoption-path-traps.md) — Windows adoption: `<root>\game` invariant, verbatim-root joins, zip `enclosed_name` backslashes, Windows file identity, UAT binary path.
 - [desktop-repair-update-terminal-hooks](desktop-repair-update-terminal-hooks.md) — Repair/Update `finish_failure` runs after every commit (dropped handoff); run-end hooks must check the op was open.
 - [launcher-release-feed-traps](launcher-release-feed-traps.md) — release zip needs the exe at its root; key/sig base64 forms; Tauri CLI keys work; prove feeds with `examples/release_feed.rs`.
+- [launcher-telemetry-tailer-traps](launcher-telemetry-tailer-traps.md) — Tailer refresh() retain drops other roots' files (egui tail ships nothing once sessions/ exists); tick order is HashMap order; opt-out discard counter.
+- [launcher-telemetry-tailer-traps](launcher-telemetry-tailer-traps.md) — one refresh per tick; NTFS coarse creation times vs baseline; same-tick ties; shared queue across sessions; undo must not bump discards.
 
 ## Injected client DLLs
 
