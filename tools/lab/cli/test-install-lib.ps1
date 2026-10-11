@@ -158,6 +158,27 @@ try {
     Check ((Get-Content -Raw -LiteralPath $dst).Trim() -eq 'third build') '-DryRun does not change the destination'
     Check (@(Get-ChildItem -LiteralPath $fileDir -Filter 'dst.exe.*.old').Count -eq 2) '-DryRun makes no backup'
 
+    # A missing source must not cost the destination its file (the rename comes first).
+    $gone = $false
+    try { Install-LabFile (Join-Path $fileDir 'absent.exe') $dst } catch { $gone = $true }
+    Check ($gone -and ((Get-Content -Raw -LiteralPath $dst).Trim() -eq 'third build') -and (@(Get-ChildItem -LiteralPath $fileDir -Filter 'dst.exe.*.old').Count -eq 2)) 'a missing source throws and leaves the destination in place'
+
+    # Replacing a running exe (lab install runs from lab.exe itself): rename works, overwrite does not.
+    $runDir = Join-Path $tmp 'running'
+    New-Item -ItemType Directory $runDir | Out-Null
+    $runExe = Join-Path $runDir 'lab.exe'
+    Copy-Item -LiteralPath (Join-Path $env:WINDIR 'System32\PING.EXE') -Destination $runExe
+    $proc = Start-Process -FilePath $runExe -ArgumentList '-n', '30', '127.0.0.1' -PassThru -WindowStyle Hidden
+    try {
+        Start-Sleep -Milliseconds 500
+        $newExe = Join-Path $runDir 'new.exe'
+        Copy-Item -LiteralPath (Join-Path $env:WINDIR 'System32\whoami.exe') -Destination $newExe
+        Install-LabFile $newExe $runExe
+        Check (((Get-FileHash -LiteralPath $runExe).Hash -eq (Get-FileHash -LiteralPath $newExe).Hash) -and (@(Get-ChildItem -LiteralPath $runDir -Filter 'lab.exe.*.old').Count -eq 1)) 'a running exe is replaced, the old one kept as .old'
+    } finally {
+        $proc.Kill()
+        $proc.WaitForExit()
+    }
     # --- tools\lab\install.ps1 builds and installs lab.exe (text guard; it cannot run without a game install) ---
     $installText = Get-Content -Raw -LiteralPath (Join-Path $repoLab 'install.ps1')
     Check ($installText -match "'-p', 'cimmeria-lab', '-p', 'cimmeria-lab-cli', '--release'") 'install.ps1 builds cimmeria-lab and cimmeria-lab-cli in one lane call'

@@ -180,6 +180,7 @@ function Install-LabFile([string]$From, [string]$To, [switch]$DryRun) {
         $backup = "$To.$stamp.old"
         if (Test-Path -LiteralPath $backup) { $backup = "$To.$(Get-Date -Format 'yyyyMMdd-HHmmss').old" }
     }
+    if (-not $DryRun -and -not (Test-Path -LiteralPath $From)) { throw "Install-LabFile: $From does not exist; $To left as it is" }
     if ($DryRun) {
         if ($backup) { Write-Host "[lab-install] would back up: $To -> $(Split-Path $backup -Leaf)" }
         Write-Host "[lab-install] would copy: $From ($built) -> $To"
