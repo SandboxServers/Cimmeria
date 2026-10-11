@@ -35,11 +35,11 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 13,109 |
+| Tests (`#[test]` / `#[tokio::test]`) | 13,110 |
 | Files with tests | 2,283 |
-| Gated in CI (every crate but CI's exclude list) | 10,459 |
+| Gated in CI (every crate but CI's exclude list) | 10,460 |
 | Live-DB tests (`require_db_or_skip!` in the body) | 1,748 |
-| Inventory threshold (5% of the tests) | 655 |
+| Inventory threshold (5% of the tests) | 656 |
 
 <!-- /gen:tests-totals -->
 
@@ -110,7 +110,7 @@ with no file in this directory yet.
 | `crates/wireclient` | `cimmeria-wireclient` | 164 | 33 | 18 | yes | [wireclient.md](wireclient.md) |
 | `crates/cell-effect-scripts` | `cimmeria-cell-effect-scripts` | 162 | 19 | 21 | yes | none |
 | `crates/resources` | `cimmeria-resources` | 162 | 24 | 3 | yes | none |
-| `crates/server` | `cimmeria-server` | 120 | 21 | 0 | yes | [server.md](server.md) |
+| `crates/server` | `cimmeria-server` | 121 | 21 | 0 | yes | [server.md](server.md) |
 | `crates/discord` | `cimmeria-discord` | 111 | 23 | 0 | yes | none |
 | `crates/client-patches` | `cimmeria-client-patches` | 99 | 16 | 0 | no | none |
 | `crates/patchset` | `cimmeria-patchset` | 78 | 14 | 0 | yes | none |
