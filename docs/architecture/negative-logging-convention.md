@@ -687,6 +687,7 @@ A deferred effect row (a pulse, an expiry, a removal) names its invoker from the
 | DEBUG | `PersistPosition: no database pool, position not stored` | No pool (test, repl or smoke mode): `reason = "no_db_pool"` |
 
 The non-finite refusal keeps its WARN and `reason = "non_finite_position"`. Guards: `cell_dispatch::position::tests::live_db_logout_position_round_trips_with_world_id` (the account id and the cached player name on the INFO row) and `live_db_persist_no_row_is_silent_warn` (the two counts on the zero-row WARN).
+
 ## Deferred content actions dropped on teardown (TG-MIS-07)
 
 A content chain's delayed actions (`content_actions.delay_ms > 0`) wait in `SpaceManager::pending_content_actions`. When the entity leaves before the delay elapses, `destroy_entity` or `disconnect_entity` drops the queue. A dropped `grant_item` or `advance_step` loses player progress, so a non-empty drop writes one WARN: `event = "deferred_actions_dropped"`, `reason` = `destroy_entity` or `disconnect`, Rule 5 identity (`account_id`, `account_name`, `player_id`, `player_name`), `entity_id` with `entity_name`, `dropped` (a count), `chain_ids` and `action_kinds` (via `player_journal::action_kind`). An empty queue writes nothing. Message: `deferred content actions dropped`. Written by `log_dropped_content_actions` in `cell/space_manager/entities.rs`. Guards: `destroy_entity_drops_pending_content_actions` and `disconnect_entity_drops_pending_content_actions` in `cell/space_manager/deferred_content_actions.rs` assert the WARN, `reason` and `dropped`.
