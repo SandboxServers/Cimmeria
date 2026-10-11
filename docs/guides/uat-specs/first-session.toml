@@ -404,7 +404,7 @@ items = [{ id = 55, count = 0 }]
 tutorials_unseen = [5882]
 [[row.expect]]
 id = "pitch"
-text = "after facing the body the camera is at the calibrated pitch (-28.8 deg). From a level camera (a relog) the face stops at about -19 and the click is unproven: resume per the header"
+text = "after facing the body the camera is at the calibrated pitch (-28.8 deg). From a level camera (a fixture session always starts level) the face stops at about -19 and the click is unproven until lab-fixtures FX-12 calibrates the fixture path or lab-spec-vocab's absolute camera lands"
 source = "tool"
 at = "aim"
 tool = "@camera"
