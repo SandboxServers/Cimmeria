@@ -85,7 +85,47 @@ Check (@($j.failures).Count -eq 1 -and $j.more_failure_groups -eq 1) 'failure gr
 Check ($j.failures[0].issue -eq '#1341' -and $j.failures[0].n -eq 2) 'the biggest group comes first, tagged'
 $jsonText = ConvertTo-UatCompactJson $s3 'C:\b'
 Check ($jsonText -notmatch 'null' -and $jsonText -notmatch 'failures') 'a clean batch has no nulls and no failure list'
-Check ($jsonText.Length -lt 300) "a clean batch is short ($($jsonText.Length) chars)"
+# A realistic clean batch: the 7 Praxis rows, 2 lanes x 5 runs, a real batch path.
+$praxis = 'FS-01', 'FS-02', 'FS-P1', 'FS-P2', 'FS-P3', 'FS-P4', 'FS-P5'
+$realRuns = foreach ($inst in 'default', 'p2') { foreach ($i in 1..5) { Rec $inst $i $true @($praxis | ForEach-Object { Row $_ 'PASS' '' }) } }
+$real = Merge-UatResults $realRuns $lanes @()
+$realJson = ConvertTo-UatCompactJson $real 'C:\Users\someone\AppData\Local\cimmeria-lab\uat-runs\batch-20261010-183832'
+Check ($realJson.Length -lt 500) "a realistic clean batch stays a few hundred characters ($($realJson.Length))"
+$longWhy = Merge-UatResults @((Rec 'default' 1 $false @((Row 'FS-P3' 'FAIL' ('x' * 600))))) @($lanes[0]) @()
+Check (((ConvertTo-UatCompactJson $longWhy 'C:\b' | ConvertFrom-Json).failures[0].why).Length -le 200) 'a long failure reason is capped at 200 characters'
+
+# --- review fixes ---
+Check ($null -eq (Test-UatArguments 1 1 '')) 'valid arguments pass without a daemon'
+Check ((Test-UatArguments 9 1 '') -like '-Leases must be*') 'argument checks need no daemon'
+Check ((Test-UatArguments 2 1 'p2') -like '-Instance runs one lane*') '-Instance with leases is a usage error'
+Check ((Test-UatArguments 1 1 '' -5) -like '-StaggerSeconds must be*') 'a negative stagger is a usage error'
+Check ((Test-UatArguments 1 1 '' 20 0) -like '-RunTimeoutMinutes must be*') 'a zero timeout (no timeout at all) is a usage error'
+Check ((Test-UatArguments 1 1 '' 20 15 -1) -like '-MaxConsecutiveFailures must be*') 'a negative brake is a usage error'
+Check (((ConvertTo-UatRowIds @('FS-01, FS-02', 'FS-02', ' FS-P1 ')) -join '|') -eq 'FS-01|FS-02|FS-P1') 'row ids are trimmed and de-duplicated'
+Check ((Hide-LeaseIds 'lease lease-0a1b2c3d4e5f is not the current lease') -eq 'lease lease-<redacted> is not the current lease') 'lease ids are redacted'
+$v = Get-UatRunVerdict @((Row 'FS-01' 'PASS' '')) @('FS-01', 'FS-02')
+Check (-not $v.Ok -and $v.Result -eq 'MISSING' -and $v.Row -eq 'FS-02') 'a run that reports fewer rows than planned fails'
+$v = Get-UatRunVerdict @((Row 'FS-P3' 'FAIL' 'lease-0123456789abcdef is not the current lease'))
+Check ($v.Reason -notmatch '0123456789abcdef') 'a failing reason has its lease id redacted'
+Check (-not (Test-UatStopLane 3 3 @($false, $false, $false) 3)) 'a lane that ran every run did not stop early (no brake on the last run)'
+Check (Test-UatStopLane 3 5 @($false, $false, $false) 3) 'a lane with runs left stops on the brake'
+$empty = Merge-UatResults $null @($lanes[0]) @()
+Check ($empty.runs -eq 0 -and -not $empty.ok -and (Get-UatExitCode $empty) -eq 1) 'no finished runs is not a pass'
+Check ((Read-McpBody "event: message`r`ndata: {`"id`":2,`"result`":{`"x`":5}}`r`n`r`n").result.x -eq 5) 'SSE body with CRLF line ends'
+Check ((Read-McpBody "data: {`"x`":1}`n`ndata: {`"id`":2,`"result`":{`"x`":6}}`n`n").result.x -eq 6) 'SSE body with several events: the last one'
+
+# The JSONL record round trip: what a Ctrl+C-interrupted batch is summarised from.
+$jl = Join-Path ([System.IO.Path]::GetTempPath()) ("uat-test-" + [guid]::NewGuid() + '.jsonl')
+try {
+    Add-UatRecord $jl ([ordered]@{ Lane = 1; Instance = 'default'; Index = 1; Ok = $false; Rows = $frost; RunDir = 'd'; Error = $null
+        Seconds = 90; Braked = $false; Verdict = (Get-UatRunVerdict $frost) })
+    Add-UatRecord $jl ([ordered]@{ Lane = 1; Instance = 'default'; Index = 0; Ok = $false; Rows = @(); RunDir = $null; Error = 'lane: boom'
+        Seconds = 0; Braked = $true; Verdict = @{ Ok = $false; Row = $null; Result = $null; Reason = 'boom'; Issue = $null } })
+    $back = @(Read-UatRecords $jl)
+    $rt = Merge-UatResults $back @($lanes[0]) @('default')
+    Check ($back.Count -eq 2 -and $rt.failed_known -eq 1 -and $rt.failed_new -eq 1) 'records read back from JSONL aggregate like live ones'
+    Check (@(Read-UatRecords (Join-Path $env:TEMP 'no-such-batch.jsonl')).Count -eq 0) 'a missing JSONL file reads as no runs'
+} finally { Remove-Item -LiteralPath $jl -ErrorAction SilentlyContinue }
 
 $md = Format-UatSummary $s 'lab uat first-session' 'C:\b'
 Check ($md -match 'FAIL \(1/4 runs passed\)' -and $md -match 'known: #1341') 'the Markdown summary names the verdict and the known issue'

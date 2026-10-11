@@ -35,6 +35,35 @@ function Get-UatField($Object, [string]$Name) {
     return $null
 }
 
+# The argument checks that need no daemon: an error message, or $null.
+function Test-UatArguments([int]$Leases, [int]$RunsPerLease, [string]$Instance,
+                           [int]$StaggerSeconds = 20, [int]$RunTimeoutMinutes = 15, [int]$MaxConsecutiveFailures = 3) {
+    if ($Leases -lt 1 -or $Leases -gt $script:UatMaxLeases) { return "-Leases must be 1 to $script:UatMaxLeases" }
+    if ($RunsPerLease -lt 1 -or $RunsPerLease -gt $script:UatMaxRunsPerLease) { return "-RunsPerLease must be 1 to $script:UatMaxRunsPerLease" }
+    if ($Instance -and $Leases -ne 1) { return '-Instance runs one lane; drop -Leases or -Instance' }
+    if ($StaggerSeconds -lt 0 -or $StaggerSeconds -gt 300) { return '-StaggerSeconds must be 0 to 300' }
+    if ($RunTimeoutMinutes -lt 1 -or $RunTimeoutMinutes -gt 120) { return '-RunTimeoutMinutes must be 1 to 120' }
+    if ($MaxConsecutiveFailures -lt 0 -or $MaxConsecutiveFailures -gt 20) { return '-MaxConsecutiveFailures must be 0 to 20' }
+    return $null
+}
+
+# -Rows as clean ids: split on commas, trimmed, blanks and repeats dropped.
+function ConvertTo-UatRowIds([string[]]$Rows) {
+    $ids = @()
+    foreach ($r in @($Rows)) {
+        foreach ($p in ("$r" -split ',')) {
+            $t = $p.Trim()
+            if ($t -and $ids -notcontains $t) { $ids += $t }
+        }
+    }
+    return $ids
+}
+
+# Lease ids (lease-<hex>) replaced in text that leaves the command.
+function Hide-LeaseIds([string]$Text) {
+    return ($Text -replace 'lease-[0-9a-fA-F]{8,}', 'lease-<redacted>')
+}
+
 # Validates the batch shape and picks the instances. Returns @{ Lanes; Error }:
 # Lanes is a list of @{ Lane (1-based); Instance }, Error a message or $null.
 # Hosted: the daemon's instance labels in order. Leased: labels a session holds.
@@ -106,20 +135,71 @@ function Invoke-McpTool($Session, [string]$Name, [hashtable]$Arguments, [int]$Ti
     $err = Get-UatField $resp 'error'
     if ($err) { throw "$Name failed: $(Get-UatField $err 'message')" }
     $result = Get-UatField $resp 'result'
-    $text = [string](@(Get-UatField $result 'content')[0].text)
+    $content = @(Get-UatField $result 'content')
+    if (-not $content.Count -or $null -eq $content[0]) { throw "$Name returned no content" }
+    $text = [string](Get-UatField $content[0] 'text')
     if (Get-UatField $result 'isError') { throw "$Name failed: $text" }
     return $text | ConvertFrom-Json -Depth 50
 }
 
+# Ends an MCP session on the daemon (best effort; the daemon also drops idle ones).
+function Close-McpSession($Session) {
+    if (-not $Session -or -not $Session.Headers['Mcp-Session-Id']) { return }
+    try { Invoke-WebRequest -Uri $Session.Url -Method Delete -Headers $Session.Headers -TimeoutSec 10 | Out-Null } catch { }
+}
+
+# Waits until the instance's lease is free (a run cut short by our timeout
+# still holds its own lease on the daemon). True when it cleared in time.
+# Needs common.ps1's Get-LabStatus.
+function Wait-UatLeaseFree([string]$Instance, [int]$TimeoutSec) {
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    do {
+        $st = Get-LabStatus
+        if ($st) {
+            $inst = @($st.instances | Where-Object { (Get-UatField $_ 'instance') -eq $Instance })[0]
+            if (-not [bool](Get-UatField (Get-UatField $inst 'lease') 'held')) { return $true }
+        }
+        Start-Sleep -Seconds 10
+    } while ((Get-Date) -lt $deadline)
+    return $false
+}
+
+# Appends one run record to the batch's JSONL file as the run finishes, under
+# a named mutex (lanes write from parallel runspaces). Ctrl+C then loses at
+# most the runs still under way.
+function Add-UatRecord([string]$Path, $Record) {
+    $line = ($Record | ConvertTo-Json -Depth 12 -Compress) + "`n"
+    $m = [System.Threading.Mutex]::new($false, 'Local\cimmeria-lab-uat-batch')
+    try {
+        [void]$m.WaitOne()
+        [System.IO.File]::AppendAllText($Path, $line, [System.Text.UTF8Encoding]::new($false))
+    } finally { $m.ReleaseMutex(); $m.Dispose() }
+}
+
+# The run records of a batch's JSONL file (none when it is missing or empty).
+function Read-UatRecords([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path)) { return @() }
+    $out = foreach ($l in (Get-Content -LiteralPath $Path)) {
+        if ($l.Trim()) { $l | ConvertFrom-Json -Depth 12 }
+    }
+    return @($out)
+}
+
 # One run's verdict from lab_uat_run's rows: Ok (every row PASS, or SKIPPED on a
 # plan), the first failing row and reason, and the known issue it matches.
-function Get-UatRunVerdict($Rows) {
+# Expected: the planned row ids; a run that reports fewer fails.
+function Get-UatRunVerdict($Rows, [string[]]$Expected = @()) {
+    $got = @(@($Rows) | ForEach-Object { [string](Get-UatField $_ 'row') })
+    $absent = @($Expected | Where-Object { $_ -and $got -notcontains $_ })
+    if ($absent) {
+        return @{ Ok = $false; Row = $absent[0]; Result = 'MISSING'; Reason = "the run reported no result for $($absent -join ', ')"; Issue = $null }
+    }
     $first = $null
     foreach ($r in @($Rows)) {
         if (@('PASS', 'SKIPPED') -notcontains [string](Get-UatField $r 'result')) { $first = $r; break }
     }
     if (-not $first) { return @{ Ok = $true; Row = $null; Result = $null; Reason = $null; Issue = $null } }
-    $reason = [string](@(Get-UatField $first 'reasons')[0])
+    $reason = Hide-LeaseIds ([string](@(Get-UatField $first 'reasons')[0]))
     $row = [string](Get-UatField $first 'row')
     $issue = $null
     foreach ($k in $script:UatKnownIssues) {
@@ -136,11 +216,17 @@ function Test-UatBrake([bool[]]$Outcomes, [int]$MaxConsecutive) {
     return $streak -ge $MaxConsecutive
 }
 
+# Whether a lane stops after run Index of Total: only on the brake, and never
+# after its last run (a lane that ran every run did not stop early).
+function Test-UatStopLane([int]$Index, [int]$Total, [bool[]]$Outcomes, [int]$MaxConsecutive) {
+    return ($Index -lt $Total) -and (Test-UatBrake $Outcomes $MaxConsecutive)
+}
+
 # Aggregates run records (Lane, Instance, Index, Ok, Rows, Verdict, RunDir, Error,
 # Seconds) into the batch summary: totals, per-row pass counts, per lane, and
 # failures grouped by signature (row + reason or the error) with counts.
 function Merge-UatResults($Runs, $Lanes, [string[]]$BrakedInstances) {
-    $Runs = @($Runs)
+    $Runs = @(@($Runs) | Where-Object { $null -ne $_ })
     $rowStats = [ordered]@{}
     foreach ($run in $Runs) {
         foreach ($r in @($run.Rows)) {
@@ -192,7 +278,9 @@ function ConvertTo-UatCompactJson($Summary, [string]$BatchDir, [int]$MaxFailures
     foreach ($k in $Summary.rows.Keys) { $rows[$k] = "$($Summary.rows[$k].pass)/$($Summary.rows[$k].total)" }
     $fails = @($Summary.failures | Sort-Object { $_.count } -Descending)
     $shown = foreach ($f in ($fails | Select-Object -First $MaxFailures)) {
-        $o = [ordered]@{ n = $f.count; why = $f.signature }
+        $why = [string]$f.signature
+        if ($why.Length -gt 200) { $why = $why.Substring(0, 197) + '...' }
+        $o = [ordered]@{ n = $f.count; why = $why }
         if ($f.issue) { $o.issue = $f.issue }
         $o.runs = @($f.runs | Select-Object -First 5)
         $o

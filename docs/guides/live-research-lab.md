@@ -1003,15 +1003,17 @@ lab doctor
 - **Leases.** Every run takes and releases its own lease.
 - **Pacing.** Lanes start `-StaggerSeconds` apart (default 20). Run ids are time based, and two clients booting at once is where logins go wrong.
 - **Pre-flight.** Before anything is driven: the daemon answers, the instances are free, no `SGW.exe` runs outside the lab, and a plan-only pass of the rows is ready.
-- **Brake.** A lane stops after `-MaxConsecutiveFailures` failed runs in a row (default 3); the other lanes carry on. Each run times out after `-RunTimeoutMinutes` (default 15).
-- **Ctrl+C** starts no new run. A run already under way finishes on the daemon and releases its lease.
+- **Pre-flight before the daemon.** Argument errors exit 2 whatever state the daemon is in. A requested row the section doesn't have is a usage error too: row ids are exact and case sensitive.
+- **Brake.** A lane stops after `-MaxConsecutiveFailures` failed runs in a row (default 3, 0 never). A lane that ran every run is not counted as stopped early. The other lanes carry on.
+- **Timeouts.** Each run times out after `-RunTimeoutMinutes` (default 15). The lane then waits up to 10 minutes for that instance's lease to clear before its next run; a lease that never clears ends the lane.
+- **Ctrl+C** starts no new run, and the summary is still written from the runs that finished. A run already under way finishes on the daemon and releases its lease.
 
 Output:
 
 - **Progress:** one line per run.
 - **Summary:** the pass rate per row and per lane, and failures grouped by their first failing row. Known issues are tagged (`#1341` for FS-P2's "Corporal Frost is known"), so a new failure stands out.
-- **`-Json`** prints only one compact JSON object, a clean batch in about 150 characters, for agents and scripts. `-Quiet` prints one line.
-- **Files.** Every batch writes `batch.json` and `summary.md` under `uat-runs\batch-<time>\` in the lab home, listing each run's own evidence folder.
+- **`-Json`** prints only one compact JSON object, for agents and scripts. A clean 7-row, 10-run batch is about 340 characters; failure groups are capped at 8 and their reasons at 200 characters. Failures print one too: `{"ok":false,"exit":N,"error":...}`. `-Quiet` prints one line.
+- **Files.** Every batch writes `batch.jsonl` (one line per run, as each finishes), then `batch.json` and `summary.md`, under `uat-runs\batch-<time>\`, next to the runs' own evidence folders (`CIMMERIA_LAB_UAT_DIR` when set). Lease ids are redacted from reasons.
 
 ```powershell
 lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -PlanOnly
