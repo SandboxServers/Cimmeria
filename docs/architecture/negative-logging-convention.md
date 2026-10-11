@@ -675,6 +675,17 @@ Two seams, both carrying both entities' ids and factions so a standoff can be de
 
 A deferred effect row (a pulse, an expiry, a removal) names its invoker from the snapshot the effect took when it landed (`SpaceManager::caster_label`, `invoker_identity` and `invoker_name` on `TimedEffect` and `ActiveEffectInstance`; the name is an NPC's too, so a mob's DoT and debuff rows name it after it died), never from whoever holds the invoker's entity id now: the id may have been reused. A pet's `owner_name` comes from the summon-time identity for the same reason (#889).
 
+### Shutdown unsaved-state report (TG-DB-01)
+
+When the cell's message loop is told to shut down (every colo deploy), it reports what it is about to lose before it breaks: `crates/cell/src/cell/service/shutdown_report.rs`, called from the `shutdown.notified()` arm of `message_loop.rs`.
+
+| Level | Row | When |
+|---|---|---|
+| WARN | `event = "player_state_not_persisted"`, `reason = "server_shutdown"`, identity, `world`, `x`/`y`/`z`, `dirty_ammo_slots` | Once per in-world player entity. Its logout position and any dirty bandolier ammo are not saved |
+| INFO | `event = "shutdown_unsaved_summary"`, `players_in_world`, `players_with_dirty_ammo` | Once per shutdown |
+
+NPCs log nothing. Once TG-DB-02 drains the saves on shutdown, the WARN fires only for players the drain missed.
+
 ## Logout position persistence (TG-DB-04)
 
 `PersistPosition` (`cell_dispatch/position.rs`) writes the player's last world and point when the session ends. Its rows name the player by Rule 5 (`account_id` and `account_name` from the `RETURNING account_id` of the UPDATE, `player_id` and `player_name`) and carry the position as numbers `x`, `y` and `z`. The character name falls back to the known-names cache when the session has already closed, so the disconnect row is not blank. A name that cannot be resolved is left off.

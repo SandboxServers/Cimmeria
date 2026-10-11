@@ -42,6 +42,7 @@ pub(super) async fn run_cell_loop(
         tokio::select! {
             _ = shutdown.notified() => {
                 tracing::info!("Cell service received shutdown signal — exiting loop");
+                super::shutdown_report::report_unsaved_on_shutdown(&space_mgr);
                 break;
             }
             msg = rx.recv() => {
