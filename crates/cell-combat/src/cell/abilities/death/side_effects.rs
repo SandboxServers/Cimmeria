@@ -506,10 +506,10 @@ pub(super) async fn send_begin_aid_wait(
         .map_or((0.0, 0.0, 0.0), |p| {
             (p.position.x, p.position.y, p.position.z)
         });
+    // `None` for an environment kill (no attacker entity): no empty name.
     let killer_name = space_mgr
         .get_entity(attacker_id)
-        .and_then(|k| k.npc_name.clone().or_else(|| k.character_name.clone()))
-        .unwrap_or_default();
+        .and_then(|k| k.npc_name.clone().or_else(|| k.character_name.clone()));
     let id = space_mgr.player_identity(target_eid);
     tracing::info!(
         target: "player.death",
@@ -519,11 +519,11 @@ pub(super) async fn send_begin_aid_wait(
         account_name = id.account_name,
         player_id = id.player_id,
         player_name = id.player_name,
-        killer = attacker_id,
-        killer_name = %killer_name,
-        ability_id = ability_id.unwrap_or(-1),
+        killer_id = attacker_id,
+        killer_name = killer_name.as_deref(),
+        ability_id,
         ability_name = cimmeria_names::book().ability(ability_id.unwrap_or(-1)),
-        world = ?world_name,
+        world = world_name.as_deref(),
         x = px,
         y = py,
         z = pz,

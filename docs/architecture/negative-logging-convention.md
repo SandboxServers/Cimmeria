@@ -869,6 +869,10 @@ The non-finite refusal keeps its WARN and `reason = "non_finite_position"`. Guar
 
 A content chain's delayed actions (`content_actions.delay_ms > 0`) wait in `SpaceManager::pending_content_actions`. When the entity leaves before the delay elapses, `destroy_entity` or `disconnect_entity` drops the queue. A dropped `grant_item` or `advance_step` loses player progress, so a non-empty drop writes one WARN: `event = "deferred_actions_dropped"`, `reason` = `destroy_entity` or `disconnect`, Rule 5 identity (`account_id`, `account_name`, `player_id`, `player_name`), `entity_id` with `entity_name`, `dropped` (a count), `chain_ids` and `action_kinds` (via `player_journal::action_kind`). An empty queue writes nothing. Message: `deferred content actions dropped`. Written by `log_dropped_content_actions` in `cell/space_manager/entities.rs`. Guards: `destroy_entity_drops_pending_content_actions` and `disconnect_entity_drops_pending_content_actions` in `cell/space_manager/deferred_content_actions.rs` assert the WARN, `reason` and `dropped`.
 
+## Dropped mission journal frames (TG-MIS-08)
+
+Mission client frames (`onMissionUpdate`, `onStepUpdate`, `onObjectiveUpdate`) go from the cell to the base over a bounded `mpsc` channel. A closed channel means the client never sees the journal change. `send_mission_frame` in `cell/missions/mod.rs` (`cimmeria-cell-content`) makes that send visible: one WARN per refused frame, `event = "mission_frame_dropped"`, `reason = "base_channel_closed"`, `frame` (the method name), Rule 5 identity (`account_id`, `account_name`, `player_id`, `player_name`), `entity_id` with `entity_name`, `mission_id` with `mission_name`, `error`. Message: `Mission journal frame not queued: the base channel is closed`. Written from the accept, abandon, advance-step and objective-completion paths in `missions/lifecycle.rs` and `missions/progression.rs`. Guard: `accept_with_closed_base_channel_warns_frame_dropped` in `missions/lifecycle_tests.rs` asserts the WARN and `frame = onMissionUpdate`.
+
 ## Unreadable saved missions lock (TG-DB-12, D-TG18)
 
 World entry no longer falls back to "no saved missions" (that let a re-accept overwrite completed progress, #411). `missions/state_lock.rs` in `cimmeria-base-methods` retries the read after 200, 400 and 800 ms, each attempt cut off after 2 s (about 9.4 s at worst). If every attempt fails, the base locks the player, sends `MissionStateUnknown` to the cell before `InitPlayerState`, and re-reads every 30 s until it succeeds. The cell (`cell/missions/state_lock.rs` in `cimmeria-cell-content`) refuses every accept, abandon, step advance, objective completion and completion, drops any content chain that changes a mission whole, and saves nothing. Each player-facing refusal also sends the feedback line "Mission data unavailable, try again shortly." The base refuses any `sgw_mission` write for a locked player as a backstop. The cell also holds mission changes from `CreateEntity` until `InitPlayerState` (`reason = "saved_missions_pending"`). Refusal rows and feedback lines are throttled to one per entity per 5 s; each admitted row carries `suppressed`, the refusals swallowed since the last one (Pattern D).
@@ -935,6 +939,17 @@ A witness that is pre-`onClientReady` or in a cinematic hold buffers its AoI tra
 | DEBUG | `event = "deferred_dropped"`, `reason = "session_gone"`, `kind`, `entity_id` | An entered or left AoI message found no session to buffer it |
 
 Guard: `push_deferred_drops_at_cap` (`base-session`) captures the WARN and asserts `event`, `entity_id` and `kind`.
+
+## Base-to-cell send seam (TG-MER-05)
+
+Every base send to the cell goes through `send_to_cell` (`crates/base/src/base/connect_loop/cell_send.rs`): the cell-method arms and the `EntityMove` relay.
+
+| Level | Row | When |
+|---|---|---|
+| WARN | `event = "cell_send_failed"`, `reason = "cell_channel_closed"`, `error`, `addr`, identity, `msg_kind`, `method_index` + `method_name` | The cell receiver was dropped: the player's call is lost |
+| WARN | `event = "cell_channel_backpressure"`, `waited_ms`, `queue_free`, `msg_kind`, `suppressed` | A send waited 50 ms or more on a full cell queue. Pattern D: one row per 5 s for the whole channel; `base_cell_channel_stalls_total` counts every stall |
+
+Guards: `dropped_receiver_logs_cell_channel_closed`, `stalled_send_logs_backpressure_row`, `second_stall_in_window_is_suppressed` in `cell_send.rs`.
 
 ## NPC attack-not-fired throttle (TG-NPC-05)
 
@@ -1056,6 +1071,12 @@ Guards: `session_tests.rs` `duplicate_register_while_pending_logs_info` and `dup
 
 Guard: `left_aoi_unmapped_witness_warns_leave_send_failure` in `cell_dispatch/aoi.rs`, which asserts `phase=leave`, `entity_id` and `reason=entity_to_addr_miss`.
 
+## DoT kill with no credited player (TG-NPC-13)
+
+`effects/pulsing/pulse.rs` in `cimmeria-cell-combat`. When a damage-over-time pulse kills an NPC and `dot_kill_credit` finds no player to credit, the kill still lands but no mission or loot credit follows. This happens, for example, when a pet's owner is gone. That branch was silent; it now logs WARN `target: "abilities"`, `event = "kill_credit_no_player"`, `reason = "no_credited_player"`, `source = "dot"`, with the invoker's identity, `entity_id` + `entity_name`, `target_id` + `target_name`, `npc_tag` and `cast_id`. It mirrors the direct-hit row in `kill_credit.rs`. An NPC-only kill (a plain NPC invoker: not a player and no `PetState`; abilities decision 32) credits nobody by design and stays silent: it writes no `kill_credit_no_player` row. A pet whose owner has left, or a vanished invoker, still WARNs.
+
+Guards: `registered_pet_dot_kill_without_owner_warns_no_credited_player` (the WARN, with `source=dot`, `event=kill_credit_no_player` and `target_id`) and `npc_dot_kill_stays_silent_when_nobody_is_credited` (a plain NPC's DoT kill logs no `kill_credit_no_player` row), both in `use_ability/tests/registered_pet_kill_credit.rs`.
+
 ## Contact-list short args (TG-SOC-09)
 
 `contact_list/mod.rs` in `cimmeria-cell-methods`. Five contact-list ops (delete, rename, flags update, add members, remove members) drop a call whose args are shorter than its layout. Each logs one WARN `event = "contacts.call_malformed"` with `reason = "malformed_args"`, `op`, `args_len`, `need`, `entity_id` + `entity_name`, and `account_id` + `account_name`. The `create` op keeps its own WARN and is not part of this row. A well-formed call logs nothing new.
@@ -1118,6 +1139,12 @@ The start-profile check (`start_profile.rs`, `resolve_start`) logs nothing itsel
 `cell/console/chat/spatial.rs` in `cimmeria-cell-console`. A `say`, `emote` or `yell` line sent into a closed base channel was dropped by `let _`. Each failed send now logs WARN `target: CHAT_LOG_TARGET`, `event = "chat.spatial_send_failed"`, `reason = "base_channel_closed"`: one row per witness (`target_entity_id` + `target_entity_name`, and the `target_player_*` / `target_account_*` identity), and one for the speaker's echo (`entity_id` + `entity_name`, the speaker's identity). Both carry `channel`. The broadcast row is DEBUG `event = "chat.spatial_broadcast"` with the speaker's identity and `ignored`, the count of witnesses withheld by an Ignore list. A sent line logs nothing new.
 
 Guard: `spatial_send_into_closed_channel_warns` in `chat/tests/spatial.rs`, which drops the receiver and asserts three WARN rows (two witnesses and the echo) with `reason=base_channel_closed`.
+
+## Death and revive rows (TG-CMB-06)
+
+`death/mod.rs` in `cimmeria-cell-combat` writes `target_killed` with the Rule 5 identity keys: `attacker_id` + `attacker_name`, `target_id` + `target_name`, and the player-side identity quartet (the attacker when it is a player, otherwise the target). `ability_id` is `Option<i32>` and is left out when unknown, never `-1`. `death/side_effects.rs` writes `player.death` with `killer_id`, `killer_name` (left out for an environment kill, never `""`), `world` as a bare name, and the identity quartet. `cell_methods/player/combat` gives `callForAid` and `player revived` the identity quartet and `world`.
+
+Guard: `death/row_keys_tests.rs`. `environment_kill_death_row_names_world_and_no_killer` asserts `player.death` has `world = "Castle"` and no `killer_name`; `player_kill_target_killed_row_names_the_attacker_player_id` asserts `target_killed` carries the player attacker's `player_id`.
 
 ## Related
 

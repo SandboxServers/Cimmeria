@@ -8,7 +8,8 @@ use cimmeria_entity::missions::{
 };
 
 use super::{
-    suppress_hidden_mission_frames, ON_MISSION_UPDATE, ON_OBJECTIVE_UPDATE, ON_STEP_UPDATE,
+    send_mission_frame, suppress_hidden_mission_frames, ON_MISSION_UPDATE, ON_OBJECTIVE_UPDATE,
+    ON_STEP_UPDATE,
 };
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::{EntityNames, SpaceManager};
@@ -184,25 +185,31 @@ pub async fn accept_mission(
     args.extend_from_slice(&mission_id.to_le_bytes());
     args.push(STATUS_ACTIVE as u8);
     args.extend_from_slice(&0i32.to_le_bytes());
-    let _ = tx
-        .send(CellToBaseMsg::EntityMethodCall {
-            entity_id,
-            method_index: ON_MISSION_UPDATE,
-            args,
-        })
-        .await;
+    send_mission_frame(
+        tx,
+        entity_id,
+        ON_MISSION_UPDATE,
+        args,
+        "onMissionUpdate",
+        mission_id,
+        &who,
+    )
+    .await;
 
     // Send onStepUpdate
     let mut args = Vec::with_capacity(5);
     args.extend_from_slice(&step_id.to_le_bytes());
     args.push(STATUS_ACTIVE as u8);
-    let _ = tx
-        .send(CellToBaseMsg::EntityMethodCall {
-            entity_id,
-            method_index: ON_STEP_UPDATE,
-            args,
-        })
-        .await;
+    send_mission_frame(
+        tx,
+        entity_id,
+        ON_STEP_UPDATE,
+        args,
+        "onStepUpdate",
+        mission_id,
+        &who,
+    )
+    .await;
 
     // Send onObjectiveUpdate per objective
     for obj in &objectives {
@@ -211,13 +218,16 @@ pub async fn accept_mission(
         args.push(obj.status as u8);
         args.push(if obj.hidden { 1 } else { 0 });
         args.push(if obj.optional { 1 } else { 0 });
-        let _ = tx
-            .send(CellToBaseMsg::EntityMethodCall {
-                entity_id,
-                method_index: ON_OBJECTIVE_UPDATE,
-                args,
-            })
-            .await;
+        send_mission_frame(
+            tx,
+            entity_id,
+            ON_OBJECTIVE_UPDATE,
+            args,
+            "onObjectiveUpdate",
+            mission_id,
+            &who,
+        )
+        .await;
     }
 
     true
@@ -342,13 +352,16 @@ pub async fn abandon_mission(
         args.extend_from_slice(&mission_id.to_le_bytes());
         args.push(STATUS_COMPLETED as u8);
         args.extend_from_slice(&0i32.to_le_bytes());
-        let _ = tx
-            .send(CellToBaseMsg::EntityMethodCall {
-                entity_id,
-                method_index: ON_MISSION_UPDATE,
-                args,
-            })
-            .await;
+        send_mission_frame(
+            tx,
+            entity_id,
+            ON_MISSION_UPDATE,
+            args,
+            "onMissionUpdate",
+            mission_id,
+            &who,
+        )
+        .await;
         return true;
     }
 
