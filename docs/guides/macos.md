@@ -119,8 +119,8 @@ window? …)"), the client patches did not load: say so.
 
 ## Updating the launcher
 
-macOS updates are manual. The **Launcher updates** section in Settings shows
-**Disabled** on a Mac. When a new launcher is released, download the zip from
+macOS updates are manual. On a Mac the **Launcher updates** section in Settings
+says launcher updates are unavailable, and **Check for updates** is greyed out. When a new launcher is released, download the zip from
 the same link again, quit the launcher, and replace the app in Applications
 with the new one. Your settings and the installed game stay. Expect the
 folder-access question again after each new version.

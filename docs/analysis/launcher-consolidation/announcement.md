@@ -38,9 +38,9 @@ The old launcher (sgw-launcher.exe) is retired and will not update itself any mo
 **Windows:** download https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-windows-x64.zip
 Unzip it into a folder of its own (not Program Files) and run cimmeria-launcher-desktop.exe. Keep the windows and graphics folders next to it. That link always has the newest version, and the launcher updates itself from Settings > Launcher updates.
 
-**Already installed the game with the old launcher?** You don't have to download the game again. In the new launcher open Settings (the gear), use "Select legacy folders..." under Import legacy launcher settings, then "Verify and adopt this folder..." to take over your existing install. After that, start the game from the new launcher only; shortcuts to SGW.exe stop working.
+**Already installed the game with the old launcher?** The new launcher can take it over: it doesn't keep a second copy of the game, and fetches the signed game files once to verify yours. In the new launcher open Settings (the gear), use "Select legacy folders..." under Import legacy launcher settings, then "Verify and adopt this folder..." to take over your existing install. After that, start the game from the new launcher only; shortcuts to SGW.exe stop working.
 
-**Mac (Apple silicon):** there is now a Mac app: https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-macos-arm64.zip
+**Mac (Apple silicon):** there is now a Mac app. It is experimental and not yet confirmed by a player, so please report how it goes: https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-macos-arm64.zip
 Drag it to Applications, open it once, then allow it under System Settings > Privacy & Security > Open Anyway. No WoWSilicon or CrossOver needed. Mac updates are manual for now: download the zip again when we announce a new version.
 
 The launcher isn't code-signed yet. If Windows shows "Windows protected your PC", choose More info > Run anyway.
@@ -70,10 +70,12 @@ This release, and every one after it, ships the new Stargate Worlds Launcher ins
   **Settings → Launcher updates**.
 - **Moving from the old launcher:** **Settings → Import legacy launcher settings**,
   then **Verify and adopt this folder…** takes over the game the old launcher
-  installed, without downloading it again.
+  installed. It doesn't keep a second copy of the game; it fetches the signed
+  game files once to verify yours.
 - **macOS (Apple silicon):** download [`StargateWorlds-Launcher-macos-arm64.zip`](https://github.com/SandboxServers/Cimmeria/releases/download/launcher-current/StargateWorlds-Launcher-macos-arm64.zip)
   and follow [Playing on a Mac](https://github.com/SandboxServers/Cimmeria/blob/main/docs/guides/macos.md).
-  macOS updates are manual.
+  The Mac app is experimental and not yet confirmed by a player. macOS updates
+  are manual.
 
 The launcher is not code-signed. If SmartScreen or Defender blocks it, see the
 [launcher guide](https://github.com/SandboxServers/Cimmeria/blob/main/docs/client/launcher-guide.md#windows-defender-or-smartscreen-blocks-the-launcher).

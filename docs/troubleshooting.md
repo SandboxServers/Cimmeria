@@ -297,7 +297,7 @@ Full LAN-setup details in [`multiplayer.md`](multiplayer.md).
 
 ### The launcher's self-update fails, or the launcher is gone after "Apply and restart"
 
-**Symptom.** **Settings → Launcher updates** says **Failed**, or no launcher window comes back after **Apply and restart**.
+**Symptom.** **Settings → Launcher updates** says the update could not start or could not be confirmed, or that the package signature could not be verified, or no launcher window comes back after **Apply and restart**.
 
 **Root cause.** Usually a folder the launcher cannot write to (`C:\Program Files`), a download that failed its signature check (it is not kept), or antivirus quarantining the new, unsigned exe.
 

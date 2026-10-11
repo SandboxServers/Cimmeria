@@ -173,7 +173,7 @@ State files:
 - `<launcher.exe dir>/uploaded.json` — log-upload dedupe ledger.
 - `<launcher.exe dir>/telemetry-state.json` — per-session telemetry runtime
   state, kept out of the config file so config rewrites don't churn it
-  ([`config.rs`](../../crates/launcher/src/config.rs)::`telemetry_state_path`).
+  (`crates/launcher/src/config.rs`::`telemetry_state_path`).
 
 ---
 
@@ -202,7 +202,7 @@ State files:
   the final `/` in `manifest_url`. The GitHub Releases hosting model uses
   absolute URLs so the rolling `content-current` manifest can point at
   immutable per-publication release tags. See
-  [`manifest.rs`](../../crates/launcher/src/manifest.rs)::`blob_url`.
+  `crates/launcher/src/manifest.rs`::`blob_url`.
 - `after` is a forward-declaration check: every referenced patch id must
   have appeared earlier in the array. Order in `patches[]` **is** the
   application order.
@@ -219,7 +219,7 @@ State files:
   so the launcher records a `sgw_game` patch as `<id>@sgw_game` and a
   newer launcher applies it again in the right place. The
   client-patches UI overlay ships this way; see
-  [`patch_dest.rs`](../../crates/launcher/src/patch_dest.rs).
+  `crates/launcher/src/patch_dest.rs`.
 - `title` and `description` (optional) name the patch and say what it
   changes, for the launcher's [Changes to your client](#changes-to-your-client)
   list. They are signed with the rest of the manifest, and older
@@ -279,7 +279,7 @@ Nothing in it can be switched off except the two launch rows; the
 patches are what Cimmeria needs to play.
 
 The rows come from one pure function,
-[`client_changes.rs`](../../crates/launcher/src/client_changes.rs)::`list`,
+`crates/launcher/src/client_changes.rs`::`list`,
 in four groups:
 
 | Group | Rows |
@@ -316,7 +316,7 @@ session first (a handshake of at most 10 s that writes
 `cimmeria-client-telemetry.dll`. Release launchers embed the player
 build of the DLL (no `lab-bridge` feature) and write it to
 `<launcher dir>/client-telemetry/<sha256 prefix>/`; a dev launcher uses
-one beside itself ([`client_telemetry_dll.rs`](../../crates/launcher/src/client_telemetry_dll.rs)).
+one beside itself (`crates/launcher/src/client_telemetry_dll.rs`).
 A `lab-bridge` build is refused. When the session cannot start, or the
 DLL is missing or refused, the status log says so (`In-game telemetry:
 unavailable: …`) and the game starts without it; if injecting both DLLs
@@ -390,12 +390,12 @@ shipped unfinished, first the Black Market window. The decision record
 is [client-patches.md](../architecture/client-patches.md). On **Launch
 SGW.exe** the launcher:
 
-1. Decides whether to load it ([`client_patches/plan.rs`](../../crates/launcher/src/client_patches/plan.rs)).
+1. Decides whether to load it (`crates/launcher/src/client_patches/plan.rs`).
    The checkbox **Load client patches (restores the Black Market
    window)** under the launch buttons is `client_patches.enabled` in
    `launcher-config.json`. It is on by default, saved as soon as it
    changes, and independent of the telemetry opt-in.
-2. Finds the DLL ([`client_patches/dll_source.rs`](../../crates/launcher/src/client_patches/dll_source.rs)),
+2. Finds the DLL (`crates/launcher/src/client_patches/dll_source.rs`),
    in this order: `client_patches.dll_override` (a tester's own build);
    the copy embedded in release launchers, written to
    `<launcher dir>/client-patches/<sha256 prefix>/cimmeria-client-patches.dll`
@@ -469,13 +469,13 @@ the telemetry DLL reads its session file first, then chains on top.
 `inject_failed`), the DLL version, `fingerprint.<site>` for each hooked
 site, `fingerprint_ok`, and the `verdict` (`installed`,
 `nothing_installed`, `hook_failed`). See
-[`telemetry/patch_log.rs`](../../crates/launcher/src/telemetry/patch_log.rs).
+`crates/launcher/src/telemetry/patch_log.rs`.
 The same session records `client.patches.counts`, the DLL's claimed /
 delivered / dropped counts with reasons
-([`telemetry/patch_counts.rs`](../../crates/launcher/src/telemetry/patch_counts.rs)),
+(`crates/launcher/src/telemetry/patch_counts.rs`),
 and an Install / Update run by an opted-in player queues one
 `client.launcher.install_result` event with every patch's outcome
-([`telemetry/install_result.rs`](../../crates/launcher/src/telemetry/install_result.rs)).
+(`crates/launcher/src/telemetry/install_result.rs`).
 Both are described in
 [dev-session-telemetry.md](../architecture/dev-session-telemetry.md#client-patches-counts-event).
 
@@ -544,15 +544,15 @@ Without `CIMMERIA_CLIENT_PATCHES_DLL` and `CIMMERIA_START32_EXE` the
 launcher embeds neither and looks for each beside itself.
 
 The release workflow runs these steps through
-[`tools/launcher-release/build.sh`](../../tools/launcher-release/build.sh)
+`tools/launcher-release/build.sh`
 (`i686`, `launcher`, `verify`, `overlay`); `PROFILE=dev` runs them with the dev profile.
 
 The `cimmeria-launcher-core` crate builds `pack-client-overlay`, the release tool that
 packs the client-patches UI overlay into a manifest patch; see
 [launcher-distribution-setup.md](launcher-distribution-setup.md#publishing-the-client-patches-ui-overlay).
 
-The icon at [`crates/launcher/icons/icon.ico`](../../crates/launcher/icons/icon.ico)
-is embedded as a Win32 resource via [`build.rs`](../../crates/launcher/build.rs),
+The icon at `crates/launcher/icons/icon.ico`
+is embedded as a Win32 resource via `crates/launcher/build.rs`,
 which also embeds the client-patches DLL and the `sgw-start32` helper
 when `CIMMERIA_CLIENT_PATCHES_DLL` and `CIMMERIA_START32_EXE` are set. A
 path that is not a PE image fails the build.
@@ -565,7 +565,7 @@ Three GitHub Actions workflows mirror the server's pattern:
 
 | Workflow | File | Trigger |
 |---|---|---|
-| **launcher** | [`.github/workflows/launcher-build.yml`](../../.github/workflows/launcher-build.yml) | Path-filtered fmt/clippy/build/test/coverage (five jobs; the `coverage` job runs `cargo llvm-cov`) on PRs touching `crates/launcher/**`, `crates/client-launch/**`, `crates/client-patches/overlay/**` or `.github/workflows/launcher-*.yml`. Clippy covers `cimmeria-client-launch` and `cimmeria-start32` too. The test job builds the i686 `sgw-start32` helper and runs the x64 tests with `CIMMERIA_TEST_START32` set, so the helper injects a real DLL into a real 32-bit process. A `release-dry-run` job runs the release build stages (`tools/launcher-release/build.sh`) without signing or publishing, because the release workflow itself only runs on a release. |
+| **launcher** | `.github/workflows/launcher-build.yml` | Path-filtered fmt/clippy/build/test/coverage (five jobs; the `coverage` job runs `cargo llvm-cov`) on PRs touching `crates/launcher/**`, `crates/client-launch/**`, `crates/client-patches/overlay/**` or `.github/workflows/launcher-*.yml`. Clippy covers `cimmeria-client-launch` and `cimmeria-start32` too. The test job builds the i686 `sgw-start32` helper and runs the x64 tests with `CIMMERIA_TEST_START32` set, so the helper injects a real DLL into a real 32-bit process. A `release-dry-run` job runs the release build stages (`tools/launcher-release/build.sh`) without signing or publishing, because the release workflow itself only runs on a release. |
 | **launcher-release** | [`.github/workflows/launcher-release.yml`](../../.github/workflows/launcher-release.yml) | `workflow_dispatch`. Builds the i686 client-patches DLL and `sgw-start32` helper, then the 64-bit launcher embedding both with `LAUNCHER_LOG_SAS_URL` injected from secrets, verifies them, packs the UI overlay, and creates a GitHub Release tagged `launcher-<date>-<sha7>` with the exe, its `.sha256` (what self-update verifies against) and, when there is an overlay, its patch zip and `.entry.json`. The tag and the build time are stamped before the build and embedded in the launcher (`CIMMERIA_LAUNCHER_TAG`, `CIMMERIA_LAUNCHER_BUILD_EPOCH`). A second job, `desktop-windows`, then builds the desktop launcher for Windows with `tools/launcher-release/build-desktop.sh` and attaches `stargate-worlds-launcher-desktop-windows-<tag>.zip` to the same release as a preview; macOS is deferred ([desktop release](../../crates/launcher/desktop/docs/release.md)). |
 | **launcher-release-on-comment** | [`.github/workflows/launcher-release-on-comment.yml`](../../.github/workflows/launcher-release-on-comment.yml) | Mirror of `release-on-comment.yml` but matches `/release-launcher` on a merged PR. Validates commenter has write access, dispatches `launcher-release.yml`. |
 

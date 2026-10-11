@@ -170,7 +170,7 @@ You've verified the server runs. Now verify your build can also run the tests CI
 cargo check -p cimmeria-cell
 
 # Full workspace check (skip the GUI apps, the Windows-only client-telemetry
-# and client-patches cdylibs and the lab supervisor: the same seven crates CI
+# and client-patches cdylibs and the lab supervisor: the same six crates CI
 # skips):
 cargo check --workspace `
   --exclude cimmeria-app --exclude cimmeria-content-editor `

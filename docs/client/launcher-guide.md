@@ -171,8 +171,9 @@ server's operator requires a newer launcher. See
 ### Coming from the old launcher
 
 The old launcher (`sgw-launcher.exe`) no longer receives updates. The new
-launcher can take over its settings and the game it installed, without
-downloading the game again.
+launcher can take over its settings and the game it installed. It does not keep
+a second copy of the game: it fetches the signed game files once to verify
+yours.
 
 **1. Import the old launcher's settings.** In **Settings → Import legacy
 launcher settings**, click **Select legacy folders…**. Two folder dialogs open
@@ -266,13 +267,17 @@ stable link. It does not check by itself:
    files.
 
 If anything fails before the new launcher starts, the old files are put back
-and the section says **Failed**. Update between game sessions: the launcher
+and the section says so, for example "The update could not start. The original
+launcher was restored when its files could be verified." or, for a package
+that fails its check, "The package signature or signed release version could
+not be verified. Nothing was installed." Update between game sessions: the launcher
 refuses to update while the game, an install, a repair or a game update is
 running.
 
 macOS updates are manual: download the new zip from the stable link and
-replace the app. The **Launcher updates** section shows **Disabled** there,
-and in any launcher you built yourself.
+replace the app. There, and in any launcher you built yourself, the **Launcher
+updates** section says launcher updates are unavailable, and **Check for
+updates** is greyed out.
 
 How the update is verified and swapped is in
 [launcher-self-update.md](launcher-self-update.md).
@@ -702,8 +707,9 @@ Code signing would remove the need for this; it is deferred for now.
 ### A launcher update failed, or the launcher is gone after an update
 
 If **Apply and restart** fails before the new launcher starts, the launcher
-puts its old files back and the section says **Failed**. Click **Recheck
-update status**, then **Check for updates** to try again. A download that
+puts its old files back and the section says "The update could not start. The
+original launcher was restored when its files could be verified." Click
+**Recheck update status**, then **Check for updates** to try again. A download that
 failed its signature check was not installed; check again for a fresh offer.
 
 Two cases need a hand fix, because no launcher is left to fix them:
