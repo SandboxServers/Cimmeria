@@ -6,6 +6,8 @@ use cimmeria_entity::known_names;
 use cimmeria_wire::cell::vault::VaultAccess;
 use sqlx::{Postgres, Transaction};
 
+use crate::base::session_identity::identity_for_entity;
+
 use super::super::grant::item_allows_container;
 use super::after_commit::{after_commit, AppliedMove};
 use super::bank_rules::{
@@ -57,12 +59,20 @@ pub(super) async fn finish_move(
 
     if !item_allows_container(ctx.pool, source.type_id, target_container_id).await {
         let _ = tx.rollback().await;
+        let who = identity_for_entity(ctx.connected, ctx.entity_to_addr, entity_id);
         tracing::warn!(
+            target: "inventory",
+            event = "move_rejected",
+            reason = "not_allowed_in_container",
+            account_id = who.account_id,
+            account_name = who.account_name,
             player_id,
             player_name = known_names::player_name(player_id),
             item_id,
             item_name = cimmeria_names::book().item(source.type_id),
             item_type_id = source.type_id,
+            source_container_id = source.container_id,
+            source_container_name = cimmeria_names::book().container(source.container_id),
             target_container_id,
             target_container_name = cimmeria_names::book().container(target_container_id),
             "MoveInventoryItem: item cannot be moved into target container"
@@ -106,7 +116,7 @@ pub(super) async fn finish_move(
         }
     };
 
-    let shape = match choose_shape(&mut tx, &req, quantity, &source, occupied.as_ref()).await {
+    let shape = match choose_shape(&mut tx, &req, quantity, &source, occupied.as_ref(), ctx).await {
         Ok(shape) => shape,
         Err(refusal) => {
             let _ = tx.rollback().await;
@@ -348,6 +358,7 @@ pub(super) async fn choose_shape(
     quantity: i32,
     source: &InventoryInstanceRow,
     occupied: Option<&Occupant>,
+    ctx: &MoveCtx<'_>,
 ) -> Result<MoveShape, Option<MoveRefusal>> {
     let Some(occ) = occupied else {
         return Ok(if quantity < source.stack_size {
@@ -385,11 +396,19 @@ pub(super) async fn choose_shape(
         }
     }
     if quantity < source.stack_size {
+        let who = identity_for_entity(ctx.connected, ctx.entity_to_addr, req.entity_id);
         tracing::warn!(
+            target: "inventory",
+            event = "move_rejected",
+            reason = "split_onto_occupied",
+            account_id = who.account_id,
+            account_name = who.account_name,
             player_id = req.player_id,
             player_name = known_names::player_name(req.player_id),
             item_id = req.item_id,
             item_name = cimmeria_names::book().item(source.type_id),
+            source_container_id = source.container_id,
+            source_container_name = cimmeria_names::book().container(source.container_id),
             target_container_id = req.target_container_id,
             target_container_name = cimmeria_names::book().container(req.target_container_id),
             target_slot_id = req.target_slot_id, // nt:id-only slot index, unnamed

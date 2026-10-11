@@ -21,12 +21,20 @@ use crate::cell::messages::BaseToCellMsg;
 use super::super::ConnectedClientState;
 use super::unmap_departed_witness;
 
+/// Session-extension marker: the client asked for a full exit
+/// (`SGWPlayer.logOff(1)`, `path=logoff_full_exit`). A full exit keeps the
+/// session until the client disconnects or the inactivity reap fires, so the
+/// later `session.end` reads this marker and carries `logoff_requested=true`
+/// while its `disconnect_reason` stays the real mechanism (TG-NET-02).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct LogoffRequested;
+
 /// One `session.end` row: how a session ended, with its identity named
 /// (Rule 5 and Rule 6). Every session-end site builds one of these and
 /// passes it to [`log_session_end`]; later packets add fields here rather
 /// than a second `session.end` call.
 #[derive(Debug, Clone, Copy)]
-pub struct SessionEndRow {
+pub struct SessionEndRow<'a> {
     /// The session's address.
     pub addr: SocketAddr,
     /// The session's identity, snapshotted before the session goes.
@@ -39,11 +47,33 @@ pub struct SessionEndRow {
     pub disconnect_reason: &'static str,
     /// Whole seconds since the session connected.
     pub session_secs: u64,
+    /// The client asked for a full exit earlier ([`LogoffRequested`]); the
+    /// session then ended by `disconnect_reason`.
+    pub logoff_requested: bool,
+    /// Milliseconds since the last fresh datagram from the client
+    /// (`last_recv`), taken when the session ended.
+    pub idle_ms: u64,
+    /// The character was in the world (listed online, past `onClientReady`)
+    /// when the session ended. `false` while still loading, and after a
+    /// `logOff` already took it out of the world.
+    pub in_world: bool,
+    /// The world the character was in, by name; absent when none.
+    pub world: Option<&'a str>,
+}
+
+/// Milliseconds since `state`'s last fresh datagram, for
+/// [`SessionEndRow::idle_ms`]. A poisoned clock still reads.
+pub fn session_idle_ms(state: &ConnectedClientState) -> u64 {
+    let at = match state.last_recv.lock() {
+        Ok(at) => *at,
+        Err(poisoned) => *poisoned.into_inner(),
+    };
+    u64::try_from(at.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
 
 /// The one emitter of `session.end`: target `session.end`, message
 /// `"player session ended"`.
-pub fn log_session_end(row: &SessionEndRow) {
+pub fn log_session_end(row: &SessionEndRow<'_>) {
     tracing::info!(
         target: "session.end",
         addr = %row.addr,
@@ -55,6 +85,10 @@ pub fn log_session_end(row: &SessionEndRow) {
         player_name = row.identity.player_name,
         disconnect_reason = row.disconnect_reason,
         session_secs = row.session_secs,
+        logoff_requested = row.logoff_requested,
+        idle_ms = row.idle_ms,
+        in_world = row.in_world,
+        world = row.world,
         "player session ended"
     );
 }
@@ -165,6 +199,15 @@ pub fn destroy_owned_client_entities(
     )
 }
 
+/// The end-cause hints [`teardown_session`] snapshots before it removes the
+/// session, for its `session.end` row.
+struct EndHints {
+    logoff_requested: bool,
+    idle_ms: u64,
+    in_world: bool,
+    world: Option<String>,
+}
+
 /// The body of both teardown entry points. `false` when nothing was torn
 /// down: the session was already gone, or `owner` is set and the session
 /// at `addr` is not the one it names.
@@ -190,6 +233,7 @@ fn teardown_session(
         ended,
         plugins,
         identity,
+        hints,
     ) = {
         let mut clients = match connected.lock() {
             Ok(c) => c,
@@ -235,6 +279,13 @@ fn teardown_session(
         // session is removed.
         let identity = crate::base::session_identity::session_identity(c);
         let session_secs = c.connected_at.elapsed().as_secs();
+        // The end-cause hints for `session.end` (TG-NET-02).
+        let hints = EndHints {
+            logoff_requested: c.extensions.contains::<LogoffRequested>(),
+            idle_ms: session_idle_ms(c),
+            in_world: c.listed_online,
+            world: c.world_name.clone(),
+        };
         // Snapshot before `remove`: a character still in the world is
         // announced offline once (a `logOff` already unlisted and announced).
         let ended = match (c.listed_online, c.active_player_id, player_eid) {
@@ -264,6 +315,7 @@ fn teardown_session(
             ended,
             plugins,
             identity,
+            hints,
         )
     };
 
@@ -295,6 +347,10 @@ fn teardown_session(
             entity_name: identity.player_name,
             disconnect_reason: reason,
             session_secs,
+            logoff_requested: hints.logoff_requested,
+            idle_ms: hints.idle_ms,
+            in_world: hints.in_world,
+            world: hints.world.as_deref(),
         });
 
         // Remove from entity->addr reverse index, and record the witness as
@@ -394,7 +450,9 @@ fn teardown_session(
         account_name = identity.account_name,
         account_entity_id = account_eid,
         account_entity_name = identity.account_name,
-        player_entity_id = ?player_eid,
+        player_id = identity.player_id,
+        player_name = identity.player_name,
+        player_entity_id = player_eid,
         player_entity_name = identity.player_name,
         "Client entities cleaned up"
     );
