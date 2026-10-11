@@ -116,7 +116,7 @@ pub(super) async fn handle_dialog_button_choice(
         return;
     }
 
-    let player_id = super::interact::chain_player_id(entity_id, space_mgr);
+    let player_id = super::interact::chain_player_id(entity_id, space_mgr, "dialogButtonChoice");
     crate::cell::content::fire_dialog_choice(
         entity_id, player_id, dialog_id, button_id, engine, tx, space_mgr,
     )
