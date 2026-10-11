@@ -1018,6 +1018,12 @@ Guard: `left_aoi_unmapped_witness_warns_leave_send_failure` in `cell_dispatch/ao
 
 Guard: `spatial_send_into_closed_channel_warns` in `chat/tests/spatial.rs`, which drops the receiver and asserts three WARN rows (two witnesses and the echo) with `reason=base_channel_closed`.
 
+## Death and revive rows (TG-CMB-06)
+
+`death/mod.rs` in `cimmeria-cell-combat` writes `target_killed` with the Rule 5 identity keys: `attacker_id` + `attacker_name`, `target_id` + `target_name`, and the player-side identity quartet (the attacker when it is a player, otherwise the target). `ability_id` is `Option<i32>` and is left out when unknown, never `-1`. `death/side_effects.rs` writes `player.death` with `killer_id`, `killer_name` (left out for an environment kill, never `""`), `world` as a bare name, and the identity quartet. `cell_methods/player/combat` gives `callForAid` and `player revived` the identity quartet and `world`.
+
+Guard: `death/row_keys_tests.rs`. `environment_kill_death_row_names_world_and_no_killer` asserts `player.death` has `world = "Castle"` and no `killer_name`; `player_kill_target_killed_row_names_the_attacker_player_id` asserts `target_killed` carries the player attacker's `player_id`.
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.
