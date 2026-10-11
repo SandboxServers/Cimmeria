@@ -1,0 +1,548 @@
+//! Every way Cimmeria's launcher makes the player's client differ from
+//! the stock 2009 install, for the "Changes to your client" list.
+//!
+//! The player either lets the launcher download the stock client or
+//! points it at a copy they already have; either way the launcher then
+//! changes that copy. This module is the one place that says how, so the
+//! list stays complete: the launcher's own setup steps, one row per
+//! manifest patch, what goes into `SGW.exe` at launch, and what the
+//! server sends while the game runs.
+//!
+//! A manifest patch is described by its manifest `title` and
+//! `description` when it has them (they are signed with the manifest),
+//! else by [`builtin_description`] for the patches published before
+//! those fields existed, else by its id. Nothing is ever left out.
+//!
+//! Pure: [`list`] takes plain inputs and is unit-tested without egui.
+
+use crate::manifest::PatchEntry;
+use crate::overlay_meta::{DEFAULT_ID_PREFIX, OVERLAY_DESCRIPTION, OVERLAY_TITLE};
+use crate::state::InstalledState;
+
+/// Where a change comes from; the list is grouped by this, in this order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChangeGroup {
+    /// Done by the launcher itself on install and before each launch.
+    Setup,
+    /// A patch set or file overlay from the content manifest.
+    Patch,
+    /// Code added to `SGW.exe` when the launcher starts it.
+    Launch,
+    /// What the server does to the client while you play.
+    Server,
+}
+
+impl ChangeGroup {
+    pub fn heading(self) -> &'static str {
+        match self {
+            Self::Setup => "Launcher setup",
+            Self::Patch => "Patched files",
+            Self::Launch => "Added when the game starts",
+            Self::Server => "Sent by the server while you play",
+        }
+    }
+}
+
+/// Whether the change is in effect on this install.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChangeStatus {
+    /// Rewritten or re-checked before every launch.
+    EveryLaunch,
+    /// Done once, when the stock client is installed or adopted.
+    AtInstall,
+    /// The launcher's install record lists this patch.
+    Applied,
+    /// In the manifest, not applied yet.
+    Pending,
+    /// Goes into `SGW.exe` on the next "Launch SGW.exe".
+    OnLaunch,
+    /// The player turned it off, or has not opted in.
+    Off,
+    /// Happens during play, driven by the server.
+    DuringPlay,
+}
+
+impl ChangeStatus {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::EveryLaunch => "before every launch",
+            Self::AtInstall => "at install",
+            Self::Applied => "applied",
+            Self::Pending => "applied on the next Install / Update",
+            Self::OnLaunch => "on",
+            Self::Off => "off",
+            Self::DuringPlay => "during play",
+        }
+    }
+}
+
+/// One row of the list.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClientChange {
+    pub group: ChangeGroup,
+    pub title: String,
+    pub description: String,
+    pub status: ChangeStatus,
+    /// The manifest id, for patch rows.
+    pub patch_id: Option<String>,
+}
+
+/// What [`list`] needs to know about this install.
+pub struct ChangeInputs<'a> {
+    /// The manifest's patches, or empty before the manifest is fetched.
+    pub patches: &'a [PatchEntry],
+    pub installed: &'a InstalledState,
+    pub client_patches_enabled: bool,
+    pub telemetry_opted_in: bool,
+}
+
+/// Every change, grouped in [`ChangeGroup`] order.
+pub fn list(inputs: &ChangeInputs<'_>) -> Vec<ClientChange> {
+    let mut out = setup_changes();
+    out.extend(
+        inputs
+            .patches
+            .iter()
+            .map(|p| patch_change(p, inputs.installed)),
+    );
+    out.extend(launch_changes(inputs));
+    out.push(ClientChange {
+        group: ChangeGroup::Server,
+        title: "Cooked game data".into(),
+        description: "The server sends its own cooked data (missions, dialogs, items and \
+            the rest) into Documents\\My Games\\Firesky\\SGWGame\\Cache.en-US, where the \
+            client reads it ahead of its installed files. The stock game did the same with \
+            the original servers' data. \"Reset client cache\" clears it."
+            .into(),
+        status: ChangeStatus::DuringPlay,
+        patch_id: None,
+    });
+    out
+}
+
+fn setup_changes() -> Vec<ClientChange> {
+    vec![
+        ClientChange {
+            group: ChangeGroup::Setup,
+            title: "Login servers".into(),
+            description: "Rewrites Working\\SGWGame\\Content\\UI\\Startup\\Login\\\
+                LoginInternal.lua with the login servers set above, in place of the \
+                original servers, which are gone. The game cannot log in without it."
+                .into(),
+            status: ChangeStatus::EveryLaunch,
+            patch_id: None,
+        },
+        ClientChange {
+            group: ChangeGroup::Setup,
+            title: "ASLR off in SGW.exe".into(),
+            description: "Clears one flag in SGW.exe's header (the byte at offset 0x186) so \
+                it always loads at the same address. The client-patches DLL and telemetry \
+                depend on that address. The same one-byte change as the modding kit's \
+                \"Fix ASLR\"."
+                .into(),
+            status: ChangeStatus::EveryLaunch,
+            patch_id: None,
+        },
+        ClientChange {
+            group: ChangeGroup::Setup,
+            title: "Stock file names".into(),
+            description: "Renames any file the patches below change back to its stock                 spelling if only its case differs, such as eula.lua back to EULA.lua. The                 game looks these names up case-sensitively, and a launcher released on                 2026-09-29 renamed EULA.lua, which left the game with no login screen."
+                .into(),
+            status: ChangeStatus::EveryLaunch,
+            patch_id: None,
+        },
+        ClientChange {
+            group: ChangeGroup::Setup,
+            title: "Bundled data folder renamed".into(),
+            description: "Renames Working\\SGWGame\\Cache.en-US to SourceCache.en-us, the \
+                read-only folder the client expects its shipped data in. The stock install \
+                puts it under the wrong name, and the client logs an error for it."
+                .into(),
+            status: ChangeStatus::AtInstall,
+            patch_id: None,
+        },
+    ]
+}
+
+fn patch_change(patch: &PatchEntry, installed: &InstalledState) -> ClientChange {
+    let builtin = builtin_description(&patch.id);
+    let title = patch
+        .title
+        .clone()
+        .or_else(|| builtin.map(|(t, _)| t.to_string()))
+        .unwrap_or_else(|| patch.id.clone());
+    let description = patch
+        .description
+        .clone()
+        .or_else(|| builtin.map(|(_, d)| d.to_string()))
+        .unwrap_or_else(|| {
+            format!(
+                "Patch {} from the content manifest. It has no description yet.",
+                patch.id
+            )
+        });
+    let status = if installed.has_applied_patch(patch) {
+        ChangeStatus::Applied
+    } else {
+        ChangeStatus::Pending
+    };
+    ClientChange {
+        group: ChangeGroup::Patch,
+        title,
+        description,
+        status,
+        patch_id: Some(patch.id.clone()),
+    }
+}
+
+/// The telemetry DLL's file name, which the telemetry row names. The egui
+/// launcher's `client_telemetry_dll` uses this one constant, so the row
+/// cannot name a file the launcher does not load.
+pub const TELEMETRY_DLL_FILE_NAME: &str = "cimmeria-client-telemetry.dll";
+
+fn launch_changes(inputs: &ChangeInputs<'_>) -> Vec<ClientChange> {
+    let patches_description = if inputs.client_patches_enabled {
+        "Adds cimmeria-client-patches.dll to SGW.exe when it starts. It finishes client \
+         features the 2009 build shipped half-built: today, the Black Market window. It \
+         checks it is hooking the exact SGW.exe build it was made for and does nothing \
+         otherwise, sends nothing to the server beyond the game's own messages, and writes \
+         its log next to SGW.exe. Turn it off with \"Load client patches\"."
+    } else {
+        "Off: you turned off \"Load client patches\", so SGW.exe starts without \
+         cimmeria-client-patches.dll and the Black Market window stays unavailable."
+    };
+    let telemetry_description = if inputs.telemetry_opted_in {
+        "On, because you opted in. Before the game starts, the launcher writes \
+         Working\\Binaries\\sessions\\current-session.json with an upload token, then \
+         loads cimmeria-client-telemetry.dll into SGW.exe after the client patches. The \
+         module records in-game events (the game messages the client handles, interface \
+         errors, its own status); it changes nothing in the game. While the game runs, \
+         the launcher also reads the client's log files. Both go, with this install's \
+         random id, to the Cimmeria server so crashes and bugs can be traced."
+    } else {
+        "Off. Telemetry is opt-in: the launcher reads and sends nothing, and loads no \
+         telemetry module into SGW.exe, unless you turn it on."
+    };
+    vec![
+        ClientChange {
+            group: ChangeGroup::Launch,
+            title: "Client patches DLL".into(),
+            description: patches_description.into(),
+            status: if inputs.client_patches_enabled {
+                ChangeStatus::OnLaunch
+            } else {
+                ChangeStatus::Off
+            },
+            patch_id: None,
+        },
+        ClientChange {
+            group: ChangeGroup::Launch,
+            title: "Telemetry".into(),
+            description: telemetry_description.into(),
+            status: if inputs.telemetry_opted_in {
+                ChangeStatus::OnLaunch
+            } else {
+                ChangeStatus::Off
+            },
+            patch_id: None,
+        },
+    ]
+}
+
+/// Title and description for the patches published before the manifest
+/// carried them. Keep in step with `data/client-patches/README.md`.
+pub fn builtin_description(id: &str) -> Option<(&'static str, &'static str)> {
+    let known = match id {
+        "001-dialog-portraits" => (
+            "Dialog portraits",
+            "Shows the speaker's portrait in NPC dialog windows, which the stock UI \
+             never displays. Changes TaharezLook.scheme and the Dialog and Blurb window \
+             layouts and scripts.",
+        ),
+        "002-castle-ring-transport" => (
+            "Castle ring transport",
+            "Adds the ring station on the CellBlock stasis-hall pad and the ring rig on the \
+             Armory pad, which mission 688 needs. Changes two Castle CellBlock map files.",
+        ),
+        "003-cooked-data" => (
+            "Merged cooked data",
+            "Replaces three bundled data files (Kismet sequence events, Kismet set events \
+             and interaction sets) with versions that match the server's, and adds \
+             CookedBehaviorEvents.pak.",
+        ),
+        "004-log-config" => (
+            "Client debug log",
+            "Adds SGWLogConfig.xml so SGW.exe writes SGWDebugLog.log, which \"Upload Debug \
+             Logs\" and telemetry read. Nothing is sent unless you use one of them.",
+        ),
+        "005-login-delay" => (
+            "Login screen delay",
+            "Makes the login screen wait 19 seconds so the gate-dialing intro finishes \
+             first. Changes eula.lua.",
+        ),
+        "006-gate-sound-bank" => (
+            "Gate sound bank",
+            "Copies the client's own prp_gen gate sounds into Audio\\UI, where the game \
+             looks for them.",
+        ),
+        "007-castle-armory-ring" => (
+            "Castle Armory ring transport",
+            "Adds the ring rig on the Castle CellBlock Armory pad that mission 688 needs. \
+             Changes one Castle CellBlock map file.",
+        ),
+        "008-dialog-portraits" => (
+            "Dialog portraits",
+            "Shows the speaker's portrait in NPC dialog windows, which the stock UI \
+             never displays. Replaces TaharezLook.scheme and the Dialog and Blurb window \
+             layouts and scripts with whole files, so it applies whatever state those \
+             files are in. Supersedes 001.",
+        ),
+        "009-starter-hotbar" => (
+            "Starting abilities on the action bar",
+            "Puts a new character's starting abilities (Pistol Shot, Strike, Heal Focus, \
+             Health Heal, Recuperation) on the empty action buttons 11-20 at its first \
+             login on this machine (no saved UI variables), once. Action bars that \
+             already exist are never changed. Changes ActionProfileDefault1.lua.",
+        ),
+        "010-debug-area-rings" => (
+            "Debug Area ring transports",
+            "Adds eight working ring transport stations to the Ihpet Crater map that the \
+             GM-only Debug Area uses. Changes one Ihpet Crater map file and needs the Castle \
+             Armory ring patch (007) first.",
+        ),
+        "011-debug-area-rings-fix" => (
+            "Debug Area ring transports (fix)",
+            "Replaces the Debug Area ring transport patch (010), which hung the client \
+             whenever it loaded the Ihpet Crater map. Adds eight working ring transport \
+             stations to that map and changes one Ihpet Crater map file. Needs the Castle \
+             Armory ring patch (007) first, unless 010 already applied.",
+        ),
+        "012-gm-slash-commands" => (
+            "GM slash commands",
+            "Adds InternalSlashCommands.xml so the client recognizes the /gm commands (such \
+             as /gmdhd and /gmgivexp); without it the stock client answers \"Invalid \
+             command.\" to every one. They are for GM accounts: the client hides them from \
+             ordinary players and the server refuses anyone below GM. Adds one file to \
+             Common\\xml\\slash_commands.",
+        ),
+        "013-ihpet-world-map" => (
+            "Ihpet Crater world map art",
+            "Fixes the Ihpet Crater world map (the Debug Area and the live Ihpet Crater): the \
+             stock overview picture shows only a zoomed-in corner of the map, so ring \
+             stations, your own marker and every other icon sit on the wrong terrain. \
+             Rebuilds that picture on your computer from the map's own tiles. Changes one \
+             Ihpet Crater map data file.",
+        ),
+        "014-debug-area-lineup-ring" => (
+            "Debug Area Lineup ring transport",
+            "Adds a ninth ring transport station, beside the NPC lineup, to the Ihpet \
+             Crater map that the GM-only Debug Area uses. Changes one Ihpet Crater map \
+             file and needs the Debug Area ring transport patch (011) first.",
+        ),
+        "015-weapon-shot-bar" => (
+            "Action bar shot follows your weapon",
+            "When you switch weapons, an action button holding the old weapon's basic shot \
+             (or Pistol Shot) switches to the shot of the weapon you now hold, and back \
+             again. Buttons holding anything else, and buttons bound per weapon, are never \
+             changed. Changes ActionProfileDefault1.lua and needs the starting-abilities \
+             patch (009) first.",
+        ),
+        "016-hotbar-learn-and-feedback" => (
+            "Action bar: new starting abilities and no-shot feedback",
+            "Puts each starting ability (Pistol Shot, Strike, Staff Swing, Heal Focus, \
+             Health Heal, Recuperation) on an empty action button 11-20 the first time your \
+             character knows it, in any session, never over a button you filled and never \
+             again once you removed it. Pressing a shot button while holding a weapon with \
+             no ranged attack now says so. Changes ActionProfileDefault1.lua and needs the \
+             weapon shot patch (015) first.",
+        ),
+        _ if id.starts_with(DEFAULT_ID_PREFIX) => (OVERLAY_TITLE, OVERLAY_DESCRIPTION),
+        _ => return None,
+    };
+    Some(known)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::manifest::PatchRoot;
+
+    fn patch(id: &str) -> PatchEntry {
+        PatchEntry {
+            id: id.into(),
+            blob: format!("{id}.zip"),
+            size: 1,
+            sha256: "h".into(),
+            after: None,
+            root: PatchRoot::InstallDir,
+            title: None,
+            description: None,
+        }
+    }
+
+    fn inputs<'a>(
+        patches: &'a [PatchEntry],
+        installed: &'a InstalledState,
+        dll: bool,
+        telemetry: bool,
+    ) -> ChangeInputs<'a> {
+        ChangeInputs {
+            patches,
+            installed,
+            client_patches_enabled: dll,
+            telemetry_opted_in: telemetry,
+        }
+    }
+
+    /// Every manifest patch gets a row, in manifest order, even one the
+    /// launcher has never heard of: the list must never hide a change.
+    #[test]
+    fn every_manifest_patch_is_listed() {
+        let patches = [patch("001-dialog-portraits"), patch("999-future")];
+        let state = InstalledState::default();
+        let rows = list(&inputs(&patches, &state, true, false));
+        let ids: Vec<_> = rows.iter().filter_map(|r| r.patch_id.as_deref()).collect();
+        assert_eq!(ids, ["001-dialog-portraits", "999-future"]);
+        let unknown = rows
+            .iter()
+            .find(|r| r.patch_id.as_deref() == Some("999-future"))
+            .unwrap();
+        assert_eq!(unknown.title, "999-future");
+        assert!(unknown.description.contains("no description"));
+    }
+
+    /// The manifest's own text wins over the built-in catalog.
+    #[test]
+    fn manifest_text_overrides_the_builtin_catalog() {
+        let mut p = patch("001-dialog-portraits");
+        p.title = Some("Portraits v2".into());
+        p.description = Some("New text".into());
+        let state = InstalledState::default();
+        let rows = list(&inputs(std::slice::from_ref(&p), &state, true, false));
+        let row = rows.iter().find(|r| r.patch_id.is_some()).unwrap();
+        assert_eq!(row.title, "Portraits v2");
+        assert_eq!(row.description, "New text");
+    }
+
+    /// Every patch set in `data/client-patches/` has built-in text, and
+    /// it matches the title and description in the patch's spec (which
+    /// `cimmeria-patchset build` prints into new manifest entries), so
+    /// the manifest and the fallback never tell the player two stories.
+    #[test]
+    fn builtin_catalog_matches_every_patch_spec() {
+        let dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/client-patches");
+        let mut seen = 0;
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let spec_path = entry.unwrap().path().join("patch.json");
+            if !spec_path.is_file() {
+                continue;
+            }
+            let spec: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(&spec_path).unwrap()).unwrap();
+            let id = spec["id"].as_str().unwrap();
+            let (title, description) = builtin_description(id)
+                .unwrap_or_else(|| panic!("{id} has a spec but no built-in description"));
+            assert_eq!(spec["title"], title, "{id} title");
+            assert_eq!(spec["description"], description, "{id} description");
+            seen += 1;
+        }
+        assert!(seen > 0, "no patch specs found under {}", dir.display());
+    }
+
+    #[test]
+    fn overlay_ids_use_the_overlay_text() {
+        let (title, _) = builtin_description("bm-ui-overlay-0123456789ab").unwrap();
+        assert_eq!(title, OVERLAY_TITLE);
+    }
+
+    /// A `sgw_game` patch is applied under its `@sgw_game` state key.
+    #[test]
+    fn status_follows_the_install_record() {
+        let mut overlay = patch("bm-ui-overlay-0123456789ab");
+        overlay.root = PatchRoot::SgwGame;
+        let patches = [patch("001-dialog-portraits"), overlay];
+        let state = InstalledState {
+            applied_patches: vec![
+                "001-dialog-portraits".into(),
+                "bm-ui-overlay-0123456789ab".into(),
+            ],
+            ..InstalledState::default()
+        };
+        let rows = list(&inputs(&patches, &state, true, false));
+        let status = |id: &str| {
+            rows.iter()
+                .find(|r| r.patch_id.as_deref() == Some(id))
+                .unwrap()
+                .status
+        };
+        assert_eq!(status("001-dialog-portraits"), ChangeStatus::Applied);
+        // Recorded under the plain id by a launcher older than `root`,
+        // so it will be applied again, in the right place.
+        assert_eq!(status("bm-ui-overlay-0123456789ab"), ChangeStatus::Pending);
+    }
+
+    #[test]
+    fn launch_rows_follow_the_settings() {
+        let state = InstalledState::default();
+        let find = |rows: &[ClientChange], title: &str| {
+            rows.iter().find(|r| r.title == title).unwrap().status
+        };
+        let off = list(&inputs(&[], &state, false, false));
+        assert_eq!(find(&off, "Client patches DLL"), ChangeStatus::Off);
+        assert_eq!(find(&off, "Telemetry"), ChangeStatus::Off);
+        let on = list(&inputs(&[], &state, true, true));
+        assert_eq!(find(&on, "Client patches DLL"), ChangeStatus::OnLaunch);
+        assert_eq!(find(&on, "Telemetry"), ChangeStatus::OnLaunch);
+    }
+
+    /// Opting in loads a DLL into SGW.exe; the list must say so, and must
+    /// not say it loads nothing (it did until 2026-09-29).
+    #[test]
+    fn the_telemetry_row_names_the_dll_it_loads() {
+        let state = InstalledState::default();
+        let describe = |rows: &[ClientChange]| {
+            rows.iter()
+                .find(|r| r.title == "Telemetry")
+                .unwrap()
+                .description
+                .clone()
+        };
+        let on = describe(&list(&inputs(&[], &state, true, true)));
+        assert!(on.contains(TELEMETRY_DLL_FILE_NAME), "{on}");
+        assert!(!on.contains("no code"), "{on}");
+        let off = describe(&list(&inputs(&[], &state, true, false)));
+        assert!(off.contains("loads no telemetry module"), "{off}");
+    }
+
+    /// The launcher's own changes are listed before the manifest is
+    /// fetched, and the groups come out in display order.
+    #[test]
+    fn setup_rows_are_listed_without_a_manifest_and_groups_are_ordered() {
+        let state = InstalledState::default();
+        let rows = list(&inputs(
+            &[patch("001-dialog-portraits")],
+            &state,
+            true,
+            false,
+        ));
+        let titles: Vec<_> = rows.iter().map(|r| r.title.as_str()).collect();
+        for t in [
+            "Login servers",
+            "ASLR off in SGW.exe",
+            "Stock file names",
+            "Bundled data folder renamed",
+        ] {
+            assert!(titles.contains(&t), "missing {t}");
+        }
+        let order = |g| match g {
+            ChangeGroup::Setup => 0,
+            ChangeGroup::Patch => 1,
+            ChangeGroup::Launch => 2,
+            ChangeGroup::Server => 3,
+        };
+        assert!(rows
+            .windows(2)
+            .all(|w| order(w[0].group) <= order(w[1].group)));
+    }
+}

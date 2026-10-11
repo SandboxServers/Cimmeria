@@ -10,6 +10,7 @@ on:
     branches: [main]
     paths:
       - 'crates/launcher/**'
+      - 'crates/launcher-core/**'
       - 'crates/client-launch/**'
       - 'crates/start32/**'
       - 'crates/client-patches/**'
@@ -20,6 +21,7 @@ on:
   pull_request:
     paths:
       - 'crates/launcher/**'
+      - 'crates/launcher-core/**'
       - 'crates/client-launch/**'
       - 'crates/start32/**'
       - 'crates/client-patches/**'
@@ -52,8 +54,8 @@ jobs:
           components: rustfmt
       - name: cargo fmt
         run: |
-          if ! cargo fmt -p sgw-launcher -- --check; then
-            echo "::error::Formatting differs from rustfmt. Run 'cargo fmt -p sgw-launcher' locally and commit the result."
+          if ! cargo fmt -p sgw-launcher -p cimmeria-launcher-core -- --check; then
+            echo "::error::Formatting differs from rustfmt. Run 'cargo fmt -p sgw-launcher -p cimmeria-launcher-core' locally and commit the result."
             exit 1
           fi
 
@@ -72,9 +74,10 @@ jobs:
           shared-key: launcher-windows
           save-if: ${{ github.ref == 'refs/heads/main' }}
       # client-launch too: its injection code is cfg(windows), so the
-      # workspace clippy on Linux never lints it.
+      # workspace clippy on Linux never lints it. launcher-core's cabinet
+      # extraction is cfg(windows) for the same reason.
       - name: cargo clippy
-        run: cargo clippy -p sgw-launcher -p cimmeria-client-launch -p cimmeria-start32 --all-targets -- -D warnings
+        run: cargo clippy -p sgw-launcher -p cimmeria-launcher-core -p cimmeria-client-launch -p cimmeria-start32 --all-targets -- -D warnings
 
   build:
     name: cargo build (Windows)
@@ -123,7 +126,7 @@ jobs:
           set -euo pipefail
           # A Windows path: the test runs the helper through std::process::Command.
           export CIMMERIA_TEST_START32="$(cygpath -w "$PWD/target/i686-pc-windows-msvc/debug/sgw-start32.exe")"
-          cargo nextest run --profile=ci -p sgw-launcher -p cimmeria-client-launch
+          cargo nextest run --profile=ci -p sgw-launcher -p cimmeria-launcher-core -p cimmeria-client-launch
 
   # launcher-release.yml has never run; its build must not be first tested at
   # release time. This job runs the same tools/launcher-release/build.sh
@@ -200,8 +203,8 @@ jobs:
         uses: taiki-e/install-action@nextest
       - name: clean stale counter data
         run: cargo llvm-cov clean --workspace
-      - name: cargo llvm-cov nextest -p sgw-launcher
-        run: cargo llvm-cov --no-report nextest --profile=ci -p sgw-launcher
+      - name: cargo llvm-cov nextest -p sgw-launcher -p cimmeria-launcher-core
+        run: cargo llvm-cov --no-report nextest --profile=ci -p sgw-launcher -p cimmeria-launcher-core
       - name: render cobertura report
         run: |
           mkdir -p target/coverage

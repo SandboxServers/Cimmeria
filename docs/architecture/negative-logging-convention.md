@@ -649,6 +649,18 @@ withheld id) and `player_entity_id_is_withheld_from_reuse_until_the_cell_confirm
 intercepts the `DisconnectEntity` before replying, and proves a concurrent
 `EntityManager::create_entity` call does not receive the id under teardown).
 
+## Logout position-save seam (TG-DB-03)
+
+On `DisconnectEntity`, the cell's `persist_last_position` (`crates/cell/src/cell/service/base_messages/lifecycle.rs`) hands a player's live position to the base as `PersistPosition`. A cell-side skip and a base-side write that never ran look the same in the database, so each outcome logs on its own. NPCs stay silent: they have no `sgw_player` row to update.
+
+| Level | Message | Meaning |
+|---|---|---|
+| WARN | `DisconnectEntity: entity not found — last position not persisted` (`reason = "entity_missing"`, `entity_id`) | The entity id is no longer in the cell's space manager when the teardown runs, so there is no position to read |
+| WARN | `DisconnectEntity: player has no player_id — last position not persisted` (`reason = "player_id_missing"`, the identity fields) | A player entity that never received its `player_id` (a session that dropped before character select). The position cannot be stored, and the next login resumes at the previous stored position |
+| DEBUG | `DisconnectEntity: last position queued for persistence` (`event = "persist_position_queued"`, the identity fields, `world`, `x`, `y`, `z`) | The `PersistPosition` was queued on the Cell→Base channel. This is the normal path, so it is DEBUG |
+
+The identity fields are `account_id`, `account_name`, `player_id` and `player_name` (Rule 5), with `entity_id` + `entity_name` (Rule 6). The `player_id_missing` row omits `player_id` when it is `None`; it is never sent as `"None"`. A failed send keeps its existing WARN (`PersistPosition send failed`, `error = %e`). Pinned by `persist_position_skip_and_queue_rows` in the same file.
+
 ## NPC-vs-NPC target refusals and NPC-only kills (#1009)
 
 Two seams, both carrying both entities' ids and factions so a standoff can be debugged from SigNoz alone:
@@ -675,6 +687,9 @@ A deferred effect row (a pulse, an expiry, a removal) names its invoker from the
 | DEBUG | `PersistPosition: no database pool, position not stored` | No pool (test, repl or smoke mode): `reason = "no_db_pool"` |
 
 The non-finite refusal keeps its WARN and `reason = "non_finite_position"`. Guards: `cell_dispatch::position::tests::live_db_logout_position_round_trips_with_world_id` (the account id and the cached player name on the INFO row) and `live_db_persist_no_row_is_silent_warn` (the two counts on the zero-row WARN).
+## Deferred content actions dropped on teardown (TG-MIS-07)
+
+A content chain's delayed actions (`content_actions.delay_ms > 0`) wait in `SpaceManager::pending_content_actions`. When the entity leaves before the delay elapses, `destroy_entity` or `disconnect_entity` drops the queue. A dropped `grant_item` or `advance_step` loses player progress, so a non-empty drop writes one WARN: `event = "deferred_actions_dropped"`, `reason` = `destroy_entity` or `disconnect`, Rule 5 identity (`account_id`, `account_name`, `player_id`, `player_name`), `entity_id` with `entity_name`, `dropped` (a count), `chain_ids` and `action_kinds` (via `player_journal::action_kind`). An empty queue writes nothing. Message: `deferred content actions dropped`. Written by `log_dropped_content_actions` in `cell/space_manager/entities.rs`. Guards: `destroy_entity_drops_pending_content_actions` and `disconnect_entity_drops_pending_content_actions` in `cell/space_manager/deferred_content_actions.rs` assert the WARN, `reason` and `dropped`.
 
 ## Related
 

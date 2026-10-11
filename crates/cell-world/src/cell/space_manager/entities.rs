@@ -8,7 +8,41 @@ use cimmeria_common::{EntityId, SpaceId, Vector3};
 use cimmeria_entity::cell_entity::{CellEntity, PlayerIdentity};
 
 use super::super::messages::CellToBaseMsg;
+use super::deferred_content_actions::PendingContentAction;
 use super::{EntityNames, SpaceManager};
+
+/// WARN for deferred content actions still queued when their entity leaves
+/// (`reason` is `destroy_entity` or `disconnect`). A dropped `grant_item` or
+/// `advance_step` loses player progress, so the drop must be visible.
+fn log_dropped_content_actions(
+    entity_id: u32,
+    id: &PlayerIdentity,
+    reason: &'static str,
+    queue: &[PendingContentAction],
+) {
+    if queue.is_empty() {
+        return;
+    }
+    let chain_ids: Vec<i64> = queue.iter().map(|p| p.chain_id).collect();
+    let action_kinds: Vec<String> = queue
+        .iter()
+        .map(|p| crate::cell::player_journal::action_kind(&p.action))
+        .collect();
+    tracing::warn!(
+        event = "deferred_actions_dropped",
+        reason,
+        entity_id,
+        entity_name = id.player_name,
+        account_id = id.account_id,
+        account_name = id.account_name,
+        player_id = id.player_id,
+        player_name = id.player_name,
+        dropped = queue.len(),
+        ?chain_ids,
+        ?action_kinds,
+        "deferred content actions dropped"
+    );
+}
 
 /// Outcome of [`SpaceManager::despawn_npc`].
 ///
@@ -141,7 +175,9 @@ impl SpaceManager {
         // before a deferred content-engine action's delay elapses must drop
         // the action, not fire it later against a torn-down (and possibly
         // id-reused) entity.
-        self.pending_content_actions.remove(&entity_id);
+        if let Some(queue) = self.pending_content_actions.remove(&entity_id) {
+            log_dropped_content_actions(entity_id, &id, "destroy_entity", &queue);
+        }
         // Same reasoning for the `entity_health_below` sample queue: a
         // sample naming a destroyed entity on either side would fire a
         // threshold chain against a torn-down (and possibly id-reused)
@@ -448,7 +484,9 @@ impl SpaceManager {
         // Same rationale, C08a: a disconnect before a deferred
         // content-engine action's delay elapses must drop the action, not
         // fire it later against a session that no longer exists.
-        self.pending_content_actions.remove(&entity_id);
+        if let Some(queue) = self.pending_content_actions.remove(&entity_id) {
+            log_dropped_content_actions(entity_id, &id, "disconnect", &queue);
+        }
         // Ring transport: release every trip this player was part of BEFORE
         // the AoI teardown below, while `tx` is in hand. Synchronous by
         // design — this is the one departure path that can dispatch the
