@@ -133,6 +133,9 @@ Keys the named-telemetry sweeps renamed while pairing them (Rule 6), so a saved 
 | The spawn rows in `space_manager/npc_population.rs` | `name` (held the template name) | `template_name` | NT-25 |
 | `npc_respawn_recreate` (`npc_respawn` tick) and the stargate loader (`spawner/stargates.rs`); also the `npc_respawns_total` metric label | `world_name` | `world` | NT-25 |
 | The respawn tick's witness re-create WARN (`spawner.npc_respawn`) | `reason = "cell_to_base_closed"` | `reason = "base_channel_closed"` (the shared cell→base send reason) | TG-NPC-12 |
+| `npc_ai.aggro_scan event=candidate_rejected` | `player_id` + `player_name` (held the witness's entity id and label) | `witness_id` + `witness_name`; `player_id` now holds the sgw character id, beside `account_id`, `account_name`, `player_name` (left out for an NPC witness) | TG-NPC-07 |
+| `npc_ai.aggro_scan event=assist_rejected` | `player_id` + `player_name` (held the fight target's entity id and label) | `target_entity_id` + `target_entity_name`, plus `target_account_id`, `target_account_name`, `target_player_id`, `target_player_name` for a player target | TG-NPC-07 |
+| `npc_ai.leash event=player_combat_exit` | `player_id` + `player_name` (held the player's entity id and label) | `entity_id` + `entity_name`; `player_id` now holds the sgw character id, beside `account_id`, `account_name`, `player_name` | TG-NPC-07 |
 | The ability loader (`spawner/abilities.rs`) | `type_id` (an `abilities.type_id` enum label) | `ability_type` | NT-25 |
 | `Loaded player data for mapLoaded` (`player_load/core/player_data.rs`) | `name` (held the character name) | `player_name` | NT-28c |
 | `Added Cimmeria item definition` (`resources/apply_overrides.rs`, boot) | `name` (held the item name) | `item_name` | NT-50a |
@@ -933,6 +936,16 @@ A witness that is pre-`onClientReady` or in a cinematic hold buffers its AoI tra
 
 Guard: `push_deferred_drops_at_cap` (`base-session`) captures the WARN and asserts `event`, `entity_id` and `kind`.
 
+## NPC attack-not-fired throttle (TG-NPC-05)
+
+An attack tick whose `handle_use_ability` call returns false (cooldown race, no ammo, out of range) used to WARN on every retry, about twice a second per NPC. `warn_attack_not_fired()` in `service/npc_ai/fight.rs` in `cimmeria-cell-combat` throttles it (Pattern D, `admit_warn`, keyed by NPC). The first row in a 15 s window writes at once. The retries inside it are counted, and the next row carries them in `suppressed`. The retry itself is scheduled whether or not the row is written.
+
+| Level | Row | When |
+|---|---|---|
+| WARN | target `npc_ai`, `event = "attack_not_fired"`, `reason = "handle_use_ability_returned_false"`, `npc_id` + `npc_name`, `template_id` + `template_name`, `world`, `space_id`, `target` + `target_name`, `suppressed` | An attack tick fired nothing; at most one row per NPC per 15 s |
+
+Guard: `retry_burst_warns_once_and_a_second_npc_is_not_swallowed` in `service/npc_ai/fight.rs` (three retries write one row; a second NPC's first row is not swallowed; the row after the window carries `suppressed = 2`).
+
 ## Trade cancel and refusal rows (TG-SOC-06)
 
 Targets `cimmeria_cell_interactions::cell::trade::state` (module path) and the cell-methods trade handlers. Every `beginTrading` refusal logs `event = "trade.session_refused"` at its existing level. The INFO row `trade.session_cancelled` carries a `reason` from a closed list per call site: `user_cancel` (the player cancelled), `bad_proposal` (a proposal update was rejected), `out_of_range` (a partner walked away mid-trade), `handoff_out_of_range` (a partner was out of range at the commit handoff) and `disconnect` (a teardown from logout or entity destroy). `trade.execute_requested` marks the handoff to base. Both cancel and execute rows carry the Rule 5 identity: `account_id`, `account_name`, `player_id`, `player_name`, with `target_*` for the partner. Guard: `disconnect_cancel_logs_reason_disconnect` in `cell-methods` `trade/tests/handlers.rs`.
@@ -1019,6 +1032,17 @@ Guard: `a_closed_base_channel_logs_the_unsent_end_aid_wait` in `cell/respawn/tes
 | WARN | `entity_missing` | `MinigameResult` with `result_code` 1 and `get_entity` misses; the chains fire for player 0 | `entity_id`, `chain_count`, `result` |
 
 Guard: `base_messages/tests/minigame.rs` `minigame_victory_for_unknown_entity_warns` (LogCapture: `reason`, `entity_id`, `chain_count`, `result`).
+
+## Duplicate minigame session (TG-MG-04)
+
+`crates/minigame/src/minigame/session.rs`, `SessionRegistry::register`. A second register for an entity that already has a session is refused. The row says why: `existing_connected` separates a double interact on a launch still loading (INFO) from a refusal while a game is live, or a launch that has sat past the 2 s window (WARN). The identity is the entity pair (`entity_id`, `entity_name`); the games are `existing_game` and `requested_game`. The ticket is never logged.
+
+| Level | `reason` | When | Fields |
+|---|---|---|---|
+| INFO | `duplicate_session` | A second register while the first session is unclaimed and under 2 s old | entity pair, `existing_connected = false`, `existing_age_ms`, `existing_game`, `requested_game` |
+| WARN | `duplicate_session` | A second register against a claimed session, or an unclaimed one older than 2 s (#1303) | entity pair, `existing_connected = true` or `false`, `existing_age_ms`, `existing_game`, `requested_game` |
+
+Guards: `session_tests.rs` `duplicate_register_while_pending_logs_info` and `duplicate_register_after_connect_logs_warn` (LogCapture: `reason`, `existing_connected`, `existing_game`, `requested_game`).
 
 ## Leave and invisible send failures (TG-AOI-08)
 

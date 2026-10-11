@@ -312,6 +312,17 @@ cannot skip the scan. Test code is cut only at an inline `#[cfg(test)] mod name 
 a `#[cfg(test)] mod tests;` declaration does not end the file's scan, so the
 production code below it is still checked.
 
+**Database pool (TG-DB-06).** `db.pool=debug` exports the pool's
+`db_pool_configured` row at connect, its 15 s `size` / `idle` sample and the
+throttled `db_pool_saturated` WARN. The pool is built with sqlx's defaults
+written out (10 connections, a 30 s acquire timeout) and a 250 ms
+slow-statement threshold (sqlx's default is 1 s), so every statement over
+250 ms is a WARN on `sqlx::query` carrying the SQL text (never its bound
+parameters; values written into the SQL text itself are logged). sqlx also
+WARNs on `sqlx::pool::acquire` when an acquire takes over 2 s; the sampler
+is the earlier, sampled signal for a pool running out of connections. See the
+[target catalog](observability-target-catalog.md).
+
 `crates/server/src/logging/parity_tests/` builds the production filters
 on recording layers and, for every directive of every file layer, fires a
 representative event at TRACE, DEBUG and INFO: an event the file keeps
