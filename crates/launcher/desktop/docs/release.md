@@ -61,6 +61,10 @@ The tag keeps its form, `launcher-YYYYMMDD-<sha7>`, from the run's UTC date and
 the dispatched commit. The compiled version (D-LX8) is SemVer `YYYY.M.D` from
 the same date, without leading zeros (`2026.10.11`), stamped as
 `CIMMERIA_LAUNCHER_VERSION`. The updater compares it with the feed's version.
+`shell/build.rs` refuses a value that is not SemVer and merges it over
+`tauri.conf.json`'s `version` through `TAURI_CONFIG` (LX-17), so the exe's file
+version, Settings' About line and the updater all read the same value. Unset
+(a local build), the version is `0.1.0`.
 
 When dated `launcher-YYYYMMDD-*` releases already exist for that day, the
 version is `YYYY.M.D-N`, where N is this release's place among the day's
