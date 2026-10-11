@@ -99,7 +99,7 @@ python tools/build-lane/lane_stats.py --recent 20
 
 ## Pre-PR checklist
 
-Run this before pushing, or the pipeline fails and you round-trip. Agents run the compiling lines through the lane (`lane.sh`, or `pwsh tools/build-lane/lane.ps1` from PowerShell), with `--exclusive` for the workspace-wide ones. `fmt`, `clippy`, `build-and-test` and `test-live-db` block a merge, and so do the two figure checks when figures or `docs/drafts/spec/` chapters change; markdownlint and spec-lint only annotate. **Before your first PR, and whenever a check fails, read [docs/agents/pre-pr-checks.md](docs/agents/pre-pr-checks.md):** what each CI job gates and when it runs, the annotated command list, and the fix for each failing check.
+Run this before pushing, or the pipeline fails and you round-trip. Agents run the compiling lines through the lane (`lane.sh`, or `pwsh tools/build-lane/lane.ps1` from PowerShell), with `--exclusive` for the workspace-wide ones. `fmt`, `clippy` and `build-and-test` (which runs the live-DB tier too) block a merge, and so do the two figure checks when figures or `docs/drafts/spec/` chapters change; markdownlint and spec-lint only annotate. **Before your first PR, and whenever a check fails, read [docs/agents/pre-pr-checks.md](docs/agents/pre-pr-checks.md):** what each CI job gates and when it runs, the annotated command list, and the fix for each failing check.
 
 ```bash
 # The same seven exclusions as CI.

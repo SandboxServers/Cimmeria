@@ -67,6 +67,8 @@ When every step, wait, coordinate and camera move is in the spec, no model is ne
 lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -Leases 2 -RunsPerLease 5
 ```
 
+**`-Heal`.** When a row fails because a pose's click, target or camera move missed in the world, its summary carries a heal hint, `heal: { pose, step }`, with `step` one of `hover`, `on_screen`, `face`, `abs_pitch` or `abs_yaw` (the camera steps only when the closed loop ran and missed, not when the readout was missing). With `-Heal` (it needs `-Leases 1`, else exit 2 before the daemon is asked), `lab uat` then recalibrates each distinct `(row, pose)` pair of the failed runs' hints with one `lab_uat_calibrate` call each, on the batch's instance, at the default budget ([Calibrate a row](#calibrate-a-row)). Each proposal is copied to `heal-<row>-<pose>.diff` in the batch folder and printed. `batch.json`, `summary.md` and the `-Json` object gain `heal: [{row, pose, diff}]` only when a proposal was written (`-Json` lists at most 3, then `more_heal: <n>`), and the command then exits **8**, over every other code, 1 and 5 included. Nothing is applied: the spec file is never written. With no hints it prints `heal: no failed row carries a heal hint` and exits as the batch would. A heal adds up to 15 minutes of lab time per pose; Ctrl+C during the batch skips it, and Ctrl+C during the heal keeps the diffs already written.
+
 ### Hand a run to a cheap agent
 
 When an agent should drive it instead, the [`lab-driver`](../../.claude/agents/lab-driver.md) agent (Haiku) makes one `lab_uat_run` call and reports each row's result. Its whole brief is the arguments:
@@ -186,9 +188,9 @@ matches = "searchitem 'pistol': [0-9]+ match"
 
 **Where rows run.** A row that tests a feature rather than a level (vendors, bankers, mail, trade, inventory, abilities, combat, chat) runs in the Debug Area (world 1300, `.gotolocation DebugArea`). It has a copy of every hub service, open ground and clear sight lines, where Castle_CellBlock's hub NPCs stand against walls the camera ends up behind. Use a level's own map only when the row is about that level: its missions, NPC placement, transitions or geometry.
 
-**Row fields:** `id`, `title`, `expected`, `required_native`, `state`, `players` (2 drives the second lab client, `p2`, and is BLOCKED with the reason when none is configured; above 2 is always BLOCKED), `known_issues`, `blocked` (a standing reason; nothing runs), `anchor` (default true in world), `relog` (what `After relog:` says when the row checks one), `notes`, `setup`, `step`, `teardown`, `expect`, `evidence`.
+**Row fields:** `id`, `title`, `expected`, `required_native`, `state`, `players` (2 drives the second lab client, `p2`, and is BLOCKED with the reason when none is configured; above 2 is always BLOCKED), `known_issues`, `blocked` (a standing reason; nothing runs), `anchor` (default true in world), `relog` (what `After relog:` says when the row checks one), `notes`, `pose` (the row's interaction poses, [below](#targets-poses-and-waits)), `setup`, `step`, `teardown`, `expect`, `evidence`.
 
-**Actions** (exactly one of the first four):
+**Actions** (exactly one of the first five):
 
 | Field | Meaning |
 |---|---|
@@ -196,6 +198,7 @@ matches = "searchitem 'pistol': [0-9]+ match"
 | `chat` | Type a line into chat: `client_chat_send` when that tool exists, else focus, Enter, `client_type_text`, Enter. The lab types letters, digits, space and `- _ / .` today |
 | `wait_ms` | Sleep (for server round trips the runner cannot observe) |
 | `capture` = `"chat"` + `regex` + `var` | Store regex group 1 of the newest matching chat line in `${var}` |
+| `wait_server` = `{ log, target, fields, timeout_ms }` | Wait for a server log line instead of sleeping ([below](#wait-for-the-server-wait_server)) |
 | `tier` | Declared native level (see above) |
 | `label` | A name for `at`, `since` and timing clauses |
 | `fallback` | Actions tried in order when the primary tool is not routed; their tier is what counts |
@@ -204,19 +207,19 @@ matches = "searchitem 'pistol': [0-9]+ match"
 
 The composites ([live-research-lab.md](live-research-lab.md#fewer-calls-composites-and-compact-results)) are routed tools like any other: `tool = "client_ui_sequence"` runs a scripted UI step as one action and reports the least native level it used, and a `tool` clause on `client_batch` reads one step's value with `pointer = "/steps/<id>"`. The runner calls tools in-process, so it always sees full results, never the compacted ones an MCP client gets. Reaching a row's state still uses the single flows (step 2 above), so each one's timing and failure stay in the evidence.
 
-`${character}`, `${run_id}`, `${row_id}`, `${section}`, `${bookmark_id}`, `${p2_character}` (two-player rows), `${player_entity_id}` (rows with packet clauses or an `@ability_state` read of the lab character), `${cast_id}`, `${cast_entity_id}`, `${cast_player_id}` and `${cast_key}`, each also as `..._<label>` (after an ability press, [below](#client-event-clauses-and-cast_id)), `${dummy_id}` (after `@dummy`), `${fixture_character}` and `${fixture_mode}` (rows with a fixture, [below](#row-fixtures)), the run's `vars` and captured values substitute into every string. A string that is exactly one `${var}` takes the variable's own type, so `entity_id = "${dummy_id}"` reaches a tool as a number. A captured whole number (a mail or entity id) is stored as a number for the same reason.
+`${character}`, `${run_id}`, `${row_id}`, `${section}`, `${bookmark_id}`, `${p2_character}` (two-player rows), `${player_entity_id}` (rows with packet clauses or an `@ability_state` read of the lab character; a `wait_server` that names it reads it from the client, `client_entity_find` `/player/id`, when it is unset, and keeps it), `${cast_id}`, `${cast_entity_id}`, `${cast_player_id}` and `${cast_key}`, each also as `..._<label>` (after an ability press, [below](#client-event-clauses-and-cast_id)), `${dummy_id}` (after `@dummy`), `${fixture_character}` and `${fixture_mode}` (rows with a fixture, [below](#row-fixtures)), the run's `vars` and captured values substitute into every string. A string that is exactly one `${var}` takes the variable's own type, so `entity_id = "${dummy_id}"` reaches a tool as a number. A captured whole number (a mail or entity id) is stored as a number for the same reason.
 
 **Expected clauses** (`[[row.expect]]`): `id`, `text`, `source`, `required` (default true), `at` (evaluate right after that step; default after all steps), `client` (`chat`, `tool`, `lua`, `wait` and `client_event` clauses: read `p2` instead of `p1`).
 
 | `source` | Fields | Verdict |
 |---|---|---|
 | `chat` | `contains` and/or `matches`, `count` (exactly N lines), `absent`, `since`, `capture_var` | Lines that arrived after `since` (default: before the first step) |
-| `tool` | `tool`, `args`, `pointer` (JSON pointer), `op`, `value` | Any lab tool's JSON |
+| `tool` | `tool`, `args`, `pointer` (JSON pointer), `op`, `value`, `timeout_ms` | Any lab tool's JSON; with `timeout_ms`, polled ([below](#poll-a-clause-timeout_ms)) |
 | `lua` | `chunk`, `pointer`, `op`, `value` | `client_lua_eval`'s first result; a Lua error is UNVERIFIED |
 | `wait` | `lua_condition`, `timeout_ms` | `client_wait_for` met or not |
 | `timing` | `action` (a label), `max_ms` | That step's elapsed time |
 | `signoz` | `filter`, `min_rows`, `max_rows`, `field` + `op` + `value` | PENDING until attested |
-| `server` | `tool`, `args`, `pointer`, `op`, `value` | A `cimmeria-lab-mcp` tool; UNVERIFIED when unreachable. `@ability_state` (`server_ability_state`) with no `entity_id` reads the lab character |
+| `server` | `tool`, `args`, `pointer`, `op`, `value`, `timeout_ms` | A `cimmeria-lab-mcp` tool; UNVERIFIED when unreachable. `@ability_state` (`server_ability_state`) with no `entity_id` reads the lab character; with `timeout_ms`, polled |
 | `client_event` | `event`, `match_fields`, `since`, `min_rows`, `max_rows`, `field` + `op` + `value` (+ `tolerance`), `timeout_ms` | The client's own telemetry events (`client.ability.*`) from the lab event store ([below](#client-event-clauses-and-cast_id)) |
 | `packet` | `message`, `direction`, `entity`, `match_fields`, `min_rows`, `max_rows`, `field` + `op` + `value` (+ `tolerance`) | Decoded Mercury messages from the row's packet tap (below); UNVERIFIED when the endpoint is unreachable |
 | `human` | `question` | NEEDS_HUMAN until answered |
@@ -226,6 +229,88 @@ A `tool`, `server` or `lua` clause with `capture_var` keeps what it observed in 
 `op` is one of `eq`, `ne`, `contains`, `not_contains`, `matches`, `gt`, `gte`, `lt`, `lte`, `exists`, `absent`, `truthy`, `falsy`, `len_gte`, `approx`. Numbers compare numerically even when Lua returns them as strings. `approx` takes a numeric `value` and a `tolerance`: `op = "approx"`, `value = 15`, `tolerance = 1` passes 14 to 16, the spec form of `complete_in_s ~ 15 ± 1`.
 
 A `pointer` may select an array element by a field: `[key=value]` after a segment picks the first element whose `key` equals `value` (numbers numerically). `server_ability_state` lists stats and ledger entries as arrays, so `/state/stats[stat_id=22]/cur` reads one stat and `/state/ledger[ability_id=637]/expires_in_secs` one effect, wherever they sit in the list.
+
+### Targets, poses and waits
+
+A step should say *what* it acts on and *how the view should look*, not where someone once measured it. Three pieces do that: a `pose` names the target by its spawn tag and describes where to stand and how to aim; `@stand`, `@camera` and `@world_click` take the pose by id; and `wait_server` ends a wait on a server event instead of a sleep. [first-session.toml](uat-specs/first-session.toml) is the worked example: FS-P3 and FS-P4 for the Praxis corpses, FS-S3 to FS-S6 for SGC_W1. The decisions behind it are D-SV1 to D-SV12 in the [lab-spec-vocab ledger](../analysis/lab-spec-vocab/README.md).
+
+```toml
+[[row]]
+id = "FS-P3"
+pose = [
+  { id = "frost", tag = "ArmYourself_FrostBody", radius_m = 4.16, bearing_deg = 322.5, dy_m = 0.13, pitch_deg = -28.8, yaw_offset_deg = 25.3, zoom = 250.0, calibrated = "2026-10-10 hand" },
+]
+setup = [
+  { chat = "/gmsetgodmode 1", tier = "G" },
+  { tool = "@stand", args = { pose = "frost" } },
+  { wait_ms = 1500 },   # nothing waits on the target's introduction yet
+]
+step = [
+  { tool = "@camera", args = { pose = "frost" }, label = "aim" },
+  { tool = "@world_click", args = { pose = "frost", button = "right", expect = "window" }, label = "frost" },
+]
+```
+
+**The `pose` line.** Each pose is one inline table on one line (TOML inline tables cannot span lines), so `lab calibrate` can replace exactly that line and nothing else (D-SV2). Write the keys in this order:
+
+| Key | Meaning |
+|---|---|
+| `id` | Row-unique, `[a-z0-9-]+`; actions name it with `pose = "<id>"` |
+| `tag` | The target's `spawnlist.tag`, exact. Checked against the seed (below) |
+| `radius_m` | Horizontal stand-off from the target, 1.0 to 8.0 m |
+| `bearing_deg` | Which side of the target to stand on, 0 to under 360 |
+| `dy_m` | Stand height above the target's origin, -3.0 to 3.0 (default 0.1) |
+| `pitch_deg` | Optional. Camera pitch after facing, in the readout's own `pitch_offset_deg` degrees, -78.75 to 78.75 |
+| `yaw_offset_deg` | Optional. Camera yaw after facing, -180 to 180 |
+| `zoom` | Optional. Camera distance, 100 to 775 (a new character starts at 250) |
+| `aim` | `"entity"` (default) or `"point"` |
+| `aim_dy_m` | With `aim = "point"` only, and then required: metres above the target's origin |
+| `calibrated` | Provenance, one line: `lab calibrate` writes `"<date> 3/3"`; a hand measurement says so |
+
+**The geometry (D-SV3).** The stand point is the target's *live* server position plus `radius_m` along the bearing: x + r·cos(b), z + r·sin(b), y + `dy_m`, in server metres. Bearing 0 stands you on the target's +x side, 90 on its +z side, 180 on its -x side, 270 on its -z side. So Frost at (-328.30, 73.47, -210.27) with radius 4.16 and bearing 322.5 gives the stand point (-325.0, 73.6, -212.8), the hand-measured point it replaced. Because the target's live position is read each time, a pose survives an NPC that moved.
+
+**`@stand`** teleports to the stand point with `/gmgotoxyz` (2 decimals, tier G), then asks the client for the player's position every 250 ms until the server x/z is within 0.5 m of the point, for up to 5 s (D-SV11). It takes `pose`, or a bare `tag` with `radius_m`, `bearing_deg` and optionally `dy_m`, or a fixed `point = { x, y, z }`. It waits for the *player* only, so a target the client has not introduced yet is not waited for: keep a short sleep after it before addressing the target, as FS-P3 does.
+
+**`@camera { pose }`** faces the target, then sets the pose's `pitch_deg`, `yaw_offset_deg` and `zoom`. `client_camera` applies its arguments in a fixed order (D-SV4): relative counts, zoom, the face, then the absolute pitch, then the absolute yaw. The pitch is a closed loop on the readout's `pitch_offset_deg` (up to 4 looks, 0.5 deg tolerance); use the number the `aim-pitch` clauses grade and never reinterpret its sign. The yaw is a turn from where the face left the camera, closed loop on the camera actor's world yaw, so a positive value turns the view the way positive `yaw_counts` do on a stock camera, and means the same view on a client whose yaw is inverted. Because both are absolute, the view no longer depends on where the previous row left the camera.
+
+**`@world_click { pose }`** (and `@target`, `@entity_find`) clicks the resolved entity by id, or the aim point for `aim = "point"`. A pose adds `rotate_camera = false`, because the stand and camera have already set the view; give `rotate_camera = true` to keep the click tool's own turn, as the uncalibrated SGU rows do.
+
+**Bare `tag` and `face_tag`.** Without a pose, `tag` names the target on `@world_click`, `@target`, `@entity_find` and `@stand`, and `face_tag` names the face target on `@camera`. A bare tag clicks with the click tool's default rotation (on).
+
+**Give one.** Each argument that names a target replaces the others, so validation refuses a pair, and the runner refuses it again for arguments built from `${vars}`:
+
+- `pose` together with `name`, `entity_id` or `point` (and, on `@camera`, `face_name`, `face_entity_id` or `face_point`): "`pose with <key>: give one`".
+- `tag` together with `name`, `entity_id`, `point` or `pose`; `face_tag` together with `face_name`, `face_entity_id`, `face_point` or `pose`.
+- `pose` only on `@camera`, `@world_click`, `@target`, `@entity_find` and `@stand`; `tag` not on `@camera`; `face_tag` on `@camera` only.
+
+Any other argument next to a pose wins over the pose's value: `pitch_deg`, `yaw_offset_deg`, `zoom`, `rotate_camera`, `aim`, `aim_dy_m`. A `zoom_to` keeps the pose's `zoom` out, because the camera refuses both. `aim_dy_m` with an entity aim is an error, not ignored.
+
+**When to use `aim = "point"`.** Only when the target never answers an entity hover. The Cellblock NID Guard's body is the known case (FS-P4): the click goes `aim_dy_m` (0.28) above its origin, on the torso. A point aim cannot prove the target is under the cursor; it can only prove nothing else is (the avatar, another entity, a HUD window), so prefer the entity aim whenever it hovers.
+
+**How a tag becomes an entity (D-SV1).** The client has no tags; the server does. The runner reads the player's entity id from the client (`client_entity_find` `/player/id`), its space with `server_entity_get`, then `server_entity_query { space_id, tag }`, filters the reply by tag and space again itself (a server older than the tag filter answers with the whole space), and hands the client tool a plain `entity_id` or `point`. `pose`, `tag`, `face_tag`, `aim` and `aim_dy_m` never reach a client tool: the action's `args` in the bundle are what the tool got. Each server read is in the action's `calls` as `{ tool, args, ok }`, with the resolution as `{ resolve: { tag, entity_id, space_id } }` (plus `pose` when the action named one; `-Heal` and lab-golden key on it). Zero matches fail the action with "`no entity with tag <tag> in space <id>`", several with "`tag <tag> matches entities <ids> in space <id>`".
+
+A row whose steps name a pose, `tag` or `face_tag` is BLOCKED without the server lab MCP ("`<tool> by tag needs the server lab MCP (CIMMERIA_LAB_MCP_URL/_TOKEN)`"), and any of those or an `@stand` needs `client_entity_find` routed. An `@stand { point }` needs no server.
+
+**Seed validation (D-SV10).** Every tag a spec names, in a `pose` or in a `tag` / `face_tag` argument, must be a `spawnlist.tag` in `db/resources/Worlds/Seed/`. `cargo test -p cimmeria-lab` checks every committed spec, and `lab_uat_run` checks again when the seed sits beside the specs (a checkout, not an installed copy). An unknown tag fails as "`tag <tag> is not in the seed`", with "did you mean" when only the case differs. Watch the near-twins: `SGCW1_GenHammond` but `SGC_W1_Tealc`. The check proves the tag exists, not that it is the entity you meant or that it is in the player's space.
+
+#### Wait for the server: `wait_server`
+
+```toml
+{ wait_server = { log = "Cinematic AoI hold: released", target = "aoi.cinematic_hold", fields = { witness_id = "${player_entity_id}" }, timeout_ms = 30000 }, label = "movie-over" },
+```
+
+| Field | Meaning |
+|---|---|
+| `log` | Required. A case-sensitive substring of the log message |
+| `target` | The tracing target, exact. Give it whenever the message text is generic |
+| `fields` | Every one must equal the line's field: numbers numerically (`"8"` equals `8`), `${var}`s filled in |
+| `timeout_ms` | Default 30000, 1 to 120000 |
+
+The runner reads the server's newest log timestamp *before the action in front of the wait* (a setup action too), so a line that action caused is never missed. The wait then polls `server_log_tail` every 250 ms with `contains`, `target`, `since_ms` and `limit: 500` (the whole ring), and passes on the first newer line with every field. The action's result is `{ matched: { timestamp_ms, message, fields } }` with only the named fields. A timeout fails with "`no server log '<log>' <fields> within <n> ms`"; a failed read fails at once rather than polling an unreachable server, and every server call is bounded by the timeout. Without the server lab MCP the row is BLOCKED. `lab.tool_call` lines (the endpoint's own audit rows, one per call, polls included) never satisfy a wait. The 17 s sleeps for the first-login hold in FS-P2 and FS-S2 are now this wait on the hold's release line.
+
+#### Poll a clause: `timeout_ms`
+
+A `tool` or `server` clause with `timeout_ms` (at most 60000) is re-read every 250 ms while it FAILs, until it passes or the time is up. It replaces "sleep, then read once" for a server write that lands a moment after the step, such as FS-P3's `sgw_mission` step check. UNVERIFIED, BLOCKED and read errors are not retried. A clause read more than once says `polls: <n>` in its detail.
 
 ### Packet clauses
 
@@ -477,7 +562,7 @@ Validation rejects `skip` on the section, an empty glob or one with whitespace, 
 
 ### The capability table
 
-`crates/lab/src/uat/tools.rs` maps each capability to the tool that provides it and the most native tier it can claim: `@world_click` is `client_world_click` at N1, `@inventory` is the read `client_inventory`. It lists the tools on `main`, including the world tools (#1099: `@entity_find`, `@world_click`, `@target`, `@move_to`, `@camera`; and `@target_player`, which the runner expands for [two-player rows](#two-player-rows)) and the combat tools (#1100: `@use_ability`, `@combat_log`, `@die_and_respawn`, `@wait_event`, `@hotbar`), the ability lab capabilities (AB-L3: `@dummy`, `@cooldowns_reset`, `@clear_effects` and the server read `@ability_state`, below), `@window_click` (`client_window_click`: a widget by its real CEGUI name, Lua global or not, such as a frame's `__auto_closebutton__`), and the planned ones (UI and items: `@window_read`, `@window_click_row`, `@chat_log`, `@inventory`, `@player_state`, `@item_action`, `@drag_drop`; and `@chat_send`, `@cache_files`). Write planned tools by alias in specs: when one lands under another name, the fix is one line in the table. A tool that reports how it drove the game (`native_level` as a word, `real_input` / `slash_command` / `ui_lua` / `server_shortcut`, as the world tools do, `native_cegui` (N1) / `client_ui_lua` / `native_call` (both N3), as the UI and item tools do, or as `{tier: "N1".."X"}`, as the combat tools do) overrides its table tier when it fell back lower, so a `client_target` that used `targetUnit` counts as N3, and so does a `client_drag_drop` that had to fire the drop itself.
+`crates/lab/src/uat/tools.rs` maps each capability to the tool that provides it and the most native tier it can claim: `@world_click` is `client_world_click` at N1, `@inventory` is the read `client_inventory`. It lists the tools on `main`, including the world tools (#1099: `@entity_find`, `@world_click`, `@target`, `@move_to`, `@camera`; and `@target_player`, which the runner expands for [two-player rows](#two-player-rows)) and the combat tools (#1100: `@use_ability`, `@combat_log`, `@die_and_respawn`, `@wait_event`, `@hotbar`), the ability lab capabilities (AB-L3: `@dummy`, `@cooldowns_reset`, `@clear_effects` and the server read `@ability_state`, below), `@window_click` (`client_window_click`: a widget by its real CEGUI name, Lua global or not, such as a frame's `__auto_closebutton__`), the spec-vocabulary pair (`@stand`, a runner action at tier G that teleports to a pose's stand point and waits for the player there, [above](#targets-poses-and-waits); `@hover_probe`, `client_hover_probe` at N1, which hovers an entity or point and scores it without clicking), and the planned ones (UI and items: `@window_read`, `@window_click_row`, `@chat_log`, `@inventory`, `@player_state`, `@item_action`, `@drag_drop`; and `@chat_send`, `@cache_files`). Write planned tools by alias in specs: when one lands under another name, the fix is one line in the table. A tool that reports how it drove the game (`native_level` as a word, `real_input` / `slash_command` / `ui_lua` / `server_shortcut`, as the world tools do, `native_cegui` (N1) / `client_ui_lua` / `native_call` (both N3), as the UI and item tools do, or as `{tier: "N1".."X"}`, as the combat tools do) overrides its table tier when it fell back lower, so a `client_target` that used `targetUnit` counts as N3, and so does a `client_drag_drop` that had to fire the drop itself.
 
 The ability lab capabilities are the AB-L2 dot commands, typed into chat at tier G. The runner builds the line from `args`, types it, and waits up to 5 s for the command's own feedback line; a refusal (`.dummy: ...`) or no reply fails the action, so a teardown that cleared nothing is flagged, not trusted.
 
@@ -489,6 +574,47 @@ The ability lab capabilities are the AB-L2 dot commands, typed into chat at tier
 | `@ability_state` | `entity_id` (default: the lab character) | the server read `server_ability_state`, for `source = "server"` clauses | |
 
 `cargo test -p cimmeria-lab` parses and validates every committed spec, so a typo in a field name or a dangling label fails the build.
+
+## Calibrate a row
+
+A pose written by hand, or one a map change broke, is found again by `lab calibrate`: it sweeps stand-offs and camera angles around the target on the live client, scores each by hover, and writes the best one as a diff against the spec for you to review. It never clicks, so the mission state is the same after every candidate, and it never writes or commits the spec. It is lab use like any other: ask the user first and wait until the lab is free. Calibration may run on the colo for the lab account, one pose at a time, and on any local server (D-SV7).
+
+```powershell
+lab calibrate first-session FS-P3 -Pose frost -Prepare FS-01,FS-02,FS-P1,FS-P2
+```
+
+1. **Put the client where the row starts.** The section must be `account = "gm"` (the sweep stands with `/gmgotoxyz`), the server lab MCP must be configured, and the client must be in the world in the row's state. `-Prepare <row ids>` runs those rows first (one `lab_uat_run` on the same instance); a prepare row that does not PASS stops with exit 3, naming it.
+2. **The sweep.** For each pose a `client_world_click` step of the row names, in step order (or only `-Pose`), it tries the current pose first, then every combination of radius (3.75, 3.0, 4.5 m), bearing (every 30 degrees, starting from the current bearing), yaw offset after the face (+25, -25, 0) and pitch (the pitch the face lands on, -35, -22): 325 candidates over 37 stand points. Each candidate is `@stand` (a teleport only when the point changed), `@camera` with the candidate's pitch, yaw and the pose's zoom (250 when it has none), then `client_hover_probe`.
+3. **The score (D-SV6).** A candidate counts only when the aim pixel gives the wanted verdict: the target under the cursor for an entity aim; for a point aim, nothing under it that is not the target (not the avatar, another entity or a HUD window). Its score is `jitter_hits * 1000 + min(avatar_px, 400) + min(edge_px, 200) / 2`: how many of eight points 12 px around the aim pixel agree, then how far the pixel is from the avatar's body and the screen edge. Ties go to the earlier candidate.
+4. **Confirmation.** The best candidate is re-stood three times, each from the opposite bearing first, and each probe must be `ok` with at least 6 jitter hits. A failed confirmation moves on to the next best, at most three winners.
+5. **The budget.** `-BudgetMinutes` (1 to 30, default 15) bounds the whole call, checked between candidates. A winner already found is still confirmed for up to 2 minutes past it; a pose the budget never reached says `budget: not started`.
+
+**Output.** One line per pose, then the diff unless `-Quiet`:
+
+```text
+frost: score 8312, confirmed 3/3, bearing 322.5 -> 330.0; diff <run folder>\first-session.diff
+supply: score 7400, confirmed 3/3, unchanged
+frost: no proposal: <reason> (best score 5100, confirmed 1/3)
+```
+
+`unchanged` means the winner is the pose as written: the diff then only restamps `calibrated`, so the re-measurement still leaves provenance. A line ending `(budget: swept 40 of 108 candidates)` stopped early. `-Json` prints one object under about 400 characters, `{ok, section, row, outcomes: [{pose, ok, score, confirmed, changed, diff, reason}], applied}`, with only the fields that are set and never the candidate list.
+
+**The run folder** is an ordinary UAT run folder under the UAT root (`run.json` included), holding:
+
+- `calibrate.jsonl`: one line per probe, `{pose, i, r, b, yaw, pitch, ok, hits, score}`, plus `confirm: <n>` on a confirmation and `miss: "stand" | "camera" | "probe"` when a candidate never reached a verdict;
+- the rewritten copy of the spec file, under its own name;
+- `<section>.diff`: a `git apply` diff against `docs/guides/uat-specs/<file>`, carrying every pose the call proposed.
+
+**Review and commit by hand.** Read the diff: only `pose` lines change, and the file is re-parsed to prove nothing else did (D-SV2). `-Apply` runs `git apply` with it in this checkout, and is refused (exit 2) when the spec file has uncommitted changes, staged or not, or is not tracked. That is checked before the sweep and again before applying, and a diff for a file outside `docs/guides/uat-specs/` or naming more than one file is never applied. `-Apply` never stages or commits. Then run the row (calibration proves a hover, not that the click interacts), run `cargo test -p cimmeria-lab` through the [build lane](../../tools/build-lane/lane.ps1), and commit the spec yourself. To recalibrate several poses of one file with `-Apply`, commit between them.
+
+| Exit | Meaning |
+|---|---|
+| 0 | Every pose has a proposal, or is unchanged |
+| 1 | A pose found no candidate that confirmed, or no outcome came back |
+| 2 | Usage, or `-Apply` refused or failed (the diff stays in the run folder) |
+| 3 | The pre-flight (daemon, a free instance, no `SGW.exe` outside the lab), a prepare row, or the `lab_uat_calibrate` call failed |
+
+The tool behind it is `lab_uat_calibrate` ([live research lab](live-research-lab.md#tools-at-a-glance)); `lab uat -Heal` calls it for a failed row's pose ([above](#run-without-an-agent-lab-uat)). The `first-session` SGU poses (FS-S3 to FS-S6) are computed from the seed's spawn rows, not calibrated, and carry no pitch, yaw or zoom until the campaign's acceptance run (lab-spec-vocab SV-15) calibrates them.
 
 ## Spec coverage
 
@@ -617,3 +743,10 @@ Re-bless when the behaviour changed on purpose (a new message, a new dialog), or
 | A fixture row BLOCKED "stage refused: character ... is not on a GM account" | The instance's lab account is not a GM. Raise its `accesslevel` to 2 or more; fixtures are lab-only (D-FX2) |
 | A fixture row BLOCKED "got ..., want ..." | The server did not apply the fixture. Its log says why: `lab fixture not applied` (`reason` `precheck_refused` or `write_failed`) or `lab fixture discarded` (`not_gm`, `no_database`) |
 | The run stops mid-section | An MCP call timeout (see the "operation timed out" row above): rerun the remaining rows with the same `run_dir` |
+| An action fails "no entity with tag ... in space ..." | The player is in another space than the target (a wrong world, or a previous row that did not bring the player there), the target is not spawned or introduced yet, or the tag is a real seed tag but the wrong one, which the seed check cannot catch. "(the reply was capped)" at the end means a server older than the tag filter cut the space's list off: update the server |
+| An action fails "tag ... matches entities ..." | Two spawns share the tag in the player's space (`spawnlist.tag` is not unique). Pick a tag that is unique there |
+| `@stand` fails "stand: still n m from (x, y, z) after 5 s" | The teleport was refused (the account is not a GM, or the chat line did not send) or the point is inside geometry and the server put the player elsewhere. Check `dy_m` and the bearing against the map, or recalibrate. "no player position after 5 s" means `client_entity_find` returned no position at all |
+| A `wait_server` fails "no server log '...' within n ms" | The event did not happen, or happened with other fields (a `witness_id` of another player): read the server log around the action. The runner re-applies every filter itself, so a server older than the `server_log_tail` filters still works. A failed read is a different error, `server_log_tail: ...`, and fails at once |
+| A row BLOCKED "... by tag needs the server lab MCP" or "wait_server needs the server lab MCP" | `CIMMERIA_LAB_MCP_URL` and `_TOKEN` are not set for the runner: pose, tag and `wait_server` rows need the server endpoint |
+| `lab calibrate` exits 2 "has uncommitted changes or is not tracked" | `-Apply` refuses a dirty or untracked spec. Commit or revert it, or apply the diff from the run folder by hand |
+| `lab calibrate` refuses with "calibration needs a gm section" | The section's `account` is `non-gm`; the sweep stands with `/gmgotoxyz` |

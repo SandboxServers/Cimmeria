@@ -324,6 +324,25 @@ class MergeTests(MergeCase):
         self.assertEqual((code, f["status"], f["checks"]), (1, "ci-failed", "cargo clippy -D warnings"))
         self.assertEqual(self.calls(["pr", "merge"]), [])
 
+    def test_a_renamed_gate_reported_under_its_old_name_counts(self):
+        # A PR whose last CI ran before the build-and-test rename reports the old name.
+        old, new = next(iter(ship.RENAMED.items()))
+        checks = {g: "pass" for g in ship.GATING if g != new}
+        checks[old] = "pass"
+        self.add_pr(["src.rs"], checks=[checks])
+        code, f, line = self.merge()
+        self.assertEqual(code, 0, line)
+        self.assertEqual(self.calls(["pr", "merge"]), [["pr", "merge", "7", "--squash"]])
+
+    def test_a_failure_under_a_renamed_gates_old_name_stops_the_merge(self):
+        old, new = next(iter(ship.RENAMED.items()))
+        checks = {g: "pass" for g in ship.GATING if g != new}
+        checks[old] = "fail"
+        self.add_pr(["src.rs"], checks=[checks])
+        code, f, _ = self.merge()
+        self.assertEqual((code, f["status"], f["checks"]), (1, "ci-failed", new))
+        self.assertEqual(self.calls(["pr", "merge"]), [])
+
     def test_a_path_filtered_lab_check_that_ran_gates_the_merge(self):
         lab = ship.CONDITIONAL[1]
         self.add_pr(["crates/lab/src/x.rs"], checks=[dict(GREEN, **{lab: "fail"})])
@@ -348,10 +367,22 @@ class MergeTests(MergeCase):
         workflows = Path(__file__).resolve().parents[2] / ".github" / "workflows"
         names = set()
         for wf in workflows.glob("*.yml"):
-            for line in wf.read_text(encoding="utf-8").splitlines():
+            lines = wf.read_text(encoding="utf-8").splitlines()
+            for i, line in enumerate(lines):
                 stripped = line.strip()
                 if stripped.startswith("name:") and line.startswith("    name:"):
-                    names.add(stripped[len("name:"):].strip().strip("'\""))
+                    name = stripped[len("name:"):].strip().strip("'\"")
+                    if "${{ matrix.os }}" not in name:
+                        names.add(name)
+                        continue
+                    # A matrix job names one check per os: value in its own block.
+                    for later in lines[i + 1:]:
+                        if later.startswith("  ") and not later.startswith("   "):
+                            break   # the next job
+                        if later.strip().startswith("os: ["):
+                            for os_name in later.split("[", 1)[1].rstrip("]").split(","):
+                                names.add(name.replace("${{ matrix.os }}", os_name.strip()))
+                            break
         missing = [c for c in ship.CONDITIONAL if c not in names]
         self.assertEqual(missing, [], "CONDITIONAL names no job in .github/workflows")
 
