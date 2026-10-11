@@ -23,8 +23,8 @@ pub const STORE_CAP: usize = 8192;
 pub struct StoredEvent {
     pub seq: u64,
     /// `cme.event`, `net.out`, `entity.enter`, `cegui.log`, `lua.print`,
-    /// `hook.hit` (bridge ring), or `combat.hit` / `chat.line` (the lab's
-    /// Lua rings, see [`super::lua_rings`]).
+    /// `hook.hit` (bridge ring), or `combat.hit` / `chat.line` / `ui.click`
+    /// (the lab's Lua rings, see [`super::lua_rings`]).
     pub kind: String,
     /// Client wall clock, ms since the epoch.
     pub ts_ms: i64,
@@ -84,6 +84,7 @@ pub struct StoreInner {
     cursors: HashMap<String, u64>,
     pub combat_mark: LuaRingMark,
     pub chat_mark: LuaRingMark,
+    pub click_mark: LuaRingMark,
 }
 
 impl StoreInner {

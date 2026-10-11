@@ -404,8 +404,24 @@ the launcher's own environment, for example on macOS:
 open --env CIMMERIA_CLIENT_CAPTURE=unfilter,firehose "<launcher bundle>"
 ```
 
+**Launcher events.** For an opted-in player the launcher also sends the
+Windows launcher's own events, built by the same core code:
+`client.launcher.install_result` once per Install, Repair or game Update run,
+and the client-patches DLL's `client.patches.boot` and `client.patches.counts`
+for each Play. The boot event's `injection` follows the policy Play used, so
+an adopted copy whose reviewed choice is patches off reports `opted_out`.
+None of these have a session of their own: they go to the disk queue and ship
+with the next session's first flush.
+
 **Not covered:**
 
+- An install result is queued only by the journal commit that ends the run.
+  A run ended any other way sends none: one finished by reconciliation after
+  a restart, one whose launcher stopped between its terminal commit and the
+  queue append, and a Repair or Update preparation that finished after its
+  owner went away (left for reconciliation). Nothing
+  records which runs were reported, so reporting them later could not be
+  made exactly-once.
 - An adopted copy still launches without game telemetry. Its imported choice
   is reported as unavailable, as before.
 - The session token is minted once per Play and is not refreshed. A session

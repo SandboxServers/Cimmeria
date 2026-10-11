@@ -132,6 +132,16 @@ pub enum Error {
     #[error("createCharacter refused, code {0}")]
     CharacterCreateFailed(i32),
 
+    // ── Scripts ─────────────────────────────────────────────────────────────
+    /// A `ScriptSession` wait ran out before its message arrived. `trail` is
+    /// the last 30 messages the script saw, one per line (D-WC9).
+    #[error("script: waited {waited:?} for {what}; last events:\n{trail}")]
+    ScriptTimeout {
+        what: String,
+        waited: std::time::Duration,
+        trail: String,
+    },
+
     // ── Replay / trace ──────────────────────────────────────────────────────
     /// Session-trace JSON could not be parsed.
     #[error("session trace JSON: {0}")]

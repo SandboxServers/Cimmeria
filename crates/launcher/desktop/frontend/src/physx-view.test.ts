@@ -6,7 +6,7 @@ import type {NativeSnapshot,PhysxStatus} from './contract';
 import {makePanelContext} from './panel-context';
 import {mountPhysx,physxWarning} from './physx-view';
 const html=readFileSync('ui/index.html','utf8');
-const snapshot:NativeSnapshot={schema_version:1,operation:{schema_version:1,revision:0,operation:null},requires_reopen:false,adopted_login_servers:null,
+const snapshot:NativeSnapshot={schema_version:1,operation:{schema_version:1,revision:0,operation:null},requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},
  preferences:{schema_version:2,revision:1,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true}};
 const status=(over:Partial<PhysxStatus>={}):PhysxStatus=>({schema_version:1,supported:true,detection:{core_registered:false,core_present:false},
  installer_available:true,installing:false,last_result:null,...over});
