@@ -6,9 +6,10 @@ use std::time::Instant;
 
 use crate::routes::telemetry::bundle::bundle_inner;
 use crate::routes::telemetry::bundle_unzip::{
-    declared_zip_entries, newest_first, unpack_and_replay, BundleCounts,
+    declared_zip_entries, newest_first, replayable_entry, unpack_and_replay, BundleCounts,
 };
 use crate::routes::telemetry::dto::IngestError;
+use crate::routes::telemetry::replay_tests::capture;
 use crate::routes::telemetry::upload_gate::{UploadLimits, UploadPolicy, UploadState};
 
 use super::{bundle_request, claims, run, zip_of, Env, PEER};
@@ -251,6 +252,58 @@ fn a_file_over_the_byte_budget_is_skipped_and_smaller_ones_still_replay() {
     assert_eq!((counts.files, counts.lines), (1, 5));
     let t = counts.truncation.unwrap();
     assert_eq!((t.budget, t.dropped_estimate), ("expanded bytes", 500));
+}
+
+/// **Only logs are replayed.** Which entries count as logs: the client's
+/// debug log and `*.log` files, whatever the folder or separator.
+#[test]
+fn replayable_entry_allows_only_logs() {
+    for name in [
+        "Binaries/SGWDebugLog.log",
+        "sgwdebuglog",
+        "Binaries/sessions/2026-10/session.log",
+        "a\\b\\X.LOG",
+    ] {
+        assert!(replayable_entry(name), "{name}");
+    }
+    for name in [
+        "Binaries/sessions/2026-10/abc-keys.txt",
+        "Binaries/sessions/current-session.json",
+        "notes.txt",
+    ] {
+        assert!(!replayable_entry(name), "{name}");
+    }
+}
+
+/// **A key dump is never replayed.** The session folder holds a log and a
+/// key dump: the log's line replays, the dump is counted in
+/// `skipped_not_log` and its bytes reach no captured row.
+#[test]
+fn bundle_replay_skips_key_dumps() {
+    let zip = zip_of(&[
+        ("sessions/x/session.log", b"hello\n"),
+        ("sessions/x/s-keys.txt", b"SECRETLINE\n"),
+    ]);
+    let mut counts = None;
+    let rows = capture(|| {
+        counts = Some(
+            unpack_and_replay(&claims("sess-zip-keys"), &zip, &UploadLimits::default()).unwrap(),
+        );
+    });
+    let counts = counts.unwrap();
+    assert_eq!(
+        (counts.files, counts.lines, counts.skipped_not_log),
+        (1, 1, 1)
+    );
+    assert!(
+        rows.iter()
+            .all(|r| r.fields.values().all(|v| !v.contains("SECRETLINE"))),
+        "{rows:#?}"
+    );
+    assert!(
+        rows.iter().any(|r| r.fields.values().any(|v| v == "hello")),
+        "{rows:#?}"
+    );
 }
 
 /// A bundle within every budget is accepted through the handler.

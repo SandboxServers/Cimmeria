@@ -15,7 +15,20 @@ use super::upload_gate::UploadLimits;
 pub(super) struct BundleCounts {
     pub files: u64,
     pub lines: u64,
+    /// Entries that are not logs (see [`replayable_entry`]), never read.
+    pub skipped_not_log: u64,
     pub truncation: Option<Truncation>,
+}
+
+/// Whether a bundle entry is a log the server replays. Only the client's
+/// debug log (`SGWDebugLog*`) and `*.log` files: session folders also hold
+/// key dumps (`*-keys.txt`) and `current-session.json`, which carry secrets
+/// and must never reach SigNoz.
+pub(super) fn replayable_entry(name: &str) -> bool {
+    // The last path component, whichever separator the zip was written with.
+    let base = name.rsplit(['/', '\\']).next().unwrap_or(name);
+    let base = base.to_ascii_lowercase();
+    base.starts_with("sgwdebuglog") || base.ends_with(".log")
 }
 
 /// The entry count a zip's end-of-central-directory record declares, read
@@ -131,6 +144,18 @@ fn replay_entries<R: std::io::Read + std::io::Seek>(
             .by_index(i)
             .map_err(|e| IngestError::Zip(e.to_string()))?;
         let path = capped(entry.name(), MAX_LABEL_BYTES).into_owned();
+        // Not a log: never read, so a key dump's bytes go nowhere.
+        if !replayable_entry(entry.name()) {
+            counts.skipped_not_log += 1;
+            tracing::debug!(
+                target: "launcher.bundle",
+                session_id = %claims.sid, // nt:id-only telemetry session UUID from the token; it names nothing
+                path = %path,
+                reason = "not_a_log",
+                "skipping non-log bundle entry"
+            );
+            continue;
+        }
         let remaining = limits.bundle_expanded_bytes - expanded;
         // The declared size first, so an entry known to be too big is not
         // expanded at all. It is skipped, not the end of the replay: a

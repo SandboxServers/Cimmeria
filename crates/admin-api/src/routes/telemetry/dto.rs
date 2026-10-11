@@ -101,6 +101,10 @@ pub(super) struct BundleResponse {
     pub files: u64,
     /// Number of lines replayed through tracing across all files.
     pub lines: u64,
+    /// Entries not replayed because they are not logs (key dumps, session
+    /// JSON, and the like). Additive.
+    #[serde(default)]
+    pub skipped_not_log: u64,
     /// The bundle passed an expansion budget (entries, expanded bytes or
     /// lines): replay stopped there, newest files first. Additive.
     pub truncated: bool,

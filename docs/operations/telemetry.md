@@ -433,6 +433,12 @@ and the answer is a 200 with `"truncated": true` in its body.
 | bundle | expanded bytes, all files | 64 MiB | a file whose declared size would pass it is skipped and smaller files still replay; a file that expands past what it declared stops the replay | Checked on each file's declared size, then on the bytes actually read |
 | bundle | replayed lines | 250,000 | replay stops | |
 
+Only the client's debug log (`SGWDebugLog*`) and `*.log` entries are replayed.
+Any other entry, such as a session's key dump (`*-keys.txt`) or
+`current-session.json`, is never read: it is counted in the bundle answer's
+`skipped_not_log` field and in no row. Launchers that still zip those files
+are covered by this, so their secrets never reach SigNoz.
+
 Bundle files are replayed in order of the zip entry's modification time,
 newest first, and among equal times in reverse archive order. A current
 launcher records each file's own modification time, so the session that

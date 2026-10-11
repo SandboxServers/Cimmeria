@@ -184,6 +184,7 @@ async fn bundle_flow(
     Ok(BundleResponse {
         files: counts.files,
         lines: counts.lines,
+        skipped_not_log: counts.skipped_not_log,
         truncated: counts.truncation.is_some(),
     })
 }
