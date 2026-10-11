@@ -18,6 +18,7 @@ use super::ConnectedClientState;
 
 mod fail_code;
 mod name;
+mod refusal_log;
 mod start_profile;
 mod starter_kit;
 use fail_code::{
@@ -25,6 +26,7 @@ use fail_code::{
     UNSPECIFIED,
 };
 use name::validate_character_name;
+use refusal_log::{Detail, Reason, Refusal};
 use start_profile::{resolve_start, starting_points};
 use starter_kit::{
     describe_abilities, describe_items, has_bandolier_weapon, insert_starter_inventory,
@@ -67,6 +69,20 @@ pub(super) async fn create_character(
     db_pool: &Option<Arc<PgPool>>,
     force_debug_kit: bool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    // The account's name, best-effort from the live session state. Every
+    // refusal row names the account, so it is read before the first return.
+    let account_name = connected
+        .lock()
+        .ok()
+        .and_then(|c| c.get(&addr).and_then(|s| s.account_name.clone()));
+    let mut refusal = Refusal {
+        addr,
+        account_id,
+        account_name: account_name.as_deref(),
+        player_name: None,
+        char_def_id: None,
+    };
+
     // Parse and check the arguments before touching the database, so a bad
     // payload gets its own code whether or not a database is attached.
     // Parse createCharacter args (from Account.def):
@@ -76,17 +92,22 @@ pub(super) async fn create_character(
     let (name, consumed) = match read_wstring(payload, off) {
         Ok(r) => r,
         Err(e) => {
-            tracing::warn!(%addr, "createCharacter: failed to parse name: {e}");
+            refusal.log(Reason::NameParseFailed, NOT_ENOUGH_INFORMATION, Some(&e));
             send_char_create_failed(transport, addr, key, connected, NOT_ENOUGH_INFORMATION)
                 .await?;
             return Ok(());
         }
     };
     off += consumed;
+    refusal.player_name = Some(name.clone());
 
     // Name validation (matches Python Account.py:isCharacterNameAllowed).
-    if let Err(reason) = validate_character_name(&name) {
-        tracing::info!(%addr, %name, %reason, "createCharacter: name rejected");
+    if let Err(rule) = validate_character_name(&name) {
+        let detail = Detail {
+            rule: Some(rule),
+            ..Detail::default()
+        };
+        refusal.log_detail(Reason::NameRejected, INVALID_CHARACTER_NAME, None, detail);
         send_char_create_failed(transport, addr, key, connected, INVALID_CHARACTER_NAME).await?;
         return Ok(());
     }
@@ -94,7 +115,7 @@ pub(super) async fn create_character(
     let (extra_name, consumed) = match read_wstring(payload, off) {
         Ok(r) => r,
         Err(e) => {
-            tracing::warn!(%addr, "createCharacter: failed to parse extraName: {e}");
+            refusal.log(Reason::NameParseFailed, NOT_ENOUGH_INFORMATION, Some(&e));
             send_char_create_failed(transport, addr, key, connected, NOT_ENOUGH_INFORMATION)
                 .await?;
             return Ok(());
@@ -104,8 +125,18 @@ pub(super) async fn create_character(
 
     // Extra name validation — same format rules, but allowed to be empty.
     if !extra_name.is_empty() {
-        if let Err(reason) = validate_character_name(&extra_name) {
-            tracing::info!(%addr, %extra_name, %reason, "createCharacter: extra_name rejected");
+        if let Err(rule) = validate_character_name(&extra_name) {
+            let detail = Detail {
+                rule: Some(rule),
+                extra_name: Some(&extra_name),
+                ..Detail::default()
+            };
+            refusal.log_detail(
+                Reason::ExtraNameRejected,
+                INVALID_CHARACTER_NAME,
+                None,
+                detail,
+            );
             send_char_create_failed(transport, addr, key, connected, INVALID_CHARACTER_NAME)
                 .await?;
             return Ok(());
@@ -113,7 +144,7 @@ pub(super) async fn create_character(
     }
 
     if off + 4 > payload.len() {
-        tracing::warn!(%addr, "createCharacter: payload too short for CharDefId");
+        refusal.log(Reason::MalformedArgs, NOT_ENOUGH_INFORMATION, None);
         send_char_create_failed(transport, addr, key, connected, NOT_ENOUGH_INFORMATION).await?;
         return Ok(());
     }
@@ -124,10 +155,11 @@ pub(super) async fn create_character(
         payload[off + 3],
     ]);
     off += 4;
+    refusal.char_def_id = Some(char_def_id);
 
     // Parse ARRAY<VisualChoices> -- count + entries
     if off + 4 > payload.len() {
-        tracing::warn!(%addr, "createCharacter: payload too short for visuals count");
+        refusal.log(Reason::MalformedArgs, NOT_ENOUGH_INFORMATION, None);
         send_char_create_failed(transport, addr, key, connected, NOT_ENOUGH_INFORMATION).await?;
         return Ok(());
     }
@@ -140,7 +172,7 @@ pub(super) async fn create_character(
     off += 4;
     // Each VisualChoices = { VisGroupId: INT32, ChoiceId: INT32 } = 8 bytes
     if off + visual_count * 8 > payload.len() {
-        tracing::warn!(%addr, "createCharacter: payload too short for visual choices");
+        refusal.log(Reason::MalformedArgs, NOT_ENOUGH_INFORMATION, None);
         send_char_create_failed(transport, addr, key, connected, NOT_ENOUGH_INFORMATION).await?;
         return Ok(());
     }
@@ -164,7 +196,7 @@ pub(super) async fn create_character(
     }
 
     if off + 4 > payload.len() {
-        tracing::warn!(%addr, "createCharacter: payload too short for SkinTintColorID");
+        refusal.log(Reason::MalformedArgs, NOT_ENOUGH_INFORMATION, None);
         send_char_create_failed(transport, addr, key, connected, NOT_ENOUGH_INFORMATION).await?;
         return Ok(());
     }
@@ -177,11 +209,11 @@ pub(super) async fn create_character(
 
     // Skin tint validation (matches Python Account.py: ERROR_CharacterCreationInvalidSkinColor).
     if !(0..=15).contains(&skin_tint_color_id) {
-        tracing::info!(
-            %addr,
-            skin_tint_color_id, // nt:id-only palette index 0-15, not a named row
-            "createCharacter: invalid skin tint"
-        );
+        let detail = Detail {
+            skin_tint_color_id: Some(skin_tint_color_id),
+            ..Detail::default()
+        };
+        refusal.log_detail(Reason::InvalidSkinTint, INVALID_SKIN_COLOR, None, detail);
         send_char_create_failed(transport, addr, key, connected, INVALID_SKIN_COLOR).await?;
         return Ok(());
     }
@@ -195,11 +227,7 @@ pub(super) async fn create_character(
     } = match chardef_lookup(char_def_id) {
         Some(info) => info,
         None => {
-            tracing::warn!(
-                %addr,
-                char_def_id, // nt:id-only CharDef rows carry no name column to pair
-                "createCharacter: unknown CharDefId"
-            );
+            refusal.log(Reason::UnknownCharDef, INVALID_CHARACTER_TYPE, None);
             send_char_create_failed(transport, addr, key, connected, INVALID_CHARACTER_TYPE)
                 .await?;
             return Ok(());
@@ -209,7 +237,7 @@ pub(super) async fn create_character(
     let pool = match db_pool {
         Some(p) => p,
         None => {
-            tracing::warn!(%addr, "createCharacter: no DB pool");
+            refusal.log(Reason::NoDbPool, UNSPECIFIED, None);
             send_char_create_failed(transport, addr, key, connected, UNSPECIFIED).await?;
             return Ok(());
         }
@@ -259,7 +287,7 @@ pub(super) async fn create_character(
     let vg_rows = match vg_rows {
         Ok(r) => r,
         Err(e) => {
-            tracing::error!(%addr, error = %e, "createCharacter: failed to query visgroups");
+            refusal.log(Reason::QueryFailed, UNSPECIFIED, Some(&e));
             send_char_create_failed(transport, addr, key, connected, UNSPECIFIED).await?;
             return Ok(());
         }
@@ -313,37 +341,28 @@ pub(super) async fn create_character(
 
     // Client choices must target VIS_Optional groups only
     for &(vg_id, choice_id) in &visual_choices {
+        let detail = || Detail {
+            vg_id: Some(vg_id),
+            choice_id: Some(choice_id),
+            ..Detail::default()
+        };
         let group = match visgroups.get(&vg_id) {
             Some(g) => g,
             None => {
-                tracing::warn!(
-                    %addr,
-                    vg_id, // nt:id-only visual groups carry no name column to pair
-                    char_def_id, // nt:id-only CharDef rows carry no name column to pair
-                    "Invalid visual group"
-                );
+                refusal.log_detail(Reason::InvalidVisualGroup, UNSPECIFIED, None, detail());
                 send_char_create_failed(transport, addr, key, connected, UNSPECIFIED).await?;
                 return Ok(());
             }
         };
         if group.vis_type != "VIS_Optional" {
-            tracing::warn!(
-                %addr,
-                vg_id, // nt:id-only visual groups carry no name column to pair
-                "Choice not allowed for forced visual group"
-            );
+            refusal.log_detail(Reason::ForcedGroupChoice, UNSPECIFIED, None, detail());
             send_char_create_failed(transport, addr, key, connected, UNSPECIFIED).await?;
             return Ok(());
         }
         let choice = match group.choices.get(&choice_id) {
             Some(c) => c,
             None => {
-                tracing::warn!(
-                    %addr,
-                    vg_id, // nt:id-only visual groups carry no name column to pair
-                    choice_id, // nt:id-only visual choices carry no name column to pair
-                    "Invalid choice for visual group"
-                );
+                refusal.log_detail(Reason::InvalidChoice, UNSPECIFIED, None, detail());
                 send_char_create_failed(transport, addr, key, connected, UNSPECIFIED).await?;
                 return Ok(());
             }
@@ -372,11 +391,15 @@ pub(super) async fn create_character(
                     });
                 }
             } else {
-                tracing::warn!(
-                    %addr,
-                    vg_id, // nt:id-only visual groups carry no name column to pair
-                    char_def_id, // nt:id-only CharDef rows carry no name column to pair
-                    "Missing choice for optional visual group"
+                let detail = Detail {
+                    vg_id: Some(vg_id),
+                    ..Detail::default()
+                };
+                refusal.log_detail(
+                    Reason::MissingOptionalChoice,
+                    NOT_ENOUGH_INFORMATION,
+                    None,
+                    detail,
                 );
                 send_char_create_failed(transport, addr, key, connected, NOT_ENOUGH_INFORMATION)
                     .await?;
@@ -405,10 +428,19 @@ pub(super) async fn create_character(
 
     // ── The start profile (Class Start v6 CS-02): world, point, level, kit ───
 
-    let start = match resolve_start(pool.as_ref(), addr, char_def_id, force_debug_kit).await {
+    let start = match resolve_start(pool.as_ref(), char_def_id, force_debug_kit).await {
         Ok(start) => start,
-        Err(code) => {
-            send_char_create_failed(transport, addr, key, connected, code).await?;
+        Err(refused) => {
+            // The one row for this refusal: `resolve_start` logs nothing.
+            let detail = Detail {
+                profile_id: refused.profile_id.as_deref(),
+                world: refused.world.as_deref(),
+                profile_problems: refused.problems.as_deref(),
+                ..Detail::default()
+            };
+            let error = refused.error.as_ref().map(|e| e as &dyn std::fmt::Display);
+            refusal.log_detail(refused.reason, refused.code, error, detail);
+            send_char_create_failed(transport, addr, key, connected, refused.code).await?;
             return Ok(());
         }
     };
@@ -419,7 +451,10 @@ pub(super) async fn create_character(
     let (training_points, applied_science_points) = starting_points(start_level);
     let (starter_abilities, kit_items) = match start_kit(pool.as_ref(), &start).await {
         Ok(kit) => kit,
-        Err(_) => {
+        Err(kit_failure) => {
+            // `start_kit` logged the ERROR; this is the client-refusal summary.
+            let detail = Detail::kit("starter_abilities_load_failed", kit_failure, None);
+            refusal.log_detail(Reason::StarterKitFailed, UNSPECIFIED, None, detail);
             send_char_create_failed(transport, addr, key, connected, UNSPECIFIED).await?;
             return Ok(());
         }
@@ -458,13 +493,6 @@ pub(super) async fn create_character(
     // GM marker on every load.
     let access_level = get_access_level(connected, addr) as i32;
 
-    // Account name is best-effort from the live session state; the creation
-    // log lines and the Discord notification carry it.
-    let account_name = connected
-        .lock()
-        .ok()
-        .and_then(|c| c.get(&addr).and_then(|s| s.account_name.clone()));
-
     // The character row and its starter inventory commit together: a kit
     // that can't be placed rolls the character back and the client gets
     // the DB-error code, rather than a character that exists for good
@@ -472,15 +500,7 @@ pub(super) async fn create_character(
     let mut tx = match pool.begin().await {
         Ok(tx) => tx,
         Err(e) => {
-            tracing::error!(
-                event = "character_create_failed",
-                reason = "db_error",
-                %addr,
-                account_id,
-                account_name = account_name.as_deref(),
-                error = %e,
-                "character_create: could not open the creation transaction"
-            );
+            refusal.log(Reason::DbWriteFailed, UNSPECIFIED, Some(&e));
             send_char_create_failed(transport, addr, key, connected, UNSPECIFIED).await?;
             return Ok(());
         }
@@ -526,6 +546,11 @@ pub(super) async fn create_character(
 
     match result {
         Ok(player_id) => {
+            // Refusals after the insert name the row that rolls back.
+            let inserted = || Detail {
+                player_id: Some(player_id),
+                ..Detail::default()
+            };
             // ── Insert starter items into sgw_inventory (Account.py:182-207) ───
 
             let placed =
@@ -533,8 +558,11 @@ pub(super) async fn create_character(
                     .await
                 {
                     Ok(placed) => placed,
-                    Err(_) => {
+                    Err(kit_failure) => {
                         // `insert_starter_inventory` logged the item and reason.
+                        let detail =
+                            Detail::kit("starter_item_failed", kit_failure, Some(player_id));
+                        refusal.log_detail(Reason::StarterKitFailed, UNSPECIFIED, None, detail);
                         let _ = tx.rollback().await;
                         send_char_create_failed(transport, addr, key, connected, UNSPECIFIED)
                             .await?;
@@ -543,26 +571,17 @@ pub(super) async fn create_character(
                 };
             // Provenance for the profile's racial_core / signature / ...
             // grants (CS-01a table), in the same transaction.
-            if record_profile_grants(&mut tx, addr, player_id, &start.profile)
-                .await
-                .is_err()
+            if let Err(kit_failure) =
+                record_profile_grants(&mut tx, addr, player_id, &start.profile).await
             {
+                let detail = Detail::kit("starter_grant_failed", kit_failure, Some(player_id));
+                refusal.log_detail(Reason::StarterKitFailed, UNSPECIFIED, None, detail);
                 let _ = tx.rollback().await;
                 send_char_create_failed(transport, addr, key, connected, UNSPECIFIED).await?;
                 return Ok(());
             }
             if let Err(e) = tx.commit().await {
-                tracing::error!(
-                    event = "character_create_failed",
-                    reason = "db_error",
-                    %addr,
-                    account_id,
-                    account_name = account_name.as_deref(),
-                    player_id,
-                    player_name = %name,
-                    error = %e,
-                    "character_create: commit failed"
-                );
+                refusal.log_detail(Reason::DbWriteFailed, UNSPECIFIED, Some(&e), inserted());
                 send_char_create_failed(transport, addr, key, connected, UNSPECIFIED).await?;
                 return Ok(());
             }
@@ -630,10 +649,10 @@ pub(super) async fn create_character(
         Err(e) => {
             let error_str = e.to_string();
             let error_code = if error_str.contains("sgw_player_player_name_key") {
-                tracing::info!(%addr, player_name = %name, "Character name already taken");
+                refusal.log(Reason::NameTaken, INVALID_CHARACTER_NAME, None);
                 INVALID_CHARACTER_NAME
             } else {
-                tracing::error!(%addr, error = %e, "Character creation DB error");
+                refusal.log(Reason::DbWriteFailed, UNSPECIFIED, Some(&e));
                 UNSPECIFIED
             };
             send_char_create_failed(transport, addr, key, connected, error_code).await?;

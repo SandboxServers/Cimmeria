@@ -1012,6 +1012,38 @@ Guard: `base_messages/tests/minigame.rs` `minigame_victory_for_unknown_entity_wa
 
 Guard: `left_aoi_unmapped_witness_warns_leave_send_failure` in `cell_dispatch/aoi.rs`, which asserts `phase=leave`, `entity_id` and `reason=entity_to_addr_miss`.
 
+## Character-create refusals (TG-DB-08)
+
+`character_create/refusal_log.rs` in `cimmeria-base`. Every refused `createCharacter` writes exactly one row, `event = "character_create_failed"`, message "character creation refused", before `onCharacterCreateFailed` goes to the client. Each row carries the account (`addr`, `account_id`, `account_name`), the code sent (`error_code` paired with its `ErrorStrings` moniker as `error_name`), and what was refused once it has been parsed: `player_name` (the requested name) and `char_def_id`. `reason` is the `Reason` enum, not a string, and `Reason::level` gives each reason its level, so a misspelt reason can't compile or fall through to a default level. The levels are the ones each site logged at before.
+
+The start-profile check (`start_profile.rs`, `resolve_start`) logs nothing itself: it returns its reason, error and profile to the handler, which writes the one row. Starter-kit helpers keep their own precise ERROR rows (`starter_abilities_load_failed`, `starter_item_failed`, `starter_grant_failed`); the refusal row is the client-facing summary, at WARN, with `reason = starter_kit_failed`, `cause` naming the helper's event and `kit_failure` its reason, so the database is not blamed for a kit that could not be placed.
+
+| Level | `reason` | When | Extra fields |
+|---|---|---|---|
+| WARN | `name_parse_failed` | The name or extra name is not a readable WSTRING | `error` |
+| INFO | `name_rejected` | The name breaks the format rules | `rule` |
+| INFO | `extra_name_rejected` | The extra name breaks the format rules | `rule`, `extra_name` |
+| WARN | `malformed_args` | The payload ends before the CharDef, the visual choices or the skin tint | |
+| INFO | `invalid_skin_tint` | The skin tint is outside 0..=15 | `skin_tint_color_id` |
+| WARN | `unknown_char_def` | No CharDef row | |
+| WARN | `no_db_pool` | No database is attached | |
+| ERROR | `query_failed` | The visual-group query failed | `error` |
+| ERROR | `start_profiles_load_failed` | The start profiles could not be read | `error` |
+| ERROR | `no_start_profile` | The CharDef has no start profile | |
+| ERROR | a `ProfileProblem` reason (`empty_world`, `origin_position`, `start_level_out_of_range`, `legacy_kit_on_canonical_profile`, ...) | The start profile has a problem | `profile_id`, `world`, `detail` (every problem) |
+| ERROR | `start_world_unknown` | The profile's world is not in `resources.worlds` | `profile_id`, `world` |
+| ERROR | `start_world_not_loaded` | The cell announced no space for the profile's world | `profile_id`, `world` |
+| ERROR | `db_error` | The profile's `world_id` lookup failed | `profile_id`, `world`, `error` |
+| WARN | `starter_kit_failed` | The starter kit could not be loaded, placed or recorded; the helper's ERROR row has the cause | `cause`, `kit_failure`, `player_id` after the insert |
+| WARN | `invalid_visual_group` | A choice names a visual group the CharDef lacks | `vg_id`, `choice_id` |
+| WARN | `forced_group_choice` | A choice targets a forced visual group | `vg_id`, `choice_id` |
+| WARN | `invalid_choice` | A choice is not in its visual group | `vg_id`, `choice_id` |
+| WARN | `missing_optional_choice` | An optional visual group has no choice | `vg_id` |
+| INFO | `name_taken` | The insert hit `sgw_player_player_name_key` | |
+| ERROR | `db_write_failed` | The transaction could not open, the insert failed, or the commit failed | `error`, `player_id` after the insert |
+
+`char_def_id`, `profile_id`, `vg_id`, `choice_id` and `skin_tint_color_id` are `nt:id-only`: their rows carry no name column. Guards: `fail_code_tests.rs` `unknown_char_def_is_invalid_character_type` (asserts `event`, `reason`, `account_id`, `char_def_id`, `error_code` and `error_name`) and `skin_tint_out_of_range_is_invalid_skin_color` (asserts `event`, `reason`, `account_id`, `skin_tint_color_id`, `char_def_id` and `player_name`); `refusal_log.rs` `every_reason_has_its_documented_spelling_and_level` (the table above as literals, every variant covered); and `profile_live_db_tests.rs` `a_start_world_with_no_cell_space_refuses_and_rolls_back_live_db` (exactly one `character_create_failed` row, ERROR, `reason = start_world_not_loaded`, with `account_id`, `char_def_id`, `profile_id` and `world`).
+
 ## Spatial chat send failures (TG-SOC-07)
 
 `cell/console/chat/spatial.rs` in `cimmeria-cell-console`. A `say`, `emote` or `yell` line sent into a closed base channel was dropped by `let _`. Each failed send now logs WARN `target: CHAT_LOG_TARGET`, `event = "chat.spatial_send_failed"`, `reason = "base_channel_closed"`: one row per witness (`target_entity_id` + `target_entity_name`, and the `target_player_*` / `target_account_*` identity), and one for the speaker's echo (`entity_id` + `entity_name`, the speaker's identity). Both carry `channel`. The broadcast row is DEBUG `event = "chat.spatial_broadcast"` with the speaker's identity and `ignored`, the count of witnesses withheld by an Ignore list. A sent line logs nothing new.
