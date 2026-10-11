@@ -178,18 +178,29 @@ impl UserChannelRegistry {
     /// teardown, never a client-initiated leave): no `onChatLeft` is owed,
     /// since there is no client left to tell. Deletes any channel this
     /// empties.
-    pub fn leave_all(&self, entity_id: u32) {
+    ///
+    /// Returns one `(wire_id, display_name, deleted)` per channel left, in
+    /// wire-id order, so the teardown can log each leave (TG-SOC-14);
+    /// `deleted` is true when that leave emptied and removed the channel.
+    pub fn leave_all(&self, entity_id: u32) -> Vec<(u8, String, bool)> {
         let mut inner = self.lock();
+        let mut left = Vec::new();
         let mut emptied = Vec::new();
         for (&wire_id, channel) in inner.channels.iter_mut() {
-            if channel.members.remove(&entity_id) && channel.members.is_empty() {
-                emptied.push(wire_id);
+            if channel.members.remove(&entity_id) {
+                let deleted = channel.members.is_empty();
+                left.push((wire_id, channel.display_name.clone(), deleted));
+                if deleted {
+                    emptied.push(wire_id);
+                }
             }
         }
         for wire_id in emptied {
             inner.channels.remove(&wire_id);
             inner.by_key.retain(|_, id| *id != wire_id);
         }
+        left.sort_unstable_by_key(|(wire_id, _, _)| *wire_id);
+        left
     }
 
     /// The members of `wire_id`, if `entity_id` is one of them -- the
