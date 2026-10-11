@@ -72,6 +72,9 @@ windows-sys = { version = "0.61", features = [
     # files with the archive's DOS date/time (src/unpack/dos_time.rs).
     "Win32_Storage_FileSystem",
     "Win32_System_WindowsProgramming",
+    # SHGetFolderPathW(CSIDL_PERSONAL): the Documents folder the client
+    # writes under (src/client_paths.rs).
+    "Win32_UI_Shell",
 ] }
 
 [dev-dependencies]

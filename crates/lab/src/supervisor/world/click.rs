@@ -31,7 +31,7 @@ pub const HOVER_OFFSETS: [f64; 4] = [0.0, 50.0, -40.0, 90.0];
 /// Default wait for the click's effect.
 pub const DEFAULT_SETTLE_MS: u64 = 1200;
 const POLL_MS: u64 = 100;
-const HOVER_WAIT_MS: u64 = 120;
+pub(super) const HOVER_WAIT_MS: u64 = 120;
 /// Private slot for the `targetUnit` fallback.
 const FALLBACK_SLOT: i32 = LAB_SLOT_BASE - 1;
 
@@ -110,7 +110,7 @@ async fn ui_snap<W: WorldIo>(io: &mut W, target_slot: i32, mo_slot: i32) -> Resu
 
 /// How the hover went at one height.
 #[derive(Debug, Clone, PartialEq)]
-enum Hover {
+pub(super) enum Hover {
     Matched,
     Nothing,
     Other(u32),
@@ -385,7 +385,7 @@ pub fn restore_pitch_counts(start: &Value, now: &Value) -> i32 {
 
 /// One hover pass over the target's body heights: the chosen point and how
 /// each height went.
-async fn hover_once<W: WorldIo>(
+pub(super) async fn hover_once<W: WorldIo>(
     io: &mut W,
     steps: &mut Steps,
     aim: &mut Aim,

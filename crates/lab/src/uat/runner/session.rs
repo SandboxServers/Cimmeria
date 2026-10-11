@@ -48,18 +48,23 @@ impl<I: ToolInvoker> Runner<'_, I> {
             .characters
             .iter()
             .find(|c| c.get("name").and_then(Value::as_str) == name.as_deref());
-        match row {
-            Some(r) => json!({
-                "name": name,
-                "archetype": r.get("archetype"),
-                "level": r.get("level"),
-                "alignment": r.get("alignment"),
-            }),
-            None => json!({ "name": name }),
-        }
+        character_json(name, row)
     }
 
-    async fn setup_call(
+    /// [`Self::character_value`] for a fixture character. The list shows it
+    /// by its full name (`Uat Fxpraxisdefa`) and the runner knows only the
+    /// last name, so a row matches on the whole name or any one word of it.
+    pub(crate) fn listed_character_value(&self, name: &str) -> Value {
+        let row = self.characters.iter().find(|c| {
+            c.get("name").and_then(Value::as_str).is_some_and(|n| {
+                n.eq_ignore_ascii_case(name)
+                    || n.split_whitespace().any(|w| w.eq_ignore_ascii_case(name))
+            })
+        });
+        character_json(Some(name.to_string()), row)
+    }
+
+    pub(crate) async fn setup_call(
         &mut self,
         tool: &str,
         args: Value,
@@ -114,11 +119,19 @@ impl<I: ToolInvoker> Runner<'_, I> {
         }
         // in_world as the right character.
         if login == "in_world" {
+            // Caveat (FX-06 deviation 3): with no record of who is in world,
+            // this assumes the lab character. A client someone left in world
+            // as another character on the same account passes as the lab
+            // character here, and `auto` may then chain from it.
             let current = self
                 .in_world_as
                 .clone()
                 .or_else(|| self.req.lab_character.clone());
             if current.is_some() && current == want {
+                // Remember who is in world even when the run found the client
+                // there: fixture mode `auto` continues a chain only from a
+                // client the runner knows is in world (D-FX10).
+                self.in_world_as = current;
                 return Ok(());
             }
             self.setup_call("lab_logout", json!({}), ctx).await?;
@@ -202,6 +215,20 @@ impl<I: ToolInvoker> Runner<'_, I> {
             }
         }
         ctx.anchor = Some(anchor);
+    }
+}
+
+/// `{name, archetype, level, alignment}` from a character-list row, or
+/// just the name without one.
+fn character_json(name: Option<String>, row: Option<&Value>) -> Value {
+    match row {
+        Some(r) => json!({
+            "name": name,
+            "archetype": r.get("archetype"),
+            "level": r.get("level"),
+            "alignment": r.get("alignment"),
+        }),
+        None => json!({ "name": name }),
     }
 }
 
