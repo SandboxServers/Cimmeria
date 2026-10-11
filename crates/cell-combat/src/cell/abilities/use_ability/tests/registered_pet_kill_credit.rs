@@ -267,3 +267,33 @@ async fn registered_pet_dot_kill_after_owner_id_reuse_credits_nobody() {
     assert_eq!(grants(&drain(&mut rx)), vec![]);
     assert_eq!(deaths(&recorder), vec![]);
 }
+
+/// **Guard (TG-NPC-13).** A registered pet's DoT finishes a tagged mob after
+/// the pet's owner has left the registry: the kill lands, no `EntityDeath`,
+/// and a WARN with `source = "dot"` and `reason = no_credited_player`.
+/// Reverting the `pulse.rs` warn drops the row.
+#[tokio::test]
+async fn registered_pet_dot_kill_without_owner_warns_no_credited_player() {
+    let (mut mgr, pet, mob) = registered_pet_and_mob();
+    arm_pet_dot(&mut mgr, pet, mob).await;
+    mgr.pets.forget_pet(pet);
+    let recorder = RecordingContentEvents::new();
+    let (tx, _rx) = mpsc::channel(512);
+    let capture = crate::test_support::LogCapture::install();
+
+    effect_pulse_tick(&recorder, &tx, &mut mgr).await;
+
+    assert_eq!(mob_hp(&mgr, mob), 0, "the kill itself still lands");
+    assert_eq!(deaths(&recorder), vec![]);
+    assert!(
+        capture
+            .find_event(
+                tracing::Level::WARN,
+                "dot_kill_credit: killer credits no player — skipping EntityDeath event",
+                "no_credited_player"
+            )
+            .is_some(),
+        "{:#?}",
+        capture.all()
+    );
+}
