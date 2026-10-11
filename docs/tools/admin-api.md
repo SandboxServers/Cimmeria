@@ -39,6 +39,8 @@ REST and WebSocket API for administering the Cimmeria server emulator. Built wit
 
 The admin API runs as a background Axum server on port 8443 within the same process as the game server. It accesses game state through a shared `Arc<Orchestrator>` reference — no inter-process communication needed.
 
+Each request to this router writes one `admin.request` row (INFO; WARN for a 5xx status) with `method`, `path` (the matched route template, `"unmatched"` when no route matched, so the path cannot carry free text), `status`, `latency_ms` and `peer` (the client IP, without the port). The login-port router writes no such row. Tower-http's own request events are off in this router, so the row is the only request record the admin API writes.
+
 The Tauri desktop app has **two** paths to the backend:
 1. **HTTP fetch** via `admin-api.ts` — calls the Axum REST endpoints (same as any browser client)
 2. **Tauri IPC** via `src-tauri/` — direct Rust function calls for chain editor persistence and server status
