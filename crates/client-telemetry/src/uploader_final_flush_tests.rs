@@ -87,6 +87,83 @@ fn the_last_post_holds_a_health_row_marked_final() {
     );
 }
 
+/// TG-CLI-04, end to end: an exit hook's flush puts exactly one
+/// `client.session.end {reason}` in the final POST, ahead of the closing
+/// health row, and a second exit hook adds none. Dropping the emit from
+/// `Shutdown::flush_reporting` fails the count.
+#[test]
+fn the_final_post_carries_one_session_end_before_the_final_health_row() {
+    use crate::shutdown::{ExitReason, FlushOutcome, Shutdown, SESSION_END_TARGET};
+
+    let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+    let addr = server.server_addr().to_ip().unwrap();
+    let url = format!("http://{}:{}/x", addr.ip(), addr.port());
+    let posts: Arc<Mutex<Vec<Vec<serde_json::Value>>>> = Arc::default();
+    let posts2 = posts.clone();
+    let server_done = Arc::new(AtomicBool::new(false));
+    let server_done2 = server_done.clone();
+    let server_handle = thread::spawn(move || {
+        while !server_done2.load(Ordering::Relaxed) {
+            if let Ok(Some(mut req)) = server.recv_timeout(Duration::from_millis(50)) {
+                let mut body = Vec::new();
+                req.as_reader().read_to_end(&mut body).unwrap();
+                posts2.lock().unwrap().push(decode(&body));
+                req.respond(tiny_http::Response::from_string("ok")).ok();
+            }
+        }
+    });
+
+    let (p, c) = governed_channel(GovernorConfig::default());
+    let shutdown = Arc::new(Shutdown::new());
+    shutdown.arm();
+    let upload = {
+        let shutdown = shutdown.clone();
+        thread::spawn(move || {
+            let cfg = UploaderConfig {
+                upload_endpoint: url,
+                token: "t".into(),
+                flush_interval: Duration::from_secs(30),
+                max_batch: 100,
+            };
+            let exit = run_uploader(c, cfg, || shutdown.stop_requested());
+            shutdown.mark_flushed();
+            exit
+        })
+    };
+
+    let budget = Duration::from_secs(5);
+    let first = shutdown.flush_reporting(ExitReason::CrtExit, budget, |ev| {
+        p.try_emit(ev);
+    });
+    let second = shutdown.flush_reporting(ExitReason::ExitProcess, budget, |ev| {
+        p.try_emit(ev);
+    });
+    assert_eq!(upload.join().unwrap(), UploaderExit::Stopped);
+    server_done.store(true, Ordering::Relaxed);
+    server_handle.join().unwrap();
+    assert_eq!(
+        (first, second),
+        (FlushOutcome::Flushed, FlushOutcome::Flushed)
+    );
+
+    let posts = posts.lock().unwrap();
+    let all: Vec<_> = posts.iter().flatten().collect();
+    let ends: Vec<_> = all
+        .iter()
+        .filter(|e| e["target"] == SESSION_END_TARGET)
+        .collect();
+    assert_eq!(ends.len(), 1, "one session end across every POST: {all:?}");
+    assert_eq!(ends[0]["fields"]["reason"], "crt_exit");
+    let last = posts.last().expect("the stop path posted");
+    let at = |t: &str| last.iter().position(|e| e["target"] == t);
+    let end_at = at(SESSION_END_TARGET).expect("the session end is in the final POST");
+    let health_at = at("client.telemetry.health").expect("the final health row");
+    assert!(
+        end_at < health_at,
+        "session end precedes the closing health row"
+    );
+}
+
 /// A server that never answers cannot hold the exit: the final POST gives
 /// up inside `FINAL_POST_TIMEOUT` instead of the agent's 30 s read limit.
 #[test]

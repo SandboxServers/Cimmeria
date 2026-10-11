@@ -36,6 +36,8 @@ use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::{Condvar, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
+use crate::events::{ClientNativeEvent, EventBuilder};
+
 /// The longest an exit hook waits for the uploader's last POST. The
 /// uploader's own final POST has a shorter limit
 /// ([`crate::uploader::FINAL_POST_TIMEOUT`]) so it normally finishes inside
@@ -140,16 +142,34 @@ impl Shutdown {
     /// Ask the uploader to stop and wait up to `budget` for it to finish.
     /// Safe to call more than once (`exit` then `ExitProcess`): the first
     /// reason wins and later calls return as soon as the flush is done.
-    ///
-    /// TG-CLI-04 seam: emit `client.session.end {reason}` here, before the
-    /// stop flag is raised, so it is in the final batch.
     pub fn flush(&self, reason: ExitReason, budget: Duration) -> FlushOutcome {
+        self.flush_reporting(reason, budget, |_| {})
+    }
+
+    /// [`Self::flush`], handing `client.session.end {reason}` to `emit`
+    /// first (TG-CLI-04). Only the call that records the reason emits, so
+    /// `exit` followed by a direct `ExitProcess` yields one row. The emit
+    /// happens before the stop flag goes up: the uploader drains the ring
+    /// after it sees the flag, so the row rides the final POST, ahead of the
+    /// closing health row. `emit` must not block (the DLL passes the
+    /// producer's `try_emit`, which drops on a full ring).
+    pub fn flush_reporting(
+        &self,
+        reason: ExitReason,
+        budget: Duration,
+        emit: impl FnOnce(EventBuilder),
+    ) -> FlushOutcome {
         if !self.armed.load(Ordering::SeqCst) {
+            // No uploader: nothing would ship the row.
             return FlushOutcome::NotRunning;
         }
-        let _ = self
+        let first = self
             .reason
-            .compare_exchange(0, reason.code(), Ordering::SeqCst, Ordering::SeqCst);
+            .compare_exchange(0, reason.code(), Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok();
+        if first {
+            emit(session_end_event(reason));
+        }
         self.stop.store(true, Ordering::SeqCst);
 
         let deadline = Instant::now() + budget;
@@ -178,10 +198,31 @@ pub fn global() -> &'static Shutdown {
     &GLOBAL
 }
 
-/// What the exit hooks call: flush within [`FINAL_FLUSH_BUDGET`], record
-/// the outcome in the local log, and return. Never panics.
+/// Target of the row the DLL writes when the process exits cleanly.
+pub const SESSION_END_TARGET: &str = "client.session.end";
+
+/// `client.session.end {reason}`: the last DLL row of a clean exit. A
+/// session with no such row (and no `final: true` health row) ended by a
+/// path no hook sees: a crash, `TerminateProcess` or a lab kill.
+pub fn session_end_event(reason: ExitReason) -> EventBuilder {
+    ClientNativeEvent::builder(SESSION_END_TARGET, "info").field("reason", reason.as_str())
+}
+
+/// Hand an event to the process-wide producer, if the boot code made one.
+fn emit_global(event: EventBuilder) {
+    #[cfg(windows)]
+    if let Some(producer) = crate::boot::producer() {
+        producer.try_emit(event);
+    }
+    #[cfg(not(windows))]
+    let _ = event;
+}
+
+/// What the exit hooks call: emit `client.session.end`, flush within
+/// [`FINAL_FLUSH_BUDGET`], record the outcome in the local log, and
+/// return. Never panics.
 pub fn flush_at_exit(reason: ExitReason) -> FlushOutcome {
-    let outcome = global().flush(reason, FINAL_FLUSH_BUDGET);
+    let outcome = global().flush_reporting(reason, FINAL_FLUSH_BUDGET, emit_global);
     crate::log::line(format_args!(
         "exit via {}: final flush {:?}",
         reason.as_str(),
@@ -272,6 +313,41 @@ mod tests {
         );
         assert!(started.elapsed() < Duration::from_secs(1));
         assert_eq!(s.reason(), Some(ExitReason::CrtExit));
+    }
+
+    /// TG-CLI-04: the first flush emits one `client.session.end` with its
+    /// reason, and does so before the stop flag goes up (so the uploader's
+    /// final drain finds it); a second flush emits nothing. Removing the
+    /// emit from `flush_reporting` fails the count.
+    #[test]
+    fn the_first_flush_emits_one_session_end_before_the_stop_flag() {
+        let s = Shutdown::new();
+        s.arm();
+        s.mark_flushed();
+        let mut seen = Vec::new();
+        s.flush_reporting(ExitReason::CrtExit, Duration::from_secs(5), |ev| {
+            seen.push((ev, s.stop_requested()))
+        });
+        s.flush_reporting(ExitReason::ExitProcess, Duration::from_secs(5), |ev| {
+            seen.push((ev, s.stop_requested()))
+        });
+        assert_eq!(seen.len(), 1, "one row for two exit hooks");
+        let (ev, stop_was_up) = &seen[0];
+        assert_eq!(ev.target, SESSION_END_TARGET);
+        assert_eq!(ev.level, "info");
+        assert_eq!(ev.fields["reason"], "crt_exit");
+        assert!(!stop_was_up, "emitted before the stop flag");
+    }
+
+    /// No uploader, no row: nothing would ship it.
+    #[test]
+    fn an_unarmed_flush_emits_nothing() {
+        let s = Shutdown::new();
+        let mut emitted = 0;
+        s.flush_reporting(ExitReason::ExitProcess, Duration::from_secs(5), |_| {
+            emitted += 1
+        });
+        assert_eq!(emitted, 0);
     }
 
     #[test]

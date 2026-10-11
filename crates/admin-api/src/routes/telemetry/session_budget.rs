@@ -201,6 +201,9 @@ fn with_ledger<R>(f: impl FnOnce(&mut SessionLedger) -> R) -> R {
 const PRIORITY_PREFIXES: &[&str] = &[
     "client.telemetry.",
     "client.dll.",
+    // `client.session.end` (TG-CLI-04): the one row that says a session
+    // closed cleanly, so a reader can tell it from a crash.
+    "client.session.",
     "client.hooks.",
     "client.entity.",
     "client.mercury.error",

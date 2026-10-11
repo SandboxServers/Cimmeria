@@ -144,7 +144,11 @@ Hooking `ExitProcess` alone would miss the ordinary quit, which is the path near
 
 A server that never answers costs the exit at most 1.5 s; the batch is then lost, and the local log (`exit via <reason>: final flush TimedOut`) records it. If an exit hook runs twice (`exit` first, then a direct `ExitProcess`), the first reason is kept and the second call returns at once.
 
-**Not done by this packet.** `client.session.end {reason}` (TG-CLI-04) is emitted from `Shutdown::flush`, which already records the reason (`exit_process` or `crt_exit`); upload-failure accounting is TG-PIPE-13. A crash, `TerminateProcess` and a lab kill still lose the tail window.
+**`client.session.end` (TG-CLI-04).** The first exit hook to run emits one `client.session.end` row (info) with `reason` set to `exit_process` (SGW.exe's own `ExitProcess`: a forced or repeated quit) or `crt_exit` (the CRT's `exit` after the message loop ends: the ordinary quit). `Shutdown::flush_reporting` emits it through the producer's non-blocking `try_emit` before it raises the stop flag, so the uploader's final drain finds it and the row lands in the final POST ahead of the `final: true` health row. A second hook (`exit`, then a direct `ExitProcess`) emits nothing. The row is must-keep in the governor (`client.session.*`), and the ingest replays it even over a session's budget (`client.session.` in `PRIORITY_PREFIXES`, `admin-api` `session_budget.rs`).
+
+The packet spec listed `ue3_shutdown` and `crash` as reasons too. The exit-path RE above found no UE3 shutdown site worth hooking apart from the CRT `exit`, which is `crt_exit`. There is no `crash` value: the first-chance exception sink fires on handled exceptions as well as fatal ones, and the lab's unhandled-exception filter must not take locks or wait (the #686 rule), so neither can truthfully say "the session ended here" and then flush. A session that has neither `client.session.end` nor a `final: true` health row ended by a path no hook sees: a crash, `TerminateProcess` or a lab kill. Those still lose the tail window.
+
+Upload-failure accounting is TG-PIPE-13.
 
 ## Hook taxonomy
 
