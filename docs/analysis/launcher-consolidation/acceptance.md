@@ -46,7 +46,7 @@ The owner runs steps 1-12 on a Windows machine with no launcher state, and step 
 | 7 | Reset cache; reset all with confirm | LX-06 | | | | |
 | 8 | Upload logs twice; the second says nothing new | LX-05 | | | | |
 | 9 | Telemetry opted in: a session shows in SigNoz with tailed log lines and exit code | LX-08a, LX-08b, LX-08c | | | | |
-| 10 | Second launch focuses the first | LX-09 | | | | |
+| 10 | Second launch focuses the first; after a self-update (step 11), a second launch also focuses the restarted launcher | LX-09, LX-13 | | | | |
 | 11 | Self-update from release N-1 to N with one network drop during the download; patch notes refresh; then a forced failed update rolls back | LX-13, LX-15, LX-17 | G-07, G-11, G-13 | | | |
 | 12 | Repair, game Update and Uninstall, on a fresh install and on the step 4 adopted folder | LX-10 | G-05, G-06, G-10 | | | |
 | 13 | macOS: a Mac that has never run the app downloads the zip, uses Open Anyway once, installs and reaches character select | LX-28 | | | | |
