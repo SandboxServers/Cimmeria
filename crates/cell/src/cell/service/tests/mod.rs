@@ -33,6 +33,7 @@ mod npc_ai_wander;
 mod pet_lifecycle;
 mod regen;
 mod reload;
+mod spawn_batch_loop;
 mod startup_order;
 
 /// Castle_CellBlock instanced fixture used by reload + bandolier tests.

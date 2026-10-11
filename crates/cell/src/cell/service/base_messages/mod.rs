@@ -19,7 +19,7 @@
 //!   (the native consumable round trip)
 //! - [`bandolier`] — `UpdateBandolierItem` + `SyncBandolierItems` (weapon display)
 //! - [`minigame`] — `MinigameResult`
-//! - [`gm_spawn`] — `GmSpawnNpcReady`
+//! - [`gm_spawn`] — `GmSpawnNpcReady`, `GmSpawnNpcFailed`
 //! - [`request_entity_update`] — `RequestEntityUpdate`
 //! - `LootGrantRefused` goes straight to `cell::interactions` (the item goes
 //!   back on its corpse)
@@ -650,11 +650,30 @@ pub(super) async fn handle_base_message(
             record,
             space_id,
             requester_entity_id,
+            batch,
         } => {
             gm_spawn::handle_gm_spawn_npc_ready(
                 record,
                 space_id,
                 requester_entity_id,
+                batch,
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
+
+        BaseToCellMsg::GmSpawnNpcFailed {
+            requester_entity_id,
+            batch,
+            template_id,
+            reason,
+        } => {
+            gm_spawn::handle_gm_spawn_npc_failed(
+                requester_entity_id,
+                batch,
+                template_id,
+                reason,
                 tx,
                 space_mgr,
             )

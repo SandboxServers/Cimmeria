@@ -20,6 +20,11 @@ pub(crate) enum Target {
     Player,
     /// Any NPC entity (`SGWMob` in the legacy hierarchy).
     Mob,
+    /// An NPC named by the command's first argument (an entity id) or, with
+    /// no argument, the selected NPC exactly as [`Target::Mob`]. The id form
+    /// is `.despawn <entityId>` (lab-chaos CH-13, D-CH9), resolved by
+    /// `spawn::resolve_npc_id`; it has no legacy counterpart.
+    MobOrId,
     /// Any being (player or NPC — anything with a stat block). The legacy
     /// `SGWBeing` target type.
     Being,
@@ -34,7 +39,7 @@ impl Target {
         match self {
             Target::None | Target::Being | Target::Spawnable => true,
             Target::Player => e.is_player,
-            Target::Mob => !e.is_player,
+            Target::Mob | Target::MobOrId => !e.is_player,
         }
     }
 
@@ -44,6 +49,7 @@ impl Target {
             Target::None => "none",
             Target::Player => "a player",
             Target::Mob => "an NPC",
+            Target::MobOrId => "an NPC (selected, or by entity id)",
             Target::Being => "a being",
             Target::Spawnable => "a spawnable entity",
         }
@@ -271,8 +277,28 @@ const DUMMY_ARGS: &[ArgSpec] = &[
     ),
 ];
 
+/// `.despawn`'s id form and `.spawnrandom`'s reply (lab-chaos CH-13) have no
+/// legacy docstring; written from `console/spawn/`.
+const DESPAWN_ARGS: &[ArgSpec] = &[arg(
+    "entityId",
+    "int",
+    "Optional. The NPC to remove, by entity id, in your space (not a player or pet); the selected NPC when omitted",
+)];
+const SPAWNRANDOM_ARGS: &[ArgSpec] = &[
+    arg("templateId", "int", "The template to spawn"),
+    arg("xRange", "float", "Ring radius along x, in metres"),
+    arg("zRange", "float", "Ring radius along z, in metres"),
+    arg(
+        "count",
+        "int",
+        "Optional. Copies, 1-50 (default 1); a summary line then lists every spawned entity id",
+    ),
+];
+
 pub(crate) fn arg_specs(name: &str) -> &'static [ArgSpec] {
     match name {
+        "despawn" => DESPAWN_ARGS,
+        "spawnrandom" => SPAWNRANDOM_ARGS,
         "cooldowns" => COOLDOWNS_ARGS,
         "dummy" => DUMMY_ARGS,
         "mute" => MUTE_ARGS,

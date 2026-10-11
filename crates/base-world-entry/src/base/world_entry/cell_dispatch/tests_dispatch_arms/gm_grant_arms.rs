@@ -230,6 +230,7 @@ async fn gm_spawn_npc_routes_to_handler_and_warns_when_no_pool() {
             world_name: "Castle".into(),
             position: [1.0, 2.0, 3.0],
             heading: 0.0,
+            batch: None,
         },
         &transport,
         &connected,

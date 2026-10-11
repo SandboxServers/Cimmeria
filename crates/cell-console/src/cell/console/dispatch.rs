@@ -95,7 +95,7 @@ pub async fn handle_console_command(
     }
 
     // Resolve + validate the selected target (if the command requires one).
-    let target_id = match resolve_target(caller_id, spec, space_mgr) {
+    let target_id = match resolve_target(caller_id, spec, &args, space_mgr) {
         Ok(t) => t,
         Err(msg) => {
             send_gm_feedback(caller_id, &format!(".{name}: {msg}"), tx).await;
@@ -262,11 +262,20 @@ pub(crate) async fn refuse_non_gm_command(
 /// a stored target that outlived its AoI must not steer a command. The legacy
 /// same-space check alone let a 19-minute-old target 216 m away do exactly
 /// that.
+///
+/// [`Target::MobOrId`] with an argument skips the selection entirely: the
+/// first argument names the NPC (`spawn::resolve_npc_id`).
 fn resolve_target(
     caller_id: u32,
     spec: &Spec,
+    args: &[&str],
     space_mgr: &SpaceManager,
 ) -> Result<Option<u32>, String> {
+    if spec.target == Target::MobOrId {
+        if let Some(arg) = args.first() {
+            return spawn::resolve_npc_id(caller_id, arg, space_mgr).map(Some);
+        }
+    }
     let caller_space = space_mgr.get_entity(caller_id).map(|e| e.space_id.0);
     let current = space_mgr
         .get_entity(caller_id)

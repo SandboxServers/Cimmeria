@@ -15,13 +15,14 @@ pub(super) const SPECS: &[Spec] = &[
     // derives from — so the legacy command would destroy a logged-in player's
     // cell entity. Corrected to `Target::Mob` (NPC / non-player spawnable
     // only) per D02; `SpaceManager::despawn_npc` refuses players again on its
-    // own so the guard survives a registry edit.
+    // own so the guard survives a registry edit. CH-13 (D-CH9) added the
+    // optional `entityId`, which names the NPC instead of selecting it.
     spec(
         "despawn",
         0,
-        0,
-        Target::Mob,
-        "Destroy the selected NPC (runtime only — its spawnlist row is untouched)",
+        1,
+        Target::MobOrId,
+        "Destroy the selected NPC, or the NPC with this entity id ([entityId]; runtime only — its spawnlist row is untouched)",
     ),
     spec(
         "savespawn",
@@ -64,6 +65,6 @@ pub(super) const SPECS: &[Spec] = &[
         3,
         4,
         Target::None,
-        "Spawn N random-scattered copies of a template (templateId xRange zRange [count])",
+        "Spawn N copies of a template on a ring around you, then report their entity ids (templateId xRange zRange [count])",
     ),
 ];
