@@ -147,6 +147,10 @@ impl SpaceManager {
             npc_data,
             player_data,
         });
+        cimmeria_observability::counter!(
+            "aoi_introductions_total",
+            "world" => space.world_name.clone(),
+        );
 
         // ── createOnClient: replay an active aggression override ──
         //
@@ -347,6 +351,10 @@ impl SpaceManager {
                     witness_id: player_id,
                     entity_id: eid,
                 });
+                cimmeria_observability::counter!(
+                    "aoi_leaves_total",
+                    "world" => space.world_name.clone(),
+                );
             }
         }
 
@@ -384,6 +392,17 @@ impl SpaceManager {
         } else {
             None
         };
+
+        // The witness-set gauge moves by this player's net change, so its sum
+        // over every player in a world is that world's witness-set size.
+        let witness_delta = current_aoi.len() as i64 - previous_aoi.len() as i64;
+        if witness_delta != 0 {
+            cimmeria_observability::gauge_add!(
+                "aoi_witness_set_size",
+                witness_delta,
+                "world" => space.world_name.clone(),
+            );
+        }
 
         // Update the witness set
         if let Some(entity) = self
@@ -478,5 +497,62 @@ mod tests {
             entered_for(&next, player).is_empty(),
             "no double-introduction on the following tick"
         );
+    }
+
+    /// The AoI counters move with the `EnteredAoI` / `LeftAoI` events the
+    /// same call returns: one `aoi_introductions_total` per introduction and
+    /// one `aoi_leaves_total` per leave. A world name unique to this test
+    /// keeps the process-wide counters it reads apart from the other tests.
+    #[test]
+    fn aoi_counters_match_compute_aoi_changes() {
+        cimmeria_observability::testing::install();
+        let world = "AoiCounterTest";
+        let mut mgr = SpaceManager::new(1);
+        let xml = format!(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="{world}" Instanced="false" MinX="-100" MaxX="100" MinY="-100" MaxY="100" /></Spaces>"#
+        );
+        let cxml =
+            format!(r#"<?xml version="1.0"?><Spaces><Space WorldName="{world}" /></Spaces>"#);
+        mgr.parse_spaces_xml(&xml).unwrap();
+        mgr.create_startup_spaces(&cxml).unwrap();
+
+        let player = 1u32;
+        mgr.create_entity(player, world, [0.0, 0.0, 0.0], [0.0; 3])
+            .unwrap();
+        let body = mgr.allocate_npc_id();
+        mgr.spawn_npc(body, world, [5.0, 0.0, 5.0], [0.0; 3])
+            .unwrap();
+        mgr.connect_entity(player);
+
+        let labels = [("world", world)];
+        let intro_before =
+            cimmeria_observability::testing::counter_total("aoi_introductions_total", &labels);
+        let leave_before =
+            cimmeria_observability::testing::counter_total("aoi_leaves_total", &labels);
+
+        // Enter: the body comes into view of the connected player.
+        let entered_events = mgr.compute_aoi_changes_for_player(player);
+        let entered = entered_events
+            .iter()
+            .filter(|e| matches!(e, CellToBaseMsg::EnteredAoI { .. }))
+            .count() as u64;
+        assert_eq!(entered, 1, "the body must be introduced once");
+        let intro_delta =
+            cimmeria_observability::testing::counter_total("aoi_introductions_total", &labels)
+                - intro_before;
+        assert_eq!(intro_delta, entered, "one counter tick per introduction");
+
+        // Leave: the body is gone, so the next tick takes it out of view.
+        mgr.destroy_entity(body);
+        let left_events = mgr.compute_aoi_changes();
+        let left = left_events
+            .iter()
+            .filter(|e| matches!(e, CellToBaseMsg::LeftAoI { .. }))
+            .count() as u64;
+        assert_eq!(left, 1, "the vanished body must leave the player's view");
+        let leave_delta =
+            cimmeria_observability::testing::counter_total("aoi_leaves_total", &labels)
+                - leave_before;
+        assert_eq!(leave_delta, left, "one counter tick per leave");
     }
 }
