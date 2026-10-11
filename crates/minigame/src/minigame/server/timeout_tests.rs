@@ -12,7 +12,7 @@ use tokio::time::Instant;
 
 use super::accept::{enable_keepalive, LogThrottle};
 use super::listener_tests::{loopback_pair, spawn_connection};
-use super::tests::{drain_results, spawn_placeholder_session_with_idle};
+use super::tests::{drain_and_close, drain_results, spawn_placeholder_session_with_idle};
 use super::*;
 use crate::test_support::{LogCapture, LogCaptureGuard};
 
@@ -72,6 +72,46 @@ async fn an_inbound_frame_resets_the_idle_deadline() {
         .expect("the session must end on victory")
         .expect("session task must not panic");
     assert_eq!(drain_results(&mut rx), vec![(RESULT_VICTORY, vec![4242])]);
+}
+
+/// An idle deadline ends the session as `idle_timeout`, which the closing
+/// row reports as `outcome=canceled`. Changing the reason in the idle arm
+/// fails this, and so does dropping the `end_reason` field from the abort row.
+#[tokio::test(start_paused = true)]
+async fn an_idle_session_reports_idle_timeout_as_canceled() {
+    let capture = LogCapture::install();
+    let idle = Duration::from_secs(60);
+    let (_client, _rx, handle) = spawn_placeholder_session_with_idle(4321, idle).await;
+
+    let end = tokio::time::timeout(Duration::from_secs(3600), handle)
+        .await
+        .expect("an idle session must end at the idle deadline")
+        .expect("session task must not panic");
+
+    assert_eq!(end.reason, EndReason::IdleTimeout);
+    assert_eq!(end.reason.as_str(), "idle_timeout");
+    assert_eq!(end.reason.outcome(), "canceled");
+    let row = capture
+        .find_message(tracing::Level::INFO, "Minigame aborted without a result")
+        .expect("the abort row must be logged");
+    assert!(row.has_field("end_reason", "idle_timeout"), "{row:#?}");
+}
+
+/// A client that closes its socket after the game starts (FIN) ends the
+/// session as `client_closed`, not as a read error.
+#[tokio::test]
+async fn a_closed_socket_reports_client_closed() {
+    let (client, _rx, handle) =
+        spawn_placeholder_session_with_idle(4322, ListenerLimits::default().idle_timeout).await;
+    drain_and_close(client).await;
+
+    let end = tokio::time::timeout(Duration::from_secs(5), handle)
+        .await
+        .expect("a closed socket must end the session")
+        .expect("session task must not panic");
+
+    assert_eq!(end.reason, EndReason::ClientClosed);
+    assert_eq!(end.reason.outcome(), "canceled");
 }
 
 /// The login deadline covers the whole handshake, not each read: a peer

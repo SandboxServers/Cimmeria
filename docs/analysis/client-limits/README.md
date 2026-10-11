@@ -7,11 +7,15 @@
 > Related: [#1341](https://github.com/SandboxServers/Cimmeria/issues/1341)
 > (first-login flush tail drop). Packet specs: [work-packets.md](work-packets.md).
 >
-> **Campaign status (2026-10-11): wave 1 integrated; CL-07 and CL-13 being
-> written.** Every decision is answered. The bounds table is live in
+> **Campaign status (2026-10-11): implementation done; live work next.**
+> Every decision is answered, and every packet that needs no lab is
+> integrated (CL-01 to CL-07, CL-11, CL-13); the bounds table is live in
 > [docs/client/limits/](../../client/limits/README.md). CL-12 is dropped: the
-> stock exe is already Large Address Aware. The live packets (CL-08, CL-09,
-> CL-10) wait for the user's OK, and CL-14 and CL-15 wait on them.
+> stock exe is already Large Address Aware. **Resume here:** the live packets
+> CL-08, CL-09 and CL-10, each after the user's OK on lab time (the lab DLL
+> must be rebuilt first so CL-06's frame fields reach SigNoz); then CL-14
+> (after CL-09 and a SO_RCVBUF measurement) and CL-15 (after CL-08); then
+> CL-16.
 
 ## Purpose
 
@@ -154,13 +158,13 @@ path), **M** measured (run, date and sample size), **I** inferred. An empty
 | CL-04 | Static: PE flags, engine ini chain, background throttle | game-archaeology-specialist | S | 1 | none | Integrated (#1533) |
 | CL-05 | SigNoz mining: memory, hitches, residues, flush faults | coordinator (`telemetry-triage` skill) | S | 1 | none | Integrated (#1502, folded into the area files by the wave-1 fold; [worknote](worknotes/CL-05.md) keeps the method) |
 | CL-06 | DLL: frame-time percentiles on `client.engine.memory` | packet-coder | S | 1 | none | Integrated (#1532); live numbers need the lab DLL rebuilt |
-| CL-07 | Measurement spec `client-limits.toml` | packet-coder | S | 2 | CL-06 | Writing |
+| CL-07 | Measurement spec `client-limits.toml` | packet-coder | S | 2 | CL-06 | Integrated (#1539); CL-M5 is CL-W2 with `-Leases 5` |
 | CL-08 | Live: per-world memory and frame time, one and five clients | coordinator + Haiku lab-driver | M | 3 | CL-07, user's OK | BlockedDependency |
 | CL-09 | Live: create-burst ceiling | coordinator + Haiku lab-driver | M | 3 | user's OK | BlockedDependency |
 | CL-10 | Live: stock-client residue probe | game-archaeology-specialist | M | 3 | user's OK | BlockedDependency |
 | CL-11 | Teleport and world-entry timing from captures | packet-coder | S | 1 | none | Integrated (#1503; folded into timing.md) |
 | CL-12 | Raise candidate: Large Address Aware lab trial | packet-coder | S | 4 | n/a | Dropped: the stock exe is already Large Address Aware (D-CL4) |
-| CL-13 | Raise candidate: lab ini overrides | packet-coder | M | 4 | none | Writing |
+| CL-13 | Raise candidate: lab ini overrides | packet-coder | M | 4 | none | Integrated (#1550); the live measurement rides on CL-08, Ihpet_Crater_Light first (F19) |
 | CL-14 | Raise candidate: server send window | rust-gameserver-dev | M | 4 | CL-09 | BlockedDependency |
 | CL-15 | Raise candidate: lab low-resolution window | packet-coder | S | 4 | CL-08 | BlockedDependency |
 | CL-16 | Close-out | documentation-writer | S | 5 | all | BlockedDependency |
@@ -214,6 +218,8 @@ Where merged work differs from the packet specs:
 - **CL-04.** The player client has **no background throttle** (the `Sleep(5)` block is `GIsEditor`-only), and `[TextureStreaming] PoolSize` is inert; F13 and F15 corrected, D-CL5 now says streaming margins. A user `SGWEngine.ini` survives only while its `[IniVersion]` stamps match the chain files.
 - **CL-05.** Run by the coordinator against ClickHouse (the MCP cannot group on JSON fields).
 - **CL-06.** `memory_fields` stays pure; `frame_fields`, `record_gap` and `take_window` carry the window. A percentile in the open bucket reports the window's longest gap.
+- **CL-07.** The Haiku worker hit its context cap; the coordinator finished it. Five clients at once needs no schema: `-Rows CL-W2 -Leases 5`.
+- **CL-13.** Review found the installed daemon runs from the lab state dir, so the overrides file is looked up there (after `CIMMERIA_LAB_INI_OVERRIDES`, before a checkout's `tools/lab/`). Writes are atomic under the seed lock; `[IniVersion]`, path escapes and device names are refused.
 - **CL-11.** The Praxis tap has no create or `onClientReady` record, so teleport-to-AoI and the observed hold stay `not measured`; world entry comes from SigNoz instead (CL-05).
 
 New measurement needed (no packet yet): the client's socket receive buffer size, `getsockopt(SO_RCVBUF)` from the lab DLL. CL-14 depends on it.

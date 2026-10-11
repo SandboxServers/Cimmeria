@@ -6,9 +6,10 @@
 //! measurement to an in-memory table, then calls [`crate::init`]. After that
 //! [`counter_total`] reads what a code path emitted.
 //!
-//! `u64` counters and `f64` histograms are recorded ([`counter_total`],
-//! [`histogram_count`], [`histogram_sum`]); other instrument kinds fall back
-//! to the API's no-op instruments.
+//! `u64` counters, `i64` up/down counters (gauges) and `f64` histograms are
+//! recorded ([`counter_total`], [`gauge_total`], [`histogram_count`],
+//! [`histogram_sum`]); other instrument kinds fall back to the API's no-op
+//! instruments.
 //!
 //! The table is process-wide. nextest runs each test in its own process;
 //! under `cargo test` tests share it, so assert on the change across the
@@ -21,7 +22,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use opentelemetry::metrics::{
     Counter, Histogram, HistogramBuilder, InstrumentBuilder, InstrumentProvider, Meter,
-    MeterProvider, SyncInstrument,
+    MeterProvider, SyncInstrument, UpDownCounter,
 };
 use opentelemetry::{InstrumentationScope, KeyValue};
 
@@ -38,6 +39,14 @@ type HistTable = Mutex<HashMap<(String, Vec<(String, String)>), Vec<f64>>>;
 
 fn hist_table() -> &'static HistTable {
     static TABLE: OnceLock<HistTable> = OnceLock::new();
+    TABLE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// `(metric name, sorted labels)` → the running sum of an up/down counter.
+type GaugeTable = Mutex<HashMap<(String, Vec<(String, String)>), i64>>;
+
+fn gauge_table() -> &'static GaugeTable {
+    static TABLE: OnceLock<GaugeTable> = OnceLock::new();
     TABLE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -62,6 +71,18 @@ impl SyncInstrument<u64> for RecordingCounter {
     }
 }
 
+struct RecordingUpDown {
+    name: Cow<'static, str>,
+}
+
+impl SyncInstrument<i64> for RecordingUpDown {
+    fn measure(&self, measurement: i64, attributes: &[KeyValue]) {
+        let labels = sorted_labels(attributes);
+        let mut table = gauge_table().lock().unwrap_or_else(|e| e.into_inner());
+        *table.entry((self.name.to_string(), labels)).or_default() += measurement;
+    }
+}
+
 struct RecordingHistogram {
     name: Cow<'static, str>,
 }
@@ -82,6 +103,13 @@ struct RecordingInstruments;
 impl InstrumentProvider for RecordingInstruments {
     fn u64_counter(&self, builder: InstrumentBuilder<'_, Counter<u64>>) -> Counter<u64> {
         Counter::new(Arc::new(RecordingCounter { name: builder.name }))
+    }
+
+    fn i64_up_down_counter(
+        &self,
+        builder: InstrumentBuilder<'_, UpDownCounter<i64>>,
+    ) -> UpDownCounter<i64> {
+        UpDownCounter::new(Arc::new(RecordingUpDown { name: builder.name }))
     }
 
     fn f64_histogram(&self, builder: HistogramBuilder<'_, Histogram<f64>>) -> Histogram<f64> {
@@ -122,6 +150,22 @@ pub fn install() {
 /// all of `labels`.
 pub fn counter_total(name: &str, labels: &[(&str, &str)]) -> u64 {
     let table = table().lock().unwrap_or_else(|e| e.into_inner());
+    table
+        .iter()
+        .filter(|((metric, set), _)| {
+            metric == name
+                && labels
+                    .iter()
+                    .all(|&(k, v)| set.iter().any(|(sk, sv)| sk == k && sv == v))
+        })
+        .map(|(_, &total)| total)
+        .sum()
+}
+
+/// The net sum added to up/down counter (gauge) `name` over every label set
+/// that contains all of `labels`.
+pub fn gauge_total(name: &str, labels: &[(&str, &str)]) -> i64 {
+    let table = gauge_table().lock().unwrap_or_else(|e| e.into_inner());
     table
         .iter()
         .filter(|((metric, set), _)| {
