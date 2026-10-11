@@ -454,13 +454,13 @@ bundle << entityId << spaceId << (uint32_t)0 <<
 
 **Handler**: `ServerConnection_voiceData` @ `0x00dd68b0`
 **Length type**: WORD_LENGTH
-**Sent**: Voice chat data. No handler registered for SGW.
+**Sent**: Voice chat data. SGW has no voice subsystem and the server never sends it, but the message is **not** unhandled: the connection's handler is the `SGWMessageQueue`, which queues it to `EntityManager::onVoiceData` (`0x00dd0980`), which reads and discards the body ([client-voicedata-and-update-frequency.md](client-voicedata-and-update-frequency.md)).
 
 | Offset | Size | Type | Field | Notes |
 |--------|------|------|-------|-------|
 | 0 | var | bytes | voiceData | Raw voice data |
 
-**Client decompilation** (`0x00dd68b0`): Simply forwards two parameters to the handler callback at `this+0x168 vtable[0x34]`. If no handler is set, logs warning: `"Got voice data before a handler has been set."`.
+**Client decompilation** (`0x00dd68b0`): forwards two parameters (source address, body stream) to the handler at `this+0x168`, vtable `+0x34` (slot 13). `this+0x168` is BigWorld's `pHandler_`, set by `logOn` to the `SGWMessageQueue` subobject, so in the world it is non-null; only a message that arrives before `logOn` logs `"Got voice data before a handler has been set."` and is dropped. Slot 13 consumes and discards the body, so any length from 0 up is harmless (statically verified, 2026-10-11).
 
 ---
 

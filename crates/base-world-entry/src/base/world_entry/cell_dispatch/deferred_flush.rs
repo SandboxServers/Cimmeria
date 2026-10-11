@@ -9,76 +9,17 @@ use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 
-use cimmeria_mercury::channel_bundle::ChannelBundle;
 use cimmeria_mercury::transport::Transport;
 
 use crate::mercury::compose_create_entity_base_body;
 
 use super::super::super::deferred_aoi::{self, DeferredAoiMsg};
 use super::super::super::deferred_aoi_lifecycle::lifecycle_segments;
-use super::super::super::helpers::{
-    send_bundle_to_witness_reliable_kind, BundleManifest, BundleSendOutcome,
-};
 use super::super::super::session_identity::entity_name_for;
 use super::super::super::ConnectedClientState;
 use super::aoi::{entity_invisible, entity_method_call, left_aoi, witness_entity_method};
+use super::intro_bundles::{send_intro_bundles, IntroRecord, Phase1Shape};
 use super::player_ghost;
-
-/// Bundle-path analogue of `aoi::log_create_emit` — emits the success
-/// (`aoi.create_emit`, DEBUG) or failure (`aoi.create_send_failed`, WARN)
-/// seam for the bundled introduction in [`dispatch_deferred`]. `entered` is the NPC count folded into the
-/// bundle; `phase` distinguishes the phase-1 (`"create_base"`) and
-/// phase-2 (`"cascade"`) bundles. Per-entity ids aren't available here —
-/// the bundle carries N entities — so the seam reports the aggregate
-/// count instead.
-fn log_bundle_emit(
-    witness_id: u32,
-    witness_name: Option<&'static str>,
-    entered: usize,
-    phase: &'static str,
-    outcome: BundleSendOutcome,
-) {
-    match outcome {
-        BundleSendOutcome::Sent {
-            base_seq,
-            packets,
-            bytes,
-            ..
-        } => {
-            tracing::debug!(
-                target: "aoi.create_emit",
-                event = "create_emit",
-                witness_id,
-                witness_name,
-                entered,
-                phase,
-                addr_resolved = true,
-                bytes,
-                seq = base_seq,
-                packets,
-                "AoI create emit: {phase} bundle ({entered} NPC) delivered to witness"
-            );
-        }
-        // Empty bundle is a benign no-op (the caller already gates on
-        // `is_empty()`), so it never reaches here in practice; treat it as
-        // non-failure to avoid a spurious WARN if that gate ever changes.
-        BundleSendOutcome::Empty => {}
-        failed => {
-            tracing::warn!(
-                target: "aoi.create_send_failed",
-                event = "create_send_failed",
-                witness_id,
-                witness_name,
-                entered,
-                phase,
-                addr_resolved = failed.addr_resolved(),
-                reason = failed.failure_reason().unwrap_or("unknown"),
-                "AoI create emit: {phase} bundle ({entered} NPC) NOT delivered to witness -- \
-                 entities may be invisible until relog"
-            );
-        }
-    }
-}
 
 /// Drain a session's whole deferred-AoI buffer and dispatch each held
 /// message through the normal AoI handlers.
@@ -223,11 +164,24 @@ async fn dispatch_deferred(
         trigger,
         "Flushing deferred-AoI buffer"
     );
+    // Lab chaos (CH-07): one read per flush. Only a `lab-chaos` build with
+    // the registry installed and chaos set on this session changes anything.
+    // Never a wait here: the base's receive loop awaits this flush inline, so
+    // `Delay` is applied by the AoI hold before the flush runs.
+    #[cfg(feature = "lab-chaos")]
+    let (segments, phase1_shape) = {
+        let mut segments = segments;
+        let shape = super::flush_chaos::apply(addr, witness_id, witness_name, &mut segments);
+        (segments, shape)
+    };
+    #[cfg(not(feature = "lab-chaos"))]
+    let phase1_shape = Phase1Shape::default();
     for segment in segments {
         dispatch_segment(
             witness_id,
             witness_name,
             segment,
+            &phase1_shape,
             transport,
             connected,
             entity_to_addr,
@@ -242,6 +196,7 @@ async fn dispatch_segment(
     witness_id: u32,
     witness_name: Option<&'static str>,
     buffered: Vec<DeferredAoiMsg>,
+    phase1_shape: &Phase1Shape,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
@@ -249,13 +204,8 @@ async fn dispatch_segment(
     // Pre-aggregate EnteredAoI events into two cross-entity bundles.
     // Tracked separately so phase-1 emits before phase-2 (the client must
     // process each NPC's CREATE_ENTITY transaction before its cascade).
-    let mut phase1 = ChannelBundle::new(true);
-    let mut phase2 = ChannelBundle::new(true);
-    // Per-message offset / id / entity for each bundle (TG-AOI-09), logged
-    // on `aoi.bundle_manifest` when the bundle is sent.
-    let mut manifest1 = BundleManifest::new();
-    let mut manifest2 = BundleManifest::new();
-    let mut entered_count = 0usize;
+    let mut phase1: Vec<IntroRecord> = Vec::new();
+    let mut phase2: Vec<IntroRecord> = Vec::new();
 
     // Per-message tail — LeftAoI / EntityMethodCall keep their existing
     // one-packet-each shape and MUST preserve encounter order relative to
@@ -302,18 +252,16 @@ async fn dispatch_segment(
                     outcome = "flushed_on_ready",
                     "AoI introduce: witness now ready, flushing buffered entity introduction"
                 );
-                manifest1.append_raw_message(
-                    &mut phase1,
+                phase1.push((
                     entity_id,
-                    &compose_create_entity_base_body(entity_id, class_id, position, direction),
-                );
+                    compose_create_entity_base_body(entity_id, class_id, position, direction),
+                ));
                 // Joined with the observee's session NOW, not when the cell
                 // fired the event: this buffer can be seconds old and the
                 // observee's cached appearance may have changed since.
-                manifest2.append_raw_message(
-                    &mut phase2,
+                phase2.push((
                     entity_id,
-                    &player_ghost::compose_cascade_body(
+                    player_ghost::compose_cascade_body(
                         witness_id,
                         entity_id,
                         class_id,
@@ -323,8 +271,7 @@ async fn dispatch_segment(
                         connected,
                         entity_to_addr,
                     ),
-                );
-                entered_count += 1;
+                ));
             }
             DeferredAoiMsg::LeftAoI { entity_id } => tail.push(TailMsg::LeftAoI(entity_id)),
             DeferredAoiMsg::EntityMethodCall {
@@ -349,54 +296,17 @@ async fn dispatch_segment(
         }
     }
 
-    if !phase1.is_empty() {
-        tracing::debug!(
-            witness_id,
-            witness_name,
-            entered = entered_count,
-            phase1_bytes = phase1.body_len(),
-            phase1_packets = phase1.estimated_packet_count(),
-            "AoI flush: phase-1 bundle (CREATE_ENTITY + UPDATE_AVATAR per NPC)"
-        );
-        let outcome = send_bundle_to_witness_reliable_kind(
-            transport,
-            connected,
-            entity_to_addr,
-            witness_id,
-            phase1,
-            "aoi_flush_create_base",
-            manifest1.entries(),
-        )
-        .await;
-        log_bundle_emit(
-            witness_id,
-            witness_name,
-            entered_count,
-            "create_base",
-            outcome,
-        );
-    }
-    if !phase2.is_empty() {
-        tracing::debug!(
-            witness_id,
-            witness_name,
-            entered = entered_count,
-            phase2_bytes = phase2.body_len(),
-            phase2_packets = phase2.estimated_packet_count(),
-            "AoI flush: phase-2 bundle (createOnClient() cascade per NPC)"
-        );
-        let outcome = send_bundle_to_witness_reliable_kind(
-            transport,
-            connected,
-            entity_to_addr,
-            witness_id,
-            phase2,
-            "aoi_flush_cascade",
-            manifest2.entries(),
-        )
-        .await;
-        log_bundle_emit(witness_id, witness_name, entered_count, "cascade", outcome);
-    }
+    send_intro_bundles(
+        witness_id,
+        witness_name,
+        phase1,
+        phase2,
+        phase1_shape,
+        transport,
+        connected,
+        entity_to_addr,
+    )
+    .await;
 
     for msg in tail {
         match msg {

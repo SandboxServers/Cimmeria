@@ -37,6 +37,9 @@ pub mod gm_feedback;
 pub mod gm_spawn;
 pub mod helpers;
 pub mod inventory_locks;
+/// Lab chaos state (lab-chaos campaign). Only `COMPILED` exists without the
+/// `lab-chaos` feature.
+pub mod lab_chaos;
 pub mod mutes;
 pub mod org_cash;
 pub mod organization;

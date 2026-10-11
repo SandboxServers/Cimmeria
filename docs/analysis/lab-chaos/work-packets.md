@@ -103,24 +103,31 @@ Knobs per profile (values as strings, parsed by the consumer):
 /// True only in a binary built with the `lab-chaos` feature.
 pub const COMPILED: bool = cfg!(feature = "lab-chaos");
 
+/// Bounds are checked by `LabChaos::set` (refused with `BadKnob`).
 #[derive(Debug, Clone, PartialEq)]
-pub struct NetChaos { pub latency_ms: u32, pub jitter_ms: u32, pub loss_per_thousand: u32,
-                      pub dup_per_thousand: u32, pub reorder: u32, pub seed: u64 }
+pub struct NetChaos { pub latency_ms: u32,        // <= 5000
+                      pub jitter_ms: u32,         // <= 5000
+                      pub loss_per_thousand: u32, // <= 1000
+                      pub dup_per_thousand: u32,  // <= 1000
+                      pub reorder: u32,           // buffer size in packets, <= 1000
+                      pub seed: u64 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum FlushChaos {
-    Delay { ms: u32 },
+    Delay { ms: u32 },              // <= 60_000
     Reorder { seed: u64 },
     /// The pre-#1341-mitigation shape: one single-packet phase-1 bundle of up to `records`.
-    Pack { records: u16 },
-    /// Prepend one filler message of `len` bytes to the phase-1 bundle.
-    Shift { len: u16 },
+    Pack { records: u16 },          // 1..=34 (PACK_RECORDS_MAX: one 1300-byte packet with a 38-byte filler)
+    /// Prepend `len` bytes of filler to a single-packet phase-1 bundle (implies Pack's shape).
+    Shift { len: u16 },             // 0 or 2..=38 (SHIFT_LEN_MAX; no message is 1 byte)
     /// Shift by a seeded length, a new one per flush.
     ShiftSweep { seed: u64 },
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct SessionChaos { pub net: Option<NetChaos>, pub flush: Option<FlushChaos>,
+pub struct SessionChaos { pub entity_id: u32,   // the player entity it was set for
+                          pub label: String,    // CH-01 header text, e.g. `flush:pack seed=7`
+                          pub net: Option<NetChaos>, pub flush: Option<FlushChaos>,
                           pub expires_at: std::time::Instant }
 
 #[derive(Debug, thiserror::Error, PartialEq)]
@@ -128,21 +135,29 @@ pub enum ChaosRefused {
     #[error("lab chaos needs DEVELOPER_MODE")] NotDeveloperMode,
     #[error("no session for entity {0}")] NoSession(u32),
     #[error("ttl {0}s is over the 1800 s cap")] TtlTooLong(u32),
+    #[error("ttl {0}s is not a usable expiry")] BadTtl(u32),     // 0, or past the clock
+    #[error("bad chaos knob: {0}")] BadKnob(&'static str),       // a bound above, or no profile
 }
 
-pub const DEFAULT_TTL_S: u32 = 300;
-pub const MAX_TTL_S: u32 = 1800;
+pub const DEFAULT_TTL_S: u32 = 300;   // applied by the caller (CH-05), not by `set`
+pub const MAX_TTL_S: u32 = 1800;      // enforced by `set`
 
 /// The registry. Keyed by the session's client address.
 pub struct LabChaos { /* Mutex<HashMap<SocketAddr, SessionChaos>> */ }
 impl LabChaos {
     pub fn new() -> Self;
-    pub fn set(&self, addr: SocketAddr, chaos: SessionChaos);
-    pub fn clear(&self, addr: Option<SocketAddr>);       // None clears every session
+    /// Refuses ttl_s == 0 or > MAX_TTL_S, a knob out of bounds, or neither
+    /// profile; sweeps every expired entry; returns `expires_at`.
+    pub fn set(&self, addr: SocketAddr, entity_id: u32, label: String, net: Option<NetChaos>,
+               flush: Option<FlushChaos>, ttl_s: u32, now: Instant) -> Result<Instant, ChaosRefused>;
+    pub fn clear(&self, addr: Option<SocketAddr>) -> usize;  // None clears every session; n removed
+    /// Removes the entry at `addr` if it was set for another entity.
+    pub fn clear_if_not(&self, addr: SocketAddr, entity_id: u32) -> bool;
     /// Expired entries are removed here and read as None.
     pub fn net_for(&self, addr: SocketAddr, now: Instant) -> Option<NetChaos>;
     pub fn flush_for(&self, addr: SocketAddr, now: Instant) -> Option<FlushChaos>;
-    pub fn status(&self, now: Instant) -> Vec<(SocketAddr, SessionChaos)>;
+    /// Sorted by entity id; no address, so the tools report entity ids only.
+    pub fn status(&self, now: Instant) -> Vec<SessionChaos>;
 }
 
 /// Installed once at startup by the server, only when DEVELOPER_MODE is true.
@@ -150,6 +165,16 @@ pub fn install(developer_mode: bool) -> Result<&'static LabChaos, ChaosRefused>;
 /// None when not installed; every hook is then a no-op.
 pub fn current() -> Option<&'static LabChaos>;
 ```
+
+**Teardown clear.** `teardown_session`
+(`crates/base-session/src/base/helpers/session_teardown.rs`) calls
+`current()?.clear(Some(addr))` once its owner check passes, so a session's
+chaos ends with it and a relaunched client on the same address starts clean.
+
+**Callers.** `install` is called only from `crates/server/src/main.rs`;
+`current` only from the lab chaos module, session teardown, the CH-05 tools,
+the CH-06 shim and the CH-07 flush file. `lab_chaos_callers` in
+`crates/server/tests/` enforces both lists.
 
 **Feature rule.** `lab-chaos` is declared on `cimmeria-base-session`
 (`lab-chaos = []`) and forwarded by `cimmeria-base-world-entry`,
@@ -347,11 +372,31 @@ module doc if it lists features.
 the contract, registered in `crates/lab-mcp/src/tools/mod.rs` the same way
 `witnesses.rs` is, all under `#[cfg(feature = "lab-chaos")]`. Resolve
 `entity_id` to the session address through the same path `sessions.rs`
-uses. Clamp `ttl_s` (default `DEFAULT_TTL_S`, refuse over `MAX_TTL_S`).
-When `lab_chaos::current()` is None, every tool answers
+uses. When `lab_chaos::current()` is None, every tool answers
 `{refused: "lab chaos is off (DEVELOPER_MODE)"}`. Add the names to
 `names.rs` if tool names are listed there. Put tests in `chaos_tests.rs`
 beside it, as the other tools do.
+
+From the CH-04 review (the registry is the authority; see
+[worknotes/CH-04.md](worknotes/CH-04.md)):
+
+- **TTL.** Apply `DEFAULT_TTL_S` only when the request names no `ttl_s`.
+  Pass any named value to `LabChaos::set` unchanged; it refuses 0 and values
+  over `MAX_TTL_S`. Return its refusal text (`ChaosRefused`'s `Display`) as
+  `{refused: ...}`. Clamp nothing.
+- **Call shape.** `set(addr, entity_id, label, net, flush, ttl_s, Instant::now())`.
+  `label` is the request's spec text if given, otherwise built from the
+  profile and seed (`net seed=7`, `flush:pack`). `expires_in_s` is
+  `expires_at - now`, rounded down.
+- **Race guard.** After `set` succeeds, resolve `entity_id` again. If it no
+  longer maps to the same address, call `clear_if_not(addr, <entity now at
+  addr, or 0>)` and answer `{refused: "no session for entity <id>"}`.
+- **Status** reports entity ids from `status()`, never an address.
+- **Do not** wire `set` or `clear` into admin-api or the console. The
+  `lab_chaos_callers` test in `crates/server/tests/` already allows
+  `crates/lab-mcp/src/tools/chaos.rs`; call `lab_chaos::current()` by its
+  full path (no `use lab_chaos::{..}`, `::*` or `as` imports, which the
+  test refuses).
 
 **Tests** (`crates/lab-mcp/src/tools/chaos_tests.rs`, type 1, with
 `--features lab-chaos`): refused when not installed; `ttl_s` over the cap is
@@ -392,6 +437,13 @@ D-CH1** (this packet is for option (a)) and CH-04.
 3. `BaseService::start`: under the feature and when `lab_chaos::current()`
    is `Some`, wrap the bound socket's transport in `ChaosTransport`; with the
    feature off, the code path is unchanged.
+4. **Cost on the send path.** `net_for` takes the registry's one mutex on
+   every send. Add a cheap "nothing set" check first (for example an
+   `AtomicUsize` entry count on `LabChaos`, kept in step inside the lock), so
+   a lab server with no chaos set pays one atomic load per send. This edits
+   `crates/base-session/src/base/lab_chaos/mod.rs`; keep its tests green.
+   The file must be `crates/base/src/base/lab_chaos_transport.rs`, the name
+   `lab_chaos_callers` allows.
 
 **Tests** (network chaos, TESTING.md type 10, under
 `crates/mercury/src/test_harness/tests/chaos/` if the filter extraction
@@ -442,7 +494,16 @@ that reads `lab_chaos::current()?.flush_for(addr, now)` and:
   single-packet bundle, as the server did before #1341's mitigation, even if
   the mitigation is on.
 - `Shift { len }` / `ShiftSweep { seed }`: prepend the filler of `len` bytes
-  (`ShiftSweep`: `len = rng % 37`, logged).
+  (`ShiftSweep`: a seeded draw from 0 and 2 to 38, never 1, logged; the
+  filler design widened 36 to 38, see `worknotes/CH-07-filler.md`). The
+  CH-04 review's candidates: `updateFrequencyNotification` (0x02, exactly 2
+  bytes) and `voiceData` (0x33, 3 to 36); the design step confirms or
+  replaces them, and says whether a missing length of 1 leaves any residue
+  unreachable.
+
+Before reading `flush_for`, call `clear_if_not(addr, player_entity_id)`: a
+`logOff` to character select keeps the session's address but the next
+character is a new entity, and must start clean.
 
 `dispatch_deferred` calls `apply` once per flush, under
 `#[cfg(feature = "lab-chaos")]`; nothing else in `deferred_flush.rs`

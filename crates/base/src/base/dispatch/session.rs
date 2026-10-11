@@ -316,6 +316,10 @@ pub(super) async fn handle_log_off(
                 c.ignore = Default::default();
             }
         }
+        // Lab chaos was set for the character that just left; the session
+        // stays, so no teardown clears it.
+        #[cfg(feature = "lab-chaos")]
+        cimmeria_base_session::base::helpers::clear_lab_chaos_on_character_select(addr);
 
         // Send RESET_ENTITIES to tear down the world
         let (acks, seq) = super::super::helpers::drain_acks_and_seq(connected, addr)?;

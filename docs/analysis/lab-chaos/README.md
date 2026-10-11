@@ -8,9 +8,11 @@
 > [#1341](https://github.com/SandboxServers/Cimmeria/issues/1341). Packet
 > specs: [work-packets.md](work-packets.md).
 >
-> **Campaign status (2026-10-10): planned, nothing built.** CH-01 and CH-03
-> can start now. Three decisions (D-CH1, D-CH2, D-CH3) gate every server-side
-> packet. CH-09 waits for lab-golden's capture, diff and `-DiffGolden` (GD-03 to GD-07, GD-09); CH-10 and CH-11 are live and
+> **Campaign status (2026-10-11): CH-01 to CH-03 merged to `main`; CH-04 to
+> CH-07 reviewed and integrated into the local feature branch
+> `lab-chaos/feature` (worktree `chaos`).** A PR hold is in force: packets
+> merge into the feature branch locally and the campaign opens one PR when the
+> hold lifts (see Ship below). CH-08 is next (Ready). CH-09 waits for lab-golden's capture, diff and `-DiffGolden` (GD-03 to GD-07, GD-09); CH-10 and CH-11 are live and
 > need the user's OK.
 
 ## Purpose
@@ -76,9 +78,9 @@ the report so a run can be replayed exactly.
 
 | ID | Status | Decision | Reason |
 |---|---|---|---|
-| D-CH1 | **BlockedDecision** (owner). Recommended: **(a)** | **How `net` shapes traffic.** (a) A server-side shim: the existing `LossyTransport`, made switchable at runtime and scoped to one session's address, in a lab build only (D-CH2). (b) A Windows packet shaper on the client machine (a WinDivert-based tool). | (a) is seeded and replayable, shapes both directions, needs no driver install or admin rights on the lab machine, and works the same against a local server and a lab server. (b) shapes the real socket but is not seedable, needs a kernel driver, and affects every process on the machine. |
-| D-CH2 | **BlockedDecision** (owner; `network-security-auth` signs off the gate). Recommended: **(a)** | **Gating server-side chaos (`net`, `flush`).** (a) Three gates, all required: compiled only with a new `lab-chaos` cargo feature that release and colo images never enable; refused at runtime unless `DEVELOPER_MODE` is true; set only through authenticated lab-mcp tools. Every set logs a WARN with the profile, level, seed, scope and expiry. (b) Feature gate only. | Chaos that reaches a player server is a denial of service. (a) means a production binary cannot contain it, a dev binary cannot enable it without the operator's mode, and nobody without the lab token can turn it on. |
-| D-CH3 | **BlockedDecision** (owner). Recommended: **(a)** | **The control surface.** (a) Three lab-mcp tools: `server_chaos_set {profile, level or knobs, seed, session_entity_id, ttl_s}`, `server_chaos_clear {}` and `server_chaos_status {}`. Scope is one session (by player entity id); there is no "all sessions" scope. `ttl_s` defaults to 300 and is clamped to 1800, after which the state clears itself. (b) Console commands (`.chaos ...`) instead of tools. | Tools are authenticated by the lab token; console commands are GM-gated only, and GMs exist on shared servers. The TTL means a crashed run never leaves chaos on. |
+| D-CH1 | **DECIDED (a)**, owner, 2026-10-11 | **How `net` shapes traffic.** (a) A server-side shim: the existing `LossyTransport`, made switchable at runtime and scoped to one session's address, in a lab build only (D-CH2). (b) A Windows packet shaper on the client machine (a WinDivert-based tool). | (a) is seeded and replayable, shapes both directions, needs no driver install or admin rights on the lab machine, and works the same against a local server and a lab server. (b) shapes the real socket but is not seedable, needs a kernel driver, and affects every process on the machine. |
+| D-CH2 | **DECIDED (a)**, owner, 2026-10-11 (`network-security-auth` signs off the gate in CH-04 review) | **Gating server-side chaos (`net`, `flush`).** (a) Three gates, all required: compiled only with a new `lab-chaos` cargo feature that release and colo images never enable; refused at runtime unless `DEVELOPER_MODE` is true; set only through authenticated lab-mcp tools. Every set logs a WARN with the profile, level, seed, scope and expiry. (b) Feature gate only. | Chaos that reaches a player server is a denial of service. (a) means a production binary cannot contain it, a dev binary cannot enable it without the operator's mode, and nobody without the lab token can turn it on. |
+| D-CH3 | **DECIDED (a)**, owner, 2026-10-11 | **The control surface.** (a) Three lab-mcp tools: `server_chaos_set {profile, level or knobs, seed, session_entity_id, ttl_s}`, `server_chaos_clear {}` and `server_chaos_status {}`. Scope is one session (by player entity id); there is no "all sessions" scope. `ttl_s` defaults to 300 and is clamped to 1800, after which the state clears itself. (b) Console commands (`.chaos ...`) instead of tools. | Tools are authenticated by the lab token; console commands are GM-gated only, and GMs exist on shared servers. The TTL means a crashed run never leaves chaos on. |
 | D-CH4 | PROPOSED (coordinator) | **`cpu` runs in the lab daemon** as N busy threads owned by the run, under a guard that stops them when the run ends, fails or is cancelled, and on daemon shutdown. Normal priority; no affinity unless `cores` asks for it. | The daemon already owns the run's lifetime (F10), so cleanup is a drop, not a separate process to hunt down. |
 | D-CH5 | PROPOSED (coordinator) | **`burst` uses existing GM commands** through the runner: `.spawnrandom` around the player, then a despawn of every entity the run spawned (by the ids the server reports), at row end and on failure. A fixed default template (a humanoid with a large cascade, chosen in CL-09). | No new server code, and spawns are GM-gated already (F9). |
 | D-CH6 | PROPOSED (coordinator; `aoi-witness-broadcast` confirms the filler) | **`flush` modes:** `delay` (hold the flush `delay_ms` longer); `reorder` (seeded shuffle of the introductions inside each phase); `pack` (force the pre-mitigation single-packet phase-1 bundle of up to 24 records, F7); `shift` (prepend one filler message of a seeded length, F6). With the gate off, the flush is byte-identical to today. | `pack` and `shift` make #1341 deterministic; `delay` and `reorder` test the client's tolerance without a known bug. |
@@ -92,11 +94,11 @@ the report so a run can be replayed exactly.
 | CH-01 | Chaos profile types, parser and levels file | packet-coder | S | 1 | none | Integrated |
 | CH-02 | `lab uat --chaos` in the PowerShell CLI | packet-coder | S | 2 | CH-01 | Integrated |
 | CH-03 | `cpu` stressor in the lab daemon | packet-coder | S | 1 | none | Integrated |
-| CH-04 | Server chaos state and the three gates | rust-gameserver-dev, `network-security-auth` review | M | 2 | D-CH2, D-CH3 | BlockedDecision |
-| CH-05 | lab-mcp tools `server_chaos_set` / `clear` / `status` | packet-coder | S | 3 | CH-04 | BlockedDependency |
-| CH-06 | `net`: switchable, per-session lossy transport | rust-gameserver-dev | M | 3 | CH-04, D-CH1 | BlockedDecision |
-| CH-07 | `flush`: delay, reorder, pack, shift | rust-gameserver-dev, `aoi-witness-broadcast` design and review | L | 3 | CH-04, D-CH6 | BlockedDependency |
-| CH-08 | `burst` and runner wiring for every profile | packet-coder | M | 4 | CH-01, CH-03, CH-05 | BlockedDependency |
+| CH-04 | Server chaos state and the three gates | rust-gameserver-dev, `network-security-auth` review | M | 2 | D-CH2, D-CH3 | Integrated (feature branch) |
+| CH-05 | lab-mcp tools `server_chaos_set` / `clear` / `status` | packet-coder (finished by rust-gameserver-dev) | S | 3 | CH-04 | Integrated (feature branch) |
+| CH-06 | `net`: switchable, per-session lossy transport | rust-gameserver-dev | M | 3 | CH-04, D-CH1 | Integrated (feature branch) |
+| CH-07 | `flush`: delay, reorder, pack, shift | rust-gameserver-dev, `aoi-witness-broadcast` design and review | L | 3 | CH-04, D-CH6 | Integrated (feature branch) |
+| CH-08 | `burst` and runner wiring for every profile | packet-coder | M | 4 | CH-01, CH-03, CH-05 | Ready |
 | CH-09 | Chaos report against the golden | packet-coder | S | 5 | CH-08, GD-03 to GD-07, GD-09 | BlockedDependency |
 | CH-10 | Live: calibrate safe and break levels | coordinator + Haiku lab-driver | M | 6 | CH-09, client-limits CL-08 and CL-09, user's OK | BlockedDependency |
 | CH-11 | Live acceptance: reproduce #1341 with `cpu` and `flush` | coordinator + Haiku lab-driver | M | 6 | CH-10, user's OK | BlockedDependency |
@@ -117,7 +119,9 @@ Waves (packets in one wave touch disjoint files):
 ## Dispatch rules
 
 - **Workers.** One packet each, in its own worktree and test database:
-  `pwsh -NoProfile -File tools/build-lane/mk-worktree.ps1 lab-chaos/<packet>-<slug> <worktree>`.
+  `pwsh -NoProfile -File tools/build-lane/mk-worktree.ps1 lab-chaos/<packet>-<slug> <worktree>`,
+  then, in the new worktree, `git reset --hard lab-chaos/feature` so the
+  packet builds on every integrated packet.
   `packet-coder` (Haiku) for packets marked so; `rust-gameserver-dev` for
   CH-04, CH-06 and CH-07; `documentation-writer` for CH-12. The brief
   carries the worktree path, the packet section, the contract section and
@@ -134,8 +138,13 @@ Waves (packets in one wave touch disjoint files):
 - **Shell.** PowerShell only: no bash, no direct `cargo`, no
   `git worktree prune`, no `git stash`. Every compiling command goes through
   `pwsh -NoProfile -File tools/build-lane/lane.ps1`.
-- **Ship.** `python tools/build-lane/ship.py pr -C <worktree> -m <msg>`, then
-  `python tools/build-lane/ship.py merge <PR> --retire <worktree>`.
+- **Ship (PR hold, 2026-10-11).** No per-packet PRs. After review, the
+  coordinator merges the packet branch into `lab-chaos/feature` (worktree
+  `chaos`) with `git merge --no-ff`, reruns the touched crates' lane checks
+  there, and retires the packet worktree. When the hold lifts, one PR:
+  `python tools/build-lane/ship.py pr -C .claude/worktrees/chaos -m <msg>`,
+  then `ship.py merge <PR> --retire chaos`. Before then, merge `origin/main`
+  into the feature branch at wave boundaries to keep it current.
 - **Shared files.** Only CH-12 edits `docs/architecture/network-chaos-testing.md`,
   `TESTING.md`, `docs/gap-analysis*`, `docs/project-status.md` and
   `docs/guides/unified-uat.md`; packets put their doc deltas in their
@@ -172,3 +181,36 @@ the code is then the reference, not the spec.
   header with it (not append). The plan call carries `chaos` too, so after
   CH-08 a bad spec fails there (exit 3). `Set-UatChaos` and
   `Add-UatChaosHeader` in `uat-lib.ps1` hold the wiring so it is tested.
+- **CH-04 to CH-07 (wave 3, 2026-10-11, local feature branch).** Every
+  packet had three reviews, and the fixes went to fresh workers.
+  - **CH-04:** limits moved into the registry. `set` refuses a bad TTL or
+    knob and never clamps. Session teardown clears the entry, and
+    `lab_chaos_callers` holds `install` and `current` to an allowlist.
+  - **CH-05:** the tools take raw JSON and refuse with `{refused}` and an
+    audit row. Unknown fields, entity 0, control characters in a label and
+    non-tenth percentages are refused. Clear by entity uses the registry's
+    tag (`LabChaos::clear_entity`). A return to character select clears the
+    session's chaos (`clear_lab_chaos_on_character_select`).
+  - **CH-06:** every `set` gets a generation, so a re-set restarts the
+    seeded stream. Held and delayed sends of a cleared or regenerated entry
+    are discarded, never released. Each delay line holds at most 4096 sends.
+    `LossyTransport` now discards its queued delays on drop.
+  - **CH-07:** `Delay` reuses the cinematic AoI hold and releases from a
+    spawned timer; the first version slept on the shared receive loop and
+    stalled every session. Shift lengths are 0 or 2 to 38, and `Pack` is
+    refused above 34 records. voiceData (0x33) is statically verified safe as
+    a filler ([RE finding](../../reverse-engineering/findings/client-voicedata-and-update-frequency.md)).
+    The default flush is pinned to bytes captured from the pre-change code.
+  - **Coordinator:** the knob bounds moved to `lab_chaos/bounds.rs`. The
+    CI `lab-chaos` step runs base-session, base, base-world-entry and
+    lab-mcp.
+  - **Owed:**
+    - CH-10 and CH-11 must not set `Delay` near 60 s on a shared lab server
+      and expect other sessions to be unaffected. Since the CH-07 fix it holds
+      only the target's AoI.
+    - CH-11 sends `Shift { len: 3 }` once live, as the first zero-length
+      voiceData.
+    - A follow-up test should pin teardown or relaunch while a chaos `Delay`
+      timer is pending (the stale-token guard in `cinematic_aoi_hold`).
+    - `client_ready/mod.rs` is over the 700-line cap: 736 lines before
+      CH-07, 738 after. A split is owed outside this campaign.

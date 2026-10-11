@@ -29,6 +29,13 @@
 //!
 //! Either way the buffer flushes through the ordinary deferred-AoI path, so
 //! the client creates the entities after the movie and its exit GC.
+//!
+//! # Lab chaos `Delay`
+//!
+//! A `lab-chaos` build reuses the hold for the CH-07 `Delay` flush mode
+//! (`chaos_delay.rs`): world entry begins a hold for a session with a delay
+//! set even without a cinematic, and every release waits the delay out on a
+//! spawned timer before it drains. The receive path never sleeps.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -37,7 +44,7 @@ use std::time::Duration;
 
 use cimmeria_mercury::transport::Transport;
 
-use super::super::world_entry::cell_dispatch::flush_deferred_aoi;
+use super::super::world_entry::cell_dispatch::{flush_deferred_aoi, flush_deferred_self_methods};
 use super::super::ConnectedClientState;
 
 // The hold record and `begin` are session state (`base::cinematic_aoi_hold`);
@@ -60,6 +67,9 @@ pub(crate) const HOLD_DURATION: Duration = Duration::from_secs(16);
 pub(crate) enum ReleaseReason {
     CancelMovie,
     Timeout,
+    /// `onClientReady` of a world entry with no cinematic: only a hold begun
+    /// for a lab chaos `Delay` ends this way ([`on_client_ready`]).
+    ClientReady,
 }
 
 impl ReleaseReason {
@@ -67,8 +77,57 @@ impl ReleaseReason {
         match self {
             Self::CancelMovie => "cancel_movie",
             Self::Timeout => "timeout",
+            Self::ClientReady => "client_ready",
         }
     }
+}
+
+/// True when world entry should hold this witness's AoI traffic although no
+/// cinematic plays: a lab chaos `Delay` is set on the session. Always false
+/// without the `lab-chaos` feature. Called under the `connected` lock (lock
+/// order: `connected`, then the chaos registry).
+pub(crate) fn chaos_wants_hold(addr: SocketAddr, witness_id: u32) -> bool {
+    #[cfg(feature = "lab-chaos")]
+    {
+        chaos_delay::wanted(addr, witness_id)
+    }
+    #[cfg(not(feature = "lab-chaos"))]
+    {
+        let _ = (addr, witness_id);
+        false
+    }
+}
+
+/// `onClientReady`'s flush for a session world entry put on hold: the
+/// player-self method calls go now, the entity traffic stays held. A
+/// cinematic hold (`cinematic`) arms its timeout. A hold begun only for a
+/// lab chaos `Delay` (see [`chaos_wants_hold`]) is released here, where the
+/// ordinary flush would have run; the release claims it and, with the delay
+/// still set, returns at once and drains from a timer.
+pub(crate) async fn on_client_ready(
+    hold: CinematicAoiHold,
+    cinematic: bool,
+    witness_id: u32,
+    addr: SocketAddr,
+    transport: &Arc<dyn Transport>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) {
+    flush_deferred_self_methods(witness_id, addr, transport, connected, entity_to_addr).await;
+    if cinematic {
+        arm_timeout(hold, witness_id, addr, transport, connected, entity_to_addr);
+        return;
+    }
+    release(
+        Some(hold.token),
+        ReleaseReason::ClientReady,
+        witness_id,
+        addr,
+        transport,
+        connected,
+        entity_to_addr,
+    )
+    .await;
 }
 
 /// Spawn the task that releases `hold` once [`HOLD_DURATION`] has passed
@@ -172,6 +231,11 @@ fn log_skipped(
 /// at the 16-second boundary — returns at once. Without the claim the second
 /// task would find the buffer momentarily empty while the first is still
 /// awaiting its sends, lift the hold, and let live traffic overtake them.
+///
+/// A lab chaos `Delay` is read once, right after the claim: the drain then
+/// runs from a spawned timer and this returns at once, with the hold still
+/// up so live AoI traffic keeps buffering behind the held introductions.
+/// The claim happens once per hold, so the delay does too.
 async fn release(
     expected: Option<u64>,
     reason: ReleaseReason,
@@ -217,6 +281,40 @@ async fn release(
         hold.token
     };
 
+    #[cfg(feature = "lab-chaos")]
+    if chaos_delay::defer_release(
+        claimed,
+        reason,
+        witness_id,
+        addr,
+        transport,
+        connected,
+        entity_to_addr,
+    ) {
+        return;
+    }
+    drain_and_lift(
+        claimed,
+        reason,
+        witness_id,
+        addr,
+        transport,
+        connected,
+        entity_to_addr,
+    )
+    .await;
+}
+
+/// The release's flush loop for the hold `claimed`, then the lift.
+async fn drain_and_lift(
+    claimed: u64,
+    reason: ReleaseReason,
+    witness_id: u32,
+    addr: SocketAddr,
+    transport: &Arc<dyn Transport>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+) {
     let mut flushed = 0usize;
     let held_for;
     loop {
@@ -271,5 +369,10 @@ async fn release(
     );
 }
 
+#[cfg(feature = "lab-chaos")]
+mod chaos_delay;
+
 #[cfg(test)]
 mod tests;
+#[cfg(all(test, feature = "lab-chaos"))]
+mod tests_chaos_delay;
