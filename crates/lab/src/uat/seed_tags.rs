@@ -556,6 +556,9 @@ teardown = [{ tool = "g", args = { tag = "TeardownTag" } }]
             "/../../db/resources/Worlds/Seed"
         ));
         let seed = SeedTags::load(dir).unwrap();
+        // 632 spawnlist rows define 608 distinct tags (counted independently
+        // of this parser, 2026-10-10). Update it with the seed when it changes.
+        assert_eq!(seed.tags.len(), 608, "distinct seeded tags");
         for tag in [
             "ArmYourself_FrostBody",
             "ArmYourself_GuardBody",
