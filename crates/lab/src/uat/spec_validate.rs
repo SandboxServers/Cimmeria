@@ -52,6 +52,13 @@ pub fn validate(spec: &SectionSpec) -> Result<(), String> {
         errs.push(format!("account {:?}: gm or non-gm", spec.section.account));
     }
     for (name, p) in &spec.section.profiles {
+        // The key becomes part of the fixture character name (`Fx` + letters,
+        // at most 8), so it must survive that unchanged.
+        if name.is_empty() || name.len() > 8 || !name.chars().all(|c| c.is_ascii_lowercase()) {
+            errs.push(format!(
+                "section.profiles.{name}: the key must be 1 to 8 lowercase letters"
+            ));
+        }
         for (field, value) in [
             ("alignment", &p.alignment),
             ("archetype", &p.archetype),

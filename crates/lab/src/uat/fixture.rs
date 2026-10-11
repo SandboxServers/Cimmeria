@@ -27,9 +27,13 @@ pub const FIXTURE_CARRIED_CONTAINERS: &[i32] = &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 
 #[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Clone, PartialEq)]
 pub struct FixtureCheck {
+    /// The label a BLOCKED reason names, e.g. `mission 622 active`.
     pub what: String,
+    /// The read-only SQL the check runs through `server_db_query`.
     pub sql: String,
+    /// A JSON pointer into the query result, e.g. `/rows/0/n`.
     pub pointer: String,
+    /// The value at `pointer` that proves the check.
     pub want: Value,
 }
 
@@ -101,19 +105,21 @@ pub fn verify_checks(f: &FixtureSpec, name: &str) -> Result<Vec<FixtureCheck>, S
         let sql = format!(
             "SELECT count(*) AS n_rows, max(m.status) AS status, max(m.current_step_id) AS step \
              FROM sgw_mission m JOIN sgw_player p ON p.player_id = m.player_id \
-             WHERE p.player_name ILIKE '%{n}%' AND m.mission_id = {}",
+             WHERE p.player_name ILIKE '% {n}' AND m.mission_id = {}",
             m.id
         );
         match m.resolved_state()? {
             FixtureMissionState::Active => {
-                if let Some(step) = m.step {
-                    out.push(check(
-                        format!("mission {} on step {step}", m.id),
-                        &sql,
-                        "/rows/0/step",
-                        json!(step),
-                    ));
-                }
+                // `resolved_state` only yields Active with a step.
+                let step = m
+                    .step
+                    .ok_or_else(|| format!("mission {}: active needs a step", m.id))?;
+                out.push(check(
+                    format!("mission {} on step {step}", m.id),
+                    &sql,
+                    "/rows/0/step",
+                    json!(step),
+                ));
                 out.push(check(
                     format!("mission {} active", m.id),
                     &sql,
@@ -144,7 +150,7 @@ pub fn verify_checks(f: &FixtureSpec, name: &str) -> Result<Vec<FixtureCheck>, S
         let sql = format!(
             "SELECT coalesce(sum(i.stack_size), 0) AS n FROM sgw_inventory i \
              JOIN sgw_player p ON p.player_id = i.character_id \
-             WHERE p.player_name ILIKE '%{n}%' AND i.type_id = {} \
+             WHERE p.player_name ILIKE '% {n}' AND i.type_id = {} \
              AND i.container_id IN ({carried})",
             i.id
         );
@@ -154,12 +160,28 @@ pub fn verify_checks(f: &FixtureSpec, name: &str) -> Result<Vec<FixtureCheck>, S
             "/rows/0/n",
             json!(i.count),
         ));
+        // The item's own container holds the count too (`main` is 1,
+        // `mission` is 2), so a count carried in the wrong place fails.
+        let cid = i.container_id()?;
+        let sql = format!(
+            "SELECT coalesce(sum(i.stack_size), 0) AS n FROM sgw_inventory i \
+             JOIN sgw_player p ON p.player_id = i.character_id \
+             WHERE p.player_name ILIKE '% {n}' AND i.type_id = {} \
+             AND i.container_id = {cid}",
+            i.id
+        );
+        out.push(check(
+            format!("item {} in container {cid}", i.id),
+            &sql,
+            "/rows/0/n",
+            json!(i.count),
+        ));
     }
     for t in &f.tutorials_unseen {
         let sql = format!(
             "SELECT count(*) AS n FROM sgw_player_tutorials t \
              JOIN sgw_player p ON p.player_id = t.player_id \
-             WHERE p.player_name ILIKE '%{n}%' AND t.tutorial_id = {t}"
+             WHERE p.player_name ILIKE '% {n}' AND t.tutorial_id = {t}"
         );
         out.push(check(
             format!("tutorial {t} unseen"),
@@ -272,7 +294,8 @@ mod tests {
             state: Some(FixtureMissionState::Completed),
         });
         let checks = verify_checks(&f, "Fxpraxisdefa").unwrap();
-        assert_eq!(checks.len(), 7, "{checks:?}");
+        // 4 mission checks, 2 per item (carried total and own container), 1 tutorial.
+        assert_eq!(checks.len(), 9, "{checks:?}");
         let has = |mission_or_item: &str, pointer: &str, want: Value| {
             checks
                 .iter()
@@ -286,11 +309,36 @@ mod tests {
         assert!(has("i.type_id = 3730", "/rows/0/n", json!(0)));
         assert!(has("t.tutorial_id = 5882", "/rows/0/n", json!(0)));
         for c in &checks {
-            assert!(c.sql.contains("ILIKE '%fxpraxisdefa%'"), "{}", c.sql);
+            assert!(c.sql.contains("ILIKE '% fxpraxisdefa'"), "{}", c.sql);
         }
         assert!(checks[4]
             .sql
             .contains("IN (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)"));
+        // The mission-container item (3730) is checked in container 2 as well.
+        let in_mission = checks
+            .iter()
+            .find(|c| c.what == "item 3730 in container 2")
+            .expect("container check for item 3730");
+        assert!(in_mission.sql.contains("i.type_id = 3730"), "{}", in_mission.sql);
+        assert!(in_mission.sql.contains("i.container_id = 2"), "{}", in_mission.sql);
+        assert_eq!(in_mission.pointer, "/rows/0/n");
+        assert_eq!(in_mission.want, json!(0));
+        let in_main = checks
+            .iter()
+            .find(|c| c.what == "item 55 in container 1")
+            .expect("container check for item 55");
+        assert!(in_main.sql.contains("i.container_id = 1"), "{}", in_main.sql);
+    }
+
+    #[test]
+    fn verify_sql_does_not_match_a_longer_name() {
+        let checks = verify_checks(&example(), "Fxab").unwrap();
+        for c in &checks {
+            assert!(c.sql.contains("ILIKE '% fxab'"), "{}", c.sql);
+            assert!(!c.sql.contains("'%fxab%'"), "{}", c.sql);
+        }
+        // Non-ASCII letters are not letters for this check.
+        assert!(verify_checks(&example(), "Fxé").is_err());
     }
 
     #[test]
@@ -337,9 +385,9 @@ source = "chat"
 contains = "Available commands"
 "#;
         let section = spec::parse(TEXT).unwrap();
-        let tmp = tempfile::tempdir().unwrap().keep();
+        let tmp = tempfile::tempdir().unwrap();
         let req = RunRequest {
-            root: tmp,
+            root: tmp.path().to_path_buf(),
             instance: Some("p2".into()),
             no_settle: true,
             ..Default::default()
@@ -347,6 +395,16 @@ contains = "Available commands"
         let runner = Runner::new(&NoTools, None, req).unwrap();
         let vars = runner.base_vars(&section, &section.rows[0]);
         assert_eq!(vars.get("instance"), Some(&json!("p2")));
+
+        let req = RunRequest {
+            root: tmp.path().to_path_buf(),
+            instance: None,
+            no_settle: true,
+            ..Default::default()
+        };
+        let runner = Runner::new(&NoTools, None, req).unwrap();
+        let vars = runner.base_vars(&section, &section.rows[0]);
+        assert!(!vars.contains_key("instance"), "{vars:?}");
     }
 
     #[test]

@@ -98,9 +98,14 @@ pub struct RunRequest {
 )]
 #[serde(rename_all = "snake_case")]
 pub enum FixtureMode {
+    /// Apply a row's fixture unless the previous row of the section passed
+    /// and left the client in world (D-FX10).
     #[default]
     Auto,
+    /// Apply a row's fixture even when the previous row left the client in
+    /// world.
     Always,
+    /// Never apply a fixture; the row runs from wherever the client is.
     Never,
 }
 
