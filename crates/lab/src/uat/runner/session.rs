@@ -1,6 +1,7 @@
 //! Reaching a row's state (client running, logged in, in world as the
-//! right character), the `.bug` anchor, and the client build fingerprint.
-//! Every call made here is recorded as a setup action on the row.
+//! right character), the `.bug` anchor, the client build fingerprint, and
+//! ending the run's session (TG-PIPE-08). Every call a row makes here is
+//! recorded as a setup action on the row.
 
 use std::path::Path;
 use std::time::Duration;
@@ -10,10 +11,10 @@ use sha2::{Digest, Sha256};
 
 use super::players::Who;
 use super::{now_ms, RowCtx, Runner};
-use crate::uat::evidence::Anchor;
+use crate::uat::evidence::{Anchor, RowEvidence};
 use crate::uat::invoke::ToolInvoker;
-use crate::uat::spec::{ActionSpec, SectionSpec};
-use crate::uat::tier::Role;
+use crate::uat::spec::{ActionSpec, GoldenSpec, RowSpec, SectionSpec, ServerWait};
+use crate::uat::tier::{Role, Tier};
 
 /// How long the anchor waits for the `Bookmark <id> recorded` reply.
 const ANCHOR_REPLY: Duration = Duration::from_secs(4);
@@ -215,6 +216,156 @@ impl<I: ToolInvoker> Runner<'_, I> {
             }
         }
         ctx.anchor = Some(anchor);
+    }
+
+    /// TG-PIPE-08 (S1): end the run's session the way a player does, after
+    /// the last row: `lab_logout` when in world, then `lab_disconnect` from
+    /// character select, each checked against the server line it causes.
+    /// Runs as the synthetic row [`SESSION_END_ROW`] of `spec` (the last
+    /// row's section). `None`, with a log line, when there is nothing to
+    /// end: the lease is gone, the client is not running, or it is already
+    /// past character select.
+    pub(crate) async fn end_run_session(&mut self, spec: &SectionSpec) -> Option<RowEvidence> {
+        if let Some(r) = self.revocation_reason() {
+            skipped("lease_revoked", &r);
+            return None;
+        }
+        let status = self.inv.call("lab_client_status", json!({})).await;
+        if !status.ok {
+            skipped("status_failed", status.error.as_deref().unwrap_or_default());
+            return None;
+        }
+        let running = status
+            .json
+            .get("running")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        let login = status
+            .json
+            .get("login_state")
+            .and_then(Value::as_str)
+            .unwrap_or("not_started")
+            .to_string();
+        if !running {
+            skipped("client_not_running", &login);
+            return None;
+        }
+        let in_world = login == "in_world";
+        if !in_world && login != "character_select" {
+            skipped("not_logged_in", &login);
+            return None;
+        }
+        let row = session_end_row(
+            in_world,
+            self.server.is_some(),
+            self.req.account_name.as_deref(),
+        );
+        // The section's own account rule (`non-gm` BLOCKs) is about its
+        // rows, not about ending the session the run left behind.
+        let mut spec = spec.clone();
+        spec.section.account = "gm".into();
+        let ev = self.run_row(&spec, &row).await;
+        self.in_world_as = None;
+        Some(ev)
+    }
+}
+
+/// The row id the end of a run is recorded under (TG-PIPE-08).
+pub(crate) const SESSION_END_ROW: &str = "_session_end";
+/// How long each end-of-run server wait waits for its line.
+const SESSION_END_WAIT_MS: u64 = 30_000;
+
+fn skipped(reason: &'static str, detail: &str) {
+    tracing::info!(target: "lab.uat", event = "run_session_end_skipped", reason, detail,
+        "UAT run did not end the session: nothing to end");
+}
+
+/// The end-of-run row: logout (when in world) and disconnect, each
+/// followed by a wait for the server line it causes (per the telemetry-gaps
+/// shared contract, "S1 corrected assertion"). Without the server lab MCP
+/// the waits are left out and the row drives the client only. `account`
+/// pins both lines to this run's account; the runner knows no ids.
+fn session_end_row(in_world: bool, with_server: bool, account: Option<&str>) -> RowSpec {
+    let tool = |name: &str| ActionSpec {
+        tool: Some(name.into()),
+        args: Some(json!({})),
+        ..Default::default()
+    };
+    let wait = |label: &str, log: &str, target: Option<&str>, reason: &str| {
+        let mut fields = serde_json::Map::new();
+        fields.insert("disconnect_reason".into(), json!(reason));
+        if let Some(a) = account {
+            fields.insert("account_name".into(), json!(a));
+        }
+        ActionSpec {
+            wait_server: Some(ServerWait {
+                log: log.into(),
+                target: target.map(Into::into),
+                fields: Some(fields),
+                timeout_ms: SESSION_END_WAIT_MS,
+            }),
+            label: Some(label.into()),
+            // A missing line still fails the row (grade counts every failed
+            // step) but must not stop the disconnect after it: a client left
+            // at character select keeps the account online.
+            optional: true,
+            ..Default::default()
+        }
+    };
+    let mut steps = Vec::new();
+    if in_world {
+        steps.push(tool("lab_logout"));
+        if with_server {
+            steps.push(wait(
+                "session_end",
+                "player session ended",
+                Some("session.end"),
+                "logoff_character_select",
+            ));
+        }
+    }
+    steps.push(tool("lab_disconnect"));
+    if with_server {
+        steps.push(wait(
+            "entities_cleaned",
+            "Client entities cleaned up",
+            None,
+            "logoff",
+        ));
+    }
+    RowSpec {
+        id: SESSION_END_ROW.into(),
+        title: "end the run's session: logout and disconnect".into(),
+        expected: "session.end disconnect_reason=logoff_character_select after the logout, \
+                   then Client entities cleaned up disconnect_reason=logoff after the disconnect"
+            .into(),
+        required_native: Tier::N1,
+        state: "any".into(),
+        players: 1,
+        known_issues: vec![],
+        blocked: None,
+        anchor: Some(false),
+        relog: None,
+        notes: Some(format!(
+            "runner-level (TG-PIPE-08); the client was {} at the run's end",
+            if in_world {
+                "in world"
+            } else {
+                "at character select"
+            }
+        )),
+        setup: vec![],
+        steps,
+        teardown: vec![],
+        expect: vec![],
+        evidence: vec![],
+        // Not a spec row: never part of a golden fingerprint.
+        golden: Some(GoldenSpec {
+            skip: true,
+            ..Default::default()
+        }),
+        pose: vec![],
+        fixture: None,
     }
 }
 

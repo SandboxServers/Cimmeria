@@ -90,6 +90,10 @@ pub struct RunRequest {
     /// Capture what a golden fingerprint needs ([`fingerprint`]); never
     /// changes a row's grade.
     pub fingerprint: bool,
+    /// After the last row, log out and disconnect like a player, checked
+    /// against the server's session-end lines, as row `_session_end`
+    /// (TG-PIPE-08). Never under `plan_only`. `lab_uat_run` defaults it on.
+    pub end_session: bool,
 }
 
 /// When a row's fixture is applied: `auto` (the row has one), `always`,
@@ -344,6 +348,18 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
                 done.push(ev);
             }
         }
+        // TG-PIPE-08: runner-level, so it runs whatever the row filter was.
+        // Ends in the last row's section; a run that ran no row has none.
+        let last = self.last_row.as_ref().map(|l| l.section.clone());
+        let section = sections
+            .iter()
+            .find(|s| Some(&s.spec.section.id) == last.as_ref());
+        if let (true, false, Some(s)) = (self.req.end_session, self.req.plan_only, section) {
+            if let Some(ev) = self.end_run_session(&s.spec).await {
+                self.finish_row(&ev)?;
+                done.push(ev);
+            }
+        }
         self.manifest.ended_utc = Some(utc_of(now_ms()));
         self.save_manifest()?;
         self.render_ledger()?;
@@ -547,6 +563,8 @@ mod progress_tests;
 mod revocation_tests;
 #[cfg(test)]
 mod server_wait_tests;
+#[cfg(test)]
+mod session_end_tests;
 #[cfg(test)]
 mod snapshot_mode_tests;
 #[cfg(test)]
