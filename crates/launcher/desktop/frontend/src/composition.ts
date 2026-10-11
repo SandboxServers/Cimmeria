@@ -9,11 +9,15 @@ import { mountLauncher, Invoke } from './view';
 
 /** Mount the launcher once; operation revisions refresh dependent capabilities. */
 export function mountDesktop(document:Document,invoke:Invoke) {
-const installation = mountInstall(document,invoke);
+// A finished install, repair or uninstall, and a game-telemetry save, change what
+// Settings panels describe (LX-07): re-inspect so each gets a new snapshot.
+let refreshLauncher = () => {};
+const installation = mountInstall(document,invoke,undefined,()=>refreshLauncher());
 const app = mountLauncher(document,invoke,()=>{void installation.refresh();});
+refreshLauncher = () => { void app.refresh(); };
 let updater: ReturnType<typeof mountUpdater> | undefined;
 // Its own record: it never reads or writes the launcher-summary choice.
-const gameTelemetry = mountGameTelemetry(document,invoke);
+const gameTelemetry = mountGameTelemetry(document,invoke,()=>refreshLauncher());
 // A finished Play changes what the last launch did about game diagnostics.
 const play = mountLaunch(document,invoke,()=>{void installation.refresh(); void app.refresh(); void updater?.refresh(); void gameTelemetry.refresh();});
 let adoption: ReturnType<typeof mountAdoption> | undefined;

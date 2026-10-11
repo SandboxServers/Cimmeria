@@ -39,7 +39,8 @@ test('approved tabs and settings work without inventing installed state', {timeo
     assert.equal(ui.get('gear').hidden, true);
     assert.equal(ui.get('settings').getAttribute('aria-expanded'), 'false');
     await app.settled();
-    assert.deepEqual(calls, ['launcher_command', 'fetch_patch_notes']);
+    // The changes panel reads its list once, on the first snapshot (LX-07).
+    assert.deepEqual(calls, ['launcher_command', 'client_changes_command', 'fetch_patch_notes']);
   } finally { await app.dispose(); }
   ui.click('settings'); assert.equal(ui.get('gear').hidden, true, 'dispose removes handlers');
 });
