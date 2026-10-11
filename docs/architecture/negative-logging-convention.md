@@ -899,6 +899,12 @@ Pattern D: one row per (entity, reason) per 60 s, carrying `suppressed`; the thr
 
 Guards: `cell_dispatch/tests.rs` `minigame_result_with_dropped_cell_receiver_logs_error`, `minigame_result_without_cell_channel_logs_warn` and `start_minigame_with_disabled_server_logs_warn`.
 
+## Malformed interact and dialog calls (TG-MIS-10)
+
+`interact` (`interaction/interact.rs`) and `dialogButtonChoice` (`interaction/dialog.rs`) used to drop a short payload or fall back to `player_id` 0 with no trace. Both now log. A payload shorter than its layout (`interact` needs 4 bytes, `dialogButtonChoice` needs 8) is dropped with no chain fired and writes one WARN: `reason = "malformed_args"`, `args_len`, `need`, Rule 5 identity, `entity_id` with `entity_name`. Message: `interact: truncated args, dropping` or `dialogButtonChoice: truncated args, dropping`. When a chain is about to fire for a player with no `player_id` yet, `chain_player_id` in `interact.rs` (shared by both handlers) logs a WARN first: `reason = "player_id_missing"`, Rule 5 identity, `entity_id` with `entity_name`. The chain still fires with `player_id` 0; the row only records the gap. Message: `interact: player has no player_id, chain fires with player_id 0`.
+
+Guard: `short_dialog_choice_payload_logs_malformed_args` in `interaction/dialog_choice_gate_tests.rs` sends a 4-byte `dialogButtonChoice` and asserts the WARN with `reason = "malformed_args"` and that the method is still consumed.
+
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.

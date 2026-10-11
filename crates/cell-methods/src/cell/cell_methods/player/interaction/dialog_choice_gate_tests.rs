@@ -391,6 +391,36 @@ async fn follow_up_of_an_answered_dialog_is_not_reported_as_displaced() {
     );
 }
 
+/// **TG-MIS-10.** A `dialogButtonChoice` payload shorter than its 8-byte
+/// layout is dropped with no chain fired, and logged at WARN with
+/// `reason = "malformed_args"`. Removing the warn leaves the capture empty.
+#[tokio::test]
+async fn short_dialog_choice_payload_logs_malformed_args() {
+    use crate::test_support::LogCapture;
+    let mut mgr = make_space_manager();
+    mgr.create_entity(1, "Agnos", [0.0; 3], [0.0; 3]).unwrap();
+    if let Some(p) = mgr.get_entity_mut(1) {
+        p.player_id = Some(42);
+    }
+    let engine = ChainEngine::new();
+    let (tx, _rx) = mpsc::channel(16);
+    let capture = LogCapture::install();
+
+    let handled = dispatch(1, DIALOG_BUTTON_CHOICE, &[0u8; 4], &tx, &mut mgr, &engine).await;
+    assert!(handled, "handler still consumes the method");
+
+    assert!(
+        capture
+            .find_event(
+                tracing::Level::WARN,
+                "dialogButtonChoice: truncated args",
+                "malformed_args"
+            )
+            .is_some(),
+        "a 4-byte payload must log WARN reason=malformed_args"
+    );
+}
+
 /// **Client-opened tutorial close.** The client opens some tutorial windows
 /// by itself (5863, the inventory help), so their `-1` close arrives for an
 /// id the server never offered. It must still be rejected (no chain fires)

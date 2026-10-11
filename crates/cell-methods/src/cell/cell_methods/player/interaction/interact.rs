@@ -16,6 +16,19 @@ pub(super) async fn handle_interact(
     engine: &ChainEngine,
 ) {
     if args.len() < 4 {
+        let id = space_mgr.player_identity(entity_id);
+        tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_label(entity_id),
+            account_id = id.account_id,
+            account_name = id.account_name,
+            player_id = id.player_id,
+            player_name = id.player_name,
+            args_len = args.len(),
+            need = 4,
+            reason = "malformed_args",
+            "interact: truncated args, dropping"
+        );
         return;
     }
     if !space_mgr
@@ -167,10 +180,7 @@ pub(super) async fn handle_interact(
         if let Some(target) = space_mgr.get_entity(target_entity_u32) {
             let tag = target.tag.clone();
             let template_name = target.npc_name.clone();
-            let player_id = space_mgr
-                .get_entity(entity_id)
-                .and_then(|e| e.player_id)
-                .unwrap_or(0);
+            let player_id = chain_player_id(entity_id, space_mgr);
 
             if let Some(ref tag) = tag {
                 handled = crate::cell::content::fire_interact_tag(
@@ -208,10 +218,7 @@ pub(super) async fn handle_interact(
                 .await;
 
         if let Some(did) = dialog_id {
-            let player_id = space_mgr
-                .get_entity(entity_id)
-                .and_then(|e| e.player_id)
-                .unwrap_or(0);
+            let player_id = chain_player_id(entity_id, space_mgr);
             crate::cell::content::fire_dialog_open(
                 entity_id, player_id, did, engine, tx, space_mgr,
             )
@@ -223,6 +230,28 @@ pub(super) async fn handle_interact(
         // a player or a non-hostile faction — neither of which should trigger
         // combat from an interact request.
     }
+}
+
+/// The `player_id` a chain context carries for the player at `entity_id`.
+/// A player with no `player_id` yet still runs the chain with `0`, as
+/// before, but the gap is logged first (`reason = "player_id_missing"`).
+/// Shared with `dialogButtonChoice`, which fires chains the same way.
+pub(super) fn chain_player_id(entity_id: u32, space_mgr: &SpaceManager) -> i32 {
+    if let Some(player_id) = space_mgr.get_entity(entity_id).and_then(|e| e.player_id) {
+        return player_id;
+    }
+    let id = space_mgr.player_identity(entity_id);
+    tracing::warn!(
+        entity_id,
+        entity_name = space_mgr.entity_label(entity_id),
+        account_id = id.account_id,
+        account_name = id.account_name,
+        player_id = id.player_id,
+        player_name = id.player_name,
+        reason = "player_id_missing",
+        "interact: player has no player_id, chain fires with player_id 0"
+    );
+    0
 }
 
 #[cfg(test)]
