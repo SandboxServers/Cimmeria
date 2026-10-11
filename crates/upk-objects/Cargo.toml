@@ -26,10 +26,14 @@ tempfile = "3"
 [[bin]]
 name = "build-package-index"
 path = "src/bin/build_package_index.rs"
+# No tests in this binary; see the note in crates/upk/Cargo.toml.
+test = false
 
 [[bin]]
 name = "inspect-export"
 path = "src/bin/inspect_export.rs"
+# No tests in this binary; see the note in crates/upk/Cargo.toml.
+test = false
 
 [[bin]]
 name = "query-index"

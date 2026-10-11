@@ -12,3 +12,31 @@ lzokay-native = "=0.1.0"
 cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
 [dev-dependencies]
+
+# No tests in this binary: `test = false` stops cargo building a test harness for it
+# (an uncacheable compile and link on every CI run). Remove it if you add a test.
+[[bin]]
+name = "extract_actors"
+path = "src/bin/extract_actors.rs"
+test = false
+
+# No tests in this binary: `test = false` stops cargo building a test harness for it
+# (an uncacheable compile and link on every CI run). Remove it if you add a test.
+[[bin]]
+name = "extract_kismet"
+path = "src/bin/extract_kismet.rs"
+test = false
+
+# No tests in this binary: `test = false` stops cargo building a test harness for it
+# (an uncacheable compile and link on every CI run). Remove it if you add a test.
+[[bin]]
+name = "upk_info"
+path = "src/bin/upk_info.rs"
+test = false
+
+# No tests in this binary: `test = false` stops cargo building a test harness for it
+# (an uncacheable compile and link on every CI run). Remove it if you add a test.
+[[bin]]
+name = "upk_patch"
+path = "src/bin/upk_patch.rs"
+test = false
