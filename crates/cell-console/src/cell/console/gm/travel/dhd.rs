@@ -21,12 +21,18 @@ pub(in crate::cell::console::gm) async fn handle_dhd(
     space_mgr: &mut SpaceManager,
     engine: &cimmeria_content_engine::chain::ChainEngine,
 ) -> bool {
+    // The calling GM's Rule 5 identity, carried on every row below.
+    let who = space_mgr.player_identity(entity_id);
     let gate_addr = match args.first() {
         Some(&b) => b as i8, // INT8 (signed)
         None => {
             tracing::warn!(
                 entity_id,
                 entity_name = space_mgr.entity_label(entity_id),
+                account_id = who.account_id,
+                account_name = who.account_name,
+                player_id = who.player_id,
+                player_name = who.player_name,
                 "gmDHD: truncated args (need INT8 aGateAddress)"
             );
             send_gm_feedback(entity_id, "gmDHD: missing INT8 aGateAddress", tx).await;
@@ -37,6 +43,10 @@ pub(in crate::cell::console::gm) async fn handle_dhd(
         tracing::warn!(
             entity_id,
             entity_name = space_mgr.entity_label(entity_id),
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id = who.player_id,
+            player_name = who.player_name,
             gate_addr,
             "gmDHD: address <= 0 (list request) unsupported — needs a client feedback channel"
         );
@@ -51,6 +61,10 @@ pub(in crate::cell::console::gm) async fn handle_dhd(
     tracing::info!(
         entity_id,
         entity_name = space_mgr.entity_label(entity_id),
+        account_id = who.account_id,
+        account_name = who.account_name,
+        player_id = who.player_id,
+        player_name = who.player_name,
         gate_addr,
         "gmDHD: dialing stargate"
     );
@@ -80,6 +94,10 @@ pub(in crate::cell::console::gm) async fn handle_dhd(
         tracing::warn!(
             entity_id,
             entity_name = space_mgr.entity_label(entity_id),
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id = who.player_id,
+            player_name = who.player_name,
             gate_addr,
             stargate_name = cimmeria_names::book().stargate(addr),
             reason = "gm_address_grant_dial_hub_skipped",
@@ -89,6 +107,10 @@ pub(in crate::cell::console::gm) async fn handle_dhd(
         if !entity.known_stargates.contains(&addr) {
             tracing::warn!(
                 entity_id,
+                account_id = who.account_id,
+                account_name = who.account_name,
+                player_id = who.player_id,
+                player_name = who.player_name,
                 gate_addr,
                 entity_name = entity.identity().player_name,
                 access_level = entity.access_level,

@@ -30,12 +30,18 @@ pub(in crate::cell::console::gm) async fn handle_goto_location(
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> bool {
+    // The calling GM's Rule 5 identity, carried on every row below.
+    let who = space_mgr.player_identity(entity_id);
     let (world_name, consumed) = match read_wstring(args, 0) {
         Ok(v) => v,
         Err(e) => {
             tracing::warn!(
                 entity_id,
                 entity_name = space_mgr.entity_label(entity_id),
+                account_id = who.account_id,
+                account_name = who.account_name,
+                player_id = who.player_id,
+                player_name = who.player_name,
                 error = %e,
                 "gmGotoLocation: malformed WorldName WSTRING",
             );
@@ -47,6 +53,10 @@ pub(in crate::cell::console::gm) async fn handle_goto_location(
         tracing::warn!(
             entity_id,
             entity_name = space_mgr.entity_label(entity_id),
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id = who.player_id,
+            player_name = who.player_name,
             args_len = args.len(),
             "gmGotoLocation: truncated args (need WSTRING + 3×FLOAT)"
         );
@@ -62,6 +72,10 @@ pub(in crate::cell::console::gm) async fn handle_goto_location(
         tracing::warn!(
             entity_id,
             entity_name = space_mgr.entity_label(entity_id),
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id = who.player_id,
+            player_name = who.player_name,
             "gmGotoLocation: empty world name rejected"
         );
         send_gm_feedback(entity_id, "gmGotoLocation: empty world name rejected", tx).await;
@@ -71,6 +85,10 @@ pub(in crate::cell::console::gm) async fn handle_goto_location(
         tracing::warn!(
             entity_id,
             entity_name = space_mgr.entity_label(entity_id),
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id = who.player_id,
+            player_name = who.player_name,
             ?position,
             "gmGotoLocation: non-finite coordinate rejected"
         );
@@ -86,6 +104,10 @@ pub(in crate::cell::console::gm) async fn handle_goto_location(
         tracing::warn!(
             entity_id,
             entity_name = space_mgr.entity_label(entity_id),
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id = who.player_id,
+            player_name = who.player_name,
             "gmGotoLocation: caller entity not found"
         );
         send_gm_feedback(entity_id, "gmGotoLocation: caller entity not found", tx).await;
@@ -113,6 +135,10 @@ pub(in crate::cell::console::gm) async fn handle_goto_location(
                     tracing::warn!(
                         entity_id,
                         entity_name = space_mgr.entity_label(entity_id),
+                        account_id = who.account_id,
+                        account_name = who.account_name,
+                        player_id = who.player_id,
+                        player_name = who.player_name,
                         world = %world_name,
                         reason = "no_entry_point",
                         "gmGotoLocation: origin requested and the world has no entry point",
@@ -132,6 +158,10 @@ pub(in crate::cell::console::gm) async fn handle_goto_location(
     tracing::info!(
         entity_id,
         entity_name = space_mgr.entity_label(entity_id),
+        account_id = who.account_id,
+        account_name = who.account_name,
+        player_id = who.player_id,
+        player_name = who.player_name,
         world = %world_name,
         ?position,
         entry_source = ?entry_source,
@@ -172,6 +202,10 @@ pub(in crate::cell::console::gm) async fn handle_goto_location(
         tracing::warn!(
             entity_id,
             entity_name = space_mgr.entity_label(entity_id),
+            account_id = who.account_id,
+            account_name = who.account_name,
+            player_id = who.player_id,
+            player_name = who.player_name,
             "gmGotoLocation: GateTravel enqueue failed; entity left in place"
         );
         send_gm_feedback(entity_id, "gmGotoLocation: transfer enqueue failed", tx).await;
