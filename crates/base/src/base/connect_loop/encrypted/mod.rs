@@ -29,6 +29,7 @@ use super::super::resources::ResourceCache;
 use super::super::session_identity;
 use super::super::world_entry::handle_enable_entities;
 use super::super::ConnectedClientState;
+use super::bundle_drop::{self, DropReason, DroppedMsg};
 use super::cell_send::send_to_cell;
 use super::{account_arms, cell_arms};
 use message_framing::{parse_request_entity_update, read_client_message_payload};
@@ -265,7 +266,9 @@ async fn dispatch_client_bundle(
             let word_len = u16::from_le_bytes([body[offset], body[offset + 1]]) as usize;
             offset += 2 + word_len;
         }
-        tracing::debug!(%addr, "AUTHENTICATE received -- ignored (entity created on ENABLE_ENTITIES)");
+        // TRACE: the client prepends one to every bundle and the server acts
+        // on nothing in it (135k rows a week at DEBUG).
+        tracing::trace!(%addr, "AUTHENTICATE received -- ignored (entity created on ENABLE_ENTITIES)");
 
         if offset >= body.len() {
             return Ok(());
@@ -279,6 +282,7 @@ async fn dispatch_client_bundle(
     //     ClientMessageList table in messages.cpp.
     //   - Entity method calls (0xC0+): always WORD_LENGTH (u16 prefix).
     while offset < body.len() {
+        let msg_offset = offset;
         let msg_id = body[offset];
         offset += 1;
 
@@ -289,7 +293,20 @@ async fn dispatch_client_bundle(
         let payload = match payload_result {
             Some(p) => p,
             None => {
-                tracing::trace!(%addr, msg_id = format_args!("{:#04x}", msg_id), msg_name = names::server_msg_name(msg_id), entity_type = names::class_name(class_id), "Bundle truncated");
+                // The rest of the bundle is lost with this message.
+                bundle_drop::log_drop(
+                    DropReason::BundleTruncated,
+                    addr,
+                    DroppedMsg {
+                        msg_id,
+                        class_id,
+                        payload: &[],
+                        method_index: None,
+                        offset: Some(msg_offset),
+                        body_len: Some(body.len()),
+                    },
+                    || session_identity::identity_for_addr(connected, addr),
+                );
                 break;
             }
         };
@@ -409,6 +426,22 @@ async fn dispatch_client_bundle(
                                 None,
                             )
                             .await;
+                        } else {
+                            // Movement before the player entity exists (or
+                            // after it is gone): a loading-time race.
+                            bundle_drop::log_drop(
+                                DropReason::NoPlayerEntity,
+                                addr,
+                                DroppedMsg {
+                                    msg_id,
+                                    class_id,
+                                    payload,
+                                    method_index: None,
+                                    offset: None,
+                                    body_len: None,
+                                },
+                                || who,
+                            );
                         }
                     }
                 }
@@ -587,6 +620,7 @@ async fn dispatch_client_bundle(
                 if cell_arms::dispatch_cell_method(
                     id,
                     payload,
+                    class_id,
                     packet_seq,
                     addr,
                     transport,
@@ -603,7 +637,19 @@ async fn dispatch_client_bundle(
                 }
             }
             _ => {
-                tracing::trace!(%addr, msg_id = format_args!("{:#04x}", msg_id), msg_name = names::server_msg_name(msg_id), method_name = names::inbound_method(class_id, msg_id, payload), entity_type = names::class_name(class_id), payload_len = payload.len(), "Unhandled client message");
+                bundle_drop::log_drop(
+                    DropReason::UnhandledMsgId,
+                    addr,
+                    DroppedMsg {
+                        msg_id,
+                        class_id,
+                        payload,
+                        method_index: None,
+                        offset: None,
+                        body_len: None,
+                    },
+                    || session_identity::identity_for_addr(connected, addr),
+                );
             }
         }
     }
@@ -616,6 +662,8 @@ mod liveness;
 mod message_framing;
 mod session_class;
 
+#[cfg(test)]
+mod bundle_drop_tests;
 #[cfg(test)]
 mod cache_routing_tests;
 #[cfg(test)]
