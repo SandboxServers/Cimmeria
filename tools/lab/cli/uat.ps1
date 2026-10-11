@@ -37,6 +37,8 @@
 
     -Chaos <profile[:level][:knobs]> passes chaos specs to the runner
     unchanged (lab_uat_run `chaos`); profiles land in later lab-chaos packets.
+    Until lab-chaos CH-08 wires the runner, -Chaos is refused (exit 2)
+    except with -PlanOnly.
     Give several as -Chaos cpu,flush:pack or -Chaos @('cpu','flush:pack').
     A multi-knob spec contains commas, so quote it: -Chaos 'net:latency=120,loss=1'.
     The run's header (chaos=<spec>, joined with "; ") leads the summary and
@@ -134,6 +136,11 @@ function Invoke-LabUat {
     # Argument checks come before the daemon is asked, so they exit 2 whatever its state.
     $shape = Test-UatArguments $Leases $RunsPerLease $Instance $StaggerSeconds $RunTimeoutMinutes $MaxConsecutiveFailures $Fixtures $Heal.IsPresent
     if ($shape) { return Stop-Uat 2 $shape }
+    # The runner ignores chaos until lab-chaos CH-08 wires it, so a real run
+    # would print a chaos= header for a run that had none. Remove with CH-08.
+    if (-not $PlanOnly -and @($Chaos | Where-Object { $_ }).Count) {
+        return Stop-Uat 2 '-Chaos is not wired to the runner until lab-chaos CH-08; refusing so no run is recorded as chaos-graded (-PlanOnly still accepts it)'
+    }
     $specs = if ($SpecsDir) { $SpecsDir } else { Get-DefaultSpecsDir }
     # A diff needs a golden: without one, stop before anything is driven.
     if ($DiffGolden) {

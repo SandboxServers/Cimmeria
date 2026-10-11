@@ -252,6 +252,9 @@ pub async fn handle_grant_xp(
             );
 
             let name_owned = name.clone();
+            // `player_id` is `Option` in this scope; a cached name always has one
+            // after character select, so the default only covers a torn state.
+            let subject_player_id = player_id.unwrap_or_default();
             let db_pool_clone = db_pool.clone();
             let transport_clone = Arc::clone(transport);
             let connected_clone = Arc::clone(connected);
@@ -259,6 +262,7 @@ pub async fn handle_grant_xp(
             tokio::spawn(async move {
                 fanout_contact_event(
                     &name_owned,
+                    subject_player_id,
                     EVENT_GAIN_LEVEL,
                     new_level as i32,
                     &db_pool_clone,

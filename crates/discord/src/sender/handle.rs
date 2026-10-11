@@ -12,7 +12,7 @@ use tokio::sync::mpsc;
 use crate::config::Config;
 use crate::event::Event;
 
-use super::stats::Stats;
+use super::stats::{Outcome, Stats};
 
 // ── Trait + handle ─────────────────────────────────────────────────────
 
@@ -37,8 +37,10 @@ impl SenderHandle {
         // off, channel unconfigured, Discord disabled). Saves a queue
         // slot for events that WILL post.
         let cfg = self.config.load();
-        if !cfg.should_post(event.kind()) {
+        let kind = event.kind();
+        if !cfg.should_post(kind) {
             self.stats.filtered.fetch_add(1, Ordering::Relaxed);
+            Outcome::Filtered.count();
             return Ok(());
         }
         match self.tx.try_send(event) {
@@ -48,10 +50,12 @@ impl SenderHandle {
             }
             Err(mpsc::error::TrySendError::Full(_)) => {
                 self.stats.dropped_full.fetch_add(1, Ordering::Relaxed);
+                self.stats.record_drop(Outcome::DroppedFull, kind);
                 Err(QueueFull)
             }
             Err(mpsc::error::TrySendError::Closed(_)) => {
                 self.stats.dropped_closed.fetch_add(1, Ordering::Relaxed);
+                self.stats.record_drop(Outcome::DroppedClosed, kind);
                 Err(QueueFull)
             }
         }

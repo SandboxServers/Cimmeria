@@ -151,14 +151,31 @@ pub async fn handle_respawn(
         space_mgr.discord_world(&target_world),
     );
 
-    // Close the Defeat Window first.
-    let _ = tx
+    // Close the Defeat Window first. A closed base channel leaves the window
+    // open on the client, so the drop is logged rather than ignored.
+    if let Err(e) = tx
         .send(CellToBaseMsg::EntityMethodCall {
             entity_id,
             method_index: crate::mercury::method_idx::ON_END_AID_WAIT,
             args: Vec::new(),
         })
-        .await;
+        .await
+    {
+        let id = space_mgr.player_identity(entity_id);
+        tracing::warn!(
+            entity_id,
+            entity_name = space_mgr.entity_names(entity_id).entity_name,
+            account_id = id.account_id,
+            account_name = id.account_name,
+            player_id = id.player_id,
+            player_name = id.player_name,
+            event = "wire_send_failed",
+            method = "onEndAidWait",
+            reason = "base_channel_closed",
+            error = %e,
+            "Respawn: onEndAidWait not sent; base channel closed"
+        );
+    }
 
     if !same_world {
         // Cross-world: full gate-travel reload (player is leaving the space).
@@ -217,10 +234,15 @@ pub async fn handle_respawn(
         .await;
         // Snapshot the name before the teardown takes the entity with it.
         let entity_name = space_mgr.entity_names(entity_id).entity_name;
+        let id = space_mgr.player_identity(entity_id);
         space_mgr.destroy_entity(entity_id);
         tracing::info!(
             entity_id,
             entity_name,
+            account_id = id.account_id,
+            account_name = id.account_name,
+            player_id = id.player_id,
+            player_name = id.player_name,
             from = ?current_world,
             to = %target_world,
             "Respawn: cross-world via GateTravel"

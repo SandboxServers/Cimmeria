@@ -125,6 +125,7 @@ fn init_player_state() -> BaseToCellMsg {
         looted_containers: Vec::new(),
         shown_tutorials: Vec::new(),
         entry_cause: crate::cell::messages::WorldEntryCause::Login,
+        session_kind: None,
     }
 }
 

@@ -13,12 +13,13 @@ use std::sync::{Arc, Mutex};
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
-use crate::base::contact_list::persistence::find_watchers;
+use crate::base::contact_list::ignore::IGNORE_LIST_FLAGS;
+use crate::base::contact_list::persistence::find_watchers_with_flags;
 use crate::base::contact_list::wire::{
     build_on_contact_list_event, DATA_OFFLINE, DATA_ONLINE, EVENT_DEATH, EVENT_GAIN_LEVEL,
     EVENT_GATE_TRAVEL, EVENT_LOGGED_IN_STATUS,
 };
-use crate::base::helpers::send_to_witness_reliable;
+use crate::base::helpers::{send_to_witness_reliable, WitnessSendOutcome};
 use crate::base::ConnectedClientState;
 use crate::mercury::{build_player_entity_method_packet, method_idx};
 
@@ -51,23 +52,46 @@ fn collect_watcher_entity_ids(
         .collect()
 }
 
+/// Distinct watcher `player_id`s from the `(player_id, flags)` rows of
+/// `find_watchers_with_flags`, and how many of those watchers hold the
+/// subject on an Ignore list (`IGNORE_LIST_FLAGS`). Pure; shared with the
+/// persistence tests.
+pub(crate) fn watcher_summary(rows: &[(i32, i32)]) -> (HashSet<i32>, usize) {
+    let watchers: HashSet<i32> = rows.iter().map(|&(id, _)| id).collect();
+    (watchers, ignoring_player_ids(rows).len())
+}
+
+/// `player_id`s that hold the subject on an Ignore list (`IGNORE_LIST_FLAGS`).
+/// A watcher who has the subject on both Friends and Ignore is in this set:
+/// the Ignore list wins, so they get no presence.
+pub(crate) fn ignoring_player_ids(rows: &[(i32, i32)]) -> HashSet<i32> {
+    rows.iter()
+        .filter(|&&(_, flags)| flags == IGNORE_LIST_FLAGS)
+        .map(|&(id, _)| id)
+        .collect()
+}
+
 /// Fan out `onContactListEvent` (CM 89) to all online players who have
 /// `player_name` in any of their contact lists.
 ///
 /// Generic core used by `fanout_login_status` and the three new presence
 /// events (GainLevel, Death, GateTravel). `event_id` is one of the
 /// `EVENT_*` bitfield constants from `wire.rs`; `data_value` is the
-/// event-specific payload (new level, 0, or world_id).
+/// event-specific payload (new level, 0, or world_id). `subject_player_id` is
+/// the subject's `sgw_player.player_id`, logged as `player_id` next to
+/// `player_name` (Rule 6 pair).
 ///
 /// Fire-and-forget — spawn this via `tokio::spawn` at call sites that must
 /// not block a critical path (gate travel, XP grant, death burst).
 ///
 /// # Invariant #5 (ignore-list leak)
-/// Does NOT filter on the recipient's ignore list — `find_watchers` returns
-/// all contact-list watchers regardless. Ignore-list filtering before fanout
-/// is deferred to Phase 5.
+/// Watchers who hold the subject on an Ignore list are dropped from the
+/// recipient set before any packet is built (owner decision D-TG10). The
+/// summary row reports them as `ignoring_watchers` and `skipped_ignoring`;
+/// `online_watchers` and `sent` count only the watchers that were eligible.
 pub async fn fanout_contact_event(
     player_name: &str,
+    subject_player_id: i32,
     event_id: u32,
     data_value: i32,
     db_pool: &Option<Arc<PgPool>>,
@@ -80,6 +104,7 @@ pub async fn fanout_contact_event(
         None => {
             tracing::warn!(
                 player_name,
+                player_id = subject_player_id,
                 event_id,
                 event_name = contact_event_name(event_id),
                 "ContactList presence fanout: no DB pool, skipping"
@@ -88,36 +113,44 @@ pub async fn fanout_contact_event(
         }
     };
 
-    let watcher_ids = match find_watchers(pool, player_name).await {
-        Ok(ids) => ids,
+    let watcher_rows = match find_watchers_with_flags(pool, player_name).await {
+        Ok(rows) => rows,
         Err(e) => {
             tracing::error!(
                 player_name,
+                player_id = subject_player_id,
                 event_id,
                 event_name = contact_event_name(event_id),
-                "ContactList presence fanout: find_watchers failed: {e}"
+                error = %e,
+                "ContactList presence fanout: find_watchers_with_flags failed"
             );
             return;
         }
     };
 
-    if watcher_ids.is_empty() {
-        return;
-    }
-
     // Build a HashSet for O(1) membership tests during the connected scan below.
-    let watcher_set: HashSet<i32> = watcher_ids.iter().copied().collect();
+    // An empty set skips the connected scan entirely: no entity can match, and
+    // the summary still logs with `online_watchers = 0` and `sent = 0`.
+    let (watcher_set, ignoring_watchers) = watcher_summary(&watcher_rows);
+    // Ignorers are removed here, before the connected scan and any send.
+    let ignoring_set = ignoring_player_ids(&watcher_rows);
+    let skipped_ignoring = ignoring_set.len();
+    let deliver_set: HashSet<i32> = watcher_set.difference(&ignoring_set).copied().collect();
 
     let args = build_on_contact_list_event(player_name, event_id, data_value);
 
     // Map player_id → entity_id for online players only.
     // Locks `connected` to iterate active sessions; does NOT take entity_to_addr.
-    let watcher_entity_ids: Vec<u32> = {
+    let watcher_entity_ids: Vec<u32> = if deliver_set.is_empty() {
+        Vec::new()
+    } else {
         let clients = match connected.lock() {
             Ok(g) => g,
             Err(_) => {
                 tracing::error!(
                     player_name,
+                    player_id = subject_player_id,
+                    event = "contacts.presence_fanout",
                     event_id,
                     event_name = contact_event_name(event_id),
                     "ContactList presence fanout: connected lock poisoned"
@@ -125,12 +158,14 @@ pub async fn fanout_contact_event(
                 return;
             }
         };
-        collect_watcher_entity_ids(&clients, &watcher_set)
+        collect_watcher_entity_ids(&clients, &deliver_set)
     };
 
+    let online_watchers = watcher_entity_ids.len();
+    let mut sent = 0usize;
     for entity_id in watcher_entity_ids {
         let args_clone = args.clone();
-        send_to_witness_reliable(
+        let outcome = send_to_witness_reliable(
             transport,
             connected,
             entity_to_addr,
@@ -148,14 +183,23 @@ pub async fn fanout_contact_event(
             },
         )
         .await;
+        if matches!(outcome, WitnessSendOutcome::Sent { .. }) {
+            sent += 1;
+        }
     }
 
     tracing::debug!(
+        event = "contacts.presence_fanout",
         player_name,
+        player_id = subject_player_id,
         event_id,
         event_name = contact_event_name(event_id),
         data_value,
-        watcher_count = watcher_ids.len(),
+        watchers = watcher_set.len(),
+        ignoring_watchers,
+        skipped_ignoring,
+        online_watchers,
+        sent,
         "ContactList: presence fanout complete"
     );
 }
@@ -167,6 +211,7 @@ pub async fn fanout_contact_event(
 /// (`data_value = DATA_OFFLINE`). Thin wrapper around `fanout_contact_event`.
 pub async fn fanout_login_status(
     player_name: &str,
+    subject_player_id: i32,
     is_online: bool,
     db_pool: &Option<Arc<PgPool>>,
     transport: &Arc<dyn Transport>,
@@ -176,6 +221,7 @@ pub async fn fanout_login_status(
     let data_value = if is_online { DATA_ONLINE } else { DATA_OFFLINE };
     fanout_contact_event(
         player_name,
+        subject_player_id,
         EVENT_LOGGED_IN_STATUS,
         data_value,
         db_pool,
@@ -205,6 +251,14 @@ mod tests {
         s.active_player_id = player_id;
         s.player_entity_id = entity_id;
         s
+    }
+
+    /// A watcher on both Friends (300) and Ignore (301) counts as ignoring.
+    #[test]
+    fn ignoring_ids_include_watcher_on_friends_and_ignore() {
+        let rows = [(1, 300), (2, IGNORE_LIST_FLAGS), (1, IGNORE_LIST_FLAGS)];
+        let ids = ignoring_player_ids(&rows);
+        assert_eq!(ids, [1, 2].into_iter().collect::<HashSet<i32>>());
     }
 
     /// A client whose player_id is in the watcher set contributes its entity_id.

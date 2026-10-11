@@ -13,6 +13,9 @@ use cimmeria_entity::manager::EntityManager;
 use cimmeria_mercury::encryption::EncryptionVersion;
 use cimmeria_mercury::transport::{Transport, UdpTransport};
 
+use cimmeria_base_session::base::helpers::{
+    log_session_end, session_channel_health, session_idle_ms, LogoffRequested, SessionEndRow,
+};
 use cimmeria_base_session::base::plugin::BasePlugins;
 
 use crate::auth::PendingLogin;
@@ -22,7 +25,8 @@ use crate::minigame::SessionRegistry;
 use super::world_entry::methods::mail::expiry as mail_expiry;
 use super::{
     archetype_name, black_market, connect_loop::run_connect_loop, outbox, resources::ResourceCache,
-    world_entry::route_cell_message, BaseError, ConnectedClientState, OnlinePlayer,
+    session_identity, world_entry::route_cell_message, BaseError, ConnectedClientState,
+    OnlinePlayer,
 };
 
 /// BaseApp service -- manages persistent entity state and client connections.
@@ -379,10 +383,55 @@ impl BaseService {
     }
 
     /// Stop the base service gracefully.
+    ///
+    /// Every session still holding a player entity gets its `session.end`
+    /// row here, with `disconnect_reason = "server_shutdown"` (TG-NET-10):
+    /// otherwise a stop leaves those sessions with a `session.start` and no
+    /// end. This only logs; it tears nothing down. The orchestrator stops the
+    /// cell first, so the shutdown flush (TG-DB-02) has already saved every
+    /// in-world player by the time these rows are written, and they add no
+    /// await to the stop.
     pub async fn stop(&mut self) {
         tracing::info!("Stopping base service");
+        self.log_sessions_open_at_stop();
         self.is_running = false;
         tracing::trace!("Base service stopped");
+    }
+
+    /// One `session.end server_shutdown` row per session with a player
+    /// entity, then one INFO count of the sessions open at the stop.
+    fn log_sessions_open_at_stop(&self) {
+        let clients = self
+            .connected_clients
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut ended: u32 = 0;
+        for (addr, c) in clients.iter() {
+            let Some(entity_id) = c.player_entity_id else {
+                continue;
+            };
+            let identity = session_identity::session_identity(c);
+            log_session_end(&SessionEndRow {
+                addr: *addr,
+                identity,
+                entity_id,
+                entity_name: identity.player_name,
+                disconnect_reason: "server_shutdown",
+                session_secs: c.connected_at.elapsed().as_secs(),
+                logoff_requested: c.extensions.contains::<LogoffRequested>(),
+                idle_ms: session_idle_ms(c),
+                in_world: c.listed_online,
+                world: c.world_name.as_deref(),
+                session_kind: c.session_kind,
+                channel: session_channel_health(c),
+            });
+            ended += 1;
+        }
+        tracing::info!(
+            sessions_open_at_stop = clients.len(),
+            sessions_ended = ended,
+            "base service stopping with sessions open"
+        );
     }
 
     /// Create a new base entity (stub).
@@ -404,5 +453,68 @@ impl BaseService {
             "Destroying base entity"
         );
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_support::{test_default_connected_client_state, LogCapture};
+
+    /// TG-NET-10: a stop writes `session.end server_shutdown` for every
+    /// session holding a player entity, and none for an account-only one.
+    #[tokio::test]
+    async fn stop_ends_each_live_session() {
+        let in_world: SocketAddr = "127.0.0.1:54810".parse().unwrap();
+        let at_select: SocketAddr = "127.0.0.1:54811".parse().unwrap();
+        let mut player = test_default_connected_client_state();
+        player.player_entity_id = Some(4310);
+        player.player_name = Some("Lomiada".to_string());
+        player.active_player_id = Some(71);
+        player.account_id = 9;
+        // TG-NET-17: the shutdown row carries the lab/player flag too.
+        player.session_kind = Some("lab");
+        let account_only = test_default_connected_client_state();
+
+        let mut svc = BaseService::new(&ServerConfig::default());
+        svc.connected_clients
+            .lock()
+            .unwrap()
+            .extend([(in_world, player), (at_select, account_only)]);
+
+        let capture = LogCapture::install();
+        svc.stop().await;
+
+        let ended: Vec<_> = capture
+            .all()
+            .into_iter()
+            .filter(|c| c.target == "session.end")
+            .collect();
+        assert_eq!(ended.len(), 1, "one row, for the in-world session only");
+        let row = &ended[0];
+        assert!(row.message_contains("player session ended"));
+        assert!(row.has_field("disconnect_reason", "server_shutdown"));
+        assert!(row.has_field("entity_id", "4310"));
+        assert!(row.has_field("player_id", "71"));
+        assert!(row.has_field("player_name", "Lomiada"));
+        assert!(row.has_field("account_id", "9"));
+        assert!(row.has_field("addr", "127.0.0.1:54810"));
+        assert!(
+            row.has_field("cimmeria.session_kind", "lab"),
+            "the shutdown row lacks the session kind: {row:#?}"
+        );
+
+        let count = capture
+            .find_message(
+                tracing::Level::INFO,
+                "base service stopping with sessions open",
+            )
+            .expect("the open-session count row");
+        assert!(count.has_field("sessions_open_at_stop", "2"));
+        assert!(count.has_field("sessions_ended", "1"));
+
+        // Log only: the sessions are still in the map for nothing else to race.
+        assert_eq!(svc.connected_clients.lock().unwrap().len(), 2);
+        assert!(!svc.is_running);
     }
 }

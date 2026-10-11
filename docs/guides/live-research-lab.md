@@ -486,6 +486,32 @@ A change you make to the real `Config\*.ini` doesn't reach an instance that is a
 - **`CIMMERIA_LAB_SHARED_USER_DIR=1`** (also `true` or `yes`) in `labd.env` turns this off and puts every lab client back on the real, shared folder (`reason = opted_out`). Two clients then lock each other's cache again.
 - **OneDrive and redirected Documents.** The redirect works only where the `Personal` shell folder (`HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders`) is `%USERPROFILE%`-relative, the Windows default. If OneDrive Known Folder Move or a policy points Documents at an absolute path, every launch logs `reason = documents_not_redirectable` and uses the shared folder, and so does a failed registry read. A seed that fails (`reason = seed_failed`) falls back the same way. On such a machine run one lab client at a time. The durable fix, a `SHGetFolderPathW` hook in the lab DLL, is on the [tooling backlog](../analysis/lab-automation/tooling-backlog.md#backlog-lab-bridge-and-supervisor-for-the-session-that-owns-them).
 
+### Ini overrides for an instance
+
+Lab-only changes to the client's user `SGWEngine.ini`, such as the texture streaming budget, come from an `ini-overrides.toml` file. There is none by default, so nothing is overridden. `tools/lab/ini-overrides.example.toml` lists the targets, every entry commented out. Copy it, uncomment what you need, and put it where the supervisor looks. The first match wins:
+
+1. The path in `CIMMERIA_LAB_INI_OVERRIDES`. For the installed daemon, `lab env set CIMMERIA_LAB_INI_OVERRIDES <path>` writes it to `labd.env`, then `lab restart` picks it up.
+2. `%LOCALAPPDATA%\cimmeria-lab\ini-overrides.toml`, the lab state folder. Use this one for the installed daemon: it runs from that folder and never sees a checkout.
+3. `tools/lab/ini-overrides.toml` in a checkout, found walking up from the supervisor's working folder or its exe. This covers a stdio supervisor or a daemon run from a checkout.
+
+The file is read at every launch, so an edit takes effect at the next client launch. Only a change to the variable needs `lab restart`. An entry looks like this:
+
+```toml
+[[override]]
+file = "SGWEngine.ini"
+section = "TextureStreaming"
+key = "HysteresisLimit"
+value = "..."
+```
+
+`value` can be a string, an integer, a float or a boolean. Booleans are written `TRUE` and `FALSE`, as in UE3's own ini files. Only a bare `Key=` line matches: `;Key=` comments and `+Key=` array edits are left alone, and only the first `Key=` in the section changes. A missing key is added at the end of its section, and a missing section at the end of the file.
+
+The overrides go only into an instance's own seeded profile, its `Documents\My Games\Firesky\SGWGame\Config\SGWEngine.ini`, at each launch after the seed, so they come back after a reseed. When the instance falls back to the shared folder (`opted_out`, `documents_not_redirectable`, `no_profile_root`, `profile_root_not_absolute`, `profile_root_inside_install` or `seed_failed`, above), nothing is applied: the real, shared ini is never touched. A new profile with nothing to seed from (`seeded = no_source`) has no ini until the client writes one, so that launch logs `ini_override_skipped` and the overrides apply from its second launch.
+
+Everything logs under `lab.instance`. `ini_override_file` (info) names the file used, and `ini_override_none` (debug) says there was none. Each override logs `ini_override_applied` with its old and new value and `changed`, which is false when the key already had the value. A bad file logs `ini_override_failed` and applies nothing: TOML that does not parse, an entry for `[IniVersion]`, a `file` that is not a plain name in `Config` (a path, `:`, or a Windows device name such as `NUL`), or a section with a bracket in it. A missing or unwritable ini logs `ini_override_failed` and is skipped. The ini is written to `<file>.tmp` and renamed over the original, after clearing its read-only attribute; a UTF-8 BOM is kept.
+
+An override lasts only while the user ini's `[IniVersion]` matches the chain files' timestamps. A reinstall or a patch can lose it, and then the client prompts to regenerate the ini, which can block a headless lab client. The chain and the target keys are in [engine.md](../client/limits/engine.md#ini-chain-and-lab-override-targets).
+
 ### Accounts, characters, the cap and the windows
 
 **Accounts.** A second login on the same account evicts the first client (`duplicate_login`), so every instance needs its own account. The seed has `lab` plus `lab2` to `lab5` (account ids 10 to 14, same password as the other seed accounts); keep all five in the Discord `muted_accounts` list.
@@ -1045,7 +1071,7 @@ first line of each.
 | `lab clients stop [<instance> \| all] [-Force]` | closes lab clients; see below | 0 stopped or nothing to stop; 1 daemon down; 2 usage; 3 a leased client was refused; 4 a client could not be stopped |
 | `lab doctor` | one `PASS`, `WARN` or `FAIL` line per check; see below | 0; 1 when any check fails |
 | `lab uat <section> [-Rows ...] [-Leases 1-5] [-RunsPerLease 1-20] [-Instance p2] [-Fixtures auto\|always\|never] [-DiffGolden] [-Heal] [-PlanOnly] [-Json] [-Quiet]` | runs a UAT spec through `lab_uat_run` with no agent; see below | 0 every run passed; 1 a run failed; 2 usage (including `-Heal` without `-Leases 1`), or `-DiffGolden` with no golden or one that cannot be read; 3 the pre-flight or plan failed (nothing driven); 4 a lane stopped on its brake; 5 every run passed but `-DiffGolden` did not match on one; 8 `-Heal` wrote a proposal, which wins over 5 and every other code |
-| `-Chaos <profile[:level][:knobs]>` on `lab uat` | passed to the runner unchanged (`lab_uat_run` `chaos`); profiles land in later lab-chaos packets; quote a multi-knob spec, as its commas would split it elsewhere | no new codes |
+| `-Chaos <profile[:level][:knobs]>` on `lab uat` | passed to the runner unchanged (`lab_uat_run` `chaos`); profiles land in later lab-chaos packets; quote a multi-knob spec, as its commas would split it elsewhere. Until lab-chaos CH-08 wires the runner, a real run refuses `-Chaos` so no run is recorded as chaos-graded; `-PlanOnly` accepts it | 2 (`-Chaos` without `-PlanOnly`, until CH-08) |
 | `lab watch [-Batch <folder>] [-Once] [-Json] [-IntervalSeconds 2]` | a live, read-only view of a running `lab uat` batch; see below | 0; 1 daemon down and no batch; 2 usage; 3 read failed |
 | `lab calibrate <section> <row> [-Pose <id>] [-Instance p2] [-Prepare <rows>] [-BudgetMinutes 1-30] [-SpecsDir <dir>] [-Apply] [-Json] [-Quiet]` | recalibrates a row's poses by hover through `lab_uat_calibrate` and proposes a spec diff; see below | 0 every pose has a proposal or is unchanged; 1 a pose found none; 2 usage, or `-Apply` refused or failed; 3 the pre-flight, a prepare row or the calibrate call failed |
 | `lab golden record <section> [-Rows ...] [-Runs 5-20] [-Leases 1-5] -ServerVersion <sha> [-SpecsDir <dir>] [-Rebless] [-Json]`, `lab golden show <section> [-SpecsDir <dir>] [-Json]` | records a section's golden fingerprint from fresh `lab uat` runs, or prints a committed one; see below | 0 recorded (or shown); 1 a run or row did not pass; 2 usage, a golden exists without `-Rebless`, or `show` found no golden; 3 the `lab uat` pre-flight or plan failed (nothing driven); 6 the runs disagree; 7 the runs cannot be recorded as given, the daemon failed after the runs, or `show` cannot read the golden |

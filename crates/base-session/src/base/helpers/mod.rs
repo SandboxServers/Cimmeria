@@ -555,6 +555,31 @@ pub async fn send_bundle_to_witness_reliable(
     witness_id: u32,
     bundle: cimmeria_mercury::channel_bundle::ChannelBundle,
 ) -> BundleSendOutcome {
+    send_bundle_to_witness_reliable_kind(
+        transport,
+        connected,
+        entity_to_addr,
+        witness_id,
+        bundle,
+        "witness_bundle",
+    )
+    .await
+}
+
+/// [`send_bundle_to_witness_reliable`] with the caller's `send_kind` label.
+///
+/// `kind` names where the bundle came from (for example
+/// `aoi_flush_create_base` for a deferred-flush phase-1 bundle). It rides on
+/// the `AoI bundle: flushed` row and on each registered fragment, so a
+/// stalled fragment names its source. The send itself is identical.
+pub async fn send_bundle_to_witness_reliable_kind(
+    transport: &Arc<dyn Transport>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    witness_id: u32,
+    bundle: cimmeria_mercury::channel_bundle::ChannelBundle,
+    kind: &'static str,
+) -> BundleSendOutcome {
     // Read addr + map_size in one lock scope; see the unreliable
     // variant for the deadlock-on-re-lock rationale and the
     // map_size snapshot caveat.
@@ -573,15 +598,8 @@ pub async fn send_bundle_to_witness_reliable(
         );
         return BundleSendOutcome::AddrUnresolved;
     };
-    reliable_fit::send_bundle_reliable_to_addr(
-        transport,
-        connected,
-        addr,
-        witness_id,
-        bundle,
-        "witness_bundle",
-    )
-    .await
+    reliable_fit::send_bundle_reliable_to_addr(transport, connected, addr, witness_id, bundle, kind)
+        .await
 }
 
 mod reliable_fit;
@@ -600,7 +618,8 @@ pub use witness_broadcast::broadcast_to_witnesses;
 
 mod session_teardown;
 pub use session_teardown::{
-    destroy_client_entities, destroy_owned_client_entities, log_session_end, SessionEndRow,
+    destroy_client_entities, destroy_owned_client_entities, log_session_end,
+    session_channel_health, session_idle_ms, LogoffRequested, SessionEndRow,
 };
 
 #[cfg(test)]
