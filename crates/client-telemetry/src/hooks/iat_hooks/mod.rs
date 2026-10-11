@@ -75,6 +75,7 @@ use std::ffi::c_void;
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+mod exit;
 mod imports;
 // Only the i686 `lua_pcall` detour calls its reader; the pure parts are
 // unit-tested everywhere.
@@ -177,11 +178,27 @@ unsafe fn install_inner(producer: Producer) {
         recvfrom_detour as *const c_void as usize,
         &ORIG_RECVFROM,
     );
+    // The two ways the client quits; the detours flush telemetry first
+    // (TG-PIPE-03, see `exit`).
+    install_one(
+        &producer,
+        "exit_process",
+        IAT_EXIT_PROCESS,
+        exit::exit_process_detour as *const c_void as usize,
+        &exit::ORIG_EXIT_PROCESS,
+    );
+    install_one(
+        &producer,
+        "crt_exit",
+        IAT_CRT_EXIT,
+        exit::crt_exit_detour as *const c_void as usize,
+        &exit::ORIG_CRT_EXIT,
+    );
 
     super::emit_info(
         &producer,
         "client.hooks.iat.install_complete",
-        [("hook_count", serde_json::json!(8))],
+        [("hook_count", serde_json::json!(10))],
     );
 }
 

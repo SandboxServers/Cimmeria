@@ -38,6 +38,16 @@ harness has an `OTLP_CLIENT` sink; `client_index_tests.rs` drives a real
 replay into a recording `LogExporter` (implement `export` as
 `async fn` + `set_resource`; no `testing` feature needed).
 
+**Uploader traps (TG-PIPE-13, 2026-10-11).** ureq 2 returns a 4xx/5xx
+as `Err(ureq::Error::Status(code, resp))`, not `Ok(resp)`: a plain
+`map_err` folds it into a network error and the status is lost (the
+old `PostError::Http` branch was dead). The chunk route does NOT dedupe
+retries by `seq`. In uploader tests, keep the producer alive until
+`run_uploader` returns: dropping it right after raising the stop flag
+can end the loop via `Disconnected`, which skips `governor_finish` and
+the `final: true` health row (in the DLL the producer is static, so it
+never happens there).
+
 **How to apply:** when a client row "doesn't show up", check in this
 order: session file endpoint shape, token (secret set? kind?), boot log
 line `dev-session telemetry:`, then `service.name = 'cimmeria-client'`.

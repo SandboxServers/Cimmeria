@@ -73,6 +73,9 @@ impl Channel {
                 .as_millis(),
         )
         .unwrap_or(u64::MAX);
+        // Who the peer is (TG-MER-03), copied out before the loop borrows
+        // the window mutably. Empty until the service syncs it.
+        let identity = self.log_identity;
 
         for entry in self.tx_window.iter_mut() {
             if budget == 0 {
@@ -107,6 +110,8 @@ impl Channel {
             // been unacked (`first_sent`, which a retransmit does not move);
             // `send_kind` / `fragment_index` say which send path produced
             // it; `wire_fingerprint` joins it to the client's socket log.
+            // The account and player pairs (TG-MER-03) say whose session it
+            // is, so a retransmit burst filters by player, not by address.
             // `msg_id` is present only where the sender recorded the head
             // (a bundle fragment past the first): the retained bytes are
             // encrypted and the transport holds no session key.
@@ -116,6 +121,10 @@ impl Channel {
                 target: "mercury.retransmit",
                 event = "retransmit",
                 peer = %self.remote_addr,
+                account_id = identity.account_id,
+                account_name = identity.account_name,
+                player_id = identity.player_id,
+                player_name = identity.player_name,
                 seq = entry.packet.sequence,
                 retransmit_count = entry.retransmit_count,
                 rto_ms = timeout.as_millis() as u64,

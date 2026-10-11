@@ -118,6 +118,53 @@ This is the load-bearing engineering constraint for the entire DLL:
 
 For instrumentation purposes (read-only telemetry) the "DLL never unloads" stance is correct. The host process exits, the kernel reclaims everything, the constraint never materialises as a leak.
 
+## Process exit and the final flush
+
+TG-PIPE-03. Recovered from the QA `SGW.exe` with headless Ghidra on 2026-10-11; the evidence is addresses, not a live exit trace.
+
+| Path | Where | Reaches `ExitProcess` how |
+|---|---|---|
+| Forced quit | `UGameEngine__unknown_004910b0(force != 0)` @ `0x004910b0`, `ExitProcess(1)` at `0x004910b9` | SGW.exe's own `ExitProcess` IAT slot `0x017ef238` |
+| Second quit request | the function containing `0x004cc107`: if the quit flag `DAT_01ead7ec` is already set, `ExitProcess(0)` at `0x004cc125` | same slot `0x017ef238` |
+| Ordinary quit | `force == 0` posts `WM_QUIT` (`PostQuitMessage(0)`) and sets `DAT_01ead7ec`; the message loop ends, WinMain `FUN_004161d0` returns, and `___tmainCRTStartup` @ `0x012376e3` calls `exit(code)` at `0x01237832` | the MSVCR80 `exit` IAT slot `0x017ef9a8`; `exit` calls `ExitProcess` inside MSVCR80, **not** through SGW.exe's slot |
+| "Failed to load Login_Map. Exiting." | `FUN_00417fe0` @ `0x00417fe0` | `exit(0)`, the same MSVCR80 slot |
+| Crash | `___report_gsfailure` @ `0x01238218` is the only SGW.exe caller of `TerminateProcess` (slot `0x017ef0d4`) | not a clean exit; left to the exception sink |
+
+Hooking `ExitProcess` alone would miss the ordinary quit, which is the path nearly every player session takes. The DLL therefore swaps both IAT slots (`hooks/iat_hooks/exit.rs`, the IAT set grows from 8 hooks to 10). Each detour calls `shutdown::flush_at_exit`, which raises the stop flag the uploader polls and waits for the uploader to report its last POST done, then chains to the real function.
+
+**Why not `DLL_PROCESS_DETACH`.** Detach runs under the loader lock, after the process's other threads are gone: the uploader cannot run, and any wait would only stall the exit. The detach is still a deliberate no-op (see [Subscriber lifetime](#subscriber-lifetime--the-hard-constraint)). The hooks run on the game's own thread before `ExitProcess` takes the loader lock, so a bounded wait there cannot deadlock the loader.
+
+**The bounds.**
+
+| Limit | Value | Where |
+|---|---|---|
+| Hook wait for the uploader | 1.5 s | `shutdown::FINAL_FLUSH_BUDGET` |
+| Final POST, whole request | 1.2 s | `uploader::FINAL_POST_TIMEOUT` (ordinary POSTs keep the 10 s connect and 30 s read limits) |
+| Uploader idle wake | 100 ms | `STOP_POLL` in `uploader.rs`, so a stop is noticed inside a tick instead of after a 2 s flush interval |
+
+A server that never answers costs the exit at most 1.5 s; the batch is then lost, and the local log (`exit via <reason>: final flush TimedOut`) records it. If an exit hook runs twice (`exit` first, then a direct `ExitProcess`), the first reason is kept and the second call returns at once.
+
+**`client.session.end` (TG-CLI-04).** The first exit hook to run emits one `client.session.end` row (info) with `reason` set to `exit_process` (SGW.exe's own `ExitProcess`: a forced or repeated quit) or `crt_exit` (the CRT's `exit` after the message loop ends: the ordinary quit). `Shutdown::flush_reporting` emits it through the producer's non-blocking `try_emit` before it raises the stop flag, so the uploader's final drain finds it and the row lands in the final POST ahead of the `final: true` health row. A second hook (`exit`, then a direct `ExitProcess`) emits nothing. The row is must-keep in the governor (`client.session.*`), and the ingest replays it even over a session's budget (`client.session.` in `PRIORITY_PREFIXES`, `admin-api` `session_budget.rs`).
+
+The packet spec listed `ue3_shutdown` and `crash` as reasons too. The exit-path RE above found no UE3 shutdown site worth hooking apart from the CRT `exit`, which is `crt_exit`. There is no `crash` value: the first-chance exception sink fires on handled exceptions as well as fatal ones, and the lab's unhandled-exception filter must not take locks or wait (the #686 rule), so neither can truthfully say "the session ended here" and then flush. A session that has neither `client.session.end` nor a `final: true` health row ended by a path no hook sees: a crash, `TerminateProcess` or a lab kill. Those still lose the tail window.
+
+Upload-failure accounting is TG-PIPE-13.
+
+## Boot failures
+
+TG-PIPE-14. Four boot steps that can fail used to write only to the local log. Each now also queues a `warn` row (builders in `crates/client-telemetry/src/boot_report.rs`). All four are must-keep in the governor and replayed over budget by the ingest (`client.dll.*`, `client.hooks.*`).
+
+| Target | When | Fields |
+|---|---|---|
+| `client.dll.uploader_spawn_failed` | the uploader thread could not be spawned | `error` |
+| `client.dll.bridge_failed` | a lab session asked for the bridge and it did not start | `reason`, `error` |
+| `client.dll.input_unhooked` | the bridge started but its DirectInput hook did not go in, so the lab cannot drive input without focus | `error` |
+| `client.hooks.install_lock_unavailable` | the install lock shared with the client-patches DLL was not taken within the wait, so no hooks went in | `wait_ms` |
+
+`reason` on `client.dll.bridge_failed` is one of `invalid_token` (the lab token is not 64 hex characters), `addr_in_use`, `addr_not_available`, `permission_denied` or `io_error` (anything else). `boot_report::report_bridge_result` picks it from the start result and returns no row when no bridge was asked for or it started.
+
+`client.dll.uploader_spawn_failed` is queued, but with no uploader nothing ships it: its local log line (`uploader thread failed to start`) is the record that survives. In SigNoz the failure looks like a launch with no DLL rows at all, `client.dll.attached` included.
+
 ## Hook taxonomy
 
 Seven techniques, applied per-tier per the [hookpoints anchor doc](../reverse-engineering/findings/client-instrumentation-hookpoints.md):
@@ -197,9 +244,11 @@ Per-entity and budgeted events also **collapse**. An event identical to the prev
 | `numeric` | `{field: {n, min, max, sum}}` for up to 16 numeric fields |
 | `last_fields` | The last absorbed event's fields, as an exemplar (for a load freeze: what was loading last) |
 
-**Nothing is dropped silently.** For every target, the rows forwarded plus the `repeat_count` of its repeat events plus the `count` of its rollups add up to the events the hooks raised. The volume test checks this for every target. Every 60 seconds, and at shutdown, `client.telemetry.health` reports the governor's totals (`seen_total`, `forwarded_total`, `must_keep_total`, `rolled_up_total`, `collapsed_total`, ...), `ring_dropped_total` (a full ring) and `upload_dropped_total` (batches discarded after failed POSTs). Both counts existed before but were never reported. If either has grown since the last report, the health event is `warn`. `uncollapsed_events_total` counts events that arrived while the collapse table was full and so were not checked for repeats.
+**Nothing is dropped silently.** For every target, the rows forwarded plus the `repeat_count` of its repeat events plus the `count` of its rollups add up to the events the hooks raised. The volume test checks this for every target. Every 60 seconds, and at shutdown, `client.telemetry.health` reports the governor's totals (`seen_total`, `forwarded_total`, `must_keep_total`, `rolled_up_total`, `collapsed_total`, ...), `ring_dropped_total` (a full ring) and `upload_dropped_total` (batches discarded after failed POSTs). Both counts existed before but were never reported. Since TG-PIPE-13 it also carries `upload_failures_total`, the POSTs that failed (a network error or a non-2xx answer; the batch is kept and retried, so a failure loses nothing until the retained batch overflows into `upload_dropped_total`), and `last_upload_status`, the HTTP status of the most recent POST. `last_upload_status` is absent before the first answer and when the last POST got no answer at all (a network error), never `0`. The counters are atomics on the queue's consumer. If any of the three counts has grown since the last report, the health event is `warn`. A failed final POST at exit has no later health row to report it, so it goes to the local log (`final POST of N events failed`).
 
-**Shutdown flush: not wired yet.** The shutdown rollups and health event run only when the uploader's stop callback returns `true`. The DLL passes `|| false` today (`boot.rs`, pending the Phase 7 stop flag), so when `SGW.exe` exits, the last window's rollups and held repeats are lost: up to 10 seconds of absorbed events. The conservation above holds for every closed window, not for the tail of a session.
+A retried batch the server had already taken (its answer was lost) arrives twice: the chunk route replays every row and keeps no `(session_id, seq)` set, so the duplicate rows in SigNoz share a `seq`. The uploader's comment used to claim the server deduplicated them; it never did. `uncollapsed_events_total` counts events that arrived while the collapse table was full and so were not checked for repeats.
+
+**Shutdown flush (TG-PIPE-03).** The shutdown rollups and held repeats run when the uploader's stop callback returns `true`, and the closing health row carries `final: true` (periodic rows carry `final: false`), so a reader can tell a closed session from one whose reports just stopped. The DLL's stop callback is `shutdown::global().stop_requested()`; the exit hooks raise it. See [Process exit and the final flush](#process-exit-and-the-final-flush). When the client dies by a path with no hook (crash, `TerminateProcess`, a lab kill), the tail window is still lost: up to 10 seconds of absorbed events. The conservation above holds for every closed window, and for the tail only on a hooked exit.
 
 **Measured effect.** Replayed through the governor on the uploader's 2 s cadence, the hour measured above (333,263 events) comes out as 4,134 rows, a 98.8% cut. All 855 must-keep events come through unchanged (`governor/tests/volume.rs`).
 
@@ -518,7 +567,7 @@ The client already logs through five paths and swallows failures at a dozen seam
 
 | Target | Hook | Fields | Level | Volume control |
 |---|---|---|---|---|
-| `client.bw.message` | inline, `DebugMsgHelper::message` `0x00a36460` | `message`, `priority`, `priority_name` (`TRACE`..`HACK`), `component_priority`, `fmt_addr`, `filtered` (the client's own threshold would have dropped it), `suppressed`, `truncated` | by priority: `debug` (trace, debug), `info`, `warn` (warning, hack), `error` | per (format string address, priority) |
+| `client.bw.message` | inline, `DebugMsgHelper::message` `0x00a36460` | `message`, `priority`, `priority_name` (`TRACE`..`HACK`), `component_priority`, `fmt_addr`, `filtered` (the client's own threshold would have dropped it), `suppressed`, `truncated`; `after_unpack_fault` and `seq` on a message raised on the game thread after a `client.mercury.unpack_fault` and before the next bundle (TG-CLI-02: a per-thread mark, since `unpack` and the message loop's own errors run on the same thread; it lapses after 250 ms, and the fault's own message raised inside `unpack` is not tagged) | by priority: `debug` (trace, debug), `info`, `warn` (warning, hack), `error` | per (format string address, priority) |
 | `client.viewport.unknown_entity` | the same `DebugMsgHelper::message` hook, checked before the throttle | `entity_id`, `count`, `first_ts` | `warn` | TG-CLI-01: the `ServerConnection::svidFollow: Viewport for entity %d ... is unknown` message becomes one row per entity at first sight, then a rollup of the later count every 10 s, instead of a free-text row per message (9.4k in the triage). At most 256 entities are tracked; past that a message takes the free-text path |
 | `client.ue3.log` | inline, `FOutputDeviceRedirector::Serialize` `0x004ce0b0` (`GLog`) | `category` (the `FName`), `event`, `message`, `suppressed_category`, `suppressed`, `truncated` | by category (`Error` `error`, `*Warning` `warn`, `Dev*` `debug`, else `info`) | per category; warnings per message shape. Low volume: `debugf`/`warnf` are compiled out of this build |
 | `client.ue3.fatal_error` | inline, `FOutputDeviceWindowsError::Serialize` `0x004ce3a0` (`GError`) | `category`, `event`, `message`, `fatal` | `error` | none; also written synchronously to the local log, because the process ends |
@@ -669,6 +718,6 @@ To preserve "observe without changing behavior":
 | Event | Level | When |
 |---|---|---|
 | `client.mercury.request_misparse` | warn | `unpack` is about to parse a message as a request (iterator next-request offset == cursor) in a packet without the has-requests flag; the client's uninitialized iterator field, see [client-mercury-receive-path.md](../reverse-engineering/findings/client-mercury-receive-path.md#the-iterators-next-request-offset-is-never-initialized-confirmed-live-2026-09-29) |
-| `client.mercury.unpack_fault` | warn | Any other `unpack` error, with the client's decoded length and the raw bytes at the cursor. Both rows carry the packet's `seq` and, when the packet filter recorded it, the encrypted datagram's `wire_fingerprint` (TG-MER-12) |
+| `client.mercury.unpack_fault` | warn | Any other `unpack` error, with the client's decoded length and the raw bytes at the cursor. Both rows carry the packet's `seq` and, when the packet filter recorded it, the encrypted datagram's `wire_fingerprint` (TG-MER-12). After a fault, the `client.bw.message` rows of the rest of the bundle carry `after_unpack_fault` and the same `seq` (TG-CLI-02) |
 
 Hook switches: `CIMMERIA_CLIENT_HOOKS_DISABLE` leaves named inline hooks uninstalled; `CIMMERIA_CLIENT_HOOKS_ENABLE` installs default-off hooks. `mercury_process_ordered_packet` is default-off because sitting in its call path changes the client's behaviour.

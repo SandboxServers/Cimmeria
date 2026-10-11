@@ -92,6 +92,19 @@ pub fn session_identity(c: &ConnectedClientState) -> PlayerIdentity {
         .with_names(c.player_name.as_deref(), c.account_name.as_deref())
 }
 
+/// [`session_identity`] in the transport's shape, for the Mercury channel's
+/// own rows (`mercury.retransmit`, `mercury.backpressure`; TG-MER-03). The
+/// names come back interned, so syncing this every tick allocates nothing.
+pub fn channel_log_identity(c: &ConnectedClientState) -> cimmeria_mercury::channel::LogIdentity {
+    let id = session_identity(c);
+    cimmeria_mercury::channel::LogIdentity {
+        account_id: id.account_id,
+        account_name: id.account_name,
+        player_id: id.player_id,
+        player_name: id.player_name,
+    }
+}
+
 /// The identity of the session at `addr`, for a line that has the address
 /// but not the session in hand. [`PlayerIdentity::UNKNOWN`] when the session
 /// is gone or the lock is poisoned.

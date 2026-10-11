@@ -131,4 +131,34 @@ fn ring_drops_are_reported_by_the_health_event() {
     assert_eq!(health.level, "warn");
     assert_eq!(health.fields["ring_dropped_total"], json!(7));
     assert_eq!(health.fields["upload_dropped_total"], json!(3));
+    assert_eq!(health.fields["upload_failures_total"], json!(0));
+    assert!(
+        !health.fields.contains_key("last_upload_status"),
+        "no POST answered yet: the status is absent, never 0"
+    );
+}
+
+/// TG-PIPE-13: failed POSTs and the last answer's status reach the health
+/// row, and a new failure makes it a warn even with no events dropped.
+#[test]
+fn upload_failures_are_reported_by_the_health_event() {
+    use crate::governor::{ExternalDrops, Governor};
+    use std::sync::atomic::AtomicU64;
+    use std::sync::Arc;
+
+    let mut g = Governor::new(GovernorConfig::default(), Arc::new(AtomicU64::new(0)));
+    let mut out = Vec::new();
+    let drops = ExternalDrops {
+        upload_failures: 2,
+        last_status: Some(503),
+        ..ExternalDrops::default()
+    };
+    g.finish(1_000, drops, &mut out);
+    let health = out
+        .iter()
+        .find(|e| e.target == crate::governor::HEALTH_TARGET)
+        .unwrap();
+    assert_eq!(health.level, "warn");
+    assert_eq!(health.fields["upload_failures_total"], json!(2));
+    assert_eq!(health.fields["last_upload_status"], json!(503));
 }

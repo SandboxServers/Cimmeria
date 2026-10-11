@@ -31,7 +31,7 @@
 //! useful for "we dropped events with seq 1003..1042" reconstruction
 //! when the drop counter advances.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -67,6 +67,12 @@ pub struct Consumer {
     receiver: Receiver<ClientNativeEvent>,
     dropped: std::sync::Arc<AtomicU64>,
     governor: SharedGovernor,
+    /// Failed POSTs (TG-PIPE-13). Atomics, like `dropped`, so a reader on
+    /// another thread never needs the uploader's cooperation.
+    upload_failures: AtomicU64,
+    /// HTTP status of the last answered POST; 0 = none (no answer yet, or
+    /// the last POST got none). Never reported as 0.
+    last_upload_status: AtomicU32,
 }
 
 /// Construct a fresh (producer, consumer) pair. Capacity is
@@ -101,6 +107,8 @@ fn build(cfg: Option<GovernorConfig>) -> (Producer, Consumer) {
             receiver,
             dropped,
             governor,
+            upload_failures: AtomicU64::new(0),
+            last_upload_status: AtomicU32::new(0),
         },
     )
 }
@@ -196,6 +204,33 @@ impl Consumer {
         self.dropped.load(Ordering::Relaxed)
     }
 
+    /// Record a POST that succeeded with HTTP `status`.
+    pub fn record_upload_ok(&self, status: u16) {
+        self.last_upload_status
+            .store(u32::from(status), Ordering::Relaxed);
+    }
+
+    /// Record a failed POST: `status` is the server's answer, `None` for a
+    /// network error (no answer at all).
+    pub fn record_upload_failure(&self, status: Option<u16>) {
+        self.upload_failures.fetch_add(1, Ordering::Relaxed);
+        self.last_upload_status
+            .store(status.map_or(0, u32::from), Ordering::Relaxed);
+    }
+
+    /// POSTs that have failed so far.
+    pub fn upload_failures_total(&self) -> u64 {
+        self.upload_failures.load(Ordering::Relaxed)
+    }
+
+    /// HTTP status of the last POST, if it got an answer.
+    pub fn last_upload_status(&self) -> Option<u16> {
+        match self.last_upload_status.load(Ordering::Relaxed) {
+            0 => None,
+            s => u16::try_from(s).ok(),
+        }
+    }
+
     /// Give the governor its cadence: append due rollups, repeat events
     /// and the health event to `batch`. `upload_dropped` is the uploader's
     /// running count of events it discarded. No-op on a plain channel.
@@ -224,6 +259,8 @@ impl Consumer {
         let drops = ExternalDrops {
             ring_dropped: self.dropped_total(),
             upload_dropped,
+            upload_failures: self.upload_failures_total(),
+            last_status: self.last_upload_status(),
         };
         let mut g = governor.lock().unwrap_or_else(PoisonError::into_inner);
         f(&mut g, now_ms(), drops, batch);

@@ -13,6 +13,7 @@ use super::mem;
 use super::nesting::SinkGuard;
 use super::text;
 use super::throttle::{self, SinkThrottle};
+use crate::hooks::mercury_recv::after_fault;
 use crate::hooks::name_throttle::Decision;
 
 /// Trampoline to the original.
@@ -191,20 +192,20 @@ fn observe(this: *mut c_void, header: *const i32, fmt: *const c_char, va: *const
     // SAFETY: `fmt`/`va` are the live arguments of the hooked call.
     let raw = unsafe { format_c(fmt, va) }.unwrap_or_else(|| "<unformattable>".to_string());
     let (msg, truncated) = text::message_field(&raw);
-    super::emit::emit(
-        TARGET,
-        telemetry_level(priority),
-        "bw.message",
-        message_fields(
-            &msg,
-            truncated,
-            component,
-            priority,
-            filtered,
-            fmt as usize,
-            suppressed,
-        ),
+    let mut fields = message_fields(
+        &msg,
+        truncated,
+        component,
+        priority,
+        filtered,
+        fmt as usize,
+        suppressed,
     );
+    // TG-CLI-02: a message on the game thread after an `unpack` fault and
+    // before the next bundle names the fault's seq. One thread-local read
+    // when nothing faulted.
+    fields.extend(after_fault::tag_fields());
+    super::emit::emit(TARGET, telemetry_level(priority), "bw.message", fields);
 }
 
 /// Detour for `DebugMsgHelper::message`.
@@ -321,6 +322,47 @@ mod tests {
         assert!(caught.is_err());
         assert!(!super::super::nesting::in_known_sink());
         let _ = take_captured();
+    }
+
+    /// TG-CLI-02: a message after an `unpack` fault on the same thread is
+    /// tagged with the fault's seq; one on another thread is not, and one
+    /// after the next bundle starts is not.
+    #[test]
+    fn a_message_after_an_unpack_fault_on_its_thread_is_tagged() {
+        fn message(fmt: &'static std::ffi::CStr) -> super::super::emit::Captured {
+            let header: [i32; 2] = [0, 5]; // ERROR
+            let this = [0usize; 2];
+            let va: [usize; 0] = [];
+            let _ = take_captured();
+            observe(
+                this.as_ptr() as *mut c_void,
+                header.as_ptr(),
+                fmt.as_ptr(),
+                va.as_ptr() as *const c_void,
+            );
+            let mut events = take_captured();
+            assert_eq!(events.len(), 1, "one row per message");
+            events.remove(0)
+        }
+
+        after_fault::clear();
+        let before = message(c"before the fault");
+        assert_eq!(before.get("after_unpack_fault"), None);
+
+        after_fault::mark_fault(Some(4242));
+        let after = message(c"Discarding bundle due to corrupted header");
+        assert_eq!(after.get("after_unpack_fault"), Some(&json!(true)));
+        assert_eq!(after.get("seq"), Some(&json!(4242)));
+
+        let elsewhere = std::thread::spawn(|| message(c"a network-thread message after the fault"))
+            .join()
+            .unwrap();
+        assert_eq!(elsewhere.get("after_unpack_fault"), None);
+        assert_eq!(elsewhere.get("seq"), None);
+
+        after_fault::clear(); // the next bundle starts
+        let next = message(c"a message in the next bundle");
+        assert_eq!(next.get("after_unpack_fault"), None);
     }
 
     /// The viewport lookup's id is its first argument; another message's

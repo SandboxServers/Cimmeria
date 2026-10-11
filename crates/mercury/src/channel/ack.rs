@@ -185,6 +185,9 @@ impl Channel {
         if self.tx_hole.map(|h| h.seq) == hole_seq {
             return;
         }
+        // Whose session the hole is in (TG-MER-04): synced onto the channel
+        // by the service's tick, absent until then.
+        let identity = self.log_identity;
         // The previous hole, if any, is closed: its packet was acked, or it
         // was the first of several missing packets and the next one now
         // leads. Say so only for a hole that was reported as a stall.
@@ -194,6 +197,10 @@ impl Channel {
                     target: "mercury.tx_hole",
                     event = "tx_hole_closed",
                     peer = %self.remote_addr,
+                    account_id = identity.account_id,
+                    account_name = identity.account_name,
+                    player_id = identity.player_id,
+                    player_name = identity.player_name,
                     seq = closed.seq,
                     open_ms = now.saturating_duration_since(closed.since).as_millis() as u64,
                     "reliable packet the peer was missing has been acked -- its held messages are released"
@@ -206,6 +213,10 @@ impl Channel {
                 target: "mercury.tx_hole",
                 event = "tx_hole_open",
                 peer = %self.remote_addr,
+                account_id = identity.account_id,
+                account_name = identity.account_name,
+                player_id = identity.player_id,
+                player_name = identity.player_name,
                 seq,
                 highest_acked = highest,
                 "peer acked a later reliable packet first -- this one was lost or reordered"
@@ -307,11 +318,16 @@ impl Channel {
             first_warning,
         };
         let names = entry.map(name).unwrap_or_default();
+        let identity = self.log_identity;
         tracing::warn!(
             target: "mercury.tx_hole",
             event = "tx_hole_stall",
             reason = "peer_missing_reliable_packet",
             peer = %self.remote_addr,
+            account_id = identity.account_id,
+            account_name = identity.account_name,
+            player_id = identity.player_id,
+            player_name = identity.player_name,
             seq = stall.seq,
             highest_acked = stall.highest_acked,
             retransmit_count = stall.retransmit_count,

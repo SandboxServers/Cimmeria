@@ -7,7 +7,7 @@
 use super::mercury_recv::{read_element, read_iter};
 use crate::hooks::emit::emit;
 use crate::hooks::entity_trace::map::{LiveMem, Mem};
-use crate::hooks::mercury_recv::{packet, wire, Fields};
+use crate::hooks::mercury_recv::{after_fault, packet, wire, Fields};
 
 /// The iterator fields `unpack` decides with, read before the call.
 ///
@@ -91,6 +91,11 @@ impl IterEntry {
         // recorded it, the encrypted datagram's fingerprint.
         let seq = LiveMem.u32_at(self.packet.wrapping_add(packet::SEQ));
         fields.extend(wire::join_fields(self.packet, seq));
+        // TG-CLI-02: the BigWorld messages this fault causes are raised on
+        // this (game) thread before the next bundle; tag them.
+        if failed {
+            after_fault::mark_fault(seq);
+        }
         let target = if misparse {
             "client.mercury.request_misparse"
         } else {

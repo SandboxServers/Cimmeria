@@ -40,6 +40,7 @@
 // session loader, and uploader thread compile and run on Linux for
 // unit tests; only the Windows cdylib actually executes them inside
 // SGW.exe.
+pub mod boot_report;
 pub mod capture;
 pub mod events;
 pub mod fingerprint;
@@ -49,6 +50,7 @@ pub mod log;
 pub mod msvc_string;
 pub mod queue;
 pub mod session;
+pub mod shutdown;
 pub mod uploader;
 
 // Live Research Lab client bridge — an inbound command channel behind
