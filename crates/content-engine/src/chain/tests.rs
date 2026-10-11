@@ -467,6 +467,47 @@ fn resolve_event_filtered_refuses_chains_the_predicate_rejects() {
     );
 }
 
+/// A failing condition on `content.resolve` logs the acting entity and the
+/// world as numbers (`entity_id`, `world_id`), not as `Option` debug text.
+#[test]
+fn resolve_failed_condition_logs_numeric_entity_id() {
+    use crate::conditions::{ComparisonOp, Condition, StepStatusValue};
+    use cimmeria_common::EntityId;
+    use cimmeria_test_support::LogCapture;
+
+    let mut engine = ChainEngine::new();
+    engine.register_chain(gated_region_chain(
+        940,
+        vec![Condition::StepStatus {
+            mission_id: 1343,
+            step_id: 4402,
+            operator: ComparisonOp::Eq,
+            expected_status: StepStatusValue::Active,
+        }],
+    ));
+
+    let ctx = ExecutionContext::new()
+        .with_source(EntityId(4242))
+        .with_world(57);
+    let capture = LogCapture::install();
+    let resolved = engine.resolve_event(&region_enter_event(), &ctx);
+    assert!(
+        resolved.actions.is_empty(),
+        "the failing chain must not fire"
+    );
+
+    let event = capture
+        .find_event(
+            tracing::Level::DEBUG,
+            "a condition failed",
+            "condition_failed",
+        )
+        .expect("a failing condition must be logged on content.resolve");
+    assert_eq!(event.target, "content.resolve");
+    assert!(event.has_field("entity_id", "4242"), "{event:#?}");
+    assert!(event.has_field("world_id", "57"), "{event:#?}");
+}
+
 /// The stuck-player detector's "turn-in objective" test: only an enabled
 /// chain's `CompleteObjective` for the exact mission/objective pair counts.
 #[test]
