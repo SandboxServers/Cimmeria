@@ -295,7 +295,11 @@ python.org). The Rust version comes from `rust-toolchain.toml`.
   `egress_proxy.py` in the node role on `127.0.0.1:3128` as LOCAL SERVICE, at boot and
   every five minutes (a no-op while it runs), so a crash is back within minutes. The
   listener reads the proxy from its service's environment (it uploads the logs), job
-  steps from `.env`. `NO_PROXY` covers localhost and the cache host.
+  steps from `.env`. `NO_PROXY` covers localhost and the cache host, and for job steps
+  also `github.com` and its subdomains. Through a CONNECT proxy git falls back to
+  HTTP/1.1, and on node3 a git fetch over HTTP/1.1 stalls once the pack's response
+  headers arrive, direct or proxied (plain curl over HTTP/1.1 works, and so does git
+  over HTTP/2). Going direct lets git use HTTP/2, so `actions/checkout` works.
 - **The shared cache needs a firewall rule.** node3 reaches the cache host's Redis
   (node2) only once the gateway's UniFi policy admits TCP 6379 from node3, as it does
   for the other nodes. Until then every job uses its runner's local cache.

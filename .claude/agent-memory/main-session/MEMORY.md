@@ -34,7 +34,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Reference
 
-- [reference_windows_runners_node3_2026_10_11.md](reference_windows_runners_node3_2026_10_11.md) — Windows runner pool on node3: sccache fails closed on dead Redis (probe per job), no cross-root Rust hits even with SCCACHE_BASEDIRS, WSL bash.exe, runner parent-dir ACL trap, host VHD ACLs
+- [reference_windows_runners_node3_2026_10_11.md](reference_windows_runners_node3_2026_10_11.md) — Windows runner pool on node3: sccache fails closed on dead Redis (probe per job), no cross-root Rust hits even with SCCACHE_BASEDIRS, WSL bash.exe, runner parent-dir ACL trap, git-over-HTTP/1.1 stall (github.com in NO_PROXY), host VHD ACLs
 - [reference_self_hosted_runners_2026_10_10.md](reference_self_hosted_runners_2026_10_10.md) — 10 dockerized cimmeria-linux runners (node5/node2), one dind each via unix socket; dind-entrypoint 2375 trap; fork approval = all outside contributors
 - [reference_desktop_launcher_macos_gating_2026_10_11.md](reference_desktop_launcher_macos_gating_2026_10_11.md) — desktop launcher macOS-only code first compiles in CI's native-engine (macos-latest); ship.py gates on both native-engine jobs; client_maintenance log-capture flake fixed in #1438
 - [reference_lab_golden_fingerprints_2026_10_11.md](reference_lab_golden_fingerprints_2026_10_11.md) — lab golden rules: offline from the bundle, tap names, entity labels, key-arg allowlist, 5 all-PASS runs agree, diff under the golden's variance, fresh-run rebless, grade-neutral capture

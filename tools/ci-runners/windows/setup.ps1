@@ -259,6 +259,11 @@ try {
     $runnerZip = Get-Download "https://github.com/actions/runner/releases/download/v$($Pins.Runner.Version)/actions-runner-win-x64-$($Pins.Runner.Version).zip" "actions-runner-win-x64-$($Pins.Runner.Version).zip" $Pins.Runner.Sha
     $cacheHost = if ($cfg.cache_endpoint) { ([uri]$cfg.cache_endpoint).Host } else { '' }
     $noProxy = (@('localhost', '127.0.0.1', '::1', $cacheHost) | Where-Object { $_ }) -join ','
+    # Job steps reach github.com (and its subdomains) directly: through any CONNECT
+    # proxy git falls back to HTTP/1.1, and on node3 a git fetch over HTTP/1.1 stalls
+    # after the pack's response headers (direct HTTP/2 works; plain curl over HTTP/1.1
+    # works too). Only the Azure Storage uploads need the detour.
+    $stepNoProxy = "$noProxy,github.com"
     $machinePath = [Environment]::GetEnvironmentVariable('PATH', 'Machine')
 
     foreach ($n in 1..$Runners) {
@@ -332,8 +337,8 @@ try {
                 "TMP=$rd\tmp"
                 "HTTPS_PROXY=http://$EgressListen"
                 "https_proxy=http://$EgressListen"
-                "NO_PROXY=$noProxy"
-                "no_proxy=$noProxy"
+                "NO_PROXY=$stepNoProxy"
+                "no_proxy=$stepNoProxy"
                 "CIMMERIA_RUNNER_ROOT=$rd"
                 "CIMMERIA_CACHE_FILE=$cacheFile"
                 "ACTIONS_RUNNER_HOOK_JOB_STARTED=$Root\hooks\job-started.ps1"
