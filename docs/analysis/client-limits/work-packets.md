@@ -464,7 +464,12 @@ D-CL5** and CL-04 (the keys and their files).
 apply overrides from an optional committed file
 `tools/lab/ini-overrides.toml` (`[[override]] file = "SGWEngine.ini",
 section = "TextureStreaming", key = "PoolSize", value = "..."`), rewriting
-only those keys, keeping CRLF, and logging each applied override. The
+only those keys, keeping CRLF, and logging each applied override.
+**CL-04 note:** `PoolSize` is inert (nothing reads it); target the keys in
+`docs/client/limits/engine.md` "Ini chain and lab override targets". A user
+`SGWEngine.ini` override survives only while its `[IniVersion]` matches the
+chain files' timestamps; otherwise the client regenerates it or blocks on a
+modal prompt (see that section). The
 overrides apply at every launch, not only at the first seed (the seed never
 reruns, per #1312).
 
