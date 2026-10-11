@@ -35,11 +35,11 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 12,605 |
-| Files with tests | 2,216 |
-| Gated in CI (every crate but CI's exclude list) | 10,298 |
-| Live-DB tests (`require_db_or_skip!` in the body) | 1,730 |
-| Inventory threshold (5% of the tests) | 630 |
+| Tests (`#[test]` / `#[tokio::test]`) | 12,632 |
+| Files with tests | 2,220 |
+| Gated in CI (every crate but CI's exclude list) | 10,306 |
+| Live-DB tests (`require_db_or_skip!` in the body) | 1,737 |
+| Inventory threshold (5% of the tests) | 632 |
 
 <!-- /gen:tests-totals -->
 
@@ -87,7 +87,7 @@ with no file in this directory yet.
 | `crates/cell-combat` | `cimmeria-cell-combat` | 908 | 163 | 48 | yes | none |
 | `crates/cell-content` | `cimmeria-cell-content` | 902 | 143 | 507 | yes | none |
 | `crates/launcher` | `sgw-launcher` | 773 | 146 | 0 | no | [launcher.md](launcher.md) |
-| `crates/lab` | `cimmeria-lab` | 748 | 126 | 0 | no | none |
+| `crates/lab` | `cimmeria-lab` | 767 | 128 | 0 | no | none |
 | `crates/client-telemetry` | `cimmeria-client-telemetry` | 668 | 128 | 0 | no | none |
 | `crates/base-methods` | `cimmeria-base-methods` | 647 | 141 | 455 | yes | none |
 | `crates/cell` | `cimmeria-cell` | 646 | 150 | 27 | yes | none |
@@ -104,9 +104,9 @@ with no file in this directory yet.
 | `crates/launcher-core` | `cimmeria-launcher-core` | 270 | 38 | 0 | yes | none |
 | `crates/admin-api` | `cimmeria-admin-api` | 234 | 35 | 0 | yes | none |
 | `crates/cell-catalog` | `cimmeria-cell-catalog` | 231 | 58 | 137 | yes | none |
+| `crates/base-world-entry` | `cimmeria-base-world-entry` | 223 | 63 | 55 | yes | none |
 | `crates/cell-interactions` | `cimmeria-cell-interactions` | 219 | 37 | 1 | yes | none |
 | `crates/base` | `cimmeria-base` | 216 | 43 | 17 | yes | none |
-| `crates/base-world-entry` | `cimmeria-base-world-entry` | 215 | 61 | 48 | yes | none |
 | `crates/cell-effect-scripts` | `cimmeria-cell-effect-scripts` | 162 | 19 | 21 | yes | none |
 | `crates/resources` | `cimmeria-resources` | 162 | 24 | 3 | yes | none |
 | `crates/wireclient` | `cimmeria-wireclient` | 135 | 30 | 17 | yes | [wireclient.md](wireclient.md) |
