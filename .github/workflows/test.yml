@@ -112,7 +112,7 @@ jobs:
         with:
           components: clippy
       - name: install clang + mold
-        run: sudo apt-get update && sudo apt-get install -y clang mold
+        run: for c in clang mold; do command -v "$c" > /dev/null || { sudo apt-get update && sudo apt-get install -y clang mold; break; }; done
       - name: hydrate external/recast
         run: |
           mkdir -p external
@@ -194,7 +194,7 @@ jobs:
           cargo hakari manage-deps --dry-run
           cargo hakari verify
       - name: install clang + mold
-        run: sudo apt-get update && sudo apt-get install -y clang mold
+        run: for c in clang mold; do command -v "$c" > /dev/null || { sudo apt-get update && sudo apt-get install -y clang mold; break; }; done
       - name: hydrate external/recast
         run: |
           mkdir -p external
@@ -238,7 +238,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - name: install lua5.1
-        run: sudo apt-get update && sudo apt-get install -y lua5.1
+        run: for c in lua5.1; do command -v "$c" > /dev/null || { sudo apt-get update && sudo apt-get install -y lua5.1; break; }; done
       - name: run the overlay logic UAT
         run: lua5.1 crates/client-patches/overlay/test/run.lua
       # 009-starter-hotbar's hook against a clean-room model of the
@@ -324,7 +324,7 @@ jobs:
           python3 tools/ability_mechanics/weapon_requirement_audit.py --check
       - uses: ./.github/actions/rust-toolchain
       - name: install clang + mold + psql
-        run: sudo apt-get update && sudo apt-get install -y clang mold postgresql-client
+        run: for c in clang mold psql; do command -v "$c" > /dev/null || { sudo apt-get update && sudo apt-get install -y clang mold postgresql-client; break; }; done
       - name: start schema + seeds load (background)
         # Loads db/database.sql into `sgw`, the template of the per-slot
         # clones, while the steps below compile. It outlives this step; the
@@ -387,7 +387,7 @@ jobs:
         with:
           components: llvm-tools-preview
       - name: install clang + mold
-        run: sudo apt-get update && sudo apt-get install -y clang mold
+        run: for c in clang mold; do command -v "$c" > /dev/null || { sudo apt-get update && sudo apt-get install -y clang mold; break; }; done
       - name: hydrate external/recast
         run: |
           mkdir -p external
@@ -470,7 +470,7 @@ jobs:
         with:
           components: llvm-tools-preview
       - name: install clang + mold + psql
-        run: sudo apt-get update && sudo apt-get install -y clang mold postgresql-client
+        run: for c in clang mold psql; do command -v "$c" > /dev/null || { sudo apt-get update && sudo apt-get install -y clang mold postgresql-client; break; }; done
       - name: start schema + seeds load (background)
         # As in test-live-db: `sgw` loads while the instrumented build runs.
         run: bash tools/live-db-schema-load.sh start

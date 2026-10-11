@@ -99,7 +99,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/rust-toolchain
       - name: install clang + mold + psql
-        run: sudo apt-get update && sudo apt-get install -y clang mold postgresql-client
+        run: for c in clang mold psql; do command -v "$c" > /dev/null || { sudo apt-get update && sudo apt-get install -y clang mold postgresql-client; break; }; done
       - name: start schema + seeds load (background)
         # Loads db/database.sql into `sgw`, the template of the per-slot clones,
         # while the steps below compile. The wait step fails the job if it failed.
