@@ -21,5 +21,19 @@ The clocks the SGW client and the server run to: the server tick, the client's i
 | Teleport snap threshold (SGW class) | 2500.0 position units per second | static | `DAT_01e69c90` in `0x00e81970` | n/a | n/a | Test is `distance(newPos, framePos) / dt > 2500`, or reset bit 1. Unit inferred to be UE3 units (25 m/s): integer rotators, UObject filters, 100 UU per metre in the repo. Faster steps snap with no blend. Stock BigWorld has no velocity snap, so this is a CME change; do not revert it to stock. |
 | Velocity smoothing (SGW class) | `v = (v_prev + 2 * v_obs) / 3` | static | `DAT_01816a84`, `DAT_01903cd4` in `0x00e81970` | n/a | n/a | Low-pass on position and angle rates. The angle step folds by `0x4001` (not a modulo), so a yaw jump above about 90 degrees between updates gives a wrong angular velocity. |
 | Same-timestamp position update | discarded whole | static | `0x00e81970`, body inside `if (t - newestFrameTime != 0.0)` | n/a | n/a | Inferred consequence, if the time is per-packet receipt time: two updates for one entity in one bundle keep the stale one, and a tiny non-zero `dt` can inflate speed into a spurious teleport snap. Server advice: coalesce to the latest position per entity per bundle. |
-| World entry, Castle_CellBlock | about 2.4 s | measured | SigNoz, 2026-09-19, 1 colo session | n/a | n/a | `playCharacter` to `onClientReady`. CL-05 measures it per world. |
-| Teleport to AoI refresh | not measured | n/a | n/a | n/a | n/a | CL-11: `gmGotoXYZ` to the first create, from the committed Praxis tap fixture. |
+| World entry (`playCharacter` to `onClientReady`) | p50 4.5 s, p95 24.6 s, all worlds | measured | SigNoz server log, 2026-10-11, 30 days, 251 entries | n/a | n/a | Per world in [World entry](#world-entry). The fastest Castle_CellBlock entry is 2.6 s; the earlier 2.4 s was one colo session on 2026-09-19. |
+| Teleport to AoI refresh | not measured | n/a | n/a | n/a | n/a | The committed Praxis tap (`crates/wireclient/tests/fixtures/praxis_start_tap.json`, captured 2026-10-10) has two `gmGotoXYZ` teleports but no `CREATE_ENTITY` or `onStaticMeshNameUpdate` record, so there is no pair to time. Needs a tap that covers the AoI refresh. |
+| Hold as observed (`onClientReady` to the first introduction) | not measured | n/a | n/a | n/a | n/a | The Praxis tap has no `onClientReady` record. The configured hold is in [aoi.md](aoi.md). |
+| Largest gap between two server-to-client records | 15.7 s | measured | Praxis tap fixture, captured 2026-10-10, 34 gaps over 35 outbound records | n/a | n/a | `onKnownAbilitiesUpdate` to `onSequence`, during the opening cinematic; the next largest is 15.5 s. A gap between tapped records is not silence on the wire: the server's 1 s keepalive (`KEEPALIVE_INTERVAL_MS`) keeps feeding the client's 15 s inactivity timer ([network.md](network.md)). |
+
+## World entry
+
+`Client requests playCharacter` to `SGWPlayer.onClientReady received`, paired per client address, kept when 0 to 120 s apart (251 of 269). SigNoz, 30 days to 2026-10-11.
+
+| World | Entries | p50 s | p95 s | Min s | Max s |
+|---|---|---|---|---|---|
+| Castle_CellBlock | 189 | 4.15 | 18.36 | 2.60 | 42.01 |
+| DebugArea | 21 | 11.37 | 24.95 | 3.63 | 26.44 |
+| SGC_W1 | 20 | 5.18 | 52.25 | 3.27 | 97.45 |
+| Castle | 12 | 5.85 | 9.33 | 3.48 | 12.70 |
+| Ihpet_Crater_Light | 3 | 15.61 | 23.46 | 8.67 | 24.33 |

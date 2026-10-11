@@ -43,4 +43,5 @@ mod organization;
 mod player_index_logoff;
 mod plugin_routing;
 mod routing_logging;
+mod session_end_logoff;
 mod tell;

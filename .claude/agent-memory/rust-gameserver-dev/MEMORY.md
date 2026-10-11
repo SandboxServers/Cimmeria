@@ -77,6 +77,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 ## Lab supervisor
 
 - [client-lua-cegui-global-subscribe](client-lua-cegui-global-subscribe.md) — client Lua `window:subscribeGlobal(ns, ev, 'Fn')`; no unsubscribe, so once per Lua state; args (this, eventWindow, ...).
+- [lab-cli-child-test-daemon-isolation](lab-cli-child-test-daemon-isolation.md) — command tests in a child pwsh reach the real daemon (User-scope token): use -StatusFile + closed-port labd.pid.
 - [lab-native-cegui-input-and-levels](lab-native-cegui-input-and-levels.md) — cursor/drag via native CEGUI injectors; `cegui_fake.rs` test seam; new native-level words need a `from_reported` row.
 - [stacked-pr-ship-title-and-ab-lab-tools.md](stacked-pr-ship-title-and-ab-lab-tools.md) — ship.py mistitles stacked PRs; AB-T5 snapshot builder, lab dummy = AI-skip extension, cooldown clear is type 2.
 - [lab-uat-runner-in-process-tool-calls.md](lab-uat-runner-in-process-tool-calls.md) — call rmcp tools by name in-process via the RequestContext extractor; chat marks before the action; capability table.
@@ -86,6 +87,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [uat-run-dir-sibling-json-trap](uat-run-dir-sibling-json-trap.md) — `RunDir::rows` parses every json beside the row JSON (skip `.snapshot.json`); attest re-grade must re-apply post-grade rules.
 - [lab-mcp-raw-args-and-live-db-crate](lab-mcp-raw-args-and-live-db-crate.md) — rmcp arg-parse errors skip audit (raw Value + delegated schema); first live-DB test in a crate: dev-dep, shim last, test-live-db lists.
 - [lab-calibrate-sweep-test-seams](lab-calibrate-sweep-test-seams.md) — runner fakes are private: write a geometry fake; paused time makes each stand cost 250 ms.
+- [lab-daemon-cwd-is-state-dir](lab-daemon-cwd-is-state-dir.md) — installed daemon cwd = %LOCALAPPDATA%\cimmeria-lab; checkout walk-ups are inert, search env then state dir first.
 - [lab-flow-first-live-run-findings.md](lab-flow-first-live-run-findings.md) — busy client after Create = bridge `dispatch timeout`; only SelfStatusWin is the HUD; outcome reads `ability.*`.
 
 ## Launcher
@@ -151,6 +153,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Testing patterns
 
+- [test-support-dev-dep-means-live-db-listing](test-support-dev-dep-means-live-db-listing.md) — a test-support dev-dep forces a test-live-db listing; log-capture-only crates use a local layer.
 - [testing-patterns-index](testing-patterns-index.md) — sub-index: nextest vs cargo test, revert proofs, live-DB races/ports, chain replay, encrypted test sessions, LogCapture.
 - [tracing-capture-single-dispatcher-trap](tracing-capture-single-dispatcher-trap.md) — scoped tracing capture records nothing under `cargo test` unless a 2nd Dispatch lives; static async locks couple tests.
 - [cap-guard-sized-from-the-constant](cap-guard-sized-from-the-constant.md) — a cap guard sized `CAP + 1` passes when the cap is loosened; use a literal size.
