@@ -72,7 +72,7 @@ One row per bound. The area file holds the grade, the source and the notes.
 | Player AoI radius | 150 m | [aoi.md](aoi.md) |
 | NPC default AoI radius | 100 m | [aoi.md](aoi.md) |
 | AoI leave margin | 25 m | [aoi.md](aoi.md) |
-| Entities the client holds at once | not measured | [aoi.md](aoi.md) |
+| Entities the client holds at once | no fixed limit | [aoi.md](aoi.md) |
 | Creates in one flush the client absorbs | not measured | [aoi.md](aoi.md) |
 | Deferred buffer | 512 messages, then drop with a WARN | [aoi.md](aoi.md) |
 | First-login hold | 16 s | [aoi.md](aoi.md) |
@@ -90,7 +90,9 @@ One row per bound. The area file holds the grade, the source and the notes.
 | Background throttle | below-normal priority, 5 ms sleep per `FEngineLoop::Tick` | [engine.md](engine.md) |
 | Idle display loss | about 10 min, then `D3DERR_NOTAVAILABLE` | [engine.md](engine.md) |
 | Server tick | 10 Hz (100 ms) | [timing.md](timing.md) |
-| Client interpolation and filter | not measured | [timing.md](timing.md) |
+| Server position-update spacing | 100 ms | [timing.md](timing.md) |
+| Client render delay of remote entities (BigWorld filter class) | target 0.1 to 1.0 s, 8-frame ring | [timing.md](timing.md) |
+| Client teleport snap (SGW filter class) | 2500 position units/s | [timing.md](timing.md) |
 | World entry, Castle_CellBlock | about 2.4 s | [timing.md](timing.md) |
 | Teleport to AoI refresh | not measured | [timing.md](timing.md) |
 | Clients per daemon | 5 | [lab.md](lab.md) |
