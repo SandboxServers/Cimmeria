@@ -52,6 +52,15 @@ struct LogTailArgs {
     /// Optional level filter, case-insensitive (e.g. "warn").
     #[serde(default)]
     level: Option<String>,
+    /// Optional exact tracing target (e.g. "aoi.cinematic_hold").
+    #[serde(default)]
+    target: Option<String>,
+    /// Optional case-sensitive substring of the message.
+    #[serde(default)]
+    contains: Option<String>,
+    /// Optional: only entries with `timestamp_ms` strictly greater than this.
+    #[serde(default)]
+    since_ms: Option<u64>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -168,14 +177,28 @@ impl LabTools {
     }
 
     /// Read the most recent buffered server log lines.
-    #[tool(description = "Return the most recent server log lines, optionally filtered by level.")]
+    #[tool(
+        description = "Return the most recent server log lines, optionally filtered by level, target, message text and since_ms; newest_ms is the buffer's newest timestamp."
+    )]
     async fn server_log_tail(
         &self,
         Parameters(args): Parameters<LogTailArgs>,
     ) -> Result<CallToolResult, ErrorData> {
         let limit = args.limit.unwrap_or(logs::DEFAULT_LIMIT);
-        let audit_args = json!({ "limit": limit, "level": args.level });
-        let v = logs::log_tail(&self.state, limit, args.level.as_deref());
+        let audit_args = json!({
+            "limit": limit,
+            "level": args.level,
+            "target": args.target,
+            "contains": args.contains,
+            "since_ms": args.since_ms,
+        });
+        let filter = logs::LogFilter {
+            level: args.level,
+            target: args.target,
+            contains: args.contains,
+            since_ms: args.since_ms,
+        };
+        let v = logs::log_tail(&self.state, &filter, limit);
         audit::emit("server_log_tail", &audit_args, OUTCOME_OK);
         ok(v)
     }
