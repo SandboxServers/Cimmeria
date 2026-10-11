@@ -54,6 +54,10 @@ cimmeria-services = { path = "../services", features = ["chaos-testing"] }
 # same insert-and-clean-up-by-exact-sentinel convention as
 # `crates/services/src/test_support.rs`'s live-DB guards.
 sqlx = { workspace = true }
+# The per-slot database URL (`database_url()`) and the live-DB skip gate
+# (`require_db_or_skip!`) every live-DB module under `tests/it` reads through,
+# so each test talks to its own nextest slot's database clone.
+cimmeria-test-support = { workspace = true }
 # Pins the sparbot's duel indices and texts against the server's own
 # constants (`tests/it/sparbot_duel.rs`).
 cimmeria-wire = { workspace = true }

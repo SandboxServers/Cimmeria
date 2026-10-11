@@ -12,9 +12,7 @@
 //! (see `docs/architecture/wireclient.md`), so it never replaces the
 //! CI-run guards in `cimmeria-base-methods`' `mail::tests`. Run locally:
 //! ```text
-//! bash tools/build-lane/reload-db.sh        # prints DATABASE_URL
-//! DATABASE_URL=... bash tools/build-lane/lane.sh \
-//!   cargo test -p cimmeria-wireclient --test it two_client_mail_cod -- --test-threads=1
+//! pwsh tools/build-lane/live-db-test.ps1 --wireclient two_client_mail_cod
 //! ```
 
 use std::time::Duration;
@@ -22,8 +20,8 @@ use std::time::Duration;
 use sqlx::PgPool;
 
 use crate::support::{
-    self, credentials_for, insert_castle_character, insert_sentinel_account, live_db_pool_or_skip,
-    start_server, wait_for, CASTLE_BASE_POS,
+    self, credentials_for, insert_castle_character, insert_sentinel_account, start_server,
+    wait_for, CASTLE_BASE_POS,
 };
 
 use cimmeria_wireclient::bundle::S2CMessage;
@@ -149,12 +147,9 @@ fn headers(a: &[u8]) -> (Vec<(i32, i32, i32)>, u32) {
 /// A sends B a COD item; B pays and takes it; A takes the payment.
 #[tokio::test]
 async fn cod_item_round_trip_between_two_clients() {
-    let pool = match live_db_pool_or_skip().await {
-        Some(p) => p,
-        None => return,
-    };
+    let pool = cimmeria_test_support::require_db_or_skip!();
     cleanup(&pool).await;
-    let server = start_server(&std::env::var("DATABASE_URL").unwrap()).await;
+    let server = start_server(&crate::support::db_url()).await;
 
     insert_sentinel_account(&pool, ACCOUNT_A, "ssm3_mail_a").await;
     insert_sentinel_account(&pool, ACCOUNT_B, "ssm3_mail_b").await;

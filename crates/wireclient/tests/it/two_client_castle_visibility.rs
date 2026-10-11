@@ -20,15 +20,11 @@
 //! the colo actually experiences, which this file's loopback run cannot
 //! exercise.
 //!
-//! Shared setup/driver helpers live in `tests/it/support/mod.rs` (see
-//! that file's doc comment for why it isn't a macro-based
-//! `require_db_or_skip!`).
+//! Shared setup/driver helpers live in `tests/it/support/mod.rs`.
 //!
-//! Run locally (the trailing `::` keeps the chaos module out):
+//! Run locally (the chaos module is a separate filter):
 //! ```text
-//! /c/Users/Steve/AppData/Local/Temp/cimmeria-castle/reload-db.sh
-//! DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/<db> \
-//!   cargo test -p cimmeria-wireclient --test it two_client_castle_visibility:: -- --test-threads=1
+//! pwsh tools/build-lane/live-db-test.ps1 --wireclient two_client_castle_visibility
 //! ```
 //! Not currently wired into `.github/workflows/test.yml`'s `ci-live-db`
 //! job (which today runs `-p cimmeria-services --lib` only) -- see
@@ -46,7 +42,7 @@ use std::time::Duration;
 
 use crate::support::{
     self, assert_never, credentials_for, insert_castle_character, insert_sentinel_account,
-    live_db_pool_or_skip, start_server, wait_for, CASTLE_BASE_POS, CLASS_SGWPLAYER,
+    start_server, wait_for, CASTLE_BASE_POS, CLASS_SGWPLAYER,
 };
 
 use cimmeria_wireclient::session::GameSession;
@@ -86,11 +82,8 @@ async fn two_clients_in_castle_see_each_other_both_arrival_orders() {
         )
         .with_test_writer()
         .try_init();
-    let pool = match live_db_pool_or_skip().await {
-        Some(p) => p,
-        None => return,
-    };
-    let server = start_server(&std::env::var("DATABASE_URL").unwrap()).await;
+    let pool = cimmeria_test_support::require_db_or_skip!();
+    let server = start_server(&support::db_url()).await;
 
     // Sentinel non-GM account + two sentinel characters per order, so the
     // two orders don't reuse an entity id that the first order's
@@ -228,11 +221,8 @@ async fn two_clients_in_castle_see_each_other_both_arrival_orders() {
 /// assertions above pass trivially.
 #[tokio::test]
 async fn characters_over_aoi_radius_apart_are_not_introduced() {
-    let pool = match live_db_pool_or_skip().await {
-        Some(p) => p,
-        None => return,
-    };
-    let server = start_server(&std::env::var("DATABASE_URL").unwrap()).await;
+    let pool = cimmeria_test_support::require_db_or_skip!();
+    let server = start_server(&support::db_url()).await;
 
     const ANCHOR_ACCOUNT: i32 = 900_211;
     const NEAR_ACCOUNT: i32 = 900_212;

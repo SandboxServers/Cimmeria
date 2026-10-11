@@ -10,18 +10,15 @@
 //! - The `live_db` tests start a full `Orchestrator` against the seeded
 //!   database and run every check, including the Mercury handshake. Like
 //!   the other live-DB modules here they skip without `DATABASE_URL` and
-//!   are not run in CI (the live-DB job runs `--lib` only):
-//!
-//! ```text
-//! DATABASE_URL=... cargo test -p cimmeria-wireclient --test it login_probe -- --test-threads=1
-//! ```
+//!   are not run in CI (the live-DB job runs `--lib` only). Run them with
+//!   `pwsh tools/build-lane/live-db-test.ps1 --wireclient login_probe`.
 
 use std::net::SocketAddr;
 
 use cimmeria_services::auth::ShardInfo;
 use cimmeria_wireclient::login_probe::{self, ProbeConfig, ProbeFailure};
 
-use crate::support::{live_db_pool_or_skip, start_auth, start_server, SHARD};
+use crate::support::{self, start_auth, start_server, SHARD};
 
 /// Seeded account the container smoke logs in as
 /// (`db/sgw/Accounts/Seed/account.sql`; password "test").
@@ -101,13 +98,9 @@ async fn seeded_account_id(pool: &sqlx::PgPool) -> u32 {
 
 #[tokio::test]
 async fn login_probe_live_db_passes_every_check_against_a_full_server() {
-    let pool = match live_db_pool_or_skip().await {
-        Some(p) => p,
-        None => return,
-    };
+    let pool = cimmeria_test_support::require_db_or_skip!();
     let account_id = seeded_account_id(&pool).await;
-    let url = std::env::var("DATABASE_URL").expect("checked by live_db_pool_or_skip");
-    let server = start_server(&url).await;
+    let server = start_server(&support::db_url()).await;
     let base_port = server.base_port;
     let expected_base: SocketAddr = format!("127.0.0.1:{base_port}").parse().unwrap();
 
@@ -128,13 +121,9 @@ async fn login_probe_live_db_passes_every_check_against_a_full_server() {
 
 #[tokio::test]
 async fn login_probe_live_db_rejects_a_wrong_advertised_base_endpoint() {
-    let pool = match live_db_pool_or_skip().await {
-        Some(p) => p,
-        None => return,
-    };
+    let pool = cimmeria_test_support::require_db_or_skip!();
     let account_id = seeded_account_id(&pool).await;
-    let url = std::env::var("DATABASE_URL").expect("checked by live_db_pool_or_skip");
-    let server = start_server(&url).await;
+    let server = start_server(&support::db_url()).await;
     let base_port = server.base_port;
     let advertised: SocketAddr = format!("127.0.0.1:{base_port}").parse().unwrap();
     // What a container smoke expects when the image's BASE_EXTERNAL or

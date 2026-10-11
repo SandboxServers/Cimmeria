@@ -14,8 +14,8 @@
 //!   challenge afterwards.
 //!
 //! Run the live-DB ones with
-//! `cargo test -p cimmeria-wireclient --test it sparbot_duel -- --test-threads=1`
-//! (add `--ignored` for the long one) and `DATABASE_URL` set.
+//! `pwsh tools/build-lane/live-db-test.ps1 --wireclient sparbot_duel`
+//! (add `--ignored` for the long one).
 
 use std::time::Duration;
 
@@ -26,8 +26,8 @@ use cimmeria_wireclient::sparbot::{
 };
 
 use crate::support::{
-    self, credentials_for, insert_castle_character, insert_sentinel_account, live_db_pool_or_skip,
-    start_server, CASTLE_BASE_POS,
+    self, credentials_for, insert_castle_character, insert_sentinel_account, start_server,
+    CASTLE_BASE_POS,
 };
 
 use cimmeria_wire::cell::client_methods::duel::{
@@ -201,11 +201,8 @@ fn assert_accepted(report: &SparbotReport, challenger_lines: &[String]) {
 #[tokio::test]
 async fn sparbot_accepts_a_duel_challenge() {
     init_logs();
-    let pool = match live_db_pool_or_skip().await {
-        Some(p) => p,
-        None => return,
-    };
-    let server = start_server(&std::env::var("DATABASE_URL").unwrap()).await;
+    let pool = cimmeria_test_support::require_db_or_skip!();
+    let server = start_server(&support::db_url()).await;
     cleanup(&pool).await;
     seed(&pool).await;
 
@@ -260,11 +257,8 @@ const PAST_THE_REAP: Duration = Duration::from_secs(70);
 #[ignore = "runs for over a minute; run with --ignored to re-prove the keep-alive"]
 async fn sparbot_session_outlives_the_inactivity_reap() {
     init_logs();
-    let pool = match live_db_pool_or_skip().await {
-        Some(p) => p,
-        None => return,
-    };
-    let server = start_server(&std::env::var("DATABASE_URL").unwrap()).await;
+    let pool = cimmeria_test_support::require_db_or_skip!();
+    let server = start_server(&support::db_url()).await;
     cleanup(&pool).await;
     seed(&pool).await;
 
