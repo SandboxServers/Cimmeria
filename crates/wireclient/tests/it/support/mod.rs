@@ -11,6 +11,10 @@
 //! skips when `DATABASE_URL` is unset and fails when it is set but
 //! unreachable, and `db_url()` gives the slot's database URL.
 
+mod templates;
+
+pub use templates::{item_granted_by_dialog, template_query};
+
 use std::net::TcpListener as StdTcpListener;
 use std::sync::{Arc, Once};
 use std::time::Duration;
