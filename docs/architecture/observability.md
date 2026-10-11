@@ -238,6 +238,8 @@ per-session is a record attribute instead:
 
 Every lifted key is absent when the event lacks it, and every name is absent when it doesn't resolve (Rule 6), never `0` or `""`. `tracing` caps an event at 32 fields, so a row is replayed in one of two shapes, chosen by its DLL target: a status target carries `level_name`, `dll_version`, `fingerprint_usable` and the rollup pair, every other target the ID and name pairs. Both carry the identity, the address pair and `fields`. The DLL's own `account_id` and `player_id` claims are not lifted: identity is the token's. The upload routes are public, so naming entity IDs is held at arm's length from the game: the cell is asked on a small channel of its own (never the gameplay channel), read only when no gameplay message waits, with at most one request in flight and none for rows the session budget refuses; a busy link replays the chunk unnamed.
 
+The server resolves its own `session_kind` for every game session, from the account rather than any client claim (owner decision D-TG13): `account.test_account` is read at the Phase 1 credential check, carried on the login ticket, and stored at Phase 3 as `ConnectedClientState.session_kind` (`lab` for a flagged account, `player` otherwise; TG-NET-16). TG-NET-17 stamps it as `cimmeria.session_kind` on server session rows, so one filter spans client, launcher and server rows.
+
 `client_target` values added 2026-09-29, all under `client.native`:
 `client.lua.debug_log` (the UI's `Debug:log` / `warn` / `error` lines and the
 Black Market overlay's `[Cimmeria BM]` lines), `client.sequence.dropped` (a
@@ -459,7 +461,7 @@ space ids to world names by hand):
 | `npc_ai_idle_unticked` (up/down gauge) | `world` (~24) | NA02: Idle NPCs the AI tick skips, driven by deltas each AI tick |
 | `npc_ai_transitions_total` | `world` (~24), `from` (12), `to` (12), `reason` (23) | One per actual AI-state change, beside the `npc_ai.transition` row. Only a few dozen `from`/`to`/`reason` triples occur in practice |
 | `npc_ai_aggro_total` | `world` (~24), `cause` (3) | One per entry into Fighting, beside the `npc_ai.aggro` row |
-| `movement_validation_warns_total` / `..._recoveries_total` / `..._corrections_suppressed_total` | `reason` | Unchanged for recoveries and suppressions. `movement_validation_warns_total{reason="speed_bunched"}` (TG-MOV-03) counts a speed-layer packet that shares its clock instant with the previous one (`dt_secs <= 1e-4`); those no longer count as `reason="speed"` WARNs |
+| `movement_validation_warns_total` / `..._recoveries_total` / `..._corrections_suppressed_total` | `reason` | Unchanged for recoveries and suppressions. `movement_validation_warns_total{reason="speed_bunched"}` (TG-MOV-03) counts a speed-layer packet that shares its clock instant with the previous one (`dt_secs <= 1e-4`); those no longer count as `reason="speed"` WARNs. `movement_validation_warns_total{reason="navmesh_gm_bypass"}` counts every GM off-mesh packet; its `movement.navmesh_gm_bypass` row is INFO and throttled per GM (TG-MOV-10) |
 
 Never entity ids, positions or mesh hashes as labels — those are
 per-entity and per-build correlators and belong on the log event.
@@ -500,10 +502,10 @@ trace index. Estimated volume with five active players: ~75 inbound
 packets/s give ~1.4 `DECRYPT_OK` and ~1.4 `UDP_IN` samples/s. The AoI
 relay (~10 Hz per witness–entity pair, ~1,200/s at 3 players watching 40
 NPCs) sends ~12 samples/s to `cimmeria-server`, as it has since NA00.
-The remaining per-packet TRACE rows are **not** sampled: ACK queueing,
-`EntityMove` and
+The remaining per-packet TRACE rows are **not** sampled: ACK queueing and
 `AVATAR_UPDATE_EXPLICIT -> CellService` (one per player movement
-packet). They are a few fields each and arrive at about the rate of
+packet). The cell's per-packet `EntityMove` row was dropped (TG-MOV-11);
+the sampled `movement.player` row covers the position stream. They are a few fields each and arrive at about the rate of
 datagrams — roughly one `cimmeria-trace` row per datagram. If that proves
 too much, move them behind `cimmeria_wire::firehose` the same way.
 

@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "check": "tsc --noEmit",
-    "test": "esbuild src/game-update-view.test.ts src/game-telemetry-view.test.ts src/updater-view.test.ts src/migration-view.test.ts src/adoption-view.test.ts src/launch-view.test.ts src/workflows.test.ts src/install-workflow.test.ts src/install-view.test.ts src/view.test.ts src/patch-notes.test.ts src/server-list-view.test.ts src/client-patches-view.test.ts src/log-upload-view.test.ts src/client-maintenance-view.test.ts src/client-changes-view.test.ts src/contract.test.ts src/panel-context.test.ts --bundle --platform=node --format=esm --packages=external --outdir=.test-build --out-extension:.js=.mjs && node --test .test-build/*.test.mjs",
+    "test": "esbuild src/game-update-view.test.ts src/game-telemetry-view.test.ts src/updater-view.test.ts src/migration-view.test.ts src/adoption-view.test.ts src/launch-view.test.ts src/workflows.test.ts src/install-workflow.test.ts src/install-view.test.ts src/view.test.ts src/patch-notes.test.ts src/server-list-view.test.ts src/client-patches-view.test.ts src/log-upload-view.test.ts src/client-maintenance-view.test.ts src/client-changes-view.test.ts src/physx-view.test.ts src/contract.test.ts src/panel-context.test.ts --bundle --platform=node --format=esm --packages=external --outdir=.test-build --out-extension:.js=.mjs && node --test .test-build/*.test.mjs",
     "uat": "esbuild src/workflows.ts src/view.ts --bundle --platform=node --format=esm --packages=external --outdir=.test-build --out-extension:.js=.mjs && node uat.mjs",
     "build": "tsc --noEmit && node build.mjs",
     "uat:install": "esbuild src/install-view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/install-view.mjs && node install-uat.mjs",
@@ -20,7 +20,8 @@
     "uat:client-patches": "esbuild src/client-patches-view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/client-patches-view.mjs && node client-patches-uat.mjs",
     "uat:log-upload": "esbuild src/log-upload-view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/log-upload-view.mjs && node log-upload-uat.mjs",
     "uat:client-maintenance": "esbuild src/client-maintenance-view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/client-maintenance-view.mjs && node client-maintenance-uat.mjs",
-    "uat:client-changes": "esbuild src/client-changes-view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/client-changes-view.mjs && node client-changes-uat.mjs"
+    "uat:client-changes": "esbuild src/client-changes-view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/client-changes-view.mjs && node client-changes-uat.mjs",
+    "uat:physx": "esbuild src/physx-view.ts --bundle --platform=node --format=esm --packages=external --outfile=.test-build/physx-view.mjs && node physx-uat.mjs"
   },
   "dependencies": {
     "effect": "4.0.0"
