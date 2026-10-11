@@ -33,12 +33,13 @@ The game container reaches the collector as `otel-collector:4317` on the externa
 | `30000/tcp` | Minigame SmartFoxServer. Capped at 256 connections, 8 per source address, 30 s to log in, 4 KiB frames, 30 min idle ([limits](../gameplay/minigame-system.md#connection-limits)) | Players | all interfaces |
 | `8443/tcp` | Admin REST API. **No authentication** (#439) | Operators only | `ADMIN_PUBLISH`, default `127.0.0.1` |
 | `8444/tcp` | Live Research Lab endpoint (overlay) | The owner's dev box over the VPN | `CIMMERIA_WG_IP` only |
-| `8080/tcp` | SigNoz UI and query API | Operators | `SIGNOZ_UI_BIND`, default `127.0.0.1` |
+| `8082/tcp` | SigNoz UI and query API (container port 8080) | Operators | `SIGNOZ_UI_BIND`, default `127.0.0.1` |
+| `8080/tcp`, `2022/tcp` | **Not Cimmeria:** the Wisp game-panel daemon and its SFTP, which share the colo host. Never publish a Cimmeria or SigNoz port on them | The wisp.gg panel | `/var/lib/wisp/docker-compose.yml`, run by `wisp.service` |
 | `4317/tcp`, `4318/tcp` | OTLP gRPC / HTTP into the collector. **No authentication** | Exporters outside Docker on the private network (a native server, workstation Claude Code telemetry) | `OTLP_BIND`, default `127.0.0.1` |
 
 Forward only `8081/tcp`, `32832/udp` and `30000/tcp` from the internet. Docker-published ports bypass the host's `INPUT` firewall chain, so the network edge (the router or the provider's firewall) is what keeps the rest private. Ports `13001` and `50000/udp` appear in the image's `EXPOSE` list, but nothing binds them; don't publish or forward them.
 
-**How player telemetry reaches SigNoz.** An opted-in launcher anywhere on the internet asks `:8081/api/auth/dev-session` for an HMAC-signed token, then uploads to `:8081/api/telemetry/*`. The game server checks the token and replays the rows into the collector over `signoz-net`, where they land as `service.name = cimmeria-client`. Nothing a player runs talks to SigNoz's own ports, so neither `8080` nor `4317`/`4318` needs to be reachable from the internet.
+**How player telemetry reaches SigNoz.** An opted-in launcher anywhere on the internet asks `:8081/api/auth/dev-session` for an HMAC-signed token, then uploads to `:8081/api/telemetry/*`. The game server checks the token and replays the rows into the collector over `signoz-net`, where they land as `service.name = cimmeria-client`. Nothing a player runs talks to SigNoz's own ports, so neither `8082` nor `4317`/`4318` needs to be reachable from the internet.
 
 ### Files on the host
 
@@ -96,7 +97,7 @@ Server logs go to `CIMMERIA_LOG_DIR` (the colo uses a directory on its data disk
    docker compose up -d
    ```
 
-   Allow about two minutes for the first boot (schema migrations). Then open `http://<SIGNOZ_UI_BIND>:8080` (or tunnel to it: `ssh -L 8080:127.0.0.1:8080 <host>`) and create the admin account. The first visitor creates it, so do this straight away.
+   Allow about two minutes for the first boot (schema migrations). Then open `http://<SIGNOZ_UI_BIND>:8082` (or tunnel to it: `ssh -L 8082:127.0.0.1:8082 <host>`) and create the admin account. The first visitor creates it, so do this straight away.
 
 4. **Start the game server:**
 

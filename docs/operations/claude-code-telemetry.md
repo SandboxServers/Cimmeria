@@ -12,12 +12,12 @@ Decision D-TP2 sets the rules: the sink is the colo SigNoz behind Cloudflare Acc
 | Question | Answer |
 |---|---|
 | Is a Cloudflare Tunnel running on the colo? | **No.** There is no `cloudflared` container, service or config on the colo. [signoz-remote-access.md](signoz-remote-access.md) describes a setup that was never deployed there. |
-| How does the colo run SigNoz? | As its own compose project (`signoz`), now vendored in the repo at [`docker/signoz/`](../../docker/signoz/) (2026-10-04). On the colo the collector publishes OTLP gRPC `4317` and OTLP HTTP `4318`, and the UI publishes `8080`, on every host interface. The repo compose binds them to `OTLP_BIND` / `SIGNOZ_UI_BIND` (default `127.0.0.1`), so a colo moved onto the repo files sets both to its private address in `signoz/.env`. |
+| How does the colo run SigNoz? | As its own compose project (`signoz`), now vendored in the repo at [`docker/signoz/`](../../docker/signoz/) (2026-10-04). On the colo the collector publishes OTLP gRPC `4317` and OTLP HTTP `4318`, and the UI publishes host port `8082` (container `8080`; moved 2026-10-10 because host `8080` belongs to the Wisp game-panel daemon), on every host interface. The repo compose binds them to `OTLP_BIND` / `SIGNOZ_UI_BIND` (default `127.0.0.1`), so a colo moved onto the repo files sets both to its private address in `signoz/.env`. |
 | How do workstations reach it today? | Over the private network. The SigNoz MCP container on the main workstation already uses that route to the UI port, and the OTLP ports answer on it too (an OTLP/HTTP `GET /v1/logs` returns 405, gRPC `4317` accepts connections). |
 | Is OTLP ingest exposed through Cloudflare Access? | **No.** Nothing is. |
 | Does any Claude Code data arrive yet? | No. SigNoz has no `claude_code.*` metric. |
 
-Checked 2026-10-04 from an outside address: the colo's network edge **forwards `8080`** (the SigNoz UI and query API answer from the internet), and `4317` and `4318` do not answer. Docker-published ports bypass the host's `INPUT` chain, so the edge is the only gate. Nothing a player runs needs `8080`: player telemetry enters through the game server's login port (`8081`). Step 0 below is therefore still open for `8080`.
+Checked 2026-10-04 from an outside address: the colo's network edge **forwards `8080`** (the SigNoz UI and query API answer from the internet), and `4317` and `4318` do not answer. Docker-published ports bypass the host's `INPUT` chain, so the edge is the only gate. Nothing a player runs needs the UI port: player telemetry enters through the game server's login port (`8081`). On 2026-10-10 the UI moved to host port `8082` and host `8080` became the Wisp game-panel daemon's, so step 0 is now open for `8082` (not yet checked from outside).
 
 So D-TP2 needs a colo change before it can be met as written. Two ways to proceed:
 
@@ -74,7 +74,7 @@ The data lives only in the colo ClickHouse, under SigNoz's log and metric retent
 
 These are changes to the colo and to Cloudflare. TP-04 did not make any of them.
 
-0. **Confirm the edge does not forward the SigNoz ports.** From outside the private network, `4317`, `4318` and `8080` on the colo's public address must not answer. If they do, remove the forwards before anything else. As of 2026-10-04, `4317` and `4318` pass and `8080` does not: the edge forwards it.
+0. **Confirm the edge does not forward the SigNoz ports.** From outside the private network, `4317`, `4318` and `8082` on the colo's public address must not answer. If they do, remove the forwards before anything else. As of 2026-10-04, `4317` and `4318` passed and the UI port (then `8080`) did not: the edge forwarded it. The UI has been on `8082` since 2026-10-10; check it again.
 1. **Run `cloudflared` on the colo.** Either finish [signoz-remote-access.md](signoz-remote-access.md) (UI ingress `http://signoz:8080`), or create a separate tunnel. The container has to reach the collector: run it on the `signoz-net` network and use the collector's container name, `signoz-otel-collector`.
 2. **Add an OTLP ingress rule** above the catch-all in the tunnel config:
 
