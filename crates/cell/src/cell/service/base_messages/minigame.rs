@@ -34,10 +34,21 @@ pub(super) async fn handle_minigame_result(
     );
     if result_code == 1 {
         // Victory — fire on_victory_chains through the content engine
-        let player_id = space_mgr
-            .get_entity(entity_id)
-            .and_then(|e| e.player_id)
-            .unwrap_or(0);
+        let entity = space_mgr.get_entity(entity_id);
+        if entity.is_none() {
+            // The chains still fire below with player 0 (behaviour unchanged);
+            // this row says that the player they name is not really there.
+            tracing::warn!(
+                entity_id, // nt:id-only the cell holds no entity under this id, so there is no name to give
+                chain_count = on_victory_chains.len(),
+                result = cimmeria_wire::cell::client_methods::minigame::minigame_result_name(
+                    result_code
+                ),
+                reason = "entity_missing",
+                "Minigame victory for an entity the cell does not hold; chains fire with player 0"
+            );
+        }
+        let player_id = entity.and_then(|e| e.player_id).unwrap_or(0);
         for chain_id in &on_victory_chains {
             content::fire_chain_by_id(*chain_id, entity_id, player_id, engine, tx, space_mgr).await;
         }
