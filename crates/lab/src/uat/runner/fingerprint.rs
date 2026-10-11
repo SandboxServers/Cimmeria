@@ -22,7 +22,9 @@
 
 use serde_json::{json, Map, Value};
 
-use super::packet::{as_entity, find_session, replaced_existing, timed_call, RowTap, ENTITY_VAR};
+use super::packet::{
+    as_entity, find_session, replaced_existing, timed_call, RowTap, ENTITY_VAR, NOT_CONFIGURED,
+};
 use super::{now_ms, RowCtx, Runner};
 use crate::uat::evidence::{ActionRecord, Attachment};
 use crate::uat::invoke::{ServerInvoker, ToolInvoker, ToolOutcome};
@@ -33,8 +35,6 @@ use crate::uat::tier::Role;
 const WINDOW_TOOL: &str = "client_ui_state";
 /// The entity fields a snapshot keeps (contract: entities.json).
 const ENTITY_KEEP: [&str; 5] = ["entity_id", "is_player", "tag", "spawn_id", "template_id"];
-const NOT_CONFIGURED: &str =
-    "server lab MCP not configured (CIMMERIA_LAB_MCP_URL/_TOKEN): no packet tap";
 
 /// One row's fingerprint-mode capture.
 #[derive(Debug, Default)]
@@ -219,8 +219,20 @@ impl<I: ToolInvoker> Runner<'_, I> {
     async fn fp_sample_windows(&self, after: String, ctx: &mut RowCtx) {
         let sample = if self.inv.has_tool(WINDOW_TOOL) {
             let out = self.inv.call(WINDOW_TOOL, json!({})).await;
-            match out.json.get("windows").filter(|w| w.is_array()) {
-                Some(w) if out.ok => json!({ "after": after, "windows": w }),
+            // A failed Lua windows section still answers `windows: []`, with
+            // the cause in `errors`: that is an unknown, not "none open".
+            let failed = out
+                .json
+                .get("errors")
+                .and_then(Value::as_array)
+                .and_then(|es| {
+                    es.iter()
+                        .filter_map(Value::as_str)
+                        .find(|e| e.starts_with("windows:"))
+                });
+            match (failed, out.json.get("windows").filter(|w| w.is_array())) {
+                (Some(e), _) if out.ok => json!({ "after": after, "error": e }),
+                (None, Some(w)) if out.ok => json!({ "after": after, "windows": w }),
                 _ if out.ok => {
                     json!({ "after": after, "error": format!("{WINDOW_TOOL} returned no windows list") })
                 }

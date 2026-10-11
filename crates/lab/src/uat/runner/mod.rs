@@ -377,6 +377,8 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             };
             if let Some(r) = lost {
                 ctx.blocked.push(format!("{}: {r}", revocation::REVOKED));
+                // The cut-off row's tap and capture are still in `ctx`.
+                self.tap_abandon(&mut ctx).await;
             }
         }
 

@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 use super::test_server::FakeServer;
 use super::tests::{request, Fake};
 use super::Runner;
-use crate::uat::evidence::{RowEvidence, RowResult, RunDir};
+use crate::uat::evidence::{RowEvidence, RowResult, RunDir, Verdict};
 use crate::uat::invoke::{ServerInvoker, ToolInvoker, ToolOutcome};
 use crate::uat::tier::Role;
 
@@ -127,6 +127,45 @@ fn recorded(row: &RowEvidence, tool: &str) -> usize {
     row.actions.iter().filter(|a| a.requested == tool).count()
 }
 
+fn server_calls(server: &FakeServer, tool: &str) -> usize {
+    server.names().iter().filter(|n| *n == tool).count()
+}
+
+/// `TOOL_ROW` plus a packet clause the canned tap read satisfies.
+fn packet_row() -> String {
+    format!(
+        "{TOOL_ROW}[[row.expect]]\nid = \"timer\"\ntext = \"a timer\"\nsource = \"packet\"\n\
+         message = \"onTimerUpdate\"\ndirection = \"to_client\"\nmin_rows = 1\n"
+    )
+}
+
+/// One `onTimerUpdate` to the player, entity 7.
+fn timer_tap() -> Value {
+    json!({ "count": 1, "dropped": 0, "messages": [
+        { "ts_ms": 1, "dir": "out", "msg_id": null, "method_index": 40,
+          "msg_name": "onTimerUpdate", "target_entity_id": 7, "args_len": 0,
+          "args_hex": "", "decoded": {} },
+    ]})
+}
+
+/// Run `rows` with the character entering the world at `lab_play_character`
+/// (or in the world from the start when the row never plays).
+async fn run_entering(
+    rows: &str,
+    server: impl FnOnce(Arc<AtomicBool>) -> FakeServer,
+    fingerprint: bool,
+) -> (RowEvidence, RunDir, FakeServer) {
+    let fake = client();
+    let flag = Arc::new(AtomicBool::new(!rows.contains("lab_play_character")));
+    let inv = Entering {
+        fake: &fake,
+        flag: flag.clone(),
+    };
+    let server = server(flag);
+    let (row, run) = run_fp(&inv, Some(&server), rows, fingerprint).await;
+    (row, run, server)
+}
+
 #[tokio::test]
 async fn fingerprint_mode_taps_a_row_without_packet_clauses() {
     let fake = client();
@@ -144,6 +183,8 @@ async fn fingerprint_mode_taps_a_row_without_packet_clauses() {
     ] {
         assert!(server.names().contains(&tool.to_string()), "{tool}");
     }
+    assert_eq!(server_calls(&server, "server_packet_tap_start"), 1);
+    assert_eq!(recorded(&row, "server_packet_tap_start"), 1);
 
     let server = FakeServer::new(json!({}));
     let (row, run) = run_fp(&fake, Some(&server), TOOL_ROW, false).await;
@@ -282,15 +323,27 @@ async fn a_skipped_row_is_not_captured() {
     assert!(server.names().is_empty());
 }
 
-/// What the grade is made of, per row: result, reasons and step actions.
-fn graded(row: &RowEvidence) -> (RowResult, Vec<String>, Vec<Value>) {
+/// What the grade is made of, per row: result, reasons, step actions,
+/// clauses (timestamps stripped), blocks and flags.
+fn graded(row: &RowEvidence) -> (RowResult, Vec<String>, Vec<Value>, Vec<Value>, Vec<String>) {
     let steps = row
         .actions
         .iter()
         .filter(|a| a.role == Role::Step)
         .map(|a| json!([a.index, a.requested, a.ok, a.error, a.label]))
         .collect();
-    (row.result, row.reasons.clone(), steps)
+    let clauses = row
+        .clauses
+        .iter()
+        .map(|c| {
+            let mut v = serde_json::to_value(c).unwrap();
+            v.as_object_mut().unwrap().remove("evaluated_ms");
+            v
+        })
+        .collect();
+    let mut marks = row.blocked.clone();
+    marks.extend(row.flags.iter().map(|f| format!("flag:{f}")));
+    (row.result, row.reasons.clone(), steps, clauses, marks)
 }
 
 /// Regression guard: fingerprint mode never changes a grade. The failing
@@ -305,34 +358,153 @@ async fn fingerprint_mode_does_not_change_the_grade() {
         )
         .replace("value = 40", "value = 10");
     assert!(failing.contains("lab_fail"), "the failing row was built");
-    let packet_row = format!(
-        "{TOOL_ROW}[[row.expect]]\nid = \"timer\"\ntext = \"a timer\"\nsource = \"packet\"\n\
-         message = \"onTimerUpdate\"\ndirection = \"to_client\"\nmin_rows = 1\n"
-    );
-    let tap = json!({ "count": 1, "dropped": 0, "messages": [
-        { "ts_ms": 1, "dir": "out", "msg_id": null, "method_index": 40,
-          "msg_name": "onTimerUpdate", "target_entity_id": 7, "args_len": 0,
-          "args_hex": "", "decoded": {} },
-    ]});
+    let packet_row = packet_row();
     let mut seen = Vec::new();
     for rows in [TOOL_ROW, LATE_ROW, failing.as_str(), packet_row.as_str()] {
         let mut grades = Vec::new();
         for fingerprint in [false, true] {
-            let fake = client();
-            // In the world from the start unless the row plays its way in.
-            let flag = Arc::new(AtomicBool::new(!rows.contains("lab_play_character")));
-            let inv = Entering {
-                fake: &fake,
-                flag: flag.clone(),
-            };
-            let server = FakeServer::new(tap.clone()).in_world_when(flag);
-            let (row, _) = run_fp(&inv, Some(&server), rows, fingerprint).await;
+            let server = |flag| FakeServer::new(timer_tap()).in_world_when(flag);
+            let (row, _, _) = run_entering(rows, server, fingerprint).await;
             grades.push(graded(&row));
         }
         assert_eq!(grades[0], grades[1], "{rows}");
         seen.push(grades[0].0);
     }
-    // The cases cover a pass and a fail, so the guard is not vacuous.
-    assert!(seen.contains(&RowResult::Pass), "{seen:?}");
+    // The cases cover a pass and a fail, so the guard is not vacuous, and
+    // the packet row's clause really graded the tap.
+    assert_eq!(seen[3], RowResult::Pass, "packet row: {seen:?}");
     assert!(seen.contains(&RowResult::Fail), "{seen:?}");
+}
+
+/// A row with a packet clause keeps the tap `tap_start` gives it: when its
+/// character is not in the world at the row's start, fingerprint mode
+/// does not start one later, so its clause grades the same on or off.
+#[tokio::test]
+async fn a_packet_row_is_never_late_bound() {
+    let rows = format!(
+        "{LATE_ROW}[[row.expect]]\nid = \"timer\"\ntext = \"a timer\"\nsource = \"packet\"\n\
+         message = \"onTimerUpdate\"\ndirection = \"to_client\"\nmin_rows = 1\n"
+    );
+    let mut runs = Vec::new();
+    for fingerprint in [false, true] {
+        let server = |flag| FakeServer::new(timer_tap()).in_world_when(flag);
+        let (row, _, server) = run_entering(&rows, server, fingerprint).await;
+        let timer = row.clauses.iter().find(|c| c.id == "timer").unwrap();
+        assert_ne!(timer.verdict, Verdict::Pass, "fingerprint={fingerprint}");
+        runs.push((
+            graded(&row),
+            server_calls(&server, "server_packet_tap_start"),
+        ));
+    }
+    assert_eq!(runs[0], runs[1]);
+}
+
+/// Fingerprint mode's late bind finds the session itself and never sets
+/// `${player_entity_id}`, which a clause could read.
+#[tokio::test]
+async fn fingerprint_mode_leaves_player_entity_id_unset() {
+    let rows = format!(
+        "{LATE_ROW}[[row.expect]]\nid = \"entity\"\ntext = \"reads the entity var\"\n\
+         source = \"lua\"\nchunk = \"return '${{player_entity_id}}'\"\nop = \"eq\"\n\
+         value = \"${{player_entity_id}}\"\n"
+    );
+    let mut runs = Vec::new();
+    for fingerprint in [false, true] {
+        let server = |flag| FakeServer::new(json!({ "messages": [] })).in_world_when(flag);
+        let (row, run, _) = run_entering(&rows, server, fingerprint).await;
+        if fingerprint {
+            let tap = attachment(&row, &run, "packet_tap").unwrap();
+            assert_eq!(tap["coverage"], "late:play", "the late bind ran");
+        }
+        assert!(row.vars.get("player_entity_id").is_none(), "{:?}", row.vars);
+        let c = row.clauses.iter().find(|c| c.id == "entity").unwrap();
+        runs.push((
+            row.vars.clone(),
+            c.expected.clone(),
+            c.observed.clone(),
+            c.detail.clone(),
+            graded(&row),
+        ));
+    }
+    assert_eq!(runs[0], runs[1]);
+}
+
+/// A start that replaced another tap on the character says so, whoever
+/// started it: fingerprint mode's bind or a packet clause's `tap_start`.
+#[tokio::test]
+async fn a_tap_that_replaced_an_observer_reports_it() {
+    for rows in [TOOL_ROW.to_string(), packet_row()] {
+        let fake = client();
+        let server = FakeServer::new(timer_tap()).answer(
+            "server_packet_tap_start",
+            vec![json!({ "entity_id": 7, "replaced_existing": true })],
+        );
+        let (row, run) = run_fp(&fake, Some(&server), &rows, true).await;
+        let tap = attachment(&row, &run, "packet_tap").unwrap();
+        assert_eq!(tap["replaced_existing"], true, "{rows}");
+        assert_eq!(tap["coverage"], "full", "{rows}");
+    }
+}
+
+/// A snapshot that fails keeps its error in `entities.json`; the row is
+/// graded as if fingerprint mode were off.
+#[tokio::test]
+async fn a_failed_snapshot_does_not_change_the_grade() {
+    let fake = client();
+    let server = FakeServer::new(json!({ "messages": [] })).answer(
+        "server_entity_get",
+        vec![json!({ "__error": "entity gone" })],
+    );
+    let (row, run) = run_fp(&fake, Some(&server), TOOL_ROW, true).await;
+    assert_eq!(row.result, RowResult::Pass, "{:?}", row.reasons);
+    assert!(row.reasons.is_empty(), "{:?}", row.reasons);
+    let e = attachment(&row, &run, "entities").unwrap();
+    let snaps = e["snapshots"].as_array().unwrap();
+    assert_eq!(snaps.len(), 2);
+    for s in snaps {
+        assert!(s["error"].as_str().unwrap().contains("entity gone"), "{s}");
+        assert!(s.get("entities").is_none(), "{s}");
+    }
+    assert_eq!(server_calls(&server, "server_entity_query"), 0);
+}
+
+/// A late start the server refuses is tried once, recorded once, and the
+/// tap's coverage is `none` with the refusal.
+#[tokio::test]
+async fn a_failed_late_start_is_recorded_once() {
+    let server = |flag| {
+        FakeServer::new(json!({ "messages": [] }))
+            .in_world_when(flag)
+            .answer(
+                "server_packet_tap_start",
+                vec![json!({ "__error": "tap refused" })],
+            )
+    };
+    let (row, run, server) = run_entering(LATE_ROW, server, true).await;
+    assert_eq!(row.result, RowResult::Pass, "{:?}", row.reasons);
+    assert_eq!(server_calls(&server, "server_packet_tap_start"), 1);
+    assert_eq!(recorded(&row, "server_packet_tap_start"), 1);
+    let tap = attachment(&row, &run, "packet_tap").unwrap();
+    assert_eq!(tap["coverage"], "none");
+    assert!(
+        tap["error"].as_str().unwrap().contains("tap refused"),
+        "{tap}"
+    );
+    // Nothing to read or stop.
+    assert_eq!(server_calls(&server, "server_packet_tap_read"), 0);
+}
+
+/// A windows section that failed in Lua still answers `windows: []`: the
+/// sample is the error, not "no windows open".
+#[tokio::test]
+async fn a_failed_window_read_is_an_error_not_no_windows() {
+    let fake = client().answer(
+        "client_ui_state",
+        vec![json!({ "windows": [], "errors": ["windows: boom"] })],
+    );
+    let (row, run) = run_fp(&fake, None, TOOL_ROW, true).await;
+    let w = attachment(&row, &run, "windows").unwrap();
+    let first = &w["samples"][0];
+    assert_eq!(first["error"], "windows: boom", "{first}");
+    assert!(first.get("windows").is_none(), "{first}");
 }

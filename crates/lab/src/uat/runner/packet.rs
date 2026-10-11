@@ -25,6 +25,9 @@ pub(crate) const TAP_CAPACITY: u32 = 5000;
 /// the `server_sessions` lookup. The runner also sets it once resolved,
 /// so a clause can filter with `entity = "${player_entity_id}"`.
 pub(crate) const ENTITY_VAR: &str = "player_entity_id";
+/// Why no tap: the runner has no server lab MCP.
+pub(crate) const NOT_CONFIGURED: &str =
+    "server lab MCP not configured (CIMMERIA_LAB_MCP_URL/_TOKEN): no packet tap";
 
 /// One row's tap: the session it is on, or why there is none, and what
 /// the read returned.
@@ -39,6 +42,9 @@ pub(crate) struct RowTap {
     /// `server_packet_tap_start` replaced a tap already on the entity (an
     /// observer's `lab_timeline`, README F3): its rows are gone.
     pub replaced_existing: bool,
+    /// `tap_finish` ran to the end: the stop was tried and the attachment
+    /// written. A lost lease can cut it off before that ([`Runner::tap_abandon`]).
+    pub finished: bool,
 }
 
 /// A var holding an entity id, as a number or a numeric string.
@@ -181,10 +187,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
     pub(crate) async fn tap_start(&mut self, ctx: &mut RowCtx) {
         let Some(server) = self.server else {
             ctx.tap = Some(RowTap {
-                error: Some(
-                    "server lab MCP not configured (CIMMERIA_LAB_MCP_URL/_TOKEN): no packet tap"
-                        .into(),
-                ),
+                error: Some(NOT_CONFIGURED.into()),
                 ..Default::default()
             });
             return;
@@ -245,11 +248,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
                 .server_call(server, Role::Teardown, "server_packet_tap_stop", args, ctx)
                 .await;
         }
-        let path = self
-            .run
-            .attach_dir(&ctx.section, &ctx.row_id)
-            .join("packet-tap.json");
-        let mut body = json!({
+        let body = json!({
             "entity_id": entity,
             "read_ok": read.ok,
             "read_error": read.error,
@@ -257,20 +256,9 @@ impl<I: ToolInvoker> Runner<'_, I> {
             "stop_error": stop.error,
             "tap": read.json,
         });
-        if let Some(fp) = &ctx.fp {
-            body["coverage"] = json!(fp.coverage(true));
-            body["replaced_existing"] =
-                json!(ctx.tap.as_ref().is_some_and(|t| t.replaced_existing));
-        }
-        if self.run.write_json(&path, &body).is_ok() {
-            ctx.attachments.push(Attachment {
-                name: "packet_tap".into(),
-                path: self.rel(&path),
-                tool: "server_packet_tap_read".into(),
-                host_ms: now_ms(),
-            });
-        }
+        self.attach_tap(ctx, body);
         if let Some(tap) = ctx.tap.as_mut() {
+            tap.finished = true;
             if !stop.ok {
                 tap.stop_error = Some(format!(
                     "server_packet_tap_stop failed twice: {}",
@@ -286,6 +274,59 @@ impl<I: ToolInvoker> Runner<'_, I> {
                 ));
             }
         }
+    }
+
+    /// Write `packet-tap.json`, adding fingerprint mode's coverage fields.
+    fn attach_tap(&self, ctx: &mut RowCtx, mut body: Value) {
+        if let Some(fp) = &ctx.fp {
+            body["coverage"] = json!(fp.coverage(true));
+            body["replaced_existing"] =
+                json!(ctx.tap.as_ref().is_some_and(|t| t.replaced_existing));
+        }
+        let path = self
+            .run
+            .attach_dir(&ctx.section, &ctx.row_id)
+            .join("packet-tap.json");
+        if self.run.write_json(&path, &body).is_ok() {
+            ctx.attachments.push(Attachment {
+                name: "packet_tap".into(),
+                path: self.rel(&path),
+                tool: "server_packet_tap_read".into(),
+                host_ms: now_ms(),
+            });
+        }
+    }
+
+    /// After a lost lease cut the row off: stop a tap `tap_finish` never
+    /// finished, then write fingerprint mode's attachments. The lab MCP is
+    /// not lease-gated, and a tap left running makes the next run's start
+    /// report `replaced_existing`, which a golden run refuses. One stop,
+    /// best effort; the tap is not read (the row is BLOCKED anyway).
+    pub(crate) async fn tap_abandon(&mut self, ctx: &mut RowCtx) {
+        let running = ctx
+            .tap
+            .as_ref()
+            .filter(|t| !t.finished)
+            .and_then(|t| t.entity);
+        if let (Some(server), Some(entity)) = (self.server, running) {
+            let args = json!({ "entity_id": entity });
+            let stop = self
+                .server_call(server, Role::Teardown, "server_packet_tap_stop", args, ctx)
+                .await;
+            let body = json!({
+                "entity_id": entity,
+                "read_ok": false,
+                "read_error": "lease revoked before the tap was read",
+                "stopped": stop.ok,
+                "stop_error": stop.error,
+                "tap": null,
+            });
+            self.attach_tap(ctx, body);
+            if let Some(tap) = ctx.tap.as_mut() {
+                tap.finished = true;
+            }
+        }
+        self.fp_write(ctx);
     }
 
     /// Grade every packet clause from the one tap read.
