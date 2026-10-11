@@ -157,6 +157,17 @@ The prefix is six characters, which is enough to correlate one login's events an
 
 Two deliberate exceptions remain. Credentials of six characters or fewer appear in full in `CredentialPrefix` output — there is nothing left to truncate — and the `UDP_IN` TRACE hex dump in `base/connect_loop/mod.rs` captures pre-encryption packet bytes, including the ticket field in `baseAppLogin`. That dump is required for wire-level debugging; production login tickets are long enough that the prefix rule still holds in practice.
 
+## Witness refusal causes (TG-AOI-05)
+
+A `RequestEntityUpdate` id that is not in the witness's AoI is refused at WARN with `reason = "not_in_witness_aoi"` and a `cause` that says why. The checks run in this order, so the first match wins:
+
+| `cause` | Meaning | Fields |
+|---|---|---|
+| `entity_gone` | The requested id names no entity in any space. | `witness_id`, `entity_id`, `reason` |
+| `other_space` | The entity exists in a different space from the witness. | `witness_id`, `entity_id`, `reason` |
+| `not_introduced_yet` | The witness is in the same space but has no AoI state yet, so the AoI tick has not introduced anything. | `witness_id`, `entity_id`, `reason` |
+| `outside_aoi` | The entity is in the same space and the witness has AoI state, but the entity is not in its witness set. | `witness_id`, `entity_id`, `reason` |
+
 ## Level discipline
 
 | Level | When |
@@ -603,6 +614,23 @@ missing container with the out-of-range feedback line.
 
 The guard for the cash row is `loot/tests.rs`, `loot_cash_send_failure_warns`.
 
+## Loot roll outcome (TG-ITM-02)
+
+Target `abilities`, in `cell/abilities/loot_drop.rs` (`generate_loot_on_death`). A
+silent return on the on-death roll used to hide why an NPC dropped nothing. The
+no-table case is the normal path, so it is DEBUG. Every roll ends with a DEBUG
+`loot_rolled` row (`entries`, `dropped`, `loot_table_id` + `loot_table_name`); a
+zero `dropped` is a real result, not a miss. The two misses are WARN.
+
+| `event` (also the message prefix) | Level | `reason` | Fields |
+|---|---|---|---|
+| `loot_skipped` | DEBUG | `no_loot_table` | `target_eid` |
+| `loot_table_empty` | WARN | `table_has_no_rows` | `target_eid`, `loot_table_id`, `loot_table_name` |
+| `loot_skipped` | WARN | `entity_missing` | `target_eid`, `loot_table_id` |
+
+The guards are `abilities/loot_drop.rs`, `unknown_loot_table_warns_table_has_no_rows`
+and `probability_zero_logs_loot_rolled_with_no_drops`.
+
 ## Native consumable seams (decision 28)
 
 A heal or buff item used from the bags ([consumables.md](../gameplay/consumables.md)). The cell rows use the module's own target (`cimmeria_cell_content::cell::content::consumable_use`), the base rows `cimmeria_base_methods::...::consume_for_use`, the stat-buff rows `abilities`. Every row carries `entity_id`, `account_id` and `player_id`, each with its name; the cell's use rows also `item_type_id` + `item_name` (`type_id` before NT-21) and, when known, `instance_id` and `ability_id` + `ability_name`; the base rows carry `item_type_id` + `item_name` (NT-22).
@@ -834,6 +862,16 @@ On Windows, a `send_to` to a closed port makes the next `recv_from` fail with WS
 | DEBUG | message `UDP recv: WSAECONNRESET (10054) -- remote closed, continuing`, `reason = "icmp_port_unreachable"`, `suppressed` | A UDP recv returned WSAECONNRESET; at most one row per 10 s |
 
 Guard: `connreset_burst_writes_one_row` in `base/connect_loop/mod.rs` (a burst of 50 resets writes one row; the next row after the window carries `suppressed = 49`).
+
+## Inert effect WARN (TG-CMB-03)
+
+An effect with no script and no NVP damage does nothing on its target. `PlannedEffect::log` (`cell/abilities/effect_plan.rs` in `cimmeria-cell-combat`) writes that landing as a `reason = "no_script"` `effect_planned` row at DEBUG, and also the WARN below. Pattern D, keyed by `(ability_id, effect_id)` in a process-wide map (not by entity): the first row for a pair writes at once, the rows inside the next 60 s are counted, and the next row carries them in `suppressed`.
+
+| Level | Row | When |
+|---|---|---|
+| WARN | target `abilities.effect`, `event = "effect_inert"`, Rule 5 identity, `entity_id`, `entity_name` (the caster), `caster_kind` (`player` or `npc`), `ability_id`, `ability_name`, `effect_id`, `effect_name`, `target_id`, `target_name`, `target_player_id`, `target_player_name`, `suppressed` | An effect with no script and no NVP damage landed on a target (once per pair per 60 s) |
+
+Guards: `one_no_script_plan_warns_once`, `burst_writes_one_row_then_reports_suppressed` and `another_effect_id_is_not_swallowed` in `cell/abilities/effect_plan.rs` (`cimmeria-cell-combat`).
 
 ## Stale combat state (TG-CMB-02)
 
