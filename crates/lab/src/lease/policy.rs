@@ -53,6 +53,9 @@ pub const OPEN: &[&str] = &[
     "lab_crash_report",
     "lab_timeline",
     "lab_uat_report",
+    // Golden runs: read bundles, write only the golden file (no client).
+    "lab_golden_record",
+    "lab_golden_diff",
     // Pixels.
     "lab_screenshot",
     "lab_screenshot_region",

@@ -283,6 +283,8 @@ Supervisor (`cimmeria-lab` on the dev box: the [shared daemon](#the-shared-daemo
 | `lab_screenshot` | The client window's game area (client rect, the UI's pixel space) → MCP image. Refuses a minimised window or an all-black frame. |
 | `lab_crash_report` | Last minidump, last N commands, quarantined command. |
 | `lab_timeline` | Merged client+server window (above). |
+| `lab_golden_record` | Open (no lease), never drives the client. Records `<specs_dir>/golden/<section>.json` from at least five fresh fingerprint-mode run directories (`run_dirs`) that agree, every row PASS, on one spec file, server build and SGW.exe; `rebless` replaces an existing golden. Replies `{ok, path, rows, events, bytes, runs}` or `{ok: false, code, error}` with `code` one of `exists`, `disagree`, `not_passing`, `cannot_record` (a tap that dropped, was replaced or was unavailable is `cannot_record`). |
+| `lab_golden_diff` | Open (no lease), never drives the client. Compares one fingerprint-mode run directory with its section's golden under the golden's stored variance: `{ok: true, match: true}`, or `match: false` with `first` (the first divergence, one line) and, when more rows diverged, `diverged` and `rows` (up to four more lines). `code: no_golden` when the golden is missing or unreadable, `cannot_diff` when the run is. |
 | `client_lua_eval` / `client_module_info` / `client_mem_read` | Probe tools proxied to the bridge. |
 | `client_ui_click` / `client_cursor_move` | Click a named UI window (`Name` or `Parent/Child`) like a player: cursor onto its centre (native `injectMousePosition`, a real CEGUI `MouseMove`), real button messages. |
 | `client_input_key` / `client_type_text` | Key presses and typing as `WM_KEYDOWN`/`WM_KEYUP` (the game translates them; Shift is virtual). Types letters, digits, space, `-_/.`, so `/logout` and `.`-console lines work through chat. |
@@ -1223,7 +1225,7 @@ a test fails until every routed tool is classified. Guarded tools list
 
 | Open (no lease) | Leased |
 |---|---|
-| `lab_lease_*`, `lab_client_status`, `lab_crash_report`, `lab_timeline`, `lab_uat_report` | `lab_client_start` / `stop` / `restart` |
+| `lab_lease_*`, `lab_client_status`, `lab_crash_report`, `lab_timeline`, `lab_uat_report`, `lab_golden_record` (it writes only the golden file), `lab_golden_diff` | `lab_client_start` / `stop` / `restart` |
 | `lab_screenshot`, `lab_screenshot_region`, `lab_pixel_probe` | `client_lua_eval`, `client_wait_for` (its predicate is Lua), `client_mem_write`, `client_call_native`, `client_console`, `client_hook_install` / `remove` |
 | `client_module_info`, `client_mem_read`, `client_hook_list`, `client_input_status` | `client_events_read`, `client_wait_event`, `client_chat_log`, `client_combat_log` (shared cursors) |
 | `client_entity_table`, `client_ui_state`, `client_window_read`, `client_player_state`, `client_hotbar`, `lab_characters` | `client_entity_find` (it pins the shared unit slots and the one projection slot), `client_inventory` (its `snapshot` writes a shared table); every input, click, drag, world, combat and item tool; the `lab_*` login, character, play, dialog and logout flows; the composites `lab_ensure_in_world`, `client_batch` (caller-chosen Lua and native calls) and `client_ui_sequence`; `lab_uat_attest`; `lab_uat_run` (see below) |

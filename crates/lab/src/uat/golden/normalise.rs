@@ -96,9 +96,9 @@ fn first_seen(items: impl Iterator<Item = String>) -> Vec<String> {
     out
 }
 
-/// One tap normalised. `events_from_tap` returns the contract's pair from
-/// it; `build_row` also needs the transitions, which are read before
-/// `allow_unordered` routing takes events out of order.
+/// One tap normalised. `build_row` needs the transitions as well as the
+/// events, and they are read before `allow_unordered` routing takes events
+/// out of order.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Normalised {
     /// The events compared in order: everything not ignored or routed to
@@ -109,18 +109,6 @@ pub struct Normalised {
     /// The mission, step and objective status changes ([`transitions`]),
     /// in tap order across both streams.
     pub transitions: Vec<String>,
-}
-
-/// The ordered events and the sorted, rendered unordered ones.
-pub fn events_from_tap(
-    messages: &[Value],
-    late: bool,
-    labels: &mut EntityLabels,
-    v: &Variance,
-    subst: &[(String, String)],
-) -> (Vec<Event>, Vec<String>) {
-    let n = normalise_tap(messages, late, labels, v, subst);
-    (n.events, n.unordered)
 }
 
 /// `messages` in tap order. `subst` is `(name, value)` for each run
