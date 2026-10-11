@@ -228,7 +228,7 @@ two tiers, set in `Working\Engine\Config\GameplayEngine.ini`:
 | Tier | INI key | Where it is | Who writes it |
 |---|---|---|---|
 | Writable | `CachePath=..\SGWGame\Cache` | `Documents\My Games\Firesky\SGWGame\Cache.en-US` | The server's version push, on every connect |
-| Bundled, read-only | `SourceCachePath=..\SGWGame\SourceCache` | `<install>\Working\SGWGame\SourceCache.en-us` | Nothing at runtime |
+| Bundled, read-only | `SourceCachePath=..\SGWGame\SourceCache` | `<install>\Working\SGWGame\SourceCache.en-us` | Nothing at runtime. The client copies a PAK from it over the writable one when its version is newer (`client.cooked_cache.write` with `tier = source_cache`) |
 
 The 2009 cabinets put the bundled PAKs in
 `Working\SGWGame\Cache.en-US`, which is neither path. A stock install
