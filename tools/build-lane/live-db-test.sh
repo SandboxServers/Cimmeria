@@ -5,6 +5,7 @@
 #
 # Usage (from a worktree root):
 #   tools/build-lane/live-db-test.sh <nextest filter or test-name substring> [extra nextest args]
+#   tools/build-lane/live-db-test.sh --wireclient <filter>   # the wireclient end-to-end tests only
 # Example:
 #   tools/build-lane/live-db-test.sh chain_replay_tests::mission_701
 #

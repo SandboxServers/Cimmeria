@@ -2,33 +2,28 @@
 
 mod app;
 mod bundled;
-mod client_changes;
 mod client_patches;
-mod client_paths;
-mod client_setup;
 mod client_telemetry_dll;
 mod config;
 mod identity;
-// Shared installer API is also consumed by the standalone desktop engine.
-pub mod install;
-mod install_layout;
-pub mod install_progress;
-mod install_report;
 mod instance_lock;
-mod logs;
-mod manifest;
-mod overlay_meta;
 // The `pack-client-overlay` tool's logic; the launcher compiles it only to
 // run its tests next to the manifest types it shares.
 #[cfg(test)]
 mod overlay_pack;
-mod patch_dest;
 mod self_update;
 mod start32_helper;
-mod state;
-mod telemetry;
-mod unpack;
 mod worker;
+
+// The launcher logic the desktop launcher shares lives in
+// `cimmeria-launcher-core` (LX-01). Importing each module at the crate
+// root keeps every `crate::manifest::…`-style path resolving unchanged.
+#[cfg(test)]
+use cimmeria_launcher_core::overlay_meta;
+use cimmeria_launcher_core::{
+    client_changes, client_paths, client_setup, install, install_layout, logs, manifest, state,
+    telemetry,
+};
 
 // The suspended-launch and DLL-injection modules moved into the shared
 // `cimmeria-client-launch` crate (issue #685, ADR §3.4) so `cimmeria-lab`
@@ -138,7 +133,7 @@ fn main() -> eframe::Result<()> {
 
     // Re-enqueue any telemetry left on disk from a previous run that
     // crashed before flushing. Best-effort.
-    let recovered = telemetry::recover_pending_on_startup();
+    let recovered = telemetry::recover_pending_on_startup(&exe_dir());
     if recovered > 0 {
         tracing::info!(recovered, "telemetry pending events recovered");
     }

@@ -7,9 +7,9 @@
 > flush tail drop). Packet specs: [work-packets.md](work-packets.md). ADR:
 > [wireclient.md](../../architecture/wireclient.md).
 >
-> **Campaign status (2026-10-10): planned, nothing built.** Five owner
-> decisions (D-WC2, D-WC3, D-WC6, D-WC7, D-WC8) gate the packets marked
-> BlockedDecision. WC-01 and WC-02 can start now.
+> **Campaign status (2026-10-10): wave 1 merged** (WC-01 #1358, WC-02 #1359,
+> WC-03 #1360). D-WC2, D-WC3, D-WC6 and D-WC7 are decided (option (a) each).
+> D-WC8 still waits on #1341. WC-04 and WC-05 (wave 2) are Ready.
 
 ## Purpose
 
@@ -62,12 +62,12 @@ Against `main` @ `c05c0638a`. "Fixture #n" is the n-th record (0-based) of
 | ID | Status | Decision | Reason |
 |---|---|---|---|
 | D-WC1 | PROPOSED (coordinator) | **Entity identity is wire-observable.** The mirror identifies an NPC by what the client is told: static mesh name, body set, name id, class id, interaction type and position. A test that wants "template N" reads that template's `static_mesh` and `name_id` from `resources.entity_templates` and queries the mirror with them. No server introspection (no reading the cell's `SpaceManager`). | F5. Runtime entity ids change per space instance (Frost was 100402, 100659, 100705 and 100751 in four runs). Reading server state would make the wire client a server-side test again. |
-| D-WC2 | **BlockedDecision** (owner). Recommended: **(a)** | **How the script reaches Frost and the Guard's body.** (a) `gmGotoXYZ` (cell 163) from a GM sentinel account (`accesslevel` 2), exactly as the capture does; a non-GM walking path is a follow-up issue. (b) `avatarUpdateExplicit` steps at walking speed from the spawn point, as a non-GM player would. | (a) matches the capture byte for byte and needs no movement validation reasoning. (b) is closer to a real player but depends on the server's speed and navmesh checks, which the capture never exercised. |
-| D-WC3 | **BlockedDecision** (owner). Recommended: **(a)** | **The first-login AoI hold.** (a) The script answers `onPlayMovie` with `cancelMovie` (what a player pressing Esc sends), so introductions flush within a second. (b) The script waits out the 16 s `HOLD_DURATION`. | (a) keeps the test about 15 s faster and exercises the real client path. The timeout path is already covered by `cinematic_aoi_hold/tests.rs`. Either way the flush goes through `flush_deferred_aoi`. |
+| D-WC2 | **DECIDED (a)**, 2026-10-10 (session driver) | **How the script reaches Frost and the Guard's body.** (a) `gmGotoXYZ` (cell 163) from a GM sentinel account (`accesslevel` 2), exactly as the capture does; a non-GM walking path is a follow-up issue. (b) `avatarUpdateExplicit` steps at walking speed from the spawn point, as a non-GM player would. | (a) matches the capture byte for byte and needs no movement validation reasoning. (b) is closer to a real player but depends on the server's speed and navmesh checks, which the capture never exercised. |
+| D-WC3 | **DECIDED (a)**, 2026-10-10 (session driver) | **The first-login AoI hold.** (a) The script answers `onPlayMovie` with `cancelMovie` (what a player pressing Esc sends), so introductions flush within a second. (b) The script waits out the 16 s `HOLD_DURATION`. | (a) keeps the test about 15 s faster and exercises the real client path. The timeout path is already covered by `cinematic_aoi_hold/tests.rs`. Either way the flush goes through `flush_deferred_aoi`. |
 | D-WC4 | PROPOSED (coordinator) | **The semantic decoders are written independently in `cimmeria-wireclient`**, typed, from `docs/protocol/client-method-dispatch-table.md`. They do not reuse `cimmeria-wire-log`'s `serde_json` decoders. Tests cross-check both against the fixture. | An oracle that shares the server's decoder cannot catch a bug in it (F10 is one). Typed fields give the script compile-time names. |
 | D-WC5 | PROPOSED (coordinator) | **Strict decoding.** Any bundle the wire client cannot decode to its last byte, and any decoder that leaves trailing bytes, fails the test with the offset and the message id. Unknown method indices are not an error (most methods have no decoder); a known index with bad bytes is. | F1. The wire client must not be fooled by a dropped tail the way the real client is. |
-| D-WC6 | **BlockedDecision** (owner). Recommended: **(a)** | **How end-to-end tests run.** (a) A `wireclient-e2e` nextest profile whose override puts every `cimmeria-wireclient` integration test in the existing `live-db` group, so each running test gets its own database clone and up to 8 run at once; `retries = 0`. (b) The ADR's original plan: a serialised profile (`threads-required = "num-test-threads"`) against one database. | F16. (a) is faster and uses machinery the live-DB tier already proves. The ADR's Phase 7 section is updated to match whichever is chosen. If CI memory pressure shows up in the WC-16 shakedown, `threads-required = 2` on the override halves concurrency without changing the design. |
-| D-WC7 | **BlockedDecision** (owner). Recommended: **(a)** | **When CI runs it and whether it gates.** (a) Its own workflow, `.github/workflows/wireclient.yml`, path-filtered on `crates/**` minus the client, launcher and lab crates, plus `db/**`, `entities/**`, `data/spaces/**`, the toolchain and nextest config, and the runner scripts: in effect every server change. It reports but does not gate until WC-16's shakedown (10 green runs in a row), then its job joins `ship.py`'s `CONDITIONAL`. (b) A step in the existing `test-live-db` job: every code PR, but `ship.py` never waits for that job, so it never gates. (c) Path-filtered on `crates/wireclient/**` only. | (b) cannot block a regression. (c) misses the server changes the test exists to catch. (a) gates every server change once it has shown it is not flaky. |
+| D-WC6 | **DECIDED (a)**, 2026-10-10 (session driver) | **How end-to-end tests run.** (a) A `wireclient-e2e` nextest profile whose override puts every `cimmeria-wireclient` integration test in the existing `live-db` group, so each running test gets its own database clone and up to 8 run at once; `retries = 0`. (b) The ADR's original plan: a serialised profile (`threads-required = "num-test-threads"`) against one database. | F16. (a) is faster and uses machinery the live-DB tier already proves. The ADR's Phase 7 section is updated to match whichever is chosen. If CI memory pressure shows up in the WC-16 shakedown, `threads-required = 2` on the override halves concurrency without changing the design. |
+| D-WC7 | **DECIDED (a)**, 2026-10-10 (session driver) | **When CI runs it and whether it gates.** (a) Its own workflow, `.github/workflows/wireclient.yml`, path-filtered on `crates/**` minus the client, launcher and lab crates, plus `db/**`, `entities/**`, `data/spaces/**`, the toolchain and nextest config, and the runner scripts: in effect every server change. It reports but does not gate until WC-16's shakedown (10 green runs in a row), then its job joins `ship.py`'s `CONDITIONAL`. (b) A step in the existing `test-live-db` job: every code PR, but `ship.py` never waits for that job, so it never gates. (c) Path-filtered on `crates/wireclient/**` only. | (b) cannot block a regression. (c) misses the server changes the test exists to catch. (a) gates every server change once it has shown it is not flaky. |
 | D-WC8 | **BlockedDecision** (owner, through #1341). Recommended: **follow #1341** | **The flush-shape guard.** WC-15 asserts, at the wire, the invariant #1341's chosen server mitigation guarantees (for example "every single-packet flush bundle holds one message", or "the first fragment of a fragmented flush bundle holds one message"). If #1341 chooses the client patch instead, WC-15 records in the ADR why the hazard is not testable from the wire (the wire client has no residue) and closes as not applicable. | F17. Today's flush fails any such invariant, so the guard can only land with the fix it guards. |
 | D-WC9 | PROPOSED (coordinator) | **No retries.** A flaky end-to-end test is a bug, fixed or `#[ignore]`d with an issue link and the owner told, never retried. No fixed sleeps: every wait is on a message or a database condition, with a timeout and a failure message that prints the last 30 observed events. | Retries hide the races these tests exist to find. |
 | D-WC10 | PROPOSED (coordinator) | **Client calls put entity id 0 in the cell-method prefix**, as the real client does (F6). The builders keep the `entity_id` parameter; the Praxis script passes `CLIENT_CALL_ENTITY_ID` (0). Existing tests keep sending the player id. | Fidelity: the wire client should send what a real client sent. The server ignores the prefix today; a future server that reads it is then tested against the real value. |
@@ -78,11 +78,11 @@ Against `main` @ `c05c0638a`. "Fixture #n" is the n-th record (0-based) of
 
 | ID | Packet | Implementer | Size | Wave | Depends on | Status |
 |---|---|---|---|---|---|---|
-| WC-01 | Strict bundle decode, raw sub-slot byte, message offsets | packet-coder | S | 1 | none | Ready |
-| WC-02 | Tap fixture loader and client-call builders, pinned to the capture | packet-coder | M | 1 | D-WC10 (proposed) | Ready |
-| WC-03 | Runner: `wireclient-e2e` nextest profile and `--wireclient` mode in `test-live-db` | packet-coder | S | 1 | D-WC6 | BlockedDecision |
-| WC-04 | `tests/it` live-DB isolation: slot URL, test logging, no direct `DATABASE_URL` | packet-coder | M | 2 | WC-03 | BlockedDependency |
-| WC-05 | Semantic decoder skeleton, primitives, dialog family | packet-coder | M | 2 | WC-02 | BlockedDependency |
+| WC-01 | Strict bundle decode, raw sub-slot byte, message offsets | packet-coder | S | 1 | none | Done (#1358) |
+| WC-02 | Tap fixture loader and client-call builders, pinned to the capture | packet-coder | M | 1 | D-WC10 (proposed) | Done (#1359) |
+| WC-03 | Runner: `wireclient-e2e` nextest profile and `--wireclient` mode in `test-live-db` | packet-coder | S | 1 | D-WC6 | Done (#1360) |
+| WC-04 | `tests/it` live-DB isolation: slot URL, test logging, no direct `DATABASE_URL` | packet-coder | M | 2 | WC-03 | Ready |
+| WC-05 | Semantic decoder skeleton, primitives, dialog family | packet-coder | M | 2 | WC-02 | Ready |
 | WC-06 | Mission family decoders | packet-coder | S | 3 | WC-05 | BlockedDependency |
 | WC-07 | Ability, sequence and movie decoders | packet-coder | S | 3 | WC-05 | BlockedDependency |
 | WC-08 | Inventory family decoders | packet-coder | S | 3 | WC-05 | BlockedDependency |
@@ -90,8 +90,8 @@ Against `main` @ `c05c0638a`. "Fixture #n" is the n-th record (0-based) of
 | WC-10 | Character creation on the wire, world entry split and recorded | packet-coder | M | 3 | WC-02, WC-04 | BlockedDependency |
 | WC-11 | Entity mirror and query | packet-coder | M | 4 | WC-01, WC-05, WC-08, WC-09 | BlockedDependency |
 | WC-12 | `ScriptSession`: lossless event log, ordered waits, keep-alive | rust-gameserver-dev | M | 5 | WC-10, WC-11 | BlockedDependency |
-| WC-13 | CI workflow `wireclient.yml` (reporting, not gating) | packet-coder | S | 3 | WC-03, WC-04, D-WC7 | BlockedDecision |
-| WC-14 | Praxis-start end-to-end test | rust-gameserver-dev | L | 6 | WC-06, WC-07, WC-12, D-WC2, D-WC3 | BlockedDecision |
+| WC-13 | CI workflow `wireclient.yml` (reporting, not gating) | packet-coder | S | 3 | WC-03, WC-04, D-WC7 | BlockedDependency |
+| WC-14 | Praxis-start end-to-end test | rust-gameserver-dev | L | 6 | WC-06, WC-07, WC-12, D-WC2, D-WC3 | BlockedDependency |
 | WC-15 | First-login flush-shape guard (#1341) | rust-gameserver-dev | M | 7 | WC-14, D-WC8, #1341's mitigation | BlockedDecision |
 | WC-16 | Shakedown, then gate merges on the job | packet-coder (coordinator runs the shakedown) | S | 7 | WC-13, WC-14 | BlockedDependency |
 | WC-17 | Close-out: ADR, TESTING.md, status docs, #281 | documentation-writer | M | 8 | all | BlockedDependency |
@@ -136,5 +136,23 @@ Waves (packets in one wave touch disjoint files and run in parallel):
 
 ## Review outcomes
 
-None yet. Where merged code differs from the packet specs, record it here;
-the code is then the reference, not the spec.
+Where merged code differs from the packet specs, record it here; the code is
+then the reference, not the spec.
+
+- **WC-01 (#1358).** As specified. The lenient `decode_bundle` warn line now
+  reads "stopping decode of this bundle" (it also fires on truncation) and
+  carries `reason`. Only the two `CREATE_ENTITY` `Truncated` exits are
+  tested; the `0x80..=0xFE` header and payload exits are not.
+- **WC-02 (#1359).** As specified, plus review tests the capture cannot
+  give: `move_item_keeps_argument_order_and_the_entity_id` (slot and
+  quantity are both 1 in record #65, and every capture prefix is 0),
+  `region_trigger_entering_sets_the_flag_byte`, and
+  `client_wstring_matches_the_server_encoding` in `tests/it/client_calls.rs`
+  (the crate keeps its own `write_wstring` because `cimmeria-wire` is a
+  dev-dependency only). Fixed the stale `0xC4` in `handle_create_character`'s
+  doc comment.
+- **WC-03 (#1360).** As specified. `nextest_profile_groups_the_live_db_filter`
+  now also pins the `wireclient-e2e` override. Until WC-04, the `tests/it`
+  suite still reads `DATABASE_URL` (F14), so `--wireclient` runs it in the
+  `live-db` group but against the template database, not the clones; the
+  profile comment and TESTING.md say so, and WC-04 should drop that caveat.

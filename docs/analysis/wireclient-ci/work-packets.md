@@ -669,6 +669,10 @@ Files:
    `pwsh tools/build-lane/live-db-test.ps1 --wireclient <module>`.
 4. `crates/wireclient/tests/it/main.rs`: the doc's run instructions say the
    same.
+5. Drop the "until WC-04" caveats WC-03's review added: in
+   `.config/nextest.toml` (the `wireclient-e2e` comment) and `TESTING.md`
+   (the `--wireclient` paragraph under "Locally (live DB)"), say each test
+   runs on its own slot clone.
 
 Tests:
 
