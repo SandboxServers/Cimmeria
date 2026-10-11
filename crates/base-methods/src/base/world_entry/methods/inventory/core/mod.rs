@@ -33,6 +33,8 @@ mod one_item_select_tests;
 mod remove_by_type;
 mod remove_instance;
 #[cfg(test)]
+mod remove_log_tests;
+#[cfg(test)]
 mod remove_type_read_tests;
 #[cfg(test)]
 mod resync_tests;
