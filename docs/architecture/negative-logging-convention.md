@@ -1049,6 +1049,12 @@ Guards: `session_tests.rs` `duplicate_register_while_pending_logs_info` and `dup
 
 Guard: `left_aoi_unmapped_witness_warns_leave_send_failure` in `cell_dispatch/aoi.rs`, which asserts `phase=leave`, `entity_id` and `reason=entity_to_addr_miss`.
 
+## DoT kill with no credited player (TG-NPC-13)
+
+`effects/pulsing/pulse.rs` in `cimmeria-cell-combat`. When a damage-over-time pulse kills an NPC and `dot_kill_credit` finds no player to credit, the kill still lands but no mission or loot credit follows. This happens, for example, when a pet's owner is gone. That branch was silent; it now logs WARN `target: "abilities"`, `event = "kill_credit_no_player"`, `reason = "no_credited_player"`, `source = "dot"`, with the invoker's identity, `entity_id` + `entity_name`, `target_id` + `target_name`, `npc_tag` and `cast_id`. It mirrors the direct-hit row in `kill_credit.rs`. An NPC-only kill (a plain NPC invoker: not a player and no `PetState`; abilities decision 32) credits nobody by design and stays silent: it writes no `kill_credit_no_player` row. A pet whose owner has left, or a vanished invoker, still WARNs.
+
+Guards: `registered_pet_dot_kill_without_owner_warns_no_credited_player` (the WARN, with `source=dot`, `event=kill_credit_no_player` and `target_id`) and `npc_dot_kill_stays_silent_when_nobody_is_credited` (a plain NPC's DoT kill logs no `kill_credit_no_player` row), both in `use_ability/tests/registered_pet_kill_credit.rs`.
+
 ## Contact-list short args (TG-SOC-09)
 
 `contact_list/mod.rs` in `cimmeria-cell-methods`. Five contact-list ops (delete, rename, flags update, add members, remove members) drop a call whose args are shorter than its layout. Each logs one WARN `event = "contacts.call_malformed"` with `reason = "malformed_args"`, `op`, `args_len`, `need`, `entity_id` + `entity_name`, and `account_id` + `account_name`. The `create` op keeps its own WARN and is not part of this row. A well-formed call logs nothing new.

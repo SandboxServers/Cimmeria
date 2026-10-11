@@ -644,7 +644,8 @@ pub async fn resolve_death_for_test(
 mod npc_only_kill;
 mod side_effects;
 
-use npc_only_kill::{log_npc_only_kill, npc_only_kill};
+use npc_only_kill::log_npc_only_kill;
+pub(crate) use npc_only_kill::npc_only_kill;
 
 #[cfg(test)]
 mod npc_only_kill_tests;
