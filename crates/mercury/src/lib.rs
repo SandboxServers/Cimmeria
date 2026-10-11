@@ -87,9 +87,13 @@ pub mod consts {
     pub const RX_WINDOW_SIZE: usize = 512;
 
     /// How long a reliable gap may block in-order delivery before the
-    /// receive-stall watchdog (`Channel::check_rx_stall`) warns. Nearly
-    /// three of the client's 700 ms resend timeouts, so an ordinary lost
-    /// packet recovers well inside it.
+    /// receive-stall watchdog (`Channel::check_rx_stall`) warns. The
+    /// client's resend timeout is max(2.5 x smoothed RTT, 50 ms), so once
+    /// its RTT settles a lost packet recovers far inside this. Its RTT
+    /// starts at 1 s, though, so a loss in the first seconds of a session
+    /// waits 2.5 s for the first resend and can warn here first. See
+    /// docs/reverse-engineering/findings/client-mercury-receive-path.md,
+    /// section Receive limits.
     pub const RX_STALL_WARN_MS: u64 = 2_000;
 
     /// Minimum spacing between repeat warnings for one unfilled gap, so a
@@ -155,8 +159,9 @@ pub mod consts {
     /// TX-window entries per scan before yielding. Mirrors the SGW
     /// client's `UnAckedHandler::checkResendTimers` at
     /// `ghidra://SGW.exe@0x0158c420`, which carries an IEEE 754 `5.0`
-    /// budget counter that decrements per processed entry and exits
-    /// when negative. Caps the cost of one tick in the pathological
+    /// budget that counts successful resends and stops the pass after six
+    /// (see docs/reverse-engineering/findings/client-mercury-receive-path.md,
+    /// section Receive limits). Caps the cost of one tick in the pathological
     /// "every TX-window entry is past RTO" case (a sustained link
     /// stall would otherwise have us blast 32 retransmits in a single
     /// tick, possibly making the congestion worse).

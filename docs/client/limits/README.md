@@ -37,7 +37,7 @@ Safe level and Break level are filled only on the chaos-driven rows (the ones a 
 | [network.md](network.md) | Datagrams, windows, resend, fragments, bundles, the #1341 residue |
 | [aoi.md](aoi.md) | AoI radius, entity count, create bursts, the deferred buffer, the first-login hold |
 | [process.md](process.md) | Address space, working sets, cache archives |
-| [engine.md](engine.md) | Frame time, texture pool, smoothing, background throttle, display loss |
+| [engine.md](engine.md) | Frame time, texture streaming keys, smoothing, background throttle, display loss, ini chain |
 | [timing.md](timing.md) | Server tick, interpolation, world entry, teleport to AoI |
 | [lab.md](lab.md) | Clients per daemon, bridge start, window size |
 
@@ -59,9 +59,16 @@ One row per bound. The area file holds the grade, the source and the notes.
 | Server resend timeout | 700 ms | [network.md](network.md) |
 | Server resend tries | 20 | [network.md](network.md) |
 | Server resends per tick | 5 | [network.md](network.md) |
-| Client resend timing for its own reliable sends | not measured | [network.md](network.md) |
-| Client socket receive buffer | not measured | [network.md](network.md) |
-| Packets the client processes per tick | not measured | [network.md](network.md) |
+| Client resend timeout for its own reliable sends | max(2.5 x smoothed RTT, 50 ms); first RTO 2.5 s | [network.md](network.md) |
+| Client resend retry cap | none | [network.md](network.md) |
+| Client resends per pass per channel | 6 | [network.md](network.md) |
+| Client idle keepalive | empty bundle after 1.5 s without a send | [network.md](network.md) |
+| Client socket receive buffer | OS default (client sets none); size not measured | [network.md](network.md) |
+| Datagrams the network thread reads per pass | 64 per socket | [network.md](network.md) |
+| Network thread idle wait | about 10 to 15.6 ms | [network.md](network.md) |
+| Packets the client processes per tick | whole queue per frame, no budget | [network.md](network.md) |
+| Largest message body the bundle loop can copy | no fixed cap | [network.md](network.md) |
+| Packets in a chain between processPacket and processOrderedPacket | no cap | [network.md](network.md) |
 | Client idle send rate | about 6 packets/s; `perfStats` every 15.0 s | [network.md](network.md) |
 | Client tolerance of server silence | 15 s | [network.md](network.md) |
 | Next-request offset residue (#1341) | multiples of 8, 128 to 848 B, sticky per process | [network.md](network.md) |
@@ -77,7 +84,7 @@ One row per bound. The area file holds the grade, the source and the notes.
 | Deferred buffer | 512 messages, then drop with a WARN | [aoi.md](aoi.md) |
 | First-login hold | 16 s | [aoi.md](aoi.md) |
 | Entities per `requestEntityUpdate` | 64 | [aoi.md](aoi.md) |
-| Address space | 4 GB on 64-bit Windows (Large Address Aware set in the stock exe) | [process.md](process.md) |
+| Address space | 4 GB for a Large Address Aware 32-bit process on 64-bit Windows (flag set in the stock exe) | [process.md](process.md) |
 | Working-set peak per world | not measured | [process.md](process.md) |
 | Free address space warning | below 256 MB | [process.md](process.md) |
 | Lowest free address space seen | not measured | [process.md](process.md) |
@@ -85,9 +92,12 @@ One row per bound. The area file holds the grade, the source and the notes.
 | Hitch threshold | 200 ms | [engine.md](engine.md) |
 | Frame time (p50, p95, max per 30 s window) | not measured | [engine.md](engine.md) |
 | Busy cores at which frame time passes the hitch threshold | not measured | [engine.md](engine.md) |
-| Texture streaming pool | not measured | [engine.md](engine.md) |
-| Frame smoothing | not measured | [engine.md](engine.md) |
-| Background throttle | below-normal priority, 5 ms sleep per `FEngineLoop::Tick` | [engine.md](engine.md) |
+| Texture pool size (`PoolSize`) | inert, not read by the client | [engine.md](engine.md) |
+| Texture streaming margins | `HysteresisLimit` 30, `DropMipLevelsLimit` 24, `StopIncreasingLimit` 18, `StopStreamingLimit` 12 | [engine.md](engine.md) |
+| Texture streaming fudge and mip rules | five keys, defaults in `BaseEngine.ini` | [engine.md](engine.md) |
+| Frame smoothing | 22 to 62 fps clamp, `bSmoothFrameRate` on | [engine.md](engine.md) |
+| Minimum desired frame rate | 35.0 | [engine.md](engine.md) |
+| Background throttle | none in the player client (editor-only block) | [engine.md](engine.md) |
 | Idle display loss | about 10 min, then `D3DERR_NOTAVAILABLE` | [engine.md](engine.md) |
 | Server tick | 10 Hz (100 ms) | [timing.md](timing.md) |
 | Server position-update spacing | 100 ms | [timing.md](timing.md) |
