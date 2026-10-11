@@ -11,6 +11,9 @@
 //! - [`channel_core`] — the [`Channel`] struct and its state-machine impl.
 //! - [`ack`] — inbound ACK processing (one ACK retires the one packet it
 //!   names) and the transmit-hole watchdog.
+//! - [`retransmit`] — the per-tick RTO retransmit scan
+//!   ([`Channel::check_timeouts`]) and the dead-peer reap check
+//!   ([`Channel::is_timed_out`]).
 //! - [`retransmit_cap`] — per-entry retransmit caps: a capped packet is
 //!   dropped from the window unacked once it reaches its cap
 //!   ([`AbandonedPacket`]).
@@ -29,6 +32,7 @@ mod ack;
 mod channel_core;
 mod fragment_caps;
 mod health;
+mod retransmit;
 mod retransmit_cap;
 mod rx_order;
 mod state;
