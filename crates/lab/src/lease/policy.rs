@@ -166,6 +166,8 @@ mod tests {
     fn tools_with_hidden_writes_need_the_lease() {
         assert_eq!(gate("client_entity_find"), Gate::Lease);
         assert_eq!(gate("client_inventory"), Gate::Lease);
+        // Moves the cursor (no button), so it drives the client.
+        assert_eq!(gate("client_hover_probe"), Gate::Lease);
     }
 
     #[test]

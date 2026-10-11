@@ -135,6 +135,141 @@ async fn a_point_aim_accepts_nothing_under_the_cursor() {
 }
 
 #[tokio::test]
+async fn a_point_aim_on_another_entity_needs_expect_entity() {
+    // The point is the guard's feet, so the guard is under the cursor.
+    let on_guard = || client_point(1000.0, 0.0, 0.0);
+    let mut sim = guard_ahead().with_entity(11, "Elsewhere", Vec3::new(1000.0, -300.0, 0.0));
+    let bare = run(
+        &mut sim,
+        HoverRequest {
+            point: Some(on_guard()),
+            ..HoverRequest::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(bare["pixel"], json!([500, 475]));
+    assert_eq!(bare["verdict"], json!({ "other_entity": 10 }));
+    assert_eq!(bare["jitter_hits"], 0);
+
+    let expected = run(
+        &mut sim,
+        HoverRequest {
+            point: Some(on_guard()),
+            expect_entity: Some(10),
+            ..HoverRequest::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(expected["verdict"], "ok");
+    assert_eq!(expected["hover"], "entity");
+    assert_eq!(expected["jitter_hits"], 8);
+
+    let wrong = run(
+        &mut sim,
+        HoverRequest {
+            point: Some(on_guard()),
+            expect_entity: Some(11),
+            ..HoverRequest::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(wrong["verdict"], json!({ "other_entity": 10 }));
+    assert!(sim.buttons.is_empty());
+    assert_eq!(sim.cursor, (3, 4));
+}
+
+#[tokio::test]
+async fn an_entity_aim_with_nothing_under_the_cursor_is_nothing() {
+    let mut sim = guard_ahead();
+    sim.unhoverable.push(10);
+    let out = run(
+        &mut sim,
+        HoverRequest {
+            entity_id: Some(10),
+            ..HoverRequest::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(out["hover"], "nothing");
+    assert_eq!(out["verdict"], "nothing");
+    assert_eq!(out["jitter_hits"], 0);
+    assert!(sim.buttons.is_empty());
+}
+
+#[tokio::test]
+async fn a_window_edge_through_the_ring_costs_part_of_the_jitter() {
+    let mut sim = guard_ahead();
+    // Centre (500, 475). A 20 px ring puts 3 points at x >= 510 (520, 514,
+    // 514), all of which a window from x = 510 covers; the default 12 px
+    // ring would lose only 1 (512).
+    sim.window_rects = vec![("Tracker".into(), [510.0, 0.0, 900.0, 800.0])];
+    let out = run(
+        &mut sim,
+        HoverRequest {
+            entity_id: Some(10),
+            jitter_px: Some(20),
+            ..HoverRequest::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(out["verdict"], "ok");
+    let hits = out["jitter_hits"].as_u64().unwrap();
+    assert!(0 < hits && hits < 8, "jitter_hits {hits}");
+    assert_eq!(hits, 5);
+    assert!(sim.buttons.is_empty());
+}
+
+#[tokio::test]
+async fn a_failing_probe_still_puts_the_cursor_back() {
+    let mut sim = guard_ahead();
+    // The centre's read answers; the first ring read fails.
+    sim.fail_mouse_over_after = Some(1);
+    let err = run(
+        &mut sim,
+        HoverRequest {
+            point: Some(client_point(1000.0, -300.0, 0.0)),
+            ..HoverRequest::default()
+        },
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err.step, "read_mouse_over");
+    assert_eq!(sim.cursor, (3, 4));
+    assert!(err.state.is_none(), "a clean restore adds nothing");
+    assert!(sim.buttons.is_empty());
+}
+
+#[tokio::test]
+async fn a_failed_restore_after_a_failure_is_reported() {
+    let mut sim = guard_ahead();
+    sim.fail_mouse_over_after = Some(1);
+    sim.fail_cursor_restore = true;
+    let err = run(
+        &mut sim,
+        HoverRequest {
+            point: Some(client_point(1000.0, -300.0, 0.0)),
+            ..HoverRequest::default()
+        },
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(err.step, "read_mouse_over");
+    let state = err.state.clone().expect("the restore error is attached");
+    assert_eq!(state["cursor_restored"], false);
+    assert_eq!(
+        state["cursor_restore_error"],
+        "injected cursor restore failure"
+    );
+    assert_eq!(state["cursor_start"], json!([3, 4]));
+    assert_ne!(sim.cursor, (3, 4));
+}
+
+#[tokio::test]
 async fn off_screen_is_reported_not_turned() {
     let mut sim = Sim::new().with_entity(10, "Behind", Vec3::new(-1000.0, 0.0, 0.0));
     let yaw = sim.cam_yaw;

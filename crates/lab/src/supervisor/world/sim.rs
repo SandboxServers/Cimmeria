@@ -88,6 +88,15 @@ pub struct Sim {
     /// projected body. The camera sits at the head, so the avatar projects
     /// only when the camera pitches down (negative `cam_pitch`).
     pub avatar_radius_px: Option<f64>,
+    /// `slots` (the mouse-over read) fails once it has answered this many
+    /// times, to prove a failing tool still puts the cursor back.
+    pub fail_mouse_over_after: Option<u32>,
+    pub slots_reads: u32,
+    /// `place_cursor` without a mouse move (a cursor restore) fails.
+    pub fail_cursor_restore: bool,
+    /// Entities mouse-over never reports (rendered, but the client's trace
+    /// does not hit them).
+    pub unhoverable: Vec<u32>,
 }
 
 impl Sim {
@@ -125,6 +134,10 @@ impl Sim {
             readout_gain_scale: 1.0,
             window_rects: Vec::new(),
             avatar_radius_px: None,
+            fail_mouse_over_after: None,
+            slots_reads: 0,
+            fail_cursor_restore: false,
+            unhoverable: Vec::new(),
         }
     }
 
@@ -181,7 +194,11 @@ impl Sim {
             }
         }
         let mut best: Option<(f64, u32)> = None;
-        for e in self.entities.iter().filter(|e| e.rendered) {
+        for e in self
+            .entities
+            .iter()
+            .filter(|e| e.rendered && !self.unhoverable.contains(&e.id))
+        {
             for dz in [-40.0, 0.0, 50.0, 90.0] {
                 let Some((px, py)) = self.project_point(Vec3::new(e.pos.x, e.pos.y, e.pos.z + dz))
                 else {
@@ -283,6 +300,13 @@ impl WorldIo for Sim {
     }
 
     async fn slots(&mut self) -> Result<Vec<(i32, u32)>, String> {
+        if self
+            .fail_mouse_over_after
+            .is_some_and(|n| self.slots_reads >= n)
+        {
+            return Err("injected mouse-over read failure".into());
+        }
+        self.slots_reads += 1;
         let mo = self.under_cursor();
         let hover_ok = !self.hover_needs_mouse_move || self.held("__mousemove");
         self.slots
@@ -379,6 +403,9 @@ impl WorldIo for Sim {
     }
 
     async fn place_cursor(&mut self, x: i32, y: i32, mouse_move: bool) -> Result<(), String> {
+        if !mouse_move && self.fail_cursor_restore {
+            return Err("injected cursor restore failure".into());
+        }
         self.cursor = (x, y);
         self.keys.insert("__mousemove".into(), mouse_move);
         Ok(())

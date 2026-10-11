@@ -108,12 +108,41 @@ pub async fn run<W: WorldIo>(io: &mut W, req: HoverRequest) -> Result<Value, Wor
     // `place_cursor` without a mouse move: putting the cursor back must not
     // hover anything on the way.
     let restored = io.place_cursor(start.0, start.1, false).await;
-    let mut out = r?;
+    let mut out = match r {
+        Ok(out) => out,
+        Err(e) => return Err(with_restore_error(e, restored, start)),
+    };
     out["cursor_restored"] = json!(restored.is_ok());
     if let Err(e) = restored {
         out["cursor_restore_error"] = json!(e);
     }
     Ok(steps.finish(io.now_ms(), out))
+}
+
+/// A probe failure with the cursor restore's own failure attached, so a
+/// cursor left mid-screen is never a silent side effect of the first error.
+fn with_restore_error(
+    mut e: WorldError,
+    restored: Result<(), String>,
+    start: (i32, i32),
+) -> WorldError {
+    let Err(re) = restored else {
+        return e;
+    };
+    tracing::warn!(
+        tool = TOOL,
+        step = %e.step,
+        restore_error = %re,
+        "client_hover_probe failed and could not put the cursor back"
+    );
+    let state = e.0.state.get_or_insert_with(|| json!({}));
+    if !state.is_object() {
+        *state = json!({ "state": state.take() });
+    }
+    state["cursor_restored"] = json!(false);
+    state["cursor_restore_error"] = json!(re);
+    state["cursor_start"] = json!([start.0, start.1]);
+    e
 }
 
 /// Everything between reading the cursor and putting it back.
@@ -159,15 +188,21 @@ async fn probe<W: WorldIo>(
         }
     };
     let entity_json = found.as_ref().map(Found::to_json);
+    // Read once, before any cursor move: a tooltip the hover itself spawns
+    // must not count as a window covering the pixel (worknote deviation).
     let rects = io
         .window_rects()
         .await
         .map_err(|e| steps.fail(io.now_ms(), "window_rects", e))?;
-    let player_pos = io
-        .snapshot()
-        .await
-        .ok()
-        .and_then(|s| s.player().and_then(|p| p.pose).map(|p| p.pos));
+    // An unreadable avatar is reported as such, never as "off screen".
+    let player_pos: Result<Vec3, String> = match io.snapshot().await {
+        Ok(s) => s
+            .player()
+            .and_then(|p| p.pose)
+            .map(|p| p.pos)
+            .ok_or_else(|| "snapshot: the player has no pose".to_string()),
+        Err(e) => Err(format!("snapshot: {e}")),
+    };
 
     // 2. On screen? Never turn the camera.
     let t_proj = io.now_ms();
@@ -234,7 +269,8 @@ async fn probe<W: WorldIo>(
             (f64::from(x) + radius * a.cos()).round() as i32,
             (f64::from(y) + radius * a.sin()).round() as i32,
         );
-        if !screen.contains((f64::from(jx), f64::from(jy)), 0.0) {
+        // Pixels run 0..w and 0..h: x == w is already off the screen.
+        if jx < 0 || jy < 0 || f64::from(jx) >= screen.w || f64::from(jy) >= screen.h {
             ring.push(json!({ "at": [jx, jy], "hover": "off_screen" }));
             continue;
         }
@@ -249,28 +285,34 @@ async fn probe<W: WorldIo>(
         json!({ "centre": hover, "ring": ring }),
     );
 
-    // 5. Distances from the avatar and the screen edge.
-    let avatar_px = match player_pos {
-        Some(p) => {
+    // 5. Distances from the avatar and the screen edge. `avatar_px` null
+    // with no `avatar_error` means the avatar is off screen; with one, the
+    // distance is unknown.
+    let (avatar_px, avatar_error) = match player_pos {
+        Ok(p) => {
             let body: Vec<Vec3> = HOVER_OFFSETS
                 .iter()
                 .map(|dz| Vec3::new(p.x, p.y, p.z + dz))
                 .collect();
-            io.project(&body).await.ok().and_then(|pr| {
-                pr.points
-                    .iter()
-                    .flatten()
-                    .map(|(ax, ay)| (ax - f64::from(x)).hypot(ay - f64::from(y)))
-                    .min_by(f64::total_cmp)
-                    .map(f64::round)
-            })
+            match io.project(&body).await {
+                Ok(pr) => (
+                    pr.points
+                        .iter()
+                        .flatten()
+                        .map(|(ax, ay)| (ax - f64::from(x)).hypot(ay - f64::from(y)))
+                        .min_by(f64::total_cmp)
+                        .map(f64::round),
+                    None,
+                ),
+                Err(e) => (None, Some(format!("project: {e}"))),
+            }
         }
-        None => None,
+        Err(e) => (None, Some(e)),
     };
     let (fx, fy) = (f64::from(x), f64::from(y));
     let edge_px = fx.min(fy).min(screen.w - fx).min(screen.h - fy).round();
 
-    Ok(json!({
+    let mut out = json!({
         "verdict": if ok { json!("ok") } else { hover.clone() },
         "pixel": [x, y],
         "hover": hover,
@@ -279,7 +321,11 @@ async fn probe<W: WorldIo>(
         "avatar_px": avatar_px,
         "edge_px": edge_px,
         "entity": entity_json,
-    }))
+    });
+    if let Some(e) = avatar_error {
+        out["avatar_error"] = json!(e);
+    }
+    Ok(out)
 }
 
 /// Hover one pixel: place the cursor (no button), wait, and classify what
