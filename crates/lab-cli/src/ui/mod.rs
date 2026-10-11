@@ -6,6 +6,7 @@
 
 pub mod table;
 
+use std::ffi::OsStr;
 use std::io::IsTerminal;
 
 /// What the terminal supports, decided once per run by [`Ui::detect`].
@@ -59,9 +60,11 @@ impl Ui {
     /// Decides colour and width from the environment and stdout.
     pub fn detect() -> Self {
         let tty = std::io::stdout().is_terminal();
-        let no_color = std::env::var_os("NO_COLOR").is_some_and(|v| !v.is_empty());
-        let dumb = std::env::var_os("TERM").is_some_and(|v| v.to_str() == Some("dumb"));
-        let color = tty && !no_color && !dumb;
+        let color = color_enabled(
+            tty,
+            std::env::var_os("NO_COLOR").as_deref(),
+            std::env::var_os("TERM").as_deref(),
+        );
         let width = if tty {
             crossterm::terminal::size()
                 .ok()
@@ -126,6 +129,14 @@ impl Ui {
     }
 }
 
+/// Colour and glyphs are on only for a terminal, with `NO_COLOR` unset or
+/// empty and `TERM` not `dumb`.
+fn color_enabled(tty: bool, no_color: Option<&OsStr>, term: Option<&OsStr>) -> bool {
+    let no_color = no_color.is_some_and(|v| !v.is_empty());
+    let dumb = term.is_some_and(|v| v == "dumb");
+    tty && !no_color && !dumb
+}
+
 /// The width of `text` on screen: its characters, without `\x1b[...m` codes.
 pub fn visible_width(text: &str) -> usize {
     strip_ansi(text).chars().count()
@@ -137,17 +148,31 @@ pub fn strip_ansi(text: &str) -> String {
     let mut chars = text.chars();
     while let Some(c) = chars.next() {
         if c == '\x1b' {
-            // Skip the sequence through its final `m`.
-            for next in chars.by_ref() {
-                if next == 'm' {
-                    break;
-                }
-            }
+            skip_escape(&mut chars);
         } else {
             out.push(c);
         }
     }
     out
+}
+
+/// Consumes the rest of an escape sequence whose `` was just read: a `[`,
+/// parameter bytes, then one final byte in `@`..=`~`.
+pub(crate) fn skip_escape(chars: &mut std::str::Chars<'_>) -> String {
+    let mut seq = String::new();
+    let mut rest = chars.clone();
+    if rest.next() != Some('[') {
+        return seq;
+    }
+    seq.push('[');
+    chars.next();
+    for next in chars.by_ref() {
+        seq.push(next);
+        if ('@'..='~').contains(&next) {
+            break;
+        }
+    }
+    seq
 }
 
 #[cfg(test)]
@@ -175,5 +200,21 @@ mod tests {
     fn visible_width_ignores_colour_codes() {
         assert_eq!(visible_width("\x1b[1;33mUsage\x1b[0m"), 5);
         assert_eq!(strip_ansi("a\x1b[2mb\x1b[0m"), "ab");
+    }
+
+    #[test]
+    fn strip_ansi_removes_non_colour_sequences_too() {
+        assert_eq!(strip_ansi("a[2Kb"), "ab");
+        assert_eq!(strip_ansi("a[1;33mb[0mc"), "abc");
+    }
+
+    #[test]
+    fn colour_needs_a_terminal_no_no_color_and_no_dumb_term() {
+        let os = |s: &'static str| Some(OsStr::new(s));
+        assert!(color_enabled(true, None, None));
+        assert!(color_enabled(true, os(""), os("xterm-256color")));
+        assert!(!color_enabled(false, None, os("xterm")));
+        assert!(!color_enabled(true, os("1"), None));
+        assert!(!color_enabled(true, None, os("dumb")));
     }
 }

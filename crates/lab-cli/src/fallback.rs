@@ -45,10 +45,7 @@ pub fn run(ctx: &Ctx) -> u8 {
         return 1;
     };
     match Process::new("pwsh").args(command_line(&dir, ctx)).status() {
-        Ok(status) => status
-            .code()
-            .and_then(|code| u8::try_from(code).ok())
-            .unwrap_or(255),
+        Ok(status) => exit_byte(status.code()),
         Err(err) => {
             ctx.ui.error(
                 &format!("could not start pwsh: {err}"),
@@ -57,6 +54,12 @@ pub fn run(ctx: &Ctx) -> u8 {
             1
         }
     }
+}
+
+/// The process exit code as one byte: passed through when it fits, else 255
+/// (no code at all, a signal, or a value outside 0..=255).
+pub fn exit_byte(code: Option<i32>) -> u8 {
+    code.and_then(|code| u8::try_from(code).ok()).unwrap_or(255)
 }
 
 #[cfg(test)]
@@ -71,17 +74,29 @@ mod tests {
             command: "uat".to_string(),
             raw: vec![OsString::from("first-session"), OsString::from("-Rows")],
         };
-        let args = command_line(Path::new("C:\\lab\\cli"), &ctx);
+        let dir = Path::new("lab-cli-dir");
+        let args = command_line(dir, &ctx);
         assert_eq!(
             args,
             [
                 OsString::from("-NoProfile"),
                 OsString::from("-File"),
-                OsString::from("C:\\lab\\cli\\lab.ps1"),
+                dir.join("lab.ps1").into_os_string(),
                 OsString::from("uat"),
                 OsString::from("first-session"),
                 OsString::from("-Rows"),
             ]
         );
+    }
+
+    #[test]
+    fn exit_codes_pass_through_or_become_255() {
+        assert_eq!(exit_byte(Some(0)), 0);
+        assert_eq!(exit_byte(Some(2)), 2);
+        assert_eq!(exit_byte(Some(130)), 130);
+        assert_eq!(exit_byte(Some(255)), 255);
+        assert_eq!(exit_byte(Some(256)), 255);
+        assert_eq!(exit_byte(Some(-1)), 255);
+        assert_eq!(exit_byte(None), 255);
     }
 }

@@ -1,6 +1,6 @@
 //! A text table whose columns align by visible width, so painted cells line up.
 
-use super::{visible_width, Tone, Ui};
+use super::{skip_escape, visible_width, Tone, Ui};
 
 /// Spaces between columns.
 const SEP: &str = "  ";
@@ -107,12 +107,7 @@ fn fit(cell: &str, width: usize) -> String {
         if c == '\x1b' {
             styled = true;
             out.push(c);
-            for next in chars.by_ref() {
-                out.push(next);
-                if next == 'm' {
-                    break;
-                }
-            }
+            out.push_str(&skip_escape(&mut chars));
         } else if visible < keep {
             out.push(c);
             visible += 1;
@@ -160,5 +155,38 @@ mod tests {
         let line = text.lines().nth(1).expect("row line");
         assert_eq!(line, "uat   Run a UAT…");
         assert_eq!(visible_width(line), 16);
+    }
+
+    #[test]
+    fn painted_last_column_is_cut_by_visible_width_and_reset() {
+        let ui = Ui {
+            color: true,
+            fancy: true,
+            width: Some(12),
+        };
+        let mut table = Table::new(&["A", "B"]);
+        table.row(vec![
+            "x".to_string(),
+            ui.paint(Tone::Cmd, "abcdefghijklmnop"),
+        ]);
+        let text = table.render(&ui);
+        let line = text.lines().nth(1).expect("row line");
+        assert_eq!(visible_width(line), 12);
+        assert!(line.ends_with("…[0m"), "{line:?}");
+    }
+
+    #[test]
+    fn fancy_headers_are_upper_case() {
+        let ui = Ui {
+            color: false,
+            fancy: true,
+            width: None,
+        };
+        let mut table = Table::new(&["Name", "State"]);
+        table.row(vec!["a".to_string(), "b".to_string()]);
+        assert!(table.render(&ui).starts_with(
+            "NAME  STATE
+"
+        ));
     }
 }

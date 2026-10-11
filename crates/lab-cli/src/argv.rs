@@ -85,6 +85,8 @@ mod tests {
     #[test]
     fn colon_form_becomes_equals_form() {
         assert_eq!(rw(&["-Value:-x"]), ["--value=-x"]);
+        assert_eq!(rw(&[r"-Out:C:\a\b"]), [r"--out=C:\a\b"]);
+        assert_eq!(rw(&["-Out:"]), ["--out="]);
     }
 
     #[test]
