@@ -12,6 +12,7 @@ use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 use tokio::sync::mpsc;
 
+use cimmeria_base_session::base::helpers::{log_session_end, SessionEndRow};
 use cimmeria_base_session::base::plugin::{SessionEvent, SessionHookPoint};
 use cimmeria_base_session::base::session_presence::{spawn_offline, EndedSession};
 
@@ -31,7 +32,6 @@ pub(super) async fn handle_log_off(
     db_pool: &Option<Arc<PgPool>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let disconnect = if !payload.is_empty() { payload[0] } else { 0 };
-    tracing::info!(%addr, disconnect, "SGWPlayer.logOff");
 
     // Snapshot entity info before cleanup. Capture the session's wire-encryption
     // version (the logoff / reset-entities packets below must be built with the
@@ -47,7 +47,7 @@ pub(super) async fn handle_log_off(
     } else {
         "logoff_character_select"
     };
-    let (entity_id, enc_version, ended, plugins, identity) = {
+    let (entity_id, enc_version, ended, plugins, identity, session_secs) = {
         let mut clients = connected.lock().unwrap();
         match clients.get_mut(&addr) {
             Some(c) => {
@@ -55,6 +55,7 @@ pub(super) async fn handle_log_off(
                 // Snapshotted before the reset below clears the names
                 // (Rule 5 § "Resolve late, and before teardown").
                 let identity = super::super::session_identity::session_identity(c);
+                let session_secs = c.connected_at.elapsed().as_secs();
                 // Only a character that was in the world is announced
                 // offline, and only here: clearing the flag stops the
                 // teardown of a full exit from announcing it again.
@@ -93,6 +94,7 @@ pub(super) async fn handle_log_off(
                     ended,
                     c.plugins.clone(),
                     identity,
+                    session_secs,
                 )
             }
             None => (
@@ -101,9 +103,19 @@ pub(super) async fn handle_log_off(
                 None,
                 Default::default(),
                 cimmeria_entity::cell_entity::PlayerIdentity::UNKNOWN,
+                0,
             ),
         }
     };
+    tracing::info!(
+        %addr,
+        disconnect,
+        account_id = identity.account_id,
+        account_name = identity.account_name,
+        player_id = identity.player_id,
+        player_name = identity.player_name,
+        "SGWPlayer.logOff"
+    );
 
     if let Some(entity_id) = entity_id {
         // Tell CellService to disconnect and destroy the entity
@@ -178,6 +190,19 @@ pub(super) async fn handle_log_off(
         // `ChannelManager.leaveChannel(self, channelId, True)` for every
         // held membership).
         cimmeria_base_session::base::user_channels::user_channel_registry().leave_all(entity_id);
+    }
+
+    // Return to character select keeps the session, so no teardown writes
+    // its `session.end`: this is the row for a character that was in the world.
+    if let (0, Some(ended)) = (disconnect, &ended) {
+        log_session_end(&SessionEndRow {
+            addr,
+            identity,
+            entity_id: ended.entity_id,
+            entity_name: identity.player_name,
+            disconnect_reason: "logoff_character_select",
+            session_secs,
+        });
     }
 
     // Fan out offline status to contact-list watchers and organization
