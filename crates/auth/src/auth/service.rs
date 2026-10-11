@@ -440,8 +440,9 @@ fn reap_expired(
 mod tests {
     use super::*;
 
-    /// A ticket older than `TICKET_TTL` gets one INFO row carrying its
-    /// account pair, issuing IP and a redacted ticket prefix.
+    /// An expired SID and an expired ticket are each dropped with one INFO
+    /// row carrying their account pair and a redacted prefix, a young ticket
+    /// survives, and no captured event holds a full SID or ticket.
     #[test]
     fn reap_expired_logs_unconsumed_ticket_with_account() {
         use crate::test_support::LogCapture;
@@ -452,32 +453,75 @@ mod tests {
         let capture = LogCapture::install();
         let sessions = Mutex::new(HashMap::new());
         let pending = Mutex::new(HashMap::new());
-        let now = Instant::now();
-        let ticket = "ABCDEF0123456789ABCD".to_string();
-        pending.lock().unwrap().insert(
-            ticket.clone(),
-            PendingLogin {
-                account_id: 42,
-                account_name: "reaper-user".to_string(),
+        // Anchor every entry to `base` and reap at `base + SESSION_TTL + 1s`,
+        // so no `now - duration` subtraction can underflow the clock on Windows.
+        let base = Instant::now();
+        let now = base + SESSION_TTL + Duration::from_secs(1);
+
+        let sid = "SIDQRSTUV0123456789W".to_string();
+        sessions.lock().unwrap().insert(
+            sid.clone(),
+            SessionRecord {
+                account_id: 7,
                 access_level: 0,
                 test_account: false,
-                ticket: ticket.clone(),
-                session_key: String::new(),
+                account_name: "reaper-sid".to_string(),
                 client_ip: Ipv4Addr::LOCALHOST.into(),
-                created: now - Duration::from_secs(31),
+                created: base,
             },
         );
 
+        let expired_ticket = "ABCDEF0123456789ABCD".to_string();
+        let young_ticket = "ZYXWVU9876543210TSRQ".to_string();
+        for (ticket, created) in [
+            (expired_ticket.clone(), base),
+            (young_ticket.clone(), base + SESSION_TTL),
+        ] {
+            pending.lock().unwrap().insert(
+                ticket.clone(),
+                PendingLogin {
+                    account_id: 42,
+                    account_name: "reaper-user".to_string(),
+                    access_level: 0,
+                    test_account: false,
+                    ticket,
+                    session_key: String::new(),
+                    client_ip: Ipv4Addr::LOCALHOST.into(),
+                    created,
+                },
+            );
+        }
+
         let (sessions_dropped, tickets_dropped) = reap_expired(&sessions, &pending, now);
 
-        assert_eq!((sessions_dropped, tickets_dropped), (0, 1));
-        let row = capture
+        assert_eq!((sessions_dropped, tickets_dropped), (1, 1));
+        assert!(sessions.lock().unwrap().is_empty());
+        {
+            let map = pending.lock().unwrap();
+            assert_eq!(map.len(), 1, "only the young ticket may survive");
+            assert!(map.contains_key(&young_ticket));
+        }
+
+        let sid_row = capture
+            .find_event(Level::INFO, "expired before it was used", "sid_unconsumed")
+            .expect("expired SID must log an INFO row with reason `sid_unconsumed`");
+        assert!(sid_row.has_field("account_id", "7"));
+        assert!(sid_row.has_field("sid_prefix", &CredentialPrefix(&sid).to_string()));
+
+        let ticket_row = capture
             .find_message(Level::INFO, "expired before BaseApp consumed")
             .expect("expired ticket must log an INFO row");
-        assert!(row.has_field("account_id", "42"));
-        assert!(row.has_field("reason", "ticket_unconsumed"));
-        assert!(row.has_field("ticket_prefix", "ABCDEF…"));
-        assert!(pending.lock().unwrap().is_empty());
+        assert!(ticket_row.has_field("account_id", "42"));
+        assert!(ticket_row.has_field("reason", "ticket_unconsumed"));
+        assert!(ticket_row.has_field("ticket_prefix", "ABCDEF…"));
+
+        for event in capture.all() {
+            for secret in [sid.as_str(), expired_ticket.as_str()] {
+                let leaked = event.message.as_deref().is_some_and(|m| m.contains(secret))
+                    || event.fields.values().any(|v| v.contains(secret));
+                assert!(!leaked, "full secret leaked into event: {event:?}");
+            }
+        }
     }
 
     #[test]
