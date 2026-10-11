@@ -45,6 +45,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [sqlx-chain-id-is-i32-vacuous-guards](sqlx-chain-id-is-i32-vacuous-guards.md) — `content_*.chain_id` is i32; a wrong decode type hides inside "no rows" guards.
 - [gitignore-swallows-new-dirs](gitignore-swallows-new-dirs.md) — unanchored `.gitignore` dir rules hide a new `foo/mod.rs`.
 - [worktree-shell-and-external-binary-tests](worktree-shell-and-external-binary-tests.md) — worktree Bash refuses `env VAR=x cmd`, heredoc appends, chained commits.
+- [powershell-git-commit-stdin-trap](powershell-git-commit-stdin-trap.md) — `git commit -F - @'..'@` takes the text as a pathspec; use `-F <file>` or `-m @'..'@`.
 - [powershell-dotnet-relative-path-trap](powershell-dotnet-relative-path-trap.md) — `[IO.File]` relative paths ignore `cd` and hit the main checkout; use absolute paths.
 
 ## Wire format
