@@ -255,18 +255,25 @@ fn every_bump_is_non_zero_and_stable() {
 #[test]
 fn served_versions_fit_in_i32() {
     let cache = ResourceCache::load_all(&data_dir()).expect("committed PAKs load");
-    for (category, name) in [
-        (CATEGORY_ERROR_STRINGS, "ErrorStrings"),
-        (CATEGORY_ABILITIES, "CookedDataAbilities"),
-    ] {
-        let metadata = cache.category(category).unwrap().metadata;
+    // Every loaded category, not just the patched ones, so a later bump path
+    // (apply_overrides, metadata_bump) can't reintroduce the overflow unseen.
+    let mut checked = 0;
+    for category in 0..64 {
+        let Some(data) = cache.category(category) else {
+            continue;
+        };
+        checked += 1;
         assert!(
-            metadata <= i32::MAX as u32,
-            "{name} (category {category}) is served at {metadata}, above i32::MAX"
+            data.metadata <= i32::MAX as u32,
+            "category {category} is served at {}, above i32::MAX",
+            data.metadata
         );
+    }
+    assert!(checked >= 20, "only {checked} categories loaded");
+    for category in [CATEGORY_ERROR_STRINGS, CATEGORY_ABILITIES] {
         assert!(
             bump_for(category) < 1 << 30,
-            "{name} (category {category}) bump {} must stay below 2^30",
+            "category {category} bump {} must stay below 2^30",
             bump_for(category)
         );
     }
