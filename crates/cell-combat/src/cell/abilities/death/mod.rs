@@ -97,9 +97,16 @@ pub(super) async fn apply_death_transition(
             // Contact-list Death fanout — cell→base hop. The base handler calls
             // `fanout_contact_event` with the player's name and EVENT_DEATH.
             // data_value=0 per spec (client ignores it; shows "{Name} has died").
+            // The deceased's `player_id` pairs with `player_name` (Rule 6).
+            // Death fires only for player entities, which always carry one.
+            let subject_player_id = space_mgr
+                .player_identity(target_eid)
+                .player_id
+                .unwrap_or_default();
             if tx
                 .send(CellToBaseMsg::ContactListPresenceEvent {
                     player_name: character_name,
+                    player_id: subject_player_id,
                     event_id: EVENT_DEATH,
                     data_value: 0,
                 })
