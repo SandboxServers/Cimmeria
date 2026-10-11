@@ -900,6 +900,20 @@ On Windows, a `send_to` to a closed port makes the next `recv_from` fail with WS
 
 Guard: `connreset_burst_writes_one_row` in `base/connect_loop/mod.rs` (a burst of 50 resets writes one row; the next row after the window carries `suppressed = 49`).
 
+## Inline move refusals (TG-ITM-04)
+
+The player-bag move path (`inventory/move_/`) refuses a move in five places that used to write a bare WARN. Each now writes one row under `target: "inventory"` with `event = "move_rejected"` and a `reason`, the identity pair (`account_id`, `account_name`, `player_id`, `player_name`) and the item and container ids with their names. The vault refusals keep their own `bank` rows (BV-01).
+
+| Level | `reason` | When |
+|---|---|---|
+| WARN | `invalid_slot` | Target container or slot outside the container's range (`move_/mod.rs`) |
+| WARN | `source_not_found` | The instance id has no row for the player (`move_/mod.rs`) |
+| WARN | `over_stack` | Quantity above the source stack; adds `quantity`, `stack_size`, source container (`move_/mod.rs`) |
+| WARN | `not_allowed_in_container` | The type's `container_sets` excludes the target; adds both containers (`move_/finish.rs`) |
+| WARN | `split_onto_occupied` | A partial stack dropped on an occupied slot; adds both containers (`choose_shape` in `move_/finish.rs`, also reached from the org path) |
+
+Guards: the `live_db_move_refusal_*` tests in `move_/named_log_tests.rs`, one per reason, each asserting the WARN level, target, `event`, `reason`, account and player identity and the item id.
+
 ## Minigame session end (TG-MG-03)
 
 `run_session` in `crates/minigame/src/minigame/server/mod.rs` returns a `SessionEnd` whose `EndReason` names the exit that stopped the session. `handle_connection` logs it once on the closing row, `event = "minigame.session_end"`, with `end_reason`, `outcome` (`victory`, `defeat` or `canceled`), `duration_ms` and `room_id` beside the Rule 6 identity. The abort row (`Minigame aborted without a result`) carries the same `end_reason`.
