@@ -12,7 +12,8 @@ The SGW client's Unreal Engine 3 bounds: frame time, the texture streaming keys,
 | Bound | Value | Grade | Source | Safe level | Break level | Notes |
 |---|---|---|---|---|---|---|
 | Hitch threshold | 200 ms | config | `crates/client-telemetry/src/hooks/seams/frame_health.rs` `HITCH_MS` | n/a | n/a | `client.engine.hitch` fires on a tick gap at or above it; 100 ms under `firehose` capture (`HITCH_MS_FIREHOSE`), so lab firehose sessions report smaller hitches. |
-| Frame time (p50, p95, max per 30 s window) | not measured | n/a | n/a | n/a | n/a | Nothing reports ordinary frame times yet. CL-06 adds the fields; CL-08 measures them per world. |
+| Frame time (p50, p95, max per 30 s window) | not measured | n/a | n/a | n/a | n/a | `client.engine.memory` carries `frame_p50_ms`, `frame_p95_ms` and `frame_max_ms` since CL-06; CL-08 measures them per world once the lab DLL is rebuilt. |
+| Hitches per world | see [Hitches per world](#hitches-per-world) | measured | SigNoz `client.engine.hitch`, 2026-10-11, 30 days | n/a | n/a | Counts are lower bounds: the sink throttle drops repeats, and firehose lab sessions use the 100 ms threshold. |
 | Busy cores at which frame time passes the hitch threshold | not measured | n/a | n/a | not measured | not measured | Chaos profile `cpu`. CL-08 fills the safe level from the five-client p95. |
 | Texture pool size (`[TextureStreaming] PoolSize`) | `140` in the ini, **inert: not read by the PC client** | static | `Engine/Config/BaseEngine.ini` line 237; no `PoolSize` string in `SGW.exe` (ASCII and UTF-16 byte scan, plus Ghidra string search `pool`) or in any of the 8 FRScript `.u` packages | n/a | n/a | Changing it does nothing. CL-13 must not target it. Its nine sibling keys are all read, in `FUN_0054a950`: the four margins and the five fudge and mip rules below. |
 | Texture streaming margins | `HysteresisLimit` 30, `DropMipLevelsLimit` 24, `StopIncreasingLimit` 18, `StopStreamingLimit` 12 | config | `Engine/Config/BaseEngine.ini` lines 238-241 under `[TextureStreaming]`; read through `GConfig->GetInt(TEXT("TextureStreaming"), ...)` with the key strings at `0x018363E0`, `0x018364B8`, `0x01836598`, `0x01836678` (`GEngineIni`) | n/a | n/a | Unit and meaning (free-texture-memory margins in MB) inferred from UE3 naming; the consumer was not traced. These are the real streaming budget. |
@@ -21,6 +22,22 @@ The SGW client's Unreal Engine 3 bounds: frame time, the texture streaming keys,
 | Minimum desired frame rate | `35.0` | config | `Engine/Config/BaseEngine.ini` line 182 under `[Engine.Client]`; the key name is a wide string at `0x018497C0` | n/a | n/a | `MinDesiredFrameRate`. Consumer not traced. |
 | Background throttle | none in the player client; a 5 ms `Sleep` and a below-normal thread priority run only when `GIsEditor` is set | static | `FEngineLoop::Tick` (`0x00416EC0`), block `0x004171A7` to `0x00417204`: foreground test via `GetForegroundWindow`/`GetWindowThreadProcessId` at `0x004171A7`-`0x004171B4`; `GIsEditor` (`0x01EAD7AC`) guard, the `JZ` at `0x004171CB` skips the block when it is 0 | n/a | n/a | The `Sleep(5)` (`FUN_00491320(0.005f)` at `0x004171F6`, `Sleep((DWORD)(arg * 1000.0))`) runs on every unfocused tick. `SetThreadPriority(-1)` (`0x004171DF`-`0x004171E6`) is edge-triggered on the focus-loss tick (latch `0x01D8F9BC`); normal priority is restored at `0x00417260` on regain. `SetPriorityClass` is not imported, so this is the only focus-driven priority change. Writers of `0x01EAD7AC`: `PreInit` `0x004185E0` (writes 0, `0x00418AFC`) and `0x00B8EF8A`, `0x00B8F0E4` inside `0x00B8E8D0` (writes `!NOEDITOR`); no address-taking references. `0x00B8E8D0` is referenced only from the data word at `0x0197ED58` and is inferred to be a commandlet `Main` from its `NOEDITOR`/`NOCLIENT`/`NOSERVER` parsing. The Ghidra project symbol at `0x01EAD7AC` is stale (`g_dwMapCheckDepEnabled`); it is `GIsEditor` per `PreInit`'s five globals. No ini key or switch reaches the guard. Not confirmed live (LT-6: record thread priority with tick rate, or read the byte with `client_mem_read`). Earlier lab reports of a throttle (#1312) are better explained by an OS-level effect. |
 | Idle display loss | about 10 min, then `D3DERR_NOTAVAILABLE` | inferred | lab observation, single report ([live-research-lab.md § The display](../../guides/live-research-lab.md#the-display-screensaver-and-d3d)) | n/a | n/a | The screensaver takes the display because lab input never resets the idle timer. The lab supervisor now holds the display awake. |
+
+## Hitches per world
+
+Tick gaps at or over the hitch threshold, each attributed to the latest visible level package in its session. SigNoz, 30 days to 2026-10-11.
+
+| World | Kind | Hitches | Sessions | p50 ms | p95 ms | Max ms |
+|---|---|---|---|---|---|---|
+| Castle_CellBlock | player | 1,208 | 20 | 127 | 737 | 2,880 |
+| Castle_CellBlock | lab | 3,641 | 11 | 282 | 1,278 | 33,604 |
+| Ihpet_Crater_Light | player | 143 | 8 | 624 | 1,684 | 8,189 |
+| Ihpet_Crater_Light | lab | 535 | 7 | 331 | 9,269 | 43,215 |
+| Castle | player | 37 | 4 | 835 | 3,620 | 3,864 |
+| SGC_W1 | player | 32 | 2 | 393 | 976 | 1,134 |
+| Login_Map | player | 338 | 29 | 2,133 | 6,751 | 379,763 |
+
+`Login_Map` gaps include level loads (the tick stops while a level loads), so they are not frame times.
 
 ## Ini chain and lab override targets
 
