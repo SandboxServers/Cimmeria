@@ -696,6 +696,10 @@ Two seams, both carrying both entities' ids and factions so a standoff can be de
 
 A deferred effect row (a pulse, an expiry, a removal) names its invoker from the snapshot the effect took when it landed (`SpaceManager::caster_label`, `invoker_identity` and `invoker_name` on `TimedEffect` and `ActiveEffectInstance`; the name is an NPC's too, so a mob's DoT and debuff rows name it after it died), never from whoever holds the invoker's entity id now: the id may have been reused. A pet's `owner_name` comes from the summon-time identity for the same reason (#889).
 
+## Outbox replays (TG-ITM-03)
+
+`crates/base-session/src/base/outbox/mod.rs` holds base→cell events that must not be lost (for example `ItemUsed`) until the cell takes them. Every WARN on the outbox (dispatch failed, poison row, mark-delivered failed, send failed) carries `outbox_id`, `entity_id` and `event_type`, so a stuck row names whose event it is. A successful replay from `drain_undelivered` writes INFO `event = "outbox_replayed"` with `outbox_id`, `entity_id`, `event_type` and `attempts`. A replayed `ItemUsed` re-runs its chain, so this row is how a possible double consume shows up. The entity id is a runtime id with no stored name (`nt:id-only`). Guard: `outbox::tests::live_db::live_db_outbox_replay_logs_event_type`.
+
 ## Bandolier ammo writeback seam (TG-ITM-06)
 
 Target `cimmeria_base_methods::base::world_entry::methods::inventory::ammo` (module path). The bandolier ammo writeback (`update_bandolier_ammo`, `base-methods` `inventory/ammo.rs`) is a write guard keyed on the slot's instance id. A zero-row result means the slot is empty or its item was swapped, so the ammo the cell computed for that slot is dropped. That is a loss the player can feel, so it is a WARN, not a DEBUG.
