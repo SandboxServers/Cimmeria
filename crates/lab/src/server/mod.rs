@@ -27,6 +27,7 @@ use serde_json::{json, Value};
 use crate::supervisor::Supervisor;
 use crate::timeline::{Timeline, TimelineArgs};
 
+mod calibrate;
 mod client_state;
 mod combat;
 pub(crate) mod compact;
@@ -274,6 +275,7 @@ impl LabServer {
                 + Self::world_router()
                 + Self::combat_router()
                 + Self::uat_router()
+                + Self::calibrate_router()
                 + Self::golden_router()
                 + Self::ui_router()
                 + Self::composite_router()

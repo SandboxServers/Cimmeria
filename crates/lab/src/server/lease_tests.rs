@@ -237,6 +237,43 @@ async fn a_uat_run_respects_the_lease() {
     );
 }
 
+/// lab-spec-vocab (SV-10): a calibration with no `lease_id` takes a lease of
+/// its own (owner `lab_uat_calibrate`) and releases it when it ends, here on
+/// a missing section; it is refused while another session holds the lab and
+/// runs under the holder's own lease, which survives it.
+#[tokio::test]
+async fn a_uat_calibrate_takes_and_releases_its_own_lease() {
+    let url = spawn_daemon(test_server()).await;
+    let mut a = McpSession::open(&url).await;
+    let mut b = McpSession::open(&url).await;
+    let specs = tempfile::tempdir().unwrap();
+    let args = json!({
+        "section": "first-session", "row": "FS-P3",
+        "specs_dir": specs.path().display().to_string(),
+    });
+
+    let r = b.call("lab_uat_calibrate", args.clone()).await;
+    assert!(error_text(&r).contains("no spec section"), "{r}");
+    let st = status_json(&b.call("lab_lease_status", json!({})).await);
+    assert_eq!(st["held"], false, "{st}");
+    assert_eq!(
+        st["recent"][0]["owner"],
+        crate::lease::run::CALIBRATE_OWNER,
+        "{st}"
+    );
+    assert_eq!(st["recent"][0]["how"], "released", "{st}");
+
+    let a_id = lease_id(&acquire(&mut a, "session-a").await);
+    let r = b.call("lab_uat_calibrate", args.clone()).await;
+    assert!(error_text(&r).contains("session-a"), "{r}");
+    let mut with = args.clone();
+    with["lease_id"] = json!(a_id);
+    let r = a.call("lab_uat_calibrate", with).await;
+    assert!(!error_text(&r).contains("lease"), "{r}");
+    let st = status_json(&a.call("lab_lease_status", json!({})).await);
+    assert_eq!(st["lease"]["owner"], "session-a", "{st}");
+}
+
 /// `tools/list` advertises `lease_id` as a required argument exactly on the
 /// guarded tools.
 #[tokio::test]

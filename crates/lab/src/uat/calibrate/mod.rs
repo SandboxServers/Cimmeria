@@ -10,12 +10,12 @@
 //!   avatar and the screen edge breaks ties. The winner is confirmed from a
 //!   fresh teleport before it is proposed.
 //!
-//! Nothing in this module drives the client, clicks or commits; SV-10 does
-//! the driving, and a person reviews the diff.
+//! Nothing in this module clicks or commits. [`drive`] (SV-10,
+//! `lab_uat_calibrate`) moves the camera, stands and hovers; a person
+//! reviews the diff it writes into the run folder.
 
-// SV-10 (`lab_uat_calibrate`) is the first real caller; remove this there.
-#![allow(dead_code)]
-
+mod candidate;
+pub mod drive;
 pub mod edit;
 pub mod grid;
 pub mod score;
@@ -49,7 +49,8 @@ pub struct CalibrateOutcome {
     pub spec_path: Option<String>,
     /// Hover probes spent, confirmations included.
     pub probes: u32,
-    /// Why the pose was not calibrated, when `ok` is false.
+    /// Why the pose was not calibrated, when `ok` is false; with `ok`, why
+    /// the sweep stopped early (`budget: ...`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
 }
