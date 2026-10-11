@@ -86,7 +86,7 @@ Status vocabulary: **Ready / BlockedDependency / BlockedDecision / Writing / Rev
 | LX-13 | 1 | Zip self-update apply on Windows | rust-gameserver-dev | LX-02 | Integrated ([#1438](https://github.com/SandboxServers/Cimmeria/pull/1438)) |
 | LX-14 | 1 | Move `pack-client-overlay` into `cimmeria-launcher-core` | packet-coder | LX-01 | Integrated ([#1379](https://github.com/SandboxServers/Cimmeria/pull/1379)) |
 | LX-15 | 2 | Release: zip only, `launcher-current`, signed feed | rust-gameserver-dev | LX-13, LX-14; D-LX9 for a live run | Integrated ([#1534](https://github.com/SandboxServers/Cimmeria/pull/1534)) |
-| LX-16 | 3 | CI: retire egui jobs, keep client-launch and start32 | packet-coder | LX-18 | BlockedDependency |
+| LX-16 | 3 | CI: retire egui jobs, keep client-launch and start32 | packet-coder | LX-18 | Review (this PR) |
 | LX-17 | 2 | Window title, version stamp and About | packet-coder | LX-02 | Integrated ([#1443](https://github.com/SandboxServers/Cimmeria/pull/1443)) |
 | LX-18 | 3 | Delete the egui launcher | packet-coder | Waves 1-2, LX-28, D-LX1 sign-off | Review (this PR) |
 | LX-19 | 1 | Delete `tools/SGWLauncher/` and the prototypes | packet-coder | | Done ([#1355](https://github.com/SandboxServers/Cimmeria/pull/1355)) |

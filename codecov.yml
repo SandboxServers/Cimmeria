@@ -34,6 +34,18 @@ coverage:
         threshold: 0%
         informational: true
 
+# Flags. client-launch.yml uploads `client-launch` coverage, but that workflow
+# is path-filtered: it runs only on commits that touch those crates. Without
+# carryforward, every later commit's report on main has no `client-launch`
+# data at all. Carryforward keeps the last upload until the next change.
+flags:
+  client-launch:
+    carryforward: true
+    paths:
+      - "crates/client-launch/**"
+      - "crates/start32/**"
+      - "crates/launcher-core/**"
+
 # PR comment shape. The defaults are noisy on a workspace this size, so we
 # scope the comment to a header + the per-component diff and trim file lists.
 comment:
