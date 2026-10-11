@@ -1,7 +1,7 @@
 # Launcher Consolidation
 
 > Type: how-to. Audience: the Claude Code coordinator, packet workers and maintainers.
-> Updated: 2026-10-10. Companions: [work packets](work-packets.md), [desktop launcher README](../../../crates/launcher/desktop/README.md), [desktop launcher ledger (macOS/Wine)](../playtests/2026-10-03-macos-wine/README.md), [documentation index](../../readme.md).
+> Updated: 2026-10-10. Companions: [work packets](work-packets.md), [acceptance gates and LX-26 results](acceptance.md), [desktop launcher README](../../../crates/launcher/desktop/README.md), [desktop launcher ledger (macOS/Wine)](../playtests/2026-10-03-macos-wine/README.md), [documentation index](../../readme.md).
 
 ## Purpose
 
