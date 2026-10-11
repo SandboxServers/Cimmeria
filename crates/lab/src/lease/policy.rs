@@ -121,6 +121,8 @@ pub const LEASED: &[&str] = &[
     "client_target",
     "client_move_to",
     "client_camera",
+    // Moves the shared cursor (never clicks).
+    "client_hover_probe",
     "client_use_ability",
     "client_item_action",
     "client_die_and_respawn",
@@ -171,6 +173,8 @@ mod tests {
     fn tools_with_hidden_writes_need_the_lease() {
         assert_eq!(gate("client_entity_find"), Gate::Lease);
         assert_eq!(gate("client_inventory"), Gate::Lease);
+        // Moves the cursor (no button), so it drives the client.
+        assert_eq!(gate("client_hover_probe"), Gate::Lease);
     }
 
     #[test]
