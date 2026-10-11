@@ -77,7 +77,10 @@ mod tests {
 
     fn check(config: &Config, feed: &[u8], package: &[u8]) -> Result<String, Error> {
         let dir = tempfile::tempdir().unwrap();
-        verify_windows_release(config, feed, package, &dir.path().join("stage"))
+        // macOS temp dirs live under /var, a symlink to /private/var, and the
+        // extraction refuses a stage whose parent runs through a link.
+        let root = dir.path().canonicalize().unwrap();
+        verify_windows_release(config, feed, package, &root.join("stage"))
     }
 
     #[test]
