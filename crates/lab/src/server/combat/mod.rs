@@ -110,7 +110,8 @@ pub struct DieArgs {
 #[derive(Debug, Default, serde::Deserialize, schemars::JsonSchema)]
 pub struct WaitEventArgs {
     /// Event kind glob: `cme.event`, `net.out`, `entity.*`, `cegui.log`,
-    /// `lua.error`, `lua.print`, `hook.hit`, `combat.hit`, `chat.line`.
+    /// `lua.error`, `lua.print`, `hook.hit`, `combat.hit`, `chat.line`,
+    /// `ui.click`.
     #[serde(default)]
     pub kind: Option<String>,
     /// Name glob over `event` / `method` / `name` / `ability_name` /
@@ -233,7 +234,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Wait for a client event matching a predicate (kind / name / entity_id / text / fields globs over the lab's event history: CME events incl. every inbound server method, net.out, entity lifecycle, CEGUI log, Lua errors, combat text, chat lines), or a window becoming visible. Reads through a named persistent cursor, so successive waits never race or miss events: a match moves the cursor past it, a timeout leaves it. `arm: true` marks now (arm, act, then wait). A timeout is met:false, not an error."
+        description = "Wait for a client event matching a predicate (kind / name / entity_id / text / fields globs over the lab's event history: CME events incl. every inbound server method, net.out, entity lifecycle, CEGUI log, Lua errors, combat text, chat lines, UI window clicks), or a window becoming visible. Reads through a named persistent cursor, so successive waits never race or miss events: a match moves the cursor past it, a timeout leaves it. `arm: true` marks now (arm, act, then wait). A timeout is met:false, not an error."
     )]
     async fn client_wait_event(
         &self,
