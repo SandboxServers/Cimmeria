@@ -67,3 +67,5 @@ Engine/Config/BaseEngine.ini            defines every key in the rows above
 | `[TextureLODSettings]` | `TEXTUREGROUP_*` `MaxLODSize` | Candidate texture-size caps; consumer not traced. |
 
 Do not target `[TextureStreaming] PoolSize` (inert) or any background or focus key (none exists for the player).
+
+The lab applies these keys from a committed override file at each launch; see [the live research lab guide](../../guides/live-research-lab.md#ini-overrides-for-an-instance).

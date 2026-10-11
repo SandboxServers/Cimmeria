@@ -1,0 +1,75 @@
+# Lab-only overrides for each instance's user SGWEngine.ini.
+#
+# To use them, copy this file to tools/lab/ini-overrides.toml (or point
+# CIMMERIA_LAB_INI_OVERRIDES at a copy), uncomment the entries you need and
+# set the value. Each launch applies them after the instance is seeded, so
+# they come back after a reseed. Each applied override is logged under
+# lab.instance (ini_override_applied). With no file, nothing is overridden.
+#
+# [IniVersion] is refused. An override lasts only while the ini's
+# [IniVersion] matches the chain files' timestamps; see
+# docs/client/limits/engine.md ("Ini chain and lab override targets").
+#
+# Targets from that section (every entry is commented out):
+
+# [[override]]
+# file = "SGWEngine.ini"
+# section = "TextureStreaming"
+# key = "HysteresisLimit"
+# value = "..."
+
+# [[override]]
+# file = "SGWEngine.ini"
+# section = "TextureStreaming"
+# key = "DropMipLevelsLimit"
+# value = "..."
+
+# [[override]]
+# file = "SGWEngine.ini"
+# section = "TextureStreaming"
+# key = "StopIncreasingLimit"
+# value = "..."
+
+# [[override]]
+# file = "SGWEngine.ini"
+# section = "TextureStreaming"
+# key = "StopStreamingLimit"
+# value = "..."
+
+# [[override]]
+# file = "SGWEngine.ini"
+# section = "TextureStreaming"
+# key = "MinRequestedMipsToConsider"
+# value = "..."
+
+# [[override]]
+# file = "SGWEngine.ini"
+# section = "Engine.GameEngine"
+# key = "bSmoothFrameRate"
+# value = "..."
+
+# [[override]]
+# file = "SGWEngine.ini"
+# section = "Engine.GameEngine"
+# key = "MinSmoothedFrameRate"
+# value = "..."
+
+# [[override]]
+# file = "SGWEngine.ini"
+# section = "Engine.GameEngine"
+# key = "MaxSmoothedFrameRate"
+# value = "..."
+
+# Candidate: the consumer is not traced yet.
+# [[override]]
+# file = "SGWEngine.ini"
+# section = "Engine.Client"
+# key = "MinDesiredFrameRate"
+# value = "..."
+
+# Candidate: one entry per texture group (the group name from BaseEngine.ini).
+# [[override]]
+# file = "SGWEngine.ini"
+# section = "TextureLODSettings"
+# key = "TEXTUREGROUP_<group>"
+# value = "..."

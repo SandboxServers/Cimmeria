@@ -486,6 +486,21 @@ A change you make to the real `Config\*.ini` doesn't reach an instance that is a
 - **`CIMMERIA_LAB_SHARED_USER_DIR=1`** (also `true` or `yes`) in `labd.env` turns this off and puts every lab client back on the real, shared folder (`reason = opted_out`). Two clients then lock each other's cache again.
 - **OneDrive and redirected Documents.** The redirect works only where the `Personal` shell folder (`HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders`) is `%USERPROFILE%`-relative, the Windows default. If OneDrive Known Folder Move or a policy points Documents at an absolute path, every launch logs `reason = documents_not_redirectable` and uses the shared folder, and so does a failed registry read. A seed that fails (`reason = seed_failed`) falls back the same way. On such a machine run one lab client at a time. The durable fix, a `SHGetFolderPathW` hook in the lab DLL, is on the [tooling backlog](../analysis/lab-automation/tooling-backlog.md#backlog-lab-bridge-and-supervisor-for-the-session-that-owns-them).
 
+### Ini overrides for an instance
+
+Lab-only changes to the client's user `SGWEngine.ini`, such as the texture streaming budget, come from `tools/lab/ini-overrides.toml`. The file is absent by default, so nothing is overridden. `tools/lab/ini-overrides.example.toml` lists the targets, every entry commented out. Copy it to `tools/lab/ini-overrides.toml`, or set `CIMMERIA_LAB_INI_OVERRIDES` (in `labd.env` or the environment) to another path, then uncomment what you need:
+
+```toml
+[[override]]
+file = "SGWEngine.ini"
+section = "TextureStreaming"
+key = "HysteresisLimit"
+value = "..."
+```
+
+Each launch applies the overrides to every instance's `Documents\My Games\Firesky\SGWGame\Config\SGWEngine.ini` after the seed, so they come back after a reseed. Each applied override logs `ini_override_applied` under `lab.instance`, with its old and new value. A bad file or a failed read or write logs `ini_override_failed` and applies nothing (a parse failure) or skips that file. An entry for `[IniVersion]`, or a `file` with a path in it, fails the whole file.
+
+An override lasts only while the user ini's `[IniVersion]` matches the chain files' timestamps. A reinstall or a patch can lose it, and then the client prompts to regenerate the ini, which can block a headless lab client. The chain and the target keys are in [engine.md](../client/limits/engine.md#ini-chain-and-lab-override-targets).
 ### Accounts, characters, the cap and the windows
 
 **Accounts.** A second login on the same account evicts the first client (`duplicate_login`), so every instance needs its own account. The seed has `lab` plus `lab2` to `lab5` (account ids 10 to 14, same password as the other seed accounts); keep all five in the Discord `muted_accounts` list.

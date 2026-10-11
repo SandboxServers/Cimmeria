@@ -340,6 +340,12 @@ fn prepare_from(
     let profile = profile_dir(&root, label);
     match seed(&source, &profile) {
         Ok(outcome) => {
+            if outcome != Seeded::NoSource {
+                super::ini_overrides::apply_for_instance(
+                    &sgwgame_dir(&profile.join("Documents")).join("Config"),
+                    label,
+                );
+            }
             let (seeded, files, bytes) = match outcome {
                 Seeded::AlreadyThere => ("already_there", 0, 0),
                 Seeded::Copied { files, bytes } => ("copied", files, bytes),
