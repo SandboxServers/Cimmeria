@@ -85,7 +85,7 @@ fn truthy(v: &Value) -> bool {
 
 /// Loose equality: numbers compare numerically across string/number (Lua
 /// returns strings), everything else by text.
-fn loose_eq(a: &Value, b: &Value) -> bool {
+pub(crate) fn loose_eq(a: &Value, b: &Value) -> bool {
     match (as_f64(a), as_f64(b)) {
         (Some(x), Some(y)) if !matches!(a, Value::Bool(_)) && !matches!(b, Value::Bool(_)) => {
             (x - y).abs() < 1e-9

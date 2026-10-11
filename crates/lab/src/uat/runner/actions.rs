@@ -183,8 +183,10 @@ impl<I: ToolInvoker> Runner<'_, I> {
             }
             // lab-spec-vocab (SV-03)
             Ok(ActionKind::ServerWait) => {
-                rec.kind = "wait_server".into();
-                fail(&mut rec, "wait_server: not implemented yet (SV-08)".into());
+                // `kind()` said ServerWait, so the field is set.
+                if let Some(w) = &chosen.wait_server {
+                    self.exec_server_wait(w, who, ctx, &mut rec).await;
+                }
             }
             // end lab-spec-vocab
             Err(e) => fail(&mut rec, e),

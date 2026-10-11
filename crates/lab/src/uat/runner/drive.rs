@@ -165,7 +165,12 @@ impl<I: ToolInvoker> Runner<'_, I> {
                 }
                 self.event_marks_at(row, Some(label), ctx).await;
             }
+            // SV-08: a `wait_server` waits from before the action in front
+            // of it. Handed over after this action runs, so a wait followed
+            // by another wait still uses its own mark.
+            let mark = self.log_mark_for(row.steps.get(i + 1), ctx).await;
             let rec = self.exec(a, Role::Step, ctx).await;
+            ctx.log_mark = mark;
             let stop = !rec.ok && !a.optional;
             ctx.actions.push(rec);
             self.fp_after_action(a, "step", i, ctx).await;
