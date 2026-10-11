@@ -41,7 +41,9 @@ const TRAIL_EVENT_CHARS: usize = 160;
 /// One server message as the script saw it.
 #[derive(Debug, Clone)]
 pub struct Observed {
-    /// When its bundle arrived, from the start of the script session.
+    /// When the script took its bundle off the inbox, from the start of the
+    /// script session. World-entry bundles all read about zero, and a bundle
+    /// that queued while the script was not pumping reads the later time.
     pub at: Duration,
     /// The message as framed on the wire.
     pub msg: S2CMessage,
@@ -51,7 +53,10 @@ pub struct Observed {
 
 /// An in-world [`GameSession`] driven by a test script.
 pub struct ScriptSession {
+    /// The connection itself; public so a script can build calls with its
+    /// builders and read `player_entity_id`.
     pub session: GameSession,
+    /// What the client has been told, as of the last logged message.
     pub mirror: EntityMirror,
     log: Vec<Observed>,
     /// The first log entry the next wait may match.
@@ -103,14 +108,14 @@ impl ScriptSession {
     /// queue. Queued `requestEntityUpdate`s go first: the client queued each
     /// when its entity entered, before the script decided to send `msgs`.
     pub async fn send(&mut self, msgs: &[Vec<u8>]) -> Result<()> {
-        let mut body = std::mem::take(&mut self.pending_updates);
-        for msg in msgs {
-            body.extend_from_slice(msg);
-        }
+        let body = take_outgoing(&mut self.pending_updates, msgs);
         if body.is_empty() {
             return Ok(());
         }
-        self.session.send_bundle(&body, true).await?;
+        if let Err(err) = self.session.send_bundle(&body, true).await {
+            tracing::warn!(bytes = body.len(), error = %err, "script: send failed");
+            return Err(err.into());
+        }
         self.last_send = Instant::now();
         Ok(())
     }
@@ -158,8 +163,7 @@ impl ScriptSession {
             match self.wait_until(deadline, &mut **pred).await? {
                 Some(at) => matched.push(self.log[at].clone()),
                 None => {
-                    let what = format!("{what}: step {} of {total} `{name}`", i + 1);
-                    return Err(self.timeout_error(what, timeout));
+                    return Err(self.timeout_error(step_label(what, i, total, name), timeout));
                 }
             }
         }
@@ -205,10 +209,12 @@ impl ScriptSession {
                 return Ok(Some(i));
             }
             from = self.log.len();
-            // Checked after the scan, so what the last pump brought in is
-            // looked at before giving up.
             if Instant::now() >= deadline {
-                return Ok(None);
+                // Whatever already arrived counts: a script that blocked on
+                // something else (a DB poll) may have a backlog in the inbox,
+                // and a zero timeout must still see it.
+                self.drain_backlog().await?;
+                return Ok(scan(&self.log, from, &mut *pred).inspect(|i| self.cursor = i + 1));
             }
             self.pump_step(deadline).await?;
         }
@@ -221,10 +227,7 @@ impl ScriptSession {
         if keepalive_due(self.last_send, Instant::now()) {
             self.send_keepalive().await?;
         }
-        let now = Instant::now();
-        let until_keepalive =
-            Self::KEEPALIVE.saturating_sub(now.saturating_duration_since(self.last_send));
-        let wait = deadline.saturating_duration_since(now).min(until_keepalive);
+        let wait = step_wait(Instant::now(), deadline, self.last_send);
         let mut added = 0;
         // `recv_bundles(1, ..)` drains at most one bundle from the peer's
         // inbox; anything behind it stays queued for the next step.
@@ -234,28 +237,29 @@ impl ScriptSession {
         Ok(added)
     }
 
-    /// The tick's packet. With nothing queued it is the unreliable
-    /// `AUTHENTICATE` (sparbot's keep-alive), never a reliable one.
+    /// Ingest every bundle already in the inbox, without waiting.
+    async fn drain_backlog(&mut self) -> Result<usize> {
+        let mut added = 0;
+        for bundle in self.session.recv_bundles(usize::MAX, Duration::ZERO).await {
+            added += self.ingest(&bundle)?;
+        }
+        Ok(added)
+    }
+
+    /// The tick's packet: always unreliable (D-WC12). Queued
+    /// `requestEntityUpdate`s ride behind the `AUTHENTICATE` in the same
+    /// bundle ([`keepalive_body`]).
     ///
-    /// With `requestEntityUpdate`s queued, the queue is the tick's packet
-    /// instead, sent reliably. The client starts `0x07` with BigWorld's
-    /// default reliability (`Bundle::startMessage`, `RELIABLE_DRIVER`; the
-    /// emitter at `0x00dd80c0` passes none), so a packet carrying one is a
-    /// reliable packet; an unreliable carrier could lose it where the
-    /// client's would not (WC-18's lossy transport). The `AUTHENTICATE` is
-    /// left out of that bundle rather than made reliable: the server ignores
-    /// its content, and the reliable packet carries the ACKs and resets the
-    /// server's inactivity clock just the same.
+    /// The real client sends `0x07` reliably, but a reliable send here buys
+    /// nothing: the wire client's peer never retransmits (nothing drives
+    /// `LoopbackPeer::tick`), and the server answers `0x07` with nothing, so
+    /// a lost one changes no test outcome. Keeping the tick unreliable keeps
+    /// it off the reliable sequence and the TX window.
     async fn send_keepalive(&mut self) -> Result<()> {
-        if self.pending_updates.is_empty() {
-            self.session.send_keepalive().await?;
-        } else {
-            let body = std::mem::take(&mut self.pending_updates);
-            tracing::trace!(
-                bytes = body.len(),
-                "script: requestEntityUpdate queue sent on the keep-alive tick"
-            );
-            self.session.send_bundle(&body, true).await?;
+        let body = keepalive_body(&mut self.pending_updates);
+        if let Err(err) = self.session.send_bundle(&body, false).await {
+            tracing::warn!(bytes = body.len(), error = %err, "script: keep-alive send failed");
+            return Err(err.into());
         }
         self.last_send = Instant::now();
         Ok(())
@@ -263,7 +267,9 @@ impl ScriptSession {
 
     /// Decode one bundle strictly and log every message in it.
     fn ingest(&mut self, bundle: &Bytes) -> Result<usize> {
-        let msgs = decode_bundle_strict(bundle)?;
+        let msgs = decode_bundle_strict(bundle).inspect_err(|err| {
+            tracing::warn!(error = %err, len = bundle.len(), "script: bundle failed strict decode");
+        })?;
         let at = self.started.elapsed();
         Ok(ingest_messages(
             &mut self.mirror,
@@ -271,7 +277,8 @@ impl ScriptSession {
             at,
             &mut self.log,
             &mut self.pending_updates,
-        )?)
+        )
+        .inspect_err(|err| tracing::warn!(error = %err, "script: mirror rejected a message"))?)
     }
 
     fn timeout_error(&self, what: String, waited: Duration) -> Error {
@@ -351,6 +358,38 @@ where
 /// True once [`ScriptSession::KEEPALIVE`] has passed since `last`.
 fn keepalive_due(last: Instant, now: Instant) -> bool {
     now.saturating_duration_since(last) >= ScriptSession::KEEPALIVE
+}
+
+/// How long one pump step may wait in `recv`: until the deadline or the next
+/// keep-alive, whichever is sooner, so neither is ever late.
+fn step_wait(now: Instant, deadline: Instant, last_send: Instant) -> Duration {
+    let until_keepalive =
+        ScriptSession::KEEPALIVE.saturating_sub(now.saturating_duration_since(last_send));
+    deadline.saturating_duration_since(now).min(until_keepalive)
+}
+
+/// The body of a script send: the queued `requestEntityUpdate`s first (the
+/// client queued each when its entity entered, before the script's call),
+/// then `msgs`. Empties the queue.
+fn take_outgoing(pending: &mut Vec<u8>, msgs: &[Vec<u8>]) -> Vec<u8> {
+    let mut body = std::mem::take(pending);
+    for msg in msgs {
+        body.extend_from_slice(msg);
+    }
+    body
+}
+
+/// The keep-alive tick's body: `AUTHENTICATE`, then any queued
+/// `requestEntityUpdate`s. Empties the queue.
+fn keepalive_body(pending: &mut Vec<u8>) -> Vec<u8> {
+    let mut body = GameSession::authenticate();
+    body.append(pending);
+    body
+}
+
+/// What a timed-out `expect_in_order` says it was waiting for.
+fn step_label(what: &str, index: usize, total: usize, name: &str) -> String {
+    format!("{what}: step {} of {total} `{name}`", index + 1)
 }
 
 /// The last `n` entries of `log`, one [`trail_line`] each.

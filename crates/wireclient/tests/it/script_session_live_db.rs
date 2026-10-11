@@ -72,6 +72,16 @@ async fn script_session_live_db_sees_the_arrival_dialog() {
         .unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(seen.msg.entity_id, Some(own_id), "sent to the player");
 
+    // The keep-alives carry the ACKs the session owes. Without them every
+    // reliable packet since world entry (dozens: the flush alone is one per
+    // introduced NPC) would still be owed after a second of pumping.
+    script
+        .pump(Duration::from_secs(1))
+        .await
+        .unwrap_or_else(|e| panic!("{e}"));
+    let owed = script.session.pending_acks_len();
+    assert!(owed <= 4, "keep-alives left {owed} ACKs owed");
+
     server.orchestrator.stop_all().await;
     cleanup_account(&pool, ACCOUNT).await;
 }

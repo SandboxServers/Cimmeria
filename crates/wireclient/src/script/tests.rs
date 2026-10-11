@@ -313,3 +313,53 @@ fn entity_update_target_is_only_for_other_networked_creates() {
         None
     );
 }
+
+#[test]
+fn step_wait_stops_at_the_deadline_or_the_next_keepalive() {
+    let t0 = Instant::now();
+    let ms = Duration::from_millis;
+    // A short `max` wins over a keep-alive that is a full period away.
+    assert_eq!(step_wait(t0, t0 + ms(10), t0), ms(10));
+    // A keep-alive due in 50 ms wins over a deadline 5 s away.
+    assert_eq!(step_wait(t0 + ms(200), t0 + ms(5000), t0), ms(50));
+    // Past the deadline, or with the keep-alive overdue, nothing is waited.
+    assert_eq!(step_wait(t0 + ms(20), t0 + ms(10), t0), Duration::ZERO);
+    assert_eq!(step_wait(t0 + ms(400), t0 + ms(5000), t0), Duration::ZERO);
+}
+
+#[test]
+fn a_send_puts_the_queued_entity_updates_first_and_empties_the_queue() {
+    let mut queue = GameSession::request_entity_update(NPC);
+    let call = vec![0xAA, 0xBB];
+    let body = take_outgoing(&mut queue, std::slice::from_ref(&call));
+    assert_eq!(
+        body,
+        [GameSession::request_entity_update(NPC), call].concat()
+    );
+    assert!(queue.is_empty());
+}
+
+#[test]
+fn the_keepalive_is_authenticate_then_the_queue() {
+    let mut queue = GameSession::request_entity_update(NPC);
+    let body = keepalive_body(&mut queue);
+    assert_eq!(
+        body,
+        [
+            GameSession::authenticate(),
+            GameSession::request_entity_update(NPC)
+        ]
+        .concat()
+    );
+    assert!(queue.is_empty());
+    // With nothing queued it is the bare AUTHENTICATE.
+    assert_eq!(keepalive_body(&mut queue), GameSession::authenticate());
+}
+
+#[test]
+fn a_step_timeout_names_the_step_one_based() {
+    assert_eq!(
+        step_label("step 3 answers", 1, 5, "StepUpdate 2113"),
+        "step 3 answers: step 2 of 5 `StepUpdate 2113`"
+    );
+}
