@@ -8,7 +8,9 @@ use cimmeria_launcher_engine::client_changes::{
 use cimmeria_launcher_engine::client_maintenance::{
     ClientMaintenanceCommand, ClientMaintenanceError, ClientMaintenanceStatus,
 };
-use cimmeria_launcher_engine::log_upload::{LogUploadCommand, LogUploadError, LogUploadStatus};
+use cimmeria_launcher_engine::log_upload::{
+    LogStore, LogUploadCommand, LogUploadError, LogUploadStatus, LogUploadStep,
+};
 use cimmeria_launcher_engine::{NativeCommand, NativeSnapshot, StorageError};
 use host::{
     AdoptionCommand, AdoptionError, AdoptionStatus, GameTelemetryCommand, GameTelemetryStatus,
@@ -247,7 +249,20 @@ async fn log_upload_command(
     state: tauri::State<'_, Arc<NativeHost>>,
 ) -> Result<LogUploadStatus, LogUploadError> {
     let host = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || host.log_upload_command(request))
+    let beginning = host.clone();
+    let step = tauri::async_runtime::spawn_blocking(move || {
+        beginning.begin_log_upload(request, LogStore::compiled().as_ref())
+    })
+    .await
+    .map_err(|_| StorageError::Io)??;
+    let pending = match step {
+        LogUploadStep::Finished(status) => return Ok(status),
+        LogUploadStep::Send(pending) => pending,
+    };
+    // `begin_log_upload` only sends when a store is compiled in.
+    let store = LogStore::compiled().ok_or(StorageError::Io)?;
+    store.put(&pending).await?;
+    tauri::async_runtime::spawn_blocking(move || host.finish_log_upload(pending))
         .await
         .map_err(|_| StorageError::Io)?
 }

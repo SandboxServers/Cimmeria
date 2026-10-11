@@ -48,6 +48,7 @@ A release build also sets, on the build step only:
 | `LAUNCHER_MANIFEST_PUBKEY_HEX` | the repository secret | The key the release manifest is signed with. Without it a release build can verify nothing. The test suites use the development key and fail with this set, so no other step has it |
 | `CIMMERIA_LAUNCHER_TAG`, `CIMMERIA_LAUNCHER_BUILD_EPOCH` | the release's tag and stamp time | The same identity as the original launcher of that release, for a manifest's `min_launcher` |
 | `CIMMERIA_BUILD_BRANCH`, `CIMMERIA_BUILD_GIT_SHA` | `main`, the commit | Recorded in a game-telemetry session |
+| `LAUNCHER_LOG_SAS_URL` | a write-only SAS URL for the log container, `https://<account>.blob.core.windows.net/<container>?<sas>` | Where Settings' "Upload debug logs" PUTs the zip. Unset, the button is hidden. It is compiled in with `option_env!`; anyone holding the exe can read it, so give it create/write permission on that one container and an expiry |
 
 ## What the preview does not have
 

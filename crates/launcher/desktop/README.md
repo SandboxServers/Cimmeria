@@ -95,8 +95,8 @@ choose the state-directory root. The shell selects app data through Tauri's
 native resolver. Native first-install intent validation and worker dispatch are
 implemented below; installation and maintenance use a separate native operation boundary.
 
-Three further Tauri commands are scaffolds that answer `unavailable` until their
-packets land. Each fails with one flat code string, `unavailable` or a storage
+Three further Tauri commands began as scaffolds (LX-02); the ones not yet filled
+answer `unavailable` until their packets land. Each fails with one flat code string, `unavailable` or a storage
 code such as `busy`, the same shape `safeFailure` reads. Each takes a versioned
 request with no free-form fields, has its
 engine half in `engine/src/storage/<name>/` and its host half in
@@ -105,9 +105,19 @@ engine half in `engine/src/storage/<name>/` and its host half in
 
 | Command | Requests | Settings panel | Filled by |
 |---|---|---|---|
-| `log_upload_command` | `inspect`, `upload` | `log-upload-view.ts` | LX-05 |
+| `log_upload_command` | `inspect`, `upload` | `log-upload-view.ts` | LX-05 (done) |
 | `client_maintenance_command` | `inspect`, `reset_cache`, `reset_all_client_state` | `client-maintenance-view.ts` | LX-06 |
 | `client_changes_command` | `inspect` | `client-changes-view.ts` | LX-07 |
+
+`log_upload_command` is filled. `upload` zips `Binaries/sgwdebuglog*` and the
+`*.log` files under `Binaries/sessions/` in the installed game, and PUTs the zip
+once to the SAS URL compiled in from `LAUNCHER_LOG_SAS_URL` as
+`logs/<host>-<utc>-<digest>.zip`. A content digest already in the
+`uploaded-logs.json` ledger (state directory, newest 100) sends nothing and
+answers `nothing_new`. It takes the operation gate first, so a stuck
+`ReconciliationRequired` operation refuses it with `busy`. A build with no SAS
+URL answers `disabled` and Settings hides the button. Failures are the codes
+`collect_failed`, `network` and `rejected`; none carries the URL.
 
 The login-server and client-patches panels (`server-list-view.ts`,
 `client-patches-view.ts`, LX-03 and LX-04) save through `save_client_options`.

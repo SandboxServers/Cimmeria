@@ -40,11 +40,16 @@ export type StorageCode = "in_use" | "io" | "corrupt" | "unsupported_schema" | "
 /** The three scaffold commands (LX-02) fail with one flat code string: a storage code or `"unavailable"`. */
 export type ScaffoldError = StorageCode | "unavailable";
 
-// `log_upload_command` (engine `storage/log_upload/`, filled by LX-05).
+// `log_upload_command` (engine `storage/log_upload/`, LX-05).
 export type LogUploadCommand = {command: "inspect"; schema_version: 1} | {command: "upload"; schema_version: 1};
-export const LogUploadStatus = Schema.Struct({schema_version: Schema.Literal(1)});
+export const LogUploadStatus = Schema.Struct({
+  schema_version: Schema.Literal(1),
+  // `disabled`: no log store compiled in. `ready` answers Inspect; the last three answer Upload.
+  state: Schema.Literals(["disabled", "not_installed", "ready", "uploaded", "nothing_new", "no_logs"]),
+});
 export type LogUploadStatus = typeof LogUploadStatus.Type;
-export type LogUploadError = ScaffoldError;
+/** One flat code string: a storage code (`"busy"` is the operation gate) or an upload code. */
+export type LogUploadError = StorageCode | "collect_failed" | "network" | "rejected";
 
 // `client_maintenance_command` (engine `storage/client_maintenance/`, LX-06).
 export type ClientMaintenanceCommand = {command: "inspect"; schema_version: 1} |
@@ -105,5 +110,14 @@ export function scaffoldFailure(error: unknown): ScaffoldError | "transport" {
   return error === "unavailable" ? error : safeFailure(error).code as StorageCode | "transport";
 }
 
-export const decodeSnapshot = (value: unknown) => Schema.decodeUnknownEffect(NativeSnapshot,
+const logUploadCodes = new Set(["collect_failed", "network", "rejected"]);
+/** A `log_upload_command` rejection, or `"transport"` for anything else it could be. */
+export function logUploadFailure(error: unknown): LogUploadError | "transport" {
+  return typeof error === "string" && logUploadCodes.has(error)
+    ? error as LogUploadError : safeFailure(error).code as StorageCode | "transport";
+}
+export const decodeLogUploadStatus = (value: unknown) => Schema.decodeUnknownEffect(LogUploadStatus,
+  {onExcessProperty: "error"})(value).pipe(Effect.mapError(() => new BridgeFailure({code: "schema"})));
+
+export const decodeSnapshot =(value: unknown) => Schema.decodeUnknownEffect(NativeSnapshot,
   {onExcessProperty: "error"})(value).pipe(Effect.mapError(() => new BridgeFailure({code: "schema"})));
