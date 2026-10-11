@@ -1,7 +1,7 @@
 #requires -Version 7
 <#
 .SYNOPSIS
-    Run a UAT spec on the lab with no agent: lab uat <section> [-Rows ...] [-Leases 1-5] [-RunsPerLease 1-20] [-Json].
+    Run a UAT spec on the lab with no agent: lab uat <section> [-Rows ...] [-Leases 1-5] [-RunsPerLease 1-20] [-Heal] [-Json].
 
 .DESCRIPTION
     Calls lab_uat_run on the shared lab daemon. -Leases lanes run at once, one
@@ -43,6 +43,21 @@
     do not change. Without a golden, or with one that cannot be read, it
     stops before anything is driven (exit 2).
 
+    -Heal (needs -Leases 1) recalibrates the poses failed rows missed on:
+    after the batch, for each distinct (row, pose) whose row summary carries
+    a heal hint (a hover, on-screen or camera miss on a pose), it calls
+    lab_uat_calibrate for that pose on the batch's instance (up to its
+    15-minute budget each), saves a proposed diff as heal-<row>-<pose>.diff
+    in the batch folder and prints it. The summary (batch.json, summary.md,
+    -Json) then lists heal: [{row, pose, diff}] (under -Json at most 3, with
+    more_heal: <n> for the rest, and diff the file name in the batch folder).
+    After a failed call it waits up to 10 minutes for the instance's lease
+    to clear before the next pose, and stops healing, naming the poses left,
+    when it does not. It never writes the spec file and never commits:
+    review the diff, then git apply it (or run lab calibrate <section> <row>
+    -Pose <pose> -Apply). Ctrl+C during the batch skips the heal; Ctrl+C
+    during the heal still lists the diffs already written.
+
     Exit codes: 0 every run passed; 1 a run failed; 2 usage; 3 the pre-flight
     or plan failed (nothing was driven); 4 a lane stopped early on its brake;
     5 every run passed but -DiffGolden did not match on one (a divergence, or
@@ -57,6 +72,7 @@
     lab uat first-session -Rows FS-P5,FS-P3,FS-P4 -Fixtures always
     lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -DiffGolden
     lab uat first-session -Leases 3 -RunsPerLease 10 -Json
+    lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3 -Heal
 #>
 [CmdletBinding()]
 param(
@@ -74,6 +90,7 @@ param(
     [int]$MaxConsecutiveFailures = 3,
     [string]$Fixtures,
     [switch]$DiffGolden,
+    [switch]$Heal,
     # Used by lab golden: runs capture what a golden fingerprint needs.
     [switch]$Fingerprint,
     # Used by lab golden: progress lines go to stderr, even under -Json.
@@ -88,6 +105,7 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'common.ps1')
 . (Join-Path $PSScriptRoot 'uat-lib.ps1')
 . (Join-Path $PSScriptRoot 'golden-lib.ps1')
+. (Join-Path $PSScriptRoot 'calibrate-lib.ps1')
 
 # A usage or pre-flight failure: plain text on stderr, or under -Json one
 # object on stdout. Returns the exit code.
@@ -102,10 +120,10 @@ function Stop-Uat([int]$Code, [string]$Message) {
 
 function Invoke-LabUat {
     if (-not $Section) {
-        return Stop-Uat 2 'usage: lab uat <section> [-Rows FS-01,...] [-Leases 1-5] [-RunsPerLease 1-20] [-Instance p2] [-Fixtures auto|always|never] [-DiffGolden] [-PlanOnly] [-Json]'
+        return Stop-Uat 2 'usage: lab uat <section> [-Rows FS-01,...] [-Leases 1-5] [-RunsPerLease 1-20] [-Instance p2] [-Fixtures auto|always|never] [-DiffGolden] [-Heal] [-PlanOnly] [-Json]'
     }
     # Argument checks come before the daemon is asked, so they exit 2 whatever its state.
-    $shape = Test-UatArguments $Leases $RunsPerLease $Instance $StaggerSeconds $RunTimeoutMinutes $MaxConsecutiveFailures $Fixtures
+    $shape = Test-UatArguments $Leases $RunsPerLease $Instance $StaggerSeconds $RunTimeoutMinutes $MaxConsecutiveFailures $Fixtures $Heal.IsPresent
     if ($shape) { return Stop-Uat 2 $shape }
     $specs = if ($SpecsDir) { $SpecsDir } else { Get-DefaultSpecsDir }
     # A diff needs a golden: without one, stop before anything is driven.
@@ -266,13 +284,23 @@ function Invoke-LabUat {
         $brakedNames = @($allRuns | Where-Object { $_.Braked } | ForEach-Object { $_.Instance } | Select-Object -Unique)
         $summary = Merge-UatResults $allRuns $plan.Lanes $brakedNames
         $title = "lab uat $Section"
-        $md = Format-UatSummary $summary $title $batchDir
-        Set-Content -LiteralPath (Join-Path $batchDir 'summary.md') -Value $md -Encoding utf8
-        [ordered]@{
-            section = $Section; rows = $rowIds; leases = $plan.Lanes.Count; runs_per_lease = $RunsPerLease
-            started = $started.ToString('o'); minutes = [math]::Round(((Get-Date) - $started).TotalMinutes, 1)
-            summary = $summary
-        } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $batchDir 'batch.json') -Encoding utf8
+        $batch = @{ Dir = $batchDir; Title = $title; Section = $Section; RowIds = $rowIds
+                    LaneCount = $plan.Lanes.Count; RunsPerLease = $RunsPerLease; Started = $started }
+        $md = Write-UatBatchSummary $summary $batch
+    }
+
+    # -Heal runs after the finally, not in it: a finally cannot be stopped,
+    # and a heal is up to 15 minutes of lab time per pose, so Ctrl+C during
+    # the batch skips it. The summary is already on disk; Invoke-UatHealPass
+    # rewrites it with heal (in its own finally, so Ctrl+C mid-heal keeps the
+    # diffs already written) only when a proposal was written. After a failed
+    # call it waits for the instance's lease, as a lane does after a timeout.
+    if ($Heal) {
+        $healMd = Invoke-UatHealPass $allRuns $summary $batch $specs $plan.Lanes[0].Instance {
+            param($ca)
+            Invoke-LabCalibrate $url $token $ca (Get-CalibrateTimeoutSec $null)
+        } $say { param($i) Wait-UatLeaseFree $i 600 } ($progress -eq 'host')
+        if ($healMd) { $md = $healMd }
     }
 
     # Straight to stdout: a bare expression here would join the function's
