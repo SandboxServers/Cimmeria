@@ -498,10 +498,10 @@ trace index. Estimated volume with five active players: ~75 inbound
 packets/s give ~1.4 `DECRYPT_OK` and ~1.4 `UDP_IN` samples/s. The AoI
 relay (~10 Hz per witness–entity pair, ~1,200/s at 3 players watching 40
 NPCs) sends ~12 samples/s to `cimmeria-server`, as it has since NA00.
-The remaining per-packet TRACE rows are **not** sampled: ACK queueing,
-`EntityMove` and
+The remaining per-packet TRACE rows are **not** sampled: ACK queueing and
 `AVATAR_UPDATE_EXPLICIT -> CellService` (one per player movement
-packet). They are a few fields each and arrive at about the rate of
+packet). The cell's per-packet `EntityMove` row was dropped (TG-MOV-11);
+the sampled `movement.player` row covers the position stream. They are a few fields each and arrive at about the rate of
 datagrams — roughly one `cimmeria-trace` row per datagram. If that proves
 too much, move them behind `cimmeria_wire::firehose` the same way.
 
