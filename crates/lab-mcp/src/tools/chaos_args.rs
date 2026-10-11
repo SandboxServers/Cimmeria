@@ -25,8 +25,15 @@ pub(super) const LABEL_MAX: usize = 120;
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(super) struct SetArgs {
-    /// The player entity whose session gets the chaos.
-    pub(super) entity_id: u32,
+    /// The player entity whose session gets the chaos. Give `entity_id` or
+    /// `account`, not both.
+    #[serde(default)]
+    pub(super) entity_id: Option<u32>,
+    /// An account name, spelled as at login: arm the chaos for that
+    /// account's next world entry instead (one-shot), so it reaches that
+    /// login's first flush. Give `entity_id` or `account`, not both.
+    #[serde(default)]
+    pub(super) account: Option<String>,
     /// The net profile's knobs. Give `net`, `flush` or both.
     #[serde(default)]
     pub(super) net: Option<NetArgs>,
@@ -74,10 +81,10 @@ pub(super) struct FlushArgs {
     /// For `delay` only: the hold in ms (at most 60000).
     #[serde(default)]
     pub(super) delay_ms: Option<u32>,
-    /// For `pack` only: the records in the single bundle (1 to 255).
+    /// For `pack` only: the records in the single bundle (1 to 34).
     #[serde(default)]
     pub(super) records: Option<u16>,
-    /// For `shift` only: the filler's length in bytes (0 or 2 to 36), or
+    /// For `shift` only: the filler's length in bytes (0 or 2 to 38), or
     /// `"sweep"`.
     #[serde(default)]
     pub(super) shift: Option<ShiftArg>,
@@ -94,10 +101,14 @@ pub(super) enum ShiftArg {
 #[derive(Debug, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(super) struct ClearArgs {
-    /// Clear only the chaos set for this player entity. Omit to clear every
-    /// session.
+    /// Clear only the chaos set for this player entity. Omit both fields to
+    /// clear every session and every arm.
     #[serde(default)]
     pub(super) entity_id: Option<u32>,
+    /// Clear only the chaos armed for this account's next world entry (an
+    /// account name, as at login). Not with `entity_id`.
+    #[serde(default)]
+    pub(super) account: Option<String>,
 }
 
 /// Raw JSON whose schema is `T`'s: rmcp deserializes any call into it, and
@@ -163,6 +174,38 @@ pub(super) fn audit_args(raw: &Value) -> Value {
         }
     }
     audit
+}
+
+/// Whom a set or a clear names: a player entity in the world, or an account
+/// whose next world entry takes the chaos (D-CH10).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum Target {
+    Entity(u32),
+    Account(String),
+}
+
+/// A set names exactly one of `entity_id` and `account`.
+pub(super) fn set_target(args: &SetArgs) -> Result<Target, String> {
+    match target(args.entity_id, args.account.as_deref())? {
+        Some(target) => Ok(target),
+        None => Err(knob_refusal("set needs entity_id or account")),
+    }
+}
+
+/// A clear names at most one of `entity_id` and `account`; `None` clears
+/// everything.
+pub(super) fn clear_target(args: &ClearArgs) -> Result<Option<Target>, String> {
+    target(args.entity_id, args.account.as_deref())
+}
+
+fn target(entity_id: Option<u32>, account: Option<&str>) -> Result<Option<Target>, String> {
+    match (entity_id, account) {
+        (Some(_), Some(_)) => Err(knob_refusal("give entity_id or account, not both")),
+        (Some(id), None) => Ok(Some(Target::Entity(id))),
+        (None, Some("")) => Err(knob_refusal("account is empty")),
+        (None, Some(name)) => Ok(Some(Target::Account(name.to_string()))),
+        (None, None) => Ok(None),
+    }
 }
 
 /// A label is logged as text on the set WARN: short, one line, printable.

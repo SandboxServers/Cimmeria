@@ -87,6 +87,7 @@ the report so a run can be replayed exactly.
 | D-CH7 | PROPOSED (coordinator) | **Reporting against the golden.** A chaos run compares to the lab-golden fingerprint with lab-golden's variance model and prints the first divergence in one line, prefixed by the chaos header (`chaos=flush:pack seed=7`). A chaos run never records or re-blesses a golden. Chaos-only failures are labelled `chaos_divergence`, not row failures, in `-Json`. | Keeps the output budget (F11) and keeps goldens clean. |
 | D-CH8 | PROPOSED (coordinator) | **Levels live in one committed file,** `crates/lab/src/chaos/levels.toml` (embedded with `include_str!`), each level citing the `docs/client/limits/` row it came from. CH-10 updates the numbers; the names stay. | One source for the CLI, the runner and the docs. |
 | D-CH9 | **DECIDED**, owner, 2026-10-11 | **Burst cleanup: change the GM console.** `.spawnrandom` replies only after the spawned ids are known and lists them; `.despawn` takes an optional entity id. Chosen over a lab-only despawn tool and over dropping burst. Supersedes D-CH5's "no new server code". | CH-08 found `.spawnrandom` never reports ids and `.despawn` acts only on the selected target, so the runner could not despawn exactly what it spawned without moving the player's target. |
+| D-CH10 | **DECIDED**, owner, 2026-10-11 | **Arming chaos for the next login: by account.** `server_chaos_set` also takes an `account` in place of an entity id: one-shot chaos held for that account's next world entry, then attached to the new session and tagged with its new player entity (same TTL cap, same three gates). Chosen over arming at character select and over relogging under chaos. Extends D-CH3's scope. | Chaos could only be aimed at an in-world entity, after that login's flush, so `flush` chaos never reached the first-login flush that #1341's acceptance (CH-11) needs. |
 
 ## Packets
 
@@ -104,6 +105,8 @@ the report so a run can be replayed exactly.
 | CH-10 | Live: calibrate safe and break levels | coordinator + Haiku lab-driver | M | 6 | CH-09, client-limits CL-08 and CL-09, user's OK | BlockedDependency |
 | CH-11 | Live acceptance: reproduce #1341 with `cpu` and `flush` | coordinator + Haiku lab-driver | M | 6 | CH-10, user's OK | BlockedDependency |
 | CH-13 | GM console: `.spawnrandom` reports spawned ids, `.despawn <id>` (D-CH9) | rust-gameserver-dev, `server-authority-enforcer` review | M | 4 | D-CH9 | Integrated |
+| CH-14 | Server: arm chaos by account for the next world entry (D-CH10) | rust-gameserver-dev, `network-security-auth` and `server-authority-enforcer` review | M | 4 | D-CH10 | Writing |
+| CH-15 | Runner arms chaos by account before login rows (D-CH10) | rust-gameserver-dev | S | 5 | CH-08, CH-14 | BlockedDependency |
 | CH-12 | Close-out | documentation-writer | S | 7 | all | BlockedDependency |
 
 Size: S under about 40k tokens, M 40k to 70k, L 70k to 100k.

@@ -126,6 +126,13 @@ pub async fn handle_play_character(
         return Ok(());
     }
 
+    // Lab chaos armed for this account (D-CH10, lab-chaos builds only) is
+    // set on the session now, tagged with the new entity: before
+    // RESET_ENTITIES goes out, so before the client can send the
+    // `onClientReady` whose flush it is meant to disturb.
+    #[cfg(feature = "lab-chaos")]
+    super::cell_dispatch::promote_armed(account_id, addr, entry_info.player_entity_id);
+
     // Also query the full player data needed for mapLoaded
     let player_load_data = query_player_load_data(db_pool, account_id, player_id).await;
 

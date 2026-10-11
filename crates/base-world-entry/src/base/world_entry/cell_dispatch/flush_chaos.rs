@@ -103,6 +103,16 @@ pub(crate) fn flush_delay(addr: SocketAddr, witness_id: u32) -> Option<Duration>
     }
 }
 
+/// Sets the chaos armed for `account_id` (D-CH10) on this session, tagged
+/// with `entity_id`, the player entity `playCharacter` just created. Called
+/// from `playCharacter` before RESET_ENTITIES goes out, so it lands before
+/// the client can send `onClientReady`: [`flush_delay`] and [`apply`] then
+/// read it for this login's first flush, and their stale-entity check keeps
+/// it because the tag is this entity. Returns whether an arm was promoted.
+pub(crate) fn promote_armed(account_id: u32, addr: SocketAddr, entity_id: u32) -> bool {
+    registry().is_some_and(|r| r.promote_armed(account_id, addr, entity_id, Instant::now()))
+}
+
 /// The `flush_delayed` row, logged when a hold starts its delay.
 /// `buffered_introductions` is what the buffer holds then; more can arrive
 /// before the timer fires.
