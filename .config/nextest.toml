@@ -57,3 +57,20 @@ report-name = "cimmeria-live-db"
 [[profile.ci-live-db.overrides]]
 filter = "test(~live_db)"
 test-group = "live-db"
+
+# The wireclient end-to-end tests (crates/wireclient/tests/it): each spawns
+# a full in-process Orchestrator. They run in the `live-db` group so each
+# running test gets its own database clone (docs/analysis/wireclient-ci,
+# D-WC6). No retries: a flake is a bug (D-WC9).
+[profile.wireclient-e2e]
+fail-fast = false
+retries = 0
+slow-timeout = { period = "60s", terminate-after = 5 }
+
+[profile.wireclient-e2e.junit]
+path = "junit.xml"
+report-name = "cimmeria-wireclient-e2e"
+
+[[profile.wireclient-e2e.overrides]]
+filter = "package(cimmeria-wireclient) & kind(test)"
+test-group = "live-db"

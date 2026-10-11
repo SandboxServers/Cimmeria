@@ -7,7 +7,7 @@
 # Usage:
 #   DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw tools/test-live-db.sh [args...]
 #   tools/test-live-db.sh --llvm-cov [args...]   # under `cargo llvm-cov --no-report nextest`
-#   tools/test-live-db.sh [--llvm-cov] --build-only   # compile only; no database needed
+#   tools/test-live-db.sh [--llvm-cov] [--build-only] --wireclient [args...]   # the wireclient e2e tests only
 # Extra args pass through to nextest, e.g. a test-name substring or `--no-fail-fast`.
 #
 # Why a list: once cimmeria-services is split into several crates, running
@@ -54,19 +54,24 @@ LIVE_DB_CRATES=(
   cimmeria-cell-org
   cimmeria-cell-effect-scripts
   cimmeria-cell
+  cimmeria-wireclient
 )
 
 # Flags, in either order, before any nextest args: --llvm-cov runs under
 # `cargo llvm-cov --no-report nextest`; --build-only compiles the test binaries with
 # exactly the arguments the real run uses (so the real run does not recompile) and
 # stops, with no database needed. CI builds first while the schema loads in the
-# background (tools/live-db-schema-load.sh), then runs this again to test.
+# background (tools/live-db-schema-load.sh), then runs this again to test. --wireclient
+# runs the wireclient end-to-end tests (the `it` test binary) under their own profile
+# instead of every crate's lib tests.
 llvm_cov=0
 build_only=0
+wireclient=0
 while :; do
   case "${1:-}" in
     --llvm-cov) llvm_cov=1; shift ;;
     --build-only) build_only=1; shift ;;
+    --wireclient) wireclient=1; shift ;;
     *) break ;;
   esac
 done
@@ -80,7 +85,11 @@ if [ $llvm_cov -eq 1 ]; then
 else
   nextest=(cargo nextest run)
 fi
-nextest+=(--profile=ci-live-db "${packages[@]}" --lib)
+if [ $wireclient -eq 1 ]; then
+  nextest+=(--profile=wireclient-e2e -p cimmeria-wireclient --test it)
+else
+  nextest+=(--profile=ci-live-db "${packages[@]}" --lib)
+fi
 
 if [ $build_only -eq 1 ]; then
   if [ $llvm_cov -eq 1 ]; then

@@ -8,6 +8,7 @@
 #   tools/test-live-db.ps1 [args...]
 #   tools/test-live-db.ps1 --llvm-cov [args...]   # under `cargo llvm-cov --no-report nextest`
 #   tools/test-live-db.ps1 [--llvm-cov] --build-only   # compile only; no database needed
+#   tools/test-live-db.ps1 [--llvm-cov] [--build-only] --wireclient [args...]   # the wireclient e2e tests only
 # Extra args pass through to nextest, e.g. a test-name substring or `--no-fail-fast`.
 #
 # The `live_db_wrapper_lists_every_test_support_crate` test in cimmeria-services checks
@@ -47,20 +48,27 @@ $LiveDbCrates = @(
     'cimmeria-cell-org'
     'cimmeria-cell-effect-scripts'
     'cimmeria-cell'
+    'cimmeria-wireclient'
 )
 
-# Flags, in either order, before any nextest args: --llvm-cov and --build-only, as in
-# test-live-db.sh.
+# Flags, in either order, before any nextest args: --llvm-cov, --build-only and
+# --wireclient, as in test-live-db.sh. --wireclient runs the wireclient end-to-end tests
+# (the `it` test binary) under their own profile instead of every crate's lib tests.
 $rest = @($args)
 $llvmCov = $false
 $buildOnly = $false
-while ($rest.Count -gt 0 -and ($rest[0] -eq '--llvm-cov' -or $rest[0] -eq '--build-only')) {
-    if ($rest[0] -eq '--llvm-cov') { $llvmCov = $true } else { $buildOnly = $true }
+$wireclient = $false
+while ($rest.Count -gt 0 -and ($rest[0] -eq '--llvm-cov' -or $rest[0] -eq '--build-only' -or $rest[0] -eq '--wireclient')) {
+    if ($rest[0] -eq '--llvm-cov') { $llvmCov = $true } elseif ($rest[0] -eq '--build-only') { $buildOnly = $true } else { $wireclient = $true }
     $rest = @($rest | Select-Object -Skip 1)
 }
 $packages = foreach ($crate in $LiveDbCrates) { '-p'; $crate }
 $nextest = if ($llvmCov) { @('llvm-cov', '--no-report', 'nextest') } else { @('nextest', 'run') }
-$nextest += @('--profile=ci-live-db') + $packages + @('--lib')
+if ($wireclient) {
+    $nextest += @('--profile=wireclient-e2e', '-p', 'cimmeria-wireclient', '--test', 'it')
+} else {
+    $nextest += @('--profile=ci-live-db') + $packages + @('--lib')
+}
 
 if ($buildOnly) {
     # Under llvm-cov, --no-run is cargo-llvm-cov's own flag and clashes with

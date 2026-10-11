@@ -426,6 +426,8 @@ DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
   tools/test-live-db.sh          # tools/test-live-db.ps1 in PowerShell
 ```
 
+Add `--wireclient` (`tools/test-live-db.sh --wireclient <filter>`) to run only the wireclient end-to-end tests (`crates/wireclient/tests/it`, profile `wireclient-e2e`) on the same clones; with `--build-only` it builds just that binary.
+
 The script runs `cargo nextest run --profile=ci-live-db --lib` once over every crate in its list, and passes extra arguments (a test-name filter, `--no-fail-fast`) through to nextest. It refuses to run without `DATABASE_URL`, because every live-DB test would skip and pass. Before the run it clones the database `DATABASE_URL` names into one database per slot of the `live-db` test group (`<db>_0` .. `<db>_<N-1>`, N from `.config/nextest.toml`); nothing may be connected to that template database while it is cloned. The `ci-live-db` profile then runs the tests whose name contains `live_db` up to N at a time, each on its own clone, and every other test in those crates in parallel beside them. Before, it ran all ~5,500 tests one at a time against one database. Without `DATABASE_URL`, those 247 tests self-skip with `module_path!: skipping live-DB test (DATABASE_URL not set)`. **Self-skipped tests are not failures** — but a green "no DB" run does not prove the live-DB suite passes. Always run both before declaring a PR ready. With `DATABASE_URL` set to a database that can't be reached, the guards fail rather than skip, so a wrong port shows up as red instead of a false green.
 
 ### Locally (injected client DLLs)
