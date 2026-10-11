@@ -19,6 +19,7 @@ use super::super::super::combat;
 use super::super::super::messages::CellToBaseMsg;
 use super::super::super::space_manager::SpaceManager;
 use crate::mercury::game_clock;
+use cimmeria_entity::cell_entity::{CellEntity, PetState};
 
 use super::super::auto_cycle_state::send_auto_cycle_state;
 use super::super::timer_update::send_timer_update_ctx;
@@ -528,14 +529,8 @@ pub async fn handle_use_ability(
     let effect_seq = entity.abilities.next_effect_id();
     tracing::Span::current().record("cast_id", effect_seq);
 
-    // A cast by or at a player or a pet is INFO; an NPC-on-NPC cast is DEBUG
-    // (TG-CMB-09). Read before the `space_mgr` lookups below: `entity` is the
-    // last use of the `&mut` borrow.
-    let pet_or_player = |e: &cimmeria_entity::cell_entity::CellEntity| {
-        e.is_player
-            || e.extensions
-                .contains::<cimmeria_entity::cell_entity::PetState>()
-    };
+    // A cast by or at a player or a pet is INFO; an NPC-on-NPC cast is DEBUG (TG-CMB-09).
+    let pet_or_player = |e: &CellEntity| e.is_player || e.extensions.contains::<PetState>();
     let player_side = pet_or_player(entity)
         || u32::try_from(target_id)
             .ok()
@@ -550,51 +545,37 @@ pub async fn handle_use_ability(
     } else {
         super::gate_rows::target_label(space_mgr, wire_target_id)
     };
-    // `tracing` takes a constant level, so the two levels are two calls.
+    // One row body for both levels: `tracing` takes a constant level, so the
+    // macro expands once per level (TG-CMB-09).
+    macro_rules! launch_row {
+        ($lvl:ident) => {
+            tracing::$lvl!(
+                target: "abilities",
+                event = "ability_launched",
+                stage = "launch",
+                account_id = who.account_id,
+                account_name = who.account_name,
+                player_id = who.player_id,
+                player_name = who.player_name,
+                entity_id,
+                entity_name = row.entity_name,
+                cast_id = effect_seq, // nt:id-only per-cast sequence number, no name exists
+                ability_id,
+                target_id,
+                target_name = row.target_name,
+                wire_target_id,
+                wire_target_name = launched_wire_target_name,
+                cooldown_secs,
+                warmup_secs,
+                ability_name = ability_def.as_ref().map(|d| d.name.as_str()),
+                "useAbility: launched"
+            )
+        };
+    }
     if player_side {
-        tracing::info!(
-            target: "abilities",
-            event = "ability_launched",
-            stage = "launch",
-            account_id = who.account_id,
-            account_name = who.account_name,
-            player_id = who.player_id,
-            player_name = who.player_name,
-            entity_id,
-            entity_name = row.entity_name,
-            cast_id = effect_seq, // nt:id-only per-cast sequence number, no name exists
-            ability_id,
-            target_id,
-            target_name = row.target_name,
-            wire_target_id,
-            wire_target_name = launched_wire_target_name,
-            cooldown_secs,
-            warmup_secs,
-            ability_name = ability_def.as_ref().map(|d| d.name.as_str()),
-            "useAbility: launched"
-        );
+        launch_row!(info);
     } else {
-        tracing::debug!(
-            target: "abilities",
-            event = "ability_launched",
-            stage = "launch",
-            account_id = who.account_id,
-            account_name = who.account_name,
-            player_id = who.player_id,
-            player_name = who.player_name,
-            entity_id,
-            entity_name = row.entity_name,
-            cast_id = effect_seq, // nt:id-only per-cast sequence number, no name exists
-            ability_id,
-            target_id,
-            target_name = row.target_name,
-            wire_target_id,
-            wire_target_name = launched_wire_target_name,
-            cooldown_secs,
-            warmup_secs,
-            ability_name = ability_def.as_ref().map(|d| d.name.as_str()),
-            "useAbility: launched"
-        );
+        launch_row!(debug);
     }
     // A beneficial cast's launch resolution, now it has a `cast_id`.
     super::beneficial::log_launch_resolution(

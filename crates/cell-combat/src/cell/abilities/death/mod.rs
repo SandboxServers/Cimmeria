@@ -461,36 +461,30 @@ pub(super) async fn resolve_death(
     };
 
     // An NPC-on-NPC kill is background traffic: DEBUG, not INFO (TG-CMB-09).
-    // `tracing` takes a constant level, so the two levels are two calls.
     let attacker_name = space_mgr.entity_label(attacker_id);
     let target_name = space_mgr.entity_label(target_eid);
     let ability_name = cimmeria_cell_world::cell::effects::content_names::ability_name(ability_id);
+    // One row body for both levels: `tracing` takes a constant level.
+    macro_rules! killed_row {
+        ($lvl:ident) => {
+            tracing::$lvl!(
+                target: "abilities",
+                event = "target_killed",
+                attacker = attacker_id,
+                attacker_name,
+                target = target_eid,
+                target_name,
+                ability_id = ability_id.unwrap_or(-1),
+                ability_name,
+                is_npc = !target_is_player,
+                "Target killed!"
+            )
+        };
+    }
     if player_side {
-        tracing::info!(
-            target: "abilities",
-            event = "target_killed",
-            attacker = attacker_id,
-            attacker_name,
-            target = target_eid,
-            target_name,
-            ability_id = ability_id.unwrap_or(-1),
-            ability_name,
-            is_npc = !target_is_player,
-            "Target killed!"
-        );
+        killed_row!(info);
     } else {
-        tracing::debug!(
-            target: "abilities",
-            event = "target_killed",
-            attacker = attacker_id,
-            attacker_name,
-            target = target_eid,
-            target_name,
-            ability_id = ability_id.unwrap_or(-1),
-            ability_name,
-            is_npc = !target_is_player,
-            "Target killed!"
-        );
+        killed_row!(debug);
     }
     // AB-T5: what the player died with, before the clear-on-death strip
     // below takes it off. Players only: see `effects::ability_snapshot`.
