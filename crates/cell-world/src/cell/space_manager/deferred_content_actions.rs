@@ -118,6 +118,8 @@ impl SpaceManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::LogCapture;
+    use tracing::Level;
 
     fn mgr() -> SpaceManager {
         SpaceManager::new(1)
@@ -188,6 +190,7 @@ mod tests {
 
     #[tokio::test]
     async fn disconnect_entity_drops_pending_content_actions() {
+        let logs = LogCapture::install();
         let mut mgr = mgr();
         let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
         mgr.parse_spaces_xml(xml).unwrap();
@@ -216,10 +219,18 @@ mod tests {
             "disconnect_entity must scrub any pending deferred content \
              actions for the entity"
         );
+        let row = logs
+            .find_message(Level::WARN, "deferred content actions dropped")
+            .expect("one WARN row for the dropped action");
+        assert!(row.has_field("event", "deferred_actions_dropped"));
+        assert!(row.has_field("reason", "disconnect"));
+        assert!(row.has_field("dropped", "1"));
+        assert!(row.has_field("chain_ids", "[100]"));
     }
 
     #[test]
     fn destroy_entity_drops_pending_content_actions() {
+        let logs = LogCapture::install();
         let mut mgr = mgr();
         let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
         mgr.parse_spaces_xml(xml).unwrap();
@@ -247,5 +258,12 @@ mod tests {
              for the entity — a disconnect or leave-space before the delay \
              elapses must drop the action, not fire it later"
         );
+        let row = logs
+            .find_message(Level::WARN, "deferred content actions dropped")
+            .expect("one WARN row for the dropped action");
+        assert!(row.has_field("event", "deferred_actions_dropped"));
+        assert!(row.has_field("reason", "destroy_entity"));
+        assert!(row.has_field("dropped", "1"));
+        assert!(row.has_field("chain_ids", "[100]"));
     }
 }
