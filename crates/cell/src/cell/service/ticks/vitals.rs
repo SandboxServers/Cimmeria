@@ -6,9 +6,14 @@
 //! script's drain or a heal changes the pools without passing through it;
 //! the sample is what makes those visible. Rows and budget:
 //! `crate::cell::combat::vitals`.
+//!
+//! The same tick checks every living player's combat state against its
+//! threat set (`combat_state_stale`, TG-CMB-02), throttled per entity.
+
+use std::time::Instant;
 
 use crate::cell::combat::state::BSF_DEAD;
-use crate::cell::combat::vitals::log_combat_sample;
+use crate::cell::combat::vitals::{log_combat_sample, log_combat_state_stale};
 use crate::cell::space_manager::SpaceManager;
 
 /// AoI ticks (100 ms) between samples: 2 s. Pinned by
@@ -16,11 +21,20 @@ use crate::cell::space_manager::SpaceManager;
 /// `docs/architecture/observability.md` (`vitals` row).
 pub(in crate::cell::service) const VITALS_SAMPLE_EVERY_TICKS: u32 = 20;
 
-/// Log one `combat_sample` row per living, in-combat player.
-pub(in crate::cell::service) fn vitals_sample_tick(space_mgr: &SpaceManager) {
+/// Log one `combat_sample` row per living, in-combat player, and check every
+/// living player's combat state for staleness.
+pub(in crate::cell::service) fn vitals_sample_tick(space_mgr: &mut SpaceManager) {
+    let now = Instant::now();
     for eid in space_mgr.all_player_entity_ids() {
+        let living = space_mgr
+            .get_entity(eid)
+            .is_some_and(|e| e.state_field & BSF_DEAD == 0);
+        if !living {
+            continue;
+        }
+        log_combat_state_stale(space_mgr, eid, now);
         if let Some(e) = space_mgr.get_entity(eid) {
-            if !e.threatened_mobs.is_empty() && e.state_field & BSF_DEAD == 0 {
+            if !e.threatened_mobs.is_empty() {
                 log_combat_sample(space_mgr, e);
             }
         }
@@ -61,7 +75,7 @@ mod tests {
         let mut mgr = mgr();
         mgr.get_entity_mut(1).unwrap().threatened_mobs.insert(900);
         let capture = LogCapture::install();
-        vitals_sample_tick(&mgr);
+        vitals_sample_tick(&mut mgr);
         let rows: Vec<_> = capture
             .all()
             .into_iter()
@@ -81,7 +95,7 @@ mod tests {
         e.threatened_mobs.insert(900);
         e.state_field |= BSF_DEAD;
         let capture = LogCapture::install();
-        vitals_sample_tick(&mgr);
+        vitals_sample_tick(&mut mgr);
         assert!(capture.all().iter().all(|c| c.target != "vitals"));
     }
 
