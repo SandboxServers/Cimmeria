@@ -11,6 +11,8 @@ from ingest.prices import CURRENT, SOURCE, estimate_usd, normalize_model
 from report.stats import distribution, share
 
 TOKEN_KEYS = ("input", "output", "cache_read", "cache_write_5m", "cache_write_1h")
+# Every campaign reports these roles, at 0.0 when it had no spend in them.
+BASE_ROLES = ("coordinator", "implementer-haiku", "reviewer", "fixer", "other")
 
 # requests -> pr_attribution rows: one row per (request, PR or campaign or unattributed), weights sum to 1.
 # The agent's role key is custom_agent_type, else agent_type; a teammate's agent_type is its name, which is
@@ -60,7 +62,9 @@ def campaign_of(row, ledger_pr_map):
 def load_requests(conn, since, until, ledger_pr_map=None):
     """One dict per pr_attribution row in [since, until): the request's tokens and agent, and the row's PR,
     weight and campaign (None when untagged). `ledger_pr_map` ({pr: campaign}) tags a PR with no campaign."""
-    cur = conn.execute(ROWS_SQL, (since, until))
+    # Timestamps are stored as 2026-09-21T00:00:00.000Z; the bounds come as ...00:00:00Z, so the Z is dropped
+    # from both sides and the string comparison keeps the boundary instant inside the window.
+    cur = conn.execute(ROWS_SQL, (since.rstrip("Z"), until.rstrip("Z")))
     names = [d[0] for d in cur.description]
     for values in cur:
         row = dict(zip(names, values))
@@ -99,8 +103,9 @@ def rollup(requests, price_table=CURRENT, roles=None, accepted=None):
     for row in requests:
         if not row["campaign"]:
             continue
-        camp = camps.setdefault(row["campaign"], {"usd": 0.0, "tiers": {}, "roles": {}, "attributed": 0.0,
-                                                  "no_pr": 0.0, "per_pr": {}, "prs": set(), "merged": set()})
+        camp = camps.setdefault(row["campaign"], {"usd": 0.0, "tiers": {}, "roles": dict.fromkeys(BASE_ROLES, 0.0),
+                                                  "attributed": 0.0, "no_pr": 0.0, "per_pr": {}, "prs": set(),
+                                                  "merged": set()})
         usd = request_usd(row, price_table)
         if usd is None:
             unpriced[row["campaign"]] = unpriced.get(row["campaign"], 0) + 1
@@ -133,12 +138,18 @@ def _campaign_record(name, camp, unpriced, accepted):
     prs = {"count": len(camp["prs"]), "merged": len(merged),
            "cost_per_pr": {"mean": _r(dist["mean"]), "p50": _r(dist["p50"]), "p90": _r(dist["p90"])},
            "per_pr": per_pr}
+    if not merged:
+        prs["cost_per_pr_gap"] = "no merged PRs"
     record = {"campaign": name, "cost": cost, "prs": prs}
     if unpriced:
         cost["unpriced_rows"] = unpriced
         cost["unpriced_gap"] = "model has no price in the table for some rows; they are left out"
     if accepted:
         record["accepted"] = {"packets": accepted, "cost_per_accepted_usd": _r(camp["usd"] / accepted)}
+    elif accepted == 0:
+        # The ledger counted no accepted packets: there is no denominator, so no cost per packet.
+        record["accepted"] = {"packets": 0, "cost_per_accepted_usd": None,
+                              "accepted_gap": "the ledger counts no accepted packets"}
     elif merged:
         record["accepted"] = {"packets": 0, "cost_per_accepted_usd": _r(camp["usd"] / len(merged)),
                               "accepted_gap": "no packet table, used merged PRs"}
@@ -181,8 +192,10 @@ def stamp(conn, since, until, ledger_pr_map=None, price_table=CURRENT):
     how many PRs are still untagged, and the unattributed share."""
     untagged = {row["pr"] for row in load_requests(conn, since, until, ledger_pr_map)
                 if row["pr"] is not None and not row["campaign"]}
+    schema = conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0]
     return {"generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "window": {"since": since, "until": until}, "price_table": price_table, "price_source": SOURCE,
+            "profiler_schema": schema,
             "ledger": "applied" if ledger_pr_map else "not passed; PRs without a campaign stay untagged",
             "untagged_pr_count": len(untagged),
             "unattributed_share": unattributed_share(conn, since, until, price_table)}

@@ -127,6 +127,17 @@ class CostTest(unittest.TestCase):
         self.assertEqual(fallback["accepted_gap"], "no packet table, used merged PRs")
         self.assertAlmostEqual(fallback["cost_per_accepted_usd"], 0.0592, places=9)
 
+    def test_window_bounds_take_the_stored_millisecond_form(self):
+        # Stored ts carry .000Z; the config's bounds end in Z. Since is inside, until is outside.
+        writer = sqlite3.connect(self.path)
+        writer.execute("UPDATE requests SET ts = ? WHERE request_id = 'r1'", (self.since[:-1] + ".000Z",))
+        writer.execute("UPDATE requests SET ts = ? WHERE request_id = 'r2'", (self.until[:-1] + ".000Z",))
+        writer.commit()
+        writer.close()
+        ids = {row["request_id"] for row in cost.load_requests(self.db, self.since, self.until)}
+        self.assertIn("r1", ids)
+        self.assertNotIn("r2", ids)
+
     def test_tier_and_family(self):
         self.assertEqual(cost.tier_of("claude-opus-5-5"), "opus")
         self.assertEqual(cost.tier_of("claude-haiku-5-5-20251001"), "haiku")
@@ -152,7 +163,40 @@ class CliTest(unittest.TestCase):
             record = json.loads(text)
             self.assertAlmostEqual(record["campaigns"]["camp-a"]["cost"]["total_usd"], 0.0592, places=9)
             self.assertEqual(record["stamp"]["price_table"], CURRENT)
+            self.assertEqual(record["stamp"]["profiler_schema"], "5")
             self.assertEqual(record["stamp"]["ledger"], "not passed; PRs without a campaign stay untagged")
+
+    def test_ledger_in_the_real_shape_counts_accepted_packets(self):
+        # Override rows are not packets: camp-a's override row is Done but is not counted.
+        ledger = {"schema": 1, "pr_map": {"401": "camp-c"}, "conflicts": [],
+                  "campaigns": {
+                      "camp-a": {"window": {}, "packets": [
+                          {"status": "Done"}, {"status": "Integrated"}, {"status": "Ready"}, {"status": "unknown"},
+                          {"override": True, "status": "Done"}]},
+                      "camp-b": {"window": {}, "packets": [{"status": "UATPending"}, {"status": "Ready"}]}}}
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "profile.sqlite"
+            build(db)
+            ledger_file = Path(tmp) / "ledger.json"
+            ledger_file.write_text(json.dumps(ledger), encoding="utf-8")
+            out = Path(tmp) / "out"
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                status = cli.main(["cost", "--db", str(db), "--out", str(out), "--ledger", str(ledger_file)])
+            self.assertEqual(status, 0)
+            record = json.loads((out / "cost.json").read_text(encoding="utf-8"))
+            self.assertEqual(record["campaigns"]["camp-a"]["accepted"]["packets"], 2)
+            self.assertEqual(record["campaigns"]["camp-b"]["accepted"]["packets"], 1)
+            self.assertNotIn("accepted_gap", record["campaigns"]["camp-a"]["accepted"])
+
+    def test_unreadable_database_exits_2_with_a_status_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "garbage.sqlite"
+            db.write_bytes(b"this is not a sqlite database" * 100)
+            err = io.StringIO()
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+                status = cli.main(["cost", "--db", str(db), "--out", str(Path(tmp) / "out")])
+            self.assertEqual(status, 2)
+            self.assertIn("status=error DatabaseError", err.getvalue().splitlines())
 
 
 if __name__ == "__main__":

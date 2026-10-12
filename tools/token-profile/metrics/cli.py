@@ -1,10 +1,10 @@
 """Command line: the campaign metrics subcommands: `registry` (CM-01) and `cost` (CM-03).
 
     python tools/token-profile/metrics registry --repo . [--check] [--config <json>] [--campaigns <json>]
-    python tools/token-profile/metrics cost --db <profile.sqlite> --out <dir> [--ledger <json>] [--since T] [--until T]
+    python tools/token-profile/metrics cost --db <profile.sqlite> --out <dir> [--config <json>] [--ledger <json>] [--since T] [--until T]
 
-`cost` opens the profiler database read-only and writes cost.json to --out. --ledger is the CM-05 output:
-{"pr_map": {"<pr>": "<campaign>"}, "accepted": {"<campaign>": <packets>}}.
+`cost` opens the profiler database read-only and writes cost.json to --out. --ledger is the CM-05 ledger.json:
+its "pr_map" ({"<pr>": "<campaign>"}) and, per campaign, the packets whose status is an accepted status.
 
 Exit status: 0 ok; 1 with registry --check, the campaign rules have a problem; 2 an input error;
 3 the privacy gate refused the output, nothing was written.
@@ -12,6 +12,7 @@ Exit status: 0 ok; 1 with registry --check, the campaign rules have a problem; 2
 
 import argparse
 import json
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -34,7 +35,8 @@ def main(argv=None):
     cst = sub.add_parser("cost", help="list-price cost per campaign, role and PR (read-only database)")
     cst.add_argument("--db", required=True, help="the profiler's SQLite database")
     cst.add_argument("--out", required=True, help="directory for cost.json")
-    cst.add_argument("--ledger", help="the CM-05 ledger output: pr_map and accepted counts")
+    cst.add_argument("--config", help="metrics config.json (default: the package's)")
+    cst.add_argument("--ledger", help="the CM-05 ledger.json: pr_map and each campaign's packets")
     cst.add_argument("--since", help="first timestamp included (default: config.json's window)")
     cst.add_argument("--until", help="first timestamp excluded (default: config.json's window)")
     args = ap.parse_args(argv)
@@ -57,27 +59,37 @@ def main(argv=None):
     return 1 if args.check and found else 0
 
 
-def load_ledger(path):
-    """The CM-05 ledger output as ({pr: campaign}, {campaign: packets}). JSON keys are strings; PR numbers go to int."""
+def load_ledger(path, accepted_statuses):
+    """The CM-05 ledger.json as ({pr: campaign}, {campaign: packets}). A packet counts when its status is in
+    `accepted_statuses`; override rows are not packets. JSON keys are strings; PR numbers go to int."""
     data = json.loads(Path(path).read_text(encoding="utf-8"))
-    return {int(pr): name for pr, name in data.get("pr_map", {}).items()}, dict(data.get("accepted", {}))
+    pr_map = {int(pr): name for pr, name in data["pr_map"].items()}
+    accepted = {name: sum(1 for p in c["packets"] if not p.get("override") and p["status"] in accepted_statuses)
+                for name, c in data["campaigns"].items()}
+    return pr_map, accepted
 
 
 def cmd_cost(args):
     """Write cost.json: each campaign's list-price cost, plus the stamp. Input errors exit 2, the privacy gate 3."""
-    config = registry.load_config()
-    since = args.since or config["window"]["since"]
-    until = args.until or config["window"]["until"]
     try:
-        pr_map, accepted = load_ledger(args.ledger) if args.ledger else (None, None)
+        config = registry.load_config(args.config)
+        since = args.since or config["window"]["since"]
+        until = args.until or config["window"]["until"]
+        roles = config["roles"]
+        pr_map, accepted = load_ledger(args.ledger, config["accepted_statuses"]) if args.ledger else (None, None)
         db = open_db(args.db)
     except (OSError, ValueError, KeyError, ReportError) as e:
         print(f"status=error {type(e).__name__}", file=sys.stderr)
         return 2
     print(f"prices {CURRENT} source {SOURCE}", file=sys.stderr)
-    campaigns = cost.rollup(cost.load_requests(db, since, until, pr_map), CURRENT, config["roles"], accepted)
-    record = {"stamp": cost.stamp(db, since, until, pr_map, CURRENT), "campaigns": campaigns}
-    db.close()
+    try:
+        campaigns = cost.rollup(cost.load_requests(db, since, until, pr_map), CURRENT, roles, accepted)
+        record = {"stamp": cost.stamp(db, since, until, pr_map, CURRENT), "campaigns": campaigns}
+    except sqlite3.Error as e:
+        print(f"status=error {type(e).__name__}", file=sys.stderr)
+        return 2
+    finally:
+        db.close()
     text = json.dumps(record, indent=2, sort_keys=True) + "\n"
     try:
         Scrubber().assert_clean(text, "cost")

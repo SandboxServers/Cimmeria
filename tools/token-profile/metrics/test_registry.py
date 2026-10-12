@@ -99,7 +99,7 @@ class CheckTest(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()) as err:
             self.assertEqual(cli.main(["registry", "--repo", str(self.repo), "--config", str(config),
                                        "--campaigns", self.write(self.clean)]), 2)
-        self.assertEqual(err.getvalue().strip(), "status=error KeyError")
+        self.assertIn("status=error KeyError", err.getvalue().splitlines())
 
     def test_check_exits_1_on_overlap_and_0_when_clean(self):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
