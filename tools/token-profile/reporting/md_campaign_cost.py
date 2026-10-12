@@ -76,7 +76,8 @@ def accepted_md(record):
         f"- Accepted packets: {num(a['packets'])}",
         f"- Cost per accepted change: {cell(a['cost_per_accepted_usd'], note, usd)}",
     ]
-    return "\n".join(lines) + "\n"
+    out = "\n".join(lines) + "\n"
+    return out + "\n" + note + "\n" if note and a["cost_per_accepted_usd"] is not None else out
 
 
 def first_pass_md(record):

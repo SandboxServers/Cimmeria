@@ -122,6 +122,14 @@ class AcceptedFirstPassRetriesTest(unittest.TestCase):
         out = md_campaign_cost.accepted_md(haiku_record())
         self.assertIn("- Cost per accepted change: $15.00", out)
 
+    def test_accepted_note_kept_beside_a_number(self):
+        record = haiku_record()
+        record["accepted"] = {"packets": 2, "cost_per_accepted_usd": 12.5,
+                              "accepted_gap": "no packet table, used merged PRs"}
+        out = md_campaign_cost.accepted_md(record)
+        self.assertIn("$12.50", out)
+        self.assertEqual(out.count("no packet table, used merged PRs"), 1)
+
 
 class CellTest(unittest.TestCase):
     def test_cell_gap_beats_dash(self):
