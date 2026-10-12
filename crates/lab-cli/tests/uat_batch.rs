@@ -175,14 +175,24 @@ fn a_two_lane_batch_writes_plan_first_then_records_then_the_summary() {
         got.remove(0),
         "lab uat first-session: 2 lease(s) x 2 run(s) = 4 run(s) on default, p2; rows FS-P1, FS-P2"
     );
+    // Each line ends in the run's real elapsed time, which depends on machine
+    // load: check the suffix has the shape, then compare the line without it.
+    let suffix = regex::Regex::new(r" \(\d+(m\d\d)?s\)$").unwrap();
+    for line in &got {
+        assert!(suffix.is_match(line), "no elapsed-time suffix: {line}");
+    }
+    let mut got: Vec<String> = got
+        .iter()
+        .map(|line| suffix.replace(line, "").into_owned())
+        .collect();
     got.sort();
     assert_eq!(
         got,
         [
-            "[default 1/2] PASS (0s)",
-            "[default 2/2] PASS (0s)",
-            "[p2 1/2] FAIL FS-P2: clause movie-over failed [known #1341] (0s)",
-            "[p2 2/2] PASS (0s)",
+            "[default 1/2] PASS",
+            "[default 2/2] PASS",
+            "[p2 1/2] FAIL FS-P2: clause movie-over failed [known #1341]",
+            "[p2 2/2] PASS",
         ]
     );
 }
