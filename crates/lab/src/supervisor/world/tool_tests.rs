@@ -383,7 +383,7 @@ async fn move_to_reports_a_snag_it_cannot_clear() {
 #[tokio::test]
 async fn move_to_times_out_with_the_distance_left() {
     let mut sim = Sim::new();
-    sim.speed_uu_s = 10.0;
+    sim.speed_uu_s = 100.0;
     let e = movement::run(
         &mut sim,
         MoveRequest {
@@ -412,7 +412,90 @@ async fn move_to_an_entity_stops_beside_it() {
     .unwrap();
     assert_eq!(out["arrived"], true);
     let d = super::geometry::horizontal_m(sim.pos, Vec3::new(1000.0, 0.0, 0.0));
-    assert!(d <= 2.5 + 0.1, "stopped {d} m away");
+    assert!(d <= 4.0 + 0.1, "stopped {d} m away");
+}
+
+/// A vendor already in interact range is a no-op: no key is pressed, and
+/// the result says so.
+#[tokio::test]
+async fn move_to_an_entity_already_in_range_presses_nothing() {
+    let mut sim = Sim::new().with_entity(10, "Quartermaster", Vec3::new(380.0, 0.0, 0.0));
+    let out = movement::run(
+        &mut sim,
+        MoveRequest {
+            name: Some("quartermaster".into()),
+            ..MoveRequest::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(out["arrived"], true);
+    assert_eq!(out["already_in_range"], true);
+    assert!(sim.looks.is_empty(), "turned toward a target in range");
+    assert!((sim.pos.x - 0.0).abs() < 1.0, "walked {} uu", sim.pos.x);
+}
+
+/// A failed walk carries the evidence needed to tell a snag from drift.
+#[tokio::test]
+async fn move_to_failure_carries_path_gain_and_hint() {
+    let mut sim = Sim::new();
+    sim.wall_x = Some(1000.0);
+    sim.jump_clears_wall = false;
+    let e = movement::run(
+        &mut sim,
+        MoveRequest {
+            point: Some(client_point(2500.0, 0.0, 0.0)),
+            ..MoveRequest::default()
+        },
+    )
+    .await
+    .unwrap_err();
+    let st = e.to_json()["state"].clone();
+    assert!(st["start_distance_m"].as_f64().unwrap() > 20.0);
+    assert!(st["path"].is_array());
+    assert!(st["turn_gain"]["counts_per_rad"].is_number());
+    assert!(st["hint"].as_str().unwrap().contains("waypoints"));
+}
+
+/// A pawn that ignores the forward key must fail as `input_probe`, not as
+/// a generic stuck/timeout (C-P6).
+#[tokio::test]
+async fn move_to_names_a_dead_forward_key() {
+    let mut sim = Sim::new();
+    sim.speed_uu_s = 0.0;
+    let e = movement::run(
+        &mut sim,
+        MoveRequest {
+            point: Some(client_point(2500.0, 0.0, 0.0)),
+            ..MoveRequest::default()
+        },
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(e.step, "input_probe");
+    assert!(e.message.contains("did not move"), "{}", e.message);
+    assert!(e.to_json()["state"]["moved_m"].as_f64().unwrap() < 0.1);
+    assert!(!sim.keys["W"], "forward key left held after a failure");
+}
+
+/// A target already inside the arrival radius costs no real move: the
+/// probe sits after the arrival check. A dead-W pawn would fail the probe,
+/// so success here proves the probe did not run.
+#[tokio::test]
+async fn move_to_in_range_does_not_probe() {
+    let mut sim = Sim::new();
+    sim.speed_uu_s = 0.0;
+    let out = movement::run(
+        &mut sim,
+        MoveRequest {
+            point: Some(client_point(100.0, 0.0, 0.0)), // 1 m, arrival 1.5 m
+            ..MoveRequest::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(out["arrived"], true);
+    assert!(!sim.keys.get("W").copied().unwrap_or(false));
 }
 
 #[tokio::test]

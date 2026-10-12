@@ -105,6 +105,9 @@ pub struct MoveConfig {
     pub max_step_rad: f64,
     /// Heading errors below this need no correction.
     pub deadband_rad: f64,
+    /// Give up when walking has taken the avatar this far (metres) beyond the
+    /// closest it has been to the goal: it is walking away, not snagged.
+    pub diverge_m: f64,
 }
 
 impl Default for MoveConfig {
@@ -117,6 +120,7 @@ impl Default for MoveConfig {
             turn_in_place_rad: 1.0,
             max_step_rad: 1.2,
             deadband_rad: 0.05,
+            diverge_m: 6.0,
         }
     }
 }
@@ -159,8 +163,19 @@ impl Unstick {
 /// How a walk ended.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum MoveOutcome {
-    Arrived { distance_m: f64 },
-    Stuck { distance_m: f64, attempts: u32 },
+    Arrived {
+        distance_m: f64,
+    },
+    Stuck {
+        distance_m: f64,
+        attempts: u32,
+    },
+    /// Farther from the goal than ever after walking: wrong turn sign, a
+    /// wall deflecting the pawn, or a goal that is running away.
+    Diverged {
+        distance_m: f64,
+        best_m: f64,
+    },
 }
 
 /// What to do this step.
@@ -187,6 +202,7 @@ pub struct MoveController {
     last: Option<(Pose, i32, bool)>,
     best_m: f64,
     best_at: u64,
+    min_m: f64,
 }
 
 impl MoveController {
@@ -199,6 +215,7 @@ impl MoveController {
             last: None,
             best_m: f64::INFINITY,
             best_at: 0,
+            min_m: f64::INFINITY,
         }
     }
 
@@ -230,6 +247,16 @@ impl MoveController {
         if dist <= self.cfg.arrival_m {
             out.outcome = Some(MoveOutcome::Arrived { distance_m: dist });
             self.last = None;
+            return out;
+        }
+
+        // Never closer than this: remembered across turns and unsticks.
+        self.min_m = self.min_m.min(dist);
+        if was_forward && dist > self.min_m + self.cfg.diverge_m {
+            out.outcome = Some(MoveOutcome::Diverged {
+                distance_m: dist,
+                best_m: self.min_m,
+            });
             return out;
         }
 
@@ -494,6 +521,41 @@ mod tests {
             outcome,
             Some(MoveOutcome::Stuck { attempts: 2, .. })
         ));
+    }
+
+    /// Moving away is not a snag: the controller must give up with
+    /// `Diverged` long before the stuck window or the walk's timeout.
+    #[test]
+    fn move_controller_gives_up_when_it_walks_away() {
+        let mut c = MoveController::new(MoveConfig::default(), TurnModel::new(400.0));
+        let target = Vec3::new(2000.0, 0.0, 0.0); // 20 m ahead
+        let mut outcome = None;
+        // The pawn walks backwards 1 m a step (100 uu).
+        for k in 0..30u64 {
+            let s = c.step(k * 100, pose(-100.0 * k as f64, 0.0, 0.0), target);
+            if s.outcome.is_some() {
+                outcome = s.outcome;
+                break;
+            }
+        }
+        match outcome {
+            Some(MoveOutcome::Diverged { distance_m, best_m }) => {
+                assert!(distance_m > best_m + 6.0);
+                assert!((best_m - 20.0).abs() < 0.1);
+            }
+            other => panic!("expected Diverged, got {other:?}"),
+        }
+    }
+
+    /// A target that is simply approached never diverges.
+    #[test]
+    fn move_controller_does_not_diverge_while_closing() {
+        let mut c = MoveController::new(MoveConfig::default(), TurnModel::new(400.0));
+        let target = Vec3::new(2000.0, 0.0, 0.0);
+        for k in 0..15u64 {
+            let s = c.step(k * 100, pose(100.0 * k as f64, 0.0, 0.0), target);
+            assert!(!matches!(s.outcome, Some(MoveOutcome::Diverged { .. })));
+        }
     }
 
     #[test]

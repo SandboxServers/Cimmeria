@@ -20,7 +20,7 @@ use crate::supervisor::flows::login::{
 };
 use crate::supervisor::flows::widgets::{self, DIALOG_WIN};
 use crate::supervisor::flows::world::{DEFAULT_MAX_PAGES, DEFAULT_PLAY_TIMEOUT};
-use crate::supervisor::{process, Supervisor};
+use crate::supervisor::{process, LoginState, Supervisor};
 
 /// Window and bridge must answer within this after a launch.
 pub const READY_TIMEOUT: Duration = Duration::from_secs(120);
@@ -349,6 +349,7 @@ impl Supervisor {
                     return Ok(out);
                 }
                 Next::Done => {
+                    self.set_login_state(LoginState::InWorld).await;
                     if req.focus {
                         self.input_focus(true).await?;
                     }
@@ -638,5 +639,21 @@ mod tests {
                 && c.contains("SelfStatusWin")
                 && c.contains("pcall(unitName, Unit.Player)")
         );
+    }
+
+    /// `Next::Done` (already in the world) must record the login state, or
+    /// `lab_client_status` keeps a stale `character_select` label.
+    #[test]
+    fn the_done_arm_records_in_world() {
+        let src = include_str!("ensure.rs");
+        let arm = src
+            .find(concat!("Next::Done", " => {"))
+            .expect("the unguarded Done arm");
+        let body = &src[arm..arm + 200];
+        let set = body
+            .find("self.set_login_state(LoginState::InWorld).await;")
+            .expect("Done arm sets the login state");
+        let focus = body.find("if req.focus").expect("focus follows");
+        assert!(set < focus);
     }
 }
