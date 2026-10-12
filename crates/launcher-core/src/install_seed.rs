@@ -1,7 +1,7 @@
 //! Seed-only extraction seam for native platform adapters. Patch overlay stays native.
 use super::*;
 use crate::manifest::SeedEntry;
-use crate::seed_source::VerifiedLocalSeed;
+use crate::seed_source::{LocalSeedError, VerifiedLocalSeed};
 use std::{future::Future, pin::Pin};
 
 /// Native-owned cache is separate from content staging, so the helper can
@@ -42,9 +42,10 @@ pub(super) async fn apply(
         .map_or(ctx.install_dir, |backend| backend.cache_directory);
     std::fs::create_dir_all(download_dir)?;
     let archive = download_dir.join(format!(".tmp-seed-{short_hash}.download"));
-    // The player's own verified archive, when they chose one, replaces the
-    // cache check and the download.
-    match ctx.seed_source.current() {
+    // The player's own verified archive, when they chose one for this seed,
+    // replaces the cache check and the download. Another seed's archive is
+    // ignored.
+    match ctx.seed_source.current_for(&seed.sha256) {
         Some(local) => copy_local(ctx, &local, &archive).await?,
         None => fetch_seed(ctx, &url, seed, &archive).await?,
     }
@@ -135,28 +136,30 @@ async fn fetch_seed(
     if complete {
         return Ok(());
     }
-    let switch = ctx.seed_source.switched();
-    match download_to_file(
-        ctx.http,
-        url,
-        archive,
-        ctx.cancel.clone(),
-        switch,
-        seed.size,
-        "seed",
-        &ctx.progress,
-    )
-    .await
-    {
-        Err(InstallError::SeedSwitched) => {
-            let _ = std::fs::remove_file(archive);
-            let local = ctx
-                .seed_source
-                .current()
-                .ok_or(InstallError::SeedSwitched)?;
-            copy_local(ctx, &local, archive).await
+    loop {
+        let switch = ctx.seed_source.switched();
+        match download_to_file(
+            ctx.http,
+            url,
+            archive,
+            ctx.cancel.clone(),
+            switch,
+            seed.size,
+            "seed",
+            &ctx.progress,
+        )
+        .await
+        {
+            Err(InstallError::SeedSwitched) => {
+                let _ = std::fs::remove_file(archive);
+                match ctx.seed_source.resume_for(&seed.sha256) {
+                    Some(local) => return copy_local(ctx, &local, archive).await,
+                    // An archive for another seed does not stop this download.
+                    None => continue,
+                }
+            }
+            other => return other,
         }
-        other => other,
     }
 }
 
@@ -172,10 +175,17 @@ async fn copy_local(
     let dest = archive.to_path_buf();
     let cancel = ctx.cancel.clone();
     let progress = ctx.progress.clone();
-    tokio::task::spawn_blocking(move || local.copy_into(&dest, &cancel, &progress))
+    let copied = tokio::task::spawn_blocking(move || local.copy_into(&dest, &cancel, &progress))
         .await
-        .map_err(|_| InstallError::Io(std::io::Error::other("local seed copy task failed")))??;
-    Ok(())
+        .map_err(|_| InstallError::Io(std::io::Error::other("local seed copy task failed")))?;
+    copied.map_err(|error| {
+        if !matches!(error, LocalSeedError::Cancelled) {
+            // The player moved, changed or deleted the file after choosing it.
+            warn!("The chosen seed archive could not be copied: {error}");
+            ctx.seed_source.note_local_failure();
+        }
+        InstallError::from(error)
+    })
 }
 
 #[cfg(test)]

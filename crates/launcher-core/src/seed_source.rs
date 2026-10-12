@@ -38,6 +38,9 @@ struct Slot {
     current: Option<VerifiedLocalSeed>,
     /// Fired by [`SeedSourceHandle::use_local`] to stop a running download.
     switch: CancellationToken,
+    /// Set when the chosen archive could not be copied. Read and cleared by
+    /// [`SeedSourceHandle::take_local_failure`].
+    local_failed: bool,
 }
 
 impl SeedSourceHandle {
@@ -56,6 +59,7 @@ impl SeedSourceHandle {
             slot: Arc::new(Mutex::new(Slot {
                 current,
                 switch: CancellationToken::new(),
+                local_failed: false,
             })),
         }
     }
@@ -69,12 +73,15 @@ impl SeedSourceHandle {
     }
 
     /// Back to download mode. Applies from the next seed step: a step that
-    /// already read [`SeedSourceHandle::current`] keeps its archive. Later
-    /// steps get a fresh switch token, so they are not switched at once.
+    /// already read [`SeedSourceHandle::current`] keeps its archive. A fired
+    /// switch token is replaced, so later steps are not switched at once. An
+    /// unfired one is kept, so a running download still sees a later switch.
     pub fn clear(&self) {
         let mut slot = self.lock();
         slot.current = None;
-        slot.switch = CancellationToken::new();
+        if slot.switch.is_cancelled() {
+            slot.switch = CancellationToken::new();
+        }
     }
 
     /// The chosen local archive, if any.
@@ -82,9 +89,41 @@ impl SeedSourceHandle {
         self.lock().current.clone()
     }
 
+    /// The chosen local archive, when it is the archive for the seed whose
+    /// SHA-256 is `sha256`. Any other archive is not used for that seed.
+    pub(crate) fn current_for(&self, sha256: &str) -> Option<VerifiedLocalSeed> {
+        self.lock()
+            .current
+            .clone()
+            .filter(|local| local.is_for(sha256))
+    }
+
+    /// Called after a running download was switched. Returns the chosen
+    /// archive when it is for `sha256`. Otherwise re-arms the switch token, so
+    /// the download keeps going and a later switch still stops it.
+    pub(crate) fn resume_for(&self, sha256: &str) -> Option<VerifiedLocalSeed> {
+        let mut slot = self.lock();
+        if let Some(local) = slot.current.as_ref().filter(|local| local.is_for(sha256)) {
+            return Some(local.clone());
+        }
+        slot.switch = CancellationToken::new();
+        None
+    }
+
     /// Fires when [`SeedSourceHandle::use_local`] is called.
     pub(crate) fn switched(&self) -> CancellationToken {
         self.lock().switch.clone()
+    }
+
+    /// Records that the chosen archive could not be copied for an install.
+    pub(crate) fn note_local_failure(&self) {
+        self.lock().local_failed = true;
+    }
+
+    /// Whether the chosen archive failed to copy since the last call. Clears
+    /// the mark, so one failure is reported once.
+    pub fn take_local_failure(&self) -> bool {
+        std::mem::take(&mut self.lock().local_failed)
     }
 
     fn lock(&self) -> MutexGuard<'_, Slot> {
@@ -188,6 +227,12 @@ pub fn verify_local_seed(
 }
 
 impl VerifiedLocalSeed {
+    /// Whether this archive was verified against the seed with SHA-256
+    /// `sha256`. The comparison ignores ASCII case.
+    pub(crate) fn is_for(&self, sha256: &str) -> bool {
+        self.sha256.eq_ignore_ascii_case(sha256)
+    }
+
     /// Opens `path` without following links, checks identity and size are the
     /// verified ones, copies to `<dest>.local-copy` while hashing, fsyncs, and
     /// renames onto `dest` only if the hash matches. Never writes, moves or

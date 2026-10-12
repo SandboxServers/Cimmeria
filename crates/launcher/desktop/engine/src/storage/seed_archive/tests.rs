@@ -79,6 +79,39 @@ async fn install_uses_remembered_archive_without_downloading_seed() {
     );
 }
 
+/// A remembered archive the player moved or deleted: the install fails, and the
+/// archive is forgotten, so the next attempt downloads instead of failing again.
+#[tokio::test]
+async fn a_moved_archive_fails_the_install_and_is_forgotten() {
+    let seed = archive(true);
+    let release = verified(&seed);
+    let (root, state, id) = setup(&release);
+    let player_seed = root.path().join("player-seed.zip");
+    std::fs::write(&player_seed, &seed).unwrap();
+    let (progress, _observed) = ProgressSink::latest();
+    verify_and_remember(
+        &state,
+        &release,
+        &player_seed,
+        &CancellationToken::new(),
+        &progress,
+    )
+    .unwrap();
+    std::fs::remove_file(&player_seed).unwrap();
+    let worker = dispatch_with(
+        state.clone(),
+        id,
+        release,
+        "http://127.0.0.1:9/manifest.json".into(),
+        reqwest::Client::new(),
+    )
+    .unwrap();
+    assert_eq!(outcome(worker.result.clone()).await, Outcome::InstallFailed);
+    let owner = state.lock().unwrap();
+    assert!(owner.seed_archive().is_none());
+    assert!(owner.seed_source.current().is_none());
+}
+
 mod downloads_offer {
     use super::*;
     use cimmeria_launcher_core::manifest::SeedEntry;
