@@ -52,6 +52,7 @@ mod lifecycle;
 pub mod login_servers;
 pub mod main_thread;
 pub mod process;
+pub mod process_activity;
 pub mod record_slot;
 pub mod recovery;
 pub mod screenshot;

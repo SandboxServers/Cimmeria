@@ -44,6 +44,16 @@ pub const LOAD_GRACE_ENV: &str = "CIMMERIA_LAB_LOAD_GRACE_SECS";
 /// past any load, and the clamp keeps the millisecond maths in `i64`.
 pub const MAX_LOAD_GRACE: Duration = Duration::from_secs(3600);
 
+/// Longest stall tolerated while the process is making IO progress
+/// ([`super::process_activity`]): a client starting on a drive saturated by
+/// builds. Replaces [`LOAD_GRACE`] for a stall that showed IO or CPU
+/// progress; never shorter than it.
+pub const IO_LOAD_GRACE: Duration = Duration::from_secs(300);
+
+/// Overrides [`IO_LOAD_GRACE`], in whole seconds (`0` or less than the load
+/// grace means the load grace applies; at most [`MAX_LOAD_GRACE`]).
+pub const IO_GRACE_ENV: &str = "CIMMERIA_LAB_IO_GRACE_SECS";
+
 /// How long after a launch a client that has never answered the bridge
 /// is left alone. With several clients booting at once a bridge took
 /// about 25 s to come up (2026-10-10), past the 5-failure rule.
@@ -96,6 +106,16 @@ pub fn load_grace_from(raw: Option<&str>) -> Duration {
         .and_then(|s| s.parse::<u64>().ok())
         .map(|secs| Duration::from_secs(secs.min(MAX_LOAD_GRACE.as_secs())))
         .unwrap_or(LOAD_GRACE)
+}
+
+/// The IO-progress grace from the raw [`IO_GRACE_ENV`] value. Unset, empty
+/// or unparseable falls back to [`IO_LOAD_GRACE`]; clamped like
+/// [`load_grace_from`].
+pub fn io_grace_from(raw: Option<&str>) -> Duration {
+    raw.map(str::trim)
+        .and_then(|s| s.parse::<u64>().ok())
+        .map(|secs| Duration::from_secs(secs.min(MAX_LOAD_GRACE.as_secs())))
+        .unwrap_or(IO_LOAD_GRACE)
 }
 
 /// Whether the main thread did real work between two samples:
@@ -167,6 +187,9 @@ pub struct Step {
     pub busy_now: bool,
     /// Some sample inside the current stall did (what the grace uses).
     pub busy_seen: bool,
+    /// Some sample inside the current stall showed IO or CPU progress of the
+    /// whole process (the longer [`IO_LOAD_GRACE`] applies).
+    pub io_seen: bool,
 }
 
 /// The watchdog's per-poll decision with its state: the consecutive
@@ -184,6 +207,9 @@ pub struct StallTracker {
     /// Polls seen in this stall.
     polls_in_stall: u32,
     busy_seen: bool,
+    /// Grace once the stall has shown process-wide progress.
+    io_grace: Duration,
+    io_seen: bool,
 }
 
 impl StallTracker {
@@ -195,17 +221,42 @@ impl StallTracker {
             stall_start_ms: None,
             polls_in_stall: 0,
             busy_seen: false,
+            io_grace: grace,
+            io_seen: false,
         }
+    }
+
+    /// Use `io_grace` instead of the load grace for a stall that has shown
+    /// IO or CPU progress (never below the load grace).
+    pub fn with_io_grace(mut self, io_grace: Duration) -> Self {
+        self.io_grace = io_grace.max(self.grace);
+        self
     }
 
     /// Decide one poll. `sample` is the main thread's `(cpu_ms, wall_ms)`
     /// since the previous poll, `None` when it could not be read (treated
     /// as idle, so an unreadable thread gets the old rules). `stalled_ms`:
     /// how long the Tick counter has not advanced at `now_ms`.
+    #[cfg(test)]
     pub fn step(
         &mut self,
         hb: Heartbeat,
         sample: Option<(i64, i64)>,
+        now_ms: i64,
+        stalled_ms: i64,
+    ) -> Step {
+        self.step_with_io(hb, sample, false, now_ms, stalled_ms)
+    }
+
+    /// [`Self::step`] plus `io_progress`: this interval showed the whole
+    /// process reading or working ([`super::process_activity::io_progress`]).
+    /// Like main-thread busy it is sticky for the stall and ignores the
+    /// first two samples; it also lengthens the grace to `io_grace`.
+    pub fn step_with_io(
+        &mut self,
+        hb: Heartbeat,
+        sample: Option<(i64, i64)>,
+        io_progress: bool,
         now_ms: i64,
         stalled_ms: i64,
     ) -> Step {
@@ -226,6 +277,7 @@ impl StallTracker {
             self.stall_start_ms = Some(start);
             self.polls_in_stall = 0;
             self.busy_seen = false;
+            self.io_seen = false;
         }
         let busy_now = sample.is_some_and(|(cpu, wall)| main_thread_busy(cpu, wall));
         // The first two samples of a stall cover frames the thread still
@@ -234,13 +286,23 @@ impl StallTracker {
         if self.polls_in_stall >= 2 && busy_now {
             self.busy_seen = true;
         }
+        if self.polls_in_stall >= 2 && io_progress {
+            self.busy_seen = true;
+            self.io_seen = true;
+        }
         self.polls_in_stall = self.polls_in_stall.saturating_add(1);
 
+        let grace = if self.io_seen {
+            self.io_grace
+        } else {
+            self.grace
+        };
         Step {
-            verdict: decide(poll, self.max_fails, self.busy_seen, stalled_ms, self.grace),
+            verdict: decide(poll, self.max_fails, self.busy_seen, stalled_ms, grace),
             poll,
             busy_now,
             busy_seen: self.busy_seen,
+            io_seen: self.io_seen,
         }
     }
 }
