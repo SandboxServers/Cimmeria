@@ -9,8 +9,9 @@ As of 2026-10-12, nothing rewrites `current-session.json` while the client runs:
 launcher-core `Telemetry::replace_session` and the desktop engine transport keep a
 refreshed token in memory only; the lab supervisor writes the file once per launch
 (cached mint, reused only with 30+ min left). The DLL's `upload_gate` re-reads the
-file on 401/403 and at each backoff deadline, and never sends past `expires_at_ms`,
-so a DLL session simply goes quiet at its first token's expiry.
+file on 401/403 and at each backoff deadline; past `expires_at_ms` (by the client's
+clock, which may be ahead) it sends one probe at once and then one per 10 min, so a
+DLL session goes nearly quiet at its first token's expiry.
 
 **Why:** a lab client retried an expired token every flush for 4.5 h (colo log and
 Discord flood); the gate fixes the flood, not the lost uploads.

@@ -101,39 +101,146 @@ fn a_rotation_during_a_hold_is_picked_up_at_the_deadline() {
     assert_eq!(g.token(), "rotated");
 }
 
-/// A token whose `expires_at_ms` has passed is never sent: `ready` says no
-/// and holds with backoff, re-reading the file each time. Reverting the
-/// expiry check sends the dead token (`ready` returns true).
-#[test]
-fn an_expired_token_is_not_sent() {
-    let mut g = UploadGate::new(creds("dead", WALL - 1), BASE, BACKOFF_CAP);
-    let mut now = Instant::now();
+/// Drive `g` from `now` until `ready` says yes or `limit` passes, jumping
+/// from one hold's end to the next the way the uploader sleeps. Returns the
+/// instant it said yes, and how many times the file was re-read.
+fn next_send(
+    g: &mut UploadGate,
+    mut now: Instant,
+    limit: Instant,
+    file: &Credentials,
+) -> (Option<Instant>, u32) {
     let mut reads = 0;
-    let mut holds = Vec::new();
-    for _ in 0..4 {
-        assert!(!g.ready(now, WALL, || {
+    while now <= limit {
+        if g.ready(now, WALL, || {
             reads += 1;
-            Some(creds("dead", WALL - 1))
-        }));
-        // The hold runs: the next tick does not even re-read.
+            Some(file.clone())
+        }) {
+            return (Some(now), reads);
+        }
+        // Inside the hold nothing is read or sent.
         assert!(!g.ready(now + Duration::from_millis(1), WALL, || panic!(
             "re-read inside a hold"
         )));
-        let d = g.delay_for(holds.len() as u32 + 1);
-        holds.push(d);
-        now += d;
+        now = g.next_attempt().expect("a refusal to send sets a hold");
     }
-    assert_eq!(reads, 4, "one re-read per backoff deadline");
-    assert_eq!(
-        holds.iter().map(Duration::as_secs).collect::<Vec<_>>(),
-        [2, 4, 8, 16]
+    (None, reads)
+}
+
+/// A token whose `expires_at_ms` is behind this clock goes out as one
+/// probe at once, then at most once per cap: between probes the gate holds
+/// with backoff and re-reads the file at each deadline. Reverting the
+/// expiry check sends on every deadline; dropping the probe never sends.
+#[test]
+fn a_token_that_looks_expired_is_probed_once_per_cap() {
+    let dead = creds("dead", WALL - 1);
+    let mut g = UploadGate::new(dead.clone(), BASE, BACKOFF_CAP);
+    let t0 = Instant::now();
+    // The first probe goes at once, so a skewed client loses no time.
+    assert!(g.ready(t0, WALL, || Some(dead.clone())));
+    let AfterRefusal::Hold(_) = g.on_auth_refused(t0, WALL, 401, || Some(dead.clone())) else {
+        panic!("the refused probe holds");
+    };
+    assert!(
+        matches!(
+            g.take_transitions().as_slice(),
+            [Transition::Paused {
+                reason: PauseReason::Expired,
+                status: Some(401),
+                ..
+            }]
+        ),
+        "a refused token that looks expired is reported as an expiry"
     );
+    let (sent, reads) = next_send(&mut g, t0, t0 + BACKOFF_CAP * 3, &dead);
+    let sent = sent.expect("a second probe within the window");
+    assert!(
+        sent >= t0 + BACKOFF_CAP,
+        "no probe before a cap has passed: {:?}",
+        sent - t0
+    );
+    assert!(reads >= 8, "re-read at each deadline in between: {reads}");
     // The launcher (or the lab) writes a new token: the next deadline sends.
-    assert!(g.ready(now, WALL, || Some(creds("fresh", WALL + 3_600_000))));
+    g.on_auth_refused(sent, WALL, 401, || Some(dead.clone()));
+    let fresh = creds("fresh", WALL + 3_600_000);
+    let at = g.next_attempt().unwrap();
+    assert!(g.ready(at, WALL, || Some(fresh.clone())));
     assert_eq!(g.token(), "fresh");
-    // The final flush at exit also refuses a known-dead token.
-    let mut dead = UploadGate::new(creds("dead", WALL - 1), BASE, BACKOFF_CAP);
-    assert!(!dead.ready_for_final(WALL, || None));
+}
+
+/// The client's clock runs ahead of the server's: the token looks expired
+/// here but the server takes the probe. From then on the server decides,
+/// and uploads go on every flush. Without the trust the gate would drop back
+/// to one POST per cap.
+#[test]
+fn a_probe_the_server_accepts_resumes_normal_uploads() {
+    let skewed = creds("live", WALL - 1);
+    let mut g = UploadGate::new(skewed.clone(), BASE, BACKOFF_CAP);
+    let t0 = Instant::now();
+    assert!(g.ready(t0, WALL, || Some(skewed.clone())));
+    g.on_success(t0);
+    for i in 1..5 {
+        assert!(
+            g.ready(t0 + BASE * i, WALL, || Some(skewed.clone())),
+            "flush {i} after an accepted probe"
+        );
+        g.on_success(t0 + BASE * i);
+    }
+    assert!(g.ready_for_final(WALL, || None), "the exit flush goes too");
+    // The next refusal ends the trust.
+    g.on_auth_refused(t0, WALL, 401, || Some(skewed.clone()));
+    let at = g.next_attempt().unwrap();
+    assert!(
+        !g.ready(at, WALL, || Some(skewed.clone())),
+        "back to probing"
+    );
+}
+
+/// The final flush at exit never spends a probe on a token that looks
+/// expired.
+#[test]
+fn the_exit_flush_skips_a_token_that_looks_expired() {
+    let mut g = UploadGate::new(creds("dead", WALL - 1), BASE, BACKOFF_CAP);
+    assert!(!g.ready_for_final(WALL, || None));
+}
+
+/// A rotated token that is itself already expired is reported as an
+/// expiry, not a refusal.
+#[test]
+fn a_rotated_token_already_expired_reports_expired() {
+    let mut g = gate("old");
+    let r = g.on_auth_refused(Instant::now(), WALL, 401, || {
+        Some(creds("also-dead", WALL - 5))
+    });
+    assert!(matches!(r, AfterRefusal::Hold(_)));
+    assert_eq!(g.token(), "also-dead");
+    assert!(matches!(
+        g.take_transitions().as_slice(),
+        [Transition::Paused {
+            reason: PauseReason::Expired,
+            ..
+        }]
+    ));
+}
+
+/// Two rotations in a row: each refusal finds a new token and asks for an
+/// immediate retry, and the backoff never starts.
+#[test]
+fn a_second_rotation_retries_at_once_again() {
+    let mut g = gate("old");
+    let now = Instant::now();
+    assert_eq!(
+        g.on_auth_refused(now, WALL, 401, || Some(creds("new1", 0))),
+        AfterRefusal::RetryNow
+    );
+    assert_eq!(
+        g.on_auth_refused(now, WALL, 401, || Some(creds("new2", 0))),
+        AfterRefusal::RetryNow
+    );
+    assert_eq!(g.token(), "new2");
+    assert_eq!(g.next_attempt(), None, "no hold");
+    assert!(g.ready(now, WALL, || None));
+    assert!(g.take_transitions().is_empty(), "no pause");
 }
 
 /// An empty token (a lab launch whose mint failed) is held the same way.

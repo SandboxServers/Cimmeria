@@ -35,17 +35,25 @@
 //!   2026-10-12 a 401 was retried every flush, forever: one lab client
 //!   whose token expired sent about three refused POSTs every 12 s for
 //!   4.5 h.
-//! - **A token known to be unusable** — empty, or past the file's
-//!   `expires_at_ms`. Not sent at all, the final POST at exit included; the
+//! - **An empty token** — never sent, the final POST at exit included; the
 //!   uploader holds and re-reads on the same backoff.
+//! - **A token past the file's `expires_at_ms` by this machine's clock** —
+//!   held the same way, but sent as one probe at once and then once per
+//!   10 min, because this clock may be ahead of the server's. A probe the
+//!   server accepts restores normal uploads; the final POST at exit never
+//!   spends a probe.
 //! - **5xx, another 4xx, or a network error** — the same bounded backoff.
 //!   A `Retry-After` in whole seconds that asks for longer wins (capped
 //!   too); the HTTP-date form is ignored.
 //! - **Memory** — the batch (already popped from the queue) stays in the
 //!   uploader's `Vec`. When a failed POST leaves it at `max_batch`, the
-//!   oldest half is dropped to bound memory at ~2× `max_batch` events.
-//!   While a hold runs, the batch stops growing at `max_batch` and the ring
-//!   absorbs (and counts) the overflow.
+//!   oldest half is dropped. While a hold runs, events from the ring stop
+//!   at `max_batch` (the ring absorbs, and counts, the overflow), but the
+//!   governor's rollup and health rows and the pause report still land in
+//!   the batch, so every loop pass also drops the oldest half once it
+//!   reaches 2× `max_batch`. Either way memory stays under ~2× `max_batch`
+//!   events, and every dropped event is counted in the health row's
+//!   `upload_dropped_total`.
 //! - **Disconnected channel** — Producer side hung up. Treated as
 //!   "uploader done" and the thread exits.
 //!
@@ -256,15 +264,21 @@ pub fn run_uploader(
         //    flush, no reason to wake sooner). This avoids a 1 ms
         //    busy-spin when no events arrive but `last_flush` is
         //    older than `flush_interval`.
-        //  - non-empty batch: wait at most `flush_interval -
-        //    last_flush.elapsed()`, floored at 1 ms, so we ship
-        //    pending events on cadence even if the queue went quiet.
+        //  - non-empty batch: wait until the next POST could go: the
+        //    flush cadence (`flush_interval - last_flush.elapsed()`), or
+        //    the end of the gate's hold when that is later, floored at
+        //    1 ms. Without the hold term a held batch whose cadence had
+        //    passed spun at 1 ms for the whole hold (or for good with a
+        //    token that looks expired), ticking the governor's mutex.
         let recv_timeout = if batch.is_empty() {
             cfg.flush_interval
         } else {
-            cfg.flush_interval
-                .saturating_sub(last_flush.elapsed())
-                .max(Duration::from_millis(1))
+            let now = Instant::now();
+            let cadence = cfg.flush_interval.saturating_sub(last_flush.elapsed());
+            let hold = gate
+                .next_attempt()
+                .map_or(Duration::ZERO, |t| t.saturating_duration_since(now));
+            cadence.max(hold).max(Duration::from_millis(1))
         }
         // Wake often enough to notice `should_stop` inside the exit budget.
         .min(STOP_POLL);
@@ -318,9 +332,7 @@ pub fn run_uploader(
                     // preferring newer telemetry over the very
                     // oldest.
                     if batch.len() >= cfg.max_batch {
-                        let n = batch.len() / 2;
-                        batch.drain(..n);
-                        upload_dropped += n as u64;
+                        upload_dropped += trim_oldest_half(&mut batch);
                     }
                 }
             }
@@ -329,7 +341,21 @@ pub fn run_uploader(
         // After a cleared batch, so a resume row ships with the next POST
         // instead of being cleared with the batch it followed.
         report_transitions(&consumer, &mut gate, &mut batch);
+        // While a hold runs nothing ships, but the governor keeps appending
+        // rollup and health rows past `max_batch`: bound the batch here
+        // too, not only after a failed POST.
+        if batch.len() >= 2 * cfg.max_batch {
+            upload_dropped += trim_oldest_half(&mut batch);
+        }
     }
+}
+
+/// Drop the oldest half of `batch`, preferring newer telemetry; returns how
+/// many events went.
+fn trim_oldest_half(batch: &mut Vec<ClientNativeEvent>) -> u64 {
+    let n = batch.len() / 2;
+    batch.drain(..n);
+    n as u64
 }
 
 /// One POST of `batch` through the gate: an auth refusal re-reads the
