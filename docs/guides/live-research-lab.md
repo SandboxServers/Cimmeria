@@ -1190,7 +1190,7 @@ lab uat first-session --rows FS-01,FS-02,FS-P1,FS-P2,FS-P3 --heal
 **`lab watch`.** It shows a `lab uat` batch while it runs: the newest `batch-*` folder under the UAT root, or the `--batch` folder, redrawn every `--interval-seconds` (default 2, 1 to 60) in the terminal's alternate screen until you press `q`, `Esc` or Ctrl+C, which puts the screen back. The frame is the batch line (with a state word: `live` green, `done`, `interrupted` red), a progress bar of runs done out of runs planned, the instance table, the last failure with its issue tag, and the footer; it is drawn in colour and cut to the window, with a last line `… <n> more lines` when it is too tall. The PowerShell spelling of every flag (`-Once`, `-IntervalSeconds`) still works. Run it in one terminal while the batch runs in another:
 
 ```powershell
-lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -Leases 2 -RunsPerLease 3   # terminal 1
+lab uat first-session --rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 --leases 2 --runs-per-lease 3   # terminal 1
 lab watch                                                                                           # terminal 2
 ```
 
