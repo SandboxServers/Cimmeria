@@ -138,14 +138,30 @@ class StopCycleOverstepTest(unittest.TestCase):
         out = md_campaign_quality.cycle_md(record)
         self.assertIn("Campaign hours: 36.7", out)
 
-    def test_overstep_wasted_column_and_total(self):
+    def test_overstep_wasted_total_without_item_column(self):
         record = overstep_record()
         record["overstep"]["wasted_usd"] = 1.5
-        record["overstep"]["items"][0]["wasted_usd"] = 1.5
         out = md_campaign_quality.overstep_md(record)
         self.assertIn("- Wasted (repriced at intended tier): $1.50", out)
+        self.assertIn("| rule | USD | tool | path class | model |\n", out)
+        self.assertNotIn("wasted USD", out)
+
+    def test_overstep_item_wasted_column(self):
+        record = overstep_record()
+        record["overstep"]["items"][0]["wasted_usd"] = 1.5
+        out = md_campaign_quality.overstep_md(record)
         self.assertIn("| rule | USD | tool | path class | model | wasted USD |", out)
         self.assertIn("| O1 | $3.00 | Edit | code | claude-opus-5-5 | $1.50 |", out)
+
+    def test_overstep_rules_table_before_items(self):
+        record = overstep_record()
+        record["overstep"]["rules"] = {"O2": {"count": 1, "usd": 1.0, "wasted_usd": 0.5},
+                                       "O1": {"count": 2, "usd": 6.0, "wasted_usd": 4.5}}
+        out = md_campaign_quality.overstep_md(record)
+        self.assertIn("| O1 | 2 | $6.00 | $4.50 |", out)
+        self.assertIn("| O2 | 1 | $1.00 | $0.50 |", out)
+        self.assertLess(out.index("| O1 | 2 |"), out.index("| O2 | 1 |"))
+        self.assertLess(out.index("| rule | count | USD | wasted USD |"), out.index("| rule | USD | tool"))
 
     def test_overstep_wasted_absent_is_omitted(self):
         out = md_campaign_quality.overstep_md(overstep_record())

@@ -5,8 +5,12 @@ from report.render import num, pct, table, usd
 from .md_common import cell, gap_of, section_gap
 
 
+def _hours(v):
+    return f"{v:,.1f}"
+
+
 def ci_md(record):
-    gap = section_gap(record,"ci")
+    gap = section_gap(record, "ci")
     if gap:
         return gap + "\n"
     c = record["ci"]
@@ -19,7 +23,7 @@ def ci_md(record):
 
 
 def defects_md(record):
-    gap = section_gap(record,"escaped_defects")
+    gap = section_gap(record, "escaped_defects")
     if gap:
         return gap + "\n"
     d = record["escaped_defects"]
@@ -34,7 +38,7 @@ def defects_md(record):
 
 
 def escalation_md(record):
-    gap = section_gap(record,"escalation")
+    gap = section_gap(record, "escalation")
     if gap:
         return gap + "\n"
     e = record["escalation"]
@@ -50,7 +54,7 @@ def escalation_md(record):
 
 
 def stop_context_md(record):
-    gap = section_gap(record,"stop_context")
+    gap = section_gap(record, "stop_context")
     if gap:
         return gap + "\n"
     s = record["stop_context"]
@@ -69,13 +73,12 @@ def stop_context_md(record):
 
 
 def cycle_md(record):
-    gap = section_gap(record,"cycle_time")
+    gap = section_gap(record, "cycle_time")
     if gap:
         return gap + "\n"
     c = record["cycle_time"]
     hours = c["packet_hours"]
     note = gap_of(c, "packet_hours")
-    _hours = lambda v: f"{v:,.1f}"
     lines = [
         f"- Campaign hours: {cell(c['campaign_hours'], gap_of(c, 'campaign_hours'), _hours)}",
         f"- Packet hours: p50 {cell(hours['p50'], note, _hours)}, p90 {cell(hours['p90'], note, _hours)} "
@@ -91,23 +94,27 @@ def overstep_md(record):
         return note + "\n"
     r = o["recoverable_usd"]
     r_note = gap_of(o, "recoverable_usd")
-    # Older records predate the wasted-cost column, so the key may be absent: omit it rather than print 0.
-    has_wasted = "wasted_usd" in o
     lines = [
         f"- Opus coding: {cell(o['opus_coding_usd'], fmt=usd)}",
         f"- Opus research: {cell(o['opus_research_usd'], fmt=usd)}",
         f"- Sonnet implementing: {cell(o['sonnet_implementing_usd'], fmt=usd)}",
         f"- Recoverable: {cell(r['low'], r_note, usd)} to {cell(r['high'], r_note, usd)}",
     ]
-    if has_wasted:
+    # Older records predate the wasted-cost figures, so the keys may be absent: omit them rather than print 0.
+    if o.get("wasted_usd") is not None:
         lines.append(f"- Wasted (repriced at intended tier): {cell(o['wasted_usd'], fmt=usd)}")
-    if not o["items"]:
-        return "\n".join(lines) + "\n"
-    headers = ["rule", "USD", "tool", "path class", "model"]
-    rows = [[cell(i["rule"]), cell(i["usd"], fmt=usd), cell(i["tool"]), cell(i["path_class"]), cell(i["model"])]
-            for i in o["items"]]
-    if has_wasted:
-        headers.append("wasted USD")
-        for row, i in zip(rows, o["items"]):
-            row.append(cell(i.get("wasted_usd"), fmt=usd))
-    return "\n".join(lines) + "\n\n" + table(headers, rows, numeric=False) + "\n"
+    blocks = ["\n".join(lines)]
+    if o.get("rules"):
+        rule_rows = [[cell(rule), cell(v["count"], fmt=num), cell(v["usd"], fmt=usd), cell(v["wasted_usd"], fmt=usd)]
+                     for rule, v in sorted(o["rules"].items())]
+        blocks.append(table(["rule", "count", "USD", "wasted USD"], rule_rows))
+    if o["items"]:
+        headers = ["rule", "USD", "tool", "path class", "model"]
+        rows = [[cell(i["rule"]), cell(i["usd"], fmt=usd), cell(i["tool"]), cell(i["path_class"]), cell(i["model"])]
+                for i in o["items"]]
+        if any("wasted_usd" in i for i in o["items"]):
+            headers.append("wasted USD")
+            for row, i in zip(rows, o["items"]):
+                row.append(cell(i.get("wasted_usd"), fmt=usd))
+        blocks.append(table(headers, rows, numeric=False))
+    return "\n\n".join(blocks) + "\n"
