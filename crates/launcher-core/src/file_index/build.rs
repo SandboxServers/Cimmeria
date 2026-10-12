@@ -23,7 +23,7 @@ use crate::unpack::{self, UnpackSink};
 const LAUNCHER_STATE_FILE: &str = "launcher-installed.json";
 
 /// One file as the scan sees it: its stock-case path and its digest.
-struct Scanned {
+pub(super) struct Scanned {
     path: String,
     size: u64,
     sha256: String,
@@ -48,25 +48,26 @@ pub fn build(
     unpack::unpack(seed, &tree, sink).map_err(|e| FileIndexError::Io(e.to_string()))?;
     install_layout::place_bundled_cooked_data(&tree).map_err(io)?;
     stock_case::restore(&tree).map_err(io)?;
-    let seed_files = scan(&tree)?;
+    // Each state's scan is kept and becomes the next patch's `before`, so the
+    // tree is hashed once per state, not twice per patch.
+    let mut previous = scan(&tree, sink)?;
     let seed = SeedLayer {
-        sha256: manifest.seed.sha256.clone(),
-        files: seed_files.values().map(indexed).collect(),
+        sha256: manifest.seed.sha256.to_ascii_lowercase(),
+        files: previous.values().map(indexed).collect(),
     };
 
     let mut layers = Vec::with_capacity(patches.len());
     for (entry, zip) in patches {
         let dest = patch_dest(&tree, entry).map_err(|e| FileIndexError::Binding(e.to_string()))?;
         let prefix = relative(&dest, &tree)?;
-        let inputs = recipe_sources(zip, &tree, &prefix)?;
-        let before = scan(&tree)?;
+        let inputs = recipe_sources(zip, &tree, &prefix, sink)?;
         unpack::unpack(zip, &dest, sink).map_err(|e| FileIndexError::Io(e.to_string()))?;
         stock_case::restore(&tree).map_err(io)?;
-        let after = scan(&tree)?;
+        let after = scan(&tree, sink)?;
         let outputs = after
             .iter()
             .filter(|(key, now)| {
-                before
+                previous
                     .get(*key)
                     .is_none_or(|was| was.size != now.size || was.sha256 != now.sha256)
             })
@@ -74,17 +75,18 @@ pub fn build(
             .collect();
         layers.push(PatchLayer {
             state_key: entry.state_key(),
-            sha256: entry.sha256.clone(),
+            sha256: entry.sha256.to_ascii_lowercase(),
             inputs,
             outputs,
         });
+        previous = after;
     }
 
     let exe = install_layout::sgw_exe(&tree);
     let copy = work.join("SGW.exe.aslr");
     std::fs::copy(&exe, &copy).map_err(io)?;
     aslr::disable(&copy).map_err(io)?;
-    let (size, sha256) = digest(&copy)?;
+    let (size, sha256) = digest(&copy, sink)?;
     let setup = vec![
         SetupRule::AslrOff {
             path: relative(&exe, &tree)?,
@@ -115,6 +117,7 @@ fn recipe_sources(
     zip: &Path,
     tree: &Path,
     prefix: &str,
+    sink: &UnpackSink,
 ) -> Result<Vec<IndexedFile>, FileIndexError> {
     let file = std::fs::File::open(zip).map_err(io)?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| FileIndexError::Io(e.to_string()))?;
@@ -149,7 +152,7 @@ fn recipe_sources(
             if !seen.insert(path.to_ascii_lowercase()) {
                 continue;
             }
-            let (size, sha256) = digest(&on_disk)?;
+            let (size, sha256) = digest(&on_disk, sink)?;
             inputs.push(IndexedFile { path, size, sha256 });
         }
     }
@@ -157,10 +160,14 @@ fn recipe_sources(
 }
 
 /// Every regular file under `root`, keyed by lower-cased path, except the
-/// launcher's state file at the root.
-fn scan(root: &Path) -> Result<BTreeMap<String, Scanned>, FileIndexError> {
+/// launcher's state file at the root. Checks the cancel switch per file.
+pub(super) fn scan(
+    root: &Path,
+    sink: &UnpackSink,
+) -> Result<BTreeMap<String, Scanned>, FileIndexError> {
     let mut out = BTreeMap::new();
     for entry in WalkDir::new(root).sort_by_file_name() {
+        check_cancel(sink)?;
         let entry = entry.map_err(|e| FileIndexError::Io(e.to_string()))?;
         if !entry.file_type().is_file() {
             continue;
@@ -169,10 +176,21 @@ fn scan(root: &Path) -> Result<BTreeMap<String, Scanned>, FileIndexError> {
         if path.eq_ignore_ascii_case(LAUNCHER_STATE_FILE) {
             continue;
         }
-        let (size, sha256) = digest(entry.path())?;
+        let (size, sha256) = digest(entry.path(), sink)?;
         out.insert(path.to_ascii_lowercase(), Scanned { path, size, sha256 });
     }
     Ok(out)
+}
+
+/// The cancel switch, as the unpack step reports it: a cancelled build ends
+/// with the same `Cancelled` text an unpack gives.
+fn check_cancel(sink: &UnpackSink) -> Result<(), FileIndexError> {
+    if sink.cancel.is_cancelled() {
+        return Err(FileIndexError::Io(
+            unpack::UnpackError::Cancelled.to_string(),
+        ));
+    }
+    Ok(())
 }
 
 /// `path` below `root` as a `/`-separated string. Empty when they are equal.
@@ -193,13 +211,15 @@ fn indexed(file: &Scanned) -> IndexedFile {
     }
 }
 
-/// Size and lower-case hex SHA-256 of the file at `path`.
-fn digest(path: &Path) -> Result<(u64, String), FileIndexError> {
+/// Size and lower-case hex SHA-256 of the file at `path`. Checks the cancel
+/// switch per read, so a large file stops promptly too.
+fn digest(path: &Path, sink: &UnpackSink) -> Result<(u64, String), FileIndexError> {
     let mut file = std::fs::File::open(path).map_err(io)?;
     let mut hasher = Sha256::new();
     let mut buf = vec![0u8; 64 * 1024];
     let mut size = 0u64;
     loop {
+        check_cancel(sink)?;
         let n = file.read(&mut buf).map_err(io)?;
         if n == 0 {
             break;

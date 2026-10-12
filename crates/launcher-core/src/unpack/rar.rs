@@ -19,9 +19,21 @@ fn rar_err(e: unrar::error::UnrarError) -> UnpackError {
 const MAX_ENTRIES: usize = 200_000;
 const MAX_BYTES: u64 = 200 * 1024 * 1024 * 1024;
 
+/// The entry and byte bounds one extraction is held to.
+#[derive(Clone, Copy)]
+struct Bounds {
+    entries: usize,
+    bytes: u64,
+}
+
+const LIMITS: Bounds = Bounds {
+    entries: MAX_ENTRIES,
+    bytes: MAX_BYTES,
+};
+
 /// Refuse an archive whose listing is over the entry or byte bound.
-fn check_bounds(entries: usize, bytes: u64) -> Result<(), UnpackError> {
-    if entries > MAX_ENTRIES || bytes > MAX_BYTES {
+fn check_bounds(limits: Bounds, entries: usize, bytes: u64) -> Result<(), UnpackError> {
+    if entries > limits.entries || bytes > limits.bytes {
         return Err(UnpackError::Rar(
             "archive is over the entry or size limit".into(),
         ));
@@ -33,6 +45,17 @@ fn check_bounds(entries: usize, bytes: u64) -> Result<(), UnpackError> {
 /// with [`safe_relative`] before anything is written, and each file is
 /// extracted to that checked path rather than to the name UnRAR reports.
 pub(super) fn extract(archive: &Path, dest: &Path, sink: &UnpackSink) -> Result<(), UnpackError> {
+    extract_within(archive, dest, sink, LIMITS)
+}
+
+/// [`extract`] under `limits`. Split out so a test can run the same listing
+/// and extraction under a small bound.
+fn extract_within(
+    archive: &Path,
+    dest: &Path,
+    sink: &UnpackSink,
+    limits: Bounds,
+) -> Result<(), UnpackError> {
     let mut inventory = EntryInventory::default();
     let mut total = 0;
     let mut listed = 0usize;
@@ -53,7 +76,7 @@ pub(super) fn extract(archive: &Path, dest: &Path, sink: &UnpackSink) -> Result<
         total += usize::from(entry.is_file());
         listed += 1;
         bytes = bytes.saturating_add(entry.unpacked_size);
-        check_bounds(listed, bytes)?;
+        check_bounds(limits, listed, bytes)?;
     }
     std::fs::create_dir_all(dest)?;
 
@@ -195,8 +218,45 @@ mod tests {
     // is refused, and the limits themselves are accepted.
     #[test]
     fn bounds_refuse_too_many_entries_or_bytes() {
-        assert!(check_bounds(MAX_ENTRIES, MAX_BYTES).is_ok());
-        assert!(check_bounds(MAX_ENTRIES + 1, 0).is_err());
-        assert!(check_bounds(1, MAX_BYTES + 1).is_err());
+        assert!(check_bounds(LIMITS, MAX_ENTRIES, MAX_BYTES).is_ok());
+        assert!(check_bounds(LIMITS, MAX_ENTRIES + 1, 0).is_err());
+        assert!(check_bounds(LIMITS, 1, MAX_BYTES + 1).is_err());
+    }
+
+    #[test]
+    fn extract_refuses_an_archive_over_the_bound_before_writing() {
+        // Two entries against a one-entry bound, and five bytes against a
+        // four-byte bound: both run through the real listing and extraction.
+        let cases = [
+            (
+                Bounds {
+                    entries: 1,
+                    bytes: MAX_BYTES,
+                },
+                "entries",
+            ),
+            (
+                Bounds {
+                    entries: MAX_ENTRIES,
+                    bytes: 4,
+                },
+                "bytes",
+            ),
+        ];
+        for (limits, what) in cases {
+            let dir = tempfile::tempdir().unwrap();
+            let archive = dir.path().join("a.rar");
+            write_stored_rar4(&archive, &[("a.txt", b"first"), ("b.txt", b"second")]);
+            let out = dir.path().join("out");
+            let (sink, _rx) = sink();
+            let err = extract_within(&archive, &out, &sink, limits).unwrap_err();
+            assert!(matches!(err, UnpackError::Rar(_)), "{what}: {err:?}");
+            assert!(!out.exists(), "{what}: nothing may be written");
+        }
+        // The same archive is fine under the real limits.
+        let dir = tempfile::tempdir().unwrap();
+        let archive = dir.path().join("a.rar");
+        write_stored_rar4(&archive, &[("a.txt", b"first"), ("b.txt", b"second")]);
+        extract(&archive, &dir.path().join("out"), &sink().0).unwrap();
     }
 }
