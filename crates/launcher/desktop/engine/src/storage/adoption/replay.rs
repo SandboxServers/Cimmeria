@@ -198,11 +198,17 @@ pub(super) fn replay(
     cancel: &CancellationToken,
     sink: &UnpackSink,
 ) -> Result<BTreeMap<String, PathBuf>, Error> {
-    // A Wine adapter would be needed to run the seed's RAR-era unpack on macOS.
+    // A Wine adapter would be needed to run the seed's RAR-era unpack on macOS;
+    // a zip seed unpacks natively on every OS.
     #[cfg(target_os = "macos")]
     {
         if plan.needs_seed {
-            return Err(Error::UnsupportedMode);
+            let seed = fetched.seed.as_deref().ok_or(Error::InvalidArtifact)?;
+            if crate::unpack::detect(seed).map_err(|_| Error::UnsupportedArchive)?
+                != crate::unpack::ArchiveKind::Zip
+            {
+                return Err(Error::UnsupportedMode);
+            }
         }
     }
     let scratch = prep_dir.join("scratch");
