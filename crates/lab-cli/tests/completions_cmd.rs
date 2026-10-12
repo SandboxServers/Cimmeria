@@ -55,9 +55,15 @@ fn the_other_shells_print_a_script() {
 fn usage_errors_exit_2() {
     assert_eq!(lab(&["completions"]).status.code(), Some(2));
     assert_eq!(lab(&["completions", "nushell"]).status.code(), Some(2));
-    let out = lab(&["completions", "bash", "--install"]);
+    // A temp profile path, so a regression that lets bash through writes there
+    // and not to the real $PROFILE.
+    let dir = TempDir::new().expect("temp dir");
+    let profile = dir.path().join("profile.ps1");
+    let p = profile.to_str().expect("utf-8 path");
+    let out = lab(&["completions", "bash", "--install", "--profile-path", p]);
     assert_eq!(out.status.code(), Some(2));
     assert!(text(&out.stderr).contains("powershell only"));
+    assert!(!profile.exists(), "bash --install must not write a profile");
     assert_eq!(
         lab(&["completions", "powershell", "--profile-path", "p.ps1"])
             .status
@@ -134,6 +140,36 @@ fn install_keeps_what_the_profile_holds() {
     let now = std::fs::read_to_string(&profile).expect("profile");
     assert!(now.starts_with("Set-Alias x y\n"), "{now:?}");
     assert!(now.contains(LINE));
+}
+
+#[test]
+fn install_uses_the_profiles_own_line_ending() {
+    let dir = TempDir::new().expect("temp dir");
+    let crlf = dir.path().join("crlf.ps1");
+    std::fs::write(&crlf, "Set-Alias x y\r\nSet-Alias a b").expect("write");
+    let lf = dir.path().join("lf.ps1");
+    std::fs::write(&lf, "Set-Alias x y\n").expect("write");
+    for path in [&crlf, &lf] {
+        let p = path.to_str().expect("utf-8 path");
+        let out = lab(&[
+            "completions",
+            "powershell",
+            "--install",
+            "--profile-path",
+            p,
+        ]);
+        assert_eq!(out.status.code(), Some(0));
+    }
+    let now = std::fs::read_to_string(&crlf).expect("profile");
+    assert!(
+        now.starts_with("Set-Alias x y\r\nSet-Alias a b\r\n# lab"),
+        "{now:?}"
+    );
+    assert!(now.ends_with(&format!("{LINE}\r\n")), "{now:?}");
+    assert!(!now.replace("\r\n", "").contains('\n'), "{now:?}");
+    let now = std::fs::read_to_string(&lf).expect("profile");
+    assert!(!now.contains('\r'), "{now:?}");
+    assert!(now.ends_with(&format!("{LINE}\n")), "{now:?}");
 }
 
 #[test]

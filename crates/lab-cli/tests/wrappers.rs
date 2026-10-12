@@ -18,7 +18,13 @@ fn pwsh_exists() -> bool {
 /// with `$env:LAB_STUB_EXIT` when it is set.
 fn scripts() -> TempDir {
     let dir = TempDir::new().expect("temp dir");
-    std::fs::create_dir(dir.path().join("cli")).expect("cli folder");
+    write_stubs(dir.path());
+    dir
+}
+
+/// Writes the five stub scripts under `root` (creating it and `root\cli`).
+fn write_stubs(root: &Path) {
+    std::fs::create_dir_all(root.join("cli")).expect("cli folder");
     let body = "[Console]::Out.WriteLine(($args -join '|'))\nif ($env:LAB_STUB_EXIT) { exit [int]$env:LAB_STUB_EXIT }\n";
     for relative in [
         "daemon.ps1",
@@ -27,9 +33,8 @@ fn scripts() -> TempDir {
         "cli/setup.ps1",
         "cli/local-setup.ps1",
     ] {
-        std::fs::write(dir.path().join(relative), body).expect("write stub");
+        std::fs::write(root.join(relative), body).expect("write stub");
     }
-    dir
 }
 
 /// Runs `lab` against the stub `scripts` folder, in an isolated lab home so no
@@ -137,6 +142,46 @@ fn the_childs_exit_code_is_ours() {
             .code(),
         Some(3)
     );
+}
+
+/// With no `CIMMERIA_LAB_CLI_DIR`, the scripts are the installed copy beside
+/// `bin` (`<lab home>\bin\lab.exe` runs `<lab home>\cli\daemon.ps1`,
+/// `<lab home>\cli\instances.ps1` and `<lab home>\cli\cli\<name>.ps1`, the
+/// layout install-lib.ps1 copies), never a checkout's.
+#[test]
+fn the_installed_layout_beside_bin_is_where_the_scripts_are_found() {
+    if !pwsh_exists() {
+        eprintln!("pwsh is not on the PATH; skipped");
+        return;
+    }
+    let install = TempDir::new().expect("temp dir");
+    let bin = install.path().join("bin");
+    std::fs::create_dir(&bin).expect("bin folder");
+    let exe = bin.join("lab.exe");
+    std::fs::copy(env!("CARGO_BIN_EXE_lab"), &exe).expect("copy lab.exe");
+    // The stubs sit in `<install>\cli`, as installed; `<install>` itself has none.
+    write_stubs(&install.path().join("cli"));
+    let home = support::isolated_lab_home();
+    for (args, want) in [
+        (&["stop", "--force"][..], "stop|-Force"),
+        (&["instances", "status"], "status"),
+        (&["install", "--skip-build"], "-SkipBuild"),
+    ] {
+        let out = Command::new(&exe)
+            .args(args)
+            .env("CIMMERIA_LAB_HOME", home.path())
+            .env("LOCALAPPDATA", home.path())
+            .env_remove("CIMMERIA_LAB_CLI_DIR")
+            .env_remove("LAB_STUB_EXIT")
+            .output()
+            .expect("run the copied lab.exe");
+        assert_eq!(out.status.code(), Some(0), "{args:?}");
+        assert_eq!(
+            String::from_utf8_lossy(&out.stdout).trim(),
+            want,
+            "{args:?}"
+        );
+    }
 }
 
 #[test]

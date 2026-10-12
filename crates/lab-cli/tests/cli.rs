@@ -195,3 +195,44 @@ fn every_converted_command_has_an_examples_section() {
         assert!(stdout.contains("Examples:"), "{name}: {stdout}");
     }
 }
+
+/// PowerShell-style flags reach the native `uat`: `-Rows A,B -PlanOnly` is
+/// parsed (not a usage error, exit 2). run_lab's home names the closed port 9,
+/// so the plan finds no daemon and stops before anything is driven: exit 3
+/// (pre-flight failure), not a run (0 or 1).
+#[test]
+fn powershell_spelling_of_uat_flags_reaches_the_native_command() {
+    let output = run_lab(
+        &["uat", "first-session", "-Rows", "FS-01,FS-02", "-PlanOnly"],
+        &[],
+    );
+    assert_eq!(
+        output.status.code(),
+        Some(3),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// `-Value:-x` reaches the native `env set` and the value lands in labd.env.
+#[test]
+fn powershell_value_colon_form_reaches_the_native_env_set() {
+    let home = support::isolated_lab_home();
+    let run = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_lab"))
+            .args(args)
+            .env("CIMMERIA_LAB_HOME", home.path())
+            .env("LOCALAPPDATA", home.path())
+            .output()
+            .expect("the lab binary should start")
+    };
+    let set = run(&["env", "set", "K", "-Value:-x"]);
+    assert_eq!(
+        set.status.code(),
+        Some(0),
+        "stderr: {}",
+        String::from_utf8_lossy(&set.stderr)
+    );
+    let got = run(&["env", "get", "K"]);
+    assert_eq!(String::from_utf8_lossy(&got.stdout).trim(), "-x");
+}
