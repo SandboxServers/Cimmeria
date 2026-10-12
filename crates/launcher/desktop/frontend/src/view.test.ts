@@ -8,6 +8,7 @@ import { Command, NativeSnapshot } from './contract';
 const html = await readFile(new URL('../ui/index.html', import.meta.url), 'utf8');
 const initial = (): NativeSnapshot => ({schema_version:1, operation:{schema_version:1, revision:0, operation:null},
   preferences:{schema_version:2, revision:0, install_directory:null, launcher_summary_consent:false,login_servers:[],client_patches_enabled:true}, requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null}});
+const seedIdle = () => ({schema_version:1, native:initial(), chosen:null, verifying:null, last_error:null});
 const flush = () => new Promise<void>(resolve => setImmediate(resolve));
 
 function dom() {
@@ -20,7 +21,7 @@ function dom() {
 test('approved tabs and settings work without inventing installed state', {timeout:5000}, async () => {
   const ui = dom();
   const calls:string[]=[];
-  const app = mountLauncher(ui.document, async command => { calls.push(command); return initial(); });
+  const app = mountLauncher(ui.document, async command => { calls.push(command); return command === 'seed_archive_command' ? seedIdle() : initial(); });
   try {
     await app.ready; await flush();
     assert.equal(ui.get('play').closest('[hidden]'), null, 'Play must not be nested inside hidden settings');
@@ -41,7 +42,9 @@ test('approved tabs and settings work without inventing installed state', {timeo
     await app.settled();
     // The debug-log panel asks once at mount whether an upload can run (LX-05);
     // the changes (LX-07) and PhysX (LX-12) panels each read once, on the first snapshot.
-    assert.deepEqual(calls, ['log_upload_command', 'launcher_command', 'client_changes_command', 'physx_command', 'fetch_patch_notes']);
+    // Settings' archive panel asks once at mount (AI-07); it is counted apart from the panels above.
+    assert.equal(calls.filter(c => c === 'seed_archive_command').length, 1);
+    assert.deepEqual(calls.filter(c => c !== 'seed_archive_command'), ['log_upload_command', 'launcher_command', 'client_changes_command', 'physx_command', 'fetch_patch_notes']);
   } finally { await app.dispose(); }
   ui.click('settings'); assert.equal(ui.get('gear').hidden, true, 'dispose removes handlers');
 });
@@ -136,9 +139,9 @@ test('native folder choice saves once, preserves consent, and cancellation chang
 
 test('disposing during pending IPC removes controls without claiming a saved result', {timeout:5000}, async () => {
   const ui = dom(); let calls=0;
-  const app = mountLauncher(ui.document, async () => { calls++; return new Promise(() => {}); });
+  const app = mountLauncher(ui.document, async command => { if (command !== 'seed_archive_command') calls++; return new Promise(() => {}); });
   await flush();
-  // Launcher inspect plus the debug-log panel's inspect (LX-05).
+  // Launcher inspect plus the debug-log panel's inspect (LX-05); the archive panel's inspect is not counted.
   assert.equal(calls,2);
   await app.dispose();
   ui.click('settings');
