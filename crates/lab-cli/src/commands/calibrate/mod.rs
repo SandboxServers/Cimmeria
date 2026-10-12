@@ -1,6 +1,18 @@
 //! `lab calibrate`: recalibrate a row's poses by hover and propose a spec diff.
-//! LX-02 gives it its clap arguments and help page; the body is still the
-//! PowerShell fallback.
+//!
+//! LX-12a holds the pure half: [`outcome`] (what the daemon returns, the human
+//! line, the `--json` objects, argument checks), [`render`] (fancy mode),
+//! [`apply`] (`--apply`'s git flow) and [`heal`] (what `lab uat --heal` calls).
+//! The command's `run` is still the PowerShell fallback until LX-12b.
+
+pub mod apply;
+pub mod heal;
+pub mod outcome;
+pub mod render;
+
+pub use apply::{apply_diff, spec_dirty, ApplyResult};
+pub use heal::{heal_file_name, invoke_heal, HealHint, HealJob, HealRecord};
+pub use outcome::{call_error_text, format_call_error, format_line, outcomes_from, Outcome};
 
 use crate::commands::Ctx;
 use crate::fallback;
