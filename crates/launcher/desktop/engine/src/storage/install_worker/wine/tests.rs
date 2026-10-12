@@ -338,6 +338,7 @@ async fn original_signed_release_prepares_patched_content() {
         &release,
         crate::catalog::URL,
         &http,
+        cimmeria_launcher_core::seed_source::SeedSourceHandle::download(),
         helper,
         CancellationToken::new(),
         ProgressSink::latest().0,

@@ -218,7 +218,10 @@ fn reopened_adoption_keeps_reviewed_settings_identity_consent_and_source() {
         imported.identity.install_id.to_string(),
         fixtures::LEGACY_INSTALL_ID
     );
-    assert_eq!(imported.identity.install_id, a.provenance.legacy_install_id);
+    assert_eq!(
+        Some(imported.identity.install_id),
+        a.provenance.legacy_install_id
+    );
     assert!(imported.config.telemetry.opted_in);
     assert!(imported.config.telemetry.prompt_answered);
     assert_eq!(imported.config.telemetry.auth_url, fixtures::AUTH_URL);
