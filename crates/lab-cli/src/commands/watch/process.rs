@@ -140,6 +140,27 @@ mod tests {
         assert!(!batch_owner_alive(u32::MAX));
     }
 
+    /// A running `pwsh` (the writer of a batch before `lab.exe` took over) reads
+    /// alive while it runs and not once it has ended. Skipped where `pwsh` is
+    /// not installed.
+    #[test]
+    fn a_running_pwsh_owns_a_batch_until_it_ends() {
+        let Ok(mut child) = std::process::Command::new("pwsh")
+            .args(["-NoProfile", "-Command", "Start-Sleep -Seconds 60"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        else {
+            return;
+        };
+        let pid = child.id();
+        let alive_while_running = batch_owner_alive(pid);
+        let _ = child.kill();
+        let _ = child.wait();
+        assert!(alive_while_running, "pwsh pid {pid} should read as alive");
+        assert!(!batch_owner_alive(pid), "pwsh pid {pid} has ended");
+    }
+
     #[cfg(windows)]
     #[test]
     fn the_process_list_includes_this_process() {

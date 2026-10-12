@@ -194,6 +194,15 @@ fn seconds_since(now: DateTime<Utc>, then: DateTime<Utc>) -> u64 {
     u64::try_from((now - then).num_seconds().max(0)).unwrap_or(0)
 }
 
+/// The folder's own name. A path that ends in `..` or `.` (`--batch ..`) has
+/// none, so it is resolved first, as PowerShell's `Resolve-Path` did.
+fn folder_name(dir: &Path) -> String {
+    let name_of = |p: &Path| p.file_name().map(|n| n.to_string_lossy().into_owned());
+    name_of(dir)
+        .or_else(|| fs::canonicalize(dir).ok().and_then(|p| name_of(&p)))
+        .unwrap_or_default()
+}
+
 /// Reads a batch folder: `plan.json`, `batch.jsonl` and the state (D-LW5):
 /// `Done` when `batch.json` exists, else `Unknown` without a plan, else `Live`
 /// when the plan's pid passes `is_alive`, else `Interrupted`. A missing folder
@@ -215,10 +224,7 @@ pub fn read_batch(dir: &Path, is_alive: &dyn Fn(u32) -> bool) -> io::Result<Batc
         }
     };
     Ok(BatchFiles {
-        name: dir
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default(),
+        name: folder_name(dir),
         plan,
         records,
         state,
@@ -348,10 +354,9 @@ pub fn panel(files: &BatchFiles) -> (BatchView, Vec<LaneState>) {
                 .and_then(|row| row.section.clone())
                 .filter(|s| !s.is_empty())
         });
-    let total = files
-        .plan
-        .as_ref()
-        .map(|p| p.lanes.len() as u32 * p.runs_per_lease);
+    let total = files.plan.as_ref().map(|p| {
+        u32::try_from(p.lanes.len()).map_or(u32::MAX, |n| n.saturating_mul(p.runs_per_lease))
+    });
     let view = BatchView {
         name: files.name.clone(),
         state: files.state,

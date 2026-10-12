@@ -1,6 +1,6 @@
 //! `lab watch`: watch a running lab uat batch, read-only.
-//! LX-02 gives it its clap arguments and help page; the body is still the
-//! PowerShell fallback.
+//! LX-02 gave it its clap arguments and help page; LX-13 reads the batch
+//! folder, `/status` and `labd.log` and prints one snapshot as text or JSON.
 
 pub mod json;
 pub mod process;
@@ -81,6 +81,14 @@ pub fn run(args: &Args, ctx: &Ctx) -> u8 {
             ),
         );
     }
+    // An empty value reads as not given, as `if ($Batch)` did in PowerShell.
+    let given_or_none = |value: &Option<String>| value.clone().filter(|v| !v.is_empty());
+    let args = &Args {
+        batch: given_or_none(&args.batch),
+        status_file: given_or_none(&args.status_file),
+        log_file: given_or_none(&args.log_file),
+        ..*args
+    };
     let batch_dir = match args.batch.as_deref() {
         None => None,
         Some(given) => {
@@ -135,6 +143,9 @@ pub fn run(args: &Args, ctx: &Ctx) -> u8 {
 /// A usage or read failure: plain text on stderr, or under `--json` one object
 /// on stdout. Returns the exit code.
 fn fail(as_json: bool, code: u8, message: &str) -> u8 {
+    // A path the user typed may carry a lease id: nothing printed keeps one.
+    let message = hide_lease_ids(message);
+    let message = message.as_str();
     if as_json {
         let _ = writeln!(std::io::stdout(), "{}", json::error_line(code, message));
     } else {

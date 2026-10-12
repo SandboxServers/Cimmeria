@@ -55,6 +55,17 @@ fn batch_json_wins_over_a_live_pid() {
     assert_eq!(files.state, BatchState::Done);
 }
 
+// New: a folder given as `<batch>\sub\..` still names the batch (`--batch ..`).
+#[test]
+fn a_batch_path_ending_in_dot_dot_still_has_its_name() {
+    let tmp = temp_fixtures();
+    fs::create_dir(tmp.path().join(NEW_BATCH).join("sub")).unwrap();
+    let dir = tmp.path().join(NEW_BATCH).join("sub").join("..");
+    let files = read_batch(&dir, &alive).unwrap();
+    assert_eq!(files.name, NEW_BATCH);
+    assert_eq!(files.state, BatchState::Live);
+}
+
 fn new_panel() -> cimmeria_lab_cli::commands::watch::snapshot::BatchView {
     let tmp = temp_fixtures();
     panel(&read_batch(&tmp.path().join(NEW_BATCH), &alive).unwrap()).0

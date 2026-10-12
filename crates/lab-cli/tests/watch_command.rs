@@ -259,6 +259,46 @@ fn a_missing_status_file_exits_2() {
     assert_eq!(o.status.code(), Some(2));
 }
 
+// New: a usage error never prints a lease id, even one in a path the user typed.
+#[test]
+fn a_usage_error_hides_a_lease_id_in_the_path() {
+    let rig = Rig::new();
+    let bad = rig.p("lease-0123456789abcdef");
+    for json in [false, true] {
+        let mut args = vec!["--once", "--batch", bad.as_str()];
+        if json {
+            args.push("--json");
+        }
+        let o = rig.run(&args);
+        assert_eq!(o.status.code(), Some(2));
+        let shown = format!("{}{}", out(&o), String::from_utf8_lossy(&o.stderr));
+        assert!(!shown.contains(LEASE), "{shown}");
+        assert!(shown.contains("lease-<redacted>"), "{shown}");
+    }
+}
+
+// New: an empty --status-file, --batch or --log-file is not given (as in PowerShell),
+// not a usage error.
+#[test]
+fn an_empty_path_argument_reads_as_not_given() {
+    let rig = Rig::new();
+    let o = rig.run(&[
+        "--json",
+        "--batch",
+        "",
+        "--status-file",
+        "",
+        "--log-file",
+        "",
+    ]);
+    // The rig's daemon is closed and its UAT root holds no batch: down, no batch.
+    assert_eq!(o.status.code(), Some(1), "{}", out(&o));
+    assert_eq!(
+        out(&o).trim_end(),
+        "{\"ok\":true,\"daemon\":\"down\",\"state\":\"none\"}"
+    );
+}
+
 // 'daemon down and no batch exits 1'
 #[test]
 fn daemon_down_and_no_batch_exits_1() {

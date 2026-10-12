@@ -8,12 +8,15 @@ use std::time::SystemTime;
 
 use cimmeria_lab_cli::batch::{append_record, write_plan, Plan, PlanLane, RunRecord, Verdict};
 use cimmeria_lab_cli::commands::watch::json::{error_line, render_json};
-use cimmeria_lab_cli::commands::watch::snapshot::Snapshot;
+use cimmeria_lab_cli::commands::watch::snapshot::{
+    BatchState, BatchView, InstanceView, LastFailure, LogCounts, Snapshot,
+};
 use cimmeria_lab_cli::commands::watch::text::render_text;
 use serde_json::{json, Value};
 use tempfile::TempDir;
 use watch_support::{
-    alive, log_lines, now, old_daemon, snap, temp_fixtures, two_lanes, NEW_BATCH, OLD_BATCH,
+    alive, batch_with, instance, log_lines, now, old_daemon, snap, temp_fixtures, two_lanes,
+    NEW_BATCH, OLD_BATCH,
 };
 
 const SGW: [u32; 2] = [49448, 63904];
@@ -50,6 +53,86 @@ fn no_lease_id_reaches_the_snapshot_text_or_json() {
         everything.contains("lease-<redacted>"),
         "the redaction is visible in the text"
     );
+}
+
+// New: a lease id in a record's error, its reason or the row under way is hidden
+// where the snapshot is built (the fixtures carry one only in a lease purpose).
+#[test]
+fn a_lease_id_in_a_record_or_a_row_is_hidden_in_the_snapshot() {
+    let tmp = temp_fixtures();
+    let dir = batch_with(
+        tmp.path(),
+        "batch-lease",
+        &RunRecord {
+            lane: 2,
+            instance: "p2".into(),
+            index: 2,
+            error: Some("lab_uat_run failed: lease-0123456789abcdef is gone".into()),
+            seconds: 3,
+            ..Default::default()
+        },
+    );
+    let mut status = two_lanes(tmp.path());
+    status["instances"][1]["uat"]["current_row"] = json!("FS-lease-0123456789abcdef");
+    let s = snap(Some(&status), Some(&dir), &[], &[], &alive);
+    let failure = s.batch.as_ref().unwrap().last_failure.as_ref().unwrap();
+    assert_eq!(
+        failure.why,
+        "error: lab_uat_run failed: lease-<redacted> is gone"
+    );
+    let p2 = instance(&s, "p2");
+    assert_eq!(p2.row, "FS-lease-<redacted>");
+    assert!(
+        p2.last.as_ref().unwrap().contains("lease-<redacted>"),
+        "{:?}",
+        p2.last
+    );
+    assert!(!format!("{s:?}").contains(lease_id()));
+}
+
+// New: the renderers hide a lease id on their own, whatever the snapshot holds.
+#[test]
+fn the_renderers_hide_a_lease_id_in_every_string() {
+    let id = "lease-0123456789abcdef";
+    let leaky = format!("x {id} y");
+    let s = Snapshot {
+        daemon_up: true,
+        old_daemon: false,
+        batch: Some(BatchView {
+            name: format!("batch-{id}"),
+            state: BatchState::Live,
+            section: Some(leaky.clone()),
+            runs: 1,
+            total: Some(2),
+            passed: 0,
+            failed: 1,
+            known: 0,
+            last_failure: Some(LastFailure {
+                run: format!("{id}#1"),
+                why: leaky.clone(),
+                issue: Some(leaky.clone()),
+            }),
+        }),
+        instances: vec![InstanceView {
+            instance: format!("i-{id}"),
+            client_pid: Some(7),
+            lease: Some(leaky.clone()),
+            run: "1/2".into(),
+            row: leaky.clone(),
+            row_s: Some(4),
+            shot_s: Some(5),
+            last: Some(leaky),
+        }],
+        orphans: vec![],
+        logs: Some(LogCounts {
+            relaunches: vec![(format!("r-{id}"), 1)],
+            login_retries: 1,
+        }),
+    };
+    for text in [render_text(&s, 400).join("\n"), render_json(&s)] {
+        assert!(!text.contains("0123456789abcdef"), "{text}");
+        assert!(text.contains("lease-<redacted>"), "{text}");
+    }
 }
 
 // 'the old-daemon footer'
