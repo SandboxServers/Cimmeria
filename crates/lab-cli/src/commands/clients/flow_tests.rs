@@ -1,5 +1,5 @@
 //! The `lab clients stop` flow with the daemon and the stopper faked. Ports
-//! the exit-code checks of tools/lab/cli/test-ops.ps1 and adds the rest of the
+//! the exit-code checks of the removed PowerShell test file and adds the rest of the
 //! exit-code contract.
 
 use super::targets::{DAEMON_DOWN, FORCE_NEEDS_NAME, USAGE};

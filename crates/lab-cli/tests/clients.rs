@@ -1,6 +1,6 @@
 //! `lab clients` as the built binary: the refusals that exit before the daemon
 //! is asked, and the daemon-down exit. Ports the three `clients stop` checks of
-//! tools/lab/cli/test-ops.ps1. The lab home is a temp folder whose labd.pid
+//! the removed PowerShell test file. The lab home is a temp folder whose labd.pid
 //! points at a closed port, so a command that did reach the daemon step would
 //! find none (exit 1), never the real daemon.
 

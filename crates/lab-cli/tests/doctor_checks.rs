@@ -1,5 +1,5 @@
 //! The ten doctor checks against `Inputs` fixtures. Ports the doctor checks
-//! of tools/lab/cli/test-ops.ps1 one-to-one (the PowerShell check is named in
+//! of the removed PowerShell test file one-to-one (the PowerShell check is named in
 //! each `// ops:` comment) and pins the plain and fancy output.
 
 use std::path::{Path, PathBuf};

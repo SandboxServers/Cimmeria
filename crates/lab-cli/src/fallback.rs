@@ -36,32 +36,36 @@ pub fn command_line(dir: &Path, ctx: &Ctx) -> Vec<OsString> {
 
 /// The tokens as `lab.ps1` spells them: `--runs-per-lease` becomes
 /// `-RunsPerLease`, `--json` becomes `-Json` and `--value=-x` becomes
-/// `-Value:-x`. Anything else stays as typed, and so does every token after a
-/// bare `--` (the `--` itself too).
+/// `-Value:-x`. `--value=` (an empty value) becomes `-Value` and an empty
+/// token, because `-Value:` alone would take the next token as its value.
+/// Anything else stays as typed, and so does every token after a bare `--`
+/// (the `--` itself too).
 pub fn to_powershell_tokens(raw: &[OsString]) -> Vec<OsString> {
     let mut after_separator = false;
-    raw.iter()
-        .map(|arg| {
-            if after_separator {
-                return arg.clone();
+    let mut out = Vec::with_capacity(raw.len());
+    for arg in raw {
+        let converted = if after_separator {
+            None
+        } else if arg == "--" {
+            after_separator = true;
+            None
+        } else {
+            arg.to_str().and_then(powershell_token)
+        };
+        match converted {
+            Some((flag, value)) => {
+                out.push(OsString::from(flag));
+                out.extend(value.map(OsString::from));
             }
-            let Some(text) = arg.to_str() else {
-                return arg.clone();
-            };
-            if text == "--" {
-                after_separator = true;
-                return arg.clone();
-            }
-            match powershell_token(text) {
-                Some(converted) => OsString::from(converted),
-                None => arg.clone(),
-            }
-        })
-        .collect()
+            None => out.push(arg.clone()),
+        }
+    }
+    out
 }
 
-/// The PowerShell form of one `--long` token, or `None` when it is not one.
-fn powershell_token(text: &str) -> Option<String> {
+/// The PowerShell form of one `--long` token (the flag and, for an empty
+/// `--name=`, the empty value that follows it), or `None` when it is not one.
+fn powershell_token(text: &str) -> Option<(String, Option<String>)> {
     let body = text.strip_prefix("--")?;
     let (name, value) = match body.split_once('=') {
         Some((name, value)) => (name, Some(value)),
@@ -70,9 +74,11 @@ fn powershell_token(text: &str) -> Option<String> {
     if !is_long_name(name) {
         return None;
     }
+    let flag = pascal_case(name);
     Some(match value {
-        Some(value) => format!("-{}:{value}", pascal_case(name)),
-        None => format!("-{}", pascal_case(name)),
+        Some("") => (format!("-{flag}"), Some(String::new())),
+        Some(value) => (format!("-{flag}:{value}"), None),
+        None => (format!("-{flag}"), None),
     })
 }
 
@@ -216,6 +222,13 @@ mod tests {
             tokens(&["--rows", "--", "--json"]),
             ["-Rows", "--", "--json"]
         );
+    }
+
+    #[test]
+    fn an_empty_value_is_its_own_token() {
+        // `-Out:` alone would take the next token as its value.
+        assert_eq!(tokens(&["--out=", "--json"]), ["-Out", "", "-Json"]);
+        assert_eq!(tokens(&["--out=", "x"]), ["-Out", "", "x"]);
     }
 
     #[test]

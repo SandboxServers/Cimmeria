@@ -18,14 +18,13 @@ use regex::Regex;
 use reqwest::blocking::Client;
 use serde_json::{json, Value};
 
-use super::status::Endpoint;
+use super::status::{self, Endpoint};
 
 const PROTOCOL_VERSION: &str = "2025-06-18";
 const ACCEPT: &str = "application/json, text/event-stream";
 const SESSION_HEADER: &str = "Mcp-Session-Id";
 const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(30);
 const CLOSE_TIMEOUT: Duration = Duration::from_secs(10);
-const STATUS_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// How long `wait_lease_free_at` sleeps between two looks at `/status`
 /// (`Start-Sleep -Seconds 10` in `Wait-UatLeaseFree`).
@@ -236,23 +235,14 @@ fn read_body(text: &str) -> Result<Option<Value>, McpError> {
         .map_err(|e| McpError::Protocol(format!("reply is not JSON: {e}")))
 }
 
-/// `GET <base_url>/status` as raw JSON; `None` on any failure or when the
-/// reply has no `daemon` object and `instances` array (as `Get-LabStatus`).
-fn fetch_status_value(http: &Client, base_url: &str, token: Option<&str>) -> Option<Value> {
-    let mut req = http
-        .get(format!("{}/status", base_url.trim_end_matches('/')))
-        .timeout(STATUS_TIMEOUT);
-    if let Some(t) = token {
-        req = req.bearer_auth(t);
-    }
-    let resp = req.send().ok()?;
-    if !resp.status().is_success() {
-        return None;
-    }
-    let value: Value = serde_json::from_str(&resp.text().ok()?).ok()?;
-    let shaped = value.get("daemon").is_some_and(Value::is_object)
-        && value.get("instances").is_some_and(Value::is_array);
-    shaped.then_some(value)
+/// `GET <base_url>/status` as raw JSON through [`status::fetch_value`] (one
+/// reader of `/status`, as `Get-LabStatus`): `None` with no token (no request
+/// is made), on any failure, and on the wrong shape.
+fn fetch_status_value(base_url: &str, token: Option<&str>) -> Option<Value> {
+    status::fetch_value(&Endpoint {
+        base_url: base_url.to_owned(),
+        token: token.map(str::to_owned),
+    })
 }
 
 /// Waits until `instance`'s lease is free, polling `poll` (a `/status`
@@ -266,7 +256,7 @@ pub fn wait_lease_free_with(
     max: Duration,
     interval: Duration,
 ) -> bool {
-    let deadline = Instant::now() + max;
+    let deadline = Instant::now().checked_add(max);
     loop {
         if let Some(status) = poll() {
             let held = status
@@ -284,10 +274,18 @@ pub fn wait_lease_free_with(
                 return true;
             }
         }
-        std::thread::sleep(interval);
-        if Instant::now() >= deadline {
+        // Never sleep past `max` (the PowerShell sleeps a full 10 s even when
+        // the budget is nearly spent); the poll after the last sleep is the
+        // last look.
+        let Some(deadline) = deadline else {
+            std::thread::sleep(interval);
+            continue;
+        };
+        let now = Instant::now();
+        if now >= deadline {
             return false;
         }
+        std::thread::sleep(interval.min(deadline - now));
     }
 }
 
@@ -299,11 +297,8 @@ pub fn wait_lease_free_at_every(
     max: Duration,
     interval: Duration,
 ) -> bool {
-    let Ok(http) = Client::builder().no_proxy().build() else {
-        return false;
-    };
     wait_lease_free_with(
-        &mut || fetch_status_value(&http, base_url, token),
+        &mut || fetch_status_value(base_url, token),
         instance,
         max,
         interval,

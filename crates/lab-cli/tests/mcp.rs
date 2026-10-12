@@ -569,3 +569,58 @@ fn wait_lease_free_reads_the_endpoint_status_with_its_token() {
     assert_eq!((req.method.as_str(), req.path.as_str()), ("GET", "/status"));
     assert_eq!(req.header("authorization"), Some("Bearer tok-123"));
 }
+
+#[test]
+fn wait_never_sleeps_past_its_budget() {
+    // The interval (10 s) is far longer than the budget (60 ms): the sleep is
+    // cut to the time left, so the wait ends on time instead of 10 s late.
+    let mut polls = 0;
+    let mut poll = || {
+        polls += 1;
+        status_with("i1", json!({"held": true}))
+    };
+    let t = std::time::Instant::now();
+    assert!(!wait_lease_free_with(
+        &mut poll,
+        "i1",
+        Duration::from_millis(60),
+        Duration::from_secs(10)
+    ));
+    assert!(t.elapsed() < Duration::from_secs(5), "{:?}", t.elapsed());
+    assert_eq!(polls, 2, "one look at the start, one at the deadline");
+}
+
+#[test]
+fn wait_lease_free_on_an_endpoint_stays_false_when_held_denied_or_down() {
+    let held = Stub::start(vec![status_route(true)]);
+    let ep = Endpoint {
+        base_url: held.base_url(),
+        token: Some(TOKEN.to_owned()),
+    };
+    assert!(!wait_lease_free(&ep, "i1", Duration::from_millis(50)));
+    let mut free = status_route(false);
+    free.status = 401;
+    let denied = Stub::start(vec![free]);
+    let ep = Endpoint {
+        base_url: denied.base_url(),
+        token: Some(TOKEN.to_owned()),
+    };
+    assert!(!wait_lease_free(&ep, "i1", Duration::from_millis(50)));
+    let ep = Endpoint {
+        base_url: "http://127.0.0.1:1".to_owned(),
+        token: Some(TOKEN.to_owned()),
+    };
+    assert!(!wait_lease_free(&ep, "i1", Duration::from_millis(50)));
+}
+
+#[test]
+fn wait_lease_free_without_a_token_asks_nothing() {
+    // Get-LabStatus returns $null with no token and makes no request.
+    let stub = Stub::start(vec![status_route(false)]);
+    let ep = Endpoint {
+        base_url: stub.base_url(),
+        token: None,
+    };
+    assert!(!wait_lease_free(&ep, "i1", Duration::from_millis(50)));
+    assert!(stub.requests().is_empty());
+}
