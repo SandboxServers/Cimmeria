@@ -1,10 +1,11 @@
 """Command line: campaign metrics. `registry` checks the campaign rules; `ledger` parses the packet tables of the
-ledgers; `cost` prices the profiler's requests per campaign (CM-03); `github` collects PRs, CI and escaped defects
-from GitHub (read-only).
+ledgers; `overstep` finds work a cheaper tier should have done; `cost` prices the profiler's requests per campaign
+(CM-03); `github` collects PRs, CI and escaped defects from GitHub (read-only).
 
     python tools/token-profile/metrics registry --repo . [--check] [--config <json>] [--campaigns <json>]
     python tools/token-profile/metrics ledger --repo . --out <dir>
     python tools/token-profile/metrics packets --db <sqlite> --ledger <json> --github <json> --out <dir>
+    python tools/token-profile/metrics overstep --db <sqlite> [--ledger <ledger.json>] --out <dir> [--config <json>]
     python tools/token-profile/metrics cost --db <profile.sqlite> --out <dir> [--config <json>] [--ledger <json>] [--since T] [--until T]
     python tools/token-profile/metrics github --repo . --out <dir> [--since 2026-09-21] [--config <json>]
         [--max-prs N] [--campaigns <file>] [--from-json <dir>]
@@ -12,6 +13,7 @@ from GitHub (read-only).
 Exit status: 0 ok; 1 with registry --check, the campaign rules have a problem; 2 an input or output error;
 3 the privacy gate refused the output, nothing was written.
 The ledger writes <dir>/ledger.json and prints a JSON count summary; packets writes <dir>/packets.json.
+Overstep writes <dir>/overstep.json and prints counts.
 `cost` opens the profiler database read-only and writes cost.json to --out. --ledger is the CM-05 ledger.json: its
 "pr_map" ({"<pr>": "<campaign>"}) and, per campaign, the packets whose status is an accepted status. The github
 subcommand writes <dir>/github.json, a scratch file that is never committed, and prints a JSON count summary.
@@ -30,7 +32,7 @@ from ingest.prices import CURRENT, SOURCE
 from report.db import ReportError, open_db
 from report.scrub import PrivacyError, Scrubber
 
-from . import cost, ledger, packets, registry
+from . import cost, ledger, overstep, packets, registry
 from .github import GhError, collect, polite, replay, run_gh
 
 
@@ -127,6 +129,35 @@ def run_ledger(args):
     if failures:
         print("status=warn git_unavailable", file=sys.stderr)
     print(json.dumps(summary(result), indent=1))
+    return 0
+
+
+def overstep_counts(result):
+    """Counts and USD (to cents): requests, hits, Opus subagents, and per campaign each rule's count, USD and wasted USD."""
+    by_campaign = {}
+    for name, stats in result["by_campaign"].items():
+        rules = {rule: {"count": row["count"], "usd": round(row["usd"], 2), "wasted_usd": round(row["wasted_usd"], 2)}
+                 for rule, row in stats["rules"].items()}
+        by_campaign[name] = {"rules": rules, "recoverable_low": round(stats["recoverable_low"], 2),
+                             "recoverable_high": round(stats["recoverable_high"], 2)}
+    return {"requests": result["requests"], "hits": result["hits"], "opus_subagents": result["opus_subagents"],
+            "by_campaign": by_campaign}
+
+
+def run_overstep(args):
+    """Detect overstep in `args.db` and write <out>/overstep.json; print counts only. Exit 0, or 2 on an error."""
+    try:
+        config = registry.load_config(args.config)
+        ledger_doc = json.loads(Path(args.ledger).read_text(encoding="utf-8")) if args.ledger else {"campaigns": {}}
+        packets, _windows, pr_map = overstep.ledger_inputs(ledger_doc)
+        result = overstep.detect(overstep.load_requests(args.db), packets, config, pr_map)
+        out = Path(args.out)
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "overstep.json").write_text(json.dumps(result, indent=1) + "\n", encoding="utf-8")
+    except (OSError, ValueError, KeyError, sqlite3.Error) as e:
+        print(f"status=error {type(e).__name__}", file=sys.stderr)
+        return 2
+    print(json.dumps(overstep_counts(result), indent=1))
     return 0
 
 
@@ -231,6 +262,11 @@ def main(argv=None):
                     help="cache gh api answers in DIR so a failed run resumes (default OUT/gh-cache; \"\" turns it off; "
                          "scratch only, never committed)")
     gh.add_argument("--from-json", default=None, metavar="DIR", help="replay saved gh answers, no network")
+    ovs = sub.add_parser("overstep", help="find overstep: work a cheaper tier should have done, and its cost")
+    ovs.add_argument("--db", required=True, help="the token-profile database, opened read only")
+    ovs.add_argument("--ledger", help="ledger.json from the ledger subcommand; without it no campaign is priced")
+    ovs.add_argument("--out", required=True, help="directory for overstep.json")
+    ovs.add_argument("--config", help="metrics config.json (default: the package's)")
     args = ap.parse_args(argv)
     if args.cmd == "ledger":
         return run_ledger(args)
@@ -240,6 +276,8 @@ def main(argv=None):
         return cmd_cost(args)
     if args.cmd == "github":
         return run_github(args)
+    if args.cmd == "overstep":
+        return run_overstep(args)
     try:
         config = registry.load_config(args.config)
         campaigns = registry.load_campaigns(args.campaigns)

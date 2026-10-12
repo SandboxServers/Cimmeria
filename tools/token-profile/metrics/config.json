@@ -9,5 +9,12 @@
     "lab-driver": "lab-driver"
   },
   "accepted_statuses": ["Integrated", "UATPending", "Done"],
-  "pr_overrides": {"historical-cellblocks": [831]}
+  "pr_overrides": {"historical-cellblocks": [831]},
+  "overstep": {
+    "code_paths": ["crates/", "tools/", "db/", ".github/", "external/"],
+    "allowed_coordinator_paths": ["docs/", ".claude/agent-memory/", "CLAUDE.md"],
+    "research_tool_prefixes": ["mcp__ghidra__", "mcp__x64dbg__", "mcp__signoz__"],
+    "research_read_burst": 25,
+    "reprice": {"implementation": "haiku", "review": "sonnet", "research": "sonnet"}
+  }
 }

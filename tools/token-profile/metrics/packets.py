@@ -4,6 +4,7 @@ Pure functions take plain dicts and lists. `load_db` is the only database access
 read-only and reads the agents, their worktree's last branch and the agent_stops rows.
 """
 
+import functools
 import re
 import sqlite3
 from datetime import datetime, timezone
@@ -58,6 +59,7 @@ def _is_escalation_implementer(agent, roles):
     return _key(agent) == "general-purpose" and ("sonnet" in model or "opus" in model)
 
 
+@functools.lru_cache(maxsize=None)
 def _packet_pattern(packet_id):
     """The pattern that finds a packet ID in a lowercased name, dash optional: `lr-10` and `lr10` both match `LR-10`.
 
