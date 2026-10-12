@@ -136,9 +136,9 @@ arguments after the program name, before clap:
 4. `-?` and `/?` become `--help`.
 
 List-valued flags (`--rows`, `--chaos` where it is a list) use
-`value_delimiter = ','` and also accept several values.
+`value_delimiter = ','` and take one comma-separated value per occurrence and may repeat; they never take a following positional.
 
-Fallback (D-LX2) forwards the **original** tokens, not the rewritten ones.
+Fallback (D-LX2) forwards the original tokens with `--long` flags turned back into PowerShell form (`--runs-per-lease 5` -> `-RunsPerLease 5`, `--value=-x` -> `-Value:-x`).
 
 ### Commands, groups and summaries
 

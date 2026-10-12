@@ -1,13 +1,32 @@
 //! The command table, the clap surface and the command dispatch.
 //!
-//! LX-01 has one real command, `version`. Every other name goes to the
-//! PowerShell dispatcher through [`crate::fallback`] until its packet moves it
-//! here, one file per command.
+//! Every command has its clap arguments and help page in its own file. Only
+//! `version` does its own work so far; the others call [`crate::fallback`]
+//! (the PowerShell dispatcher) until their packet ports the body.
 
+pub mod calibrate;
+pub mod clients;
+pub mod doctor;
+pub mod env;
+pub mod golden;
+pub mod install;
+pub mod instances;
+pub mod local_setup;
+pub mod logs;
+pub mod record;
+pub mod restart;
+pub mod setup;
+pub mod start;
+pub mod status;
+pub mod stop;
+pub mod uat;
 pub mod version;
+pub mod watch;
 
 use std::ffi::OsString;
 
+use anstyle::{AnsiColor, Style};
+use clap::builder::Styles;
 use clap::{Parser, Subcommand};
 
 use crate::ui::Ui;
@@ -171,9 +190,19 @@ pub fn find(name: &str) -> Option<&'static CommandInfo> {
     COMMANDS.iter().find(|info| info.name == name)
 }
 
-/// The clap surface of `lab`. Only `version` is parsed by clap for now.
+/// The clap help styles: headings bold yellow, literals cyan, placeholders dim.
+pub fn styles() -> Styles {
+    let heading = Style::new().bold().fg_color(Some(AnsiColor::Yellow.into()));
+    Styles::styled()
+        .header(heading)
+        .usage(heading)
+        .literal(Style::new().fg_color(Some(AnsiColor::Cyan.into())))
+        .placeholder(Style::new().dimmed())
+}
+
+/// The clap surface of `lab`.
 #[derive(Debug, Parser)]
-#[command(name = "lab", disable_help_subcommand = true)]
+#[command(name = "lab", disable_help_subcommand = true, styles = styles())]
 pub struct Cli {
     /// The subcommand, if any.
     #[command(subcommand)]
@@ -183,9 +212,177 @@ pub struct Cli {
 /// The subcommands clap knows about.
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    Uat(uat::Args),
+    Watch(watch::Args),
+    Record(record::Args),
+    Calibrate(calibrate::Args),
+    Golden(golden::Args),
+    Status(status::Args),
+    Start(start::Args),
+    Stop(stop::Args),
+    Restart(restart::Args),
+    Logs(logs::Args),
+    Doctor(doctor::Args),
+    Instances(instances::Args),
+    Clients(clients::Args),
+    Env(env::Args),
+    Install(install::Args),
+    Setup(setup::Args),
+    LocalSetup(local_setup::Args),
     /// Print the CLI and daemon versions.
     Version,
-    /// Any other command: the PowerShell dispatcher handles it.
-    #[command(external_subcommand)]
-    Other(Vec<OsString>),
+}
+
+/// Runs a parsed command and returns its exit code.
+pub fn dispatch(cmd: &Command, ctx: &Ctx) -> u8 {
+    match cmd {
+        Command::Uat(args) => uat::run(args, ctx),
+        Command::Watch(args) => watch::run(args, ctx),
+        Command::Record(args) => record::run(args, ctx),
+        Command::Calibrate(args) => calibrate::run(args, ctx),
+        Command::Golden(args) => golden::run(args, ctx),
+        Command::Status(args) => status::run(args, ctx),
+        Command::Start(args) => start::run(args, ctx),
+        Command::Stop(args) => stop::run(args, ctx),
+        Command::Restart(args) => restart::run(args, ctx),
+        Command::Logs(args) => logs::run(args, ctx),
+        Command::Doctor(args) => doctor::run(args, ctx),
+        Command::Instances(args) => instances::run(args, ctx),
+        Command::Clients(args) => clients::run(args, ctx),
+        Command::Env(args) => env::run(args, ctx),
+        Command::Install(args) => install::run(args, ctx),
+        Command::Setup(args) => setup::run(args, ctx),
+        Command::LocalSetup(args) => local_setup::run(args, ctx),
+        Command::Version => version::run(),
+    }
+}
+
+/// Parses `lab <command> <tokens...>` after `argv::rewrite`, as `main_with` does.
+#[cfg(test)]
+pub(crate) fn try_parse(command: &str, tokens: &[&str]) -> Result<Cli, clap::Error> {
+    let mut args = vec![OsString::from(command)];
+    args.extend(tokens.iter().map(|t| OsString::from(*t)));
+    let rewritten = crate::argv::rewrite(args);
+    Cli::try_parse_from(std::iter::once(OsString::from("lab")).chain(rewritten))
+}
+
+/// [`try_parse`] that panics with clap's message when the tokens do not parse.
+#[cfg(test)]
+pub(crate) fn parse_ok(command: &str, tokens: &[&str]) -> Command {
+    match try_parse(command, tokens) {
+        Ok(cli) => cli.command.expect("a subcommand"),
+        Err(err) => panic!("`lab {command} {tokens:?}` should parse: {err}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::CommandFactory;
+
+    use super::*;
+
+    /// COMMANDS and the clap subcommands list the same names, except
+    /// `completions`, which LX-18 adds.
+    #[test]
+    fn command_table_and_clap_list_the_same_names() {
+        let mut clap_names: Vec<String> = Cli::command()
+            .get_subcommands()
+            .map(|s| s.get_name().to_string())
+            .collect();
+        let mut table_names: Vec<String> = COMMANDS
+            .iter()
+            .map(|c| c.name.to_string())
+            .filter(|n| n != "completions")
+            .collect();
+        clap_names.sort();
+        table_names.sort();
+        assert_eq!(clap_names, table_names);
+    }
+
+    /// A `///` doc comment is not a Rust string, so a doubled backslash in an
+    /// argument's help prints as two: no help page may show one.
+    #[test]
+    fn help_pages_have_no_doubled_backslashes() {
+        for mut sub in Cli::command().get_subcommands().cloned() {
+            let page = sub.render_long_help().to_string();
+            assert!(
+                !page.contains("\\\\"),
+                "{}: doubled backslash in\n{page}",
+                sub.get_name()
+            );
+        }
+    }
+
+    /// Splits an example line on spaces, keeping a 'single quoted' word whole.
+    fn shell_words(line: &str) -> Vec<String> {
+        let mut words = Vec::new();
+        let mut word = String::new();
+        let mut quoted = false;
+        for c in line.chars() {
+            match c {
+                '\'' => quoted = !quoted,
+                ' ' if !quoted => {
+                    if !word.is_empty() {
+                        words.push(std::mem::take(&mut word));
+                    }
+                }
+                _ => word.push(c),
+            }
+        }
+        if !word.is_empty() {
+            words.push(word);
+        }
+        words
+    }
+
+    /// Every `lab ...` line in a help page's Examples section parses in the
+    /// `--flag` form it shows, and names the command whose page it is on.
+    #[test]
+    fn every_help_example_parses() {
+        let mut checked = 0;
+        for sub in Cli::command().get_subcommands() {
+            let Some(after) = sub.get_after_help() else {
+                assert_eq!(
+                    sub.get_name(),
+                    "version",
+                    "no Examples on {}",
+                    sub.get_name()
+                );
+                continue;
+            };
+            let after = after.to_string();
+            let lines: Vec<&str> = after.lines().skip(1).collect();
+            assert!(!lines.is_empty(), "{}: no example lines", sub.get_name());
+            for line in lines {
+                let words = shell_words(line.trim());
+                assert_eq!(words[0], "lab", "{line}");
+                assert_eq!(words[1], sub.get_name(), "{line}");
+                let parsed = Cli::try_parse_from(words.iter().map(String::as_str));
+                if let Err(err) = parsed {
+                    panic!("example `{line}` does not parse: {err}");
+                }
+                checked += 1;
+            }
+        }
+        assert!(checked >= 35, "only {checked} examples were checked");
+    }
+
+    /// No line of any help page's Examples section is wider than 76 columns,
+    /// so the pages fit a 80-column terminal with room to spare.
+    #[test]
+    fn help_examples_fit_76_columns() {
+        for sub in Cli::command().get_subcommands() {
+            let Some(after) = sub.get_after_help() else {
+                continue;
+            };
+            for line in after.to_string().lines() {
+                assert!(
+                    line.chars().count() <= 76,
+                    "{}: {} columns in `{line}`",
+                    sub.get_name(),
+                    line.chars().count()
+                );
+            }
+        }
+    }
 }

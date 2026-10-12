@@ -22,7 +22,7 @@ pub fn dispatcher_path() -> Option<PathBuf> {
 }
 
 /// The `pwsh` arguments for `ctx`: `-NoProfile -File <dir>\lab.ps1 <command>`,
-/// then the raw tokens unchanged.
+/// then the raw tokens in PowerShell form (see [`to_powershell_tokens`]).
 pub fn command_line(dir: &Path, ctx: &Ctx) -> Vec<OsString> {
     let mut args = vec![
         OsString::from("-NoProfile"),
@@ -30,8 +30,70 @@ pub fn command_line(dir: &Path, ctx: &Ctx) -> Vec<OsString> {
         dir.join("lab.ps1").into_os_string(),
         OsString::from(&ctx.command),
     ];
-    args.extend(ctx.raw.iter().cloned());
+    args.extend(to_powershell_tokens(&ctx.raw));
     args
+}
+
+/// The tokens as `lab.ps1` spells them: `--runs-per-lease` becomes
+/// `-RunsPerLease`, `--json` becomes `-Json` and `--value=-x` becomes
+/// `-Value:-x`. Anything else stays as typed, and so does every token after a
+/// bare `--` (the `--` itself too).
+pub fn to_powershell_tokens(raw: &[OsString]) -> Vec<OsString> {
+    let mut after_separator = false;
+    raw.iter()
+        .map(|arg| {
+            if after_separator {
+                return arg.clone();
+            }
+            let Some(text) = arg.to_str() else {
+                return arg.clone();
+            };
+            if text == "--" {
+                after_separator = true;
+                return arg.clone();
+            }
+            match powershell_token(text) {
+                Some(converted) => OsString::from(converted),
+                None => arg.clone(),
+            }
+        })
+        .collect()
+}
+
+/// The PowerShell form of one `--long` token, or `None` when it is not one.
+fn powershell_token(text: &str) -> Option<String> {
+    let body = text.strip_prefix("--")?;
+    let (name, value) = match body.split_once('=') {
+        Some((name, value)) => (name, Some(value)),
+        None => (body, None),
+    };
+    if !is_long_name(name) {
+        return None;
+    }
+    Some(match value {
+        Some(value) => format!("-{}:{value}", pascal_case(name)),
+        None => format!("-{}", pascal_case(name)),
+    })
+}
+
+/// `[a-z][a-z0-9-]*`: a kebab-case long flag name.
+fn is_long_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    chars.next().is_some_and(|c| c.is_ascii_lowercase())
+        && chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+/// kebab-case to PascalCase: `runs-per-lease` becomes `RunsPerLease`.
+fn pascal_case(name: &str) -> String {
+    name.split('-')
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                Some(first) => first.to_ascii_uppercase().to_string() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect()
 }
 
 /// Runs the PowerShell dispatcher for `ctx` with inherited stdio and returns
@@ -67,8 +129,15 @@ mod tests {
     use super::*;
     use crate::ui::Ui;
 
+    fn tokens(args: &[&str]) -> Vec<String> {
+        to_powershell_tokens(&args.iter().map(OsString::from).collect::<Vec<_>>())
+            .into_iter()
+            .map(|t| t.to_string_lossy().into_owned())
+            .collect()
+    }
+
     #[test]
-    fn command_line_keeps_raw_tokens_unchanged() {
+    fn command_line_keeps_powershell_form_tokens_unchanged() {
         let ctx = Ctx {
             ui: Ui::plain(),
             command: "uat".to_string(),
@@ -86,6 +155,66 @@ mod tests {
                 OsString::from("first-session"),
                 OsString::from("-Rows"),
             ]
+        );
+    }
+
+    #[test]
+    fn command_line_turns_long_flags_into_powershell_form() {
+        let ctx = Ctx {
+            ui: Ui::plain(),
+            command: "uat".to_string(),
+            raw: vec![
+                OsString::from("--runs-per-lease"),
+                OsString::from("5"),
+                OsString::from("--value=-x"),
+            ],
+        };
+        let dir = Path::new("lab-cli-dir");
+        let args = command_line(dir, &ctx);
+        assert_eq!(
+            args[4..],
+            [
+                OsString::from("-RunsPerLease"),
+                OsString::from("5"),
+                OsString::from("-Value:-x"),
+            ]
+        );
+    }
+
+    #[test]
+    fn long_flags_become_pascal_case() {
+        assert_eq!(tokens(&["--runs-per-lease"]), ["-RunsPerLease"]);
+        assert_eq!(tokens(&["--plan-only"]), ["-PlanOnly"]);
+        assert_eq!(tokens(&["--json"]), ["-Json"]);
+    }
+
+    #[test]
+    fn equals_form_becomes_colon_form() {
+        assert_eq!(tokens(&["--value=-x"]), ["-Value:-x"]);
+        assert_eq!(tokens(&["--out=C:\\a=b"]), ["-Out:C:\\a=b"]);
+    }
+
+    #[test]
+    fn everything_else_is_unchanged() {
+        assert_eq!(tokens(&["-Rows"]), ["-Rows"]);
+        assert_eq!(tokens(&["-h"]), ["-h"]);
+        assert_eq!(tokens(&["FS-01,FS-02"]), ["FS-01,FS-02"]);
+        assert_eq!(tokens(&["C:\\x"]), ["C:\\x"]);
+        assert_eq!(tokens(&["-5"]), ["-5"]);
+        assert_eq!(tokens(&["-"]), ["-"]);
+        assert_eq!(tokens(&["---json"]), ["---json"]);
+        assert_eq!(tokens(&["--Json"]), ["--Json"]);
+    }
+
+    #[test]
+    fn a_token_after_the_separator_stays() {
+        assert_eq!(
+            tokens(&["uat", "--", "--rows", "-h"]),
+            ["uat", "--", "--rows", "-h"]
+        );
+        assert_eq!(
+            tokens(&["--rows", "--", "--json"]),
+            ["-Rows", "--", "--json"]
         );
     }
 
