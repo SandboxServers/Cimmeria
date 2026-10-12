@@ -91,19 +91,23 @@ def _settled(args, result):
 
 
 def polite(run, cache_dir=None, stats=None):
-    """Wrap `run` with the rate-limit rules: a pause before each call, and a retry after RETRY_WAITS_S on a
+    """Wrap `run` with the rate-limit rules: calls start at least PAUSE_S apart, and a retry after RETRY_WAITS_S on a
     retryable error.
 
     An `api` answer is cached as JSON in `cache_dir` (keyed by the call's arguments), so a run that stopped
     part way resumes from the answers it already has. A merge-queue list (`actions/runs`) and a check-runs answer
     with a run still in progress are never cached. Use a fresh cache dir for each run.
     `stats` ({gh_calls, cache_hits}) counts the work done: gh_calls counts gh invocations, not HTTP requests
-    (a --paginate call is several requests). `call` may run in several threads at once: the counters are locked.
+    (a --paginate call is several requests). `call` may run in several threads at once: the counters are locked,
+    and the backoff is shared, so a retryable error seen by one thread pauses every thread.
     """
     stats = stats if stats is not None else {"gh_calls": 0, "cache_hits": 0}
     lock = threading.Lock()
+    # The earliest monotonic time the next call may start. Guarded by `lock`.
+    next_ok = 0.0
 
     def call(args):
+        nonlocal next_ok
         cached = None
         if cache_dir and args[0] == "api" and "/actions/runs" not in args[1]:
             key = hashlib.sha256(json.dumps(args).encode()).hexdigest()
@@ -114,9 +118,11 @@ def polite(run, cache_dir=None, stats=None):
                     stats["cache_hits"] += 1
                 return answer
         for attempt in range(len(RETRY_WAITS_S) + 1):
-            if attempt:
-                time.sleep(RETRY_WAITS_S[attempt - 1])
-            time.sleep(PAUSE_S)
+            with lock:
+                now = time.monotonic()
+                wait = max(0, next_ok - now)
+                next_ok = max(now, next_ok) + PAUSE_S
+            time.sleep(wait)
             with lock:
                 stats["gh_calls"] += 1
             try:
@@ -127,12 +133,18 @@ def polite(run, cache_dir=None, stats=None):
                     raise
                 if attempt == len(RETRY_WAITS_S):
                     raise GhError(f"{e} (rerun with the same --cache to resume)") from e
+                with lock:
+                    next_ok = max(next_ok, time.monotonic() + RETRY_WAITS_S[attempt])
         if cached and _settled(args, result):
             cached.parent.mkdir(parents=True, exist_ok=True)
             # Written beside the final name, then renamed over it, so a killed run never leaves a torn file.
-            tmp = cached.with_name(cached.name + ".tmp")
-            tmp.write_text(json.dumps(result), encoding="utf-8")
-            os.replace(tmp, cached)
+            # One temp name per thread, so two threads writing one key cannot clash. A missed write is harmless.
+            tmp = cached.with_name(f"{cached.name}.{threading.get_ident()}.tmp")
+            try:
+                tmp.write_text(json.dumps(result), encoding="utf-8")
+                os.replace(tmp, cached)
+            except OSError:
+                pass
         return result
 
     return call
@@ -432,8 +444,14 @@ def collect(run, since, campaigns=None, max_prs=None, until=None, pr_map=None, w
 
     traced = [pr for pr in prs if tags[pr["number"]] is not None][:max_prs]
     if workers > 1:
-        with ThreadPoolExecutor(max_workers=workers) as pool:
+        pool = ThreadPoolExecutor(max_workers=workers)
+        try:
             details = list(pool.map(trace, traced))
+        except BaseException:
+            # A failed PR must not wait for the queued ones: cancel them, then fail the run.
+            pool.shutdown(wait=False, cancel_futures=True)
+            raise
+        pool.shutdown()
     else:
         details = [trace(pr) for pr in traced]
     by_number = {pr["number"]: d for pr, d in zip(traced, details)}
