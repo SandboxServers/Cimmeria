@@ -258,3 +258,4 @@ the code is then the reference, not the spec.
     to the TTL, and only deployment keeps it off real players.
   - **Owed by CH-15:** grade a chaos login only after a `lab.chaos` flush
     row for that entity.
+- **Lab CLI (LX-17).** From LX-17 on, `lab uat` is Rust (`crates/lab-cli/src/commands/uat/`); chaos packets change it there. `uat.ps1`, `uat-lib.ps1`, `uat-chaos-lib.ps1` and `test-uat-chaos.ps1` are deleted; the chaos checks of those tests now live in `crates/lab-cli/` (the header, request and refusal ones in `src/commands/uat/args.rs`, `tests/uat_preflight.rs` and `tests/uat_cli.rs`; the batch-level ones in `tests/uat_chaos.rs`, `uat_json.rs`, `uat_exit.rs`, `uat_summary_blocks.rs` and `uat_chaos_run.rs`).
