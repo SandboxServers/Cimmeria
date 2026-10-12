@@ -478,7 +478,9 @@ impl Supervisor {
             "dragging_at_drop": run.dragging_at_drop,
             "handed_off": run.handed_off,
             "stand_in": stand_in_name,
-            "raised_window": raised["raised"],
+            // Only a raise the client accepted counts: `moveToFront` missing
+            // or throwing leaves `ok` false and nothing was raised.
+            "raised_window": if raised["ok"] == json!(true) { raised["raised"].clone() } else { Value::Null },
             "mod_drag_type": run.mod_drag_type,
             "drop_target_resolved": run.drop_target != 0,
             "drop_notified": run.notified,

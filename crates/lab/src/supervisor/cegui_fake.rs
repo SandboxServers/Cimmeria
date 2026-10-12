@@ -69,6 +69,8 @@ pub struct FakeCegui {
     pub press_on_src: bool,
     /// Windows `moveToFront` was called for, in order.
     pub raises: Vec<String>,
+    /// `moveToFront` is missing or throws: the window stays where it was.
+    pub raise_fails: bool,
     /// A native right click (button 1) on `SrcSlot` uses the item.
     pub right_click_works: bool,
     /// A native left click on `TabBtn` shows the tab.
@@ -112,6 +114,7 @@ impl Default for FakeCegui {
             src_covered: false,
             press_on_src: true,
             raises: Vec::new(),
+            raise_fails: false,
             right_click_works: false,
             tab_click_works: false,
             tab_visible: false,
@@ -275,8 +278,12 @@ impl FakeCegui {
         let doc = if chunk.contains("moveToFront") {
             self.raises
                 .push(window(chunk).map(|w| w.0).unwrap_or("?").to_string());
-            self.src_covered = false;
-            json!({ "found": true, "ok": true, "raised": "TopWin" })
+            if self.raise_fails {
+                json!({ "found": true, "ok": false, "raised": "TopWin" })
+            } else {
+                self.src_covered = false;
+                json!({ "found": true, "ok": true, "raised": "TopWin" })
+            }
         } else if chunk.contains("getCash") {
             let slot = if self.moved { self.lands_in } else { 1 };
             json!({ "cash": if self.bought { -50 } else { 0 }, "containers": [{ "name": "Main",

@@ -145,6 +145,25 @@ async fn a_source_under_another_window_is_raised_before_the_press() {
     assert_eq!(out["effect_ok"], true);
 }
 
+/// A raise the client did not take (no `moveToFront`) is not reported as a
+/// raised window, and a covered source still grades as a failed drag.
+#[tokio::test]
+async fn a_failed_raise_is_not_reported_and_the_drag_grades_failed() {
+    let (out, _) = drag(
+        FakeCegui {
+            src_covered: true,
+            raise_fails: true,
+            ..FakeCegui::default()
+        },
+        4,
+        true,
+    )
+    .await;
+    assert!(out["raised_window"].is_null());
+    assert_eq!(out["drag_started"], false);
+    assert_eq!(out["effect_ok"], false);
+}
+
 /// Nothing is raised for an end that is only a target: the target stays
 /// where it is (the drop is the explicit notify).
 #[tokio::test]
