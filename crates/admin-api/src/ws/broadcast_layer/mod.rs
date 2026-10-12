@@ -16,8 +16,11 @@
 //!   the message to [`MAX_MESSAGE_BYTES`], every other string to
 //!   [`MAX_FIELD_BYTES`], and the whole entry to [`MAX_ENTRY_BYTES`]. A cut
 //!   lands on a UTF-8 char boundary and is followed by [`TRUNCATION_MARKER`].
-//! - The ring holds at most [`BUFFER_CAPACITY`] entries and at most
-//!   [`RING_BYTE_BUDGET`] bytes, evicting the oldest entries first.
+//! - Each ring holds at most [`BUFFER_CAPACITY`] entries and at most
+//!   [`RING_BYTE_BUDGET`] bytes, evicting the oldest entries first. Events
+//!   the telemetry ingest replays from an uploading client
+//!   ([`FORWARDED_CLIENT_TARGETS`]) go to a second ring, so a flood of them
+//!   never pushes server lines out of the first.
 
 use std::collections::VecDeque;
 use std::fmt::{self, Write as _};
@@ -91,13 +94,32 @@ fn json_bytes(value: &serde_json::Value) -> usize {
     }
 }
 
+/// Tracing targets of the events the telemetry ingest replays from an
+/// uploading client or launcher (`routes/telemetry/replay.rs`,
+/// `replay_native.rs`, `bundle_unzip.rs`). A lab client produces hundreds a
+/// second; they are kept in their own ring (see [`LogBuffer`]).
+pub const FORWARDED_CLIENT_TARGETS: [&str; 5] = [
+    "client.native",
+    "launcher.client_log",
+    "launcher.debug_log",
+    "launcher.key_dump",
+    "launcher.session_meta",
+];
+
+/// Whether `target` is one of [`FORWARDED_CLIENT_TARGETS`].
+pub fn is_forwarded_client_target(target: &str) -> bool {
+    FORWARDED_CLIENT_TARGETS.contains(&target)
+}
+
 /// Ring contents with the running byte total, so a push never rescans.
 struct Ring {
     entries: VecDeque<(LogEntry, usize)>,
     bytes: usize,
 }
 
-/// Thread-safe ring buffer of recent log entries.
+/// Thread-safe ring buffers of recent log entries: one for server events and
+/// one for client events forwarded by the telemetry ingest
+/// ([`FORWARDED_CLIENT_TARGETS`]), each with its own entry and byte caps.
 ///
 /// Shared between the tracing layer (writer) and WebSocket handlers (reader).
 /// Uses a `std::sync::Mutex` (not tokio) because the tracing layer runs in
@@ -105,6 +127,7 @@ struct Ring {
 #[derive(Clone)]
 pub struct LogBuffer {
     inner: Arc<Mutex<Ring>>,
+    client: Arc<Mutex<Ring>>,
 }
 
 impl Default for LogBuffer {
@@ -115,19 +138,28 @@ impl Default for LogBuffer {
 
 impl LogBuffer {
     pub fn new() -> Self {
-        Self {
-            inner: Arc::new(Mutex::new(Ring {
+        let empty = || {
+            Arc::new(Mutex::new(Ring {
                 entries: VecDeque::new(),
                 bytes: 0,
-            })),
+            }))
+        };
+        Self {
+            inner: empty(),
+            client: empty(),
         }
     }
 
-    /// Push an entry, evicting the oldest until both the entry count and the
-    /// byte budget hold.
+    /// Push an entry into the ring its target belongs to, evicting that
+    /// ring's oldest until both the entry count and the byte budget hold.
     fn push(&self, entry: LogEntry) {
         let size = entry.approx_bytes();
-        if let Ok(mut ring) = self.inner.lock() {
+        let ring = if is_forwarded_client_target(&entry.target) {
+            &self.client
+        } else {
+            &self.inner
+        };
+        if let Ok(mut ring) = ring.lock() {
             while !ring.entries.is_empty()
                 && (ring.entries.len() >= BUFFER_CAPACITY || ring.bytes + size > RING_BYTE_BUDGET)
             {
@@ -140,15 +172,29 @@ impl LogBuffer {
         }
     }
 
-    /// Snapshot all buffered entries (oldest first).
-    pub fn snapshot(&self) -> Vec<LogEntry> {
-        self.inner
-            .lock()
+    fn read(ring: &Mutex<Ring>) -> Vec<LogEntry> {
+        ring.lock()
             .map(|ring| ring.entries.iter().map(|(e, _)| e.clone()).collect())
             .unwrap_or_default()
     }
 
-    /// The ring's running byte total.
+    /// Snapshot the server ring only (oldest first): every event except the
+    /// forwarded client telemetry. This is what `server_log_tail` reads.
+    pub fn snapshot_server(&self) -> Vec<LogEntry> {
+        Self::read(&self.inner)
+    }
+
+    /// Snapshot all buffered entries, server and forwarded client, merged
+    /// by timestamp (oldest first; equal timestamps keep server entries
+    /// first).
+    pub fn snapshot(&self) -> Vec<LogEntry> {
+        let mut all = self.snapshot_server();
+        all.extend(Self::read(&self.client));
+        all.sort_by_key(|e| e.timestamp_ms);
+        all
+    }
+
+    /// The server ring's running byte total.
     #[cfg(test)]
     fn total_bytes(&self) -> usize {
         self.inner.lock().map(|ring| ring.bytes).unwrap_or_default()

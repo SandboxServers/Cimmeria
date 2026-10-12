@@ -82,6 +82,11 @@ struct LogTailArgs {
     /// Optional: only entries with `timestamp_ms` strictly greater than this.
     #[serde(default)]
     since_ms: Option<u64>,
+    /// Optional: also return the client telemetry the server replays into
+    /// its log (targets client.native, launcher.client_log, ...). Default
+    /// false.
+    #[serde(default)]
+    include_client: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -214,7 +219,7 @@ impl LabTools {
 
     /// Read the most recent buffered server log lines.
     #[tool(
-        description = "Return the most recent server log lines, optionally filtered by level, target, message text and since_ms; newest_ms is the buffer's newest timestamp."
+        description = "Return the most recent server log lines, optionally filtered by level, target, message text and since_ms; newest_ms is the buffer's newest timestamp. Forwarded client telemetry (client.native, launcher.client_log, ...) is left out unless include_client is true."
     )]
     async fn server_log_tail(
         &self,
@@ -228,12 +233,14 @@ impl LabTools {
             "target": args.target,
             "contains": args.contains,
             "since_ms": args.since_ms,
+            "include_client": args.include_client,
         });
         let filter = logs::LogFilter {
             level: args.level,
             target: args.target,
             contains: args.contains,
             since_ms: args.since_ms,
+            include_client: args.include_client.unwrap_or(false),
         };
         let v = logs::log_tail(&self.state, &filter, limit);
         audit::emit("server_log_tail", &audit_args, OUTCOME_OK, None, started);

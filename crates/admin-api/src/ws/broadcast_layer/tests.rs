@@ -217,3 +217,30 @@ fn full_ring_capacity_stays_within_budget() {
         "only {resident} bytes used"
     );
 }
+
+#[test]
+fn forwarded_client_events_do_not_evict_server_lines() {
+    let ring = with_layer(|| {
+        tracing::info!("server line");
+        for i in 0..BUFFER_CAPACITY * 2 {
+            tracing::info!(target: "client.native", "native {i}");
+        }
+        tracing::info!(target: "launcher.client_log", "client log");
+    });
+
+    let server = ring.snapshot_server();
+    assert_eq!(
+        server.len(),
+        1,
+        "only the server line is in the server ring"
+    );
+    assert_eq!(server[0].message, "server line");
+
+    // The client ring is bounded on its own, and snapshot() merges both.
+    let all = ring.snapshot();
+    assert_eq!(all.len(), BUFFER_CAPACITY + 1);
+    assert!(all.iter().any(|e| e.message == "server line"));
+    assert!(all
+        .iter()
+        .all(|e| e.target != "client.native" || e.message.starts_with("native ")));
+}

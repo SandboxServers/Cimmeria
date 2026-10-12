@@ -20,6 +20,10 @@ pub struct LogFilter {
     pub contains: Option<String>,
     /// Only entries with `timestamp_ms` strictly greater than this.
     pub since_ms: Option<u64>,
+    /// Also return the client telemetry the server replays into its log
+    /// (targets `client.native`, `launcher.client_log`, ...). Off by
+    /// default: it floods the ring during a lab run.
+    pub include_client: bool,
 }
 
 /// Keep only the entries that pass every set filter in `f`, in buffer order.
@@ -42,9 +46,10 @@ pub fn filter_entries(entries: Vec<LogEntry>, f: &LogFilter) -> Vec<LogEntry> {
 /// filtered by level, target, message text and time. The buffer holds only the
 /// most recent entries (see `broadcast_layer::BUFFER_CAPACITY` and
 /// `RING_BYTE_BUDGET`; long messages are truncated), so this is a tail,
-/// not a full history.
+/// not a full history. Forwarded client telemetry is in a separate ring, read
+/// only with `include_client`.
 pub fn log_tail(state: &LabState, f: &LogFilter, limit: usize) -> Value {
-    tail_reply(state.log_snapshot(), f, limit)
+    tail_reply(state.log_snapshot(f.include_client), f, limit)
 }
 
 /// Build the `server_log_tail` reply from a buffer snapshot. `newest_ms` is
