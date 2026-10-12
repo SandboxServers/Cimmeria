@@ -244,3 +244,31 @@ fn forwarded_client_events_do_not_evict_server_lines() {
         .iter()
         .all(|e| e.target != "client.native" || e.message.starts_with("native ")));
 }
+
+#[test]
+fn snapshot_merges_both_rings_by_timestamp_server_first_on_ties() {
+    let ring = LogBuffer::new();
+    let entry = |ts: u64, target: &str, message: &str| LogEntry {
+        timestamp_ms: ts,
+        level: "INFO".to_string(),
+        target: target.to_string(),
+        message: message.to_string(),
+        fields: serde_json::Value::Null,
+    };
+    // Pushed out of order across the two rings.
+    ring.push(entry(30, "client.native", "c30"));
+    ring.push(entry(10, "server", "s10"));
+    ring.push(entry(20, "client.native", "c20"));
+    ring.push(entry(20, "server", "s20"));
+    ring.push(entry(40, "server", "s40"));
+
+    let order: Vec<String> = ring.snapshot().into_iter().map(|e| e.message).collect();
+    assert_eq!(order, ["s10", "s20", "c20", "c30", "s40"]);
+
+    let server: Vec<String> = ring
+        .snapshot_server()
+        .into_iter()
+        .map(|e| e.message)
+        .collect();
+    assert_eq!(server, ["s10", "s20", "s40"]);
+}
