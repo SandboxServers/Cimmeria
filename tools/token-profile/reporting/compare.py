@@ -1,5 +1,9 @@
-"""Old-versus-Haiku comparison: the delta between the two regimes and the low-n flag that goes with it."""
+"""Old-versus-Haiku comparison: the delta between the two regimes, the low-n flag and the summary document."""
 
+from reporting.rollup import mixed_summary, rollup
+
+SCHEMA = "cimmeria-campaign-metrics/1"
+NOTE = "haiku minus old; for cost and retries a negative delta is better, for first-pass and CI a positive one is"
 LOW_N_CAMPAIGNS = 5
 LOW_N_PACKETS = 10
 DELTA_METRICS = (
@@ -34,3 +38,23 @@ def delta(old, haiku):
 def low_n(old, haiku):
     """True when either regime has too few campaigns or too few packets for its delta to be read."""
     return any(m["campaigns"] < LOW_N_CAMPAIGNS or m["packets"] < LOW_N_PACKETS for m in (old, haiku))
+
+
+def summary_doc(records):
+    """The campaign-metrics summary: both regimes, the mixed campaigns and the delta, which always carries its low-n flag."""
+    old = rollup(records, "old")
+    haiku = rollup(records, "haiku")
+    return {
+        "schema": SCHEMA,
+        "regimes": {"old": old, "haiku": haiku},
+        "mixed": mixed_summary(records),
+        "comparison": {
+            "delta": delta(old, haiku),
+            "n": {
+                "old": {"campaigns": old["campaigns"], "packets": old["packets"]},
+                "haiku": {"campaigns": haiku["campaigns"], "packets": haiku["packets"]},
+            },
+            "low_n": low_n(old, haiku),
+            "note": NOTE,
+        },
+    }
