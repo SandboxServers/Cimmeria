@@ -8,9 +8,7 @@
 use super::{atomic, ensure_regular_or_absent, read, DesktopState, StorageError};
 use crate::catalog::VerifiedRelease;
 use crate::install_progress::ProgressSink;
-use cimmeria_launcher_core::seed_source::{
-    verify_local_seed, LocalSeedError, SeedSourceHandle, VerifiedLocalSeed,
-};
+use cimmeria_launcher_core::seed_source::{verify_local_seed, SeedSourceHandle, VerifiedLocalSeed};
 use serde::{Deserialize, Serialize};
 use std::{
     io::ErrorKind,
@@ -19,6 +17,9 @@ use std::{
 };
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
+
+/// Why a chosen archive was refused; the shell maps its outcomes from this type.
+pub use cimmeria_launcher_core::seed_source::LocalSeedError;
 
 const SEED_ARCHIVE_FILE: &str = "seed-archive.json";
 
@@ -41,16 +42,22 @@ pub(super) fn load(root: &Path) -> Option<SeedArchiveRecord> {
 }
 
 /// Observes one background verification of a chosen archive.
-// Until the install, repair and update steps call it.
-#[allow(dead_code)]
 pub struct VerifyWorker {
     /// Bytes checked so far, as the shared progress sink reports them.
     pub progress: watch::Receiver<Option<crate::install::Progress>>,
     /// `None` while the check runs; then the outcome, once.
     pub result: watch::Receiver<Option<Result<(), LocalSeedError>>>,
+    /// Stops the check; its outcome is then `Cancelled`, and nothing is remembered.
+    pub cancel: CancellationToken,
 }
 
 impl DesktopState {
+    /// The archive the player chose, as remembered. It is not yet checked against
+    /// a release; see [`DesktopState::seed_source_for`].
+    pub fn seed_archive(&self) -> Option<&SeedArchiveRecord> {
+        self.seed_archive.as_ref()
+    }
+
     /// The seed source for `release`. A remembered archive is applied only when
     /// its hash matches this release; otherwise the handle is in download mode.
     pub fn seed_source_for(&self, release: &VerifiedRelease) -> SeedSourceHandle {
@@ -93,7 +100,6 @@ impl DesktopState {
 
 /// Checks `path` against the release's seed on a blocking thread, then makes it
 /// the shared seed source and remembers it. Must run inside a Tokio runtime.
-#[allow(dead_code)] // Until the install, repair and update steps call it.
 pub fn start_verify(
     state: Arc<Mutex<DesktopState>>,
     release: VerifiedRelease,
@@ -101,9 +107,11 @@ pub fn start_verify(
 ) -> VerifyWorker {
     let (progress, observed) = ProgressSink::latest();
     let (send, result) = watch::channel(None);
+    let cancel = CancellationToken::new();
+    let token = cancel.clone();
     tokio::task::spawn_blocking(move || {
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            verify_and_remember(&state, &release, &path, &progress)
+            verify_and_remember(&state, &release, &path, &token, &progress)
         }))
         .unwrap_or(Err(LocalSeedError::Io));
         send.send_replace(Some(outcome));
@@ -111,18 +119,19 @@ pub fn start_verify(
     VerifyWorker {
         progress: observed,
         result,
+        cancel,
     }
 }
 
-#[allow(dead_code)] // Reached through `start_verify`.
 fn verify_and_remember(
     state: &Mutex<DesktopState>,
     release: &VerifiedRelease,
     path: &Path,
+    cancel: &CancellationToken,
     progress: &ProgressSink,
 ) -> Result<(), LocalSeedError> {
     let seed = &release.manifest().seed;
-    let verified = verify_local_seed(path, seed, &CancellationToken::new(), progress)?;
+    let verified = verify_local_seed(path, seed, cancel, progress)?;
     let mut state = state.lock().map_err(|_| LocalSeedError::Io)?;
     state.seed_source.use_local(verified.clone());
     state

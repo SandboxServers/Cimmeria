@@ -49,7 +49,14 @@ async fn install_uses_remembered_archive_without_downloading_seed() {
     let player_seed = root.path().join("player-seed.zip");
     std::fs::write(&player_seed, &seed).unwrap();
     let (progress, _observed) = ProgressSink::latest();
-    verify_and_remember(&state, &release, &player_seed, &progress).unwrap();
+    verify_and_remember(
+        &state,
+        &release,
+        &player_seed,
+        &CancellationToken::new(),
+        &progress,
+    )
+    .unwrap();
     let worker = dispatch_with(
         state.clone(),
         id,

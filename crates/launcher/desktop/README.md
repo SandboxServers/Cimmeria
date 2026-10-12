@@ -110,6 +110,8 @@ engine half in `engine/src/storage/<name>/` and its host half in
 | `log_upload_command` | `inspect`, `upload` | `log-upload-view.ts` | LX-05 (done) |
 | `client_maintenance_command` | `inspect`, `reset_cache`, `reset_all_client_state` | `client-maintenance-view.ts` | LX-06 |
 | `client_changes_command` | `inspect` | `client-changes-view.ts` | LX-07 |
+| `seed_archive_command` | `inspect`, `cancel`, `forget` | not yet available | AI-06 (part B) |
+| `choose_seed_archive` | none; the native `*.rar` picker | not yet available | AI-06 (part B) |
 
 `log_upload_command` is filled. `upload` zips `Binaries/sgwdebuglog*` and the
 `*.log` files under `Binaries/sessions/` in the installed game, and PUTs the zip
