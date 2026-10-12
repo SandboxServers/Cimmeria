@@ -37,6 +37,34 @@ use super::{keys, process, Supervisor};
 /// least a couple of frames at the game's frame rate.
 pub const DEFAULT_HOLD_MS: u64 = 80;
 
+/// One `client_input_mouse` call.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MouseInput<'a> {
+    /// DirectInput relative motion (mouse-look) and wheel.
+    pub dx: i32,
+    pub dy: i32,
+    pub wheel: i32,
+    /// 0 left, 1 right, 2 middle.
+    pub button: Option<usize>,
+    /// `"click"` (default), `"down"` or `"up"`.
+    pub action: Option<&'a str>,
+    pub hold_ms: Option<u64>,
+    /// UI pixel to put the cursor on first. CEGUI applies a button at its own
+    /// cursor, so without this the press lands wherever the cursor happens
+    /// to be.
+    pub at: Option<(i32, i32)>,
+}
+
+/// `x` and `y` together, or neither: half a point is a mistake, and the old
+/// behaviour (ignore it, click at the last cursor position) hid it.
+pub fn cursor_target(x: Option<i32>, y: Option<i32>) -> Result<Option<(i32, i32)>, String> {
+    match (x, y) {
+        (Some(x), Some(y)) => Ok(Some((x, y))),
+        (None, None) => Ok(None),
+        _ => Err("give both x and y (UI pixels), or neither".to_string()),
+    }
+}
+
 /// A widget rectangle in UI pixels (CEGUI unclipped pixel rect).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rect {
@@ -263,28 +291,42 @@ impl Supervisor {
     }
 
     /// `client_input_mouse` — relative motion / wheel (DirectInput, for
-    /// mouse-look), and a button press, release or click at the current
-    /// UI cursor (window messages).
-    pub async fn input_mouse(
-        &self,
-        dx: i32,
-        dy: i32,
-        wheel: i32,
-        button: Option<usize>,
-        action: Option<&str>,
-        hold_ms: Option<u64>,
-    ) -> Result<Value, String> {
-        if dx != 0 || dy != 0 || wheel != 0 {
-            self.bridge_call("input_mouse", json!({ "dx": dx, "dy": dy, "wheel": wheel }))
-                .await?;
-        }
-        let Some(button) = button else {
-            return self.bridge_call("input_status", json!({})).await;
+    /// mouse-look), and a button press, release or click (window messages)
+    /// at the UI cursor. With `at`, the cursor is put there first (a real
+    /// CEGUI `MouseMove`, like `ui_click`); a point with no button just
+    /// moves the cursor.
+    pub async fn input_mouse(&self, m: MouseInput<'_>) -> Result<Value, String> {
+        let placed = match m.at {
+            Some((x, y)) => Some(self.place_cursor(x, y).await?),
+            None => None,
         };
-        let at = self.cursor().await?;
-        self.post_button(button, action.unwrap_or("click"), at, hold_ms)
+        if m.dx != 0 || m.dy != 0 || m.wheel != 0 {
+            self.bridge_call(
+                "input_mouse",
+                json!({ "dx": m.dx, "dy": m.dy, "wheel": m.wheel }),
+            )
             .await?;
-        Ok(json!({ "button": button, "at": [at.0, at.1] }))
+        }
+        let Some(button) = m.button else {
+            return match placed {
+                Some(p) => Ok(p.to_json()),
+                None => self.bridge_call("input_status", json!({})).await,
+            };
+        };
+        let at = match &placed {
+            Some(p) => p.at,
+            None => self.cursor().await?,
+        };
+        if placed.is_some() {
+            // A frame for the UI to register the hover before the press.
+            tokio::time::sleep(Duration::from_millis(40)).await;
+        }
+        self.post_button(button, m.action.unwrap_or("click"), at, m.hold_ms)
+            .await?;
+        let mut out = placed.map(|p| p.to_json()).unwrap_or_else(|| json!({}));
+        out["button"] = json!(button);
+        out["at"] = json!([at.0, at.1]);
+        Ok(out)
     }
 
     pub(super) async fn post_button(
@@ -417,7 +459,11 @@ impl Supervisor {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, Mutex};
+
     use super::*;
+    use crate::supervisor::cegui_fake::{self, FakeCegui};
+    use crate::supervisor::events::fake_bridge;
 
     #[test]
     fn rect_centre_rounds_to_the_middle_pixel() {
@@ -467,5 +513,50 @@ mod tests {
         assert!(
             widget_rect_chunk("CharSelect_PlayButton").contains("_G[\"CharSelect_PlayButton\"]")
         );
+    }
+
+    #[test]
+    fn half_a_point_is_refused() {
+        assert_eq!(cursor_target(Some(3), Some(4)), Ok(Some((3, 4))));
+        assert_eq!(cursor_target(None, None), Ok(None));
+        assert!(cursor_target(Some(3), None)
+            .unwrap_err()
+            .contains("both x and y"));
+        assert!(cursor_target(None, Some(4)).is_err());
+    }
+
+    /// Item 5 of #1660: the press used to land at the last cursor position.
+    /// With a point, the cursor goes there (a native `injectMousePosition`)
+    /// before the button message is posted.
+    #[tokio::test]
+    async fn a_press_with_a_point_moves_the_cursor_first() {
+        let state = Arc::new(Mutex::new(FakeCegui::default()));
+        let sup = fake_bridge::supervisor(cegui_fake::responder(state.clone())).await;
+        let err = sup
+            .input_mouse(MouseInput {
+                button: Some(0),
+                at: Some((300, 200)),
+                ..MouseInput::default()
+            })
+            .await
+            .unwrap_err();
+        assert!(err.contains("no client running"), "{err}");
+        assert_eq!(state.lock().unwrap().calls, vec!["move 300 200"]);
+    }
+
+    #[tokio::test]
+    async fn a_point_with_no_button_just_moves_the_cursor() {
+        let state = Arc::new(Mutex::new(FakeCegui::default()));
+        let sup = fake_bridge::supervisor(cegui_fake::responder(state.clone())).await;
+        let out = sup
+            .input_mouse(MouseInput {
+                at: Some((300, 200)),
+                ..MouseInput::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(out["cursor"], json!([300, 200]));
+        assert_eq!(out["cursor_via"], "native_inject");
+        assert_eq!(state.lock().unwrap().calls, vec!["move 300 200"]);
     }
 }

@@ -289,7 +289,7 @@ Supervisor (`cimmeria-lab` on the dev box: the [shared daemon](#the-shared-daemo
 | `client_lua_eval` / `client_module_info` / `client_mem_read` | Probe tools proxied to the bridge. |
 | `client_ui_click` / `client_cursor_move` | Click a named UI window (`Name` or `Parent/Child`) like a player: cursor onto its centre (native `injectMousePosition`, a real CEGUI `MouseMove`), real button messages. |
 | `client_input_key` / `client_type_text` | Key presses and typing as `WM_KEYDOWN`/`WM_KEYUP` (the game translates them; Shift is virtual). Types letters, digits, space, `-_/.`, so `/logout` and `.`-console lines work through chat. |
-| `client_input_mouse` | DirectInput relative motion (mouse-look) and button clicks at the UI cursor. |
+| `client_input_mouse` | DirectInput relative motion (mouse-look) and button clicks. `x` and `y` (UI pixels, both or neither) put the UI cursor there first, with a real CEGUI `MouseMove`, and the press lands on it; without them the press lands wherever the cursor already is (CEGUI applies a button at its own cursor, never at the message's coordinates). `x`/`y` with no button just move the cursor. |
 | `client_input_focus` / `client_input_status` / `client_input_release` | Virtual focus (the game keeps reading input in the background), hook counters, let go of everything. |
 | `client_window_read` | Read an open window: title, buttons with enabled state, text, list rows. `kind` adds the module's state for vault, trainer, crafting, pet, organization, mail, loot, DHD, dialog/blurb, greet, vendor, trade, character. See [UI readers and item tools](#ui-readers-and-item-tools). |
 | `client_window_click` | Click a named widget, the widget showing a text, or a list row, with a real click at its screen point. |
