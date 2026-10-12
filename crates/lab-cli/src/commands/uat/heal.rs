@@ -182,8 +182,15 @@ pub fn heal_batch(
     };
     let emit = stdio_emit(opts.mode);
     let mut say = |m: &str| emit(m);
-    let mut wait =
-        |i: &str| !ctrlc::stop_requested() && mcp::wait_lease_free(ep, i, Duration::from_secs(600));
+    let mut wait = |i: &str| {
+        !ctrlc::stop_requested()
+            && mcp::wait_lease_free_stoppable(
+                ep,
+                i,
+                Duration::from_secs(600),
+                &ctrlc::stop_requested,
+            )
+    };
     let ui = &ctx.ui;
     // A closed pipe (`| head`) must not panic the heal: write errors are ignored.
     let mut print = |t: &str| {

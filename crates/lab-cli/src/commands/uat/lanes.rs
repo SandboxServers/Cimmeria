@@ -131,7 +131,11 @@ fn lane_body(lane: &PlanLane, cfg: &LaneConfig, env: &LaneEnv) -> io::Result<()>
         outcomes.push(rec.ok);
         // A run cut short may still hold its lease on the daemon: wait for it,
         // or the next run collides with it.
-        let stuck = timed_out && !(env.wait_lease_free)(&lane.instance, LEASE_CLEAR_WAIT);
+        // A wait that Ctrl+C cut short says nothing about the lease: the lane ends
+        // at the loop top anyway, and it is not "stuck".
+        let stuck = timed_out
+            && !(env.wait_lease_free)(&lane.instance, LEASE_CLEAR_WAIT)
+            && !env.stop.load(Ordering::SeqCst);
         let brake = stop_lane(index, total, &outcomes, cfg.max_consecutive_failures);
         rec.braked = brake || stuck;
         rec.ended = Some(utc_stamp(Utc::now()));

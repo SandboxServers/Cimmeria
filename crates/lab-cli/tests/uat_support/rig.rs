@@ -76,6 +76,8 @@ pub struct LaneRig {
     pub script: Mutex<HashMap<String, VecDeque<Reply>>>,
     /// What the lease wait answers.
     pub wait_result: bool,
+    /// Set `stop` inside the lease wait, as Ctrl+C during it would.
+    pub stop_on_wait: bool,
     pub stop: AtomicBool,
     /// Set `stop` inside this (1-based) call, as Ctrl+C would.
     pub stop_on_call: Option<usize>,
@@ -103,6 +105,7 @@ impl LaneRig {
                     .collect(),
             ),
             wait_result: true,
+            stop_on_wait: false,
             stop: AtomicBool::new(false),
             stop_on_call: None,
             panic_instance: None,
@@ -153,6 +156,9 @@ impl LaneRig {
         };
         let wait = |instance: &str, max: Duration| -> bool {
             self.waits.lock().unwrap().push((instance.to_string(), max));
+            if self.stop_on_wait {
+                self.stop.store(true, Ordering::SeqCst);
+            }
             self.wait_result
         };
         let sleep = |total: Duration| self.sleeps.lock().unwrap().push(total);
