@@ -198,12 +198,16 @@ impl StoreInner {
 #[derive(Debug)]
 pub struct EventStore {
     pub inner: tokio::sync::Mutex<StoreInner>,
+    /// Held across one bridge `events_read` and its ingest, so the keeper and
+    /// a reader pump cannot ingest two drains out of order.
+    pub drain: tokio::sync::Mutex<()>,
 }
 
 impl Default for EventStore {
     fn default() -> Self {
         Self {
             inner: tokio::sync::Mutex::new(StoreInner::with_cap(STORE_CAP)),
+            drain: tokio::sync::Mutex::new(()),
         }
     }
 }

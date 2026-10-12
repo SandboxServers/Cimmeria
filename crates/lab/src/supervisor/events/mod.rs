@@ -180,10 +180,11 @@ impl Supervisor {
     /// error; a Lua failure is reported in the result.
     pub async fn pump_events(&self, lua: bool) -> Result<PumpReport, String> {
         let mut rep = PumpReport::default();
-        let drained = self
-            .bridge_call("events_read", json!({ "max": BRIDGE_DRAIN_MAX }))
-            .await?;
         {
+            let _drain = self.events.drain.lock().await;
+            let drained = self
+                .bridge_call("events_read", json!({ "max": BRIDGE_DRAIN_MAX }))
+                .await?;
             let mut st = self.events.inner.lock().await;
             let (n, _) = ingest_bridge(&mut st, &drained);
             rep.bridge_events = n;

@@ -39,12 +39,15 @@ impl Supervisor {
     /// One keeper tick: drain the bridge ring into the store and make sure
     /// the Lua wrappers are installed, reading no ring record.
     pub async fn keeper_tick(&self) -> Result<(), String> {
-        let drained = self
-            .bridge
-            .call("events_read", json!({ "max": BRIDGE_DRAIN_MAX }))
-            .await
-            .map_err(|e| format!("bridge: {e}"))?;
         {
+            // One drain at a time, so a reader pump cannot ingest a newer
+            // batch ahead of this one. Never held across the Lua call.
+            let _drain = self.events.drain.lock().await;
+            let drained = self
+                .bridge
+                .call("events_read", json!({ "max": BRIDGE_DRAIN_MAX }))
+                .await
+                .map_err(|e| format!("bridge: {e}"))?;
             let mut st = self.events.inner.lock().await;
             ingest_bridge(&mut st, &drained);
         }
@@ -147,6 +150,21 @@ mod tests {
         assert_eq!(second.bridge_dropped, 0);
         assert_eq!(second.bridge_dropped_total, 5);
         assert!(second.to_json()["bridge_note"].is_null());
+    }
+
+    /// Events the keeper drained stay visible to the reader's cursor, and
+    /// the keeper's drops come back in the read's `dropped`, once.
+    #[tokio::test]
+    async fn keeper_drained_events_are_still_returned_to_a_reader() {
+        let (r, _) = fake(vec![4, 0]);
+        let sup = fake_bridge::supervisor(r).await;
+        sup.keeper_tick().await.unwrap();
+        let out = sup.events_read(None).await.unwrap();
+        // One event from the tick, one from the reader's own drain.
+        assert_eq!(out["returned"], 2);
+        assert_eq!(out["dropped"], 4);
+        let again = sup.events_read(None).await.unwrap();
+        assert_eq!(again["dropped"], 0);
     }
 
     #[test]
