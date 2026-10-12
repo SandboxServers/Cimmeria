@@ -92,5 +92,25 @@ class OverstepSectionTest(unittest.TestCase):
         self.assertNotIn("overstep_gap", record["overstep"])
 
 
+class AssembleTest(unittest.TestCase):
+    def test_assemble_two_campaigns_and_meta(self):
+        result = assemble.assemble(inputs.load_inputs(FIXTURES))
+        self.assertEqual(set(result["campaigns"]), {"alpha-old", "beta-haiku"})
+        self.assertEqual(result["campaigns"]["alpha-old"]["regime"], "old")
+        self.assertEqual(result["campaigns"]["beta-haiku"]["overstep"]["opus_coding_usd"], 6.0)
+        self.assertEqual(result["campaigns"]["alpha-old"]["escaped_defects"]["count"], 1)
+        self.assertEqual(result["meta"]["fixer_requests_total"], 7)
+        self.assertEqual(result["meta"]["untagged_prs"], 2)
+        self.assertEqual(result["meta"]["missing_inputs"], [])
+
+    def test_assemble_empty_inputs(self):
+        empty = {name: {} for name in ("cost", "ledger", "github", "packets", "overstep")}
+        empty["missing"] = ["cost", "ledger", "github", "packets", "overstep"]
+        result = assemble.assemble(empty)
+        self.assertEqual(result["campaigns"], {})
+        self.assertEqual(result["meta"]["missing_inputs"], empty["missing"])
+        self.assertIsNone(result["meta"]["fixer_requests_total"])
+
+
 if __name__ == "__main__":
     unittest.main()

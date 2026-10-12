@@ -1,4 +1,4 @@
-"""Merges the cost, packets and ledger files for one campaign into its core report record (CM-08b)."""
+"""Merges the input files into one report record per campaign: the core merge (CM-08b), then GitHub and overstep (CM-08c)."""
 
 import copy
 
@@ -145,3 +145,33 @@ def attach_overstep(record, overstep_doc):
         "recoverable_usd": {"low": entry.get("recoverable_low"), "high": entry.get("recoverable_high")},
         "items": copy.deepcopy(entry.get("items") or []),
     }
+
+
+def assemble(inputs):
+    """Return {"campaigns": {name: record}, "meta": {...}} for every campaign with spend; an empty input gives no campaigns."""
+    cost_doc = inputs.get("cost") or {}
+    ledger_doc = inputs.get("ledger") or {}
+    github_doc = inputs.get("github") or {}
+    packets_doc = inputs.get("packets") or {}
+    overstep_doc = inputs.get("overstep") or {}
+    cost_campaigns = cost_doc.get("campaigns") or {}
+
+    campaigns = {}
+    for name in cost_campaigns:
+        record = assemble_core(name, cost_doc, packets_doc, ledger_doc)
+        attach_github(record, github_doc)
+        attach_overstep(record, overstep_doc)
+        campaigns[name] = record
+
+    fixer_requests = overstep_doc.get("fixer_requests")
+    ledger_campaigns = ledger_doc.get("campaigns") or {}
+    meta = {
+        "stamp": copy.deepcopy(cost_doc.get("stamp")),
+        "unmapped_share": (packets_doc.get("sessions") or {}).get("unmapped_share"),
+        "untagged_prs": github_doc.get("untagged_prs"),
+        "opus_subagents": overstep_doc.get("opus_subagents"),
+        "fixer_requests_total": sum(fixer_requests.values()) if fixer_requests is not None else None,
+        "missing_inputs": inputs.get("missing"),
+        "skipped_ledger_campaigns": len(set(ledger_campaigns) - set(cost_campaigns)),
+    }
+    return {"campaigns": campaigns, "meta": meta}
