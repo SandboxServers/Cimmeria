@@ -246,9 +246,12 @@ $ lab uat first-session --rows FS-01,FS-02 --leases 2 --runs-per-lease 3
 Each command keeps the exit codes in the
 [guide's command table](../../guides/live-research-lab.md#commands) and its
 PowerShell `.DESCRIPTION`. `--json` output keeps the PowerShell keys, key
-order, caps and size budgets; build it with `serde_json::json!` or
-`#[derive(Serialize)]` structs whose field order matches, and leave out
-the keys the PowerShell leaves out. Usage errors exit 2 before anything
+order, caps and size budgets. Build every object the CLI itself emits
+with `#[derive(Serialize)]` structs whose field order is the PowerShell
+order (`skip_serializing_if` for keys the PowerShell leaves out), never
+with `serde_json::json!`: the workspace's `serde_json` has no
+`preserve_order`, so a `json!` object prints its keys sorted. A daemon
+answer passed through unchanged stays a `serde_json::Value`. Usage errors exit 2 before anything
 contacts the daemon.
 
 ### Daemon endpoint types (LX-04 builds these; later packets only use them)
