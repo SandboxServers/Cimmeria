@@ -95,3 +95,14 @@ fn cancellation_during_the_copy_is_terminal_publishes_nothing_and_releases_the_r
     drop(state);
     assert_eq!(f.source_snapshot(), before);
 }
+
+#[test]
+fn setup_files_that_exist_are_flushed_and_a_missing_one_is_skipped() {
+    let dir = tempfile::tempdir().unwrap();
+    let game = dir.path();
+    std::fs::create_dir_all(game.join("Working/Binaries")).unwrap();
+    std::fs::write(game.join("Working/Binaries/SGW.exe"), b"exe").unwrap();
+    std::fs::write(game.join("launcher-installed.json"), b"{}").unwrap();
+    // LoginInternal.lua is absent, as on a folder whose setup wrote no login file.
+    super::in_place::sync_files(game, &super::in_place::SETUP_FILES).unwrap();
+}

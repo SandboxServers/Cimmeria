@@ -15,10 +15,12 @@ use uuid::Uuid;
 mod contract;
 mod review;
 mod status;
+#[cfg(all(test, target_os = "macos"))]
+use contract::Imported;
 use contract::{Activity, Backend};
 pub use contract::{AdoptionCommand, AdoptionError, AdoptionStatus};
-#[cfg(all(test, target_os = "macos"))]
-use contract::{Completed, Imported, Phase, Reconciliation};
+#[cfg(test)]
+use contract::{Completed, Phase, Reconciliation};
 use review::Review;
 #[cfg(all(test, not(target_os = "macos")))]
 mod copy_tests;
@@ -27,7 +29,7 @@ mod copy_tests;
 mod fixture;
 #[cfg(all(test, not(target_os = "macos")))]
 mod in_place_tests;
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(test)]
 mod lifecycle_tests;
 #[cfg(all(test, target_os = "macos"))]
 mod play_tests;

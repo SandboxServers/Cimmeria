@@ -1,4 +1,5 @@
 //! Source-preserving staging and explicit checkpoint recovery. No redispatch.
+use super::in_place::{sync_files, SETUP_FILES};
 use super::*;
 use std::io::Write;
 
@@ -280,6 +281,7 @@ fn copy_and_publish(
             source::verify_import(imported)?;
         }
         sync_tree(&stage)?;
+        sync_files(&stage, &SETUP_FILES)?;
         // Publication is serialized with preference edits again. The operation
         // must still be the one admitted above before any checkpoint is written.
         let mut state = preview.state.lock().map_err(|_| StorageError::Io)?;

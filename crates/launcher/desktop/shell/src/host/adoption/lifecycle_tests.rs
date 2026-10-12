@@ -245,6 +245,7 @@ async fn an_interrupted_preparation_is_offered_for_removal_and_survives_reopen()
     let mut host = NativeHost::new(path);
     host.adoption_fixture = Some(TestDispatch {
         manifest_url: origin.into(),
+        #[cfg(target_os = "macos")]
         helper: None,
         copy_fault: Mutex::new(None),
     });

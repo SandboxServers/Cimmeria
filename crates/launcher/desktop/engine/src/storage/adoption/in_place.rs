@@ -510,6 +510,29 @@ fn validate(game: &Path, plan: &Plan) -> Result<(), Error> {
 
 /// Shared by publication and explicit recovery. A Staged checkpoint finishes its
 /// moves; the release files are then exactly the signed reference.
+/// The files the launcher's setup writes in the game folder, relative to it. Both
+/// adoption paths flush them before the receipt is written.
+pub(super) const SETUP_FILES: [&str; 3] = [
+    "Working/Binaries/SGW.exe",
+    "Working/SGWGame/Content/UI/Startup/Login/LoginInternal.lua",
+    "launcher-installed.json",
+];
+
+/// Flushes the listed files under `root`; a file that is not there is skipped.
+pub(super) fn sync_files(root: &Path, paths: &[&str]) -> Result<(), Error> {
+    for path in paths {
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .open(root.join(path))
+        {
+            Ok(file) => file.sync_all()?,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Ok(())
+}
+
 pub(super) fn finish(
     state: &mut DesktopState,
     plan: &Plan,
@@ -558,6 +581,7 @@ pub(super) fn finish(
         reference::ledger(&release)
             .save(&game)
             .map_err(|_| StorageError::Io)?;
+        sync_files(&game, &SETUP_FILES)?;
         hook(Point::SetUp)?;
     }
     validate(&game, plan)?;

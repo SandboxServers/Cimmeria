@@ -30,7 +30,7 @@ pub mod test_support;
 mod verification;
 mod worker;
 pub use worker::{start_confirmation, start_preview, ConfirmationWorker, PreviewWorker};
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(test)]
 mod artifacts_tests;
 #[cfg(all(test, target_os = "macos"))]
 mod cab_fixture;
