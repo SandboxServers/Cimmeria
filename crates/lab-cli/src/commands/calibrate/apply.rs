@@ -13,6 +13,7 @@ pub const SPEC_PREFIX: &str = "docs/guides/uat-specs/";
 /// What [`apply_diff`] did.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApplyResult {
+    /// The diff was applied.
     pub ok: bool,
     /// Set when `!ok`; starts with the diff path (`<diff>: <why>`).
     pub error: Option<String>,
@@ -36,11 +37,26 @@ impl ApplyResult {
     }
 }
 
-/// The number of `+++ ` file headers in a diff.
+/// The number of files a diff names: its `+++ ` headers or its `diff --git `
+/// headers, whichever are more (a mode-only or rename-only file has no `+++`).
 pub fn diff_file_count(text: &str) -> usize {
-    text.split('\n')
-        .filter(|l| l.trim_end_matches('\r').starts_with("+++ "))
-        .count()
+    let starting = |prefix: &str| {
+        text.split('\n')
+            .filter(|l| l.trim_end_matches('\r').starts_with(prefix))
+            .count()
+    };
+    starting("+++ ").max(starting("diff --git "))
+}
+
+/// Whether a repo-relative target stays inside [`SPEC_PREFIX`]: it starts with
+/// the prefix and has no `.`/`..`/empty component, backslash or drive colon
+/// that would walk out of it.
+fn inside_spec_folder(target: &str) -> bool {
+    target.starts_with(SPEC_PREFIX)
+        && !target.contains(['\\', ':'])
+        && target
+            .split('/')
+            .all(|c| !c.is_empty() && c != "." && c != "..")
 }
 
 /// The repo-relative file a diff applies to (its `+++ b/<path>` line), or
@@ -120,7 +136,7 @@ pub fn apply_diff(repo: &Path, diff_path: &str) -> ApplyResult {
     let Some(target) = diff_target(&text) else {
         return ApplyResult::refused(diff_path, "the diff names no file", None);
     };
-    if !target.starts_with(SPEC_PREFIX) {
+    if !inside_spec_folder(&target) {
         let m = format!(
             "the diff is for {target}, not this checkout's {SPEC_PREFIX}; apply it by hand"
         );

@@ -22,29 +22,23 @@ pub const APPLY_ERROR_MAX: usize = 700;
 /// The usage line (exit 2 when the section or the row is missing).
 pub const USAGE: &str = "usage: lab calibrate <section> <row> [--pose <id>] [--instance <name>] [--prepare <row ids>] [--budget-minutes 1-30] [--apply] [--json] [--quiet]";
 
-/// Print order of a pose's changed fields (the spec's pose-line order); any
-/// other field follows, alphabetically.
-const FIELD_ORDER: [&str; 6] = [
-    "radius_m",
-    "bearing_deg",
-    "dy_m",
-    "pitch_deg",
-    "yaw_offset_deg",
-    "zoom",
-];
-
 /// One pose's result from `lab_uat_calibrate`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Outcome {
+    /// The pose has a proposal (or is unchanged).
     pub ok: bool,
+    /// The pose's id.
     pub pose: String,
+    /// The winning (or best) candidate's hover score, when there was one.
     pub score: Option<f64>,
+    /// How many of the [`CONFIRM_RUNS`] confirmation runs the winner passed.
     pub confirmed: i64,
-    /// `(field, old, new)` in [`FIELD_ORDER`]; a value is a number or the
-    /// string `"none"`.
+    /// `(field, old, new)` in the order of the daemon's JSON object; a value
+    /// is a number or the string `"none"`.
     pub changed: Vec<(String, Value, Value)>,
     /// Empty when this outcome proposed nothing or the tool named no file.
     pub diff_path: String,
+    /// Why the pose has no proposal, or stopped early; empty when not said.
     pub reason: String,
 }
 
@@ -68,14 +62,17 @@ impl Outcome {
     }
 }
 
-/// The `changed` object as `(field, old, new)`, sorted by [`FIELD_ORDER`].
+/// The `changed` object as `(field, old, new)`, in the order the parsed object
+/// iterates, which is the order of the daemon's JSON: the daemon builds a
+/// `serde_json::Map` without `preserve_order`, so it sends the keys sorted
+/// (`bearing_deg`, `pitch_deg`, `radius_m`, `yaw_offset_deg`, `zoom`), and this
+/// crate parses them the same way. That is the order the PowerShell printed.
 /// An entry that is not a two-element array is skipped.
 fn changes_from(changed: Option<&Value>) -> Vec<(String, Value, Value)> {
     let Some(map) = changed.and_then(Value::as_object) else {
         return Vec::new();
     };
-    let mut out: Vec<(String, Value, Value)> = map
-        .iter()
+    map.iter()
         .filter_map(|(name, pair)| {
             let pair = pair.as_array()?;
             if pair.len() != 2 {
@@ -83,15 +80,7 @@ fn changes_from(changed: Option<&Value>) -> Vec<(String, Value, Value)> {
             }
             Some((name.clone(), pair[0].clone(), pair[1].clone()))
         })
-        .collect();
-    out.sort_by_key(|(name, _, _)| {
-        let rank = FIELD_ORDER
-            .iter()
-            .position(|f| f == name)
-            .unwrap_or(FIELD_ORDER.len());
-        (rank, name.clone())
-    });
-    out
+        .collect()
 }
 
 /// The outcomes of a `lab_uat_calibrate` reply (none when the key is absent).

@@ -228,3 +228,42 @@ fn a_failing_git_apply_under_json_keeps_run_dir_diff_and_outcomes() {
     );
     assert_eq!(v["outcomes"].as_array().unwrap().len(), 2);
 }
+
+// New: a target that walks out of the spec folder is not applied, though it
+// starts with the folder's name.
+#[test]
+fn a_diff_that_walks_out_of_the_spec_folder_is_not_applied() {
+    let s = scratch();
+    fs::write(s.repo.join("keep.txt"), "a\nb\nc\n").unwrap();
+    git(&s.repo, &["add", "keep.txt"]);
+    git(&s.repo, &["commit", "-q", "-m", "keep"]);
+    let up = diff_file(
+        &s,
+        "up.diff",
+        "--- a/docs/guides/uat-specs/../../../keep.txt\n+++ b/docs/guides/uat-specs/../../../keep.txt\n@@ -1,3 +1,3 @@\n a\n-b\n+B\n c\n",
+    );
+    let r = apply_diff(&s.repo, &up);
+    assert!(
+        !r.ok && r.error.unwrap().contains("not this checkout"),
+        "refused as outside the spec folder"
+    );
+    assert_eq!(
+        fs::read_to_string(s.repo.join("keep.txt")).unwrap(),
+        "a\nb\nc\n"
+    );
+}
+
+// New: a second file with no `+++` line (a mode change) still counts as a file.
+#[test]
+fn a_second_file_without_a_plus_line_is_counted() {
+    let two = format!(
+        "diff --git a/docs/guides/uat-specs/x.toml b/docs/guides/uat-specs/x.toml\n{X_DIFF}diff --git a/docs/guides/uat-specs/z.toml b/docs/guides/uat-specs/z.toml\nold mode 100644\nnew mode 100755\n"
+    );
+    assert_eq!(diff_file_count(&two), 2);
+    assert_eq!(diff_target(&two), None);
+    let s = scratch();
+    let diff = diff_file(&s, "mode.diff", &two);
+    let r = apply_diff(&s.repo, &diff);
+    assert!(!r.ok && r.error.unwrap().contains("touches 2 files"));
+    assert_eq!(fs::read_to_string(&s.spec).unwrap(), "a\nb\nc\n");
+}

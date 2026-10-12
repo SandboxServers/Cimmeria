@@ -20,6 +20,7 @@ fn fake_home() -> TempDir {
 fn run_lab(args: &[&str], home: &Path) -> Output {
     Command::new(env!("CARGO_BIN_EXE_lab"))
         .args(args)
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
         .env("CIMMERIA_LAB_HOME", home)
         .env_remove("CIMMERIA_LAB_DAEMON_TOKEN")
         .env_remove("NO_COLOR")

@@ -95,8 +95,9 @@ fn an_unchanged_poses_line() {
     );
 }
 // [9] 'an unset field reads none, every changed field is listed'. The
-// PowerShell printed zoom before yaw (the daemon's order); Rust prints the
-// fixed order yaw, zoom (decision 1), so the expected text differs.
+// daemon's JSON object is sorted by key (a `serde_json::Map` without
+// `preserve_order`), so yaw comes before zoom; the PowerShell test built its
+// object by hand with zoom first, which the daemon never sends.
 #[test]
 fn an_unset_field_reads_none_and_every_changed_field_is_listed() {
     let guard = out(
@@ -106,6 +107,29 @@ fn an_unset_field_reads_none_and_every_changed_field_is_listed() {
     assert_eq!(
         format_line(&guard),
         "guard: score 6000, confirmed 3/3, yaw 0.0 -> -12.5, zoom none -> 250.0"
+    );
+}
+// New: the fields print in the order of the daemon's JSON (its keys sorted),
+// not in a fixed radius-first order, in the line and in the `--json` object.
+#[test]
+fn changed_fields_print_in_the_daemons_key_order() {
+    let all = out(
+        json!({"ok": true, "pose": "frost", "score": 1, "confirmed": 3,
+        "changed": {"zoom": ["none", 250.0], "yaw_offset_deg": [0, -12.5], "radius_m": [4.16, 3.0],
+        "pitch_deg": [-28.8, -30.0], "bearing_deg": [322.5, 330.0]}}),
+    );
+    assert_eq!(
+        format_line(&all),
+        "frost: score 1, confirmed 3/3, bearing 322.5 -> 330.0, pitch -28.8 -> -30.0, radius 4.16 -> 3.0, yaw 0.0 -> -12.5, zoom none -> 250.0"
+    );
+    let j = compact_json("s", "r", &[all], false);
+    let pos = |k: &str| j.find(&format!("\"{k}\":")).unwrap();
+    assert!(
+        pos("bearing") < pos("pitch")
+            && pos("pitch") < pos("radius")
+            && pos("radius") < pos("yaw")
+            && pos("yaw") < pos("zoom"),
+        "{j}"
     );
 }
 // [10] 'a pose with no candidate'

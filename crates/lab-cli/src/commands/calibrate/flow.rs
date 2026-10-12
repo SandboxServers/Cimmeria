@@ -92,12 +92,15 @@ pub fn execute(
     // A spec with local edits is refused before any lab time is spent; the
     // file the diff names is checked again before git apply.
     if args.apply {
-        if let Some(repo) = &repo {
-            let guess = format!("{SPEC_PREFIX}{section}.toml");
-            if repo.join(&guess).exists() && spec_dirty(repo, &guess) {
-                let m = format!("{guess} has uncommitted changes or is not tracked; --apply would clobber them (commit or revert first, or drop --apply)");
-                return stop(ui, json, 2, &m, out, err);
-            }
+        let Some(repo) = &repo else {
+            // No checkout, nowhere to apply: refuse before lab time is spent.
+            let m = "no checkout was found (run lab calibrate from inside the repository); --apply has nowhere to apply the diff (drop --apply)";
+            return stop(ui, json, 2, m, out, err);
+        };
+        let guess = format!("{SPEC_PREFIX}{section}.toml");
+        if repo.join(&guess).exists() && spec_dirty(repo, &guess) {
+            let m = format!("{guess} has uncommitted changes or is not tracked; --apply would clobber them (commit or revert first, or drop --apply)");
+            return stop(ui, json, 2, &m, out, err);
         }
     }
     let prepare_rows = row_ids(&args.prepare);

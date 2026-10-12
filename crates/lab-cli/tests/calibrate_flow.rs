@@ -26,6 +26,8 @@ struct Ran {
     out: String,
     err: String,
     calls: Vec<(String, Value)>,
+    /// The timeout each call was given.
+    waits: Vec<Duration>,
 }
 
 fn args(tokens: &[&str]) -> calibrate::Args {
@@ -53,10 +55,25 @@ fn run_flow(
     sgw: Vec<u32>,
     replies: Vec<Result<Value, McpError>>,
 ) -> Ran {
+    run_flow_hooked(tokens, ep, repo, sgw, replies, &|_| {})
+}
+
+/// [`run_flow`], with `hook` run (with the tool's name) as each MCP call starts.
+fn run_flow_hooked(
+    tokens: &[&str],
+    ep: &Endpoint,
+    repo: Option<PathBuf>,
+    sgw: Vec<u32>,
+    replies: Vec<Result<Value, McpError>>,
+    hook: &dyn Fn(&str),
+) -> Ran {
     let queue = RefCell::new(VecDeque::from(replies));
     let calls = RefCell::new(Vec::<(String, Value)>::new());
-    let mut call = |name: &str, a: Value, _t: Duration| -> Result<Value, McpError> {
+    let waits = RefCell::new(Vec::<Duration>::new());
+    let mut call = |name: &str, a: Value, t: Duration| -> Result<Value, McpError> {
         calls.borrow_mut().push((name.to_string(), a));
+        waits.borrow_mut().push(t);
+        hook(name);
         queue
             .borrow_mut()
             .pop_front()
@@ -77,6 +94,7 @@ fn run_flow(
         out: String::from_utf8(out).unwrap(),
         err: String::from_utf8(err).unwrap(),
         calls: calls.into_inner(),
+        waits: waits.into_inner(),
     }
 }
 
@@ -382,4 +400,108 @@ fn a_failed_apply_under_json_keeps_the_proposal_and_exits_2() {
         (Some(d.as_str()), Some("RUN"))
     );
     assert_eq!(fs::read_to_string(&spec).unwrap(), "a\nb\nc\n");
+}
+
+#[test]
+fn the_call_timeouts_are_the_budget_plus_5_minutes_and_15_minutes_for_prepare() {
+    let body = status_body(&[("default", false, None)]);
+    let (_stub, ep) = StubServer::start(vec![("GET", "/status", 200, body.as_str())]);
+    let rows = json!({"rows": [{"row": "FS-01", "result": "PASS", "reasons": []}]});
+    let r = run_flow(
+        &[
+            "first-session",
+            "FS-P3",
+            "--prepare",
+            "FS-01",
+            "--budget-minutes",
+            "8",
+            "--json",
+        ],
+        &ep,
+        None,
+        vec![],
+        vec![Ok(rows), Ok(frost_reply(""))],
+    );
+    assert_eq!(
+        r.waits,
+        [Duration::from_secs(15 * 60), Duration::from_secs(13 * 60)]
+    );
+    let r = run_flow(
+        &["first-session", "FS-P3", "--json"],
+        &ep,
+        None,
+        vec![],
+        vec![Ok(frost_reply(""))],
+    );
+    assert_eq!(r.waits, [Duration::from_secs(20 * 60)]);
+}
+
+#[test]
+fn apply_without_a_checkout_is_refused_before_the_daemon_is_asked() {
+    let (stub, ep) = StubServer::start(vec![]);
+    let r = run_flow(
+        &["x", "FS-P3", "--apply", "--json"],
+        &ep,
+        None,
+        vec![],
+        vec![],
+    );
+    assert_eq!(r.code, 2);
+    let v: Value = serde_json::from_str(r.out.trim()).unwrap();
+    assert_eq!(v["exit"], 2);
+    assert!(v["error"]
+        .as_str()
+        .unwrap()
+        .starts_with("no checkout was found"));
+    assert!(stub.requests().is_empty() && r.calls.is_empty());
+}
+
+#[test]
+fn apply_on_an_untracked_spec_is_refused_before_the_daemon_is_asked() {
+    let (_tmp, repo, _spec) = scratch_repo();
+    fs::write(repo.join("docs/guides/uat-specs/y.toml"), "a\nb\nc\n").unwrap();
+    let (stub, ep) = StubServer::start(vec![]);
+    let r = run_flow(&["y", "FS-P3", "--apply"], &ep, Some(repo), vec![], vec![]);
+    assert_eq!(r.code, 2);
+    assert!(
+        r.err
+            .starts_with("docs/guides/uat-specs/y.toml has uncommitted changes or is not tracked"),
+        "{}",
+        r.err
+    );
+    assert!(stub.requests().is_empty() && r.calls.is_empty());
+}
+
+#[test]
+fn a_spec_edited_during_the_sweep_is_refused_again_before_git_apply() {
+    let (tmp, repo, spec) = scratch_repo();
+    let body = status_body(&[("default", false, None)]);
+    let (_stub, ep) = StubServer::start(vec![("GET", "/status", 200, body.as_str())]);
+    let diff = tmp.path().join("x.diff");
+    fs::write(&diff, DIFF).unwrap();
+    let d = diff.to_string_lossy().into_owned();
+    // The spec is clean when the flow starts and edited while the sweep runs.
+    let edit = |name: &str| {
+        if name == "lab_uat_calibrate" {
+            fs::write(&spec, "a\nb\nc\nlocal\n").unwrap();
+        }
+    };
+    let r = run_flow_hooked(
+        &["x", "FS-P3", "--apply"],
+        &ep,
+        Some(repo.clone()),
+        vec![],
+        vec![Ok(frost_reply(&d))],
+        &edit,
+    );
+    assert_eq!(r.code, 2);
+    assert!(
+        r.err.starts_with(&format!(
+            "{d}: docs/guides/uat-specs/x.toml has uncommitted changes"
+        )),
+        "{}",
+        r.err
+    );
+    assert_eq!(fs::read_to_string(&spec).unwrap(), "a\nb\nc\nlocal\n");
+    assert_eq!(git(&repo, &["diff", "--cached", "--name-only"]), "");
 }

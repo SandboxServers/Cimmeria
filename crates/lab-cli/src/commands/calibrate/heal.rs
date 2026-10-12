@@ -15,16 +15,22 @@ use super::outcome::{call_error_text, format_call_error, format_line, outcomes_f
 /// One pose a failed row missed on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HealHint {
+    /// The failed row.
     pub row: String,
+    /// The pose of that row to recalibrate.
     pub pose: String,
 }
 
 /// Where and what to heal. `specs_dir` and `instance` are empty for "none".
 #[derive(Debug, Clone, Copy)]
 pub struct HealJob<'a> {
+    /// The batch folder the proposals are copied into.
     pub batch_dir: &'a Path,
+    /// The UAT section of every hint.
     pub section: &'a str,
+    /// The spec folder to pass on, or empty.
     pub specs_dir: &'a str,
+    /// The instance the batch ran on, or empty.
     pub instance: &'a str,
 }
 
@@ -32,10 +38,13 @@ pub struct HealJob<'a> {
 /// `None` and only `line` set.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HealRecord {
+    /// The hint's row (`None` on the stop record).
     pub row: Option<String>,
+    /// The hint's pose (`None` on the stop record).
     pub pose: Option<String>,
     /// The batch copy of the proposal, when there is one.
     pub diff: Option<PathBuf>,
+    /// The one line the summary prints for this hint.
     pub line: String,
     /// The proposal's text, kept so the caller can print it.
     pub text: Option<String>,
