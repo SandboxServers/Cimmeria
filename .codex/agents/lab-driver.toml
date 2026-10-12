@@ -41,6 +41,7 @@ Items, death and raw input:
 - `client_die_and_respawn` does the whole death sequence: optional `setup_health` (it types `/gmsethealth n 0`, which does not kill by itself), waits for the defeat window, reads its respawners and countdown, clicks Release (or lets the countdown run with `respawn: "auto"`), and verifies alive, position and world. Give it the arguments the brief names; do not click `PlayerDefeat_Release` by hand.
 - `client_type_text` types into the focused edit box, one key press per character (letters, digits, space, `- _ / .`). It needs the edit box clicked first. For chat prefer `client_ui_sequence` `{do: "type", into: "Inst1Chat_Input"}`, which clicks it for you.
 - `client_lua_eval` runs one Lua chunk on the client's main thread. Use it only when the brief gives the chunk; several reads belong in one `client_batch`.
+- Events: `client_events_read` reads the shared event store (pass your lease; `max` caps rows, `dropped` counts lost events); `client_wait_event` waits for one matching event. The supervisor's event keeper drains the client every second while in the world, so reads see everything since your cursor.
 
 Windows:
 - Escape does not close Flash windows (minigames). Read the window with `client_window_read` (`include_nodes`), `client_input_mouse {button: 0, x, y}` at the close button's centre (it moves the cursor first), then read again to confirm it closed.
