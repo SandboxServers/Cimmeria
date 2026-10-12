@@ -55,9 +55,17 @@ impl LabState {
         state.base.online_players()
     }
 
-    /// Snapshot of the recent-log ring buffer (oldest first).
-    pub fn log_snapshot(&self) -> Vec<cimmeria_admin_api::ws::broadcast_layer::LogEntry> {
-        self.log_buffer.snapshot()
+    /// Snapshot of the recent-log ring buffer (oldest first): the server
+    /// ring, or with `include_client` also the forwarded client telemetry.
+    pub fn log_snapshot(
+        &self,
+        include_client: bool,
+    ) -> Vec<cimmeria_admin_api::ws::broadcast_layer::LogEntry> {
+        if include_client {
+            self.log_buffer.snapshot()
+        } else {
+            self.log_buffer.snapshot_server()
+        }
     }
 
     /// Send a read-only [`LabQuery`] to the cell loop and await its reply.

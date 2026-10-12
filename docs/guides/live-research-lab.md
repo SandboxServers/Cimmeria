@@ -329,7 +329,7 @@ are reads.
 | Tool | Arguments | Reply |
 |---|---|---|
 | `server_entity_query` | `space_id`, `template_id`, `class_id` (2 player, 4 NPC), `tag` (a `spawnlist.tag`, exact), `radius` with `around_entity` or `around_point`; all AND-combined | `entities` (each with `tag`, `space_id`, `position`), `returned`, `total_matched`, `capped` (at 256). Always give `space_id` with `tag`: one tag matches once in every player's copy of an instanced map |
-| `server_log_tail` | `level`, `target` (the tracing target, exact), `contains` (a case-sensitive substring of the message), `since_ms` (strictly after), `limit` (default 100) | `entries` (`timestamp_ms`, `level`, `target`, `message`, `fields`), `count`, `total_buffered`, `newest_ms` |
+| `server_log_tail` | `level`, `target` (the tracing target, exact), `contains` (a case-sensitive substring of the message), `since_ms` (strictly after), `include_client` (default false; also return the client telemetry the server replays into its log), `limit` (default 100) | `entries` (`timestamp_ms`, `level`, `target`, `message`, `fields`), `count`, `total_buffered`, `newest_ms` |
 
 The three `server_chaos_*` tools are not reads: they arm and clear fault
 injection on a live session. They exist only in a server built with
@@ -369,7 +369,7 @@ a control character, is refused and the audit row records only its length.
 | `server_chaos_clear` | `entity_id` (the chaos set for that entity, wherever its session is now), or `account` (that account's pending arm), or neither for every session and every arm | `{cleared: n}` |
 | `server_chaos_status` | none | `{sessions: [{entity_id, net?, flush?, expires_in_s}], more?, armed: [{account_id, net?, flush?, expires_in_s}], armed_more?}`, sessions by entity id and pending arms by account id (never an address), at most 10 of each; `more` and `armed_more` count the rest |
 
-`server_log_tail` reads a ring of the last 500 lines (or 2 MiB). Its
+`server_log_tail` reads a ring of the last 500 server lines (or 2 MiB). Client telemetry that the server replays into its log (targets `client.native`, `launcher.client_log`, `launcher.debug_log`, `launcher.key_dump`, `launcher.session_meta`) goes to a second ring of the same size, so a running lab client cannot push server lines out; pass `include_client: true` to read it. Its
 `total_buffered` counts the lines that passed the filters, while
 `newest_ms` is the newest timestamp in the whole ring, taken before
 filtering, so you can wait from it even when nothing matches yet; an empty

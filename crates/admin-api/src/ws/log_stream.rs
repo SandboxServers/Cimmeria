@@ -4,7 +4,9 @@
 //! `broadcast` channel fed by the [`BroadcastLayer`](super::broadcast_layer::BroadcastLayer).
 //!
 //! On connect, the handler replays recent history from the [`LogBuffer`] ring
-//! buffer so clients see startup logs even if they connected late.
+//! buffers (server and forwarded client events, merged by time; up to twice
+//! the single-ring size) so clients see startup logs even if they connected
+//! late.
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::response::Response;
