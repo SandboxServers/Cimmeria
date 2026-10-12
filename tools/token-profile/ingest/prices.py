@@ -3,8 +3,8 @@
 A new price list is a new version: add a dict under a new key, never edit an
 old one, so a report made under an old version can be recomputed exactly.
 Cache writes are 1.25x input for the 5-minute TTL and 2x for the 1-hour TTL
-on every model. Cache reads differ by model: 0.05x on Opus 5.5, 0.025x on
-Fable 5.1, 0.1x elsewhere.
+on every model. Cache reads differ by model: 0.05x on Opus 5.5 and Sonnet 5.5,
+0.025x on Fable 5.1, 0.1x elsewhere.
 
 Haiku 5.5 has two rate cards chosen by prompt length: a prompt (input plus
 cache reads and writes) over 100K tokens pays 5x every rate. A row says so
@@ -51,8 +51,22 @@ PRICE_TABLES = {
         "claude-haiku-5-5": _row(0.10, 0.50, 0.01, long_above=100_000, long_factor=5.0),
         "claude-haiku-4-5": _row(1.0, 5.0, 0.10),
     },
+    "2026-10-12": {
+        "claude-fable-5-1": _row(10.0, 50.0, 0.25),
+        "claude-fable-5": _row(10.0, 50.0, 1.0),
+        "claude-opus-5-5": _row(4.0, 20.0, 0.20),
+        "claude-opus-5": _row(5.0, 25.0, 0.50),
+        "claude-opus-4-8": _row(5.0, 25.0, 0.50),
+        "claude-opus-4-7": _row(5.0, 25.0, 0.50),
+        "claude-opus-4-6": _row(5.0, 25.0, 0.50),
+        "claude-sonnet-5-5": _row(2.0, 10.0, 0.10),
+        "claude-sonnet-5": _row(2.0, 10.0, 0.20),
+        "claude-sonnet-4-6": _row(3.0, 15.0, 0.30),
+        "claude-haiku-5-5": _row(0.10, 0.50, 0.01, long_above=100_000, long_factor=5.0),
+        "claude-haiku-4-5": _row(1.0, 5.0, 0.10),
+    },
 }
-CURRENT = "2026-10-10"
+CURRENT = "2026-10-12"
 
 TOKEN_COLUMNS = ("input", "output", "cache_read", "cache_write_5m", "cache_write_1h")
 

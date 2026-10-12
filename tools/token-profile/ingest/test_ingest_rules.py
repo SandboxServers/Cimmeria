@@ -20,6 +20,11 @@ class PriceTest(unittest.TestCase):
         self.assertAlmostEqual(fable["cache_read"] / fable["input"], 0.025)
         self.assertAlmostEqual(prices.price_for("claude-sonnet-5")["cache_read"] / 2.0, 0.1)
 
+    def test_sonnet_55_cache_reads_are_a_tenth_from_2026_10_12(self):
+        # Sonnet 5.5 cache reads are 0.05x input (source: prices.SOURCE). The 2026-10-10 key stays as it was.
+        self.assertAlmostEqual(prices.PRICE_TABLES["2026-10-12"]["claude-sonnet-5-5"]["cache_read"], 0.10)
+        self.assertAlmostEqual(prices.PRICE_TABLES["2026-10-10"]["claude-sonnet-5-5"]["cache_read"], 0.20)
+
     def test_cache_writes_split_by_ttl(self):
         for model in prices.PRICE_TABLES[prices.CURRENT]:
             row = prices.price_for(model)

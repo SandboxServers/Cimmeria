@@ -15,7 +15,7 @@ from . import cli, cost, registry
 SCHEMA = Path(__file__).resolve().parent.parent / "schema.sql"
 T0 = "2026-10-01T12:00:00Z"
 
-# Prices in force (ingest/prices.py, CURRENT): Opus 5.5 4/20/0.20, Sonnet 5.5 2/10/0.20, Haiku 5.5 0.10/0.50/0.01 (USD/MTok).
+# Prices in force (ingest/prices.py, CURRENT): Opus 5.5 4/20/0.20, Sonnet 5.5 2/10/0.10, Haiku 5.5 0.10/0.50/0.01 (USD/MTok).
 # Session worktrees: s-coder is lr-01, s-rev is lr-02; s-main is the coordinator.
 SESSIONS = [("s-main", None, 1), ("s-coder", ".claude/worktrees/lr-01", 0), ("s-rev", ".claude/worktrees/lr-02", 0)]
 AGENTS = [("a-coder", "s-coder", "packet-coder"), ("a-rev", "s-rev", "packet-reviewer")]
@@ -104,11 +104,11 @@ class CostTest(unittest.TestCase):
         return cost.rollup(cost.load_requests(self.db, self.since, self.until, pr_map), CURRENT, self.roles, accepted)
 
     def test_totals_to_the_cent(self):
-        # Hand-computed from the price table: r1 0.046, r2 0.0012, r3 0.025, r4 0.024 split, r6 0.0006.
+        # Hand-computed from the price table: r1 0.046, r2 0.0012, r3 0.023 (its 20K cache reads at $0.10/MTok), r4 0.024 split, r6 0.0006.
         # Reverting the weight multiplication makes camp-a and camp-b come out at the full request cost.
         out = self.rollup()
         self.assertAlmostEqual(out["camp-a"]["cost"]["total_usd"], 0.046 + 0.0012 + 0.012, places=9)
-        self.assertAlmostEqual(out["camp-b"]["cost"]["total_usd"], 0.025 + 0.012, places=9)
+        self.assertAlmostEqual(out["camp-b"]["cost"]["total_usd"], 0.023 + 0.012, places=9)
         self.assertAlmostEqual(out["camp-c"]["cost"]["total_usd"], 0.0006, places=9)
         self.assertEqual(sorted(out), ["camp-a", "camp-b", "camp-c"])
 
@@ -116,7 +116,7 @@ class CostTest(unittest.TestCase):
         # r4 is 0.024 in all: 0.012 on PR 101 and 0.012 on PR 201, never 0.024 on each.
         out = self.rollup()
         total = sum(c["cost"]["total_usd"] for c in out.values())
-        self.assertAlmostEqual(total, 0.0968, places=9)
+        self.assertAlmostEqual(total, 0.0948, places=9)
         per_pr = {p["pr"]: p["usd"] for p in out["camp-a"]["prs"]["per_pr"]}
         self.assertAlmostEqual(per_pr[101], 0.046 + 0.0012 + 0.012, places=9)
 
@@ -126,7 +126,7 @@ class CostTest(unittest.TestCase):
         share = cost.unattributed_share(self.db, self.since, self.until)
         self.assertEqual(share["requests"], 7)
         self.assertAlmostEqual(share["by_request"], round(1 / 7, 4), places=4)
-        self.assertAlmostEqual(share["by_usd"], round(0.012 / (0.0968 + 0.012 + 0.012), 4), places=4)
+        self.assertAlmostEqual(share["by_usd"], round(0.012 / (0.0948 + 0.012 + 0.012), 4), places=4)
         self.assertAlmostEqual(share["by_family"]["main"]["requests"], round(1 / 3, 4), places=4)
 
     def test_ledger_map_tags_an_untagged_pr(self):
@@ -144,7 +144,7 @@ class CostTest(unittest.TestCase):
         self.assertAlmostEqual(out["camp-a"]["cost"]["by_model_tier"]["haiku"], 0.0012, places=9)
         self.assertAlmostEqual(out["camp-a"]["cost"]["by_model_tier"]["opus"], 0.058, places=9)
         self.assertAlmostEqual(out["camp-a"]["cost"]["by_role"]["implementer-haiku"], 0.0012, places=9)
-        self.assertAlmostEqual(out["camp-b"]["cost"]["by_role"]["reviewer"], 0.025, places=9)
+        self.assertAlmostEqual(out["camp-b"]["cost"]["by_role"]["reviewer"], 0.023, places=9)
         self.assertAlmostEqual(out["camp-b"]["cost"]["by_role"]["coordinator"], 0.012, places=9)
 
     def test_base_roles_are_zero_filled(self):
