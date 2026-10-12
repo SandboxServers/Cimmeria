@@ -7,7 +7,7 @@
 # from its own environment.
 #
 # Setup (runbook: docs/guides/live-research-lab.md):
-#   pwsh tools/lab/lab.ps1 local-setup   # CIMMERIA_LAB_MCP_TOKEN, the server's lab bind, ...
+#   pwsh tools/lab/cli/local-setup.ps1   # CIMMERIA_LAB_MCP_TOKEN, the server's lab bind, ...
 #   pwsh tools/lab/install.ps1           # build and install the lab binaries
 #   pwsh tools/lab/daemon.ps1 install    # the shared daemon; generates CIMMERIA_LAB_DAEMON_TOKEN
 #

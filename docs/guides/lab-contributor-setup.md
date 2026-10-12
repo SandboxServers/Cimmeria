@@ -44,7 +44,7 @@ The [rulebook](live-research-lab.md) explains what the lab is and how to use it 
 
 **Known gaps and limits:**
 
-- `-Chaos` is not live: until [lab-chaos](../analysis/lab-chaos/README.md) CH-08 wires the runner, a real `lab uat` run refuses it (exit 2) and only `-PlanOnly` accepts it. `lab record` is not built yet ([lab-record](../analysis/lab-record/README.md)).
+- `lab uat --chaos` runs: `cpu` needs nothing extra, `net` and `flush` need a server built with `lab-chaos` and `DEVELOPER_MODE`, and `burst` is refused until [lab-chaos](../analysis/lab-chaos/README.md) CH-13 lands. `lab record` is built but has had no live check ([lab-record](../analysis/lab-record/README.md)).
 - One agent drives at a time; the lease enforces it.
 - Ask the user before any lab use. The client takes focus and the lab's input hooks swallow your own clicks while it runs.
 - A loaded machine starves the client: SV-15's third attempt failed at 91 % CPU with every build-lane slot busy. Run the lab on an idle machine.
@@ -112,17 +112,17 @@ This builds the server, starts PostgreSQL on port 5433 and loads the seed data. 
 The helper makes the secrets, writes `lab-account.json` and, if you ask, adds your server to the client's login list:
 
 ```powershell
-pwsh tools/lab/lab.ps1 local-setup -InstallDir 'D:\Games\Stargate Worlds-QA\Working' -PatchLoginInternal
+pwsh tools/lab/cli/local-setup.ps1 -InstallDir 'D:\Games\Stargate Worlds-QA\Working' -PatchLoginInternal
 ```
 
-Once the `lab` command is set up (step 6), the same thing is `lab local-setup`. Its flags:
+Once the `lab` command is set up (step 6), the same thing is `lab local-setup`. Its flags (the PowerShell spellings, `-InstallDir` and the rest, work too):
 
 | Flag | What it does |
 |---|---|
-| `-InstallDir <folder>` | The install dir. Default: `CIMMERIA_LAB_INSTALL_DIR`, else `labd.env` |
-| `-PatchLoginInternal` | Adds the `Local` login row to `LoginInternal.lua` (step 3). Without it, the helper prints the line and where it goes |
-| `-Worktree <checkout>` | The checkout whose pinned toolchain gets the i686 target |
-| `-EnvScope User\|Process` | Where the variables go; `Process` is for the helper's tests only |
+| `--install-dir <folder>` | The install dir. Default: `CIMMERIA_LAB_INSTALL_DIR`, else `labd.env` |
+| `--patch-login-internal` | Adds the `Local` login row to `LoginInternal.lua` (step 3). Without it, the helper prints the line and where it goes |
+| `--worktree <checkout>` | The checkout whose pinned toolchain gets the i686 target |
+| `--env-scope User\|Process` | Where the variables go; `Process` is for the helper's tests only |
 
 It sets these user environment variables, keeping any that already hold a valid value, and never prints a value:
 
@@ -207,9 +207,9 @@ pwsh tools/lab/install.ps1 -InstallDir 'D:\Games\Stargate Worlds-QA\Working'
 pwsh tools/lab/cli/setup.ps1
 ```
 
-`install.ps1` adds the `i686-pc-windows-msvc` Rust target when it's missing (`rustup target add`), because the 32-bit client needs 32-bit DLLs. It then builds four pieces through the build lane: the supervisor, the bridge DLL, the `sgw-start32.exe` injector and the client patches DLL. The first build takes a while. `cli/setup.ps1` installs the `lab` command and offers to put it on your `PATH`; open a new terminal afterwards.
+`install.ps1` adds the `i686-pc-windows-msvc` Rust target when it's missing (`rustup target add`), because the 32-bit client needs 32-bit DLLs. It then builds five pieces through the build lane: the supervisor, the `lab.exe` command, the bridge DLL, the `sgw-start32.exe` injector and the client patches DLL. The first build takes a while. `cli/setup.ps1` copies the PowerShell scripts `lab` still runs (`lab start`, `stop`, `restart`, `instances`, `install`, `setup` and `local-setup`) and offers to put `lab.exe` on your `PATH`; open a new terminal afterwards.
 
-After a `git pull`, refresh both with `lab install -From <your checkout>`, then `lab restart`.
+After a `git pull`, refresh both with `lab install --from <your checkout>`, then `lab restart`.
 
 ### 7. Install the daemon
 
@@ -320,8 +320,8 @@ Both rows should come back `SKIPPED` (ready). A `BLOCKED` row names what's missi
 Without an agent, the `lab` command runs the same rows:
 
 ```powershell
-lab uat first-session -Rows FS-01,FS-02 -PlanOnly
-lab uat first-session -Rows FS-01,FS-02
+lab uat first-session --rows FS-01,FS-02 --plan-only
+lab uat first-session --rows FS-01,FS-02
 ```
 
 Next, get the lab character into the world with `lab_ensure_in_world {create: {alignment, archetype, gender}}`, then read [automated UAT](automated-uat.md) and the [rulebook](live-research-lab.md).

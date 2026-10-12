@@ -103,6 +103,7 @@ const OUT_OF_PROCESS_CRATES: &[(&str, &str)] = &[
         "library linked into the launcher, plus an offline CLI; no tracing events reach the server",
     ),
     ("lab", "the research-lab supervisor process"),
+    ("lab-cli", "the lab command-line tool, its own process"),
     ("supervisor", "the process supervisor"),
     ("navmesh-extractor", "offline build tool"),
     ("upk", "offline asset tooling"),

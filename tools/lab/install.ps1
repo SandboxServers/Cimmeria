@@ -4,13 +4,14 @@
 
 .DESCRIPTION
     Builds, through the build lane (tools/build-lane/lane.ps1):
-      - cimmeria-lab (release, host): the MCP supervisor
+      - cimmeria-lab and cimmeria-lab-cli (release, host, one lane call): the MCP supervisor and the lab command
       - cimmeria-client-telemetry --features lab-bridge (release, i686): the bridge DLL
       - cimmeria-start32 and cimmeria-client-patches (release, i686): the injector
         helper and the client patch DLL
     It first adds the i686-pc-windows-msvc Rust target (rustup target add)
     when the checkout's toolchain lacks it. Then it installs them:
       %LOCALAPPDATA%\cimmeria-lab\bin\cimmeria-lab.exe
+      %LOCALAPPDATA%\cimmeria-lab\bin\lab.exe
       %LOCALAPPDATA%\cimmeria-lab\bin\sgw-start32.exe
       %LOCALAPPDATA%\cimmeria-lab\bin\cimmeria_client_patches.dll
       %LOCALAPPDATA%\cimmeria-lab\bin\cimmeria_client_telemetry.dll
@@ -64,6 +65,7 @@ $ErrorActionPreference = 'Stop'
 $I686 = 'i686-pc-windows-msvc'
 
 function Say([string]$Text) { Write-Host "[lab-install] $Text" }
+. (Join-Path $PSScriptRoot 'cli\install-lib.ps1')
 
 # --- the worktree and its commit -------------------------------------------------------
 if (-not $Worktree) {
@@ -76,8 +78,12 @@ $Worktree = (Resolve-Path $Worktree).Path
 if (-not (Test-Path (Join-Path $Worktree 'tools\build-lane\lane.ps1'))) {
     throw "$Worktree is not a Cimmeria checkout (no tools\build-lane\lane.ps1)"
 }
-$Commit = (git -C $Worktree rev-parse HEAD).Trim()
-$Subject = (git -C $Worktree log -1 --format=%s).Trim()
+# git prints nothing on failure, so each result is checked before it is trimmed.
+$Commit = "$(git -C $Worktree rev-parse HEAD 2>$null)".Trim()
+if ($LASTEXITCODE -ne 0 -or -not $Commit) { throw "git rev-parse HEAD failed in $Worktree (is it a git checkout with a commit?)" }
+$Subject = "$(git -C $Worktree log -1 --format=%s 2>$null)".Trim()
+$CliSha = "$(git -C $Worktree rev-parse --short HEAD 2>$null)".Trim()
+if ($LASTEXITCODE -ne 0 -or -not $CliSha) { throw "git rev-parse --short HEAD failed in $Worktree (is it a git checkout with a commit?)" }
 $Dirty = @(git -C $Worktree status --porcelain --untracked-files=no).Count
 Say "source:  $Worktree"
 Say "commit:  $Commit  $Subject"
@@ -175,7 +181,7 @@ if (-not $SkipBuild) {
 
 # --- build through the lane ---------------------------------------------------------------
 $builds = @(
-    @('cargo', 'build', '-p', 'cimmeria-lab', '--release'),
+    @('cargo', 'build', '-p', 'cimmeria-lab', '-p', 'cimmeria-lab-cli', '--release'),
     @('cargo', 'build', '-p', 'cimmeria-client-telemetry', '--features', 'lab-bridge', '--target', $I686, '--release'),
     @('cargo', 'build', '-p', 'cimmeria-start32', '-p', 'cimmeria-client-patches', '--target', $I686, '--release')
 )
@@ -185,7 +191,9 @@ foreach ($b in $builds) {
     if ($DryRun) { Say "would build: $line"; continue }
     Say "build:   $line"
     Push-Location $Worktree
-    try { & pwsh -NoProfile -File (Join-Path $Worktree 'tools\build-lane\lane.ps1') @b; $rc = $LASTEXITCODE } finally { Pop-Location }
+    $savedCliSha = $env:CIMMERIA_LAB_CLI_SHA
+    if ($b -contains 'cimmeria-lab-cli') { $env:CIMMERIA_LAB_CLI_SHA = $CliSha }
+    try { & pwsh -NoProfile -File (Join-Path $Worktree 'tools\build-lane\lane.ps1') @b; $rc = $LASTEXITCODE } finally { $env:CIMMERIA_LAB_CLI_SHA = $savedCliSha; Pop-Location }
     if ($rc -ne 0) { throw "build failed (exit $rc): $line. Read the failures file or log the lane printed." }
 }
 
@@ -205,11 +213,18 @@ $telemetry = Join-Path $targetDir "$I686\release\cimmeria_client_telemetry.dll"
 $bin = Join-Path $LabHome 'bin'
 $plan = @(
     @{ From = (Join-Path $targetDir 'release\cimmeria-lab.exe');                 To = (Join-Path $bin 'cimmeria-lab.exe') },
+    @{ From = (Join-Path $targetDir 'release\lab.exe');                          To = (Join-Path $bin 'lab.exe') },
     @{ From = (Join-Path $targetDir "$I686\release\sgw-start32.exe");            To = (Join-Path $bin 'sgw-start32.exe') },
     @{ From = (Join-Path $targetDir "$I686\release\cimmeria_client_patches.dll"); To = (Join-Path $bin 'cimmeria_client_patches.dll') },
     @{ From = $telemetry;                                                        To = (Join-Path $bin 'cimmeria_client_telemetry.dll') },
     @{ From = $telemetry;                                                        To = (Join-Path $InstallDir 'Binaries\cimmeria-client-telemetry.dll') }
 )
+# -SkipBuild with no lab.exe in the target dir: warn and leave lab.exe out, instead of failing.
+$labExeFrom = Join-Path $targetDir 'release\lab.exe'
+if ($SkipBuild -and -not (Test-Path $labExeFrom)) {
+    Say 'warning: lab.exe not built; skipping it'
+    $plan = @($plan | Where-Object { $_.To -ne (Join-Path $bin 'lab.exe') })
+}
 $missing = @($plan | Where-Object { -not (Test-Path $_.From) } | ForEach-Object { $_.From } | Select-Object -Unique)
 if ($missing.Count -gt 0) {
     $msg = "build output missing: $($missing -join ', ')"
@@ -217,30 +232,9 @@ if ($missing.Count -gt 0) {
 }
 
 # --- install -----------------------------------------------------------------------------
-$stamp = Get-Date -Format 'yyyyMMdd'
 if (-not $DryRun) { New-Item -ItemType Directory -Force -Path $bin | Out-Null }
 foreach ($item in $plan) {
-    $from = $item.From; $to = $item.To
-    $built = if (Test-Path $from) { (Get-Item $from).LastWriteTime.ToString('yyyy-MM-dd HH:mm') } else { 'not built' }
-    if ((Test-Path $to) -and (Test-Path $from) -and
-        (Get-FileHash $from).Hash -eq (Get-FileHash $to).Hash) {
-        Say "same:    $to"
-        continue
-    }
-    $backup = $null
-    if (Test-Path $to) {
-        $backup = "$to.$stamp.old"
-        if (Test-Path $backup) { $backup = "$to.$(Get-Date -Format 'yyyyMMdd-HHmmss').old" }
-    }
-    if ($DryRun) {
-        if ($backup) { Say "would back up: $to -> $(Split-Path $backup -Leaf)" }
-        Say "would copy: $from ($built) -> $to"
-        continue
-    }
-    # Rename, then copy: a rename works on a running cimmeria-lab.exe, an overwrite does not.
-    if ($backup) { Move-Item -LiteralPath $to -Destination $backup; Say "backup:  $backup" }
-    Copy-Item -LiteralPath $from -Destination $to
-    Say "install: $to ($built)"
+    Install-LabFile -From $item.From -To $item.To -DryRun:$DryRun
 }
 
 if (-not $DryRun) {

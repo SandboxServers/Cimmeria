@@ -4,8 +4,7 @@
 
 .DESCRIPTION
     Dot-source it; it defines functions only. It is self-contained (it does not
-    dot-source common.ps1), so tools/lab/cli/test-install-lib.ps1 runs without the
-    dispatcher. The dispatcher skips *-lib.ps1, so it is not a command.
+    dot-source common.ps1), so tools/lab/cli/test-install-lib.ps1 runs on its own.
 
 .EXAMPLE
     . tools/lab/cli/install-lib.ps1; Install-LabCli C:\src\Cimmeria
@@ -13,7 +12,8 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# The lab home: CIMMERIA_LAB_HOME when set (the tests use it), else %LOCALAPPDATA%\cimmeria-lab.
+# The lab home: %LOCALAPPDATA%\cimmeria-lab. CIMMERIA_LAB_HOME overrides it, but only
+# the tests set it; it is not a setting for users.
 function Get-InstallLabHome {
     if ($env:CIMMERIA_LAB_HOME) { return $env:CIMMERIA_LAB_HOME }
     return (Join-Path $env:LOCALAPPDATA 'cimmeria-lab')
@@ -85,7 +85,7 @@ public static extern System.IntPtr SendMessageTimeout(System.IntPtr hWnd, uint M
 
 # The checkout lab setup installs from: $From when given, else the checkout this
 # script sits in ($ScriptRoot\..\..\..), which must have .git (a folder, or a file in
-# a worktree) and tools\lab\lab.ps1. The installed copy is not a checkout, so
+# a worktree) and tools\lab\daemon.ps1. The installed copy is not a checkout, so
 # setup run from it needs -From.
 function Resolve-SetupRoot([string]$From, [string]$ScriptRoot) {
     $hint = 'lab setup must run from a checkout: pwsh <checkout>\tools\lab\cli\setup.ps1, or lab setup -From <checkout>'
@@ -95,24 +95,27 @@ function Resolve-SetupRoot([string]$From, [string]$ScriptRoot) {
         $root = [System.IO.Path]::GetFullPath((Join-Path $ScriptRoot '..\..\..'))
         if (-not (Test-Path -LiteralPath (Join-Path $root '.git'))) { throw $hint }
     }
-    if (-not (Test-Path -LiteralPath (Join-Path $root 'tools\lab\lab.ps1'))) {
-        throw "$root has no tools\lab\lab.ps1. $hint"
+    if (-not (Test-Path -LiteralPath (Join-Path $root 'tools\lab\daemon.ps1'))) {
+        throw "$root has no tools\lab\daemon.ps1. $hint"
     }
     return $root
 }
 
-# Copies the lab CLI from the checkout at $Root into <LabHome>\cli, so the installed
-# lab.ps1 runs without the checkout. Layout: cli\lab.ps1, cli\cli\*.ps1, and
-# daemon.ps1, instances.ps1, labd-lib.ps1 beside lab.ps1, so cli\..\daemon.ps1
-# resolves. The test-*.ps1 files are not copied, and command files no longer in
-# the checkout are removed, so lab help never lists a stale command. Writes
-# cli\cli\VERSION with the checkout's short commit, last, so a copy that fails part
-# way leaves no VERSION. Refuses a root that has no tools\lab\lab.ps1.
+# Copies the PowerShell the lab CLI still runs from the checkout at $Root into
+# <LabHome>\cli, so the installed copy works without the checkout. Layout:
+# cli\cli\*.ps1 (install, setup, local-setup and their libraries), and daemon.ps1,
+# instances.ps1, labd-lib.ps1 beside cli\cli, so <cli>\daemon.ps1 and
+# <cli>\instances.ps1 are what lab.exe runs. The test-*.ps1 files are not copied,
+# command files no longer in the checkout are removed, and so is the retired
+# cli\lab.ps1 of an older install. Writes cli\cli\VERSION with the checkout's short
+# commit, last, so a copy that fails part way leaves no VERSION. Refuses a root
+# that has no tools\lab\daemon.ps1. Deletes bin\lab.cmd, the shim of the retired
+# dispatcher (Remove-LabShim).
 function Install-LabCli([string]$Root) {
     $Root = (Resolve-Path -LiteralPath $Root).Path
     $src = Join-Path $Root 'tools\lab'
-    if (-not (Test-Path -LiteralPath (Join-Path $src 'lab.ps1'))) {
-        throw "$Root is not a Cimmeria checkout with the lab CLI (no tools\lab\lab.ps1)"
+    if (-not (Test-Path -LiteralPath (Join-Path $src 'daemon.ps1'))) {
+        throw "$Root is not a Cimmeria checkout with the lab CLI (no tools\lab\daemon.ps1)"
     }
     $out = git -C $Root rev-parse --short HEAD 2>$null
     if ($LASTEXITCODE -ne 0 -or -not "$out".Trim()) { throw "git rev-parse failed in $Root" }
@@ -123,7 +126,7 @@ function Install-LabCli([string]$Root) {
     New-Item -ItemType Directory -Force -Path $destCli | Out-Null
     Remove-Item -LiteralPath (Join-Path $destCli 'VERSION') -Force -ErrorAction SilentlyContinue
     Get-ChildItem -LiteralPath $destCli -Filter '*.ps1' | Remove-Item -Force
-    Copy-Item -LiteralPath (Join-Path $src 'lab.ps1') -Destination $dest -Force
+    Remove-Item -LiteralPath (Join-Path $dest 'lab.ps1') -Force -ErrorAction SilentlyContinue
     Get-ChildItem -LiteralPath (Join-Path $src 'cli') -Filter '*.ps1' |
         Where-Object { $_.Name -notlike 'test-*' } |
         Copy-Item -Destination $destCli -Force
@@ -131,4 +134,55 @@ function Install-LabCli([string]$Root) {
         Copy-Item -LiteralPath (Join-Path $src $name) -Destination $dest -Force
     }
     Set-Content -LiteralPath (Join-Path $destCli 'VERSION') -Value $sha -Encoding ascii
+    Remove-LabShim (Get-InstallLabHome)
+}
+
+# True when <LabHome>\bin\lab.exe exists, the Rust lab CLI.
+function Test-LabExeInstalled([string]$LabHome) {
+    return [bool](Test-Path -LiteralPath (Join-Path $LabHome 'bin\lab.exe') -PathType Leaf)
+}
+
+# Deletes <LabHome>\bin\lab.cmd when there is one: it ran the retired lab.ps1
+# dispatcher, so it cannot work any more. Says why.
+function Remove-LabShim([string]$LabHome) {
+    $shim = Join-Path $LabHome 'bin\lab.cmd'
+    if (-not (Test-Path -LiteralPath $shim)) { return }
+    Remove-Item -LiteralPath $shim -Force
+    if (Test-LabExeInstalled $LabHome) {
+        Write-Host 'lab.exe installed; the lab.cmd shim is no longer needed'
+    } else {
+        Write-Host 'removed bin\lab.cmd: it ran the retired lab.ps1; build lab.exe with: pwsh <checkout>\tools\lab\cli\install.ps1 -From <checkout>'
+    }
+    # An install run through that shim loses its batch file under cmd.exe, which
+    # then says so after the script ends. Said once, here, where the shim goes.
+    Write-Host "Removed the old lab.cmd shim; if you see 'The batch file cannot be found', ignore it. Open a new terminal and use lab.exe."
+}
+
+# Installs one built file: skips it when the destination has the same hash; otherwise keeps
+# the old destination as <name>.<yyyymmdd>.old (<name>.<yyyymmdd-HHmmss>.old when that exists),
+# then copies. Rename, then copy: a rename works on a running cimmeria-lab.exe, an overwrite
+# does not. -DryRun prints the plan and changes nothing. The destination's folder must exist.
+# Used by tools/lab/install.ps1 for every binary, lab.exe included.
+function Install-LabFile([string]$From, [string]$To, [switch]$DryRun) {
+    $stamp = Get-Date -Format 'yyyyMMdd'
+    $built = if (Test-Path -LiteralPath $From) { (Get-Item -LiteralPath $From).LastWriteTime.ToString('yyyy-MM-dd HH:mm') } else { 'not built' }
+    if ((Test-Path -LiteralPath $To) -and (Test-Path -LiteralPath $From) -and
+        (Get-FileHash -LiteralPath $From).Hash -eq (Get-FileHash -LiteralPath $To).Hash) {
+        Write-Host "[lab-install] same:    $To"
+        return
+    }
+    $backup = $null
+    if (Test-Path -LiteralPath $To) {
+        $backup = "$To.$stamp.old"
+        if (Test-Path -LiteralPath $backup) { $backup = "$To.$(Get-Date -Format 'yyyyMMdd-HHmmss').old" }
+    }
+    if (-not $DryRun -and -not (Test-Path -LiteralPath $From)) { throw "Install-LabFile: $From does not exist; $To left as it is" }
+    if ($DryRun) {
+        if ($backup) { Write-Host "[lab-install] would back up: $To -> $(Split-Path $backup -Leaf)" }
+        Write-Host "[lab-install] would copy: $From ($built) -> $To"
+        return
+    }
+    if ($backup) { Move-Item -LiteralPath $To -Destination $backup; Write-Host "[lab-install] backup:  $backup" }
+    Copy-Item -LiteralPath $From -Destination $To
+    Write-Host "[lab-install] install: $To ($built)"
 }

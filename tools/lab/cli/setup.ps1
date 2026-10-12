@@ -1,13 +1,14 @@
 <#
 .SYNOPSIS
-    Refresh the installed lab CLI, write the lab.cmd shim, and add it to the user PATH.
+    Refresh the installed lab CLI scripts and add <LabHome>\bin to the user PATH.
 
 .DESCRIPTION
-    Run it from a Cimmeria checkout, or pass -From. It copies the CLI into
-    <LabHome>\cli (Install-LabCli), writes <LabHome>\bin\lab.cmd, and adds
-    <LabHome>\bin to the user PATH when it is missing, then broadcasts the change
-    so a new terminal sees it. LabHome is %LOCALAPPDATA%\cimmeria-lab, or
-    CIMMERIA_LAB_HOME when set.
+    Run it from a Cimmeria checkout, or pass -From. It copies the PowerShell the
+    lab CLI still runs into <LabHome>\cli (Install-LabCli), deletes an old
+    <LabHome>\bin\lab.cmd shim, and adds <LabHome>\bin to the user PATH when it
+    is missing, then broadcasts the change so a new terminal sees it. lab.exe
+    itself comes from lab install (cli\install.ps1). LabHome is
+    %LOCALAPPDATA%\cimmeria-lab.
 
 .PARAMETER From
     The checkout to install from. Needed when setup runs from the installed copy.
@@ -21,7 +22,7 @@
 .EXAMPLE
     pwsh tools/lab/cli/setup.ps1 -NoPath
 .EXAMPLE
-    lab setup -From C:\src\Cimmeria
+    lab setup --from C:\src\Cimmeria
 #>
 [CmdletBinding()]
 param(
@@ -40,13 +41,9 @@ Install-LabCli $root
 $labHome = Get-InstallLabHome
 $bin = Join-Path $labHome 'bin'
 New-Item -ItemType Directory -Force -Path $bin | Out-Null
-$shim = Join-Path $bin 'lab.cmd'
-# The real path, not %LOCALAPPDATA%, so the shim follows a CIMMERIA_LAB_HOME
-# override. OEM encoding is what cmd.exe reads a .cmd file as.
-Set-Content -LiteralPath $shim -Encoding oem -Value @(
-    '@echo off',
-    "pwsh -NoProfile -File `"$(Join-Path $labHome 'cli\lab.ps1')`" %*")
-Write-Host "shim:  $shim"
+if (-not (Test-LabExeInstalled $labHome)) {
+    Write-Host "lab.exe: not installed yet. Build it with: pwsh $root\tools\lab\cli\install.ps1 -From $root"
+}
 
 $manual = "Add $bin to the user PATH to run 'lab' anywhere."
 if ($NoPath) {
