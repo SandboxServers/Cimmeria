@@ -106,3 +106,42 @@ def attach_github(record, github_doc):
         {key: item.get(key) for key in ("kind", "number", "cites", "days_after_merge")} for item in defects
     ]
     record["escaped_defects"] = escaped
+
+
+def _usd(rules, rule):
+    """The dollars of overstep rule `rule`; a rule that did not fire counts as 0.0."""
+    return (rules.get(rule) or {}).get("usd", 0.0)
+
+
+def attach_overstep(record, overstep_doc):
+    """Add the overstep dollars and recoverable range of campaign `record` from the overstep output (CM-08c)."""
+    entry = (overstep_doc.get("by_campaign") or {}).get(record["campaign"])
+    if entry is None:
+        # The rules apply to the Haiku regime only: an old campaign has no figures, any other has zeros.
+        if record["regime"] == "old":
+            record["overstep"] = {
+                "opus_coding_usd": None,
+                "opus_research_usd": None,
+                "sonnet_implementing_usd": None,
+                "recoverable_usd": {"low": None, "high": None},
+                "items": [],
+                "overstep_gap": "predates the regime switch; the rules apply to the Haiku regime",
+            }
+        else:
+            record["overstep"] = {
+                "opus_coding_usd": 0.0,
+                "opus_research_usd": 0.0,
+                "sonnet_implementing_usd": 0.0,
+                "recoverable_usd": {"low": 0.0, "high": 0.0},
+                "items": [],
+            }
+        return
+
+    rules = entry.get("rules") or {}
+    record["overstep"] = {
+        "opus_coding_usd": _usd(rules, "O1"),
+        "opus_research_usd": _usd(rules, "O2"),
+        "sonnet_implementing_usd": _usd(rules, "O3"),
+        "recoverable_usd": {"low": entry.get("recoverable_low"), "high": entry.get("recoverable_high")},
+        "items": copy.deepcopy(entry.get("items") or []),
+    }
