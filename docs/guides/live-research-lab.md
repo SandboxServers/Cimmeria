@@ -1300,12 +1300,14 @@ match without regard to case.
 | Each instance's account file exists | WARN (`lab instances init`) |
 | Each instance's profile is seeded | WARN |
 | No `SGW.exe` runs that `/status` doesn't list | WARN, naming the pids |
-| `bin\cimmeria-lab.exe` and the daemon's `labd\cimmeria-lab.exe` have the same SHA-256 | WARN (`lab restart`) |
+| `bin\cimmeria-lab.exe` and the daemon's `labd\cimmeria-lab.exe` are the same file, byte for byte | WARN (`lab restart`) |
 | The copy's `VERSION` has the same `tools/lab` as `origin/main`, compared by content (`git diff --quiet <VERSION> origin/main -- tools/lab`); only inside a Cimmeria checkout | WARN (`lab setup`) |
 
 The last check compares content, not ancestry: PRs are squash-merged, so
 the commit of a worktree you installed from never becomes an ancestor of
 `origin/main`, even after it merges. It uses your last fetch.
+
+`lab doctor` is native in `lab.exe` and takes no flags. `tools/lab/cli/doctor.ps1` is gone, so `pwsh tools/lab/lab.ps1 doctor` no longer exists. The task check runs `schtasks /Query /TN CimmeriaLabDaemon`, and the `SGW.exe` check reads the process list directly.
 
 **Where things live**, all under `%LOCALAPPDATA%\cimmeria-lab\`:
 
