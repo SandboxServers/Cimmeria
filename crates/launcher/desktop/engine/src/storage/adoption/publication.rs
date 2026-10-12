@@ -91,8 +91,8 @@ fn copy_and_publish(
     }
     preview.consent(&choices)?;
     inventory::check_cancel(cancel)?;
-    verify_import(&preview.imported)?;
-    if inventory::scan(&preview.imported.source.game_directory, cancel)? != preview.source {
+    source::verify_import(preview.legacy()?)?;
+    if inventory::scan(&preview.legacy()?.source.game_directory, cancel)? != preview.scanned {
         return Err(Error::SourceChanged);
     }
     // Admission: the journal's Running Adopt operation, not this guard, excludes
@@ -135,7 +135,7 @@ fn copy_and_publish(
         preferences_revision: preview.before.revision,
         destination: destination.clone(),
         manifest_digest: preview.release.digest(),
-        login_servers: servers(&preview.imported),
+        login_servers: source::servers(preview.legacy()?),
         backend: preview.preparation.record.descriptor.backend.clone(),
     };
     let mut owner = OpenOptions::new()
@@ -150,10 +150,12 @@ fn copy_and_publish(
     std::fs::create_dir(&stage)?;
     let provenance = Provenance {
         work_id: id,
-        legacy_install_id: preview.imported.identity.install_id,
-        import_digest: preview.imported.confirmation.clone(),
+        legacy_install_id: Some(preview.legacy()?.identity.install_id),
+        import_digest: Some(preview.legacy()?.confirmation.clone()),
         reference_digest: inventory::content_digest(&preview.reference.index)?,
         setup_policy_version: 1,
+        folder_scan_digest: None,
+        file_index_sha256: None,
     };
     let mut after = preview.before.clone();
     after.revision = after.revision.checked_add(1).ok_or(StorageError::Corrupt)?;
@@ -162,14 +164,16 @@ fn copy_and_publish(
         schema_version: 1,
         installation,
         provenance: provenance.clone(),
-        imported: preview.imported.clone(),
+        imported: Some(preview.legacy()?.clone()),
+        folder: None,
         before: preview.before.clone(),
         after,
         report: preview.report.clone(),
         choices,
-        source_digest: digest(&preview.source)?,
+        source_digest: digest(&preview.scanned)?,
         stage_identity: inventory::identity(&stage)?,
         destination_identity: inventory::identity(&destination)?,
+        replacements: Vec::new(),
     };
     state.save_release_evidence(owner_id, &preview.release)?;
     atomic::write(
@@ -209,9 +213,9 @@ fn copy_and_publish(
             });
             if let Some(source_path) = reusable.and_then(|d| d.source_path.as_ref()) {
                 inventory::copy(
-                    &preview.imported.source.game_directory.join(source_path),
+                    &preview.legacy()?.source.game_directory.join(source_path),
                     &stage.join(path),
-                    &preview.source[source_path],
+                    &preview.scanned[source_path],
                     cancel,
                 )?;
             } else {
@@ -235,10 +239,10 @@ fn copy_and_publish(
         {
             return Err(Error::InvalidArtifact);
         }
-        if inventory::scan(&preview.imported.source.game_directory, cancel)? != preview.source {
+        if inventory::scan(&preview.legacy()?.source.game_directory, cancel)? != preview.scanned {
             return Err(Error::SourceChanged);
         }
-        verify_import(&preview.imported)?;
+        source::verify_import(preview.legacy()?)?;
         sync_tree(&stage)?;
         // Publication is serialized with preference edits again. The operation
         // must still be the one admitted above before any checkpoint is written.
@@ -570,8 +574,11 @@ fn published_record(
     if record.plan.schema_version != 1 || provenance.setup_policy_version != 1 {
         return Err(StorageError::UnsupportedSchema.into());
     }
-    if record.plan.imported.confirmation != provenance.import_digest
-        || record.plan.imported.identity.install_id != provenance.legacy_install_id
+    let Some(legacy) = record.plan.imported.as_ref() else {
+        return Err(StorageError::Corrupt.into());
+    };
+    if provenance.import_digest.as_ref() != Some(&legacy.confirmation)
+        || provenance.legacy_install_id != Some(legacy.identity.install_id)
     {
         return Err(StorageError::Corrupt.into());
     }

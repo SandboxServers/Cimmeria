@@ -114,7 +114,9 @@ impl Fixture {
     pub(super) fn request(&self) -> PreviewRequest {
         let state = self.state.lock().unwrap();
         PreviewRequest {
-            import_digest: state.legacy_import().unwrap().unwrap().confirmation,
+            source: SourceRequest::Legacy {
+                import_digest: state.legacy_import().unwrap().unwrap().confirmation,
+            },
             destination: self.folder().to_path_buf(),
             operation_revision: state.operations().snapshot().revision,
             preferences_revision: state.preferences().revision,
@@ -170,6 +172,7 @@ fn choices() -> Choices {
         normalize_managed_files: true,
         accept_unavailable_game_telemetry: true,
         old_game_closed: true,
+        replace_modified_files: false,
     }
 }
 pub(super) fn commit(preview: Preview) -> Result<Provenance, Error> {

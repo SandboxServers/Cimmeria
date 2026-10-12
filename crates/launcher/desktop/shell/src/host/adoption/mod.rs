@@ -176,7 +176,9 @@ impl NativeHost {
                     .ok_or(AdoptionError::ImportRequired)?;
                 adoption::PreviewRequest {
                     destination: destination(&imported),
-                    import_digest: imported.confirmation,
+                    source: adoption::SourceRequest::Legacy {
+                        import_digest: imported.confirmation,
+                    },
                     operation_revision: state.operations().snapshot().revision,
                     preferences_revision: state.preferences().revision,
                     release,
@@ -279,6 +281,7 @@ impl NativeHost {
                         normalize_managed_files,
                         accept_unavailable_game_telemetry,
                         old_game_closed,
+                        replace_modified_files: false,
                     },
                 )?;
             }

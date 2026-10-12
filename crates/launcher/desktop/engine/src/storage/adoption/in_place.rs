@@ -38,9 +38,9 @@ pub(super) fn publish(
         .consent(&choices)
         .map_err(|error| refused(error, "confirmation"))?;
     inventory::check_cancel(cancel)?;
-    verify_import(&preview.imported)?;
+    source::verify_import(preview.legacy()?)?;
     let root = preview.report.destination.clone();
-    if inventory::scan(&root, cancel)? != preview.source {
+    if inventory::scan(&root, cancel)? != preview.scanned {
         return Err(refused(
             Error::SourceChanged,
             "the folder changed after review",
@@ -159,7 +159,7 @@ fn admit(
         preferences_revision: preview.before.revision,
         destination: root.to_path_buf(),
         manifest_digest: preview.release.digest(),
-        login_servers: servers(&preview.imported),
+        login_servers: source::servers(preview.legacy()?),
         backend: preview.preparation.record.descriptor.backend.clone(),
     };
     let mut owner = OpenOptions::new()
@@ -172,10 +172,12 @@ fn admit(
     owner.sync_all()?;
     let provenance = Provenance {
         work_id: id,
-        legacy_install_id: preview.imported.identity.install_id,
-        import_digest: preview.imported.confirmation.clone(),
+        legacy_install_id: Some(preview.legacy()?.identity.install_id),
+        import_digest: Some(preview.legacy()?.confirmation.clone()),
         reference_digest: inventory::content_digest(&preview.reference.index)?,
         setup_policy_version: 1,
+        folder_scan_digest: None,
+        file_index_sha256: None,
     };
     let mut after = preview.before.clone();
     after.revision = after.revision.checked_add(1).ok_or(StorageError::Corrupt)?;
@@ -184,14 +186,16 @@ fn admit(
         schema_version: 1,
         installation,
         provenance: provenance.clone(),
-        imported: preview.imported.clone(),
+        imported: Some(preview.legacy()?.clone()),
+        folder: None,
         before: preview.before.clone(),
         after,
         report: preview.report.clone(),
         choices,
-        source_digest: digest(&preview.source)?,
+        source_digest: digest(&preview.scanned)?,
         stage_identity: inventory::identity(game)?,
         destination_identity: inventory::identity(root)?,
+        replacements: Vec::new(),
     };
     state.save_release_evidence(owner_id, &preview.release)?;
     atomic::write(
@@ -204,7 +208,7 @@ fn admit(
     let reviewed: Reviewed = release_files(&preview.report)
         .into_iter()
         .map(|path| {
-            let entry = preview.source.get(path).ok_or(StorageError::Corrupt)?;
+            let entry = preview.scanned.get(path).ok_or(StorageError::Corrupt)?;
             Ok((
                 path.to_string(),
                 Hashed {

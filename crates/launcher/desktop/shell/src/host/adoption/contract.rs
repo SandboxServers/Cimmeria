@@ -108,6 +108,14 @@ pub enum AdoptionError {
     DuplicateReleaseFile,
     /// In place: launcher-owned entries with content are already in the folder.
     LeftoverLauncherFiles,
+    /// The folder cannot be written, so the adoption cannot change it.
+    FolderNotWritable,
+    /// The selected folder is neither a client root nor its `Working` folder.
+    NotAGameFolder,
+    /// The backup folder for replaced files already exists.
+    BackupConflict,
+    /// This adoption mode is not available in this build.
+    UnsupportedMode,
 }
 impl From<StorageError> for AdoptionError {
     fn from(error: StorageError) -> Self {
@@ -164,6 +172,10 @@ impl From<adoption::Error> for AdoptionError {
             adoption::Error::GameRunning => Self::GameRunning,
             adoption::Error::DuplicateReleaseFile => Self::DuplicateReleaseFile,
             adoption::Error::LeftoverLauncherFiles => Self::LeftoverLauncherFiles,
+            adoption::Error::FolderNotWritable => Self::FolderNotWritable,
+            adoption::Error::NotAGameFolder => Self::NotAGameFolder,
+            adoption::Error::BackupConflict => Self::BackupConflict,
+            adoption::Error::UnsupportedMode => Self::UnsupportedMode,
         }
     }
 }

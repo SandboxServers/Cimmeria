@@ -37,11 +37,12 @@ pub(super) fn launch_binding(
             _ => StorageError::Corrupt,
         })?
         .ok_or(StorageError::Corrupt)?;
-    if imported != plan.imported
-        || imported.confirmation != provenance.import_digest
-        || imported.identity.install_id != provenance.legacy_install_id
-        || plan.report.requested_config != imported.config
-        || plan.report.imported_identity != imported.identity
+    // A folder adoption has no saved import to bind, so its plan never matches here.
+    if plan.imported.as_ref() != Some(&imported)
+        || provenance.import_digest.as_ref() != Some(&imported.confirmation)
+        || provenance.legacy_install_id != Some(imported.identity.install_id)
+        || plan.report.requested_config.as_ref() != Some(&imported.config)
+        || plan.report.imported_identity.as_ref() != Some(&imported.identity)
     {
         return Err(StorageError::Corrupt);
     }

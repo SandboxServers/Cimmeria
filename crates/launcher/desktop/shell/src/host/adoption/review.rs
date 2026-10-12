@@ -57,8 +57,13 @@ impl Review {
         preview: &Preview,
         operation_revision: u64,
         preferences_revision: u64,
-    ) -> Self {
+    ) -> Result<Self, AdoptionError> {
         let report = preview.report();
+        // Only a legacy preview is reviewed here, and it always has a requested config.
+        let requested = report
+            .requested_config
+            .as_ref()
+            .ok_or(AdoptionError::CorruptState)?;
         let mut counts = Counts::default();
         let mut differences = Vec::new();
         let mut differences_omitted = 0;
@@ -69,7 +74,8 @@ impl Review {
                     continue;
                 }
                 Classification::KnownTransform => counts.known_transform += 1,
-                Classification::Modified => counts.modified += 1,
+                // No review row of its own yet; a file that needs patching is a changed file.
+                Classification::Modified | Classification::NeedsPatching => counts.modified += 1,
                 Classification::Missing => counts.missing += 1,
                 Classification::Extra => counts.extra += 1,
             }
@@ -80,7 +86,7 @@ impl Review {
             }
         }
         let manifest = preview.signed_release().manifest();
-        Self {
+        Ok(Self {
             preview_handle: report.preview_handle,
             operation_revision,
             preferences_revision,
@@ -98,8 +104,7 @@ impl Review {
             counts,
             differences,
             differences_omitted,
-            login_servers: report
-                .requested_config
+            login_servers: requested
                 .login_servers
                 .iter()
                 .map(|server| LoginServer {
@@ -107,8 +112,8 @@ impl Review {
                     url: server.url.clone(),
                 })
                 .collect(),
-            client_patches_enabled: report.requested_config.client_patches.enabled,
-            game_telemetry_opted_in: report.requested_config.telemetry.opted_in,
+            client_patches_enabled: requested.client_patches.enabled,
+            game_telemetry_opted_in: requested.telemetry.opted_in,
             game_telemetry_available: report.game_telemetry_available,
             requires_normalization: preview.requires_normalization(),
             requires_telemetry_acceptance: preview.requires_telemetry_acceptance(),
@@ -119,6 +124,6 @@ impl Review {
                 .take(LISTED)
                 .map(|file| file.path.clone())
                 .collect(),
-        }
+        })
     }
 }

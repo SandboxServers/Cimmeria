@@ -54,14 +54,8 @@ pub(super) fn preview(
         if owner.installed_content()?.is_some() {
             return Err(ContractError::IdentityConflict.into());
         }
-        let imported = owner
-            .legacy_import()
-            .map_err(|_| StorageError::Corrupt)?
-            .ok_or(StorageError::Corrupt)?;
-        if imported.confirmation != request.import_digest {
-            return Err(Error::SourceChanged);
-        }
-        if let Some(blocker) = import_blocker(&imported) {
+        let imported = source::saved_import(&owner, &request.source)?;
+        if let Some(blocker) = source::import_blocker(&imported) {
             return Err(refused(blocker, "imported configuration"));
         }
         let folder = &imported.source.game_directory;
@@ -88,14 +82,8 @@ pub(super) fn preview(
         (imported, owner.preferences.clone())
     };
     let folder = imported.source.game_directory.clone();
-    for path in [&folder, &imported.source.launcher_directory] {
-        if path.canonicalize()? != *path {
-            return Err(refused(
-                StorageError::UnsafeFile.into(),
-                "a folder is not canonical",
-            ));
-        }
-    }
+    source::canonical_paths(&imported)
+        .map_err(|error| refused(error, "a folder is not canonical"))?;
     clear_unbegun_admission(&*state.lock().map_err(|_| StorageError::Io)?, &folder)?;
     if !full_layout(&folder) {
         tracing::warn!(target: "adoption", folder = %folder.display(), binaries = %crate::install_layout::binaries_dir(&folder).display(), "in-place adoption refused: the folder is not in the installer's Working\\Binaries layout");
@@ -106,24 +94,24 @@ pub(super) fn preview(
         tracing::warn!(target: "adoption", ?missing, "in-place adoption refused: the old launcher has not applied the signed release");
         return Err(Error::OutdatedInstall);
     }
-    let legacy_lock = lock_source(&imported)?;
-    verify_import(&imported)?;
-    let source = inventory::scan(&folder, &cancel)?;
-    let servers = servers(&imported);
+    let (adopted, legacy_lock) = source::resolve(imported)?;
+    let imported = source::legacy(&adopted)?;
+    let scanned = inventory::scan(&folder, &cancel)?;
+    let servers = source::servers(imported);
     let mut preparation = preparation::Ownership::claim(
         state.clone(),
         &request,
         ExtractionBackend::Native,
         servers.clone(),
     )?;
-    let prepared = reference_and_comparison(
+    let prepared = verification::reference_and_comparison(
         &state,
         &request,
         Backend::Native,
         transport,
         &mut preparation,
-        &imported,
-        &source,
+        source::borrowed(&adopted),
+        &scanned,
         &servers,
         &cancel,
         progress,
@@ -140,11 +128,13 @@ pub(super) fn preview(
         source: folder.clone(),
         destination: folder,
         release_digest: request.release.digest(),
-        imported_identity: imported.identity.clone(),
-        requested_config: imported.config.clone(),
+        imported_identity: Some(imported.identity.clone()),
+        requested_config: Some(imported.config.clone()),
         files,
         user_data_remains_in_source: true,
         game_telemetry_available: false,
+        download: None,
+        backup: None,
     };
     for file in report.blocking() {
         tracing::warn!(target: "adoption", path = %file.path, classification = ?file.classification, "in-place adoption: release file does not verify");
@@ -152,11 +142,11 @@ pub(super) fn preview(
     Ok(Preview {
         state,
         report,
-        imported,
+        source: adopted,
         before,
         preparation,
         release: request.release,
-        source,
+        scanned,
         reference,
         _legacy_lock: legacy_lock,
     })
