@@ -10,7 +10,7 @@ use support::StubServer;
 use uat_preflight_support::{one_free, ready, run, run_with, status_body, with_chaos, FANCY};
 // ---- --plan-only output ----
 
-// test-uat.ps1 / uat.ps1: "plan: N row(s) ready on <instances>: <rows>"
+// the removed PowerShell test file / the removed PowerShell uat command: "plan: N row(s) ready on <instances>: <rows>"
 #[test]
 fn plan_only_plain_prints_one_line_and_exits_0() {
     let body = status_body(&[("default", false, None), ("p2", false, None)]);

@@ -1,5 +1,5 @@
 //! The text frame and the JSON line. Ports the render checks of
-//! the retired tools/lab/cli/test-watch.ps1 (each check is named in a comment).
+//! the removed PowerShell test file (each check is named in a comment).
 
 mod watch_support;
 

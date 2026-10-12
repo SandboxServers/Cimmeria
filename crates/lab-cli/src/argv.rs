@@ -1,5 +1,5 @@
 //! PowerShell-style flag rewriting (D-LX4). `-Rows` becomes `--rows`, so a
-//! flag reads the same whether it is typed to `lab.ps1` or to `lab.exe`.
+//! flag reads the same whether it is typed in PowerShell form or as `--flag`.
 
 use std::ffi::OsString;
 

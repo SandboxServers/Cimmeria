@@ -1,6 +1,6 @@
 //! LX-17a: the `--json` summary object, byte for byte, and its size budgets.
-//! Ports the compact-JSON checks of tools/lab/cli/test-uat.ps1 and the JSON
-//! checks of test-uat-chaos.ps1.
+//! Ports the compact-JSON checks of the removed PowerShell test file and the JSON
+//! checks of the removed PowerShell test file.
 
 mod uat_support;
 
@@ -64,7 +64,7 @@ fn clean(rows: Vec<(String, RowStat)>, runs: u32, lane_passed: &[(&str, u32, u32
     }
 }
 
-/// test-uat.ps1 `$s`: 4 runs on two lanes, p2 braked; the biggest group is
+/// the removed PowerShell test file `$s`: 4 runs on two lanes, p2 braked; the biggest group is
 /// stored last so the sort is what puts it first.
 fn mixed() -> Summary {
     Summary {
@@ -100,7 +100,7 @@ fn five_golden_summary(groups: Vec<GoldenGroup>, matched: u32, diverged: u32) ->
     s
 }
 
-/// test-uat.ps1 [86-87] 'rows read as pass/total'
+/// the removed PowerShell test file [86-87] 'rows read as pass/total'
 #[test]
 fn rows_read_as_pass_over_total() {
     let j = parse(&compact_json_with(&mixed(), BATCH_SHORT, 1, MAX_HEAL));

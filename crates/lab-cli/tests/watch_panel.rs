@@ -1,6 +1,6 @@
 //! The batch panel: state, counts, the last failure, braked lanes and lane
 //! deaths. Ports the 'finding and reading a batch', 'the panel', 'a braked
-//! lane' and 'a lane death' checks of the retired tools/lab/cli/test-watch.ps1.
+//! lane' and 'a lane death' checks of the removed PowerShell test file.
 
 mod watch_support;
 

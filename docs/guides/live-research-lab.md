@@ -11,7 +11,6 @@ companion_docs:
   - ../commands.md
   - ../analysis/ability-mechanics/lab-uat-and-telemetry.md
   - ../../tools/lab/install.ps1
-  - ../../tools/lab/lab.ps1
   - ../analysis/lab-cli/README.md
   - ../architecture/observability.md
   - re-toolchain-setup.md
@@ -1094,15 +1093,8 @@ pwsh tools/lab/cli/setup.ps1
 
 It does three things:
 
-1. Copies the CLI into `%LOCALAPPDATA%\cimmeria-lab\cli\`: `lab.ps1`, the
-   commands in `cli\*.ps1`, and `daemon.ps1`, `instances.ps1` and
-   `labd-lib.ps1` beside `lab.ps1`. Tests are not copied, and a command
-   file the checkout no longer has is removed. `cli\cli\VERSION`, the
-   checkout's short commit, is written last, so a copy that failed part way
-   has no `VERSION`.
-2. Writes the shim `%LOCALAPPDATA%\cimmeria-lab\bin\lab.cmd`, which runs
-   `pwsh -NoProfile -File <that copy>\lab.ps1` with your arguments. The
-   shim holds the real path.
+1. Copies the PowerShell the CLI still runs into `%LOCALAPPDATA%\cimmeria-lab\cli\`: the scripts in `cli\*.ps1` (`install`, `setup`, `local-setup` and their libraries), and `daemon.ps1`, `instances.ps1` and `labd-lib.ps1` beside them. Tests are not copied, and a script the checkout no longer has is removed. `cli\cli\VERSION`, the checkout's short commit, is written last, so a copy that failed part way has no `VERSION`.
+2. Deletes `%LOCALAPPDATA%\cimmeria-lab\bin\lab.cmd` when an older setup left it: it ran the `lab.ps1` dispatcher, which no longer exists. `bin\lab.exe` is the command now; `lab install --from <checkout>` builds and installs it.
 3. Asks `Add ...\cimmeria-lab\bin to your user PATH? [y/N]` when the
    folder isn't on it yet. `-Yes` adds it without asking, and `-NoPath`
    leaves the `PATH` alone. The edit goes through `HKCU\Environment`
@@ -1310,26 +1302,18 @@ The last check compares content, not ancestry: PRs are squash-merged, so
 the commit of a worktree you installed from never becomes an ancestor of
 `origin/main`, even after it merges. It uses your last fetch.
 
-`lab doctor` is native in `lab.exe` and takes no flags. `tools/lab/cli/doctor.ps1` is gone, so `pwsh tools/lab/lab.ps1 doctor` no longer exists. The task check runs `schtasks /Query /TN CimmeriaLabDaemon`, and the `SGW.exe` check reads the process list directly.
+`lab doctor` is native in `lab.exe` and takes no flags. The task check runs `schtasks /Query /TN CimmeriaLabDaemon`, and the `SGW.exe` check reads the process list directly.
 
 **Where things live**, all under `%LOCALAPPDATA%\cimmeria-lab\`:
 
 | Path | What it is |
 |---|---|
-| `bin\lab.cmd` | the shim on your `PATH` |
-| `cli\lab.ps1`, `cli\cli\*.ps1` | the installed dispatcher and commands |
-| `cli\daemon.ps1`, `cli\instances.ps1`, `cli\labd-lib.ps1` | the scripts the commands run |
+| `bin\lab.exe` | the command on your `PATH` |
+| `cli\cli\*.ps1` | the PowerShell behind `lab install`, `lab setup` and `lab local-setup` |
+| `cli\daemon.ps1`, `cli\instances.ps1`, `cli\labd-lib.ps1` | the scripts `lab start`, `stop`, `restart` and `instances` run |
 | `cli\cli\VERSION` | the commit the copy came from |
 
-The dispatcher is [`tools/lab/lab.ps1`](../../tools/lab/lab.ps1). A command
-is a file `tools/lab/cli/<name>.ps1`, so adding one never edits the
-dispatcher; `common.ps1`, `test-*.ps1` and `*-lib.ps1` are not commands.
-Named flags reach the command as flags, and a command that ends without
-`exit` reads as success. The tests are `tools/lab/cli/test-*.ps1`, run with
-`pwsh -NoProfile -File`. `CIMMERIA_LAB_HOME` points the CLI at another lab
-home for those tests only: `daemon.ps1` ignores it, so with it set,
-`lab status` would read a different `labd.pid` than the one `lab restart`
-acts on.
+Every command is a subcommand of `lab.exe` ([`crates/lab-cli`](../../crates/lab-cli/)); `lab start`, `stop`, `restart`, `instances`, `install`, `setup` and `local-setup` run the scripts above with your flags in PowerShell form (`--force` becomes `-Force`) and return the script's exit code. The script tests are `tools/lab/cli/test-*.ps1`, run with `pwsh -NoProfile -File`. `CIMMERIA_LAB_HOME` points `lab.exe` at another lab home for tests only: `daemon.ps1` ignores it, so with it set, `lab status` would read a different `labd.pid` than the one `lab restart` acts on.
 
 ## The shared daemon (`cimmeria-lab --http`)
 

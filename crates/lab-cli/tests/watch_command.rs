@@ -1,5 +1,5 @@
 //! `lab watch` as a process: exit codes, one snapshot, usage errors. Ports the
-//! 'command' checks of the retired tools/lab/cli/test-watch.ps1 (each is named in a comment).
+//! 'command' checks of the removed PowerShell test file (each is named in a comment).
 
 mod support;
 mod watch_support;
@@ -426,7 +426,7 @@ fn without_batch_the_newest_batch_under_the_uat_root_is_shown() {
     assert_eq!(v["batch"], NEW_BATCH);
 }
 
-// 'watch.ps1 calls no /mcp tool and takes no lease' (the command is read-only)
+// 'the removed PowerShell watch command calls no /mcp tool and takes no lease' (the command is read-only)
 #[test]
 fn the_command_calls_no_mcp_tool_and_takes_no_lease() {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR"))

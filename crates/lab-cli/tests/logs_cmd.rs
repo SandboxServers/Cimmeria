@@ -161,7 +161,7 @@ fn binary_prints_the_last_p2_line_masked() {
     );
 }
 
-// New: the retired logs.ps1 exits 1 with 'no daemon log yet: <path>' on stderr.
+// New: the removed PowerShell logs command exits 1 with 'no daemon log yet: <path>' on stderr.
 #[test]
 fn binary_without_a_log_exits_1_and_names_the_path() {
     let home = lab_home_for("127.0.0.1:9");

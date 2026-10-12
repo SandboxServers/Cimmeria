@@ -1,5 +1,5 @@
 //! LX-17b: heal hints and the heal pass (stubbed calibrate call, real batch
-//! files). Ports the heal checks of test-uat.ps1 that LX-12 did not (hints,
+//! files). Ports the heal checks of the removed PowerShell test file that LX-12 did not (hints,
 //! the pass, Ctrl+C mid-heal, the 240-character budget is in uat_json.rs).
 
 mod uat_support;
@@ -63,7 +63,7 @@ fn pairs(runs: &[RunRecord]) -> Vec<(String, String)> {
         .collect()
 }
 
-/// test-uat.ps1 [372] 'heal hints: two runs' identical hint once, rows without
+/// the removed PowerShell test file [372] 'heal hints: two runs' identical hint once, rows without
 /// one and PASS rows ignored'
 #[test]
 fn heal_hints_list_each_pair_once_in_first_seen_order() {

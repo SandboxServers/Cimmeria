@@ -18,7 +18,7 @@ fn names(lanes: &[PlanLane]) -> Vec<&str> {
     lanes.iter().map(|l| l.instance.as_str()).collect()
 }
 
-// ---- lane planning (test-uat.ps1, "planning") ----
+// ---- lane planning (the removed PowerShell test file, "planning") ----
 
 // 'one lease runs on the first instance'
 #[test]
@@ -153,7 +153,7 @@ fn a_leased_instance_is_refused() {
     );
 }
 
-// ---- the request body (test-uat-chaos.ps1: 'two -Chaos values both reach
+// ---- the request body (the removed PowerShell test file: 'two -Chaos values both reach
 // the request body', '-Chaos implies -Fingerprint', 'a quoted multi-knob
 // spec reaches the body as one element', 'without -Chaos the body has no
 // chaos or fingerprint key') ----
@@ -211,7 +211,7 @@ fn ready_row(id: &str) -> Value {
     json!({"row": id, "result": "SKIPPED", "reasons": []})
 }
 
-// test-uat-chaos.ps1: "the runner's headers join with '; '"
+// the removed PowerShell test file: "the runner's headers join with '; '"
 #[test]
 fn the_runners_headers_join_with_a_semicolon() {
     let reply = json!({"chaos": ["chaos=cpu seed=5", "chaos=flush:pack seed=5"]});
@@ -221,14 +221,14 @@ fn the_runners_headers_join_with_a_semicolon() {
     );
 }
 
-// test-uat-chaos.ps1: 'a result without chaos gives no header'
+// the removed PowerShell test file: 'a result without chaos gives no header'
 #[test]
 fn a_result_without_chaos_gives_no_header() {
     assert_eq!(run_chaos(&json!({"rows": []})), None);
     assert_eq!(run_chaos(&json!({"chaos": []})), None);
 }
 
-// uat.ps1: the plan is ready when every row is SKIPPED
+// the removed PowerShell uat command: the plan is ready when every row is SKIPPED
 #[test]
 fn a_ready_plan_lists_its_rows_and_the_runners_header() {
     let reply = json!({"rows": [ready_row("FS-01"), ready_row("FS-02")], "chaos": ["chaos=cpu:safe seed=<per run>"]});
@@ -240,7 +240,7 @@ fn a_ready_plan_lists_its_rows_and_the_runners_header() {
     );
 }
 
-// uat.ps1: "no rows matched in section $Section"
+// the removed PowerShell uat command: "no rows matched in section $Section"
 #[test]
 fn no_rows_is_exit_2() {
     for reply in [json!({"rows": []}), json!({})] {
@@ -252,7 +252,7 @@ fn no_rows_is_exit_2() {
     }
 }
 
-// uat.ps1: 'section X has no row(s) ... (row ids are exact and case sensitive)'
+// the removed PowerShell uat command: 'section X has no row(s) ... (row ids are exact and case sensitive)'
 #[test]
 fn a_requested_row_the_section_lacks_is_exit_2_and_exact() {
     let reply = json!({"rows": [ready_row("FS-01")]});
@@ -271,7 +271,7 @@ fn a_requested_row_the_section_lacks_is_exit_2_and_exact() {
     );
 }
 
-// uat.ps1: 'not ready: <row> <result>: <first reason>', joined with '; '
+// the removed PowerShell uat command: 'not ready: <row> <result>: <first reason>', joined with '; '
 #[test]
 fn a_row_that_cannot_run_is_exit_3_with_its_first_reason() {
     let reply = json!({"rows": [
@@ -289,7 +289,7 @@ fn a_row_that_cannot_run_is_exit_3_with_its_first_reason() {
     );
 }
 
-// ---- plan.json (test-uat.ps1, Write-UatPlan / Read-UatPlan) ----
+// ---- plan.json (the removed PowerShell test file, Write-UatPlan / Read-UatPlan) ----
 
 fn lanes2() -> Vec<PlanLane> {
     vec![
@@ -369,7 +369,7 @@ fn a_plan_that_is_not_json_reads_as_nothing() {
     assert_eq!(read_plan(&path), None);
 }
 
-// uat.ps1: "cannot write the batch folder ..." is exit 3
+// the removed PowerShell uat command: "cannot write the batch folder ..." is exit 3
 #[test]
 fn an_unwritable_batch_folder_is_exit_3() {
     let root = tempfile::tempdir().unwrap();

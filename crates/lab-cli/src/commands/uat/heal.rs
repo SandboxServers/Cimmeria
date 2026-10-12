@@ -144,7 +144,7 @@ pub fn heal_pass(
     markdown
 }
 
-/// `--heal` after a native batch (the `-Heal` block of `uat.ps1`): recalibrates
+/// `--heal` after a native batch (the `-Heal` block of the removed PowerShell uat command): recalibrates
 /// each hint on the batch's one instance (`--heal` needs `--leases 1`) and, when
 /// a proposal was written, replaces `outcome.md` with the new Markdown and
 /// `outcome.exit` with the recomputed code (8). The caller skips it after Ctrl+C.

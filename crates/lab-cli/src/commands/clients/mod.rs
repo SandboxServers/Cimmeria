@@ -1,5 +1,5 @@
 //! `lab clients`: close the game client of one lab instance, or of all of them.
-//! LX-09 ported the retired `tools/lab/cli/clients.ps1`: [`targets`] decides who is
+//! LX-09 ported the removed PowerShell clients command: [`targets`] decides who is
 //! stopped or refused, [`win`] stops one pid, and [`execute`] ties them
 //! together (the daemon status and the stopper are injected, so the tests need
 //! neither a daemon nor a game client).
@@ -180,7 +180,7 @@ pub fn execute(
 mod tests {
     use crate::commands::{parse_ok, Command};
 
-    /// The `.EXAMPLE` lines of the retired clients.ps1 parse, with the right values.
+    /// The `.EXAMPLE` lines of the removed PowerShell clients command parse, with the right values.
     #[test]
     fn examples_parse() {
         let Command::Clients(a) = parse_ok("clients", &["stop", "p2"]) else {

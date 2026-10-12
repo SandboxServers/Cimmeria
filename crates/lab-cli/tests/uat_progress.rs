@@ -19,37 +19,37 @@ fn fancy_ui() -> Ui {
 
 #[test]
 fn progress_goes_to_the_console_by_default() {
-    // test-uat.ps1: 'progress goes to the console by default'
+    // the removed PowerShell test file: 'progress goes to the console by default'
     assert_eq!(progress_mode(false, false, false), ProgressMode::Host);
 }
 
 #[test]
 fn json_alone_silences_progress() {
-    // test-uat.ps1: '-Json alone silences progress'
+    // the removed PowerShell test file: '-Json alone silences progress'
     assert_eq!(progress_mode(true, false, false), ProgressMode::None);
 }
 
 #[test]
 fn quiet_silences_progress() {
-    // test-uat.ps1: '-Quiet silences progress'
+    // the removed PowerShell test file: '-Quiet silences progress'
     assert_eq!(progress_mode(false, true, false), ProgressMode::None);
 }
 
 #[test]
 fn progress_to_stderr_keeps_progress_under_json() {
-    // test-uat.ps1: '-ProgressToStderr keeps progress under -Json, on stderr'
+    // the removed PowerShell test file: '-ProgressToStderr keeps progress under -Json, on stderr'
     assert_eq!(progress_mode(true, false, true), ProgressMode::Stderr);
 }
 
 #[test]
 fn progress_to_stderr_wins_over_quiet() {
-    // test-uat.ps1: '-ProgressToStderr wins over -Quiet'
+    // the removed PowerShell test file: '-ProgressToStderr wins over -Quiet'
     assert_eq!(progress_mode(true, true, true), ProgressMode::Stderr);
 }
 
 #[test]
 fn stderr_mode_writes_the_line_to_stderr_and_nothing_to_stdout() {
-    // test-uat.ps1: 'stderr mode writes the line to stderr, nothing to stdout'
+    // the removed PowerShell test file: 'stderr mode writes the line to stderr, nothing to stdout'
     let (mut out, mut err) = (Vec::new(), Vec::new());
     write_line(
         ProgressMode::Stderr,
@@ -66,7 +66,7 @@ fn stderr_mode_writes_the_line_to_stderr_and_nothing_to_stdout() {
 
 #[test]
 fn host_mode_writes_to_stdout_and_none_mode_writes_nothing() {
-    // test-uat.ps1: 'none mode writes nothing'
+    // the removed PowerShell test file: 'none mode writes nothing'
     let (mut out, mut err) = (Vec::new(), Vec::new());
     write_line(ProgressMode::Host, "hello", &mut out, &mut err);
     assert_eq!(String::from_utf8(out).unwrap(), "hello\n");

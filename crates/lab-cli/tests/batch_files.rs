@@ -1,5 +1,5 @@
 //! plan.json, batch.jsonl and batch folders. Ports the 'finding and reading a
-//! batch' checks of the retired tools/lab/cli/test-watch.ps1 (each check is named in a
+//! batch' checks of the removed PowerShell test file (each check is named in a
 //! comment) and pins the file formats LX-15 to LX-17 write.
 
 mod watch_support;
@@ -50,7 +50,7 @@ fn a_half_written_last_line_is_skipped() {
     assert_eq!(records.len(), 3);
 }
 
-// New: the fields of a real record, as uat.ps1 wrote them.
+// New: the fields of a real record, as the removed PowerShell uat command wrote them.
 #[test]
 fn record_fields_are_read_as_written() {
     let records = read_records(&fixture_dir().join(NEW_BATCH).join("batch.jsonl")).unwrap();
@@ -90,7 +90,7 @@ fn an_old_record_without_started_and_ended_reads() {
     assert_eq!(records[1].instance, "p2");
 }
 
-// New: plan.json as uat.ps1 wrote it.
+// New: plan.json as the removed PowerShell uat command wrote it.
 #[test]
 fn plan_json_fields_are_read_as_written() {
     let plan = read_plan(&fixture_dir().join(NEW_BATCH).join("plan.json")).unwrap();
@@ -138,7 +138,7 @@ fn a_missing_batch_jsonl_is_no_records_and_an_unreadable_one_is_an_error() {
     assert!(read_records(&tmp.path().join("batch.jsonl")).is_err());
 }
 
-// New: the key order of a record line is the order uat.ps1's hashtable wrote.
+// New: the key order of a record line is the order the removed PowerShell uat command's hashtable wrote.
 #[test]
 fn a_run_record_serializes_in_the_order_powershell_wrote_it() {
     let mut r = RunRecord {

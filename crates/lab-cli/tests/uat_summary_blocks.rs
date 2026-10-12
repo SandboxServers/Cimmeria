@@ -1,6 +1,6 @@
 //! LX-17b: the golden, chaos and heal blocks of summary.md (format_markdown).
-//! Ports test-uat.ps1 [323-325, 193-194, 320-322, 432-433, 552-555, 561-562]
-//! and test-uat-chaos.ps1 [41-52, 218-219].
+//! Ports the removed PowerShell test file [323-325, 193-194, 320-322, 432-433, 552-555, 561-562]
+//! and the removed PowerShell test file [41-52, 218-219].
 
 mod uat_support;
 

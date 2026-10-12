@@ -589,7 +589,7 @@ function Install-CimmeriaReToolchain {
             Write-Status ".mcp.json: generated from .mcp.json.example" "Green"
             Write-Status "  cimmeria-lab is the shared lab daemon (tools/lab/daemon.ps1 install);" "DarkGray"
             Write-Status "  lab-server reads CIMMERIA_LAB_MCP_URL / CIMMERIA_LAB_MCP_TOKEN" "DarkGray"
-            Write-Status "  (pwsh tools/lab/lab.ps1 local-setup sets them)." "DarkGray"
+            Write-Status "  (pwsh tools/lab/cli/local-setup.ps1 sets them)." "DarkGray"
             if (-not $SgwInstallDir) {
                 Write-Status "  <SGW_INSTALL_DIR> left in the optional stdio entries under _alternatives:" "Yellow"
                 Write-Status "  set CIMMERIA_LAB_INSTALL_DIR (or pass -SgwInstallDir) to fill it." "Yellow"

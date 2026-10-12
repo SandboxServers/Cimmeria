@@ -1,13 +1,14 @@
 <#
 .SYNOPSIS
-    Refresh the installed lab CLI, write the lab.cmd shim (unless lab.exe is installed), and add <LabHome>\bin to the user PATH.
+    Refresh the installed lab CLI scripts and add <LabHome>\bin to the user PATH.
 
 .DESCRIPTION
-    Run it from a Cimmeria checkout, or pass -From. It copies the CLI into
-    <LabHome>\cli (Install-LabCli), writes <LabHome>\bin\lab.cmd unless <LabHome>\bin\lab.exe exists (then it deletes the shim), and adds
-    <LabHome>\bin to the user PATH when it is missing, then broadcasts the change
-    so a new terminal sees it. LabHome is %LOCALAPPDATA%\cimmeria-lab, or
-    CIMMERIA_LAB_HOME when set.
+    Run it from a Cimmeria checkout, or pass -From. It copies the PowerShell the
+    lab CLI still runs into <LabHome>\cli (Install-LabCli), deletes an old
+    <LabHome>\bin\lab.cmd shim, and adds <LabHome>\bin to the user PATH when it
+    is missing, then broadcasts the change so a new terminal sees it. lab.exe
+    itself comes from lab install (cli\install.ps1). LabHome is
+    %LOCALAPPDATA%\cimmeria-lab, or CIMMERIA_LAB_HOME when set.
 
 .PARAMETER From
     The checkout to install from. Needed when setup runs from the installed copy.
@@ -21,7 +22,7 @@
 .EXAMPLE
     pwsh tools/lab/cli/setup.ps1 -NoPath
 .EXAMPLE
-    lab setup -From C:\src\Cimmeria
+    lab setup --from C:\src\Cimmeria
 #>
 [CmdletBinding()]
 param(
@@ -40,10 +41,8 @@ Install-LabCli $root
 $labHome = Get-InstallLabHome
 $bin = Join-Path $labHome 'bin'
 New-Item -ItemType Directory -Force -Path $bin | Out-Null
-# Install-LabCli already deleted bin\lab.cmd and printed the notice when bin\lab.exe exists.
 if (-not (Test-LabExeInstalled $labHome)) {
-    $shim = Write-LabShim $labHome
-    Write-Host "shim:  $shim"
+    Write-Host "lab.exe: not installed yet. Build it with: pwsh $root\tools\lab\cli\install.ps1 -From $root"
 }
 
 $manual = "Add $bin to the user PATH to run 'lab' anywhere."

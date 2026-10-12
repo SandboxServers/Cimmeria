@@ -112,7 +112,7 @@ This builds the server, starts PostgreSQL on port 5433 and loads the seed data. 
 The helper makes the secrets, writes `lab-account.json` and, if you ask, adds your server to the client's login list:
 
 ```powershell
-pwsh tools/lab/lab.ps1 local-setup -InstallDir 'D:\Games\Stargate Worlds-QA\Working' -PatchLoginInternal
+pwsh tools/lab/cli/local-setup.ps1 -InstallDir 'D:\Games\Stargate Worlds-QA\Working' -PatchLoginInternal
 ```
 
 Once the `lab` command is set up (step 6), the same thing is `lab local-setup`. Its flags:

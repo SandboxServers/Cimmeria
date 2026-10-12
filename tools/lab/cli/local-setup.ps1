@@ -50,7 +50,7 @@
     nothing outside this run; it is for testing the script.
 
 .EXAMPLE
-    pwsh tools/lab/lab.ps1 local-setup -InstallDir 'D:\Games\Stargate Worlds'
+    pwsh tools/lab/cli/local-setup.ps1 -InstallDir 'D:\Games\Stargate Worlds'
 .EXAMPLE
     lab local-setup -PatchLoginInternal
 #>
@@ -180,7 +180,7 @@ $todo.Add('open a new terminal (it picks up the variables), start the server the
 $todo.Add('pwsh tools/lab/install.ps1              build and install the lab binaries')
 $todo.Add('pwsh tools/lab/daemon.ps1 install       the shared daemon (generates CIMMERIA_LAB_DAEMON_TOKEN)')
 $todo.Add('MCP: copy .mcp.json.example to .mcp.json (Claude Code) or .codex/config.toml.example to .codex/config.toml (Codex); restart the client')
-$todo.Add('lab doctor                              (pwsh tools/lab/lab.ps1 doctor before lab setup)')
+$todo.Add('lab doctor                              (checks the install, the daemon and each instance)')
 Write-Host ''
 Write-Host 'Left to do:'
 $n = 0

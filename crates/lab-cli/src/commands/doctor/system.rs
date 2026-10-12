@@ -192,7 +192,7 @@ fn fill(reader: &mut impl Read, buf: &mut [u8]) -> io::Result<usize> {
 }
 
 /// The top of the Cimmeria checkout that `start` is in (it has
-/// `tools\lab\lab.ps1`), else `None`; also `None` when git is missing.
+/// `tools\lab\daemon.ps1`), else `None`; also `None` when git is missing.
 pub fn checkout_root(start: &Path) -> Option<PathBuf> {
     let output = Command::new("git")
         .arg("-C")
@@ -212,7 +212,7 @@ pub fn checkout_root(start: &Path) -> Option<PathBuf> {
     let top = PathBuf::from(top);
     top.join("tools")
         .join("lab")
-        .join("lab.ps1")
+        .join("daemon.ps1")
         .exists()
         .then_some(top)
 }

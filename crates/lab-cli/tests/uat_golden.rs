@@ -1,5 +1,5 @@
 //! LX-17a: golden values, the golden merge and the per-run diff. Ports the
-//! `-DiffGolden` checks of test-uat.ps1 (200 to 302). The golden file check and
+//! `-DiffGolden` checks of the removed PowerShell test file (200 to 302). The golden file check and
 //! the pre-check (304 to 352) are LX-15's.
 
 mod uat_support;
@@ -21,7 +21,7 @@ fn g(i: u32, golden: &str) -> RunRecord {
 
 // ---- golden_value ----
 
-/// test-uat.ps1 [200] 'a matching diff stores match'
+/// the removed PowerShell test file [200] 'a matching diff stores match'
 #[test]
 fn a_matching_diff_stores_match() {
     assert_eq!(

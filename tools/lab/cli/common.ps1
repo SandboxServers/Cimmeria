@@ -1,15 +1,13 @@
 <#
 .SYNOPSIS
-    Shared library for the lab CLI (tools/lab/cli/): paths, the daemon token,
-    labd.env, labd.pid, the /status probe and the daemon log filter. Dot-source
-    it; it defines functions only. Never print a token or a lease id from here.
+    Shared helpers for the PowerShell the lab CLI still runs (tools/lab/cli/):
+    the lab home and labd.env. Dot-source it; it defines functions only.
 
 .DESCRIPTION
     CIMMERIA_LAB_HOME overrides the lab home (%LOCALAPPDATA%\cimmeria-lab);
     the tests in test-common.ps1 use it to point at a temp folder. It is for
-    tests only: daemon.ps1 (behind start, stop and restart) always uses
-    %LOCALAPPDATA%\cimmeria-lab, so with the override set, status would read a
-    different labd.pid than the one those commands act on.
+    tests only: daemon.ps1 (behind lab start, stop and restart) always uses
+    %LOCALAPPDATA%\cimmeria-lab.
 #>
 
 Set-StrictMode -Version Latest
@@ -31,104 +29,4 @@ function Get-LabdEnvPath {
 # labd.env as an ordered KEY -> VALUE map (labd-lib.ps1's Read-LabdEnvFile).
 function Get-LabdEnv {
     return Read-LabdEnvFile (Get-LabdEnvPath)
-}
-
-# The bearer token: the user environment variable, else the process one; $null when unset.
-function Get-LabToken {
-    $token = [Environment]::GetEnvironmentVariable('CIMMERIA_LAB_DAEMON_TOKEN', 'User')
-    if (-not $token) { $token = [Environment]::GetEnvironmentVariable('CIMMERIA_LAB_DAEMON_TOKEN', 'Process') }
-    if (-not $token) { return $null }
-    return $token
-}
-
-# labd.pid as an object (pid, bind, started_at, ...), or $null when absent or unreadable.
-function Get-DaemonInfo {
-    $path = Join-Path (Get-LabHome) 'labd.pid'
-    if (-not (Test-Path -LiteralPath $path)) { return $null }
-    try {
-        return Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
-    } catch {
-        return $null
-    }
-}
-
-# The daemon's /status object, or $null when the daemon or its endpoint is down.
-# Never throws, and never reports the token in an error.
-function Get-LabStatus {
-    $token = Get-LabToken
-    if (-not $token) { return $null }
-
-    # The bind comes from labd.pid; a pidfile without a bind uses the default.
-    $bind = '127.0.0.1:8779'
-    $info = Get-DaemonInfo
-    if ($info -and $info.PSObject.Properties.Name -contains 'bind' -and $info.bind) { $bind = [string]$info.bind }
-
-    try {
-        $status = Invoke-RestMethod -Uri "http://$bind/status" -Headers @{ Authorization = "Bearer $token" } -TimeoutSec 5
-    } catch {
-        return $null
-    }
-    # Only the daemon's own shape: something else answering on the port, or an
-    # older /status, reads as unavailable rather than failing later under StrictMode.
-    if ($status -isnot [pscustomobject]) { return $null }
-    $names = $status.PSObject.Properties.Name
-    if ($names -notcontains 'daemon' -or $names -notcontains 'instances' -or $null -eq $status.daemon) { return $null }
-    return $status
-}
-
-# The game's profile root: labd.env's CIMMERIA_LAB_PROFILE_ROOT, else the
-# environment variable, else <LOCALAPPDATA>\cimmeria-lab\instances.
-function Get-ProfileRoot {
-    $map = Get-LabdEnv
-    foreach ($raw in @($map['CIMMERIA_LAB_PROFILE_ROOT'], $env:CIMMERIA_LAB_PROFILE_ROOT)) {
-        if ("$raw".Trim()) { return "$raw".Trim() }
-    }
-    return Join-Path $env:LOCALAPPDATA 'cimmeria-lab\instances'
-}
-
-# A duration as "12s", "5m" or "2h 3m".
-function Format-Ago([int]$seconds) {
-    if ($seconds -lt 60) { return "${seconds}s" }
-    # Truncating division: [int](x / y) rounds (90 s would read 2m).
-    if ($seconds -lt 3600) { return '{0}m' -f [math]::Floor($seconds / 60) }
-    return '{0}h {1}m' -f [math]::Floor($seconds / 3600), [math]::Floor(($seconds % 3600) / 60)
-}
-
-# Rows (objects whose property names are the column names) as an aligned table string.
-function Write-LabTable($rows, [string[]]$columns) {
-    $rows | Format-Table -Property $columns -AutoSize | Out-String -Width 200
-}
-
-# The log lines that pass the instance and level filters, with tokens masked.
-# Pure: it reads lines from the pipeline and touches no file. An entry starts
-# with a timestamp; a line without one (a panic body, a backtrace) belongs to
-# the entry above it and is kept or dropped with it, so a level word inside a
-# continuation line ("   at error handling") never ranks it on its own.
-function Select-LabLogLine {
-    param(
-        [Parameter(ValueFromPipeline)][string]$Line,
-        [string]$Instance,
-        [string]$Level
-    )
-    begin {
-        $ranks = @{ trace = 0; debug = 1; info = 2; warn = 3; error = 4 }
-        # Before the first entry, continuation lines have no entry to follow.
-        $keep = -not ($Instance -or $Level)
-    }
-    process {
-        if ($Line -match '^\d{4}-\d\d-\d\dT') {
-            $keep = $true
-            if ($Instance -and $Line -inotmatch ('instance=(Some\()?"' + [regex]::Escape($Instance) + '"')) { $keep = $false }
-            if ($keep -and $Level) {
-                $parts = @($Line.Trim() -split '\s+')
-                $token = if ($parts.Count -ge 2) { $parts[1].ToLowerInvariant() } else { '' }
-                $rank = $ranks[$token]
-                if ($null -eq $rank -or $rank -lt $ranks[$Level]) { $keep = $false }
-            }
-        }
-        if (-not $keep) { return }
-
-        $masked = $Line -replace '(?i)bearer\s+\S+', '<redacted>'
-        $masked -replace '(?i)\b[0-9a-f]{64}\b', '<redacted>'
-    }
 }
