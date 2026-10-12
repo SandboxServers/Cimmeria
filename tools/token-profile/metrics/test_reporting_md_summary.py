@@ -89,6 +89,11 @@ class ComparisonTest(unittest.TestCase):
         self.assertIn("**Small sample: fewer than 5 campaigns or 10 packets on a side", warned)
         self.assertNotIn("**Small sample", plain)
 
+    def test_comparison_has_size_note_after_note(self):
+        text = render_summary({}, _summary(_regime(), _regime()), _meta())
+        self.assertIn("different size", text)
+        self.assertLess(text.index("Note: "), text.index("different size"))
+
     def test_none_renders_na_not_zero(self):
         old = _regime(cost_per_accepted_usd=None)
         haiku = _regime(cost_per_accepted_usd=10.0)

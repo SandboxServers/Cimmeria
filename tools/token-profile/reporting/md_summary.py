@@ -10,6 +10,10 @@ LOW_N_WARNING = (
     f"**Small sample: fewer than {LOW_N_CAMPAIGNS} campaigns or {LOW_N_PACKETS} packets on a side; "
     "read the deltas as directional only.**"
 )
+SIZE_NOTE = (
+    "Per-packet and per-PR costs compare units of different size: Haiku packets are sliced smaller, so they overstate "
+    "the saving. Read them next to the spend share outside campaigns in Caveats."
+)
 # (label, delta key, kind, better): kind picks the value and delta units; better is the good direction, None when there is none.
 COMPARISON = (
     ("Cost per merged PR, p50", "cost_per_pr_p50", "usd", "lower"),
@@ -127,6 +131,7 @@ def _comparison_blocks(summary, low):
     sample = comparison.get("n") or {}
     blocks.append(f"Sample: old {_sample(sample.get('old'))}; Haiku {_sample(sample.get('haiku'))}.")
     blocks.append(f"Note: {_shown(comparison.get('note'), 'text')}.")
+    blocks.append(SIZE_NOTE)
     return blocks
 
 
