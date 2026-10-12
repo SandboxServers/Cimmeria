@@ -1,9 +1,22 @@
 //! `lab record`: record a person playing a lab instance and draft a spec from it.
-//! LX-02 gives it its clap arguments and help page; the body is still the
-//! PowerShell fallback.
+//! The four actions live in `action.rs`; `checks.rs`, `state.rs` and `json.rs` hold
+//! the argument checks, the state file and the compact JSON.
+
+pub mod action;
+pub mod checks;
+pub mod json;
+pub mod state;
+
+use std::time::Duration;
+
+use serde_json::Value;
 
 use crate::commands::Ctx;
-use crate::fallback;
+use crate::daemon::mcp::{McpClient, McpError};
+use crate::daemon::paths;
+use crate::daemon::status::{self, Endpoint};
+
+use self::action::{render, run_action, Env};
 
 const LONG: &str = concat!(
     "start <section> calls lab_record_start on the shared lab daemon: the daemon samples the instance every 500 ms while a person plays it by hand (it only reads), under a lease of its own, so no agent drives that client meanwhile. It stops by itself after --max-minutes (default and at most 30) or when its lease is taken over. The recording id and instance go to %LOCALAPPDATA%\\cimmeria-lab\\record-<instance>.json, so stop needs no id.",
@@ -22,7 +35,7 @@ const LONG: &str = concat!(
 const EXAMPLES: &str = "Examples:\n  lab record start first-session --instance p2\n  lab record status --instance p2\n  lab record stop --instance p2 --character-expr 'Px${run_id}'\n  lab record transform 20261012-143000-p2 --section first-session --json";
 
 // Arguments of `lab record`.
-#[derive(clap::Args, Debug)]
+#[derive(clap::Args, Debug, Default)]
 #[command(
     about = "Record a person playing a lab instance and draft a spec from it",
     long_about = LONG,
@@ -65,10 +78,34 @@ pub struct Args {
     pub json: bool,
 }
 
-/// Runs `lab record` (still the PowerShell fallback).
+/// Runs `lab record`: arguments are checked first (exit 2), then the daemon is
+/// probed (exit 3), then one tool call is made per action over its own MCP session.
 pub fn run(args: &Args, ctx: &Ctx) -> u8 {
-    let _ = args;
-    fallback::run(ctx)
+    let ep = Endpoint::discover();
+    let env = Env {
+        lab_home: paths::lab_home(),
+        uat_root: paths::uat_root(),
+        specs_dir: paths::default_specs_dir(),
+        cwd: std::env::current_dir().unwrap_or_default(),
+    };
+    // Get-LabToken -and Get-LabStatus: a token, and a status that answers.
+    let probe =
+        || ep.token.as_deref().is_some_and(|t| !t.is_empty()) && status::fetch(&ep).is_some();
+    // One MCP session per call: a command makes one call.
+    let call = |name: &str, arguments: Value, timeout: Duration| -> Result<Value, McpError> {
+        let mut client = McpClient::connect(&ep)?;
+        let result = client.call_tool(name, arguments, timeout);
+        client.close();
+        result
+    };
+    let outcome = run_action(args, &env, &ctx.ui, probe, call);
+    let out = render(&ctx.ui, args.json, &outcome);
+    if out.to_stderr {
+        anstream::eprintln!("{}", out.text);
+    } else {
+        anstream::println!("{}", out.text);
+    }
+    outcome.exit
 }
 
 #[cfg(test)]
