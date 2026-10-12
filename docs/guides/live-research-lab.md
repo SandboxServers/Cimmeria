@@ -1131,7 +1131,7 @@ first line of each.
 | `lab setup [-From <checkout>] [-NoPath] [-Yes]` | see [Set up the `lab` command](#set-up-the-lab-command) | 0; non-zero when the copy fails |
 | `lab instances [status \| init ...]` | `instances.ps1` from the installed copy (see [Parallel clients](#parallel-clients-up-to-five)) | its own |
 | `lab clients stop [<instance> \| all] [-Force]` | closes lab clients; see below | 0 stopped or nothing to stop; 1 daemon down; 2 usage; 3 a leased client was refused; 4 a client could not be stopped |
-| `lab doctor` | one `PASS`, `WARN` or `FAIL` line per check; see below | 0; 1 when any check fails |
+| `lab doctor` | one `PASS`, `WARN` or `FAIL` line per check; on a terminal a ✓ / ! / ✗ list with a dim hint under each warning and failure, and a count line; see below | 0; 1 when any check fails |
 | `lab uat <section> [-Rows ...] [-Leases 1-5] [-RunsPerLease 1-20] [-Instance p2] [-Fixtures auto\|always\|never] [-DiffGolden] [-Heal] [-PlanOnly] [-Json] [-Quiet]` | runs a UAT spec through `lab_uat_run` with no agent; see below | 0 every run passed; 1 a run failed; 2 usage (including `-Heal` without `-Leases 1`), or `-DiffGolden` or `-Chaos` with no golden or one that cannot be read; 3 the pre-flight or plan failed (nothing driven); 4 a lane stopped on its brake; 5 every run passed but `-DiffGolden` did not match on one (under `-Chaos`, only a run it could not compare); 8 `-Heal` wrote a proposal, which wins over 5 and every other code |
 | `-Chaos <profile[:level][:knobs]>` on `lab uat` | runs every row under the specs (`lab_uat_run` `chaos`): `cpu` loads the lab machine for the whole run; `net` and `flush` are set on the row's player session before its setup and cleared after its teardown, on failed rows too (they need a server built with `lab-chaos` and `DEVELOPER_MODE`). `burst` is refused until lab-chaos CH-13 lands. The header is the runner's own (`chaos=<spec> seed=<n>`, the seed being the run id's hash unless the spec gives one); quote a multi-knob spec, as its commas would split it elsewhere. `-Chaos` implies `-Fingerprint` and `-DiffGolden` (lab-chaos D-CH7): every passing run is compared with the section's golden, and the result is `chaos_divergence` in place of `golden` (in the summary and `-Json`, the same `{match, diverged, first}` shape and grouping, present whenever a run was compared; the header is the `chaos` key, and `summary.md` names each divergence's runs with their seeds). `-PlanOnly` needs no golden; with no local spec folder the daemon's is used, and a missing golden there is a diff error (exit 5). A row that passed its own expects stays a pass, and a divergence alone exits 0, not 5. A chaos run is never recorded as a golden (`lab_golden_record` answers `cannot_record`, "chaos runs never become golden") | 2 when the local spec folder has no golden for the section (record one first with `lab golden record`); 3 when the plan call refuses a spec (an unknown profile or knob, `burst`, a value the server would refuse); 5 only when a diff could not be made |
 | `lab watch [-Batch <folder>] [-Once] [-Json] [-IntervalSeconds 2]` | a live, read-only view of a running `lab uat` batch; see below | 0; 1 daemon down and no batch; 2 usage; 3 read failed |
@@ -1299,12 +1299,14 @@ force-stops it after 8 seconds.
 | Each instance's account file exists | WARN (`lab instances init`) |
 | Each instance's profile is seeded | WARN |
 | No `SGW.exe` runs that `/status` doesn't list | WARN, naming the pids |
-| `bin\cimmeria-lab.exe` and the daemon's `labd\cimmeria-lab.exe` have the same SHA-256 | WARN (`lab restart`) |
+| `bin\cimmeria-lab.exe` and the daemon's `labd\cimmeria-lab.exe` are the same file, byte for byte | WARN (`lab restart`) |
 | The copy's `VERSION` has the same `tools/lab` as `origin/main`, compared by content (`git diff --quiet <VERSION> origin/main -- tools/lab`); only inside a Cimmeria checkout | WARN (`lab setup`) |
 
 The last check compares content, not ancestry: PRs are squash-merged, so
 the commit of a worktree you installed from never becomes an ancestor of
 `origin/main`, even after it merges. It uses your last fetch.
+
+`lab doctor` is native in `lab.exe` and takes no flags. `tools/lab/cli/doctor.ps1` is gone, so `pwsh tools/lab/lab.ps1 doctor` no longer exists. The task check runs `schtasks /Query /TN CimmeriaLabDaemon`, and the `SGW.exe` check reads the process list directly.
 
 **Where things live**, all under `%LOCALAPPDATA%\cimmeria-lab\`:
 
