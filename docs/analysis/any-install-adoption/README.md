@@ -66,6 +66,12 @@ Research against `main` @ `ee899c2c0`.
 | D-AI14 | **BlockedDecision** (owner) | **Out of scope here:** index-driven incremental Update and Repair. Today both rebuild from the full seed (F-15), so an adopted folder's first game Update still needs the seed (downloaded, or the player's archive through D-AI4). **Question:** follow-up campaign, or accept? | Same index, different state machines; folding it in doubles the campaign. |
 | D-AI15 | PROPOSED (coordinator) | **A local archive is copied, not read in place.** Choosing it verifies size and SHA-256 at once (feedback in seconds to a minute). When an operation needs the seed, the launcher opens the player's file without following links, checks it is the same file (volume and file id, size, modified time) it verified, and copies it into the exact path the download would have written (`.tmp-seed-<sha12>.download`, or the adoption artifact store), hashing the bytes as it copies; the copy is accepted only if that hash matches the signed release. From there the existing pipeline runs unchanged and may delete its own copy. | F-21: the pipeline deletes its archive and the RAR reader opens by path, so in-place reading cannot be bound to the hashed bytes. The copy costs the same 4.1 GB the download would have, and no network. |
 | D-AI16 | ADOPTED (user, 2026-10-11) | AI-16 ships in this campaign: look in the player's Downloads folder for a file with the seed's exact size and archive.org file name, and offer it; the hash is still required before use. | The user wants it: most players who have the archive have it in Downloads. |
+| D-AI17 | ADOPTED (coordinator, 2026-10-11) | A remembered archive is checked against the release **where it is used** (Install, Repair, Update, adoption), not when the launcher opens; the status shows it as chosen only while it matches the cached release seed. | The release is not known at open; checking at use keeps "a new seed means choose again" without a network call at startup. |
+| D-AI18 | ADOPTED (coordinator, 2026-10-11) | Forget clears the shared archive handle (`SeedSourceHandle::clear`); a seed step that already read it keeps its archive. A switch to an archive for another seed restarts the download instead of failing it. | One handle per process; a running step must not see its source change under it. |
+| D-AI19 | ADOPTED (coordinator, 2026-10-12) | A verified copy needs no replacement consent: the player's folder is never changed. The engine and the review agree (`requires_replacement` only in place). | Consent protects the player's files; a copy touches none. |
+| D-AI20 | ADOPTED (coordinator, 2026-10-12) | Layouts the copy cannot map (a flat folder, or a legacy import pointing at `Working` or `Binaries`) are refused (`not_a_game_folder`, `unsupported_layout`) rather than mapped. A picked `Working` or `Binaries` folder is resolved to its root first. | Classification has no layout mapping; refusing is clearer than a review that calls every file missing. |
+
+Campaign close notes (what was reviewed, fixed, and is still open): [worknotes/campaign-close.md](worknotes/campaign-close.md).
 
 ## Packets
 
@@ -73,24 +79,24 @@ Status vocabulary: **Ready / BlockedDependency / BlockedDecision / Writing / Rev
 
 | Packet | Wave | Title | Agent | Depends on | Status |
 |---|---|---|---|---|---|
-| AI-01 | 0 | `file_index` types and the optional manifest field (launcher-core) | rust-gameserver-dev | | Ready |
-| AI-02 | 0 | Engine, shell and TypeScript adoption contract scaffold | rust-gameserver-dev | AI-01 | BlockedDependency |
-| AI-03 | 0 | Fix: Windows adoption reference extracts the RAR seed | rust-gameserver-dev | | Ready |
-| AI-04 | 1 | `file_index::build`, the `build-file-index` tool, stale-index handling in `pack-client-overlay` | rust-gameserver-dev | AI-01 | BlockedDependency |
-| AI-05 | 1 | Local seed archive seam in launcher-core (`SeedSource`) | rust-gameserver-dev | | Ready |
-| AI-06 | 2 | Local seed archive: engine record and worker, shell command, routing through Install, Repair, Update and adoption | rust-gameserver-dev | AI-05 | BlockedDependency |
-| AI-07 | 3 | Local seed archive: Settings panel and install-area button | packet-coder | AI-06 | BlockedDependency |
-| AI-08 | 2 | Index-based verification and classification | rust-gameserver-dev | AI-02, AI-03, AI-04 | BlockedDependency |
-| AI-09 | 3 | Targeted replay: fetch only what is needed, verified replacement store | rust-gameserver-dev | AI-05, AI-08 | BlockedDependency |
-| AI-10 | 2 | Folder source: picker, layout resolution, writable preflight, own settings | rust-gameserver-dev | AI-02 | BlockedDependency |
-| AI-11 | 4 | In-place publication with replacements, backups, recovery and abandon | rust-gameserver-dev | AI-09, AI-10 | BlockedDependency |
-| AI-12 | 4 | Verified copy on Windows | rust-gameserver-dev | AI-09, AI-10 | BlockedDependency |
-| AI-13 | 5 | Settings UI: one adoption entry, mode choice, review and consent | packet-coder | AI-07, AI-11, AI-12 | BlockedDependency |
+| AI-01 | 0 | `file_index` types and the optional manifest field (launcher-core) | rust-gameserver-dev | | Review (campaign PR) |
+| AI-02 | 0 | Engine, shell and TypeScript adoption contract scaffold | rust-gameserver-dev | AI-01 | Review (campaign PR) |
+| AI-03 | 0 | Fix: Windows adoption reference extracts the RAR seed | rust-gameserver-dev | | Review (campaign PR) |
+| AI-04 | 1 | `file_index::build`, the `build-file-index` tool, stale-index handling in `pack-client-overlay` | rust-gameserver-dev | AI-01 | Review (campaign PR) |
+| AI-05 | 1 | Local seed archive seam in launcher-core (`SeedSource`) | rust-gameserver-dev | | Review (campaign PR) |
+| AI-06 | 2 | Local seed archive: engine record and worker, shell command, routing through Install, Repair, Update and adoption | rust-gameserver-dev | AI-05 | Review (campaign PR) |
+| AI-07 | 3 | Local seed archive: Settings panel and install-area button | packet-coder | AI-06 | Review (campaign PR) |
+| AI-08 | 2 | Index-based verification and classification | rust-gameserver-dev | AI-02, AI-03, AI-04 | Review (campaign PR) |
+| AI-09 | 3 | Targeted replay: fetch only what is needed, verified replacement store | rust-gameserver-dev | AI-05, AI-08 | Review (campaign PR) |
+| AI-10 | 2 | Folder source: picker, layout resolution, writable preflight, own settings | rust-gameserver-dev | AI-02 | Review (campaign PR) |
+| AI-11 | 4 | In-place publication with replacements, backups, recovery and abandon | rust-gameserver-dev | AI-09, AI-10 | Review (campaign PR) |
+| AI-12 | 4 | Verified copy on Windows | rust-gameserver-dev | AI-09, AI-10 | Review (campaign PR) |
+| AI-13 | 5 | Settings UI: one adoption entry, mode choice, review and consent | packet-coder | AI-07, AI-11, AI-12 | Review (campaign PR) |
 | AI-14 | 5 | Publish `file-index.json` for `content-current` | owner (key holder) | AI-04; D-AI8 | BlockedDecision |
-| AI-15 | 5 | Developer, operator and player docs | documentation-writer | AI-07, AI-11, AI-12, AI-13 | BlockedDependency |
-| AI-16 | 3 | Offer a matching archive found in Downloads (D-AI16) | packet-coder | AI-07 | BlockedDependency |
-| AI-17 | 6 | Windows UAT of any-install adoption and local archives | owner | AI-13, AI-15; AI-14 for the no-seed rows | BlockedDependency |
-| AI-18 | 6 | Close-out | coordinator | AI-17 | BlockedDependency |
+| AI-15 | 5 | Developer, operator and player docs | documentation-writer | AI-07, AI-11, AI-12, AI-13 | Review (campaign PR) |
+| AI-16 | 3 | Offer a matching archive found in Downloads (D-AI16) | packet-coder | AI-07 | Review (campaign PR) |
+| AI-17 | 6 | Windows UAT of any-install adoption and local archives | owner | AI-13, AI-15; AI-14 for the no-seed rows | BlockedDependency (campaign PR merge; AI-14 for the no-seed rows) |
+| AI-18 | 6 | Close-out | coordinator | AI-17 | Writing (code close-out in the campaign PR; status docs after AI-17) |
 
 AI-01, AI-03 and AI-05 start at once; AI-05 touches only the seed path in launcher-core and does not depend on the index work. AI-02 and AI-04 follow AI-01 and run in parallel. AI-08 and AI-10 run in parallel after AI-02, against the seams AI-02 creates (`source.rs` and `verification.rs`). AI-11 and AI-12 run in parallel: they edit different files (`in_place.rs` against `publication.rs` and the copy gates). AI-13 waits for AI-07 because both edit `frontend/ui/index.html` and `view.ts`.
 
