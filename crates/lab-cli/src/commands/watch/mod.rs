@@ -2,13 +2,15 @@
 //! LX-02 gave it its clap arguments and help page; LX-13 reads the batch
 //! folder, `/status` and `labd.log` and prints one snapshot as text or JSON.
 
+pub mod frame;
 pub mod json;
+pub mod live;
 pub mod process;
 pub mod snapshot;
 pub mod source;
 pub mod text;
 
-use std::io::Write;
+use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 
 use chrono::Utc;
@@ -27,9 +29,9 @@ const LONG: &str = concat!(
     "\n\n",
     "Read-only: it takes no lease, asks the daemon only for GET /status, and every string it prints has its lease ids hidden.",
     "\n\n",
-    "--once prints one snapshot and exits; --json prints it as one JSON line and implies --once. With output redirected, the live view prints one --once snapshot instead of looping. The live view uses the terminal's alternate screen; Ctrl+C ends it and restores the screen.",
+    "--once prints one snapshot and exits; --json prints it as one JSON line and implies --once. With output redirected, the live view prints one --once snapshot instead of looping. The live view uses the terminal's alternate screen; q, Esc or Ctrl+C ends it and restores the screen.",
     "\n\n",
-    "Exit codes: 0 a snapshot was printed, or the live view ended with Ctrl+C; 1 the daemon is down and there is no batch to show; 2 usage (an --interval-seconds outside 1 to 60, a --batch folder with neither plan.json nor batch.jsonl); 3 a one-snapshot read failed (a locked or denied batch folder or labd.log). Under --json exits 2 and 3 print {\"ok\":false,\"exit\":N,\"error\":...}.",
+    "Exit codes: 0 a snapshot was printed, or the live view ended with q, Esc or Ctrl+C; 1 the daemon is down and there is no batch to show; 2 usage (an --interval-seconds outside 1 to 60, a --batch folder with neither plan.json nor batch.jsonl); 3 a one-snapshot read failed (a locked or denied batch folder or labd.log). Under --json exits 2 and 3 print {\"ok\":false,\"exit\":N,\"error\":...}.",
     "\n\n",
     "Limits: with stdin redirected, Ctrl+C is the shell's own and the exit is not 0 (the screen is still restored); Ctrl+Break or closing the window skips the restore.",
 );
@@ -112,8 +114,11 @@ pub fn run(args: &Args, ctx: &Ctx) -> u8 {
         }
     }
 
-    // LX-14: the live view goes here, when neither --once nor --json is given
-    // and stdout is a terminal. Until then every call prints one snapshot.
+    // The live view: neither --once nor --json, and stdout is a terminal. A
+    // redirected stdout falls through to one snapshot below.
+    if !as_json && !args.once && std::io::stdout().is_terminal() {
+        return live::run_live(args, &ctx.ui, batch_dir);
+    }
     let snapshot = match take_snapshot(args, batch_dir) {
         Ok(snapshot) => snapshot,
         Err(why) => {
