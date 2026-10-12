@@ -19,6 +19,7 @@ now observes native game lifecycle and, for a player who opts in, injects the
 [game-telemetry DLL](docs/launch.md#opt-in-game-telemetry) with a server session.
 Consented [launcher summaries](docs/launcher-summaries.md) are connected,
 but this build configures no endpoint and sends nothing. Real-client/platform gates remain open.
+A player's own [seed archive](docs/seed-archive.md) can replace the seed download for Install, Repair and Update; the seed is never rehosted.
 
 ## Native operation and storage contracts
 

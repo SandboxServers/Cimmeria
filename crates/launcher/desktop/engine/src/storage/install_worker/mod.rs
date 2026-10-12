@@ -79,7 +79,7 @@ fn download_client() -> Result<reqwest::Client, StorageError> {
         .map_err(|_| StorageError::Io)
 }
 
-fn dispatch_with(
+pub(crate) fn dispatch_with(
     state: Arc<Mutex<DesktopState>>,
     id: Uuid,
     release: VerifiedRelease,
@@ -87,7 +87,7 @@ fn dispatch_with(
     http: reqwest::Client,
 ) -> Result<Worker, IntentError> {
     let runtime = tokio::runtime::Handle::try_current().map_err(|_| StorageError::Io)?;
-    let (intent, state_root) = {
+    let (intent, state_root, seed_source) = {
         let mut owner = state.lock().map_err(|_| StorageError::Io)?;
         let intent = owner.install_intent()?.ok_or(StorageError::Corrupt)?;
         if intent.operation_id != id || intent.manifest_digest != release.digest() {
@@ -100,7 +100,8 @@ fn dispatch_with(
         owner
             .operations_mut()?
             .observe(id, OperationState::Running)?;
-        (intent, owner.directory.root.clone())
+        let seed_source = owner.seed_source_for(&release);
+        (intent, owner.directory.root.clone(), seed_source)
     };
     Ok(spawn_worker(
         runtime,
@@ -112,6 +113,7 @@ fn dispatch_with(
             release,
             manifest_url,
             http,
+            seed_source,
             ownership: None,
             execution: Execution::Native,
         },
@@ -129,6 +131,7 @@ struct TaskInputs {
     release: VerifiedRelease,
     manifest_url: String,
     http: reqwest::Client,
+    seed_source: SeedSourceHandle,
     ownership: Option<File>,
     execution: Execution,
 }
@@ -153,6 +156,7 @@ fn spawn_worker(
             release,
             manifest_url,
             http,
+            seed_source,
             ownership,
             execution,
         } = input;
@@ -166,6 +170,7 @@ fn spawn_worker(
                     &release,
                     &manifest_url,
                     &http,
+                    seed_source,
                     helper,
                     owned_cancel,
                     progress,
@@ -181,6 +186,7 @@ fn spawn_worker(
                         &release,
                         &manifest_url,
                         &http,
+                        seed_source,
                         owned_cancel,
                         progress,
                     )
@@ -193,6 +199,7 @@ fn spawn_worker(
                         &release,
                         &manifest_url,
                         &http,
+                        seed_source,
                         owned_cancel,
                         progress,
                     )
@@ -305,13 +312,23 @@ async fn install_owned(
     release: &VerifiedRelease,
     manifest_url: &str,
     http: &reqwest::Client,
+    seed_source: SeedSourceHandle,
     cancel: CancellationToken,
     progress: ProgressSink,
 ) -> Staged {
     let Ok(_ownership) = claim(intent, state_root) else {
         return (Outcome::DestinationUnavailable, None);
     };
-    install_stage(intent, release, manifest_url, http, cancel, progress).await
+    install_stage(
+        intent,
+        release,
+        manifest_url,
+        http,
+        seed_source,
+        cancel,
+        progress,
+    )
+    .await
 }
 
 /// How a stage ended, with `install_all`'s report when it got that far
@@ -323,6 +340,7 @@ async fn install_stage(
     release: &VerifiedRelease,
     manifest_url: &str,
     http: &reqwest::Client,
+    seed_source: SeedSourceHandle,
     cancel: CancellationToken,
     progress: ProgressSink,
 ) -> Staged {
@@ -342,7 +360,7 @@ async fn install_stage(
         cancel,
         progress,
         http,
-        seed_source: &SeedSourceHandle::download(),
+        seed_source: &seed_source,
     })
     .await;
     (finish_stage(intent, release, &stage, result), Some(report))
@@ -456,7 +474,7 @@ pub(super) fn content_valid(stage: &Path, release: &VerifiedRelease) -> bool {
 }
 
 #[cfg(test)]
-pub(super) mod tests;
+pub(crate) mod tests;
 
 #[cfg(test)]
 mod export_tests;
