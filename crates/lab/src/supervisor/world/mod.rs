@@ -40,6 +40,8 @@ pub mod steer;
 #[cfg(test)]
 mod camera_pitch_tests;
 #[cfg(test)]
+mod move_to_tests;
+#[cfg(test)]
 mod sim;
 #[cfg(test)]
 mod tool_tests;

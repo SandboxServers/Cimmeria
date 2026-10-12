@@ -217,8 +217,11 @@ async fn walk<W: WorldIo>(io: &mut W, req: &MoveRequest) -> Result<Value, WorldE
                         "at": prev.to_json(),
                         "goal": goal.describe(),
                         "distance_m": horizontal_m(prev.pos, goal_pos),
+                        "start_distance_m": leg_start_m,
                         "turn_gain": ctl.turn.to_json(),
                         "unsticks": unsticks,
+                        "path": path,
+                        "hint": FAIL_HINT,
                     }),
                 ));
             }
@@ -286,7 +289,7 @@ async fn walk<W: WorldIo>(io: &mut W, req: &MoveRequest) -> Result<Value, WorldE
                             "at": after.to_json(),
                             "moved_m": moved_m,
                             "hold_ms": PROBE_HOLD_MS,
-                            "hint": "Not a path problem: client_input_key w with hold_ms, then compare server_entity_get. Keys are posted window messages, so client_input_status keyboard counters say nothing about it.",
+                            "hint": "Usually not a path problem, but check the avatar is not pressed against a wall first. Try client_input_key w with hold_ms and compare server_entity_get, or a ui_sequence key step with hold_ms; if the pawn still ignores W, teleport on the server and click the target without walking. Keys are posted window messages, so client_input_status keyboard counters say nothing about it.",
                         }),
                     ));
                 }
