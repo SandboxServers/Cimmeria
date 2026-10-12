@@ -52,6 +52,8 @@ class AssembleCoreTest(unittest.TestCase):
         self.assertEqual(core["retries"]["total"], 2)
         self.assertEqual(core["escalation"]["rate"], 0.33)
         self.assertEqual(core["stop_context"]["by_stop"]["error"], 1)
+        self.assertEqual(core["stamp"]["unmapped_share"], 0.1)
+        self.assertEqual(core["stamp"]["generated"], "2026-10-12T12:00:00Z")
         rows = core["packet_rows"]
         self.assertEqual([row["id"] for row in rows], ["B-1", "B-2", "B-3"])
         self.assertTrue(rows[2]["escalated"])
@@ -67,6 +69,16 @@ class AssembleCoreTest(unittest.TestCase):
         self.assertEqual(core["regime"], "old")
         self.assertIn("regime_gap", core)
         self.assertEqual(core["packet_rows"], [])
+
+    def test_empty_packets_and_ledger_docs(self):
+        # A missing input file loads as {}; the merge must still produce a record with gaps.
+        loaded = copy.deepcopy(self.loaded)
+        loaded["packets"] = {}
+        loaded["ledger"] = {}
+        core = self.assemble("beta-haiku", loaded)
+        self.assertEqual(core["regime"], "old")
+        self.assertIn("regime_gap", core)
+        self.assertIn("first_pass_gap", core)
 
     def test_inputs_not_mutated(self):
         before = copy.deepcopy(self.loaded)

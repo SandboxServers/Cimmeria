@@ -2,7 +2,7 @@
 
 import copy
 
-from reporting.regime import campaign_regime, packet_regime
+from .regime import campaign_regime, packet_regime
 
 SECTIONS = ("first_pass", "retries", "escalation", "stop_context", "cycle_time")
 STAMP_KEYS = ("generated", "window", "price_table", "profiler_schema", "unattributed_share")
@@ -11,8 +11,8 @@ STAMP_KEYS = ("generated", "window", "price_table", "profiler_schema", "unattrib
 def assemble_core(name, cost_doc, packets_doc, ledger_doc):
     """Return the core record of campaign `name`; inputs are copied, never mutated, and a missing packets record becomes gaps."""
     cost_campaign = cost_doc["campaigns"][name]
-    packets_campaign = packets_doc["campaigns"].get(name)
-    ledger_packets = {p["id"]: p for p in ledger_doc["campaigns"].get(name, {}).get("packets", [])}
+    packets_campaign = packets_doc.get("campaigns", {}).get(name)
+    ledger_packets = {p["id"]: p for p in ledger_doc.get("campaigns", {}).get(name, {}).get("packets", [])}
     packets = packets_campaign.get("packets", []) if packets_campaign is not None else []
 
     out = {"campaign": name}
@@ -22,8 +22,9 @@ def assemble_core(name, cost_doc, packets_doc, ledger_doc):
     else:
         out["regime"] = campaign_regime(packets)
 
-    out["stamp"] = copy.deepcopy({key: cost_doc["stamp"][key] for key in STAMP_KEYS})
-    out["stamp"]["unmapped_share"] = packets_doc["sessions"]["unmapped_share"]
+    stamp = cost_doc.get("stamp") or {}
+    out["stamp"] = copy.deepcopy({key: stamp.get(key) for key in STAMP_KEYS})
+    out["stamp"]["unmapped_share"] = (packets_doc.get("sessions") or {}).get("unmapped_share")
 
     for key in ("cost", "prs", "accepted"):
         out[key] = copy.deepcopy(cost_campaign[key])
