@@ -81,10 +81,13 @@ fn help_for_a_converted_name_prints_its_clap_page() {
 }
 
 #[test]
-fn help_for_a_name_not_in_clap_yet_goes_to_the_fallback() {
-    // uat moves to clap in LX-02b, which replaces this test with `completions`.
+fn help_for_completions_goes_to_the_fallback() {
+    // completions has no clap subcommand until LX-18.
     let empty = tempfile::TempDir::new().expect("temp dir");
-    let output = run_lab(&["help", "uat"], &[("CIMMERIA_LAB_CLI_DIR", empty.path())]);
+    let output = run_lab(
+        &["help", "completions"],
+        &[("CIMMERIA_LAB_CLI_DIR", empty.path())],
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_eq!(output.status.code(), Some(1));
     assert!(stderr.contains("not installed"), "stderr: {stderr}");
@@ -145,5 +148,64 @@ fn powershell_spelling_is_accepted_before_the_fallback() {
         &["logs", "-Lines", "5"],
         &[("CIMMERIA_LAB_CLI_DIR", empty.path())],
     );
+    assert_eq!(output.status.code(), Some(1));
+}
+
+#[test]
+fn uat_help_pages_list_rows() {
+    for args in [
+        &["help", "uat"][..],
+        &["uat", "-h"],
+        &["uat", "--help"],
+        &["uat", "-?"],
+    ] {
+        let output = run_lab(args, &[]);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert_eq!(output.status.code(), Some(0), "{args:?}");
+        assert!(stdout.contains("--rows"), "{args:?}: {stdout}");
+    }
+}
+
+#[test]
+fn uat_unknown_flag_exits_2() {
+    assert_eq!(run_lab(&["uat", "--bogus"], &[]).status.code(), Some(2));
+}
+
+#[test]
+fn every_converted_command_has_an_examples_section() {
+    for name in [
+        "uat",
+        "watch",
+        "record",
+        "calibrate",
+        "golden",
+        "status",
+        "start",
+        "stop",
+        "restart",
+        "logs",
+        "doctor",
+        "instances",
+        "clients",
+        "env",
+        "install",
+        "setup",
+        "local-setup",
+    ] {
+        let output = run_lab(&[name, "--help"], &[]);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        assert_eq!(output.status.code(), Some(0), "{name}");
+        assert!(stdout.contains("Examples:"), "{name}: {stdout}");
+    }
+}
+
+#[test]
+fn powershell_spelling_of_uat_flags_is_accepted() {
+    let empty = tempfile::TempDir::new().expect("temp dir");
+    let output = run_lab(
+        &["uat", "first-session", "-Rows", "FS-01,FS-02", "-PlanOnly"],
+        &[("CIMMERIA_LAB_CLI_DIR", empty.path())],
+    );
+    // Parsed, then the fallback finds no dispatcher: exit 1, not a usage error.
     assert_eq!(output.status.code(), Some(1));
 }

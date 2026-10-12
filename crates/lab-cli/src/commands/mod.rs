@@ -4,16 +4,24 @@
 //! PowerShell dispatcher through [`crate::fallback`] until its packet moves it
 //! here, one file per command.
 
+pub mod calibrate;
 pub mod clients;
 pub mod doctor;
 pub mod env;
+pub mod golden;
+pub mod install;
 pub mod instances;
+pub mod local_setup;
 pub mod logs;
+pub mod record;
 pub mod restart;
+pub mod setup;
 pub mod start;
 pub mod status;
 pub mod stop;
+pub mod uat;
 pub mod version;
+pub mod watch;
 
 use std::ffi::OsString;
 
@@ -21,7 +29,6 @@ use anstyle::{AnsiColor, Style};
 use clap::builder::Styles;
 use clap::{Parser, Subcommand};
 
-use crate::fallback;
 use crate::ui::Ui;
 
 /// What a command gets: the terminal kit, its name and its raw arguments.
@@ -205,6 +212,11 @@ pub struct Cli {
 /// The subcommands clap knows about.
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    Uat(uat::Args),
+    Watch(watch::Args),
+    Record(record::Args),
+    Calibrate(calibrate::Args),
+    Golden(golden::Args),
     Status(status::Args),
     Start(start::Args),
     Stop(stop::Args),
@@ -214,17 +226,21 @@ pub enum Command {
     Instances(instances::Args),
     Clients(clients::Args),
     Env(env::Args),
+    Install(install::Args),
+    Setup(setup::Args),
+    LocalSetup(local_setup::Args),
     /// Print the CLI and daemon versions.
     Version,
-    /// A command that has not moved to clap yet: the PowerShell dispatcher
-    /// handles it. LX-02b deletes this variant.
-    #[command(external_subcommand)]
-    Other(Vec<OsString>),
 }
 
 /// Runs a parsed command and returns its exit code.
 pub fn dispatch(cmd: &Command, ctx: &Ctx) -> u8 {
     match cmd {
+        Command::Uat(args) => uat::run(args, ctx),
+        Command::Watch(args) => watch::run(args, ctx),
+        Command::Record(args) => record::run(args, ctx),
+        Command::Calibrate(args) => calibrate::run(args, ctx),
+        Command::Golden(args) => golden::run(args, ctx),
         Command::Status(args) => status::run(args, ctx),
         Command::Start(args) => start::run(args, ctx),
         Command::Stop(args) => stop::run(args, ctx),
@@ -234,8 +250,10 @@ pub fn dispatch(cmd: &Command, ctx: &Ctx) -> u8 {
         Command::Instances(args) => instances::run(args, ctx),
         Command::Clients(args) => clients::run(args, ctx),
         Command::Env(args) => env::run(args, ctx),
+        Command::Install(args) => install::run(args, ctx),
+        Command::Setup(args) => setup::run(args, ctx),
+        Command::LocalSetup(args) => local_setup::run(args, ctx),
         Command::Version => version::run(),
-        Command::Other(_) => fallback::run(ctx),
     }
 }
 
@@ -263,41 +281,21 @@ mod tests {
 
     use super::*;
 
-    /// Every clap subcommand is a command in the table (the table may hold
-    /// more until LX-02b converts the rest).
+    /// COMMANDS and the clap subcommands list the same names, except
+    /// `completions`, which LX-18 adds.
     #[test]
-    fn clap_subcommands_are_in_the_command_table() {
-        for sub in Cli::command().get_subcommands() {
-            assert!(
-                find(sub.get_name()).is_some(),
-                "clap subcommand '{}' is missing from COMMANDS",
-                sub.get_name()
-            );
-        }
-    }
-
-    #[test]
-    fn converted_commands_are_clap_subcommands() {
-        let names: Vec<String> = Cli::command()
+    fn command_table_and_clap_list_the_same_names() {
+        let mut clap_names: Vec<String> = Cli::command()
             .get_subcommands()
             .map(|s| s.get_name().to_string())
             .collect();
-        for want in [
-            "status",
-            "start",
-            "stop",
-            "restart",
-            "logs",
-            "doctor",
-            "instances",
-            "clients",
-            "env",
-            "version",
-        ] {
-            assert!(
-                names.iter().any(|n| n == want),
-                "no clap subcommand '{want}'"
-            );
-        }
+        let mut table_names: Vec<String> = COMMANDS
+            .iter()
+            .map(|c| c.name.to_string())
+            .filter(|n| n != "completions")
+            .collect();
+        clap_names.sort();
+        table_names.sort();
+        assert_eq!(clap_names, table_names);
     }
 }

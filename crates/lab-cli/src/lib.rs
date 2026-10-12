@@ -52,9 +52,8 @@ fn help_for(ui: &Ui, target: Option<&OsString>) -> ExitCode {
     dispatch(*ui, tokens.clone(), tokens)
 }
 
-/// Runs one command: clap parses it (a name clap does not know yet becomes
-/// `Command::Other` and goes to the PowerShell fallback with its original
-/// tokens).
+/// Runs one command: clap parses it. `completions` has no clap subcommand yet
+/// and goes to the PowerShell fallback with its original tokens.
 fn dispatch(ui: Ui, raw: Vec<OsString>, rewritten: Vec<OsString>) -> ExitCode {
     let name = raw
         .first()
@@ -62,6 +61,15 @@ fn dispatch(ui: Ui, raw: Vec<OsString>, rewritten: Vec<OsString>) -> ExitCode {
         .unwrap_or_default();
     if commands::find(&name).is_none() {
         return unknown_command(&ui, &name);
+    }
+    if name == "completions" {
+        // No clap subcommand until LX-18: the PowerShell dispatcher answers.
+        let ctx = Ctx {
+            ui,
+            command: name,
+            raw: raw.into_iter().skip(1).collect(),
+        };
+        return ExitCode::from(fallback::run(&ctx));
     }
     let cli = match Cli::try_parse_from(once(OsString::from("lab")).chain(rewritten)) {
         Ok(cli) => cli,
