@@ -8,7 +8,11 @@
 > LX-01 to LX-09) and [work-packets-ports.md](work-packets-ports.md)
 > (LX-10 to LX-20).
 >
-> **Campaign status (2026-10-11): planned.** Nothing built.
+> **Campaign status (2026-10-12): building on one local branch.** The user
+> asked for local work and one PR at the end (2026-10-11), so packets merge
+> into `lab-cli-rust/integration` (worktree `lcr`), not `main`; #1654
+> (LX-01) was closed and folded in. Every packet has a step-by-step spec in
+> [specs/](specs/), written by a Sonnet expander before a Haiku coder starts.
 
 ## Why
 
@@ -47,24 +51,24 @@ expects one continuation).
 
 | ID | Packet | Size | Wave | Depends on | Status |
 |---|---|---|---|---|---|
-| LX-01 | Crate, argument rewriting, UI kit, root help, PowerShell fallback, `version` | M | 1 | none | Ready |
-| LX-02 | Command registry: every command's args, page and fallback stub | M | 2 | LX-01 | BlockedDependency |
-| LX-03 | Install `lab.exe`; `setup` drops the shim | S | 2 | LX-01 | BlockedDependency |
-| LX-04 | Lab paths, `labd.env`, token, `/status` client | M | 2 | LX-01 | BlockedDependency |
-| LX-05 | MCP client and lease wait | M | 2 | LX-01 | BlockedDependency |
-| LX-06 | `status`, `logs` | M | 3 | LX-02, LX-03, LX-04 | BlockedDependency |
-| LX-07 | `env` | S | 3 | LX-02, LX-03, LX-04 | BlockedDependency |
-| LX-08 | `doctor` | M | 3 | LX-02, LX-03, LX-04 | BlockedDependency |
-| LX-09 | `clients stop` | M | 3 | LX-02, LX-03, LX-04 | BlockedDependency |
-| LX-10 | `record` | M | 3 | LX-02 to LX-05 | BlockedDependency |
-| LX-11 | `golden` | M | 3 | LX-02 to LX-05 | BlockedDependency |
-| LX-12 | `calibrate` | M | 3 | LX-02 to LX-05 | BlockedDependency |
-| LX-13 | `watch`: model, `--once`, `--json`, known issues, batch files | M | 3 | LX-02 to LX-04 | BlockedDependency |
-| LX-14 | `watch`: live view | S | 4 | LX-13 | BlockedDependency |
-| LX-15 | `uat`: arguments, plan, pre-flight, `--plan-only` | M | 4 | LX-05, LX-13; lab-chaos CH-08 (#1651) merged | BlockedDependency |
-| LX-16 | `uat`: lanes, brake, timeouts, batch files, progress, summary | L | 5 | LX-15 | BlockedDependency |
-| LX-17 | `uat`: `--diff-golden`, `--heal`, `--json`, exit codes; delete the uat PowerShell | M | 6 | LX-16, LX-12 | BlockedDependency |
-| LX-18 | Native wrappers, `completions`, delete the dispatcher | S | 7 | all ports | BlockedDependency |
+| LX-01 | Crate, argument rewriting, UI kit, root help, PowerShell fallback, `version` | M | 1 | none | Integrated (local) |
+| LX-02 | Command registry: every command's args, page and fallback stub | M | 2 | LX-01 | Integrated (local) |
+| LX-03 | Install `lab.exe`; `setup` drops the shim | S | 2 | LX-01 | Integrated (local) |
+| LX-04 | Lab paths, `labd.env`, token, `/status` client | M | 2 | LX-01 | Integrated (local) |
+| LX-05 | MCP client and lease wait | M | 2 | LX-01 | Integrated (local) |
+| LX-06 | `status`, `logs` | M | 3 | LX-02, LX-03, LX-04 | Integrated (local) |
+| LX-07 | `env` | S | 3 | LX-02, LX-03, LX-04 | Integrated (local) |
+| LX-08 | `doctor` | M | 3 | LX-02, LX-03, LX-04 | Integrated (local) |
+| LX-09 | `clients stop` | M | 3 | LX-02, LX-03, LX-04 | Integrated (local) |
+| LX-10 | `record` | M | 3 | LX-02 to LX-05 | Integrated (local) |
+| LX-11 | `golden` | M | 3 | LX-02 to LX-05 | Integrated (local) |
+| LX-12 | `calibrate` | M | 3 | LX-02 to LX-05 | Integrated (local) |
+| LX-13 | `watch`: model, `--once`, `--json`, known issues, batch files | M | 3 | LX-02 to LX-04 | Integrated (local) |
+| LX-14 | `watch`: live view | S | 4 | LX-13 | Integrated (local) |
+| LX-15 | `uat`: arguments, plan, pre-flight, `--plan-only` | M | 4 | LX-05, LX-13; lab-chaos CH-08 (#1651) merged | Integrated (local) |
+| LX-16 | `uat`: lanes, brake, timeouts, batch files, progress, summary | L | 5 | LX-15 | Integrated (local) |
+| LX-17 | `uat`: `--diff-golden`, `--heal`, `--json`, exit codes; delete the uat PowerShell | M | 6 | LX-16, LX-12 | Writing |
+| LX-18 | Native wrappers, `completions`, delete the dispatcher | S | 7 | all ports | Writing (18a integrated) |
 | LX-19 | Docs close-out | M | 7 | LX-18 | BlockedDependency |
 | LX-20 | Live check of every command on the workstation | S | 8 | LX-19, the user's OK for lab use | BlockedDependency |
 
@@ -85,4 +89,44 @@ the lab workstation starves under load).
 
 ## Review outcomes
 
-None yet.
+Where the merged code differs from the packet text. The specs in
+[specs/](specs/) and the code are the reference.
+
+- **Agents.** `packet-review-fixer` (Sonnet; reviews and fixes) was added
+  for this campaign. Every Haiku commit gets one, including follow-ups made
+  after a review and merge-conflict resolutions (a gap review on
+  2026-10-12 covered the ones that had slipped through).
+- **A new crate must be classified** in
+  `crates/server/src/logging/target_scan_tests.rs` (LX-01 failed the merge
+  queue on it).
+- **Fallback (LX-02).** The PowerShell dispatcher gets PowerShell-form flags:
+  `--runs-per-lease 5` becomes `-RunsPerLease 5`, `--value=-x` becomes
+  `-Value:-x`, `--x=` becomes `-X` plus an empty token. List flags take one
+  comma-separated value per occurrence. PowerShell's implicit positional
+  binding (`lab logs 5`) is not supported.
+- **JSON key order.** The workspace `serde_json` has no `preserve_order`, so
+  objects the CLI builds are `#[derive(Serialize)]` structs in PowerShell
+  order; daemon answers pass through as `Value` (they are already sorted).
+- **`labd.env` (LX-04).** Untouched lines are written back byte-identical
+  (`EnvLine::Pair` keeps `raw`); every line is written with CRLF, as the
+  PowerShell writer did.
+- **Tests never reach a real daemon (LX-15).** With `CIMMERIA_LAB_HOME` set
+  (tests only) the token comes from the process environment, never HKCU; every
+  test that runs the binary uses `tests/support`'s `isolated_lab_home()`,
+  whose `labd.pid` names a closed port.
+- **`doctor` (LX-08)** compares the two `cimmeria-lab.exe` copies by bytes,
+  not SHA-256. `test-ops.ps1` and `test-logs-env.ps1` are deleted (no checks
+  left after the ports).
+- **`calibrate` (LX-12).** `changed` fields print in the daemon's key order
+  (sorted), as the PowerShell did; the spec's fixed order was dropped.
+  `--apply` refuses `..` paths and counts files by both diff headers.
+- **`uat` (LX-15, LX-16).** Only `--plan-only` was native in LX-15; LX-16
+  makes a real run native; `--json`, `--diff-golden`, `--heal` and `--chaos`
+  stay on PowerShell until LX-17. Row ids match exactly (the PowerShell matched
+  them ignoring case, against its own message).
+- **Follow-ups F-LX1 to F-LX9** (found in reviews) are fixed in LX-18a:
+  IPv6 masking, doctor hints and plurals, cell-width tables, absolute
+  `--specs-dir`, calibrate's no-instance wording, `logs --follow` on a
+  replaced file, the live view's panic restore, a deterministic Windows stop
+  test (10/10), stale references. **F-LX10** (Ctrl+C during the 10-minute
+  lease wait ends the wait) goes to LX-18b.
