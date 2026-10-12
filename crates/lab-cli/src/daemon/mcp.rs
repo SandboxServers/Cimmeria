@@ -7,9 +7,8 @@
 //! `notifications/initialized`, then one POST per `tools/call`, whose reply
 //! is plain JSON or an SSE stream (the last `data:` line is the answer).
 //!
-//! This module takes a base URL and an optional token, not an `Endpoint`, so it
-//! stands alone; `connect` and `wait_lease_free` over an `Endpoint` are thin
-//! wrappers added once `daemon/status.rs` has that type.
+//! The core takes a base URL and an optional token; `McpClient::connect` and
+//! `wait_lease_free` are the thin wrappers over a discovered [`Endpoint`].
 
 use std::fmt;
 use std::sync::OnceLock;
@@ -18,6 +17,8 @@ use std::time::{Duration, Instant};
 use regex::Regex;
 use reqwest::blocking::Client;
 use serde_json::{json, Value};
+
+use super::status::Endpoint;
 
 const PROTOCOL_VERSION: &str = "2025-06-18";
 const ACCEPT: &str = "application/json, text/event-stream";
@@ -317,6 +318,19 @@ pub fn wait_lease_free_at(
     max: Duration,
 ) -> bool {
     wait_lease_free_at_every(base_url, token, instance, max, LEASE_POLL_INTERVAL)
+}
+
+impl McpClient {
+    /// [`McpClient::open`] over a discovered endpoint.
+    pub fn connect(ep: &Endpoint) -> Result<Self, McpError> {
+        Self::open(&ep.base_url, ep.token.as_deref())
+    }
+}
+
+/// Port of `Wait-UatLeaseFree`: true when `instance`'s lease is free within `max`,
+/// polling `GET /status` on the endpoint at the PowerShell's 10 second interval.
+pub fn wait_lease_free(ep: &Endpoint, instance: &str, max: Duration) -> bool {
+    wait_lease_free_at(&ep.base_url, ep.token.as_deref(), instance, max)
 }
 
 /// Lease ids (`lease-<hex>`) replaced in text that leaves the command

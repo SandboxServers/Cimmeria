@@ -8,8 +8,10 @@ use std::net::TcpListener;
 use std::time::Duration;
 
 use cimmeria_lab_cli::daemon::mcp::{
-    hide_lease_ids, wait_lease_free_at_every, wait_lease_free_with, McpClient, McpError,
+    hide_lease_ids, wait_lease_free, wait_lease_free_at_every, wait_lease_free_with, McpClient,
+    McpError,
 };
+use cimmeria_lab_cli::daemon::status::Endpoint;
 use serde_json::{json, Value};
 use stub::{route, Route, Stub};
 
@@ -539,4 +541,31 @@ fn wait_over_http_stays_false_while_held_or_unauthorized() {
         Duration::from_millis(80),
         Duration::from_millis(20)
     ));
+}
+
+#[test]
+fn connect_opens_a_session_on_the_endpoint_with_its_token() {
+    let stub = Stub::start(handshake());
+    let ep = Endpoint {
+        base_url: stub.base_url(),
+        token: Some(TOKEN.to_owned()),
+    };
+    assert!(McpClient::connect(&ep).is_ok());
+    let init = stub.post_with(r#""method":"initialize""#);
+    assert_eq!(init.header("authorization"), Some("Bearer tok-123"));
+    let notice = stub.post_with(r#""method":"notifications/initialized""#);
+    assert_eq!(notice.header("mcp-session-id"), Some("sess-1"));
+}
+
+#[test]
+fn wait_lease_free_reads_the_endpoint_status_with_its_token() {
+    let stub = Stub::start(vec![status_route(false)]);
+    let ep = Endpoint {
+        base_url: stub.base_url(),
+        token: Some(TOKEN.to_owned()),
+    };
+    assert!(wait_lease_free(&ep, "i1", Duration::from_secs(5)));
+    let req = stub.requests().remove(0);
+    assert_eq!((req.method.as_str(), req.path.as_str()), ("GET", "/status"));
+    assert_eq!(req.header("authorization"), Some("Bearer tok-123"));
 }
