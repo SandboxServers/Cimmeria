@@ -3,8 +3,8 @@
     Library for `lab golden`: argument rules, run directories from a batch,
     the lab_golden_record reply as an exit code and compact JSON, and the
     committed golden file as a summary. Dot-source it after uat-lib.ps1 (it uses
-    Get-UatField); it defines functions only, and all of them are pure, so tools/lab/cli/test-golden.ps1 tests
-    them without a daemon.
+    Get-UatField); it defines functions only. Only Get-GoldenPath is still used (by uat.ps1); lab golden is native now
+    (crates/lab-cli/src/commands/golden/), and LX-17 deletes this file.
 
     Never print the token or a lease id from here.
 #>
