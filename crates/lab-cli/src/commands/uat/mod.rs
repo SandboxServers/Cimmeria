@@ -6,6 +6,9 @@
 //! LX-16b: a real run goes straight to the PowerShell fallback.
 
 pub mod args;
+pub mod batch_run;
+pub mod ctrlc;
+pub mod lanes;
 pub mod plan;
 pub mod preflight;
 pub mod progress;
