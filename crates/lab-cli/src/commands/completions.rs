@@ -126,7 +126,7 @@ pub fn install_into(path: &Path) -> io::Result<Installed> {
 
 /// `$PROFILE.CurrentUserAllHosts`, asked of `pwsh`.
 pub fn pwsh_profile_path() -> Result<PathBuf, String> {
-    let output = Process::new("pwsh")
+    let output = Process::new(crate::fallback::pwsh_program())
         .args([
             "-NoProfile",
             "-NonInteractive",

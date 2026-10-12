@@ -15,7 +15,7 @@ const LONG: &str = concat!(
 const EXAMPLES: &str =
     "Examples:\n  lab local-setup --install-dir 'D:\\Games\\Stargate Worlds'\n  lab local-setup --patch-login-internal";
 
-// Arguments of `lab local-setup`.
+/// Arguments of `lab local-setup`.
 #[derive(clap::Args, Debug)]
 #[command(
     about = "One-shot setup for a lab against a local server",

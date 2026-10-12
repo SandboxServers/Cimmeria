@@ -20,7 +20,7 @@
     "                 x96dbg.exe launched with the x64dbg-automate plugin loaded.",
     "  cimmeria-lab : the Live Research Lab supervisor, as ONE shared daemon",
     "                 for every session (cimmeria-lab --http, a per-user",
-    "                 scheduled task). Set it up with: pwsh tools/lab/cli/local-setup.ps1",
+    "                 scheduled task). Set it up with: pwsh tools/lab/cli/local-setup.ps1, then",
     "                 pwsh tools/lab/install.ps1, then",
     "                 pwsh tools/lab/daemon.ps1 install. Loopback only; the",
     "                 bearer token comes from labd-headers.ps1, which reads the",

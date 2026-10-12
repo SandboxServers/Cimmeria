@@ -12,7 +12,7 @@ const LONG: &str = concat!(
 
 const EXAMPLES: &str = "Examples:\n  lab stop\n  lab stop --force";
 
-// Arguments of `lab stop`.
+/// Arguments of `lab stop`.
 #[derive(clap::Args, Debug)]
 #[command(
     about = "Stop the lab daemon and close its lab clients",

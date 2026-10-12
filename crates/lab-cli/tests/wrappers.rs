@@ -10,8 +10,16 @@ use std::process::{Command, Output};
 
 use tempfile::TempDir;
 
+/// True when `pwsh` runs. On Windows it must: a missing PowerShell 7 fails the
+/// test there instead of skipping it. Elsewhere a missing one skips the test.
 fn pwsh_exists() -> bool {
-    Command::new("pwsh").arg("-Version").output().is_ok()
+    let found = Command::new(cimmeria_lab_cli::fallback::pwsh_program())
+        .arg("-Version")
+        .output()
+        .is_ok();
+    #[cfg(windows)]
+    assert!(found, "pwsh (PowerShell 7) is required on Windows");
+    found
 }
 
 /// A scripts folder whose five scripts print `$args` joined with `|` and exit
@@ -188,6 +196,23 @@ fn the_installed_layout_beside_bin_is_where_the_scripts_are_found() {
 fn a_missing_script_is_exit_1_not_installed() {
     let empty = TempDir::new().expect("temp dir");
     let out = lab(&["start"], empty.path(), None);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&out.stderr).contains("not installed"));
+}
+
+/// `CIMMERIA_LAB_CLI_DIR` alone does not choose the scripts: it counts only
+/// with the `CIMMERIA_LAB_HOME` test override. Without it the scripts are the
+/// installed copy beside `bin`, which is not there for a test binary.
+#[test]
+fn the_cli_dir_variable_alone_does_not_choose_the_scripts() {
+    let dir = scripts();
+    let out = Command::new(env!("CARGO_BIN_EXE_lab"))
+        .arg("start")
+        .env_remove("CIMMERIA_LAB_HOME")
+        .env("CIMMERIA_LAB_CLI_DIR", dir.path())
+        .env_remove("LAB_STUB_EXIT")
+        .output()
+        .expect("run lab");
     assert_eq!(out.status.code(), Some(1));
     assert!(String::from_utf8_lossy(&out.stderr).contains("not installed"));
 }

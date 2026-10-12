@@ -12,7 +12,7 @@ const LONG: &str = concat!(
 
 const EXAMPLES: &str = "Examples:\n  lab instances status\n  lab instances init\n  lab instances init --install-dir 'D:\\Games\\Stargate Worlds' --force";
 
-// Arguments of `lab instances`.
+/// Arguments of `lab instances`.
 #[derive(clap::Args, Debug)]
 #[command(
     about = "Show each instance's account, profile and client, or write account files",

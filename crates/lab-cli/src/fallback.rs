@@ -8,13 +8,17 @@ use std::path::{Path, PathBuf};
 use std::process::Command as Process;
 
 use crate::commands::Ctx;
+use crate::daemon::paths;
 
-/// The folder the scripts live in: `CIMMERIA_LAB_CLI_DIR` when set, else the
-/// `cli` folder beside the executable's folder (`<lab home>\bin\..\cli`). In a
-/// checkout that folder is `tools\lab`.
+/// The folder the scripts live in: the `cli` folder beside the executable's
+/// folder (`<lab home>\bin\..\cli`). In a checkout that folder is `tools\lab`.
+/// Tests may point it elsewhere with `CIMMERIA_LAB_CLI_DIR`, which counts only
+/// while the test override `CIMMERIA_LAB_HOME` is set too: in normal use an
+/// environment variable must not choose which scripts `lab` runs.
 pub fn scripts_dir() -> Option<PathBuf> {
-    match std::env::var_os("CIMMERIA_LAB_CLI_DIR") {
-        Some(dir) => Some(PathBuf::from(dir)),
+    let from_env = std::env::var_os("CIMMERIA_LAB_CLI_DIR");
+    match cli_dir_override(from_env, paths::lab_home_overridden()) {
+        Some(dir) => Some(dir),
         None => Some(
             std::env::current_exe()
                 .ok()?
@@ -23,6 +27,36 @@ pub fn scripts_dir() -> Option<PathBuf> {
                 .join("cli"),
         ),
     }
+}
+
+/// `CIMMERIA_LAB_CLI_DIR` as a folder, when it is set and the lab-home test
+/// override is on; `None` otherwise.
+pub fn cli_dir_override(value: Option<OsString>, lab_home_overridden: bool) -> Option<PathBuf> {
+    if !lab_home_overridden {
+        return None;
+    }
+    value.filter(|v| !v.is_empty()).map(PathBuf::from)
+}
+
+/// The `pwsh` to run: `%ProgramFiles%\PowerShell\7\pwsh.exe` when that file
+/// exists, else `pwsh` from `PATH`. Looking in Program Files first means a
+/// `pwsh.exe` planted in the current folder or earlier on `PATH` is not run.
+pub fn pwsh_program() -> PathBuf {
+    pwsh_in(std::env::var_os("ProgramFiles"))
+}
+
+/// [`pwsh_program`] with the `%ProgramFiles%` value given.
+pub fn pwsh_in(program_files: Option<OsString>) -> PathBuf {
+    program_files
+        .filter(|dir| !dir.is_empty())
+        .map(|dir| {
+            PathBuf::from(dir)
+                .join("PowerShell")
+                .join("7")
+                .join("pwsh.exe")
+        })
+        .filter(|path| path.is_file())
+        .unwrap_or_else(|| PathBuf::from("pwsh"))
 }
 
 /// `relative` (for example `daemon.ps1` or `cli/install.ps1`) under
@@ -124,7 +158,7 @@ pub fn run_script(ctx: &Ctx, relative: &str, leading: &[&str]) -> u8 {
         );
         return 1;
     };
-    match Process::new("pwsh")
+    match Process::new(pwsh_program())
         .args(command_line(&script, leading, &ctx.raw))
         .status()
     {
@@ -154,6 +188,40 @@ mod tests {
             .into_iter()
             .map(|t| t.to_string_lossy().into_owned())
             .collect()
+    }
+
+    #[test]
+    fn the_cli_dir_variable_is_ignored_without_the_lab_home_override() {
+        let dir = Some(OsString::from("C:\\elsewhere"));
+        assert_eq!(cli_dir_override(dir.clone(), false), None);
+        assert_eq!(
+            cli_dir_override(dir, true),
+            Some(PathBuf::from("C:\\elsewhere"))
+        );
+        assert_eq!(cli_dir_override(None, true), None);
+        assert_eq!(cli_dir_override(Some(OsString::new()), true), None);
+    }
+
+    #[test]
+    fn pwsh_is_the_program_files_copy_when_it_exists() {
+        let root = tempfile::TempDir::new().expect("temp dir");
+        let folder = root.path().join("PowerShell").join("7");
+        std::fs::create_dir_all(&folder).expect("folder");
+        let exe = folder.join("pwsh.exe");
+        std::fs::write(&exe, "").expect("file");
+        let found = pwsh_in(Some(root.path().as_os_str().to_owned()));
+        assert_eq!(found, exe);
+    }
+
+    #[test]
+    fn pwsh_comes_from_the_path_when_program_files_has_none() {
+        let empty = tempfile::TempDir::new().expect("temp dir");
+        assert_eq!(
+            pwsh_in(Some(empty.path().as_os_str().to_owned())),
+            PathBuf::from("pwsh")
+        );
+        assert_eq!(pwsh_in(Some(OsString::new())), PathBuf::from("pwsh"));
+        assert_eq!(pwsh_in(None), PathBuf::from("pwsh"));
     }
 
     #[test]

@@ -78,10 +78,12 @@ $Worktree = (Resolve-Path $Worktree).Path
 if (-not (Test-Path (Join-Path $Worktree 'tools\build-lane\lane.ps1'))) {
     throw "$Worktree is not a Cimmeria checkout (no tools\build-lane\lane.ps1)"
 }
-$Commit = (git -C $Worktree rev-parse HEAD).Trim()
-$Subject = (git -C $Worktree log -1 --format=%s).Trim()
-$CliSha = (git -C $Worktree rev-parse --short HEAD).Trim()
-if ($LASTEXITCODE -ne 0 -or -not $CliSha) { throw "git rev-parse --short HEAD failed in $Worktree" }
+# git prints nothing on failure, so each result is checked before it is trimmed.
+$Commit = "$(git -C $Worktree rev-parse HEAD 2>$null)".Trim()
+if ($LASTEXITCODE -ne 0 -or -not $Commit) { throw "git rev-parse HEAD failed in $Worktree (is it a git checkout with a commit?)" }
+$Subject = "$(git -C $Worktree log -1 --format=%s 2>$null)".Trim()
+$CliSha = "$(git -C $Worktree rev-parse --short HEAD 2>$null)".Trim()
+if ($LASTEXITCODE -ne 0 -or -not $CliSha) { throw "git rev-parse --short HEAD failed in $Worktree (is it a git checkout with a commit?)" }
 $Dirty = @(git -C $Worktree status --porcelain --untracked-files=no).Count
 Say "source:  $Worktree"
 Say "commit:  $Commit  $Subject"

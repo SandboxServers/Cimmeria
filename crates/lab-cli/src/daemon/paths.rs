@@ -149,7 +149,8 @@ pub struct DaemonInfo {
 }
 
 /// Reads `labd.pid`. A missing, unreadable or malformed file, or a file with
-/// no `bind`, gives `pid: None` and/or the default bind. Port of
+/// no `bind` or a `bind` that is not loopback (see [`loopback_bind`]), gives
+/// `pid: None` and/or the default bind. Port of
 /// `Get-DaemonInfo` plus the default-bind rule of `Get-LabStatus`.
 pub fn daemon_info() -> DaemonInfo {
     let none = DaemonInfo {
@@ -169,9 +170,26 @@ pub fn daemon_info() -> DaemonInfo {
     let bind = value
         .get("bind")
         .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|bind| !bind.is_empty())
-        .unwrap_or(DEFAULT_BIND)
-        .to_string();
+        .and_then(loopback_bind)
+        .unwrap_or_else(|| DEFAULT_BIND.to_string());
     DaemonInfo { pid, bind }
+}
+
+/// `text` as a loopback `host:port`, or `None`. Accepted: an IP socket address
+/// whose IP is loopback (`127.0.0.1:8779`, `[::1]:8779`) and `localhost:port`.
+/// Everything else is refused: other IPs (`0.0.0.0` included), host names,
+/// userinfo (`127.0.0.1:8779@evil.example`), paths and port 0. The bearer token
+/// is sent to this address, and `labd.pid` is a file anyone with write access
+/// to the lab home can change.
+pub fn loopback_bind(text: &str) -> Option<String> {
+    let text = text.trim();
+    if let Ok(addr) = text.parse::<std::net::SocketAddr>() {
+        return (addr.ip().is_loopback() && addr.port() != 0).then(|| addr.to_string());
+    }
+    let (host, port) = text.rsplit_once(':')?;
+    let port: u16 = port.parse().ok().filter(|port| *port != 0)?;
+    if !host.eq_ignore_ascii_case("localhost") {
+        return None;
+    }
+    Some(format!("localhost:{port}"))
 }

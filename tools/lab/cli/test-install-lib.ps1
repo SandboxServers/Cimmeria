@@ -104,6 +104,9 @@ try {
     $said = @(Install-LabCli $root 6>&1 | ForEach-Object { "$_" })
     Check (-not (Test-Path -LiteralPath $shimPath)) 'without lab.exe, Install-LabCli still deletes an old bin\lab.cmd (the dispatcher it ran is gone)'
     Check (($said -join "`n") -like '*removed bin\lab.cmd*') 'the removal says why'
+    $batchNote = "*Removed the old lab.cmd shim; if you see 'The batch file cannot be found', ignore it. Open a new terminal and use lab.exe.*"
+    Check (($said -join "`n") -like $batchNote) 'the removal warns about the batch file message'
+    Check (@($said | Where-Object { $_ -like '*batch file cannot be found*' }).Count -eq 1) 'the batch file warning is printed once'
 
     Set-Content -LiteralPath $exePath -Value 'fake exe' -Encoding ascii
     Check (Test-LabExeInstalled $env:CIMMERIA_LAB_HOME) 'with a bin\lab.exe, Test-LabExeInstalled is true'
@@ -113,8 +116,11 @@ try {
     Check (Test-Path -LiteralPath $exePath) 'deleting the shim leaves lab.exe alone'
     Check (($said -join "`n") -like '*lab.exe installed; the lab.cmd shim is no longer needed*') 'the shim removal prints the notice'
 
-    Install-LabCli $root
+    Check (($said -join "`n") -like $batchNote) 'the removal with lab.exe warns about the batch file message too'
+
+    $said = @(Install-LabCli $root 6>&1 | ForEach-Object { "$_" })
     Check (-not (Test-Path -LiteralPath $shimPath)) 'with lab.exe and no shim, a second run leaves none'
+    Check (($said -join "`n") -notlike '*batch file cannot be found*') 'with no shim to remove, nothing is said about it'
 
     # setup.ps1 as a whole, in a child process; -NoPath keeps it off the user PATH.
     $setup = Join-Path $root 'tools\lab\cli\setup.ps1'
@@ -188,6 +194,7 @@ try {
     Check ($installText -match "Join-Path \`$bin 'lab\.exe'") 'install.ps1 installs it to bin\lab.exe'
     Check ($installText -match 'Install-LabFile -From') 'install.ps1 copies through Install-LabFile'
     Check ($installText -notmatch 'Move-Item') 'install.ps1 no longer has its own rename-then-copy'
+    Check ($installText -notmatch '\(git [^)]*\)\.Trim\(\)') 'install.ps1 never calls .Trim() on raw git output (it is $null when git fails)'
 } finally {
     $env:CIMMERIA_LAB_HOME = $savedHome
     Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue

@@ -71,8 +71,10 @@ impl McpClient {
     /// `Mcp-Session-Id` header, POST `notifications/initialized`.
     pub fn open(base_url: &str, token: Option<&str>) -> Result<Self, McpError> {
         // no_proxy: this is loopback, and a system proxy must never see the token.
+        // No redirects: a reply must not send the bearer token anywhere else.
         let http = Client::builder()
             .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|e| McpError::Protocol(format!("http client: {e}")))?;
         let mut client = McpClient {
@@ -178,7 +180,7 @@ impl McpClient {
         }
         let resp = req
             .send()
-            .map_err(|e| McpError::Unreachable(e.to_string()))?;
+            .map_err(|e| McpError::Unreachable(transport_text(&e, timeout)))?;
         let status = resp.status();
         if let Some(sid) = resp
             .headers()
@@ -189,7 +191,7 @@ impl McpClient {
         }
         let text = resp.text().map_err(|e| {
             if e.is_timeout() {
-                McpError::Unreachable(e.to_string())
+                McpError::Unreachable(transport_text(&e, timeout))
             } else {
                 McpError::Protocol(format!("reading the reply: {e}"))
             }
@@ -201,6 +203,17 @@ impl McpClient {
             ));
         }
         Ok(text)
+    }
+}
+
+/// The text of a transport error. reqwest's own text for a timeout does not say
+/// "timed out", and the uat runner tells a timeout from other failures by that
+/// text, so a timeout is spelled out here.
+fn transport_text(e: &reqwest::Error, timeout: Duration) -> String {
+    if e.is_timeout() {
+        format!("timed out after {}s: {e}", timeout.as_secs())
+    } else {
+        e.to_string()
     }
 }
 

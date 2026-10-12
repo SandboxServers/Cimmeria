@@ -8,7 +8,7 @@ const LONG: &str = "Starts the lab daemon through its scheduled task, CimmeriaLa
 
 const EXAMPLES: &str = "Examples:\n  lab start";
 
-// Arguments of `lab start`.
+/// Arguments of `lab start`.
 #[derive(clap::Args, Debug)]
 #[command(
     about = "Start the lab daemon (the CimmeriaLabDaemon scheduled task)",
