@@ -1,11 +1,18 @@
 //! Runs the built `lab` binary and checks exit codes and output.
 
+mod support;
+
 use std::process::{Command, Output};
 
-/// Runs `lab` with `args` and an optional environment override.
+/// Runs `lab` with `args` and an optional environment override. Every run gets
+/// an isolated lab home (`CIMMERIA_LAB_HOME` and `LOCALAPPDATA`), so no run
+/// reaches the machine's real lab daemon. `env` may override the home.
 fn run_lab(args: &[&str], env: &[(&str, &std::path::Path)]) -> Output {
+    let home = support::isolated_lab_home();
     let mut command = Command::new(env!("CARGO_BIN_EXE_lab"));
     command.args(args);
+    command.env("CIMMERIA_LAB_HOME", home.path());
+    command.env("LOCALAPPDATA", home.path());
     for (key, value) in env {
         command.env(key, value);
     }
@@ -255,11 +262,17 @@ fn completions_goes_to_the_fallback_with_its_tokens() {
 
 #[test]
 fn powershell_spelling_of_uat_flags_is_accepted() {
-    let empty = tempfile::TempDir::new().expect("temp dir");
+    // -PlanOnly is native and parsed; run_lab's home names the closed port 9, so
+    // the plan finds no daemon and stops before anything is driven: exit 3
+    // (pre-flight failure), not a usage error (2) and not a run (0 or 1).
     let output = run_lab(
         &["uat", "first-session", "-Rows", "FS-01,FS-02", "-PlanOnly"],
-        &[("CIMMERIA_LAB_CLI_DIR", empty.path())],
+        &[],
     );
-    // Parsed, then the fallback finds no dispatcher: exit 1, not a usage error.
-    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        output.status.code(),
+        Some(3),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }

@@ -1,9 +1,27 @@
 //! `lab uat`: run a UAT spec on the lab with no agent.
-//! LX-02 gives it its clap arguments and help page; the body is still the
-//! PowerShell fallback.
+//!
+//! LX-15 is the front half: [`args`] (the argument checks), [`plan`] (lanes,
+//! the plan call and `plan.json`) and [`preflight`] (the order of events before
+//! anything is driven, and `--plan-only`). Only `--plan-only` is native until
+//! LX-16b: a real run goes straight to the PowerShell fallback.
 
+pub mod args;
+pub mod plan;
+pub mod preflight;
+
+use std::time::Duration;
+
+use serde_json::Value;
+
+use crate::commands::doctor::system::sgw_pids;
 use crate::commands::Ctx;
+use crate::daemon::env_file;
+use crate::daemon::mcp::{McpClient, McpError};
+use crate::daemon::paths;
+use crate::daemon::status::Endpoint;
 use crate::fallback;
+
+pub use preflight::{execute, Deps, Outcome, Ready};
 
 const LONG: &str = concat!(
     "Calls lab_uat_run on the shared lab daemon. --leases lanes run at once, one per hosted lab instance in the daemon's order (default, p2, ...); each lane runs the rows --runs-per-lease times, one after another. Every run takes and releases its own lease, so nothing stays held. Lanes start --stagger-seconds apart (run ids are time based, and simultaneous client boots are where logins go wrong).",
@@ -93,10 +111,49 @@ pub struct Args {
     pub quiet: bool,
 }
 
-/// Runs `lab uat` (still the PowerShell fallback).
+/// The native pre-flight on real collaborators. Returns the daemon endpoint (a
+/// native batch drives on it) with how the pre-flight ended.
+fn native_preflight(args: &Args, ctx: &Ctx) -> (Endpoint, Outcome) {
+    let ep = Endpoint::discover();
+    let specs = paths::default_specs_dir().map(|p| p.display().to_string());
+    let max_clients =
+        preflight::max_clients_from(&env_file::read_or_empty(&paths::labd_env_path()));
+    // One MCP session per call, closed after it (the PowerShell did the same).
+    let call_ep = ep.clone();
+    let mut call = move |name: &str, call_args: Value, wait: Duration| -> Result<Value, McpError> {
+        let mut client = McpClient::connect(&call_ep)?;
+        let reply = client.call_tool(name, call_args, wait);
+        client.close();
+        reply
+    };
+    let sgw = sgw_pids;
+    let mut deps = Deps {
+        ep: &ep,
+        specs,
+        max_clients,
+        sgw_pids: &sgw,
+        call: &mut call,
+    };
+    let mut out = anstream::stdout();
+    let mut err = anstream::stderr();
+    let outcome = execute(args, &ctx.ui, &mut deps, &mut out, &mut err);
+    (ep, outcome)
+}
+
+/// Runs `lab uat` and returns its exit code. `--plan-only` is native: a usage
+/// error is 2, a refusal before anything is driven is 3, the plan ends with 0.
+/// A real run goes straight to the PowerShell fallback WITHOUT the native
+/// pre-flight (the script does its own), so nothing is planned twice and no
+/// second batch folder is made. LX-16b replaces this function.
 pub fn run(args: &Args, ctx: &Ctx) -> u8 {
-    let _ = args;
-    fallback::run(ctx)
+    if !args.plan_only {
+        return fallback::run(ctx);
+    }
+    match native_preflight(args, ctx).1 {
+        Outcome::Done(code) => code,
+        // `--plan-only` never returns Drive; the fallback is the safe answer if it did.
+        Outcome::Drive(_) => fallback::run(ctx),
+    }
 }
 
 #[cfg(test)]

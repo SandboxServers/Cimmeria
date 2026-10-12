@@ -2,6 +2,7 @@
 //! (ports test-record.ps1, "compact JSON" and "the script itself").
 
 mod record_support;
+mod support;
 
 use std::process::Command;
 
@@ -14,6 +15,9 @@ use tempfile::TempDir;
 use record_support::{args, fancy_ui, joined, ok, run, run_with, tool_err, ID, SPECS, UAT};
 
 fn lab(dir: &TempDir, tokens: &[&str]) -> std::process::Output {
+    // The home names a closed port: a run that did reach the daemon step
+    // would find none, never the machine's real daemon.
+    support::write_closed_port_pid(dir.path());
     Command::new(env!("CARGO_BIN_EXE_lab"))
         .args(tokens)
         .env("CIMMERIA_LAB_HOME", dir.path())

@@ -4,17 +4,14 @@
 //! points at a closed port, so a command that did reach the daemon step would
 //! find none (exit 1), never the real daemon.
 
+mod support;
+
 use std::process::{Command, Output};
 
 use tempfile::TempDir;
 
 fn lab(args: &[&str]) -> (Output, TempDir) {
-    let home = tempfile::tempdir().expect("temp lab home");
-    std::fs::write(
-        home.path().join("labd.pid"),
-        r#"{"pid":1,"bind":"127.0.0.1:9"}"#,
-    )
-    .expect("write labd.pid");
+    let home = support::isolated_lab_home();
     let output = Command::new(env!("CARGO_BIN_EXE_lab"))
         .args(args)
         .env("CIMMERIA_LAB_HOME", home.path())

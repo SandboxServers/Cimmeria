@@ -6,6 +6,8 @@
 use std::path::PathBuf;
 use std::process::Command;
 
+mod support;
+
 const START: &str =
     "# head\r\nFOO=1\r\nCIMMERIA_LAB_DAEMON_TOKEN=test-token-not-real\r\n# tail\r\n";
 const USAGE: &str =
@@ -25,7 +27,7 @@ struct Run {
 impl Lab {
     fn new() -> Self {
         Self {
-            home: tempfile::TempDir::new().expect("temp dir"),
+            home: support::isolated_lab_home(),
         }
     }
 

@@ -221,6 +221,31 @@ fn handle_connection(mut stream: TcpStream, routes: &[Route], log: &Mutex<Vec<Re
     let _ = stream.shutdown(Shutdown::Both);
 }
 
+/// The bind an isolated lab home names: port 9 (discard) on loopback, which
+/// nothing listens on.
+pub const CLOSED_PORT_BIND: &str = "127.0.0.1:9";
+
+/// Writes `<home>\labd.pid` naming [`CLOSED_PORT_BIND`], so a `lab` child or a
+/// `status::fetch` run with `CIMMERIA_LAB_HOME=<home>` finds no daemon. An
+/// empty home falls back to `127.0.0.1:8779`, where the machine's real lab
+/// daemon may be listening.
+pub fn write_closed_port_pid(home: &std::path::Path) {
+    std::fs::write(
+        home.join("labd.pid"),
+        format!(r#"{{"pid":1,"bind":"{CLOSED_PORT_BIND}"}}"#),
+    )
+    .expect("write labd.pid");
+}
+
+/// A fresh temp lab home whose `labd.pid` names a closed port. Every test that
+/// runs the `lab` binary, or calls `Endpoint::discover`, uses this unless it
+/// points at a [`StubServer`] on purpose.
+pub fn isolated_lab_home() -> tempfile::TempDir {
+    let home = tempfile::TempDir::new().expect("temp lab home");
+    write_closed_port_pid(home.path());
+    home
+}
+
 /// An [`Endpoint`] on a loopback port that nothing listens on: a listener is
 /// bound to get a free port, then dropped.
 pub fn closed_port_endpoint() -> Endpoint {

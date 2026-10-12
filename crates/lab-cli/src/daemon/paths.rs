@@ -27,6 +27,12 @@ pub fn lab_home() -> PathBuf {
     }
 }
 
+/// True when `CIMMERIA_LAB_HOME` is set and non-empty, so [`lab_home`] is the
+/// test override and not the real `%LOCALAPPDATA%\cimmeria-lab`.
+pub fn lab_home_overridden() -> bool {
+    std::env::var_os("CIMMERIA_LAB_HOME").is_some_and(|value| !value.is_empty())
+}
+
 /// `<home>\labd.env`. Port of `Get-LabdEnvPath`.
 pub fn labd_env_path() -> PathBuf {
     lab_home().join("labd.env")
