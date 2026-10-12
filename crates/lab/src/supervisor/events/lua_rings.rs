@@ -49,9 +49,12 @@
 //! The binding has no `unsubscribeGlobal`, so the subscription is made
 //! once per Lua state (`L.click_host`), never per pump: re-subscribing would
 //! stack handlers. An interface reload rebuilds the Lua state (a new
-//! `epoch`), which installs it again. The host is `Root`, the ancestor of
-//! every window, so a subscription scoped to the host's subtree still sees
-//! all clicks; `BackgroundWin` is only the fallback. In CEGUI 0.6 an
+//! `epoch`), which installs it again. The hosts are tried in order,
+//! `BackgroundWin` then `Root`, moving on when the subscribe itself fails
+//! (`Root` is not a child of a ScriptedWindow, so it raises; the global
+//! event fires for every window's click whichever window hosts it). The
+//! status names the host used, or the error text of every host that
+//! failed. In CEGUI 0.6 an
 //! unhandled `MouseClick` bubbles to the parents, firing the global event
 //! once per ancestor; a fire on one of the last record's ancestors (never
 //! the clicked window itself), at the same UI time and cursor position, is
@@ -221,24 +224,37 @@ L.on_click = function(this, window, position, moveDelta, button)
 end
 local st_click = "missing"
 -- Its own pcall: a fault in the click install must not cost the combat and chat rings their pump.
-local okc = pcall(function()
-  if L.click_host ~= nil then st_click = "ok" return end
-  -- Root first: it is an ancestor of every window, so a subscription scoped to the host's
-  -- subtree still sees every click. BackgroundWin is a sibling of TutorialWin and the rest.
-  local host
-  local okw, w = pcall(getWindow, "Root")
-  if okw then host = w end
-  if host == nil then host = rawget(_G, "BackgroundWin") end
-  if host == nil then return end
+local okc, cerr = pcall(function()
+  if L.click_host ~= nil then st_click = "ok host=" .. tostring(L.click_host_name) return end
   local ns, ev = "Window", "MouseClick"
   if type(CEGUI) == "table" and type(CEGUI.Window) == "table" then
     ns = CEGUI.Window.EventNamespace or ns
     ev = CEGUI.Window.EventMouseClick or ev
   end
-  local oks = pcall(function() host:subscribeGlobal(ns, ev, "{click_handler}") end)
-  if oks then L.click_host = host st_click = "installed" else st_click = "failed" end
+  -- Hosts in order. "Root" is not a child of a ScriptedWindow, so its subscribe raises; BackgroundWin
+  -- takes it, and the global event fires for every window's click whichever window hosts it.
+  -- L.on_click is defined above, before any subscribe: the handler is bound by name at subscribe time.
+  local errs = {{}}
+  for _, hn in ipairs({{ "BackgroundWin", "Root" }}) do
+    local okw, host = pcall(function() return rawget(_G, hn) or getWindow(hn) end)
+    if not okw then
+      errs[#errs + 1] = hn .. "=" .. string.sub(clean(host), 1, 120)
+    elseif host == nil then
+      errs[#errs + 1] = hn .. "=no window"
+    else
+      local oks, serr = pcall(function() host:subscribeGlobal(ns, ev, "{click_handler}") end)
+      if oks then
+        L.click_host = host
+        L.click_host_name = hn
+        st_click = "installed host=" .. hn
+        return
+      end
+      errs[#errs + 1] = hn .. "=" .. string.sub(clean(serr), 1, 120)
+    end
+  end
+  st_click = "failed: " .. table.concat(errs, "; ")
 end)
-if not okc then st_click = "failed" end
+if not okc then st_click = "failed: " .. string.sub(clean(cerr), 1, 120) end
 local out = {{}}
 local function add(...) out[#out + 1] = table.concat({{...}}, "\t") end
 add("epoch", clean(L.epoch))
@@ -282,8 +298,8 @@ pub struct RingRead {
     /// `(ring, status)`: `ok` (already ours), `installed`,
     /// `installed_no_resubscribe`, or `missing` (the stock handler is not
     /// loaded: the client is not in the world yet). The click ring reports
-    /// `ok`, `installed`, `failed` (`subscribeGlobal` raised) or `missing`
-    /// (no host window yet).
+    /// `ok host=<name>`, `installed host=<name>`, `failed: <host>=<error>; ...`
+    /// (one entry per host tried, with its Lua error text) or `missing`.
     pub install: Vec<(String, String)>,
     /// `(ring seq, fields)` per record.
     pub combat: Vec<(u64, Value)>,
@@ -453,25 +469,70 @@ mod tests {
         let c = pump_chunk(0, 0, 0, READ_MAX);
         assert_eq!(c.matches("subscribeGlobal").count(), 1);
         let gate = c
-            .find(r#"if L.click_host ~= nil then st_click = "ok" return end"#)
+            .find(r#"if L.click_host ~= nil then st_click = "ok host=" .. tostring(L.click_host_name) return end"#)
             .expect("install gate");
         let sub = c.find("host:subscribeGlobal").unwrap();
         let set = c
-            .find(r#"if oks then L.click_host = host st_click = "installed" else st_click = "failed" end"#)
+            .find("L.click_host = host")
             .expect("host recorded only on success");
         assert!(gate < sub && sub < set);
-        // Root is tried before BackgroundWin: only Root is every window's ancestor.
-        let root = c.find(r#"pcall(getWindow, "Root")"#).expect("root host");
-        let bg = c
-            .find(r#"rawget(_G, "BackgroundWin")"#)
-            .expect("fallback host");
-        assert!(root < bg && bg < sub);
+        // BackgroundWin is tried first and Root is only the fallback: Root is
+        // not a child of a ScriptedWindow, so its subscribe raises.
+        let hosts = c
+            .find(r#"ipairs({ "BackgroundWin", "Root" })"#)
+            .expect("hosts in order, BackgroundWin first");
+        assert!(gate < hosts && hosts < sub);
+        assert!(
+            !c.contains(r#"pcall(getWindow, "Root")"#),
+            "the Root-only host choice is back"
+        );
+        // The handler is defined before the subscribe (it is bound by name).
+        assert!(c.find("L.on_click = function").unwrap() < sub);
         // The install has its own pcall, opened before the gate, so a fault
         // there cannot stop the combat and chat reads that follow.
         let guard = c
-            .find("local okc = pcall(function()")
+            .find("local okc, cerr = pcall(function()")
             .expect("install pcall");
         assert!(guard < gate && sub < c.find("add(\"head\", \"combat\"").unwrap());
+    }
+
+    /// A failed click install names every host it tried with the Lua error,
+    /// and the host that worked (#1660, probes C-P4 and C-P7). `failed` alone
+    /// gave the caller nothing to act on, and the Root-only choice failed
+    /// on every client.
+    #[test]
+    fn a_failed_click_install_reports_each_hosts_error_text() {
+        let c = pump_chunk(0, 0, 0, READ_MAX);
+        // Failure carries the error text of each host, clipped to 120 chars.
+        assert!(c.contains(r#"local oks, serr = pcall(function() host:subscribeGlobal(ns, ev, "CimmeriaLab.on_click") end)"#));
+        assert!(c.contains(r#"errs[#errs + 1] = hn .. "=" .. string.sub(clean(serr), 1, 120)"#));
+        assert!(c.contains(r#"st_click = "failed: " .. table.concat(errs, "; ")"#));
+        assert!(c.contains(
+            r#"if not okc then st_click = "failed: " .. string.sub(clean(cerr), 1, 120) end"#
+        ));
+        // Success names the host.
+        assert!(c.contains(r#"st_click = "installed host=" .. hn"#));
+        // The pump parses the new statuses as one field each.
+        let r = parse_ring_read(&s(&[
+            "install\tclick\tfailed: BackgroundWin=no window; Root=Window 'Root' is not a child of a ScriptedWindow",
+            "install\tchat\tok",
+        ]));
+        assert_eq!(
+            r.install[0],
+            (
+                "click".to_string(),
+                "failed: BackgroundWin=no window; Root=Window 'Root' is not a child of a ScriptedWindow".to_string()
+            )
+        );
+        assert!(r.bad_lines.is_empty());
+        let r = parse_ring_read(&s(&["install\tclick\tinstalled host=BackgroundWin"]));
+        assert_eq!(
+            r.install,
+            vec![(
+                "click".to_string(),
+                "installed host=BackgroundWin".to_string()
+            )]
+        );
     }
 
     /// A bubbled fire is skipped only on the last click's ancestors, never
