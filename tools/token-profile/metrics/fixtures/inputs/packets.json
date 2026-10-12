@@ -1,0 +1,286 @@
+{
+ "schema": "cimmeria-campaign-packets/1",
+ "sessions": {
+  "total": 20,
+  "mapped": 18,
+  "unmapped": 2,
+  "unmapped_share": 0.1
+ },
+ "campaigns": {
+  "alpha-old": {
+   "accepted": {
+    "packets": 4
+   },
+   "first_pass": {
+    "rate": 0.75,
+    "eligible": 4,
+    "packets": [
+     {
+      "id": "A-1",
+      "implementer_sessions": 0,
+      "reviewer_sessions": 1,
+      "fix_commits": 0,
+      "first_pass": true
+     },
+     {
+      "id": "A-2",
+      "implementer_sessions": 0,
+      "reviewer_sessions": 1,
+      "fix_commits": 0,
+      "first_pass": true
+     },
+     {
+      "id": "A-3",
+      "implementer_sessions": 0,
+      "reviewer_sessions": 1,
+      "fix_commits": 1,
+      "first_pass": false
+     },
+     {
+      "id": "A-4",
+      "implementer_sessions": 0,
+      "reviewer_sessions": 1,
+      "fix_commits": 0,
+      "first_pass": true
+     }
+    ]
+   },
+   "retries": {
+    "total": 0,
+    "by_reason": {
+     "context-exhausted": 0,
+     "stalled-background": 0,
+     "permission-denied": 0,
+     "review-fix": 0,
+     "ci-failure": 0,
+     "merge-conflict": 0,
+     "other": 0
+    }
+   },
+   "escalation": {
+    "dispatched_to_haiku": 0,
+    "escalated": 0,
+    "rate": null,
+    "items": []
+   },
+   "stop_context": {
+    "workers": 0,
+    "by_stop": {
+     "end_turn": 0,
+     "tool_use": 0,
+     "error": 0,
+     "no_record": 0
+    },
+    "by_error_kind": {
+     "rate_limit": 0,
+     "authentication_failed": 0,
+     "other": 0
+    },
+    "context_at_stop": {
+     "p50": null,
+     "p90": null,
+     "max": null
+    },
+    "share_above_90k": null
+   },
+   "cycle_time": {
+    "campaign_hours": 24.0,
+    "packet_hours": {
+     "n": 4,
+     "p50": 6.0,
+     "p90": 9.0
+    }
+   },
+   "packets": [
+    {
+     "id": "A-1",
+     "accepted": true,
+     "implementer_sessions": 0,
+     "reviewer_sessions": 1,
+     "fixer_sessions": 0,
+     "fix_commits": 0,
+     "escalated": false,
+     "escalation_to": null,
+     "why": null,
+     "retries": [],
+     "first_pass": true,
+     "cycle_hours": 4.0
+    },
+    {
+     "id": "A-2",
+     "accepted": true,
+     "implementer_sessions": 0,
+     "reviewer_sessions": 1,
+     "fixer_sessions": 0,
+     "fix_commits": 0,
+     "escalated": false,
+     "escalation_to": null,
+     "why": null,
+     "retries": [],
+     "first_pass": true,
+     "cycle_hours": 6.0
+    },
+    {
+     "id": "A-3",
+     "accepted": true,
+     "implementer_sessions": 0,
+     "reviewer_sessions": 1,
+     "fixer_sessions": 1,
+     "fix_commits": 1,
+     "escalated": false,
+     "escalation_to": null,
+     "why": null,
+     "retries": [],
+     "first_pass": false,
+     "cycle_hours": 6.0
+    },
+    {
+     "id": "A-4",
+     "accepted": true,
+     "implementer_sessions": 0,
+     "reviewer_sessions": 1,
+     "fixer_sessions": 0,
+     "fix_commits": 0,
+     "escalated": false,
+     "escalation_to": null,
+     "why": null,
+     "retries": [],
+     "first_pass": true,
+     "cycle_hours": 9.0
+    }
+   ]
+  },
+  "beta-haiku": {
+   "accepted": {
+    "packets": 3
+   },
+   "first_pass": {
+    "rate": 0.33,
+    "eligible": 3,
+    "packets": [
+     {
+      "id": "B-1",
+      "implementer_sessions": 1,
+      "reviewer_sessions": 1,
+      "fix_commits": 0,
+      "first_pass": true
+     },
+     {
+      "id": "B-2",
+      "implementer_sessions": 2,
+      "reviewer_sessions": 1,
+      "fix_commits": 1,
+      "first_pass": false
+     },
+     {
+      "id": "B-3",
+      "implementer_sessions": 2,
+      "reviewer_sessions": 1,
+      "fix_commits": 0,
+      "first_pass": false
+     }
+    ]
+   },
+   "retries": {
+    "total": 2,
+    "by_reason": {
+     "context-exhausted": 2,
+     "stalled-background": 0,
+     "permission-denied": 0,
+     "review-fix": 0,
+     "ci-failure": 0,
+     "merge-conflict": 0,
+     "other": 0
+    }
+   },
+   "escalation": {
+    "dispatched_to_haiku": 3,
+    "escalated": 1,
+    "rate": 0.33,
+    "items": [
+     {
+      "id": "B-3",
+      "to": "rust-gameserver-dev",
+      "why": "context-exhausted"
+     }
+    ]
+   },
+   "stop_context": {
+    "workers": 5,
+    "by_stop": {
+     "end_turn": 2,
+     "tool_use": 1,
+     "error": 1,
+     "no_record": 1
+    },
+    "by_error_kind": {
+     "rate_limit": 1,
+     "authentication_failed": 0,
+     "other": 0
+    },
+    "context_at_stop": {
+     "p50": 61000,
+     "p90": 95000,
+     "max": 98000
+    },
+    "share_above_90k": 0.4
+   },
+   "cycle_time": {
+    "campaign_hours": 12.0,
+    "packet_hours": {
+     "n": 3,
+     "p50": 2.0,
+     "p90": 3.0
+    }
+   },
+   "packets": [
+    {
+     "id": "B-1",
+     "accepted": true,
+     "implementer_sessions": 1,
+     "reviewer_sessions": 1,
+     "fixer_sessions": 0,
+     "fix_commits": 0,
+     "escalated": false,
+     "escalation_to": null,
+     "why": null,
+     "retries": [],
+     "first_pass": true,
+     "cycle_hours": 1.0
+    },
+    {
+     "id": "B-2",
+     "accepted": true,
+     "implementer_sessions": 2,
+     "reviewer_sessions": 1,
+     "fixer_sessions": 1,
+     "fix_commits": 1,
+     "escalated": false,
+     "escalation_to": null,
+     "why": null,
+     "retries": [
+      "context-exhausted"
+     ],
+     "first_pass": false,
+     "cycle_hours": 2.0
+    },
+    {
+     "id": "B-3",
+     "accepted": true,
+     "implementer_sessions": 2,
+     "reviewer_sessions": 1,
+     "fixer_sessions": 0,
+     "fix_commits": 0,
+     "escalated": true,
+     "escalation_to": "rust-gameserver-dev",
+     "why": "context-exhausted",
+     "retries": [
+      "context-exhausted"
+     ],
+     "first_pass": false,
+     "cycle_hours": 3.0
+    }
+   ]
+  }
+ }
+}
