@@ -152,7 +152,7 @@ Each metric, one line:
 
 **Regime.** A packet's regime is the implementer that ran: `haiku` if a Haiku implementer session ran, else `old`. The switch to Haiku workers was `2026-10-10T20:02:54Z`. A campaign is `haiku` at 70% or more Haiku packets, `old` at none, and `mixed` in between; cost compares pure campaigns only, and packet metrics split a mixed campaign by packet.
 
-**Before you start.** `packets` needs a schema v6 database, so re-ingest first. A full `github` run makes roughly 3,500 to 5,500 `gh` API calls for a full run (projected from a sample of tagged PRs): pass `--cache`, and expect two sittings.
+**Before you start.** `packets` needs a schema v6 database, so re-ingest first. A full `github` run makes roughly 3,500 to 5,500 `gh` API calls (projected from a sample of tagged PRs): pass `--cache`, and expect two sittings.
 
 **Rerun in order.** Each step except `registry --check` writes to a scratch directory outside the repository. Copy each command from `python tools/token-profile/metrics <sub> --help`, and check the flags there before you rely on them.
 
