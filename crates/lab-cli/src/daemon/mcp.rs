@@ -340,14 +340,19 @@ pub fn wait_lease_free_until(
         if left.is_zero() {
             return false;
         }
-        let mut rest = interval.min(left);
-        while !rest.is_zero() {
+        // Slices are cut from the clock, not from a running sum of the nominal
+        // slice lengths: a sleep that overshoots (about 15 ms on Windows) is
+        // not added up over fifty slices, so the poll cadence and `max` hold.
+        let until = clock.elapsed().saturating_add(interval.min(left));
+        loop {
             if stop() {
                 return false;
             }
-            let slice = rest.min(STOP_SLICE);
-            clock.sleep(slice);
-            rest -= slice;
+            let now = clock.elapsed();
+            if now >= until {
+                break;
+            }
+            clock.sleep((until - now).min(STOP_SLICE));
         }
     }
 }

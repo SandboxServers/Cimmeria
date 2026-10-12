@@ -16,6 +16,8 @@ use support::StubServer;
 /// n-th sleep (1-based).
 struct FakeClock<'a> {
     now: Duration,
+    /// Extra time every sleep takes beyond what was asked, as a real sleep does.
+    overshoot: Duration,
     sleeps: Vec<Duration>,
     on_sleep: Box<dyn FnMut(usize) + 'a>,
 }
@@ -26,7 +28,7 @@ impl LeaseClock for FakeClock<'_> {
     }
 
     fn sleep(&mut self, d: Duration) {
-        self.now += d;
+        self.now += d + self.overshoot;
         self.sleeps.push(d);
         (self.on_sleep)(self.sleeps.len());
     }
@@ -35,6 +37,7 @@ impl LeaseClock for FakeClock<'_> {
 fn clock<'a>(on_sleep: impl FnMut(usize) + 'a) -> FakeClock<'a> {
     FakeClock {
         now: Duration::ZERO,
+        overshoot: Duration::ZERO,
         sleeps: Vec::new(),
         on_sleep: Box::new(on_sleep),
     }
@@ -109,6 +112,33 @@ fn without_a_stop_the_wait_sleeps_in_slices_until_the_lease_clears() {
     assert_eq!(fake.sleeps.len(), 150, "three 10 s sleeps of 50 slices");
     assert!(fake.sleeps.iter().all(|s| *s <= STOP_SLICE));
     assert_eq!(fake.now, Duration::from_secs(30));
+}
+
+#[test]
+fn sleeps_that_overshoot_do_not_add_up_over_the_slices() {
+    let polls = Cell::new(0u32);
+    let mut poll = || {
+        polls.set(polls.get() + 1);
+        status("i1", polls.get() < 2) // held once, then free
+    };
+    let mut fake = clock(|_| {});
+    fake.overshoot = Duration::from_millis(10);
+    assert!(wait_lease_free_until(
+        &mut poll,
+        "i1",
+        TEN_MINUTES,
+        TEN,
+        &|| false,
+        &mut fake
+    ));
+    // Cut from the clock the 10 s interval ends within one slice of 10 s; summing
+    // 50 nominal slices of 210 ms real time each would take 10.5 s.
+    assert!(fake.now >= TEN, "{:?}", fake.now);
+    assert!(
+        fake.now < TEN + STOP_SLICE + fake.overshoot,
+        "{:?}",
+        fake.now
+    );
 }
 
 #[test]
