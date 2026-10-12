@@ -64,7 +64,9 @@ Independence: LH-09 (player_state.rs), LH-10 (movement.rs, steer.rs, tool_tests.
 
 ### LH-09: client_player_state reads stats robustly and says why when it cannot (S)
 
-depends-on: P1 (names only; the code is correct either way).
+depends-on: none (probe C-P1 ran 2026-10-12 and settled the names; see "Why the stats came back empty" below).
+
+**Why the stats came back empty (probe C-P1, confirmed by reading `player_state.rs`).** `Stat` is a tolua class table. `pairs(Stat)` yields only its 13 metamethods (`__index`, `__newindex`, ...), every value a function, so the old loop `for name, id in pairs(Stat) do if type(id) == 'number' ...` never saw a number, `getUnitStat` was never called, and `stats` was `{}` on every instance. The stat names are the keys of the table `Stat['.get']` (34 of them); `Stat[name]` returns the id (`Stat.Intelligence` is 5; there is no `Stat.Intellect`). `getUnitStat(Unit.Player, Stat.Health)` returns a table with `id` and `current` (probe: `{id=7, current=760, ...}`), so the old `s.id` guard was fine; the enumeration was the whole bug. The fix enumerates `Stat['.get']`, and falls back to the verbatim 34-name list when that table is unreachable. `Energy`, `Mitigation`, `Awareness` and `InCombat` are NOT stat names on this client (an earlier draft of this packet guessed them). Consequence: `shape()` reads `raw["stats"]["InCombat"]`, which never exists, so `in_combat` stays absent; leave that line alone in this packet.
 
 **Files**
 - `crates/lab/src/supervisor/ui/player_state.rs` (chunk, `shape`, tests)
@@ -73,7 +75,7 @@ depends-on: P1 (names only; the code is correct either way).
 
 **Steps**
 
-1. In `chunk()` replace everything from `local function stats_of(u)` (line 23) through its closing `end` (line 33) with the block below. Inside `format!` every brace is doubled, as in the rest of the string.
+1. In `chunk()` replace everything from `local function stats_of(u)` (line 23) through its closing `end` (line 33) with the block below. Inside `format!` every brace is doubled, as in the rest of the string. The 34 names in `STAT_NAMES` are the keys of `Stat['.get']` from probe C-P1, copied verbatim; do not edit, add or reorder them.
 
 ```lua
 local function stat_field(s, k)
@@ -81,35 +83,40 @@ local function stat_field(s, k)
   if ok then return v end
   return nil
 end
-local FALLBACK = {{ 'Health', 'Focus', 'Energy', 'Coordination', 'Engagement', 'Fortitude', 'Intelligence', 'Morale', 'Perception', 'Accuracy', 'Defense', 'QrMod', 'Damage', 'Penetration', 'Mitigation', 'Awareness', 'InCombat' }}
+local STAT_NAMES = {{ 'Accuracy', 'AmmoSlot1', 'AmmoSlot2', 'AmmoSlot3', 'AmmoSlot4', 'AmmoSlot5', 'Coordination', 'CoverQRModifier', 'Damage', 'Defense', 'DeploymentAmmo', 'DisguiseRating', 'EnergyAF', 'Engagement', 'Focus', 'FocusRegen', 'Fortitude', 'HazmatAF', 'Health', 'HealthRegen', 'HealthRes', 'Intelligence', 'KineticRes', 'MentalRes', 'Morale', 'MovementSpeedMod', 'Penetration', 'Perception', 'PhysicalAF', 'PsionicAF', 'QrMod', 'RangeModifier', 'RevealRating', 'StealthRating' }}
+local function stat_names()
+  local names = {{}}
+  pcall(function()
+    for name in pairs(Stat['.get']) do
+      if type(name) == 'string' then names[#names + 1] = name end
+    end
+  end)
+  if #names > 0 then
+    table.sort(names)
+    return names, 'get'
+  end
+  return STAT_NAMES, 'fallback'
+end
 local function stats_of(u)
   local out, listed, read = {{}}, 0, 0
-  local named = {{}}
-  pcall(function()
-    for name, id in pairs(Stat) do named[#named + 1] = {{ name, id }} end
-  end)
-  if #named == 0 then
-    for _, name in ipairs(FALLBACK) do
-      local ok, id = pcall(function() return Stat[name] end)
-      if ok and id ~= nil then named[#named + 1] = {{ name, id }} end
-    end
-  end
-  for _, p in ipairs(named) do
-    local id = tonumber(p[2])
+  local names, source = stat_names()
+  for _, name in ipairs(names) do
+    local ok, raw_id = pcall(function() return Stat[name] end)
+    local id = ok and tonumber(raw_id) or nil
     if id then
       listed = listed + 1
       local s = __jcall(getUnitStat, u, id)
       if (type(s) == 'table' or type(s) == 'userdata') and stat_field(s, 'current') ~= nil then
         read = read + 1
-        out[tostring(p[1])] = {{ id = id, current = stat_field(s, 'current'), max = stat_field(s, 'max'), min = stat_field(s, 'min'), base_current = stat_field(s, 'baseCurrent') }}
+        out[name] = {{ id = id, current = stat_field(s, 'current'), max = stat_field(s, 'max'), min = stat_field(s, 'min'), base_current = stat_field(s, 'baseCurrent') }}
       end
     end
   end
-  return out, {{ stat_type = type(Stat), listed = listed, read = read }}
+  return out, {{ stat_type = type(Stat), source = source, listed = listed, read = read }}
 end
 ```
 
-(After P1 replace the names in `FALLBACK` with the printed list. A stat the unit does not have returns an empty table, so `current ~= nil` is the presence test; `id` is no longer required.)
+(`pairs(Stat)` must not appear anywhere in the chunk. `current ~= nil` is the presence test: a stat the unit lacks returns an empty table.)
 
 2. Change line 59 `if {include_stats} then me.stats = stats_of(P) end` to:
 `if {include_stats} then me.stats, me.stats_diag = stats_of(P) end`
@@ -139,8 +146,9 @@ end
     if empty && !raw["stats_diag"].is_null() {
         let d = &raw["stats_diag"];
         out["stats_note"] = json!(format!(
-            "no stat was readable: the client's Stat table is a {}, {} ids were listed and {} read. Read one directly with client_lua_eval: getUnitStat(Unit.Player, Stat.Health).current.",
+            "no stat was readable: the client's Stat table is a {}, its names came from {}, {} ids were listed and {} read. Read one directly with client_lua_eval: getUnitStat(Unit.Player, Stat.Health).current.",
             d["stat_type"].as_str().unwrap_or("nil"),
+            d["source"].as_str().unwrap_or("nothing"),
             d["listed"].as_u64().unwrap_or(0),
             d["read"].as_u64().unwrap_or(0),
         ));
@@ -150,6 +158,17 @@ end
 **Test** (add to the `tests` module of `player_state.rs`):
 
 ```rust
+    /// The 34 stat names the client's `Stat['.get']` table holds (probe C-P1,
+    /// 2026-10-12). The chunk must carry exactly these as its fallback list.
+    const CLIENT_STAT_NAMES: [&str; 34] = [
+        "Accuracy", "AmmoSlot1", "AmmoSlot2", "AmmoSlot3", "AmmoSlot4", "AmmoSlot5",
+        "Coordination", "CoverQRModifier", "Damage", "Defense", "DeploymentAmmo", "DisguiseRating",
+        "EnergyAF", "Engagement", "Focus", "FocusRegen", "Fortitude", "HazmatAF",
+        "Health", "HealthRegen", "HealthRes", "Intelligence", "KineticRes", "MentalRes",
+        "Morale", "MovementSpeedMod", "Penetration", "Perception", "PhysicalAF", "PsionicAF",
+        "QrMod", "RangeModifier", "RevealRating", "StealthRating",
+    ];
+
     /// An empty stat read must explain itself instead of looking like "no
     /// stats": the compact result drops an empty map, so the note is all the
     /// caller sees.
@@ -157,42 +176,59 @@ end
     fn shape_explains_an_empty_stat_read() {
         let raw = json!({
             "name": "Labone", "stats": {},
-            "stats_diag": { "stat_type": "userdata", "listed": 0, "read": 0 }
+            "stats_diag": { "stat_type": "table", "source": "fallback", "listed": 0, "read": 0 }
         });
         let s = shape(&raw);
         assert!(s.get("health").is_none());
         let note = s["stats_note"].as_str().unwrap();
-        assert!(note.contains("userdata") && note.contains("0 read"), "{note}");
+        assert!(note.contains("a table") && note.contains("fallback") && note.contains("0 read"), "{note}");
         // A read that found stats adds no note.
         let ok = shape(&json!({
-            "stats": { "Health": { "id": 1, "current": 5, "max": 9 } },
-            "stats_diag": { "stat_type": "table", "listed": 1, "read": 1 }
+            "stats": { "Health": { "id": 7, "current": 5, "max": 9 } },
+            "stats_diag": { "stat_type": "table", "source": "get", "listed": 1, "read": 1 }
         }));
         assert!(ok.get("stats_note").is_none());
         assert_eq!(ok["health"]["current"], 5);
     }
 
+    /// Regression guard for the empty-`stats` bug: `Stat` is a tolua class,
+    /// so `pairs(Stat)` yields only metamethods and no id was ever read. The
+    /// chunk must enumerate `Stat['.get']` and carry the real names as the
+    /// fallback. Reverting to `pairs(Stat)` (or to guessed names) fails this.
+    #[test]
+    fn chunk_enumerates_the_stat_get_table_not_the_class() {
+        let c = chunk(true, false);
+        assert!(!c.contains("pairs(Stat)"), "the class table has only metamethods");
+        assert!(c.contains("pairs(Stat['.get'])"));
+        for name in CLIENT_STAT_NAMES {
+            assert!(c.contains(&format!("'{name}'")), "fallback lacks {name}");
+        }
+        for guessed in ["'Energy'", "'Mitigation'", "'Awareness'", "'InCombat'", "'Intellect'"] {
+            assert!(!c.contains(guessed), "{guessed} is not a client stat name");
+        }
+    }
+
     /// The reader must not require an `id` field or a plain Lua table (the
-    /// old guard `type(s) == 'table' and s.id`), and must fall back to named
-    /// stats when `Stat` cannot be enumerated.
+    /// old guard `type(s) == 'table' and s.id`) and must report where its
+    /// names came from.
     #[test]
     fn chunk_reads_stats_without_requiring_id_or_a_plain_table() {
         let c = chunk(true, false);
         assert!(!c.contains("and s.id then"), "the id guard is back");
         assert!(c.contains("stat_field(s, 'current') ~= nil"));
         assert!(c.contains("type(s) == 'userdata'"));
-        assert!(c.contains("local FALLBACK"));
+        assert!(c.contains("source = source"));
         assert!(c.contains("me.stats, me.stats_diag = stats_of(P)"));
     }
 ```
 
-(The first test fails without step 5; the second fails if the old guard returns. The chunk has no Lua runtime in the workspace, which is why the Lua is asserted textually, as `lua_rings.rs` does.)
+(The second test fails if `pairs(Stat)` or a guessed name returns, which is exactly the shipped bug; the first fails without step 5; the third fails if the old guard returns. The chunk has no Lua runtime in the workspace, which is why the Lua is asserted textually, as `lua_rings.rs` does.)
 
 **Lane checks**: the three commands above with filter `player_state`.
 
-**Docs**: `docs/guides/live-research-lab.md`, row at line 916 (`| \`client_player_state\` | Position, facing ... the active weapon's ammo, the target. | — |`): append to the second column: ` Stats are read by the names in the client's \`Stat\` table (printed in P1; \`Stat.Intelligence\`, not \`Intellect\`); when none can be read the result has \`stats_note\` saying what the table looked like. A stat the unit lacks is left out.` Also in the line 936 UAT item 8 keep as is.
+**Docs**: `docs/guides/live-research-lab.md`, row at line 916 (`| \`client_player_state\` | Position, facing ... the active weapon's ammo, the target. | — |`): append to the second column: ` Stats are read by the 34 names in the client's \`Stat['.get']\` table (\`Stat.Intelligence\`, not \`Intellect\`; \`pairs(Stat)\` lists only metamethods); when none can be read the result has \`stats_note\` saying what the table looked like. A stat the unit lacks is left out.` Also in the line 936 UAT item 8 keep as is.
 
-**Live smoke**: `client_player_state {"lease_id":"...","fields":["stats","stats_note","health"]}` in the world: `stats` non-empty and `stats.Health.current` equals `getUnitStat(Unit.Player, Stat.Health).current` from `client_lua_eval`; `stats.Intelligence` present (value matches the character sheet). Server evidence: `server_entity_get` for the player, attribute stats, same numbers.
+**Live smoke**: `client_player_state {"lease_id":"...","fields":["stats","stats_note","health"]}` in the world: `stats` has up to 34 keys (`Accuracy` ... `StealthRating`, only the ones the unit has) and `stats.Health.current` equals `getUnitStat(Unit.Player, Stat.Health).current` from `client_lua_eval`; `stats.Intelligence` present (value matches the character sheet). Server evidence: `server_entity_get` for the player, attribute stats, same numbers.
 
 **Commit**: `fix(lab): client_player_state reads stats without the id guard and explains an empty read (LH-09)`
 

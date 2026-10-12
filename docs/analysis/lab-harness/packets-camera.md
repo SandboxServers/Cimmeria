@@ -738,7 +738,8 @@ On a fresh character in the world: `client_camera {"pitch_counts":900}` -> expec
 `click.rs` is 639 lines; this packet and LH-08 would push it past the 700-line hard cap, so step 1 moves the hover code into `click_hover.rs` first. Do step 1 and run its lane check before the rest.
 
 ## Design
-- Retry order: yaw first (about 27.5 deg each way, 250 counts at gain 20), then pitch up twice, then zoom in. The old order (pitch -300 twice first) drove the camera to the clamp with the target off screen before any yaw was tried. The sums stay zero so the existing "ends where it began" test holds.
+- **Aim height (probe B-P2, 2026-10-12).** The actor `Location` the click flow projects is the entity's FEET, not a collision centre: `client_entity_find`'s `screen` point is the feet projection, and hovering it gives `mouse_over 0`. The old heights `[0, 50, -40, 90]` were therefore feet, knee, below the ground and waist, and the 4.4 m probe showed the waist-and-lower band is where the own avatar sits when the camera is behind it: mid-body hovered the own avatar, while the trainer's body above and behind the avatar's head hovered the trainer. Client coordinates are UE3 units with `UU_PER_METRE = 100` (geometry.rs; the probe position `(-23150, -34390, 7345)` is 231.5 m, 343.9 m, 73.45 m), so a 1.8 m humanoid spans 0 to about 180 units above `Location`. **Final constants:** `HOVER_OFFSETS = [100.0, 140.0, 170.0, 60.0]` units above `Location` (chest, shoulders, head, knee). `hover_once` tries them in that order inside one pass, stops at the first height that hovers the entity, and clicks that pixel; this is the "ladder of aim heights" and it always runs BEFORE any view (yaw) retry, because it costs two 120 ms waits per height and no camera motion. A `Nothing` candidate is the first height tried (100, the chest), never the feet.
+- Retry order after the height ladder: yaw first (about 27.5 deg each way, 250 counts at gain 20), then pitch up twice, then zoom in. The old order (pitch -300 twice first) drove the camera to the clamp with the target off screen before any yaw was tried. The sums stay zero so the existing "ends where it began" test holds.
 - A hover that lands on the player's own entity is labelled `own_avatar` in `tried`, `saw_own_avatar` goes into the hover detail, and the failure message says to stand to the side.
 - A `Hover::Nothing` candidate no longer ends the retries when the target is within 8 m of the avatar (the avatar or the HUD ring is the likely reason) or when some other height hovered another entity. Far targets keep the old behaviour (click the `Nothing` candidate without retrying), so bodies that never hover cost no extra time. `rotate_camera: false` still disables retries.
 - When no retry verifies a hover, the view is restored (as before), and now the first view's candidate is taken again, so a `Nothing` candidate is still clicked.
@@ -749,6 +750,8 @@ On a fresh character in the world: `client_camera {"pitch_counts":900}` -> expec
 - `crates/lab/src/supervisor/world/hover.rs` (import path and one call)
 - `crates/lab/src/supervisor/world/mod.rs` (register `click_hover` and a test module)
 - `crates/lab/src/supervisor/world/geometry.rs` (`distance_m`, reused by LH-08)
+- `crates/lab/src/supervisor/world/find.rs` (one doc string: the `screen` point is the feet)
+- `crates/lab/src/supervisor/world/hover_tests.rs` (two numbers, see Step 3)
 - `crates/lab/src/supervisor/world/sim.rs` (`avatar_hides`)
 - `crates/lab/src/supervisor/world/occlusion_tests.rs` (new)
 - `docs/guides/live-research-lab.md`, `.claude/agents/lab-driver.md`
@@ -771,9 +774,12 @@ use super::io::WorldIo;
 use super::memory::slot_entity;
 use super::{Steps, WorldError};
 
-/// Heights tried on an entity's body, UE3 units above its actor location
-/// (the collision centre): centre, chest, legs, head.
-pub const HOVER_OFFSETS: [f64; 4] = [0.0, 50.0, -40.0, 90.0];
+/// Heights tried on an entity's body, UE3 units (100 per metre) above its
+/// actor `Location`, which is its FEET (probe B-P2: hovering the feet gives
+/// nothing). In order: chest, shoulders, head, knee. The own avatar covers the
+/// lower band when the camera is behind it, so the higher heights come first
+/// after the chest and the knee comes last.
+pub const HOVER_OFFSETS: [f64; 4] = [100.0, 140.0, 170.0, 60.0];
 pub(super) const HOVER_WAIT_MS: u64 = 120;
 /// A target this close to the avatar sits behind or under it on a
 /// third-person camera, so an unverified hover is retried from another view.
@@ -970,6 +976,14 @@ mod tests {
         assert!(!wants_view_retry(&forced, &[], true, true));
     }
 
+    /// The aim never touches the feet (probe B-P2): every height is a body
+    /// point, the chest comes first, and the head is within a 1.8 m humanoid.
+    #[test]
+    fn the_aim_heights_are_above_the_feet() {
+        assert_eq!(HOVER_OFFSETS[0], 100.0);
+        assert!(HOVER_OFFSETS.iter().all(|dz| (60.0..=180.0).contains(dz)));
+    }
+
     #[test]
     fn the_retries_net_to_zero_so_the_view_comes_back() {
         let (dx, dy): (i32, i32) = VIEW_RETRIES
@@ -1131,7 +1145,7 @@ b. Replace the block from `let t_hover = io.now_ms();` through the closing `};` 
             io.now_ms(),
             "hover",
             if saw_own {
-                "your own avatar covers the target at every height tried, even after the view retries: stand 3.5-4.5 m to the side of it (or turn the camera with client_camera yaw_offset_deg) and click with rotate_camera=false; force=true clicks anyway"
+                "your own avatar covers the target at every height tried, even after the view retries: stand 3.5-4.5 m to the side of it (or turn the camera with client_camera yaw counts) and click with rotate_camera=false; force=true clicks anyway"
             } else {
                 "every point on the target is off screen or covered by another entity, after the view retries (force=true clicks anyway)"
             },
@@ -1143,16 +1157,58 @@ b. Replace the block from `let t_hover = io.now_ms();` through the closing `};` 
 
 c. Do NOT change `tool_tests.rs` (its `an_occluder_stops_the_click` must pass unmodified: the crate stays aligned with the guard under any yaw, so every retry still fails, the restore look is still the last look, and the state still contains `other_entity`:20, `view_retries` and `"view_restored":true`).
 
+### Step 2b: say what `screen` is (`find.rs`)
+In `crates/lab/src/supervisor/world/find.rs` (the `"note"` string near line 302) change `Positions come from each entity's actor (UE3 AActor::Location);` to `Positions come from each entity's actor (UE3 AActor::Location, the FEET, in UE3 units of 100 per metre); \`screen\` is the projection of that feet point, not a clickable body point (client_world_click aims 100 units higher);`. Run `Grep` for `Positions come from` in `crates/lab/src` and `docs/guides/live-research-lab.md`; if a test asserts the old text, update it to the new text.
+
 ### Step 3: sim and tests
-`sim.rs`: add to `Sim` (after `live_pitch_clamp`/`pitch_inverted` from LH-06):
+`sim.rs`, three edits.
+
+(a) Add to `Sim` (after `live_pitch_clamp`/`pitch_inverted` from LH-06):
 ```rust
     /// While the camera looks within this many radians of the bearing to the
     /// entity, the avatar stands in front of it: mouse-over reports the
     /// player. (The usual third-person cover.)
     pub avatar_hides: Option<(u32, f64)>,
+    /// The avatar only covers the target at pointer heights below this many
+    /// units above the target's `Location` (the target's upper body shows
+    /// over the avatar's head). Default infinity: covers every height.
+    pub avatar_cover_dz: f64,
+    /// Heights (units above an entity's `Location`) the sim treats as body
+    /// when hit-testing the cursor. Default is the old permissive set that
+    /// includes the feet; `REAL_BODY_DZ` is a standing humanoid, whose feet
+    /// hover nothing (probe B-P2).
+    pub body_dz: Vec<f64>,
 ```
-init `avatar_hides: None,` in `Sim::new`. In `under_cursor`, replace the last line `best.map(|b| b.1).unwrap_or(0)` with:
+with, next to `PLAYER_ID`, `pub const REAL_BODY_DZ: [f64; 4] = [60.0, 100.0, 140.0, 180.0];`. In `Sim::new` init `avatar_hides: None, avatar_cover_dz: f64::INFINITY, body_dz: vec![-40.0, 0.0, 50.0, 90.0],`.
+
+(b) In `under_cursor`, replace the whole entity loop and the last line. The old text from `let mut best: Option<(f64, u32)> = None;` through `best.map(|b| b.1).unwrap_or(0)` becomes:
 ```rust
+        let mut best: Option<(f64, u32, f64)> = None;
+        for e in self
+            .entities
+            .iter()
+            .filter(|e| e.rendered && !self.unhoverable.contains(&e.id))
+        {
+            // The body height whose projection is nearest the cursor, if any
+            // is within 25 px.
+            let mut near: Option<(f64, f64)> = None;
+            for dz in self.body_dz.iter().copied() {
+                let Some((px, py)) = self.project_point(Vec3::new(e.pos.x, e.pos.y, e.pos.z + dz))
+                else {
+                    continue;
+                };
+                let d_px = ((px - x).powi(2) + (py - y).powi(2)).sqrt();
+                if d_px <= 25.0 && near.is_none_or(|(d, _)| d_px < d) {
+                    near = Some((d_px, dz));
+                }
+            }
+            if let Some((_, dz)) = near {
+                let dist = horizontal_m(self.pos, e.pos);
+                if best.is_none_or(|(d, _, _)| dist < d) {
+                    best = Some((dist, e.id, dz));
+                }
+            }
+        }
         let hit = best.map(|b| b.1).unwrap_or(0);
         if let Some((id, half)) = self.avatar_hides {
             let off = self
@@ -1160,12 +1216,15 @@ init `avatar_hides: None,` in `Sim::new`. In `under_cursor`, replace the last li
                 .iter()
                 .find(|e| e.id == id)
                 .map(|e| wrap_pi(super::geometry::bearing(self.pos, e.pos) - self.cam_yaw).abs());
-            if hit == id && off.is_some_and(|o| o < half) {
+            let low = best.is_some_and(|b| b.2 < self.avatar_cover_dz);
+            if hit == id && low && off.is_some_and(|o| o < half) {
                 return PLAYER_ID;
             }
         }
         hit
 ```
+(c) Nothing else in `sim.rs` changes: the player-cover list `[-40.0, 0.0, 50.0, 90.0]` in the `avatar_radius_px` branch stays as it is.
+
 `mod.rs`: after `mod camera_pitch_tests;` add `#[cfg(test)]\nmod occlusion_tests;`.
 
 New file `crates/lab/src/supervisor/world/occlusion_tests.rs`:
@@ -1177,7 +1236,7 @@ use serde_json::Value;
 
 use super::click::{self, ClickRequest, Expect};
 use super::geometry::Vec3;
-use super::sim::Sim;
+use super::sim::{Sim, REAL_BODY_DZ};
 
 /// The `hover` step's detail from a result or an error's steps.
 fn hover_detail(steps: &[Value]) -> &Value {
@@ -1219,6 +1278,70 @@ async fn a_target_behind_the_avatar_is_clicked_after_a_yaw_retry() {
     assert_eq!(detail["view_retries"][0]["yaw_counts"], 250, "{detail}");
     assert_eq!(detail["view_retries"][0]["pitch_counts"], 0, "{detail}");
     assert_eq!(detail["view_retries"].as_array().unwrap().len(), 1);
+}
+
+/// Probe B-P2: the actor `Location` is the feet and hovering it gives
+/// nothing, so the click must aim at a body point. In this sim the feet hover
+/// nothing (`REAL_BODY_DZ`). Reverting `HOVER_OFFSETS` to a set that starts at
+/// the feet makes `tried[0]` a `nothing` at `dz` 0 and this test fails.
+#[tokio::test]
+async fn the_click_aims_above_the_feet() {
+    let mut sim = Sim::new().with_entity(11, "Trainer", Vec3::new(1000.0, 0.0, 0.0));
+    sim.entities[0].window = Some("DialogWin".into());
+    sim.body_dz = REAL_BODY_DZ.to_vec();
+    let feet = sim.project_point(Vec3::new(1000.0, 0.0, 0.0)).unwrap();
+    let out = click::run(
+        &mut sim,
+        "client_world_click",
+        ClickRequest {
+            entity_id: Some(11),
+            ..ClickRequest::default()
+        },
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(out["hover_verified"], true, "{out}");
+    let steps = out["steps"].as_array().unwrap();
+    let detail = hover_detail(steps);
+    let first = &detail["tried"][0];
+    assert_eq!(first["dz"], 100.0, "{detail}");
+    assert_eq!(first["hover"], "entity", "{detail}");
+    // 100 units above the feet at 10 m is 50 px higher on screen (smaller y).
+    let y = first["at"][1].as_f64().unwrap();
+    assert!(y < feet.1 - 40.0, "aimed at y {y}, feet at {}", feet.1);
+    assert!(detail["view_retries"].is_null(), "{detail}");
+}
+
+/// The avatar covers the target's lower body only (the camera is behind and
+/// above it): the height ladder reaches the trainer's shoulders in the SAME
+/// pass, with no yaw retry. With the old heights (all low) every height is
+/// covered and a yaw retry runs, so this test fails on a revert.
+#[tokio::test]
+async fn the_height_ladder_clears_the_avatar_before_any_yaw_retry() {
+    let mut sim = medic_behind_the_avatar();
+    sim.body_dz = REAL_BODY_DZ.to_vec();
+    sim.avatar_cover_dz = 120.0;
+    let out = click::run(
+        &mut sim,
+        "client_world_click",
+        ClickRequest {
+            entity_id: Some(11),
+            ..ClickRequest::default()
+        },
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(out["hover_verified"], true, "{out}");
+    let steps = out["steps"].as_array().unwrap();
+    let detail = hover_detail(steps);
+    assert_eq!(detail["tried"][0]["dz"], 100.0, "{detail}");
+    assert_eq!(detail["tried"][0]["hover"], "own_avatar", "{detail}");
+    assert_eq!(detail["tried"][1]["dz"], 140.0, "{detail}");
+    assert_eq!(detail["tried"][1]["hover"], "entity", "{detail}");
+    assert_eq!(detail["saw_own_avatar"], true, "{detail}");
+    assert!(detail["view_retries"].is_null(), "no yaw was needed: {detail}");
 }
 
 /// With nowhere to go (force off, rotation off) the failure names the avatar.
@@ -1297,7 +1420,19 @@ async fn a_far_target_that_hovers_nothing_is_clicked_without_retries() {
     assert!(hover_detail(&e.steps)["view_retries"].is_null());
 }
 ```
-Why they fail when reverted: with the old order (pitch first) the first test never gets a verified hover (two pitch retries put the target off screen, the later yaw retries run with the camera at the clamp, the final retry returns to the covering view) and ends in a `hover` error; with the old `chosen.is_some() => break` the third test has no `view_retries`; with the new rule applied to every target the fourth test would have retries; without the `own_avatar` label the first and second tests lose `saw_own_avatar` and the message.
+Existing-test edits forced by the new heights (do exactly these, nothing else): in `hover_tests.rs`, in `an_open_target_scores_full_jitter`, the guard 10 m ahead is now aimed at the chest (dz 100, eye at +150 units, so the pixel is 50 px above the old feet pixel; screen centre is (500, 400), 500 px focal): replace the two lines
+```rust
+    assert_eq!(out["pixel"], json!([500, 475]));
+    assert_eq!(out["edge_px"], 325.0);
+```
+with
+```rust
+    assert_eq!(out["pixel"], json!([500, 425]));
+    assert_eq!(out["edge_px"], 375.0);
+```
+and in the doc comment of `guard_ahead` and the comment of `a_window_edge_through_the_ring_costs_part_of_the_jitter` change `(500, 475)` to `(500, 425)` (comments only; that test's window spans y 0 to 800, so its assertions hold). Tests that aim at a `point` keep `475` (a point is not offset). If any OTHER test fails on a pixel or edge number after this change, report the assertion and the value; do not loosen it.
+
+Why they fail when reverted: the ladder tests (`the_click_aims_above_the_feet`, `the_height_ladder_clears_the_avatar_before_any_yaw_retry`) fail with any `HOVER_OFFSETS` that starts at the feet or stays below 120 units (`tried[0].dz` is not 100, and the second test needs a yaw retry); with the old order (pitch first) the first test never gets a verified hover (two pitch retries put the target off screen, the later yaw retries run with the camera at the clamp, the final retry returns to the covering view) and ends in a `hover` error; with the old `chosen.is_some() => break` the third test has no `view_retries`; with the new rule applied to every target the fourth test would have retries; without the `own_avatar` label the first and second tests lose `saw_own_avatar` and the message.
 
 ## Lane checks
 ```
@@ -1315,7 +1450,7 @@ If a retry-order assumption in the new sim tests is off (for instance the avatar
 `.claude/agents/lab-driver.md` line 39 (anchor `A hover answering \`other_entity: 2\` is your own avatar: reposition (step 2), don't \`force\`.`): replace that sentence with: `A hover reported as \`own_avatar\` (older builds: \`other_entity\` with your own id) means your avatar covers the target: the click already retried from the sides; if it still fails, reposition (step 2) and don't \`force\`.`
 
 ## Live smoke
-Avatar 3.4 m from the Debug Area trainer (open floor, teleport, then `client_camera {"face_entity_id":T}` so the trainer sits straight behind the avatar): `client_world_click {"entity_id":T,"expect":"window","settle_ms":5000}`. Expect success; the `hover` step detail has `saw_own_avatar: true` (if P2 step 3 said `own`) and `view_retries[0].yaw_counts == 250`. Server evidence (ClickHouse, not `server_log_tail`): `scope_name = 'abilities' AND event = 'trainer_open'` for the player, one row. A tighter check: the same call at 3.4 m on the old build failed at step `hover`.
+Avatar 3.4 m from the Debug Area trainer (open floor, teleport, then `client_camera {"face_entity_id":T}` so the trainer sits straight behind the avatar): `client_world_click {"entity_id":T,"expect":"window","settle_ms":5000}`. Expect success; the `hover` step detail has `saw_own_avatar: true` or, when the avatar does not cover the trainer, a success at the first pass with `tried[0].dz == 100.0` and no `view_retries`; when `view_retries` exists, `view_retries[0].yaw_counts == 250`. Server evidence (ClickHouse, not `server_log_tail`): `scope_name = 'abilities' AND event = 'trainer_open'` for the player, one row. A tighter check: the same call at 3.4 m on the old build failed at step `hover`.
 
 ## Commit subject
 `fix(lab): world_click dodges the avatar with yaw first and retries near targets that hover nothing (LH-07)`
