@@ -73,4 +73,6 @@ Coordinator defaults, taken from the expanders' recommendations; the owner can r
 | LH-15 | Wait for an idle build lane before a launch | S | LH-14 | BlockedDependency |
 | LH-16 | Keep-awake sees windowless clients; single-row server pick | S | | Ready |
 | LH-17 | `lab-driver` agent tools and docs | S | all tool packets | BlockedDependency |
+| LH-19 | `client_move_to` steers with the turn keys (mouse-look turns only the camera) | L | close-out finding | Ready |
+| LH-20 | Drags raise the source slot's window first (bag covers the vault) | S | close-out finding | Ready |
 | LH-18 | Close-out: live lab UAT of every fix, guide, unified-uat, status | M | all | BlockedDependency |

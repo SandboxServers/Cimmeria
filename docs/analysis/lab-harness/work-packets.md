@@ -8,6 +8,7 @@ Ledger: [README.md](README.md). Packet specs live in four files, one per area; e
 | [packets-camera.md](packets-camera.md) | LH-05 .. LH-08 (mouse x/y, pitch clamp, own-avatar occlusion, interact range) |
 | [packets-events-move.md](packets-events-move.md) | LH-09 .. LH-12 (player stats, move_to, event keeper, click ring) |
 | [packets-supervisor.md](packets-supervisor.md) | LH-13 .. LH-17 (log tail, startup grace, lane wait, keep-awake, server pick, lab-driver) |
+| [packets-closeout.md](packets-closeout.md) | LH-19, LH-20 (found in the close-out lab run: turn-key steering, covered drag source) |
 
 Live probe results that change a packet are in [probes.md](probes.md). Where a probe result contradicts a packet's code, `probes.md` wins and says which step changes.
 
