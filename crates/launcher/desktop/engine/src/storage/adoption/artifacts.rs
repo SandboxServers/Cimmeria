@@ -299,6 +299,43 @@ fn stored(path: &Path, size: u64, sha256: &str, cancel: &CancellationToken) -> R
     Ok(false)
 }
 
+/// The local-artifact counterpart of [`fetch_some`]: nothing is downloaded, but
+/// each wanted blob is hash-checked against the signed manifest, so a corrupt or
+/// swapped local artifact is still [`Error::InvalidArtifact`].
+pub(super) fn local_some(
+    local: &Artifacts,
+    release: &VerifiedRelease,
+    seed: bool,
+    patches: &[usize],
+    cancel: &CancellationToken,
+) -> Result<Fetched, Error> {
+    let manifest = release.manifest();
+    let mut fetched = Fetched {
+        seed: None,
+        patches: vec![None; manifest.patches.len()],
+    };
+    if seed {
+        if !matches(
+            &local.seed,
+            manifest.seed.size,
+            &manifest.seed.sha256,
+            cancel,
+        )? {
+            return Err(Error::InvalidArtifact);
+        }
+        fetched.seed = Some(local.seed.clone());
+    }
+    for &k in patches {
+        let path = local.patches.get(k).ok_or(Error::InvalidArtifact)?;
+        let patch = manifest.patches.get(k).ok_or(Error::InvalidArtifact)?;
+        if !matches(path, patch.size, &patch.sha256, cancel)? {
+            return Err(Error::InvalidArtifact);
+        }
+        fetched.patches[k] = Some(path.clone());
+    }
+    Ok(fetched)
+}
+
 fn matches(
     path: &Path,
     size: u64,

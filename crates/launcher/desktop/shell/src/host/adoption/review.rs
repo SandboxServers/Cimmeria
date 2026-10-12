@@ -112,11 +112,11 @@ impl Review {
                 Classification::KnownTransform => counts.known_transform += 1,
                 Classification::NeedsPatching => counts.needs_patching += 1,
                 Classification::Modified => {
-                    requires_replacement = true;
+                    requires_replacement |= report.in_place();
                     counts.modified += 1;
                 }
                 Classification::Missing => {
-                    requires_replacement = true;
+                    requires_replacement |= report.in_place();
                     counts.missing += 1;
                 }
                 Classification::Extra => counts.extra += 1,

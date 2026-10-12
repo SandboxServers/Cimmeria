@@ -226,7 +226,9 @@ async fn unsupported_imports_and_existing_destinations_are_refused_before_any_wo
         let _server = f.serve().await;
         let status = f.host.adoption_status().unwrap();
         assert_eq!(status.imported.unwrap().blocker, Some(expected));
-        assert_eq!(f.host.adoption_choice_allowed().unwrap_err(), expected);
+        assert_eq!(f.host.legacy_choice_allowed().unwrap_err(), expected);
+        // The unrelated saved import does not block a folder adoption.
+        assert!(f.host.adoption_choice_allowed().is_ok());
         assert_eq!(f.begin().unwrap_err(), expected);
         assert_eq!(
             f.host.adoption_status().unwrap().native.operation.operation,

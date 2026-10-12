@@ -64,3 +64,25 @@ async fn a_picked_folder_is_copied_into_a_new_folder_and_left_as_it_was() {
         b"untrusted plugin"
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_copy_of_a_folder_with_a_modified_file_needs_no_replacement_consent() {
+    let mut f = Fixture::new(serde_json::json!({}));
+    let folder = f.source.game_directory.clone();
+    f.host = unimported_host(f.root.path().join("plain-state"));
+    let _origin = f.serve().await;
+
+    // The copy leaves the folder alone, so the modified file is kept as it is.
+    f.host
+        .begin_folder_adoption(
+            folder.join("Working"),
+            Some(f.location()),
+            AdoptionMode::Copy,
+            f.release(),
+        )
+        .unwrap();
+    let review = reviewed(&f.host).await;
+    assert!(!review.in_place);
+    assert_eq!(review.counts.modified, 1);
+    assert!(!review.requires_replacement);
+}

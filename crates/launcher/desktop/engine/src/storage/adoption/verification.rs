@@ -121,18 +121,28 @@ pub(super) fn reference_and_comparison(
         |sha| held.contains(sha),
     );
     let mut replacements = Vec::new();
-    // Local fixture artifacts carry no patch list, so only a signed fetch replays.
-    if request.artifacts.is_none() && !plan.targets.is_empty() {
-        let fetched = artifacts::fetch_some(
-            &root,
-            &transport,
-            &request.release,
-            plan.needs_seed,
-            &plan.patches,
-            &seed_source,
-            cancel,
-            &progress,
-        )?;
+    if !plan.targets.is_empty() {
+        // Local artifacts are hash-checked in place; a signed fetch downloads only
+        // the blobs the plan needs.
+        let fetched = match &request.artifacts {
+            Some(local) => artifacts::local_some(
+                local,
+                &request.release,
+                plan.needs_seed,
+                &plan.patches,
+                cancel,
+            )?,
+            None => artifacts::fetch_some(
+                &root,
+                &transport,
+                &request.release,
+                plan.needs_seed,
+                &plan.patches,
+                &seed_source,
+                cancel,
+                &progress,
+            )?,
+        };
         let sink = UnpackSink {
             progress: progress.clone(),
             label: "Adoption replay".into(),

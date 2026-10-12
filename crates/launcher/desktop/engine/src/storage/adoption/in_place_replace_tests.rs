@@ -3,6 +3,8 @@
 use super::in_place_tests::*;
 use super::*;
 use crate::install_worker::fixtures;
+use ed25519_dalek::{Signer, SigningKey};
+use sha2::{Digest, Sha256};
 use std::io::Write;
 
 const EXE: &str = "Working/Binaries/SGW.exe";
@@ -12,18 +14,23 @@ const EXTRA: &[u8] = b"extra entry";
 /// `fixtures::archive(true)` with one more release file, `extra.txt`, so that one
 /// file can go missing while the others stay reusable.
 fn three_file_archive() -> Vec<u8> {
+    archive_with("extra.txt", EXTRA)
+}
+
+/// `fixtures::archive(true)` with one more entry, `name`.
+fn archive_with(name: &str, bytes: &[u8]) -> Vec<u8> {
     let mut source = zip::ZipArchive::new(std::io::Cursor::new(fixtures::archive(true))).unwrap();
     let mut out = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     for index in 0..source.len() {
         let mut entry = source.by_index(index).unwrap();
-        let name = entry.name().to_string();
-        out.start_file(name, zip::write::SimpleFileOptions::default())
+        let entry_name = entry.name().to_string();
+        out.start_file(entry_name, zip::write::SimpleFileOptions::default())
             .unwrap();
         std::io::copy(&mut entry, &mut out).unwrap();
     }
-    out.start_file("extra.txt", zip::write::SimpleFileOptions::default())
+    out.start_file(name, zip::write::SimpleFileOptions::default())
         .unwrap();
-    out.write_all(EXTRA).unwrap();
+    out.write_all(bytes).unwrap();
     out.finish().unwrap().into_inner()
 }
 
@@ -188,4 +195,92 @@ fn a_crash_at_replaced_abandoned_puts_the_modified_original_back_byte_for_byte()
     );
     assert!(!backup.exists());
     assert_eq!(leftover_names(&f), 0);
+}
+
+/// The seed's file the folder spells in another case.
+const CASED: &str = "Working/Binaries/tool.bin";
+const CASED_BYTES: &[u8] = b"cased tool";
+/// Added by the overlay patch, so the folder has no copy of it.
+const PATCH_ADDED: &str = "Working/Binaries/added.txt";
+const PATCH_ADDED_BYTES: &[u8] = b"added by patch";
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// A release signed with the test key, whose one overlay patch is `overlay`.
+fn signed_with_overlay(seed: &[u8], overlay: &[u8]) -> VerifiedRelease {
+    let body = serde_json::to_vec(&serde_json::json!({
+        "schema": 1,
+        "seed": {"blob": "seed.zip", "size": seed.len(), "sha256": hex(&Sha256::digest(seed))},
+        "patches": [{
+            "id": "overlay",
+            "blob": "overlay.zip",
+            "size": overlay.len(),
+            "sha256": hex(&Sha256::digest(overlay)),
+            "root": "install_dir",
+        }],
+    }))
+    .unwrap();
+    let signature = SigningKey::from_bytes(&[0x2a; 32]).sign(&body);
+    crate::catalog::verify_release(&body, hex(&signature.to_bytes()).as_bytes()).unwrap()
+}
+
+/// An overlay that adds `PATCH_ADDED` and nothing else.
+fn overlay_archive() -> Vec<u8> {
+    let mut out = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    out.start_file(PATCH_ADDED, zip::write::SimpleFileOptions::default())
+        .unwrap();
+    out.write_all(PATCH_ADDED_BYTES).unwrap();
+    out.finish().unwrap().into_inner()
+}
+
+/// The folder's `Working/Binaries` is spelled `Working/binaries`, and the release
+/// has a file the overlay adds. Admission must not fail on either, and publishing
+/// puts the release bytes in `game`, the patch-added file included.
+#[cfg(windows)]
+#[test]
+fn a_patch_added_file_and_a_folder_spelled_in_another_case_are_adopted() {
+    let seed = archive_with(CASED, CASED_BYTES);
+    let overlay = overlay_archive();
+    let dir = tempfile::tempdir().unwrap();
+    let overlay_path = dir.path().join("overlay.zip");
+    std::fs::write(&overlay_path, &overlay).unwrap();
+    let mut f = Fixture::with_archive(None, SeedKind::Zip, seed.clone());
+    f.release = signed_with_overlay(&seed, &overlay);
+    let binaries = inventory::native(f.folder(), "Working/Binaries");
+    let renamed = inventory::native(f.folder(), "Working/binaries-renamed");
+    std::fs::rename(&binaries, &renamed).unwrap();
+    std::fs::rename(&renamed, inventory::native(f.folder(), "Working/binaries")).unwrap();
+    let mut request = f.request();
+    request
+        .artifacts
+        .as_mut()
+        .unwrap()
+        .patches
+        .push(overlay_path);
+    let preview = preview(
+        f.state.clone(),
+        request,
+        CancellationToken::new(),
+        crate::install_progress::ProgressSink::latest().0,
+    )
+    .unwrap();
+    let expected = preview.expected_digest;
+    commit(preview).unwrap();
+
+    let game = f.folder().join("game");
+    assert_eq!(
+        std::fs::read(inventory::native(&game, PATCH_ADDED)).unwrap(),
+        PATCH_ADDED_BYTES
+    );
+    assert_eq!(
+        std::fs::read(inventory::native(&game, CASED)).unwrap(),
+        CASED_BYTES
+    );
+    assert_eq!(
+        inventory::content_digest(&inventory::scan(&game, &CancellationToken::new()).unwrap())
+            .unwrap(),
+        expected
+    );
 }

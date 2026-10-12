@@ -219,25 +219,28 @@ fn admit(
     )?;
     // What each release file held at review: recovery tells the reviewed copy
     // from one something wrote at the old path afterwards (see `move_files`).
-    // A missing file held nothing at review, so it has no reviewed copy.
+    // A missing file held nothing at review, so it has no reviewed copy. Keyed by
+    // the release path, and read from the folder's spelling of it: a file a patch
+    // adds has no folder copy, and a folder may spell the path in another case.
     let reviewed: Reviewed = preview
         .report
         .files
         .iter()
         .filter(|d| d.classification != Classification::Missing)
         .filter(|d| d.classification != Classification::Extra)
-        .map(|d| {
-            let path = d.path.as_str();
-            let entry = preview.scanned.get(path).ok_or(StorageError::Corrupt)?;
-            Ok((
-                path.to_string(),
+        .filter_map(|d| {
+            let entry = preview
+                .scanned
+                .get(d.source_path.as_deref().unwrap_or(d.path.as_str()))?;
+            Some((
+                d.path.clone(),
                 Hashed {
                     sha256: entry.sha256,
                     size: entry.size,
                 },
             ))
         })
-        .collect::<Result<_, Error>>()?;
+        .collect();
     write_large(&state.directory.root, &reviewed_name(id), &reviewed)?;
     write_large(&state.directory.root, &plan_name(id), &plan)?;
     // Staged here means the moves are authorized, not that they are done.

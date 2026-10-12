@@ -117,6 +117,19 @@ impl NativeHost {
         #[cfg(not(target_os = "macos"))]
         Backend::InPlace
     }
+    /// A legacy adoption also needs its saved import to be usable. A folder never
+    /// reads the import, so an unrelated import cannot block it.
+    fn legacy_choice_allowed(&self) -> Result<(), AdoptionError> {
+        self.adoption_choice_allowed()?;
+        if let Some(blocker) = self
+            .adoption_status()?
+            .imported
+            .and_then(|imported| imported.blocker)
+        {
+            return Err(blocker);
+        }
+        Ok(())
+    }
     /// Checked before a folder dialog or the network is touched, and again when
     /// the preview is admitted.
     pub fn adoption_choice_allowed(&self) -> Result<(), AdoptionError> {
@@ -126,10 +139,6 @@ impl NativeHost {
         }
         if status.native.requires_reopen {
             return Err(AdoptionError::PersistenceUncertain);
-        }
-        // A folder needs no saved import; only a saved import can block its own choice.
-        if let Some(blocker) = status.imported.and_then(|imported| imported.blocker) {
-            return Err(blocker);
         }
         if status.reconciliation.is_some() {
             return Err(AdoptionError::RecoveryRequired);
@@ -156,7 +165,7 @@ impl NativeHost {
         location: PathBuf,
         release: VerifiedRelease,
     ) -> Result<AdoptionStatus, AdoptionError> {
-        self.adoption_choice_allowed()?;
+        self.legacy_choice_allowed()?;
         let destination = copy_destination(location)?;
         self.admit_adoption_preview(release, adoption::AdoptionMode::Copy, |state| {
             let imported = legacy_import(state)?;
@@ -176,7 +185,7 @@ impl NativeHost {
         &self,
         release: VerifiedRelease,
     ) -> Result<AdoptionStatus, AdoptionError> {
-        self.adoption_choice_allowed()?;
+        self.legacy_choice_allowed()?;
         self.admit_adoption_preview(release, adoption::AdoptionMode::InPlace, |state| {
             let imported = legacy_import(state)?;
             let folder = imported.source.game_directory.clone();

@@ -341,22 +341,28 @@ fn adopts_the_folder_in_place_from_a_rar_seed() {
 }
 
 #[test]
-fn a_modified_release_file_blocks_adoption_names_it_and_changes_nothing() {
+fn a_modified_release_file_is_replaced_only_with_consent_and_changes_nothing() {
     let f = Fixture::new(None);
     std::fs::write(f.folder().join("later.txt"), b"edited by the player").unwrap();
     let before = f.scan();
     let preview = f.preview().unwrap();
-    let blocking: Vec<_> = preview
+    // The replay now produces the release copy, so the file no longer blocks; it
+    // needs replace consent instead.
+    assert!(preview
         .report
         .blocking(preview.replacements())
-        .map(|d| (d.path.clone(), d.classification))
-        .collect();
+        .next()
+        .is_none());
     assert_eq!(
-        blocking,
+        preview
+            .replacements()
+            .iter()
+            .map(|r| (r.path.clone(), r.reason))
+            .collect::<Vec<_>>(),
         vec![("later.txt".to_string(), Classification::Modified)]
     );
-    assert_eq!(preview.consent(&choices()), Err(Error::VerificationFailed));
-    assert_eq!(commit(preview), Err(Error::VerificationFailed));
+    assert_eq!(preview.consent(&choices()), Err(Error::ConsentRequired));
+    assert_eq!(commit(preview), Err(Error::ConsentRequired));
     assert_eq!(f.scan(), before);
     for name in ["game", ".cimmeria-install.json", "content-ready.json"] {
         assert!(!f.folder().join(name).exists(), "{name} was created");
