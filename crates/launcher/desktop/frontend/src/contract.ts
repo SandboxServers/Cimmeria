@@ -156,7 +156,7 @@ export const decodeSnapshot =(value: unknown) => Schema.decodeUnknownEffect(Nati
 
 // `seed_archive_command` and `choose_seed_archive` (engine `storage/seed_archive`, AI-06). The archive is
 // picked natively; the webview names no path. Command tags are `command`, as the other commands use.
-export type SeedArchiveCommand = {command: "inspect" | "cancel" | "forget"; schema_version: 1};
+export type SeedArchiveCommand = {command: "inspect" | "cancel" | "forget" | "accept_offer"; schema_version: 1};
 export const SeedArchiveErrorCode = Schema.Union([
   Schema.Literal("not_a_file"), Schema.Literal("size_mismatch"), Schema.Literal("hash_mismatch"),
   Schema.Literal("changed"), Schema.Literal("cancelled"), Schema.Literal("busy"), Schema.Literal("io"),
@@ -167,6 +167,8 @@ export const SeedArchiveStatus = Schema.Struct({
   schema_version: Schema.Literal(1),
   native: NativeSnapshot,
   chosen: Schema.NullOr(Schema.Struct({file_name: Schema.String, size: Schema.Int})),
+  // A file in Downloads with the seed's exact size and name; no folder is sent.
+  offer: Schema.NullOr(Schema.Struct({file_name: Schema.String, size: Schema.Int})),
   // Present while a check runs and has reported progress.
   verifying: Schema.NullOr(Schema.Struct({
     phase: Schema.Union([Schema.Literal("download"), Schema.Literal("extraction")]),

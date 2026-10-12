@@ -21,6 +21,8 @@ use tokio_util::sync::CancellationToken;
 /// Why a chosen archive was refused; the shell maps its outcomes from this type.
 pub use cimmeria_launcher_core::seed_source::LocalSeedError;
 
+pub use downloads::{archive_file_name, downloads_folder, find_downloads_offer};
+
 const SEED_ARCHIVE_FILE: &str = "seed-archive.json";
 
 /// A verified local seed and the seed hash of the release it was checked for.
@@ -141,6 +143,8 @@ fn verify_and_remember(
         })
         .map_err(|_| LocalSeedError::Io)
 }
+
+mod downloads;
 
 #[cfg(test)]
 mod tests;

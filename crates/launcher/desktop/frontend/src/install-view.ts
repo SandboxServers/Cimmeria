@@ -2,7 +2,7 @@ import { repairControls } from './repair-view';
 import { Context, Effect, Fiber, Layer, ManagedRuntime, Result, Stream } from 'effect';
 import { installBridgeLayer, InstallFailure, InstallStatus, InstallViewState, makeInstallWorkflow, operationActive } from './install-workflow';
 import type { SeedArchiveState } from './seed-archive-workflow';
-import { acquireSeedArchive, seedArchiveShowsLine, seedArchiveText, SeedArchive } from './seed-archive-view';
+import { acquireSeedArchive, seedArchiveOfferText, seedArchiveShowsLine, seedArchiveText, SeedArchive } from './seed-archive-view';
 import type { Invoke } from './view';
 class Installation extends Context.Service<Installation,Effect.Success<typeof makeInstallWorkflow>>()('launcher/Installation') {}
 const errors:Record<InstallFailure['code'],string>={
@@ -143,16 +143,25 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
   const archiveHold=acquireSeedArchive(invoke);const archiveRuntime=archiveHold.runtime;
   const archiveButton=get<HTMLButtonElement>('install-seed-archive');
   const archiveLine=get<HTMLElement>('install-seed-archive-status');
-  let archive:SeedArchiveState={status:null,phase:null,cancelling:false,error:null};let archivePressed=false;
-  const renderArchive=()=>{const busy=archivePressed||archive.phase!==null;
+  const archiveOffer=get<HTMLElement>('install-seed-archive-offer');
+  const archiveAccept=get<HTMLButtonElement>('install-seed-archive-accept');
+  let archive:SeedArchiveState={status:null,phase:null,cancelling:false,error:null};let archivePressed=false;let acceptPressed=false;
+  const renderArchive=()=>{const busy=archivePressed||acceptPressed||archive.phase!==null;
     archiveButton.textContent=archivePressed?'Switching to your archive…':'Use a downloaded game archive…';
     archiveButton.disabled=busy;archiveButton.setAttribute('aria-busy',String(busy));
+    const question=seedArchiveOfferText(archive);
+    archiveOffer.hidden=question===null;archiveOffer.textContent=question??'';
+    archiveAccept.hidden=question===null;archiveAccept.disabled=busy;archiveAccept.textContent=acceptPressed?'Checking…':'Yes';
+    archiveAccept.setAttribute('aria-busy',String(busy));
     archiveLine.hidden=!seedArchiveShowsLine(archive);archiveLine.textContent=seedArchiveText(archive);};
   const archiveWatcher=archiveRuntime.runFork(Effect.flatMap(SeedArchive,s=>Stream.runForEach(s.changes,
     value=>Effect.sync(()=>{archive=value;renderArchive();}))));
   const chooseArchive=()=>{if(archiveButton.disabled)return;archivePressed=true;renderArchive();
     void archiveRuntime.runPromise(Effect.flatMap(SeedArchive,s=>Effect.result(s.choose))).finally(()=>{archivePressed=false;renderArchive();});};
   archiveButton.addEventListener('click',chooseArchive);listeners.push(()=>archiveButton.removeEventListener('click',chooseArchive));
+  const acceptArchive=()=>{if(archiveAccept.disabled)return;acceptPressed=true;renderArchive();
+    void archiveRuntime.runPromise(Effect.flatMap(SeedArchive,s=>Effect.result(s.accept))).finally(()=>{acceptPressed=false;renderArchive();});};
+  archiveAccept.addEventListener('click',acceptArchive);listeners.push(()=>archiveAccept.removeEventListener('click',acceptArchive));
   renderArchive();
   const on=(element:HTMLButtonElement,action:()=>void)=>{
     const listener=()=>{if(!element.disabled)action();};
