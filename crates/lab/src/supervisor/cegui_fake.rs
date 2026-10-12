@@ -255,7 +255,7 @@ impl FakeCegui {
         let doc = if chunk.contains("getCash") {
             let slot = if self.moved { self.lands_in } else { 1 };
             json!({ "cash": if self.bought { -50 } else { 0 }, "containers": [{ "name": "Main",
-                "slots": [{ "slot": slot, "item_id": 7, "name": "Medkit", "qty": 1 }] }] })
+                "slots": [{ "slot": slot, "item_id": 7, "name": "Medkit", "qty": if self.bought { 1 + self.vendor_value } else { 1 } }] }] })
         } else if chunk.contains("local cid, slot = ") {
             Self::locate_slot(chunk)
         } else if chunk.contains("rect_centre") {

@@ -217,8 +217,22 @@ impl Supervisor {
         let (after, d) = self
             .press_buy(&before, allow_fallback, wait, &mut trail)
             .await?;
-        let bought = d["changed"] == json!(true);
+        // Bought means the items arrived: some item's total went up and
+        // the cash did not. A cash-only or slot-shuffle change is not a buy.
+        let gained: i64 = d["by_item"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|i| i["delta"].as_i64())
+                    .filter(|x| *x > 0)
+                    .sum()
+            })
+            .unwrap_or(0);
+        let cash_ok = d["cash_delta"].as_i64().is_none_or(|c| c <= 0);
+        let bought = gained > 0 && cash_ok;
         let mut out = json!({
+            "items_gained": gained,
+            "quantity_matched": gained == want,
             "row": row,
             "quantity": want,
             "spinner_start": start,
@@ -232,8 +246,9 @@ impl Supervisor {
         });
         trail.stamp(&mut out);
         if expect_change {
-            out["effect_ok"] = json!(bought);
-            if !bought {
+            let ok = bought && gained == want;
+            out["effect_ok"] = json!(ok);
+            if !ok {
                 out["native_pass"] = json!(false);
             }
         }
@@ -323,6 +338,31 @@ mod tests {
         let (out, s) = buy(FakeCegui::default(), 2, false).await;
         let e = out.unwrap_err();
         assert!(e.contains("stopped at 0, not 2"), "{e}");
+        assert!(!s.lock().unwrap().bought);
+    }
+
+    /// Above the row's maximum is refused before any click.
+    #[tokio::test]
+    async fn a_quantity_above_the_row_maximum_is_refused() {
+        let (out, s) = buy(FakeCegui::default(), 11, true).await;
+        assert!(out.unwrap_err().contains("allows at most 10"));
+        assert!(s.lock().unwrap().edges().is_empty());
+    }
+
+    /// Nothing bought (the quantity was never set, so Buy does nothing):
+    /// effect_ok and native_pass are false, not an error and not a pass.
+    #[tokio::test]
+    async fn a_buy_that_changes_nothing_fails_the_effect_check() {
+        let s = Arc::new(Mutex::new(FakeCegui::default()));
+        let sup = fake_bridge::supervisor(cegui_fake::responder(s.clone())).await;
+        let mut trail = NativeTrail::default();
+        let before = sup.inventory_read(&[], false).await.unwrap();
+        let (after, d) = sup
+            .press_buy(&before, false, Duration::ZERO, &mut trail)
+            .await
+            .unwrap();
+        assert_eq!(d["changed"], false);
+        assert_eq!(after["cash"], 0);
         assert!(!s.lock().unwrap().bought);
     }
 
