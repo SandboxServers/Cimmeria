@@ -140,11 +140,13 @@ pub(super) fn preview(
         source: folder.clone(),
         destination: folder,
         release_digest: request.release.digest(),
-        imported_identity: imported.identity.clone(),
-        requested_config: imported.config.clone(),
+        imported_identity: Some(imported.identity.clone()),
+        requested_config: Some(imported.config.clone()),
         files,
         user_data_remains_in_source: true,
         game_telemetry_available: false,
+        download: None,
+        backup: None,
     };
     for file in report.blocking() {
         tracing::warn!(target: "adoption", path = %file.path, classification = ?file.classification, "in-place adoption: release file does not verify");

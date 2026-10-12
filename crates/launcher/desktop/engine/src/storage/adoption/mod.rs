@@ -257,11 +257,13 @@ fn copy_preview(
         source: imported.source.game_directory.clone(),
         destination,
         release_digest: request.release.digest(),
-        imported_identity: imported.identity.clone(),
-        requested_config: imported.config.clone(),
+        imported_identity: Some(imported.identity.clone()),
+        requested_config: Some(imported.config.clone()),
         files,
         user_data_remains_in_source: true,
         game_telemetry_available: false,
+        download: None,
+        backup: None,
     };
     Ok(Preview {
         state,

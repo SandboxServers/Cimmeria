@@ -150,10 +150,12 @@ fn copy_and_publish(
     std::fs::create_dir(&stage)?;
     let provenance = Provenance {
         work_id: id,
-        legacy_install_id: preview.imported.identity.install_id,
-        import_digest: preview.imported.confirmation.clone(),
+        legacy_install_id: Some(preview.imported.identity.install_id),
+        import_digest: Some(preview.imported.confirmation.clone()),
         reference_digest: inventory::content_digest(&preview.reference.index)?,
         setup_policy_version: 1,
+        folder_scan_digest: None,
+        file_index_sha256: None,
     };
     let mut after = preview.before.clone();
     after.revision = after.revision.checked_add(1).ok_or(StorageError::Corrupt)?;
@@ -162,7 +164,8 @@ fn copy_and_publish(
         schema_version: 1,
         installation,
         provenance: provenance.clone(),
-        imported: preview.imported.clone(),
+        imported: Some(preview.imported.clone()),
+        folder: None,
         before: preview.before.clone(),
         after,
         report: preview.report.clone(),
@@ -170,6 +173,7 @@ fn copy_and_publish(
         source_digest: digest(&preview.source)?,
         stage_identity: inventory::identity(&stage)?,
         destination_identity: inventory::identity(&destination)?,
+        replacements: Vec::new(),
     };
     state.save_release_evidence(owner_id, &preview.release)?;
     atomic::write(
@@ -570,8 +574,11 @@ fn published_record(
     if record.plan.schema_version != 1 || provenance.setup_policy_version != 1 {
         return Err(StorageError::UnsupportedSchema.into());
     }
-    if record.plan.imported.confirmation != provenance.import_digest
-        || record.plan.imported.identity.install_id != provenance.legacy_install_id
+    let Some(legacy) = record.plan.imported.as_ref() else {
+        return Err(StorageError::Corrupt.into());
+    };
+    if provenance.import_digest.as_ref() != Some(&legacy.confirmation)
+        || provenance.legacy_install_id != Some(legacy.identity.install_id)
     {
         return Err(StorageError::Corrupt.into());
     }

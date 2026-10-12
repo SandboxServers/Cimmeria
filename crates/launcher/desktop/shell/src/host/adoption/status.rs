@@ -107,7 +107,7 @@ impl NativeHost {
                         &preview,
                         state.operations().snapshot().revision,
                         state.preferences().revision,
-                    );
+                    )?;
                     drop(state);
                     adoption.session = Some(Session { preview, review });
                     adoption.last_error = None;
