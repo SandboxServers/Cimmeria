@@ -10,8 +10,8 @@ const Review=Schema.Struct({preview_handle:Schema.String,operation_revision:Coun
  differences:Schema.Array(Schema.Struct({path:Schema.String,source_path:Schema.NullOr(Schema.String),classification:Schema.Literals(['matched','known_transform','modified','needs_patching','missing','extra'])})),differences_omitted:Count,
  requires_replacement:Schema.Boolean,backup_directory:Schema.optionalKey(Schema.String),
  download:Schema.optionalKey(Schema.Struct({seed:Schema.Boolean,patches:Schema.Array(Schema.String),bytes:Count})),
- login_servers:Schema.Array(Schema.Struct({name:Schema.String,url:Schema.String})),client_patches_enabled:Schema.Boolean,
- game_telemetry_opted_in:Schema.Boolean,game_telemetry_available:Schema.Boolean,requires_normalization:Schema.Boolean,requires_telemetry_acceptance:Schema.Boolean,user_data_remains_in_source:Schema.Boolean,
+ login_servers:Schema.optionalKey(Schema.Array(Schema.Struct({name:Schema.String,url:Schema.String}))),client_patches_enabled:Schema.optionalKey(Schema.Boolean),
+ game_telemetry_opted_in:Schema.optionalKey(Schema.Boolean),game_telemetry_available:Schema.Boolean,requires_normalization:Schema.Boolean,requires_telemetry_acceptance:Schema.Boolean,user_data_remains_in_source:Schema.Boolean,
  in_place:Schema.Boolean,blocked_files:Schema.Array(Schema.String)});
 export const AdoptionStatus=Schema.Struct({schema_version:Schema.Literal(1),native:NativeSnapshot,
  backend:Schema.Literals(['available','in_place','unsupported_platform','helper_unavailable']),

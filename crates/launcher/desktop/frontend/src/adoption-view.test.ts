@@ -243,3 +243,15 @@ test('a folder source with files that need patching shows its review, backup and
   assert.equal(ui.get('adoption-source').textContent,'/old-game');assert.equal(ui.get('adoption-destination').textContent,'/library/Stargate Worlds');
  }finally{await ui.app.dispose();}
 });
+test('a folder review without imported settings decodes and says the launcher defaults apply',async()=>{
+ // A folder preview has no legacy import, so the requested-config fields are absent.
+ const imported=['login_servers','client_patches_enabled','game_telemetry_opted_in'];
+ const folder=Object.fromEntries(Object.entries({...review(),source_kind:'folder'}).filter(([key])=>!imported.includes(key))) as NonNullable<AdoptionStatus['review']>;
+ const ui=mount(()=>({...reviewing(),review:folder}));
+ try{await ui.app.ready;await ui.settle();
+  assert.equal(ui.get('adoption-review').hidden,false);
+  assert.match(ui.get('adoption-settings').textContent!,/^Launcher defaults:/);
+  assert.match(ui.get('adoption-telemetry').textContent!,/^Game telemetry: launcher defaults/);
+  assert.doesNotMatch(ui.get('adoption-settings').textContent!,/Login servers/);
+ }finally{await ui.app.dispose();}
+});

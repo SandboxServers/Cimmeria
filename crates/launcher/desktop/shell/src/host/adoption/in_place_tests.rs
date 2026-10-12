@@ -1,7 +1,9 @@
 //! In-place adoption (D-LX12) through the production host, where it is the
 //! adoption backend: no destination is chosen and nothing is copied.
 use super::fixture::*;
+use super::review::SourceKind;
 use super::*;
+use cimmeria_launcher_engine::adoption::AdoptionMode;
 use std::{path::Path, time::Duration};
 
 /// Index names use `/`; a verbatim folder takes separators literally.
@@ -64,5 +66,50 @@ async fn the_imported_folder_is_adopted_in_place_once_its_release_files_verify()
             .uninstall
             .map(|target| target.directory),
         Some(folder)
+    );
+}
+
+/// A host whose state holds no saved import, so a picked folder is the source.
+fn unimported_host(state_root: PathBuf) -> NativeHost {
+    drop(DesktopState::open(&state_root).unwrap());
+    NativeHost::new(state_root)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_picked_folder_without_an_import_is_reviewed_and_adopted_in_place() {
+    let mut f = Fixture::new(serde_json::json!({}));
+    let folder = f.source.game_directory.clone();
+    f.host = unimported_host(f.root.path().join("plain-state"));
+    let _origin = f.serve().await;
+    assert!(f.host.adoption_choice_allowed().is_ok());
+    assert!(f.host.adoption_status().unwrap().imported.is_none());
+
+    // The player picks the `Working` folder inside the game root; the root is
+    // what gets adopted. The release file they edited is restored first.
+    std::fs::write(folder.join("later.txt"), b"later entry").unwrap();
+    f.host
+        .begin_folder_adoption(folder.join("Working"), AdoptionMode::InPlace, f.release())
+        .unwrap();
+    let review = reviewed(&f.host).await;
+    assert!(matches!(review.source_kind, SourceKind::Folder));
+    assert!(review.in_place);
+    assert_eq!((&review.source, &review.destination), (&folder, &folder));
+    assert!(review.blocked_files.is_empty());
+    f.host.adoption_command(confirmation(&review)).unwrap();
+    let status = until(&f.host, "publication", Duration::from_secs(30), |status| {
+        status.activity == Activity::Idle
+    })
+    .await;
+    assert_eq!(status.last_error, None);
+    assert!(status.owned);
+    assert_eq!(status.completed.map(|c| c.directory), Some(folder.clone()));
+    assert_eq!(
+        operation(&f.host.adoption_status().unwrap()),
+        Some((OperationKind::Adopt, OperationState::Succeeded))
+    );
+    // Not part of the release: it stays exactly where the player left it.
+    assert_eq!(
+        std::fs::read(folder.join("unknown.dll")).unwrap(),
+        b"untrusted plugin"
     );
 }
