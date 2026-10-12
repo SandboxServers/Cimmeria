@@ -19,7 +19,7 @@ const LONG: &str = concat!(
     "Exit codes: 0 recorded (or shown); 1 a run or row did not pass; 2 usage, or a golden exists without --rebless (show: no golden); 3 the lab uat pre-flight or plan failed (nothing driven); 6 the runs disagree; 7 the runs cannot be recorded as given, the daemon failed after the runs, or (show) the golden cannot be read.",
 );
 
-const EXAMPLES: &str = "Examples:\n  lab golden record first-session --rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 --server-version 1a2b3c4\n  lab golden record first-session --runs 10 --leases 2 --server-version 1a2b3c4 --rebless --json\n  lab golden show first-session";
+const EXAMPLES: &str = "Examples:\n  lab golden record first-session --rows FS-P1 --server-version 1a2b3c4\n  lab golden record first-session --runs 10 --server-version 1a2b3c4 --json\n  lab golden record first-session --server-version 1a2b3c4 --rebless\n  lab golden show first-session";
 
 // Arguments of `lab golden`.
 #[derive(clap::Args, Debug)]
@@ -34,7 +34,7 @@ pub struct Args {
     /// The UAT section
     pub section: Option<String>,
     /// Rows to run (record)
-    #[arg(long, value_delimiter = ',', num_args = 1..)]
+    #[arg(long, action = clap::ArgAction::Append, value_delimiter = ',')]
     pub rows: Vec<String>,
     /// Fresh runs to record from, 5 to 20
     #[arg(long, default_value_t = 5)]
@@ -73,7 +73,7 @@ mod tests {
         args
     }
 
-    /// The three EXAMPLES lines parse, with the right values.
+    /// The EXAMPLES lines parse, with the right values.
     #[test]
     fn examples_parse() {
         let a = golden(&[

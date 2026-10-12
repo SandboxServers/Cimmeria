@@ -366,4 +366,23 @@ mod tests {
         }
         assert!(checked >= 35, "only {checked} examples were checked");
     }
+
+    /// No line of any help page's Examples section is wider than 76 columns,
+    /// so the pages fit a 80-column terminal with room to spare.
+    #[test]
+    fn help_examples_fit_76_columns() {
+        for sub in Cli::command().get_subcommands() {
+            let Some(after) = sub.get_after_help() else {
+                continue;
+            };
+            for line in after.to_string().lines() {
+                assert!(
+                    line.chars().count() <= 76,
+                    "{}: {} columns in `{line}`",
+                    sub.get_name(),
+                    line.chars().count()
+                );
+            }
+        }
+    }
 }

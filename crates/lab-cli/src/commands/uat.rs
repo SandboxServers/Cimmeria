@@ -25,7 +25,7 @@ const LONG: &str = concat!(
     "Exit codes: 0 every run passed; 1 a run failed; 2 usage; 3 the pre-flight or plan failed (nothing was driven); 4 a lane stopped early on its brake; 5 every run passed but --diff-golden did not match on one (a divergence, or a run it could not compare; under --chaos only the latter); 8 a heal proposal was written, which wins over every other code, 5 included.",
 );
 
-const EXAMPLES: &str = "Examples:\n  lab uat first-session --rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5\n  lab uat first-session --rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 --leases 2 --runs-per-lease 5\n  lab uat first-session --instance p2 --plan-only\n  lab uat first-session --rows FS-P4 --runs-per-lease 20\n  lab uat first-session --rows FS-P5,FS-P3,FS-P4 --fixtures always\n  lab uat first-session --rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 --diff-golden\n  lab uat first-session --leases 3 --runs-per-lease 10 --json\n  lab uat first-session --rows FS-01,FS-02,FS-P1,FS-P2,FS-P3 --heal";
+const EXAMPLES: &str = "Examples:\n  lab uat first-session --rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5\n  lab uat first-session --rows FS-P1,FS-P2 --leases 2 --runs-per-lease 5\n  lab uat first-session --instance p2 --plan-only\n  lab uat first-session --rows FS-P4 --runs-per-lease 20\n  lab uat first-session --rows FS-P5,FS-P3,FS-P4 --fixtures always\n  lab uat first-session --rows FS-01,FS-02,FS-P1 --diff-golden\n  lab uat first-session --leases 3 --runs-per-lease 10 --json\n  lab uat first-session --rows FS-01,FS-02,FS-P1,FS-P2,FS-P3 --heal";
 
 // Arguments of `lab uat`.
 #[derive(clap::Args, Debug)]
@@ -38,7 +38,7 @@ pub struct Args {
     /// The UAT section, e.g. first-session
     pub section: Option<String>,
     /// Rows to run, e.g. FS-01,FS-02 (default: every row of the section)
-    #[arg(long, value_delimiter = ',', num_args = 1..)]
+    #[arg(long, action = clap::ArgAction::Append, value_delimiter = ',')]
     pub rows: Vec<String>,
     /// Lanes to run at once, 1 to 5; one per hosted lab instance
     #[arg(long, default_value_t = 1)]
@@ -71,7 +71,7 @@ pub struct Args {
     #[arg(long, value_parser = ["auto", "always", "never"])]
     pub fixtures: Option<String>,
     /// Run every row under a chaos spec profile[:level][:knobs]; repeat the flag for several, and quote a spec that has commas
-    #[arg(long, action = clap::ArgAction::Append, num_args = 1..)]
+    #[arg(long, action = clap::ArgAction::Append)]
     pub chaos: Vec<String>,
     /// Compare every passing run with the section's committed golden
     #[arg(long)]
@@ -186,9 +186,19 @@ mod tests {
     }
 
     #[test]
-    fn rows_accept_several_values() {
-        let a = uat(&["first-session", "-Rows", "FS-01", "FS-02"]);
+    fn rows_take_one_comma_list_per_flag() {
+        let a = uat(&["first-session", "-Rows", "FS-01,FS-02"]);
         assert_eq!(a.rows, ["FS-01", "FS-02"]);
+        let a = uat(&["first-session", "--rows", "FS-01", "--rows", "FS-02"]);
+        assert_eq!(a.rows, ["FS-01", "FS-02"]);
+    }
+
+    #[test]
+    fn list_flag_does_not_swallow_the_section() {
+        let a = uat(&["--chaos", "cpu", "first-session", "--plan-only"]);
+        assert_eq!(a.section.as_deref(), Some("first-session"));
+        assert_eq!(a.chaos, ["cpu"]);
+        assert!(a.plan_only);
     }
 
     #[test]

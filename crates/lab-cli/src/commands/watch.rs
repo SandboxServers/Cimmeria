@@ -17,7 +17,7 @@ const LONG: &str = concat!(
     "Limits: with stdin redirected, Ctrl+C is the shell's own and the exit is not 0 (the screen is still restored); Ctrl+Break or closing the window skips the restore.",
 );
 
-const EXAMPLES: &str = "Examples:\n  lab watch\n  lab watch --once\n  lab watch --once --json\n  lab watch --batch C:\\Users\\you\\AppData\\Local\\cimmeria-lab\\uat-runs\\batch-20261011-013906 --once";
+const EXAMPLES: &str = "Examples:\n  lab watch\n  lab watch --once\n  lab watch --once --json\n  lab watch --batch C:\\uat-runs\\batch-20261011-013906 --once";
 
 // Arguments of `lab watch`.
 #[derive(clap::Args, Debug)]

@@ -214,19 +214,23 @@ fn tokens_the_fallback_receives(args: &[&str]) -> Option<String> {
     Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
 }
 
-/// clap parses the rewritten tokens, but the PowerShell dispatcher gets the
-/// tokens as typed: `-Lines` stays `-Lines`, not `--lines`.
+/// clap parses the tokens as either spelling, but the PowerShell dispatcher
+/// gets them in its own form: `--lines` and `-Lines` both arrive as `-Lines`,
+/// and `--follow` as `-Follow`.
 #[test]
 fn the_fallback_receives_the_original_tokens() {
-    let Some(seen) = tokens_the_fallback_receives(&["logs", "-Lines", "5", "-Follow"]) else {
+    let Some(seen) = tokens_the_fallback_receives(&["logs", "-Lines", "5", "--follow"]) else {
         eprintln!("pwsh is not on the PATH; skipped");
         return;
     };
     assert_eq!(seen, "logs|-Lines|5|-Follow");
+    let seen = tokens_the_fallback_receives(&["logs", "--lines", "5", "-Follow"]).expect("pwsh");
+    assert_eq!(seen, "logs|-Lines|5|-Follow");
 }
 
-/// `completions` has no clap subcommand: it reaches the dispatcher untouched,
-/// and `lab help completions` asks it for `--help`.
+/// `completions` has no clap subcommand: it reaches the dispatcher with its
+/// tokens in PowerShell form, and `lab help completions` asks it for `--help`
+/// (sent as `-Help`).
 #[test]
 fn completions_goes_to_the_fallback_with_its_tokens() {
     let Some(seen) = tokens_the_fallback_receives(&["completions", "bash"]) else {
@@ -234,8 +238,10 @@ fn completions_goes_to_the_fallback_with_its_tokens() {
         return;
     };
     assert_eq!(seen, "completions|bash");
+    let seen = tokens_the_fallback_receives(&["completions", "--shell", "bash"]).expect("pwsh");
+    assert_eq!(seen, "completions|-Shell|bash");
     let seen = tokens_the_fallback_receives(&["help", "completions"]).expect("pwsh");
-    assert_eq!(seen, "completions|--help");
+    assert_eq!(seen, "completions|-Help");
 }
 
 #[test]

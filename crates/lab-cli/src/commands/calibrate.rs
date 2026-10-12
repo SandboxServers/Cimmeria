@@ -19,7 +19,7 @@ const LONG: &str = concat!(
     "Exit codes: 0 every pose has a proposal (or is unchanged); 1 a pose found no candidate; 2 usage, or --apply refused or failed; 3 the pre-flight, the prepare rows or the calibrate call failed.",
 );
 
-const EXAMPLES: &str = "Examples:\n  lab calibrate first-session FS-P3\n  lab calibrate first-session FS-P3 --pose frost --prepare FS-01,FS-02,FS-P1,FS-P2\n  lab calibrate first-session FS-P3 --pose frost --budget-minutes 8 --apply\n  lab calibrate first-session FS-P3 --instance p2 --json";
+const EXAMPLES: &str = "Examples:\n  lab calibrate first-session FS-P3\n  lab calibrate first-session FS-P3 --pose frost --prepare FS-01,FS-P1\n  lab calibrate first-session FS-P3 --pose frost --budget-minutes 8 --apply\n  lab calibrate first-session FS-P3 --instance p2 --json";
 
 // Arguments of `lab calibrate`.
 #[derive(clap::Args, Debug)]
@@ -40,7 +40,7 @@ pub struct Args {
     #[arg(long)]
     pub instance: Option<String>,
     /// Rows to run first on the same instance (a prepare row that does not PASS stops with exit 3)
-    #[arg(long, value_delimiter = ',', num_args = 1..)]
+    #[arg(long, action = clap::ArgAction::Append, value_delimiter = ',')]
     pub prepare: Vec<String>,
     /// Bound the whole sweep, 1 to 30 (default 15)
     #[arg(long)]
