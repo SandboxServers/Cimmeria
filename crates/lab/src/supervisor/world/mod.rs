@@ -28,6 +28,7 @@
 pub mod camera;
 mod camera_read;
 pub mod click;
+mod click_hover;
 pub mod find;
 pub mod geometry;
 pub mod hover;
@@ -39,6 +40,8 @@ pub mod steer;
 
 #[cfg(test)]
 mod camera_pitch_tests;
+#[cfg(test)]
+mod occlusion_tests;
 #[cfg(test)]
 mod sim;
 #[cfg(test)]
