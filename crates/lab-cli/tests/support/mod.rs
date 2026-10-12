@@ -232,3 +232,66 @@ pub fn closed_port_endpoint() -> Endpoint {
         token: Some(STUB_TOKEN.to_string()),
     }
 }
+
+/// A server that accepts a request and then stalls, to test timeouts: with
+/// `partial_body` it first sends the headers of a 100 byte body and 7 bytes of
+/// it, else nothing at all. Stops when dropped.
+pub struct HangServer {
+    addr: SocketAddr,
+    stop: Arc<AtomicBool>,
+    handle: Option<JoinHandle<()>>,
+}
+
+impl HangServer {
+    /// Binds `127.0.0.1:0` and starts stalling every connection.
+    pub fn start(partial_body: bool) -> (HangServer, Endpoint) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind the hang server");
+        let addr = listener.local_addr().expect("hang address");
+        let stop = Arc::new(AtomicBool::new(false));
+        let handle = {
+            let stop = Arc::clone(&stop);
+            std::thread::spawn(move || {
+                for stream in listener.incoming() {
+                    if stop.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    let Ok(mut stream) = stream else { continue };
+                    let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
+                    let mut buf = [0u8; 1024];
+                    let _ = stream.read(&mut buf);
+                    if partial_body {
+                        let head = "HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\n{\"daemon\"";
+                        let _ = stream.write_all(head.as_bytes());
+                        let _ = stream.flush();
+                    }
+                    // Hold the connection open until the test is over.
+                    while !stop.load(Ordering::SeqCst) {
+                        std::thread::sleep(Duration::from_millis(20));
+                    }
+                }
+            })
+        };
+        let endpoint = Endpoint {
+            base_url: format!("http://{addr}"),
+            token: Some(STUB_TOKEN.to_string()),
+        };
+        (
+            HangServer {
+                addr,
+                stop,
+                handle: Some(handle),
+            },
+            endpoint,
+        )
+    }
+}
+
+impl Drop for HangServer {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+        let _ = TcpStream::connect(self.addr);
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
+}

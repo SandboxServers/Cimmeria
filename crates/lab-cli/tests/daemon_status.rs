@@ -4,8 +4,10 @@
 
 mod support;
 
+use std::time::{Duration, Instant};
+
 use cimmeria_lab_cli::daemon::status::{self, Endpoint};
-use support::{closed_port_endpoint, env_lock, EnvGuard, StubServer, STUB_TOKEN};
+use support::{closed_port_endpoint, env_lock, EnvGuard, HangServer, StubServer, STUB_TOKEN};
 use tempfile::TempDir;
 
 /// What the real daemon sends (crates/lab/src/daemon/status.rs), two rows.
@@ -164,4 +166,45 @@ fn discover_carries_the_process_token() {
         Endpoint::discover().token.as_deref(),
         Some("test-token-not-real")
     );
+}
+
+// Get-LabStatus -TimeoutSec 5: the constant is five seconds.
+#[test]
+fn fetch_timeout_is_five_seconds() {
+    assert_eq!(status::FETCH_TIMEOUT, Duration::from_secs(5));
+}
+
+// The timeout really applies: a daemon that never answers is None, and soon.
+#[test]
+fn fetch_gives_up_on_a_daemon_that_never_answers() {
+    let (_server, ep) = HangServer::start(false);
+    let started = Instant::now();
+    assert!(status::fetch_with_timeout(&ep, Duration::from_millis(300)).is_none());
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "{:?}",
+        started.elapsed()
+    );
+}
+
+// It covers the body too: headers and part of the body, then silence.
+#[test]
+fn fetch_gives_up_on_a_body_that_stalls() {
+    let (_server, ep) = HangServer::start(true);
+    let started = Instant::now();
+    assert!(status::fetch_with_timeout(&ep, Duration::from_millis(300)).is_none());
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "{:?}",
+        started.elapsed()
+    );
+}
+
+// New: an empty token is no token.
+#[test]
+fn fetch_with_an_empty_token_makes_no_request() {
+    let (server, mut ep) = serve(200, FULL);
+    ep.token = Some(String::new());
+    assert!(status::fetch(&ep).is_none());
+    assert!(server.requests().is_empty());
 }

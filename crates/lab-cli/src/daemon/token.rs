@@ -22,13 +22,21 @@ pub fn pick_token(user: Option<String>, process: Option<String>) -> Option<Strin
 /// when it is absent, empty or unreadable.
 #[cfg(windows)]
 fn user_env(name: &str) -> Option<String> {
+    read_user_registry_string("Environment", name)
+}
+
+/// `HKCU\<subkey>\<name>` as text (REG_SZ, or REG_EXPAND_SZ with its
+/// `%VARS%` expanded), or `None` when the value is absent, empty, of another
+/// type or unreadable. Public so a test can read a throwaway key.
+#[cfg(windows)]
+pub fn read_user_registry_string(subkey: &str, name: &str) -> Option<String> {
     use std::ptr::null_mut;
     use windows_sys::Win32::Foundation::{ERROR_MORE_DATA, ERROR_SUCCESS};
     use windows_sys::Win32::System::Registry::{
         RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_EXPAND_SZ, RRF_RT_REG_SZ,
     };
 
-    let subkey: Vec<u16> = "Environment\0".encode_utf16().collect();
+    let subkey: Vec<u16> = subkey.encode_utf16().chain(std::iter::once(0)).collect();
     let value: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
     let flags = RRF_RT_REG_SZ | RRF_RT_REG_EXPAND_SZ;
 
@@ -75,8 +83,14 @@ fn user_env(name: &str) -> Option<String> {
             return None;
         }
         let units = ((bytes as usize) / 2).min(buffer.len());
-        let text = String::from_utf16_lossy(&buffer[..units]);
-        let text = text.trim_end_matches('\0').to_string();
+        // The text ends at the first NUL: after an expansion `bytes` can still
+        // count the longer unexpanded text, and the tail is not part of the value.
+        let units = &buffer[..units];
+        let end = units
+            .iter()
+            .position(|&unit| unit == 0)
+            .unwrap_or(units.len());
+        let text = String::from_utf16_lossy(&units[..end]);
         return if text.is_empty() { None } else { Some(text) };
     }
     None
