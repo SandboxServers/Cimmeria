@@ -473,7 +473,7 @@ Trade, duels, squads and teams, mail between players, player-to-player visibilit
    lab instances init                  # or: pwsh tools/lab/instances.ps1 init
    ```
 
-   It copies `Binaries\sessions\lab-account.json` to `lab-account.p2.json` to `lab-account.p5.json`, with username `lab2` to `lab5` and character `Labtwo` to `Labfive`. Every other field, the password included, is copied unchanged and never printed. Existing files are kept unless you pass `-Force`, and `-Count 3` stops at `p3`. `lab instances status` prints each instance's account, character, whether its profile is seeded, and whether its client runs.
+   It copies `Binaries\sessions\lab-account.json` to `lab-account.p2.json` to `lab-account.p5.json`, with username `lab2` to `lab5` and character `Labtwo` to `Labfive`. Every other field, the password included, is copied unchanged and never printed. Existing files are kept unless you pass `--force`, and `--count 3` stops at `p3`. `lab instances status` prints each instance's account, character, whether its profile is seeded, and whether its client runs.
 3. Restart the daemon so it reads `labd.env`: `lab restart` (or `pwsh tools/lab/daemon.ps1 restart`).
 4. Reconnect the lab MCP server in **every** Claude session (`/mcp`). With more than one instance hosted, every tool gains an optional `instance` argument, and a session that connected before the restart still has the old tool list.
 
@@ -1016,14 +1016,15 @@ resumes it (#985). The install script below builds and places it.
 The lab runs from installed copies, not from a target dir, so a build of
 `main` changes nothing until you install it. Nothing refreshes them on
 their own: on 2026-10-04 the installed DLL still dated from 2026-09-29.
-Use [`lab install -From <worktree>`](#the-lab-command): it runs
+Use [`lab install --from <worktree>`](#the-lab-command): it runs
 [`tools/lab/install.ps1`](../../tools/lab/install.ps1) from that worktree,
-which builds the four pieces and installs them, then refreshes the `lab`
+which builds the five pieces and installs them, then refreshes the `lab`
 command's own copy:
 
 | Built (through the build lane) | Installed to |
 |---|---|
 | `cimmeria-lab` (release, host) | `%LOCALAPPDATA%\cimmeria-lab\bin\cimmeria-lab.exe` |
+| `cimmeria-lab-cli` (release, host; the same lane call as `cimmeria-lab`) | `%LOCALAPPDATA%\cimmeria-lab\bin\lab.exe`, the `lab` command itself. The running copy is moved aside, so `lab install` can replace the `lab.exe` that runs it |
 | `cimmeria-client-telemetry --features lab-bridge` (release, i686) | `%LOCALAPPDATA%\cimmeria-lab\bin\cimmeria_client_telemetry.dll`, and `<CIMMERIA_LAB_INSTALL_DIR>\Binaries\cimmeria-client-telemetry.dll`, the one the supervisor injects unless `CIMMERIA_LAB_DLL` names another |
 | `cimmeria-start32` (release, i686) | `%LOCALAPPDATA%\cimmeria-lab\bin\sgw-start32.exe` |
 | `cimmeria-client-patches` (release, i686) | `%LOCALAPPDATA%\cimmeria-lab\bin\cimmeria_client_patches.dll` |
@@ -1034,12 +1035,12 @@ command's own copy:
 2. Install from the worktree you want:
 
    ```powershell
-   lab install -From C:\src\Cimmeria\.claude\worktrees\lab-fix
+   lab install --from C:\src\Cimmeria\.claude\worktrees\lab-fix
    ```
 
-   `lab install` passes `-InstallDir` from `labd.env`'s
-   `CIMMERIA_LAB_INSTALL_DIR` and `-SkipBuild` when you give it. To see the
-   plan first, or to install without the `lab` command, run the script
+   `lab install` runs the script with `-InstallDir` taken from `labd.env`'s
+   `CIMMERIA_LAB_INSTALL_DIR`, and with `-SkipBuild` when you pass
+   `--skip-build`. To see the plan first, or to install without the `lab` command, run the script
    itself from that checkout:
 
    ```powershell
@@ -1076,55 +1077,56 @@ reconnect again.
 
 ## The `lab` command
 
-`lab` is one command in front of the lab scripts and the
-[shared daemon](#the-shared-daemon-cimmeria-lab---http): its status, its
-log, `labd.env`, installs, instances and clients. It runs an installed copy
-of the scripts, never a checkout's, so a checkout on an old branch can't
-drive the lab (D-LC4 in the
-[campaign ledger](../analysis/lab-cli/README.md)). It is PowerShell 7 only.
+`lab` is one program, `lab.exe`, in front of the lab and the [shared daemon](#the-shared-daemon-cimmeria-lab---http): its status, its log, `labd.env`, installs, instances and clients, and UAT runs, recordings, goldens and calibration. It is Rust ([`crates/lab-cli`](../../crates/lab-cli/)) and stands alone: no PowerShell starts for any command except `start`, `stop`, `restart`, `instances`, `install`, `setup` and `local-setup`, which run a daemon or installer script (see "Where things live" below). It runs from an installed copy, never from a checkout, so a checkout on an old branch can't drive the lab (D-LC4 in the [lab CLI ledger](../analysis/lab-cli/README.md)). It replaced a PowerShell dispatcher in the [lab CLI in Rust](../analysis/lab-cli-rust/README.md) campaign (D-LX1).
 
 ### Set up the `lab` command
 
-Run setup once, from a checkout on a current `main`:
+`lab.exe` is `%LOCALAPPDATA%\cimmeria-lab\bin\lab.exe`, next to `cimmeria-lab.exe`. There is no shim: `lab` is found through your user `PATH`. On a machine that has no `lab.exe` yet, bootstrap from a checkout on a current `main`:
 
 ```powershell
-pwsh tools/lab/cli/setup.ps1
+pwsh tools/lab/install.ps1      # builds and installs cimmeria-lab.exe, lab.exe and the other lab binaries
+pwsh tools/lab/cli/setup.ps1    # copies the scripts lab still runs; offers to put bin on your PATH
 ```
 
-It does three things:
+`setup.ps1` does three things:
 
-1. Copies the PowerShell the CLI still runs into `%LOCALAPPDATA%\cimmeria-lab\cli\`: the scripts in `cli\*.ps1` (`install`, `setup`, `local-setup` and their libraries), and `daemon.ps1`, `instances.ps1` and `labd-lib.ps1` beside them. Tests are not copied, and a script the checkout no longer has is removed. `cli\cli\VERSION`, the checkout's short commit, is written last, so a copy that failed part way has no `VERSION`.
-2. Deletes `%LOCALAPPDATA%\cimmeria-lab\bin\lab.cmd` when an older setup left it: it ran the `lab.ps1` dispatcher, which no longer exists. `bin\lab.exe` is the command now; `lab install --from <checkout>` builds and installs it.
+1. Copies the PowerShell the CLI still runs into `%LOCALAPPDATA%\cimmeria-lab\cli\`: the checkout's `tools/lab/cli/*.ps1` (`install`, `setup`, `local-setup` and their libraries) go to `cli\cli\`, and `daemon.ps1`, `instances.ps1` and `labd-lib.ps1` from `tools/lab/` go to `cli\`. Tests are not copied, and a script the checkout no longer has is removed. `cli\cli\VERSION`, the checkout's short commit, is written last, so a copy that failed part way has no `VERSION`.
+2. Deletes `%LOCALAPPDATA%\cimmeria-lab\bin\lab.cmd` when an older setup left it: it ran a PowerShell dispatcher that no longer exists, and `lab.exe` is the command now.
 3. Asks `Add ...\cimmeria-lab\bin to your user PATH? [y/N]` when the
    folder isn't on it yet. `-Yes` adds it without asking, and `-NoPath`
    leaves the `PATH` alone. The edit goes through `HKCU\Environment`
    directly, so a `REG_EXPAND_SZ` `PATH` keeps its type, and setup
    broadcasts the change. Open a new terminal to see it.
 
-Run `setup` again to refresh the copy. From the installed copy (`lab setup`
-on the `PATH`) there is no checkout to copy from, so it needs one:
-`lab setup -From C:\src\Cimmeria`. `lab install` refreshes the copy too, from
-the worktree it builds.
+From then on `lab` does the same itself. `lab setup --from C:\src\Cimmeria` refreshes the copied scripts (`--no-path` leaves the `PATH` alone, `--yes` adds it without asking); from the installed copy there is no checkout to copy from, so `lab setup` needs `--from`. `lab install --from <worktree>` builds and installs the lab, `lab.exe` included, and refreshes the scripts from that worktree. Each replaced file is kept as `<name>.<yyyymmdd>.old`, and Windows lets `lab install` rename the running `lab.exe`, so the command can replace itself. `lab version` shows which commit your `lab.exe` was built from.
+
+### Help, flags and output
+
+- **Help.** `lab` or `lab help` prints the commands in four groups: Run and record UAT (`uat`, `watch`, `record`, `calibrate`, `golden`), Daemon (`status`, `start`, `stop`, `restart`, `logs`, `doctor`), Instances and clients (`instances`, `clients`), and Install and configure (`env`, `install`, `setup`, `local-setup`, `version`, `completions`), with a line for each, then examples. `lab help <command>` (or `lab <command> --help`) prints that command's page: its arguments, a longer description and examples; `lab <command> -h` prints the shorter page, without the long description. A mistyped command exits 2 and names the nearest commands (`lab stauts` suggests `status`).
+- **Flags.** Flags are `--long-flags`, which is how this guide writes them. The PowerShell spellings still work: `-Rows`, `-PlanOnly` and `-Instance:p2` run the same as `--rows`, `--plan-only` and `--instance=p2`, because `lab` rewrites them before it parses anything. Commands, scripts and agent briefs written either way keep working.
+- **Colour and plain output.** On a terminal, `lab` prints colour, glyphs and tables. When stdout is redirected (a pipe or a file), when `NO_COLOR` is set to a non-empty value, or when `TERM` is `dumb`, it prints plain text with no colour codes or glyphs, in the line format that scripts and agents read. `--json` output and exit codes are the same either way.
+- **Completions.** `lab completions powershell | Out-String | Invoke-Expression` loads tab completion for the current session. `lab completions powershell --install` adds that line to `$PROFILE.CurrentUserAllHosts` once (it looks for the line first, so running it again changes nothing) and says what it did; open a new terminal afterwards, and `lab u` then Tab completes to `lab uat`. `lab completions bash`, `zsh` and `fish` print their scripts for you to load; `--install` is for PowerShell only.
 
 ### Commands
 
-Every command prints its own help in its `.SYNOPSIS`; `lab help` lists the
-first line of each.
+`lab help` lists the commands and `lab help <command>` prints one command's page. The table gives each command's `--flag` forms; every flag also accepts its PowerShell spelling. The last column gives the exit codes: 0 is success, and 2 usually means a usage error (a mistyped flag, a missing argument).
 
 | Command | What it does | Exit codes |
 |---|---|---|
-| `lab help` | lists the commands | 0 |
+| `lab help [<command>]` | lists the commands by group, or prints one command's page | 0; 2 for an unknown command |
 | `lab status` | daemon pid, uptime and version, then one row per instance: account, client pid, bridge port, lease (owner, purpose, time left; never an id) and whether its profile is seeded. On a terminal it prints a coloured table (`●` or `○` for the daemon, a `PROFILE` column reading `seeded` or `not seeded`); redirected, it prints the plain text the PowerShell command printed. It takes no flags | 0; 1 when the daemon is down (it still lists the `labd.env` instances with the seed column) |
 | `lab version` | the CLI's version line (`lab <version> (<sha>)`, `dev` for a build `lab install` did not stamp) and the daemon's version (`daemon <version>`, or `daemon: not running` when it does not answer) | 0 |
-| `lab start`, `lab stop [-Force]`, `lab restart [-Force]` | the `CimmeriaLabDaemon` task, through `daemon.ps1`; `stop` and `restart` also close the lab clients (see [A new build](#run-it)) | `daemon.ps1`'s: 3 when a leased client refused the stop |
+| `lab start`, `lab stop [--force]`, `lab restart [--force]` | the `CimmeriaLabDaemon` task, through `daemon.ps1`; `stop` and `restart` also close the lab clients (see [A new build](#run-it)) | `daemon.ps1`'s: 3 when a leased client refused the stop |
 | `lab logs [--lines 50] [--instance p2] [--level warn] [--follow]` | the last lines of `labd.log`, filtered by instance and minimum level; a continuation line (a panic body, a backtrace) goes with its entry; bearer and 64-hex tokens print as `<redacted>`. `--follow` polls the file every 500 ms from its end and stops on Ctrl+C; the `-Lines`, `-Instance`, `-Level` and `-Follow` spellings still work. On a terminal the timestamp is dim and the level word coloured | 0 (also after Ctrl+C under `--follow`); 1 when there is no log |
 | `lab env [get KEY \| set KEY VALUE \| unset KEY]` | reads or edits `labd.env`; see below | 0; 1 for `get` of an unset key or a missing `labd.env`; 2 for a bad verb, key or value |
-| `lab install -From <worktree> [-SkipBuild]` | builds and installs the lab from that worktree, then refreshes the CLI copy with the worktree's own installer | 0; non-zero when the build, the install or the copy fails |
-| `lab setup [-From <checkout>] [-NoPath] [-Yes]` | see [Set up the `lab` command](#set-up-the-lab-command) | 0; non-zero when the copy fails |
-| `lab instances [status \| init ...]` | `instances.ps1` from the installed copy (see [Parallel clients](#parallel-clients-up-to-five)) | its own |
+| `lab install --from <worktree> [--skip-build]` | builds and installs the lab from that worktree, then refreshes the CLI copy with the worktree's own installer | 0; non-zero when the build, the install or the copy fails |
+| `lab setup [--from <checkout>] [--no-path] [--yes]` | see [Set up the `lab` command](#set-up-the-lab-command) | 0; non-zero when the copy fails |
+| `lab local-setup [--install-dir <folder>] [--patch-login-internal] [--worktree <checkout>]` | one-shot, idempotent setup for a lab against a local server (i686 target, tokens, `lab-account.json`, the `Local` login row); see [lab-contributor-setup.md](lab-contributor-setup.md). Never prints a secret | its script's: 0; non-zero when a step fails |
+| `lab completions <powershell\|bash\|zsh\|fish> [--install]` | prints a shell completion script; `--install` adds the PowerShell line to your profile once; see [Help, flags and output](#help-flags-and-output) | 0; 1 when the script or the profile cannot be written; 2 for `--install` with another shell |
+| `lab instances [status \| init [--install-dir <dir>] [--count <n>] [--force]]` | `instances.ps1` from the installed copy (see [Parallel clients](#parallel-clients-up-to-five)) | its own |
 | `lab clients stop [<instance> \| all] [--force]` | closes lab clients; see below | 0 stopped or nothing to stop; 1 daemon down; 2 usage; 3 a leased client was refused; 4 a client could not be stopped |
 | `lab doctor` | one `PASS`, `WARN` or `FAIL` line per check; on a terminal a ✓ / ! / ✗ list with a dim hint under each warning and failure, and a count line; see below | 0; 1 when any check fails |
-| `lab uat <section> [--rows ...] [--leases 1-5] [--runs-per-lease 1-20] [--instance p2] [--fixtures auto\|always\|never] [--diff-golden] [--heal] [--plan-only] [--json] [--quiet]` | runs a UAT spec through `lab_uat_run` with no agent; see below | 0 every run passed; 1 a run failed; 2 usage (including `--heal` without `--leases 1`), or `--diff-golden` or `--chaos` with no golden or one that cannot be read; 3 the pre-flight or plan failed (nothing driven); 4 a lane stopped on its brake; 5 every run passed but `--diff-golden` did not match on one (under `--chaos`, only a run it could not compare); 8 `--heal` wrote a proposal, which wins over 5 and every other code |
+| `lab uat <section> [--rows ...] [--leases 1-5] [--runs-per-lease 1-20] [--instance p2] [--specs-dir <dir>] [--server-version <sha>] [--fixtures auto\|always\|never] [--diff-golden] [--heal] [--plan-only] [--json] [--quiet]` | runs a UAT spec through `lab_uat_run` with no agent; see below | 0 every run passed; 1 a run failed; 2 usage (including `--heal` without `--leases 1`), or `--diff-golden` or `--chaos` with no golden or one that cannot be read; 3 the pre-flight or plan failed (nothing driven); 4 a lane stopped on its brake; 5 every run passed but `--diff-golden` did not match on one (under `--chaos`, only a run it could not compare); 8 `--heal` wrote a proposal, which wins over 5 and every other code |
 | `--chaos <profile[:level][:knobs]>` on `lab uat` | runs every row under the specs (`lab_uat_run` `chaos`): `cpu` loads the lab machine for the whole run; `net` and `flush` are set on the row's player session before its setup and cleared after its teardown, on failed rows too (they need a server built with `lab-chaos` and `DEVELOPER_MODE`). `burst` is refused until lab-chaos CH-13 lands. The header is the runner's own (`chaos=<spec> seed=<n>`, the seed being the run id's hash unless the spec gives one); quote a multi-knob spec, as its commas would split it elsewhere. `--chaos` implies `--fingerprint` and `--diff-golden` (lab-chaos D-CH7): every passing run is compared with the section's golden, and the result is `chaos_divergence` in place of `golden` (in the summary and `--json`, the same `{match, diverged, first}` shape and grouping, present whenever a run was compared; the header is the `chaos` key, and `summary.md` names each divergence's runs with their seeds). `--plan-only` needs no golden; with no local spec folder the daemon's is used, and a missing golden there is a diff error (exit 5). A row that passed its own expects stays a pass, and a divergence alone exits 0, not 5. A chaos run is never recorded as a golden (`lab_golden_record` answers `cannot_record`, "chaos runs never become golden") | 2 when the local spec folder has no golden for the section (record one first with `lab golden record`); 3 when the plan call refuses a spec (an unknown profile or knob, `burst`, a value the server would refuse); 5 only when a diff could not be made |
 | `lab watch [--batch <folder>] [--once] [--json] [--interval-seconds 2]` | a live, read-only view of a running `lab uat` batch; see below | 0; 1 daemon down and no batch; 2 usage; 3 read failed |
 | `lab calibrate <section> <row> [--pose <id>] [--instance p2] [--prepare <rows>] [--budget-minutes 1-30] [--specs-dir <dir>] [--apply] [--json] [--quiet]` | recalibrates a row's poses by hover through `lab_uat_calibrate` and proposes a spec diff; see below | 0 every pose has a proposal or is unchanged; 1 a pose found none; 2 usage, or `--apply` refused or failed; 3 the pre-flight, a prepare row or the calibrate call failed |
@@ -1134,7 +1136,7 @@ first line of each.
 | `lab record stop [--instance p2] [--character-expr 'Px${run_id}'] [--profile <name>] [--no-draft] [--recording-id <id>] [--json]` | stops the saved recording and writes `<specs>\drafts\<section>-<yyyyMMdd-HHmm>.toml` (`lab_record_stop`); deletes the state file on success and keeps it on a failure, so stop can be retried | 0; 1 failed, the recording stays; 2 usage, no recording, or refused; 3 no daemon (the recording stays); 4 still finishing |
 | `lab record transform <recording id or folder> [--section <id>] [--character-expr ...] [--profile ...] [--specs-dir <dir>] [--json]` | drafts a stopped recording already on disk again (`lab_record_transform`), as `<name>-2.toml`, `-3`, ... when the draft exists; needs the daemon, no lease, no client | 0; 1 failed (also: the log has no stop line yet); 2 usage or refused; 3 the daemon is not running |
 
-An unknown command exits 2. Examples:
+An unknown command exits 2 and suggests the nearest names. Examples:
 
 ```powershell
 lab status
@@ -1142,10 +1144,12 @@ lab logs --instance p2 --level warn --lines 20
 lab logs --follow
 lab env get CIMMERIA_LAB_INSTANCES
 lab env set CIMMERIA_LAB_INSTANCES default,p2,p3
-lab install -From C:\src\Cimmeria\.claude\worktrees\lab-fix
+lab install --from C:\src\Cimmeria\.claude\worktrees\lab-fix
 lab instances status
 lab clients stop p2
 lab doctor
+lab help uat
+lab completions powershell --install
 ```
 
 **`lab uat`.** It runs spec rows (`docs/guides/uat-specs/`) on the lab with no agent: one `lab_uat_run` call per run, over the daemon's MCP endpoint.
@@ -1220,7 +1224,7 @@ lab calibrate first-session FS-P3 --pose frost --budget-minutes 8 --apply
 lab calibrate first-session FS-P3 --instance p2 --json
 ```
 
-**`lab golden`.** `record` turns the owner's rule, "golden only when five runs agree", into one command. It runs the rows `--runs` times (5 to 20, default 5) through `lab uat` in fingerprint mode, one after another on one instance unless `--leases` splits the runs evenly over more lanes. The lane brake is one failed run, because every run must pass. It then reads the run folders from the batch's `batch.jsonl` and calls `lab_golden_record`, which writes `<specs>/golden/<section>.json` only when every row passed in every run and the fingerprints agree exactly. It starts the batch by running this program's own `lab uat` with the fingerprint options, so it works whether `uat` is native or still PowerShell. The PowerShell spellings (`-Runs 10`, `-Rebless`) still work.
+**`lab golden`.** `record` turns the owner's rule, "golden only when five runs agree", into one command. It runs the rows `--runs` times (5 to 20, default 5) through `lab uat` in fingerprint mode, one after another on one instance unless `--leases` splits the runs evenly over more lanes. The lane brake is one failed run, because every run must pass. It then reads the run folders from the batch's `batch.jsonl` and calls `lab_golden_record`, which writes `<specs>/golden/<section>.json` only when every row passed in every run and the fingerprints agree exactly. It starts the batch by running `lab.exe`'s own `lab uat` with the fingerprint options. The PowerShell spellings (`-Runs 10`, `-Rebless`) still work.
 
 - **Build.** `--server-version` (the server build's commit, 7 to 40 hex characters) is required: the runs record it, and the tool refuses runs without one.
 - **Spec folder.** `--specs-dir` works as in `lab uat` (default: the checkout's `docs/guides/uat-specs`). It goes to the runs and to the tool, so a draft spec folder can be blessed too.
@@ -1308,12 +1312,13 @@ the commit of a worktree you installed from never becomes an ancestor of
 
 | Path | What it is |
 |---|---|
-| `bin\lab.exe` | the command on your `PATH` |
+| `bin\lab.exe` | the command: built and copied by `lab install` (or `tools/lab/install.ps1`) and found through your user `PATH`; there is no `lab.cmd` shim |
+| `bin\installed-from.txt` | the source commit of the last install |
 | `cli\cli\*.ps1` | the PowerShell behind `lab install`, `lab setup` and `lab local-setup` |
 | `cli\daemon.ps1`, `cli\instances.ps1`, `cli\labd-lib.ps1` | the scripts `lab start`, `stop`, `restart` and `instances` run |
 | `cli\cli\VERSION` | the commit the copy came from |
 
-Every command is a subcommand of `lab.exe` ([`crates/lab-cli`](../../crates/lab-cli/)); `lab start`, `stop`, `restart`, `instances`, `install`, `setup` and `local-setup` run the scripts above with your flags in PowerShell form (`--force` becomes `-Force`) and return the script's exit code. The script tests are `tools/lab/cli/test-*.ps1`, run with `pwsh -NoProfile -File`. `CIMMERIA_LAB_HOME` points `lab.exe` at another lab home for tests only: `daemon.ps1` ignores it, so with it set, `lab status` would read a different `labd.pid` than the one `lab restart` acts on.
+Every command is a subcommand of `lab.exe` ([`crates/lab-cli`](../../crates/lab-cli/)); `lab start`, `stop`, `restart`, `instances`, `install`, `setup` and `local-setup` run the scripts above with your flags in PowerShell form (`--force` becomes `-Force`) and return the script's exit code (255 when it has none; 1 with a message when `pwsh` or the script is missing). There is no generic fallback: a command that is not one of these seven never starts PowerShell. The script tests are `tools/lab/cli/test-*.ps1`, run with `pwsh -NoProfile -File`. `CIMMERIA_LAB_HOME` points `lab.exe` at another lab home for tests only: `daemon.ps1` ignores it, so with it set, `lab status` would read a different `labd.pid` than the one `lab restart` acts on.
 
 ## The shared daemon (`cimmeria-lab --http`)
 

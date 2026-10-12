@@ -57,7 +57,7 @@ This guide gathers every restored system's in-game acceptance test (UAT) into on
 
 **How to work a section.** Read its prerequisites, then do each numbered step in order. Every step keeps the campaign's own step id (`U1`, `T25`, `B7`, ...), so you can report a result against it. The `Notes / known issues` column tells you when a failure is already known and should not be filed again.
 
-**Automated runs.** Many rows can also be run by an agent through the live research lab: see [automated-uat.md](automated-uat.md). Its specs keep these step ids, and its results use the template below. Every lab run ends with an extra row, `_session_end`: it logs out and disconnects the way a player does and checks the server's `session.end disconnect_reason=logoff_character_select` and `Client entities cleaned up disconnect_reason=logoff` lines, so a run that leaves the session open fails there.
+**Automated runs.** Many rows can also be run by an agent through the live research lab: see [automated-uat.md](automated-uat.md). Its specs keep these step ids, and its results use the template below. Every lab run ends with an extra row, `_session_end`: it logs out and disconnects the way a player does and checks the server's `session.end disconnect_reason=logoff_character_select` and `Client entities cleaned up disconnect_reason=logoff` lines, so a run that leaves the session open fails there. Lab commands in this guide are written with `--flag` forms; the PowerShell spellings (`-Rows`, `-PlanOnly`) still work.
 
 **Status legend.** Each section, and some steps, carry one of these:
 
@@ -210,6 +210,7 @@ Start from a **fresh character**, so the tutorial and every "first time" check r
 | 11. Special ammo | GM, plus a second character for AMMO-02, AMMO-03 and AMMO-18 | AMMO-01 to AMMO-03 first (the risks of the flag being on), then the debug-hub crate (AMMO-19), reloads, picker and damage (AMMO-04 to AMMO-17) in Castle Cellblock, loot in Castle (AMMO-20, AMMO-21), GM commands (AMMO-22, AMMO-23) | 90 min |
 | 12. Debug Area | Fresh character, GM | Debug Area DA-U1 to DA-U38 in zone order: the plaza (DA-U3 to DA-U18), dummies, faction yard, AI slope, gallery, arena, cover course, death yard; DA-U39 to DA-U42 on a second new character; the gate and rings (DA-U45, DA-U46); the System Lords' summit (DA-U47); the Visual NPC Lineup (DA-U48) | 95 min |
 | 13. Telemetry gaps | Any character, then a second player for G7-G8; the lab for L and C rows | Telemetry gaps TG-UAT-S1 to S7, N1 to N4 and G1 to G10 alongside any other session (note the times), then the lab rows L1-L3 and the client DLL load check C1-C10 (owner) | 30 min, plus 45 min in the lab |
+| 14. Lab CLI | Owner only; the lab and a terminal | Lab CLI LX-U1 to LX-U16 ([Lab CLI](#lab-cli-labexe)); LX-U13 to LX-U15 drive a client, so ask first | 30 min |
 
 Relog at every step boundary that a section asks for. Most defects these campaigns found were "correct until you relog".
 
@@ -219,15 +220,15 @@ What every new player does in their first ten minutes, once per faction. Run it 
 
 **Status:** Praxis rows (FS-01 to FS-P5) hand-calibrated and passing on the colo, 2026-10-10: five clean runs in a row from a one-line Haiku brief, then concurrent runs on two lab clients. Since 2026-10-11 (lab-spec-vocab, released) the spec names each target by spawn tag in a `pose`, stands with `@stand` and waits on the server's hold-release line instead of fixed sleeps; that version has not had a clean live run yet. The SGU rows (FS-S1 to FS-S6) and FS-99 have not been run live.
 
-**Calibrated rows and healing (lab only).** The interaction rows FS-P3, FS-P4 and FS-S3 to FS-S6 each carry a `pose`. When one fails on a missed hover, `lab uat first-session ... -Leases 1 -Heal` recalibrates that pose after the batch and prints a spec diff to review (exit 8); it never edits the spec. To recalibrate one row by hand: `lab calibrate first-session <row> -Apply`. Both are lab use: ask the owner first. How it works: [automated-uat.md, Calibrate a row](automated-uat.md#calibrate-a-row).
+**Calibrated rows and healing (lab only).** The interaction rows FS-P3, FS-P4 and FS-S3 to FS-S6 each carry a `pose`. When one fails on a missed hover, `lab uat first-session ... --leases 1 --heal` recalibrates that pose after the batch and prints a spec diff to review (exit 8); it never edits the spec. To recalibrate one row by hand: `lab calibrate first-session <row> --apply`. Both are lab use: ask the owner first. How it works: [automated-uat.md, Calibrate a row](automated-uat.md#calibrate-a-row).
 
 **Still to run: SV-15, the calibrated acceptance run (coordinator, with the owner's OK; paused 2026-10-11).** Paused because the workstation was under full build load and starved the lab client; run it only when the machine is idle and the lab is free. Pending rows:
 
 | # | Do | Expect | Notes / known issues |
 |---|---|---|---|
-| SV-15a | Recalibrate FS-P3 and FS-P4 from scratch with `lab calibrate ... -Apply`, committing after each | Each pose proposes a diff, confirmed 3/3 | The FS-P3 call needs `-Prepare FS-01,FS-02,FS-P1,FS-P2` |
-| SV-15b | Calibrate FS-S3 to FS-S6 the same way | Each pose proposes a diff, confirmed 3/3 | The FS-S3 call needs `-Prepare FS-01,FS-02,FS-S1,FS-S2`. A "no entity with tag" means the target is not in the player's space yet: run the rows before it, then calibrate again |
-| SV-15c | Run the whole section five times: `lab uat first-session -Rows FS-01,...,FS-99 -RunsPerLease 5 -Heal` | 5 of 5 runs, every row PASS | An FS-P2 or FS-S2 `movie-over` failure is #1341: record it and restart the count. A heal proposal: review, apply, restart the count |
+| SV-15a | Recalibrate FS-P3 and FS-P4 from scratch with `lab calibrate ... --apply`, committing after each | Each pose proposes a diff, confirmed 3/3 | The FS-P3 call needs `--prepare FS-01,FS-02,FS-P1,FS-P2` |
+| SV-15b | Calibrate FS-S3 to FS-S6 the same way | Each pose proposes a diff, confirmed 3/3 | The FS-S3 call needs `--prepare FS-01,FS-02,FS-S1,FS-S2`. A "no entity with tag" means the target is not in the player's space yet: run the rows before it, then calibrate again |
+| SV-15c | Run the whole section five times: `lab uat first-session --rows FS-01,...,FS-99 --runs-per-lease 5 --heal` | 5 of 5 runs, every row PASS | An FS-P2 or FS-S2 `movie-over` failure is #1341: record it and restart the count. A heal proposal: review, apply, restart the count |
 
 The exact commands and the resume order are in the [SV-15 worknote](../analysis/lab-spec-vocab/worknotes/SV-15.md#resume-procedure).
 
@@ -250,13 +251,13 @@ The exact commands and the resume order are in the [SV-15 worknote](../analysis/
 | FS-S6 | Search the body holding the firearm | 1559 completes; a pistol in the backpack; dialog 5358 | |
 | FS-99 | Delete both characters | Both gone | |
 
-**Golden diff (lab only, once the golden exists).** After a server change, run `lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -DiffGolden`. Expect `golden: match` on every passing run. A divergence line (exit 5) does not fail a row: it names the first message, transition or window where the run stopped matching the recorded good runs. How to read it: [automated-uat.md, Golden runs](automated-uat.md#golden-runs).
+**Golden diff (lab only, once the golden exists).** After a server change, run `lab uat first-session --rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 --diff-golden`. Expect `golden: match` on every passing run. A divergence line (exit 5) does not fail a row: it names the first message, transition or window where the run stopped matching the recorded good runs. How to read it: [automated-uat.md, Golden runs](automated-uat.md#golden-runs).
 
 **Still to run: GD-10, record the first-session golden (owner or coordinator agent).** Not before lab-spec-vocab SV-13 (the spec migration) and SV-15 (its recalibration) have merged, or the golden is stale on arrival. Then, with the owner's OK and the lab free for about 25 minutes:
 
-1. Reinstall the lab from the merged `main`: `lab install -From <checkout>` ([Install or update the lab](live-research-lab.md#install-or-update-the-lab)).
-2. From the `gd10` worktree: `lab golden record first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -Runs 5 -ServerVersion <sha>`, where `<sha>` is the server build the lab runs against.
-3. Then `lab uat first-session -Rows <the same rows> -DiffGolden` once: it must report `golden: match`.
+1. Reinstall the lab from the merged `main`: `lab install --from <checkout>` ([Install or update the lab](live-research-lab.md#install-or-update-the-lab)).
+2. From the `gd10` worktree: `lab golden record first-session --rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 --runs 5 --server-version <sha>`, where `<sha>` is the server build the lab runs against.
+3. Then `lab uat first-session --rows <the same rows> --diff-golden` once: it must report `golden: match`.
 
 The rules for a disagreement (exit 6) or an FS-P2 #1341 failure, and what to commit and record, are in [GD-10](../analysis/lab-golden/work-packets-2.md#gd-10-live-acceptance).
 
@@ -1301,6 +1302,33 @@ Not ready for UAT until the next signed launcher release.
 **Things only a human can check:** that a normal quit doesn't hang the game (TG-UAT-C2); that the presence change (TG-UAT-G7) shows nothing in the ignorer's client.
 
 Source: [telemetry-gaps ledger](../analysis/telemetry-gaps/README.md) and [close-out handoff](../analysis/telemetry-gaps/handoffs/2026-10-11-closeout.md); row names in [negative-logging-convention.md](../architecture/negative-logging-convention.md), [observability-target-catalog.md](../architecture/observability-target-catalog.md) and [client-telemetry.md](../architecture/client-telemetry.md).
+
+## Lab CLI (`lab.exe`)
+
+The lab command is the Rust `lab.exe` ([lab CLI in Rust ledger](../analysis/lab-cli-rust/README.md), packets `LX-`). CI tests it, but nobody has yet watched it work on the real lab, with its real daemon, colour and tab completion. That check is LX-20 and it is **owed by the user** (or by a coordinator with the user's OK): a person has to see the colour, the terminal views and the completion. LX-U13 to LX-U15 drive a game client, so **ask the owner before running them** and wait until the lab is free; the other rows only read.
+
+**Status:** the code is complete and merged on the campaign branch; this check has not been run.
+
+**Prerequisites:** a fresh `lab install --from <main checkout>` ([Install or update the lab](live-research-lab.md#install-or-update-the-lab); it refuses while an `SGW.exe` runs), then a new terminal so the new `lab.exe` and your `PATH` are in effect. Run the rows in order and write each result into the [ledger](../analysis/lab-cli-rust/README.md), with the date and the `lab version` line.
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| LX-U1 | `lab` | The commands in four groups (Run and record UAT, Daemon, Instances and clients, Install and configure), examples and a footer; exit 0 | In a terminal: colour and aligned columns |
+| LX-U2 | `lab help uat` | The `uat` page: arguments, a description and examples; exit 0 | `lab uat --help` shows the same page; `lab uat -h` a shorter one |
+| LX-U3 | `lab stauts`, then `$LASTEXITCODE` | `unknown command 'stauts'` with a hint that names `status`; exit code 2 | |
+| LX-U4 | `lab version` | `lab <version> (<sha>)`, then `daemon <version>` (`daemon ● <version>` on a terminal) | `dev` instead of a sha means `lab.exe` was not stamped by `lab install` |
+| LX-U5 | `lab status` | The daemon line, then one row per instance: account, client, port, lease, seed | Exit 1 when the daemon is down |
+| LX-U6 | `lab doctor` | A check list with no FAIL | The two expected WARNs on a fresh setup are in [lab-contributor-setup.md](lab-contributor-setup.md) |
+| LX-U7 | `lab env` | The `labd.env` lines, with every secret shown as `<redacted>` | |
+| LX-U8 | `lab logs --lines 5 --instance p2` | The last five log lines of instance p2; a continuation line goes with its entry | Exit 1 with a message when there is no `labd.log` |
+| LX-U9 | `lab logs --follow`, wait for a new line, then Ctrl+C | New lines print as they are written; Ctrl+C stops it with exit 0 | |
+| LX-U10 | `lab watch --once` | One snapshot of the newest batch, or the line `no batch`; exit 0 | Exit 1 when the daemon is down and there is no batch |
+| LX-U11 | `lab golden show first-session` | The committed golden, or exit 2 with "no golden" while GD-10 has not recorded one | Needs no daemon |
+| LX-U12 | `lab completions powershell --install`; open a new terminal; type `lab u` and press Tab | The first run says it added the line to your profile, and a second run says it is already there; Tab completes to `lab uat` | Edits `$PROFILE.CurrentUserAllHosts` |
+| LX-U13 | (ask first) `lab uat first-session --rows FS-01,FS-02,FS-P1 --plan-only` | `plan: 3 row(s) ready on <instance>: <the rows>`; nothing is driven; exit 0 | |
+| LX-U14 | (ask first) One real run, `lab uat first-session --rows FS-01,FS-02,FS-P1`, with `lab watch` open in a second terminal | One progress line per run, then a summary; exit 0 when every row passes. `lab watch` shows the batch as `live`, then `done` | The lab must be free for about 10 minutes |
+| LX-U15 | (ask first) `lab clients stop <instance>` on an idle client | The client closes; exit 0. A leased instance is refused with the holder named and exit 3 | |
+| LX-U16 | `lab status \| Out-File s.txt`, then the same for `lab doctor` and `lab watch --once` | Each file holds plain text with no escape codes, in the format the PowerShell command printed | Compare with the examples in [the `lab` command](live-research-lab.md#the-lab-command) |
 
 ## Recording results
 

@@ -1,12 +1,12 @@
 # Lab tooling
 
-Scripts that install, run and drive the Live Research Lab: the `cimmeria-lab` supervisor, its shared daemon, and the `lab` command.
+Scripts that install and run the Live Research Lab: the `cimmeria-lab` supervisor and its shared daemon. The `lab` command itself is `lab.exe`, written in Rust ([`crates/lab-cli`](../../crates/lab-cli/)); `install.ps1` builds it and installs it to `%LOCALAPPDATA%\cimmeria-lab\bin\` (no shim), and the scripts below are the ones it still runs.
 
 | Entry point | What it does |
 |---|---|
 | `install.ps1` | Build the lab binaries from a worktree through the build lane and install them (`-DryRun` changes nothing) |
 | `daemon.ps1` | Run the shared supervisor (`cimmeria-lab --http`) as the `CimmeriaLabDaemon` scheduled task: `install`, `start`, `stop`, `restart`, `status`, `uninstall` |
-| `cli/` | The PowerShell the `lab` command still runs: `install.ps1`, `setup.ps1`, `local-setup.ps1`, their `*-lib.ps1` and `common.ps1`; `lab.exe` (`crates/lab-cli/`) is the command itself |
+| `cli/` | The PowerShell behind `lab install`, `lab setup` and `lab local-setup`: `install.ps1`, `setup.ps1`, `local-setup.ps1`, their `*-lib.ps1` and `common.ps1`. `lab setup` copies them, with `daemon.ps1`, `instances.ps1` and `labd-lib.ps1`, to `%LOCALAPPDATA%\cimmeria-lab\cli\`, and `lab.exe` runs them |
 | `instances.ps1` | Write the account files for the extra lab clients and report each instance |
 | `labd-headers.ps1` | The `.mcp.json` `headersHelper` that prints the daemon's bearer header |
 

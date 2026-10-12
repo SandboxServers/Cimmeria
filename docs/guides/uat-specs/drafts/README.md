@@ -14,7 +14,7 @@ in the authoring guide's [Recording a draft](../../automated-uat.md#recording-a-
 - **A plain `lab uat` never runs it.** Specs load from
   `docs/guides/uat-specs/` only, not from folders under it. Run a draft by
   pointing the command at this folder:
-  `lab uat rec-first-session-20261012-1430 -SpecsDir docs/guides/uat-specs/drafts`.
+  `lab uat rec-first-session-20261012-1430 --specs-dir docs/guides/uat-specs/drafts`.
 - **It is UNCONFIRMED** until `lab golden record` agrees on it 5 times
   (D-LR12). Its header says so. One passing run proves nothing about the
   next one.
@@ -24,12 +24,12 @@ in the authoring guide's [Recording a draft](../../automated-uat.md#recording-a-
   change to check) is written whole as comments under
   `# TODO REC-0n not runnable: <reason>`.
 - **SQL names no real character.** The recorded name is replaced by
-  `${character}`, or by the `-CharacterExpr` given to `lab record`.
+  `${character}`, or by the `--character-expr` given to `lab record`.
 
 A draft is committed only when a person chooses to. Every committed draft
 must parse, validate and name only seeded spawn tags:
 `committed_drafts_parse_and_validate` in `crates/lab/src/uat/mod.rs` checks
-that on every build. `lab uat -SpecsDir <drafts>` does not run the seed-tag
+that on every build. `lab uat --specs-dir <drafts>` does not run the seed-tag
 check (`SeedTags::beside_specs` resolves outside the repo from this folder),
 so run that test or `lab golden record` to catch an unseeded tag.
 
@@ -37,7 +37,7 @@ so run that test or `lab golden record` to catch an unseeded tag.
 
 1. Resolve its `# TODO` lines: add the missing steps by hand, or delete the
    lines once you know they don't matter.
-2. Run `lab golden record <draft section> -Rows REC-01,... -ServerVersion <sha> -SpecsDir docs/guides/uat-specs/drafts`
+2. Run `lab golden record <draft section> --rows REC-01,... --server-version <sha> --specs-dir docs/guides/uat-specs/drafts`
    until its 5 runs agree. Fix the draft, not the golden, when it doesn't.
 3. Move the rows into the real spec (`docs/guides/uat-specs/<section>.toml`),
    giving them that spec's row ids, and record that spec's golden.
