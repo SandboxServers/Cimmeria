@@ -58,8 +58,10 @@ use super::inventory::diff;
 use super::lua_json::list;
 use super::slots::ContainerRef;
 use super::window_click::{click_point, locate_chunk, ClickTarget};
+use super::window_read::WALK_FN;
 use super::{NativeLevel, NativeTrail, Supervisor};
 use crate::supervisor::cegui_native::{drop_plan, Cegui, DropPlan, LEFT_BUTTON};
+use crate::supervisor::flows::widgets::lua_quote;
 use crate::supervisor::keys;
 
 /// One end of a drag.
@@ -132,6 +134,30 @@ pub const DRAG_STATE: &str = "local t, info = nil, nil \
      local ok = pcall(function() t, info = getDragInfo() end) \
      return __jenc({ drag_type = t, info = info, \
        drag_icon_visible = InventoryDragItemWin ~= nil and InventoryDragItemWin:isVisible() })";
+
+/// Lua body: raise the top-level window that holds `name` (the ancestor
+/// whose parent is the root) above its siblings, so a press at the slot's
+/// centre reaches the slot and not a window drawn over it. Live
+/// 2026-10-12: the bag opens exactly over the vault, so the press on
+/// `Vault_Slot1` landed on `Inventory_Slot1` and no vault drag started.
+/// Returns `{found, raised, ok}`.
+pub fn raise_chunk(name: &str) -> String {
+    format!(
+        "{WALK_FN}\nlocal w = __lab_find({n})\n\
+         if w == nil then return __jenc({{ found = false }}) end\n\
+         local top, cur = w, w\n\
+         while cur ~= nil do\n\
+           local p = __jcall(function() return cur:getParent() end)\n\
+           if p == nil then break end\n\
+           top = cur\n\
+           cur = p\n\
+         end\n\
+         local ok = __jcall(function() top:moveToFront() return true end)\n\
+         return __jenc({{ found = true, ok = ok == true,\n\
+           raised = __jcall(function() return top:getName() end) }})",
+        n = lua_quote(name)
+    )
+}
 
 /// Evenly spaced points from `a` to `b`, excluding `a`, including `b`.
 pub fn path(a: (i32, i32), b: (i32, i32), steps: u32) -> Vec<(i32, i32)> {
@@ -339,6 +365,10 @@ impl Supervisor {
             Some(n) => Some(cegui.drag_container(n).await?),
             None => None,
         };
+        // A window drawn over the source would take the press: bring the
+        // source's window to the front first. A miss is not fatal (the
+        // source may already be on top); it is reported either way.
+        let raised = self.lua_json(&raise_chunk(&src_name)).await?;
 
         self.inject_cursor(&cegui, src).await?;
         trail.push(format!("cursor onto {src_name}"), NativeLevel::NativeCegui);
@@ -448,6 +478,7 @@ impl Supervisor {
             "dragging_at_drop": run.dragging_at_drop,
             "handed_off": run.handed_off,
             "stand_in": stand_in_name,
+            "raised_window": raised["raised"],
             "mod_drag_type": run.mod_drag_type,
             "drop_target_resolved": run.drop_target != 0,
             "drop_notified": run.notified,
