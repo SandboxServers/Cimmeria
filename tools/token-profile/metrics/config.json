@@ -1,0 +1,12 @@
+{
+  "window": {"since": "2026-09-21T00:00:00Z", "until": "2026-10-13T00:00:00Z"},
+  "regime_switch": "2026-10-10T20:02:54Z",
+  "roles": {
+    "packet-coder": "implementer-haiku",
+    "packet-reviewer": "reviewer",
+    "packet-review-fixer": "fixer",
+    "rust-gameserver-dev": "implementer-domain",
+    "lab-driver": "lab-driver"
+  },
+  "accepted_statuses": ["Integrated", "UATPending", "Done"]
+}
