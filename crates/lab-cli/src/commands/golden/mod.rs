@@ -26,7 +26,7 @@ const LONG: &str = concat!(
     "\n\n",
     "--json prints only one compact JSON object on stdout: {\"ok\":true,\"exit\":0,...} or {\"ok\":false,\"exit\":N,\"error\":...}, with \"batch\" (the runs' batch folder) on any failure after the runs. Progress still goes to stderr.",
     "\n\n",
-    "Exit codes: 0 recorded (or shown); 1 a run or row did not pass; 2 usage, or a golden exists without --rebless (show: no golden); 3 the lab uat pre-flight or plan failed (nothing driven); 6 the runs disagree; 7 the runs cannot be recorded as given, the daemon failed after the runs, or (show) the golden cannot be read.",
+    "Exit codes: 0 recorded (or shown); 1 a run or row did not pass; 2 usage, or a golden exists without --rebless (show: no golden); 3 the lab uat pre-flight or plan failed (nothing driven); 6 the runs disagree; 7 the runs cannot be recorded as given, the daemon failed after the runs, or (show) the golden cannot be read; 130 Ctrl+C stopped the runs (nothing is recorded; the first press lets the run under way finish, the second stops at once).",
 );
 
 const EXAMPLES: &str = "Examples:\n  lab golden record first-session --rows FS-P1 --server-version 1a2b3c4\n  lab golden record first-session --runs 10 --server-version 1a2b3c4 --json\n  lab golden record first-session --server-version 1a2b3c4 --rebless\n  lab golden show first-session";

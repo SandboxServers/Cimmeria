@@ -76,13 +76,11 @@ pub fn abortable<T: Send + 'static>(
 #[cfg(windows)]
 mod win {
     use std::io::Write;
-    use std::sync::Once;
-
-    use std::sync::atomic::Ordering;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     use super::{press, PRESSES, QUIET};
 
-    static INSTALLED: Once = Once::new();
+    static REGISTERED: AtomicBool = AtomicBool::new(false);
 
     type HandlerRoutine = unsafe extern "system" fn(u32) -> i32;
 
@@ -111,23 +109,25 @@ mod win {
         }
     }
 
-    /// Registers the handler once per process (a second call adds nothing).
+    /// Registers the handler (a call while it is registered adds nothing; one
+    /// after [`uninstall`] registers it again, so a second child wait is covered).
     pub fn install() {
-        INSTALLED.call_once(|| {
+        if !REGISTERED.swap(true, Ordering::SeqCst) {
             // SAFETY: `on_event` has the `PHANDLER_ROUTINE` signature and lives for
             // the whole process; the call only registers it.
             unsafe {
                 SetConsoleCtrlHandler(Some(on_event), 1);
             }
-        });
+        }
     }
 
     /// Takes the handler off again (the default Ctrl+C ends the process).
     pub fn uninstall() {
-        // SAFETY: removes the routine `install` registered; removing one that is
-        // not registered only returns 0.
-        unsafe {
-            SetConsoleCtrlHandler(Some(on_event), 0);
+        if REGISTERED.swap(false, Ordering::SeqCst) {
+            // SAFETY: removes the routine `install` registered.
+            unsafe {
+                SetConsoleCtrlHandler(Some(on_event), 0);
+            }
         }
     }
 }

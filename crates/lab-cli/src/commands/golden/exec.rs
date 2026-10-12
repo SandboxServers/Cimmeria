@@ -15,6 +15,7 @@ use super::reply::{self, first_line, text_of};
 use super::summary;
 use super::Args;
 use crate::ascii_json::to_ascii_json;
+use crate::commands::uat::ctrlc;
 use crate::daemon::mcp::{hide_lease_ids, McpClient, McpError};
 use crate::daemon::paths;
 use crate::daemon::status::Endpoint;
@@ -86,7 +87,8 @@ impl Io<'_> {
 /// or row did not pass; 2 usage, or a golden exists without `--rebless`
 /// (show: no golden); 3 the `lab uat` pre-flight or plan failed (nothing
 /// driven); 6 the runs disagree; 7 the runs cannot be recorded as given, the
-/// daemon failed after the runs, or (show) the golden cannot be read.
+/// daemon failed after the runs, or (show) the golden cannot be read; 130 Ctrl+C
+/// stopped the runs (nothing is recorded).
 pub fn execute(args: &Args, ui: &Ui, deps: &Deps, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     let action = args.action.as_deref().unwrap_or("");
     let section = args.section.as_deref().unwrap_or("");
@@ -216,6 +218,17 @@ fn record(
         return io.stop(
             outcome.exit,
             outcome.error.as_deref().unwrap_or(""),
+            outcome.batch.as_deref(),
+        );
+    }
+    // A first Ctrl+C reached this process as well as the child: the child started
+    // no new run and ended with the runs it had (exit 0 when those passed). A
+    // golden from a short batch would bless fewer runs than were asked for, so
+    // nothing is recorded; the runs stay in the batch folder.
+    if ctrlc::stop_requested() {
+        return io.stop(
+            ctrlc::EXIT_INTERRUPTED,
+            "interrupted by Ctrl+C; no golden recorded",
             outcome.batch.as_deref(),
         );
     }
