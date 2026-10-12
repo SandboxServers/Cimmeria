@@ -6,6 +6,8 @@ use std::collections::BTreeMap;
 
 pub(super) struct Reference {
     pub prepared: PathBuf,
+    // Read by the parity test only; classification no longer compares raw bytes.
+    #[allow(dead_code)]
     pub raw: inventory::Index,
     pub index: inventory::Index,
 }

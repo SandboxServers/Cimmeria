@@ -126,6 +126,7 @@ impl Fixture {
             source: SourceRequest::Legacy {
                 import_digest: state.legacy_import().unwrap().unwrap().confirmation,
             },
+            mode: AdoptionMode::InPlace,
             destination: self.folder().to_path_buf(),
             operation_revision: state.operations().snapshot().revision,
             preferences_revision: state.preferences().revision,

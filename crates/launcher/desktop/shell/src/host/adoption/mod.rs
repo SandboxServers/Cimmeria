@@ -150,7 +150,7 @@ impl NativeHost {
         if std::fs::symlink_metadata(&destination).is_ok() {
             return Err(AdoptionError::InvalidDirectory);
         }
-        self.admit_adoption_preview(release, |state| {
+        self.admit_adoption_preview(release, adoption::AdoptionMode::Copy, |state| {
             let imported = legacy_import(state)?;
             Ok((
                 adoption::SourceRequest::Legacy {
@@ -167,7 +167,7 @@ impl NativeHost {
         release: VerifiedRelease,
     ) -> Result<AdoptionStatus, AdoptionError> {
         self.adoption_choice_allowed()?;
-        self.admit_adoption_preview(release, |state| {
+        self.admit_adoption_preview(release, adoption::AdoptionMode::InPlace, |state| {
             let imported = legacy_import(state)?;
             let folder = imported.source.game_directory.clone();
             Ok((
@@ -195,13 +195,14 @@ impl NativeHost {
         }
         // The engine checks the request names this same root, so the root is passed.
         let root = adoption::resolve_folder(&selected, mode)?;
-        self.admit_adoption_preview(release, |_| {
+        self.admit_adoption_preview(release, mode, |_| {
             Ok((adoption::SourceRequest::Folder { selected }, root))
         })
     }
     fn admit_adoption_preview(
         &self,
         release: VerifiedRelease,
+        mode: adoption::AdoptionMode,
         source: impl FnOnce(&DesktopState) -> Result<(adoption::SourceRequest, PathBuf), AdoptionError>,
     ) -> Result<AdoptionStatus, AdoptionError> {
         {
@@ -219,6 +220,7 @@ impl NativeHost {
                 adoption::PreviewRequest {
                     destination,
                     source,
+                    mode,
                     operation_revision: state.operations().snapshot().revision,
                     preferences_revision: state.preferences().revision,
                     release,

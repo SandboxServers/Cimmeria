@@ -43,6 +43,11 @@ pub(super) fn read_large<T: serde::de::DeserializeOwned>(path: &Path) -> Result<
     serde_json::from_slice(&bytes).map_err(|_| StorageError::Corrupt.into())
 }
 fn sync(path: &Path) -> Result<(), Error> {
+    // Windows cannot open a directory as a file, so it has no directory flush to
+    // make; the entries themselves were already flushed when each file was written.
+    if cfg!(windows) {
+        return Ok(());
+    }
     File::open(path)?.sync_all()?;
     Ok(())
 }
@@ -218,6 +223,7 @@ fn copy_and_publish(
                         Classification::Matched | Classification::KnownTransform
                     )
             });
+            let replacement = preview.replacements().iter().find(|r| &r.path == path);
             if let Some(source_path) = reusable.and_then(|d| d.source_path.as_ref()) {
                 inventory::copy(
                     &source_root(&preview.source).join(source_path),
@@ -225,6 +231,17 @@ fn copy_and_publish(
                     &preview.scanned[source_path],
                     cancel,
                 )?;
+            } else if let Some(replacement) = replacement {
+                // The replay stored the verified bytes; check them again before use.
+                let stored = inventory::native(
+                    &preview.preparation.record.directory.join("replacements"),
+                    path,
+                );
+                let entry = inventory::hash(&stored, cancel)?;
+                if entry.size != replacement.size || entry.sha256 != replacement.sha256 {
+                    return Err(Error::InvalidArtifact);
+                }
+                inventory::copy(&stored, &stage.join(path), &entry, cancel)?;
             } else {
                 inventory::copy(
                     &preview.reference.prepared.join(path),
@@ -399,7 +416,19 @@ fn rename_exclusive(source: &Path, destination: &Path) -> Result<(), Error> {
         }
         Ok(())
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::Storage::FileSystem::MoveFileExW;
+        let wide =
+            |path: &Path| -> Vec<u16> { path.as_os_str().encode_wide().chain([0]).collect() };
+        // Without MOVEFILE_REPLACE_EXISTING the move fails on any existing destination.
+        if unsafe { MoveFileExW(wide(source).as_ptr(), wide(destination).as_ptr(), 0) } == 0 {
+            return Err(std::io::Error::last_os_error().into());
+        }
+        Ok(())
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         let _ = (source, destination);
         Err(Error::UnsupportedConfiguration)

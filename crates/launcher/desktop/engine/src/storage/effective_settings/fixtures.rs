@@ -122,6 +122,7 @@ impl Legacy {
             source: adoption::SourceRequest::Legacy {
                 import_digest: state.legacy_import().unwrap().unwrap().confirmation,
             },
+            mode: adoption::AdoptionMode::Copy,
             destination: self.destination(),
             operation_revision: state.operations().snapshot().revision,
             preferences_revision: state.preferences().revision,
