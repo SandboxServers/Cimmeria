@@ -12,6 +12,8 @@ mod folder_tests;
 #[cfg(all(test, not(target_os = "macos")))]
 mod in_place_recovery_tests;
 #[cfg(all(test, not(target_os = "macos")))]
+mod in_place_replace_tests;
+#[cfg(all(test, not(target_os = "macos")))]
 mod in_place_tests;
 mod inventory;
 mod model;

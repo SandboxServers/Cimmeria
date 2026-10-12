@@ -433,7 +433,7 @@ fn a_crash_between_verification_and_the_marker_leaves_the_folder_untouched() {
 
 /// Stores `bytes` as the replacement for `path` in the preparation store, as the
 /// replay does, and returns the entry the review would hold for it.
-fn stored_replacement(preview: &Preview, path: &str, bytes: &[u8]) -> Replacement {
+pub(super) fn stored_replacement(preview: &Preview, path: &str, bytes: &[u8]) -> Replacement {
     let dest = inventory::native(
         &preview.preparation.record.directory.join("replacements"),
         path,
@@ -461,7 +461,7 @@ fn modified_with_replacement() -> (Fixture, Preview, Vec<u8>) {
 }
 
 /// Confirms with `replace_modified_files` set; the other choices are as `choices()`.
-fn confirm_replacing(
+pub(super) fn confirm_replacing(
     preview: Preview,
     hook: impl FnMut(publication::Point) -> Result<(), Error>,
 ) -> Result<Provenance, Error> {

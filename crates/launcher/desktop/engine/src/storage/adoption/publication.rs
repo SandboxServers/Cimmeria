@@ -10,6 +10,9 @@ pub(super) enum Point {
     BeforePromotion,
     /// In place only: one more release file is now inside the owned tree.
     Moved,
+    /// In place only: a modified or unneeded original is set aside and its
+    /// replacement is not yet copied into `game`.
+    Replaced,
     AfterPromotion,
     /// In place only: the launcher's setup and ledger are written in `game`.
     SetUp,
