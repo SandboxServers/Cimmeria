@@ -248,7 +248,7 @@ fn completions_goes_to_the_fallback_with_its_tokens() {
 fn powershell_spelling_of_uat_flags_is_accepted() {
     let empty = tempfile::TempDir::new().expect("temp dir");
     let output = run_lab(
-        &["uat", "first-session", "-Rows", "FS-01,FS-02", "-PlanOnly"],
+        &["uat", "first-session", "-Rows", "FS-01,FS-02"],
         &[("CIMMERIA_LAB_CLI_DIR", empty.path())],
     );
     // Parsed, then the fallback finds no dispatcher: exit 1, not a usage error.
