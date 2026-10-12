@@ -607,15 +607,17 @@ What `labd.log` shows:
 | Line (`WARN`) | Meaning |
 |---|---|
 | `load grace in effect` | a kill rule tripped but the stall has shown work; `stalled_ms`, `grace_ms`, `fails`, and `main_thread_cpu_ms` over `interval_ms` say how far in, and `busy_now` whether this last interval was busy too |
-| `client main thread busy past the load grace; terminating` | `load_in_progress=true`: a load, or a busy loop, outlasted the cap |
+| `client main thread busy past the load grace; terminating` | `load_in_progress=true`: a load, or a busy loop, outlasted the cap; with `io_seen=true` the cap was the IO grace |
 | `client hung (main thread stalled and idle); terminating` | `load_in_progress=false`; `rule` is `heartbeat unreachable` or `heartbeat stale` |
 | `client process gone` | the process exited on its own |
 
 A spinning main thread also reads as busy, and so does a deadlock that strikes mid-load: both die at the cap instead of after about 30 s.
 
+A client starting while the drive is saturated (concurrent builds, sccache writes) can sit in page-in waits at 0 ms of main-thread CPU for minutes. So the watchdog also samples the whole process (`supervisor::process_activity`): at least 256 KiB read, or 2 % CPU across all threads, in a sample interval counts as progress, sticky for the stall like busy. A stall that showed progress waits up to the **IO grace** (300 s from the last Tick advance, or from the launch for a client whose window never came) instead of 120 s. `CIMMERIA_LAB_IO_GRACE_SECS` changes it (`labd.env`; at most 3600; never below the load grace). A stall with no reads and no CPU still dies at the old time. The grace and kill lines carry `io_read_kb`, `process_cpu_ms` and `io_seen`.
+
 A client still booting gets a **boot grace** too (`stall_grace::BOOT_GRACE`, 90 s). Until its bridge has answered once, a failed poll within 90 s of the launch doesn't count toward either rule; the watchdog logs `bridge not up yet; boot grace in effect` at debug instead. With several clients booting at once a bridge took about 25 s to come up, and the old rules killed it as `heartbeat unreachable` at about 17 s (2026-10-10). A client that dies during boot is still caught at once (the process check runs first), the grace ends at the first answer, and a client that never answers is judged by the normal rules after 90 s.
 
-After a kill the watchdog relaunches the client and logs back in, but only while someone holds the lease, and at most three crashes in ten minutes (`recovery cap reached (3 crashes / 10 min); not relaunching`). The count lives in the supervisor's memory, so it resets ten minutes after the oldest of those crashes, or when the supervisor restarts (`pwsh tools/lab/daemon.ps1 restart`). `lab_client_start` launches a client whatever the count.
+After a kill the watchdog relaunches the client and logs back in, but only while someone holds the lease, and at most three crashes in ten minutes (`recovery cap reached (3 crashes / 10 min, or 6 load stalls / 1 h); not relaunching`). A kill that came after the IO grace while the process was still reading (a starved disk, `load_in_progress=true` with `io_seen=true`) counts against a separate budget of six per hour, so slow starts under build load do not use up the crash budget. To avoid them, start lab clients when the build lane is idle (see below) or keep the client install on the Dev Drive. The count lives in the supervisor's memory, so it resets ten minutes after the oldest of those crashes, or when the supervisor restarts (`pwsh tools/lab/daemon.ps1 restart`). `lab_client_start` launches a client whatever the count.
 
 ## Fewer calls: composites and compact results
 

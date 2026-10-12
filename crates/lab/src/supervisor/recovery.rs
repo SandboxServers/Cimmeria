@@ -119,13 +119,21 @@ impl CommandJournal {
     }
 }
 
+/// Load-phase stalls (a start the disk starved, killed after the IO grace)
+/// have their own, looser cap: they say nothing about a crashing probe, but
+/// a relaunch loop into a saturated disk must still end.
+pub const MAX_LOAD_STALLS: usize = 6;
+/// The window for [`MAX_LOAD_STALLS`].
+pub const LOAD_STALL_WINDOW_MS: i64 = 60 * 60 * 1000;
+
 /// Caps automatic relaunches: stop after `max` crashes within
-/// `window_ms`.
+/// `window_ms`, or [`MAX_LOAD_STALLS`] load-phase stalls within an hour.
 #[derive(Debug, Clone)]
 pub struct RecoveryTracker {
     window_ms: i64,
     max: usize,
     crashes: VecDeque<i64>,
+    stalls: VecDeque<i64>,
 }
 
 impl RecoveryTracker {
@@ -139,6 +147,7 @@ impl RecoveryTracker {
             window_ms,
             max,
             crashes: VecDeque::new(),
+            stalls: VecDeque::new(),
         }
     }
 
@@ -148,11 +157,19 @@ impl RecoveryTracker {
         self.prune(now_ms);
     }
 
+    /// Record a load-phase stall at `now_ms`. It does not count toward the
+    /// crash cap.
+    pub fn record_load_stall(&mut self, now_ms: i64) {
+        self.stalls.push_back(now_ms);
+        self.prune(now_ms);
+    }
+
     /// Whether the supervisor may still relaunch. False once `max`
-    /// crashes have occurred within the trailing window.
+    /// crashes have occurred within the trailing window, or once
+    /// [`MAX_LOAD_STALLS`] load stalls have within the hour.
     pub fn should_relaunch(&mut self, now_ms: i64) -> bool {
         self.prune(now_ms);
-        self.crashes.len() < self.max
+        self.crashes.len() < self.max && self.stalls.len() < MAX_LOAD_STALLS
     }
 
     /// Crashes recorded within the trailing window (for status output).
@@ -165,6 +182,10 @@ impl RecoveryTracker {
         let cutoff = now_ms - self.window_ms;
         while self.crashes.front().is_some_and(|&t| t < cutoff) {
             self.crashes.pop_front();
+        }
+        let stall_cutoff = now_ms - LOAD_STALL_WINDOW_MS;
+        while self.stalls.front().is_some_and(|&t| t < stall_cutoff) {
+            self.stalls.pop_front();
         }
     }
 }
@@ -303,6 +324,28 @@ mod tests {
         j.quarantine_in_flight();
         j.complete(s, true);
         assert_eq!(j.recent(1)[0].state, CommandState::Quarantined);
+    }
+
+    #[test]
+    fn load_stalls_do_not_use_the_crash_budget() {
+        let mut r = RecoveryTracker::new_default();
+        for i in 0..5 {
+            r.record_load_stall(i * 1_000);
+        }
+        assert!(r.should_relaunch(5_000), "five stalls: still allowed");
+        assert_eq!(r.recent_crash_count(5_000), 0);
+        r.record_load_stall(6_000);
+        assert!(
+            !r.should_relaunch(6_000),
+            "six stalls in an hour end the loop"
+        );
+        // An hour later they have aged out.
+        assert!(r.should_relaunch(6_000 + LOAD_STALL_WINDOW_MS + 1));
+        let mut c = RecoveryTracker::new_default();
+        for i in 0..3 {
+            c.record_crash(i * 1_000);
+        }
+        assert!(!c.should_relaunch(3_000), "three crashes still stop it");
     }
 
     /// Three crashes in ten minutes stops relaunch; the fourth attempt

@@ -331,3 +331,107 @@ fn an_answered_bridge_has_no_boot_grace() {
     assert_eq!(boot.ignores_failure(start), None);
     assert_eq!(boot.ignores_failure(start + 10_000), None);
 }
+
+// --- IO-progress grace (LH-14) ---------------------------------------
+
+fn io_tracker() -> StallTracker {
+    StallTracker::new(FAILS, LOAD_GRACE).with_io_grace(IO_LOAD_GRACE)
+}
+
+/// The `n`th failed poll of a stall that began at `start`, with an idle
+/// main thread and `io` progress of the whole process.
+fn failed_io(t: &mut StallTracker, start: i64, n: i64, io: bool) -> Step {
+    let now = start + n * POLL;
+    let hb = Heartbeat::Failed {
+        ms_since_last_ok: Some(now - start),
+    };
+    t.step_with_io(hb, IDLE, io, now, now - start)
+}
+
+/// Live regression (2026-10-12): a client starting on a drive saturated by
+/// builds sat in page-in waits at 0 ms of main-thread CPU and was killed
+/// at 115 s. A stall whose process keeps reading waits past the 120 s load
+/// grace, up to the IO grace.
+#[test]
+fn an_io_bound_stall_waits_past_the_cpu_grace() {
+    let mut t = io_tracker();
+    ticked(&mut t, 0);
+    // 30 polls = 180 s: past LOAD_GRACE (120 s), inside IO_LOAD_GRACE.
+    let mut last = None;
+    for n in 1..=30 {
+        last = Some(failed_io(&mut t, 0, n, true));
+    }
+    let s = last.unwrap();
+    assert_eq!(
+        s.verdict,
+        Verdict::Grace {
+            stalled_ms: 180_000
+        }
+    );
+    assert!(s.io_seen && s.busy_seen);
+}
+
+/// IO progress is a cap too: at the IO grace the stall is killed, and the
+/// kill says it was loading.
+#[test]
+fn an_io_bound_stall_dies_at_the_io_grace() {
+    let mut t = io_tracker();
+    ticked(&mut t, 0);
+    let mut last = None;
+    for n in 1..=51 {
+        last = Some(failed_io(&mut t, 0, n, true));
+    }
+    assert_eq!(
+        last.unwrap().verdict,
+        Verdict::Kill {
+            loading: true,
+            stalled_ms: 306_000
+        }
+    );
+}
+
+/// No reads and no CPU: a hung client dies at five failures as before,
+/// whatever the IO grace is.
+#[test]
+fn a_stall_with_no_progress_still_dies_at_five_failures() {
+    let mut t = io_tracker();
+    ticked(&mut t, 0);
+    let mut last = None;
+    for n in 1..=5 {
+        last = Some(failed_io(&mut t, 0, n, false));
+    }
+    assert_eq!(
+        last.unwrap().verdict,
+        Verdict::Kill {
+            loading: false,
+            stalled_ms: 30_000
+        }
+    );
+}
+
+/// Main-thread CPU alone keeps the 120 s cap: the IO grace is only for a
+/// stall that showed process-wide progress.
+#[test]
+fn a_cpu_busy_stall_without_io_keeps_the_load_grace() {
+    let mut t = io_tracker();
+    ticked(&mut t, 0);
+    let v = stall(&mut t, 0, 21, |_| BUSY); // 126 s
+    assert_eq!(
+        v[20],
+        Verdict::Kill {
+            loading: true,
+            stalled_ms: 126_000
+        }
+    );
+}
+
+#[test]
+fn the_io_env_override_parses_seconds() {
+    assert_eq!(io_grace_from(None), IO_LOAD_GRACE);
+    assert_eq!(io_grace_from(Some("abc")), IO_LOAD_GRACE);
+    assert_eq!(io_grace_from(Some(" 600 ")), Duration::from_secs(600));
+    assert_eq!(io_grace_from(Some("99999")), MAX_LOAD_GRACE);
+    // Never below the load grace once applied.
+    let t = StallTracker::new(FAILS, LOAD_GRACE).with_io_grace(Duration::from_secs(10));
+    assert_eq!(t.io_grace, LOAD_GRACE);
+}
