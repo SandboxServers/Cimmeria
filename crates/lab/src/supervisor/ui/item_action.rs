@@ -21,6 +21,7 @@ use serde_json::{json, Value};
 
 use super::inventory::{diff, find_items};
 use super::slots::ContainerRef;
+use super::window_click::{click_point, locate_chunk, ClickTarget};
 use super::{NativeLevel, NativeTrail, Supervisor};
 
 /// What to do.
@@ -132,9 +133,21 @@ pub fn loot_page_row(index: u32) -> (u32, u32) {
 const LOOT_STATE: &str = "return __jenc({ visible = LootWin ~= nil and LootWin:isVisible(), \
      count = __jcall(getLootCount) or 0, page = LootMod and LootMod.page or 0 })";
 
+/// Lua body: the stock right-click handler, `contextSensitiveUseItem`, called
+/// the way `InventoryMod.onSlotItemMouseButtonUp` calls it
+/// (`Inventory.lua:753`): `{ ok }`.
+pub fn use_item_chunk(container: &ContainerRef, slot: u32) -> String {
+    format!(
+        "local cid = {cid} if cid == nil then return __jenc({{ ok = false }}) end \
+         local ok = type(contextSensitiveUseItem) == 'function' and pcall(contextSensitiveUseItem, cid, {slot}) \
+         return __jenc({{ ok = ok == true }})",
+        cid = container.lua_id()
+    )
+}
+
 impl Supervisor {
     /// Poll the inventory until it differs from `before` or `wait` passes.
-    async fn await_inventory_change(
+    pub(super) async fn await_inventory_change(
         &self,
         before: &Value,
         wait: Duration,
@@ -157,10 +170,14 @@ impl Supervisor {
         sel: &ItemSelector,
         loot_index: Option<u32>,
         allow_fallback: bool,
+        expect_change: bool,
         wait: Duration,
     ) -> Result<Value, String> {
         let t0 = Instant::now();
         let mut trail = NativeTrail::default();
+        // A step that already saw the inventory change (so the tail need
+        // not wait again).
+        let mut settled: Option<(Value, Value)> = None;
         let before = self.inventory_read(&[], false).await?;
         let mut out = json!({ "action": format!("{verb:?}").to_ascii_lowercase() });
         match verb {
@@ -237,33 +254,105 @@ impl Supervisor {
             _ => {
                 let (container, slot, item_id, name) = select_item(&before, sel)?;
                 out["item"] = json!({ "container": container, "slot": slot, "item_id": item_id, "name": name });
+                // The stock inventory has no double-click handler on a slot
+                // (`Inventory.lua:745-757` acts on the right button only), so
+                // a double-click would do nothing: do the right-click and say so.
+                let verb = if verb == ItemVerb::DoubleClick {
+                    out["requested"] = json!("doubleclick");
+                    out["performed"] = json!("rightclick");
+                    ItemVerb::RightClick
+                } else {
+                    verb
+                };
                 let revealed = self
                     .reveal_slot(&ContainerRef::Name(container.clone()), slot, &mut trail)
                     .await;
                 match revealed {
                     Ok(loc) => {
                         let window = loc["window"].as_str().unwrap_or_default().to_string();
-                        let (button, double) = match verb {
-                            ItemVerb::DoubleClick => (0, true),
-                            _ => (1, false),
-                        };
                         let r = self
-                            .lua_json(&super::window_click::locate_chunk(
-                                &super::window_click::ClickTarget::Named(window.clone()),
-                            ))
+                            .lua_json(&locate_chunk(&ClickTarget::Named(window.clone())))
                             .await?;
-                        let (x, y) = super::window_click::click_point(&r)
+                        let (x, y) = click_point(&r)
                             .ok_or_else(|| format!("{window} has no screen rectangle"))?;
-                        self.click_at(x, y, button, double)
-                            .await?
-                            .note_fallback(&mut trail);
-                        let how = if double {
-                            "double-click"
-                        } else {
-                            "right-click"
-                        };
-                        trail.push(format!("{how} {window}"), NativeLevel::RealInput);
+                        let step_wait = wait / 2;
+                        let mut attempts: Vec<String> = Vec::new();
+                        // A click that was sent but showed no change may still
+                        // land late (a slow server round trip): the next step
+                        // could then use the item a second time.
+                        let mut sent_unseen = false;
+                        // 1. CEGUI's own button injectors (N1).
+                        match self.click_at_native(x, y, 1, false).await {
+                            Ok(placed) => {
+                                let (a, d) =
+                                    self.await_inventory_change(&before, step_wait).await?;
+                                if d["changed"] == json!(true) {
+                                    placed.note_fallback(&mut trail);
+                                    trail.push(
+                                        format!("right-click {window} (CEGUI injectors)"),
+                                        NativeLevel::NativeCegui,
+                                    );
+                                    settled = Some((a, d));
+                                } else {
+                                    sent_unseen = true;
+                                    attempts
+                                        .push("injected right-click: no inventory change".into());
+                                }
+                            }
+                            Err(e) => attempts.push(format!("injected right-click: {e}")),
+                        }
+                        // A negative check (expect_change false) stops after the
+                        // first native click: no extra use attempts (D-LH13).
+                        let escalate = expect_change;
+                        if !escalate && settled.is_none() {
+                            out["escalation"] = json!("skipped_negative_check");
+                        }
+                        // 2. Posted button messages (N1).
+                        if escalate && settled.is_none() {
+                            match self.click_at(x, y, 1, false).await {
+                                Ok(placed) => {
+                                    let (a, d) =
+                                        self.await_inventory_change(&before, step_wait).await?;
+                                    if d["changed"] == json!(true) {
+                                        placed.note_fallback(&mut trail);
+                                        trail.push(
+                                            format!("right-click {window}"),
+                                            NativeLevel::RealInput,
+                                        );
+                                        settled = Some((a, d));
+                                    } else {
+                                        sent_unseen = true;
+                                        attempts
+                                            .push("posted right-click: no inventory change".into());
+                                    }
+                                }
+                                Err(e) => attempts.push(format!("posted right-click: {e}")),
+                            }
+                        }
+                        // 3. The stock handler the right-click would reach (N3).
+                        if escalate && settled.is_none() && allow_fallback {
+                            let r = self
+                                .lua_json(&use_item_chunk(
+                                    &ContainerRef::Name(container.clone()),
+                                    slot,
+                                ))
+                                .await?;
+                            if r["ok"] == json!(true) {
+                                let (a, d) = self.await_inventory_change(&before, wait).await?;
+                                trail.push(
+                                    "contextSensitiveUseItem via Lua",
+                                    NativeLevel::ClientUiLua,
+                                );
+                                settled = Some((a, d));
+                            } else {
+                                attempts.push("contextSensitiveUseItem: not callable".into());
+                            }
+                        }
                         out["slot_window"] = json!(window);
+                        out["attempts"] = json!(attempts);
+                        // Reported, not hidden: when this is true and the diff
+                        // shows more than one use, an earlier click landed late.
+                        out["double_use_risk"] = json!(sent_unseen && settled.is_some());
                     }
                     Err(e) => {
                         let line = match verb.slash(item_id, 0) {
@@ -277,7 +366,10 @@ impl Supervisor {
                 }
             }
         }
-        let (after, d) = self.await_inventory_change(&before, wait).await?;
+        let (after, d) = match settled.take() {
+            Some(done) => done,
+            None => self.await_inventory_change(&before, wait).await?,
+        };
         if matches!(verb, ItemVerb::LootAll | ItemVerb::LootSlot) {
             let st = self.lua_json(LOOT_STATE).await?;
             out["loot_count_after"] = st["count"].clone();
@@ -287,6 +379,16 @@ impl Supervisor {
         out["diff"] = d;
         out["cash_after"] = after["cash"].clone();
         trail.stamp(&mut out);
+        // An item action that changed nothing is no pass at any level
+        // (#1660 item 3). Loot actions have their own counters; a caller who
+        // expects no change (a negative check) passes expect_change false.
+        if expect_change && !matches!(verb, ItemVerb::LootAll | ItemVerb::LootSlot) {
+            let moved = out["inventory_changed"] == json!(true);
+            out["effect_ok"] = json!(moved);
+            if !moved {
+                out["native_pass"] = json!(false);
+            }
+        }
         out["elapsed_ms"] = json!(t0.elapsed().as_millis() as u64);
         Ok(out)
     }
@@ -295,6 +397,9 @@ impl Supervisor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::supervisor::cegui_fake::{self, FakeCegui};
+    use crate::supervisor::events::fake_bridge;
+    use std::sync::{Arc, Mutex};
 
     fn inv() -> Value {
         json!({
@@ -381,5 +486,121 @@ mod tests {
         assert_eq!(loot_page_row(4), (0, 4));
         assert_eq!(loot_page_row(5), (1, 1));
         assert_eq!(loot_page_row(10), (2, 2));
+    }
+
+    fn main_slot_1() -> ItemSelector {
+        ItemSelector {
+            container: Some("Main".into()),
+            slot: Some(1),
+            ..Default::default()
+        }
+    }
+
+    async fn use_item(
+        state: FakeCegui,
+        allow_fallback: bool,
+        expect_change: bool,
+    ) -> (Value, Arc<Mutex<FakeCegui>>) {
+        let s = Arc::new(Mutex::new(state));
+        let sup = fake_bridge::supervisor(cegui_fake::responder(s.clone())).await;
+        let out = sup
+            .item_action(
+                ItemVerb::Use,
+                &main_slot_1(),
+                None,
+                allow_fallback,
+                expect_change,
+                Duration::ZERO,
+            )
+            .await
+            .unwrap();
+        (out, s)
+    }
+
+    /// The injected right-click uses the item: N1, one injected click, the
+    /// Lua handler never called.
+    #[tokio::test]
+    async fn an_injected_right_click_that_works_is_a_native_pass() {
+        let (out, s) = use_item(
+            FakeCegui {
+                right_click_works: true,
+                ..FakeCegui::default()
+            },
+            true,
+            true,
+        )
+        .await;
+        assert_eq!(out["effect_ok"], true);
+        assert_eq!(out["native_level"], "native_cegui");
+        assert_eq!(out["native_pass"], true);
+        let s = s.lock().unwrap();
+        assert_eq!(s.edges(), vec!["down 1", "up 1"]);
+        assert_eq!(s.lua_use_calls, 0);
+        assert_eq!(out["double_use_risk"], false);
+    }
+
+    /// Both clicks are lost: the stock handler uses the item, and the result
+    /// says N3 and no native pass.
+    #[tokio::test]
+    async fn the_lua_handler_is_the_last_resort_and_is_n3() {
+        let (out, s) = use_item(FakeCegui::default(), true, true).await;
+        assert_eq!(out["effect_ok"], true);
+        assert_eq!(out["native_level"], "client_ui_lua");
+        assert_eq!(out["native_pass"], false);
+        assert_eq!(out["double_use_risk"], true);
+        assert_eq!(s.lock().unwrap().lua_use_calls, 1);
+    }
+
+    /// Regression guard (#1660 item 3): nothing changed, so the result is no
+    /// pass. The old code stamped native_pass true here.
+    #[tokio::test]
+    async fn a_use_that_changed_nothing_is_no_pass() {
+        let (out, _) = use_item(FakeCegui::default(), false, true).await;
+        assert_eq!(out["effect_ok"], false);
+        assert_eq!(out["native_pass"], false);
+        assert_eq!(out["inventory_changed"], false);
+        assert!(out["attempts"].as_array().unwrap().len() >= 2);
+    }
+
+    /// A negative check opts out of the effect test.
+    #[tokio::test]
+    async fn expect_change_false_leaves_effect_ok_unset() {
+        let (out, _) = use_item(FakeCegui::default(), false, false).await;
+        assert!(out.get("effect_ok").is_none());
+    }
+
+    /// D-LH13: a negative check sends one native click and no escalation,
+    /// even when a later step would have used the item.
+    #[tokio::test]
+    async fn expect_change_false_does_not_escalate() {
+        let (out, s) = use_item(FakeCegui::default(), true, false).await;
+        let s = s.lock().unwrap();
+        assert_eq!(s.edges(), vec!["down 1", "up 1"], "one injected click only");
+        assert_eq!(s.lua_use_calls, 0, "the Lua handler must not run");
+        assert_eq!(out["escalation"], "skipped_negative_check");
+        assert_eq!(out["attempts"].as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_double_click_on_a_slot_is_performed_as_a_right_click() {
+        let s = Arc::new(Mutex::new(FakeCegui {
+            right_click_works: true,
+            ..FakeCegui::default()
+        }));
+        let sup = fake_bridge::supervisor(cegui_fake::responder(s.clone())).await;
+        let out = sup
+            .item_action(
+                ItemVerb::DoubleClick,
+                &main_slot_1(),
+                None,
+                true,
+                true,
+                Duration::ZERO,
+            )
+            .await
+            .unwrap();
+        assert_eq!(out["requested"], "doubleclick");
+        assert_eq!(out["performed"], "rightclick");
+        assert_eq!(s.lock().unwrap().edges(), vec!["down 1", "up 1"]);
     }
 }

@@ -48,6 +48,7 @@ Coordinator defaults, taken from the expanders' recommendations; the owner can r
 | D-LH10 | Load-phase grace 300 s while IO progresses; load stalls have their own budget (6/h) | Accepted | Kills during page-in are not crashes |
 | D-LH11 | Client launch waits up to 90 s for the build lane to go idle, never refuses | Accepted | Moving the client to the Dev Drive is an environment choice, not code |
 | D-LH12 | A server list with one row selects it when the requested name is missing | Accepted | Several rows with no match stay an error |
+| D-LH13 | With `expect_change:false` the item-action escalation stops after the first native click | Accepted | A negative check must not send extra use attempts |
 
 ## Packets
 
