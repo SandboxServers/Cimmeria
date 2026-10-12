@@ -1,5 +1,5 @@
 //! Lab paths, labd.pid and the token picker. Ports the common.ps1 checks of
-//! the retired tools/lab/cli/test-common.ps1 (the PowerShell check is named in each
+//! tools/lab/cli/test-common.ps1 (the PowerShell check is named in each
 //! comment).
 
 mod support;

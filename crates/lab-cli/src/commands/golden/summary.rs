@@ -1,5 +1,5 @@
 //! A committed golden as what `lab golden show` prints. Ports
-//! `Get-GoldenSummary` and `Format-GoldenSummary` (the retired golden-lib.ps1).
+//! `Get-GoldenSummary` and `Format-GoldenSummary` (golden-lib.ps1).
 
 use serde::Serialize;
 use serde_json::Value;

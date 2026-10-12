@@ -28,7 +28,7 @@ pub fn run(args: &Args, ctx: &Ctx) -> u8 {
 mod tests {
     use crate::commands::{parse_ok, try_parse, Command};
 
-    /// The `.EXAMPLE` line of the retired start.ps1 parses.
+    /// The `.EXAMPLE` line of start.ps1 parses.
     #[test]
     fn examples_parse() {
         assert!(matches!(parse_ok("start", &[]), Command::Start(_)));

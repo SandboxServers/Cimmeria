@@ -1,6 +1,6 @@
 //! `lab status`: lease and seed text, the plain and fancy renders, the
 //! daemon-down listing and the binary's exit codes. The `Format-Ago` test
-//! ports the seven checks of the retired tools/lab/cli/test-common.ps1; the rest are new.
+//! ports the seven checks of tools/lab/cli/test-common.ps1; the rest are new.
 
 mod support;
 

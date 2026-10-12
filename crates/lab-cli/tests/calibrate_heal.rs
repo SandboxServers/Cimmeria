@@ -1,5 +1,5 @@
 //! LX-12a: heal_file_name and invoke_heal with stubbed MCP and lease wait.
-//! Ports the heal checks of the retired tools/lab/cli/test-uat.ps1 that exercise
+//! Ports the heal checks of tools/lab/cli/test-uat.ps1 that exercise
 //! Get-UatHealFileName and Invoke-UatHeal (LX-17 does not repeat them).
 
 use std::cell::RefCell;
@@ -27,14 +27,14 @@ fn reply(src: &str) -> Value {
         {"ok": false, "pose": "supply", "confirmed": 0, "reason": "no candidate hovered the target"}]})
 }
 
-// retired test-uat.ps1: 'heal file names are safe'
+// test-uat.ps1: 'heal file names are safe'
 #[test]
 fn heal_file_names_are_safe() {
     assert_eq!(heal_file_name("FS-P3", "frost"), "heal-FS-P3-frost.diff");
     assert_eq!(heal_file_name("a/b", "c d"), "heal-a_b-c_d.diff");
 }
 
-// retired test-uat.ps1: the call names the section, row, pose, instance and spec folder;
+// test-uat.ps1: the call names the section, row, pose, instance and spec folder;
 // the proposal is saved in the batch folder; the line names the batch copy; a
 // pose with no proposal writes no file.
 #[test]
@@ -87,7 +87,7 @@ fn a_proposal_is_copied_into_the_batch_folder() {
     assert!(!batch.join("heal-FS-P5-supply.diff").exists());
 }
 
-// retired test-uat.ps1: 'a failed call proposes nothing' (the tool's text is bare in Rust)
+// test-uat.ps1: 'a failed call proposes nothing' (the tool's text is bare in Rust)
 #[test]
 fn a_failed_call_proposes_nothing() {
     let tmp = TempDir::new().unwrap();
@@ -108,7 +108,7 @@ fn a_failed_call_proposes_nothing() {
     );
 }
 
-// retired test-uat.ps1: a reply with no outcome for the pose; no instance or specs_dir keys when empty
+// test-uat.ps1: a reply with no outcome for the pose; no instance or specs_dir keys when empty
 #[test]
 fn a_reply_with_no_outcome_for_the_pose() {
     let tmp = TempDir::new().unwrap();
@@ -141,7 +141,7 @@ fn failing_call(count: &RefCell<usize>) -> impl FnMut(Value) -> Result<Value, Mc
     }
 }
 
-// retired test-uat.ps1: 'a lease that stays held stops healing'
+// test-uat.ps1: 'a lease that stays held stops healing'
 #[test]
 fn a_lease_that_stays_held_stops_healing() {
     let tmp = TempDir::new().unwrap();
@@ -170,7 +170,7 @@ fn a_lease_that_stays_held_stops_healing() {
     );
 }
 
-// retired test-uat.ps1: the wait runs after a failed call and not after the last hint
+// test-uat.ps1: the wait runs after a failed call and not after the last hint
 #[test]
 fn the_wait_runs_after_a_failed_call_but_not_after_the_last() {
     let tmp = TempDir::new().unwrap();

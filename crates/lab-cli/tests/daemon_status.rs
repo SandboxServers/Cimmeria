@@ -1,5 +1,5 @@
 //! The /status client against a stub server. Ports 'Get-LabStatus is null
-//! when nothing listens' of the retired tools/lab/cli/test-common.ps1, plus the fetch
+//! when nothing listens' of tools/lab/cli/test-common.ps1, plus the fetch
 //! cases the packet lists.
 
 mod support;

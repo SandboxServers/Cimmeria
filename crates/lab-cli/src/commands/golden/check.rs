@@ -1,6 +1,6 @@
 //! Argument rules, the golden file's path and the `--rows` cleanup.
-//! Ports `Test-GoldenArguments` and `Get-GoldenPath` (the retired golden-lib.ps1) and
-//! `ConvertTo-UatRowIds` (the retired uat-lib.ps1).
+//! Ports `Test-GoldenArguments` and `Get-GoldenPath` (golden-lib.ps1) and
+//! `ConvertTo-UatRowIds` (uat-lib.ps1).
 
 use std::path::{Path, PathBuf};
 

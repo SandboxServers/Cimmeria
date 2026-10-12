@@ -1,5 +1,5 @@
 //! LX-05: the MCP client against a private stub of the daemon's endpoint.
-//! Ports the `Hide-LeaseIds` check of `the retired tools/lab/cli/test-uat.ps1`.
+//! Ports the `Hide-LeaseIds` check of `tools/lab/cli/test-uat.ps1`.
 
 #[path = "mcp/stub.rs"]
 mod stub;
@@ -388,7 +388,7 @@ fn close_ignores_a_dead_daemon() {
     c.close(); // must return, not panic
 }
 
-// ---- hide_lease_ids (the retired test-uat.ps1 'lease ids are redacted' and the golden/heal samples) ----
+// ---- hide_lease_ids (test-uat.ps1 'lease ids are redacted' and the golden/heal samples) ----
 
 #[test]
 fn lease_ids_are_redacted() {
