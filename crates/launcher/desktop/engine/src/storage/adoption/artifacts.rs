@@ -7,10 +7,18 @@ use crate::{
     install_progress::{ProgressReporter, ProgressSink},
     manifest,
 };
+use cimmeria_launcher_core::seed_source::{LocalSeedError, SeedSourceHandle};
 use futures_util::StreamExt;
 use std::{io::Write, time::Duration};
 
 const STORE: &str = "adoption-artifacts";
+
+/// The blobs one [`fetch_some`] call holds. `seed` is `None` when the seed was
+/// not wanted; `patches[k]` is `None` for each manifest patch left out.
+pub(super) struct Fetched {
+    pub seed: Option<PathBuf>,
+    pub patches: Vec<Option<PathBuf>>,
+}
 
 /// Origin of signed blobs. Production is the fixed HTTPS catalog; another origin
 /// exists only through the explicit loopback test entry point.
@@ -59,44 +67,104 @@ pub(super) fn fetch(
     cancel: &CancellationToken,
     progress: &ProgressSink,
 ) -> Result<Artifacts, Error> {
+    let all: Vec<usize> = (0..release.manifest().patches.len()).collect();
+    let fetched = fetch_some(
+        state_root,
+        transport,
+        release,
+        true,
+        &all,
+        &SeedSourceHandle::download(),
+        cancel,
+        progress,
+    )?;
+    let patches = fetched
+        .patches
+        .into_iter()
+        .collect::<Option<Vec<_>>>()
+        .ok_or(Error::InvalidArtifact)?;
+    Ok(Artifacts {
+        seed: fetched.seed.ok_or(Error::InvalidArtifact)?,
+        patches,
+    })
+}
+
+/// Blocking, like [`fetch`], for the blobs a replay needs: the seed when `seed`
+/// is set, and the manifest patches at `patches` (indices in signed order). A
+/// stored blob that verifies is reused, and the release's other stored blobs are
+/// kept. With a chosen local seed archive the seed is copied from it and never
+/// downloaded. Every download comes from the signed blob URL.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn fetch_some(
+    state_root: &Path,
+    transport: &Transport,
+    release: &VerifiedRelease,
+    seed: bool,
+    patches: &[usize],
+    seed_source: &SeedSourceHandle,
+    cancel: &CancellationToken,
+    progress: &ProgressSink,
+) -> Result<Fetched, Error> {
     let manifest = release.manifest();
-    let mut wanted = vec![(
+    // Slot 0 is the seed, slot `k + 1` is manifest patch `k`, in signed order.
+    let mut blobs = vec![(
         "seed".to_string(),
         manifest.seed.blob.as_str(),
         manifest.seed.size,
         manifest.seed.sha256.as_str(),
     )];
     for patch in &manifest.patches {
-        wanted.push((
+        blobs.push((
             format!("patch {}", patch.id),
             patch.blob.as_str(),
             patch.size,
             patch.sha256.as_str(),
         ));
     }
-    let names = wanted
+    let names = blobs
         .iter()
         .map(|(_, _, _, sha)| name(sha))
         .collect::<Result<Vec<_>, _>>()?;
     let store = open_store(state_root, &names)?;
     let runtime = tokio::runtime::Handle::try_current().map_err(|_| StorageError::Io)?;
-    let mut paths = Vec::with_capacity(wanted.len());
-    for ((label, blob, size, sha), name) in wanted.iter().zip(&names) {
+    let mut fetched = Fetched {
+        seed: None,
+        patches: vec![None; manifest.patches.len()],
+    };
+    for (slot, ((label, blob, size, sha), name)) in blobs.iter().zip(&names).enumerate() {
+        let wanted = match slot.checked_sub(1) {
+            None => seed,
+            Some(k) => patches.contains(&k),
+        };
+        if !wanted {
+            continue;
+        }
         let path = store.join(name);
         if !stored(&path, *size, sha, cancel)? {
             let partial = store.join(format!("{name}.download"));
-            let url = manifest::blob_url(&transport.manifest_url, blob);
-            let result = runtime
-                .block_on(download(
-                    &transport.http,
-                    &url,
-                    &partial,
-                    *size,
-                    label,
-                    cancel,
-                    progress,
-                ))
-                .and_then(|()| matches(&partial, *size, sha, cancel));
+            let local = if slot == 0 {
+                seed_source.current()
+            } else {
+                None
+            };
+            let result = match local {
+                Some(local) => local
+                    .copy_into(&partial, cancel, progress)
+                    .map_err(local_seed_error),
+                None => {
+                    let url = manifest::blob_url(&transport.manifest_url, blob);
+                    runtime.block_on(download(
+                        &transport.http,
+                        &url,
+                        &partial,
+                        *size,
+                        label,
+                        cancel,
+                        progress,
+                    ))
+                }
+            }
+            .and_then(|()| matches(&partial, *size, sha, cancel));
             match result {
                 Ok(true) => std::fs::rename(&partial, &path)?,
                 Ok(false) => {
@@ -109,13 +177,21 @@ pub(super) fn fetch(
                 }
             }
         }
-        paths.push(path);
+        match slot.checked_sub(1) {
+            None => fetched.seed = Some(path),
+            Some(k) => fetched.patches[k] = Some(path),
+        }
     }
-    let patches = paths.split_off(1);
-    Ok(Artifacts {
-        seed: paths.remove(0),
-        patches,
-    })
+    Ok(fetched)
+}
+
+/// A refused local archive is not retried by a download: the review names it.
+fn local_seed_error(error: LocalSeedError) -> Error {
+    match error {
+        LocalSeedError::Cancelled => Error::Cancelled,
+        LocalSeedError::Io => StorageError::Io.into(),
+        _ => Error::InvalidArtifact,
+    }
 }
 
 /// Blocking, like [`fetch`]: the signed file index, bounded by its signed size

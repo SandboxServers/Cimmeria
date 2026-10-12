@@ -1,10 +1,12 @@
-//! The minimal replay an adopted folder needs (any-install AI-09). Planning
-//! only: which signed patches and which seed bytes the replacement store must
+//! The minimal replay an adopted folder needs (any-install AI-09). Planning:
+//! which signed patches and which seed bytes the replacement store must
 //! produce, and which of the folder's own files already hold a needed
-//! pre-patch state. Nothing is fetched, extracted or written here.
+//! pre-patch state. [`replay`] then rebuilds the target bytes in a scratch tree
+//! and stores them; it fetches nothing itself.
+use super::artifacts::Fetched;
 use super::*;
-use crate::manifest::Manifest;
-use cimmeria_launcher_core::file_index::{FileIndex, Origin, PathHistory};
+use crate::{manifest::Manifest, unpack::UnpackSink};
+use cimmeria_launcher_core::file_index::{FileIndex, IndexedFile, Origin, PathHistory};
 use std::collections::{BTreeMap, BTreeSet};
 
 /// What the replay needs to rebuild the release bytes of every target.
@@ -177,4 +179,118 @@ impl Planner<'_> {
 
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Rebuilds the release bytes of every target in `plan` under `prep_dir`. The
+/// seed and patches come from `fetched`; the folder's own needed files are
+/// copied from `folder_root`. Each target is checked against the release and
+/// stored at `replacements/<path>`, and the stored paths are returned by target.
+/// The scratch tree is removed on every outcome.
+#[allow(dead_code)] // AI-09 part b2 wires it
+#[allow(clippy::too_many_arguments)]
+pub(super) fn replay(
+    plan: &ReplayPlan,
+    index: &FileIndex,
+    release: &VerifiedRelease,
+    fetched: &Fetched,
+    folder_root: &Path,
+    scanned: &inventory::Index,
+    prep_dir: &Path,
+    cancel: &CancellationToken,
+    sink: &UnpackSink,
+) -> Result<BTreeMap<String, PathBuf>, Error> {
+    // A Wine adapter would be needed to run the seed's RAR-era unpack on macOS.
+    #[cfg(target_os = "macos")]
+    {
+        if plan.needs_seed {
+            return Err(Error::UnsupportedMode);
+        }
+    }
+    let scratch = prep_dir.join("scratch");
+    std::fs::create_dir_all(&scratch)?;
+    let outcome = (|| -> Result<BTreeMap<String, PathBuf>, Error> {
+        let manifest = release.manifest();
+        if plan.needs_seed {
+            let seed = fetched.seed.as_deref().ok_or(Error::InvalidArtifact)?;
+            if crate::unpack::detect(seed).map_err(|_| Error::UnsupportedArchive)?
+                == crate::unpack::ArchiveKind::Zip
+            {
+                super::reference::strict_zip(seed)?;
+            }
+            crate::unpack::unpack(seed, &scratch, sink).map_err(|_| Error::InvalidArtifact)?;
+        }
+        for (stock, folder_file) in &plan.local {
+            let known = scanned.get(folder_file).ok_or(Error::SourceChanged)?;
+            let source = inventory::native(folder_root, folder_file);
+            let entry = inventory::hash(&source, cancel)?;
+            if entry.size != known.size || entry.sha256 != known.sha256 {
+                return Err(Error::SourceChanged);
+            }
+            // The folder file must be the pre-patch state some planned patch reads.
+            let hash = hex(&entry.sha256);
+            let wanted = plan
+                .patches
+                .iter()
+                .filter_map(|&k| index.patches.get(k))
+                .flat_map(|layer| layer.inputs.iter())
+                .any(|input| {
+                    input.path.eq_ignore_ascii_case(stock)
+                        && input.size == entry.size
+                        && input.sha256.eq_ignore_ascii_case(&hash)
+                });
+            if !wanted {
+                return Err(Error::InvalidArtifact);
+            }
+            inventory::copy(&source, &inventory::native(&scratch, stock), &entry, cancel)?;
+        }
+        for &k in &plan.patches {
+            let patch = manifest.patches.get(k).ok_or(Error::InvalidArtifact)?;
+            let archive = fetched
+                .patches
+                .get(k)
+                .and_then(Option::as_deref)
+                .ok_or(Error::InvalidArtifact)?;
+            let dest = crate::patch_dest::patch_dest(&scratch, patch)
+                .map_err(|_| Error::UnsupportedLayout)?;
+            super::reference::strict_zip(archive)?;
+            std::fs::create_dir_all(&dest)?;
+            crate::unpack::unpack(archive, &dest, sink).map_err(|_| Error::InvalidArtifact)?;
+        }
+        let mut stored = BTreeMap::new();
+        for target in &plan.targets {
+            let expected = release_file(index, target).ok_or(Error::InvalidArtifact)?;
+            let built = inventory::native(&scratch, target);
+            let entry = inventory::hash(&built, cancel)?;
+            if entry.size != expected.size
+                || !hex(&entry.sha256).eq_ignore_ascii_case(&expected.sha256)
+            {
+                return Err(Error::InvalidArtifact);
+            }
+            let dest = inventory::native(&prep_dir.join("replacements"), target);
+            inventory::copy(&built, &dest, &entry, cancel)?;
+            stored.insert(target.clone(), dest);
+        }
+        Ok(stored)
+    })();
+    // Best effort: the scratch tree holds only copies of verified bytes.
+    let _ = std::fs::remove_dir_all(&scratch);
+    outcome
+}
+
+/// The release's file at `path`: the state the index gives it last, found in the
+/// seed or in the patch that wrote it.
+fn release_file<'a>(index: &'a FileIndex, path: &str) -> Option<&'a IndexedFile> {
+    let origin = index
+        .histories()
+        .get(&path.to_ascii_lowercase())?
+        .states
+        .last()?
+        .origin;
+    let files = match origin {
+        Origin::Seed => &index.seed.files,
+        Origin::Patch(k) => &index.patches.get(k)?.outputs,
+    };
+    files
+        .iter()
+        .find(|file| file.path.eq_ignore_ascii_case(path))
 }

@@ -1,9 +1,15 @@
 use super::replay::{estimate, plan, ReplayPlan};
 use super::verification::classify;
 use super::*;
+use crate::install_progress::ProgressSink;
 use crate::manifest::{Manifest, PatchEntry, SeedEntry};
+use crate::unpack::UnpackSink;
 use cimmeria_launcher_core::file_index::{FileIndex, IndexedFile, PatchLayer, SeedLayer};
+use cimmeria_launcher_core::seed_source::verify_local_seed;
+use ed25519_dalek::{Signer, SigningKey};
 use sha2::{Digest, Sha256};
+use std::io::{Cursor, Write};
+use wiremock::{matchers::path, Mock, MockServer, ResponseTemplate};
 
 const SEED_LEVELS: &[u8] = b"levels as the seed ships them";
 const SEED_OVERLAY: &[u8] = b"overlay as the seed ships it";
@@ -232,4 +238,285 @@ fn the_estimate_sums_needed_sizes_and_drops_a_local_seed() {
     });
     assert_eq!(stored_overlay.patches, vec!["set"]);
     assert_eq!(stored_overlay.bytes, 200 + 1000);
+}
+
+// Real tiny artifacts: a two-file seed and one overlay patch per file. The
+// blobs are served and verified exactly as a signed release is.
+
+const LEVELS: &str = "Working/Data/Levels.bin";
+const OVERLAY: &str = "Working/Data/Overlay.dat";
+const EXTRA: &str = "Working/Data/Extra.dat";
+const EXTRA_OUT: &[u8] = b"extra written by patch 1";
+
+fn zip_of(entries: &[(&str, &[u8])]) -> Vec<u8> {
+    let mut zip = zip::ZipWriter::new(Cursor::new(Vec::new()));
+    for (name, bytes) in entries {
+        zip.start_file(*name, zip::write::SimpleFileOptions::default())
+            .unwrap();
+        zip.write_all(bytes).unwrap();
+    }
+    zip.finish().unwrap().into_inner()
+}
+
+fn sha(bytes: &[u8]) -> String {
+    hex(Sha256::digest(bytes).as_slice())
+}
+
+/// The index for the real seed and patches, and the release that signs them.
+/// The blobs are `seed.zip`, `patch0.zip` and `patch1.zip`.
+fn real_artifacts() -> (FileIndex, VerifiedRelease, Vec<(&'static str, Vec<u8>)>) {
+    let seed = zip_of(&[(LEVELS, SEED_LEVELS), (OVERLAY, SEED_OVERLAY)]);
+    let patch0 = zip_of(&[(OVERLAY, OVERLAY_PATCHED)]);
+    let patch1 = zip_of(&[(EXTRA, EXTRA_OUT)]);
+    let index = FileIndex {
+        schema_version: 1,
+        setup_policy_version: 1,
+        seed: SeedLayer {
+            sha256: sha(&seed),
+            files: vec![file(LEVELS, SEED_LEVELS), file(OVERLAY, SEED_OVERLAY)],
+        },
+        patches: vec![
+            PatchLayer {
+                state_key: "overlay".into(),
+                sha256: sha(&patch0),
+                inputs: vec![],
+                outputs: vec![file(OVERLAY, OVERLAY_PATCHED)],
+            },
+            PatchLayer {
+                state_key: "extra".into(),
+                sha256: sha(&patch1),
+                inputs: vec![],
+                outputs: vec![file(EXTRA, EXTRA_OUT)],
+            },
+        ],
+        setup: vec![],
+    };
+    let body = serde_json::json!({
+        "schema": 1,
+        "seed": {"blob": "seed.zip", "size": seed.len(), "sha256": sha(&seed)},
+        "patches": [
+            {"id": "overlay", "blob": "patch0.zip", "size": patch0.len(), "sha256": sha(&patch0)},
+            {"id": "extra", "blob": "patch1.zip", "size": patch1.len(), "sha256": sha(&patch1)},
+        ],
+    });
+    let body = serde_json::to_vec(&body).unwrap();
+    let signature = SigningKey::from_bytes(&[0x2a; 32]).sign(&body);
+    let release =
+        crate::catalog::verify_release(&body, hex(&signature.to_bytes()).as_bytes()).unwrap();
+    let blobs = vec![
+        ("seed.zip", seed),
+        ("patch0.zip", patch0),
+        ("patch1.zip", patch1),
+    ];
+    (index, release, blobs)
+}
+
+async fn serve(blobs: &[(&str, Vec<u8>)]) -> MockServer {
+    let server = MockServer::start().await;
+    for (name, bytes) in blobs {
+        Mock::given(path(format!("/{name}")))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(bytes.clone()))
+            .mount(&server)
+            .await;
+    }
+    server
+}
+
+/// The request paths the origin has seen, sorted.
+async fn requests(server: &MockServer) -> Vec<String> {
+    let mut paths: Vec<String> = server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .map(|request| request.url.path().to_string())
+        .collect();
+    paths.sort();
+    paths
+}
+
+/// Blocking fetch of what `planned` needs, as the retained worker runs it.
+fn fetch(
+    state: &Path,
+    server: &MockServer,
+    release: &VerifiedRelease,
+    planned: &ReplayPlan,
+    source: &SeedSourceHandle,
+) -> artifacts::Fetched {
+    let transport =
+        artifacts::Transport::loopback(format!("{}/manifest.json", server.uri())).unwrap();
+    let progress = ProgressSink::latest().0;
+    let cancel = CancellationToken::new();
+    tokio::task::block_in_place(|| {
+        artifacts::fetch_some(
+            state,
+            &transport,
+            release,
+            planned.needs_seed,
+            &planned.patches,
+            source,
+            &cancel,
+            &progress,
+        )
+    })
+    .unwrap()
+}
+
+fn sink() -> UnpackSink {
+    UnpackSink {
+        progress: ProgressSink::latest().0,
+        label: "Replay fixture".into(),
+        cancel: CancellationToken::new(),
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_stock_folder_fetches_only_the_patch_blobs_and_replays_to_the_release() {
+    let (index, release, blobs) = real_artifacts();
+    let server = serve(&blobs).await;
+    let (folder, scanned, found) =
+        classify_folder(&index, &[(LEVELS, SEED_LEVELS), (OVERLAY, SEED_OVERLAY)]);
+    let planned = plan(&index, &found, &scanned, AdoptionMode::InPlace);
+    assert!(!planned.needs_seed);
+    assert_eq!(planned.patches, vec![0, 1]);
+
+    let state = tempfile::tempdir().unwrap();
+    let fetched = fetch(
+        state.path(),
+        &server,
+        &release,
+        &planned,
+        &SeedSourceHandle::download(),
+    );
+    assert_eq!(requests(&server).await, ["/patch0.zip", "/patch1.zip"]);
+
+    let prep = tempfile::tempdir().unwrap();
+    let replaced = super::replay::replay(
+        &planned,
+        &index,
+        &release,
+        &fetched,
+        folder.path(),
+        &scanned,
+        prep.path(),
+        &CancellationToken::new(),
+        &sink(),
+    )
+    .unwrap();
+    assert_eq!(replaced.len(), 2);
+    assert_eq!(std::fs::read(&replaced[OVERLAY]).unwrap(), OVERLAY_PATCHED);
+    assert_eq!(std::fs::read(&replaced[EXTRA]).unwrap(), EXTRA_OUT);
+    assert!(!prep.path().join("scratch").exists());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_modified_overlay_output_fetches_only_its_patch() {
+    let (index, release, blobs) = real_artifacts();
+    let server = serve(&blobs).await;
+    let (folder, scanned, found) = classify_folder(
+        &index,
+        &[(LEVELS, SEED_LEVELS), (OVERLAY, EDITED), (EXTRA, EXTRA_OUT)],
+    );
+    let planned = plan(&index, &found, &scanned, AdoptionMode::InPlace);
+    assert_eq!(planned.patches, vec![0]);
+
+    let state = tempfile::tempdir().unwrap();
+    let fetched = fetch(
+        state.path(),
+        &server,
+        &release,
+        &planned,
+        &SeedSourceHandle::download(),
+    );
+    assert_eq!(requests(&server).await, ["/patch0.zip"]);
+
+    let prep = tempfile::tempdir().unwrap();
+    let replaced = super::replay::replay(
+        &planned,
+        &index,
+        &release,
+        &fetched,
+        folder.path(),
+        &scanned,
+        prep.path(),
+        &CancellationToken::new(),
+        &sink(),
+    )
+    .unwrap();
+    assert_eq!(replaced.len(), 1);
+    assert_eq!(std::fs::read(&replaced[OVERLAY]).unwrap(), OVERLAY_PATCHED);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_estimate_equals_the_bytes_of_the_fetched_blobs() {
+    let (index, release, blobs) = real_artifacts();
+    let server = serve(&blobs).await;
+    let (_folder, scanned, found) =
+        classify_folder(&index, &[(LEVELS, SEED_LEVELS), (OVERLAY, SEED_OVERLAY)]);
+    let planned = plan(&index, &found, &scanned, AdoptionMode::InPlace);
+
+    let state = tempfile::tempdir().unwrap();
+    let fetched = fetch(
+        state.path(),
+        &server,
+        &release,
+        &planned,
+        &SeedSourceHandle::download(),
+    );
+    let downloaded = estimate(&planned, release.manifest(), false, |_| false);
+    assert!(!downloaded.seed);
+    assert_eq!(downloaded.patches.len(), 2);
+    let fetched_bytes: u64 = fetched
+        .patches
+        .iter()
+        .flatten()
+        .map(|path| std::fs::metadata(path).unwrap().len())
+        .sum();
+    assert_eq!(downloaded.bytes, fetched_bytes);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_modified_seed_file_with_a_local_seed_never_requests_the_seed() {
+    let (index, release, blobs) = real_artifacts();
+    let server = serve(&blobs).await;
+    let (folder, scanned, found) =
+        classify_folder(&index, &[(LEVELS, EDITED), (OVERLAY, SEED_OVERLAY)]);
+    let planned = plan(&index, &found, &scanned, AdoptionMode::InPlace);
+    assert!(planned.needs_seed);
+
+    let archive_dir = tempfile::tempdir().unwrap();
+    let archive = archive_dir.path().join("SGW-seed.zip");
+    std::fs::write(&archive, &blobs[0].1).unwrap();
+    let verified = verify_local_seed(
+        &archive,
+        &release.manifest().seed,
+        &CancellationToken::new(),
+        &ProgressSink::latest().0,
+    )
+    .unwrap();
+    let source = SeedSourceHandle::download();
+    source.use_local(verified);
+
+    let state = tempfile::tempdir().unwrap();
+    let fetched = fetch(state.path(), &server, &release, &planned, &source);
+    assert!(fetched.seed.is_some());
+    assert_eq!(requests(&server).await, ["/patch0.zip", "/patch1.zip"]);
+    assert_eq!(std::fs::read(&archive).unwrap(), blobs[0].1);
+
+    let prep = tempfile::tempdir().unwrap();
+    let replaced = super::replay::replay(
+        &planned,
+        &index,
+        &release,
+        &fetched,
+        folder.path(),
+        &scanned,
+        prep.path(),
+        &CancellationToken::new(),
+        &sink(),
+    )
+    .unwrap();
+    assert_eq!(std::fs::read(&replaced[LEVELS]).unwrap(), SEED_LEVELS);
+    assert_eq!(std::fs::read(&replaced[OVERLAY]).unwrap(), OVERLAY_PATCHED);
+    assert_eq!(std::fs::read(&replaced[EXTRA]).unwrap(), EXTRA_OUT);
 }

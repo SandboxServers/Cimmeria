@@ -163,7 +163,7 @@ fn authenticated_copy(
     inventory::copy(source, archive, &entry, cancel)?;
     Ok(())
 }
-fn strict_zip(path: &Path) -> Result<(), Error> {
+pub(super) fn strict_zip(path: &Path) -> Result<(), Error> {
     if crate::unpack::detect(path).map_err(|_| Error::UnsupportedArchive)?
         != crate::unpack::ArchiveKind::Zip
     {
