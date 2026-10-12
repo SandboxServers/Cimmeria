@@ -214,6 +214,12 @@ async fn an_interrupted_preparation_is_offered_for_removal_and_survives_reopen()
             source: adoption::SourceRequest::Legacy {
                 import_digest: state.legacy_import().unwrap().unwrap().confirmation,
             },
+            // The mode this host takes: a copy on macOS, in place elsewhere.
+            mode: if cfg!(target_os = "macos") {
+                adoption::AdoptionMode::Copy
+            } else {
+                adoption::AdoptionMode::InPlace
+            },
             destination: f.destination(),
             operation_revision: state.operations().snapshot().revision,
             preferences_revision: state.preferences().revision,

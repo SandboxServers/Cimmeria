@@ -156,7 +156,11 @@ fn reference_cleanup_refuses_replaced_directories_and_nested_links() {
         std::fs::create_dir(&foreign).unwrap();
         std::fs::write(foreign.join("sentinel"), b"keep").unwrap();
         if linked {
+            // Creating a symlink needs a privilege Windows does not grant by default.
+            #[cfg(unix)]
             std::os::unix::fs::symlink(&foreign, record.directory.join("foreign")).unwrap();
+            #[cfg(not(unix))]
+            continue;
         } else {
             std::fs::rename(&record.directory, f.root.path().join("saved-reference")).unwrap();
             std::fs::rename(&foreign, &record.directory).unwrap();
@@ -215,16 +219,19 @@ fn orphan_reference_cleanup_uses_saved_identity_and_never_replays_work() {
     assert!(!f.destination().exists());
 }
 
+#[cfg(target_os = "macos")]
 #[tokio::test]
 #[ignore = "runs the pinned Windows-native helper headlessly with isolated fixture state and Wine prefix"]
 async fn retained_wine_reference_uses_real_rar_adapter_then_publishes_verified_copy() {
     wine_case(false).await;
 }
+#[cfg(target_os = "macos")]
 #[tokio::test]
 #[ignore = "runs the pinned Windows helper cabinet.dll extraction in an isolated Wine prefix"]
 async fn retained_wine_reference_expands_installer_cabinet_then_publishes_verified_copy() {
     wine_case(true).await;
 }
+#[cfg(target_os = "macos")]
 async fn wine_case(cabinet: bool) {
     let f = Fixture::new();
     let before = f.source_snapshot();
@@ -337,6 +344,7 @@ async fn wine_case(cabinet: bool) {
     );
 }
 
+#[cfg(target_os = "macos")]
 #[test]
 fn live_helper_evidence_blocks_reference_cleanup_without_replay() {
     let f = Fixture::new();

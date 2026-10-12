@@ -39,6 +39,9 @@ pub(super) fn reference_and_comparison(
         AdoptionSourceRef::Legacy(imported) => (&imported.source.game_directory, Some(imported)),
         AdoptionSourceRef::Folder(picked) => (&picked.root, None),
     };
+    if mode == AdoptionMode::Copy {
+        super::comparison::copy_layout(folder, scanned)?;
+    }
     let root = state
         .lock()
         .map_err(|_| StorageError::Io)?
@@ -415,6 +418,13 @@ fn built(
         }
     };
     let manifest = release.manifest();
+    // A seed that does not match the signed release is an invalid artifact, not
+    // an I/O failure, whichever path supplied it.
+    let seed = inventory::hash(&artifacts.seed, cancel)?;
+    let seed_hex: String = seed.sha256.iter().map(|b| format!("{b:02x}")).collect();
+    if seed.size != manifest.seed.size || !seed_hex.eq_ignore_ascii_case(&manifest.seed.sha256) {
+        return Err(Error::InvalidArtifact);
+    }
     let patches: Vec<(PatchEntry, PathBuf)> = manifest
         .patches
         .iter()

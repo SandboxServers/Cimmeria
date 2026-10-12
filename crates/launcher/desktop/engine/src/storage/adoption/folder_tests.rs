@@ -40,6 +40,7 @@ fn a_folder_adoption_publishes_and_follows_the_patch_preference() {
             source: SourceRequest::Folder {
                 selected: game.clone(),
             },
+            mode: AdoptionMode::InPlace,
             destination: game.clone(),
             operation_revision: owner.operations().snapshot().revision,
             preferences_revision: owner.preferences().revision,

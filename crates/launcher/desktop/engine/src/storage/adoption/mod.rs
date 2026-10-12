@@ -4,7 +4,6 @@
 mod artifacts;
 mod comparison;
 mod in_place;
-#[cfg(not(target_os = "macos"))]
 mod in_place_preview;
 // Where the in-place backend is the one previews use.
 #[cfg(all(test, not(target_os = "macos")))]
@@ -39,17 +38,17 @@ mod digest_tests;
 mod golden_tests;
 #[cfg(test)]
 mod index_parity_tests;
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(test)]
 mod preparation_tests;
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(test)]
 mod publication_tests;
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(test)]
 mod recovery_tests;
 #[cfg(all(test, target_os = "macos"))]
 mod reference_tests;
 #[cfg(test)]
 mod replay_tests;
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod verification_tests;
@@ -101,7 +100,7 @@ impl Preview {
     pub fn source(&self) -> AdoptionSourceRef<'_> {
         source::borrowed(&self.source)
     }
-    /// The legacy import this preview adopts. A folder source has none yet.
+    /// The legacy import this preview adopts. A folder source has none.
     pub(super) fn legacy(&self) -> Result<&migration::LegacyImport, Error> {
         source::legacy(&self.source)
     }
@@ -149,6 +148,8 @@ pub enum SourceRequest {
 }
 pub struct PreviewRequest {
     pub source: SourceRequest,
+    /// How the preview adopts the source. It picks the path, not the host OS.
+    pub mode: AdoptionMode,
     pub destination: PathBuf,
     pub operation_revision: u64,
     pub preferences_revision: u64,
@@ -175,17 +176,17 @@ pub(super) fn preview_using(
     backend: Backend,
     transport: Option<artifacts::Transport>,
 ) -> Result<Preview, Error> {
-    // macOS makes a verified copy. Every other host adopts the imported folder
-    // in place (D-LX12); there is no copy destination to choose.
-    #[cfg(not(target_os = "macos"))]
-    {
-        let Backend::Native = backend;
-        in_place_preview::preview(state, request, cancel, progress, transport)
+    // The request's mode picks the path on every OS. In place adopts the folder
+    // where it is (D-LX12); a copy writes a separately owned tree.
+    match request.mode {
+        AdoptionMode::InPlace => {
+            // In place never runs the Wine helper; only a copy extracts through it.
+            let _ = backend;
+            in_place_preview::preview(state, request, cancel, progress, transport)
+        }
+        AdoptionMode::Copy => copy_preview(state, request, cancel, progress, backend, transport),
     }
-    #[cfg(target_os = "macos")]
-    copy_preview(state, request, cancel, progress, backend, transport)
 }
-#[cfg(target_os = "macos")]
 fn copy_preview(
     state: Arc<Mutex<DesktopState>>,
     request: PreviewRequest,
@@ -210,10 +211,8 @@ fn copy_preview(
     }
     // Resolved and scanned with no state guard held.
     let (adopted, scanned) = source::request_source(&state, &request.source, AdoptionMode::Copy)?;
-    let (imported, before, destination) = {
+    let (before, destination) = {
         let owner = state.lock().map_err(|_| StorageError::Io)?;
-        // A folder source is refused by `legacy` until AI-12 copies it.
-        let imported = source::legacy(&adopted)?.clone();
         let destination =
             super::install_intent::fresh_destination(&request.destination, &owner.directory.root)?;
         // Confirmation creates this folder itself. Refuse an existing one now,
@@ -221,24 +220,22 @@ fn copy_preview(
         if std::fs::symlink_metadata(&destination).is_ok() {
             return Err(StorageError::InvalidDirectory.into());
         }
-        for source in [
-            &imported.source.game_directory,
-            &imported.source.launcher_directory,
-        ] {
-            if destination.starts_with(source)
-                || source.starts_with(&destination)
-                || owner.directory.root.starts_with(source)
-                || source.starts_with(&owner.directory.root)
+        // The copy never overlaps the folders it reads, nor the launcher state.
+        for dir in source::directories(&adopted) {
+            if destination.starts_with(dir)
+                || dir.starts_with(&destination)
+                || owner.directory.root.starts_with(dir)
+                || dir.starts_with(&owner.directory.root)
             {
                 return Err(StorageError::InvalidDirectory.into());
             }
         }
-        (imported, owner.preferences.clone(), destination)
+        (owner.preferences.clone(), destination)
     };
-    source::canonical_paths(&imported)?;
+    source::canonical_paths(&adopted)?;
     let (adopted, legacy_lock) = source::resolve(adopted)?;
-    let imported = source::legacy(&adopted)?;
-    let servers = source::servers(imported);
+    let imported = source::legacy(&adopted).ok();
+    let servers = source::servers_of(&adopted, &before);
     let identity = match &backend {
         Backend::Native => ExtractionBackend::Native,
         #[cfg(target_os = "macos")]
@@ -275,11 +272,11 @@ fn copy_preview(
     };
     let report = Report {
         preview_handle: preparation.record.id,
-        source: imported.source.game_directory.clone(),
+        source: source::root(&adopted).to_path_buf(),
         destination,
         release_digest: request.release.digest(),
-        imported_identity: Some(imported.identity.clone()),
-        requested_config: Some(imported.config.clone()),
+        imported_identity: imported.map(|imported| imported.identity.clone()),
+        requested_config: imported.map(|imported| imported.config.clone()),
         files,
         user_data_remains_in_source: true,
         game_telemetry_available: false,

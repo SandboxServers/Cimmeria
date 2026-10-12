@@ -78,6 +78,7 @@ impl Fixture {
             source: SourceRequest::Legacy {
                 import_digest: state.legacy_import().unwrap().unwrap().confirmation,
             },
+            mode: AdoptionMode::Copy,
             destination: self.destination(),
             operation_revision: state.operations().snapshot().revision,
             preferences_revision: state.preferences().revision,
@@ -126,6 +127,82 @@ fn commit(preview: Preview) -> Result<Provenance, Error> {
     )
 }
 
+/// Lays `folder` out as a stock install: the seed unpacked and prepared.
+fn stage_stock(folder: &Path, seed: &Path) {
+    std::fs::create_dir(folder).unwrap();
+    let (progress, _) = crate::install_progress::ProgressSink::latest();
+    crate::unpack::unpack(
+        seed,
+        folder,
+        &crate::unpack::UnpackSink {
+            progress,
+            label: "fixture".into(),
+            cancel: CancellationToken::new(),
+        },
+    )
+    .unwrap();
+    crate::client_setup::prepare(
+        folder,
+        &[crate::client_setup::LoginServer {
+            name: "First".into(),
+            url: "https://example.invalid/first".into(),
+        }],
+    )
+    .unwrap();
+}
+/// The request that adopts a picked folder by a verified copy.
+fn folder_copy_request(f: &Fixture, picked: &Path) -> PreviewRequest {
+    let mut request = f.request();
+    request.source = SourceRequest::Folder {
+        selected: picked.to_path_buf(),
+    };
+    request
+}
+
+#[test]
+fn a_stock_folder_copies_into_a_new_folder_and_its_scan_is_unchanged() {
+    let f = Fixture::new();
+    let stock = f.root.path().join("stock");
+    stage_stock(&stock, &f.seed);
+    let before = inventory::scan(&stock, &CancellationToken::new()).unwrap();
+    let preview = preview(
+        f.state.clone(),
+        folder_copy_request(&f, &stock),
+        CancellationToken::new(),
+        crate::install_progress::ProgressSink::latest().0,
+    )
+    .unwrap();
+    let provenance = commit(preview).unwrap();
+    assert_eq!(
+        inventory::scan(&stock, &CancellationToken::new()).unwrap(),
+        before
+    );
+    let copy = inventory::scan(&f.destination().join("game"), &CancellationToken::new()).unwrap();
+    assert_eq!(
+        inventory::content_digest(&copy).unwrap(),
+        provenance.reference_digest
+    );
+}
+
+#[test]
+fn a_copy_destination_inside_the_source_folder_is_refused() {
+    let f = Fixture::new();
+    let stock = f.root.path().join("stock");
+    stage_stock(&stock, &f.seed);
+    let mut request = folder_copy_request(&f, &stock);
+    request.destination = stock.canonicalize().unwrap().join("desktop-copy");
+    assert!(matches!(
+        preview(
+            f.state.clone(),
+            request,
+            CancellationToken::new(),
+            crate::install_progress::ProgressSink::latest().0,
+        ),
+        Err(Error::Storage(StorageError::InvalidDirectory))
+    ));
+    assert!(!stock.join("desktop-copy").exists());
+}
+
 #[test]
 fn signed_copy_ignores_forged_ledger_preserves_source_identity_config_and_excludes_unknown_code() {
     let f = Fixture::new();
@@ -152,7 +229,10 @@ fn signed_copy_ignores_forged_ledger_preserves_source_identity_config_and_exclud
     assert_eq!(f.source_snapshot(), before);
     let mut state = f.state.lock().unwrap();
     let installed = state.installed_content().unwrap().unwrap();
-    assert_ne!(installed.intent.operation_id, provenance.legacy_install_id);
+    assert_ne!(
+        Some(installed.intent.operation_id),
+        provenance.legacy_install_id
+    );
     assert_ne!(installed.intent.operation_id, provenance.work_id);
     assert_eq!(
         state
@@ -190,7 +270,10 @@ fn signed_copy_ignores_forged_ledger_preserves_source_identity_config_and_exclud
     let imported = state.legacy_import().unwrap().unwrap();
     assert!(!imported.config.client_patches.enabled);
     assert!(imported.config.telemetry.opted_in);
-    assert_eq!(imported.identity.install_id, provenance.legacy_install_id);
+    assert_eq!(
+        Some(imported.identity.install_id),
+        provenance.legacy_install_id
+    );
     assert_eq!(installed.intent.login_servers[0].name, "Second");
     drop(state);
     std::fs::write(f.source.game_directory.join("later.txt"), b"after adoption").unwrap();
@@ -298,13 +381,17 @@ fn corrupt_signed_artifact_and_nested_links_are_refused_without_source_changes()
     std::fs::write(&f.seed, b"not the signed zip").unwrap();
     assert!(matches!(f.preview(), Err(Error::InvalidArtifact)));
     assert_eq!(f.source_snapshot(), before);
-    let f = Fixture::new();
-    std::os::unix::fs::symlink(&f.seed, f.source.game_directory.join("link")).unwrap();
-    assert!(matches!(
-        f.preview(),
-        Err(Error::Storage(StorageError::UnsafeFile))
-    ));
-    assert!(!f.destination().exists());
+    // Creating a symlink needs a privilege Windows does not grant by default.
+    #[cfg(unix)]
+    {
+        let f = Fixture::new();
+        std::os::unix::fs::symlink(&f.seed, f.source.game_directory.join("link")).unwrap();
+        assert!(matches!(
+            f.preview(),
+            Err(Error::Storage(StorageError::UnsafeFile))
+        ));
+        assert!(!f.destination().exists());
+    }
 }
 #[test]
 fn hardlinks_and_ambiguous_layouts_fail_closed() {
@@ -407,7 +494,21 @@ async fn confirmation_observer_loss_does_not_abort_the_retained_worker() {
     })
     .await
     .unwrap();
-    assert_eq!(f.source_snapshot(), before);
+    // Windows locks are mandatory: the worker releases the legacy launcher's lock
+    // a moment after the operation reports Succeeded, so retry the read.
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
+    let after = loop {
+        let scanned = (
+            inventory::scan(&f.source.game_directory, &CancellationToken::new()),
+            inventory::scan(&f.source.launcher_directory, &CancellationToken::new()),
+        );
+        match scanned {
+            (Ok(game), Ok(launcher)) => break (game, launcher),
+            _ if tokio::time::Instant::now() >= deadline => panic!("source stayed locked for 5 s"),
+            _ => tokio::time::sleep(std::time::Duration::from_millis(100)).await,
+        }
+    };
+    assert_eq!(after, before);
     let state = f.state.lock().unwrap();
     assert_eq!(inspect(&state, id).unwrap().phase, Phase::Published);
 }

@@ -21,6 +21,10 @@ pub(super) fn preview(
     progress: ProgressSink,
     transport: Option<artifacts::Transport>,
 ) -> Result<Preview, Error> {
+    // macOS adopts only by a verified copy; it never adopts a folder in place.
+    if cfg!(target_os = "macos") {
+        return Err(Error::UnsupportedMode);
+    }
     {
         let mut owner = state.lock().map_err(|_| StorageError::Io)?;
         idle(
@@ -82,8 +86,8 @@ pub(super) fn preview(
         };
         (folder, owner.preferences.clone())
     };
-    if let AdoptionSource::Legacy(imported) = &adopted {
-        source::canonical_paths(imported)
+    if matches!(adopted, AdoptionSource::Legacy(_)) {
+        source::canonical_paths(&adopted)
             .map_err(|error| refused(error, "a folder is not canonical"))?;
     }
     let cleared = clear_unbegun_admission(&*state.lock().map_err(|_| StorageError::Io)?, &folder)?;

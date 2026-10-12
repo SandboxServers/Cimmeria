@@ -489,6 +489,7 @@ fn active_updater_refuses_early_mutation_but_preserves_consent_control() {
                 source: crate::adoption::SourceRequest::Legacy {
                     import_digest: "unused".into(),
                 },
+                mode: crate::adoption::AdoptionMode::Copy,
                 destination: root.path().join("adopted"),
                 operation_revision: 0,
                 preferences_revision: 2,
