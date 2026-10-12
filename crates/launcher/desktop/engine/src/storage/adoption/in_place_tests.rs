@@ -30,6 +30,15 @@ impl Fixture {
     /// As [`Self::new`], with the seed in the given container format. Both
     /// kinds carry the same entries.
     pub(super) fn with_seed(ledger_seed: Option<&str>, kind: SeedKind) -> Self {
+        Self::with_archive(ledger_seed, kind, fixtures::archive(true))
+    }
+    /// As [`Self::with_seed`], with the release built from `archive`, a zip with
+    /// the entries `fixtures::archive` writes.
+    pub(super) fn with_archive(
+        ledger_seed: Option<&str>,
+        kind: SeedKind,
+        archive: Vec<u8>,
+    ) -> Self {
         let root = tempfile::tempdir().unwrap();
         let launcher = root.path().join("legacy");
         let game = root.path().join("old-game");
@@ -40,8 +49,8 @@ impl Fixture {
             SeedKind::Rar => root.path().join("seed.rar"),
         };
         let bytes = match kind {
-            SeedKind::Zip => fixtures::archive(true),
-            SeedKind::Rar => rar_seed(&fixtures::archive(true), &seed),
+            SeedKind::Zip => archive,
+            SeedKind::Rar => rar_seed(&archive, &seed),
         };
         std::fs::write(&seed, &bytes).unwrap();
         let release = fixtures::verified(&bytes);

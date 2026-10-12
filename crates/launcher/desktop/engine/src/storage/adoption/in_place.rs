@@ -219,9 +219,15 @@ fn admit(
     )?;
     // What each release file held at review: recovery tells the reviewed copy
     // from one something wrote at the old path afterwards (see `move_files`).
-    let reviewed: Reviewed = release_files(&preview.report)
-        .into_iter()
-        .map(|path| {
+    // A missing file held nothing at review, so it has no reviewed copy.
+    let reviewed: Reviewed = preview
+        .report
+        .files
+        .iter()
+        .filter(|d| d.classification != Classification::Missing)
+        .filter(|d| d.classification != Classification::Extra)
+        .map(|d| {
+            let path = d.path.as_str();
             let entry = preview.scanned.get(path).ok_or(StorageError::Corrupt)?;
             Ok((
                 path.to_string(),
@@ -318,8 +324,10 @@ enum Way<'a> {
     /// its old path after the review, so a duplicate is settled by content.
     Adopt { plan: &'a Plan, store: &'a Path },
     /// Back out of `game`. The folder's copy is kept and `game`'s copy is left
-    /// in `game`: nothing the player may want is deleted.
-    Abandon,
+    /// in `game`: nothing the player may want is deleted. A replaced file's
+    /// original comes back from where it was set aside, and only a replacement
+    /// copy that still holds the reviewed bytes leaves `game`.
+    Abandon { plan: &'a Plan },
 }
 
 /// A release file in both places while adopting. The copy the review verified
@@ -385,13 +393,23 @@ fn move_files(
         });
         let source = inventory::native(from, path);
         let target = inventory::native(to, path);
-        if let Way::Adopt { plan, .. } = way {
-            if let Some(replacement) = plan.replacements.iter().find(|r| r.path == *path) {
-                if let Some(kind) = replaced_kind(path, replacement.reason) {
-                    replace_file(path, &source, &target, plan, replacement, kind, hook)?;
-                    continue;
+        let replaced = match way {
+            Way::Adopt { plan, .. } | Way::Abandon { plan } => plan
+                .replacements
+                .iter()
+                .find(|r| r.path == *path)
+                .and_then(|r| replaced_kind(path, r.reason).map(|kind| (r, kind))),
+        };
+        if let Some((replacement, kind)) = replaced {
+            match way {
+                Way::Adopt { plan, .. } => {
+                    replace_file(path, &source, &target, plan, replacement, kind, hook)?
+                }
+                Way::Abandon { plan } => {
+                    restore_replaced(path, &source, &target, plan, replacement, kind)?
                 }
             }
+            continue;
         }
         match (present(&source)?, present(&target)?) {
             (true, false) => {
@@ -406,7 +424,7 @@ fn move_files(
                 Way::Adopt { plan, store } => {
                     settle_duplicate(path, &source, &target, plan, store, &mut reviewed)?
                 }
-                Way::Abandon => {
+                Way::Abandon { .. } => {
                     tracing::warn!(target: "adoption", path, "abandoning in-place adoption: a release file is in both places; the folder's copy stays and game keeps the other");
                 }
             },
@@ -503,6 +521,82 @@ fn replace_file(
         return Err(StorageError::Corrupt.into());
     }
     inventory::copy(&staged, target, &entry, &CancellationToken::new())
+}
+
+/// Undoes [`replace_file`] while the adoption is staged: the original goes back
+/// from where it was set aside, and the replacement copy leaves `game` only if it
+/// still holds the reviewed bytes. A file in both places keeps the folder's copy
+/// and the set-aside original stays where it is.
+fn restore_replaced(
+    path: &str,
+    game_copy: &Path,
+    root_copy: &Path,
+    plan: &Plan,
+    replacement: &Replacement,
+    kind: Classification,
+) -> Result<(), Error> {
+    if let Some(home) = original_home(plan, path, kind)? {
+        match (present(&home)?, present(root_copy)?) {
+            (true, false) => {
+                if let Some(parent) = root_copy.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::rename(&home, root_copy)?;
+            }
+            (true, true) => {
+                tracing::warn!(target: "adoption", path, "abandoning in-place adoption: the original is in both the backup and its old path; the folder's copy stays")
+            }
+            (false, false) if kind == Classification::Modified => {
+                tracing::error!(target: "adoption", path, "abandoning in-place adoption: a modified release file is in neither place");
+                return Err(StorageError::Corrupt.into());
+            }
+            _ => (),
+        }
+    }
+    let expected = Hashed {
+        sha256: replacement.sha256,
+        size: replacement.size,
+    };
+    if present(game_copy)? && holds(game_copy, &expected)? {
+        std::fs::remove_file(game_copy)?;
+    }
+    Ok(())
+}
+
+/// Abandon's last folder steps, once the originals are back: the directories the
+/// restored originals emptied go, then the backup folder, and so does the work
+/// folder with its replacement copies. A folder still holding a kept original
+/// stays, and is logged.
+fn clear_abandoned(plan: &Plan, files: &[&str]) -> Result<(), Error> {
+    let originals = plan.stage().join("originals");
+    if let Some(backup) = &plan.report.backup {
+        remove_emptied(backup, files)?;
+        remove_empty_dir(backup);
+    }
+    remove_emptied(&originals, files)?;
+    let stage = plan.stage();
+    match std::fs::remove_dir_all(stage.join("replacements")) {
+        Ok(()) => (),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+        Err(error) => {
+            tracing::warn!(target: "adoption", ?error, "abandoned in-place adoption: could not remove the staged replacements")
+        }
+    }
+    remove_empty_dir(&originals);
+    remove_empty_dir(&stage);
+    Ok(())
+}
+
+/// Removes `dir` if it is empty. A folder that is missing or still holds a file
+/// is left alone; a kept file is the reason it stays.
+fn remove_empty_dir(dir: &Path) {
+    match std::fs::remove_dir(dir) {
+        Ok(()) => (),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+        Err(error) => {
+            tracing::warn!(target: "adoption", ?error, directory = %dir.display(), "abandoned in-place adoption: a folder is left in place")
+        }
+    }
 }
 
 /// The work folder's replacement copies and parked originals are spent once the
@@ -726,7 +820,7 @@ pub(super) fn abandon(state: &mut DesktopState, plan: &Plan) -> Result<(), Error
                 &files,
                 &game,
                 root,
-                Way::Abandon,
+                Way::Abandon { plan },
                 &ProgressSink::latest().0,
                 &mut |_| Ok(()),
             )?;
@@ -739,6 +833,7 @@ pub(super) fn abandon(state: &mut DesktopState, plan: &Plan) -> Result<(), Error
             if std::fs::remove_dir(&game).is_err() {
                 tracing::warn!(target: "adoption", game = %game.display(), "abandoned in-place adoption left a non-empty game folder in place");
             }
+            clear_abandoned(plan, &files)?;
         }
     }
     // Windows cannot unlink a locked file; admission is still serialized here.
