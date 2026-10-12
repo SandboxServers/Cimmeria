@@ -2,7 +2,7 @@
 
 ## Stamp
 
-- Generated: 2026-10-12T18:51:11Z
+- Generated: 2026-10-12T19:03:48Z
 - Window: 2026-09-21T00:00:00Z to 2026-10-13T00:00:00Z
 - Price table: 2026-10-12
 - Dollars are a list-price estimate, a floor.

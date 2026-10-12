@@ -29,7 +29,7 @@
   "opus_subagents": 12,
   "skipped_ledger_campaigns": 2,
   "stamp": {
-   "generated": "2026-10-12T18:51:11Z",
+   "generated": "2026-10-12T19:03:48Z",
    "ledger": "applied",
    "price_source": "https://platform.claude.com/docs/en/about-claude/pricing",
    "price_table": "2026-10-12",

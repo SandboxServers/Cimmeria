@@ -1,7 +1,7 @@
 # Campaign metrics
 
 > Type: ledger. Audience: the coordinator and owner who want to know what each campaign cost, how clean it was, and whether the Haiku packet model beat the old model.
-> Window: 2026-09-21 to 2026-10-12 (three weeks). All times UTC. Packets: [work-packets.md](work-packets.md). Written 2026-10-12 by the research agent; nothing is built yet.
+> Window: 2026-09-21 to 2026-10-12 (three weeks). All times UTC. Packets: [work-packets.md](work-packets.md). Written 2026-10-12; built and closed out the same day. Results: [findings.md](findings.md) and [reports/summary.md](reports/summary.md).
 
 ## Purpose
 
@@ -105,29 +105,31 @@ Status words: Ready / BlockedDependency / BlockedDecision / Writing / Review / I
 
 | ID | Packet | Implementer | Size | Wave | Depends on | Status |
 |---|---|---|---|---|---|---|
-| CM-01 | Campaign registry, regime config, missing campaign tags | packet-coder | S | 1 | none | Ready |
-| CM-02 | Schema v6: `stop_reason` and `agent_stops` | packet-coder (3 sessions max, then Sonnet) | M | 1 | none | Ready |
-| CM-04 | GitHub collector: PRs, CI per head commit, escaped defects | packet-coder | M | 1 | none | Ready |
-| CM-05 | Ledger parser: packets, PR links, implementer, retry and escalation text | packet-coder | S | 1 | none | Ready |
-| CM-03 | Cost rollup: by campaign, role, PR, accepted change | packet-coder | M | 2 | CM-01 | BlockedDependency |
-| CM-06 | Packet join: retries, first-pass, escalation, stop context, cycle time | packet-coder (3 sessions max, then Sonnet) | M | 2 | CM-01, CM-02, CM-05 | BlockedDependency |
-| CM-07 | Overstep detection and wasted-cost estimate | packet-coder | M | 2 | CM-01, CM-05 | BlockedDependency |
-| CM-08a | Report inputs loader and two-campaign fixtures | packet-coder | S | 3 | none | BlockedDependency |
-| CM-08b | Regime and cost/packet/ledger record merge | packet-coder | S | 3 | CM-08a | BlockedDependency |
-| CM-08c | CI, escaped-defect and overstep sections, `assemble` | packet-coder | S | 3 | CM-08b, CM-04, CM-07 | BlockedDependency |
-| CM-08d | Per-regime roll-up | packet-coder | S | 3 | none | BlockedDependency |
-| CM-08e | Old-versus-Haiku delta and summary document | packet-coder | S | 3 | CM-08d | BlockedDependency |
-| CM-08f | Campaign Markdown: cost and throughput tables | packet-coder | S | 3 | none | BlockedDependency |
-| CM-08g | Campaign Markdown: quality tables, `render_campaign` | packet-coder | S | 3 | CM-08f | BlockedDependency |
-| CM-08h | Summary Markdown with own-cost slot | packet-coder | S | 3 | CM-08e | BlockedDependency |
-| CM-08i | Price this campaign's own sessions | packet-coder | S | 3 | none | BlockedDependency |
-| CM-08j | Write reports and data behind the privacy gate | packet-coder | S | 3 | CM-08c, CM-08e, CM-08g, CM-08h | BlockedDependency |
-| CM-08k | `report` subcommand and self-session merge | packet-coder | S | 3 | CM-08j, CM-08i | BlockedDependency |
-| CM-09a | Docs: guide section | documentation-writer | S | 3 | CM-08k | BlockedDependency |
-| CM-09b | Docs: token-profile README, doc-update row, docs index | documentation-writer | S | 3 | CM-09a | BlockedDependency |
-| CM-10 | Close-out: run, review numbers, this campaign's own cost, status, handoff | coordinator + documentation-writer | M | 4 | all | BlockedDependency |
+| CM-01 | Campaign registry, regime config, missing campaign tags | packet-coder | S | 1 | none | Done |
+| CM-02 | Schema v6: `stop_reason` and `agent_stops` | packet-coder (3 sessions max, then Sonnet) | M | 1 | none | Done |
+| CM-04 | GitHub collector: PRs, CI per head commit, escaped defects | packet-coder | M | 1 | none | Done |
+| CM-05 | Ledger parser: packets, PR links, implementer, retry and escalation text | packet-coder | S | 1 | none | Done |
+| CM-03 | Cost rollup: by campaign, role, PR, accepted change | packet-coder | M | 2 | CM-01 | Done |
+| CM-06 | Packet join: retries, first-pass, escalation, stop context, cycle time | packet-coder (3 sessions max, then Sonnet) | M | 2 | CM-01, CM-02, CM-05 | Done |
+| CM-07 | Overstep detection and wasted-cost estimate | packet-coder | M | 2 | CM-01, CM-05 | Done |
+| CM-08a | Report inputs loader and two-campaign fixtures | packet-coder | S | 3 | none | Done |
+| CM-08b | Regime and cost/packet/ledger record merge | packet-coder | S | 3 | CM-08a | Done |
+| CM-08c | CI, escaped-defect and overstep sections, `assemble` | packet-coder | S | 3 | CM-08b, CM-04, CM-07 | Done |
+| CM-08d | Per-regime roll-up | packet-coder | S | 3 | none | Done |
+| CM-08e | Old-versus-Haiku delta and summary document | packet-coder | S | 3 | CM-08d | Done |
+| CM-08f | Campaign Markdown: cost and throughput tables | packet-coder | S | 3 | none | Done |
+| CM-08g | Campaign Markdown: quality tables, `render_campaign` | packet-coder | S | 3 | CM-08f | Done |
+| CM-08h | Summary Markdown with own-cost slot | packet-coder | S | 3 | CM-08e | Done |
+| CM-08i | Price this campaign's own sessions | packet-coder | S | 3 | none | Done |
+| CM-08j | Write reports and data behind the privacy gate | packet-coder | S | 3 | CM-08c, CM-08e, CM-08g, CM-08h | Done |
+| CM-08k | `report` subcommand and self-session merge | packet-coder | S | 3 | CM-08j, CM-08i | Done |
+| CM-09a | Docs: guide section | documentation-writer | S | 3 | CM-08k | Done |
+| CM-09b | Docs: token-profile README, doc-update row, docs index | documentation-writer | S | 3 | CM-09a | Done |
+| CM-10 | Close-out: run, review numbers, this campaign's own cost, status, handoff | coordinator + documentation-writer | M | 4 | all | Done (on PR merge) |
 
 CM-01, CM-02, CM-04 and CM-05 touch different files and can run in parallel in separate worktrees. CM-03, CM-06 and CM-07 share only the `metrics/` package `__init__.py`, which CM-01 creates.
+
+Close-out: [findings.md](findings.md) holds the verified narrative, this campaign's own cost and the spot checks; [reports/summary.md](reports/summary.md) holds the per-campaign tables.
 
 ## Findings for the report
 
@@ -147,7 +149,8 @@ A hook hard-caps Haiku workers at 90k tokens of total context, and about 35-40k 
 | CM-06 | M | context overflow |
 | CM-07 | M | context overflow |
 
-5 of the 7 packets overflowed on the first attempt: every one that needed more than a single small module plus its tests, and CM-03 even though it was sized S. Three fix rounds overflowed as well. Only the two small single-module packets finished on the first try. Consequence for the campaign: CM-08 and CM-09 were re-sliced into thirteen packets of about 15-28k working tokens each, one module group plus its tests, with the contract excerpt inlined so the worker reads no other document. The rule of thumb to carry forward: size a Haiku packet to about 40k working tokens, no M sizes, and inline what it needs.
+5 of the 7 packets overflowed on the first attempt: every one that needed more than a single small module plus its tests, and CM-03 even though it was sized S. Four fix rounds reached 90k as well (three had to be re-run as continuations). Only the two small single-module packets finished on the first try. Consequence for the campaign: CM-08 and CM-09 were re-sliced into thirteen packets of about 15-28k working tokens each, one module group plus its tests, with the contract excerpt inlined so the worker reads no other document. The rule of thumb to carry forward: size a Haiku packet to about 40k working tokens, no M sizes, and inline what it needs. All 13 re-sliced packets finished their first attempt (peak 41.8k to 75.6k); see [findings.md](findings.md#packet-sizing-against-the-90k-haiku-cap).
+
 ## Resume note
 
-Nothing is built. Next step: dispatch wave 1 (D-CM1, D-CM2, D-CM7, D-CM9 are accepted). Packets build on the integration branch `campaign-metrics/ledger`; one PR for the whole campaign at close-out. Re-ingest `~/token-profile.sqlite` right before CM-10 so the window is complete. The campaign's own transcripts are in the coordinator session; CM-10 names it with `--self-session`.
+Closed out 2026-10-12. The campaign PR carries the whole branch; after merge, retire the campaign-metrics worktree and the cm-* worktrees (rm-worktree --merged). Open: D-CM3, D-CM4, D-CM5, D-CM6 and D-CM8 are still Proposed and need an owner decision; the quality-rate base and the PR-count definition noted in findings.md want a follow-up.
