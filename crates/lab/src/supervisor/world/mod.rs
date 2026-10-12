@@ -45,6 +45,8 @@ mod occlusion_tests;
 #[cfg(test)]
 mod range_tests;
 #[cfg(test)]
+mod move_to_tests;
+#[cfg(test)]
 mod sim;
 #[cfg(test)]
 mod tool_tests;

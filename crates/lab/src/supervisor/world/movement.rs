@@ -18,14 +18,27 @@ use super::{NativeLevel, PointArg, Steps, TargetArg, WorldError};
 pub const FORWARD_KEY: &str = "W";
 pub const DEFAULT_TICK_MS: u64 = 100;
 pub const DEFAULT_TIMEOUT_MS: u64 = 60_000;
-/// Default arrival radius for an entity target (stop next to it, not in it).
-pub const ENTITY_ARRIVAL_M: f64 = 2.5;
+/// Default arrival radius for an entity target (stop next to it, not in
+/// it). Inside the 3.5 to 4.5 m a right-click or a trainer window needs, so a
+/// target already in range is a no-op and a walk ends in range (#1660).
+pub const ENTITY_ARRIVAL_M: f64 = 4.0;
+
+/// What a failed walk tells the caller to try. The walk is a straight line
+/// with no path-finding.
+const FAIL_HINT: &str = "client_move_to walks a straight line and cannot path-find. Go round the obstacle with waypoints, hold a movement key with a ui_sequence key step (hold_ms), or teleport on the server and click without walking; then stand 3.5 to 4.5 m from the target.";
 /// A jump this large in one tick is a teleport or a zone change, not a walk.
 pub const TELEPORT_M: f64 = 30.0;
 /// How long a strafe unstick holds its key.
 const STRAFE_MS: u64 = 600;
 /// Path samples kept in the result.
 const PATH_SAMPLE_MS: u64 = 1000;
+/// Forward-key liveness probe: hold the forward key this long ...
+const PROBE_HOLD_MS: u64 = 300;
+/// ... let the pose settle this long after the release ...
+const PROBE_SETTLE_MS: u64 = 100;
+/// ... and expect at least this much horizontal travel, metres. A live pawn
+/// covers about 1.5 m in 300 ms; `horizontal_m` is in metres, like `TELEPORT_M`.
+const PROBE_MIN_M: f64 = 0.1;
 
 /// `client_move_to` arguments.
 #[derive(Debug, Clone, Default, serde::Deserialize, schemars::JsonSchema)]
@@ -42,7 +55,7 @@ pub struct MoveRequest {
     /// Points to pass through first, in order (same space rules as `point`).
     #[serde(default)]
     pub waypoints: Vec<PointArg>,
-    /// Arrival radius, metres (default 1.5 for a point, 2.5 for an entity).
+    /// Arrival radius, metres (default 1.5 for a point, 4.0 for an entity).
     #[serde(default)]
     pub arrival_m: Option<f64>,
     /// Give up after this long, ms (default 60000, max 600000).
@@ -178,6 +191,8 @@ async fn walk<W: WorldIo>(io: &mut W, req: &MoveRequest) -> Result<Value, WorldE
     let mut leg_reports = Vec::new();
     let mut prev = start;
     let mut forward = false;
+    let mut leg_in_range: Vec<bool> = Vec::new();
+    let mut probed = false;
 
     for (i, (mut goal, arrival)) in legs.into_iter().enumerate() {
         let t_leg = io.now_ms();
@@ -189,6 +204,7 @@ async fn walk<W: WorldIo>(io: &mut W, req: &MoveRequest) -> Result<Value, WorldE
             turn,
         );
         let mut unsticks = Vec::new();
+        let mut leg_start_m: Option<f64> = None;
         let outcome = loop {
             let now = io.now_ms();
             if now.saturating_sub(t_start) > timeout {
@@ -201,8 +217,11 @@ async fn walk<W: WorldIo>(io: &mut W, req: &MoveRequest) -> Result<Value, WorldE
                         "at": prev.to_json(),
                         "goal": goal.describe(),
                         "distance_m": horizontal_m(prev.pos, goal_pos),
+                        "start_distance_m": leg_start_m,
                         "turn_gain": ctl.turn.to_json(),
                         "unsticks": unsticks,
+                        "path": path,
+                        "hint": FAIL_HINT,
                     }),
                 ));
             }
@@ -232,8 +251,50 @@ async fn walk<W: WorldIo>(io: &mut W, req: &MoveRequest) -> Result<Value, WorldE
             }
             let goal_pos = goal.position(io).await;
             let s = ctl.step(now, pose, goal_pos);
+            if leg_start_m.is_none() {
+                leg_start_m = Some(s.distance_m);
+            }
             if let Some(o) = s.outcome {
                 break o;
+            }
+            // The first tick that still has to walk: prove the forward key moves the pawn.
+            // Placed after the outcome check on purpose: a target already inside
+            // `arrival_m` breaks out above, so it never costs a real move. Runs once
+            // per walk, not per leg.
+            if !probed {
+                probed = true;
+                let before = pose;
+                io.key(FORWARD_KEY, true)
+                    .await
+                    .map_err(|e| steps.fail(io.now_ms(), "input_probe", e))?;
+                io.sleep(PROBE_HOLD_MS).await;
+                io.key(FORWARD_KEY, false)
+                    .await
+                    .map_err(|e| steps.fail(io.now_ms(), "input_probe", e))?;
+                io.sleep(PROBE_SETTLE_MS).await;
+                let after = io
+                    .actor_pose(actor)
+                    .await
+                    .map_err(|e| steps.fail(io.now_ms(), "input_probe", e))?;
+                let moved_m = horizontal_m(before.pos, after.pos);
+                if moved_m < PROBE_MIN_M {
+                    return Err(steps.fail_with(
+                        io.now_ms(),
+                        "input_probe",
+                        format!(
+                            "the avatar did not move for a {PROBE_HOLD_MS} ms forward key hold ({moved_m:.2} m): movement input is not reaching the pawn (UI keys can still work); see client_input_status.held and the world state"
+                        ),
+                        json!({
+                            "before": before.to_json(),
+                            "at": after.to_json(),
+                            "moved_m": moved_m,
+                            "hold_ms": PROBE_HOLD_MS,
+                            "hint": "Usually not a path problem, but check the avatar is not pressed against a wall first. Try client_input_key w with hold_ms and compare server_entity_get, or a ui_sequence key step with hold_ms; if the pawn still ignores W, teleport on the server and click the target without walking. Keys are posted window messages, so client_input_status keyboard counters say nothing about it.",
+                        }),
+                    ));
+                }
+                steps.used(NativeLevel::RealInput);
+                prev = after;
             }
             if let Some(u) = s.unstick {
                 unsticks.push(u.name());
@@ -280,27 +341,53 @@ async fn walk<W: WorldIo>(io: &mut W, req: &MoveRequest) -> Result<Value, WorldE
         let report = json!({
             "goal": goal.describe(),
             "arrival_m": arrival,
+            "start_distance_m": leg_start_m,
             "ms": io.now_ms() - t_leg,
             "unsticks": unsticks,
             "standing_turn": ctl.standing_turn,
             "outcome": match outcome {
                 MoveOutcome::Arrived { distance_m } => json!({ "arrived": true, "distance_m": distance_m }),
                 MoveOutcome::Stuck { distance_m, attempts } => json!({ "arrived": false, "stuck": true, "distance_m": distance_m, "attempts": attempts }),
+                MoveOutcome::Diverged { distance_m, best_m } => json!({ "arrived": false, "diverged": true, "distance_m": distance_m, "best_m": best_m }),
             },
         });
         steps.record(&format!("leg_{i}"), t_leg, io.now_ms(), report.clone());
         leg_reports.push(report);
-        if let MoveOutcome::Stuck {
-            distance_m,
-            attempts,
-        } = outcome
-        {
-            return Err(steps.fail_with(
-                io.now_ms(),
-                &format!("leg_{i}"),
-                format!("stuck {distance_m:.1} m short after {attempts} unstick attempts"),
-                json!({ "at": prev.to_json(), "goal": goal.describe() }),
-            ));
+        leg_in_range.push(leg_start_m.is_some_and(|d| d <= arrival));
+        let evidence = || {
+            json!({
+                "at": prev.to_json(),
+                "goal": goal.describe(),
+                "start_distance_m": leg_start_m,
+                "unsticks": unsticks,
+                "turn_gain": turn.to_json(),
+                "path": path,
+                "hint": FAIL_HINT,
+            })
+        };
+        match outcome {
+            MoveOutcome::Arrived { .. } => {}
+            MoveOutcome::Stuck {
+                distance_m,
+                attempts,
+            } => {
+                return Err(steps.fail_with(
+                    io.now_ms(),
+                    &format!("leg_{i}"),
+                    format!("stuck {distance_m:.1} m short after {attempts} unstick attempts"),
+                    evidence(),
+                ));
+            }
+            MoveOutcome::Diverged { distance_m, best_m } => {
+                return Err(steps.fail_with(
+                    io.now_ms(),
+                    &format!("leg_{i}"),
+                    format!(
+                        "walking away from the goal: {distance_m:.1} m now, {best_m:.1} m at the closest; stopped instead of drifting further"
+                    ),
+                    evidence(),
+                ));
+            }
         }
     }
     if forward {
@@ -311,6 +398,7 @@ async fn walk<W: WorldIo>(io: &mut W, req: &MoveRequest) -> Result<Value, WorldE
     path.push(json!({ "t_ms": io.now_ms() - t_start, "at": prev.pos.to_json() }));
     let out = json!({
         "arrived": true,
+        "already_in_range": leg_in_range.iter().all(|b| *b),
         "start": start.to_json(),
         "end": prev.to_json(),
         "legs": leg_reports,

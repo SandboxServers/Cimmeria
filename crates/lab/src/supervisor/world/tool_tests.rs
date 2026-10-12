@@ -6,11 +6,10 @@ use super::camera::{self, CameraRequest};
 use super::click::{self, ClickRequest, Expect};
 use super::find::{self, FindRequest};
 use super::geometry::{wrap_pi, Vec3};
-use super::movement::{self, MoveRequest};
 use super::sim::{Sim, SimEntity, UNITS};
 use super::{PointArg, Space};
 
-fn client_point(x: f64, y: f64, z: f64) -> PointArg {
+pub(super) fn client_point(x: f64, y: f64, z: f64) -> PointArg {
     PointArg {
         x,
         y,
@@ -24,7 +23,7 @@ fn target_of(sim: &Sim) -> u32 {
 }
 
 /// A guard 10 m ahead, a medic 20 m to the left, an unrendered entity.
-fn room() -> Sim {
+pub(super) fn room() -> Sim {
     let mut s = Sim::new()
         .with_entity(10, "Cellblock Guard", Vec3::new(1000.0, 0.0, 0.0))
         .with_entity(11, "Medic Ogilvie", Vec3::new(0.0, 2000.0, 0.0));
@@ -286,133 +285,6 @@ async fn right_click_reports_the_window_it_opened() {
         .iter()
         .collect();
     assert_eq!(opened, vec![&Value::from("DialogWin")]);
-}
-
-#[tokio::test]
-async fn move_to_walks_to_a_point_and_lets_go_of_the_keys() {
-    let mut sim = Sim::new();
-    let out = movement::run(
-        &mut sim,
-        MoveRequest {
-            point: Some(client_point(3000.0, 0.0, 0.0)),
-            ..MoveRequest::default()
-        },
-    )
-    .await
-    .unwrap();
-    assert_eq!(out["arrived"], true);
-    assert_eq!(out["native_level"], "real_input");
-    assert!((sim.pos.x - 3000.0).abs() <= 150.0 + 60.0);
-    assert!(!sim.keys["W"], "forward key left held");
-}
-
-/// Target behind, inverted and slow mouse, pawn does not turn standing:
-/// the controller learns all three and still arrives.
-#[tokio::test]
-async fn move_to_learns_an_inverted_gain_and_walking_turns() {
-    let mut sim = Sim::new();
-    sim.gain = -200.0;
-    sim.standing_turn = false;
-    let out = movement::run(
-        &mut sim,
-        MoveRequest {
-            point: Some(client_point(-2500.0, 800.0, 0.0)),
-            timeout_ms: Some(60_000),
-            ..MoveRequest::default()
-        },
-    )
-    .await
-    .unwrap();
-    assert_eq!(out["arrived"], true);
-    assert!(out["turn_gain"]["counts_per_rad"].as_f64().unwrap() < 0.0);
-    assert_eq!(out["legs"][0]["standing_turn"], false);
-}
-
-#[tokio::test]
-async fn move_to_follows_waypoints_in_order() {
-    let mut sim = Sim::new();
-    let out = movement::run(
-        &mut sim,
-        MoveRequest {
-            waypoints: vec![client_point(1000.0, 1000.0, 0.0)],
-            point: Some(client_point(0.0, 2000.0, 0.0)),
-            ..MoveRequest::default()
-        },
-    )
-    .await
-    .unwrap();
-    assert_eq!(out["legs"].as_array().unwrap().len(), 2);
-    assert_eq!(out["legs"][0]["outcome"]["arrived"], true);
-}
-
-#[tokio::test]
-async fn move_to_jumps_out_of_a_snag() {
-    let mut sim = Sim::new();
-    sim.wall_x = Some(1000.0);
-    let out = movement::run(
-        &mut sim,
-        MoveRequest {
-            point: Some(client_point(2500.0, 0.0, 0.0)),
-            ..MoveRequest::default()
-        },
-    )
-    .await
-    .unwrap();
-    assert_eq!(out["legs"][0]["unsticks"][0], "jump");
-}
-
-#[tokio::test]
-async fn move_to_reports_a_snag_it_cannot_clear() {
-    let mut sim = Sim::new();
-    sim.wall_x = Some(1000.0);
-    sim.jump_clears_wall = false;
-    let e = movement::run(
-        &mut sim,
-        MoveRequest {
-            point: Some(client_point(2500.0, 0.0, 0.0)),
-            ..MoveRequest::default()
-        },
-    )
-    .await
-    .unwrap_err();
-    assert_eq!(e.step, "leg_0");
-    assert!(e.message.contains("stuck"));
-    assert!(!sim.keys["W"], "forward key left held after a failure");
-}
-
-#[tokio::test]
-async fn move_to_times_out_with_the_distance_left() {
-    let mut sim = Sim::new();
-    sim.speed_uu_s = 10.0;
-    let e = movement::run(
-        &mut sim,
-        MoveRequest {
-            point: Some(client_point(5000.0, 0.0, 0.0)),
-            timeout_ms: Some(2000),
-            ..MoveRequest::default()
-        },
-    )
-    .await
-    .unwrap_err();
-    assert!(e.message.contains("timed out"));
-    assert!(e.to_json()["state"]["distance_m"].as_f64().unwrap() > 40.0);
-}
-
-#[tokio::test]
-async fn move_to_an_entity_stops_beside_it() {
-    let mut sim = room();
-    let out = movement::run(
-        &mut sim,
-        MoveRequest {
-            name: Some("guard".into()),
-            ..MoveRequest::default()
-        },
-    )
-    .await
-    .unwrap();
-    assert_eq!(out["arrived"], true);
-    let d = super::geometry::horizontal_m(sim.pos, Vec3::new(1000.0, 0.0, 0.0));
-    assert!(d <= 2.5 + 0.1, "stopped {d} m away");
 }
 
 #[tokio::test]
