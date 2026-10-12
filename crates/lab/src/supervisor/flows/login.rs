@@ -118,18 +118,22 @@ pub fn classify_start(results: &[String]) -> StartScreen {
 
 /// Lua that selects the server row named `name` (rows are list items, not
 /// named windows, so this is the one Lua-driven selection in the flows;
-/// the Select button is still clicked natively). Returns `selected, name`
-/// or `missing, <available names>`.
+/// the Select button is still clicked natively). Returns `selected, name, only`
+/// (`only` is `only` when the requested name was missing and the list has just
+/// one row, which was selected) or `missing, <available names>`.
 pub fn select_server_chunk(name: &str) -> String {
     format!(
         "local item = ServerSelect_List:findColumnItemWithText({n}, 0, nil) \
+         local only = '' \
          if item == nil then local names = {{}} \
            for i = 1, getShardCount() do names[#names + 1] = tostring(getShardInfo(i).name) end \
-           return 'missing', table.concat(names, ', ') end \
+           if #names == 1 then \
+             item = ServerSelect_List:findColumnItemWithText(names[1], 0, nil) only = 'only' end \
+           if item == nil then return 'missing', table.concat(names, ', ') end end \
          ServerSelect_List:clearAllSelections() \
          ServerSelect_List:setItemSelectState(item, true) \
          local s = ServerSelect_List:getFirstSelectedItem() \
-         return 'selected', tostring(s and s:getText())",
+         return 'selected', tostring(s and s:getText()), only",
         n = widgets::lua_quote(name)
     )
 }
@@ -315,7 +319,20 @@ impl Supervisor {
             match r.first().map(String::as_str) {
                 Some("selected") => {
                     let got = r.get(1).cloned().unwrap_or_default();
-                    run.record("pick_server", t0, json!({ "server": got }));
+                    if r.get(2).map(String::as_str) == Some("only") {
+                        tracing::info!(
+                            requested = %name,
+                            selected = %got,
+                            "lab_login: requested server not in the list; using its only row"
+                        );
+                        run.record(
+                            "pick_server",
+                            t0,
+                            json!({ "server": got, "requested": name, "only_row": true }),
+                        );
+                    } else {
+                        run.record("pick_server", t0, json!({ "server": got }));
+                    }
                     return Ok(got);
                 }
                 Some("missing") if creds.server_explicit => {
@@ -513,5 +530,65 @@ mod tests {
         let c = select_server_chunk("Cimmeria \"colo\"");
         assert!(c.contains(r#"findColumnItemWithText("Cimmeria \"colo\"", 0, nil)"#));
         assert!(c.contains("getShardInfo(i).name"));
+    }
+
+    fn creds(server: &str, explicit: bool) -> ResolvedLogin {
+        ResolvedLogin {
+            account: "a".into(),
+            password: "p".into(),
+            server: Some(server.into()),
+            server_explicit: explicit,
+        }
+    }
+
+    /// Live regression (2026-10-12): `server: "colo"` against a client whose
+    /// list has the one row "Test" failed `pick_server`. The chunk now falls
+    /// back to the only row and says so; the flow records it.
+    #[tokio::test]
+    async fn an_unknown_name_selects_the_only_row_and_says_so() {
+        let sup = fake_bridge::supervisor(Arc::new(|method: &str, p: &Value| {
+            assert_eq!(method, "lua_eval");
+            let chunk = p["chunk"].as_str().unwrap_or_default();
+            assert!(chunk.contains("findColumnItemWithText(\"colo\""), "{chunk}");
+            Ok(fake_bridge::lua_ok(&["selected", "Test", "only"]))
+        }))
+        .await;
+        let mut run = FlowRun::new(&sup, "lab_login");
+        let got = sup
+            .pick_server(&mut run, &creds("colo", true))
+            .await
+            .unwrap();
+        assert_eq!(got, "Test");
+        let step = run.steps.last().unwrap();
+        assert_eq!(step["detail"]["only_row"], true, "{step}");
+        assert_eq!(step["detail"]["requested"], "colo", "{step}");
+    }
+
+    /// With several rows and no match the explicit request still fails and
+    /// lists the rows (the guard against picking the wrong shard).
+    #[tokio::test]
+    async fn an_unknown_name_with_several_rows_is_still_an_error() {
+        let sup = fake_bridge::supervisor(Arc::new(|_, _| {
+            Ok(fake_bridge::lua_ok(&["missing", "Test, Dev"]))
+        }))
+        .await;
+        let mut run = FlowRun::new(&sup, "lab_login");
+        let e = sup
+            .pick_server(&mut run, &creds("colo", true))
+            .await
+            .unwrap_err();
+        assert!(
+            e.message.contains("no server named") && e.message.contains("Test, Dev"),
+            "{}",
+            e.message
+        );
+    }
+
+    #[test]
+    fn the_chunk_falls_back_to_a_single_row() {
+        let c = select_server_chunk("colo");
+        assert!(c.contains("if #names == 1 then"), "{c}");
+        assert!(c.contains("only = 'only'"), "{c}");
+        assert!(c.trim_end().ends_with("only"), "{c}");
     }
 }
