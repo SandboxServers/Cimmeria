@@ -194,9 +194,9 @@ pub async fn face<W: WorldIo>(
         report.pitch_clamped = true;
         report.pitch_recovered_from = Some(from);
         // A failed recovery leaves the camera where it was; the report says so.
+        // (The controller is fresh, so no earlier pixel can be mistaken for a
+        // look's result.)
         let _ = abs_pitch(io, steps, PITCH_RECOVER_DEG).await;
-        // The recovery moved the camera, so no pixel may be read as its result.
-        ctl.forget_last_look();
     }
     for _ in 0..=max_steps {
         let pos = aim.position(io).await;

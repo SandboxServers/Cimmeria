@@ -353,12 +353,6 @@ impl FaceController {
         }
     }
 
-    /// Forget the last look, so the next pixel is not read as its result
-    /// (the camera was moved by something else in between).
-    pub fn forget_last_look(&mut self) {
-        self.last = None;
-    }
-
     /// `pixel`: the projection (None when behind the camera).
     /// `yaw_hint`: radians the camera should turn, when known otherwise.
     pub fn step(
