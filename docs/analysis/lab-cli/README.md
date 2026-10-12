@@ -9,6 +9,10 @@
 > the live UAT, passed on this machine (results below). D-LC1 to D-LC5
 > accepted; D-LC5 amended to allow `-Force`. One follow-up, F-LC1, since
 > fixed.
+>
+> **D-LC1 is superseded by D-LX1** ([lab CLI in Rust](../lab-cli-rust/README.md)):
+> the command is now the Rust `lab.exe`. The scripts and file names below
+> describe the PowerShell version that existed until then.
 
 ## Why
 
@@ -54,7 +58,7 @@ user `PATH` once. Operating detail: [The `lab` command](../../guides/live-resear
 
 | ID | Decision | Status | Reason |
 |---|---|---|---|
-| D-LC1 | PowerShell 7 scripts under `tools/lab/cli/`, one file per command, found by the dispatcher `tools/lab/lab.ps1`. | Accepted 2026-10-10 | All existing lab tooling is PowerShell. One file per command lets packets run in parallel without touching a shared file, and Haiku handles it well. A Rust subcommand of `cimmeria-lab.exe` would add a rebuild to every CLI change. |
+| D-LC1 | PowerShell 7 scripts under `tools/lab/cli/`, one file per command, found by the dispatcher `tools/lab/lab.ps1`. | Accepted 2026-10-10; superseded by D-LX1 (2026-10-11) | All existing lab tooling is PowerShell. One file per command lets packets run in parallel without touching a shared file, and Haiku handles it well. A Rust subcommand of `cimmeria-lab.exe` would add a rebuild to every CLI change. |
 | D-LC2 | The daemon gains `GET /status`, behind the same bearer token as `/mcp`, returning the JSON in the contract. | Accepted 2026-10-10 | `lab status` would otherwise need an MCP streamable-HTTP client in PowerShell (initialize, session id, SSE parsing): fragile, and the wrong job for a small model. The endpoint is read-only and shows no lease ids. |
 | D-LC3 | `lab setup` adds `%LOCALAPPDATA%\cimmeria-lab\bin` to the **user** `PATH` (registry `HKCU\Environment`), once, after asking. | Accepted 2026-10-10 | It is a machine-level change. Without it, the command is `pwsh <path>\lab.ps1`. |
 | D-LC4 | The CLI runs from an installed copy (`%LOCALAPPDATA%\cimmeria-lab\cli\`), refreshed by `lab install` and `lab setup`. | Accepted 2026-10-10 | The same reason `daemon.ps1` copies itself to `labd\`: a checkout on an old branch must not drive the lab. |

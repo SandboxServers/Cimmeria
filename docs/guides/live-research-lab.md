@@ -11,7 +11,6 @@ companion_docs:
   - ../commands.md
   - ../analysis/ability-mechanics/lab-uat-and-telemetry.md
   - ../../tools/lab/install.ps1
-  - ../../tools/lab/lab.ps1
   - ../analysis/lab-cli/README.md
   - ../architecture/observability.md
   - re-toolchain-setup.md
@@ -474,7 +473,7 @@ Trade, duels, squads and teams, mail between players, player-to-player visibilit
    lab instances init                  # or: pwsh tools/lab/instances.ps1 init
    ```
 
-   It copies `Binaries\sessions\lab-account.json` to `lab-account.p2.json` to `lab-account.p5.json`, with username `lab2` to `lab5` and character `Labtwo` to `Labfive`. Every other field, the password included, is copied unchanged and never printed. Existing files are kept unless you pass `-Force`, and `-Count 3` stops at `p3`. `lab instances status` prints each instance's account, character, whether its profile is seeded, and whether its client runs.
+   It copies `Binaries\sessions\lab-account.json` to `lab-account.p2.json` to `lab-account.p5.json`, with username `lab2` to `lab5` and character `Labtwo` to `Labfive`. Every other field, the password included, is copied unchanged and never printed. Existing files are kept unless you pass `--force`, and `--count 3` stops at `p3`. `lab instances status` prints each instance's account, character, whether its profile is seeded, and whether its client runs.
 3. Restart the daemon so it reads `labd.env`: `lab restart` (or `pwsh tools/lab/daemon.ps1 restart`).
 4. Reconnect the lab MCP server in **every** Claude session (`/mcp`). With more than one instance hosted, every tool gains an optional `instance` argument, and a session that connected before the restart still has the old tool list.
 
@@ -1017,14 +1016,15 @@ resumes it (#985). The install script below builds and places it.
 The lab runs from installed copies, not from a target dir, so a build of
 `main` changes nothing until you install it. Nothing refreshes them on
 their own: on 2026-10-04 the installed DLL still dated from 2026-09-29.
-Use [`lab install -From <worktree>`](#the-lab-command): it runs
+Use [`lab install --from <worktree>`](#the-lab-command): it runs
 [`tools/lab/install.ps1`](../../tools/lab/install.ps1) from that worktree,
-which builds the four pieces and installs them, then refreshes the `lab`
+which builds the five pieces and installs them, then refreshes the `lab`
 command's own copy:
 
 | Built (through the build lane) | Installed to |
 |---|---|
 | `cimmeria-lab` (release, host) | `%LOCALAPPDATA%\cimmeria-lab\bin\cimmeria-lab.exe` |
+| `cimmeria-lab-cli` (release, host; the same lane call as `cimmeria-lab`) | `%LOCALAPPDATA%\cimmeria-lab\bin\lab.exe`, the `lab` command itself. The running copy is moved aside, so `lab install` can replace the `lab.exe` that runs it |
 | `cimmeria-client-telemetry --features lab-bridge` (release, i686) | `%LOCALAPPDATA%\cimmeria-lab\bin\cimmeria_client_telemetry.dll`, and `<CIMMERIA_LAB_INSTALL_DIR>\Binaries\cimmeria-client-telemetry.dll`, the one the supervisor injects unless `CIMMERIA_LAB_DLL` names another |
 | `cimmeria-start32` (release, i686) | `%LOCALAPPDATA%\cimmeria-lab\bin\sgw-start32.exe` |
 | `cimmeria-client-patches` (release, i686) | `%LOCALAPPDATA%\cimmeria-lab\bin\cimmeria_client_patches.dll` |
@@ -1035,12 +1035,12 @@ command's own copy:
 2. Install from the worktree you want:
 
    ```powershell
-   lab install -From C:\src\Cimmeria\.claude\worktrees\lab-fix
+   lab install --from C:\src\Cimmeria\.claude\worktrees\lab-fix
    ```
 
-   `lab install` passes `-InstallDir` from `labd.env`'s
-   `CIMMERIA_LAB_INSTALL_DIR` and `-SkipBuild` when you give it. To see the
-   plan first, or to install without the `lab` command, run the script
+   `lab install` runs the script with `-InstallDir` taken from `labd.env`'s
+   `CIMMERIA_LAB_INSTALL_DIR`, and with `-SkipBuild` when you pass
+   `--skip-build`. To see the plan first, or to install without the `lab` command, run the script
    itself from that checkout:
 
    ```powershell
@@ -1077,119 +1077,120 @@ reconnect again.
 
 ## The `lab` command
 
-`lab` is one command in front of the lab scripts and the
-[shared daemon](#the-shared-daemon-cimmeria-lab---http): its status, its
-log, `labd.env`, installs, instances and clients. It runs an installed copy
-of the scripts, never a checkout's, so a checkout on an old branch can't
-drive the lab (D-LC4 in the
-[campaign ledger](../analysis/lab-cli/README.md)). It is PowerShell 7 only.
+`lab` is one program, `lab.exe`, in front of the lab and the [shared daemon](#the-shared-daemon-cimmeria-lab---http): its status, its log, `labd.env`, installs, instances and clients, and UAT runs, recordings, goldens and calibration. It is Rust ([`crates/lab-cli`](../../crates/lab-cli/)) and stands alone: no PowerShell starts for any command except `start`, `stop`, `restart`, `instances`, `install`, `setup` and `local-setup`, which run a daemon or installer script (see "Where things live" below), and `lab completions powershell --install`, which runs `pwsh` once to ask for `$PROFILE.CurrentUserAllHosts`. It runs from an installed copy, never from a checkout, so a checkout on an old branch can't drive the lab (D-LC4 in the [lab CLI ledger](../analysis/lab-cli/README.md)). It replaced a PowerShell dispatcher in the [lab CLI in Rust](../analysis/lab-cli-rust/README.md) campaign (D-LX1).
 
 ### Set up the `lab` command
 
-Run setup once, from a checkout on a current `main`:
+`lab.exe` is `%LOCALAPPDATA%\cimmeria-lab\bin\lab.exe`, next to `cimmeria-lab.exe`. There is no shim: `lab` is found through your user `PATH`. On a machine that has no `lab.exe` yet, bootstrap from a checkout on a current `main`:
 
 ```powershell
-pwsh tools/lab/cli/setup.ps1
+pwsh tools/lab/install.ps1      # builds and installs cimmeria-lab.exe, lab.exe and the other lab binaries
+pwsh tools/lab/cli/setup.ps1    # copies the scripts lab still runs; offers to put bin on your PATH
 ```
 
-It does three things:
+`setup.ps1` does three things:
 
-1. Copies the CLI into `%LOCALAPPDATA%\cimmeria-lab\cli\`: `lab.ps1`, the
-   commands in `cli\*.ps1`, and `daemon.ps1`, `instances.ps1` and
-   `labd-lib.ps1` beside `lab.ps1`. Tests are not copied, and a command
-   file the checkout no longer has is removed. `cli\cli\VERSION`, the
-   checkout's short commit, is written last, so a copy that failed part way
-   has no `VERSION`.
-2. Writes the shim `%LOCALAPPDATA%\cimmeria-lab\bin\lab.cmd`, which runs
-   `pwsh -NoProfile -File <that copy>\lab.ps1` with your arguments. The
-   shim holds the real path.
+1. Copies the PowerShell the CLI still runs into `%LOCALAPPDATA%\cimmeria-lab\cli\`: the checkout's `tools/lab/cli/*.ps1` (`install`, `setup`, `local-setup` and their libraries) go to `cli\cli\`, and `daemon.ps1`, `instances.ps1` and `labd-lib.ps1` from `tools/lab/` go to `cli\`. Tests are not copied, and a script the checkout no longer has is removed. `cli\cli\VERSION`, the checkout's short commit, is written last, so a copy that failed part way has no `VERSION`.
+2. Deletes `%LOCALAPPDATA%\cimmeria-lab\bin\lab.cmd` when an older setup left it: it ran a PowerShell dispatcher that no longer exists, and `lab.exe` is the command now.
 3. Asks `Add ...\cimmeria-lab\bin to your user PATH? [y/N]` when the
    folder isn't on it yet. `-Yes` adds it without asking, and `-NoPath`
    leaves the `PATH` alone. The edit goes through `HKCU\Environment`
    directly, so a `REG_EXPAND_SZ` `PATH` keeps its type, and setup
    broadcasts the change. Open a new terminal to see it.
 
-Run `setup` again to refresh the copy. From the installed copy (`lab setup`
-on the `PATH`) there is no checkout to copy from, so it needs one:
-`lab setup -From C:\src\Cimmeria`. `lab install` refreshes the copy too, from
-the worktree it builds.
+From then on `lab` does the same itself. `lab setup --from C:\src\Cimmeria` refreshes the copied scripts (`--no-path` leaves the `PATH` alone, `--yes` adds it without asking); from the installed copy there is no checkout to copy from, so `lab setup` needs `--from`. `lab install --from <worktree>` builds and installs the lab, `lab.exe` included, and refreshes the scripts from that worktree. Each replaced file is kept as `<name>.<yyyymmdd>.old`, and Windows lets `lab install` rename the running `lab.exe`, so the command can replace itself. `lab version` shows which commit your `lab.exe` was built from.
+
+Upgrading from the PowerShell `lab` command: run `pwsh <checkout>\tools\lab\cli\install.ps1 -From <checkout>` once (or open a new terminal after `lab install`); a "The batch file cannot be found" message from the old `lab.cmd` at the end is harmless.
+
+### Help, flags and output
+
+- **Help.** `lab` or `lab help` prints the commands in four groups: Run and record UAT (`uat`, `watch`, `record`, `calibrate`, `golden`), Daemon (`status`, `start`, `stop`, `restart`, `logs`, `doctor`), Instances and clients (`instances`, `clients`), and Install and configure (`env`, `install`, `setup`, `local-setup`, `version`, `completions`), with a line for each, then examples. `lab help <command>` (or `lab <command> --help`) prints that command's page: its arguments, a longer description and examples; `lab <command> -h` prints the shorter page, without the long description. A mistyped command exits 2 and names the nearest commands (`lab stauts` suggests `status`).
+- **Flags.** Flags are `--long-flags`, which is how this guide writes them. The PowerShell spellings still work: `-Rows`, `-PlanOnly` and `-Instance:p2` run the same as `--rows`, `--plan-only` and `--instance=p2`, because `lab` rewrites them before it parses anything. Commands, scripts and agent briefs written either way keep working.
+- **Colour and plain output.** On a terminal, `lab` prints colour, glyphs and tables. When stdout is redirected (a pipe or a file), when `NO_COLOR` is set to a non-empty value, or when `TERM` is `dumb`, it prints plain text with no colour codes or glyphs, in the line format that scripts and agents read. `--json` output and exit codes are the same either way.
+- **Completions.** `lab completions powershell | Out-String | Invoke-Expression` loads tab completion for the current session. `lab completions powershell --install` runs `pwsh` once to find `$PROFILE.CurrentUserAllHosts` (so it needs `pwsh` on the `PATH`), adds a guarded line to it once: `if (Test-Path -LiteralPath '<lab.exe>') { & '<lab.exe>' completions powershell | Out-String | Invoke-Expression }`, with lab.exe's full path, so the profile never errors when lab is not on the `PATH` or has moved (it looks for the line first, so running it again changes nothing; a line an earlier version wrote, exactly `lab completions powershell | Out-String | Invoke-Expression` or the same guarded line for another path, is replaced in place; any other line of yours is left alone) and says what it did; open a new terminal afterwards, and `lab u` then Tab completes to `lab uat`. `lab completions bash`, `zsh` and `fish` print their scripts for you to load; `--install` is for PowerShell only.
 
 ### Commands
 
-Every command prints its own help in its `.SYNOPSIS`; `lab help` lists the
-first line of each.
+`lab help` lists the commands and `lab help <command>` prints one command's page. The table gives each command's `--flag` forms; every flag also accepts its PowerShell spelling. The last column gives the exit codes: 0 is success, and 2 usually means a usage error (a mistyped flag, a missing argument).
 
 | Command | What it does | Exit codes |
 |---|---|---|
-| `lab help` | lists the commands | 0 |
-| `lab status` | daemon pid, uptime and version, then one row per instance: account, client pid, bridge port, lease (owner, purpose, time left; never an id) and whether its profile is seeded | 0; 1 when the daemon is down (it still lists the `labd.env` instances with the seed column) |
-| `lab version` | the copy's `VERSION` (`dev` when run from a checkout) and the daemon version | 0 |
-| `lab start`, `lab stop [-Force]`, `lab restart [-Force]` | the `CimmeriaLabDaemon` task, through `daemon.ps1`; `stop` and `restart` also close the lab clients (see [A new build](#run-it)) | `daemon.ps1`'s: 3 when a leased client refused the stop |
-| `lab logs [-Lines 50] [-Instance p2] [-Level warn] [-Follow]` | the last lines of `labd.log`, filtered by instance and minimum level; a continuation line (a panic body, a backtrace) goes with its entry; bearer and 64-hex tokens print as `<redacted>` | 0; 1 when there is no log |
+| `lab help [<command>]` | lists the commands by group, or prints one command's page | 0; 2 for an unknown command |
+| `lab status` | daemon pid, uptime and version, then one row per instance: account, client pid, bridge port, lease (owner, purpose, time left; never an id) and whether its profile is seeded. On a terminal it prints a coloured table (`●` or `○` for the daemon, a `PROFILE` column reading `seeded` or `not seeded`); redirected, it prints the plain text the PowerShell command printed. It takes no flags | 0; 1 when the daemon is down (it still lists the `labd.env` instances with the seed column) |
+| `lab version` | the CLI's version line (`lab <version> (<sha>)`, `dev` for a build `lab install` did not stamp) and the daemon's version (`daemon <version>`, or `daemon: not running` when it does not answer) | 0 |
+| `lab start`, `lab stop [--force]`, `lab restart [--force]` | the `CimmeriaLabDaemon` task, through `daemon.ps1`; `stop` and `restart` also close the lab clients (see [A new build](#run-it)) | `daemon.ps1`'s: 3 when a leased client refused the stop |
+| `lab logs [--lines 50] [--instance p2] [--level warn] [--follow]` | the last lines of `labd.log`, filtered by instance and minimum level; a continuation line (a panic body, a backtrace) goes with its entry; bearer and 64-hex tokens print as `<redacted>`. `--follow` first prints the last `--lines` filtered lines (as without it; an unfinished last line waits for its newline), then polls the file every 500 ms for new lines and stops on Ctrl+C; the `-Lines`, `-Instance`, `-Level` and `-Follow` spellings still work. On a terminal the timestamp is dim and the level word coloured | 0 (also after Ctrl+C under `--follow`); 1 when there is no log |
 | `lab env [get KEY \| set KEY VALUE \| unset KEY]` | reads or edits `labd.env`; see below | 0; 1 for `get` of an unset key or a missing `labd.env`; 2 for a bad verb, key or value |
-| `lab install -From <worktree> [-SkipBuild]` | builds and installs the lab from that worktree, then refreshes the CLI copy with the worktree's own installer | 0; non-zero when the build, the install or the copy fails |
-| `lab setup [-From <checkout>] [-NoPath] [-Yes]` | see [Set up the `lab` command](#set-up-the-lab-command) | 0; non-zero when the copy fails |
-| `lab instances [status \| init ...]` | `instances.ps1` from the installed copy (see [Parallel clients](#parallel-clients-up-to-five)) | its own |
-| `lab clients stop [<instance> \| all] [-Force]` | closes lab clients; see below | 0 stopped or nothing to stop; 1 daemon down; 2 usage; 3 a leased client was refused; 4 a client could not be stopped |
-| `lab doctor` | one `PASS`, `WARN` or `FAIL` line per check; see below | 0; 1 when any check fails |
-| `lab uat <section> [-Rows ...] [-Leases 1-5] [-RunsPerLease 1-20] [-Instance p2] [-Fixtures auto\|always\|never] [-DiffGolden] [-Heal] [-PlanOnly] [-Json] [-Quiet]` | runs a UAT spec through `lab_uat_run` with no agent; see below | 0 every run passed; 1 a run failed; 2 usage (including `-Heal` without `-Leases 1`), or `-DiffGolden` or `-Chaos` with no golden or one that cannot be read; 3 the pre-flight or plan failed (nothing driven); 4 a lane stopped on its brake; 5 every run passed but `-DiffGolden` did not match on one (under `-Chaos`, only a run it could not compare); 8 `-Heal` wrote a proposal, which wins over 5 and every other code |
-| `-Chaos <profile[:level][:knobs]>` on `lab uat` | runs every row under the specs (`lab_uat_run` `chaos`): `cpu` loads the lab machine for the whole run; `net` and `flush` are set on the row's player session before its setup and cleared after its teardown, on failed rows too (they need a server built with `lab-chaos` and `DEVELOPER_MODE`). `burst` is refused until lab-chaos CH-13 lands. The header is the runner's own (`chaos=<spec> seed=<n>`, the seed being the run id's hash unless the spec gives one); quote a multi-knob spec, as its commas would split it elsewhere. `-Chaos` implies `-Fingerprint` and `-DiffGolden` (lab-chaos D-CH7): every passing run is compared with the section's golden, and the result is `chaos_divergence` in place of `golden` (in the summary and `-Json`, the same `{match, diverged, first}` shape and grouping, present whenever a run was compared; the header is the `chaos` key, and `summary.md` names each divergence's runs with their seeds). `-PlanOnly` needs no golden; with no local spec folder the daemon's is used, and a missing golden there is a diff error (exit 5). A row that passed its own expects stays a pass, and a divergence alone exits 0, not 5. A chaos run is never recorded as a golden (`lab_golden_record` answers `cannot_record`, "chaos runs never become golden") | 2 when the local spec folder has no golden for the section (record one first with `lab golden record`); 3 when the plan call refuses a spec (an unknown profile or knob, `burst`, a value the server would refuse); 5 only when a diff could not be made |
-| `lab watch [-Batch <folder>] [-Once] [-Json] [-IntervalSeconds 2]` | a live, read-only view of a running `lab uat` batch; see below | 0; 1 daemon down and no batch; 2 usage; 3 read failed |
-| `lab calibrate <section> <row> [-Pose <id>] [-Instance p2] [-Prepare <rows>] [-BudgetMinutes 1-30] [-SpecsDir <dir>] [-Apply] [-Json] [-Quiet]` | recalibrates a row's poses by hover through `lab_uat_calibrate` and proposes a spec diff; see below | 0 every pose has a proposal or is unchanged; 1 a pose found none; 2 usage, or `-Apply` refused or failed; 3 the pre-flight, a prepare row or the calibrate call failed |
-| `lab golden record <section> [-Rows ...] [-Runs 5-20] [-Leases 1-5] -ServerVersion <sha> [-SpecsDir <dir>] [-Rebless] [-Json]`, `lab golden show <section> [-SpecsDir <dir>] [-Json]` | records a section's golden fingerprint from fresh `lab uat` runs, or prints a committed one; see below | 0 recorded (or shown); 1 a run or row did not pass; 2 usage, a golden exists without `-Rebless`, or `show` found no golden; 3 the `lab uat` pre-flight or plan failed (nothing driven); 6 the runs disagree; 7 the runs cannot be recorded as given, the daemon failed after the runs, or `show` cannot read the golden |
-| `lab record start <section> [-Instance p2] [-Character <name>] [-MaxMinutes 1-30] [-SpecsDir <dir>] [-Json]` | starts recording a person playing the instance by hand (`lab_record_start`); saves the recording id to `%LOCALAPPDATA%\cimmeria-lab\record-<instance>.json`; see below | 0; 1 the tool failed; 2 usage, or refused with nothing changed; 3 no daemon; 4 the instance is busy (the lab is leased, or a recording runs there) |
-| `lab record status [-Instance p2] [-Json]` | the instance's recording: id, section, age, ticks, anchors (`lab_record_status`) | 0; 1; 2; 3 |
-| `lab record stop [-Instance p2] [-CharacterExpr 'Px${run_id}'] [-Profile <name>] [-NoDraft] [-RecordingId <id>] [-Json]` | stops the saved recording and writes `<specs>\drafts\<section>-<yyyyMMdd-HHmm>.toml` (`lab_record_stop`); deletes the state file on success and keeps it on a failure, so stop can be retried | 0; 1 failed, the recording stays; 2 usage, no recording, or refused; 3 no daemon (the recording stays); 4 still finishing |
-| `lab record transform <recording id or folder> [-Section <id>] [-CharacterExpr ...] [-Profile ...] [-SpecsDir <dir>] [-Json]` | drafts a stopped recording already on disk again (`lab_record_transform`), as `<name>-2.toml`, `-3`, ... when the draft exists; needs the daemon, no lease, no client | 0; 1 failed (also: the log has no stop line yet); 2 usage or refused; 3 the daemon is not running |
+| `lab install --from <worktree> [--skip-build]` | builds and installs the lab from that worktree, then refreshes the CLI copy with the worktree's own installer | 0; non-zero when the build, the install or the copy fails |
+| `lab setup [--from <checkout>] [--no-path] [--yes]` | see [Set up the `lab` command](#set-up-the-lab-command) | 0; non-zero when the copy fails |
+| `lab local-setup [--install-dir <folder>] [--patch-login-internal] [--worktree <checkout>]` | one-shot, idempotent setup for a lab against a local server (i686 target, tokens, `lab-account.json`, the `Local` login row); see [lab-contributor-setup.md](lab-contributor-setup.md). Never prints a secret | its script's: 0; non-zero when a step fails |
+| `lab completions <powershell\|bash\|zsh\|fish> [--install]` | prints a shell completion script; `--install` adds the PowerShell line to your profile once; see [Help, flags and output](#help-flags-and-output) | 0; 1 when the script or the profile cannot be written; 2 for `--install` with another shell |
+| `lab instances [status \| init [--install-dir <dir>] [--count <n>] [--force]]` | `instances.ps1` from the installed copy (see [Parallel clients](#parallel-clients-up-to-five)) | its own |
+| `lab clients stop [<instance> \| all] [--force]` | closes lab clients; see below | 0 stopped or nothing to stop; 1 daemon down; 2 usage; 3 a leased client was refused; 4 a client could not be stopped, or was relaunched since the first status read |
+| `lab doctor` | one `PASS`, `WARN` or `FAIL` line per check; on a terminal a ✓ / ! / ✗ list with a dim hint under each warning and failure, and a count line; see below | 0; 1 when any check fails |
+| `lab uat <section> [--rows ...] [--leases 1-5] [--runs-per-lease 1-20] [--instance p2] [--specs-dir <dir>] [--server-version <sha>] [--fixtures auto\|always\|never] [--diff-golden] [--heal] [--plan-only] [--json] [--quiet]` | runs a UAT spec through `lab_uat_run` with no agent; see below | 0 every run passed; 1 a run failed; 2 usage (including `--heal` without `--leases 1`), or `--diff-golden` or `--chaos` with no golden or one that cannot be read; 3 the pre-flight or plan failed (nothing driven); 4 a lane stopped on its brake; 5 every run passed but `--diff-golden` did not match on one (under `--chaos`, only a run it could not compare); 8 `--heal` wrote a proposal, which wins over 5 and every other code; 130 a second Ctrl+C stopped the batch (its summary is still written) |
+| `--chaos <profile[:level][:knobs]>` on `lab uat` | runs every row under the specs (`lab_uat_run` `chaos`): `cpu` loads the lab machine for the whole run; `net` and `flush` are set on the row's player session before its setup and cleared after its teardown, on failed rows too (they need a server built with `lab-chaos` and `DEVELOPER_MODE`). `burst` is refused until lab-chaos CH-13 lands. The header is the runner's own (`chaos=<spec> seed=<n>`, the seed being the run id's hash unless the spec gives one); quote a multi-knob spec, as its commas would split it elsewhere. A comma-separated list of profiles (`--chaos cpu,flush:pack`) is refused with exit 2: repeat `--chaos` for each profile. `--chaos` implies `--fingerprint` and `--diff-golden` (lab-chaos D-CH7): every passing run is compared with the section's golden, and the result is `chaos_divergence` in place of `golden` (in the summary and `--json`, the same `{match, diverged, first}` shape and grouping, present whenever a run was compared; the header is the `chaos` key, and `summary.md` names each divergence's runs with their seeds). `--plan-only` needs no golden; with no local spec folder the daemon's is used, and a missing golden there is a diff error (exit 5). A row that passed its own expects stays a pass, and a divergence alone exits 0, not 5. A chaos run is never recorded as a golden (`lab_golden_record` answers `cannot_record`, "chaos runs never become golden") | 2 when the local spec folder has no golden for the section (record one first with `lab golden record`); 3 when the plan call refuses a spec (an unknown profile or knob, `burst`, a value the server would refuse); 5 only when a diff could not be made |
+| `lab watch [--batch <folder>] [--once] [--json] [--interval-seconds 2]` | a live, read-only view of a running `lab uat` batch; see below | 0; 1 daemon down and no batch; 2 usage; 3 read failed |
+| `lab calibrate <section> <row> [--pose <id>] [--instance p2] [--prepare <rows>] [--budget-minutes 1-30] [--specs-dir <dir>] [--apply] [--json] [--quiet]` | recalibrates a row's poses by hover through `lab_uat_calibrate` and proposes a spec diff; see below | 0 every pose has a proposal or is unchanged; 1 a pose found none; 2 usage, or `--apply` refused or failed; 3 the pre-flight, a prepare row or the calibrate call failed |
+| `lab golden record <section> [--rows ...] [--runs 5-20] [--leases 1-5] --server-version <sha> [--specs-dir <dir>] [--rebless] [--json]`, `lab golden show <section> [--specs-dir <dir>] [--json]` | records a section's golden fingerprint from fresh `lab uat` runs, or prints a committed one; see below | 0 recorded (or shown); 1 a run or row did not pass; 2 usage, a golden exists without `--rebless`, or `show` found no golden; 3 the `lab uat` pre-flight or plan failed (nothing driven); 6 the runs disagree; 7 the runs cannot be recorded as given, the daemon failed after the runs, or `show` cannot read the golden; 130 Ctrl+C stopped the runs (nothing recorded) |
+| `lab record start <section> [--instance p2] [--character <name>] [--max-minutes 1-30] [--specs-dir <dir>] [--json]` | starts recording a person playing the instance by hand (`lab_record_start`); saves the recording id to `%LOCALAPPDATA%\cimmeria-lab\record-<instance>.json`; see below | 0; 1 the tool failed; 2 usage, or refused with nothing changed; 3 no daemon; 4 the instance is busy (the lab is leased, or a recording runs there) |
+| `lab record status [--instance p2] [--json]` | the instance's recording: id, section, age, ticks, anchors (`lab_record_status`) | 0; 1; 2; 3 |
+| `lab record stop [--instance p2] [--character-expr 'Px${run_id}'] [--profile <name>] [--no-draft] [--recording-id <id>] [--json]` | stops the saved recording and writes `<specs>\drafts\<section>-<yyyyMMdd-HHmm>.toml` (`lab_record_stop`); deletes the state file on success and keeps it on a failure, so stop can be retried | 0; 1 failed, the recording stays; 2 usage, no recording, or refused; 3 no daemon (the recording stays); 4 still finishing |
+| `lab record transform <recording id or folder> [--section <id>] [--character-expr ...] [--profile ...] [--specs-dir <dir>] [--json]` | drafts a stopped recording already on disk again (`lab_record_transform`), as `<name>-2.toml`, `-3`, ... when the draft exists; needs the daemon, no lease, no client | 0; 1 failed (also: the log has no stop line yet); 2 usage or refused; 3 the daemon is not running |
 
-An unknown command exits 2. Examples:
+An unknown command exits 2 and suggests the nearest names. Examples:
 
 ```powershell
 lab status
-lab logs -Instance p2 -Level warn -Lines 20
-lab logs -Follow
+lab logs --instance p2 --level warn --lines 20
+lab logs --follow
 lab env get CIMMERIA_LAB_INSTANCES
 lab env set CIMMERIA_LAB_INSTANCES default,p2,p3
-lab install -From C:\src\Cimmeria\.claude\worktrees\lab-fix
+lab install --from C:\src\Cimmeria\.claude\worktrees\lab-fix
 lab instances status
 lab clients stop p2
 lab doctor
+lab help uat
+lab completions powershell --install
 ```
 
 **`lab uat`.** It runs spec rows (`docs/guides/uat-specs/`) on the lab with no agent: one `lab_uat_run` call per run, over the daemon's MCP endpoint.
 
-- **Lanes.** `-Leases N` starts N lanes at once, one per hosted instance in the daemon's order (`default`, `p2`, ...), skipping instances another session holds. Each lane runs the rows `-RunsPerLease` times, back to back.
+- **Lanes.** `--leases N` starts N lanes at once, one per hosted instance in the daemon's order (`default`, `p2`, ...), skipping instances another session holds. Each lane runs the rows `--runs-per-lease` times, back to back.
 - **Leases.** Every run takes and releases its own lease.
-- **Pacing.** Lanes start `-StaggerSeconds` apart (default 20). Run ids are time based, and two clients booting at once is where logins go wrong.
+- **Pacing.** Lanes start `--stagger-seconds` apart (default 20). Run ids are time based, and two clients booting at once is where logins go wrong.
 - **Pre-flight.** Before anything is driven: the daemon answers, the instances are free, no `SGW.exe` runs outside the lab, and a plan-only pass of the rows is ready.
 - **Pre-flight before the daemon.** Argument errors exit 2 whatever state the daemon is in. A requested row the section doesn't have is a usage error too: row ids are exact and case sensitive.
-- **Brake.** A lane stops after `-MaxConsecutiveFailures` failed runs in a row (default 3, 0 never). A lane that ran every run is not counted as stopped early. The other lanes carry on.
-- **Timeouts.** Each run times out after `-RunTimeoutMinutes` (default 15). The lane then waits up to 10 minutes for that instance's lease to clear before its next run; a lease that never clears ends the lane.
-- **Ctrl+C** starts no new run, and the summary is still written from the runs that finished. A run already under way finishes on the daemon and releases its lease.
-- **`-DiffGolden`** compares every passing run with the section's committed golden (`<specs>/golden/<section>.json`, from `lab golden record`). The runs are fingerprinted, and `lab_golden_diff` is called on each passing run's folder; a failed run is not compared and gets no `golden` value. Each passing run gets one: `match`, the first divergence as one line, or `error: <why>` when the diff could not be made (`cannot_diff` on one run is reported on that run; the batch goes on). Rows' verdicts don't change (README D-GD7 of the [lab-golden ledger](../analysis/lab-golden/README.md)): a divergence on passing runs exits 5, not 1, and nothing gates `ship.py` or CI on it. A diff error is never counted as a match, so it exits 5 too. A failed run (1) or a stopped lane (4) keeps its own code, and a heal proposal (8, SV-12) wins over all of them. With no golden for the section, or one that is not JSON with `schema`, `section` and `fingerprint`, the command exits 2 before the daemon is asked.
-- **`-Heal`** (needs `-Leases 1`; exit 2 otherwise, before the daemon is asked). After the batch, each distinct `(row, pose)` of the failed runs' heal hints (a pose click, target or camera move that missed) is recalibrated by one `lab_uat_calibrate` call on the batch's instance, at the default 15-minute budget. A proposal is copied to `heal-<row>-<pose>.diff` in the batch folder and printed (its line, then the diff; neither under `-Json` or `-Quiet`, and only the line, on stderr, under `-ProgressToStderr`). `batch.json`, `summary.md` (under "Heal proposals (spec diffs to review; nothing was applied)") and the `-Json` object gain `heal: [{row, pose, diff}]`, and the command exits 8. Under `-Json`, `heal` holds at most 3 entries with `diff` as the file name in `batch`, then `more_heal: <n>`. The heal runs after the summary is written, so Ctrl+C during the batch skips it; Ctrl+C during the heal keeps the diffs already written. After a calibrate call that failed, it waits up to 10 minutes for the instance's lease to clear, and stops healing (naming the poses left) when it does not. The spec file is never written. See [Calibrate a row](automated-uat.md#calibrate-a-row).
+- **`--plan-only`.** Does the whole pre-flight and the plan call, drives nothing and needs no free `SGW.exe` check, then prints `plan: <n> row(s) ready on <instances>: <rows>` (the runner's `chaos=<spec> seed=<n>` header on the line before, when `--chaos` was given) and exits 0. Under `--json` it prints `{"ok":true,"plan_only":true,"rows":[...],"lanes":[...]}` (plus `"chaos"`), under `--quiet` nothing. A real run does the same checks natively, then drives (see Native run below).
+- **Brake.** A lane stops after `--max-consecutive-failures` failed runs in a row (default 3, 0 never). A lane that ran every run is not counted as stopped early. The other lanes carry on.
+- **Timeouts.** Each run times out after `--run-timeout-minutes` (default 15). The lane then waits up to 10 minutes for that instance's lease to clear before its next run; a lease that never clears ends the lane.
+- **Ctrl+C.** First press: no new run starts and the run under way finishes (the command waits for it, at most the run timeout); a `--heal` is skipped. Second press: stops at once, even in the middle of a run or heal call, still writes `batch.json` and `summary.md` from the runs that finished (both marked interrupted, as is the `--json` object, with `"interrupted":true`), prints the summary and exits 130. Third press: Windows ends the process. `batch.jsonl` keeps the finished runs, and a run given up on is listed as failed ("interrupted by the second Ctrl+C"). The run itself goes on in the daemon until it ends and releases its own lease, so a batch started right away may find that instance still leased. `lab golden record` waits for the `lab uat` it started: that child decides what the presses do, and when it was stopped no golden is recorded (exit 130).
+- **`--diff-golden`** compares every passing run with the section's committed golden (`<specs>/golden/<section>.json`, from `lab golden record`). The runs are fingerprinted, and `lab_golden_diff` is called on each passing run's folder; a failed run is not compared and gets no `golden` value. Each passing run gets one: `match`, the first divergence as one line, or `error: <why>` when the diff could not be made (`cannot_diff` on one run is reported on that run; the batch goes on). Rows' verdicts don't change (README D-GD7 of the [lab-golden ledger](../analysis/lab-golden/README.md)): a divergence on passing runs exits 5, not 1, and nothing gates `ship.py` or CI on it. A diff error is never counted as a match, so it exits 5 too. A failed run (1) or a stopped lane (4) keeps its own code, and a heal proposal (8, SV-12) wins over all of them. With no golden for the section, or one that is not JSON with `schema`, `section` and `fingerprint`, the command exits 2 before the daemon is asked.
+- **`--heal`** (needs `--leases 1`; exit 2 otherwise, before the daemon is asked). After the batch, each distinct `(row, pose)` of the failed runs' heal hints (a pose click, target or camera move that missed) is recalibrated by one `lab_uat_calibrate` call on the batch's instance, at the default 15-minute budget. A proposal is copied to `heal-<row>-<pose>.diff` in the batch folder and printed (its line, then the diff; neither under `--json` or `--quiet`, and only the line, on stderr, under `--progress-to-stderr`). `batch.json`, `summary.md` (under "Heal proposals (spec diffs to review; nothing was applied)") and the `--json` object gain `heal: [{row, pose, diff}]`, and the command exits 8. Under `--json`, `heal` holds at most 3 entries with `diff` as the file name in `batch`, then `more_heal: <n>`. The heal runs after the summary is written, so Ctrl+C during the batch skips it; Ctrl+C during the heal keeps the diffs already written. After a calibrate call that failed, it waits up to 10 minutes for the instance's lease to clear, and stops healing (naming the poses left) when it does not. The spec file is never written. See [Calibrate a row](automated-uat.md#calibrate-a-row).
+- **Native run.** `lab uat` runs entirely in the Rust `lab.exe`: lanes, brake, timeouts, `batch.jsonl`, `batch.json`, `summary.md`, `--json`, `--diff-golden`, `--heal` and `--chaos`. No PowerShell is started.
 
 Output:
 
-- **Progress:** one line per run; under `-DiffGolden` it ends with `; golden: <value>`.
-- **Summary:** the pass rate per row and per lane, and failures grouped by their first failing row. Under `-DiffGolden`, a Golden block counts the runs that matched, diverged or could not be compared, then lists each line with its count and up to five runs. Known issues are tagged (`#1341` for FS-P2's "Corporal Frost is known", `#1343` for "the login password box read back empty"), so a new failure stands out.
-- **`-Json`** prints only one compact JSON object, for agents and scripts. A clean 7-row, 10-run batch is about 340 characters; failure groups are capped at 8 and their reasons at 200 characters. Under `-DiffGolden` it adds `golden: {match, diverged, first}` (`errors` when a run could not be compared; `first` is the most common divergence line, never an error; `error`, the most common error line, appears only when no run diverged; both are capped at 120 characters); a 5-run batch with two divergences stays under 500 characters. Failures print one too: `{"ok":false,"exit":N,"error":...}`. `-ProgressToStderr` still writes the per-run progress lines, to stderr (`lab golden` uses it). `-Quiet` prints one line.
-- **Files.** Every batch writes `plan.json` first: the section, the rows, the lanes (lane and instance), the runs per lease, the start time (UTC) and the `lab uat` pid. Then `batch.jsonl` (one line per run, as each finishes) with `Started` and `Ended` (UTC) on each line, then `batch.json` and `summary.md`, under `uat-runs\batch-<time>\`, next to the runs' own evidence folders (`CIMMERIA_LAB_UAT_DIR` when set). Lease ids are redacted from reasons.
+- **Progress:** one line per run; under `--diff-golden` it ends with `; golden: <value>`. In a terminal, `lab uat` lays them out as `▶ <section> · <n> rows · <n> lanes × <n> runs · <batch>` then one line per run, `  <instance> <i>/<n>  ✓ pass  <p>/<n> rows  4m12s` or `  <instance> <i>/<n>  ✗ fail  <row>: <reason…>  [#1343]  1m02s`; piped, under `--quiet` or `--progress-to-stderr` the lines are the plain `[<instance> <i>/<n>] PASS (114s)` ones.
+- **Summary:** the pass rate per row and per lane, and failures grouped by their first failing row. Under `--diff-golden`, a Golden block counts the runs that matched, diverged or could not be compared, then lists each line with its count and up to five runs. Known issues are tagged (`#1341` for FS-P2's "Corporal Frost is known", `#1343` for "the login password box read back empty"), so a new failure stands out. In a terminal the summary is a lane table and a row table with the pass rates coloured (100 % green, 0 % red, otherwise yellow) and the failure groups with their known-issue tags; piped, it is the Markdown that is written to `summary.md`. The terminal summary also carries the chaos header, the Golden and chaos-divergence blocks, the heal proposals and, after a second Ctrl+C, the Interrupted line, as `summary.md` does.
+- **`--json`** prints only one compact JSON object, for agents and scripts. A clean 7-row, 10-run batch is about 340 characters; failure groups are capped at 8 and their reasons at 200 characters. Under `--diff-golden` it adds `golden: {match, diverged, first}` (`errors` when a run could not be compared; `first` is the most common divergence line, never an error; `error`, the most common error line, appears only when no run diverged; both are capped at 120 characters); a 5-run batch with two divergences stays under 500 characters. Failures print one too: `{"ok":false,"exit":N,"error":...}`. `--progress-to-stderr` still writes the per-run progress lines, to stderr (`lab golden` uses it). `--quiet` prints one line. Every `--json` line of every command is pure ASCII: a non-ASCII character is written as a `\uXXXX` escape (a surrogate pair above U+FFFF), so a PowerShell pipe reads it the same under any code page. A usage error (exit 2) of `uat`, `golden`, `calibrate`, `record` or `watch` given `--json` is also the one `{"ok":false,"exit":2,"error":...}` object on stdout, not clap's text.
+- **Files.** Every batch writes `plan.json` first: the section, the rows, the lanes (lane and instance), the runs per lease, the start time (UTC) and the `lab uat` pid. Then `batch.jsonl` (one line per run, as each finishes) with `Started` and `Ended` (UTC) on each line, then `batch.json` and `summary.md`, under `uat-runs\batch-<time>\`, next to the runs' own evidence folders (`CIMMERIA_LAB_UAT_DIR` when set). A batch started in the same second as another gets `batch-<time>-2`, `-3`, ... and never reuses a folder. Lease ids are redacted from reasons.
+- **Flags.** `--diff-golden`, `--heal`, `--json`, `--quiet`, `--progress-to-stderr` and the rest also accept their PowerShell forms (`-DiffGolden`, `-Heal`, `-Json`, ...), so agent commands written for the PowerShell tool keep working. `--diff-golden` and `--heal` run natively now (no PowerShell is started for any `lab uat` flag).
 
 ```powershell
-lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -PlanOnly
-lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -Leases 2 -RunsPerLease 5
-lab uat first-session -Instance p2 -Rows FS-01,FS-02,FS-P1 -Json
-lab uat first-session -Rows FS-P4 -RunsPerLease 20
-lab uat first-session -Rows FS-P5,FS-P3,FS-P4 -Fixtures always
-lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -DiffGolden
-lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3 -Heal
+lab uat first-session --rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 --plan-only
+lab uat first-session --rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 --leases 2 --runs-per-lease 5
+lab uat first-session --instance p2 --rows FS-01,FS-02,FS-P1 --json
+lab uat first-session --rows FS-P4 --runs-per-lease 20
+lab uat first-session --rows FS-P5,FS-P3,FS-P4 --fixtures always
+lab uat first-session --rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 --diff-golden
+lab uat first-session --rows FS-01,FS-02,FS-P1,FS-P2,FS-P3 --heal
 ```
 
-**`lab watch`.** It shows a `lab uat` batch while it runs: the newest `batch-*` folder under the UAT root, or the `-Batch` folder, redrawn every `-IntervalSeconds` (default 2, 1 to 60) in the terminal's alternate screen until Ctrl+C, which puts the screen back. Run it in one terminal while the batch runs in another:
+**`lab watch`.** It shows a `lab uat` batch while it runs: the newest `batch-*` folder under the UAT root, or the `--batch` folder, redrawn every `--interval-seconds` (default 2, 1 to 60) in the terminal's alternate screen until you press `q`, `Esc` or Ctrl+C, which puts the screen back. The frame is the batch line (with a state word: `live` green, `done`, `interrupted` red), a progress bar of runs done out of runs planned, the instance table, the last failure with its issue tag, and the footer; it is drawn in colour and cut to the window, with a last line `… <n> more lines` when it is too tall. The PowerShell spelling of every flag (`-Once`, `-IntervalSeconds`) still works. Run it in one terminal while the batch runs in another:
 
 ```powershell
-lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -Leases 2 -RunsPerLease 3   # terminal 1
+lab uat first-session --rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 --leases 2 --runs-per-lease 3   # terminal 1
 lab watch                                                                                           # terminal 2
 ```
 
@@ -1197,95 +1198,97 @@ lab watch                                                                       
 - **Instance rows.** One per lab instance in the daemon's `/status` (per plan lane when the daemon is down). CLIENT is the client pid. LEASE is `free` or `<owner> (<purpose>)`, the purpose cut to 40 characters; never a lease id or the time left. RUN is the lane's run of its runs per lease (`3/3`), `<n>/3 braked` once its brake stopped it, or `-` for an instance outside the batch. ROW is the row under way and how long it has run (`FS-P3 42s`), from the `uat` field of `/status`; `-` between rows, `?` when the daemon predates that field (the footer then says `daemon has no run progress: lab install, then lab restart`). SHOT is the age of the newest screenshot under the run directory's `rows\` (the run under way, from `/status`, else the lane's last run): the first-session rows save only one `final.png` per row as it ends, so SHOT is the age of the last finished row, and `-` when there is none. Screenshots an agent takes outside a run carry no instance, so they never count. Under each row, indented, is the lane's last progress line as `lab uat` printed it, tagged with the known issue.
 - **Footer.** `orphan SGW.exe: <pid> (#1342?)` for game clients no instance owns, client relaunches per instance and login retries (`#1343`) counted in `labd.log` since the batch started.
 - **Known issues** are tagged by their signature with the same table `lab uat` uses: `#1341` (FS-P2's "Corporal Frost is known") and `#1343` (the login password box read back empty). `#1342` has no failure signature; it shows as an orphan `SGW.exe` and as relaunch counts.
-- **`-Once`** prints one snapshot and exits; with output redirected (a pipe or a file) the view prints one snapshot too, never the live loop. **`-Json`** implies `-Once` and prints one line for agents, under 500 characters for a two-lane batch and under 700 for five lanes, with empty, null and zero keys left out (except `passed` and `failed`):
+- **`--once`** prints one snapshot and exits; with output redirected (a pipe or a file) the view prints one snapshot too, never the live loop. **`--json`** implies `--once` and prints one line for agents, under 500 characters for a two-lane batch and under 700 for five lanes, with empty, null and zero keys left out (except `passed` and `failed`):
 
 ```json
 {"ok":true,"daemon":"up","batch":"batch-20261011-013906","state":"live","section":"first-session","runs":"3/6","passed":1,"failed":2,"known":2,"last_failure":{"run":"default#2","why":"FS-01 BLOCKED: setup failed: lab_login: Login_PasswordEdit holds 0 ch...","issue":"#1343"},"lanes":{"default":"3/3 FS-P3 42s shot 5s","p2":"2/3 FS-02 3s"},"orphans":[63904],"relaunches":1,"login_retries":1}
 ```
 
 - **Read-only.** It takes no lease and asks the daemon only for `GET /status`, so it can run beside any batch or agent. Lease ids are redacted from everything it prints.
-- **Exit codes.** 0 a snapshot was printed or Ctrl+C ended the view; 1 the daemon is down and there is no batch; 2 usage; 3 a `-Once` read failed (a locked or denied batch folder or `labd.log`). Under `-Json`, 2 and 3 print `{"ok":false,"exit":N,"error":"..."}`. A frame taller than the window is cut, with a last line saying how many lines it hid. With stdin redirected, Ctrl+C is the shell's own and the exit is not 0; Ctrl+Break or closing the window leaves the alternate screen without restoring it.
-- **Test seams.** `-StatusFile <path>` reads the `/status` JSON from a file instead of the daemon (a file without the daemon's shape reads as the daemon down), and `-LogFile <path>` reads that file instead of `labd.log`. They exist for `test-watch.ps1` and for reading a saved snapshot; they are not in `lab help`.
+- **Exit codes.** 0 a snapshot was printed or `q`, `Esc` or Ctrl+C ended the view; 1 the daemon is down and there is no batch; 2 usage; 3 a `--once` read failed (a locked or denied batch folder or `labd.log`). Under `--json`, 2 and 3 print `{"ok":false,"exit":N,"error":"..."}`. A frame taller than the window is cut, with a last line `… <n> more lines`. With stdin redirected the view reads no keys (`q` and `Esc` do nothing): Ctrl+C is the shell's own and the exit is not 0; Ctrl+Break or closing the window leaves the alternate screen without restoring it.
+- **Test seams.** `--status-file <path>` reads the `/status` JSON from a file instead of the daemon (a file without the daemon's shape reads as the daemon down), and `--log-file <path>` reads that file instead of `labd.log`. They exist for the tests in `crates/lab-cli/tests/` and for reading a saved snapshot; they are not in `lab help`.
 
-**`lab calibrate`.** It finds a pose again on the live client and proposes it as a spec diff, through `lab_uat_calibrate`; the how-to, the sweep and its score are in [Calibrate a row](automated-uat.md#calibrate-a-row).
+**`lab calibrate`.** It finds a pose again on the live client and proposes it as a spec diff, through `lab_uat_calibrate`; the how-to, the sweep and its score are in [Calibrate a row](automated-uat.md#calibrate-a-row). The PowerShell spellings (`-Pose`, `-BudgetMinutes`, `-Apply`, `-Json`) still work: `lab` rewrites them to the `--flag` forms.
 
-- **Poses.** With no `-Pose`, every pose a `client_world_click` step of the row names, in step order.
-- **Pre-flight** as `lab uat`: argument checks first (exit 2 whatever the daemon's state), then the daemon answers, the instance (`-Instance`, else the first free hosted one) is free, and no `SGW.exe` runs outside the lab (exit 3).
-- **`-Prepare FS-01,FS-02,...`** runs those rows first, in one `lab_uat_run` on the same instance, so the client stands where the row starts. A prepare row that does not PASS stops with exit 3 (`prepare row FS-P2 FAIL: ...`).
-- **`-BudgetMinutes`** bounds the whole sweep (default 15); the command's own call timeout is the budget plus 5 minutes.
-- **`-SpecsDir`** defaults to the checkout's `docs/guides/uat-specs`, as for `lab uat`.
-- **Output.** One line per pose (`frost: score 8312, confirmed 3/3, bearing 322.5 -> 330.0; diff <path>`, `... unchanged`, or `frost: no proposal: <reason> (best score 5100, confirmed 1/3)`), then the diff text unless `-Quiet`, then how to apply it. The field labels are `radius`, `bearing`, `pitch`, `yaw` and `zoom`, and an unset field reads `none`.
-- **`-Json`** prints one object under about 400 characters: `{ok, section, row, outcomes: [{pose, ok, score, confirmed, changed: {bearing: "322.5 -> 330.0"}, diff, reason}], applied}`, with `score`, `changed`, `diff`, `reason` (cut to 40 characters) and `applied` only when set. Errors are `{"ok":false,"exit":N,"error":"..."}`; a failed `-Apply` adds `run_dir`, `diff` and the outcomes (under about 700 characters, then `outcomes_cut: <n>`). The candidate list is never printed: it is `calibrate.jsonl` in the run folder.
-- **`-Apply`** runs `git apply` with the proposed diff in this checkout, and nothing else: it never stages or commits. It is refused with exit 2 when the spec file has uncommitted changes, staged or not, or is not tracked. It checks before the sweep (so a dirty spec costs no lab time) and again just before applying, on the file the diff names. A diff for a file outside `docs/guides/uat-specs/` or naming more than one file is not applied. Every `-Apply` error starts with the diff's path; the diff stays in the run folder.
+- **Poses.** With no `--pose`, every pose a `client_world_click` step of the row names, in step order.
+- **Pre-flight** as `lab uat`: argument checks first (exit 2 whatever the daemon's state), then the daemon answers, the instance (`--instance`, else the first free hosted one) is free, and no `SGW.exe` runs outside the lab (exit 3).
+- **`--prepare FS-01,FS-02,...`** runs those rows first, in one `lab_uat_run` on the same instance, so the client stands where the row starts. A prepare row that does not PASS stops with exit 3 (`prepare row FS-P2 FAIL: ...`).
+- **`--budget-minutes`** bounds the whole sweep (default 15); the command's own call timeout is the budget plus 5 minutes.
+- **`--specs-dir`** defaults to the checkout's `docs/guides/uat-specs`, as for `lab uat`.
+- **Output.** One line per pose (`frost: score 8312, confirmed 3/3, bearing 322.5 -> 330.0; diff <path>`, `... unchanged`, or `frost: no proposal: <reason> (best score 5100, confirmed 1/3)`), then the diff text unless `--quiet`, then how to apply it. The field labels are `radius`, `bearing`, `pitch`, `yaw` and `zoom`, and an unset field reads `none`. The fields of a changed pose print in the order of the daemon's JSON (its keys sorted): bearing, pitch, radius, yaw, zoom. On a terminal the lines are coloured (`✓ frost  score 8312 · confirmed 3/3 · bearing 322.5 → 330.0`, `· frost  unchanged`, `✗ frost  no proposal: <reason>`) and the diff prints with `+` lines green and `-` lines red; piped, or with `NO_COLOR` set, it is the plain text above.
+- **`--json`** prints one object under about 400 characters: `{ok, section, row, outcomes: [{pose, ok, score, confirmed, changed: {bearing: "322.5 -> 330.0"}, diff, reason}], applied}`, with `score`, `changed`, `diff`, `reason` (cut to 40 characters) and `applied` only when set. Errors are `{"ok":false,"exit":N,"error":"..."}`; a failed `--apply` adds `run_dir`, `diff` and the outcomes (under about 700 characters, then `outcomes_cut: <n>`). The candidate list is never printed: it is `calibrate.jsonl` in the run folder.
+- **`--apply`** runs `git apply` with the proposed diff in this checkout, and nothing else: it never stages or commits. It is refused with exit 2 when the spec file has uncommitted changes, staged or not, or is not tracked. It checks before the sweep (so a dirty spec costs no lab time) and again just before applying, on the file the diff names. A diff for a file outside `docs/guides/uat-specs/` or naming more than one file is not applied. Every `--apply` error starts with the diff's path; the diff stays in the run folder. The checkout is the one whose `docs/guides/uat-specs` `lab.exe` finds from its own folder or the current directory; with none found the apply is refused (exit 2).
 
 ```powershell
 lab calibrate first-session FS-P3
-lab calibrate first-session FS-P3 -Pose frost -Prepare FS-01,FS-02,FS-P1,FS-P2
-lab calibrate first-session FS-P3 -Pose frost -BudgetMinutes 8 -Apply
-lab calibrate first-session FS-P3 -Instance p2 -Json
+lab calibrate first-session FS-P3 --pose frost --prepare FS-01,FS-02,FS-P1,FS-P2
+lab calibrate first-session FS-P3 --pose frost --budget-minutes 8 --apply
+lab calibrate first-session FS-P3 --instance p2 --json
 ```
 
-**`lab golden`.** `record` turns the owner's rule, "golden only when five runs agree", into one command. It runs the rows `-Runs` times (5 to 20, default 5) through `lab uat` in fingerprint mode, one after another on one instance unless `-Leases` splits the runs evenly over more lanes. The lane brake is one failed run, because every run must pass. It then reads the run folders from the batch's `batch.jsonl` and calls `lab_golden_record`, which writes `<specs>/golden/<section>.json` only when every row passed in every run and the fingerprints agree exactly.
+**`lab golden`.** `record` turns the owner's rule, "golden only when five runs agree", into one command. It runs the rows `--runs` times (5 to 20, default 5) through `lab uat` in fingerprint mode, one after another on one instance unless `--leases` splits the runs evenly over more lanes. The lane brake is one failed run, because every run must pass. It then reads the run folders from the batch's `batch.jsonl` and calls `lab_golden_record`, which writes `<specs>/golden/<section>.json` only when every row passed in every run and the fingerprints agree exactly. It starts the batch by running `lab.exe`'s own `lab uat` with the fingerprint options. The PowerShell spellings (`-Runs 10`, `-Rebless`) still work.
 
-- **Build.** `-ServerVersion` (the server build's commit, 7 to 40 hex characters) is required: the runs record it, and the tool refuses runs without one.
-- **Spec folder.** `-SpecsDir` works as in `lab uat` (default: the checkout's `docs/guides/uat-specs`). It goes to the runs and to the tool, so a draft spec folder can be blessed too.
-- **Re-bless.** An existing golden is refused (exit 2) unless `-Rebless` is given. A re-bless needs fresh runs (none the old golden names as evidence) and keeps every row the old golden held.
+- **Build.** `--server-version` (the server build's commit, 7 to 40 hex characters) is required: the runs record it, and the tool refuses runs without one.
+- **Spec folder.** `--specs-dir` works as in `lab uat` (default: the checkout's `docs/guides/uat-specs`). It goes to the runs and to the tool, so a draft spec folder can be blessed too.
+- **Re-bless.** An existing golden is refused (exit 2) unless `--rebless` is given. A re-bless needs fresh runs (none the old golden names as evidence) and keeps every row the old golden held.
 - **While recording, don't call `lab_timeline` on the lab character.** It reads and drains the same packet tap, and a run with a drained tap can't be recorded.
-- **Output.** One line, `golden first-session: 7 rows, 312 events, 21456 bytes from 5 runs; <path>`, or under `-Json` one compact object: `{"ok":true,"exit":0,"path":...,"rows":7,"events":312,"bytes":21456,"runs":5}` or `{"ok":false,"exit":N,"code":...,"error":...,"batch":...}`. A refusal after the runs names the batch folder (`batch` under `-Json`), so the runs can be inspected. Each run's progress line from `lab uat` shows live on stderr, under `-Json` too, so a 25-minute batch is not silent.
+- **Output.** One line, `golden first-session: 7 rows, 312 events, 21456 bytes from 5 runs; <path>`, or under `--json` one compact object: `{"ok":true,"exit":0,"path":...,"rows":7,"events":312,"bytes":21456,"runs":5}` or `{"ok":false,"exit":N,"code":...,"error":...,"batch":...}`. A refusal after the runs names the batch folder (`batch` under `--json`), so the runs can be inspected. Each run's progress line from `lab uat` shows live on stderr, under `--json` too, so a 25-minute batch is not silent.
+- **Ctrl+C.** `record` handles it too and waits for its `lab uat` child, so no run is left going without its parent. The first press lets the run under way finish and the child ends with fewer runs; the second stops the child at once. Either way `record` records nothing and exits 130 (`interrupted by Ctrl+C; no golden recorded`, with the batch folder named); a third press ends both processes.
 
 `show` prints a committed golden (section, rows, total ordered events, server build, SGW.exe hash, recorded time and evidence run ids) and needs no daemon.
 
 ```powershell
-lab golden record first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -ServerVersion 1a2b3c4
-lab golden record first-session -Runs 10 -Leases 2 -ServerVersion 1a2b3c4 -Rebless -Json
+lab golden record first-session --rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 --server-version 1a2b3c4
+lab golden record first-session --runs 10 --leases 2 --server-version 1a2b3c4 --rebless --json
 lab golden show first-session
 ```
 
 The `first-session` SGU rows are not calibrated yet, so name the Praxis rows as above.
 
-**`lab record`.** A person plays one instance by hand while the daemon records it, and the stop turns the recording into a draft spec under `<specs>\drafts\`. The how-to, what a draft holds, the `# TODO` convention and how a draft becomes a spec are in [Recording a draft](automated-uat.md#recording-a-draft); the decisions are in the [lab-record ledger](../analysis/lab-record/README.md).
+**`lab record`.** A person plays one instance by hand while the daemon records it, and the stop turns the recording into a draft spec under `<specs>\drafts\`. The how-to, what a draft holds, the `# TODO` convention and how a draft becomes a spec are in [Recording a draft](automated-uat.md#recording-a-draft); the decisions are in the [lab-record ledger](../analysis/lab-record/README.md). The PowerShell spellings (`-Instance p2`) still work: `lab.exe` rewrites them.
 
-- **The lease.** `start` takes a lease of its own on the instance (owner `lab_record`, purpose `recording a human: <section>`) and holds it until the recorder ends (the stop, `-MaxMinutes`, a write failure, the size cap, or a takeover), so no agent drives the client a person is playing. It is refused (exit 4) while anyone holds the lab or a recording already runs there. A forced takeover ends the recording (`lease_lost`), as does `-MaxMinutes`.
+- **The lease.** `start` takes a lease of its own on the instance (owner `lab_record`, purpose `recording a human: <section>`) and holds it until the recorder ends (the stop, `--max-minutes`, a write failure, the size cap, or a takeover), so no agent drives the client a person is playing. It is refused (exit 4) while anyone holds the lab or a recording already runs there. A forced takeover ends the recording (`lease_lost`), as does `--max-minutes`.
 - **Don't call `lab_timeline` on a recording instance** (D-LR2). It reads and drains the player's packet tap, which the recorder owns, so the rows it took never reach the recording. Nothing refuses the call yet.
-- **The state file.** `start` saves `{recording_id, instance, specs_dir}` to `%LOCALAPPDATA%\cimmeria-lab\record-<instance>.json`, so `stop` needs no id. A failed stop keeps it and the recording stays on the daemon, so run `stop` again (with other options if they were the problem). When the file is gone, `lab record status` shows the id and `stop -RecordingId <id>` stops it.
-- **Arguments** are checked before the daemon is asked (exit 2 whatever its state): the section is `^[a-z0-9][a-z0-9-]{0,47}$`, the instance `[A-Za-z0-9_-]`, `-CharacterExpr` `^[A-Za-z0-9 _${}]{1,64}$`, `-MaxMinutes` 1 to 30. `transform` takes no `-Instance`: it reads a folder on disk.
-- **`-Profile` and `-CharacterExpr` exclude each other**, but that is the daemon's check, not the CLI's: the daemon refuses the pair when it transforms, so `stop` fails with exit 1 and the recording stays (stop again with one of them). `-Profile` also needs a named section that defines it.
-- **Output.** Without `-Json`, `start` and `status` print one line on stdout. `stop` and `transform` print the draft's path, its counts and the raw log's path, plus an `ended` line when the recorder ended with an error; a `-NoDraft` stop prints `stopped; N tick(s), no draft` and the raw log's path. A failure prints the error on stderr. `-Json` prints one compact object under 400 characters with no nulls or empty values: `{ok, recording_id, instance, section}` for start; `{ok, recording, recording_id, instance, section, age_s, ticks, anchors}` for status; `{ok, draft, rows, steps, todo, dropped, raw}` for stop and transform, where `draft` is a file name and `raw` the recording id (no answer carries a path), plus `ended` when the recorder stopped early with an error; `{ok, recording_id, ticks, raw}` for a `-NoDraft` stop. A failure is `{"ok":false,"exit":N,"error":"..."}`, printed as the daemon returned it. Lease ids never print.
+- **The state file.** `start` saves `{recording_id, instance, specs_dir}` to `%LOCALAPPDATA%\cimmeria-lab\record-<instance>.json`, so `stop` needs no id. A failed stop keeps it and the recording stays on the daemon, so run `stop` again (with other options if they were the problem). When the file is gone, `lab record status` shows the id and `stop --recording-id <id>` stops it.
+- **Arguments** are checked before the daemon is asked (exit 2 whatever its state): the section is `^[a-z0-9][a-z0-9-]{0,47}$`, the instance `[A-Za-z0-9_-]`, `--character-expr` `^[A-Za-z0-9 _${}]{1,64}$`, `--max-minutes` 1 to 30. `transform` takes no `--instance`: it reads a folder on disk.
+- **`--profile` and `--character-expr` exclude each other**, but that is the daemon's check, not the CLI's: the daemon refuses the pair when it transforms, so `stop` fails with exit 1 and the recording stays (stop again with one of them). `--profile` also needs a named section that defines it.
+- **Output.** Without `--json`, `start` and `status` print one line on stdout. `stop` and `transform` print the draft's path, its counts and the raw log's path, plus an `ended` line when the recorder ended with an error; a `--no-draft` stop prints `stopped; N tick(s), no draft` and the raw log's path. A failure prints the error on stderr. `--json` prints one compact object under 400 characters with no nulls or empty values: `{ok, recording_id, instance, section}` for start; `{ok, recording, recording_id, instance, section, age_s, ticks, anchors}` for status; `{ok, draft, rows, steps, todo, dropped, raw}` for stop and transform, where `draft` is a file name and `raw` the recording id (no answer carries a path), plus `ended` when the recorder stopped early with an error; `{ok, recording_id, ticks, raw}` for a `--no-draft` stop. A failure is `{"ok":false,"exit":N,"error":"..."}`, printed as the daemon returned it. Lease ids never print.
 - **Exit codes** (D-LR16, amended in review): 0 ok; 1 the tool failed; 2 usage, or refused with nothing changed; 3 no daemon; 4 the instance is busy. The tools answer 4 themselves, so the CLI passes it straight through rather than reading it from the text.
 
 ```powershell
-lab record start first-session -Instance p2
-lab record status -Instance p2
-lab record stop -Instance p2 -CharacterExpr 'Px${run_id}'
-lab record transform 20261012-143000-p2 -Section first-session -Json
+lab record start first-session --instance p2
+lab record status --instance p2
+lab record stop --instance p2 --character-expr 'Px${run_id}'
+lab record transform 20261012-143000-p2 --section first-session --json
 ```
 
 **`lab env`.** With no verb it prints every line of `labd.env`. Values print
-masked: a key containing `TOKEN`, `SECRET`, `PASSWORD`, `KEY`, `AUTH` or
+masked: a key containing `TOKEN`, `SECRET`, `PASS` (so `PASSWORD` too), `PWD`, `KEY`, `AUTH` or
 `CREDENTIAL` shows `<redacted>`, so do bearer and 64-hex tokens, a URL's
 user, password and host show as `<host>`, and a line that is neither
 `KEY=VALUE` nor a comment shows `<unparsed line>`. The masking is display
 only: `set` and `unset` write values back unchanged. Keys are upper case
 (`^[A-Z][A-Z0-9_]*$`) and match existing lines ignoring case, as the daemon
 reads them. `set` replaces the key's line in place or appends it; `unset`
-removes it; comments and order stay. Before writing, `labd.env` is copied
+removes it; comments and order stay. A `labd.env` that is not valid UTF-8 is not rewritten (nothing is changed), and a failed write leaves no `labd.env.tmp` behind. Before writing, `labd.env` is copied
 to `labd.env.bak-<yyyyMMdd-HHmmss>`, and the new file replaces the old one
-in a single move. The daemon reads `labd.env` only when it starts, so a
+in a single move, and `set` and `unset` print the backup's path. The daemon reads `labd.env` only when it starts, so a
 change needs `lab restart`. Two value rules:
 
-- a value that starts with `-` must be written `-Value:<value>`, or
-  PowerShell reads it as a parameter name: `lab env set SOME_FLAGS -Value:-x`;
+- a value that starts with `-` must be written `--value=<value>`, or `lab`
+  reads it as a flag: `lab env set SOME_FLAGS --value=-x` (`-Value:-x` works too);
 - a value with leading or trailing spaces is refused, because `labd.env`
   lines are trimmed when read.
 
 **`lab clients stop`.** It stops only clients whose instance holds no lease,
 because a leased client belongs to the agent driving it (D-LC5). A leased one
-is refused, naming the holder and purpose. `-Force` stops it anyway, but
-only with a named instance: `lab clients stop all -Force` exits 2 before
-asking the daemon anything. The holder loses the client, and its watchdog
-may relaunch it. The pid comes from the daemon's `/status`, and only a
-process named `SGW` is touched: the command asks its window to close and
-force-stops it after 8 seconds.
+is refused, naming the holder and purpose. `--force` (`-Force` works too)
+stops it anyway, but only with a named instance: `lab clients stop all --force`
+exits 2 before asking the daemon anything. The holder loses the client, and
+its watchdog may relaunch it. The pid comes from the daemon's `/status`, and
+only a process whose image is `SGW.exe` is touched: `lab.exe` posts
+`WM_CLOSE` to its windows and force-stops it after 8 seconds. Instance names
+match without regard to case. Right before each stop it reads `/status` again: a client relaunched with another pid since the first read is not stopped (exit 4), one a session leased in the meantime is refused (exit 3, unless `--force`), and a second read that fails stops nothing (exit 4). A lease whose `held` is not JSON `false` counts as held.
 
 **`lab doctor`.** Read-only; the token is only ever reported as set or not.
 
@@ -1299,31 +1302,29 @@ force-stops it after 8 seconds.
 | Each instance's account file exists | WARN (`lab instances init`) |
 | Each instance's profile is seeded | WARN |
 | No `SGW.exe` runs that `/status` doesn't list | WARN, naming the pids |
-| `bin\cimmeria-lab.exe` and the daemon's `labd\cimmeria-lab.exe` have the same SHA-256 | WARN (`lab restart`) |
-| The copy's `VERSION` has the same `tools/lab` as `origin/main`, compared by content (`git diff --quiet <VERSION> origin/main -- tools/lab`); only inside a Cimmeria checkout | WARN (`lab setup`) |
+| `bin\cimmeria-lab.exe` and the daemon's `labd\cimmeria-lab.exe` are the same file, byte for byte | WARN (`lab restart`) |
+| The copy's `VERSION` has the same `tools/lab` as `origin/main`, compared by content (`git diff --quiet <VERSION> origin/main -- tools/lab`); outside a Cimmeria checkout it is skipped and reported as WARN | WARN (`lab setup`) |
+| `lab.exe` and the installed CLI scripts (`cli\cli\VERSION`) come from the same build commit (`lab install` stamps `lab.exe`; a dev build has no stamp) | WARN (`lab install`) |
 
-The last check compares content, not ancestry: PRs are squash-merged, so
+The version check compares content, not ancestry: PRs are squash-merged, so
 the commit of a worktree you installed from never becomes an ancestor of
 `origin/main`, even after it merges. It uses your last fetch.
+
+`lab doctor` is native in `lab.exe` and takes no flags; it runs eleven checks. The task check runs `schtasks /Query /TN CimmeriaLabDaemon`, and the `SGW.exe` check reads the process list directly.
 
 **Where things live**, all under `%LOCALAPPDATA%\cimmeria-lab\`:
 
 | Path | What it is |
 |---|---|
-| `bin\lab.cmd` | the shim on your `PATH` |
-| `cli\lab.ps1`, `cli\cli\*.ps1` | the installed dispatcher and commands |
-| `cli\daemon.ps1`, `cli\instances.ps1`, `cli\labd-lib.ps1` | the scripts the commands run |
+| `bin\lab.exe` | the command: built and copied by `lab install` (or `tools/lab/install.ps1`) and found through your user `PATH`; there is no `lab.cmd` shim |
+| `bin\installed-from.txt` | the source commit of the last install |
+| `cli\cli\*.ps1` | the PowerShell behind `lab install`, `lab setup` and `lab local-setup` |
+| `cli\daemon.ps1`, `cli\instances.ps1`, `cli\labd-lib.ps1` | the scripts `lab start`, `stop`, `restart` and `instances` run |
 | `cli\cli\VERSION` | the commit the copy came from |
 
-The dispatcher is [`tools/lab/lab.ps1`](../../tools/lab/lab.ps1). A command
-is a file `tools/lab/cli/<name>.ps1`, so adding one never edits the
-dispatcher; `common.ps1`, `test-*.ps1` and `*-lib.ps1` are not commands.
-Named flags reach the command as flags, and a command that ends without
-`exit` reads as success. The tests are `tools/lab/cli/test-*.ps1`, run with
-`pwsh -NoProfile -File`. `CIMMERIA_LAB_HOME` points the CLI at another lab
-home for those tests only: `daemon.ps1` ignores it, so with it set,
-`lab status` would read a different `labd.pid` than the one `lab restart`
-acts on.
+Every command is a subcommand of `lab.exe` ([`crates/lab-cli`](../../crates/lab-cli/)); `lab start`, `stop`, `restart`, `instances`, `install`, `setup` and `local-setup` run the scripts above with your flags in PowerShell form (`--force` becomes `-Force`) and return the script's exit code (255 when it has none; 1 with a message when `pwsh` or the script is missing). There is no generic fallback: a command that is not one of these seven never starts PowerShell, except `lab completions powershell --install`, which runs `pwsh` once to find `$PROFILE`. The script tests are `tools/lab/cli/test-*.ps1`, run with `pwsh -NoProfile -File`. `CIMMERIA_LAB_HOME` points `lab.exe` at another lab home for tests only: `daemon.ps1` ignores it, so with it set, `lab status` would read a different `labd.pid` than the one `lab restart` acts on. `CIMMERIA_LAB_CLI_DIR` (another scripts folder) and `CIMMERIA_LAB_TEST_SGW_PIDS` (a fixed `SGW.exe` list) are test seams too and count only while `CIMMERIA_LAB_HOME` is set; on their own they change nothing. When `lab.exe` runs a script it uses `%ProgramFiles%\PowerShell\7\pwsh.exe` if that file exists, else `pwsh` from the `PATH`.
+
+`lab.exe` sends the bearer token only to a loopback address. The address comes from `bind` in `labd.pid`: `127.0.0.1:<port>`, `[::1]:<port>` or `localhost:<port>` is used, anything else (another IP, a host name, a URL with a user part, port 0) is ignored and the default `127.0.0.1:8779` is used. It uses no proxy and follows no redirects.
 
 ## The shared daemon (`cimmeria-lab --http`)
 
