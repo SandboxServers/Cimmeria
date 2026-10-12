@@ -1,9 +1,32 @@
 //! `lab calibrate`: recalibrate a row's poses by hover and propose a spec diff.
-//! LX-02 gives it its clap arguments and help page; the body is still the
-//! PowerShell fallback.
+//!
+//! LX-12a holds the pure half: [`outcome`] (what the daemon returns, the human
+//! line, the `--json` objects, argument checks), [`render`] (fancy mode),
+//! [`apply`] (`--apply`'s git flow) and [`heal`] (what `lab uat --heal` calls).
+//! LX-12b adds [`preflight`] (the checks before anything is driven) and
+//! [`flow`] (the whole command), which [`run`] drives.
 
+pub mod apply;
+pub mod flow;
+pub mod heal;
+pub mod outcome;
+pub mod preflight;
+pub mod render;
+
+pub use apply::{apply_diff, spec_dirty, ApplyResult};
+pub use flow::{execute, Deps};
+pub use heal::{heal_file_name, invoke_heal, HealHint, HealJob, HealRecord};
+pub use outcome::{call_error_text, format_call_error, format_line, outcomes_from, Outcome};
+
+use std::time::Duration;
+
+use serde_json::Value;
+
+use crate::commands::doctor::system::sgw_pids;
 use crate::commands::Ctx;
-use crate::fallback;
+use crate::daemon::mcp::{McpClient, McpError};
+use crate::daemon::paths;
+use crate::daemon::status::Endpoint;
 
 const LONG: &str = concat!(
     "Calls lab_uat_calibrate on the shared lab daemon: for each pose a client_world_click step of the row names (or only --pose), it sweeps stand-off radii, bearings and camera angles around the target, scores each by hover, confirms the winner three times, and writes the proposed pose line as a diff in a new UAT run folder (with calibrate.jsonl, one line per probe). The spec file itself is never written; nothing is committed.",
@@ -59,10 +82,33 @@ pub struct Args {
     pub quiet: bool,
 }
 
-/// Runs `lab calibrate` (still the PowerShell fallback).
+/// Runs `lab calibrate` and returns its exit code: 0 every pose has a
+/// proposal or is unchanged, 1 a pose found none, 2 usage or `--apply`
+/// refused or failed, 3 the pre-flight, a prepare row or the call failed.
 pub fn run(args: &Args, ctx: &Ctx) -> u8 {
-    let _ = args;
-    fallback::run(ctx)
+    let ep = Endpoint::discover();
+    let specs = paths::default_specs_dir();
+    let repo = specs.as_deref().and_then(preflight::repo_root_from_specs);
+    let specs = specs.map(|p| p.display().to_string());
+    // One MCP session per call, closed after it (the PowerShell did the same).
+    let call_ep = ep.clone();
+    let mut call = move |name: &str, call_args: Value, wait: Duration| -> Result<Value, McpError> {
+        let mut client = McpClient::connect(&call_ep)?;
+        let reply = client.call_tool(name, call_args, wait);
+        client.close();
+        reply
+    };
+    let sgw = sgw_pids;
+    let mut deps = Deps {
+        ep: &ep,
+        repo,
+        specs,
+        sgw_pids: &sgw,
+        call: &mut call,
+    };
+    let mut out = anstream::stdout();
+    let mut err = anstream::stderr();
+    execute(args, &ctx.ui, &mut deps, &mut out, &mut err)
 }
 
 #[cfg(test)]
