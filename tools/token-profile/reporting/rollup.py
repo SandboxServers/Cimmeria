@@ -39,12 +39,10 @@ def rollup(records, regime):
     pure = [r for r in records.values() if r.get("regime") == regime]
     costs = [r.get("cost") or {} for r in pure]
     prs = [r.get("prs") or {} for r in pure]
-    accepted = [r.get("accepted") or {} for r in pure]
     per_pr = [e for p in prs for e in (p.get("per_pr") or [])]
 
     total_usd = _sum(c.get("total_usd") for c in costs)
     merged_prs = _sum(p.get("merged") for p in prs)
-    accepted_packets = _sum(a.get("packets") for a in accepted)
 
     out = {"campaigns": len(pure)}
     _put(out, "prs", _sum(p.get("count") for p in prs))
@@ -54,7 +52,11 @@ def rollup(records, regime):
     usd = distribution([e.get("usd") for e in per_pr if e.get("merged")])
     _put(out, "cost_per_pr", {"p50": usd["p50"], "mean": usd["mean"]} if usd["n"] else None)
 
-    _put(out, "cost_per_accepted_usd", _ratio(total_usd, accepted_packets))
+    # The numerator and the denominator cover the same campaigns: those with a packet table.
+    paid = [r for r in pure if ((r.get("accepted") or {}).get("packets") or 0) > 0]
+    paid_usd = _sum((r.get("cost") or {}).get("total_usd") for r in paid)
+    paid_packets = _sum((r.get("accepted") or {}).get("packets") for r in paid)
+    _put(out, "cost_per_accepted_usd", _ratio(paid_usd, paid_packets), "no campaign has an accepted packet table")
     escaped = [r.get("escaped_defects") or {} for r in pure]
     _put(out, "escaped_defects_per_merged_pr", _ratio(_sum(e.get("count") for e in escaped), merged_prs, 2))
     _put(out, "ci_first_attempt_rate", _share(e.get("ci_first_pass") for e in per_pr))

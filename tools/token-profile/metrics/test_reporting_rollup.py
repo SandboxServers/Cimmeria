@@ -109,6 +109,26 @@ class RollupCostTest(unittest.TestCase):
         self.assertEqual(haiku["total_usd"], 4.0)
         self.assertEqual(haiku["cost_share_by_tier"], {"haiku": 0.75, "sonnet": 0.25})
 
+    def test_cost_per_accepted_divides_only_by_campaigns_with_packets(self):
+        # B's 50 USD has no packet table, so it must not sit in the numerator either
+        records = {
+            "old-a": {"regime": "old", "cost": {"total_usd": 100.0}, "accepted": {"packets": 4}},
+            "old-b": {
+                "regime": "old",
+                "cost": {"total_usd": 50.0},
+                "accepted": {"packets": 0, "accepted_gap": "no packet table, used merged PRs"},
+            },
+        }
+        self.assertEqual(rollup(records, "old")["cost_per_accepted_usd"], 25.0)
+
+    def test_cost_per_accepted_is_none_without_any_packets(self):
+        records = {
+            "old-a": {"regime": "old", "cost": {"total_usd": 100.0}, "accepted": {"packets": 0}},
+        }
+        out = rollup(records, "old")
+        self.assertIsNone(out["cost_per_accepted_usd"])
+        self.assertIn("cost_per_accepted_usd_gap", out)
+
     def test_cost_per_pr_only_merged(self):
         old = rollup(_records(), "old")
         # merged old PRs cost 3, 5 and 4; the unmerged 2 and 50 are ignored
