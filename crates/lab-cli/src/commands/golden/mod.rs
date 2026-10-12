@@ -3,7 +3,17 @@
 //! PowerShell fallback.
 
 use crate::commands::Ctx;
-use crate::fallback;
+use crate::daemon::paths;
+use crate::daemon::status::Endpoint;
+
+mod batch;
+mod check;
+mod exec;
+mod reply;
+mod summary;
+
+pub use batch::ChildOutput;
+pub use exec::{execute, Deps};
 
 const LONG: &str = concat!(
     "record runs the rows --runs times in fingerprint mode through lab uat (serial on one instance by default; --leases up to the run count splits them over that many lanes), then records the section's golden from those runs with lab_golden_record on the shared lab daemon. A golden is recorded only from five or more fresh runs that all pass every row and agree exactly, so --runs is 5 to 20, and the lane brake is one failed run. --server-version names the server build the runs drove; the tool refuses runs without one. The golden goes to <specs>/golden/<section>.json (--specs-dir, default the checkout's docs/guides/uat-specs). An existing golden is replaced only with --rebless, from fresh runs and with every row it held.",
@@ -56,10 +66,17 @@ pub struct Args {
     pub json: bool,
 }
 
-/// Runs `lab golden` (still the PowerShell fallback).
+/// Runs `lab golden`: `record` drives this program's own `lab uat` and then
+/// asks the daemon to write the golden; `show` reads a committed golden.
 pub fn run(args: &Args, ctx: &Ctx) -> u8 {
-    let _ = args;
-    fallback::run(ctx)
+    let deps = Deps {
+        run_uat: &batch::spawn_uat,
+        endpoint: Endpoint::discover(),
+        default_specs: paths::default_specs_dir(),
+    };
+    let mut out = anstream::stdout();
+    let mut err = anstream::stderr();
+    execute(args, &ctx.ui, &deps, &mut out, &mut err)
 }
 
 #[cfg(test)]
