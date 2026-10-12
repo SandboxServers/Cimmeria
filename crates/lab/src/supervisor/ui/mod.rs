@@ -18,6 +18,7 @@
 //! verdict can refuse a pass that was not driven natively.
 
 pub mod chat_log;
+pub mod click_checked;
 pub mod drag_drop;
 pub mod inventory;
 pub mod item_action;
@@ -207,6 +208,34 @@ impl Supervisor {
             // double-click timeout (0.33 s by default) at the same spot.
             tokio::time::sleep(Duration::from_millis(60)).await;
             self.post_button(button, "click", at, None).await?;
+        }
+        Ok(placed)
+    }
+
+    /// [`Self::click_at`] through CEGUI's own button injectors instead of
+    /// posted window messages: cursor onto `(x, y)` (native `MouseMove`),
+    /// then `injectMouseButtonDown/Up` at the CEGUI cursor. N1
+    /// (`NativeLevel::NativeCegui`). Errors when CEGUI did not take the press.
+    pub async fn click_at_native(
+        &self,
+        x: i32,
+        y: i32,
+        button: usize,
+        double: bool,
+    ) -> Result<CursorPlaced, String> {
+        let b = crate::supervisor::cegui_native::cegui_button(button)?;
+        let placed = self.place_cursor(x, y).await?;
+        let cegui = self.cegui().await?;
+        // A frame for the hover to register before the press.
+        tokio::time::sleep(Duration::from_millis(40)).await;
+        let hold = Duration::from_millis(super::input::DEFAULT_HOLD_MS);
+        for i in 0..(if double { 2 } else { 1 }) {
+            if i > 0 {
+                tokio::time::sleep(Duration::from_millis(60)).await;
+            }
+            if !cegui.click(b, hold).await? {
+                return Err(format!("CEGUI did not take the press at ({x}, {y})"));
+            }
         }
         Ok(placed)
     }
