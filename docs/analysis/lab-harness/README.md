@@ -50,6 +50,7 @@ Coordinator defaults, taken from the expanders' recommendations; the owner can r
 | D-LH12 | A server list with one row selects it when the requested name is missing | Accepted | Several rows with no match stay an error |
 | D-LH13 | With `expect_change:false` the item-action escalation stops after the first native click | Accepted | A negative check must not send extra use attempts |
 | D-LH14 | `client_vendor_buy` reports `double_buy_risk` when a Buy retry ran after a silent click | Accepted | Same as item use (D-LH1); a slow server can land the first click late |
+| D-LH15 | The event keeper ticks only while the client is in the world | Accepted | A tick holds the bridge mutex up to 3 s; during load it would contend with the watchdog heartbeat |
 
 ## Packets
 

@@ -18,7 +18,7 @@ use serde_json::json;
 use tracing::Instrument;
 
 use super::{ingest_bridge, lua_rings, BRIDGE_DRAIN_MAX};
-use crate::supervisor::Supervisor;
+use crate::supervisor::{LoginState, Supervisor};
 
 /// Gap between keeper ticks.
 pub const KEEPER_TICK: Duration = Duration::from_secs(1);
@@ -62,6 +62,26 @@ impl Supervisor {
         Ok(())
     }
 
+    /// One keeper loop pass for `pid`: `false` when the launch is gone and
+    /// the keeper should end. It ticks only while the client is in the world
+    /// (D-LH15): a tick can hold the bridge mutex up to [`TICK_TIMEOUT`], and
+    /// during a load that contends with the watchdog heartbeat. Wrappers
+    /// are re-armed by the first tick after the state returns to in-world.
+    pub(in crate::supervisor) async fn keeper_pass(&self, pid: u32) -> bool {
+        let in_world = {
+            let st = self.state.lock().await;
+            if st.pid != Some(pid) {
+                return false;
+            }
+            st.login == LoginState::InWorld
+        };
+        if in_world {
+            // A failed or slow tick is ignored: the next one retries.
+            let _ = tokio::time::timeout(TICK_TIMEOUT, self.keeper_tick()).await;
+        }
+        true
+    }
+
     /// Spawn the keeper for `pid`; it ends when the launch's pid changes.
     pub(in crate::supervisor) fn spawn_keeper(&self, pid: u32) {
         if !enabled_from(std::env::var(KEEPER_ENV).ok().as_deref()) {
@@ -73,11 +93,9 @@ impl Supervisor {
             async move {
                 loop {
                     tokio::time::sleep(KEEPER_TICK).await;
-                    if this.state.lock().await.pid != Some(pid) {
+                    if !this.keeper_pass(pid).await {
                         return;
                     }
-                    // A failed or slow tick is ignored: the next one retries.
-                    let _ = tokio::time::timeout(TICK_TIMEOUT, this.keeper_tick()).await;
                 }
             }
             .instrument(span),
@@ -165,6 +183,41 @@ mod tests {
         assert_eq!(out["dropped"], 4);
         let again = sup.events_read(None).await.unwrap();
         assert_eq!(again["dropped"], 0);
+    }
+
+    /// D-LH15: no bridge call while the client is loading or not in the
+    /// world; ticks (and the wrapper re-arm) resume once it is in world.
+    #[tokio::test]
+    async fn the_keeper_ticks_only_while_in_world() {
+        let calls = Arc::new(Mutex::new(Vec::<String>::new()));
+        let c2 = calls.clone();
+        let r: Responder = Arc::new(move |method, params| {
+            c2.lock().unwrap().push(method.to_string());
+            match method {
+                "events_read" => Ok(json!({ "returned": 0, "dropped": 0, "events": [] })),
+                "lua_eval" if is_ring_pump(params) => Ok(empty_rings()),
+                other => Err(format!("unexpected {other}")),
+            }
+        });
+        let sup = fake_bridge::supervisor(r).await;
+        sup.state.lock().await.pid = Some(77);
+        for s in [
+            LoginState::NotStarted,
+            LoginState::LoggingIn,
+            LoginState::CharSelect,
+            LoginState::Failed,
+            LoginState::Crashed,
+        ] {
+            sup.set_login_state(s).await;
+            assert!(sup.keeper_pass(77).await, "the keeper lives while waiting");
+            assert!(calls.lock().unwrap().is_empty(), "ticked in {s:?}");
+        }
+        sup.set_login_state(LoginState::InWorld).await;
+        assert!(sup.keeper_pass(77).await);
+        assert_eq!(*calls.lock().unwrap(), ["events_read", "lua_eval"]);
+        // A different pid ends the keeper without a call.
+        assert!(!sup.keeper_pass(78).await);
+        assert_eq!(calls.lock().unwrap().len(), 2);
     }
 
     #[test]

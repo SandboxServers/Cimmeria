@@ -86,15 +86,17 @@ pub struct IdleWait {
 }
 
 /// Poll the lane at `dir` every `poll` until no slot is held or `max`
-/// has passed.
+/// has passed. `on_poll` runs before every look at the lane.
 pub async fn wait_for_idle(
     dir: &Path,
     max: Duration,
     poll: Duration,
     is_alive: impl Fn(u32) -> bool,
+    mut on_poll: impl FnMut(),
 ) -> IdleWait {
     let start = Instant::now();
     loop {
+        on_poll();
         let busy = busy_slots(dir, &is_alive);
         let waited = start.elapsed();
         if busy.is_empty() || waited >= max {
@@ -117,7 +119,13 @@ pub async fn wait_before_launch(cause: &'static str) {
     ) else {
         return;
     };
-    let w = wait_for_idle(&dir, max, POLL, process::is_alive).await;
+    // The wait is up to 90 s (600 s by env) with no tool call in it, and a
+    // lease lasts as little as 30 s: renew it at every poll, so a short
+    // lease cannot lapse here and fail the launch it is waiting for.
+    let w = wait_for_idle(&dir, max, POLL, process::is_alive, || {
+        let _ = crate::lease::permit::ensure("launch wait");
+    })
+    .await;
     if w.busy.is_empty() {
         if !w.waited.is_zero() {
             tracing::info!(
@@ -208,6 +216,7 @@ mod tests {
             Duration::from_secs(20),
             Duration::from_secs(5),
             |_| true,
+            || {},
         )
         .await;
         assert_eq!(held.busy, vec!["slot.1 [job]"]);
@@ -223,9 +232,56 @@ mod tests {
             Duration::from_secs(60),
             Duration::from_secs(5),
             |_| true,
+            || {},
         )
         .await;
         assert!(freed.busy.is_empty());
         assert!(freed.waited >= Duration::from_secs(12) && freed.waited < Duration::from_secs(20));
+    }
+
+    /// A lease of the 30 s minimum is renewed by the wait's polls, so it
+    /// cannot lapse during a 90 s lane wait (without the renewal the
+    /// launch's own `permit::ensure` would refuse it).
+    #[tokio::test(start_paused = true)]
+    async fn polling_the_wait_renews_the_callers_lease() {
+        use crate::lease::{permit, AcquireRequest, LeaseBook};
+        use std::sync::Arc;
+
+        let t = tempfile::tempdir().unwrap();
+        slot(t.path(), "slot.1", &[("winpid", "1"), ("what", "job")]);
+        let book = Arc::new(LeaseBook::default());
+        let l = book
+            .acquire(AcquireRequest {
+                owner: "a".into(),
+                purpose: "p".into(),
+                ttl_s: Some(30),
+                force: false,
+                reason: None,
+            })
+            .unwrap();
+        // Age the lease to 10 s from expiry.
+        book.renew_at(&l.lease_id, Some(30), crate::supervisor::now_ms() - 20_000)
+            .unwrap();
+        let before = book.status()["lease"]["remaining_s"].as_i64().unwrap();
+        assert!(before <= 10, "{before}");
+        let p = permit::Permit::Lease {
+            book: book.clone(),
+            id: l.lease_id.clone(),
+        };
+        permit::scope(p, async {
+            wait_for_idle(
+                t.path(),
+                Duration::from_secs(10),
+                Duration::from_secs(5),
+                |_| true,
+                || {
+                    let _ = permit::ensure("launch wait");
+                },
+            )
+            .await
+        })
+        .await;
+        let after = book.status()["lease"]["remaining_s"].as_i64().unwrap();
+        assert!(after >= 29, "{after}");
     }
 }
