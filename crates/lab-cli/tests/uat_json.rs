@@ -1,6 +1,6 @@
 //! LX-17a: the `--json` summary object, byte for byte, and its size budgets.
-//! Ports the compact-JSON checks of the removed PowerShell test file and the JSON
-//! checks of the removed PowerShell test file.
+//! Ports the compact-JSON checks of the retired test-uat.ps1 and the JSON
+//! checks of test-uat-chaos.ps1.
 
 mod uat_support;
 

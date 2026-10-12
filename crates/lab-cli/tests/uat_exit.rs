@@ -1,7 +1,7 @@
 //! LX-17a: the exit code, and what `merge` hands it for golden and chaos
 //! batches (Step A2 replaced `exit_code`; the first four tests also exist in
-//! LX-16a and guard that the codes 0, 1 and 4 survived the replacement). Ports the exit-code checks of the removed PowerShell test file and
-//! the removed PowerShell test file.
+//! LX-16a and guard that the codes 0, 1 and 4 survived the replacement). Ports the exit-code checks of the retired test-uat.ps1 and
+//! test-uat-chaos.ps1.
 
 mod uat_support;
 

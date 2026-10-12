@@ -1,5 +1,5 @@
-//! LX-15: `lab uat` through the real binary. Ports the removed PowerShell test file's two
-//! "reaches the daemon" guards, which ran the removed PowerShell uat command with every daemon call stubbed.
+//! LX-15: `lab uat` through the real binary. Ports the retired test-uat-chaos.ps1's two
+//! "reaches the daemon" guards, which ran the retired uat.ps1 with every daemon call stubbed.
 //! Every call passes `--plan-only` (or `-PlanOnly`): a real run goes to the
 //! PowerShell script until LX-16b, and a test must never start that.
 
@@ -30,7 +30,7 @@ fn last_json(output: &Output) -> Value {
     serde_json::from_str(&line).unwrap_or_else(|e| panic!("not JSON ({e}): {stdout:?}"))
 }
 
-// the removed PowerShell test file: '-Chaos cpu -Leases 2 exits 2 before the daemon is asked';
+// test-uat-chaos.ps1: '-Chaos cpu -Leases 2 exits 2 before the daemon is asked';
 // the PowerShell spelling goes through argv::rewrite too
 #[test]
 fn chaos_cpu_with_two_leases_exits_2_in_either_spelling() {

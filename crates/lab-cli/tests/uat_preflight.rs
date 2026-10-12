@@ -1,6 +1,6 @@
 //! LX-15: the `lab uat` pre-flight with a stub /status server and a stub MCP
-//! call. Ports the plan, usage and -Chaos checks of the removed PowerShell test file
-//! and the removed PowerShell test file that reach the daemon. The `--plan-only` output and
+//! call. Ports the plan, usage and -Chaos checks of the retired test-uat.ps1
+//! and test-uat-chaos.ps1 that reach the daemon. The `--plan-only` output and
 //! the real-run hand-off are in uat_plan_only.rs.
 
 mod support;
@@ -19,7 +19,7 @@ use uat_preflight_support::{
 
 // ---- usage errors exit 2 before the daemon is asked ----
 
-// the removed PowerShell test file: 'argument checks need no daemon'; the removed PowerShell test file:
+// test-uat.ps1: 'argument checks need no daemon'; test-uat-chaos.ps1:
 // '-Chaos cpu -Leases 2 exits 2 before the daemon is asked'
 #[test]
 fn usage_errors_exit_2_before_the_daemon_is_asked() {
@@ -75,7 +75,7 @@ fn a_fancy_usage_error_leads_with_error() {
     assert_eq!(r.err, "error: --leases must be 1 to 5\n");
 }
 
-// ---- the golden check (the removed PowerShell test file) ----
+// ---- the golden check (test-uat-chaos.ps1) ----
 
 // '-Chaos with no golden exits 2 before the daemon is asked'
 #[test]
@@ -199,7 +199,7 @@ fn an_unreadable_golden_exits_2() {
     );
 }
 
-// ---- the request body (the removed PowerShell test file) ----
+// ---- the request body (test-uat-chaos.ps1) ----
 
 // 'two -Chaos values both reach the request body'; '-Chaos implies
 // -Fingerprint: the request asks for fingerprint capture (CH-09)'
@@ -293,7 +293,7 @@ fn a_relative_specs_dir_reaches_the_plan_call_absolute() {
     assert_eq!(r.calls[0].1["specs_dir"], json!(want));
 }
 
-// ---- the plan call's answer (the removed PowerShell test file) ----
+// ---- the plan call's answer (test-uat-chaos.ps1) ----
 
 // "the plan prints the runner's header in place of the typed one"
 #[test]
@@ -429,7 +429,7 @@ fn a_row_that_is_not_ready_exits_3() {
 
 // ---- instances and foreign clients ----
 
-// the removed PowerShell test file planning, through the daemon's /status: the first free instance,
+// test-uat.ps1 planning, through the daemon's /status: the first free instance,
 // a leased -Instance, an unknown one, the client cap
 #[test]
 fn the_lane_is_the_first_free_instance() {

@@ -426,7 +426,7 @@ fn without_batch_the_newest_batch_under_the_uat_root_is_shown() {
     assert_eq!(v["batch"], NEW_BATCH);
 }
 
-// 'the removed PowerShell watch command calls no /mcp tool and takes no lease' (the command is read-only)
+// 'watch.ps1 calls no /mcp tool and takes no lease' (the command is read-only)
 #[test]
 fn the_command_calls_no_mcp_tool_and_takes_no_lease() {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR"))

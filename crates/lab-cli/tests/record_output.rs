@@ -75,7 +75,7 @@ fn a_start_answer_stays_under_400() {
     assert!(compact_json(&o.body).chars().count() < 400);
 }
 
-// Check: 'the removed PowerShell record command -Json prints one failure line and exits 2'
+// Check: 'record.ps1 -Json prints one failure line and exits 2'
 #[test]
 fn record_json_prints_one_failure_line_and_exits_2() {
     let dir = TempDir::new().expect("temp dir");
