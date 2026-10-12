@@ -9,6 +9,7 @@ pub mod commands;
 pub mod daemon;
 pub mod fallback;
 pub mod help;
+pub mod log_filter;
 pub mod ui;
 
 use std::ffi::OsString;

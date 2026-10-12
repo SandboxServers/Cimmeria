@@ -253,7 +253,7 @@ pub fn dispatch(cmd: &Command, ctx: &Ctx) -> u8 {
         Command::Install(args) => install::run(args, ctx),
         Command::Setup(args) => setup::run(args, ctx),
         Command::LocalSetup(args) => local_setup::run(args, ctx),
-        Command::Version => version::run(),
+        Command::Version => version::run(ctx),
     }
 }
 
