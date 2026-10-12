@@ -61,6 +61,12 @@ def _packet_pattern(packet_id):
     return re.compile(r"(?<![a-z0-9])" + re.escape(packet_id.lower()).replace(r"\-", "-?") + r"(?![0-9])")
 
 
+def _named(texts, ids):
+    """The packet IDs the texts name. An ID that another named ID extends (TP-05 in TP-05b) names nothing of its own."""
+    found = {i for i in ids if any(_packet_pattern(i).search(text) for text in texts)}
+    return {i for i in found if not any(j != i and _packet_pattern(i).search(j.lower()) for j in found)}
+
+
 def packet_of_session(agent, worktree, branch_hint, ledger_rows, campaign):
     """The packet ID a worker session ran for, or None.
 
@@ -73,7 +79,7 @@ def packet_of_session(agent, worktree, branch_hint, ledger_rows, campaign):
         branch = branch[len(campaign) + 1:]
     tree = re.split(r"[\\/]", worktree or "")[-1]
     for texts in ((tree.lower(), branch.lower()), ((agent.get("name") or "").lower(),)):
-        found = {i for i in ids if any(_packet_pattern(i).search(text) for text in texts)}
+        found = _named(texts, ids)
         if len(found) == 1:
             return found.pop()
         if found:

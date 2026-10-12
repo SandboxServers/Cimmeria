@@ -161,6 +161,14 @@ class SessionMatchTest(unittest.TestCase):
             with self.subTest(worktree=worktree):
                 self.assertEqual(packets.packet_of_session(agent, worktree, None, self.ROWS, CAMPAIGN), expected)
 
+    def test_shorter_id_yields_to_the_longer_one_it_prefixes(self):
+        """`tp-05b` names TP-05b, not TP-05; `tp-05` names TP-05; `tp05b-fix` names TP-05b."""
+        agent = _agent("x", None, None)
+        rows = _row_ids("TP-05", "TP-05b")
+        for worktree, expected in (("tp-05b", "TP-05b"), ("tp-05", "TP-05"), ("tp05b-fix", "TP-05b")):
+            with self.subTest(worktree=worktree):
+                self.assertEqual(packets.packet_of_session(agent, worktree, None, rows, CAMPAIGN), expected)
+
     def test_branch_hint_strips_the_campaign_prefix(self):
         agent = _agent("x", None, None)
         self.assertEqual(packets.packet_of_session(agent, None, "lab-record/LR-02-stall-slug", _row_ids("LR-02"),
