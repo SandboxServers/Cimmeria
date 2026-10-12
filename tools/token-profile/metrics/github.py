@@ -16,7 +16,9 @@ import json
 import os
 import re
 import subprocess
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
@@ -96,9 +98,10 @@ def polite(run, cache_dir=None, stats=None):
     part way resumes from the answers it already has. A merge-queue list (`actions/runs`) and a check-runs answer
     with a run still in progress are never cached. Use a fresh cache dir for each run.
     `stats` ({gh_calls, cache_hits}) counts the work done: gh_calls counts gh invocations, not HTTP requests
-    (a --paginate call is several requests).
+    (a --paginate call is several requests). `call` may run in several threads at once: the counters are locked.
     """
     stats = stats if stats is not None else {"gh_calls": 0, "cache_hits": 0}
+    lock = threading.Lock()
 
     def call(args):
         cached = None
@@ -107,13 +110,15 @@ def polite(run, cache_dir=None, stats=None):
             cached = Path(cache_dir) / f"{key}.json"
             answer = _read_cached(cached)
             if answer is not None:
-                stats["cache_hits"] += 1
+                with lock:
+                    stats["cache_hits"] += 1
                 return answer
         for attempt in range(len(RETRY_WAITS_S) + 1):
             if attempt:
                 time.sleep(RETRY_WAITS_S[attempt - 1])
             time.sleep(PAUSE_S)
-            stats["gh_calls"] += 1
+            with lock:
+                stats["gh_calls"] += 1
             try:
                 result = run(args)
                 break
@@ -402,13 +407,14 @@ def escaped_defects(prs, issues, campaign_of):
 
 
 # -- the whole run -----------------------------------------------------------
-def collect(run, since, campaigns=None, max_prs=None, until=None, pr_map=None):
+def collect(run, since, campaigns=None, max_prs=None, until=None, pr_map=None, workers=1):
     """The github.json record: each PR's list fields, its CI and queue verdicts, and the escaped defects.
 
     The window is `since` (YYYY-MM-DD) up to `until` (an ISO timestamp, exclusive; no bound when None).
     A PR's campaign is its `pr_map` entry (the ledger's) when it has one, else its branch or title tag.
     An untagged PR stays untagged: it is never grouped into a campaign of its own.
     Only a tagged PR gets per-PR calls (commits, check-runs, files); `max_prs` caps how many of them do.
+    `workers` > 1 fetches the tagged PRs in parallel threads; the rows keep the PR order either way.
     An untagged PR's per-PR fields are None. The output carries numbers, campaign tags and verdicts only:
     no titles, bodies, branches or files.
     """
@@ -416,19 +422,28 @@ def collect(run, since, campaigns=None, max_prs=None, until=None, pr_map=None):
     issues = collect_issues(run, since, until)
     tags = {p["number"]: (pr_map or {}).get(p["number"]) or p["campaign"] for p in prs}
     queued = merge_queue_runs(run, since)
+
+    def trace(pr):
+        """The per-PR fields of a tagged PR: its commits, CI verdicts, code flag and merge-queue verdict."""
+        commits = head_commits(run, pr)
+        results = {c["sha"]: ci_result(run, c["sha"]) for c in commits}
+        return {"code_pr": code_pr(run, pr["number"]), "commits": commits,
+                "ci": ci_summary(pr, commits, results), "queue": queue_summary(queued.get(pr["number"], []))}
+
+    traced = [pr for pr in prs if tags[pr["number"]] is not None][:max_prs]
+    if workers > 1:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            details = list(pool.map(trace, traced))
+    else:
+        details = [trace(pr) for pr in traced]
+    by_number = {pr["number"]: d for pr, d in zip(traced, details)}
     rows = []
-    traced = 0
     for pr in prs:
         number = pr["number"]
         row = {"number": number, "campaign": tags[number], "merged": bool(pr["mergedAt"]),
                "createdAt": pr["createdAt"], "mergedAt": pr["mergedAt"],
                "code_pr": None, "commits": None, "ci": None, "queue": None}
-        if tags[number] is not None and (max_prs is None or traced < max_prs):
-            traced += 1
-            commits = head_commits(run, pr)
-            results = {c["sha"]: ci_result(run, c["sha"]) for c in commits}
-            row.update(code_pr=code_pr(run, number), commits=commits, ci=ci_summary(pr, commits, results),
-                       queue=queue_summary(queued.get(number, [])))
+        row.update(by_number.get(number, {}))
         rows.append(row)
     items = defect_items(prs, issues, lambda n: tags.get(n))
     return {"since": since, "until": until, "prs": rows, "untagged_prs": sum(t is None for t in tags.values()),

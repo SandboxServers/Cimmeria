@@ -341,6 +341,31 @@ class CliSmokeTest(unittest.TestCase):
         self.assertEqual(json.loads(out.getvalue())["escaped_defects"], {"lab-record": 2})
         self.assertNotIn("headRefName", json.dumps(record))
 
+    def test_four_workers_write_the_same_github_json_as_one(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rules = Path(tmp) / "campaigns.json"
+            rules.write_text(json.dumps({"lab-record": {"prefixes": ["lab/"]}}), encoding="utf-8")
+            texts = {}
+            for workers in ("1", "4"):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    code = main(["github", "--repo", ".", "--out", str(Path(tmp) / workers), "--from-json",
+                                 str(FIXTURES), "--campaigns", str(rules), "--workers", workers])
+                self.assertEqual(code, 0)
+                texts[workers] = (Path(tmp) / workers / "github.json").read_bytes()
+        self.assertTrue(any(r["ci"] for r in json.loads(texts["4"])["prs"]))
+        self.assertEqual(texts["4"], texts["1"])
+
+    def test_workers_count_the_same_gh_calls_and_cache_hits_as_one(self):
+        counts = {}
+        for workers in (1, 4):
+            stats = {"gh_calls": 0, "cache_hits": 0}
+            with tempfile.TemporaryDirectory() as tmp, mock.patch.object(gh.time, "sleep"):
+                run = gh.polite(gh.replay(FIXTURES), cache_dir=tmp, stats=stats)
+                gh.collect(run, "2026-09-21", Campaigns({"lab-record": {"prefixes": ["lab/"]}}), workers=workers)
+            counts[workers] = stats
+        self.assertGreater(counts[1]["gh_calls"], 0)
+        self.assertEqual(counts[4], counts[1])
+
 
 if __name__ == "__main__":
     unittest.main()
