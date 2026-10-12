@@ -438,6 +438,16 @@ fn a_setup_written_login_file_the_seed_lacks_is_matched_not_extra() {
     let found = classify_tree(folder.path(), &index);
     assert_eq!(class_of(&found, LOGIN), Classification::Matched);
 
+    // At another spelling it is a transform, reported at the rule's spelling.
+    let folded = LOGIN.replace("LoginInternal", "logininternal");
+    std::fs::remove_file(folder.path().join(LOGIN)).unwrap();
+    write_under(folder.path(), &folded, rendered.as_bytes());
+    let found = classify_tree(folder.path(), &index);
+    let login = found.iter().find(|d| d.path == LOGIN).unwrap();
+    assert_eq!(login.classification, Classification::KnownTransform);
+    assert_eq!(login.source_path.as_deref(), Some(folded.as_str()));
+    std::fs::remove_file(folder.path().join(&folded)).unwrap();
+
     // Any other bytes are not what setup writes, so the file stays extra.
     write_under(folder.path(), LOGIN, b"custom login");
     let found = classify_tree(folder.path(), &index);
