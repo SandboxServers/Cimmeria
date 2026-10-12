@@ -64,5 +64,11 @@ find real defects, all fixed in review batches A to D4b with a test each:
 - The replay test fixtures use overlay patches that do not read their inputs,
   so dropping the local copy of an intact input would not fail a test; the
   seed-collision case it fixed does.
+- Revert spot-checks (2026-10-12): removing the admission fix (a hard failure
+  on a file with no scan entry) or `keep_login` makes its test fail. Looking
+  the reviewed hash up by the folder's own spelling rather than the release
+  spelling is not separately guarded: with the release spelling, a file spelled
+  in another case is skipped from the reviewed-hash record, which only crash
+  recovery reads.
 - Index-driven incremental Update and Repair (D-AI14) is out of scope; an
   adopted folder's first game Update still needs the seed.
