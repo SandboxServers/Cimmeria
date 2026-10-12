@@ -66,8 +66,12 @@ def build_ledger(repo, git, pr_overrides=None):
         rows_by_campaign.setdefault(campaign, []).append(
             {"id": campaign, "title": "pr override", "status": "unknown", "status_raw": "", "prs": list(prs),
              "implementer": "other", "implementer_note": None, "escalated": False, "retry_reason": None,
-             "size": "", "wave": "", "depends": ""})
-        pr_map.update({pr: campaign for pr in prs})
+             "size": "", "wave": "", "depends": "", "override": True})
+        for pr in prs:
+            if pr in pr_map and pr_map[pr] != campaign:
+                conflicts.append({"pr": pr, "campaigns": sorted([pr_map.pop(pr), campaign])})
+            else:
+                pr_map[pr] = campaign
     return {
         "schema": "cimmeria-campaign-ledger/1",
         "campaigns": {name: {"packets": rows, "window": ledger.campaign_window(name, git)}
@@ -78,9 +82,13 @@ def build_ledger(repo, git, pr_overrides=None):
 
 
 def summary(result):
-    """Counts only: packets per campaign, packets with an unknown status, PRs cited by two campaigns."""
-    packets = [p for c in result["campaigns"].values() for p in c["packets"]]
-    return {"campaigns": {name: len(c["packets"]) for name, c in result["campaigns"].items()},
+    """Counts only: packets per campaign, packets with an unknown status, PRs cited by two campaigns.
+
+    A PR override is not a packet, so it counts nowhere here.
+    """
+    packets = [p for c in result["campaigns"].values() for p in c["packets"] if not p.get("override")]
+    return {"campaigns": {name: sum(not p.get("override") for p in c["packets"])
+                          for name, c in result["campaigns"].items()},
             "unknown_status": sum(p["status"] == "unknown" for p in packets),
             "conflicts": len(result["conflicts"])}
 
@@ -89,7 +97,7 @@ def run_ledger(args):
     """Write the ledger for `args.repo` to `args.out` and print its summary; the exit status is 0, or 2 on an error."""
     failures = []
     try:
-        pr_overrides = registry.load_config().get("pr_overrides", {})
+        pr_overrides = registry.load_config(args.config).get("pr_overrides", {})
         result = build_ledger(args.repo, git_log(args.repo, failures), pr_overrides)
         out = Path(args.out)
         out.mkdir(parents=True, exist_ok=True)
@@ -115,6 +123,7 @@ def main(argv=None):
     led = sub.add_parser("ledger", help="parse the packet tables of the campaign ledgers")
     led.add_argument("--repo", required=True, help="the repository root")
     led.add_argument("--out", required=True, help="directory for ledger.json")
+    led.add_argument("--config", help="metrics config.json (default: the package's)")
     args = ap.parse_args(argv)
     if args.cmd == "ledger":
         return run_ledger(args)

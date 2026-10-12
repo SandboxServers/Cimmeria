@@ -8,8 +8,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from metrics import ledger
-from metrics.cli import build_ledger, git_log, main
+from metrics import ledger, registry
+from metrics.cli import build_ledger, git_log, main, summary
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
@@ -86,6 +86,20 @@ class ParseTest(unittest.TestCase):
         rows = [ledger.normalize(r) for r in ledger.parse_packet_table(text)]
         self.assertEqual([(r["title"], r["status"]) for r in rows], [("a | b", "Done")])
 
+    def test_cross_reference_table_is_not_a_ledger(self):
+        text = """\
+| System | Status | Packet |
+|---|---|---|
+| Thing | BLOCKED (x) | DK-20 |
+"""
+        self.assertEqual(ledger.parse_packet_table(text), [])
+
+    def test_real_dakara_ledger_skips_cross_reference_table(self):
+        text = (REPO / "docs" / "analysis" / "dakara-e1-rebuild" / "README.md").read_text(encoding="utf-8")
+        rows = [ledger.normalize(r) for r in ledger.parse_packet_table(text)]
+        self.assertNotEqual(next(r for r in rows if r["id"] == "DK-20")["status"], "unknown")
+        self.assertNotIn("none", [r["id"] for r in rows])
+
     def test_real_token_usage_ledger(self):
         text = (REPO / "docs" / "analysis" / "token-usage" / "README.md").read_text(encoding="utf-8")
         rows = [ledger.normalize(r) for r in ledger.parse_packet_table(text)]
@@ -113,6 +127,16 @@ class StatusTest(unittest.TestCase):
         self.assertEqual(_normalized("**Done**")["status"], "Done")
         self.assertEqual(_normalized("passed 2026-10-10")["status"], "Done")
         self.assertEqual(_normalized("Dropped: superseded")["status"], "unknown")
+
+    def test_common_status_phrases(self):
+        self.assertEqual(_normalized("Released (#1247, v1)")["status"], "Integrated")
+        self.assertEqual(_normalized("Released (#1247, v1)")["prs"], [1247])
+        self.assertEqual(_normalized("In review (#1271)")["status"], "Review")
+        self.assertEqual(_normalized("Implemented; M2 UAT pending")["status"], "UATPending")
+        self.assertEqual(_normalized("Built, not yet integrated (#1279)")["status"], "Review")
+        self.assertEqual(_normalized("Dropped:")["status"], "unknown")
+        self.assertEqual(_normalized("Deferred")["status"], "unknown")
+        self.assertEqual(_normalized("BLOCKED (B-DK4)")["status"], "unknown")
 
 
 class EscalationTest(unittest.TestCase):
@@ -181,6 +205,12 @@ class BuildTest(unittest.TestCase):
         result = build_ledger(self.tmp, lambda args: "", {"fx": [831]})
         self.assertEqual(result["pr_map"], {831: "fx"})
 
+    def test_pr_override_cited_elsewhere_is_a_conflict(self):
+        self._write("fx", "README.md", "| ID | Packet | Status |\n|---|---|---|\n| FX-01 | Thing | Done (#831) |\n")
+        result = build_ledger(self.tmp, lambda args: "", {"other": [831]})
+        self.assertEqual(result["conflicts"], [{"pr": 831, "campaigns": ["fx", "other"]}])
+        self.assertNotIn(831, result["pr_map"])
+
     def test_worknote_gives_retry_reason(self):
         folder = self._write("fx", "README.md", (FIXTURES / "ledger_readme.md").read_text(encoding="utf-8"))
         (folder / "worknotes").mkdir()
@@ -201,28 +231,29 @@ class BuildTest(unittest.TestCase):
 
 
 class CliSmokeTest(unittest.TestCase):
-    def test_ledger_writes_expected_json(self):
+    def test_ledger_builds_expected_packets(self):
         tmp = Path(tempfile.mkdtemp())
         try:
             folder = tmp / "docs" / "analysis" / "fixture-campaign"
             folder.mkdir(parents=True)
             shutil.copy(FIXTURES / "ledger_readme.md", folder / "README.md")
-            out = tmp / "out"
-            with contextlib.redirect_stdout(io.StringIO()) as printed:
-                self.assertEqual(main(["ledger", "--repo", str(tmp), "--out", str(out)]), 0)
-            result = json.loads((out / "ledger.json").read_text(encoding="utf-8"))
+            # A fixed override, not the shipped config's: the smoke test does not move when config.json does.
+            result = build_ledger(tmp, lambda args: "", {"historical-cellblocks": [831]})
             packets = result["campaigns"]["fixture-campaign"]["packets"]
             self.assertEqual([(p["id"], p["status"], p["escalated"]) for p in packets],
                              [("FX-01", "Integrated", False), ("FX-02", "Integrated", True), ("FX-03", "Ready", False)])
-            # The shipped config's pr_overrides adds one pseudo-packet (status unknown) for historical-cellblocks.
-            self.assertEqual(result["pr_map"], {"1527": "fixture-campaign", "1627": "fixture-campaign",
-                                                "831": "historical-cellblocks"})
+            self.assertEqual(result["pr_map"], {1527: "fixture-campaign", 1627: "fixture-campaign",
+                                                831: "historical-cellblocks"})
             self.assertEqual(result["campaigns"]["fixture-campaign"]["window"], {"start": None, "end": None})
-            self.assertEqual(json.loads(printed.getvalue()),
-                             {"campaigns": {"fixture-campaign": 3, "historical-cellblocks": 1},
-                              "unknown_status": 1, "conflicts": 0})
+            # The override pseudo-row is not a packet: it is not counted, and its unknown status is not reported.
+            self.assertEqual(summary(result),
+                             {"campaigns": {"fixture-campaign": 3, "historical-cellblocks": 0},
+                              "unknown_status": 0, "conflicts": 0})
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_shipped_config_overrides_historical_cellblocks(self):
+        self.assertIn("historical-cellblocks", registry.load_config()["pr_overrides"])
 
 
 if __name__ == "__main__":

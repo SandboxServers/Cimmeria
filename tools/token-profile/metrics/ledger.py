@@ -9,7 +9,8 @@ import re
 
 STATUSES = ("Ready", "BlockedDependency", "BlockedDecision", "Writing", "Review", "Integrated", "UATPending", "Done")
 STATUS_BY_WORD = {s.lower(): s for s in STATUSES}
-ALIASES = {"merged": "Integrated", "passed": "Done"}
+ALIASES = {"merged": "Integrated", "released": "Integrated", "passed": "Done", "complete": "Done", "completed": "Done",
+           "built": "Review"}
 PR_STATUSES = ("Review", "Integrated", "UATPending", "Done")
 IMPLEMENTERS = ("packet-coder", "rust-gameserver-dev", "documentation-writer", "coordinator", "sonnet")
 ESCALATION_PHRASES = ("ran out of context", "stalled", "took over", "finished by", "escalated")
@@ -31,8 +32,12 @@ def _cells(line):
 
 
 def _is_packet_header(names):
-    """Whether a header names a packet (`id` or `packet`), a status (`status` or `state`) and a title (`packet` or `title`)."""
-    return all(group & set(names) for group in ({"id", "packet"}, {"status", "state"}, {"packet", "title"}))
+    """Whether a header starts with its packet id (`id` or `packet`) and also names a status and a title.
+
+    The first column must be the id: a cross-reference table (`System | Status | Packet`) names all three but is not a ledger.
+    """
+    return names[0] in ("id", "packet") and all(
+        group & set(names) for group in ({"id", "packet"}, {"status", "state"}, {"packet", "title"}))
 
 
 def parse_packet_table(text):
@@ -68,11 +73,20 @@ def parse_packet_table(text):
     return rows
 
 
+def _phrase_status(raw):
+    """The status a phrase names when its first word does not: `In review (#1271)`, `Implemented; M2 UAT pending`; else `unknown`."""
+    if re.match(r"[^A-Za-z]*in review\b", raw, re.IGNORECASE):
+        return "Review"
+    if "uat pending" in raw.lower():
+        return "UATPending"
+    return "unknown"
+
+
 def normalize(row):
     """Status (or `unknown`), PR numbers, implementer kind, its parenthetical note, and whether it was escalated."""
     match = re.match(r"[^A-Za-z]*([A-Za-z]+)", row["status_raw"])
     word = match.group(1).lower() if match else ""
-    status = ALIASES.get(word) or STATUS_BY_WORD.get(word, "unknown")
+    status = ALIASES.get(word) or STATUS_BY_WORD.get(word) or _phrase_status(row["status_raw"])
     implementer_raw = row["implementer_raw"]
     lowered = implementer_raw.lower()
     implementer = next((name for name in IMPLEMENTERS if lowered.startswith(name)), "other")
