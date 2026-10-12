@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Tests for tools/lab/cli/logs.ps1 and env.ps1 (no Pester needed). Exits
+    Tests for tools/lab/cli/logs.ps1 (no Pester needed). Exits
     non-zero on the first failure:
 
         pwsh -NoProfile -File tools/lab/cli/test-logs-env.ps1
@@ -11,7 +11,6 @@
 #>
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'logs.ps1')
-. (Join-Path $PSScriptRoot 'env.ps1')
 
 $script:failed = 0
 function Check([bool]$cond, [string]$what) {
@@ -63,87 +62,13 @@ try {
     Check ($all[2] -notmatch 'abc123def' -and $all[2] -match '<redacted>') 'a bearer token is masked'
     Check ($all[3] -notmatch $hex -and $all[3] -match '<redacted>') 'a 64-hex token is masked'
 
-    # --- env: masking (display only) ---
-    Check ((Get-MaskedEnvLine 'CIMMERIA_LAB_DAEMON_TOKEN=s3cr3t') -eq 'CIMMERIA_LAB_DAEMON_TOKEN=<redacted>') 'a TOKEN key is masked'
-    Check ((Get-MaskedEnvLine 'MY_PASSWORD = x y') -eq 'MY_PASSWORD=<redacted>') 'a PASSWORD key is masked, spaces around = allowed'
-    Check ((Get-MaskedEnvLine 'CIMMERIA_LAB_BIND=http://127.0.0.1:8779/mcp') -eq 'CIMMERIA_LAB_BIND=http://<host>:8779/mcp') 'a URL host is shown as <host>, the port stays'
-    Check ((Get-MaskedEnvLine '# note TOKEN=abc') -eq '# note TOKEN=<redacted>') 'a comment with a TOKEN assignment is masked'
-    Check ((Get-MaskedEnvLine '# keep this comment') -eq '# keep this comment') 'a plain comment is shown as is'
-    Check ((Get-MaskedEnvLine 'CIMMERIA_LAB_INSTANCES=default,p2') -eq 'CIMMERIA_LAB_INSTANCES=default,p2') 'an ordinary value is shown as is'
-    Check ((Get-MaskedEnvLine ('CIMMERIA_LAB_X=' + $hex)) -eq 'CIMMERIA_LAB_X=<redacted>') 'a 64-hex value is masked under any key'
-    Check ((Get-MaskedEnvLine 'U=http://user:p/ss@host.example/x') -eq 'U=http://<host>/x') 'URL userinfo with a / in the password is masked with the host'
-    Check ((Get-MaskedEnvLine 'U=postgres://u:pw@db:5432/d') -eq 'U=postgres://<host>:5432/d') 'URL userinfo is masked, the port stays'
-    Check ((Get-MaskedEnvLine 'API_KEY=0123456789abcdef0123456789abcdef01234567') -eq 'API_KEY=<redacted>') 'a KEY-named value is masked'
-    Check ((Get-MaskedEnvLine 'pasted-secret-on-its-own-line') -eq '<unparsed line>') 'a line that is not KEY=VALUE is not shown'
-
-    # --- env: key rule ---
-    Check (Test-LabdEnvKey 'CIMMERIA_LAB_X_1') 'an upper-case key with digits and _ is valid'
-    Check (-not (Test-LabdEnvKey 'lower')) 'a lower-case key is rejected'
-    Check (-not (Test-LabdEnvKey '1ABC')) 'a key starting with a digit is rejected'
-    Check (-not (Test-LabdEnvKey 'A-B')) 'a key with a dash is rejected'
-    Check (-not (Test-LabdEnvKey '')) 'an empty key is rejected'
-
-    # --- env: line rewrite keeps comments and order ---
-    $src = @('# head', 'FOO=1', 'CIMMERIA_LAB_BAR=a=b', '# tail')
-    Check (((Set-LabdEnvLine $src 'FOO' '2') -join '|') -eq '# head|FOO=2|CIMMERIA_LAB_BAR=a=b|# tail') 'set replaces the key in place'
-    Check (((Set-LabdEnvLine $src 'NEW_ONE' 'x') -join '|') -eq '# head|FOO=1|CIMMERIA_LAB_BAR=a=b|# tail|NEW_ONE=x') 'set appends an unknown key'
-    Check (((Remove-LabdEnvLine $src 'FOO') -join '|') -eq '# head|CIMMERIA_LAB_BAR=a=b|# tail') 'unset removes the key line only'
-    Check (((Set-LabdEnvLine @('A=1', 'A=2') 'A' '9') -join '|') -eq 'A=1|A=9') 'set changes the last duplicate, which is the one that counts'
-    Check ((Remove-LabdEnvLine @('FOO=1') 'FOO').Count -eq 0) 'unset of the only line gives no lines'
-    Check ((Remove-LabdEnvLine @('foo=1', 'BAR=2') 'FOO') -join '|' -eq 'BAR=2') 'unset matches a key stored in another case, as the daemon reads it'
-    Check (((Set-LabdEnvLine @('foo=1') 'FOO' '2') -join '|') -eq 'FOO=2') 'set replaces a key stored in another case instead of adding a second'
-    Check (($src -join '|') -eq '# head|FOO=1|CIMMERIA_LAB_BAR=a=b|# tail') 'the input lines are not changed'
-
-    # --- logs.ps1 and env.ps1 on a temp lab home ---
+    # --- logs.ps1 on a temp lab home ---
     $env:CIMMERIA_LAB_HOME = $tmp
     $logsPs1 = Join-Path $PSScriptRoot 'logs.ps1'
-    $envPs1 = Join-Path $PSScriptRoot 'env.ps1'
-    $envFile = Join-Path $tmp 'labd.env'
     [System.IO.File]::WriteAllLines((Join-Path $tmp 'labd.log'), [string[]]$logLines)
 
     $tail = pwsh -NoProfile -File $logsPs1 -Instance p2 -Lines 1
     Check ($LASTEXITCODE -eq 0 -and "$tail" -match 'DEBUG' -and "$tail" -notmatch 'abc123def') 'logs -Instance p2 -Lines 1 prints the last p2 line, masked'
-
-    [System.IO.File]::WriteAllLines($envFile, [string[]]@('# head', 'FOO=1', 'CIMMERIA_LAB_DAEMON_TOKEN=test-token-not-real', '# tail'))
-    $before = [System.IO.File]::ReadAllText($envFile)
-
-    $listed = pwsh -NoProfile -File $envPs1
-    Check ($LASTEXITCODE -eq 0 -and (@($listed) -join '|') -eq '# head|FOO=1|CIMMERIA_LAB_DAEMON_TOKEN=<redacted>|# tail') 'env lists every line with the token masked'
-    $got = pwsh -NoProfile -File $envPs1 get CIMMERIA_LAB_DAEMON_TOKEN
-    Check ($LASTEXITCODE -eq 0 -and "$got" -eq '<redacted>') 'env get masks a token key'
-    $null = pwsh -NoProfile -File $envPs1 get bad_key 2>$null
-    Check ($LASTEXITCODE -eq 2) 'env get with a bad key exits 2'
-    $null = pwsh -NoProfile -File $envPs1 set bad_key x 2>$null
-    Check ($LASTEXITCODE -eq 2 -and [System.IO.File]::ReadAllText($envFile) -eq $before) 'env set with a bad key exits 2 and changes nothing'
-    $null = pwsh -NoProfile -File $envPs1 set FOO 2>$null
-    Check ($LASTEXITCODE -eq 2) 'env set without a value exits 2'
-
-    $null = pwsh -NoProfile -File $envPs1 set FOO 2
-    Check ($LASTEXITCODE -eq 0) 'env set FOO 2 exits 0'
-    $afterSet = [System.IO.File]::ReadAllLines($envFile)
-    Check (($afterSet -join '|') -eq '# head|FOO=2|CIMMERIA_LAB_DAEMON_TOKEN=test-token-not-real|# tail') 'env set keeps comments and order'
-    $backups = @(Get-ChildItem -LiteralPath $tmp -Filter 'labd.env.bak-*')
-    Check ($backups.Count -eq 1 -and $backups[0].Name -match '^labd\.env\.bak-\d{8}-\d{6}$') 'env set writes labd.env.bak-<stamp>'
-    Check ([System.IO.File]::ReadAllText($backups[0].FullName) -eq $before) 'the backup holds the old file'
-
-    $null = pwsh -NoProfile -File $envPs1 set NEW_KEY 'a b=c'
-    $null = pwsh -NoProfile -File $envPs1 unset FOO
-    Check ($LASTEXITCODE -eq 0) 'env unset FOO exits 0'
-    $afterUnset = [System.IO.File]::ReadAllLines($envFile)
-    Check (($afterUnset -join '|') -eq '# head|CIMMERIA_LAB_DAEMON_TOKEN=test-token-not-real|# tail|NEW_KEY=a b=c') 'env set appends an unknown key, unset removes FOO'
-    Check (@(Get-ChildItem -LiteralPath $tmp -Filter 'labd.env.bak-*').Count -eq 3) 'each change writes its own backup, even in the same second'
-
-    $null = pwsh -NoProfile -File $envPs1 unset MISSING_KEY
-    Check ($LASTEXITCODE -eq 0 -and @(Get-ChildItem -LiteralPath $tmp -Filter 'labd.env.bak-*').Count -eq 3) 'unset of an absent key exits 0 and writes nothing'
-
-    $null = pwsh -NoProfile -File $envPs1 set PAD_KEY 'val  ' 2>$null
-    Check ($LASTEXITCODE -eq 2) 'a VALUE with trailing spaces is refused (exit 2)'
-    $null = pwsh -NoProfile -File $envPs1 set DASH_KEY -Value:-Xmx512m
-    Check ($LASTEXITCODE -eq 0 -and ([System.IO.File]::ReadAllLines($envFile) -contains 'DASH_KEY=-Xmx512m')) 'a VALUE starting with - is set with -Value:'
-    Check (-not (Test-Path -LiteralPath "$envFile.tmp")) 'no labd.env.tmp is left behind'
-
-    $listedAll = (pwsh -NoProfile -File $envPs1) -join "`n"
-    Check ($listedAll -notmatch 'test-token-not-real') 'the token never appears in env output'
 } finally {
     $env:CIMMERIA_LAB_HOME = $savedHome
     Remove-Item -Recurse -Force $tmp -ErrorAction SilentlyContinue

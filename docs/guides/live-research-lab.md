@@ -1270,11 +1270,11 @@ only: `set` and `unset` write values back unchanged. Keys are upper case
 reads them. `set` replaces the key's line in place or appends it; `unset`
 removes it; comments and order stay. Before writing, `labd.env` is copied
 to `labd.env.bak-<yyyyMMdd-HHmmss>`, and the new file replaces the old one
-in a single move. The daemon reads `labd.env` only when it starts, so a
+in a single move, and `set` and `unset` print the backup's path. The daemon reads `labd.env` only when it starts, so a
 change needs `lab restart`. Two value rules:
 
-- a value that starts with `-` must be written `-Value:<value>`, or
-  PowerShell reads it as a parameter name: `lab env set SOME_FLAGS -Value:-x`;
+- a value that starts with `-` must be written `--value=<value>`, or `lab`
+  reads it as a flag: `lab env set SOME_FLAGS --value=-x` (`-Value:-x` works too);
 - a value with leading or trailing spaces is refused, because `labd.env`
   lines are trimmed when read.
 
