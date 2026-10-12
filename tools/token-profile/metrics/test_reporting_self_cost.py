@@ -74,6 +74,18 @@ class LoadSelfCostTest(unittest.TestCase):
         self.assertEqual(self_cost.load_self_cost(self.path, ["s2"])["requests"], 1)
         self.assertEqual(self_cost.load_self_cost(self.path, ["s1", "s2"])["requests"], 3)
 
+    def test_ledger_pr_numbers_exclude_requests_already_in_campaign(self):
+        # r6 sits on PR 104, which has no campaign of its own; only the ledger maps 104 to the campaign.
+        db = sqlite3.connect(self.path)
+        db.execute("INSERT INTO requests VALUES ('r6', 's1', 'claude-haiku-5-5', 1000, 1000, 0, 0, 0)")
+        db.execute("INSERT INTO pr_attribution VALUES ('r6', 104, NULL)")
+        db.execute("INSERT INTO prs VALUES (104, NULL)")
+        db.commit()
+        db.close()
+        self.assertEqual(self_cost.load_self_cost(self.path, ["s1"])["requests"], 3)
+        self.assertEqual(self_cost.load_self_cost(self.path, ["s1"], pr_numbers=[104])["requests"], 2)
+        self.assertEqual(self_cost.load_self_cost(self.path, ["s1"], pr_numbers=[])["requests"], 3)
+
     def test_empty_ids_returns_zeros_without_db(self):
         out = self_cost.load_self_cost(Path(self.tmp.name) / "missing.sqlite", [])
         self.assertEqual(out["requests"], 0)
