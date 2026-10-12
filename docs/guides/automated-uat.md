@@ -2,7 +2,7 @@
 title: Automated in-game UAT with the lab
 type: how-to
 audience: agents and developers running unified-UAT rows through the live research lab
-last_updated: 2026-10-11
+last_updated: 2026-10-12
 companion_docs:
   - unified-uat.md
   - live-research-lab.md
@@ -13,7 +13,7 @@ companion_docs:
 # Automated in-game UAT with the lab
 
 > Type: how-to, with the spec and bundle formats as reference. Audience: an agent or developer with the `cimmeria-lab` MCP server running.
-> Updated: 2026-10-11. Companions: [unified UAT guide](unified-uat.md), [live research lab](live-research-lab.md).
+> Updated: 2026-10-12. Companions: [unified UAT guide](unified-uat.md), [live research lab](live-research-lab.md).
 
 The [unified UAT guide](unified-uat.md) is written for a person at the keyboard. This page runs the same rows from the lab: each row is data in a TOML spec, the `lab_uat_run` tool drives the client through the lab tools, checks every expected clause, and writes an evidence bundle plus the guide's "Recording results" blocks, ready to paste into the campaign ledger.
 
@@ -138,7 +138,7 @@ When several apply, the first in the table's order after PASS wins, and every re
 
 A spec may declare a known tool *less* native than its floor (a typed `/useitem` standing in for a double-click is N2) but never more: `client_lua_eval` is N3 at best. A tool the runner does not know (a new tool from another change) must carry its tier in the spec.
 
-Tools that put a window on screen first (item and drag tools) escalate a click whose effect they can read back: posted click, then the CEGUI button injectors (both N1), then the button's own stock handler (N3). The step that worked is in native_steps; a tool that needed the handler reports N3. An item or vendor action whose inventory did not change reports effect_ok: false and the runner fails the action; a negative check passes expect_change: false. Split, item use and vendor quantity run at N1 when the injected clicks take. Two things keep them N3: a split or drag whose drop target CEGUI does not resolve (the stock slot windows may carry no DragDropTarget flag) lands through notifyDragDropItemDropped, reported native_call (N3); a click path that is lost on a window ends at the stock handler (client_ui_lua, N3). native_steps names the step.
+Tools that put a window on screen first (item and drag tools) escalate a click whose effect they can read back: posted click, then the CEGUI button injectors (both N1), then the button's own stock handler (N3). The step that worked is in native_steps; a tool that needed the handler reports N3. An item or vendor action whose inventory did not change reports effect_ok: false and the runner fails the action; a negative check passes expect_change: false. Item use and vendor quantity run at N1 when the injected clicks take, and did in the lab-harness close-out run of 2026-10-12. Splits and drags start natively but so far always land at N3 ([close-out](../analysis/lab-harness/closeout.md#native-tiers-against-the-issues-acceptance)). Two things keep a step at N3: a split or drag whose drop target CEGUI does not resolve (the stock slot windows may carry no DragDropTarget flag) lands through notifyDragDropItemDropped, reported native_call (N3); a click path that is lost on a window ends at the stock handler (client_ui_lua, N3). native_steps names the step.
 
 ## The evidence bundle
 

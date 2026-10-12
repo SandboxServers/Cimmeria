@@ -53,6 +53,7 @@ This guide gathers every restored system's in-game acceptance test (UAT) into on
 | [Debug Area](#debug-area) | [Debug Area ledger](../analysis/debug-area/README.md#packets) (live-client checks: [DA-06](../analysis/debug-area/README.md#da-06-live-client-checks)) |
 | [Dakara_E1](#dakara_e1) | [Dakara_E1 ledger, M1 checklist](../analysis/dakara-e1-rebuild/README.md#m1-checklist-dead-end-removed) |
 | [Mission data lock](#mission-data-lock) | This section (telemetry-gaps packet TG-DB-12) |
+| [Lab harness](#lab-harness) | [lab-harness close-out](../analysis/lab-harness/closeout.md#what-was-not-tested-live) |
 | [Telemetry gaps](#telemetry-gaps) | [telemetry-gaps ledger](../analysis/telemetry-gaps/README.md#packet-status) and its [close-out handoff](../analysis/telemetry-gaps/handoffs/2026-10-11-closeout.md) |
 
 **How to work a section.** Read its prerequisites, then do each numbered step in order. Every step keeps the campaign's own step id (`U1`, `T25`, `B7`, ...), so you can report a result against it. The `Notes / known issues` column tells you when a failure is already known and should not be filed again.
@@ -1340,6 +1341,25 @@ The lab command is the Rust `lab.exe` ([lab CLI in Rust ledger](../analysis/lab-
 | LX-U14 | (ask first) One real run, `lab uat first-session --rows FS-01,FS-02,FS-P1`, with `lab watch` open in a second terminal | One progress line per run, then a summary; exit 0 when every row passes. `lab watch` shows the batch as `live`, then `done` | The lab must be free for about 10 minutes. Run 2026-10-12: pass. Owed: the live `lab watch` view and a second Ctrl+C during a run (LX-20). |
 | LX-U15 | (ask first) `lab clients stop <instance>` on an idle client | The client closes; exit 0. A leased instance is refused with the holder named and exit 3 | Run 2026-10-12: pass. |
 | LX-U16 | `lab status \| Out-File s.txt`, then the same for `lab doctor` and `lab watch --once` | Each file holds plain text with no escape codes, in the format the PowerShell command printed | Compare with the examples in [the `lab` command](live-research-lab.md#the-lab-command). Run 2026-10-12: pass. |
+
+## Lab harness
+
+The lab-harness campaign ([ledger](../analysis/lab-harness/README.md), #1660) fixed the sixteen lab tool defects that the Haiku colo UAT round 1 found. Its close-out run on 2026-10-12 verified most fixes live; the rows below are the checks it could not make. The per-item results and server evidence are in [closeout.md](../analysis/lab-harness/closeout.md#what-was-not-tested-live).
+
+**Status:** Ready once the lab-harness branch is on `main` and installed (`lab install --from <main checkout>`). LH-U1 also needs the colo deploy that follows the merge, because its fix is in the server. Every row drives a lab client, so **ask the owner before running it** and wait until the lab is free.
+
+**Prerequisites:** the lab lease; `labd.log` (`lab logs`); for LH-U1, lab-server access on the colo; for LH-U6, a character with at least two Health Slappacks whose health is below full.
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| LH-U1 | With a lab client in the world and its telemetry flowing for a minute, call `server_log_tail {limit: 100}`, then the same with `include_client: true` | The first call returns server lines only, not a page of `client.native` / `launcher.*` replays; the second adds the client lines | LH-13. Needs the colo deploy after the merge |
+| LH-U2 | `lab_client_stop`, then `lab_ensure_in_world {server: "colo"}`, so the flow starts from the login screen | The flow runs `pick_server` and selects the server list's only row; its detail has `server: "Test"`, `requested: "colo"`, `only_row: true` | LH-16 part 2. `lab_logout` stops at character select and never reaches the list, so start from a stopped client |
+| LH-U3 | Start a lab client (`lab_client_start`) and read `labd.log` a few seconds later | `lab display keep-awake held=true sgw_pids=1` while the client runs, released after it stops | LH-16 part 1 |
+| LH-U4 | Start a lab client while the disk is saturated (a workspace build through the lane) | Either the launch waits for the lane to go idle (up to 90 s, logged), or, if the client stalls in page-in, `load grace in effect` lines and no kill while IO progresses; `crash_count_10min` stays 0 | LH-14, LH-15. The 2026-10-12 cold start (38 s, 0 crashes) had no stall |
+| LH-U5 | With a vendor window open, `client_lua_eval` `return type(VendorMod) .. ' ' .. type(VendorMod and VendorMod.onBuyClicked)` | `table function`: the handler the `client_vendor_buy` Lua fallback calls exists under that name | LH-04. The N1 spinner path worked on 2026-10-12, so the fallback never ran; if the name is wrong, the fallback fails with `allow_fallback` |
+| LH-U6 | Issue two `client_item_action {action: "use", name: "Health Slappack"}` calls at the same moment (two parallel calls in one turn) | One unit used; the other call reports `effect_ok: false` or an error. SigNoz: either one `consumable_consume_refused reason=not_removed`, or no second `consumable_requested` (refused client-side): record which | I4. On 2026-10-12 the calls ran one after the other |
+| LH-U7 | Run a lab brief with the `lab-driver` agent in a session started after the merge | The agent has `client_item_action`, `client_die_and_respawn`, `client_type_text`, `client_lua_eval`, `client_input_mouse`, `client_cursor_move`, `client_events_read` and `client_wait_event`, and finishes the brief without hitting its context cap | LH-17 |
+| LH-U8 | Stand within 4 m of a vendor and call `client_move_to {entity_id}`; then, at a trainer, click a tab in the Ability window and call `client_events_read` | The walk returns `arrived: true`, `already_in_range: true` and the avatar does not move; the event read has a `ui.click` record for the tab | LH-10 (brief D4) and LH-12 (COORD-2), neither recorded on 2026-10-12 |
 
 ## Recording results
 

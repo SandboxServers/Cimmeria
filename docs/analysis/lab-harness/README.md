@@ -6,6 +6,7 @@ Lab and supervisor only. One product-crate change, LH-13 (`crates/admin-api` log
 
 - Packets: [work-packets.md](work-packets.md) (dispatch rules and order), then the four packet files it indexes.
 - Live probes run before coding: [probes.md](probes.md).
+- Close-out (LH-18): [closeout.md](closeout.md), the live result, server evidence and status of every item, the native tiers against the acceptance, and what is still owed.
 - Per-packet notes: `worknotes/`. Session handoffs: `handoffs/`.
 
 ## Findings
@@ -29,6 +30,8 @@ Lab and supervisor only. One product-crate change, LH-13 (`crates/admin-api` log
 | 14 | Keep-awake never held | It counts only `SGW.exe` with a top-level window | LH-16 |
 | 15 | `server:"colo"` fails at `pick_server` | "colo" is a launcher label; the list has one shard named "Test" | LH-16 |
 | 16 | `lab-driver` lacks tools | Agent `tools:` line is behind the lab tool set | LH-17 |
+| LH-19 | `client_move_to` never turns the pawn (close-out run) | Mouse-look turns only the camera; the pawn's heading answers only to the bound TurnLeft / TurnRight keys (Q / E, about 110 deg/s) | LH-19 |
+| LH-20 | Vault-to-bag drag never starts (close-out run) | The bag window opens exactly over the vault, so the press lands on the bag's slot; raise the source window first | LH-20 |
 
 ## Decisions
 
@@ -56,23 +59,23 @@ Coordinator defaults, taken from the expanders' recommendations; the owner can r
 
 | Packet | Title | Size | Depends on | Status |
 |---|---|---|---|---|
-| LH-01 | Split drag follows the stand-in window; fake client extended | M | | Ready |
-| LH-02 | Verified tab and filter clicks | M | LH-01 | BlockedDependency |
-| LH-03 | `client_item_action` honest use | M | LH-02 | BlockedDependency |
-| LH-04 | `ui_click` name resolution and `client_vendor_buy` | L | LH-03 | BlockedDependency |
-| LH-05 | `client_input_mouse` takes x/y | S | | Ready |
-| LH-06 | Pitch clamp detected and recovered; zero pose rejected | M | | Ready |
-| LH-07 | `world_click` dodges the own avatar (yaw retries first) | L | LH-06, probe B-P2 | BlockedDependency |
-| LH-08 | `world_click` reports interact range | S | LH-07 | BlockedDependency |
-| LH-09 | `client_player_state` stats | S | probe C-P1 | BlockedDependency |
-| LH-10 | `client_move_to` stops at range, aborts on walk-away | M | LH-06 (steer.rs) | BlockedDependency |
-| LH-11 | Event keeper: capture armed, ring drained, honest drops | M | probes C-P2, C-P3 | BlockedDependency |
-| LH-12 | Click ring install error text | S | LH-11, probe C-P4 | BlockedDependency |
-| LH-13 | `server_log_tail` keeps server lines | M | | Ready |
-| LH-14 | Watchdog IO-progress load grace and stall budget | M | | Ready |
-| LH-15 | Wait for an idle build lane before a launch | S | LH-14 | BlockedDependency |
-| LH-16 | Keep-awake sees windowless clients; single-row server pick | S | | Ready |
-| LH-17 | `lab-driver` agent tools and docs | S | all tool packets | BlockedDependency |
-| LH-19 | `client_move_to` steers with the turn keys (mouse-look turns only the camera) | L | close-out finding | Ready |
-| LH-20 | Drags raise the source slot's window first (bag covers the vault) | S | close-out finding | Ready |
-| LH-18 | Close-out: live lab UAT of every fix, guide, unified-uat, status | M | all | BlockedDependency |
+| LH-01 | Split drag follows the stand-in window; fake client extended | M | | Integrated |
+| LH-02 | Verified tab and filter clicks | M | LH-01 | Integrated |
+| LH-03 | `client_item_action` honest use | M | LH-02 | Integrated |
+| LH-04 | `ui_click` name resolution and `client_vendor_buy` | L | LH-03 | Integrated |
+| LH-05 | `client_input_mouse` takes x/y | S | | Integrated |
+| LH-06 | Pitch clamp detected and recovered; zero pose rejected | M | | Integrated |
+| LH-07 | `world_click` dodges the own avatar (yaw retries first) | L | LH-06, probe B-P2 | Integrated |
+| LH-08 | `world_click` reports interact range | S | LH-07 | Integrated |
+| LH-09 | `client_player_state` stats | S | probe C-P1 | Integrated |
+| LH-10 | `client_move_to` stops at range, aborts on walk-away | M | LH-06 (steer.rs) | Integrated |
+| LH-11 | Event keeper: capture armed, ring drained, honest drops | M | probes C-P2, C-P3 | Integrated |
+| LH-12 | Click ring install error text | S | LH-11, probe C-P4 | Integrated |
+| LH-13 | `server_log_tail` keeps server lines | M | | Integrated |
+| LH-14 | Watchdog IO-progress load grace and stall budget | M | | Integrated |
+| LH-15 | Wait for an idle build lane before a launch | S | LH-14 | Integrated |
+| LH-16 | Keep-awake sees windowless clients; single-row server pick | S | | Integrated |
+| LH-17 | `lab-driver` agent tools and docs | S | all tool packets | Integrated |
+| LH-19 | `client_move_to` steers with the turn keys (mouse-look turns only the camera) | L | close-out finding | Integrated |
+| LH-20 | Drags raise the source slot's window first (bag covers the vault) | S | close-out finding | Integrated |
+| LH-18 | Close-out: live lab UAT of every fix, guide, unified-uat, status ([closeout.md](closeout.md)) | M | all | Done |

@@ -35,6 +35,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Reference
 
+- [reference_lab_harness_findings_2026_10_12.md](reference_lab_harness_findings_2026_10_12.md) — lab live facts: Stat['.get'] names, zero camera pose, Q/E turn the pawn (mouse-look only the camera), BackgroundWin click host, bag over vault, feet aim, 5 m 3D range, Lua rebuilt on relog
 - [reference_lab_cli_rust_2026_10_12.md](reference_lab_cli_rust_2026_10_12.md) — `lab.exe` (crates/lab-cli): bin\lab.exe layout, no fallback except the seven `run_script` wrappers, PowerShell flags rewritten, tests isolate `CIMMERIA_LAB_HOME`, JSON from `Serialize` structs; LX-20 live check owed
 - [reference_lab_driving_recipes_2026_10_12.md](reference_lab_driving_recipes_2026_10_12.md) — 2026-10-12 Haiku UAT round 1: teleport-then-click at 3.5-4.5 m, pitch_counts -650, Lua moveItem/useItem N3 fallbacks, HP staging, ClickHouse grading; lab bugs in #1660
 - [reference_resources_schema_qualify_2026_10_11.md](reference_resources_schema_qualify_2026_10_11.md) — resources tables (items, ...) need the `resources.` prefix in server_db_query/spec SQL; bare `items` broke LR-06 snapshots
