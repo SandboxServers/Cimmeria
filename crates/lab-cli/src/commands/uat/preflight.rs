@@ -11,6 +11,7 @@ use serde_json::Value;
 use crate::batch::PlanLane;
 use crate::daemon::env_file::{self, EnvLine};
 use crate::daemon::mcp::{hide_lease_ids, McpError};
+use crate::daemon::paths;
 use crate::daemon::status::{self, Endpoint};
 use crate::ui::{Mark, Tone, Ui};
 
@@ -205,8 +206,9 @@ pub fn execute(
     }
     let specs: Option<String> = args
         .specs_dir
-        .clone()
+        .as_deref()
         .filter(|s| !s.is_empty())
+        .map(paths::absolute_specs_dir)
         .or_else(|| deps.specs.clone());
     // lab-chaos D-CH7: a chaos run is reported against the golden, so --chaos
     // implies --diff-golden (and with it fingerprint capture on every row).

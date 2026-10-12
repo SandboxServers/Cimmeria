@@ -55,7 +55,7 @@ pub fn pick_instance(
     if hosted.is_empty() {
         return Err((
             3,
-            "-Leases 1 is more than the lab allows (0: 0 hosted, max clients 0)".to_string(),
+            "no lab instance is free (0 hosted, max clients 0)".to_string(),
         ));
     }
     let free: Vec<&String> = hosted

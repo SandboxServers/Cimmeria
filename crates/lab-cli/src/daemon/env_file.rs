@@ -202,7 +202,8 @@ fn hex64() -> &'static Regex {
 fn url_host() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
-        Regex::new(r"(?i)([a-z][a-z0-9+.-]*://)(?:\S*@)?[^/\s:?#@]+").expect("valid regex")
+        Regex::new(r"(?i)([a-z][a-z0-9+.-]*://)(?:\S*@)?(?:\[[^\]\s]*\]|[^/\s:?#@]+)")
+            .expect("valid regex")
     })
 }
 
@@ -215,8 +216,8 @@ fn secret_key() -> &'static Regex {
 
 /// Masks secret-looking text for display (port of `Hide-LabdEnvText`): a
 /// secret-named assignment loses its value, a bearer token and a 64-hex token
-/// become `<redacted>`, and a URL's userinfo and host become `<host>` (the
-/// port and path stay).
+/// become `<redacted>`, and a URL's userinfo and host (a bracketed IPv6 host
+/// too) become `<host>` (the port and path stay).
 pub fn hide_text(text: &str) -> String {
     let t = secret_assignment().replace_all(text, "${1}<redacted>");
     let t = bearer().replace_all(&t, "<redacted>");

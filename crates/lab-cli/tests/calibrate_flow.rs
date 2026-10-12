@@ -164,6 +164,43 @@ fn a_proposal_prints_the_line_the_diff_and_the_apply_hint() {
     );
 }
 
+// F-LX7: a relative --specs-dir reaches the daemon as an absolute path.
+#[test]
+fn a_relative_specs_dir_reaches_the_daemon_absolute() {
+    let body = status_body(&[("default", false, None)]);
+    let (_stub, ep) = StubServer::start(vec![("GET", "/status", 200, body.as_str())]);
+    let r = run_flow(
+        &["first-session", "FS-P3", "--specs-dir", "lx18-specs"],
+        &ep,
+        None,
+        vec![],
+        vec![Ok(frost_reply("D"))],
+    );
+    assert_eq!(r.code, 0, "{}", r.err);
+    let want = std::env::current_dir()
+        .unwrap()
+        .join("lx18-specs")
+        .display()
+        .to_string();
+    assert_eq!(r.calls[0].1["specs_dir"], json!(want));
+}
+
+// F-LX8: with no hosted instance the message does not name a flag calibrate lacks.
+#[test]
+fn no_hosted_instance_is_reported_without_a_leases_flag() {
+    let body = status_body(&[]);
+    let (_stub, ep) = StubServer::start(vec![("GET", "/status", 200, body.as_str())]);
+    let r = run_flow(&["first-session", "FS-P3"], &ep, None, vec![], vec![]);
+    assert_eq!(r.code, 3, "{}", r.err);
+    assert!(
+        r.err
+            .contains("no lab instance is free (0 hosted, max clients 0)"),
+        "{}",
+        r.err
+    );
+    assert!(!r.err.contains("Leases"), "{}", r.err);
+}
+
 #[test]
 fn json_prints_one_object_and_quiet_hides_the_diff() {
     let body = status_body(&[("default", false, None)]);

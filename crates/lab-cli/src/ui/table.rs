@@ -1,6 +1,6 @@
 //! A text table whose columns align by visible width, so painted cells line up.
 
-use super::{skip_escape, visible_width, Tone, Ui};
+use super::{cell_width, skip_escape, text_width, Tone, Ui};
 
 /// Spaces between columns.
 const SEP: &str = "  ";
@@ -44,10 +44,10 @@ impl Table {
                 }
             })
             .collect();
-        let mut widths: Vec<usize> = labels.iter().map(|l| visible_width(l)).collect();
+        let mut widths: Vec<usize> = labels.iter().map(|l| text_width(l)).collect();
         for row in &self.rows {
             for (i, cell) in row.iter().enumerate().take(cols) {
-                widths[i] = widths[i].max(visible_width(cell));
+                widths[i] = widths[i].max(text_width(cell));
             }
         }
         let last = cols - 1;
@@ -89,13 +89,13 @@ fn push_line(out: &mut String, cells: &[String], widths: &[usize]) {
 
 /// `cell` followed by spaces up to `width` visible columns.
 fn pad(cell: &str, width: usize) -> String {
-    let spaces = width.saturating_sub(visible_width(cell));
+    let spaces = width.saturating_sub(text_width(cell));
     format!("{cell}{}", " ".repeat(spaces))
 }
 
 /// `cell` cut to `width` visible columns, ending in `…` when it is cut.
 fn fit(cell: &str, width: usize) -> String {
-    if visible_width(cell) <= width {
+    if text_width(cell) <= width {
         return cell.to_string();
     }
     let keep = width.saturating_sub(1);
@@ -108,9 +108,9 @@ fn fit(cell: &str, width: usize) -> String {
             styled = true;
             out.push(c);
             out.push_str(&skip_escape(&mut chars));
-        } else if visible < keep {
+        } else if visible + cell_width(c) <= keep {
             out.push(c);
-            visible += 1;
+            visible += cell_width(c);
         } else {
             break;
         }
@@ -127,7 +127,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn columns_align_by_visible_width() {
+    fn columns_align_by_text_width() {
         let ui = Ui::plain();
         let mut table = Table::new(&["Name", "State"]);
         table.row(vec!["\x1b[36muat\x1b[0m".to_string(), "idle".to_string()]);
@@ -154,7 +154,7 @@ mod tests {
         let text = table.render(&ui);
         let line = text.lines().nth(1).expect("row line");
         assert_eq!(line, "uat   Run a UAT…");
-        assert_eq!(visible_width(line), 16);
+        assert_eq!(text_width(line), 16);
     }
 
     #[test]
@@ -171,8 +171,33 @@ mod tests {
         ]);
         let text = table.render(&ui);
         let line = text.lines().nth(1).expect("row line");
-        assert_eq!(visible_width(line), 12);
+        assert_eq!(text_width(line), 12);
         assert!(line.ends_with("…[0m"), "{line:?}");
+    }
+
+    // F-LX6: columns align by terminal cells, not characters.
+    #[test]
+    fn wide_cells_align_by_terminal_columns() {
+        let ui = Ui::plain();
+        let mut table = Table::new(&["Name", "State"]);
+        table.row(vec!["日本".to_string(), "x".to_string()]);
+        table.row(vec!["abcd".to_string(), "y".to_string()]);
+        assert_eq!(table.render(&ui), "Name  State\n日本  x\nabcd  y\n");
+    }
+
+    #[test]
+    fn a_wide_last_column_is_cut_by_cells() {
+        let ui = Ui {
+            color: false,
+            fancy: false,
+            width: Some(8),
+        };
+        let mut table = Table::new(&["A", "B"]);
+        table.row(vec!["x".to_string(), "日本語日本語".to_string()]);
+        let text = table.render(&ui);
+        let line = text.lines().nth(1).expect("row line");
+        assert_eq!(line, "x  日本…");
+        assert!(text_width(line) <= 8);
     }
 
     #[test]

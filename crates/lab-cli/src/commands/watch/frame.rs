@@ -3,7 +3,7 @@
 
 use crate::daemon::mcp::hide_lease_ids;
 use crate::ui::table::Table;
-use crate::ui::{skip_escape, strip_ansi, Mark, Tone, Ui};
+use crate::ui::{cell_width, skip_escape, text_width, Mark, Tone, Ui};
 
 use super::snapshot::{BatchState, BatchView, Snapshot};
 
@@ -50,37 +50,6 @@ fn finish(lines: Vec<String>, width: usize, height: usize, ui: &Ui) -> Vec<Strin
         out.push(fit_line(&marker, width));
     }
     out
-}
-
-/// Terminal cells one character takes: 0 for combining marks, zero-width
-/// joiners and variation selectors, 2 for East Asian wide characters and
-/// emoji, else 1.
-pub fn cell_width(c: char) -> usize {
-    match u32::from(c) {
-        0..=0x1f | 0x7f..=0x9f => 0,
-        0x0300..=0x036f | 0x200b..=0x200f | 0x20d0..=0x20ff | 0xfe00..=0xfe0f => 0,
-        0x1100..=0x115f
-        | 0x231a..=0x231b
-        | 0x2e80..=0x303e
-        | 0x3041..=0x33ff
-        | 0x3400..=0x4dbf
-        | 0x4e00..=0xa4cf
-        | 0xac00..=0xd7a3
-        | 0xf900..=0xfaff
-        | 0xfe30..=0xfe6f
-        | 0xff00..=0xff60
-        | 0xffe0..=0xffe6
-        | 0x1f300..=0x1f64f
-        | 0x1f680..=0x1f6ff
-        | 0x1f900..=0x1f9ff
-        | 0x20000..=0x3fffd => 2,
-        _ => 1,
-    }
-}
-
-/// The columns `text` takes on screen: colour codes count 0, wide characters 2.
-pub fn text_width(text: &str) -> usize {
-    strip_ansi(text).chars().map(cell_width).sum()
 }
 
 /// `line` cut to `width` terminal columns, ending in `…` (and a colour reset when

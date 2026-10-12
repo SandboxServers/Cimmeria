@@ -8,6 +8,7 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 use crate::daemon::mcp::{hide_lease_ids, McpError};
+use crate::daemon::paths;
 use crate::daemon::status::{self, Endpoint};
 use crate::ui::{Mark, Tone, Ui};
 
@@ -85,8 +86,9 @@ pub fn execute(
     }
     let specs: Option<String> = args
         .specs_dir
-        .clone()
+        .as_deref()
         .filter(|s| !s.is_empty())
+        .map(paths::absolute_specs_dir)
         .or_else(|| deps.specs.clone());
     let repo = deps.repo.clone();
     // A spec with local edits is refused before any lab time is spent; the

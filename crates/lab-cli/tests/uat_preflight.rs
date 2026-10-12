@@ -278,6 +278,21 @@ fn rows_specs_server_version_and_fixtures_reach_the_plan_call() {
     );
 }
 
+// F-LX7: a relative --specs-dir reaches the plan call as an absolute path.
+#[test]
+fn a_relative_specs_dir_reaches_the_plan_call_absolute() {
+    let r = run(
+        &["first-session", "--plan-only", "--specs-dir", "lx18-specs"],
+        vec![Ok(ready(&["FS-01"]))],
+    );
+    let want = std::env::current_dir()
+        .unwrap()
+        .join("lx18-specs")
+        .display()
+        .to_string();
+    assert_eq!(r.calls[0].1["specs_dir"], json!(want));
+}
+
 // ---- the plan call's answer (test-uat-chaos.ps1) ----
 
 // "the plan prints the runner's header in place of the typed one"

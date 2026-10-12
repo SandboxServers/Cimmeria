@@ -39,6 +39,11 @@ pub struct Check {
     /// What to do about it, e.g. `run lab install`; plain mode appends it to
     /// the detail after `; `, fancy mode prints it as its own `hint:` line.
     pub hint: Option<String>,
+    /// The command to run, on its own `hint:` line in fancy mode only (plain
+    /// mode keeps `hint`, as the PowerShell printed it): `run lab install`
+    /// becomes `lab install`. A check whose plain text has no hint can still
+    /// carry one here.
+    pub fancy_hint: Option<String>,
 }
 
 impl Check {
@@ -48,7 +53,14 @@ impl Check {
             name: name.to_string(),
             detail: detail.into(),
             hint: hint.map(str::to_string),
+            fancy_hint: hint.map(command_of),
         }
+    }
+
+    /// Sets the fancy-mode hint of a check whose plain text has none.
+    fn with_fancy_hint(mut self, command: &str) -> Self {
+        self.fancy_hint = Some(command.to_string());
+        self
     }
 
     /// The detail as the PowerShell printed it: `detail; hint`.
@@ -58,6 +70,14 @@ impl Check {
             None => self.detail.clone(),
         }
     }
+}
+
+/// The command a hint names: `run lab install` is `lab install`, and
+/// `git fetch, or run lab setup` is `git fetch, or lab setup`.
+fn command_of(hint: &str) -> String {
+    hint.replace(", or run ", ", or ")
+        .trim_start_matches("run ")
+        .to_string()
 }
 
 /// What the gathering found about one instance.
@@ -282,7 +302,8 @@ pub fn seed_check(i: &Inputs) -> Check {
             name,
             format!("not seeded: {}", unseeded.join(", ")),
             None,
-        );
+        )
+        .with_fancy_hint("lab instances init");
     }
     Check::new(
         Status::Pass,

@@ -57,6 +57,19 @@ fn mask_url_host_keeps_the_port() {
     );
 }
 
+// New (F-LX1): a bracketed IPv6 host is masked whole, the port stays.
+#[test]
+fn mask_ipv6_url_host_whole() {
+    assert_eq!(
+        masked("CIMMERIA_LAB_MCP_URL=http://[::1]:8779/x"),
+        "CIMMERIA_LAB_MCP_URL=http://<host>:8779/x"
+    );
+    assert_eq!(
+        masked("X=http://user:pw@[fe80::1]:80/p"),
+        "X=http://<host>:80/p"
+    );
+}
+
 // 'a comment with a TOKEN assignment is masked'
 #[test]
 fn mask_comment_with_a_token_assignment() {

@@ -7,6 +7,7 @@ use std::time::Duration;
 use serde_json::{Map, Value};
 
 use crate::daemon::mcp::{hide_lease_ids, McpError};
+use crate::daemon::paths;
 use crate::ui::{Mark, Tone, Ui};
 
 use super::checks::{check_arguments, given, is_instance, MAX_MINUTES};
@@ -130,7 +131,7 @@ where
     let action = args.action.as_deref().unwrap_or("");
     let instance = given(&args.instance).unwrap_or("");
     let specs = given(&args.specs_dir)
-        .map(str::to_owned)
+        .map(|d| paths::absolute_in(d, &env.cwd))
         .or_else(|| env.specs_dir.as_ref().map(|p| p.display().to_string()));
 
     // stop's state file is read before the daemon is asked: without it there is nothing to stop.
