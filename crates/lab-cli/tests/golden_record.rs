@@ -94,13 +94,16 @@ fn record_really_spawns_this_exe_and_its_uat_preflight_refusal_is_exit_3() {
         .expect("run lab");
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert_eq!(out.status.code(), Some(3), "{stdout}");
-    let line = json_of(&stdout);
-    assert_eq!(line["ok"], json!(false));
-    assert_eq!(line["exit"], json!(3));
-    assert!(
-        line["error"].as_str().is_some_and(|e| !e.is_empty()),
-        "{stdout}"
+    // The error text is the one only the native `uat` pre-flight prints
+    // (`commands/uat/preflight.rs`): `golden` itself says something else for a
+    // missing daemon ("...; the runs are in <batch>") and never reaches that
+    // point before the child ran. Without the spawn this line cannot appear.
+    assert_eq!(
+        json_of(&stdout),
+        json!({"ok": false, "exit": 3,
+               "error": "the lab daemon is not answering (lab status; lab start)"})
     );
+    assert_eq!(stdout.lines().count(), 1, "{stdout}");
 }
 
 // ----- record, with the child and the daemon stubbed -----

@@ -4,6 +4,7 @@
 //! file is never written.
 
 use std::collections::HashSet;
+use std::io::Write;
 use std::panic::{catch_unwind, resume_unwind, AssertUnwindSafe};
 use std::time::Duration;
 
@@ -184,7 +185,14 @@ pub fn heal_batch(
     let mut wait =
         |i: &str| !ctrlc::stop_requested() && mcp::wait_lease_free(ep, i, Duration::from_secs(600));
     let ui = &ctx.ui;
-    let mut print = |t: &str| println!("{}", calibrate::render::render_diff(ui, t));
+    // A closed pipe (`| head`) must not panic the heal: write errors are ignored.
+    let mut print = |t: &str| {
+        let _ = writeln!(
+            std::io::stdout().lock(),
+            "{}",
+            calibrate::render::render_diff(ui, t)
+        );
+    };
     let io = HealIo {
         call: &mut call,
         say: &mut say,
