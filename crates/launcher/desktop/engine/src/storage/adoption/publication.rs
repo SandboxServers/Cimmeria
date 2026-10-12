@@ -91,8 +91,10 @@ fn copy_and_publish(
     }
     preview.consent(&choices)?;
     inventory::check_cancel(cancel)?;
-    source::verify_import(preview.legacy()?)?;
-    if inventory::scan(&preview.legacy()?.source.game_directory, cancel)? != preview.scanned {
+    if let AdoptionSource::Legacy(imported) = &preview.source {
+        source::verify_import(imported)?;
+    }
+    if inventory::scan(source_root(&preview.source), cancel)? != preview.scanned {
         return Err(Error::SourceChanged);
     }
     // Admission: the journal's Running Adopt operation, not this guard, excludes
@@ -135,7 +137,7 @@ fn copy_and_publish(
         preferences_revision: preview.before.revision,
         destination: destination.clone(),
         manifest_digest: preview.release.digest(),
-        login_servers: source::servers(preview.legacy()?),
+        login_servers: source::servers_of(&preview.source, &preview.before),
         backend: preview.preparation.record.descriptor.backend.clone(),
     };
     let mut owner = OpenOptions::new()
@@ -148,24 +150,26 @@ fn copy_and_publish(
     owner.sync_all()?;
     let stage = destination.join(format!(".cimmeria-adopt-{id}"));
     std::fs::create_dir(&stage)?;
+    let (legacy_install_id, import_digest, folder_scan_digest) = pins(&preview.source);
     let provenance = Provenance {
         work_id: id,
-        legacy_install_id: Some(preview.legacy()?.identity.install_id),
-        import_digest: Some(preview.legacy()?.confirmation.clone()),
+        legacy_install_id,
+        import_digest,
         reference_digest: inventory::content_digest(&preview.reference.index)?,
         setup_policy_version: 1,
-        folder_scan_digest: None,
+        folder_scan_digest,
         file_index_sha256: None,
     };
     let mut after = preview.before.clone();
     after.revision = after.revision.checked_add(1).ok_or(StorageError::Corrupt)?;
     after.install_directory = Some(destination.clone());
+    let (imported, folder) = planned(&preview.source);
     let plan = Plan {
         schema_version: 1,
         installation,
         provenance: provenance.clone(),
-        imported: Some(preview.legacy()?.clone()),
-        folder: None,
+        imported,
+        folder,
         before: preview.before.clone(),
         after,
         report: preview.report.clone(),
@@ -213,7 +217,7 @@ fn copy_and_publish(
             });
             if let Some(source_path) = reusable.and_then(|d| d.source_path.as_ref()) {
                 inventory::copy(
-                    &preview.legacy()?.source.game_directory.join(source_path),
+                    &source_root(&preview.source).join(source_path),
                     &stage.join(path),
                     &preview.scanned[source_path],
                     cancel,
@@ -239,10 +243,12 @@ fn copy_and_publish(
         {
             return Err(Error::InvalidArtifact);
         }
-        if inventory::scan(&preview.legacy()?.source.game_directory, cancel)? != preview.scanned {
+        if inventory::scan(source_root(&preview.source), cancel)? != preview.scanned {
             return Err(Error::SourceChanged);
         }
-        source::verify_import(preview.legacy()?)?;
+        if let AdoptionSource::Legacy(imported) = &preview.source {
+            source::verify_import(imported)?;
+        }
         sync_tree(&stage)?;
         // Publication is serialized with preference edits again. The operation
         // must still be the one admitted above before any checkpoint is written.
@@ -536,6 +542,37 @@ pub fn abandon(state: &mut DesktopState, id: Uuid, revision: u64) -> Result<(), 
     Ok(())
 }
 
+/// The folder a source is read from: the import's game folder, or the picked root.
+fn source_root(source: &AdoptionSource) -> &Path {
+    match source {
+        AdoptionSource::Legacy(imported) => &imported.source.game_directory,
+        AdoptionSource::Folder(folder) => &folder.root,
+    }
+}
+
+/// What a source pins in its provenance: a legacy import by its install and
+/// confirmation, a folder by the scan the player reviewed.
+pub(super) fn pins(source: &AdoptionSource) -> (Option<Uuid>, Option<String>, Option<[u8; 32]>) {
+    match source {
+        AdoptionSource::Legacy(imported) => (
+            Some(imported.identity.install_id),
+            Some(imported.confirmation.clone()),
+            None,
+        ),
+        AdoptionSource::Folder(folder) => (None, None, Some(folder.scan_digest)),
+    }
+}
+
+/// The plan's source fields: exactly one of the import and the folder is set.
+pub(super) fn planned(
+    source: &AdoptionSource,
+) -> (Option<migration::LegacyImport>, Option<FolderSource>) {
+    match source {
+        AdoptionSource::Legacy(imported) => (Some(imported.clone()), None),
+        AdoptionSource::Folder(folder) => (None, Some(folder.clone())),
+    }
+}
+
 pub(super) fn verify_provenance(
     state: &DesktopState,
     intent: &InstallIntent,
@@ -574,13 +611,23 @@ fn published_record(
     if record.plan.schema_version != 1 || provenance.setup_policy_version != 1 {
         return Err(StorageError::UnsupportedSchema.into());
     }
-    let Some(legacy) = record.plan.imported.as_ref() else {
-        return Err(StorageError::Corrupt.into());
-    };
-    if provenance.import_digest.as_ref() != Some(&legacy.confirmation)
-        || provenance.legacy_install_id != Some(legacy.identity.install_id)
-    {
-        return Err(StorageError::Corrupt.into());
+    match record.plan.source()? {
+        AdoptionSourceRef::Legacy(legacy) => {
+            if provenance.import_digest.as_ref() != Some(&legacy.confirmation)
+                || provenance.legacy_install_id != Some(legacy.identity.install_id)
+                || provenance.folder_scan_digest.is_some()
+            {
+                return Err(StorageError::Corrupt.into());
+            }
+        }
+        AdoptionSourceRef::Folder(folder) => {
+            if provenance.folder_scan_digest != Some(folder.scan_digest)
+                || provenance.import_digest.is_some()
+                || provenance.legacy_install_id.is_some()
+            {
+                return Err(StorageError::Corrupt.into());
+            }
+        }
     }
     if record.phase != Phase::Published
         || record.plan.installation != *intent

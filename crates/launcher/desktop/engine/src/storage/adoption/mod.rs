@@ -8,6 +8,8 @@ mod in_place;
 mod in_place_preview;
 // Where the in-place backend is the one previews use.
 #[cfg(all(test, not(target_os = "macos")))]
+mod folder_tests;
+#[cfg(all(test, not(target_os = "macos")))]
 mod in_place_recovery_tests;
 #[cfg(all(test, not(target_os = "macos")))]
 mod in_place_tests;
@@ -180,7 +182,7 @@ fn copy_preview(
     backend: Backend,
     transport: Option<artifacts::Transport>,
 ) -> Result<Preview, Error> {
-    let (imported, before, destination) = {
+    {
         let mut owner = state.lock().map_err(|_| StorageError::Io)?;
         idle(
             &owner,
@@ -193,7 +195,13 @@ fn copy_preview(
         if owner.installed_content()?.is_some() {
             return Err(ContractError::IdentityConflict.into());
         }
-        let imported = source::saved_import(&owner, &request.source)?;
+    }
+    // Resolved and scanned with no state guard held.
+    let (adopted, scanned) = source::request_source(&state, &request.source, AdoptionMode::Copy)?;
+    let (imported, before, destination) = {
+        let owner = state.lock().map_err(|_| StorageError::Io)?;
+        // A folder source is refused by `legacy` until AI-12 copies it.
+        let imported = source::legacy(&adopted)?.clone();
         let destination =
             super::install_intent::fresh_destination(&request.destination, &owner.directory.root)?;
         // Confirmation creates this folder itself. Refuse an existing one now,
@@ -216,9 +224,8 @@ fn copy_preview(
         (imported, owner.preferences.clone(), destination)
     };
     source::canonical_paths(&imported)?;
-    let (adopted, legacy_lock) = source::resolve(imported)?;
+    let (adopted, legacy_lock) = source::resolve(adopted)?;
     let imported = source::legacy(&adopted)?;
-    let scanned = inventory::scan(&imported.source.game_directory, &cancel)?;
     let servers = source::servers(imported);
     let identity = match &backend {
         Backend::Native => ExtractionBackend::Native,

@@ -2,7 +2,7 @@
 //! release and becomes the owner root. Its release files move by rename into the
 //! owned `game` tree, so nothing is copied; every other file stays where it was,
 //! outside that tree, and no later Repair, Update or Uninstall touches it.
-use super::publication::{name, plan_name, read_large, write_large, Point};
+use super::publication::{self, name, plan_name, read_large, write_large, Point};
 use super::*;
 use crate::install_progress::{ProgressReporter, ProgressSink};
 use std::{
@@ -38,7 +38,9 @@ pub(super) fn publish(
         .consent(&choices)
         .map_err(|error| refused(error, "confirmation"))?;
     inventory::check_cancel(cancel)?;
-    source::verify_import(preview.legacy()?)?;
+    if let AdoptionSource::Legacy(imported) = &preview.source {
+        source::verify_import(imported)?;
+    }
     let root = preview.report.destination.clone();
     if inventory::scan(&root, cancel)? != preview.scanned {
         return Err(refused(
@@ -159,7 +161,7 @@ fn admit(
         preferences_revision: preview.before.revision,
         destination: root.to_path_buf(),
         manifest_digest: preview.release.digest(),
-        login_servers: source::servers(preview.legacy()?),
+        login_servers: source::servers_of(&preview.source, &preview.before),
         backend: preview.preparation.record.descriptor.backend.clone(),
     };
     let mut owner = OpenOptions::new()
@@ -170,24 +172,26 @@ fn admit(
     owner.try_lock().map_err(|_| StorageError::InUse)?;
     owner.write_all(&serde_json::to_vec(&installation).map_err(|_| StorageError::Corrupt)?)?;
     owner.sync_all()?;
+    let (legacy_install_id, import_digest, folder_scan_digest) = publication::pins(&preview.source);
     let provenance = Provenance {
         work_id: id,
-        legacy_install_id: Some(preview.legacy()?.identity.install_id),
-        import_digest: Some(preview.legacy()?.confirmation.clone()),
+        legacy_install_id,
+        import_digest,
         reference_digest: inventory::content_digest(&preview.reference.index)?,
         setup_policy_version: 1,
-        folder_scan_digest: None,
+        folder_scan_digest,
         file_index_sha256: None,
     };
     let mut after = preview.before.clone();
     after.revision = after.revision.checked_add(1).ok_or(StorageError::Corrupt)?;
     after.install_directory = Some(root.to_path_buf());
+    let (imported, folder) = publication::planned(&preview.source);
     let plan = Plan {
         schema_version: 1,
         installation,
         provenance: provenance.clone(),
-        imported: Some(preview.legacy()?.clone()),
-        folder: None,
+        imported,
+        folder,
         before: preview.before.clone(),
         after,
         report: preview.report.clone(),

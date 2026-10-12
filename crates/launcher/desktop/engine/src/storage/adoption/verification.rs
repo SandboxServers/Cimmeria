@@ -1,5 +1,6 @@
 //! The signed reference is reconstructed and compared with the adopted source.
-//! Only a legacy source can be compared so far; a folder source is refused.
+//! The game directory is `Folder.root` for a folder source or the imported game
+//! folder for a legacy one; only a legacy source has an import to verify.
 use super::*;
 
 #[allow(clippy::too_many_arguments)]
@@ -15,8 +16,9 @@ pub(super) fn reference_and_comparison(
     cancel: &CancellationToken,
     progress: crate::install_progress::ProgressSink,
 ) -> Result<(reference::Reference, Vec<Difference>), Error> {
-    let AdoptionSourceRef::Legacy(imported) = adopted else {
-        return Err(Error::UnsupportedMode);
+    let (folder, legacy) = match adopted {
+        AdoptionSourceRef::Legacy(imported) => (&imported.source.game_directory, Some(imported)),
+        AdoptionSourceRef::Folder(picked) => (&picked.root, None),
     };
     let fetched;
     let artifacts = match &request.artifacts {
@@ -65,7 +67,7 @@ pub(super) fn reference_and_comparison(
     )?;
     preparation.uncertain = false;
     drop(adapter);
-    let files = comparison::compare(&imported.source.game_directory, scanned, &reference)?;
+    let files = comparison::compare(folder, scanned, &reference)?;
     if !files.iter().any(|d| {
         matches!(
             d.classification,
@@ -74,9 +76,11 @@ pub(super) fn reference_and_comparison(
     }) {
         return Err(Error::NoReusableFiles);
     }
-    if inventory::scan(&imported.source.game_directory, cancel)? != *scanned {
+    if inventory::scan(folder, cancel)? != *scanned {
         return Err(Error::SourceChanged);
     }
-    source::verify_import(imported)?;
+    if let Some(imported) = legacy {
+        source::verify_import(imported)?;
+    }
     Ok((reference, files))
 }
