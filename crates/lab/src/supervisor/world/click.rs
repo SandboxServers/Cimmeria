@@ -256,7 +256,10 @@ pub async fn run<W: WorldIo>(
             return Err(steps.fail_with(
                 io.now_ms(),
                 "on_screen",
-                "could not turn the camera onto the target",
+                format!(
+                    "could not turn the camera onto the target{}",
+                    rep.clamp_note()
+                ),
                 face_json,
             ));
         }

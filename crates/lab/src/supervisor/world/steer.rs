@@ -9,7 +9,7 @@
 //! each motion actually did, so a changed sensitivity, an inverted axis or
 //! a different camera mode only costs a step or two.
 
-use std::f64::consts::{FRAC_PI_2, PI};
+use std::f64::consts::{FRAC_PI_2, PI, TAU};
 
 use serde_json::{json, Value};
 
@@ -24,6 +24,9 @@ const MIN_LEARN_COUNTS: i32 = 15;
 /// Yaw changes smaller than this are "did not turn".
 const MIN_LEARN_RAD: f64 = 0.02;
 const GAIN_BOUNDS: (f64, f64) = (10.0, 50_000.0);
+/// Rotator units in one radian (65536 per turn): the camera's `gain` is
+/// rotator units per mouse count.
+const UNITS_PER_RAD: f64 = 65536.0 / TAU;
 
 /// Learned mouse-look gain for one axis.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -326,6 +329,36 @@ impl FaceController {
         (((p.0 - cx) / focal).atan(), ((cy - p.1) / focal).atan())
     }
 
+    /// Start from the camera's own signed gains (`yaw_gain` / `pitch_gain` of
+    /// `client_camera`'s readout, rotator units per count) instead of guesses.
+    /// A target is fixed, so turning the camera one way moves it the other:
+    /// yaw counts per radian is `U / yaw_gain` and pitch counts per radian is
+    /// `-U / pitch_gain` (looking down raises the pitch offset and moves the
+    /// target up the screen). An inverted axis has a negative gain, so the
+    /// first look already goes the right way. A gain that is zero (settings
+    /// not loaded yet) or not finite changes nothing, and a model that has
+    /// already learned from a pixel keeps what it learned.
+    pub fn seed_gains(&mut self, yaw_gain: Option<f64>, pitch_gain: Option<f64>) {
+        let seed = |v: f64| v.signum() * v.abs().clamp(GAIN_BOUNDS.0, GAIN_BOUNDS.1);
+        let usable = |g: &f64| g.is_finite() && g.abs() >= 1e-3;
+        if let Some(g) = yaw_gain.filter(usable) {
+            if self.yaw.samples == 0 {
+                self.yaw = TurnModel::new(seed(UNITS_PER_RAD / g));
+            }
+        }
+        if let Some(g) = pitch_gain.filter(usable) {
+            if self.pitch.samples == 0 {
+                self.pitch = TurnModel::new(seed(-UNITS_PER_RAD / g));
+            }
+        }
+    }
+
+    /// Forget the last look, so the next pixel is not read as its result
+    /// (the camera was moved by something else in between).
+    pub fn forget_last_look(&mut self) {
+        self.last = None;
+    }
+
     /// `pixel`: the projection (None when behind the camera).
     /// `yaw_hint`: radians the camera should turn, when known otherwise.
     pub fn step(
@@ -502,5 +535,24 @@ mod tests {
             FaceStep::Done => panic!(),
         }
         assert_eq!(f.searches, 2);
+    }
+
+    #[test]
+    fn face_controller_seeds_its_gains_from_the_camera_readout() {
+        let mut f = FaceController::new(FaceConfig::default(), TurnModel::default());
+        // Gain 20 rotator units per count: 65536 / TAU / 20 = 521.5 counts per radian.
+        f.seed_gains(Some(20.0), Some(20.0));
+        assert!((f.yaw.counts_per_rad - 521.5).abs() < 0.1);
+        assert!((f.pitch.counts_per_rad + 521.5).abs() < 0.1);
+        // An inverted pitch axis (flag 0x8) reads a negative gain and flips the sign.
+        let mut g = FaceController::new(FaceConfig::default(), TurnModel::default());
+        g.seed_gains(Some(-20.0), Some(-20.0));
+        assert!((g.yaw.counts_per_rad + 521.5).abs() < 0.1);
+        assert!((g.pitch.counts_per_rad - 521.5).abs() < 0.1);
+        // A gain read before the game loads its settings is 0: keep the guess.
+        let mut h = FaceController::new(FaceConfig::default(), TurnModel::new(400.0));
+        h.seed_gains(Some(0.0), None);
+        assert_eq!(h.yaw.counts_per_rad, 400.0);
+        assert_eq!(h.pitch.counts_per_rad, -400.0);
     }
 }

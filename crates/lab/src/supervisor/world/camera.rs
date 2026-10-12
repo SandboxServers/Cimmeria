@@ -30,6 +30,9 @@ pub const WHEEL_NOTCH: i32 = 120;
 pub const ABS_TOLERANCE_DEG: f64 = 0.5;
 /// Looks an absolute pitch or yaw may take before it fails.
 pub const ABS_MAX_LOOKS: u32 = 4;
+/// Where a face brings a pitch that is pinned at the limit back to, readout
+/// degrees: the avatar and the horizon are both in view.
+pub const PITCH_RECOVER_DEG: f64 = 10.0;
 
 /// `client_camera` arguments.
 #[derive(Debug, Clone, Default, serde::Deserialize, schemars::JsonSchema)]
@@ -80,19 +83,48 @@ pub struct FaceReport {
     pub looks: u32,
     pub searches: u32,
     pub yaw_model: TurnModel,
+    /// The pitch was pinned at the +-78.75 deg limit when the face started.
+    pub pitch_clamped: bool,
+    /// The pitch (readout degrees) the camera was brought back from.
+    pub pitch_recovered_from: Option<f64>,
 }
 
 impl FaceReport {
     pub fn to_json(&self) -> Value {
-        json!({
+        let mut out = json!({
             "centred": self.centred,
             "screen": self.screen.map(|s| json!([s.w, s.h])),
             "pixel": self.pixel.map(|(x, y)| json!([x.round(), y.round()])),
             "looks": self.looks,
             "searches_behind_camera": self.searches,
             "yaw_gain": self.yaw_model.to_json(),
-        })
+        });
+        if self.pitch_clamped {
+            out["pitch_clamped"] = json!(true);
+            out["pitch_recovered_from"] = json!(self
+                .pitch_recovered_from
+                .map(|p| (p * 100.0).round() / 100.0));
+        }
+        out
     }
+
+    /// A failure-message suffix naming the clamp, or empty.
+    pub fn clamp_note(&self) -> String {
+        match (self.pitch_clamped, self.pitch_recovered_from) {
+            (false, _) => String::new(),
+            (true, Some(p)) => format!(
+                " (pitch clamped at {p:.1} deg; the camera was returned to {PITCH_RECOVER_DEG} deg)"
+            ),
+            (true, None) => " (pitch clamped at the 78.75 deg limit)".to_string(),
+        }
+    }
+}
+
+/// The readout's pitch when it is pinned at the limit.
+pub(super) fn pinned_pitch_of(readout: &Value) -> Option<f64> {
+    readout["pitch_offset_deg"]
+        .as_f64()
+        .filter(|p| memory::pitch_pinned(*p))
 }
 
 /// Where the point to face is now: an entity's actor (re-read each step,
@@ -146,7 +178,26 @@ pub async fn face<W: WorldIo>(
         looks: 0,
         searches: 0,
         yaw_model: model,
+        pitch_clamped: false,
+        pitch_recovered_from: None,
     };
+    // One readout: the camera's own signed gains replace the guesses (an
+    // inverted axis is right from the first look), and a pitch left pinned at
+    // its limit by an earlier call is undone first. At the limit the lab's
+    // clamp makes a push into it no call at all, so the pixel never moves and
+    // nothing is learned.
+    let readout = io.camera_readout().await.ok();
+    if let Some(r) = &readout {
+        ctl.seed_gains(r["yaw_gain"].as_f64(), r["pitch_gain"].as_f64());
+    }
+    if let Some(from) = readout.as_ref().and_then(pinned_pitch_of) {
+        report.pitch_clamped = true;
+        report.pitch_recovered_from = Some(from);
+        // A failed recovery leaves the camera where it was; the report says so.
+        let _ = abs_pitch(io, steps, PITCH_RECOVER_DEG).await;
+        // The recovery moved the camera, so no pixel may be read as its result.
+        ctl.forget_last_look();
+    }
     for _ in 0..=max_steps {
         let pos = aim.position(io).await;
         let pr = io
@@ -477,7 +528,10 @@ pub async fn run<W: WorldIo>(io: &mut W, req: CameraRequest) -> Result<Value, Wo
             return Err(steps.fail_with(
                 io.now_ms(),
                 "face",
-                "could not bring the target to the screen centre",
+                format!(
+                    "could not bring the target to the screen centre{}",
+                    rep.clamp_note()
+                ),
                 rep.to_json(),
             ));
         }
@@ -494,16 +548,24 @@ pub async fn run<W: WorldIo>(io: &mut W, req: CameraRequest) -> Result<Value, Wo
 
     let camera_after = io.camera_pose().await.ok();
     let readout = |r: Result<Value, String>| r.unwrap_or_else(|e| json!({ "error": e }));
+    let view_after = readout(io.camera_readout().await);
+    let pinned = pinned_pitch_of(&view_after).is_some();
     let mut out = json!({
         "camera_before": camera_before.map(|p| p.to_json()),
         "camera_after": camera_after.map(|p| p.to_json()),
         "view_before": readout(readout_before),
-        "view_after": readout(io.camera_readout().await),
+        "view_after": view_after,
         "target": resolved,
         "face": face_json,
     });
     if !absolute.is_empty() {
         out["absolute"] = Value::Object(absolute);
+    }
+    if pinned {
+        out["pitch_clamped"] = json!(true);
+        out["warning"] = json!(format!(
+            "the pitch is pinned at the 78.75 deg limit: every further push that way does nothing; client_camera {{pitch_deg: {PITCH_RECOVER_DEG}}} brings it back"
+        ));
     }
     Ok(steps.finish(io.now_ms(), out))
 }
