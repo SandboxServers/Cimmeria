@@ -142,7 +142,7 @@ def load(db, root, expected, hostile):
         db.execute("INSERT INTO triggers VALUES (?, ?, ?, ?, ?, NULL, ?, ?)",
                    (trg, session, aid, ts, kind, bad[2] if hostile else None, rule))
     for rid, sess, aid, trg, uuid, ts, model, version, branch, w, ctx, gap, _, _ in request_rows:
-        db.execute("INSERT INTO requests VALUES (?, ?, ?, ?, ?, 2, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, 0)",
+        db.execute("INSERT INTO requests VALUES (?, ?, ?, ?, ?, 2, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, 0, NULL)",
                    (rid, sess, aid, trg, uuid, ts, model, version, branch, w["input_tokens"], w["output_tokens"],
                     w["thinking_tokens"], w["cache_read"], w["cache_write_5m"], w["cache_write_1h"], ctx, gap))
 

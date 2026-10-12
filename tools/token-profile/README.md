@@ -6,7 +6,7 @@ Status: **Campaign closed (2026-10-03).** The data contract, ingest, reports, re
 
 | File | What it is |
 |---|---|
-| [`schema.sql`](schema.sql) | The SQLite schema the ingest writes and the reports read. Version 5. |
+| [`schema.sql`](schema.sql) | The SQLite schema the ingest writes and the reports read. Version 6. |
 | [`transcript-format.md`](transcript-format.md) | The transcript shapes the profiler depends on, and the trigger classification rules. |
 | [`attribution.md`](attribution.md) | How a request is charged to a PR or a campaign, and the invariants every attribution keeps. |
 | [`campaigns.json`](campaigns.json) | Which branches, branch prefixes and tracking issues belong to which campaign (a `docs/analysis/<campaign>/` folder). |
