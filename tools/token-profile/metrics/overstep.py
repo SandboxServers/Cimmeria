@@ -9,7 +9,9 @@ Rules (work-packets.md, CM-07): O1 Opus coding, O2 Opus research, O3 Sonnet impl
 packet worktree (counted, not priced). Repricing is an estimate: it ignores extra turns a cheaper model may need.
 """
 
+import sqlite3
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from ingest import prices
 
@@ -239,3 +241,44 @@ def detect(requests, packets, windows, cfg, version=prices.CURRENT):
                                    "path_class": _path_class(call)})
     opus_subagents = sum(opus_subagent(r, packets) for r in reqs)
     return {"by_campaign": out, "opus_subagents": opus_subagents, "requests": len(reqs), "hits": counts}
+
+
+REQUEST_SQL = """
+    SELECT r.request_id, r.session_id, r.agent_id, r.ts, r.model, r.input_tokens AS input,
+           r.output_tokens AS output, r.cache_read, r.cache_write_5m, r.cache_write_1h, t.kind AS trigger_kind,
+           COALESCE(r.cwd_worktree, a.worktree, s.worktree) AS worktree, a.agent_type
+    FROM requests r
+    JOIN sessions s ON s.session_id = r.session_id
+    JOIN triggers t ON t.trigger_id = r.trigger_id
+    LEFT JOIN agents a ON a.agent_id = r.agent_id
+    ORDER BY r.ts, r.request_id
+"""
+CALL_SQL = "SELECT request_id, tool_name, fingerprint FROM tool_calls ORDER BY ts, tool_use_id"
+
+
+def load_requests(db_path):
+    """The requests of a token-profile database, in time order, each with its tool calls.
+
+    The file is opened read only (mode=ro), so a missing file is an error and is never created.
+    """
+    db = sqlite3.connect(Path(db_path).resolve().as_uri() + "?mode=ro", uri=True)
+    db.row_factory = sqlite3.Row
+    try:
+        calls = {}
+        for row in db.execute(CALL_SQL):
+            calls.setdefault(row["request_id"], []).append({"tool_name": row["tool_name"], "fingerprint": row["fingerprint"]})
+        return [dict(row, calls=calls.get(row["request_id"], [])) for row in db.execute(REQUEST_SQL)]
+    finally:
+        db.close()
+
+
+def ledger_inputs(ledger_doc):
+    """(packets, windows) for detect, from a ledger.json: packets keyed by lower-cased packet id, windows by campaign."""
+    packets = {}
+    for name, campaign in ledger_doc["campaigns"].items():
+        for p in campaign["packets"]:
+            if not p.get("override"):
+                packets[p["id"].lower()] = {"campaign": name, "implementer": p["implementer"], "size": p["size"],
+                                            "escalated": p["escalated"]}
+    windows = {name: campaign["window"] for name, campaign in ledger_doc["campaigns"].items()}
+    return packets, windows

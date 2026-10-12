@@ -1,19 +1,22 @@
-"""Command line: campaign metrics. `registry` checks the campaign rules; `ledger` parses the packet tables of the ledgers.
+"""Command line: campaign metrics. `registry` checks the campaign rules; `ledger` parses the packet tables of the ledgers;
+`overstep` finds work a cheaper tier should have done.
 
     python tools/token-profile/metrics registry --repo . [--check] [--config <json>] [--campaigns <json>]
     python tools/token-profile/metrics ledger --repo . --out <dir>
+    python tools/token-profile/metrics overstep --db <sqlite> [--ledger <ledger.json>] --out <dir> [--config <json>]
 
 Exit status: 0 ok; 1 with registry --check, the campaign rules have a problem; 2 an input or output error.
-The ledger writes <dir>/ledger.json and prints a JSON count summary.
+The ledger writes <dir>/ledger.json and prints a JSON count summary. Overstep writes <dir>/overstep.json and prints counts.
 """
 
 import argparse
 import json
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
 
-from . import ledger, registry
+from . import ledger, overstep, registry
 
 
 def git_log(repo, failures):
@@ -111,6 +114,30 @@ def run_ledger(args):
     return 0
 
 
+def overstep_counts(result):
+    """Counts only: requests, overstep hits per rule, Opus subagents, and per campaign the count of each rule."""
+    return {"requests": result["requests"], "hits": result["hits"], "opus_subagents": result["opus_subagents"],
+            "by_campaign": {name: {rule: row["count"] for rule, row in stats["rules"].items()}
+                            for name, stats in result["by_campaign"].items()}}
+
+
+def run_overstep(args):
+    """Detect overstep in `args.db` and write <out>/overstep.json; print counts only. Exit 0, or 2 on an error."""
+    try:
+        config = registry.load_config(args.config)
+        ledger_doc = json.loads(Path(args.ledger).read_text(encoding="utf-8")) if args.ledger else {"campaigns": {}}
+        packets, windows = overstep.ledger_inputs(ledger_doc)
+        result = overstep.detect(overstep.load_requests(args.db), packets, windows, config)
+        out = Path(args.out)
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "overstep.json").write_text(json.dumps(result, indent=1) + "\n", encoding="utf-8")
+    except (OSError, ValueError, KeyError, sqlite3.Error) as e:
+        print(f"status=error {type(e).__name__}", file=sys.stderr)
+        return 2
+    print(json.dumps(overstep_counts(result), indent=1))
+    return 0
+
+
 def main(argv=None):
     """Run the subcommand and return its exit status."""
     ap = argparse.ArgumentParser(prog="token-profile metrics", description=__doc__.split("\n\n")[0])
@@ -124,9 +151,16 @@ def main(argv=None):
     led.add_argument("--repo", required=True, help="the repository root")
     led.add_argument("--out", required=True, help="directory for ledger.json")
     led.add_argument("--config", help="metrics config.json (default: the package's)")
+    ovs = sub.add_parser("overstep", help="find overstep: work a cheaper tier should have done, and its cost")
+    ovs.add_argument("--db", required=True, help="the token-profile database, opened read only")
+    ovs.add_argument("--ledger", help="ledger.json from the ledger subcommand; without it no campaign is priced")
+    ovs.add_argument("--out", required=True, help="directory for overstep.json")
+    ovs.add_argument("--config", help="metrics config.json (default: the package's)")
     args = ap.parse_args(argv)
     if args.cmd == "ledger":
         return run_ledger(args)
+    if args.cmd == "overstep":
+        return run_overstep(args)
     try:
         config = registry.load_config(args.config)
         campaigns = registry.load_campaigns(args.campaigns)
