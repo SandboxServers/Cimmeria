@@ -10,10 +10,11 @@ use crate::batch::RunRecord;
 
 use super::golden::{merge_golden, GoldenSummary};
 
-/// `seed=<digits>`: what differs between the runs' headers.
+/// `seed=<digits>`: what differs between the runs' headers. Ignores case, as
+/// PowerShell's `-replace` does.
 fn seed_digits() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"seed=\d+").expect("seed regex"))
+    RE.get_or_init(|| Regex::new(r"(?i)seed=\d+").expect("seed regex"))
 }
 
 /// `seed=<anything up to a space>`: a seed as the run ref shows it.

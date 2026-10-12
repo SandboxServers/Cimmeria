@@ -156,6 +156,22 @@ fn equal_counts_keep_the_order_first_seen() {
     assert_eq!(s.groups[0].line, DIV_B);
 }
 
+/// Review fix: `Merge-UatGolden` keys its groups in an ordered dictionary,
+/// which ignores case: lines that differ only in case are one group, under the
+/// casing seen first (checked in pwsh 7).
+#[test]
+fn lines_that_differ_only_in_case_are_one_group() {
+    let s = merge_golden(
+        &[g(1, "row A: x"), g(2, "ROW A: x"), g(3, "match")],
+        &default_run_ref,
+    )
+    .unwrap();
+    assert_eq!((s.matched, s.diverged, s.groups.len()), (1, 2, 1));
+    assert_eq!(s.groups[0].line, "row A: x");
+    assert_eq!(s.groups[0].count, 2);
+    assert_eq!(s.groups[0].runs, ["default#1", "default#2"]);
+}
+
 /// New: `-ceq 'match'`: only the exact word is a match.
 #[test]
 fn only_the_exact_word_match_is_a_match() {

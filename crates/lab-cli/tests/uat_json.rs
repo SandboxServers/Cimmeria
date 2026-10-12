@@ -162,6 +162,18 @@ fn a_realistic_clean_batch_stays_under_500_characters() {
     assert!(text.len() < 500);
 }
 
+/// Review fix: `Select-Object -First 5` on a group's runs (the count `n` stays whole).
+#[test]
+fn a_failure_group_lists_at_most_five_runs() {
+    let mut s = failed_batch();
+    s.failures[0].count = 7;
+    s.failures[0].runs = (1..=7).map(|i| format!("default#{i}")).collect();
+    let j = parse(&compact_json(&s, BATCH_SHORT));
+    assert_eq!(j["failures"][0]["n"], 7);
+    assert_eq!(j["failures"][0]["runs"].as_array().unwrap().len(), 5);
+    assert_eq!(j["failures"][0]["runs"][4], "default#5");
+}
+
 /// [98-99] 'a long failure reason is capped at 200 characters'
 #[test]
 fn a_long_failure_reason_is_capped_at_200_characters() {
@@ -373,6 +385,38 @@ fn heal_adds_at_most_240_characters_and_stays_under_700() {
 #[test]
 fn a_batch_without_a_proposal_has_no_heal_key() {
     assert!(!compact_json(&failed_batch(), BATCH_LONG).contains("heal"));
+}
+
+/// Review fix: `ConvertTo-Json -Compress` writes U+0085, U+2028 and U+2029 as
+/// `\uXXXX` (serde_json writes them raw) and leaves `< > & '`, DEL, U+00A0 and
+/// astral characters as they are. Expected text taken from pwsh 7.
+#[test]
+fn line_separators_are_escaped_as_powershell_does() {
+    let mut s = mixed();
+    s.failures = vec![FailureGroup {
+        signature: "error: a<b>&'c\u{2028}\u{85}\u{2029}\u{7f}\u{a0}x\u{1b}\u{1F600}".into(),
+        count: 1,
+        issue: None,
+        runs: vec!["p2#2".into()],
+    }];
+    let text = compact_json(&s, BATCH_SHORT);
+    assert!(
+        text.contains(r#""why":"error: a<b>&'c\u2028\u0085\u2029"#)
+            && text.contains("\u{7f}\u{a0}x\\u001b\u{1F600}\""),
+        "{text}"
+    );
+}
+
+/// Review fix: `Split-Path -Leaf` ignores a trailing separator.
+#[test]
+fn a_heal_diff_path_with_a_trailing_separator_still_has_a_file_name() {
+    let mut s = failed_batch();
+    s.heal = vec![HealEntry {
+        row: "FS-P3".into(),
+        pose: "frost".into(),
+        diff: r"C:\tmp\batch\heal-dir\".into(),
+    }];
+    assert!(compact_json(&s, BATCH_SHORT).contains(r#""diff":"heal-dir""#));
 }
 
 /// tc:36-52 '-Json has the chaos string when the run had chaos' and 'a run

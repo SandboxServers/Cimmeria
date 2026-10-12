@@ -45,6 +45,20 @@ fn runs_that_differ_only_by_seed_name_the_seed_once() {
     );
 }
 
+/// Review fix: `-replace 'seed=\d+'` ignores case, so `SEED=5` and `SEED=9`
+/// name the seed once too (checked in pwsh 7).
+#[test]
+fn the_seed_is_found_whatever_its_case() {
+    let runs = vec![
+        with_header(1, Some("chaos=cpu SEED=5")),
+        with_header(2, Some("chaos=cpu SEED=9")),
+    ];
+    assert_eq!(
+        select_header(&runs, None).as_deref(),
+        Some("chaos=cpu seed=<per run>")
+    );
+}
+
 /// New: headers that differ beyond the seed are counted, not listed.
 #[test]
 fn runs_that_differ_beyond_the_seed_are_counted() {

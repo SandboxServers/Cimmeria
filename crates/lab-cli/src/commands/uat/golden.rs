@@ -76,7 +76,10 @@ pub fn merge_golden(
         } else {
             diverged += 1;
         }
-        let at = match groups.iter().position(|g| g.line == line) {
+        // PowerShell's ordered dictionary ignores case in its keys: lines that
+        // differ only in case are one group, named as first seen.
+        let key = line.to_lowercase();
+        let at = match groups.iter().position(|g| g.line.to_lowercase() == key) {
             Some(i) => i,
             None => {
                 groups.push(GoldenGroup {
