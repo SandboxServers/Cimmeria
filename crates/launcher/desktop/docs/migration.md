@@ -209,10 +209,10 @@ launcher's game folder itself, so an existing multi-gigabyte install is neither
 copied nor downloaded again as a second client. Settings offers **Verify and
 adopt this folder** after a legacy import; there is no location to choose.
 
-1. **Preflight.** The old launcher's `launcher-installed.json` must record the
-   signed release's seed and every one of its patches, by their state keys. A
-   folder it left out of date is refused before anything is downloaded
-   (`outdated_install`). The folder must not hold the old launcher's own
+1. **Preflight.** The old launcher's `launcher-installed.json` need not record the
+   signed release. A folder it left out of date is classified, not refused: its
+   files that only lack a patch are listed as needing patching. The folder must
+   not hold the old launcher's own
    folder. It must be in the full layout the installer and a fresh install
    write, with `SGW.exe` in `Working\Binaries`. The old launcher also manages
    folders that point straight at `Working` or `Binaries`. Their release files
@@ -300,11 +300,14 @@ runs `adoption-in-place-uat.mjs` against the
 `host::adoption::uat_bridge_in_place` bridge, again with the shell test binary
 in `ADOPTION_UAT_BINARY`.
 
-Known limits: verification needs the signed seed once, because the signed
-release carries blob hashes and no per-file index. A publisher-signed file
-index would let in-place adoption skip that download. Native Windows power-loss
-behavior and the adopted-folder Play, Repair, Update and Uninstall views are
-checked by the LX-26 Windows UAT (G-06, G-10).
+Verification uses the signed file index when the manifest publishes one. The
+launcher fetches it, checks it against the manifest's hash, keeps it in the
+state root as `file-index-<sha256>.json`, and a second review does not download
+the seed again. When the manifest has no index, or the index does not match its
+hash, the launcher logs the reason, then fetches the seed and patches and builds
+the same index locally; either way the folder is classified against that index.
+Native Windows power-loss behavior and the adopted-folder Play, Repair, Update
+and Uninstall views are checked by the LX-26 Windows UAT (G-06, G-10).
 
 ## Permanent owner and current release
 

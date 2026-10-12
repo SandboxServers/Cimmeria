@@ -48,6 +48,8 @@ mod recovery_tests;
 mod reference_tests;
 #[cfg(all(test, target_os = "macos"))]
 mod tests;
+#[cfg(test)]
+mod verification_tests;
 use super::*;
 use crate::{catalog::VerifiedRelease, OperationKind, OperationState};
 pub use model::*;

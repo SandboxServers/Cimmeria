@@ -102,8 +102,6 @@ pub enum AdoptionError {
     ReleaseUnavailable,
     /// In place: release files in the folder do not match the signed release.
     VerificationFailed,
-    /// In place: the old launcher has not installed the signed release.
-    OutdatedInstall,
     /// In place: the folder is not in the installer's full layout.
     UnsupportedLayout,
     /// In place: the game is running from the folder.
@@ -171,7 +169,6 @@ impl From<adoption::Error> for AdoptionError {
             adoption::Error::Cancelled => Self::Cancelled,
             adoption::Error::LauncherTooOld => Self::LauncherTooOld,
             adoption::Error::VerificationFailed => Self::VerificationFailed,
-            adoption::Error::OutdatedInstall => Self::OutdatedInstall,
             adoption::Error::UnsupportedLayout => Self::UnsupportedLayout,
             adoption::Error::GameRunning => Self::GameRunning,
             adoption::Error::DuplicateReleaseFile => Self::DuplicateReleaseFile,

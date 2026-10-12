@@ -1,6 +1,8 @@
 use super::*;
 use std::collections::{BTreeMap, BTreeSet};
 
+// Copy mode's layout mapping; in-place classification uses the index instead.
+#[allow(dead_code)]
 pub(super) fn compare(
     source_root: &Path,
     source: &inventory::Index,

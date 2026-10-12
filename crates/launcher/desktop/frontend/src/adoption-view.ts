@@ -27,7 +27,6 @@ const failures:Record<string,string>={
  import_required:'Import legacy launcher settings first.',
  platform_unavailable:'Verified copy adoption is not available in this build.',
  verification_failed:'Release files in your game folder do not match the signed release, so it cannot be adopted in place. Restore the files listed in the review, then prepare a new review. Nothing was changed.',
- outdated_install:'The old launcher has not installed the current signed release in this folder. Update the game with the old launcher first, then adopt it. Nothing was changed.',
  unsupported_layout:'This game folder uses an older layout, with SGW.exe outside “Working\\Binaries”, that the launcher cannot adopt in place. Install the game fresh with this launcher, or keep using the old launcher for this folder. Nothing was changed.',
  game_running:'The game is running from this folder. Close the game first, then verify and adopt the folder again. Nothing was changed.',
  duplicate_release_file:'A release file is both in the launcher’s “game” folder and at its old place, and neither copy matches the reviewed file, so recovery stopped. The launcher log names the file. Nothing was deleted.',
