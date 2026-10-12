@@ -13,6 +13,7 @@ history did. Only a tagged PR gets per-PR calls; an untagged one keeps its list 
 
 import hashlib
 import json
+import os
 import re
 import subprocess
 import time
@@ -70,24 +71,44 @@ def run_gh(args, cwd=None):
         raise GhError(f"gh {args[0]} printed invalid JSON") from None
 
 
+def _read_cached(path):
+    """The answer cached at `path`, or None when there is none. A torn or corrupt file is a miss, so it is refetched."""
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except ValueError:
+        return None
+
+
+def _settled(args, result):
+    """False for a check-runs answer with a run still in progress: that answer will change, so it is not cached."""
+    if "/check-runs" not in args[1]:
+        return True
+    return all(r.get("status") == "completed" for page in result for r in page.get("check_runs", []))
+
+
 def polite(run, cache_dir=None, stats=None):
     """Wrap `run` with the rate-limit rules: a pause before each call, and a retry after RETRY_WAITS_S on a
     retryable error.
 
     An `api` answer is cached as JSON in `cache_dir` (keyed by the call's arguments), so a run that stopped
-    part way resumes from the answers it already has. `stats` ({gh_calls, cache_hits}) counts the work done: gh_calls
-    counts gh invocations, not HTTP requests (a --paginate call is several requests).
+    part way resumes from the answers it already has. A merge-queue list (`actions/runs`) and a check-runs answer
+    with a run still in progress are never cached. Use a fresh cache dir for each run.
+    `stats` ({gh_calls, cache_hits}) counts the work done: gh_calls counts gh invocations, not HTTP requests
+    (a --paginate call is several requests).
     """
     stats = stats if stats is not None else {"gh_calls": 0, "cache_hits": 0}
 
     def call(args):
         cached = None
-        if cache_dir and args[0] == "api":
+        if cache_dir and args[0] == "api" and "/actions/runs" not in args[1]:
             key = hashlib.sha256(json.dumps(args).encode()).hexdigest()
             cached = Path(cache_dir) / f"{key}.json"
-            if cached.is_file():
+            answer = _read_cached(cached)
+            if answer is not None:
                 stats["cache_hits"] += 1
-                return json.loads(cached.read_text(encoding="utf-8"))
+                return answer
         for attempt in range(len(RETRY_WAITS_S) + 1):
             if attempt:
                 time.sleep(RETRY_WAITS_S[attempt - 1])
@@ -101,9 +122,12 @@ def polite(run, cache_dir=None, stats=None):
                     raise
                 if attempt == len(RETRY_WAITS_S):
                     raise GhError(f"{e} (rerun with the same --cache to resume)") from e
-        if cached:
+        if cached and _settled(args, result):
             cached.parent.mkdir(parents=True, exist_ok=True)
-            cached.write_text(json.dumps(result), encoding="utf-8")
+            # Written beside the final name, then renamed over it, so a killed run never leaves a torn file.
+            tmp = cached.with_name(cached.name + ".tmp")
+            tmp.write_text(json.dumps(result), encoding="utf-8")
+            os.replace(tmp, cached)
         return result
 
     return call

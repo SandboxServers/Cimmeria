@@ -143,6 +143,51 @@ class GithubTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertEqual(stats, {"gh_calls": 1, "cache_hits": 1})
 
+    def test_a_merge_queue_list_is_fetched_every_time(self):
+        calls = []
+
+        def run(args):
+            calls.append(args)
+            return []
+
+        path = "repos/{owner}/{repo}/actions/runs?event=merge_group"
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(gh.time, "sleep"):
+            call = gh.polite(run, cache_dir=tmp)
+            call(["api", path])
+            call(["api", path])
+        self.assertEqual(len(calls), 2)
+
+    def test_an_in_progress_check_run_answer_is_fetched_again(self):
+        calls = []
+
+        def run(args):
+            calls.append(args)
+            return [{"check_runs": [{"name": "ci", "status": "in_progress", "conclusion": None}]}]
+
+        path = "repos/{owner}/{repo}/commits/abc/check-runs?per_page=100"
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(gh.time, "sleep"):
+            call = gh.polite(run, cache_dir=tmp)
+            call(["api", path])
+            call(["api", path])
+        self.assertEqual(len(calls), 2)
+
+    def test_a_torn_cache_file_is_refetched_and_overwritten(self):
+        calls = []
+
+        def run(args):
+            calls.append(args)
+            return []
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(gh.time, "sleep"):
+            call = gh.polite(run, cache_dir=tmp)
+            call(["api", "x"])
+            (cached,) = Path(tmp).glob("*.json")
+            cached.write_text("{torn", encoding="utf-8")
+            self.assertEqual(call(["api", "x"]), [])
+            self.assertEqual(cached.read_text(encoding="utf-8"), "[]")
+            self.assertEqual(list(Path(tmp).glob("*.tmp")), [])
+        self.assertEqual(len(calls), 2)
+
     def test_cancelled_and_skipped_gates_are_none_and_a_timed_out_gate_is_a_failure(self):
         def gate(conclusion):
             return lambda args: [{"check_runs": [{"name": gh.GATE, "conclusion": conclusion}]}]
