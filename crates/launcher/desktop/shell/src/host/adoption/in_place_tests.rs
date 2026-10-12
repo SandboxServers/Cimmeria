@@ -7,7 +7,7 @@ use cimmeria_launcher_engine::adoption::AdoptionMode;
 use std::{path::Path, time::Duration};
 
 /// Index names use `/`; a verbatim folder takes separators literally.
-fn under(root: &Path, name: &str) -> PathBuf {
+pub(super) fn under(root: &Path, name: &str) -> PathBuf {
     name.split('/')
         .fold(root.to_path_buf(), |path, part| path.join(part))
 }
@@ -70,7 +70,7 @@ async fn the_imported_folder_is_adopted_in_place_once_its_release_files_verify()
 }
 
 /// A host whose state holds no saved import, so a picked folder is the source.
-fn unimported_host(state_root: PathBuf) -> NativeHost {
+pub(super) fn unimported_host(state_root: PathBuf) -> NativeHost {
     drop(DesktopState::open(&state_root).unwrap());
     NativeHost::new(state_root)
 }
@@ -88,7 +88,12 @@ async fn a_picked_folder_without_an_import_is_reviewed_and_adopted_in_place() {
     // what gets adopted. The release file they edited is restored first.
     std::fs::write(folder.join("later.txt"), b"later entry").unwrap();
     f.host
-        .begin_folder_adoption(folder.join("Working"), AdoptionMode::InPlace, f.release())
+        .begin_folder_adoption(
+            folder.join("Working"),
+            None,
+            AdoptionMode::InPlace,
+            f.release(),
+        )
         .unwrap();
     let review = reviewed(&f.host).await;
     assert!(matches!(review.source_kind, SourceKind::Folder));

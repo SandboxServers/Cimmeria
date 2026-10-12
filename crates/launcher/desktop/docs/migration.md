@@ -160,14 +160,18 @@ See the [preparation handoff](../../../../docs/analysis/playtests/2026-10-03-mac
 
 ## Verified-copy adoption in Settings
 
-On macOS, Settings offers adoption after a legacy import. The copy is extracted
-by the build-pinned Windows helper under Wine, so the adopted installation
-records the Wine backend that prerequisite setup and Play require. Windows
-adopts the imported folder in place instead; see
-[In-place adoption on Windows](#in-place-adoption-on-windows).
+Settings offers verified-copy adoption after a legacy import, on every OS.
+On macOS the copy is the only mode. It is extracted by the build-pinned Windows
+helper under Wine, so the adopted installation records the Wine backend that
+prerequisite setup and Play require. On Windows and Linux Settings also offers
+adopting the imported folder in place; see
+[In-place adoption on Windows](#in-place-adoption-on-windows). Either mode can
+instead start from an existing game folder: the player picks that folder, then
+the folder the verified copy goes into.
 
 1. **Choose a location.** The launcher creates a new `Stargate Worlds` folder
-   inside the chosen folder. An existing folder of that name is refused.
+   inside the chosen folder. An existing folder of that name is refused. An
+   existing game folder is picked first, then the folder for the copy.
 2. **Preparation.** The signed release is downloaded with a size bound and
    extracted into a private reference. Progress and Cancel are shown. A second
    choice during preparation is refused, and Dismiss stops the download.

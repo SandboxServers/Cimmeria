@@ -20,6 +20,8 @@ pub use contract::{AdoptionCommand, AdoptionError, AdoptionStatus};
 #[cfg(all(test, target_os = "macos"))]
 use contract::{Completed, Imported, Phase, Reconciliation};
 use review::Review;
+#[cfg(all(test, not(target_os = "macos")))]
+mod copy_tests;
 #[cfg(test)]
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod fixture;
@@ -40,7 +42,6 @@ mod wine_tests;
 
 /// Created inside the folder the user picks. Confirmation requires a destination
 /// that does not exist yet, and a folder dialog can only return existing folders.
-#[cfg(any(target_os = "macos", test))]
 const COPY_FOLDER: &str = "Stargate Worlds";
 
 /// The saved import a legacy adoption names. A folder adoption never reads it.
@@ -51,6 +52,19 @@ fn legacy_import(
         .legacy_import()
         .map_err(|_| AdoptionError::CorruptState)?
         .ok_or(AdoptionError::ImportRequired)
+}
+
+/// The new folder a verified copy is created in, inside the folder the player picked.
+/// It must not exist yet, so the copy never lands on anything the player owns.
+fn copy_destination(location: PathBuf) -> Result<PathBuf, AdoptionError> {
+    let destination = location
+        .canonicalize()
+        .map_err(|_| AdoptionError::InvalidDirectory)?
+        .join(COPY_FOLDER);
+    if std::fs::symlink_metadata(&destination).is_ok() {
+        return Err(AdoptionError::InvalidDirectory);
+    }
+    Ok(destination)
 }
 
 #[derive(Default)]
@@ -136,20 +150,14 @@ impl NativeHost {
     }
     /// `location` is the folder the user picked natively; the copy goes into a
     /// new folder inside it.
-    #[cfg(any(target_os = "macos", test))]
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub fn begin_adoption_preview(
         &self,
         location: PathBuf,
         release: VerifiedRelease,
     ) -> Result<AdoptionStatus, AdoptionError> {
         self.adoption_choice_allowed()?;
-        let destination = location
-            .canonicalize()
-            .map_err(|_| AdoptionError::InvalidDirectory)?
-            .join(COPY_FOLDER);
-        if std::fs::symlink_metadata(&destination).is_ok() {
-            return Err(AdoptionError::InvalidDirectory);
-        }
+        let destination = copy_destination(location)?;
         self.admit_adoption_preview(release, adoption::AdoptionMode::Copy, |state| {
             let imported = legacy_import(state)?;
             Ok((
@@ -178,25 +186,40 @@ impl NativeHost {
             ))
         })
     }
-    /// A folder the player picked natively, adopted in place. The engine admits it
-    /// only when `selected` resolves to a game root (`Working`, `Working\Binaries`
-    /// or the root itself), and the folder can be written, before any download.
-    /// `mode` must be in place; a verified copy of a folder is AI-12.
-    #[cfg(not(target_os = "macos"))]
+    /// Checked before a folder dialog or the network is touched: `mode` must be one
+    /// this build offers, and the adoption must be admissible.
+    pub fn adoption_mode_allowed(&self, mode: adoption::AdoptionMode) -> Result<(), AdoptionError> {
+        self.adoption_choice_allowed()?;
+        if !self.adoption_status()?.modes.contains(&mode) {
+            return Err(AdoptionError::UnsupportedMode);
+        }
+        Ok(())
+    }
+    /// A folder the player picked natively. The engine admits it only when
+    /// `selected` resolves to a game root (`Working`, `Working\Binaries` or the root
+    /// itself), and the folder can be written, before any download. In place
+    /// (`InPlace`, no `location`) the folder itself is adopted. A copy (`Copy`) goes
+    /// into a new folder inside `location`, the folder the player picked second.
     pub fn begin_folder_adoption(
         &self,
         selected: PathBuf,
+        location: Option<PathBuf>,
         mode: adoption::AdoptionMode,
         release: VerifiedRelease,
     ) -> Result<AdoptionStatus, AdoptionError> {
-        self.adoption_choice_allowed()?;
-        if mode != adoption::AdoptionMode::InPlace {
-            return Err(AdoptionError::UnsupportedMode);
-        }
+        self.adoption_mode_allowed(mode)?;
         // The engine checks the request names this same root, so the root is passed.
         let root = adoption::resolve_folder(&selected, mode)?;
+        let destination = match (mode, location) {
+            (adoption::AdoptionMode::InPlace, None) => root,
+            (adoption::AdoptionMode::InPlace, Some(_)) => {
+                return Err(AdoptionError::UnsupportedMode)
+            }
+            (adoption::AdoptionMode::Copy, Some(location)) => copy_destination(location)?,
+            (adoption::AdoptionMode::Copy, None) => return Err(AdoptionError::InvalidDirectory),
+        };
         self.admit_adoption_preview(release, mode, |_| {
-            Ok((adoption::SourceRequest::Folder { selected }, root))
+            Ok((adoption::SourceRequest::Folder { selected }, destination))
         })
     }
     fn admit_adoption_preview(

@@ -112,7 +112,7 @@ engine half in `engine/src/storage/<name>/` and its host half in
 | `client_changes_command` | `inspect` | `client-changes-view.ts` | LX-07 |
 | `seed_archive_command` | `inspect`, `cancel`, `forget` | not yet available | AI-06 (part B) |
 | `choose_seed_archive` | none; the native `*.rar` picker | not yet available | AI-06 (part B) |
-| `choose_existing_game_folder` | none; the native folder picker | in place only; copy is AI-12 | AI-10 |
+| `choose_existing_game_folder` | `mode` (`in_place` or `copy`); the native folder picker, then a second picker for a copy | in place and copy, as `modes` offers | AI-10; copy AI-12 |
 
 `log_upload_command` is filled. `upload` zips `Binaries/sgwdebuglog*` and the
 `*.log` files under `Binaries/sessions/` in the installed game, and PUTs the zip
