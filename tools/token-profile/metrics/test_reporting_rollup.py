@@ -149,6 +149,12 @@ class RollupPacketTest(unittest.TestCase):
         self.assertEqual(haiku["first_pass_rate"], 0.75)
         self.assertEqual(haiku["retries_per_accepted"], 0.5)
 
+    def test_old_retries_are_gap_not_zero(self):
+        # the old regime's workers are not counted for retries, so its 0 would be an artifact, not a result
+        old = rollup(_records(), "old")
+        self.assertIsNone(old["retries_per_accepted"])
+        self.assertEqual(old["retries_per_accepted_gap"], "retries are counted for Haiku packet workers only")
+
     def test_overstep_counts_mixed_post_switch_campaigns(self):
         records = {
             "haiku-a": {"regime": "haiku", "overstep": {"recoverable_usd": {"low": 1.0, "high": 2.0}}},

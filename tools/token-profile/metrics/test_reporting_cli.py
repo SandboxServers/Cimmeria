@@ -112,6 +112,13 @@ class ReportCliTest(unittest.TestCase):
                     "reports/alpha-old.md", "reports/beta-haiku.md", "reports/summary.md"):
             self.assertTrue((self.out / rel).is_file(), rel)
 
+    def test_cli_old_retries_render_na(self):
+        _run(["report", "--inputs", str(self.inputs), "--out", str(self.out)])
+        summary = (self.out / "reports" / "summary.md").read_bytes().decode("utf-8")
+        retries = [line for line in summary.splitlines() if line.startswith("| Retries per accepted packet |")]
+        self.assertEqual(len(retries), 1)
+        self.assertTrue(retries[0].startswith("| Retries per accepted packet | n/a |"), retries[0])
+
     def test_cli_self_session_prices_only_listed_session(self):
         status, out, _ = _run(["report", "--inputs", str(self.inputs), "--out", str(self.out), "--db", str(self.db),
                                "--self-session", "s1"])
