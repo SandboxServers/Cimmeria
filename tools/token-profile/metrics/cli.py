@@ -4,17 +4,18 @@ from GitHub (read-only).
 
     python tools/token-profile/metrics registry --repo . [--check] [--config <json>] [--campaigns <json>]
     python tools/token-profile/metrics ledger --repo . --out <dir>
+    python tools/token-profile/metrics packets --db <sqlite> --ledger <json> --github <json> --out <dir>
     python tools/token-profile/metrics cost --db <profile.sqlite> --out <dir> [--config <json>] [--ledger <json>] [--since T] [--until T]
     python tools/token-profile/metrics github --repo . --out <dir> [--since 2026-09-21] [--config <json>]
         [--max-prs N] [--campaigns <file>] [--from-json <dir>]
 
 Exit status: 0 ok; 1 with registry --check, the campaign rules have a problem; 2 an input or output error;
 3 the privacy gate refused the output, nothing was written.
-The ledger writes <dir>/ledger.json and prints a JSON count summary. `cost` opens the profiler database read-only
-and writes cost.json to --out. --ledger is the CM-05 ledger.json: its "pr_map" ({"<pr>": "<campaign>"}) and, per
-campaign, the packets whose status is an accepted status. The github subcommand writes <dir>/github.json,
-a scratch file that is never committed, and prints a JSON count summary. --from-json replays gh_prs.json,
-gh_issues.json and gh_checks.json from <dir> instead of calling gh.
+The ledger writes <dir>/ledger.json and prints a JSON count summary; packets writes <dir>/packets.json.
+`cost` opens the profiler database read-only and writes cost.json to --out. --ledger is the CM-05 ledger.json: its
+"pr_map" ({"<pr>": "<campaign>"}) and, per campaign, the packets whose status is an accepted status. The github
+subcommand writes <dir>/github.json, a scratch file that is never committed, and prints a JSON count summary.
+--from-json replays gh_prs.json, gh_issues.json and gh_checks.json from <dir> instead of calling gh.
 """
 
 import argparse
@@ -29,7 +30,7 @@ from ingest.prices import CURRENT, SOURCE
 from report.db import ReportError, open_db
 from report.scrub import PrivacyError, Scrubber
 
-from . import cost, ledger, registry
+from . import cost, ledger, packets, registry
 from .github import GhError, collect, polite, replay, run_gh
 
 
@@ -172,6 +173,24 @@ def run_github(args):
     return 0
 
 
+def run_packets(args):
+    """Write the packet join to args.out/packets.json and print its counts; the exit status is 0, or 2 on an error."""
+    try:
+        ledger_doc = json.loads(Path(args.ledger).read_text(encoding="utf-8"))
+        github_doc = json.loads(Path(args.github).read_text(encoding="utf-8"))
+        config = registry.load_config(args.config)
+        result = packets.join_campaigns(ledger_doc, packets.load_db(args.db), github_doc, config)
+        out = Path(args.out)
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "packets.json").write_text(json.dumps(result, indent=1) + "\n", encoding="utf-8")
+    except (OSError, ValueError, KeyError, sqlite3.Error) as e:
+        print(f"status=error {type(e).__name__}", file=sys.stderr)
+        return 2
+    print(json.dumps({"sessions": result["sessions"],
+                      "packets": {name: len(c["packets"]) for name, c in result["campaigns"].items()}}))
+    return 0
+
+
 def main(argv=None):
     """Run the subcommand and return its exit status."""
     ap = argparse.ArgumentParser(prog="token-profile metrics", description=__doc__.split("\n\n")[0])
@@ -185,6 +204,12 @@ def main(argv=None):
     led.add_argument("--repo", required=True, help="the repository root")
     led.add_argument("--out", required=True, help="directory for ledger.json")
     led.add_argument("--config", help="metrics config.json (default: the package's)")
+    pk = sub.add_parser("packets", help="join worker sessions to packets: retries, first pass, escalation, stops")
+    pk.add_argument("--db", required=True, help="the profiler database, opened read-only")
+    pk.add_argument("--ledger", required=True, help="ledger.json from the ledger subcommand")
+    pk.add_argument("--github", required=True, help="github.json with the PRs' merge times and commits")
+    pk.add_argument("--out", required=True, help="directory for packets.json")
+    pk.add_argument("--config", help="metrics config.json (default: the package's)")
     cst = sub.add_parser("cost", help="list-price cost per campaign, role and PR (read-only database)")
     cst.add_argument("--db", required=True, help="the profiler's SQLite database")
     cst.add_argument("--out", required=True, help="directory for cost.json")
@@ -209,6 +234,8 @@ def main(argv=None):
     args = ap.parse_args(argv)
     if args.cmd == "ledger":
         return run_ledger(args)
+    if args.cmd == "packets":
+        return run_packets(args)
     if args.cmd == "cost":
         return cmd_cost(args)
     if args.cmd == "github":
