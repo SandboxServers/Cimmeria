@@ -50,3 +50,59 @@ def assemble_core(name, cost_doc, packets_doc, ledger_doc):
         for p in packets
     ]
     return out
+
+
+def _share(flags):
+    """Share of True among the flags that are not None, rounded to 2 places, or None when there are none."""
+    flags = [f for f in flags if f is not None]
+    return round(sum(1 for f in flags if f) / len(flags), 2) if flags else None
+
+
+def _put(out, key, value, gap):
+    """Store a rate; a rate with no rows is None with a gap note, never 0."""
+    out[key] = value
+    if value is None:
+        out[f"{key}_gap"] = gap
+
+
+def attach_github(record, github_doc):
+    """Add the CI, queue and escaped-defect figures of campaign `record` from the GitHub collector output (CM-08c)."""
+    name = record["campaign"]
+    ci_rows = [
+        row
+        for row in github_doc.get("prs") or []
+        if row.get("campaign") == name and (row.get("ci") or {}).get("first_attempt") is not None
+    ]
+
+    ci = {}
+    _put(ci, "first_attempt_rate", _share(r["ci"]["first_attempt"] for r in ci_rows), "no CI data")
+    _put(ci, "overall_rate", _share(r["ci"]["overall"] for r in ci_rows), "no CI data")
+    _put(
+        ci,
+        "code_prs_first_attempt_rate",
+        _share(r["ci"]["first_attempt"] for r in ci_rows if r.get("code_pr")),
+        "no CI data",
+    )
+    _put(ci, "queue_first_attempt_rate", _share((r.get("queue") or {}).get("first_attempt") for r in ci_rows), "no CI data")
+    ci["pr_runs_total"] = sum(r["ci"].get("runs") or 0 for r in ci_rows)
+    record["ci"] = ci
+
+    ci_by_pr = {row["number"]: row.get("ci") or {} for row in github_doc.get("prs") or []}
+    for entry in record["prs"]["per_pr"]:
+        pr_ci = ci_by_pr.get(entry["pr"], {})
+        entry["ci_first_pass"] = pr_ci.get("first_attempt")
+        entry["ci_runs"] = pr_ci.get("runs")
+
+    merged = record["prs"].get("merged")
+    defects = (github_doc.get("escaped_defects") or {}).get(name, [])
+    escaped = {"count": len(defects)}
+    _put(
+        escaped,
+        "rate_per_merged_pr",
+        len(defects) / merged if merged else None,
+        "no merged PRs",
+    )
+    escaped["items"] = [
+        {key: item.get(key) for key in ("kind", "number", "cites", "days_after_merge")} for item in defects
+    ]
+    record["escaped_defects"] = escaped
