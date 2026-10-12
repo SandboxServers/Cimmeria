@@ -64,6 +64,9 @@ pub struct DownloadEstimate {
     pub seed: bool,
     pub patches: Vec<String>,
     pub bytes: u64,
+    /// The seed comes from the player's own game archive, not a download.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub local_seed: bool,
 }
 /// One file the adopted tree gets from the replacement store (AI-09).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

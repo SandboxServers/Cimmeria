@@ -63,11 +63,6 @@ fn bridge() {
         };
         let result = match value["command"].as_str().unwrap() {
             "hello" => Ok(serde_json::json!({"backend": "in_place"})),
-            // The player puts the release file they edited back.
-            "restore" => {
-                fs::write(folder.join("later.txt"), b"later entry").unwrap();
-                Ok(serde_json::json!({}))
-            }
             "choose" => status(host.begin_adoption_in_place(fixtures::verified(&seed))),
             "evidence" => Ok(evidence(&host, &folder)),
             // The engine's confirmed uninstall of the adopted folder; its own

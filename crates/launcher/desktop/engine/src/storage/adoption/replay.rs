@@ -93,6 +93,7 @@ pub(super) fn estimate(
         seed,
         patches,
         bytes,
+        local_seed: plan.needs_seed && have_local_seed,
     }
 }
 

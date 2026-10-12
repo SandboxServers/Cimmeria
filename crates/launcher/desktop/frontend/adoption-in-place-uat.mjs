@@ -22,7 +22,8 @@ const send=request=>new Promise((resolve,reject)=>{
 const {document,window}=parseHTML(await readFile(new URL('./ui/index.html',import.meta.url),'utf8'));
 const calls=[];
 const app=mountAdoption(document,async(command,args)=>{
- const request=command==='choose_adoption_destination'?{command:'choose'}:(assert.equal(command,'adoption_command'),args.request);
+ // The stand-in for the folder dialog: the production view names the mode it chose.
+ const request=command==='choose_existing_game_folder'?(assert.equal(args.mode,'in_place'),{command:'choose'}):(assert.equal(command,'adoption_command'),args.request);
  calls.push(request);
  return send(request);
 });
@@ -49,29 +50,25 @@ try {
  const before=await evidence();
  assert.equal(before.owner_marker,false);assert.equal(before.owned_directory,null);assert.equal(before.executable_in_old_place,true);
  assert.match(text(),/Adopt your existing game folder .* in place/);
- assert.equal(get('choose-adoption-destination').textContent,'Verify and adopt this folder…');
+ assert.equal(get('choose-adoption-destination').textContent,'Use an existing game folder…');
 
- // 1. The player edited one release file: the review names it, confirm stays
- // disabled even with every box ticked, and nothing in the folder changes.
+ // 1. The player edited one release file: the review shows its replacement box.
+ // Confirm stays disabled with every other box ticked, nothing changes until the
+ // replacement is allowed, and then one confirmation publishes in place.
  await click('choose-adoption-destination');
- let status=await until('the first review',s=>{assert.equal(s.last_error,null,'preparation failed');return !!s.review;});
- assert.equal(status.review.in_place,true);assert.deepEqual(status.review.blocked_files,['later.txt']);
- assert.match(text(),/cannot be adopted in place: later\.txt/);
+ let status=await until('the review',s=>{assert.equal(s.last_error,null,'preparation failed');return !!s.review;});
+ assert.equal(status.review.in_place,true);assert.equal(status.review.requires_replacement,true);assert.deepEqual(status.review.blocked_files,[]);
+ assert.match(text(),/Review the comparison and confirmations below\. Nothing is moved until you confirm\./);
  assert.equal(get('adoption-source-label').textContent,'Game folder to adopt:');assert.equal(get('adoption-source').textContent,before.folder);
+ assert.equal(get('adoption-replace-row').hidden,false,'a modified release file shows the replacement box');
+ assert.equal(get('adoption-replace').checked,false);
  await tickShown();
- assert.equal(get('confirm-adoption').disabled,true,'a folder that does not verify is never confirmed');
+ assert.equal(get('confirm-adoption').disabled,true,'a modified release file is never confirmed before its replacement is ticked');
  press('confirm-adoption');await settle();assert.equal(sent('confirm').length,0);
  let now=await evidence();assert.equal(now.owner_marker,false);assert.equal(now.executable_in_old_place,true);
- await click('dismiss-adoption');
- await until('the dismissed review',s=>s.activity==='idle'&&!s.review);
-
- // 2. Restored, the folder verifies; one confirmation adopts it in place.
- await send({command:'restore'});
- await click('choose-adoption-destination');
- status=await until('the second review',s=>{assert.equal(s.last_error,null,'preparation failed');return !!s.review;});
- assert.deepEqual(status.review.blocked_files,[]);assert.match(text(),/Nothing is moved until you confirm/);
+ await tick('adoption-replace');
+ assert.equal(get('confirm-adoption').disabled,false,'ticking the replacement enables confirm');
  assert.match(get('adoption-consequences').textContent,/moved, not copied.*old launcher stop working.*Don’t run the old launcher on this folder again.*no longer use them.*live in Documents and are not affected/);
- await tickShown();
  press('confirm-adoption');press('confirm-adoption');await settle();
  assert.equal(sent('confirm').length,1,'a double click confirms once');
  status=await until('publication',s=>s.activity==='idle');
@@ -83,12 +80,12 @@ try {
  assert.equal(now.executable_in_game,true);assert.equal(now.executable_in_old_place,false);
  assert.equal(now.player_file,'untrusted plugin','a file that is not part of the release stays where it was');
 
- // 3. Uninstalling the adopted folder removes what the launcher manages only.
+ // 2. Uninstalling the adopted folder removes what the launcher manages only.
  await send({command:'uninstall'});
  now=await evidence();
  assert.equal(now.owner_marker,false);assert.equal(now.owned_directory,null);assert.equal(now.executable_in_game,false);
  assert.equal(now.player_file,'untrusted plugin');
  console.log('In-place adoption logic UAT passed: production Effect workflow and view against the production host with a real isolated store, imported old-launcher folder and signed loopback artifact origin.');
- console.log('Exercised: in-place offer text and button; a modified release file named in the review with confirm held disabled and the folder unchanged; dismiss; restored folder re-reviewed unchecked; single confirmation per double click; adoption published with owner marker, owned directory, uninstall target, executable moved into the owned tree and the unlisted file left in place; engine uninstall of the adopted folder keeping the unlisted file.');
+ console.log('Exercised: in-place offer text and button; a modified release file shows the replacement box, confirm held disabled until it is ticked and the folder unchanged until then; a single confirmation per double click; adoption published with owner marker, owned directory, uninstall target, executable moved into the owned tree and the unlisted file left in place; engine uninstall of the adopted folder keeping the unlisted file.');
  console.log('Excluded: Tauri IPC and the absent folder dialog, the signed production catalog and HTTPS transport, the published client and its RAR/CAB seed, interrupted-move recovery and abandonment (engine tests), the Uninstall view (G-06, LX-26), Play on the adopted folder (LX-26), and packaged visual UAT.');
 } finally {await app.dispose();child.stdin.end();assert.equal(await exit,0,'native bridge exits cleanly');await rm(root,{recursive:true,force:true});}
