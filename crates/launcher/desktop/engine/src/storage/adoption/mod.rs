@@ -301,6 +301,7 @@ fn copy_preview(
         game_telemetry_available: false,
         download: Some(download),
         backup: None,
+        login_replaced: false,
     };
     Ok(Preview {
         state,

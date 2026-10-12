@@ -419,6 +419,11 @@ fn move_files(
                 if let Some(parent) = target.parent() {
                     std::fs::create_dir_all(parent)?;
                 }
+                if let Way::Adopt { plan, .. } = way {
+                    if keeps_login(plan, path) {
+                        keep_login(path, &source, plan)?;
+                    }
+                }
                 std::fs::rename(&source, &target)?;
                 hook(Point::Moved)?;
             }
@@ -434,6 +439,11 @@ fn move_files(
             (false, false) => {
                 tracing::error!(target: "adoption", path, "in-place adoption: a release file is in neither place");
                 return Err(StorageError::Corrupt.into());
+            }
+        }
+        if let Way::Abandon { plan } = way {
+            if keeps_login(plan, path) {
+                drop_login_copy(path, &target, plan)?;
             }
         }
     }
@@ -523,7 +533,26 @@ fn replace_file(
         tracing::error!(target: "adoption", path, "in-place adoption: a staged replacement no longer matches the review");
         return Err(StorageError::Corrupt.into());
     }
-    inventory::copy(&staged, target, &entry, &CancellationToken::new())
+    // The copy lands beside the target and is renamed over it only once it verifies,
+    // so an interrupted copy never leaves a partial file at the release path.
+    let partial = partial_path(target);
+    if present(&partial)? {
+        std::fs::remove_file(&partial)?;
+    }
+    inventory::copy(&staged, &partial, &entry, &CancellationToken::new())?;
+    if !holds(&partial, &expected)? {
+        std::fs::remove_file(&partial)?;
+        return Err(StorageError::Corrupt.into());
+    }
+    std::fs::rename(&partial, target)?;
+    Ok(())
+}
+
+/// The name a replacement is copied to before it is renamed over `target`.
+fn partial_path(target: &Path) -> PathBuf {
+    let mut partial = target.as_os_str().to_owned();
+    partial.push(".adopt-partial");
+    PathBuf::from(partial)
 }
 
 /// Undoes [`replace_file`] while the adoption is staged: the original goes back
@@ -563,6 +592,11 @@ fn restore_replaced(
     if present(game_copy)? && holds(game_copy, &expected)? {
         std::fs::remove_file(game_copy)?;
     }
+    // A copy an interrupted install left beside the release path is never the reviewed file.
+    let partial = partial_path(game_copy);
+    if present(&partial)? {
+        std::fs::remove_file(&partial)?;
+    }
     Ok(())
 }
 
@@ -600,6 +634,58 @@ fn remove_empty_dir(dir: &Path) {
             tracing::warn!(target: "adoption", ?error, directory = %dir.display(), "abandoned in-place adoption: a folder is left in place")
         }
     }
+}
+
+/// Whether `path` is a custom `LoginInternal.lua` that setup rewrites. Its original
+/// is kept in the backup at the same relative path (D-AI13).
+fn keeps_login(plan: &Plan, path: &str) -> bool {
+    path.eq_ignore_ascii_case(LOGIN_INTERNAL)
+        && plan.report.login_replaced
+        && plan.report.backup.is_some()
+}
+
+/// Copies the original `LoginInternal.lua` into the backup before it moves into
+/// `game`. Idempotent: a copy already holding the same bytes is kept, and a
+/// partial one from an interrupted run is copied again.
+fn keep_login(path: &str, source: &Path, plan: &Plan) -> Result<(), Error> {
+    let backup = plan.report.backup.as_ref().ok_or(StorageError::Corrupt)?;
+    let home = inventory::native(backup, path);
+    let entry = inventory::hash(source, &CancellationToken::new())?;
+    let expected = Hashed {
+        sha256: entry.sha256,
+        size: entry.size,
+    };
+    if present(&home)? {
+        if holds(&home, &expected)? {
+            return Ok(());
+        }
+        std::fs::remove_file(&home)?;
+    }
+    if let Some(parent) = home.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    inventory::copy(source, &home, &entry, &CancellationToken::new())?;
+    tracing::debug!(target: "adoption", path, original = %home.display(), "in-place adoption: the login file's original was kept in the backup");
+    Ok(())
+}
+
+/// Abandon drops the backup's copy of a login file once the folder holds the same
+/// bytes again. A copy whose original is not back in the folder stays.
+fn drop_login_copy(path: &str, restored: &Path, plan: &Plan) -> Result<(), Error> {
+    let backup = plan.report.backup.as_ref().ok_or(StorageError::Corrupt)?;
+    let home = inventory::native(backup, path);
+    if !present(&home)? {
+        return Ok(());
+    }
+    let entry = inventory::hash(&home, &CancellationToken::new())?;
+    let expected = Hashed {
+        sha256: entry.sha256,
+        size: entry.size,
+    };
+    if present(restored)? && holds(restored, &expected)? {
+        std::fs::remove_file(&home)?;
+    }
+    Ok(())
 }
 
 /// The work folder's replacement copies and parked originals are spent once the

@@ -284,3 +284,135 @@ fn a_patch_added_file_and_a_folder_spelled_in_another_case_are_adopted() {
         expected
     );
 }
+
+/// The login file the setup rule writes, relative to the folder.
+const LOGIN: &str = "Working/SGWGame/Content/UI/Startup/Login/LoginInternal.lua";
+const CUSTOM_LOGIN: &[u8] = b"-- the player's own login servers\n";
+
+/// A release that names `LoginInternal.lua`, and a folder whose copy the player
+/// wrote. The custom file is a known transform: it adopts in place with no
+/// replacement, and its original goes to the backup at the same path.
+#[test]
+fn a_custom_login_file_adopts_in_place_and_its_original_is_backed_up() {
+    let f = Fixture::with_archive(None, SeedKind::Zip, archive_with(LOGIN, b"stock login"));
+    let login = inventory::native(f.folder(), LOGIN);
+    std::fs::create_dir_all(login.parent().unwrap()).unwrap();
+    std::fs::write(&login, CUSTOM_LOGIN).unwrap();
+    let preview = f.preview().unwrap();
+    assert!(preview.report.login_replaced);
+    let backup = preview.report.backup.clone().unwrap();
+    commit(preview).unwrap();
+
+    // The player's login file is kept at the same relative path in the backup.
+    assert_eq!(
+        std::fs::read(inventory::native(&backup, LOGIN)).unwrap(),
+        CUSTOM_LOGIN
+    );
+    // The game's login file is the setup version, not the player's.
+    let game_login = std::fs::read(inventory::native(&f.folder().join("game"), LOGIN)).unwrap();
+    assert_ne!(game_login, CUSTOM_LOGIN);
+}
+
+/// A launcher-owned work folder that holds a file no adoption writes is refused,
+/// and the file is kept.
+#[test]
+fn a_work_folder_with_an_unexpected_file_is_refused_and_the_file_is_kept() {
+    let f = Fixture::new(None);
+    let stage = f
+        .folder()
+        .join(format!(".cimmeria-adopt-{}", Uuid::new_v4()));
+    std::fs::create_dir(&stage).unwrap();
+    std::fs::write(stage.join("stray.txt"), b"unexpected").unwrap();
+    assert_eq!(f.preview().err(), Some(Error::LeftoverLauncherFiles));
+    assert_eq!(
+        std::fs::read(stage.join("stray.txt")).unwrap(),
+        b"unexpected"
+    );
+}
+
+/// `Working` is a junction to another folder. The in-place preview must refuse
+/// before it writes its write probe, so the junction target gets no probe file.
+#[cfg(windows)]
+#[test]
+fn an_in_place_preview_writes_no_probe_through_a_junction() {
+    let f = Fixture::new(None);
+    let target = tempfile::tempdir().unwrap();
+    let working = f.folder().join("Working");
+    std::fs::remove_dir_all(&working).unwrap();
+    let made = std::process::Command::new("cmd")
+        .args(["/C", "mklink", "/J"])
+        .arg(&working)
+        .arg(target.path())
+        .status();
+    if !matches!(made, Ok(status) if status.success()) {
+        return;
+    }
+    assert!(f.preview().is_err());
+    let probes = std::fs::read_dir(target.path())
+        .unwrap()
+        .filter(|entry| {
+            entry
+                .as_ref()
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".cimmeria-write-probe-")
+        })
+        .count();
+    assert_eq!(probes, 0);
+}
+
+/// Uninstall removes a `.cimmeria-adopt-<work id>` folder that an adoption left
+/// behind, and the backup folder stays.
+#[test]
+fn uninstalling_removes_a_work_folder_an_adoption_left_behind() {
+    let (f, preview, _) = modified_with_replacement();
+    let backup = preview.report.backup.clone().unwrap();
+    let provenance = confirm_replacing(preview, |_| Ok(())).unwrap();
+    let stuck = f
+        .folder()
+        .join(format!(".cimmeria-adopt-{}", provenance.work_id));
+    std::fs::create_dir(&stuck).unwrap();
+    std::fs::write(stuck.join("left.txt"), b"left behind").unwrap();
+    let mut state = f.state.lock().unwrap();
+    let installed = state.installed_content().unwrap().unwrap();
+    let revision = state.operations().snapshot().revision;
+    state
+        .uninstall(
+            Uuid::new_v4(),
+            revision,
+            installed.intent.operation_id,
+            true,
+        )
+        .unwrap();
+    drop(state);
+    assert!(!stuck.exists());
+    assert!(backup.is_dir());
+}
+
+/// Abandon removes a `<game file>.adopt-partial` left by an interrupted copy, and
+/// no game folder is left behind.
+#[test]
+fn abandoning_removes_a_partial_replacement_left_in_game() {
+    let (f, preview, _) = modified_with_replacement();
+    assert!(confirm_replacing(preview, crash_at_replaced).is_err());
+    let f = f.reopen();
+    let mut partial = inventory::native(&f.folder().join("game"), EXE).into_os_string();
+    partial.push(".adopt-partial");
+    let partial = PathBuf::from(partial);
+    std::fs::create_dir_all(partial.parent().unwrap()).unwrap();
+    std::fs::write(&partial, b"half copied").unwrap();
+
+    let (id, _) = f.operation();
+    let mut state = f.state.lock().unwrap();
+    let revision = state.operations().snapshot().revision;
+    abandon(&mut state, id, revision).unwrap();
+    drop(state);
+
+    assert!(!partial.exists());
+    assert!(!f.folder().join("game").exists());
+    assert_eq!(
+        std::fs::read(inventory::native(f.folder(), EXE)).unwrap(),
+        EDITED
+    );
+}

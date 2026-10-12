@@ -177,6 +177,7 @@ pub(super) fn preview(
         game_telemetry_available: false,
         download: Some(download),
         backup,
+        login_replaced,
     };
     for file in report.blocking(&replacements) {
         tracing::warn!(target: "adoption", path = %file.path, classification = ?file.classification, "in-place adoption: release file does not verify");
@@ -278,11 +279,41 @@ fn work_folders(folder: &Path) -> Result<Vec<(Uuid, PathBuf)>, Error> {
     Ok(found)
 }
 
+/// Whether a work folder holds only what admission copies in: `replacements` (any
+/// content) and optionally an empty `originals`, and nothing else at its top level.
+/// Anything else is not the launcher's to delete, so the folder is kept.
+fn only_copies(stage: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(stage) else {
+        return false;
+    };
+    let mut replacements = false;
+    for entry in entries {
+        let Ok(entry) = entry else {
+            return false;
+        };
+        let path = entry.path();
+        let plain_dir = std::fs::symlink_metadata(&path).is_ok_and(|meta| meta.is_dir());
+        match entry.file_name().to_str() {
+            Some("replacements") if plain_dir => replacements = true,
+            Some("originals") if plain_dir => {
+                if std::fs::read_dir(&path).is_ok_and(|mut d| d.next().is_some()) {
+                    return false;
+                }
+            }
+            _ => return false,
+        }
+    }
+    replacements
+}
+
 /// Whether an admission for `id` never began. Moves follow `begin`, so such a
 /// work folder holds only copies. It is not begun when no journal operation names
 /// it, nothing was set aside, no backup was taken, and its record is absent or
 /// still Staged. A record that cannot be read counts as begun.
 fn unbegun_work_folder(state: &DesktopState, id: Uuid, stage: &Path) -> Result<bool, Error> {
+    if !only_copies(stage) {
+        return Ok(false);
+    }
     let journaled = state
         .operations
         .snapshot()

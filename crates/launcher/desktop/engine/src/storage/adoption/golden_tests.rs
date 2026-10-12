@@ -137,6 +137,7 @@ fn plan() -> Plan {
             game_telemetry_available: false,
             download: None,
             backup: None,
+            login_replaced: false,
         },
         choices: Choices {
             normalize_managed_files: true,

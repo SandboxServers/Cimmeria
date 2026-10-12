@@ -97,6 +97,10 @@ pub struct Report {
     pub download: Option<DownloadEstimate>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub backup: Option<PathBuf>,
+    /// The folder's `LoginInternal.lua` differs from its release and prepared bytes.
+    /// Its original is copied to the backup before setup rewrites it (D-AI13).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub login_replaced: bool,
 }
 impl Report {
     /// Adopted in place (D-LX12): the reviewed folder becomes the owner root.

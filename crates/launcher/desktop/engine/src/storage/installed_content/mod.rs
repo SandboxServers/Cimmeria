@@ -408,6 +408,19 @@ impl DesktopState {
     }
 }
 
+/// The work id of the adoption that installed `intent`, or `None` when it was not
+/// adopted. Uninstall uses it to recognise the adoption's work folder.
+pub(super) fn adopted_work(
+    state_root: &Path,
+    intent: &InstallIntent,
+) -> Result<Option<uuid::Uuid>, StorageError> {
+    let record: Record = read(&state_root.join(NAME))?.ok_or(StorageError::Corrupt)?;
+    if record.intent != *intent {
+        return Err(StorageError::Corrupt);
+    }
+    Ok(adoption_shape(&record)?.map(|provenance| provenance.work_id))
+}
+
 /// Which index schemas may carry adoption provenance.
 fn adoption_shape(record: &Record) -> Result<Option<&super::adoption::Provenance>, StorageError> {
     if (record.schema_version == 3) != record.current_release.is_some() {

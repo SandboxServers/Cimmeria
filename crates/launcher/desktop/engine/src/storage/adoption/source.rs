@@ -49,6 +49,7 @@ pub(super) fn request_source(
     }
     // A copy only reads the folder, so it needs no write access to it.
     if mode == AdoptionMode::InPlace {
+        refuse_links(&root)?;
         check_writable(&root)?;
     }
     if root.starts_with(&state_root) || state_root.starts_with(&root) {
@@ -124,6 +125,40 @@ fn working_binaries(root: &Path) -> Option<PathBuf> {
     let working = child_ci(root, "Working")?;
     let binaries = child_ci(&working, "Binaries")?;
     holds_sgw(&binaries).then_some(binaries)
+}
+
+/// Refuses a folder whose root, `Working` or `Binaries` is a symlink or a reparse
+/// point such as a junction. The write probe would follow it to another folder,
+/// so this runs before any probe is created.
+pub(super) fn refuse_links(root: &Path) -> Result<(), Error> {
+    let working = child_ci(root, "Working");
+    let binaries = working
+        .as_deref()
+        .and_then(|working| child_ci(working, "Binaries"));
+    for path in [Some(root.to_path_buf()), working, binaries]
+        .into_iter()
+        .flatten()
+    {
+        let meta = std::fs::symlink_metadata(&path)?;
+        if is_link(&meta) {
+            tracing::warn!(target: "adoption", path = %path.display(), "in-place adoption refused: a folder on the way is a link");
+            return Err(StorageError::UnsafeFile.into());
+        }
+    }
+    Ok(())
+}
+
+/// A symbolic link, or on Windows a reparse point (junction included).
+fn is_link(meta: &std::fs::Metadata) -> bool {
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        meta.file_type().is_symlink() || meta.file_attributes() & 0x400 != 0
+    }
+    #[cfg(not(windows))]
+    {
+        meta.file_type().is_symlink()
+    }
 }
 
 /// The folder can be changed in place: a probe is created and deleted under
