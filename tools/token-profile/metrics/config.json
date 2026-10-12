@@ -8,5 +8,6 @@
     "rust-gameserver-dev": "implementer-domain",
     "lab-driver": "lab-driver"
   },
-  "accepted_statuses": ["Integrated", "UATPending", "Done"]
+  "accepted_statuses": ["Integrated", "UATPending", "Done"],
+  "pr_overrides": {"historical-cellblocks": [831]}
 }

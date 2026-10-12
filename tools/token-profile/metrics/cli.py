@@ -16,27 +16,58 @@ from pathlib import Path
 from . import ledger, registry
 
 
-def git_log(repo):
-    """A runner for `git log` in `repo`: its stdout, or "" when git cannot run there."""
+def git_log(repo, failures):
+    """A runner for `git log` in `repo`: its stdout. A run that fails returns "" and is appended to `failures`."""
     def run(args):
         try:
             return subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True,
                                   encoding="utf-8", errors="replace", check=True).stdout
         except (OSError, subprocess.CalledProcessError):
+            failures.append(args)
             return ""
     return run
 
 
-def build_ledger(repo, git):
-    """The packets of every campaign folder under docs/analysis, their PR map, and each campaign's window."""
+def _one_per_id(rows):
+    """One row per packet id: the first row with a status cell, or the first row when none has one."""
+    kept = {}
+    for row in rows:
+        if row["id"] not in kept or (not kept[row["id"]]["status_raw"] and row["status_raw"]):
+            kept[row["id"]] = row
+    return list(kept.values())
+
+
+def _retry_reason(campaign_dir, row):
+    """The retry reason of an escalated packet or one with a worknote, else None. A worknote's first 60 lines count."""
+    note = campaign_dir / "worknotes" / f"{row['id']}.md"
+    if not (row["escalated"] or note.is_file()):
+        return None
+    head = "\n".join(note.read_text(encoding="utf-8").splitlines()[:60]) if note.is_file() else ""
+    return ledger.retry_reason(f"{row['implementer_note'] or ''} {row['status_raw']} {head}")
+
+
+def build_ledger(repo, git, pr_overrides=None):
+    """The packets of every campaign folder under docs/analysis, their PR map, and each campaign's window.
+
+    `pr_overrides` ({campaign: [pr]}) adds PRs that no ledger table cites; each such campaign gets a pseudo-packet for them.
+    """
     root = Path(repo) / "docs" / "analysis"
     rows_by_campaign = {}
     for folder in sorted(p for p in root.iterdir() if p.is_dir()):
         files = sorted([*folder.glob("README.md"), *folder.glob("work-packets*.md")])
         rows = [ledger.normalize(r) for f in files for r in ledger.parse_packet_table(f.read_text(encoding="utf-8"))]
+        rows = _one_per_id(rows)
+        for row in rows:
+            row["retry_reason"] = _retry_reason(folder, row)
         if rows:
             rows_by_campaign[folder.name] = rows
     pr_map, conflicts = ledger.campaign_pr_map(rows_by_campaign)
+    for campaign, prs in (pr_overrides or {}).items():
+        rows_by_campaign.setdefault(campaign, []).append(
+            {"id": campaign, "title": "pr override", "status": "unknown", "status_raw": "", "prs": list(prs),
+             "implementer": "other", "implementer_note": None, "escalated": False, "retry_reason": None,
+             "size": "", "wave": "", "depends": ""})
+        pr_map.update({pr: campaign for pr in prs})
     return {
         "schema": "cimmeria-campaign-ledger/1",
         "campaigns": {name: {"packets": rows, "window": ledger.campaign_window(name, git)}
@@ -56,14 +87,18 @@ def summary(result):
 
 def run_ledger(args):
     """Write the ledger for `args.repo` to `args.out` and print its summary; the exit status is 0, or 2 on an error."""
+    failures = []
     try:
-        result = build_ledger(args.repo, git_log(args.repo))
+        pr_overrides = registry.load_config().get("pr_overrides", {})
+        result = build_ledger(args.repo, git_log(args.repo, failures), pr_overrides)
         out = Path(args.out)
         out.mkdir(parents=True, exist_ok=True)
         (out / "ledger.json").write_text(json.dumps(result, indent=1) + "\n", encoding="utf-8")
-    except OSError as e:
+    except (OSError, ValueError) as e:
         print(f"status=error {type(e).__name__}", file=sys.stderr)
         return 2
+    if failures:
+        print("status=warn git_unavailable", file=sys.stderr)
     print(json.dumps(summary(result), indent=1))
     return 0
 
