@@ -27,8 +27,15 @@ const CHECK_LABEL: &str = "Checking your game archive";
 /// What the seed step uses. Shared by Install, Repair, Update and adoption.
 #[derive(Clone)]
 pub struct SeedSourceHandle {
+    /// The archive and the switch token, changed together under one lock.
+    slot: Arc<Mutex<Slot>>,
+}
+
+/// What the handle holds: the chosen archive, and the token that fires when
+/// it was chosen.
+struct Slot {
     /// The archive the seed step uses, when the player has chosen one.
-    current: Arc<Mutex<Option<VerifiedLocalSeed>>>,
+    current: Option<VerifiedLocalSeed>,
     /// Fired by [`SeedSourceHandle::use_local`] to stop a running download.
     switch: CancellationToken,
 }
@@ -46,30 +53,42 @@ impl SeedSourceHandle {
 
     fn with_current(current: Option<VerifiedLocalSeed>) -> Self {
         Self {
-            current: Arc::new(Mutex::new(current)),
-            switch: CancellationToken::new(),
+            slot: Arc::new(Mutex::new(Slot {
+                current,
+                switch: CancellationToken::new(),
+            })),
         }
     }
 
     /// Switch a running seed step to `seed`: stops its download at the next
     /// chunk and removes the partial file. Later seed steps use it too.
     pub fn use_local(&self, seed: VerifiedLocalSeed) {
-        *self.lock() = Some(seed);
-        self.switch.cancel();
+        let mut slot = self.lock();
+        slot.current = Some(seed);
+        slot.switch.cancel();
+    }
+
+    /// Back to download mode. Applies from the next seed step: a step that
+    /// already read [`SeedSourceHandle::current`] keeps its archive. Later
+    /// steps get a fresh switch token, so they are not switched at once.
+    pub fn clear(&self) {
+        let mut slot = self.lock();
+        slot.current = None;
+        slot.switch = CancellationToken::new();
     }
 
     /// The chosen local archive, if any.
     pub fn current(&self) -> Option<VerifiedLocalSeed> {
-        self.lock().clone()
+        self.lock().current.clone()
     }
 
     /// Fires when [`SeedSourceHandle::use_local`] is called.
     pub(crate) fn switched(&self) -> CancellationToken {
-        self.switch.clone()
+        self.lock().switch.clone()
     }
 
-    fn lock(&self) -> MutexGuard<'_, Option<VerifiedLocalSeed>> {
-        self.current.lock().unwrap_or_else(PoisonError::into_inner)
+    fn lock(&self) -> MutexGuard<'_, Slot> {
+        self.slot.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
