@@ -136,7 +136,7 @@ folder (both are inside the WoWSilicon profile's Wine prefix). After
 the game in a new folder; your original stays untouched. An adopted copy plays
 without the game diagnostics module for now, so testers should install fresh.
 The details are in
-the [migration contract](../../crates/launcher/desktop/docs/migration.md#verified-copy-adoption-in-settings).
+the [migration contract](../../crates/launcher/desktop/docs/migration.md#adopting-an-existing-folder).
 
 ## What to report
 

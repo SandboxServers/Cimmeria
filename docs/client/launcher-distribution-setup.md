@@ -145,6 +145,9 @@ cargo run -p cimmeria-launcher-core --bin build-file-index -- `
 - Attach `file-index.json` to the immutable per-publication release, next to the seed and patches.
 - Paste the printed `file_index` entry into `manifest.json` before signing, and set its `blob` to the attached asset name.
 - `pack-client-overlay` drops a stale index: when it appends a patch, it sets `file_index` to `None` and prints a reminder. Rebuild the index after adding patches, before signing.
+- A missing or mismatched index makes the launcher build one from the seed. That is a fallback, never a wrong verdict.
+- Publishing the index is an owner step, signed with the offline signing key, and waits on owner decision D-AI8 (see [any-install adoption](../analysis/any-install-adoption/README.md)).
+- The index carries only paths, sizes and hashes. The seed is never rehosted.
 
 ### Initial setup
 

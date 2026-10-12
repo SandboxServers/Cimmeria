@@ -9,6 +9,14 @@ seed archive is a player-chosen copy of the signed seed ZIP. The launcher
 verifies it, then uses it in place of the seed download. It is never rehosted; see
 [Rehosting](#rehosting).
 
+## Where players choose it
+
+Players choose the archive in two places: Settings, and the install area on the
+Play tab, both behind the label `Use a downloaded game archive…`. The archive
+is `Stargate Worlds (0.8348.1.4046) (2009-06-30) (beta).rar`, 4,135,724,034
+bytes. Adoption uses the chosen archive too when it needs the seed, and its
+review says `Uses your game archive`.
+
 ## Record and lazy check
 
 A chosen archive is remembered in `seed-archive.json` under the launcher state

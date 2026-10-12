@@ -2,7 +2,7 @@
 title: "Launcher Guide"
 type: how-to
 audience: players, operators
-last_updated: 2026-10-11
+last_updated: 2026-10-12
 companion_docs:
   - ../guides/macos.md
   - ../../crates/launcher/desktop/README.md
@@ -19,7 +19,7 @@ There is one launcher: the **Stargate Worlds Launcher**, a desktop app for
 Windows and for Apple silicon Macs. It replaced the old single-file launcher,
 `sgw-launcher.exe`, which was retired on 2026-10-11 and no longer updates
 itself. If you still use that one, read
-[Coming from the old launcher](#coming-from-the-old-launcher).
+[Use an existing game folder](#use-an-existing-game-folder).
 
 > **Audience split:**
 > [Part 1 — Players](#part-1--for-players) is for anyone installing and
@@ -44,7 +44,8 @@ storage) is [launcher-distribution-setup.md](launcher-distribution-setup.md).
   - [Install the game](#install-the-game)
   - [Install PhysX](#install-physx)
   - [Play](#play)
-  - [Coming from the old launcher](#coming-from-the-old-launcher)
+  - [Use an existing game folder](#use-an-existing-game-folder)
+  - [Use a game archive you already downloaded](#use-a-game-archive-you-already-downloaded)
   - [Settings](#settings)
   - [Launcher updates](#launcher-updates)
   - [Where your files are](#where-your-files-are)
@@ -168,64 +169,100 @@ If the line says "Update the launcher before playing this release", the
 server's operator requires a newer launcher. See
 [Launcher updates](#launcher-updates).
 
-### Coming from the old launcher
+### Use an existing game folder
 
-The old launcher (`sgw-launcher.exe`) no longer receives updates. The new
-launcher can take over its settings and the game it installed. It does not keep
-a second copy of the game: it fetches the signed game files once to verify
-yours.
+If the game is already on this PC, you don't have to download it again. Point
+the launcher at the folder. You don't need the old launcher for this.
 
-**1. Import the old launcher's settings.** In **Settings → Import legacy
-launcher settings**, click **Select legacy folders…**. Two folder dialogs open
-one after the other:
+1. Open **Settings** (⚙) and click **Use an existing game folder…**.
+2. Pick your game folder. The game root, the `Working` folder and the
+   `Binaries` folder all work.
+3. Choose a mode:
+   - **Adopt it in place** (Windows). The launcher takes over that folder and
+     moves the game files into a `game` folder inside it. Shortcuts to the old
+     `SGW.exe` stop working.
+   - **Make a verified copy.** Your folder stays exactly as it is. The launcher
+     makes a checked copy in the place you choose.
+4. Read the review screen. It lists:
+   - files that will be updated to the current release;
+   - modified or missing files. The launcher replaces these only if you tick
+     the box. Your originals go to a folder named
+     `cimmeria-adoption-backup-<id>` in the game folder. The launcher never
+     deletes that folder, not even when you uninstall.
+   - what will be downloaded.
+5. Tick the confirmations and click the confirm button on the screen.
 
-1. the folder that holds `sgw-launcher.exe` (its `launcher-config.json` is
-   there);
-2. the game folder the old launcher installed into (by default
-   `%LOCALAPPDATA%\Stargate Worlds`; its `launcher-installed.json` is there).
+Program Files folders can't be adopted in place, so use a verified copy for
+those.
 
-Close the old launcher first; while it runs, the import is refused. Check the
-review and click **Confirm settings import**. The launcher keeps a copy of the
-old launcher's settings, including your login servers and the client-patches
-setting, and the folder you adopt next plays with them. Nothing in either
-folder changes.
+Before you adopt in place, know what changes:
 
-**2. Adopt the game folder.** After the import, **Settings → Adopt existing
-installation** offers **Verify and adopt this folder…**. The launcher
-downloads the signed game files once (into a private folder, not yours) and
-compares every game file in your folder with them. The review lists any file
-that is modified, missing or somewhere else; a folder with such files cannot
-be adopted. If it is clean, tick the confirmations and click **Adopt this
-folder**.
-
-Before you confirm, know what adoption changes:
-
-- `SGW.exe` and every other game file move into a new `game` folder inside
-  your game folder. Desktop shortcuts to `SGW.exe` and the old launcher stop
-  working. Start the game from this launcher from now on, and don't run the old
-  launcher on this folder again: it may download the whole game a second time.
-- Files you added inside the game folders yourself, such as PAKs placed by hand
-  in `SourceCache.en-us`, stay where they are, and the game no longer uses
+- `SGW.exe` and the other game files move into a new `game` folder inside your
+  folder. Desktop shortcuts to `SGW.exe` and to the old launcher stop working.
+  Start the game from this launcher from now on. Don't run the old launcher on
+  this folder again: it may download the whole game a second time.
+- Files you added yourself inside the game folders, such as PAKs you placed by
+  hand in `SourceCache.en-us`, stay where they are, and the game no longer uses
   them.
 - Your game settings and the client cache live in `Documents` and are not
   affected.
 - An adopted folder plays without the game diagnostics module for now, even
   with **Send game diagnostics while playing** on. A fresh install has it.
+- A folder that is behind the current release is fine. The review lists the
+  files that will be updated, and the launcher downloads only the patches they
+  need.
 
-The old launcher must have finished installing every current patch. If the
-review says the folder is out of date, either let the old launcher run
-**Install / Update** once more and then adopt, or install fresh into a new
-empty folder instead. A folder whose install path pointed straight at
-`Working` or `Binaries` cannot be adopted; install fresh.
+#### Optional: bring settings from the old launcher
 
-If adoption stops part-way (the PC turns off), the launcher offers **Recover
-adoption…** to finish it or, while only file moves have happened, **Abandon
-adoption…** to put every file back. Neither runs on its own. The full rules
-are in the [migration contract](../../crates/launcher/desktop/docs/migration.md#in-place-adoption-on-windows).
+The old launcher (`sgw-launcher.exe`) no longer receives updates. You can bring
+its settings over, so the folder you pick next plays with your login servers
+and your client-patches setting. This is optional. Nothing in either folder
+changes.
+
+1. Close the old launcher. While it runs, the import is refused.
+2. In **Settings → Import legacy launcher settings**, click
+   **Select legacy folders…**. Two folder dialogs open one after the other:
+   1. the folder that holds `sgw-launcher.exe` (its `launcher-config.json` is
+      there);
+   2. the game folder the old launcher installed into (by default
+      `%LOCALAPPDATA%\Stargate Worlds`; its `launcher-installed.json` is there).
+3. Check the review and click **Confirm settings import**. The launcher keeps a
+   copy of the old launcher's settings. Import them before you pick the folder,
+   and that folder plays with them.
+
+If adoption stops part-way (the PC turns off), the launcher offers
+**Recover adoption…** to finish it or, while only file moves have happened,
+**Abandon adoption…** to put every file back. **Abandon** puts your original
+files back. Neither runs on its own. The full rules are in the
+[migration contract](../../crates/launcher/desktop/docs/migration.md#adopting-an-existing-folder).
 
 After adoption, the folder is the launcher's own: **Play**, **Repair game**,
 game updates and **Uninstall…** work on it as on a fresh install. Uninstall
 removes only what the launcher manages there and leaves your own files.
+
+### Use a game archive you already downloaded
+
+If you already downloaded the game archive, you can use that file instead of
+downloading it again. You don't unpack it first.
+
+1. Click **Use a downloaded game archive…**. It is in **Settings** and on the
+   Play tab.
+2. Pick the archive file.
+
+The file must be the archive.org release
+`Stargate Worlds (0.8348.1.4046) (2009-06-30) (beta).rar`, which is
+4,135,724,034 bytes (about 4.1 GB). The launcher checks the size and the
+fingerprint before it uses the file. A file that doesn't match is not used.
+
+- The launcher copies game files from the archive when it needs them. It never
+  moves, changes or deletes your file.
+- If that exact file is in the top level of your Downloads folder, the launcher
+  offers it: "Found … in Downloads. Use it?" Nothing is read until you say Yes.
+- **Forget** stops the launcher using the archive.
+- The launcher remembers the archive only while it matches the current release.
+  After a release change, pick the file again.
+- The project never hosts the game archive. It comes from archive.org or from
+  your own copy.
 
 ### Settings
 
@@ -247,7 +284,7 @@ soon as you press it.
 | **PhysX System Software** | Windows only. See [Install PhysX](#install-physx). |
 | **Game updates** | **Check for game updates** looks for a newer signed release of the game patches; **Update game…** applies one after you confirm. The update is built beside your install and swapped in, so a failed update leaves the old one working. |
 | **Launcher updates** | See [Launcher updates](#launcher-updates). |
-| **Import legacy launcher settings** and **Adopt existing installation** | See [Coming from the old launcher](#coming-from-the-old-launcher). |
+| **Use an existing game folder**, **Import legacy launcher settings** and **Use a downloaded game archive** | See [Use an existing game folder](#use-an-existing-game-folder) and [Use a game archive you already downloaded](#use-a-game-archive-you-already-downloaded). |
 
 The **Settings** heading also shows the launcher's version and release tag.
 
