@@ -30,6 +30,15 @@ impl Fixture {
     /// As [`Self::new`], with the seed in the given container format. Both
     /// kinds carry the same entries.
     pub(super) fn with_seed(ledger_seed: Option<&str>, kind: SeedKind) -> Self {
+        Self::with_archive(ledger_seed, kind, fixtures::archive(true))
+    }
+    /// As [`Self::with_seed`], with the release built from `archive`, a zip with
+    /// the entries `fixtures::archive` writes.
+    pub(super) fn with_archive(
+        ledger_seed: Option<&str>,
+        kind: SeedKind,
+        archive: Vec<u8>,
+    ) -> Self {
         let root = tempfile::tempdir().unwrap();
         let launcher = root.path().join("legacy");
         let game = root.path().join("old-game");
@@ -40,8 +49,8 @@ impl Fixture {
             SeedKind::Rar => root.path().join("seed.rar"),
         };
         let bytes = match kind {
-            SeedKind::Zip => fixtures::archive(true),
-            SeedKind::Rar => rar_seed(&fixtures::archive(true), &seed),
+            SeedKind::Zip => archive,
+            SeedKind::Rar => rar_seed(&archive, &seed),
         };
         std::fs::write(&seed, &bytes).unwrap();
         let release = fixtures::verified(&bytes);
@@ -168,6 +177,46 @@ impl Fixture {
         (op.id, op.state)
     }
 }
+/// A stock-shaped in-place install whose release publishes the file index: the
+/// preview reads only the index, makes no seed request and keeps no reference.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_published_index_previews_in_place_without_the_seed() {
+    use super::verification_tests::{published_index, reference, release};
+    let mut f = Fixture::new(None);
+    let seed = std::fs::read(&f.seed).unwrap();
+    let index = published_index(&seed);
+    f.release = release(&seed, Some(reference(&index, None)));
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::path("/index/file-index.json"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_bytes(index.clone()))
+        .mount(&server)
+        .await;
+    let transport =
+        artifacts::Transport::loopback(format!("{}/manifest.json", server.uri())).unwrap();
+    let request = f.request();
+    let preview = tokio::task::block_in_place(|| {
+        preview_using(
+            f.state.clone(),
+            request,
+            CancellationToken::new(),
+            crate::install_progress::ProgressSink::latest().0,
+            Backend::Native,
+            Some(transport),
+        )
+    })
+    .unwrap();
+    assert!(preview.reference.is_none());
+    commit(preview).unwrap();
+    let seen: Vec<String> = server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .map(|request| request.url.path().to_string())
+        .collect();
+    assert_eq!(seen, vec!["/index/file-index.json".to_string()]);
+}
+
 fn choices() -> Choices {
     Choices {
         normalize_managed_files: true,
@@ -241,8 +290,8 @@ fn adopts_in_place_from(kind: SeedKind) {
     let exe_identity = inventory::identity(&exe).unwrap();
     let preview = f.preview().unwrap();
     assert!(preview.report.in_place());
-    assert_eq!(preview.report.blocking().count(), 0);
-    let expected = preview.reference.index.clone();
+    assert_eq!(preview.report.blocking(preview.replacements()).count(), 0);
+    let expected = preview.reference.as_ref().unwrap().index.clone();
     commit(preview).unwrap();
 
     let game = f.folder().join("game");
@@ -299,7 +348,7 @@ fn a_modified_release_file_blocks_adoption_names_it_and_changes_nothing() {
     let preview = f.preview().unwrap();
     let blocking: Vec<_> = preview
         .report
-        .blocking()
+        .blocking(preview.replacements())
         .map(|d| (d.path.clone(), d.classification))
         .collect();
     assert_eq!(
@@ -328,7 +377,7 @@ fn an_old_launcher_ledger_for_another_release_is_classified_not_refused() {
     let preview = f.preview().unwrap();
     // The ledger is not a gate: the files are classified against the release
     // itself. This folder holds the seed's own bytes, so nothing blocks.
-    assert_eq!(preview.report.blocking().count(), 0);
+    assert_eq!(preview.report.blocking(preview.replacements()).count(), 0);
     assert_eq!(f.scan(), before);
 }
 
@@ -360,7 +409,7 @@ fn uninstalling_an_adopted_folder_removes_only_what_the_launcher_manages() {
 fn an_interrupted_move_is_recovered_after_restart() {
     let f = Fixture::new(None);
     let preview = f.preview().unwrap();
-    let expected = inventory::content_digest(&preview.reference.index).unwrap();
+    let expected = preview.expected_digest;
     assert!(commit_with(preview, crash_after_first_move).is_err());
     let f = f.reopen();
     let (id, phase) = f.operation();
@@ -430,4 +479,99 @@ fn a_crash_between_verification_and_the_marker_leaves_the_folder_untouched() {
         .installed_content()
         .unwrap()
         .is_some());
+}
+
+/// Stores `bytes` as the replacement for `path` in the preparation store, as the
+/// replay does, and returns the entry the review would hold for it.
+pub(super) fn stored_replacement(preview: &Preview, path: &str, bytes: &[u8]) -> Replacement {
+    let dest = inventory::native(
+        &preview.preparation.record.directory.join("replacements"),
+        path,
+    );
+    std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
+    std::fs::write(&dest, bytes).unwrap();
+    let entry = inventory::hash(&dest, &CancellationToken::new()).unwrap();
+    Replacement {
+        path: path.to_string(),
+        size: entry.size,
+        sha256: entry.sha256,
+        reason: Classification::Modified,
+    }
+}
+
+/// A folder whose `later.txt` the player edited, with the release bytes stored as
+/// its replacement. Returns the release bytes too.
+fn modified_with_replacement() -> (Fixture, Preview, Vec<u8>) {
+    let f = Fixture::new(None);
+    let release = std::fs::read(f.folder().join("later.txt")).unwrap();
+    std::fs::write(f.folder().join("later.txt"), b"edited by the player").unwrap();
+    let mut preview = f.preview().unwrap();
+    preview.replacements = vec![stored_replacement(&preview, "later.txt", &release)];
+    (f, preview, release)
+}
+
+/// Confirms with `replace_modified_files` set; the other choices are as `choices()`.
+pub(super) fn confirm_replacing(
+    preview: Preview,
+    hook: impl FnMut(publication::Point) -> Result<(), Error>,
+) -> Result<Provenance, Error> {
+    let handle = preview.report.preview_handle;
+    let choices = Choices {
+        replace_modified_files: true,
+        ..choices()
+    };
+    publication::confirm(
+        preview,
+        Uuid::new_v4(),
+        handle,
+        choices,
+        CancellationToken::new(),
+        &crate::install_progress::ProgressSink::latest().0,
+        hook,
+    )
+}
+
+#[test]
+fn a_replaced_file_needs_replace_modified_files_consent_and_moves_nothing() {
+    let (f, preview, _) = modified_with_replacement();
+    let before = f.scan();
+    assert_eq!(preview.consent(&choices()), Err(Error::ConsentRequired));
+    assert_eq!(commit(preview), Err(Error::ConsentRequired));
+    assert_eq!(f.scan(), before);
+    assert!(!f.folder().join("game").exists());
+}
+
+#[test]
+fn admission_refuses_a_backup_folder_that_already_exists() {
+    let (f, preview, _) = modified_with_replacement();
+    let backup = preview.report.backup.clone().unwrap();
+    assert!(backup.ends_with(format!(
+        "cimmeria-adoption-backup-{}",
+        preview.report.preview_handle
+    )));
+    std::fs::create_dir(&backup).unwrap();
+    let before = f.scan();
+    assert_eq!(
+        confirm_replacing(preview, |_| Ok(())),
+        Err(Error::BackupConflict)
+    );
+    assert_eq!(f.scan(), before);
+    assert!(!f.folder().join("game").exists());
+}
+
+#[test]
+fn admission_stages_each_replacement_under_the_work_folder() {
+    let (f, preview, release) = modified_with_replacement();
+    // The hook stops the moves at once; admission has already staged the replacements.
+    let _ = confirm_replacing(preview, |_| Err(Error::Cancelled));
+    let stage = std::fs::read_dir(f.folder())
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| {
+            path.file_name()
+                .is_some_and(|name| name.to_string_lossy().starts_with(".cimmeria-adopt-"))
+        })
+        .expect("admission made the work folder");
+    let staged = std::fs::read(stage.join("replacements").join("later.txt")).unwrap();
+    assert_eq!(staged, release);
 }

@@ -12,6 +12,20 @@ pub(super) fn under(root: &Path, name: &str) -> PathBuf {
         .fold(root.to_path_buf(), |path, part| path.join(part))
 }
 
+/// The backup folders an adoption left in the folder's root.
+fn backups(folder: &Path) -> Vec<PathBuf> {
+    std::fs::read_dir(folder)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| {
+            path.file_name().is_some_and(|name| {
+                name.to_string_lossy()
+                    .starts_with("cimmeria-adoption-backup-")
+            })
+        })
+        .collect()
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_imported_folder_is_adopted_in_place_once_its_release_files_verify() {
     let mut f = Fixture::new(serde_json::json!({}));
@@ -20,27 +34,44 @@ async fn the_imported_folder_is_adopted_in_place_once_its_release_files_verify()
     assert_eq!(f.host.adoption_status().unwrap().backend, Backend::InPlace);
     assert!(f.host.adoption_choice_allowed().is_ok());
 
-    // The fixture's player edited one release file: the review names it and
-    // confirmation is refused with the folder untouched.
+    // The fixture's player edited one release file. The launcher can replace it,
+    // so it is shown as modified and needs consent rather than blocking.
     f.host.begin_adoption_in_place(f.release()).unwrap();
     let review = reviewed(&f.host).await;
     assert!(review.in_place);
     assert_eq!((&review.source, &review.destination), (&folder, &folder));
-    assert_eq!(review.blocked_files, vec!["later.txt".to_string()]);
+    assert!(review.blocked_files.is_empty());
+    assert!(review.requires_replacement);
+    assert_eq!(review.counts.modified, 1);
+    // Confirming without consent to replace it is refused with nothing moved.
     assert_eq!(
         f.host.adoption_command(confirmation(&review)).unwrap_err(),
-        AdoptionError::VerificationFailed
+        AdoptionError::ConsentRequired
+    );
+    assert_eq!(
+        std::fs::read(folder.join("later.txt")).unwrap(),
+        b"edited by the user"
     );
     assert!(!folder.join(".cimmeria-install.json").exists());
     assert!(!folder.join("game").exists());
+    assert!(backups(&folder).is_empty());
 
-    // Restored to the signed bytes, the same folder verifies and is adopted.
+    // Consent to replacing the modified file: the same folder is adopted and the
+    // player's copy is kept in the backup folder.
     f.host.adoption_command(DISMISS).unwrap();
-    std::fs::write(folder.join("later.txt"), b"later entry").unwrap();
     f.host.begin_adoption_in_place(f.release()).unwrap();
     let review = reviewed(&f.host).await;
     assert!(review.blocked_files.is_empty());
-    f.host.adoption_command(confirmation(&review)).unwrap();
+    assert!(review.requires_replacement);
+    let mut command = confirmation(&review);
+    if let AdoptionCommand::Confirm {
+        replace_modified_files,
+        ..
+    } = &mut command
+    {
+        *replace_modified_files = true;
+    }
+    f.host.adoption_command(command).unwrap();
     let status = until(&f.host, "publication", Duration::from_secs(30), |status| {
         status.activity == Activity::Idle
     })
@@ -54,6 +85,13 @@ async fn the_imported_folder_is_adopted_in_place_once_its_release_files_verify()
     );
     assert!(under(&folder, "game/Working/Binaries/SGW.exe").is_file());
     assert!(!under(&folder, "Working/Binaries/SGW.exe").exists());
+    // The original, modified later.txt is preserved in the backup folder.
+    let backup = backups(&folder);
+    assert_eq!(backup.len(), 1);
+    assert_eq!(
+        std::fs::read(backup[0].join("later.txt")).unwrap(),
+        b"edited by the user"
+    );
     // Not part of the release: it stays exactly where the player left it.
     assert_eq!(
         std::fs::read(folder.join("unknown.dll")).unwrap(),

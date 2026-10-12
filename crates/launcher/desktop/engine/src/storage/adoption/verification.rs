@@ -1,6 +1,7 @@
-//! The signed reference is reconstructed for the in-place moves. Classification
-//! compares the adopted folder with the per-file index: [`acquire_index`] yields
-//! the signed index, or the one built locally. The game directory is
+//! Classification compares the adopted folder with the per-file index:
+//! [`acquire_index`] yields the signed index, or the one built locally. A built
+//! index also reconstructs the reference for the moves; a published one does not,
+//! so its adoption fetches only what the replay needs. The game directory is
 //! `Folder.root` for a folder source or the imported game folder for a legacy
 //! one; only a legacy source has an import to verify.
 use super::*;
@@ -20,6 +21,9 @@ use std::{
 
 /// A file's size and lower-case SHA-256 hex.
 type Bytes = (u64, String);
+
+/// The game-root ledger the adopted tree carries; synthesized, never a release file.
+const LEDGER: &str = "launcher-installed.json";
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn reference_and_comparison(
@@ -54,55 +58,43 @@ pub(super) fn reference_and_comparison(
     // Read before the full fetch below, so the estimate counts only what the
     // replay must download.
     let held = artifacts::held(&root, &request.release, cancel)?;
-    let fetched;
-    let artifacts = match &request.artifacts {
-        Some(artifacts) => artifacts,
-        None => {
-            fetched = artifacts::fetch(&root, &transport, &request.release, cancel, &progress)?;
-            &fetched
-        }
-    };
-    let (index, _origin) = acquire_index(
+    // The index comes first: a published one needs no seed or patch for the reference.
+    let (index, origin) = acquire_index(
         &root,
         &request.release,
         &transport,
-        Some(artifacts),
+        request.artifacts.as_ref(),
         cancel,
         &progress,
     )?;
-    let adapter: Option<Box<dyn crate::install::SeedExtractor>> = match backend {
-        Backend::Native => None,
-        #[cfg(target_os = "macos")]
-        Backend::Wine(helper) => {
-            preparation.uncertain = true;
-            Some(Box::new(
-                tokio::runtime::Handle::try_current()
-                    .map_err(|_| StorageError::Io)?
-                    .block_on(crate::mac_wine::WineSeedExtractor::prepare(
-                        state.clone(),
-                        preparation.record.id,
-                        helper.path().to_path_buf(),
-                        cancel.clone(),
-                        progress.clone(),
-                    ))
-                    .map_err(|_| StorageError::PersistenceUncertain)?,
-            ))
+    let reference = match origin {
+        IndexOrigin::Published => None,
+        IndexOrigin::Built => Some(reconstructed(
+            state,
+            request,
+            backend,
+            &transport,
+            preparation,
+            servers,
+            cancel,
+            &progress,
+        )?),
+    };
+    let (expected_digest, expected_paths): ([u8; 32], Vec<String>) = match &reference {
+        Some(reference) => (
+            inventory::content_digest(&reference.index)?,
+            reference.index.keys().cloned().collect(),
+        ),
+        None => {
+            let tree = expected_tree(&index, servers)?;
+            (
+                published_digest(&tree, &request.release)?,
+                tree.keys().cloned().collect(),
+            )
         }
     };
-    // The in-place moves still read the reconstructed bytes.
-    // AI-11: drop when the moves use replacements
-    let reference = reference::reconstruct(
-        &preparation.record.directory,
-        &request.release,
-        artifacts,
-        servers,
-        cancel,
-        progress.clone(),
-        adapter.as_deref(),
-    )?;
-    preparation.uncertain = false;
-    drop(adapter);
     let files = classify(scanned, &index, servers);
+    let login_replaced = replaces_login(&index, scanned, servers);
     if !files.iter().any(|d| {
         matches!(
             d.classification,
@@ -174,20 +166,157 @@ pub(super) fn reference_and_comparison(
     }
     Ok(Compared {
         reference,
+        expected_digest,
+        expected_paths,
         files,
         download,
         replacements,
+        login_replaced,
     })
 }
 
+/// The reference a built index needs: the seed and patches are fetched (a stored
+/// blob is reused), then the release is rebuilt and set up. Blocking, like
+/// [`artifacts::fetch`].
+#[allow(clippy::too_many_arguments)]
+fn reconstructed(
+    state: &Arc<Mutex<DesktopState>>,
+    request: &PreviewRequest,
+    backend: Backend,
+    transport: &artifacts::Transport,
+    preparation: &mut preparation::Ownership,
+    servers: &[crate::client_setup::LoginServer],
+    cancel: &CancellationToken,
+    progress: &ProgressSink,
+) -> Result<reference::Reference, Error> {
+    let root = state
+        .lock()
+        .map_err(|_| StorageError::Io)?
+        .state_root()
+        .to_path_buf();
+    let fetched;
+    let artifacts = match &request.artifacts {
+        Some(artifacts) => artifacts,
+        None => {
+            fetched = artifacts::fetch(&root, transport, &request.release, cancel, progress)?;
+            &fetched
+        }
+    };
+    let adapter: Option<Box<dyn crate::install::SeedExtractor>> = match backend {
+        Backend::Native => None,
+        #[cfg(target_os = "macos")]
+        Backend::Wine(helper) => {
+            preparation.uncertain = true;
+            Some(Box::new(
+                tokio::runtime::Handle::try_current()
+                    .map_err(|_| StorageError::Io)?
+                    .block_on(crate::mac_wine::WineSeedExtractor::prepare(
+                        state.clone(),
+                        preparation.record.id,
+                        helper.path().to_path_buf(),
+                        cancel.clone(),
+                        progress.clone(),
+                    ))
+                    .map_err(|_| StorageError::PersistenceUncertain)?,
+            ))
+        }
+    };
+    // The in-place moves still read the reconstructed bytes of a built index.
+    let reference = reference::reconstruct(
+        &preparation.record.directory,
+        &request.release,
+        artifacts,
+        servers,
+        cancel,
+        progress.clone(),
+        adapter.as_deref(),
+    )?;
+    preparation.uncertain = false;
+    Ok(reference)
+}
+
+/// A tree of release paths, each with its size and SHA-256.
+type Tree = BTreeMap<String, (u64, [u8; 32])>;
+
+/// The release tree after setup, keyed by release spelling: every path's release
+/// bytes, or the setup rule's bytes for `SGW.exe` and `LoginInternal.lua`.
+fn expected_tree(
+    index: &FileIndex,
+    servers: &[crate::client_setup::LoginServer],
+) -> Result<Tree, Error> {
+    let (setup, _) = expected_prepared(index, servers);
+    let mut tree = Tree::new();
+    for (key, history) in index.histories() {
+        let Some(release) = history.states.last() else {
+            continue;
+        };
+        let bytes = match setup.get(&key) {
+            Some((size, sha)) => (*size, unhex(sha).ok_or(Error::InvalidArtifact)?),
+            None => (release.size, release.sha256),
+        };
+        tree.insert(history.path.clone(), bytes);
+    }
+    // A setup rule can create a file no history names (`LoginInternal.lua` is not
+    // in the seed), so the post-setup tree has it too.
+    for rule in &index.setup {
+        let path = match rule {
+            SetupRule::AslrOff { path, .. } | SetupRule::LoginServers { path } => path,
+        };
+        if tree.keys().any(|known| known.eq_ignore_ascii_case(path)) {
+            continue;
+        }
+        if let Some((size, sha)) = setup.get(&path.to_ascii_lowercase()) {
+            tree.insert(
+                path.clone(),
+                (*size, unhex(sha).ok_or(Error::InvalidArtifact)?),
+            );
+        }
+    }
+    Ok(tree)
+}
+
+/// The digest the post-setup tree of a published index must have: `tree` plus the
+/// synthesized ledger, hashed the way [`inventory::content_digest`] hashes a scan.
+fn published_digest(tree: &Tree, release: &VerifiedRelease) -> Result<[u8; 32], Error> {
+    let ledger = serde_json::to_vec_pretty(&reference::ledger(release))
+        .map_err(|_| StorageError::Corrupt)?;
+    let mut all = tree.clone();
+    all.insert(
+        LEDGER.into(),
+        (ledger.len() as u64, Sha256::digest(&ledger).into()),
+    );
+    let rows: Vec<(&String, u64, [u8; 32])> = all
+        .iter()
+        .map(|(path, (size, sha))| (path, *size, *sha))
+        .collect();
+    digest(&rows)
+}
+
+/// Decodes exactly 64 hex digits into a digest; `None` for any other text.
+fn unhex(hex: &str) -> Option<[u8; 32]> {
+    let mut out = [0u8; 32];
+    for (i, byte) in out.iter_mut().enumerate() {
+        *byte = u8::from_str_radix(hex.get(i * 2..i * 2 + 2)?, 16).ok()?;
+    }
+    (hex.len() == 64).then_some(out)
+}
+
 /// What a preview learns from the signed reference and the folder: the reference
-/// for the moves, the per-file review, the download the replay implies, and the
-/// files it stored for the adopted tree.
+/// for the moves when the index was built, the digest and paths the adopted tree
+/// must have, the per-file review, the download the replay implies, and the files
+/// it stored for the adopted tree.
 pub(super) struct Compared {
-    pub reference: reference::Reference,
+    /// Built indexes only; a published index needs none (AI-11 part c).
+    pub reference: Option<reference::Reference>,
+    /// The digest the post-setup tree must have (the provenance's reference digest).
+    pub expected_digest: [u8; 32],
+    /// Every release path of the post-setup tree, in release spelling.
+    pub expected_paths: Vec<String>,
     pub files: Vec<Difference>,
     pub download: DownloadEstimate,
     pub replacements: Vec<Replacement>,
+    /// `LoginInternal.lua` differs from both its release and prepared bytes (D-AI13).
+    pub login_replaced: bool,
 }
 
 /// Classifies every path of the index's histories against the folder scan, then
@@ -292,6 +421,30 @@ fn expected_prepared(
         }
     }
     (expected, login)
+}
+
+/// Whether the folder's `LoginInternal.lua` differs from both its release bytes
+/// and its expected prepared bytes (D-AI13). Such a file is a known transform,
+/// but the adoption still backs up the original before it replaces it.
+fn replaces_login(
+    index: &FileIndex,
+    scanned: &inventory::Index,
+    servers: &[crate::client_setup::LoginServer],
+) -> bool {
+    let (setup, login) = expected_prepared(index, servers);
+    let histories = index.histories();
+    scanned.iter().any(|(name, entry)| {
+        let key = name.to_ascii_lowercase();
+        if !login.contains(&key) {
+            return false;
+        }
+        let bytes = (entry.size, hex(&entry.sha256));
+        let release = histories
+            .get(&key)
+            .and_then(|history| history.states.last())
+            .map(|state| (state.size, hex(&state.sha256)));
+        setup.get(&key) != Some(&bytes) && release != Some(bytes)
+    })
 }
 
 fn hex(bytes: &[u8]) -> String {

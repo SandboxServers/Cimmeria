@@ -13,6 +13,8 @@ use std::{
 pub(super) const OWNER: &str = ".cimmeria-install.json";
 /// What an owner root holds. A folder that already has any of these is refused.
 pub(super) const MANAGED: [&str; 3] = ["game", OWNER, "content-ready.json"];
+/// The login file the launcher writes its server list into (D-AI13).
+const LOGIN_INTERNAL: &str = "Working/SGWGame/Content/UI/Startup/Login/LoginInternal.lua";
 
 pub(super) fn refused(error: Error, why: &str) -> Error {
     tracing::warn!(target: "adoption", ?error, "in-place adoption refused: {why}");
@@ -82,10 +84,16 @@ pub(super) fn publish(
     if game_running(&root)? {
         return Err(refused(Error::GameRunning, "SGW.exe is open"));
     }
+    // The backup is named by the preview handle at review; admission keeps that name.
+    if let Some(backup) = &preview.report.backup {
+        if std::fs::symlink_metadata(backup).is_ok() {
+            return Err(refused(Error::BackupConflict, "the backup folder exists"));
+        }
+    }
     let store = state.directory.root.clone();
     let game = root.join("game");
     std::fs::create_dir(&game).map_err(|_| StorageError::InUse)?;
-    let admitted = admit(preview, &mut state, id, choices, &root, &game);
+    let admitted = admit(preview, &mut state, id, choices, &root, &game, cancel);
     let (plan, provenance, owner) = match admitted {
         Ok(admitted) => admitted,
         Err(error) => {
@@ -153,6 +161,7 @@ fn admit(
     choices: Choices,
     root: &Path,
     game: &Path,
+    cancel: &CancellationToken,
 ) -> Result<(Plan, Provenance, File), Error> {
     let owner_id = Uuid::new_v4();
     let installation = InstallIntent {
@@ -177,7 +186,7 @@ fn admit(
         work_id: id,
         legacy_install_id,
         import_digest,
-        reference_digest: inventory::content_digest(&preview.reference.index)?,
+        reference_digest: preview.expected_digest,
         setup_policy_version: 1,
         folder_scan_digest,
         file_index_sha256: None,
@@ -186,7 +195,7 @@ fn admit(
     after.revision = after.revision.checked_add(1).ok_or(StorageError::Corrupt)?;
     after.install_directory = Some(root.to_path_buf());
     let (imported, folder) = publication::planned(&preview.source);
-    let plan = Plan {
+    let mut plan = Plan {
         schema_version: 1,
         installation,
         provenance: provenance.clone(),
@@ -201,6 +210,7 @@ fn admit(
         destination_identity: inventory::identity(root)?,
         replacements: Vec::new(),
     };
+    plan.replacements = stage_replacements(preview, &plan.stage(), cancel)?;
     state.save_release_evidence(owner_id, &preview.release)?;
     atomic::write(
         &state.directory.root,
@@ -209,9 +219,15 @@ fn admit(
     )?;
     // What each release file held at review: recovery tells the reviewed copy
     // from one something wrote at the old path afterwards (see `move_files`).
-    let reviewed: Reviewed = release_files(&preview.report)
-        .into_iter()
-        .map(|path| {
+    // A missing file held nothing at review, so it has no reviewed copy.
+    let reviewed: Reviewed = preview
+        .report
+        .files
+        .iter()
+        .filter(|d| d.classification != Classification::Missing)
+        .filter(|d| d.classification != Classification::Extra)
+        .map(|d| {
+            let path = d.path.as_str();
             let entry = preview.scanned.get(path).ok_or(StorageError::Corrupt)?;
             Ok((
                 path.to_string(),
@@ -254,6 +270,29 @@ fn release_files(report: &Report) -> Vec<&str> {
         .collect()
 }
 
+/// Copies each replacement from the preparation store into `stage/replacements`.
+/// Copying, not renaming: the state root may sit on another volume. Each copy is
+/// checked against the size and hash the review recorded.
+fn stage_replacements(
+    preview: &Preview,
+    stage: &Path,
+    cancel: &CancellationToken,
+) -> Result<Vec<Replacement>, Error> {
+    let store = preview.preparation.record.directory.join("replacements");
+    let mut staged = Vec::new();
+    for replacement in preview.replacements() {
+        let source = inventory::native(&store, &replacement.path);
+        let entry = inventory::hash(&source, cancel)?;
+        if entry.size != replacement.size || entry.sha256 != replacement.sha256 {
+            return Err(StorageError::Corrupt.into());
+        }
+        let dest = inventory::native(&stage.join("replacements"), &replacement.path);
+        inventory::copy(&source, &dest, &entry, cancel)?;
+        staged.push(replacement.clone());
+    }
+    Ok(staged)
+}
+
 fn present(path: &Path) -> Result<bool, Error> {
     match std::fs::symlink_metadata(path) {
         Ok(meta) if super::super::failed_cleanup::plain(&meta) && meta.is_file() => Ok(true),
@@ -285,8 +324,10 @@ enum Way<'a> {
     /// its old path after the review, so a duplicate is settled by content.
     Adopt { plan: &'a Plan, store: &'a Path },
     /// Back out of `game`. The folder's copy is kept and `game`'s copy is left
-    /// in `game`: nothing the player may want is deleted.
-    Abandon,
+    /// in `game`: nothing the player may want is deleted. A replaced file's
+    /// original comes back from where it was set aside, and only a replacement
+    /// copy that still holds the reviewed bytes leaves `game`.
+    Abandon { plan: &'a Plan },
 }
 
 /// A release file in both places while adopting. The copy the review verified
@@ -352,6 +393,24 @@ fn move_files(
         });
         let source = inventory::native(from, path);
         let target = inventory::native(to, path);
+        let replaced = match way {
+            Way::Adopt { plan, .. } | Way::Abandon { plan } => plan
+                .replacements
+                .iter()
+                .find(|r| r.path == *path)
+                .and_then(|r| replaced_kind(path, r.reason).map(|kind| (r, kind))),
+        };
+        if let Some((replacement, kind)) = replaced {
+            match way {
+                Way::Adopt { plan, .. } => {
+                    replace_file(path, &source, &target, plan, replacement, kind, hook)?
+                }
+                Way::Abandon { plan } => {
+                    restore_replaced(path, &source, &target, plan, replacement, kind)?
+                }
+            }
+            continue;
+        }
         match (present(&source)?, present(&target)?) {
             (true, false) => {
                 if let Some(parent) = target.parent() {
@@ -365,7 +424,7 @@ fn move_files(
                 Way::Adopt { plan, store } => {
                     settle_duplicate(path, &source, &target, plan, store, &mut reviewed)?
                 }
-                Way::Abandon => {
+                Way::Abandon { .. } => {
                     tracing::warn!(target: "adoption", path, "abandoning in-place adoption: a release file is in both places; the folder's copy stays and game keeps the other");
                 }
             },
@@ -382,6 +441,176 @@ fn move_files(
         filename: String::new(),
     });
     remove_emptied(from, files)
+}
+
+/// The kind of a replaced release file, which says where its original goes. A
+/// file that verifies needs no replacement, except a `LoginInternal.lua` the
+/// launcher rewrote, whose original is backed up (D-AI13). `None` renames as usual.
+fn replaced_kind(path: &str, reason: Classification) -> Option<Classification> {
+    match reason {
+        Classification::Matched | Classification::KnownTransform | Classification::Extra => {
+            (path == LOGIN_INTERNAL).then_some(Classification::Modified)
+        }
+        kind => Some(kind),
+    }
+}
+
+/// Where a replaced file's original is kept: a modified file's original goes to
+/// the backup (D-AI1), one that needs patching to the work folder's `originals`.
+/// A missing file has no original.
+fn original_home(plan: &Plan, path: &str, kind: Classification) -> Result<Option<PathBuf>, Error> {
+    Ok(match kind {
+        Classification::Modified => {
+            let backup = plan.report.backup.as_ref().ok_or(StorageError::Corrupt)?;
+            Some(inventory::native(backup, path))
+        }
+        Classification::NeedsPatching => {
+            Some(inventory::native(&plan.stage().join("originals"), path))
+        }
+        _ => None,
+    })
+}
+
+/// Installs the replacement for one release file: the original is set aside
+/// first, then the staged replacement is copied into `game`. Idempotent: an
+/// original already set aside is not moved again, and a `game` file already
+/// holding the replacement is done.
+fn replace_file(
+    path: &str,
+    source: &Path,
+    target: &Path,
+    plan: &Plan,
+    replacement: &Replacement,
+    kind: Classification,
+    hook: &mut impl FnMut(Point) -> Result<(), Error>,
+) -> Result<(), Error> {
+    if let Some(home) = original_home(plan, path, kind)? {
+        match (present(source)?, present(&home)?) {
+            (true, false) => {
+                if let Some(parent) = home.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::rename(source, &home)?;
+                tracing::debug!(target: "adoption", path, original = %home.display(), "in-place adoption: the original was set aside");
+                hook(Point::Replaced)?;
+            }
+            (false, false) if kind == Classification::Modified => {
+                tracing::error!(target: "adoption", path, "in-place adoption: a modified release file is in neither place");
+                return Err(StorageError::Corrupt.into());
+            }
+            // Already set aside; a file at the old path now is one the release does not list.
+            _ => (),
+        }
+    }
+    let expected = Hashed {
+        sha256: replacement.sha256,
+        size: replacement.size,
+    };
+    if present(target)? {
+        if holds(target, &expected)? {
+            return Ok(());
+        }
+        // A partial copy from an interrupted run. `game` is this launcher's own
+        // tree, so the partial file is replaced rather than kept.
+        std::fs::remove_file(target)?;
+    }
+    let staged = inventory::native(&plan.stage().join("replacements"), path);
+    let entry = inventory::hash(&staged, &CancellationToken::new())?;
+    if entry.sha256 != replacement.sha256 || entry.size != replacement.size {
+        tracing::error!(target: "adoption", path, "in-place adoption: a staged replacement no longer matches the review");
+        return Err(StorageError::Corrupt.into());
+    }
+    inventory::copy(&staged, target, &entry, &CancellationToken::new())
+}
+
+/// Undoes [`replace_file`] while the adoption is staged: the original goes back
+/// from where it was set aside, and the replacement copy leaves `game` only if it
+/// still holds the reviewed bytes. A file in both places keeps the folder's copy
+/// and the set-aside original stays where it is.
+fn restore_replaced(
+    path: &str,
+    game_copy: &Path,
+    root_copy: &Path,
+    plan: &Plan,
+    replacement: &Replacement,
+    kind: Classification,
+) -> Result<(), Error> {
+    if let Some(home) = original_home(plan, path, kind)? {
+        match (present(&home)?, present(root_copy)?) {
+            (true, false) => {
+                if let Some(parent) = root_copy.parent() {
+                    std::fs::create_dir_all(parent)?;
+                }
+                std::fs::rename(&home, root_copy)?;
+            }
+            (true, true) => {
+                tracing::warn!(target: "adoption", path, "abandoning in-place adoption: the original is in both the backup and its old path; the folder's copy stays")
+            }
+            (false, false) if kind == Classification::Modified => {
+                tracing::error!(target: "adoption", path, "abandoning in-place adoption: a modified release file is in neither place");
+                return Err(StorageError::Corrupt.into());
+            }
+            _ => (),
+        }
+    }
+    let expected = Hashed {
+        sha256: replacement.sha256,
+        size: replacement.size,
+    };
+    if present(game_copy)? && holds(game_copy, &expected)? {
+        std::fs::remove_file(game_copy)?;
+    }
+    Ok(())
+}
+
+/// Abandon's last folder steps, once the originals are back: the directories the
+/// restored originals emptied go, then the backup folder, and so does the work
+/// folder with its replacement copies. A folder still holding a kept original
+/// stays, and is logged.
+fn clear_abandoned(plan: &Plan, files: &[&str]) -> Result<(), Error> {
+    let originals = plan.stage().join("originals");
+    if let Some(backup) = &plan.report.backup {
+        remove_emptied(backup, files)?;
+        remove_empty_dir(backup);
+    }
+    remove_emptied(&originals, files)?;
+    let stage = plan.stage();
+    match std::fs::remove_dir_all(stage.join("replacements")) {
+        Ok(()) => (),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+        Err(error) => {
+            tracing::warn!(target: "adoption", ?error, "abandoned in-place adoption: could not remove the staged replacements")
+        }
+    }
+    remove_empty_dir(&originals);
+    remove_empty_dir(&stage);
+    Ok(())
+}
+
+/// Removes `dir` if it is empty. A folder that is missing or still holds a file
+/// is left alone; a kept file is the reason it stays.
+fn remove_empty_dir(dir: &Path) {
+    match std::fs::remove_dir(dir) {
+        Ok(()) => (),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+        Err(error) => {
+            tracing::warn!(target: "adoption", ?error, directory = %dir.display(), "abandoned in-place adoption: a folder is left in place")
+        }
+    }
+}
+
+/// The work folder's replacement copies and parked originals are spent once the
+/// adoption is published. Best effort: a folder left behind is logged and kept.
+/// The backup is a sibling of this folder and is never touched here.
+fn remove_work_folder(plan: &Plan) {
+    let stage = plan.stage();
+    match std::fs::remove_dir_all(&stage) {
+        Ok(()) => (),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => (),
+        Err(error) => {
+            tracing::warn!(target: "adoption", ?error, directory = %stage.display(), "in-place adoption: could not remove the work folder; it is left in place")
+        }
+    }
 }
 
 fn move_release_files(
@@ -547,6 +776,10 @@ pub(super) fn finish(
             .observe(id, OperationState::Succeeded)?;
     }
     hook(Point::Terminal)?;
+    remove_work_folder(plan);
+    if let Some(backup) = &plan.report.backup {
+        tracing::info!(target: "adoption", backup = %backup.display(), "in-place adoption: the replaced files are kept in the backup folder");
+    }
     tracing::info!(target: "adoption", directory = %root.display(), files = plan.report.files.len(), "adopted the installation in place");
     Ok(())
 }
@@ -587,7 +820,7 @@ pub(super) fn abandon(state: &mut DesktopState, plan: &Plan) -> Result<(), Error
                 &files,
                 &game,
                 root,
-                Way::Abandon,
+                Way::Abandon { plan },
                 &ProgressSink::latest().0,
                 &mut |_| Ok(()),
             )?;
@@ -600,6 +833,7 @@ pub(super) fn abandon(state: &mut DesktopState, plan: &Plan) -> Result<(), Error
             if std::fs::remove_dir(&game).is_err() {
                 tracing::warn!(target: "adoption", game = %game.display(), "abandoned in-place adoption left a non-empty game folder in place");
             }
+            clear_abandoned(plan, &files)?;
         }
     }
     // Windows cannot unlink a locked file; admission is still serialized here.

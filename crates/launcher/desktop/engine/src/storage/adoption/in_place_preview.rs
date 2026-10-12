@@ -133,9 +133,12 @@ pub(super) fn preview(
     );
     let verification::Compared {
         reference,
+        expected_digest,
+        expected_paths,
         files,
         download,
         replacements,
+        login_replaced,
     } = match prepared {
         Ok(prepared) => prepared,
         Err(error) => {
@@ -150,6 +153,18 @@ pub(super) fn preview(
         ),
         AdoptionSource::Folder(_) => (None, None),
     };
+    // The backup holds each original a replacement overwrites (D-AI1, D-AI13). It is
+    // named by the preview handle, which admission uses too.
+    let backup = (files
+        .iter()
+        .any(|d| d.classification == Classification::Modified)
+        || login_replaced)
+        .then(|| {
+            folder.join(format!(
+                "cimmeria-adoption-backup-{}",
+                preparation.record.id
+            ))
+        });
     let report = Report {
         preview_handle: preparation.record.id,
         source: folder.clone(),
@@ -161,9 +176,9 @@ pub(super) fn preview(
         user_data_remains_in_source: true,
         game_telemetry_available: false,
         download: Some(download),
-        backup: None,
+        backup,
     };
-    for file in report.blocking() {
+    for file in report.blocking(&replacements) {
         tracing::warn!(target: "adoption", path = %file.path, classification = ?file.classification, "in-place adoption: release file does not verify");
     }
     Ok(Preview {
@@ -175,6 +190,8 @@ pub(super) fn preview(
         release: request.release,
         scanned,
         reference,
+        expected_digest,
+        expected_paths,
         replacements,
         _legacy_lock: legacy_lock,
     })
@@ -188,7 +205,8 @@ fn clear_unbegun_admission(state: &DesktopState, folder: &Path) -> Result<bool, 
     let marker = folder.join(OWNER);
     let game = folder.join("game");
     let has = |path: &Path| std::fs::symlink_metadata(path).is_ok();
-    if !MANAGED.iter().any(|entry| has(&folder.join(entry))) {
+    let stages = work_folders(folder)?;
+    if !MANAGED.iter().any(|entry| has(&folder.join(entry))) && stages.is_empty() {
         return Ok(false);
     }
     let leftover = |why: &str| {
@@ -225,14 +243,70 @@ fn clear_unbegun_admission(state: &DesktopState, folder: &Path) -> Result<bool, 
             return leftover("the owner marker belongs to known work");
         }
     }
+    for (id, stage) in &stages {
+        if !unbegun_work_folder(state, *id, stage)? {
+            return leftover("the work folder belongs to known work");
+        }
+    }
     if has(&marker) {
         std::fs::remove_file(&marker)?;
     }
     if empty_game {
         std::fs::remove_dir(&game)?;
     }
-    tracing::warn!(target: "adoption", folder = %folder.display(), "in-place adoption took back an owner marker or empty game folder left by an admission that never began");
+    for (_, stage) in &stages {
+        std::fs::remove_dir_all(stage)?;
+    }
+    tracing::warn!(target: "adoption", folder = %folder.display(), "in-place adoption took back an owner marker, empty game folder or work folder left by an admission that never began");
     Ok(true)
+}
+
+/// The `.cimmeria-adopt-<work id>` folders in `folder`, by work id.
+fn work_folders(folder: &Path) -> Result<Vec<(Uuid, PathBuf)>, Error> {
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir(folder)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let id = name
+            .to_string_lossy()
+            .strip_prefix(".cimmeria-adopt-")
+            .and_then(|id| Uuid::parse_str(id).ok());
+        if let Some(id) = id {
+            found.push((id, entry.path()));
+        }
+    }
+    Ok(found)
+}
+
+/// Whether an admission for `id` never began. Moves follow `begin`, so such a
+/// work folder holds only copies. It is not begun when no journal operation names
+/// it, nothing was set aside, no backup was taken, and its record is absent or
+/// still Staged. A record that cannot be read counts as begun.
+fn unbegun_work_folder(state: &DesktopState, id: Uuid, stage: &Path) -> Result<bool, Error> {
+    let journaled = state
+        .operations
+        .snapshot()
+        .operation
+        .as_ref()
+        .is_some_and(|op| op.id == id);
+    let parked = std::fs::read_dir(stage.join("originals")).is_ok_and(|mut d| d.next().is_some());
+    if journaled || parked {
+        return Ok(false);
+    }
+    let record = state.directory.root.join(super::publication::name(id));
+    if std::fs::symlink_metadata(&record).is_err() {
+        return Ok(true);
+    }
+    let Ok(record) = read_large::<Record>(&record) else {
+        return Ok(false);
+    };
+    let backed_up = record
+        .plan
+        .report
+        .backup
+        .as_ref()
+        .is_some_and(|backup| std::fs::symlink_metadata(backup).is_ok());
+    Ok(record.phase == Phase::Staged && !backed_up)
 }
 /// Whether a saved adoption plan admits this owner and the journal began it.
 /// A plan whose operation never began moved nothing: moves follow `begin`.

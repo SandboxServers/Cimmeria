@@ -10,6 +10,9 @@ pub(super) enum Point {
     BeforePromotion,
     /// In place only: one more release file is now inside the owned tree.
     Moved,
+    /// In place only: a modified or unneeded original is set aside and its
+    /// replacement is not yet copied into `game`.
+    Replaced,
     AfterPromotion,
     /// In place only: the launcher's setup and ledger are written in `game`.
     SetUp,
@@ -160,7 +163,7 @@ fn copy_and_publish(
         work_id: id,
         legacy_install_id,
         import_digest,
-        reference_digest: inventory::content_digest(&preview.reference.index)?,
+        reference_digest: preview.expected_digest,
         setup_policy_version: 1,
         folder_scan_digest,
         file_index_sha256: None,
@@ -205,8 +208,8 @@ fn copy_and_publish(
         hook(Point::Plan)?;
         // The multi-gigabyte copy runs without the state guard, so status reads
         // and other views stay responsive. Never invoke this on a command thread.
-        let total = preview.reference.index.len();
-        for (current, (path, expected)) in preview.reference.index.iter().enumerate() {
+        let total = preview.expected_paths.len();
+        for (current, path) in preview.expected_paths.iter().enumerate() {
             progress.report(crate::install::Progress::Extracting {
                 label: "Verified copy".into(),
                 current,
@@ -240,13 +243,23 @@ fn copy_and_publish(
                 }
                 inventory::copy(&stored, &stage.join(path), &entry, cancel)?;
             } else {
+                // Without a reconstructed reference only a replacement supplies the
+                // file; a missing one is never skipped.
+                let reference = preview.reference.as_ref().ok_or(Error::InvalidArtifact)?;
+                let expected = reference.index.get(path).ok_or(Error::InvalidArtifact)?;
                 inventory::copy(
-                    &preview.reference.prepared.join(path),
+                    &reference.prepared.join(path),
                     &stage.join(path),
                     expected,
                     cancel,
                 )?;
             }
+        }
+        if preview.reference.is_none() {
+            // The ledger a reconstruction would have saved, synthesized from the release.
+            reference::ledger(&preview.release)
+                .save(&stage)
+                .map_err(|_| StorageError::Io)?;
         }
         progress.report(crate::install::Progress::Extracting {
             label: "Verified copy".into(),

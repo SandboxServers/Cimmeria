@@ -41,7 +41,7 @@ fn seed_bytes() -> Vec<u8> {
     ])
 }
 /// A release signed with the test key; `file_index` is the manifest's optional field.
-fn release(seed: &[u8], file_index: Option<serde_json::Value>) -> VerifiedRelease {
+pub(super) fn release(seed: &[u8], file_index: Option<serde_json::Value>) -> VerifiedRelease {
     let mut body = serde_json::json!({
         "schema": 1,
         "seed": {"blob": "seed.zip", "size": seed.len(), "sha256": hex(&Sha256::digest(seed))},
@@ -59,7 +59,7 @@ fn signed(body: serde_json::Value) -> VerifiedRelease {
     crate::catalog::verify_release(&body, hex(&signature.to_bytes()).as_bytes()).unwrap()
 }
 /// The index the build produces for `seed` with no patches, as published bytes.
-fn published_index(seed: &[u8]) -> Vec<u8> {
+pub(super) fn published_index(seed: &[u8]) -> Vec<u8> {
     let dir = tempfile::tempdir().unwrap();
     let seed_path = dir.path().join("seed.zip");
     std::fs::write(&seed_path, seed).unwrap();
@@ -80,7 +80,7 @@ fn published_index(seed: &[u8]) -> Vec<u8> {
     serde_json::to_vec(&index).unwrap()
 }
 /// The manifest's `file_index` for `index`; `sha` overrides the signed digest.
-fn reference(index: &[u8], sha: Option<String>) -> serde_json::Value {
+pub(super) fn reference(index: &[u8], sha: Option<String>) -> serde_json::Value {
     serde_json::json!({
         "blob": INDEX_BLOB,
         "size": index.len(),

@@ -101,18 +101,25 @@ impl Report {
     pub fn in_place(&self) -> bool {
         self.source == self.destination
     }
-    /// Release files that keep an in-place adoption from verifying: changed or
-    /// absent bytes, or a file the release keeps at another path. Nothing is
-    /// ever rewritten from the reference inside the player's folder.
-    pub fn blocking(&self) -> impl Iterator<Item = &Difference> {
-        self.files.iter().filter(|d| {
+    /// Release files that keep an in-place adoption from verifying: changed,
+    /// absent or patch-only bytes that the preview holds no replacement for. A
+    /// replacement from the replacement store (AI-09) takes the file's place, and
+    /// a file the release keeps at another spelling moves rather than blocks.
+    pub fn blocking<'a>(
+        &'a self,
+        replacements: &'a [Replacement],
+    ) -> impl Iterator<Item = &'a Difference> {
+        self.files.iter().filter(move |d| {
             self.in_place()
                 && match d.classification {
                     Classification::Modified
                     | Classification::Missing
-                    | Classification::NeedsPatching => true,
-                    Classification::KnownTransform => d.source_path.as_ref() != Some(&d.path),
-                    Classification::Matched | Classification::Extra => false,
+                    | Classification::NeedsPatching => {
+                        !replacements.iter().any(|r| r.path == d.path)
+                    }
+                    Classification::KnownTransform
+                    | Classification::Matched
+                    | Classification::Extra => false,
                 }
         })
     }

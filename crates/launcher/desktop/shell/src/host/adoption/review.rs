@@ -168,7 +168,7 @@ impl Review {
             user_data_remains_in_source: report.user_data_remains_in_source,
             in_place: report.in_place(),
             blocked_files: report
-                .blocking()
+                .blocking(preview.replacements())
                 .take(LISTED)
                 .map(|file| file.path.clone())
                 .collect(),
