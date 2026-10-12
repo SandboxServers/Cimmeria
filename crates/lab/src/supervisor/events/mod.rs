@@ -18,6 +18,7 @@
 pub mod fake_bridge;
 #[cfg(test)]
 mod flow_tests;
+mod keeper;
 pub mod lua_rings;
 pub mod predicate;
 pub mod store;
@@ -44,6 +45,11 @@ pub const KIND_CLICK: &str = "ui.click";
 pub struct PumpReport {
     pub bridge_events: usize,
     pub bridge_dropped: u64,
+    /// Every event the bridge ring has dropped since the lab started
+    /// (`bridge_dropped` is only what no earlier reader was told).
+    pub bridge_dropped_total: u64,
+    /// Plain-words reading of `bridge_dropped`, when it is not zero.
+    pub bridge_note: Option<String>,
     pub combat: usize,
     pub chat: usize,
     pub click: usize,
@@ -62,6 +68,8 @@ impl PumpReport {
         json!({
             "bridge_events": self.bridge_events,
             "bridge_dropped": self.bridge_dropped,
+            "bridge_dropped_total": self.bridge_dropped_total,
+            "bridge_note": self.bridge_note,
             "combat": self.combat,
             "chat": self.chat,
             "click": self.click,
@@ -79,6 +87,7 @@ impl PumpReport {
 pub fn ingest_bridge(st: &mut StoreInner, result: &Value) -> (usize, u64) {
     let dropped = result.get("dropped").and_then(Value::as_u64).unwrap_or(0);
     st.upstream_dropped += dropped;
+    st.dropped_unreported += dropped;
     let mut n = 0;
     if let Some(evs) = result.get("events").and_then(Value::as_array) {
         for e in evs {
@@ -176,9 +185,16 @@ impl Supervisor {
             .await?;
         {
             let mut st = self.events.inner.lock().await;
-            let (n, d) = ingest_bridge(&mut st, &drained);
+            let (n, _) = ingest_bridge(&mut st, &drained);
             rep.bridge_events = n;
-            rep.bridge_dropped = d;
+            rep.bridge_dropped = st.take_unreported_drops();
+            rep.bridge_dropped_total = st.upstream_dropped;
+            if rep.bridge_dropped > 0 {
+                rep.bridge_note = Some(format!(
+                    "the client's event ring overflowed and dropped {} newest event(s) since the last report: cme.event, net.out, cegui.log and similar rows may be missing. chat.line, combat.hit and ui.click come from separate in-client rings and are not affected.",
+                    rep.bridge_dropped
+                ));
+            }
         }
         if lua {
             let (combat_after, chat_after, click_after, epoch) = {

@@ -81,6 +81,10 @@ pub struct StoreInner {
     cap: usize,
     /// Events the bridge ring dropped before we drained it (ring full).
     pub upstream_dropped: u64,
+    /// Of `upstream_dropped`, the part no reader pump has reported yet. The
+    /// keeper drains between tool calls and sees drops no caller was there
+    /// to read; the next reader pump takes them with [`Self::take_unreported_drops`].
+    pub dropped_unreported: u64,
     cursors: HashMap<String, u64>,
     pub combat_mark: LuaRingMark,
     pub chat_mark: LuaRingMark,
@@ -94,6 +98,12 @@ impl StoreInner {
             cap: cap.max(1),
             ..Default::default()
         }
+    }
+
+    /// Drops the keeper or an earlier drain saw that no reader has been told
+    /// about; resets to zero.
+    pub fn take_unreported_drops(&mut self) -> u64 {
+        std::mem::take(&mut self.dropped_unreported)
     }
 
     /// Newest seq handed out (0 before the first event).
