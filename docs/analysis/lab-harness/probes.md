@@ -1,0 +1,14 @@
+# LH live probe results (2026-10-12, colo, instances default and p3)
+
+Run by Sonnet probe runners before coding. Where a result changes a packet, the packet section says so after the amend pass.
+
+| Probe | Result | Effect |
+|---|---|---|
+| B-P1 camera pose | `camera_before.client` reads `{0,0,0}` on **both** default and p3; 200 yaw counts moved `yaw_offset_deg` by 21.98 deg (predicted 21.97) on both; `pitch_gain` +20 on both (no inversion) | The camera actor Location is never written by this client build. LH-06's zero-pose guard is the whole fix; no p3 follow-up |
+| B-P2 own avatar | At 4.4 m from the Debug Area Archetype Skills Trainer after `face`: the `client_entity_find` `screen` point is the entity's **feet** projection (498,644) and hovers nothing; mid-body (498,560) hovers the own avatar `Labthree`; the trainer's body behind the avatar's head (570,345) hovers the trainer | Both item-7 variants are real: feet aim point gives `mouse_over 0`, body aim gives own avatar. LH-07 amended: aim above the feet and retry yaw |
+| C-P1 stats | `Stat` is a tolua class: `pairs(Stat)` yields 13 metamethods. Names are the keys of `Stat[".get"]` (34): `Accuracy,AmmoSlot1,AmmoSlot2,AmmoSlot3,AmmoSlot4,AmmoSlot5,Coordination,CoverQRModifier,Damage,Defense,DeploymentAmmo,DisguiseRating,EnergyAF,Engagement,Focus,FocusRegen,Fortitude,HazmatAF,Health,HealthRegen,HealthRes,Intelligence,KineticRes,MentalRes,Morale,MovementSpeedMod,Penetration,Perception,PhysicalAF,PsionicAF,QrMod,RangeModifier,RevealRating,StealthRating`. `getUnitStat(Unit.Player, Stat.Health)` returns a table `{id=7, current=760, ...}`; `Stat.Intelligence`=5, `Stat.Intellect`=nil | LH-09 amended: enumerate `Stat[".get"]` |
+| C-P2 relog | After `lab_logout` + `lab_ensure_in_world`, before any chat read: `nil|wrapped=false` | Lua state is rebuilt on relog: "armed too late" confirmed; LH-11 as written |
+| C-P3 event rate | ~16-18 events/s idle in Castle; `dropped` 0 over 10 s | The thousands of drops were a 4096-slot ring filling over minutes without a reader; LH-11 keeper (1 Hz drain) is enough, no filtering |
+| C-P4 click ring | `getWindow("Root")` ok; `subscribeGlobal` fails: "Window 'Root' is not a child of a ScriptedWindow"; constants right (`ns=Window`, `ev=MouseClick`) | LH-12 amended: subscribe on a window under a ScriptedWindow (see the input investigation) |
+| C-P5 move_to | Blocked: three `client_move_to` calls in the CellBlock hub (5.3 to 13.9 m) all "stuck"; the server position and heading never changed; `client_input_status` showed `events_delivered 0`, `data_reads_keyboard 0` | Keyboard input never reaches the default client: a delivery defect under item 8. Investigated before LH-10 |
+| Side notes | `lab_ensure_in_world` on default needed `character:"Bankone"` (config names Labone); the relog hit two dispatch timeouts | Folded into the close-out checks |
