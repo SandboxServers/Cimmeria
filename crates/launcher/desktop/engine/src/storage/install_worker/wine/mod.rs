@@ -4,6 +4,7 @@ use crate::{
     mac_runtime::RuntimeError,
     mac_wine::{WineError, WineSeedExtractor},
 };
+use cimmeria_launcher_core::seed_source::SeedSourceHandle;
 
 /// Bind an admitted Wine intent to the packaged Windows helper. This native API
 /// accepts no webview executable or environment. The shell must supply its
@@ -121,6 +122,7 @@ async fn install_claimed(
             cancel,
             progress,
             http,
+            seed_source: &SeedSourceHandle::download(),
         },
         install::SeedBackend {
             extractor: &adapter,

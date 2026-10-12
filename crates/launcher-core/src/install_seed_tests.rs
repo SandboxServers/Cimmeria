@@ -110,6 +110,7 @@ async fn exercise(uncertain: bool, bad_hash: bool) {
     };
     let http = reqwest::Client::new();
     let url = format!("{}/manifest.json", server.uri());
+    let seed_source = SeedSourceHandle::download();
     let run = || {
         install_all_with_seed_extractor(
             InstallContext {
@@ -120,6 +121,7 @@ async fn exercise(uncertain: bool, bad_hash: bool) {
                 cancel: CancellationToken::new(),
                 progress: ProgressSink::latest().0,
                 http: &http,
+                seed_source: &seed_source,
             },
             SeedBackend {
                 extractor: &extractor,
@@ -223,6 +225,7 @@ async fn complete_authenticated_seed_cache_works_offline_but_corruption_fetches_
                 cancel: CancellationToken::new(),
                 progress: ProgressSink::latest().0,
                 http: &http,
+                seed_source: &SeedSourceHandle::download(),
             },
             &manifest.seed,
             Some(SeedBackend {

@@ -107,9 +107,18 @@ async fn download_to_file_returns_unexpected_status_on_non_2xx() {
     // Test client allows http:// — production worker client is
     // configured with https_only(true).
     let http = reqwest::Client::new();
-    let err = download_to_file(&http, &url, &dest, CancellationToken::new(), 0, "seed", &tx)
-        .await
-        .expect_err("418 must surface as an error, not panic");
+    let err = download_to_file(
+        &http,
+        &url,
+        &dest,
+        CancellationToken::new(),
+        CancellationToken::new(),
+        0,
+        "seed",
+        &tx,
+    )
+    .await
+    .expect_err("418 must surface as an error, not panic");
 
     match err {
         InstallError::UnexpectedStatus { status, url: u } => {
@@ -146,6 +155,7 @@ async fn hash_mismatch_deletes_the_download() {
         cancel: CancellationToken::new(),
         progress: tx.into(),
         http: &http,
+        seed_source: &SeedSourceHandle::download(),
     };
     let err = verify_and_unpack(&ctx, &tmp, ctx.install_dir, "00", "seed")
         .await
@@ -178,6 +188,7 @@ async fn download_to_file_treats_416_on_a_complete_file_as_done() {
         &url,
         &dest,
         CancellationToken::new(),
+        CancellationToken::new(),
         10,
         "seed",
         &tx,
@@ -192,6 +203,7 @@ async fn download_to_file_treats_416_on_a_complete_file_as_done() {
         &reqwest::Client::new(),
         &url,
         &dest,
+        CancellationToken::new(),
         CancellationToken::new(),
         10,
         "seed",
@@ -392,6 +404,7 @@ async fn install_all_reports_every_patch_outcome() {
         cancel: CancellationToken::new(),
         progress: tx.into(),
         http: &http,
+        seed_source: &SeedSourceHandle::download(),
     };
     let (result, report) = install_all(ctx).await;
     assert!(
@@ -474,6 +487,7 @@ async fn desktop_progress_installs_seed_and_patch_then_reuses_saved_state() {
             cancel: CancellationToken::new(),
             progress: progress.clone(),
             http: &client,
+            seed_source: &SeedSourceHandle::download(),
         })
         .await;
         result.unwrap();
@@ -530,6 +544,7 @@ async fn cancelling_a_stalled_response_body_stops_the_download() {
             &format!("http://{address}/seed"),
             &target,
             worker_cancel,
+            CancellationToken::new(),
             100,
             "seed",
             &sink,
@@ -606,6 +621,7 @@ async fn a_patch_with_a_transform_this_launcher_does_not_know_fails_alone() {
         cancel: CancellationToken::new(),
         progress: tx.into(),
         http: &http,
+        seed_source: &SeedSourceHandle::download(),
     };
     let (result, report) = install_all(ctx).await;
     assert!(

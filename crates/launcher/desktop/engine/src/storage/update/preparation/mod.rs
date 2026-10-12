@@ -3,6 +3,7 @@
 use super::*;
 use crate::game_telemetry::install_event::{Ending, Run};
 use crate::{catalog, install, install_progress::ProgressSink, OperationState};
+use cimmeria_launcher_core::seed_source::SeedSourceHandle;
 use futures_util::FutureExt;
 use std::{io::Write, panic::AssertUnwindSafe, sync::Mutex, time::Duration};
 use tokio::sync::{oneshot, watch};
@@ -206,6 +207,7 @@ async fn reconstruct(
         cancel: cancel.clone(),
         progress,
         http: &source.http,
+        seed_source: &SeedSourceHandle::download(),
     };
     let (result, report) = match source.backend {
         Backend::Native => install::install_all(context).await,

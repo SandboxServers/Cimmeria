@@ -36,6 +36,7 @@ use crate::install_progress::{ProgressReporter, ProgressSink};
 use crate::install_report::{InstallReport, PatchOutcomeKind};
 use crate::manifest::{blob_url, Manifest, PatchEntry};
 use crate::patch_dest::patch_dest;
+use crate::seed_source::{LocalSeedError, SeedSourceHandle};
 use crate::state::{InstalledState, StateError};
 use crate::unpack::{self, UnpackError, UnpackSink};
 
@@ -61,6 +62,13 @@ pub enum InstallError {
     InvalidSha256(String),
     #[error("Cancelled")]
     Cancelled,
+    /// A running seed download was switched to a local archive; the caller
+    /// removes the partial download and copies that archive instead.
+    #[error("seed switched to a local archive")]
+    SeedSwitched,
+    /// The player's chosen seed archive cannot be used.
+    #[error("local seed archive: {0}")]
+    LocalSeed(#[source] LocalSeedError),
     #[error("External seed extraction requires reconciliation")]
     SeedExtractionUncertain,
     #[error(transparent)]
@@ -75,6 +83,15 @@ impl From<UnpackError> for InstallError {
         match error {
             UnpackError::Cancelled => Self::Cancelled,
             other => Self::Unpack(other),
+        }
+    }
+}
+
+impl From<LocalSeedError> for InstallError {
+    fn from(error: LocalSeedError) -> Self {
+        match error {
+            LocalSeedError::Cancelled => Self::Cancelled,
+            other => Self::LocalSeed(other),
         }
     }
 }
@@ -150,6 +167,10 @@ pub struct InstallContext<'a> {
     /// manifest revalidation. Avoids rebuilding the connection pool
     /// per blob. Configured with `https_only(true)`.
     pub http: &'a reqwest::Client,
+    /// Which archive the seed step uses: a download, or the player's own
+    /// verified copy. The desktop engine wires its real handle; others pass
+    /// `&SeedSourceHandle::download()`.
+    pub seed_source: &'a SeedSourceHandle,
 }
 
 /// Install the seed and every patch, and report what happened to each
@@ -288,6 +309,8 @@ async fn apply_patch(ctx: &InstallContext<'_>, patch: &PatchEntry) -> Result<(),
         &url,
         &tmp,
         ctx.cancel.clone(),
+        // Patches never switch to a local archive.
+        CancellationToken::new(),
         patch.size,
         &label,
         &ctx.progress,
@@ -336,11 +359,15 @@ async fn verify_and_unpack(
 }
 
 /// Downloads `url` to `dest`, resuming a partial file there with a `Range` request.
+///
+/// Firing `switch` stops the download and returns [`InstallError::SeedSwitched`];
+/// the partial file is left for the caller to remove.
 pub async fn download_to_file(
     http: &reqwest::Client,
     url: &str,
     dest: &Path,
     cancel: CancellationToken,
+    switch: CancellationToken,
     expected_size: u64,
     label: &str,
     progress: &impl ProgressReporter,
@@ -359,6 +386,7 @@ pub async fn download_to_file(
     let resp = tokio::select! {
         biased;
         _ = cancel.cancelled() => return Err(InstallError::Cancelled),
+        _ = switch.cancelled() => return Err(InstallError::SeedSwitched),
         response = req.send() => response?,
     };
 
@@ -410,6 +438,7 @@ pub async fn download_to_file(
         let chunk = tokio::select! {
             biased;
             _ = cancel.cancelled() => return Err(InstallError::Cancelled),
+            _ = switch.cancelled() => return Err(InstallError::SeedSwitched),
             chunk = stream.next() => chunk,
         };
         let Some(chunk) = chunk else {

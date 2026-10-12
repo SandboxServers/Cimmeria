@@ -18,6 +18,7 @@ use crate::{
     launcher_summary::TimedPhase,
     OperationState,
 };
+use cimmeria_launcher_core::seed_source::SeedSourceHandle;
 use futures_util::FutureExt;
 use std::{io::Write, panic::AssertUnwindSafe, sync::Mutex, time::Duration};
 use tokio::sync::watch;
@@ -341,6 +342,7 @@ async fn install_stage(
         cancel,
         progress,
         http,
+        seed_source: &SeedSourceHandle::download(),
     })
     .await;
     (finish_stage(intent, release, &stage, result), Some(report))
