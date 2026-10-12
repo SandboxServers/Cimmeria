@@ -12,7 +12,9 @@ def _empty_campaign(campaign):
     """A campaign record with zero cost, for a campaign that cost.json does not list."""
     cost = {"total_usd": 0.0, "by_model_tier": {tier: 0.0 for tier in TIERS}, "by_role": {},
             "attributed_usd": 0.0, "unattributed_in_campaign_usd": 0.0}
-    return {"campaign": campaign, "cost": cost, "prs": copy.deepcopy(EMPTY_PRS), "accepted": copy.deepcopy(EMPTY_ACCEPTED)}
+    # Mixed, not old: the coordinator's own spend belongs to neither regime, so it stays out of the old-model column.
+    return {"campaign": campaign, "regime": "mixed", "cost": cost, "prs": copy.deepcopy(EMPTY_PRS),
+            "accepted": copy.deepcopy(EMPTY_ACCEPTED)}
 
 
 def apply_self_cost(inputs, self_cost, campaign="campaign-metrics"):

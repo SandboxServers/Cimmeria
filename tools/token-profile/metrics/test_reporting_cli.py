@@ -35,6 +35,23 @@ def _fixture_db(path):
         db.commit()
 
 
+def _schema_db(path):
+    """A scratch database built from the profiler's schema.sql, holding one Opus request in session sess-a that no
+    campaign claims."""
+    schema = (Path(__file__).resolve().parents[1] / "schema.sql").read_text(encoding="utf-8")
+    with contextlib.closing(sqlite3.connect(path)) as db:
+        db.executescript(schema)
+        db.execute("INSERT INTO sessions (session_id, project_dir, first_ts, last_ts, is_coordinator) "
+                   "VALUES ('sess-a', 'proj', '2026-10-11T00:00:00Z', '2026-10-11T01:00:00Z', 1)")
+        db.execute("INSERT INTO triggers (trigger_id, session_id, ts, kind, rule) "
+                   "VALUES ('t-a', 'sess-a', '2026-10-11T00:00:00Z', 'human_prompt', 'R1')")
+        db.execute("INSERT INTO requests (request_id, session_id, trigger_id, message_uuid, records_seen, ts, model, "
+                   "input_tokens, output_tokens, cache_read, cache_write_5m, cache_write_1h, context_tokens) "
+                   "VALUES ('r-a', 'sess-a', 't-a', 'm-a', 1, '2026-10-11T00:00:00Z', 'claude-opus-5-5', "
+                   "1000000, 0, 0, 0, 0, 1000000)")
+        db.commit()
+
+
 def _run(argv):
     """(exit status, stdout, stderr) of the CLI run with `argv`."""
     out, err = io.StringIO(), io.StringIO()
@@ -59,6 +76,7 @@ class ApplySelfCostTest(unittest.TestCase):
         inputs = load_inputs(FIXTURES)
         out = self_apply.apply_self_cost(inputs, SELF)
         record = out["cost"]["campaigns"]["campaign-metrics"]
+        self.assertEqual(record["regime"], "mixed")
         self.assertAlmostEqual(record["cost"]["total_usd"], 5.0)
         self.assertEqual(record["cost"]["self_sessions"], 2)
         self.assertEqual(record["prs"], {"count": 0, "merged": 0, "cost_per_pr": {"mean": None, "p50": None, "p90": None},
@@ -101,7 +119,19 @@ class ReportCliTest(unittest.TestCase):
         self.assertEqual(json.loads(out)["self_sessions"], 1)
         # s1's one request is the only one priced; s2's request is not listed, so it is not counted.
         summary = (self.out / "reports" / "summary.md").read_bytes().decode("utf-8")
-        self.assertIn("over 1 requests in 1 sessions", summary)
+        self.assertIn("over 1 request in 1 session.", summary)
+
+    def test_cli_own_session_stays_out_of_old_column(self):
+        # The own cost makes campaign-metrics, which is mixed: its dollars must not move the old column's total.
+        scratch = self.dir / "scratch.sqlite"
+        _schema_db(scratch)
+        status, _, _ = _run(["report", "--inputs", str(self.inputs), "--out", str(self.out), "--db", str(scratch),
+                             "--self-session", "sess-a"])
+        self.assertEqual(status, 0)
+        summary = (self.out / "reports" / "summary.md").read_bytes().decode("utf-8")
+        self.assertIn("| Pure campaigns | 1 |", summary)
+        self.assertIn("| Total USD | $100.00 |", summary)
+        self.assertIn("- Mixed campaigns are excluded from the cost comparison: campaign-metrics.", summary)
 
     def test_cli_self_session_needs_db(self):
         status, _, err = _run(["report", "--inputs", str(self.inputs), "--out", str(self.out), "--self-session", "s1"])
