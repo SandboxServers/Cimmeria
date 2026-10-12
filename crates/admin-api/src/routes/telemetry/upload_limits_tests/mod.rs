@@ -7,7 +7,8 @@
 //! - `chunk` — the chunk budgets and the priority allowance.
 //! - `bundle` — the bundle budgets.
 //! - `field_caps` — the string caps.
-//! - `refusal_log` — the refusal throttle.
+//! - `refusal_log` — the refusal throttle: burst, escalation, `event`.
+//! - `refusal_log_pools` — slot collisions and the two global ceilings.
 //! - `slow_body` — token before body (bundle) and the body deadline, over a socket.
 
 mod bundle;
@@ -15,6 +16,7 @@ mod chunk;
 mod field_caps;
 mod gate;
 mod refusal_log;
+mod refusal_log_pools;
 mod slow_body;
 
 use std::io::Write;

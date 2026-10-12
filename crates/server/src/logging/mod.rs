@@ -27,6 +27,8 @@ mod client_entity_names_tests;
 mod client_index_tests;
 #[cfg(test)]
 mod deployables_target_tests;
+#[cfg(test)]
+mod discord_ingest_tests;
 mod filters;
 #[cfg(test)]
 mod parity_tests;

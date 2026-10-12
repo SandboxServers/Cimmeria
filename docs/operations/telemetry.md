@@ -498,7 +498,14 @@ next row's `suppressed` counting them. The window starts at 10 s and
 doubles with every row the pair writes, up to 15 minutes, so a client
 retrying every 12 s writes about ten rows in its first hour and four an
 hour after that. It drops back to 10 s once the pair has had no refusal
-for 15 minutes. At most 50 rows are written per 10 s in all.
+for 15 minutes. At most 50 rows are written per 10 s across all
+uploaders, with a separate 50 for `upload_auth_refused` rows, so a crowd
+of stale tokens cannot hold back the first rows of refusals that still
+post. A row a ceiling held back is written on the pair's first refusal
+after the ceiling reopens, with the count in `suppressed`. Two uploaders
+whose pairs share a throttle slot do not reset each other's window; if
+both of a newcomer's slots are taken by active pairs, its rows are
+written untracked, under the ceiling.
 
 Any backlog in the launcher's on-disk queue (a server outage of a few
 minutes, a kill switch, or a launcher killed mid-session) is posted when
@@ -529,7 +536,7 @@ server:
 | `cimmeria-client` | `launcher.debug_log` | `sgwdebuglog` lines |
 | `cimmeria-client` | `launcher.session_meta` | Session boundaries and rotation events. `kind=game_exited` carries the game's `pid` and `exit_code` (the exit code is absent when the OS reports none); the desktop launcher also sends `host_pid` and `early` |
 | `cimmeria-client` | `launcher.summary` | The desktop launcher's attempt summaries: `event = launcher_summary` per accepted summary and `event = launcher_phase` per timed phase. See [Launcher summaries](#launcher-summaries) |
-| `cimmeria-server` | `launcher.ingest` | Server-side accept counters per chunk, with the session totals; a `warn` with `reason = session_over_budget` when the runaway guard suppressed events; a throttled row per refused upload (`warn`, except `busy`, which is `info`), with its `route` and `reason` ([Upload size and rate limits](#upload-size-and-rate-limits)). Also `event = launcher_summary_batch`, one row per launcher-summary request that reached validation |
+| `cimmeria-server` | `launcher.ingest` | Server-side accept counters per chunk, with the session totals; a `warn` with `reason = session_over_budget` when the runaway guard suppressed events; a throttled row per refused upload (`warn`, except `busy`, which is `info`), with its `route`, `reason` and `event` (`upload_auth_refused` for a missing, bad or expired token, SigNoz-only; `upload_refused` for every other refusal) ([Upload size and rate limits](#upload-size-and-rate-limits)). Also `event = launcher_summary_batch`, one row per launcher-summary request that reached validation |
 | `cimmeria-server` | `launcher.bundle` | Bundle metadata and refusals (caps, bad entries) |
 | none | `launcher.key_dump` | Encryption key material; `off` in every OTLP filter, never leaves the host |
 
