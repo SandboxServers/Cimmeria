@@ -1130,7 +1130,7 @@ first line of each.
 | `lab install -From <worktree> [-SkipBuild]` | builds and installs the lab from that worktree, then refreshes the CLI copy with the worktree's own installer | 0; non-zero when the build, the install or the copy fails |
 | `lab setup [-From <checkout>] [-NoPath] [-Yes]` | see [Set up the `lab` command](#set-up-the-lab-command) | 0; non-zero when the copy fails |
 | `lab instances [status \| init ...]` | `instances.ps1` from the installed copy (see [Parallel clients](#parallel-clients-up-to-five)) | its own |
-| `lab clients stop [<instance> \| all] [-Force]` | closes lab clients; see below | 0 stopped or nothing to stop; 1 daemon down; 2 usage; 3 a leased client was refused; 4 a client could not be stopped |
+| `lab clients stop [<instance> \| all] [--force]` | closes lab clients; see below | 0 stopped or nothing to stop; 1 daemon down; 2 usage; 3 a leased client was refused; 4 a client could not be stopped |
 | `lab doctor` | one `PASS`, `WARN` or `FAIL` line per check; see below | 0; 1 when any check fails |
 | `lab uat <section> [-Rows ...] [-Leases 1-5] [-RunsPerLease 1-20] [-Instance p2] [-Fixtures auto\|always\|never] [-DiffGolden] [-Heal] [-PlanOnly] [-Json] [-Quiet]` | runs a UAT spec through `lab_uat_run` with no agent; see below | 0 every run passed; 1 a run failed; 2 usage (including `-Heal` without `-Leases 1`), or `-DiffGolden` or `-Chaos` with no golden or one that cannot be read; 3 the pre-flight or plan failed (nothing driven); 4 a lane stopped on its brake; 5 every run passed but `-DiffGolden` did not match on one (under `-Chaos`, only a run it could not compare); 8 `-Heal` wrote a proposal, which wins over 5 and every other code |
 | `-Chaos <profile[:level][:knobs]>` on `lab uat` | runs every row under the specs (`lab_uat_run` `chaos`): `cpu` loads the lab machine for the whole run; `net` and `flush` are set on the row's player session before its setup and cleared after its teardown, on failed rows too (they need a server built with `lab-chaos` and `DEVELOPER_MODE`). `burst` is refused until lab-chaos CH-13 lands. The header is the runner's own (`chaos=<spec> seed=<n>`, the seed being the run id's hash unless the spec gives one); quote a multi-knob spec, as its commas would split it elsewhere. `-Chaos` implies `-Fingerprint` and `-DiffGolden` (lab-chaos D-CH7): every passing run is compared with the section's golden, and the result is `chaos_divergence` in place of `golden` (in the summary and `-Json`, the same `{match, diverged, first}` shape and grouping, present whenever a run was compared; the header is the `chaos` key, and `summary.md` names each divergence's runs with their seeds). `-PlanOnly` needs no golden; with no local spec folder the daemon's is used, and a missing golden there is a diff error (exit 5). A row that passed its own expects stays a pass, and a divergence alone exits 0, not 5. A chaos run is never recorded as a golden (`lab_golden_record` answers `cannot_record`, "chaos runs never become golden") | 2 when the local spec folder has no golden for the section (record one first with `lab golden record`); 3 when the plan call refuses a spec (an unknown profile or knob, `burst`, a value the server would refuse); 5 only when a diff could not be made |
@@ -1280,12 +1280,13 @@ change needs `lab restart`. Two value rules:
 
 **`lab clients stop`.** It stops only clients whose instance holds no lease,
 because a leased client belongs to the agent driving it (D-LC5). A leased one
-is refused, naming the holder and purpose. `-Force` stops it anyway, but
-only with a named instance: `lab clients stop all -Force` exits 2 before
-asking the daemon anything. The holder loses the client, and its watchdog
-may relaunch it. The pid comes from the daemon's `/status`, and only a
-process named `SGW` is touched: the command asks its window to close and
-force-stops it after 8 seconds.
+is refused, naming the holder and purpose. `--force` (`-Force` works too)
+stops it anyway, but only with a named instance: `lab clients stop all --force`
+exits 2 before asking the daemon anything. The holder loses the client, and
+its watchdog may relaunch it. The pid comes from the daemon's `/status`, and
+only a process whose image is `SGW.exe` is touched: `lab.exe` posts
+`WM_CLOSE` to its windows and force-stops it after 8 seconds. Instance names
+match without regard to case.
 
 **`lab doctor`.** Read-only; the token is only ever reported as set or not.
 
