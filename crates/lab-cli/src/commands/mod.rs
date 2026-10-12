@@ -1,11 +1,13 @@
 //! The command table, the clap surface and the command dispatch.
 //!
-//! Every command has its clap arguments and help page in its own file. Only
-//! `version` does its own work so far; the others call [`crate::fallback`]
-//! (the PowerShell dispatcher) until their packet ports the body.
+//! Every command has its clap arguments and help page in its own file. Every
+//! command but `start`, `stop`, `restart`, `instances`, `install`, `setup` and
+//! `local-setup` is native; those seven run their PowerShell script through
+//! [`crate::fallback::run_script`].
 
 pub mod calibrate;
 pub mod clients;
+pub mod completions;
 pub mod doctor;
 pub mod env;
 pub mod golden;
@@ -229,6 +231,7 @@ pub enum Command {
     Install(install::Args),
     Setup(setup::Args),
     LocalSetup(local_setup::Args),
+    Completions(completions::Args),
     /// Print the CLI and daemon versions.
     Version,
 }
@@ -253,6 +256,7 @@ pub fn dispatch(cmd: &Command, ctx: &Ctx) -> u8 {
         Command::Install(args) => install::run(args, ctx),
         Command::Setup(args) => setup::run(args, ctx),
         Command::LocalSetup(args) => local_setup::run(args, ctx),
+        Command::Completions(args) => completions::run(args, ctx),
         Command::Version => version::run(ctx),
     }
 }
@@ -281,19 +285,14 @@ mod tests {
 
     use super::*;
 
-    /// COMMANDS and the clap subcommands list the same names, except
-    /// `completions`, which LX-18 adds.
+    /// COMMANDS and the clap subcommands list the same names.
     #[test]
     fn command_table_and_clap_list_the_same_names() {
         let mut clap_names: Vec<String> = Cli::command()
             .get_subcommands()
             .map(|s| s.get_name().to_string())
             .collect();
-        let mut table_names: Vec<String> = COMMANDS
-            .iter()
-            .map(|c| c.name.to_string())
-            .filter(|n| n != "completions")
-            .collect();
+        let mut table_names: Vec<String> = COMMANDS.iter().map(|c| c.name.to_string()).collect();
         clap_names.sort();
         table_names.sort();
         assert_eq!(clap_names, table_names);

@@ -1,6 +1,5 @@
-//! `lab install`: build the lab from a worktree and install it.
-//! LX-02 gives it its clap arguments and help page; the body is still the
-//! PowerShell fallback.
+//! `lab install`: build the lab from a worktree and install it, by running
+//! `cli\install.ps1` with the same arguments (LX-18).
 
 use crate::commands::Ctx;
 use crate::fallback;
@@ -29,10 +28,10 @@ pub struct Args {
     pub skip_build: bool,
 }
 
-/// Runs `lab install` (still the PowerShell fallback).
+/// Runs `lab install`: `cli\install.ps1` with the same arguments.
 pub fn run(args: &Args, ctx: &Ctx) -> u8 {
     let _ = args;
-    fallback::run(ctx)
+    fallback::run_script(ctx, "cli/install.ps1", &[])
 }
 
 #[cfg(test)]

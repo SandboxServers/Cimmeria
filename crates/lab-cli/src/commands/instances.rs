@@ -1,6 +1,5 @@
-//! `lab instances`: each instance's account, profile and client, or the
-//! extra account files. LX-02 gives it its clap arguments and help page; the
-//! body is still the PowerShell fallback.
+//! `lab instances`: each instance's account, profile and client, or the extra
+//! account files, by running `instances.ps1` with the same arguments (LX-18).
 
 use crate::commands::Ctx;
 use crate::fallback;
@@ -30,10 +29,10 @@ pub struct Args {
     pub rest: Vec<String>,
 }
 
-/// Runs `lab instances` (still the PowerShell fallback).
+/// Runs `lab instances`: `instances.ps1` with the same arguments.
 pub fn run(args: &Args, ctx: &Ctx) -> u8 {
     let _ = args;
-    fallback::run(ctx)
+    fallback::run_script(ctx, "instances.ps1", &[])
 }
 
 #[cfg(test)]

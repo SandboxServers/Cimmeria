@@ -1,6 +1,5 @@
-//! `lab start`: starts the lab daemon through its scheduled task. LX-02 gives
-//! it its clap arguments and help page; the body is still the PowerShell
-//! fallback.
+//! `lab start`: starts the lab daemon through its scheduled task by running
+//! `daemon.ps1 start` (LX-18); the script's exit code is ours.
 
 use crate::commands::Ctx;
 use crate::fallback;
@@ -18,10 +17,10 @@ const EXAMPLES: &str = "Examples:\n  lab start";
 )]
 pub struct Args {}
 
-/// Runs `lab start` (still the PowerShell fallback).
+/// Runs `lab start`: `daemon.ps1 start`.
 pub fn run(args: &Args, ctx: &Ctx) -> u8 {
     let _ = args;
-    fallback::run(ctx)
+    fallback::run_script(ctx, "daemon.ps1", &["start"])
 }
 
 #[cfg(test)]

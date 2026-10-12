@@ -1,6 +1,5 @@
-//! `lab setup`: refresh the installed CLI and add it to the user PATH.
-//! LX-02 gives it its clap arguments and help page; the body is still the
-//! PowerShell fallback.
+//! `lab setup`: refresh the installed CLI scripts and add `bin` to the user PATH,
+//! by running `cli\setup.ps1` with the same arguments (LX-18).
 
 use crate::commands::Ctx;
 use crate::fallback;
@@ -28,10 +27,10 @@ pub struct Args {
     pub yes: bool,
 }
 
-/// Runs `lab setup` (still the PowerShell fallback).
+/// Runs `lab setup`: `cli\setup.ps1` with the same arguments.
 pub fn run(args: &Args, ctx: &Ctx) -> u8 {
     let _ = args;
-    fallback::run(ctx)
+    fallback::run_script(ctx, "cli/setup.ps1", &[])
 }
 
 #[cfg(test)]

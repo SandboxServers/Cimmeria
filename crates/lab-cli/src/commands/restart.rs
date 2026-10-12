@@ -1,6 +1,5 @@
-//! `lab restart`: restarts the lab daemon, picking up a newer build. LX-02
-//! gives it its clap arguments and help page; the body is still the
-//! PowerShell fallback.
+//! `lab restart`: restarts the lab daemon, picking up a newer build, by running
+//! `daemon.ps1 restart [-Force]` (LX-18); the script's exit code is ours.
 
 use crate::commands::Ctx;
 use crate::fallback;
@@ -26,10 +25,10 @@ pub struct Args {
     pub force: bool,
 }
 
-/// Runs `lab restart` (still the PowerShell fallback).
+/// Runs `lab restart`: `daemon.ps1 restart`, with `-Force` when given.
 pub fn run(args: &Args, ctx: &Ctx) -> u8 {
     let _ = args;
-    fallback::run(ctx)
+    fallback::run_script(ctx, "daemon.ps1", &["restart"])
 }
 
 #[cfg(test)]
