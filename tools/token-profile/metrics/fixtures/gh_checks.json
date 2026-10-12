@@ -1,0 +1,57 @@
+{
+  "repos/{owner}/{repo}/pulls/101/files": [
+    [{"filename": "crates/sgw/src/lab.rs"}, {"filename": "docs/a.md"}]
+  ],
+  "repos/{owner}/{repo}/pulls/102/files": [
+    [{"filename": "tools/token-profile/metrics/github.py"}]
+  ],
+  "repos/{owner}/{repo}/pulls/103/files": [
+    [{"filename": "docs/notes.md"}]
+  ],
+  "repos/{owner}/{repo}/pulls/104/files": [
+    [{"filename": "crates/sgw/src/lab.rs"}]
+  ],
+  "repos/{owner}/{repo}/pulls/101/commits": [
+    [{"sha": "a101", "commit": {"committer": {"date": "2026-10-01T09:00:00Z"}}}]
+  ],
+  "repos/{owner}/{repo}/pulls/102/commits": [
+    [
+      {"sha": "b101", "commit": {"committer": {"date": "2026-10-02T09:00:00Z"}}},
+      {"sha": "b102", "commit": {"committer": {"date": "2026-10-02T11:00:00Z"}}}
+    ]
+  ],
+  "repos/{owner}/{repo}/pulls/103/commits": [
+    [{"sha": "c103", "commit": {"committer": {"date": "2026-10-03T09:00:00Z"}}}]
+  ],
+  "repos/{owner}/{repo}/pulls/104/commits": [
+    [{"sha": "d104", "commit": {"committer": {"date": "2026-10-04T08:30:00Z"}}}]
+  ],
+  "repos/{owner}/{repo}/commits/a101/check-runs": [
+    {"total_count": 2, "check_runs": [
+      {"name": "ci gate", "conclusion": "success", "started_at": "2026-10-01T09:01:00Z"},
+      {"name": "build", "conclusion": "success", "started_at": "2026-10-01T09:01:00Z"}
+    ]}
+  ],
+  "repos/{owner}/{repo}/commits/b101/check-runs": [
+    {"total_count": 2, "check_runs": [
+      {"name": "ci gate", "conclusion": "failure", "started_at": "2026-10-02T09:01:00Z"},
+      {"name": "build", "conclusion": "failure", "started_at": "2026-10-02T09:01:00Z"}
+    ]}
+  ],
+  "repos/{owner}/{repo}/commits/b102/check-runs": [
+    {"total_count": 2, "check_runs": [
+      {"name": "ci gate", "conclusion": "success", "started_at": "2026-10-02T11:01:00Z"},
+      {"name": "build", "conclusion": "success", "started_at": "2026-10-02T11:01:00Z"}
+    ]}
+  ],
+  "repos/{owner}/{repo}/commits/c103/check-runs": [
+    {"total_count": 1, "check_runs": [
+      {"name": "docs-lint", "conclusion": "success", "started_at": "2026-10-03T09:01:00Z"}
+    ]}
+  ],
+  "repos/{owner}/{repo}/commits/d104/check-runs": [
+    {"total_count": 1, "check_runs": [
+      {"name": "ci gate", "conclusion": "success", "started_at": "2026-10-04T08:31:00Z"}
+    ]}
+  ]
+}
