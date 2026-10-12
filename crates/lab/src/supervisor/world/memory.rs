@@ -361,6 +361,26 @@ pub async fn camera_state<M: Memory>(mem: &mut M, camera: u32) -> Result<CameraS
 /// clamped by the turn handler: live it reached 1563 degrees after repeated
 /// pitch turns and the view ended up looking straight down (2026-10-10).
 pub const CAMERA_PITCH_LIMIT: i32 = 0x3800;
+/// [`CAMERA_PITCH_LIMIT`] in readout degrees (`pitch_offset_deg`).
+pub const CAMERA_PITCH_LIMIT_DEG: f64 = 78.75;
+/// A readout this close to the limit, or past it, is "pinned".
+pub const PITCH_PINNED_MARGIN_DEG: f64 = 0.5;
+
+/// Is a readout's `pitch_offset_deg` at the pitch limit? There the lab's
+/// clamp ([`clamped_pitch_counts`]) turns every further push into that
+/// direction into no call at all, so a closed loop that pushes that way
+/// never moves the pixel and never learns anything.
+pub fn pitch_pinned(pitch_offset_deg: f64) -> bool {
+    pitch_offset_deg.is_finite()
+        && pitch_offset_deg.abs() >= CAMERA_PITCH_LIMIT_DEG - PITCH_PINNED_MARGIN_DEG
+}
+
+/// The camera actor's pose, or `None` when its location is exactly zero: the
+/// client never wrote one (seen on a second lab instance, 2026-10-12), and a
+/// zero pose would make every bearing from the camera wrong.
+pub fn real_camera_pose(p: Pose) -> Option<Pose> {
+    (p.pos != Vec3::new(0.0, 0.0, 0.0)).then_some(p)
+}
 
 /// The pitch counts to pass to the turn handler so the offset moves by
 /// `dy` counts but ends inside +-[`CAMERA_PITCH_LIMIT`]. A pitch already
@@ -559,5 +579,30 @@ mod tests {
         assert_eq!(slot_entity(&slots, 1), 100);
         assert_eq!(slot_entity(&slots, 7700), 555);
         assert_eq!(slot_entity(&slots, 3), 0);
+    }
+
+    #[test]
+    fn a_pitch_at_the_limit_is_pinned() {
+        assert_eq!(
+            CAMERA_PITCH_LIMIT_DEG,
+            f64::from(CAMERA_PITCH_LIMIT) * 360.0 / 65536.0
+        );
+        assert!(pitch_pinned(78.75));
+        assert!(pitch_pinned(-78.4));
+        assert!(pitch_pinned(1563.0));
+        assert!(!pitch_pinned(78.0));
+        assert!(!pitch_pinned(0.0));
+        assert!(!pitch_pinned(f64::NAN));
+    }
+
+    #[test]
+    fn an_all_zero_camera_location_is_not_a_pose() {
+        let at = |x, y, z| Pose {
+            pos: Vec3::new(x, y, z),
+            yaw: 1.0,
+            pitch: 0.0,
+        };
+        assert_eq!(real_camera_pose(at(0.0, 0.0, 0.0)), None);
+        assert!(real_camera_pose(at(0.0, 0.0, 5.0)).is_some());
     }
 }

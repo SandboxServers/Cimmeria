@@ -367,14 +367,24 @@ impl WorldIo for LiveWorld<'_> {
 
     async fn camera_pose(&mut self) -> Result<Pose, String> {
         let c = self.player_camera().await?;
-        memory::actor_pose(&mut Reader(self.sup), c.camera).await
+        let p = memory::actor_pose(&mut Reader(self.sup), c.camera).await?;
+        memory::real_camera_pose(p).ok_or_else(|| {
+            format!(
+                "camera actor {:#x} has no location (it reads all zero)",
+                c.camera
+            )
+        })
     }
 
     async fn camera_readout(&mut self) -> Result<Value, String> {
         let c = self.player_camera().await?;
         let mut r = Reader(self.sup);
         let mut out = memory::camera_state(&mut r, c.camera).await?.to_json();
-        if let Ok(p) = memory::actor_pose(&mut r, c.camera).await {
+        if let Some(p) = memory::actor_pose(&mut r, c.camera)
+            .await
+            .ok()
+            .and_then(memory::real_camera_pose)
+        {
             out["pose"] = p.to_json();
         }
         Ok(out)

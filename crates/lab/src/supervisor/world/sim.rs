@@ -16,7 +16,8 @@ use super::geometry::{horizontal_m, wrap_pi, Pose, Screen, Vec3};
 use super::io::{Projected, WorldIo};
 use super::lua::{UnitInfo, UnitSlots};
 use super::memory::{
-    WorldEntity, WorldSnapshot, CAMERA_DIST_MAX, CAMERA_DIST_MIN, CAMERA_ZOOM_STEP,
+    clamped_pitch_counts, WorldEntity, WorldSnapshot, CAMERA_DIST_MAX, CAMERA_DIST_MIN,
+    CAMERA_ZOOM_STEP,
 };
 use super::NativeLevel;
 
@@ -97,6 +98,12 @@ pub struct Sim {
     /// Entities mouse-over never reports (rendered, but the client's trace
     /// does not hit them).
     pub unhoverable: Vec<u32>,
+    /// Pitch turns behave like the live camera: clamped to +-78.75 deg
+    /// (`memory::clamped_pitch_counts`), and a push into the limit is no call.
+    pub live_pitch_clamp: bool,
+    /// The pitch axis is inverted (flag 0x8): `pitch_gain` reads negative and
+    /// +dy looks up.
+    pub pitch_inverted: bool,
 }
 
 impl Sim {
@@ -138,6 +145,8 @@ impl Sim {
             slots_reads: 0,
             fail_cursor_restore: false,
             unhoverable: Vec::new(),
+            live_pitch_clamp: false,
+            pitch_inverted: false,
         }
     }
 
@@ -368,8 +377,20 @@ impl WorldIo for Sim {
     async fn look(&mut self, dx: i32, dy: i32, wheel: i32) -> Result<NativeLevel, String> {
         self.looks.push((dx, dy, wheel));
         self.cam_yaw = wrap_pi(self.cam_yaw + dx as f64 / self.gain);
-        // Mouse forward (negative dy) looks up.
-        self.cam_pitch = (self.cam_pitch - dy as f64 / self.gain.abs()).clamp(-1.4, 1.4);
+        let sign = if self.pitch_inverted { -1.0 } else { 1.0 };
+        let mut counts = f64::from(dy);
+        if self.live_pitch_clamp && dy != 0 {
+            // What LiveWorld::native_look does before it calls the turn handler.
+            let offset_units = (-self.cam_pitch).to_degrees() * 65536.0 / 360.0;
+            let gain = sign * 65536.0 / std::f64::consts::TAU / self.gain.abs();
+            counts = f64::from(clamped_pitch_counts(
+                offset_units as i32,
+                gain as f32,
+                dy as f32,
+            ));
+        }
+        // Mouse forward (negative dy) looks up (inverted: down).
+        self.cam_pitch = (self.cam_pitch - sign * counts / self.gain.abs()).clamp(-1.4, 1.4);
         if self.standing_turn {
             self.pawn_yaw = self.cam_yaw;
         }
@@ -389,7 +410,7 @@ impl WorldIo for Sim {
             "yaw_offset_deg": 0.0,
             "pitch_offset_deg": -self.cam_pitch.to_degrees(),
             "gain": gain,
-            "pitch_gain": gain,
+            "pitch_gain": if self.pitch_inverted { -gain } else { gain },
             "yaw_gain": units / self.gain * self.readout_gain_scale,
         }))
     }

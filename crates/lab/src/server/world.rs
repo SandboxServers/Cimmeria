@@ -63,7 +63,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Camera control with real input: raw mouse-look (yaw_counts, pitch_counts), zoom (zoom_notches of the wheel, or zoom to a distance), and/or face an entity or point (turns until it projects near the screen centre, closed loop on worldToPixel), then absolute pitch_deg (readout degrees) and yaw_offset_deg (camera world yaw, -180..180, after any face), each closed loop. zoom is the same as zoom_to and is applied before the face. Reports the camera actor's pose before and after."
+        description = "Camera control with real input: raw mouse-look (yaw_counts, pitch_counts), zoom (zoom_notches of the wheel, or zoom to a distance), and/or face an entity or point (turns until it projects near the screen centre, closed loop on worldToPixel), then absolute pitch_deg (readout degrees) and yaw_offset_deg (camera world yaw, -180..180, after any face), each closed loop. zoom is the same as zoom_to and is applied before the face. Reports the camera actor's pose before and after. Reports pitch_clamped (with a warning) when the camera ends at the +-78.75 deg pitch limit; a face that starts there brings it back to 10 deg first and says so under face.pitch_clamped."
     )]
     async fn client_camera(
         &self,
