@@ -64,6 +64,15 @@ pub struct Sim {
     /// Camera distance, moved by the wheel (30 per notch, 100..775).
     pub zoom: f64,
     pub standing_turn: bool,
+    /// The live pawn: its heading answers only to the turn keys (the
+    /// camera's mouse-look never moves it), and `W` walks along it.
+    pub live_pawn: bool,
+    /// Radians per second while a turn key is held (live: 1.92).
+    pub turn_rate_rad_s: f64,
+    /// The right turn key raises the yaw (live: yes, E).
+    pub right_raises_yaw: bool,
+    /// `(left, right)` key names the client binds.
+    pub turn_key_names: (String, String),
     pub hover_needs_mouse_move: bool,
     pub speed_uu_s: f64,
     /// Walls: forward motion stops at x >= wall until a jump clears it.
@@ -136,6 +145,10 @@ impl Sim {
             gain: 400.0,
             zoom: 250.0,
             standing_turn: true,
+            live_pawn: false,
+            turn_rate_rad_s: 1.92,
+            right_raises_yaw: true,
+            turn_key_names: ("Q".into(), "E".into()),
             hover_needs_mouse_move: false,
             speed_uu_s: 500.0,
             wall_x: None,
@@ -181,6 +194,15 @@ impl Sim {
             rendered: true,
         });
         self
+    }
+
+    /// A sim whose pawn behaves like the live one (see `live_pawn`).
+    pub fn live() -> Self {
+        Self {
+            live_pawn: true,
+            standing_turn: false,
+            ..Self::new()
+        }
     }
 
     fn held(&self, k: &str) -> bool {
@@ -269,8 +291,17 @@ impl Sim {
             let dt = left.min(10);
             left -= dt;
             self.now += dt;
+            if self.live_pawn {
+                let (l, r) = self.turn_key_names.clone();
+                let dir = f64::from(u8::from(self.held(&r))) - f64::from(u8::from(self.held(&l)));
+                let sign = if self.right_raises_yaw { 1.0 } else { -1.0 };
+                self.pawn_yaw =
+                    wrap_pi(self.pawn_yaw + sign * dir * self.turn_rate_rad_s * dt as f64 / 1000.0);
+            }
             if self.held("W") {
-                self.pawn_yaw = self.cam_yaw;
+                if !self.live_pawn {
+                    self.pawn_yaw = self.cam_yaw;
+                }
                 let step = self.speed_uu_s * dt as f64 / 1000.0;
                 let nx = self.pos.x + self.pawn_yaw.cos() * step;
                 let ny = self.pos.y + self.pawn_yaw.sin() * step;
@@ -430,7 +461,7 @@ impl WorldIo for Sim {
         }
         // Mouse forward (negative dy) looks up (inverted: down).
         self.cam_pitch = (self.cam_pitch - sign * counts / self.gain.abs()).clamp(-1.4, 1.4);
-        if self.standing_turn {
+        if self.standing_turn && !self.live_pawn {
             self.pawn_yaw = self.cam_yaw;
         }
         let notches = f64::from(wheel) / f64::from(WHEEL_NOTCH);
@@ -523,5 +554,9 @@ impl WorldIo for Sim {
 
     async fn ensure_focus(&mut self) -> Result<(), String> {
         Ok(())
+    }
+
+    async fn turn_keys(&mut self) -> Result<(String, String), String> {
+        Ok(self.turn_key_names.clone())
     }
 }

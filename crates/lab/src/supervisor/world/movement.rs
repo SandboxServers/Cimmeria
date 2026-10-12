@@ -1,10 +1,11 @@
 //! `client_move_to`: walk to a point or an entity with the movement keys.
 //!
-//! Forward is the `W` key held down; turning is mouse-look (DirectInput
-//! motion), exactly what a player does. The loop reads the player's actor
-//! pose every tick (one memory read), steers with [`MoveController`], and
-//! ends on arrival, on a snag it cannot get out of, or on the timeout.
-//! Every exit releases the keys it pressed.
+//! Forward is the `W` key held down; turning is the client's bound turn keys
+//! (TurnLeft / TurnRight, Q / E by default), because the pawn's heading ignores
+//! mouse-look. The loop reads the player's actor pose every tick (one memory
+//! read), steers with [`MoveController`], and ends on arrival, on a snag it
+//! cannot get out of, or on the timeout. Every exit releases the keys it
+//! pressed.
 
 use rmcp::schemars;
 use serde_json::{json, Value};
@@ -12,10 +13,65 @@ use serde_json::{json, Value};
 use super::find::{find_entities, FindRequest};
 use super::geometry::{horizontal_m, Pose, Vec3};
 use super::io::WorldIo;
-use super::steer::{MoveConfig, MoveController, MoveOutcome, TurnModel, Unstick};
+use super::steer::{MoveConfig, MoveController, MoveOutcome, TurnCmd, TurnKey, TurnRate, Unstick};
 use super::{NativeLevel, PointArg, Steps, TargetArg, WorldError};
 
 pub const FORWARD_KEY: &str = "W";
+/// The names of the turn keys this walk may press, for pressing and for
+/// the release on every exit.
+#[derive(Debug, Clone)]
+struct TurnKeys {
+    left: String,
+    right: String,
+}
+
+impl Default for TurnKeys {
+    fn default() -> Self {
+        Self {
+            left: "Q".into(),
+            right: "E".into(),
+        }
+    }
+}
+
+impl TurnKeys {
+    fn name(&self, k: TurnKey) -> &str {
+        match k {
+            TurnKey::Left => &self.left,
+            TurnKey::Right => &self.right,
+        }
+    }
+}
+
+/// Put the turn keys in the state `cmd` wants. `held` is the key currently
+/// down. Returns whether a turn key was used.
+async fn apply_turn<W: WorldIo>(
+    io: &mut W,
+    keys: &TurnKeys,
+    held: &mut Option<TurnKey>,
+    cmd: TurnCmd,
+) -> Result<bool, String> {
+    let want = match cmd {
+        TurnCmd::Off => None,
+        TurnCmd::Hold(k) | TurnCmd::Pulse(k, _) => Some(k),
+    };
+    if *held != want {
+        if let Some(old) = held.take() {
+            io.key(keys.name(old), false).await?;
+        }
+        if let Some(k) = want {
+            io.key(keys.name(k), true).await?;
+            *held = Some(k);
+        }
+    }
+    if let TurnCmd::Pulse(_, ms) = cmd {
+        io.sleep(ms).await;
+        if let Some(k) = held.take() {
+            io.key(keys.name(k), false).await?;
+        }
+    }
+    Ok(want.is_some())
+}
 pub const DEFAULT_TICK_MS: u64 = 100;
 pub const DEFAULT_TIMEOUT_MS: u64 = 60_000;
 /// Default arrival radius for an entity target (stop next to it, not in
@@ -105,20 +161,31 @@ async fn player_actor<W: WorldIo>(io: &mut W) -> Result<(u32, Pose), String> {
 
 /// Release what the walk may be holding. Errors are ignored on purpose: a
 /// cleanup failure must not mask the walk's own result.
-async fn release<W: WorldIo>(io: &mut W) {
-    for k in [FORWARD_KEY, "A", "D"] {
+async fn release<W: WorldIo>(io: &mut W, turn: &TurnKeys) {
+    for k in [
+        FORWARD_KEY,
+        "A",
+        "D",
+        turn.left.as_str(),
+        turn.right.as_str(),
+    ] {
         let _ = io.key(k, false).await;
     }
 }
 
 /// `client_move_to`.
 pub async fn run<W: WorldIo>(io: &mut W, req: MoveRequest) -> Result<Value, WorldError> {
-    let r = walk(io, &req).await;
-    release(io).await;
+    let mut turn_keys = TurnKeys::default();
+    let r = walk(io, &req, &mut turn_keys).await;
+    release(io, &turn_keys).await;
     r
 }
 
-async fn walk<W: WorldIo>(io: &mut W, req: &MoveRequest) -> Result<Value, WorldError> {
+async fn walk<W: WorldIo>(
+    io: &mut W,
+    req: &MoveRequest,
+    turn_keys: &mut TurnKeys,
+) -> Result<Value, WorldError> {
     let mut steps = Steps::new("client_move_to", io.now_ms());
     let target = TargetArg {
         entity_id: req.entity_id,
@@ -136,6 +203,13 @@ async fn walk<W: WorldIo>(io: &mut W, req: &MoveRequest) -> Result<Value, WorldE
     io.ensure_focus()
         .await
         .map_err(|e| steps.fail(io.now_ms(), "focus", e))?;
+    match io.turn_keys().await {
+        Ok((left, right)) => {
+            turn_keys.left = left;
+            turn_keys.right = right;
+        }
+        Err(why) => tracing::debug!(%why, "turn key bindings unreadable; using Q and E"),
+    }
 
     // Legs: waypoints, then the target.
     let mut legs: Vec<(Goal, f64)> = req
@@ -185,7 +259,8 @@ async fn walk<W: WorldIo>(io: &mut W, req: &MoveRequest) -> Result<Value, WorldE
         .map_err(|e| steps.fail(io.now_ms(), "read_player", e))?;
     let timeout = req.timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS).min(600_000);
     let t_start = io.now_ms();
-    let mut turn = TurnModel::default();
+    let mut rate = TurnRate::default();
+    let mut held_turn: Option<TurnKey> = None;
     let mut path = vec![json!({ "t_ms": 0, "at": start.pos.to_json() })];
     let mut last_sample = t_start;
     let mut leg_reports = Vec::new();
@@ -201,7 +276,7 @@ async fn walk<W: WorldIo>(io: &mut W, req: &MoveRequest) -> Result<Value, WorldE
                 arrival_m: arrival,
                 ..MoveConfig::default()
             },
-            turn,
+            rate,
         );
         let mut unsticks = Vec::new();
         let mut leg_start_m: Option<f64> = None;
@@ -218,7 +293,7 @@ async fn walk<W: WorldIo>(io: &mut W, req: &MoveRequest) -> Result<Value, WorldE
                         "goal": goal.describe(),
                         "distance_m": horizontal_m(prev.pos, goal_pos),
                         "start_distance_m": leg_start_m,
-                        "turn_gain": ctl.turn.to_json(),
+                        "turn_rate": ctl.rate.to_json(),
                         "unsticks": unsticks,
                         "path": path,
                         "hint": FAIL_HINT,
@@ -319,36 +394,32 @@ async fn walk<W: WorldIo>(io: &mut W, req: &MoveRequest) -> Result<Value, WorldE
                     }
                 }
             }
-            let look_level = io
-                .look(s.dx, 0, 0)
+            let turned = apply_turn(io, turn_keys, &mut held_turn, s.turn)
                 .await
-                .map_err(|e| steps.fail(io.now_ms(), "mouse_look", e))?;
+                .map_err(|e| steps.fail(io.now_ms(), "turn_key", e))?;
             if s.forward != forward {
                 io.key(FORWARD_KEY, s.forward)
                     .await
                     .map_err(|e| steps.fail(io.now_ms(), "forward_key", e))?;
                 forward = s.forward;
             }
-            if s.dx != 0 {
-                steps.used(look_level);
-            }
-            if s.forward {
+            if turned || s.forward {
                 steps.used(NativeLevel::RealInput);
             }
             io.sleep(DEFAULT_TICK_MS).await;
         };
-        turn = ctl.turn;
+        rate = ctl.rate;
         let report = json!({
             "goal": goal.describe(),
             "arrival_m": arrival,
             "start_distance_m": leg_start_m,
             "ms": io.now_ms() - t_leg,
             "unsticks": unsticks,
-            "standing_turn": ctl.standing_turn,
             "outcome": match outcome {
                 MoveOutcome::Arrived { distance_m } => json!({ "arrived": true, "distance_m": distance_m }),
                 MoveOutcome::Stuck { distance_m, attempts } => json!({ "arrived": false, "stuck": true, "distance_m": distance_m, "attempts": attempts }),
                 MoveOutcome::Diverged { distance_m, best_m } => json!({ "arrived": false, "diverged": true, "distance_m": distance_m, "best_m": best_m }),
+                MoveOutcome::NoTurn { ticks } => json!({ "arrived": false, "no_turn": true, "ticks": ticks }),
             },
         });
         steps.record(&format!("leg_{i}"), t_leg, io.now_ms(), report.clone());
@@ -360,7 +431,7 @@ async fn walk<W: WorldIo>(io: &mut W, req: &MoveRequest) -> Result<Value, WorldE
                 "goal": goal.describe(),
                 "start_distance_m": leg_start_m,
                 "unsticks": unsticks,
-                "turn_gain": turn.to_json(),
+                "turn_rate": rate.to_json(),
                 "path": path,
                 "hint": FAIL_HINT,
             })
@@ -388,6 +459,17 @@ async fn walk<W: WorldIo>(io: &mut W, req: &MoveRequest) -> Result<Value, WorldE
                     evidence(),
                 ));
             }
+            MoveOutcome::NoTurn { ticks } => {
+                return Err(steps.fail_with(
+                    io.now_ms(),
+                    &format!("leg_{i}"),
+                    format!(
+                        "the pawn did not turn in {ticks} ticks of holding the turn keys ({} / {}): something roots it (a dialog, a cast, a stun) or the client binds other keys; compare client_player_state heading_deg before and after a client_input_key hold",
+                        turn_keys.left, turn_keys.right
+                    ),
+                    evidence(),
+                ));
+            }
         }
     }
     if forward {
@@ -402,7 +484,7 @@ async fn walk<W: WorldIo>(io: &mut W, req: &MoveRequest) -> Result<Value, WorldE
         "start": start.to_json(),
         "end": prev.to_json(),
         "legs": leg_reports,
-        "turn_gain": turn.to_json(),
+        "turn_rate": rate.to_json(),
         "path": path,
     });
     Ok(steps.finish(io.now_ms(), out))
