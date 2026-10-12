@@ -203,6 +203,26 @@ async fn install_all_uses_a_local_seed_without_downloading() {
 
 /// Setup clears the ASLR bit (0x40 at 0x186) in the installed image; every
 /// other byte must match the packed one.
+#[test]
+fn clear_returns_to_download_and_only_later_steps_see_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("player.rar");
+    std::fs::write(&path, b"aaaa").unwrap();
+    let (sink, _recorder) = recording_sink();
+    let verified =
+        verify_local_seed(&path, &seed_for(b"aaaa"), &CancellationToken::new(), &sink).unwrap();
+    let handle = SeedSourceHandle::download();
+    handle.use_local(verified.clone());
+    // A running step fired by the switch, and one that already read current().
+    let running = handle.switched();
+    let read_before = handle.current();
+    assert!(running.is_cancelled());
+    handle.clear();
+    assert_eq!(read_before, Some(verified));
+    assert!(handle.current().is_none());
+    assert!(!handle.switched().is_cancelled());
+}
+
 fn assert_installed_pe(installed: &Path, packed: &[u8]) {
     let got = std::fs::read(installed).unwrap();
     assert_eq!(got.len(), packed.len());

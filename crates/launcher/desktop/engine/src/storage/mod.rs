@@ -14,6 +14,7 @@ pub mod log_upload;
 pub mod migration;
 pub mod repair;
 pub mod runtime_setup;
+pub mod seed_archive;
 pub mod uninstall;
 pub mod update;
 pub mod updater;
@@ -36,6 +37,7 @@ mod tests;
 
 use crate::{ContractError, Journal, Operations, Snapshot};
 use cimmeria_launcher_core::client_setup::login_servers::LoginServer;
+use cimmeria_launcher_core::seed_source::SeedSourceHandle;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{File, OpenOptions},
@@ -219,6 +221,10 @@ pub struct DesktopState {
     preferences_uncertain: bool,
     summaries: launcher_summary::Shared,
     install_telemetry: game_telemetry::install_event::Pending,
+    /// The one seed source every seed step of this process shares.
+    seed_source: SeedSourceHandle,
+    /// The stored choice, not yet checked against a release. See `seed_archive`.
+    seed_archive: Option<seed_archive::SeedArchiveRecord>,
 }
 
 impl DesktopState {
@@ -275,6 +281,7 @@ impl DesktopState {
             ContractError::PersistenceUncertain => StorageError::PersistenceUncertain,
             _ => StorageError::Io,
         })?;
+        let seed_archive = seed_archive::load(&directory.root);
         let mut state = Self {
             compatibility,
             operations,
@@ -283,6 +290,8 @@ impl DesktopState {
             preferences_uncertain: false,
             summaries,
             install_telemetry: Default::default(),
+            seed_source: SeedSourceHandle::download(),
+            seed_archive,
         };
         state.recover_legacy_import()?;
         state.recover_launcher_update()?;
