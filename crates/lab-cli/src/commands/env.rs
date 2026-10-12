@@ -30,7 +30,12 @@ pub struct Args {
     /// The value for set
     pub value: Option<String>,
     /// The value for set, for a value that starts with '-' (--value=-x)
-    #[arg(long = "value", allow_hyphen_values = true, conflicts_with = "value")]
+    #[arg(
+        long = "value",
+        value_name = "VALUE",
+        allow_hyphen_values = true,
+        conflicts_with = "value"
+    )]
     pub value_flag: Option<String>,
 }
 

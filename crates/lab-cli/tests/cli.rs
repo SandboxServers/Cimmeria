@@ -199,6 +199,45 @@ fn every_converted_command_has_an_examples_section() {
     }
 }
 
+/// Runs `lab` against a stand-in `lab.ps1` that prints the tokens it was given,
+/// joined with `|`. `None` when `pwsh` is not on the PATH.
+fn tokens_the_fallback_receives(args: &[&str]) -> Option<String> {
+    Command::new("pwsh").arg("-Version").output().ok()?;
+    let dir = tempfile::TempDir::new().expect("temp dir");
+    std::fs::write(
+        dir.path().join("lab.ps1"),
+        "[Console]::Out.WriteLine(($args -join '|'))\n",
+    )
+    .expect("write the stand-in dispatcher");
+    let output = run_lab(args, &[("CIMMERIA_LAB_CLI_DIR", dir.path())]);
+    assert_eq!(output.status.code(), Some(0), "{args:?}");
+    Some(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// clap parses the rewritten tokens, but the PowerShell dispatcher gets the
+/// tokens as typed: `-Lines` stays `-Lines`, not `--lines`.
+#[test]
+fn the_fallback_receives_the_original_tokens() {
+    let Some(seen) = tokens_the_fallback_receives(&["logs", "-Lines", "5", "-Follow"]) else {
+        eprintln!("pwsh is not on the PATH; skipped");
+        return;
+    };
+    assert_eq!(seen, "logs|-Lines|5|-Follow");
+}
+
+/// `completions` has no clap subcommand: it reaches the dispatcher untouched,
+/// and `lab help completions` asks it for `--help`.
+#[test]
+fn completions_goes_to_the_fallback_with_its_tokens() {
+    let Some(seen) = tokens_the_fallback_receives(&["completions", "bash"]) else {
+        eprintln!("pwsh is not on the PATH; skipped");
+        return;
+    };
+    assert_eq!(seen, "completions|bash");
+    let seen = tokens_the_fallback_receives(&["help", "completions"]).expect("pwsh");
+    assert_eq!(seen, "completions|--help");
+}
+
 #[test]
 fn powershell_spelling_of_uat_flags_is_accepted() {
     let empty = tempfile::TempDir::new().expect("temp dir");

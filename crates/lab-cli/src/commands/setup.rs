@@ -20,10 +20,10 @@ pub struct Args {
     /// The checkout to install from (needed when setup runs from the installed copy)
     #[arg(long)]
     pub from: Option<String>,
-    /// Leave the user PATH alone; add <LabHome>\\bin to it yourself
+    /// Leave the user PATH alone; add <LabHome>\bin to it yourself
     #[arg(long)]
     pub no_path: bool,
-    /// Add <LabHome>\\bin to the user PATH without asking
+    /// Add <LabHome>\bin to the user PATH without asking
     #[arg(long)]
     pub yes: bool,
 }

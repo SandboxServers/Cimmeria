@@ -51,7 +51,7 @@ pub struct Args {
     /// transform: the section for the draft
     #[arg(long)]
     pub section: Option<String>,
-    /// The spec folder the draft goes under (default: the checkout's docs\\guides\\uat-specs; away from a checkout, the daemon's)
+    /// The spec folder the draft goes under (default: the checkout's docs\guides\uat-specs; away from a checkout, the daemon's)
     #[arg(long)]
     pub specs_dir: Option<String>,
     /// stop: stop a recording this machine did not start (lab record status shows its id)

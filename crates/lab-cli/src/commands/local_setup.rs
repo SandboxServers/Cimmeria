@@ -24,7 +24,7 @@ const EXAMPLES: &str =
     after_help = EXAMPLES
 )]
 pub struct Args {
-    /// The SGW install (the folder holding Binaries\\SGW.exe); default CIMMERIA_LAB_INSTALL_DIR, else labd.env's
+    /// The SGW install (the folder holding Binaries\SGW.exe); default CIMMERIA_LAB_INSTALL_DIR, else labd.env's
     #[arg(long)]
     pub install_dir: Option<String>,
     /// The checkout whose pinned toolchain gets the i686 target (default: the Cimmeria checkout you are in)

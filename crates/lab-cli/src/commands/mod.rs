@@ -1,8 +1,8 @@
 //! The command table, the clap surface and the command dispatch.
 //!
-//! LX-01 has one real command, `version`. Every other name goes to the
-//! PowerShell dispatcher through [`crate::fallback`] until its packet moves it
-//! here, one file per command.
+//! Every command has its clap arguments and help page in its own file. Only
+//! `version` does its own work so far; the others call [`crate::fallback`]
+//! (the PowerShell dispatcher) until their packet ports the body.
 
 pub mod calibrate;
 pub mod clients;
@@ -297,5 +297,73 @@ mod tests {
         clap_names.sort();
         table_names.sort();
         assert_eq!(clap_names, table_names);
+    }
+
+    /// A `///` doc comment is not a Rust string, so a doubled backslash in an
+    /// argument's help prints as two: no help page may show one.
+    #[test]
+    fn help_pages_have_no_doubled_backslashes() {
+        for mut sub in Cli::command().get_subcommands().cloned() {
+            let page = sub.render_long_help().to_string();
+            assert!(
+                !page.contains("\\\\"),
+                "{}: doubled backslash in\n{page}",
+                sub.get_name()
+            );
+        }
+    }
+
+    /// Splits an example line on spaces, keeping a 'single quoted' word whole.
+    fn shell_words(line: &str) -> Vec<String> {
+        let mut words = Vec::new();
+        let mut word = String::new();
+        let mut quoted = false;
+        for c in line.chars() {
+            match c {
+                '\'' => quoted = !quoted,
+                ' ' if !quoted => {
+                    if !word.is_empty() {
+                        words.push(std::mem::take(&mut word));
+                    }
+                }
+                _ => word.push(c),
+            }
+        }
+        if !word.is_empty() {
+            words.push(word);
+        }
+        words
+    }
+
+    /// Every `lab ...` line in a help page's Examples section parses in the
+    /// `--flag` form it shows, and names the command whose page it is on.
+    #[test]
+    fn every_help_example_parses() {
+        let mut checked = 0;
+        for sub in Cli::command().get_subcommands() {
+            let Some(after) = sub.get_after_help() else {
+                assert_eq!(
+                    sub.get_name(),
+                    "version",
+                    "no Examples on {}",
+                    sub.get_name()
+                );
+                continue;
+            };
+            let after = after.to_string();
+            let lines: Vec<&str> = after.lines().skip(1).collect();
+            assert!(!lines.is_empty(), "{}: no example lines", sub.get_name());
+            for line in lines {
+                let words = shell_words(line.trim());
+                assert_eq!(words[0], "lab", "{line}");
+                assert_eq!(words[1], sub.get_name(), "{line}");
+                let parsed = Cli::try_parse_from(words.iter().map(String::as_str));
+                if let Err(err) = parsed {
+                    panic!("example `{line}` does not parse: {err}");
+                }
+                checked += 1;
+            }
+        }
+        assert!(checked >= 35, "only {checked} examples were checked");
     }
 }

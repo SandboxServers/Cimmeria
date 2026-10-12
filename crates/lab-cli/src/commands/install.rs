@@ -21,7 +21,7 @@ const EXAMPLES: &str = "Examples:\n  lab install --from C:\\src\\Cimmeria\\.clau
     after_help = EXAMPLES
 )]
 pub struct Args {
-    /// The worktree to build from, e.g. C:\\src\\Cimmeria\\.claude\\worktrees\\lab-fix (required)
+    /// The worktree to build from, e.g. C:\src\Cimmeria\.claude\worktrees\lab-fix (required)
     #[arg(long)]
     pub from: Option<String>,
     /// Install what the target dir already holds; build nothing

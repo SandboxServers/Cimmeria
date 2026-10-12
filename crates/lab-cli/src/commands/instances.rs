@@ -22,7 +22,11 @@ const EXAMPLES: &str = "Examples:\n  lab instances status\n  lab instances init\
 )]
 pub struct Args {
     /// status, or init [--install-dir <dir>] [--count <n>] [--force]
-    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    #[arg(
+        value_name = "ARGS",
+        trailing_var_arg = true,
+        allow_hyphen_values = true
+    )]
     pub rest: Vec<String>,
 }
 
