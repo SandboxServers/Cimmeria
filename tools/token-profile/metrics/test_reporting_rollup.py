@@ -2,7 +2,7 @@
 
 import unittest
 
-from reporting.rollup import rollup
+from reporting.rollup import mixed_summary, rollup
 
 
 def _row(pid, regime, first_pass=None, accepted=True, retries=(), escalated=None, cycle=None):
@@ -116,3 +116,32 @@ class RollupCostTest(unittest.TestCase):
         self.assertEqual(old["cost_per_pr"]["p50"], 4.0)
         self.assertEqual(old["merged_prs"], 3)
         self.assertEqual(old["escaped_defects_per_merged_pr"], 0.33)
+
+
+class RollupPacketTest(unittest.TestCase):
+    def test_packet_metrics_split_mixed_by_row_regime(self):
+        # the mixed campaign's two old rows count toward old, its two haiku rows toward haiku
+        old = rollup(_records(), "old")
+        self.assertEqual(old["packets"], 5)
+        self.assertEqual(old["first_pass_rate"], 0.8)
+        haiku = rollup(_records(), "haiku")
+        self.assertEqual(haiku["packets"], 4)
+        self.assertEqual(haiku["first_pass_rate"], 0.75)
+        self.assertEqual(haiku["retries_per_accepted"], 0.5)
+
+    def test_zero_denominator_is_none_with_gap(self):
+        records = {"x": {"regime": "haiku", "packet_rows": [_row("CM-10", "haiku", accepted=False, first_pass=True)]}}
+        out = rollup(records, "haiku")
+        self.assertIsNone(out["first_pass_rate"])
+        self.assertIn("first_pass_rate_gap", out)
+        self.assertIsNone(out["retries_per_accepted"])
+        self.assertIn("retries_per_accepted_gap", out)
+
+    def test_old_escalation_is_gap(self):
+        old = rollup(_records(), "old")
+        self.assertIsNone(old["escalation_rate"])
+        self.assertEqual(old["escalation_rate_gap"], "n/a: nothing was dispatched to Haiku")
+        self.assertEqual(rollup(_records(), "haiku")["escalation_rate"], 0.25)
+
+    def test_mixed_summary(self):
+        self.assertEqual(mixed_summary(_records()), {"campaigns": 1, "names": ["mixed-a"]})

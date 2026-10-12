@@ -70,4 +70,24 @@ def rollup(records, regime):
     low = _sum(x.get("low") for x in recoverable)
     high = _sum(x.get("high") for x in recoverable)
     _put(out, "overstep_recoverable_usd", {"low": low, "high": high} if (low, high) != (None, None) else None)
+
+    # Packet metrics take every campaign's rows, mixed campaigns included, by the row's own regime.
+    rows = [row for r in records.values() for row in (r.get("packet_rows") or []) if row.get("regime") == regime]
+    accepted_rows = [row for row in rows if row.get("accepted")]
+    cycles = distribution([row.get("cycle_hours") for row in rows])
+    _put(out, "packets", len(accepted_rows))
+    _put(out, "first_pass_rate", _share(row.get("first_pass") for row in accepted_rows))
+    retries = sum(len(row.get("retries") or []) for row in rows)
+    _put(out, "retries_per_accepted", _ratio(retries, len(accepted_rows), 2))
+    if regime == "haiku":
+        _put(out, "escalation_rate", _share(row.get("escalated") for row in rows))
+    else:
+        _put(out, "escalation_rate", None, "n/a: nothing was dispatched to Haiku")
+    _put(out, "packet_cycle_p50_hours", cycles["p50"])
     return out
+
+
+def mixed_summary(records):
+    """The campaigns whose regime is mixed, by name: they count toward packets, not cost."""
+    names = sorted(name for name, r in records.items() if r.get("regime") == "mixed")
+    return {"campaigns": len(names), "names": names}
