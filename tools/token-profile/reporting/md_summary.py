@@ -183,6 +183,7 @@ def _caveat_text(summary, meta, low):
         f"unmapped session share: {_shown(meta.get('unmapped_share'), 'rate')}.",
         "- USD is a floor: list-price estimates of plan usage, not a bill.",
         f"- Mixed campaigns are excluded from the cost comparison: {', '.join(names) or 'none'}.",
+        "- The overstep range covers every post-switch campaign, mixed ones included; cost comparisons use pure campaigns only.",
         f"- Untagged PRs: {_shown(meta.get('untagged_prs'), 'num')}.",
         f"- Missing inputs: {', '.join(missing) or 'none'}.",
         f"- Small samples: {'yes, see the warning in Comparison' if low else 'no'}.",

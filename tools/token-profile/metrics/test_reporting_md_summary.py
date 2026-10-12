@@ -155,6 +155,7 @@ class SlotsAndCaveatsTest(unittest.TestCase):
         text = render_summary({}, summary, _meta(missing_inputs=["overstep"]))
         self.assertIn("- Mixed campaigns are excluded from the cost comparison: mixed-a.", text)
         self.assertIn("- Missing inputs: overstep.", text)
+        self.assertIn("- The overstep range covers every post-switch campaign, mixed ones included; cost comparisons use pure campaigns only.", text)
         self.assertIn("- Untagged PRs: 2.", text)
         self.assertIn("- Unattributed share of spend: 16.0%; unmapped session share: 10.0%.", text)
 

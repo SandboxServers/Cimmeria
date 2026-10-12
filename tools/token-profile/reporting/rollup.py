@@ -66,7 +66,13 @@ def rollup(records, regime):
                 tiers[tier] = tiers.get(tier, 0.0) + usd_tier
     out["cost_share_by_tier"] = {t: round(u / total_usd, 2) for t, u in sorted(tiers.items())} if total_usd else {}
 
-    recoverable = [(r.get("overstep") or {}).get("recoverable_usd") or {} for r in pure]
+    # Overstep covers every campaign once: old ones for the old roll-up, haiku and mixed ones for the haiku roll-up.
+    overstep_regimes = ("old",) if regime == "old" else ("haiku", "mixed")
+    recoverable = [
+        (r.get("overstep") or {}).get("recoverable_usd") or {}
+        for r in records.values()
+        if r.get("regime") in overstep_regimes
+    ]
     low = _sum(x.get("low") for x in recoverable)
     high = _sum(x.get("high") for x in recoverable)
     _put(out, "overstep_recoverable_usd", {"low": low, "high": high} if (low, high) != (None, None) else None)

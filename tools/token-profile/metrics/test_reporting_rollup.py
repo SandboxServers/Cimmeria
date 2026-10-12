@@ -129,6 +129,15 @@ class RollupPacketTest(unittest.TestCase):
         self.assertEqual(haiku["first_pass_rate"], 0.75)
         self.assertEqual(haiku["retries_per_accepted"], 0.5)
 
+    def test_overstep_counts_mixed_post_switch_campaigns(self):
+        records = {
+            "haiku-a": {"regime": "haiku", "overstep": {"recoverable_usd": {"low": 1.0, "high": 2.0}}},
+            "mixed-a": {"regime": "mixed", "overstep": {"recoverable_usd": {"low": 2.0, "high": 5.0}}},
+            "old-a": {"regime": "old", "overstep": {"recoverable_usd": {"low": None, "high": None}}},
+        }
+        self.assertEqual(rollup(records, "haiku")["overstep_recoverable_usd"], {"low": 3.0, "high": 7.0})
+        self.assertIsNone(rollup(records, "old")["overstep_recoverable_usd"])
+
     def test_zero_denominator_is_none_with_gap(self):
         records = {"x": {"regime": "haiku", "packet_rows": [_row("CM-10", "haiku", accepted=False, first_pass=True)]}}
         out = rollup(records, "haiku")
