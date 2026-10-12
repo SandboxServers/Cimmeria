@@ -86,18 +86,24 @@ pub fn set_quantity_chunk(row: u32, abs0: i64, n: i64) -> String {
 impl Supervisor {
     /// Click Buy and wait for the inventory or cash to change: posted
     /// click, then the injectors, then (allow_fallback) the stock handler.
+    /// The last value is `double_buy_risk`: a later Buy step fired after an
+    /// earlier click was sent but showed no change within `wait`, so a slow
+    /// server may land both (same as item use, D-LH1 / D-LH14).
     async fn press_buy(
         &self,
         before: &Value,
         allow_fallback: bool,
         wait: Duration,
         trail: &mut NativeTrail,
-    ) -> Result<(Value, Value), String> {
+    ) -> Result<(Value, Value, bool), String> {
+        // Buy attempts sent so far (a click that went out, or the handler).
+        let mut sent = 0u32;
         if self.ui_click(BUY_BUTTON, 0).await.is_ok() {
+            sent += 1;
             let (a, d) = self.await_inventory_change(before, wait).await?;
             if d["changed"] == json!(true) {
                 trail.push(format!("click {BUY_BUTTON}"), NativeLevel::RealInput);
-                return Ok((a, d));
+                return Ok((a, d, false));
             }
         }
         let loc = self
@@ -105,13 +111,14 @@ impl Supervisor {
             .await?;
         if let Some((x, y)) = click_point(&loc) {
             if self.click_at_native(x, y, 0, false).await.is_ok() {
+                sent += 1;
                 let (a, d) = self.await_inventory_change(before, wait).await?;
                 if d["changed"] == json!(true) {
                     trail.push(
                         format!("click {BUY_BUTTON} (CEGUI injectors)"),
                         NativeLevel::NativeCegui,
                     );
-                    return Ok((a, d));
+                    return Ok((a, d, sent > 1));
                 }
             }
         }
@@ -120,10 +127,12 @@ impl Supervisor {
                 .lua_json(&handler_chunk("VendorMod.onBuyClicked", BUY_BUTTON))
                 .await?;
             if r["ok"] == json!(true) {
+                sent += 1;
                 trail.push("VendorMod.onBuyClicked via Lua", NativeLevel::ClientUiLua);
             }
         }
-        self.await_inventory_change(before, wait).await
+        let (a, d) = self.await_inventory_change(before, wait).await?;
+        Ok((a, d, sent > 1))
     }
 
     /// `client_vendor_buy`: set row `row` (1-based, as shown) to `quantity`
@@ -214,7 +223,7 @@ impl Supervisor {
             }
             quantity_via = "lua";
         }
-        let (after, d) = self
+        let (after, d, double_buy_risk) = self
             .press_buy(&before, allow_fallback, wait, &mut trail)
             .await?;
         // Bought means the items arrived: some item's total went up and
@@ -240,6 +249,7 @@ impl Supervisor {
             "spinner_final": cur,
             "quantity_via": quantity_via,
             "bought": bought,
+            "double_buy_risk": double_buy_risk,
             "inventory_changed": d["changed"],
             "diff": d,
             "cash_after": after["cash"],
@@ -357,13 +367,46 @@ mod tests {
         let sup = fake_bridge::supervisor(cegui_fake::responder(s.clone())).await;
         let mut trail = NativeTrail::default();
         let before = sup.inventory_read(&[], false).await.unwrap();
-        let (after, d) = sup
+        let (after, d, risk) = sup
             .press_buy(&before, false, Duration::ZERO, &mut trail)
             .await
             .unwrap();
         assert_eq!(d["changed"], false);
+        assert!(!risk, "one silent click and no retry is not a double buy");
         assert_eq!(after["cash"], 0);
         assert!(!s.lock().unwrap().bought);
+    }
+
+    /// D-LH14: the injected Buy click is lost (no change within the wait), so
+    /// the stock handler runs as well. The result must carry
+    /// `double_buy_risk`; a clean first-click buy must not.
+    #[tokio::test]
+    async fn a_buy_retry_after_a_silent_click_reports_double_buy_risk() {
+        let (out, s) = buy(
+            FakeCegui {
+                vendor_value: 1,
+                buy_swallow: 1,
+                ..FakeCegui::default()
+            },
+            1,
+            true,
+        )
+        .await;
+        let out = out.unwrap();
+        assert_eq!(out["bought"], true);
+        assert_eq!(s.lock().unwrap().lua_buy_calls, 1);
+        assert_eq!(out["double_buy_risk"], true);
+
+        let (clean, _) = buy(
+            FakeCegui {
+                inc_works: true,
+                ..FakeCegui::default()
+            },
+            1,
+            true,
+        )
+        .await;
+        assert_eq!(clean.unwrap()["double_buy_risk"], false);
     }
 
     #[tokio::test]

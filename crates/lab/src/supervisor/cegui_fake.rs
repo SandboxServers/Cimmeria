@@ -75,6 +75,9 @@ pub struct FakeCegui {
     pub vendor_value: i64,
     pub inc_works: bool,
     pub bought: bool,
+    /// Buy clicks (injected) the client loses before one lands.
+    pub buy_swallow: usize,
+    pub lua_buy_calls: usize,
     pub lua_set_calls: usize,
     pub cursor: (f32, f32),
     pub button_down: bool,
@@ -107,6 +110,8 @@ impl Default for FakeCegui {
             vendor_value: 0,
             inc_works: false,
             bought: false,
+            buy_swallow: 0,
+            lua_buy_calls: 0,
             lua_set_calls: 0,
             cursor: (0.0, 0.0),
             button_down: false,
@@ -201,7 +206,11 @@ impl FakeCegui {
                 self.vendor_value += 1;
             }
             if args[1] == 0 && (500.0..540.0).contains(&x) && self.vendor_value >= 1 {
-                self.bought = true;
+                if self.buy_swallow > 0 {
+                    self.buy_swallow -= 1;
+                } else {
+                    self.bought = true;
+                }
             }
             self.button_down = false;
             self.dragging = false;
@@ -274,6 +283,10 @@ impl FakeCegui {
         } else if chunk.contains("contextSensitiveUseItem") {
             self.lua_use_calls += 1;
             self.moved = true;
+            json!({ "ok": true })
+        } else if chunk.contains("onBuyClicked") {
+            self.lua_buy_calls += 1;
+            self.bought = self.vendor_value >= 1;
             json!({ "ok": true })
         } else if chunk.contains("pcall(f, w)") {
             self.tab_handler_calls += 1;
