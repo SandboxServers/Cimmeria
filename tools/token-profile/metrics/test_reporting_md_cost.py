@@ -2,7 +2,73 @@
 
 import unittest
 
-from reporting import md_common
+from reporting import md_campaign_cost, md_common
+
+
+def haiku_record():
+    return {
+        "regime": "haiku",
+        "stamp": {
+            "generated": "2026-10-12T10:00:00Z",
+            "window": {"since": "2026-10-10T20:02:54Z", "until": None},
+            "price_table": "2026-10",
+            "profiler_schema": "6",
+            "unattributed_share": 0.1,
+            "unmapped_share": 0.0,
+        },
+        "cost": {
+            "total_usd": 30.0,
+            "attributed_usd": 27.0,
+            "unattributed_in_campaign_usd": 3.0,
+            "by_model_tier": {"haiku": 24.0, "opus": 6.0},
+            "by_role": {"implementer": 20.0, "reviewer": 10.0, "fix": 0.0},
+        },
+        "prs": {
+            "count": 3,
+            "merged": 2,
+            "cost_per_pr": {"mean": 10.0, "p50": 9.0, "p90": 14.0},
+            "per_pr": [
+                {"pr": 101, "usd": 9.0, "merged": True, "ci_first_pass": True, "ci_runs": 1},
+                {"pr": 102, "usd": 12.0, "merged": True, "ci_first_pass": False, "ci_runs": 3},
+                {"pr": 103, "usd": 9.0, "merged": False, "ci_first_pass": None, "ci_runs": None},
+            ],
+        },
+        "accepted": {"packets": 2, "cost_per_accepted_usd": 15.0},
+        "first_pass": {
+            "rate": 0.33,
+            "eligible": 3,
+            "packets": [{"id": "CM-08f", "implementer_sessions": 1, "reviewer_sessions": 1, "fix_commits": 1,
+                         "first_pass": False}],
+        },
+        "retries": {"total": 2, "by_reason": {"ci": 2, "review": 0}},
+    }
+
+
+class StampCostPrTest(unittest.TestCase):
+    def test_cost_md_numbers(self):
+        out = md_campaign_cost.cost_md(haiku_record())
+        self.assertIn("$30.00", out)
+        self.assertIn("| haiku | $24.00 |", out)
+        self.assertNotIn("| fix |", out)
+
+    def test_prs_md_marks_ci(self):
+        out = md_campaign_cost.prs_md(haiku_record())
+        self.assertIn("| 102 | $12.00 | no | 3 |", out)
+        self.assertIn("| 101 | $9.00 | yes | 1 |", out)
+        self.assertIn("| 103 | $9.00 | - | - |", out)
+
+    def test_stamp_md_states_the_floor(self):
+        out = md_campaign_cost.stamp_md(haiku_record())
+        self.assertIn("Dollars are list-price estimates of plan usage, a floor, never a bill.", out)
+        self.assertIn("- Unattributed share: 10.0%", out)
+
+    def test_empty_cost_renders_gap_not_table(self):
+        record = haiku_record()
+        record["cost"] = {}
+        record["cost_gap"] = "no ledger rows"
+        out = md_campaign_cost.cost_md(record)
+        self.assertIn("no ledger rows", out)
+        self.assertNotIn("|", out)
 
 
 class CellTest(unittest.TestCase):
