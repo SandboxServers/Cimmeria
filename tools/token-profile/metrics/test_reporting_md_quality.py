@@ -80,5 +80,67 @@ class CiDefectEscalationTest(unittest.TestCase):
         self.assertNotIn("0.0%", out)
 
 
+def stop_record():
+    return {
+        "stop_context": {
+            "workers": 5,
+            "by_stop": {"end_turn": 2, "tool_use": 1, "error": 1, "no_record": 1},
+            "by_error_kind": {"rate_limit": 1, "authentication_failed": 0, "other": 0},
+            "context_at_stop": {"p50": 61000, "p90": 95000, "max": 98000},
+            "share_above_90k": 0.4,
+        },
+    }
+
+
+def overstep_record():
+    return {
+        "overstep": {
+            "opus_coding_usd": 6.0,
+            "opus_research_usd": 1.0,
+            "sonnet_implementing_usd": 0.0,
+            "recoverable_usd": {"low": 2.0, "high": 5.0},
+            "items": [{"rule": "O1", "usd": 3.0, "tool": "Edit", "path_class": "code", "model": "claude-opus-5-5"}],
+        },
+    }
+
+
+class StopCycleOverstepTest(unittest.TestCase):
+    def test_stop_context_share_and_cap_sentence(self):
+        out = md_campaign_quality.stop_context_md(stop_record())
+        self.assertIn("40.0%", out)
+        self.assertIn("61,000", out)
+        self.assertIn("| error | 1 |", out)
+        self.assertIn("| rate_limit | 1 |", out)
+        self.assertIn("90k is the Haiku worker context cap.", out)
+
+    def test_stop_context_gap_is_not_zero(self):
+        record = stop_record()
+        record["stop_context"]["context_at_stop"] = {"p50": None, "p90": None, "max": None}
+        record["stop_context"]["context_at_stop_gap"] = "no context data"
+        out = md_campaign_quality.stop_context_md(record)
+        self.assertIn("n/a (no context data)", out)
+
+    def test_cycle_md_numbers(self):
+        record = {"cycle_time": {"campaign_hours": 24.0, "packet_hours": {"n": 4, "p50": 6.0, "p90": 9.0}}}
+        out = md_campaign_quality.cycle_md(record)
+        self.assertIn("Campaign hours: 24", out)
+        self.assertIn("p50 6, p90 9 over 4 packets", out)
+
+    def test_overstep_beta_numbers(self):
+        out = md_campaign_quality.overstep_md(overstep_record())
+        self.assertIn("Opus coding: $6.00", out)
+        self.assertIn("Sonnet implementing: $0.00", out)
+        self.assertIn("Recoverable: $2.00 to $5.00", out)
+        self.assertIn("| O1 | $3.00 | Edit | code | claude-opus-5-5 |", out)
+
+    def test_overstep_gap_hides_numbers(self):
+        record = {"overstep": {"overstep_gap": "predates the regime switch; the rules apply to the Haiku regime",
+                               "opus_coding_usd": None, "opus_research_usd": None, "sonnet_implementing_usd": None,
+                               "recoverable_usd": {"low": None, "high": None}, "items": []}}
+        out = md_campaign_quality.overstep_md(record)
+        self.assertIn("predates the regime switch", out)
+        self.assertNotIn("$", out)
+
+
 if __name__ == "__main__":
     unittest.main()
