@@ -132,6 +132,7 @@ pub(super) fn preview(
         files,
         download,
         replacements,
+        login_replaced,
     } = match prepared {
         Ok(prepared) => prepared,
         Err(error) => {
@@ -146,6 +147,18 @@ pub(super) fn preview(
         ),
         AdoptionSource::Folder(_) => (None, None),
     };
+    // The backup holds each original a replacement overwrites (D-AI1, D-AI13). It is
+    // named by the preview handle, which admission uses too.
+    let backup = (files
+        .iter()
+        .any(|d| d.classification == Classification::Modified)
+        || login_replaced)
+        .then(|| {
+            folder.join(format!(
+                "cimmeria-adoption-backup-{}",
+                preparation.record.id
+            ))
+        });
     let report = Report {
         preview_handle: preparation.record.id,
         source: folder.clone(),
@@ -157,9 +170,9 @@ pub(super) fn preview(
         user_data_remains_in_source: true,
         game_telemetry_available: false,
         download: Some(download),
-        backup: None,
+        backup,
     };
-    for file in report.blocking() {
+    for file in report.blocking(&replacements) {
         tracing::warn!(target: "adoption", path = %file.path, classification = ?file.classification, "in-place adoption: release file does not verify");
     }
     Ok(Preview {

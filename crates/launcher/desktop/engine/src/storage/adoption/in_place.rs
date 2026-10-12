@@ -82,10 +82,16 @@ pub(super) fn publish(
     if game_running(&root)? {
         return Err(refused(Error::GameRunning, "SGW.exe is open"));
     }
+    // The backup is named by the preview handle at review; admission keeps that name.
+    if let Some(backup) = &preview.report.backup {
+        if std::fs::symlink_metadata(backup).is_ok() {
+            return Err(refused(Error::BackupConflict, "the backup folder exists"));
+        }
+    }
     let store = state.directory.root.clone();
     let game = root.join("game");
     std::fs::create_dir(&game).map_err(|_| StorageError::InUse)?;
-    let admitted = admit(preview, &mut state, id, choices, &root, &game);
+    let admitted = admit(preview, &mut state, id, choices, &root, &game, cancel);
     let (plan, provenance, owner) = match admitted {
         Ok(admitted) => admitted,
         Err(error) => {
@@ -153,6 +159,7 @@ fn admit(
     choices: Choices,
     root: &Path,
     game: &Path,
+    cancel: &CancellationToken,
 ) -> Result<(Plan, Provenance, File), Error> {
     let owner_id = Uuid::new_v4();
     let installation = InstallIntent {
@@ -186,7 +193,7 @@ fn admit(
     after.revision = after.revision.checked_add(1).ok_or(StorageError::Corrupt)?;
     after.install_directory = Some(root.to_path_buf());
     let (imported, folder) = publication::planned(&preview.source);
-    let plan = Plan {
+    let mut plan = Plan {
         schema_version: 1,
         installation,
         provenance: provenance.clone(),
@@ -201,6 +208,7 @@ fn admit(
         destination_identity: inventory::identity(root)?,
         replacements: Vec::new(),
     };
+    plan.replacements = stage_replacements(preview, &plan.stage(), cancel)?;
     state.save_release_evidence(owner_id, &preview.release)?;
     atomic::write(
         &state.directory.root,
@@ -252,6 +260,29 @@ fn release_files(report: &Report) -> Vec<&str> {
         .filter(|d| d.classification != Classification::Extra)
         .map(|d| d.path.as_str())
         .collect()
+}
+
+/// Copies each replacement from the preparation store into `stage/replacements`.
+/// Copying, not renaming: the state root may sit on another volume. Each copy is
+/// checked against the size and hash the review recorded.
+fn stage_replacements(
+    preview: &Preview,
+    stage: &Path,
+    cancel: &CancellationToken,
+) -> Result<Vec<Replacement>, Error> {
+    let store = preview.preparation.record.directory.join("replacements");
+    let mut staged = Vec::new();
+    for replacement in preview.replacements() {
+        let source = inventory::native(&store, &replacement.path);
+        let entry = inventory::hash(&source, cancel)?;
+        if entry.size != replacement.size || entry.sha256 != replacement.sha256 {
+            return Err(StorageError::Corrupt.into());
+        }
+        let dest = inventory::native(&stage.join("replacements"), &replacement.path);
+        inventory::copy(&source, &dest, &entry, cancel)?;
+        staged.push(replacement.clone());
+    }
+    Ok(staged)
 }
 
 fn present(path: &Path) -> Result<bool, Error> {

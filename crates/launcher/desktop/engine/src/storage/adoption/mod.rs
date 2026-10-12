@@ -123,11 +123,20 @@ impl Preview {
     }
     /// The one consent rule, shared by review presentation and confirmation.
     pub fn consent(&self, choices: &Choices) -> Result<(), Error> {
-        if self.report.blocking().next().is_some() {
+        if self.report.blocking(&self.replacements).next().is_some() {
             return Err(Error::VerificationFailed);
         }
+        // Replacing a changed or absent file is a choice of its own (D-AI1);
+        // a patch-only file needs no extra consent (D-AI7).
+        let replaces = self.report.files.iter().any(|d| {
+            matches!(
+                d.classification,
+                Classification::Modified | Classification::Missing
+            )
+        });
         if !choices.old_game_closed
             || (self.requires_normalization() && !choices.normalize_managed_files)
+            || (replaces && !choices.replace_modified_files)
             || (self.requires_telemetry_acceptance() && !choices.accept_unavailable_game_telemetry)
         {
             return Err(Error::ConsentRequired);
@@ -264,6 +273,7 @@ fn copy_preview(
         files,
         download,
         replacements,
+        ..
     } = match prepared {
         Ok(prepared) => prepared,
         Err(error) => {

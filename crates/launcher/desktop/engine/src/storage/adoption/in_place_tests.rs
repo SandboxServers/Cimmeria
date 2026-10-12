@@ -240,7 +240,7 @@ fn adopts_in_place_from(kind: SeedKind) {
     let exe_identity = inventory::identity(&exe).unwrap();
     let preview = f.preview().unwrap();
     assert!(preview.report.in_place());
-    assert_eq!(preview.report.blocking().count(), 0);
+    assert_eq!(preview.report.blocking(preview.replacements()).count(), 0);
     let expected = preview.reference.index.clone();
     commit(preview).unwrap();
 
@@ -298,7 +298,7 @@ fn a_modified_release_file_blocks_adoption_names_it_and_changes_nothing() {
     let preview = f.preview().unwrap();
     let blocking: Vec<_> = preview
         .report
-        .blocking()
+        .blocking(preview.replacements())
         .map(|d| (d.path.clone(), d.classification))
         .collect();
     assert_eq!(
@@ -327,7 +327,7 @@ fn an_old_launcher_ledger_for_another_release_is_classified_not_refused() {
     let preview = f.preview().unwrap();
     // The ledger is not a gate: the files are classified against the release
     // itself. This folder holds the seed's own bytes, so nothing blocks.
-    assert_eq!(preview.report.blocking().count(), 0);
+    assert_eq!(preview.report.blocking(preview.replacements()).count(), 0);
     assert_eq!(f.scan(), before);
 }
 
@@ -429,4 +429,99 @@ fn a_crash_between_verification_and_the_marker_leaves_the_folder_untouched() {
         .installed_content()
         .unwrap()
         .is_some());
+}
+
+/// Stores `bytes` as the replacement for `path` in the preparation store, as the
+/// replay does, and returns the entry the review would hold for it.
+fn stored_replacement(preview: &Preview, path: &str, bytes: &[u8]) -> Replacement {
+    let dest = inventory::native(
+        &preview.preparation.record.directory.join("replacements"),
+        path,
+    );
+    std::fs::create_dir_all(dest.parent().unwrap()).unwrap();
+    std::fs::write(&dest, bytes).unwrap();
+    let entry = inventory::hash(&dest, &CancellationToken::new()).unwrap();
+    Replacement {
+        path: path.to_string(),
+        size: entry.size,
+        sha256: entry.sha256,
+        reason: Classification::Modified,
+    }
+}
+
+/// A folder whose `later.txt` the player edited, with the release bytes stored as
+/// its replacement. Returns the release bytes too.
+fn modified_with_replacement() -> (Fixture, Preview, Vec<u8>) {
+    let f = Fixture::new(None);
+    let release = std::fs::read(f.folder().join("later.txt")).unwrap();
+    std::fs::write(f.folder().join("later.txt"), b"edited by the player").unwrap();
+    let mut preview = f.preview().unwrap();
+    preview.replacements = vec![stored_replacement(&preview, "later.txt", &release)];
+    (f, preview, release)
+}
+
+/// Confirms with `replace_modified_files` set; the other choices are as `choices()`.
+fn confirm_replacing(
+    preview: Preview,
+    hook: impl FnMut(publication::Point) -> Result<(), Error>,
+) -> Result<Provenance, Error> {
+    let handle = preview.report.preview_handle;
+    let choices = Choices {
+        replace_modified_files: true,
+        ..choices()
+    };
+    publication::confirm(
+        preview,
+        Uuid::new_v4(),
+        handle,
+        choices,
+        CancellationToken::new(),
+        &crate::install_progress::ProgressSink::latest().0,
+        hook,
+    )
+}
+
+#[test]
+fn a_replaced_file_needs_replace_modified_files_consent_and_moves_nothing() {
+    let (f, preview, _) = modified_with_replacement();
+    let before = f.scan();
+    assert_eq!(preview.consent(&choices()), Err(Error::ConsentRequired));
+    assert_eq!(commit(preview), Err(Error::ConsentRequired));
+    assert_eq!(f.scan(), before);
+    assert!(!f.folder().join("game").exists());
+}
+
+#[test]
+fn admission_refuses_a_backup_folder_that_already_exists() {
+    let (f, preview, _) = modified_with_replacement();
+    let backup = preview.report.backup.clone().unwrap();
+    assert!(backup.ends_with(format!(
+        "cimmeria-adoption-backup-{}",
+        preview.report.preview_handle
+    )));
+    std::fs::create_dir(&backup).unwrap();
+    let before = f.scan();
+    assert_eq!(
+        confirm_replacing(preview, |_| Ok(())),
+        Err(Error::BackupConflict)
+    );
+    assert_eq!(f.scan(), before);
+    assert!(!f.folder().join("game").exists());
+}
+
+#[test]
+fn admission_stages_each_replacement_under_the_work_folder() {
+    let (f, preview, release) = modified_with_replacement();
+    // The hook stops the moves at once; admission has already staged the replacements.
+    let _ = confirm_replacing(preview, |_| Err(Error::Cancelled));
+    let stage = std::fs::read_dir(f.folder())
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| {
+            path.file_name()
+                .is_some_and(|name| name.to_string_lossy().starts_with(".cimmeria-adopt-"))
+        })
+        .expect("admission made the work folder");
+    let staged = std::fs::read(stage.join("replacements").join("later.txt")).unwrap();
+    assert_eq!(staged, release);
 }

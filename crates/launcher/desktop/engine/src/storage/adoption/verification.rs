@@ -100,6 +100,7 @@ pub(super) fn reference_and_comparison(
     preparation.uncertain = false;
     drop(adapter);
     let files = classify(scanned, &index, servers);
+    let login_replaced = replaces_login(&index, scanned, servers);
     if !files.iter().any(|d| {
         matches!(
             d.classification,
@@ -174,6 +175,7 @@ pub(super) fn reference_and_comparison(
         files,
         download,
         replacements,
+        login_replaced,
     })
 }
 
@@ -185,6 +187,8 @@ pub(super) struct Compared {
     pub files: Vec<Difference>,
     pub download: DownloadEstimate,
     pub replacements: Vec<Replacement>,
+    /// `LoginInternal.lua` differs from both its release and prepared bytes (D-AI13).
+    pub login_replaced: bool,
 }
 
 /// Classifies every path of the index's histories against the folder scan, then
@@ -289,6 +293,30 @@ fn expected_prepared(
         }
     }
     (expected, login)
+}
+
+/// Whether the folder's `LoginInternal.lua` differs from both its release bytes
+/// and its expected prepared bytes (D-AI13). Such a file is a known transform,
+/// but the adoption still backs up the original before it replaces it.
+fn replaces_login(
+    index: &FileIndex,
+    scanned: &inventory::Index,
+    servers: &[crate::client_setup::LoginServer],
+) -> bool {
+    let (setup, login) = expected_prepared(index, servers);
+    let histories = index.histories();
+    scanned.iter().any(|(name, entry)| {
+        let key = name.to_ascii_lowercase();
+        if !login.contains(&key) {
+            return false;
+        }
+        let bytes = (entry.size, hex(&entry.sha256));
+        let release = histories
+            .get(&key)
+            .and_then(|history| history.states.last())
+            .map(|state| (state.size, hex(&state.sha256)));
+        setup.get(&key) != Some(&bytes) && release != Some(bytes)
+    })
 }
 
 fn hex(bytes: &[u8]) -> String {
