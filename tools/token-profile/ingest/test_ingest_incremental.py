@@ -60,6 +60,22 @@ class IncrementalTest(unittest.TestCase):
                 run_ingest(root, db, "--allow-unknown", prs=PRS)
                 self.assertEqual(dump(db), self.oneshot)
 
+    def test_appended_request_updates_the_stop_row_instead_of_adding_one(self):
+        data = self.main_file.read_bytes()
+        lines = data.split(b"\n")
+        last = next(i for i, line in enumerate(lines) if b'"req_I"' in line)
+        cut = len(b"\n".join(lines[:last])) + 1
+        root, target, _ = self.staged("stop", cut)
+        db = self.base / "stop.sqlite"
+        run_ingest(root, db, "--allow-unknown", prs=PRS)
+        target.write_bytes(data)
+        run_ingest(root, db, "--allow-unknown", prs=PRS)
+        conn = sqlite3.connect(db)
+        self.addCleanup(conn.close)
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM agent_stops").fetchone(), (2,))
+        self.assertEqual(conn.execute("SELECT last_stop_reason, last_tool_name, last_tool_background FROM agent_stops"
+                                      " WHERE agent_id LIKE 'main:%'").fetchall(), [("tool_use", "Bash", 1)])
+
     def test_partial_then_final_record_keeps_the_final_usage(self):
         data = self.main_file.read_bytes()
         lines = data.split(b"\n")

@@ -91,7 +91,7 @@ class Transcript:
         rec["sourceToolUseID"] = tool_use_id
         return self.add(rec)
 
-    def assistant(self, when, request_id, usage, content=None, model="claude-opus-5-5"):
+    def assistant(self, when, request_id, usage, content=None, model="claude-opus-5-5", stop_reason=None):
         rec = self._base("assistant", when)
         rec["requestId"] = request_id
         rec["message"] = {
@@ -100,6 +100,7 @@ class Transcript:
             "model": model,
             "content": content or [{"type": "text", "text": "ok"}],
             "usage": usage,
+            "stop_reason": stop_reason,
         }
         return self.add(rec)
 
@@ -142,8 +143,10 @@ def request(t, when, rid, final, partial_output=3, content=None, model="claude-o
     partial = dict(final)
     partial["output_tokens"] = partial_output
     partial.pop("output_tokens_details", None)
+    # Streaming partials carry no stop_reason; the final record does: tool_use when it asks for a tool.
+    ends_in_tool = any(isinstance(b, dict) and b.get("type") == "tool_use" for b in content or [])
     t.assistant(when, rid, partial, content=[{"type": "text", "text": ""}], model=model)
-    t.assistant(when, rid, final, content=content, model=model)
+    t.assistant(when, rid, final, content=content, model=model, stop_reason="tool_use" if ends_in_tool else "end_turn")
 
 
 def build(out):
@@ -320,7 +323,10 @@ def build(out):
     m.user_text(ts(40, 30), "This session is being continued from a previous conversation...",
                 isCompactSummary=True, isVisibleInTranscriptOnly=True)
     u = usage(9000, 40, 0, 0, 9100, 0)
-    request(m, ts(40, 35), "req_I", u)
+    # The main session stops mid-tool_use: a backgrounded Bash whose result never arrives.
+    bg = {"type": "tool_use", "id": "toolu_fixture_bg", "name": "Bash",
+          "input": {"command": "cargo nextest run", "run_in_background": True}}
+    request(m, ts(40, 35), "req_I", u, content=[bg])
     expect("req_I", "compact_summary", "R3", u)
 
     # A record type this contract does not know.
@@ -363,8 +369,22 @@ def build(out):
         "toolu_fixture_echo": "echo",
         "toolu_fixture_py": "python",
         "toolu_fixture_ls": None,
+        "toolu_fixture_bg": "cargo nextest",
     }
     expected["agents"] = {AGENT: {"custom_agent_type": "rust-gameserver-dev", "branch": WORKER_BRANCH}}
+    # One worker ends on end_turn; the main session ends mid-tool_use with a backgrounded Bash.
+    expected["agent_stops"] = [
+        {"agent_id": f"main:{SESSION}", "session_id": SESSION, "last_ts": ts(40, 35),
+         "requests": sum(1 for r in expected["requests"].values() if r["agent_id"] is None),
+         "last_stop_reason": "tool_use", "last_context_tokens": 18100, "last_tool_name": "Bash",
+         "last_tool_background": 1, "last_result_is_error": None, "ended_after_result": 0,
+         "ended_in_api_error": 0, "api_error_kind": None},
+        {"agent_id": AGENT, "session_id": SESSION, "last_ts": ts(9, 0),
+         "requests": sum(1 for r in expected["requests"].values() if r["agent_id"] == AGENT),
+         "last_stop_reason": "end_turn", "last_context_tokens": 81003, "last_tool_name": None,
+         "last_tool_background": 0, "last_result_is_error": None, "ended_after_result": 0,
+         "ended_in_api_error": 0, "api_error_kind": None},
+    ]
     (out / "expected.json").write_text(json.dumps(expected, indent=1, sort_keys=True), encoding="utf-8")
     return out
 

@@ -54,7 +54,16 @@ def seed_request(db, request_id="r1", output=100, thinking=50, inp=1, read=2, w5
 class SchemaTest(unittest.TestCase):
     def test_schema_loads_with_version(self):
         db = load_schema()
-        self.assertEqual(db.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0], "5")
+        self.assertEqual(db.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0], "6")
+
+    def test_v6_records_stop_reason_and_agent_stops(self):
+        db = load_schema()
+        columns = {row[1] for row in db.execute("PRAGMA table_info(requests)")}
+        self.assertIn("stop_reason", columns)
+        tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        self.assertIn("agent_stops", tables)
+        stop_columns = {row[1] for row in db.execute("PRAGMA table_info(agent_stops)")}
+        self.assertTrue({"ended_in_api_error", "api_error_kind"} <= stop_columns)
 
     def test_thinking_is_a_subset_of_output(self):
         db = load_schema()

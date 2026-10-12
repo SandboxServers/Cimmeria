@@ -73,13 +73,15 @@ Prices are not here: use `ingest/prices.py` (`estimate_usd`, `CURRENT`, `normali
   "ci": {"first_attempt_rate": 0, "overall_rate": 0, "code_prs_first_attempt_rate": 0},
   "escaped_defects": {"count": 0, "rate_per_merged_pr": 0, "items": [{"kind": "pr|issue|revert", "number": 1, "cites": 1527}]},
   "escalation": {"dispatched_to_haiku": 0, "escalated": 0, "rate": 0, "items": [{"id": "LR-02", "to": "rust-gameserver-dev", "why": "context-exhausted"}]},
-  "stop_context": {"workers": 0, "by_stop": {"end_turn": 0, "tool_use": 0, "error": 0, "no_record": 0}, "context_at_stop": {"p50": 0, "p90": 0, "max": 0}, "share_above_90k": 0},
+  "stop_context": {"workers": 0, "by_stop": {"end_turn": 0, "tool_use": 0, "error": 0, "no_record": 0}, "by_error_kind": {"rate_limit": 0, "authentication_failed": 0, "other": 0}, "context_at_stop": {"p50": 0, "p90": 0, "max": 0}, "share_above_90k": 0},
   "cycle_time": {"campaign_hours": 0, "packet_hours": {"n": 0, "p50": 0, "p90": 0}},
   "overstep": {"opus_coding_usd": 0, "opus_research_usd": 0, "sonnet_implementing_usd": 0, "recoverable_usd": {"low": 0, "high": 0}, "items": []}
 }
 ```
 
 `data/summary.json` has `"regimes": {"old": {...}, "haiku": {...}}` with the same fields aggregated, plus `"comparison"` (see CM-08). Markdown per campaign goes to `docs/analysis/campaign-metrics/reports/<campaign>.md`, the roll-up to `reports/summary.md`.
+
+**`stop_context.by_stop` classification.** CM-06 classifies each worker's `agent_stops` row, first match wins: no row -> `no_record`; `ended_in_api_error = 1` -> `error`; `last_stop_reason = 'end_turn'` -> `end_turn`; `last_stop_reason = 'tool_use'` -> `tool_use`; `last_stop_reason` NULL (interrupted before a final record) -> `no_record`; any other value (`max_tokens`, `refusal`, `pause_turn`) -> `error`. Each `error` row with `ended_in_api_error = 1` also counts in `by_error_kind[api_error_kind]`. A tool call the user refused is not an API error: it stays `tool_use` with `last_result_is_error = 1`. An API-error stop maps to the retry reason `other`; the `retries.by_reason` keys do not change.
 
 **CLI** (`cli.py`, argparse subcommands; every subcommand takes `--out <dir>`, `--config`, and prints a JSON count summary, never content):
 
@@ -129,13 +131,15 @@ Intermediate files go in a scratch `--out` dir (never committed): `github.json`,
          last_tool_background INTEGER NOT NULL DEFAULT 0 CHECK (last_tool_background IN (0, 1)),
          last_result_is_error INTEGER,          -- result of that tool call, NULL if none seen
          ended_after_result  INTEGER NOT NULL DEFAULT 0 CHECK (ended_after_result IN (0, 1)),  -- transcript ends with a tool_result, no later assistant text
+         ended_in_api_error  INTEGER NOT NULL DEFAULT 0 CHECK (ended_in_api_error IN (0, 1)),  -- the transcript's last assistant record is a synthetic API error (never a request row)
+         api_error_kind    TEXT,                -- that record's `error` value (rate_limit, authentication_failed, ...), 'other' if absent or not a plain name; NULL when ended_in_api_error = 0
          PRIMARY KEY (agent_id)
      );
      ```
-  2. `ingest/transcript.py`: carry `stop_reason` into the request row. `ingest/store.py`: write `agent_stops` from the last request of each transcript, recomputed per run for transcripts that grew (the ingest is incremental; delete and reinsert that agent's row). `last_tool_background` = the last tool_use input has `run_in_background: true`.
+  2. `ingest/transcript.py`: carry `stop_reason` into the request row. `ingest/store.py`: write `agent_stops` from the last request of each transcript, recomputed per run for transcripts that grew (the ingest is incremental; delete and reinsert that agent's row). `last_tool_background` = the last tool_use input has `run_in_background: true`. The ingest also sets `ended_in_api_error` = 1 and `api_error_kind` (the record's top-level `error` value when it is lower-case letters and underscores, at most 40 characters, else `other`; never the message text) when the transcript's last assistant record is a synthetic `isApiErrorMessage` record, which is never a request row; a later real assistant record clears both.
   3. Bump the "older schema refused" message path: a v5 database must be refused with the existing message.
   4. `fixtures/build_fixtures.py`: add `stop_reason` to generated assistant records (alternate `end_turn` and `tool_use`) and extend `expected.json` with the expected `agent_stops` rows for two agents (one ends `end_turn`, one ends mid-`tool_use` with a backgrounded Bash).
-- Tests: `ingest/test_ingest_fixture.py` asserts the two `agent_stops` rows exactly; `test_contract.py` asserts the new column and table exist. Reverting the transcript change leaves `stop_reason` NULL, so the fixture test fails. Add a test that a second incremental run with an appended record updates the row instead of duplicating it.
+- Tests: `ingest/test_ingest_fixture.py` asserts the two `agent_stops` rows exactly; `test_contract.py` asserts the new column and table exist. Reverting the transcript change leaves `stop_reason` NULL, so the fixture test fails. Add a test that a second incremental run with an appended record updates the row instead of duplicating it. A test in `ingest/test_ingest_stops.py` appends a tool_result and then a synthetic API error record to the fixture's main transcript and asserts the stop row; reverting the transcript change leaves `ended_in_api_error` 0.
 - Checks: `python -m unittest discover -s tools/token-profile -p "test_*.py"`.
 - Docs owed: `transcript-format.md` (the `stop_reason` field and the `agent_stops` rules), token-profile README (schema version 6), `docs/guides/token-profiling.md` one line (re-ingest a v5 DB from scratch, about two minutes).
 - Risk: M. If the packet-coder runs out of context on `transcript.py`, a fresh session continues from the worknote; after three sessions, hand to a Sonnet worker.
@@ -196,7 +200,7 @@ Intermediate files go in a scratch `--out` dir (never committed): `github.json`,
   - `fix_commits` = commits on the PR head after the first reviewer session started: from `github.json` commit times; unknown if no PR.
   - `first_pass` = `implementer_sessions == 1 and fixer_sessions == 0 and fix_commits == 0 and not escalated` (accepted packets only; others excluded from the rate).
   - `cycle_hours` = PR `mergedAt` minus the earliest request of any mapped agent; campaign cycle from `ledger.campaign_window`.
-  - `stop_context`: from `agent_stops`, per worker: `last_stop_reason`, `last_context_tokens`, aggregated into the contract's `stop_context` (p50, p90, max, share above 90k).
+  - `stop_context`: from `agent_stops`, per worker: `last_stop_reason`, `last_context_tokens`, `ended_in_api_error`, `api_error_kind`, classified by the Contract's `by_stop` rule and aggregated into the contract's `stop_context` (p50, p90, max, share above 90k).
 - Tests: a fixture DB with three packets: A (one coder, one reviewer, no fixes), B (two coders: the first stops at 96k with `tool_use` and a backgrounded last tool, then a Sonnet agent in the same worktree), C (one coder, one fixer). Assert A first_pass true; B escalated, one retry with reason `stalled-background`, first_pass false; C first_pass false. Reverting the worktree match leaves all unmapped and fails.
 - Checks: unittest; trial run on the real DB prints per-campaign first-pass rate for `lab-record` in the commit body.
 - Docs owed: catalog row.

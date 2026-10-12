@@ -1,4 +1,4 @@
-"""Run as `python tools/token-profile/metrics ...`; see cli.py."""
+"""Run as `python tools/token-profile/metrics <subcommand>`; see cli.py."""
 
 import sys
 from pathlib import Path
