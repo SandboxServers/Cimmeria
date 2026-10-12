@@ -8,6 +8,9 @@
 pub mod args;
 pub mod plan;
 pub mod preflight;
+pub mod progress;
+pub mod record;
+pub mod summary;
 
 use std::time::Duration;
 
