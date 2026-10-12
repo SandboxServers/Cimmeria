@@ -108,7 +108,7 @@ Read these before you start. None of them needs a new report.
 | K29 | **How the stock DHD window dials (lab-verified 2026-10-05).** The first left-click after the window opens is ignored. Selecting a row in the address book *is* the dial: the glyphs fill and the client dials about 2 s later on its own; the centre orb only re-dials. The window reopens in its last state (the glyph ring, not the address book). The Reset button sends nothing. Don't right-click the DHD again while its window is open: that reloads the window, and it is the suspected (unproven) cause of the one session where a selection sent no dial at all. | Click the row twice and wait about 2 s; close the window with X before right-clicking the DHD again. If nothing dials, relog | [gate-travel.md, Debug Area dial-out](../gameplay/gate-travel.md#debug-area-dial-out) |
 | K30 | **`/gmsethealth` cannot target yourself (lab-confirmed 2026-10-12).** The client sends target `-1` whether or not you have selected yourself, and the server accepts only `0` or your own id, so the answer is always `gmSetHealth: target not found`. | For I1 and I4, lower your health by taking fire from a hostile NPC instead. | [Haiku lab UAT round 1, P1](../analysis/haiku-lab-uat/README.md#product-findings) |
 | K31 | **An open trainer window goes stale after a level-up (lab-confirmed 2026-10-12).** Nodes that the new training points unlock stay greyed while the Ability window stays open. | Close the window and reopen it at the trainer. | [Haiku lab UAT round 1, P2](../analysis/haiku-lab-uat/README.md#product-findings) |
-| K32 | **Buying from a trainer out of range shows nothing (lab-confirmed 2026-10-12).** The server refuses the purchase and spends nothing, but no message appears. | Record it against ability-tree step 6; not a new bug. | [Haiku lab UAT round 1, P3](../analysis/haiku-lab-uat/README.md#product-findings) |
+| K32 | **Out of range of a trainer, the buy button is disabled, and a purchase sent anyway shows nothing (lab-confirmed 2026-10-12).** The open Ability window keeps its buttons greyed once you walk away. A purchase that bypasses the button (only a modified client can send one) is refused by the server with nothing spent, but no message appears. | At ability-tree step 6, record the disabled button; not a new bug. | [Haiku lab UAT round 1, P3](../analysis/haiku-lab-uat/README.md#product-findings) |
 | K33 | **The server keeps your vault open after its window closes (lab-confirmed 2026-10-12).** Walking or teleporting away hides the vault window, but the server still counts the vault as open, so `.bankexpand` then charges you and grows the vault without a `.bank` first. | For the "no vault open" half of bank step 11, relog first; the logout closes the server's vault. | [Haiku lab UAT round 1, P4](../analysis/haiku-lab-uat/README.md#product-findings) |
 
 ## Common setup
@@ -405,7 +405,7 @@ Your personal vault (bank container 17), opened at a Banker, with deposit, withd
 
 **Status:** Ready. Steps 1-14 (the personal bank) since release 1; steps 15-25 (org vaults, the treasury and the Team expansion) once release 2 is deployed. Known broken: the player-facing Expand offer (K3), so steps 11-12 and 24-25 use the GM commands. Step 19 needs a local server.
 
-**Lab result 2026-10-12** (agent-driven on the colo, [round 1 report](../analysis/haiku-lab-uat/README.md#bank-and-vault)): 1, 2, 6, 11 (GM half) and 12 pass; 3, 4, 5 and 14 pass with the move made by stock Lua (N3) because the lab's drags failed; 7, 9 and 13 partly pass (7 and 9 have doc mismatches, below; 13 and 11 still need a non-GM); 8 and 10 are blocked. Steps 15-25 not run.
+**Lab result 2026-10-12** (agent-driven on the colo, [round 1 report](../analysis/haiku-lab-uat/README.md#bank-and-vault)): 1, 2, 6, 11 (GM half) and 12 pass; 3, 4, 5 and 14 are NATIVE_SHORTFALL (the server behaved, but the move was made by a stock Lua call (N3) because the lab's drags failed); 7, 9 and 13 partly pass (7's server guard and 9's sell half are client-read only, with no server row pulled; 7 and 9 have doc mismatches, below; 13's GM half was vacuous, no item was moved, and 11 and 13 still need a non-GM); 8 and 10 are blocked. Steps 15-25 not run.
 
 **Prerequisites:** a fresh GM character with some naquadah, a stackable item and a mission item. Location: the **Storage Officer** in the debug hub (middle of the right-hand wall). Step 13 needs a non-GM character too.
 
@@ -419,7 +419,7 @@ Your personal vault (bank container 17), opened at a Banker, with deposit, withd
 | 4 | Drag it back | It lands in the backpack; the vault slot empties. | |
 | 5 | Split a stack into the vault, then merge it back | The totals never change. | |
 | 6 | Deposit an item, log out, log in, open the vault | The item is still there. `.bankdump <name>` lists it. | |
-| 7 | Open the vault at the Banker, walk more than about 5 m away, then drag | The move is refused with a visible message; the item snaps back. | Lab 2026-10-12: the stock client hides the vault window by itself as you walk away, so there is nothing to drag. The server guard works ("You are too far from the Banker…", reached by a Lua move at 6.6 m). Report what your window does; the step is under review |
+| 7 | Open the vault at the Banker, walk more than about 5 m away, then drag | The move is refused with a visible message; the item snaps back. | Lab 2026-10-12: the stock client hides the vault window by itself as you walk away, so there is nothing to drag. The server guard works ("You are too far from the Banker…", reached by a stock Lua call (N3) at 6.6 m). Report what your window does; the step is under review |
 | 8 | Try to bank a mission item | Refused with a message. | |
 | 9 | Try to trade, sell or mail a banked item | Only carried bags are offered; a banked item cannot be used. | Mail needs the player mail window: the GM `.mail … item` creates its attachment and never takes it from your bags, so it cannot test this (lab 2026-10-12) |
 | 10 | Sell an item; try to drag it out of the vendor's buyback tab without paying | Refused. | |
@@ -581,7 +581,7 @@ Buying abilities at a trainer with training points: three tree tabs per archetyp
 
 **Status:** Ready. Every packet merged and released; awaiting UAT.
 
-**Lab result 2026-10-12** (agent-driven on the colo, Soldier only, [round 1 report](../analysis/haiku-lab-uat/README.md#ability-trees-at-06-soldier)): 1, 2, 4, 5 and 7 pass; 3 partly passes (nothing is spent, but the client drops the press before it reaches the server); 6 fails on feedback only (K32). Steps 8-10 and the other archetypes not run.
+**Lab result 2026-10-12** (agent-driven on the colo, Soldier only, [round 1 report](../analysis/haiku-lab-uat/README.md#ability-trees-at-06-soldier)): 1, 2, 4, 5 and 7 pass; 3 partly passes (nothing is spent, but the client drops the press before it reaches the server); 6 fails on feedback only, for a send that bypasses the disabled button (K32). Steps 8-10 and the other archetypes not run.
 
 **Prerequisites:** a GM character per showcase archetype, in this order: Soldier, Commando, Scientist, Archaeologist, Free Jaffa (Shol'va). Location: the **Archetype Skills Trainer** in the debug hub, which offers every tree node (the source names the Interaction Debug NPC, template 25, which the hub trainer copies). Some naquadah for respec (1000).
 
@@ -592,7 +592,7 @@ Buying abilities at a trainer with training points: three tree tabs per archetyp
 | 3 | Click a node whose prerequisite you lack (a stale window works) | The press shows an error; nothing is spent. | Does the error show any text, or only a window refresh? Note which. Lab 2026-10-12: the client drops a locked node's press itself and sends nothing, so only "nothing is spent" can be checked |
 | 4 | Buy the tier-1 nodes in one branch; watch a tier-2 node in another branch | It opens once archetype-wide spend reaches 4 and its own branch prerequisite is known. | After a `/gmgivexp` level-up, reopen the window first (K31) |
 | 5 | Relog and reopen the trainer | Learned nodes and points persist. | |
-| 6 | Walk away from the trainer and try to buy | Rejected with feedback. | The source says "replay a train packet"; a stale window after walking away is the in-game way. No message appears today (K32) |
+| 6 | Walk away from the trainer and try to buy | Rejected with feedback. | The source says "replay a train packet"; a stale window after walking away is the in-game way. Lab 2026-10-12: the window stays open at 22 m but the buy button is disabled, so you cannot press it; record a disabled button as the result. The server refuses a purchase sent anyway (only possible from a modified client), with no message today (K32) |
 | 7 | Double-click a purchase | Only one point is spent. | |
 | 8 | `/gmgivexp` to level 21, then to 50 | The XP bar behaves (at the cap it is full, never 0); there is no level 51; the capstone opens at 50 once its path and spend are met; you have 50 points in total. | |
 | 9 | Respec at the trainer with the Ability window open | Trainer nodes go; starter abilities stay; points are refunded; 1000 naquadah is charged. A hotbar button for a refunded ability stays on the bar and shows an error when pressed. | K13. Note whether the open Ability window drops the removed abilities |
@@ -923,7 +923,7 @@ Heal items and stimpacks used from your bags: the Health Slappack, the Health an
 
 **Status:** Ready. Merged; first seen in a client on 2026-10-12. Known broken: K21, K30.
 
-**Lab result 2026-10-12** (agent-driven on the colo, [round 1 report](../analysis/haiku-lab-uat/README.md#consumables)): I2-I4 and I6-I10b pass, each item used through stock Lua (N3) because the lab's double-click sent nothing; I5 passes its low-focus half (the full-focus half not run); I1 fails at `/gmsethealth` (K30). I11 not run.
+**Lab result 2026-10-12** (agent-driven on the colo, [round 1 report](../analysis/haiku-lab-uat/README.md#consumables)): I9 passes (client-read only: attribute values, no server row pulled); I2-I4, I6-I8, I10 and I10b are NATIVE_SHORTFALL (the server behaved, but each item was used through a stock Lua call (N3) because the lab's double-click sent nothing); I5 passes its low-focus half, client-read only (the full-focus half not run); I1 fails at `/gmsethealth` (K30). I11 not run.
 
 **Prerequisites:** a GM character (for `/gmgiveitem` and `/gmsethealth`). Anywhere; the Cellblock guards are handy for losing focus.
 
