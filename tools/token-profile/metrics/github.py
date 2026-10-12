@@ -75,7 +75,8 @@ def polite(run, cache_dir=None, stats=None):
     retryable error.
 
     An `api` answer is cached as JSON in `cache_dir` (keyed by the call's arguments), so a run that stopped
-    part way resumes from the answers it already has. `stats` ({gh_calls, cache_hits}) counts the work done.
+    part way resumes from the answers it already has. `stats` ({gh_calls, cache_hits}) counts the work done: gh_calls
+    counts gh invocations, not HTTP requests (a --paginate call is several requests).
     """
     stats = stats if stats is not None else {"gh_calls": 0, "cache_hits": 0}
 
@@ -96,8 +97,10 @@ def polite(run, cache_dir=None, stats=None):
                 result = run(args)
                 break
             except GhError as e:
-                if not e.retryable or attempt == len(RETRY_WAITS_S):
+                if not e.retryable:
                     raise
+                if attempt == len(RETRY_WAITS_S):
+                    raise GhError(f"{e} (rerun with the same --cache to resume)") from e
         if cached:
             cached.parent.mkdir(parents=True, exist_ok=True)
             cached.write_text(json.dumps(result), encoding="utf-8")
@@ -148,9 +151,9 @@ def _labels(issue):
     return {x["name"] if isinstance(x, dict) else x for x in issue.get("labels") or []}
 
 
-def _apart(a, b):
-    """True when both campaigns are known and differ. An untagged PR is never apart from anything."""
-    return a is not None and b is not None and a != b
+def _apart(target, citing):
+    """True when the cited campaign is known and differs from the citing one. An untagged citing PR is outside it."""
+    return target is not None and citing != target
 
 
 def _verdict(conclusion):
@@ -312,7 +315,8 @@ def defect_items(prs, issues, campaign_of):
     (a) a merged fix or revert PR outside C whose text cites #N and that merged after N;
     (b) a closed `bug` issue whose body cites #N and that was created after N merged;
     (c) a merged `Revert "<title>"` PR outside C quoting the title of N.
-    `kind` is pr, revert or issue; `number` is the citing item. A link needs both campaigns known (a, c) or N's.
+    `kind` is pr, revert or issue; `number` is the citing item. A link needs N's campaign known; an untagged citing
+    PR counts as outside it.
     """
     merged = {p["number"]: p for p in prs if p.get("mergedAt")}
     by_title = {p["title"]: p for p in merged.values()}

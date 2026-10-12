@@ -23,6 +23,7 @@ from ingest.campaigns import Campaigns
 from . import ledger, registry
 from .github import GhError, collect, polite, replay, run_gh
 
+
 def git_log(repo, failures):
     """A runner for `git log` in `repo`: its stdout. A run that fails returns "" and is appended to `failures`."""
     def run(args):
@@ -122,11 +123,12 @@ def run_ledger(args):
 def run_github(args):
     """Write github.json for `args.repo` to `args.out` and print its count summary; 0 written, 2 on an error."""
     stats = {"gh_calls": 0, "cache_hits": 0}
+    cache_dir = (args.cache if args.cache is not None else Path(args.out) / "gh-cache") or None
     try:
         if args.from_json:
             run = replay(args.from_json)
         else:
-            run = polite(lambda a: run_gh(a, cwd=args.repo), cache_dir=args.cache, stats=stats)
+            run = polite(lambda a: run_gh(a, cwd=args.repo), cache_dir=cache_dir, stats=stats)
         window = registry.load_config(args.config)["window"]
         campaigns = Campaigns(registry.load_campaigns(args.campaigns))
         pr_map = None
@@ -185,7 +187,8 @@ def main(argv=None):
     gh.add_argument("--campaigns", default=None, help="campaign tags; default ingest/campaigns.json")
     gh.add_argument("--ledger", default=None, help="ledger.json whose pr_map tags the PRs it names")
     gh.add_argument("--cache", default=None, metavar="DIR",
-                    help="cache gh api answers in DIR so a failed run resumes (scratch only, never committed)")
+                    help="cache gh api answers in DIR so a failed run resumes (default OUT/gh-cache; \"\" turns it off; "
+                         "scratch only, never committed)")
     gh.add_argument("--from-json", default=None, metavar="DIR", help="replay saved gh answers, no network")
     args = ap.parse_args(argv)
     if args.cmd == "ledger":

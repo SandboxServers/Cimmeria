@@ -163,6 +163,14 @@ class GithubTests(unittest.TestCase):
                {"number": 2, "title": "fix(x): y (#1)", "body": "", "mergedAt": "2026-10-02T00:00:00Z"}]
         self.assertEqual(gh.escaped_defects(prs, [], lambda n: None), {})
 
+    def test_a_fix_with_no_campaign_tag_is_a_defect_outside_the_cited_campaign(self):
+        prs = [{"number": 1, "title": "feat(x): a", "body": "", "mergedAt": "2026-10-01T00:00:00Z"},
+               {"number": 2, "title": "fix(y): z (#1)", "body": "", "mergedAt": "2026-10-02T00:00:00Z"}]
+        items = gh.defect_items(prs, [], lambda n: "x" if n == 1 else None)
+        self.assertEqual(len(items), 1)
+        self.assertIsNone(items[0]["citing_campaign"])
+        self.assertEqual(items[0]["campaign"], "x")
+
     def test_a_title_that_only_starts_with_fix_letters_is_not_a_fix(self):
         prs = [{"number": 1, "title": "feat(x): one", "body": "", "mergedAt": "2026-10-01T00:00:00Z"},
                {"number": 2, "title": "fixture(x): add data (#1)", "body": "", "mergedAt": "2026-10-02T00:00:00Z"}]
@@ -275,7 +283,7 @@ class CliSmokeTest(unittest.TestCase):
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
                 main(["github", "--repo", ".", "--out", tmp, "--from-json", str(FIXTURES), "--campaigns", str(rules)])
-        self.assertEqual(json.loads(out.getvalue())["escaped_defects"], {"lab-record": 1})
+        self.assertEqual(json.loads(out.getvalue())["escaped_defects"], {"lab-record": 2})
 
     def test_ledger_pr_map_tags_the_prs_it_names(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -285,7 +293,7 @@ class CliSmokeTest(unittest.TestCase):
             with contextlib.redirect_stdout(out):
                 main(["github", "--repo", ".", "--out", tmp, "--from-json", str(FIXTURES), "--ledger", str(ledger)])
             record = json.loads((Path(tmp) / "github.json").read_text(encoding="utf-8"))
-        self.assertEqual(json.loads(out.getvalue())["escaped_defects"], {"lab-record": 1})
+        self.assertEqual(json.loads(out.getvalue())["escaped_defects"], {"lab-record": 2})
         self.assertNotIn("headRefName", json.dumps(record))
 
 
