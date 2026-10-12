@@ -186,7 +186,7 @@ fn admit(
         work_id: id,
         legacy_install_id,
         import_digest,
-        reference_digest: inventory::content_digest(&preview.reference.index)?,
+        reference_digest: preview.expected_digest,
         setup_policy_version: 1,
         folder_scan_digest,
         file_index_sha256: None,

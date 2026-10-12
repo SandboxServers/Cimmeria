@@ -133,6 +133,8 @@ pub(super) fn preview(
     );
     let verification::Compared {
         reference,
+        expected_digest,
+        expected_paths,
         files,
         download,
         replacements,
@@ -188,6 +190,8 @@ pub(super) fn preview(
         release: request.release,
         scanned,
         reference,
+        expected_digest,
+        expected_paths,
         replacements,
         _legacy_lock: legacy_lock,
     })

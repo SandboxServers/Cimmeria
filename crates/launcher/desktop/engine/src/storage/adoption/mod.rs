@@ -81,7 +81,11 @@ pub struct Preview {
     preparation: preparation::Ownership,
     release: VerifiedRelease,
     scanned: inventory::Index,
-    reference: reference::Reference,
+    /// Built indexes only: the reconstructed reference the moves may read.
+    reference: Option<reference::Reference>,
+    /// The digest and release paths of the post-setup tree (see `Compared`).
+    expected_digest: [u8; 32],
+    expected_paths: Vec<String>,
     /// The files the replay stored for the adopted tree (AI-09); empty when the
     /// review needs none.
     replacements: Vec<Replacement>,
@@ -128,13 +132,14 @@ impl Preview {
             return Err(Error::VerificationFailed);
         }
         // Replacing a changed or absent file is a choice of its own (D-AI1);
-        // a patch-only file needs no extra consent (D-AI7).
-        let replaces = self.report.files.iter().any(|d| {
-            matches!(
-                d.classification,
-                Classification::Modified | Classification::Missing
-            )
-        });
+        // a patch-only file needs no extra consent (D-AI7). A copy replaces nothing.
+        let replaces = self.report.in_place()
+            && self.report.files.iter().any(|d| {
+                matches!(
+                    d.classification,
+                    Classification::Modified | Classification::Missing
+                )
+            });
         if !choices.old_game_closed
             || (self.requires_normalization() && !choices.normalize_managed_files)
             || (replaces && !choices.replace_modified_files)
@@ -269,6 +274,8 @@ fn copy_preview(
     );
     let verification::Compared {
         reference,
+        expected_digest,
+        expected_paths,
         files,
         download,
         replacements,
@@ -304,6 +311,8 @@ fn copy_preview(
         release: request.release,
         scanned,
         reference,
+        expected_digest,
+        expected_paths,
         replacements,
         _legacy_lock: legacy_lock,
     })

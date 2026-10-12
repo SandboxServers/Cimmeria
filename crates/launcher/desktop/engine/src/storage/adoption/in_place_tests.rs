@@ -177,6 +177,46 @@ impl Fixture {
         (op.id, op.state)
     }
 }
+/// A stock-shaped in-place install whose release publishes the file index: the
+/// preview reads only the index, makes no seed request and keeps no reference.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_published_index_previews_in_place_without_the_seed() {
+    use super::verification_tests::{published_index, reference, release};
+    let mut f = Fixture::new(None);
+    let seed = std::fs::read(&f.seed).unwrap();
+    let index = published_index(&seed);
+    f.release = release(&seed, Some(reference(&index, None)));
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::path("/index/file-index.json"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_bytes(index.clone()))
+        .mount(&server)
+        .await;
+    let transport =
+        artifacts::Transport::loopback(format!("{}/manifest.json", server.uri())).unwrap();
+    let request = f.request();
+    let preview = tokio::task::block_in_place(|| {
+        preview_using(
+            f.state.clone(),
+            request,
+            CancellationToken::new(),
+            crate::install_progress::ProgressSink::latest().0,
+            Backend::Native,
+            Some(transport),
+        )
+    })
+    .unwrap();
+    assert!(preview.reference.is_none());
+    commit(preview).unwrap();
+    let seen: Vec<String> = server
+        .received_requests()
+        .await
+        .unwrap()
+        .iter()
+        .map(|request| request.url.path().to_string())
+        .collect();
+    assert_eq!(seen, vec!["/index/file-index.json".to_string()]);
+}
+
 fn choices() -> Choices {
     Choices {
         normalize_managed_files: true,
@@ -251,7 +291,7 @@ fn adopts_in_place_from(kind: SeedKind) {
     let preview = f.preview().unwrap();
     assert!(preview.report.in_place());
     assert_eq!(preview.report.blocking(preview.replacements()).count(), 0);
-    let expected = preview.reference.index.clone();
+    let expected = preview.reference.as_ref().unwrap().index.clone();
     commit(preview).unwrap();
 
     let game = f.folder().join("game");
@@ -369,7 +409,7 @@ fn uninstalling_an_adopted_folder_removes_only_what_the_launcher_manages() {
 fn an_interrupted_move_is_recovered_after_restart() {
     let f = Fixture::new(None);
     let preview = f.preview().unwrap();
-    let expected = inventory::content_digest(&preview.reference.index).unwrap();
+    let expected = preview.expected_digest;
     assert!(commit_with(preview, crash_after_first_move).is_err());
     let f = f.reopen();
     let (id, phase) = f.operation();

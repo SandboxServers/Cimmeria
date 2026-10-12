@@ -68,7 +68,7 @@ fn adopting_with_consent_backs_up_the_modified_file_and_installs_the_release() {
     assert!(backup.file_name().is_some_and(|name| name
         .to_string_lossy()
         .starts_with("cimmeria-adoption-backup-")));
-    let expected = inventory::content_digest(&preview.reference.index).unwrap();
+    let expected = preview.expected_digest;
     confirm_replacing(preview, |_| Ok(())).unwrap();
 
     // The player's edited SGW.exe is kept byte for byte in the backup folder.

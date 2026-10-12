@@ -224,7 +224,7 @@ fn signed_copy_ignores_forged_ledger_preserves_source_identity_config_and_exclud
         .files
         .iter()
         .any(|d| d.path == "unknown.dll" && d.classification == Classification::Extra));
-    let expected = preview.reference.index.clone();
+    let expected = preview.reference.as_ref().unwrap().index.clone();
     let provenance = commit(preview).unwrap();
     assert_eq!(f.source_snapshot(), before);
     let mut state = f.state.lock().unwrap();

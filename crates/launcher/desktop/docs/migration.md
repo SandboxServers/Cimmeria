@@ -233,30 +233,10 @@ adopt this folder** after a legacy import; there is no location to choose.
    remove `game`. Those leftovers are an owner marker that no journal
    operation or begun plan names, and an empty `game`. The launcher removes
    them, logs a warning and continues.
-2. **Verification.** The signed seed (a zip or a RAR, as the archive.org client is) and patches are fetched and reconstructed
-   into a private reference, the same preparation the verified copy uses. Every
-   release file in the folder is compared by size and SHA-256. The review names
-   each one that is modified, missing or at another path (`blocked_files`), and
-   confirmation is refused (`verification_failed`). Nothing in the player's
-   folder is ever rewritten from the reference. The only accepted difference is
-   the old launcher's own setup change, which the launcher re-applies.
-3. **Admission.** Confirmation first opens `Working\Binaries\SGW.exe`
-   exclusively. A sharing violation means the game is running, and confirmation
-   is refused with nothing admitted (`game_running`). It then writes the owner marker `.cimmeria-install.json`
-   into the folder, creates an empty `game` folder, and saves the plan and a
-   checkpoint before the Adopt operation begins. If admission fails before the
-   operation exists, the marker and the empty folder are taken back.
-4. **Moves.** Each verified release file is renamed into `game` at the same
-   relative path, then the launcher's setup and a synthesized ledger are
-   written and the tree is checked against the signed reference digest. Every
-   file that is not part of the release stays exactly where it was, outside
-   `game`. That includes the old launcher's `launcher-installed.json`, which is
-   left in place. Folders the moves emptied are removed. Admitted moves are not
-   cancelled part-way.
-5. **Publication.** The receipt, installed-content index (with adoption
-   provenance) and preferences are written as for a verified copy. From then on
-   Play, Repair and Update treat the folder as owned: its `game` tree is managed
-   exactly like a fresh install's.
+2. **Verification.** When the release publishes a file index, it is fetched first, and it alone names every release file: nothing else is downloaded for the comparison. The signed seed (a zip or a RAR, as the archive.org client is) and the patches are fetched only as needed. Patches are fetched for the files that lack the current patches, and the seed only when a needed pre-patch file is itself wrong. The seed comes from archive.org or from the player's own archive. Nothing is ever uploaded or mirrored. The needed files are reconstructed into a private reference, the same preparation the verified copy uses. Every release file in the folder is compared by size and SHA-256. A stock file that only lacks the current patches is listed as needing patching and is updated without extra consent. A modified or missing release file is listed as blocked (`blocked_files`), and confirmation is refused (`verification_failed`) unless the review's explicit consent to replace it is given in step 3. Nothing in the player's folder is ever rewritten from the reference. The only accepted difference is the old launcher's own setup change, which the launcher re-applies.
+3. **Admission.** Confirmation first opens `Working\Binaries\SGW.exe` exclusively. A sharing violation means the game is running, and confirmation is refused with nothing admitted (`game_running`). Replacing a modified or missing release file needs that explicit consent; without it nothing is admitted. Admission then writes the owner marker `.cimmeria-install.json` into the folder, creates an empty `game` folder, and saves the plan and a checkpoint before the Adopt operation begins. If admission fails before the operation exists, the marker and the empty folder are taken back.
+4. **Moves.** Each original that the consent replaces moves first into `cimmeria-adoption-backup-<id>` in the folder, so no player file is overwritten. That backup folder is never removed by the launcher, not even by Uninstall. Then each verified release file is renamed into `game` at the same relative path, and the launcher's setup and a synthesized ledger are written and the tree is checked against the signed reference digest. Every file that is not part of the release stays exactly where it was, outside `game`. That includes the old launcher's `launcher-installed.json`, which is left in place. Folders the moves emptied are removed. Admitted moves are not cancelled part-way.
+5. **Publication.** The receipt, installed-content index (with adoption provenance) and preferences are written as for a verified copy. From then on Play, Repair and Update treat the folder as owned: its `game` tree is managed exactly like a fresh install's.
 
 The review warns about the consequences before Confirm. `SGW.exe` and every
 release file move into the `game` folder, so desktop shortcuts and the old
@@ -267,25 +247,8 @@ hand in `SourceCache.en-us`, stay where they are and the game no longer uses
 them. Your settings and the client cache live in Documents and are not
 affected.
 
-An interruption after admission leaves the operation in reconciliation. Recover
-finishes the remaining moves and publication. A file in neither place is
-refused. The old launcher or a running game can recreate a file at its old path
-after the review, so a file in both places is settled by content. Admission
-saves each release file's reviewed hash (`adoption-reviewed-<work>.json`). If
-the copy in `game` matches, the other copy stays where it is as a file the
-release does not list. If only the old-path copy matches, it replaces the copy
-in `game`, which is kept beside the old path as
-`<name>.adopt-conflict-<owner>`. If neither matches, recovery stops and names
-the file in the log (`duplicate_release_file`). Nothing is deleted in any case.
-
-Abandon moves every release file back to where the review found it and removes
-the marker. A file in both places keeps the folder's copy, and `game` keeps the
-other. Abandon is offered only while nothing but renames has happened: once
-every file is in `game` the checkpoint advances before the launcher's setup
-rewrites `LoginInternal.lua` and the ledger. Putting the files back after that
-would leave the launcher's setup in them, so only Recover is offered. A crash during verification leaves only
-the private reference. The folder has no marker yet, and the reference is
-removed with the existing preparation removal.
+An interruption after admission leaves the operation in reconciliation. Recover finishes the remaining moves and publication. A file in neither place is refused. The old launcher or a running game can recreate a file at its old path after the review, so a file in both places is settled by content. Admission saves each release file's reviewed hash (`adoption-reviewed-<work>.json`). If the copy in `game` matches, the other copy stays where it is as a file the release does not list. If only the old-path copy matches, it replaces the copy in `game`, which is kept beside the old path as `<name>.adopt-conflict-<owner>`. If neither matches, recovery stops and names the file in the log (`duplicate_release_file`). Nothing is deleted in any case.
+Abandon, offered only while the operation is still staged, moves every release file back to where the review found it, moves each replaced original back out of `cimmeria-adoption-backup-<id>`, removes the replacements, and removes the marker. A file in both places keeps the folder's copy, and `game` keeps the other. The backup folder itself is never removed, not even by Abandon. Abandon is offered only while nothing but renames has happened: once every file is in `game` the checkpoint advances before the launcher's setup rewrites `LoginInternal.lua` and the ledger. Putting the files back after that would leave the launcher's setup in them, so only Recover is offered. A crash during verification leaves only the private reference. The folder has no marker yet, and the reference is removed with the existing preparation removal.
 
 **Uninstall** of an adopted folder never detaches or deletes the folder. It
 removes only the entries the launcher manages there: `game`, its Repair and
