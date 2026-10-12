@@ -87,15 +87,32 @@ impl DesktopState {
     }
 
     /// Back to download mode, and no archive remembered after the next launch.
+    /// The file goes first: if it cannot be removed, the handle and the memory
+    /// still hold the archive, so nothing claims it is forgotten when it is not.
     pub fn forget_seed_archive(&mut self) -> Result<(), StorageError> {
-        self.seed_source.clear();
-        self.seed_archive = None;
         let path = self.directory.root.join(SEED_ARCHIVE_FILE);
         ensure_regular_or_absent(&path)?;
         match std::fs::remove_file(&path) {
-            Ok(()) => Ok(()),
-            Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
-            Err(_) => Err(StorageError::Io),
+            Ok(()) => {}
+            Err(error) if error.kind() == ErrorKind::NotFound => {}
+            Err(_) => return Err(StorageError::Io),
+        }
+        self.seed_source.clear();
+        self.seed_archive = None;
+        Ok(())
+    }
+
+    /// Forgets the remembered archive when the install that used it could not
+    /// copy it (the player moved, changed or deleted it), so the next attempt
+    /// downloads. `seed_source` is the handle the install ran with.
+    pub fn forget_if_unusable(
+        &mut self,
+        seed_source: &SeedSourceHandle,
+    ) -> Result<(), StorageError> {
+        if seed_source.take_local_failure() {
+            self.forget_seed_archive()
+        } else {
+            Ok(())
         }
     }
 }
@@ -135,13 +152,16 @@ fn verify_and_remember(
     let seed = &release.manifest().seed;
     let verified = verify_local_seed(path, seed, cancel, progress)?;
     let mut state = state.lock().map_err(|_| LocalSeedError::Io)?;
-    state.seed_source.use_local(verified.clone());
+    // Remember on disk first: a failed write must not leave a running install
+    // switched to an archive that the next launch would not know about.
     state
         .record_seed_archive(SeedArchiveRecord {
-            seed: verified,
+            seed: verified.clone(),
             seed_sha256: seed.sha256.clone(),
         })
-        .map_err(|_| LocalSeedError::Io)
+        .map_err(|_| LocalSeedError::Io)?;
+    state.seed_source.use_local(verified);
+    Ok(())
 }
 
 mod downloads;

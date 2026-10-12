@@ -8,15 +8,24 @@ use cimmeria_patchset::build::{Spec, SpecOp, SpecSource};
 use cimmeria_patchset::Transform;
 use tokio_util::sync::CancellationToken;
 
-use super::{build, sha256_hex};
+use super::build::{build, scan};
+use super::{sha256_hex, FileIndexError, SetupRule};
+use crate::client_setup::aslr;
 use crate::install_progress::ProgressSink;
 use crate::manifest::{Manifest, PatchEntry, SeedEntry};
-use crate::unpack::UnpackSink;
+use crate::unpack::{UnpackError, UnpackSink};
 
 const EXE: &str = "Working/Binaries/SGW.exe";
 const A: &str = "Working/SGWGame/Data/a.bin";
 const B: &str = "Working/SGWGame/Data/b.bin";
 const C: &str = "Working/SGWGame/Data/c.bin";
+/// A bundled cooked-data PAK as the 2009 cabinets ship it, and where the
+/// client reads it after `place_bundled_cooked_data`.
+const BUNDLED_PAK: &str = "Working/SGWGame/Cache.en-US/CookedInteractionSet.pak";
+const PLACED_PAK: &str = "Working/SGWGame/SourceCache.en-us/CookedInteractionSet.pak";
+/// The seed stores the EULA script lower-cased; the stock name is `EULA.lua`.
+const EULA_SEED: &str = "Working/SGWGame/Content/UI/Startup/EULA/eula.lua";
+const EULA_STOCK: &str = "Working/SGWGame/Content/UI/Startup/EULA/EULA.lua";
 
 /// The smallest PE that `aslr::disable` accepts: an MZ header pointing at a
 /// PE32 optional header with the DYNAMIC_BASE bit set.
@@ -107,7 +116,15 @@ fn builds_the_seed_and_each_patch_layer_then_binds_to_the_manifest() {
     let b_overlay = b"bravo replaced by the overlay".to_vec();
     let exe = minimal_exe();
 
-    let seed = zip_of(&[(EXE, &exe), (A, &a), (B, &b_stock)]);
+    let pak = b"bundled cooked data".to_vec();
+    let eula = b"patched eula".to_vec();
+    let seed = zip_of(&[
+        (EXE, &exe),
+        (A, &a),
+        (B, &b_stock),
+        (BUNDLED_PAK, &pak),
+        (EULA_SEED, &eula),
+    ]);
     let seed_path = root.join("seed.zip");
     std::fs::write(&seed_path, &seed).unwrap();
 
@@ -142,13 +159,25 @@ fn builds_the_seed_and_each_patch_layer_then_binds_to_the_manifest() {
 
     let index = build(&seed_path, &patches, &manifest, &work, &sink()).unwrap();
 
-    // The seed: the three files of the seed zip, as the scan sees them.
+    // The seed: the seed zip's files as the scan sees them, after the bundled
+    // PAK is moved to SourceCache.en-us and the EULA script gets its stock name.
     let mut seed_paths: Vec<&str> = index.seed.files.iter().map(|f| f.path.as_str()).collect();
     seed_paths.sort_unstable();
-    assert_eq!(seed_paths.len(), 3, "{seed_paths:?}");
+    assert_eq!(seed_paths.len(), 5, "{seed_paths:?}");
     assert!(seed_paths.contains(&EXE), "{seed_paths:?}");
     assert!(seed_paths.contains(&A), "{seed_paths:?}");
     assert!(seed_paths.contains(&B), "{seed_paths:?}");
+    assert!(seed_paths.contains(&PLACED_PAK), "{seed_paths:?}");
+    assert!(seed_paths.contains(&EULA_STOCK), "{seed_paths:?}");
+    assert!(!seed_paths.contains(&BUNDLED_PAK), "{seed_paths:?}");
+    assert!(!seed_paths.contains(&EULA_SEED), "{seed_paths:?}");
+    let placed = index
+        .seed
+        .files
+        .iter()
+        .find(|f| f.path == PLACED_PAK)
+        .unwrap();
+    assert_eq!(placed.sha256, sha256_hex(&pak));
 
     // Patch 1 reads A at its seed bytes and writes only C.
     assert_eq!(index.patches.len(), 2);
@@ -172,9 +201,69 @@ fn builds_the_seed_and_each_patch_layer_then_binds_to_the_manifest() {
     assert_eq!(layer2.outputs[0].sha256, sha256_hex(&b_overlay));
 
     // Two setup rules: the ASLR copy of SGW.exe and the login servers file.
-    assert_eq!(index.setup.len(), 2);
+    // The ASLR hash is that of the SGW.exe `client_setup` prepares: the same
+    // bytes with ASLR disabled, not the raw file.
+    let aslr_copy = root.join("aslr-check.exe");
+    std::fs::write(&aslr_copy, &exe).unwrap();
+    aslr::disable(&aslr_copy).unwrap();
+    let prepared = std::fs::read(&aslr_copy).unwrap();
+    assert_ne!(sha256_hex(&prepared), sha256_hex(&exe));
+    let [SetupRule::AslrOff { path, size, sha256 }, SetupRule::LoginServers { .. }] =
+        index.setup.as_slice()
+    else {
+        panic!("{:?}", index.setup);
+    };
+    assert_eq!(path, EXE);
+    assert_eq!(*size, prepared.len() as u64);
+    assert_eq!(*sha256, sha256_hex(&prepared));
 
     index.validate().unwrap();
     index.bind(&manifest).unwrap();
     assert!(work.join("tree").join(A).is_file());
+}
+
+#[test]
+fn a_cancelled_build_stops_with_the_cancel_error() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let seed = zip_of(&[(EXE, &minimal_exe()), (A, b"alpha stock bytes")]);
+    let seed_path = root.join("seed.zip");
+    std::fs::write(&seed_path, &seed).unwrap();
+    let manifest = Manifest {
+        schema: 1,
+        min_launcher: None,
+        seed: SeedEntry {
+            blob: "seed.zip".into(),
+            size: seed.len() as u64,
+            sha256: sha256_hex(&seed),
+        },
+        patches: vec![],
+        file_index: None,
+    };
+    let cancelled = CancellationToken::new();
+    cancelled.cancel();
+    let sink = UnpackSink {
+        cancel: cancelled,
+        ..sink()
+    };
+
+    let err = build(&seed_path, &[], &manifest, &root.join("work"), &sink).unwrap_err();
+    assert_eq!(err, FileIndexError::Io(UnpackError::Cancelled.to_string()));
+}
+
+#[test]
+fn the_scan_checks_the_cancel_switch_for_each_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    write_under(root, A, b"alpha");
+    write_under(root, B, b"bravo");
+    let cancelled = CancellationToken::new();
+    cancelled.cancel();
+    let stopped = UnpackSink {
+        cancel: cancelled,
+        ..sink()
+    };
+    assert!(scan(root, &stopped).is_err());
+    let live = scan(root, &sink()).unwrap();
+    assert_eq!(live.len(), 2);
 }

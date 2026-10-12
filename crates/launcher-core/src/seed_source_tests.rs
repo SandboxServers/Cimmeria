@@ -201,8 +201,6 @@ async fn install_all_uses_a_local_seed_without_downloading() {
     assert_installed_pe(&install_dir.join("SGW.exe"), &exe);
 }
 
-/// Setup clears the ASLR bit (0x40 at 0x186) in the installed image; every
-/// other byte must match the packed one.
 #[test]
 fn clear_returns_to_download_and_only_later_steps_see_it() {
     let dir = tempfile::tempdir().unwrap();
@@ -223,6 +221,46 @@ fn clear_returns_to_download_and_only_later_steps_see_it() {
     assert!(!handle.switched().is_cancelled());
 }
 
+#[test]
+fn a_download_running_across_clear_still_sees_a_later_switch() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("player.rar");
+    std::fs::write(&path, b"aaaa").unwrap();
+    let (sink, _recorder) = recording_sink();
+    let verified =
+        verify_local_seed(&path, &seed_for(b"aaaa"), &CancellationToken::new(), &sink).unwrap();
+    let handle = SeedSourceHandle::download();
+    // The download started before the clear holds the token it was given.
+    let running = handle.switched();
+    handle.clear();
+    assert!(!running.is_cancelled());
+    handle.use_local(verified.clone());
+    assert!(running.is_cancelled());
+    assert_eq!(handle.current(), Some(verified));
+}
+
+#[test]
+fn current_for_ignores_an_archive_for_another_seed() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("player.rar");
+    std::fs::write(&path, b"aaaa").unwrap();
+    let (sink, _recorder) = recording_sink();
+    let verified =
+        verify_local_seed(&path, &seed_for(b"aaaa"), &CancellationToken::new(), &sink).unwrap();
+    let handle = SeedSourceHandle::local(verified.clone());
+    assert_eq!(handle.current_for(&verified.sha256), Some(verified.clone()));
+    assert_eq!(
+        handle.current_for(&verified.sha256.to_ascii_uppercase()),
+        Some(verified.clone())
+    );
+    assert!(handle.current_for(&sha_of(b"bbbb")).is_none());
+    // A resumed download for another seed is re-armed and keeps going.
+    assert!(handle.resume_for(&sha_of(b"bbbb")).is_none());
+    assert!(!handle.switched().is_cancelled());
+}
+
+/// Setup clears the ASLR bit (0x40 at 0x186) in the installed image; every
+/// other byte must match the packed one.
 fn assert_installed_pe(installed: &Path, packed: &[u8]) {
     let got = std::fs::read(installed).unwrap();
     assert_eq!(got.len(), packed.len());

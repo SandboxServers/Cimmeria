@@ -39,9 +39,16 @@ fn minimal_pe() -> Vec<u8> {
 fn file_index_build_matches_adoption_reference_raw_index() {
     let dir = tempfile::tempdir().unwrap();
     let exe = minimal_pe();
+    // A bundled cooked-data PAK (moved to SourceCache.en-us by both builders)
+    // and a lower-cased EULA script (the builder restores its stock name).
     let seed = archive(&[
         ("Working/Binaries/SGW.exe", exe.as_slice()),
         ("later.txt", b"later entry"),
+        (
+            "Working/SGWGame/Cache.en-US/CookedInteractionSet.pak",
+            b"bundled cooked data",
+        ),
+        ("Working/SGWGame/Content/UI/Startup/EULA/eula.lua", b"eula"),
     ]);
     let first = archive(&[
         ("later.txt", b"patch one"),
@@ -99,23 +106,41 @@ fn file_index_build_matches_adoption_reference_raw_index() {
         None,
     )
     .unwrap();
-    // The final state of each path: the seed, then each patch's outputs in order.
+    // The final state of each path: the seed, then each patch's outputs in
+    // order. Paths compare lower-cased: the reference keeps the seed's
+    // spelling, the builder restores stock case. The stock-case rename itself
+    // is pinned by `build_tests`, which compares exact spellings.
     let mut expected: BTreeMap<String, String> = index
         .seed
         .files
         .iter()
-        .map(|file| (file.path.clone(), file.sha256.clone()))
+        .map(|file| (file.path.to_ascii_lowercase(), file.sha256.clone()))
         .collect();
     for layer in &index.patches {
         for file in &layer.outputs {
-            expected.insert(file.path.clone(), file.sha256.clone());
+            expected.insert(file.path.to_ascii_lowercase(), file.sha256.clone());
         }
     }
     let raw: BTreeMap<String, String> = result
         .raw
         .iter()
         .filter(|(path, _)| path.as_str() != "launcher-installed.json")
-        .map(|(path, entry)| (path.clone(), hex(&entry.sha256)))
+        .map(|(path, entry)| (path.to_ascii_lowercase(), hex(&entry.sha256)))
         .collect();
     assert_eq!(expected, raw);
+    assert!(expected.contains_key("working/sgwgame/sourcecache.en-us/cookedinteractionset.pak"));
+
+    // The ASLR setup rule hashes the SGW.exe that `client_setup` prepares:
+    // the same bytes with ASLR disabled.
+    let aslr_copy = dir.path().join("aslr-check.exe");
+    std::fs::write(&aslr_copy, &exe).unwrap();
+    crate::client_setup::aslr::disable(&aslr_copy).unwrap();
+    let prepared = std::fs::read(&aslr_copy).unwrap();
+    let [cimmeria_launcher_core::file_index::SetupRule::AslrOff { sha256, .. }, ..] =
+        index.setup.as_slice()
+    else {
+        panic!("{:?}", index.setup);
+    };
+    assert_eq!(*sha256, hex(&Sha256::digest(&prepared)));
+    assert_ne!(*sha256, hex(&Sha256::digest(&exe)));
 }

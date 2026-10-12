@@ -160,6 +160,8 @@ fn spawn_worker(
             ownership,
             execution,
         } = input;
+        // Kept after the install moves `seed_source`, to see a failed local copy.
+        let seed_probe = seed_source.clone();
         let outcome = AssertUnwindSafe(async {
             #[cfg(target_os = "macos")]
             if let Execution::Wine(helper) = execution {
@@ -213,6 +215,13 @@ fn spawn_worker(
         let (outcome, report) = outcome;
         if let (Some(report), Ok(mut owner)) = (report, owned_state.lock()) {
             owner.stash_install_report(id, report);
+        }
+        // A remembered archive that could not be copied is forgotten, so the
+        // next attempt downloads instead of failing on the same file again.
+        if let Ok(mut owner) = owned_state.lock() {
+            if owner.forget_if_unusable(&seed_probe).is_err() {
+                tracing::warn!("forgetting the unusable seed archive failed");
+            }
         }
         let published = publish(&owned_state, id, outcome);
         result.send_replace(Some(published));
