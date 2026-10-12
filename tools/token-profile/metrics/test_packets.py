@@ -374,6 +374,39 @@ class LoadDbTest(unittest.TestCase):
         self.assertEqual(by_id["b-2"]["branch_hint"], "lab-record/LR-03-new-slug")
 
 
+class CampaignClaimTest(unittest.TestCase):
+    """Two campaigns with the same packet ID: a session belongs to the campaign whose window opened latest before it."""
+
+    CAMPAIGNS = {
+        "alpha": {"packets": [_row("LX-01")], "window": {"start": "2026-10-01T00:00:00Z", "end": None}},
+        "beta": {"packets": [_row("LX-01")], "window": {"start": "2026-10-05T00:00:00Z", "end": None}}}
+
+    def test_session_after_the_later_window_start_maps_only_to_that_campaign(self):
+        late = _agent("late", WORKTREE.format("lx-01"), "2026-10-06T06:00:00Z")
+        self.assertEqual(packets._claim(late, self.CAMPAIGNS), ("beta", "LX-01"))
+
+    def test_session_between_the_window_starts_maps_to_the_earlier_campaign(self):
+        early = _agent("early", WORKTREE.format("lx-01"), "2026-10-02T06:00:00Z")
+        self.assertEqual(packets._claim(early, self.CAMPAIGNS), ("alpha", "LX-01"))
+
+    def test_session_before_every_window_maps_to_none(self):
+        before = _agent("before", WORKTREE.format("lx-01"), "2026-09-30T06:00:00Z")
+        self.assertIsNone(packets._claim(before, self.CAMPAIGNS))
+
+    def test_branch_hint_claims_its_campaign_whatever_the_window(self):
+        early = dict(_agent("early", None, "2026-10-02T06:00:00Z"), branch_hint="beta/LX-01-slug")
+        self.assertEqual(packets._claim(early, self.CAMPAIGNS), ("beta", "LX-01"))
+
+    def test_each_session_is_mapped_once(self):
+        agents = [_agent("early", WORKTREE.format("lx-01"), "2026-10-02T06:00:00Z"),
+                  _agent("late", WORKTREE.format("lx-01"), "2026-10-06T06:00:00Z"),
+                  _agent("before", WORKTREE.format("lx-01"), "2026-09-30T06:00:00Z")]
+        ledger_doc = {"campaigns": self.CAMPAIGNS}
+        result = packets.join_campaigns(ledger_doc, {"agents": agents, "stops": {}}, {"prs": []}, CONFIG)
+        self.assertEqual((result["sessions"]["total"], result["sessions"]["mapped"], result["sessions"]["unmapped"]),
+                         (3, 2, 1))
+
+
 def _record(result, packet_id):
     """The record of `packet_id` in the fixture campaign of a join result."""
     return next(r for r in result["campaigns"][CAMPAIGN]["packets"] if r["id"] == packet_id)

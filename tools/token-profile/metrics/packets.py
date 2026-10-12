@@ -236,14 +236,30 @@ def _eligible_rows(packets):
     return [r for r in packets if not r.get("override") and not r["status_raw"].startswith(EXCLUDED_PREFIXES)]
 
 
-def _sessions_by_packet(name, rows, agents):
-    """The worker sessions each packet of campaign `name` claims, by packet_of_session, oldest first."""
-    by_packet = {}
-    for agent in sorted(agents, key=_started):
-        packet = packet_of_session(agent, agent.get("worktree"), agent.get("branch_hint"), rows, name)
+def _claim(agent, campaigns):
+    """The (campaign, packet ID) a worker session belongs to, or None: at most one campaign per session.
+
+    A branch hint that names a campaign claims the session for it when the packet matches. Otherwise the session goes to
+    the matching campaign whose window opened latest before the session started. Packet IDs repeat across campaigns.
+    """
+    hint = agent.get("branch_hint") or ""
+    for name, campaign in campaigns.items():
+        if hint.startswith(name + "/"):
+            packet = packet_of_session(agent, agent.get("worktree"), hint, _eligible_rows(campaign["packets"]), name)
+            if packet is not None:
+                return name, packet
+    # a branch that names any campaign says nothing about the others, so the window match ignores it
+    branch = None if any(hint.startswith(name + "/") for name in campaigns) else hint
+    started = _started(agent)
+    best = None
+    for name, campaign in campaigns.items():
+        start = _ts((campaign.get("window") or {}).get("start"))
+        if start is None or start > started or (best is not None and start <= best[0]):
+            continue
+        packet = packet_of_session(agent, agent.get("worktree"), branch, _eligible_rows(campaign["packets"]), name)
         if packet is not None:
-            by_packet.setdefault(packet, []).append(agent)
-    return by_packet
+            best = (start, name, packet)
+    return None if best is None else (best[1], best[2])
 
 
 def join_campaigns(ledger_doc, db, github_doc, config):
@@ -255,13 +271,18 @@ def join_campaigns(ledger_doc, db, github_doc, config):
     roles, statuses = config["roles"], config["accepted_statuses"]
     prs = {pr["number"]: pr for pr in github_doc.get("prs", [])}
     agents, stops = db["agents"], db["stops"]
-    campaigns = {}
+    claimed = {name: {} for name in ledger_doc["campaigns"]}  # per campaign: packet ID -> its worker sessions
     mapped = set()
+    for agent in sorted(agents, key=_started):
+        claim = _claim(agent, ledger_doc["campaigns"])
+        if claim is not None:
+            claimed[claim[0]].setdefault(claim[1], []).append(agent)
+            mapped.add(agent["agent_id"])
+    campaigns = {}
     for name, campaign in ledger_doc["campaigns"].items():
-        rows = _eligible_rows(campaign["packets"])
-        by_packet = _sessions_by_packet(name, rows, agents)
+        by_packet = claimed[name]
         workers = [a for group in by_packet.values() for a in group]
-        mapped |= {a["agent_id"] for a in workers}
+        rows = _eligible_rows(campaign["packets"])
         records = [_join_packet(row, by_packet.get(row["id"], []), agents, stops,
                                 prs.get(row["prs"][0]) if row["prs"] else None, roles, row["status"] in statuses)
                    for row in rows]
