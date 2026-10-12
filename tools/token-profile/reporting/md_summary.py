@@ -20,6 +20,10 @@ COMPARISON = (
     ("CI first-attempt rate", "ci_first_attempt_rate", "rate", "higher"),
     ("Escaped defects per merged PR", "escaped_defects_per_merged_pr", "num", None),
     ("Packet cycle p50", "packet_cycle_p50_hours", "hours", None),
+    ("Pure campaigns", "campaigns", "num", None),
+    ("Merged PRs", "merged_prs", "num", None),
+    ("Total USD", "total_usd", "usd", None),
+    ("Escalation rate", "escalation_rate", "rate", None),
 )
 
 
@@ -41,7 +45,7 @@ def _shown(value, kind):
     if kind == "rate":
         return pct(value)
     if kind == "hours":
-        return f"{num(value)} h"
+        return f"{value:,.1f} h"
     if kind == "text":
         return str(value)
     return num(value)

@@ -109,6 +109,22 @@ class ComparisonTest(unittest.TestCase):
         self.assertNotIn("better", _line(text, "Escaped defects per merged PR"))
         self.assertIn("+2.0 h", _line(text, "Packet cycle p50"))
 
+    def test_hours_show_one_decimal(self):
+        old = _regime(packet_cycle_p50_hours=12.6)
+        haiku = _regime(packet_cycle_p50_hours=12.6)
+        text = render_summary({}, _summary(old, haiku), _meta())
+        self.assertIn("12.6 h", _line(text, "Packet cycle p50"))
+
+    def test_rollup_metrics_all_compared(self):
+        old = _regime(total_usd=100.0, escalation_rate=None)
+        haiku = _regime(total_usd=30.0, escalation_rate=0.1)
+        text = render_summary({}, _summary(old, haiku), _meta())
+        self.assertIn("$100.00", _line(text, "Total USD"))
+        self.assertIn("$30.00", _line(text, "Total USD"))
+        escalation = _line(text, "Escalation rate")
+        self.assertIn("n/a", escalation)
+        self.assertIn("10.0%", escalation)
+
     def test_campaigns_sorted_by_cost_desc(self):
         text = render_summary(_records(), _summary(_regime(), _regime()), _meta())
         self.assertLess(text.index("[alpha-old](alpha-old.md)"), text.index("[beta-haiku](beta-haiku.md)"))
