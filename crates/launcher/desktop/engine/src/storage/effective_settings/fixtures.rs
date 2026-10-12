@@ -119,7 +119,9 @@ impl Legacy {
     pub fn request(&self, state: &DesktopState) -> adoption::PreviewRequest {
         let (body, signature) = self.release.evidence();
         adoption::PreviewRequest {
-            import_digest: state.legacy_import().unwrap().unwrap().confirmation,
+            source: adoption::SourceRequest::Legacy {
+                import_digest: state.legacy_import().unwrap().unwrap().confirmation,
+            },
             destination: self.destination(),
             operation_revision: state.operations().snapshot().revision,
             preferences_revision: state.preferences().revision,

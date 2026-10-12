@@ -176,7 +176,9 @@ impl NativeHost {
                     .ok_or(AdoptionError::ImportRequired)?;
                 adoption::PreviewRequest {
                     destination: destination(&imported),
-                    import_digest: imported.confirmation,
+                    source: adoption::SourceRequest::Legacy {
+                        import_digest: imported.confirmation,
+                    },
                     operation_revision: state.operations().snapshot().revision,
                     preferences_revision: state.preferences().revision,
                     release,

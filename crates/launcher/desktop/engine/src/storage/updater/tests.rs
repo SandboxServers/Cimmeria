@@ -486,7 +486,9 @@ fn active_updater_refuses_early_mutation_but_preserves_consent_control() {
         let result = crate::adoption::preview(
             std::sync::Arc::new(std::sync::Mutex::new(state)),
             crate::adoption::PreviewRequest {
-                import_digest: "unused".into(),
+                source: crate::adoption::SourceRequest::Legacy {
+                    import_digest: "unused".into(),
+                },
                 destination: root.path().join("adopted"),
                 operation_revision: 0,
                 preferences_revision: 2,

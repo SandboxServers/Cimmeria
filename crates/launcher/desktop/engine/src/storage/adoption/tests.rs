@@ -75,7 +75,9 @@ impl Fixture {
     pub(super) fn request(&self) -> PreviewRequest {
         let state = self.state.lock().unwrap();
         PreviewRequest {
-            import_digest: state.legacy_import().unwrap().unwrap().confirmation,
+            source: SourceRequest::Legacy {
+                import_digest: state.legacy_import().unwrap().unwrap().confirmation,
+            },
             destination: self.destination(),
             operation_revision: state.operations().snapshot().revision,
             preferences_revision: state.preferences().revision,
@@ -243,9 +245,11 @@ fn actual_legacy_lock_is_held_for_the_entire_review_and_released_on_cancel() {
     let f = Fixture::new();
     let before = f.source_snapshot();
     let preview = f.preview().unwrap();
-    assert!(lock_source(&preview.imported).is_err());
+    assert!(source::lock_source(preview.legacy().unwrap()).is_err());
     drop(preview);
-    assert!(lock_source(&f.state.lock().unwrap().legacy_import().unwrap().unwrap()).is_ok());
+    assert!(
+        source::lock_source(&f.state.lock().unwrap().legacy_import().unwrap().unwrap()).is_ok()
+    );
     assert_eq!(f.source_snapshot(), before);
     assert!(!f.destination().exists());
 }
