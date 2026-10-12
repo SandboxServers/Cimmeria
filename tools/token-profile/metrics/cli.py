@@ -1,8 +1,10 @@
-"""Command line: campaign metrics. One subcommand so far, `ledger` (packet tables of the campaign ledgers).
+"""Command line: campaign metrics. `registry` checks the campaign rules; `ledger` parses the packet tables of the ledgers.
 
+    python tools/token-profile/metrics registry --repo . [--check] [--config <json>] [--campaigns <json>]
     python tools/token-profile/metrics ledger --repo . --out <dir>
 
-Writes <dir>/ledger.json and prints a JSON count summary. Exit status: 0 written; 2 an input or output error.
+Exit status: 0 ok; 1 with registry --check, the campaign rules have a problem; 2 an input or output error.
+The ledger writes <dir>/ledger.json and prints a JSON count summary.
 """
 
 import argparse
@@ -11,7 +13,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import ledger
+from . import ledger, registry
 
 
 def git_log(repo):
@@ -52,13 +54,8 @@ def summary(result):
             "conflicts": len(result["conflicts"])}
 
 
-def main(argv=None):
-    ap = argparse.ArgumentParser(prog="metrics", description=__doc__.split("\n\n")[0])
-    sub = ap.add_subparsers(dest="command", required=True)
-    led = sub.add_parser("ledger", help="parse the packet tables of the campaign ledgers")
-    led.add_argument("--repo", required=True, help="the repository root")
-    led.add_argument("--out", required=True, help="directory for ledger.json")
-    args = ap.parse_args(argv)
+def run_ledger(args):
+    """Write the ledger for `args.repo` to `args.out` and print its summary; the exit status is 0, or 2 on an error."""
     try:
         result = build_ledger(args.repo, git_log(args.repo))
         out = Path(args.out)
@@ -69,3 +66,35 @@ def main(argv=None):
         return 2
     print(json.dumps(summary(result), indent=1))
     return 0
+
+
+def main(argv=None):
+    """Run the subcommand and return its exit status."""
+    ap = argparse.ArgumentParser(prog="token-profile metrics", description=__doc__.split("\n\n")[0])
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    reg = sub.add_parser("registry", help="the campaign registry and regime config")
+    reg.add_argument("--repo", required=True, help="the repository root; docs/analysis/ is read from it")
+    reg.add_argument("--check", action="store_true", help="exit 1 if a campaign has no folder or two prefixes overlap")
+    reg.add_argument("--config", help="metrics config.json (default: the package's)")
+    reg.add_argument("--campaigns", help="campaigns.json (default: the ingest's)")
+    led = sub.add_parser("ledger", help="parse the packet tables of the campaign ledgers")
+    led.add_argument("--repo", required=True, help="the repository root")
+    led.add_argument("--out", required=True, help="directory for ledger.json")
+    args = ap.parse_args(argv)
+    if args.cmd == "ledger":
+        return run_ledger(args)
+    try:
+        config = registry.load_config(args.config)
+        campaigns = registry.load_campaigns(args.campaigns)
+        regime_switch = config["regime_switch"]
+    except (OSError, ValueError, KeyError) as e:
+        print(f"status=error {type(e).__name__}", file=sys.stderr)
+        return 2
+    found = registry.problems(campaigns, args.repo)
+    names = [name for name in campaigns if not name.startswith("_")]
+    print(json.dumps({"campaigns": len(names),
+                      "prefixes": sum(len(campaigns[name].get("prefixes", ())) for name in names),
+                      "regime_switch": regime_switch, "problems": len(found)}))
+    for line in found:
+        print(f"problem: {line}", file=sys.stderr)
+    return 1 if args.check and found else 0
