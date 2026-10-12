@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 //! Shared by the `lab uat` tests: rows, records, lanes.
 
+pub mod batch_fx;
 pub mod rig;
 
 use cimmeria_lab_cli::batch::{PlanLane, RowResult, RunRecord, Verdict};
