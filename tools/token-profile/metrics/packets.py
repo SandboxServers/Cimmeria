@@ -47,10 +47,15 @@ def _role_name(agent, roles):
     return _key(agent) if role == "other" else role
 
 
-def _is_sonnet_implementer(agent, roles):
-    """A Sonnet domain implementer or general-purpose agent: the targets of an escalation."""
-    return agent.get("model_alias") == "sonnet" and (
-        role_of(agent, roles) == "implementer-domain" or _key(agent) == "general-purpose")
+def _is_escalation_implementer(agent, roles):
+    """A domain implementer at any model but Haiku, or a general-purpose agent on Sonnet or Opus: the targets of an escalation.
+
+    The model is the agent's `model_alias`, else the model most of its requests ran on (`request_model`).
+    """
+    model = (agent.get("model_alias") or agent.get("request_model") or "").lower()
+    if role_of(agent, roles) == "implementer-domain":
+        return "haiku" not in model
+    return _key(agent) == "general-purpose" and ("sonnet" in model or "opus" in model)
 
 
 def _packet_pattern(packet_id):
@@ -125,13 +130,18 @@ def _fix_commits(pr, reviewers):
     return sum(1 for when in times if when and when > start)
 
 
-def _escalation_target(coders, agents, roles):
-    """The first Sonnet implementer that started after the first Haiku coder in one of the coders' worktrees, or None."""
+def _escalation_target(coders, agents, roles, sessions, merged):
+    """The first escalation implementer that started after the first Haiku coder in one of the coders' worktrees, or None.
+
+    A candidate is one of the packet's `sessions`, or else it must start no later than the PR's `merged` time when known.
+    """
     trees = {c["worktree"] for c in coders if c.get("worktree")}
     if not coders or not trees:
         return None
+    mapped = {s["agent_id"] for s in sessions}
     later = [a for a in agents if a.get("worktree") in trees and _started(a) > _started(coders[0])
-             and _is_sonnet_implementer(a, roles)]
+             and _is_escalation_implementer(a, roles)
+             and (a["agent_id"] in mapped or merged is None or _started(a) <= merged)]
     return min(later, key=_started, default=None)
 
 
@@ -140,19 +150,29 @@ def _join_packet(row, sessions, agents, stops, pr, roles, accepted):
     coders = [a for a in sessions if role_of(a, roles) == "implementer-haiku"]
     reviewers = [a for a in sessions if role_of(a, roles) == "reviewer"]
     fixers = [a for a in sessions if role_of(a, roles) == "fixer"]
-    target = _escalation_target(coders, agents, roles)
+    merged = _ts(pr.get("mergedAt")) if pr else None
+    target = _escalation_target(coders, agents, roles, sessions, merged)
     escalated = bool(row["escalated"]) or target is not None
     fix_commits = _fix_commits(pr, reviewers)
     first_pass = None
     if accepted and fix_commits is not None:
-        first_pass = len(coders) == 1 and not fixers and fix_commits == 0 and not escalated
+        if coders:
+            first_pass = len(coders) == 1 and not fixers and fix_commits == 0 and not escalated
+        else:
+            # no Haiku coder to judge: the PR's commits alone decide
+            first_pass = fix_commits == 0
     starts = [when for when in (_ts(a.get("first_ts")) for a in sessions) if when]
-    merged = _ts(pr.get("mergedAt")) if pr else None
-    cycle = round((merged - min(starts)).total_seconds() / 3600, 2) if merged and starts else None
+    first = min(starts, default=None)
+    cycle = round((merged - first).total_seconds() / 3600, 2) if merged and first and merged >= first else None
+    if not escalated:
+        why = None
+    elif coders:
+        why = stop_reason(stops.get(coders[-1]["agent_id"]))
+    else:
+        why = row.get("retry_reason")
     return {"id": row["id"], "accepted": accepted, "implementer_sessions": len(coders),
             "reviewer_sessions": len(reviewers), "fixer_sessions": len(fixers), "fix_commits": fix_commits,
-            "escalated": escalated, "escalation_to": _role_name(target, roles) if target else None,
-            "why": stop_reason(stops.get(coders[-1]["agent_id"])) if coders and escalated else None,
+            "escalated": escalated, "escalation_to": _role_name(target, roles) if target else None, "why": why,
             "retries": [stop_reason(stops.get(c["agent_id"])) for c in coders[:-1]],
             "first_pass": first_pass, "cycle_hours": cycle}
 
@@ -287,10 +307,13 @@ def join_campaigns(ledger_doc, db, github_doc, config):
                                 prs.get(row["prs"][0]) if row["prs"] else None, roles, row["status"] in statuses)
                    for row in rows]
         campaigns[name] = _campaign_out(campaign, records, workers, stops)
-    total = len(agents)
-    unmapped = total - len(mapped)
+    # the denominator is the worker sessions with a campaign role; sessions of other agents are not counted
+    counted = {a["agent_id"] for a in agents if role_of(a, roles) != "other"}
+    total = len(counted)
+    mapped_counted = len(counted & mapped)
+    unmapped = total - mapped_counted
     return {"schema": SCHEMA,
-            "sessions": {"total": total, "mapped": len(mapped), "unmapped": unmapped,
+            "sessions": {"total": total, "mapped": mapped_counted, "unmapped": unmapped,
                          "unmapped_share": round(unmapped / total, 2) if total else None},
             "campaigns": campaigns}
 
@@ -304,17 +327,23 @@ def load_db(path):
     """The worker agents (with their worktree's branch when they ran) and the agent_stops rows, read-only from `path`.
 
     The branch hint is the worktree's latest branch observed by the agent's last record, else its latest branch.
+    `request_model` is the model most of the agent's requests ran on. A database below schema 6 raises ValueError.
     """
     db = sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True)
     db.row_factory = sqlite3.Row
     try:
+        version = db.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0]
+        if int(version) < 6:
+            raise ValueError(f"schema_version {version}, re-ingest")
         agents = [dict(r) for r in db.execute(
             "SELECT a.agent_id, a.agent_type, a.custom_agent_type, a.name, a.model_alias, a.first_ts,"
             f" {_WORKTREE} AS worktree,"
             f" COALESCE((SELECT b.branch FROM worktree_branches b WHERE b.worktree = {_WORKTREE}"
             "  AND b.observed_at <= a.last_ts ORDER BY b.observed_at DESC LIMIT 1),"
             f"  (SELECT b.branch FROM worktree_branches b WHERE b.worktree = {_WORKTREE}"
-            "  ORDER BY b.observed_at DESC LIMIT 1)) AS branch_hint"
+            "  ORDER BY b.observed_at DESC LIMIT 1)) AS branch_hint,"
+            " (SELECT r.model FROM requests r WHERE r.agent_id = a.agent_id"
+            "  GROUP BY r.model ORDER BY COUNT(*) DESC LIMIT 1) AS request_model"
             " FROM agents a ORDER BY a.agent_id")]
         stops = {r["agent_id"]: dict(r) for r in db.execute("SELECT * FROM agent_stops")}
     finally:

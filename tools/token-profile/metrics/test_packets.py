@@ -69,7 +69,7 @@ AGENTS = [
     _agent("c-coder", WORKTREE.format("lr-03"), "2026-10-01T06:00:00Z", "packet-coder", "packet-coder"),
     _agent("c-reviewer", WORKTREE.format("lr-03"), "2026-10-01T09:00:00Z", "packet-reviewer", "packet-reviewer"),
     _agent("c-fixer", WORKTREE.format("lr-03"), "2026-10-01T11:00:00Z", "packet-review-fixer", "packet-review-fixer"),
-    _agent("scratch", WORKTREE.format("scratch"), "2026-10-01T12:00:00Z"),
+    _agent("scratch", WORKTREE.format("scratch"), "2026-10-01T12:00:00Z", "lab-driver", "lab-driver"),
 ]
 
 
@@ -270,8 +270,8 @@ class JoinTest(FixtureTest):
 
     def test_sessions_count_the_unmapped_scratch_agent(self):
         sessions = self.join()["sessions"]
-        self.assertEqual((sessions["total"], sessions["mapped"], sessions["unmapped"]), (9, 8, 1))
-        self.assertEqual(sessions["unmapped_share"], 0.11)
+        self.assertEqual((sessions["total"], sessions["mapped"], sessions["unmapped"]), (8, 7, 1))
+        self.assertEqual(sessions["unmapped_share"], 0.12)
 
     def test_load_db_takes_the_latest_branch_of_a_worktree(self):
         by_id = {a["agent_id"]: a for a in self.db["agents"]}
@@ -281,7 +281,47 @@ class JoinTest(FixtureTest):
         """Without the worktree and branch, only the name could map a session, and no fixture name does."""
         stripped = [dict(a, worktree=None, branch_hint=None) for a in self.db["agents"]]
         sessions = self.join(agents=stripped)["sessions"]
-        self.assertEqual((sessions["mapped"], sessions["unmapped"]), (0, 9))
+        self.assertEqual((sessions["mapped"], sessions["unmapped"]), (0, 8))
+
+    def test_escalated_packet_without_a_coder_keeps_its_retry_reason(self):
+        ledger_doc = _ledger()
+        ledger_doc["campaigns"][CAMPAIGN]["packets"][1]["escalated"] = True
+        ledger_doc["campaigns"][CAMPAIGN]["packets"][1]["retry_reason"] = "ci-failure"
+        record = _record(packets.join_campaigns(ledger_doc, {"agents": [], "stops": {}}, _github(), CONFIG), "LR-02")
+        self.assertEqual((record["implementer_sessions"], record["why"]), (0, "ci-failure"))
+
+    def test_packet_without_a_coder_is_judged_on_its_commits(self):
+        agents = [_agent("dom", WORKTREE.format("lr-01"), "2026-10-01T06:00:00Z", "rust-gameserver-dev",
+                         "rust-gameserver-dev"), AGENTS[1]]
+        github = _github()
+        self.assertIs(_record(self.join(agents=agents, github=github), "LR-01")["first_pass"], True)
+        github["prs"][0]["commits"].append({"sha": "a2", "committed": "2026-10-01T11:00:00Z"})
+        self.assertIs(_record(self.join(agents=agents, github=github), "LR-01")["first_pass"], False)
+
+    def test_domain_implementer_at_opus_escalates(self):
+        agents = [_agent("a-coder", WORKTREE.format("lr-01"), "2026-10-01T06:00:00Z", "packet-coder", "packet-coder"),
+                  _agent("dom", WORKTREE.format("lr-01"), "2026-10-01T07:00:00Z", "rust-gameserver-dev",
+                         "rust-gameserver-dev", model=None)]
+        agents[1]["request_model"] = "claude-opus-5-5"
+        record = _record(self.join(agents=agents), "LR-01")
+        self.assertTrue(record["escalated"])
+        self.assertEqual(record["escalation_to"], "implementer-domain")
+
+    def test_escalation_skips_an_unmapped_sonnet_agent_started_after_merge(self):
+        late = _agent("late-sonnet", WORKTREE.format("lr-01"), "2026-10-01T13:00:00Z", name="lr-02-sonnet",
+                      model="claude-sonnet-5")
+        record = _record(self.join(agents=[AGENTS[0], late]), "LR-01")
+        self.assertFalse(record["escalated"])
+
+    def test_escalation_takes_a_sonnet_agent_mapped_to_the_packet_after_merge(self):
+        late = _agent("late-sonnet", WORKTREE.format("lr-01"), "2026-10-01T13:00:00Z", model="claude-sonnet-5")
+        record = _record(self.join(agents=[AGENTS[0], late]), "LR-01")
+        self.assertEqual(record["escalation_to"], "general-purpose")
+
+    def test_negative_cycle_time_is_none(self):
+        github = _github()
+        github["prs"][0]["mergedAt"] = "2026-09-30T00:00:00Z"
+        self.assertIsNone(_record(self.join(github=github), "LR-01")["cycle_hours"])
 
     def test_pr_without_commits_has_no_first_pass(self):
         github = _github()
@@ -365,7 +405,7 @@ class LoadDbTest(unittest.TestCase):
     def test_null_worktree_takes_the_tool_call_worktree(self):
         by_id = {a["agent_id"]: a for a in self.db["agents"]}
         self.assertEqual(by_id["n-1"]["worktree"], WORKTREE.format("lr-01"))
-        only_n1 = dict(self.db, agents=[by_id["n-1"]])
+        only_n1 = dict(self.db, agents=[dict(by_id["n-1"], agent_type="lab-driver")])
         self.assertEqual(packets.join_campaigns(_ledger(), only_n1, _github(), CONFIG)["sessions"]["mapped"], 1)
 
     def test_branch_hint_is_the_branch_observed_by_the_last_record(self):
@@ -398,9 +438,9 @@ class CampaignClaimTest(unittest.TestCase):
         self.assertEqual(packets._claim(early, self.CAMPAIGNS), ("beta", "LX-01"))
 
     def test_each_session_is_mapped_once(self):
-        agents = [_agent("early", WORKTREE.format("lx-01"), "2026-10-02T06:00:00Z"),
-                  _agent("late", WORKTREE.format("lx-01"), "2026-10-06T06:00:00Z"),
-                  _agent("before", WORKTREE.format("lx-01"), "2026-09-30T06:00:00Z")]
+        agents = [_agent("early", WORKTREE.format("lx-01"), "2026-10-02T06:00:00Z", "lab-driver", "lab-driver"),
+                  _agent("late", WORKTREE.format("lx-01"), "2026-10-06T06:00:00Z", "lab-driver", "lab-driver"),
+                  _agent("before", WORKTREE.format("lx-01"), "2026-09-30T06:00:00Z", "lab-driver", "lab-driver")]
         ledger_doc = {"campaigns": self.CAMPAIGNS}
         result = packets.join_campaigns(ledger_doc, {"agents": agents, "stops": {}}, {"prs": []}, CONFIG)
         self.assertEqual((result["sessions"]["total"], result["sessions"]["mapped"], result["sessions"]["unmapped"]),

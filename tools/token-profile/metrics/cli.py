@@ -123,7 +123,7 @@ def run_ledger(args):
 
 
 def run_packets(args):
-    """Write the packet join to rgs.out/packets.json and print its counts; the exit status is 0, or 2 on an error."""
+    """Write the packet join to args.out/packets.json and print its counts; the exit status is 0, or 2 on an error."""
     try:
         ledger_doc = json.loads(Path(args.ledger).read_text(encoding="utf-8"))
         github_doc = json.loads(Path(args.github).read_text(encoding="utf-8"))
