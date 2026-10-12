@@ -72,7 +72,7 @@ A hook caps Haiku workers at 90k tokens of total context. About 35 to 40k is fix
 | First pass 5.0% | Reproduced (6 of 125 judged = 4.8%; 6 of 100 pure). A packet is a first pass only with one implementer session, no escalation and no commit after the first reviewer starts; 17 of this campaign's 20 packets needed a fix round. 88 of 188 accepted pure-Haiku packets are not judged (no PR commit data or no reviewer), so this is a rate over reviewed packets. |
 | Per-unit costs | Recomputed from the database: $7.44 and $3.03 per 1,000 changed lines, matching the earlier review. |
 | PR counts | Count PRs with attributed spend; wireclient-ci 16 against 21 merged. |
-| data/campaign-metrics.json | Generated while the ledger still listed every packet as Ready, so accepted is 0 and first pass n/a. Regenerate after the README update to get accepted 20. |
+| data/campaign-metrics.json | The generated record shows 0 accepted packets with gap "no packet table": the campaign has no PR-attributed requests until its PR merges, so the cost rollup emits no accepted count for it. The hand count is authoritative: 20 packets accepted (CM-01 to CM-09b), plus CM-10 at merge. |
 
 ## This campaign's own cost
 
@@ -91,7 +91,7 @@ The report's "Cost of this campaign" prints $44.32 under "coordinator". Checked 
 
 By tier: Opus $26.05, Sonnet $16.29, Haiku $1.63.
 
-- **Packets accepted:** 20 (CM-01 to CM-07, CM-08a to CM-08k, CM-09a, CM-09b). Cost per accepted packet: $2.20 all in, including research, slicing, the close-out runs and the coordinator.
+- **Packets accepted:** 20 (CM-01 to CM-07, CM-08a to CM-08k, CM-09a, CM-09b) (CM-10 completes at merge). Cost per accepted packet: $2.20 all in, including research, slicing, the close-out runs and the coordinator.
 - **Retries:** 10 (5 first attempts that overflowed 90k and were re-run; 5 fix-worker continuations). No packet was escalated and none needed a third implementer attempt.
 - **Haiku sessions at or above 90k:** 9 of 34 before the re-slice (5 first attempts, 4 fix rounds); 0 of 36 after.
 - **Review rounds:** 8 reviewer sessions (one each for CM-01 to CM-07; one for the 13 CM-08 and CM-09 packets together). Six were resumed for a second round after fixes, CM-07's more than once; this is inferred from gaps in their requests. 17 of 20 packets needed at least one fix round (CM-08c, CM-08d and CM-08e did not).
