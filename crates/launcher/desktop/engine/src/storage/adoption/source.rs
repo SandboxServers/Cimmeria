@@ -42,7 +42,7 @@ pub(super) fn request_source(
         let scanned = inventory::scan(&imported.source.game_directory, &CancellationToken::new())?;
         return Ok((AdoptionSource::Legacy(imported), scanned));
     };
-    let root = resolve_folder(selected, mode)?;
+    let root = resolve_folder(selected)?;
     if let Some(imported) = saved.filter(|imported| imported.source.game_directory == root) {
         let scanned = inventory::scan(&root, &CancellationToken::new())?;
         return Ok((AdoptionSource::Legacy(imported), scanned));
@@ -65,9 +65,9 @@ pub(super) fn request_source(
 }
 
 /// The client root a picked folder names: the folder itself, its `Working`, or
-/// its `Working\Binaries`. A flat folder (`SGW.exe` beside `SGWGame`) is a root
-/// only in copy mode. Names match case-blind.
-pub fn resolve_folder(selected: &Path, mode: AdoptionMode) -> Result<PathBuf, Error> {
+/// its `Working\Binaries`. A flat folder (`SGW.exe` beside `SGWGame`) is not a
+/// root in either mode: copy cannot map its layout. Names match case-blind.
+pub fn resolve_folder(selected: &Path) -> Result<PathBuf, Error> {
     let selected = selected.canonicalize()?;
     if working_binaries(&selected).is_some() {
         return Ok(selected);
@@ -86,12 +86,7 @@ pub fn resolve_folder(selected: &Path, mode: AdoptionMode) -> Result<PathBuf, Er
             return Ok(root.to_path_buf());
         }
     }
-    if mode == AdoptionMode::Copy
-        && holds_sgw(&selected)
-        && child_ci(&selected, "SGWGame").is_some()
-    {
-        return Ok(selected);
-    }
+    tracing::warn!(target: "adoption", folder = %selected.display(), "adoption refused: the folder is not a game folder");
     Err(Error::NotAGameFolder)
 }
 
@@ -165,7 +160,10 @@ fn is_link(meta: &std::fs::Metadata) -> bool {
 /// `root`, and one is created, renamed and deleted in `Working\Binaries`. The
 /// probes are removed on every path.
 pub(super) fn check_writable(root: &Path) -> Result<(), Error> {
-    let binaries = working_binaries(root).ok_or(Error::FolderNotWritable)?;
+    let Some(binaries) = working_binaries(root) else {
+        tracing::warn!(target: "adoption", folder = %root.display(), "in-place adoption refused: the folder has no Working\\Binaries to change");
+        return Err(Error::FolderNotWritable);
+    };
     let id = Uuid::new_v4();
     let root_probe = root.join(format!(".cimmeria-write-probe-{id}"));
     let binaries_probe = binaries.join(format!(".cimmeria-write-probe-{id}"));
@@ -180,7 +178,10 @@ pub(super) fn check_writable(root: &Path) -> Result<(), Error> {
     let _ = std::fs::remove_file(&root_probe);
     let _ = std::fs::remove_file(&binaries_probe);
     let _ = std::fs::remove_file(&renamed);
-    result.map_err(|_| Error::FolderNotWritable)
+    result.map_err(|error| {
+        tracing::warn!(target: "adoption", folder = %root.display(), ?error, "in-place adoption refused: the folder is not writable");
+        Error::FolderNotWritable
+    })
 }
 
 /// Imported configuration this copy cannot honour. It is refused, never rewritten.
@@ -368,10 +369,7 @@ mod tests {
             root.join("Working"),
             root.join("Working").join("Binaries"),
         ] {
-            assert_eq!(
-                resolve_folder(&picked, AdoptionMode::InPlace).unwrap(),
-                root
-            );
+            assert_eq!(resolve_folder(&picked).unwrap(), root);
         }
     }
 
@@ -380,23 +378,33 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir(dir.path().join("Working")).unwrap();
         assert!(matches!(
-            resolve_folder(dir.path(), AdoptionMode::Copy),
+            resolve_folder(dir.path()),
             Err(Error::NotAGameFolder)
         ));
     }
 
     #[test]
-    fn flat_folder_is_a_root_only_in_copy_mode() {
+    fn flat_folder_is_not_a_game_folder_in_either_mode() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("SGW.exe"), sgw_exe()).unwrap();
         std::fs::create_dir(dir.path().join("SGWGame")).unwrap();
-        let root = dir.path().canonicalize().unwrap();
-        assert_eq!(
-            resolve_folder(dir.path(), AdoptionMode::Copy).unwrap(),
-            root
-        );
         assert!(matches!(
-            resolve_folder(dir.path(), AdoptionMode::InPlace),
+            resolve_folder(dir.path()),
+            Err(Error::NotAGameFolder)
+        ));
+    }
+
+    #[test]
+    fn flat_folder_in_copy_mode_is_not_a_game_folder() {
+        let f = Fixture::new(None);
+        let picked = tempfile::tempdir().unwrap();
+        std::fs::write(picked.path().join("SGW.exe"), sgw_exe()).unwrap();
+        std::fs::create_dir(picked.path().join("SGWGame")).unwrap();
+        let request = SourceRequest::Folder {
+            selected: picked.path().to_path_buf(),
+        };
+        assert!(matches!(
+            request_source(&f.state, &request, AdoptionMode::Copy),
             Err(Error::NotAGameFolder)
         ));
     }

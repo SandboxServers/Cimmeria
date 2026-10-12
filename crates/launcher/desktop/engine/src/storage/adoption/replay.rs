@@ -261,6 +261,9 @@ pub(super) fn replay(
     })();
     // Best effort: the scratch tree holds only copies of verified bytes.
     let _ = std::fs::remove_dir_all(&scratch);
+    if let Err(error) = &outcome {
+        tracing::warn!(target: "adoption", folder = %folder_root.display(), ?error, "adoption replay failed; the replacement files were not built");
+    }
     outcome
 }
 

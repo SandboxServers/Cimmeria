@@ -220,7 +220,7 @@ impl NativeHost {
     ) -> Result<AdoptionStatus, AdoptionError> {
         self.adoption_mode_allowed(mode)?;
         // The engine checks the request names this same root, so the root is passed.
-        let root = adoption::resolve_folder(&selected, mode)?;
+        let root = adoption::resolve_folder(&selected)?;
         let destination = match (mode, location) {
             (adoption::AdoptionMode::InPlace, None) => root,
             (adoption::AdoptionMode::InPlace, Some(_)) => {

@@ -186,6 +186,17 @@ pub(super) fn reference_and_comparison(
             });
         }
     }
+    // The published index is the signed blob the manifest names, so its digest is the
+    // reference's. A built index is not a blob, so it records no digest.
+    let file_index_sha256 = match origin {
+        IndexOrigin::Published => request
+            .release
+            .manifest()
+            .file_index
+            .as_ref()
+            .map(|reference| reference.sha256.to_ascii_lowercase()),
+        IndexOrigin::Built => None,
+    };
     Ok(Compared {
         reference,
         expected_digest,
@@ -194,6 +205,7 @@ pub(super) fn reference_and_comparison(
         download,
         replacements,
         login_replaced,
+        file_index_sha256,
     })
 }
 
@@ -347,6 +359,8 @@ pub(super) struct Compared {
     pub replacements: Vec<Replacement>,
     /// `LoginInternal.lua` differs from both its release and prepared bytes (D-AI13).
     pub login_replaced: bool,
+    /// The signed index's digest when the index was published; a built index has none.
+    pub file_index_sha256: Option<String>,
 }
 
 /// Classifies every path of the index's histories against the folder scan, then

@@ -5,6 +5,7 @@ mod artifacts;
 mod comparison;
 mod in_place;
 mod in_place_preview;
+mod in_place_replace;
 // Where the in-place backend is the one previews use.
 #[cfg(all(test, not(target_os = "macos")))]
 mod folder_tests;
@@ -89,6 +90,8 @@ pub struct Preview {
     /// The files the replay stored for the adopted tree (AI-09); empty when the
     /// review needs none.
     replacements: Vec<Replacement>,
+    /// The published index's digest, recorded in the provenance; `None` when built.
+    file_index_sha256: Option<String>,
     _legacy_lock: Option<File>,
 }
 impl Preview {
@@ -279,6 +282,7 @@ fn copy_preview(
         files,
         download,
         replacements,
+        file_index_sha256,
         ..
     } = match prepared {
         Ok(prepared) => prepared,
@@ -315,6 +319,7 @@ fn copy_preview(
         expected_digest,
         expected_paths,
         replacements,
+        file_index_sha256,
         _legacy_lock: legacy_lock,
     })
 }

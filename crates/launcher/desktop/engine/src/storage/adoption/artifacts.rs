@@ -223,7 +223,6 @@ fn local_seed_error(error: LocalSeedError) -> Error {
 /// Blocking, like [`fetch`]: the signed file index, bounded by its signed size
 /// (the same TLS and redirect policy as the seed and patches) and read back into
 /// memory. `partial` is scratch and is removed on every outcome.
-#[allow(dead_code)] // AI-08 part b wires it
 pub(super) fn index_blob(
     transport: &Transport,
     blob: &str,

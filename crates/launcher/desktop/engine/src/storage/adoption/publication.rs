@@ -166,7 +166,7 @@ fn copy_and_publish(
         reference_digest: preview.expected_digest,
         setup_policy_version: 1,
         folder_scan_digest,
-        file_index_sha256: None,
+        file_index_sha256: preview.file_index_sha256.clone(),
     };
     let mut after = preview.before.clone();
     after.revision = after.revision.checked_add(1).ok_or(StorageError::Corrupt)?;

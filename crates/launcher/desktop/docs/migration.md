@@ -182,8 +182,7 @@ copied nor downloaded a second time.
 
 **Preflight (before any download).**
 
-- The folder must hold `SGW.exe` in `Working\Binaries` (`not_a_game_folder`). A
-  verified copy also accepts a flat folder with `SGW.exe` beside `SGWGame`. In place,
+- The folder must hold `SGW.exe` in `Working\Binaries` (`not_a_game_folder`). In place,
   the folder must be writable (`folder_not_writable`): the check creates and deletes a
   probe file in the root and renames one inside `Working\Binaries`.
 - A picked `Working` or `Binaries` folder is resolved to its root first. An old

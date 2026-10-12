@@ -1,23 +1,16 @@
 use super::*;
 
-/// Refuses a Copy-mode source whose layout is ambiguous: exactly one of the
-/// full, working and flat layouts must hold, and the binaries directory must
-/// sit under the source root.
+/// Refuses a Copy-mode source whose layout copy cannot map. A copy maps no paths,
+/// so a flat folder, or a legacy import that names `Working` or `Binaries`, would
+/// classify every file as Missing. The folder must be the installer's
+/// `Working\Binaries` layout, and a root `SGW.exe` beside it is ambiguous.
 pub(super) fn copy_layout(source_root: &Path, scanned: &inventory::Index) -> Result<(), Error> {
-    let binaries = crate::install_layout::binaries_dir(source_root);
-    let full = source_root.join("Working").is_dir();
-    let working = std::fs::read_dir(source_root)?.any(|entry| {
-        entry.is_ok_and(|entry| {
-            entry.file_name().eq_ignore_ascii_case("binaries")
-                && entry.file_type().is_ok_and(|kind| kind.is_dir())
-        })
-    });
-    let flat = scanned.keys().any(|p| p.eq_ignore_ascii_case("SGW.exe"))
-        || (!full && !working && source_root.join("SGWGame").is_dir());
-    if [full, working, flat].into_iter().filter(|v| *v).count() != 1
-        || !binaries.starts_with(source_root)
-    {
+    if scanned.keys().any(|p| p.eq_ignore_ascii_case("SGW.exe")) {
         return Err(StorageError::InvalidDirectory.into());
     }
-    Ok(())
+    if super::in_place_preview::full_layout(source_root) {
+        return Ok(());
+    }
+    tracing::warn!(target: "adoption", folder = %source_root.display(), "copy adoption refused: the folder is not in the installer's Working\\Binaries layout");
+    Err(Error::UnsupportedLayout)
 }

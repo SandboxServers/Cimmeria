@@ -9,7 +9,7 @@ use crate::install_progress::ProgressSink;
 /// `SGW.exe` in `Working\Binaries`. The old launcher also manages folders that
 /// point straight at `Working` or `Binaries`; every release file there sits at
 /// another path than the release keeps it, so in place they cannot verify.
-fn full_layout(folder: &Path) -> bool {
+pub(super) fn full_layout(folder: &Path) -> bool {
     let working = folder.join("Working");
     working.is_dir() && crate::install_layout::binaries_dir(folder).parent() == Some(&working)
 }
@@ -139,6 +139,7 @@ pub(super) fn preview(
         download,
         replacements,
         login_replaced,
+        file_index_sha256,
     } = match prepared {
         Ok(prepared) => prepared,
         Err(error) => {
@@ -194,6 +195,7 @@ pub(super) fn preview(
         expected_digest,
         expected_paths,
         replacements,
+        file_index_sha256,
         _legacy_lock: legacy_lock,
     })
 }
