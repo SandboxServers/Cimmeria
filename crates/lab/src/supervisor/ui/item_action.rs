@@ -301,8 +301,14 @@ impl Supervisor {
                             }
                             Err(e) => attempts.push(format!("injected right-click: {e}")),
                         }
+                        // A negative check (expect_change false) stops after the
+                        // first native click: no extra use attempts (D-LH13).
+                        let escalate = expect_change;
+                        if !escalate && settled.is_none() {
+                            out["escalation"] = json!("skipped_negative_check");
+                        }
                         // 2. Posted button messages (N1).
-                        if settled.is_none() {
+                        if escalate && settled.is_none() {
                             match self.click_at(x, y, 1, false).await {
                                 Ok(placed) => {
                                     let (a, d) =
@@ -324,7 +330,7 @@ impl Supervisor {
                             }
                         }
                         // 3. The stock handler the right-click would reach (N3).
-                        if settled.is_none() && allow_fallback {
+                        if escalate && settled.is_none() && allow_fallback {
                             let r = self
                                 .lua_json(&use_item_chunk(
                                     &ContainerRef::Name(container.clone()),
@@ -561,6 +567,18 @@ mod tests {
     async fn expect_change_false_leaves_effect_ok_unset() {
         let (out, _) = use_item(FakeCegui::default(), false, false).await;
         assert!(out.get("effect_ok").is_none());
+    }
+
+    /// D-LH13: a negative check sends one native click and no escalation,
+    /// even when a later step would have used the item.
+    #[tokio::test]
+    async fn expect_change_false_does_not_escalate() {
+        let (out, s) = use_item(FakeCegui::default(), true, false).await;
+        let s = s.lock().unwrap();
+        assert_eq!(s.edges(), vec!["down 1", "up 1"], "one injected click only");
+        assert_eq!(s.lua_use_calls, 0, "the Lua handler must not run");
+        assert_eq!(out["escalation"], "skipped_negative_check");
+        assert_eq!(out["attempts"].as_array().unwrap().len(), 1);
     }
 
     #[tokio::test]
