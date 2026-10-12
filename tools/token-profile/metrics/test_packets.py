@@ -374,6 +374,13 @@ class JoinTest(FixtureTest):
         self.assertEqual((record["implementer_sessions"], record["fixer_sessions"], record["retries"],
                           record["first_pass"]), (1, 1, [], False))
 
+    def test_fix_name_is_fix_or_fix_digit_as_its_own_word(self):
+        """`cm01-fix1` and `ch04-fix` are fixers; `plan-fixtures` and `x-fixer` stay coders."""
+        for name in ("cm01-fix1", "ch04-fix"):
+            self.assertTrue(packets._is_fix_named({"name": name}), name)
+        for name in ("plan-fixtures", "x-fixer", "cm01-a1", None):
+            self.assertFalse(packets._is_fix_named({"name": name}), name)
+
     def test_a_second_non_fix_coder_still_makes_no_first_pass(self):
         agents = [AGENTS[0], _agent("cm01-a2", WORKTREE.format("lr-01"), "2026-10-01T07:00:00Z", "packet-coder",
                                     "packet-coder", name="cm01-a2")]

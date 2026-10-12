@@ -122,8 +122,8 @@ def stop_reason(stop):
 
 
 def _is_fix_named(agent):
-    """A worker named as a fix worker: `fix`, optionally numbered, as its own dash-separated word (cm01-fix1)."""
-    return re.search(r"(^|-)fix\d*[a-z0-9]*$", agent.get("name") or "") is not None
+    """A worker named as a fix worker: `fix` or `fix<digit>`, as its own dash-separated word (cm01-fix1, ch04-fix)."""
+    return re.search(r"(^|-)fix(\d+[a-z0-9]*)?$", agent.get("name") or "") is not None
 
 
 def _fix_commits(pr, reviewers):
