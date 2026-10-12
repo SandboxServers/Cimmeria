@@ -193,3 +193,23 @@ pub struct DragDropArgs {
     #[serde(default)]
     pub wait_ms: Option<u64>,
 }
+
+/// Args for `client_vendor_buy`.
+#[derive(Debug, Default, serde::Deserialize, schemars::JsonSchema)]
+pub struct VendorBuyArgs {
+    /// The row on screen, 1-based (1..=7), as the vendor window lists them.
+    pub row: u32,
+    /// How many to buy (at least 1).
+    pub quantity: u32,
+    /// Set the quantity through Lua (N3) when the spinner buttons cannot,
+    /// and press Buy through its stock handler (default true).
+    #[serde(default)]
+    pub allow_fallback: Option<bool>,
+    /// Whether the purchase is expected to change the inventory or cash
+    /// (default true); false for a negative check (too little cash).
+    #[serde(default)]
+    pub expect_change: Option<bool>,
+    /// How long to wait for the inventory or cash to change, ms (default 3000).
+    #[serde(default)]
+    pub wait_ms: Option<u64>,
+}

@@ -124,6 +124,7 @@ pub const LEASED: &[&str] = &[
     "client_ui_click",
     "client_window_click",
     "client_drag_drop",
+    "client_vendor_buy",
     // World and combat actions.
     "client_world_click",
     "client_target",

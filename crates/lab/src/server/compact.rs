@@ -250,7 +250,8 @@ impl Shape {
 /// Tools whose results are long enough that `fields` / `verbose` are worth
 /// a line in their schema. Every tool accepts both; the server
 /// instructions say so once.
-const ADVERTISED: [&str; 12] = [
+const ADVERTISED: [&str; 13] = [
+    "client_vendor_buy",
     "client_window_read",
     "client_inventory",
     "client_ui_state",

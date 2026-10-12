@@ -92,7 +92,13 @@ pub fn widget_rect_chunk(window: &str) -> String {
         Some((parent, child)) => format!(
             "local p = _G[{parent:?}]              local w = p and p:getChildRecursive({child:?})"
         ),
-        None => format!("local w = _G[{window:?}]"),
+        // `_G` first, then CEGUI's own window name (`getWindow`): an
+        // auto-created child such as `Vendor_Item1Quantity__auto_incbtn__`
+        // is no Lua global but is a named window (#1660 item 4).
+        None => format!(
+            "local w = _G[{window:?}] \
+             if w == nil then local ok, g = pcall(getWindow, {window:?}) if ok then w = g end end"
+        ),
     };
     format!(
         "{lookup}          if not w then return 'missing' end          local r = w:getUnclippedPixelRect()          return tostring(w:isVisible()), r.left, r.top, r.right, r.bottom"
@@ -513,6 +519,15 @@ mod tests {
         assert!(
             widget_rect_chunk("CharSelect_PlayButton").contains("_G[\"CharSelect_PlayButton\"]")
         );
+    }
+
+    /// Regression guard (#1660 item 4): a CEGUI auto child is found by its
+    /// window name, not only as a Lua global.
+    #[test]
+    fn widget_rect_chunk_falls_back_to_the_cegui_window_name() {
+        let c = widget_rect_chunk("Vendor_Item1Quantity__auto_incbtn__");
+        assert!(c.contains(r#"_G["Vendor_Item1Quantity__auto_incbtn__"]"#));
+        assert!(c.contains(r#"pcall(getWindow, "Vendor_Item1Quantity__auto_incbtn__")"#));
     }
 
     #[test]

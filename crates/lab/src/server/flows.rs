@@ -271,6 +271,7 @@ mod tests {
             "client_player_state",
             "client_item_action",
             "client_drag_drop",
+            "client_vendor_buy",
         ] {
             assert!(s.tool_router.has_route(name), "{name} is not routed");
         }
