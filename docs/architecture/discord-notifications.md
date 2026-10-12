@@ -1,6 +1,6 @@
 # Discord notifications
 
-> **Last updated**: 2026-10-10
+> **Last updated**: 2026-10-12
 
 The server posts structured events to Discord channels via webhooks for
 development-time ops visibility — login bursts, world entry, errors,
@@ -343,6 +343,13 @@ it now logs at INFO with the `peer`. An unknown frame from a
 logged-in session still posts, now with the session and type fields filled.
 This is a fix at the source, not a Discord filter. See
 [minigame-system.md § Logging](../gameplay/minigame-system.md#logging).
+
+**Busy telemetry uploads log at INFO.** Five lab clients behind one address
+collided on the one-chunk-per-address upload slot, and each 503 refusal posted
+`telemetry upload refused: busy` to the errors channel (236 posts in 7 days,
+2026-10-12). The uploader keeps the batch and retries, so `RefusalLog::report`
+now logs `reason = busy` at INFO; every other refusal reason still posts. A fix
+at the source, not a Discord filter.
 
 **Cell-side name cache.** The cell service has no character/GM display name of
 its own — names live in the base `ConnectedClientState`. `GmCommand` and the

@@ -464,7 +464,10 @@ it appears as a quoted string (`"ids":"[1,2,3]"`), not as nested JSON. A
 cut value ends in `...[truncated, N bytes]`, with the original length,
 and a cut bag gains `_truncated_keys`.
 
-Every refusal and every truncation writes a `warn` on `launcher.ingest`:
+Every refusal and every truncation writes a row on `launcher.ingest`, at `warn`
+except a `busy` refusal, which is `info`: it is answered 503 with `Retry-After`
+and the uploader retries on its next flush, so it is back-pressure, not a fault,
+and it stays out of the Discord errors channel.
 
 ```text
 service.name = 'cimmeria-server' AND scope_name = 'launcher.ingest'
@@ -518,7 +521,7 @@ server:
 | `cimmeria-client` | `launcher.debug_log` | `sgwdebuglog` lines |
 | `cimmeria-client` | `launcher.session_meta` | Session boundaries and rotation events. `kind=game_exited` carries the game's `pid` and `exit_code` (the exit code is absent when the OS reports none); the desktop launcher also sends `host_pid` and `early` |
 | `cimmeria-client` | `launcher.summary` | The desktop launcher's attempt summaries: `event = launcher_summary` per accepted summary and `event = launcher_phase` per timed phase. See [Launcher summaries](#launcher-summaries) |
-| `cimmeria-server` | `launcher.ingest` | Server-side accept counters per chunk, with the session totals; a `warn` with `reason = session_over_budget` when the runaway guard suppressed events; a throttled `warn` per refused upload, with its `route` and `reason` ([Upload size and rate limits](#upload-size-and-rate-limits)). Also `event = launcher_summary_batch`, one row per launcher-summary request that reached validation |
+| `cimmeria-server` | `launcher.ingest` | Server-side accept counters per chunk, with the session totals; a `warn` with `reason = session_over_budget` when the runaway guard suppressed events; a throttled row per refused upload (`warn`, except `busy`, which is `info`), with its `route` and `reason` ([Upload size and rate limits](#upload-size-and-rate-limits)). Also `event = launcher_summary_batch`, one row per launcher-summary request that reached validation |
 | `cimmeria-server` | `launcher.bundle` | Bundle metadata and refusals (caps, bad entries) |
 | none | `launcher.key_dump` | Encryption key material; `off` in every OTLP filter, never leaves the host |
 
