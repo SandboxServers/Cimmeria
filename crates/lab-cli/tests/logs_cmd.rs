@@ -161,6 +161,122 @@ fn binary_prints_the_last_p2_line_masked() {
     );
 }
 
+// New: a lease id in a log line is hidden on the snapshot path.
+// Fails if reverted: the printed line would carry the full lease id.
+#[test]
+fn binary_hides_a_lease_id_in_a_printed_line() {
+    let home = lab_home_for("127.0.0.1:9");
+    std::fs::write(
+        home.path().join("labd.log"),
+        "2026-10-10T20:00:07.000001Z  INFO serve: lease lease-f7405832bc894677ae303a148425e666 taken\r\n",
+    )
+    .expect("write log");
+    let output = run_lab_in(home.path(), &["logs", "--lines", "5"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        stdout,
+        "2026-10-10T20:00:07.000001Z  INFO serve: lease lease-<redacted> taken\n"
+    );
+    assert!(!stdout.contains("f7405832"), "{stdout}");
+}
+
+// New: the same holds on the --follow path, for a line appended after the start.
+// Fails if reverted: the appended line would carry the full lease id.
+#[test]
+fn follow_hides_a_lease_id_in_an_appended_line() {
+    let dir = tempfile::TempDir::new().expect("temp dir");
+    let path = dir.path().join("labd.log");
+    std::fs::write(&path, "2026-10-10T20:00:00Z  INFO serve: a\n").expect("write log");
+    let follow = Follow::start(path.clone(), None, None, 50);
+    follow.wait_for("serve: a");
+    append(
+        &path,
+        "2026-10-10T20:00:08Z  INFO serve: lease lease-f7405832bc894677ae303a148425e666 kept\n",
+    );
+    follow.wait_for("serve: lease");
+    let text = follow.finish();
+    assert!(text.contains("lease lease-<redacted> kept"), "{text}");
+    assert!(!text.contains("f7405832"), "{text}");
+}
+
+// New: a continuation line that a filter keeps with its entry is hidden too.
+// Fails if reverted: the continuation line carries the full lease id.
+#[test]
+fn binary_hides_a_lease_id_in_a_kept_continuation_line() {
+    let home = lab_home_for("127.0.0.1:9");
+    std::fs::write(
+        home.path().join("labd.log"),
+        concat!(
+            "2026-10-10T20:00:07.000001Z ERROR serve: instance=Some(\"p2\") failed\n",
+            "   held by lease-F7405832BC894677AE303A148425E666\n",
+            "2026-10-10T20:00:08.000001Z  INFO serve: instance=Some(\"p3\") fine\n",
+        ),
+    )
+    .expect("write log");
+    let output = run_lab_in(
+        home.path(),
+        &[
+            "logs",
+            "--lines",
+            "5",
+            "--instance",
+            "p2",
+            "--level",
+            "warn",
+        ],
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        stdout,
+        "2026-10-10T20:00:07.000001Z ERROR serve: instance=Some(\"p2\") failed\n   held by lease-<redacted>\n"
+    );
+}
+
+// New: the colour path hides the id as well, and a continuation line is still
+// not coloured.
+// Fails if reverted: the id survives in the coloured line.
+#[test]
+fn fancy_and_continuation_lines_hide_a_lease_id() {
+    assert_eq!(
+        paint_line(
+            &colour_ui(),
+            "2026-10-10T20:00:00.000001Z  WARN serve: lease-f7405832bc894677 held"
+        ),
+        "\x1b[2m2026-10-10T20:00:00.000001Z\x1b[0m  \x1b[33mWARN\x1b[0m serve: lease-<redacted> held"
+    );
+    assert_eq!(
+        paint_line(&colour_ui(), "   held by lease-f7405832bc894677"),
+        "   held by lease-<redacted>"
+    );
+}
+
+// New: the first --follow snapshot hides the id, and so does a continuation
+// line appended later.
+// Fails if reverted: both carry the full lease id.
+#[test]
+fn follow_hides_a_lease_id_in_the_snapshot_and_in_a_continuation_line() {
+    let dir = tempfile::TempDir::new().expect("temp dir");
+    let path = dir.path().join("labd.log");
+    std::fs::write(
+        &path,
+        "2026-10-10T20:00:00Z  INFO serve: lease-f7405832bc894677ae303a148425e666 first\n",
+    )
+    .expect("write log");
+    let follow = Follow::start(path.clone(), None, None, 50);
+    follow.wait_for("first");
+    append(&path, "   held by lease-0123456789abcdef0123\n");
+    follow.wait_for("held by");
+    let text = follow.finish();
+    assert!(text.contains("lease-<redacted> first"), "{text}");
+    assert!(text.contains("   held by lease-<redacted>\n"), "{text}");
+    assert!(
+        !text.contains("f7405832") && !text.contains("01234567"),
+        "{text}"
+    );
+}
+
 // New: the removed PowerShell logs command exits 1 with 'no daemon log yet: <path>' on stderr.
 #[test]
 fn binary_without_a_log_exits_1_and_names_the_path() {
