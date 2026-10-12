@@ -294,6 +294,17 @@ impl Supervisor {
                                     );
                                     settled = Some((a, d));
                                 } else {
+                                    if !expect_change {
+                                        // A negative check: the single click ran
+                                        // natively and "nothing changed" is the
+                                        // expected outcome, so the step counts at
+                                        // the click's own level (D-LH13).
+                                        placed.note_fallback(&mut trail);
+                                        trail.push(
+                                            format!("right-click {window} (CEGUI injectors)"),
+                                            NativeLevel::NativeCegui,
+                                        );
+                                    }
                                     sent_unseen = true;
                                     attempts
                                         .push("injected right-click: no inventory change".into());
@@ -567,6 +578,18 @@ mod tests {
     async fn expect_change_false_leaves_effect_ok_unset() {
         let (out, _) = use_item(FakeCegui::default(), false, false).await;
         assert!(out.get("effect_ok").is_none());
+    }
+
+    /// D-LH13: a correct refusal (nothing changed, none expected) reports the
+    /// native tier of its single click and is a native pass.
+    #[tokio::test]
+    async fn a_negative_check_reports_its_native_click_tier() {
+        let (out, _) = use_item(FakeCegui::default(), true, false).await;
+        assert_eq!(out["native_level"], "native_cegui");
+        assert_eq!(out["native_tier"], "N1");
+        assert_eq!(out["native_pass"], true);
+        assert!(out.get("effect_ok").is_none());
+        assert_eq!(out["inventory_changed"], false);
     }
 
     /// D-LH13: a negative check sends one native click and no escalation,

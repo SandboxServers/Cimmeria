@@ -64,7 +64,7 @@ What that means for the round-1 grades ([round 1, Results](../haiku-lab-uat/READ
 - Consumables I2, I3 and I6, graded NATIVE_SHORTFALL (N3) in round 1, now run at N1 and can be regraded PASS. I4 (double use) needs the concurrent check below first.
 - Bank 3 (deposit), 4 (withdraw), 5 (split / merge) and 14 (backpack merge) still land at N3 and stay NATIVE_SHORTFALL until the drop-target question is settled. Bank 4 now at least starts: before LH-20 it could not.
 
-One result shape to follow up: the full-health negative check (A4) came back with `native_pass: false` and no `native_level` or `native_tier`, although its one injected right-click was N1 and nothing changing was the expected outcome. A runner that reads `native_pass` would grade a correct refusal as a shortfall. Not changed in this campaign.
+One result shape to follow up: the full-health negative check (A4) came back with `native_pass: false` and no `native_level` or `native_tier`, although its one injected right-click was N1 and nothing changing was the expected outcome. A runner that reads `native_pass` would grade a correct refusal as a shortfall. Fixed 2026-10-12 (follow-up commit "a negative item check reports its native click tier"): a negative check now stamps the native level and tier of its single click (`native_cegui`, N1) and `native_pass: true`, and `effect_ok` stays unset.
 
 ## What was not tested live
 
