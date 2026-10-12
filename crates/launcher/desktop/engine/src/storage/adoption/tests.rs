@@ -184,6 +184,49 @@ fn a_stock_folder_copies_into_a_new_folder_and_its_scan_is_unchanged() {
     );
 }
 
+/// With a published index there is no reference to supply a file; the login
+/// file the folder lacks is written by setup instead of failing the copy.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_published_index_copy_lets_setup_write_a_missing_login_file() {
+    use super::verification_tests::{published_index, reference, release};
+    let mut f = Fixture::new();
+    let seed = std::fs::read(&f.seed).unwrap();
+    let index = published_index(&seed);
+    f.release = release(&seed, Some(reference(&index, None)));
+    std::fs::remove_file(crate::client_setup::login_servers::path(
+        &f.source.game_directory,
+    ))
+    .unwrap();
+    let server = wiremock::MockServer::start().await;
+    wiremock::Mock::given(wiremock::matchers::path("/index/file-index.json"))
+        .respond_with(wiremock::ResponseTemplate::new(200).set_body_bytes(index))
+        .mount(&server)
+        .await;
+    let transport =
+        artifacts::Transport::loopback(format!("{}/manifest.json", server.uri())).unwrap();
+    let request = f.request();
+    let preview = tokio::task::block_in_place(|| {
+        preview_using(
+            f.state.clone(),
+            request,
+            CancellationToken::new(),
+            crate::install_progress::ProgressSink::latest().0,
+            Backend::Native,
+            Some(transport),
+        )
+    })
+    .unwrap();
+    assert!(preview.reference.is_none());
+    let provenance = tokio::task::block_in_place(|| commit(preview)).unwrap();
+    let copy = f.destination().join("game");
+    assert!(crate::client_setup::login_servers::path(&copy).is_file());
+    assert_eq!(
+        inventory::content_digest(&inventory::scan(&copy, &CancellationToken::new()).unwrap())
+            .unwrap(),
+        provenance.reference_digest
+    );
+}
+
 #[test]
 fn a_copy_destination_inside_the_source_folder_is_refused() {
     let f = Fixture::new();

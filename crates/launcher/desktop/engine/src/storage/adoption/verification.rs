@@ -433,10 +433,27 @@ pub(super) fn classify(
         .keys()
         .filter(|name| !histories.contains_key(&name.to_ascii_lowercase()))
     {
+        // A setup rule can create a file no history names (`LoginInternal.lua` is
+        // not in the seed); in its prepared bytes it is part of the post-setup tree.
+        let entry = &scanned[name];
+        let prepared = setup
+            .get(&name.to_ascii_lowercase())
+            .filter(|prepared| **prepared == (entry.size, hex(&entry.sha256)));
+        let rule_path = index.setup.iter().find_map(|rule| {
+            let path = match rule {
+                SetupRule::AslrOff { path, .. } | SetupRule::LoginServers { path } => path,
+            };
+            path.eq_ignore_ascii_case(name).then_some(path)
+        });
+        let (path, classification) = match (prepared, rule_path) {
+            (Some(_), Some(path)) if path == name => (path.clone(), Classification::Matched),
+            (Some(_), Some(path)) => (path.clone(), Classification::KnownTransform),
+            _ => (name.clone(), Classification::Extra),
+        };
         out.push(Difference {
-            path: name.clone(),
+            path,
             source_path: Some(name.clone()),
-            classification: Classification::Extra,
+            classification,
         });
     }
     out

@@ -160,8 +160,9 @@ impl NativeHost {
         Ok(())
     }
     /// `location` is the folder the user picked natively; the copy goes into a
-    /// new folder inside it.
-    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+    /// new folder inside it. Only tests and the UAT bridge start it now; the
+    /// launcher uses the folder picker.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn begin_adoption_preview(
         &self,
         location: PathBuf,

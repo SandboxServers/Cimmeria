@@ -243,6 +243,11 @@ fn copy_and_publish(
                     return Err(Error::InvalidArtifact);
                 }
                 inventory::copy(&stored, &stage.join(path), &entry, cancel)?;
+            } else if preview.reference.is_none()
+                && stage.join(path) == crate::client_setup::login_servers::path(&stage)
+            {
+                // Setup below writes the login file from the server list whatever
+                // the folder held, and the digest check still verifies it.
             } else {
                 // Without a reconstructed reference only a replacement supplies the
                 // file; a missing one is never skipped.

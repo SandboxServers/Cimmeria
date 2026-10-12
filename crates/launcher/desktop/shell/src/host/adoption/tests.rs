@@ -39,7 +39,7 @@ async fn reviewed_copy_publishes_once_and_preserves_source_import_identity_and_c
     // Matched: the executable and the login server list the old launcher wrote.
     assert_eq!(
         serde_json::to_value(&review.counts).unwrap(),
-        serde_json::json!({"matched": 2, "known_transform": 0, "modified": 1, "missing": 0, "extra": 2})
+        serde_json::json!({"matched": 2, "known_transform": 0, "modified": 1, "needs_patching": 0, "missing": 0, "extra": 2})
     );
     assert_eq!(
         serde_json::to_value(&review.differences).unwrap(),
@@ -53,13 +53,16 @@ async fn reviewed_copy_publishes_once_and_preserves_source_import_identity_and_c
     assert_eq!(
         review
             .login_servers
+            .as_ref()
+            .expect("a legacy source names its login servers")
             .iter()
             .map(|server| server.name.as_str())
             .collect::<Vec<_>>(),
         ["Second", "First"]
     );
-    assert!(!review.client_patches_enabled);
-    assert!(review.game_telemetry_opted_in && !review.game_telemetry_available);
+    assert_eq!(review.client_patches_enabled, Some(false));
+    assert_eq!(review.game_telemetry_opted_in, Some(true));
+    assert!(!review.game_telemetry_available);
     assert!(review.requires_normalization && review.requires_telemetry_acceptance);
     assert!(review.user_data_remains_in_source);
     assert!(!f.destination().exists());
