@@ -115,10 +115,15 @@ def run_ledger(args):
 
 
 def overstep_counts(result):
-    """Counts only: requests, overstep hits per rule, Opus subagents, and per campaign the count of each rule."""
+    """Counts and USD (to cents): requests, hits, Opus subagents, and per campaign each rule's count, USD and wasted USD."""
+    by_campaign = {}
+    for name, stats in result["by_campaign"].items():
+        rules = {rule: {"count": row["count"], "usd": round(row["usd"], 2), "wasted_usd": round(row["wasted_usd"], 2)}
+                 for rule, row in stats["rules"].items()}
+        by_campaign[name] = {"rules": rules, "recoverable_low": round(stats["recoverable_low"], 2),
+                             "recoverable_high": round(stats["recoverable_high"], 2)}
     return {"requests": result["requests"], "hits": result["hits"], "opus_subagents": result["opus_subagents"],
-            "by_campaign": {name: {rule: row["count"] for rule, row in stats["rules"].items()}
-                            for name, stats in result["by_campaign"].items()}}
+            "by_campaign": by_campaign}
 
 
 def run_overstep(args):

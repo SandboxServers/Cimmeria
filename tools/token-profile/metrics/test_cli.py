@@ -58,8 +58,9 @@ class OverstepCliTest(unittest.TestCase):
         self.assertEqual(status, 0, stderr)
         counts = json.loads(stdout)
         self.assertEqual(counts["hits"], {"O1": 1})
-        self.assertEqual(counts["by_campaign"], {"campaign-metrics": {"O1": 1}})
-        self.assertNotIn("usd", stdout)
+        o1 = counts["by_campaign"]["campaign-metrics"]["rules"]["O1"]
+        self.assertEqual(o1["count"], 1)
+        self.assertEqual(o1["wasted_usd"], 3.50)
         written = json.loads((out / "overstep.json").read_text(encoding="utf-8"))
         self.assertEqual(written["by_campaign"]["campaign-metrics"]["rules"]["O1"]["count"], 1)
 
