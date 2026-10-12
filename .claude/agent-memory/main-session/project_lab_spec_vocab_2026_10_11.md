@@ -11,4 +11,4 @@ metadata:
 
 **Why:** at full build load the client misses the bridge's fixed timeouts, and each miss looks like a spec or product failure, costing a run and a diagnosis.
 
-**How to apply:** before a live lab packet, check the lab lease is free and the build lane idle; if other sessions are building, wait or ask the user. Run the worktree's `pwsh -NoProfile -File tools/lab/lab.ps1` (`lab` is not on `PATH` in agent shells, and the installed copy can lag `main`). The 15 s dispatch timeout and the late keep-awake are filed as lab infrastructure issue #1483.
+**How to apply:** before a live lab packet, check the lab lease is free and the build lane idle; if other sessions are building, wait or ask the user. Run `lab` (`lab.exe`; when it is not on `PATH` in an agent shell, use `%LOCALAPPDATA%\cimmeria-lab\bin\lab.exe`). The installed copy can lag `main`: `lab doctor` warns, and `lab install --from <worktree>` refreshes it. The 15 s dispatch timeout and the late keep-awake are filed as lab infrastructure issue #1483.
