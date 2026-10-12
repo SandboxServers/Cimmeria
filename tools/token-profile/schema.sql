@@ -1,4 +1,4 @@
--- Token profiler data contract, schema version 5.
+-- Token profiler data contract, schema version 6.
 --
 -- The ingest (TP-01a, tools/token-profile/ingest/) writes these tables from
 -- Claude Code transcripts; the reports (TP-01b, tools/token-profile/report/)
@@ -40,7 +40,7 @@ CREATE TABLE meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
-INSERT INTO meta (key, value) VALUES ('schema_version', '5');
+INSERT INTO meta (key, value) VALUES ('schema_version', '6');
 
 -- One row per ingest run, for version-stamping every report.
 CREATE TABLE profiler_runs (
@@ -174,6 +174,7 @@ CREATE TABLE requests (
     context_tokens    INTEGER NOT NULL,       -- input + cache_read + cache_write_5m + cache_write_1h
     prev_gap_s        REAL,                   -- seconds since the previous request in the same transcript
     is_api_error      INTEGER NOT NULL DEFAULT 0 CHECK (is_api_error IN (0, 1)),
+    stop_reason       TEXT,                   -- version 6: message.stop_reason of the final record, NULL if absent
     CHECK (thinking_tokens <= output_tokens),
     CHECK (context_tokens = input_tokens + cache_read + cache_write_5m + cache_write_1h)
 );
@@ -312,6 +313,25 @@ FROM requests r
 LEFT JOIN pr_attribution a ON a.request_id = r.request_id
 GROUP BY r.request_id
 HAVING ABS(COALESCE(SUM(a.weight), 0) - 1.0) > 1e-6;
+
+-- How each worker (and each main session, as 'main:' || session_id) stopped:
+-- the last request of its transcript. Version 6. Rewritten by the ingest for
+-- every transcript that grew, so a row is never duplicated.
+CREATE TABLE agent_stops (
+    agent_id          TEXT NOT NULL,          -- agents.agent_id, or 'main:' || session_id for a main session
+    session_id        TEXT NOT NULL REFERENCES sessions (session_id),
+    last_ts           TEXT NOT NULL,          -- ts of the last request (its first streamed record), not of the transcript's last record
+    requests          INTEGER NOT NULL,
+    last_stop_reason  TEXT,                   -- stop_reason of the last request
+    last_context_tokens INTEGER NOT NULL,     -- context_tokens of the last request
+    last_tool_name    TEXT,                   -- tool of the last tool_use, if the last request ended in tool_use
+    last_tool_background INTEGER NOT NULL DEFAULT 0 CHECK (last_tool_background IN (0, 1)),
+    last_result_is_error INTEGER,             -- result of that tool call, NULL if none seen
+    ended_after_result  INTEGER NOT NULL DEFAULT 0 CHECK (ended_after_result IN (0, 1)),  -- transcript ends with a tool_result
+    ended_in_api_error  INTEGER NOT NULL DEFAULT 0 CHECK (ended_in_api_error IN (0, 1)),  -- the transcript's last assistant record is a synthetic API error (never a request row)
+    api_error_kind    TEXT,                   -- that record's `error` value (rate_limit, authentication_failed, ...), 'other' if absent or not a plain name; NULL when ended_in_api_error = 0
+    PRIMARY KEY (agent_id)
+);
 
 -- Records whose shape the ingest does not recognise. A run with rows here
 -- exits non-zero unless --allow-unknown is passed; they are never dropped silently.

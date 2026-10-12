@@ -10,7 +10,7 @@ from pathlib import Path
 
 # Schema versions the reports read. Versions 2 (TP-01a), 3 (TP-05) and 4 (TP-05b) only added columns
 # and methods; the campaign rollup needs version 4.
-SUPPORTED_SCHEMAS = ("1", "2", "3", "4", "5")
+SUPPORTED_SCHEMAS = ("1", "2", "3", "4", "5", "6")
 
 
 def agent_type_sql(alias, default="NULL"):
