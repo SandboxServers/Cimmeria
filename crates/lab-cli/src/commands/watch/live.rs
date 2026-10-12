@@ -149,9 +149,31 @@ fn compose(
     lines
 }
 
-/// Waits one interval; true when a quit key was pressed. Without keys (raw mode
+/// Why a wait ended.
+#[derive(Debug, PartialEq, Eq)]
+enum Wake {
+    /// A quit key.
+    Quit,
+    /// The window was resized: draw again now, not after the interval.
+    Resize,
+    /// The interval ran out.
+    Elapsed,
+}
+
+/// What one event does to the wait, if anything.
+fn wake_for(event: &Event) -> Option<Wake> {
+    if is_quit(event) {
+        Some(Wake::Quit)
+    } else if matches!(event, Event::Resize(..)) {
+        Some(Wake::Resize)
+    } else {
+        None
+    }
+}
+
+/// Waits one interval, or until a quit key or a resize. Without keys (raw mode
 /// unavailable) it only sleeps.
-fn wait_tick(interval: Duration, keys: bool) -> bool {
+fn wait_tick(interval: Duration, keys: bool) -> Wake {
     let until = Instant::now() + interval;
     while Instant::now() < until {
         if !keys {
@@ -160,15 +182,27 @@ fn wait_tick(interval: Duration, keys: bool) -> bool {
         }
         match event::poll(TICK) {
             Ok(true) => {
-                if event::read().is_ok_and(|event| is_quit(&event)) {
-                    return true;
+                let Ok(first) = event::read() else { continue };
+                let mut wake = wake_for(&first);
+                // A resize drag sends many events: take what is queued, so one
+                // redraw answers them all, and a quit key among them still wins.
+                while event::poll(Duration::ZERO).unwrap_or(false) {
+                    let Ok(next) = event::read() else { break };
+                    if wake_for(&next) == Some(Wake::Quit) {
+                        wake = Some(Wake::Quit);
+                    } else if wake.is_none() {
+                        wake = wake_for(&next);
+                    }
+                }
+                if let Some(wake) = wake {
+                    return wake;
                 }
             }
             Ok(false) => {}
             Err(_) => std::thread::sleep(TICK),
         }
     }
-    false
+    Wake::Elapsed
 }
 
 /// Runs the live view until `q`, `Esc` or Ctrl+C. Returns 0, or 3 when the
@@ -189,7 +223,7 @@ pub fn run_live(args: &Args, ui: &Ui, batch_dir: Option<PathBuf>) -> u8 {
         if guard.draw(&lines).is_err() {
             return 3; // the guard restores on drop
         }
-        if wait_tick(interval, raw) {
+        if wait_tick(interval, raw) == Wake::Quit {
             return 0;
         }
     }
@@ -282,6 +316,19 @@ mod tests {
         };
         assert!(!is_quit(&Event::Key(release)));
         assert!(!is_quit(&Event::Resize(80, 24)));
+    }
+
+    // A resize ends the wait (a redraw at the new size); a quit key outranks it; a
+    // stray key does nothing.
+    // Fails if reverted: a resize is ignored until the interval (up to 60 s) runs out.
+    #[test]
+    fn a_resize_wakes_the_wait_for_a_redraw() {
+        assert_eq!(wake_for(&Event::Resize(80, 24)), Some(Wake::Resize));
+        assert_eq!(
+            wake_for(&key(KeyCode::Char('q'), KeyModifiers::NONE)),
+            Some(Wake::Quit)
+        );
+        assert_eq!(wake_for(&key(KeyCode::Char('x'), KeyModifiers::NONE)), None);
     }
 
     // Width: columns less one, or 120 under 41 columns or when unknown.

@@ -3,7 +3,7 @@
 
 use crate::daemon::mcp::hide_lease_ids;
 use crate::ui::table::Table;
-use crate::ui::{skip_escape, visible_width, Mark, Tone, Ui};
+use crate::ui::{skip_escape, strip_ansi, Mark, Tone, Ui};
 
 use super::snapshot::{BatchState, BatchView, Snapshot};
 
@@ -52,10 +52,41 @@ fn finish(lines: Vec<String>, width: usize, height: usize, ui: &Ui) -> Vec<Strin
     out
 }
 
-/// `line` cut to `width` visible columns, ending in `…` (and a colour reset when
+/// Terminal cells one character takes: 0 for combining marks, zero-width
+/// joiners and variation selectors, 2 for East Asian wide characters and
+/// emoji, else 1.
+pub fn cell_width(c: char) -> usize {
+    match u32::from(c) {
+        0..=0x1f | 0x7f..=0x9f => 0,
+        0x0300..=0x036f | 0x200b..=0x200f | 0x20d0..=0x20ff | 0xfe00..=0xfe0f => 0,
+        0x1100..=0x115f
+        | 0x231a..=0x231b
+        | 0x2e80..=0x303e
+        | 0x3041..=0x33ff
+        | 0x3400..=0x4dbf
+        | 0x4e00..=0xa4cf
+        | 0xac00..=0xd7a3
+        | 0xf900..=0xfaff
+        | 0xfe30..=0xfe6f
+        | 0xff00..=0xff60
+        | 0xffe0..=0xffe6
+        | 0x1f300..=0x1f64f
+        | 0x1f680..=0x1f6ff
+        | 0x1f900..=0x1f9ff
+        | 0x20000..=0x3fffd => 2,
+        _ => 1,
+    }
+}
+
+/// The columns `text` takes on screen: colour codes count 0, wide characters 2.
+pub fn text_width(text: &str) -> usize {
+    strip_ansi(text).chars().map(cell_width).sum()
+}
+
+/// `line` cut to `width` terminal columns, ending in `…` (and a colour reset when
 /// the line was painted) when it is cut.
 pub fn fit_line(line: &str, width: usize) -> String {
-    if visible_width(line) <= width {
+    if text_width(line) <= width {
         return line.to_string();
     }
     if width == 0 {
@@ -71,9 +102,9 @@ pub fn fit_line(line: &str, width: usize) -> String {
             styled = true;
             out.push(c);
             out.push_str(&skip_escape(&mut chars));
-        } else if visible < keep {
+        } else if visible + cell_width(c) <= keep {
             out.push(c);
-            visible += 1;
+            visible += cell_width(c);
         } else {
             break;
         }
@@ -516,7 +547,7 @@ mod tests {
                 let frame = render_frame(&busy(), width, 0, &ui);
                 assert!(frame.len() > 8, "{width}: {frame:?}");
                 for line in &frame {
-                    assert!(visible_width(line) <= width, "{width}: {line:?}");
+                    assert!(text_width(line) <= width, "{width}: {line:?}");
                 }
             }
         }
@@ -529,9 +560,39 @@ mod tests {
         let painted = colour().paint(Tone::Cmd, "abcdefghij");
         let cut = fit_line(&painted, 6);
         assert_eq!(cut, "\x1b[36mabcde…\x1b[0m");
-        assert_eq!(visible_width(&cut), 6);
+        assert_eq!(text_width(&cut), 6);
         assert_eq!(fit_line("short", 6), "short");
         assert_eq!(fit_line("anything", 0), "");
+    }
+
+    // Wide glyphs take two columns: a line of them is cut by cells, not characters.
+    // Fails if reverted: counting characters lets 10 CJK characters (20 cells)
+    // through a 12-column frame, so the terminal wraps it.
+    #[test]
+    fn wide_glyphs_are_cut_by_cells() {
+        assert_eq!(text_width("日本語"), 6);
+        assert_eq!(fit_line("日本語日本語", 7), "日本語…");
+        assert_eq!(fit_line("日本語日本語", 6), "日本…");
+        let mut s = sample(1);
+        s.instances[0].last = Some("p1 失敗した 失敗した 失敗した 失敗した".into());
+        for line in render_frame(&s, 20, 0, &fancy()) {
+            assert!(text_width(&line) <= 20, "{line:?}");
+        }
+    }
+
+    // A lease id never reaches the screen, in any line.
+    // Fails if reverted: with hide_lease_ids dropped from `finish` the id shows
+    // in the lease cell, the lane's last line and the failure reason.
+    #[test]
+    fn no_line_carries_a_lease_id() {
+        let id = "lease-0123456789abcdef";
+        let mut s = busy();
+        s.instances[0].lease = Some(format!("owner ({id})"));
+        s.instances[0].last = Some(format!("holds {id}"));
+        s.batch.as_mut().unwrap().last_failure.as_mut().unwrap().why = format!("took {id}");
+        let frame = render_frame(&s, 200, 0, &fancy());
+        assert!(frame.iter().any(|l| l.contains("lease-<redacted>")));
+        assert!(frame.iter().all(|l| !l.contains("0123456789abcdef")));
     }
 
     // The cut: a 20-line frame in a 10-row window keeps 8 lines and a marker.
