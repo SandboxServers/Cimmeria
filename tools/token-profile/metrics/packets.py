@@ -274,15 +274,26 @@ def join_campaigns(ledger_doc, db, github_doc, config):
             "campaigns": campaigns}
 
 
+# The agent's worktree: its own, else the one its tool calls ran in most often (most agents have none of their own).
+_WORKTREE = ("COALESCE(a.worktree, (SELECT t.worktree FROM tool_calls t WHERE t.agent_id = a.agent_id"
+             " AND t.worktree IS NOT NULL GROUP BY t.worktree ORDER BY COUNT(*) DESC LIMIT 1))")
+
+
 def load_db(path):
-    """The worker agents (with their worktree's latest branch) and the agent_stops rows, read-only from `path`."""
+    """The worker agents (with their worktree's branch when they ran) and the agent_stops rows, read-only from `path`.
+
+    The branch hint is the worktree's latest branch observed by the agent's last record, else its latest branch.
+    """
     db = sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True)
     db.row_factory = sqlite3.Row
     try:
         agents = [dict(r) for r in db.execute(
-            "SELECT a.agent_id, a.agent_type, a.custom_agent_type, a.name, a.model_alias, a.worktree, a.first_ts,"
-            " (SELECT b.branch FROM worktree_branches b WHERE b.worktree = a.worktree"
-            "  ORDER BY b.observed_at DESC LIMIT 1) AS branch_hint"
+            "SELECT a.agent_id, a.agent_type, a.custom_agent_type, a.name, a.model_alias, a.first_ts,"
+            f" {_WORKTREE} AS worktree,"
+            f" COALESCE((SELECT b.branch FROM worktree_branches b WHERE b.worktree = {_WORKTREE}"
+            "  AND b.observed_at <= a.last_ts ORDER BY b.observed_at DESC LIMIT 1),"
+            f"  (SELECT b.branch FROM worktree_branches b WHERE b.worktree = {_WORKTREE}"
+            "  ORDER BY b.observed_at DESC LIMIT 1)) AS branch_hint"
             " FROM agents a ORDER BY a.agent_id")]
         stops = {r["agent_id"]: dict(r) for r in db.execute("SELECT * FROM agent_stops")}
     finally:

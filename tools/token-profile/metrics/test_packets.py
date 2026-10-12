@@ -329,6 +329,51 @@ class MissingCommitsTest(unittest.TestCase):
         self.assertIsNone(record["cycle_hours"])
 
 
+class LoadDbTest(unittest.TestCase):
+    """load_db: a NULL worktree takes the one its tool calls ran in; the branch hint is the one observed by the agent's
+    last record, else the worktree's latest branch."""
+
+    def setUp(self):
+        self.dir = Path(tempfile.mkdtemp())
+        self.path = self.dir / "profile.sqlite"
+        db = sqlite3.connect(self.path)
+        db.executescript(SCHEMA.read_text(encoding="utf-8"))
+        db.execute("PRAGMA foreign_keys = OFF")  # the tool call's request is not needed here
+        agents = [_agent("n-1", None, "2026-10-01T06:00:00Z"),
+                  _agent("b-1", WORKTREE.format("lr-02"), "2026-10-01T06:00:00Z"),
+                  _agent("b-2", WORKTREE.format("lr-02"), "2026-10-01T06:00:00Z")]
+        _insert(db, "sessions", [{"session_id": "s-" + a["agent_id"], "project_dir": "repo",
+                                  "first_ts": a["first_ts"], "last_ts": a["first_ts"]} for a in agents])
+        _insert(db, "agents", [dict(a, session_id="s-" + a["agent_id"]) for a in agents])
+        db.execute("UPDATE agents SET last_ts = '2026-10-01T09:00:00Z' WHERE agent_id = 'b-1'")
+        db.execute("UPDATE agents SET last_ts = '2026-09-01T00:00:00Z' WHERE agent_id = 'b-2'")
+        _insert(db, "tool_calls", [{"tool_use_id": "t-1", "request_id": "r-1", "session_id": "s-n-1",
+                                    "agent_id": "n-1", "ts": "2026-10-01T06:10:00Z", "tool_name": "Read",
+                                    "worktree": WORKTREE.format("lr-01")}])
+        _insert(db, "worktree_branches", [
+            {"worktree": WORKTREE.format("lr-02"), "branch": "lab-record/LR-09-old-slug",
+             "observed_at": "2026-09-30T00:00:00Z", "source": "lane-log"},
+            {"worktree": WORKTREE.format("lr-02"), "branch": "lab-record/LR-03-new-slug",
+             "observed_at": "2026-10-02T00:00:00Z", "source": "lane-log"}])
+        db.commit()
+        db.close()
+        self.db = packets.load_db(self.path)
+
+    def tearDown(self):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def test_null_worktree_takes_the_tool_call_worktree(self):
+        by_id = {a["agent_id"]: a for a in self.db["agents"]}
+        self.assertEqual(by_id["n-1"]["worktree"], WORKTREE.format("lr-01"))
+        only_n1 = dict(self.db, agents=[by_id["n-1"]])
+        self.assertEqual(packets.join_campaigns(_ledger(), only_n1, _github(), CONFIG)["sessions"]["mapped"], 1)
+
+    def test_branch_hint_is_the_branch_observed_by_the_last_record(self):
+        by_id = {a["agent_id"]: a for a in self.db["agents"]}
+        self.assertEqual(by_id["b-1"]["branch_hint"], "lab-record/LR-09-old-slug")
+        self.assertEqual(by_id["b-2"]["branch_hint"], "lab-record/LR-03-new-slug")
+
+
 def _record(result, packet_id):
     """The record of `packet_id` in the fixture campaign of a join result."""
     return next(r for r in result["campaigns"][CAMPAIGN]["packets"] if r["id"] == packet_id)
