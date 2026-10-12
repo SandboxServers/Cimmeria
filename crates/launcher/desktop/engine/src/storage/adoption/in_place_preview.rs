@@ -54,7 +54,9 @@ pub(super) fn preview(
         if owner.installed_content()?.is_some() {
             return Err(ContractError::IdentityConflict.into());
         }
-        let imported = source::saved_import(&owner, &request.source)?;
+        let adopted = source::request_source(&owner, &request.source, AdoptionMode::InPlace)?;
+        // A folder source is refused by `legacy` until part b consumes it.
+        let imported = source::legacy(&adopted)?.clone();
         if let Some(blocker) = source::import_blocker(&imported) {
             return Err(refused(blocker, "imported configuration"));
         }

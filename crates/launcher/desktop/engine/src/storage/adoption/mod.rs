@@ -189,7 +189,9 @@ fn copy_preview(
         if owner.installed_content()?.is_some() {
             return Err(ContractError::IdentityConflict.into());
         }
-        let imported = source::saved_import(&owner, &request.source)?;
+        let adopted = source::request_source(&owner, &request.source, AdoptionMode::Copy)?;
+        // A folder source is refused by `legacy` until part b consumes it.
+        let imported = source::legacy(&adopted)?.clone();
         let destination =
             super::install_intent::fresh_destination(&request.destination, &owner.directory.root)?;
         // Confirmation creates this folder itself. Refuse an existing one now,
