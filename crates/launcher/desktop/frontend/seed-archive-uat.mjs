@@ -38,8 +38,8 @@ let active=app;
 const settle=async()=>{await app.settled();await sleep(20);};
 try{
  await app.ready;await sleep(20);print('start');
- // A good file: choose, verify with progress, succeed.
- plan=[checking(100),checking(300),chosen()];
+ // A good file: choose (the check has no report yet), verify with progress, succeed.
+ plan=[idle(),checking(300),chosen()];
  press('seed-archive-choose');await settle();print('success');
  assert.match(line(),/^Using Stargate\.rar \(verified\)/);
  // A file that does not match the signed release: the earlier choice stays, the error says so.
@@ -58,7 +58,7 @@ try{
  plan=[offered()];
  active=mountSeedArchive(document,invoke,context,1);await active.ready;print('offer');
  assert.equal(document.getElementById('seed-archive-offer').textContent,'Found Stargate.rar in Downloads. Use it?');
- plan=[checking(100),checking(300),chosen()];
+ plan=[idle(),checking(300),chosen()];
  press('seed-archive-accept');await active.settled();await sleep(20);print('accepted');
  assert.match(line(),/^Using Stargate\.rar \(verified\)/);
  assert.equal(calls.filter(c=>c==='accept_offer').length,1);

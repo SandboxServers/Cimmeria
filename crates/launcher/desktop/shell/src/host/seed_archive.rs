@@ -1,4 +1,5 @@
 //! Native-chosen seed archive: the webview names commands only, never a path.
+use super::install::contract::{progress, JobProgress};
 use super::NativeHost;
 use cimmeria_launcher_engine::{
     catalog::VerifiedRelease,
@@ -56,8 +57,8 @@ pub struct SeedArchiveStatus {
     pub chosen: Option<ChosenSeedArchive>,
     /// Present while no archive is chosen and a matching file is in Downloads.
     pub offer: Option<OfferedSeedArchive>,
-    /// Present while a check runs and has reported progress.
-    pub verifying: Option<super::install::contract::JobProgress>,
+    /// Present while a check runs: a zero placeholder until its first report.
+    pub verifying: Option<JobProgress>,
     pub last_error: Option<SeedArchiveError>,
 }
 
@@ -128,18 +129,31 @@ pub struct SeedArchive {
     seed: Option<SeedEntry>,
     /// When the last release fetch failed; the next one waits `RELEASE_RETRY`.
     release_failed_at: Option<Instant>,
+    /// True while one release fetch runs; a poll never starts a second one.
+    release_in_flight: bool,
     /// True once Downloads was scanned since mount or the last Forget.
     scanned: bool,
 }
 
 impl SeedArchive {
-    /// No seed is cached and any failed fetch is old enough to retry.
+    /// No seed is cached, no fetch is running, and any failed fetch is old enough to retry.
     fn release_wanted(&self) -> bool {
         self.seed.is_none()
+            && !self.release_in_flight
             && match self.release_failed_at {
                 None => true,
                 Some(failed) => failed.elapsed() >= RELEASE_RETRY,
             }
+    }
+
+    /// Takes the right to fetch the release when it is wanted. A `true` answer must
+    /// end in a command carrying the release, or in a recorded failure.
+    fn claim_release(&mut self) -> bool {
+        let wanted = self.release_wanted();
+        if wanted {
+            self.release_in_flight = true;
+        }
+        wanted
     }
 
     /// Moves a finished check into `last_error` and reports whether one still runs.
@@ -178,6 +192,7 @@ impl NativeHost {
         if let Some(fetched) = &release {
             archive.seed = Some(fetched.manifest().seed.clone());
             archive.release_failed_at = None;
+            archive.release_in_flight = false;
         }
         match command {
             SeedArchiveCommand::Inspect { .. } => {
@@ -194,9 +209,7 @@ impl NativeHost {
                 }
                 // Nothing offered (a stale click): report the current status unchanged.
                 if let Some(path) = archive.offer.take() {
-                    let store = self.store()?;
-                    archive.worker = Some(seed_archive::start_verify(store, release, path));
-                    archive.last_error = None;
+                    self.start_check(&mut archive, release, path)?;
                 }
             }
             SeedArchiveCommand::Cancel { .. } => {
@@ -220,19 +233,44 @@ impl NativeHost {
         self.seed_archive_status(&mut archive)
     }
 
-    /// Whether Inspect should fetch the signed release now: no seed is cached and
-    /// a failed fetch, if any, was at least a minute ago.
+    /// Whether Inspect should fetch the signed release now: no seed is cached, no
+    /// fetch runs, and a failed fetch, if any, was at least a minute ago. A `true`
+    /// answer claims the fetch; end it with `seed_archive_release_failed` or with a
+    /// command carrying the release.
     pub fn seed_archive_release_wanted(&self) -> bool {
         self.seed_archive
             .lock()
-            .is_ok_and(|archive| archive.release_wanted())
+            .is_ok_and(|mut archive| archive.claim_release())
     }
 
     /// Records a failed release fetch, so the next one waits `RELEASE_RETRY`.
     pub fn seed_archive_release_failed(&self) {
         if let Ok(mut archive) = self.seed_archive.lock() {
             archive.release_failed_at = Some(Instant::now());
+            archive.release_in_flight = false;
         }
+    }
+
+    /// Whether a check runs now. The file dialog is refused while one does.
+    pub fn seed_archive_busy(&self) -> bool {
+        self.seed_archive
+            .lock()
+            .is_ok_and(|mut archive| archive.settle())
+    }
+
+    /// Starts the check of `path` against `release`, and remembers that release's
+    /// seed so the status can name the check's size before its first report.
+    fn start_check(
+        &self,
+        archive: &mut SeedArchive,
+        release: VerifiedRelease,
+        path: PathBuf,
+    ) -> Result<(), SeedArchiveError> {
+        let store = self.store()?;
+        archive.seed = Some(release.manifest().seed.clone());
+        archive.worker = Some(seed_archive::start_verify(store, release, path));
+        archive.last_error = None;
+        Ok(())
     }
 
     /// Looks in Downloads for the cached seed and caches the result. Runs once per
@@ -246,7 +284,7 @@ impl NativeHost {
             .lock()
             .map_err(|_| SeedArchiveError::Io)?
             .seed_archive()
-            .is_some();
+            .is_some_and(|record| matches_release(&record.seed_sha256, Some(seed)));
         archive.offer = if chosen {
             None
         } else {
@@ -268,9 +306,7 @@ impl NativeHost {
         if archive.settle() {
             return Err(SeedArchiveError::Busy);
         }
-        let store = self.store()?;
-        archive.worker = Some(seed_archive::start_verify(store, release, path));
-        archive.last_error = None;
+        self.start_check(&mut archive, release, path)?;
         archive.offer = None;
         self.seed_archive_status(&mut archive)
     }
@@ -280,25 +316,44 @@ impl NativeHost {
         archive: &mut SeedArchive,
     ) -> Result<SeedArchiveStatus, SeedArchiveError> {
         archive.settle();
-        let verifying = match &archive.worker {
-            Some(worker) => {
-                let observed = worker.progress.borrow();
-                observed.as_ref().map(super::install::progress)
-            }
-            None => None,
-        };
+        let verifying = verifying_progress(archive);
         let store = self.store()?;
         let mut state = store.lock().map_err(|_| SeedArchiveError::Io)?;
         let native = state.dispatch(NativeCommand::Inspect { schema_version: 1 })?;
+        let seed = archive.seed.as_ref();
         Ok(SeedArchiveStatus {
             schema_version: 1,
             native,
-            chosen: state.seed_archive().map(ChosenSeedArchive::from),
+            chosen: state
+                .seed_archive()
+                .filter(|record| matches_release(&record.seed_sha256, seed))
+                .map(ChosenSeedArchive::from),
             offer: archive.offer.as_deref().and_then(offered_archive),
             verifying,
             last_error: archive.last_error,
         })
     }
+}
+
+/// Whether a remembered archive with `record_sha` is the cached release's seed.
+/// Before any release is cached, every remembered archive counts.
+fn matches_release(record_sha: &str, seed: Option<&SeedEntry>) -> bool {
+    seed.is_none_or(|seed| record_sha.eq_ignore_ascii_case(&seed.sha256))
+}
+
+/// The running check's latest progress. Until the first report arrives it is a
+/// zero download of the seed's size, so the panel shows the check from the start.
+fn verifying_progress(archive: &SeedArchive) -> Option<JobProgress> {
+    let worker = archive.worker.as_ref()?;
+    let observed = worker.progress.borrow();
+    let report = match observed.as_ref() {
+        Some(value) => progress(value),
+        None => JobProgress::Download {
+            current: 0,
+            total: archive.seed.as_ref().map_or(0, |seed| seed.size),
+        },
+    };
+    Some(report)
 }
 
 #[cfg(test)]
@@ -353,5 +408,54 @@ mod tests {
         assert!(!archive.release_wanted());
         archive.release_failed_at = Instant::now().checked_sub(RELEASE_RETRY);
         assert!(archive.release_wanted());
+    }
+
+    #[test]
+    fn one_release_fetch_runs_at_a_time() {
+        let mut archive = SeedArchive::default();
+        assert!(archive.claim_release());
+        // A poll while the fetch runs must not start a second one.
+        assert!(!archive.claim_release());
+        assert!(!archive.release_wanted());
+    }
+
+    fn seed_entry(sha256: &str, size: u64) -> SeedEntry {
+        SeedEntry {
+            blob: String::new(),
+            size,
+            sha256: sha256.to_string(),
+        }
+    }
+
+    #[test]
+    fn stale_archive_is_not_the_chosen_one() {
+        let seed = seed_entry(&"AB".repeat(32), 1);
+        assert!(matches_release(&"ab".repeat(32), Some(&seed)));
+        assert!(!matches_release(&"cd".repeat(32), Some(&seed)));
+        // Before a release is cached, a remembered archive still counts as chosen.
+        assert!(matches_release(&"cd".repeat(32), None));
+    }
+
+    #[test]
+    fn check_that_just_started_reports_a_placeholder() {
+        let (_progress_sender, progress) = tokio::sync::watch::channel(None);
+        let (_result_sender, result) = tokio::sync::watch::channel(None);
+        let archive = SeedArchive {
+            worker: Some(VerifyWorker {
+                progress,
+                result,
+                cancel: tokio_util::sync::CancellationToken::new(),
+            }),
+            seed: Some(seed_entry(&"ab".repeat(32), 4096)),
+            ..SeedArchive::default()
+        };
+        assert!(matches!(
+            verifying_progress(&archive),
+            Some(JobProgress::Download {
+                current: 0,
+                total: 4096
+            })
+        ));
+        assert!(verifying_progress(&SeedArchive::default()).is_none());
     }
 }

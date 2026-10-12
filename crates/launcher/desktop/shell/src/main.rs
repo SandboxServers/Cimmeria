@@ -482,6 +482,10 @@ async fn choose_seed_archive(
     state: tauri::State<'_, Arc<NativeHost>>,
 ) -> Result<SeedArchiveStatus, SeedArchiveError> {
     let host = state.inner().clone();
+    // Refused before the dialog opens: a check already runs, so nothing is picked.
+    if host.seed_archive_busy() {
+        return Err(SeedArchiveError::Busy);
+    }
     let Some(path) = tauri::async_runtime::spawn_blocking(move || {
         app.dialog()
             .file()

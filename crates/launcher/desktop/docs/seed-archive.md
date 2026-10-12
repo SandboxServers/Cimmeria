@@ -5,7 +5,7 @@
 
 See the [desktop overview](../README.md) for installation and the
 [maintenance reference](maintenance.md) for installed-content identity. The
-seed archive is a player-chosen copy of the signed seed ZIP. The launcher
+seed archive is a player-chosen copy of the signed seed RAR. The launcher
 verifies it, then uses it in place of the seed download. It is never rehosted; see
 [Rehosting](#rehosting).
 
@@ -21,7 +21,7 @@ review says `Uses your game archive`.
 
 A chosen archive is remembered in `seed-archive.json` under the launcher state
 root. The record holds the verified file (path, size, SHA-256 and file
-identity) and the signed seed SHA-256 it was checked against. Loading is
+identity) and the signed seed SHA-256 it was checked against. The panel shows it as chosen only while that SHA-256 matches the cached release seed. Loading is
 tolerant: a missing, unreadable or corrupt record is ignored, and the player
 chooses again.
 
@@ -79,7 +79,7 @@ webview never receives a path, only the name and size.
 
 The offer is cached for the session. Downloads is scanned on the first status
 check after the panel mounts and again after Forget, not on every poll. Status
-checks fetch the signed release only while no seed is cached, and wait at least
+checks fetch the signed release only while no seed is cached and no fetch is running, and wait at least
 a minute after a failed fetch. Accepting an offer always fetches the release,
 because verification needs it.
 

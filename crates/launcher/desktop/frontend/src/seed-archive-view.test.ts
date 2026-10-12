@@ -77,6 +77,21 @@ test('verifying shows progress until the check ends in a chosen file',{timeout:5
   }finally{await app.dispose();}
 });
 
+test('a check whose first reply has no progress yet is followed to its error',{timeout:5000},async()=>{
+  const ui=dom();let started=false;let polls=0;
+  const app=mountSeedArchive(ui.document,async(command,args)=>{
+    if(command==='choose_seed_archive'){started=true;return idle();}
+    if(requestOf(args)!=='inspect'||!started)return idle();
+    polls++;
+    // The reply to choose has no report yet; the next poll shows the check failed.
+    return polls===1?{...idle(),last_error:'hash_mismatch'}:idle();
+  },panelContext(),1);
+  try{await app.ready;ui.click('seed-archive-choose');await app.settled();
+    assert.equal(polls,1);
+    assert.match(ui.text('seed-archive-status'),/contents do not match the signed release/);
+  }finally{await app.dispose();}
+});
+
 test('cancel asks native once and shows that nothing changed',{timeout:5000},async()=>{
   const ui=dom();const calls:string[]=[];let cancelled=false;let started=false;
   const app=mountSeedArchive(ui.document,async(command,args)=>{
@@ -124,12 +139,12 @@ test('hash_mismatch says the file was not used and shows no chosen file',{timeou
 });
 
 test('a Downloads offer asks first; Yes sends accept_offer and shows busy at once',{timeout:5000},async()=>{
-  const ui=dom();const sent:string[]=[];let open!:(s:SeedArchiveStatus)=>void;
+  const ui=dom();const sent:string[]=[];let done:SeedArchiveStatus|null=null;let open!:(s:SeedArchiveStatus)=>void;
   const gate=new Promise<SeedArchiveStatus>(resolve=>{open=resolve;});
   const invoke=async(command:string,args?:Record<string,unknown>)=>{
     if(command!=='seed_archive_command')return idle();
     sent.push(requestOf(args));
-    return requestOf(args)==='accept_offer'?gate:offered();
+    return requestOf(args)==='accept_offer'?gate:(done??offered());
   };
   const app=mountSeedArchive(ui.document,invoke,panelContext(),1);
   try{await app.ready;
@@ -139,23 +154,24 @@ test('a Downloads offer asks first; Yes sends accept_offer and shows busy at onc
     await until(()=>ui.get('seed-archive-accept').disabled);
     assert.equal(ui.get('seed-archive-accept').textContent,'Checking…');
     assert.equal(sent[sent.length-1],'accept_offer');
-    open(chosen());await app.settled();
+    // The gate first reports a running check; the next poll reads the final chosen state.
+    done=chosen();open(checking(300*MB));await app.settled();
     assert.equal(ui.get('seed-archive-accept').hidden,true);
     assert.equal(ui.text('seed-archive-status'),using);
   }finally{open(idle());await app.dispose();}
 });
 
 test('a choice made in the install area shows in Settings at once',{timeout:5000},async()=>{
-  const ui=dom();let open!:(s:SeedArchiveStatus)=>void;
+  const ui=dom();let done:SeedArchiveStatus|null=null;let open!:(s:SeedArchiveStatus)=>void;
   const gate=new Promise<SeedArchiveStatus>(resolve=>{open=resolve;});
-  const invoke=async(command:string)=>command==='choose_seed_archive'?gate:command==='install_command'?installIdle():idle();
+  const invoke=async(command:string)=>command==='choose_seed_archive'?gate:command==='install_command'?installIdle():(done??idle());
   const settings=mountSeedArchive(ui.document,invoke,panelContext(),1);
   const install=mountInstall(ui.document,invoke,()=>id);
   try{await settings.ready;await install.ready;
     ui.click('install-seed-archive');
     await until(()=>ui.get('seed-archive-choose').disabled);
     assert.equal(ui.text('seed-archive-status'),'Choose your archive in the file window…','Settings sees the press from the install area');
-    open(chosen());
+    done=chosen();open(checking(300*MB));
     await until(()=>ui.text('install-seed-archive-status')===using);
     assert.equal(ui.text('seed-archive-status'),using);assert.equal(ui.text('seed-archive-file'),'Stargate.rar, 40 MB');
     assert.equal(ui.get('seed-archive-forget').hidden,false);
@@ -163,13 +179,13 @@ test('a choice made in the install area shows in Settings at once',{timeout:5000
 });
 
 test('the install area asks the same Downloads question, and its Yes accepts the offer',{timeout:5000},async()=>{
-  const ui=dom();const sent:string[]=[];let open!:(s:SeedArchiveStatus)=>void;
+  const ui=dom();const sent:string[]=[];let done:SeedArchiveStatus|null=null;let open!:(s:SeedArchiveStatus)=>void;
   const gate=new Promise<SeedArchiveStatus>(resolve=>{open=resolve;});
   const invoke=async(command:string,args?:Record<string,unknown>)=>{
     if(command==='install_command')return installIdle();
     if(command!=='seed_archive_command')return idle();
     sent.push(requestOf(args));
-    return requestOf(args)==='accept_offer'?gate:offered();
+    return requestOf(args)==='accept_offer'?gate:(done??offered());
   };
   // Settings starts the shared status check, as it does in the app; the install area shows its result.
   const settings=mountSeedArchive(ui.document,invoke,panelContext(),1);
@@ -180,7 +196,7 @@ test('the install area asks the same Downloads question, and its Yes accepts the
     ui.click('install-seed-archive-accept');
     await until(()=>ui.get('install-seed-archive-accept').disabled);
     assert.equal(sent[sent.length-1],'accept_offer');
-    open(chosen());
+    done=chosen();open(checking(300*MB));
     await until(()=>ui.text('install-seed-archive-status')===using);
     assert.equal(ui.get('install-seed-archive-accept').hidden,true);
   }finally{open(idle());await install.dispose();await settings.dispose();}
