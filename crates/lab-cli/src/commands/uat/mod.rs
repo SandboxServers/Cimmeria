@@ -2,12 +2,20 @@
 //!
 //! LX-15 is the front half: [`args`] (the argument checks), [`plan`] (lanes,
 //! the plan call and `plan.json`) and [`preflight`] (the order of events before
-//! anything is driven, and `--plan-only`). Only `--plan-only` is native until
-//! LX-16b: a real run goes straight to the PowerShell fallback.
+//! anything is driven, and `--plan-only`). LX-16 is the back half: [`record`],
+//! [`summary`], [`progress`], [`lanes`], [`ctrlc`] and [`batch_run`] run a real
+//! batch. Only `--json`, `--diff-golden`, `--heal` and `--chaos` still use the
+//! PowerShell fallback (until LX-17).
 
 pub mod args;
+pub mod batch_run;
+pub mod ctrlc;
+pub mod lanes;
 pub mod plan;
 pub mod preflight;
+pub mod progress;
+pub mod record;
+pub mod summary;
 
 use std::time::Duration;
 
@@ -140,19 +148,22 @@ fn native_preflight(args: &Args, ctx: &Ctx) -> (Endpoint, Outcome) {
     (ep, outcome)
 }
 
-/// Runs `lab uat` and returns its exit code. `--plan-only` is native: a usage
-/// error is 2, a refusal before anything is driven is 3, the plan ends with 0.
-/// A real run goes straight to the PowerShell fallback WITHOUT the native
-/// pre-flight (the script does its own), so nothing is planned twice and no
-/// second batch folder is made. LX-16b replaces this function.
+/// Runs `lab uat` and returns its exit code. `--plan-only` and every refusal
+/// before anything is driven are native (LX-15). A real run drives natively
+/// unless it needs a flag the Rust code does not do yet (`--json`,
+/// `--diff-golden`, `--heal`, `--chaos`): then the PowerShell script does the
+/// whole run, its own pre-flight included, so nothing is planned twice.
+/// LX-17b replaces this function and removes the fallback.
 pub fn run(args: &Args, ctx: &Ctx) -> u8 {
-    if !args.plan_only {
+    if !args.plan_only && batch_run::needs_powershell(args) {
         return fallback::run(ctx);
     }
-    match native_preflight(args, ctx).1 {
+    let (ep, outcome) = native_preflight(args, ctx);
+    match outcome {
         Outcome::Done(code) => code,
-        // `--plan-only` never returns Drive; the fallback is the safe answer if it did.
-        Outcome::Drive(_) => fallback::run(ctx),
+        Outcome::Drive(ready) => {
+            batch_run::execute(args, ctx, &ep, batch_run::BatchInput::from_ready(ready))
+        }
     }
 }
 
