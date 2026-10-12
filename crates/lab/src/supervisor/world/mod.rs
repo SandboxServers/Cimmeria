@@ -28,6 +28,7 @@
 pub mod camera;
 mod camera_read;
 pub mod click;
+mod click_hover;
 pub mod find;
 pub mod geometry;
 pub mod hover;
@@ -36,9 +37,20 @@ pub mod lua;
 pub mod memory;
 pub mod movement;
 pub mod steer;
+mod turn_keys;
 
 #[cfg(test)]
+mod camera_pitch_tests;
+#[cfg(test)]
+mod move_to_tests;
+#[cfg(test)]
+mod occlusion_tests;
+#[cfg(test)]
+mod range_tests;
+#[cfg(test)]
 mod sim;
+#[cfg(test)]
+mod steer_tests;
 #[cfg(test)]
 mod tool_tests;
 

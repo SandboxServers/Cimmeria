@@ -146,10 +146,17 @@ pub struct ItemActionArgs {
     /// For loot_slot: the loot row, 1-based.
     #[serde(default)]
     pub loot_index: Option<u32>,
-    /// Fall back to the client's slash command when the item cannot be put
-    /// on screen (default true).
+    /// Fall back to the stock `contextSensitiveUseItem` through Lua (N3) when
+    /// the clicks change nothing, and to the client's slash command when the
+    /// item cannot be put on screen (default true).
     #[serde(default)]
     pub allow_fallback: Option<bool>,
+    /// Whether the action is expected to change the inventory (default
+    /// true). When true and nothing changes the result carries effect_ok
+    /// false and native_pass false, and the UAT runner fails the action;
+    /// pass false for a negative check (an item that must not be usable).
+    #[serde(default)]
+    pub expect_change: Option<bool>,
     /// How long to wait for the inventory to change, ms (default 3000).
     #[serde(default)]
     pub wait_ms: Option<u64>,
@@ -183,6 +190,26 @@ pub struct DragDropArgs {
     #[serde(default)]
     pub allow_fallback: Option<bool>,
     /// How long to wait for the inventory to change, ms (default 3000).
+    #[serde(default)]
+    pub wait_ms: Option<u64>,
+}
+
+/// Args for `client_vendor_buy`.
+#[derive(Debug, Default, serde::Deserialize, schemars::JsonSchema)]
+pub struct VendorBuyArgs {
+    /// The row on screen, 1-based (1..=7), as the vendor window lists them.
+    pub row: u32,
+    /// How many to buy (at least 1).
+    pub quantity: u32,
+    /// Set the quantity through Lua (N3) when the spinner buttons cannot,
+    /// and press Buy through its stock handler (default true).
+    #[serde(default)]
+    pub allow_fallback: Option<bool>,
+    /// Whether the purchase is expected to change the inventory or cash
+    /// (default true); false for a negative check (too little cash).
+    #[serde(default)]
+    pub expect_change: Option<bool>,
+    /// How long to wait for the inventory or cash to change, ms (default 3000).
     #[serde(default)]
     pub wait_ms: Option<u64>,
 }

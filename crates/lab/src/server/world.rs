@@ -30,7 +30,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Click an entity (entity_id or name) or a world point in the 3D view like a player: turn the camera onto it when off screen, put the cursor on it, check the client's mouse-over (another entity in the way fails as occluded unless force), click with real buttons (default right = interact), report the target and the windows opened or closed. `expect` (target, window, any, nothing) decides pass/fail. Reports native_level."
+        description = "Click an entity (entity_id or name) or a world point in the 3D view like a player: turn the camera onto it when off screen, put the cursor on it, check the client's mouse-over (another entity in the way fails as occluded unless force), click with real buttons (default right = interact), report the target and the windows opened or closed. `expect` (target, window, any, nothing) decides pass/fail. Reports the straight-line distance to the entity and whether it is inside the server's 5 m interact range (result.range); a right-click that opens nothing from farther away says so. Reports native_level."
     )]
     async fn client_world_click(
         &self,
@@ -52,18 +52,26 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Walk to a point (server metres by default, or space: client), an entity (entity_id or name; the goal follows it), through optional waypoints, with the movement keys: W held, turning with mouse-look, closed loop on the player's actor position every 100 ms. Learns the mouse-look gain, jumps/strafes out of snags, fails on a teleport, a snag it cannot clear, or the timeout (default 60 s) with the distance left. Always releases the keys."
+        description = "Walk to a point (server metres by default, or space: client), an entity (entity_id or name; the goal follows it), through optional waypoints, with the movement keys: W held, turning with the client's bound turn keys (TurnLeft/TurnRight, Q/E by default), closed loop on the player's actor position every 100 ms. Learns the turn rate and key sign from the pawn's yaw, fails as did-not-turn when the keys do nothing, jumps/strafes out of snags, fails on a teleport, a snag it cannot clear, or the timeout (default 60 s) with the distance left. Always releases the keys."
     )]
     async fn client_move_to(
         &self,
         Parameters(a): Parameters<MoveRequest>,
     ) -> Result<CallToolResult, McpError> {
+        let sup = self.supervisor.clone();
+        let mut guard = HeldKeysGuard::new(move || async move {
+            let mut io = LiveWorld::new(&sup);
+            movement::release_stray(&mut io).await;
+        });
         let mut io = LiveWorld::new(&self.supervisor);
-        world_result(movement::run(&mut io, a).await)
+        let r = movement::run(&mut io, a).await;
+        // Finished (and released by `run`): nothing left for the guard to do.
+        guard.disarm();
+        world_result(r)
     }
 
     #[tool(
-        description = "Camera control with real input: raw mouse-look (yaw_counts, pitch_counts), zoom (zoom_notches of the wheel, or zoom to a distance), and/or face an entity or point (turns until it projects near the screen centre, closed loop on worldToPixel), then absolute pitch_deg (readout degrees) and yaw_offset_deg (camera world yaw, -180..180, after any face), each closed loop. zoom is the same as zoom_to and is applied before the face. Reports the camera actor's pose before and after."
+        description = "Camera control with real input: raw mouse-look (yaw_counts, pitch_counts), zoom (zoom_notches of the wheel, or zoom to a distance), and/or face an entity or point (turns until it projects near the screen centre, closed loop on worldToPixel), then absolute pitch_deg (readout degrees) and yaw_offset_deg (camera world yaw, -180..180, after any face), each closed loop. zoom is the same as zoom_to and is applied before the face. Reports the camera actor's pose before and after. Reports pitch_clamped (with a warning) when the camera ends at the +-78.75 deg pitch limit; a face that starts there brings it back to 10 deg first and says so under face.pitch_clamped."
     )]
     async fn client_camera(
         &self,
@@ -82,6 +90,52 @@ impl LabServer {
     ) -> Result<CallToolResult, McpError> {
         let mut io = LiveWorld::new(&self.supervisor);
         world_result(hover::run(&mut io, a).await)
+    }
+}
+
+/// Releases the walk's keys if the tool future is dropped mid-walk (the
+/// client cancelled the call): movement::run releases them on every exit it
+/// gets to, but a dropped future gets to none. A held W or turn key would
+/// wreck every later lab step. Covers the client's bound turn keys too.
+struct HeldKeysGuard<F, Fut>
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = ()> + Send + 'static,
+{
+    release: Option<F>,
+}
+
+impl<F, Fut> HeldKeysGuard<F, Fut>
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = ()> + Send + 'static,
+{
+    /// A guard that runs `release` (on the runtime) if dropped armed.
+    fn new(release: F) -> Self {
+        Self {
+            release: Some(release),
+        }
+    }
+
+    /// The walk finished and released its own keys.
+    fn disarm(&mut self) {
+        self.release = None;
+    }
+}
+
+impl<F, Fut> Drop for HeldKeysGuard<F, Fut>
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = ()> + Send + 'static,
+{
+    fn drop(&mut self) {
+        let Some(release) = self.release.take() else {
+            return;
+        };
+        let Ok(rt) = tokio::runtime::Handle::try_current() else {
+            return;
+        };
+        rt.spawn(release());
     }
 }
 
@@ -133,5 +187,39 @@ mod tests {
                 .unwrap_or_else(|| panic!("{name} is not routed"));
             assert!(t.description.as_deref().unwrap_or_default().len() > 40);
         }
+    }
+
+    /// A dropped (cancelled) tool future must run the key release; a
+    /// disarmed guard (the walk released its own keys) must not.
+    #[tokio::test]
+    async fn held_keys_guard_releases_on_a_dropped_future_only() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::time::Duration;
+
+        let released = Arc::new(AtomicU32::new(0));
+        let make = |counter: Arc<AtomicU32>| {
+            super::HeldKeysGuard::new(move || async move {
+                counter.fetch_add(1, Ordering::SeqCst);
+            })
+        };
+
+        // Cancelled mid-walk: the timeout drops the future holding the guard.
+        let g = make(released.clone());
+        let walk = async move {
+            let _g = g;
+            tokio::time::sleep(Duration::from_secs(3600)).await;
+        };
+        assert!(tokio::time::timeout(Duration::from_millis(20), walk)
+            .await
+            .is_err());
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(released.load(Ordering::SeqCst), 1, "keys not released");
+
+        // Finished walk: disarmed, nothing more to release.
+        let mut g = make(released.clone());
+        g.disarm();
+        drop(g);
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(released.load(Ordering::SeqCst), 1, "released after disarm");
     }
 }

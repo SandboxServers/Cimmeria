@@ -65,7 +65,8 @@ impl ContainerRef {
 
 /// Lua body: where slot `slot` of `container` is shown, or what must happen
 /// first. Returns `{container, container_id, slot, host, need, click,
-/// scroll_bar, scroll_to, window, rect, visible, empty, item_id, name, qty}`.
+/// click_expect, click_handler, scroll_bar, scroll_to, window, rect, visible,
+/// empty, item_id, name, qty}`.
 /// `need` is one of `open_host`, `click`, `scroll`, `unsupported`, or nil
 /// when `window` is ready.
 pub fn locate_chunk(container: &ContainerRef, slot: u32) -> String {
@@ -88,16 +89,16 @@ local function done(w)
   if r then res.rect = {{ r.left, r.top, r.right, r.bottom }} end
 end
 local C = Container or {{}}
-local inv = {{ [C.Main or -1] = {{ 'Inventory_GeneralTabActive', 'Inventory_GeneralTabInactive', 'Inventory_FilterAllActive', 'Inventory_FilterAllInactive' }},
-              [C.Mission or -2] = {{ 'Inventory_MissionTabActive', 'Inventory_MissionTabInactive', 'Inventory_FilterMissionAllActive', 'Inventory_FilterMissionAllInactive' }},
-              [C.Crafting or -3] = {{ 'Inventory_CraftingTabActive', 'Inventory_CraftingTabInactive', 'Inventory_FilterCraftingAllActive', 'Inventory_FilterCraftingAllInactive' }} }}
+local inv = {{ [C.Main or -1] = {{ 'Inventory_GeneralTabActive', 'Inventory_GeneralTabInactive', 'Inventory_FilterAllActive', 'Inventory_FilterAllInactive', 'InventoryMod.onGeneralClicked', 'InventoryMod.onFilterGeneralAll' }},
+              [C.Mission or -2] = {{ 'Inventory_MissionTabActive', 'Inventory_MissionTabInactive', 'Inventory_FilterMissionAllActive', 'Inventory_FilterMissionAllInactive', 'InventoryMod.onMissionClicked', 'InventoryMod.onFilterMissionAll' }},
+              [C.Crafting or -3] = {{ 'Inventory_CraftingTabActive', 'Inventory_CraftingTabInactive', 'Inventory_FilterCraftingAllActive', 'Inventory_FilterCraftingAllInactive', 'InventoryMod.onCraftingClicked', 'InventoryMod.onFilterCraftingAll' }} }}
 local equip = CharacterMod and CharacterMod.EquippedSlots and CharacterMod.EquippedSlots[cid]
 if inv[cid] then
   local t = inv[cid]
   res.host, res.host_binding, res.host_toggle = 'InventoryWin', 'ToggleInventory', 'InventoryMod.onToggleInventory'
   if not vis(InventoryWin) then res.need = 'open_host' return __jenc(res) end
-  if not vis(_G[t[1]]) then res.need = 'click' res.click = t[2] return __jenc(res) end
-  if not vis(_G[t[3]]) then res.need = 'click' res.click = t[4] return __jenc(res) end
+  if not vis(_G[t[1]]) then res.need = 'click' res.click = t[2] res.click_expect = t[1] res.click_handler = t[5] return __jenc(res) end
+  if not vis(_G[t[3]]) then res.need = 'click' res.click = t[4] res.click_expect = t[3] res.click_handler = t[6] return __jenc(res) end
   local v = __jcall(InventoryMod.getVisibleSlotFor, cid, slot)
   if v == nil then res.need = 'scroll' res.scroll_bar = 'Inventory_Scrollbar' res.scroll_to = math.floor((slot - 1) / 10) return __jenc(res) end
   res.visible_slot = v
@@ -105,7 +106,7 @@ if inv[cid] then
 elseif cid == C.Bandolier or equip then
   res.host, res.host_binding, res.host_toggle = 'CharacterWin', 'ToggleCharacter', 'CharacterMod.onToggleCharacter'
   if not vis(CharacterWin) then res.need = 'open_host' return __jenc(res) end
-  if not vis(Character_EquipmentTabActive) then res.need = 'click' res.click = 'Character_EquipmentTabInactive' return __jenc(res) end
+  if not vis(Character_EquipmentTabActive) then res.need = 'click' res.click = 'Character_EquipmentTabInactive' res.click_expect = 'Character_EquipmentTabActive' return __jenc(res) end
   if cid == C.Bandolier then done(CharacterMod.BandolierSlots[slot]) else done(equip) end
 elseif cid == C.Vault then
   res.host = 'VaultWin'
@@ -134,15 +135,20 @@ pub fn scroll_chunk(bar: &str, pos: i64) -> String {
     )
 }
 
-/// Lua body that calls a host window's toggle handler (`InventoryMod.onToggleInventory`).
-pub fn toggle_chunk(handler: &str) -> String {
+/// Lua expression for a dotted global path (`InventoryMod.onToggleInventory`)
+/// that is nil instead of an error when a part is missing.
+pub fn lua_path(handler: &str) -> String {
     let path: Vec<&str> = handler.split('.').collect();
-    let lookup = path
-        .iter()
+    path.iter()
         .skip(1)
         .fold(format!("_G[{}]", lua_quote(path[0])), |acc, p| {
             format!("({acc} or {{}})[{}]", lua_quote(p))
-        });
+        })
+}
+
+/// Lua body that calls a host window's toggle handler (`InventoryMod.onToggleInventory`).
+pub fn toggle_chunk(handler: &str) -> String {
+    let lookup = lua_path(handler);
     format!(
         "local f = {lookup} local ok = type(f) == 'function' and pcall(f, nil) \
          return __jenc({{ ok = ok == true }})"
@@ -238,9 +244,15 @@ impl Supervisor {
                 }
                 Some("click") => {
                     let w = loc["click"].as_str().unwrap_or_default().to_string();
-                    self.ui_click(&w, 0).await?;
-                    trail.push(format!("click {w}"), NativeLevel::RealInput);
-                    tokio::time::sleep(Duration::from_millis(200)).await;
+                    let expect = loc["click_expect"].as_str().unwrap_or_default().to_string();
+                    let handler = loc["click_handler"].as_str().map(str::to_string);
+                    self.click_until(
+                        &w,
+                        &super::click_checked::visible_chunk(&expect),
+                        handler.as_deref(),
+                        trail,
+                    )
+                    .await?;
                 }
                 Some("scroll") => {
                     let bar = loc["scroll_bar"].as_str().unwrap_or_default();
@@ -329,6 +341,18 @@ mod tests {
     fn toggle_chunk_walks_the_dotted_path() {
         let c = toggle_chunk("InventoryMod.onToggleInventory");
         assert!(c.contains(r#"(_G["InventoryMod"] or {})["onToggleInventory"]"#));
+    }
+
+    #[test]
+    fn tab_clicks_carry_their_readback_and_stock_handler() {
+        let c = locate_chunk(&ContainerRef::Name("Main".into()), 12);
+        assert!(c.contains("res.click_expect = t[1] res.click_handler = t[5]"));
+        assert!(c.contains("'InventoryMod.onGeneralClicked'"));
+        assert!(c.contains("res.click_expect = 'Character_EquipmentTabActive'"));
+        assert_eq!(
+            lua_path("InventoryMod.onGeneralClicked"),
+            r#"(_G["InventoryMod"] or {})["onGeneralClicked"]"#
+        );
     }
 
     #[test]

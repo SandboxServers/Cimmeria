@@ -5,6 +5,7 @@
 
 use super::heartbeat::HeartbeatState;
 use super::main_thread::MainThreadCpu;
+use super::process_activity::{self, ProcessActivity};
 use super::stall_grace::{self, BootGrace, Heartbeat, Poll, StallTracker, Verdict};
 use serde_json::Value;
 use tracing::Instrument;
@@ -21,18 +22,22 @@ impl Supervisor {
         // Several instances share one process: tag every watchdog line.
         let span = tracing::info_span!("lab_watchdog", instance = self.label(), pid);
         tokio::spawn(async move { this.watchdog_loop(pid).await }.instrument(span));
+        self.spawn_keeper(pid);
     }
 
     async fn watchdog_loop(&self, my_pid: u32) {
         let grace = stall_grace::load_grace_from(
             std::env::var(stall_grace::LOAD_GRACE_ENV).ok().as_deref(),
         );
+        let io_grace =
+            stall_grace::io_grace_from(std::env::var(stall_grace::IO_GRACE_ENV).ok().as_deref());
         let started_ms = now_ms();
         let mut cpu = MainThreadCpu::default();
+        let mut activity = ProcessActivity::default();
         // Every kill decision but "the process is gone" lives in the
         // tracker (pure, tested): the failure count, the stale rule and
         // the load grace.
-        let mut tracker = StallTracker::new(MAX_HEARTBEAT_FAILS, grace);
+        let mut tracker = StallTracker::new(MAX_HEARTBEAT_FAILS, grace).with_io_grace(io_grace);
         let mut boot = BootGrace::new(started_ms, stall_grace::BOOT_GRACE);
         loop {
             tokio::time::sleep(WATCHDOG_POLL).await;
@@ -58,7 +63,7 @@ impl Supervisor {
                 Err(_) => {
                     if !process::is_alive(my_pid) {
                         tracing::warn!(pid = my_pid, "client process gone");
-                        self.handle_death(my_pid).await;
+                        self.handle_death(my_pid, DeathKind::Crash).await;
                         return;
                     }
                     if let Some(since) = boot.ignores_failure(now_ms()) {
@@ -79,8 +84,12 @@ impl Supervisor {
             let ts = now_ms();
             let sample = cpu.sample(my_pid, ts);
             let (cpu_ms, wall_ms) = sample.unwrap_or((0, 0));
+            let act = activity.sample(my_pid, ts);
+            let io_progress = act.is_some_and(process_activity::io_progress);
+            let io_read_kb = act.map_or(0, |a| a.read_bytes / 1024);
+            let process_cpu_ms = act.map_or(0, |a| a.cpu_ms);
             let stalled_ms = self.state.lock().await.watchdog.stalled_ms(ts, started_ms);
-            let step = tracker.step(hb, sample, ts, stalled_ms);
+            let step = tracker.step_with_io(hb, sample, io_progress, ts, stalled_ms);
             let fails = match step.poll {
                 Poll::Failed { fails } => fails,
                 Poll::Answered { .. } => 0,
@@ -97,6 +106,9 @@ impl Supervisor {
                         main_thread_cpu_ms = cpu_ms,
                         interval_ms = wall_ms,
                         busy_now = step.busy_now,
+                        io_read_kb,
+                        process_cpu_ms,
+                        io_seen = step.io_seen,
                         "client main thread stalled but busy (world load?); load grace in effect"
                     );
                 }
@@ -117,6 +129,9 @@ impl Supervisor {
                         grace_ms = grace.as_millis() as u64,
                         main_thread_cpu_ms = cpu_ms,
                         interval_ms = wall_ms,
+                        io_read_kb,
+                        process_cpu_ms,
+                        io_seen = step.io_seen,
                         "{}",
                         if loading {
                             "client main thread busy past the load grace; terminating"
@@ -124,7 +139,12 @@ impl Supervisor {
                             "client hung (main thread stalled and idle); terminating"
                         }
                     );
-                    self.handle_death(my_pid).await;
+                    let kind = if loading && step.io_seen {
+                        DeathKind::LoadStall
+                    } else {
+                        DeathKind::Crash
+                    };
+                    self.handle_death(my_pid, kind).await;
                     return;
                 }
             }
@@ -135,8 +155,8 @@ impl Supervisor {
     /// quarantine the in-flight command, record the crash, and — if
     /// under the recovery cap and someone holds the lab lease — relaunch
     /// and log back in.
-    async fn handle_death(&self, dead_pid: u32) {
-        if self.after_death(dead_pid).await != AfterDeath::Relaunch {
+    async fn handle_death(&self, dead_pid: u32, kind: DeathKind) {
+        if self.after_death(dead_pid, kind).await != AfterDeath::Relaunch {
             return;
         }
         // Recovery acts only while a lease is held: re-checked before the
@@ -165,20 +185,25 @@ impl Supervisor {
 
     /// Everything a death does short of the relaunch, and whether to
     /// relaunch. Split out so the lease gate is testable without launching.
-    async fn after_death(&self, dead_pid: u32) -> AfterDeath {
+    async fn after_death(&self, dead_pid: u32, kind: DeathKind) -> AfterDeath {
         let _ = tokio::task::spawn_blocking(move || process::terminate(dead_pid)).await;
 
         let may_relaunch = {
             let mut st = self.state.lock().await;
             st.journal.quarantine_in_flight();
-            st.recovery.record_crash(now_ms());
+            match kind {
+                DeathKind::Crash => st.recovery.record_crash(now_ms()),
+                DeathKind::LoadStall => st.recovery.record_load_stall(now_ms()),
+            }
             st.login = LoginState::Crashed;
             st.pid = None;
             st.recovery.should_relaunch(now_ms())
         };
 
         if !may_relaunch {
-            tracing::error!("recovery cap reached (3 crashes / 10 min); not relaunching");
+            tracing::error!(
+                "recovery cap reached (3 crashes / 10 min, or 6 load stalls / 1 h); not relaunching"
+            );
             return AfterDeath::CapReached;
         }
         // Nobody holds the lab, so nobody is driving this client (or the
@@ -263,6 +288,16 @@ impl Supervisor {
     }
 }
 
+/// Why the client was terminated, for the recovery budget.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DeathKind {
+    /// Gone, or hung with no progress: counts toward three per ten minutes.
+    Crash,
+    /// Killed after the IO grace while still reading: a starved disk, not a
+    /// crash, so it has its own budget (`recovery::MAX_LOAD_STALLS`).
+    LoadStall,
+}
+
 /// What the watchdog does after a client death.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AfterDeath {
@@ -296,8 +331,9 @@ mod tests {
                 .await
                 .with_leases(book.clone())
         };
-        let died =
-            |sup: crate::supervisor::Supervisor| async move { sup.after_death(NO_SUCH_PID).await };
+        let died = |sup: crate::supervisor::Supervisor| async move {
+            sup.after_death(NO_SUCH_PID, DeathKind::Crash).await
+        };
         assert_eq!(died(fresh().await).await, AfterDeath::IdleNoLease);
 
         let l = book
@@ -311,5 +347,39 @@ mod tests {
 
         book.release(&l.lease_id).unwrap();
         assert_eq!(died(fresh().await).await, AfterDeath::IdleNoLease);
+    }
+
+    /// Regression guard (2026-10-12): three load-phase stalls used up the
+    /// crash budget and stopped relaunches. A stall is its own kind; three of
+    /// them leave all three crash slots free.
+    #[tokio::test]
+    async fn load_stalls_do_not_spend_the_crash_budget() {
+        let book = Arc::new(LeaseBook::default());
+        let sup = fake_bridge::supervisor(Arc::new(|_, _| Ok(serde_json::json!({}))))
+            .await
+            .with_leases(book.clone());
+        book.acquire(AcquireRequest {
+            owner: "test".into(),
+            purpose: "watchdog".into(),
+            ..Default::default()
+        })
+        .unwrap();
+        for _ in 0..3 {
+            assert_eq!(
+                sup.after_death(NO_SUCH_PID, DeathKind::LoadStall).await,
+                AfterDeath::Relaunch
+            );
+        }
+        for _ in 0..2 {
+            assert_eq!(
+                sup.after_death(NO_SUCH_PID, DeathKind::Crash).await,
+                AfterDeath::Relaunch
+            );
+        }
+        assert_eq!(
+            sup.after_death(NO_SUCH_PID, DeathKind::Crash).await,
+            AfterDeath::CapReached,
+            "the third real crash still stops it"
+        );
     }
 }

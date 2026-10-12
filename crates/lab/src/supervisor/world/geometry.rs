@@ -65,6 +65,13 @@ pub fn horizontal_m(a: Vec3, b: Vec3) -> f64 {
     (d.x * d.x + d.y * d.y).sqrt() / UU_PER_METRE
 }
 
+/// Straight-line distance in metres between two client points. The server's
+/// interaction range is this, not the horizontal distance [`horizontal_m`].
+pub fn distance_m(a: Vec3, b: Vec3) -> f64 {
+    let d = b.sub(a);
+    (d.x * d.x + d.y * d.y + d.z * d.z).sqrt() / UU_PER_METRE
+}
+
 /// Angle wrapped into (-PI, PI].
 pub fn wrap_pi(a: f64) -> f64 {
     let mut r = a.rem_euclid(TAU);
@@ -137,6 +144,13 @@ impl Screen {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn straight_line_distance_counts_height() {
+        let a = Vec3::new(0.0, 0.0, 0.0);
+        let b = Vec3::new(300.0, 400.0, 1200.0);
+        assert!((distance_m(a, b) - 13.0).abs() < 1e-9);
+    }
 
     #[test]
     fn server_client_round_trip_swizzles_and_scales() {

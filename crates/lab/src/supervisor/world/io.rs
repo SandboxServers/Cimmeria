@@ -17,6 +17,7 @@ use super::NativeLevel;
 use crate::supervisor::cegui_native::{float_word, thiscall_params};
 use crate::supervisor::entity_table::{decode_hex, Memory, DEFAULT_MAX_NODES};
 use crate::supervisor::flows::ui_state::lua_results_of;
+use crate::supervisor::input::MouseInput;
 use crate::supervisor::ui::lua_json;
 use crate::supervisor::{process, Supervisor};
 
@@ -85,6 +86,15 @@ pub trait WorldIo {
     async fn target_unit(&mut self, slot: i32) -> Result<(), String>;
     /// Make sure the game reads the lab's input (virtual focus).
     async fn ensure_focus(&mut self) -> Result<(), String>;
+
+    /// The `(left, right)` lab key names the client binds to turn the pawn
+    /// (default Q and E).
+    async fn turn_keys(&mut self) -> Result<(String, String), String> {
+        Ok((
+            super::turn_keys::DEFAULT_LEFT.to_string(),
+            super::turn_keys::DEFAULT_RIGHT.to_string(),
+        ))
+    }
 }
 
 /// [`WorldIo`] over the running client.
@@ -366,14 +376,24 @@ impl WorldIo for LiveWorld<'_> {
 
     async fn camera_pose(&mut self) -> Result<Pose, String> {
         let c = self.player_camera().await?;
-        memory::actor_pose(&mut Reader(self.sup), c.camera).await
+        let p = memory::actor_pose(&mut Reader(self.sup), c.camera).await?;
+        memory::real_camera_pose(p).ok_or_else(|| {
+            format!(
+                "camera actor {:#x} has no location (it reads all zero)",
+                c.camera
+            )
+        })
     }
 
     async fn camera_readout(&mut self) -> Result<Value, String> {
         let c = self.player_camera().await?;
         let mut r = Reader(self.sup);
         let mut out = memory::camera_state(&mut r, c.camera).await?.to_json();
-        if let Ok(p) = memory::actor_pose(&mut r, c.camera).await {
+        if let Some(p) = memory::actor_pose(&mut r, c.camera)
+            .await
+            .ok()
+            .and_then(memory::real_camera_pose)
+        {
             out["pose"] = p.to_json();
         }
         Ok(out)
@@ -419,14 +439,11 @@ impl WorldIo for LiveWorld<'_> {
 
     async fn button(&mut self, button: usize, down: bool) -> Result<(), String> {
         self.sup
-            .input_mouse(
-                0,
-                0,
-                0,
-                Some(button),
-                Some(if down { "down" } else { "up" }),
-                None,
-            )
+            .input_mouse(MouseInput {
+                button: Some(button),
+                action: Some(if down { "down" } else { "up" }),
+                ..MouseInput::default()
+            })
             .await
             .map(|_| ())
     }
@@ -458,5 +475,10 @@ impl WorldIo for LiveWorld<'_> {
 
     async fn ensure_focus(&mut self) -> Result<(), String> {
         self.sup.input_focus(true).await.map(|_| ())
+    }
+
+    async fn turn_keys(&mut self) -> Result<(String, String), String> {
+        let r = self.lua(super::turn_keys::TURN_KEYS_CHUNK).await?;
+        Ok(super::turn_keys::parse_turn_keys(&r))
     }
 }

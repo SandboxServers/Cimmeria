@@ -12,15 +12,18 @@ use std::f64::consts::FRAC_PI_2;
 use serde_json::{json, Value};
 
 use super::camera::WHEEL_NOTCH;
-use super::geometry::{horizontal_m, wrap_pi, Pose, Screen, Vec3};
+use super::geometry::{distance_m, horizontal_m, wrap_pi, Pose, Screen, Vec3};
 use super::io::{Projected, WorldIo};
 use super::lua::{UnitInfo, UnitSlots};
 use super::memory::{
-    WorldEntity, WorldSnapshot, CAMERA_DIST_MAX, CAMERA_DIST_MIN, CAMERA_ZOOM_STEP,
+    clamped_pitch_counts, WorldEntity, WorldSnapshot, CAMERA_DIST_MAX, CAMERA_DIST_MIN,
+    CAMERA_ZOOM_STEP,
 };
 use super::NativeLevel;
 
 pub const PLAYER_ID: u32 = 1;
+/// A standing humanoid's body heights (units above Location): knee, chest, shoulders and head, not the feet.
+pub const REAL_BODY_DZ: [f64; 4] = [60.0, 100.0, 140.0, 180.0];
 pub const PLAYER_ACTOR: u32 = 0x9000;
 pub const UNITS: UnitSlots = UnitSlots {
     player: 0,
@@ -61,6 +64,15 @@ pub struct Sim {
     /// Camera distance, moved by the wheel (30 per notch, 100..775).
     pub zoom: f64,
     pub standing_turn: bool,
+    /// The live pawn: its heading answers only to the turn keys (the
+    /// camera's mouse-look never moves it), and `W` walks along it.
+    pub live_pawn: bool,
+    /// Radians per second while a turn key is held (live: 1.92).
+    pub turn_rate_rad_s: f64,
+    /// The right turn key raises the yaw (live: yes, E).
+    pub right_raises_yaw: bool,
+    /// `(left, right)` key names the client binds.
+    pub turn_key_names: (String, String),
     pub hover_needs_mouse_move: bool,
     pub speed_uu_s: f64,
     /// Walls: forward motion stops at x >= wall until a jump clears it.
@@ -97,6 +109,27 @@ pub struct Sim {
     /// Entities mouse-over never reports (rendered, but the client's trace
     /// does not hit them).
     pub unhoverable: Vec<u32>,
+    /// Pitch turns behave like the live camera: clamped to +-78.75 deg
+    /// (`memory::clamped_pitch_counts`), and a push into the limit is no call.
+    pub live_pitch_clamp: bool,
+    /// The pitch axis is inverted (flag 0x8): `pitch_gain` reads negative and
+    /// +dy looks up.
+    pub pitch_inverted: bool,
+    /// While the camera looks within this many radians of the bearing to the
+    /// entity, the avatar stands in front of it: mouse-over reports the
+    /// player. (The usual third-person cover.)
+    pub avatar_hides: Option<(u32, f64)>,
+    /// The avatar only covers the target at pointer heights below this many
+    /// units above the target's `Location` (the target's upper body shows
+    /// over the avatar's head). Default infinity: covers every height.
+    pub avatar_cover_dz: f64,
+    /// Heights (units above an entity's `Location`) the sim treats as body
+    /// when hit-testing the cursor. Default is the old permissive set that
+    /// includes the feet; `REAL_BODY_DZ` is a standing humanoid, whose feet
+    /// hover nothing (probe B-P2).
+    pub body_dz: Vec<f64>,
+    /// A right-click opens an entity's window only within this many metres, straight line, like the server.
+    pub interact_range_m: Option<f64>,
 }
 
 impl Sim {
@@ -112,6 +145,10 @@ impl Sim {
             gain: 400.0,
             zoom: 250.0,
             standing_turn: true,
+            live_pawn: false,
+            turn_rate_rad_s: 1.92,
+            right_raises_yaw: true,
+            turn_key_names: ("Q".into(), "E".into()),
             hover_needs_mouse_move: false,
             speed_uu_s: 500.0,
             wall_x: None,
@@ -138,6 +175,12 @@ impl Sim {
             slots_reads: 0,
             fail_cursor_restore: false,
             unhoverable: Vec::new(),
+            live_pitch_clamp: false,
+            pitch_inverted: false,
+            avatar_hides: None,
+            avatar_cover_dz: f64::INFINITY,
+            body_dz: vec![-40.0, 0.0, 50.0, 90.0],
+            interact_range_m: None,
         }
     }
 
@@ -151,6 +194,15 @@ impl Sim {
             rendered: true,
         });
         self
+    }
+
+    /// A sim whose pawn behaves like the live one (see `live_pawn`).
+    pub fn live() -> Self {
+        Self {
+            live_pawn: true,
+            standing_turn: false,
+            ..Self::new()
+        }
     }
 
     fn held(&self, k: &str) -> bool {
@@ -193,26 +245,44 @@ impl Sim {
                 return PLAYER_ID;
             }
         }
-        let mut best: Option<(f64, u32)> = None;
+        let mut best: Option<(f64, u32, f64)> = None;
         for e in self
             .entities
             .iter()
             .filter(|e| e.rendered && !self.unhoverable.contains(&e.id))
         {
-            for dz in [-40.0, 0.0, 50.0, 90.0] {
+            // The body height whose projection is nearest the cursor, if any
+            // is within 25 px.
+            let mut near: Option<(f64, f64)> = None;
+            for dz in self.body_dz.iter().copied() {
                 let Some((px, py)) = self.project_point(Vec3::new(e.pos.x, e.pos.y, e.pos.z + dz))
                 else {
                     continue;
                 };
-                if ((px - x).powi(2) + (py - y).powi(2)).sqrt() <= 25.0 {
-                    let dist = horizontal_m(self.pos, e.pos);
-                    if best.is_none_or(|(d, _)| dist < d) {
-                        best = Some((dist, e.id));
-                    }
+                let d_px = ((px - x).powi(2) + (py - y).powi(2)).sqrt();
+                if d_px <= 25.0 && near.is_none_or(|(d, _)| d_px < d) {
+                    near = Some((d_px, dz));
+                }
+            }
+            if let Some((_, dz)) = near {
+                let dist = horizontal_m(self.pos, e.pos);
+                if best.is_none_or(|(d, _, _)| dist < d) {
+                    best = Some((dist, e.id, dz));
                 }
             }
         }
-        best.map(|b| b.1).unwrap_or(0)
+        let hit = best.map(|b| b.1).unwrap_or(0);
+        if let Some((id, half)) = self.avatar_hides {
+            let off =
+                self.entities.iter().find(|e| e.id == id).map(|e| {
+                    wrap_pi(super::geometry::bearing(self.pos, e.pos) - self.cam_yaw).abs()
+                });
+            let low = best.is_some_and(|b| b.2 < self.avatar_cover_dz);
+            if hit == id && low && off.is_some_and(|o| o < half) {
+                return PLAYER_ID;
+            }
+        }
+        hit
     }
 
     fn advance(&mut self, ms: u64) {
@@ -221,8 +291,23 @@ impl Sim {
             let dt = left.min(10);
             left -= dt;
             self.now += dt;
+            if self.live_pawn {
+                let (l, r) = self.turn_key_names.clone();
+                let dir = f64::from(u8::from(self.held(&r))) - f64::from(u8::from(self.held(&l)));
+                let sign = if self.right_raises_yaw { 1.0 } else { -1.0 };
+                self.pawn_yaw =
+                    wrap_pi(self.pawn_yaw + sign * dir * self.turn_rate_rad_s * dt as f64 / 1000.0);
+            }
+            if self.held("S") {
+                // Backward is never blocked by `wall_x` (the wall is ahead).
+                let step = self.speed_uu_s * dt as f64 / 1000.0;
+                self.pos.x -= self.pawn_yaw.cos() * step;
+                self.pos.y -= self.pawn_yaw.sin() * step;
+            }
             if self.held("W") {
-                self.pawn_yaw = self.cam_yaw;
+                if !self.live_pawn {
+                    self.pawn_yaw = self.cam_yaw;
+                }
                 let step = self.speed_uu_s * dt as f64 / 1000.0;
                 let nx = self.pos.x + self.pawn_yaw.cos() * step;
                 let ny = self.pos.y + self.pawn_yaw.sin() * step;
@@ -368,9 +453,21 @@ impl WorldIo for Sim {
     async fn look(&mut self, dx: i32, dy: i32, wheel: i32) -> Result<NativeLevel, String> {
         self.looks.push((dx, dy, wheel));
         self.cam_yaw = wrap_pi(self.cam_yaw + dx as f64 / self.gain);
-        // Mouse forward (negative dy) looks up.
-        self.cam_pitch = (self.cam_pitch - dy as f64 / self.gain.abs()).clamp(-1.4, 1.4);
-        if self.standing_turn {
+        let sign = if self.pitch_inverted { -1.0 } else { 1.0 };
+        let mut counts = f64::from(dy);
+        if self.live_pitch_clamp && dy != 0 {
+            // What LiveWorld::native_look does before it calls the turn handler.
+            let offset_units = (-self.cam_pitch).to_degrees() * 65536.0 / 360.0;
+            let gain = sign * 65536.0 / std::f64::consts::TAU / self.gain.abs();
+            counts = f64::from(clamped_pitch_counts(
+                offset_units as i32,
+                gain as f32,
+                dy as f32,
+            ));
+        }
+        // Mouse forward (negative dy) looks up (inverted: down).
+        self.cam_pitch = (self.cam_pitch - sign * counts / self.gain.abs()).clamp(-1.4, 1.4);
+        if self.standing_turn && !self.live_pawn {
             self.pawn_yaw = self.cam_yaw;
         }
         let notches = f64::from(wheel) / f64::from(WHEEL_NOTCH);
@@ -389,7 +486,7 @@ impl WorldIo for Sim {
             "yaw_offset_deg": 0.0,
             "pitch_offset_deg": -self.cam_pitch.to_degrees(),
             "gain": gain,
-            "pitch_gain": gain,
+            "pitch_gain": if self.pitch_inverted { -gain } else { gain },
             "yaw_gain": units / self.gain * self.readout_gain_scale,
         }))
     }
@@ -419,11 +516,18 @@ impl WorldIo for Sim {
             if under != 0 {
                 self.slots.insert(UNITS.target, under);
                 if button == 1 {
+                    let in_range = self.interact_range_m.is_none_or(|r| {
+                        self.entities
+                            .iter()
+                            .find(|e| e.id == under)
+                            .is_some_and(|e| distance_m(self.pos, e.pos) <= r)
+                    });
                     if let Some(w) = self
                         .entities
                         .iter()
                         .find(|e| e.id == under)
                         .and_then(|e| e.window.clone())
+                        .filter(|_| in_range)
                     {
                         if !self.windows.contains(&w) {
                             self.windows.push(w);
@@ -456,5 +560,9 @@ impl WorldIo for Sim {
 
     async fn ensure_focus(&mut self) -> Result<(), String> {
         Ok(())
+    }
+
+    async fn turn_keys(&mut self) -> Result<(String, String), String> {
+        Ok(self.turn_key_names.clone())
     }
 }

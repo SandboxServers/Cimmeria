@@ -34,11 +34,28 @@ pub fn describe_d3d_failure(hr: u32, screensaver_running: bool, secure: bool) ->
     }
 }
 
+/// Pids of `SGW.exe` among `(pid, exe file name)` process entries. The
+/// keep-awake counts every such process, window or not: a client that hangs
+/// before its window shows (a starved drive) is exactly when the screensaver
+/// must not start.
+pub fn sgw_pids_in(entries: impl IntoIterator<Item = (u32, String)>) -> Vec<u32> {
+    entries
+        .into_iter()
+        .filter(|(_, exe)| crate::supervisor::process::is_sgw_image(exe))
+        .map(|(pid, _)| pid)
+        .collect()
+}
+
 #[cfg(windows)]
 mod win {
     use std::ffi::c_void;
     use std::time::Duration;
 
+    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+        TH32CS_SNAPPROCESS,
+    };
     use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
     use windows_sys::Win32::System::Power::{
         SetThreadExecutionState, ES_CONTINUOUS, ES_DISPLAY_REQUIRED, ES_SYSTEM_REQUIRED,
@@ -110,13 +127,46 @@ mod win {
         pids.len()
     }
 
+    /// Pids of every running `SGW.exe`, whether or not it has a window.
+    pub fn sgw_process_pids() -> Vec<u32> {
+        let mut entries = Vec::new();
+        // SAFETY: a process snapshot walked with a correctly sized entry; the
+        // snapshot handle is closed below.
+        unsafe {
+            let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+            if snap == INVALID_HANDLE_VALUE {
+                return Vec::new();
+            }
+            let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+            entry.dwSize = std::mem::size_of::<PROCESSENTRY32W>() as u32;
+            let mut more = Process32FirstW(snap, &mut entry) != 0;
+            while more {
+                let len = entry
+                    .szExeFile
+                    .iter()
+                    .position(|&c| c == 0)
+                    .unwrap_or(entry.szExeFile.len());
+                entries.push((
+                    entry.th32ProcessID,
+                    String::from_utf16_lossy(&entry.szExeFile[..len]),
+                ));
+                more = Process32NextW(snap, &mut entry) != 0;
+            }
+            CloseHandle(snap);
+        }
+        crate::supervisor::display::sgw_pids_in(entries)
+    }
+
+    /// The keep-awake thread: holds the display and system awake while any
+    /// `SGW.exe` runs, checked every two seconds.
     pub fn spawn_keep_awake() {
         let _ = std::thread::Builder::new()
             .name("lab-keep-awake".into())
             .spawn(|| {
                 let mut held = false;
                 loop {
-                    let want = !process::running_sgw_pids().is_empty();
+                    let pids = sgw_process_pids();
+                    let want = !pids.is_empty();
                     if want != held {
                         let flags = if want {
                             ES_CONTINUOUS | ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED
@@ -126,10 +176,14 @@ mod win {
                         // SAFETY: per-thread execution state; this thread lives
                         // as long as the supervisor.
                         unsafe { SetThreadExecutionState(flags) };
-                        tracing::info!(held = want, "lab display keep-awake");
+                        tracing::info!(
+                            held = want,
+                            sgw_pids = pids.len(),
+                            "lab display keep-awake"
+                        );
                         held = want;
                     }
-                    std::thread::sleep(Duration::from_secs(10));
+                    std::thread::sleep(Duration::from_secs(2));
                 }
             });
     }
@@ -149,6 +203,7 @@ pub fn ensure_display_for_launch() -> Result<(), String> {
     #[cfg(windows)]
     {
         if win::probe_d3d().is_ok() {
+            tracing::info!(target: "lab.client", event = "display_probe", ok = true, "lab launch: Direct3D probe ok");
             return Ok(());
         }
         let running = win::screensaver_running();
@@ -187,6 +242,25 @@ mod tests {
         assert!(
             s.contains("0x88760868") && s.contains("display is off"),
             "{s}"
+        );
+    }
+
+    /// Regression guard (2026-10-12): the keep-awake counted only an SGW.exe
+    /// with a top-level window, so a client hung before its window never
+    /// held the display. Every SGW.exe process counts, whatever else runs.
+    #[test]
+    fn a_windowless_client_process_keeps_the_display_awake() {
+        let procs = vec![
+            (100, "explorer.exe".to_string()),
+            (4242, "SGW.exe".to_string()),
+            (4300, "sgw.EXE".to_string()),
+            (4400, "NotSGW.exe".to_string()),
+            (4500, "SGW.exe.bak".to_string()),
+        ];
+        assert_eq!(sgw_pids_in(procs), vec![4242, 4300]);
+        assert!(
+            sgw_pids_in(Vec::new()).is_empty(),
+            "no client, nothing held"
         );
     }
 }

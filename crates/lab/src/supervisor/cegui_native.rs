@@ -51,6 +51,22 @@ pub const DROP_TARGET_OFFSET: u32 = 0x270;
 pub const DRAG_FLAGS_OFFSET: u32 = 0x23c;
 /// CEGUI `LeftButton`.
 pub const LEFT_BUTTON: u32 = 0;
+/// CEGUI `RightButton`. `Inventory.lua:729` documents `RightButton:
+/// mouseButton == 1`; left is 0 (proven live), so right is 1 and middle 2.
+pub const RIGHT_BUTTON: u32 = 1;
+/// CEGUI `MiddleButton`.
+pub const MIDDLE_BUTTON: u32 = 2;
+
+/// The CEGUI button index for the lab's button number (0 left, 1 right, 2
+/// middle).
+pub fn cegui_button(button: usize) -> Result<u32, String> {
+    match button {
+        0 => Ok(LEFT_BUTTON),
+        1 => Ok(RIGHT_BUTTON),
+        2 => Ok(MIDDLE_BUTTON),
+        other => Err(format!("mouse button {other} (0 left, 1 right, 2 middle)")),
+    }
+}
 
 /// A stock VA moved by the module slide.
 pub fn rebase(va: u32, slide: i64) -> u32 {
@@ -137,6 +153,25 @@ pub fn drop_plan(started: bool, drop_target: u32, allow_notify: bool) -> DropPla
         (true, false, true) => DropPlan::Notify,
         (true, false, false) => DropPlan::Release,
     }
+}
+
+/// Runs `on_cancel` if dropped before disarming (the button-up of a click
+/// whose call was cancelled mid-hold).
+struct ButtonUpGuard<F: FnOnce()>(Option<F>);
+
+impl<F: FnOnce()> Drop for ButtonUpGuard<F> {
+    fn drop(&mut self) {
+        if let Some(f) = self.0.take() {
+            f();
+        }
+    }
+}
+
+/// Sleep `hold`; if the future is dropped meanwhile, run `on_cancel`.
+async fn hold_with_cancel_release<F: FnOnce()>(hold: std::time::Duration, on_cancel: F) {
+    let mut guard = ButtonUpGuard(Some(on_cancel));
+    tokio::time::sleep(hold).await;
+    guard.0 = None;
 }
 
 /// A handle on the client's CEGUI `System`, valid for one tool call.
@@ -256,6 +291,30 @@ impl Cegui<'_> {
         )
         .await
         .map(|r| r & 0xFF != 0)
+    }
+
+    /// A whole click at the CEGUI cursor: injected button down, `hold`, button
+    /// up. True when CEGUI took the press.
+    pub async fn click(&self, button: u32, hold: std::time::Duration) -> Result<bool, String> {
+        let taken = self.button_down(button).await?;
+        // A call cancelled during the hold must not leave the button down.
+        let params = thiscall_params(
+            rebase(INJECT_MOUSE_BUTTON_UP_VA, self.slide),
+            self.system,
+            &[button],
+            "u32",
+        );
+        let bridge = self.sup.bridge.clone();
+        hold_with_cancel_release(hold, move || {
+            if let Ok(rt) = tokio::runtime::Handle::try_current() {
+                rt.spawn(async move {
+                    let _ = bridge.call("call_native", params).await;
+                });
+            }
+        })
+        .await;
+        self.button_up(button).await?;
+        Ok(taken)
     }
 
     /// The C++ `Window*` behind a named window: the word stored at the
@@ -459,5 +518,33 @@ mod tests {
         assert!(c.contains("ud = tostring(w)"));
         let full = crate::supervisor::ui::lua_json::chunk(&c);
         assert!(full.contains("local function __jcall"));
+    }
+
+    /// A click cancelled during its hold must release the button; a click
+    /// that completes the hold must not fire the cancel path.
+    #[tokio::test]
+    async fn a_cancelled_hold_releases_the_button() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        let ups = Arc::new(AtomicU32::new(0));
+        let c = ups.clone();
+        let cancelled = tokio::time::timeout(
+            Duration::from_millis(20),
+            hold_with_cancel_release(Duration::from_secs(3600), move || {
+                c.fetch_add(1, Ordering::SeqCst);
+            }),
+        )
+        .await;
+        assert!(cancelled.is_err());
+        assert_eq!(ups.load(Ordering::SeqCst), 1);
+
+        let c = ups.clone();
+        hold_with_cancel_release(Duration::from_millis(5), move || {
+            c.fetch_add(1, Ordering::SeqCst);
+        })
+        .await;
+        assert_eq!(ups.load(Ordering::SeqCst), 1, "fired after a full hold");
     }
 }

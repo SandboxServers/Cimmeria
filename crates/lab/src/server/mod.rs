@@ -24,6 +24,7 @@ use rmcp::{
 };
 use serde_json::{json, Value};
 
+use crate::supervisor::input::{cursor_target, MouseInput};
 use crate::supervisor::Supervisor;
 use crate::timeline::{Timeline, TimelineArgs};
 
@@ -209,6 +210,13 @@ pub struct InputMouseArgs {
     pub action: Option<String>,
     #[serde(default)]
     pub hold_ms: Option<u64>,
+    /// With `y`: put the UI cursor on this UI pixel first (a real CEGUI
+    /// MouseMove), then press. Both or neither. With no button, just moves
+    /// the cursor.
+    #[serde(default)]
+    pub x: Option<i32>,
+    #[serde(default)]
+    pub y: Option<i32>,
 }
 
 /// Args for `client_ui_click`.
@@ -469,22 +477,27 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Relative mouse motion / wheel through the game's DirectInput mouse (mouse-look while the viewport has the mouse captured), and/or a mouse-button press, release or click (window messages) at the current UI cursor."
+        description = "Relative mouse motion / wheel through the game's DirectInput mouse (mouse-look while the viewport has the mouse captured), and/or a mouse-button press, release or click (window messages). Give x and y (UI pixels, both or neither) to put the UI cursor there first, with a real CEGUI MouseMove, and have the press land on it; without them the press lands wherever the UI cursor already is (CEGUI applies a button at its own cursor, never at a message's coordinates). x and y with no button just move the cursor."
     )]
     async fn client_input_mouse(
         &self,
         Parameters(a): Parameters<InputMouseArgs>,
     ) -> Result<CallToolResult, McpError> {
+        let at = match cursor_target(a.x, a.y) {
+            Ok(at) => at,
+            Err(e) => return self.wrap(Err(e)),
+        };
         self.wrap(
             self.supervisor
-                .input_mouse(
-                    a.dx,
-                    a.dy,
-                    a.wheel,
-                    a.button,
-                    a.action.as_deref(),
-                    a.hold_ms,
-                )
+                .input_mouse(MouseInput {
+                    dx: a.dx,
+                    dy: a.dy,
+                    wheel: a.wheel,
+                    button: a.button,
+                    action: a.action.as_deref(),
+                    hold_ms: a.hold_ms,
+                    at,
+                })
                 .await,
         )
     }

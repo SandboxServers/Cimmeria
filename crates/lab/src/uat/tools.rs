@@ -86,6 +86,7 @@ pub const CAPABILITIES: &[Capability] = &[
     read("player_state", "client_player_state"),
     drive("item_action", "client_item_action", Tier::N1),
     drive("drag_drop", "client_drag_drop", Tier::N1),
+    drive("vendor_buy", "client_vendor_buy", Tier::N1),
     // Abilities, combat, events (L6, L7, L12, L16): on main since #1100;
     // each reports `native_level: {tier, label}`.
     drive("use_ability", "client_use_ability", Tier::N1),

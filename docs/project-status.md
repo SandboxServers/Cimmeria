@@ -2,7 +2,7 @@
 title: "Project Status"
 type: reference
 audience: anyone tracking the project
-last_updated: 2026-10-11
+last_updated: 2026-10-12
 ---
 
 # Project Status
@@ -26,6 +26,8 @@ Where the Cimmeria server emulator stands today and what's ahead.
 > **2026-10-11 update (telemetry gaps)**: the headline and the Missions, Contact lists, Observability pipeline, Tauri admin app + tools, World state and Metrics / telemetry rows follow the telemetry-gaps close-out ([ledger](analysis/telemetry-gaps/README.md)), which added eight NT rows across §13, §26, §33, §36, World State Persistence and Metrics / Telemetry and changed no existing row. A session can now be explained from SigNoz: how it ended, what each system refused or dropped and why, and who it happened to. The client DLL half ships with the next signed launcher release.
 >
 > **2026-10-11 update (lab)**: the lab spec vocabulary close-out (SV-16, [ledger](analysis/lab-spec-vocab/README.md)) adds the live research lab's UAT runner to [Development Tooling](#development-tooling) and changes no gap-analysis row: it is tooling, not a game system.
+>
+> **2026-10-12 update (lab)**: the lab-harness close-out (LH-18, [close-out](analysis/lab-harness/closeout.md), #1660) fixes the lab tool defects the Haiku UAT round 1 found and changes no gap-analysis row: it is tooling. Item use and vendor buys now run at N1; drags and splits still land at N3 until CEGUI resolves the drop target. Eight live checks are owed ([unified-uat.md § Lab harness](guides/unified-uat.md#lab-harness)).
 >
 > **Scope note**: only work merged to `main` is counted. The black-market implementation on `feat/571-black-market-phase1` (PR #586) is real but unmerged, and is counted as missing until it lands.
 
@@ -147,7 +149,7 @@ Tools for working on the project rather than features of the server. They have n
 | Tool | Status | Notes |
 |------|--------|-------|
 | Token profiler (`tools/token-profile/`) | Working | Measures what AI-assisted work costs: ingests local Claude Code transcripts, reports tokens, list-price USD (a floor about 10% under Claude Code's own total), context pressure and attribution per PR and campaign, and reconciles against Claude Code's `cost-state` totals. Every merged PR gets one stats comment (406 backfilled on 2026-10-03), and local scheduled jobs post missed comments daily and write a weekly report. The OTel reconciliation waits for the first telemetry export. How-to: [guides/token-profiling.md](guides/token-profiling.md); findings: [retro cost study](analysis/token-usage/retro-cost-study.md) |
-| Live research lab UAT runner (`lab uat`, `lab calibrate`) | Working; live acceptance pending | Runs the TOML UAT specs against the real client with no agent in the loop. The lab spec vocabulary (released 2026-10-11) lets a step name its target by spawn tag, stand at a pose, set an absolute camera and wait on a server log line; `lab calibrate` finds a pose by hover alone and `lab uat --heal` proposes the fix for a missed hover, both as a spec diff, never a commit. The calibrated first-session acceptance run (SV-15) is paused until the workstation is idle. The `lab` command is now the Rust `lab.exe` ([lab CLI in Rust](analysis/lab-cli-rust/README.md): code complete, its live check on the workstation is owed). How-to: [guides/automated-uat.md](guides/automated-uat.md); ledger: [analysis/lab-spec-vocab/](analysis/lab-spec-vocab/README.md) |
+| Live research lab UAT runner (`lab uat`, `lab calibrate`) | Working; live acceptance pending | Runs the TOML UAT specs against the real client with no agent in the loop. The lab spec vocabulary (released 2026-10-11) lets a step name its target by spawn tag, stand at a pose, set an absolute camera and wait on a server log line; `lab calibrate` finds a pose by hover alone and `lab uat --heal` proposes the fix for a missed hover, both as a spec diff, never a commit. The calibrated first-session acceptance run (SV-15) is paused until the workstation is idle. The lab-harness campaign (2026-10-12, [close-out](analysis/lab-harness/closeout.md)) made the drive tools honest about what they did: item use and vendor buys run at N1, drags and splits land at N3. The `lab` command is now the Rust `lab.exe` ([lab CLI in Rust](analysis/lab-cli-rust/README.md): code complete, its live check on the workstation is owed). How-to: [guides/automated-uat.md](guides/automated-uat.md); ledger: [analysis/lab-spec-vocab/](analysis/lab-spec-vocab/README.md) |
 
 ## Content Coverage
 

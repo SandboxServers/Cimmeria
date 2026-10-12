@@ -198,7 +198,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Act on an item like a player. use / equip / unequip / rightclick: a real right-click on the item's slot (the stock UI's contextSensitiveUseItem), opening the inventory or character window with its bound key and clicking the right tab first; doubleclick: a double left-click. loot_all: click Loot All; loot_slot: page the loot window and double-click row `loot_index` (1-based). Pick the item by container + slot, item_id or name. When the slot cannot be put on screen, falls back to the client's slash command (/useitem, /equip, /lootitem) and reports native_level slash_command. Returns the inventory diff observed within wait_ms."
+        description = "Act on an item like a player. use / equip / unequip / rightclick: a right-click on the item's slot, which the stock UI turns into contextSensitiveUseItem; it is sent through CEGUI's own button injectors first, then as posted button messages (both N1), each followed by an inventory check, and with allow_fallback the stock handler is called through Lua (client_ui_lua, N3). The inventory or character window is opened with its bound key and the right tab clicked first. doubleclick on a slot is performed as the same right-click (the stock inventory has no double-click handler; result fields requested/performed). loot_all: click Loot All; loot_slot: page the loot window and double-click row `loot_index` (1-based). Pick the item by container + slot, item_id or name. When the slot cannot be put on screen, falls back to the client's slash command (/useitem, /equip, /lootitem) and reports native_level slash_command. Returns the inventory diff observed within wait_ms. effect_ok and native_pass are false when the inventory did not change (expect_change false disables the check)."
     )]
     async fn client_item_action(
         &self,
@@ -219,6 +219,7 @@ impl LabServer {
                     &sel,
                     a.loot_index,
                     a.allow_fallback.unwrap_or(true),
+                    a.expect_change.unwrap_or(true),
                     Duration::from_millis(a.wait_ms.unwrap_or(DEFAULT_WAIT_MS).min(60_000)),
                 )
                 .await
@@ -251,6 +252,27 @@ impl LabServer {
         }
         .await;
         ui_result("client_drag_drop", t0, r)
+    }
+
+    #[tool(
+        description = "Buy from the open vendor window like a player. Sets row `row`'s quantity spinner to `quantity` by clicking its increment or decrement button (real or CEGUI-injected clicks, N1), then clicks Vendor_BuyButton. Refuses when the vendor is closed, the Buy tab is not active or the row is empty. When the spinner buttons cannot reach the quantity and allow_fallback is on, sets it through the spinner's Lua / setVendorSelectedQuantity (client_ui_lua, N3). Verified by an inventory and cash diff: bought, effect_ok and native_pass false when nothing changed (expect_change false disables the check)."
+    )]
+    async fn client_vendor_buy(
+        &self,
+        Parameters(a): Parameters<VendorBuyArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let t0 = Instant::now();
+        let r = self
+            .supervisor
+            .vendor_buy(
+                a.row,
+                a.quantity,
+                a.allow_fallback.unwrap_or(true),
+                a.expect_change.unwrap_or(true),
+                Duration::from_millis(a.wait_ms.unwrap_or(DEFAULT_WAIT_MS).min(60_000)),
+            )
+            .await;
+        ui_result("client_vendor_buy", t0, r)
     }
 }
 

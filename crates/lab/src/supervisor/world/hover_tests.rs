@@ -17,7 +17,7 @@ fn client_point(x: f64, y: f64, z: f64) -> PointArg {
     }
 }
 
-/// A guard 10 m straight ahead (centre pixel 500, 475) and the cursor
+/// A guard 10 m straight ahead (centre pixel 500, 425) and the cursor
 /// parked in a corner.
 fn guard_ahead() -> Sim {
     let mut s = Sim::new().with_entity(10, "Cellblock Guard", Vec3::new(1000.0, 0.0, 0.0));
@@ -41,8 +41,8 @@ async fn an_open_target_scores_full_jitter() {
     assert_eq!(out["hover"], "entity");
     assert_eq!(out["jitter_hits"], 8);
     assert_eq!(out["jitter"], 8);
-    assert_eq!(out["pixel"], json!([500, 475]));
-    assert_eq!(out["edge_px"], 325.0);
+    assert_eq!(out["pixel"], json!([500, 425]));
+    assert_eq!(out["edge_px"], 375.0);
     assert_eq!(out["native_level"], "real_input");
     // A hover probe never presses a button, and puts the cursor back.
     assert!(
@@ -203,7 +203,7 @@ async fn an_entity_aim_with_nothing_under_the_cursor_is_nothing() {
 #[tokio::test]
 async fn a_window_edge_through_the_ring_costs_part_of_the_jitter() {
     let mut sim = guard_ahead();
-    // Centre (500, 475). A 20 px ring puts 3 points at x >= 510 (520, 514,
+    // Centre (500, 425). A 20 px ring puts 3 points at x >= 510 (520, 514,
     // 514), all of which a window from x = 510 covers; the default 12 px
     // ring would lose only 1 (512).
     sim.window_rects = vec![("Tracker".into(), [510.0, 0.0, 900.0, 800.0])];
