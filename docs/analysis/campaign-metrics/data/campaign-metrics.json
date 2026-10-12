@@ -1,0 +1,363 @@
+{
+ "accepted": {
+  "accepted_gap": "no packet table",
+  "cost_per_accepted_usd": null,
+  "packets": 0
+ },
+ "campaign": "campaign-metrics",
+ "ci": {
+  "code_prs_first_attempt_rate": null,
+  "code_prs_first_attempt_rate_gap": "no CI data",
+  "first_attempt_rate": null,
+  "first_attempt_rate_gap": "no CI data",
+  "overall_rate": null,
+  "overall_rate_gap": "no CI data",
+  "pr_runs_total": 0,
+  "queue_first_attempt_rate": null,
+  "queue_first_attempt_rate_gap": "no CI data"
+ },
+ "cost": {
+  "attributed_usd": 0.0,
+  "by_model_tier": {
+   "fable": 0.0,
+   "haiku": 1.6287975299999993,
+   "opus": 26.053160600000005,
+   "other": 0.0,
+   "sonnet": 16.639283300000002
+  },
+  "by_role": {
+   "coordinator": 44.321241429999894
+  },
+  "self_sessions": 1,
+  "total_usd": 44.321241429999894,
+  "unattributed_in_campaign_usd": 44.321241429999894
+ },
+ "cycle_time": {
+  "campaign_hours": null,
+  "campaign_hours_gap": "no close-out commit in the ledger window",
+  "packet_hours": {
+   "n": 0,
+   "p50": null,
+   "p90": null
+  }
+ },
+ "escalation": {
+  "dispatched_to_haiku": 21,
+  "escalated": 0,
+  "items": [],
+  "rate": 0.0
+ },
+ "escaped_defects": {
+  "count": 0,
+  "items": [],
+  "rate_per_merged_pr": null,
+  "rate_per_merged_pr_gap": "no merged PRs"
+ },
+ "first_pass": {
+  "eligible": 0,
+  "packets": [],
+  "rate": null
+ },
+ "overstep": {
+  "items": [],
+  "opus_coding_usd": 0.0,
+  "opus_research_usd": 0.0,
+  "recoverable_usd": {
+   "high": 0.0,
+   "low": 0.0
+  },
+  "rules": {},
+  "sonnet_implementing_usd": 0.0,
+  "wasted_usd": 0.0
+ },
+ "packet_rows": [
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CM-01",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CM-02",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": [
+    "context-exhausted"
+   ]
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CM-04",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": [
+    "context-exhausted",
+    "other",
+    "other"
+   ]
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CM-05",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CM-03",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": [
+    "context-exhausted"
+   ]
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CM-06",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": [
+    "context-exhausted"
+   ]
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CM-07",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": [
+    "context-exhausted"
+   ]
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CM-08a",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CM-08b",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CM-08c",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CM-08d",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CM-08e",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CM-08f",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CM-08g",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CM-08h",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CM-08i",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CM-08j",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CM-08k",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CM-09a",
+   "implementer": "documentation-writer",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CM-09b",
+   "implementer": "documentation-writer",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CM-10",
+   "implementer": "coordinator",
+   "regime": "haiku",
+   "retries": [
+    "other",
+    "other",
+    "other",
+    "other",
+    "other",
+    "other",
+    "other",
+    "other",
+    "other"
+   ]
+  }
+ ],
+ "prs": {
+  "cost_per_pr": {
+   "mean": null,
+   "p50": null,
+   "p90": null
+  },
+  "count": 0,
+  "merged": 0,
+  "per_pr": []
+ },
+ "regime": "mixed",
+ "retries": {
+  "by_reason": {
+   "ci-failure": 0,
+   "context-exhausted": 5,
+   "merge-conflict": 0,
+   "other": 11,
+   "permission-denied": 0,
+   "review-fix": 0,
+   "stalled-background": 0
+  },
+  "total": 16
+ },
+ "stamp": {
+  "generated": "2026-10-12T19:03:48Z",
+  "price_table": "2026-10-12",
+  "profiler_schema": "6",
+  "unattributed_request_share": 0.1406,
+  "unattributed_share": 0.122,
+  "unmapped_share": 0.38,
+  "untagged_usd_share": 0.2653,
+  "window": {
+   "since": "2026-09-21T00:00:00Z",
+   "until": "2026-10-13T00:00:00Z"
+  }
+ },
+ "stop_context": {
+  "by_error_kind": {
+   "authentication_failed": 0,
+   "other": 0,
+   "rate_limit": 0
+  },
+  "by_stop": {
+   "end_turn": 79,
+   "error": 0,
+   "no_record": 1,
+   "tool_use": 1
+  },
+  "context_at_stop": {
+   "max": 184788,
+   "p50": 57104.0,
+   "p90": 99415.0
+  },
+  "share_above_90k": 0.21,
+  "workers": 81
+ }
+}

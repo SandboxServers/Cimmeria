@@ -17,6 +17,7 @@ from .shapes import SYNTHETIC_MODEL, unknown_shape
 
 WORKTREE = re.compile(r"[\\/]\.claude[\\/]worktrees[\\/]([^\\/]+)")
 PERSISTED = re.compile(r"Output too large.*saved to|<persisted-output>", re.DOTALL)
+API_ERROR_KIND = re.compile(r"[a-z_]{1,40}")
 AGENT_TOOLS = {"Agent", "Task"}
 
 
@@ -80,6 +81,11 @@ def result_text(content):
     return ""
 
 
+def api_error_kind(value):
+    """The `error` class of a synthetic API error record (rate_limit, ...), never its message text."""
+    return value if isinstance(value, str) and API_ERROR_KIND.fullmatch(value) else "other"
+
+
 class Transcript:
     def __init__(self, db, run_id, path, session_id, agent_id, state, stats):
         self.db = db
@@ -88,7 +94,9 @@ class Transcript:
         self.session_id = session_id
         self.agent_id = agent_id
         self.st = {"cur": None, "retry": False, "sched": False, "seen_turn": False, "last_req": None,
-                   "compaction": None, "gh_create": [], "git_calls": [], "last_ts": None, **state}
+                   "compaction": None, "gh_create": [], "git_calls": [], "last_ts": None,
+                   "last_tools": {"rid": None, "tools": []}, "ends_result": False, "api_error": None,
+                   **state}
         self.stats = stats
         self.is_fork = agent_id is not None and db.execute(
             "SELECT agent_type = 'fork' FROM agents WHERE agent_id = ?", (agent_id,)).fetchone() == (1,)
@@ -178,13 +186,17 @@ class Transcript:
 
     def _assistant(self, rec):
         msg = rec["message"]
+        self.st["ends_result"] = False
+        self.st["api_error"] = None
         if msg.get("model") == SYNTHETIC_MODEL:
             if rec.get("isApiErrorMessage"):
                 self.st["retry"] = True
+                self.st["api_error"] = api_error_kind(rec.get("error"))
                 self.stats["api_errors"] += 1
             return
         rid = rec["requestId"]
         cols = usage_columns(msg["usage"], self.stats)
+        cols["stop_reason"] = msg.get("stop_reason")
         row = self.db.execute("SELECT session_id, agent_id FROM requests WHERE request_id = ?", (rid,)).fetchone()
         if row is not None:
             if row != (self.session_id, self.agent_id):
@@ -193,7 +205,8 @@ class Transcript:
                 self.stats["fork_copied_records" if self.is_fork else "duplicate_request_records"] += 1
                 return
             # A later record of the same request: keep the final usage.
-            sets = ", ".join(f"{k} = ?" for k in cols)
+            sets = ", ".join("stop_reason = COALESCE(?, stop_reason)" if k == "stop_reason" else f"{k} = ?"
+                             for k in cols)
             self.db.execute(f"UPDATE requests SET {sets}, records_seen = records_seen + 1, message_uuid = ?"
                             f" WHERE request_id = ?", (*cols.values(), rec.get("uuid") or "", rid))
         else:
@@ -225,12 +238,13 @@ class Transcript:
         self.db.execute(
             "INSERT INTO requests (request_id, session_id, agent_id, trigger_id, message_uuid, records_seen, ts, model,"
             " cc_version, git_branch, cwd_worktree, input_tokens, output_tokens, thinking_tokens, cache_read,"
-            " cache_write_5m, cache_write_1h, web_search, web_fetch, context_tokens, prev_gap_s)"
-            " VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " cache_write_5m, cache_write_1h, web_search, web_fetch, context_tokens, prev_gap_s, stop_reason)"
+            " VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (rid, self.session_id, self.agent_id, trig["id"], rec.get("uuid") or "", ts, msg.get("model") or "",
              rec.get("version"), rec.get("gitBranch"), worktree_of(rec.get("cwd")), cols["input_tokens"],
              cols["output_tokens"], cols["thinking_tokens"], cols["cache_read"], cols["cache_write_5m"],
-             cols["cache_write_1h"], cols["web_search"], cols["web_fetch"], cols["context_tokens"], gap))
+             cols["cache_write_1h"], cols["web_search"], cols["web_fetch"], cols["context_tokens"], gap,
+             cols["stop_reason"]))
         self.stats["new_requests"] += 1
         if st["compaction"]:
             self.db.execute("UPDATE compactions SET request_after = ? WHERE boundary_uuid = ?", (rid, st["compaction"]))
@@ -242,11 +256,17 @@ class Transcript:
         if not isinstance(content, list):
             return
         root = fp.checkout_root(rec.get("cwd"))
+        # The tool calls of the last request, across its streamed records (see write_agent_stop).
+        last = self.st["last_tools"]
+        if last["rid"] != rid:
+            last = self.st["last_tools"] = {"rid": rid, "tools": []}
         for b in content:
             if not isinstance(b, dict) or b.get("type") != "tool_use" or not b.get("id"):
                 continue
             name = b.get("name") or ""
             inp = b.get("input") if isinstance(b.get("input"), dict) else {}
+            if all(t["id"] != b["id"] for t in last["tools"]):
+                last["tools"].append({"id": b["id"], "name": name, "bg": inp.get("run_in_background") is True})
             fprint, server = fp.fingerprint(name, inp, root)
             pr_ref = verb = None
             worktree = wb.worktree_ref(inp)
@@ -270,6 +290,7 @@ class Transcript:
         content = msg.get("content")
         results = [b for b in content if isinstance(b, dict) and b.get("type") == "tool_result"] \
             if isinstance(content, list) else []
+        self.st["ends_result"] = bool(results)
         if results:
             self._tool_results(rec, results)
             return

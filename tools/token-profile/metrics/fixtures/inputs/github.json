@@ -1,0 +1,209 @@
+{
+ "since": "2026-09-21",
+ "until": "2026-10-13T00:00:00Z",
+ "untagged_prs": 2,
+ "prs": [
+  {
+   "number": 101,
+   "campaign": "alpha-old",
+   "merged": true,
+   "createdAt": "2026-09-26T20:00:00Z",
+   "mergedAt": "2026-09-27T02:00:00Z",
+   "code_pr": true,
+   "commits": [
+    {
+     "sha": "aaa101",
+     "committed": "2026-09-27T01:00:00Z",
+     "authored": "2026-09-27T01:00:00Z",
+     "merge": false
+    }
+   ],
+   "ci": {
+    "first_attempt": true,
+    "overall": true,
+    "runs": 1
+   },
+   "queue": {
+    "runs": 1,
+    "first_attempt": true,
+    "overall": true
+   }
+  },
+  {
+   "number": 102,
+   "campaign": "alpha-old",
+   "merged": true,
+   "createdAt": "2026-09-26T20:00:00Z",
+   "mergedAt": "2026-09-27T03:00:00Z",
+   "code_pr": true,
+   "commits": [
+    {
+     "sha": "aaa102",
+     "committed": "2026-09-27T01:00:00Z",
+     "authored": "2026-09-27T01:00:00Z",
+     "merge": false
+    }
+   ],
+   "ci": {
+    "first_attempt": true,
+    "overall": true,
+    "runs": 1
+   },
+   "queue": {
+    "runs": 1,
+    "first_attempt": true,
+    "overall": true
+   }
+  },
+  {
+   "number": 103,
+   "campaign": "alpha-old",
+   "merged": true,
+   "createdAt": "2026-09-26T20:00:00Z",
+   "mergedAt": "2026-09-27T04:00:00Z",
+   "code_pr": true,
+   "commits": [
+    {
+     "sha": "aaa103",
+     "committed": "2026-09-27T01:00:00Z",
+     "authored": "2026-09-27T01:00:00Z",
+     "merge": false
+    }
+   ],
+   "ci": {
+    "first_attempt": false,
+    "overall": true,
+    "runs": 2
+   },
+   "queue": {
+    "runs": 1,
+    "first_attempt": true,
+    "overall": true
+   }
+  },
+  {
+   "number": 104,
+   "campaign": "alpha-old",
+   "merged": true,
+   "createdAt": "2026-09-26T20:00:00Z",
+   "mergedAt": "2026-09-27T05:00:00Z",
+   "code_pr": true,
+   "commits": [
+    {
+     "sha": "aaa104",
+     "committed": "2026-09-27T01:00:00Z",
+     "authored": "2026-09-27T01:00:00Z",
+     "merge": false
+    }
+   ],
+   "ci": {
+    "first_attempt": true,
+    "overall": true,
+    "runs": 1
+   },
+   "queue": {
+    "runs": 1,
+    "first_attempt": true,
+    "overall": true
+   }
+  },
+  {
+   "number": 201,
+   "campaign": "beta-haiku",
+   "merged": true,
+   "createdAt": "2026-09-26T20:00:00Z",
+   "mergedAt": "2026-10-11T02:00:00Z",
+   "code_pr": true,
+   "commits": [
+    {
+     "sha": "aaa201",
+     "committed": "2026-09-27T01:00:00Z",
+     "authored": "2026-09-27T01:00:00Z",
+     "merge": false
+    }
+   ],
+   "ci": {
+    "first_attempt": true,
+    "overall": true,
+    "runs": 1
+   },
+   "queue": {
+    "runs": 1,
+    "first_attempt": true,
+    "overall": true
+   }
+  },
+  {
+   "number": 202,
+   "campaign": "beta-haiku",
+   "merged": true,
+   "createdAt": "2026-09-26T20:00:00Z",
+   "mergedAt": "2026-10-11T03:00:00Z",
+   "code_pr": true,
+   "commits": [
+    {
+     "sha": "aaa202",
+     "committed": "2026-09-27T01:00:00Z",
+     "authored": "2026-09-27T01:00:00Z",
+     "merge": false
+    }
+   ],
+   "ci": {
+    "first_attempt": false,
+    "overall": true,
+    "runs": 2
+   },
+   "queue": {
+    "runs": 1,
+    "first_attempt": true,
+    "overall": true
+   }
+  },
+  {
+   "number": 203,
+   "campaign": "beta-haiku",
+   "merged": true,
+   "createdAt": "2026-09-26T20:00:00Z",
+   "mergedAt": "2026-10-11T04:00:00Z",
+   "code_pr": false,
+   "commits": [
+    {
+     "sha": "aaa203",
+     "committed": "2026-09-27T01:00:00Z",
+     "authored": "2026-09-27T01:00:00Z",
+     "merge": false
+    }
+   ],
+   "ci": {
+    "first_attempt": true,
+    "overall": true,
+    "runs": 1
+   },
+   "queue": {
+    "runs": 1,
+    "first_attempt": true,
+    "overall": true
+   }
+  }
+ ],
+ "escaped_defects": {
+  "alpha-old": [
+   {
+    "kind": "pr",
+    "number": 900,
+    "cites": 102,
+    "days_after_merge": 2.0
+   }
+  ]
+ },
+ "defect_items": [
+  {
+   "kind": "pr",
+   "number": 900,
+   "cites": 102,
+   "days_after_merge": 2.0,
+   "campaign": "alpha-old",
+   "citing_campaign": null
+  }
+ ]
+}

@@ -20,6 +20,11 @@ class PriceTest(unittest.TestCase):
         self.assertAlmostEqual(fable["cache_read"] / fable["input"], 0.025)
         self.assertAlmostEqual(prices.price_for("claude-sonnet-5")["cache_read"] / 2.0, 0.1)
 
+    def test_sonnet_55_cache_reads_are_a_tenth_from_2026_10_12(self):
+        # Sonnet 5.5 cache reads are 0.05x input (source: prices.SOURCE). The 2026-10-10 key stays as it was.
+        self.assertAlmostEqual(prices.PRICE_TABLES["2026-10-12"]["claude-sonnet-5-5"]["cache_read"], 0.10)
+        self.assertAlmostEqual(prices.PRICE_TABLES["2026-10-10"]["claude-sonnet-5-5"]["cache_read"], 0.20)
+
     def test_cache_writes_split_by_ttl(self):
         for model in prices.PRICE_TABLES[prices.CURRENT]:
             row = prices.price_for(model)
@@ -75,6 +80,10 @@ class FingerprintTest(unittest.TestCase):
             '& "C:\\Program Files\\Tool\\tool.EXE" --key k': "tool",
             "bash tools/build-lane/lane.sh cargo check -p x": "bash tools/build-lane/lane.sh",
             "bash /home/u/secret.sh": "bash",
+            "Set-Location C:\\x; pwsh -NoProfile -File tools/build-lane/lane.ps1 cargo test": "pwsh tools/build-lane/lane.ps1",
+            'Set-Location "C:\\a b"; git status': "git status",
+            "pwsh -File secret.ps1 --key k": "pwsh",
+            "pwsh -ExecutionPolicy Bypass -File tools/build-lane/lane.ps1 cargo check": "pwsh tools/build-lane/lane.ps1",
             "sed -n 1,20p file": "sed -n",
             "": None,
         }
@@ -90,6 +99,8 @@ class FingerprintTest(unittest.TestCase):
         self.assertEqual(repo_relative("/etc/passwd", root), "<external>")
         self.assertEqual(repo_relative("../../outside", root), "<external>")
         self.assertEqual(repo_relative("docs/b.md", root), "docs/b.md")
+        self.assertEqual(fingerprint("NotebookEdit", {"notebook_path": "C:\\Users\\x\\src\\Cimmeria\\docs\\n.ipynb"}, root),
+                         ("docs/n.ipynb", None))
 
     def test_mcp_and_others(self):
         self.assertEqual(fingerprint("mcp__ghidra__decompile_function", {"x": "C:\\secret"}),

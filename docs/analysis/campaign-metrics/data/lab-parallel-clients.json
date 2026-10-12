@@ -1,0 +1,531 @@
+{
+ "accepted": {
+  "cost_per_accepted_usd": 1.928124,
+  "packets": 10
+ },
+ "campaign": "lab-parallel-clients",
+ "ci": {
+  "code_prs_first_attempt_rate": null,
+  "code_prs_first_attempt_rate_gap": "no CI data",
+  "first_attempt_rate": null,
+  "first_attempt_rate_gap": "no CI data",
+  "overall_rate": null,
+  "overall_rate_gap": "no CI data",
+  "pr_runs_total": 0,
+  "queue_first_attempt_rate": null,
+  "queue_first_attempt_rate_gap": "no CI data"
+ },
+ "cost": {
+  "attributed_usd": 19.281244,
+  "by_model_tier": {
+   "fable": 0.0,
+   "haiku": 0.250262,
+   "opus": 16.316594,
+   "other": 0.0,
+   "sonnet": 2.714388
+  },
+  "by_role": {
+   "coordinator": 13.07755,
+   "fixer": 0.0,
+   "implementer-haiku": 0.250262,
+   "other": 3.239044,
+   "reviewer": 2.714388
+  },
+  "total_usd": 19.281244,
+  "unattributed_in_campaign_usd": 0.0
+ },
+ "cycle_time": {
+  "campaign_hours": null,
+  "campaign_hours_gap": "no close-out commit in the ledger window",
+  "packet_hours": {
+   "n": 3,
+   "p50": 0.12,
+   "p90": 0.17
+  }
+ },
+ "escalation": {
+  "dispatched_to_haiku": 8,
+  "escalated": 0,
+  "items": [],
+  "rate": 0.0
+ },
+ "escaped_defects": {
+  "count": 0,
+  "items": [],
+  "rate_per_merged_pr": 0.0
+ },
+ "first_pass": {
+  "eligible": 3,
+  "packets": [
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "LP-01",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "LP-02",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "LP-03",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "LP-04",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "LP-05a",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "LP-05b1",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "LP-05b2",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "LP-06",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "LP-08",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "LP-07",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   }
+  ],
+  "rate": 0.0
+ },
+ "overstep": {
+  "items": [
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "1f2ae9b8-28dc-4c6e-a4b9-b1c7f060a311",
+    "tool": "Edit",
+    "ts": "2026-10-10T20:08:25.865Z",
+    "usd": 0.145858
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "1f2ae9b8-28dc-4c6e-a4b9-b1c7f060a311",
+    "tool": "Edit",
+    "ts": "2026-10-10T20:08:56.590Z",
+    "usd": 0.164257
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "1f2ae9b8-28dc-4c6e-a4b9-b1c7f060a311",
+    "tool": "PowerShell",
+    "ts": "2026-10-10T20:09:15.420Z",
+    "usd": 0.094241
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "1f2ae9b8-28dc-4c6e-a4b9-b1c7f060a311",
+    "tool": "Edit",
+    "ts": "2026-10-10T20:10:52.155Z",
+    "usd": 0.047533
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "1f2ae9b8-28dc-4c6e-a4b9-b1c7f060a311",
+    "tool": "Edit",
+    "ts": "2026-10-10T20:10:56.819Z",
+    "usd": 0.165881
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "1f2ae9b8-28dc-4c6e-a4b9-b1c7f060a311",
+    "tool": "Edit",
+    "ts": "2026-10-10T20:11:28.067Z",
+    "usd": 0.123248
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "1f2ae9b8-28dc-4c6e-a4b9-b1c7f060a311",
+    "tool": "PowerShell",
+    "ts": "2026-10-10T20:11:32.972Z",
+    "usd": 0.085937
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "1f2ae9b8-28dc-4c6e-a4b9-b1c7f060a311",
+    "tool": "Edit",
+    "ts": "2026-10-10T20:12:37.420Z",
+    "usd": 0.20649
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "1f2ae9b8-28dc-4c6e-a4b9-b1c7f060a311",
+    "tool": "PowerShell",
+    "ts": "2026-10-10T20:14:04.148Z",
+    "usd": 0.197004
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "1f2ae9b8-28dc-4c6e-a4b9-b1c7f060a311",
+    "tool": "Edit",
+    "ts": "2026-10-10T20:25:05.897Z",
+    "usd": 0.157184
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "1f2ae9b8-28dc-4c6e-a4b9-b1c7f060a311",
+    "tool": "Edit",
+    "ts": "2026-10-10T20:25:19.228Z",
+    "usd": 0.202799
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "1f2ae9b8-28dc-4c6e-a4b9-b1c7f060a311",
+    "tool": "Edit",
+    "ts": "2026-10-10T20:25:56.292Z",
+    "usd": 0.162384
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "1f2ae9b8-28dc-4c6e-a4b9-b1c7f060a311",
+    "tool": "PowerShell",
+    "ts": "2026-10-10T20:25:59.855Z",
+    "usd": 0.114098
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "1f2ae9b8-28dc-4c6e-a4b9-b1c7f060a311",
+    "tool": "Edit",
+    "ts": "2026-10-10T20:28:11.303Z",
+    "usd": 0.246826
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "1f2ae9b8-28dc-4c6e-a4b9-b1c7f060a311",
+    "tool": "PowerShell",
+    "ts": "2026-10-10T20:29:06.554Z",
+    "usd": 0.24556
+   }
+  ],
+  "opus_coding_usd": 2.3592990000000005,
+  "opus_research_usd": 0.0,
+  "recoverable_usd": {
+   "high": 1.85615525,
+   "low": 1.1796495000000002
+  },
+  "rules": {
+   "O1": {
+    "count": 15,
+    "usd": 2.3592990000000005,
+    "wasted_usd": 1.85615525
+   }
+  },
+  "sonnet_implementing_usd": 0.0,
+  "wasted_usd": 1.86
+ },
+ "packet_rows": [
+  {
+   "accepted": true,
+   "cycle_hours": 0.18,
+   "escalated": false,
+   "first_pass": false,
+   "id": "LP-01",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "LP-02",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.08,
+   "escalated": false,
+   "first_pass": false,
+   "id": "LP-03",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "LP-04",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "LP-05a",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "LP-05b1",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "LP-05b2",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.12,
+   "escalated": false,
+   "first_pass": false,
+   "id": "LP-06",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "LP-08",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "LP-07",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  }
+ ],
+ "prs": {
+  "cost_per_pr": {
+   "mean": 1.928124,
+   "p50": 1.678889,
+   "p90": 3.544148
+  },
+  "count": 10,
+  "merged": 10,
+  "per_pr": [
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1316,
+    "usd": 1.357807
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1320,
+    "usd": 0.771553
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1321,
+    "usd": 2.21804
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1322,
+    "usd": 0.677101
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1323,
+    "usd": 3.529546
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1325,
+    "usd": 2.513385
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1327,
+    "usd": 1.429039
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1328,
+    "usd": 3.675565
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1329,
+    "usd": 1.928739
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1331,
+    "usd": 1.180469
+   }
+  ]
+ },
+ "regime": "haiku",
+ "retries": {
+  "by_reason": {
+   "ci-failure": 0,
+   "context-exhausted": 0,
+   "merge-conflict": 0,
+   "other": 0,
+   "permission-denied": 0,
+   "review-fix": 0,
+   "stalled-background": 0
+  },
+  "total": 0
+ },
+ "stamp": {
+  "generated": "2026-10-12T19:03:48Z",
+  "price_table": "2026-10-12",
+  "profiler_schema": "6",
+  "unattributed_request_share": 0.1406,
+  "unattributed_share": 0.122,
+  "unmapped_share": 0.38,
+  "untagged_usd_share": 0.2653,
+  "window": {
+   "since": "2026-09-21T00:00:00Z",
+   "until": "2026-10-13T00:00:00Z"
+  }
+ },
+ "stop_context": {
+  "by_error_kind": {
+   "authentication_failed": 0,
+   "other": 0,
+   "rate_limit": 0
+  },
+  "by_stop": {
+   "end_turn": 16,
+   "error": 0,
+   "no_record": 0,
+   "tool_use": 0
+  },
+  "context_at_stop": {
+   "max": 203733,
+   "p50": 63695.5,
+   "p90": 91852.5
+  },
+  "share_above_90k": 0.12,
+  "workers": 16
+ }
+}

@@ -1,0 +1,121 @@
+{
+ "stamp": {
+  "generated": "2026-10-12T12:00:00Z",
+  "window": {
+   "since": "2026-09-21T00:00:00Z",
+   "until": "2026-10-13T00:00:00Z"
+  },
+  "price_table": "2026-10-10",
+  "price_source": "pricing page",
+  "profiler_schema": "6",
+  "ledger": "applied",
+  "untagged_pr_count": 2,
+  "unattributed_share": {"by_family": {"lx": {"requests": 0.1, "usd": 0.2}}, "by_request": 0.12, "by_usd": 0.16, "requests": 1000}
+ },
+ "campaigns": {
+  "alpha-old": {
+   "campaign": "alpha-old",
+   "cost": {
+    "total_usd": 100.0,
+    "by_model_tier": {
+     "opus": 80.0,
+     "sonnet": 20.0,
+     "haiku": 0.0,
+     "fable": 0.0,
+     "other": 0.0
+    },
+    "by_role": {
+     "coordinator": 60.0,
+     "implementer-domain": 40.0
+    },
+    "attributed_usd": 90.0,
+    "unattributed_in_campaign_usd": 10.0
+   },
+   "prs": {
+    "count": 4,
+    "merged": 4,
+    "cost_per_pr": {
+     "mean": 22.5,
+     "p50": 22.5,
+     "p90": 28.5
+    },
+    "per_pr": [
+     {
+      "pr": 101,
+      "usd": 20.0,
+      "merged": true
+     },
+     {
+      "pr": 102,
+      "usd": 30.0,
+      "merged": true
+     },
+     {
+      "pr": 103,
+      "usd": 25.0,
+      "merged": true
+     },
+     {
+      "pr": 104,
+      "usd": 15.0,
+      "merged": true
+     }
+    ]
+   },
+   "accepted": {
+    "packets": 4,
+    "cost_per_accepted_usd": 25.0
+   }
+  },
+  "beta-haiku": {
+   "campaign": "beta-haiku",
+   "cost": {
+    "total_usd": 30.0,
+    "by_model_tier": {
+     "opus": 12.0,
+     "sonnet": 8.0,
+     "haiku": 10.0,
+     "fable": 0.0,
+     "other": 0.0
+    },
+    "by_role": {
+     "coordinator": 12.0,
+     "implementer-haiku": 10.0,
+     "reviewer": 8.0
+    },
+    "attributed_usd": 27.0,
+    "unattributed_in_campaign_usd": 3.0
+   },
+   "prs": {
+    "count": 3,
+    "merged": 3,
+    "cost_per_pr": {
+     "mean": 9.0,
+     "p50": 9.0,
+     "p90": 9.8
+    },
+    "per_pr": [
+     {
+      "pr": 201,
+      "usd": 9.0,
+      "merged": true
+     },
+     {
+      "pr": 202,
+      "usd": 10.0,
+      "merged": true
+     },
+     {
+      "pr": 203,
+      "usd": 8.0,
+      "merged": true
+     }
+    ]
+   },
+   "accepted": {
+    "packets": 3,
+    "cost_per_accepted_usd": 10.0
+   }
+  }
+ }
+}

@@ -1,0 +1,749 @@
+{
+ "accepted": {
+  "cost_per_accepted_usd": 3.784857,
+  "packets": 15
+ },
+ "campaign": "wireclient-ci",
+ "ci": {
+  "code_prs_first_attempt_rate": null,
+  "code_prs_first_attempt_rate_gap": "no CI data",
+  "first_attempt_rate": null,
+  "first_attempt_rate_gap": "no CI data",
+  "overall_rate": null,
+  "overall_rate_gap": "no CI data",
+  "pr_runs_total": 0,
+  "queue_first_attempt_rate": null,
+  "queue_first_attempt_rate_gap": "no CI data"
+ },
+ "cost": {
+  "attributed_usd": 56.772856,
+  "by_model_tier": {
+   "fable": 0.0,
+   "haiku": 0.363784,
+   "opus": 51.551056,
+   "other": 0.0,
+   "sonnet": 4.858015
+  },
+  "by_role": {
+   "coordinator": 30.693524,
+   "fixer": 0.0,
+   "implementer-domain": 14.78245,
+   "implementer-haiku": 0.363784,
+   "other": 6.075083,
+   "reviewer": 4.858015
+  },
+  "total_usd": 56.772856,
+  "unattributed_in_campaign_usd": 0.0
+ },
+ "cycle_time": {
+  "campaign_hours": null,
+  "campaign_hours_gap": "no close-out commit in the ledger window",
+  "packet_hours": {
+   "n": 13,
+   "p50": 0.69,
+   "p90": 2.81
+  }
+ },
+ "escalation": {
+  "dispatched_to_haiku": 13,
+  "escalated": 0,
+  "items": [],
+  "rate": 0.0
+ },
+ "escaped_defects": {
+  "count": 0,
+  "items": [],
+  "rate_per_merged_pr": 0.0
+ },
+ "first_pass": {
+  "eligible": 9,
+  "packets": [
+   {
+    "first_pass": true,
+    "fix_commits": 0,
+    "id": "WC-01",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "WC-02",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "WC-03",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "WC-04",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "WC-05",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "WC-06",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "WC-07",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "WC-08",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "WC-09",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "WC-10",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "WC-11",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "WC-12",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "WC-13",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 2,
+    "id": "WC-14",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "WC-18",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   }
+  ],
+  "rate": 0.11
+ },
+ "overstep": {
+  "items": [
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "e1fde149-c38d-4b94-b827-00003b2f7d27",
+    "tool": "Edit",
+    "ts": "2026-10-11T01:39:14.538Z",
+    "usd": 0.094691
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "e1fde149-c38d-4b94-b827-00003b2f7d27",
+    "tool": "PowerShell",
+    "ts": "2026-10-11T01:39:24.577Z",
+    "usd": 0.077688
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "e1fde149-c38d-4b94-b827-00003b2f7d27",
+    "tool": "Edit",
+    "ts": "2026-10-11T01:39:44.224Z",
+    "usd": 0.087111
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "e1fde149-c38d-4b94-b827-00003b2f7d27",
+    "tool": "Edit",
+    "ts": "2026-10-11T01:41:07.577Z",
+    "usd": 0.150341
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "e1fde149-c38d-4b94-b827-00003b2f7d27",
+    "tool": "PowerShell",
+    "ts": "2026-10-11T01:41:21.590Z",
+    "usd": 0.08567
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "e1fde149-c38d-4b94-b827-00003b2f7d27",
+    "tool": "Edit",
+    "ts": "2026-10-11T02:17:14.606Z",
+    "usd": 0.145951
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "e1fde149-c38d-4b94-b827-00003b2f7d27",
+    "tool": "Write",
+    "ts": "2026-10-11T02:17:30.873Z",
+    "usd": 0.162539
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "e1fde149-c38d-4b94-b827-00003b2f7d27",
+    "tool": "Edit",
+    "ts": "2026-10-11T02:32:51.650Z",
+    "usd": 0.224423
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "e1fde149-c38d-4b94-b827-00003b2f7d27",
+    "tool": "Edit",
+    "ts": "2026-10-11T02:40:06.080Z",
+    "usd": 0.243187
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "e1fde149-c38d-4b94-b827-00003b2f7d27",
+    "tool": "Write",
+    "ts": "2026-10-11T03:41:19.160Z",
+    "usd": 0.309416
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "e1fde149-c38d-4b94-b827-00003b2f7d27",
+    "tool": "Edit",
+    "ts": "2026-10-11T03:49:04.045Z",
+    "usd": 0.330739
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O1",
+    "session_family": "e1fde149-c38d-4b94-b827-00003b2f7d27",
+    "tool": "Grep",
+    "ts": "2026-10-11T04:08:42.384Z",
+    "usd": 0.090475
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "e1fde149-c38d-4b94-b827-00003b2f7d27",
+    "tool": "Edit",
+    "ts": "2026-10-11T06:20:08.647Z",
+    "usd": 0.314346
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "e1fde149-c38d-4b94-b827-00003b2f7d27",
+    "tool": "Edit",
+    "ts": "2026-10-11T06:20:34.963Z",
+    "usd": 0.294118
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "e1fde149-c38d-4b94-b827-00003b2f7d27",
+    "tool": "PowerShell",
+    "ts": "2026-10-11T06:28:11.473Z",
+    "usd": 0.282988
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "e1fde149-c38d-4b94-b827-00003b2f7d27",
+    "tool": "Edit",
+    "ts": "2026-10-11T06:29:57.874Z",
+    "usd": 0.185161
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "e1fde149-c38d-4b94-b827-00003b2f7d27",
+    "tool": "Edit",
+    "ts": "2026-10-11T06:31:46.179Z",
+    "usd": 0.201255
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "e1fde149-c38d-4b94-b827-00003b2f7d27",
+    "tool": "Edit",
+    "ts": "2026-10-11T06:32:01.704Z",
+    "usd": 0.317972
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "e1fde149-c38d-4b94-b827-00003b2f7d27",
+    "tool": "Edit",
+    "ts": "2026-10-11T06:37:05.129Z",
+    "usd": 0.422596
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "e1fde149-c38d-4b94-b827-00003b2f7d27",
+    "tool": "Edit",
+    "ts": "2026-10-11T06:37:23.078Z",
+    "usd": 0.30387
+   }
+  ],
+  "opus_coding_usd": 8.4426356,
+  "opus_research_usd": 1.4972005999999995,
+  "recoverable_usd": {
+   "high": 9.948001174999998,
+   "low": 6.530412300000003
+  },
+  "rules": {
+   "O1": {
+    "count": 57,
+    "usd": 8.4426356,
+    "wasted_usd": 6.652359699999996
+   },
+   "O2": {
+    "count": 21,
+    "usd": 1.4972005999999995,
+    "wasted_usd": 0.7486002999999998
+   },
+   "O3b": {
+    "count": 32,
+    "usd": 3.1209884000000008,
+    "wasted_usd": 2.547041175
+   }
+  },
+  "sonnet_implementing_usd": 0.0,
+  "wasted_usd": 9.95
+ },
+ "packet_rows": [
+  {
+   "accepted": true,
+   "cycle_hours": 0.36,
+   "escalated": false,
+   "first_pass": true,
+   "id": "WC-01",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.44,
+   "escalated": false,
+   "first_pass": false,
+   "id": "WC-02",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.54,
+   "escalated": false,
+   "first_pass": false,
+   "id": "WC-03",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.32,
+   "escalated": false,
+   "first_pass": false,
+   "id": "WC-04",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.51,
+   "escalated": false,
+   "first_pass": false,
+   "id": "WC-05",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.65,
+   "escalated": false,
+   "first_pass": null,
+   "id": "WC-06",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.66,
+   "escalated": false,
+   "first_pass": null,
+   "id": "WC-07",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.83,
+   "escalated": false,
+   "first_pass": null,
+   "id": "WC-08",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.84,
+   "escalated": false,
+   "first_pass": null,
+   "id": "WC-09",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.97,
+   "escalated": false,
+   "first_pass": false,
+   "id": "WC-10",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "WC-11",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "WC-12",
+   "implementer": "rust-gameserver-dev",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.69,
+   "escalated": false,
+   "first_pass": false,
+   "id": "WC-13",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 6.14,
+   "escalated": false,
+   "first_pass": false,
+   "id": "WC-14",
+   "implementer": "rust-gameserver-dev",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "WC-15",
+   "implementer": "rust-gameserver-dev",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "WC-16",
+   "implementer": "packet-coder",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "WC-17",
+   "implementer": "documentation-writer",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 3.18,
+   "escalated": false,
+   "first_pass": false,
+   "id": "WC-18",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  }
+ ],
+ "prs": {
+  "cost_per_pr": {
+   "mean": 3.548303,
+   "p50": 1.173184,
+   "p90": 9.042823
+  },
+  "count": 16,
+  "merged": 16,
+  "per_pr": [
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1358,
+    "usd": 0.388117
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1359,
+    "usd": 0.829302
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1360,
+    "usd": 0.888488
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1369,
+    "usd": 0.647463
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1373,
+    "usd": 2.51286
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1399,
+    "usd": 0.640584
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1400,
+    "usd": 0.017601
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1401,
+    "usd": 0.011658
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1402,
+    "usd": 0.018066
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1403,
+    "usd": 2.007481
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1404,
+    "usd": 1.457879
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1447,
+    "usd": 8.583708
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1496,
+    "usd": 2.2276
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1507,
+    "usd": 5.649083
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1555,
+    "usd": 21.391028
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1625,
+    "usd": 9.501938
+   }
+  ]
+ },
+ "regime": "haiku",
+ "retries": {
+  "by_reason": {
+   "ci-failure": 0,
+   "context-exhausted": 0,
+   "merge-conflict": 0,
+   "other": 0,
+   "permission-denied": 0,
+   "review-fix": 0,
+   "stalled-background": 0
+  },
+  "total": 0
+ },
+ "stamp": {
+  "generated": "2026-10-12T19:03:48Z",
+  "price_table": "2026-10-12",
+  "profiler_schema": "6",
+  "unattributed_request_share": 0.1406,
+  "unattributed_share": 0.122,
+  "unmapped_share": 0.38,
+  "untagged_usd_share": 0.2653,
+  "window": {
+   "since": "2026-09-21T00:00:00Z",
+   "until": "2026-10-13T00:00:00Z"
+  }
+ },
+ "stop_context": {
+  "by_error_kind": {
+   "authentication_failed": 0,
+   "other": 0,
+   "rate_limit": 0
+  },
+  "by_stop": {
+   "end_turn": 33,
+   "error": 0,
+   "no_record": 0,
+   "tool_use": 0
+  },
+  "context_at_stop": {
+   "max": 338391,
+   "p50": 79832.0,
+   "p90": 204586.0
+  },
+  "share_above_90k": 0.33,
+  "workers": 33
+ }
+}

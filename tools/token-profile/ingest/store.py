@@ -13,7 +13,7 @@ from pathlib import Path
 from .transcript import Transcript
 
 SCHEMA = Path(__file__).resolve().parent.parent / "schema.sql"
-SCHEMA_VERSION = "5"
+SCHEMA_VERSION = "6"
 
 
 def now_iso():
@@ -32,6 +32,7 @@ def open_db(path):
         db.executescript(SCHEMA.read_text(encoding="utf-8"))
     version = db.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0]
     if version != SCHEMA_VERSION:
+        db.close()
         raise SystemExit(f"{path} has schema version {version}, this ingest writes {SCHEMA_VERSION}; "
                          "start a new database (it is rebuilt from the transcripts).")
     return db
@@ -157,6 +158,39 @@ def _read_meta(db, run_id, meta_path, project_dir, agent_id):
         (str(meta_path), project_dir, st.st_size, mtime, st.st_size, run_id))
 
 
+def write_agent_stop(db, session_id, agent_id, state):
+    """The agent_stops row of one transcript, from its last request.
+
+    The row is deleted and written again, so a transcript that grew updates
+    its row rather than adding one. A transcript with no request has none.
+    A transcript whose last assistant record is a synthetic API error also
+    records that (ended_in_api_error, api_error_kind).
+    """
+    key = agent_id or f"main:{session_id}"
+    db.execute("DELETE FROM agent_stops WHERE agent_id = ?", (key,))
+    where = "session_id = ? AND agent_id IS ?"
+    args = (session_id, agent_id)
+    last = db.execute(f"SELECT request_id, ts, stop_reason, context_tokens FROM requests WHERE {where}"
+                      " ORDER BY rowid DESC LIMIT 1", args).fetchone()
+    if last is None:
+        return
+    rid, ts, stop, context = last
+    count = db.execute(f"SELECT COUNT(*) FROM requests WHERE {where}", args).fetchone()[0]
+    calls = state["last_tools"]["tools"] if state["last_tools"]["rid"] == rid else []
+    tool = calls[-1] if stop == "tool_use" and calls else None
+    error = None
+    if tool is not None:
+        row = db.execute("SELECT result_is_error FROM tool_calls WHERE tool_use_id = ?", (tool["id"],)).fetchone()
+        error = row[0] if row else None
+    db.execute(
+        "INSERT INTO agent_stops (agent_id, session_id, last_ts, requests, last_stop_reason, last_context_tokens,"
+        " last_tool_name, last_tool_background, last_result_is_error, ended_after_result, ended_in_api_error,"
+        " api_error_kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (key, session_id, ts, count, stop, context, tool["name"] if tool else None,
+         1 if tool and tool["bg"] else 0, error, 1 if state["ends_result"] else 0,
+         1 if state["api_error"] else 0, state["api_error"]))
+
+
 def ingest_file(db, run_id, kind, path, project_dir, session_id, agent_id, stats, touched):
     """Read the new complete lines of one transcript. Returns True if anything was read."""
     st = path.stat()
@@ -204,6 +238,7 @@ def ingest_file(db, run_id, kind, path, project_dir, session_id, agent_id, stats
     else:
         _update_session(db, session_id, {**reader.info, "worktree": None, "forked_from": None, "entrypoint": None})
         _update_agent(db, agent_id, session_id, reader.info)
+    write_agent_stop(db, session_id, agent_id, reader.st)
     db.execute(
         "INSERT INTO ingest_files (path, project_dir, kind, size_bytes, mtime, head_sha1, byte_offset, parse_state,"
         " last_run_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (path) DO UPDATE SET"

@@ -1,0 +1,705 @@
+{
+ "accepted": {
+  "cost_per_accepted_usd": 21.071151,
+  "packets": 24
+ },
+ "campaign": "named-telemetry",
+ "ci": {
+  "code_prs_first_attempt_rate": null,
+  "code_prs_first_attempt_rate_gap": "no CI data",
+  "first_attempt_rate": null,
+  "first_attempt_rate_gap": "no CI data",
+  "overall_rate": null,
+  "overall_rate_gap": "no CI data",
+  "pr_runs_total": 0,
+  "queue_first_attempt_rate": null,
+  "queue_first_attempt_rate_gap": "no CI data"
+ },
+ "cost": {
+  "attributed_usd": 505.707616,
+  "by_model_tier": {
+   "fable": 0.0,
+   "haiku": 0.0,
+   "opus": 484.696575,
+   "other": 0.0,
+   "sonnet": 21.011041
+  },
+  "by_role": {
+   "coordinator": 35.658658,
+   "fixer": 0.0,
+   "implementer-domain": 383.244412,
+   "implementer-haiku": 0.0,
+   "other": 86.804545,
+   "reviewer": 0.0
+  },
+  "total_usd": 505.707616,
+  "unattributed_in_campaign_usd": 0.0
+ },
+ "cycle_time": {
+  "campaign_hours": null,
+  "campaign_hours_gap": "no close-out commit in the ledger window",
+  "packet_hours": {
+   "n": 22,
+   "p50": 1.48,
+   "p90": 2.65
+  }
+ },
+ "escalation": {
+  "dispatched_to_haiku": 0,
+  "escalated": 0,
+  "items": [],
+  "rate": null
+ },
+ "escaped_defects": {
+  "count": 0,
+  "items": [],
+  "rate_per_merged_pr": 0.0
+ },
+ "first_pass": {
+  "eligible": 0,
+  "packets": [
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "NT-00",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "NT-01",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "NT-02",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "NT-03",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "NT-10",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "NT-11",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "NT-20",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "NT-21",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "NT-22a",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "NT-22b",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "NT-23",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "NT-24",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "NT-25",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "NT-26",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "NT-27",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "NT-28a",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "NT-28b",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "NT-28c",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "NT-30",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "NT-31",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "NT-40",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "NT-41",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "NT-50a",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "NT-50b",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   }
+  ],
+  "rate": null
+ },
+ "overstep": {
+  "items": [],
+  "opus_coding_usd": null,
+  "opus_research_usd": null,
+  "overstep_gap": "predates the regime switch; the rules apply to the Haiku regime",
+  "recoverable_usd": {
+   "high": null,
+   "low": null
+  },
+  "rules": {},
+  "sonnet_implementing_usd": null,
+  "wasted_usd": null
+ },
+ "packet_rows": [
+  {
+   "accepted": true,
+   "cycle_hours": 0.42,
+   "escalated": false,
+   "first_pass": null,
+   "id": "NT-00",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 2.07,
+   "escalated": false,
+   "first_pass": null,
+   "id": "NT-01",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.57,
+   "escalated": false,
+   "first_pass": null,
+   "id": "NT-02",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 2.67,
+   "escalated": false,
+   "first_pass": null,
+   "id": "NT-03",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.46,
+   "escalated": false,
+   "first_pass": null,
+   "id": "NT-10",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.5,
+   "escalated": false,
+   "first_pass": null,
+   "id": "NT-11",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 2.43,
+   "escalated": false,
+   "first_pass": null,
+   "id": "NT-20",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.25,
+   "escalated": false,
+   "first_pass": null,
+   "id": "NT-21",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "NT-22a",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 3.02,
+   "escalated": false,
+   "first_pass": null,
+   "id": "NT-22b",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.06,
+   "escalated": false,
+   "first_pass": null,
+   "id": "NT-23",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 2.33,
+   "escalated": false,
+   "first_pass": null,
+   "id": "NT-24",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.37,
+   "escalated": false,
+   "first_pass": null,
+   "id": "NT-25",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 2.23,
+   "escalated": false,
+   "first_pass": null,
+   "id": "NT-26",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.5,
+   "escalated": false,
+   "first_pass": null,
+   "id": "NT-27",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.53,
+   "escalated": false,
+   "first_pass": null,
+   "id": "NT-28a",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.39,
+   "escalated": false,
+   "first_pass": null,
+   "id": "NT-28b",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.48,
+   "escalated": false,
+   "first_pass": null,
+   "id": "NT-28c",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 3.85,
+   "escalated": false,
+   "first_pass": null,
+   "id": "NT-30",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.22,
+   "escalated": false,
+   "first_pass": null,
+   "id": "NT-31",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.6,
+   "escalated": false,
+   "first_pass": null,
+   "id": "NT-40",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.37,
+   "escalated": false,
+   "first_pass": null,
+   "id": "NT-41",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.91,
+   "escalated": false,
+   "first_pass": null,
+   "id": "NT-50a",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "NT-50b",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  }
+ ],
+ "prs": {
+  "cost_per_pr": {
+   "mean": 21.987288,
+   "p50": 19.050597,
+   "p90": 45.684642
+  },
+  "count": 23,
+  "merged": 23,
+  "per_pr": [
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1191,
+    "usd": 1.84485
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1196,
+    "usd": 10.412596
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1199,
+    "usd": 6.237449
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1200,
+    "usd": 15.848013
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1201,
+    "usd": 48.037629
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1206,
+    "usd": 3.680146
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1207,
+    "usd": 17.893233
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1208,
+    "usd": 19.050597
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1209,
+    "usd": 15.09127
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1211,
+    "usd": 29.516286
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1212,
+    "usd": 24.466169
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1214,
+    "usd": 23.199806
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1215,
+    "usd": 30.476402
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1217,
+    "usd": 36.272693
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1219,
+    "usd": 22.379111
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1220,
+    "usd": 27.441793
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1221,
+    "usd": 50.278275
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1225,
+    "usd": 50.803255
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1226,
+    "usd": 27.095118
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1233,
+    "usd": 12.824077
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1236,
+    "usd": 9.829764
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1237,
+    "usd": 9.909288
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1238,
+    "usd": 13.119795
+   }
+  ]
+ },
+ "regime": "old",
+ "retries": {
+  "by_reason": {
+   "ci-failure": 0,
+   "context-exhausted": 0,
+   "merge-conflict": 0,
+   "other": 0,
+   "permission-denied": 0,
+   "review-fix": 0,
+   "stalled-background": 0
+  },
+  "total": 0
+ },
+ "stamp": {
+  "generated": "2026-10-12T19:03:48Z",
+  "price_table": "2026-10-12",
+  "profiler_schema": "6",
+  "unattributed_request_share": 0.1406,
+  "unattributed_share": 0.122,
+  "unmapped_share": 0.38,
+  "untagged_usd_share": 0.2653,
+  "window": {
+   "since": "2026-09-21T00:00:00Z",
+   "until": "2026-10-13T00:00:00Z"
+  }
+ },
+ "stop_context": {
+  "by_error_kind": {
+   "authentication_failed": 0,
+   "other": 0,
+   "rate_limit": 0
+  },
+  "by_stop": {
+   "end_turn": 38,
+   "error": 0,
+   "no_record": 0,
+   "tool_use": 0
+  },
+  "context_at_stop": {
+   "max": 683424,
+   "p50": 270626.5,
+   "p90": 519448.9
+  },
+  "share_above_90k": 1.0,
+  "workers": 38
+ }
+}

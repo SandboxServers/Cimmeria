@@ -1,0 +1,550 @@
+{
+ "accepted": {
+  "cost_per_accepted_usd": 8.906831,
+  "packets": 15
+ },
+ "campaign": "token-usage",
+ "ci": {
+  "code_prs_first_attempt_rate": null,
+  "code_prs_first_attempt_rate_gap": "no CI data",
+  "first_attempt_rate": null,
+  "first_attempt_rate_gap": "no CI data",
+  "overall_rate": null,
+  "overall_rate_gap": "no CI data",
+  "pr_runs_total": 0,
+  "queue_first_attempt_rate": null,
+  "queue_first_attempt_rate_gap": "no CI data"
+ },
+ "cost": {
+  "attributed_usd": 133.60246,
+  "by_model_tier": {
+   "fable": 0.0,
+   "haiku": 0.144512,
+   "opus": 133.457948,
+   "other": 0.0,
+   "sonnet": 0.0
+  },
+  "by_role": {
+   "coordinator": 24.204753,
+   "fixer": 0.0,
+   "implementer-haiku": 0.0,
+   "other": 109.397707,
+   "reviewer": 0.0
+  },
+  "total_usd": 133.60246,
+  "unattributed_in_campaign_usd": 0.0
+ },
+ "cycle_time": {
+  "campaign_hours": 5.9,
+  "packet_hours": {
+   "n": 14,
+   "p50": 0.33,
+   "p90": 0.93
+  }
+ },
+ "escalation": {
+  "dispatched_to_haiku": 0,
+  "escalated": 0,
+  "items": [],
+  "rate": null
+ },
+ "escaped_defects": {
+  "count": 1,
+  "items": [
+   {
+    "cites": 1130,
+    "days_after_merge": 0.1,
+    "kind": "pr",
+    "number": 1139
+   }
+  ],
+  "rate_per_merged_pr": 0.045454545454545456
+ },
+ "first_pass": {
+  "eligible": 0,
+  "packets": [
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TP-00",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TP-01a",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TP-01b",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TP-02",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TP-03",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TP-04",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TP-05",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TP-06",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TP-07",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TP-08",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TP-09",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TP-10",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TP-05b",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TP-11",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TP-12",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   }
+  ],
+  "rate": null
+ },
+ "overstep": {
+  "items": [],
+  "opus_coding_usd": null,
+  "opus_research_usd": null,
+  "overstep_gap": "predates the regime switch; the rules apply to the Haiku regime",
+  "recoverable_usd": {
+   "high": null,
+   "low": null
+  },
+  "rules": {},
+  "sonnet_implementing_usd": null,
+  "wasted_usd": null
+ },
+ "packet_rows": [
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TP-00",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.98,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TP-01a",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.34,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TP-01b",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.81,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TP-02",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.3,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TP-03",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.23,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TP-04",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.44,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TP-05",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.3,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TP-06",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.32,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TP-07",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.29,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TP-08",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.52,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TP-09",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.69,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TP-10",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.69,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TP-05b",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.22,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TP-11",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.23,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TP-12",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  }
+ ],
+ "prs": {
+  "cost_per_pr": {
+   "mean": 6.072839,
+   "p50": 5.277883,
+   "p90": 9.60637
+  },
+  "count": 22,
+  "merged": 22,
+  "per_pr": [
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1122,
+    "usd": 4.646767
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1123,
+    "usd": 0.889717
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1124,
+    "usd": 4.384212
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1125,
+    "usd": 3.186736
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1126,
+    "usd": 5.634103
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1127,
+    "usd": 6.90747
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1128,
+    "usd": 11.014366
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1129,
+    "usd": 0.669402
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1130,
+    "usd": 3.60086
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1131,
+    "usd": 7.711541
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1132,
+    "usd": 8.416099
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1133,
+    "usd": 9.720877
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1134,
+    "usd": 8.57581
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1135,
+    "usd": 4.95518
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1136,
+    "usd": 0.426118
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1137,
+    "usd": 2.65531
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1138,
+    "usd": 26.973481
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1140,
+    "usd": 5.75387
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1142,
+    "usd": 5.600586
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1143,
+    "usd": 4.489695
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1145,
+    "usd": 1.49548
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1146,
+    "usd": 5.894778
+   }
+  ]
+ },
+ "regime": "old",
+ "retries": {
+  "by_reason": {
+   "ci-failure": 0,
+   "context-exhausted": 0,
+   "merge-conflict": 0,
+   "other": 0,
+   "permission-denied": 0,
+   "review-fix": 0,
+   "stalled-background": 0
+  },
+  "total": 0
+ },
+ "stamp": {
+  "generated": "2026-10-12T19:03:48Z",
+  "price_table": "2026-10-12",
+  "profiler_schema": "6",
+  "unattributed_request_share": 0.1406,
+  "unattributed_share": 0.122,
+  "unmapped_share": 0.38,
+  "untagged_usd_share": 0.2653,
+  "window": {
+   "since": "2026-09-21T00:00:00Z",
+   "until": "2026-10-13T00:00:00Z"
+  }
+ },
+ "stop_context": {
+  "by_error_kind": {
+   "authentication_failed": 0,
+   "other": 0,
+   "rate_limit": 0
+  },
+  "by_stop": {
+   "end_turn": 20,
+   "error": 0,
+   "no_record": 0,
+   "tool_use": 0
+  },
+  "context_at_stop": {
+   "max": 447259,
+   "p50": 207923.5,
+   "p90": 330797.6
+  },
+  "share_above_90k": 1.0,
+  "workers": 20
+ }
+}

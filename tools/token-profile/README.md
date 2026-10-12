@@ -6,12 +6,14 @@ Status: **Campaign closed (2026-10-03).** The data contract, ingest, reports, re
 
 | File | What it is |
 |---|---|
-| [`schema.sql`](schema.sql) | The SQLite schema the ingest writes and the reports read. Version 5. |
+| [`schema.sql`](schema.sql) | The SQLite schema the ingest writes and the reports read. Version 6. |
 | [`transcript-format.md`](transcript-format.md) | The transcript shapes the profiler depends on, and the trigger classification rules. |
 | [`attribution.md`](attribution.md) | How a request is charged to a PR or a campaign, and the invariants every attribution keeps. |
 | [`campaigns.json`](campaigns.json) | Which branches, branch prefixes and tracking issues belong to which campaign (a `docs/analysis/<campaign>/` folder). |
 | [`fixtures/build_fixtures.py`](fixtures/build_fixtures.py) | Builds a synthetic transcript tree, with an `expected.json` of what a correct ingest produces and hostile values a report must never show. |
 | [`ingest/`](ingest/) | The ingest: transcripts into the schema, incrementally, with trigger classification, prices and PR attribution. Its tests are `ingest/test_*.py`. |
+| [`metrics/`](metrics/) | Campaign metrics: the subcommands `registry`, `ledger`, `cost`, `github`, `packets`, `overstep` and `report`, run as `python tools/token-profile/metrics <subcommand>`. `registry --check` validates the campaign rules. Its tests are `metrics/test_*.py`. See [Campaign metrics](#campaign-metrics). |
+| [`reporting/`](reporting/) | The campaign metrics report: merges the five input files into one record per campaign, renders the Markdown and JSON, and writes them behind the privacy gate. |
 | [`report/`](report/) | The reports: raw tokens, estimated USD, context pressure, tool exposure, cost per merged PR and a cache-policy simulator, behind a privacy scrubber. See [Reports](#reports). |
 | [`reconcile/`](reconcile/) | Checks the profiler against Claude Code's `cost-state` records and OTel `api_request` events, with tolerances. See [Reconciliation](#reconciliation). |
 | [`cutlines/`](cutlines/) | Before-and-after measures across the ledger's cut lines. See [Cut lines](#cut-lines). |
@@ -178,6 +180,12 @@ python tools/token-profile/validate --db <profile.sqlite> [--labels <labels.csv>
 ```
 
 Scores the database's PR attribution against ground truth, by estimated USD and by request count: precision, recall, and the wrong, campaign and unattributed shares, with the wrong share by method. The ground-truth sets (a local labels CSV of worker name, day and PR; workers that created exactly one PR) and the rule that a method misplacing more than 10% of labelled spend is fixed first are in [attribution.md § Validating the rules](attribution.md#validating-the-rules). `--truth-db` takes the ground truth from another database, to score an older database on the same requests. The output holds shares and totals only, never names or ids. A labelled request's weight that its attribution rows don't account for counts as unattributed. `--max-wrong-share` makes the run exit 4 when one method misplaces more than that share of a set's USD; the weekly job passes 0.10. Exit code 2 is an input error, including an `--out` it can't write.
+
+## Campaign metrics
+
+The campaign metrics add per-campaign cost, packet, CI, defect and overstep figures to the profile. Run the subcommands in the guide's order, `registry`, `ledger`, `cost`, `github`, `packets`, `overstep`, then `report`, and read each one's flags with `python tools/token-profile/metrics <subcommand> --help`. The method, the regime rule and the caveats are in the guide's [Campaign metrics](../../docs/guides/token-profiling.md#campaign-metrics) section.
+
+Intermediate JSON goes to a scratch directory outside the repo and is never committed. The aggregate data goes to `docs/analysis/campaign-metrics/data/` and the Markdown reports to `docs/analysis/campaign-metrics/reports/`; the campaign's ledger is [docs/analysis/campaign-metrics/README.md](../../docs/analysis/campaign-metrics/README.md).
 
 ## Scheduled jobs
 

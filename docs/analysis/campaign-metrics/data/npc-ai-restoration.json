@@ -1,0 +1,359 @@
+{
+ "accepted": {
+  "accepted_gap": "no packet table, used merged PRs",
+  "cost_per_accepted_usd": 22.690139,
+  "packets": 0
+ },
+ "campaign": "npc-ai-restoration",
+ "ci": {
+  "code_prs_first_attempt_rate": null,
+  "code_prs_first_attempt_rate_gap": "no CI data",
+  "first_attempt_rate": null,
+  "first_attempt_rate_gap": "no CI data",
+  "overall_rate": null,
+  "overall_rate_gap": "no CI data",
+  "pr_runs_total": 0,
+  "queue_first_attempt_rate": null,
+  "queue_first_attempt_rate_gap": "no CI data"
+ },
+ "cost": {
+  "attributed_usd": 816.845007,
+  "by_model_tier": {
+   "fable": 0.0,
+   "haiku": 0.0,
+   "opus": 635.959479,
+   "other": 0.0,
+   "sonnet": 180.885527
+  },
+  "by_role": {
+   "coordinator": 83.270398,
+   "fixer": 0.0,
+   "implementer-domain": 193.017619,
+   "implementer-haiku": 0.0,
+   "other": 540.55699,
+   "reviewer": 0.0
+  },
+  "total_usd": 816.845007,
+  "unattributed_in_campaign_usd": 0.0
+ },
+ "cycle_time": {},
+ "cycle_time_gap": "no packets record for this campaign",
+ "escalation": {},
+ "escalation_gap": "no packets record for this campaign",
+ "escaped_defects": {
+  "count": 2,
+  "items": [
+   {
+    "cites": 830,
+    "days_after_merge": 0.1,
+    "kind": "issue",
+    "number": 842
+   },
+   {
+    "cites": 829,
+    "days_after_merge": 0.1,
+    "kind": "pr",
+    "number": 854
+   }
+  ],
+  "rate_per_merged_pr": 0.05555555555555555
+ },
+ "first_pass": {},
+ "first_pass_gap": "no packets record for this campaign",
+ "overstep": {
+  "items": [],
+  "opus_coding_usd": null,
+  "opus_research_usd": null,
+  "overstep_gap": "predates the regime switch; the rules apply to the Haiku regime",
+  "recoverable_usd": {
+   "high": null,
+   "low": null
+  },
+  "rules": {},
+  "sonnet_implementing_usd": null,
+  "wasted_usd": null
+ },
+ "packet_rows": [],
+ "prs": {
+  "cost_per_pr": {
+   "mean": 22.690139,
+   "p50": 16.049696,
+   "p90": 40.258631
+  },
+  "count": 36,
+  "merged": 36,
+  "per_pr": [
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 774,
+    "usd": 6.041936
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 775,
+    "usd": 3.505576
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 776,
+    "usd": 11.98116
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 777,
+    "usd": 11.904691
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 779,
+    "usd": 11.567825
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 780,
+    "usd": 17.528933
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 781,
+    "usd": 38.867642
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 782,
+    "usd": 3.337317
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 783,
+    "usd": 13.58486
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 785,
+    "usd": 24.197238
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 786,
+    "usd": 12.006415
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 787,
+    "usd": 21.158773
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 788,
+    "usd": 8.025346
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 789,
+    "usd": 7.895686
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 790,
+    "usd": 33.579104
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 791,
+    "usd": 10.704579
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 792,
+    "usd": 14.191451
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 793,
+    "usd": 20.156986
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 794,
+    "usd": 31.335462
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 795,
+    "usd": 8.813569
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 796,
+    "usd": 2.008644
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 797,
+    "usd": 110.664178
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 806,
+    "usd": 13.592773
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 808,
+    "usd": 14.57046
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 810,
+    "usd": 24.215248
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 811,
+    "usd": 24.767966
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 814,
+    "usd": 26.501756
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 815,
+    "usd": 41.649621
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 816,
+    "usd": 72.106782
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 817,
+    "usd": 18.046813
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 821,
+    "usd": 24.502777
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 823,
+    "usd": 24.285738
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 824,
+    "usd": 31.043224
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 829,
+    "usd": 11.650724
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 830,
+    "usd": 11.689403
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 833,
+    "usd": 55.164349
+   }
+  ]
+ },
+ "regime": "old",
+ "regime_gap": "no packets record",
+ "retries": {},
+ "retries_gap": "no packets record for this campaign",
+ "stamp": {
+  "generated": "2026-10-12T19:03:48Z",
+  "price_table": "2026-10-12",
+  "profiler_schema": "6",
+  "unattributed_request_share": 0.1406,
+  "unattributed_share": 0.122,
+  "unmapped_share": 0.38,
+  "untagged_usd_share": 0.2653,
+  "window": {
+   "since": "2026-09-21T00:00:00Z",
+   "until": "2026-10-13T00:00:00Z"
+  }
+ },
+ "stop_context": {},
+ "stop_context_gap": "no packets record for this campaign"
+}

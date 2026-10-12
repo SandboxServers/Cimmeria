@@ -1,0 +1,501 @@
+{
+ "accepted": {
+  "cost_per_accepted_usd": 1.131619,
+  "packets": 7
+ },
+ "campaign": "lab-cli",
+ "ci": {
+  "code_prs_first_attempt_rate": null,
+  "code_prs_first_attempt_rate_gap": "no CI data",
+  "first_attempt_rate": null,
+  "first_attempt_rate_gap": "no CI data",
+  "overall_rate": null,
+  "overall_rate_gap": "no CI data",
+  "pr_runs_total": 0,
+  "queue_first_attempt_rate": null,
+  "queue_first_attempt_rate_gap": "no CI data"
+ },
+ "cost": {
+  "attributed_usd": 7.921336,
+  "by_model_tier": {
+   "fable": 0.0,
+   "haiku": 0.063996,
+   "opus": 7.164067,
+   "other": 0.0,
+   "sonnet": 0.693272
+  },
+  "by_role": {
+   "coordinator": 4.320885,
+   "fixer": 0.0,
+   "implementer-haiku": 0.063996,
+   "other": 2.843182,
+   "reviewer": 0.693272
+  },
+  "total_usd": 7.921336,
+  "unattributed_in_campaign_usd": 0.0
+ },
+ "cycle_time": {
+  "campaign_hours": 1.52,
+  "packet_hours": {
+   "n": 6,
+   "p50": 0.26,
+   "p90": 0.48
+  }
+ },
+ "escalation": {
+  "dispatched_to_haiku": 5,
+  "escalated": 0,
+  "items": [],
+  "rate": 0.0
+ },
+ "escaped_defects": {
+  "count": 0,
+  "items": [],
+  "rate_per_merged_pr": 0.0
+ },
+ "first_pass": {
+  "eligible": 5,
+  "packets": [
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "LC-01",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "LC-02",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "LC-03",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "LC-04",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "LC-05",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "LC-06",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "LC-07",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   }
+  ],
+  "rate": 0.0
+ },
+ "overstep": {
+  "items": [
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "352ad0a8-87b4-44f1-80c1-13201d3d2bdb",
+    "tool": "Edit",
+    "ts": "2026-10-10T21:52:29.237Z",
+    "usd": 0.13561
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "352ad0a8-87b4-44f1-80c1-13201d3d2bdb",
+    "tool": "PowerShell",
+    "ts": "2026-10-10T21:52:38.735Z",
+    "usd": 0.075022
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O1",
+    "session_family": "352ad0a8-87b4-44f1-80c1-13201d3d2bdb",
+    "tool": "Edit",
+    "ts": "2026-10-10T21:54:36.225Z",
+    "usd": 0.084667
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O1",
+    "session_family": "352ad0a8-87b4-44f1-80c1-13201d3d2bdb",
+    "tool": "Edit",
+    "ts": "2026-10-10T21:54:45.496Z",
+    "usd": 0.073942
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O1",
+    "session_family": "352ad0a8-87b4-44f1-80c1-13201d3d2bdb",
+    "tool": "Edit",
+    "ts": "2026-10-10T21:54:56.145Z",
+    "usd": 0.108134
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O1",
+    "session_family": "352ad0a8-87b4-44f1-80c1-13201d3d2bdb",
+    "tool": "Edit",
+    "ts": "2026-10-10T21:55:06.897Z",
+    "usd": 0.101111
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O1",
+    "session_family": "352ad0a8-87b4-44f1-80c1-13201d3d2bdb",
+    "tool": "Edit",
+    "ts": "2026-10-10T21:55:16.900Z",
+    "usd": 0.095686
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O1",
+    "session_family": "352ad0a8-87b4-44f1-80c1-13201d3d2bdb",
+    "tool": "Edit",
+    "ts": "2026-10-10T21:55:41.842Z",
+    "usd": 0.105432
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O1",
+    "session_family": "352ad0a8-87b4-44f1-80c1-13201d3d2bdb",
+    "tool": "Edit",
+    "ts": "2026-10-10T21:55:47.873Z",
+    "usd": 0.075985
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O1",
+    "session_family": "352ad0a8-87b4-44f1-80c1-13201d3d2bdb",
+    "tool": "Edit",
+    "ts": "2026-10-10T21:56:04.084Z",
+    "usd": 0.149855
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O1",
+    "session_family": "352ad0a8-87b4-44f1-80c1-13201d3d2bdb",
+    "tool": "Edit",
+    "ts": "2026-10-10T21:56:15.246Z",
+    "usd": 0.100565
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O1",
+    "session_family": "352ad0a8-87b4-44f1-80c1-13201d3d2bdb",
+    "tool": "Edit",
+    "ts": "2026-10-10T21:56:58.612Z",
+    "usd": 0.19344
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O1",
+    "session_family": "352ad0a8-87b4-44f1-80c1-13201d3d2bdb",
+    "tool": "Edit",
+    "ts": "2026-10-10T21:57:14.227Z",
+    "usd": 0.162092
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O1",
+    "session_family": "352ad0a8-87b4-44f1-80c1-13201d3d2bdb",
+    "tool": "Edit",
+    "ts": "2026-10-10T21:57:47.729Z",
+    "usd": 0.191606
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O1",
+    "session_family": "352ad0a8-87b4-44f1-80c1-13201d3d2bdb",
+    "tool": "Edit",
+    "ts": "2026-10-10T22:19:06.245Z",
+    "usd": 0.179967
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O1",
+    "session_family": "352ad0a8-87b4-44f1-80c1-13201d3d2bdb",
+    "tool": "Edit",
+    "ts": "2026-10-10T22:19:17.544Z",
+    "usd": 0.105265
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O1",
+    "session_family": "352ad0a8-87b4-44f1-80c1-13201d3d2bdb",
+    "tool": "Edit",
+    "ts": "2026-10-10T22:19:38.860Z",
+    "usd": 0.113412
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O1",
+    "session_family": "352ad0a8-87b4-44f1-80c1-13201d3d2bdb",
+    "tool": "Edit",
+    "ts": "2026-10-10T22:19:48.527Z",
+    "usd": 0.146804
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O1",
+    "session_family": "352ad0a8-87b4-44f1-80c1-13201d3d2bdb",
+    "tool": "Edit",
+    "ts": "2026-10-10T22:20:03.515Z",
+    "usd": 0.115604
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O1",
+    "session_family": "352ad0a8-87b4-44f1-80c1-13201d3d2bdb",
+    "tool": "Edit",
+    "ts": "2026-10-10T22:20:09.117Z",
+    "usd": 0.176016
+   }
+  ],
+  "opus_coding_usd": 3.7604116,
+  "opus_research_usd": 0.0,
+  "recoverable_usd": {
+   "high": 3.003646200000001,
+   "low": 1.8802058
+  },
+  "rules": {
+   "O1": {
+    "count": 25,
+    "usd": 3.7604116,
+    "wasted_usd": 3.003646200000001
+   }
+  },
+  "sonnet_implementing_usd": 0.0,
+  "wasted_usd": 3.0
+ },
+ "packet_rows": [
+  {
+   "accepted": true,
+   "cycle_hours": 0.2,
+   "escalated": false,
+   "first_pass": false,
+   "id": "LC-01",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.28,
+   "escalated": false,
+   "first_pass": false,
+   "id": "LC-02",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.24,
+   "escalated": false,
+   "first_pass": false,
+   "id": "LC-03",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.4,
+   "escalated": false,
+   "first_pass": false,
+   "id": "LC-04",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.24,
+   "escalated": false,
+   "first_pass": false,
+   "id": "LC-05",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.56,
+   "escalated": false,
+   "first_pass": null,
+   "id": "LC-06",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "LC-07",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  }
+ ],
+ "prs": {
+  "cost_per_pr": {
+   "mean": 1.320223,
+   "p50": 0.889958,
+   "p90": 2.77993
+  },
+  "count": 6,
+  "merged": 6,
+  "per_pr": [
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1334,
+    "usd": 2.50459
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1335,
+    "usd": 0.754927
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1336,
+    "usd": 0.322353
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1337,
+    "usd": 1.024989
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1338,
+    "usd": 0.259206
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1339,
+    "usd": 3.05527
+   }
+  ]
+ },
+ "regime": "haiku",
+ "retries": {
+  "by_reason": {
+   "ci-failure": 0,
+   "context-exhausted": 0,
+   "merge-conflict": 0,
+   "other": 0,
+   "permission-denied": 0,
+   "review-fix": 0,
+   "stalled-background": 0
+  },
+  "total": 0
+ },
+ "stamp": {
+  "generated": "2026-10-12T19:03:48Z",
+  "price_table": "2026-10-12",
+  "profiler_schema": "6",
+  "unattributed_request_share": 0.1406,
+  "unattributed_share": 0.122,
+  "unmapped_share": 0.38,
+  "untagged_usd_share": 0.2653,
+  "window": {
+   "since": "2026-09-21T00:00:00Z",
+   "until": "2026-10-13T00:00:00Z"
+  }
+ },
+ "stop_context": {
+  "by_error_kind": {
+   "authentication_failed": 0,
+   "other": 0,
+   "rate_limit": 0
+  },
+  "by_stop": {
+   "end_turn": 11,
+   "error": 0,
+   "no_record": 0,
+   "tool_use": 0
+  },
+  "context_at_stop": {
+   "max": 186610,
+   "p50": 72820.0,
+   "p90": 92522.0
+  },
+  "share_above_90k": 0.27,
+  "workers": 11
+ }
+}

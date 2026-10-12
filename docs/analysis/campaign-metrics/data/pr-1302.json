@@ -1,0 +1,109 @@
+{
+ "accepted": {
+  "accepted_gap": "no packet table, used merged PRs",
+  "cost_per_accepted_usd": 22.093935,
+  "packets": 0
+ },
+ "campaign": "pr-1302",
+ "ci": {
+  "code_prs_first_attempt_rate": null,
+  "code_prs_first_attempt_rate_gap": "no CI data",
+  "first_attempt_rate": null,
+  "first_attempt_rate_gap": "no CI data",
+  "overall_rate": null,
+  "overall_rate_gap": "no CI data",
+  "pr_runs_total": 0,
+  "queue_first_attempt_rate": null,
+  "queue_first_attempt_rate_gap": "no CI data"
+ },
+ "cost": {
+  "attributed_usd": 44.187871,
+  "by_model_tier": {
+   "fable": 0.0,
+   "haiku": 0.102015,
+   "opus": 38.0922,
+   "other": 0.0,
+   "sonnet": 5.993655
+  },
+  "by_role": {
+   "coordinator": 24.053451,
+   "fixer": 0.0,
+   "implementer-domain": 10.305317,
+   "implementer-haiku": 0.0,
+   "lab-driver": 0.085515,
+   "other": 9.743588,
+   "reviewer": 0.0
+  },
+  "total_usd": 44.187871,
+  "unattributed_in_campaign_usd": 0.0
+ },
+ "cycle_time": {},
+ "cycle_time_gap": "no packets record for this campaign",
+ "escalation": {},
+ "escalation_gap": "no packets record for this campaign",
+ "escaped_defects": {
+  "count": 0,
+  "items": [],
+  "rate_per_merged_pr": 0.0
+ },
+ "first_pass": {},
+ "first_pass_gap": "no packets record for this campaign",
+ "overstep": {
+  "items": [],
+  "opus_coding_usd": null,
+  "opus_research_usd": null,
+  "overstep_gap": "predates the regime switch; the rules apply to the Haiku regime",
+  "recoverable_usd": {
+   "high": null,
+   "low": null
+  },
+  "rules": {},
+  "sonnet_implementing_usd": null,
+  "wasted_usd": null
+ },
+ "packet_rows": [],
+ "prs": {
+  "cost_per_pr": {
+   "mean": 22.093935,
+   "p50": 22.093935,
+   "p90": 33.051242
+  },
+  "count": 2,
+  "merged": 2,
+  "per_pr": [
+   {
+    "ci_first_pass": null,
+    "ci_runs": null,
+    "merged": true,
+    "pr": 1302,
+    "usd": 35.790568
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": null,
+    "merged": true,
+    "pr": 1309,
+    "usd": 8.397302
+   }
+  ]
+ },
+ "regime": "old",
+ "regime_gap": "no packets record",
+ "retries": {},
+ "retries_gap": "no packets record for this campaign",
+ "stamp": {
+  "generated": "2026-10-12T19:03:48Z",
+  "price_table": "2026-10-12",
+  "profiler_schema": "6",
+  "unattributed_request_share": 0.1406,
+  "unattributed_share": 0.122,
+  "unmapped_share": 0.38,
+  "untagged_usd_share": 0.2653,
+  "window": {
+   "since": "2026-09-21T00:00:00Z",
+   "until": "2026-10-13T00:00:00Z"
+  }
+ },
+ "stop_context": {},
+ "stop_context_gap": "no packets record for this campaign"
+}
