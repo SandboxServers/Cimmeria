@@ -49,7 +49,17 @@ pub fn filter_entries(entries: Vec<LogEntry>, f: &LogFilter) -> Vec<LogEntry> {
 /// not a full history. Forwarded client telemetry is in a separate ring, read
 /// only with `include_client`.
 pub fn log_tail(state: &LabState, f: &LogFilter, limit: usize) -> Value {
-    tail_reply(state.log_snapshot(f.include_client), f, limit)
+    tail_reply(state.log_snapshot(reads_client_ring(f)), f, limit)
+}
+
+/// Whether a read must include the forwarded client ring: asked for, or the
+/// target filter names one of its targets (an exact `target: "client.native"`
+/// read would otherwise return nothing).
+pub fn reads_client_ring(f: &LogFilter) -> bool {
+    f.include_client
+        || f.target
+            .as_deref()
+            .is_some_and(cimmeria_admin_api::ws::broadcast_layer::is_forwarded_client_target)
 }
 
 /// Build the `server_log_tail` reply from a buffer snapshot. `newest_ms` is

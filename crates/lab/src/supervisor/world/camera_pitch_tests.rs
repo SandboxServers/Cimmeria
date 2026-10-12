@@ -33,6 +33,9 @@ async fn a_face_from_a_pinned_pitch_says_so_and_comes_back() {
     assert_eq!(out["face"]["pitch_clamped"], true, "{out}");
     let from = out["face"]["pitch_recovered_from"].as_f64().unwrap();
     assert!((from - CAMERA_PITCH_LIMIT_DEG).abs() < 0.1, "{out}");
+    // The recovery itself (not the face that follows) brought it to 10 deg.
+    let to = out["face"]["pitch_recovered_to"].as_f64().unwrap();
+    assert!((to - camera::PITCH_RECOVER_DEG).abs() <= 0.5, "{out}");
     let after = out["view_after"]["pitch_offset_deg"].as_f64().unwrap();
     assert!(
         after.abs() < CAMERA_PITCH_LIMIT_DEG - 5.0,

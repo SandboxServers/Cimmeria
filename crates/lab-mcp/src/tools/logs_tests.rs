@@ -4,7 +4,7 @@
 use cimmeria_admin_api::ws::broadcast_layer::LogEntry;
 use serde_json::json;
 
-use super::{filter_entries, tail_reply, LogFilter};
+use super::{filter_entries, reads_client_ring, tail_reply, LogFilter};
 
 fn entry(timestamp_ms: u64, target: &str, message: &str) -> LogEntry {
     LogEntry {
@@ -98,4 +98,23 @@ fn level_ands_with_the_other_filters() {
         ..LogFilter::default()
     };
     assert_eq!(timestamps(&filter_entries(entries, &f)), vec![10, 30]);
+}
+
+/// An exact client target filter must reach the client ring, or
+/// `server_log_tail {target: "client.native"}` silently returns nothing now
+/// that the forwarded events live in a separate ring.
+#[test]
+fn a_client_target_filter_reads_the_client_ring() {
+    let by_target = |t: &str| LogFilter {
+        target: Some(t.to_string()),
+        ..LogFilter::default()
+    };
+    assert!(reads_client_ring(&by_target("client.native")));
+    assert!(reads_client_ring(&by_target("launcher.client_log")));
+    assert!(!reads_client_ring(&by_target("aoi.zone")));
+    assert!(!reads_client_ring(&LogFilter::default()));
+    assert!(reads_client_ring(&LogFilter {
+        include_client: true,
+        ..LogFilter::default()
+    }));
 }

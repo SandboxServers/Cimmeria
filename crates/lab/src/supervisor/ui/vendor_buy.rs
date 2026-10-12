@@ -27,14 +27,17 @@ pub const MAX_ROWS: u32 = 7;
 pub const MAX_CLICKS: i64 = 30;
 const BUY_BUTTON: &str = "Vendor_BuyButton";
 
+/// The CEGUI name of row `row`'s quantity spinner.
 pub fn spinner_name(row: u32) -> String {
     format!("Vendor_Item{row}Quantity")
 }
 
+/// The spinner's increment button.
 pub fn inc_button(row: u32) -> String {
     format!("{}__auto_incbtn__", spinner_name(row))
 }
 
+/// The spinner's decrement button.
 pub fn dec_button(row: u32) -> String {
     format!("{}__auto_decbtn__", spinner_name(row))
 }

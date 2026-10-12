@@ -16,6 +16,7 @@ use super::{Steps, WorldError};
 /// lower band when the camera is behind it, so the higher heights come first
 /// after the chest and the knee comes last.
 pub const HOVER_OFFSETS: [f64; 4] = [100.0, 140.0, 170.0, 60.0];
+/// How long the client gets to update mouse-over after the cursor moves.
 pub(super) const HOVER_WAIT_MS: u64 = 120;
 /// A target this close to the avatar sits behind or under it on a
 /// third-person camera, so an unverified hover is retried from another view.

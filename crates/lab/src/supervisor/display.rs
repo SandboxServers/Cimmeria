@@ -157,6 +157,8 @@ mod win {
         crate::supervisor::display::sgw_pids_in(entries)
     }
 
+    /// The keep-awake thread: holds the display and system awake while any
+    /// `SGW.exe` runs, checked every two seconds.
     pub fn spawn_keep_awake() {
         let _ = std::thread::Builder::new()
             .name("lab-keep-awake".into())

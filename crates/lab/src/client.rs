@@ -100,11 +100,16 @@ impl BridgeClient {
         method: &str,
         params: Value,
     ) -> Result<Value> {
-        if guard.stream.is_none() {
-            let s = connect_and_auth(&guard.addr, &guard.token).await?;
-            guard.stream = Some(s);
-        }
-        let stream = guard.stream.as_mut().expect("just connected");
+        // The stream is taken out of the cache for the exchange and put back
+        // only after a whole response was read. A caller that times out and
+        // drops this future (the event keeper's tick does) would otherwise
+        // leave an unread response on the cached stream, and the next call
+        // would read it as its own: every later answer one call behind.
+        let mut taken = match guard.stream.take() {
+            Some(s) => s,
+            None => connect_and_auth(&guard.addr, &guard.token).await?,
+        };
+        let stream = &mut taken;
 
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let req = json!({
@@ -116,6 +121,7 @@ impl BridgeClient {
         write_frame(stream, &serde_json::to_vec(&req)?).await?;
 
         let body = read_frame(stream).await?;
+        guard.stream = Some(taken);
         let resp: Value = serde_json::from_slice(&body).context("bridge response is not JSON")?;
         if let Some(err) = resp.get("error") {
             let code = err.get("code").and_then(Value::as_i64).unwrap_or(0);
@@ -245,5 +251,45 @@ mod tests {
         });
         let mut c = TcpStream::connect(addr).await.unwrap();
         assert!(read_frame(&mut c).await.is_err());
+    }
+
+    /// A call dropped mid-exchange (the event keeper's tick timeout) must not
+    /// leave its unread response on the cached stream: the next call would
+    /// read it as its own answer.
+    #[tokio::test]
+    async fn a_cancelled_call_does_not_poison_the_next_one() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            loop {
+                let (mut s, _) = listener.accept().await.unwrap();
+                tokio::spawn(async move {
+                    let _auth = read_frame(&mut s).await.unwrap();
+                    write_frame(&mut s, br#"{"ok":true}"#).await.unwrap();
+                    while let Ok(body) = read_frame(&mut s).await {
+                        let req: Value = serde_json::from_slice(&body).unwrap();
+                        let delay = req["params"]["delay_ms"].as_u64().unwrap_or(0);
+                        tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                        let resp = json!({ "jsonrpc": "2.0", "id": req["id"],
+                            "result": req["method"] });
+                        if write_frame(&mut s, &serde_json::to_vec(&resp).unwrap())
+                            .await
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                });
+            }
+        });
+        let c = BridgeClient::new(addr.to_string(), "t");
+        assert_eq!(c.call("warm", json!({})).await.unwrap(), json!("warm"));
+        let slow = tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            c.call("slow", json!({ "delay_ms": 400 })),
+        )
+        .await;
+        assert!(slow.is_err(), "the slow call is cancelled");
+        assert_eq!(c.call("fast", json!({})).await.unwrap(), json!("fast"));
     }
 }

@@ -87,6 +87,8 @@ pub struct FaceReport {
     pub pitch_clamped: bool,
     /// The pitch (readout degrees) the camera was brought back from.
     pub pitch_recovered_from: Option<f64>,
+    /// The pitch (readout degrees) the recovery reached; `None` when it failed.
+    pub pitch_recovered_to: Option<f64>,
 }
 
 impl FaceReport {
@@ -104,6 +106,8 @@ impl FaceReport {
             out["pitch_recovered_from"] = json!(self
                 .pitch_recovered_from
                 .map(|p| (p * 100.0).round() / 100.0));
+            out["pitch_recovered_to"] =
+                json!(self.pitch_recovered_to.map(|p| (p * 100.0).round() / 100.0));
         }
         out
     }
@@ -180,6 +184,7 @@ pub async fn face<W: WorldIo>(
         yaw_model: model,
         pitch_clamped: false,
         pitch_recovered_from: None,
+        pitch_recovered_to: None,
     };
     // One readout: the camera's own signed gains replace the guesses (an
     // inverted axis is right from the first look), and a pitch left pinned at
@@ -196,7 +201,10 @@ pub async fn face<W: WorldIo>(
         // A failed recovery leaves the camera where it was; the report says so.
         // (The controller is fresh, so no earlier pixel can be mistaken for a
         // look's result.)
-        let _ = abs_pitch(io, steps, PITCH_RECOVER_DEG).await;
+        report.pitch_recovered_to = abs_pitch(io, steps, PITCH_RECOVER_DEG)
+            .await
+            .ok()
+            .and_then(|r| r["got"].as_f64());
     }
     for _ in 0..=max_steps {
         let pos = aim.position(io).await;
