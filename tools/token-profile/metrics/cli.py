@@ -1,5 +1,5 @@
-"""Command line: campaign metrics. `registry` checks the campaign rules; `ledger` parses the packet tables of the ledgers;
-`github` collects PRs, CI and escaped defects from GitHub (read-only).
+"""Command line: campaign metrics. `registry` checks the campaign rules; `ledger` parses the packet tables of the
+ledgers; `github` collects PRs, CI and escaped defects from GitHub (read-only).
 
     python tools/token-profile/metrics registry --repo . [--check] [--config <json>] [--campaigns <json>]
     python tools/token-profile/metrics ledger --repo . --out <dir>
@@ -56,7 +56,8 @@ def _retry_reason(campaign_dir, row):
 def build_ledger(repo, git, pr_overrides=None):
     """The packets of every campaign folder under docs/analysis, their PR map, and each campaign's window.
 
-    `pr_overrides` ({campaign: [pr]}) adds PRs that no ledger table cites; each such campaign gets a pseudo-packet for them.
+    `pr_overrides` ({campaign: [pr]}) adds PRs that no ledger table cites; each such campaign gets a pseudo-packet
+    for them.
     """
     root = Path(repo) / "docs" / "analysis"
     rows_by_campaign = {}
@@ -145,8 +146,12 @@ def run_github(args):
         "merged": sum(1 for r in record["prs"] if r["merged"]),
         "traced_prs": sum(1 for r in record["prs"] if r["ci"] is not None),
         "ci_checked": sum(1 for r in record["prs"] if r["ci"] and r["ci"]["runs"]),
-        "queue_first_attempt_green": sum(1 for r in record["prs"] if r["queue"] and r["queue"]["first_attempt"] is True),
-        "queue_first_attempt_red": sum(1 for r in record["prs"] if r["queue"] and r["queue"]["first_attempt"] is False),
+        "queue_first_attempt_green": sum(
+            1 for r in record["prs"] if r["queue"] and r["queue"]["first_attempt"] is True
+        ),
+        "queue_first_attempt_red": sum(
+            1 for r in record["prs"] if r["queue"] and r["queue"]["first_attempt"] is False
+        ),
         "untagged_prs": record["untagged_prs"],
         "escaped_defects": {c: len(rows) for c, rows in record["escaped_defects"].items()},
         "gh_calls": stats["gh_calls"],
@@ -172,7 +177,9 @@ def main(argv=None):
     gh = sub.add_parser("github", help="PRs, CI per head commit and escaped defects, read-only")
     gh.add_argument("--repo", required=True, help="the checkout gh reads the remote from")
     gh.add_argument("--out", required=True, help="scratch directory for github.json")
-    gh.add_argument("--since", default=None, help="PRs and issues created on or after this date (default: config window)")
+    gh.add_argument(
+        "--since", default=None, help="PRs and issues created on or after this date (default: config window)"
+    )
     gh.add_argument("--config", help="metrics config.json, whose window ends the collection (default: the package's)")
     gh.add_argument("--max-prs", type=int, default=None, help="collect CI for the first N PRs only (a trial)")
     gh.add_argument("--campaigns", default=None, help="campaign tags; default ingest/campaigns.json")

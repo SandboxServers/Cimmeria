@@ -174,7 +174,8 @@ class GithubTests(unittest.TestCase):
     def test_a_fix_citing_two_prs_of_one_campaign_is_one_defect_on_the_later_merged_one(self):
         prs = [{"number": 1, "title": "feat: a", "body": "", "mergedAt": "2026-10-01T00:00:00Z"},
                {"number": 2, "title": "feat: b", "body": "", "mergedAt": "2026-10-02T00:00:00Z"},
-               {"number": 3, "title": "fix(y): stack follow-up (#1, #2)", "body": "", "mergedAt": "2026-10-03T00:00:00Z"}]
+               {"number": 3, "title": "fix(y): stack follow-up (#1, #2)", "body": "",
+                "mergedAt": "2026-10-03T00:00:00Z"}]
         defects = gh.escaped_defects(prs, [], lambda n: "x" if n in (1, 2) else "y")
         self.assertEqual(defects, {"x": [{"kind": "pr", "number": 3, "cites": 2, "days_after_merge": 1.0}]})
 

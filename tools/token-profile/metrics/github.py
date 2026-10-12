@@ -71,7 +71,8 @@ def run_gh(args, cwd=None):
 
 
 def polite(run, cache_dir=None, stats=None):
-    """Wrap `run` with the rate-limit rules: a pause before each call, and a retry after RETRY_WAITS_S on a retryable error.
+    """Wrap `run` with the rate-limit rules: a pause before each call, and a retry after RETRY_WAITS_S on a
+    retryable error.
 
     An `api` answer is cached as JSON in `cache_dir` (keyed by the call's arguments), so a run that stopped
     part way resumes from the answers it already has. `stats` ({gh_calls, cache_hits}) counts the work done.
@@ -153,7 +154,8 @@ def _apart(a, b):
 
 
 def _verdict(conclusion):
-    """`success`, `failure` for a conclusion in FAILED, else `none`: cancelled, skipped and undecided give no verdict."""
+    """`success`, `failure` for a conclusion in FAILED, else `none`: cancelled, skipped and undecided give no
+    verdict."""
     return "success" if conclusion == "success" else "failure" if conclusion in FAILED else "none"
 
 
@@ -281,7 +283,9 @@ def merge_queue_runs(run, since):
                    key="workflow_runs"):
         m = QUEUE_BRANCH.fullmatch(r.get("head_branch") or "")
         if r.get("name") == "ci" and m:
-            by_pr.setdefault(int(m.group(1)), []).append({"conclusion": r.get("conclusion"), "created": r.get("created_at")})
+            by_pr.setdefault(int(m.group(1)), []).append(
+                {"conclusion": r.get("conclusion"), "created": r.get("created_at")}
+            )
     for queued in by_pr.values():
         queued.sort(key=lambda r: r["created"] or "")
     return by_pr
@@ -315,7 +319,8 @@ def defect_items(prs, issues, campaign_of):
     found = {}
 
     def hit(kind, number, target, when, citing):
-        # One item per citing item and campaign: a fix that cites a whole stack counts once. The cited PR merged last wins.
+        # One item per citing item and campaign: a fix that cites a whole stack counts once. The cited PR merged
+        # last wins.
         days = round((_when(when) - _when(target["mergedAt"])).total_seconds() / 86400, 1)
         key = (kind, number, campaign_of(target["number"]))
         if key not in found or days < found[key]["days_after_merge"]:
