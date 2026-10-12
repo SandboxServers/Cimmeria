@@ -41,7 +41,7 @@ pub(super) fn preview(
     progress: ProgressSink,
     transport: Option<artifacts::Transport>,
 ) -> Result<Preview, Error> {
-    let (imported, before) = {
+    {
         let mut owner = state.lock().map_err(|_| StorageError::Io)?;
         idle(
             &owner,
@@ -54,52 +54,79 @@ pub(super) fn preview(
         if owner.installed_content()?.is_some() {
             return Err(ContractError::IdentityConflict.into());
         }
-        let adopted = source::request_source(&owner, &request.source, AdoptionMode::InPlace)?;
-        // A folder source is refused by `legacy` until part b consumes it.
-        let imported = source::legacy(&adopted)?.clone();
-        if let Some(blocker) = source::import_blocker(&imported) {
-            return Err(refused(blocker, "imported configuration"));
-        }
-        let folder = &imported.source.game_directory;
-        if request.destination != *folder {
-            return Err(refused(
-                StorageError::InvalidDirectory.into(),
-                "the folder is not the imported game folder",
-            ));
-        }
-        if folder.starts_with(&owner.directory.root) || owner.directory.root.starts_with(folder) {
-            return Err(refused(
-                StorageError::InvalidDirectory.into(),
-                "the folder overlaps the launcher state",
-            ));
-        }
-        // Its lock is held for the whole adoption, and a locked file cannot be
-        // read for verification.
-        if imported.source.launcher_directory.starts_with(folder) {
-            return Err(refused(
-                StorageError::InvalidDirectory.into(),
-                "the old launcher lives inside the game folder",
-            ));
-        }
-        (imported, owner.preferences.clone())
+    }
+    // Resolved and scanned with no state guard held.
+    let (adopted, scanned) =
+        source::request_source(&state, &request.source, AdoptionMode::InPlace)?;
+    let (folder, before) = {
+        let owner = state.lock().map_err(|_| StorageError::Io)?;
+        let folder = match &adopted {
+            AdoptionSource::Legacy(imported) => {
+                if let Some(blocker) = source::import_blocker(imported) {
+                    return Err(refused(blocker, "imported configuration"));
+                }
+                let folder = &imported.source.game_directory;
+                if request.destination != *folder {
+                    return Err(refused(
+                        StorageError::InvalidDirectory.into(),
+                        "the folder is not the imported game folder",
+                    ));
+                }
+                if folder.starts_with(&owner.directory.root)
+                    || owner.directory.root.starts_with(folder)
+                {
+                    return Err(refused(
+                        StorageError::InvalidDirectory.into(),
+                        "the folder overlaps the launcher state",
+                    ));
+                }
+                // Its lock is held for the whole adoption, and a locked file cannot be
+                // read for verification.
+                if imported.source.launcher_directory.starts_with(folder) {
+                    return Err(refused(
+                        StorageError::InvalidDirectory.into(),
+                        "the old launcher lives inside the game folder",
+                    ));
+                }
+                folder.clone()
+            }
+            AdoptionSource::Folder(picked) => {
+                if request.destination != picked.root {
+                    return Err(refused(
+                        StorageError::InvalidDirectory.into(),
+                        "the folder is not the picked game folder",
+                    ));
+                }
+                picked.root.clone()
+            }
+        };
+        (folder, owner.preferences.clone())
     };
-    let folder = imported.source.game_directory.clone();
-    source::canonical_paths(&imported)
-        .map_err(|error| refused(error, "a folder is not canonical"))?;
-    clear_unbegun_admission(&*state.lock().map_err(|_| StorageError::Io)?, &folder)?;
+    if let AdoptionSource::Legacy(imported) = &adopted {
+        source::canonical_paths(imported)
+            .map_err(|error| refused(error, "a folder is not canonical"))?;
+    }
+    let cleared = clear_unbegun_admission(&*state.lock().map_err(|_| StorageError::Io)?, &folder)?;
+    // The scan above saw any launcher-owned names this cleanup just took back;
+    // only then is the folder hashed again.
+    let scanned = if cleared {
+        inventory::scan(&folder, &cancel)?
+    } else {
+        scanned
+    };
     if !full_layout(&folder) {
         tracing::warn!(target: "adoption", folder = %folder.display(), binaries = %crate::install_layout::binaries_dir(&folder).display(), "in-place adoption refused: the folder is not in the installer's Working\\Binaries layout");
         return Err(Error::UnsupportedLayout);
     }
-    let missing = outdated(&imported.ledger, &request.release);
-    if !missing.is_empty() {
-        tracing::warn!(target: "adoption", ?missing, "in-place adoption refused: the old launcher has not applied the signed release");
-        return Err(Error::OutdatedInstall);
+    if let AdoptionSource::Legacy(imported) = &adopted {
+        let missing = outdated(&imported.ledger, &request.release);
+        if !missing.is_empty() {
+            tracing::warn!(target: "adoption", ?missing, "in-place adoption refused: the old launcher has not applied the signed release");
+            return Err(Error::OutdatedInstall);
+        }
     }
-    let (adopted, legacy_lock) = source::resolve(imported)?;
-    let imported = source::legacy(&adopted)?;
-    let scanned = inventory::scan(&folder, &cancel)?;
-    let servers = source::servers(imported);
+    let (adopted, legacy_lock) = source::resolve(adopted)?;
+    let servers = source::servers_of(&adopted, &before);
     let mut preparation = preparation::Ownership::claim(
         state.clone(),
         &request,
@@ -125,13 +152,20 @@ pub(super) fn preview(
             return Err(refused(error, "the signed reference could not be compared"));
         }
     };
+    let (imported_identity, requested_config) = match &adopted {
+        AdoptionSource::Legacy(imported) => (
+            Some(imported.identity.clone()),
+            Some(imported.config.clone()),
+        ),
+        AdoptionSource::Folder(_) => (None, None),
+    };
     let report = Report {
         preview_handle: preparation.record.id,
         source: folder.clone(),
         destination: folder,
         release_digest: request.release.digest(),
-        imported_identity: Some(imported.identity.clone()),
-        requested_config: Some(imported.config.clone()),
+        imported_identity,
+        requested_config,
         files,
         user_data_remains_in_source: true,
         game_telemetry_available: false,
@@ -158,12 +192,12 @@ pub(super) fn preview(
 /// an admission leaves when it dies before its operation begins, or when
 /// Abandon could not remove `game`: an owner marker that no journal operation or
 /// saved plan names, and an empty `game`. Anything else is refused.
-fn clear_unbegun_admission(state: &DesktopState, folder: &Path) -> Result<(), Error> {
+fn clear_unbegun_admission(state: &DesktopState, folder: &Path) -> Result<bool, Error> {
     let marker = folder.join(OWNER);
     let game = folder.join("game");
     let has = |path: &Path| std::fs::symlink_metadata(path).is_ok();
     if !MANAGED.iter().any(|entry| has(&folder.join(entry))) {
-        return Ok(());
+        return Ok(false);
     }
     let leftover = |why: &str| {
         tracing::warn!(target: "adoption", folder = %folder.display(), "in-place adoption refused: launcher-owned names are already in the folder ({why})");
@@ -206,7 +240,7 @@ fn clear_unbegun_admission(state: &DesktopState, folder: &Path) -> Result<(), Er
         std::fs::remove_dir(&game)?;
     }
     tracing::warn!(target: "adoption", folder = %folder.display(), "in-place adoption took back an owner marker or empty game folder left by an admission that never began");
-    Ok(())
+    Ok(true)
 }
 /// Whether a saved adoption plan admits this owner and the journal began it.
 /// A plan whose operation never began moved nothing: moves follow `begin`.

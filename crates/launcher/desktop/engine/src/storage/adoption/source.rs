@@ -1,58 +1,67 @@
 //! Where an adoption takes its files from. A legacy source is the saved import:
 //! its folders are checked, locked and verified before anything is read. A
-//! folder source is a natively picked folder; AI-10 resolves it, so until then
-//! it is refused before any preparation begins.
+//! folder source is a natively picked folder: it is resolved, checked and
+//! scanned, and it has no lock or saved import to verify. Copying one is refused
+//! until AI-12.
 use super::*;
 
-/// The saved import a legacy request names, checked under the state guard: it
+/// The saved import a legacy request names, copied under the state guard: it
 /// must be the import the player confirmed. The caller refuses an import this
 /// build cannot honour (see `import_blocker`).
 pub(super) fn saved_import(
-    owner: &DesktopState,
+    saved: Option<migration::LegacyImport>,
     request: &SourceRequest,
 ) -> Result<migration::LegacyImport, Error> {
     let SourceRequest::Legacy { import_digest } = request else {
         return Err(Error::UnsupportedMode);
     };
-    let imported = owner
-        .legacy_import()
-        .map_err(|_| StorageError::Corrupt)?
-        .ok_or(StorageError::Corrupt)?;
+    let imported = saved.ok_or(StorageError::Corrupt)?;
     if imported.confirmation != *import_digest {
         return Err(Error::SourceChanged);
     }
     Ok(imported)
 }
 
-/// The source a request names, resolved under the state guard before anything
-/// is claimed. A folder request resolves to its client root first: when the
-/// saved import names that root it is the legacy source, otherwise it is a
-/// folder source. In place, the folder must be writable and outside the state.
+/// The source a request names, and the scan of its folder. The state guard is
+/// held only to copy the saved import and the state root; nothing below holds
+/// it, so the folder is never read under the guard. A folder request resolves
+/// to its client root first: when the saved import names that root it is the
+/// legacy source, otherwise it is a folder source. A folder source cannot be
+/// copied yet. In place, the folder must be writable and outside the state.
 pub(super) fn request_source(
-    owner: &DesktopState,
+    state: &Mutex<DesktopState>,
     request: &SourceRequest,
     mode: AdoptionMode,
-) -> Result<AdoptionSource, Error> {
+) -> Result<(AdoptionSource, inventory::Index), Error> {
+    let (saved, state_root) = {
+        let owner = state.lock().map_err(|_| StorageError::Io)?;
+        let saved = owner.legacy_import().map_err(|_| StorageError::Corrupt)?;
+        (saved, owner.directory.root.clone())
+    };
     let SourceRequest::Folder { selected } = request else {
-        return saved_import(owner, request).map(AdoptionSource::Legacy);
+        let imported = saved_import(saved, request)?;
+        let scanned = inventory::scan(&imported.source.game_directory, &CancellationToken::new())?;
+        return Ok((AdoptionSource::Legacy(imported), scanned));
     };
     let root = resolve_folder(selected, mode)?;
-    let saved = owner.legacy_import().map_err(|_| StorageError::Corrupt)?;
     if let Some(imported) = saved.filter(|imported| imported.source.game_directory == root) {
-        return Ok(AdoptionSource::Legacy(imported));
+        let scanned = inventory::scan(&root, &CancellationToken::new())?;
+        return Ok((AdoptionSource::Legacy(imported), scanned));
     }
-    if mode == AdoptionMode::InPlace {
-        check_writable(&root)?;
-        if root.starts_with(&owner.directory.root) || owner.directory.root.starts_with(&root) {
-            return Err(StorageError::InvalidDirectory.into());
-        }
+    if mode == AdoptionMode::Copy {
+        return Err(Error::UnsupportedMode);
+    }
+    check_writable(&root)?;
+    if root.starts_with(&state_root) || state_root.starts_with(&root) {
+        return Err(StorageError::InvalidDirectory.into());
     }
     let scanned = inventory::scan(&root, &CancellationToken::new())?;
-    Ok(AdoptionSource::Folder(FolderSource {
+    let source = AdoptionSource::Folder(FolderSource {
         selected: selected.clone(),
         root,
         scan_digest: digest(&scanned)?,
-    }))
+    });
+    Ok((source, scanned))
 }
 
 /// The client root a picked folder names: the folder itself, its `Working`, or
@@ -166,10 +175,11 @@ pub(super) fn canonical_paths(imported: &migration::LegacyImport) -> Result<(), 
 }
 
 /// Locks the old launcher and verifies the imported files. Only a legacy source
-/// has a lock; a folder source will return `None` once AI-10 adds it.
-pub(super) fn resolve(
-    imported: migration::LegacyImport,
-) -> Result<(AdoptionSource, Option<File>), Error> {
+/// has a lock and an import to verify; a folder source has neither.
+pub(super) fn resolve(source: AdoptionSource) -> Result<(AdoptionSource, Option<File>), Error> {
+    let AdoptionSource::Legacy(imported) = source else {
+        return Ok((source, None));
+    };
     let lock = lock_source(&imported)?;
     verify_import(&imported)?;
     Ok((AdoptionSource::Legacy(imported), Some(lock)))
@@ -201,6 +211,21 @@ pub(super) fn servers(imported: &migration::LegacyImport) -> Vec<crate::client_s
             url: s.url.clone(),
         })
         .collect()
+}
+
+/// The login servers a source launches with. A legacy source keeps its imported
+/// list; a folder source takes the saved preference, or the defaults when none.
+pub(super) fn servers_of(
+    source: &AdoptionSource,
+    prefs: &Preferences,
+) -> Vec<crate::client_setup::LoginServer> {
+    match source {
+        AdoptionSource::Legacy(imported) => servers(imported),
+        AdoptionSource::Folder(_) if prefs.login_servers.is_empty() => {
+            crate::client_setup::login_servers::default_servers()
+        }
+        AdoptionSource::Folder(_) => prefs.login_servers.clone(),
+    }
 }
 
 pub(super) fn lock_source(imported: &migration::LegacyImport) -> Result<File, Error> {
@@ -250,37 +275,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn folder_source_is_refused_before_any_preparation_begins() {
+    fn copy_of_a_folder_source_is_unsupported() {
         let f = Fixture::new(None);
-        let mut request = f.request();
         // A game folder that is not the saved import: a folder source, which
-        // `legacy` refuses until part b consumes it.
+        // cannot be copied until AI-12.
         let picked = tempfile::tempdir().unwrap();
         layout(picked.path());
-        request.source = SourceRequest::Folder {
+        let request = SourceRequest::Folder {
             selected: picked.path().to_path_buf(),
         };
-        let result = preview(
-            f.state.clone(),
-            request,
-            CancellationToken::new(),
-            crate::install_progress::ProgressSink::latest().0,
-        );
-        assert!(matches!(result, Err(Error::UnsupportedMode)));
-        let state = f.state.lock().unwrap();
-        assert!(state.operations().snapshot().operation.is_none());
-        assert!(preparation::list_preparations(&state).unwrap().is_empty());
-        let reference_files = std::fs::read_dir(&state.directory.root)
-            .unwrap()
-            .filter_map(Result::ok)
-            .filter(|entry| {
-                entry
-                    .file_name()
-                    .to_string_lossy()
-                    .starts_with(".adoption-reference-")
-            })
-            .count();
-        assert_eq!(reference_files, 0);
+        assert!(matches!(
+            request_source(&f.state, &request, AdoptionMode::Copy),
+            Err(Error::UnsupportedMode)
+        ));
     }
 
     /// A minimal PE header: enough for the executable to be recognised.
@@ -348,19 +355,18 @@ mod tests {
     #[test]
     fn saved_import_naming_the_folder_is_legacy_another_is_folder() {
         let f = Fixture::new(None);
-        let state = f.state.lock().unwrap();
         let named = SourceRequest::Folder {
             selected: f.folder().to_path_buf(),
         };
         layout(f.folder());
-        let adopted = request_source(&state, &named, AdoptionMode::Copy).unwrap();
+        let (adopted, _) = request_source(&f.state, &named, AdoptionMode::InPlace).unwrap();
         assert!(matches!(adopted, AdoptionSource::Legacy(_)));
         let other = tempfile::tempdir().unwrap();
         layout(other.path());
         let request = SourceRequest::Folder {
             selected: other.path().to_path_buf(),
         };
-        let adopted = request_source(&state, &request, AdoptionMode::Copy).unwrap();
+        let (adopted, _) = request_source(&f.state, &request, AdoptionMode::InPlace).unwrap();
         assert!(matches!(adopted, AdoptionSource::Folder(_)));
     }
 

@@ -176,7 +176,7 @@ fn copy_preview(
     backend: Backend,
     transport: Option<artifacts::Transport>,
 ) -> Result<Preview, Error> {
-    let (imported, before, destination) = {
+    {
         let mut owner = state.lock().map_err(|_| StorageError::Io)?;
         idle(
             &owner,
@@ -189,8 +189,12 @@ fn copy_preview(
         if owner.installed_content()?.is_some() {
             return Err(ContractError::IdentityConflict.into());
         }
-        let adopted = source::request_source(&owner, &request.source, AdoptionMode::Copy)?;
-        // A folder source is refused by `legacy` until part b consumes it.
+    }
+    // Resolved and scanned with no state guard held.
+    let (adopted, scanned) = source::request_source(&state, &request.source, AdoptionMode::Copy)?;
+    let (imported, before, destination) = {
+        let owner = state.lock().map_err(|_| StorageError::Io)?;
+        // A folder source is refused by `legacy` until AI-12 copies it.
         let imported = source::legacy(&adopted)?.clone();
         let destination =
             super::install_intent::fresh_destination(&request.destination, &owner.directory.root)?;
@@ -214,9 +218,8 @@ fn copy_preview(
         (imported, owner.preferences.clone(), destination)
     };
     source::canonical_paths(&imported)?;
-    let (adopted, legacy_lock) = source::resolve(imported)?;
+    let (adopted, legacy_lock) = source::resolve(adopted)?;
     let imported = source::legacy(&adopted)?;
-    let scanned = inventory::scan(&imported.source.game_directory, &cancel)?;
     let servers = source::servers(imported);
     let identity = match &backend {
         Backend::Native => ExtractionBackend::Native,
