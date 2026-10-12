@@ -313,6 +313,13 @@ class JoinTest(FixtureTest):
         github["prs"][0]["commits"].append({"sha": "a2", "committed": "2026-10-01T11:00:00Z"})
         self.assertIs(_record(self.join(agents=agents, github=github), "LR-01")["first_pass"], False)
 
+    def test_coder_without_a_reviewer_has_no_first_pass(self):
+        """With no reviewer mapped the fix commits are unknown, so the packet is not counted as a first pass."""
+        record = _record(self.join(agents=[AGENTS[0]]), "LR-01")
+        self.assertIsNone(record["fix_commits"])
+        self.assertIsNone(record["first_pass"])
+        self.assertEqual(self.join(agents=[AGENTS[0]])["campaigns"][CAMPAIGN]["first_pass"]["eligible"], 0)
+
     def test_domain_implementer_at_opus_escalates(self):
         agents = [_agent("a-coder", WORKTREE.format("lr-01"), "2026-10-01T06:00:00Z", "packet-coder", "packet-coder"),
                   _agent("dom", WORKTREE.format("lr-01"), "2026-10-01T07:00:00Z", "rust-gameserver-dev",
@@ -422,6 +429,21 @@ class LoadDbTest(unittest.TestCase):
         self.assertEqual(by_id["n-1"]["worktree"], WORKTREE.format("lr-01"))
         only_n1 = dict(self.db, agents=[dict(by_id["n-1"], agent_type="lab-driver")])
         self.assertEqual(packets.join_campaigns(_ledger(), only_n1, _github(), CONFIG)["sessions"]["mapped"], 1)
+
+    def test_null_worktree_tie_takes_the_smaller_worktree(self):
+        db = sqlite3.connect(self.path)
+        _insert(db, "sessions", [{"session_id": "s-t-1", "project_dir": "repo",
+                                  "first_ts": "2026-10-01T06:00:00Z", "last_ts": "2026-10-01T06:00:00Z"}])
+        _insert(db, "agents", [dict(_agent("t-1", None, "2026-10-01T06:00:00Z"), session_id="s-t-1")])
+        _insert(db, "tool_calls", [
+            {"tool_use_id": "t-2", "request_id": "r-2", "session_id": "s-t-1", "agent_id": "t-1",
+             "ts": "2026-10-01T06:10:00Z", "tool_name": "Read", "worktree": WORKTREE.format("lr-03")},
+            {"tool_use_id": "t-3", "request_id": "r-3", "session_id": "s-t-1", "agent_id": "t-1",
+             "ts": "2026-10-01T06:11:00Z", "tool_name": "Read", "worktree": WORKTREE.format("lr-01")}])
+        db.commit()
+        db.close()
+        by_id = {a["agent_id"]: a for a in packets.load_db(self.path)["agents"]}
+        self.assertEqual(by_id["t-1"]["worktree"], WORKTREE.format("lr-01"))
 
     def test_a_schema_below_6_is_refused(self):
         db = sqlite3.connect(self.path)

@@ -120,11 +120,12 @@ def stop_reason(stop):
 
 
 def _fix_commits(pr, reviewers):
-    """Commits on the PR head after the first reviewer started. None without a PR or its commit times; 0 with no reviewer."""
+    """Commits on the PR head after the first reviewer started. None without a PR, its commit times or a reviewer."""
     if pr is None or pr.get("commits") is None:
         return None
     if not reviewers:
-        return 0
+        # no reviewer session mapped: fix commits unknown
+        return None
     start = _started(reviewers[0])
     times = (_ts(c.get("committed")) for c in pr["commits"])
     return sum(1 for when in times if when and when > start)
@@ -155,12 +156,12 @@ def _join_packet(row, sessions, agents, stops, pr, roles, accepted):
     escalated = bool(row["escalated"]) or target is not None
     fix_commits = _fix_commits(pr, reviewers)
     first_pass = None
-    if accepted and fix_commits is not None:
-        if coders:
-            first_pass = len(coders) == 1 and not fixers and fix_commits == 0 and not escalated
-        else:
-            # no Haiku coder to judge: the PR's commits alone decide
-            first_pass = fix_commits == 0
+    if accepted and coders and (escalated or len(coders) > 1 or fixers):
+        # a retry, an escalation or a fix is not a first pass, whatever the commits
+        first_pass = False
+    elif accepted and fix_commits is not None:
+        # the PR's commits decide: a lone coder's packet is a first pass with none after the review
+        first_pass = fix_commits == 0
     starts = [when for when in (_ts(a.get("first_ts")) for a in sessions) if when]
     first = min(starts, default=None)
     cycle = round((merged - first).total_seconds() / 3600, 2) if merged and first and merged >= first else None
@@ -318,14 +319,32 @@ def join_campaigns(ledger_doc, db, github_doc, config):
             "campaigns": campaigns}
 
 
-# The agent's worktree: its own, else the one its tool calls ran in most often (most agents have none of their own).
-_WORKTREE = ("COALESCE(a.worktree, (SELECT t.worktree FROM tool_calls t WHERE t.agent_id = a.agent_id"
-             " AND t.worktree IS NOT NULL GROUP BY t.worktree ORDER BY COUNT(*) DESC LIMIT 1))")
+def _modal_worktrees(db):
+    """Each agent's worktree its tool calls ran in most often, a tie going to the lexicographically smaller worktree."""
+    options = {}
+    for agent_id, worktree, calls in db.execute(
+            "SELECT agent_id, worktree, COUNT(*) FROM tool_calls"
+            " WHERE agent_id IS NOT NULL AND worktree IS NOT NULL GROUP BY agent_id, worktree"):
+        options.setdefault(agent_id, []).append((-calls, worktree))
+    return {agent_id: min(choices)[1] for agent_id, choices in options.items()}
+
+
+def _branch_hint(db, worktree, last_ts):
+    """The worktree's latest branch observed by `last_ts`, else its latest branch; None without a worktree."""
+    if worktree is None:
+        return None
+    row = db.execute("SELECT branch FROM worktree_branches WHERE worktree = ? AND observed_at <= ?"
+                     " ORDER BY observed_at DESC LIMIT 1", (worktree, last_ts)).fetchone()
+    if row is None:
+        row = db.execute("SELECT branch FROM worktree_branches WHERE worktree = ?"
+                         " ORDER BY observed_at DESC LIMIT 1", (worktree,)).fetchone()
+    return row["branch"] if row else None
 
 
 def load_db(path):
     """The worker agents (with their worktree's branch when they ran) and the agent_stops rows, read-only from `path`.
 
+    The worktree is the agent's own, else the one its tool calls ran in most often (most agents have none of their own).
     The branch hint is the worktree's latest branch observed by the agent's last record, else its latest branch.
     `request_model` is the model most of the agent's requests ran on. A database below schema 6 raises ValueError.
     """
@@ -335,16 +354,19 @@ def load_db(path):
         version = db.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0]
         if int(version) < 6:
             raise ValueError(f"schema_version {version}, re-ingest")
-        agents = [dict(r) for r in db.execute(
-            "SELECT a.agent_id, a.agent_type, a.custom_agent_type, a.name, a.model_alias, a.first_ts,"
-            f" {_WORKTREE} AS worktree,"
-            f" COALESCE((SELECT b.branch FROM worktree_branches b WHERE b.worktree = {_WORKTREE}"
-            "  AND b.observed_at <= a.last_ts ORDER BY b.observed_at DESC LIMIT 1),"
-            f"  (SELECT b.branch FROM worktree_branches b WHERE b.worktree = {_WORKTREE}"
-            "  ORDER BY b.observed_at DESC LIMIT 1)) AS branch_hint,"
-            " (SELECT r.model FROM requests r WHERE r.agent_id = a.agent_id"
-            "  GROUP BY r.model ORDER BY COUNT(*) DESC LIMIT 1) AS request_model"
-            " FROM agents a ORDER BY a.agent_id")]
+        modal = _modal_worktrees(db)
+        agents = []
+        for row in db.execute(
+                "SELECT a.agent_id, a.agent_type, a.custom_agent_type, a.name, a.model_alias, a.first_ts,"
+                " a.worktree, a.last_ts,"
+                " (SELECT r.model FROM requests r WHERE r.agent_id = a.agent_id"
+                "  GROUP BY r.model ORDER BY COUNT(*) DESC LIMIT 1) AS request_model"
+                " FROM agents a ORDER BY a.agent_id").fetchall():
+            agent = dict(row)
+            last_ts = agent.pop("last_ts")
+            agent["worktree"] = agent["worktree"] or modal.get(agent["agent_id"])
+            agent["branch_hint"] = _branch_hint(db, agent["worktree"], last_ts)
+            agents.append(agent)
         stops = {r["agent_id"]: dict(r) for r in db.execute("SELECT * FROM agent_stops")}
     finally:
         db.close()
