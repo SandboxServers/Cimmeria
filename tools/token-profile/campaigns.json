@@ -6,7 +6,7 @@
   "any-install-adoption": {"prefixes": ["any-install-adoption/"]},
   "bank-vault": {"prefixes": ["bank/"]},
   "black-market": {"prefixes": ["bm/"]},
-  "campaign-metrics": {"prefixes": ["campaign-metrics/"]},
+  "campaign-metrics": {"prefixes": ["campaign-metrics/", "cm/"]},
   "castle-cellblock-rebuild": {"branches": ["content/castle-cellblock-rebuild"]},
   "castle-population": {"branches": ["content/castle-population"]},
   "castle-rebuild": {"prefixes": ["castle/"]},
