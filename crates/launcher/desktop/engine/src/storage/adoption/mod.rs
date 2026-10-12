@@ -17,6 +17,7 @@ mod inventory;
 mod model;
 pub(crate) mod preparation;
 mod publication;
+mod replay;
 pub use preparation::{
     abandon_preparation, inspect_preparation, list_preparations, PreparationRecord,
 };
@@ -46,6 +47,8 @@ mod publication_tests;
 mod recovery_tests;
 #[cfg(all(test, target_os = "macos"))]
 mod reference_tests;
+#[cfg(test)]
+mod replay_tests;
 #[cfg(all(test, target_os = "macos"))]
 mod tests;
 #[cfg(test)]
