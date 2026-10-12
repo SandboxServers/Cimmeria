@@ -259,7 +259,14 @@ fn stock_files() -> Vec<(&'static str, Vec<u8>)> {
 /// The index built from the stock seed and one overlay that rewrites `PATCHED`
 /// and adds `ADDED`. The artifacts are written under `dir`.
 fn built_index(dir: &Path) -> FileIndex {
-    let files = stock_files();
+    built_index_without(dir, &[])
+}
+/// [`built_index`] from a seed that leaves out the paths in `skip`.
+fn built_index_without(dir: &Path, skip: &[&str]) -> FileIndex {
+    let files: Vec<_> = stock_files()
+        .into_iter()
+        .filter(|(path, _)| !skip.contains(path))
+        .collect();
     let refs: Vec<(&str, &[u8])> = files.iter().map(|(p, b)| (*p, b.as_slice())).collect();
     let seed = archive(&refs);
     let overlay = archive(&[(PATCHED, b"patched text"), (ADDED, b"added by patch")]);
@@ -417,4 +424,22 @@ fn a_file_no_history_names_is_extra() {
         class_of(&found, "Working/SGWGame/Content/notes.txt"),
         Classification::Extra
     );
+}
+
+#[test]
+fn a_setup_written_login_file_the_seed_lacks_is_matched_not_extra() {
+    let dir = tempfile::tempdir().unwrap();
+    let index = built_index_without(dir.path(), &[LOGIN]);
+    let folder = tempfile::tempdir().unwrap();
+    write_stock(folder.path(), &[LOGIN]);
+    let servers = crate::client_setup::login_servers::default_servers();
+    let rendered = crate::client_setup::login_servers::render(&servers);
+    write_under(folder.path(), LOGIN, rendered.as_bytes());
+    let found = classify_tree(folder.path(), &index);
+    assert_eq!(class_of(&found, LOGIN), Classification::Matched);
+
+    // Any other bytes are not what setup writes, so the file stays extra.
+    write_under(folder.path(), LOGIN, b"custom login");
+    let found = classify_tree(folder.path(), &index);
+    assert_eq!(class_of(&found, LOGIN), Classification::Extra);
 }

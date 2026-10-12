@@ -39,7 +39,7 @@ async fn reviewed_copy_publishes_once_and_preserves_source_import_identity_and_c
     // Matched: the executable and the login server list the old launcher wrote.
     assert_eq!(
         serde_json::to_value(&review.counts).unwrap(),
-        serde_json::json!({"matched": 2, "known_transform": 0, "modified": 1, "missing": 0, "extra": 2})
+        serde_json::json!({"matched": 2, "known_transform": 0, "modified": 1, "needs_patching": 0, "missing": 0, "extra": 2})
     );
     assert_eq!(
         serde_json::to_value(&review.differences).unwrap(),
