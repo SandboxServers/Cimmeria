@@ -39,6 +39,16 @@
 //! one item off the stack (`dragType == 1`, CEGUI button state 9 = left +
 //! control). Shift-drag, "choose how many", is a `TODO` in the stock Lua and
 //! does nothing, so `split` here means Ctrl-drag, one item.
+//!
+//! **The stand-in window.** On that Ctrl-drag the stock Lua calls
+//! `dragAborted` on the slot and `dragStartedFrom(InventoryDragItemWin)`
+//! (`VaultDragItemWin` in the vault; `BandolierDragWin` on every Bandolier
+//! drag): the slot's own container stops dragging and another
+//! `DragContainer` carries the item. The tool resolves that window before
+//! pressing ([`stand_in_window`]), reads "is it dragging" and its
+//! `d_dropTarget` from whichever of the two holds the drag, and drops onto
+//! that one. Reading only the slot (the old code) reported `drag_started:
+//! false` and dropped nothing (#1660 item 1).
 
 use std::time::{Duration, Instant};
 
@@ -49,7 +59,7 @@ use super::lua_json::list;
 use super::slots::ContainerRef;
 use super::window_click::{click_point, locate_chunk, ClickTarget};
 use super::{NativeLevel, NativeTrail, Supervisor};
-use crate::supervisor::cegui_native::{drop_plan, DropPlan, LEFT_BUTTON};
+use crate::supervisor::cegui_native::{drop_plan, Cegui, DropPlan, LEFT_BUTTON};
 use crate::supervisor::keys;
 
 /// One end of a drag.
@@ -63,6 +73,58 @@ pub enum DragEnd {
 /// starts the drag), then at least two for `doDragging` to pick a target
 /// (findings §7.2).
 pub const MIN_STEPS: u32 = 3;
+
+/// Lua body: the stock modules' own Ctrl-drag state (`buttonState == 9`
+/// sets `dragType = 1` in `onSlotItemMouseButtonDown`), kept in the result
+/// so a split that did nothing can be told from a Ctrl that never arrived.
+pub const MOD_DRAG_TYPE: &str =
+    "return __jenc({ inventory = InventoryMod and InventoryMod.dragType, \
+     vault = VaultMod and VaultMod.dragType })";
+
+/// The window the stock Lua hands a drag to once CEGUI has started it:
+/// `dragAborted(slot)` then `dragStartedFrom(stand_in)`, so the slot's own
+/// `DragContainer` stops dragging and the stand-in drags instead
+/// (`Inventory.lua:640-647` and `Vault.lua:505-521` on a Ctrl-drag of a
+/// stack, `Bandolier.lua:326-335` on every drag). `container` is the source
+/// container's name as the inventory reader prints it.
+pub fn stand_in_window(container: Option<&str>, split: bool) -> Option<&'static str> {
+    match container?.to_ascii_lowercase().as_str() {
+        "main" | "mission" | "crafting" if split => Some("InventoryDragItemWin"),
+        "vault" if split => Some("VaultDragItemWin"),
+        "bandolier" => Some("BandolierDragWin"),
+        _ => None,
+    }
+}
+
+/// How one native drag runs.
+#[derive(Debug, Clone, Copy)]
+struct DragRunPlan {
+    split: bool,
+    steps: u32,
+    allow_notify: bool,
+    wait: Duration,
+    /// The game window to post Ctrl to (a split only).
+    ctrl_hwnd: Option<isize>,
+}
+
+/// Which of our containers is being dragged now: the stand-in when the
+/// stock Lua handed the drag over, else the source slot; 0 when neither.
+/// Never someone else's drag.
+async fn dragged_now(
+    cegui: &Cegui<'_>,
+    container: u32,
+    stand_in: Option<u32>,
+) -> Result<u32, String> {
+    if let Some(s) = stand_in {
+        if cegui.is_dragging(s).await? {
+            return Ok(s);
+        }
+    }
+    if cegui.is_dragging(container).await? {
+        return Ok(container);
+    }
+    Ok(0)
+}
 
 /// Lua body: is a drag in progress (`getDragInfo`), and is the inventory's
 /// drag stand-in visible.
@@ -129,14 +191,19 @@ fn all_ok(results: Vec<Result<(), String>>) -> Result<(), String> {
 /// What happened between button down and button up.
 #[derive(Debug, Default)]
 struct DragRun {
-    /// The first step at which our source container was dragging.
+    /// The first step at which one of our containers was dragging.
     started_at_step: Option<usize>,
     /// Whether `getDragInfo` (global: any item) ever showed a drag.
     drag_info_seen: bool,
-    /// Our container was still dragging when the drop was decided.
+    /// One of our containers was still dragging when the drop was decided.
     dragging_at_drop: bool,
+    /// The stand-in window, not the source slot, held the drag.
+    handed_off: bool,
+    /// The container that was dragging at the drop (0: none).
+    dragged: u32,
     drop_target: u32,
     notified: bool,
+    mod_drag_type: Value,
 }
 
 impl Supervisor {
@@ -212,7 +279,37 @@ impl Supervisor {
         allow_notify: bool,
         wait: Duration,
     ) -> Result<Value, String> {
+        // Only Ctrl needs the window (a posted key); a plain drag is all
+        // native calls.
+        let ctrl_hwnd = if split {
+            Some(self.game_hwnd().await?)
+        } else {
+            None
+        };
+        let plan = DragRunPlan {
+            split,
+            steps,
+            allow_notify,
+            wait,
+            ctrl_hwnd,
+        };
+        self.drag_native(from, to, plan).await
+    }
+
+    async fn drag_native(
+        &self,
+        from: &DragEnd,
+        to: &DragEnd,
+        plan: DragRunPlan,
+    ) -> Result<Value, String> {
         let t0 = Instant::now();
+        let DragRunPlan {
+            split,
+            steps,
+            allow_notify,
+            wait,
+            ctrl_hwnd: hwnd,
+        } = plan;
         let steps = steps.max(MIN_STEPS);
         let mut trail = NativeTrail::default();
         let before = self.inventory_read(&[], false).await?;
@@ -237,12 +334,10 @@ impl Supervisor {
         let cegui = self.cegui().await?;
         let container = cegui.drag_container(&src_name).await?;
         let target = cegui.window_ptr(&dst_name).await?;
-        // Only Ctrl needs the window (a posted key); a plain drag is all
-        // native calls.
-        let hwnd = if split {
-            Some(self.game_hwnd().await?)
-        } else {
-            None
+        let stand_in_name = stand_in_window(src_key.as_ref().map(|k| k.0.as_str()), split);
+        let stand_in = match stand_in_name {
+            Some(n) => Some(cegui.drag_container(n).await?),
+            None => None,
         };
 
         self.inject_cursor(&cegui, src).await?;
@@ -264,6 +359,9 @@ impl Supervisor {
                 ));
             }
             trail.push(format!("press on {src_name}"), NativeLevel::NativeCegui);
+            if split {
+                run.mod_drag_type = self.lua_json(MOD_DRAG_TYPE).await?;
+            }
             tokio::time::sleep(Duration::from_millis(100)).await;
             for (i, p) in path(src, dst, steps).into_iter().enumerate() {
                 self.inject_cursor(&cegui, p).await?;
@@ -271,8 +369,12 @@ impl Supervisor {
                 // lets the client run a frame before the next move.
                 let state = self.lua_json(DRAG_STATE).await?;
                 run.drag_info_seen |= drag_active(&state);
-                if run.started_at_step.is_none() && cegui.is_dragging(container).await? {
-                    run.started_at_step = Some(i + 1);
+                if run.started_at_step.is_none() {
+                    let now = dragged_now(&cegui, container, stand_in).await?;
+                    if now != 0 {
+                        run.started_at_step = Some(i + 1);
+                        run.handed_off = now != container;
+                    }
                 }
                 tokio::time::sleep(Duration::from_millis(40)).await;
             }
@@ -280,12 +382,18 @@ impl Supervisor {
                 format!("move to {dst_name} in {steps} steps"),
                 NativeLevel::NativeCegui,
             );
-            // Decide on what our container says now, not on the global
+            // Decide on what our containers say now, not on the global
             // drag info: a drag of any other item must never be dropped.
-            run.dragging_at_drop = cegui.is_dragging(container).await?;
-            run.drop_target = cegui.drop_target(container).await?;
+            run.dragged = dragged_now(&cegui, container, stand_in).await?;
+            run.dragging_at_drop = run.dragged != 0;
+            let dragged = if run.dragged != 0 {
+                run.dragged
+            } else {
+                container
+            };
+            run.drop_target = cegui.drop_target(dragged).await?;
             if drop_plan(run.dragging_at_drop, run.drop_target, allow_notify) == DropPlan::Notify {
-                cegui.notify_dropped(target, container).await?;
+                cegui.notify_dropped(target, dragged).await?;
                 run.notified = true;
                 trail.push(
                     format!("notifyDragDropItemDropped on {dst_name} (no drop target)"),
@@ -338,6 +446,9 @@ impl Supervisor {
             "drag_started_at_step": run.started_at_step,
             "drag_info_seen": run.drag_info_seen,
             "dragging_at_drop": run.dragging_at_drop,
+            "handed_off": run.handed_off,
+            "stand_in": stand_in_name,
+            "mod_drag_type": run.mod_drag_type,
             "drop_target_resolved": run.drop_target != 0,
             "drop_notified": run.notified,
             "moved": moved,
@@ -346,6 +457,8 @@ impl Supervisor {
             "snap_back": started && !moved,
             "native": {
                 "container": format!("{container:#x}"),
+                "stand_in": stand_in.map(|p| format!("{p:#x}")),
+                "dragged": format!("{:#x}", run.dragged),
                 "target": format!("{target:#x}"),
                 "drop_target": format!("{:#x}", run.drop_target),
             },

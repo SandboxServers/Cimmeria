@@ -25,6 +25,10 @@ use super::events::fake_bridge::{lua_ok, Responder};
 pub const SYSTEM: u32 = 0x0500_0000;
 pub const CONTAINER: u32 = 0x0600_0000;
 pub const TARGET: u32 = 0x0700_0000;
+/// The stand-in `DragContainer` (`InventoryDragItemWin`) the stock Lua hands
+/// a split drag to.
+pub const STAND_IN: u32 = 0x0800_0000;
+const STAND_USERDATA: u32 = 0x0a00_0030;
 const SRC_USERDATA: u32 = 0x0a00_0010;
 const DST_USERDATA: u32 = 0x0a00_0020;
 
@@ -55,6 +59,23 @@ pub struct FakeCegui {
     pub modifiers: Vec<Value>,
     /// Lua chunks that placed the cursor through `setPosition`.
     pub lua_placements: usize,
+    /// The stock UI hands the drag to `InventoryDragItemWin`: the source
+    /// container stops dragging, the stand-in drags.
+    pub stand_in: bool,
+    /// A native right click (button 1) on `SrcSlot` uses the item.
+    pub right_click_works: bool,
+    /// A native left click on `TabBtn` shows the tab.
+    pub tab_click_works: bool,
+    pub tab_visible: bool,
+    /// `contextSensitiveUseItem` calls and tab-handler calls made through Lua.
+    pub lua_use_calls: usize,
+    pub tab_handler_calls: usize,
+    /// Vendor: the row-1 spinner value, whether its inc button works,
+    /// whether Buy bought, and `setCurrentValue` calls through Lua.
+    pub vendor_value: i64,
+    pub inc_works: bool,
+    pub bought: bool,
+    pub lua_set_calls: usize,
     pub cursor: (f32, f32),
     pub button_down: bool,
     pub dragging: bool,
@@ -77,6 +98,16 @@ impl Default for FakeCegui {
             calls: Vec::new(),
             modifiers: Vec::new(),
             lua_placements: 0,
+            stand_in: false,
+            right_click_works: false,
+            tab_click_works: false,
+            tab_visible: false,
+            lua_use_calls: 0,
+            tab_handler_calls: 0,
+            vendor_value: 0,
+            inc_works: false,
+            bought: false,
+            lua_set_calls: 0,
             cursor: (0.0, 0.0),
             button_down: false,
             dragging: false,
@@ -95,13 +126,22 @@ impl FakeCegui {
             .collect()
     }
 
-    /// The container's flag word as the live client lays it out.
+    /// The source container's flag word as the live client lays it out.
     fn drag_flags(&self) -> u32 {
         let mut w = u32::from(self.button_down);
-        if self.dragging {
+        if self.dragging && !self.stand_in {
             w |= 0x0001_0100;
         }
         w
+    }
+
+    /// The stand-in's flag word: dragging only after the hand-off.
+    fn stand_in_flags(&self) -> u32 {
+        if self.dragging && self.stand_in {
+            0x0001_0101
+        } else {
+            0
+        }
     }
 
     fn memory(&self) -> HashMap<u32, u32> {
@@ -112,6 +152,10 @@ impl FakeCegui {
             (CONTAINER, rebase(self.container_vtable, self.slide)),
             (CONTAINER + DROP_TARGET_OFFSET, self.drop_target),
             (CONTAINER + DRAG_FLAGS_OFFSET, self.drag_flags()),
+            (STAND_USERDATA, STAND_IN),
+            (STAND_IN, rebase(self.container_vtable, self.slide)),
+            (STAND_IN + DROP_TARGET_OFFSET, self.drop_target),
+            (STAND_IN + DRAG_FLAGS_OFFSET, self.stand_in_flags()),
         ])
     }
 
@@ -144,6 +188,20 @@ impl FakeCegui {
         } else if addr == at(INJECT_MOUSE_BUTTON_UP_VA) {
             if self.dragging && self.drop_target != 0 {
                 self.moved = true;
+            }
+            // Clicks (no drag): which window the cursor is over decides.
+            let (x, y) = self.cursor;
+            if args[1] == 1 && self.right_click_works && x < 20.0 && y < 20.0 {
+                self.moved = true;
+            }
+            if args[1] == 0 && self.tab_click_works && (300.0..320.0).contains(&x) {
+                self.tab_visible = true;
+            }
+            if args[1] == 0 && self.inc_works && (400.0..420.0).contains(&x) {
+                self.vendor_value += 1;
+            }
+            if args[1] == 0 && (500.0..540.0).contains(&x) && self.vendor_value >= 1 {
+                self.bought = true;
             }
             self.button_down = false;
             self.dragging = false;
@@ -182,13 +240,21 @@ impl FakeCegui {
                 Some(("SrcSlot", [0, 0, 20, 20], SRC_USERDATA))
             } else if c.contains("\"DstSlot\"") {
                 Some(("DstSlot", [100, 0, 120, 20], DST_USERDATA))
+            } else if c.contains("\"InventoryDragItemWin\"") {
+                Some(("InventoryDragItemWin", [200, 0, 220, 20], STAND_USERDATA))
+            } else if c.contains("\"TabBtn\"") {
+                Some(("TabBtn", [300, 0, 320, 20], 0))
+            } else if c.contains("\"Vendor_Item1Quantity__auto_incbtn__\"") {
+                Some(("Vendor_Item1Quantity__auto_incbtn__", [400, 0, 420, 20], 0))
+            } else if c.contains("\"Vendor_BuyButton\"") {
+                Some(("Vendor_BuyButton", [500, 0, 540, 20], 0))
             } else {
                 None
             }
         };
         let doc = if chunk.contains("getCash") {
             let slot = if self.moved { self.lands_in } else { 1 };
-            json!({ "cash": 0, "containers": [{ "name": "Main",
+            json!({ "cash": if self.bought { -50 } else { 0 }, "containers": [{ "name": "Main",
                 "slots": [{ "slot": slot, "item_id": 7, "name": "Medkit", "qty": 1 }] }] })
         } else if chunk.contains("local cid, slot = ") {
             Self::locate_slot(chunk)
@@ -203,6 +269,47 @@ impl FakeCegui {
                 Some((_, _, ud)) => json!({ "found": true, "ud": format!("userdata: {ud:08X}") }),
                 None => json!({ "found": false }),
             }
+        } else if chunk.contains("InventoryMod") && chunk.contains("dragType") {
+            json!({ "inventory": 1 })
+        } else if chunk.contains("contextSensitiveUseItem") {
+            self.lua_use_calls += 1;
+            self.moved = true;
+            json!({ "ok": true })
+        } else if chunk.contains("pcall(f, w)") {
+            self.tab_handler_calls += 1;
+            self.tab_visible = true;
+            json!({ "ok": true })
+        } else if chunk.contains("done = w ~= nil") {
+            json!({ "done": self.tab_visible })
+        } else if chunk.contains("vendor_open") {
+            json!({ "vendor_open": true, "buy_visible": true, "row_visible": true,
+                    "current": self.vendor_value, "max": 10, "scroll": 0 })
+        } else if chunk.contains("done = cur ==") {
+            let want: i64 = chunk
+                .split("done = cur == ")
+                .nth(1)
+                .map(|s| {
+                    s.chars()
+                        .take_while(char::is_ascii_digit)
+                        .collect::<String>()
+                })
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(-1);
+            json!({ "done": self.vendor_value == want })
+        } else if chunk.contains("setCurrentValue(") {
+            let n: i64 = chunk
+                .split("setCurrentValue(")
+                .nth(1)
+                .map(|s| {
+                    s.chars()
+                        .take_while(char::is_ascii_digit)
+                        .collect::<String>()
+                })
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(-1);
+            self.lua_set_calls += 1;
+            self.vendor_value = n;
+            json!({ "ok": true, "via": "spinner", "current": n })
         } else if chunk.contains("getDragInfo") {
             self.drag_state_reads += 1;
             if self.fail_drag_state_on == Some(self.drag_state_reads) {
