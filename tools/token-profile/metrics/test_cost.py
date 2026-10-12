@@ -32,10 +32,29 @@ REQUESTS = [
     ("r6", "s-coder", "a-coder", "claude-haiku-5-5", 1000, 1000, 0, [(301, "branch", 1.0)]),
     ("r7", "s-rev", "a-rev", "claude-sonnet-5-5", 1000, 1000, 0, [(401, "branch", 1.0)]),
 ]
+# CM-03 review pins, kept apart from REQUESTS so the totals above hold. Campaign camp-d has PRs 501 (OPEN) and 502
+# (MERGED); camp-e has rows with no PR. The schema allows a campaign on a row only when it has no PR, so a row
+# campaign and a PR campaign never meet in one row (see test_row_campaign_beats_pr_campaign).
+# pr, head branch, state, campaign
+PINNED_PRS = [(501, "camp-d/lr-05-x", "OPEN", "camp-d"), (502, "camp-d/lr-05-y", "MERGED", "camp-d")]
+# id, session, agent, model, input, output, cache_read, cache_write_5m, cache_write_1h, [(pr or None, method, weight, campaign)]
+PINNED_REQUESTS = [
+    # Sonnet 5.5 cache writes: (1000 * 2.0 * 1.25 + 1000 * 2.0 * 2.0) / 1e6 = 0.0065 on PR 502.
+    ("p1", "s-main", None, "claude-sonnet-5-5", 0, 0, 0, 1000, 1000, [(502, "branch", 1.0, None)]),
+    # Opus 5.5: (1000 * 4 + 1000 * 20) / 1e6 = 0.024 on the OPEN PR 501.
+    ("p2", "s-coder", "a-coder", "claude-opus-5-5", 1000, 1000, 0, 0, 0, [(501, "branch", 1.0, None)]),
+    # No price for this model: unpriced, on the MERGED PR 502.
+    ("p3", "s-coder", "a-coder", "mystery-model", 1000, 1000, 0, 0, 0, [(502, "branch", 1.0, None)]),
+    # Haiku 5.5 prompt is 50000 + 60000 = 110000 > 100000, so the x5 long card applies:
+    # (50000 * 0.10 + 1000 * 0.50 + 60000 * 0.01) / 1e6 = 0.0061, times 5 = 0.0305, on camp-e with no PR.
+    ("p4", "s-rev", "a-rev", "claude-haiku-5-5", 50000, 1000, 60000, 0, 0, [(None, "campaign", 1.0, "camp-e")]),
+    # Sonnet 5.5 input: 1000 * 2 / 1e6 = 0.002, on camp-e with no PR.
+    ("p5", "s-main", None, "claude-sonnet-5-5", 1000, 0, 0, 0, 0, [(None, "campaign", 1.0, "camp-e")]),
+]
 
 
-def build(path):
-    """A profiler database with the CM-03 fixture, built on schema.sql."""
+def build(path, pinned=False):
+    """A profiler database with the CM-03 fixture, built on schema.sql; `pinned` adds the review rows."""
     db = sqlite3.connect(path)
     db.executescript(SCHEMA.read_text(encoding="utf-8"))
     for session, worktree, coordinator in SESSIONS:
@@ -44,21 +63,29 @@ def build(path):
     for agent, session, custom in AGENTS:
         db.execute("INSERT INTO agents (agent_id, session_id, agent_type, custom_agent_type) VALUES (?, ?, 'general', ?)",
                    (agent, session, custom))
-    for pr, branch, state, campaign in PRS:
+    for pr, branch, state, campaign in PRS + (PINNED_PRS if pinned else []):
         db.execute("INSERT INTO prs (pr_number, head_branch, created_at, merged_at, state, campaign)"
                    " VALUES (?, ?, ?, ?, ?, ?)", (pr, branch, T0, T0, state, campaign))
     for rid, session, agent, model, inp, out, read, attribution in REQUESTS:
-        db.execute("INSERT INTO triggers (trigger_id, session_id, agent_id, ts, kind, rule)"
-                   " VALUES (?, ?, ?, ?, 'human_prompt', 'R1')", ("t-" + rid, session, agent, T0))
-        db.execute("INSERT INTO requests (request_id, session_id, agent_id, trigger_id, message_uuid, records_seen,"
-                   " ts, model, input_tokens, output_tokens, cache_read, cache_write_5m, cache_write_1h,"
-                   " context_tokens) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, 0, 0, ?)",
-                   (rid, session, agent, "t-" + rid, "u-" + rid, T0, model, inp, out, read, inp + read))
-        for pr, method, weight in attribution:
-            db.execute("INSERT INTO pr_attribution (request_id, pr_number, method, weight, confidence, campaign)"
-                       " VALUES (?, ?, ?, ?, ?, NULL)", (rid, pr, method, weight, 0.5 if pr else 0.0))
+        add_request(db, rid, session, agent, model, inp, out, read, 0, 0, [(*item, None) for item in attribution])
+    for row in PINNED_REQUESTS if pinned else []:
+        add_request(db, *row)
     db.commit()
     db.close()
+
+
+def add_request(db, rid, session, agent, model, inp, out, read, cache_5m, cache_1h, attribution):
+    """One request, its trigger, and one pr_attribution row per (pr or campaign or unattributed) item."""
+    db.execute("INSERT INTO triggers (trigger_id, session_id, agent_id, ts, kind, rule)"
+               " VALUES (?, ?, ?, ?, 'human_prompt', 'R1')", ("t-" + rid, session, agent, T0))
+    db.execute("INSERT INTO requests (request_id, session_id, agent_id, trigger_id, message_uuid, records_seen,"
+               " ts, model, input_tokens, output_tokens, cache_read, cache_write_5m, cache_write_1h,"
+               " context_tokens) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)",
+               (rid, session, agent, "t-" + rid, "u-" + rid, T0, model, inp, out, read, cache_5m, cache_1h,
+                inp + read + cache_5m + cache_1h))
+    for pr, method, weight, campaign in attribution:
+        db.execute("INSERT INTO pr_attribution (request_id, pr_number, method, weight, confidence, campaign)"
+                   " VALUES (?, ?, ?, ?, ?, ?)", (rid, pr, method, weight, 0.5 if pr else 0.0, campaign))
 
 
 class CostTest(unittest.TestCase):
@@ -145,6 +172,74 @@ class CostTest(unittest.TestCase):
         self.assertEqual(cost.tier_of("mystery-model"), "other")
         self.assertEqual(cost.family_of(".claude/worktrees/lr-08a-fix2"), "lr")
         self.assertEqual(cost.family_of(None), "main")
+
+
+class PinnedCostTest(unittest.TestCase):
+    """CM-03 review pins: cache writes, the long-prompt card, merged-only cost per PR, unpriced rows, merged flags."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.path = Path(tmp.name) / "profile.sqlite"
+        build(self.path, pinned=True)
+        self.db = sqlite3.connect(f"file:{self.path}?mode=ro", uri=True)
+        self.addCleanup(self.db.close)
+        config = registry.load_config()
+        self.roles = config["roles"]
+        self.since, self.until = config["window"]["since"], config["window"]["until"]
+
+    def rollup(self):
+        return cost.rollup(cost.load_requests(self.db, self.since, self.until), CURRENT, self.roles)
+
+    def test_cache_writes_are_loaded_and_priced(self):
+        # p1 is 0.0065 on PR 502: zeroing either cache write in load_requests gives 0.004 or 0.0025.
+        rows = {row["request_id"]: row for row in cost.load_requests(self.db, self.since, self.until)}
+        self.assertEqual(rows["p1"]["tokens"]["cache_write_5m"], 1000)
+        self.assertEqual(rows["p1"]["tokens"]["cache_write_1h"], 1000)
+        per_pr = {p["pr"]: p for p in self.rollup()["camp-d"]["prs"]["per_pr"]}
+        self.assertAlmostEqual(per_pr[502]["usd"], 0.0065, places=9)
+
+    def test_long_prompt_card_applies_above_100k(self):
+        # p4 (Haiku, the x5 card) is 0.0305 and p5 (Sonnet) is 0.002: camp-e is 0.0325 and the tier split is Haiku's.
+        out = self.rollup()
+        self.assertAlmostEqual(out["camp-e"]["cost"]["by_model_tier"]["haiku"], 0.0305, places=9)
+        self.assertAlmostEqual(out["camp-e"]["cost"]["total_usd"], 0.0325, places=9)
+
+    def test_campaign_row_without_a_pr_is_unattributed_in_campaign(self):
+        # camp-e has no PR: its 0.0325 is unattributed_in_campaign, nothing is attributed to a PR.
+        camp = self.rollup()["camp-e"]
+        self.assertAlmostEqual(camp["cost"]["unattributed_in_campaign_usd"], 0.0325, places=9)
+        self.assertAlmostEqual(camp["cost"]["attributed_usd"], 0.0, places=9)
+        self.assertEqual(camp["prs"]["count"], 0)
+
+    def test_cost_per_pr_is_the_merged_pr_only(self):
+        # PR 501 is OPEN at 0.024; PR 502 is MERGED at 0.0065. The mean over merged PRs is 0.0065, not 0.01525.
+        camp = self.rollup()["camp-d"]
+        self.assertEqual(camp["prs"]["count"], 2)
+        self.assertEqual(camp["prs"]["merged"], 1)
+        self.assertAlmostEqual(camp["prs"]["cost_per_pr"]["mean"], 0.0065, places=9)
+        self.assertEqual(camp["prs"]["per_pr"], [{"pr": 501, "usd": 0.024, "merged": False},
+                                                 {"pr": 502, "usd": 0.0065, "merged": True}])
+
+    def test_unpriced_row_is_counted_and_left_out(self):
+        # p3 (mystery-model) is counted once in unpriced_rows and is in no total: camp-d is 0.0065 + 0.024.
+        camp = self.rollup()["camp-d"]
+        self.assertEqual(camp["cost"]["unpriced_rows"], 1)
+        self.assertAlmostEqual(camp["cost"]["total_usd"], 0.0305, places=9)
+
+    def test_pr_merged_follows_the_pr_state(self):
+        # p1 is on the MERGED PR 502 and p2 on the OPEN PR 501: pr_merged is not always true.
+        rows = {row["request_id"]: row for row in cost.load_requests(self.db, self.since, self.until)}
+        self.assertIs(rows["p1"]["pr_merged"], True)
+        self.assertIs(rows["p2"]["pr_merged"], False)
+
+    def test_row_campaign_beats_pr_campaign(self):
+        # campaign_of's order: the row's own campaign, then its PR's, then the ledger map. The schema never keeps a
+        # row campaign and a PR on one row (a campaign row has no PR), so this pins the function on synthetic rows.
+        row = {"row_campaign": "camp-x", "pr_campaign": "camp-y", "pr_number": 5}
+        self.assertEqual(cost.campaign_of(row, {5: "camp-z"}), "camp-x")
+        self.assertEqual(cost.campaign_of({**row, "row_campaign": None}, {5: "camp-z"}), "camp-y")
+        self.assertEqual(cost.campaign_of({**row, "row_campaign": None, "pr_campaign": None}, {5: "camp-z"}), "camp-z")
 
 
 class CliTest(unittest.TestCase):
