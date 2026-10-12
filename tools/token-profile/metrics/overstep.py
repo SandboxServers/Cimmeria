@@ -2,8 +2,9 @@
 
 Pure functions take plain dicts and lists. A request is a dict with its ts, model, the four token counts
 (prices.TOKEN_COLUMNS), session_id, agent_id, trigger_kind, worktree (the .claude/worktrees/<name> it ran in),
-agent_type, and calls (a list of {tool_name, fingerprint}). Packets are {worktree name: {campaign, implementer,
-size, escalated}} from the ledger. The DB is read only in load_requests, which cli.py calls.
+agent_type (the custom agent type when set), agent_name, and calls (a list of {tool_name, fingerprint}). Packets are
+(campaign, {id, implementer, size, escalated}) pairs from the ledger. The DB is read only in load_requests, which cli.py
+calls.
 
 Rules (work-packets.md, CM-07): O1 Opus coding, O2 Opus research, O3 Sonnet implementing, O4 Opus subagent in a
 packet worktree (counted, not priced). Repricing is an estimate: it ignores extra turns a cheaper model may need.
@@ -14,6 +15,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from ingest import prices
+
+from .packets import packet_of_session
 
 TIERS = {"haiku": "claude-haiku-5-5", "sonnet": "claude-sonnet-5-5"}
 EDIT_TOOLS = {"Edit", "Write", "NotebookEdit"}
@@ -79,6 +82,17 @@ def worktree_name(path):
     return path.replace("\\", "/").rstrip("/").split("/")[-1].lower() if path else None
 
 
+def packet_for(req, packets):
+    """The (campaign, packet) a request ran for, or None.
+
+    CM-06's matcher reads the agent's name, then the worktree, for a packet ID. An ID that two campaigns hold matches
+    nothing, so only one campaign's packet is returned.
+    """
+    pid = packet_of_session({"name": req.get("agent_name")}, req["worktree"], None, [p for _, p in packets], "")
+    found = [(campaign, packet) for campaign, packet in packets if packet["id"] == pid]
+    return found[0] if len(found) == 1 else None
+
+
 def _small(size):
     """The ledger's size cell is S or M (its first letter)."""
     return (size or "").strip().upper()[:1] in ("S", "M")
@@ -108,21 +122,22 @@ def opus_research(req, cfg):
 
 
 def sonnet_implementing(req, packets, cfg):
-    """O3: a Sonnet request that edits a code path in a worktree whose packet is packet-coder's, size S or M, not
-    escalated. A review fixer's edits are expected, so a request with the fixer role is not O3. Returns (call, packet)."""
+    """O3: a Sonnet request that edits a code path in a request whose packet is packet-coder's, size S or M, not
+    escalated. A review fixer's edits are expected, so a request with the fixer role is not O3.
+    Returns (call, (campaign, packet))."""
     if family(req["model"]) != "sonnet" or req["role"] == "fixer":
         return None
-    packet = packets.get(worktree_name(req["worktree"]))
-    if not packet or packet["implementer"] != "packet-coder" or packet["escalated"] or not _small(packet["size"]):
+    found = packet_for(req, packets)
+    if not found or found[1]["implementer"] != "packet-coder" or found[1]["escalated"] or not _small(found[1]["size"]):
         return None
     call = next((c for c in req["calls"] if c["tool_name"] in EDIT_TOOLS and _under(c.get("fingerprint") or "", cfg["code_paths"])), None)
-    return (call, packet) if call else None
+    return (call, found) if call else None
 
 
 def opus_subagent(req, packets):
-    """O4: an Opus subagent of a documentation or general-purpose type working in a packet worktree. Not priced."""
+    """O4: an Opus subagent of a documentation or general-purpose type working on a packet. Not priced."""
     return (req["agent_id"] is not None and family(req["model"]) == "opus"
-            and req["agent_type"] in O4_AGENT_TYPES and worktree_name(req["worktree"]) in packets)
+            and req["agent_type"] in O4_AGENT_TYPES and packet_for(req, packets) is not None)
 
 
 def _follow_ups(req, streams):
@@ -192,7 +207,7 @@ def detect(requests, packets, windows, cfg, version=prices.CURRENT):
     """Overstep counts, USD and wasted USD per campaign, from the requests of the window.
 
     `windows` maps campaign name to {start, end} (end None means the window's end). `packets` is as in
-    sonnet_implementing. Requests before the regime switch or at/after the window's end are ignored. The
+    ledger_inputs. Requests before the regime switch or at/after the window's end are ignored. The
     main session's role is coordinator; a subagent's comes from cfg roles by its agent type.
     """
     regime, until = parse_ts(cfg["regime_switch"]), parse_ts(cfg["window"]["until"])
@@ -220,7 +235,7 @@ def detect(requests, packets, windows, cfg, version=prices.CURRENT):
             hits.append(_hit("O2", [req], call))
         found = sonnet_implementing(req, packets, rules)
         if found:
-            hits.append(_hit("O3", [req], found[0], found[1]["campaign"]))
+            hits.append(_hit("O3", [req], found[0], found[1][0]))
     hits.extend(_hit("O2", cluster, None) for cluster in research_bursts(reqs, rules))
     out, counts = {}, {}
     for hit in hits:
@@ -244,7 +259,7 @@ def detect(requests, packets, windows, cfg, version=prices.CURRENT):
             stats["items"].append({"rule": rule, "ts": head["ts"], "session_family": head["session_id"],
                                    "model": head["model"], "usd": round(actual, 6), "tool": call.get("tool_name"),
                                    "path_class": _path_class(call)})
-    opus_subagents = sum(opus_subagent(r, packets) for r in reqs)
+    opus_subagents = len({r["agent_id"] for r in reqs if opus_subagent(r, packets)})
     return {"by_campaign": out, "opus_subagents": opus_subagents, "requests": len(reqs), "hits": counts,
             "fixer_requests": fixers}
 
@@ -252,7 +267,8 @@ def detect(requests, packets, windows, cfg, version=prices.CURRENT):
 REQUEST_SQL = """
     SELECT r.request_id, r.session_id, r.agent_id, r.ts, r.model, r.input_tokens AS input,
            r.output_tokens AS output, r.cache_read, r.cache_write_5m, r.cache_write_1h, t.kind AS trigger_kind,
-           COALESCE(r.cwd_worktree, a.worktree, s.worktree) AS worktree, a.agent_type
+           COALESCE(r.cwd_worktree, a.worktree, s.worktree) AS worktree,
+           COALESCE(a.custom_agent_type, a.agent_type) AS agent_type, a.name AS agent_name
     FROM requests r
     JOIN sessions s ON s.session_id = r.session_id
     JOIN triggers t ON t.trigger_id = r.trigger_id
@@ -279,12 +295,9 @@ def load_requests(db_path):
 
 
 def ledger_inputs(ledger_doc):
-    """(packets, windows) for detect, from a ledger.json: packets keyed by lower-cased packet id, windows by campaign."""
-    packets = {}
-    for name, campaign in ledger_doc["campaigns"].items():
-        for p in campaign["packets"]:
-            if not p.get("override"):
-                packets[p["id"].lower()] = {"campaign": name, "implementer": p["implementer"], "size": p["size"],
-                                            "escalated": p["escalated"]}
+    """(packets, windows) for detect, from a ledger.json: packets as (campaign, packet) pairs, windows by campaign."""
+    packets = [(name, {"id": p["id"], "implementer": p["implementer"], "size": p["size"], "escalated": p["escalated"]})
+               for name, campaign in ledger_doc["campaigns"].items() for p in campaign["packets"]
+               if not p.get("override")]
     windows = {name: campaign["window"] for name, campaign in ledger_doc["campaigns"].items()}
     return packets, windows

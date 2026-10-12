@@ -1,5 +1,6 @@
 """Overstep rules O1 to O4 and the wasted-cost estimate: fixture requests, one negative per rule."""
 
+import sqlite3
 import unittest
 from datetime import datetime, timedelta, timezone
 
@@ -7,7 +8,7 @@ from metrics import overstep, registry
 
 CFG = registry.load_config()
 WINDOWS = {"lab-record": {"start": "2026-10-01T00:00:00Z", "end": None}}
-PACKETS = {"cm-07": {"campaign": "campaign-metrics", "implementer": "packet-coder", "size": "M", "escalated": False}}
+PACKETS = [("campaign-metrics", {"id": "CM-07", "implementer": "packet-coder", "size": "M", "escalated": False})]
 T0 = datetime(2026, 10, 11, 10, 0, 0, tzinfo=timezone.utc)
 
 
@@ -112,7 +113,7 @@ class SonnetImplementingTest(unittest.TestCase):
         self.assertEqual(_detect([fixer])["hits"], {})
 
     def test_o3_negative_escalated_packet(self):
-        packets = {"cm-07": dict(PACKETS["cm-07"], escalated=True)}
+        packets = [("campaign-metrics", dict(PACKETS[0][1], escalated=True))]
         self.assertEqual(_detect([self._sonnet()], packets=packets)["hits"], {})
 
 
@@ -122,6 +123,50 @@ class OpusSubagentTest(unittest.TestCase):
         result = _detect([sub])
         self.assertEqual(result["opus_subagents"], 1)
         self.assertEqual(result["hits"], {})
+
+    def test_opus_subagents_count_distinct_agents(self):
+        subs = [_req(request_id=f"r{i}", agent_id=agent, agent_type="general-purpose", worktree=".claude/worktrees/cm-07")
+                for i, agent in enumerate(["a1", "a1", "a1", "a2", "a2"])]
+        result = _detect(subs)
+        self.assertEqual(result["requests"], 5)
+        self.assertEqual(result["opus_subagents"], 2)
+
+
+def _pkt(packet_id):
+    return {"id": packet_id, "implementer": "packet-coder", "size": "S", "escalated": False}
+
+
+class PacketForTest(unittest.TestCase):
+    def test_a_dashless_worktree_name_matches_the_packet(self):
+        found = overstep.packet_for({"worktree": "lr03"}, [("lab-record", _pkt("LR-03"))])
+        self.assertEqual(found, ("lab-record", _pkt("LR-03")))
+
+    def test_an_id_held_by_two_campaigns_matches_nothing(self):
+        packets = [("lab-a", _pkt("LX-01")), ("lab-b", _pkt("LX-01"))]
+        self.assertIsNone(overstep.packet_for({"worktree": "lx-01"}, packets))
+
+
+class RequestSqlTest(unittest.TestCase):
+    def test_a_named_agent_takes_its_custom_agent_type(self):
+        db = sqlite3.connect(":memory:")
+        db.row_factory = sqlite3.Row
+        db.executescript("""
+            CREATE TABLE sessions (session_id TEXT, worktree TEXT);
+            CREATE TABLE triggers (trigger_id INTEGER, kind TEXT);
+            CREATE TABLE agents (agent_id TEXT, agent_type TEXT, custom_agent_type TEXT, name TEXT, worktree TEXT);
+            CREATE TABLE requests (request_id TEXT, session_id TEXT, agent_id TEXT, ts TEXT, model TEXT,
+                input_tokens INTEGER, output_tokens INTEGER, cache_read INTEGER, cache_write_5m INTEGER,
+                cache_write_1h INTEGER, trigger_id INTEGER, cwd_worktree TEXT);
+            INSERT INTO sessions VALUES ('s1', NULL);
+            INSERT INTO triggers VALUES (1, 'mixed');
+            INSERT INTO agents VALUES ('a1', 'lr07-dev', 'rust-gameserver-dev', 'lr07-dev', '.claude/worktrees/lr07');
+            INSERT INTO requests VALUES ('r1', 's1', 'a1', '2026-10-11T10:00:00Z', 'claude-sonnet-5-5', 1, 0, 0, 0, 0, 1,
+                NULL);
+        """)
+        row = db.execute(overstep.REQUEST_SQL).fetchone()
+        self.assertEqual(row["agent_type"], "rust-gameserver-dev")
+        self.assertEqual(row["agent_name"], "lr07-dev")
+        self.assertEqual(row["worktree"], ".claude/worktrees/lr07")
 
 
 class WindowTest(unittest.TestCase):
