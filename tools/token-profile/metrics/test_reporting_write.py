@@ -6,6 +6,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from report.scrub import PrivacyError
 from reporting.inputs import load_inputs
@@ -38,6 +39,11 @@ class BuildOutputsTest(unittest.TestCase):
                 self.assertNotIn("C:\\", text)
                 self.assertIsNone(UUID.search(text))
 
+    def test_zero_own_cost_keeps_placeholder(self):
+        zeros = {"sessions": 0, "requests": 0, "total_usd": 0, "by_role": {}}
+        outputs = build_outputs(load_inputs(FIXTURES), self_cost=zeros)
+        self.assertIn("Filled at close-out (CM-10).", outputs["reports/summary.md"])
+
 
 class WriteOutputsTest(unittest.TestCase):
     def setUp(self):
@@ -56,9 +62,29 @@ class WriteOutputsTest(unittest.TestCase):
             with self.subTest(path=path):
                 if path.endswith(".md"):
                     self.assertNotIn(b"\n", data.replace(b"\r\n", b""))
+                    self.assertNotIn(b"\r\r", data)
+                    self.assertEqual(data.count(b"\r\n"), data.count(b"\n"))
                 else:
                     self.assertNotIn(b"\r", data)
                     self.assertTrue(data.endswith(b"\n"))
+
+    def test_unsafe_campaign_names_are_refused_and_nothing_is_written(self):
+        out = self.root / "out"
+        out.mkdir()
+        for name in ["../x", "a/b", "summary", "nul"]:
+            with self.subTest(name=name):
+                fake = {"campaigns": {name: {}}, "meta": {"stamp": {}}}
+                with mock.patch("reporting.write.assemble", return_value=fake):
+                    with self.assertRaises(ValueError):
+                        build_outputs(load_inputs(FIXTURES))
+                self.assertEqual(list(out.iterdir()), [])
+
+    def test_write_refuses_path_outside_out_folder(self):
+        out = self.root / "out"
+        out.mkdir()
+        with self.assertRaises(ValueError):
+            write_outputs({"../escaped.json": "{}\n"}, out)
+        self.assertEqual(list(out.iterdir()), [])
 
     def test_privacy_gate_refuses_injected_path_and_writes_nothing(self):
         fixture = self.root / "fixture"
