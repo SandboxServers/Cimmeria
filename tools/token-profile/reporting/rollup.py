@@ -1,0 +1,73 @@
+"""Per-regime roll-up of campaign records.
+
+Cost and PR metrics use only pure campaigns (their own regime equals the
+requested one); a mixed campaign's dollars belong to neither regime.
+"""
+
+from report.stats import distribution
+
+
+def _sum(values):
+    """Sum of the non-None values, or None when there are none."""
+    vals = [v for v in values if v is not None]
+    return sum(vals) if vals else None
+
+
+def _ratio(part, whole, places=None):
+    """part / whole, or None when either side is missing or the whole is zero."""
+    if part is None or not whole:
+        return None
+    value = part / whole
+    return round(value, places) if places is not None else value
+
+
+def _share(flags, places=2):
+    """Share of True among the flags that are not None, or None when there are none."""
+    flags = [f for f in flags if f is not None]
+    return round(sum(1 for f in flags if f) / len(flags), places) if flags else None
+
+
+def _put(out, key, value, gap="no data"):
+    """Store a metric; a metric with no denominator is None with a gap note, never 0."""
+    out[key] = value
+    if value is None:
+        out[f"{key}_gap"] = gap
+
+
+def rollup(records, regime):
+    """Roll up the campaigns of one regime ("old" or "haiku") into one dict of metrics."""
+    pure = [r for r in records.values() if r.get("regime") == regime]
+    costs = [r.get("cost") or {} for r in pure]
+    prs = [r.get("prs") or {} for r in pure]
+    accepted = [r.get("accepted") or {} for r in pure]
+    per_pr = [e for p in prs for e in (p.get("per_pr") or [])]
+
+    total_usd = _sum(c.get("total_usd") for c in costs)
+    merged_prs = _sum(p.get("merged") for p in prs)
+    accepted_packets = _sum(a.get("packets") for a in accepted)
+
+    out = {"campaigns": len(pure)}
+    _put(out, "prs", _sum(p.get("count") for p in prs))
+    _put(out, "merged_prs", merged_prs)
+    _put(out, "total_usd", total_usd)
+
+    usd = distribution([e.get("usd") for e in per_pr if e.get("merged")])
+    _put(out, "cost_per_pr", {"p50": usd["p50"], "mean": usd["mean"]} if usd["n"] else None)
+
+    _put(out, "cost_per_accepted_usd", _ratio(total_usd, accepted_packets))
+    escaped = [r.get("escaped_defects") or {} for r in pure]
+    _put(out, "escaped_defects_per_merged_pr", _ratio(_sum(e.get("count") for e in escaped), merged_prs, 2))
+    _put(out, "ci_first_attempt_rate", _share(e.get("ci_first_pass") for e in per_pr))
+
+    tiers = {}
+    for c in costs:
+        for tier, usd_tier in (c.get("by_model_tier") or {}).items():
+            if usd_tier is not None:
+                tiers[tier] = tiers.get(tier, 0.0) + usd_tier
+    out["cost_share_by_tier"] = {t: round(u / total_usd, 2) for t, u in sorted(tiers.items())} if total_usd else {}
+
+    recoverable = [(r.get("overstep") or {}).get("recoverable_usd") or {} for r in pure]
+    low = _sum(x.get("low") for x in recoverable)
+    high = _sum(x.get("high") for x in recoverable)
+    _put(out, "overstep_recoverable_usd", {"low": low, "high": high} if (low, high) != (None, None) else None)
+    return out
