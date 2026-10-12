@@ -61,29 +61,28 @@ def _packet_pattern(packet_id):
     return re.compile(r"(?<![a-z0-9])" + re.escape(packet_id.lower()).replace(r"\-", "-?") + r"(?![0-9])")
 
 
-def _named(texts, ids):
-    """The packet IDs the texts name. An ID that another named ID extends (TP-05 in TP-05b) names nothing of its own."""
-    found = {i for i in ids if any(_packet_pattern(i).search(text) for text in texts)}
+def _named(text, ids):
+    """The packet IDs a lowercased text names. An ID that another named ID extends (TP-05 in TP-05b) names nothing."""
+    found = {i for i in ids if _packet_pattern(i).search(text)}
     return {i for i in found if not any(j != i and _packet_pattern(i).search(j.lower()) for j in found)}
 
 
 def packet_of_session(agent, worktree, branch_hint, ledger_rows, campaign):
     """The packet ID a worker session ran for, or None.
 
-    Matched in order: the worktree name or the branch hint (the campaign's `<campaign>/<id>-<slug>` branch, read
-    without its campaign prefix), then the agent's name. A text that names two packets matches neither.
+    Matched in order, each text on its own: the agent's name, the worktree name, then the branch hint (the campaign's
+    `<campaign>/<id>-<slug>` branch, read without its campaign prefix). The first text that names exactly one packet
+    wins; a text that names two packets matches neither.
     """
     ids = [row["id"] for row in ledger_rows]
     branch = branch_hint or ""
     if branch.startswith(campaign + "/"):
         branch = branch[len(campaign) + 1:]
     tree = re.split(r"[\\/]", worktree or "")[-1]
-    for texts in ((tree.lower(), branch.lower()), ((agent.get("name") or "").lower(),)):
-        found = _named(texts, ids)
+    for text in ((agent.get("name") or ""), tree, branch):
+        found = _named(text.lower(), ids)
         if len(found) == 1:
             return found.pop()
-        if found:
-            return None
     return None
 
 

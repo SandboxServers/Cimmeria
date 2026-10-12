@@ -179,6 +179,17 @@ class SessionMatchTest(unittest.TestCase):
         self.assertEqual(packets.packet_of_session(agent, agent["worktree"], None, _row_ids("LR-03"), CAMPAIGN),
                          "LR-03")
 
+    def test_name_comes_before_worktree(self):
+        agent = _agent("x", WORKTREE.format("lr-02"), None, name="LR-01 reviewer")
+        self.assertEqual(packets.packet_of_session(agent, agent["worktree"], None, _row_ids("LR-01", "LR-02"),
+                                                   CAMPAIGN), "LR-01")
+
+    def test_worktree_and_branch_are_separate_steps(self):
+        """The worktree names LR-01 and the branch LR-02: the worktree is the step that matches, not both texts pooled."""
+        agent = _agent("x", WORKTREE.format("lr-01"), None)
+        self.assertEqual(packets.packet_of_session(agent, agent["worktree"], "lab-record/LR-02-slug",
+                                                   _row_ids("LR-01", "LR-02"), CAMPAIGN), "LR-01")
+
     def test_name_that_names_two_packets_matches_neither(self):
         agent = _agent("x", None, None, name="LR-01 and LR-02")
         self.assertIsNone(packets.packet_of_session(agent, None, None, _row_ids("LR-01", "LR-02"), CAMPAIGN))
