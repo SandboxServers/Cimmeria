@@ -51,6 +51,8 @@ fn the_last_post_holds_a_health_row_marked_final() {
         let cfg = UploaderConfig {
             upload_endpoint: url,
             token: "t".into(),
+            expires_at_ms: 0,
+            session_file: None,
             // Long enough that only the stop path can ship the health row.
             flush_interval: Duration::from_secs(30),
             max_batch: 100,
@@ -122,6 +124,8 @@ fn the_final_post_carries_one_session_end_before_the_final_health_row() {
             let cfg = UploaderConfig {
                 upload_endpoint: url,
                 token: "t".into(),
+                expires_at_ms: 0,
+                session_file: None,
                 flush_interval: Duration::from_secs(30),
                 max_batch: 100,
             };
@@ -182,6 +186,8 @@ fn the_final_post_is_bounded_when_the_server_stalls() {
     let cfg = UploaderConfig {
         upload_endpoint: url,
         token: "t".into(),
+        expires_at_ms: 0,
+        session_file: None,
         flush_interval: Duration::from_secs(30),
         max_batch: 100,
     };

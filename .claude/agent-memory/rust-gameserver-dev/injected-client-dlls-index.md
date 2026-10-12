@@ -7,6 +7,7 @@ metadata:
 
 # Injected client DLLs
 
+- [telemetry-dll-token-never-rewritten.md](telemetry-dll-token-never-rewritten.md) — no launcher rewrites current-session.json on refresh; DLL upload_gate backs off and goes quiet at first expiry.
 - [offline-disasm-and-minhook-detour-tests.md](offline-disasm-and-minhook-detour-tests.md) — capstone under `py -V:3.13` reads SGW.exe offline; MinHook stand-in tests for detours; game calls outside catch_unwind.
 - [injected-dll-unwind-and-lua-error-rules.md](injected-dll-unwind-and-lua-error-rules.md) — `thiscall-unwind` detours for C++-EH prologues.
 - [entity-method-stream-is-memory-ostream.md](entity-method-stream-is-memory-ostream.md) — onEntityMethod's live stream is a queued MemoryOStream subobject (cursor +0x14, end +0xc), not MemoryIStream.

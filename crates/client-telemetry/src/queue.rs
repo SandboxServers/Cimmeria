@@ -65,6 +65,9 @@ pub struct Producer {
 /// Consumer handle. Owned by the single uploader thread.
 pub struct Consumer {
     receiver: Receiver<ClientNativeEvent>,
+    /// The producers' sequence counter, so an event the uploader writes
+    /// itself ([`Consumer::stamp`]) takes a seq from the same series.
+    seq: std::sync::Arc<AtomicU64>,
     dropped: std::sync::Arc<AtomicU64>,
     governor: SharedGovernor,
     /// Failed POSTs (TG-PIPE-13). Atomics, like `dropped`, so a reader on
@@ -99,12 +102,13 @@ fn build(cfg: Option<GovernorConfig>) -> (Producer, Consumer) {
     (
         Producer {
             sender,
-            seq,
+            seq: seq.clone(),
             dropped: dropped.clone(),
             governor: governor.clone(),
         },
         Consumer {
             receiver,
+            seq,
             dropped,
             governor,
             upload_failures: AtomicU64::new(0),
@@ -202,6 +206,20 @@ impl Consumer {
     /// Read the running drop counter without resetting it.
     pub fn dropped_total(&self) -> u64 {
         self.dropped.load(Ordering::Relaxed)
+    }
+
+    /// Stamp an event the uploader writes itself (the upload pause and
+    /// resume rows) with `ts_ms` and the next `seq`, for the uploader to put
+    /// straight into its batch. Like the governor's own health rows, it
+    /// bypasses the ring and the governor.
+    pub fn stamp(&self, builder: EventBuilder) -> ClientNativeEvent {
+        ClientNativeEvent {
+            ts_ms: now_ms(),
+            seq: self.seq.fetch_add(1, Ordering::Relaxed),
+            target: builder.target,
+            level: builder.level,
+            fields: builder.fields,
+        }
     }
 
     /// Record a POST that succeeded with HTTP `status`.
