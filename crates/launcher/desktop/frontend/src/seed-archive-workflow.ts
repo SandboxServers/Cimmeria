@@ -24,11 +24,12 @@ export const makeSeedArchiveWorkflow=(pollMillis:number=500)=>Effect.gen(functio
  const publish=(s:SeedArchiveState)=>Ref.set(state,s).pipe(Effect.andThen(PubSub.publish(events,s)),Effect.asVoid);
  const patch=(p:Partial<SeedArchiveState>)=>Ref.get(state).pipe(Effect.flatMap(s=>publish({...s,...p})));
  const busy=()=>new SeedArchiveFailure({code:'busy'});
- // Follows a running check: each reply is shown, and the loop ends when native code reports no check.
- const follow=(status:SeedArchiveStatus):Effect.Effect<SeedArchiveStatus,SeedArchiveFailure>=>status.verifying===null
+ // Follows a running check: each reply is shown. The loop keeps going while a check reports progress, and
+ // `awaiting` lets the reply that starts a check get one more poll, since its first report may not be there yet.
+ const follow=(status:SeedArchiveStatus,awaiting:boolean):Effect.Effect<SeedArchiveStatus,SeedArchiveFailure>=>status.verifying===null&&!awaiting
   ?Effect.succeed(status)
   :Effect.sleep(`${pollMillis} millis`).pipe(Effect.andThen(bridge.call({command:'inspect',schema_version:1})),
-   Effect.tap(s=>patch({status:s})),Effect.flatMap(follow));
+   Effect.tap(s=>patch({status:s,...(s.verifying?{phase:'checking' as const}:{})})),Effect.flatMap(s=>follow(s,false)));
  // Sent once. A lost reply shows as a transport failure and is never replayed; the next inspect re-reads native state.
  const choose=Effect.gen(function*(){
   const before=yield* Ref.get(state);
@@ -36,7 +37,7 @@ export const makeSeedArchiveWorkflow=(pollMillis:number=500)=>Effect.gen(functio
   yield* publish({...before,phase:'choosing',error:null});
   return yield* bridge.call('choose').pipe(
    Effect.tap(s=>patch({status:s,phase:s.verifying?'checking':'choosing'})),
-   Effect.flatMap(follow),
+   Effect.flatMap(s=>follow(s,s.last_error===null)),
    Effect.tap(s=>patch({status:s,error:s.last_error})),
    Effect.tapError(e=>patch({error:e.code})),
    Effect.ensuring(patch({phase:null,cancelling:false})));
@@ -48,7 +49,7 @@ export const makeSeedArchiveWorkflow=(pollMillis:number=500)=>Effect.gen(functio
   yield* publish({...before,phase:'checking',error:null});
   return yield* bridge.call({command:'accept_offer',schema_version:1}).pipe(
    Effect.tap(s=>patch({status:s})),
-   Effect.flatMap(follow),
+   Effect.flatMap(s=>follow(s,s.last_error===null)),
    Effect.tap(s=>patch({status:s,error:s.last_error})),
    Effect.tapError(e=>patch({error:e.code})),
    Effect.ensuring(patch({phase:null,cancelling:false})));
