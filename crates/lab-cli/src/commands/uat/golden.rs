@@ -157,7 +157,7 @@ pub fn golden_value(reply: Option<&Value>, call_error: Option<&str>) -> String {
 }
 
 /// The arguments of `lab_golden_diff` less `run_dir` (`$diffArgs` of
-/// `uat.ps1`): the section, and the spec folder when there is a local one.
+/// the removed PowerShell uat command): the section, and the spec folder when there is a local one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiffArgs {
     pub section: String,

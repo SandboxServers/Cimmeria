@@ -1,6 +1,6 @@
 //! Instance rows, orphans, the old daemon, screenshot age and the log counts.
 //! Ports the 'snapshot with the two-lane status', 'the old daemon', 'screenshot
-//! age' and 'labd.log counts' checks of the retired tools/lab/cli/test-watch.ps1.
+//! age' and 'labd.log counts' checks of the removed PowerShell test file.
 
 mod watch_support;
 

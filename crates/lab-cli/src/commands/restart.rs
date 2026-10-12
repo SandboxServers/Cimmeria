@@ -35,7 +35,7 @@ pub fn run(args: &Args, ctx: &Ctx) -> u8 {
 mod tests {
     use crate::commands::{parse_ok, Command};
 
-    /// Both `.EXAMPLE` lines of restart.ps1 parse, with the right values.
+    /// Both `.EXAMPLE` lines of the removed PowerShell restart command parse, with the right values.
     #[test]
     fn examples_parse() {
         let Command::Restart(a) = parse_ok("restart", &[]) else {

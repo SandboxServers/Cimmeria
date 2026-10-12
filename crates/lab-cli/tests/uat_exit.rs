@@ -1,6 +1,6 @@
 //! LX-17a: the exit code, and what `merge` hands it for golden and chaos
 //! batches (Step A2 replaced `exit_code`; the first four tests also exist in
-//! LX-16a and guard that the codes 0, 1 and 4 survived the replacement). Ports the exit-code checks of test-uat.ps1 and
+//! LX-16a and guard that the codes 0, 1 and 4 survived the replacement). Ports the exit-code checks of the retired test-uat.ps1 and
 //! test-uat-chaos.ps1.
 
 mod uat_support;
@@ -47,7 +47,7 @@ fn four_runs() -> Vec<RunRecord> {
     ]
 }
 
-/// test-uat.ps1 [79] 'a braked lane exits 4'
+/// the removed PowerShell test file [79] 'a braked lane exits 4'
 #[test]
 fn a_braked_lane_exits_4() {
     assert_eq!(exit_code(&merged(four_runs(), &["p2"])), 4);

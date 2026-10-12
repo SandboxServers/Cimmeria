@@ -1,5 +1,5 @@
-//! LX-15: `lab uat` through the real binary. Ports test-uat-chaos.ps1's two
-//! "reaches the daemon" guards, which ran `uat.ps1` with every daemon call stubbed.
+//! LX-15: `lab uat` through the real binary. Ports the retired test-uat-chaos.ps1's two
+//! "reaches the daemon" guards, which ran the retired uat.ps1 with every daemon call stubbed.
 //! Every call passes `--plan-only` (or `-PlanOnly`): a real run goes to the
 //! PowerShell script until LX-16b, and a test must never start that.
 

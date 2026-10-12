@@ -26,7 +26,7 @@ fn four() -> Vec<RunRecord> {
 
 #[test]
 fn totals() {
-    // test-uat.ps1: 'totals'
+    // the removed PowerShell test file: 'totals'
     let s = merge(&four(), &lanes2(), &["p2".to_string()]);
     assert_eq!((s.runs, s.passed, s.failed), (4, 1, 3));
     assert!(!s.ok);
@@ -34,14 +34,14 @@ fn totals() {
 
 #[test]
 fn known_and_new_failures_are_counted_apart() {
-    // test-uat.ps1: 'known (#1341) and new failures are counted apart'
+    // the removed PowerShell test file: 'known (#1341) and new failures are counted apart'
     let s = merge(&four(), &lanes2(), &[]);
     assert_eq!((s.failed_known, s.failed_new), (2, 1));
 }
 
 #[test]
 fn per_row_pass_counts_an_errored_run_has_no_rows() {
-    // test-uat.ps1: 'per-row pass counts (an errored run has no rows)'
+    // the removed PowerShell test file: 'per-row pass counts (an errored run has no rows)'
     let s = merge(&four(), &lanes2(), &[]);
     assert_eq!(s.rows.get("FS-P2"), Some(&RowStat { pass: 1, total: 3 }));
     assert_eq!(s.rows.get("FS-P1"), Some(&RowStat { pass: 3, total: 3 }));
@@ -49,7 +49,7 @@ fn per_row_pass_counts_an_errored_run_has_no_rows() {
 
 #[test]
 fn identical_failures_group_with_their_runs() {
-    // test-uat.ps1: 'identical failures group with their runs'
+    // the removed PowerShell test file: 'identical failures group with their runs'
     let s = merge(&four(), &lanes2(), &[]);
     assert_eq!(s.failures.len(), 2);
     let g = &s.failures[0];
@@ -64,7 +64,7 @@ fn identical_failures_group_with_their_runs() {
 
 #[test]
 fn lane_totals_and_a_braked_lane_is_marked() {
-    // test-uat.ps1: 'a braked lane is marked'
+    // the removed PowerShell test file: 'a braked lane is marked'
     let s = merge(&four(), &lanes2(), &["p2".to_string()]);
     assert_eq!(
         (s.lanes[0].runs, s.lanes[0].passed, s.lanes[0].braked),
@@ -78,7 +78,7 @@ fn lane_totals_and_a_braked_lane_is_marked() {
 
 #[test]
 fn a_braked_lane_exits_4() {
-    // test-uat.ps1: 'a braked lane exits 4'
+    // the removed PowerShell test file: 'a braked lane exits 4'
     assert_eq!(
         exit_code(&merge(&four(), &lanes2(), &["p2".to_string()])),
         4
@@ -87,7 +87,7 @@ fn a_braked_lane_exits_4() {
 
 #[test]
 fn a_failed_run_exits_1() {
-    // test-uat.ps1: 'a failed run exits 1'
+    // the removed PowerShell test file: 'a failed run exits 1'
     let s = merge(
         &[rec("default", 1, false, frost(), None)],
         &[lane(1, "default")],
@@ -98,7 +98,7 @@ fn a_failed_run_exits_1() {
 
 #[test]
 fn all_passed_exits_0() {
-    // test-uat.ps1: 'all passed exits 0'
+    // the removed PowerShell test file: 'all passed exits 0'
     let s = merge(
         &[rec("default", 1, true, good(), None)],
         &[lane(1, "default")],
@@ -110,7 +110,7 @@ fn all_passed_exits_0() {
 
 #[test]
 fn no_finished_runs_is_not_a_pass() {
-    // test-uat.ps1: 'no finished runs is not a pass'
+    // the removed PowerShell test file: 'no finished runs is not a pass'
     let s = merge(&[], &[lane(1, "default")], &[]);
     assert_eq!(s.runs, 0);
     assert!(!s.ok);
@@ -119,7 +119,7 @@ fn no_finished_runs_is_not_a_pass() {
 
 #[test]
 fn started_and_ended_do_not_change_the_aggregate() {
-    // test-uat.ps1: 'Started and Ended do not change the aggregate'
+    // the removed PowerShell test file: 'Started and Ended do not change the aggregate'
     let plain = rec("default", 1, false, frost(), None);
     let mut timed = plain.clone();
     timed.started = Some("2026-10-11T01:39:06.0000000Z".to_string());
@@ -134,7 +134,7 @@ fn started_and_ended_do_not_change_the_aggregate() {
 
 #[test]
 fn records_read_back_from_jsonl_aggregate_like_live_ones() {
-    // test-uat.ps1: 'records read back from JSONL aggregate like live ones' and
+    // the removed PowerShell test file: 'records read back from JSONL aggregate like live ones' and
     // 'a missing JSONL file reads as no runs'
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("batch.jsonl");
@@ -179,7 +179,7 @@ fn crlf(lines: &[&str]) -> String {
 
 #[test]
 fn the_markdown_summary_is_exactly_the_powershell_text() {
-    // test-uat.ps1: 'the Markdown summary names the verdict and the known issue',
+    // the removed PowerShell test file: 'the Markdown summary names the verdict and the known issue',
     // and 'a batch without Golden fields prints no golden'
     let s = merge(&four(), &lanes2(), &["p2".to_string()]);
     let md = format_markdown(&s, "lab uat first-session", "C:\\b");

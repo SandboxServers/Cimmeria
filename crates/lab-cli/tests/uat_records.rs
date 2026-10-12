@@ -12,7 +12,7 @@ use uat_support::{ids, row};
 
 #[test]
 fn all_pass_is_ok() {
-    // test-uat.ps1: 'all PASS is ok'
+    // the removed PowerShell test file: 'all PASS is ok'
     let v = run_verdict(&[row("FS-01", "PASS", ""), row("FS-P1", "PASS", "")], &[]);
     assert!(v.ok);
     assert_eq!(v.row, None);
@@ -21,7 +21,7 @@ fn all_pass_is_ok() {
 
 #[test]
 fn the_first_failing_row_decides_and_fs_p2_movie_over_is_known() {
-    // test-uat.ps1: 'the first failing row decides; FS-P2 movie-over is known #1341'
+    // the removed PowerShell test file: 'the first failing row decides; FS-P2 movie-over is known #1341'
     let v = run_verdict(
         &[
             row("FS-P1", "PASS", ""),
@@ -42,7 +42,7 @@ fn the_first_failing_row_decides_and_fs_p2_movie_over_is_known() {
 
 #[test]
 fn any_other_failure_is_new() {
-    // test-uat.ps1: 'any other failure is new' and 'a row and reason no known issue covers have no issue'
+    // the removed PowerShell test file: 'any other failure is new' and 'a row and reason no known issue covers have no issue'
     let v = run_verdict(&[row("FS-P3", "FAIL", "clause aim failed")], &[]);
     assert!(!v.ok);
     assert_eq!(v.issue, None);
@@ -50,7 +50,7 @@ fn any_other_failure_is_new() {
 
 #[test]
 fn blocked_fails_a_run() {
-    // test-uat.ps1: 'BLOCKED fails a run'
+    // the removed PowerShell test file: 'BLOCKED fails a run'
     let v = run_verdict(&[row("FS-P1", "BLOCKED", "setup failed")], &[]);
     assert!(!v.ok);
     assert_eq!(v.result.as_deref(), Some("BLOCKED"));
@@ -58,7 +58,7 @@ fn blocked_fails_a_run() {
 
 #[test]
 fn the_empty_login_password_box_is_known_1343() {
-    // test-uat.ps1: 'the empty login password box is known #1343'
+    // the removed PowerShell test file: 'the empty login password box is known #1343'
     let v = run_verdict(
         &[row(
             "FS-01",
@@ -78,7 +78,7 @@ fn a_skipped_row_does_not_fail_a_run() {
 
 #[test]
 fn a_run_that_reports_fewer_rows_than_planned_fails() {
-    // test-uat.ps1: 'a run that reports fewer rows than planned fails'
+    // the removed PowerShell test file: 'a run that reports fewer rows than planned fails'
     let v = run_verdict(&[row("FS-01", "PASS", "")], &ids(&["FS-01", "FS-02"]));
     assert!(!v.ok);
     assert_eq!(v.result.as_deref(), Some("MISSING"));
@@ -105,7 +105,7 @@ fn every_missing_row_is_named_and_the_first_one_is_the_row() {
 
 #[test]
 fn a_failing_reason_has_its_lease_id_redacted() {
-    // test-uat.ps1: 'a failing reason has its lease id redacted'
+    // the removed PowerShell test file: 'a failing reason has its lease id redacted'
     let v = run_verdict(
         &[row(
             "FS-P3",
@@ -122,31 +122,31 @@ fn a_failing_reason_has_its_lease_id_redacted() {
 
 #[test]
 fn a_pass_resets_the_failure_streak() {
-    // test-uat.ps1: 'a pass resets the failure streak'
+    // the removed PowerShell test file: 'a pass resets the failure streak'
     assert!(!brake(&[false, false, true, false], 3));
 }
 
 #[test]
 fn three_failures_in_a_row_brake_the_lane() {
-    // test-uat.ps1: 'three failures in a row brake the lane'
+    // the removed PowerShell test file: 'three failures in a row brake the lane'
     assert!(brake(&[true, false, false, false], 3));
 }
 
 #[test]
 fn a_brake_of_0_never_stops() {
-    // test-uat.ps1: 'a brake of 0 never stops'
+    // the removed PowerShell test file: 'a brake of 0 never stops'
     assert!(!brake(&[false, false, false, false], 0));
 }
 
 #[test]
 fn a_lane_that_ran_every_run_did_not_stop_early() {
-    // test-uat.ps1: 'a lane that ran every run did not stop early (no brake on the last run)'
+    // the removed PowerShell test file: 'a lane that ran every run did not stop early (no brake on the last run)'
     assert!(!stop_lane(3, 3, &[false, false, false], 3));
 }
 
 #[test]
 fn a_lane_with_runs_left_stops_on_the_brake() {
-    // test-uat.ps1: 'a lane with runs left stops on the brake'
+    // the removed PowerShell test file: 'a lane with runs left stops on the brake'
     assert!(stop_lane(3, 5, &[false, false, false], 3));
 }
 

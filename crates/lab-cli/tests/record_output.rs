@@ -1,5 +1,5 @@
 //! `lab record` JSON line, the binary's exit codes, and the fancy output
-//! (ports the retired test-record.ps1, "compact JSON" and "the script itself").
+//! (ports the removed PowerShell test file, "compact JSON" and "the script itself").
 
 mod record_support;
 mod support;

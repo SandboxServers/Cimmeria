@@ -405,7 +405,7 @@ mod tests {
         assert_eq!(max_clients_from(&[]), 0);
     }
 
-    // golden-lib.ps1 Get-GoldenPath: 'v1.2' is golden/v1_2.json
+    // the removed PowerShell golden library Get-GoldenPath: 'v1.2' is golden/v1_2.json
     #[test]
     fn the_golden_file_is_named_as_the_daemon_names_it() {
         let specs = Path::new("S");
@@ -423,7 +423,7 @@ mod tests {
         );
     }
 
-    // uat-lib.ps1 Test-UatGoldenFile
+    // the removed PowerShell uat library Test-UatGoldenFile
     #[test]
     fn a_golden_must_be_json_with_schema_section_and_fingerprint() {
         let dir = tempfile::tempdir().unwrap();

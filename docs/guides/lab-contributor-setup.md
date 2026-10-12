@@ -112,7 +112,7 @@ This builds the server, starts PostgreSQL on port 5433 and loads the seed data. 
 The helper makes the secrets, writes `lab-account.json` and, if you ask, adds your server to the client's login list:
 
 ```powershell
-pwsh tools/lab/lab.ps1 local-setup -InstallDir 'D:\Games\Stargate Worlds-QA\Working' -PatchLoginInternal
+pwsh tools/lab/cli/local-setup.ps1 -InstallDir 'D:\Games\Stargate Worlds-QA\Working' -PatchLoginInternal
 ```
 
 Once the `lab` command is set up (step 6), the same thing is `lab local-setup`. Its flags:
@@ -207,7 +207,7 @@ pwsh tools/lab/install.ps1 -InstallDir 'D:\Games\Stargate Worlds-QA\Working'
 pwsh tools/lab/cli/setup.ps1
 ```
 
-`install.ps1` adds the `i686-pc-windows-msvc` Rust target when it's missing (`rustup target add`), because the 32-bit client needs 32-bit DLLs. It then builds four pieces through the build lane: the supervisor, the bridge DLL, the `sgw-start32.exe` injector and the client patches DLL. The first build takes a while. `cli/setup.ps1` installs the `lab` command and offers to put it on your `PATH`; open a new terminal afterwards.
+`install.ps1` adds the `i686-pc-windows-msvc` Rust target when it's missing (`rustup target add`), because the 32-bit client needs 32-bit DLLs. It then builds five pieces through the build lane: the supervisor, the `lab.exe` command, the bridge DLL, the `sgw-start32.exe` injector and the client patches DLL. The first build takes a while. `cli/setup.ps1` copies the PowerShell scripts `lab` still runs (`lab start`, `stop`, `restart`, `instances`, `install`, `setup` and `local-setup`) and offers to put `lab.exe` on your `PATH`; open a new terminal afterwards.
 
 After a `git pull`, refresh both with `lab install -From <your checkout>`, then `lab restart`.
 

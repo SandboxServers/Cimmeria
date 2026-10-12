@@ -2,7 +2,7 @@
 //!
 //! The command logic is [`exec`], which returns the text and exit code, so
 //! tests need no process. [`run`] prints that text. Plain mode prints what
-//! the retired `env.ps1` printed, line for line; fancy mode adds the D-LX5 style.
+//! the removed PowerShell env command printed, line for line; fancy mode adds the D-LX5 style.
 
 use std::io::ErrorKind;
 use std::path::Path;
@@ -289,7 +289,7 @@ mod tests {
         }
     }
 
-    /// The `.EXAMPLE` lines of the retired env.ps1 parse, with the right values.
+    /// The `.EXAMPLE` lines of the removed PowerShell env command parse, with the right values.
     #[test]
     fn examples_parse() {
         let a = env_args(parse_ok("env", &[]));

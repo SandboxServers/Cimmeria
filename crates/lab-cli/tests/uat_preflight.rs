@@ -1,5 +1,5 @@
 //! LX-15: the `lab uat` pre-flight with a stub /status server and a stub MCP
-//! call. Ports the plan, usage and -Chaos checks of tools/lab/cli/test-uat.ps1
+//! call. Ports the plan, usage and -Chaos checks of the retired test-uat.ps1
 //! and test-uat-chaos.ps1 that reach the daemon. The `--plan-only` output and
 //! the real-run hand-off are in uat_plan_only.rs.
 

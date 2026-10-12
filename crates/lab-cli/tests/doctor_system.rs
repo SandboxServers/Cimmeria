@@ -263,14 +263,24 @@ fn the_content_check_is_skipped_without_a_checkout_or_a_sha() {
     assert_eq!(content_check(Some(dir.path()), None), None);
 }
 
-// New: a checkout is a git work tree that has tools/lab/lab.ps1.
+// New: a checkout is a git work tree that has tools/lab/daemon.ps1.
 #[test]
-fn checkout_root_needs_the_lab_dispatcher() {
+fn checkout_root_needs_the_lab_scripts() {
     let dir = repo();
-    assert_eq!(checkout_root(dir.path()), None, "no tools/lab/lab.ps1 yet");
-    commit(dir.path(), "tools/lab/lab.ps1", "# dispatcher");
+    assert_eq!(
+        checkout_root(dir.path()),
+        None,
+        "no tools/lab/daemon.ps1 yet"
+    );
+    commit(dir.path(), "tools/lab/lab.ps1", "# the retired dispatcher");
+    assert_eq!(
+        checkout_root(dir.path()),
+        None,
+        "the retired lab.ps1 no longer makes a checkout"
+    );
+    commit(dir.path(), "tools/lab/daemon.ps1", "# daemon");
     let root = checkout_root(dir.path()).expect("a checkout now");
-    assert!(root.join("tools").join("lab").join("lab.ps1").exists());
+    assert!(root.join("tools").join("lab").join("daemon.ps1").exists());
     let plain = TempDir::new().unwrap();
     assert_eq!(checkout_root(plain.path()), None, "not a git repository");
 }

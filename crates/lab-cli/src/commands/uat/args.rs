@@ -139,13 +139,13 @@ mod tests {
         items.iter().map(|s| s.to_string()).collect()
     }
 
-    // test-uat.ps1: 'valid arguments pass without a daemon'
+    // the removed PowerShell test file: 'valid arguments pass without a daemon'
     #[test]
     fn valid_arguments_pass_without_a_daemon() {
         assert_eq!(check_arguments(&uat(&["first-session"])), None);
     }
 
-    // test-uat.ps1: 'argument checks need no daemon' (-Leases 9; 0 and 6 too)
+    // the removed PowerShell test file: 'argument checks need no daemon' (-Leases 9; 0 and 6 too)
     #[test]
     fn leases_outside_1_to_5_are_a_usage_error() {
         for n in ["0", "6", "9"] {
@@ -162,7 +162,7 @@ mod tests {
         );
     }
 
-    // test-uat.ps1 (planning): '21 runs per lease is refused', at the argument stage
+    // the removed PowerShell test file (planning): '21 runs per lease is refused', at the argument stage
     #[test]
     fn runs_per_lease_outside_1_to_20_are_a_usage_error() {
         for n in ["0", "21"] {
@@ -179,7 +179,7 @@ mod tests {
         );
     }
 
-    // test-uat.ps1: '-Instance with leases is a usage error'
+    // the removed PowerShell test file: '-Instance with leases is a usage error'
     #[test]
     fn instance_with_two_leases_is_a_usage_error() {
         let a = uat(&["first-session", "--leases", "2", "--instance", "p2"]);
@@ -193,7 +193,7 @@ mod tests {
         );
     }
 
-    // test-uat.ps1: 'a negative stagger is a usage error' (clap rejects the
+    // the removed PowerShell test file: 'a negative stagger is a usage error' (clap rejects the
     // negative; our check keeps the upper bound)
     #[test]
     fn stagger_seconds_must_be_0_to_300() {
@@ -213,7 +213,7 @@ mod tests {
         );
     }
 
-    // test-uat.ps1: 'a zero timeout (no timeout at all) is a usage error'
+    // the removed PowerShell test file: 'a zero timeout (no timeout at all) is a usage error'
     #[test]
     fn run_timeout_minutes_must_be_1_to_120() {
         for n in ["0", "121"] {
@@ -230,7 +230,7 @@ mod tests {
         );
     }
 
-    // test-uat.ps1: 'a negative brake is a usage error'
+    // the removed PowerShell test file: 'a negative brake is a usage error'
     #[test]
     fn max_consecutive_failures_must_be_0_to_20() {
         assert!(try_parse("uat", &["first-session", "--max-consecutive-failures=-1"]).is_err());
@@ -245,7 +245,7 @@ mod tests {
         );
     }
 
-    // test-uat.ps1: '-Fixtures always is valid'
+    // the removed PowerShell test file: '-Fixtures always is valid'
     #[test]
     fn fixtures_always_is_valid() {
         assert_eq!(
@@ -254,7 +254,7 @@ mod tests {
         );
     }
 
-    // test-uat.ps1: 'no -Fixtures leaves the daemon default'
+    // the removed PowerShell test file: 'no -Fixtures leaves the daemon default'
     #[test]
     fn no_fixtures_leaves_the_daemon_default() {
         let a = uat(&["first-session"]);
@@ -262,7 +262,7 @@ mod tests {
         assert_eq!(check_arguments(&a), None);
     }
 
-    // test-uat.ps1: '-Fixtures is case-sensitive' and 'an unknown -Fixtures
+    // the removed PowerShell test file: '-Fixtures is case-sensitive' and 'an unknown -Fixtures
     // mode is a usage error': clap refuses both, and our own check refuses a
     // value that gets past it.
     #[test]
@@ -280,7 +280,7 @@ mod tests {
         }
     }
 
-    // test-uat.ps1: '-Heal -Leases 2 is refused', '-Heal with one lease is
+    // the removed PowerShell test file: '-Heal -Leases 2 is refused', '-Heal with one lease is
     // allowed', 'two leases without -Heal are allowed'
     #[test]
     fn heal_needs_one_lease() {
@@ -309,7 +309,7 @@ mod tests {
         );
     }
 
-    // test-uat.ps1: 'row ids are trimmed and de-duplicated'
+    // the removed PowerShell test file: 'row ids are trimmed and de-duplicated'
     #[test]
     fn row_ids_are_trimmed_and_deduplicated() {
         let got = row_ids(&strings(&["FS-01, FS-02", "FS-02", " FS-P1 "]));
@@ -318,7 +318,7 @@ mod tests {
         assert!(row_ids(&[]).is_empty());
     }
 
-    // test-uat.ps1: 'progress goes to the console by default', '-Json alone
+    // the removed PowerShell test file: 'progress goes to the console by default', '-Json alone
     // silences progress', '-Quiet silences progress', '-ProgressToStderr keeps
     // progress under -Json, on stderr', '-ProgressToStderr wins over -Quiet'
     #[test]
@@ -330,7 +330,7 @@ mod tests {
         assert_eq!(progress_mode(true, true, true), Progress::Stderr);
     }
 
-    // test-uat-chaos.ps1: 'the chaos header has one chaos=<spec> per value,
+    // the removed PowerShell test file: 'the chaos header has one chaos=<spec> per value,
     // joined with "; "'
     #[test]
     fn the_chaos_header_has_one_entry_per_value() {
@@ -341,13 +341,13 @@ mod tests {
         );
     }
 
-    // test-uat-chaos.ps1: 'no chaos gives no header'
+    // the removed PowerShell test file: 'no chaos gives no header'
     #[test]
     fn no_chaos_gives_no_header() {
         assert_eq!(chaos_header(&[]), None);
     }
 
-    // test-uat-chaos.ps1: 'a quoted multi-knob spec stays one value'
+    // the removed PowerShell test file: 'a quoted multi-knob spec stays one value'
     #[test]
     fn a_multi_knob_spec_stays_one_value() {
         let a = uat(&["first-session", "--chaos", "net:latency=120,loss=1"]);
@@ -359,7 +359,7 @@ mod tests {
         );
     }
 
-    // test-uat-chaos.ps1: 'an empty -Chaos value reaches neither the body nor
+    // the removed PowerShell test file: 'an empty -Chaos value reaches neither the body nor
     // the header', 'no -Chaos leaves the body without a chaos key'
     #[test]
     fn an_empty_chaos_value_is_dropped() {
@@ -370,7 +370,7 @@ mod tests {
         assert!(chaos_specs(&strings(&[""])).is_empty());
     }
 
-    // test-uat-chaos.ps1: 'cpu with -Leases 2 is refused'
+    // the removed PowerShell test file: 'cpu with -Leases 2 is refused'
     #[test]
     fn cpu_chaos_with_two_leases_is_refused() {
         let msg = "--chaos cpu loads the whole machine and each lease's run would start its own load; run it with --leases 1";
@@ -384,7 +384,7 @@ mod tests {
         );
     }
 
-    // test-uat-chaos.ps1: 'cpu with -Leases 1 is fine', 'net and flush with
+    // the removed PowerShell test file: 'cpu with -Leases 1 is fine', 'net and flush with
     // -Leases 3 are fine', 'no chaos with -Leases 3 is fine'
     #[test]
     fn other_chaos_combinations_are_fine() {

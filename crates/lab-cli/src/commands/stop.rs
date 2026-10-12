@@ -35,7 +35,7 @@ pub fn run(args: &Args, ctx: &Ctx) -> u8 {
 mod tests {
     use crate::commands::{parse_ok, Command};
 
-    /// Both `.EXAMPLE` lines of stop.ps1 parse, with the right values.
+    /// Both `.EXAMPLE` lines of the removed PowerShell stop command parse, with the right values.
     #[test]
     fn examples_parse() {
         let Command::Stop(a) = parse_ok("stop", &[]) else {

@@ -34,7 +34,7 @@
     the token never lands in .mcp.json.
 
     Day to day, use the lab command instead (lab start / stop / restart /
-    status / doctor; tools/lab/lab.ps1, set up with tools/lab/cli/setup.ps1).
+    status / doctor; lab.exe, built and installed by tools/lab/cli/install.ps1).
 
 .PARAMETER Command
     install | uninstall | start | stop | restart | status | run

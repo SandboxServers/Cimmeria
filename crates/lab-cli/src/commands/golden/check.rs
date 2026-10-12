@@ -1,6 +1,6 @@
 //! Argument rules, the golden file's path and the `--rows` cleanup.
-//! Ports `Test-GoldenArguments` and `Get-GoldenPath` (golden-lib.ps1) and
-//! `ConvertTo-UatRowIds` (uat-lib.ps1).
+//! Ports `Test-GoldenArguments` and `Get-GoldenPath` (the removed PowerShell golden library) and
+//! `ConvertTo-UatRowIds` (the removed PowerShell uat library).
 
 use std::path::{Path, PathBuf};
 

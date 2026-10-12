@@ -1,4 +1,4 @@
-//! `lab record` argument checks and the state file (ports the retired test-record.ps1,
+//! `lab record` argument checks and the state file (ports the removed PowerShell test file,
 //! "argument checks" and "state file path").
 
 mod record_support;

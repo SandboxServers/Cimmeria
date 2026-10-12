@@ -1,5 +1,5 @@
 //! `lab status`: the daemon and each lab instance, from the daemon's status
-//! endpoint. Plain output is the text the retired `status.ps1` printed; fancy output is
+//! endpoint. Plain output is the text the removed PowerShell status command printed; fancy output is
 //! a coloured table. Exits 1 when the daemon does not answer.
 
 use std::path::Path;

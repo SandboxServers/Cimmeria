@@ -1,5 +1,5 @@
 //! LX-12b: `lab calibrate` through the real binary. Ports checks [45]-[47] of
-//! the retired tools/lab/cli/test-calibrate.ps1.
+//! the removed PowerShell test file.
 
 use std::path::Path;
 use std::process::{Command, Output};

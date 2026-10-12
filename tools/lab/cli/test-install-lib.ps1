@@ -44,8 +44,6 @@ try {
     $labDir = Join-Path $root 'tools\lab'
     $repoLab = Split-Path $PSScriptRoot -Parent
     New-Item -ItemType Directory -Force (Join-Path $labDir 'cli') | Out-Null
-    # lab.ps1 is LC-02's file, so the test uses a stub.
-    Set-Content -LiteralPath (Join-Path $labDir 'lab.ps1') -Value '# stub v1' -Encoding ascii
     Copy-Item -Path (Join-Path $PSScriptRoot '*.ps1') -Destination (Join-Path $labDir 'cli')
     foreach ($name in 'daemon.ps1', 'instances.ps1', 'labd-lib.ps1') {
         Copy-Item -LiteralPath (Join-Path $repoLab $name) -Destination $labDir
@@ -56,22 +54,23 @@ try {
     $sha = (git -C $root rev-parse --short HEAD).Trim()
 
     $cli = Join-Path $env:CIMMERIA_LAB_HOME 'cli'
+    # An older install left the retired dispatcher beside daemon.ps1.
+    New-Item -ItemType Directory -Force $cli | Out-Null
+    Set-Content -LiteralPath (Join-Path $cli 'lab.ps1') -Value '# old dispatcher' -Encoding ascii
     Install-LabCli $root
-    Check (Test-Path (Join-Path $cli 'lab.ps1')) 'lab.ps1 lands in cli\'
+    Check (-not (Test-Path (Join-Path $cli 'lab.ps1'))) 'an older install''s lab.ps1 is removed'
     Check (Test-Path (Join-Path $cli 'daemon.ps1')) 'daemon.ps1 lands in cli\'
     Check (Test-Path (Join-Path $cli 'instances.ps1')) 'instances.ps1 lands in cli\'
     Check (Test-Path (Join-Path $cli 'labd-lib.ps1')) 'labd-lib.ps1 lands in cli\'
     Check (Test-Path (Join-Path $cli 'cli\install-lib.ps1')) 'the cli\*.ps1 files land in cli\cli\'
     Check ((Get-Content -Raw (Join-Path $cli 'cli\VERSION')).Trim() -eq $sha) 'VERSION holds the checkout sha'
-    Check ((Get-Content -Raw (Join-Path $cli 'lab.ps1')).Trim() -eq '# stub v1') 'the first run copies lab.ps1'
-
     Check (-not (Test-Path (Join-Path $cli 'cli\test-install-lib.ps1'))) 'test-*.ps1 files are not installed'
 
     # A second run overwrites, and drops a command the checkout no longer has.
     Set-Content -LiteralPath (Join-Path $cli 'cli\gone.ps1') -Value '# stale' -Encoding ascii
-    Set-Content -LiteralPath (Join-Path $labDir 'lab.ps1') -Value '# stub v2' -Encoding ascii
+    Add-Content -LiteralPath (Join-Path $labDir 'daemon.ps1') -Value "`n# stub v2" -Encoding ascii
     Install-LabCli $root
-    Check ((Get-Content -Raw (Join-Path $cli 'lab.ps1')).Trim() -eq '# stub v2') 'a second run overwrites the installed files'
+    Check ((Get-Content (Join-Path $cli 'daemon.ps1') | Select-Object -Last 1) -eq '# stub v2') 'a second run overwrites the installed files'
     Check (-not (Test-Path (Join-Path $cli 'cli\gone.ps1'))) 'a second run removes a command no longer in the checkout'
     Check (Test-Path (Join-Path $cli 'cli\install-lib.ps1')) 'a second run keeps the current commands'
 
@@ -88,26 +87,27 @@ try {
     $bare = Join-Path $tmp 'bare'
     New-Item -ItemType Directory $bare | Out-Null
     $refused = $false
-    try { Install-LabCli $bare } catch { $refused = $_.Exception.Message -like '*lab.ps1*' }
-    Check $refused 'a root without tools\lab\lab.ps1 is refused'
+    try { Install-LabCli $bare } catch { $refused = $_.Exception.Message -like '*daemon.ps1*' }
+    Check $refused 'a root without tools\lab\daemon.ps1 is refused'
 
-    # --- the lab.cmd shim and lab.exe (LX-03) ---
+    # --- the retired lab.cmd shim and lab.exe ---
     $homeBin = Join-Path $env:CIMMERIA_LAB_HOME 'bin'
     $shimPath = Join-Path $homeBin 'lab.cmd'
     $exePath = Join-Path $homeBin 'lab.exe'
     Remove-Item -LiteralPath $homeBin -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Force $homeBin | Out-Null
 
     Check (-not (Test-LabExeInstalled $env:CIMMERIA_LAB_HOME)) 'no lab.exe: Test-LabExeInstalled is false'
-    $written = Write-LabShim $env:CIMMERIA_LAB_HOME
-    Check (($written -eq $shimPath) -and (Test-Path -LiteralPath $shimPath)) 'without lab.exe, Write-LabShim writes bin\lab.cmd and returns its path'
-    $shimText = Get-Content -Raw -LiteralPath $shimPath
-    Check (($shimText -like '*pwsh -NoProfile -File*') -and ($shimText -like '*cli\lab.ps1*') -and ($shimText -like '*%*')) 'the shim runs cli\lab.ps1 with the arguments'
+    Check ($null -eq (Get-Command Write-LabShim -ErrorAction SilentlyContinue)) 'Write-LabShim is gone: nothing writes the shim any more'
 
-    Install-LabCli $root
-    Check (Test-Path -LiteralPath $shimPath) 'without lab.exe, Install-LabCli leaves lab.cmd in place'
+    Set-Content -LiteralPath $shimPath -Value '@echo off' -Encoding ascii
+    $said = @(Install-LabCli $root 6>&1 | ForEach-Object { "$_" })
+    Check (-not (Test-Path -LiteralPath $shimPath)) 'without lab.exe, Install-LabCli still deletes an old bin\lab.cmd (the dispatcher it ran is gone)'
+    Check (($said -join "`n") -like '*removed bin\lab.cmd*') 'the removal says why'
 
     Set-Content -LiteralPath $exePath -Value 'fake exe' -Encoding ascii
     Check (Test-LabExeInstalled $env:CIMMERIA_LAB_HOME) 'with a bin\lab.exe, Test-LabExeInstalled is true'
+    Set-Content -LiteralPath $shimPath -Value '@echo off' -Encoding ascii
     $said = @(Install-LabCli $root 6>&1 | ForEach-Object { "$_" })
     Check (-not (Test-Path -LiteralPath $shimPath)) 'with lab.exe, Install-LabCli deletes bin\lab.cmd'
     Check (Test-Path -LiteralPath $exePath) 'deleting the shim leaves lab.exe alone'
@@ -121,11 +121,12 @@ try {
     $savedHomeForSetup = $env:CIMMERIA_LAB_HOME
     $env:CIMMERIA_LAB_HOME = Join-Path $tmp 'home-setup'
     try {
-        & pwsh -NoProfile -File $setup -From $root -NoPath | Out-Null
-        Check (($LASTEXITCODE -eq 0) -and (Test-Path -LiteralPath (Join-Path $env:CIMMERIA_LAB_HOME 'bin\lab.cmd'))) 'setup without lab.exe writes bin\lab.cmd'
+        $said = @(& pwsh -NoProfile -File $setup -From $root -NoPath 2>&1 | ForEach-Object { "$_" })
+        Check (($LASTEXITCODE -eq 0) -and -not (Test-Path -LiteralPath (Join-Path $env:CIMMERIA_LAB_HOME 'bin\lab.cmd'))) 'setup writes no bin\lab.cmd shim'
+        Check (($said -join "`n") -like '*lab.exe: not installed yet*') 'setup without lab.exe says how to build it'
         Set-Content -LiteralPath (Join-Path $env:CIMMERIA_LAB_HOME 'bin\lab.exe') -Value 'fake exe' -Encoding ascii
-        & pwsh -NoProfile -File $setup -From $root -NoPath | Out-Null
-        Check (($LASTEXITCODE -eq 0) -and -not (Test-Path -LiteralPath (Join-Path $env:CIMMERIA_LAB_HOME 'bin\lab.cmd'))) 'setup with lab.exe removes bin\lab.cmd and does not write it again'
+        $said = @(& pwsh -NoProfile -File $setup -From $root -NoPath 2>&1 | ForEach-Object { "$_" })
+        Check (($LASTEXITCODE -eq 0) -and (($said -join "`n") -notlike '*not installed yet*')) 'setup with lab.exe does not ask for a build'
     } finally {
         $env:CIMMERIA_LAB_HOME = $savedHomeForSetup
     }

@@ -1,4 +1,4 @@
-//! `lab record` start and stop over a stubbed daemon (ports the retired test-record.ps1,
+//! `lab record` start and stop over a stubbed daemon (ports the removed PowerShell test file,
 //! "usage and no daemon", "start writes the state file; stop reads it").
 
 mod record_support;
