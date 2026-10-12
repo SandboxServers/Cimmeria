@@ -94,15 +94,23 @@ fn run() -> Result<(), String> {
         let text = std::fs::read_to_string(&input).map_err(|e| e.to_string())?;
         let mut m: manifest::Manifest = serde_json::from_str(&text).map_err(|e| e.to_string())?;
         m.validate().map_err(|e| e.to_string())?;
+        let had_index = m.file_index.is_some();
         let outcome = merge(&mut m, patch).map_err(|e| e.to_string())?;
         let json = serde_json::to_string_pretty(&m).map_err(|e| e.to_string())?;
         std::fs::write(&output, format!("{json}\n")).map_err(|e| e.to_string())?;
         match outcome {
-            Merged::Appended => println!(
-                "appended {} to {}; sign it before publishing",
-                packed.id,
-                output.display()
-            ),
+            Merged::Appended => {
+                println!(
+                    "appended {} to {}; sign it before publishing",
+                    packed.id,
+                    output.display()
+                );
+                if had_index {
+                    println!(
+                        "file_index removed: rebuild it with build-file-index after adding patches"
+                    );
+                }
+            }
             Merged::AlreadyPresent => println!(
                 "{} is already in {}; manifest unchanged",
                 packed.id,
