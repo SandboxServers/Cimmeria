@@ -933,6 +933,8 @@ Quirks to keep in mind:
 - Items in the Mission and Crafting tabs share `InventoryWin` with Main: a drag between two tabs of the same window is refused, because both ends cannot be on screen at once.
 - Vault slots can be read and dragged only while the vault window is open at a banker.
 - `d_dropTarget` stays null over an inventory slot in the live client (2026-10-10), so a drag only lands through the explicit drop. Why is open: the leading suspect is that no window from the slot up to the GUI sheet has `DragDropTarget` set ([findings, section 8](../reverse-engineering/findings/cegui-mouse-input-feed.md#8-follow-up-d_droptarget-stays-0-after-a-live-injected-drag-2026-10-10)). When that is fixed, drags report `drop_target_resolved: true` and N1 with no change to the tool.
+- Before the press, client_drag_drop raises the source slot's top-level window above the others (`raised_window` in the result, through `moveToFront`): the bag opens exactly over the vault, and CEGUI gives the press to the topmost window. The drop target may stay underneath; the drop is the explicit `notifyDragDropItemDropped` (N3) as before.
+- `client_ui_click` / `client_item_action` on a slot hidden under another window hit the window on top; raise it first with a `client_lua_eval` `Window:moveToFront()` (follow-up, same cause).
 
 **Not yet proven on the live client.** These tools were built and unit-tested against fixtures and a Lua 5.1 mock of the bindings (every reader chunk loads and runs under Lua 5.1), without a live client; still true on 2026-10-04. After the [AB-L0 smoke](#first-live-check-the-ab-l0-smoke), the first live session should check:
 

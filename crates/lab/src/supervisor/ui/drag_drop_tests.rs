@@ -123,6 +123,55 @@ fn main_slot(slot: u32) -> DragEnd {
     }
 }
 
+/// Live 2026-10-12 (#1660): the bag opened over the vault, the press at the
+/// vault slot landed on the window drawn over it, and no vault drag
+/// started. The tool raises the source's window before it presses.
+#[tokio::test]
+async fn a_source_under_another_window_is_raised_before_the_press() {
+    let (out, s) = drag(
+        FakeCegui {
+            src_covered: true,
+            ..FakeCegui::default()
+        },
+        4,
+        true,
+    )
+    .await;
+    let s = s.lock().unwrap();
+    assert_eq!(s.raises, vec!["SrcSlot".to_string()]);
+    assert_eq!(out["raised_window"], "TopWin");
+    assert_eq!(out["drag_started"], true);
+    assert_eq!(out["moved"], true);
+    assert_eq!(out["effect_ok"], true);
+}
+
+/// A raise the client did not take (no `moveToFront`) is not reported as a
+/// raised window, and a covered source still grades as a failed drag.
+#[tokio::test]
+async fn a_failed_raise_is_not_reported_and_the_drag_grades_failed() {
+    let (out, _) = drag(
+        FakeCegui {
+            src_covered: true,
+            raise_fails: true,
+            ..FakeCegui::default()
+        },
+        4,
+        true,
+    )
+    .await;
+    assert!(out["raised_window"].is_null());
+    assert_eq!(out["drag_started"], false);
+    assert_eq!(out["effect_ok"], false);
+}
+
+/// Nothing is raised for an end that is only a target: the target stays
+/// where it is (the drop is the explicit notify).
+#[tokio::test]
+async fn only_the_source_window_is_raised() {
+    let (_, s) = drag(FakeCegui::default(), 4, true).await;
+    assert_eq!(s.lock().unwrap().raises, vec!["SrcSlot".to_string()]);
+}
+
 /// The live client today: no drop target, so the tool fires the target's
 /// Dropped itself, between the last move and the release, and labels the
 /// drag N3.

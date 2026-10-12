@@ -62,6 +62,15 @@ pub struct FakeCegui {
     /// The stock UI hands the drag to `InventoryDragItemWin`: the source
     /// container stops dragging, the stand-in drags.
     pub stand_in: bool,
+    /// Another window is drawn over `SrcSlot`: a press there lands on it, so
+    /// the source container never drags until `raise_chunk` ran.
+    pub src_covered: bool,
+    /// The press of the current gesture reached `SrcSlot`.
+    pub press_on_src: bool,
+    /// Windows `moveToFront` was called for, in order.
+    pub raises: Vec<String>,
+    /// `moveToFront` is missing or throws: the window stays where it was.
+    pub raise_fails: bool,
     /// A native right click (button 1) on `SrcSlot` uses the item.
     pub right_click_works: bool,
     /// A native left click on `TabBtn` shows the tab.
@@ -102,6 +111,10 @@ impl Default for FakeCegui {
             modifiers: Vec::new(),
             lua_placements: 0,
             stand_in: false,
+            src_covered: false,
+            press_on_src: true,
+            raises: Vec::new(),
+            raise_fails: false,
             right_click_works: false,
             tab_click_works: false,
             tab_visible: false,
@@ -182,11 +195,12 @@ impl FakeCegui {
             self.cursor = (f32::from_bits(args[1]), f32::from_bits(args[2]));
             self.calls
                 .push(format!("move {} {}", self.cursor.0, self.cursor.1));
-            if self.button_down && self.container_drags {
+            if self.button_down && self.container_drags && self.press_on_src {
                 self.dragging = true;
             }
         } else if addr == at(INJECT_MOUSE_BUTTON_DOWN_VA) {
             self.button_down = self.down_handled;
+            self.press_on_src = !self.src_covered;
             // Only AL carries the bool: garbage above it must not count.
             ret = if self.down_handled { 1 } else { 0xdead_be00 };
             self.calls.push(format!("down {}", args[1]));
@@ -261,7 +275,16 @@ impl FakeCegui {
                 None
             }
         };
-        let doc = if chunk.contains("getCash") {
+        let doc = if chunk.contains("moveToFront") {
+            self.raises
+                .push(window(chunk).map(|w| w.0).unwrap_or("?").to_string());
+            if self.raise_fails {
+                json!({ "found": true, "ok": false, "raised": "TopWin" })
+            } else {
+                self.src_covered = false;
+                json!({ "found": true, "ok": true, "raised": "TopWin" })
+            }
+        } else if chunk.contains("getCash") {
             let slot = if self.moved { self.lands_in } else { 1 };
             json!({ "cash": if self.bought { -50 } else { 0 }, "containers": [{ "name": "Main",
                 "slots": [{ "slot": slot, "item_id": 7, "name": "Medkit", "qty": if self.bought { 1 + self.vendor_value } else { 1 } }] }] })
