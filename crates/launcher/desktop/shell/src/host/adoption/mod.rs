@@ -169,7 +169,9 @@ impl NativeHost {
         })
     }
     /// The imported game folder is the one adopted; there is nothing to choose.
+    /// Only tests and the UAT bridge start it now; the launcher uses the folder picker.
     #[cfg(not(target_os = "macos"))]
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn begin_adoption_in_place(
         &self,
         release: VerifiedRelease,

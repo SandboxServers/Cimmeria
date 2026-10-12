@@ -21,11 +21,11 @@ export const AdoptionStatus=Schema.Struct({schema_version:Schema.Literal(1),nati
  progress:Schema.NullOr(Schema.Struct({phase:Schema.Literals(['download','extraction','copy']),current:Count,total:Count})),cancellable:Schema.Boolean,
  reconciliation:Schema.NullOr(Schema.Union([Schema.Struct({kind:Schema.Literal('preparation'),preparation_id:Schema.String}),
   Schema.Struct({kind:Schema.Literal('copy'),operation_id:Schema.String,directory:Schema.String,can_recover:Schema.Boolean,can_abandon:Schema.Boolean})])),
- preparations:Schema.Array(Schema.String),owned:Schema.Boolean,completed:Schema.NullOr(Schema.Struct({directory:Schema.String})),last_error:Schema.NullOr(Code)});
+ preparations:Schema.Array(Schema.String),owned:Schema.Boolean,completed:Schema.NullOr(Schema.Struct({directory:Schema.String,backup_directory:Schema.optionalKey(Schema.String)})),last_error:Schema.NullOr(Code)});
 export type AdoptionStatus=typeof AdoptionStatus.Type;
 export type Request={command:'inspect'|'dismiss'|'cancel';schema_version:1}|{command:'confirm';schema_version:1;work_id:string;preview_handle:string;operation_revision:number;preferences_revision:number;normalize_managed_files:boolean;accept_unavailable_game_telemetry:boolean;old_game_closed:boolean;replace_modified_files?:boolean;confirmed:true}|{command:'recover'|'abandon';schema_version:1;operation_id:string;operation_revision:number;confirmed:true}|{command:'abandon_preparation';schema_version:1;preparation_id:string;operation_revision:number;confirmed:true};
 export type Maintenance={action:'recover'|'abandon'|'abandon_preparation';id:string};
-export type Choice='normalize'|'telemetry'|'closed';
+export type Choice='normalize'|'telemetry'|'closed'|'replace';
 export class AdoptionFailure extends Data.TaggedError('AdoptionFailure')<{readonly code:string}> {}
 export class AdoptionBridge extends Context.Service<AdoptionBridge,{call:(request:Request|'choose')=>Effect.Effect<AdoptionStatus,AdoptionFailure>}>()('launcher/AdoptionBridge') {}
 const known=new Set<string>(codes);
@@ -39,10 +39,10 @@ export const adoptionBridgeLayer=(call:(request:Request|'choose')=>Promise<unkno
   Effect.flatMap(value=>Schema.decodeUnknownEffect(AdoptionStatus,{onExcessProperty:'error'})(value).pipe(Effect.mapError(()=>new AdoptionFailure({code:'schema'}))))
  )});
 export type AdoptionState={status:AdoptionStatus|null;pending:boolean;uncertain:boolean;error:string|null;stale:boolean;maintenance:Maintenance|null}&Record<Choice,boolean>;
-const initial:AdoptionState={status:null,pending:false,uncertain:true,error:null,stale:false,maintenance:null,normalize:false,telemetry:false,closed:false};
+const initial:AdoptionState={status:null,pending:false,uncertain:true,error:null,stale:false,maintenance:null,normalize:false,telemetry:false,closed:false,replace:false};
 /** Consent rule comes from the native review; this only checks the boxes it asks for.
  * A folder whose release files do not verify cannot be adopted in place at all. */
-export const consented=(s:AdoptionState)=>{const r=s.status?.review;return !!r&&!r.blocked_files.length&&s.closed&&(!r.requires_normalization||s.normalize)&&(!r.requires_telemetry_acceptance||s.telemetry);};
+export const consented=(s:AdoptionState)=>{const r=s.status?.review;return !!r&&!r.blocked_files.length&&s.closed&&(!r.requires_normalization||s.normalize)&&(!r.requires_telemetry_acceptance||s.telemetry)&&(!r.requires_replacement||s.replace);};
 const offered=(status:AdoptionStatus,m:Maintenance)=>{const r=status.reconciliation;
  if(m.action==='abandon_preparation')return (r?.kind==='preparation'&&r.preparation_id===m.id)||status.preparations.includes(m.id);
  return r?.kind==='copy'&&r.operation_id===m.id&&(m.action==='recover'?r.can_recover:r.can_abandon);};
@@ -57,7 +57,7 @@ export const makeAdoptionWorkflow=Effect.gen(function*(){
   // A different review starts with every confirmation unchecked.
   const same=!!status.review&&status.review.preview_handle===before.status?.review?.preview_handle;
   yield* publish({...before,status,uncertain:status.native.requires_reopen,error:null,stale:same&&before.stale,
-   normalize:same&&before.normalize,telemetry:same&&before.telemetry,closed:same&&before.closed,
+   normalize:same&&before.normalize,telemetry:same&&before.telemetry,closed:same&&before.closed,replace:same&&before.replace,
    maintenance:before.maintenance&&offered(status,before.maintenance)?before.maintenance:null});
   return status;
  });
@@ -82,7 +82,7 @@ export const makeAdoptionWorkflow=Effect.gen(function*(){
   if(status.review?.preview_handle!==review.preview_handle)return yield* Effect.fail(new AdoptionFailure({code:'review_unavailable'}));
   if(status.native.operation.revision!==review.operation_revision||status.native.preferences.revision!==review.preferences_revision)return yield* Effect.fail(new AdoptionFailure({code:'stale_revision'}));
   return {command:'confirm',schema_version:1,work_id:crypto.randomUUID(),preview_handle:review.preview_handle,operation_revision:review.operation_revision,preferences_revision:review.preferences_revision,
-   normalize_managed_files:before.normalize,accept_unavailable_game_telemetry:before.telemetry,old_game_closed:before.closed,confirmed:true} as const;
+   normalize_managed_files:before.normalize,accept_unavailable_game_telemetry:before.telemetry,old_game_closed:before.closed,replace_modified_files:before.replace,confirmed:true} as const;
  }));
  const propose=(maintenance:Maintenance)=>Ref.get(state).pipe(Effect.flatMap(s=>s.pending||s.uncertain||!s.status||!offered(s.status,maintenance)?Effect.fail(new AdoptionFailure({code:'busy'})):publish({...s,maintenance,error:null})));
  const maintain=mutate(before=>{
