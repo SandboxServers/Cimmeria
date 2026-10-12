@@ -1,5 +1,5 @@
 //! `lab doctor`: check the install, the daemon and each instance.
-//! `checks.rs` holds the ten pure checks, `system.rs` reads the machine.
+//! `checks.rs` holds the eleven pure checks, `system.rs` reads the machine.
 
 pub mod checks;
 pub mod system;
@@ -22,7 +22,7 @@ const EXAMPLES: &str = "Examples:\n  lab doctor";
 )]
 pub struct Args {}
 
-/// Runs `lab doctor`: gathers the facts, runs the ten checks, prints them and
+/// Runs `lab doctor`: gathers the facts, runs the eleven checks, prints them and
 /// returns 1 when any check failed (a warning does not fail).
 pub fn run(args: &Args, ctx: &Ctx) -> u8 {
     let _ = args;

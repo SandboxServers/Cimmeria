@@ -11,6 +11,7 @@ pub mod fallback;
 pub mod help;
 pub mod known_issues;
 pub mod log_filter;
+pub mod processes;
 pub mod ui;
 
 use std::ffi::OsString;

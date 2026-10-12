@@ -37,6 +37,7 @@ impl Rig {
         c.env("CIMMERIA_LAB_HOME", self.p("home"))
             .env("CIMMERIA_LAB_UAT_DIR", self.p("no-batches"))
             .env("LOCALAPPDATA", self.p("local"))
+            .env("CIMMERIA_LAB_TEST_SGW_PIDS", "")
             .env_remove("CIMMERIA_LAB_DAEMON_TOKEN");
         c
     }

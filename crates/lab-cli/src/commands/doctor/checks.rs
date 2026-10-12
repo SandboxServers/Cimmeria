@@ -1,4 +1,4 @@
-//! The ten `lab doctor` checks, ported from the removed PowerShell doctor command.
+//! The eleven `lab doctor` checks: ten ported from the removed PowerShell doctor command, plus the build-stamp match.
 //! Every check is a pure function of [`Inputs`], which `system.rs` gathers.
 
 use std::path::{Path, PathBuf};
@@ -136,6 +136,9 @@ pub struct Inputs {
     pub binaries: BinaryFacts,
     /// The first line of `<lab home>\cli\cli\VERSION`, trimmed; `None` when absent or blank.
     pub version_sha: Option<String>,
+    /// The git sha stamped into this `lab.exe` at build time
+    /// (`CIMMERIA_LAB_CLI_SHA`); `None` for a dev build with no stamp.
+    pub exe_sha: Option<String>,
     /// The Cimmeria checkout the command runs in, if any.
     pub checkout: Option<PathBuf>,
     /// The tools/lab content comparison; `None` when it was skipped (no
@@ -148,7 +151,7 @@ pub fn sgw_exe_path(install_dir: &str) -> PathBuf {
     Path::new(install_dir).join("Binaries").join("SGW.exe")
 }
 
-/// All ten checks, in the PowerShell's order.
+/// All eleven checks: the PowerShell's ten in its order, then the build match.
 pub fn run_all(i: &Inputs) -> Vec<Check> {
     vec![
         task_check(i),
@@ -161,6 +164,7 @@ pub fn run_all(i: &Inputs) -> Vec<Check> {
         stray_sgw_check(i),
         binary_check(i),
         version_check(i),
+        build_match_check(i),
     ]
 }
 
@@ -376,7 +380,7 @@ pub fn version_check(i: &Inputs) -> Check {
     let name = "CLI copy matches origin/main (as of the last fetch)";
     let Some(root) = i.checkout.as_deref() else {
         return Check::new(
-            Status::Pass,
+            Status::Warn,
             name,
             "not in a Cimmeria checkout; skipped",
             None,
@@ -410,6 +414,45 @@ pub fn version_check(i: &Inputs) -> Check {
             Some("git fetch, or run lab setup"),
         ),
     }
+}
+
+/// This `lab.exe` and the installed CLI scripts (`cli\cli\VERSION`) were built
+/// from the same commit. A dev build has no stamp, so nothing can be compared.
+pub fn build_match_check(i: &Inputs) -> Check {
+    let name = "lab.exe matches the installed CLI scripts";
+    let Some(exe) = i.exe_sha.as_deref() else {
+        return Check::new(
+            Status::Warn,
+            name,
+            "lab.exe has no build stamp (dev build)",
+            None,
+        );
+    };
+    let Some(scripts) = i.version_sha.as_deref() else {
+        return Check::new(
+            Status::Warn,
+            name,
+            format!("lab.exe is build {exe} but cli\\cli\\VERSION is missing"),
+            Some("run lab install"),
+        );
+    };
+    if same_build(exe, scripts) {
+        return Check::new(Status::Pass, name, format!("both are build {exe}"), None);
+    }
+    Check::new(
+        Status::Warn,
+        name,
+        "lab.exe and the CLI scripts come from different builds",
+        Some("run lab install"),
+    )
+}
+
+/// Whether two git shas name one commit: one is a prefix of the other (the
+/// stamp is a short sha), ignoring case, and at least 4 characters long.
+fn same_build(a: &str, b: &str) -> bool {
+    let (a, b) = (a.trim(), b.trim());
+    let n = a.len().min(b.len());
+    n >= 4 && a.is_char_boundary(n) && b.is_char_boundary(n) && a[..n].eq_ignore_ascii_case(&b[..n])
 }
 
 /// .NET's `Path.IsPathFullyQualified` for Windows paths: `X:\` or `X:/`, or a

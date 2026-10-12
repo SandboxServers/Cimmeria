@@ -11,7 +11,7 @@ mod support;
 const START: &str =
     "# head\r\nFOO=1\r\nCIMMERIA_LAB_DAEMON_TOKEN=test-token-not-real\r\n# tail\r\n";
 const USAGE: &str =
-    "usage: lab env [get KEY | set KEY VALUE | unset KEY]  (a VALUE starting with '-': -Value:<value>)";
+    "usage: lab env [get KEY | set KEY VALUE | unset KEY]  (a VALUE starting with '-': --value=<value>)";
 const RESTART: &str = "restart the daemon for this to apply: lab restart";
 
 struct Lab {

@@ -60,18 +60,34 @@ fn go(
     stopper: fn(u32) -> Result<StopOutcome, String>,
     ui: &Ui,
 ) -> Run {
+    go_seq(verb, which, force, vec![status], stopper, ui)
+}
+
+/// Like [`go`] with one daemon reply per `/status` read: the first answers the
+/// first look, each later one a re-check before a stop; the last repeats.
+fn go_seq(
+    verb: Option<&str>,
+    which: Option<&str>,
+    force: bool,
+    replies: Vec<Option<StatusReply>>,
+    stopper: fn(u32) -> Result<StopOutcome, String>,
+    ui: &Ui,
+) -> Run {
     let args = Args {
         verb: verb.map(str::to_string),
         which: which.map(str::to_string),
         force,
     };
     let (mut out, mut err, mut pids, mut asked) = (Vec::new(), Vec::new(), Vec::new(), false);
+    let mut reads = 0usize;
     let code = execute(
         &args,
         ui,
         || {
             asked = true;
-            status
+            let reply = replies[reads.min(replies.len() - 1)].clone();
+            reads += 1;
+            reply
         },
         &mut |pid| {
             pids.push(pid);
@@ -300,5 +316,130 @@ fn fancy_errors_carry_the_error_label_and_a_hint() {
             "error: --force needs a named instance".to_string(),
             "  hint: name the instance: lab clients stop p2 --force".to_string(),
         ]
+    );
+}
+
+/// `fake_status()` with `p2` changed by `edit` (its JSON row).
+fn status_with_p2(edit: impl FnOnce(&mut serde_json::Value)) -> StatusReply {
+    let mut body = serde_json::json!({
+        "daemon": {"pid": 4242, "version": "0.1.0"},
+        "instances": [
+            {"instance": "p2", "client_pid": 202, "lease": {"held": false}}
+        ]
+    });
+    edit(&mut body["instances"][0]);
+    parse_status(&body).expect("shape")
+}
+
+fn first_p2() -> StatusReply {
+    status_with_p2(|_| {})
+}
+
+// C2: the client was relaunched after the first look: the new process is not ours to stop
+#[test]
+fn a_client_relaunched_since_the_first_status_is_not_stopped() {
+    let later = status_with_p2(|p2| p2["client_pid"] = serde_json::json!(303));
+    let run = go_seq(
+        Some("stop"),
+        Some("p2"),
+        false,
+        vec![Some(first_p2()), Some(later)],
+        stopped,
+        &Ui::plain(),
+    );
+    assert!(run.stopped.is_empty(), "stopped {:?}", run.stopped);
+    assert_eq!(run.code, 4);
+    assert_eq!(
+        run.err,
+        vec!["p2: client pid changed from 202 to 303; not stopped".to_string()]
+    );
+}
+
+// C2: a session took the lease after the first look: refused, exit 3
+#[test]
+fn a_client_leased_since_the_first_status_is_refused() {
+    let later = status_with_p2(|p2| {
+        p2["lease"] =
+            serde_json::json!({"held": true, "lease": {"owner": "late", "purpose": "UAT"}});
+    });
+    let run = go_seq(
+        Some("stop"),
+        Some("p2"),
+        false,
+        vec![Some(first_p2()), Some(later)],
+        stopped,
+        &Ui::plain(),
+    );
+    assert!(run.stopped.is_empty());
+    assert_eq!(run.code, 3);
+    assert_eq!(
+        run.out,
+        vec!["p2: leased to late (UAT); not stopped (use --force to override)".to_string()]
+    );
+}
+
+// C2: --force overrides a lease, also one taken after the first look
+#[test]
+fn a_forced_stop_ignores_a_lease_taken_since_the_first_status() {
+    let later = status_with_p2(|p2| p2["lease"] = serde_json::json!({"held": true}));
+    let run = go_seq(
+        Some("stop"),
+        Some("p2"),
+        true,
+        vec![Some(first_p2()), Some(later)],
+        stopped,
+        &Ui::plain(),
+    );
+    assert_eq!((run.code, run.stopped), (0, vec![202]));
+}
+
+// C2: a lease whose `held` is text still protects the client
+#[test]
+fn a_lease_with_a_text_held_refuses_the_stop() {
+    let held_text = status_with_p2(|p2| p2["lease"] = serde_json::json!({"held": "yes"}));
+    let run = go_seq(
+        Some("stop"),
+        Some("p2"),
+        false,
+        vec![Some(held_text)],
+        stopped,
+        &Ui::plain(),
+    );
+    assert!(run.stopped.is_empty());
+    assert_eq!(run.code, 3);
+}
+
+// C2: the client exited on its own before its turn: nothing to stop
+#[test]
+fn a_client_gone_since_the_first_status_is_reported_and_not_stopped() {
+    let later = status_with_p2(|p2| p2["client_pid"] = serde_json::Value::Null);
+    let run = go_seq(
+        Some("stop"),
+        Some("p2"),
+        false,
+        vec![Some(first_p2()), Some(later)],
+        stopped,
+        &Ui::plain(),
+    );
+    assert!(run.stopped.is_empty());
+    assert_eq!((run.code, run.out), (0, vec!["p2: no client".to_string()]));
+}
+
+// C2: no fresh status, no stop
+#[test]
+fn a_failed_recheck_stops_nothing_and_exits_4() {
+    let run = go_seq(
+        Some("stop"),
+        Some("p2"),
+        false,
+        vec![Some(first_p2()), None],
+        stopped,
+        &Ui::plain(),
+    );
+    assert!(run.stopped.is_empty());
+    assert_eq!(run.code, 4);
+    assert_eq!(
+        run.err,
+        vec!["p2: could not re-check /status; pid 202 not stopped".to_string()]
     );
 }

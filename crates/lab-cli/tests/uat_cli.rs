@@ -18,6 +18,7 @@ fn run_lab(args: &[&str], home: &Path) -> Output {
         .args(args)
         .env("CIMMERIA_LAB_HOME", home)
         .env("LOCALAPPDATA", home)
+        .env("CIMMERIA_LAB_TEST_SGW_PIDS", "")
         .env_remove("CIMMERIA_LAB_DAEMON_TOKEN")
         .env_remove("NO_COLOR")
         .output()

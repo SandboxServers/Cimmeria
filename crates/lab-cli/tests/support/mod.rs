@@ -464,8 +464,19 @@ impl Drop for HangServer {
 /// Runs the built `lab` binary with `args` against a throw-away lab home:
 /// `CIMMERIA_LAB_HOME` and `LOCALAPPDATA` are `home`, the profile root is
 /// `<home>\instances`, the token is [`STUB_TOKEN`]. Stdout is a pipe, so the
-/// output is plain.
+/// output is plain; no SGW.exe runs as far as it can tell.
 pub fn run_lab_in(home: &std::path::Path, args: &[&str]) -> std::process::Output {
+    run_lab_seeing(home, args, "")
+}
+
+/// [`run_lab_in`] with the machine's `SGW.exe` list replaced by `sgw_pids` (a
+/// comma-separated list; empty for none), so a test never depends on, or is
+/// stopped by, a game client that happens to run on this machine.
+pub fn run_lab_seeing(
+    home: &std::path::Path,
+    args: &[&str],
+    sgw_pids: &str,
+) -> std::process::Output {
     let instances = home.join("instances");
     std::process::Command::new(env!("CARGO_BIN_EXE_lab"))
         .args(args)
@@ -473,6 +484,7 @@ pub fn run_lab_in(home: &std::path::Path, args: &[&str]) -> std::process::Output
         .env("LOCALAPPDATA", home)
         .env("CIMMERIA_LAB_PROFILE_ROOT", &instances)
         .env("CIMMERIA_LAB_DAEMON_TOKEN", STUB_TOKEN)
+        .env("CIMMERIA_LAB_TEST_SGW_PIDS", sgw_pids)
         .env_remove("NO_COLOR")
         .env_remove("CIMMERIA_LAB_UAT_DIR")
         .output()

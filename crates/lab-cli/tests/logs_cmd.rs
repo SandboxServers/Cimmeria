@@ -477,3 +477,32 @@ fn follow_stops_when_the_flag_is_set() {
     let text = follow.finish();
     assert_eq!(text, "2026-10-10T20:00:00Z  INFO serve: a\n");
 }
+// C3: the first snapshot holds back a last line that has no newline yet, and
+// prints it once, whole, when the newline arrives
+#[test]
+fn follow_holds_back_an_unterminated_last_line_of_the_first_snapshot() {
+    let dir = tempfile::TempDir::new().expect("temp dir");
+    let path = dir.path().join("labd.log");
+    std::fs::write(
+        &path,
+        "2026-10-10T20:00:00Z  INFO serve: whole\n2026-10-10T20:00:01Z  INFO serve: half",
+    )
+    .expect("write log");
+    let follow = Follow::start(path.clone(), None, None, 50);
+    follow.wait_for("serve: whole");
+    // Several polls (20 ms each) pass without the half line being printed.
+    std::thread::sleep(Duration::from_millis(200));
+    assert!(
+        !follow.text().contains("serve: half"),
+        "an unterminated last line must wait: {}",
+        follow.text()
+    );
+    append(&path, " done\n");
+    follow.wait_for("serve: half done");
+    let text = follow.finish();
+    assert_eq!(text.matches("serve: half").count(), 1, "{text}");
+    assert!(
+        !text.contains("serve: half\n"),
+        "never printed cut short: {text}"
+    );
+}

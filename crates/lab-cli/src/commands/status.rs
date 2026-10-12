@@ -18,7 +18,7 @@ const LONG: &str = concat!(
     "\n\n",
     "When the daemon or its endpoint is down, prints the instances named by labd.env's CIMMERIA_LAB_INSTANCES with the SEED column only, and exits 1.",
     "\n\n",
-    "SEED is 'seeded' when the instance's profile folder exists under the profile root, else '-'.",
+    "Plain output has a SEED column: 'seeded' when the instance's profile folder exists under the profile root, else '-'. On a terminal the table has a Profile column instead, reading 'seeded' or 'not seeded'.",
 );
 
 const EXAMPLES: &str = "Examples:\n  lab status";

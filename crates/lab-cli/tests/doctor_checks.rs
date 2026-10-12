@@ -1,13 +1,13 @@
-//! The ten doctor checks against `Inputs` fixtures. Ports the doctor checks
+//! The eleven doctor checks against `Inputs` fixtures. Ports the doctor checks
 //! of the removed PowerShell test file one-to-one (the PowerShell check is named in
 //! each `// ops:` comment) and pins the plain and fancy output.
 
 use std::path::{Path, PathBuf};
 
 use cimmeria_lab_cli::commands::doctor::checks::{
-    account_check, binary_check, daemon_check, install_check, profile_root_check, run_all,
-    seed_check, stray_sgw_check, task_check, token_check, version_check, BinaryFacts, Check,
-    ContentCheck, Inputs, InstanceFacts, Status,
+    account_check, binary_check, build_match_check, daemon_check, install_check,
+    profile_root_check, run_all, seed_check, stray_sgw_check, task_check, token_check,
+    version_check, BinaryFacts, Check, ContentCheck, Inputs, InstanceFacts, Status,
 };
 use cimmeria_lab_cli::commands::doctor::{exit_code, render};
 use cimmeria_lab_cli::daemon::status::{DaemonRow, InstanceRow, StatusReply};
@@ -56,6 +56,7 @@ fn good() -> Inputs {
         listed_sgw: vec![101],
         binaries: BinaryFacts::Same(10),
         version_sha: Some("abc1234".to_string()),
+        exe_sha: Some("abc1234".to_string()),
         checkout: Some(PathBuf::from("C:/repo")),
         content: Some(ContentCheck::Same),
     }
@@ -67,7 +68,7 @@ fn root(i: &mut Inputs, root: &str) -> Check {
 }
 
 #[test]
-fn the_ten_checks_run_in_the_powershell_order_and_all_pass_when_healthy() {
+fn the_eleven_checks_run_in_order_and_all_pass_when_healthy() {
     let results = run_all(&good());
     let names: Vec<&str> = results.iter().map(|c| c.name.as_str()).collect();
     assert_eq!(
@@ -83,6 +84,7 @@ fn the_ten_checks_run_in_the_powershell_order_and_all_pass_when_healthy() {
             "no SGW.exe runs that /status does not list",
             "installed cimmeria-lab.exe is the daemon's copy",
             "CLI copy matches origin/main (as of the last fetch)",
+            "lab.exe matches the installed CLI scripts",
         ]
     );
     assert!(results.iter().all(|c| c.status == Status::Pass));
@@ -372,15 +374,65 @@ fn no_version_file_inside_a_checkout_warns() {
     assert_eq!(c.plain_detail(), "no cli\\cli\\VERSION; run lab setup");
 }
 
-// ops: 'outside a checkout the VERSION check is skipped (PASS)'
+// ops: 'outside a checkout the VERSION check is skipped' (C6: a skipped check is a WARN, not a PASS)
 #[test]
 fn outside_a_checkout_the_version_check_is_skipped() {
     let mut i = good();
     i.checkout = None;
     i.content = None;
     let c = version_check(&i);
-    assert_eq!(c.status, Status::Pass);
+    assert_eq!(c.status, Status::Warn);
     assert_eq!(c.plain_detail(), "not in a Cimmeria checkout; skipped");
+}
+
+// C6: lab.exe's stamp is compared with the installed CLI's VERSION
+#[test]
+fn the_exe_and_the_installed_cli_from_one_build_pass() {
+    let c = build_match_check(&good());
+    assert_eq!(c.status, Status::Pass);
+    let mut i = good();
+    i.exe_sha = Some("ABC1234".to_string());
+    i.version_sha = Some("abc1234def5678".to_string());
+    assert_eq!(
+        build_match_check(&i).status,
+        Status::Pass,
+        "a short sha matches its long form"
+    );
+}
+
+#[test]
+fn an_exe_and_cli_scripts_from_different_builds_warn() {
+    let mut i = good();
+    i.exe_sha = Some("1111111".to_string());
+    let c = build_match_check(&i);
+    assert_eq!(c.status, Status::Warn);
+    assert_eq!(
+        c.plain_detail(),
+        "lab.exe and the CLI scripts come from different builds; run lab install"
+    );
+    assert_eq!(c.fancy_hint.as_deref(), Some("lab install"));
+}
+
+#[test]
+fn an_exe_with_no_build_stamp_warns_that_it_is_a_dev_build() {
+    let mut i = good();
+    i.exe_sha = None;
+    let c = build_match_check(&i);
+    assert_eq!(c.status, Status::Warn);
+    assert_eq!(c.plain_detail(), "lab.exe has no build stamp (dev build)");
+}
+
+#[test]
+fn a_stamped_exe_with_no_installed_version_file_warns() {
+    let mut i = good();
+    i.version_sha = None;
+    let c = build_match_check(&i);
+    assert_eq!(c.status, Status::Warn);
+    assert!(
+        c.plain_detail().ends_with("; run lab install"),
+        "{}",
+        c.plain_detail()
+    );
 }
 
 // ops: "origin/main's own sha PASSes"

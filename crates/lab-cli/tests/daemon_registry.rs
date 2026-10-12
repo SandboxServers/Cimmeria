@@ -2,20 +2,26 @@
 //! test works in a throwaway key under `HKCU\Software`, never `Environment`.
 #![cfg(windows)]
 
+mod support;
+
 use std::ptr::{null, null_mut};
 
 use cimmeria_lab_cli::daemon::token::read_user_registry_string;
 use windows_sys::Win32::Foundation::ERROR_SUCCESS;
 use windows_sys::Win32::System::Registry::{
-    RegCloseKey, RegCreateKeyExW, RegDeleteTreeW, RegSetValueExW, HKEY, HKEY_CURRENT_USER,
-    KEY_WRITE, REG_DWORD, REG_EXPAND_SZ, REG_OPTION_NON_VOLATILE, REG_SZ,
+    RegCloseKey, RegCreateKeyExW, RegDeleteKeyW, RegDeleteTreeW, RegSetValueExW, HKEY,
+    HKEY_CURRENT_USER, KEY_WRITE, REG_DWORD, REG_EXPAND_SZ, REG_OPTION_NON_VOLATILE, REG_SZ,
 };
 
 fn wide(text: &str) -> Vec<u16> {
     text.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
-/// A throwaway key that is deleted when dropped.
+/// The parent of every throwaway key; removed on drop when no sibling is left.
+const PARENT: &str = "Software\\cimmeria-lab-cli-test";
+
+/// A throwaway key that is deleted when dropped, and its parent with it when
+/// that is then empty (`RegDeleteKeyW` refuses a key that still has subkeys).
 struct TempKey {
     path: String,
     handle: HKEY,
@@ -23,10 +29,7 @@ struct TempKey {
 
 impl TempKey {
     fn create(tag: &str) -> Self {
-        let path = format!(
-            "Software\\cimmeria-lab-cli-test\\{}-{tag}",
-            std::process::id()
-        );
+        let path = format!("{PARENT}\\{}-{tag}", std::process::id());
         let subkey = wide(&path);
         let mut handle: HKEY = null_mut();
         // SAFETY: `subkey` is NUL-terminated UTF-16 that outlives the call and
@@ -79,6 +82,7 @@ impl Drop for TempKey {
         unsafe {
             RegCloseKey(self.handle);
             RegDeleteTreeW(HKEY_CURRENT_USER, wide(&self.path).as_ptr());
+            RegDeleteKeyW(HKEY_CURRENT_USER, wide(PARENT).as_ptr());
         }
     }
 }
@@ -144,8 +148,10 @@ fn a_much_longer_expansion_is_read_whole() {
     let long = "y".repeat(5_000);
     key.set_text("V", REG_EXPAND_SZ, "%CIMMERIA_LAB_CLI_TEST_LONG%");
     // The process environment decides the expansion; set it for this test only.
-    std::env::set_var("CIMMERIA_LAB_CLI_TEST_LONG", &long);
-    let got = read_user_registry_string(&key.path, "V");
-    std::env::remove_var("CIMMERIA_LAB_CLI_TEST_LONG");
+    let got = {
+        let _lock = support::env_lock();
+        let _env = support::EnvGuard::set(&[("CIMMERIA_LAB_CLI_TEST_LONG", Some(long.as_str()))]);
+        read_user_registry_string(&key.path, "V")
+    };
     assert_eq!(got, Some(long));
 }

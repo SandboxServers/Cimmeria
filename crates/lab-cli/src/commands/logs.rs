@@ -159,7 +159,8 @@ pub fn paint_line(ui: &Ui, line: &str) -> String {
 /// then polls every `poll` for appended bytes and prints each new complete
 /// line that passes. A file that shrinks, or is replaced by another file at the
 /// same path (a different creation time or inode), is read again from the top.
-/// A last line without its newline is held until the newline arrives.
+/// A last line without its newline is held back, in the first snapshot too,
+/// until the newline arrives.
 /// Returns `Ok` when `stop` is set; an `Err` is a failed read of the first
 /// snapshot or a failed write to `out`.
 pub fn follow_file(
@@ -176,7 +177,15 @@ pub fn follow_file(
     first.read_to_end(&mut bytes)?;
     let mut id = first.metadata().ok().as_ref().and_then(file_id);
     drop(first);
-    let mut pos = bytes.len() as u64;
+    let pos_at_eof = bytes.len() as u64;
+    // A last line without its newline may still be growing: it is not part of
+    // the snapshot but waits in `pending` for the poll loop to complete it.
+    let complete = bytes
+        .iter()
+        .rposition(|&byte| byte == b'\n')
+        .map_or(0, |last| last + 1);
+    let mut pending: Vec<u8> = bytes.split_off(complete);
+    let mut pos = pos_at_eof;
     let text = String::from_utf8_lossy(&bytes);
     let raw: Vec<&str> = text.lines().collect();
     let first = raw.len().saturating_sub(tail);
@@ -187,7 +196,6 @@ pub fn follow_file(
     }
     out.flush()?;
 
-    let mut pending: Vec<u8> = Vec::new();
     while !stop.load(Ordering::SeqCst) {
         std::thread::sleep(poll);
         if stop.load(Ordering::SeqCst) {
