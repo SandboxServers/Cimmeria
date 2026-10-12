@@ -16,6 +16,12 @@ use thiserror::Error;
 
 use crate::manifest::Manifest;
 
+mod build;
+#[cfg(test)]
+mod build_tests;
+
+pub use build::build;
+
 /// The only index schema this launcher reads.
 pub const FILE_INDEX_SCHEMA: u32 = 1;
 /// Bumped when client_setup changes what it writes. A launcher ignores an
