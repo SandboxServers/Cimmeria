@@ -3,6 +3,7 @@
 import sqlite3
 import unittest
 from datetime import datetime, timedelta, timezone
+from unittest import mock
 
 from metrics import overstep, registry
 
@@ -116,6 +117,10 @@ class SonnetImplementingTest(unittest.TestCase):
         packets = [("campaign-metrics", dict(PACKETS[0][1], escalated=True))]
         self.assertEqual(_detect([self._sonnet()], packets=packets)["hits"], {})
 
+    def test_o3_sonnet_main_session_edit_on_a_packet_coders_packet(self):
+        req = _req(model="claude-sonnet-5-5", worktree="lr03", calls=[_call("Edit", "crates/gameserver/src/lib.rs")])
+        self.assertEqual(_detect([req], packets=[("lab-record", _pkt("LR-03"))])["hits"], {"O3": 1})
+
 
 class ImplementingTest(unittest.TestCase):
     """O3 (Sonnet) and O3b (Opus) subagents editing a packet-coder's packet in worktree lr03 (packet LR-03)."""
@@ -198,6 +203,13 @@ class PacketForTest(unittest.TestCase):
         packets = [("lab-a", _pkt("LX-01")), ("lab-b", _pkt("LX-01"))]
         self.assertIsNone(overstep.packet_for({"worktree": "lx-01"}, packets))
 
+    def test_requests_of_one_session_match_the_packet_once(self):
+        reqs = [_req(request_id=f"r{i}", worktree="lr03", agent_name="lr03-dev") for i in range(50)]
+        with mock.patch("metrics.overstep.packet_of_session", return_value="LR-03") as matcher:
+            result = _detect(reqs, packets=[("lab-record", _pkt("LR-03"))])
+        self.assertEqual(matcher.call_count, 1)
+        self.assertEqual(result["requests"], 50)
+
 
 class RequestSqlTest(unittest.TestCase):
     def test_a_named_agent_takes_its_custom_agent_type(self):
@@ -245,6 +257,14 @@ class AttributionTest(unittest.TestCase):
         row = {"pr_number": None, "weight": 1.0, "campaign": "camp-b", "pr_campaign": None}
         result = _detect([_req(calls=self.CODE, rows=[row])], packets=packets, pr_map=pr_map)
         self.assertEqual(list(result["by_campaign"]), ["camp-b"])
+
+    def test_a_pr_placeholder_row_takes_its_pr_map_campaign(self):
+        row = {"pr_number": 9, "weight": 1.0, "campaign": None, "pr_campaign": "pr-9"}
+        self.assertEqual(overstep._campaign_of_row(row, {9: "x"}, None), "x")
+
+    def test_a_pr_placeholder_with_no_map_entry_and_no_packet_is_unattributed(self):
+        row = {"pr_number": 9, "weight": 1.0, "campaign": None, "pr_campaign": "pr-9"}
+        self.assertEqual(overstep._campaign_of_row(row, {}, None), "unattributed")
 
     def test_a_request_with_no_attribution_and_no_packet_is_unattributed(self):
         result = _detect([_req(calls=self.CODE, rows=[], worktree=None)])

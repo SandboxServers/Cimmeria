@@ -88,13 +88,18 @@ def worktree_name(path):
     return path.replace("\\", "/").rstrip("/").split("/")[-1].lower() if path else None
 
 
-def packet_for(req, packets):
+def packet_for(req, packets, memo=None):
     """The (campaign, packet) a request ran for, or None.
 
     CM-06's matcher reads the agent's name, then the worktree, for a packet ID. An ID that two campaigns hold matches
-    nothing, so only one campaign's packet is returned.
+    nothing, so only one campaign's packet is returned. `memo` ({(worktree, agent name): packet ID}) saves the matcher
+    a call for every request of one session; detect passes one in.
     """
-    pid = packet_of_session({"name": req.get("agent_name")}, req["worktree"], None, [p for _, p in packets], "")
+    memo = {} if memo is None else memo
+    key = (req["worktree"], req.get("agent_name"))
+    if key not in memo:
+        memo[key] = packet_of_session({"name": req.get("agent_name")}, req["worktree"], None, [p for _, p in packets], "")
+    pid = memo[key]
     found = [(campaign, packet) for campaign, packet in packets if packet["id"] == pid]
     return found[0] if len(found) == 1 else None
 
@@ -127,24 +132,27 @@ def opus_research(req, cfg):
     return next((c for c in req["calls"] if c["tool_name"].startswith(tuple(cfg["research_tool_prefixes"]))), None)
 
 
-def implementing(req, packets, cfg):
-    """O3 (Sonnet) or O3b (Opus): a subagent's request that edits a code path in a request whose packet is packet-coder's,
-    size S or M, not escalated. A review fixer's or reviewer's edits are expected, so those roles are not O3 or O3b.
+def implementing(req, packets, cfg, memo=None):
+    """O3 (Sonnet) or O3b (Opus): an edit to a code path in a request whose packet is packet-coder's, size S or M, not
+    escalated. A Sonnet main session counts as O3 too; an Opus main session is O1 (opus_coding), not this. A review
+    fixer's or reviewer's edits are expected, so those roles are not O3 or O3b.
     Returns (rule, call, (campaign, packet)), else None."""
     rule = IMPLEMENTING_RULES.get(family(req["model"]))
-    if rule is None or req["agent_id"] is None or req["role"] in ("fixer", "reviewer"):
+    if rule is None or req["role"] in ("fixer", "reviewer"):
         return None
-    found = packet_for(req, packets)
+    if req["agent_id"] is None and rule != "O3":
+        return None
+    found = packet_for(req, packets, memo)
     if not found or found[1]["implementer"] != "packet-coder" or found[1]["escalated"] or not _small(found[1]["size"]):
         return None
     call = next((c for c in req["calls"] if c["tool_name"] in EDIT_TOOLS and _under(c.get("fingerprint") or "", cfg["code_paths"])), None)
     return (rule, call, found) if call else None
 
 
-def opus_subagent(req, packets):
+def opus_subagent(req, packets, memo=None):
     """O4: an Opus subagent of a documentation or general-purpose type working on a packet. Not priced."""
     return (req["agent_id"] is not None and family(req["model"]) == "opus"
-            and req["agent_type"] in O4_AGENT_TYPES and packet_for(req, packets) is not None)
+            and req["agent_type"] in O4_AGENT_TYPES and packet_for(req, packets, memo) is not None)
 
 
 def _follow_ups(req, streams):
@@ -191,14 +199,17 @@ def _campaign_of_row(row, pr_map, packet_campaign):
     tag = row.get("campaign")
     if tag and not tag.startswith("pr-"):
         return tag
-    return row.get("pr_campaign") or (pr_map or {}).get(row.get("pr_number")) or packet_campaign or UNATTRIBUTED
+    pr_campaign = row.get("pr_campaign")
+    if pr_campaign and not pr_campaign.startswith("pr-"):
+        return pr_campaign
+    return (pr_map or {}).get(row.get("pr_number")) or packet_campaign or UNATTRIBUTED
 
 
-def _shares(req, packets, pr_map):
+def _shares(req, packets, pr_map, memo=None):
     """(campaign, share) per attribution row of a request, the shares normalised to sum to 1. A request with no rows
     is one untagged row, so it takes its packet's campaign or 'unattributed'."""
     rows = req.get("rows") or [{}]
-    found = packet_for(req, packets)
+    found = packet_for(req, packets, memo)
     total = sum(row.get("weight", 1.0) for row in rows)
     packet_campaign = found[0] if found else None
     return [(_campaign_of_row(row, pr_map, packet_campaign), row.get("weight", 1.0) / total) for row in rows]
@@ -261,9 +272,10 @@ def detect(requests, packets, cfg, pr_map=None, version=prices.CURRENT):
     reqs = sorted((dict(r) for r in requests if regime <= parse_ts(r["ts"]) < until), key=lambda r: parse_ts(r["ts"]))
     streams = {}
     fixers = {}
+    memo = {}
     for req in reqs:
         req["role"] = "coordinator" if req["agent_id"] is None else cfg["roles"].get(req["agent_type"])
-        req["shares"] = _shares(req, packets, pr_map)
+        req["shares"] = _shares(req, packets, pr_map, memo)
         stream = streams.setdefault((req["session_id"], req["agent_id"]), [])
         req["seq"] = len(stream)
         stream.append(req)
@@ -279,7 +291,7 @@ def detect(requests, packets, cfg, pr_map=None, version=prices.CURRENT):
         call = opus_research(req, rules)
         if call:
             candidates.append(_hit("O2", [req], call))
-        found = implementing(req, packets, rules)
+        found = implementing(req, packets, rules, memo)
         if found:
             candidates.append(_hit(found[0], [req], found[1]))
     candidates.extend(_hit("O2", cluster, None) for cluster in research_bursts(reqs, rules))
@@ -306,7 +318,7 @@ def detect(requests, packets, cfg, pr_map=None, version=prices.CURRENT):
                                        "usd": round(actual * share, 6),
                                        "tool": call.get("tool_name"), "path_class": _path_class(call)})
         counts[rule] = counts.get(rule, 0) + 1
-    opus_subagents = len({r["agent_id"] for r in reqs if opus_subagent(r, packets)})
+    opus_subagents = len({r["agent_id"] for r in reqs if opus_subagent(r, packets, memo)})
     return {"by_campaign": out, "opus_subagents": opus_subagents, "requests": len(reqs), "hits": counts,
             "fixer_requests": fixers, "caveats": CAVEATS}
 
