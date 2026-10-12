@@ -12,7 +12,7 @@ fn fake_status() -> StatusReply {
         "daemon": {"pid": 4242, "version": "0.1.0", "uptime_s": 60},
         "instances": [
             {"instance": "default", "account": "lab", "bridge_port": 8770, "client_pid": 101,
-             "lease": {"held": true, "lease": {"owner": "lp07-lab", "purpose": "UAT", "remaining_s": 600}}},
+             "lease": {"held": true, "lease": {"id": "LEASE-ID-0001", "owner": "lp07-lab", "purpose": "UAT", "remaining_s": 600}}},
             {"instance": "p2", "account": "lab2", "bridge_port": 8771, "client_pid": 202,
              "lease": {"held": false}},
             {"instance": "p3", "account": null, "bridge_port": 8772, "client_pid": null,
@@ -169,6 +169,53 @@ fn all_stops_the_free_client_and_refuses_the_leased_one_with_exit_3() {
         ]
     );
     assert!(run.err.is_empty());
+}
+
+// new: a leased instance named without --force is refused and never stopped
+#[test]
+fn a_leased_instance_by_name_without_force_exits_3_and_stops_nothing() {
+    let run = stop(Some("default"), false, stopped);
+    assert_eq!(run.code, 3);
+    assert!(
+        run.stopped.is_empty(),
+        "a leased client must not be stopped"
+    );
+    assert_eq!(
+        run.out,
+        vec![
+            "default: leased to lp07-lab (UAT); not stopped (use --force to override)".to_string()
+        ]
+    );
+}
+
+// new: the refusal and the forced warning name the holder, never the lease id
+#[test]
+fn no_line_carries_the_lease_id() {
+    let mut lines = stop(Some("all"), false, stopped).out;
+    lines.extend(stop(Some("default"), true, stopped).out);
+    let fancy_run = go(
+        Some("stop"),
+        Some("default"),
+        true,
+        Some(fake_status()),
+        stopped,
+        &fancy(),
+    );
+    lines.extend(fancy_run.out);
+    assert!(lines.iter().any(|l| l.contains("lp07-lab")));
+    assert!(
+        lines.iter().all(|l| !l.contains("LEASE-ID")),
+        "lines: {lines:?}"
+    );
+}
+
+// new: --force with `all` in any case exits 2 before the daemon is asked
+#[test]
+fn stop_all_in_capitals_with_force_exits_2_before_the_daemon_is_asked() {
+    let run = go(Some("STOP"), Some("ALL"), true, None, stopped, &Ui::plain());
+    assert_eq!(run.code, 2);
+    assert!(!run.asked_daemon);
+    assert!(run.stopped.is_empty());
 }
 
 // new: exit 0 with the forced warning

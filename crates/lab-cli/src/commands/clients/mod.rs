@@ -55,9 +55,14 @@ pub enum Stream {
 /// Runs `lab clients ...`: asks the daemon for its status, stops the clients
 /// that may be stopped, prints one line per instance. Returns the exit code.
 pub fn run(args: &Args, ctx: &Ctx) -> u8 {
-    let mut emit = |stream: Stream, line: String| match stream {
-        Stream::Out => anstream::println!("{line}"),
-        Stream::Err => anstream::eprintln!("{line}"),
+    // A closed pipe must not abort the run half way: a panic here would leave
+    // later clients unstopped and the exit code 101. Write errors are ignored.
+    let mut emit = |stream: Stream, line: String| {
+        use std::io::Write;
+        let _ = match stream {
+            Stream::Out => writeln!(anstream::stdout(), "{line}"),
+            Stream::Err => writeln!(anstream::stderr(), "{line}"),
+        };
     };
     execute(
         args,
