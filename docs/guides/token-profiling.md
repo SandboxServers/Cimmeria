@@ -150,11 +150,11 @@ Each metric, one line:
 - Cycle time: first worker request in a packet's worktree to the PR's merge.
 - Overstep and recoverable cost: work a role did that a cheaper tier should have done, and what it would have cost at that tier.
 
-**Regime.** A packet's regime is the implementer that ran: `haiku` from the switch at `2026-10-10T20:02:54Z` on, `old` before it. Cost compares pure campaigns only. Packet metrics split a mixed campaign by packet.
+**Regime.** A packet's regime is the implementer that ran: `haiku` if a Haiku implementer session ran, else `old`. The switch to Haiku workers was `2026-10-10T20:02:54Z`. A campaign is `haiku` at 70% or more Haiku packets, `old` at none, and `mixed` in between; cost compares pure campaigns only, and packet metrics split a mixed campaign by packet.
 
-**Before you start.** Packets and overstep need a schema v6 database, so re-ingest first. A full `github` run makes about 4,500 `gh` API calls: pass `--cache`, and expect two sittings.
+**Before you start.** `packets` needs a schema v6 database, so re-ingest first. A full `github` run makes roughly 3,500 to 5,500 `gh` API calls for a full run (projected from a sample of tagged PRs): pass `--cache`, and expect two sittings.
 
-**Rerun in order.** Each step writes to a scratch directory outside the repository. Copy each command from `python tools/token-profile/metrics <sub> --help`, and check the flags there before you rely on them.
+**Rerun in order.** Each step except `registry --check` writes to a scratch directory outside the repository. Copy each command from `python tools/token-profile/metrics <sub> --help`, and check the flags there before you rely on them.
 
 1. `python tools/token-profile/metrics registry --repo . --check`
 2. `python tools/token-profile/metrics ledger --repo . --out <scratch>`
@@ -174,7 +174,7 @@ Each metric, one line:
 - The unattributed and unmapped share is reported with every total. Requests and PRs that attribution could not place are not in any campaign.
 - The escaped-defect count is a floor. A defect with no citation is invisible.
 - CI first attempt is optimistic after a force-push.
-- Overstep is an estimate. It reprices the same tokens at the intended tier (implementation to Haiku, research and review to Sonnet) and ignores the extra turns a cheaper model may need. Rule O3b (Opus implementing) is an upper bound, because a ledger may not record a legitimate escalation.
+- Overstep is an estimate. It reprices the same tokens at the intended tier: implementation at Haiku, research at Sonnet. The low end of the range reprices everything at Sonnet. It ignores the extra turns a cheaper model may need. Rule O3b (Opus implementing) is an upper bound, because a ledger may not record a legitimate escalation.
 - A comparison side with fewer than 5 campaigns or 10 packets carries a `low_n` flag. Read flagged figures as indicative only.
 
 **Outputs.** Aggregate data goes to `docs/analysis/campaign-metrics/data/` and the Markdown reports to `docs/analysis/campaign-metrics/reports/`.
