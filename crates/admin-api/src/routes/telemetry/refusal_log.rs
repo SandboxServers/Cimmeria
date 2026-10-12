@@ -1,4 +1,6 @@
-//! One throttled `warn` per refused upload (negative-logging Pattern D).
+//! One throttled row per refused upload (negative-logging Pattern D). The
+//! row is a `warn`, except `busy`, which is `info`: it is retried
+//! back-pressure (503 + Retry-After) and an operator has nothing to act on.
 //!
 //! A refused uploader usually keeps trying: the launcher and the DLL retry
 //! every flush, and an unauthenticated caller can repeat as fast as it
@@ -136,7 +138,8 @@ impl RefusalLog {
     }
 
     /// Log `err`, a refusal of `route` to `who`, unless the throttle holds
-    /// it back.
+    /// it back. At WARN, except `busy`, which is INFO: it is retried
+    /// back-pressure, not a fault.
     pub(super) fn report(&self, route: Route, who: &Uploader, err: &IngestError, now: Instant) {
         let reason = err.reason();
         let peer = who.peer.to_string();
@@ -144,20 +147,32 @@ impl RefusalLog {
         let Decision::Emit { suppressed } = self.decide(reason, subject, now) else {
             return;
         };
-        tracing::warn!(
-            target: "launcher.ingest",
-            route = route.path(),
-            reason,
-            budget = err.budget(),
-            pool = err.pool(),
-            limit = err.limit(),
-            session_id = who.session_id.as_deref(), // nt:id-only telemetry session UUID from the token; it names nothing
-            install_id = who.install_id.as_deref(), // nt:id-only launcher install UUID from the token; it names nothing
-            cimmeria.session_kind = who.session_kind.as_deref(),
-            peer = %who.peer,
-            suppressed,
-            "telemetry upload refused: {reason}"
-        );
+        // `tracing` fixes an event's level at the call site, so one call per
+        // level; the macro keeps the field list in one place.
+        macro_rules! refusal {
+            ($level:expr) => {
+                tracing::event!(
+                    target: "launcher.ingest",
+                    $level,
+                    route = route.path(),
+                    reason,
+                    budget = err.budget(),
+                    pool = err.pool(),
+                    limit = err.limit(),
+                    session_id = who.session_id.as_deref(), // nt:id-only telemetry session UUID from the token; it names nothing
+                    install_id = who.install_id.as_deref(), // nt:id-only launcher install UUID from the token; it names nothing
+                    cimmeria.session_kind = who.session_kind.as_deref(),
+                    peer = %who.peer,
+                    suppressed,
+                    "telemetry upload refused: {reason}"
+                )
+            };
+        }
+        if matches!(err, IngestError::Busy { .. }) {
+            refusal!(tracing::Level::INFO);
+        } else {
+            refusal!(tracing::Level::WARN);
+        }
     }
 
     /// Log a truncated upload (`reason` = `chunk_truncated` or

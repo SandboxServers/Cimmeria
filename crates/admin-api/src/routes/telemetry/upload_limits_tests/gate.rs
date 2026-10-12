@@ -131,6 +131,11 @@ fn a_chunk_is_refused_while_every_slot_is_busy() {
     let err = result.unwrap_err();
     assert!(matches!(err, IngestError::Busy { .. }), "{err:?}");
     assert_eq!(busy_row(&rows).fields["pool"], "route");
+    assert_eq!(
+        busy_row(&rows).level,
+        tracing::Level::INFO,
+        "busy is back-pressure, not a fault"
+    );
     let response = err.into_response();
     assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
     assert_eq!(response.headers()[RETRY_AFTER], "5");
@@ -178,6 +183,46 @@ fn a_session_over_its_upload_rate_is_refused() {
     let response = err.into_response();
     assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
     assert!(response.headers().contains_key(RETRY_AFTER));
+}
+
+/// **A refusal that is not busy still logs at WARN.** A session over its
+/// upload rate is refused `rate_limited`, and that row stays a `warn`: only
+/// `busy` drops to INFO.
+#[test]
+fn a_non_busy_refusal_still_logs_at_warn() {
+    let _env = Env::install();
+    let state = UploadState::new(UploadLimits::default());
+    let policy = UploadPolicy {
+        chunk_per_session: 1,
+        ..UploadPolicy::defaults()
+    };
+    let now = Instant::now();
+    let (result, rows) = run(capture_async(async {
+        chunk_inner(
+            &state,
+            &policy,
+            PEER,
+            chunk_request("sess-warn", small_chunk(1)),
+            now,
+        )
+        .await
+        .unwrap();
+        chunk_inner(
+            &state,
+            &policy,
+            PEER,
+            chunk_request("sess-warn", small_chunk(1)),
+            now,
+        )
+        .await
+    }));
+    let err = result.unwrap_err();
+    assert_eq!(err.reason(), "rate_limited");
+    let row = rows
+        .iter()
+        .find(|r| r.fields.get("reason").map(String::as_str) == Some("rate_limited"))
+        .expect("a rate_limited refusal is logged");
+    assert_eq!(row.level, tracing::Level::WARN, "{row:?}");
 }
 
 /// The per-address rate limit holds across sessions: a caller cannot
@@ -240,6 +285,11 @@ fn an_address_holds_at_most_one_chunk_slot() {
     let err = result.unwrap_err();
     assert!(matches!(err, IngestError::Busy { .. }), "{err:?}");
     assert_eq!(busy_row(&rows).fields["pool"], "peer_share");
+    assert_eq!(
+        busy_row(&rows).level,
+        tracing::Level::INFO,
+        "busy is back-pressure, not a fault"
+    );
     run(chunk_inner(
         &state,
         &policy,
