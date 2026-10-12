@@ -9,7 +9,7 @@ Cimmeria reimplements the server infrastructure — authentication, world simula
 
 ## Status
 
-The project tracks **<!-- gen:gap-count total -->504<!-- /gen:gap-count --> features** across <!-- gen:gap-systems -->45<!-- /gen:gap-systems --> systems against the Rust codebase. **<!-- gen:gap-pct CW+NT+IM 0 -->81%<!-- /gen:gap-pct --> have code** (<!-- gen:gap-count CW+NT+IM -->407<!-- /gen:gap-count --> of <!-- gen:gap-count total -->504<!-- /gen:gap-count -->); **<!-- gen:gap-pct CW 0 -->33%<!-- /gen:gap-pct --> are confirmed working** end-to-end with the live client (<!-- gen:gap-count CW -->167<!-- /gen:gap-count --> of <!-- gen:gap-count total -->504<!-- /gen:gap-count -->), and another <!-- gen:gap-count NT -->138<!-- /gen:gap-count --> are merged and waiting for a client test. These figures are generated from the gap analysis's summary matrix. See the [Gap Analysis](docs/gap-analysis.md) for the full per-system breakdown.
+The project tracks **<!-- gen:gap-count total -->512<!-- /gen:gap-count --> features** across <!-- gen:gap-systems -->45<!-- /gen:gap-systems --> systems against the Rust codebase. **<!-- gen:gap-pct CW+NT+IM 0 -->81%<!-- /gen:gap-pct --> have code** (<!-- gen:gap-count CW+NT+IM -->415<!-- /gen:gap-count --> of <!-- gen:gap-count total -->512<!-- /gen:gap-count -->); **<!-- gen:gap-pct CW 0 -->33%<!-- /gen:gap-pct --> are confirmed working** end-to-end with the live client (<!-- gen:gap-count CW -->167<!-- /gen:gap-count --> of <!-- gen:gap-count total -->512<!-- /gen:gap-count -->), and another <!-- gen:gap-count NT -->146<!-- /gen:gap-count --> are merged and waiting for a client test. These figures are generated from the gap analysis's summary matrix. See the [Gap Analysis](docs/gap-analysis.md) for the full per-system breakdown.
 
 **Tested end-to-end with the game client:**
 - Login and authentication (HTTP SOAP → shard select → Mercury UDP)
@@ -47,7 +47,7 @@ launcher can import its settings and adopt the game it installed. See the
 
 ## Tests & CI
 
-The Rust workspace currently carries **<!-- gen:tests-total -->13,418<!-- /gen:tests-total --> `#[test]` / `#[tokio::test]` cases** across **<!-- gen:tests-files -->2,335<!-- /gen:tests-files --> files**, of which **<!-- gen:tests-ci-gated -->10,629<!-- /gen:tests-ci-gated --> are gated on every PR** (CI excludes the two Tauri editors, the Tauri app, the Windows-only client-telemetry and client-patches cdylibs, and the live research lab; the desktop launcher is a separate workspace with its own workflow). **<!-- gen:tests-live-db -->1,761<!-- /gen:tests-live-db --> are live-DB regression guards** (gated by `require_db_or_skip!`) and **3 are end-to-end PL/pgSQL smoke scripts** (vendor stack, inventory move, progression). GitHub Actions runs five gating jobs on every PR — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo nextest run` (workspace, no DB), and the live-DB tier (`tools/test-live-db.sh`: the lib tests of every crate with live-DB tests) against a `postgres:17.9` service container loaded from `db/database.sql`. nextest's JUnit output is uploaded to Codecov Test Analytics for per-test history and flake detection.
+The Rust workspace currently carries **<!-- gen:tests-total -->12,844<!-- /gen:tests-total --> `#[test]` / `#[tokio::test]` cases** across **<!-- gen:tests-files -->2,216<!-- /gen:tests-files --> files**, of which **<!-- gen:tests-ci-gated -->10,793<!-- /gen:tests-ci-gated --> are gated on every PR** (CI excludes the two Tauri editors, the Tauri app, the Windows-only client-telemetry and client-patches cdylibs, and the live research lab; the desktop launcher is a separate workspace with its own workflow). **<!-- gen:tests-live-db -->1,765<!-- /gen:tests-live-db --> are live-DB regression guards** (gated by `require_db_or_skip!`) and **3 are end-to-end PL/pgSQL smoke scripts** (vendor stack, inventory move, progression). GitHub Actions runs five gating jobs on every PR — `cargo fmt --check`, `cargo clippy -D warnings`, `cargo build`, `cargo nextest run` (workspace, no DB), and the live-DB tier (`tools/test-live-db.sh`: the lib tests of every crate with live-DB tests) against a `postgres:17.9` service container loaded from `db/database.sql`. nextest's JUnit output is uploaded to Codecov Test Analytics for per-test history and flake detection.
 
 For the test-type taxonomy (unit / wire-format / live-DB / smoke / concurrency / chain-replay), when each is appropriate, common gotchas, and the patterns reviewers expect to see, read **[TESTING.md](TESTING.md)**.
 
@@ -122,7 +122,6 @@ flowchart TD
         server["server"]
         start32["start32"]
         supervisor["supervisor"]
-        sgwLauncher["sgw-launcher"]
     end
     subgraph grp_api["Admin and lab APIs"]
         adminApi["admin-api"]
@@ -251,7 +250,6 @@ flowchart TD
     upkObjects --> upk
     wire --> patchWire
     wireLog --> wire
-    sgwLauncher --> launcherCore
     grp_cell --> grp_domain
     grp_base --> grp_foundation
     grp_wire --> grp_domain
@@ -260,7 +258,7 @@ flowchart TD
     grp_test --> grp_foundation
 ```
 
-*Generated by `tools/crate-graph/crate_graph.py` from `cargo metadata`: 60 workspace crates, 239 direct dependency edges (58 drawn crate to crate, after omitting edges already implied by a longer path; edges into the shared "Domain and engine" and "Protocol and foundation" layers are drawn as 6 layer-to-layer arrows). Dev-dependencies are not drawn. The `regen-docs` workflow regenerates this block on `main` every six hours (`python tools/docs-gen/regen.py`); `crate_graph.py --full` draws every edge.*
+*Generated by `tools/crate-graph/crate_graph.py` from `cargo metadata`: 59 workspace crates, 238 direct dependency edges (57 drawn crate to crate, after omitting edges already implied by a longer path; edges into the shared "Domain and engine" and "Protocol and foundation" layers are drawn as 6 layer-to-layer arrows). Dev-dependencies are not drawn. The `regen-docs` workflow regenerates this block on `main` every six hours (`python tools/docs-gen/regen.py`); `crate_graph.py --full` draws every edge.*
 
 <!-- crate-graph:end -->
 
