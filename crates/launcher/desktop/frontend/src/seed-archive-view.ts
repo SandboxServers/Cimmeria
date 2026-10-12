@@ -34,6 +34,12 @@ export function seedArchiveText(s:SeedArchiveState):string {
 }
 /** True when the install area should show the archive line (idle needs no line there). */
 export const seedArchiveShowsLine=(s:SeedArchiveState)=>s.phase!==null||s.error!==null||!!s.status?.chosen;
+/** The Downloads question Settings and the install area both ask (AI-16), or null when no offer is asked. */
+export function seedArchiveOfferText(s:SeedArchiveState):string|null{
+ const found=s.status?.offer;
+ if(!found||s.status?.chosen||s.error||s.phase!==null)return null;
+ return `Found ${found.file_name} in Downloads. Use it?`;
+}
 export const makeSeedArchiveRuntime=(invoke:Invoke,pollMillis:number)=>ManagedRuntime.make(Layer.effect(SeedArchive,makeSeedArchiveWorkflow(pollMillis)).pipe(
  Layer.provide(seedArchiveBridgeLayer((command,args)=>invoke(command,args)))));
 export type SeedArchiveRuntime=ReturnType<typeof makeSeedArchiveRuntime>;
@@ -52,25 +58,31 @@ export function mountSeedArchive(document:Document,invoke:Invoke,context:PanelCo
  const heading=make('h3','seed-archive-title');heading.textContent='Downloaded game archive';
  const status=make('p','seed-archive-status');status.setAttribute('role','status');status.setAttribute('aria-live','polite');
  const detail=make('p','seed-archive-file');detail.className='caption';
+ const offer=make('p','seed-archive-offer');offer.className='caption';offer.hidden=true;
+ const yes=make('button','seed-archive-accept');yes.textContent='Yes';yes.hidden=true;
  const choose=make('button','seed-archive-choose');choose.textContent='Use a downloaded game archive…';
  const cancel=make('button','seed-archive-cancel');cancel.textContent='Cancel check';cancel.hidden=true;
  const forget=make('button','seed-archive-forget');forget.textContent='Forget archive';forget.hidden=true;
- panel.textContent='';panel.append(heading,status,detail,choose,cancel,forget);
+ panel.textContent='';panel.append(heading,status,detail,offer,yes,choose,cancel,forget);
  const archive=acquireSeedArchive(invoke,pollMillis);const runtime=archive.runtime;
  let current:SeedArchiveState={status:null,phase:null,cancelling:false,error:null};let disposed=false;
  // The button that was pressed shows busy at once, before the workflow confirms it.
- let pressed:'choose'|'cancel'|'forget'|null=null;let mutation:Promise<void>=Promise.resolve();
+ let pressed:'choose'|'accept'|'cancel'|'forget'|null=null;let mutation:Promise<void>=Promise.resolve();
  const render=()=>{if(disposed)return;const s=current;const busy=s.phase!==null||pressed!==null;
   status.textContent=seedArchiveText(s);
   const chosen=s.status?.chosen;
   detail.textContent=chosen&&!s.error&&s.phase===null?`${chosen.file_name}, ${mb(chosen.size)} MB`:'';
+  const question=seedArchiveOfferText(s);
+  offer.hidden=question===null;offer.textContent=question??'';
+  yes.hidden=question===null;yes.disabled=busy;yes.textContent=pressed==='accept'?'Checking…':'Yes';
+  yes.setAttribute('aria-busy',String(busy));
   choose.disabled=busy;choose.textContent=s.phase==='choosing'||pressed==='choose'?'Choosing…':'Use a downloaded game archive…';
   choose.setAttribute('aria-busy',String(busy));
   cancel.hidden=s.phase!=='checking';cancel.disabled=s.cancelling||pressed==='cancel';
   forget.hidden=!chosen||s.phase==='checking';forget.disabled=busy;
  };
  const watcher=runtime.runFork(Effect.flatMap(SeedArchive,s=>Stream.runForEach(s.changes,value=>Effect.sync(()=>{current=value;render();}))));
- const run=(kind:'choose'|'cancel'|'forget'|null,action:(s:Effect.Success<ReturnType<typeof makeSeedArchiveWorkflow>>)=>Effect.Effect<unknown,SeedArchiveFailure>,after:()=>void=()=>{})=>{
+ const run=(kind:'choose'|'accept'|'cancel'|'forget'|null,action:(s:Effect.Success<ReturnType<typeof makeSeedArchiveWorkflow>>)=>Effect.Effect<unknown,SeedArchiveFailure>,after:()=>void=()=>{})=>{
   if(disposed)return mutation;pressed=kind;render();
   mutation=runtime.runPromise(Effect.flatMap(SeedArchive,s=>Effect.result(action(s)))).then(result=>{if(Result.isSuccess(result)&&!disposed)after();})
    .finally(()=>{pressed=null;render();})
@@ -79,6 +91,7 @@ export function mountSeedArchive(document:Document,invoke:Invoke,context:PanelCo
   return mutation;
  };
  choose.addEventListener('click',()=>{if(!choose.disabled)void run('choose',s=>s.choose,()=>{void context.refresh();});});
+ yes.addEventListener('click',()=>{if(!yes.disabled)void run('accept',s=>s.accept,()=>{void context.refresh();});});
  cancel.addEventListener('click',()=>{if(!cancel.disabled)void run('cancel',s=>s.cancel);});
  forget.addEventListener('click',()=>{if(!forget.disabled)void run('forget',s=>s.forget,()=>{void context.refresh();});});
  const ready=run(null,s=>s.inspect);

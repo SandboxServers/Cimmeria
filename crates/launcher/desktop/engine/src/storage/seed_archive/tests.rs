@@ -78,3 +78,53 @@ async fn install_uses_remembered_archive_without_downloading_seed() {
         "the player's archive is copied, not moved"
     );
 }
+
+mod downloads_offer {
+    use super::*;
+    use cimmeria_launcher_core::manifest::SeedEntry;
+
+    fn seed(size: u64) -> SeedEntry {
+        SeedEntry {
+            blob: "https://archive.org/download/sgw/Stargate%20Worlds%20Game.rar".to_string(),
+            size,
+            sha256: "22".repeat(32),
+        }
+    }
+
+    #[test]
+    fn archive_name_is_the_decoded_last_segment() {
+        assert_eq!(
+            archive_file_name("https://archive.org/download/sgw/Stargate%20Worlds%20Game.rar?x=1")
+                .as_deref(),
+            Some("Stargate Worlds Game.rar")
+        );
+        assert_eq!(
+            archive_file_name("https://archive.org/download/sgw/%2e%2e%2f"),
+            None
+        );
+    }
+
+    #[test]
+    fn exact_size_and_name_is_offered() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("Stargate Worlds Game.rar");
+        std::fs::write(&file, b"0123456789").unwrap();
+        assert_eq!(find_downloads_offer(dir.path(), &seed(10)), Some(file));
+    }
+
+    #[test]
+    fn wrong_size_is_not_offered() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("Stargate Worlds Game.rar"), b"0123456789").unwrap();
+        assert_eq!(find_downloads_offer(dir.path(), &seed(11)), None);
+    }
+
+    #[test]
+    fn subfolder_is_not_searched() {
+        let dir = tempfile::tempdir().unwrap();
+        let sub = dir.path().join("old");
+        std::fs::create_dir(&sub).unwrap();
+        std::fs::write(sub.join("Stargate Worlds Game.rar"), b"0123456789").unwrap();
+        assert_eq!(find_downloads_offer(dir.path(), &seed(10)), None);
+    }
+}

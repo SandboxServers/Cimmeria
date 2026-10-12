@@ -56,6 +56,25 @@ and removes `seed-archive.json`. The archive file itself is untouched. As with
 a switch, forgetting applies from the next seed step: a seed step already
 running keeps the archive it started with.
 
+## Offer from Downloads
+
+While no archive is chosen, the launcher looks for the seed in the top level of
+the player's Downloads folder only. It offers a regular file whose name is the
+signed seed's archive file name and whose size is exactly the seed's size.
+Subfolders, links and other files are never offered. Only the name and size are
+compared: nothing in the file is read or hashed before the player presses Yes.
+
+Settings and the install area both show the offer with its exact name and size,
+asking `Found <name> in Downloads. Use it?` with a Yes button. Yes runs the same
+verification as choosing the file, so the file is checked before it is used. The
+webview never receives a path, only the name and size.
+
+The offer is cached for the session. Downloads is scanned on the first status
+check after the panel mounts and again after Forget, not on every poll. Status
+checks fetch the signed release only while no seed is cached, and wait at least
+a minute after a failed fetch. Accepting an offer always fetches the release,
+because verification needs it.
+
 ## Rehosting
 
 D-AI5: the seed is never rehosted. The launcher does not upload or offer the

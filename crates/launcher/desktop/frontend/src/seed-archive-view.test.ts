@@ -13,8 +13,9 @@ const id='d539d049-61b7-4c82-b3d7-cb9b7a991adc';
 const native:SeedArchiveStatus['native']={schema_version:1,requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},
   operation:{schema_version:1,revision:0,operation:null},
   preferences:{schema_version:2,revision:0,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true}};
-const idle=():SeedArchiveStatus=>({schema_version:1,native,chosen:null,verifying:null,last_error:null});
+const idle=():SeedArchiveStatus=>({schema_version:1,native,chosen:null,offer:null,verifying:null,last_error:null});
 const chosen=():SeedArchiveStatus=>({...idle(),chosen:{file_name:'Stargate.rar',size:40*MB}});
+const offered=():SeedArchiveStatus=>({...idle(),offer:{file_name:'Stargate.rar',size:40*MB}});
 const checking=(current:number):SeedArchiveStatus=>({...idle(),verifying:{phase:'download',current,total:400*MB}});
 const installIdle=():InstallStatus=>({schema_version:1,install_supported:true,can_resume:true,can_reconcile:true,can_retry:false,uninstall:null,runtime_setup:null,progress:null,outcome:null,native:{schema_version:1,
   requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},operation:{schema_version:1,revision:0,operation:null},preferences:{schema_version:2,revision:1,
@@ -122,6 +123,28 @@ test('hash_mismatch says the file was not used and shows no chosen file',{timeou
   }finally{await app.dispose();}
 });
 
+test('a Downloads offer asks first; Yes sends accept_offer and shows busy at once',{timeout:5000},async()=>{
+  const ui=dom();const sent:string[]=[];let open!:(s:SeedArchiveStatus)=>void;
+  const gate=new Promise<SeedArchiveStatus>(resolve=>{open=resolve;});
+  const invoke=async(command:string,args?:Record<string,unknown>)=>{
+    if(command!=='seed_archive_command')return idle();
+    sent.push(requestOf(args));
+    return requestOf(args)==='accept_offer'?gate:offered();
+  };
+  const app=mountSeedArchive(ui.document,invoke,panelContext(),1);
+  try{await app.ready;
+    assert.equal(ui.text('seed-archive-offer'),'Found Stargate.rar in Downloads. Use it?');
+    assert.equal(ui.get('seed-archive-accept').hidden,false);
+    ui.click('seed-archive-accept');
+    await until(()=>ui.get('seed-archive-accept').disabled);
+    assert.equal(ui.get('seed-archive-accept').textContent,'Checking…');
+    assert.equal(sent[sent.length-1],'accept_offer');
+    open(chosen());await app.settled();
+    assert.equal(ui.get('seed-archive-accept').hidden,true);
+    assert.equal(ui.text('seed-archive-status'),using);
+  }finally{open(idle());await app.dispose();}
+});
+
 test('a choice made in the install area shows in Settings at once',{timeout:5000},async()=>{
   const ui=dom();let open!:(s:SeedArchiveStatus)=>void;
   const gate=new Promise<SeedArchiveStatus>(resolve=>{open=resolve;});
@@ -136,5 +159,29 @@ test('a choice made in the install area shows in Settings at once',{timeout:5000
     await until(()=>ui.text('install-seed-archive-status')===using);
     assert.equal(ui.text('seed-archive-status'),using);assert.equal(ui.text('seed-archive-file'),'Stargate.rar, 40 MB');
     assert.equal(ui.get('seed-archive-forget').hidden,false);
+  }finally{open(idle());await install.dispose();await settings.dispose();}
+});
+
+test('the install area asks the same Downloads question, and its Yes accepts the offer',{timeout:5000},async()=>{
+  const ui=dom();const sent:string[]=[];let open!:(s:SeedArchiveStatus)=>void;
+  const gate=new Promise<SeedArchiveStatus>(resolve=>{open=resolve;});
+  const invoke=async(command:string,args?:Record<string,unknown>)=>{
+    if(command==='install_command')return installIdle();
+    if(command!=='seed_archive_command')return idle();
+    sent.push(requestOf(args));
+    return requestOf(args)==='accept_offer'?gate:offered();
+  };
+  // Settings starts the shared status check, as it does in the app; the install area shows its result.
+  const settings=mountSeedArchive(ui.document,invoke,panelContext(),1);
+  const install=mountInstall(ui.document,invoke,()=>id);
+  try{await settings.ready;await install.ready;
+    assert.equal(ui.text('install-seed-archive-offer'),'Found Stargate.rar in Downloads. Use it?');
+    assert.equal(ui.get('install-seed-archive-accept').hidden,false);
+    ui.click('install-seed-archive-accept');
+    await until(()=>ui.get('install-seed-archive-accept').disabled);
+    assert.equal(sent[sent.length-1],'accept_offer');
+    open(chosen());
+    await until(()=>ui.text('install-seed-archive-status')===using);
+    assert.equal(ui.get('install-seed-archive-accept').hidden,true);
   }finally{open(idle());await install.dispose();await settings.dispose();}
 });

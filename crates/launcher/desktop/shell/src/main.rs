@@ -444,7 +444,29 @@ async fn seed_archive_command(
     state: tauri::State<'_, Arc<NativeHost>>,
 ) -> Result<SeedArchiveStatus, SeedArchiveError> {
     let host = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || host.seed_archive_command(request))
+    // Accepting an offer always fetches the signed release to verify it. Inspect
+    // fetches only while no seed is cached and a failed fetch has waited a minute,
+    // so the 500 ms poll makes no network request. Cancel and Forget never fetch.
+    let release = match request {
+        SeedArchiveCommand::AcceptOffer { .. } => Some(
+            cimmeria_launcher_engine::catalog::fetch_release()
+                .await
+                .map_err(|_| SeedArchiveError::ReleaseUnavailable)?,
+        ),
+        SeedArchiveCommand::Inspect { .. } if host.seed_archive_release_wanted() => {
+            match cimmeria_launcher_engine::catalog::fetch_release().await {
+                Ok(release) => Some(release),
+                Err(_) => {
+                    host.seed_archive_release_failed();
+                    None
+                }
+            }
+        }
+        SeedArchiveCommand::Inspect { .. }
+        | SeedArchiveCommand::Cancel { .. }
+        | SeedArchiveCommand::Forget { .. } => None,
+    };
+    tauri::async_runtime::spawn_blocking(move || host.seed_archive_command(request, release))
         .await
         .map_err(|_| SeedArchiveError::Io)?
 }
@@ -471,9 +493,11 @@ async fn choose_seed_archive(
     else {
         // A cancelled dialog changes nothing and reports the current status.
         let inspect = SeedArchiveCommand::Inspect { schema_version: 1 };
-        return tauri::async_runtime::spawn_blocking(move || host.seed_archive_command(inspect))
-            .await
-            .map_err(|_| SeedArchiveError::Io)?;
+        return tauri::async_runtime::spawn_blocking(move || {
+            host.seed_archive_command(inspect, None)
+        })
+        .await
+        .map_err(|_| SeedArchiveError::Io)?;
     };
     // Only the fixed, signed catalog names the release; the webview cannot.
     let release = cimmeria_launcher_engine::catalog::fetch_release()

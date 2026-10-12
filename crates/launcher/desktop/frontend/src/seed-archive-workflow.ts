@@ -41,6 +41,18 @@ export const makeSeedArchiveWorkflow=(pollMillis:number=500)=>Effect.gen(functio
    Effect.tapError(e=>patch({error:e.code})),
    Effect.ensuring(patch({phase:null,cancelling:false})));
  });
+ // Sent once, like choose: the native side verifies the Downloads copy it already found.
+ const accept=Effect.gen(function*(){
+  const before=yield* Ref.get(state);
+  if(before.phase!==null)return yield* Effect.fail(busy());
+  yield* publish({...before,phase:'checking',error:null});
+  return yield* bridge.call({command:'accept_offer',schema_version:1}).pipe(
+   Effect.tap(s=>patch({status:s})),
+   Effect.flatMap(follow),
+   Effect.tap(s=>patch({status:s,error:s.last_error})),
+   Effect.tapError(e=>patch({error:e.code})),
+   Effect.ensuring(patch({phase:null,cancelling:false})));
+ });
  // Allowed only while a check runs, and only once per check.
  const cancel=Effect.gen(function*(){
   const before=yield* Ref.get(state);
@@ -60,6 +72,6 @@ export const makeSeedArchiveWorkflow=(pollMillis:number=500)=>Effect.gen(functio
  return {
   inspect:gated('inspecting',{command:'inspect',schema_version:1}),
   forget:gated('forgetting',{command:'forget',schema_version:1}),
-  choose,cancel,snapshot:Ref.get(state),changes:Stream.fromPubSub(events),
+  choose,accept,cancel,snapshot:Ref.get(state),changes:Stream.fromPubSub(events),
  };
 });

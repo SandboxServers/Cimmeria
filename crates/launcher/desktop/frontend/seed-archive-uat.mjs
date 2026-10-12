@@ -10,8 +10,9 @@ const MB=1024*1024;
 const native={schema_version:1,requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},
  operation:{schema_version:1,revision:0,operation:null},
  preferences:{schema_version:2,revision:0,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true}};
-const idle=()=>({schema_version:1,native,chosen:null,verifying:null,last_error:null});
+const idle=()=>({schema_version:1,native,chosen:null,offer:null,verifying:null,last_error:null});
 const chosen=()=>({...idle(),chosen:{file_name:'Stargate.rar',size:40*MB}});
+const offered=()=>({...idle(),offer:{file_name:'Stargate.rar',size:40*MB}});
 const checking=megabytes=>({...idle(),verifying:{phase:'download',current:megabytes*MB,total:400*MB}});
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 
@@ -33,6 +34,7 @@ async function invoke(command,args){
 const context={snapshot:()=>undefined,onSnapshot:()=>()=>{},refresh:async()=>{refreshes++;}};
 const press=id=>document.getElementById(id).dispatchEvent(new window.Event('click'));
 const app=mountSeedArchive(document,invoke,context,1);
+let active=app;
 const settle=async()=>{await app.settled();await sleep(20);};
 try{
  await app.ready;await sleep(20);print('start');
@@ -51,5 +53,14 @@ try{
  assert.match(line(),/^Already have the game archive/);
  assert.equal(calls.filter(c=>c==='choose').length,3);
  assert.equal(calls.filter(c=>c==='forget').length,1);
+ // A matching file in Downloads is offered on mount; Yes verifies it, then it is used.
+ await app.dispose();
+ plan=[offered()];
+ active=mountSeedArchive(document,invoke,context,1);await active.ready;print('offer');
+ assert.equal(document.getElementById('seed-archive-offer').textContent,'Found Stargate.rar in Downloads. Use it?');
+ plan=[checking(100),checking(300),chosen()];
+ press('seed-archive-accept');await active.settled();await sleep(20);print('accepted');
+ assert.match(line(),/^Using Stargate\.rar \(verified\)/);
+ assert.equal(calls.filter(c=>c==='accept_offer').length,1);
  console.log(`seed-archive UAT passed (Settings refreshed ${refreshes} times)`);
-}finally{await app.dispose();}
+}finally{await active.dispose();}
