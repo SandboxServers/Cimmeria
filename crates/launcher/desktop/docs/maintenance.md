@@ -58,7 +58,7 @@ An install adopted in place on Windows (D-LX12) is never detached or deleted as 
 whole: Uninstall removes only the entries the launcher manages there (`game`, its
 Repair and Update work and backups, `content-ready.json` and the owner marker
 last), and files the release does not list stay. See
-[In-place adoption on Windows](migration.md#in-place-adoption-on-windows).
+[In-place adoption on Windows](migration.md#adopting-an-existing-folder).
 
 ## Repair
 

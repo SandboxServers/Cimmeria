@@ -3,7 +3,7 @@ use crate::client_setup::login_servers::default_servers;
 use wiremock::{matchers::path, Mock, MockServer, ResponseTemplate};
 
 pub(crate) use super::fixtures::{archive, verified};
-pub(super) fn setup(
+pub(crate) fn setup(
     release: &VerifiedRelease,
 ) -> (tempfile::TempDir, Arc<Mutex<DesktopState>>, Uuid) {
     let root = tempfile::tempdir().unwrap();
@@ -17,7 +17,7 @@ pub(super) fn setup(
         .unwrap();
     (root, Arc::new(Mutex::new(state)), id)
 }
-pub(super) async fn outcome(mut receiver: watch::Receiver<Option<Outcome>>) -> Outcome {
+pub(crate) async fn outcome(mut receiver: watch::Receiver<Option<Outcome>>) -> Outcome {
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             if let Some(result) = *receiver.borrow_and_update() {
@@ -296,6 +296,7 @@ async fn extraction_checkpoint_cancellation_persists_cancelled_and_retains_parti
         &release,
         &format!("{}/manifest.json", server.uri()),
         &reqwest::Client::new(),
+        cimmeria_launcher_core::seed_source::SeedSourceHandle::download(),
         cancel,
         progress,
     )

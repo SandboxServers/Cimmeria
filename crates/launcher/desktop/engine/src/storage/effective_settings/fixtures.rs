@@ -119,7 +119,10 @@ impl Legacy {
     pub fn request(&self, state: &DesktopState) -> adoption::PreviewRequest {
         let (body, signature) = self.release.evidence();
         adoption::PreviewRequest {
-            import_digest: state.legacy_import().unwrap().unwrap().confirmation,
+            source: adoption::SourceRequest::Legacy {
+                import_digest: state.legacy_import().unwrap().unwrap().confirmation,
+            },
+            mode: adoption::AdoptionMode::Copy,
             destination: self.destination(),
             operation_revision: state.operations().snapshot().revision,
             preferences_revision: state.preferences().revision,
@@ -191,6 +194,7 @@ pub fn choices() -> adoption::Choices {
         normalize_managed_files: true,
         accept_unavailable_game_telemetry: true,
         old_game_closed: true,
+        replace_modified_files: false,
     }
 }
 

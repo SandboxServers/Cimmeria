@@ -12,6 +12,7 @@
 pub mod client_changes;
 pub mod client_paths;
 pub mod client_setup;
+pub mod file_index;
 pub mod install;
 pub mod install_layout;
 pub mod install_progress;
@@ -21,6 +22,7 @@ pub mod manifest;
 pub mod overlay_meta;
 pub mod overlay_pack;
 pub mod patch_dest;
+pub mod seed_source;
 pub mod state;
 pub mod telemetry;
 pub mod unpack;

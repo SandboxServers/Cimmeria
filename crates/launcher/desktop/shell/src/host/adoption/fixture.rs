@@ -240,6 +240,7 @@ pub(super) fn confirmation(review: &Review) -> AdoptionCommand {
         normalize_managed_files: true,
         accept_unavailable_game_telemetry: true,
         old_game_closed: true,
+        replace_modified_files: false,
         confirmed: true,
     }
 }

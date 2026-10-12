@@ -23,13 +23,19 @@ pub struct InjectionPolicy {
 
 /// The reviewed settings of a published adoption. The plan alone is not trusted:
 /// the installed index names the import digest, and the retained import record
-/// re-derives the same settings and digest from the exact legacy JSON.
+/// re-derives the same settings and digest from the exact legacy JSON. A folder
+/// adoption has no import to bind: it launches like a fresh install, so `None`.
 pub(super) fn launch_binding(
     state: &DesktopState,
     intent: &InstallIntent,
     provenance: &Provenance,
-) -> Result<LaunchBinding, StorageError> {
+) -> Result<Option<LaunchBinding>, StorageError> {
     let plan = super::adoption::published_plan(state, intent, provenance)?;
+    if let super::adoption::AdoptionSourceRef::Folder(_) =
+        plan.source().map_err(|_| StorageError::Corrupt)?
+    {
+        return Ok(None);
+    }
     let imported = state
         .legacy_import()
         .map_err(|error| match error {
@@ -37,11 +43,12 @@ pub(super) fn launch_binding(
             _ => StorageError::Corrupt,
         })?
         .ok_or(StorageError::Corrupt)?;
-    if imported != plan.imported
-        || imported.confirmation != provenance.import_digest
-        || imported.identity.install_id != provenance.legacy_install_id
-        || plan.report.requested_config != imported.config
-        || plan.report.imported_identity != imported.identity
+    // A folder adoption has no saved import to bind, so its plan never matches here.
+    if plan.imported.as_ref() != Some(&imported)
+        || provenance.import_digest.as_ref() != Some(&imported.confirmation)
+        || provenance.legacy_install_id != Some(imported.identity.install_id)
+        || plan.report.requested_config.as_ref() != Some(&imported.config)
+        || plan.report.imported_identity.as_ref() != Some(&imported.identity)
     {
         return Err(StorageError::Corrupt);
     }
@@ -61,9 +68,9 @@ pub(super) fn launch_binding(
     if !reviewed.eq(intent.login_servers.iter().map(|s| (&s.name, &s.url))) {
         return Err(StorageError::Corrupt);
     }
-    Ok(LaunchBinding {
+    Ok(Some(LaunchBinding {
         client_patches_enabled: config.client_patches.enabled,
-    })
+    }))
 }
 
 impl DesktopState {
@@ -71,7 +78,7 @@ impl DesktopState {
     pub fn effective_launch_binding(&self) -> Result<Option<LaunchBinding>, StorageError> {
         match self.installed_for_launch()? {
             Some((installed, Some(provenance))) => {
-                launch_binding(self, &installed.intent, &provenance).map(Some)
+                launch_binding(self, &installed.intent, &provenance)
             }
             _ => Ok(None),
         }

@@ -18,6 +18,7 @@ use crate::{
     launcher_summary::TimedPhase,
     OperationState,
 };
+use cimmeria_launcher_core::seed_source::SeedSourceHandle;
 use futures_util::FutureExt;
 use std::{io::Write, panic::AssertUnwindSafe, sync::Mutex, time::Duration};
 use tokio::sync::watch;
@@ -78,7 +79,7 @@ fn download_client() -> Result<reqwest::Client, StorageError> {
         .map_err(|_| StorageError::Io)
 }
 
-fn dispatch_with(
+pub(crate) fn dispatch_with(
     state: Arc<Mutex<DesktopState>>,
     id: Uuid,
     release: VerifiedRelease,
@@ -86,7 +87,7 @@ fn dispatch_with(
     http: reqwest::Client,
 ) -> Result<Worker, IntentError> {
     let runtime = tokio::runtime::Handle::try_current().map_err(|_| StorageError::Io)?;
-    let (intent, state_root) = {
+    let (intent, state_root, seed_source) = {
         let mut owner = state.lock().map_err(|_| StorageError::Io)?;
         let intent = owner.install_intent()?.ok_or(StorageError::Corrupt)?;
         if intent.operation_id != id || intent.manifest_digest != release.digest() {
@@ -99,7 +100,8 @@ fn dispatch_with(
         owner
             .operations_mut()?
             .observe(id, OperationState::Running)?;
-        (intent, owner.directory.root.clone())
+        let seed_source = owner.seed_source_for(&release);
+        (intent, owner.directory.root.clone(), seed_source)
     };
     Ok(spawn_worker(
         runtime,
@@ -111,6 +113,7 @@ fn dispatch_with(
             release,
             manifest_url,
             http,
+            seed_source,
             ownership: None,
             execution: Execution::Native,
         },
@@ -128,6 +131,7 @@ struct TaskInputs {
     release: VerifiedRelease,
     manifest_url: String,
     http: reqwest::Client,
+    seed_source: SeedSourceHandle,
     ownership: Option<File>,
     execution: Execution,
 }
@@ -152,9 +156,12 @@ fn spawn_worker(
             release,
             manifest_url,
             http,
+            seed_source,
             ownership,
             execution,
         } = input;
+        // Kept after the install moves `seed_source`, to see a failed local copy.
+        let seed_probe = seed_source.clone();
         let outcome = AssertUnwindSafe(async {
             #[cfg(target_os = "macos")]
             if let Execution::Wine(helper) = execution {
@@ -165,6 +172,7 @@ fn spawn_worker(
                     &release,
                     &manifest_url,
                     &http,
+                    seed_source,
                     helper,
                     owned_cancel,
                     progress,
@@ -180,6 +188,7 @@ fn spawn_worker(
                         &release,
                         &manifest_url,
                         &http,
+                        seed_source,
                         owned_cancel,
                         progress,
                     )
@@ -192,6 +201,7 @@ fn spawn_worker(
                         &release,
                         &manifest_url,
                         &http,
+                        seed_source,
                         owned_cancel,
                         progress,
                     )
@@ -205,6 +215,13 @@ fn spawn_worker(
         let (outcome, report) = outcome;
         if let (Some(report), Ok(mut owner)) = (report, owned_state.lock()) {
             owner.stash_install_report(id, report);
+        }
+        // A remembered archive that could not be copied is forgotten, so the
+        // next attempt downloads instead of failing on the same file again.
+        if let Ok(mut owner) = owned_state.lock() {
+            if owner.forget_if_unusable(&seed_probe).is_err() {
+                tracing::warn!("forgetting the unusable seed archive failed");
+            }
         }
         let published = publish(&owned_state, id, outcome);
         result.send_replace(Some(published));
@@ -304,13 +321,23 @@ async fn install_owned(
     release: &VerifiedRelease,
     manifest_url: &str,
     http: &reqwest::Client,
+    seed_source: SeedSourceHandle,
     cancel: CancellationToken,
     progress: ProgressSink,
 ) -> Staged {
     let Ok(_ownership) = claim(intent, state_root) else {
         return (Outcome::DestinationUnavailable, None);
     };
-    install_stage(intent, release, manifest_url, http, cancel, progress).await
+    install_stage(
+        intent,
+        release,
+        manifest_url,
+        http,
+        seed_source,
+        cancel,
+        progress,
+    )
+    .await
 }
 
 /// How a stage ended, with `install_all`'s report when it got that far
@@ -322,6 +349,7 @@ async fn install_stage(
     release: &VerifiedRelease,
     manifest_url: &str,
     http: &reqwest::Client,
+    seed_source: SeedSourceHandle,
     cancel: CancellationToken,
     progress: ProgressSink,
 ) -> Staged {
@@ -341,6 +369,7 @@ async fn install_stage(
         cancel,
         progress,
         http,
+        seed_source: &seed_source,
     })
     .await;
     (finish_stage(intent, release, &stage, result), Some(report))
@@ -454,7 +483,7 @@ pub(super) fn content_valid(stage: &Path, release: &VerifiedRelease) -> bool {
 }
 
 #[cfg(test)]
-pub(super) mod tests;
+pub(crate) mod tests;
 
 #[cfg(test)]
 mod export_tests;

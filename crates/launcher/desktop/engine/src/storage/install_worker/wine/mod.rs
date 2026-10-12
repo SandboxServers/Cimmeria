@@ -4,6 +4,7 @@ use crate::{
     mac_runtime::RuntimeError,
     mac_wine::{WineError, WineSeedExtractor},
 };
+use cimmeria_launcher_core::seed_source::SeedSourceHandle;
 
 /// Bind an admitted Wine intent to the packaged Windows helper. This native API
 /// accepts no webview executable or environment. The shell must supply its
@@ -46,6 +47,7 @@ fn dispatch_with(
         TaskInputs {
             intent,
             state_root: owner.directory.root.clone(),
+            seed_source: owner.seed_source_for(&release),
             release,
             manifest_url,
             http,
@@ -63,6 +65,7 @@ pub(super) async fn install(
     release: &VerifiedRelease,
     manifest_url: &str,
     http: &reqwest::Client,
+    seed_source: SeedSourceHandle,
     helper: PathBuf,
     cancel: CancellationToken,
     progress: ProgressSink,
@@ -76,6 +79,7 @@ pub(super) async fn install(
         release,
         manifest_url,
         http,
+        seed_source,
         helper,
         cancel,
         progress,
@@ -89,6 +93,7 @@ async fn install_claimed(
     release: &VerifiedRelease,
     manifest_url: &str,
     http: &reqwest::Client,
+    seed_source: SeedSourceHandle,
     helper: PathBuf,
     cancel: CancellationToken,
     progress: ProgressSink,
@@ -121,6 +126,7 @@ async fn install_claimed(
             cancel,
             progress,
             http,
+            seed_source: &seed_source,
         },
         install::SeedBackend {
             extractor: &adapter,

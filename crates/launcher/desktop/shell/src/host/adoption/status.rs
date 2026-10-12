@@ -70,11 +70,24 @@ impl NativeHost {
         } else {
             (Activity::Idle, None)
         };
+        let backend = self.adoption_backend();
+        // The modes this build can offer: a verified copy wherever a backend runs
+        // (macOS only through its helper), and the folder itself where the
+        // in-place backend runs too (Windows and Linux).
+        let modes = match backend {
+            Backend::Available => vec![adoption::AdoptionMode::Copy],
+            Backend::InPlace => vec![
+                adoption::AdoptionMode::InPlace,
+                adoption::AdoptionMode::Copy,
+            ],
+            Backend::HelperUnavailable => Vec::new(),
+        };
         Ok(AdoptionStatus {
             schema_version: 1,
             native: facts.native,
-            backend: self.adoption_backend(),
+            backend,
             imported: facts.imported,
+            modes,
             activity,
             review: adoption
                 .session
@@ -107,7 +120,7 @@ impl NativeHost {
                         &preview,
                         state.operations().snapshot().revision,
                         state.preferences().revision,
-                    );
+                    )?;
                     drop(state);
                     adoption.session = Some(Session { preview, review });
                     adoption.last_error = None;

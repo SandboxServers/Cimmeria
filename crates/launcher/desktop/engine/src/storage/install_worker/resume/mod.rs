@@ -77,6 +77,7 @@ fn resume_with(
         TaskInputs {
             intent,
             state_root: owner.directory.root.clone(),
+            seed_source: owner.seed_source_for(&release),
             release,
             manifest_url,
             http,

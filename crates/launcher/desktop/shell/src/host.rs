@@ -26,8 +26,10 @@ pub use launch::{LaunchCommand, LaunchStatus};
 pub use migration::{MigrationCommand, MigrationStatus};
 mod repair;
 mod runtime_setup;
+mod seed_archive;
 mod summary;
 pub use install::{InstallCommand, InstallStatus, JobError};
+pub use seed_archive::{SeedArchiveCommand, SeedArchiveError, SeedArchiveStatus};
 
 pub struct NativeHost {
     game_update_offer: Mutex<game_update::Offers>,
@@ -45,6 +47,7 @@ pub struct NativeHost {
     state: Mutex<Option<Arc<Mutex<DesktopState>>>>,
     migration_preview: Mutex<Option<migration::Preview>>,
     adoption: Mutex<adoption::Adoption>,
+    seed_archive: Mutex<seed_archive::SeedArchive>,
     #[cfg(test)]
     repair_fixture: Option<repair::TestDispatch>,
     #[cfg(test)]
@@ -82,6 +85,7 @@ impl NativeHost {
             state: Mutex::new(None),
             migration_preview: Mutex::new(None),
             adoption: Mutex::new(adoption::Adoption::default()),
+            seed_archive: Mutex::new(seed_archive::SeedArchive::default()),
             #[cfg(test)]
             repair_fixture: None,
             #[cfg(test)]

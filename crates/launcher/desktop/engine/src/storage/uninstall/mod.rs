@@ -438,12 +438,21 @@ fn managed(
     }
     let stage = format!(".cimmeria-stage-{}", intent.operation_id);
     let cache = format!(".cimmeria-cache-{}", intent.operation_id);
+    // The adopted plan's work folder, left behind when its cleanup failed.
+    let work = name
+        .strip_prefix(".cimmeria-adopt-")
+        .and_then(|id| Uuid::parse_str(id).ok());
+    let adopt = match work {
+        Some(id) => installed_content::adopted_work(state_root, intent)? == Some(id),
+        None => false,
+    };
     Ok(meta.is_dir()
         && (repair::uninstall_artifact(state_root, &entry.path(), intent, partial)?
             || update::uninstall_artifact(state_root, &entry.path(), intent, partial)?
             || name == "game"
             || name == stage
-            || name == cache)
+            || name == cache
+            || adopt)
         || meta.is_file() && (name == ".cimmeria-install.json" || name == "content-ready.json"))
 }
 

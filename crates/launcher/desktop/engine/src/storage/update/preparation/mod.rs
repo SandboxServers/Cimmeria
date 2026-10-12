@@ -3,6 +3,7 @@
 use super::*;
 use crate::game_telemetry::install_event::{Ending, Run};
 use crate::{catalog, install, install_progress::ProgressSink, OperationState};
+use cimmeria_launcher_core::seed_source::SeedSourceHandle;
 use futures_util::FutureExt;
 use std::{io::Write, panic::AssertUnwindSafe, sync::Mutex, time::Duration};
 use tokio::sync::{oneshot, watch};
@@ -110,7 +111,7 @@ fn start_with_backend(
     backend: Backend,
 ) -> Result<Preparation, IntentError> {
     let runtime = tokio::runtime::Handle::try_current().map_err(|_| StorageError::Io)?;
-    let (plan, release) = {
+    let (plan, release, seed_source) = {
         let mut owner = state.lock().map_err(|_| StorageError::Io)?;
         let plan = owner
             .update_plan()?
@@ -138,12 +139,11 @@ fn start_with_backend(
         owner
             .operations_mut()?
             .observe(id, OperationState::Running)?;
-        (
-            plan.clone(),
-            owner
-                .verify_release_identity(plan.target)
-                .map_err(|_| StorageError::Corrupt)?,
-        )
+        let release = owner
+            .verify_release_identity(plan.target)
+            .map_err(|_| StorageError::Corrupt)?;
+        let seed_source = owner.seed_source_for(&release);
+        (plan.clone(), release, seed_source)
     };
     let cancel = CancellationToken::new();
     let owned_cancel = cancel.clone();
@@ -155,6 +155,7 @@ fn start_with_backend(
             &owner,
             plan,
             release,
+            seed_source,
             Source { http, url, backend },
             owned_cancel,
             progress,
@@ -185,6 +186,7 @@ async fn reconstruct(
     state: &Arc<Mutex<DesktopState>>,
     plan: Plan,
     release: catalog::VerifiedRelease,
+    seed_source: SeedSourceHandle,
     source: Source,
     cancel: CancellationToken,
     progress: ProgressSink,
@@ -206,6 +208,7 @@ async fn reconstruct(
         cancel: cancel.clone(),
         progress,
         http: &source.http,
+        seed_source: &seed_source,
     };
     let (result, report) = match source.backend {
         Backend::Native => install::install_all(context).await,

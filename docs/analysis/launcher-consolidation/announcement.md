@@ -85,6 +85,6 @@ The launcher is not code-signed. If SmartScreen or Defender blocks it, see the
 
 Record the release tag and the date you posted in the ledger's LX-27 close-out.
 Questions from players about adoption usually come down to the rules in the
-[player guide](../../client/launcher-guide.md#coming-from-the-old-launcher): the
+[player guide](../../client/launcher-guide.md#use-an-existing-game-folder): the
 old launcher must have finished installing every current patch, and the folder
 must have the full `Working\Binaries` layout.

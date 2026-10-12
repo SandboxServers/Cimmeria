@@ -19,6 +19,7 @@ now observes native game lifecycle and, for a player who opts in, injects the
 [game-telemetry DLL](docs/launch.md#opt-in-game-telemetry) with a server session.
 Consented [launcher summaries](docs/launcher-summaries.md) are connected,
 but this build configures no endpoint and sends nothing. Real-client/platform gates remain open.
+A player's own [seed archive](docs/seed-archive.md) can replace the seed download for Install, Repair and Update; the seed is never rehosted.
 
 ## Native operation and storage contracts
 
@@ -109,6 +110,9 @@ engine half in `engine/src/storage/<name>/` and its host half in
 | `log_upload_command` | `inspect`, `upload` | `log-upload-view.ts` | LX-05 (done) |
 | `client_maintenance_command` | `inspect`, `reset_cache`, `reset_all_client_state` | `client-maintenance-view.ts` | LX-06 |
 | `client_changes_command` | `inspect` | `client-changes-view.ts` | LX-07 |
+| `seed_archive_command` | `inspect`, `cancel`, `forget` | available; see [seed archive](docs/seed-archive.md) | AI-06 (part B) |
+| `choose_seed_archive` | none; the native `*.rar` picker | available; see [seed archive](docs/seed-archive.md) | AI-06 (part B) |
+| `choose_existing_game_folder` | `mode` (`in_place` or `copy`); the native folder picker, then a second picker for a copy | in place (Windows and Linux) or verified copy (every OS), as `modes` offers | AI-10; copy AI-12 |
 
 `log_upload_command` is filled. `upload` zips `Binaries/sgwdebuglog*` and the
 `*.log` files under `Binaries/sessions/` in the installed game, and PUTs the zip
@@ -313,7 +317,7 @@ environment variable. The updater pair needs the engine test binary in
 `UPDATER_UAT_BINARY`; the others need the shell test binary
 (`GAME_TELEMETRY_UAT_BINARY` for the game-diagnostics toggle). The adoption
 bridge and its optional Wine backend are described in the
-[migration contract](docs/migration.md#verified-copy-adoption-in-settings).
+[migration contract](docs/migration.md#adopting-an-existing-folder).
 
 Build the development executable without opening it:
 

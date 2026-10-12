@@ -9,29 +9,9 @@ use crate::install_progress::ProgressSink;
 /// `SGW.exe` in `Working\Binaries`. The old launcher also manages folders that
 /// point straight at `Working` or `Binaries`; every release file there sits at
 /// another path than the release keeps it, so in place they cannot verify.
-fn full_layout(folder: &Path) -> bool {
+pub(super) fn full_layout(folder: &Path) -> bool {
     let working = folder.join("Working");
     working.is_dir() && crate::install_layout::binaries_dir(folder).parent() == Some(&working)
-}
-
-/// What the old launcher's ledger says is still missing from the signed release.
-/// Checked before anything is downloaded: such a folder cannot verify.
-fn outdated(ledger: &migration::LegacyLedger, release: &VerifiedRelease) -> Vec<String> {
-    let manifest = release.manifest();
-    let mut missing = Vec::new();
-    if !ledger
-        .seed_sha256
-        .as_deref()
-        .is_some_and(|seed| seed.eq_ignore_ascii_case(&manifest.seed.sha256))
-    {
-        missing.push("seed".to_string());
-    }
-    for patch in &manifest.patches {
-        if !ledger.applied_patches.contains(&patch.state_key()) {
-            missing.push(patch.id.clone());
-        }
-    }
-    missing
 }
 
 pub(super) fn preview(
@@ -41,7 +21,11 @@ pub(super) fn preview(
     progress: ProgressSink,
     transport: Option<artifacts::Transport>,
 ) -> Result<Preview, Error> {
-    let (imported, before) = {
+    // macOS adopts only by a verified copy; it never adopts a folder in place.
+    if cfg!(target_os = "macos") {
+        return Err(Error::UnsupportedMode);
+    }
+    {
         let mut owner = state.lock().map_err(|_| StorageError::Io)?;
         idle(
             &owner,
@@ -54,110 +38,164 @@ pub(super) fn preview(
         if owner.installed_content()?.is_some() {
             return Err(ContractError::IdentityConflict.into());
         }
-        let imported = owner
-            .legacy_import()
-            .map_err(|_| StorageError::Corrupt)?
-            .ok_or(StorageError::Corrupt)?;
-        if imported.confirmation != request.import_digest {
-            return Err(Error::SourceChanged);
-        }
-        if let Some(blocker) = import_blocker(&imported) {
-            return Err(refused(blocker, "imported configuration"));
-        }
-        let folder = &imported.source.game_directory;
-        if request.destination != *folder {
-            return Err(refused(
-                StorageError::InvalidDirectory.into(),
-                "the folder is not the imported game folder",
-            ));
-        }
-        if folder.starts_with(&owner.directory.root) || owner.directory.root.starts_with(folder) {
-            return Err(refused(
-                StorageError::InvalidDirectory.into(),
-                "the folder overlaps the launcher state",
-            ));
-        }
-        // Its lock is held for the whole adoption, and a locked file cannot be
-        // read for verification.
-        if imported.source.launcher_directory.starts_with(folder) {
-            return Err(refused(
-                StorageError::InvalidDirectory.into(),
-                "the old launcher lives inside the game folder",
-            ));
-        }
-        (imported, owner.preferences.clone())
-    };
-    let folder = imported.source.game_directory.clone();
-    for path in [&folder, &imported.source.launcher_directory] {
-        if path.canonicalize()? != *path {
-            return Err(refused(
-                StorageError::UnsafeFile.into(),
-                "a folder is not canonical",
-            ));
-        }
     }
-    clear_unbegun_admission(&*state.lock().map_err(|_| StorageError::Io)?, &folder)?;
+    // Resolved and scanned with no state guard held.
+    let (adopted, scanned) =
+        source::request_source(&state, &request.source, AdoptionMode::InPlace)?;
+    let (folder, before) = {
+        let owner = state.lock().map_err(|_| StorageError::Io)?;
+        let folder = match &adopted {
+            AdoptionSource::Legacy(imported) => {
+                if let Some(blocker) = source::import_blocker(imported) {
+                    return Err(refused(blocker, "imported configuration"));
+                }
+                let folder = &imported.source.game_directory;
+                if request.destination != *folder {
+                    return Err(refused(
+                        StorageError::InvalidDirectory.into(),
+                        "the folder is not the imported game folder",
+                    ));
+                }
+                if folder.starts_with(&owner.directory.root)
+                    || owner.directory.root.starts_with(folder)
+                {
+                    return Err(refused(
+                        StorageError::InvalidDirectory.into(),
+                        "the folder overlaps the launcher state",
+                    ));
+                }
+                // Its lock is held for the whole adoption, and a locked file cannot be
+                // read for verification.
+                if imported.source.launcher_directory.starts_with(folder) {
+                    return Err(refused(
+                        StorageError::InvalidDirectory.into(),
+                        "the old launcher lives inside the game folder",
+                    ));
+                }
+                folder.clone()
+            }
+            AdoptionSource::Folder(picked) => {
+                if request.destination != picked.root {
+                    return Err(refused(
+                        StorageError::InvalidDirectory.into(),
+                        "the folder is not the picked game folder",
+                    ));
+                }
+                picked.root.clone()
+            }
+        };
+        (folder, owner.preferences.clone())
+    };
+    if matches!(adopted, AdoptionSource::Legacy(_)) {
+        source::canonical_paths(&adopted)
+            .map_err(|error| refused(error, "a folder is not canonical"))?;
+    }
+    let cleared = clear_unbegun_admission(&*state.lock().map_err(|_| StorageError::Io)?, &folder)?;
+    // The scan above saw any launcher-owned names this cleanup just took back;
+    // only then is the folder hashed again.
+    let scanned = if cleared {
+        inventory::scan(&folder, &cancel)?
+    } else {
+        scanned
+    };
+    // The digest pins the scan the player reviews, so a rescan refreshes it.
+    let adopted = match adopted {
+        AdoptionSource::Folder(picked) if cleared => AdoptionSource::Folder(FolderSource {
+            scan_digest: digest(&scanned)?,
+            ..picked
+        }),
+        other => other,
+    };
     if !full_layout(&folder) {
         tracing::warn!(target: "adoption", folder = %folder.display(), binaries = %crate::install_layout::binaries_dir(&folder).display(), "in-place adoption refused: the folder is not in the installer's Working\\Binaries layout");
         return Err(Error::UnsupportedLayout);
     }
-    let missing = outdated(&imported.ledger, &request.release);
-    if !missing.is_empty() {
-        tracing::warn!(target: "adoption", ?missing, "in-place adoption refused: the old launcher has not applied the signed release");
-        return Err(Error::OutdatedInstall);
-    }
-    let legacy_lock = lock_source(&imported)?;
-    verify_import(&imported)?;
-    let source = inventory::scan(&folder, &cancel)?;
-    let servers = servers(&imported);
+    let (adopted, legacy_lock) = source::resolve(adopted)?;
+    let servers = source::servers_of(&adopted, &before);
     let mut preparation = preparation::Ownership::claim(
         state.clone(),
         &request,
         ExtractionBackend::Native,
         servers.clone(),
     )?;
-    let prepared = reference_and_comparison(
+    let prepared = verification::reference_and_comparison(
         &state,
         &request,
         Backend::Native,
         transport,
         &mut preparation,
-        &imported,
-        &source,
+        source::borrowed(&adopted),
+        AdoptionMode::InPlace,
+        &scanned,
         &servers,
         &cancel,
         progress,
     );
-    let (reference, files) = match prepared {
+    let verification::Compared {
+        reference,
+        expected_digest,
+        expected_paths,
+        files,
+        download,
+        replacements,
+        login_replaced,
+        file_index_sha256,
+    } = match prepared {
         Ok(prepared) => prepared,
         Err(error) => {
             preparation.release();
             return Err(refused(error, "the signed reference could not be compared"));
         }
     };
+    let (imported_identity, requested_config) = match &adopted {
+        AdoptionSource::Legacy(imported) => (
+            Some(imported.identity.clone()),
+            Some(imported.config.clone()),
+        ),
+        AdoptionSource::Folder(_) => (None, None),
+    };
+    // The backup holds each original a replacement overwrites (D-AI1, D-AI13). It is
+    // named by the preview handle, which admission uses too.
+    let backup = (files
+        .iter()
+        .any(|d| d.classification == Classification::Modified)
+        || login_replaced)
+        .then(|| {
+            folder.join(format!(
+                "cimmeria-adoption-backup-{}",
+                preparation.record.id
+            ))
+        });
     let report = Report {
         preview_handle: preparation.record.id,
         source: folder.clone(),
         destination: folder,
         release_digest: request.release.digest(),
-        imported_identity: imported.identity.clone(),
-        requested_config: imported.config.clone(),
+        imported_identity,
+        requested_config,
         files,
         user_data_remains_in_source: true,
         game_telemetry_available: false,
+        download: Some(download),
+        backup,
+        login_replaced,
     };
-    for file in report.blocking() {
+    for file in report.blocking(&replacements) {
         tracing::warn!(target: "adoption", path = %file.path, classification = ?file.classification, "in-place adoption: release file does not verify");
     }
     Ok(Preview {
         state,
         report,
-        imported,
+        source: adopted,
         before,
         preparation,
         release: request.release,
-        source,
+        scanned,
         reference,
+        expected_digest,
+        expected_paths,
+        replacements,
+        file_index_sha256,
         _legacy_lock: legacy_lock,
     })
 }
@@ -166,12 +204,13 @@ pub(super) fn preview(
 /// an admission leaves when it dies before its operation begins, or when
 /// Abandon could not remove `game`: an owner marker that no journal operation or
 /// saved plan names, and an empty `game`. Anything else is refused.
-fn clear_unbegun_admission(state: &DesktopState, folder: &Path) -> Result<(), Error> {
+fn clear_unbegun_admission(state: &DesktopState, folder: &Path) -> Result<bool, Error> {
     let marker = folder.join(OWNER);
     let game = folder.join("game");
     let has = |path: &Path| std::fs::symlink_metadata(path).is_ok();
-    if !MANAGED.iter().any(|entry| has(&folder.join(entry))) {
-        return Ok(());
+    let stages = work_folders(folder)?;
+    if !MANAGED.iter().any(|entry| has(&folder.join(entry))) && stages.is_empty() {
+        return Ok(false);
     }
     let leftover = |why: &str| {
         tracing::warn!(target: "adoption", folder = %folder.display(), "in-place adoption refused: launcher-owned names are already in the folder ({why})");
@@ -207,14 +246,100 @@ fn clear_unbegun_admission(state: &DesktopState, folder: &Path) -> Result<(), Er
             return leftover("the owner marker belongs to known work");
         }
     }
+    for (id, stage) in &stages {
+        if !unbegun_work_folder(state, *id, stage)? {
+            return leftover("the work folder belongs to known work");
+        }
+    }
     if has(&marker) {
         std::fs::remove_file(&marker)?;
     }
     if empty_game {
         std::fs::remove_dir(&game)?;
     }
-    tracing::warn!(target: "adoption", folder = %folder.display(), "in-place adoption took back an owner marker or empty game folder left by an admission that never began");
-    Ok(())
+    for (_, stage) in &stages {
+        std::fs::remove_dir_all(stage)?;
+    }
+    tracing::warn!(target: "adoption", folder = %folder.display(), "in-place adoption took back an owner marker, empty game folder or work folder left by an admission that never began");
+    Ok(true)
+}
+
+/// The `.cimmeria-adopt-<work id>` folders in `folder`, by work id.
+fn work_folders(folder: &Path) -> Result<Vec<(Uuid, PathBuf)>, Error> {
+    let mut found = Vec::new();
+    for entry in std::fs::read_dir(folder)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let id = name
+            .to_string_lossy()
+            .strip_prefix(".cimmeria-adopt-")
+            .and_then(|id| Uuid::parse_str(id).ok());
+        if let Some(id) = id {
+            found.push((id, entry.path()));
+        }
+    }
+    Ok(found)
+}
+
+/// Whether a work folder holds only what admission copies in: `replacements` (any
+/// content) and optionally an empty `originals`, and nothing else at its top level.
+/// Anything else is not the launcher's to delete, so the folder is kept.
+fn only_copies(stage: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(stage) else {
+        return false;
+    };
+    let mut replacements = false;
+    for entry in entries {
+        let Ok(entry) = entry else {
+            return false;
+        };
+        let path = entry.path();
+        let plain_dir = std::fs::symlink_metadata(&path).is_ok_and(|meta| meta.is_dir());
+        match entry.file_name().to_str() {
+            Some("replacements") if plain_dir => replacements = true,
+            Some("originals") if plain_dir => {
+                if std::fs::read_dir(&path).is_ok_and(|mut d| d.next().is_some()) {
+                    return false;
+                }
+            }
+            _ => return false,
+        }
+    }
+    replacements
+}
+
+/// Whether an admission for `id` never began. Moves follow `begin`, so such a
+/// work folder holds only copies. It is not begun when no journal operation names
+/// it, nothing was set aside, no backup was taken, and its record is absent or
+/// still Staged. A record that cannot be read counts as begun.
+fn unbegun_work_folder(state: &DesktopState, id: Uuid, stage: &Path) -> Result<bool, Error> {
+    if !only_copies(stage) {
+        return Ok(false);
+    }
+    let journaled = state
+        .operations
+        .snapshot()
+        .operation
+        .as_ref()
+        .is_some_and(|op| op.id == id);
+    let parked = std::fs::read_dir(stage.join("originals")).is_ok_and(|mut d| d.next().is_some());
+    if journaled || parked {
+        return Ok(false);
+    }
+    let record = state.directory.root.join(super::publication::name(id));
+    if std::fs::symlink_metadata(&record).is_err() {
+        return Ok(true);
+    }
+    let Ok(record) = read_large::<Record>(&record) else {
+        return Ok(false);
+    };
+    let backed_up = record
+        .plan
+        .report
+        .backup
+        .as_ref()
+        .is_some_and(|backup| std::fs::symlink_metadata(backup).is_ok());
+    Ok(record.phase == Phase::Staged && !backed_up)
 }
 /// Whether a saved adoption plan admits this owner and the journal began it.
 /// A plan whose operation never began moved nothing: moves follow `begin`.

@@ -28,6 +28,10 @@ pub enum AdoptionCommand {
         normalize_managed_files: bool,
         accept_unavailable_game_telemetry: bool,
         old_game_closed: bool,
+        /// Replace the files the reviewed folder has modified or lost. Absent
+        /// means no replacement, so an older renderer cannot opt in by accident.
+        #[serde(default)]
+        replace_modified_files: bool,
         confirmed: bool,
     },
     Recover {
@@ -98,8 +102,6 @@ pub enum AdoptionError {
     ReleaseUnavailable,
     /// In place: release files in the folder do not match the signed release.
     VerificationFailed,
-    /// In place: the old launcher has not installed the signed release.
-    OutdatedInstall,
     /// In place: the folder is not in the installer's full layout.
     UnsupportedLayout,
     /// In place: the game is running from the folder.
@@ -108,6 +110,14 @@ pub enum AdoptionError {
     DuplicateReleaseFile,
     /// In place: launcher-owned entries with content are already in the folder.
     LeftoverLauncherFiles,
+    /// The folder cannot be written, so the adoption cannot change it.
+    FolderNotWritable,
+    /// The selected folder is neither a client root nor its `Working` folder.
+    NotAGameFolder,
+    /// The backup folder for replaced files already exists.
+    BackupConflict,
+    /// This adoption mode is not available in this build.
+    UnsupportedMode,
 }
 impl From<StorageError> for AdoptionError {
     fn from(error: StorageError) -> Self {
@@ -159,11 +169,14 @@ impl From<adoption::Error> for AdoptionError {
             adoption::Error::Cancelled => Self::Cancelled,
             adoption::Error::LauncherTooOld => Self::LauncherTooOld,
             adoption::Error::VerificationFailed => Self::VerificationFailed,
-            adoption::Error::OutdatedInstall => Self::OutdatedInstall,
             adoption::Error::UnsupportedLayout => Self::UnsupportedLayout,
             adoption::Error::GameRunning => Self::GameRunning,
             adoption::Error::DuplicateReleaseFile => Self::DuplicateReleaseFile,
             adoption::Error::LeftoverLauncherFiles => Self::LeftoverLauncherFiles,
+            adoption::Error::FolderNotWritable => Self::FolderNotWritable,
+            adoption::Error::NotAGameFolder => Self::NotAGameFolder,
+            adoption::Error::BackupConflict => Self::BackupConflict,
+            adoption::Error::UnsupportedMode => Self::UnsupportedMode,
         }
     }
 }
@@ -234,6 +247,8 @@ pub struct AdoptionStatus {
     pub native: NativeSnapshot,
     pub backend: Backend,
     pub imported: Option<Imported>,
+    /// Adoption modes this build can offer for the selected folder.
+    pub modes: Vec<adoption::AdoptionMode>,
     pub activity: Activity,
     pub review: Option<Review>,
     pub progress: Option<Progress>,

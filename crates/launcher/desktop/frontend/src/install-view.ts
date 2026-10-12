@@ -1,6 +1,8 @@
 import { repairControls } from './repair-view';
 import { Context, Effect, Fiber, Layer, ManagedRuntime, Result, Stream } from 'effect';
 import { installBridgeLayer, InstallFailure, InstallStatus, InstallViewState, makeInstallWorkflow, operationActive } from './install-workflow';
+import type { SeedArchiveState } from './seed-archive-workflow';
+import { acquireSeedArchive, seedArchiveOfferText, seedArchiveShowsLine, seedArchiveText, SeedArchive } from './seed-archive-view';
 import type { Invoke } from './view';
 import { formatBytes, formatDuration, makeRateTracker, type TransferSample } from './transfer-rate';
 class Installation extends Context.Service<Installation,Effect.Success<typeof makeInstallWorkflow>>()('launcher/Installation') {}
@@ -143,6 +145,30 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
       .catch(()=>{journeyInstallId=null;}).finally(()=>{pending=false;render();if(completed&&advance(completed))return;if(!current.error)observe();});
     return mutation;
   };
+  // The install-area archive button runs the same native check as Settings (AI-07), on the runtime Settings shares.
+  const archiveHold=acquireSeedArchive(invoke);const archiveRuntime=archiveHold.runtime;
+  const archiveButton=get<HTMLButtonElement>('install-seed-archive');
+  const archiveLine=get<HTMLElement>('install-seed-archive-status');
+  const archiveOffer=get<HTMLElement>('install-seed-archive-offer');
+  const archiveAccept=get<HTMLButtonElement>('install-seed-archive-accept');
+  let archive:SeedArchiveState={status:null,phase:null,cancelling:false,error:null};let archivePressed=false;let acceptPressed=false;
+  const renderArchive=()=>{const busy=archivePressed||acceptPressed||archive.phase!==null;
+    archiveButton.textContent=archivePressed?'Switching to your archive…':'Use a downloaded game archive…';
+    archiveButton.disabled=busy;archiveButton.setAttribute('aria-busy',String(busy));
+    const question=seedArchiveOfferText(archive);
+    archiveOffer.hidden=question===null;archiveOffer.textContent=question??'';
+    archiveAccept.hidden=question===null;archiveAccept.disabled=busy;archiveAccept.textContent=acceptPressed?'Checking…':'Yes';
+    archiveAccept.setAttribute('aria-busy',String(busy));
+    archiveLine.hidden=!seedArchiveShowsLine(archive);archiveLine.textContent=seedArchiveText(archive);};
+  const archiveWatcher=archiveRuntime.runFork(Effect.flatMap(SeedArchive,s=>Stream.runForEach(s.changes,
+    value=>Effect.sync(()=>{archive=value;renderArchive();}))));
+  const chooseArchive=()=>{if(archiveButton.disabled)return;archivePressed=true;renderArchive();
+    void archiveRuntime.runPromise(Effect.flatMap(SeedArchive,s=>Effect.result(s.choose))).finally(()=>{archivePressed=false;renderArchive();});};
+  archiveButton.addEventListener('click',chooseArchive);listeners.push(()=>archiveButton.removeEventListener('click',chooseArchive));
+  const acceptArchive=()=>{if(archiveAccept.disabled)return;acceptPressed=true;renderArchive();
+    void archiveRuntime.runPromise(Effect.flatMap(SeedArchive,s=>Effect.result(s.accept))).finally(()=>{acceptPressed=false;renderArchive();});};
+  archiveAccept.addEventListener('click',acceptArchive);listeners.push(()=>archiveAccept.removeEventListener('click',acceptArchive));
+  renderArchive();
   const on=(element:HTMLButtonElement,action:()=>void)=>{
     const listener=()=>{if(!element.disabled)action();};
     element.addEventListener('click',listener);listeners.push(()=>element.removeEventListener('click',listener));
@@ -168,6 +194,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
   return {ready,refresh,settled:()=>mutation,dispose:async()=>{
     if(disposed)return;disposed=true;abort.abort();listeners.forEach(remove=>remove());repairs.dispose();
     await Effect.runPromise(Fiber.interrupt(watcher));await Promise.all([mutation,observation]);await runtime.dispose();
+    await Effect.runPromise(Fiber.interrupt(archiveWatcher));await archiveHold.release();
   }};
 }
 

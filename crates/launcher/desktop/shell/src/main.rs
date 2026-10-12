@@ -24,7 +24,8 @@ use cimmeria_launcher_engine::{LauncherBuild, NativeCommand, NativeSnapshot, Sto
 use host::{
     AdoptionCommand, AdoptionError, AdoptionStatus, GameTelemetryCommand, GameTelemetryStatus,
     GameUpdateCommand, GameUpdateStatus, InstallCommand, InstallStatus, JobError, LaunchCommand,
-    LaunchStatus, MigrationCommand, MigrationStatus, NativeHost, UpdaterCommand,
+    LaunchStatus, MigrationCommand, MigrationStatus, NativeHost, SeedArchiveCommand,
+    SeedArchiveError, SeedArchiveStatus, UpdaterCommand,
 };
 use std::sync::Arc;
 use tauri::Manager;
@@ -342,45 +343,64 @@ async fn adoption_command(
         .map_err(|_| AdoptionError::Io)?
 }
 
+/// Picks an existing game folder to adopt: in place, or as a verified copy made
+/// into a folder the player picks next. The webview never passes a path; a
+/// cancelled dialog returns the current status.
 #[tauri::command]
-async fn choose_adoption_destination(
+async fn choose_existing_game_folder(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
     state: tauri::State<'_, Arc<NativeHost>>,
+    mode: cimmeria_launcher_engine::adoption::AdoptionMode,
 ) -> Result<AdoptionStatus, AdoptionError> {
     let host = state.inner().clone();
-    // Refuse before a dialog or the network when no preview could be admitted.
+    // Refuse before a dialog or the network when this build cannot offer the mode.
     let checking = host.clone();
-    tauri::async_runtime::spawn_blocking(move || checking.adoption_choice_allowed())
+    tauri::async_runtime::spawn_blocking(move || checking.adoption_mode_allowed(mode))
         .await
         .map_err(|_| AdoptionError::Io)??;
-    // In place (D-LX12) the imported game folder is the one adopted, so there
-    // is no folder to pick.
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = (app, window);
-        let release = cimmeria_launcher_engine::catalog::fetch_release()
-            .await
-            .map_err(|_| AdoptionError::ReleaseUnavailable)?;
-        tauri::async_runtime::spawn_blocking(move || host.begin_adoption_in_place(release))
-            .await
-            .map_err(|_| AdoptionError::Io)?
-    }
-    #[cfg(target_os = "macos")]
-    choose_copy_destination(app, window, host).await
+    let Some(selected) = pick_folder(
+        app.clone(),
+        window.clone(),
+        "Choose your Stargate Worlds game folder",
+    )
+    .await?
+    else {
+        return cancelled(host).await;
+    };
+    // A copy also needs the folder it goes into; in place there is none.
+    let location = if mode == cimmeria_launcher_engine::adoption::AdoptionMode::Copy {
+        let Some(location) =
+            pick_folder(app, window, "Choose where to put the verified copy").await?
+        else {
+            return cancelled(host).await;
+        };
+        Some(location)
+    } else {
+        None
+    };
+    // Only the fixed, signed catalog names the release; the webview cannot.
+    let release = cimmeria_launcher_engine::catalog::fetch_release()
+        .await
+        .map_err(|_| AdoptionError::ReleaseUnavailable)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        host.begin_folder_adoption(selected, location, mode, release)
+    })
+    .await
+    .map_err(|_| AdoptionError::Io)?
 }
 
-#[cfg(target_os = "macos")]
-async fn choose_copy_destination(
+/// A folder dialog titled `title`, run off the async runtime. `None` when cancelled.
+async fn pick_folder(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
-    host: Arc<NativeHost>,
-) -> Result<AdoptionStatus, AdoptionError> {
-    let Some(location) = tauri::async_runtime::spawn_blocking(move || {
+    title: &'static str,
+) -> Result<Option<std::path::PathBuf>, AdoptionError> {
+    tauri::async_runtime::spawn_blocking(move || {
         app.dialog()
             .file()
             .set_parent(&window)
-            .set_title("Choose where to create the verified Stargate Worlds copy")
+            .set_title(title)
             .blocking_pick_folder()
             .map(|folder| {
                 folder
@@ -390,17 +410,12 @@ async fn choose_copy_destination(
             .transpose()
     })
     .await
-    .map_err(|_| AdoptionError::Io)??
-    else {
-        return tauri::async_runtime::spawn_blocking(move || host.adoption_status())
-            .await
-            .map_err(|_| AdoptionError::Io)?;
-    };
-    // Only the fixed, signed catalog names the release; the webview cannot.
-    let release = cimmeria_launcher_engine::catalog::fetch_release()
-        .await
-        .map_err(|_| AdoptionError::ReleaseUnavailable)?;
-    tauri::async_runtime::spawn_blocking(move || host.begin_adoption_preview(location, release))
+    .map_err(|_| AdoptionError::Io)?
+}
+
+/// The status after a cancelled dialog: nothing is started.
+async fn cancelled(host: Arc<NativeHost>) -> Result<AdoptionStatus, AdoptionError> {
+    tauri::async_runtime::spawn_blocking(move || host.adoption_status())
         .await
         .map_err(|_| AdoptionError::Io)?
 }
@@ -425,6 +440,80 @@ async fn choose_legacy_source(
             game_directory: game.into_path().map_err(|_| StorageError::InvalidDirectory)?,
         })
     }).await.map_err(|_| StorageError::Io)?
+}
+
+#[tauri::command]
+async fn seed_archive_command(
+    request: SeedArchiveCommand,
+    state: tauri::State<'_, Arc<NativeHost>>,
+) -> Result<SeedArchiveStatus, SeedArchiveError> {
+    let host = state.inner().clone();
+    // Accepting an offer always fetches the signed release to verify it. Inspect
+    // fetches only while no seed is cached and a failed fetch has waited a minute,
+    // so the 500 ms poll makes no network request. Cancel and Forget never fetch.
+    let release = match request {
+        SeedArchiveCommand::AcceptOffer { .. } => Some(
+            cimmeria_launcher_engine::catalog::fetch_release()
+                .await
+                .map_err(|_| SeedArchiveError::ReleaseUnavailable)?,
+        ),
+        SeedArchiveCommand::Inspect { .. } if host.seed_archive_release_wanted() => {
+            match cimmeria_launcher_engine::catalog::fetch_release().await {
+                Ok(release) => Some(release),
+                Err(_) => {
+                    host.seed_archive_release_failed();
+                    None
+                }
+            }
+        }
+        SeedArchiveCommand::Inspect { .. }
+        | SeedArchiveCommand::Cancel { .. }
+        | SeedArchiveCommand::Forget { .. } => None,
+    };
+    tauri::async_runtime::spawn_blocking(move || host.seed_archive_command(request, release))
+        .await
+        .map_err(|_| SeedArchiveError::Io)?
+}
+
+#[tauri::command]
+async fn choose_seed_archive(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, Arc<NativeHost>>,
+) -> Result<SeedArchiveStatus, SeedArchiveError> {
+    let host = state.inner().clone();
+    // Refused before the dialog opens: a check already runs, so nothing is picked.
+    if host.seed_archive_busy() {
+        return Err(SeedArchiveError::Busy);
+    }
+    let Some(path) = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_parent(&window)
+            .set_title("Choose your downloaded Stargate Worlds archive")
+            .add_filter("RAR archive", &["rar"])
+            .blocking_pick_file()
+            .map(|file| file.into_path().map_err(|_| SeedArchiveError::Io))
+            .transpose()
+    })
+    .await
+    .map_err(|_| SeedArchiveError::Io)??
+    else {
+        // A cancelled dialog changes nothing and reports the current status.
+        let inspect = SeedArchiveCommand::Inspect { schema_version: 1 };
+        return tauri::async_runtime::spawn_blocking(move || {
+            host.seed_archive_command(inspect, None)
+        })
+        .await
+        .map_err(|_| SeedArchiveError::Io)?;
+    };
+    // Only the fixed, signed catalog names the release; the webview cannot.
+    let release = cimmeria_launcher_engine::catalog::fetch_release()
+        .await
+        .map_err(|_| SeedArchiveError::ReleaseUnavailable)?;
+    tauri::async_runtime::spawn_blocking(move || host.choose_seed_archive(path, release))
+        .await
+        .map_err(|_| SeedArchiveError::Io)?
 }
 
 /// tauri.conf.json carries the release title, so only a development build
@@ -501,7 +590,9 @@ fn main() {
             game_update_command,
             choose_legacy_source,
             adoption_command,
-            choose_adoption_destination
+            choose_existing_game_folder,
+            seed_archive_command,
+            choose_seed_archive
         ])
         .run(tauri::generate_context!())
         .expect("desktop launcher could not initialize");

@@ -7,9 +7,9 @@ import type {AdoptionStatus,Request} from './adoption-workflow';
 const html=await readFile(new URL('../ui/index.html',import.meta.url),'utf8');
 const native=(revision:number,operation:AdoptionStatus['native']['operation']['operation']=null,preferences=1)=>({schema_version:1 as const,requires_reopen:false,adopted_login_servers:null,launcher:{version:'0.1.0',tag:null},preferences:{schema_version:2 as const,revision:preferences,install_directory:null,launcher_summary_consent:false,login_servers:[],client_patches_enabled:true},operation:{schema_version:1 as const,revision,operation}});
 const adopt=(state:'running'|'reconciliation_required'|'succeeded'|'cancelled')=>({id:'op',kind:'adopt' as const,intent_digest:Array(32).fill(0),state});
-const idle=(revision=1):AdoptionStatus=>({schema_version:1,native:native(revision),backend:'available',imported:{launcher_directory:'/old-launcher',game_directory:'/old-game',blocker:null},activity:'idle',review:null,progress:null,cancellable:false,reconciliation:null,preparations:[],owned:false,completed:null,last_error:null});
-const review=(handle='preview-1'):NonNullable<AdoptionStatus['review']>=>({preview_handle:handle,operation_revision:3,preferences_revision:1,source:'/old-game',destination:'/library/Stargate Worlds',
- release:{manifest_sha256:'ab'.repeat(32),seed_sha256:'cd'.repeat(32),patches:['first-patch','second-patch']},counts:{matched:40,known_transform:1,modified:2,missing:1,extra:3},
+const idle=(revision=1):AdoptionStatus=>({schema_version:1,native:native(revision),backend:'available',modes:['copy'],imported:{launcher_directory:'/old-launcher',game_directory:'/old-game',blocker:null},activity:'idle',review:null,progress:null,cancellable:false,reconciliation:null,preparations:[],owned:false,completed:null,last_error:null});
+const review=(handle='preview-1'):NonNullable<AdoptionStatus['review']>=>({preview_handle:handle,operation_revision:3,preferences_revision:1,source:'/old-game',destination:'/library/Stargate Worlds',source_kind:'legacy',
+ release:{manifest_sha256:'ab'.repeat(32),seed_sha256:'cd'.repeat(32),patches:['first-patch','second-patch']},counts:{matched:40,known_transform:1,modified:2,needs_patching:0,missing:1,extra:3},requires_replacement:true,
  differences:[{path:'Working/Binaries/SGW.exe',source_path:'Working/Binaries/SGW.exe',classification:'known_transform'},{path:'<img src=x onerror=alert(1)>.lua',source_path:'x',classification:'modified'},{path:'mod.dll',source_path:'mod.dll',classification:'extra'}],differences_omitted:4,
  login_servers:[{name:'Second',url:'https://example.invalid/second'},{name:'First',url:'https://example.invalid/first'}],client_patches_enabled:false,
  game_telemetry_opted_in:true,game_telemetry_available:false,requires_normalization:true,requires_telemetry_acceptance:true,user_data_remains_in_source:true,in_place:false,blocked_files:[]});
@@ -17,7 +17,7 @@ const reviewing=(handle?:string):AdoptionStatus=>({...idle(3),native:native(3,ad
 type Reply=AdoptionStatus|Promise<AdoptionStatus>;
 function mount(reply:(request:Request|'choose')=>Reply,onChange=()=>{}) {
  const {document,window}=parseHTML(html),calls:(Request|'choose')[]=[];
- const app=mountAdoption(document,async(command,args)=>{const request=command==='choose_adoption_destination'?'choose' as const:(args as {request:Request}).request;calls.push(request);return reply(request);},onChange);
+ const app=mountAdoption(document,async(command,args)=>{const request=command==='choose_existing_game_folder'?'choose' as const:(args as {request:Request}).request;calls.push(request);return reply(request);},onChange);
  const get=(id:string)=>document.getElementById(id)!;
  const settle=async()=>{await app.settled();await new Promise(resolve=>setTimeout(resolve,5));await app.settled();};
  return {app,calls,get,settle,sent:(command:string)=>calls.filter(c=>c!=='choose'&&c.command===command) as Request[],
@@ -46,10 +46,11 @@ test('review is readable, every required confirmation is visible and unchecked, 
   assert.equal(ui.disabled('confirm-adoption'),true);
   await ui.click('confirm-adoption');assert.equal(ui.sent('confirm').length,0);
   await ui.tick('adoption-closed');await ui.tick('adoption-normalize');assert.equal(ui.disabled('confirm-adoption'),true,'telemetry acceptance is still required');
-  await ui.tick('adoption-telemetry');assert.equal(ui.disabled('confirm-adoption'),false);
+  await ui.tick('adoption-telemetry');assert.equal(ui.disabled('confirm-adoption'),true,'the replacement box is still required');
+  await ui.tick('adoption-replace');assert.equal(ui.disabled('confirm-adoption'),false);
   ui.press('confirm-adoption');await ui.click('confirm-adoption');
   const [sent]=ui.sent('confirm');assert.equal(ui.sent('confirm').length,1);
-  assert.deepEqual({...sent,work_id:'id'},{command:'confirm',schema_version:1,work_id:'id',preview_handle:'preview-1',operation_revision:3,preferences_revision:1,normalize_managed_files:true,accept_unavailable_game_telemetry:true,old_game_closed:true,confirmed:true});
+  assert.deepEqual({...sent,work_id:'id'},{command:'confirm',schema_version:1,work_id:'id',preview_handle:'preview-1',operation_revision:3,preferences_revision:1,normalize_managed_files:true,accept_unavailable_game_telemetry:true,old_game_closed:true,replace_modified_files:true,confirmed:true});
   assert.match(ui.text(),/Copying verified files: 1 of 44/);
   assert.equal(ui.get('adoption-progress').hidden,false);assert.equal(ui.get('cancel-adoption').hidden,false);assert.equal(ui.get('cancel-adoption').textContent,'Cancel copy');
   assert.equal(ui.get('adoption-review').hidden,true);
@@ -60,7 +61,7 @@ test('confirmations that do not apply are hidden and not required',async()=>{
  const ui=mount(()=>status);
  try{await ui.app.ready;await ui.settle();
   assert.equal(ui.get('adoption-normalize-row').hidden,true);assert.equal(ui.get('adoption-telemetry-row').hidden,true);assert.equal(ui.get('adoption-closed-row').hidden,false);
-  await ui.tick('adoption-closed');assert.equal(ui.disabled('confirm-adoption'),false);
+  await ui.tick('adoption-closed');await ui.tick('adoption-replace');assert.equal(ui.disabled('confirm-adoption'),false);
   await ui.click('confirm-adoption');
   assert.deepEqual(ui.sent('confirm').map(r=>r.command==='confirm'&&[r.normalize_managed_files,r.accept_unavailable_game_telemetry]),[[false,false]]);
  }finally{await ui.app.dispose();}
@@ -90,7 +91,7 @@ test('a refused or failed press is shown, and a stale review stays on screen unc
  let status=reviewing(),refuse:string|null='in_use';
  const ui=mount(request=>{if(request!=='choose'&&request.command==='confirm'&&refuse)return Promise.reject(refuse);return status;});
  try{await ui.app.ready;await ui.settle();
-  for(const id of ['adoption-closed','adoption-normalize','adoption-telemetry'])await ui.tick(id);
+  for(const id of ['adoption-closed','adoption-normalize','adoption-telemetry','adoption-replace'])await ui.tick(id);
   await ui.click('confirm-adoption');
   assert.match(ui.text(),/still holds its lock, or the destination already exists/);
   assert.equal(ui.get('adoption-review').hidden,false);assert.equal(ui.disabled('confirm-adoption'),false,'a clear refusal can be corrected and retried by the user');
@@ -113,7 +114,7 @@ test('a lost confirm reply is reported and never sent again',async()=>{
  let status=reviewing(),lose=true;
  const ui=mount(request=>{if(request!=='choose'&&request.command==='confirm'){status={...idle(6),native:native(6,adopt('succeeded')),owned:true,completed:{directory:'/library/Stargate Worlds'}};if(lose){lose=false;return Promise.reject('transport');}}return status;});
  try{await ui.app.ready;await ui.settle();
-  for(const id of ['adoption-closed','adoption-normalize','adoption-telemetry'])await ui.tick(id);
+  for(const id of ['adoption-closed','adoption-normalize','adoption-telemetry','adoption-replace'])await ui.tick(id);
   await ui.click('confirm-adoption');
   assert.match(ui.text(),/could not be confirmed, and nothing was retried/);
   assert.equal(ui.disabled('confirm-adoption'),true);assert.equal(ui.disabled('choose-adoption-destination'),true);assert.equal(ui.disabled('inspect-adoption'),false);
@@ -159,8 +160,8 @@ test('in place: the imported folder is offered, a file that does not verify is n
   return status;});
  try{await ui.app.ready;await ui.settle();
   assert.match(ui.text(),/Adopt your existing game folder \/old-game in place.*without copying it/);
-  assert.equal(ui.get('adoption-title').textContent,'Adopt existing installation');
-  assert.equal(ui.get('choose-adoption-destination').textContent,'Verify and adopt this folder…');
+  assert.equal(ui.get('adoption-title').textContent,'Use an existing game folder');
+  assert.equal(ui.get('choose-adoption-destination').textContent,'Use an existing game folder…');
   await ui.click('choose-adoption-destination');
   assert.match(ui.text(),/cannot be adopted in place: later\.txt\. Restore them/);
   assert.equal(ui.get('adoption-source-label').textContent,'Game folder to adopt:');
@@ -177,7 +178,7 @@ test('in place: the imported folder is offered, a file that does not verify is n
   await ui.click('choose-adoption-destination');
   assert.match(ui.text(),/Nothing is moved until you confirm/);
   assert.equal((ui.get('adoption-closed') as HTMLInputElement).checked,false,'a new review starts unchecked');
-  await ui.tick('adoption-closed');assert.equal(ui.disabled('confirm-adoption'),false);
+  await ui.tick('adoption-closed');await ui.tick('adoption-replace');assert.equal(ui.disabled('confirm-adoption'),false);
   await ui.click('confirm-adoption');assert.equal(ui.sent('confirm').length,1);
   assert.match(ui.text(),/Moving the verified release files into the launcher-owned game folder: 1 of 3\. Nothing is copied/);
   assert.equal(ui.get('cancel-adoption').hidden,true,'admitted moves are never cancelled part-way');
@@ -208,21 +209,20 @@ test('unavailable backends and unsupported imported settings are stated plainly'
   [{...idle(),backend:'unsupported_platform'},/not available on this operating system yet\. Keep using the old launcher/],
   [{...idle(),backend:'helper_unavailable'},/does not include the verified archive helper/],
   [{...idle(),backend:'in_place'},/Adopt your existing game folder \/old-game in place/],
-  [{...idle(),backend:'in_place',last_error:'outdated_install'},/has not installed the current signed release.*Nothing was changed/],
   [{...idle(),backend:'in_place',last_error:'unsupported_layout'},/older layout.*cannot adopt in place.*Install the game fresh/],
   [{...idle(),backend:'in_place',last_error:'game_running'},/game is running from this folder\. Close the game first/],
   [{...idle(),backend:'in_place',last_error:'duplicate_release_file'},/neither copy matches.*log names the file\. Nothing was deleted/],
   [{...idle(),backend:'in_place',last_error:'leftover_launcher_files'},/already holds launcher files.*cannot be adopted/],
   [{...idle(),imported:{...idle().imported!,blocker:'unsupported_catalog'}},/custom content catalog.*will not rewrite your settings/],
   [{...idle(),imported:{...idle().imported!,blocker:'unsupported_configuration'}},/custom patch DLL.*will not silently drop/],
-  [{...idle(),imported:null},/Import legacy launcher settings above first/],
+  [{...idle(),imported:null},/Choose your existing game folder to start/],
   [{...idle(),owned:true},/desktop-owned installation already exists/],
   [{...idle(),last_error:'invalid_artifact'},/did not match the signed release and was discarded/],
   [{...idle(),last_error:'network'},/could not be downloaded/],
  ] as [AdoptionStatus,RegExp][]){
   const ui=mount(()=>status);
   try{await ui.app.ready;await ui.settle();assert.match(ui.text(),expected);
-   assert.equal(ui.disabled('choose-adoption-destination'),!['available','in_place'].includes(status.backend)||!status.imported||!!status.imported.blocker||status.owned);
+   assert.equal(ui.disabled('choose-adoption-destination'),!['available','in_place'].includes(status.backend)||status.owned);
   }finally{await ui.app.dispose();}
  }
 });
@@ -235,4 +235,80 @@ test('a failed read is shown and disables every mutation until a recheck succeed
   fail=false;await ui.click('inspect-adoption');
   assert.match(ui.text(),/Review the comparison/);
  }finally{await ui.app.dispose();}
+});
+test('a folder source with files that need patching shows its review, backup and download',async()=>{
+ const folder:NonNullable<AdoptionStatus['review']>={...review(),source_kind:'folder',backup_directory:'/old-game.backup',download:{seed:true,patches:['first-patch'],bytes:1024},counts:{...review().counts,needs_patching:2}};
+ const ui=mount(()=>({...reviewing(),modes:['in_place','copy'],review:folder}));
+ try{await ui.app.ready;await ui.settle();
+  assert.equal(ui.get('adoption-review').hidden,false);
+  assert.equal(ui.get('adoption-source').textContent,'/old-game');assert.equal(ui.get('adoption-destination').textContent,'/library/Stargate Worlds');
+ }finally{await ui.app.dispose();}
+});
+test('a review whose seed comes from the chosen game archive says so, with its patches',async()=>{
+ const archive=(patches:string[]):NonNullable<AdoptionStatus['review']>=>({...review(),source_kind:'folder',download:{seed:false,patches,bytes:1048576,local_seed:true}});
+ for(const [patches,line] of [[['first-patch'],'Uses your game archive and patches first-patch (1.0 MB).'],[[],'Uses your game archive.']] as const){
+  const ui=mount(()=>({...reviewing(),modes:['in_place','copy'],review:archive([...patches])}));
+  try{await ui.app.ready;await ui.settle();
+   assert.equal(ui.get('adoption-download').textContent,line);assert.equal(ui.get('adoption-seed-archive').hidden,true);
+  }finally{await ui.app.dispose();}
+ }
+});
+test('a folder review without imported settings decodes and says the launcher defaults apply',async()=>{
+ // A folder preview has no legacy import, so the requested-config fields are absent.
+ const imported=['login_servers','client_patches_enabled','game_telemetry_opted_in'];
+ const folder=Object.fromEntries(Object.entries({...review(),source_kind:'folder'}).filter(([key])=>!imported.includes(key))) as NonNullable<AdoptionStatus['review']>;
+ const ui=mount(()=>({...reviewing(),review:folder}));
+ try{await ui.app.ready;await ui.settle();
+  assert.equal(ui.get('adoption-review').hidden,false);
+  assert.match(ui.get('adoption-settings').textContent!,/^Settings: this launcher's own server list/);
+  assert.match(ui.get('adoption-telemetry').textContent!,/^Game telemetry: launcher defaults/);
+  assert.doesNotMatch(ui.get('adoption-settings').textContent!,/Login servers/);
+ }finally{await ui.app.dispose();}
+});
+test('the replacement box starts unchecked and Confirm stays disabled until it is ticked',async()=>{
+ const status={...reviewing(),review:{...review(),requires_normalization:false,requires_telemetry_acceptance:false}};
+ const ui=mount(()=>status);
+ try{await ui.app.ready;await ui.settle();
+  assert.equal(ui.get('adoption-replace-row').hidden,false);assert.equal((ui.get('adoption-replace') as HTMLInputElement).checked,false,'unchecked by default');
+  await ui.tick('adoption-closed');assert.equal(ui.disabled('confirm-adoption'),true,'the replacement box is still required');
+  await ui.tick('adoption-replace');assert.equal(ui.disabled('confirm-adoption'),false);
+ }finally{await ui.app.dispose();}
+});
+test('a folder review imports nothing: only the launcher’s own settings line is shown',async()=>{
+ // A folder review carries none of the imported settings fields.
+ const folder:Record<string,unknown>={...review()};for(const key of ['login_servers','client_patches_enabled','game_telemetry_opted_in'])delete folder[key];
+ const status={...reviewing(),review:{...folder,source_kind:'folder',requires_replacement:false,download:{seed:false,patches:['first-patch'],bytes:1048576}} as unknown as NonNullable<AdoptionStatus['review']>};
+ const ui=mount(()=>status);
+ try{await ui.app.ready;await ui.settle();
+  assert.equal(ui.get('adoption-settings').textContent,'Settings: this launcher\'s own server list and client-patch setting.');
+  assert.doesNotMatch(ui.get('adoption-settings').textContent!,/Second|First|Client patches: off/);
+  assert.doesNotMatch(ui.get('adoption-telemetry').textContent!,/you opted in/);
+  assert.equal(ui.get('adoption-replace-row').hidden,true);assert.equal(ui.get('adoption-download').textContent,'Downloads: patches first-patch (1.0 MB).');
+  assert.equal(ui.get('adoption-seed-archive').hidden,true);
+ }finally{await ui.app.dispose();}
+});
+test('each new failure code renders its own text',async()=>{
+ const expected:[AdoptionStatus['last_error'],RegExp][]=[['folder_not_writable',/cannot write to this folder/],['not_a_game_folder',/not a Stargate Worlds game folder/],['backup_conflict',/backup folder for replaced files already exists/],['unsupported_mode',/adoption mode is not available/]];
+ for(const [code,text] of expected){
+  const ui=mount(()=>({...idle(),last_error:code}));
+  try{await ui.app.ready;await ui.settle();assert.match(ui.text(),text,code as string);}finally{await ui.app.dispose();}
+ }
+});
+test('the mode choice shows only when the build offers both modes',async()=>{
+ const both=mount(()=>({...idle(),modes:['in_place','copy'] as AdoptionStatus['modes']})),one=mount(()=>idle());
+ try{await both.app.ready;await both.settle();await one.app.ready;await one.settle();
+  assert.equal(both.get('adoption-modes').hidden,false);assert.equal(one.get('adoption-modes').hidden,true);
+  assert.match(both.get('adoption-modes').textContent!,/Adopt it in place: the folder becomes the launcher's installation.*Make a verified copy: your folder is left as it is/);
+ }finally{await both.app.dispose();await one.app.dispose();}
+});
+test('every button shows busy on the first press',async()=>{
+ let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});
+ const status=reviewing();
+ const ui=mount(async request=>{if(request!=='choose'&&request.command==='dismiss')await gate;return status;});
+ try{await ui.app.ready;await ui.settle();
+  ui.press('dismiss-adoption');
+  assert.equal(ui.text(),'Working on verified adoption…','the first press is acknowledged at once');
+  for(const id of ['dismiss-adoption','confirm-adoption','inspect-adoption','choose-adoption-destination','dismiss-adoption-maintenance'])assert.equal(ui.disabled(id),true,id);
+  release();await ui.settle();
+ }finally{release();await ui.app.dispose();}
 });

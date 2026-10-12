@@ -6,6 +6,8 @@ use std::collections::BTreeMap;
 
 pub(super) struct Reference {
     pub prepared: PathBuf,
+    // Read by the parity test only; classification no longer compares raw bytes.
+    #[allow(dead_code)]
     pub raw: inventory::Index,
     pub index: inventory::Index,
 }
@@ -50,7 +52,7 @@ pub(super) fn reconstruct(
             .map_err(|_| StorageError::PersistenceUncertain)?;
         std::fs::remove_file(&archive)?;
     } else {
-        extract(
+        seed(
             &artifacts.seed,
             &archive,
             manifest.seed.size,
@@ -110,6 +112,29 @@ pub(super) fn ledger(release: &VerifiedRelease) -> crate::state::InstalledState 
         applied_patches: manifest.patches.iter().map(|p| p.state_key()).collect(),
     }
 }
+/// Unpack the local seed. A zip seed is checked by `strict_zip` first. A RAR
+/// seed (the production client) goes straight to `unpack::unpack`, which a
+/// fresh install already uses and which checks its own entry names.
+fn seed(
+    source: &Path,
+    archive: &Path,
+    size: u64,
+    sha: &str,
+    destination: &Path,
+    cancel: &CancellationToken,
+    sink: &UnpackSink,
+) -> Result<(), Error> {
+    authenticated_copy(source, archive, size, sha, cancel)?;
+    if crate::unpack::detect(archive).map_err(|_| Error::UnsupportedArchive)?
+        == crate::unpack::ArchiveKind::Zip
+    {
+        strict_zip(archive)?;
+    }
+    crate::unpack::unpack(archive, destination, sink).map_err(|_| Error::InvalidArtifact)?;
+    std::fs::remove_file(archive)?;
+    Ok(())
+}
+/// Patches are zips, so they are always checked by `strict_zip`.
 fn extract(
     source: &Path,
     archive: &Path,
@@ -140,7 +165,7 @@ fn authenticated_copy(
     inventory::copy(source, archive, &entry, cancel)?;
     Ok(())
 }
-fn strict_zip(path: &Path) -> Result<(), Error> {
+pub(super) fn strict_zip(path: &Path) -> Result<(), Error> {
     if crate::unpack::detect(path).map_err(|_| Error::UnsupportedArchive)?
         != crate::unpack::ArchiveKind::Zip
     {

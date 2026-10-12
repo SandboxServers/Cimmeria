@@ -4,47 +4,63 @@
 mod artifacts;
 mod comparison;
 mod in_place;
-#[cfg(not(target_os = "macos"))]
 mod in_place_preview;
+mod in_place_replace;
 // Where the in-place backend is the one previews use.
 #[cfg(all(test, not(target_os = "macos")))]
+mod folder_tests;
+#[cfg(all(test, not(target_os = "macos")))]
 mod in_place_recovery_tests;
+#[cfg(all(test, not(target_os = "macos")))]
+mod in_place_replace_tests;
 #[cfg(all(test, not(target_os = "macos")))]
 mod in_place_tests;
 mod inventory;
 mod model;
 pub(crate) mod preparation;
 mod publication;
+mod replay;
 pub use preparation::{
     abandon_preparation, inspect_preparation, list_preparations, PreparationRecord,
 };
 mod reference;
+mod source;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
+mod verification;
 mod worker;
 pub use worker::{start_confirmation, start_preview, ConfirmationWorker, PreviewWorker};
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(test)]
 mod artifacts_tests;
 #[cfg(all(test, target_os = "macos"))]
 mod cab_fixture;
 // Every platform: it needs no copy, only a persisted plan and its journal.
 #[cfg(test)]
 mod digest_tests;
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(test)]
+mod golden_tests;
+#[cfg(test)]
+mod index_parity_tests;
+#[cfg(test)]
 mod preparation_tests;
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(test)]
 mod publication_tests;
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(test)]
 mod recovery_tests;
 #[cfg(all(test, target_os = "macos"))]
 mod reference_tests;
-#[cfg(all(test, target_os = "macos"))]
+#[cfg(test)]
+mod replay_tests;
+#[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod verification_tests;
 use super::*;
 use crate::{catalog::VerifiedRelease, OperationKind, OperationState};
 pub use model::*;
 pub use publication::{abandon, inspect, interrupted, recover, Interrupted};
 use sha2::{Digest, Sha256};
+pub use source::{import_blocker, resolve_folder};
 use std::{io::Read, sync::Mutex};
 use tokio_util::sync::CancellationToken;
 #[cfg(target_os = "macos")]
@@ -61,20 +77,41 @@ use uuid::Uuid;
 pub struct Preview {
     state: Arc<Mutex<DesktopState>>,
     report: Report,
-    imported: migration::LegacyImport,
+    source: AdoptionSource,
     before: Preferences,
     preparation: preparation::Ownership,
     release: VerifiedRelease,
-    source: inventory::Index,
-    reference: reference::Reference,
-    _legacy_lock: File,
+    scanned: inventory::Index,
+    /// Built indexes only: the reconstructed reference the moves may read.
+    reference: Option<reference::Reference>,
+    /// The digest and release paths of the post-setup tree (see `Compared`).
+    expected_digest: [u8; 32],
+    expected_paths: Vec<String>,
+    /// The files the replay stored for the adopted tree (AI-09); empty when the
+    /// review needs none.
+    replacements: Vec<Replacement>,
+    /// The published index's digest, recorded in the provenance; `None` when built.
+    file_index_sha256: Option<String>,
+    _legacy_lock: Option<File>,
 }
 impl Preview {
     pub fn report(&self) -> &Report {
         &self.report
     }
+    /// The replacement store entries the adopted tree takes, one per target.
+    pub fn replacements(&self) -> &[Replacement] {
+        &self.replacements
+    }
     pub fn signed_release(&self) -> &VerifiedRelease {
         &self.release
+    }
+    /// The source this preview adopts: a legacy import or a folder.
+    pub fn source(&self) -> AdoptionSourceRef<'_> {
+        source::borrowed(&self.source)
+    }
+    /// The legacy import this preview adopts. A folder source has none.
+    pub(super) fn legacy(&self) -> Result<&migration::LegacyImport, Error> {
+        source::legacy(&self.source)
     }
     /// Reference bytes replace managed files that are missing, modified or carry
     /// the launcher's known setup transform; that needs explicit consent.
@@ -88,15 +125,27 @@ impl Preview {
     }
     /// Imported game telemetry consent cannot be honoured by this build.
     pub fn requires_telemetry_acceptance(&self) -> bool {
-        self.imported.config.telemetry.opted_in && !self.report.game_telemetry_available
+        self.legacy()
+            .is_ok_and(|imported| imported.config.telemetry.opted_in)
+            && !self.report.game_telemetry_available
     }
     /// The one consent rule, shared by review presentation and confirmation.
     pub fn consent(&self, choices: &Choices) -> Result<(), Error> {
-        if self.report.blocking().next().is_some() {
+        if self.report.blocking(&self.replacements).next().is_some() {
             return Err(Error::VerificationFailed);
         }
+        // Replacing a changed or absent file is a choice of its own (D-AI1);
+        // a patch-only file needs no extra consent (D-AI7). A copy replaces nothing.
+        let replaces = self.report.in_place()
+            && self.report.files.iter().any(|d| {
+                matches!(
+                    d.classification,
+                    Classification::Modified | Classification::Missing
+                )
+            });
         if !choices.old_game_closed
             || (self.requires_normalization() && !choices.normalize_managed_files)
+            || (replaces && !choices.replace_modified_files)
             || (self.requires_telemetry_acceptance() && !choices.accept_unavailable_game_telemetry)
         {
             return Err(Error::ConsentRequired);
@@ -109,18 +158,17 @@ impl Preview {
         self.preparation.release();
     }
 }
-/// Imported configuration this copy cannot honour. It is refused, never rewritten.
-pub fn import_blocker(imported: &migration::LegacyImport) -> Option<Error> {
-    if imported.config.manifest_url != crate::catalog::URL {
-        return Some(Error::UnsupportedCatalog);
-    }
-    if imported.config.client_patches.dll_override.is_some() {
-        return Some(Error::UnsupportedConfiguration);
-    }
-    None
+/// Which source a preview adopts, as the caller names it.
+pub enum SourceRequest {
+    /// The saved import, as today. The digest is the one the player confirmed.
+    Legacy { import_digest: String },
+    /// A natively picked folder; AI-10 resolves it.
+    Folder { selected: PathBuf },
 }
 pub struct PreviewRequest {
-    pub import_digest: String,
+    pub source: SourceRequest,
+    /// How the preview adopts the source. It picks the path, not the host OS.
+    pub mode: AdoptionMode,
     pub destination: PathBuf,
     pub operation_revision: u64,
     pub preferences_revision: u64,
@@ -147,17 +195,17 @@ pub(super) fn preview_using(
     backend: Backend,
     transport: Option<artifacts::Transport>,
 ) -> Result<Preview, Error> {
-    // macOS makes a verified copy. Every other host adopts the imported folder
-    // in place (D-LX12); there is no copy destination to choose.
-    #[cfg(not(target_os = "macos"))]
-    {
-        let Backend::Native = backend;
-        in_place_preview::preview(state, request, cancel, progress, transport)
+    // The request's mode picks the path on every OS. In place adopts the folder
+    // where it is (D-LX12); a copy writes a separately owned tree.
+    match request.mode {
+        AdoptionMode::InPlace => {
+            // In place never runs the Wine helper; only a copy extracts through it.
+            let _ = backend;
+            in_place_preview::preview(state, request, cancel, progress, transport)
+        }
+        AdoptionMode::Copy => copy_preview(state, request, cancel, progress, backend, transport),
     }
-    #[cfg(target_os = "macos")]
-    copy_preview(state, request, cancel, progress, backend, transport)
 }
-#[cfg(target_os = "macos")]
 fn copy_preview(
     state: Arc<Mutex<DesktopState>>,
     request: PreviewRequest,
@@ -166,7 +214,7 @@ fn copy_preview(
     backend: Backend,
     transport: Option<artifacts::Transport>,
 ) -> Result<Preview, Error> {
-    let (imported, before, destination) = {
+    {
         let mut owner = state.lock().map_err(|_| StorageError::Io)?;
         idle(
             &owner,
@@ -179,16 +227,11 @@ fn copy_preview(
         if owner.installed_content()?.is_some() {
             return Err(ContractError::IdentityConflict.into());
         }
-        let imported = owner
-            .legacy_import()
-            .map_err(|_| StorageError::Corrupt)?
-            .ok_or(StorageError::Corrupt)?;
-        if imported.confirmation != request.import_digest {
-            return Err(Error::SourceChanged);
-        }
-        if let Some(blocker) = import_blocker(&imported) {
-            return Err(blocker);
-        }
+    }
+    // Resolved and scanned with no state guard held.
+    let (adopted, scanned) = source::request_source(&state, &request.source, AdoptionMode::Copy)?;
+    let (before, destination) = {
+        let owner = state.lock().map_err(|_| StorageError::Io)?;
         let destination =
             super::install_intent::fresh_destination(&request.destination, &owner.directory.root)?;
         // Confirmation creates this folder itself. Refuse an existing one now,
@@ -196,32 +239,22 @@ fn copy_preview(
         if std::fs::symlink_metadata(&destination).is_ok() {
             return Err(StorageError::InvalidDirectory.into());
         }
-        for source in [
-            &imported.source.game_directory,
-            &imported.source.launcher_directory,
-        ] {
-            if destination.starts_with(source)
-                || source.starts_with(&destination)
-                || owner.directory.root.starts_with(source)
-                || source.starts_with(&owner.directory.root)
+        // The copy never overlaps the folders it reads, nor the launcher state.
+        for dir in source::directories(&adopted) {
+            if destination.starts_with(dir)
+                || dir.starts_with(&destination)
+                || owner.directory.root.starts_with(dir)
+                || dir.starts_with(&owner.directory.root)
             {
                 return Err(StorageError::InvalidDirectory.into());
             }
         }
-        (imported, owner.preferences.clone(), destination)
+        (owner.preferences.clone(), destination)
     };
-    for path in [
-        &imported.source.game_directory,
-        &imported.source.launcher_directory,
-    ] {
-        if path.canonicalize()? != *path {
-            return Err(StorageError::UnsafeFile.into());
-        }
-    }
-    let legacy_lock = lock_source(&imported)?;
-    verify_import(&imported)?;
-    let source = inventory::scan(&imported.source.game_directory, &cancel)?;
-    let servers = servers(&imported);
+    source::canonical_paths(&adopted)?;
+    let (adopted, legacy_lock) = source::resolve(adopted)?;
+    let imported = source::legacy(&adopted).ok();
+    let servers = source::servers_of(&adopted, &before);
     let identity = match &backend {
         Backend::Native => ExtractionBackend::Native,
         #[cfg(target_os = "macos")]
@@ -229,19 +262,29 @@ fn copy_preview(
     };
     let mut preparation =
         preparation::Ownership::claim(state.clone(), &request, identity, servers.clone())?;
-    let prepared = reference_and_comparison(
+    let prepared = verification::reference_and_comparison(
         &state,
         &request,
         backend,
         transport,
         &mut preparation,
-        &imported,
-        &source,
+        source::borrowed(&adopted),
+        AdoptionMode::Copy,
+        &scanned,
         &servers,
         &cancel,
         progress,
     );
-    let (reference, files) = match prepared {
+    let verification::Compared {
+        reference,
+        expected_digest,
+        expected_paths,
+        files,
+        download,
+        replacements,
+        file_index_sha256,
+        ..
+    } = match prepared {
         Ok(prepared) => prepared,
         Err(error) => {
             // This worker holds no state guard, so settle the owner now rather
@@ -252,101 +295,33 @@ fn copy_preview(
     };
     let report = Report {
         preview_handle: preparation.record.id,
-        source: imported.source.game_directory.clone(),
+        source: source::root(&adopted).to_path_buf(),
         destination,
         release_digest: request.release.digest(),
-        imported_identity: imported.identity.clone(),
-        requested_config: imported.config.clone(),
+        imported_identity: imported.map(|imported| imported.identity.clone()),
+        requested_config: imported.map(|imported| imported.config.clone()),
         files,
         user_data_remains_in_source: true,
         game_telemetry_available: false,
+        download: Some(download),
+        backup: None,
+        login_replaced: false,
     };
     Ok(Preview {
         state,
         report,
-        imported,
+        source: adopted,
         before,
         preparation,
         release: request.release,
-        source,
+        scanned,
         reference,
+        expected_digest,
+        expected_paths,
+        replacements,
+        file_index_sha256,
         _legacy_lock: legacy_lock,
     })
-}
-#[allow(clippy::too_many_arguments)]
-fn reference_and_comparison(
-    state: &Arc<Mutex<DesktopState>>,
-    request: &PreviewRequest,
-    backend: Backend,
-    transport: Option<artifacts::Transport>,
-    preparation: &mut preparation::Ownership,
-    imported: &migration::LegacyImport,
-    source: &inventory::Index,
-    servers: &[crate::client_setup::LoginServer],
-    cancel: &CancellationToken,
-    progress: crate::install_progress::ProgressSink,
-) -> Result<(reference::Reference, Vec<Difference>), Error> {
-    let fetched;
-    let artifacts = match &request.artifacts {
-        Some(artifacts) => artifacts,
-        None => {
-            let transport = match transport {
-                Some(transport) => transport,
-                None => artifacts::Transport::production()?,
-            };
-            let root = state
-                .lock()
-                .map_err(|_| StorageError::Io)?
-                .state_root()
-                .to_path_buf();
-            fetched = artifacts::fetch(&root, &transport, &request.release, cancel, &progress)?;
-            &fetched
-        }
-    };
-    let adapter: Option<Box<dyn crate::install::SeedExtractor>> = match backend {
-        Backend::Native => None,
-        #[cfg(target_os = "macos")]
-        Backend::Wine(helper) => {
-            preparation.uncertain = true;
-            Some(Box::new(
-                tokio::runtime::Handle::try_current()
-                    .map_err(|_| StorageError::Io)?
-                    .block_on(crate::mac_wine::WineSeedExtractor::prepare(
-                        state.clone(),
-                        preparation.record.id,
-                        helper.path().to_path_buf(),
-                        cancel.clone(),
-                        progress.clone(),
-                    ))
-                    .map_err(|_| StorageError::PersistenceUncertain)?,
-            ))
-        }
-    };
-    let reference = reference::reconstruct(
-        &preparation.record.directory,
-        &request.release,
-        artifacts,
-        servers,
-        cancel,
-        progress,
-        adapter.as_deref(),
-    )?;
-    preparation.uncertain = false;
-    drop(adapter);
-    let files = comparison::compare(&imported.source.game_directory, source, &reference)?;
-    if !files.iter().any(|d| {
-        matches!(
-            d.classification,
-            Classification::Matched | Classification::KnownTransform
-        )
-    }) {
-        return Err(Error::NoReusableFiles);
-    }
-    if inventory::scan(&imported.source.game_directory, cancel)? != *source {
-        return Err(Error::SourceChanged);
-    }
-    verify_import(imported)?;
-    Ok((reference, files))
 }
 /// Work ID is the only new identity provided at confirmation; content ownership
 /// gets a separate UUID. The caller consumes the exact native-held Preview once.
@@ -366,17 +341,6 @@ pub fn confirm(
         &crate::install_progress::ProgressSink::latest().0,
         |_| Ok(()),
     )
-}
-fn servers(imported: &migration::LegacyImport) -> Vec<crate::client_setup::LoginServer> {
-    imported
-        .config
-        .login_servers
-        .iter()
-        .map(|s| crate::client_setup::LoginServer {
-            name: s.name.clone(),
-            url: s.url.clone(),
-        })
-        .collect()
 }
 fn idle(
     state: &DesktopState,
@@ -401,45 +365,6 @@ fn idle(
         .is_some_and(|op| !op.state.terminal())
     {
         return Err(ContractError::Busy.into());
-    }
-    Ok(())
-}
-fn lock_source(imported: &migration::LegacyImport) -> Result<File, Error> {
-    // Import already created the same executable-adjacent legacy lock. Adoption
-    // never creates or replaces anything in either legacy folder.
-    let file = inventory::open(&imported.source.launcher_directory.join("launcher.lock"))?;
-    file.try_lock().map_err(|_| StorageError::InUse)?;
-    Ok(file)
-}
-fn verify_import(imported: &migration::LegacyImport) -> Result<(), Error> {
-    let mut hash = Sha256::new();
-    let source = serde_json::to_vec(&imported.source).map_err(|_| StorageError::Corrupt)?;
-    hash.update((source.len() as u64).to_le_bytes());
-    hash.update(source);
-    for path in [
-        imported
-            .source
-            .launcher_directory
-            .join("launcher-config.json"),
-        imported.source.launcher_directory.join("install.json"),
-        imported
-            .source
-            .game_directory
-            .join("launcher-installed.json"),
-    ] {
-        let mut bytes = Vec::new();
-        inventory::open(&path)?
-            .take(12 * 1024 + 1)
-            .read_to_end(&mut bytes)?;
-        if bytes.len() > 12 * 1024 {
-            return Err(StorageError::TooLarge.into());
-        }
-        hash.update((bytes.len() as u64).to_le_bytes());
-        hash.update(bytes);
-    }
-    let actual: String = hash.finalize().iter().map(|b| format!("{b:02x}")).collect();
-    if actual != imported.confirmation {
-        return Err(Error::SourceChanged);
     }
     Ok(())
 }

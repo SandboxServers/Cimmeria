@@ -8,6 +8,7 @@ import { mountLogUpload } from "./log-upload-view";
 import { mountClientMaintenance } from "./client-maintenance-view";
 import { mountClientChanges } from "./client-changes-view";
 import { mountPhysx } from "./physx-view";
+import { mountSeedArchive } from "./seed-archive-view";
 import { makePanelContext } from "./panel-context";
 import { aboutText, buildBadge } from "./about";
 
@@ -52,6 +53,7 @@ export function mountLauncher(document: Document, invoke: Invoke, onSettingsChan
     mountClientMaintenance(document, invoke, panelFeed.context),
     mountClientChanges(document, invoke, panelFeed.context),
     mountPhysx(document, invoke, panelFeed.context),
+    mountSeedArchive(document, invoke, panelFeed.context),
   ];
   const checkbox = get<HTMLInputElement>('telemetry');
   const path = get<HTMLInputElement>('install-path');

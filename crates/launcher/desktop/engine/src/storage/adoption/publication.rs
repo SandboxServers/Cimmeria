@@ -1,4 +1,5 @@
 //! Source-preserving staging and explicit checkpoint recovery. No redispatch.
+use super::in_place::{sync_files, SETUP_FILES};
 use super::*;
 use std::io::Write;
 
@@ -10,6 +11,9 @@ pub(super) enum Point {
     BeforePromotion,
     /// In place only: one more release file is now inside the owned tree.
     Moved,
+    /// In place only: a modified or unneeded original is set aside and its
+    /// replacement is not yet copied into `game`.
+    Replaced,
     AfterPromotion,
     /// In place only: the launcher's setup and ledger are written in `game`.
     SetUp,
@@ -40,6 +44,11 @@ pub(super) fn read_large<T: serde::de::DeserializeOwned>(path: &Path) -> Result<
     serde_json::from_slice(&bytes).map_err(|_| StorageError::Corrupt.into())
 }
 fn sync(path: &Path) -> Result<(), Error> {
+    // Windows cannot open a directory as a file, so it has no directory flush to
+    // make; the entries themselves were already flushed when each file was written.
+    if cfg!(windows) {
+        return Ok(());
+    }
     File::open(path)?.sync_all()?;
     Ok(())
 }
@@ -91,8 +100,10 @@ fn copy_and_publish(
     }
     preview.consent(&choices)?;
     inventory::check_cancel(cancel)?;
-    verify_import(&preview.imported)?;
-    if inventory::scan(&preview.imported.source.game_directory, cancel)? != preview.source {
+    if let AdoptionSource::Legacy(imported) = &preview.source {
+        source::verify_import(imported)?;
+    }
+    if inventory::scan(source_root(&preview.source), cancel)? != preview.scanned {
         return Err(Error::SourceChanged);
     }
     // Admission: the journal's Running Adopt operation, not this guard, excludes
@@ -135,7 +146,7 @@ fn copy_and_publish(
         preferences_revision: preview.before.revision,
         destination: destination.clone(),
         manifest_digest: preview.release.digest(),
-        login_servers: servers(&preview.imported),
+        login_servers: source::servers_of(&preview.source, &preview.before),
         backend: preview.preparation.record.descriptor.backend.clone(),
     };
     let mut owner = OpenOptions::new()
@@ -148,28 +159,34 @@ fn copy_and_publish(
     owner.sync_all()?;
     let stage = destination.join(format!(".cimmeria-adopt-{id}"));
     std::fs::create_dir(&stage)?;
+    let (legacy_install_id, import_digest, folder_scan_digest) = pins(&preview.source);
     let provenance = Provenance {
         work_id: id,
-        legacy_install_id: preview.imported.identity.install_id,
-        import_digest: preview.imported.confirmation.clone(),
-        reference_digest: inventory::content_digest(&preview.reference.index)?,
+        legacy_install_id,
+        import_digest,
+        reference_digest: preview.expected_digest,
         setup_policy_version: 1,
+        folder_scan_digest,
+        file_index_sha256: preview.file_index_sha256.clone(),
     };
     let mut after = preview.before.clone();
     after.revision = after.revision.checked_add(1).ok_or(StorageError::Corrupt)?;
     after.install_directory = Some(destination.clone());
+    let (imported, folder) = planned(&preview.source);
     let plan = Plan {
         schema_version: 1,
         installation,
         provenance: provenance.clone(),
-        imported: preview.imported.clone(),
+        imported,
+        folder,
         before: preview.before.clone(),
         after,
         report: preview.report.clone(),
         choices,
-        source_digest: digest(&preview.source)?,
+        source_digest: digest(&preview.scanned)?,
         stage_identity: inventory::identity(&stage)?,
         destination_identity: inventory::identity(&destination)?,
+        replacements: Vec::new(),
     };
     state.save_release_evidence(owner_id, &preview.release)?;
     atomic::write(
@@ -192,8 +209,8 @@ fn copy_and_publish(
         hook(Point::Plan)?;
         // The multi-gigabyte copy runs without the state guard, so status reads
         // and other views stay responsive. Never invoke this on a command thread.
-        let total = preview.reference.index.len();
-        for (current, (path, expected)) in preview.reference.index.iter().enumerate() {
+        let total = preview.expected_paths.len();
+        for (current, path) in preview.expected_paths.iter().enumerate() {
             progress.report(crate::install::Progress::Extracting {
                 label: "Verified copy".into(),
                 current,
@@ -207,21 +224,43 @@ fn copy_and_publish(
                         Classification::Matched | Classification::KnownTransform
                     )
             });
+            let replacement = preview.replacements().iter().find(|r| &r.path == path);
             if let Some(source_path) = reusable.and_then(|d| d.source_path.as_ref()) {
                 inventory::copy(
-                    &preview.imported.source.game_directory.join(source_path),
+                    &source_root(&preview.source).join(source_path),
                     &stage.join(path),
-                    &preview.source[source_path],
+                    &preview.scanned[source_path],
                     cancel,
                 )?;
+            } else if let Some(replacement) = replacement {
+                // The replay stored the verified bytes; check them again before use.
+                let stored = inventory::native(
+                    &preview.preparation.record.directory.join("replacements"),
+                    path,
+                );
+                let entry = inventory::hash(&stored, cancel)?;
+                if entry.size != replacement.size || entry.sha256 != replacement.sha256 {
+                    return Err(Error::InvalidArtifact);
+                }
+                inventory::copy(&stored, &stage.join(path), &entry, cancel)?;
             } else {
+                // Without a reconstructed reference only a replacement supplies the
+                // file; a missing one is never skipped.
+                let reference = preview.reference.as_ref().ok_or(Error::InvalidArtifact)?;
+                let expected = reference.index.get(path).ok_or(Error::InvalidArtifact)?;
                 inventory::copy(
-                    &preview.reference.prepared.join(path),
+                    &reference.prepared.join(path),
                     &stage.join(path),
                     expected,
                     cancel,
                 )?;
             }
+        }
+        if preview.reference.is_none() {
+            // The ledger a reconstruction would have saved, synthesized from the release.
+            reference::ledger(&preview.release)
+                .save(&stage)
+                .map_err(|_| StorageError::Io)?;
         }
         progress.report(crate::install::Progress::Extracting {
             label: "Verified copy".into(),
@@ -235,11 +274,14 @@ fn copy_and_publish(
         {
             return Err(Error::InvalidArtifact);
         }
-        if inventory::scan(&preview.imported.source.game_directory, cancel)? != preview.source {
+        if inventory::scan(source_root(&preview.source), cancel)? != preview.scanned {
             return Err(Error::SourceChanged);
         }
-        verify_import(&preview.imported)?;
+        if let AdoptionSource::Legacy(imported) = &preview.source {
+            source::verify_import(imported)?;
+        }
         sync_tree(&stage)?;
+        sync_files(&stage, &SETUP_FILES)?;
         // Publication is serialized with preference edits again. The operation
         // must still be the one admitted above before any checkpoint is written.
         let mut state = preview.state.lock().map_err(|_| StorageError::Io)?;
@@ -386,7 +428,19 @@ fn rename_exclusive(source: &Path, destination: &Path) -> Result<(), Error> {
         }
         Ok(())
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::Storage::FileSystem::MoveFileExW;
+        let wide =
+            |path: &Path| -> Vec<u16> { path.as_os_str().encode_wide().chain([0]).collect() };
+        // Without MOVEFILE_REPLACE_EXISTING the move fails on any existing destination.
+        if unsafe { MoveFileExW(wide(source).as_ptr(), wide(destination).as_ptr(), 0) } == 0 {
+            return Err(std::io::Error::last_os_error().into());
+        }
+        Ok(())
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
     {
         let _ = (source, destination);
         Err(Error::UnsupportedConfiguration)
@@ -532,6 +586,37 @@ pub fn abandon(state: &mut DesktopState, id: Uuid, revision: u64) -> Result<(), 
     Ok(())
 }
 
+/// The folder a source is read from: the import's game folder, or the picked root.
+fn source_root(source: &AdoptionSource) -> &Path {
+    match source {
+        AdoptionSource::Legacy(imported) => &imported.source.game_directory,
+        AdoptionSource::Folder(folder) => &folder.root,
+    }
+}
+
+/// What a source pins in its provenance: a legacy import by its install and
+/// confirmation, a folder by the scan the player reviewed.
+pub(super) fn pins(source: &AdoptionSource) -> (Option<Uuid>, Option<String>, Option<[u8; 32]>) {
+    match source {
+        AdoptionSource::Legacy(imported) => (
+            Some(imported.identity.install_id),
+            Some(imported.confirmation.clone()),
+            None,
+        ),
+        AdoptionSource::Folder(folder) => (None, None, Some(folder.scan_digest)),
+    }
+}
+
+/// The plan's source fields: exactly one of the import and the folder is set.
+pub(super) fn planned(
+    source: &AdoptionSource,
+) -> (Option<migration::LegacyImport>, Option<FolderSource>) {
+    match source {
+        AdoptionSource::Legacy(imported) => (Some(imported.clone()), None),
+        AdoptionSource::Folder(folder) => (None, Some(folder.clone())),
+    }
+}
+
 pub(super) fn verify_provenance(
     state: &DesktopState,
     intent: &InstallIntent,
@@ -570,10 +655,23 @@ fn published_record(
     if record.plan.schema_version != 1 || provenance.setup_policy_version != 1 {
         return Err(StorageError::UnsupportedSchema.into());
     }
-    if record.plan.imported.confirmation != provenance.import_digest
-        || record.plan.imported.identity.install_id != provenance.legacy_install_id
-    {
-        return Err(StorageError::Corrupt.into());
+    match record.plan.source()? {
+        AdoptionSourceRef::Legacy(legacy) => {
+            if provenance.import_digest.as_ref() != Some(&legacy.confirmation)
+                || provenance.legacy_install_id != Some(legacy.identity.install_id)
+                || provenance.folder_scan_digest.is_some()
+            {
+                return Err(StorageError::Corrupt.into());
+            }
+        }
+        AdoptionSourceRef::Folder(folder) => {
+            if provenance.folder_scan_digest != Some(folder.scan_digest)
+                || provenance.import_digest.is_some()
+                || provenance.legacy_install_id.is_some()
+            {
+                return Err(StorageError::Corrupt.into());
+            }
+        }
     }
     if record.phase != Phase::Published
         || record.plan.installation != *intent

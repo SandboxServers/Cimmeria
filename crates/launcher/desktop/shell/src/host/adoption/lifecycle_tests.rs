@@ -211,7 +211,15 @@ async fn an_interrupted_preparation_is_offered_for_removal_and_survives_reopen()
     let request = {
         let state = store.lock().unwrap();
         adoption::PreviewRequest {
-            import_digest: state.legacy_import().unwrap().unwrap().confirmation,
+            source: adoption::SourceRequest::Legacy {
+                import_digest: state.legacy_import().unwrap().unwrap().confirmation,
+            },
+            // The mode this host takes: a copy on macOS, in place elsewhere.
+            mode: if cfg!(target_os = "macos") {
+                adoption::AdoptionMode::Copy
+            } else {
+                adoption::AdoptionMode::InPlace
+            },
             destination: f.destination(),
             operation_revision: state.operations().snapshot().revision,
             preferences_revision: state.preferences().revision,
@@ -237,6 +245,7 @@ async fn an_interrupted_preparation_is_offered_for_removal_and_survives_reopen()
     let mut host = NativeHost::new(path);
     host.adoption_fixture = Some(TestDispatch {
         manifest_url: origin.into(),
+        #[cfg(target_os = "macos")]
         helper: None,
         copy_fault: Mutex::new(None),
     });
