@@ -278,7 +278,7 @@ pub fn fetch(ep: &Endpoint) -> Option<StatusReply>;   // GET /status, bearer, 5 
     pub client_pid: Option<u32>, pub lease: Option<serde_json::Value>, pub uat: Option<serde_json::Value>,
 }
 // daemon/env_file.rs
-pub enum EnvLine { Pair { key: String, value: String }, Comment(String), Blank, Unparsed(String) }
+pub enum EnvLine { Pair { key: String, value: String, raw: Option<String> }, Comment(String), Blank(String), Unparsed(String) }  // raw: line as read, None once set changes it; untouched lines are written back byte-identical
 pub fn read(path: &Path) -> io::Result<Vec<EnvLine>>;
 pub fn get<'a>(lines: &'a [EnvLine], key: &str) -> Option<&'a str>;       // key matched ignoring case
 pub fn set(lines: &mut Vec<EnvLine>, key: &str, value: &str);             // replace in place, else append
