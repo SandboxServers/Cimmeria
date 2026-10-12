@@ -11,11 +11,16 @@ use regex::Regex;
 pub enum EnvLine {
     /// `KEY=VALUE`: the key is trimmed, the value is everything after the
     /// first `=` of the trimmed line (it may itself contain `=`).
-    Pair { key: String, value: String },
+    Pair {
+        key: String,
+        value: String,
+        /// The line exactly as read; None once `set` changes it or for a new line.
+        raw: Option<String>,
+    },
     /// A line whose first non-blank character is `#`, kept as written.
     Comment(String),
-    /// An empty or whitespace-only line.
-    Blank,
+    /// An empty or whitespace-only line, kept as written.
+    Blank(String),
     /// Anything else (no `=` after the first character), kept as written.
     Unparsed(String),
 }
@@ -26,7 +31,7 @@ pub enum EnvLine {
 pub fn parse_line(raw: &str) -> EnvLine {
     let trimmed = raw.trim().trim_start_matches('\u{feff}');
     if trimmed.is_empty() {
-        return EnvLine::Blank;
+        return EnvLine::Blank(raw.to_string());
     }
     if trimmed.starts_with('#') {
         return EnvLine::Comment(raw.to_string());
@@ -35,6 +40,7 @@ pub fn parse_line(raw: &str) -> EnvLine {
         Some(index) if index >= 1 => EnvLine::Pair {
             key: trimmed[..index].trim().to_string(),
             value: trimmed[index + 1..].to_string(),
+            raw: Some(raw.to_string()),
         },
         _ => EnvLine::Unparsed(raw.to_string()),
     }
@@ -66,9 +72,13 @@ pub fn read_or_empty(path: &Path) -> Vec<EnvLine> {
 /// One line as it is written to the file.
 pub fn render_line(line: &EnvLine) -> String {
     match line {
-        EnvLine::Pair { key, value } => format!("{key}={value}"),
-        EnvLine::Comment(text) | EnvLine::Unparsed(text) => text.clone(),
-        EnvLine::Blank => String::new(),
+        EnvLine::Pair { raw: Some(raw), .. } => raw.clone(),
+        EnvLine::Pair {
+            key,
+            value,
+            raw: None,
+        } => format!("{key}={value}"),
+        EnvLine::Comment(text) | EnvLine::Unparsed(text) | EnvLine::Blank(text) => text.clone(),
     }
 }
 
@@ -86,7 +96,7 @@ pub fn render(lines: &[EnvLine]) -> String {
 /// it wins, as in `Read-LabdEnvFile`'s map.
 pub fn get<'a>(lines: &'a [EnvLine], key: &str) -> Option<&'a str> {
     lines.iter().rev().find_map(|line| match line {
-        EnvLine::Pair { key: k, value } if k.eq_ignore_ascii_case(key) => Some(value.as_str()),
+        EnvLine::Pair { key: k, value, .. } if k.eq_ignore_ascii_case(key) => Some(value.as_str()),
         _ => None,
     })
 }
@@ -97,6 +107,7 @@ pub fn set(lines: &mut Vec<EnvLine>, key: &str, value: &str) {
     let new = EnvLine::Pair {
         key: key.to_string(),
         value: value.to_string(),
+        raw: None,
     };
     let last = lines.iter().rposition(
         |line| matches!(line, EnvLine::Pair { key: k, .. } if k.eq_ignore_ascii_case(key)),
@@ -229,9 +240,9 @@ pub fn mask(key: &str, value: &str) -> String {
 /// not shown (`<unparsed line>`).
 pub fn mask_line(line: &EnvLine) -> String {
     match line {
-        EnvLine::Pair { key, value } => format!("{key}={}", mask(key, value)),
+        EnvLine::Pair { key, value, .. } => format!("{key}={}", mask(key, value)),
         EnvLine::Comment(text) => hide_text(text),
-        EnvLine::Blank => String::new(),
+        EnvLine::Blank(_) => String::new(),
         EnvLine::Unparsed(_) => "<unparsed line>".to_string(),
     }
 }

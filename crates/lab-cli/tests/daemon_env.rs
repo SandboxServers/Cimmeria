@@ -283,6 +283,44 @@ fn unset_of_an_absent_key_returns_false() {
     assert_eq!(joined(&file), "# head|FOO=1|CIMMERIA_LAB_BAR=a=b|# tail");
 }
 
+// The file as it is written with one line changed: every other line keeps its
+// exact bytes (spacing, a whitespace-only line, CRLF).
+const EDIT_SRC: &str = "FOO = 1\r\n  BAR=2  \r\n   \r\n# c\r\nBAZ=3\r\n";
+
+// New: a set leaves every untouched line byte-identical; only BAZ changes.
+#[test]
+fn untouched_lines_round_trip_byte_identical() {
+    let tmp = TempDir::new().unwrap();
+    let path = tmp.path().join("labd.env");
+    std::fs::write(&path, EDIT_SRC).unwrap();
+
+    let mut file = env_file::read(&path).unwrap();
+    env_file::set(&mut file, "BAZ", "4");
+    env_file::write_with_backup(&path, &file).unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        "FOO = 1\r\n  BAR=2  \r\n   \r\n# c\r\nBAZ=4\r\n"
+    );
+}
+
+// New: an unset leaves every other line byte-identical; only BAZ goes.
+#[test]
+fn unset_keeps_other_lines_byte_identical() {
+    let tmp = TempDir::new().unwrap();
+    let path = tmp.path().join("labd.env");
+    std::fs::write(&path, EDIT_SRC).unwrap();
+
+    let mut file = env_file::read(&path).unwrap();
+    assert!(env_file::unset(&mut file, "BAZ"));
+    env_file::write_with_backup(&path, &file).unwrap();
+
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        "FOO = 1\r\n  BAR=2  \r\n   \r\n# c\r\n"
+    );
+}
+
 // ---- reading ----
 
 // New (Read-LabdEnvFile): a BOM, LF, CRLF and a lone CR all parse.
@@ -295,7 +333,10 @@ fn parse_accepts_a_bom_and_every_line_ending() {
 // New: blank, comment and unparsed lines are told apart.
 #[test]
 fn parse_line_tells_the_line_kinds_apart() {
-    assert_eq!(env_file::parse_line("   "), EnvLine::Blank);
+    assert_eq!(
+        env_file::parse_line("   "),
+        EnvLine::Blank("   ".to_string())
+    );
     assert_eq!(
         env_file::parse_line("  # c"),
         EnvLine::Comment("  # c".to_string())
@@ -308,7 +349,8 @@ fn parse_line_tells_the_line_kinds_apart() {
         env_file::parse_line("  K = v "),
         EnvLine::Pair {
             key: "K".to_string(),
-            value: " v".to_string()
+            value: " v".to_string(),
+            raw: Some("  K = v ".to_string())
         }
     );
 }
