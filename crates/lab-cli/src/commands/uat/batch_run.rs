@@ -268,7 +268,9 @@ pub fn execute(args: &Args, ctx: &Ctx, ep: &Endpoint, input: BatchInput) -> u8 {
     let call = |instance: &str, timeout: Duration| {
         call_lab_uat_run(ep, &input.call.for_lane(instance), timeout)
     };
-    let wait = |instance: &str, max: Duration| mcp::wait_lease_free(ep, instance, max);
+    let wait = |instance: &str, max: Duration| {
+        mcp::wait_lease_free_stoppable(ep, instance, max, &ctrlc::stop_requested)
+    };
     let sleep = |total: Duration| sleep_unless_stopped(total, &ctrlc::STOP);
     // --diff-golden (or --chaos, which implies it): compare each passing run with the golden.
     let diff = input

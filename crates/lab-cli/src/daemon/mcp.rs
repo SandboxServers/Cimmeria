@@ -256,36 +256,99 @@ pub fn wait_lease_free_with(
     max: Duration,
     interval: Duration,
 ) -> bool {
-    let deadline = Instant::now().checked_add(max);
+    wait_lease_free_until(
+        poll,
+        instance,
+        max,
+        interval,
+        &|| false,
+        &mut RealClock::default(),
+    )
+}
+
+/// The longest single sleep inside a lease wait: a stop request is seen within it.
+pub const STOP_SLICE: Duration = Duration::from_millis(200);
+
+/// The clock and the sleeper of a lease wait. The real one is [`RealClock`];
+/// tests pass a fake one that moves time without sleeping.
+pub trait LeaseClock {
+    /// Time since the wait began.
+    fn elapsed(&mut self) -> Duration;
+    /// Sleeps for `d`.
+    fn sleep(&mut self, d: Duration);
+}
+
+/// [`Instant`] and `thread::sleep`; the wait begins when it is made.
+pub struct RealClock(Instant);
+
+impl Default for RealClock {
+    fn default() -> Self {
+        RealClock(Instant::now())
+    }
+}
+
+impl LeaseClock for RealClock {
+    fn elapsed(&mut self) -> Duration {
+        self.0.elapsed()
+    }
+
+    fn sleep(&mut self, d: Duration) {
+        std::thread::sleep(d);
+    }
+}
+
+/// Whether `instance`'s row of a `/status` body says its lease is held. An
+/// instance missing from the body counts as free, as the PowerShell does.
+fn lease_held(status: &Value, instance: &str) -> bool {
+    status
+        .get("instances")
+        .and_then(Value::as_array)
+        .and_then(|rows| {
+            rows.iter()
+                .find(|r| r.get("instance").and_then(Value::as_str) == Some(instance))
+        })
+        .and_then(|row| row.get("lease"))
+        .and_then(|lease| lease.get("held"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+}
+
+/// [`wait_lease_free_with`] with a stop check and a clock. `stop` is asked at
+/// the top of every round and before every sleep slice (each at most
+/// [`STOP_SLICE`] long), so a `true` ends the wait within one slice and the
+/// answer is `false` (the lease did not clear). A stop that is already `true`
+/// polls nothing. The wait never sleeps past `max`; the poll after the last
+/// sleep is the last look.
+pub fn wait_lease_free_until(
+    poll: &mut dyn FnMut() -> Option<Value>,
+    instance: &str,
+    max: Duration,
+    interval: Duration,
+    stop: &dyn Fn() -> bool,
+    clock: &mut dyn LeaseClock,
+) -> bool {
     loop {
+        if stop() {
+            return false;
+        }
         if let Some(status) = poll() {
-            let held = status
-                .get("instances")
-                .and_then(Value::as_array)
-                .and_then(|rows| {
-                    rows.iter()
-                        .find(|r| r.get("instance").and_then(Value::as_str) == Some(instance))
-                })
-                .and_then(|row| row.get("lease"))
-                .and_then(|lease| lease.get("held"))
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-            if !held {
+            if !lease_held(&status, instance) {
                 return true;
             }
         }
-        // Never sleep past `max` (the PowerShell sleeps a full 10 s even when
-        // the budget is nearly spent); the poll after the last sleep is the
-        // last look.
-        let Some(deadline) = deadline else {
-            std::thread::sleep(interval);
-            continue;
-        };
-        let now = Instant::now();
-        if now >= deadline {
+        let left = max.saturating_sub(clock.elapsed());
+        if left.is_zero() {
             return false;
         }
-        std::thread::sleep(interval.min(deadline - now));
+        let mut rest = interval.min(left);
+        while !rest.is_zero() {
+            if stop() {
+                return false;
+            }
+            let slice = rest.min(STOP_SLICE);
+            clock.sleep(slice);
+            rest -= slice;
+        }
     }
 }
 
@@ -315,6 +378,26 @@ pub fn wait_lease_free_at(
     wait_lease_free_at_every(base_url, token, instance, max, LEASE_POLL_INTERVAL)
 }
 
+/// [`wait_lease_free_at_every`] that also stops: `stop` is asked as in
+/// [`wait_lease_free_until`] and a `true` ends the wait with `false`.
+pub fn wait_lease_free_stoppable_every(
+    base_url: &str,
+    token: Option<&str>,
+    instance: &str,
+    max: Duration,
+    interval: Duration,
+    stop: &dyn Fn() -> bool,
+) -> bool {
+    wait_lease_free_until(
+        &mut || fetch_status_value(base_url, token),
+        instance,
+        max,
+        interval,
+        stop,
+        &mut RealClock::default(),
+    )
+}
+
 impl McpClient {
     /// [`McpClient::open`] over a discovered endpoint.
     pub fn connect(ep: &Endpoint) -> Result<Self, McpError> {
@@ -326,6 +409,24 @@ impl McpClient {
 /// polling `GET /status` on the endpoint at the PowerShell's 10 second interval.
 pub fn wait_lease_free(ep: &Endpoint, instance: &str, max: Duration) -> bool {
     wait_lease_free_at(&ep.base_url, ep.token.as_deref(), instance, max)
+}
+
+/// [`wait_lease_free`] that ends at once when `stop` turns `true` (the lab
+/// uat batch passes `ctrlc::stop_requested`): the answer is then `false`.
+pub fn wait_lease_free_stoppable(
+    ep: &Endpoint,
+    instance: &str,
+    max: Duration,
+    stop: &dyn Fn() -> bool,
+) -> bool {
+    wait_lease_free_stoppable_every(
+        &ep.base_url,
+        ep.token.as_deref(),
+        instance,
+        max,
+        LEASE_POLL_INTERVAL,
+        stop,
+    )
 }
 
 /// Lease ids (`lease-<hex>`) replaced in text that leaves the command
