@@ -109,6 +109,36 @@ pub fn default_specs_dir() -> Option<PathBuf> {
     })
 }
 
+/// `dir` made absolute against `cwd`, as text. A path that is already rooted
+/// (a drive letter or a UNC prefix with either slash, or a leading slash) is
+/// returned as it is, on every platform; anything else is joined to `cwd`.
+/// The folder need not exist. The daemon runs in another directory, so a
+/// relative spec folder must be sent as the folder the user meant.
+pub fn absolute_in(dir: &str, cwd: &Path) -> String {
+    if dir.is_empty() || is_rooted(dir) {
+        return dir.to_string();
+    }
+    cwd.join(dir).display().to_string()
+}
+
+/// [`absolute_in`] against this process's current directory (`dir` unchanged
+/// when that cannot be read). Every `--specs-dir` goes through it before any
+/// daemon call.
+pub fn absolute_specs_dir(dir: &str) -> String {
+    match std::env::current_dir() {
+        Ok(cwd) => absolute_in(dir, &cwd),
+        Err(_) => dir.to_string(),
+    }
+}
+
+fn is_rooted(dir: &str) -> bool {
+    let b = dir.as_bytes();
+    let sep = |c: u8| c == b'\\' || c == b'/';
+    Path::new(dir).is_absolute()
+        || (b.len() >= 2 && sep(b[0]) && sep(b[1]))
+        || (b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && sep(b[2]))
+}
+
 /// What `labd.pid` says about the running daemon.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DaemonInfo {

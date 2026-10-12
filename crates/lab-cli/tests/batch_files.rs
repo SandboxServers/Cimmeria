@@ -1,5 +1,5 @@
 //! plan.json, batch.jsonl and batch folders. Ports the 'finding and reading a
-//! batch' checks of tools/lab/cli/test-watch.ps1 (each check is named in a
+//! batch' checks of the retired tools/lab/cli/test-watch.ps1 (each check is named in a
 //! comment) and pins the file formats LX-15 to LX-17 write.
 
 mod watch_support;
@@ -138,7 +138,7 @@ fn a_missing_batch_jsonl_is_no_records_and_an_unreadable_one_is_an_error() {
     assert!(read_records(&tmp.path().join("batch.jsonl")).is_err());
 }
 
-// New: the key order of a record line is the order uat.ps1's hashtable writes.
+// New: the key order of a record line is the order uat.ps1's hashtable wrote.
 #[test]
 fn a_run_record_serializes_in_the_order_powershell_wrote_it() {
     let mut r = RunRecord {

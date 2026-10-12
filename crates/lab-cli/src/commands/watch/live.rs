@@ -2,7 +2,10 @@
 //! every interval, quit on `q`, `Esc` or Ctrl+C, and the screen always put back.
 
 use std::io::{self, Write};
+use std::panic::{self, PanicHookInfo};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Once;
 use std::time::{Duration, Instant};
 
 use chrono::Local;
@@ -57,14 +60,70 @@ impl<W: Write> ScreenGuard<W> {
 
 impl<W: Write> Drop for ScreenGuard<W> {
     fn drop(&mut self) {
-        // Raw mode first: a write to a closed console must not leave the parent
-        // shell without its line editing.
-        if self.raw {
-            let _ = terminal::disable_raw_mode();
-        }
-        let seq = format!("{}{}", ansi(Show), ansi(LeaveAlternateScreen));
-        let _ = self.out.write_all(seq.as_bytes());
-        let _ = self.out.flush();
+        restore_terminal(&mut self.out, self.raw);
+    }
+}
+
+/// The bytes that put the terminal back: show the cursor, leave the alternate screen.
+fn leave_sequence() -> String {
+    format!("{}{}", ansi(Show), ansi(LeaveAlternateScreen))
+}
+
+/// Puts the terminal back: raw mode off first (a write to a closed console must
+/// not leave the parent shell without its line editing), then the cursor and
+/// the screen. Safe to run twice.
+pub fn restore_terminal<W: Write>(out: &mut W, raw: bool) {
+    if raw {
+        let _ = terminal::disable_raw_mode();
+    }
+    let _ = out.write_all(leave_sequence().as_bytes());
+    let _ = out.flush();
+}
+
+/// A panic hook, as the panic machinery stores it.
+type Hook = Box<dyn Fn(&PanicHookInfo<'_>) + Send + Sync + 'static>;
+
+/// A hook that runs `restore` and then `previous`: the terminal is back on the
+/// normal screen before the default hook prints, so the message stays visible
+/// (printed on the alternate screen it would vanish with the screen).
+fn hook_with(restore: impl Fn() + Send + Sync + 'static, previous: Hook) -> Hook {
+    Box::new(move |info| {
+        restore();
+        previous(info);
+    })
+}
+
+static LIVE: AtomicBool = AtomicBool::new(false);
+static LIVE_RAW: AtomicBool = AtomicBool::new(false);
+static HOOK: Once = Once::new();
+
+/// While alive, a panic restores the terminal before it is reported. The hook
+/// is installed once per process and does nothing while no live view runs.
+pub struct PanicHookGuard;
+
+impl PanicHookGuard {
+    /// Arms the hook; `raw` says raw mode is on.
+    pub fn install(raw: bool) -> Self {
+        LIVE_RAW.store(raw, Ordering::SeqCst);
+        LIVE.store(true, Ordering::SeqCst);
+        HOOK.call_once(|| {
+            let previous = panic::take_hook();
+            panic::set_hook(hook_with(
+                || {
+                    if LIVE.load(Ordering::SeqCst) {
+                        restore_terminal(&mut io::stdout(), LIVE_RAW.load(Ordering::SeqCst));
+                    }
+                },
+                previous,
+            ));
+        });
+        PanicHookGuard
+    }
+}
+
+impl Drop for PanicHookGuard {
+    fn drop(&mut self) {
+        LIVE.store(false, Ordering::SeqCst);
     }
 }
 
@@ -213,6 +272,7 @@ pub fn run_live(args: &Args, ui: &Ui, batch_dir: Option<PathBuf>) -> u8 {
     // (the guard writes raw ANSI); on other systems it does nothing of note.
     let _ = crossterm::execute!(io::stdout(), crossterm::style::ResetColor);
     let raw = terminal::enable_raw_mode().is_ok();
+    let _hook = PanicHookGuard::install(raw);
     let mut guard = match ScreenGuard::enter(io::stdout(), raw) {
         Ok(guard) => guard,
         Err(_) => return 3,
@@ -272,6 +332,45 @@ mod tests {
         }));
         assert!(result.is_err());
         assert!(String::from_utf8(buf).unwrap().ends_with(LEAVE));
+    }
+
+    // F-LX5: the hook restores the terminal, then lets the previous hook print.
+    // Fails if reverted: with the previous hook first the log reads print, restore
+    // (the message lands on the alternate screen), and with no hook it is empty.
+    #[test]
+    fn the_panic_hook_restores_the_terminal_before_the_message_prints() {
+        use std::sync::{Arc, Mutex};
+        use std::thread;
+        let log: Arc<Mutex<Vec<&'static str>>> = Arc::default();
+        let me = thread::current().id();
+        let (restore_log, print_log) = (Arc::clone(&log), Arc::clone(&log));
+        let previous: Hook = Box::new(move |_| {
+            if thread::current().id() == me {
+                print_log.lock().unwrap().push("print");
+            }
+        });
+        let hook = hook_with(
+            move || {
+                if thread::current().id() == me {
+                    restore_log.lock().unwrap().push("restore");
+                }
+            },
+            previous,
+        );
+        let saved = std::panic::take_hook();
+        std::panic::set_hook(hook);
+        let result = std::panic::catch_unwind(|| panic!("a bad tick"));
+        std::panic::set_hook(saved);
+        assert!(result.is_err());
+        assert_eq!(*log.lock().unwrap(), ["restore", "print"]);
+    }
+
+    // The restore bytes: show cursor, then leave screen (what the guard's drop writes).
+    #[test]
+    fn restore_terminal_writes_the_leave_sequence() {
+        let mut buf: Vec<u8> = Vec::new();
+        restore_terminal(&mut buf, false);
+        assert_eq!(String::from_utf8(buf).unwrap(), LEAVE);
     }
 
     // A frame: home, each line + erase-to-eol + CRLF, then erase below.

@@ -1,5 +1,5 @@
 //! `lab watch` as a process: exit codes, one snapshot, usage errors. Ports the
-//! 'command' checks of tools/lab/cli/test-watch.ps1 (each is named in a comment).
+//! 'command' checks of the retired tools/lab/cli/test-watch.ps1 (each is named in a comment).
 
 mod support;
 mod watch_support;

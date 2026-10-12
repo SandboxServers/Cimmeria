@@ -451,15 +451,16 @@ fn fancy_output_has_glyphs_hints_and_a_count_line() {
         "✓ scheduled task CimmeriaLabDaemon exists\n\
          ! each instance's profile is seeded\n\
          \x20   not seeded: p3\n\
+         \x20   hint: lab instances init\n\
          ✗ CIMMERIA_LAB_DAEMON_TOKEN is set\n\
          \x20   not set\n\
-         \x20   hint: run lab install\n\
+         \x20   hint: lab install\n\
          3 checks · 1 passed · 1 warning · 1 failed\n"
     );
 }
 
 #[test]
-fn the_count_line_pluralises_warnings() {
+fn the_count_line_says_1_check_and_pluralises_warnings() {
     let ui = Ui {
         color: false,
         fancy: true,
@@ -468,7 +469,7 @@ fn the_count_line_pluralises_warnings() {
     let text = render(&ui, &[task_check(&good())]);
     assert_eq!(
         text,
-        "✓ scheduled task CimmeriaLabDaemon exists\n1 checks · 1 passed · 0 warnings · 0 failed\n"
+        "✓ scheduled task CimmeriaLabDaemon exists\n1 check · 1 passed · 0 warnings · 0 failed\n"
     );
 }
 
@@ -479,4 +480,37 @@ fn exit_code_is_1_only_when_a_check_fails() {
     assert_eq!(exit_code(&results), 1);
     assert_eq!(exit_code(&results[..2]), 0, "a warning does not fail");
     assert_eq!(exit_code(&run_all(&good())), 0);
+}
+
+// New (F-LX2): every hint is a command in fancy mode, and plain mode is untouched.
+#[test]
+fn fancy_hints_are_commands() {
+    let mut i = good();
+    i.status = None;
+    assert_eq!(daemon_check(&i).fancy_hint.as_deref(), Some("lab start"));
+    i.binaries = BinaryFacts::Differ;
+    assert_eq!(binary_check(&i).fancy_hint.as_deref(), Some("lab restart"));
+    i.binaries = BinaryFacts::Missing(PathBuf::from("C:/x/cimmeria-lab.exe"));
+    assert_eq!(binary_check(&i).fancy_hint.as_deref(), Some("lab install"));
+    i.instances = vec![inst("p2", false, false)];
+    assert_eq!(
+        account_check(&i).fancy_hint.as_deref(),
+        Some("lab instances init")
+    );
+    assert_eq!(
+        seed_check(&i).fancy_hint.as_deref(),
+        Some("lab instances init")
+    );
+    i.content = Some(ContentCheck::Unknown);
+    assert_eq!(
+        version_check(&i).fancy_hint.as_deref(),
+        Some("git fetch, or lab setup")
+    );
+    // The seed check's plain text is still the PowerShell's, with no hint.
+    assert_eq!(seed_check(&i).plain_detail(), "not seeded: p2");
+    for check in run_all(&i) {
+        if let Some(hint) = &check.fancy_hint {
+            assert!(!hint.starts_with("run "), "{hint}");
+        }
+    }
 }

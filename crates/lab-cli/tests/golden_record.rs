@@ -292,6 +292,38 @@ fn the_child_gets_the_rows_runs_leases_build_and_specs_and_the_tool_gets_the_row
     );
 }
 
+// F-LX7: a relative --specs-dir reaches the child `uat` and the tool as an absolute path.
+#[test]
+fn a_relative_specs_dir_is_made_absolute_before_the_child_and_the_tool() {
+    let (specs, batch) = (specs_dir(), batch_dir(5));
+    let body = mcp_body(&ok_reply());
+    let (stub, endpoint) = StubServer::start(vec![("POST", "/mcp", 200, body.as_str())]);
+    let seen: RefCell<Vec<String>> = RefCell::new(Vec::new());
+    let runner = |a: &[String]| {
+        *seen.borrow_mut() = a.to_vec();
+        Ok(uat_ok(&batch))
+    };
+    let mut a = args("record", "first-session");
+    a.specs_dir = Some("lx18-relative-specs".to_string());
+    let (code, _, err) = run(&a, &deps(&runner, endpoint, &specs));
+    assert_eq!(code, 0, "{err}");
+    let want = std::env::current_dir()
+        .unwrap()
+        .join("lx18-relative-specs")
+        .display()
+        .to_string();
+    let at = seen
+        .borrow()
+        .iter()
+        .position(|t| t == "-SpecsDir")
+        .expect("-SpecsDir");
+    assert_eq!(seen.borrow()[at + 1], want);
+    assert_eq!(
+        tool_call(&stub)["params"]["arguments"]["specs_dir"],
+        json!(want)
+    );
+}
+
 #[test]
 fn a_disagreement_is_exit_6_and_names_the_batch() {
     let (specs, batch) = (specs_dir(), batch_dir(5));

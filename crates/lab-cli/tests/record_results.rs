@@ -1,5 +1,5 @@
 //! `lab record` exit-code mapping, status and transform over a stubbed daemon
-//! (ports test-record.ps1, "exit-code mapping" and "status and transform").
+//! (ports the retired test-record.ps1, "exit-code mapping" and "status and transform").
 
 mod record_support;
 
@@ -151,6 +151,21 @@ fn transform_sends_a_bare_id_section_and_specs_dir() {
     assert_eq!(calls[0].args["dir"], json!(ID));
     assert_eq!(calls[0].args["section"], json!("other-section"));
     assert_eq!(calls[0].args["specs_dir"], json!(r"D:\specs"));
+}
+
+// F-LX7: a relative --specs-dir is made absolute against the command's directory.
+#[test]
+fn a_relative_specs_dir_is_made_absolute_against_the_env_cwd() {
+    let dir = TempDir::new().expect("temp dir");
+    let mut a = args("transform", Some(ID));
+    a.section = Some("other-section".into());
+    a.specs_dir = Some("lx18-specs".into());
+    let reply = ok(
+        json!({"ok":true,"draft":"other-section-20261012-1430.toml","rows":1,"steps":2,"todo":0,"dropped":0,"raw":ID}),
+    );
+    let (_, calls) = run(dir.path(), &a, vec![reply], true);
+    let want = dir.path().join("lx18-specs").display().to_string();
+    assert_eq!(calls[0].args["specs_dir"], json!(want));
 }
 
 // Check: 'transform is not routed'

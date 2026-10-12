@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use cimmeria_lab_cli::commands::logs::{follow_file, paint_line};
+use cimmeria_lab_cli::commands::logs::{follow_file, paint_line, was_replaced, FileId};
 use cimmeria_lab_cli::log_filter::{filter_lines, tail_lines, LogFilter};
 use cimmeria_lab_cli::ui::Ui;
 use support::{lab_home_for, run_lab_in};
@@ -161,7 +161,7 @@ fn binary_prints_the_last_p2_line_masked() {
     );
 }
 
-// New: logs.ps1 exits 1 with 'no daemon log yet: <path>' on stderr.
+// New: the retired logs.ps1 exits 1 with 'no daemon log yet: <path>' on stderr.
 #[test]
 fn binary_without_a_log_exits_1_and_names_the_path() {
     let home = lab_home_for("127.0.0.1:9");
@@ -406,6 +406,64 @@ fn follow_rereads_a_file_that_shrinks() {
     follow.wait_for("serve: fresh");
     let text = follow.finish();
     assert_eq!(text.matches("serve: fresh").count(), 1, "{text}");
+}
+
+// F-LX4: a changed identity is a replacement even when the new file is longer.
+#[test]
+fn a_changed_identity_counts_as_replaced_even_when_longer() {
+    let (a, b) = (Some(FileId(1)), Some(FileId(2)));
+    assert!(was_replaced(10, 20, a, b));
+    assert!(!was_replaced(10, 20, a, a));
+    assert!(was_replaced(10, 5, a, a), "shorter is still a rotation");
+    assert!(!was_replaced(10, 20, None, b), "nothing to compare");
+    assert!(!was_replaced(10, 20, a, None));
+}
+
+/// Replaces `path` with a different file holding `text` (written beside it,
+/// then renamed over it), so the path now names another file.
+#[cfg(unix)]
+fn replace_file(path: &std::path::Path, text: &str) {
+    let tmp = path.with_extension("new");
+    std::fs::write(&tmp, text).expect("write the replacement");
+    std::fs::rename(&tmp, path).expect("replace the log");
+}
+
+/// The same on Windows, then a clearly different creation time: NTFS
+/// tunnelling would otherwise give the new file the old one's.
+#[cfg(windows)]
+fn replace_file(path: &std::path::Path, text: &str) {
+    use std::fs::FileTimes;
+    use std::os::windows::fs::FileTimesExt;
+    let tmp = path.with_extension("new");
+    std::fs::write(&tmp, text).expect("write the replacement");
+    std::fs::rename(&tmp, path).expect("replace the log");
+    let file = std::fs::OpenOptions::new()
+        .write(true)
+        .open(path)
+        .expect("reopen the log");
+    let later = std::time::SystemTime::now() + Duration::from_secs(3600);
+    file.set_times(FileTimes::new().set_created(later))
+        .expect("set the creation time");
+}
+
+// F-LX4: the replacement is longer than the old file, so the length check
+// alone misses it and the tail of the new file would be read from the old
+// position (the first line lost).
+#[cfg(any(unix, windows))]
+#[test]
+fn follow_rereads_a_replaced_file_even_when_it_is_longer() {
+    let dir = tempfile::TempDir::new().expect("temp dir");
+    let path = dir.path().join("labd.log");
+    std::fs::write(&path, "2026-10-11T20:00:00Z  INFO serve: old\n").expect("write log");
+    let follow = Follow::start(path.clone(), None, None, 50);
+    follow.wait_for("serve: old");
+    replace_file(
+        &path,
+        "2026-10-11T21:00:00Z  INFO serve: fresh1\n2026-10-11T21:00:01Z  INFO serve: fresh2\n",
+    );
+    follow.wait_for("serve: fresh2");
+    let text = follow.finish();
+    assert!(text.contains("serve: fresh1"), "{text}");
 }
 
 // New: setting the stop flag (Ctrl+C) ends the loop with Ok.

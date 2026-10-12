@@ -43,8 +43,8 @@ pub fn exit_code(results: &[Check]) -> u8 {
 /// and the hint after `; ` in the detail, and nothing else.
 ///
 /// Fancy mode: a glyph and the check name; under a warning or failure the
-/// detail, then the hint, each indented four spaces and dim; then a count
-/// line, `N checks · P passed · W warning(s) · F failed`.
+/// detail, then the hint (a command), each indented four spaces and dim; then
+/// a count line, `N check(s) · P passed · W warning(s) · F failed`.
 pub fn render(ui: &Ui, results: &[Check]) -> String {
     let mut out = String::new();
     for check in results {
@@ -69,7 +69,7 @@ pub fn render(ui: &Ui, results: &[Check]) -> String {
         ));
         if check.status != Status::Pass {
             out.push_str(&format!("    {}\n", ui.paint(Tone::Dim, &check.detail)));
-            if let Some(hint) = &check.hint {
+            if let Some(hint) = &check.fancy_hint {
                 out.push_str(&format!(
                     "    {}\n",
                     ui.paint(Tone::Dim, &format!("hint: {hint}"))
@@ -81,9 +81,10 @@ pub fn render(ui: &Ui, results: &[Check]) -> String {
         let count = |status: Status| results.iter().filter(|c| c.status == status).count();
         let warnings = count(Status::Warn);
         let noun = if warnings == 1 { "warning" } else { "warnings" };
+        let total = results.len();
+        let checks = if total == 1 { "check" } else { "checks" };
         let line = format!(
-            "{} checks · {} passed · {warnings} {noun} · {} failed",
-            results.len(),
+            "{total} {checks} · {} passed · {warnings} {noun} · {} failed",
             count(Status::Pass),
             count(Status::Fail)
         );
@@ -96,7 +97,7 @@ pub fn render(ui: &Ui, results: &[Check]) -> String {
 mod tests {
     use crate::commands::{parse_ok, Command};
 
-    /// The `.EXAMPLE` line of doctor.ps1 parses.
+    /// The `.EXAMPLE` line of the retired doctor.ps1 parses.
     #[test]
     fn examples_parse() {
         assert!(matches!(parse_ok("doctor", &[]), Command::Doctor(_)));

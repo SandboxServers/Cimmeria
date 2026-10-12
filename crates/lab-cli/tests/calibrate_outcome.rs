@@ -1,5 +1,5 @@
 //! LX-12a: argument checks, the pose line, exit codes and the --json objects.
-//! Ports checks [1]-[24] and [28]-[32] of tools/lab/cli/test-calibrate.ps1.
+//! Ports checks [1]-[24] and [28]-[32] of the retired tools/lab/cli/test-calibrate.ps1.
 
 use cimmeria_lab_cli::commands::calibrate::outcome::*;
 use cimmeria_lab_cli::commands::calibrate::render::{render_diff, render_line};

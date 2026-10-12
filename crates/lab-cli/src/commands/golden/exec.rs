@@ -1,6 +1,6 @@
 //! `lab golden` itself. Everything outside the process (the child `uat`, the
 //! daemon endpoint, the default spec folder, stdout and stderr) is passed in,
-//! so tests stub it. Ports `golden.ps1`.
+//! so tests stub it. Ports the retired `golden.ps1`.
 
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -15,6 +15,7 @@ use super::reply::{self, first_line, text_of};
 use super::summary;
 use super::Args;
 use crate::daemon::mcp::{hide_lease_ids, McpClient, McpError};
+use crate::daemon::paths;
 use crate::daemon::status::Endpoint;
 use crate::ui::{Mark, Tone, Ui};
 
@@ -104,7 +105,7 @@ pub fn execute(args: &Args, ui: &Ui, deps: &Deps, out: &mut dyn Write, err: &mut
         .specs_dir
         .as_deref()
         .filter(|d| !d.is_empty())
-        .map(PathBuf::from)
+        .map(|d| PathBuf::from(paths::absolute_specs_dir(d)))
         .or_else(|| deps.default_specs.clone());
     if action == "show" {
         return show(&mut io, section, specs.as_deref());
