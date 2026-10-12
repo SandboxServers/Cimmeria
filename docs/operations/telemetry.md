@@ -488,9 +488,17 @@ chunk (past the expansion cap, estimated from the compression ratio),
 files for `budget = zip entries`, **bytes** for `budget = expanded
 bytes` (the sizes of the bundle files not replayed), and lines for
 `budget = lines`.
-Repeats are throttled: one row per uploader and reason per 10 s, the next
-row's `suppressed` counting the ones held back, and at most 50 rows per
-10 s in all.
+A refusal row also carries `event`: `upload_auth_refused` when the
+uploader's credential was refused (`missing_token`, `bad_token`,
+`token_expired`), which stays in SigNoz and never posts to Discord, and
+`upload_refused` for every other refusal.
+Repeats are throttled per uploader and reason: the first refusal writes a
+row at once and the repeats inside the pair's window are held back, the
+next row's `suppressed` counting them. The window starts at 10 s and
+doubles with every row the pair writes, up to 15 minutes, so a client
+retrying every 12 s writes about ten rows in its first hour and four an
+hour after that. It drops back to 10 s once the pair has had no refusal
+for 15 minutes. At most 50 rows are written per 10 s in all.
 
 Any backlog in the launcher's on-disk queue (a server outage of a few
 minutes, a kill switch, or a launcher killed mid-session) is posted when

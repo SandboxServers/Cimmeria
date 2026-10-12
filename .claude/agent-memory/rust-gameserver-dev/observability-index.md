@@ -11,6 +11,7 @@ metadata:
 - [rule6-sweep-scanner-and-naming-traps](rule6-sweep-scanner-and-naming-traps.md) — list unpaired sites by zeroing baseline rows; `$level!` rows escape the scan; never name a deferred effect's invoker live.
 - [discord-named-pairs-resolvers](discord-named-pairs-resolvers.md) — Discord Event objects are `Named` pairs (NT-10); base/cell/content resolvers; button text and minigame ids are unnameable.
 - [observability-test-and-throttle-traps](observability-test-and-throttle-traps.md) — counters unobservable in tests.
+- [fixed-window-throttle-steady-retrier](fixed-window-throttle-steady-retrier.md) — fixed 10 s window let a 12 s retrier post 1,363 Discord rows; escalate, reset on quiet-since-last-seen; credential refusals SigNoz-only.
 - [rule6-name-pairing-traps](rule6-name-pairing-traps.md) — base names via known_names; NameBook borrow vs owned; rustfmt bails on >100-col macro lines.
 - [ability-row-event-guard-and-cast-join](ability-row-event-guard-and-cast-join.md) — ability rows need `event` (source-scan guard); pre-mint rows lack cast_id; client_sent joins by payload.
 - [discord-noise-and-teardown-race](discord-noise-and-teardown-race.md) — SIGNOZ_ONLY_EVENTS; logOff witness-send race is DEBUG via departed_witnesses; colo warns that are real faults.
