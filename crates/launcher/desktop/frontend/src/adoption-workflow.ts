@@ -1,25 +1,29 @@
 import {Context,Data,Effect,Layer,PubSub,Ref,Schema,Semaphore,Stream} from 'effect';
 import {NativeSnapshot} from './contract';
 const Count=Schema.Int.check(Schema.isBetween({minimum:0,maximum:Number.MAX_SAFE_INTEGER}));
-const codes=['unsupported_schema','platform_unavailable','import_required','unsupported_catalog','unsupported_configuration','review_unavailable','source_changed','in_use','consent_required','no_reusable_files','busy','stale_revision','identity_conflict','recovery_required','persistence_uncertain','invalid_directory','unsafe_file','corrupt_state','io','cancelled','launcher_too_old','invalid_artifact','unsupported_archive','network','release_unavailable','verification_failed','outdated_install','unsupported_layout','game_running','duplicate_release_file','leftover_launcher_files'] as const;
+const codes=['unsupported_schema','platform_unavailable','import_required','unsupported_catalog','unsupported_configuration','review_unavailable','source_changed','in_use','consent_required','no_reusable_files','busy','stale_revision','identity_conflict','recovery_required','persistence_uncertain','invalid_directory','unsafe_file','corrupt_state','io','cancelled','launcher_too_old','invalid_artifact','unsupported_archive','network','release_unavailable','verification_failed','outdated_install','unsupported_layout','game_running','duplicate_release_file','leftover_launcher_files','folder_not_writable','not_a_game_folder','backup_conflict','unsupported_mode'] as const;
 const Code=Schema.Literals(codes);
 const Review=Schema.Struct({preview_handle:Schema.String,operation_revision:Count,preferences_revision:Count,source:Schema.String,destination:Schema.String,
+ source_kind:Schema.Literals(['legacy','folder']),
  release:Schema.Struct({manifest_sha256:Schema.String,seed_sha256:Schema.String,patches:Schema.Array(Schema.String)}),
- counts:Schema.Struct({matched:Count,known_transform:Count,modified:Count,missing:Count,extra:Count}),
- differences:Schema.Array(Schema.Struct({path:Schema.String,source_path:Schema.NullOr(Schema.String),classification:Schema.Literals(['matched','known_transform','modified','missing','extra'])})),differences_omitted:Count,
+ counts:Schema.Struct({matched:Count,known_transform:Count,modified:Count,needs_patching:Count,missing:Count,extra:Count}),
+ differences:Schema.Array(Schema.Struct({path:Schema.String,source_path:Schema.NullOr(Schema.String),classification:Schema.Literals(['matched','known_transform','modified','needs_patching','missing','extra'])})),differences_omitted:Count,
+ requires_replacement:Schema.Boolean,backup_directory:Schema.optionalKey(Schema.String),
+ download:Schema.optionalKey(Schema.Struct({seed:Schema.Boolean,patches:Schema.Array(Schema.String),bytes:Count})),
  login_servers:Schema.Array(Schema.Struct({name:Schema.String,url:Schema.String})),client_patches_enabled:Schema.Boolean,
  game_telemetry_opted_in:Schema.Boolean,game_telemetry_available:Schema.Boolean,requires_normalization:Schema.Boolean,requires_telemetry_acceptance:Schema.Boolean,user_data_remains_in_source:Schema.Boolean,
  in_place:Schema.Boolean,blocked_files:Schema.Array(Schema.String)});
 export const AdoptionStatus=Schema.Struct({schema_version:Schema.Literal(1),native:NativeSnapshot,
  backend:Schema.Literals(['available','in_place','unsupported_platform','helper_unavailable']),
  imported:Schema.NullOr(Schema.Struct({launcher_directory:Schema.String,game_directory:Schema.String,blocker:Schema.NullOr(Code)})),
+ modes:Schema.Array(Schema.Literals(['in_place','copy'])),
  activity:Schema.Literals(['idle','preparing','review','copying']),review:Schema.NullOr(Review),
  progress:Schema.NullOr(Schema.Struct({phase:Schema.Literals(['download','extraction','copy']),current:Count,total:Count})),cancellable:Schema.Boolean,
  reconciliation:Schema.NullOr(Schema.Union([Schema.Struct({kind:Schema.Literal('preparation'),preparation_id:Schema.String}),
   Schema.Struct({kind:Schema.Literal('copy'),operation_id:Schema.String,directory:Schema.String,can_recover:Schema.Boolean,can_abandon:Schema.Boolean})])),
  preparations:Schema.Array(Schema.String),owned:Schema.Boolean,completed:Schema.NullOr(Schema.Struct({directory:Schema.String})),last_error:Schema.NullOr(Code)});
 export type AdoptionStatus=typeof AdoptionStatus.Type;
-export type Request={command:'inspect'|'dismiss'|'cancel';schema_version:1}|{command:'confirm';schema_version:1;work_id:string;preview_handle:string;operation_revision:number;preferences_revision:number;normalize_managed_files:boolean;accept_unavailable_game_telemetry:boolean;old_game_closed:boolean;confirmed:true}|{command:'recover'|'abandon';schema_version:1;operation_id:string;operation_revision:number;confirmed:true}|{command:'abandon_preparation';schema_version:1;preparation_id:string;operation_revision:number;confirmed:true};
+export type Request={command:'inspect'|'dismiss'|'cancel';schema_version:1}|{command:'confirm';schema_version:1;work_id:string;preview_handle:string;operation_revision:number;preferences_revision:number;normalize_managed_files:boolean;accept_unavailable_game_telemetry:boolean;old_game_closed:boolean;replace_modified_files?:boolean;confirmed:true}|{command:'recover'|'abandon';schema_version:1;operation_id:string;operation_revision:number;confirmed:true}|{command:'abandon_preparation';schema_version:1;preparation_id:string;operation_revision:number;confirmed:true};
 export type Maintenance={action:'recover'|'abandon'|'abandon_preparation';id:string};
 export type Choice='normalize'|'telemetry'|'closed';
 export class AdoptionFailure extends Data.TaggedError('AdoptionFailure')<{readonly code:string}> {}

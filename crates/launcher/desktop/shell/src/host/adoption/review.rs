@@ -1,17 +1,28 @@
 //! Bounded, readable projection of a native-held preview. The complete report
 //! stays native and is written to the adoption plan at confirmation.
 use super::*;
-use cimmeria_launcher_engine::adoption::{Classification, Difference, Preview};
+use cimmeria_launcher_engine::adoption::{
+    AdoptionSourceRef, Classification, Difference, DownloadEstimate, Preview,
+};
 use serde::Serialize;
 
 /// Paths listed for review. Exact matches are counted, not listed.
 const LISTED: usize = 60;
 
+/// Which kind of source the review was prepared from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SourceKind {
+    Legacy,
+    Folder,
+}
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct Counts {
     pub matched: usize,
     pub known_transform: usize,
     pub modified: usize,
+    /// Files the folder holds in a form the release must be patched into.
+    pub needs_patching: usize,
     pub missing: usize,
     pub extra: usize,
 }
@@ -32,12 +43,21 @@ pub struct Review {
     pub preview_handle: Uuid,
     pub operation_revision: u64,
     pub preferences_revision: u64,
+    pub source_kind: SourceKind,
     pub source: PathBuf,
     pub destination: PathBuf,
     pub release: SignedRelease,
     pub counts: Counts,
     pub differences: Vec<Difference>,
     pub differences_omitted: usize,
+    /// A modified or missing release file would be replaced; the player must allow it.
+    pub requires_replacement: bool,
+    /// Where the files a replacement moves out of the way are kept.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub backup_directory: Option<PathBuf>,
+    /// What the adoption downloads before it can finish, when anything is needed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub download: Option<DownloadEstimate>,
     /// Requested order, applied to the copy.
     pub login_servers: Vec<LoginServer>,
     pub client_patches_enabled: bool,
@@ -59,6 +79,10 @@ impl Review {
         preferences_revision: u64,
     ) -> Result<Self, AdoptionError> {
         let report = preview.report();
+        let source_kind = match preview.source() {
+            AdoptionSourceRef::Legacy(_) => SourceKind::Legacy,
+            AdoptionSourceRef::Folder(_) => SourceKind::Folder,
+        };
         // Only a legacy preview is reviewed here, and it always has a requested config.
         let requested = report
             .requested_config
@@ -67,6 +91,7 @@ impl Review {
         let mut counts = Counts::default();
         let mut differences = Vec::new();
         let mut differences_omitted = 0;
+        let mut requires_replacement = false;
         for file in &report.files {
             match file.classification {
                 Classification::Matched => {
@@ -74,9 +99,15 @@ impl Review {
                     continue;
                 }
                 Classification::KnownTransform => counts.known_transform += 1,
-                // No review row of its own yet; a file that needs patching is a changed file.
-                Classification::Modified | Classification::NeedsPatching => counts.modified += 1,
-                Classification::Missing => counts.missing += 1,
+                Classification::NeedsPatching => counts.needs_patching += 1,
+                Classification::Modified => {
+                    requires_replacement = true;
+                    counts.modified += 1;
+                }
+                Classification::Missing => {
+                    requires_replacement = true;
+                    counts.missing += 1;
+                }
                 Classification::Extra => counts.extra += 1,
             }
             if differences.len() < LISTED {
@@ -90,6 +121,7 @@ impl Review {
             preview_handle: report.preview_handle,
             operation_revision,
             preferences_revision,
+            source_kind,
             source: report.source.clone(),
             destination: report.destination.clone(),
             release: SignedRelease {
@@ -104,6 +136,9 @@ impl Review {
             counts,
             differences,
             differences_omitted,
+            requires_replacement,
+            backup_directory: report.backup.clone(),
+            download: report.download.clone(),
             login_servers: requested
                 .login_servers
                 .iter()

@@ -371,6 +371,16 @@ async fn choose_adoption_destination(
     choose_copy_destination(app, window, host).await
 }
 
+/// Picks an existing game folder to adopt. Not yet available: the folder picker
+/// and the folder adoption land with AI-10.
+#[tauri::command]
+async fn choose_existing_game_folder(
+    mode: cimmeria_launcher_engine::adoption::AdoptionMode,
+) -> Result<AdoptionStatus, AdoptionError> {
+    let _ = mode;
+    Err(AdoptionError::PlatformUnavailable)
+}
+
 #[cfg(target_os = "macos")]
 async fn choose_copy_destination(
     app: tauri::AppHandle,
@@ -549,6 +559,7 @@ fn main() {
             choose_legacy_source,
             adoption_command,
             choose_adoption_destination,
+            choose_existing_game_folder,
             seed_archive_command,
             choose_seed_archive
         ])

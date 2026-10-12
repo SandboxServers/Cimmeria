@@ -304,3 +304,36 @@ fn ipc_accepts_only_closed_choices_and_identities() {
         AdoptionError::UnsupportedSchema
     );
 }
+
+#[test]
+fn confirm_without_replace_modified_files_reads_false_and_unknown_fields_are_refused() {
+    let mut value = serde_json::json!({
+        "command": "confirm",
+        "schema_version": 1,
+        "work_id": "00000000-0000-0000-0000-000000000001",
+        "preview_handle": "00000000-0000-0000-0000-000000000002",
+        "operation_revision": 0,
+        "preferences_revision": 0,
+        "normalize_managed_files": true,
+        "accept_unavailable_game_telemetry": false,
+        "old_game_closed": true,
+        "confirmed": true,
+    });
+    match serde_json::from_value::<AdoptionCommand>(value.clone()).unwrap() {
+        AdoptionCommand::Confirm {
+            replace_modified_files,
+            ..
+        } => assert!(!replace_modified_files),
+        other => panic!("unexpected command {other:?}"),
+    }
+    value["replace_modified_files"] = serde_json::json!(true);
+    match serde_json::from_value::<AdoptionCommand>(value.clone()).unwrap() {
+        AdoptionCommand::Confirm {
+            replace_modified_files,
+            ..
+        } => assert!(replace_modified_files),
+        other => panic!("unexpected command {other:?}"),
+    }
+    value["unexpected"] = serde_json::json!(true);
+    assert!(serde_json::from_value::<AdoptionCommand>(value).is_err());
+}

@@ -28,6 +28,10 @@ pub enum AdoptionCommand {
         normalize_managed_files: bool,
         accept_unavailable_game_telemetry: bool,
         old_game_closed: bool,
+        /// Replace the files the reviewed folder has modified or lost. Absent
+        /// means no replacement, so an older renderer cannot opt in by accident.
+        #[serde(default)]
+        replace_modified_files: bool,
         confirmed: bool,
     },
     Recover {
@@ -246,6 +250,8 @@ pub struct AdoptionStatus {
     pub native: NativeSnapshot,
     pub backend: Backend,
     pub imported: Option<Imported>,
+    /// Adoption modes this build can offer for the selected folder.
+    pub modes: Vec<adoption::AdoptionMode>,
     pub activity: Activity,
     pub review: Option<Review>,
     pub progress: Option<Progress>,

@@ -83,6 +83,10 @@ impl Preview {
     pub fn signed_release(&self) -> &VerifiedRelease {
         &self.release
     }
+    /// The source this preview adopts: a legacy import or a folder.
+    pub fn source(&self) -> AdoptionSourceRef<'_> {
+        source::borrowed(&self.source)
+    }
     /// The legacy import this preview adopts. A folder source has none yet.
     pub(super) fn legacy(&self) -> Result<&migration::LegacyImport, Error> {
         source::legacy(&self.source)

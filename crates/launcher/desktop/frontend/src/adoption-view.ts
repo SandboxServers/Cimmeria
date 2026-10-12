@@ -31,6 +31,10 @@ const failures:Record<string,string>={
  unsupported_layout:'This game folder uses an older layout, with SGW.exe outside “Working\\Binaries”, that the launcher cannot adopt in place. Install the game fresh with this launcher, or keep using the old launcher for this folder. Nothing was changed.',
  game_running:'The game is running from this folder. Close the game first, then verify and adopt the folder again. Nothing was changed.',
  duplicate_release_file:'A release file is both in the launcher’s “game” folder and at its old place, and neither copy matches the reviewed file, so recovery stopped. The launcher log names the file. Nothing was deleted.',
+ folder_not_writable:'The game folder cannot be written, so the adoption cannot change it. Check that the folder is not read-only and that the game is not holding it, then choose it again. Nothing was changed.',
+ not_a_game_folder:'That folder is not a Stargate Worlds game folder. Choose the game root, the folder that holds “Working”, or the “Working\\Binaries” folder. Nothing was changed.',
+ backup_conflict:'A backup folder for replaced files already exists, so nothing was replaced. Move or remove that folder, then prepare a new review. Nothing was changed.',
+ unsupported_mode:'This adoption mode is not available in this build. Nothing was changed.',
  leftover_launcher_files:'This folder already holds launcher files (“game”, “.cimmeria-install.json” or “content-ready.json”) from an earlier installation or adoption, so it cannot be adopted. The launcher log says which. Nothing was changed.',
  unsupported_schema:'This launcher build does not understand that adoption request.',
 };
@@ -69,7 +73,7 @@ export function adoptionText(s:AdoptionState):string {
  if(status.imported)return 'Legacy settings are saved. Choose where to create a separate verified copy; the launcher makes a new “Stargate Worlds” folder there and never changes the old one.';
  return 'Import legacy launcher settings above first, then start verified adoption here.';
 }
-const labels={matched:'Identical',known_transform:'Old launcher setup change',modified:'Modified',missing:'Missing',extra:'Not part of the release'} as const;
+const labels={matched:'Identical',known_transform:'Old launcher setup change',needs_patching:'Needs patching',modified:'Modified',missing:'Missing',extra:'Not part of the release'} as const;
 const maintenanceText:Record<Maintenance['action'],[string,string]>={
  recover:['Recover adoption','Finish publishing the already verified staged copy. Nothing is downloaded or copied again; recovery is refused if the staged files no longer verify.'],
  abandon:['Abandon adoption','End this interrupted adoption. Files already copied stay in the destination folder and are not used; choose a different location afterwards. The original game folder is unchanged.'],

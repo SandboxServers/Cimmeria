@@ -267,6 +267,7 @@ impl NativeHost {
                 normalize_managed_files,
                 accept_unavailable_game_telemetry,
                 old_game_closed,
+                replace_modified_files,
                 confirmed,
                 ..
             } => {
@@ -281,7 +282,7 @@ impl NativeHost {
                         normalize_managed_files,
                         accept_unavailable_game_telemetry,
                         old_game_closed,
-                        replace_modified_files: false,
+                        replace_modified_files,
                     },
                 )?;
             }
