@@ -1,0 +1,58 @@
+[
+  {
+    "number": 101,
+    "title": "feat(lab): record gate",
+    "body": "",
+    "headRefName": "lab/record-gate",
+    "baseRefName": "main",
+    "createdAt": "2026-10-01T08:00:00Z",
+    "mergedAt": "2026-10-01T12:00:00Z",
+    "closedAt": "2026-10-01T12:00:00Z",
+    "state": "MERGED",
+    "additions": 120,
+    "deletions": 4,
+    "changedFiles": 2
+  },
+  {
+    "number": 102,
+    "title": "feat(lab): packet join",
+    "body": "",
+    "headRefName": "lab/packet-join",
+    "baseRefName": "main",
+    "createdAt": "2026-10-02T08:00:00Z",
+    "mergedAt": "2026-10-02T12:00:00Z",
+    "closedAt": "2026-10-02T12:00:00Z",
+    "state": "MERGED",
+    "additions": 60,
+    "deletions": 2,
+    "changedFiles": 1
+  },
+  {
+    "number": 103,
+    "title": "docs(lab): notes",
+    "body": "",
+    "headRefName": "docs/notes",
+    "baseRefName": "main",
+    "createdAt": "2026-10-03T08:00:00Z",
+    "mergedAt": "2026-10-03T10:00:00Z",
+    "closedAt": "2026-10-03T10:00:00Z",
+    "state": "MERGED",
+    "additions": 12,
+    "deletions": 0,
+    "changedFiles": 1
+  },
+  {
+    "number": 104,
+    "title": "fix(lab): record gate follow-up (#101)",
+    "body": "Follow-up to #101: the gate reads the wrong stage.",
+    "headRefName": "fix/record-gate",
+    "baseRefName": "main",
+    "createdAt": "2026-10-04T08:00:00Z",
+    "mergedAt": "2026-10-04T09:00:00Z",
+    "closedAt": "2026-10-04T09:00:00Z",
+    "state": "MERGED",
+    "additions": 8,
+    "deletions": 3,
+    "changedFiles": 1
+  }
+]

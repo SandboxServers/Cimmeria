@@ -112,12 +112,42 @@ Status words: Ready / BlockedDependency / BlockedDecision / Writing / Review / I
 | CM-03 | Cost rollup: by campaign, role, PR, accepted change | packet-coder | M | 2 | CM-01 | BlockedDependency |
 | CM-06 | Packet join: retries, first-pass, escalation, stop context, cycle time | packet-coder (3 sessions max, then Sonnet) | M | 2 | CM-01, CM-02, CM-05 | BlockedDependency |
 | CM-07 | Overstep detection and wasted-cost estimate | packet-coder | M | 2 | CM-01, CM-05 | BlockedDependency |
-| CM-08 | Report generator: per-campaign files, summary, pre/post comparison | packet-coder | M | 3 | CM-03, CM-04, CM-06, CM-07 | BlockedDependency |
-| CM-09 | Docs: tools catalog row, guide section, doc-update rows | documentation-writer | S | 3 | CM-08 interface frozen | BlockedDependency |
+| CM-08a | Report inputs loader and two-campaign fixtures | packet-coder | S | 3 | none | BlockedDependency |
+| CM-08b | Regime and cost/packet/ledger record merge | packet-coder | S | 3 | CM-08a | BlockedDependency |
+| CM-08c | CI, escaped-defect and overstep sections, `assemble` | packet-coder | S | 3 | CM-08b, CM-04, CM-07 | BlockedDependency |
+| CM-08d | Per-regime roll-up | packet-coder | S | 3 | none | BlockedDependency |
+| CM-08e | Old-versus-Haiku delta and summary document | packet-coder | S | 3 | CM-08d | BlockedDependency |
+| CM-08f | Campaign Markdown: cost and throughput tables | packet-coder | S | 3 | none | BlockedDependency |
+| CM-08g | Campaign Markdown: quality tables, `render_campaign` | packet-coder | S | 3 | CM-08f | BlockedDependency |
+| CM-08h | Summary Markdown with own-cost slot | packet-coder | S | 3 | CM-08e | BlockedDependency |
+| CM-08i | Price this campaign's own sessions | packet-coder | S | 3 | none | BlockedDependency |
+| CM-08j | Write reports and data behind the privacy gate | packet-coder | S | 3 | CM-08c, CM-08e, CM-08g, CM-08h | BlockedDependency |
+| CM-08k | `report` subcommand and self-session merge | packet-coder | S | 3 | CM-08j, CM-08i | BlockedDependency |
+| CM-09a | Docs: guide section | documentation-writer | S | 3 | CM-08k | BlockedDependency |
+| CM-09b | Docs: token-profile README, doc-update row, docs index | documentation-writer | S | 3 | CM-09a | BlockedDependency |
 | CM-10 | Close-out: run, review numbers, this campaign's own cost, status, handoff | coordinator + documentation-writer | M | 4 | all | BlockedDependency |
 
 CM-01, CM-02, CM-04 and CM-05 touch different files and can run in parallel in separate worktrees. CM-03, CM-06 and CM-07 share only the `metrics/` package `__init__.py`, which CM-01 creates.
 
+## Findings for the report
+
+Notes the CM-08 summary cites (`reports/summary.md`, "Packet sizing vs the 90k Haiku cap").
+
+### Packet sizing vs the 90k Haiku cap
+
+A hook hard-caps Haiku workers at 90k tokens of total context, and about 35-40k of that is fixed startup overhead (system prompt, CLAUDE.md, memory indexes), so a packet has roughly 40k of working budget. The packets were first written to the campaign-packet skill's "under 100k" guideline, which does not leave room for that overhead. First-attempt outcomes (2026-10-12):
+
+| Packet | Size | First attempt |
+|---|---|---|
+| CM-01 | S | done |
+| CM-05 | S | done |
+| CM-03 | S | context overflow |
+| CM-02 | M | context overflow |
+| CM-04 | M | context overflow |
+| CM-06 | M | context overflow |
+| CM-07 | M | context overflow |
+
+5 of the 7 packets overflowed on the first attempt: every one that needed more than a single small module plus its tests, and CM-03 even though it was sized S. Three fix rounds overflowed as well. Only the two small single-module packets finished on the first try. Consequence for the campaign: CM-08 and CM-09 were re-sliced into thirteen packets of about 15-28k working tokens each, one module group plus its tests, with the contract excerpt inlined so the worker reads no other document. The rule of thumb to carry forward: size a Haiku packet to about 40k working tokens, no M sizes, and inline what it needs.
 ## Resume note
 
 Nothing is built. Next step: dispatch wave 1 (D-CM1, D-CM2, D-CM7, D-CM9 are accepted). Packets build on the integration branch `campaign-metrics/ledger`; one PR for the whole campaign at close-out. Re-ingest `~/token-profile.sqlite` right before CM-10 so the window is complete. The campaign's own transcripts are in the coordinator session; CM-10 names it with `--self-session`.

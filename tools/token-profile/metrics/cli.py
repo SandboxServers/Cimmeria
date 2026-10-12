@@ -1,12 +1,23 @@
-"""Command line: campaign metrics. `registry` checks the campaign rules; `ledger` parses the packet tables of the ledgers;
-`overstep` finds work a cheaper tier should have done.
+"""Command line: campaign metrics. `registry` checks the campaign rules; `ledger` parses the packet tables of the
+ledgers; `overstep` finds work a cheaper tier should have done; `cost` prices the profiler's requests per campaign
+(CM-03); `github` collects PRs, CI and escaped defects from GitHub (read-only).
 
     python tools/token-profile/metrics registry --repo . [--check] [--config <json>] [--campaigns <json>]
     python tools/token-profile/metrics ledger --repo . --out <dir>
+    python tools/token-profile/metrics packets --db <sqlite> --ledger <json> --github <json> --out <dir>
     python tools/token-profile/metrics overstep --db <sqlite> [--ledger <ledger.json>] --out <dir> [--config <json>]
+    python tools/token-profile/metrics cost --db <profile.sqlite> --out <dir> [--config <json>] [--ledger <json>] [--since T] [--until T]
+    python tools/token-profile/metrics github --repo . --out <dir> [--since 2026-09-21] [--config <json>]
+        [--max-prs N] [--campaigns <file>] [--from-json <dir>]
 
-Exit status: 0 ok; 1 with registry --check, the campaign rules have a problem; 2 an input or output error.
-The ledger writes <dir>/ledger.json and prints a JSON count summary. Overstep writes <dir>/overstep.json and prints counts.
+Exit status: 0 ok; 1 with registry --check, the campaign rules have a problem; 2 an input or output error;
+3 the privacy gate refused the output, nothing was written.
+The ledger writes <dir>/ledger.json and prints a JSON count summary; packets writes <dir>/packets.json.
+Overstep writes <dir>/overstep.json and prints counts.
+`cost` opens the profiler database read-only and writes cost.json to --out. --ledger is the CM-05 ledger.json: its
+"pr_map" ({"<pr>": "<campaign>"}) and, per campaign, the packets whose status is an accepted status. The github
+subcommand writes <dir>/github.json, a scratch file that is never committed, and prints a JSON count summary.
+--from-json replays gh_prs.json, gh_issues.json and gh_checks.json from <dir> instead of calling gh.
 """
 
 import argparse
@@ -16,7 +27,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import ledger, overstep, registry
+from ingest.campaigns import Campaigns
+from ingest.prices import CURRENT, SOURCE
+from report.db import ReportError, open_db
+from report.scrub import PrivacyError, Scrubber
+
+from . import cost, ledger, overstep, packets, registry
+from .github import GhError, collect, polite, replay, run_gh
 
 
 def git_log(repo, failures):
@@ -52,7 +69,8 @@ def _retry_reason(campaign_dir, row):
 def build_ledger(repo, git, pr_overrides=None):
     """The packets of every campaign folder under docs/analysis, their PR map, and each campaign's window.
 
-    `pr_overrides` ({campaign: [pr]}) adds PRs that no ledger table cites; each such campaign gets a pseudo-packet for them.
+    `pr_overrides` ({campaign: [pr]}) adds PRs that no ledger table cites; each such campaign gets a pseudo-packet
+    for them.
     """
     root = Path(repo) / "docs" / "analysis"
     rows_by_campaign = {}
@@ -143,6 +161,67 @@ def run_overstep(args):
     return 0
 
 
+def run_github(args):
+    """Write github.json for `args.repo` to `args.out` and print its count summary; 0 written, 2 on an error."""
+    stats = {"gh_calls": 0, "cache_hits": 0}
+    cache_dir = (args.cache if args.cache is not None else Path(args.out) / "gh-cache") or None
+    try:
+        if args.from_json:
+            run = replay(args.from_json)
+        else:
+            run = polite(lambda a: run_gh(a, cwd=args.repo), cache_dir=cache_dir, stats=stats)
+        window = registry.load_config(args.config)["window"]
+        campaigns = Campaigns(registry.load_campaigns(args.campaigns))
+        pr_map = None
+        if args.ledger:
+            pr_map = {int(k): v for k, v in json.loads(Path(args.ledger).read_text(encoding="utf-8"))["pr_map"].items()}
+        record = collect(run, args.since or window["since"][:10], campaigns, args.max_prs, window["until"], pr_map)
+    except (GhError, OSError, ValueError, KeyError) as e:
+        print(f"status=error {e}", file=sys.stderr)
+        return 2
+
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "github.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8", newline="\n")
+    summary = {
+        "since": record["since"],
+        "prs_collected": len(record["prs"]),
+        "merged": sum(1 for r in record["prs"] if r["merged"]),
+        "traced_prs": sum(1 for r in record["prs"] if r["ci"] is not None),
+        "ci_checked": sum(1 for r in record["prs"] if r["ci"] and r["ci"]["runs"]),
+        "queue_first_attempt_green": sum(
+            1 for r in record["prs"] if r["queue"] and r["queue"]["first_attempt"] is True
+        ),
+        "queue_first_attempt_red": sum(
+            1 for r in record["prs"] if r["queue"] and r["queue"]["first_attempt"] is False
+        ),
+        "untagged_prs": record["untagged_prs"],
+        "escaped_defects": {c: len(rows) for c, rows in record["escaped_defects"].items()},
+        "gh_calls": stats["gh_calls"],
+        "cache_hits": stats["cache_hits"],
+    }
+    print(json.dumps(summary, indent=2))
+    return 0
+
+
+def run_packets(args):
+    """Write the packet join to args.out/packets.json and print its counts; the exit status is 0, or 2 on an error."""
+    try:
+        ledger_doc = json.loads(Path(args.ledger).read_text(encoding="utf-8"))
+        github_doc = json.loads(Path(args.github).read_text(encoding="utf-8"))
+        config = registry.load_config(args.config)
+        result = packets.join_campaigns(ledger_doc, packets.load_db(args.db), github_doc, config)
+        out = Path(args.out)
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "packets.json").write_text(json.dumps(result, indent=1) + "\n", encoding="utf-8")
+    except (OSError, ValueError, KeyError, sqlite3.Error) as e:
+        print(f"status=error {type(e).__name__}", file=sys.stderr)
+        return 2
+    print(json.dumps({"sessions": result["sessions"],
+                      "packets": {name: len(c["packets"]) for name, c in result["campaigns"].items()}}))
+    return 0
+
+
 def main(argv=None):
     """Run the subcommand and return its exit status."""
     ap = argparse.ArgumentParser(prog="token-profile metrics", description=__doc__.split("\n\n")[0])
@@ -156,6 +235,33 @@ def main(argv=None):
     led.add_argument("--repo", required=True, help="the repository root")
     led.add_argument("--out", required=True, help="directory for ledger.json")
     led.add_argument("--config", help="metrics config.json (default: the package's)")
+    pk = sub.add_parser("packets", help="join worker sessions to packets: retries, first pass, escalation, stops")
+    pk.add_argument("--db", required=True, help="the profiler database, opened read-only")
+    pk.add_argument("--ledger", required=True, help="ledger.json from the ledger subcommand")
+    pk.add_argument("--github", required=True, help="github.json with the PRs' merge times and commits")
+    pk.add_argument("--out", required=True, help="directory for packets.json")
+    pk.add_argument("--config", help="metrics config.json (default: the package's)")
+    cst = sub.add_parser("cost", help="list-price cost per campaign, role and PR (read-only database)")
+    cst.add_argument("--db", required=True, help="the profiler's SQLite database")
+    cst.add_argument("--out", required=True, help="directory for cost.json")
+    cst.add_argument("--config", help="metrics config.json (default: the package's)")
+    cst.add_argument("--ledger", help="the CM-05 ledger.json: pr_map and each campaign's packets")
+    cst.add_argument("--since", help="first timestamp included (default: config.json's window)")
+    cst.add_argument("--until", help="first timestamp excluded (default: config.json's window)")
+    gh = sub.add_parser("github", help="PRs, CI per head commit and escaped defects, read-only")
+    gh.add_argument("--repo", required=True, help="the checkout gh reads the remote from")
+    gh.add_argument("--out", required=True, help="scratch directory for github.json")
+    gh.add_argument(
+        "--since", default=None, help="PRs and issues created on or after this date (default: config window)"
+    )
+    gh.add_argument("--config", help="metrics config.json, whose window ends the collection (default: the package's)")
+    gh.add_argument("--max-prs", type=int, default=None, help="collect CI for the first N PRs only (a trial)")
+    gh.add_argument("--campaigns", default=None, help="campaign tags; default ingest/campaigns.json")
+    gh.add_argument("--ledger", default=None, help="ledger.json whose pr_map tags the PRs it names")
+    gh.add_argument("--cache", default=None, metavar="DIR",
+                    help="cache gh api answers in DIR so a failed run resumes (default OUT/gh-cache; \"\" turns it off; "
+                         "scratch only, never committed)")
+    gh.add_argument("--from-json", default=None, metavar="DIR", help="replay saved gh answers, no network")
     ovs = sub.add_parser("overstep", help="find overstep: work a cheaper tier should have done, and its cost")
     ovs.add_argument("--db", required=True, help="the token-profile database, opened read only")
     ovs.add_argument("--ledger", help="ledger.json from the ledger subcommand; without it no campaign is priced")
@@ -164,6 +270,12 @@ def main(argv=None):
     args = ap.parse_args(argv)
     if args.cmd == "ledger":
         return run_ledger(args)
+    if args.cmd == "packets":
+        return run_packets(args)
+    if args.cmd == "cost":
+        return cmd_cost(args)
+    if args.cmd == "github":
+        return run_github(args)
     if args.cmd == "overstep":
         return run_overstep(args)
     try:
@@ -181,3 +293,48 @@ def main(argv=None):
     for line in found:
         print(f"problem: {line}", file=sys.stderr)
     return 1 if args.check and found else 0
+
+
+def load_ledger(path, accepted_statuses):
+    """The CM-05 ledger.json as ({pr: campaign}, {campaign: packets}). A packet counts when its status is in
+    `accepted_statuses`; override rows are not packets. JSON keys are strings; PR numbers go to int."""
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    pr_map = {int(pr): name for pr, name in data["pr_map"].items()}
+    accepted = {name: sum(1 for p in c["packets"] if not p.get("override") and p["status"] in accepted_statuses)
+                for name, c in data["campaigns"].items()}
+    return pr_map, accepted
+
+
+def cmd_cost(args):
+    """Write cost.json: each campaign's list-price cost, plus the stamp. Input errors exit 2, the privacy gate 3."""
+    try:
+        config = registry.load_config(args.config)
+        since = args.since or config["window"]["since"]
+        until = args.until or config["window"]["until"]
+        roles = config["roles"]
+        pr_map, accepted = load_ledger(args.ledger, config["accepted_statuses"]) if args.ledger else (None, None)
+        db = open_db(args.db)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, ReportError) as e:
+        print(f"status=error {type(e).__name__}", file=sys.stderr)
+        return 2
+    print(f"prices {CURRENT} source {SOURCE}", file=sys.stderr)
+    try:
+        campaigns = cost.rollup(cost.load_requests(db, since, until, pr_map), CURRENT, roles, accepted)
+        record = {"stamp": cost.stamp(db, since, until, pr_map, CURRENT), "campaigns": campaigns}
+    except sqlite3.Error as e:
+        print(f"status=error {type(e).__name__}", file=sys.stderr)
+        return 2
+    finally:
+        db.close()
+    text = json.dumps(record, indent=2, sort_keys=True) + "\n"
+    try:
+        Scrubber().assert_clean(text, "cost")
+    except PrivacyError as e:
+        print(f"status=refused {e}", file=sys.stderr)
+        return 3
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "cost.json").write_text(text, encoding="utf-8", newline="\n")
+    total = sum(c["cost"]["total_usd"] for c in campaigns.values())
+    print(f"status=ok wrote cost.json campaigns={len(campaigns)} total_usd={total:.4f}")
+    return 0
