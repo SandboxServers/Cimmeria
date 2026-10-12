@@ -1,8 +1,6 @@
 //! `lab.exe`: the Cimmeria Live Research Lab command line.
 //!
-//! LX-01 is the skeleton: argument rewriting, the UI kit, the root help, the
-//! PowerShell fallback and `version`. Each later packet moves one command
-//! from `tools/lab/lab.ps1` into [`commands`].
+//! Every command is a subcommand in [`commands`]; the few that still run PowerShell do it through [`fallback::run_script`].
 
 pub mod argv;
 pub mod batch;
@@ -41,8 +39,7 @@ pub fn main_with(args: impl IntoIterator<Item = OsString>) -> ExitCode {
 }
 
 /// `lab help [name]`: the root help, or the full help of one command (clap's
-/// `--help` page; a name clap does not know yet goes to the PowerShell
-/// fallback with `--help`).
+/// `--help` page).
 fn help_for(ui: &Ui, target: Option<&OsString>) -> ExitCode {
     let Some(target) = target else {
         anstream::println!("{}", help::root_help(ui));
@@ -56,8 +53,7 @@ fn help_for(ui: &Ui, target: Option<&OsString>) -> ExitCode {
     dispatch(*ui, tokens.clone(), tokens)
 }
 
-/// Runs one command: clap parses it. `completions` has no clap subcommand yet
-/// and goes to the PowerShell fallback with its original tokens.
+/// Runs one command: clap parses it.
 fn dispatch(ui: Ui, raw: Vec<OsString>, rewritten: Vec<OsString>) -> ExitCode {
     let name = raw
         .first()
@@ -65,15 +61,6 @@ fn dispatch(ui: Ui, raw: Vec<OsString>, rewritten: Vec<OsString>) -> ExitCode {
         .unwrap_or_default();
     if commands::find(&name).is_none() {
         return unknown_command(&ui, &name);
-    }
-    if name == "completions" {
-        // No clap subcommand until LX-18: the PowerShell dispatcher answers.
-        let ctx = Ctx {
-            ui,
-            command: name,
-            raw: raw.into_iter().skip(1).collect(),
-        };
-        return ExitCode::from(fallback::run(&ctx));
     }
     let cli = match Cli::try_parse_from(once(OsString::from("lab")).chain(rewritten)) {
         Ok(cli) => cli,

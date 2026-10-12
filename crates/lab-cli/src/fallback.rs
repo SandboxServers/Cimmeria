@@ -1,5 +1,7 @@
-//! Running a command through the PowerShell dispatcher (`lab.ps1`) until its
-//! packet moves it into Rust.
+//! Running the PowerShell scripts that stay PowerShell: `daemon.ps1` behind
+//! `lab start`, `stop` and `restart`, `instances.ps1` behind `lab instances`,
+//! and `cli\install.ps1`, `cli\setup.ps1` and `cli\local-setup.ps1` behind
+//! `lab install`, `setup` and `local-setup`. There is no generic dispatcher.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -7,34 +9,43 @@ use std::process::Command as Process;
 
 use crate::commands::Ctx;
 
-/// The folder that holds `lab.ps1`: `CIMMERIA_LAB_CLI_DIR` when set, else the
-/// `cli` folder beside the executable's folder. `None` when it has no `lab.ps1`.
-pub fn dispatcher_path() -> Option<PathBuf> {
-    let dir = match std::env::var_os("CIMMERIA_LAB_CLI_DIR") {
-        Some(dir) => PathBuf::from(dir),
-        None => std::env::current_exe()
-            .ok()?
-            .parent()?
-            .join("..")
-            .join("cli"),
-    };
-    dir.join("lab.ps1").is_file().then_some(dir)
+/// The folder the scripts live in: `CIMMERIA_LAB_CLI_DIR` when set, else the
+/// `cli` folder beside the executable's folder (`<lab home>\bin\..\cli`). In a
+/// checkout that folder is `tools\lab`.
+pub fn scripts_dir() -> Option<PathBuf> {
+    match std::env::var_os("CIMMERIA_LAB_CLI_DIR") {
+        Some(dir) => Some(PathBuf::from(dir)),
+        None => Some(
+            std::env::current_exe()
+                .ok()?
+                .parent()?
+                .join("..")
+                .join("cli"),
+        ),
+    }
 }
 
-/// The `pwsh` arguments for `ctx`: `-NoProfile -File <dir>\lab.ps1 <command>`,
-/// then the raw tokens in PowerShell form (see [`to_powershell_tokens`]).
-pub fn command_line(dir: &Path, ctx: &Ctx) -> Vec<OsString> {
+/// `relative` (for example `daemon.ps1` or `cli/install.ps1`) under
+/// [`scripts_dir`], when that file exists.
+pub fn script_path(relative: &str) -> Option<PathBuf> {
+    let path = scripts_dir()?.join(relative);
+    path.is_file().then_some(path)
+}
+
+/// The `pwsh` arguments: `-NoProfile -File <script> <leading...>`, then the raw
+/// tokens in PowerShell form (see [`to_powershell_tokens`]).
+pub fn command_line(script: &Path, leading: &[&str], raw: &[OsString]) -> Vec<OsString> {
     let mut args = vec![
         OsString::from("-NoProfile"),
         OsString::from("-File"),
-        dir.join("lab.ps1").into_os_string(),
-        OsString::from(&ctx.command),
+        script.as_os_str().to_owned(),
     ];
-    args.extend(to_powershell_tokens(&ctx.raw));
+    args.extend(leading.iter().map(OsString::from));
+    args.extend(to_powershell_tokens(raw));
     args
 }
 
-/// The tokens as `lab.ps1` spells them: `--runs-per-lease` becomes
+/// The tokens as PowerShell spells them: `--runs-per-lease` becomes
 /// `-RunsPerLease`, `--json` becomes `-Json` and `--value=-x` becomes
 /// `-Value:-x`. `--value=` (an empty value) becomes `-Value` and an empty
 /// token, because `-Value:` alone would take the next token as its value.
@@ -102,17 +113,21 @@ fn pascal_case(name: &str) -> String {
         .collect()
 }
 
-/// Runs the PowerShell dispatcher for `ctx` with inherited stdio and returns
-/// its exit code (255 when it has none).
-pub fn run(ctx: &Ctx) -> u8 {
-    let Some(dir) = dispatcher_path() else {
+/// Runs `pwsh -NoProfile -File <scripts dir>\<relative> <leading...> <ctx.raw
+/// in PowerShell form>` with inherited stdio and returns the child's exit code
+/// (255 when it has none). 1, with an error, when the script or `pwsh` is missing.
+pub fn run_script(ctx: &Ctx, relative: &str, leading: &[&str]) -> u8 {
+    let Some(script) = script_path(relative) else {
         ctx.ui.error(
-            "the PowerShell half of the lab CLI is not installed",
-            Some("run: lab setup -From <checkout>"),
+            &format!("the PowerShell script {relative} is not installed"),
+            Some("run: pwsh <checkout>\\tools\\lab\\cli\\setup.ps1"),
         );
         return 1;
     };
-    match Process::new("pwsh").args(command_line(&dir, ctx)).status() {
+    match Process::new("pwsh")
+        .args(command_line(&script, leading, &ctx.raw))
+        .status()
+    {
         Ok(status) => exit_byte(status.code()),
         Err(err) => {
             ctx.ui.error(
@@ -133,7 +148,6 @@ pub fn exit_byte(code: Option<i32>) -> u8 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ui::Ui;
 
     fn tokens(args: &[&str]) -> Vec<String> {
         to_powershell_tokens(&args.iter().map(OsString::from).collect::<Vec<_>>())
@@ -143,46 +157,18 @@ mod tests {
     }
 
     #[test]
-    fn command_line_keeps_powershell_form_tokens_unchanged() {
-        let ctx = Ctx {
-            ui: Ui::plain(),
-            command: "uat".to_string(),
-            raw: vec![OsString::from("first-session"), OsString::from("-Rows")],
-        };
-        let dir = Path::new("lab-cli-dir");
-        let args = command_line(dir, &ctx);
+    fn command_line_is_script_then_leading_then_tokens() {
+        let raw = vec![OsString::from("--force"), OsString::from("-Yes")];
+        let args = command_line(Path::new("d\\daemon.ps1"), &["stop"], &raw);
         assert_eq!(
             args,
             [
                 OsString::from("-NoProfile"),
                 OsString::from("-File"),
-                dir.join("lab.ps1").into_os_string(),
-                OsString::from("uat"),
-                OsString::from("first-session"),
-                OsString::from("-Rows"),
-            ]
-        );
-    }
-
-    #[test]
-    fn command_line_turns_long_flags_into_powershell_form() {
-        let ctx = Ctx {
-            ui: Ui::plain(),
-            command: "uat".to_string(),
-            raw: vec![
-                OsString::from("--runs-per-lease"),
-                OsString::from("5"),
-                OsString::from("--value=-x"),
-            ],
-        };
-        let dir = Path::new("lab-cli-dir");
-        let args = command_line(dir, &ctx);
-        assert_eq!(
-            args[4..],
-            [
-                OsString::from("-RunsPerLease"),
-                OsString::from("5"),
-                OsString::from("-Value:-x"),
+                OsString::from("d\\daemon.ps1"),
+                OsString::from("stop"),
+                OsString::from("-Force"),
+                OsString::from("-Yes"),
             ]
         );
     }

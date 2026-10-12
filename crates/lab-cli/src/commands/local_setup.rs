@@ -1,6 +1,5 @@
-//! `lab local-setup`: one-shot setup for a lab against a local server.
-//! LX-02 gives it its clap arguments and help page; the body is still the
-//! PowerShell fallback.
+//! `lab local-setup`: one-shot setup for a lab against a local server, by
+//! running `cli\local-setup.ps1` with the same arguments (LX-18).
 
 use crate::commands::Ctx;
 use crate::fallback;
@@ -38,10 +37,10 @@ pub struct Args {
     pub env_scope: String,
 }
 
-/// Runs `lab local-setup` (still the PowerShell fallback).
+/// Runs `lab local-setup`: `cli\local-setup.ps1` with the same arguments.
 pub fn run(args: &Args, ctx: &Ctx) -> u8 {
     let _ = args;
-    fallback::run(ctx)
+    fallback::run_script(ctx, "cli/local-setup.ps1", &[])
 }
 
 #[cfg(test)]
