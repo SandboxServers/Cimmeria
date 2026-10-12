@@ -209,7 +209,7 @@ launcher's game folder itself, so an existing multi-gigabyte install is neither
 copied nor downloaded again as a second client. Settings offers **Verify and
 adopt this folder** after a legacy import; there is no location to choose.
 
-1. **Preflight.** The old launcher's `launcher-installed.json` need not record the
+1. **Preflight.** No saved import is needed. Pick the game folder itself, its `Working` folder or its `Working\Binaries` folder: the launcher resolves all three to the same root, and refuses a folder that does not hold `SGW.exe` in `Working\Binaries` (`not_a_game_folder`) before anything is downloaded. It also refuses a root it cannot write to (`folder_not_writable`). That check creates and deletes a probe file in the root and renames one inside `Working\Binaries`, and runs before any download; a verified copy into a new folder is offered later. A saved import adds the checks below: the old launcher's `launcher-installed.json` need not record the
    signed release. A folder it left out of date is classified, not refused: its
    files that only lack a patch are listed as needing patching. The folder must
    not hold the old launcher's own

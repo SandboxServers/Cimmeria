@@ -58,10 +58,15 @@ pub struct Review {
     /// What the adoption downloads before it can finish, when anything is needed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub download: Option<DownloadEstimate>,
-    /// Requested order, applied to the copy.
-    pub login_servers: Vec<LoginServer>,
-    pub client_patches_enabled: bool,
-    pub game_telemetry_opted_in: bool,
+    /// Requested order, applied to the copy. Legacy sources only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub login_servers: Option<Vec<LoginServer>>,
+    /// Legacy sources only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_patches_enabled: Option<bool>,
+    /// Legacy sources only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub game_telemetry_opted_in: Option<bool>,
     pub game_telemetry_available: bool,
     pub requires_normalization: bool,
     pub requires_telemetry_acceptance: bool,
@@ -83,11 +88,17 @@ impl Review {
             AdoptionSourceRef::Legacy(_) => SourceKind::Legacy,
             AdoptionSourceRef::Folder(_) => SourceKind::Folder,
         };
-        // Only a legacy preview is reviewed here, and it always has a requested config.
-        let requested = report
-            .requested_config
-            .as_ref()
-            .ok_or(AdoptionError::CorruptState)?;
+        // A legacy preview always carries its requested config; a folder preview has
+        // none (no legacy import), so the requested-config fields stay absent for it.
+        let requested = match source_kind {
+            SourceKind::Legacy => Some(
+                report
+                    .requested_config
+                    .as_ref()
+                    .ok_or(AdoptionError::CorruptState)?,
+            ),
+            SourceKind::Folder => None,
+        };
         let mut counts = Counts::default();
         let mut differences = Vec::new();
         let mut differences_omitted = 0;
@@ -139,16 +150,18 @@ impl Review {
             requires_replacement,
             backup_directory: report.backup.clone(),
             download: report.download.clone(),
-            login_servers: requested
-                .login_servers
-                .iter()
-                .map(|server| LoginServer {
-                    name: server.name.clone(),
-                    url: server.url.clone(),
-                })
-                .collect(),
-            client_patches_enabled: requested.client_patches.enabled,
-            game_telemetry_opted_in: requested.telemetry.opted_in,
+            login_servers: requested.map(|requested| {
+                requested
+                    .login_servers
+                    .iter()
+                    .map(|server| LoginServer {
+                        name: server.name.clone(),
+                        url: server.url.clone(),
+                    })
+                    .collect()
+            }),
+            client_patches_enabled: requested.map(|requested| requested.client_patches.enabled),
+            game_telemetry_opted_in: requested.map(|requested| requested.telemetry.opted_in),
             game_telemetry_available: report.game_telemetry_available,
             requires_normalization: preview.requires_normalization(),
             requires_telemetry_acceptance: preview.requires_telemetry_acceptance(),

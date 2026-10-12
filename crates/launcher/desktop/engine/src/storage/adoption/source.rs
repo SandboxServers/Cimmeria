@@ -67,7 +67,7 @@ pub(super) fn request_source(
 /// The client root a picked folder names: the folder itself, its `Working`, or
 /// its `Working\Binaries`. A flat folder (`SGW.exe` beside `SGWGame`) is a root
 /// only in copy mode. Names match case-blind.
-pub(super) fn resolve_folder(selected: &Path, mode: AdoptionMode) -> Result<PathBuf, Error> {
+pub fn resolve_folder(selected: &Path, mode: AdoptionMode) -> Result<PathBuf, Error> {
     let selected = selected.canonicalize()?;
     if working_binaries(&selected).is_some() {
         return Ok(selected);

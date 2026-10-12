@@ -43,6 +43,16 @@ mod wine_tests;
 #[cfg(any(target_os = "macos", test))]
 const COPY_FOLDER: &str = "Stargate Worlds";
 
+/// The saved import a legacy adoption names. A folder adoption never reads it.
+fn legacy_import(
+    state: &DesktopState,
+) -> Result<cimmeria_launcher_engine::migration::LegacyImport, AdoptionError> {
+    state
+        .legacy_import()
+        .map_err(|_| AdoptionError::CorruptState)?
+        .ok_or(AdoptionError::ImportRequired)
+}
+
 #[derive(Default)]
 pub(crate) struct Adoption {
     preview: Option<adoption::PreviewWorker>,
@@ -103,11 +113,8 @@ impl NativeHost {
         if status.native.requires_reopen {
             return Err(AdoptionError::PersistenceUncertain);
         }
-        if let Some(blocker) = status
-            .imported
-            .ok_or(AdoptionError::ImportRequired)?
-            .blocker
-        {
+        // A folder needs no saved import; only a saved import can block its own choice.
+        if let Some(blocker) = status.imported.and_then(|imported| imported.blocker) {
             return Err(blocker);
         }
         if status.reconciliation.is_some() {
@@ -143,7 +150,15 @@ impl NativeHost {
         if std::fs::symlink_metadata(&destination).is_ok() {
             return Err(AdoptionError::InvalidDirectory);
         }
-        self.admit_adoption_preview(release, |_| destination)
+        self.admit_adoption_preview(release, |state| {
+            let imported = legacy_import(state)?;
+            Ok((
+                adoption::SourceRequest::Legacy {
+                    import_digest: imported.confirmation,
+                },
+                destination,
+            ))
+        })
     }
     /// The imported game folder is the one adopted; there is nothing to choose.
     #[cfg(not(target_os = "macos"))]
@@ -152,12 +167,42 @@ impl NativeHost {
         release: VerifiedRelease,
     ) -> Result<AdoptionStatus, AdoptionError> {
         self.adoption_choice_allowed()?;
-        self.admit_adoption_preview(release, |imported| imported.source.game_directory.clone())
+        self.admit_adoption_preview(release, |state| {
+            let imported = legacy_import(state)?;
+            let folder = imported.source.game_directory.clone();
+            Ok((
+                adoption::SourceRequest::Legacy {
+                    import_digest: imported.confirmation,
+                },
+                folder,
+            ))
+        })
+    }
+    /// A folder the player picked natively, adopted in place. The engine admits it
+    /// only when `selected` resolves to a game root (`Working`, `Working\Binaries`
+    /// or the root itself), and the folder can be written, before any download.
+    /// `mode` must be in place; a verified copy of a folder is AI-12.
+    #[cfg(not(target_os = "macos"))]
+    pub fn begin_folder_adoption(
+        &self,
+        selected: PathBuf,
+        mode: adoption::AdoptionMode,
+        release: VerifiedRelease,
+    ) -> Result<AdoptionStatus, AdoptionError> {
+        self.adoption_choice_allowed()?;
+        if mode != adoption::AdoptionMode::InPlace {
+            return Err(AdoptionError::UnsupportedMode);
+        }
+        // The engine checks the request names this same root, so the root is passed.
+        let root = adoption::resolve_folder(&selected, mode)?;
+        self.admit_adoption_preview(release, |_| {
+            Ok((adoption::SourceRequest::Folder { selected }, root))
+        })
     }
     fn admit_adoption_preview(
         &self,
         release: VerifiedRelease,
-        destination: impl FnOnce(&cimmeria_launcher_engine::migration::LegacyImport) -> PathBuf,
+        source: impl FnOnce(&DesktopState) -> Result<(adoption::SourceRequest, PathBuf), AdoptionError>,
     ) -> Result<AdoptionStatus, AdoptionError> {
         {
             let mut adoption = self.adoption.lock().map_err(|_| AdoptionError::Io)?;
@@ -170,15 +215,10 @@ impl NativeHost {
             let store = self.store()?;
             let request = {
                 let state = store.lock().map_err(|_| AdoptionError::Io)?;
-                let imported = state
-                    .legacy_import()
-                    .map_err(|_| AdoptionError::CorruptState)?
-                    .ok_or(AdoptionError::ImportRequired)?;
+                let (source, destination) = source(&state)?;
                 adoption::PreviewRequest {
-                    destination: destination(&imported),
-                    source: adoption::SourceRequest::Legacy {
-                        import_digest: imported.confirmation,
-                    },
+                    destination,
+                    source,
                     operation_revision: state.operations().snapshot().revision,
                     preferences_revision: state.preferences().revision,
                     release,

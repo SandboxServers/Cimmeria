@@ -371,14 +371,61 @@ async fn choose_adoption_destination(
     choose_copy_destination(app, window, host).await
 }
 
-/// Picks an existing game folder to adopt. Not yet available: the folder picker
-/// and the folder adoption land with AI-10.
+/// Picks an existing game folder to adopt in place. The webview never passes a
+/// path; a cancelled dialog returns the current status. Copy is AI-12.
 #[tauri::command]
 async fn choose_existing_game_folder(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, Arc<NativeHost>>,
     mode: cimmeria_launcher_engine::adoption::AdoptionMode,
 ) -> Result<AdoptionStatus, AdoptionError> {
-    let _ = mode;
-    Err(AdoptionError::PlatformUnavailable)
+    let host = state.inner().clone();
+    if mode != cimmeria_launcher_engine::adoption::AdoptionMode::InPlace {
+        return Err(AdoptionError::UnsupportedMode);
+    }
+    // Refuse before a dialog or the network when no preview could be admitted.
+    let checking = host.clone();
+    tauri::async_runtime::spawn_blocking(move || checking.adoption_choice_allowed())
+        .await
+        .map_err(|_| AdoptionError::Io)??;
+    #[cfg(target_os = "macos")]
+    {
+        let _ = (app, window, host);
+        Err(AdoptionError::PlatformUnavailable)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let Some(selected) = tauri::async_runtime::spawn_blocking(move || {
+            app.dialog()
+                .file()
+                .set_parent(&window)
+                .set_title("Choose your Stargate Worlds game folder")
+                .blocking_pick_folder()
+                .map(|folder| {
+                    folder
+                        .into_path()
+                        .map_err(|_| AdoptionError::InvalidDirectory)
+                })
+                .transpose()
+        })
+        .await
+        .map_err(|_| AdoptionError::Io)??
+        else {
+            return tauri::async_runtime::spawn_blocking(move || host.adoption_status())
+                .await
+                .map_err(|_| AdoptionError::Io)?;
+        };
+        // Only the fixed, signed catalog names the release; the webview cannot.
+        let release = cimmeria_launcher_engine::catalog::fetch_release()
+            .await
+            .map_err(|_| AdoptionError::ReleaseUnavailable)?;
+        tauri::async_runtime::spawn_blocking(move || {
+            host.begin_folder_adoption(selected, mode, release)
+        })
+        .await
+        .map_err(|_| AdoptionError::Io)?
+    }
 }
 
 #[cfg(target_os = "macos")]
