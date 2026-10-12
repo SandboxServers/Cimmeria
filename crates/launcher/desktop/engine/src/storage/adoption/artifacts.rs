@@ -9,7 +9,7 @@ use crate::{
 };
 use cimmeria_launcher_core::seed_source::{LocalSeedError, SeedSourceHandle};
 use futures_util::StreamExt;
-use std::{io::Write, time::Duration};
+use std::{collections::BTreeSet, io::Write, time::Duration};
 
 const STORE: &str = "adoption-artifacts";
 
@@ -87,6 +87,30 @@ pub(super) fn fetch(
         seed: fetched.seed.ok_or(Error::InvalidArtifact)?,
         patches,
     })
+}
+
+/// The SHA-256 of each signed blob of `release` already in the store and
+/// verifying. Read before a fetch, so the review counts only what must download.
+pub(super) fn held(
+    state_root: &Path,
+    release: &VerifiedRelease,
+    cancel: &CancellationToken,
+) -> Result<BTreeSet<String>, Error> {
+    let manifest = release.manifest();
+    let store = state_root.join(STORE);
+    let mut held = BTreeSet::new();
+    let blobs = std::iter::once((manifest.seed.size, manifest.seed.sha256.as_str())).chain(
+        manifest
+            .patches
+            .iter()
+            .map(|patch| (patch.size, patch.sha256.as_str())),
+    );
+    for (size, sha) in blobs {
+        if stored(&store.join(name(sha)?), size, sha, cancel)? {
+            held.insert(sha.to_string());
+        }
+    }
+    Ok(held)
 }
 
 /// Blocking, like [`fetch`], for the blobs a replay needs: the seed when `seed`

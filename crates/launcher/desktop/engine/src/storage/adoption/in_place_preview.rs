@@ -121,12 +121,18 @@ pub(super) fn preview(
         transport,
         &mut preparation,
         source::borrowed(&adopted),
+        AdoptionMode::InPlace,
         &scanned,
         &servers,
         &cancel,
         progress,
     );
-    let (reference, files) = match prepared {
+    let verification::Compared {
+        reference,
+        files,
+        download,
+        replacements,
+    } = match prepared {
         Ok(prepared) => prepared,
         Err(error) => {
             preparation.release();
@@ -150,7 +156,7 @@ pub(super) fn preview(
         files,
         user_data_remains_in_source: true,
         game_telemetry_available: false,
-        download: None,
+        download: Some(download),
         backup: None,
     };
     for file in report.blocking() {
@@ -165,6 +171,7 @@ pub(super) fn preview(
         release: request.release,
         scanned,
         reference,
+        replacements,
         _legacy_lock: legacy_lock,
     })
 }

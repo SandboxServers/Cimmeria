@@ -10,7 +10,6 @@ use cimmeria_launcher_core::file_index::{FileIndex, IndexedFile, Origin, PathHis
 use std::collections::{BTreeMap, BTreeSet};
 
 /// What the replay needs to rebuild the release bytes of every target.
-#[allow(dead_code)] // AI-09 part b wires it
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct ReplayPlan {
     /// Some needed pre-state is neither in the folder nor made by a patch.
@@ -26,7 +25,6 @@ pub(super) struct ReplayPlan {
 /// Plans the replay for `files` (the classification of the folder). Targets are
 /// `NeedsPatching`, `Modified` and `Missing`, plus a `KnownTransform` at another
 /// spelling in copy mode.
-#[allow(dead_code)] // AI-09 part b wires it
 pub(super) fn plan(
     index: &FileIndex,
     files: &[Difference],
@@ -70,7 +68,6 @@ pub(super) fn plan(
 /// The download a replay plan implies. Artifacts `stored` reports as on disk
 /// are not downloaded. A `have_local_seed` replaces the seed download, and the
 /// review then names the player's archive.
-#[allow(dead_code)] // AI-09 part b wires it
 pub(super) fn estimate(
     plan: &ReplayPlan,
     manifest: &Manifest,
@@ -186,7 +183,6 @@ fn hex(bytes: &[u8]) -> String {
 /// copied from `folder_root`. Each target is checked against the release and
 /// stored at `replacements/<path>`, and the stored paths are returned by target.
 /// The scratch tree is removed on every outcome.
-#[allow(dead_code)] // AI-09 part b2 wires it
 #[allow(clippy::too_many_arguments)]
 pub(super) fn replay(
     plan: &ReplayPlan,

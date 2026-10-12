@@ -29,11 +29,12 @@ pub(super) fn reference_and_comparison(
     transport: Option<artifacts::Transport>,
     preparation: &mut preparation::Ownership,
     adopted: AdoptionSourceRef<'_>,
+    mode: AdoptionMode,
     scanned: &inventory::Index,
     servers: &[crate::client_setup::LoginServer],
     cancel: &CancellationToken,
     progress: crate::install_progress::ProgressSink,
-) -> Result<(reference::Reference, Vec<Difference>), Error> {
+) -> Result<Compared, Error> {
     let (folder, legacy) = match adopted {
         AdoptionSourceRef::Legacy(imported) => (&imported.source.game_directory, Some(imported)),
         AdoptionSourceRef::Folder(picked) => (&picked.root, None),
@@ -47,6 +48,9 @@ pub(super) fn reference_and_comparison(
         Some(transport) => transport,
         None => artifacts::Transport::production()?,
     };
+    // Read before the full fetch below, so the estimate counts only what the
+    // replay must download.
+    let held = artifacts::held(&root, &request.release, cancel)?;
     let fetched;
     let artifacts = match &request.artifacts {
         Some(artifacts) => artifacts,
@@ -83,13 +87,14 @@ pub(super) fn reference_and_comparison(
         }
     };
     // The in-place moves still read the reconstructed bytes.
+    // AI-11: drop when the moves use replacements
     let reference = reference::reconstruct(
         &preparation.record.directory,
         &request.release,
         artifacts,
         servers,
         cancel,
-        progress,
+        progress.clone(),
         adapter.as_deref(),
     )?;
     preparation.uncertain = false;
@@ -109,7 +114,77 @@ pub(super) fn reference_and_comparison(
     if let Some(imported) = legacy {
         source::verify_import(imported)?;
     }
-    Ok((reference, files))
+    let plan = replay::plan(&index, &files, scanned, mode);
+    let seed_source = state
+        .lock()
+        .map_err(|_| StorageError::Io)?
+        .seed_source_for(&request.release);
+    let download = replay::estimate(
+        &plan,
+        request.release.manifest(),
+        seed_source.current().is_some(),
+        |sha| held.contains(sha),
+    );
+    let mut replacements = Vec::new();
+    // Local fixture artifacts carry no patch list, so only a signed fetch replays.
+    if request.artifacts.is_none() && !plan.targets.is_empty() {
+        let fetched = artifacts::fetch_some(
+            &root,
+            &transport,
+            &request.release,
+            plan.needs_seed,
+            &plan.patches,
+            &seed_source,
+            cancel,
+            &progress,
+        )?;
+        let sink = UnpackSink {
+            progress: progress.clone(),
+            label: "Adoption replay".into(),
+            cancel: cancel.clone(),
+        };
+        let stored = replay::replay(
+            &plan,
+            &index,
+            &request.release,
+            &fetched,
+            folder,
+            scanned,
+            &preparation.record.directory,
+            cancel,
+            &sink,
+        )?;
+        for (path, dest) in stored {
+            let entry = inventory::hash(&dest, cancel)?;
+            let reason = files
+                .iter()
+                .find(|d| d.path == path)
+                .map(|d| d.classification)
+                .ok_or(Error::InvalidArtifact)?;
+            replacements.push(Replacement {
+                path,
+                size: entry.size,
+                sha256: entry.sha256,
+                reason,
+            });
+        }
+    }
+    Ok(Compared {
+        reference,
+        files,
+        download,
+        replacements,
+    })
+}
+
+/// What a preview learns from the signed reference and the folder: the reference
+/// for the moves, the per-file review, the download the replay implies, and the
+/// files it stored for the adopted tree.
+pub(super) struct Compared {
+    pub reference: reference::Reference,
+    pub files: Vec<Difference>,
+    pub download: DownloadEstimate,
+    pub replacements: Vec<Replacement>,
 }
 
 /// Classifies every path of the index's histories against the folder scan, then

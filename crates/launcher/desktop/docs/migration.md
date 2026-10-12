@@ -92,6 +92,14 @@ Windows-native lock interoperability, hardware power-loss durability, visual UAT
 and actual legacy-user installs remain unverified. Shell/UI confirmation has
 additional native fixture evidence described below.
 
+Adopting an existing folder fetches only what the review says it needs. The
+replay downloads only the patches that the folder's changed files need, each
+from its signed blob URL in the release manifest. The seed archive is fetched
+only when a needed pre-patch file is wrong, from archive.org through the signed
+blob URL or from the player's own archive. Nothing is ever uploaded or
+mirrored (D-AI5). The review's download estimate names the patches and the seed
+before confirmation.
+
 ## Settings preview and confirmation
 
 Settings → **Select legacy folders…** opens two native folder dialogs: first the

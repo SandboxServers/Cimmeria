@@ -81,11 +81,18 @@ pub struct Preview {
     release: VerifiedRelease,
     scanned: inventory::Index,
     reference: reference::Reference,
+    /// The files the replay stored for the adopted tree (AI-09); empty when the
+    /// review needs none.
+    replacements: Vec<Replacement>,
     _legacy_lock: Option<File>,
 }
 impl Preview {
     pub fn report(&self) -> &Report {
         &self.report
+    }
+    /// The replacement store entries the adopted tree takes, one per target.
+    pub fn replacements(&self) -> &[Replacement] {
+        &self.replacements
     }
     pub fn signed_release(&self) -> &VerifiedRelease {
         &self.release
@@ -246,12 +253,18 @@ fn copy_preview(
         transport,
         &mut preparation,
         source::borrowed(&adopted),
+        AdoptionMode::Copy,
         &scanned,
         &servers,
         &cancel,
         progress,
     );
-    let (reference, files) = match prepared {
+    let verification::Compared {
+        reference,
+        files,
+        download,
+        replacements,
+    } = match prepared {
         Ok(prepared) => prepared,
         Err(error) => {
             // This worker holds no state guard, so settle the owner now rather
@@ -270,7 +283,7 @@ fn copy_preview(
         files,
         user_data_remains_in_source: true,
         game_telemetry_available: false,
-        download: None,
+        download: Some(download),
         backup: None,
     };
     Ok(Preview {
@@ -282,6 +295,7 @@ fn copy_preview(
         release: request.release,
         scanned,
         reference,
+        replacements,
         _legacy_lock: legacy_lock,
     })
 }
