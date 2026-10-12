@@ -29,6 +29,8 @@ def _fixture_db(path):
                    "('r1', 's1', 't1', 'u1', 1, '2026-10-11T10:00:00Z', 'claude-opus-5-5', 1000000, 0, 0, 0, 0, 1000000)")
         db.execute("INSERT INTO tool_calls (tool_use_id, request_id, session_id, ts, tool_name, fingerprint) VALUES "
                    "('c1', 'r1', 's1', '2026-10-11T10:00:01Z', 'Edit', 'crates/gameserver/src/lib.rs')")
+        db.execute("INSERT INTO pr_attribution (request_id, pr_number, method, weight, confidence, campaign) VALUES "
+                   "('r1', NULL, 'campaign', 1.0, 1.0, 'campaign-metrics')")
         db.commit()
 
 

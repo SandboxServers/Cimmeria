@@ -7,9 +7,9 @@ from datetime import datetime, timedelta, timezone
 from metrics import overstep, registry
 
 CFG = registry.load_config()
-WINDOWS = {"lab-record": {"start": "2026-10-01T00:00:00Z", "end": None}}
 PACKETS = [("campaign-metrics", {"id": "CM-07", "implementer": "packet-coder", "size": "M", "escalated": False})]
 T0 = datetime(2026, 10, 11, 10, 0, 0, tzinfo=timezone.utc)
+LAB_ROW = {"pr_number": None, "weight": 1.0, "campaign": "lab-record", "pr_campaign": None}
 
 
 def _iso(dt):
@@ -17,10 +17,10 @@ def _iso(dt):
 
 
 def _req(**kw):
-    """A request dict: Opus 5.5, main session, one million input tokens, no calls, on 2026-10-11."""
+    """A request dict: Opus 5.5, main session, one million input tokens, no calls, on 2026-10-11, in lab-record."""
     base = {"request_id": "r1", "session_id": "s1", "agent_id": None, "ts": _iso(T0), "model": "claude-opus-5-5",
             "input": 1_000_000, "output": 0, "cache_read": 0, "cache_write_5m": 0, "cache_write_1h": 0,
-            "trigger_kind": "mixed", "worktree": None, "agent_type": None, "calls": []}
+            "trigger_kind": "mixed", "worktree": None, "agent_type": None, "calls": [], "rows": [LAB_ROW]}
     base.update(kw)
     return base
 
@@ -29,8 +29,8 @@ def _call(tool, fingerprint=None):
     return {"tool_name": tool, "fingerprint": fingerprint}
 
 
-def _detect(requests, cfg=CFG, packets=PACKETS):
-    return overstep.detect(requests, packets, WINDOWS, cfg)
+def _detect(requests, cfg=CFG, packets=PACKETS, pr_map=None):
+    return overstep.detect(requests, packets, cfg, pr_map)
 
 
 class OpusCodingTest(unittest.TestCase):
@@ -179,6 +179,42 @@ class WindowTest(unittest.TestCase):
         fixer = _req(agent_id="a3", agent_type="packet-review-fixer", worktree=".claude/worktrees/cm-07")
         result = _detect([fixer, _req(request_id="r3", worktree=".claude/worktrees/cm-07")])
         self.assertEqual(result["fixer_requests"], {"cm-07": 1})
+
+
+class AttributionTest(unittest.TestCase):
+    CODE = [_call("Edit", "crates/gameserver/src/lib.rs")]
+
+    def test_a_pr_attribution_row_names_the_campaign_over_overlapping_open_windows(self):
+        window = {"start": "2026-10-01T00:00:00Z", "end": None}
+        ledger = {"campaigns": {"camp-a": {"window": window, "packets": []},
+                                "camp-b": {"window": window, "packets": []}}}
+        packets, _, pr_map = overstep.ledger_inputs(ledger)
+        row = {"pr_number": None, "weight": 1.0, "campaign": "camp-b", "pr_campaign": None}
+        result = _detect([_req(calls=self.CODE, rows=[row])], packets=packets, pr_map=pr_map)
+        self.assertEqual(list(result["by_campaign"]), ["camp-b"])
+
+    def test_a_request_with_no_attribution_and_no_packet_is_unattributed(self):
+        result = _detect([_req(calls=self.CODE, rows=[], worktree=None)])
+        self.assertEqual(list(result["by_campaign"]), ["unattributed"])
+
+    def test_a_request_split_evenly_gives_each_campaign_half_the_waste(self):
+        rows = [{"pr_number": None, "weight": 0.5, "campaign": "camp-a", "pr_campaign": None},
+                {"pr_number": None, "weight": 0.5, "campaign": "camp-b", "pr_campaign": None}]
+        whole = _detect([_req(calls=self.CODE)])["by_campaign"]["lab-record"]["rules"]["O1"]["wasted_usd"]
+        by_campaign = _detect([_req(calls=self.CODE, rows=rows)])["by_campaign"]
+        for name in ("camp-a", "camp-b"):
+            self.assertAlmostEqual(by_campaign[name]["rules"]["O1"]["wasted_usd"], whole / 2)
+
+    def test_campaign_usd_sums_to_the_total_of_the_hits(self):
+        split = [{"pr_number": None, "weight": 0.25, "campaign": "camp-a", "pr_campaign": None},
+                 {"pr_number": None, "weight": 0.75, "campaign": None, "pr_campaign": "camp-b"}]
+        pr_tagged = [{"pr_number": 7, "weight": 1.0, "campaign": None, "pr_campaign": "camp-c"}]
+        reqs = [_req(request_id=f"r{i}", session_id=f"s{i}", calls=self.CODE, rows=rows)
+                for i, rows in enumerate([split, [], pr_tagged])]
+        result = _detect(reqs)
+        usd = sum(row["usd"] for stats in result["by_campaign"].values() for row in stats["rules"].values())
+        self.assertAlmostEqual(usd, sum(overstep.actual_usd(r) for r in reqs))
+        self.assertEqual(set(result["by_campaign"]), {"camp-a", "camp-b", "camp-c", "unattributed"})
 
 
 class RepriceTest(unittest.TestCase):

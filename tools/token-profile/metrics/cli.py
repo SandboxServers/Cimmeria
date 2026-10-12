@@ -149,8 +149,8 @@ def run_overstep(args):
     try:
         config = registry.load_config(args.config)
         ledger_doc = json.loads(Path(args.ledger).read_text(encoding="utf-8")) if args.ledger else {"campaigns": {}}
-        packets, windows = overstep.ledger_inputs(ledger_doc)
-        result = overstep.detect(overstep.load_requests(args.db), packets, windows, config)
+        packets, _windows, pr_map = overstep.ledger_inputs(ledger_doc)
+        result = overstep.detect(overstep.load_requests(args.db), packets, config, pr_map)
         out = Path(args.out)
         out.mkdir(parents=True, exist_ok=True)
         (out / "overstep.json").write_text(json.dumps(result, indent=1) + "\n", encoding="utf-8")

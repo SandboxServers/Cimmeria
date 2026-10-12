@@ -29,6 +29,7 @@ BURST_WINDOW = timedelta(minutes=10)
 FOLLOW_UPS = 3
 CACHE_COLUMNS = ("cache_read", "cache_write_5m", "cache_write_1h")
 ITEM_LIMIT = 20
+UNATTRIBUTED = "unattributed"
 
 
 def parse_ts(text):
@@ -178,20 +179,38 @@ def research_bursts(reqs, cfg):
     return clusters
 
 
-def campaign_for(ts, windows):
-    """The first campaign (by name) whose start <= ts < end; `windows` maps name to {start, end} ISO strings."""
-    when = parse_ts(ts)
-    for name in sorted(windows):
-        win = windows[name]
-        if win["start"] and parse_ts(win["start"]) <= when < parse_ts(win["end"]):
-            return name
-    return None
+def _campaign_of_row(row, pr_map, packet_campaign):
+    """A pr_attribution row's campaign: its own tag (a 'pr-' tag is a placeholder), else its PR's, else the ledger's
+    campaign for the PR, else the packet's, else 'unattributed'."""
+    tag = row.get("campaign")
+    if tag and not tag.startswith("pr-"):
+        return tag
+    return row.get("pr_campaign") or (pr_map or {}).get(row.get("pr_number")) or packet_campaign or UNATTRIBUTED
 
 
-def _hit(rule, reqs, call, campaign=None, follow_ups=()):
-    """One overstep: its rule, its request, the call that made it, a packet's campaign if any, and the follow-up
-    requests whose cache cost it also carries."""
-    return {"rule": rule, "requests": reqs, "call": call, "campaign": campaign, "follow_ups": list(follow_ups)}
+def _shares(req, packets, pr_map):
+    """(campaign, share) per attribution row of a request, the shares normalised to sum to 1. A request with no rows
+    is one untagged row, so it takes its packet's campaign or 'unattributed'."""
+    rows = req.get("rows") or [{}]
+    found = packet_for(req, packets)
+    total = sum(row.get("weight", 1.0) for row in rows)
+    packet_campaign = found[0] if found else None
+    return [(_campaign_of_row(row, pr_map, packet_campaign), row.get("weight", 1.0) / total) for row in rows]
+
+
+def _split(hit):
+    """Each campaign's share of a hit: the mean over its requests of their attribution shares."""
+    out = {}
+    for req in hit["requests"]:
+        for campaign, share in req["shares"]:
+            out[campaign] = out.get(campaign, 0.0) + share / len(hit["requests"])
+    return out
+
+
+def _hit(rule, reqs, call, follow_ups=()):
+    """One overstep: its rule, its request, the call that made it, and the follow-up requests whose cache cost it also
+    carries."""
+    return {"rule": rule, "requests": reqs, "call": call, "follow_ups": list(follow_ups)}
 
 
 def _waste(hit, target, version):
@@ -203,21 +222,24 @@ def _waste(hit, target, version):
     return actual, max(0.0, actual - repriced)
 
 
-def detect(requests, packets, windows, cfg, version=prices.CURRENT):
+def detect(requests, packets, cfg, pr_map=None, version=prices.CURRENT):
     """Overstep counts, USD and wasted USD per campaign, from the requests of the window.
 
-    `windows` maps campaign name to {start, end} (end None means the window's end). `packets` is as in
-    ledger_inputs. Requests before the regime switch or at/after the window's end are ignored. The
-    main session's role is coordinator; a subagent's comes from cfg roles by its agent type.
+    `packets` is as in ledger_inputs and `pr_map` ({pr: campaign}) is its third value. Each request's USD is split
+    across its pr_attribution rows by weight, and each row names its campaign (_campaign_of_row); nothing is dropped,
+    so a request with no campaign counts under 'unattributed' and the campaigns sum to the total. A hit counts once in
+    each campaign it touches. Requests before the
+    regime switch or at/after the window's end are ignored. The main session's role is coordinator; a subagent's comes
+    from cfg roles by its agent type.
     """
     regime, until = parse_ts(cfg["regime_switch"]), parse_ts(cfg["window"]["until"])
     rules = cfg["overstep"]
-    windows = {n: {"start": w["start"], "end": w["end"] or cfg["window"]["until"]} for n, w in windows.items()}
     reqs = sorted((dict(r) for r in requests if regime <= parse_ts(r["ts"]) < until), key=lambda r: parse_ts(r["ts"]))
     streams = {}
     fixers = {}
     for req in reqs:
         req["role"] = "coordinator" if req["agent_id"] is None else cfg["roles"].get(req["agent_type"])
+        req["shares"] = _shares(req, packets, pr_map)
         stream = streams.setdefault((req["session_id"], req["agent_id"]), [])
         req["seq"] = len(stream)
         stream.append(req)
@@ -235,30 +257,29 @@ def detect(requests, packets, windows, cfg, version=prices.CURRENT):
             hits.append(_hit("O2", [req], call))
         found = sonnet_implementing(req, packets, rules)
         if found:
-            hits.append(_hit("O3", [req], found[0], found[1][0]))
+            hits.append(_hit("O3", [req], found[0]))
     hits.extend(_hit("O2", cluster, None) for cluster in research_bursts(reqs, rules))
     out, counts = {}, {}
     for hit in hits:
-        campaign = hit["campaign"] or campaign_for(hit["requests"][0]["ts"], windows)
-        if campaign is None:
-            continue
         rule = hit["rule"]
         target = rules["reprice"]["implementation" if rule in ("O1", "O3") else "research"]
         actual, wasted = _waste(hit, target, version)
         _, wasted_low = _waste(hit, "sonnet", version)
-        stats = out.setdefault(campaign, {"rules": {}, "recoverable_low": 0.0, "recoverable_high": 0.0, "items": []})
-        row = stats["rules"].setdefault(rule, {"count": 0, "usd": 0.0, "wasted_usd": 0.0})
-        row["count"] += 1
-        row["usd"] += actual
-        row["wasted_usd"] += wasted
-        stats["recoverable_low"] += wasted_low
-        stats["recoverable_high"] += wasted
+        for campaign, share in _split(hit).items():
+            stats = out.setdefault(campaign,
+                                   {"rules": {}, "recoverable_low": 0.0, "recoverable_high": 0.0, "items": []})
+            row = stats["rules"].setdefault(rule, {"count": 0, "usd": 0.0, "wasted_usd": 0.0})
+            row["count"] += 1
+            row["usd"] += actual * share
+            row["wasted_usd"] += wasted * share
+            stats["recoverable_low"] += wasted_low * share
+            stats["recoverable_high"] += wasted * share
+            if len(stats["items"]) < ITEM_LIMIT:
+                head, call = hit["requests"][0], hit["call"] or {}
+                stats["items"].append({"rule": rule, "ts": head["ts"], "session_family": head["session_id"],
+                                       "model": head["model"], "usd": round(actual * share, 6),
+                                       "tool": call.get("tool_name"), "path_class": _path_class(call)})
         counts[rule] = counts.get(rule, 0) + 1
-        if len(stats["items"]) < ITEM_LIMIT:
-            head, call = hit["requests"][0], hit["call"] or {}
-            stats["items"].append({"rule": rule, "ts": head["ts"], "session_family": head["session_id"],
-                                   "model": head["model"], "usd": round(actual, 6), "tool": call.get("tool_name"),
-                                   "path_class": _path_class(call)})
     opus_subagents = len({r["agent_id"] for r in reqs if opus_subagent(r, packets)})
     return {"by_campaign": out, "opus_subagents": opus_subagents, "requests": len(reqs), "hits": counts,
             "fixer_requests": fixers}
@@ -276,10 +297,15 @@ REQUEST_SQL = """
     ORDER BY r.ts, r.request_id
 """
 CALL_SQL = "SELECT request_id, tool_name, fingerprint FROM tool_calls ORDER BY ts, tool_use_id"
+ROW_SQL = """
+    SELECT pa.request_id, pa.pr_number, pa.weight, pa.campaign, p.campaign AS pr_campaign
+    FROM pr_attribution pa
+    LEFT JOIN prs p ON p.pr_number = pa.pr_number
+"""
 
 
 def load_requests(db_path):
-    """The requests of a token-profile database, in time order, each with its tool calls.
+    """The requests of a token-profile database, in time order, each with its tool calls and its pr_attribution rows.
 
     The file is opened read only (mode=ro), so a missing file is an error and is never created.
     """
@@ -289,15 +315,27 @@ def load_requests(db_path):
         calls = {}
         for row in db.execute(CALL_SQL):
             calls.setdefault(row["request_id"], []).append({"tool_name": row["tool_name"], "fingerprint": row["fingerprint"]})
-        return [dict(row, calls=calls.get(row["request_id"], [])) for row in db.execute(REQUEST_SQL)]
+        rows = {}
+        for row in db.execute(ROW_SQL):
+            rows.setdefault(row["request_id"], []).append(dict(row))
+        return [dict(row, calls=calls.get(row["request_id"], []), rows=rows.get(row["request_id"], []))
+                for row in db.execute(REQUEST_SQL)]
     finally:
         db.close()
 
 
 def ledger_inputs(ledger_doc):
-    """(packets, windows) for detect, from a ledger.json: packets as (campaign, packet) pairs, windows by campaign."""
+    """(packets, windows, pr_map) for detect, from a ledger.json: packets as (campaign, packet) pairs, windows by
+    campaign, and pr_map ({pr: campaign}) from every packet's PRs, override rows included. A PR that two campaigns
+    claim is left out of the map."""
     packets = [(name, {"id": p["id"], "implementer": p["implementer"], "size": p["size"], "escalated": p["escalated"]})
                for name, campaign in ledger_doc["campaigns"].items() for p in campaign["packets"]
                if not p.get("override")]
     windows = {name: campaign["window"] for name, campaign in ledger_doc["campaigns"].items()}
-    return packets, windows
+    claims = {}
+    for name, campaign in ledger_doc["campaigns"].items():
+        for p in campaign["packets"]:
+            for pr in p.get("prs", []):
+                claims.setdefault(pr, set()).add(name)
+    pr_map = {pr: names.pop() for pr, names in claims.items() if len(names) == 1}
+    return packets, windows, pr_map
