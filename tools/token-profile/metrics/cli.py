@@ -2,18 +2,20 @@
 
     python tools/token-profile/metrics registry --repo . [--check] [--config <json>] [--campaigns <json>]
     python tools/token-profile/metrics ledger --repo . --out <dir>
+    python tools/token-profile/metrics packets --db <sqlite> --ledger <json> --github <json> --out <dir>
 
 Exit status: 0 ok; 1 with registry --check, the campaign rules have a problem; 2 an input or output error.
-The ledger writes <dir>/ledger.json and prints a JSON count summary.
+The ledger writes <dir>/ledger.json and prints a JSON count summary; packets writes <dir>/packets.json.
 """
 
 import argparse
 import json
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
 
-from . import ledger, registry
+from . import ledger, packets, registry
 
 
 def git_log(repo, failures):
@@ -111,6 +113,24 @@ def run_ledger(args):
     return 0
 
 
+def run_packets(args):
+    """Write the packet join to rgs.out/packets.json and print its counts; the exit status is 0, or 2 on an error."""
+    try:
+        ledger_doc = json.loads(Path(args.ledger).read_text(encoding="utf-8"))
+        github_doc = json.loads(Path(args.github).read_text(encoding="utf-8"))
+        config = registry.load_config(args.config)
+        result = packets.join_campaigns(ledger_doc, packets.load_db(args.db), github_doc, config)
+        out = Path(args.out)
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "packets.json").write_text(json.dumps(result, indent=1) + "\n", encoding="utf-8")
+    except (OSError, ValueError, KeyError, sqlite3.Error) as e:
+        print(f"status=error {type(e).__name__}", file=sys.stderr)
+        return 2
+    print(json.dumps({"sessions": result["sessions"],
+                      "packets": {name: len(c["packets"]) for name, c in result["campaigns"].items()}}))
+    return 0
+
+
 def main(argv=None):
     """Run the subcommand and return its exit status."""
     ap = argparse.ArgumentParser(prog="token-profile metrics", description=__doc__.split("\n\n")[0])
@@ -124,9 +144,17 @@ def main(argv=None):
     led.add_argument("--repo", required=True, help="the repository root")
     led.add_argument("--out", required=True, help="directory for ledger.json")
     led.add_argument("--config", help="metrics config.json (default: the package's)")
+    pk = sub.add_parser("packets", help="join worker sessions to packets: retries, first pass, escalation, stops")
+    pk.add_argument("--db", required=True, help="the profiler database, opened read-only")
+    pk.add_argument("--ledger", required=True, help="ledger.json from the ledger subcommand")
+    pk.add_argument("--github", required=True, help="github.json with the PRs' merge times and commits")
+    pk.add_argument("--out", required=True, help="directory for packets.json")
+    pk.add_argument("--config", help="metrics config.json (default: the package's)")
     args = ap.parse_args(argv)
     if args.cmd == "ledger":
         return run_ledger(args)
+    if args.cmd == "packets":
+        return run_packets(args)
     try:
         config = registry.load_config(args.config)
         campaigns = registry.load_campaigns(args.campaigns)
