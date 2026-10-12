@@ -1,0 +1,40 @@
+{
+ "by_campaign": {
+  "beta-haiku": {
+   "rules": {
+    "O1": {
+     "count": 2,
+     "usd": 6.0,
+     "wasted_usd": 4.5
+    },
+    "O2": {
+     "count": 1,
+     "usd": 1.0,
+     "wasted_usd": 0.5
+    }
+   },
+   "recoverable_low": 2.0,
+   "recoverable_high": 5.0,
+   "items": [
+    {
+     "rule": "O1",
+     "ts": "2026-10-11T03:00:00Z",
+     "session_family": "s1",
+     "model": "claude-opus-5-5",
+     "usd": 3.0,
+     "tool": "Edit",
+     "path_class": "code"
+    }
+   ]
+  }
+ },
+ "opus_subagents": 0,
+ "requests": 10,
+ "hits": {
+  "O1": 2,
+  "O2": 1
+ },
+ "fixer_requests": {
+  "cm-x": 7
+ }
+}

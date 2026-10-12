@@ -1,0 +1,143 @@
+{
+ "schema": "cimmeria-campaign-ledger/1",
+ "campaigns": {
+  "alpha-old": {
+   "packets": [
+    {
+     "id": "A-1",
+     "title": "Fixture packet A-1",
+     "status": "Done",
+     "status_raw": "Done",
+     "prs": [
+      101
+     ],
+     "implementer": "rust-gameserver-dev",
+     "implementer_note": null,
+     "escalated": false,
+     "retry_reason": null,
+     "size": "S",
+     "wave": 1,
+     "depends": []
+    },
+    {
+     "id": "A-2",
+     "title": "Fixture packet A-2",
+     "status": "Done",
+     "status_raw": "Done",
+     "prs": [
+      102
+     ],
+     "implementer": "rust-gameserver-dev",
+     "implementer_note": null,
+     "escalated": false,
+     "retry_reason": null,
+     "size": "S",
+     "wave": 1,
+     "depends": []
+    },
+    {
+     "id": "A-3",
+     "title": "Fixture packet A-3",
+     "status": "Done",
+     "status_raw": "Done",
+     "prs": [
+      103
+     ],
+     "implementer": "rust-gameserver-dev",
+     "implementer_note": null,
+     "escalated": false,
+     "retry_reason": null,
+     "size": "S",
+     "wave": 1,
+     "depends": []
+    },
+    {
+     "id": "A-4",
+     "title": "Fixture packet A-4",
+     "status": "Done",
+     "status_raw": "Done",
+     "prs": [
+      104
+     ],
+     "implementer": "rust-gameserver-dev",
+     "implementer_note": null,
+     "escalated": false,
+     "retry_reason": null,
+     "size": "S",
+     "wave": 1,
+     "depends": []
+    }
+   ],
+   "window": {
+    "start": "2026-09-27T00:00:00Z",
+    "end": "2026-09-28T00:00:00Z"
+   }
+  },
+  "beta-haiku": {
+   "packets": [
+    {
+     "id": "B-1",
+     "title": "Fixture packet B-1",
+     "status": "Done",
+     "status_raw": "Done",
+     "prs": [
+      201
+     ],
+     "implementer": "packet-coder",
+     "implementer_note": null,
+     "escalated": false,
+     "retry_reason": null,
+     "size": "S",
+     "wave": 1,
+     "depends": []
+    },
+    {
+     "id": "B-2",
+     "title": "Fixture packet B-2",
+     "status": "Done",
+     "status_raw": "Done",
+     "prs": [
+      202
+     ],
+     "implementer": "packet-coder",
+     "implementer_note": null,
+     "escalated": false,
+     "retry_reason": null,
+     "size": "S",
+     "wave": 1,
+     "depends": []
+    },
+    {
+     "id": "B-3",
+     "title": "Fixture packet B-3",
+     "status": "Done",
+     "status_raw": "Done",
+     "prs": [
+      203
+     ],
+     "implementer": "packet-coder",
+     "implementer_note": null,
+     "escalated": true,
+     "retry_reason": "context-exhausted",
+     "size": "S",
+     "wave": 1,
+     "depends": []
+    }
+   ],
+   "window": {
+    "start": "2026-10-11T00:00:00Z",
+    "end": "2026-10-11T12:00:00Z"
+   }
+  }
+ },
+ "pr_map": {
+  "101": "alpha-old",
+  "102": "alpha-old",
+  "103": "alpha-old",
+  "104": "alpha-old",
+  "201": "beta-haiku",
+  "202": "beta-haiku",
+  "203": "beta-haiku"
+ },
+ "conflicts": []
+}
