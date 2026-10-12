@@ -4,7 +4,8 @@
 
 ## Dispatch rules
 
-- One worktree and one `packet-coder` per packet: `pwsh tools/build-lane/mk-worktree.ps1 campaign-metrics/<packet>-<slug> cm-<nn>`. Branch `campaign-metrics/<packet>-<slug>`.
+- **Integration branch:** all packets build on `campaign-metrics/ledger`. Each packet gets a worktree and branch `cm/<id>` (for example `cm/cm-01`) started from `campaign-metrics/ledger`, and after review is merged back into it locally. No per-packet PR and no push: one PR for the whole campaign at close-out (CM-10). The `Branch/worktree` lines in the packets below name older per-packet branch names; use `cm/<id>` instead.
+- One worktree and one `packet-coder` per packet: `pwsh tools/build-lane/mk-worktree.ps1 cm/<id> cm-<nn>`, based on `campaign-metrics/ledger`.
 - PowerShell only. No bash, no direct `cargo` (none is needed: this is Python), no `git stash`, no `git worktree prune`. Run every command from the worktree: `Set-Location <worktree>;` at the start of each call.
 - Python 3.11+, standard library only (the profiler's rule). `python -I` for anything that reads untrusted data.
 - Edit only the files the packet names. docs/**/*.md are CRLF.
@@ -252,5 +253,5 @@ Intermediate files go in a scratch `--out` dir (never committed): `github.json`,
   4. **This campaign's own cost** goes into `reports/summary.md` under "Cost of this campaign": total USD by role (Opus coordinator, the Sonnet research agent that wrote these packets, Haiku coders, Sonnet reviewers and fixers), cost per accepted packet, retries, and the unattributed share for this campaign. State that the figure is measured at close-out and excludes the close-out session's own tail.
   5. Spot-check three campaign records against the sources by hand (PR count against `gh`, a packet's first-pass against its ledger row and worktree log, one overstep item against the transcript); record the three checks in the ledger.
   6. Commit `data/` and `reports/` (aggregate-only; run the privacy gate). Update the ledger packet table to Done, add findings, then (once) `docs/gap-analysis.md` / `docs/project-status.md` only if a gap row changes (probably none).
-  7. Post a handoff to the board if D-CM9 is yes; retire worktrees with `pwsh tools/build-lane/rm-worktree.ps1 --merged`.
+  7. No board post (D-CM9: results stay in the repo). Open the single campaign PR from `campaign-metrics/ledger`; retire worktrees with `pwsh tools/build-lane/rm-worktree.ps1 --merged`.
 - UAT the owner still has: none (no runtime behavior). Owner reads `reports/summary.md` and confirms D-CM1 and the overstep thresholds.

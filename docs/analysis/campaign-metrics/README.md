@@ -89,15 +89,15 @@ Not campaigns, reported as one line each: generic `feat/`, `fix/`, `docs/`, `ci/
 
 | ID | Status | Decision | Reason |
 |---|---|---|---|
-| D-CM1 | Proposed | Regime switch = **2026-10-10T20:02:54Z**, the first `packet-coder` transcript. Per packet, regime is the implementer that actually ran (a packet touched by `packet-coder` is Haiku regime), so mixed campaigns split cleanly. Old = Opus/Sonnet/`rust-gameserver-dev` implementing, anything started before the switch. | Memory dates say 10-10/10-11; the transcript is the evidence. Owner to confirm. |
-| D-CM2 | Proposed | One price table: keep `tools/token-profile/ingest/prices.py` (versioned, source URL, Haiku long card). Do not add a second config. A new price list is a new key there. CM-03 re-checks the current table against the pricing page before the final run. | A second table would drift from the reconcile checks (0.03% residual today). The lead asked for "one config file"; this is that file. |
+| D-CM1 | Accepted 2026-10-12 | Regime switch = **2026-10-10T20:02:54Z**, the first `packet-coder` transcript. Per packet, regime is the implementer that actually ran (a packet touched by `packet-coder` is Haiku regime), so mixed campaigns split cleanly. Old = Opus/Sonnet/`rust-gameserver-dev` implementing, anything started before the switch. | Memory dates say 10-10/10-11; the transcript is the evidence. Owner to confirm. |
+| D-CM2 | Accepted 2026-10-12 | One price table: keep `tools/token-profile/ingest/prices.py` (versioned, source URL, Haiku long card). Do not add a second config. A new price list is a new key there. CM-03 re-checks the current table against the pricing page before the final run. | A second table would drift from the reconcile checks (0.03% residual today). The lead asked for "one config file"; this is that file. |
 | D-CM3 | Proposed | Dollars are labelled "list-price estimate, a floor" everywhere. Where Claude Code's cost-state covers a window, the summary shows it next to the profiler total (D-TP6). | Inherited from D-TP1 and D-TP6. |
 | D-CM4 | Proposed | Unattributed spend is reported per campaign and in total, never spread. Campaign-level cost-per-X is computed on attributed spend only and says so. | Inherited from attribution invariants. |
 | D-CM5 | Proposed | Committed outputs are aggregate-only and pass the existing privacy gate (`report/scrub.py`): campaign names are ledger folders, no branches, session ids, prompts, absolute paths. Per-packet rows use the ledger packet ID. | The repo is public. |
 | D-CM6 | Proposed | The ledger's packet table is the authority for packet identity, size, implementer and status; transcripts and git add evidence. Where they disagree the report prints both and flags it. | "A ticket is a claim, not evidence." |
-| D-CM7 | Proposed | Overstep rules (CM-07): Opus main sessions editing code paths or running implementation lanes in the Haiku regime; Opus or Sonnet research in the coordinator session; Sonnet implementing a packet whose ledger implementer is `packet-coder` without a recorded escalation. Ledger/docs edits by the coordinator are allowed. Repricing target: Haiku for implementation, Sonnet for review and research. | The user's requirement. Thresholds are a starting point; owner may tune. |
+| D-CM7 | Accepted 2026-10-12 (waste = actual minus cost at the intended tier) | Overstep rules (CM-07): Opus main sessions editing code paths or running implementation lanes in the Haiku regime; Opus or Sonnet research in the coordinator session; Sonnet implementing a packet whose ledger implementer is `packet-coder` without a recorded escalation. Ledger/docs edits by the coordinator are allowed. Repricing target: Haiku for implementation, Sonnet for review and research. | The user's requirement. Thresholds are a starting point; owner may tune. |
 | D-CM8 | Proposed | The report may be rerun later. Committed data lives in `docs/analysis/campaign-metrics/data/` and `reports/`; the DB and raw transcripts stay out of the repo. A scheduled rerun is out of scope. | Keeps this campaign finite. |
-| D-CM9 | BlockedDecision | Do we post per-campaign numbers to the board (`handoffs`)? Owner call at close-out. | Outward-facing. |
+| D-CM9 | Accepted 2026-10-12 | Do NOT post to the board; results stay in the repo only. | Owner decision. |
 
 ## Packets
 
@@ -120,4 +120,4 @@ CM-01, CM-02, CM-04 and CM-05 touch different files and can run in parallel in s
 
 ## Resume note
 
-Nothing is built. Next step: owner answers D-CM1 and D-CM2, then dispatch wave 1. Re-ingest `~/token-profile.sqlite` right before CM-10 so the window is complete. The campaign's own transcripts are in the coordinator session; CM-10 names it with `--self-session`.
+Nothing is built. Next step: dispatch wave 1 (D-CM1, D-CM2, D-CM7, D-CM9 are accepted). Packets build on the integration branch `campaign-metrics/ledger`; one PR for the whole campaign at close-out. Re-ingest `~/token-profile.sqlite` right before CM-10 so the window is complete. The campaign's own transcripts are in the coordinator session; CM-10 names it with `--self-session`.
