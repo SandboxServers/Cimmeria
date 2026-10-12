@@ -12,7 +12,7 @@ mod exec;
 mod reply;
 mod summary;
 
-pub use batch::ChildOutput;
+pub use batch::{wait_for_child, ChildOutput};
 pub use exec::{execute, Deps};
 
 const LONG: &str = concat!(

@@ -5,6 +5,7 @@ use serde::ser::{SerializeMap, Serializer};
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::ascii_json::to_ascii_json;
 use crate::daemon::mcp::{hide_lease_ids, McpError};
 
 /// A `--json` line stays under this many characters (a failure's error is cut to fit).
@@ -83,7 +84,7 @@ pub fn compact_json(body: &Body) -> String {
 }
 
 fn line_of(pairs: &[(&str, Value)]) -> String {
-    serde_json::to_string(&Pairs(pairs)).unwrap_or_default()
+    to_ascii_json(&Pairs(pairs))
 }
 
 fn first_line(text: &str) -> &str {

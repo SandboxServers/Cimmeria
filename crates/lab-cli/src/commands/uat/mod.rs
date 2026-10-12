@@ -41,7 +41,7 @@ const LONG: &str = concat!(
     "\n\n",
     "Output: one progress line per run, then a summary (pass rate per row and per lane, failures grouped by their first failing row, known issues tagged). --json prints only one compact JSON object (on failure too: {\"ok\":false,\"exit\":N,\"error\":...}), for agents.",
     "\n\n",
-    "Every batch writes plan.json first, then batch.jsonl (one line per run, as each finishes), then batch.json and summary.md, under uat-runs\\batch-<time>\\ next to the runs' own evidence folders. Ctrl+C starts no new run and still writes the summary of the runs that finished; a run under way finishes on the daemon and releases its lease.",
+    "Every batch writes plan.json first, then batch.jsonl (one line per run, as each finishes), then batch.json and summary.md, under uat-runs\\batch-<time>\\ next to the runs' own evidence folders. First Ctrl+C: no new run starts, the run under way finishes; second Ctrl+C: stops now and still writes the summary (marked interrupted, exit 130). A run under way finishes on the daemon and releases its lease.",
     "\n\n",
     "--fixtures auto|always|never sets when a row's [row.fixture] is applied (the daemon's default is auto: a fixture row continues a passing chain and starts from its fixture otherwise).",
     "\n\n",
@@ -51,7 +51,7 @@ const LONG: &str = concat!(
     "\n\n",
     "--heal (needs --leases 1) recalibrates the poses failed rows missed on: after the batch, for each distinct (row, pose) whose row summary carries a heal hint, it calls lab_uat_calibrate for that pose (up to its 15-minute budget each), saves a proposed diff as heal-<row>-<pose>.diff in the batch folder and prints it. It never writes the spec file and never commits: review the diff, then git apply it (or run lab calibrate <section> <row> --pose <pose> --apply).",
     "\n\n",
-    "Exit codes: 0 every run passed; 1 a run failed; 2 usage; 3 the pre-flight or plan failed (nothing was driven); 4 a lane stopped early on its brake; 5 every run passed but --diff-golden did not match on one (a divergence, or a run it could not compare; under --chaos only the latter); 8 a heal proposal was written, which wins over every other code, 5 included.",
+    "Exit codes: 0 every run passed; 1 a run failed; 2 usage; 3 the pre-flight or plan failed (nothing was driven); 4 a lane stopped early on its brake; 5 every run passed but --diff-golden did not match on one (a divergence, or a run it could not compare; under --chaos only the latter); 8 a heal proposal was written, which wins over every other code, 5 included; 130 a second Ctrl+C stopped the batch (the summary is still written).",
 );
 
 const EXAMPLES: &str = "Examples:\n  lab uat first-session --rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5\n  lab uat first-session --rows FS-P1,FS-P2 --leases 2 --runs-per-lease 5\n  lab uat first-session --instance p2 --plan-only\n  lab uat first-session --rows FS-P4 --runs-per-lease 20\n  lab uat first-session --rows FS-P5,FS-P3,FS-P4 --fixtures always\n  lab uat first-session --rows FS-01,FS-02,FS-P1 --diff-golden\n  lab uat first-session --leases 3 --runs-per-lease 10 --json\n  lab uat first-session --rows FS-01,FS-02,FS-P1,FS-P2,FS-P3 --heal";

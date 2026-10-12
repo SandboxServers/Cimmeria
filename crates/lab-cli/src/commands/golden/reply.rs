@@ -5,6 +5,7 @@
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::ascii_json::to_ascii_json;
 use crate::ui::{Mark, Tone, Ui};
 
 /// A JSON value as text: `null` and a missing key are empty, a string is
@@ -95,7 +96,7 @@ pub fn compact_json(reply: &Value, exit: u8, batch: Option<&str>) -> String {
             batch.filter(|b| !b.is_empty())
         },
     };
-    serde_json::to_string(&compact).unwrap_or_default()
+    to_ascii_json(&compact)
 }
 
 /// The one line `lab golden record` prints on success (plain mode).

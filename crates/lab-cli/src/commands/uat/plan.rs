@@ -338,23 +338,42 @@ pub fn build_plan(
 }
 
 /// Creates `<root>\<folder>` and writes `plan.json` into it before any lane
-/// starts, so a watcher never sees runs without a plan. `Err` is exit 3.
+/// starts, so a watcher never sees runs without a plan. A folder of that name
+/// that already exists (two batches in the same second) is never reused: the
+/// next free `<folder>-2`, `<folder>-3`, ... is made instead. `Err` is exit 3.
 pub fn create_batch(root: &Path, folder: &str, plan: &Plan) -> Result<PathBuf, Stop> {
-    let dir = root.join(folder);
-    fs::create_dir_all(&dir)
-        .and_then(|_| write_plan(&dir.join(PLAN_JSON), plan))
-        .map_err(|e| {
-            Stop::new(
-                3,
-                format!(
-                    "cannot write the batch folder {}: {}",
-                    dir.display(),
-                    first_line(&e.to_string())
-                ),
-            )
-        })?;
+    let fail = |dir: &Path, e: std::io::Error| {
+        Stop::new(
+            3,
+            format!(
+                "cannot write the batch folder {}: {}",
+                dir.display(),
+                first_line(&e.to_string())
+            ),
+        )
+    };
+    fs::create_dir_all(root).map_err(|e| fail(root, e))?;
+    let mut n = 1u32;
+    let dir = loop {
+        let dir = if n == 1 {
+            root.join(folder)
+        } else {
+            root.join(format!("{folder}-{n}"))
+        };
+        match fs::create_dir(&dir) {
+            Ok(()) => break dir,
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists && n < MAX_BATCH_FOLDERS => {
+                n += 1;
+            }
+            Err(e) => return Err(fail(&dir, e)),
+        }
+    };
+    write_plan(&dir.join(PLAN_JSON), plan).map_err(|e| fail(&dir, e))?;
     Ok(dir)
 }
+
+/// How many same-named batch folders `create_batch` tries before it gives up.
+const MAX_BATCH_FOLDERS: u32 = 99;
 
 #[cfg(test)]
 #[path = "plan_tests.rs"]

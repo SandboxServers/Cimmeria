@@ -7,7 +7,8 @@ use crate::batch::{format_progress_line, PlanLane, RunRecord};
 use crate::ui::table::Table;
 use crate::ui::{Mark, Tone, Ui};
 
-use super::summary::{FailureGroup, Summary};
+use super::golden::GoldenSummary;
+use super::summary::{FailureGroup, Summary, INTERRUPTED_LINE};
 
 /// Where progress lines go: LX-15's `args::Progress` under this module's name
 /// (`Host`, `Stderr`, `None`), so the pre-flight and the batch agree and there
@@ -150,7 +151,58 @@ pub fn fancy_run_line(ui: &Ui, rec: &RunRecord, total: u32, label_width: usize) 
             cut(&format!("{row}: {reason}"), FAIL_TEXT_WIDTH)
         )
     };
-    format!("  {label}{pad}  {body}")
+    let golden = rec
+        .golden
+        .as_deref()
+        .filter(|g| !g.is_empty())
+        .map(|g| ui.paint(golden_tone(g), &format!("; golden: {g}")))
+        .unwrap_or_default();
+    format!("  {label}{pad}  {body}{golden}")
+}
+
+/// The tone of a run's golden value: `match` green, `error: ...` red, a
+/// divergence yellow.
+fn golden_tone(value: &str) -> Tone {
+    if value == "match" {
+        Tone::Ok
+    } else if value.starts_with("error:") {
+        Tone::Fail
+    } else {
+        Tone::Warn
+    }
+}
+
+/// One golden block of the fancy summary: the heading with its counts, then a
+/// line per distinct non-match value.
+fn fancy_golden_block(ui: &Ui, name: &str, g: &GoldenSummary, out: &mut String) {
+    out.push('\n');
+    let diverged = format!("{} diverged", g.diverged);
+    let diverged = if g.diverged > 0 {
+        ui.paint(Tone::Warn, &diverged)
+    } else {
+        diverged
+    };
+    let errors = if g.errors > 0 {
+        format!(
+            ", {}",
+            ui.paint(Tone::Fail, &format!("{} could not be compared", g.errors))
+        )
+    } else {
+        String::new()
+    };
+    out.push_str(&format!(
+        "{}: {}, {diverged}{errors}\n",
+        ui.paint(Tone::Heading, name),
+        ui.paint(Tone::Ok, &format!("{} match", g.matched)),
+    ));
+    for l in &g.groups {
+        out.push_str(&format!(
+            "  {}x {}  runs: {}\n",
+            l.count,
+            l.line,
+            l.runs.join(", ")
+        ));
+    }
 }
 
 /// The line that says a lane stopped (`rest` is `stopped after 3 failed runs in a
@@ -192,7 +244,16 @@ pub fn fancy_summary(ui: &Ui, summary: &Summary, title: &str, dir: &str) -> Stri
     } else {
         (Mark::Fail, Tone::Fail, "FAIL")
     };
-    let mut out = format!(
+    let mut out = String::new();
+    if let Some(chaos) = summary.chaos.as_deref().filter(|c| !c.is_empty()) {
+        out.push_str(&ui.paint(Tone::Warn, chaos));
+        out.push('\n');
+    }
+    if summary.interrupted {
+        out.push_str(&ui.paint(Tone::Warn, INTERRUPTED_LINE));
+        out.push('\n');
+    }
+    out.push_str(&format!(
         "{} {}\n",
         ui.paint(tone, ui.mark(mark)),
         ui.paint(
@@ -202,7 +263,7 @@ pub fn fancy_summary(ui: &Ui, summary: &Summary, title: &str, dir: &str) -> Stri
                 summary.passed, summary.runs
             )
         )
-    );
+    ));
     if summary.failed > 0 {
         out.push_str(&ui.paint(
             Tone::Warn,
@@ -252,6 +313,28 @@ pub fn fancy_summary(ui: &Ui, summary: &Summary, title: &str, dir: &str) -> Stri
                 f.count,
                 f.signature,
                 f.runs.join(", ")
+            ));
+        }
+    }
+    if let Some(g) = &summary.golden {
+        fancy_golden_block(ui, "Golden", g, &mut out);
+    }
+    if let Some(g) = &summary.chaos_divergence {
+        fancy_golden_block(ui, "Chaos divergence from the golden", g, &mut out);
+    }
+    if !summary.heal.is_empty() {
+        out.push('\n');
+        out.push_str(&ui.paint(
+            Tone::Heading,
+            "Heal proposals (spec diffs to review; nothing was applied):",
+        ));
+        out.push('\n');
+        for h in &summary.heal {
+            out.push_str(&format!(
+                "  {} {}: {}\n",
+                h.row,
+                h.pose,
+                ui.paint(Tone::Cmd, &h.diff)
             ));
         }
     }

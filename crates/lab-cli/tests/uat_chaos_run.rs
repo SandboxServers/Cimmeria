@@ -42,6 +42,7 @@ fn one_chaos_run(root: &Path, golden_reply: Value) -> BatchOutcome {
         sleep: &sleep,
         finish: &finish,
         stop: &stop,
+        abort: &AtomicBool::new(false),
     };
     let input = BatchInput {
         section: "first-session".to_string(),

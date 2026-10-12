@@ -83,6 +83,7 @@ fn a_two_lane_batch_writes_plan_first_then_records_then_the_summary() {
         sleep: &sleep,
         finish: &no_finish,
         stop: &stop,
+        abort: &AtomicBool::new(false),
     };
     let lines = Mutex::new(Vec::<String>::new());
     let emit = |l: &str| lines.lock().unwrap().push(l.to_string());
@@ -211,6 +212,7 @@ fn a_braked_lane_exits_4_marks_the_lane_and_says_so() {
         sleep: &sleep,
         finish: &no_finish,
         stop: &stop,
+        abort: &AtomicBool::new(false),
     };
     let lines = Mutex::new(Vec::<String>::new());
     let emit = |l: &str| lines.lock().unwrap().push(l.to_string());
@@ -254,6 +256,7 @@ fn ctrl_c_still_writes_the_summary_from_the_runs_that_finished() {
         sleep: &sleep,
         finish: &no_finish,
         stop: &stop,
+        abort: &AtomicBool::new(false),
     };
     let emit = |_: &str| {};
     let out = run_batch(
@@ -289,6 +292,7 @@ fn an_unwritable_batch_root_is_an_error_before_any_run() {
         sleep: &sleep,
         finish: &no_finish,
         stop: &stop,
+        abort: &AtomicBool::new(false),
     };
     let emit = |_: &str| {};
     let err = run_batch(
@@ -319,6 +323,7 @@ fn none_mode_prints_nothing_and_stderr_mode_still_prints() {
             sleep: &sleep,
             finish: &no_finish,
             stop: &stop,
+            abort: &AtomicBool::new(false),
         };
         let lines = Mutex::new(Vec::<String>::new());
         let emit = |l: &str| lines.lock().unwrap().push(l.to_string());
@@ -348,6 +353,7 @@ fn fancy_mode_prints_the_mock_up_lines() {
         sleep: &sleep,
         finish: &no_finish,
         stop: &stop,
+        abort: &AtomicBool::new(false),
     };
     let lines = Mutex::new(Vec::<String>::new());
     let emit = |l: &str| lines.lock().unwrap().push(l.to_string());

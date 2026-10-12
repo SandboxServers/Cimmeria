@@ -8,6 +8,7 @@ use std::time::Duration;
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::ascii_json::to_ascii_json;
 use crate::batch::PlanLane;
 use crate::daemon::env_file::{self, EnvLine};
 use crate::daemon::mcp::{hide_lease_ids, McpError};
@@ -105,7 +106,7 @@ pub fn stop(
             exit: code,
             error: message,
         };
-        let _ = writeln!(out, "{}", serde_json::to_string(&body).unwrap_or_default());
+        let _ = writeln!(out, "{}", to_ascii_json(&body));
     } else if ui.fancy {
         let _ = writeln!(err, "{} {message}", ui.paint(Tone::Fail, "error:"));
     } else {
@@ -342,7 +343,7 @@ pub fn execute(
                 lanes: lane_names.clone(),
                 chaos: header.as_deref(),
             };
-            let _ = writeln!(out, "{}", serde_json::to_string(&body).unwrap_or_default());
+            let _ = writeln!(out, "{}", to_ascii_json(&body));
         } else {
             if let Some(h) = &header {
                 let line = if ui.fancy {

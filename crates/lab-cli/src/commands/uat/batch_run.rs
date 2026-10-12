@@ -1,9 +1,10 @@
 //! A native `lab uat` batch: make the folder, write `plan.json`, run the lanes,
 //! write `batch.json` and `summary.md` (also after Ctrl+C), print the result.
 
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use std::time::Duration;
 
 use chrono::{DateTime, Local, Utc};
@@ -110,13 +111,43 @@ pub struct Hooks<'a> {
     pub finish: &'a FinishFn<'a>,
     /// Set by Ctrl+C: no new run starts.
     pub stop: &'a AtomicBool,
+    /// Set by the second Ctrl+C: the calls in flight were given up on, and the
+    /// summary says the batch was interrupted.
+    pub abort: &'a AtomicBool,
+}
+
+/// How often the summary reads `batch.jsonl` before it settles for what the
+/// lanes reported (a virus scanner or an indexer may hold the file for a moment).
+pub const READ_ATTEMPTS: u32 = 5;
+/// The pause between two of those reads.
+pub const READ_PAUSE: Duration = Duration::from_millis(200);
+
+/// Reads `batch.jsonl` through `read`, trying up to `attempts` times with `pause`
+/// between tries; the last error is returned when every try failed.
+pub fn read_with_retry(
+    read: &dyn Fn() -> io::Result<Vec<RunRecord>>,
+    attempts: u32,
+    pause: Duration,
+) -> io::Result<Vec<RunRecord>> {
+    let mut tries = 1;
+    loop {
+        match read() {
+            Ok(records) => return Ok(records),
+            Err(error) if tries >= attempts => return Err(error),
+            Err(_) => {
+                tries += 1;
+                std::thread::sleep(pause);
+            }
+        }
+    }
 }
 
 /// Runs a batch under `root` (`batch-<yyyyMMdd-HHmmss>`): header, folder and
 /// `plan.json` (before any lane starts), the lanes, then, always, the summary
 /// files. An error is a message for exit 3: the folder or `plan.json` could not
-/// be written (before any run), or the records or summary could not be read or
-/// written after.
+/// be written (before any run), or the summary could not be written after. A
+/// `batch.jsonl` that stays unreadable is not an error: the summary lists the
+/// runs the lanes reported, with a warning on stderr.
 pub fn run_batch(
     input: &BatchInput,
     opts: &BatchOptions,
@@ -124,6 +155,20 @@ pub fn run_batch(
     root: &Path,
     hooks: &Hooks<'_>,
     emit: &(dyn Fn(&str) + Sync),
+) -> Result<BatchOutcome, String> {
+    run_batch_reading(input, opts, ui, root, hooks, emit, &read_records)
+}
+
+/// [`run_batch`] with the reader of `batch.jsonl` given (the tests inject one
+/// that fails).
+pub fn run_batch_reading(
+    input: &BatchInput,
+    opts: &BatchOptions,
+    ui: &Ui,
+    root: &Path,
+    hooks: &Hooks<'_>,
+    emit: &(dyn Fn(&str) + Sync),
+    reader: &(dyn Fn(&Path) -> io::Result<Vec<RunRecord>> + Sync),
 ) -> Result<BatchOutcome, String> {
     let started = Local::now();
     let name = batch_folder_name(&started.naive_local());
@@ -150,7 +195,15 @@ pub fn run_batch(
         max_consecutive_failures: opts.max_consecutive_failures,
         jsonl: &jsonl,
     };
-    let on_record = |rec: &RunRecord| progress.say(&progress.run_line(rec));
+    // The records the lanes reported: the summary's fallback when the file stays locked.
+    let reported: Mutex<Vec<RunRecord>> = Mutex::new(Vec::new());
+    let on_record = |rec: &RunRecord| {
+        reported
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .push(rec.clone());
+        progress.say(&progress.run_line(rec));
+    };
     let on_notice = |instance: &str, rest: &str| progress.say(&progress.notice(instance, rest));
     let env = LaneEnv {
         call: hooks.call,
@@ -164,8 +217,20 @@ pub fn run_batch(
     run_lanes(&input.lanes, &cfg, &env);
 
     // Also after Ctrl+C: summarise whatever finished.
-    let records =
-        read_records(&jsonl).map_err(|e| format!("cannot read {}: {e}", jsonl.display()))?;
+    let records = match read_with_retry(&|| reader(&jsonl), READ_ATTEMPTS, READ_PAUSE) {
+        Ok(records) => records,
+        Err(error) => {
+            let records = reported.into_inner().unwrap_or_else(|p| p.into_inner());
+            // Stderr whatever the mode: stdout may be the one JSON object.
+            let _ = writeln!(
+                std::io::stderr(),
+                "warning: cannot read {}: {error}; the summary lists the {} run(s) reported while the batch ran",
+                jsonl.display(),
+                records.len()
+            );
+            records
+        }
+    };
     let mut braked: Vec<String> = Vec::new();
     for rec in records.iter().filter(|r| r.braked) {
         if !braked.iter().any(|b| b.eq_ignore_ascii_case(&rec.instance)) {
@@ -174,6 +239,7 @@ pub fn run_batch(
     }
     let mut summary = merge(&records, &input.lanes, &braked);
     summary.chaos = chaos::select_header(&records, input.chaos.as_deref());
+    summary.interrupted = hooks.abort.load(Ordering::SeqCst);
     let title = format!("lab uat {}", input.section);
     let meta = BatchMeta {
         dir: &dir,
@@ -231,6 +297,32 @@ pub fn print_outcome(ui: &Ui, opts: &BatchOptions, outcome: &BatchOutcome) {
     };
 }
 
+/// What a call that the second Ctrl+C gave up on reports as its error.
+pub const INTERRUPTED_ERROR: &str = "interrupted by the second Ctrl+C";
+
+/// Runs `work` (a daemon call) on its own thread and waits for it, but not past
+/// `abort`: when the second Ctrl+C sets it, the call is given up on and its
+/// error is [`INTERRUPTED_ERROR`]. The call goes on in its thread until the
+/// process exits, and the daemon finishes the run under way and releases its lease.
+pub fn give_up_on_abort(
+    abort: &AtomicBool,
+    work: impl FnOnce() -> Result<Value, McpError> + Send + 'static,
+) -> Result<Value, McpError> {
+    ctrlc::abortable(abort, work)
+        .unwrap_or_else(|| Err(McpError::Tool(INTERRUPTED_ERROR.to_string())))
+}
+
+/// The exit code of a finished batch: [`ctrlc::EXIT_INTERRUPTED`] when the
+/// second Ctrl+C stopped it (the summary files are written all the same), else
+/// the outcome's own.
+pub fn batch_exit(outcome: &BatchOutcome, aborted: bool) -> u8 {
+    if aborted {
+        ctrlc::EXIT_INTERRUPTED
+    } else {
+        outcome.exit
+    }
+}
+
 /// One `lab_uat_run` call on its own MCP session: connect, call (bounded by
 /// `timeout`), close. `call` is LX-15's `RunCall::for_lane(instance)`.
 fn call_lab_uat_run(ep: &Endpoint, call: &RunCall, timeout: Duration) -> Result<Value, McpError> {
@@ -262,11 +354,14 @@ pub fn finish_with<'a>(
 /// Runs a real batch against the daemon at `ep` and returns the exit code: 0 all
 /// passed, 1 a run failed, 4 a lane stopped early, 5 a golden divergence or a diff
 /// that could not be made, 8 a heal proposal was written, 3 when the batch folder
-/// cannot be written.
+/// cannot be written, 130 when a second Ctrl+C stopped the batch (the summary is
+/// written and printed first).
 pub fn execute(args: &Args, ctx: &Ctx, ep: &Endpoint, input: BatchInput) -> u8 {
     let mode = progress_mode(args.json, args.quiet, args.progress_to_stderr);
+    // A call blocks up to --run-timeout-minutes; the second Ctrl+C gives up on it.
     let call = |instance: &str, timeout: Duration| {
-        call_lab_uat_run(ep, &input.call.for_lane(instance), timeout)
+        let (ep, run) = (ep.clone(), input.call.for_lane(instance));
+        give_up_on_abort(&ctrlc::ABORT, move || call_lab_uat_run(&ep, &run, timeout))
     };
     let wait = |instance: &str, max: Duration| {
         mcp::wait_lease_free_stoppable(ep, instance, max, &ctrlc::stop_requested)
@@ -276,7 +371,10 @@ pub fn execute(args: &Args, ctx: &Ctx, ep: &Endpoint, input: BatchInput) -> u8 {
     let diff = input
         .diff_golden
         .then(|| DiffArgs::new(&input.section, input.specs_dir.as_deref().map(Path::new)));
-    let golden_call = |a: Value| golden::call_golden_diff(ep, a);
+    let golden_call = |a: Value| {
+        let ep = ep.clone();
+        give_up_on_abort(&ctrlc::ABORT, move || golden::call_golden_diff(&ep, a))
+    };
     let finish = finish_with(diff.as_ref(), &golden_call);
     let hooks = Hooks {
         call: &call,
@@ -284,6 +382,7 @@ pub fn execute(args: &Args, ctx: &Ctx, ep: &Endpoint, input: BatchInput) -> u8 {
         sleep: &sleep,
         finish: &finish,
         stop: &ctrlc::STOP,
+        abort: &ctrlc::ABORT,
     };
     let opts = BatchOptions {
         runs_per_lease: args.runs_per_lease,
@@ -304,7 +403,7 @@ pub fn execute(args: &Args, ctx: &Ctx, ep: &Endpoint, input: BatchInput) -> u8 {
                 heal::heal_batch(ctx, ep, &input, &opts, &mut outcome);
             }
             print_outcome(&ctx.ui, &opts, &outcome);
-            outcome.exit
+            batch_exit(&outcome, ctrlc::abort_requested())
         }
         Err(message) => {
             // Exit 3, one JSON object under --json, else the message on stderr.
