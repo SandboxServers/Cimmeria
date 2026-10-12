@@ -43,6 +43,8 @@ mod camera_pitch_tests;
 #[cfg(test)]
 mod occlusion_tests;
 #[cfg(test)]
+mod range_tests;
+#[cfg(test)]
 mod sim;
 #[cfg(test)]
 mod tool_tests;
