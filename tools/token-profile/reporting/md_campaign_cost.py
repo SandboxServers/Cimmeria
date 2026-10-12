@@ -2,12 +2,7 @@
 
 from report.render import num, pct, table, usd
 
-from .md_common import cell, gap_of
-
-
-def _gap(record, name):
-    """The `<name>_gap` note when the section is empty, else None."""
-    return None if record.get(name) else record.get(name + "_gap") or "no data"
+from .md_common import cell, gap_of, section_gap
 
 
 def _yes_no(ok):
@@ -15,7 +10,7 @@ def _yes_no(ok):
 
 
 def stamp_md(record):
-    gap = _gap(record, "stamp")
+    gap = section_gap(record,"stamp")
     if gap:
         return gap + "\n"
     s = record["stamp"]
@@ -33,7 +28,7 @@ def stamp_md(record):
 
 
 def cost_md(record):
-    gap = _gap(record, "cost")
+    gap = section_gap(record,"cost")
     if gap:
         return gap + "\n"
     c = record["cost"]
@@ -50,7 +45,7 @@ def cost_md(record):
 
 
 def prs_md(record):
-    gap = _gap(record, "prs")
+    gap = section_gap(record,"prs")
     if gap:
         return gap + "\n"
     p = record["prs"]
@@ -67,7 +62,7 @@ def prs_md(record):
 
 
 def accepted_md(record):
-    gap = _gap(record, "accepted")
+    gap = section_gap(record,"accepted")
     if gap:
         return gap + "\n"
     a = record["accepted"]
@@ -81,7 +76,7 @@ def accepted_md(record):
 
 
 def first_pass_md(record):
-    gap = _gap(record, "first_pass")
+    gap = section_gap(record,"first_pass")
     if gap:
         return gap + "\n"
     f = record["first_pass"]
@@ -96,7 +91,7 @@ def first_pass_md(record):
 
 
 def retries_md(record):
-    gap = _gap(record, "retries")
+    gap = section_gap(record,"retries")
     if gap:
         return gap + "\n"
     r = record["retries"]

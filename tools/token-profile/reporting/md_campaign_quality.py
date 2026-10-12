@@ -2,12 +2,11 @@
 
 from report.render import num, pct, table, usd
 
-from .md_campaign_cost import _gap
-from .md_common import cell, gap_of
+from .md_common import cell, gap_of, section_gap
 
 
 def ci_md(record):
-    gap = _gap(record, "ci")
+    gap = section_gap(record,"ci")
     if gap:
         return gap + "\n"
     c = record["ci"]
@@ -20,7 +19,7 @@ def ci_md(record):
 
 
 def defects_md(record):
-    gap = _gap(record, "escaped_defects")
+    gap = section_gap(record,"escaped_defects")
     if gap:
         return gap + "\n"
     d = record["escaped_defects"]
@@ -30,12 +29,12 @@ def defects_md(record):
     ]
     if not d["items"]:
         return "\n".join(lines) + "\n"
-    rows = [[cell(i["kind"]), cell(i["number"], fmt=num), cell(i["cites"], fmt=num)] for i in d["items"]]
+    rows = [[cell(i["kind"]), cell(i["number"], fmt=str), cell(i["cites"], fmt=str)] for i in d["items"]]
     return "\n".join(lines) + "\n\n" + table(["kind", "citing item", "cites PR"], rows) + "\n"
 
 
 def escalation_md(record):
-    gap = _gap(record, "escalation")
+    gap = section_gap(record,"escalation")
     if gap:
         return gap + "\n"
     e = record["escalation"]
@@ -51,7 +50,7 @@ def escalation_md(record):
 
 
 def stop_context_md(record):
-    gap = _gap(record, "stop_context")
+    gap = section_gap(record,"stop_context")
     if gap:
         return gap + "\n"
     s = record["stop_context"]
@@ -70,15 +69,16 @@ def stop_context_md(record):
 
 
 def cycle_md(record):
-    gap = _gap(record, "cycle_time")
+    gap = section_gap(record,"cycle_time")
     if gap:
         return gap + "\n"
     c = record["cycle_time"]
     hours = c["packet_hours"]
     note = gap_of(c, "packet_hours")
+    _hours = lambda v: f"{v:,.1f}"
     lines = [
-        f"- Campaign hours: {cell(c['campaign_hours'], gap_of(c, 'campaign_hours'), num)}",
-        f"- Packet hours: p50 {cell(hours['p50'], note, num)}, p90 {cell(hours['p90'], note, num)} "
+        f"- Campaign hours: {cell(c['campaign_hours'], gap_of(c, 'campaign_hours'), _hours)}",
+        f"- Packet hours: p50 {cell(hours['p50'], note, _hours)}, p90 {cell(hours['p90'], note, _hours)} "
         f"over {cell(hours['n'], fmt=num)} packets",
     ]
     return "\n".join(lines) + "\n"
@@ -86,19 +86,28 @@ def cycle_md(record):
 
 def overstep_md(record):
     o = record.get("overstep") or {}
-    note = o.get("overstep_gap") or _gap(record, "overstep")
+    note = o.get("overstep_gap") or section_gap(record, "overstep")
     if note:
         return note + "\n"
     r = o["recoverable_usd"]
     r_note = gap_of(o, "recoverable_usd")
+    # Older records predate the wasted-cost column, so the key may be absent: omit it rather than print 0.
+    has_wasted = "wasted_usd" in o
     lines = [
         f"- Opus coding: {cell(o['opus_coding_usd'], fmt=usd)}",
         f"- Opus research: {cell(o['opus_research_usd'], fmt=usd)}",
         f"- Sonnet implementing: {cell(o['sonnet_implementing_usd'], fmt=usd)}",
         f"- Recoverable: {cell(r['low'], r_note, usd)} to {cell(r['high'], r_note, usd)}",
     ]
+    if has_wasted:
+        lines.append(f"- Wasted (repriced at intended tier): {cell(o['wasted_usd'], fmt=usd)}")
     if not o["items"]:
         return "\n".join(lines) + "\n"
+    headers = ["rule", "USD", "tool", "path class", "model"]
     rows = [[cell(i["rule"]), cell(i["usd"], fmt=usd), cell(i["tool"]), cell(i["path_class"]), cell(i["model"])]
             for i in o["items"]]
-    return "\n".join(lines) + "\n\n" + table(["rule", "USD", "tool", "path class", "model"], rows, numeric=False) + "\n"
+    if has_wasted:
+        headers.append("wasted USD")
+        for row, i in zip(rows, o["items"]):
+            row.append(cell(i.get("wasted_usd"), fmt=usd))
+    return "\n".join(lines) + "\n\n" + table(headers, rows, numeric=False) + "\n"

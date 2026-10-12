@@ -62,6 +62,13 @@ class CiDefectEscalationTest(unittest.TestCase):
         self.assertIn("| pr | 900 | 102 |", out)
         self.assertIn("0.25", out)
 
+    def test_defects_md_pr_numbers_are_plain(self):
+        record = defect_record()
+        record["escaped_defects"]["items"] = [{"kind": "pr", "number": 1643, "cites": 1102, "days_after_merge": 1.0}]
+        out = md_campaign_quality.defects_md(record)
+        self.assertIn("| pr | 1643 | 1102 |", out)
+        self.assertNotIn("1,643", out)
+
     def test_defects_md_missing_section_is_gap(self):
         out = md_campaign_quality.defects_md({"escaped_defects": {}, "escaped_defects_gap": "no defect data"})
         self.assertIn("no defect data", out)
@@ -123,8 +130,27 @@ class StopCycleOverstepTest(unittest.TestCase):
     def test_cycle_md_numbers(self):
         record = {"cycle_time": {"campaign_hours": 24.0, "packet_hours": {"n": 4, "p50": 6.0, "p90": 9.0}}}
         out = md_campaign_quality.cycle_md(record)
-        self.assertIn("Campaign hours: 24", out)
-        self.assertIn("p50 6, p90 9 over 4 packets", out)
+        self.assertIn("Campaign hours: 24.0", out)
+        self.assertIn("p50 6.0, p90 9.0 over 4 packets", out)
+
+    def test_cycle_md_hours_one_decimal(self):
+        record = {"cycle_time": {"campaign_hours": 36.7, "packet_hours": {"n": 4, "p50": 6.0, "p90": 9.0}}}
+        out = md_campaign_quality.cycle_md(record)
+        self.assertIn("Campaign hours: 36.7", out)
+
+    def test_overstep_wasted_column_and_total(self):
+        record = overstep_record()
+        record["overstep"]["wasted_usd"] = 1.5
+        record["overstep"]["items"][0]["wasted_usd"] = 1.5
+        out = md_campaign_quality.overstep_md(record)
+        self.assertIn("- Wasted (repriced at intended tier): $1.50", out)
+        self.assertIn("| rule | USD | tool | path class | model | wasted USD |", out)
+        self.assertIn("| O1 | $3.00 | Edit | code | claude-opus-5-5 | $1.50 |", out)
+
+    def test_overstep_wasted_absent_is_omitted(self):
+        out = md_campaign_quality.overstep_md(overstep_record())
+        self.assertNotIn("Wasted", out)
+        self.assertNotIn("wasted USD", out)
 
     def test_overstep_beta_numbers(self):
         out = md_campaign_quality.overstep_md(overstep_record())
