@@ -2,7 +2,7 @@
 
 import unittest
 
-from reporting import md_campaign_quality
+from reporting import md_campaign, md_campaign_quality
 
 
 def ci_record():
@@ -140,6 +140,62 @@ class StopCycleOverstepTest(unittest.TestCase):
         out = md_campaign_quality.overstep_md(record)
         self.assertIn("predates the regime switch", out)
         self.assertNotIn("$", out)
+
+
+def campaign_record():
+    return {
+        "campaign": "beta-haiku",
+        "regime": "haiku",
+        "stamp": {"generated": "2026-10-12T12:00:00Z", "window": {"since": "2026-09-21T00:00:00Z", "until": None},
+                  "price_table": "2026-10-10", "profiler_schema": "6", "unattributed_share": 0.1,
+                  "unmapped_share": 0.1},
+        "cost": {"total_usd": 30.0, "attributed_usd": 27.0, "unattributed_in_campaign_usd": 3.0,
+                 "by_model_tier": {"opus": 12.0, "haiku": 10.0}, "by_role": {"coordinator": 12.0, "reviewer": 0.0}},
+        "prs": {"count": 3, "merged": 3, "cost_per_pr": {"mean": 9.0, "p50": 9.0, "p90": 9.8},
+                "per_pr": [{"pr": 201, "usd": 9.0, "merged": True, "ci_first_pass": True, "ci_runs": 1}]},
+        "accepted": {"packets": 3, "cost_per_accepted_usd": 10.0},
+        "first_pass": {"rate": 0.33, "eligible": 3,
+                       "packets": [{"id": "B-1", "implementer_sessions": 1, "reviewer_sessions": 1,
+                                    "fix_commits": 0, "first_pass": True}]},
+        "retries": {"total": 2, "by_reason": {"context-exhausted": 2, "ci-failure": 0}},
+        "ci": {"first_attempt_rate": 0.67, "overall_rate": 1.0, "code_prs_first_attempt_rate": 0.5,
+               "queue_first_attempt_rate": 1.0, "pr_runs_total": 4},
+        "escaped_defects": {"count": 0, "rate_per_merged_pr": 0.0, "items": []},
+        "escalation": {"dispatched_to_haiku": 3, "escalated": 1, "rate": 0.33,
+                       "items": [{"id": "B-3", "to": "rust-gameserver-dev", "why": "context-exhausted"}]},
+        "stop_context": {"workers": 5, "by_stop": {"end_turn": 2, "tool_use": 1, "error": 1, "no_record": 1},
+                         "by_error_kind": {"rate_limit": 1, "authentication_failed": 0, "other": 0},
+                         "context_at_stop": {"p50": 61000, "p90": 95000, "max": 98000}, "share_above_90k": 0.4},
+        "cycle_time": {"campaign_hours": 12.0, "packet_hours": {"n": 3, "p50": 2.0, "p90": 3.0}},
+        "overstep": {"opus_coding_usd": 6.0, "opus_research_usd": 1.0, "sonnet_implementing_usd": 0.0,
+                     "recoverable_usd": {"low": 2.0, "high": 5.0}, "items": []},
+    }
+
+
+SECTION_TITLES = ["Stamp", "Cost", "PRs", "Accepted", "First pass", "Retries", "CI", "Escaped defects",
+                  "Escalation", "Stop context", "Cycle time", "Overstep"]
+
+
+class RenderCampaignTest(unittest.TestCase):
+    def test_render_campaign_section_order(self):
+        out = md_campaign.render_campaign(campaign_record())
+        self.assertTrue(out.startswith("# beta-haiku\n\n> Regime: haiku\n"))
+        positions = [out.index(f"### {title}\n") for title in SECTION_TITLES]
+        self.assertEqual(positions, sorted(positions))
+        self.assertEqual(out.count("\n### "), len(SECTION_TITLES))
+
+    def test_render_campaign_ends_with_single_newline(self):
+        out = md_campaign.render_campaign(campaign_record())
+        self.assertTrue(out.endswith("\n"))
+        self.assertFalse(out.endswith("\n\n"))
+
+    def test_render_campaign_gap_section_has_no_table(self):
+        record = campaign_record()
+        record["first_pass"] = {}
+        record["first_pass_gap"] = "no packets record for this campaign"
+        out = md_campaign.render_campaign(record)
+        self.assertIn("no packets record for this campaign", out)
+        self.assertNotIn("| id |", out)
 
 
 if __name__ == "__main__":
