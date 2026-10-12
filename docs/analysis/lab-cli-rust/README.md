@@ -8,7 +8,8 @@
 > LX-01 to LX-09) and [work-packets-ports.md](work-packets-ports.md)
 > (LX-10 to LX-20).
 >
-> **Campaign status (2026-10-12): code complete; LX-20 live check owed.** Everything is built on one local branch. The user
+> **Campaign status (2026-10-12): code complete; LX-20 live check owed.**
+> Everything is built on one local branch. The user
 > asked for local work and one PR at the end (2026-10-11), so packets merge
 > into `lab-cli-rust/integration` (worktree `lcr`), not `main`; #1654
 > (LX-01) was closed and folded in. Every packet has a step-by-step spec in
@@ -41,7 +42,7 @@ suggestions and shell completions.
 | D-LX4 | Flags are clap long flags (`--rows`). PowerShell-style flags still work: `-Rows`, `-PlanOnly`, `-Value:-x` are rewritten before clap sees them (contract § Arguments). | Accepted 2026-10-11 | Docs, skills, specs and muscle memory use the PowerShell form. |
 | D-LX5 | Output parity. Exit codes and `--json` output (keys, key order, caps and size budgets) are exactly the PowerShell command's. Plain output (stdout not a terminal, or `NO_COLOR`) keeps the PowerShell line formats. Terminal output is restyled per contract § Look and feel. | Accepted 2026-10-11 | Agents and scripts parse the JSON and the plain lines; people read the terminal. |
 | D-LX6 | Stays PowerShell: `daemon.ps1` and `labd-lib.ps1` (the scheduled task, Windows PowerShell 5.1), `instances.ps1`, `tools/lab/install.ps1`, and the `install`, `setup` and `local-setup` commands. `lab.exe` runs them as child processes and gives them native help entries. | Accepted 2026-10-11 | Windows glue and bootstrapping: `setup` must work before `lab.exe` exists. |
-| D-LX7 | `lab.exe` lives at `<lab home>\bin\lab.exe` next to `cimmeria-lab.exe`. `lab install` builds and copies it; `lab setup` deletes the `lab.cmd` shim once `lab.exe` is there (`PATHEXT` finds `.exe` before `.cmd`). D-LC4 (run an installed copy, never a checkout) holds. | Accepted 2026-10-11 | One install path, no shim. |
+| D-LX7 | `lab.exe` lives at `<lab home>\bin\lab.exe` next to `cimmeria-lab.exe`. `lab install` builds and copies it; `lab setup` deletes the `lab.cmd` shim once `lab.exe` is there (`PATHEXT` finds `.exe` before `.cmd`). D-LC4 (run an installed copy, never a checkout) holds. | Accepted 2026-10-11; amended at LX-18: setup deletes `lab.cmd` even before `lab.exe` is installed | One install path, no shim. |
 | D-LX8 | Work split: `packet-coder` (Haiku) implements; when it runs out of context, a fresh `packet-coder` continues from `worknotes/<packet>.md` and the uncommitted diff. `packet-review-fixer` (Sonnet) reviews and fixes every packet. The coordinator writes no code: it dispatches, ships and merges. | Accepted 2026-10-11 | The user's rule for this campaign. |
 
 ## Packets
@@ -103,7 +104,7 @@ Where the merged code differs from the packet text. The specs in
   `--runs-per-lease 5` becomes `-RunsPerLease 5`, `--value=-x` becomes
   `-Value:-x`, `--x=` becomes `-X` plus an empty token. List flags take one
   comma-separated value per occurrence. PowerShell's implicit positional
-  binding (`lab logs 5`) is not supported.
+  binding (`lab logs 5`) is not supported. After LX-18 only the seven script wrappers use this.
 - **JSON key order.** The workspace `serde_json` has no `preserve_order`, so
   objects the CLI builds are `#[derive(Serialize)]` structs in PowerShell
   order; daemon answers pass through as `Value` (they are already sorted).
