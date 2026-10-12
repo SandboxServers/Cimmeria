@@ -1,6 +1,7 @@
 //! A native `lab uat` batch: make the folder, write `plan.json`, run the lanes,
 //! write `batch.json` and `summary.md` (also after Ctrl+C), print the result.
 
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
@@ -63,11 +64,17 @@ impl BatchInput {
 
 /// The numbers and switches of a batch.
 pub struct BatchOptions {
+    /// Runs each lane does, one after another.
     pub runs_per_lease: u32,
+    /// Seconds between lane starts.
     pub stagger_seconds: u32,
+    /// Minutes before one run times out.
     pub run_timeout_minutes: u32,
+    /// Failed runs in a row that stop a lane (0 never).
     pub max_consecutive_failures: u32,
+    /// Where progress lines go.
     pub mode: ProgressMode,
+    /// `--quiet`: the end of the batch is one line.
     pub quiet: bool,
     /// `--json` (LX-17b prints the compact object; nothing reads this before).
     pub json: bool,
@@ -90,11 +97,15 @@ pub struct BatchOutcome {
 
 /// The parts of a [`LaneEnv`] the caller supplies.
 pub struct Hooks<'a> {
+    /// One `lab_uat_run` call.
     pub call: &'a CallFn<'a>,
+    /// Waits for an instance's lease to clear.
     pub wait_lease_free: &'a WaitFn<'a>,
+    /// Sleeps (the stagger).
     pub sleep: &'a SleepFn<'a>,
     /// [`no_finish`] until LX-17b.
     pub finish: &'a FinishFn<'a>,
+    /// Set by Ctrl+C: no new run starts.
     pub stop: &'a AtomicBool,
 }
 
@@ -190,18 +201,23 @@ pub fn run_batch(
 pub fn print_outcome(ui: &Ui, opts: &BatchOptions, outcome: &BatchOutcome) {
     let dir = outcome.dir.display().to_string();
     // LX-17 hook: under --json print json::compact_json(&outcome.summary, &dir) and return here.
-    if opts.quiet {
-        println!("{}", quiet_line(&outcome.title, &outcome.summary, &dir));
-    } else if ui.fancy && opts.mode == ProgressMode::Host {
-        println!();
-        print!(
+    // Write errors are ignored (`| head`, a closed pipe): `println!` would panic.
+    let mut out = std::io::stdout().lock();
+    let _ = if opts.quiet {
+        writeln!(
+            out,
             "{}",
+            quiet_line(&outcome.title, &outcome.summary, &dir)
+        )
+    } else if ui.fancy && opts.mode == ProgressMode::Host {
+        write!(
+            out,
+            "\n{}",
             fancy_summary(ui, &outcome.summary, &outcome.title, &dir)
-        );
+        )
     } else {
-        println!();
-        println!("{}", outcome.md.replace("\r\n", "\n"));
-    }
+        write!(out, "\n{}\n", outcome.md.replace("\r\n", "\n"))
+    };
 }
 
 /// One `lab_uat_run` call on its own MCP session: connect, call (bounded by

@@ -27,7 +27,12 @@ pub fn press() -> bool {
 
 #[cfg(windows)]
 mod win {
+    use std::io::Write;
+    use std::sync::Once;
+
     use super::press;
+
+    static INSTALLED: Once = Once::new();
 
     type HandlerRoutine = unsafe extern "system" fn(u32) -> i32;
 
@@ -41,7 +46,9 @@ mod win {
 
     unsafe extern "system" fn on_event(kind: u32) -> i32 {
         if (kind == CTRL_C_EVENT || kind == CTRL_BREAK_EVENT) && press() {
-            eprintln!(
+            // `eprintln!` panics when stderr is closed; a panic here would abort.
+            let _ = writeln!(
+                std::io::stderr(),
                 "Ctrl+C: no new run will start; the runs under way finish first (Ctrl+C again stops now)"
             );
             1
@@ -50,12 +57,15 @@ mod win {
         }
     }
 
+    /// Registers the handler once per process (a second call adds nothing).
     pub fn install() {
-        // SAFETY: `on_event` has the `PHANDLER_ROUTINE` signature and lives for
-        // the whole process; the call only registers it.
-        unsafe {
-            SetConsoleCtrlHandler(Some(on_event), 1);
-        }
+        INSTALLED.call_once(|| {
+            // SAFETY: `on_event` has the `PHANDLER_ROUTINE` signature and lives for
+            // the whole process; the call only registers it.
+            unsafe {
+                SetConsoleCtrlHandler(Some(on_event), 1);
+            }
+        });
     }
 }
 

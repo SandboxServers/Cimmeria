@@ -49,8 +49,11 @@ pub fn no_finish(_rec: &mut RunRecord, _reply: Option<&Value>) {}
 pub struct LaneConfig<'a> {
     /// The planned row ids the verdict checks the reply against.
     pub row_ids: &'a [String],
+    /// Runs each lane does.
     pub runs_per_lease: u32,
+    /// Seconds between lane starts.
     pub stagger_seconds: u32,
+    /// The bound of one `call`.
     pub run_timeout: Duration,
     /// Failed runs in a row that stop a lane (0 never).
     pub max_consecutive_failures: u32,
@@ -60,10 +63,15 @@ pub struct LaneConfig<'a> {
 
 /// What a lane needs from outside.
 pub struct LaneEnv<'a> {
+    /// One `lab_uat_run` call.
     pub call: &'a CallFn<'a>,
+    /// Waits for an instance's lease to clear.
     pub wait_lease_free: &'a WaitFn<'a>,
+    /// Sleeps (the stagger).
     pub sleep: &'a SleepFn<'a>,
+    /// Called after each record is appended.
     pub on_record: &'a RecordFn<'a>,
+    /// Called when a lane stops.
     pub on_notice: &'a NoticeFn<'a>,
     /// The per-run seam LX-17b fills ([`no_finish`] until then).
     pub finish: &'a FinishFn<'a>,

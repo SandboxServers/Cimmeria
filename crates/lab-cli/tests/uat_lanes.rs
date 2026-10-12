@@ -191,12 +191,13 @@ fn lanes_are_staggered_by_their_lane_number() {
 
 #[test]
 fn lanes_run_at_the_same_time() {
+    // Each call waits for the other lane's call: only lanes that run at once get past.
     let mut rig = LaneRig::new(vec![
-        ("default", passes(2, &["FS-01"])),
-        ("p2", passes(2, &["FS-01"])),
+        ("default", passes(1, &["FS-01"])),
+        ("p2", passes(1, &["FS-01"])),
     ]);
-    rig.delay_ms = 150;
-    rig.run(&lanes2(), &ids(&["FS-01"]), 2, 0, 3);
+    rig.rendezvous = 2;
+    rig.run(&lanes2(), &ids(&["FS-01"]), 1, 0, 3);
     assert_eq!(rig.max_in_flight.load(Ordering::SeqCst), 2);
 }
 

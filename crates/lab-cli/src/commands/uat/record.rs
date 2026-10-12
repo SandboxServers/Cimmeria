@@ -112,7 +112,8 @@ pub fn new_record(lane: u32, instance: &str, index: u32, started: DateTime<Utc>)
 }
 
 /// The rows of a `lab_uat_run` reply: its `rows` array, `null` elements and
-/// elements that are not rows dropped. A reply that is not an object has none.
+/// elements that are not rows dropped, lease ids hidden in every reason (the rows
+/// are stored in `batch.jsonl`). A reply that is not an object has none.
 pub fn rows_of(reply: &Value) -> Vec<RowResult> {
     reply
         .get("rows")
@@ -121,6 +122,12 @@ pub fn rows_of(reply: &Value) -> Vec<RowResult> {
             rows.iter()
                 .filter(|row| !row.is_null())
                 .filter_map(|row| serde_json::from_value::<RowResult>(row.clone()).ok())
+                .map(|mut row| {
+                    for reason in &mut row.reasons {
+                        *reason = hide_lease_ids(reason);
+                    }
+                    row
+                })
                 .collect()
         })
         .unwrap_or_default()

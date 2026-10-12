@@ -213,6 +213,22 @@ fn a_reply_without_a_run_dir_stores_an_empty_one_and_a_non_object_reply_has_no_r
 }
 
 #[test]
+fn the_stored_rows_have_their_lease_ids_hidden_too() {
+    let t = Utc.with_ymd_and_hms(2026, 10, 11, 1, 39, 6).unwrap();
+    let mut rec = new_record(1, "default", 1, t);
+    let reply = json!({"run_dir": "d", "rows": [
+        {"row": "FS-P3", "result": "FAIL",
+         "reasons": ["lease-0123456789abcdef is not current", "second lease-FEDCBA9876543210"]}]});
+    apply_reply(&mut rec, &reply, &ids(&["FS-P3"]));
+    assert_eq!(
+        rec.rows[0].reasons,
+        ["lease-<redacted> is not current", "second lease-<redacted>"]
+    );
+    let line = serde_json::to_string(&rec).unwrap();
+    assert!(!line.contains("0123456789abcdef"), "{line}");
+}
+
+#[test]
 fn a_failed_call_stores_the_error_as_the_reason_and_says_whether_it_timed_out() {
     let t = Utc.with_ymd_and_hms(2026, 10, 11, 1, 39, 6).unwrap();
     let mut rec = new_record(1, "p2", 2, t);

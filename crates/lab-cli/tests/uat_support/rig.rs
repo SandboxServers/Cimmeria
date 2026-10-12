@@ -5,7 +5,7 @@ use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use cimmeria_lab_cli::batch::{read_records, PlanLane, RunRecord};
 use cimmeria_lab_cli::commands::uat::lanes::{no_finish, run_lanes, LaneConfig, LaneEnv};
@@ -81,8 +81,8 @@ pub struct LaneRig {
     pub stop_on_call: Option<usize>,
     /// Panic inside any call for this instance.
     pub panic_instance: Option<String>,
-    /// Sleep this long inside each call.
-    pub delay_ms: u64,
+    /// Hold each call until this many are in flight at once (at most 5 s).
+    pub rendezvous: usize,
     pub in_flight: AtomicUsize,
     pub max_in_flight: AtomicUsize,
 }
@@ -106,7 +106,7 @@ impl LaneRig {
             stop: AtomicBool::new(false),
             stop_on_call: None,
             panic_instance: None,
-            delay_ms: 0,
+            rendezvous: 0,
             in_flight: AtomicUsize::new(0),
             max_in_flight: AtomicUsize::new(0),
         }
@@ -137,8 +137,11 @@ impl LaneRig {
             }
             let now = self.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
             self.max_in_flight.fetch_max(now, Ordering::SeqCst);
-            if self.delay_ms > 0 {
-                std::thread::sleep(Duration::from_millis(self.delay_ms));
+            let give_up = Instant::now() + Duration::from_secs(5);
+            while self.in_flight.load(Ordering::SeqCst) < self.rendezvous
+                && Instant::now() < give_up
+            {
+                std::thread::yield_now();
             }
             self.in_flight.fetch_sub(1, Ordering::SeqCst);
             self.script

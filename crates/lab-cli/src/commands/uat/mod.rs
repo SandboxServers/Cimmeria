@@ -2,8 +2,10 @@
 //!
 //! LX-15 is the front half: [`args`] (the argument checks), [`plan`] (lanes,
 //! the plan call and `plan.json`) and [`preflight`] (the order of events before
-//! anything is driven, and `--plan-only`). Only `--plan-only` is native until
-//! LX-16b: a real run goes straight to the PowerShell fallback.
+//! anything is driven, and `--plan-only`). LX-16 is the back half: [`record`],
+//! [`summary`], [`progress`], [`lanes`], [`ctrlc`] and [`batch_run`] run a real
+//! batch. Only `--json`, `--diff-golden`, `--heal` and `--chaos` still use the
+//! PowerShell fallback (until LX-17).
 
 pub mod args;
 pub mod batch_run;
