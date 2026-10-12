@@ -135,6 +135,8 @@ pub fn fetch_value_with_timeout(ep: &Endpoint, timeout: Duration) -> Option<Valu
     let client = reqwest::blocking::Client::builder()
         .timeout(timeout)
         .no_proxy()
+        // A redirect would carry the bearer token to wherever it points.
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .ok()?;
     let url = format!("{}/status", ep.base_url.trim_end_matches('/'));

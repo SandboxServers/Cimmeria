@@ -140,7 +140,9 @@ pub fn is_valid_key(key: &str) -> bool {
 /// (a `-2`, `-3`, ... suffix when that name is taken), then replaces `path`
 /// with `lines` (UTF-8, CRLF, no BOM) by writing `<path>.tmp` and renaming it
 /// over `path`. Creates the parent folder. Returns the backup path, `None`
-/// when `path` did not exist. Port of `Save-LabdEnv`.
+/// when `path` did not exist. An existing `path` that is not valid UTF-8 is
+/// refused (`InvalidData`) before anything is copied or written; when the
+/// rename fails, `<path>.tmp` is removed. Port of `Save-LabdEnv`.
 pub fn write_with_backup(path: &Path, lines: &[EnvLine]) -> io::Result<Option<PathBuf>> {
     let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
     write_with_backup_at(path, lines, &stamp)
@@ -158,6 +160,7 @@ pub fn write_with_backup_at(
         _ => PathBuf::from("."),
     };
     std::fs::create_dir_all(&dir)?;
+    refuse_if_not_utf8(path)?;
     let mut backup = None;
     if path.exists() {
         let name = path
@@ -176,15 +179,41 @@ pub fn write_with_backup_at(
     let mut tmp_name = path.as_os_str().to_owned();
     tmp_name.push(".tmp");
     let tmp = PathBuf::from(tmp_name);
-    std::fs::write(&tmp, render(lines).as_bytes())?;
-    std::fs::rename(&tmp, path)?;
+    let moved =
+        std::fs::write(&tmp, render(lines).as_bytes()).and_then(|()| std::fs::rename(&tmp, path));
+    if let Err(err) = moved {
+        // No half-written `.tmp` is left behind to be mistaken for the file.
+        let _ = std::fs::remove_file(&tmp);
+        return Err(err);
+    }
     Ok(backup)
+}
+
+/// `Err` (`InvalidData`) when `path` exists and is not valid UTF-8. [`read`]
+/// shows such a file lossily; rewriting it would turn every byte it cannot
+/// decode into U+FFFD for good, so a change is refused instead.
+fn refuse_if_not_utf8(path: &Path) -> io::Result<()> {
+    let bytes = match std::fs::read(path) {
+        Ok(bytes) => bytes,
+        Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(err) => return Err(err),
+    };
+    match std::str::from_utf8(&bytes) {
+        Ok(_) => Ok(()),
+        Err(err) => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "the file is not valid UTF-8 (bad byte at offset {}); open it in an editor, save it as UTF-8, then retry. Nothing was changed",
+                err.valid_up_to()
+            ),
+        )),
+    }
 }
 
 fn secret_assignment() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
-        Regex::new(r"(?i)((?:TOKEN|SECRET|PASSWORD|KEY|AUTH|CREDENTIAL)\w*\s*=)\S*")
+        Regex::new(r"(?i)((?:TOKEN|SECRET|PASS|PWD|KEY|AUTH|CREDENTIAL)\w*[ \t]*=)[ \t]*\S*")
             .expect("valid regex")
     })
 }
@@ -210,7 +239,7 @@ fn url_host() -> &'static Regex {
 fn secret_key() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     RE.get_or_init(|| {
-        Regex::new(r"(?i)TOKEN|SECRET|PASSWORD|KEY|AUTH|CREDENTIAL").expect("valid regex")
+        Regex::new(r"(?i)TOKEN|SECRET|PASS|PWD|KEY|AUTH|CREDENTIAL").expect("valid regex")
     })
 }
 
@@ -226,8 +255,8 @@ pub fn hide_text(text: &str) -> String {
 }
 
 /// A value for display (port of `Get-MaskedEnvValue`): `<redacted>` when the
-/// key name contains TOKEN, SECRET, PASSWORD, KEY, AUTH or CREDENTIAL
-/// (ignoring case), else [`hide_text`] of the value.
+/// key name contains TOKEN, SECRET, PASS (PASSWORD included), PWD, KEY, AUTH or
+/// CREDENTIAL (ignoring case), else [`hide_text`] of the value.
 pub fn mask(key: &str, value: &str) -> String {
     if secret_key().is_match(key) {
         "<redacted>".to_string()

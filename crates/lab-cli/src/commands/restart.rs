@@ -12,7 +12,7 @@ const LONG: &str = concat!(
 
 const EXAMPLES: &str = "Examples:\n  lab restart\n  lab restart --force";
 
-// Arguments of `lab restart`.
+/// Arguments of `lab restart`.
 #[derive(clap::Args, Debug)]
 #[command(
     about = "Restart the lab daemon, picking up a newer cimmeria-lab.exe",

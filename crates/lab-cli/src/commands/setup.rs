@@ -4,11 +4,11 @@
 use crate::commands::Ctx;
 use crate::fallback;
 
-const LONG: &str = "Run it from a Cimmeria checkout, or pass --from. It copies the PowerShell scripts the CLI still runs into <LabHome>\\cli, deletes an old <LabHome>\\bin\\lab.cmd shim, and adds <LabHome>\\bin to the user PATH when it is missing, then broadcasts the change so a new terminal sees it. lab.exe itself comes from lab install. LabHome is %LOCALAPPDATA%\\cimmeria-lab, or CIMMERIA_LAB_HOME when set.";
+const LONG: &str = "Run it from a Cimmeria checkout, or pass --from. It copies the PowerShell scripts the CLI still runs into <LabHome>\\cli, deletes an old <LabHome>\\bin\\lab.cmd shim, and adds <LabHome>\\bin to the user PATH when it is missing, then broadcasts the change so a new terminal sees it. lab.exe itself comes from lab install. LabHome is %LOCALAPPDATA%\\cimmeria-lab.";
 
 const EXAMPLES: &str = "Examples:\n  lab setup --no-path\n  lab setup --from C:\\src\\Cimmeria";
 
-// Arguments of `lab setup`.
+/// Arguments of `lab setup`.
 #[derive(clap::Args, Debug)]
 #[command(
     about = "Refresh the installed CLI and add it to the user PATH",

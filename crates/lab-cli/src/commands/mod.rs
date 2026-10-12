@@ -214,23 +214,41 @@ pub struct Cli {
 /// The subcommands clap knows about.
 #[derive(Debug, Subcommand)]
 pub enum Command {
+    /// Run a UAT spec on the lab with no agent
     Uat(uat::Args),
+    /// Watch a running lab uat batch, read-only
     Watch(watch::Args),
+    /// Record a person playing a lab instance and draft a spec from it
     Record(record::Args),
+    /// Recalibrate a row's poses by hover and propose a spec diff
     Calibrate(calibrate::Args),
+    /// Record or show a golden fingerprint
     Golden(golden::Args),
+    /// Show the daemon and each instance: account, client, port, lease, seed
     Status(status::Args),
+    /// Start the lab daemon (the CimmeriaLabDaemon scheduled task)
     Start(start::Args),
+    /// Stop the lab daemon and close its lab clients
     Stop(stop::Args),
+    /// Restart the lab daemon, picking up a newer cimmeria-lab.exe
     Restart(restart::Args),
+    /// Show the daemon log, filtered by instance or level
     Logs(logs::Args),
+    /// Check the install, the daemon and each instance
     Doctor(doctor::Args),
+    /// Show each instance's account, profile and client, or write account files
     Instances(instances::Args),
+    /// Close the game client of one lab instance, or of all of them
     Clients(clients::Args),
+    /// Show, get, set or unset labd.env entries (secrets masked)
     Env(env::Args),
+    /// Build the lab from a worktree and install it
     Install(install::Args),
+    /// Refresh the installed CLI and add it to the user PATH
     Setup(setup::Args),
+    /// One-shot setup for a lab against a local server
     LocalSetup(local_setup::Args),
+    /// Print a shell completion script
     Completions(completions::Args),
     /// Print the CLI and daemon versions.
     Version,

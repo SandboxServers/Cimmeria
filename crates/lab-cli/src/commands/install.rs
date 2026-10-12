@@ -12,7 +12,7 @@ const LONG: &str = concat!(
 
 const EXAMPLES: &str = "Examples:\n  lab install --from C:\\src\\Cimmeria\\.claude\\worktrees\\lab-fix\n  lab install --from C:\\src\\Cimmeria\\.claude\\worktrees\\lab-fix --skip-build";
 
-// Arguments of `lab install`.
+/// Arguments of `lab install`.
 #[derive(clap::Args, Debug)]
 #[command(
     about = "Build the lab from a worktree and install it",

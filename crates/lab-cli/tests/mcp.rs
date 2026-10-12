@@ -8,8 +8,8 @@ use std::net::TcpListener;
 use std::time::Duration;
 
 use cimmeria_lab_cli::daemon::mcp::{
-    hide_lease_ids, wait_lease_free, wait_lease_free_at_every, wait_lease_free_with, McpClient,
-    McpError,
+    hide_lease_ids, wait_lease_free, wait_lease_free_at_every, wait_lease_free_until,
+    wait_lease_free_with, LeaseClock, McpClient, McpError,
 };
 use cimmeria_lab_cli::daemon::status::Endpoint;
 use serde_json::{json, Value};
@@ -570,6 +570,24 @@ fn wait_lease_free_reads_the_endpoint_status_with_its_token() {
     assert_eq!(req.header("authorization"), Some("Bearer tok-123"));
 }
 
+/// Time that moves only when the wait sleeps, so the test does not depend on
+/// how loaded the machine is.
+struct StepClock {
+    now: Duration,
+    slept: Duration,
+}
+
+impl LeaseClock for StepClock {
+    fn elapsed(&mut self) -> Duration {
+        self.now
+    }
+
+    fn sleep(&mut self, d: Duration) {
+        self.now += d;
+        self.slept += d;
+    }
+}
+
 #[test]
 fn wait_never_sleeps_past_its_budget() {
     // The interval (10 s) is far longer than the budget (60 ms): the sleep is
@@ -579,14 +597,23 @@ fn wait_never_sleeps_past_its_budget() {
         polls += 1;
         status_with("i1", json!({"held": true}))
     };
-    let t = std::time::Instant::now();
-    assert!(!wait_lease_free_with(
+    let mut clock = StepClock {
+        now: Duration::ZERO,
+        slept: Duration::ZERO,
+    };
+    assert!(!wait_lease_free_until(
         &mut poll,
         "i1",
         Duration::from_millis(60),
-        Duration::from_secs(10)
+        Duration::from_secs(10),
+        &|| false,
+        &mut clock
     ));
-    assert!(t.elapsed() < Duration::from_secs(5), "{:?}", t.elapsed());
+    assert_eq!(
+        clock.slept,
+        Duration::from_millis(60),
+        "slept the budget, no more"
+    );
     assert_eq!(polls, 2, "one look at the start, one at the deadline");
 }
 

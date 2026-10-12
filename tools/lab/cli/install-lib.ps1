@@ -12,7 +12,8 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-# The lab home: CIMMERIA_LAB_HOME when set (the tests use it), else %LOCALAPPDATA%\cimmeria-lab.
+# The lab home: %LOCALAPPDATA%\cimmeria-lab. CIMMERIA_LAB_HOME overrides it, but only
+# the tests set it; it is not a setting for users.
 function Get-InstallLabHome {
     if ($env:CIMMERIA_LAB_HOME) { return $env:CIMMERIA_LAB_HOME }
     return (Join-Path $env:LOCALAPPDATA 'cimmeria-lab')
@@ -152,6 +153,9 @@ function Remove-LabShim([string]$LabHome) {
     } else {
         Write-Host 'removed bin\lab.cmd: it ran the retired lab.ps1; build lab.exe with: pwsh <checkout>\tools\lab\cli\install.ps1 -From <checkout>'
     }
+    # An install run through that shim loses its batch file under cmd.exe, which
+    # then says so after the script ends. Said once, here, where the shim goes.
+    Write-Host "Removed the old lab.cmd shim; if you see 'The batch file cannot be found', ignore it. Open a new terminal and use lab.exe."
 }
 
 # Installs one built file: skips it when the destination has the same hash; otherwise keeps

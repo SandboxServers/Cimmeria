@@ -8,7 +8,7 @@
     <LabHome>\bin\lab.cmd shim, and adds <LabHome>\bin to the user PATH when it
     is missing, then broadcasts the change so a new terminal sees it. lab.exe
     itself comes from lab install (cli\install.ps1). LabHome is
-    %LOCALAPPDATA%\cimmeria-lab, or CIMMERIA_LAB_HOME when set.
+    %LOCALAPPDATA%\cimmeria-lab.
 
 .PARAMETER From
     The checkout to install from. Needed when setup runs from the installed copy.
