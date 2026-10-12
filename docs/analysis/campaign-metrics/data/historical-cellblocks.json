@@ -1,0 +1,148 @@
+{
+ "accepted": {
+  "accepted_gap": "the ledger counts no accepted packets",
+  "cost_per_accepted_usd": null,
+  "packets": 0
+ },
+ "campaign": "historical-cellblocks",
+ "ci": {
+  "code_prs_first_attempt_rate": null,
+  "code_prs_first_attempt_rate_gap": "no CI data",
+  "first_attempt_rate": null,
+  "first_attempt_rate_gap": "no CI data",
+  "overall_rate": null,
+  "overall_rate_gap": "no CI data",
+  "pr_runs_total": 0,
+  "queue_first_attempt_rate": null,
+  "queue_first_attempt_rate_gap": "no CI data"
+ },
+ "cost": {
+  "attributed_usd": 18.666836,
+  "by_model_tier": {
+   "fable": 0.0,
+   "haiku": 0.0,
+   "opus": 18.666836,
+   "other": 0.0,
+   "sonnet": 0.0
+  },
+  "by_role": {
+   "coordinator": 18.666836,
+   "fixer": 0.0,
+   "implementer-haiku": 0.0,
+   "other": 0.0,
+   "reviewer": 0.0
+  },
+  "total_usd": 18.666836,
+  "unattributed_in_campaign_usd": 0.0
+ },
+ "cycle_time": {
+  "campaign_hours": null,
+  "campaign_hours_gap": "no close-out commit in the ledger window",
+  "packet_hours": {
+   "n": 0,
+   "p50": null,
+   "p90": null
+  }
+ },
+ "escalation": {
+  "dispatched_to_haiku": 0,
+  "escalated": 0,
+  "items": [],
+  "rate": null
+ },
+ "escaped_defects": {
+  "count": 1,
+  "items": [
+   {
+    "cites": 831,
+    "days_after_merge": 0.1,
+    "kind": "issue",
+    "number": 840
+   }
+  ],
+  "rate_per_merged_pr": 1.0
+ },
+ "first_pass": {
+  "eligible": 0,
+  "packets": [],
+  "rate": null
+ },
+ "overstep": {
+  "items": [],
+  "opus_coding_usd": null,
+  "opus_research_usd": null,
+  "overstep_gap": "predates the regime switch; the rules apply to the Haiku regime",
+  "recoverable_usd": {
+   "high": null,
+   "low": null
+  },
+  "rules": {},
+  "sonnet_implementing_usd": null,
+  "wasted_usd": null
+ },
+ "packet_rows": [],
+ "prs": {
+  "cost_per_pr": {
+   "mean": 18.666836,
+   "p50": 18.666836,
+   "p90": 18.666836
+  },
+  "count": 1,
+  "merged": 1,
+  "per_pr": [
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 831,
+    "usd": 18.666836
+   }
+  ]
+ },
+ "regime": "old",
+ "retries": {
+  "by_reason": {
+   "ci-failure": 0,
+   "context-exhausted": 0,
+   "merge-conflict": 0,
+   "other": 0,
+   "permission-denied": 0,
+   "review-fix": 0,
+   "stalled-background": 0
+  },
+  "total": 0
+ },
+ "stamp": {
+  "generated": "2026-10-12T18:51:11Z",
+  "price_table": "2026-10-12",
+  "profiler_schema": "6",
+  "unattributed_request_share": 0.1406,
+  "unattributed_share": 0.122,
+  "unmapped_share": 0.38,
+  "untagged_usd_share": 0.2653,
+  "window": {
+   "since": "2026-09-21T00:00:00Z",
+   "until": "2026-10-13T00:00:00Z"
+  }
+ },
+ "stop_context": {
+  "by_error_kind": {
+   "authentication_failed": 0,
+   "other": 0,
+   "rate_limit": 0
+  },
+  "by_stop": {
+   "end_turn": 0,
+   "error": 0,
+   "no_record": 0,
+   "tool_use": 0
+  },
+  "context_at_stop": {
+   "max": null,
+   "p50": null,
+   "p90": null
+  },
+  "share_above_90k": null,
+  "workers": 0
+ }
+}

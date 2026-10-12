@@ -1,0 +1,157 @@
+{
+ "accepted": {
+  "accepted_gap": "no packet table, used merged PRs",
+  "cost_per_accepted_usd": 17.74542,
+  "packets": 0
+ },
+ "campaign": "ability-trees",
+ "ci": {
+  "code_prs_first_attempt_rate": null,
+  "code_prs_first_attempt_rate_gap": "no CI data",
+  "first_attempt_rate": null,
+  "first_attempt_rate_gap": "no CI data",
+  "overall_rate": null,
+  "overall_rate_gap": "no CI data",
+  "pr_runs_total": 0,
+  "queue_first_attempt_rate": null,
+  "queue_first_attempt_rate_gap": "no CI data"
+ },
+ "cost": {
+  "attributed_usd": 159.708778,
+  "by_model_tier": {
+   "fable": 0.0,
+   "haiku": 0.0,
+   "opus": 156.685583,
+   "other": 0.0,
+   "sonnet": 3.023195
+  },
+  "by_role": {
+   "coordinator": 16.424306,
+   "fixer": 0.0,
+   "implementer-domain": 133.685155,
+   "implementer-haiku": 0.0,
+   "other": 9.599318,
+   "reviewer": 0.0
+  },
+  "total_usd": 159.708778,
+  "unattributed_in_campaign_usd": 0.0
+ },
+ "cycle_time": {},
+ "cycle_time_gap": "no packets record for this campaign",
+ "escalation": {},
+ "escalation_gap": "no packets record for this campaign",
+ "escaped_defects": {
+  "count": 0,
+  "items": [],
+  "rate_per_merged_pr": 0.0
+ },
+ "first_pass": {},
+ "first_pass_gap": "no packets record for this campaign",
+ "overstep": {
+  "items": [],
+  "opus_coding_usd": null,
+  "opus_research_usd": null,
+  "overstep_gap": "predates the regime switch; the rules apply to the Haiku regime",
+  "recoverable_usd": {
+   "high": null,
+   "low": null
+  },
+  "rules": {},
+  "sonnet_implementing_usd": null,
+  "wasted_usd": null
+ },
+ "packet_rows": [],
+ "prs": {
+  "cost_per_pr": {
+   "mean": 17.74542,
+   "p50": 19.576277,
+   "p90": 26.777141
+  },
+  "count": 9,
+  "merged": 9,
+  "per_pr": [
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 807,
+    "usd": 19.576277
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 809,
+    "usd": 3.363434
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 812,
+    "usd": 5.866559
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 813,
+    "usd": 7.335683
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 820,
+    "usd": 23.3588
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 827,
+    "usd": 24.650044
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 828,
+    "usd": 35.28553
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 832,
+    "usd": 23.656098
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 834,
+    "usd": 16.616353
+   }
+  ]
+ },
+ "regime": "old",
+ "regime_gap": "no packets record",
+ "retries": {},
+ "retries_gap": "no packets record for this campaign",
+ "stamp": {
+  "generated": "2026-10-12T18:51:11Z",
+  "price_table": "2026-10-12",
+  "profiler_schema": "6",
+  "unattributed_request_share": 0.1406,
+  "unattributed_share": 0.122,
+  "unmapped_share": 0.38,
+  "untagged_usd_share": 0.2653,
+  "window": {
+   "since": "2026-09-21T00:00:00Z",
+   "until": "2026-10-13T00:00:00Z"
+  }
+ },
+ "stop_context": {},
+ "stop_context_gap": "no packets record for this campaign"
+}

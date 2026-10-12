@@ -1,0 +1,324 @@
+{
+ "accepted": {
+  "cost_per_accepted_usd": 29.657005,
+  "packets": 6
+ },
+ "campaign": "class-start-v6",
+ "ci": {
+  "code_prs_first_attempt_rate": null,
+  "code_prs_first_attempt_rate_gap": "no CI data",
+  "first_attempt_rate": null,
+  "first_attempt_rate_gap": "no CI data",
+  "overall_rate": null,
+  "overall_rate_gap": "no CI data",
+  "pr_runs_total": 0,
+  "queue_first_attempt_rate": null,
+  "queue_first_attempt_rate_gap": "no CI data"
+ },
+ "cost": {
+  "attributed_usd": 177.94203,
+  "by_model_tier": {
+   "fable": 0.0,
+   "haiku": 0.0,
+   "opus": 177.94203,
+   "other": 0.0,
+   "sonnet": 0.0
+  },
+  "by_role": {
+   "coordinator": 21.460652,
+   "fixer": 0.0,
+   "implementer-domain": 101.899037,
+   "implementer-haiku": 0.0,
+   "other": 54.582341,
+   "reviewer": 0.0
+  },
+  "total_usd": 177.94203,
+  "unattributed_in_campaign_usd": 0.0
+ },
+ "cycle_time": {
+  "campaign_hours": null,
+  "campaign_hours_gap": "no close-out commit in the ledger window",
+  "packet_hours": {
+   "n": 5,
+   "p50": 4.37,
+   "p90": 90.38
+  }
+ },
+ "escalation": {
+  "dispatched_to_haiku": 0,
+  "escalated": 0,
+  "items": [],
+  "rate": null
+ },
+ "escaped_defects": {
+  "count": 0,
+  "items": [],
+  "rate_per_merged_pr": 0.0
+ },
+ "first_pass": {
+  "eligible": 0,
+  "packets": [
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "CS-00",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "CS-01a",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "CS-01b",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "CS-02",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "CS-03",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "CS-04",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   }
+  ],
+  "rate": null
+ },
+ "overstep": {
+  "items": [],
+  "opus_coding_usd": null,
+  "opus_research_usd": null,
+  "overstep_gap": "predates the regime switch; the rules apply to the Haiku regime",
+  "recoverable_usd": {
+   "high": null,
+   "low": null
+  },
+  "rules": {},
+  "sonnet_implementing_usd": null,
+  "wasted_usd": null
+ },
+ "packet_rows": [
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CS-00",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CS-01a",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.22,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CS-01b",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 53.15,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CS-02",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 4.37,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CS-03",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CS-04",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CS-05",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": 115.2,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CS-07",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": 2.59,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CS-08",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  }
+ ],
+ "prs": {
+  "cost_per_pr": {
+   "mean": 22.242754,
+   "p50": 21.639445,
+   "p90": 36.834795
+  },
+  "count": 8,
+  "merged": 8,
+  "per_pr": [
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1261,
+    "usd": 7.787015
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1263,
+    "usd": 19.271055
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1264,
+    "usd": 25.73798
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1270,
+    "usd": 15.319289
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1271,
+    "usd": 36.372631
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1273,
+    "usd": 24.007835
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1313,
+    "usd": 11.533048
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1314,
+    "usd": 37.913177
+   }
+  ]
+ },
+ "regime": "old",
+ "retries": {
+  "by_reason": {
+   "ci-failure": 0,
+   "context-exhausted": 0,
+   "merge-conflict": 0,
+   "other": 0,
+   "permission-denied": 0,
+   "review-fix": 0,
+   "stalled-background": 0
+  },
+  "total": 0
+ },
+ "stamp": {
+  "generated": "2026-10-12T18:51:11Z",
+  "price_table": "2026-10-12",
+  "profiler_schema": "6",
+  "unattributed_request_share": 0.1406,
+  "unattributed_share": 0.122,
+  "unmapped_share": 0.38,
+  "untagged_usd_share": 0.2653,
+  "window": {
+   "since": "2026-09-21T00:00:00Z",
+   "until": "2026-10-13T00:00:00Z"
+  }
+ },
+ "stop_context": {
+  "by_error_kind": {
+   "authentication_failed": 0,
+   "other": 0,
+   "rate_limit": 0
+  },
+  "by_stop": {
+   "end_turn": 11,
+   "error": 0,
+   "no_record": 0,
+   "tool_use": 1
+  },
+  "context_at_stop": {
+   "max": 536712,
+   "p50": 291417.0,
+   "p90": 514761.3
+  },
+  "share_above_90k": 1.0,
+  "workers": 12
+ }
+}

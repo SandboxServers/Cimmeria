@@ -1,0 +1,4210 @@
+{
+ "accepted": {
+  "cost_per_accepted_usd": 1.809526,
+  "packets": 159
+ },
+ "campaign": "telemetry-gaps",
+ "ci": {
+  "code_prs_first_attempt_rate": 1.0,
+  "first_attempt_rate": 1.0,
+  "overall_rate": 1.0,
+  "pr_runs_total": 8,
+  "queue_first_attempt_rate": 1.0
+ },
+ "cost": {
+  "attributed_usd": 287.714584,
+  "by_model_tier": {
+   "fable": 0.0,
+   "haiku": 6.291137,
+   "opus": 262.001546,
+   "other": 0.0,
+   "sonnet": 19.4219
+  },
+  "by_role": {
+   "coordinator": 113.842689,
+   "fixer": 0.0,
+   "implementer-domain": 96.93923,
+   "implementer-haiku": 6.291137,
+   "other": 59.564297,
+   "reviewer": 11.07723
+  },
+  "total_usd": 287.714584,
+  "unattributed_in_campaign_usd": 0.0
+ },
+ "cycle_time": {
+  "campaign_hours": 20.9,
+  "packet_hours": {
+   "n": 144,
+   "p50": 1.21,
+   "p90": 5.0
+  }
+ },
+ "escalation": {
+  "dispatched_to_haiku": 125,
+  "escalated": 11,
+  "items": [
+   {
+    "id": "TG-MER-09",
+    "to": "implementer-domain",
+    "why": "context-exhausted"
+   },
+   {
+    "id": "TG-NET-01",
+    "to": "implementer-domain",
+    "why": "context-exhausted"
+   },
+   {
+    "id": "TG-NET-17",
+    "to": "implementer-domain",
+    "why": "other"
+   },
+   {
+    "id": "TG-PIPE-06",
+    "to": "implementer-domain",
+    "why": "other"
+   },
+   {
+    "id": "TG-AOI-01",
+    "to": "implementer-domain",
+    "why": "other"
+   },
+   {
+    "id": "TG-AOI-06",
+    "to": "implementer-domain",
+    "why": "context-exhausted"
+   },
+   {
+    "id": "TG-MER-02",
+    "to": "implementer-domain",
+    "why": "other"
+   },
+   {
+    "id": "TG-MIS-01",
+    "to": "implementer-domain",
+    "why": "other"
+   },
+   {
+    "id": "TG-MIS-02",
+    "to": "implementer-domain",
+    "why": "context-exhausted"
+   },
+   {
+    "id": "TG-MIS-03",
+    "to": "implementer-domain",
+    "why": "other"
+   },
+   {
+    "id": "TG-MOV-08",
+    "to": "implementer-domain",
+    "why": "other"
+   }
+  ],
+  "rate": 0.09
+ },
+ "escaped_defects": {
+  "count": 0,
+  "items": [],
+  "rate_per_merged_pr": 0.0
+ },
+ "first_pass": {
+  "eligible": 54,
+  "packets": [
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-PIPE-01",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-SOC-01",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "TG-NET-08",
+    "implementer_sessions": 2,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-DB-01",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "TG-DB-02",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "TG-DB-03",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 2,
+    "id": "TG-DB-04",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "TG-DB-07",
+    "implementer_sessions": 2,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 2,
+    "id": "TG-DB-12",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "TG-ITM-06",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "TG-ITM-11",
+    "implementer_sessions": 2,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "TG-ITM-09",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": true,
+    "fix_commits": 0,
+    "id": "TG-ITM-03",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "TG-SOC-02",
+    "implementer_sessions": 3,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "TG-MIS-07",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MER-08",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 0,
+    "id": "TG-MER-09",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": true,
+    "fix_commits": 0,
+    "id": "TG-NPC-01",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "TG-NPC-02",
+    "implementer_sessions": 2,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-NPC-03",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-NPC-09",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "TG-MER-10",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-SOC-11",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-AOI-10",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MOV-11",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MOV-03",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MOV-10",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MOV-14",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "TG-CMB-04",
+    "implementer_sessions": 2,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "TG-CMB-09",
+    "implementer_sessions": 2,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-SOC-13",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MIS-12",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MER-14",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-DB-11",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 2,
+    "id": "TG-NET-01",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-NET-02",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MER-07",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-NET-03",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-NET-10",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-NET-14",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-NET-13",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-NET-15",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-NET-16",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "TG-NET-17",
+    "implementer_sessions": 8,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "TG-NET-18",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "TG-PIPE-17",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "TG-PIPE-05",
+    "implementer_sessions": 2,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "TG-PIPE-06",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-PIPE-11",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-PIPE-07",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-PIPE-08",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "TG-AOI-01",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-AOI-02",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-AOI-04",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-AOI-09",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-AOI-05",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "TG-AOI-06",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "TG-AOI-07",
+    "implementer_sessions": 3,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "TG-AOI-08",
+    "implementer_sessions": 2,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MER-01",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "TG-MER-02",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MER-03",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MER-04",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MER-05",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MER-06",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MER-11",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MER-13",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-CMB-01",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-CMB-02",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-CMB-03",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "TG-CMB-05",
+    "implementer_sessions": 2,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "TG-CMB-06",
+    "implementer_sessions": 2,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-CMB-07",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-CMB-08",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-CMB-10",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 2,
+    "id": "TG-ITM-01",
+    "implementer_sessions": 2,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "TG-ITM-14",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-ITM-02",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-ITM-04",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-ITM-05",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-ITM-08",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "TG-ITM-10",
+    "implementer_sessions": 2,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-ITM-12",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-ITM-13",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MG-01",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MG-02",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MG-03",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MG-04",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MG-05",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MG-06",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MG-07",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MG-08",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MG-09",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MG-10",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "TG-MIS-01",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "TG-MIS-02",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 2,
+    "id": "TG-MIS-03",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MIS-05",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "TG-MIS-06",
+    "implementer_sessions": 2,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MIS-08",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": true,
+    "fix_commits": 0,
+    "id": "TG-MIS-09",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "TG-MIS-10",
+    "implementer_sessions": 2,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MIS-11",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MIS-13",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MOV-01",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MOV-02",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MOV-04",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "TG-MOV-05",
+    "implementer_sessions": 2,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MOV-06",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "TG-MOV-07",
+    "implementer_sessions": 2,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "TG-MOV-08",
+    "implementer_sessions": 5,
+    "reviewer_sessions": 8
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MOV-09",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MOV-12",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-NPC-04",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-NPC-05",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "TG-NPC-06",
+    "implementer_sessions": 2,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-NPC-07",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "TG-NPC-08",
+    "implementer_sessions": 2,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-NPC-10",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-NPC-11",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "TG-NPC-12",
+    "implementer_sessions": 2,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "TG-NPC-13",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-NPC-15",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-SOC-04",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "TG-SOC-05",
+    "implementer_sessions": 2,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-SOC-06",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-SOC-07",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": true,
+    "fix_commits": 0,
+    "id": "TG-SOC-08",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-SOC-09",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-SOC-10",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": true,
+    "fix_commits": 0,
+    "id": "TG-SOC-12",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-SOC-14",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-SOC-15",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "TG-NET-04",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "TG-NET-05",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-NET-06",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "TG-NET-09",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-NET-12",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-DB-05",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "TG-DB-06",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-DB-08",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-DB-09",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-PIPE-10",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-PIPE-15",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-PIPE-16",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-PIPE-02",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-PIPE-04",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-PIPE-03",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-CLI-04",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-PIPE-12",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-PIPE-13",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-PIPE-14",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-MER-12",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-CLI-01",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-CLI-02",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-CLI-03",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-CLI-05",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-CLI-06",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "TG-CLI-07",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   }
+  ],
+  "rate": 0.09
+ },
+ "overstep": {
+  "items": [
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "c3fde557-c546-4216-ad27-6dd9b9da0f6b",
+    "tool": "Edit",
+    "ts": "2026-10-11T02:55:40.066Z",
+    "usd": 0.46559
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "c3fde557-c546-4216-ad27-6dd9b9da0f6b",
+    "tool": "PowerShell",
+    "ts": "2026-10-11T05:21:16.042Z",
+    "usd": 0.533797
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "c3fde557-c546-4216-ad27-6dd9b9da0f6b",
+    "tool": "PowerShell",
+    "ts": "2026-10-11T05:44:56.423Z",
+    "usd": 0.590894
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "c3fde557-c546-4216-ad27-6dd9b9da0f6b",
+    "tool": "PowerShell",
+    "ts": "2026-10-11T10:07:40.483Z",
+    "usd": 0.679058
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "c3fde557-c546-4216-ad27-6dd9b9da0f6b",
+    "tool": "PowerShell",
+    "ts": "2026-10-11T11:09:35.963Z",
+    "usd": 0.809997
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "c3fde557-c546-4216-ad27-6dd9b9da0f6b",
+    "tool": "PowerShell",
+    "ts": "2026-10-11T11:44:27.291Z",
+    "usd": 0.860637
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "c3fde557-c546-4216-ad27-6dd9b9da0f6b",
+    "tool": "Edit",
+    "ts": "2026-10-11T12:35:47.507Z",
+    "usd": 0.058755
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "c3fde557-c546-4216-ad27-6dd9b9da0f6b",
+    "tool": "PowerShell",
+    "ts": "2026-10-11T12:36:08.042Z",
+    "usd": 0.09624
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "c3fde557-c546-4216-ad27-6dd9b9da0f6b",
+    "tool": "Edit",
+    "ts": "2026-10-11T12:40:50.047Z",
+    "usd": 0.071851
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "c3fde557-c546-4216-ad27-6dd9b9da0f6b",
+    "tool": "PowerShell",
+    "ts": "2026-10-11T12:42:36.684Z",
+    "usd": 0.139597
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "c3fde557-c546-4216-ad27-6dd9b9da0f6b",
+    "tool": "Edit",
+    "ts": "2026-10-11T12:56:16.896Z",
+    "usd": 0.260851
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "c3fde557-c546-4216-ad27-6dd9b9da0f6b",
+    "tool": "PowerShell",
+    "ts": "2026-10-11T12:56:23.293Z",
+    "usd": 0.093722
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O1",
+    "session_family": "c3fde557-c546-4216-ad27-6dd9b9da0f6b",
+    "tool": "Edit",
+    "ts": "2026-10-11T13:10:54.551Z",
+    "usd": 0.264717
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "c3fde557-c546-4216-ad27-6dd9b9da0f6b",
+    "tool": "Edit",
+    "ts": "2026-10-11T13:22:40.762Z",
+    "usd": 0.156869
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "c3fde557-c546-4216-ad27-6dd9b9da0f6b",
+    "tool": "Edit",
+    "ts": "2026-10-11T13:22:46.304Z",
+    "usd": 0.134092
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "c3fde557-c546-4216-ad27-6dd9b9da0f6b",
+    "tool": "PowerShell",
+    "ts": "2026-10-11T13:24:00.871Z",
+    "usd": 0.144557
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "c3fde557-c546-4216-ad27-6dd9b9da0f6b",
+    "tool": "Edit",
+    "ts": "2026-10-11T14:54:41.259Z",
+    "usd": 0.326136
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "c3fde557-c546-4216-ad27-6dd9b9da0f6b",
+    "tool": "PowerShell",
+    "ts": "2026-10-11T14:54:55.617Z",
+    "usd": 0.212154
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "c3fde557-c546-4216-ad27-6dd9b9da0f6b",
+    "tool": "PowerShell",
+    "ts": "2026-10-11T16:01:39.983Z",
+    "usd": 0.411614
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "c3fde557-c546-4216-ad27-6dd9b9da0f6b",
+    "tool": "Edit",
+    "ts": "2026-10-11T16:04:50.451Z",
+    "usd": 0.29316
+   }
+  ],
+  "opus_coding_usd": 9.0337748,
+  "opus_research_usd": 0.15204040000000002,
+  "recoverable_usd": {
+   "high": 7.056227800000001,
+   "low": 4.5929076
+  },
+  "rules": {
+   "O1": {
+    "count": 25,
+    "usd": 9.0337748,
+    "wasted_usd": 6.980207600000001
+   },
+   "O2": {
+    "count": 1,
+    "usd": 0.15204040000000002,
+    "wasted_usd": 0.07602020000000001
+   }
+  },
+  "sonnet_implementing_usd": 0.0,
+  "wasted_usd": 7.06
+ },
+ "packet_rows": [
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-PIPE-01",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-SOC-01",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.49,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-NET-08",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.42,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-DB-01",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.37,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-DB-02",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.36,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-DB-03",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.39,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-DB-04",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.45,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-DB-07",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.77,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-DB-12",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.47,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-ITM-06",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.79,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-ITM-11",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "context-exhausted"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.46,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-ITM-09",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.53,
+   "escalated": false,
+   "first_pass": true,
+   "id": "TG-ITM-03",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.55,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-SOC-02",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "context-exhausted",
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.36,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-MIS-07",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 5.28,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MER-08",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 4.81,
+   "escalated": true,
+   "first_pass": false,
+   "id": "TG-MER-09",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 5.3,
+   "escalated": false,
+   "first_pass": true,
+   "id": "TG-NPC-01",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 5.3,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-NPC-02",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 5.31,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-NPC-03",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.54,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-NPC-09",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 5.28,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-MER-10",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 4.01,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-SOC-11",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 3.31,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-AOI-10",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.42,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MOV-11",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 5.31,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MOV-03",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.43,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MOV-10",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.77,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MOV-14",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 5.83,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-CMB-04",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 5.32,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-CMB-09",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "context-exhausted"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 4.87,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-SOC-13",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 4.85,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MIS-12",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 4.87,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MER-14",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.72,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-DB-11",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 2.6,
+   "escalated": true,
+   "first_pass": false,
+   "id": "TG-NET-01",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.71,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-NET-02",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.85,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MER-07",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.12,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-NET-03",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.78,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-NET-10",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.53,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-NET-14",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.19,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-NET-13",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.4,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-NET-15",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.33,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-NET-16",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.04,
+   "escalated": true,
+   "first_pass": false,
+   "id": "TG-NET-17",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other",
+    "other",
+    "other",
+    "context-exhausted",
+    "other",
+    "other",
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 2.23,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-NET-18",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.21,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-PIPE-17",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.19,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-PIPE-05",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 2.13,
+   "escalated": true,
+   "first_pass": false,
+   "id": "TG-PIPE-06",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.41,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-PIPE-11",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.2,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-PIPE-07",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.21,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-PIPE-08",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 5.05,
+   "escalated": true,
+   "first_pass": false,
+   "id": "TG-AOI-01",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 2.73,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-AOI-02",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.51,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-AOI-04",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 2.65,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-AOI-09",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.0,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-AOI-05",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 3.64,
+   "escalated": true,
+   "first_pass": false,
+   "id": "TG-AOI-06",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.4,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-AOI-07",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other",
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.69,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-AOI-08",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.37,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MER-01",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 2.72,
+   "escalated": true,
+   "first_pass": false,
+   "id": "TG-MER-02",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MER-03",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MER-04",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 4.84,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MER-05",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.36,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MER-06",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.37,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MER-11",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.06,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MER-13",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 2.23,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-CMB-01",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.81,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-CMB-02",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.85,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-CMB-03",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.88,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-CMB-05",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "context-exhausted"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.88,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-CMB-06",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "context-exhausted"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.19,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-CMB-07",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.58,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-CMB-08",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.96,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-CMB-10",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 2.03,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-ITM-01",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.28,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-ITM-14",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.22,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-ITM-02",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.9,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-ITM-04",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 8.47,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-ITM-05",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.6,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-ITM-08",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 6.57,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-ITM-10",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.85,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-ITM-12",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 7.44,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-ITM-13",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.44,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MG-01",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.53,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MG-02",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.44,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MG-03",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.59,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MG-04",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.95,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MG-05",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.81,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MG-06",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.54,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MG-07",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 8.28,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MG-08",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.13,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MG-09",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 2.12,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MG-10",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.82,
+   "escalated": true,
+   "first_pass": false,
+   "id": "TG-MIS-01",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.75,
+   "escalated": true,
+   "first_pass": false,
+   "id": "TG-MIS-02",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 3.25,
+   "escalated": true,
+   "first_pass": false,
+   "id": "TG-MIS-03",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 2.79,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MIS-05",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.18,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-MIS-06",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.96,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MIS-08",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.56,
+   "escalated": false,
+   "first_pass": true,
+   "id": "TG-MIS-09",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 7.09,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-MIS-10",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "context-exhausted"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 2.79,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MIS-11",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.0,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MIS-13",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.13,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MOV-01",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.81,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MOV-02",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.72,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MOV-04",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.43,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-MOV-05",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MOV-06",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.86,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-MOV-07",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "context-exhausted"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.35,
+   "escalated": true,
+   "first_pass": false,
+   "id": "TG-MOV-08",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other",
+    "context-exhausted",
+    "context-exhausted",
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.14,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MOV-09",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.53,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MOV-12",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.71,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-NPC-04",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 4.0,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-NPC-05",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.7,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-NPC-06",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.6,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-NPC-07",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.64,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-NPC-08",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-NPC-10",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.4,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-NPC-11",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.54,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-NPC-12",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 2.68,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-NPC-13",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.81,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-NPC-15",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.12,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-SOC-04",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.04,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-SOC-05",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "context-exhausted"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 2.73,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-SOC-06",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.97,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-SOC-07",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.84,
+   "escalated": false,
+   "first_pass": true,
+   "id": "TG-SOC-08",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-SOC-09",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-SOC-10",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.04,
+   "escalated": false,
+   "first_pass": true,
+   "id": "TG-SOC-12",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 2.33,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-SOC-14",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.06,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-SOC-15",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 5.7,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-NET-04",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.79,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-NET-05",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.61,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-NET-06",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.48,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-NET-09",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 2.15,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-NET-12",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.88,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-DB-05",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.11,
+   "escalated": false,
+   "first_pass": false,
+   "id": "TG-DB-06",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-DB-08",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 2.78,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-DB-09",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.65,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-PIPE-10",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 2.78,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-PIPE-15",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-PIPE-16",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 3.78,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-PIPE-02",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.62,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-PIPE-04",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-PIPE-03",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-CLI-04",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 4.62,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-PIPE-12",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-PIPE-13",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-PIPE-14",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 3.39,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-MER-12",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.99,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-CLI-01",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-CLI-02",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 2.01,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-CLI-03",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 2.02,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-CLI-05",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 3.38,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-CLI-06",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 2.03,
+   "escalated": false,
+   "first_pass": null,
+   "id": "TG-CLI-07",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  }
+ ],
+ "prs": {
+  "cost_per_pr": {
+   "mean": 1.918097,
+   "p50": 0.77501,
+   "p90": 4.677791
+  },
+  "count": 150,
+  "merged": 150,
+  "per_pr": [
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1351,
+    "usd": 0.355745
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1367,
+    "usd": 0.672649
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1370,
+    "usd": 0.654266
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1372,
+    "usd": 0.256395
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1375,
+    "usd": 0.72875
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1376,
+    "usd": 0.540553
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1377,
+    "usd": 0.590868
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1378,
+    "usd": 0.929873
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1380,
+    "usd": 1.541118
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1382,
+    "usd": 1.404834
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1384,
+    "usd": 0.203567
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1385,
+    "usd": 2.342542
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1388,
+    "usd": 10.068954
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1394,
+    "usd": 13.171292
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1419,
+    "usd": 0.557419
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1427,
+    "usd": 2.634166
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1437,
+    "usd": 1.140813
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1455,
+    "usd": 0.572955
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1461,
+    "usd": 0.458301
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1462,
+    "usd": 1.241273
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1463,
+    "usd": 0.302924
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1464,
+    "usd": 1.204205
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1465,
+    "usd": 0.300302
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1467,
+    "usd": 0.430113
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1468,
+    "usd": 0.295847
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1469,
+    "usd": 1.16685
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1470,
+    "usd": 1.212432
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1471,
+    "usd": 5.803849
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1472,
+    "usd": 0.421981
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1479,
+    "usd": 0.221484
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1480,
+    "usd": 1.504174
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1481,
+    "usd": 4.419752
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1484,
+    "usd": 3.326241
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1485,
+    "usd": 4.209795
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1486,
+    "usd": 0.532078
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1487,
+    "usd": 0.521125
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1488,
+    "usd": 0.835888
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1489,
+    "usd": 1.172896
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1490,
+    "usd": 9.576023
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1492,
+    "usd": 0.209921
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1493,
+    "usd": 0.394719
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1494,
+    "usd": 0.954867
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1497,
+    "usd": 1.135452
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1498,
+    "usd": 1.870932
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1499,
+    "usd": 0.385388
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1501,
+    "usd": 0.428361
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1508,
+    "usd": 0.617593
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1509,
+    "usd": 2.497446
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1510,
+    "usd": 0.039375
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1512,
+    "usd": 1.2591
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1513,
+    "usd": 3.352352
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1514,
+    "usd": 4.633384
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1516,
+    "usd": 0.431376
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1518,
+    "usd": 0.253619
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1519,
+    "usd": 0.441132
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1522,
+    "usd": 1.330925
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1523,
+    "usd": 0.857724
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1526,
+    "usd": 0.435951
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1528,
+    "usd": 1.069505
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1529,
+    "usd": 0.262629
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1530,
+    "usd": 0.062817
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1531,
+    "usd": 3.254939
+   },
+   {
+    "ci_first_pass": true,
+    "ci_runs": 1,
+    "merged": true,
+    "pr": 1537,
+    "usd": 1.001151
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1540,
+    "usd": 0.428909
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1541,
+    "usd": 0.453772
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1542,
+    "usd": 0.648247
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1543,
+    "usd": 1.137188
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1544,
+    "usd": 0.568407
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1545,
+    "usd": 0.458944
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1546,
+    "usd": 0.462051
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1547,
+    "usd": 3.050038
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1548,
+    "usd": 2.121345
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1549,
+    "usd": 2.335751
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1552,
+    "usd": 0.559179
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1553,
+    "usd": 0.771326
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1554,
+    "usd": 0.258178
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1556,
+    "usd": 0.452283
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1557,
+    "usd": 0.056458
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1558,
+    "usd": 1.499742
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1559,
+    "usd": 0.741418
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1560,
+    "usd": 0.611495
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1561,
+    "usd": 0.665319
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1562,
+    "usd": 0.594293
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1563,
+    "usd": 0.587959
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1565,
+    "usd": 0.300566
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1566,
+    "usd": 0.496131
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1567,
+    "usd": 0.12491
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1568,
+    "usd": 0.913772
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1569,
+    "usd": 0.913213
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1570,
+    "usd": 0.111645
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1571,
+    "usd": 0.191627
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1572,
+    "usd": 0.212882
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1573,
+    "usd": 0.778694
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1574,
+    "usd": 1.091375
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1575,
+    "usd": 6.74627
+   },
+   {
+    "ci_first_pass": true,
+    "ci_runs": 2,
+    "merged": true,
+    "pr": 1576,
+    "usd": 10.816069
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1577,
+    "usd": 4.699244
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1578,
+    "usd": 9.876371
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1579,
+    "usd": 0.421586
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1580,
+    "usd": 0.736883
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1581,
+    "usd": 1.252729
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1582,
+    "usd": 0.259827
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1583,
+    "usd": 0.265917
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1584,
+    "usd": 0.466697
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1585,
+    "usd": 4.172279
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1586,
+    "usd": 0.978391
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1587,
+    "usd": 0.479057
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1588,
+    "usd": 4.892175
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1589,
+    "usd": 0.289228
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1590,
+    "usd": 0.279979
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1591,
+    "usd": 0.404532
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1592,
+    "usd": 0.570212
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1593,
+    "usd": 3.107852
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1594,
+    "usd": 3.071832
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1595,
+    "usd": 6.28299
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1596,
+    "usd": 1.463908
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1597,
+    "usd": 0.298881
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1598,
+    "usd": 0.169659
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1599,
+    "usd": 0.529995
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1600,
+    "usd": 0.379667
+   },
+   {
+    "ci_first_pass": true,
+    "ci_runs": 1,
+    "merged": true,
+    "pr": 1601,
+    "usd": 2.05585
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1602,
+    "usd": 8.037658
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1603,
+    "usd": 3.499376
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1604,
+    "usd": 1.907222
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1605,
+    "usd": 0.918602
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1606,
+    "usd": 0.58905
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1607,
+    "usd": 4.0648
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1608,
+    "usd": 0.568317
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1609,
+    "usd": 1.086924
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1610,
+    "usd": 0.741272
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1611,
+    "usd": 2.557551
+   },
+   {
+    "ci_first_pass": true,
+    "ci_runs": 1,
+    "merged": true,
+    "pr": 1613,
+    "usd": 3.645295
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1614,
+    "usd": 4.717079
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1615,
+    "usd": 3.587782
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1616,
+    "usd": 2.880229
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1617,
+    "usd": 2.951194
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1618,
+    "usd": 5.566455
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1621,
+    "usd": 0.446205
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1622,
+    "usd": 0.259329
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1623,
+    "usd": 0.278249
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1624,
+    "usd": 0.235601
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1628,
+    "usd": 10.871705
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1629,
+    "usd": 1.891579
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1630,
+    "usd": 1.577107
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1631,
+    "usd": 3.093084
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1632,
+    "usd": 0.400837
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1633,
+    "usd": 4.675407
+   },
+   {
+    "ci_first_pass": true,
+    "ci_runs": 1,
+    "merged": true,
+    "pr": 1642,
+    "usd": 2.260308
+   },
+   {
+    "ci_first_pass": true,
+    "ci_runs": 1,
+    "merged": true,
+    "pr": 1645,
+    "usd": 16.477171
+   },
+   {
+    "ci_first_pass": true,
+    "ci_runs": 1,
+    "merged": true,
+    "pr": 1648,
+    "usd": 4.659048
+   }
+  ]
+ },
+ "regime": "haiku",
+ "retries": {
+  "by_reason": {
+   "ci-failure": 0,
+   "context-exhausted": 11,
+   "merge-conflict": 0,
+   "other": 24,
+   "permission-denied": 0,
+   "review-fix": 0,
+   "stalled-background": 0
+  },
+  "total": 35
+ },
+ "stamp": {
+  "generated": "2026-10-12T18:51:11Z",
+  "price_table": "2026-10-12",
+  "profiler_schema": "6",
+  "unattributed_request_share": 0.1406,
+  "unattributed_share": 0.122,
+  "unmapped_share": 0.38,
+  "untagged_usd_share": 0.2653,
+  "window": {
+   "since": "2026-09-21T00:00:00Z",
+   "until": "2026-10-13T00:00:00Z"
+  }
+ },
+ "stop_context": {
+  "by_error_kind": {
+   "authentication_failed": 0,
+   "other": 0,
+   "rate_limit": 0
+  },
+  "by_stop": {
+   "end_turn": 248,
+   "error": 0,
+   "no_record": 1,
+   "tool_use": 1
+  },
+  "context_at_stop": {
+   "max": 282900,
+   "p50": 72162.5,
+   "p90": 162552.6
+  },
+  "share_above_90k": 0.29,
+  "workers": 250
+ }
+}

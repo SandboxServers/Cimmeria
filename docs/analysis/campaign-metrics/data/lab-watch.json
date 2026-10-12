@@ -1,0 +1,439 @@
+{
+ "accepted": {
+  "cost_per_accepted_usd": 1.026692,
+  "packets": 4
+ },
+ "campaign": "lab-watch",
+ "ci": {
+  "code_prs_first_attempt_rate": null,
+  "code_prs_first_attempt_rate_gap": "no CI data",
+  "first_attempt_rate": null,
+  "first_attempt_rate_gap": "no CI data",
+  "overall_rate": null,
+  "overall_rate_gap": "no CI data",
+  "pr_runs_total": 0,
+  "queue_first_attempt_rate": null,
+  "queue_first_attempt_rate_gap": "no CI data"
+ },
+ "cost": {
+  "attributed_usd": 4.106767,
+  "by_model_tier": {
+   "fable": 0.0,
+   "haiku": 0.037649,
+   "opus": 3.836989,
+   "other": 0.0,
+   "sonnet": 0.232129
+  },
+  "by_role": {
+   "coordinator": 1.826849,
+   "fixer": 0.0,
+   "implementer-domain": 2.01014,
+   "implementer-haiku": 0.037649,
+   "other": 0.0,
+   "reviewer": 0.232129
+  },
+  "total_usd": 4.106767,
+  "unattributed_in_campaign_usd": 0.0
+ },
+ "cycle_time": {
+  "campaign_hours": null,
+  "campaign_hours_gap": "no close-out commit in the ledger window",
+  "packet_hours": {
+   "n": 1,
+   "p50": 1.01,
+   "p90": 1.01
+  }
+ },
+ "escalation": {
+  "dispatched_to_haiku": 3,
+  "escalated": 1,
+  "items": [
+   {
+    "id": "LW-01",
+    "to": "implementer-domain",
+    "why": "context-exhausted"
+   }
+  ],
+  "rate": 0.33
+ },
+ "escaped_defects": {
+  "count": 0,
+  "items": [],
+  "rate_per_merged_pr": 0.0
+ },
+ "first_pass": {
+  "eligible": 2,
+  "packets": [
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "LW-01",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "LW-02",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "LW-03",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "LW-04",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 1
+   }
+  ],
+  "rate": 0.0
+ },
+ "overstep": {
+  "items": [
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O1",
+    "session_family": "0356a61c-2444-407d-bfbe-c6514dc2013c",
+    "tool": "Edit",
+    "ts": "2026-10-11T03:28:48.567Z",
+    "usd": 0.164328
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "0356a61c-2444-407d-bfbe-c6514dc2013c",
+    "tool": "PowerShell",
+    "ts": "2026-10-11T05:02:32.345Z",
+    "usd": 0.213956
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "674cf8f7-349e-484b-b732-1b5b21143e7a",
+    "tool": "PowerShell",
+    "ts": "2026-10-11T11:02:11.299Z",
+    "usd": 0.106417
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "674cf8f7-349e-484b-b732-1b5b21143e7a",
+    "tool": "PowerShell",
+    "ts": "2026-10-11T11:08:30.465Z",
+    "usd": 0.072842
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "674cf8f7-349e-484b-b732-1b5b21143e7a",
+    "tool": "Edit",
+    "ts": "2026-10-11T11:15:06.051Z",
+    "usd": 0.171121
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O1",
+    "session_family": "674cf8f7-349e-484b-b732-1b5b21143e7a",
+    "tool": "Edit",
+    "ts": "2026-10-11T11:28:09.041Z",
+    "usd": 0.242749
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O1",
+    "session_family": "674cf8f7-349e-484b-b732-1b5b21143e7a",
+    "tool": "Edit",
+    "ts": "2026-10-11T11:28:33.422Z",
+    "usd": 0.183022
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O1",
+    "session_family": "674cf8f7-349e-484b-b732-1b5b21143e7a",
+    "tool": "Edit",
+    "ts": "2026-10-11T11:50:09.490Z",
+    "usd": 0.221096
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O1",
+    "session_family": "674cf8f7-349e-484b-b732-1b5b21143e7a",
+    "tool": "Edit",
+    "ts": "2026-10-11T11:50:27.705Z",
+    "usd": 0.127129
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O1",
+    "session_family": "674cf8f7-349e-484b-b732-1b5b21143e7a",
+    "tool": "Edit",
+    "ts": "2026-10-11T11:50:56.927Z",
+    "usd": 0.230636
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O1",
+    "session_family": "674cf8f7-349e-484b-b732-1b5b21143e7a",
+    "tool": "Edit",
+    "ts": "2026-10-11T11:51:45.989Z",
+    "usd": 0.230162
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O3b",
+    "session_family": "674cf8f7-349e-484b-b732-1b5b21143e7a",
+    "tool": "Write",
+    "ts": "2026-10-11T11:16:09.731Z",
+    "usd": 0.238288
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O3b",
+    "session_family": "674cf8f7-349e-484b-b732-1b5b21143e7a",
+    "tool": "Write",
+    "ts": "2026-10-11T11:18:30.732Z",
+    "usd": 0.165295
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O3b",
+    "session_family": "674cf8f7-349e-484b-b732-1b5b21143e7a",
+    "tool": "Write",
+    "ts": "2026-10-11T11:35:55.440Z",
+    "usd": 0.154368
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O3b",
+    "session_family": "674cf8f7-349e-484b-b732-1b5b21143e7a",
+    "tool": "Edit",
+    "ts": "2026-10-11T11:36:29.457Z",
+    "usd": 0.061046
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O3b",
+    "session_family": "674cf8f7-349e-484b-b732-1b5b21143e7a",
+    "tool": "Edit",
+    "ts": "2026-10-11T11:36:51.657Z",
+    "usd": 0.103292
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O3b",
+    "session_family": "674cf8f7-349e-484b-b732-1b5b21143e7a",
+    "tool": "Edit",
+    "ts": "2026-10-11T11:37:17.457Z",
+    "usd": 0.03967
+   }
+  ],
+  "opus_coding_usd": 1.9634576000000001,
+  "opus_research_usd": 0.0,
+  "recoverable_usd": {
+   "high": 2.2018613000000005,
+   "low": 1.3627082000000001
+  },
+  "rules": {
+   "O1": {
+    "count": 11,
+    "usd": 1.9634576000000001,
+    "wasted_usd": 1.5567862
+   },
+   "O3b": {
+    "count": 6,
+    "usd": 0.7619587999999999,
+    "wasted_usd": 0.6450751
+   }
+  },
+  "sonnet_implementing_usd": 0.0,
+  "wasted_usd": 2.2
+ },
+ "packet_rows": [
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": true,
+   "first_pass": false,
+   "id": "LW-01",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 1.01,
+   "escalated": false,
+   "first_pass": false,
+   "id": "LW-02",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "LW-03",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "LW-04",
+   "implementer": "packet-coder",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "LW-05",
+   "implementer": "coordinator",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "LW-06",
+   "implementer": "documentation-writer",
+   "regime": "old",
+   "retries": []
+  }
+ ],
+ "prs": {
+  "cost_per_pr": {
+   "mean": 1.026692,
+   "p50": 0.279693,
+   "p90": 2.524415
+  },
+  "count": 4,
+  "merged": 4,
+  "per_pr": [
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1395,
+    "usd": 0.247941
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1511,
+    "usd": 3.472831
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1520,
+    "usd": 0.311445
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1536,
+    "usd": 0.07455
+   }
+  ]
+ },
+ "regime": "mixed",
+ "retries": {
+  "by_reason": {
+   "ci-failure": 0,
+   "context-exhausted": 0,
+   "merge-conflict": 0,
+   "other": 0,
+   "permission-denied": 0,
+   "review-fix": 0,
+   "stalled-background": 0
+  },
+  "total": 0
+ },
+ "stamp": {
+  "generated": "2026-10-12T18:51:11Z",
+  "price_table": "2026-10-12",
+  "profiler_schema": "6",
+  "unattributed_request_share": 0.1406,
+  "unattributed_share": 0.122,
+  "unmapped_share": 0.38,
+  "untagged_usd_share": 0.2653,
+  "window": {
+   "since": "2026-09-21T00:00:00Z",
+   "until": "2026-10-13T00:00:00Z"
+  }
+ },
+ "stop_context": {
+  "by_error_kind": {
+   "authentication_failed": 0,
+   "other": 0,
+   "rate_limit": 0
+  },
+  "by_stop": {
+   "end_turn": 9,
+   "error": 0,
+   "no_record": 0,
+   "tool_use": 0
+  },
+  "context_at_stop": {
+   "max": 196113,
+   "p50": 90991.0,
+   "p90": 165820.2
+  },
+  "share_above_90k": 0.67,
+  "workers": 9
+ }
+}

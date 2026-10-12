@@ -1,0 +1,583 @@
+{
+ "accepted": {
+  "cost_per_accepted_usd": 2.423821,
+  "packets": 9
+ },
+ "campaign": "client-limits",
+ "ci": {
+  "code_prs_first_attempt_rate": null,
+  "code_prs_first_attempt_rate_gap": "no CI data",
+  "first_attempt_rate": null,
+  "first_attempt_rate_gap": "no CI data",
+  "overall_rate": null,
+  "overall_rate_gap": "no CI data",
+  "pr_runs_total": 0,
+  "queue_first_attempt_rate": null,
+  "queue_first_attempt_rate_gap": "no CI data"
+ },
+ "cost": {
+  "attributed_usd": 21.814388,
+  "by_model_tier": {
+   "fable": 0.0,
+   "haiku": 0.05384,
+   "opus": 15.55436,
+   "other": 0.0,
+   "sonnet": 6.206188
+  },
+  "by_role": {
+   "coordinator": 7.503353,
+   "fixer": 0.0,
+   "implementer-domain": 3.380743,
+   "implementer-haiku": 0.05384,
+   "other": 9.89989,
+   "reviewer": 0.976563
+  },
+  "total_usd": 21.814388,
+  "unattributed_in_campaign_usd": 0.0
+ },
+ "cycle_time": {
+  "campaign_hours": null,
+  "campaign_hours_gap": "no close-out commit in the ledger window",
+  "packet_hours": {
+   "n": 8,
+   "p50": 0.47,
+   "p90": 0.91
+  }
+ },
+ "escalation": {
+  "dispatched_to_haiku": 4,
+  "escalated": 0,
+  "items": [],
+  "rate": 0.0
+ },
+ "escaped_defects": {
+  "count": 0,
+  "items": [],
+  "rate_per_merged_pr": 0.0
+ },
+ "first_pass": {
+  "eligible": 3,
+  "packets": [
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "CL-01",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "CL-02",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "CL-03",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "CL-04",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "CL-05",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "CL-06",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "CL-07",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "CL-11",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "CL-13",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 1
+   }
+  ],
+  "rate": 0.0
+ },
+ "overstep": {
+  "items": [
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "421624b6-433d-4faa-a9ce-fabddbf805cb",
+    "tool": "Edit",
+    "ts": "2026-10-11T11:31:18.530Z",
+    "usd": 0.21483
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "421624b6-433d-4faa-a9ce-fabddbf805cb",
+    "tool": "PowerShell",
+    "ts": "2026-10-11T11:31:23.969Z",
+    "usd": 0.126085
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "421624b6-433d-4faa-a9ce-fabddbf805cb",
+    "tool": "Edit",
+    "ts": "2026-10-11T11:37:55.027Z",
+    "usd": 0.177391
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "421624b6-433d-4faa-a9ce-fabddbf805cb",
+    "tool": "Edit",
+    "ts": "2026-10-11T11:38:01.344Z",
+    "usd": 0.133787
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "421624b6-433d-4faa-a9ce-fabddbf805cb",
+    "tool": "Edit",
+    "ts": "2026-10-11T11:43:42.204Z",
+    "usd": 0.175989
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "421624b6-433d-4faa-a9ce-fabddbf805cb",
+    "tool": "Edit",
+    "ts": "2026-10-11T11:49:37.196Z",
+    "usd": 0.247349
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "421624b6-433d-4faa-a9ce-fabddbf805cb",
+    "tool": "Edit",
+    "ts": "2026-10-11T11:49:54.095Z",
+    "usd": 0.202015
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "421624b6-433d-4faa-a9ce-fabddbf805cb",
+    "tool": "PowerShell",
+    "ts": "2026-10-11T11:59:26.213Z",
+    "usd": 0.30062
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "421624b6-433d-4faa-a9ce-fabddbf805cb",
+    "tool": "PowerShell",
+    "ts": "2026-10-11T12:04:13.589Z",
+    "usd": 0.341552
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O3b",
+    "session_family": "421624b6-433d-4faa-a9ce-fabddbf805cb",
+    "tool": "Write",
+    "ts": "2026-10-11T12:17:27.596Z",
+    "usd": 0.171213
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O3b",
+    "session_family": "421624b6-433d-4faa-a9ce-fabddbf805cb",
+    "tool": "Edit",
+    "ts": "2026-10-11T12:18:16.419Z",
+    "usd": 0.044459
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O3b",
+    "session_family": "421624b6-433d-4faa-a9ce-fabddbf805cb",
+    "tool": "Edit",
+    "ts": "2026-10-11T12:18:24.467Z",
+    "usd": 0.046936
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O3b",
+    "session_family": "421624b6-433d-4faa-a9ce-fabddbf805cb",
+    "tool": "Edit",
+    "ts": "2026-10-11T12:18:29.704Z",
+    "usd": 0.040265
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O3b",
+    "session_family": "421624b6-433d-4faa-a9ce-fabddbf805cb",
+    "tool": "Write",
+    "ts": "2026-10-11T12:18:34.526Z",
+    "usd": 0.136072
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O3b",
+    "session_family": "421624b6-433d-4faa-a9ce-fabddbf805cb",
+    "tool": "Edit",
+    "ts": "2026-10-11T12:19:18.468Z",
+    "usd": 0.101894
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O3b",
+    "session_family": "421624b6-433d-4faa-a9ce-fabddbf805cb",
+    "tool": "Edit",
+    "ts": "2026-10-11T12:20:40.215Z",
+    "usd": 0.059534
+   }
+  ],
+  "opus_coding_usd": 1.9196196,
+  "opus_research_usd": 0.0,
+  "recoverable_usd": {
+   "high": 2.0089632250000005,
+   "low": 1.2599964
+  },
+  "rules": {
+   "O1": {
+    "count": 9,
+    "usd": 1.9196196,
+    "wasted_usd": 1.5074682000000001
+   },
+   "O3b": {
+    "count": 7,
+    "usd": 0.6003731999999999,
+    "wasted_usd": 0.501495025
+   }
+  },
+  "sonnet_implementing_usd": 0.0,
+  "wasted_usd": 2.01
+ },
+ "packet_rows": [
+  {
+   "accepted": true,
+   "cycle_hours": 0.2,
+   "escalated": false,
+   "first_pass": false,
+   "id": "CL-01",
+   "implementer": "documentation-writer",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.9,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CL-02",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.3,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CL-03",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.92,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CL-04",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CL-05",
+   "implementer": "coordinator",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.9,
+   "escalated": false,
+   "first_pass": false,
+   "id": "CL-06",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.14,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CL-07",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CL-08",
+   "implementer": "coordinator",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CL-09",
+   "implementer": "coordinator",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CL-10",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.14,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CL-11",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.65,
+   "escalated": false,
+   "first_pass": false,
+   "id": "CL-13",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CL-14",
+   "implementer": "rust-gameserver-dev",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CL-15",
+   "implementer": "packet-coder",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "CL-16",
+   "implementer": "documentation-writer",
+   "regime": "old",
+   "retries": []
+  }
+ ],
+ "prs": {
+  "cost_per_pr": {
+   "mean": 2.423821,
+   "p50": 2.143618,
+   "p90": 5.494504
+  },
+  "count": 9,
+  "merged": 9,
+  "per_pr": [
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1502,
+    "usd": 0.502088
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1503,
+    "usd": 0.142326
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1504,
+    "usd": 1.581789
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1505,
+    "usd": 3.274243
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1525,
+    "usd": 5.303554
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1532,
+    "usd": 2.428145
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1533,
+    "usd": 2.143618
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1539,
+    "usd": 0.18032
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1550,
+    "usd": 6.258307
+   }
+  ]
+ },
+ "regime": "mixed",
+ "retries": {
+  "by_reason": {
+   "ci-failure": 0,
+   "context-exhausted": 0,
+   "merge-conflict": 0,
+   "other": 0,
+   "permission-denied": 0,
+   "review-fix": 0,
+   "stalled-background": 0
+  },
+  "total": 0
+ },
+ "stamp": {
+  "generated": "2026-10-12T18:51:11Z",
+  "price_table": "2026-10-12",
+  "profiler_schema": "6",
+  "unattributed_request_share": 0.1406,
+  "unattributed_share": 0.122,
+  "unmapped_share": 0.38,
+  "untagged_usd_share": 0.2653,
+  "window": {
+   "since": "2026-09-21T00:00:00Z",
+   "until": "2026-10-13T00:00:00Z"
+  }
+ },
+ "stop_context": {
+  "by_error_kind": {
+   "authentication_failed": 0,
+   "other": 0,
+   "rate_limit": 0
+  },
+  "by_stop": {
+   "end_turn": 17,
+   "error": 0,
+   "no_record": 1,
+   "tool_use": 0
+  },
+  "context_at_stop": {
+   "max": 286804,
+   "p50": 124284.5,
+   "p90": 219940.7
+  },
+  "share_above_90k": 0.67,
+  "workers": 18
+ }
+}

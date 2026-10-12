@@ -1,0 +1,599 @@
+{
+ "accepted": {
+  "cost_per_accepted_usd": 30.086647,
+  "packets": 3
+ },
+ "campaign": "lab-fixtures",
+ "ci": {
+  "code_prs_first_attempt_rate": null,
+  "code_prs_first_attempt_rate_gap": "no CI data",
+  "first_attempt_rate": null,
+  "first_attempt_rate_gap": "no CI data",
+  "overall_rate": null,
+  "overall_rate_gap": "no CI data",
+  "pr_runs_total": 0,
+  "queue_first_attempt_rate": null,
+  "queue_first_attempt_rate_gap": "no CI data"
+ },
+ "cost": {
+  "attributed_usd": 90.25994,
+  "by_model_tier": {
+   "fable": 0.0,
+   "haiku": 0.188291,
+   "opus": 85.582874,
+   "other": 0.0,
+   "sonnet": 4.488775
+  },
+  "by_role": {
+   "coordinator": 29.362102,
+   "fixer": 0.0,
+   "implementer-domain": 46.603292,
+   "implementer-haiku": 0.188291,
+   "other": 10.246229,
+   "reviewer": 3.860026
+  },
+  "total_usd": 90.25994,
+  "unattributed_in_campaign_usd": 0.0
+ },
+ "cycle_time": {
+  "campaign_hours": null,
+  "campaign_hours_gap": "no close-out commit in the ledger window",
+  "packet_hours": {
+   "n": 3,
+   "p50": 0.77,
+   "p90": 0.91
+  }
+ },
+ "escalation": {
+  "dispatched_to_haiku": 5,
+  "escalated": 2,
+  "items": [
+   {
+    "id": "FX-06",
+    "to": "implementer-domain",
+    "why": "other"
+   },
+   {
+    "id": "FX-07",
+    "to": "implementer-domain",
+    "why": "context-exhausted"
+   }
+  ],
+  "rate": 0.4
+ },
+ "escaped_defects": {
+  "count": 3,
+  "items": [
+   {
+    "cites": 1421,
+    "days_after_merge": 0.0,
+    "kind": "pr",
+    "number": 1433
+   },
+   {
+    "cites": 1434,
+    "days_after_merge": 0.1,
+    "kind": "pr",
+    "number": 1457
+   },
+   {
+    "cites": 1421,
+    "days_after_merge": 0.2,
+    "kind": "pr",
+    "number": 1471
+   }
+  ],
+  "rate_per_merged_pr": 0.2727272727272727
+ },
+ "first_pass": {
+  "eligible": 3,
+  "packets": [
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "FX-01",
+    "implementer_sessions": 2,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 1,
+    "id": "FX-02",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": false,
+    "fix_commits": 2,
+    "id": "FX-05",
+    "implementer_sessions": 2,
+    "reviewer_sessions": 1
+   }
+  ],
+  "rate": 0.0
+ },
+ "overstep": {
+  "items": [
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "a469d151-7422-4257-bf41-327e9c459f39",
+    "tool": "Edit",
+    "ts": "2026-10-11T04:45:27.922Z",
+    "usd": 0.305747
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "a469d151-7422-4257-bf41-327e9c459f39",
+    "tool": "Edit",
+    "ts": "2026-10-11T04:46:39.339Z",
+    "usd": 0.241565
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O1",
+    "session_family": "a469d151-7422-4257-bf41-327e9c459f39",
+    "tool": "Edit",
+    "ts": "2026-10-11T04:46:58.412Z",
+    "usd": 0.245898
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "a469d151-7422-4257-bf41-327e9c459f39",
+    "tool": "PowerShell",
+    "ts": "2026-10-11T04:47:27.619Z",
+    "usd": 0.179168
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "a469d151-7422-4257-bf41-327e9c459f39",
+    "tool": "PowerShell",
+    "ts": "2026-10-11T04:48:25.017Z",
+    "usd": 0.227494
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "a469d151-7422-4257-bf41-327e9c459f39",
+    "tool": "PowerShell",
+    "ts": "2026-10-11T05:04:18.451Z",
+    "usd": 0.195133
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "a469d151-7422-4257-bf41-327e9c459f39",
+    "tool": "PowerShell",
+    "ts": "2026-10-11T05:05:09.741Z",
+    "usd": 0.128608
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "a469d151-7422-4257-bf41-327e9c459f39",
+    "tool": "PowerShell",
+    "ts": "2026-10-11T06:05:33.979Z",
+    "usd": 0.309636
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "a469d151-7422-4257-bf41-327e9c459f39",
+    "tool": "PowerShell",
+    "ts": "2026-10-11T06:10:59.023Z",
+    "usd": 0.353341
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "tools",
+    "rule": "O1",
+    "session_family": "a469d151-7422-4257-bf41-327e9c459f39",
+    "tool": "Edit",
+    "ts": "2026-10-11T06:21:54.812Z",
+    "usd": 0.424338
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": null,
+    "rule": "O1",
+    "session_family": "a469d151-7422-4257-bf41-327e9c459f39",
+    "tool": "PowerShell",
+    "ts": "2026-10-11T09:12:31.760Z",
+    "usd": 0.453226
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O3b",
+    "session_family": "a469d151-7422-4257-bf41-327e9c459f39",
+    "tool": "Write",
+    "ts": "2026-10-11T04:15:54.965Z",
+    "usd": 0.1137
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O3b",
+    "session_family": "a469d151-7422-4257-bf41-327e9c459f39",
+    "tool": "Edit",
+    "ts": "2026-10-11T04:16:26.291Z",
+    "usd": 0.078877
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O3b",
+    "session_family": "a469d151-7422-4257-bf41-327e9c459f39",
+    "tool": "Write",
+    "ts": "2026-10-11T04:16:29.762Z",
+    "usd": 0.111072
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O3b",
+    "session_family": "a469d151-7422-4257-bf41-327e9c459f39",
+    "tool": "Write",
+    "ts": "2026-10-11T04:16:57.517Z",
+    "usd": 0.134044
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O3b",
+    "session_family": "a469d151-7422-4257-bf41-327e9c459f39",
+    "tool": "Edit",
+    "ts": "2026-10-11T04:17:23.338Z",
+    "usd": 0.105492
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O3b",
+    "session_family": "a469d151-7422-4257-bf41-327e9c459f39",
+    "tool": "Edit",
+    "ts": "2026-10-11T04:17:51.103Z",
+    "usd": 0.080811
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O3b",
+    "session_family": "a469d151-7422-4257-bf41-327e9c459f39",
+    "tool": "Edit",
+    "ts": "2026-10-11T04:18:01.246Z",
+    "usd": 0.079138
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O3b",
+    "session_family": "a469d151-7422-4257-bf41-327e9c459f39",
+    "tool": "Edit",
+    "ts": "2026-10-11T04:18:15.378Z",
+    "usd": 0.067477
+   },
+   {
+    "family": "opus",
+    "model": "claude-opus-5-5",
+    "path_class": "crates",
+    "rule": "O3b",
+    "session_family": "a469d151-7422-4257-bf41-327e9c459f39",
+    "tool": "Write",
+    "ts": "2026-10-11T04:18:39.701Z",
+    "usd": 0.227866
+   }
+  ],
+  "opus_coding_usd": 3.064153,
+  "opus_research_usd": 0.0,
+  "recoverable_usd": {
+   "high": 12.580793949999993,
+   "low": 7.710244300000003
+  },
+  "rules": {
+   "O1": {
+    "count": 11,
+    "usd": 3.064153,
+    "wasted_usd": 2.36250525
+   },
+   "O3b": {
+    "count": 139,
+    "usd": 12.356335599999998,
+    "wasted_usd": 10.218288699999999
+   }
+  },
+  "sonnet_implementing_usd": 0.0,
+  "wasted_usd": 12.58
+ },
+ "packet_rows": [
+  {
+   "accepted": true,
+   "cycle_hours": 0.77,
+   "escalated": false,
+   "first_pass": false,
+   "id": "FX-01",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": [
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.94,
+   "escalated": false,
+   "first_pass": false,
+   "id": "FX-02",
+   "implementer": "rust-gameserver-dev",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "FX-03",
+   "implementer": "rust-gameserver-dev",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "FX-04",
+   "implementer": "rust-gameserver-dev",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": 0.25,
+   "escalated": false,
+   "first_pass": false,
+   "id": "FX-05",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": [
+    "other"
+   ]
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": true,
+   "first_pass": null,
+   "id": "FX-06",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": true,
+   "first_pass": null,
+   "id": "FX-07",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "FX-08",
+   "implementer": "packet-coder",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "FX-09",
+   "implementer": "documentation-writer",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "FX-10",
+   "implementer": "packet-coder",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "FX-12",
+   "implementer": "coordinator",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": false,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "FX-13",
+   "implementer": "documentation-writer",
+   "regime": "old",
+   "retries": []
+  }
+ ],
+ "prs": {
+  "cost_per_pr": {
+   "mean": 8.205449,
+   "p50": 10.774472,
+   "p90": 14.87673
+  },
+  "count": 11,
+  "merged": 11,
+  "per_pr": [
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1408,
+    "usd": 15.385111
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1420,
+    "usd": 1.259322
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1421,
+    "usd": 14.87673
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1424,
+    "usd": 0.097281
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1430,
+    "usd": 11.279544
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1432,
+    "usd": 10.774472
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1434,
+    "usd": 11.378026
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1436,
+    "usd": 0.485569
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1440,
+    "usd": 8.808265
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1441,
+    "usd": 4.000649
+   },
+   {
+    "ci_first_pass": null,
+    "ci_runs": 0,
+    "merged": true,
+    "pr": 1448,
+    "usd": 11.914972
+   }
+  ]
+ },
+ "regime": "mixed",
+ "retries": {
+  "by_reason": {
+   "ci-failure": 0,
+   "context-exhausted": 0,
+   "merge-conflict": 0,
+   "other": 2,
+   "permission-denied": 0,
+   "review-fix": 0,
+   "stalled-background": 0
+  },
+  "total": 2
+ },
+ "stamp": {
+  "generated": "2026-10-12T18:51:11Z",
+  "price_table": "2026-10-12",
+  "profiler_schema": "6",
+  "unattributed_request_share": 0.1406,
+  "unattributed_share": 0.122,
+  "unmapped_share": 0.38,
+  "untagged_usd_share": 0.2653,
+  "window": {
+   "since": "2026-09-21T00:00:00Z",
+   "until": "2026-10-13T00:00:00Z"
+  }
+ },
+ "stop_context": {
+  "by_error_kind": {
+   "authentication_failed": 0,
+   "other": 0,
+   "rate_limit": 0
+  },
+  "by_stop": {
+   "end_turn": 36,
+   "error": 0,
+   "no_record": 0,
+   "tool_use": 0
+  },
+  "context_at_stop": {
+   "max": 254002,
+   "p50": 116235.5,
+   "p90": 220235.5
+  },
+  "share_above_90k": 0.72,
+  "workers": 36
+ }
+}

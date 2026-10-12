@@ -1,0 +1,557 @@
+{
+ "accepted": {
+  "cost_per_accepted_usd": 6.16597,
+  "packets": 20
+ },
+ "campaign": "lab-cli-rust",
+ "ci": {
+  "code_prs_first_attempt_rate": 1.0,
+  "first_attempt_rate": 1.0,
+  "overall_rate": 1.0,
+  "pr_runs_total": 7,
+  "queue_first_attempt_rate": 0.67
+ },
+ "cost": {
+  "attributed_usd": 69.17346,
+  "by_model_tier": {
+   "fable": 0.0,
+   "haiku": 2.082241,
+   "opus": 51.061413,
+   "other": 0.0,
+   "sonnet": 70.17575
+  },
+  "by_role": {
+   "coordinator": 51.061413,
+   "fixer": 26.559143,
+   "implementer-haiku": 2.082241,
+   "other": 37.944348,
+   "reviewer": 5.672259
+  },
+  "total_usd": 123.319404,
+  "unattributed_in_campaign_usd": 54.145944
+ },
+ "cycle_time": {
+  "campaign_hours": null,
+  "campaign_hours_gap": "no close-out commit in the ledger window",
+  "packet_hours": {
+   "n": 0,
+   "p50": null,
+   "p90": null
+  }
+ },
+ "escalation": {
+  "dispatched_to_haiku": 18,
+  "escalated": 2,
+  "items": [
+   {
+    "id": "LX-01",
+    "to": "general-purpose",
+    "why": "other"
+   },
+   {
+    "id": "LX-17",
+    "to": "general-purpose",
+    "why": "other"
+   }
+  ],
+  "rate": 0.11
+ },
+ "escaped_defects": {
+  "count": 0,
+  "items": [],
+  "rate_per_merged_pr": 0.0
+ },
+ "first_pass": {
+  "eligible": 18,
+  "packets": [
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "LX-01",
+    "implementer_sessions": 3,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "LX-02",
+    "implementer_sessions": 4,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "LX-03",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "LX-04",
+    "implementer_sessions": 3,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "LX-05",
+    "implementer_sessions": 2,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "LX-06",
+    "implementer_sessions": 4,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "LX-07",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "LX-08",
+    "implementer_sessions": 2,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "LX-09",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "LX-10",
+    "implementer_sessions": 3,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "LX-11",
+    "implementer_sessions": 4,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "LX-12",
+    "implementer_sessions": 4,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "LX-13",
+    "implementer_sessions": 4,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "LX-14",
+    "implementer_sessions": 1,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "LX-15",
+    "implementer_sessions": 4,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "LX-16",
+    "implementer_sessions": 5,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "LX-17",
+    "implementer_sessions": 7,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "LX-18",
+    "implementer_sessions": 10,
+    "reviewer_sessions": 0
+   },
+   {
+    "first_pass": false,
+    "fix_commits": null,
+    "id": "LX-19",
+    "implementer_sessions": 3,
+    "reviewer_sessions": 1
+   },
+   {
+    "first_pass": null,
+    "fix_commits": null,
+    "id": "LX-20",
+    "implementer_sessions": 0,
+    "reviewer_sessions": 0
+   }
+  ],
+  "rate": 0.0
+ },
+ "overstep": {
+  "items": [],
+  "opus_coding_usd": 0.0,
+  "opus_research_usd": 0.0,
+  "recoverable_usd": {
+   "high": 0.0,
+   "low": 0.0
+  },
+  "rules": {},
+  "sonnet_implementing_usd": 0.0,
+  "wasted_usd": 0.0
+ },
+ "packet_rows": [
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": true,
+   "first_pass": false,
+   "id": "LX-01",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "context-exhausted",
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": false,
+   "id": "LX-02",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other",
+    "context-exhausted",
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "LX-03",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": false,
+   "id": "LX-04",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other",
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": false,
+   "id": "LX-05",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": false,
+   "id": "LX-06",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other",
+    "context-exhausted",
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": false,
+   "id": "LX-07",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": false,
+   "id": "LX-08",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "context-exhausted"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": false,
+   "id": "LX-09",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": false,
+   "id": "LX-10",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other",
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": false,
+   "id": "LX-11",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other",
+    "other",
+    "context-exhausted"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": false,
+   "id": "LX-12",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other",
+    "other",
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": false,
+   "id": "LX-13",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other",
+    "other",
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": false,
+   "id": "LX-14",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": []
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": false,
+   "id": "LX-15",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other",
+    "context-exhausted",
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": false,
+   "id": "LX-16",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other",
+    "other",
+    "other",
+    "context-exhausted"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": true,
+   "first_pass": false,
+   "id": "LX-17",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other",
+    "other",
+    "other",
+    "context-exhausted",
+    "other",
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": false,
+   "id": "LX-18",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other",
+    "other",
+    "other",
+    "other",
+    "other",
+    "other",
+    "other",
+    "context-exhausted",
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": false,
+   "id": "LX-19",
+   "implementer": "other",
+   "regime": "haiku",
+   "retries": [
+    "other",
+    "other"
+   ]
+  },
+  {
+   "accepted": true,
+   "cycle_hours": null,
+   "escalated": false,
+   "first_pass": null,
+   "id": "LX-20",
+   "implementer": "other",
+   "regime": "old",
+   "retries": []
+  }
+ ],
+ "prs": {
+  "cost_per_pr": {
+   "mean": 53.384327,
+   "p50": 53.384327,
+   "p90": 53.384327
+  },
+  "count": 2,
+  "merged": 1,
+  "per_pr": [
+   {
+    "ci_first_pass": true,
+    "ci_runs": 2,
+    "merged": false,
+    "pr": 1654,
+    "usd": 15.789133
+   },
+   {
+    "ci_first_pass": true,
+    "ci_runs": 4,
+    "merged": true,
+    "pr": 1659,
+    "usd": 53.384327
+   }
+  ]
+ },
+ "regime": "haiku",
+ "retries": {
+  "by_reason": {
+   "ci-failure": 0,
+   "context-exhausted": 9,
+   "merge-conflict": 0,
+   "other": 38,
+   "permission-denied": 0,
+   "review-fix": 0,
+   "stalled-background": 0
+  },
+  "total": 47
+ },
+ "stamp": {
+  "generated": "2026-10-12T18:51:11Z",
+  "price_table": "2026-10-12",
+  "profiler_schema": "6",
+  "unattributed_request_share": 0.1406,
+  "unattributed_share": 0.122,
+  "unmapped_share": 0.38,
+  "untagged_usd_share": 0.2653,
+  "window": {
+   "since": "2026-09-21T00:00:00Z",
+   "until": "2026-10-13T00:00:00Z"
+  }
+ },
+ "stop_context": {
+  "by_error_kind": {
+   "authentication_failed": 0,
+   "other": 0,
+   "rate_limit": 0
+  },
+  "by_stop": {
+   "end_turn": 91,
+   "error": 0,
+   "no_record": 0,
+   "tool_use": 0
+  },
+  "context_at_stop": {
+   "max": 222715,
+   "p50": 76941.0,
+   "p90": 117559.0
+  },
+  "share_above_90k": 0.29,
+  "workers": 91
+ }
+}
