@@ -7,7 +7,7 @@ from .md_common import cell, gap_of
 
 def _gap(record, name):
     """The `<name>_gap` note when the section is empty, else None."""
-    return None if record.get(name) else record.get(name + "_gap")
+    return None if record.get(name) else record.get(name + "_gap") or "no data"
 
 
 def _yes_no(ok):
@@ -54,12 +54,12 @@ def prs_md(record):
     if gap:
         return gap + "\n"
     p = record["prs"]
-    cost = p["cost_per_pr"]
+    cost = p.get("cost_per_pr") or {}
     note = gap_of(p, "cost_per_pr")
     lines = [
         f"- PRs: {num(p['count'])}, merged {num(p['merged'])}",
-        f"- Cost per PR: mean {cell(cost['mean'], note, usd)}, p50 {cell(cost['p50'], note, usd)}, "
-        f"p90 {cell(cost['p90'], note, usd)}",
+        f"- Cost per PR: mean {cell(cost.get('mean'), note, usd)}, p50 {cell(cost.get('p50'), note, usd)}, "
+        f"p90 {cell(cost.get('p90'), note, usd)}",
     ]
     rows = [[cell(r["pr"]), cell(r["usd"], fmt=usd), cell(r["ci_first_pass"], fmt=_yes_no), cell(r["ci_runs"], fmt=num)]
             for r in p["per_pr"]]
@@ -76,8 +76,7 @@ def accepted_md(record):
         f"- Accepted packets: {num(a['packets'])}",
         f"- Cost per accepted change: {cell(a['cost_per_accepted_usd'], note, usd)}",
     ]
-    out = "\n".join(lines) + "\n"
-    return out + "\n" + note + "\n" if note else out
+    return "\n".join(lines) + "\n"
 
 
 def first_pass_md(record):

@@ -70,6 +70,20 @@ class StampCostPrTest(unittest.TestCase):
         self.assertIn("no ledger rows", out)
         self.assertNotIn("|", out)
 
+    def test_empty_cost_without_gap_says_no_data(self):
+        record = haiku_record()
+        record["cost"] = {}
+        out = md_campaign_cost.cost_md(record)
+        self.assertIn("no data", out)
+        self.assertNotIn("|", out)
+
+    def test_cost_per_pr_none_renders_without_error(self):
+        record = haiku_record()
+        record["prs"]["cost_per_pr"] = None
+        out = md_campaign_cost.prs_md(record)
+        self.assertIn("- Cost per PR: mean -, p50 -, p90 -", out)
+        self.assertIn("| 102 | $12.00 | no | 3 |", out)
+
 
 class AcceptedFirstPassRetriesTest(unittest.TestCase):
     def test_retries_none_sentence(self):
@@ -102,7 +116,7 @@ class AcceptedFirstPassRetriesTest(unittest.TestCase):
         out = md_campaign_cost.accepted_md(record)
         self.assertNotIn("$0.00", out)
         self.assertIn("n/a (nothing accepted)", out)
-        self.assertIn("nothing accepted", out)
+        self.assertEqual(out.count("nothing accepted"), 1)
 
     def test_accepted_cost_renders_dollars(self):
         out = md_campaign_cost.accepted_md(haiku_record())
