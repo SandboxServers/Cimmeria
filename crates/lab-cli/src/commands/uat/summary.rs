@@ -12,6 +12,9 @@ use serde::{Serialize, Serializer};
 
 use crate::batch::{PlanLane, RunRecord};
 
+use super::chaos;
+use super::golden::{default_run_ref, merge_golden, GoldenSummary};
+
 const NL: &str = "\r\n";
 
 fn eqi(a: &str, b: &str) -> bool {
@@ -91,6 +94,26 @@ pub struct Summary {
     pub rows: RowStats,
     pub lanes: Vec<LaneStat>,
     pub failures: Vec<FailureGroup>,
+    /// `--diff-golden`: the comparison of the runs without a chaos header.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub golden: Option<GoldenSummary>,
+    /// `--chaos`: the comparison of the runs that carry the runner's header.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chaos_divergence: Option<GoldenSummary>,
+    /// The batch's chaos header (set by `run_batch`, not by `merge`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chaos: Option<String>,
+    /// `--heal`: the spec diffs proposed (set by the heal pass, not by `merge`).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub heal: Vec<HealEntry>,
+}
+
+/// One heal proposal: the row, the pose and the full path of its diff file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct HealEntry {
+    pub row: String,
+    pub pose: String,
+    pub diff: String,
 }
 
 /// Aggregates run records into the summary. Lane deaths (`Index` 0) are records
@@ -181,16 +204,40 @@ pub fn merge(runs: &[RunRecord], lanes: &[PlanLane], braked: &[String]) -> Summa
         rows,
         lanes: lane_stats,
         failures,
+        // lab-chaos D-CH7: a chaos run's comparison is chaos_divergence, not golden,
+        // and the run's own verdict is left as it is. A run without the runner's
+        // header stays under golden, even in a chaos batch.
+        golden: merge_golden(&chaos::select_runs(runs, false), &default_run_ref),
+        chaos_divergence: chaos::merge_divergence(runs),
+        chaos: None,
+        heal: Vec::new(),
     }
 }
 
-/// The exit code of a batch with no golden comparison and no heal: 0 all passed,
-/// 4 a lane stopped early, else 1 (`Get-UatExitCode`). LX-17a replaces this
-/// whole function (it adds 5 and 8).
+/// The exit code of a batch (`Get-UatExitCode`): 0 every run passed; 1 a run
+/// failed; 4 a lane stopped early; 5 every run passed but the golden comparison
+/// did not match on one (a divergence, or a diff that could not be made; under
+/// chaos only the latter, because a chaos divergence is what a chaos run
+/// reports); 8 a heal proposal was written, which wins over every other code.
+/// (2 and 3 are returned before any summary exists.)
 pub fn exit_code(summary: &Summary) -> u8 {
+    if !summary.heal.is_empty() {
+        return 8;
+    }
     if summary.ok {
-        0
-    } else if summary.lanes.iter().any(|l| l.braked) {
+        if let Some(g) = &summary.golden {
+            if g.diverged + g.errors > 0 {
+                return 5;
+            }
+        }
+        if let Some(cd) = &summary.chaos_divergence {
+            if cd.errors > 0 {
+                return 5;
+            }
+        }
+        return 0;
+    }
+    if summary.lanes.iter().any(|l| l.braked) {
         4
     } else {
         1
@@ -201,6 +248,9 @@ pub fn exit_code(summary: &Summary) -> u8 {
 /// the last line ended too.
 pub fn format_markdown(summary: &Summary, title: &str, dir: &str) -> String {
     let mut lines: Vec<String> = Vec::new();
+    if let Some(chaos) = summary.chaos.as_deref().filter(|c| !c.is_empty()) {
+        lines.push(chaos.to_string());
+    }
     lines.push(format!(
         "# {title}: {} ({}/{} runs passed)",
         if summary.ok { "PASS" } else { "FAIL" },
@@ -251,6 +301,41 @@ pub fn format_markdown(summary: &Summary, title: &str, dir: &str) -> String {
                 tag,
                 f.runs.join(", ")
             ));
+        }
+    }
+    let blocks = [
+        ("Golden", &summary.golden),
+        (
+            "Chaos divergence from the golden",
+            &summary.chaos_divergence,
+        ),
+    ];
+    for (name, block) in blocks {
+        let Some(g) = block else { continue };
+        lines.push(String::new());
+        let err = if g.errors > 0 {
+            format!(", {} could not be compared", g.errors)
+        } else {
+            String::new()
+        };
+        lines.push(format!(
+            "{name}: {} match, {} diverged{err}",
+            g.matched, g.diverged
+        ));
+        for l in &g.groups {
+            lines.push(format!(
+                "- {}x {}; runs: {}",
+                l.count,
+                l.line,
+                l.runs.join(", ")
+            ));
+        }
+    }
+    if !summary.heal.is_empty() {
+        lines.push(String::new());
+        lines.push("Heal proposals (spec diffs to review; nothing was applied):".to_string());
+        for h in &summary.heal {
+            lines.push(format!("- {} {}: {}", h.row, h.pose, h.diff));
         }
     }
     lines.push(String::new());

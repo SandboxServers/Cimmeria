@@ -9,7 +9,10 @@
 
 pub mod args;
 pub mod batch_run;
+pub mod chaos;
 pub mod ctrlc;
+pub mod golden;
+pub mod json;
 pub mod lanes;
 pub mod plan;
 pub mod preflight;
