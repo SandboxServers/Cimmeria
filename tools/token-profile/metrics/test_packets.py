@@ -185,7 +185,7 @@ class SessionMatchTest(unittest.TestCase):
                                                    CAMPAIGN), "LR-01")
 
     def test_worktree_and_branch_are_separate_steps(self):
-        """The worktree names LR-01 and the branch LR-02: the worktree is the step that matches, not both texts pooled."""
+        """The worktree names LR-01 and the branch LR-02: the worktree step matches, the texts are not pooled."""
         agent = _agent("x", WORKTREE.format("lr-01"), None)
         self.assertEqual(packets.packet_of_session(agent, agent["worktree"], "lab-record/LR-02-slug",
                                                    _row_ids("LR-01", "LR-02"), CAMPAIGN), "LR-01")
