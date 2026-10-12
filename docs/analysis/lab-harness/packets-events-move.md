@@ -240,7 +240,8 @@ depends-on: none (P5 informs the follow-up only).
 
 **Files**
 - `crates/lab/src/supervisor/world/steer.rs` (`MoveConfig`, `MoveOutcome`, `MoveController`, tests)
-- `crates/lab/src/supervisor/world/movement.rs` (const, leg report, failure)
+- `crates/lab/src/supervisor/world/movement.rs` (const, leg report, failure, forward-key probe)
+- `crates/lab/src/supervisor/composite/ensure.rs` (`Next::Done` sets the login state; one test)
 - `crates/lab/src/supervisor/world/tool_tests.rs` (existing 2.5 test, new tests)
 - `docs/guides/live-research-lab.md` (lines 304 and 699, plus one new paragraph)
 
@@ -344,7 +345,92 @@ Right after `leg_reports.push(report);` add `leg_in_range.push(leg_start_m.is_so
 
 9. `movement.rs`, in the final `out` json (line 312-319) add `"already_in_range": leg_in_range.iter().all(|b| *b),` after `"arrived": true,`.
 
-10. `tool_tests.rs` line 415: change `assert!(d <= 2.5 + 0.1, "stopped {d} m away");` to `assert!(d <= 4.0 + 0.1, "stopped {d} m away");`.
+10. `movement.rs`, forward-key probe (probes C-P6: on a client whose pawn ignores movement keys the walk ended in a generic `stuck`). Three edits.
+
+(a) After `const PATH_SAMPLE_MS: u64 = 1000;` (line 28) add:
+
+```rust
+/// Forward-key liveness probe: hold the forward key this long ...
+const PROBE_HOLD_MS: u64 = 300;
+/// ... let the pose settle this long after the release ...
+const PROBE_SETTLE_MS: u64 = 100;
+/// ... and expect at least this much horizontal travel, metres. A live pawn
+/// covers about 1.5 m in 300 ms; `horizontal_m` is in metres, like `TELEPORT_M`.
+const PROBE_MIN_M: f64 = 0.1;
+```
+
+(b) In `walk`, next to the `let mut leg_in_range: Vec<bool> = Vec::new();` line added in step 6 (before `for (i, (mut goal, arrival)) in legs.into_iter().enumerate() {`), add `let mut probed = false;`.
+
+(c) In the leg loop, directly after the block
+
+```rust
+            if let Some(o) = s.outcome {
+                break o;
+            }
+```
+(original lines 235-237) and before `if let Some(u) = s.unstick {` (line 238), insert:
+
+```rust
+            // The first tick that still has to walk: prove the forward key moves the pawn.
+            // Placed after the outcome check on purpose: a target already inside
+            // `arrival_m` breaks out above, so it never costs a real move. Runs once
+            // per walk, not per leg.
+            if !probed {
+                probed = true;
+                let before = pose;
+                io.key(FORWARD_KEY, true)
+                    .await
+                    .map_err(|e| steps.fail(io.now_ms(), "input_probe", e))?;
+                io.sleep(PROBE_HOLD_MS).await;
+                io.key(FORWARD_KEY, false)
+                    .await
+                    .map_err(|e| steps.fail(io.now_ms(), "input_probe", e))?;
+                io.sleep(PROBE_SETTLE_MS).await;
+                let after = io
+                    .actor_pose(actor)
+                    .await
+                    .map_err(|e| steps.fail(io.now_ms(), "input_probe", e))?;
+                let moved_m = horizontal_m(before.pos, after.pos);
+                if moved_m < PROBE_MIN_M {
+                    return Err(steps.fail_with(
+                        io.now_ms(),
+                        "input_probe",
+                        format!(
+                            "the avatar did not move for a {PROBE_HOLD_MS} ms forward key hold ({moved_m:.2} m): movement input is not reaching the pawn (UI keys can still work); see client_input_status.held and the world state"
+                        ),
+                        json!({
+                            "before": before.to_json(),
+                            "at": after.to_json(),
+                            "moved_m": moved_m,
+                            "hold_ms": PROBE_HOLD_MS,
+                            "hint": "Not a path problem: client_input_key w with hold_ms, then compare server_entity_get. Keys are posted window messages, so client_input_status keyboard counters say nothing about it.",
+                        }),
+                    ));
+                }
+                steps.used(NativeLevel::RealInput);
+                prev = after;
+            }
+```
+`pose` and `prev` are `Pose` (`Copy`, as `prev = pose;` at line 228 already relies on), `actor` is the `let mut actor` from line 170. `release(io)` in `run` lets go of W again on any error path.
+
+11. `composite/ensure.rs`, the login label stayed `character_select` while the client was in the world (`Next::Done` returned "already in world" without recording it). Two edits:
+
+(a) Line 23: change `use crate::supervisor::{process, Supervisor};` to `use crate::supervisor::{process, LoginState, Supervisor};`.
+
+(b) In the `Next::Done => {` arm (line 351; the arm without the `if req.stop != StopAt::World` guard), make the first statement:
+
+```rust
+                Next::Done => {
+                    self.set_login_state(LoginState::InWorld).await;
+                    if req.focus {
+                        self.input_focus(true).await?;
+                    }
+```
+(`set_login_state` is `pub(crate)` on `Supervisor`, `supervisor/mod.rs:563`; `flows/world.rs:178` makes the same call after `lab_play_character`.)
+
+12. `tool_tests.rs` line 415: change `assert!(d <= 2.5 + 0.1, "stopped {d} m away");` to `assert!(d <= 4.0 + 0.1, "stopped {d} m away");`.
+
+13. `tool_tests.rs`, `move_to_times_out_with_the_distance_left` (line 384): the probe needs a pawn that moves at least 0.1 m in 300 ms, and `sim.speed_uu_s = 10.0` moves 0.03 m. Change `sim.speed_uu_s = 10.0;` to `sim.speed_uu_s = 100.0;` (30 uu = 0.3 m in the probe; 2 s of walking still leaves more than 40 m of the 50 m, so the `> 40.0` assertion holds).
 
 **Tests**
 
@@ -435,14 +521,85 @@ In `tool_tests.rs` add (needs the sim to walk away: put the target behind and ma
 ```
 (The first fails if `ENTITY_ARRIVAL_M` goes back to 2.5: the avatar is 3.8 m away and would walk 1.3 m. The second fails without step 8. Check `sim.looks` is the pub field `looks: Vec<(i32,i32,i32)>`: yes, `sim.rs:76`.)
 
-**Lane checks**: the three commands with filter `move_to` then `move_controller`.
+Forward-key probe tests (`tool_tests.rs`; `Sim.speed_uu_s = 0.0` is a pawn that ignores `W`):
+
+```rust
+    /// A pawn that ignores the forward key must fail as `input_probe`, not as
+    /// a generic stuck/timeout (C-P6).
+    #[tokio::test]
+    async fn move_to_names_a_dead_forward_key() {
+        let mut sim = Sim::new();
+        sim.speed_uu_s = 0.0;
+        let e = movement::run(
+            &mut sim,
+            MoveRequest {
+                point: Some(client_point(2500.0, 0.0, 0.0)),
+                ..MoveRequest::default()
+            },
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(e.step, "input_probe");
+        assert!(e.message.contains("did not move"), "{}", e.message);
+        assert!(e.to_json()["state"]["moved_m"].as_f64().unwrap() < 0.1);
+        assert!(!sim.keys["W"], "forward key left held after a failure");
+    }
+
+    /// A target already inside the arrival radius costs no real move: the
+    /// probe sits after the arrival check. A dead-W pawn would fail the probe,
+    /// so success here proves the probe did not run.
+    #[tokio::test]
+    async fn move_to_in_range_does_not_probe() {
+        let mut sim = Sim::new();
+        sim.speed_uu_s = 0.0;
+        let out = movement::run(
+            &mut sim,
+            MoveRequest {
+                point: Some(client_point(100.0, 0.0, 0.0)), // 1 m, arrival 1.5 m
+                ..MoveRequest::default()
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(out["arrived"], true);
+        assert!(!sim.keys.get("W").copied().unwrap_or(false));
+    }
+```
+Fail on revert: without step 10 the first test gets `leg_0`/`stuck` (or a timeout), not `input_probe`, so `assert_eq!(e.step, "input_probe")` fails. The second guards the placement: move the probe above the outcome check and it fails with `input_probe`. The healthy-pawn path is covered by every existing walking test (they all pass through the probe and must still arrive).
+
+Login-state guard (`composite/ensure.rs`, in its existing `#[cfg(test)] mod tests`). The Done arm needs a live bridge to run, so this is a textual guard on the source, which still fails on revert:
+
+```rust
+    /// `Next::Done` (already in the world) must record the login state, or
+    /// `lab_client_status` keeps a stale `character_select` label.
+    #[test]
+    fn the_done_arm_records_in_world() {
+        let src = include_str!("ensure.rs");
+        let arm = src
+            .find(concat!("Next::Done", " => {"))
+            .expect("the unguarded Done arm");
+        let body = &src[arm..arm + 200];
+        let set = body
+            .find("self.set_login_state(LoginState::InWorld).await;")
+            .expect("Done arm sets the login state");
+        let focus = body.find("if req.focus").expect("focus follows");
+        assert!(set < focus);
+    }
+```
+(The needle is built with `concat!` so this test's own text does not match it. `Next::Done => {` with a brace occurs once outside the test: the guarded arm reads `Next::Done if req.stop`, and the other arms read `Next::Done => break,` or `Next::Done` inside `assert_eq!`.)
+
+**Lane checks**: the three commands with filter `move_to`, then `move_controller`, then `the_done_arm`.
 
 **Docs**
 - `docs/guides/live-research-lab.md` line 699 row: replace `` `arrival_m` (1.5, or 2.5 for an entity) `` with `` `arrival_m` (1.5, or 4.0 for an entity: inside the 3.5 to 4.5 m a click or trainer needs) ``, and append to the result column: `` ; `already_in_range` when no leg had to move. A walk that gets farther from the goal than it has been by 6 m stops with a \`diverged\` failure; every failure carries \`path\`, \`turn_gain\`, \`start_distance_m\` and a \`hint\` ``.
 - After the table paragraph that contains that row add this paragraph (new): `` `client_move_to` walks a straight line with `W` and mouse-look. It cannot path-find, so a wall or counter on the way (the Castle_CellBlock hub is full of them) ends it as `stuck`. Go round with `waypoints`, hold a key (`{"do":"key","key":"s","hold_ms":2500}` in `client_ui_sequence`), or teleport on the server (`gotoxyz`, `server_console_exec`) and click without walking. Check `already_in_range` first: a target within 4 m needs no walk. ``
+- `docs/guides/live-research-lab.md`, in the `client_input_status` row (line 293) append: `` `events_delivered` and `data_reads_keyboard` are the DirectInput counters the mouse-look path moves; they read 0 on a client whose keyboard works. Keys are posted window messages (`WM_KEYDOWN`/`WM_KEYUP`), so these counters are not keyboard health. To test movement input, hold `client_input_key {key:"w", hold_ms:1500}` and compare `server_entity_get`; `client_move_to` does this itself and fails as `input_probe` when the avatar does not move. ``
+- Also in that guide (one sentence, next to the `ui_sequence` key-hold advice added above): the `ui_sequence` `key` step and `client_input_key` use the same `post_key` path, so a held key in a sequence is no workaround for a pawn that ignores `client_input_key`.
 - `.claude/agents/lab-driver.md`: no change.
 
 **Live smoke**: character in the Castle_CellBlock hub, vendor within 4 m: `client_move_to {name:"<vendor>"}` returns `arrived:true, already_in_range:true` and `server_entity_get` shows the avatar position unchanged (to 0.1 m). Then a vendor 10 m away with a clear line: arrives at 3.5-4.0 m. Then one behind a wall: fails `stuck` or `diverged` within about 12 s with `path` in the result and the avatar not farther than 6 m from where it was closest.
+
+Then, on a client whose pawn ignores `W` (the default instance in the Castle_CellBlock new-character state, 2026-10-12; root cause not proven, see probes C-P6): `client_move_to` to a vendor 10 m away fails within 1 s with `step: "input_probe"` and the `before`/`at`/`moved_m` evidence, instead of `stuck` after 12 s. After `lab_ensure_in_world` on an already-in-world client, `lab_client_status.login_state` is `in_world`.
 
 **Commit**: `fix(lab): client_move_to stops at interact range, aborts when walking away, fails with evidence (LH-10)`
 
@@ -744,65 +901,169 @@ and in `chat_log()` after `out["capture"] = rep.to_json();` (line 232) add
 
 ---
 
-### LH-12: say why the click ring failed to install (S)
+### LH-12: say why the click ring failed to install, and install it on a host that can take it (S)
 
-depends-on: P4. LH-11 (the keeper retries the install each second, which also covers a first pump before the world loaded).
+depends-on: P4 (done: it found `Root` cannot host the subscription; see probes C-P4 and C-P7). LH-11 (the keeper retries the install each second, which also covers a first pump before the world loaded).
+
+**What the investigation found (2026-10-12, live, instance p2, SGC_W1)**
+- `getWindow("Root")` succeeds, but `Root:subscribeGlobal(...)` raises `Window 'Root' is not a child of a ScriptedWindow`. The current chunk picks `Root` first and never falls back (the fallback only runs when `getWindow` fails), so the install fails on every client.
+- `BackgroundWin:subscribeGlobal(CEGUI.Window.EventNamespace, CEGUI.Window.EventMouseClick, "CimmeriaLab.on_click")` succeeds (`ns` = `Window`, `ev` = `MouseClick`; the stock chat does the same on `Inst1ChatWin`, `ChatWindow.lua:1317`). The global event is not scoped to the host: clicks on `MissionTrackerWin` and `SelfStatusWin` reached the handler with the host on `BackgroundWin`.
+- The handler is bound by name when `subscribeGlobal` runs. Redefining `CimmeriaLab.<name>` afterwards does not rebind it. `L.on_click` must exist before the subscribe (it does in the chunk: it is defined above the install block; keep it so).
+- The ns/ev must be the pair `Window` + `MouseClick`; `ev = "Window/MouseClick"` raises "not a known event".
 
 **Files**
-- `crates/lab/src/supervisor/events/lua_rings.rs` (install chunk, one test)
+- `crates/lab/src/supervisor/events/lua_rings.rs` (module doc, install chunk, doc comment on `RingRead.install`, two tests)
 - `docs/guides/live-research-lab.md`
 
-**Steps**
+**Steps** (all in `lua_rings.rs`; the chunk is a `format!` raw string, so a literal `{` or `}` is written `{{` or `}}`)
 
-1. `lua_rings.rs` line 238-239 currently:
-
-```
-  local oks = pcall(function() host:subscribeGlobal(ns, ev, "{click_handler}") end)
-  if oks then L.click_host = host st_click = "installed" else st_click = "failed" end
-```
-Replace with (note `serr` and the 120-char clip, `clean` strips tabs and newlines so the status stays one tab-separated field):
+1. Module doc, lines 52-54. Replace
 
 ```
-  local oks, serr = pcall(function() host:subscribeGlobal(ns, ev, "{click_handler}") end)
-  if oks then L.click_host = host st_click = "installed" else st_click = "failed: " .. string.sub(clean(serr), 1, 120) end
+//! `epoch`), which installs it again. The host is `Root`, the ancestor of
+//! every window, so a subscription scoped to the host's subtree still sees
+//! all clicks; `BackgroundWin` is only the fallback. In CEGUI 0.6 an
 ```
-The pcall at line 224 (`local okc = pcall(function()`) swallows an error raised before this; change it to `local okc, cerr = pcall(function()` and line 241 `if not okc then st_click = "failed" end` to `if not okc then st_click = "failed: " .. string.sub(clean(cerr), 1, 120) end`.
+with
 
-2. Update the doc comment on `RingRead.install` (line 282-286): `failed` becomes `failed: <error text>`. Nothing else matches on the literal `failed` (grep of `lua_install` shows only `combat_log.rs:112`, which reads the `combat` ring status).
+```
+//! `epoch`), which installs it again. The hosts are tried in order,
+//! `BackgroundWin` then `Root`, moving on when the subscribe itself fails
+//! (`Root` is not a child of a ScriptedWindow, so it raises; the global
+//! event fires for every window's click whichever window hosts it). The
+//! status names the host used, or the error text of every host that
+//! failed. In CEGUI 0.6 an
+```
 
-3. Fix per P4: if P4 shows the `CEGUI.Window.*` constants are the problem, change lines 233-237 to use only the literals (`local ns, ev = "Window", "MouseClick"`) and update the test `chunk_subscribes_the_click_ring_globally_and_reads_after_its_mark` (lines 425-427) which asserts those two `CEGUI.Window` lines. If P4 shows `Root` is the problem, swap the order so `BackgroundWin` is tried first and update `the_click_install_is_idempotent` (lines 463-468: it asserts Root before BackgroundWin). If P4 shows the subscribe succeeds, change nothing else.
+2. Install block, lines 222-241. Replace the whole text from `local st_click = "missing"` through `if not okc then st_click = "failed" end` (exactly the current lines 222-241) with:
 
-**Test** (in `lua_rings.rs` `tests`):
+```
+local st_click = "missing"
+-- Its own pcall: a fault in the click install must not cost the combat and chat rings their pump.
+local okc, cerr = pcall(function()
+  if L.click_host ~= nil then st_click = "ok host=" .. tostring(L.click_host_name) return end
+  local ns, ev = "Window", "MouseClick"
+  if type(CEGUI) == "table" and type(CEGUI.Window) == "table" then
+    ns = CEGUI.Window.EventNamespace or ns
+    ev = CEGUI.Window.EventMouseClick or ev
+  end
+  -- Hosts in order. "Root" is not a child of a ScriptedWindow, so its subscribe raises; BackgroundWin
+  -- takes it, and the global event fires for every window's click whichever window hosts it.
+  -- L.on_click is defined above, before any subscribe: the handler is bound by name at subscribe time.
+  local errs = {{}}
+  for _, hn in ipairs({{ "BackgroundWin", "Root" }}) do
+    local okw, host = pcall(function() return rawget(_G, hn) or getWindow(hn) end)
+    if not okw then
+      errs[#errs + 1] = hn .. "=" .. string.sub(clean(host), 1, 120)
+    elseif host == nil then
+      errs[#errs + 1] = hn .. "=no window"
+    else
+      local oks, serr = pcall(function() host:subscribeGlobal(ns, ev, "{click_handler}") end)
+      if oks then
+        L.click_host = host
+        L.click_host_name = hn
+        st_click = "installed host=" .. hn
+        return
+      end
+      errs[#errs + 1] = hn .. "=" .. string.sub(clean(serr), 1, 120)
+    end
+  end
+  st_click = "failed: " .. table.concat(errs, "; ")
+end)
+if not okc then st_click = "failed: " .. string.sub(clean(cerr), 1, 120) end
+```
+Notes: a failed attempt subscribes nothing (each failed host raised before binding), so retrying on the next pump cannot stack handlers; `L.click_host` is set only on success, which keeps the single-subscribe gate. `subscribeGlobal` appears once in the chunk. The status stays one tab-free field (`clean` strips control characters; `; ` separates hosts).
+
+3. Doc comment on `RingRead.install` (lines 282-286). Replace
+
+```
+    /// loaded: the client is not in the world yet). The click ring reports
+    /// `ok`, `installed`, `failed` (`subscribeGlobal` raised) or `missing`
+    /// (no host window yet).
+```
+with
+
+```
+    /// loaded: the client is not in the world yet). The click ring reports
+    /// `ok host=<name>`, `installed host=<name>`, `failed: <host>=<error>; ...`
+    /// (one entry per host tried, with its Lua error text) or `missing`.
+```
+Nothing else matches on the literal click status (`combat_log.rs:112` reads the `combat` ring only).
+
+4. Tests, `lua_rings.rs` `tests`. (a) `the_click_install_is_idempotent` (lines 451-475): replace the body from `let gate = ...` through the `assert!(guard < gate && ...)` line with:
 
 ```rust
-    /// A failed click install must carry its reason: `failed` alone gave the
-    /// caller nothing to act on (#1660).
+        let gate = c
+            .find(r#"if L.click_host ~= nil then st_click = "ok host=" .. tostring(L.click_host_name) return end"#)
+            .expect("install gate");
+        let sub = c.find("host:subscribeGlobal").unwrap();
+        let set = c
+            .find("L.click_host = host")
+            .expect("host recorded only on success");
+        assert!(gate < sub && sub < set);
+        // BackgroundWin is tried first and Root is only the fallback: Root is
+        // not a child of a ScriptedWindow, so its subscribe raises.
+        let hosts = c
+            .find(r#"ipairs({ "BackgroundWin", "Root" })"#)
+            .expect("hosts in order, BackgroundWin first");
+        assert!(gate < hosts && hosts < sub);
+        assert!(!c.contains(r#"pcall(getWindow, "Root")"#), "the Root-only host choice is back");
+        // The handler is defined before the subscribe (it is bound by name).
+        assert!(c.find("L.on_click = function").unwrap() < sub);
+        // The install has its own pcall, opened before the gate, so a fault
+        // there cannot stop the combat and chat reads that follow.
+        let guard = c
+            .find("local okc, cerr = pcall(function()")
+            .expect("install pcall");
+        assert!(guard < gate && sub < c.find("add(\"head\", \"combat\"").unwrap());
+```
+(The first line of the test, `assert_eq!(c.matches("subscribeGlobal").count(), 1);`, stays.)
+
+(b) Add:
+
+```rust
+    /// A failed click install names every host it tried with the Lua error,
+    /// and the host that worked (#1660, probes C-P4 and C-P7). `failed` alone
+    /// gave the caller nothing to act on, and the Root-only choice failed
+    /// on every client.
     #[test]
-    fn a_failed_click_install_reports_the_error_text() {
+    fn a_failed_click_install_reports_each_hosts_error_text() {
         let c = pump_chunk(0, 0, 0, READ_MAX);
-        assert!(c.contains(
-            r#"local oks, serr = pcall(function() host:subscribeGlobal(ns, ev, "CimmeriaLab.on_click") end)"#
-        ));
-        assert!(c.contains(r#"st_click = "failed: " .. string.sub(clean(serr), 1, 120)"#));
-        assert!(c.contains(r#"local okc, cerr = pcall(function()"#));
-        // The status stays a single tab-separated field.
-        let r = parse_ring_read(&s(&["install\tclick\tfailed: bad argument #2 to 'subscribeGlobal'"]));
+        // Failure carries the error text of each host, clipped to 120 chars.
+        assert!(c.contains(r#"local oks, serr = pcall(function() host:subscribeGlobal(ns, ev, "CimmeriaLab.on_click") end)"#));
+        assert!(c.contains(r#"errs[#errs + 1] = hn .. "=" .. string.sub(clean(serr), 1, 120)"#));
+        assert!(c.contains(r#"st_click = "failed: " .. table.concat(errs, "; ")"#));
+        assert!(c.contains(r#"if not okc then st_click = "failed: " .. string.sub(clean(cerr), 1, 120) end"#));
+        // Success names the host.
+        assert!(c.contains(r#"st_click = "installed host=" .. hn"#));
+        // The pump parses the new statuses as one field each.
+        let r = parse_ring_read(&s(&[
+            "install\tclick\tfailed: BackgroundWin=no window; Root=Window 'Root' is not a child of a ScriptedWindow",
+            "install\tchat\tok",
+        ]));
         assert_eq!(
-            r.install,
-            vec![("click".to_string(), "failed: bad argument #2 to 'subscribeGlobal'".to_string())]
+            r.install[0],
+            (
+                "click".to_string(),
+                "failed: BackgroundWin=no window; Root=Window 'Root' is not a child of a ScriptedWindow".to_string()
+            )
         );
         assert!(r.bad_lines.is_empty());
+        let r = parse_ring_read(&s(&["install\tclick\tinstalled host=BackgroundWin"]));
+        assert_eq!(r.install, vec![("click".to_string(), "installed host=BackgroundWin".to_string())]);
     }
 ```
-(Fails when reverted: the old chunk has no `serr`.)
+(c) `chunk_subscribes_the_click_ring_globally_and_reads_after_its_mark` (lines 420-445) is unchanged: it still asserts the `ns`/`ev` lines and `host:subscribeGlobal(ns, ev, "CimmeriaLab.on_click")`, all of which the new chunk keeps. The `parse_ring_read` tests at lines 497 and 505 are unchanged: `installed` stays a valid opaque status string.
+
+Why (a) and (b) fail if the Root-only path returns: the old chunk has `pcall(getWindow, "Root")`, no `ipairs({ "BackgroundWin", "Root" })`, no `errs`, and a bare `"failed"`. Running Lua is not available in the workspace (module doc), so these are textual checks of the chunk, like the existing click tests; the live check below is the behavioural proof.
 
 **Lane checks**: the three commands, filter `lua_rings`.
 
-**Docs**: `docs/guides/live-research-lab.md`: where the click ring statuses are described (search `installed_no_resubscribe` / `ui.click`, near line 697-708) add: `` A click ring that cannot install reports `failed: <the Lua error>` in `lua_install`; an `Error`-free `missing` means the host window is not up yet. `bridge_dropped` in the same report is a different ring (see the keeper paragraph). ``
+**Docs**: `docs/guides/live-research-lab.md`: where the click ring statuses are described (search `installed_no_resubscribe` / `ui.click`, near lines 697-708) add: `` The click ring subscribes on `BackgroundWin` (`Root` is not a child of a ScriptedWindow, so it cannot host a global subscription); the report says `installed host=BackgroundWin` once and `ok host=BackgroundWin` afterwards. A ring that cannot install reports `failed: <host>=<Lua error>; ...` in `lua_install`, one entry per host tried; `missing` means the install block did not run (the pump read no status). The ring sees every window's click, not just the host's. `bridge_dropped` in the same report is a different ring (see the keeper paragraph). ``
 
-**Live smoke**: `client_chat_log` (any), read `capture.lua_install`: `click: installed` (or `ok`) after P4's fix; open and close a window by `client_window_click` and `client_wait_event {kind:"ui.click"}` returns the click. If it still fails, the status now names the Lua error: record it in the LR-13 worknote.
+**Live smoke** (lab, ask first; any instance in the world): the next pump after `lab_ensure_in_world` reports `lua_install` click `installed host=BackgroundWin`, then `ok host=BackgroundWin`. `client_ui_click {window: "MissionTrackerWin"}` then `client_wait_event {kind:"ui.click"}` returns a record `{window:"MissionTrackerWin", button:"MissionTracker_Handle", mouse:"left"}` (the 2026-10-12 live names). Clicking the middle of `Inst1ChatWin` records nothing (a child consumes it; not investigated), so do not use it as the check. If the install still fails, the status now names each host's Lua error: record it in the LR-13 worknote.
 
-**Commit**: `fix(lab): click ring install failure reports its error text (LH-12)`
+**Commit**: `fix(lab): click ring installs on BackgroundWin and reports each host's error (LH-12)`
 
 ---
 
