@@ -1,4 +1,4 @@
-"""Merges the cost, packets and ledger files for one campaign into its core report record (CM-08b)."""
+"""Merges the input files into one report record per campaign: the core merge (CM-08b), then GitHub and overstep (CM-08c)."""
 
 import copy
 
@@ -50,3 +50,138 @@ def assemble_core(name, cost_doc, packets_doc, ledger_doc):
         for p in packets
     ]
     return out
+
+
+def _share(flags):
+    """Share of True among the flags that are not None, rounded to 2 places, or None when there are none."""
+    flags = [f for f in flags if f is not None]
+    return round(sum(1 for f in flags if f) / len(flags), 2) if flags else None
+
+
+def _put(out, key, value, gap):
+    """Store a rate; a rate with no rows is None with a gap note, never 0."""
+    out[key] = value
+    if value is None:
+        out[f"{key}_gap"] = gap
+
+
+def attach_github(record, github_doc):
+    """Add the CI, queue and escaped-defect figures of campaign `record` from the GitHub collector output (CM-08c)."""
+    name = record["campaign"]
+    ci_rows = [
+        row
+        for row in github_doc.get("prs") or []
+        if row.get("campaign") == name and (row.get("ci") or {}).get("first_attempt") is not None
+    ]
+
+    ci = {}
+    _put(ci, "first_attempt_rate", _share(r["ci"]["first_attempt"] for r in ci_rows), "no CI data")
+    _put(ci, "overall_rate", _share(r["ci"]["overall"] for r in ci_rows), "no CI data")
+    _put(
+        ci,
+        "code_prs_first_attempt_rate",
+        _share(r["ci"]["first_attempt"] for r in ci_rows if r.get("code_pr")),
+        "no CI data",
+    )
+    _put(ci, "queue_first_attempt_rate", _share((r.get("queue") or {}).get("first_attempt") for r in ci_rows), "no CI data")
+    ci["pr_runs_total"] = sum(r["ci"].get("runs") or 0 for r in ci_rows)
+    record["ci"] = ci
+
+    ci_by_pr = {row["number"]: row.get("ci") or {} for row in github_doc.get("prs") or []}
+    for entry in record["prs"]["per_pr"]:
+        pr_ci = ci_by_pr.get(entry["pr"], {})
+        entry["ci_first_pass"] = pr_ci.get("first_attempt")
+        entry["ci_runs"] = pr_ci.get("runs")
+
+    merged = record["prs"].get("merged")
+    defects = (github_doc.get("escaped_defects") or {}).get(name, [])
+    escaped = {"count": len(defects)}
+    _put(
+        escaped,
+        "rate_per_merged_pr",
+        len(defects) / merged if merged else None,
+        "no merged PRs",
+    )
+    escaped["items"] = [
+        {key: item.get(key) for key in ("kind", "number", "cites", "days_after_merge")} for item in defects
+    ]
+    record["escaped_defects"] = escaped
+
+
+def _usd(rules, rule):
+    """The dollars of overstep rule `rule`; a rule that did not fire counts as 0.0."""
+    return (rules.get(rule) or {}).get("usd", 0.0)
+
+
+def attach_overstep(record, overstep_doc):
+    """Add the overstep dollars and recoverable range of campaign `record` from the overstep output (CM-08c)."""
+    entry = (overstep_doc.get("by_campaign") or {}).get(record["campaign"])
+    if entry is None:
+        # The rules apply to the Haiku regime only: an old campaign has no figures, any other has zeros.
+        if record["regime"] == "old":
+            record["overstep"] = {
+                "opus_coding_usd": None,
+                "opus_research_usd": None,
+                "sonnet_implementing_usd": None,
+                "wasted_usd": None,
+                "recoverable_usd": {"low": None, "high": None},
+                "rules": {},
+                "items": [],
+                "overstep_gap": "predates the regime switch; the rules apply to the Haiku regime",
+            }
+        else:
+            record["overstep"] = {
+                "opus_coding_usd": 0.0,
+                "opus_research_usd": 0.0,
+                "sonnet_implementing_usd": 0.0,
+                "wasted_usd": 0.0,
+                "recoverable_usd": {"low": 0.0, "high": 0.0},
+                "rules": {},
+                "items": [],
+            }
+        return
+
+    rules = entry.get("rules") or {}
+    record["overstep"] = {
+        "opus_coding_usd": _usd(rules, "O1"),
+        "opus_research_usd": _usd(rules, "O2"),
+        "sonnet_implementing_usd": _usd(rules, "O3"),
+        # Wasted cost is the headline figure: the campaign total is the rounded sum over its rules, None without rules.
+        "wasted_usd": round(sum(body.get("wasted_usd") or 0.0 for body in rules.values()), 2) if rules else None,
+        "recoverable_usd": {"low": entry.get("recoverable_low"), "high": entry.get("recoverable_high")},
+        "rules": {
+            rule: {"count": body.get("count"), "usd": body.get("usd"), "wasted_usd": body.get("wasted_usd")}
+            for rule, body in rules.items()
+        },
+        "items": copy.deepcopy(entry.get("items") or []),
+    }
+
+
+def assemble(inputs):
+    """Return {"campaigns": {name: record}, "meta": {...}} for every campaign with spend; an empty input gives no campaigns."""
+    cost_doc = inputs.get("cost") or {}
+    ledger_doc = inputs.get("ledger") or {}
+    github_doc = inputs.get("github") or {}
+    packets_doc = inputs.get("packets") or {}
+    overstep_doc = inputs.get("overstep") or {}
+    cost_campaigns = cost_doc.get("campaigns") or {}
+
+    campaigns = {}
+    for name in cost_campaigns:
+        record = assemble_core(name, cost_doc, packets_doc, ledger_doc)
+        attach_github(record, github_doc)
+        attach_overstep(record, overstep_doc)
+        campaigns[name] = record
+
+    fixer_requests = overstep_doc.get("fixer_requests")
+    ledger_campaigns = ledger_doc.get("campaigns") or {}
+    meta = {
+        "stamp": copy.deepcopy(cost_doc.get("stamp")),
+        "unmapped_share": (packets_doc.get("sessions") or {}).get("unmapped_share"),
+        "untagged_prs": github_doc.get("untagged_prs"),
+        "opus_subagents": overstep_doc.get("opus_subagents"),
+        "fixer_requests_total": sum(fixer_requests.values()) if fixer_requests is not None else None,
+        "missing_inputs": inputs.get("missing"),
+        "skipped_ledger_campaigns": len(set(ledger_campaigns) - set(cost_campaigns)),
+    }
+    return {"campaigns": campaigns, "meta": meta}
