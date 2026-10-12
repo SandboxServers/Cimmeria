@@ -322,3 +322,74 @@ fn env_value_and_value_flag_conflict() {
     assert_eq!(run.code, 2);
     assert!(!lab.file().exists());
 }
+
+// New: other lines stay byte-identical through set and unset (odd spacing, LF
+// endings, a stray line, a lower-case key, no final newline).
+#[test]
+fn env_set_and_unset_leave_other_lines_byte_identical() {
+    let lab = Lab::new();
+    lab.seed("# c\n  spaced = 1  \nfoo=low\nstray-line\n\nTARGET=old\n#end");
+    assert_eq!(lab.run(&["set", "TARGET", "new"]).code, 0);
+    assert_eq!(
+        lab.read(),
+        "# c\r\n  spaced = 1  \r\nfoo=low\r\nstray-line\r\n\r\nTARGET=new\r\n#end\r\n"
+    );
+    assert_eq!(lab.run(&["unset", "TARGET"]).code, 0);
+    assert_eq!(
+        lab.read(),
+        "# c\r\n  spaced = 1  \r\nfoo=low\r\nstray-line\r\n\r\n#end\r\n"
+    );
+}
+
+// New: the listing and get never print a bearer token, a 64-hex token, URL
+// userinfo or host, or a stray pasted line.
+#[test]
+fn env_masks_bearer_hex_url_and_stray_lines() {
+    let lab = Lab::new();
+    let hex = "0123456789abcdef".repeat(4);
+    lab.seed(&format!(
+        "U=http://user:p/ss@host.example:8779/x\r\nN=Authorization Bearer abc123def\r\nH={hex}\r\n# note TOKEN=abc\r\npasted-secret-line\r\n"
+    ));
+    let listed = lab.run(&[]);
+    assert_eq!(listed.code, 0, "{}", listed.err);
+    assert_eq!(
+        listed.out,
+        "U=http://<host>:8779/x\nN=Authorization <redacted>\nH=<redacted>\n# note TOKEN=<redacted>\n<unparsed line>\n"
+    );
+    let got = lab.run(&["get", "U"]);
+    assert_eq!(got.out, "http://<host>:8779/x\n");
+    for text in [&listed.out, &got.out] {
+        for secret in ["user", "host.example", "abc123def", hex.as_str(), "pasted"] {
+            assert!(!text.contains(secret), "{secret} leaked in {text}");
+        }
+    }
+}
+
+// New: an empty verb lists, as `-not $Verb` did in the PowerShell.
+#[test]
+fn env_empty_verb_lists() {
+    let lab = Lab::new();
+    lab.seed(START);
+    let run = lab.run(&[""]);
+    assert_eq!(run.code, 0, "{}", run.err);
+    assert!(run.out.starts_with("# head\n"), "{}", run.out);
+}
+
+// New: a labd.env that exists but cannot be read (a folder stands in for it)
+// is `cannot read`, exit 1, and set writes nothing.
+#[test]
+fn env_unreadable_labd_env_exits_1() {
+    let lab = Lab::new();
+    std::fs::create_dir(lab.file()).expect("labd.env folder");
+    for args in [&[][..], &["get", "A"][..], &["set", "A", "1"][..]] {
+        let run = lab.run(args);
+        assert_eq!(run.code, 1, "{args:?}: {}", run.err);
+        assert!(
+            run.err
+                .starts_with(&format!("cannot read {}: ", lab.file().display())),
+            "{}",
+            run.err
+        );
+    }
+    assert!(lab.backups().is_empty());
+}

@@ -105,7 +105,8 @@ fn usage(ui: &Ui, message: &str) -> Outcome {
 
 /// Runs `lab env` against the labd.env at `path`.
 pub(crate) fn exec(args: &Args, ui: &Ui, path: &Path) -> Outcome {
-    let Some(verb_text) = args.verb.as_deref() else {
+    // An empty verb lists too: the PowerShell tested `-not $Verb`.
+    let Some(verb_text) = args.verb.as_deref().filter(|verb| !verb.is_empty()) else {
         return list(ui, path);
     };
     let verb = verb_text.to_ascii_lowercase();
@@ -389,6 +390,53 @@ mod exec_tests {
             format!("error: set needs KEY and VALUE\n  hint: {USAGE}\n")
         );
         assert!(outcome.err.contains("\x1b[1;31merror:\x1b[0m"));
+    }
+
+    fn args(verb: &str, key: &str) -> Args {
+        Args {
+            verb: Some(verb.to_string()),
+            key: Some(key.to_string()),
+            value: None,
+            value_flag: None,
+        }
+    }
+
+    /// New: fancy unset of an absent key is a yellow `!` line and writes nothing.
+    #[test]
+    fn fancy_unset_of_an_absent_key_warns_and_writes_nothing() {
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let path = dir.path().join("labd.env");
+        std::fs::write(&path, "A=1\r\n").expect("seed labd.env");
+        let outcome = exec(&args("unset", "NOPE"), &fancy(), &path);
+        assert_eq!(outcome.code, 0);
+        assert_eq!(
+            strip_ansi(&outcome.out),
+            "! NOPE is not set; labd.env unchanged\n"
+        );
+        assert!(outcome.out.contains("\x1b[33m"), "{}", outcome.out);
+        assert_eq!(std::fs::read_dir(dir.path()).expect("dir").count(), 1);
+    }
+
+    /// New: fancy listing of a missing file is `error:` plus a dim hint.
+    #[test]
+    fn fancy_listing_without_a_file_has_the_error_label_and_a_hint() {
+        let dir = tempfile::TempDir::new().expect("temp dir");
+        let path = dir.path().join("labd.env");
+        let none = Args {
+            verb: None,
+            key: None,
+            value: None,
+            value_flag: None,
+        };
+        let outcome = exec(&none, &fancy(), &path);
+        assert_eq!(outcome.code, 1);
+        assert_eq!(
+            strip_ansi(&outcome.err),
+            format!(
+                "error: no labd.env at {}\n  hint: lab env set KEY VALUE creates it\n",
+                path.display()
+            )
+        );
     }
 
     /// New: fancy success shows a check, the backup path and the restart hint.
