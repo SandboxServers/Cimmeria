@@ -124,6 +124,18 @@ class OpusSubagentTest(unittest.TestCase):
         self.assertEqual(result["hits"], {})
 
 
+class WindowTest(unittest.TestCase):
+    def test_a_fractional_second_at_the_regime_switch_is_included(self):
+        # As text "...54.500Z" sorts before the switch "...54Z", so a string compare dropped it.
+        req = _req(ts="2026-10-10T20:02:54.500Z", calls=[_call("Edit", "crates/gameserver/src/lib.rs")])
+        self.assertEqual(_detect([req])["requests"], 1)
+
+    def test_fixer_requests_are_counted_per_worktree_for_fixer_heavy(self):
+        fixer = _req(agent_id="a3", agent_type="packet-review-fixer", worktree=".claude/worktrees/cm-07")
+        result = _detect([fixer, _req(request_id="r3", worktree=".claude/worktrees/cm-07")])
+        self.assertEqual(result["fixer_requests"], {"cm-07": 1})
+
+
 class RepriceTest(unittest.TestCase):
     def test_worktree_name_is_the_last_segment_lower_cased(self):
         self.assertEqual(overstep.worktree_name(".claude\\worktrees\\CM-07"), "cm-07")

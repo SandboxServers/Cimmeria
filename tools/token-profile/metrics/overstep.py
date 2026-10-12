@@ -195,16 +195,21 @@ def detect(requests, packets, windows, cfg, version=prices.CURRENT):
     sonnet_implementing. Requests before the regime switch or at/after the window's end are ignored. The
     main session's role is coordinator; a subagent's comes from cfg roles by its agent type.
     """
-    regime, until = cfg["regime_switch"], cfg["window"]["until"]
+    regime, until = parse_ts(cfg["regime_switch"]), parse_ts(cfg["window"]["until"])
     rules = cfg["overstep"]
-    windows = {n: {"start": w["start"], "end": w["end"] or until} for n, w in windows.items()}
-    reqs = sorted((dict(r) for r in requests if regime <= r["ts"] < until), key=lambda r: r["ts"])
+    windows = {n: {"start": w["start"], "end": w["end"] or cfg["window"]["until"]} for n, w in windows.items()}
+    reqs = sorted((dict(r) for r in requests if regime <= parse_ts(r["ts"]) < until), key=lambda r: parse_ts(r["ts"]))
     streams = {}
+    fixers = {}
     for req in reqs:
         req["role"] = "coordinator" if req["agent_id"] is None else cfg["roles"].get(req["agent_type"])
         stream = streams.setdefault((req["session_id"], req["agent_id"]), [])
         req["seq"] = len(stream)
         stream.append(req)
+        # fixer-heavy is deferred until CM-06 supplies fix_commits; CM-08 joins these per-worktree counts with them.
+        name = worktree_name(req["worktree"])
+        if req["role"] == "fixer" and name:
+            fixers[name] = fixers.get(name, 0) + 1
     hits = []
     for req in reqs:
         call = opus_coding(req, rules)
@@ -240,7 +245,8 @@ def detect(requests, packets, windows, cfg, version=prices.CURRENT):
                                    "model": head["model"], "usd": round(actual, 6), "tool": call.get("tool_name"),
                                    "path_class": _path_class(call)})
     opus_subagents = sum(opus_subagent(r, packets) for r in reqs)
-    return {"by_campaign": out, "opus_subagents": opus_subagents, "requests": len(reqs), "hits": counts}
+    return {"by_campaign": out, "opus_subagents": opus_subagents, "requests": len(reqs), "hits": counts,
+            "fixer_requests": fixers}
 
 
 REQUEST_SQL = """

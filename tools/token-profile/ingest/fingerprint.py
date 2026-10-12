@@ -9,7 +9,8 @@ Adding to the allowlist is a reviewed change.
 import re
 
 SHELL_TOOLS = {"Bash", "PowerShell"}
-PATH_TOOLS = {"Read": "file_path", "Edit": "file_path", "Write": "file_path", "Grep": "path", "Glob": "path"}
+PATH_TOOLS = {"Read": "file_path", "Edit": "file_path", "Write": "file_path", "NotebookEdit": "notebook_path",
+              "Grep": "path", "Glob": "path"}
 PWSH_SCRIPTS = {"tools/build-lane/lane.ps1", "tools/build-lane/live-db-test.ps1", "tools/build-lane/mk-worktree.ps1",
                 "tools/build-lane/rm-worktree.ps1"}
 

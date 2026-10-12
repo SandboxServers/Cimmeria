@@ -94,6 +94,8 @@ class FingerprintTest(unittest.TestCase):
         self.assertEqual(repo_relative("/etc/passwd", root), "<external>")
         self.assertEqual(repo_relative("../../outside", root), "<external>")
         self.assertEqual(repo_relative("docs/b.md", root), "docs/b.md")
+        self.assertEqual(fingerprint("NotebookEdit", {"notebook_path": "C:\\Users\\x\\src\\Cimmeria\\docs\\n.ipynb"}, root),
+                         ("docs/n.ipynb", None))
 
     def test_mcp_and_others(self):
         self.assertEqual(fingerprint("mcp__ghidra__decompile_function", {"x": "C:\\secret"}),
