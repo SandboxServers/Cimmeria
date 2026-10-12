@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 use super::*;
 use crate::lease::permit::{scope, Permit};
 use crate::lease::{AcquireRequest, LeaseBook};
-use crate::supervisor::cegui_fake::{self, FakeCegui, CONTAINER, TARGET};
+use crate::supervisor::cegui_fake::{self, FakeCegui, CONTAINER, STAND_IN, TARGET};
 use crate::supervisor::events::fake_bridge;
 
 /// A window handle no window has: posting to it fails, as a dead client's
@@ -394,4 +394,82 @@ async fn a_revoked_lease_still_lets_go_of_the_button_and_ctrl() {
     let s = s.lock().unwrap();
     assert_eq!(s.edges(), vec!["up 0"]);
     assert_eq!(s.modifiers, vec![json!({})]);
+}
+
+fn run_plan(split: bool, allow_notify: bool) -> DragRunPlan {
+    DragRunPlan {
+        split,
+        steps: 4,
+        allow_notify,
+        wait: Duration::ZERO,
+        ctrl_hwnd: None,
+    }
+}
+
+#[test]
+fn stand_in_windows_follow_the_stock_lua() {
+    assert_eq!(
+        stand_in_window(Some("Main"), true),
+        Some("InventoryDragItemWin")
+    );
+    assert_eq!(stand_in_window(Some("Main"), false), None);
+    assert_eq!(
+        stand_in_window(Some("vault"), true),
+        Some("VaultDragItemWin")
+    );
+    assert_eq!(
+        stand_in_window(Some("Bandolier"), false),
+        Some("BandolierDragWin")
+    );
+    assert_eq!(stand_in_window(None, true), None);
+}
+
+/// Regression guard (#1660 item 1): on a Ctrl-drag the stock Lua aborts the
+/// slot's drag and a stand-in window carries it. The tool must follow the
+/// stand-in: it started, it was dragging at the drop, and the explicit drop
+/// is fired with the stand-in as the dragged item. Reading only the slot
+/// (the old code) gives drag_started false and no drop at all.
+#[tokio::test]
+async fn a_split_drag_follows_the_stand_in_the_stock_ui_hands_it_to() {
+    let s = Arc::new(Mutex::new(FakeCegui {
+        stand_in: true,
+        ..FakeCegui::default()
+    }));
+    let sup = fake_bridge::supervisor(cegui_fake::responder(s.clone())).await;
+    let out = sup
+        .drag_native(&main_slot(1), &main_slot(2), run_plan(true, true))
+        .await
+        .unwrap();
+    let notify = format!("notify {TARGET:#x} {STAND_IN:#x}");
+    assert_eq!(
+        s.lock().unwrap().edges(),
+        vec!["down 0", notify.as_str(), "up 0"]
+    );
+    assert_eq!(out["stand_in"], "InventoryDragItemWin");
+    assert_eq!(out["drag_started"], true);
+    assert_eq!(out["handed_off"], true);
+    assert_eq!(out["dragging_at_drop"], true);
+    assert_eq!(out["drop_notified"], true);
+    assert_eq!(out["moved"], true);
+    assert_eq!(out["effect_ok"], true);
+    assert_eq!(out["mod_drag_type"]["inventory"], 1);
+    assert_eq!(out["native_tier"], "N3");
+}
+
+/// When CEGUI resolves the target, the stand-in drops by itself: N1.
+#[tokio::test]
+async fn a_split_with_a_resolved_target_is_a_native_pass() {
+    let s = Arc::new(Mutex::new(FakeCegui {
+        stand_in: true,
+        drop_target: TARGET,
+        ..FakeCegui::default()
+    }));
+    let sup = fake_bridge::supervisor(cegui_fake::responder(s.clone())).await;
+    let out = sup
+        .drag_native(&main_slot(1), &main_slot(2), run_plan(true, true))
+        .await
+        .unwrap();
+    assert_eq!(s.lock().unwrap().edges(), vec!["down 0", "up 0"]);
+    assert_eq!(out["moved"], true);
+    assert_eq!(out["native_pass"], true);
 }
