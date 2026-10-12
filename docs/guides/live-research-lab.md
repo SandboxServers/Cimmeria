@@ -1122,10 +1122,10 @@ first line of each.
 | Command | What it does | Exit codes |
 |---|---|---|
 | `lab help` | lists the commands | 0 |
-| `lab status` | daemon pid, uptime and version, then one row per instance: account, client pid, bridge port, lease (owner, purpose, time left; never an id) and whether its profile is seeded | 0; 1 when the daemon is down (it still lists the `labd.env` instances with the seed column) |
-| `lab version` | the copy's `VERSION` (`dev` when run from a checkout) and the daemon version | 0 |
+| `lab status` | daemon pid, uptime and version, then one row per instance: account, client pid, bridge port, lease (owner, purpose, time left; never an id) and whether its profile is seeded. On a terminal it prints a coloured table (`●` or `○` for the daemon, a `PROFILE` column reading `seeded` or `not seeded`); redirected, it prints the plain text the PowerShell command printed. It takes no flags | 0; 1 when the daemon is down (it still lists the `labd.env` instances with the seed column) |
+| `lab version` | the CLI's version line (`lab <version> (<sha>)`, `dev` for a build `lab install` did not stamp) and the daemon's version (`daemon <version>`, or `daemon: not running` when it does not answer) | 0 |
 | `lab start`, `lab stop [-Force]`, `lab restart [-Force]` | the `CimmeriaLabDaemon` task, through `daemon.ps1`; `stop` and `restart` also close the lab clients (see [A new build](#run-it)) | `daemon.ps1`'s: 3 when a leased client refused the stop |
-| `lab logs [-Lines 50] [-Instance p2] [-Level warn] [-Follow]` | the last lines of `labd.log`, filtered by instance and minimum level; a continuation line (a panic body, a backtrace) goes with its entry; bearer and 64-hex tokens print as `<redacted>` | 0; 1 when there is no log |
+| `lab logs [--lines 50] [--instance p2] [--level warn] [--follow]` | the last lines of `labd.log`, filtered by instance and minimum level; a continuation line (a panic body, a backtrace) goes with its entry; bearer and 64-hex tokens print as `<redacted>`. `--follow` polls the file every 500 ms from its end and stops on Ctrl+C; the `-Lines`, `-Instance`, `-Level` and `-Follow` spellings still work. On a terminal the timestamp is dim and the level word coloured | 0 (also after Ctrl+C under `--follow`); 1 when there is no log |
 | `lab env [get KEY \| set KEY VALUE \| unset KEY]` | reads or edits `labd.env`; see below | 0; 1 for `get` of an unset key or a missing `labd.env`; 2 for a bad verb, key or value |
 | `lab install -From <worktree> [-SkipBuild]` | builds and installs the lab from that worktree, then refreshes the CLI copy with the worktree's own installer | 0; non-zero when the build, the install or the copy fails |
 | `lab setup [-From <checkout>] [-NoPath] [-Yes]` | see [Set up the `lab` command](#set-up-the-lab-command) | 0; non-zero when the copy fails |
@@ -1146,8 +1146,8 @@ An unknown command exits 2. Examples:
 
 ```powershell
 lab status
-lab logs -Instance p2 -Level warn -Lines 20
-lab logs -Follow
+lab logs --instance p2 --level warn --lines 20
+lab logs --follow
 lab env get CIMMERIA_LAB_INSTANCES
 lab env set CIMMERIA_LAB_INSTANCES default,p2,p3
 lab install -From C:\src\Cimmeria\.claude\worktrees\lab-fix

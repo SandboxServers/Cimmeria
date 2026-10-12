@@ -295,3 +295,41 @@ impl Drop for HangServer {
         }
     }
 }
+
+/// Runs the built `lab` binary with `args` against a throw-away lab home:
+/// `CIMMERIA_LAB_HOME` and `LOCALAPPDATA` are `home`, the profile root is
+/// `<home>\instances`, the token is [`STUB_TOKEN`]. Stdout is a pipe, so the
+/// output is plain.
+pub fn run_lab_in(home: &std::path::Path, args: &[&str]) -> std::process::Output {
+    let instances = home.join("instances");
+    std::process::Command::new(env!("CARGO_BIN_EXE_lab"))
+        .args(args)
+        .env("CIMMERIA_LAB_HOME", home)
+        .env("LOCALAPPDATA", home)
+        .env("CIMMERIA_LAB_PROFILE_ROOT", &instances)
+        .env("CIMMERIA_LAB_DAEMON_TOKEN", STUB_TOKEN)
+        .env_remove("NO_COLOR")
+        .output()
+        .expect("the lab binary should start")
+}
+
+/// A lab home whose `labd.pid` names `bind` (`host:port`), with an empty
+/// `instances` folder (the profile root).
+pub fn lab_home_for(bind: &str) -> tempfile::TempDir {
+    let home = tempfile::TempDir::new().expect("temp dir");
+    std::fs::write(
+        home.path().join("labd.pid"),
+        format!("{{\"pid\":1,\"bind\":\"{bind}\"}}"),
+    )
+    .expect("write labd.pid");
+    std::fs::create_dir_all(home.path().join("instances")).expect("mkdir instances");
+    home
+}
+
+/// `host:port` of a loopback port that nothing listens on.
+pub fn closed_bind() -> String {
+    closed_port_endpoint()
+        .base_url
+        .trim_start_matches("http://")
+        .to_string()
+}

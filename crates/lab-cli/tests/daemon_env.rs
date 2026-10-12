@@ -1,5 +1,5 @@
 //! labd.env parsing, editing, masking and backups. Ports the masking, key
-//! rule, line rewrite and backup checks of tools/lab/cli/test-logs-env.ps1
+//! rule, line rewrite and backup checks of the removed PowerShell test file
 //! (the PowerShell check is named in each comment).
 
 mod support;

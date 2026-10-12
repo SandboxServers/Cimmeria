@@ -1,9 +1,19 @@
-//! `lab logs`: show the daemon log, filtered by instance or level.
-//! LX-02 gives it its clap arguments and help page; the body is still the
-//! PowerShell fallback.
+//! `lab logs`: show the daemon log, filtered by instance or level, with
+//! tokens masked. `--follow` polls the file and stops on Ctrl+C (exit 0).
+
+use std::fs::File;
+use std::io::{self, Read, Seek, SeekFrom, Write};
+use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::OnceLock;
+use std::time::Duration;
+
+use regex::Regex;
 
 use crate::commands::Ctx;
-use crate::fallback;
+use crate::daemon::paths;
+use crate::log_filter::{self, LogFilter};
+use crate::ui::{Tone, Ui};
 
 const LONG: &str = concat!(
     "Shows the last lines of the lab daemon's log, filtered by instance or level, with tokens masked. Reads labd.log under the lab home.",
@@ -40,17 +50,198 @@ pub struct Args {
     pub level: Option<String>,
 }
 
-/// Runs `lab logs` (still the PowerShell fallback).
+/// How often `--follow` looks at the file.
+pub const POLL: Duration = Duration::from_millis(500);
+
+/// Set by the Ctrl+C handler; `--follow` stops when it is set.
+static STOP: AtomicBool = AtomicBool::new(false);
+
+/// Ctrl+C and Ctrl+Break set [`STOP`] instead of ending the process, so
+/// `--follow` can return exit code 0. Declared by hand (no extra crate).
+#[cfg(windows)]
+fn install_ctrl_c() {
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn SetConsoleCtrlHandler(
+            handler: Option<unsafe extern "system" fn(u32) -> i32>,
+            add: i32,
+        ) -> i32;
+    }
+    unsafe extern "system" fn on_ctrl(kind: u32) -> i32 {
+        // CTRL_C_EVENT is 0 and CTRL_BREAK_EVENT is 1.
+        if kind == 0 || kind == 1 {
+            STOP.store(true, Ordering::SeqCst);
+            1
+        } else {
+            0
+        }
+    }
+    // SAFETY: `on_ctrl` is a valid handler for the life of the process and
+    // only stores to an atomic.
+    unsafe {
+        SetConsoleCtrlHandler(Some(on_ctrl), 1);
+    }
+}
+
+/// Off Windows Ctrl+C ends the process the default way.
+#[cfg(not(windows))]
+fn install_ctrl_c() {}
+
+/// Plain mode: the line as it is. Fancy mode: the timestamp dim and the level
+/// word coloured (ERROR red, WARN yellow, INFO as is, DEBUG and TRACE dim). A
+/// continuation line is never coloured.
+pub fn paint_line(ui: &Ui, line: &str) -> String {
+    if !ui.color || !log_filter::is_entry_start(line) {
+        return line.to_string();
+    }
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| Regex::new(r"^(\S+)(\s+)(\S+)(.*)$").expect("valid regex"));
+    let Some(caps) = re.captures(line) else {
+        return line.to_string();
+    };
+    let tone = match caps[3].to_ascii_lowercase().as_str() {
+        "error" => Some(Tone::Fail),
+        "warn" => Some(Tone::Warn),
+        "debug" | "trace" => Some(Tone::Dim),
+        _ => None,
+    };
+    let level = match tone {
+        Some(tone) => ui.paint(tone, &caps[3]),
+        None => caps[3].to_string(),
+    };
+    format!(
+        "{}{}{}{}",
+        ui.paint(Tone::Dim, &caps[1]),
+        &caps[2],
+        level,
+        &caps[4]
+    )
+}
+
+/// `lab logs --follow`: prints the last `tail` lines of the file that pass
+/// `filter` (the raw tail is taken first, then filtered, so fewer can show),
+/// then polls every `poll` for appended bytes and prints each new complete
+/// line that passes. A file that shrinks (rotation) is read again from the
+/// top. A last line without its newline is held until the newline arrives.
+/// Returns `Ok` when `stop` is set; an `Err` is a failed read of the first
+/// snapshot or a failed write to `out`.
+pub fn follow_file(
+    path: &Path,
+    ui: &Ui,
+    filter: &mut LogFilter,
+    tail: usize,
+    stop: &AtomicBool,
+    poll: Duration,
+    out: &mut dyn Write,
+) -> io::Result<()> {
+    let bytes = std::fs::read(path)?;
+    let mut pos = bytes.len() as u64;
+    let text = String::from_utf8_lossy(&bytes);
+    let raw: Vec<&str> = text.lines().collect();
+    let first = raw.len().saturating_sub(tail);
+    for line in &raw[first..] {
+        if let Some(kept) = filter.accept(line) {
+            writeln!(out, "{}", paint_line(ui, &kept))?;
+        }
+    }
+    out.flush()?;
+
+    let mut pending: Vec<u8> = Vec::new();
+    while !stop.load(Ordering::SeqCst) {
+        std::thread::sleep(poll);
+        if stop.load(Ordering::SeqCst) {
+            break;
+        }
+        let Ok(meta) = std::fs::metadata(path) else {
+            continue;
+        };
+        let len = meta.len();
+        if len < pos {
+            pos = 0;
+            pending.clear();
+        }
+        if len == pos {
+            continue;
+        }
+        let Ok(mut file) = File::open(path) else {
+            continue;
+        };
+        if file.seek(SeekFrom::Start(pos)).is_err() {
+            continue;
+        }
+        let mut chunk = Vec::new();
+        if file.read_to_end(&mut chunk).is_err() {
+            continue;
+        }
+        pos += chunk.len() as u64;
+        pending.extend_from_slice(&chunk);
+        while let Some(end) = pending.iter().position(|&byte| byte == b'\n') {
+            let raw_line: Vec<u8> = pending.drain(..=end).collect();
+            let line = String::from_utf8_lossy(&raw_line);
+            let line = line.trim_end_matches(['\r', '\n']);
+            if let Some(kept) = filter.accept(line) {
+                writeln!(out, "{}", paint_line(ui, &kept))?;
+            }
+        }
+        out.flush()?;
+    }
+    Ok(())
+}
+
+/// Runs `lab logs`. Exit 0; 1 when there is no log (plain stderr text
+/// `no daemon log yet: <path>`) or it cannot be read.
 pub fn run(args: &Args, ctx: &Ctx) -> u8 {
-    let _ = args;
-    fallback::run(ctx)
+    let path = paths::labd_log_path();
+    if !path.exists() {
+        let message = format!("no daemon log yet: {}", path.display());
+        if ctx.ui.fancy {
+            ctx.ui.error(&message, Some("start the daemon: lab start"));
+        } else {
+            anstream::eprintln!("{message}");
+        }
+        return 1;
+    }
+    let instance = args.instance.as_deref().filter(|name| !name.is_empty());
+    let level = args.level.as_deref().filter(|word| !word.is_empty());
+    let count = args.lines as usize;
+    let mut out = anstream::stdout().lock();
+
+    if args.follow {
+        install_ctrl_c();
+        let mut filter = LogFilter::new(instance, level);
+        return match follow_file(&path, &ctx.ui, &mut filter, count, &STOP, POLL, &mut out) {
+            Ok(()) => 0,
+            Err(err) if err.kind() == io::ErrorKind::BrokenPipe => 0,
+            Err(err) => {
+                ctx.ui
+                    .error(&format!("cannot read {}: {err}", path.display()), None);
+                1
+            }
+        };
+    }
+
+    let bytes = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            ctx.ui
+                .error(&format!("cannot read {}: {err}", path.display()), None);
+            return 1;
+        }
+    };
+    let text = String::from_utf8_lossy(&bytes);
+    for line in log_filter::tail_lines(&text, instance, level, count) {
+        if writeln!(out, "{}", paint_line(&ctx.ui, &line)).is_err() {
+            break;
+        }
+    }
+    0
 }
 
 #[cfg(test)]
 mod tests {
     use crate::commands::{parse_ok, try_parse, Command};
 
-    /// Both `.EXAMPLE` lines of logs.ps1 parse, with the right values.
+    /// Both documented example lines parse, with the right values.
     #[test]
     fn examples_parse() {
         let Command::Logs(a) = parse_ok("logs", &["-Lines", "5"]) else {

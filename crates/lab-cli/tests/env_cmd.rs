@@ -1,5 +1,5 @@
 //! `lab env` as the binary, on a temp lab home. Ports the command runs of
-//! tools/lab/cli/test-logs-env.ps1 (the PowerShell check is named above each
+//! the removed PowerShell test file (the PowerShell check is named above each
 //! test). The pure masking, key and line-rewrite checks of that file are
 //! ported by LX-04 in tests/daemon_env.rs.
 

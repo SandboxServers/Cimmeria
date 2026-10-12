@@ -103,15 +103,6 @@ fn unknown_command_without_a_near_name_hints_at_help_only() {
 }
 
 #[test]
-fn status_without_dispatcher_exits_1_not_installed() {
-    let empty = tempfile::TempDir::new().expect("temp dir");
-    let output = run_lab(&["status"], &[("CIMMERIA_LAB_CLI_DIR", empty.path())]);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert_eq!(output.status.code(), Some(1));
-    assert!(stderr.contains("not installed"), "stderr: {stderr}");
-}
-
-#[test]
 fn command_help_flag_prints_examples_and_exits_0() {
     for (args, flag) in [
         (&["status", "--help"][..], "Examples:"),
@@ -140,15 +131,17 @@ fn unknown_flag_is_a_usage_error_exit_2() {
 }
 
 #[test]
-fn powershell_spelling_is_accepted_before_the_fallback() {
-    // -Lines 5 is rewritten to --lines 5, parses, then the fallback reports
-    // the missing dispatcher (exit 1), not a usage error (exit 2).
-    let empty = tempfile::TempDir::new().expect("temp dir");
+fn powershell_spelling_is_accepted_by_a_native_command() {
+    // -Lines 5 is rewritten to --lines 5 and parses (a bad spelling would
+    // exit 2); logs then finds no log in the empty home and exits 1.
+    let home = tempfile::TempDir::new().expect("temp dir");
     let output = run_lab(
         &["logs", "-Lines", "5"],
-        &[("CIMMERIA_LAB_CLI_DIR", empty.path())],
+        &[("CIMMERIA_LAB_HOME", home.path())],
     );
     assert_eq!(output.status.code(), Some(1));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("no daemon log yet"), "stderr: {stderr}");
 }
 
 #[test]
@@ -216,16 +209,32 @@ fn tokens_the_fallback_receives(args: &[&str]) -> Option<String> {
 
 /// clap parses the tokens as either spelling, but the PowerShell dispatcher
 /// gets them in its own form: `--lines` and `-Lines` both arrive as `-Lines`,
-/// and `--follow` as `-Follow`.
+/// and `--runs-per-lease` as `-RunsPerLease`.
 #[test]
 fn the_fallback_receives_the_original_tokens() {
-    let Some(seen) = tokens_the_fallback_receives(&["logs", "-Lines", "5", "--follow"]) else {
+    // `instances` stays on the fallback until LX-18 (`logs` is native now).
+    let Some(seen) = tokens_the_fallback_receives(&[
+        "instances",
+        "status",
+        "-Lines",
+        "5",
+        "--runs-per-lease",
+        "5",
+    ]) else {
         eprintln!("pwsh is not on the PATH; skipped");
         return;
     };
-    assert_eq!(seen, "logs|-Lines|5|-Follow");
-    let seen = tokens_the_fallback_receives(&["logs", "--lines", "5", "-Follow"]).expect("pwsh");
-    assert_eq!(seen, "logs|-Lines|5|-Follow");
+    assert_eq!(seen, "instances|status|-Lines|5|-RunsPerLease|5");
+    let seen = tokens_the_fallback_receives(&[
+        "instances",
+        "status",
+        "--lines",
+        "5",
+        "-RunsPerLease",
+        "5",
+    ])
+    .expect("pwsh");
+    assert_eq!(seen, "instances|status|-Lines|5|-RunsPerLease|5");
 }
 
 /// `completions` has no clap subcommand: it reaches the dispatcher with its
