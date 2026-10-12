@@ -5,6 +5,8 @@
 use rmcp::{
     handler::server::wrapper::Parameters, model::*, tool, tool_router, ErrorData as McpError,
 };
+use std::sync::Arc;
+
 use serde_json::Value;
 
 use super::LabServer;
@@ -15,6 +17,7 @@ use crate::supervisor::world::hover::HoverRequest;
 use crate::supervisor::world::io::LiveWorld;
 use crate::supervisor::world::movement::MoveRequest;
 use crate::supervisor::world::{camera, click, find, hover, movement, WorldError};
+use crate::supervisor::Supervisor;
 
 #[tool_router(router = world_router, vis = "pub(super)")]
 impl LabServer {
@@ -58,8 +61,15 @@ impl LabServer {
         &self,
         Parameters(a): Parameters<MoveRequest>,
     ) -> Result<CallToolResult, McpError> {
+        let mut guard = HeldKeysGuard {
+            sup: self.supervisor.clone(),
+            armed: true,
+        };
         let mut io = LiveWorld::new(&self.supervisor);
-        world_result(movement::run(&mut io, a).await)
+        let r = movement::run(&mut io, a).await;
+        // Finished (and released by `run`): nothing left for the guard to do.
+        guard.armed = false;
+        world_result(r)
     }
 
     #[tool(
@@ -82,6 +92,32 @@ impl LabServer {
     ) -> Result<CallToolResult, McpError> {
         let mut io = LiveWorld::new(&self.supervisor);
         world_result(hover::run(&mut io, a).await)
+    }
+}
+
+/// Releases the walk's keys if the tool future is dropped mid-walk (the
+/// client cancelled the call): movement::run releases them on every exit it
+/// gets to, but a dropped future gets to none. A held W or turn key would
+/// wreck every later lab step. Covers the stock and default-bound keys.
+struct HeldKeysGuard {
+    sup: Arc<Supervisor>,
+    armed: bool,
+}
+
+impl Drop for HeldKeysGuard {
+    fn drop(&mut self) {
+        if !self.armed {
+            return;
+        }
+        let Ok(rt) = tokio::runtime::Handle::try_current() else {
+            return;
+        };
+        let sup = self.sup.clone();
+        rt.spawn(async move {
+            for k in [movement::FORWARD_KEY, "A", "D", "Q", "E"] {
+                let _ = sup.input_key(k, "up", None).await;
+            }
+        });
     }
 }
 

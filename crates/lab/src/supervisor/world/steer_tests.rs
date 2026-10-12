@@ -225,3 +225,43 @@ fn face_controller_seeds_its_gains_from_the_camera_readout() {
     assert_eq!(h.yaw.counts_per_rad, 400.0);
     assert_eq!(h.pitch.counts_per_rad, -400.0);
 }
+
+/// One tick where the yaw moved restarts the count: only consecutive held
+/// ticks without a turn end the walk.
+#[test]
+fn a_turn_between_held_ticks_resets_the_no_turn_count() {
+    let mut c = MoveController::new(MoveConfig::default(), TurnRate::default());
+    let target = Vec3::new(0.0, 2000.0, 0.0);
+    // 9 held ticks with no yaw change (the first has nothing to compare).
+    for k in 0..10u64 {
+        let s = c.step(k * 100, pose(0.0, 0.0, 0.0), target);
+        assert!(s.outcome.is_none(), "tick {k}");
+    }
+    // The yaw moves once: the count restarts, 9 more held ticks are fine.
+    let s = c.step(1000, pose(0.0, 0.0, 0.3), target);
+    assert!(s.outcome.is_none());
+    for k in 11..20u64 {
+        let s = c.step(k * 100, pose(0.0, 0.0, 0.3), target);
+        assert!(s.outcome.is_none(), "tick {k}: {:?}", s.outcome);
+    }
+}
+
+/// A probe or unstick between a held step and the next one lasts far longer
+/// than the tick: learning from that interval would teach a rate several
+/// times too slow.
+#[test]
+fn skipped_interval_teaches_no_rate() {
+    let target = Vec3::new(0.0, 2000.0, 0.0);
+    let mut c = MoveController::new(MoveConfig::default(), TurnRate::default());
+    assert_eq!(
+        c.step(0, pose(0.0, 0.0, 0.0), target).turn,
+        TurnCmd::Hold(TurnKey::Right)
+    );
+    c.skip_next_learning();
+    // 500 ms later the yaw rose 0.2 rad: 0.4 rad/s if it were learned.
+    c.step(500, pose(0.0, 0.0, 0.2), target);
+    assert_eq!(c.rate.samples, 0);
+    // The next interval is learned again.
+    c.step(600, pose(0.0, 0.0, 0.4), target);
+    assert_eq!(c.rate.samples, 1);
+}

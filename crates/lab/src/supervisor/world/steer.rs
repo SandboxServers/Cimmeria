@@ -321,6 +321,7 @@ pub struct MoveController {
     pub unsticks: u32,
     last: Option<(Pose, u64, TurnCmd, bool)>,
     no_turn: u32,
+    skip_learn: bool,
     best_m: f64,
     best_at: u64,
     min_m: f64,
@@ -334,10 +335,17 @@ impl MoveController {
             unsticks: 0,
             last: None,
             no_turn: 0,
+            skip_learn: false,
             best_m: f64::INFINITY,
             best_at: 0,
             min_m: f64::INFINITY,
         }
+    }
+
+    /// The time since this step was not spent holding its turn command (the
+    /// caller probed or unstuck in between): skip learning from the interval.
+    pub fn skip_next_learning(&mut self) {
+        self.skip_learn = true;
     }
 
     pub fn step(&mut self, now_ms: u64, pose: Pose, target: Vec3) -> MoveStep {
@@ -355,7 +363,10 @@ impl MoveController {
         // Learn from what the previous step's held key did.
         let was_forward = match self.last {
             Some((prev, t, cmd, fwd)) => {
-                if let TurnCmd::Hold(k) = cmd {
+                if std::mem::take(&mut self.skip_learn) {
+                    // The interval held a probe or an unstick: the key was not
+                    // down for all of it, so it teaches nothing.
+                } else if let TurnCmd::Hold(k) = cmd {
                     let dyaw = wrap_pi(pose.yaw - prev.yaw);
                     self.rate.observe(k, dyaw, now_ms.saturating_sub(t));
                     self.no_turn = if dyaw.abs() < NO_TURN_RAD {
@@ -363,6 +374,9 @@ impl MoveController {
                     } else {
                         0
                     };
+                } else {
+                    // Consecutive held ticks only.
+                    self.no_turn = 0;
                 }
                 fwd
             }

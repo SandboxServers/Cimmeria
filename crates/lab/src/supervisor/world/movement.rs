@@ -17,6 +17,7 @@ use super::steer::{MoveConfig, MoveController, MoveOutcome, TurnCmd, TurnKey, Tu
 use super::{NativeLevel, PointArg, Steps, TargetArg, WorldError};
 
 pub const FORWARD_KEY: &str = "W";
+
 /// The names of the turn keys this walk may press, for pressing and for
 /// the release on every exit.
 #[derive(Debug, Clone)]
@@ -72,6 +73,7 @@ async fn apply_turn<W: WorldIo>(
     }
     Ok(want.is_some())
 }
+
 pub const DEFAULT_TICK_MS: u64 = 100;
 pub const DEFAULT_TIMEOUT_MS: u64 = 60_000;
 /// Default arrival radius for an entity target (stop next to it, not in
@@ -370,8 +372,10 @@ async fn walk<W: WorldIo>(
                 }
                 steps.used(NativeLevel::RealInput);
                 prev = after;
+                ctl.skip_next_learning();
             }
             if let Some(u) = s.unstick {
+                ctl.skip_next_learning();
                 unsticks.push(u.name());
                 match u {
                     Unstick::Jump => {
