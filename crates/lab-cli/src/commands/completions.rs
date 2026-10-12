@@ -19,7 +19,7 @@ const PROFILE_COMMENT: &str =
 const LONG: &str = concat!(
     "Prints a completion script for a shell to stdout: powershell, bash, zsh or fish. Load it the way your shell loads completions; for PowerShell, `lab completions powershell | Out-String | Invoke-Expression`.",
     "\n\n",
-    "`lab completions powershell --install` adds that line to $PROFILE.CurrentUserAllHosts once (it looks for the line first, so running it again changes nothing) and says what it did. Open a new terminal afterwards.",
+    "`lab completions powershell --install` adds a line to $PROFILE.CurrentUserAllHosts once. The line runs this lab.exe by its full path and only while that file exists, so a profile never errors when lab has moved. It looks for the line first, so running it again changes nothing; a line an earlier version wrote is replaced. It says what it did. Open a new terminal afterwards.",
 );
 
 const EXAMPLES: &str =
@@ -87,10 +87,18 @@ pub enum Installed {
 }
 
 /// The guarded profile line for the lab.exe at `exe`. It runs only while that
-/// file exists, so a profile never errors when lab has moved or is gone. A `'`
-/// in the path is doubled, as a PowerShell single-quoted string needs.
+/// file exists, so a profile never errors when lab has moved or is gone. Every
+/// quote character in the path is doubled, as a PowerShell single-quoted
+/// string needs: `'` and the typographic quotes `‘ ’ ‚ ‛`, which PowerShell
+/// reads as quotes too.
 pub fn profile_line(exe: &Path) -> String {
-    let quoted = exe.display().to_string().replace('\'', "''");
+    let mut quoted = String::new();
+    for c in exe.display().to_string().chars() {
+        quoted.push(c);
+        if matches!(c, '\'' | '\u{2018}' | '\u{2019}' | '\u{201a}' | '\u{201b}') {
+            quoted.push(c);
+        }
+    }
     format!("if (Test-Path -LiteralPath '{quoted}') {{ & '{quoted}' {PROFILE_CALL} }}")
 }
 
@@ -106,11 +114,26 @@ pub fn lab_exe_path() -> io::Result<PathBuf> {
     }
 }
 
-/// Whether a line is one of ours: not a comment, and it runs the lab
-/// completion call (an old unguarded line, or one from an older path).
+/// Whether a line is exactly one of the forms `--install` has written, with
+/// only whitespace around it: the old unguarded `lab <call>`, or the guarded
+/// line for some lab.exe path (this one or an older one). A line that holds
+/// more than that, such as one with a trailing comment, is the user's own.
 fn is_profile_call(line: &str) -> bool {
-    let line = line.trim_start();
-    !line.starts_with('#') && line.contains(PROFILE_CALL)
+    // A byte order mark at the start of the file is not part of the line.
+    let line = line.trim_start_matches('\u{feff}').trim();
+    if line.strip_prefix("lab ") == Some(PROFILE_CALL) {
+        return true;
+    }
+    let Some(rest) = line.strip_prefix("if (Test-Path -LiteralPath '") else {
+        return false;
+    };
+    let Some(rest) = rest.strip_suffix(&format!("' {PROFILE_CALL} }}")) else {
+        return false;
+    };
+    match rest.split_once("') { & '") {
+        Some((tested, called)) => !tested.is_empty() && tested == called,
+        None => false,
+    }
 }
 
 /// Puts [`profile_line`] for `exe` into the profile at `path`:
@@ -128,7 +151,10 @@ pub fn install_into(path: &Path, exe: &Path) -> io::Result<Installed> {
         Err(err) => return Err(err),
     };
     let line = profile_line(exe);
-    if existing.lines().any(|known| known.trim() == line) {
+    if existing
+        .lines()
+        .any(|known| known.trim_start_matches('\u{feff}').trim() == line)
+    {
         return Ok(Installed::AlreadyThere);
     }
     if existing.lines().any(is_profile_call) {
@@ -140,6 +166,9 @@ pub fn install_into(path: &Path, exe: &Path) -> io::Result<Installed> {
             let content = segment.trim_end_matches(['\r', '\n']);
             if is_profile_call(content) {
                 if !replaced {
+                    if content.starts_with('\u{feff}') {
+                        text.push('\u{feff}');
+                    }
                     text.push_str(&line);
                     text.push_str(&segment[content.len()..]);
                     replaced = true;
@@ -294,6 +323,38 @@ mod tests {
             line,
             r"if (Test-Path -LiteralPath 'C:\Dev''s\lab.exe') { & 'C:\Dev''s\lab.exe' completions powershell | Out-String | Invoke-Expression }"
         );
+    }
+
+    #[test]
+    fn a_typographic_quote_in_the_exe_path_is_doubled_too() {
+        let line = super::profile_line(std::path::Path::new("C:\\Dev\u{2019}s\\lab.exe"));
+        assert!(
+            line.contains("'C:\\Dev\u{2019}\u{2019}s\\lab.exe'"),
+            "{line}"
+        );
+        assert!(super::is_profile_call(&line));
+    }
+
+    #[test]
+    fn only_the_exact_old_forms_are_ours() {
+        use super::{is_profile_call, profile_line};
+        let call = "completions powershell | Out-String | Invoke-Expression";
+        let guarded = profile_line(std::path::Path::new(r"D:\old dir\lab.exe"));
+        // Ours: the unguarded form, a guarded form for any path, with whitespace
+        // or a byte order mark around it.
+        assert!(is_profile_call(&format!("lab {call}")));
+        assert!(is_profile_call(&format!("  lab {call}  \t")));
+        assert!(is_profile_call(&format!("\u{feff}lab {call}")));
+        assert!(is_profile_call(&guarded));
+        // The user's: a comment, a trailing comment, extra statements, a guard
+        // that tests one file and runs another, a different command.
+        assert!(!is_profile_call(&format!("# lab {call}")));
+        assert!(!is_profile_call(&format!("lab {call}  # mine")));
+        assert!(!is_profile_call(&format!("$x = 1; lab {call}")));
+        assert!(!is_profile_call(&format!("lab {call}; Set-Alias a b")));
+        assert!(!is_profile_call(&format!("{guarded} # mine")));
+        assert!(!is_profile_call(&guarded.replace("& 'D:", "& 'E:")));
+        assert!(!is_profile_call(&format!("labx {call}")));
     }
 
     #[test]

@@ -8,7 +8,7 @@
 > LX-01 to LX-09) and [work-packets-ports.md](work-packets-ports.md)
 > (LX-10 to LX-20).
 >
-> **Campaign status (2026-10-12): code complete; LX-20 live check owed.**
+> **Campaign status (2026-10-12): code complete; LX-20 live check done 2026-10-12 (three interactive items owed: `lab logs --follow` + Ctrl+C, the live `lab watch` view, a second Ctrl+C during a run).**
 > Everything is built on one local branch. The user
 > asked for local work and one PR at the end (2026-10-11), so packets merge
 > into `lab-cli-rust/integration` (worktree `lcr`), not `main`; #1654

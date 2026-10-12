@@ -241,24 +241,147 @@ fn install_uses_the_profiles_own_line_ending() {
     assert!(now.ends_with(&format!("{}\n", line())), "{now:?}");
 }
 
+// Only the exact old forms are replaced. A line of the user's that holds the
+// call, with a trailing comment or other statements, stays byte for byte and
+// the guarded line is appended.
+// Fails if reverted: a `contains` match replaces these lines and loses the
+// user's comment and statements.
 #[test]
-fn a_line_the_user_wrote_is_ours_but_a_comment_is_not() {
+fn a_line_the_user_wrote_is_kept_and_a_comment_is_not_ours() {
+    let dir = TempDir::new().expect("temp dir");
+    for (name, mine) in [
+        ("trailing.ps1", format!("lab {CALL}  # mine")),
+        ("statements.ps1", format!("$x = 1; lab {CALL}")),
+        ("comment.ps1", format!("# lab {CALL} is nice")),
+    ] {
+        let profile = dir.path().join(name);
+        std::fs::write(&profile, format!("{mine}\r\nSet-Alias a b\r\n")).expect("write");
+        let out = install(profile.to_str().expect("utf-8 path"));
+        assert_eq!(out.status.code(), Some(0), "{name}");
+        assert!(text(&out.stdout).contains("added"), "{name}");
+        let now = std::fs::read_to_string(&profile).expect("profile");
+        assert!(
+            now.starts_with(&format!("{mine}\r\nSet-Alias a b\r\n# lab command-line")),
+            "{name}: {now:?}"
+        );
+        assert!(now.ends_with(&format!("{}\r\n", line())), "{name}: {now:?}");
+    }
+}
+
+// A guarded line for another lab.exe path is replaced in place, an extra old
+// line is dropped, whitespace around the old line does not matter, and every
+// other line stays byte for byte, including a byte order mark and the endings.
+// Fails if reverted: the stale path stays, or the guarded line is appended.
+#[test]
+fn a_guarded_line_for_another_path_is_replaced_and_the_rest_is_untouched() {
     let dir = TempDir::new().expect("temp dir");
     let profile = dir.path().join("profile.ps1");
-    // A line that runs the call with a trailing comment is an older form of
-    // ours: it is replaced, its comment goes with it.
-    std::fs::write(&profile, format!("{CALL}  # mine\n")).expect("write");
-    let p = profile.to_str().expect("utf-8 path");
-    let out = install(p);
+    let stale =
+        format!("if (Test-Path -LiteralPath 'D:\\old\\lab.exe') {{ & 'D:\\old\\lab.exe' {CALL} }}");
+    let before = format!(
+        "\u{feff}Set-Alias x y\r\n# keep  \r\n  {stale}  \nSet-Alias a b\n\n  {} \r\nlast",
+        old_line()
+    );
+    std::fs::write(&profile, &before).expect("write");
+    let out = install(profile.to_str().expect("utf-8 path"));
+    assert_eq!(out.status.code(), Some(0));
+    assert!(text(&out.stdout).contains("updated"));
+    let now = std::fs::read_to_string(&profile).expect("profile");
+    assert_eq!(
+        now,
+        format!(
+            "\u{feff}Set-Alias x y\r\n# keep  \r\n{}\nSet-Alias a b\n\nlast",
+            line()
+        )
+    );
+}
+
+// The first line of a file with a byte order mark keeps the mark when it is
+// the line that is replaced.
+// Fails if reverted: the mark is lost and PowerShell 5 reads the file as ANSI.
+#[test]
+fn a_byte_order_mark_on_the_replaced_line_is_kept() {
+    let dir = TempDir::new().expect("temp dir");
+    let profile = dir.path().join("profile.ps1");
+    std::fs::write(
+        &profile,
+        format!("\u{feff}{}\r\nSet-Alias a b\r\n", old_line()),
+    )
+    .expect("write");
+    let out = install(profile.to_str().expect("utf-8 path"));
     assert!(text(&out.stdout).contains("updated"));
     assert_eq!(
         std::fs::read_to_string(&profile).expect("profile"),
-        format!("{}\n", line())
+        format!("\u{feff}{}\r\nSet-Alias a b\r\n", line())
     );
+    assert!(text(&install(profile.to_str().expect("utf-8 path")).stdout).contains("already"));
+}
 
-    let commented = dir.path().join("other.ps1");
-    std::fs::write(&commented, format!("# {CALL} is nice\n")).expect("write");
-    let c = commented.to_str().expect("utf-8 path");
-    let out = install(c);
-    assert!(text(&out.stdout).contains("added"));
+// A profile that is not UTF-8 (Windows PowerShell's UTF-16 default) is left
+// alone and the failure is reported.
+// Fails if the read were made lossy: the replace path would overwrite the file.
+#[test]
+fn a_profile_that_is_not_utf8_is_left_untouched() {
+    let dir = TempDir::new().expect("temp dir");
+    let profile = dir.path().join("profile.ps1");
+    let bytes: Vec<u8> = "lab x\r\n"
+        .encode_utf16()
+        .flat_map(u16::to_le_bytes)
+        .collect();
+    let mut utf16 = vec![0xff, 0xfe];
+    utf16.extend(bytes);
+    std::fs::write(&profile, &utf16).expect("write");
+    let out = install(profile.to_str().expect("utf-8 path"));
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        text(&out.stderr).contains("cannot update"),
+        "{}",
+        text(&out.stderr)
+    );
+    assert_eq!(std::fs::read(&profile).expect("profile"), utf16);
+}
+
+/// Runs `command` in `pwsh -NoProfile`; `None` when pwsh is not installed.
+fn pwsh(command: &str) -> Option<Output> {
+    Command::new(cimmeria_lab_cli::fallback::pwsh_program())
+        .args(["-NoProfile", "-NonInteractive", "-Command", command])
+        .output()
+        .ok()
+}
+
+// The written line really never errors when lab.exe is missing, even with an
+// apostrophe and spaces in the path.
+// Fails if reverted: without the Test-Path guard PowerShell reports that the
+// file is not recognised; without the doubled quote the line does not parse.
+#[test]
+fn the_line_runs_clean_in_pwsh_when_the_exe_is_missing() {
+    let missing = std::path::Path::new(r"Z:\no such dir\it's gone\lab.exe");
+    let line = cimmeria_lab_cli::commands::completions::profile_line(missing);
+    let Some(out) = pwsh(&format!("{line}; 'after'")) else {
+        return;
+    };
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    assert_eq!(text(&out.stderr), "");
+    assert_eq!(text(&out.stdout).trim(), "after");
+}
+
+// With lab.exe present, in a folder with a space and an apostrophe, the line
+// loads the completer.
+// Fails if reverted: an undoubled quote in the folder name breaks the string.
+#[test]
+fn the_line_loads_the_completer_in_pwsh_from_a_quoted_path() {
+    let dir = TempDir::new().expect("temp dir");
+    let folder = dir.path().join("it's a dir");
+    std::fs::create_dir_all(&folder).expect("folder");
+    let exe = folder.join("lab.exe");
+    std::fs::copy(env!("CARGO_BIN_EXE_lab"), &exe).expect("copy lab.exe");
+    let line = cimmeria_lab_cli::commands::completions::profile_line(&exe);
+    let Some(out) = pwsh(&format!(
+        "{line}; (TabExpansion2 -inputScript 'lab u' -cursorColumn 5).CompletionMatches.CompletionText -join ','"
+    )) else {
+        return;
+    };
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out.stderr));
+    assert_eq!(text(&out.stderr), "");
+    assert!(text(&out.stdout).contains("uat"), "{}", text(&out.stdout));
 }
