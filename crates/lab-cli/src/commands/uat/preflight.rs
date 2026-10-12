@@ -41,7 +41,9 @@ pub struct Deps<'a> {
 /// Everything LX-16 needs to drive the batch after a ready pre-flight.
 #[derive(Debug, Clone)]
 pub struct Ready {
+    /// The section to run.
     pub section: String,
+    /// The lanes: one instance each, numbered from 1.
     pub lanes: Vec<PlanLane>,
     /// The rows the runner will run.
     pub rows: Vec<String>,
@@ -67,6 +69,7 @@ pub enum Outcome {
 }
 
 #[derive(Serialize)]
+/// The --json failure object {ok, exit, error}.
 struct StopJson<'a> {
     ok: bool,
     exit: u8,
@@ -74,6 +77,7 @@ struct StopJson<'a> {
 }
 
 #[derive(Serialize)]
+/// The --plan-only --json object.
 struct PlanJson<'a> {
     ok: bool,
     plan_only: bool,

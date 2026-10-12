@@ -1,6 +1,7 @@
 //! `lab watch` as a process: exit codes, one snapshot, usage errors. Ports the
 //! 'command' checks of tools/lab/cli/test-watch.ps1 (each is named in a comment).
 
+mod support;
 mod watch_support;
 
 use std::fs;
@@ -22,11 +23,7 @@ impl Rig {
         let tmp = temp_fixtures();
         fs::create_dir_all(tmp.path().join("home")).unwrap();
         fs::create_dir_all(tmp.path().join("no-batches")).unwrap();
-        fs::write(
-            tmp.path().join("home").join("labd.pid"),
-            "{\"pid\":1,\"bind\":\"127.0.0.1:9\"}",
-        )
-        .unwrap();
+        support::write_closed_port_pid(&tmp.path().join("home"));
         Rig { tmp }
     }
 

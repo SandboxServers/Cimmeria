@@ -1,137 +1,21 @@
 //! LX-15: the `lab uat` pre-flight with a stub /status server and a stub MCP
 //! call. Ports the plan, usage and -Chaos checks of tools/lab/cli/test-uat.ps1
-//! and test-uat-chaos.ps1 that reach the daemon.
+//! and test-uat-chaos.ps1 that reach the daemon. The `--plan-only` output and
+//! the real-run hand-off are in uat_plan_only.rs.
 
 mod support;
+mod uat_preflight_support;
 
-use std::cell::RefCell;
-use std::collections::VecDeque;
 use std::fs;
-use std::time::Duration;
 
-use cimmeria_lab_cli::commands::uat::{execute, Args, Deps, Outcome};
-use cimmeria_lab_cli::commands::{Cli, Command};
+use cimmeria_lab_cli::commands::uat::Outcome;
 use cimmeria_lab_cli::daemon::mcp::McpError;
-use cimmeria_lab_cli::daemon::status::Endpoint;
 use cimmeria_lab_cli::ui::Ui;
-use clap::Parser;
-use serde_json::{json, Value};
+use serde_json::json;
 use support::StubServer;
-use tempfile::TempDir;
-
-struct Ran {
-    outcome: Outcome,
-    out: String,
-    err: String,
-    calls: Vec<(String, Value)>,
-}
-
-impl Ran {
-    fn code(&self) -> Option<u8> {
-        match self.outcome {
-            Outcome::Done(c) => Some(c),
-            Outcome::Drive(_) => None,
-        }
-    }
-}
-
-fn args(tokens: &[&str]) -> Args {
-    let mut all = vec!["lab", "uat"];
-    all.extend_from_slice(tokens);
-    match Cli::try_parse_from(all).expect("parses").command {
-        Some(Command::Uat(a)) => a,
-        _ => panic!("not uat"),
-    }
-}
-
-/// `[(instance, leased, client_pid)]` as the daemon's /status body.
-fn status_body(rows: &[(&str, bool, Option<u32>)]) -> String {
-    let instances: Vec<Value> = rows
-        .iter()
-        .map(|(name, held, pid)| json!({"instance": name, "client_pid": pid, "lease": {"held": held}}))
-        .collect();
-    json!({"daemon": {"pid": 1, "version": "x"}, "instances": instances}).to_string()
-}
-
-fn one_free() -> String {
-    status_body(&[("default", false, None)])
-}
-
-fn ready(rows: &[&str]) -> Value {
-    let rows: Vec<Value> = rows
-        .iter()
-        .map(|r| json!({"row": r, "result": "SKIPPED", "reasons": []}))
-        .collect();
-    json!({ "rows": rows })
-}
-
-fn with_chaos(mut reply: Value, headers: &[&str]) -> Value {
-    reply["chaos"] = json!(headers);
-    reply
-}
-
-const FANCY: Ui = Ui {
-    color: false,
-    fancy: true,
-    width: None,
+use uat_preflight_support::{
+    one_free, ready, run, run_with, specs_dir, status_body, with_chaos, FANCY,
 };
-
-fn run_with(
-    tokens: &[&str],
-    ep: &Endpoint,
-    specs: Option<&str>,
-    max_clients: u32,
-    sgw: Option<Vec<u32>>,
-    ui: Ui,
-    replies: Vec<Result<Value, McpError>>,
-) -> Ran {
-    let queue = RefCell::new(VecDeque::from(replies));
-    let calls = RefCell::new(Vec::<(String, Value)>::new());
-    let mut call = |name: &str, a: Value, _t: Duration| -> Result<Value, McpError> {
-        calls.borrow_mut().push((name.to_string(), a));
-        queue
-            .borrow_mut()
-            .pop_front()
-            .expect("an unexpected MCP call")
-    };
-    let sgw_fn = move || sgw.clone().expect("SGW.exe must not be scanned here");
-    let mut deps = Deps {
-        ep,
-        specs: specs.map(str::to_string),
-        max_clients,
-        sgw_pids: &sgw_fn,
-        call: &mut call,
-    };
-    let (mut out, mut err) = (Vec::new(), Vec::new());
-    let outcome = execute(&args(tokens), &ui, &mut deps, &mut out, &mut err);
-    Ran {
-        outcome,
-        out: String::from_utf8(out).unwrap(),
-        err: String::from_utf8(err).unwrap(),
-        calls: calls.into_inner(),
-    }
-}
-
-/// The common case: one free instance, no local spec folder, no foreign client.
-fn run(tokens: &[&str], replies: Vec<Result<Value, McpError>>) -> Ran {
-    let body = one_free();
-    let (_stub, ep) = StubServer::start(vec![("GET", "/status", 200, body.as_str())]);
-    run_with(tokens, &ep, None, 0, Some(vec![]), Ui::plain(), replies)
-}
-
-/// A spec folder with a golden for `first-session`, or without.
-fn specs_dir(with_golden: bool) -> TempDir {
-    let dir = TempDir::new().unwrap();
-    if with_golden {
-        fs::create_dir_all(dir.path().join("golden")).unwrap();
-        fs::write(
-            dir.path().join("golden").join("first-session.json"),
-            r#"{"schema":1,"section":"first-session","fingerprint":{}}"#,
-        )
-        .unwrap();
-    }
-    dir
-}
 
 // ---- usage errors exit 2 before the daemon is asked ----
 
@@ -640,8 +524,27 @@ fn a_foreign_sgw_stops_a_real_run_with_exit_3() {
 // new: --plan-only drives nothing, so it never looks at SGW.exe (the closure panics if called)
 #[test]
 fn plan_only_does_not_scan_for_sgw() {
-    let r = run(
+    let body = one_free();
+    let (_stub, ep) = StubServer::start(vec![("GET", "/status", 200, body.as_str())]);
+    // `None`: the scan closure panics when called, so a scan fails the test.
+    let r = run_with(
         &["first-session", "--plan-only"],
+        &ep,
+        None,
+        0,
+        None,
+        Ui::plain(),
+        vec![Ok(ready(&["FS-01"]))],
+    );
+    assert_eq!(r.code(), Some(0));
+    // A foreign SGW.exe does not stop a plan either (a real run exits 3 on it).
+    let r = run_with(
+        &["first-session", "--plan-only"],
+        &ep,
+        None,
+        0,
+        Some(vec![7]),
+        Ui::plain(),
         vec![Ok(ready(&["FS-01"]))],
     );
     assert_eq!(r.code(), Some(0));
@@ -662,142 +565,4 @@ fn the_labs_own_client_is_not_foreign() {
         vec![Ok(ready(&["FS-01"]))],
     );
     assert!(matches!(r.outcome, Outcome::Drive(_)));
-}
-
-// ---- --plan-only output ----
-
-// test-uat.ps1 / uat.ps1: "plan: N row(s) ready on <instances>: <rows>"
-#[test]
-fn plan_only_plain_prints_one_line_and_exits_0() {
-    let body = status_body(&[("default", false, None), ("p2", false, None)]);
-    let (_stub, ep) = StubServer::start(vec![("GET", "/status", 200, body.as_str())]);
-    let r = run_with(
-        &["first-session", "--plan-only", "--leases", "2"],
-        &ep,
-        None,
-        0,
-        None,
-        Ui::plain(),
-        vec![Ok(ready(&["FS-01", "FS-02"]))],
-    );
-    assert_eq!(r.code(), Some(0));
-    assert_eq!(r.out, "plan: 2 row(s) ready on default, p2: FS-01, FS-02\n");
-    assert!(r.err.is_empty());
-}
-
-// new: the runner's header leads the plain line
-#[test]
-fn plan_only_plain_puts_the_chaos_header_first() {
-    let reply = with_chaos(ready(&["FS-01"]), &["chaos=cpu:safe seed=<per run>"]);
-    let r = run(
-        &["first-session", "--plan-only", "--chaos", "cpu"],
-        vec![Ok(reply)],
-    );
-    assert_eq!(
-        r.out,
-        "chaos=cpu:safe seed=<per run>\nplan: 1 row(s) ready on default: FS-01\n"
-    );
-}
-
-// new: fancy mode marks the line with a check (no colour here, so only the glyph shows)
-#[test]
-fn plan_only_fancy_leads_with_a_check_mark() {
-    let body = one_free();
-    let (_stub, ep) = StubServer::start(vec![("GET", "/status", 200, body.as_str())]);
-    let r = run_with(
-        &["first-session", "--plan-only"],
-        &ep,
-        None,
-        0,
-        None,
-        FANCY,
-        vec![Ok(ready(&["FS-01"]))],
-    );
-    assert_eq!(r.out, "\u{2713} plan: 1 row(s) ready on default: FS-01\n");
-}
-
-// new: --json is the one object, no progress
-#[test]
-fn plan_only_json_is_one_object() {
-    let r = run(
-        &["first-session", "--plan-only", "--json"],
-        vec![Ok(ready(&["FS-01", "FS-02"]))],
-    );
-    assert_eq!(
-        r.out,
-        "{\"ok\":true,\"plan_only\":true,\"rows\":[\"FS-01\",\"FS-02\"],\"lanes\":[\"default\"]}\n"
-    );
-    assert!(r.err.is_empty());
-}
-
-// new: --quiet prints nothing; --progress-to-stderr moves the line to stderr, under --json too
-#[test]
-fn plan_only_progress_goes_where_the_flags_say() {
-    let r = run(
-        &["first-session", "--plan-only", "--quiet"],
-        vec![Ok(ready(&["FS-01"]))],
-    );
-    assert_eq!(
-        (r.code(), r.out.as_str(), r.err.as_str()),
-        (Some(0), "", "")
-    );
-    let r = run(
-        &["first-session", "--plan-only", "--progress-to-stderr"],
-        vec![Ok(ready(&["FS-01"]))],
-    );
-    assert_eq!(
-        (r.out.as_str(), r.err.as_str()),
-        ("", "plan: 1 row(s) ready on default: FS-01\n")
-    );
-    // under --json the object is stdout; --json has no progress line to move
-    let r = run(
-        &[
-            "first-session",
-            "--plan-only",
-            "--json",
-            "--progress-to-stderr",
-        ],
-        vec![Ok(ready(&["FS-01"]))],
-    );
-    assert!(r.out.starts_with("{\"ok\":true"));
-    assert!(r.err.is_empty());
-}
-
-// ---- a real run ----
-
-// new: a ready real run returns Drive with the plan, and made exactly one call
-#[test]
-fn a_ready_real_run_returns_drive_after_one_plan_call() {
-    let body = status_body(&[("default", false, None), ("p2", false, None)]);
-    let (_stub, ep) = StubServer::start(vec![("GET", "/status", 200, body.as_str())]);
-    let r = run_with(
-        &["first-session", "--leases", "2", "--runs-per-lease", "3"],
-        &ep,
-        None,
-        0,
-        Some(vec![]),
-        Ui::plain(),
-        vec![Ok(ready(&["FS-01", "FS-02"]))],
-    );
-    let Outcome::Drive(ready) = &r.outcome else {
-        panic!("expected Drive")
-    };
-    assert_eq!(ready.section, "first-session");
-    assert_eq!(ready.rows, ["FS-01", "FS-02"]);
-    assert_eq!(
-        ready
-            .lanes
-            .iter()
-            .map(|l| l.instance.as_str())
-            .collect::<Vec<_>>(),
-        ["default", "p2"]
-    );
-    assert_eq!(ready.chaos, None);
-    assert!(!ready.diff_golden);
-    assert_eq!(r.calls.len(), 1);
-    assert_eq!(r.calls[0].1["instance"], "default");
-    assert!(
-        r.out.is_empty() && r.err.is_empty(),
-        "a real run prints nothing before it drives"
-    );
 }

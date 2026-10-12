@@ -1,19 +1,14 @@
 //! `lab doctor` end to end: the binary against an empty lab home.
 
-use std::process::Command;
+mod support;
 
-use tempfile::TempDir;
+use std::process::Command;
 
 // ops: the exit-1-on-FAIL rule and the plain PASS/WARN/FAIL lines, end to end.
 #[test]
 fn doctor_prints_ten_plain_lines_and_exits_1_when_a_check_fails() {
-    let home = TempDir::new().unwrap();
     // A closed port: the daemon is "down", whatever runs on this machine.
-    std::fs::write(
-        home.path().join("labd.pid"),
-        "{\"pid\":1,\"bind\":\"[::1]:9\"}",
-    )
-    .unwrap();
+    let home = support::isolated_lab_home();
     let output = Command::new(env!("CARGO_BIN_EXE_lab"))
         .arg("doctor")
         .env("CIMMERIA_LAB_HOME", home.path())

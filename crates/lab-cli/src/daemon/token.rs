@@ -6,8 +6,28 @@ pub const TOKEN_VAR: &str = "CIMMERIA_LAB_DAEMON_TOKEN";
 /// The bearer token: the user environment (`HKCU\Environment`, Windows
 /// only), else the process environment. An empty value is `None`. Never
 /// print the result. Port of `Get-LabToken`.
+///
+/// When `CIMMERIA_LAB_HOME` is set (the test-only override of the lab home)
+/// the registry is not read: only the process environment counts. Otherwise a
+/// test run against a temp lab home would pick up the real daemon's token
+/// from the developer's own `HKCU\Environment` and could drive the real daemon.
 pub fn daemon_token() -> Option<String> {
-    pick_token(user_env(TOKEN_VAR), std::env::var(TOKEN_VAR).ok())
+    token_with(
+        super::paths::lab_home_overridden(),
+        || user_env(TOKEN_VAR),
+        std::env::var(TOKEN_VAR).ok(),
+    )
+}
+
+/// [`daemon_token`] with its inputs given. `read_user` is called only when
+/// `home_overridden` is false; when it is true only `process` is used.
+pub fn token_with(
+    home_overridden: bool,
+    read_user: impl FnOnce() -> Option<String>,
+    process: Option<String>,
+) -> Option<String> {
+    let user = if home_overridden { None } else { read_user() };
+    pick_token(user, process)
 }
 
 /// The first non-empty of the user value and the process value.

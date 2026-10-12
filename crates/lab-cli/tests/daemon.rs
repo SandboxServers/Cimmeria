@@ -264,6 +264,67 @@ fn pick_token_treats_empty_and_missing_as_none() {
     );
 }
 
+// A lab home override is a test run: the registry (the real daemon's token)
+// must not be read, whatever it holds.
+#[test]
+fn token_with_a_home_override_never_reads_the_user_environment() {
+    let mut read = false;
+    let got = token::token_with(
+        true,
+        || {
+            read = true;
+            Some("real-token-from-registry".into())
+        },
+        Some("process".into()),
+    );
+    assert!(!read, "the user environment was read");
+    assert_eq!(got, Some("process".to_string()));
+    assert_eq!(token::token_with(true, || None, None), None);
+}
+
+#[test]
+fn token_without_a_home_override_reads_the_user_environment_first() {
+    let got = token::token_with(false, || Some("user".into()), Some("process".into()));
+    assert_eq!(got, Some("user".to_string()));
+}
+
+#[test]
+fn lab_home_overridden_follows_the_variable() {
+    let _lock = env_lock();
+    let tmp = TempDir::new().unwrap();
+    {
+        let _env = EnvGuard::set(&[(HOME, Some(s(tmp.path())))]);
+        assert!(paths::lab_home_overridden());
+    }
+    {
+        let _env = EnvGuard::set(&[(HOME, Some(""))]);
+        assert!(!paths::lab_home_overridden());
+    }
+    let _env = EnvGuard::set(&[(HOME, None)]);
+    assert!(!paths::lab_home_overridden());
+}
+
+// With the override set, daemon_token is the process variable alone, so a
+// machine's real registry token can never reach a test.
+#[test]
+fn daemon_token_with_a_home_override_is_the_process_variable() {
+    let _lock = env_lock();
+    let tmp = TempDir::new().unwrap();
+    {
+        let _env = EnvGuard::set(&[
+            (HOME, Some(s(tmp.path()))),
+            (token::TOKEN_VAR, Some("test-token-not-real")),
+        ]);
+        assert_eq!(
+            token::daemon_token(),
+            Some("test-token-not-real".to_string())
+        );
+    }
+    // Unset in the process: None even where the registry holds a real token.
+    let _env = EnvGuard::set(&[(HOME, Some(s(tmp.path()))), (token::TOKEN_VAR, None)]);
+    assert_eq!(token::daemon_token(), None);
+}
+
 // Off Windows there is no registry, so the process environment decides.
 #[cfg(not(windows))]
 #[test]

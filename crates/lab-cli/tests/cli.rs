@@ -1,18 +1,14 @@
 //! Runs the built `lab` binary and checks exit codes and output.
 
+mod support;
+
 use std::process::{Command, Output};
 
 /// Runs `lab` with `args` and an optional environment override. Every run gets
-/// a fresh lab home (`CIMMERIA_LAB_HOME` and `LOCALAPPDATA`) whose `labd.pid`
-/// names the closed port 9: without it the default is 127.0.0.1:8779, where a
-/// lab daemon may run on this machine. `env` may override the home.
+/// an isolated lab home (`CIMMERIA_LAB_HOME` and `LOCALAPPDATA`), so no run
+/// reaches the machine's real lab daemon. `env` may override the home.
 fn run_lab(args: &[&str], env: &[(&str, &std::path::Path)]) -> Output {
-    let home = tempfile::TempDir::new().expect("temp dir");
-    std::fs::write(
-        home.path().join("labd.pid"),
-        r#"{"pid":1,"bind":"127.0.0.1:9"}"#,
-    )
-    .expect("labd.pid");
+    let home = support::isolated_lab_home();
     let mut command = Command::new(env!("CARGO_BIN_EXE_lab"));
     command.args(args);
     command.env("CIMMERIA_LAB_HOME", home.path());

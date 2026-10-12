@@ -3,21 +3,13 @@
 //! Every call passes `--plan-only` (or `-PlanOnly`): a real run goes to the
 //! PowerShell script until LX-16b, and a test must never start that.
 
+mod support;
+
 use std::path::Path;
 use std::process::{Command, Output};
 
 use serde_json::Value;
-use tempfile::TempDir;
-
-fn fake_home() -> TempDir {
-    let home = TempDir::new().unwrap();
-    std::fs::write(
-        home.path().join("labd.pid"),
-        r#"{"pid":1,"bind":"127.0.0.1:9"}"#,
-    )
-    .unwrap();
-    home
-}
+use support::isolated_lab_home as fake_home;
 
 /// Runs the binary with `home` as both the lab home and `%LOCALAPPDATA%`, so
 /// no child reads the machine's real lab state or reaches a real daemon.
