@@ -298,11 +298,15 @@ fn status(job: &Job<'_>, sent: Map<String, Value>, call: &mut CallFn<'_>) -> Out
                 ui.paint(Tone::Warn, ui.mark(Mark::Warn))
             )
         };
-        let age_text = reply
-            .get("age_s")
-            .and_then(Value::as_u64)
-            .map(format_age)
-            .unwrap_or_default();
+        // A whole or fractional number of seconds is shown as `1m 15s`; anything
+        // else is shown as the daemon sent it, never blank.
+        let age_text = match reply.get("age_s") {
+            Some(Value::Number(n)) => n
+                .as_u64()
+                .or_else(|| n.as_f64().filter(|f| *f >= 0.0).map(|f| f as u64))
+                .map_or_else(|| age.clone(), format_age),
+            _ => age.clone(),
+        };
         let kv = |key: &str, value: &str| {
             format!("  {}  {value}", ui.paint(Tone::Dim, &format!("{key:<9}")))
         };

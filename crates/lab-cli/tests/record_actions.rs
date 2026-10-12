@@ -388,6 +388,49 @@ fn exit_3_on_stop_offers_the_retry_too() {
         .ends_with("recording is kept; retry with lab record stop -Instance p2"));
 }
 
+// Extra: the state file is one compact line, keys in order, and the folder
+// `start` sent is where `stop` says the draft went.
+#[test]
+fn the_state_file_is_one_ordered_line_and_stop_uses_its_spec_folder() {
+    let dir = TempDir::new().expect("temp dir");
+    let mut a = args("start", Some("first-session"));
+    a.instance = Some("p2".into());
+    a.specs_dir = Some(r"D:\specs".into());
+    run(dir.path(), &a, vec![start_reply()], true);
+    let text = fs::read_to_string(dir.path().join("record-p2.json")).expect("state file");
+    assert_eq!(
+        text,
+        format!(
+            "{{\"recording_id\":\"{ID}\",\"instance\":\"p2\",\"specs_dir\":\"D:\\\\specs\"}}\n"
+        )
+    );
+    let (o, _) = run(dir.path(), &stop_p2(), vec![stop_reply()], true);
+    let draft = joined(r"D:\specs", &["drafts", "first-session-20261012-1430.toml"]);
+    assert!(o.text.starts_with(&format!("draft {draft}")), "{}", o.text);
+}
+
+// Extra: a start that sent no spec folder leaves the key out of the state file.
+#[test]
+fn a_start_with_no_spec_folder_leaves_specs_dir_out_of_the_state_file() {
+    let dir = TempDir::new().expect("temp dir");
+    save_state(&dir.path().join("record-p2.json"), ID, "p2", "").expect("save state");
+    let text = fs::read_to_string(dir.path().join("record-p2.json")).expect("state file");
+    assert_eq!(
+        text,
+        format!("{{\"recording_id\":\"{ID}\",\"instance\":\"p2\"}}\n")
+    );
+}
+
+// Extra: a good stop keeps the state file of another instance.
+#[test]
+fn a_good_stop_deletes_only_its_own_state_file() {
+    let dir = TempDir::new().expect("temp dir");
+    save_p2(dir.path());
+    save_state(&dir.path().join("record-p3.json"), "other", "p3", "").expect("save state");
+    run(dir.path(), &stop_p2(), vec![stop_reply()], true);
+    assert!(!dir.path().join("record-p2.json").exists());
+    assert!(dir.path().join("record-p3.json").exists());
+}
 // Extra (not a ported check): the PowerShell paths on Windows, byte for byte.
 #[cfg(windows)]
 #[test]

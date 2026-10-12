@@ -227,6 +227,80 @@ fn fancy_stop_prints_draft_written() {
     );
 }
 
+// Extra: lease ids in a daemon's success answer are hidden in the line printed,
+// with and without --json (the answer is not a refusal, so only `render` hides them).
+#[test]
+fn lease_ids_in_a_success_answer_are_hidden_when_printed() {
+    let dir = TempDir::new().expect("temp dir");
+    let reply = ok(
+        json!({"ok":true,"recording":true,"recording_id":ID,"instance":"p2","section":"lease-0123456789abcdef","age_s":1,"ticks":2,"anchors":3}),
+    );
+    let (o, _) = run(dir.path(), &args("status", None), vec![reply], true);
+    let plain = render(&Ui::plain(), false, &o);
+    assert!(
+        !plain.text.contains("lease-0123456789abcdef"),
+        "{}",
+        plain.text
+    );
+    assert!(plain.text.contains("lease-<redacted>"));
+    let json = render(&Ui::plain(), true, &o);
+    assert!(
+        !json.text.contains("lease-0123456789abcdef"),
+        "{}",
+        json.text
+    );
+    assert!(json.text.contains("lease-<redacted>"));
+}
+
+// Extra: a success answer prints as the daemon's keys in the order it sent
+// them (alphabetical), nulls and empty strings dropped, zeros kept.
+#[test]
+fn a_success_answer_prints_in_the_daemons_key_order() {
+    let dir = TempDir::new().expect("temp dir");
+    let reply: Value = serde_json::from_str(
+        r#"{"ok":true,"recording_id":"r1","instance":"p2","section":"fs","ended":null,"note":"","ticks":0}"#,
+    )
+    .expect("json");
+    let (o, _) = run(dir.path(), &args("status", None), vec![ok(reply)], true);
+    assert_eq!(
+        render(&Ui::plain(), true, &o).text,
+        r#"{"instance":"p2","ok":true,"recording_id":"r1","section":"fs","ticks":0}"#
+    );
+}
+
+// Extra: fancy status shows a fractional age as minutes and seconds, never blank.
+#[test]
+fn fancy_status_formats_a_fractional_age() {
+    let dir = TempDir::new().expect("temp dir");
+    let reply = ok(
+        json!({"ok":true,"recording":true,"recording_id":ID,"instance":"p2","section":"fs","age_s":75.5,"ticks":150,"anchors":2}),
+    );
+    let (o, _) = run_with(
+        &fancy_ui(),
+        dir.path(),
+        &args("status", None),
+        vec![reply],
+        true,
+    );
+    assert!(o.text.contains("1m 15s"), "{}", o.text);
+}
+
+// Extra: fancy stop with no draft and an early end.
+#[test]
+fn fancy_stop_with_no_draft_prints_the_tick_count_and_the_early_end() {
+    let dir = TempDir::new().expect("temp dir");
+    record_support_save(dir.path());
+    let mut a = args("stop", None);
+    a.instance = Some("p2".into());
+    a.no_draft = true;
+    let reply = ok(json!({"ok":true,"recording_id":ID,"ticks":4,"raw":ID,"ended":"lease_lost"}));
+    let (o, _) = run_with(&fancy_ui(), dir.path(), &a, vec![reply], true);
+    let raw = joined(UAT, &["records", ID, "record.jsonl"]);
+    assert_eq!(
+        o.text,
+        format!("\x1b[32m✓\x1b[0m stopped; 4 tick(s), no draft\n\x1b[2m  raw   {raw}\x1b[0m\n\x1b[33m!\x1b[0m the recorder stopped early: lease_lost")
+    );
+}
 fn record_support_save(home: &std::path::Path) {
     cimmeria_lab_cli::commands::record::state::save_state(
         &home.join("record-p2.json"),
