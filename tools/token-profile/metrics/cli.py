@@ -78,7 +78,7 @@ def cmd_cost(args):
         roles = config["roles"]
         pr_map, accepted = load_ledger(args.ledger, config["accepted_statuses"]) if args.ledger else (None, None)
         db = open_db(args.db)
-    except (OSError, ValueError, KeyError, ReportError) as e:
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, ReportError) as e:
         print(f"status=error {type(e).__name__}", file=sys.stderr)
         return 2
     print(f"prices {CURRENT} source {SOURCE}", file=sys.stderr)

@@ -192,7 +192,8 @@ def stamp(conn, since, until, ledger_pr_map=None, price_table=CURRENT):
     how many PRs are still untagged, and the unattributed share."""
     untagged = {row["pr"] for row in load_requests(conn, since, until, ledger_pr_map)
                 if row["pr"] is not None and not row["campaign"]}
-    schema = conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0]
+    row = conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
+    schema = row[0] if row else None
     return {"generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "window": {"since": since, "until": until}, "price_table": price_table, "price_source": SOURCE,
             "profiler_schema": schema,

@@ -147,6 +147,12 @@ class CostTest(unittest.TestCase):
         self.assertAlmostEqual(out["camp-b"]["cost"]["by_role"]["reviewer"], 0.025, places=9)
         self.assertAlmostEqual(out["camp-b"]["cost"]["by_role"]["coordinator"], 0.012, places=9)
 
+    def test_base_roles_are_zero_filled(self):
+        # camp-c has no fixer rows, but every base role is present in by_role, at 0.0 when it has no spend.
+        by_role = self.rollup()["camp-c"]["cost"]["by_role"]
+        self.assertLessEqual(set(cost.BASE_ROLES), set(by_role))
+        self.assertEqual(by_role["fixer"], 0.0)
+
     def test_accepted_count_or_merged_prs_as_the_denominator(self):
         out = self.rollup(accepted={"camp-a": 2})
         self.assertAlmostEqual(out["camp-a"]["accepted"]["cost_per_accepted_usd"], 0.0592 / 2, places=9)
@@ -227,6 +233,13 @@ class PinnedCostTest(unittest.TestCase):
         self.assertEqual(camp["cost"]["unpriced_rows"], 1)
         self.assertAlmostEqual(camp["cost"]["total_usd"], 0.0305, places=9)
 
+    def test_campaign_without_a_merged_pr_says_so(self):
+        # camp-e has no PR, so no merged PR and no cost per PR; camp-d has merged PR 502, so it has no gap.
+        out = self.rollup()
+        self.assertEqual(out["camp-e"]["prs"]["cost_per_pr_gap"], "no merged PRs")
+        self.assertIsNone(out["camp-e"]["prs"]["cost_per_pr"]["mean"])
+        self.assertNotIn("cost_per_pr_gap", out["camp-d"]["prs"])
+
     def test_pr_merged_follows_the_pr_state(self):
         # p1 is on the MERGED PR 502 and p2 on the OPEN PR 501: pr_merged is not always true.
         rows = {row["request_id"]: row for row in cost.load_requests(self.db, self.since, self.until)}
@@ -234,8 +247,9 @@ class PinnedCostTest(unittest.TestCase):
         self.assertIs(rows["p2"]["pr_merged"], False)
 
     def test_row_campaign_beats_pr_campaign(self):
-        # campaign_of's order: the row's own campaign, then its PR's, then the ledger map. The schema never keeps a
-        # row campaign and a PR on one row (a campaign row has no PR), so this pins the function on synthetic rows.
+        # campaign_of's order: the row's own campaign, then its PR's, then the ledger map. The order is not observable
+        # through the DB: the schema CHECKs make row_campaign and pr_campaign mutually exclusive (a campaign row has no
+        # PR), so this pins the function on synthetic rows only.
         row = {"row_campaign": "camp-x", "pr_campaign": "camp-y", "pr_number": 5}
         self.assertEqual(cost.campaign_of(row, {5: "camp-z"}), "camp-x")
         self.assertEqual(cost.campaign_of({**row, "row_campaign": None}, {5: "camp-z"}), "camp-y")
@@ -282,6 +296,38 @@ class CliTest(unittest.TestCase):
             self.assertEqual(record["campaigns"]["camp-a"]["accepted"]["packets"], 2)
             self.assertEqual(record["campaigns"]["camp-b"]["accepted"]["packets"], 1)
             self.assertNotIn("accepted_gap", record["campaigns"]["camp-a"]["accepted"])
+
+    def test_ledger_with_no_accepted_packets_says_so(self):
+        # camp-a's only packet is Ready, which is not accepted: a count of 0, with no cost per packet.
+        ledger = {"schema": 1, "pr_map": {}, "conflicts": [], "campaigns": {
+            "camp-a": {"window": {}, "packets": [{"status": "Ready"}]}}}
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "profile.sqlite"
+            build(db)
+            ledger_file = Path(tmp) / "ledger.json"
+            ledger_file.write_text(json.dumps(ledger), encoding="utf-8")
+            out = Path(tmp) / "out"
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                status = cli.main(["cost", "--db", str(db), "--out", str(out), "--ledger", str(ledger_file)])
+            self.assertEqual(status, 0)
+            record = json.loads((out / "cost.json").read_text(encoding="utf-8"))
+            self.assertEqual(record["campaigns"]["camp-a"]["accepted"],
+                             {"packets": 0, "cost_per_accepted_usd": None,
+                              "accepted_gap": "the ledger counts no accepted packets"})
+
+    def test_malformed_ledger_exits_2_with_a_status_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "profile.sqlite"
+            build(db)
+            ledger_file = Path(tmp) / "ledger.json"
+            # A campaign that is a list, not an object: indexing it by "packets" is a TypeError.
+            ledger_file.write_text(json.dumps({"pr_map": {}, "campaigns": {"camp-a": []}}), encoding="utf-8")
+            err = io.StringIO()
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+                status = cli.main(["cost", "--db", str(db), "--out", str(Path(tmp) / "out"),
+                                   "--ledger", str(ledger_file)])
+            self.assertEqual(status, 2)
+            self.assertIn("status=error TypeError", err.getvalue().splitlines())
 
     def test_unreadable_database_exits_2_with_a_status_line(self):
         with tempfile.TemporaryDirectory() as tmp:
