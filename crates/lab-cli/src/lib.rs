@@ -5,10 +5,13 @@
 //! from `tools/lab/lab.ps1` into [`commands`].
 
 pub mod argv;
+pub mod batch;
+pub mod clip;
 pub mod commands;
 pub mod daemon;
 pub mod fallback;
 pub mod help;
+pub mod known_issues;
 pub mod ui;
 
 use std::ffi::OsString;

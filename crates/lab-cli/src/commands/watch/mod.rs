@@ -2,6 +2,8 @@
 //! LX-02 gives it its clap arguments and help page; the body is still the
 //! PowerShell fallback.
 
+pub mod snapshot;
+
 use crate::commands::Ctx;
 use crate::fallback;
 
