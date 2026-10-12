@@ -1,5 +1,5 @@
 {
-  "_doc": "Campaign tags for PRs and branches, read by the ingest. Each key is a campaign ledger folder under docs/analysis/. A PR's campaign is the first match of: its head branch (exact, then prefix), a tracking issue in its title, its base branch. An untagged integration PR forms its own campaign, pr-<N>. See attribution.md section Campaigns.",
+  "_doc": "Campaign tags for PRs and branches, read by the ingest. Each key is a campaign ledger folder under docs/analysis/; a folder with no branch rule is listed under _untagged with its reason. A PR's campaign is the first match of: its head branch (exact, then prefix), a tracking issue in its title, its base branch. An untagged integration PR forms its own campaign, pr-<N>. See attribution.md section Campaigns.",
   "ability-mechanics": {"prefixes": ["abilities/"]},
   "ability-trees": {"prefixes": ["trees/"]},
   "ammo": {"prefixes": ["ammo/"], "issues": [1026]},
@@ -34,5 +34,21 @@
   "social-systems": {"prefixes": ["social/"]},
   "telemetry-gaps": {"prefixes": ["telemetry-gaps/"]},
   "token-usage": {"issues": [957]},
-  "wireclient-ci": {"prefixes": ["wireclient-ci/"]}
+  "wireclient-ci": {"prefixes": ["wireclient-ci/"]},
+  "_untagged": {
+    "cellblock-asset-audit": "no confirmed branch prefix; PRs come from the ledger PR map (CM-05)",
+    "cellblock-autoplay": "no confirmed branch prefix; PRs come from the ledger PR map (CM-05)",
+    "custom-debug-map": "no confirmed branch prefix; PRs come from the ledger PR map (CM-05)",
+    "deployables": "no confirmed branch prefix; PRs come from the ledger PR map (CM-05)",
+    "haiku-lab-uat": "no confirmed branch prefix; PRs come from the ledger PR map (CM-05)",
+    "historical-cellblocks": "no confirmed branch prefix; PRs come from the ledger PR map (CM-05)",
+    "issue-triage-2026-09-25": "no confirmed branch prefix; PRs come from the ledger PR map (CM-05)",
+    "lab-automation": "no confirmed branch prefix; PRs come from the ledger PR map (CM-05)",
+    "lab-cli": "no confirmed branch prefix; PRs come from the ledger PR map (CM-05)",
+    "lab-roadmap": "no confirmed branch prefix; PRs come from the ledger PR map (CM-05)",
+    "named-telemetry": "no confirmed branch prefix; PRs come from the ledger PR map (CM-05)",
+    "playtests": "predates window",
+    "ring-transport-cellblock-castle": "predates window",
+    "sgw-handoff-pack-v1.2": "predates window"
+  }
 }
