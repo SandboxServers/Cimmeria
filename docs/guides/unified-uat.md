@@ -1313,22 +1313,22 @@ The lab command is the Rust `lab.exe` ([lab CLI in Rust ledger](../analysis/lab-
 
 | # | Do | Expect | Notes / known issues |
 |---|---|---|---|
-| LX-U1 | `lab` | The commands in four groups (Run and record UAT, Daemon, Instances and clients, Install and configure), examples and a footer; exit 0 | In a terminal: colour and aligned columns |
-| LX-U2 | `lab help uat` | The `uat` page: arguments, a description and examples; exit 0 | `lab uat --help` shows the same page; `lab uat -h` a shorter one |
-| LX-U3 | `lab stauts`, then `$LASTEXITCODE` | `unknown command 'stauts'` with a hint that names `status`; exit code 2 | |
-| LX-U4 | `lab version` | `lab <version> (<sha>)`, then `daemon <version>` (`daemon ● <version>` on a terminal) | `dev` instead of a sha means `lab.exe` was not stamped by `lab install` |
-| LX-U5 | `lab status` | The daemon line, then one row per instance: account, client, port, lease, seed | Exit 1 when the daemon is down |
-| LX-U6 | `lab doctor` | A check list with no FAIL | The two expected WARNs on a fresh setup are in [lab-contributor-setup.md](lab-contributor-setup.md) |
-| LX-U7 | `lab env` | The `labd.env` lines, with every secret shown as `<redacted>` | |
-| LX-U8 | `lab logs --lines 5 --instance p2` | The last five log lines of instance p2; a continuation line goes with its entry | Exit 1 with a message when there is no `labd.log` |
-| LX-U9 | `lab logs --follow`, wait for a new line, then Ctrl+C | New lines print as they are written; Ctrl+C stops it with exit 0 | |
-| LX-U10 | `lab watch --once` | One snapshot of the newest batch, or the line `no batch`; exit 0 | Exit 1 when the daemon is down and there is no batch |
+| LX-U1 | `lab` | The commands in four groups (Run and record UAT, Daemon, Instances and clients, Install and configure), examples and a footer; exit 0 | In a terminal: colour and aligned columns Run 2026-10-12: pass. |
+| LX-U2 | `lab help uat` | The `uat` page: arguments, a description and examples; exit 0 | `lab uat --help` shows the same page; `lab uat -h` a shorter one Run 2026-10-12: pass. |
+| LX-U3 | `lab stauts`, then `$LASTEXITCODE` | `unknown command 'stauts'` with a hint that names `status`; exit code 2 | Run 2026-10-12: pass. |
+| LX-U4 | `lab version` | `lab <version> (<sha>)`, then `daemon <version>` (`daemon ● <version>` on a terminal) | `dev` instead of a sha means `lab.exe` was not stamped by `lab install` Run 2026-10-12: pass. |
+| LX-U5 | `lab status` | The daemon line, then one row per instance: account, client, port, lease, seed | Exit 1 when the daemon is down Run 2026-10-12: pass. |
+| LX-U6 | `lab doctor` | A check list with no FAIL | The two expected WARNs on a fresh setup are in [lab-contributor-setup.md](lab-contributor-setup.md) Run 2026-10-12: pass. |
+| LX-U7 | `lab env` | The `labd.env` lines, with every secret shown as `<redacted>` | Run 2026-10-12: pass. |
+| LX-U8 | `lab logs --lines 5 --instance p2` | The last five log lines of instance p2; a continuation line goes with its entry | Exit 1 with a message when there is no `labd.log` Run 2026-10-12: pass. |
+| LX-U9 | `lab logs --follow`, wait for a new line, then Ctrl+C | New lines print as they are written; Ctrl+C stops it with exit 0 | Owed: not checked live on 2026-10-12 (LX-20). |
+| LX-U10 | `lab watch --once` | One snapshot of the newest batch, or the line `no batch`; exit 0 | Exit 1 when the daemon is down and there is no batch Run 2026-10-12: pass. |
 | LX-U11 | `lab golden show first-session` | The committed golden, or exit 2 with "no golden" while GD-10 has not recorded one | Needs no daemon |
-| LX-U12 | `lab completions powershell --install`; open a new terminal; type `lab u` and press Tab | The first run says it added the line to your profile, and a second run says it is already there; Tab completes to `lab uat` | Edits `$PROFILE.CurrentUserAllHosts` |
-| LX-U13 | (ask first) `lab uat first-session --rows FS-01,FS-02,FS-P1 --plan-only` | `plan: 3 row(s) ready on <instance>: <the rows>`; nothing is driven; exit 0 | |
-| LX-U14 | (ask first) One real run, `lab uat first-session --rows FS-01,FS-02,FS-P1`, with `lab watch` open in a second terminal | One progress line per run, then a summary; exit 0 when every row passes. `lab watch` shows the batch as `live`, then `done` | The lab must be free for about 10 minutes |
-| LX-U15 | (ask first) `lab clients stop <instance>` on an idle client | The client closes; exit 0. A leased instance is refused with the holder named and exit 3 | |
-| LX-U16 | `lab status \| Out-File s.txt`, then the same for `lab doctor` and `lab watch --once` | Each file holds plain text with no escape codes, in the format the PowerShell command printed | Compare with the examples in [the `lab` command](live-research-lab.md#the-lab-command) |
+| LX-U12 | `lab completions powershell --install`; open a new terminal; type `lab u` and press Tab | The first run says it added the line to your profile, and a second run says it is already there; Tab completes to `lab uat` | Edits `$PROFILE.CurrentUserAllHosts` Run 2026-10-12: pass. |
+| LX-U13 | (ask first) `lab uat first-session --rows FS-01,FS-02,FS-P1 --plan-only` | `plan: 3 row(s) ready on <instance>: <the rows>`; nothing is driven; exit 0 | Run 2026-10-12: pass. |
+| LX-U14 | (ask first) One real run, `lab uat first-session --rows FS-01,FS-02,FS-P1`, with `lab watch` open in a second terminal | One progress line per run, then a summary; exit 0 when every row passes. `lab watch` shows the batch as `live`, then `done` | The lab must be free for about 10 minutes Run 2026-10-12: pass. Owed: the live `lab watch` view and a second Ctrl+C during a run (LX-20). |
+| LX-U15 | (ask first) `lab clients stop <instance>` on an idle client | The client closes; exit 0. A leased instance is refused with the holder named and exit 3 | Run 2026-10-12: pass. |
+| LX-U16 | `lab status \| Out-File s.txt`, then the same for `lab doctor` and `lab watch --once` | Each file holds plain text with no escape codes, in the format the PowerShell command printed | Compare with the examples in [the `lab` command](live-research-lab.md#the-lab-command) Run 2026-10-12: pass. |
 
 ## Recording results
 

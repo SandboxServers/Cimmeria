@@ -161,6 +161,45 @@ fn binary_prints_the_last_p2_line_masked() {
     );
 }
 
+// New: a lease id in a log line is hidden on the snapshot path.
+// Fails if reverted: the printed line would carry the full lease id.
+#[test]
+fn binary_hides_a_lease_id_in_a_printed_line() {
+    let home = lab_home_for("127.0.0.1:9");
+    std::fs::write(
+        home.path().join("labd.log"),
+        "2026-10-10T20:00:07.000001Z  INFO serve: lease lease-f7405832bc894677ae303a148425e666 taken\r\n",
+    )
+    .expect("write log");
+    let output = run_lab_in(home.path(), &["logs", "--lines", "5"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(output.status.code(), Some(0));
+    assert_eq!(
+        stdout,
+        "2026-10-10T20:00:07.000001Z  INFO serve: lease lease-<redacted> taken\n"
+    );
+    assert!(!stdout.contains("f7405832"), "{stdout}");
+}
+
+// New: the same holds on the --follow path, for a line appended after the start.
+// Fails if reverted: the appended line would carry the full lease id.
+#[test]
+fn follow_hides_a_lease_id_in_an_appended_line() {
+    let dir = tempfile::TempDir::new().expect("temp dir");
+    let path = dir.path().join("labd.log");
+    std::fs::write(&path, "2026-10-10T20:00:00Z  INFO serve: a\n").expect("write log");
+    let follow = Follow::start(path.clone(), None, None, 50);
+    follow.wait_for("serve: a");
+    append(
+        &path,
+        "2026-10-10T20:00:08Z  INFO serve: lease lease-f7405832bc894677ae303a148425e666 kept\n",
+    );
+    follow.wait_for("serve: lease");
+    let text = follow.finish();
+    assert!(text.contains("lease lease-<redacted> kept"), "{text}");
+    assert!(!text.contains("f7405832"), "{text}");
+}
+
 // New: the removed PowerShell logs command exits 1 with 'no daemon log yet: <path>' on stderr.
 #[test]
 fn binary_without_a_log_exits_1_and_names_the_path() {

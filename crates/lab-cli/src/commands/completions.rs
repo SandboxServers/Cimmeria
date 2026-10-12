@@ -10,8 +10,8 @@ use clap_complete::Shell;
 
 use crate::commands::{Cli, Ctx};
 
-/// The line `--install` adds to the PowerShell profile.
-pub const PROFILE_LINE: &str = "lab completions powershell | Out-String | Invoke-Expression";
+/// The call the profile line runs; a line that holds it is ours to replace.
+const PROFILE_CALL: &str = "completions powershell | Out-String | Invoke-Expression";
 
 const PROFILE_COMMENT: &str =
     "# lab command-line completion (added by: lab completions powershell --install)";
@@ -80,26 +80,76 @@ pub fn script(shell: ShellName) -> String {
 pub enum Installed {
     /// The line was appended.
     Added,
-    /// A line that runs `lab completions powershell` was already there.
+    /// An older line that runs the completion call was replaced.
+    Updated,
+    /// The exact line was already there.
     AlreadyThere,
 }
 
-/// Adds [`PROFILE_LINE`] to the profile at `path` unless a line that is not a
-/// comment already runs `lab completions powershell`. Creates the folder and
-/// the file when they are missing, keeps what is there, and uses the file's own
-/// line ending.
-pub fn install_into(path: &Path) -> io::Result<Installed> {
+/// The guarded profile line for the lab.exe at `exe`. It runs only while that
+/// file exists, so a profile never errors when lab has moved or is gone. A `'`
+/// in the path is doubled, as a PowerShell single-quoted string needs.
+pub fn profile_line(exe: &Path) -> String {
+    let quoted = exe.display().to_string().replace('\'', "''");
+    format!("if (Test-Path -LiteralPath '{quoted}') {{ & '{quoted}' {PROFILE_CALL} }}")
+}
+
+/// The canonical path of the running lab.exe. The `\\?\` prefix that Windows
+/// adds to canonical paths is dropped, so the profile line reads plainly.
+pub fn lab_exe_path() -> io::Result<PathBuf> {
+    let exe = std::env::current_exe()?;
+    let canonical = std::fs::canonicalize(&exe).unwrap_or(exe);
+    let text = canonical.to_string_lossy().into_owned();
+    match text.strip_prefix(r"\\?\") {
+        Some(plain) if !plain.starts_with(r"UNC\") => Ok(PathBuf::from(plain)),
+        _ => Ok(canonical),
+    }
+}
+
+/// Whether a line is one of ours: not a comment, and it runs the lab
+/// completion call (an old unguarded line, or one from an older path).
+fn is_profile_call(line: &str) -> bool {
+    let line = line.trim_start();
+    !line.starts_with('#') && line.contains(PROFILE_CALL)
+}
+
+/// Puts [`profile_line`] for `exe` into the profile at `path`:
+/// - if the exact line is already there, nothing changes ([`Installed::AlreadyThere`]);
+/// - if a line that runs the lab completion call is there (an older form), the
+///   first one is replaced and any others are dropped ([`Installed::Updated`]);
+/// - otherwise the line is appended after a comment ([`Installed::Added`]).
+///
+/// Creates the folder and the file when they are missing, keeps what is there,
+/// and uses the file's own line ending.
+pub fn install_into(path: &Path, exe: &Path) -> io::Result<Installed> {
     let existing = match std::fs::read_to_string(path) {
         Ok(text) => text,
         Err(err) if err.kind() == io::ErrorKind::NotFound => String::new(),
         Err(err) => return Err(err),
     };
-    let present = existing.lines().any(|line| {
-        let line = line.trim_start();
-        !line.starts_with('#') && line.contains("lab completions powershell")
-    });
-    if present {
+    let line = profile_line(exe);
+    if existing.lines().any(|known| known.trim() == line) {
         return Ok(Installed::AlreadyThere);
+    }
+    if existing.lines().any(is_profile_call) {
+        let mut text = String::new();
+        let mut replaced = false;
+        // Each segment keeps its own line ending; the replacement takes the
+        // ending of the line it replaces.
+        for segment in existing.split_inclusive('\n') {
+            let content = segment.trim_end_matches(['\r', '\n']);
+            if is_profile_call(content) {
+                if !replaced {
+                    text.push_str(&line);
+                    text.push_str(&segment[content.len()..]);
+                    replaced = true;
+                }
+            } else {
+                text.push_str(segment);
+            }
+        }
+        std::fs::write(path, text)?;
+        return Ok(Installed::Updated);
     }
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -113,9 +163,7 @@ pub fn install_into(path: &Path) -> io::Result<Installed> {
     if !existing.is_empty() && !existing.ends_with('\n') {
         text.push_str(newline);
     }
-    text.push_str(&format!(
-        "{PROFILE_COMMENT}{newline}{PROFILE_LINE}{newline}"
-    ));
+    text.push_str(&format!("{PROFILE_COMMENT}{newline}{line}{newline}"));
     let mut file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -186,10 +234,25 @@ fn install(args: &Args, ctx: &Ctx) -> u8 {
             }
         },
     };
-    match install_into(&path) {
+    let exe = match lab_exe_path() {
+        Ok(exe) => exe,
+        Err(err) => {
+            ctx.ui
+                .error(&format!("cannot find the path of lab.exe: {err}"), None);
+            return 1;
+        }
+    };
+    match install_into(&path, &exe) {
         Ok(Installed::Added) => {
             anstream::println!(
                 "added the lab completion line to {}\nopen a new terminal to use it",
+                path.display()
+            );
+            0
+        }
+        Ok(Installed::Updated) => {
+            anstream::println!(
+                "updated the lab completion line in {}\nopen a new terminal to use it",
                 path.display()
             );
             0
@@ -222,6 +285,15 @@ mod tests {
         ));
         assert!(try_parse("completions", &[]).is_err());
         assert!(try_parse("completions", &["nushell"]).is_err());
+    }
+
+    #[test]
+    fn a_quote_in_the_exe_path_is_doubled_in_the_profile_line() {
+        let line = super::profile_line(std::path::Path::new(r"C:\Dev's\lab.exe"));
+        assert_eq!(
+            line,
+            r"if (Test-Path -LiteralPath 'C:\Dev''s\lab.exe') { & 'C:\Dev''s\lab.exe' completions powershell | Out-String | Invoke-Expression }"
+        );
     }
 
     #[test]

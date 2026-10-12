@@ -71,7 +71,7 @@ expects one continuation).
 | LX-17 | `uat`: `--diff-golden`, `--heal`, `--json`, exit codes; delete the uat PowerShell | M | 6 | LX-16, LX-12 | Integrated (local) |
 | LX-18 | Native wrappers, `completions`, delete the dispatcher | S | 7 | all ports | Integrated (local) |
 | LX-19 | Docs close-out | M | 7 | LX-18 | Integrated (local) |
-| LX-20 | Live check of every command on the workstation | S | 8 | LX-19, the user's OK for lab use | BlockedDependency |
+| LX-20 | Live check of every command on the workstation | S | 8 | LX-19, the user's OK for lab use | Done 2026-10-12 |
 
 Wave 3 has eight packets; run at most four at once (four lane slots, and
 the lab workstation starves under load).
@@ -87,6 +87,23 @@ the lab workstation starves under load).
   its dispatch. Before merging a port, the coordinator checks
   `git log <dispatch base>..origin/main -- tools/lab/cli/<command>*` and
   sends any later change to the review-fixer.
+
+## LX-20 live check (2026-10-12)
+
+| Step | Result |
+|---|---|
+| Install from the integration worktree (`pwsh tools\lab\cli\install.ps1 -From …`) | lab.exe installed beside cimmeria-lab.exe; old lab.cmd removed with the migration notice; dated .old backups |
+| `lab restart`, `lab version` | new daemon; `lab 0.1.0 (563691f70)`, daemon line |
+| `lab`, `lab help uat`, `lab stauts` | grouped help; full page; "did you mean: status, start?", exit 2 |
+| `lab status`, `lab env`, `lab logs --lines 5 --instance p2`, `lab watch --once` | correct; env masks secrets and hosts |
+| `lab doctor` | 10 PASS, 1 WARN (CLI copy differs from origin/main: expected on an unmerged branch); new build-match check PASS |
+| `lab uat first-session -Rows FS-01,FS-02,FS-P1 -PlanOnly`, `--plan-only --json` | native plan, PowerShell spelling accepted, one JSON line |
+| `lab uat first-session --rows FS-01,FS-02` | first try FAIL: D3DERR_NOTAVAILABLE, the screensaver was running (known lab issue); reported, summary written, exit 1. After stopping Ribbons.scr: PASS in 36 s, exit 0; plan.json, batch.jsonl, batch.json, summary.md written; lease released |
+| `lab watch --once` (+`--json`) during the run | state `live`, lease holder and purpose without an id, row under way |
+| `lab clients stop default` | stopped the idle client, exit 0 |
+| `lab completions powershell --install` (twice), tab completion | added once, idempotent; `lab u` → `uat`, `lab uat --ro` → `--rows`. Found F-LX14 (profile line errors when lab is not on PATH), fixed |
+| `lab status` piped to a file | no ANSI codes |
+| Not checked live | `lab logs --follow` + Ctrl+C, the live view of `lab watch`, a second Ctrl+C during a run (covered by tests) |
 
 ## Review outcomes
 
@@ -132,7 +149,7 @@ Where the merged code differs from the packet text. The specs in
   IPv6 masking, doctor hints and plurals, cell-width tables, absolute
   `--specs-dir`, calibrate's no-instance wording, `logs --follow` on a
   replaced file, the live view's panic restore, a deterministic Windows stop
-  test (10/10), stale references.
+  test (10/10), stale references. F-LX14 and F-LX15 were found by the LX-20 live check and fixed after it: the completion profile line errored when lab was not on PATH (now guarded, with lab.exe's absolute path), and log lines printed lease ids (now hidden).
 - **F-LX10 to F-LX12 (LX-18c).** Found in the LX-15 to LX-17 reviews.
   Ctrl+C during the 10-minute lease wait after a run timeout ends the wait
   at once, and a wait that Ctrl+C cut short does not brake the lane

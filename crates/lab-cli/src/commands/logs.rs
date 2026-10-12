@@ -11,6 +11,7 @@ use std::time::Duration;
 use regex::Regex;
 
 use crate::commands::Ctx;
+use crate::daemon::mcp::hide_lease_ids;
 use crate::daemon::paths;
 use crate::log_filter::{self, LogFilter};
 use crate::ui::{Tone, Ui};
@@ -123,10 +124,13 @@ fn install_ctrl_c() {
 #[cfg(not(windows))]
 fn install_ctrl_c() {}
 
-/// Plain mode: the line as it is. Fancy mode: the timestamp dim and the level
-/// word coloured (ERROR red, WARN yellow, INFO as is, DEBUG and TRACE dim). A
-/// continuation line is never coloured.
+/// Plain mode: the line as it is, with lease ids hidden. Fancy mode: the
+/// timestamp dim and the level word coloured (ERROR red, WARN yellow, INFO as
+/// is, DEBUG and TRACE dim). A continuation line is never coloured. Every
+/// printed line goes through here, on the snapshot and the `--follow` paths.
 pub fn paint_line(ui: &Ui, line: &str) -> String {
+    let line = hide_lease_ids(line);
+    let line = line.as_str();
     if !ui.color || !log_filter::is_entry_start(line) {
         return line.to_string();
     }
