@@ -84,13 +84,15 @@ def rollup(records, regime):
     accepted_rows = [row for row in rows if row.get("accepted")]
     cycles = distribution([row.get("cycle_hours") for row in rows])
     _put(out, "packets", len(accepted_rows))
-    _put(out, "first_pass_rate", _share(row.get("first_pass") for row in accepted_rows))
     if regime == "haiku":
+        _put(out, "first_pass_rate", _share(row.get("first_pass") for row in accepted_rows))
         retries = sum(len(row.get("retries") or []) for row in rows)
         _put(out, "retries_per_accepted", _ratio(retries, len(accepted_rows), 2))
         _put(out, "escalation_rate", _share(row.get("escalated") for row in rows))
     else:
-        # Retries are only counted for Haiku packet workers, so the old regime's count would be an artifact.
+        # First pass and retries are only counted for Haiku packet workers; the old regime's counts would be artifacts
+        # (its 0.0% came from packets with no implementer sessions, marked false).
+        _put(out, "first_pass_rate", None, "first pass is counted for Haiku packet workers only")
         _put(out, "retries_per_accepted", None, "retries are counted for Haiku packet workers only")
         _put(out, "escalation_rate", None, "n/a: nothing was dispatched to Haiku")
     _put(out, "packet_cycle_p50_hours", cycles["p50"])

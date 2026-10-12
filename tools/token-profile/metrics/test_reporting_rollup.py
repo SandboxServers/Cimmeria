@@ -143,11 +143,16 @@ class RollupPacketTest(unittest.TestCase):
         # the mixed campaign's two old rows count toward old, its two haiku rows toward haiku
         old = rollup(_records(), "old")
         self.assertEqual(old["packets"], 5)
-        self.assertEqual(old["first_pass_rate"], 0.8)
         haiku = rollup(_records(), "haiku")
         self.assertEqual(haiku["packets"], 4)
         self.assertEqual(haiku["first_pass_rate"], 0.75)
         self.assertEqual(haiku["retries_per_accepted"], 0.5)
+
+    def test_old_first_pass_is_gap_not_zero(self):
+        # the old regime's first pass is not counted (no implementer sessions), so its rate would be an artifact
+        old = rollup(_records(), "old")
+        self.assertIsNone(old["first_pass_rate"])
+        self.assertEqual(old["first_pass_rate_gap"], "first pass is counted for Haiku packet workers only")
 
     def test_old_retries_are_gap_not_zero(self):
         # the old regime's workers are not counted for retries, so its 0 would be an artifact, not a result
