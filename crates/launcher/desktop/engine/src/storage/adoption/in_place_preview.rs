@@ -14,26 +14,6 @@ fn full_layout(folder: &Path) -> bool {
     working.is_dir() && crate::install_layout::binaries_dir(folder).parent() == Some(&working)
 }
 
-/// What the old launcher's ledger says is still missing from the signed release.
-/// Checked before anything is downloaded: such a folder cannot verify.
-fn outdated(ledger: &migration::LegacyLedger, release: &VerifiedRelease) -> Vec<String> {
-    let manifest = release.manifest();
-    let mut missing = Vec::new();
-    if !ledger
-        .seed_sha256
-        .as_deref()
-        .is_some_and(|seed| seed.eq_ignore_ascii_case(&manifest.seed.sha256))
-    {
-        missing.push("seed".to_string());
-    }
-    for patch in &manifest.patches {
-        if !ledger.applied_patches.contains(&patch.state_key()) {
-            missing.push(patch.id.clone());
-        }
-    }
-    missing
-}
-
 pub(super) fn preview(
     state: Arc<Mutex<DesktopState>>,
     request: PreviewRequest,
@@ -88,11 +68,6 @@ pub(super) fn preview(
     if !full_layout(&folder) {
         tracing::warn!(target: "adoption", folder = %folder.display(), binaries = %crate::install_layout::binaries_dir(&folder).display(), "in-place adoption refused: the folder is not in the installer's Working\\Binaries layout");
         return Err(Error::UnsupportedLayout);
-    }
-    let missing = outdated(&imported.ledger, &request.release);
-    if !missing.is_empty() {
-        tracing::warn!(target: "adoption", ?missing, "in-place adoption refused: the old launcher has not applied the signed release");
-        return Err(Error::OutdatedInstall);
     }
     let (adopted, legacy_lock) = source::resolve(imported)?;
     let imported = source::legacy(&adopted)?;

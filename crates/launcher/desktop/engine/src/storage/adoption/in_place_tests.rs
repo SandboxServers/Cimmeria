@@ -321,12 +321,14 @@ fn a_modified_release_file_blocks_adoption_names_it_and_changes_nothing() {
 }
 
 #[test]
-fn an_old_launcher_ledger_for_another_release_is_refused_before_any_download() {
+fn an_old_launcher_ledger_for_another_release_is_classified_not_refused() {
     let f = Fixture::new(Some("another-seed"));
-    assert_eq!(f.preview().err(), Some(Error::OutdatedInstall));
-    let state = f.state.lock().unwrap();
-    assert!(list_preparations(&state).unwrap().is_empty());
-    assert!(state.operations().snapshot().operation.is_none());
+    let before = f.scan();
+    let preview = f.preview().unwrap();
+    // The ledger is not a gate: the files are classified against the release
+    // itself. This folder holds the seed's own bytes, so nothing blocks.
+    assert_eq!(preview.report.blocking().count(), 0);
+    assert_eq!(f.scan(), before);
 }
 
 #[test]

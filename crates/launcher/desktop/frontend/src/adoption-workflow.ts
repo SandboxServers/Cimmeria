@@ -1,7 +1,7 @@
 import {Context,Data,Effect,Layer,PubSub,Ref,Schema,Semaphore,Stream} from 'effect';
 import {NativeSnapshot} from './contract';
 const Count=Schema.Int.check(Schema.isBetween({minimum:0,maximum:Number.MAX_SAFE_INTEGER}));
-const codes=['unsupported_schema','platform_unavailable','import_required','unsupported_catalog','unsupported_configuration','review_unavailable','source_changed','in_use','consent_required','no_reusable_files','busy','stale_revision','identity_conflict','recovery_required','persistence_uncertain','invalid_directory','unsafe_file','corrupt_state','io','cancelled','launcher_too_old','invalid_artifact','unsupported_archive','network','release_unavailable','verification_failed','outdated_install','unsupported_layout','game_running','duplicate_release_file','leftover_launcher_files'] as const;
+const codes=['unsupported_schema','platform_unavailable','import_required','unsupported_catalog','unsupported_configuration','review_unavailable','source_changed','in_use','consent_required','no_reusable_files','busy','stale_revision','identity_conflict','recovery_required','persistence_uncertain','invalid_directory','unsafe_file','corrupt_state','io','cancelled','launcher_too_old','invalid_artifact','unsupported_archive','network','release_unavailable','verification_failed','unsupported_layout','game_running','duplicate_release_file','leftover_launcher_files'] as const;
 const Code=Schema.Literals(codes);
 const Review=Schema.Struct({preview_handle:Schema.String,operation_revision:Count,preferences_revision:Count,source:Schema.String,destination:Schema.String,
  release:Schema.Struct({manifest_sha256:Schema.String,seed_sha256:Schema.String,patches:Schema.Array(Schema.String)}),

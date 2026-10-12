@@ -208,7 +208,6 @@ test('unavailable backends and unsupported imported settings are stated plainly'
   [{...idle(),backend:'unsupported_platform'},/not available on this operating system yet\. Keep using the old launcher/],
   [{...idle(),backend:'helper_unavailable'},/does not include the verified archive helper/],
   [{...idle(),backend:'in_place'},/Adopt your existing game folder \/old-game in place/],
-  [{...idle(),backend:'in_place',last_error:'outdated_install'},/has not installed the current signed release.*Nothing was changed/],
   [{...idle(),backend:'in_place',last_error:'unsupported_layout'},/older layout.*cannot adopt in place.*Install the game fresh/],
   [{...idle(),backend:'in_place',last_error:'game_running'},/game is running from this folder\. Close the game first/],
   [{...idle(),backend:'in_place',last_error:'duplicate_release_file'},/neither copy matches.*log names the file\. Nothing was deleted/],

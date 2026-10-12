@@ -149,9 +149,6 @@ pub enum Error {
     /// An in-place folder holds release files that do not match the signed
     /// release; the review names them.
     VerificationFailed,
-    /// The old launcher's ledger records a different seed or lacks a patch of
-    /// the signed release, so the folder cannot match it yet.
-    OutdatedInstall,
     /// In place: the folder is not the full `Working\Binaries` layout the
     /// installer writes, so its release files are not where the release keeps them.
     UnsupportedLayout,
