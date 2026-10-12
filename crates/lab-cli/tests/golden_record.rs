@@ -68,16 +68,29 @@ fn record_v1_2_sees_golden_v1_2_json_exists() {
         .starts_with("a golden exists"));
 }
 
-// New: the real spawn. With an empty CIMMERIA_LAB_CLI_DIR the child `lab uat`
-// has no PowerShell dispatcher (exit 1, no JSON; a native `uat` exits 3 with no
-// daemon), so `record` reports a failed pre-flight: exit 3, nothing recorded.
+// New: the real spawn. The child is `<this exe> uat <PowerShell-form args>`: a
+// fake `lab.ps1` (the PowerShell dispatcher `uat` still falls back to) records
+// the tokens it is given, writes one progress line to stderr and answers with a
+// `lab uat --json` refusal. `record` must forward those tokens in order, report
+// the child's own error and exit code, show the child's stderr live, and keep
+// stdout to one JSON line. (When `uat` goes native this test must follow it.)
 #[test]
 fn record_really_spawns_this_exe_with_uat() {
-    let (home, specs, empty_cli) = (
+    let (home, specs, fake_cli, seen) = (
         TempDir::new().unwrap(),
         specs_dir(),
         TempDir::new().unwrap(),
+        TempDir::new().unwrap(),
     );
+    std::fs::write(
+        fake_cli.path().join("lab.ps1"),
+        "$args | Set-Content -LiteralPath $env:LAB_GOLDEN_TEST_ARGS\n\
+         [Console]::Error.WriteLine('uat progress line')\n\
+         [Console]::Out.WriteLine('{\"ok\":false,\"exit\":2,\"error\":\"stub uat refused\"}')\n\
+         exit 2\n",
+    )
+    .unwrap();
+    let args_file = seen.path().join("args.txt");
     let sp = path_text(&specs);
     let out = Command::new(env!("CARGO_BIN_EXE_lab"))
         .args([
@@ -91,15 +104,40 @@ fn record_really_spawns_this_exe_with_uat() {
             "--json",
         ])
         .env("CIMMERIA_LAB_HOME", home.path())
-        .env("CIMMERIA_LAB_CLI_DIR", empty_cli.path())
+        .env("CIMMERIA_LAB_CLI_DIR", fake_cli.path())
+        .env("LAB_GOLDEN_TEST_ARGS", &args_file)
         .output()
         .expect("run lab");
-    assert_eq!(out.status.code(), Some(3));
-    let o = json_of(&String::from_utf8_lossy(&out.stdout));
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(out.status.code(), Some(2), "{stdout}");
     assert_eq!(
-        (o["ok"].clone(), o["exit"].clone()),
-        (json!(false), json!(3))
+        json_of(&stdout),
+        json!({"ok": false, "exit": 2, "error": "stub uat refused"})
     );
+    assert!(String::from_utf8_lossy(&out.stderr).contains("uat progress line"));
+    let given: Vec<String> = std::fs::read_to_string(&args_file)
+        .unwrap()
+        .lines()
+        .map(str::to_owned)
+        .collect();
+    let expected = [
+        "uat",
+        "first-session",
+        "-Leases",
+        "1",
+        "-RunsPerLease",
+        "5",
+        "-ServerVersion",
+        SHA,
+        "-SpecsDir",
+        sp.as_str(),
+        "-Fingerprint",
+        "-MaxConsecutiveFailures",
+        "1",
+        "-ProgressToStderr",
+        "-Json",
+    ];
+    assert_eq!(given, expected);
 }
 
 // ----- record, with the child and the daemon stubbed -----

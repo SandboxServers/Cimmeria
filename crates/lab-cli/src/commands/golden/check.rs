@@ -6,7 +6,9 @@ use std::path::{Path, PathBuf};
 
 /// The owner's rule is "golden only when five runs agree" (README D-GD6).
 pub const MIN_RUNS: u32 = 5;
+/// The most fresh runs one golden may be recorded from.
 pub const MAX_RUNS: u32 = 20;
+/// The most lanes the runs may be split over.
 pub const MAX_LEASES: u32 = 5;
 
 /// The argument checks that need no daemon: an error message, or `None`.

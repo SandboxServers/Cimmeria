@@ -14,7 +14,9 @@ use super::reply::text_of;
 /// exit code). Its stderr is not captured: it reaches our stderr live.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChildOutput {
+    /// Everything the child wrote to stdout.
     pub stdout: String,
+    /// The child's exit code, or -1 when it had none.
     pub code: i32,
 }
 
@@ -92,6 +94,8 @@ pub fn read_records(path: &Path) -> Result<Vec<Value>, String> {
         return Ok(Vec::new());
     }
     let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    // `Get-Content` drops a byte-order mark; so do we.
+    let text = text.trim_start_matches('\u{feff}');
     let mut records = Vec::new();
     for (index, line) in text.lines().enumerate() {
         let line = line.trim();
@@ -445,6 +449,18 @@ mod tests {
                 .unwrap()
                 .len(),
             0
+        );
+    }
+
+    // New: a batch.jsonl with a byte-order mark reads like one without.
+    #[test]
+    fn a_byte_order_mark_on_batch_jsonl_is_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("batch.jsonl");
+        std::fs::write(&path, "\u{feff}{\"Ok\":true,\"RunDir\":\"C:\\\\r\\\\a\"}\n").unwrap();
+        assert_eq!(
+            run_dirs(&read_records(&path).unwrap()),
+            Some(strings(&[r"C:\r\a"]))
         );
     }
 

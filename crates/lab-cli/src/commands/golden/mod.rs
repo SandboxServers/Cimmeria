@@ -1,6 +1,6 @@
 //! `lab golden`: record or show a golden fingerprint.
-//! LX-02 gives it its clap arguments and help page; the body is still the
-//! PowerShell fallback.
+//! `record` runs this program's own `lab uat` and then asks the daemon to
+//! write the golden; `show` reads a committed one.
 
 use crate::commands::Ctx;
 use crate::daemon::paths;

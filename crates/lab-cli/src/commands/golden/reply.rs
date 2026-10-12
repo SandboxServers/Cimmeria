@@ -179,6 +179,12 @@ mod tests {
     #[test]
     fn a_success_has_no_nulls() {
         assert!(!compact_json(&ok_reply(), 0, None).contains("null"));
+        let sparse =
+            json!({"ok": true, "path": "p", "rows": 7, "events": null, "bytes": "", "runs": 5});
+        assert_eq!(
+            compact_json(&sparse, 0, None),
+            r#"{"ok":true,"exit":0,"path":"p","rows":7,"runs":5}"#
+        );
     }
 
     // PS L129
