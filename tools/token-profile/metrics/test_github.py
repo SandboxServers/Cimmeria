@@ -7,6 +7,7 @@ import contextlib
 import io
 import json
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,6 +20,19 @@ from .cli import main
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 CAMPAIGN_OF = {101: "lab-record", 102: "lab-record", 103: "docs", 104: "pr-104"}.get
+
+
+class FakeClock:
+    """A stand-in for time: sleep() moves the clock on, so the waits can be read back as times."""
+
+    def __init__(self):
+        self.now = 0.0
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.now += seconds
 
 
 class GithubTests(unittest.TestCase):
@@ -101,26 +115,84 @@ class GithubTests(unittest.TestCase):
         self.assertIn("created:>=2026-09-21 created:<2026-10-13", searches[0])
 
     def test_a_retryable_error_waits_and_is_retried(self):
+        clock = FakeClock()
+        starts = []
+
+        def run(args):
+            starts.append(clock.now)
+            if len(starts) < 3:
+                raise gh.GhError("limited", retryable=True)
+            return []
+
+        with mock.patch.object(gh.time, "monotonic", clock.monotonic), \
+                mock.patch.object(gh.time, "sleep", clock.sleep):
+            self.assertEqual(gh.polite(run)(["api", "x"]), [])
+        self.assertEqual(starts, [0, gh.RETRY_WAITS_S[0], gh.RETRY_WAITS_S[0] + gh.RETRY_WAITS_S[1]])
+
+    def test_a_retryable_error_in_one_thread_also_pauses_another_thread(self):
+        clock = FakeClock()
+        starts = {}
+        failed = []
+        others = []
+
+        def run(args):
+            starts[args[1]] = clock.now
+            if args[1] == "a" and not failed:
+                failed.append(args)
+                raise gh.GhError("limited", retryable=True)
+            return []
+
+        call = gh.polite(run)
+
+        def sleep(seconds):
+            # Thread b starts while thread a is in its backoff, so it must wait that backoff out too.
+            if seconds == gh.RETRY_WAITS_S[0] and not others:
+                others.append(threading.Thread(target=call, args=(["api", "b"],)))
+                others[0].start()
+                others[0].join()
+            clock.sleep(seconds)
+
+        with mock.patch.object(gh.time, "monotonic", clock.monotonic), mock.patch.object(gh.time, "sleep", sleep):
+            call(["api", "a"])
+        self.assertEqual(len(others), 1)
+        self.assertGreaterEqual(starts["b"], gh.RETRY_WAITS_S[0])
+
+    def test_a_non_retryable_error_raises_at_once(self):
         calls = []
 
         def run(args):
             calls.append(args)
-            if len(calls) < 3:
-                raise gh.GhError("limited", retryable=True)
-            return []
-
-        with mock.patch.object(gh.time, "sleep") as sleep:
-            self.assertEqual(gh.polite(run)(["api", "x"]), [])
-        waits = [c.args[0] for c in sleep.call_args_list if c.args[0] != gh.PAUSE_S]
-        self.assertEqual(waits, list(gh.RETRY_WAITS_S[:2]))
-
-    def test_a_non_retryable_error_raises_at_once(self):
-        def run(args):
             raise gh.GhError("bad")
 
-        with mock.patch.object(gh.time, "sleep") as sleep, self.assertRaises(gh.GhError):
+        with mock.patch.object(gh.time, "sleep"), self.assertRaises(gh.GhError):
             gh.polite(run)(["api", "x"])
-        self.assertEqual([c.args[0] for c in sleep.call_args_list], [gh.PAUSE_S])
+        self.assertEqual(len(calls), 1)
+
+    def test_two_threads_writing_one_cache_key_at_once_never_raise_or_tear_the_file(self):
+        answer = [{"check_runs": [{"name": str(n)} for n in range(500)]}]
+        barrier = threading.Barrier(2)
+        errors = []
+
+        def fetch(call):
+            try:
+                barrier.wait()
+                call(["api", "x"])
+            except Exception as e:
+                errors.append(e)
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(gh.time, "sleep"):
+            call = gh.polite(lambda args: answer, cache_dir=tmp)
+            for _ in range(50):
+                for cached in Path(tmp).glob("*.json"):
+                    cached.unlink()
+                threads = [threading.Thread(target=fetch, args=(call,)) for _ in range(2)]
+                for t in threads:
+                    t.start()
+                for t in threads:
+                    t.join()
+            (cached,) = Path(tmp).glob("*.json")
+            self.assertEqual(json.loads(cached.read_text(encoding="utf-8")), answer)
+        self.assertEqual(errors, [])
 
     def test_a_secondary_limit_is_retryable_when_its_status_is_past_the_truncated_message(self):
         result = SimpleNamespace(returncode=1, stdout="", stderr="x" * 400 + " (HTTP 403)")
@@ -340,6 +412,31 @@ class CliSmokeTest(unittest.TestCase):
             record = json.loads((Path(tmp) / "github.json").read_text(encoding="utf-8"))
         self.assertEqual(json.loads(out.getvalue())["escaped_defects"], {"lab-record": 2})
         self.assertNotIn("headRefName", json.dumps(record))
+
+    def test_four_workers_write_the_same_github_json_as_one(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rules = Path(tmp) / "campaigns.json"
+            rules.write_text(json.dumps({"lab-record": {"prefixes": ["lab/"]}}), encoding="utf-8")
+            texts = {}
+            for workers in ("1", "4"):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    code = main(["github", "--repo", ".", "--out", str(Path(tmp) / workers), "--from-json",
+                                 str(FIXTURES), "--campaigns", str(rules), "--workers", workers])
+                self.assertEqual(code, 0)
+                texts[workers] = (Path(tmp) / workers / "github.json").read_bytes()
+        self.assertTrue(any(r["ci"] for r in json.loads(texts["4"])["prs"]))
+        self.assertEqual(texts["4"], texts["1"])
+
+    def test_workers_count_the_same_gh_calls_and_cache_hits_as_one(self):
+        counts = {}
+        for workers in (1, 4):
+            stats = {"gh_calls": 0, "cache_hits": 0}
+            with tempfile.TemporaryDirectory() as tmp, mock.patch.object(gh.time, "sleep"):
+                run = gh.polite(gh.replay(FIXTURES), cache_dir=tmp, stats=stats)
+                gh.collect(run, "2026-09-21", Campaigns({"lab-record": {"prefixes": ["lab/"]}}), workers=workers)
+            counts[workers] = stats
+        self.assertGreater(counts[1]["gh_calls"], 0)
+        self.assertEqual(counts[4], counts[1])
 
 
 if __name__ == "__main__":

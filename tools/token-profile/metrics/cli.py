@@ -183,7 +183,8 @@ def run_github(args):
         pr_map = None
         if args.ledger:
             pr_map = {int(k): v for k, v in json.loads(Path(args.ledger).read_text(encoding="utf-8"))["pr_map"].items()}
-        record = collect(run, args.since or window["since"][:10], campaigns, args.max_prs, window["until"], pr_map)
+        record = collect(run, args.since or window["since"][:10], campaigns, args.max_prs, window["until"], pr_map,
+                         workers=args.workers)
     except (GhError, OSError, ValueError, KeyError) as e:
         print(f"status=error {e}", file=sys.stderr)
         return 2
@@ -293,6 +294,8 @@ def main(argv=None):
     )
     gh.add_argument("--config", help="metrics config.json, whose window ends the collection (default: the package's)")
     gh.add_argument("--max-prs", type=int, default=None, help="collect CI for the first N PRs only (a trial)")
+    gh.add_argument("--workers", type=int, default=1,
+                    help="tagged PRs fetched in parallel (default 1: one at a time; the output is the same)")
     gh.add_argument("--campaigns", default=None, help="campaign tags; default ingest/campaigns.json")
     gh.add_argument("--ledger", default=None, help="ledger.json whose pr_map tags the PRs it names")
     gh.add_argument("--cache", default=None, metavar="DIR",
