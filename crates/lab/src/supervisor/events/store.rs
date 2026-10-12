@@ -18,6 +18,20 @@ use serde_json::{json, Value};
 /// seq reads as a gap.
 pub const STORE_CAP: usize = 8192;
 
+/// Drop records kept; older ones fall out (the total stays in
+/// `upstream_dropped`).
+const DROP_LOG_CAP: usize = 1024;
+
+/// A run of events the bridge ring dropped, placed in the store's order.
+#[derive(Debug, Clone, Copy)]
+struct DropMark {
+    id: u64,
+    /// The store head when the drop was ingested: the events were lost after
+    /// the event with this seq.
+    at: u64,
+    count: u64,
+}
+
 /// One stored event.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StoredEvent {
@@ -81,10 +95,13 @@ pub struct StoreInner {
     cap: usize,
     /// Events the bridge ring dropped before we drained it (ring full).
     pub upstream_dropped: u64,
-    /// Of `upstream_dropped`, the part no reader pump has reported yet. The
-    /// keeper drains between tool calls and sees drops no caller was there
-    /// to read; the next reader pump takes them with [`Self::take_unreported_drops`].
-    pub dropped_unreported: u64,
+    /// Where each drop fell, so a reader is told about the drops inside its
+    /// own cursor range whoever pumped them in (the keeper, a wait, a
+    /// recording sampler). Newest last, bounded by [`DROP_LOG_CAP`].
+    drop_log: VecDeque<DropMark>,
+    next_drop_id: u64,
+    /// Per reader name: the newest drop id it has been told about.
+    drops_told: HashMap<String, u64>,
     cursors: HashMap<String, u64>,
     pub combat_mark: LuaRingMark,
     pub chat_mark: LuaRingMark,
@@ -100,10 +117,52 @@ impl StoreInner {
         }
     }
 
-    /// Drops the keeper or an earlier drain saw that no reader has been told
-    /// about; resets to zero.
-    pub fn take_unreported_drops(&mut self) -> u64 {
-        std::mem::take(&mut self.dropped_unreported)
+    /// Note that the bridge ring dropped `count` events in the drain just
+    /// ingested, placed after the current head.
+    pub fn record_drops(&mut self, count: u64) {
+        if count == 0 {
+            return;
+        }
+        self.upstream_dropped += count;
+        self.next_drop_id += 1;
+        let (id, at) = (self.next_drop_id, self.head());
+        self.drop_log.push_back(DropMark { id, at, count });
+        while self.drop_log.len() > DROP_LOG_CAP {
+            self.drop_log.pop_front();
+        }
+    }
+
+    /// The newest drop id (0 before any drop).
+    pub fn last_drop_id(&self) -> u64 {
+        self.next_drop_id
+    }
+
+    /// Drops that fell at or before `upto` that reader `name` has not been
+    /// told about; marks them told. A reader that read events up to `upto`
+    /// gets every drop in that range, whichever pump saw it.
+    pub fn take_drops_up_to(&mut self, name: &str, upto: u64) -> u64 {
+        let told = self.drops_told.get(name).copied().unwrap_or(0);
+        let mut sum = 0;
+        let mut newest = told;
+        for m in self.drop_log.iter().filter(|m| m.id > told) {
+            if m.at > upto {
+                break;
+            }
+            sum += m.count;
+            newest = m.id;
+        }
+        self.drops_told.insert(name.to_string(), newest);
+        sum
+    }
+
+    /// Drops with an id above `floor_id` that fell between seqs `from` and
+    /// `upto`; does not mark anything told (a wait's report).
+    pub fn drops_in(&self, floor_id: u64, from: u64, upto: u64) -> u64 {
+        self.drop_log
+            .iter()
+            .filter(|m| m.id > floor_id && m.at >= from && m.at <= upto)
+            .map(|m| m.count)
+            .sum()
     }
 
     /// Newest seq handed out (0 before the first event).
@@ -313,6 +372,26 @@ mod tests {
         let (got, gap) = s.take_kind("record", "ui.click");
         assert_eq!(got.len(), 4);
         assert!(gap);
+    }
+
+    /// A reader is told the drops inside its own range, once, however the
+    /// drain that saw them was pumped.
+    #[test]
+    fn drops_are_told_to_each_reader_inside_its_range_once() {
+        let mut s = store(8);
+        s.push("a", 1, json!({}));
+        s.record_drops(3); // after seq 1
+        s.push("b", 2, json!({}));
+        s.record_drops(4); // after seq 2
+        assert_eq!(s.upstream_dropped, 7);
+        // A reader that only got as far as seq 1 hears only the first run.
+        assert_eq!(s.take_drops_up_to("r", 1), 3);
+        assert_eq!(s.take_drops_up_to("r", 1), 0);
+        assert_eq!(s.take_drops_up_to("r", 2), 4);
+        // Another reader has its own account.
+        assert_eq!(s.take_drops_up_to("other", 2), 7);
+        assert_eq!(s.drops_in(0, 2, 2), 4);
+        assert_eq!(s.drops_in(1, 0, 9), 4, "the floor skips older runs");
     }
 
     #[test]

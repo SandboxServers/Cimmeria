@@ -87,6 +87,9 @@ impl Supervisor {
         let lua = req.needs_lua();
         let want = req.count.max(1);
         // Where this wait starts.
+        // Drops count from this id on when the wait starts "now" (a pump just
+        // ran); an explicit or stored start counts the drops by position.
+        let mut drop_floor = 0u64;
         let (start, cursor_before) = {
             let explicit = req.since_seq;
             let known = self.events.inner.lock().await.cursor(&req.cursor);
@@ -96,6 +99,7 @@ impl Supervisor {
                 // Fresh cursor or arm: pump first so the start is "now".
                 _ => {
                     let rep = self.pump_events(lua).await?;
+                    drop_floor = self.events.inner.lock().await.last_drop_id();
                     (rep.head, known)
                 }
             }
@@ -121,13 +125,19 @@ impl Supervisor {
         let mut first_match_ms = None;
         loop {
             polls += 1;
-            let rep = self.pump_events(lua).await?;
+            let mut rep = self.pump_events(lua).await?;
             {
                 let st = self.events.inner.lock().await;
                 let slice = st.since(scan_from, SCAN_MAX);
                 gap |= slice.gap;
                 scanned += slice.events.len();
                 let (hits, last) = scan(&slice.events, &req.predicate, want - matched.len());
+                // Drops inside the range this wait covered, whoever pumped.
+                rep.bridge_dropped =
+                    st.drops_in(drop_floor, start, last.unwrap_or(scan_from).max(scan_from));
+                if rep.bridge_dropped > 0 {
+                    rep.bridge_note = Some(super::drop_note(rep.bridge_dropped));
+                }
                 if !hits.is_empty() && first_match_ms.is_none() {
                     first_match_ms = Some(t0.elapsed().as_millis() as u64);
                 }

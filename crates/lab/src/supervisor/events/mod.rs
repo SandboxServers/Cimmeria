@@ -44,9 +44,10 @@ pub const KIND_CLICK: &str = "ui.click";
 #[derive(Debug, Clone, Default)]
 pub struct PumpReport {
     pub bridge_events: usize,
+    /// Filled by the caller that reads (`events_read`, `wait_event`) for its
+    /// own range; a plain pump leaves it 0.
     pub bridge_dropped: u64,
-    /// Every event the bridge ring has dropped since the lab started
-    /// (`bridge_dropped` is only what no earlier reader was told).
+    /// Every event the bridge ring has dropped since the lab started.
     pub bridge_dropped_total: u64,
     /// Plain-words reading of `bridge_dropped`, when it is not zero.
     pub bridge_note: Option<String>,
@@ -86,8 +87,7 @@ impl PumpReport {
 /// Fold one `events_read` result into the store. Returns (events, dropped).
 pub fn ingest_bridge(st: &mut StoreInner, result: &Value) -> (usize, u64) {
     let dropped = result.get("dropped").and_then(Value::as_u64).unwrap_or(0);
-    st.upstream_dropped += dropped;
-    st.dropped_unreported += dropped;
+    st.record_drops(dropped);
     let mut n = 0;
     if let Some(evs) = result.get("events").and_then(Value::as_array) {
         for e in evs {
@@ -174,6 +174,13 @@ pub fn ingest_rings(st: &mut StoreInner, r: &lua_rings::RingRead) -> RingIngest 
     }
 }
 
+/// Plain-words reading of `n` dropped bridge events.
+pub fn drop_note(n: u64) -> String {
+    format!(
+        "the client's event ring overflowed and dropped {n} newest event(s) in the range read: cme.event, net.out, cegui.log and similar rows may be missing. chat.line, combat.hit and ui.click come from separate in-client rings and are not affected."
+    )
+}
+
 impl Supervisor {
     /// Move new client events into the store. `lua` also installs/reads the
     /// combat, chat and click rings (one extra `lua_eval`). A bridge failure is an
@@ -188,14 +195,7 @@ impl Supervisor {
             let mut st = self.events.inner.lock().await;
             let (n, _) = ingest_bridge(&mut st, &drained);
             rep.bridge_events = n;
-            rep.bridge_dropped = st.take_unreported_drops();
             rep.bridge_dropped_total = st.upstream_dropped;
-            if rep.bridge_dropped > 0 {
-                rep.bridge_note = Some(format!(
-                    "the client's event ring overflowed and dropped {} newest event(s) since the last report: cme.event, net.out, cegui.log and similar rows may be missing. chat.line, combat.hit and ui.click come from separate in-client rings and are not affected.",
-                    rep.bridge_dropped
-                ));
-            }
         }
         if lua {
             let (combat_after, chat_after, click_after, epoch) = {
@@ -268,9 +268,18 @@ impl Supervisor {
         if let Some(last) = slice.events.last() {
             st.set_cursor(EVENTS_READ_CURSOR, last.seq);
         }
+        // Drops that fell inside what this read covered, whoever pumped them.
+        let upto = if slice.events.len() >= max {
+            slice.events.last().map_or(slice.head, |e| e.seq)
+        } else {
+            slice.head
+        };
+        let dropped = st.take_drops_up_to(EVENTS_READ_CURSOR, upto);
         Ok(json!({
             "returned": slice.events.len(),
-            "dropped": rep.bridge_dropped,
+            "dropped": dropped,
+            "dropped_total": rep.bridge_dropped_total,
+            "bridge_note": (dropped > 0).then(|| drop_note(dropped)),
             "gap": slice.gap,
             "head": slice.head,
             "cursors": st.cursors(),
@@ -295,6 +304,7 @@ mod tests {
         });
         assert_eq!(ingest_bridge(&mut st, &r), (2, 3));
         assert_eq!(st.upstream_dropped, 3);
+        assert_eq!(st.last_drop_id(), 1);
         let all = st.since(0, 10);
         assert_eq!(all.events[0].kind, "cme.event");
         assert_eq!(all.events[1].fields["method"], "useAbility");
