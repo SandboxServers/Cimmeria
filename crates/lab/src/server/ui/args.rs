@@ -146,10 +146,17 @@ pub struct ItemActionArgs {
     /// For loot_slot: the loot row, 1-based.
     #[serde(default)]
     pub loot_index: Option<u32>,
-    /// Fall back to the client's slash command when the item cannot be put
-    /// on screen (default true).
+    /// Fall back to the stock `contextSensitiveUseItem` through Lua (N3) when
+    /// the clicks change nothing, and to the client's slash command when the
+    /// item cannot be put on screen (default true).
     #[serde(default)]
     pub allow_fallback: Option<bool>,
+    /// Whether the action is expected to change the inventory (default
+    /// true). When true and nothing changes the result carries effect_ok
+    /// false and native_pass false, and the UAT runner fails the action;
+    /// pass false for a negative check (an item that must not be usable).
+    #[serde(default)]
+    pub expect_change: Option<bool>,
     /// How long to wait for the inventory to change, ms (default 3000).
     #[serde(default)]
     pub wait_ms: Option<u64>,

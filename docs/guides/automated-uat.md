@@ -138,7 +138,7 @@ When several apply, the first in the table's order after PASS wins, and every re
 
 A spec may declare a known tool *less* native than its floor (a typed `/useitem` standing in for a double-click is N2) but never more: `client_lua_eval` is N3 at best. A tool the runner does not know (a new tool from another change) must carry its tier in the spec.
 
-Tools that put a window on screen first (item and drag tools) escalate a click whose effect they can read back: posted click, then the CEGUI button injectors (both N1), then the button's own stock handler (N3). The step that worked is in native_steps; a tool that needed the handler reports N3.
+Tools that put a window on screen first (item and drag tools) escalate a click whose effect they can read back: posted click, then the CEGUI button injectors (both N1), then the button's own stock handler (N3). The step that worked is in native_steps; a tool that needed the handler reports N3. An item or vendor action whose inventory did not change reports effect_ok: false and the runner fails the action; a negative check passes expect_change: false.
 
 ## The evidence bundle
 
