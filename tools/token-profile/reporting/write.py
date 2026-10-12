@@ -1,6 +1,9 @@
 """Builds the report files as text (JSON data and Markdown reports) and writes them behind the privacy gate."""
 
 import json
+from pathlib import Path
+
+from report.scrub import Scrubber
 
 from .assemble import assemble
 from .compare import summary_doc
@@ -31,3 +34,22 @@ def build_outputs(inputs, self_cost=None):
     outputs["data/metrics.json"] = _json({"schema": SCHEMA, "stamp": meta["stamp"], "campaigns": records, "summary": summary})
     outputs["reports/summary.md"] = render_summary(records, summary, meta, self_cost=self_cost)
     return outputs
+
+
+def write_outputs(outputs, out_dir, scrubber=None):
+    """Write `outputs` under `out_dir` and return the sorted relative paths written.
+
+    Every text passes the privacy gate before the first file is created: a `PrivacyError` leaves `out_dir` untouched.
+    Markdown is written with CRLF line ends, JSON with LF; all files are UTF-8 without a BOM.
+    """
+    scrubber = scrubber or Scrubber()
+    for path, text in outputs.items():
+        scrubber.assert_clean(text, path)
+    out_dir = Path(out_dir)
+    for path, text in outputs.items():
+        target = out_dir / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if path.endswith(".md"):
+            text = text.replace("\n", "\r\n")
+        target.write_bytes(text.encode("utf-8"))
+    return sorted(outputs)
