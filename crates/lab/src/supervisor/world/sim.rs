@@ -298,6 +298,12 @@ impl Sim {
                 self.pawn_yaw =
                     wrap_pi(self.pawn_yaw + sign * dir * self.turn_rate_rad_s * dt as f64 / 1000.0);
             }
+            if self.held("S") {
+                // Backward is never blocked by `wall_x` (the wall is ahead).
+                let step = self.speed_uu_s * dt as f64 / 1000.0;
+                self.pos.x -= self.pawn_yaw.cos() * step;
+                self.pos.y -= self.pawn_yaw.sin() * step;
+            }
             if self.held("W") {
                 if !self.live_pawn {
                     self.pawn_yaw = self.cam_yaw;

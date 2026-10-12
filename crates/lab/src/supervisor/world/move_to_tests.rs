@@ -285,6 +285,28 @@ async fn move_to_names_a_dead_forward_key() {
     assert!(!sim.keys["W"], "forward key left held after a failure");
 }
 
+/// A pawn pressed against a wall ignores W too, but S moves it: that is
+/// geometry ("blocked ahead"), not dead input, so it must not fail as
+/// `input_probe`.
+#[tokio::test]
+async fn move_to_names_a_wall_ahead_not_dead_input() {
+    let mut sim = Sim::live();
+    sim.wall_x = Some(1.0);
+    sim.jump_clears_wall = false;
+    let e = movement::run(
+        &mut sim,
+        MoveRequest {
+            point: Some(client_point(2500.0, 0.0, 0.0)),
+            ..MoveRequest::default()
+        },
+    )
+    .await
+    .unwrap_err();
+    assert_ne!(e.step, "input_probe", "{}", e.message);
+    assert!(e.message.contains("blocked ahead"), "{}", e.message);
+    assert!(e.to_json()["state"]["backward_m"].as_f64().unwrap() >= 0.1);
+    assert!(!sim.keys["W"] && !sim.keys["S"], "keys left held");
+}
 /// A target already inside the arrival radius costs no real move: the
 /// probe sits after the arrival check. A dead-W pawn would fail the probe,
 /// so success here proves the probe did not run.

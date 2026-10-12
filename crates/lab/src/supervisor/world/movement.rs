@@ -17,6 +17,8 @@ use super::steer::{MoveConfig, MoveController, MoveOutcome, TurnCmd, TurnKey, Tu
 use super::{NativeLevel, PointArg, Steps, TargetArg, WorldError};
 
 pub const FORWARD_KEY: &str = "W";
+/// Backward key, for the blocked-vs-dead probe retry.
+const BACKWARD_KEY: &str = "S";
 
 /// The names of the turn keys this walk may press, for pressing and for
 /// the release on every exit.
@@ -166,6 +168,7 @@ async fn player_actor<W: WorldIo>(io: &mut W) -> Result<(u32, Pose), String> {
 async fn release<W: WorldIo>(io: &mut W, turn: &TurnKeys) {
     for k in [
         FORWARD_KEY,
+        BACKWARD_KEY,
         "A",
         "D",
         turn.left.as_str(),
@@ -367,18 +370,52 @@ async fn walk<W: WorldIo>(
                     .map_err(|e| steps.fail(io.now_ms(), "input_probe", e))?;
                 let moved_m = horizontal_m(before.pos, after.pos);
                 if moved_m < PROBE_MIN_M {
+                    // A pawn pressed against a wall also ignores W. Back up
+                    // once: if S moves it, the way ahead is blocked (geometry),
+                    // not the input dead.
+                    io.key(BACKWARD_KEY, true)
+                        .await
+                        .map_err(|e| steps.fail(io.now_ms(), "input_probe", e))?;
+                    io.sleep(PROBE_HOLD_MS).await;
+                    io.key(BACKWARD_KEY, false)
+                        .await
+                        .map_err(|e| steps.fail(io.now_ms(), "input_probe", e))?;
+                    io.sleep(PROBE_SETTLE_MS).await;
+                    let back = io
+                        .actor_pose(actor)
+                        .await
+                        .map_err(|e| steps.fail(io.now_ms(), "input_probe", e))?;
+                    let back_m = horizontal_m(after.pos, back.pos);
+                    if back_m >= PROBE_MIN_M {
+                        return Err(steps.fail_with(
+                            io.now_ms(),
+                            &format!("leg_{i}"),
+                            format!(
+                                "blocked ahead: the avatar did not move for a {PROBE_HOLD_MS} ms forward hold ({moved_m:.2} m) but moved {back_m:.1} m backward, so movement input works and something solid is in front of it"
+                            ),
+                            json!({
+                                "before": before.to_json(),
+                                "at": back.to_json(),
+                                "moved_m": moved_m,
+                                "backward_m": back_m,
+                                "goal": goal.describe(),
+                                "hint": FAIL_HINT,
+                            }),
+                        ));
+                    }
                     return Err(steps.fail_with(
                         io.now_ms(),
                         "input_probe",
                         format!(
-                            "the avatar did not move for a {PROBE_HOLD_MS} ms forward key hold ({moved_m:.2} m): movement input is not reaching the pawn (UI keys can still work); see client_input_status.held and the world state"
+                            "the avatar did not move for a {PROBE_HOLD_MS} ms forward key hold ({moved_m:.2} m) nor a backward one ({back_m:.2} m): movement input is not reaching the pawn (UI keys can still work); see client_input_status.held and the world state"
                         ),
                         json!({
                             "before": before.to_json(),
-                            "at": after.to_json(),
+                            "at": back.to_json(),
                             "moved_m": moved_m,
+                            "backward_m": back_m,
                             "hold_ms": PROBE_HOLD_MS,
-                            "hint": "Usually not a path problem, but check the avatar is not pressed against a wall first. Try client_input_key w with hold_ms and compare server_entity_get, or a ui_sequence key step with hold_ms; if the pawn still ignores W, teleport on the server and click the target without walking. Keys are posted window messages, so client_input_status keyboard counters say nothing about it.",
+                            "hint": "W and S both did nothing, so it is not a wall. Try a ui_sequence key step with hold_ms and compare server_entity_get; if the pawn still ignores W, teleport on the server and click the target without walking. Keys are posted window messages, so client_input_status keyboard counters say nothing about it.",
                         }),
                     ));
                 }
@@ -480,7 +517,7 @@ async fn walk<W: WorldIo>(
                     io.now_ms(),
                     &format!("leg_{i}"),
                     format!(
-                        "the pawn did not turn in {ticks} ticks of holding the turn keys ({} / {}): something roots it (a dialog, a cast, a stun) or the client binds other keys; compare client_player_state heading_deg before and after a client_input_key hold",
+                        "the pawn did not turn in {ticks} ticks of holding the turn keys ({} / {}): something roots it (a dialog, a cast, a stun) or the client binds other keys; compare client_player_state heading_deg before and after a ui_sequence key step with hold_ms",
                         turn_keys.left, turn_keys.right
                     ),
                     evidence(),

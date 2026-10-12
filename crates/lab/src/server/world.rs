@@ -5,8 +5,6 @@
 use rmcp::{
     handler::server::wrapper::Parameters, model::*, tool, tool_router, ErrorData as McpError,
 };
-use std::sync::Arc;
-
 use serde_json::Value;
 
 use super::LabServer;
@@ -17,7 +15,6 @@ use crate::supervisor::world::hover::HoverRequest;
 use crate::supervisor::world::io::LiveWorld;
 use crate::supervisor::world::movement::MoveRequest;
 use crate::supervisor::world::{camera, click, find, hover, movement, WorldError};
-use crate::supervisor::Supervisor;
 
 #[tool_router(router = world_router, vis = "pub(super)")]
 impl LabServer {
@@ -61,14 +58,15 @@ impl LabServer {
         &self,
         Parameters(a): Parameters<MoveRequest>,
     ) -> Result<CallToolResult, McpError> {
-        let mut guard = HeldKeysGuard {
-            sup: self.supervisor.clone(),
-            armed: true,
-        };
+        let sup = self.supervisor.clone();
+        let mut guard = HeldKeysGuard::new(move || async move {
+            let mut io = LiveWorld::new(&sup);
+            movement::release_stray(&mut io).await;
+        });
         let mut io = LiveWorld::new(&self.supervisor);
         let r = movement::run(&mut io, a).await;
         // Finished (and released by `run`): nothing left for the guard to do.
-        guard.armed = false;
+        guard.disarm();
         world_result(r)
     }
 
@@ -99,24 +97,45 @@ impl LabServer {
 /// client cancelled the call): movement::run releases them on every exit it
 /// gets to, but a dropped future gets to none. A held W or turn key would
 /// wreck every later lab step. Covers the client's bound turn keys too.
-struct HeldKeysGuard {
-    sup: Arc<Supervisor>,
-    armed: bool,
+struct HeldKeysGuard<F, Fut>
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = ()> + Send + 'static,
+{
+    release: Option<F>,
 }
 
-impl Drop for HeldKeysGuard {
-    fn drop(&mut self) {
-        if !self.armed {
-            return;
+impl<F, Fut> HeldKeysGuard<F, Fut>
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = ()> + Send + 'static,
+{
+    /// A guard that runs `release` (on the runtime) if dropped armed.
+    fn new(release: F) -> Self {
+        Self {
+            release: Some(release),
         }
+    }
+
+    /// The walk finished and released its own keys.
+    fn disarm(&mut self) {
+        self.release = None;
+    }
+}
+
+impl<F, Fut> Drop for HeldKeysGuard<F, Fut>
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = ()> + Send + 'static,
+{
+    fn drop(&mut self) {
+        let Some(release) = self.release.take() else {
+            return;
+        };
         let Ok(rt) = tokio::runtime::Handle::try_current() else {
             return;
         };
-        let sup = self.sup.clone();
-        rt.spawn(async move {
-            let mut io = LiveWorld::new(&sup);
-            movement::release_stray(&mut io).await;
-        });
+        rt.spawn(release());
     }
 }
 
@@ -168,5 +187,39 @@ mod tests {
                 .unwrap_or_else(|| panic!("{name} is not routed"));
             assert!(t.description.as_deref().unwrap_or_default().len() > 40);
         }
+    }
+
+    /// A dropped (cancelled) tool future must run the key release; a
+    /// disarmed guard (the walk released its own keys) must not.
+    #[tokio::test]
+    async fn held_keys_guard_releases_on_a_dropped_future_only() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::time::Duration;
+
+        let released = Arc::new(AtomicU32::new(0));
+        let make = |counter: Arc<AtomicU32>| {
+            super::HeldKeysGuard::new(move || async move {
+                counter.fetch_add(1, Ordering::SeqCst);
+            })
+        };
+
+        // Cancelled mid-walk: the timeout drops the future holding the guard.
+        let g = make(released.clone());
+        let walk = async move {
+            let _g = g;
+            tokio::time::sleep(Duration::from_secs(3600)).await;
+        };
+        assert!(tokio::time::timeout(Duration::from_millis(20), walk)
+            .await
+            .is_err());
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(released.load(Ordering::SeqCst), 1, "keys not released");
+
+        // Finished walk: disarmed, nothing more to release.
+        let mut g = make(released.clone());
+        g.disarm();
+        drop(g);
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(released.load(Ordering::SeqCst), 1, "released after disarm");
     }
 }

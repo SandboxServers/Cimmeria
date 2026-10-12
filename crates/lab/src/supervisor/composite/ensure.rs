@@ -649,7 +649,8 @@ mod tests {
         let arm = src
             .find(concat!("Next::Done", " => {"))
             .expect("the unguarded Done arm");
-        let body = &src[arm..arm + 200];
+        // 200 chars, not bytes: a byte slice can split a non-ASCII char.
+        let body: String = src[arm..].chars().take(200).collect();
         let set = body
             .find("self.set_login_state(LoginState::InWorld).await;")
             .expect("Done arm sets the login state");

@@ -5,8 +5,6 @@
 //! 0 ms of main-thread CPU for minutes (2026-10-12, `docs/analysis/haiku-lab-uat`),
 //! which the main-thread CPU test alone reads as a hang.
 
-use super::stall_grace::main_thread_busy;
-
 /// Bytes read per sample interval at or above which the process counts as
 /// making IO progress (256 KiB: far above a hung client's idle reads).
 pub const IO_PROGRESS_BYTES: i64 = 256 * 1024;
@@ -22,11 +20,12 @@ pub struct Activity {
     pub wall_ms: i64,
 }
 
-/// Whether the interval shows the process working or reading: at least
-/// [`IO_PROGRESS_BYTES`] read, or the busy share of CPU
-/// ([`main_thread_busy`]'s threshold, applied to all threads).
+/// Whether the interval shows the process reading: at least
+/// [`IO_PROGRESS_BYTES`] read. CPU of the other threads is deliberately not
+/// progress: a client whose main thread is deadlocked still ticks audio and
+/// render threads, and must die as a crash, not wait out the load grace.
 pub fn io_progress(a: Activity) -> bool {
-    a.wall_ms > 0 && (a.read_bytes >= IO_PROGRESS_BYTES || main_thread_busy(a.cpu_ms, a.wall_ms))
+    a.wall_ms > 0 && a.read_bytes >= IO_PROGRESS_BYTES
 }
 
 /// The sampler for one launch: remembers the previous counters.
@@ -101,14 +100,15 @@ mod tests {
     /// 256 KiB read in the interval is progress with an idle CPU; 2 % CPU
     /// is progress with no reads; a hung client's trickle is neither.
     #[test]
-    fn progress_is_reads_or_cpu_not_a_trickle() {
+    fn progress_is_reads_only_not_cpu() {
         let a = |read_bytes, cpu_ms| Activity {
             read_bytes,
             cpu_ms,
             wall_ms: 6_000,
         };
         assert!(io_progress(a(IO_PROGRESS_BYTES, 0)));
-        assert!(io_progress(a(0, 120)));
+        assert!(!io_progress(a(0, 120)));
+        assert!(!io_progress(a(0, 5_000)));
         assert!(!io_progress(a(IO_PROGRESS_BYTES - 1, 119)));
         assert!(!io_progress(a(0, 0)));
         assert!(!io_progress(Activity {

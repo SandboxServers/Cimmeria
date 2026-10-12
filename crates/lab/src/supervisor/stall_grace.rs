@@ -249,7 +249,7 @@ impl StallTracker {
     }
 
     /// [`Self::step`] plus `io_progress`: this interval showed the whole
-    /// process reading or working ([`super::process_activity::io_progress`]).
+    /// process reading ([`super::process_activity::io_progress`]).
     /// Like main-thread busy it is sticky for the stall and ignores the
     /// first two samples; it also lengthens the grace to `io_grace`.
     pub fn step_with_io(

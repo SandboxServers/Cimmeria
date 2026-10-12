@@ -157,7 +157,6 @@ pub fn shape(raw: &Value) -> Value {
         ));
     }
     out["effect_names"] = json!(names);
-    out["in_combat"] = raw["stats"]["InCombat"]["current"].clone();
     out
 }
 
@@ -192,6 +191,9 @@ mod tests {
         assert_eq!(s["position"]["z"], 3.0);
         assert_eq!(s["heading_deg"], 90.0);
         assert!(s["target"].is_null());
+        // No client stat or Lua query for combat state is verified, so the
+        // result must not carry an always-null in_combat.
+        assert!(s.get("in_combat").is_none());
     }
 
     /// Without the stat read (or on a client with no Focus stat) the
