@@ -42,7 +42,7 @@ def _summary(old, haiku, delta=None, low=False):
 
 def _meta(**overrides):
     meta = {
-        "stamp": {"generated": "2026-10-12T12:00:00Z", "window": {"since": "2026-09-21", "until": "2026-10-13"}, "price_table": "2026-10-10", "unattributed_share": 0.16},
+        "stamp": {"generated": "2026-10-12T12:00:00Z", "window": {"since": "2026-09-21", "until": "2026-10-13"}, "price_table": "2026-10-10", "unattributed_share": 0.16, "untagged_usd_share": 0.1},
         "unmapped_share": 0.1,
         "untagged_prs": 2,
         "opus_subagents": 0,
@@ -163,6 +163,13 @@ class SlotsAndCaveatsTest(unittest.TestCase):
         self.assertIn("- The overstep range covers every post-switch campaign, mixed ones included; cost comparisons use pure campaigns only.", text)
         self.assertIn("- Untagged PRs: 2.", text)
         self.assertIn("- Unattributed share of spend: 16.0%; unmapped session share: 10.0%.", text)
+        self.assertIn("- Spend on PRs with no campaign: 10.0%.", text)
+
+    def test_caveat_untagged_spend_is_na_when_missing(self):
+        meta = _meta()
+        del meta["stamp"]["untagged_usd_share"]
+        text = render_summary({}, _summary(_regime(), _regime()), meta)
+        self.assertIn("- Spend on PRs with no campaign: n/a.", text)
 
     def test_links_are_relative_md(self):
         text = render_summary(_records(), _summary(_regime(), _regime()), _meta())

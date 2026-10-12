@@ -5,7 +5,7 @@ import copy
 from .regime import campaign_regime, packet_regime
 
 SECTIONS = ("first_pass", "retries", "escalation", "stop_context", "cycle_time")
-STAMP_KEYS = ("generated", "window", "price_table", "profiler_schema", "unattributed_share")
+STAMP_KEYS = ("generated", "window", "price_table", "profiler_schema", "unattributed_share", "untagged_usd_share")
 
 
 def scalar_share(stamp):

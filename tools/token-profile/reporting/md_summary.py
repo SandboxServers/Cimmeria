@@ -186,6 +186,7 @@ def _caveat_text(summary, meta, low):
     lines = [
         f"- Unattributed share of spend: {_shown(stamp.get('unattributed_share'), 'rate')}; "
         f"unmapped session share: {_shown(meta.get('unmapped_share'), 'rate')}.",
+        f"- Spend on PRs with no campaign: {_shown(stamp.get('untagged_usd_share'), 'rate')}.",
         "- USD is a floor: list-price estimates of plan usage, not a bill.",
         f"- Mixed campaigns are excluded from the cost comparison: {', '.join(names) or 'none'}.",
         "- The overstep range covers every post-switch campaign, mixed ones included; cost comparisons use pure campaigns only.",

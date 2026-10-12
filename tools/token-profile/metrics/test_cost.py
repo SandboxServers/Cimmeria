@@ -120,6 +120,14 @@ class CostTest(unittest.TestCase):
         per_pr = {p["pr"]: p["usd"] for p in out["camp-a"]["prs"]["per_pr"]}
         self.assertAlmostEqual(per_pr[101], 0.046 + 0.0012 + 0.012, places=9)
 
+    def test_untagged_usd_share_is_pr_rows_without_a_campaign(self):
+        # r7 (0.012, PR 401) has no campaign until the ledger tags it. r5 has no PR, so it is not untagged PR spend.
+        # Total list-price USD over all seven rows is 0.1188.
+        off = cost.stamp(self.db, self.since, self.until)["untagged_usd_share"]
+        self.assertAlmostEqual(off, round(0.012 / 0.1188, 4), places=4)
+        on = cost.stamp(self.db, self.since, self.until, {401: "camp-c"})["untagged_usd_share"]
+        self.assertEqual(on, 0.0)
+
     def test_unattributed_request_is_in_no_campaign_but_in_the_stamp(self):
         # r5 (0.012) has no PR and no campaign: the campaigns above do not hold it, the unattributed share does.
         # Its family is 'main' with 3.0 weight over all main rows (r1, both halves of r4, r5), 1.0 unattributed.

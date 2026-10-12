@@ -187,9 +187,21 @@ def unattributed_share(conn, since, until, price_table=CURRENT):
             "by_usd": round(share(sum(v[1] for v in unattr.values()), all_usd), 4), "by_family": by_family}
 
 
+def untagged_usd_share(conn, since, until, ledger_pr_map=None, price_table=CURRENT):
+    """The share of list-price USD on PRs that have no campaign, after the ledger's map: spend the campaign totals
+    leave out, besides the unattributed spend. Every row counts in the total, as in unattributed_share."""
+    all_usd = untagged_usd = 0.0
+    for row in load_requests(conn, since, until, ledger_pr_map):
+        usd = request_usd(row, price_table) or 0.0
+        all_usd += usd
+        if row["pr"] is not None and not row["campaign"]:
+            untagged_usd += usd
+    return round(share(untagged_usd, all_usd), 4)
+
+
 def stamp(conn, since, until, ledger_pr_map=None, price_table=CURRENT):
     """What the numbers rest on: the window, the price table and its source, whether a ledger map was used,
-    how many PRs are still untagged, and the unattributed share."""
+    how many PRs are still untagged, the unattributed share, and the share of spend on untagged PRs."""
     untagged = {row["pr"] for row in load_requests(conn, since, until, ledger_pr_map)
                 if row["pr"] is not None and not row["campaign"]}
     row = conn.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()
@@ -199,4 +211,5 @@ def stamp(conn, since, until, ledger_pr_map=None, price_table=CURRENT):
             "profiler_schema": schema,
             "ledger": "applied" if ledger_pr_map else "not passed; PRs without a campaign stay untagged",
             "untagged_pr_count": len(untagged),
-            "unattributed_share": unattributed_share(conn, since, until, price_table)}
+            "unattributed_share": unattributed_share(conn, since, until, price_table),
+            "untagged_usd_share": untagged_usd_share(conn, since, until, ledger_pr_map, price_table)}
