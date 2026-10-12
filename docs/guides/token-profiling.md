@@ -132,6 +132,53 @@ Keep four things in mind when you compare the numbers:
 
 The JSON block under the table is the `cimmeria-pr-stats/1` record that the trend aggregation reads (`pr_stats.block.parse(body)`). Fields are only ever added; a breaking change bumps the schema name. The [retro cost study](../analysis/token-usage/retro-cost-study.md) shows what typical work costs, so you can tell whether a PR's number is high for its type and size.
 
+## Campaign metrics
+
+The campaign metrics read the profiler database and add what a campaign produced: packets, PRs, CI, escaped defects and overstep. The method and definitions are in the [campaign-metrics README](../analysis/campaign-metrics/README.md).
+
+Each metric, one line:
+
+- Campaign cost: list-price cost of a campaign's requests, by role and PR.
+- Cost per PR: attributed campaign cost divided by the PR count (p50 and p90 per PR too).
+- Cost per accepted change: campaign cost divided by accepted packets.
+- First-pass completion: accepted packets with one implementer session, no review-fix commit and no escalation.
+- Retries and why: implementer sessions beyond the first, each classified by its stop context.
+- CI first-attempt rate: share of PRs whose first CI run passed.
+- Escaped defects: fix or revert PRs and bug issues that cite a merged PR of the campaign.
+- Escalation rate: packets whose implementer moved up a tier, over packets sent to Haiku.
+- Worker stop context: why each worker session stopped, and its context size at the stop.
+- Cycle time: first worker request in a packet's worktree to the PR's merge.
+- Overstep and recoverable cost: work a role did that a cheaper tier should have done, and what it would have cost at that tier.
+
+**Regime.** A packet's regime is the implementer that ran: `haiku` if a Haiku implementer session ran, else `old`. The switch to Haiku workers was `2026-10-10T20:02:54Z`. A campaign is `haiku` at 70% or more Haiku packets, `old` at none, and `mixed` in between; cost compares pure campaigns only, and packet metrics split a mixed campaign by packet.
+
+**Before you start.** `packets` needs a schema v6 database, so re-ingest first. A full `github` run makes roughly 3,500 to 5,500 `gh` API calls (projected from a sample of tagged PRs): pass `--cache`, and expect two sittings.
+
+**Rerun in order.** Each step except `registry --check` writes to a scratch directory outside the repository. Copy each command from `python tools/token-profile/metrics <sub> --help`, and check the flags there before you rely on them.
+
+1. `python tools/token-profile/metrics registry --repo . --check`
+2. `python tools/token-profile/metrics ledger --repo . --out <scratch>`
+3. `python tools/token-profile/metrics cost --db <profile.sqlite> --out <scratch> --ledger <scratch>/ledger.json`
+4. `python tools/token-profile/metrics github --repo . --out <scratch> --ledger <scratch>/ledger.json --cache <scratch>/gh-cache`
+5. `python tools/token-profile/metrics packets --db <profile.sqlite> --ledger <scratch>/ledger.json --github <scratch>/github.json --out <scratch>`
+6. `python tools/token-profile/metrics overstep --db <profile.sqlite> --ledger <scratch>/ledger.json --out <scratch>`
+7. `python tools/token-profile/metrics report --inputs <scratch> --out docs/analysis/campaign-metrics --db <profile.sqlite> --self-session <id>`
+
+**Scratch rule.** Intermediate JSON (`ledger.json`, `cost.json`, `github.json`, `packets.json`, `overstep.json`) and the `gh` cache are never committed. Only the aggregate outputs under `docs/analysis/campaign-metrics/` are committed.
+
+**Exit codes.** `0` ok. `1` `registry --check` found a campaign rule problem: a campaign has no folder, or two prefixes overlap. `2` an input or output error. `3` the privacy gate refused the output, and nothing was written.
+
+**Caveats.**
+
+- Dollars are a list-price floor, not a bill.
+- The unattributed and unmapped share is reported with every total. Requests and PRs that attribution could not place are not in any campaign.
+- The escaped-defect count is a floor. A defect with no citation is invisible.
+- CI first attempt is optimistic after a force-push.
+- Overstep is an estimate. It reprices the same tokens at the intended tier: implementation at Haiku, research at Sonnet. The low end of the range reprices everything at Sonnet. It ignores the extra turns a cheaper model may need. Rule O3b (Opus implementing) is an upper bound, because a ledger may not record a legitimate escalation.
+- A comparison side with fewer than 5 campaigns or 10 packets carries a `low_n` flag. Read flagged figures as indicative only.
+
+**Outputs.** Aggregate data goes to `docs/analysis/campaign-metrics/data/` and the Markdown reports to `docs/analysis/campaign-metrics/reports/`.
+
 ## Telemetry
 
 Claude Code can also export OpenTelemetry events to the colo SigNoz. The setup, the privacy settings and the kill switch are in [claude-code-telemetry.md](../operations/claude-code-telemetry.md). The profiler doesn't need it, but the OTel reconciliation does. As of 2026-10-03 the workstation is configured and nothing has arrived yet: Claude Code reads the exporter settings only when it starts, so the window opens at the first restart.
