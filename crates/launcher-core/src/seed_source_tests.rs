@@ -43,6 +43,7 @@ fn manifest_for(seed: SeedEntry) -> Manifest {
         min_launcher: None,
         seed,
         patches: vec![],
+        file_index: None,
     }
 }
 
