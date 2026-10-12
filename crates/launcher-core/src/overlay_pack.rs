@@ -205,6 +205,9 @@ pub fn merge(manifest: &mut Manifest, mut entry: PatchEntry) -> Result<Merged, P
         manifest.patches.pop();
         return Err(e.into());
     }
+    // A new patch makes any published per-file index stale: drop it until
+    // `build-file-index` is run again.
+    manifest.file_index = None;
     Ok(Merged::Appended)
 }
 
@@ -467,6 +470,21 @@ mod tests {
         let last = m.patches.last().unwrap();
         assert_eq!(last.after.as_deref(), Some("002-x"));
         assert_eq!(last.root, PatchRoot::SgwGame);
+    }
+
+    #[test]
+    fn merge_drops_a_stale_file_index() {
+        let mut m = manifest(vec![plain_patch("001-base", None)]);
+        m.file_index = Some(crate::file_index::FileIndexRef {
+            blob: "file-index.json".into(),
+            size: 2,
+            sha256: "i".into(),
+        });
+        assert_eq!(
+            merge(&mut m, plain_patch("o", None)).unwrap(),
+            Merged::Appended
+        );
+        assert_eq!(m.file_index, None);
     }
 
     #[test]
