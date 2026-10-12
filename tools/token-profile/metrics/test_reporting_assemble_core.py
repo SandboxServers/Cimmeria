@@ -79,6 +79,15 @@ class AssembleCoreTest(unittest.TestCase):
         self.assertEqual(core["regime"], "mixed")
         self.assertNotIn("regime_gap", core)
 
+    def test_cost_regime_wins_over_packets(self):
+        # A self-measuring campaign has a packets record of its own, all Haiku, yet stays mixed.
+        loaded = copy.deepcopy(self.loaded)
+        loaded["cost"]["campaigns"]["beta-haiku"]["regime"] = "mixed"
+        core = self.assemble("beta-haiku", loaded)
+        self.assertEqual(core["regime"], "mixed")
+        self.assertNotIn("regime_gap", core)
+        self.assertTrue(all(row["regime"] == "haiku" for row in core["packet_rows"]))
+
     def test_empty_packets_and_ledger_docs(self):
         # A missing input file loads as {}; the merge must still produce a record with gaps.
         loaded = copy.deepcopy(self.loaded)

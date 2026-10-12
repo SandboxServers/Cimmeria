@@ -32,11 +32,13 @@ def assemble_core(name, cost_doc, packets_doc, ledger_doc):
     packets = packets_campaign.get("packets", []) if packets_campaign is not None else []
 
     out = {"campaign": name}
-    if packets_campaign is None:
-        # A cost record may already carry its regime (a mixed campaign created by the own-session cost).
-        out["regime"] = cost_campaign.get("regime", "old")
-        if "regime" not in cost_campaign:
-            out["regime_gap"] = "no packets record"
+    # A cost record that carries its regime (a mixed campaign created by the own-session cost) keeps it, packets or not.
+    explicit = cost_campaign.get("regime")
+    if explicit:
+        out["regime"] = explicit
+    elif packets_campaign is None:
+        out["regime"] = "old"
+        out["regime_gap"] = "no packets record"
     else:
         out["regime"] = campaign_regime(packets)
 

@@ -133,6 +133,30 @@ class ReportCliTest(unittest.TestCase):
         self.assertIn("| Total USD | $100.00 |", summary)
         self.assertIn("- Mixed campaigns are excluded from the cost comparison: campaign-metrics.", summary)
 
+    def test_cli_own_session_leaves_haiku_column_unchanged(self):
+        # campaign-metrics has an all-Haiku packets record, yet its own cost keeps it mixed: the Haiku column must not move.
+        packets_path = self.inputs / "packets.json"
+        packets = json.loads(packets_path.read_text(encoding="utf-8"))
+        packets["campaigns"]["campaign-metrics"] = {
+            "accepted": {"packets": 1},
+            "packets": [{"id": "CM-1", "implementer_sessions": 2, "reviewer_sessions": 1, "fix_commits": 0,
+                         "first_pass": True, "accepted": True, "escalated": False, "cycle_hours": 1.0, "retries": []}],
+        }
+        packets_path.write_text(json.dumps(packets), encoding="utf-8")
+        baseline_out = self.dir / "baseline"
+        _run(["report", "--inputs", str(self.inputs), "--out", str(baseline_out)])
+        scratch = self.dir / "scratch.sqlite"
+        _schema_db(scratch)
+        _run(["report", "--inputs", str(self.inputs), "--out", str(self.out), "--db", str(scratch),
+              "--self-session", "sess-a"])
+
+        def haiku_rows(out):
+            summary = (out / "reports" / "summary.md").read_bytes().decode("utf-8")
+            return [line for line in summary.splitlines() if line.startswith(("| Pure campaigns |", "| Total USD |"))]
+
+        self.assertEqual(len(haiku_rows(self.out)), 2)
+        self.assertEqual(haiku_rows(self.out), haiku_rows(baseline_out))
+
     def test_cli_self_session_needs_db(self):
         status, _, err = _run(["report", "--inputs", str(self.inputs), "--out", str(self.out), "--self-session", "s1"])
         self.assertEqual(status, 2)
