@@ -13,7 +13,7 @@ use crate::daemon::paths;
 use crate::ui::{Mark, Tone, Ui};
 
 const USAGE: &str =
-    "usage: lab env [get KEY | set KEY VALUE | unset KEY]  (a VALUE starting with '-': -Value:<value>)";
+    "usage: lab env [get KEY | set KEY VALUE | unset KEY]  (a VALUE starting with '-': --value=<value>)";
 const KEY_RULE: &str = "KEY must match ^[A-Z][A-Z0-9_]*$";
 const RESTART_PLAIN: &str = "restart the daemon for this to apply: lab restart";
 

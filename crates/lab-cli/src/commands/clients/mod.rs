@@ -19,9 +19,9 @@ pub use win::StopOutcome;
 const LONG: &str = concat!(
     "Usage: lab clients stop [<instance>|all] [--force].",
     "\n\n",
-    "Asks each client window to close (CloseMainWindow) and force-stops it when it is still alive after 8 s. Only a process named SGW is touched, and the pid comes from the daemon's GET /status.",
+    "Asks each client window to close (CloseMainWindow) and force-stops it when it is still alive after 8 s. Only a process named SGW.exe is touched, and the pid comes from the daemon's GET /status, read again right before each stop (a client that was relaunched or leased meanwhile is left alone).",
     "\n\n",
-    "An instance a session holds (a lease) is not stopped, because its holder would lose the client. --force overrides that, for one named instance only: 'all' with --force is refused. Exit codes: 0 when nothing was refused, 1 when the daemon is not running, 2 on a usage error, 3 when a leased client was refused, 4 when a client could not be stopped.",
+    "An instance a session holds (a lease) is not stopped, because its holder would lose the client. --force overrides that, for one named instance only: 'all' with --force is refused. Exit codes: 0 when nothing was refused, 1 when the daemon is not running, 2 on a usage error, 3 when a leased client was refused, 4 when a client could not be stopped (including one that was relaunched since the first status read).",
 );
 
 const EXAMPLES: &str = "Examples:\n  lab clients stop p2\n  lab clients stop p2 --force";
@@ -64,22 +64,25 @@ pub fn run(args: &Args, ctx: &Ctx) -> u8 {
             Stream::Err => writeln!(anstream::stderr(), "{line}"),
         };
     };
+    let endpoint = Endpoint::discover();
     execute(
         args,
         &ctx.ui,
-        || status::fetch(&Endpoint::discover()),
+        || status::fetch(&endpoint),
         &mut |pid| win::stop_client(pid),
         &mut emit,
     )
 }
 
 /// The command with its three outside effects injected: `fetch` asks the
-/// daemon (called only after every usage check), `stopper` stops one pid, and
-/// `emit` receives each output line as it is produced.
+/// daemon (called only after every usage check, and again right before each
+/// stop so a client that was relaunched or leased meanwhile is left alone),
+/// `stopper` stops one pid, and `emit` receives each output line as it is
+/// produced.
 pub fn execute(
     args: &Args,
     ui: &Ui,
-    fetch: impl FnOnce() -> Option<StatusReply>,
+    mut fetch: impl FnMut() -> Option<StatusReply>,
     stopper: &mut dyn FnMut(u32) -> Result<StopOutcome, String>,
     emit: &mut dyn FnMut(Stream, String),
 ) -> u8 {
@@ -138,14 +141,39 @@ pub fn execute(
         );
     }
     let mut failed = 0u32;
+    let mut refused = sel.refuse.len();
     for inst in &sel.stop {
         let label = inst.instance.as_str();
         let Some(pid) = inst.client_pid else { continue };
-        if sel
+        let forced = sel
             .forced
             .iter()
-            .any(|f| targets::same_name(&f.instance, label))
-        {
+            .any(|f| targets::same_name(&f.instance, label));
+        // The status above may be seconds old (earlier stops wait up to 10 s):
+        // look again so a relaunched or newly leased client is not stopped.
+        match targets::recheck(fetch().as_ref(), label, pid, args.force) {
+            targets::Recheck::Proceed => {}
+            targets::Recheck::Gone => {
+                emit(Stream::Out, targets::none_line(ui, label));
+                continue;
+            }
+            targets::Recheck::Changed(now) => {
+                failed += 1;
+                emit(Stream::Err, targets::changed_line(ui, label, pid, now));
+                continue;
+            }
+            targets::Recheck::Leased(who) => {
+                refused += 1;
+                emit(Stream::Out, targets::refuse_line(ui, label, &who));
+                continue;
+            }
+            targets::Recheck::Unknown => {
+                failed += 1;
+                emit(Stream::Err, targets::unchecked_line(ui, label, pid));
+                continue;
+            }
+        }
+        if forced {
             emit(
                 Stream::Out,
                 targets::forced_line(ui, label, &targets::lease_who(inst)),
@@ -169,7 +197,7 @@ pub fn execute(
     }
     if failed > 0 {
         4
-    } else if !sel.refuse.is_empty() {
+    } else if refused > 0 {
         3
     } else {
         0

@@ -11,6 +11,7 @@ use super::checks::{sgw_exe_path, BinaryFacts, ContentCheck, Inputs, InstanceFac
 use crate::daemon::env_file::{self, EnvLine};
 use crate::daemon::status::{self, Endpoint, StatusReply};
 use crate::daemon::{paths, token};
+use crate::processes::sgw_pids;
 
 /// Gathers every fact the checks need.
 pub fn gather() -> Inputs {
@@ -58,6 +59,10 @@ pub fn gather() -> Inputs {
             &home.join("labd").join("cimmeria-lab.exe"),
         ),
         version_sha,
+        exe_sha: option_env!("CIMMERIA_LAB_CLI_SHA")
+            .map(str::trim)
+            .filter(|sha| !sha.is_empty())
+            .map(str::to_string),
         checkout,
         content,
     }
@@ -239,90 +244,4 @@ pub fn content_check(root: Option<&Path>, sha: Option<&str>) -> Option<ContentCh
         Some(1) => ContentCheck::Differs,
         _ => ContentCheck::Unknown,
     })
-}
-
-/// Whether a process image name is the game client.
-#[cfg_attr(not(windows), allow(dead_code))]
-pub(crate) fn is_sgw_image(name: &str) -> bool {
-    name.eq_ignore_ascii_case("SGW.exe")
-}
-
-/// Pids of every running `SGW.exe`. LX-15 reuses this.
-#[cfg(windows)]
-pub(crate) fn sgw_pids() -> Vec<u32> {
-    use std::mem::{size_of, zeroed};
-    use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
-    use windows_sys::Win32::System::Diagnostics::ToolHelp::{
-        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
-        TH32CS_SNAPPROCESS,
-    };
-
-    let mut pids = Vec::new();
-    // SAFETY: plain Win32 calls. `entry` is zeroed and its `dwSize` is set as
-    // the API requires; the snapshot handle is closed before returning.
-    unsafe {
-        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-        if snapshot == INVALID_HANDLE_VALUE {
-            return pids;
-        }
-        let mut entry: PROCESSENTRY32W = zeroed();
-        entry.dwSize = size_of::<PROCESSENTRY32W>() as u32;
-        let mut more = Process32FirstW(snapshot, &mut entry) != 0;
-        while more {
-            let len = entry
-                .szExeFile
-                .iter()
-                .position(|&unit| unit == 0)
-                .unwrap_or(entry.szExeFile.len());
-            let name = String::from_utf16_lossy(&entry.szExeFile[..len]);
-            if is_sgw_image(&name) {
-                pids.push(entry.th32ProcessID);
-            }
-            more = Process32NextW(snapshot, &mut entry) != 0;
-        }
-        CloseHandle(snapshot);
-    }
-    pids
-}
-
-/// No process list off Windows: no `SGW.exe` runs there.
-#[cfg(not(windows))]
-pub(crate) fn sgw_pids() -> Vec<u32> {
-    Vec::new()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // ops: the Get-Process -Name SGW filter (image name SGW.exe, any case)
-    #[test]
-    fn image_name_must_be_sgw_exe() {
-        assert!(is_sgw_image("SGW.exe"));
-        assert!(is_sgw_image("sgw.EXE"));
-        assert!(!is_sgw_image("SGW2.exe"));
-        assert!(!is_sgw_image("notSGW.exe"));
-        assert!(!is_sgw_image("SGW"));
-    }
-
-    // A real process named SGW.exe (a copy of ping.exe) is found by pid.
-    #[cfg(windows)]
-    #[test]
-    fn sgw_pids_finds_a_running_sgw_exe() {
-        let root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".into());
-        let ping = Path::new(&root).join("System32").join("PING.EXE");
-        let dir = tempfile::TempDir::new().unwrap();
-        let fake = dir.path().join("SGW.exe");
-        std::fs::copy(&ping, &fake).unwrap();
-        let mut child = Command::new(&fake)
-            .args(["-n", "20", "localhost"])
-            .stdout(Stdio::null())
-            .spawn()
-            .unwrap();
-        let found = sgw_pids().contains(&child.id());
-        let _ = child.kill();
-        let _ = child.wait();
-        assert!(found, "the SGW.exe copy's pid is not in the snapshot");
-        assert!(!sgw_pids().contains(&std::process::id()));
-    }
 }

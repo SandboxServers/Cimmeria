@@ -9,37 +9,11 @@ use std::process::Output;
 
 use cimmeria_lab_cli::batch::{read_records, RunRecord, BATCH_JSONL};
 use serde_json::{json, Value};
-use support::{lab_home_for, run_lab_in, StubServer, ToolReply, STUB_TOKEN};
+use support::{lab_home_for, run_lab_in, run_lab_seeing, StubServer, ToolReply, STUB_TOKEN};
 use tempfile::TempDir;
 
 /// One hosted, free instance.
 const STATUS: &str = r#"{"daemon":{"pid":1,"version":"x"},"instances":[{"instance":"default","client_pid":null,"lease":{"held":false}}]}"#;
-
-/// True when an `SGW.exe` runs on this machine: the pre-flight then refuses to
-/// drive (exit 3), so the tests that drive skip.
-fn sgw_running() -> bool {
-    if !cfg!(windows) {
-        return false;
-    }
-    std::process::Command::new("tasklist")
-        .args(["/FI", "IMAGENAME eq SGW.exe", "/NH"])
-        .output()
-        .map(|o| {
-            String::from_utf8_lossy(&o.stdout)
-                .to_ascii_lowercase()
-                .contains("sgw.exe")
-        })
-        .unwrap_or(false)
-}
-
-macro_rules! need_no_sgw {
-    () => {
-        if sgw_running() {
-            eprintln!("skipped: an SGW.exe runs, so the pre-flight would refuse to drive");
-            return;
-        }
-    };
-}
 
 /// The plan call's reply: every row ready.
 fn plan(rows: &[&str]) -> ToolReply {
@@ -141,7 +115,6 @@ fn run_uat(tools: Vec<(&str, Vec<ToolReply>)>, args: &[&str]) -> Ran {
 
 #[test]
 fn a_one_lane_two_row_run_writes_the_batch_files_and_exits_0() {
-    need_no_sgw!();
     let r = run_uat(
         vec![(
             "lab_uat_run",
@@ -194,7 +167,6 @@ fn a_one_lane_two_row_run_writes_the_batch_files_and_exits_0() {
 
 #[test]
 fn json_prints_exactly_one_compact_line() {
-    need_no_sgw!();
     let r = run_uat(
         vec![(
             "lab_uat_run",
@@ -227,7 +199,6 @@ fn json_prints_exactly_one_compact_line() {
 
 #[test]
 fn a_failing_row_exits_1_and_the_summary_groups_it() {
-    need_no_sgw!();
     let r = run_uat(
         vec![(
             "lab_uat_run",
@@ -268,7 +239,6 @@ fn a_failing_row_exits_1_and_the_summary_groups_it() {
 
 #[test]
 fn diff_golden_records_each_runs_value_and_exits_5_on_a_divergence() {
-    need_no_sgw!();
     let specs = TempDir::new().unwrap();
     fs::create_dir_all(specs.path().join("golden")).unwrap();
     fs::write(
@@ -329,7 +299,6 @@ fn diff_golden_records_each_runs_value_and_exits_5_on_a_divergence() {
 
 #[test]
 fn heal_writes_the_proposed_diff_into_the_batch_and_exits_8() {
-    need_no_sgw!();
     let scratch = TempDir::new().unwrap();
     let proposal = "--- a/spec.toml\n+++ b/spec.toml\n@@ -1 +1 @@\n-bearing_deg = 322.5\n+bearing_deg = 330.0\n";
     let proposal_path = scratch.path().join("proposal.diff");
@@ -377,7 +346,6 @@ fn heal_writes_the_proposed_diff_into_the_batch_and_exits_8() {
 
 #[test]
 fn the_brake_stops_a_lane_after_n_failures_and_exits_4() {
-    need_no_sgw!();
     let r = run_uat(
         vec![(
             "lab_uat_run",
@@ -414,4 +382,20 @@ fn the_brake_stops_a_lane_after_n_failures_and_exits_4() {
     let batch = r.batch_json();
     assert_eq!(batch["summary"]["lanes"][0]["braked"], true);
     assert_eq!(batch["summary"]["lanes"][0]["passed"], 0);
+}
+
+// C1/C10: the tests' view of the process list is the seam's, not the machine's:
+// a listed SGW.exe outside the lab stops a real run (exit 3), an empty list
+// does not (every other test here drives).
+#[test]
+fn the_sgw_list_comes_from_the_test_seam() {
+    let (stub, ep) = StubServer::start_mcp(STATUS, vec![]);
+    let bind = ep.base_url.trim_start_matches("http://").to_string();
+    let home = lab_home_for(&bind);
+    let args = ["uat", "first-session", "--stagger-seconds", "0"];
+    let out = run_lab_seeing(home.path(), &args, "4242, 4243");
+    let err = String::from_utf8_lossy(&out.stderr).into_owned();
+    assert_eq!(out.status.code(), Some(3), "stderr: {err}");
+    assert!(err.contains("pid 4242, 4243"), "stderr: {err}");
+    assert!(stub.tool_calls().is_empty(), "nothing was driven");
 }

@@ -25,12 +25,12 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-use crate::commands::doctor::system::sgw_pids;
 use crate::commands::Ctx;
 use crate::daemon::env_file;
 use crate::daemon::mcp::{McpClient, McpError};
 use crate::daemon::paths;
 use crate::daemon::status::Endpoint;
+use crate::processes::sgw_pids;
 
 pub use preflight::{execute, Deps, Outcome, Ready};
 

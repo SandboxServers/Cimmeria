@@ -59,7 +59,7 @@ pub fn stop_client_with(
         PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE, PROCESS_TERMINATE,
     };
 
-    use super::targets::is_sgw_image;
+    use crate::processes::is_sgw_image;
 
     /// Waits for the process to exit; true when it has.
     fn exited(handle: HANDLE, wait: Duration) -> bool {

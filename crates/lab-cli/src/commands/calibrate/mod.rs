@@ -22,11 +22,11 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-use crate::commands::doctor::system::sgw_pids;
 use crate::commands::Ctx;
 use crate::daemon::mcp::{McpClient, McpError};
 use crate::daemon::paths;
 use crate::daemon::status::Endpoint;
+use crate::processes::sgw_pids;
 
 const LONG: &str = concat!(
     "Calls lab_uat_calibrate on the shared lab daemon: for each pose a client_world_click step of the row names (or only --pose), it sweeps stand-off radii, bearings and camera angles around the target, scores each by hover, confirms the winner three times, and writes the proposed pose line as a diff in a new UAT run folder (with calibrate.jsonl, one line per probe). The spec file itself is never written; nothing is committed.",

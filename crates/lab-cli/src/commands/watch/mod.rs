@@ -198,7 +198,7 @@ fn take_snapshot(args: &Args, batch_dir: Option<PathBuf>) -> Result<Snapshot, St
     } else {
         Vec::new()
     };
-    let sgw = process::sgw_pids();
+    let sgw = crate::processes::sgw_pids();
     build(&Inputs {
         status: status_body.as_ref(),
         batch_dir: dir.as_deref(),

@@ -6,12 +6,14 @@ use std::process::Command;
 
 // ops: the exit-1-on-FAIL rule and the plain PASS/WARN/FAIL lines, end to end.
 #[test]
-fn doctor_prints_ten_plain_lines_and_exits_1_when_a_check_fails() {
+fn doctor_prints_eleven_plain_lines_and_exits_1_when_a_check_fails() {
     // A closed port: the daemon is "down", whatever runs on this machine.
     let home = support::isolated_lab_home();
     let output = Command::new(env!("CARGO_BIN_EXE_lab"))
         .arg("doctor")
+        .current_dir(home.path())
         .env("CIMMERIA_LAB_HOME", home.path())
+        .env("CIMMERIA_LAB_TEST_SGW_PIDS", "")
         .env("LOCALAPPDATA", home.path())
         .env_remove("CIMMERIA_LAB_PROFILE_ROOT")
         .env_remove("CIMMERIA_LAB_DAEMON_TOKEN")
@@ -20,7 +22,7 @@ fn doctor_prints_ten_plain_lines_and_exits_1_when_a_check_fails() {
         .expect("lab runs");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let lines: Vec<&str> = stdout.lines().collect();
-    assert_eq!(lines.len(), 10, "stdout: {stdout}");
+    assert_eq!(lines.len(), 11, "stdout: {stdout}");
     assert!(
         lines
             .iter()
@@ -37,6 +39,20 @@ fn doctor_prints_ten_plain_lines_and_exits_1_when_a_check_fails() {
         lines.contains(
             &"FAIL  labd.env has CIMMERIA_LAB_INSTALL_DIR and SGW.exe is under it  CIMMERIA_LAB_INSTALL_DIR is not set in labd.env"
         ),
+        "stdout: {stdout}"
+    );
+    // Run in a temp dir, not in this repo: the version check is skipped (WARN,
+    // never PASS) and the build match has nothing installed to compare with.
+    assert!(
+        lines.contains(
+            &"WARN  CLI copy matches origin/main (as of the last fetch)  not in a Cimmeria checkout; skipped"
+        ),
+        "stdout: {stdout}"
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.starts_with("WARN  lab.exe matches the installed CLI scripts  ")),
         "stdout: {stdout}"
     );
     assert!(

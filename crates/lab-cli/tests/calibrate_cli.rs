@@ -14,14 +14,18 @@ fn fake_home() -> TempDir {
         r#"{"pid":1,"bind":"127.0.0.1:9"}"#,
     )
     .unwrap();
+    // A stand-in checkout (the spec folder is how `--apply` finds its repo), so
+    // the child runs here, never in the real repo.
+    std::fs::create_dir_all(home.path().join("docs").join("guides").join("uat-specs")).unwrap();
     home
 }
 
 fn run_lab(args: &[&str], home: &Path) -> Output {
     Command::new(env!("CARGO_BIN_EXE_lab"))
         .args(args)
-        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .current_dir(home)
         .env("CIMMERIA_LAB_HOME", home)
+        .env("CIMMERIA_LAB_TEST_SGW_PIDS", "")
         .env_remove("CIMMERIA_LAB_DAEMON_TOKEN")
         .env_remove("NO_COLOR")
         .output()

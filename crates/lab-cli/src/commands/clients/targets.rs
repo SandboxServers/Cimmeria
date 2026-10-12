@@ -29,20 +29,50 @@ pub fn same_name(a: &str, b: &str) -> bool {
     a.eq_ignore_ascii_case(b)
 }
 
-/// Whether the image path names `SGW.exe`: the last path component, any case,
-/// the whole name (`SGW.exe.bak` and `notSGW.exe` are not it).
-#[cfg_attr(not(windows), allow(dead_code))]
-pub fn is_sgw_image(path: &str) -> bool {
-    let name = path.rsplit(['\\', '/']).next().unwrap_or(path);
-    name.eq_ignore_ascii_case("SGW.exe")
+/// Whether a session holds the instance's lease. No lease object means free
+/// and `lease.held` of JSON `false` means free; anything else (`true`, or a
+/// `held` that is missing, null, text or a number) counts as held, because a
+/// wrong guess here stops a client its holder is driving.
+pub fn lease_held(inst: &InstanceRow) -> bool {
+    match inst.lease.as_ref() {
+        None | Some(Value::Null) => false,
+        Some(lease) => !matches!(lease.get("held"), Some(Value::Bool(false))),
+    }
 }
 
-/// Whether a session holds the instance's lease (`lease.held` is JSON `true`).
-pub fn lease_held(inst: &InstanceRow) -> bool {
-    matches!(
-        inst.lease.as_ref().and_then(|lease| lease.get("held")),
-        Some(Value::Bool(true))
-    )
+/// What a fresh `/status` says about an instance whose stop is about to run.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Recheck {
+    /// Same client pid and the lease allows the stop: go ahead.
+    Proceed,
+    /// The instance has no client any more.
+    Gone,
+    /// The client is a different process now (it was relaunched).
+    Changed(u32),
+    /// A session took the lease since the first look; the text is its holder.
+    Leased(String),
+    /// The fresh status could not be had, or no longer lists the instance.
+    Unknown,
+}
+
+/// Compares the instance `label` in a fresh status with the pid chosen from
+/// the first one. A lease taken since only blocks a stop without `--force`: it
+/// overrides a lease by design.
+pub fn recheck(fresh: Option<&StatusReply>, label: &str, pid: u32, force: bool) -> Recheck {
+    let Some(inst) = fresh.and_then(|status| {
+        status
+            .instances
+            .iter()
+            .find(|i| same_name(&i.instance, label))
+    }) else {
+        return Recheck::Unknown;
+    };
+    match inst.client_pid {
+        None => Recheck::Gone,
+        Some(now) if now != pid => Recheck::Changed(now),
+        Some(_) if !force && lease_held(inst) => Recheck::Leased(lease_who(inst)),
+        Some(_) => Recheck::Proceed,
+    }
 }
 
 /// A JSON field as text: empty for a missing or null field.
@@ -180,6 +210,29 @@ pub fn stopped_line(ui: &Ui, label: &str, pid: u32) -> String {
 pub fn not_sgw_line(ui: &Ui, label: &str, pid: u32) -> String {
     let text = format!("{label}: no client (pid {pid} is not a running SGW)");
     marked(ui, Mark::Stopped, Tone::Dim, &text, &text)
+}
+
+/// The client was relaunched between the first status and the stop (stderr):
+/// the new process was not chosen, so it is left alone.
+pub fn changed_line(ui: &Ui, label: &str, was: u32, now: u32) -> String {
+    marked(
+        ui,
+        Mark::Fail,
+        Tone::Fail,
+        &format!("{label}: client pid changed from {was} to {now}; not stopped"),
+        &format!("{label}: client changed from pid {was} to {now}; not stopped"),
+    )
+}
+
+/// The fresh status could not be had, or no longer lists the instance (stderr).
+pub fn unchecked_line(ui: &Ui, label: &str, pid: u32) -> String {
+    marked(
+        ui,
+        Mark::Fail,
+        Tone::Fail,
+        &format!("{label}: could not re-check /status; pid {pid} not stopped"),
+        &format!("{label}: could not re-check the daemon status; pid {pid} not stopped"),
+    )
 }
 
 /// A client still alive after the stop (stderr). `reason` is the error text
@@ -360,15 +413,24 @@ mod tests {
         assert_eq!(lease_who(&one.instances[0]), "o (-)");
     }
 
-    // new: only the whole image name SGW.exe counts
+    // new: a lease whose `held` is not a JSON bool counts as held
     #[test]
-    fn only_an_image_named_sgw_exe_is_a_client() {
-        assert!(is_sgw_image(r"C:\Game\Binaries\SGW.exe"));
-        assert!(is_sgw_image(r"c:\game\sgw.EXE"));
-        assert!(is_sgw_image("SGW.exe"));
-        assert!(!is_sgw_image(r"C:\x\SGW.exe.bak"));
-        assert!(!is_sgw_image(r"C:\x\notSGW.exe"));
-        assert!(!is_sgw_image(r"C:\x\SGW"));
+    fn a_lease_whose_held_is_not_a_bool_counts_as_held() {
+        let held = |lease: serde_json::Value| {
+            let body = serde_json::json!({
+                "daemon": {"pid": 1, "version": "x"},
+                "instances": [{"instance": "a", "client_pid": 5, "lease": lease}]
+            });
+            lease_held(&parse_status(&body).expect("shape").instances[0])
+        };
+        assert!(held(serde_json::json!({"held": true})));
+        assert!(held(serde_json::json!({"held": "false"})));
+        assert!(held(serde_json::json!({"held": "true"})));
+        assert!(held(serde_json::json!({"held": 0})));
+        assert!(held(serde_json::json!({"held": null})));
+        assert!(held(serde_json::json!({})));
+        assert!(!held(serde_json::json!({"held": false})));
+        assert!(!held(serde_json::json!(null)));
     }
 
     #[test]

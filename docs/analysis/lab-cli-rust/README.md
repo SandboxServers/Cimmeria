@@ -37,7 +37,7 @@ suggestions and shell completions.
 | ID | Decision | Status | Reason |
 |---|---|---|---|
 | D-LX1 | The CLI becomes a Rust binary `lab` in a new crate `crates/lab-cli` (package `cimmeria-lab-cli`). It replaces D-LC1. | Accepted by the user 2026-10-11; owner to confirm before LX-06 merges | Size and logic outgrew PowerShell; one toolchain. A small crate rebuilds in seconds, which answers D-LC1's rebuild objection. |
-| D-LX2 | Strangler migration. `lab.exe` knows every command from day one; a command not yet ported runs the installed PowerShell dispatcher (`<lab home>\cli\lab.ps1`) with the original arguments and passes its exit code on. Each port packet deletes the PowerShell it replaces. | Accepted 2026-10-11; fully retired at LX-18 (only the seven script wrappers still start PowerShell, and there is no generic fallback) | Every packet ships something usable; there is never a second copy of a command to keep in step. |
+| D-LX2 | Strangler migration. `lab.exe` knows every command from day one; a command not yet ported runs the installed PowerShell dispatcher (`<lab home>\cli\lab.ps1`) with the original arguments and passes its exit code on. Each port packet deletes the PowerShell it replaces. | Accepted 2026-10-11; fully retired at LX-18 (only the seven script wrappers still start PowerShell, plus `lab completions powershell --install`, which runs `pwsh` once to find `$PROFILE`; there is no generic fallback) | Every packet ships something usable; there is never a second copy of a command to keep in step. |
 | D-LX3 | `crates/lab-cli` builds on every OS and is a `default-member`, so CI builds, lints and tests it. Windows-only code (registry, windows, processes) sits behind `cfg(windows)` with a non-Windows stub that returns "Windows only". It does not depend on `cimmeria-lab`. | Accepted 2026-10-11 | `cimmeria-lab` is excluded from CI; the CLI must not be. The daemon's JSON is read through the CLI's own small serde types. |
 | D-LX4 | Flags are clap long flags (`--rows`). PowerShell-style flags still work: `-Rows`, `-PlanOnly`, `-Value:-x` are rewritten before clap sees them (contract § Arguments). | Accepted 2026-10-11 | Docs, skills, specs and muscle memory use the PowerShell form. |
 | D-LX5 | Output parity. Exit codes and `--json` output (keys, key order, caps and size budgets) are exactly the PowerShell command's. Plain output (stdout not a terminal, or `NO_COLOR`) keeps the PowerShell line formats. Terminal output is restyled per contract § Look and feel. | Accepted 2026-10-11 | Agents and scripts parse the JSON and the plain lines; people read the terminal. |
@@ -114,7 +114,10 @@ Where the merged code differs from the packet text. The specs in
 - **Tests never reach a real daemon (LX-15).** With `CIMMERIA_LAB_HOME` set
   (tests only) the token comes from the process environment, never HKCU; every
   test that runs the binary uses `tests/support`'s `isolated_lab_home()`,
-  whose `labd.pid` names a closed port.
+  whose `labd.pid` names a closed port. Likewise the list of running
+  `SGW.exe` comes from one module (`src/processes`); with `CIMMERIA_LAB_HOME`
+  set, `CIMMERIA_LAB_TEST_SGW_PIDS` (comma list, may be empty) replaces it, so
+  a game client on the developer's machine never changes a test.
 - **`doctor` (LX-08)** compares the two `cimmeria-lab.exe` copies by bytes,
   not SHA-256. `test-ops.ps1` and `test-logs-env.ps1` are deleted (no checks
   left after the ports).
@@ -169,3 +172,4 @@ Where the merged code differs from the packet text. The specs in
   the unified UAT guide gains a "Lab CLI" section with LX-20's steps (LX-U1
   to LX-U16). The tools catalog's stale rows leave at the next
   `regen-docs` run.
+- Guard tests `uat_no_fallback.rs` and `watch_command.rs`'s /mcp check scan source text; they are structural guards, kept on purpose, not behaviour tests.
