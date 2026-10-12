@@ -103,7 +103,8 @@ class FixtureIngestTest(unittest.TestCase):
 
     def test_agent_stops_are_exactly_the_expected_rows(self):
         cols = ("agent_id", "session_id", "last_ts", "requests", "last_stop_reason", "last_context_tokens",
-                "last_tool_name", "last_tool_background", "last_result_is_error", "ended_after_result")
+                "last_tool_name", "last_tool_background", "last_result_is_error", "ended_after_result",
+                "ended_in_api_error", "api_error_kind")
         got = self.q(f"SELECT {', '.join(cols)} FROM agent_stops ORDER BY agent_id")
         want = [tuple(r[c] for c in cols) for r in sorted(self.expected["agent_stops"], key=lambda r: r["agent_id"])]
         self.assertEqual(got, want)

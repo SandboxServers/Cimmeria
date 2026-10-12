@@ -17,6 +17,7 @@ from .shapes import SYNTHETIC_MODEL, unknown_shape
 
 WORKTREE = re.compile(r"[\\/]\.claude[\\/]worktrees[\\/]([^\\/]+)")
 PERSISTED = re.compile(r"Output too large.*saved to|<persisted-output>", re.DOTALL)
+API_ERROR_KIND = re.compile(r"[a-z_]{1,40}")
 AGENT_TOOLS = {"Agent", "Task"}
 
 
@@ -80,6 +81,11 @@ def result_text(content):
     return ""
 
 
+def api_error_kind(value):
+    """The `error` class of a synthetic API error record (rate_limit, ...), never its message text."""
+    return value if isinstance(value, str) and API_ERROR_KIND.fullmatch(value) else "other"
+
+
 class Transcript:
     def __init__(self, db, run_id, path, session_id, agent_id, state, stats):
         self.db = db
@@ -89,7 +95,8 @@ class Transcript:
         self.agent_id = agent_id
         self.st = {"cur": None, "retry": False, "sched": False, "seen_turn": False, "last_req": None,
                    "compaction": None, "gh_create": [], "git_calls": [], "last_ts": None,
-                   "last_tools": {"rid": None, "tools": []}, "ends_result": False, **state}
+                   "last_tools": {"rid": None, "tools": []}, "ends_result": False, "api_error": None,
+                   **state}
         self.stats = stats
         self.is_fork = agent_id is not None and db.execute(
             "SELECT agent_type = 'fork' FROM agents WHERE agent_id = ?", (agent_id,)).fetchone() == (1,)
@@ -180,9 +187,11 @@ class Transcript:
     def _assistant(self, rec):
         msg = rec["message"]
         self.st["ends_result"] = False
+        self.st["api_error"] = None
         if msg.get("model") == SYNTHETIC_MODEL:
             if rec.get("isApiErrorMessage"):
                 self.st["retry"] = True
+                self.st["api_error"] = api_error_kind(rec.get("error"))
                 self.stats["api_errors"] += 1
             return
         rid = rec["requestId"]
@@ -196,7 +205,8 @@ class Transcript:
                 self.stats["fork_copied_records" if self.is_fork else "duplicate_request_records"] += 1
                 return
             # A later record of the same request: keep the final usage.
-            sets = ", ".join(f"{k} = ?" for k in cols)
+            sets = ", ".join("stop_reason = COALESCE(?, stop_reason)" if k == "stop_reason" else f"{k} = ?"
+                             for k in cols)
             self.db.execute(f"UPDATE requests SET {sets}, records_seen = records_seen + 1, message_uuid = ?"
                             f" WHERE request_id = ?", (*cols.values(), rec.get("uuid") or "", rid))
         else:

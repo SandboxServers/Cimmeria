@@ -62,6 +62,8 @@ class SchemaTest(unittest.TestCase):
         self.assertIn("stop_reason", columns)
         tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
         self.assertIn("agent_stops", tables)
+        stop_columns = {row[1] for row in db.execute("PRAGMA table_info(agent_stops)")}
+        self.assertTrue({"ended_in_api_error", "api_error_kind"} <= stop_columns)
 
     def test_thinking_is_a_subset_of_output(self):
         db = load_schema()

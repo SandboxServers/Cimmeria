@@ -32,6 +32,7 @@ def open_db(path):
         db.executescript(SCHEMA.read_text(encoding="utf-8"))
     version = db.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0]
     if version != SCHEMA_VERSION:
+        db.close()
         raise SystemExit(f"{path} has schema version {version}, this ingest writes {SCHEMA_VERSION}; "
                          "start a new database (it is rebuilt from the transcripts).")
     return db
@@ -162,6 +163,8 @@ def write_agent_stop(db, session_id, agent_id, state):
 
     The row is deleted and written again, so a transcript that grew updates
     its row rather than adding one. A transcript with no request has none.
+    A transcript whose last assistant record is a synthetic API error also
+    records that (ended_in_api_error, api_error_kind).
     """
     key = agent_id or f"main:{session_id}"
     db.execute("DELETE FROM agent_stops WHERE agent_id = ?", (key,))
@@ -181,10 +184,11 @@ def write_agent_stop(db, session_id, agent_id, state):
         error = row[0] if row else None
     db.execute(
         "INSERT INTO agent_stops (agent_id, session_id, last_ts, requests, last_stop_reason, last_context_tokens,"
-        " last_tool_name, last_tool_background, last_result_is_error, ended_after_result)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " last_tool_name, last_tool_background, last_result_is_error, ended_after_result, ended_in_api_error,"
+        " api_error_kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (key, session_id, ts, count, stop, context, tool["name"] if tool else None,
-         1 if tool and tool["bg"] else 0, error, 1 if state["ends_result"] else 0))
+         1 if tool and tool["bg"] else 0, error, 1 if state["ends_result"] else 0,
+         1 if state["api_error"] else 0, state["api_error"]))
 
 
 def ingest_file(db, run_id, kind, path, project_dir, session_id, agent_id, stats, touched):

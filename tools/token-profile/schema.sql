@@ -320,7 +320,7 @@ HAVING ABS(COALESCE(SUM(a.weight), 0) - 1.0) > 1e-6;
 CREATE TABLE agent_stops (
     agent_id          TEXT NOT NULL,          -- agents.agent_id, or 'main:' || session_id for a main session
     session_id        TEXT NOT NULL REFERENCES sessions (session_id),
-    last_ts           TEXT NOT NULL,
+    last_ts           TEXT NOT NULL,          -- ts of the last request (its first streamed record), not of the transcript's last record
     requests          INTEGER NOT NULL,
     last_stop_reason  TEXT,                   -- stop_reason of the last request
     last_context_tokens INTEGER NOT NULL,     -- context_tokens of the last request
@@ -328,6 +328,8 @@ CREATE TABLE agent_stops (
     last_tool_background INTEGER NOT NULL DEFAULT 0 CHECK (last_tool_background IN (0, 1)),
     last_result_is_error INTEGER,             -- result of that tool call, NULL if none seen
     ended_after_result  INTEGER NOT NULL DEFAULT 0 CHECK (ended_after_result IN (0, 1)),  -- transcript ends with a tool_result
+    ended_in_api_error  INTEGER NOT NULL DEFAULT 0 CHECK (ended_in_api_error IN (0, 1)),  -- the transcript's last assistant record is a synthetic API error (never a request row)
+    api_error_kind    TEXT,                   -- that record's `error` value (rate_limit, authentication_failed, ...), 'other' if absent or not a plain name; NULL when ended_in_api_error = 0
     PRIMARY KEY (agent_id)
 );
 

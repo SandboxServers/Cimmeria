@@ -377,11 +377,13 @@ def build(out):
         {"agent_id": f"main:{SESSION}", "session_id": SESSION, "last_ts": ts(40, 35),
          "requests": sum(1 for r in expected["requests"].values() if r["agent_id"] is None),
          "last_stop_reason": "tool_use", "last_context_tokens": 18100, "last_tool_name": "Bash",
-         "last_tool_background": 1, "last_result_is_error": None, "ended_after_result": 0},
+         "last_tool_background": 1, "last_result_is_error": None, "ended_after_result": 0,
+         "ended_in_api_error": 0, "api_error_kind": None},
         {"agent_id": AGENT, "session_id": SESSION, "last_ts": ts(9, 0),
          "requests": sum(1 for r in expected["requests"].values() if r["agent_id"] == AGENT),
          "last_stop_reason": "end_turn", "last_context_tokens": 81003, "last_tool_name": None,
-         "last_tool_background": 0, "last_result_is_error": None, "ended_after_result": 0},
+         "last_tool_background": 0, "last_result_is_error": None, "ended_after_result": 0,
+         "ended_in_api_error": 0, "api_error_kind": None},
     ]
     (out / "expected.json").write_text(json.dumps(expected, indent=1, sort_keys=True), encoding="utf-8")
     return out

@@ -17,7 +17,7 @@ PREFIX = build_fixtures.PROJECT_DIR
 
 # Tables whose content a run produces; ingest_files and profiler_runs hold run bookkeeping.
 CONTENT_TABLES = ("sessions", "agents", "triggers", "requests", "tool_calls", "compactions", "pr_links",
-                  "cost_states", "unknown_shapes", "pr_attribution")
+                  "cost_states", "unknown_shapes", "pr_attribution", "agent_stops")
 
 
 def run_ingest(projects, db, *extra, prs=None, repo=None):
