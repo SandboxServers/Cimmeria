@@ -11,5 +11,10 @@ def gap_of(section, field):
     return section.get(field + "_gap")
 
 
+def section_gap(record, name):
+    """The `<name>_gap` note when the section is empty, else None."""
+    return None if record.get(name) else record.get(name + "_gap") or "no data"
+
+
 def section_md(title, body):
     return f"### {title}\n\n{body}\n"
