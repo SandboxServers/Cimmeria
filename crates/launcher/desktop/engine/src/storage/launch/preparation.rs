@@ -2,7 +2,7 @@
 use super::*;
 use crate::client_setup::login_servers;
 impl DesktopState {
-    /// The login servers Play writes into `LoginInternal.lua`. An adopted copy
+    /// The login servers Play writes into `LoginInternal.lua`. A legacy adoption
     /// keeps the list its adoption reviewed; any other install uses the saved
     /// preference, or the defaults when that is empty. Checked again here, so a
     /// list that reached `preferences.json` another way never reaches the client.
@@ -15,9 +15,11 @@ impl DesktopState {
             return Err(StorageError::Corrupt.into());
         }
         let servers = match adoption {
-            Some(_) => installation.login_servers.clone(),
-            None if self.preferences.login_servers.is_empty() => login_servers::default_servers(),
-            None => self.preferences.login_servers.clone(),
+            Some(provenance) if provenance.legacy_install_id.is_some() => {
+                installation.login_servers.clone()
+            }
+            _ if self.preferences.login_servers.is_empty() => login_servers::default_servers(),
+            _ => self.preferences.login_servers.clone(),
         };
         login_servers::validate(&servers).map_err(|_| StorageError::InvalidServerList)?;
         Ok(servers)

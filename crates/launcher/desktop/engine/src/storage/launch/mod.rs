@@ -130,11 +130,17 @@ impl DesktopState {
             }
             telemetry.refuse_lab_build()?;
         }
-        match adoption {
-            Some(provenance) => super::effective_settings::verify_launch_resources(
-                super::effective_settings::launch_binding(self, &installed.intent, &provenance)?,
-                &resources,
-            )?,
+        // A folder adoption has no reviewed binding, so it takes the fresh arm.
+        let binding = match adoption {
+            Some(provenance) => {
+                super::effective_settings::launch_binding(self, &installed.intent, &provenance)?
+            }
+            None => None,
+        };
+        match binding {
+            Some(binding) => {
+                super::effective_settings::verify_launch_resources(binding, &resources)?
+            }
             None => {
                 // "Load client patches" off: a host that skipped resolution must
                 // not inject the DLL anyway.

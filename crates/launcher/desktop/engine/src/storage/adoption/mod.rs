@@ -8,6 +8,8 @@ mod in_place;
 mod in_place_preview;
 // Where the in-place backend is the one previews use.
 #[cfg(all(test, not(target_os = "macos")))]
+mod folder_tests;
+#[cfg(all(test, not(target_os = "macos")))]
 mod in_place_recovery_tests;
 #[cfg(all(test, not(target_os = "macos")))]
 mod in_place_tests;

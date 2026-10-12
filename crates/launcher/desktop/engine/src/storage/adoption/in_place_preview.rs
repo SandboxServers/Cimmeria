@@ -114,6 +114,14 @@ pub(super) fn preview(
     } else {
         scanned
     };
+    // The digest pins the scan the player reviews, so a rescan refreshes it.
+    let adopted = match adopted {
+        AdoptionSource::Folder(picked) if cleared => AdoptionSource::Folder(FolderSource {
+            scan_digest: digest(&scanned)?,
+            ..picked
+        }),
+        other => other,
+    };
     if !full_layout(&folder) {
         tracing::warn!(target: "adoption", folder = %folder.display(), binaries = %crate::install_layout::binaries_dir(&folder).display(), "in-place adoption refused: the folder is not in the installer's Working\\Binaries layout");
         return Err(Error::UnsupportedLayout);
