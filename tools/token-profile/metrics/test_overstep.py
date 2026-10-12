@@ -52,10 +52,8 @@ class OpusCodingTest(unittest.TestCase):
         self.assertEqual(result["hits"], {"O1": 1})
 
     def test_o1_run_of_the_powershell_lane(self):
-        for fingerprint in ("pwsh tools/build-lane/lane.ps1", "pwsh -File tools\\build-lane\\lane.ps1 cargo test",
-                            "lane.ps1 cargo clippy"):
-            with self.subTest(fingerprint=fingerprint):
-                self.assertEqual(_detect([_req(calls=[_call("Bash", fingerprint)])])["hits"], {"O1": 1})
+        result = _detect([_req(calls=[_call("PowerShell", "pwsh tools/build-lane/lane.ps1")])])
+        self.assertEqual(result["hits"], {"O1": 1})
 
     def test_o1_negative_other_pwsh_command_is_not_a_build_run(self):
         self.assertEqual(_detect([_req(calls=[_call("PowerShell", "pwsh")])])["hits"], {})

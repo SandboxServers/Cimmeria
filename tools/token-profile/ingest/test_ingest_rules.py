@@ -75,6 +75,10 @@ class FingerprintTest(unittest.TestCase):
             '& "C:\\Program Files\\Tool\\tool.EXE" --key k': "tool",
             "bash tools/build-lane/lane.sh cargo check -p x": "bash tools/build-lane/lane.sh",
             "bash /home/u/secret.sh": "bash",
+            "Set-Location C:\\x; pwsh -NoProfile -File tools/build-lane/lane.ps1 cargo test": "pwsh tools/build-lane/lane.ps1",
+            'Set-Location "C:\\a b"; git status': "git status",
+            "pwsh -File secret.ps1 --key k": "pwsh",
+            "pwsh -ExecutionPolicy Bypass -File tools/build-lane/lane.ps1 cargo check": "pwsh tools/build-lane/lane.ps1",
             "sed -n 1,20p file": "sed -n",
             "": None,
         }

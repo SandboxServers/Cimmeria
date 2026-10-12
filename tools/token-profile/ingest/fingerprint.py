@@ -10,6 +10,8 @@ import re
 
 SHELL_TOOLS = {"Bash", "PowerShell"}
 PATH_TOOLS = {"Read": "file_path", "Edit": "file_path", "Write": "file_path", "Grep": "path", "Glob": "path"}
+PWSH_SCRIPTS = {"tools/build-lane/lane.ps1", "tools/build-lane/live-db-test.ps1", "tools/build-lane/mk-worktree.ps1",
+                "tools/build-lane/rm-worktree.ps1"}
 
 ALLOWED_PAIRS = {
     "cargo": {"build", "check", "clippy", "fmt", "hakari", "install", "metadata", "nextest", "run", "test",
@@ -23,11 +25,15 @@ ALLOWED_PAIRS = {
     "bash": {"tools/build-lane/lane.sh", "tools/build-lane/live-db-test.sh", "tools/build-lane/mk-worktree.sh",
              "tools/build-lane/rm-worktree.sh", "tools/build-lane/reload-db.sh", "tools/test-live-db.sh",
              "tools/lint-md.sh", "tools/check-figure-sources.sh", "tools/lint-figure-style.sh"},
+    "pwsh": PWSH_SCRIPTS,
+    "powershell": PWSH_SCRIPTS,
 }
 
 TOKEN = re.compile(r"""(?:[^\s"']+|"[^"]*"|'[^']*')+""")
 ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 SEPARATORS = {"&&", ";", "||", "|"}
+CD_COMMANDS = {"cd", "set-location", "push-location", "sl"}
+PWSH_SWITCHES = {"-noprofile", "-noninteractive", "-nologo", "-file", "-command"}
 
 
 def _unquote(token):
@@ -41,15 +47,31 @@ def _base(exe):
     return re.sub(r"\.exe$", "", name, flags=re.IGNORECASE)
 
 
+def _pwsh_script(args):
+    """The script a pwsh call runs: its first argument once the switches are dropped."""
+    i = 0
+    while i < len(args):
+        switch = args[i].lower()
+        if switch in PWSH_SWITCHES:
+            i += 1
+        elif switch == "-executionpolicy":
+            i += 2
+        else:
+            break
+    if i >= len(args):
+        return None
+    return _unquote(args[i]).replace("\\", "/")
+
+
 def command_head(command):
     """'cd x && FOO=1 cargo nextest run --token y' -> 'cargo nextest'."""
     tokens = TOKEN.findall(command or "")
     while tokens:
         if ASSIGNMENT.match(tokens[0]):
             tokens.pop(0)
-        elif tokens[0] == "cd" and len(tokens) >= 3 and tokens[2] in SEPARATORS:
+        elif tokens[0].lower() in CD_COMMANDS and len(tokens) >= 3 and tokens[2] in SEPARATORS:
             tokens = tokens[3:]
-        elif tokens[0] == "cd" and len(tokens) >= 2 and tokens[1].endswith(";"):
+        elif tokens[0].lower() in CD_COMMANDS and len(tokens) >= 2 and tokens[1].endswith(";"):
             tokens = tokens[2:]
         elif tokens[0] in ("&", "env"):
             tokens.pop(0)
@@ -60,10 +82,15 @@ def command_head(command):
     exe = _base(tokens[0])
     if not exe:
         return None
-    if len(tokens) > 1:
+    if exe.lower() in ("pwsh", "powershell"):
+        exe = exe.lower()
+        arg = _pwsh_script(tokens[1:])
+    elif len(tokens) > 1:
         arg = _unquote(tokens[1]).replace("\\", "/")
-        if arg in ALLOWED_PAIRS.get(exe, ()):
-            return f"{exe} {arg}"
+    else:
+        arg = None
+    if arg in ALLOWED_PAIRS.get(exe, ()):
+        return f"{exe} {arg}"
     return exe
 
 
