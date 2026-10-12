@@ -90,11 +90,18 @@ pub struct InstanceRow {
 /// Checks the shape the way `Get-LabStatus` does (a `daemon` object and an
 /// `instances` key), then deserializes. `None` for anything else.
 pub fn parse_status(body: &Value) -> Option<StatusReply> {
-    let object = body.as_object()?;
-    if !object.get("daemon").is_some_and(Value::is_object) || !object.contains_key("instances") {
+    if !has_status_shape(body) {
         return None;
     }
     serde_json::from_value(body.clone()).ok()
+}
+
+/// Whether `body` has the shape of `GET /status`: an object with a `daemon`
+/// object and an `instances` key (`Get-LabStatus`'s check).
+pub fn has_status_shape(body: &Value) -> bool {
+    body.as_object().is_some_and(|object| {
+        object.get("daemon").is_some_and(Value::is_object) && object.contains_key("instances")
+    })
 }
 
 /// The time [`fetch`] allows for the whole request, response body included
@@ -112,6 +119,18 @@ pub fn fetch(ep: &Endpoint) -> Option<StatusReply> {
 
 /// [`fetch`] with the request timeout given (so tests need not wait 5 s).
 pub fn fetch_with_timeout(ep: &Endpoint, timeout: Duration) -> Option<StatusReply> {
+    parse_status(&fetch_value_with_timeout(ep, timeout)?)
+}
+
+/// [`fetch`] without the typed parse: the `/status` body as JSON, so a caller
+/// can tell an absent key from a `null` one (`lab watch` reads an instance row
+/// with no `uat` key as an old daemon). `None` in every case `fetch` is `None`.
+pub fn fetch_value(ep: &Endpoint) -> Option<Value> {
+    fetch_value_with_timeout(ep, FETCH_TIMEOUT)
+}
+
+/// [`fetch_value`] with the request timeout given (see [`fetch_with_timeout`]).
+pub fn fetch_value_with_timeout(ep: &Endpoint, timeout: Duration) -> Option<Value> {
     let token = ep.token.as_deref().filter(|t| !t.is_empty())?;
     let client = reqwest::blocking::Client::builder()
         .timeout(timeout)
@@ -125,5 +144,5 @@ pub fn fetch_with_timeout(ep: &Endpoint, timeout: Duration) -> Option<StatusRepl
     }
     let text = response.text().ok()?;
     let body: Value = serde_json::from_str(&text).ok()?;
-    parse_status(&body)
+    has_status_shape(&body).then_some(body)
 }
