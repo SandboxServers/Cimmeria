@@ -18,23 +18,25 @@ pub(super) struct ReplayPlan {
     pub patches: Vec<usize>,
     /// Stock path to the folder file that already holds its needed pre-state.
     pub local: BTreeMap<String, String>,
+    /// Patch index to the stock paths that patch reads from the folder. Each is
+    /// copied into scratch just before that patch runs, over any earlier state.
+    pub local_for: BTreeMap<usize, BTreeSet<String>>,
     /// Stock paths whose release bytes the replay produces.
     pub targets: Vec<String>,
 }
 
 /// Plans the replay for `files` (the classification of the folder). Targets are
-/// `NeedsPatching`, `Modified` and `Missing`, plus a `KnownTransform` at another
-/// spelling in copy mode.
+/// `NeedsPatching`, `Modified` and `Missing`. A `KnownTransform` is never a
+/// target: the folder file at another spelling is already the release bytes.
 pub(super) fn plan(
     index: &FileIndex,
     files: &[Difference],
     scanned: &inventory::Index,
-    mode: AdoptionMode,
 ) -> ReplayPlan {
     let histories = index.histories();
     let targets: Vec<String> = files
         .iter()
-        .filter(|d| is_target(d, mode))
+        .filter(|d| is_target(d))
         .map(|d| d.path.clone())
         .collect();
     let mut planner = Planner {
@@ -47,6 +49,7 @@ pub(super) fn plan(
             .collect(),
         patches: BTreeSet::new(),
         local: BTreeMap::new(),
+        local_for: BTreeMap::new(),
         needs_seed: false,
     };
     for path in &targets {
@@ -61,6 +64,7 @@ pub(super) fn plan(
         needs_seed: planner.needs_seed,
         patches: planner.patches.into_iter().collect(),
         local: planner.local,
+        local_for: planner.local_for,
         targets,
     }
 }
@@ -97,17 +101,10 @@ pub(super) fn estimate(
     }
 }
 
-fn is_target(difference: &Difference, mode: AdoptionMode) -> bool {
+fn is_target(difference: &Difference) -> bool {
     match difference.classification {
         Classification::NeedsPatching | Classification::Modified | Classification::Missing => true,
-        Classification::KnownTransform => {
-            mode == AdoptionMode::Copy
-                && difference
-                    .source_path
-                    .as_deref()
-                    .is_some_and(|source| source != difference.path)
-        }
-        Classification::Matched | Classification::Extra => false,
+        Classification::KnownTransform | Classification::Matched | Classification::Extra => false,
     }
 }
 
@@ -121,6 +118,7 @@ struct Planner<'a> {
     folded: BTreeMap<String, &'a String>,
     patches: BTreeSet<usize>,
     local: BTreeMap<String, String>,
+    local_for: BTreeMap<usize, BTreeSet<String>>,
     needs_seed: bool,
 }
 
@@ -151,6 +149,10 @@ impl Planner<'_> {
                 let entry = &self.scanned[name];
                 if entry.size == input.size && hex(&entry.sha256) == input.sha256 {
                     self.local.insert(input.path.clone(), name.clone());
+                    self.local_for
+                        .entry(k)
+                        .or_default()
+                        .insert(input.path.clone());
                     continue;
                 }
             }
@@ -215,32 +217,20 @@ pub(super) fn replay(
                 super::reference::strict_zip(seed)?;
             }
             crate::unpack::unpack(seed, &scratch, sink).map_err(|_| Error::InvalidArtifact)?;
-        }
-        for (stock, folder_file) in &plan.local {
-            let known = scanned.get(folder_file).ok_or(Error::SourceChanged)?;
-            let source = inventory::native(folder_root, folder_file);
-            let entry = inventory::hash(&source, cancel)?;
-            if entry.size != known.size || entry.sha256 != known.sha256 {
-                return Err(Error::SourceChanged);
-            }
-            // The folder file must be the pre-patch state some planned patch reads.
-            let hash = hex(&entry.sha256);
-            let wanted = plan
-                .patches
-                .iter()
-                .filter_map(|&k| index.patches.get(k))
-                .flat_map(|layer| layer.inputs.iter())
-                .any(|input| {
-                    input.path.eq_ignore_ascii_case(stock)
-                        && input.size == entry.size
-                        && input.sha256.eq_ignore_ascii_case(&hash)
-                });
-            if !wanted {
-                return Err(Error::InvalidArtifact);
-            }
-            inventory::copy(&source, &inventory::native(&scratch, stock), &entry, cancel)?;
+            crate::install_layout::place_bundled_cooked_data(&scratch)?;
         }
         for &k in &plan.patches {
+            for stock in plan.local_for.get(&k).into_iter().flatten() {
+                let folder_file = plan.local.get(stock).ok_or(Error::InvalidArtifact)?;
+                copy_local(
+                    index,
+                    k,
+                    (stock, folder_file),
+                    (folder_root, scanned),
+                    &scratch,
+                    cancel,
+                )?;
+            }
             let patch = manifest.patches.get(k).ok_or(Error::InvalidArtifact)?;
             let archive = fetched
                 .patches
@@ -272,6 +262,45 @@ pub(super) fn replay(
     // Best effort: the scratch tree holds only copies of verified bytes.
     let _ = std::fs::remove_dir_all(&scratch);
     outcome
+}
+
+/// Copies the folder file `(stock, folder_file)` into `scratch` as the input
+/// patch `k` reads. The folder file must hold exactly that input's pre-`k`
+/// bytes. An earlier state of `stock` (the seed's or an earlier patch's) is
+/// replaced, so the patch never sees a state other than its own.
+#[allow(clippy::too_many_arguments)]
+fn copy_local(
+    index: &FileIndex,
+    k: usize,
+    (stock, folder_file): (&str, &str),
+    (folder_root, scanned): (&Path, &inventory::Index),
+    scratch: &Path,
+    cancel: &CancellationToken,
+) -> Result<(), Error> {
+    let known = scanned.get(folder_file).ok_or(Error::SourceChanged)?;
+    let source = inventory::native(folder_root, folder_file);
+    let entry = inventory::hash(&source, cancel)?;
+    if entry.size != known.size || entry.sha256 != known.sha256 {
+        return Err(Error::SourceChanged);
+    }
+    let hash = hex(&entry.sha256);
+    let wanted = index.patches.get(k).is_some_and(|layer| {
+        layer.inputs.iter().any(|input| {
+            input.path.eq_ignore_ascii_case(stock)
+                && input.size == entry.size
+                && input.sha256.eq_ignore_ascii_case(&hash)
+        })
+    });
+    if !wanted {
+        return Err(Error::InvalidArtifact);
+    }
+    let dest = inventory::native(scratch, stock);
+    match std::fs::remove_file(&dest) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+    inventory::copy(&source, &dest, &entry, cancel)
 }
 
 /// The release's file at `path`: the state the index gives it last, found in the

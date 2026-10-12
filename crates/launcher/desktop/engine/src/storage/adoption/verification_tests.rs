@@ -1,9 +1,10 @@
 //! Index acquisition against a loopback origin: a published index is used, a
 //! refused one falls back to the build, and a verified cache is not refetched.
 //! Runs on every OS; the signed fixtures are tiny and built here.
-use super::verification::{acquire_index, classify, IndexOrigin};
+use super::verification::{acquire_index, classify, download_for, IndexOrigin};
 use super::*;
 use cimmeria_launcher_core::file_index::FileIndex;
+use cimmeria_launcher_core::seed_source::SeedSourceHandle;
 use ed25519_dalek::{Signer, SigningKey};
 use std::io::{Cursor, Write};
 use wiremock::{matchers::path, Mock, MockServer, ResponseTemplate};
@@ -112,6 +113,7 @@ fn acquire(
             state,
             release,
             &transport,
+            &SeedSourceHandle::download(),
             None,
             &CancellationToken::new(),
             &progress,
@@ -175,6 +177,64 @@ async fn a_verified_cache_is_read_without_another_index_request() {
     let (_, second) = acquire(state.path(), &signed, &server).unwrap();
     assert_eq!(second, IndexOrigin::Published);
     assert_eq!(requests(&server).await, vec![format!("/{INDEX_BLOB}")]);
+}
+
+#[test]
+fn a_built_index_estimate_downloads_nothing() {
+    let estimate = DownloadEstimate {
+        seed: true,
+        patches: vec!["overlay".into()],
+        bytes: 1100,
+        local_seed: false,
+    };
+    let built = download_for(&IndexOrigin::Built, estimate.clone());
+    assert_eq!(built.bytes, 0);
+    assert!(!built.seed);
+    assert!(built.patches.is_empty());
+    assert_eq!(
+        download_for(&IndexOrigin::Published, estimate.clone()),
+        estimate
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_built_index_with_a_chosen_local_archive_never_requests_the_seed() {
+    let seed = seed_bytes();
+    let signed = release(&seed, None);
+    let server = origin(&seed, &[]).await;
+    let folder = tempfile::tempdir().unwrap();
+    let archive_path = folder.path().join("Seed.zip");
+    std::fs::write(&archive_path, &seed).unwrap();
+    let before = std::fs::read(&archive_path).unwrap();
+    let progress = crate::install_progress::ProgressSink::latest().0;
+    let verified = cimmeria_launcher_core::seed_source::verify_local_seed(
+        &archive_path,
+        &signed.manifest().seed,
+        &CancellationToken::new(),
+        &progress,
+    )
+    .unwrap();
+    let source = SeedSourceHandle::download();
+    source.use_local(verified);
+
+    let state = tempfile::tempdir().unwrap();
+    let transport =
+        artifacts::Transport::loopback(format!("{}/manifest.json", server.uri())).unwrap();
+    let (_, found) = tokio::task::block_in_place(|| {
+        acquire_index(
+            state.path(),
+            &signed,
+            &transport,
+            &source,
+            None,
+            &CancellationToken::new(),
+            &progress,
+        )
+    })
+    .unwrap();
+    assert_eq!(found, IndexOrigin::Built);
+    assert!(!requests(&server).await.contains(&"/seed.zip".to_string()));
+    assert_eq!(std::fs::read(&archive_path).unwrap(), before);
 }
 
 const EXE: &str = "Working/Binaries/SGW.exe";

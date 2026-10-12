@@ -59,11 +59,13 @@ impl Transport {
 }
 
 /// Blocking: call from a retained worker. Blobs that already match the signed
-/// release are reused, so a dismissed review does not repeat the download.
+/// release are reused, so a dismissed review does not repeat the download. The
+/// seed comes from `seed_source` when its chosen archive is for this release.
 pub(super) fn fetch(
     state_root: &Path,
     transport: &Transport,
     release: &VerifiedRelease,
+    seed_source: &SeedSourceHandle,
     cancel: &CancellationToken,
     progress: &ProgressSink,
 ) -> Result<Artifacts, Error> {
@@ -74,7 +76,7 @@ pub(super) fn fetch(
         release,
         true,
         &all,
-        &SeedSourceHandle::download(),
+        seed_source,
         cancel,
         progress,
     )?;
@@ -167,7 +169,7 @@ pub(super) fn fetch_some(
         if !stored(&path, *size, sha, cancel)? {
             let partial = store.join(format!("{name}.download"));
             let local = if slot == 0 {
-                seed_source.current()
+                seed_source.current_for(sha)
             } else {
                 None
             };

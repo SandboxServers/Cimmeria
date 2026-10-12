@@ -13,6 +13,7 @@ use crate::{
 use cimmeria_launcher_core::file_index::{
     self, FileIndex, FileIndexError, FileIndexRef, Origin, SetupRule, MAX_FILE_INDEX_BYTES,
 };
+use cimmeria_launcher_core::seed_source::SeedSourceHandle;
 use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -55,14 +56,17 @@ pub(super) fn reference_and_comparison(
         Some(transport) => transport,
         None => artifacts::Transport::production()?,
     };
-    // Read before the full fetch below, so the estimate counts only what the
-    // replay must download.
-    let held = artifacts::held(&root, &request.release, cancel)?;
+    // The chosen local archive, if any, is the seed a fetch of this release uses.
+    let seed_source = state
+        .lock()
+        .map_err(|_| StorageError::Io)?
+        .seed_source_for(&request.release);
     // The index comes first: a published one needs no seed or patch for the reference.
     let (index, origin) = acquire_index(
         &root,
         &request.release,
         &transport,
+        &seed_source,
         request.artifacts.as_ref(),
         cancel,
         &progress,
@@ -74,12 +78,21 @@ pub(super) fn reference_and_comparison(
             request,
             backend,
             &transport,
+            &seed_source,
             preparation,
             servers,
             cancel,
             &progress,
         )?),
     };
+    // Read after the index is known, so the estimate counts only what the replay
+    // must still download. A built index fetched every blob it used, so nothing
+    // is left to download and no held set is read.
+    let held = match origin {
+        IndexOrigin::Published => Some(artifacts::held(&root, &request.release, cancel)?),
+        IndexOrigin::Built => None,
+    };
+    let is_held = |sha: &str| held.as_ref().is_none_or(|held| held.contains(sha));
     let (expected_digest, expected_paths): ([u8; 32], Vec<String>) = match &reference {
         Some(reference) => (
             inventory::content_digest(&reference.index)?,
@@ -109,17 +122,16 @@ pub(super) fn reference_and_comparison(
     if let Some(imported) = legacy {
         source::verify_import(imported)?;
     }
-    let plan = replay::plan(&index, &files, scanned, mode);
-    let seed_source = state
-        .lock()
-        .map_err(|_| StorageError::Io)?
-        .seed_source_for(&request.release);
-    let download = replay::estimate(
+    let plan = replay::plan(&index, &files, scanned);
+    let estimate = replay::estimate(
         &plan,
         request.release.manifest(),
-        seed_source.current().is_some(),
-        |sha| held.contains(sha),
+        seed_source
+            .current_for(&request.release.manifest().seed.sha256)
+            .is_some(),
+        is_held,
     );
+    let download = download_for(&origin, estimate);
     let mut replacements = Vec::new();
     if !plan.targets.is_empty() {
         // Local artifacts are hash-checked in place; a signed fetch downloads only
@@ -194,6 +206,7 @@ fn reconstructed(
     request: &PreviewRequest,
     backend: Backend,
     transport: &artifacts::Transport,
+    seed_source: &SeedSourceHandle,
     preparation: &mut preparation::Ownership,
     servers: &[crate::client_setup::LoginServer],
     cancel: &CancellationToken,
@@ -208,7 +221,14 @@ fn reconstructed(
     let artifacts = match &request.artifacts {
         Some(artifacts) => artifacts,
         None => {
-            fetched = artifacts::fetch(&root, transport, &request.release, cancel, progress)?;
+            fetched = artifacts::fetch(
+                &root,
+                transport,
+                &request.release,
+                seed_source,
+                cancel,
+                progress,
+            )?;
             &fetched
         }
     };
@@ -478,6 +498,7 @@ pub(super) fn acquire_index(
     state_root: &Path,
     release: &VerifiedRelease,
     transport: &artifacts::Transport,
+    seed_source: &SeedSourceHandle,
     prefetched: Option<&Artifacts>,
     cancel: &CancellationToken,
     progress: &ProgressSink,
@@ -492,8 +513,30 @@ pub(super) fn acquire_index(
         }
     };
     tracing::warn!(target: "adoption", reason = %reason, "file index unavailable; building it from the seed and patches");
-    let index = built(state_root, release, transport, prefetched, cancel, progress)?;
+    let index = built(
+        state_root,
+        release,
+        transport,
+        seed_source,
+        prefetched,
+        cancel,
+        progress,
+    )?;
     Ok((index, IndexOrigin::Built))
+}
+
+/// The download a comparison reports. A built index fetched every blob it used,
+/// so nothing is left to download; a chosen local archive is still named.
+pub(super) fn download_for(origin: &IndexOrigin, estimate: DownloadEstimate) -> DownloadEstimate {
+    match origin {
+        IndexOrigin::Published => estimate,
+        IndexOrigin::Built => DownloadEstimate {
+            seed: false,
+            patches: Vec::new(),
+            bytes: 0,
+            local_seed: estimate.local_seed,
+        },
+    }
 }
 
 /// The signed blob, from the cache when it verifies, else downloaded and cached.
@@ -568,6 +611,7 @@ fn built(
     state_root: &Path,
     release: &VerifiedRelease,
     transport: &artifacts::Transport,
+    seed_source: &SeedSourceHandle,
     prefetched: Option<&Artifacts>,
     cancel: &CancellationToken,
     progress: &ProgressSink,
@@ -576,7 +620,14 @@ fn built(
     let artifacts = match prefetched {
         Some(artifacts) => artifacts,
         None => {
-            fetched = artifacts::fetch(state_root, transport, release, cancel, progress)?;
+            fetched = artifacts::fetch(
+                state_root,
+                transport,
+                release,
+                seed_source,
+                cancel,
+                progress,
+            )?;
             &fetched
         }
     };

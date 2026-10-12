@@ -101,21 +101,18 @@ fn classify_folder(
     (dir, scanned, found)
 }
 
-fn replay(files: &[(&str, &[u8])], mode: AdoptionMode) -> ReplayPlan {
+fn replay(files: &[(&str, &[u8])]) -> ReplayPlan {
     let index = index();
     let (_dir, scanned, found) = classify_folder(&index, files);
-    plan(&index, &found, &scanned, mode)
+    plan(&index, &found, &scanned)
 }
 
 #[test]
 fn a_stock_folder_at_seed_state_needs_both_patches_and_no_seed() {
-    let replayed = replay(
-        &[
-            ("Working/Data/Levels.bin", SEED_LEVELS),
-            ("Working/Data/Overlay.dat", SEED_OVERLAY),
-        ],
-        AdoptionMode::InPlace,
-    );
+    let replayed = replay(&[
+        ("Working/Data/Levels.bin", SEED_LEVELS),
+        ("Working/Data/Overlay.dat", SEED_OVERLAY),
+    ]);
     assert_eq!(replayed.patches, vec![0, 1]);
     assert!(!replayed.needs_seed);
     assert_eq!(
@@ -134,14 +131,11 @@ fn a_stock_folder_at_seed_state_needs_both_patches_and_no_seed() {
 
 #[test]
 fn a_modified_overlay_output_needs_only_its_patch() {
-    let replayed = replay(
-        &[
-            ("Working/Data/Levels.bin", SEED_LEVELS),
-            ("Working/Data/Overlay.dat", EDITED),
-            ("Working/Data/Patched.bin", SET_OUTPUT),
-        ],
-        AdoptionMode::InPlace,
-    );
+    let replayed = replay(&[
+        ("Working/Data/Levels.bin", SEED_LEVELS),
+        ("Working/Data/Overlay.dat", EDITED),
+        ("Working/Data/Patched.bin", SET_OUTPUT),
+    ]);
     assert_eq!(replayed.patches, vec![0]);
     assert!(!replayed.needs_seed);
     assert_eq!(replayed.targets, vec!["Working/Data/Overlay.dat"]);
@@ -149,14 +143,11 @@ fn a_modified_overlay_output_needs_only_its_patch() {
 
 #[test]
 fn a_modified_patch_set_output_with_seed_input_in_the_folder_needs_no_seed() {
-    let replayed = replay(
-        &[
-            ("Working/Data/Levels.bin", SEED_LEVELS),
-            ("Working/Data/Overlay.dat", OVERLAY_PATCHED),
-            ("Working/Data/Patched.bin", EDITED),
-        ],
-        AdoptionMode::InPlace,
-    );
+    let replayed = replay(&[
+        ("Working/Data/Levels.bin", SEED_LEVELS),
+        ("Working/Data/Overlay.dat", OVERLAY_PATCHED),
+        ("Working/Data/Patched.bin", EDITED),
+    ]);
     assert_eq!(replayed.patches, vec![1]);
     assert!(!replayed.needs_seed);
     assert_eq!(replayed.targets, vec!["Working/Data/Patched.bin"]);
@@ -165,14 +156,11 @@ fn a_modified_patch_set_output_with_seed_input_in_the_folder_needs_no_seed() {
 
 #[test]
 fn a_modified_patch_set_input_needs_the_seed() {
-    let replayed = replay(
-        &[
-            ("Working/Data/Levels.bin", EDITED),
-            ("Working/Data/Overlay.dat", OVERLAY_PATCHED),
-            ("Working/Data/Patched.bin", EDITED),
-        ],
-        AdoptionMode::InPlace,
-    );
+    let replayed = replay(&[
+        ("Working/Data/Levels.bin", EDITED),
+        ("Working/Data/Overlay.dat", OVERLAY_PATCHED),
+        ("Working/Data/Patched.bin", EDITED),
+    ]);
     assert_eq!(replayed.patches, vec![1]);
     assert!(replayed.needs_seed);
     assert!(!replayed.local.contains_key("Working/Data/Levels.bin"));
@@ -191,23 +179,23 @@ fn an_input_at_an_earlier_patch_state_recurses_into_that_patch() {
             ("Working/Data/Levels.bin", SEED_LEVELS),
         ],
     );
-    let replayed = plan(&index, &found, &scanned, AdoptionMode::InPlace);
+    let replayed = plan(&index, &found, &scanned);
     assert_eq!(replayed.patches, vec![0, 1]);
     assert!(!replayed.needs_seed);
 }
 
 #[test]
-fn a_copy_mode_known_transform_at_another_spelling_is_a_target() {
-    let files = [
+fn a_known_transform_at_another_spelling_is_never_a_target() {
+    // The folder's `levels.bin` already holds the release bytes under another
+    // spelling, so nothing is planned and no seed is needed in either mode.
+    let replayed = replay(&[
         ("Working/Data/levels.bin", SEED_LEVELS),
         ("Working/Data/Overlay.dat", OVERLAY_PATCHED),
         ("Working/Data/Patched.bin", SET_OUTPUT),
-    ];
-    assert!(replay(&files, AdoptionMode::InPlace).targets.is_empty());
-    let copied = replay(&files, AdoptionMode::Copy);
-    assert_eq!(copied.targets, vec!["Working/Data/Levels.bin"]);
-    assert!(copied.patches.is_empty());
-    assert!(copied.needs_seed);
+    ]);
+    assert!(replayed.targets.is_empty());
+    assert!(replayed.patches.is_empty());
+    assert!(!replayed.needs_seed);
 }
 
 #[test]
@@ -221,7 +209,7 @@ fn the_estimate_sums_needed_sizes_and_drops_a_local_seed() {
             ("Working/Data/Overlay.dat", EDITED),
         ],
     );
-    let replayed = plan(&index, &found, &scanned, AdoptionMode::InPlace);
+    let replayed = plan(&index, &found, &scanned);
     assert!(replayed.needs_seed);
 
     let downloaded = estimate(&replayed, &manifest, false, |_| false);
@@ -251,7 +239,7 @@ fn the_estimate_flags_a_local_seed_only_when_it_replaces_one() {
             ("Working/Data/Overlay.dat", EDITED),
         ],
     );
-    let replayed = plan(&index, &found, &scanned, AdoptionMode::InPlace);
+    let replayed = plan(&index, &found, &scanned);
     assert!(replayed.needs_seed);
 
     let downloaded = estimate(&replayed, &manifest, false, |_| false);
@@ -333,6 +321,177 @@ fn real_artifacts() -> (FileIndex, VerifiedRelease, Vec<(&'static str, Vec<u8>)>
     (index, release, blobs)
 }
 
+const STATIC: &str = "Working/Data/Static.dat";
+const SEED_STATIC: &[u8] = b"static as the seed ships it";
+const PATCHED: &str = "Working/Data/Patched.bin";
+/// The seed ships its bundled PAK as `Cache.en-US`; the install places it under
+/// `SourceCache.en-us`, and the index lists that placed path.
+const SHIPPED_PAK: &str = "Working/SGWGame/Cache.en-US/Cooked.pak";
+const PLACED_PAK: &str = "Working/SGWGame/SourceCache.en-us/Cooked.pak";
+const SEED_PAK: &[u8] = b"bundled cooked data as the seed ships it";
+
+/// Patch 0 rewrites the overlay. Patch 1 has two inputs, `Levels` and `Static`,
+/// both seed files, and writes `Patched.bin`. The seed also carries the bundled
+/// PAK, listed at its placed path.
+fn two_input_artifacts() -> (FileIndex, VerifiedRelease, Vec<(&'static str, Vec<u8>)>) {
+    let seed = zip_of(&[
+        (LEVELS, SEED_LEVELS),
+        (OVERLAY, SEED_OVERLAY),
+        (STATIC, SEED_STATIC),
+        (SHIPPED_PAK, SEED_PAK),
+    ]);
+    let patch0 = zip_of(&[(OVERLAY, OVERLAY_PATCHED)]);
+    let patch1 = zip_of(&[(PATCHED, SET_OUTPUT)]);
+    let mut index = FileIndex {
+        schema_version: 1,
+        setup_policy_version: 1,
+        seed: SeedLayer {
+            sha256: sha(&seed),
+            files: vec![
+                file(LEVELS, SEED_LEVELS),
+                file(OVERLAY, SEED_OVERLAY),
+                file(STATIC, SEED_STATIC),
+                file(PLACED_PAK, SEED_PAK),
+            ],
+        },
+        patches: vec![
+            PatchLayer {
+                state_key: "overlay".into(),
+                sha256: sha(&patch0),
+                inputs: vec![],
+                outputs: vec![file(OVERLAY, OVERLAY_PATCHED)],
+            },
+            PatchLayer {
+                state_key: "set".into(),
+                sha256: sha(&patch1),
+                inputs: vec![],
+                outputs: vec![file(PATCHED, SET_OUTPUT)],
+            },
+        ],
+        setup: vec![],
+    };
+    index.patches[1].inputs = vec![file(LEVELS, SEED_LEVELS), file(STATIC, SEED_STATIC)];
+    let body = serde_json::json!({
+        "schema": 1,
+        "seed": {"blob": "seed.zip", "size": seed.len(), "sha256": sha(&seed)},
+        "patches": [
+            {"id": "overlay", "blob": "patch0.zip", "size": patch0.len(), "sha256": sha(&patch0)},
+            {"id": "set", "blob": "patch1.zip", "size": patch1.len(), "sha256": sha(&patch1)},
+        ],
+    });
+    let body = serde_json::to_vec(&body).unwrap();
+    let signature = SigningKey::from_bytes(&[0x2a; 32]).sign(&body);
+    let release =
+        crate::catalog::verify_release(&body, hex(&signature.to_bytes()).as_bytes()).unwrap();
+    let blobs = vec![
+        ("seed.zip", seed),
+        ("patch0.zip", patch0),
+        ("patch1.zip", patch1),
+    ];
+    (index, release, blobs)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_folder_input_is_copied_over_the_seed_file_its_patch_reads() {
+    let (index, release, blobs) = two_input_artifacts();
+    let server = serve(&blobs).await;
+    // Levels is edited, so patch 1 cannot read it from the folder and the seed
+    // is needed. Static is intact, so patch 1 reads the folder's copy.
+    let (folder, scanned, found) = classify_folder(
+        &index,
+        &[
+            (LEVELS, EDITED),
+            (OVERLAY, SEED_OVERLAY),
+            (STATIC, SEED_STATIC),
+            (PLACED_PAK, SEED_PAK),
+        ],
+    );
+    let planned = plan(&index, &found, &scanned);
+    assert!(planned.needs_seed);
+    assert_eq!(planned.patches, vec![0, 1]);
+    assert!(planned
+        .local_for
+        .get(&1)
+        .is_some_and(|inputs| inputs.contains(STATIC)));
+
+    let state = tempfile::tempdir().unwrap();
+    let fetched = fetch(
+        state.path(),
+        &server,
+        &release,
+        &planned,
+        &SeedSourceHandle::download(),
+    );
+    assert_eq!(
+        requests(&server).await,
+        ["/patch0.zip", "/patch1.zip", "/seed.zip"]
+    );
+
+    let prep = tempfile::tempdir().unwrap();
+    let replaced = super::replay::replay(
+        &planned,
+        &index,
+        &release,
+        &fetched,
+        folder.path(),
+        &scanned,
+        prep.path(),
+        &CancellationToken::new(),
+        &sink(),
+    )
+    .unwrap();
+    assert_eq!(replaced.len(), 3);
+    assert_eq!(std::fs::read(&replaced[LEVELS]).unwrap(), SEED_LEVELS);
+    assert_eq!(std::fs::read(&replaced[OVERLAY]).unwrap(), OVERLAY_PATCHED);
+    assert_eq!(std::fs::read(&replaced[PATCHED]).unwrap(), SET_OUTPUT);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_replay_places_the_seeds_bundled_cooked_data() {
+    let (index, release, blobs) = two_input_artifacts();
+    let server = serve(&blobs).await;
+    // The bundled PAK is Missing from the folder, so the replay must produce it
+    // from the seed's shipped name.
+    let (folder, scanned, found) = classify_folder(
+        &index,
+        &[
+            (LEVELS, SEED_LEVELS),
+            (OVERLAY, SEED_OVERLAY),
+            (STATIC, SEED_STATIC),
+        ],
+    );
+    let planned = plan(&index, &found, &scanned);
+    assert!(planned.needs_seed);
+
+    let state = tempfile::tempdir().unwrap();
+    let fetched = fetch(
+        state.path(),
+        &server,
+        &release,
+        &planned,
+        &SeedSourceHandle::download(),
+    );
+    assert_eq!(
+        requests(&server).await,
+        ["/patch0.zip", "/patch1.zip", "/seed.zip"]
+    );
+
+    let prep = tempfile::tempdir().unwrap();
+    let replaced = super::replay::replay(
+        &planned,
+        &index,
+        &release,
+        &fetched,
+        folder.path(),
+        &scanned,
+        prep.path(),
+        &CancellationToken::new(),
+        &sink(),
+    )
+    .unwrap();
+    assert_eq!(std::fs::read(&replaced[PLACED_PAK]).unwrap(), SEED_PAK);
+}
+
 async fn serve(blobs: &[(&str, Vec<u8>)]) -> MockServer {
     let server = MockServer::start().await;
     for (name, bytes) in blobs {
@@ -398,7 +557,7 @@ async fn a_stock_folder_fetches_only_the_patch_blobs_and_replays_to_the_release(
     let server = serve(&blobs).await;
     let (folder, scanned, found) =
         classify_folder(&index, &[(LEVELS, SEED_LEVELS), (OVERLAY, SEED_OVERLAY)]);
-    let planned = plan(&index, &found, &scanned, AdoptionMode::InPlace);
+    let planned = plan(&index, &found, &scanned);
     assert!(!planned.needs_seed);
     assert_eq!(planned.patches, vec![0, 1]);
 
@@ -439,7 +598,7 @@ async fn a_modified_overlay_output_fetches_only_its_patch() {
         &index,
         &[(LEVELS, SEED_LEVELS), (OVERLAY, EDITED), (EXTRA, EXTRA_OUT)],
     );
-    let planned = plan(&index, &found, &scanned, AdoptionMode::InPlace);
+    let planned = plan(&index, &found, &scanned);
     assert_eq!(planned.patches, vec![0]);
 
     let state = tempfile::tempdir().unwrap();
@@ -475,7 +634,7 @@ async fn the_estimate_equals_the_bytes_of_the_fetched_blobs() {
     let server = serve(&blobs).await;
     let (_folder, scanned, found) =
         classify_folder(&index, &[(LEVELS, SEED_LEVELS), (OVERLAY, SEED_OVERLAY)]);
-    let planned = plan(&index, &found, &scanned, AdoptionMode::InPlace);
+    let planned = plan(&index, &found, &scanned);
 
     let state = tempfile::tempdir().unwrap();
     let fetched = fetch(
@@ -503,7 +662,7 @@ async fn a_modified_seed_file_with_a_local_seed_never_requests_the_seed() {
     let server = serve(&blobs).await;
     let (folder, scanned, found) =
         classify_folder(&index, &[(LEVELS, EDITED), (OVERLAY, SEED_OVERLAY)]);
-    let planned = plan(&index, &found, &scanned, AdoptionMode::InPlace);
+    let planned = plan(&index, &found, &scanned);
     assert!(planned.needs_seed);
 
     let archive_dir = tempfile::tempdir().unwrap();

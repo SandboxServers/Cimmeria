@@ -91,7 +91,7 @@ impl SeedSourceHandle {
 
     /// The chosen local archive, when it is the archive for the seed whose
     /// SHA-256 is `sha256`. Any other archive is not used for that seed.
-    pub(crate) fn current_for(&self, sha256: &str) -> Option<VerifiedLocalSeed> {
+    pub fn current_for(&self, sha256: &str) -> Option<VerifiedLocalSeed> {
         self.lock()
             .current
             .clone()
