@@ -17,6 +17,7 @@ use super::NativeLevel;
 use crate::supervisor::cegui_native::{float_word, thiscall_params};
 use crate::supervisor::entity_table::{decode_hex, Memory, DEFAULT_MAX_NODES};
 use crate::supervisor::flows::ui_state::lua_results_of;
+use crate::supervisor::input::MouseInput;
 use crate::supervisor::ui::lua_json;
 use crate::supervisor::{process, Supervisor};
 
@@ -419,14 +420,11 @@ impl WorldIo for LiveWorld<'_> {
 
     async fn button(&mut self, button: usize, down: bool) -> Result<(), String> {
         self.sup
-            .input_mouse(
-                0,
-                0,
-                0,
-                Some(button),
-                Some(if down { "down" } else { "up" }),
-                None,
-            )
+            .input_mouse(MouseInput {
+                button: Some(button),
+                action: Some(if down { "down" } else { "up" }),
+                ..MouseInput::default()
+            })
             .await
             .map(|_| ())
     }

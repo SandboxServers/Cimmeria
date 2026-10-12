@@ -44,7 +44,7 @@ Chat and GM commands:
 - Teleport with `.gotolocation <World> x y z`. Never use `.gotoxyz`: it moves your selected target, not you.
 
 Windows:
-- Escape does not close Flash windows (minigames). Read the window with `client_window_read` (`include_nodes`), `client_cursor_move` to the close button's centre, `client_input_mouse` button 0, then read again to confirm it closed.
+- Escape does not close Flash windows (minigames). Read the window with `client_window_read` (`include_nodes`), `client_input_mouse {button: 0, x, y}` at the close button's centre (it moves the cursor first), then read again to confirm it closed.
 - `client_ui_sequence` `click` only takes named windows (Lua globals); `__auto_closebutton__` is not one. `client_window_click {target: "<Win>__auto_closebutton__"}` clicks it.
 - The tutorial window (`TutorialWin`) opens on top of `DialogWin`, so a dialog Done click lands on the tutorial. Close the tutorial first: `client_window_click {target: "TutorialWin__auto_closebutton__"}` works from any page (its `Tutorial_DoneButton` shows only on the last page).
 
