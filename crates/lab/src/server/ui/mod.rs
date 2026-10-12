@@ -253,6 +253,27 @@ impl LabServer {
         .await;
         ui_result("client_drag_drop", t0, r)
     }
+
+    #[tool(
+        description = "Buy from the open vendor window like a player. Sets row `row`'s quantity spinner to `quantity` by clicking its increment or decrement button (real or CEGUI-injected clicks, N1), then clicks Vendor_BuyButton. Refuses when the vendor is closed, the Buy tab is not active or the row is empty. When the spinner buttons cannot reach the quantity and allow_fallback is on, sets it through the spinner's Lua / setVendorSelectedQuantity (client_ui_lua, N3). Verified by an inventory and cash diff: bought, effect_ok and native_pass false when nothing changed (expect_change false disables the check)."
+    )]
+    async fn client_vendor_buy(
+        &self,
+        Parameters(a): Parameters<VendorBuyArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let t0 = Instant::now();
+        let r = self
+            .supervisor
+            .vendor_buy(
+                a.row,
+                a.quantity,
+                a.allow_fallback.unwrap_or(true),
+                a.expect_change.unwrap_or(true),
+                Duration::from_millis(a.wait_ms.unwrap_or(DEFAULT_WAIT_MS).min(60_000)),
+            )
+            .await;
+        ui_result("client_vendor_buy", t0, r)
+    }
 }
 
 #[cfg(test)]
