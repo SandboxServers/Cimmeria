@@ -118,6 +118,36 @@ pub(super) fn fetch(
     })
 }
 
+/// Blocking, like [`fetch`]: the signed file index, bounded by its signed size
+/// (the same TLS and redirect policy as the seed and patches) and read back into
+/// memory. `partial` is scratch and is removed on every outcome.
+#[allow(dead_code)] // AI-08 part b wires it
+pub(super) fn index_blob(
+    transport: &Transport,
+    blob: &str,
+    size: u64,
+    partial: &Path,
+    cancel: &CancellationToken,
+    progress: &ProgressSink,
+) -> Result<Vec<u8>, Error> {
+    let runtime = tokio::runtime::Handle::try_current().map_err(|_| StorageError::Io)?;
+    let url = manifest::blob_url(&transport.manifest_url, blob);
+    let _ = std::fs::remove_file(partial);
+    let fetched = runtime
+        .block_on(download(
+            &transport.http,
+            &url,
+            partial,
+            size,
+            "file index",
+            cancel,
+            progress,
+        ))
+        .and_then(|()| std::fs::read(partial).map_err(Error::from));
+    let _ = std::fs::remove_file(partial);
+    fetched
+}
+
 /// Best effort after publication: the adopted copy no longer needs its archives.
 pub(super) fn discard_store(state_root: &Path) {
     if open_store(state_root, &[]).is_ok() {
