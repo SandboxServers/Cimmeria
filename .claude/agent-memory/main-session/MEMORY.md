@@ -35,6 +35,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Reference
 
+- [reference_lab_driving_recipes_2026_10_12.md](reference_lab_driving_recipes_2026_10_12.md) — 2026-10-12 Haiku UAT round 1: teleport-then-click at 3.5-4.5 m, pitch_counts -650, Lua moveItem/useItem N3 fallbacks, HP staging, ClickHouse grading; lab bugs in #1660
 - [reference_resources_schema_qualify_2026_10_11.md](reference_resources_schema_qualify_2026_10_11.md) — resources tables (items, ...) need the `resources.` prefix in server_db_query/spec SQL; bare `items` broke LR-06 snapshots
 - [reference_windows_runners_node3_2026_10_11.md](reference_windows_runners_node3_2026_10_11.md) — Windows runner pool on node3: sccache fails closed on dead Redis (probe per job), no cross-root Rust hits even with SCCACHE_BASEDIRS, WSL bash.exe, runner parent-dir ACL trap, git-over-HTTP/1.1 stall (github.com in NO_PROXY), runner account denied on VM storage
 - [reference_self_hosted_runners_2026_10_10.md](reference_self_hosted_runners_2026_10_10.md) — 10 dockerized cimmeria-linux runners (node5/node2), one dind each via unix socket; dind-entrypoint 2375 trap; fork approval = all outside contributors

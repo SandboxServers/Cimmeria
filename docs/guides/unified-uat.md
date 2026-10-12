@@ -2,7 +2,7 @@
 title: Unified In-Game UAT Guide
 type: how-to
 audience: in-game testers (the owner and playtesters) working through the restored systems on the colo; no programming needed
-last_updated: 2026-10-11
+last_updated: 2026-10-12
 companion_docs:
   - organizations-uat.md
   - ../content/debug-hub.md
@@ -18,7 +18,7 @@ companion_docs:
 # Unified In-Game UAT Guide
 
 > Type: how-to. Audience: an in-game tester who is not a programmer.
-> Updated: 2026-10-11. Companions: [debug hub](../content/debug-hub.md), [commands](../commands.md), [organizations UAT](organizations-uat.md), [Cellblock UAT guide](../analysis/castle-cellblock-rebuild/uat-guide.md), [zone operator guide](../analysis/zone-restoration-operator-guide.md), [telemetry runbook](../operations/npc-ai-telemetry-runbook.md).
+> Updated: 2026-10-12. Companions: [debug hub](../content/debug-hub.md), [commands](../commands.md), [organizations UAT](organizations-uat.md), [Cellblock UAT guide](../analysis/castle-cellblock-rebuild/uat-guide.md), [zone operator guide](../analysis/zone-restoration-operator-guide.md), [telemetry runbook](../operations/npc-ai-telemetry-runbook.md).
 
 ## Purpose and how to use it
 
@@ -106,6 +106,10 @@ Read these before you start. None of them needs a new report.
 | K27 | **The Debug Area arena pit floor is a water plane.** The map's pit "floor" is a water collision surface; the navmesh lies on it, but a player sinks to the lakebed. DA-F2 moved the arena squads to the east shelf and DA-F1 moved the arena ring pad there too; nothing seeded stands on the water any more. | Report it only if an arena NPC or the Arena shelf rig is drawn swimming, sunk or floating, or if you step off the pit's west ledge into the water. | [debug-area.md, Live-client risks](../content/debug-area.md#live-client-risks) |
 | K28 | **DHDs on the Ihpet Crater map render solid black.** The Debug Area DHD beside the gate and world 73's DHD draw as untextured black silhouettes (DA-06, 2026-10-05). Clicking them works. | Use them as normal; report it only if a click stops opening the dialling window. | [Debug Area ledger, open follow-ups](../analysis/debug-area/README.md#open-follow-ups) |
 | K29 | **How the stock DHD window dials (lab-verified 2026-10-05).** The first left-click after the window opens is ignored. Selecting a row in the address book *is* the dial: the glyphs fill and the client dials about 2 s later on its own; the centre orb only re-dials. The window reopens in its last state (the glyph ring, not the address book). The Reset button sends nothing. Don't right-click the DHD again while its window is open: that reloads the window, and it is the suspected (unproven) cause of the one session where a selection sent no dial at all. | Click the row twice and wait about 2 s; close the window with X before right-clicking the DHD again. If nothing dials, relog | [gate-travel.md, Debug Area dial-out](../gameplay/gate-travel.md#debug-area-dial-out) |
+| K30 | **`/gmsethealth` cannot target yourself (lab-confirmed 2026-10-12).** The client sends target `-1` whether or not you have selected yourself, and the server accepts only `0` or your own id, so the answer is always `gmSetHealth: target not found`. | For I1 and I4, lower your health by taking fire from a hostile NPC instead. | [Haiku lab UAT round 1, P1](../analysis/haiku-lab-uat/README.md#product-findings) |
+| K31 | **An open trainer window goes stale after a level-up (lab-confirmed 2026-10-12).** Nodes that the new training points unlock stay greyed while the Ability window stays open. | Close the window and reopen it at the trainer. | [Haiku lab UAT round 1, P2](../analysis/haiku-lab-uat/README.md#product-findings) |
+| K32 | **Out of range of a trainer, the buy button is disabled, and a purchase sent anyway shows nothing (lab-confirmed 2026-10-12).** The open Ability window keeps its buttons greyed once you walk away. A purchase that bypasses the button (only a modified client can send one) is refused by the server with nothing spent, but no message appears. | At ability-tree step 6, record the disabled button; not a new bug. | [Haiku lab UAT round 1, P3](../analysis/haiku-lab-uat/README.md#product-findings) |
+| K33 | **The server keeps your vault open after its window closes (lab-confirmed 2026-10-12).** Walking or teleporting away hides the vault window, but the server still counts the vault as open, so `.bankexpand` then charges you and grows the vault without a `.bank` first. | For the "no vault open" half of bank step 11, relog first; the logout closes the server's vault. | [Haiku lab UAT round 1, P4](../analysis/haiku-lab-uat/README.md#product-findings) |
 
 ## Common setup
 
@@ -401,6 +405,8 @@ Your personal vault (bank container 17), opened at a Banker, with deposit, withd
 
 **Status:** Ready. Steps 1-14 (the personal bank) since release 1; steps 15-25 (org vaults, the treasury and the Team expansion) once release 2 is deployed. Known broken: the player-facing Expand offer (K3), so steps 11-12 and 24-25 use the GM commands. Step 19 needs a local server.
 
+**Lab result 2026-10-12** (agent-driven on the colo, [round 1 report](../analysis/haiku-lab-uat/README.md#bank-and-vault)): 1, 2, 6, 11 (GM half) and 12 pass; 3, 4, 5 and 14 are NATIVE_SHORTFALL (the server behaved, but the move was made by a stock Lua call (N3) because the lab's drags failed); 7, 9 and 13 partly pass (7's server guard and 9's sell half are client-read only, with no server row pulled; 7 and 9 have doc mismatches, below; 13's GM half was vacuous, no item was moved, and 11 and 13 still need a non-GM); 8 and 10 are blocked. Steps 15-25 not run.
+
 **Prerequisites:** a fresh GM character with some naquadah, a stackable item and a mission item. Location: the **Storage Officer** in the debug hub (middle of the right-hand wall). Step 13 needs a non-GM character too.
 
 **Prerequisites for steps 15-25:** two characters online at once, **A** (GM) and **B** (any). A founds a Team with `.org_create team Vault Testers` and a Command with `.org_create command <name>`, reads their ids and each rank's permission mask with `.org_info`, and adds B to both with `.org_join <orgId> <B>`; B joins at the entry rank, which may deposit items and cash but not withdraw. A needs a few hundred naquadah, and B a stackable item (the hub's Common Materials Components vendor sells them at 1 naquadah). The Team and Command Bankers stand in a second row in front of the Storage Officer; all three are named "Storage Officer" (K17). Full setup: [debug hub doc](../content/debug-hub.md#team-and-command-bankers-templates-371-and-372).
@@ -413,11 +419,11 @@ Your personal vault (bank container 17), opened at a Banker, with deposit, withd
 | 4 | Drag it back | It lands in the backpack; the vault slot empties. | |
 | 5 | Split a stack into the vault, then merge it back | The totals never change. | |
 | 6 | Deposit an item, log out, log in, open the vault | The item is still there. `.bankdump <name>` lists it. | |
-| 7 | Open the vault at the Banker, walk more than about 5 m away, then drag | The move is refused with a visible message; the item snaps back. | |
+| 7 | Open the vault at the Banker, walk more than about 5 m away, then drag | The move is refused with a visible message; the item snaps back. | Lab 2026-10-12: the stock client hides the vault window by itself as you walk away, so there is nothing to drag. The server guard works ("You are too far from the Banker…", reached by a stock Lua call (N3) at 6.6 m). Report what your window does; the step is under review |
 | 8 | Try to bank a mission item | Refused with a message. | |
-| 9 | Try to trade, sell or mail a banked item | Only carried bags are offered; a banked item cannot be used. | |
+| 9 | Try to trade, sell or mail a banked item | Only carried bags are offered; a banked item cannot be used. | Mail needs the player mail window: the GM `.mail … item` creates its attachment and never takes it from your bags, so it cannot test this (lab 2026-10-12) |
 | 10 | Sell an item; try to drag it out of the vendor's buyback tab without paying | Refused. | |
-| 11 | `.bank`, then `.bankexpand`; repeat to 100; try once more; try with no vault open; try as a non-GM | "Your vault now has 50 slots. You paid 100 naquadah."; cash drops by 100; an open window's scroll range grows to 50 (confirm). At 100: "Your vault is already at its full size of 100 slots." No vault open: "bankexpand: open your vault first (.bank, or a Banker in range). Nothing was charged." Non-GM: ".bankexpand needs GM access. Nothing was charged.", not said aloud. | GM command stands in for the quarantined button (K3) |
+| 11 | `.bank`, then `.bankexpand`; repeat to 100; try once more; try with no vault open; try as a non-GM | "Your vault now has 50 slots. You paid 100 naquadah."; cash drops by 100; an open window's scroll range grows to 50 (confirm). At 100: "Your vault is already at its full size of 100 slots." No vault open: "bankexpand: open your vault first (.bank, or a Banker in range). Nothing was charged." Non-GM: ".bankexpand needs GM access. Nothing was charged.", not said aloud. | GM command stands in for the quarantined button (K3). For "no vault open", relog first (K33) |
 | 12 | With less than 100 naquadah, `.bankexpand` | "You need 100 naquadah to expand your vault. Nothing was charged."; nothing changes. | |
 | 13 | As a GM away from any Banker, `.bank` and move items; as a non-GM, `.bank` | The GM's vault opens and moves work; the non-GM is refused. | |
 | 14 | Drag a stack onto a same-type stack in your backpack | They merge up to the stack limit; the total never changes. | No success telemetry for this; report a wrong total with `.bug` |
@@ -575,16 +581,18 @@ Buying abilities at a trainer with training points: three tree tabs per archetyp
 
 **Status:** Ready. Every packet merged and released; awaiting UAT.
 
+**Lab result 2026-10-12** (agent-driven on the colo, Soldier only, [round 1 report](../analysis/haiku-lab-uat/README.md#ability-trees-at-06-soldier)): 1, 2, 4, 5 and 7 pass; 3 partly passes (nothing is spent, but the client drops the press before it reaches the server); 6 fails on feedback only, for a send that bypasses the disabled button (K32). Steps 8-10 and the other archetypes not run.
+
 **Prerequisites:** a GM character per showcase archetype, in this order: Soldier, Commando, Scientist, Archaeologist, Free Jaffa (Shol'va). Location: the **Archetype Skills Trainer** in the debug hub, which offers every tree node (the source names the Interaction Debug NPC, template 25, which the hub trainer copies). Some naquadah for respec (1000).
 
 | # | Do | Expect | Notes / known issues |
 |---|---|---|---|
 | 1 | Open the trainer | Three tabs, in workbook order. Locked nodes are visible and greyed. | |
 | 2 | Buy the root | The point counter drops at once; the ability appears in the known list. | |
-| 3 | Click a node whose prerequisite you lack (a stale window works) | The press shows an error; nothing is spent. | Does the error show any text, or only a window refresh? Note which |
-| 4 | Buy the tier-1 nodes in one branch; watch a tier-2 node in another branch | It opens once archetype-wide spend reaches 4 and its own branch prerequisite is known. | |
+| 3 | Click a node whose prerequisite you lack (a stale window works) | The press shows an error; nothing is spent. | Does the error show any text, or only a window refresh? Note which. Lab 2026-10-12: the client drops a locked node's press itself and sends nothing, so only "nothing is spent" can be checked |
+| 4 | Buy the tier-1 nodes in one branch; watch a tier-2 node in another branch | It opens once archetype-wide spend reaches 4 and its own branch prerequisite is known. | After a `/gmgivexp` level-up, reopen the window first (K31) |
 | 5 | Relog and reopen the trainer | Learned nodes and points persist. | |
-| 6 | Walk away from the trainer and try to buy | Rejected with feedback. | The source says "replay a train packet"; a stale window after walking away is the in-game way |
+| 6 | Walk away from the trainer and try to buy | Rejected with feedback. | The source says "replay a train packet"; a stale window after walking away is the in-game way. Lab 2026-10-12: the window stays open at 22 m but the buy button is disabled, so you cannot press it; record a disabled button as the result. The server refuses a purchase sent anyway (only possible from a modified client), with no message today (K32) |
 | 7 | Double-click a purchase | Only one point is spent. | |
 | 8 | `/gmgivexp` to level 21, then to 50 | The XP bar behaves (at the cap it is full, never 0); there is no level 51; the capstone opens at 50 once its path and spend are met; you have 50 points in total. | |
 | 9 | Respec at the trainer with the Ability window open | Trainer nodes go; starter abilities stay; points are refunded; 1000 naquadah is charged. A hotbar button for a refunded ability stays on the bar and shows an error when pressed. | K13. Note whether the open Ability window drops the removed abilities |
@@ -913,22 +921,24 @@ Source: [legacy command parity README, Validation and UAT gates](../analysis/leg
 
 Heal items and stimpacks used from your bags: the Health Slappack, the Health and Focus Heal Consumables, and the Mark III / V / VII / X stimpacks.
 
-**Status:** Ready. Merged; nothing has been seen in a client yet. Known broken: K21.
+**Status:** Ready. Merged; first seen in a client on 2026-10-12. Known broken: K21, K30.
+
+**Lab result 2026-10-12** (agent-driven on the colo, [round 1 report](../analysis/haiku-lab-uat/README.md#consumables)): I9 passes (client-read only: attribute values, no server row pulled); I2-I4, I6-I8, I10 and I10b are NATIVE_SHORTFALL (the server behaved, but each item was used through a stock Lua call (N3) because the lab's double-click sent nothing); I5 passes its low-focus half, client-read only (the full-focus half not run); I1 fails at `/gmsethealth` (K30). I11 not run.
 
 **Prerequisites:** a GM character (for `/gmgiveitem` and `/gmsethealth`). Anywhere; the Cellblock guards are handy for losing focus.
 
 | # | Do | Expect | Notes / known issues |
 |---|---|---|---|
-| I1 | `/gmgiveitem 2893 3`, then `/gmsethealth 100 0` | Three Health Slappacks in your bag; your health bar drops to 100. | |
+| I1 | `/gmgiveitem 2893 3`, then `/gmsethealth 100 0` | Three Health Slappacks in your bag; your health bar drops to 100. | `/gmsethealth` cannot target you (K30); take fire from a hostile NPC instead |
 | I2 | Double-click a slappack | Health rises by 500 (or to full), and the stack shows 2. | |
-| I3 | Double-click again until you are at full health, then once more | The use at full health shows "You are already at full health." in chat, and the stack does not change. | The refusal is the expected result |
+| I3 | Double-click again until you are at full health, then once more | The use at full health shows "You are already at full health." in chat, and the stack does not change. | The refusal is the expected result. A second chat line, `CONDITION_FEEDBACK_StatValueGreaterThanOrEqual`, also appears (lab 2026-10-12): cosmetic |
 | I4 | `/gmsethealth 100 0`, drop to one slappack, and double-click it twice as fast as you can | One heal of 500; the slappack is gone; no second heal. | The double-click guard |
 | I5 | `/gmgiveitem 6106 1` (Focus Heal Consumable); use it at full focus; then take a few shots from a hostile NPC and use it again | At full focus: "You are already at full focus." and the item stays. After the shots: focus rises by 384 (or to full) and the item goes. | |
 | I6 | `/gmgiveitem 6677 1` (Mark III Stimpack: Coordination), open the character window, use the stimpack | Coordination rises by 5. A buff icon appears with about 60 minutes on it. The item goes. Health is unchanged. | Which icon the client draws is unverified |
-| I7 | `/gmgiveitem 6697 1` (Mark V Coordination/Engagement) and use it | Coordination is now 7 above its base, not 12; Engagement is 3 above. The Mark III icon is replaced by the Mark V one. | One buff per attribute, by design |
+| I7 | `/gmgiveitem 6697 1` (Mark V Coordination/Engagement) and use it | Coordination is now 7 above its base, not 12; Engagement is 3 above. The Mark III icon is replaced by the Mark V one. | One buff per attribute, by design. The replaced Mark III buff can stay listed at 0 s for about 12 s (lab 2026-10-12): cosmetic |
 | I8 | `/gmgiveitem 6679 1` (Mark III Fortitude) and use it | Fortitude rises by 5, and the Coordination and Engagement buffs are still there. | Different attributes add up |
 | I9 | Die and respawn in the same zone; then relog | After the respawn the buffs are still on (the attributes stay raised). After the relog every attribute is back at its base and no buff icon shows. | The buff is not saved across a relog, zone change or gate trip (known limit). Note whether the icons survived the respawn |
-| I10 | `/gmgiveitem 1893 1` (Opheltes's Injection, a mission item) and use it with focus below full | Nothing heals; the item stays. | Mission items must never heal |
+| I10 | `/gmgiveitem 1893 1` (Opheltes's Injection, a mission item) and use it with focus below full | Nothing heals; the item stays. | Mission items must never heal. SigNoz shows `consumable_skipped`, not `consumable_refused` |
 | I10b | `/gmgiveitem 6206 1` (Stealth Boost Consumable) and use it | Chat shows "This item has no effect yet."; the item stays. | K21: expected |
 | I11 | Wait out a stimpack's full hour (optional, long) | When the hour ends the attribute drops back and the icon goes. | |
 
@@ -938,6 +948,7 @@ Heal items and stimpacks used from your bags: the Health Slappack, the Health an
 |---|---|
 | Every item use and refusal of a player | `event IN ('consumable_used','consumable_refused','consumable_skipped','consumable_apply_skipped') AND player_id = <id>` |
 | Why a use was refused (I3, I5, I10b) | `event = 'consumable_refused' AND player_id = <id>`: `reason` is `already_at_max` (with `stat_cur` and `stat_max`), `dead` or `consumable_not_implemented` |
+| A mission item that does nothing (I10) | `event = 'consumable_skipped' AND reason = 'placeholder_ability' AND player_id = <id>` |
 | Did the base take a unit (I4) | `event IN ('consumable_consumed','consumable_consume_refused') AND player_id = <id>` |
 | Stimpack buffs applied, replaced and expired (I6-I9, I11) | `scope_name = 'abilities' AND event IN ('stat_buff_applied','stat_buff_removed') AND player_id = <id>`; `stat_buff_removed` carries `reason` = `replaced`, `expired`, `removed` or `died` |
 
