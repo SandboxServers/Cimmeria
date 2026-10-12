@@ -18,7 +18,7 @@ def load_inputs(folder):
             inputs[name] = {}
             continue
         try:
-            inputs[name] = json.loads(path.read_text(encoding="utf-8"))
+            inputs[name] = json.loads(path.read_text(encoding="utf-8-sig"))
         except json.JSONDecodeError as exc:
             raise ValueError(f"{name}.json is not valid JSON") from exc
     inputs["missing"] = missing

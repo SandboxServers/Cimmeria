@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from metrics.reporting import inputs
+from reporting import inputs
 
 FIXTURES = Path(__file__).parent / "fixtures" / "inputs"
 
@@ -30,6 +30,16 @@ class LoadInputsTest(unittest.TestCase):
         self.assertEqual(loaded["missing"], ["overstep"])
         self.assertEqual(loaded["overstep"], {})
         self.assertIn("cost", loaded)
+
+    def test_utf8_bom_still_loads(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp) / "inputs"
+            shutil.copytree(FIXTURES, folder)
+            # Excel and some editors prepend a UTF-8 BOM; the loader must accept it.
+            original = (folder / "cost.json").read_bytes()
+            (folder / "cost.json").write_bytes(b"\xef\xbb\xbf" + original)
+            loaded = inputs.load_inputs(folder)
+        self.assertIn("alpha-old", loaded["cost"]["campaigns"])
 
     def test_bad_json_raises(self):
         with tempfile.TemporaryDirectory() as tmp:
