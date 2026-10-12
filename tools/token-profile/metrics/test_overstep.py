@@ -117,6 +117,59 @@ class SonnetImplementingTest(unittest.TestCase):
         self.assertEqual(_detect([self._sonnet()], packets=packets)["hits"], {})
 
 
+class ImplementingTest(unittest.TestCase):
+    """O3 (Sonnet) and O3b (Opus) subagents editing a packet-coder's packet in worktree lr03 (packet LR-03)."""
+
+    def _subagent(self, model, **kw):
+        base = {"model": model, "agent_id": "a1", "agent_type": "rust-gameserver-dev", "worktree": "lr03",
+                "calls": [_call("Edit", "crates/gameserver/src/lib.rs")]}
+        base.update(kw)
+        return _req(**base)
+
+    def test_o3_and_o3b_sonnet_and_opus_subagents_both_hit(self):
+        packets = [("lab-record", _pkt("LR-03"))]
+        reqs = [self._subagent("claude-sonnet-5-5"), self._subagent("claude-opus-5-5", request_id="r2")]
+        result = _detect(reqs, packets=packets)
+        self.assertEqual(result["hits"], {"O3": 1, "O3b": 1})
+        self.assertEqual(sorted(item["family"] for item in result["by_campaign"]["lab-record"]["items"]),
+                         ["opus", "sonnet"])
+
+    def test_o3b_is_repriced_at_the_haiku_tier_and_carries_a_caveat(self):
+        result = _detect([self._subagent("claude-opus-5-5")], packets=[("lab-record", _pkt("LR-03"))])
+        rule = result["by_campaign"]["lab-record"]["rules"]["O3b"]
+        self.assertEqual(round(rule["usd"], 2), 4.00)
+        self.assertEqual(round(rule["wasted_usd"], 2), 3.50)
+        self.assertIn("upper bound", result["caveats"]["O3b"])
+
+    def test_o3_and_o3b_negative_escalated_packet(self):
+        packets = [("lab-record", dict(_pkt("LR-03"), escalated=True))]
+        reqs = [self._subagent("claude-sonnet-5-5"), self._subagent("claude-opus-5-5", request_id="r2")]
+        self.assertEqual(_detect(reqs, packets=packets)["hits"], {})
+
+    def test_o3b_negative_reviewer_edit_is_expected(self):
+        reviewer = self._subagent("claude-opus-5-5", agent_type="packet-reviewer")
+        self.assertEqual(_detect([reviewer], packets=[("lab-record", _pkt("LR-03"))])["hits"], {})
+
+
+class ClaimTest(unittest.TestCase):
+    CODE = [_call("Edit", "crates/gameserver/src/lib.rs")]
+
+    def test_three_consecutive_o1_requests_price_each_request_once(self):
+        # r1 to r3 edit code; f1 to f3 are plain follow-ups between them, each reading 100K from the cache.
+        stream = []
+        for i in range(1, 4):
+            stream.append(_req(request_id=f"r{i}", ts=_iso(T0 + timedelta(seconds=20 * i)), calls=self.CODE))
+            stream.append(_req(request_id=f"f{i}", ts=_iso(T0 + timedelta(seconds=20 * i + 10)), input=0, cache_read=100_000))
+        result = _detect(stream)
+        self.assertEqual(result["hits"], {"O1": 3})
+        rule = result["by_campaign"]["lab-record"]["rules"]["O1"]
+        self.assertAlmostEqual(rule["usd"], sum(overstep.actual_usd(r) for r in stream))
+
+    def test_a_request_matching_o1_and_o2_counts_once_under_o1(self):
+        req = _req(calls=self.CODE + [_call("mcp__ghidra__decompile_function")])
+        self.assertEqual(_detect([req])["hits"], {"O1": 1})
+
+
 class OpusSubagentTest(unittest.TestCase):
     def test_o4_is_counted_not_priced(self):
         sub = _req(agent_id="a2", agent_type="documentation-writer", worktree=".claude/worktrees/cm-07")

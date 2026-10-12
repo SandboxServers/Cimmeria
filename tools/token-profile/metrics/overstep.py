@@ -6,8 +6,9 @@ agent_type (the custom agent type when set), agent_name, and calls (a list of {t
 (campaign, {id, implementer, size, escalated}) pairs from the ledger. The DB is read only in load_requests, which cli.py
 calls.
 
-Rules (work-packets.md, CM-07): O1 Opus coding, O2 Opus research, O3 Sonnet implementing, O4 Opus subagent in a
-packet worktree (counted, not priced). Repricing is an estimate: it ignores extra turns a cheaper model may need.
+Rules (work-packets.md, CM-07): O1 Opus coding, O2 Opus research, O3 Sonnet implementing, O3b Opus implementing (an
+upper bound, see CAVEATS), O4 Opus subagent in a packet worktree (counted, not priced). Repricing is an estimate: it
+ignores extra turns a cheaper model may need.
 """
 
 import sqlite3
@@ -25,6 +26,10 @@ BUILD_RUNS = {"cargo build", "cargo check", "cargo clippy", "cargo fmt", "cargo 
               "cargo test", "lane", "lane.ps1", "lane.sh", "bash tools/build-lane/lane.sh"}
 LANE_SCRIPTS = {"lane.ps1", "lane.sh"}
 O4_AGENT_TYPES = {"documentation-writer", "general-purpose"}
+IMPLEMENTING_RULES = {"sonnet": "O3", "opus": "O3b"}
+IMPLEMENTATION_RULES = ("O1", "O3", "O3b")
+RULE_PRIORITY = ("O1", "O3", "O3b", "O2")
+CAVEATS = {"O3b": "O3b is an upper bound: a ledger may not record a legitimate escalation"}
 BURST_WINDOW = timedelta(minutes=10)
 FOLLOW_UPS = 3
 CACHE_COLUMNS = ("cache_read", "cache_write_5m", "cache_write_1h")
@@ -122,17 +127,18 @@ def opus_research(req, cfg):
     return next((c for c in req["calls"] if c["tool_name"].startswith(tuple(cfg["research_tool_prefixes"]))), None)
 
 
-def sonnet_implementing(req, packets, cfg):
-    """O3: a Sonnet request that edits a code path in a request whose packet is packet-coder's, size S or M, not
-    escalated. A review fixer's edits are expected, so a request with the fixer role is not O3.
-    Returns (call, (campaign, packet))."""
-    if family(req["model"]) != "sonnet" or req["role"] == "fixer":
+def implementing(req, packets, cfg):
+    """O3 (Sonnet) or O3b (Opus): a subagent's request that edits a code path in a request whose packet is packet-coder's,
+    size S or M, not escalated. A review fixer's or reviewer's edits are expected, so those roles are not O3 or O3b.
+    Returns (rule, call, (campaign, packet)), else None."""
+    rule = IMPLEMENTING_RULES.get(family(req["model"]))
+    if rule is None or req["agent_id"] is None or req["role"] in ("fixer", "reviewer"):
         return None
     found = packet_for(req, packets)
     if not found or found[1]["implementer"] != "packet-coder" or found[1]["escalated"] or not _small(found[1]["size"]):
         return None
     call = next((c for c in req["calls"] if c["tool_name"] in EDIT_TOOLS and _under(c.get("fingerprint") or "", cfg["code_paths"])), None)
-    return (call, found) if call else None
+    return (rule, call, found) if call else None
 
 
 def opus_subagent(req, packets):
@@ -213,6 +219,24 @@ def _hit(rule, reqs, call, follow_ups=()):
     return {"rule": rule, "requests": reqs, "call": call, "follow_ups": list(follow_ups)}
 
 
+def _claim(candidates):
+    """The hits that count, each request priced once: by RULE_PRIORITY, a hit counts only if its requests are unclaimed.
+
+    A follow-up is dropped when it is already claimed or is a hit itself; the surviving ids are then claimed. Sorting is
+    stable, so hits of one rule keep their time order.
+    """
+    hit_ids = {r["request_id"] for hit in candidates for r in hit["requests"]}
+    claimed, kept = set(), []
+    for hit in sorted(candidates, key=lambda h: RULE_PRIORITY.index(h["rule"])):
+        ids = {r["request_id"] for r in hit["requests"]}
+        if ids & claimed:
+            continue
+        hit["follow_ups"] = [f for f in hit["follow_ups"] if f["request_id"] not in claimed | hit_ids]
+        claimed |= ids | {f["request_id"] for f in hit["follow_ups"]}
+        kept.append(hit)
+    return kept
+
+
 def _waste(hit, target, version):
     """(usd actual, wasted at `target`) for a hit: its requests in full, its follow-ups by cache cost; wasted floors at 0."""
     actual = sum(u for u in (actual_usd(r, version) for r in hit["requests"]) if u is not None)
@@ -228,7 +252,7 @@ def detect(requests, packets, cfg, pr_map=None, version=prices.CURRENT):
     `packets` is as in ledger_inputs and `pr_map` ({pr: campaign}) is its third value. Each request's USD is split
     across its pr_attribution rows by weight, and each row names its campaign (_campaign_of_row); nothing is dropped,
     so a request with no campaign counts under 'unattributed' and the campaigns sum to the total. A hit counts once in
-    each campaign it touches. Requests before the
+    each campaign it touches, and each request is priced once (_claim). Requests before the
     regime switch or at/after the window's end are ignored. The main session's role is coordinator; a subagent's comes
     from cfg roles by its agent type.
     """
@@ -247,22 +271,23 @@ def detect(requests, packets, cfg, pr_map=None, version=prices.CURRENT):
         name = worktree_name(req["worktree"])
         if req["role"] == "fixer" and name:
             fixers[name] = fixers.get(name, 0) + 1
-    hits = []
+    candidates = []
     for req in reqs:
         call = opus_coding(req, rules)
         if call:
-            hits.append(_hit("O1", [req], call, follow_ups=_follow_ups(req, streams)))
+            candidates.append(_hit("O1", [req], call, follow_ups=_follow_ups(req, streams)))
         call = opus_research(req, rules)
         if call:
-            hits.append(_hit("O2", [req], call))
-        found = sonnet_implementing(req, packets, rules)
+            candidates.append(_hit("O2", [req], call))
+        found = implementing(req, packets, rules)
         if found:
-            hits.append(_hit("O3", [req], found[0]))
-    hits.extend(_hit("O2", cluster, None) for cluster in research_bursts(reqs, rules))
+            candidates.append(_hit(found[0], [req], found[1]))
+    candidates.extend(_hit("O2", cluster, None) for cluster in research_bursts(reqs, rules))
+    hits = _claim(candidates)
     out, counts = {}, {}
     for hit in hits:
         rule = hit["rule"]
-        target = rules["reprice"]["implementation" if rule in ("O1", "O3") else "research"]
+        target = rules["reprice"]["implementation" if rule in IMPLEMENTATION_RULES else "research"]
         actual, wasted = _waste(hit, target, version)
         _, wasted_low = _waste(hit, "sonnet", version)
         for campaign, share in _split(hit).items():
@@ -277,12 +302,13 @@ def detect(requests, packets, cfg, pr_map=None, version=prices.CURRENT):
             if len(stats["items"]) < ITEM_LIMIT:
                 head, call = hit["requests"][0], hit["call"] or {}
                 stats["items"].append({"rule": rule, "ts": head["ts"], "session_family": head["session_id"],
-                                       "model": head["model"], "usd": round(actual * share, 6),
+                                       "model": head["model"], "family": family(head["model"]),
+                                       "usd": round(actual * share, 6),
                                        "tool": call.get("tool_name"), "path_class": _path_class(call)})
         counts[rule] = counts.get(rule, 0) + 1
     opus_subagents = len({r["agent_id"] for r in reqs if opus_subagent(r, packets)})
     return {"by_campaign": out, "opus_subagents": opus_subagents, "requests": len(reqs), "hits": counts,
-            "fixer_requests": fixers}
+            "fixer_requests": fixers, "caveats": CAVEATS}
 
 
 REQUEST_SQL = """
