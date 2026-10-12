@@ -67,10 +67,6 @@ class GithubTests(unittest.TestCase):
         defects = gh.escaped_defects(prs, [], lambda n: "x" if n == 1 else "y")
         self.assertEqual(defects, {"x": [{"kind": "revert", "number": 2, "cites": 1, "days_after_merge": 1.0}]})
 
-    def test_branch_names_are_dropped_from_the_pr_records(self):
-        for pr in self.prs:
-            self.assertNotIn("headRefName", pr)
-
     def test_code_pr_is_true_when_a_crates_tools_db_or_ci_path_changed(self):
         self.assertTrue(gh.code_pr(self.run, 101))
         self.assertFalse(gh.code_pr(self.run, 103))
@@ -80,10 +76,15 @@ class GithubTests(unittest.TestCase):
         tagged = {p["number"]: p["campaign"] for p in gh.collect_prs(self.run, "2026-09-21", campaigns)}
         self.assertEqual(tagged, {101: "lab-record", 102: "lab-record", 103: None, 104: None})
 
-    def test_commits_are_capped_at_one_hundred(self):
-        commits = [{"sha": f"s{i}", "commit": {"committer": {"date": "2026-10-01T00:00:00Z"}}} for i in range(150)]
+    def test_commits_are_capped_at_one_hundred_keeping_the_first_and_the_last_fifty(self):
+        commits = [{"sha": f"s{i}", "commit": {"committer": {"date": f"2026-10-01T{i // 60:02d}:{i % 60:02d}:00Z"}}}
+                   for i in range(150)]
         run = lambda args: [commits]  # noqa: E731
-        self.assertEqual(len(gh.head_commits(run, {"number": 1})), gh.MAX_COMMITS)
+        kept = [c["sha"] for c in gh.head_commits(run, {"number": 1})]
+        self.assertEqual(len(kept), gh.MAX_COMMITS)
+        self.assertIn("s0", kept)
+        self.assertIn("s149", kept)
+        self.assertNotIn("s75", kept)
 
     def test_window_end_is_searched_and_drops_items_created_at_or_after_it(self):
         searches = []
@@ -162,6 +163,58 @@ class GithubTests(unittest.TestCase):
                {"number": 2, "title": "fix(x): y (#1)", "body": "", "mergedAt": "2026-10-02T00:00:00Z"}]
         self.assertEqual(gh.escaped_defects(prs, [], lambda n: None), {})
 
+    def test_a_title_that_only_starts_with_fix_letters_is_not_a_fix(self):
+        prs = [{"number": 1, "title": "feat(x): one", "body": "", "mergedAt": "2026-10-01T00:00:00Z"},
+               {"number": 2, "title": "fixture(x): add data (#1)", "body": "", "mergedAt": "2026-10-02T00:00:00Z"}]
+        campaign_of = lambda n: "x" if n == 1 else "y"  # noqa: E731
+        self.assertEqual(gh.escaped_defects(prs, [], campaign_of), {})
+        prs[1]["title"] = "fix(x): y (#1)"
+        self.assertEqual(len(gh.escaped_defects(prs, [], campaign_of)["x"]), 1)
+
+    def test_a_fix_citing_two_prs_of_one_campaign_is_one_defect_on_the_later_merged_one(self):
+        prs = [{"number": 1, "title": "feat: a", "body": "", "mergedAt": "2026-10-01T00:00:00Z"},
+               {"number": 2, "title": "feat: b", "body": "", "mergedAt": "2026-10-02T00:00:00Z"},
+               {"number": 3, "title": "fix(y): stack follow-up (#1, #2)", "body": "", "mergedAt": "2026-10-03T00:00:00Z"}]
+        defects = gh.escaped_defects(prs, [], lambda n: "x" if n in (1, 2) else "y")
+        self.assertEqual(defects, {"x": [{"kind": "pr", "number": 3, "cites": 2, "days_after_merge": 1.0}]})
+
+    def test_a_bug_closed_as_not_planned_or_duplicate_is_not_a_defect(self):
+        prs = [{"number": 1, "title": "feat(x): a", "body": "", "mergedAt": "2026-10-01T00:00:00Z"}]
+
+        def bug(number, reason):
+            return {"number": number, "body": "Regression from #1", "createdAt": "2026-10-05T00:00:00Z",
+                    "state": "CLOSED", "labels": [{"name": "bug"}], "stateReason": reason}
+
+        issues = [bug(9, "NOT_PLANNED"), bug(10, "DUPLICATE")]
+        self.assertEqual(gh.escaped_defects(prs, issues, lambda n: "x"), {})
+        issues = [bug(9, "COMPLETED")]
+        self.assertEqual(gh.escaped_defects(prs, issues, lambda n: "x"),
+                         {"x": [{"kind": "issue", "number": 9, "cites": 1, "days_after_merge": 4.0}]})
+
+    def test_a_commit_after_the_merge_is_left_out_of_overall(self):
+        commits = [{"sha": "A", "committed": "2026-10-01T09:00:00Z"}, {"sha": "B", "committed": "2026-10-01T13:00:00Z"}]
+        results = {"A": {"gate": "success", "failed_jobs": []}, "B": {"gate": "failure", "failed_jobs": []}}
+        self.assertEqual(gh.ci_summary({"mergedAt": "2026-10-01T12:00:00Z"}, commits, results),
+                         {"first_attempt": True, "overall": True, "runs": 2})
+
+    def test_a_pr_whose_last_gated_commit_is_red_is_overall_red(self):
+        commits = [{"sha": "A", "committed": "2026-10-01T09:00:00Z"}, {"sha": "B", "committed": "2026-10-01T10:00:00Z"}]
+        results = {"A": {"gate": "success", "failed_jobs": []}, "B": {"gate": "failure", "failed_jobs": []}}
+        self.assertEqual(gh.ci_summary({"mergedAt": "2026-10-01T12:00:00Z"}, commits, results),
+                         {"first_attempt": True, "overall": False, "runs": 2})
+
+    def test_an_open_pr_takes_its_last_gated_commit_as_overall(self):
+        commits = [{"sha": "A", "committed": "2026-10-01T09:00:00Z"}, {"sha": "B", "committed": "2026-10-01T10:00:00Z"}]
+        results = {"A": {"gate": "failure", "failed_jobs": []}, "B": {"gate": "success", "failed_jobs": []}}
+        self.assertEqual(gh.ci_summary({"mergedAt": None}, commits, results),
+                         {"first_attempt": False, "overall": True, "runs": 2})
+
+    def test_a_pr_list_at_the_limit_stops_the_run_instead_of_losing_the_oldest(self):
+        full = [{"number": i, "createdAt": "2026-10-01T00:00:00Z"} for i in range(gh.LIMIT)]
+        with self.assertRaises(gh.GhError):
+            gh.collect_prs(lambda args: full, "2026-09-21")
+        self.assertEqual(len(gh.collect_prs(lambda args: full[:-1], "2026-09-21")), gh.LIMIT - 1)
+
 
 class CliSmokeTest(unittest.TestCase):
     def test_replay_writes_github_json_and_a_count_summary(self):
@@ -169,13 +222,16 @@ class CliSmokeTest(unittest.TestCase):
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
                 code = main(["github", "--repo", ".", "--out", tmp, "--from-json", str(FIXTURES)])
-            record = json.loads((Path(tmp) / "github.json").read_text(encoding="utf-8"))
+            text = (Path(tmp) / "github.json").read_text(encoding="utf-8")
+        record = json.loads(text)
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(out.getvalue()), {
             "since": "2026-09-21", "prs_collected": 4, "merged": 4, "ci_checked": 3, "untagged_prs": 4,
             "escaped_defects": {}, "gh_calls": 0, "cache_hits": 0,
         })
         self.assertEqual([r["ci"]["runs"] for r in record["prs"]], [1, 2, 0, 1])
+        for branch in ("lab/record-gate", "lab/packet-join", "docs/notes", "fix/record-gate"):
+            self.assertNotIn(branch, text)
 
     def test_campaigns_file_tags_the_prs_it_names(self):
         with tempfile.TemporaryDirectory() as tmp:

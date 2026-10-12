@@ -17,12 +17,16 @@ from pathlib import Path
 # `files` is not listed: `gh pr list --limit 1000 --json files` fails in gh itself. code_pr() reads the paths instead.
 PR_FIELDS = ("number,title,body,headRefName,baseRefName,createdAt,mergedAt,closedAt,state,additions,deletions,"
              "changedFiles")
-ISSUE_FIELDS = "number,body,createdAt,closedAt,state,labels"
+ISSUE_FIELDS = "number,body,createdAt,closedAt,state,labels,stateReason"
 CODE_PREFIXES = ("crates/", "tools/", "db/", ".github/")
 GATE = "ci gate"
 FAILED = {"failure", "timed_out", "startup_failure", "action_required"}
-# A fix or a revert, by title. A revert of a PR quotes its title: Revert "<title>".
-FIX_OR_REVERT = re.compile(r"(?i)^(fix|revert)")
+# An issue closed this way is not a defect of the PR it cites.
+NOT_A_DEFECT = {"NOT_PLANNED", "DUPLICATE"}
+# gh returns at most 1000 items per search; at LIMIT the oldest would be silently lost, so the run stops instead.
+LIMIT = 1000
+# A fix or a revert, by title. A revert of a PR quotes its title: Revert "<title>". `\b` keeps "fixture" out.
+FIX_OR_REVERT = re.compile(r"(?i)^(fix|revert)\b")
 REVERT_OF = re.compile(r'^Revert "(.*)"$')
 CITE = re.compile(r"#(\d+)\b")
 MAX_COMMITS = 100
@@ -141,6 +145,11 @@ def _apart(a, b):
     return a is not None and b is not None and a != b
 
 
+def _verdict(conclusion):
+    """`success`, `failure` for a conclusion in FAILED, else `none`: cancelled, skipped and undecided give no verdict."""
+    return "success" if conclusion == "success" else "failure" if conclusion in FAILED else "none"
+
+
 def _window(since, until):
     """The gh search qualifiers for a window: created on or after `since`, and before `until` when it is given."""
     return f"created:>={since}" + (f" created:<{until[:10]}" if until else "")
@@ -177,22 +186,34 @@ def collect_prs(run, since, campaigns=None, until=None):
 
     `campaigns` is an ingest.campaigns.Campaigns.
     """
-    raw = run(["pr", "list", "--state", "all", "--search", _window(since, until), "--limit", "1000",
+    raw = run(["pr", "list", "--state", "all", "--search", _window(since, until), "--limit", str(LIMIT),
                "--json", PR_FIELDS]) or []
+    if len(raw) >= LIMIT:
+        raise GhError(f"gh returned {LIMIT} PRs: narrow the window")
     return [pr_record(p, campaigns) for p in raw if _before(p["createdAt"], until)]
 
 
 def collect_issues(run, since, until=None):
     """Closed issues labelled bug and created in the window, as gh returned them."""
     raw = run(["issue", "list", "--state", "closed", "--label", "bug", "--search", _window(since, until),
-               "--limit", "1000", "--json", ISSUE_FIELDS]) or []
+               "--limit", str(LIMIT), "--json", ISSUE_FIELDS]) or []
+    if len(raw) >= LIMIT:
+        raise GhError(f"gh returned {LIMIT} issues: narrow the window")
     return [i for i in raw if _before(i["createdAt"], until)]
 
 
 def head_commits(run, pr):
-    """The PR's commits, oldest first, as {sha, committed}. Only the first MAX_COMMITS are kept."""
+    """The PR's commits, oldest first, as {sha, committed}. Past MAX_COMMITS, the first and the last 50 are kept.
+
+    The first half feeds first_attempt and the last half feeds overall, so the cap keeps both ends.
+    """
     rows = pages(run, f"repos/{{owner}}/{{repo}}/pulls/{pr['number']}/commits{PAGE}")
-    return [{"sha": c["sha"], "committed": c["commit"]["committer"]["date"]} for c in rows[:MAX_COMMITS]]
+    commits = sorted(({"sha": c["sha"], "committed": c["commit"]["committer"]["date"]} for c in rows),
+                     key=lambda c: c["committed"])
+    if len(commits) > MAX_COMMITS:
+        half = MAX_COMMITS // 2
+        commits = commits[:half] + commits[-half:]
+    return commits
 
 
 def code_pr(run, number):
@@ -207,13 +228,15 @@ def ci_result(run, sha):
     gate is `none` when no check run is named `ci gate` (docs-only commits may skip
     it), it has not finished, or it was cancelled or skipped (a superseded push). `none`
     is not a failure; only a conclusion in FAILED is one.
+
+    The verdict is per commit, not per run: check-runs returns only the latest run of each
+    name (`filter=latest`), so a re-run of a flaky job replaces its red run.
     """
     runs = pages(run, f"repos/{{owner}}/{{repo}}/commits/{sha}/check-runs{PAGE}", key="check_runs")
     gates = sorted((r for r in runs if r.get("name") == GATE), key=lambda r: r.get("started_at") or "")
     conclusion = gates[-1].get("conclusion") if gates else None
-    gate = "success" if conclusion == "success" else "failure" if conclusion in FAILED else "none"
     failed = sorted({r["name"] for r in runs if r.get("name") != GATE and r.get("conclusion") in FAILED})
-    return {"gate": gate, "failed_jobs": failed}
+    return {"gate": _verdict(conclusion), "failed_jobs": failed}
 
 
 def ci_summary(pr, commits, results):
@@ -223,6 +246,10 @@ def ci_summary(pr, commits, results):
     first_attempt is the earliest gated commit's verdict, overall the last gated
     commit at or before the merge (the last one if the PR is open). True is green,
     False is red, None means no commit had a gate.
+
+    This is the PR-push gate on the surviving head commits only. A rebase or force-push
+    drops the commits it replaces, and their red runs with them, so first_attempt can be
+    optimistic. The merge-queue result is queue_summary().
     """
     gated = [c for c in sorted(commits, key=lambda c: c["committed"]) if results[c["sha"]]["gate"] != "none"]
     if not gated:
@@ -252,10 +279,13 @@ def defect_items(prs, issues, campaign_of):
     found = {}
 
     def hit(kind, number, target, when, citing):
+        # One item per citing item and campaign: a fix that cites a whole stack counts once. The cited PR merged last wins.
         days = round((_when(when) - _when(target["mergedAt"])).total_seconds() / 86400, 1)
-        found[(kind, number, target["number"])] = {
-            "kind": kind, "number": number, "cites": target["number"], "days_after_merge": days,
-            "campaign": campaign_of(target["number"]), "citing_campaign": citing}
+        key = (kind, number, campaign_of(target["number"]))
+        if key not in found or days < found[key]["days_after_merge"]:
+            found[key] = {
+                "kind": kind, "number": number, "cites": target["number"], "days_after_merge": days,
+                "campaign": campaign_of(target["number"]), "citing_campaign": citing}
 
     for p in prs:
         if not p.get("mergedAt") or not FIX_OR_REVERT.match(p["title"]):
@@ -269,6 +299,8 @@ def defect_items(prs, issues, campaign_of):
 
     for i in issues:
         if str(i.get("state", "")).lower() != "closed" or "bug" not in _labels(i):
+            continue
+        if str(i.get("stateReason") or "").upper() in NOT_A_DEFECT:
             continue
         for n in {int(x) for x in CITE.findall(i.get("body") or "")}:
             target = merged.get(n)
