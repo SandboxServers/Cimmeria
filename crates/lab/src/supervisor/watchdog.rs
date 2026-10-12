@@ -22,6 +22,7 @@ impl Supervisor {
         // Several instances share one process: tag every watchdog line.
         let span = tracing::info_span!("lab_watchdog", instance = self.label(), pid);
         tokio::spawn(async move { this.watchdog_loop(pid).await }.instrument(span));
+        self.spawn_keeper(pid);
     }
 
     async fn watchdog_loop(&self, my_pid: u32) {

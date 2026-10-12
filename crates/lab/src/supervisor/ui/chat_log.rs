@@ -191,6 +191,25 @@ pub fn store_cursor(name: &str) -> String {
     format!("chat_log:{name}")
 }
 
+/// A caller-facing warning when the chat capture was not already running, so
+/// lines from before this call may be missing from the log.
+pub fn capture_warning(install: &[(String, String)]) -> Option<&'static str> {
+    match install
+        .iter()
+        .find(|(r, _)| r == "chat")
+        .map(|(_, s)| s.as_str())
+    {
+        Some("ok") => None,
+        Some(s) if s.starts_with("installed") => Some(
+            "the chat capture was installed during this call; lines shown before now are not in this log. Read client_ui_state's chat tail for them.",
+        ),
+        Some("missing") => Some(
+            "the chat window is not loaded (not in the world yet): nothing is being captured.",
+        ),
+        _ => Some("the chat capture could not be read (see capture.lua_error)."),
+    }
+}
+
 impl Supervisor {
     /// `client_chat_log`. `since_seq` overrides the named cursor; `peek`
     /// reads without moving it.
@@ -230,6 +249,9 @@ impl Supervisor {
         }
         out["cursor"] = json!(cursor);
         out["capture"] = rep.to_json();
+        if let Some(w) = capture_warning(&rep.lua_install) {
+            out["capture_warning"] = json!(w);
+        }
         if meta.is_null() {
             out["meta_error"] = json!("channel names, colours and tabs could not be read");
         }
@@ -375,5 +397,20 @@ mod tests {
     #[test]
     fn cursors_are_namespaced_in_the_shared_store() {
         assert_eq!(store_cursor("default"), "chat_log:default");
+    }
+
+    #[test]
+    fn capture_warning_names_a_late_or_absent_capture() {
+        let s = |status: &str| vec![("chat".to_string(), status.to_string())];
+        assert!(capture_warning(&s("ok")).is_none());
+        assert!(capture_warning(&s("installed"))
+            .unwrap()
+            .contains("installed during this call"));
+        assert!(capture_warning(&s("installed_no_resubscribe")).is_some());
+        assert!(capture_warning(&s("missing"))
+            .unwrap()
+            .contains("not loaded"));
+        // No install line at all (the Lua read failed).
+        assert!(capture_warning(&[]).unwrap().contains("could not be read"));
     }
 }
