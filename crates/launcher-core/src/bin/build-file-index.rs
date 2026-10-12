@@ -63,7 +63,7 @@ fn check_artifact(path: &Path, size: u64, sha256: &str) -> Result<(), String> {
         return Err(format!("{name}: {len} bytes, the manifest says {size}"));
     }
     let actual = install::hash_file(path).map_err(|e| format!("{name}: {e}"))?;
-    if actual != sha256 {
+    if !actual.eq_ignore_ascii_case(sha256) {
         return Err(format!(
             "{name}: sha256 {actual} does not match the manifest's {sha256}"
         ));
@@ -114,6 +114,13 @@ fn run() -> Result<(), String> {
     let json = serde_json::to_string_pretty(&index).map_err(|e| e.to_string())?;
     std::fs::write(&out, format!("{json}\n")).map_err(|e| format!("{}: {e}", out.display()))?;
     let size = std::fs::metadata(&out).map_err(|e| e.to_string())?.len();
+    if size > file_index::MAX_FILE_INDEX_BYTES {
+        eprintln!(
+            "warning: {} is {size} bytes, over the {} byte cap; the launcher will refuse it and fall back",
+            out.display(),
+            file_index::MAX_FILE_INDEX_BYTES
+        );
+    }
     let sha256 = install::hash_file(&out).map_err(|e| e.to_string())?;
     println!(
         "\"file_index\": {{ \"blob\": \"<fill in>\", \"size\": {size}, \"sha256\": \"{sha256}\" }}"
