@@ -1,4 +1,4 @@
-//! The ten `lab doctor` checks, ported from tools/lab/cli/doctor.ps1.
+//! The ten `lab doctor` checks, ported from the retired tools/lab/cli/doctor.ps1.
 //! Every check is a pure function of [`Inputs`], which `system.rs` gathers.
 
 use std::path::{Path, PathBuf};

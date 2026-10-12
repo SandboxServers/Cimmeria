@@ -1,6 +1,6 @@
 //! `lab golden` itself. Everything outside the process (the child `uat`, the
 //! daemon endpoint, the default spec folder, stdout and stderr) is passed in,
-//! so tests stub it. Ports `golden.ps1`.
+//! so tests stub it. Ports the retired `golden.ps1`.
 
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};

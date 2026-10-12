@@ -1,5 +1,5 @@
 //! `lab record` exit-code mapping, status and transform over a stubbed daemon
-//! (ports test-record.ps1, "exit-code mapping" and "status and transform").
+//! (ports the retired test-record.ps1, "exit-code mapping" and "status and transform").
 
 mod record_support;
 

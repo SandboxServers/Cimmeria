@@ -133,7 +133,7 @@ fn unparsed_line_is_not_shown() {
     assert_eq!(masked("pasted-secret-on-its-own-line"), "<unparsed line>");
 }
 
-// 'the token never appears in env output' (env.ps1 listing, at the library level)
+// 'the token never appears in env output' (the retired env.ps1 listing, at the library level)
 #[test]
 fn a_masked_listing_never_holds_the_token() {
     let file = lines("# head\nFOO=1\nCIMMERIA_LAB_DAEMON_TOKEN=test-token-not-real\n# tail\n");

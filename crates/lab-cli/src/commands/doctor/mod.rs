@@ -97,7 +97,7 @@ pub fn render(ui: &Ui, results: &[Check]) -> String {
 mod tests {
     use crate::commands::{parse_ok, Command};
 
-    /// The `.EXAMPLE` line of doctor.ps1 parses.
+    /// The `.EXAMPLE` line of the retired doctor.ps1 parses.
     #[test]
     fn examples_parse() {
         assert!(matches!(parse_ok("doctor", &[]), Command::Doctor(_)));

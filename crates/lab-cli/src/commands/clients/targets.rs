@@ -1,7 +1,7 @@
 //! Which instances `lab clients stop` stops, refuses or skips, and the lines
 //! it prints. Pure: no process is touched and nothing is printed here. Port of
 //! `Select-StopTargets`, `Get-LeaseHeld`, `Get-LeaseWho` and the messages of
-//! tools/lab/cli/clients.ps1.
+//! the retired tools/lab/cli/clients.ps1.
 
 use serde_json::Value;
 

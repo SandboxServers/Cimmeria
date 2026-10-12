@@ -1,7 +1,7 @@
 //! `lab logs`: show the daemon log, filtered by instance or level, with
 //! tokens masked. `--follow` polls the file and stops on Ctrl+C (exit 0).
 
-use std::fs::File;
+use std::fs::{File, Metadata};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -52,6 +52,42 @@ pub struct Args {
 
 /// How often `--follow` looks at the file.
 pub const POLL: Duration = Duration::from_millis(500);
+
+/// What tells the file being followed from a different file at the same path:
+/// the creation time on Windows, the inode elsewhere.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FileId(pub u128);
+
+/// The identity of the file `meta` describes; `None` when the platform cannot
+/// say. (NTFS "tunnelling" can hand a file renamed into a just-freed name its
+/// predecessor's creation time, so a rotation is still mostly caught by the
+/// length check in [`was_replaced`].)
+#[cfg(windows)]
+pub fn file_id(meta: &Metadata) -> Option<FileId> {
+    let created = meta.created().ok()?;
+    let since = created.duration_since(std::time::UNIX_EPOCH).ok()?;
+    Some(FileId(since.as_nanos()))
+}
+
+/// The identity of the file `meta` describes (its inode).
+#[cfg(unix)]
+pub fn file_id(meta: &Metadata) -> Option<FileId> {
+    use std::os::unix::fs::MetadataExt;
+    Some(FileId(u128::from(meta.ino())))
+}
+
+/// No identity on other platforms; only the length check runs.
+#[cfg(not(any(windows, unix)))]
+pub fn file_id(_meta: &Metadata) -> Option<FileId> {
+    None
+}
+
+/// Whether the file at the path is no longer the one being read: it is shorter
+/// than the read position (truncated or rotated), or its identity changed (a
+/// new file, possibly longer already).
+pub fn was_replaced(pos: u64, len: u64, seen: Option<FileId>, now: Option<FileId>) -> bool {
+    len < pos || matches!((seen, now), (Some(a), Some(b)) if a != b)
+}
 
 /// Set by the Ctrl+C handler; `--follow` stops when it is set.
 static STOP: AtomicBool = AtomicBool::new(false);
@@ -121,8 +157,9 @@ pub fn paint_line(ui: &Ui, line: &str) -> String {
 /// `lab logs --follow`: prints the last `tail` lines of the file that pass
 /// `filter` (the raw tail is taken first, then filtered, so fewer can show),
 /// then polls every `poll` for appended bytes and prints each new complete
-/// line that passes. A file that shrinks (rotation) is read again from the
-/// top. A last line without its newline is held until the newline arrives.
+/// line that passes. A file that shrinks, or is replaced by another file at the
+/// same path (a different creation time or inode), is read again from the top.
+/// A last line without its newline is held until the newline arrives.
 /// Returns `Ok` when `stop` is set; an `Err` is a failed read of the first
 /// snapshot or a failed write to `out`.
 pub fn follow_file(
@@ -134,7 +171,11 @@ pub fn follow_file(
     poll: Duration,
     out: &mut dyn Write,
 ) -> io::Result<()> {
-    let bytes = std::fs::read(path)?;
+    let mut first = File::open(path)?;
+    let mut bytes = Vec::new();
+    first.read_to_end(&mut bytes)?;
+    let mut id = first.metadata().ok().as_ref().and_then(file_id);
+    drop(first);
     let mut pos = bytes.len() as u64;
     let text = String::from_utf8_lossy(&bytes);
     let raw: Vec<&str> = text.lines().collect();
@@ -156,10 +197,12 @@ pub fn follow_file(
             continue;
         };
         let len = meta.len();
-        if len < pos {
+        let now = file_id(&meta);
+        if was_replaced(pos, len, id, now) {
             pos = 0;
             pending.clear();
         }
+        id = now.or(id);
         if len == pos {
             continue;
         }

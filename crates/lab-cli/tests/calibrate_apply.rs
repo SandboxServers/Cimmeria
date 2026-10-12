@@ -1,5 +1,5 @@
 //! LX-12a: the diff target and --apply in a scratch repository created with
-//! `git init`. Ports checks [25]-[27] and [33]-[44] of test-calibrate.ps1.
+//! `git init`. Ports checks [25]-[27] and [33]-[44] of the retired test-calibrate.ps1.
 
 use std::fs;
 use std::path::{Path, PathBuf};

@@ -2,7 +2,7 @@
 //!
 //! A port of `Read-McpBody`, `New-McpSession`, `Send-McpRequest`,
 //! `Invoke-McpTool`, `Close-McpSession`, `Wait-UatLeaseFree` and
-//! `Hide-LeaseIds` from `tools/lab/cli/uat-lib.ps1`. The protocol is the
+//! `Hide-LeaseIds` from `the retired tools/lab/cli/uat-lib.ps1`. The protocol is the
 //! streamable-HTTP one: `initialize`, the `Mcp-Session-Id` it returns,
 //! `notifications/initialized`, then one POST per `tools/call`, whose reply
 //! is plain JSON or an SSE stream (the last `data:` line is the answer).

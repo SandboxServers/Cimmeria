@@ -1,6 +1,6 @@
 //! The child `lab uat` batch: its arguments, how it is started, its result
 //! and the run folders of its `batch.jsonl`. Ports `Get-GoldenBatchArgs`,
-//! `Get-GoldenRunDirs`, `ConvertFrom-GoldenBatchOutput` (golden-lib.ps1).
+//! `Get-GoldenRunDirs`, `ConvertFrom-GoldenBatchOutput` (the retired golden-lib.ps1).
 
 use std::io;
 use std::path::Path;

@@ -1,5 +1,5 @@
 //! LX-12b: `lab calibrate` through the real binary. Ports checks [45]-[47] of
-//! tools/lab/cli/test-calibrate.ps1.
+//! the retired tools/lab/cli/test-calibrate.ps1.
 
 use std::path::Path;
 use std::process::{Command, Output};

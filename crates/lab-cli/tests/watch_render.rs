@@ -1,5 +1,5 @@
 //! The text frame and the JSON line. Ports the render checks of
-//! tools/lab/cli/test-watch.ps1 (each check is named in a comment).
+//! the retired tools/lab/cli/test-watch.ps1 (each check is named in a comment).
 
 mod watch_support;
 
