@@ -35,6 +35,35 @@ pub const DEFAULT_SETTLE_MS: u64 = 1200;
 const POLL_MS: u64 = 100;
 /// Private slot for the `targetUnit` fallback.
 const FALLBACK_SLOT: i32 = LAB_SLOT_BASE - 1;
+/// The server's interaction range, metres, straight line
+/// (`MAX_INTERACT_DISTANCE` in `cimmeria-cell-world`, `interact_range.rs`): a
+/// right-click on an NPC farther away than this opens nothing, and the server
+/// logs only an info line. Mirrored here because the lab crate does not
+/// depend on the cell crates.
+pub const INTERACT_RANGE_M: f64 = 5.0;
+
+/// `{distance_m, interact_range_m, in_interact_range}` for a result, or null
+/// for a point click.
+fn range_json(range_m: Option<f64>) -> Value {
+    match range_m {
+        Some(d) => json!({
+            "distance_m": (d * 100.0).round() / 100.0,
+            "interact_range_m": INTERACT_RANGE_M,
+            "in_interact_range": d <= INTERACT_RANGE_M,
+        }),
+        None => Value::Null,
+    }
+}
+
+/// Why a right-click may have opened nothing: the target was out of range.
+fn range_hint(button: usize, range_m: Option<f64>) -> String {
+    match range_m {
+        Some(d) if button == 1 && d > INTERACT_RANGE_M => format!(
+            "; the target is {d:.1} m away, beyond the server's {INTERACT_RANGE_M} m interact range: stand 3.5-4.5 m from it"
+        ),
+        _ => String::new(),
+    }
+}
 
 /// What the click must achieve to pass.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize, schemars::JsonSchema)]
@@ -380,6 +409,7 @@ pub async fn run<W: WorldIo>(
         hover_verified: matches!(hover, Hover::Matched),
         face_json,
         found,
+        range_m,
     };
     click_and_observe(io, steps, &req, plan).await
 }
@@ -395,6 +425,7 @@ struct ClickPlan {
     hover_verified: bool,
     face_json: Value,
     found: Option<Found>,
+    range_m: Option<f64>,
 }
 
 /// Steps 4 and 5: click, then watch what the client did.
@@ -414,6 +445,7 @@ async fn click_and_observe<W: WorldIo>(
         hover_verified,
         face_json,
         found,
+        range_m,
     } = plan;
     // 4. Click and watch.
     let t_click = io.now_ms();
@@ -489,12 +521,16 @@ async fn click_and_observe<W: WorldIo>(
         "windows_opened": opened,
         "windows_closed": closed,
         "mouse_over_after": after.mouse_over,
+        "range": range_json(range_m),
     });
     if !ok {
         return Err(steps.fail_with(
             io.now_ms(),
             "observe",
-            format!("the click did not produce the expected {expect:?} within {settle} ms"),
+            format!(
+                "the click did not produce the expected {expect:?} within {settle} ms{}",
+                range_hint(button, range_m)
+            ),
             evidence,
         ));
     }
@@ -546,6 +582,18 @@ mod tests {
         assert!(!met(Expect::Window, Some(42), &before, &targeted));
         assert!(met(Expect::Any, Some(42), &before, &opened));
         assert!(met(Expect::Nothing, Some(42), &before, &before));
+    }
+
+    #[test]
+    fn a_far_right_click_gets_a_range_hint() {
+        assert!(range_hint(1, Some(6.4)).contains("6.4 m away"));
+        assert!(range_hint(1, Some(6.4)).contains("5 m interact range"));
+        assert_eq!(range_hint(0, Some(6.4)), "");
+        assert_eq!(range_hint(1, Some(4.2)), "");
+        assert_eq!(range_hint(1, None), "");
+        assert_eq!(range_json(Some(4.2))["in_interact_range"], true);
+        assert_eq!(range_json(Some(6.4))["in_interact_range"], false);
+        assert!(range_json(None).is_null());
     }
 
     #[test]

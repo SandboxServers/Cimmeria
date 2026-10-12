@@ -12,7 +12,7 @@ use std::f64::consts::FRAC_PI_2;
 use serde_json::{json, Value};
 
 use super::camera::WHEEL_NOTCH;
-use super::geometry::{horizontal_m, wrap_pi, Pose, Screen, Vec3};
+use super::geometry::{distance_m, horizontal_m, wrap_pi, Pose, Screen, Vec3};
 use super::io::{Projected, WorldIo};
 use super::lua::{UnitInfo, UnitSlots};
 use super::memory::{
@@ -119,6 +119,8 @@ pub struct Sim {
     /// includes the feet; `REAL_BODY_DZ` is a standing humanoid, whose feet
     /// hover nothing (probe B-P2).
     pub body_dz: Vec<f64>,
+    /// A right-click opens an entity's window only within this many metres, straight line, like the server.
+    pub interact_range_m: Option<f64>,
 }
 
 impl Sim {
@@ -165,6 +167,7 @@ impl Sim {
             avatar_hides: None,
             avatar_cover_dz: f64::INFINITY,
             body_dz: vec![-40.0, 0.0, 50.0, 90.0],
+            interact_range_m: None,
         }
     }
 
@@ -476,11 +479,18 @@ impl WorldIo for Sim {
             if under != 0 {
                 self.slots.insert(UNITS.target, under);
                 if button == 1 {
+                    let in_range = self.interact_range_m.is_none_or(|r| {
+                        self.entities
+                            .iter()
+                            .find(|e| e.id == under)
+                            .is_some_and(|e| distance_m(self.pos, e.pos) <= r)
+                    });
                     if let Some(w) = self
                         .entities
                         .iter()
                         .find(|e| e.id == under)
                         .and_then(|e| e.window.clone())
+                        .filter(|_| in_range)
                     {
                         if !self.windows.contains(&w) {
                             self.windows.push(w);
