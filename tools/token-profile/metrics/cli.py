@@ -120,14 +120,18 @@ def run_ledger(args):
 
 def run_github(args):
     """Write github.json for `args.repo` to `args.out` and print its count summary; 0 written, 2 on an error."""
+    stats = {"gh_calls": 0, "cache_hits": 0}
     try:
         if args.from_json:
             run = replay(args.from_json)
         else:
-            run = polite(lambda a: run_gh(a, cwd=args.repo))
+            run = polite(lambda a: run_gh(a, cwd=args.repo), cache_dir=args.cache, stats=stats)
         window = registry.load_config(args.config)["window"]
         campaigns = Campaigns(registry.load_campaigns(args.campaigns))
-        record = collect(run, args.since or window["since"][:10], campaigns, args.max_prs, window["until"])
+        pr_map = None
+        if args.ledger:
+            pr_map = {int(k): v for k, v in json.loads(Path(args.ledger).read_text(encoding="utf-8"))["pr_map"].items()}
+        record = collect(run, args.since or window["since"][:10], campaigns, args.max_prs, window["until"], pr_map)
     except (GhError, OSError, ValueError, KeyError) as e:
         print(f"status=error {e}", file=sys.stderr)
         return 2
@@ -140,7 +144,10 @@ def run_github(args):
         "prs_collected": len(record["prs"]),
         "merged": sum(1 for r in record["prs"] if r["merged"]),
         "ci_checked": sum(1 for r in record["prs"] if r["ci"]["runs"]),
+        "untagged_prs": record["untagged_prs"],
         "escaped_defects": {c: len(rows) for c, rows in record["escaped_defects"].items()},
+        "gh_calls": stats["gh_calls"],
+        "cache_hits": stats["cache_hits"],
     }
     print(json.dumps(summary, indent=2))
     return 0
@@ -166,6 +173,9 @@ def main(argv=None):
     gh.add_argument("--config", help="metrics config.json, whose window ends the collection (default: the package's)")
     gh.add_argument("--max-prs", type=int, default=None, help="collect CI for the first N PRs only (a trial)")
     gh.add_argument("--campaigns", default=None, help="campaign tags; default ingest/campaigns.json")
+    gh.add_argument("--ledger", default=None, help="ledger.json whose pr_map tags the PRs it names")
+    gh.add_argument("--cache", default=None, metavar="DIR",
+                    help="cache gh api answers in DIR so a failed run resumes (scratch only, never committed)")
     gh.add_argument("--from-json", default=None, metavar="DIR", help="replay saved gh answers, no network")
     args = ap.parse_args(argv)
     if args.cmd == "ledger":

@@ -6,6 +6,7 @@ writes to GitHub. Branch names are read to tag a PR's campaign and then dropped:
 no record returned from here carries one.
 """
 
+import hashlib
 import json
 import re
 import subprocess
@@ -19,19 +20,27 @@ PR_FIELDS = ("number,title,body,headRefName,baseRefName,createdAt,mergedAt,close
 ISSUE_FIELDS = "number,body,createdAt,closedAt,state,labels"
 CODE_PREFIXES = ("crates/", "tools/", "db/", ".github/")
 GATE = "ci gate"
-FAILED = {"failure", "timed_out", "startup_failure"}
+FAILED = {"failure", "timed_out", "startup_failure", "action_required"}
 # A fix or a revert, by title. A revert of a PR quotes its title: Revert "<title>".
 FIX_OR_REVERT = re.compile(r"(?i)^(fix|revert)")
 REVERT_OF = re.compile(r'^Revert "(.*)"$')
 CITE = re.compile(r"#(\d+)\b")
 MAX_COMMITS = 100
+PAGE = "?per_page=100"
 PAUSE_S = 0.2
-RETRY_WAIT_S = 60
+RETRY_WAITS_S = (60, 120, 300)
 REPLAY_FILES = ("gh_prs.json", "gh_checks.json", "gh_issues.json")
 
 
 class GhError(Exception):
-    """A gh call failed. The message names the call, never the token or the payload."""
+    """A gh call failed. The message names the call, never the token or the payload.
+
+    `retryable` marks a rate limit or a server error, the only failures `polite` retries.
+    """
+
+    def __init__(self, message, retryable=False):
+        super().__init__(message)
+        self.retryable = retryable
 
 
 def run_gh(args, cwd=None):
@@ -41,22 +50,46 @@ def run_gh(args, cwd=None):
     except (OSError, subprocess.SubprocessError) as e:
         raise GhError(f"gh {args[0]} could not run: {type(e).__name__}") from None
     if p.returncode != 0:
-        raise GhError(f"gh {args[0]} exited {p.returncode}: {p.stderr.strip()[:200]}")
-    return json.loads(p.stdout) if p.stdout.strip() else None
+        # Classified on the full stderr: a secondary rate limit's status code can sit past the truncated message.
+        retryable = bool(re.search(r"HTTP (403|429|5\d\d)", p.stderr)) or "rate limit" in p.stderr.lower()
+        raise GhError(f"gh {args[0]} exited {p.returncode}: {p.stderr.strip()[:200]}", retryable=retryable)
+    try:
+        return json.loads(p.stdout) if p.stdout.strip() else None
+    except ValueError:
+        raise GhError(f"gh {args[0]} printed invalid JSON") from None
 
 
-def polite(run):
-    """Wrap `run` with the rate-limit rules: a pause before each call, and one retry after 60 s on HTTP 403/429."""
+def polite(run, cache_dir=None, stats=None):
+    """Wrap `run` with the rate-limit rules: a pause before each call, and a retry after RETRY_WAITS_S on a retryable error.
+
+    An `api` answer is cached as JSON in `cache_dir` (keyed by the call's arguments), so a run that stopped
+    part way resumes from the answers it already has. `stats` ({gh_calls, cache_hits}) counts the work done.
+    """
+    stats = stats if stats is not None else {"gh_calls": 0, "cache_hits": 0}
 
     def call(args):
-        time.sleep(PAUSE_S)
-        try:
-            return run(args)
-        except GhError as e:
-            if not re.search(r"HTTP (403|429)", str(e)):
-                raise
-            time.sleep(RETRY_WAIT_S)
-            return run(args)
+        cached = None
+        if cache_dir and args[0] == "api":
+            key = hashlib.sha256(json.dumps(args).encode()).hexdigest()
+            cached = Path(cache_dir) / f"{key}.json"
+            if cached.is_file():
+                stats["cache_hits"] += 1
+                return json.loads(cached.read_text(encoding="utf-8"))
+        for attempt in range(len(RETRY_WAITS_S) + 1):
+            if attempt:
+                time.sleep(RETRY_WAITS_S[attempt - 1])
+            time.sleep(PAUSE_S)
+            stats["gh_calls"] += 1
+            try:
+                result = run(args)
+                break
+            except GhError as e:
+                if not e.retryable or attempt == len(RETRY_WAITS_S):
+                    raise
+        if cached:
+            cached.parent.mkdir(parents=True, exist_ok=True)
+            cached.write_text(json.dumps(result), encoding="utf-8")
+        return result
 
     return call
 
@@ -103,6 +136,21 @@ def _labels(issue):
     return {x["name"] if isinstance(x, dict) else x for x in issue.get("labels") or []}
 
 
+def _apart(a, b):
+    """True when both campaigns are known and differ. An untagged PR is never apart from anything."""
+    return a is not None and b is not None and a != b
+
+
+def _window(since, until):
+    """The gh search qualifiers for a window: created on or after `since`, and before `until` when it is given."""
+    return f"created:>={since}" + (f" created:<{until[:10]}" if until else "")
+
+
+def _before(created, until):
+    """True when an item created at `created` falls before `until` (an ISO timestamp), or when there is no bound."""
+    return until is None or _when(created) < _when(until)
+
+
 # -- reads -------------------------------------------------------------------
 def pr_record(raw, campaigns=None):
     """The PR fields the metrics use. Branch names become `campaign`; they are not kept."""
@@ -124,16 +172,6 @@ def pr_record(raw, campaigns=None):
     }
 
 
-def _window(since, until):
-    """The gh search qualifiers for a window: created on or after `since`, and before `until` when it is given."""
-    return f"created:>={since}" + (f" created:<{until[:10]}" if until else "")
-
-
-def _before(created, until):
-    """True when an item created at `created` falls before `until` (an ISO timestamp), or when there is no bound."""
-    return until is None or _when(created) < _when(until)
-
-
 def collect_prs(run, since, campaigns=None, until=None):
     """Every PR created in the window (`since` YYYY-MM-DD, `until` an ISO timestamp), as pr_record() dicts.
 
@@ -153,13 +191,13 @@ def collect_issues(run, since, until=None):
 
 def head_commits(run, pr):
     """The PR's commits, oldest first, as {sha, committed}. Only the first MAX_COMMITS are kept."""
-    rows = pages(run, f"repos/{{owner}}/{{repo}}/pulls/{pr['number']}/commits")
+    rows = pages(run, f"repos/{{owner}}/{{repo}}/pulls/{pr['number']}/commits{PAGE}")
     return [{"sha": c["sha"], "committed": c["commit"]["committer"]["date"]} for c in rows[:MAX_COMMITS]]
 
 
 def code_pr(run, number):
     """True when the PR changes a path under CODE_PREFIXES (the crates, tools, db and CI trees)."""
-    files = pages(run, f"repos/{{owner}}/{{repo}}/pulls/{number}/files")
+    files = pages(run, f"repos/{{owner}}/{{repo}}/pulls/{number}/files{PAGE}")
     return any((f.get("filename") or "").startswith(CODE_PREFIXES) for f in files)
 
 
@@ -167,12 +205,13 @@ def ci_result(run, sha):
     """The `ci gate` verdict for one commit, and the jobs that failed: {gate, failed_jobs}.
 
     gate is `none` when no check run is named `ci gate` (docs-only commits may skip
-    it) or it has not finished. `none` is not a failure.
+    it), it has not finished, or it was cancelled or skipped (a superseded push). `none`
+    is not a failure; only a conclusion in FAILED is one.
     """
-    runs = pages(run, f"repos/{{owner}}/{{repo}}/commits/{sha}/check-runs", key="check_runs")
+    runs = pages(run, f"repos/{{owner}}/{{repo}}/commits/{sha}/check-runs{PAGE}", key="check_runs")
     gates = sorted((r for r in runs if r.get("name") == GATE), key=lambda r: r.get("started_at") or "")
     conclusion = gates[-1].get("conclusion") if gates else None
-    gate = "none" if conclusion is None else ("success" if conclusion == "success" else "failure")
+    gate = "success" if conclusion == "success" else "failure" if conclusion in FAILED else "none"
     failed = sorted({r["name"] for r in runs if r.get("name") != GATE and r.get("conclusion") in FAILED})
     return {"gate": gate, "failed_jobs": failed}
 
@@ -198,23 +237,25 @@ def ci_summary(pr, commits, results):
 
 
 # -- escaped defects ---------------------------------------------------------
-def escaped_defects(prs, issues, campaign_of):
-    """Defects that escaped each campaign: {campaign: [{kind, number, cites, days_after_merge}]}.
+def defect_items(prs, issues, campaign_of):
+    """Every escaped-defect link as a flat list, before grouping by campaign.
 
-    `campaign_of(number)` gives a PR's campaign. A merged PR N of campaign C is cited by:
+    Each row is {kind, number, cites, days_after_merge, campaign, citing_campaign}; `campaign` is the cited PR's.
+    `campaign_of(number)` gives a PR's campaign, None when untagged. A merged PR N of campaign C is cited by:
     (a) a merged fix or revert PR outside C whose text cites #N and that merged after N;
     (b) a closed `bug` issue whose body cites #N and that was created after N merged;
     (c) a merged `Revert "<title>"` PR outside C quoting the title of N.
-    `kind` is pr, revert or issue; `number` is the citing item.
+    `kind` is pr, revert or issue; `number` is the citing item. A link needs both campaigns known (a, c) or N's.
     """
     merged = {p["number"]: p for p in prs if p.get("mergedAt")}
     by_title = {p["title"]: p for p in merged.values()}
     found = {}
 
-    def hit(campaign, kind, number, target, when):
+    def hit(kind, number, target, when, citing):
         days = round((_when(when) - _when(target["mergedAt"])).total_seconds() / 86400, 1)
-        row = {"kind": kind, "number": number, "cites": target["number"], "days_after_merge": days}
-        found.setdefault(campaign, {})[(kind, number, target["number"])] = row
+        found[(kind, number, target["number"])] = {
+            "kind": kind, "number": number, "cites": target["number"], "days_after_merge": days,
+            "campaign": campaign_of(target["number"]), "citing_campaign": citing}
 
     for p in prs:
         if not p.get("mergedAt") or not FIX_OR_REVERT.match(p["title"]):
@@ -222,37 +263,55 @@ def escaped_defects(prs, issues, campaign_of):
         kind = "revert" if p["title"].lower().startswith("revert") else "pr"
         for n in {int(x) for x in CITE.findall(p["title"] + "\n" + p["body"])}:
             target = merged.get(n)
-            if target and campaign_of(n) != campaign_of(p["number"]) and _when(p["mergedAt"]) > _when(target["mergedAt"]):
-                hit(campaign_of(n), kind, p["number"], target, p["mergedAt"])
+            citing = campaign_of(p["number"])
+            if target and _apart(campaign_of(n), citing) and _when(p["mergedAt"]) > _when(target["mergedAt"]):
+                hit(kind, p["number"], target, p["mergedAt"], citing)
 
     for i in issues:
         if str(i.get("state", "")).lower() != "closed" or "bug" not in _labels(i):
             continue
         for n in {int(x) for x in CITE.findall(i.get("body") or "")}:
             target = merged.get(n)
-            if target and _when(i["createdAt"]) > _when(target["mergedAt"]):
-                hit(campaign_of(n), "issue", i["number"], target, i["createdAt"])
+            if target and campaign_of(n) is not None and _when(i["createdAt"]) > _when(target["mergedAt"]):
+                hit("issue", i["number"], target, i["createdAt"], None)
 
     for p in prs:
         quoted = REVERT_OF.match(p["title"])
         target = by_title.get(quoted.group(1)) if quoted and p.get("mergedAt") else None
-        if target and campaign_of(target["number"]) != campaign_of(p["number"]) \
+        citing = campaign_of(p["number"])
+        if target and _apart(campaign_of(target["number"]), citing) \
                 and _when(p["mergedAt"]) > _when(target["mergedAt"]):
-            hit(campaign_of(target["number"]), "revert", p["number"], target, p["mergedAt"])
+            hit("revert", p["number"], target, p["mergedAt"], citing)
 
-    return {c: sorted(rows.values(), key=lambda r: (r["number"], r["cites"])) for c, rows in found.items()}
+    return sorted(found.values(), key=lambda r: (r["campaign"], r["number"], r["cites"]))
+
+
+def group_defects(items):
+    """The defect items grouped by the cited PR's campaign: {campaign: [{kind, number, cites, days_after_merge}]}."""
+    grouped = {}
+    for row in items:
+        grouped.setdefault(row["campaign"], []).append(
+            {k: row[k] for k in ("kind", "number", "cites", "days_after_merge")})
+    return grouped
+
+
+def escaped_defects(prs, issues, campaign_of):
+    """Defects that escaped each campaign: {campaign: [{kind, number, cites, days_after_merge}]}. See defect_items()."""
+    return group_defects(defect_items(prs, issues, campaign_of))
 
 
 # -- the whole run -----------------------------------------------------------
-def collect(run, since, campaigns=None, max_prs=None, until=None):
+def collect(run, since, campaigns=None, max_prs=None, until=None, pr_map=None):
     """The github.json record: per PR its CI summary (for the first max_prs PRs), and the escaped defects.
 
     The window is `since` (YYYY-MM-DD) up to `until` (an ISO timestamp, exclusive; no bound when None).
+    A PR's campaign is its `pr_map` entry (the ledger's) when it has one, else its branch or title tag.
+    An untagged PR stays untagged: it is never grouped into a campaign of its own.
     The output carries numbers, campaign tags and verdicts only: no titles, bodies, branches or files.
     """
     prs = collect_prs(run, since, campaigns, until)
     issues = collect_issues(run, since, until)
-    tags = {p["number"]: p["campaign"] or f"pr-{p['number']}" for p in prs}
+    tags = {p["number"]: (pr_map or {}).get(p["number"]) or p["campaign"] for p in prs}
     rows = []
     for pr in prs[:max_prs]:
         commits = head_commits(run, pr)
@@ -266,5 +325,6 @@ def collect(run, since, campaigns=None, max_prs=None, until=None):
             "code_pr": code_pr(run, pr["number"]),
             "ci": ci_summary(pr, commits, results),
         })
-    defects = escaped_defects(prs, issues, lambda n: tags.get(n))
-    return {"since": since, "until": until, "prs": rows, "escaped_defects": defects}
+    items = defect_items(prs, issues, lambda n: tags.get(n))
+    return {"since": since, "until": until, "prs": rows, "untagged_prs": sum(t is None for t in tags.values()),
+            "escaped_defects": group_defects(items), "defect_items": items}

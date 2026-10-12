@@ -9,6 +9,8 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 from ingest.campaigns import Campaigns
 
@@ -97,6 +99,69 @@ class GithubTests(unittest.TestCase):
         self.assertEqual([p["number"] for p in prs], [1])
         self.assertIn("created:>=2026-09-21 created:<2026-10-13", searches[0])
 
+    def test_a_retryable_error_waits_and_is_retried(self):
+        calls = []
+
+        def run(args):
+            calls.append(args)
+            if len(calls) < 3:
+                raise gh.GhError("limited", retryable=True)
+            return []
+
+        with mock.patch.object(gh.time, "sleep") as sleep:
+            self.assertEqual(gh.polite(run)(["api", "x"]), [])
+        waits = [c.args[0] for c in sleep.call_args_list if c.args[0] != gh.PAUSE_S]
+        self.assertEqual(waits, list(gh.RETRY_WAITS_S[:2]))
+
+    def test_a_non_retryable_error_raises_at_once(self):
+        def run(args):
+            raise gh.GhError("bad")
+
+        with mock.patch.object(gh.time, "sleep") as sleep, self.assertRaises(gh.GhError):
+            gh.polite(run)(["api", "x"])
+        self.assertEqual([c.args[0] for c in sleep.call_args_list], [gh.PAUSE_S])
+
+    def test_a_secondary_limit_is_retryable_when_its_status_is_past_the_truncated_message(self):
+        result = SimpleNamespace(returncode=1, stdout="", stderr="x" * 400 + " (HTTP 403)")
+        with mock.patch.object(gh.subprocess, "run", return_value=result), self.assertRaises(gh.GhError) as ctx:
+            gh.run_gh(["api", "x"])
+        self.assertTrue(ctx.exception.retryable)
+
+    def test_a_cached_api_answer_is_fetched_once(self):
+        calls = []
+
+        def run(args):
+            calls.append(args)
+            return []
+
+        stats = {"gh_calls": 0, "cache_hits": 0}
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(gh.time, "sleep"):
+            call = gh.polite(run, cache_dir=tmp, stats=stats)
+            call(["api", "x"])
+            call(["api", "x"])
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(stats, {"gh_calls": 1, "cache_hits": 1})
+
+    def test_cancelled_and_skipped_gates_are_none_and_a_timed_out_gate_is_a_failure(self):
+        def gate(conclusion):
+            return lambda args: [{"check_runs": [{"name": gh.GATE, "conclusion": conclusion}]}]
+
+        for conclusion in ("cancelled", "skipped", None):
+            with self.subTest(conclusion=conclusion):
+                self.assertEqual(gh.ci_result(gate(conclusion), "x")["gate"], "none")
+        self.assertEqual(gh.ci_result(gate("timed_out"), "x")["gate"], "failure")
+
+    def test_a_cancelled_first_push_is_not_a_failed_first_attempt(self):
+        commits = [{"sha": "A", "committed": "2026-10-01T00:00:00Z"}, {"sha": "B", "committed": "2026-10-01T01:00:00Z"}]
+        results = {"A": {"gate": "none", "failed_jobs": []}, "B": {"gate": "success", "failed_jobs": []}}
+        self.assertEqual(gh.ci_summary({"mergedAt": None}, commits, results),
+                         {"first_attempt": True, "overall": True, "runs": 1})
+
+    def test_untagged_prs_are_never_an_escaped_defect(self):
+        prs = [{"number": 1, "title": "feat: a", "body": "", "mergedAt": "2026-10-01T00:00:00Z"},
+               {"number": 2, "title": "fix(x): y (#1)", "body": "", "mergedAt": "2026-10-02T00:00:00Z"}]
+        self.assertEqual(gh.escaped_defects(prs, [], lambda n: None), {})
+
 
 class CliSmokeTest(unittest.TestCase):
     def test_replay_writes_github_json_and_a_count_summary(self):
@@ -107,10 +172,29 @@ class CliSmokeTest(unittest.TestCase):
             record = json.loads((Path(tmp) / "github.json").read_text(encoding="utf-8"))
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(out.getvalue()), {
-            "since": "2026-09-21", "prs_collected": 4, "merged": 4, "ci_checked": 3,
-            "escaped_defects": {"pr-101": 2},
+            "since": "2026-09-21", "prs_collected": 4, "merged": 4, "ci_checked": 3, "untagged_prs": 4,
+            "escaped_defects": {}, "gh_calls": 0, "cache_hits": 0,
         })
         self.assertEqual([r["ci"]["runs"] for r in record["prs"]], [1, 2, 0, 1])
+
+    def test_campaigns_file_tags_the_prs_it_names(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rules = Path(tmp) / "campaigns.json"
+            rules.write_text(json.dumps({"lab-record": {"prefixes": ["lab/"]}}), encoding="utf-8")
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                main(["github", "--repo", ".", "--out", tmp, "--from-json", str(FIXTURES), "--campaigns", str(rules)])
+        self.assertEqual(json.loads(out.getvalue())["escaped_defects"], {"lab-record": 1})
+
+    def test_ledger_pr_map_tags_the_prs_it_names(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ledger = Path(tmp) / "ledger.json"
+            ledger.write_text(json.dumps({"pr_map": {"101": "lab-record"}}), encoding="utf-8")
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                main(["github", "--repo", ".", "--out", tmp, "--from-json", str(FIXTURES), "--ledger", str(ledger)])
+            record = json.loads((Path(tmp) / "github.json").read_text(encoding="utf-8"))
+        self.assertEqual(json.loads(out.getvalue())["escaped_defects"], {"lab-record": 1})
         self.assertNotIn("headRefName", json.dumps(record))
 
 
