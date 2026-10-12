@@ -51,6 +51,13 @@ def _shown(value, kind):
     return num(value)
 
 
+def _plural(value, noun):
+    """A count with its noun, singular for one: "1 request", "2 requests"; n/a when the count is missing."""
+    if value is None:
+        return NA
+    return f"{num(value)} {noun}" if value == 1 else f"{num(value)} {noun}s"
+
+
 def _regime_value(regime, key):
     """One comparison metric from a roll-up; the two cost-per-PR figures live inside cost_per_pr."""
     if key.startswith("cost_per_pr_"):
@@ -190,8 +197,8 @@ def _own_cost_blocks(self_cost):
     rows = [[role, _shown(value, "usd")] for role, value in sorted((self_cost.get("by_role") or {}).items())]
     return [
         table(["role", "USD"], rows),
-        f"Total {_shown(self_cost.get('total_usd'), 'usd')} over {_shown(self_cost.get('requests'), 'num')} requests "
-        f"in {_shown(self_cost.get('sessions'), 'num')} sessions.",
+        f"Total {_shown(self_cost.get('total_usd'), 'usd')} over {_plural(self_cost.get('requests'), 'request')} "
+        f"in {_plural(self_cost.get('sessions'), 'session')}.",
         "Measured at close-out; excludes the close-out session's own tail.",
     ]
 

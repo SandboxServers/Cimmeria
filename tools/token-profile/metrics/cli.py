@@ -1,6 +1,7 @@
 """Command line: campaign metrics. `registry` checks the campaign rules; `ledger` parses the packet tables of the
 ledgers; `overstep` finds work a cheaper tier should have done; `cost` prices the profiler's requests per campaign
-(CM-03); `github` collects PRs, CI and escaped defects from GitHub (read-only).
+(CM-03); `github` collects PRs, CI and escaped defects from GitHub (read-only); `report` writes the campaign data and
+reports from the five input files, with the campaign's own sessions priced in (CM-08k).
 
     python tools/token-profile/metrics registry --repo . [--check] [--config <json>] [--campaigns <json>]
     python tools/token-profile/metrics ledger --repo . --out <dir>
@@ -9,6 +10,7 @@ ledgers; `overstep` finds work a cheaper tier should have done; `cost` prices th
     python tools/token-profile/metrics cost --db <profile.sqlite> --out <dir> [--config <json>] [--ledger <json>] [--since T] [--until T]
     python tools/token-profile/metrics github --repo . --out <dir> [--since 2026-09-21] [--config <json>]
         [--max-prs N] [--campaigns <file>] [--from-json <dir>]
+    python tools/token-profile/metrics report --inputs <dir> --out <dir> [--db <sqlite> --self-session <id> ...] [--config <json>]
 
 Exit status: 0 ok; 1 with registry --check, the campaign rules have a problem; 2 an input or output error;
 3 the privacy gate refused the output, nothing was written.
@@ -31,9 +33,15 @@ from ingest.campaigns import Campaigns
 from ingest.prices import CURRENT, SOURCE
 from report.db import ReportError, open_db
 from report.scrub import PrivacyError, Scrubber
+from reporting.inputs import FILES, load_inputs
+from reporting.self_apply import apply_self_cost
+from reporting.self_cost import load_self_cost
+from reporting.write import build_outputs, write_outputs
 
 from . import cost, ledger, overstep, packets, registry
 from .github import GhError, collect, polite, replay, run_gh
+
+OWN_CAMPAIGN = "campaign-metrics"
 
 
 def git_log(repo, failures):
@@ -222,6 +230,35 @@ def run_packets(args):
     return 0
 
 
+def run_report(args):
+    """Write the campaign data and reports to `args.out`, pricing the own sessions in when `--self-session` names
+    them. Prints counts only. Exit 0; 2 on an input or output error; 3 when the privacy gate refuses the output."""
+    try:
+        registry.load_config(args.config)
+        if args.self_session and not args.db:
+            print("status=error self-session-needs-db", file=sys.stderr)
+            return 2
+        inputs = load_inputs(args.inputs)
+        if len(inputs["missing"]) == len(FILES):
+            print("status=error no inputs found", file=sys.stderr)
+            return 2
+        self_cost = None
+        if args.self_session:
+            pr_numbers = [int(pr) for pr, name in inputs["ledger"].get("pr_map", {}).items() if name == OWN_CAMPAIGN]
+            self_cost = load_self_cost(args.db, args.self_session, OWN_CAMPAIGN, pr_numbers)
+            inputs = apply_self_cost(inputs, self_cost, OWN_CAMPAIGN)
+        written = write_outputs(build_outputs(inputs, self_cost=self_cost), args.out)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, sqlite3.Error, ReportError) as e:
+        print(f"status=error {type(e).__name__}", file=sys.stderr)
+        return 2
+    except PrivacyError as e:
+        print(f"status=refused {e}", file=sys.stderr)
+        return 3
+    print(json.dumps({"campaigns": sum(p.startswith("reports/") and p != "reports/summary.md" for p in written),
+                      "files": len(written), "self_sessions": self_cost["sessions"] if self_cost else 0}))
+    return 0
+
+
 def main(argv=None):
     """Run the subcommand and return its exit status."""
     ap = argparse.ArgumentParser(prog="token-profile metrics", description=__doc__.split("\n\n")[0])
@@ -267,6 +304,12 @@ def main(argv=None):
     ovs.add_argument("--ledger", help="ledger.json from the ledger subcommand; without it no campaign is priced")
     ovs.add_argument("--out", required=True, help="directory for overstep.json")
     ovs.add_argument("--config", help="metrics config.json (default: the package's)")
+    rep = sub.add_parser("report", help="campaign data and Markdown reports, with the own-session cost")
+    rep.add_argument("--inputs", required=True, help="folder with the cost, ledger, github, packets and overstep .json")
+    rep.add_argument("--out", required=True, help="directory for the data/ and reports/ folders")
+    rep.add_argument("--db", help="the profiler's SQLite database, opened read-only (needed by --self-session)")
+    rep.add_argument("--self-session", action="append", metavar="ID", help="a coordinator session to price (repeatable)")
+    rep.add_argument("--config", help="metrics config.json (default: the package's)")
     args = ap.parse_args(argv)
     if args.cmd == "ledger":
         return run_ledger(args)
@@ -278,6 +321,8 @@ def main(argv=None):
         return run_github(args)
     if args.cmd == "overstep":
         return run_overstep(args)
+    if args.cmd == "report":
+        return run_report(args)
     try:
         config = registry.load_config(args.config)
         campaigns = registry.load_campaigns(args.campaigns)

@@ -70,6 +70,15 @@ class AssembleCoreTest(unittest.TestCase):
         self.assertIn("regime_gap", core)
         self.assertEqual(core["packet_rows"], [])
 
+    def test_missing_packets_record_keeps_cost_regime(self):
+        # A campaign the own-session cost created is mixed by its cost record; no packets record must not relabel it old.
+        loaded = copy.deepcopy(self.loaded)
+        del loaded["packets"]["campaigns"]["beta-haiku"]
+        loaded["cost"]["campaigns"]["beta-haiku"]["regime"] = "mixed"
+        core = self.assemble("beta-haiku", loaded)
+        self.assertEqual(core["regime"], "mixed")
+        self.assertNotIn("regime_gap", core)
+
     def test_empty_packets_and_ledger_docs(self):
         # A missing input file loads as {}; the merge must still produce a record with gaps.
         loaded = copy.deepcopy(self.loaded)
