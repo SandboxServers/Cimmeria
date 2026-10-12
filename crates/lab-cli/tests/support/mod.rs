@@ -1,6 +1,7 @@
 //! Shared test support: the environment lock and guard, and a stub HTTP server.
 #![allow(dead_code)]
 
+use std::collections::{HashMap, VecDeque};
 use std::ffi::OsString;
 use std::io::{Read, Write};
 use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
@@ -10,6 +11,7 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use cimmeria_lab_cli::daemon::status::Endpoint;
+use serde_json::{json, Value};
 
 /// Tests that change the process environment hold this lock (nextest gives
 /// each test its own process, but `cargo test` runs them as threads of one).
@@ -82,6 +84,91 @@ struct Route {
     body: String,
 }
 
+/// What a scripted `tools/call` answers.
+#[derive(Debug, Clone)]
+pub enum ToolReply {
+    /// The tool's result: sent as the text of the first content item (the
+    /// client parses it back into JSON).
+    Json(Value),
+    /// The tool ran and said no (`isError`), with this text.
+    Error(String),
+}
+
+/// The MCP half of a stub: `GET /status` answers `status`; `POST /mcp` answers
+/// `initialize` (with a session id), `notifications/initialized` (202) and
+/// `tools/call` by tool name from `tools`, one scripted reply per call, in
+/// order; `DELETE /mcp` answers 200. A call to a tool with nothing left in its
+/// script gets an `isError` reply naming the tool.
+pub struct McpScript {
+    status: String,
+    tools: Mutex<HashMap<String, VecDeque<ToolReply>>>,
+}
+
+impl McpScript {
+    /// `(status, extra header lines, body)` for a request this script answers,
+    /// else `None` (the stub's routes then decide).
+    fn answer(&self, method: &str, path: &str, body: &str) -> Option<(u16, &'static str, String)> {
+        if method.eq_ignore_ascii_case("GET") && path == "/status" {
+            return Some((200, "", self.status.clone()));
+        }
+        if path != "/mcp" {
+            return None;
+        }
+        if method.eq_ignore_ascii_case("DELETE") {
+            return Some((200, "", String::new()));
+        }
+        if !method.eq_ignore_ascii_case("POST") {
+            return None;
+        }
+        let request: Value = serde_json::from_str(body).unwrap_or(Value::Null);
+        let id = request.get("id").cloned().unwrap_or(Value::Null);
+        match request.get("method").and_then(Value::as_str) {
+            Some("initialize") => Some((
+                200,
+                "Mcp-Session-Id: stub-session\r\n",
+                json!({"jsonrpc": "2.0", "id": id, "result": {
+                    "protocolVersion": "2025-06-18",
+                    "capabilities": {},
+                    "serverInfo": {"name": "stub", "version": "0"},
+                }})
+                .to_string(),
+            )),
+            Some("notifications/initialized") => Some((202, "", String::new())),
+            Some("tools/call") => {
+                let name = request
+                    .pointer("/params/name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                let next = self
+                    .tools
+                    .lock()
+                    .expect("script lock")
+                    .get_mut(&name)
+                    .and_then(VecDeque::pop_front);
+                let result = match next {
+                    Some(ToolReply::Json(v)) => {
+                        json!({"content": [{"type": "text", "text": v.to_string()}]})
+                    }
+                    Some(ToolReply::Error(m)) => {
+                        json!({"content": [{"type": "text", "text": m}], "isError": true})
+                    }
+                    None => json!({
+                        "content": [{"type": "text", "text": format!("no scripted reply for {name}")}],
+                        "isError": true,
+                    }),
+                };
+                Some((
+                    200,
+                    "",
+                    json!({"jsonrpc": "2.0", "id": id, "result": result}).to_string(),
+                ))
+            }
+            _ => None,
+        }
+    }
+}
+
 /// A stub HTTP server on `127.0.0.1:0`: one request per connection, answered
 /// from `routes`, every request recorded. Stops when dropped.
 pub struct StubServer {
@@ -96,6 +183,33 @@ impl StubServer {
     /// none gets `404 not found`. The returned [`Endpoint`] points at the
     /// stub and carries [`STUB_TOKEN`].
     pub fn start(routes: Vec<(&str, &str, u16, &str)>) -> (StubServer, Endpoint) {
+        Self::start_with(routes, None)
+    }
+
+    /// A stub that speaks the daemon's MCP protocol: `GET /status` answers
+    /// `status_body`, and each `tools/call` of a tool named in `tools` gets its
+    /// next scripted reply (see [`McpScript`]). One request is served at a time,
+    /// so the script is consumed in the order the client calls.
+    pub fn start_mcp(
+        status_body: &str,
+        tools: Vec<(&str, Vec<ToolReply>)>,
+    ) -> (StubServer, Endpoint) {
+        let script = McpScript {
+            status: status_body.to_string(),
+            tools: Mutex::new(
+                tools
+                    .into_iter()
+                    .map(|(name, replies)| (name.to_string(), replies.into_iter().collect()))
+                    .collect(),
+            ),
+        };
+        Self::start_with(Vec::new(), Some(script))
+    }
+
+    fn start_with(
+        routes: Vec<(&str, &str, u16, &str)>,
+        mcp: Option<McpScript>,
+    ) -> (StubServer, Endpoint) {
         let routes: Vec<Route> = routes
             .into_iter()
             .map(|(method, path, status, body)| Route {
@@ -118,7 +232,7 @@ impl StubServer {
                         break;
                     }
                     let Ok(stream) = stream else { continue };
-                    handle_connection(stream, &routes, &requests);
+                    handle_connection(stream, &routes, mcp.as_ref(), &requests);
                 }
             })
         };
@@ -141,6 +255,20 @@ impl StubServer {
     pub fn requests(&self) -> Vec<RecordedRequest> {
         self.requests.lock().expect("requests lock").clone()
     }
+
+    /// Every `tools/call` received so far as `(tool name, arguments)`, in order.
+    pub fn tool_calls(&self) -> Vec<(String, Value)> {
+        self.requests()
+            .iter()
+            .filter(|r| r.method == "POST")
+            .filter_map(|r| serde_json::from_str::<Value>(&r.body).ok())
+            .filter(|v| v.get("method").and_then(Value::as_str) == Some("tools/call"))
+            .map(|v| {
+                let name = v["params"]["name"].as_str().unwrap_or("").to_string();
+                (name, v["params"]["arguments"].clone())
+            })
+            .collect()
+    }
 }
 
 impl Drop for StubServer {
@@ -157,6 +285,7 @@ impl Drop for StubServer {
 fn reason(status: u16) -> &'static str {
     match status {
         200 => "OK",
+        202 => "Accepted",
         401 => "Unauthorized",
         404 => "Not Found",
         500 => "Internal Server Error",
@@ -164,7 +293,12 @@ fn reason(status: u16) -> &'static str {
     }
 }
 
-fn handle_connection(mut stream: TcpStream, routes: &[Route], log: &Mutex<Vec<RecordedRequest>>) {
+fn handle_connection(
+    mut stream: TcpStream,
+    routes: &[Route],
+    mcp: Option<&McpScript>,
+    log: &Mutex<Vec<RecordedRequest>>,
+) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
     let mut buf: Vec<u8> = Vec::new();
     let mut chunk = [0u8; 1024];
@@ -200,19 +334,25 @@ fn handle_connection(mut stream: TcpStream, routes: &[Route], log: &Mutex<Vec<Re
         }
     }
     let path = target.split('?').next().unwrap_or_default().to_string();
+    let body_text = String::from_utf8_lossy(&body).into_owned();
     log.lock().expect("requests lock").push(RecordedRequest {
         method: method.clone(),
         path: path.clone(),
         headers,
-        body: String::from_utf8_lossy(&body).into_owned(),
+        body: body_text.clone(),
     });
-    let (status, text) = routes
-        .iter()
-        .find(|r| r.method.eq_ignore_ascii_case(&method) && r.path == path)
-        .map(|r| (r.status, r.body.clone()))
-        .unwrap_or((404, "not found".to_string()));
+    let (status, extra, text) = mcp
+        .and_then(|script| script.answer(&method, &path, &body_text))
+        .unwrap_or_else(|| {
+            let (status, text) = routes
+                .iter()
+                .find(|r| r.method.eq_ignore_ascii_case(&method) && r.path == path)
+                .map(|r| (r.status, r.body.clone()))
+                .unwrap_or((404, "not found".to_string()));
+            (status, "", text)
+        });
     let response = format!(
-        "HTTP/1.1 {status} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{text}",
+        "HTTP/1.1 {status} {}\r\nContent-Type: application/json\r\n{extra}Content-Length: {}\r\nConnection: close\r\n\r\n{text}",
         reason(status),
         text.len()
     );
@@ -334,6 +474,7 @@ pub fn run_lab_in(home: &std::path::Path, args: &[&str]) -> std::process::Output
         .env("CIMMERIA_LAB_PROFILE_ROOT", &instances)
         .env("CIMMERIA_LAB_DAEMON_TOKEN", STUB_TOKEN)
         .env_remove("NO_COLOR")
+        .env_remove("CIMMERIA_LAB_UAT_DIR")
         .output()
         .expect("the lab binary should start")
 }
