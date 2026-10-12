@@ -208,6 +208,10 @@ class StopReasonTest(unittest.TestCase):
         self.assertEqual(packets.stop_class(_stop("x", ended_in_api_error=1, api_error_kind="rate_limit")), "error")
         self.assertEqual(packets.stop_class(_stop("x", last_stop_reason="tool_use")), "tool_use")
 
+    def test_missing_stop_reason_is_no_record_and_max_tokens_is_error(self):
+        self.assertEqual(packets.stop_class(_stop("x", last_stop_reason=None)), "no_record")
+        self.assertEqual(packets.stop_class(_stop("x", last_stop_reason="max_tokens")), "error")
+
     def test_background_stall_is_checked_before_context(self):
         stop = _stop("x", last_stop_reason="tool_use", last_context_tokens=96_000, last_tool_background=1)
         self.assertEqual(packets.stop_reason(stop), "stalled-background")
@@ -267,6 +271,17 @@ class JoinTest(FixtureTest):
         self.assertEqual(stop_context["by_stop"], {"end_turn": 6, "tool_use": 1, "error": 0, "no_record": 1})
         self.assertEqual(stop_context["context_at_stop"]["max"], 96_000)
         self.assertEqual(stop_context["share_above_90k"], 0.29)
+
+    def test_api_error_stop_counts_by_kind_and_by_stop(self):
+        stops = dict(self.db["stops"], **{"c-coder": _stop("c-coder", ended_in_api_error=1, api_error_kind="rate_limit")})
+        stop_context = packets.join_campaigns(_ledger(), dict(self.db, stops=stops), _github(), CONFIG)[
+            "campaigns"][CAMPAIGN]["stop_context"]
+        self.assertEqual(stop_context["by_error_kind"]["rate_limit"], 1)
+        self.assertEqual(stop_context["by_stop"]["error"], 1)
+
+    def test_sonnet_agent_in_another_worktree_does_not_escalate(self):
+        other = _agent("other-sonnet", WORKTREE.format("lr-03"), "2026-10-01T08:30:00Z", model="sonnet")
+        self.assertFalse(_record(self.join(agents=[AGENTS[0], other]), "LR-01")["escalated"])
 
     def test_sessions_count_the_unmapped_scratch_agent(self):
         sessions = self.join()["sessions"]
@@ -407,6 +422,14 @@ class LoadDbTest(unittest.TestCase):
         self.assertEqual(by_id["n-1"]["worktree"], WORKTREE.format("lr-01"))
         only_n1 = dict(self.db, agents=[dict(by_id["n-1"], agent_type="lab-driver")])
         self.assertEqual(packets.join_campaigns(_ledger(), only_n1, _github(), CONFIG)["sessions"]["mapped"], 1)
+
+    def test_a_schema_below_6_is_refused(self):
+        db = sqlite3.connect(self.path)
+        db.execute("UPDATE meta SET value = '5' WHERE key = 'schema_version'")
+        db.commit()
+        db.close()
+        with self.assertRaisesRegex(ValueError, "schema_version 5, re-ingest"):
+            packets.load_db(self.path)
 
     def test_branch_hint_is_the_branch_observed_by_the_last_record(self):
         by_id = {a["agent_id"]: a for a in self.db["agents"]}
