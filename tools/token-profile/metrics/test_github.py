@@ -209,6 +209,39 @@ class GithubTests(unittest.TestCase):
         self.assertEqual(gh.ci_summary({"mergedAt": None}, commits, results),
                          {"first_attempt": False, "overall": True, "runs": 2})
 
+    def test_an_untagged_pr_makes_no_per_pr_call_and_max_prs_caps_the_tagged_ones(self):
+        calls = []
+
+        def run(args):
+            calls.append(args)
+            return self.run(args)
+
+        def per_pr(args):
+            return args[0] == "api" and ("/pulls/" in args[1] or "/commits/" in args[1])
+
+        gh.collect(run, "2026-09-21", Campaigns({}))
+        self.assertEqual([a for a in calls if per_pr(a)], [])
+        calls.clear()
+        record = gh.collect(run, "2026-09-21", Campaigns({"lab-record": {"prefixes": ["lab/"]}}), max_prs=1)
+        self.assertEqual([r["number"] for r in record["prs"] if r["ci"]], [101])
+        self.assertTrue(any(per_pr(a) for a in calls))
+        self.assertFalse(any("/pulls/102/" in a[1] for a in calls if a[0] == "api"))
+
+    def test_a_traced_pr_records_its_commits_oldest_first(self):
+        record = gh.collect(self.run, "2026-09-21", Campaigns({"lab-record": {"prefixes": ["lab/"]}}))
+        row = {r["number"]: r for r in record["prs"]}[102]
+        self.assertEqual(row["commits"], [{"sha": "b101", "committed": "2026-10-02T09:00:00Z"},
+                                          {"sha": "b102", "committed": "2026-10-02T11:00:00Z"}])
+
+    def test_queue_runs_are_read_from_the_branch_and_the_earliest_run_is_the_first_attempt(self):
+        record = gh.collect(self.run, "2026-09-21", Campaigns({"lab-record": {"prefixes": ["lab/"]}}),
+                            pr_map={103: "docs"})
+        queue = {r["number"]: r["queue"] for r in record["prs"]}
+        self.assertEqual(queue[101], {"runs": 1, "first_attempt": True, "overall": True})
+        self.assertEqual(queue[102], {"runs": 2, "first_attempt": False, "overall": True})
+        self.assertEqual(queue[103], {"runs": 0, "first_attempt": None, "overall": None})
+        self.assertIsNone(queue[104])
+
     def test_a_pr_list_at_the_limit_stops_the_run_instead_of_losing_the_oldest(self):
         full = [{"number": i, "createdAt": "2026-10-01T00:00:00Z"} for i in range(gh.LIMIT)]
         with self.assertRaises(gh.GhError):
@@ -226,10 +259,11 @@ class CliSmokeTest(unittest.TestCase):
         record = json.loads(text)
         self.assertEqual(code, 0)
         self.assertEqual(json.loads(out.getvalue()), {
-            "since": "2026-09-21", "prs_collected": 4, "merged": 4, "ci_checked": 3, "untagged_prs": 4,
+            "since": "2026-09-21", "prs_collected": 4, "merged": 4, "traced_prs": 0, "ci_checked": 0,
+            "queue_first_attempt_green": 0, "queue_first_attempt_red": 0, "untagged_prs": 4,
             "escaped_defects": {}, "gh_calls": 0, "cache_hits": 0,
         })
-        self.assertEqual([r["ci"]["runs"] for r in record["prs"]], [1, 2, 0, 1])
+        self.assertEqual([r["ci"] for r in record["prs"]], [None, None, None, None])
         for branch in ("lab/record-gate", "lab/packet-join", "docs/notes", "fix/record-gate"):
             self.assertNotIn(branch, text)
 

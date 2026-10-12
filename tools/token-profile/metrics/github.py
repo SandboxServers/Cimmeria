@@ -1,9 +1,14 @@
-"""GitHub collector for the campaign metrics: PRs, CI per head commit, escaped defects.
+"""GitHub collector for the campaign metrics: PRs, CI per head commit, merge-queue CI, escaped defects.
 
 Every read goes through `run_gh(args) -> object`, which runs gh and parses its
 JSON. Tests and `--from-json` inject a different one (`replay`). Nothing here
 writes to GitHub. Branch names are read to tag a PR's campaign and then dropped:
 no record returned from here carries one.
+
+`ci` is the PR-push gate on the head commits that survive in `pulls/<n>/commits`;
+`queue` is the merge-queue result of the same PR. A rebase or force-push drops the
+commits it replaces and their earlier red runs, so `ci` can read better than the
+history did. Only a tagged PR gets per-PR calls; an untagged one keeps its list fields.
 """
 
 import hashlib
@@ -29,6 +34,8 @@ LIMIT = 1000
 FIX_OR_REVERT = re.compile(r"(?i)^(fix|revert)\b")
 REVERT_OF = re.compile(r'^Revert "(.*)"$')
 CITE = re.compile(r"#(\d+)\b")
+# A merge-queue run tests a temporary branch named for the PR it lands, e.g. gh-readonly-queue/main/pr-1664-<sha>.
+QUEUE_BRANCH = re.compile(r"gh-readonly-queue/[^/]+/pr-(\d+)-[0-9a-f]+")
 MAX_COMMITS = 100
 PAGE = "?per_page=100"
 PAUSE_S = 0.2
@@ -263,6 +270,35 @@ def ci_summary(pr, commits, results):
     }
 
 
+def merge_queue_runs(run, since):
+    """The merge-queue `ci` runs created since `since`, as {pr_number: [{conclusion, created}]}, oldest first.
+
+    A queue run tests a temporary commit on a `gh-readonly-queue/` branch, which is not in
+    `pulls/<n>/commits`, so its PR number is read from the branch name and the name is dropped.
+    """
+    by_pr = {}
+    for r in pages(run, f"repos/{{owner}}/{{repo}}/actions/runs?event=merge_group&created=>={since}&per_page=100",
+                   key="workflow_runs"):
+        m = QUEUE_BRANCH.fullmatch(r.get("head_branch") or "")
+        if r.get("name") == "ci" and m:
+            by_pr.setdefault(int(m.group(1)), []).append({"conclusion": r.get("conclusion"), "created": r.get("created_at")})
+    for queued in by_pr.values():
+        queued.sort(key=lambda r: r["created"] or "")
+    return by_pr
+
+
+def queue_summary(runs):
+    """A PR's merge-queue verdicts from its merge_queue_runs() entries: {runs, first_attempt, overall}.
+
+    Cancelled and skipped runs are dropped, as ci_result() drops them. first_attempt is the
+    earliest run's verdict, overall the latest's; both None when no run is left.
+    """
+    verdicts = [v for v in (_verdict(r["conclusion"]) for r in runs) if v != "none"]
+    if not verdicts:
+        return {"runs": 0, "first_attempt": None, "overall": None}
+    return {"runs": len(verdicts), "first_attempt": verdicts[0] == "success", "overall": verdicts[-1] == "success"}
+
+
 # -- escaped defects ---------------------------------------------------------
 def defect_items(prs, issues, campaign_of):
     """Every escaped-defect link as a flat list, before grouping by campaign.
@@ -334,29 +370,33 @@ def escaped_defects(prs, issues, campaign_of):
 
 # -- the whole run -----------------------------------------------------------
 def collect(run, since, campaigns=None, max_prs=None, until=None, pr_map=None):
-    """The github.json record: per PR its CI summary (for the first max_prs PRs), and the escaped defects.
+    """The github.json record: each PR's list fields, its CI and queue verdicts, and the escaped defects.
 
     The window is `since` (YYYY-MM-DD) up to `until` (an ISO timestamp, exclusive; no bound when None).
     A PR's campaign is its `pr_map` entry (the ledger's) when it has one, else its branch or title tag.
     An untagged PR stays untagged: it is never grouped into a campaign of its own.
-    The output carries numbers, campaign tags and verdicts only: no titles, bodies, branches or files.
+    Only a tagged PR gets per-PR calls (commits, check-runs, files); `max_prs` caps how many of them do.
+    An untagged PR's per-PR fields are None. The output carries numbers, campaign tags and verdicts only:
+    no titles, bodies, branches or files.
     """
     prs = collect_prs(run, since, campaigns, until)
     issues = collect_issues(run, since, until)
     tags = {p["number"]: (pr_map or {}).get(p["number"]) or p["campaign"] for p in prs}
+    queued = merge_queue_runs(run, since)
     rows = []
-    for pr in prs[:max_prs]:
-        commits = head_commits(run, pr)
-        results = {c["sha"]: ci_result(run, c["sha"]) for c in commits}
-        rows.append({
-            "number": pr["number"],
-            "campaign": tags[pr["number"]],
-            "merged": bool(pr["mergedAt"]),
-            "createdAt": pr["createdAt"],
-            "mergedAt": pr["mergedAt"],
-            "code_pr": code_pr(run, pr["number"]),
-            "ci": ci_summary(pr, commits, results),
-        })
+    traced = 0
+    for pr in prs:
+        number = pr["number"]
+        row = {"number": number, "campaign": tags[number], "merged": bool(pr["mergedAt"]),
+               "createdAt": pr["createdAt"], "mergedAt": pr["mergedAt"],
+               "code_pr": None, "commits": None, "ci": None, "queue": None}
+        if tags[number] is not None and (max_prs is None or traced < max_prs):
+            traced += 1
+            commits = head_commits(run, pr)
+            results = {c["sha"]: ci_result(run, c["sha"]) for c in commits}
+            row.update(code_pr=code_pr(run, number), commits=commits, ci=ci_summary(pr, commits, results),
+                       queue=queue_summary(queued.get(number, [])))
+        rows.append(row)
     items = defect_items(prs, issues, lambda n: tags.get(n))
     return {"since": since, "until": until, "prs": rows, "untagged_prs": sum(t is None for t in tags.values()),
             "escaped_defects": group_defects(items), "defect_items": items}
