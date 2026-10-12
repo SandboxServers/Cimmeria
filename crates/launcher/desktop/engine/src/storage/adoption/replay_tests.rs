@@ -240,6 +240,28 @@ fn the_estimate_sums_needed_sizes_and_drops_a_local_seed() {
     assert_eq!(stored_overlay.bytes, 200 + 1000);
 }
 
+#[test]
+fn the_estimate_flags_a_local_seed_only_when_it_replaces_one() {
+    let index = index();
+    let manifest = manifest(&index);
+    let (_dir, scanned, found) = classify_folder(
+        &index,
+        &[
+            ("Working/Data/Levels.bin", EDITED),
+            ("Working/Data/Overlay.dat", EDITED),
+        ],
+    );
+    let replayed = plan(&index, &found, &scanned, AdoptionMode::InPlace);
+    assert!(replayed.needs_seed);
+
+    let downloaded = estimate(&replayed, &manifest, false, |_| false);
+    assert!(!downloaded.local_seed);
+
+    let local = estimate(&replayed, &manifest, true, |_| false);
+    assert!(local.local_seed);
+    assert!(!local.seed);
+}
+
 // Real tiny artifacts: a two-file seed and one overlay patch per file. The
 // blobs are served and verified exactly as a signed release is.
 

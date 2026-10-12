@@ -9,7 +9,7 @@ const Review=Schema.Struct({preview_handle:Schema.String,operation_revision:Coun
  counts:Schema.Struct({matched:Count,known_transform:Count,modified:Count,needs_patching:Count,missing:Count,extra:Count}),
  differences:Schema.Array(Schema.Struct({path:Schema.String,source_path:Schema.NullOr(Schema.String),classification:Schema.Literals(['matched','known_transform','modified','needs_patching','missing','extra'])})),differences_omitted:Count,
  requires_replacement:Schema.Boolean,backup_directory:Schema.optionalKey(Schema.String),
- download:Schema.optionalKey(Schema.Struct({seed:Schema.Boolean,patches:Schema.Array(Schema.String),bytes:Count})),
+ download:Schema.optionalKey(Schema.Struct({seed:Schema.Boolean,patches:Schema.Array(Schema.String),bytes:Count,local_seed:Schema.optionalKey(Schema.Boolean)})),
  login_servers:Schema.optionalKey(Schema.Array(Schema.Struct({name:Schema.String,url:Schema.String}))),client_patches_enabled:Schema.optionalKey(Schema.Boolean),
  game_telemetry_opted_in:Schema.optionalKey(Schema.Boolean),game_telemetry_available:Schema.Boolean,requires_normalization:Schema.Boolean,requires_telemetry_acceptance:Schema.Boolean,user_data_remains_in_source:Schema.Boolean,
  in_place:Schema.Boolean,blocked_files:Schema.Array(Schema.String)});

@@ -27,7 +27,8 @@ let bridge=spawnBridge();
 const {document,window}=parseHTML(await readFile(new URL('./ui/index.html',import.meta.url),'utf8'));
 const calls=[];let loseConfirm=false,changes=0;
 const app=mountAdoption(document,async(command,args)=>{
- const request=command==='choose_adoption_destination'?{command:'choose'}:(assert.equal(command,'adoption_command'),args.request);
+ // The stand-in for the folder dialog: the production view names the mode it chose.
+ const request=command==='choose_existing_game_folder'?(assert.equal(args.mode,'copy'),{command:'choose'}):(assert.equal(command,'adoption_command'),args.request);
  calls.push(request);
  const reply=await bridge.send(request);
  // The native side accepted the request; only its reply is lost.
@@ -60,6 +61,8 @@ try {
  assert.equal(before.destination_entries,null);assert.equal(before.owned_directory,null);assert.equal(before.launcher_summary_consent,false);
  assert.equal(before.settings_binding,null);assert.equal(before.prerequisite_target,null);
  assert.match(text(),/Choose where to create a separate verified copy/);
+ // Copy is the mode under test; an in-place capable build offers both and defaults to in place.
+ get('adoption-mode-copy').checked=true;
  assert.equal(get('adoption-review').hidden,true);assert.equal(get('cancel-adoption').hidden,true);
 
  // 1. Failures are visible, change nothing, and keep nothing.
@@ -125,6 +128,10 @@ try {
  assert.match(get('adoption-telemetry').textContent,/you opted in with the old launcher.*diagnostics stay off/);
  for(const id of ['adoption-normalize','adoption-closed','adoption-telemetry']){assert.equal(get(`${id}-row`).hidden,false);assert.equal(get(id).checked,false);}
  assert.equal(get('confirm-adoption').disabled,true);
+ // The modified release file asks for its replacement; the box starts unchecked.
+ assert.equal(get('adoption-replace-row').hidden,false,'a modified release file shows the replacement box');
+ assert.equal(get('adoption-replace').checked,false);
+ assert.match(get('adoption-replace-text').textContent,/Replace 1 modified or missing release files/);
  assert.equal((await evidence()).destination_entries,null,'a review copies nothing');
 
  // 5. Settings change under the review: it stays on screen and is not confirmed.
@@ -147,6 +154,9 @@ try {
  status=await until('the second review',s=>{assert.equal(s.last_error,null,'preparation failed');return !!s.review;},slow);
  assert.notEqual(status.review.preview_handle,review.preview_handle);
  for(const id of ['adoption-normalize','adoption-closed','adoption-telemetry']){assert.equal(get(id).checked,false,'a new review starts unchecked');await tick(id);}
+ assert.equal(get('confirm-adoption').disabled,true,'the replacement is not allowed yet, so nothing is confirmed');
+ await tick('adoption-replace');
+ assert.equal(get('confirm-adoption').disabled,false,'ticking the replacement enables confirm');
  await bridge.send({command:'fault',mode:'hold'});
  loseConfirm=true;
  press('confirm-adoption');press('confirm-adoption');await settle();

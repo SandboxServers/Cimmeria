@@ -244,6 +244,15 @@ test('a folder source with files that need patching shows its review, backup and
   assert.equal(ui.get('adoption-source').textContent,'/old-game');assert.equal(ui.get('adoption-destination').textContent,'/library/Stargate Worlds');
  }finally{await ui.app.dispose();}
 });
+test('a review whose seed comes from the chosen game archive says so, with its patches',async()=>{
+ const archive=(patches:string[]):NonNullable<AdoptionStatus['review']>=>({...review(),source_kind:'folder',download:{seed:false,patches,bytes:1048576,local_seed:true}});
+ for(const [patches,line] of [[['first-patch'],'Uses your game archive and patches first-patch (1.0 MB).'],[[],'Uses your game archive.']] as const){
+  const ui=mount(()=>({...reviewing(),modes:['in_place','copy'],review:archive([...patches])}));
+  try{await ui.app.ready;await ui.settle();
+   assert.equal(ui.get('adoption-download').textContent,line);assert.equal(ui.get('adoption-seed-archive').hidden,true);
+  }finally{await ui.app.dispose();}
+ }
+});
 test('a folder review without imported settings decodes and says the launcher defaults apply',async()=>{
  // A folder preview has no legacy import, so the requested-config fields are absent.
  const imported=['login_servers','client_patches_enabled','game_telemetry_opted_in'];
