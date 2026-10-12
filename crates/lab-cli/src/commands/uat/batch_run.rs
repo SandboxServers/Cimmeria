@@ -16,12 +16,15 @@ use crate::daemon::paths;
 use crate::daemon::status::Endpoint;
 use crate::ui::Ui;
 
+use super::chaos;
 use super::ctrlc;
+use super::golden::{self, DiffArgs};
+use super::heal;
+use super::json;
 use super::lanes::{
-    no_finish, run_lanes, sleep_unless_stopped, CallFn, FinishFn, LaneConfig, LaneEnv, SleepFn,
-    WaitFn,
+    run_lanes, sleep_unless_stopped, CallFn, FinishFn, LaneConfig, LaneEnv, SleepFn, WaitFn,
 };
-use super::plan::{batch_folder_name, build_plan, create_batch, RunCall};
+use super::plan::{batch_folder_name, build_plan, create_batch, run_chaos, RunCall};
 use super::preflight::{stop, Ready};
 use super::progress::{
     fancy_summary, progress_mode, quiet_line, stdio_emit, Progress, ProgressMode,
@@ -76,7 +79,7 @@ pub struct BatchOptions {
     pub mode: ProgressMode,
     /// `--quiet`: the end of the batch is one line.
     pub quiet: bool,
-    /// `--json` (LX-17b prints the compact object; nothing reads this before).
+    /// `--json`: the end of the batch is the compact object (`json::compact_json`).
     pub json: bool,
 }
 
@@ -103,7 +106,7 @@ pub struct Hooks<'a> {
     pub wait_lease_free: &'a WaitFn<'a>,
     /// Sleeps (the stagger).
     pub sleep: &'a SleepFn<'a>,
-    /// [`no_finish`] until LX-17b.
+    /// After each run: [`finish_with`] in a native batch.
     pub finish: &'a FinishFn<'a>,
     /// Set by Ctrl+C: no new run starts.
     pub stop: &'a AtomicBool,
@@ -169,8 +172,8 @@ pub fn run_batch(
             braked.push(rec.instance.clone());
         }
     }
-    let summary = merge(&records, &input.lanes, &braked);
-    // LX-17 hook: chaos header. LX-17b makes the line above "let mut summary" and adds the line "summary.chaos = chaos::select_header(&records, input.chaos.as_deref());".
+    let mut summary = merge(&records, &input.lanes, &braked);
+    summary.chaos = chaos::select_header(&records, input.chaos.as_deref());
     let title = format!("lab uat {}", input.section);
     let meta = BatchMeta {
         dir: &dir,
@@ -200,7 +203,15 @@ pub fn run_batch(
 /// `Write-Host ''; Write-Host $md`).
 pub fn print_outcome(ui: &Ui, opts: &BatchOptions, outcome: &BatchOutcome) {
     let dir = outcome.dir.display().to_string();
-    // LX-17 hook: under --json print json::compact_json(&outcome.summary, &dir) and return here.
+    if opts.json {
+        // Write errors are ignored here too (a closed pipe), as below.
+        let _ = writeln!(
+            std::io::stdout().lock(),
+            "{}",
+            json::compact_json(&outcome.summary, &dir)
+        );
+        return;
+    }
     // Write errors are ignored (`| head`, a closed pipe): `println!` would panic.
     let mut out = std::io::stdout().lock();
     let _ = if opts.quiet {
@@ -229,15 +240,29 @@ fn call_lab_uat_run(ep: &Endpoint, call: &RunCall, timeout: Duration) -> Result<
     reply
 }
 
-/// Whether a real run still needs the PowerShell: `--json` (LX-17's compact JSON),
-/// `--diff-golden`, `--heal` and `--chaos` (which implies `--diff-golden`; an
-/// empty `--chaos ""` counts as none, as `args::chaos_specs` filters it).
-pub fn needs_powershell(args: &Args) -> bool {
-    args.json || args.diff_golden || args.heal || args.chaos.iter().any(|c| !c.is_empty())
+/// The `FinishFn` of a native batch: a run's own chaos header from its reply and,
+/// for a passing run under `--diff-golden` (`diff` is `Some`), the golden value
+/// of its folder. The run's verdict is never changed. `golden_call` is the
+/// `lab_golden_diff` call (`golden::call_golden_diff` in `execute`, a stub in tests).
+pub fn finish_with<'a>(
+    diff: Option<&'a DiffArgs>,
+    golden_call: &'a (dyn Fn(Value) -> Result<Value, McpError> + Sync),
+) -> impl Fn(&mut RunRecord, Option<&Value>) + Sync + 'a {
+    move |rec: &mut RunRecord, reply: Option<&Value>| {
+        if let Some(header) = reply.and_then(run_chaos) {
+            rec.chaos = Some(header);
+        }
+        let mut call = |a: Value| golden_call(a);
+        if let Some(value) = golden::run_golden(rec, diff, &mut call) {
+            rec.golden = Some(value);
+        }
+    }
 }
 
-/// Runs a real batch against the daemon at `ep` and returns the exit code
-/// (0, 1 or 4; 3 when the batch folder cannot be written).
+/// Runs a real batch against the daemon at `ep` and returns the exit code: 0 all
+/// passed, 1 a run failed, 4 a lane stopped early, 5 a golden divergence or a diff
+/// that could not be made, 8 a heal proposal was written, 3 when the batch folder
+/// cannot be written.
 pub fn execute(args: &Args, ctx: &Ctx, ep: &Endpoint, input: BatchInput) -> u8 {
     let mode = progress_mode(args.json, args.quiet, args.progress_to_stderr);
     let call = |instance: &str, timeout: Duration| {
@@ -245,11 +270,17 @@ pub fn execute(args: &Args, ctx: &Ctx, ep: &Endpoint, input: BatchInput) -> u8 {
     };
     let wait = |instance: &str, max: Duration| mcp::wait_lease_free(ep, instance, max);
     let sleep = |total: Duration| sleep_unless_stopped(total, &ctrlc::STOP);
+    // --diff-golden (or --chaos, which implies it): compare each passing run with the golden.
+    let diff = input
+        .diff_golden
+        .then(|| DiffArgs::new(&input.section, input.specs_dir.as_deref().map(Path::new)));
+    let golden_call = |a: Value| golden::call_golden_diff(ep, a);
+    let finish = finish_with(diff.as_ref(), &golden_call);
     let hooks = Hooks {
         call: &call,
         wait_lease_free: &wait,
         sleep: &sleep,
-        finish: &no_finish,
+        finish: &finish,
         stop: &ctrlc::STOP,
     };
     let opts = BatchOptions {
@@ -264,8 +295,12 @@ pub fn execute(args: &Args, ctx: &Ctx, ep: &Endpoint, input: BatchInput) -> u8 {
     ctrlc::install();
     let emit = stdio_emit(mode);
     match run_batch(&input, &opts, &ctx.ui, &paths::uat_root(), &hooks, &emit) {
-        Ok(outcome) => {
-            // LX-17 hook: --heal pass (heal::heal_batch) runs here, before print_outcome.
+        Ok(mut outcome) => {
+            // -Heal runs after the summary is on disk, not before: a heal is up to 15
+            // minutes of lab time per pose, so Ctrl+C during the batch skips it.
+            if args.heal && !ctrlc::stop_requested() {
+                heal::heal_batch(ctx, ep, &input, &opts, &mut outcome);
+            }
             print_outcome(&ctx.ui, &opts, &outcome);
             outcome.exit
         }
@@ -281,44 +316,5 @@ pub fn execute(args: &Args, ctx: &Ctx, ep: &Endpoint, input: BatchInput) -> u8 {
             );
             3
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::commands::{parse_ok, Command};
-
-    fn uat(tokens: &[&str]) -> Args {
-        let Command::Uat(args) = parse_ok("uat", tokens) else {
-            panic!("not uat")
-        };
-        args
-    }
-
-    #[test]
-    fn a_plain_real_run_is_native() {
-        assert!(!needs_powershell(&uat(&["first-session"])));
-        assert!(!needs_powershell(&uat(&[
-            "first-session",
-            "--quiet",
-            "--fingerprint",
-            "--progress-to-stderr"
-        ])));
-        assert!(!needs_powershell(&uat(&[
-            "first-session",
-            "--leases",
-            "2",
-            "--fixtures",
-            "always"
-        ])));
-    }
-
-    #[test]
-    fn json_golden_heal_and_chaos_still_use_the_powershell() {
-        assert!(needs_powershell(&uat(&["first-session", "--json"])));
-        assert!(needs_powershell(&uat(&["first-session", "--diff-golden"])));
-        assert!(needs_powershell(&uat(&["first-session", "--heal"])));
-        assert!(needs_powershell(&uat(&["first-session", "--chaos", "cpu"])));
     }
 }

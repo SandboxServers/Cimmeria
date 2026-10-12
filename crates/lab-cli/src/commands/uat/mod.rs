@@ -4,12 +4,16 @@
 //! the plan call and `plan.json`) and [`preflight`] (the order of events before
 //! anything is driven, and `--plan-only`). LX-16 is the back half: [`record`],
 //! [`summary`], [`progress`], [`lanes`], [`ctrlc`] and [`batch_run`] run a real
-//! batch. Only `--json`, `--diff-golden`, `--heal` and `--chaos` still use the
-//! PowerShell fallback (until LX-17).
+//! batch. LX-17 added the golden diff, `--chaos`, `--json` and `--heal`:
+//! nothing is left to PowerShell.
 
 pub mod args;
 pub mod batch_run;
+pub mod chaos;
 pub mod ctrlc;
+pub mod golden;
+pub mod heal;
+pub mod json;
 pub mod lanes;
 pub mod plan;
 pub mod preflight;
@@ -27,7 +31,6 @@ use crate::daemon::env_file;
 use crate::daemon::mcp::{McpClient, McpError};
 use crate::daemon::paths;
 use crate::daemon::status::Endpoint;
-use crate::fallback;
 
 pub use preflight::{execute, Deps, Outcome, Ready};
 
@@ -148,16 +151,10 @@ fn native_preflight(args: &Args, ctx: &Ctx) -> (Endpoint, Outcome) {
     (ep, outcome)
 }
 
-/// Runs `lab uat` and returns its exit code. `--plan-only` and every refusal
-/// before anything is driven are native (LX-15). A real run drives natively
-/// unless it needs a flag the Rust code does not do yet (`--json`,
-/// `--diff-golden`, `--heal`, `--chaos`): then the PowerShell script does the
-/// whole run, its own pre-flight included, so nothing is planned twice.
-/// LX-17b replaces this function and removes the fallback.
+/// Runs `lab uat` and returns its exit code. The pre-flight is native (a usage
+/// error is 2, a refusal before anything is driven is 3, `--plan-only` ends with
+/// 0); a ready run is driven by `batch_run::execute`.
 pub fn run(args: &Args, ctx: &Ctx) -> u8 {
-    if !args.plan_only && batch_run::needs_powershell(args) {
-        return fallback::run(ctx);
-    }
     let (ep, outcome) = native_preflight(args, ctx);
     match outcome {
         Outcome::Done(code) => code,

@@ -125,7 +125,8 @@ fn lane_body(lane: &PlanLane, cfg: &LaneConfig, env: &LaneEnv) -> io::Result<()>
             Err(error) => timed_out = apply_error(&mut rec, &error),
         }
         rec.seconds = started.elapsed().as_secs();
-        // LX-17 hook: per-run finish (chaos header, golden diff); a no-op until LX-17b.
+        // Per-run finish, after the verdict: the run's chaos header from its reply and,
+        // under --diff-golden, the golden diff. It never changes the run's verdict.
         (env.finish)(&mut rec, reply.as_ref());
         outcomes.push(rec.ok);
         // A run cut short may still hold its lease on the daemon: wait for it,
