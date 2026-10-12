@@ -3,8 +3,8 @@
 
     python tools/token-profile/metrics registry --repo . [--check] [--config <json>] [--campaigns <json>]
     python tools/token-profile/metrics ledger --repo . --out <dir>
-    python tools/token-profile/metrics github --repo . --out <dir> [--since 2026-09-21] [--max-prs N]
-        [--campaigns <file>] [--from-json <dir>]
+    python tools/token-profile/metrics github --repo . --out <dir> [--since 2026-09-21] [--config <json>]
+        [--max-prs N] [--campaigns <file>] [--from-json <dir>]
 
 Exit status: 0 ok; 1 with registry --check, the campaign rules have a problem; 2 an input or output error.
 The ledger writes <dir>/ledger.json and prints a JSON count summary. The github subcommand writes <dir>/github.json,
@@ -22,9 +22,6 @@ from ingest.campaigns import Campaigns
 
 from . import ledger, registry
 from .github import GhError, collect, polite, replay, run_gh
-
-DEFAULT_SINCE = "2026-09-21"  # config.json window.since (CM-01)
-
 
 def git_log(repo, failures):
     """A runner for `git log` in `repo`: its stdout. A run that fails returns "" and is appended to `failures`."""
@@ -128,9 +125,10 @@ def run_github(args):
             run = replay(args.from_json)
         else:
             run = polite(lambda a: run_gh(a, cwd=args.repo))
+        window = registry.load_config(args.config)["window"]
         campaigns = Campaigns(registry.load_campaigns(args.campaigns))
-        record = collect(run, args.since, campaigns, args.max_prs)
-    except GhError as e:
+        record = collect(run, args.since or window["since"][:10], campaigns, args.max_prs, window["until"])
+    except (GhError, OSError, ValueError, KeyError) as e:
         print(f"status=error {e}", file=sys.stderr)
         return 2
 
@@ -164,7 +162,8 @@ def main(argv=None):
     gh = sub.add_parser("github", help="PRs, CI per head commit and escaped defects, read-only")
     gh.add_argument("--repo", required=True, help="the checkout gh reads the remote from")
     gh.add_argument("--out", required=True, help="scratch directory for github.json")
-    gh.add_argument("--since", default=DEFAULT_SINCE, help="PRs and issues created on or after this date")
+    gh.add_argument("--since", default=None, help="PRs and issues created on or after this date (default: config window)")
+    gh.add_argument("--config", help="metrics config.json, whose window ends the collection (default: the package's)")
     gh.add_argument("--max-prs", type=int, default=None, help="collect CI for the first N PRs only (a trial)")
     gh.add_argument("--campaigns", default=None, help="campaign tags; default ingest/campaigns.json")
     gh.add_argument("--from-json", default=None, metavar="DIR", help="replay saved gh answers, no network")

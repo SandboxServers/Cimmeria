@@ -124,17 +124,31 @@ def pr_record(raw, campaigns=None):
     }
 
 
-def collect_prs(run, since, campaigns=None):
-    """Every PR created on or after `since` (YYYY-MM-DD), as pr_record() dicts. `campaigns` is an ingest.campaigns.Campaigns."""
-    raw = run(["pr", "list", "--state", "all", "--search", f"created:>={since}", "--limit", "1000",
+def _window(since, until):
+    """The gh search qualifiers for a window: created on or after `since`, and before `until` when it is given."""
+    return f"created:>={since}" + (f" created:<{until[:10]}" if until else "")
+
+
+def _before(created, until):
+    """True when an item created at `created` falls before `until` (an ISO timestamp), or when there is no bound."""
+    return until is None or _when(created) < _when(until)
+
+
+def collect_prs(run, since, campaigns=None, until=None):
+    """Every PR created in the window (`since` YYYY-MM-DD, `until` an ISO timestamp), as pr_record() dicts.
+
+    `campaigns` is an ingest.campaigns.Campaigns.
+    """
+    raw = run(["pr", "list", "--state", "all", "--search", _window(since, until), "--limit", "1000",
                "--json", PR_FIELDS]) or []
-    return [pr_record(p, campaigns) for p in raw]
+    return [pr_record(p, campaigns) for p in raw if _before(p["createdAt"], until)]
 
 
-def collect_issues(run, since):
-    """Closed issues labelled bug and created on or after `since`, as gh returned them."""
-    return run(["issue", "list", "--state", "closed", "--label", "bug", "--search", f"created:>={since}",
-                "--limit", "1000", "--json", ISSUE_FIELDS]) or []
+def collect_issues(run, since, until=None):
+    """Closed issues labelled bug and created in the window, as gh returned them."""
+    raw = run(["issue", "list", "--state", "closed", "--label", "bug", "--search", _window(since, until),
+               "--limit", "1000", "--json", ISSUE_FIELDS]) or []
+    return [i for i in raw if _before(i["createdAt"], until)]
 
 
 def head_commits(run, pr):
@@ -230,13 +244,14 @@ def escaped_defects(prs, issues, campaign_of):
 
 
 # -- the whole run -----------------------------------------------------------
-def collect(run, since, campaigns=None, max_prs=None):
+def collect(run, since, campaigns=None, max_prs=None, until=None):
     """The github.json record: per PR its CI summary (for the first max_prs PRs), and the escaped defects.
 
+    The window is `since` (YYYY-MM-DD) up to `until` (an ISO timestamp, exclusive; no bound when None).
     The output carries numbers, campaign tags and verdicts only: no titles, bodies, branches or files.
     """
-    prs = collect_prs(run, since, campaigns)
-    issues = collect_issues(run, since)
+    prs = collect_prs(run, since, campaigns, until)
+    issues = collect_issues(run, since, until)
     tags = {p["number"]: p["campaign"] or f"pr-{p['number']}" for p in prs}
     rows = []
     for pr in prs[:max_prs]:
@@ -252,4 +267,4 @@ def collect(run, since, campaigns=None, max_prs=None):
             "ci": ci_summary(pr, commits, results),
         })
     defects = escaped_defects(prs, issues, lambda n: tags.get(n))
-    return {"since": since, "prs": rows, "escaped_defects": defects}
+    return {"since": since, "until": until, "prs": rows, "escaped_defects": defects}

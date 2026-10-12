@@ -83,6 +83,20 @@ class GithubTests(unittest.TestCase):
         run = lambda args: [commits]  # noqa: E731
         self.assertEqual(len(gh.head_commits(run, {"number": 1})), gh.MAX_COMMITS)
 
+    def test_window_end_is_searched_and_drops_items_created_at_or_after_it(self):
+        searches = []
+
+        def run(args):
+            searches.append(args)
+            if args[:2] == ["pr", "list"]:
+                return [{"number": 1, "createdAt": "2026-10-12T00:00:00Z"},
+                        {"number": 2, "createdAt": "2026-10-13T00:00:00Z"}]
+            return []
+
+        prs = gh.collect_prs(run, "2026-09-21", None, "2026-10-13T00:00:00Z")
+        self.assertEqual([p["number"] for p in prs], [1])
+        self.assertIn("created:>=2026-09-21 created:<2026-10-13", searches[0])
+
 
 class CliSmokeTest(unittest.TestCase):
     def test_replay_writes_github_json_and_a_count_summary(self):
