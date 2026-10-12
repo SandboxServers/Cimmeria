@@ -590,8 +590,8 @@ A second player that only has to exist and answer (a duel partner, a body to be 
 
 Lab input goes through the client's hooked DirectInput, which never resets Windows' idle timer, so an unattended run reaches the screensaver after about ten minutes. While a screensaver owns the display, Direct3D 9 reports no adapter (`D3DERR_NOTAVAILABLE` from `GetDeviceCaps`): a client launched then dies on a "GetDeviceCaps failed" message box and an R6025 box, each with a Windows error sound, and the watchdog relaunches it until its cap. The supervisor prevents this:
 
-- While any `SGW.exe` runs, a supervisor thread holds `ES_DISPLAY_REQUIRED` (released when none runs), so the screensaver doesn't start.
-- Before every launch (including watchdog relaunches) it probes Direct3D. If the display is unavailable and a screensaver that is not password-protected is running, it dismisses it and probes again; otherwise the launch is refused with the reason (screensaver still running, password-protected screensaver, or display off/locked) instead of starting a client that can only show an error box.
+- While any `SGW.exe` process exists, window or not (a client hung before its window still counts), a supervisor thread holds `ES_DISPLAY_REQUIRED` (checked every 2 s, released when none runs), so the screensaver doesn't start. `labd.log` shows `lab display keep-awake held=true` within a few seconds of `launched`.
+- Before every launch (including watchdog relaunches) it probes Direct3D. If the display is unavailable and a screensaver that is not password-protected is running, it dismisses it and probes again; otherwise the launch is refused with the reason (screensaver still running, password-protected screensaver, or display off/locked) instead of starting a client that can only show an error box. A passing probe logs `display_probe ok=true`.
 
 ## The watchdog: hangs, world loads and the recovery cap
 
