@@ -399,3 +399,22 @@ fn the_batch_folder_is_named_by_local_start_time() {
         .unwrap();
     assert_eq!(batch_folder_name(&at), "batch-20261011-013906");
 }
+
+// two batches in the same second get their own folders, never a shared one
+#[test]
+fn two_batches_in_the_same_second_get_separate_folders() {
+    let root = tempfile::tempdir().unwrap();
+    let first = create_batch(root.path(), "batch-20261011-013906", &sample_plan()).unwrap();
+    fs::write(first.join("batch.jsonl"), "kept").unwrap();
+    let second = create_batch(root.path(), "batch-20261011-013906", &sample_plan()).unwrap();
+    let third = create_batch(root.path(), "batch-20261011-013906", &sample_plan()).unwrap();
+    assert_eq!(first.file_name().unwrap(), "batch-20261011-013906");
+    assert_eq!(second.file_name().unwrap(), "batch-20261011-013906-2");
+    assert_eq!(third.file_name().unwrap(), "batch-20261011-013906-3");
+    assert_eq!(
+        fs::read_to_string(first.join("batch.jsonl")).unwrap(),
+        "kept"
+    );
+    assert!(!second.join("batch.jsonl").exists());
+    assert!(second.join("plan.json").exists() && third.join("plan.json").exists());
+}

@@ -57,19 +57,24 @@ pub fn check_arguments(args: &Args) -> Option<String> {
     if args.max_consecutive_failures > 20 {
         return Some("--max-consecutive-failures must be 0 to 20".to_string());
     }
-    // lab-fixtures D-FX10: when a row's fixture is applied. Case sensitive: the
-    // daemon takes snake_case.
-    if let Some(fixtures) = args.fixtures.as_deref().filter(|f| !f.is_empty()) {
-        if !["auto", "always", "never"].contains(&fixtures) {
-            return Some("--fixtures must be auto, always or never".to_string());
-        }
-    }
+    // `--fixtures` (lab-fixtures D-FX10: when a row's fixture is applied) needs no
+    // check here: clap's value parser takes only the case-sensitive `auto`,
+    // `always` and `never`, and exits 2 for anything else.
     // D-SV8: a heal recalibrates on the batch's one instance, where the row failed.
     if args.heal && args.leases != 1 {
         return Some(
             "--heal needs --leases 1 (it recalibrates on the instance the batch ran on)"
                 .to_string(),
         );
+    }
+    // One value is one spec; a comma-separated list of profiles is a mistake that
+    // would reach the runner as one unknown profile. A multi-knob spec has an '='.
+    if let Some(list) = args
+        .chaos
+        .iter()
+        .find(|c| c.contains(',') && !c.contains('='))
+    {
+        return Some(format!("repeat --chaos for each profile (got '{list}')"));
     }
     None
 }
@@ -263,20 +268,33 @@ mod tests {
     }
 
     // the removed PowerShell test file: '-Fixtures is case-sensitive' and 'an unknown -Fixtures
-    // mode is a usage error': clap refuses both, and our own check refuses a
-    // value that gets past it.
+    // mode is a usage error': clap refuses both (exit 2), so no check of ours is needed.
     #[test]
     fn fixtures_is_case_sensitive_and_closed() {
         assert!(try_parse("uat", &["first-session", "--fixtures", "Always"]).is_err());
         assert!(try_parse("uat", &["first-session", "--fixtures", "sometimes"]).is_err());
-        for bad in ["Always", "sometimes"] {
-            let mut a = uat(&["first-session"]);
-            a.fixtures = Some(bad.to_string());
-            assert_eq!(
-                check_arguments(&a),
-                Some("--fixtures must be auto, always or never".to_string()),
-                "{bad}"
-            );
+        for good in ["auto", "always", "never"] {
+            assert!(try_parse("uat", &["first-session", "--fixtures", good]).is_ok());
+        }
+    }
+
+    // a comma-separated list of profiles is refused; a multi-knob spec (it has an
+    // '=') and a list of repeated flags are not
+    #[test]
+    fn a_chaos_list_with_commas_and_no_equals_is_refused() {
+        let a = uat(&["first-session", "--chaos", "cpu,flush:pack"]);
+        assert_eq!(
+            check_arguments(&a),
+            Some("repeat --chaos for each profile (got 'cpu,flush:pack')".to_string())
+        );
+        for ok in [
+            &["--chaos", "net:latency=120,loss=1"][..],
+            &["--chaos", "cpu", "--chaos", "flush:pack"][..],
+            &["--chaos", "net:latency=120,loss=1", "--chaos", "cpu"][..],
+        ] {
+            let mut tokens = vec!["first-session"];
+            tokens.extend_from_slice(ok);
+            assert_eq!(check_arguments(&uat(&tokens)), None, "{ok:?}");
         }
     }
 

@@ -108,3 +108,85 @@ fn a_negative_stagger_is_a_usage_error() {
     );
     assert_eq!(o.status.code(), Some(2));
 }
+
+// a clap usage error under --json is the one JSON object on stdout, exit 2, in
+// both spellings and for every command that has --json
+#[test]
+fn a_usage_error_under_json_is_one_json_object() {
+    let home = fake_home();
+    let cases: &[&[&str]] = &[
+        &["uat", "first-session", "--fixtures", "Always", "--json"],
+        &["uat", "first-session", "-Fixtures", "Always", "-Json"],
+        &["uat", "first-session", "--leases", "-1", "--json"],
+        &[
+            "golden",
+            "record",
+            "first-session",
+            "--runs",
+            "many",
+            "--json",
+        ],
+        &["calibrate", "--no-such-flag", "--json"],
+        &["record", "--no-such-flag", "--json"],
+        &["watch", "--no-such-flag", "--json"],
+    ];
+    for args in cases {
+        let o = run_lab(args, home.path());
+        assert_eq!(o.status.code(), Some(2), "{args:?}");
+        let v = last_json(&o);
+        assert_eq!(v["ok"], false, "{args:?}");
+        assert_eq!(v["exit"], 2, "{args:?}");
+        let error = v["error"].as_str().unwrap();
+        assert!(
+            !error.is_empty() && !error.contains('\n'),
+            "{args:?}: {error}"
+        );
+        assert!(!error.starts_with("error:"), "{error}");
+        assert_eq!(String::from_utf8_lossy(&o.stdout).lines().count(), 1);
+        assert!(
+            o.stderr.is_empty(),
+            "{:?}",
+            String::from_utf8_lossy(&o.stderr)
+        );
+    }
+    let o = run_lab(
+        &["uat", "first-session", "--fixtures", "Always", "--json"],
+        home.path(),
+    );
+    assert!(last_json(&o)["error"].as_str().unwrap().contains("Always"));
+}
+
+// without --json the usage error stays clap's text on stderr, nothing on stdout
+#[test]
+fn a_usage_error_without_json_stays_text_on_stderr() {
+    let home = fake_home();
+    let o = run_lab(
+        &["uat", "first-session", "--fixtures", "Always"],
+        home.path(),
+    );
+    assert_eq!(o.status.code(), Some(2));
+    assert!(o.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&o.stderr).contains("--fixtures"));
+}
+
+// --chaos takes one profile per flag: a comma list without '=' is exit 2
+#[test]
+fn a_chaos_list_is_a_usage_error() {
+    let home = fake_home();
+    let o = run_lab(
+        &[
+            "uat",
+            "first-session",
+            "--chaos",
+            "cpu,flush:pack",
+            "--plan-only",
+            "--json",
+        ],
+        home.path(),
+    );
+    assert_eq!(o.status.code(), Some(2));
+    assert_eq!(
+        last_json(&o)["error"],
+        "repeat --chaos for each profile (got 'cpu,flush:pack')"
+    );
+}

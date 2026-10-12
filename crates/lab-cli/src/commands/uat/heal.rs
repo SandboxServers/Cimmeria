@@ -18,7 +18,7 @@ use crate::commands::Ctx;
 use crate::daemon::mcp::{self, McpClient, McpError};
 use crate::daemon::status::Endpoint;
 
-use super::batch_run::{BatchInput, BatchOptions, BatchOutcome};
+use super::batch_run::{give_up_on_abort, BatchInput, BatchOptions, BatchOutcome};
 use super::ctrlc;
 use super::progress::{stdio_emit, ProgressMode};
 use super::summary::{exit_code, write_batch_summary, BatchMeta, HealEntry, Summary};
@@ -175,10 +175,15 @@ pub fn heal_batch(
         if ctrlc::stop_requested() {
             return Err(McpError::Tool("interrupted by Ctrl+C".to_string()));
         }
-        let mut client = McpClient::connect(ep)?;
-        let reply = client.call_tool("lab_uat_calibrate", a, calibrate::outcome::timeout(None));
-        client.close();
-        reply
+        // The second Ctrl+C gives up on a pose under way; the proposals already
+        // written are still listed (heal_pass writes the summary after the loop).
+        let ep = ep.clone();
+        give_up_on_abort(&ctrlc::ABORT, move || {
+            let mut client = McpClient::connect(&ep)?;
+            let reply = client.call_tool("lab_uat_calibrate", a, calibrate::outcome::timeout(None));
+            client.close();
+            reply
+        })
     };
     let emit = stdio_emit(opts.mode);
     let mut say = |m: &str| emit(m);
@@ -221,5 +226,13 @@ pub fn heal_batch(
     if let Some(markdown) = healed {
         outcome.md = markdown;
         outcome.exit = exit_code(&outcome.summary);
+    }
+    // A second Ctrl+C during the heal: the files must say so too.
+    if ctrlc::abort_requested() && !outcome.summary.interrupted {
+        outcome.summary.interrupted = true;
+        match write_batch_summary(&outcome.summary, &meta, Local::now()) {
+            Ok(markdown) => outcome.md = markdown,
+            Err(e) => emit(&format!("heal: cannot write the summary: {e}")),
+        }
     }
 }

@@ -388,8 +388,10 @@ fn a_batch_without_a_proposal_has_no_heal_key() {
 }
 
 /// Review fix: `ConvertTo-Json -Compress` writes U+0085, U+2028 and U+2029 as
-/// `\uXXXX` (serde_json writes them raw) and leaves `< > & '`, DEL, U+00A0 and
-/// astral characters as they are. Expected text taken from pwsh 7.
+/// `\uXXXX` (serde_json writes them raw) and leaves `< > & '` and DEL as they are.
+/// Final review fix B8: every other non-ASCII character (U+00A0, astral ones as a
+/// surrogate pair) is escaped too, so the line reads the same under any console
+/// code page.
 #[test]
 fn line_separators_are_escaped_as_powershell_does() {
     let mut s = mixed();
@@ -402,7 +404,7 @@ fn line_separators_are_escaped_as_powershell_does() {
     let text = compact_json(&s, BATCH_SHORT);
     assert!(
         text.contains(r#""why":"error: a<b>&'c\u2028\u0085\u2029"#)
-            && text.contains("\u{7f}\u{a0}x\\u001b\u{1F600}\""),
+            && text.contains("\u{7f}\\u00a0x\\u001b\\ud83d\\ude00\""),
         "{text}"
     );
 }

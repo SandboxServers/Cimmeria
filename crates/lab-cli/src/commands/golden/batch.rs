@@ -8,6 +8,8 @@ use std::process::{Command, Stdio};
 
 use serde_json::Value;
 
+use crate::commands::uat::ctrlc;
+
 use super::reply::text_of;
 
 /// What the child printed on stdout and how it exited (`-1` when it had no
@@ -74,12 +76,28 @@ pub fn batch_args(
 /// per-run progress lines show live), stdin closed.
 pub fn spawn_uat(args: &[String]) -> io::Result<ChildOutput> {
     let exe = std::env::current_exe()?;
-    let output = Command::new(exe)
-        .arg("uat")
-        .args(args)
+    let mut command = Command::new(exe);
+    command.arg("uat").args(args);
+    wait_for_child(command)
+}
+
+/// Starts `command` with stdin closed and stderr inherited, and waits for it.
+///
+/// Ctrl+C reaches this process and the child alike (one console). This process
+/// handles it too (`ctrlc::install_silent`), so it does not die and leave the
+/// child running as an orphan: the child's own handler decides (first press: the
+/// run under way finishes; second: it writes its summary and exits 130; a third
+/// press ends both).
+pub fn wait_for_child(mut command: Command) -> io::Result<ChildOutput> {
+    ctrlc::install_silent();
+    let output = command
         .stdin(Stdio::null())
         .stderr(Stdio::inherit())
-        .output()?;
+        .output();
+    // The child is gone: Ctrl+C ends this process again (the daemon call that
+    // follows has no child to hand the press to).
+    ctrlc::uninstall();
+    let output = output?;
     Ok(ChildOutput {
         stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
         code: output.status.code().unwrap_or(-1),
@@ -156,6 +174,13 @@ pub fn parse_batch_output(lines: &[String], exit_code: i32) -> BatchOutcome {
         }
     }
     let Some(obj) = obj else {
+        if exit_code == 130 {
+            return BatchOutcome {
+                exit: 130,
+                error: Some("interrupted by Ctrl+C; no golden recorded".to_string()),
+                batch: None,
+            };
+        }
         return BatchOutcome {
             exit: 3,
             error: Some(format!("lab uat exited {exit_code} without a result")),
@@ -233,6 +258,16 @@ pub fn parse_batch_output(lines: &[String], exit_code: i32) -> BatchOutcome {
                 batch: batch_opt,
             }
         }
+        // The child ended on a second Ctrl+C after writing its summary.
+        130 => BatchOutcome {
+            exit: 130,
+            error: Some(if batch.is_empty() {
+                "interrupted by Ctrl+C; no golden recorded".to_string()
+            } else {
+                format!("interrupted by Ctrl+C; no golden recorded; {batch}")
+            }),
+            batch: batch_opt,
+        },
         other => BatchOutcome {
             exit: 3,
             error: Some(format!("lab uat exited {other}")),
@@ -584,5 +619,18 @@ mod tests {
             r.error.as_deref(),
             Some("lab uat passed but named no batch folder")
         );
+    }
+
+    // a second Ctrl+C ends the child with 130: golden ends with 130, not 3
+    #[test]
+    fn a_child_ended_by_ctrl_c_is_exit_130_with_its_folder() {
+        let line =
+            r#"{"ok":false,"runs":2,"passed":1,"failed":1,"batch":"C:\\b","interrupted":true}"#;
+        let r = parse_batch_output(&[line.to_string()], 130);
+        assert_eq!(r.exit, 130);
+        assert_eq!(r.batch.as_deref(), Some(r"C:\b"));
+        assert!(r.error.unwrap().starts_with("interrupted by Ctrl+C"));
+        let r = parse_batch_output(&[], 130);
+        assert_eq!((r.exit, r.batch), (130, None));
     }
 }

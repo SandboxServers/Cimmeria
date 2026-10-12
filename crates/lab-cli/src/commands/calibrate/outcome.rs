@@ -10,6 +10,7 @@ use serde::ser::{SerializeMap, Serializer};
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::ascii_json::to_ascii_json;
 use crate::daemon::mcp::{hide_lease_ids, McpError};
 
 /// The sweep confirms its winner this many times (`confirmed 3/3`).
@@ -357,7 +358,7 @@ struct CompactReply<'a> {
 }
 
 fn to_json<T: Serialize>(value: &T) -> String {
-    serde_json::to_string(value).expect("a plain struct serialises")
+    to_ascii_json(value)
 }
 
 /// The `--json` object: `{ok, section, row, outcomes, applied}` on one line,

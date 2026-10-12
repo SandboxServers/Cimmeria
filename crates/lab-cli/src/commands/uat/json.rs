@@ -3,12 +3,10 @@
 //! golden lines to 120; a clean 7-row 10-run batch is about 340 characters and a
 //! 5-run batch with two divergences stays under 500.
 
-use std::io;
-
 use serde::ser::{SerializeMap, Serializer};
 use serde::Serialize;
-use serde_json::ser::Formatter;
 
+use crate::ascii_json::to_ascii_json;
 use crate::clip::clip_text;
 
 use super::golden::GoldenSummary;
@@ -106,6 +104,8 @@ struct Compact<'a> {
     more_heal: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
     chaos: Option<&'a str>,
+    #[serde(skip_serializing_if = "is_false")]
+    interrupted: bool,
     batch: &'a str,
 }
 
@@ -201,40 +201,8 @@ pub fn compact_json_with(
             .collect(),
         more_heal: (summary.heal.len() > max_heal).then(|| summary.heal.len() - max_heal),
         chaos: summary.chaos.as_deref().filter(|c| !c.is_empty()),
+        interrupted: summary.interrupted,
         batch: batch_dir,
     };
-    let mut buf: Vec<u8> = Vec::new();
-    out.serialize(&mut serde_json::Serializer::with_formatter(
-        &mut buf,
-        PsFormatter,
-    ))
-    .expect("a plain struct serialises");
-    String::from_utf8(buf).expect("JSON is UTF-8")
-}
-
-/// The escapes of PowerShell's `ConvertTo-Json -Compress` that `serde_json`
-/// leaves out: it writes U+0085, U+2028 and U+2029 as backslash-u escapes
-/// (everything else is escaped the same way).
-struct PsFormatter;
-
-impl Formatter for PsFormatter {
-    fn write_string_fragment<W: ?Sized + io::Write>(
-        &mut self,
-        writer: &mut W,
-        fragment: &str,
-    ) -> io::Result<()> {
-        let mut plain = 0;
-        for (at, c) in fragment.char_indices() {
-            let escape = match c {
-                '\u{85}' => "\\u0085",
-                '\u{2028}' => "\\u2028",
-                '\u{2029}' => "\\u2029",
-                _ => continue,
-            };
-            writer.write_all(&fragment.as_bytes()[plain..at])?;
-            writer.write_all(escape.as_bytes())?;
-            plain = at + c.len_utf8();
-        }
-        writer.write_all(&fragment.as_bytes()[plain..])
-    }
+    to_ascii_json(&out)
 }

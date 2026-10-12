@@ -14,6 +14,7 @@ use super::check;
 use super::reply::{self, first_line, text_of};
 use super::summary;
 use super::Args;
+use crate::ascii_json::to_ascii_json;
 use crate::daemon::mcp::{hide_lease_ids, McpClient, McpError};
 use crate::daemon::paths;
 use crate::daemon::status::Endpoint;
@@ -62,7 +63,7 @@ impl Io<'_> {
                 error: &message,
                 batch: batch.filter(|b| !b.is_empty()),
             };
-            let text = serde_json::to_string(&body).unwrap_or_default();
+            let text = to_ascii_json(&body);
             let _ = writeln!(self.out, "{text}");
         } else {
             self.fail_line(&message);

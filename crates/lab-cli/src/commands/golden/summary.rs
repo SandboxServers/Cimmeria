@@ -5,6 +5,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use super::reply::text_of;
+use crate::ascii_json::to_ascii_json;
 use crate::ui::{Tone, Ui};
 
 /// Section, rows, total ordered events, build, recorded time and evidence run
@@ -93,12 +94,11 @@ pub fn show_json(summary: &Summary) -> String {
         #[serde(flatten)]
         summary: &'a Summary,
     }
-    serde_json::to_string(&Shown {
+    to_ascii_json(&Shown {
         ok: true,
         exit: 0,
         summary,
     })
-    .unwrap_or_default()
 }
 
 /// Plain mode: the lines the PowerShell printed, joined by `\n`.

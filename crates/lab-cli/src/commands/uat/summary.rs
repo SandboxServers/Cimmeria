@@ -106,7 +106,15 @@ pub struct Summary {
     /// `--heal`: the spec diffs proposed (set by the heal pass, not by `merge`).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub heal: Vec<HealEntry>,
+    /// A second Ctrl+C stopped the batch before every run finished (set by
+    /// `run_batch`, not by `merge`).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub interrupted: bool,
 }
+
+/// The line `summary.md` and the terminal summary carry after a second Ctrl+C.
+pub const INTERRUPTED_LINE: &str =
+    "Interrupted: Ctrl+C stopped this batch early; the runs below are the ones that finished or were cut short";
 
 /// One heal proposal: the row, the pose and the full path of its diff file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -211,6 +219,7 @@ pub fn merge(runs: &[RunRecord], lanes: &[PlanLane], braked: &[String]) -> Summa
         chaos_divergence: chaos::merge_divergence(runs),
         chaos: None,
         heal: Vec::new(),
+        interrupted: false,
     }
 }
 
@@ -250,6 +259,9 @@ pub fn format_markdown(summary: &Summary, title: &str, dir: &str) -> String {
     let mut lines: Vec<String> = Vec::new();
     if let Some(chaos) = summary.chaos.as_deref().filter(|c| !c.is_empty()) {
         lines.push(chaos.to_string());
+    }
+    if summary.interrupted {
+        lines.push(INTERRUPTED_LINE.to_string());
     }
     lines.push(format!(
         "# {title}: {} ({}/{} runs passed)",

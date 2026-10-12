@@ -5,6 +5,7 @@
 
 use serde::{Serialize, Serializer};
 
+use crate::ascii_json::to_ascii_json;
 use crate::daemon::mcp::hide_lease_ids;
 
 use super::snapshot::{InstanceView, Snapshot};
@@ -67,7 +68,7 @@ impl Serialize for Lanes<'_> {
 }
 
 fn to_line<T: Serialize>(value: &T) -> String {
-    serde_json::to_string(value).expect("a derived struct of strings and numbers always serializes")
+    to_ascii_json(value)
 }
 
 /// `{"ok":false,"exit":<code>,"error":"<message>"}`: a usage or read failure
