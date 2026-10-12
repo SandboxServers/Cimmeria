@@ -277,6 +277,10 @@ impl Supervisor {
                             .ok_or_else(|| format!("{window} has no screen rectangle"))?;
                         let step_wait = wait / 2;
                         let mut attempts: Vec<String> = Vec::new();
+                        // A click that was sent but showed no change may still
+                        // land late (a slow server round trip): the next step
+                        // could then use the item a second time.
+                        let mut sent_unseen = false;
                         // 1. CEGUI's own button injectors (N1).
                         match self.click_at_native(x, y, 1, false).await {
                             Ok(placed) => {
@@ -290,6 +294,7 @@ impl Supervisor {
                                     );
                                     settled = Some((a, d));
                                 } else {
+                                    sent_unseen = true;
                                     attempts
                                         .push("injected right-click: no inventory change".into());
                                 }
@@ -310,6 +315,7 @@ impl Supervisor {
                                         );
                                         settled = Some((a, d));
                                     } else {
+                                        sent_unseen = true;
                                         attempts
                                             .push("posted right-click: no inventory change".into());
                                     }
@@ -338,6 +344,9 @@ impl Supervisor {
                         }
                         out["slot_window"] = json!(window);
                         out["attempts"] = json!(attempts);
+                        // Reported, not hidden: when this is true and the diff
+                        // shows more than one use, an earlier click landed late.
+                        out["double_use_risk"] = json!(sent_unseen && settled.is_some());
                     }
                     Err(e) => {
                         let line = match verb.slash(item_id, 0) {
@@ -521,6 +530,7 @@ mod tests {
         let s = s.lock().unwrap();
         assert_eq!(s.edges(), vec!["down 1", "up 1"]);
         assert_eq!(s.lua_use_calls, 0);
+        assert_eq!(out["double_use_risk"], false);
     }
 
     /// Both clicks are lost: the stock handler uses the item, and the result
@@ -531,6 +541,7 @@ mod tests {
         assert_eq!(out["effect_ok"], true);
         assert_eq!(out["native_level"], "client_ui_lua");
         assert_eq!(out["native_pass"], false);
+        assert_eq!(out["double_use_risk"], true);
         assert_eq!(s.lock().unwrap().lua_use_calls, 1);
     }
 
