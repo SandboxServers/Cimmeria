@@ -178,6 +178,7 @@ Each metric, one line:
 - A comparison side with fewer than 5 campaigns or 10 packets carries a `low_n` flag. Read flagged figures as indicative only.
 
 **Outputs.** Aggregate data goes to `docs/analysis/campaign-metrics/data/` and the Markdown reports to `docs/analysis/campaign-metrics/reports/`.
+
 ## Telemetry
 
 Claude Code can also export OpenTelemetry events to the colo SigNoz. The setup, the privacy settings and the kill switch are in [claude-code-telemetry.md](../operations/claude-code-telemetry.md). The profiler doesn't need it, but the OTel reconciliation does. As of 2026-10-03 the workstation is configured and nothing has arrived yet: Claude Code reads the exporter settings only when it starts, so the window opens at the first restart.
