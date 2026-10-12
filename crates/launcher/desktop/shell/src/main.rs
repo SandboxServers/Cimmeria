@@ -24,7 +24,8 @@ use cimmeria_launcher_engine::{LauncherBuild, NativeCommand, NativeSnapshot, Sto
 use host::{
     AdoptionCommand, AdoptionError, AdoptionStatus, GameTelemetryCommand, GameTelemetryStatus,
     GameUpdateCommand, GameUpdateStatus, InstallCommand, InstallStatus, JobError, LaunchCommand,
-    LaunchStatus, MigrationCommand, MigrationStatus, NativeHost, UpdaterCommand,
+    LaunchStatus, MigrationCommand, MigrationStatus, NativeHost, SeedArchiveCommand,
+    SeedArchiveError, SeedArchiveStatus, UpdaterCommand,
 };
 use std::sync::Arc;
 use tauri::Manager;
@@ -427,6 +428,52 @@ async fn choose_legacy_source(
     }).await.map_err(|_| StorageError::Io)?
 }
 
+#[tauri::command]
+async fn seed_archive_command(
+    request: SeedArchiveCommand,
+    state: tauri::State<'_, Arc<NativeHost>>,
+) -> Result<SeedArchiveStatus, SeedArchiveError> {
+    let host = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || host.seed_archive_command(request))
+        .await
+        .map_err(|_| SeedArchiveError::Io)?
+}
+
+#[tauri::command]
+async fn choose_seed_archive(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, Arc<NativeHost>>,
+) -> Result<SeedArchiveStatus, SeedArchiveError> {
+    let host = state.inner().clone();
+    let Some(path) = tauri::async_runtime::spawn_blocking(move || {
+        app.dialog()
+            .file()
+            .set_parent(&window)
+            .set_title("Choose your downloaded Stargate Worlds archive")
+            .add_filter("RAR archive", &["rar"])
+            .blocking_pick_file()
+            .map(|file| file.into_path().map_err(|_| SeedArchiveError::Io))
+            .transpose()
+    })
+    .await
+    .map_err(|_| SeedArchiveError::Io)??
+    else {
+        // A cancelled dialog changes nothing and reports the current status.
+        let inspect = SeedArchiveCommand::Inspect { schema_version: 1 };
+        return tauri::async_runtime::spawn_blocking(move || host.seed_archive_command(inspect))
+            .await
+            .map_err(|_| SeedArchiveError::Io)?;
+    };
+    // Only the fixed, signed catalog names the release; the webview cannot.
+    let release = cimmeria_launcher_engine::catalog::fetch_release()
+        .await
+        .map_err(|_| SeedArchiveError::ReleaseUnavailable)?;
+    tauri::async_runtime::spawn_blocking(move || host.choose_seed_archive(path, release))
+        .await
+        .map_err(|_| SeedArchiveError::Io)?
+}
+
 /// tauri.conf.json carries the release title, so only a development build
 /// (no release tag and stamp) changes it, and a failed change never makes a
 /// release say "development".
@@ -501,7 +548,9 @@ fn main() {
             game_update_command,
             choose_legacy_source,
             adoption_command,
-            choose_adoption_destination
+            choose_adoption_destination,
+            seed_archive_command,
+            choose_seed_archive
         ])
         .run(tauri::generate_context!())
         .expect("desktop launcher could not initialize");

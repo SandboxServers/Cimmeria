@@ -64,6 +64,7 @@ pub use storage::client_maintenance;
 pub use storage::effective_settings;
 pub use storage::game_telemetry;
 pub use storage::log_upload;
+pub use storage::seed_archive;
 pub use storage::update;
 pub use storage::updater;
 mod owner_lock;
