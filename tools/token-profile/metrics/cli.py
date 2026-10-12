@@ -1,15 +1,20 @@
-"""Command line: campaign metrics. `registry` checks the campaign rules; `ledger` parses the packet tables of the ledgers;
-`cost` prices the profiler's requests per campaign (CM-03).
+"""Command line: campaign metrics. `registry` checks the campaign rules; `ledger` parses the packet tables of the
+ledgers; `cost` prices the profiler's requests per campaign (CM-03); `github` collects PRs, CI and escaped defects
+from GitHub (read-only).
 
     python tools/token-profile/metrics registry --repo . [--check] [--config <json>] [--campaigns <json>]
     python tools/token-profile/metrics ledger --repo . --out <dir>
     python tools/token-profile/metrics cost --db <profile.sqlite> --out <dir> [--config <json>] [--ledger <json>] [--since T] [--until T]
+    python tools/token-profile/metrics github --repo . --out <dir> [--since 2026-09-21] [--config <json>]
+        [--max-prs N] [--campaigns <file>] [--from-json <dir>]
 
 Exit status: 0 ok; 1 with registry --check, the campaign rules have a problem; 2 an input or output error;
 3 the privacy gate refused the output, nothing was written.
 The ledger writes <dir>/ledger.json and prints a JSON count summary. `cost` opens the profiler database read-only
 and writes cost.json to --out. --ledger is the CM-05 ledger.json: its "pr_map" ({"<pr>": "<campaign>"}) and, per
-campaign, the packets whose status is an accepted status.
+campaign, the packets whose status is an accepted status. The github subcommand writes <dir>/github.json,
+a scratch file that is never committed, and prints a JSON count summary. --from-json replays gh_prs.json,
+gh_issues.json and gh_checks.json from <dir> instead of calling gh.
 """
 
 import argparse
@@ -19,11 +24,13 @@ import subprocess
 import sys
 from pathlib import Path
 
+from ingest.campaigns import Campaigns
 from ingest.prices import CURRENT, SOURCE
 from report.db import ReportError, open_db
 from report.scrub import PrivacyError, Scrubber
 
 from . import cost, ledger, registry
+from .github import GhError, collect, polite, replay, run_gh
 
 
 def git_log(repo, failures):
@@ -59,7 +66,8 @@ def _retry_reason(campaign_dir, row):
 def build_ledger(repo, git, pr_overrides=None):
     """The packets of every campaign folder under docs/analysis, their PR map, and each campaign's window.
 
-    `pr_overrides` ({campaign: [pr]}) adds PRs that no ledger table cites; each such campaign gets a pseudo-packet for them.
+    `pr_overrides` ({campaign: [pr]}) adds PRs that no ledger table cites; each such campaign gets a pseudo-packet
+    for them.
     """
     root = Path(repo) / "docs" / "analysis"
     rows_by_campaign = {}
@@ -121,6 +129,49 @@ def run_ledger(args):
     return 0
 
 
+def run_github(args):
+    """Write github.json for `args.repo` to `args.out` and print its count summary; 0 written, 2 on an error."""
+    stats = {"gh_calls": 0, "cache_hits": 0}
+    cache_dir = (args.cache if args.cache is not None else Path(args.out) / "gh-cache") or None
+    try:
+        if args.from_json:
+            run = replay(args.from_json)
+        else:
+            run = polite(lambda a: run_gh(a, cwd=args.repo), cache_dir=cache_dir, stats=stats)
+        window = registry.load_config(args.config)["window"]
+        campaigns = Campaigns(registry.load_campaigns(args.campaigns))
+        pr_map = None
+        if args.ledger:
+            pr_map = {int(k): v for k, v in json.loads(Path(args.ledger).read_text(encoding="utf-8"))["pr_map"].items()}
+        record = collect(run, args.since or window["since"][:10], campaigns, args.max_prs, window["until"], pr_map)
+    except (GhError, OSError, ValueError, KeyError) as e:
+        print(f"status=error {e}", file=sys.stderr)
+        return 2
+
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "github.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8", newline="\n")
+    summary = {
+        "since": record["since"],
+        "prs_collected": len(record["prs"]),
+        "merged": sum(1 for r in record["prs"] if r["merged"]),
+        "traced_prs": sum(1 for r in record["prs"] if r["ci"] is not None),
+        "ci_checked": sum(1 for r in record["prs"] if r["ci"] and r["ci"]["runs"]),
+        "queue_first_attempt_green": sum(
+            1 for r in record["prs"] if r["queue"] and r["queue"]["first_attempt"] is True
+        ),
+        "queue_first_attempt_red": sum(
+            1 for r in record["prs"] if r["queue"] and r["queue"]["first_attempt"] is False
+        ),
+        "untagged_prs": record["untagged_prs"],
+        "escaped_defects": {c: len(rows) for c, rows in record["escaped_defects"].items()},
+        "gh_calls": stats["gh_calls"],
+        "cache_hits": stats["cache_hits"],
+    }
+    print(json.dumps(summary, indent=2))
+    return 0
+
+
 def main(argv=None):
     """Run the subcommand and return its exit status."""
     ap = argparse.ArgumentParser(prog="token-profile metrics", description=__doc__.split("\n\n")[0])
@@ -141,11 +192,27 @@ def main(argv=None):
     cst.add_argument("--ledger", help="the CM-05 ledger.json: pr_map and each campaign's packets")
     cst.add_argument("--since", help="first timestamp included (default: config.json's window)")
     cst.add_argument("--until", help="first timestamp excluded (default: config.json's window)")
+    gh = sub.add_parser("github", help="PRs, CI per head commit and escaped defects, read-only")
+    gh.add_argument("--repo", required=True, help="the checkout gh reads the remote from")
+    gh.add_argument("--out", required=True, help="scratch directory for github.json")
+    gh.add_argument(
+        "--since", default=None, help="PRs and issues created on or after this date (default: config window)"
+    )
+    gh.add_argument("--config", help="metrics config.json, whose window ends the collection (default: the package's)")
+    gh.add_argument("--max-prs", type=int, default=None, help="collect CI for the first N PRs only (a trial)")
+    gh.add_argument("--campaigns", default=None, help="campaign tags; default ingest/campaigns.json")
+    gh.add_argument("--ledger", default=None, help="ledger.json whose pr_map tags the PRs it names")
+    gh.add_argument("--cache", default=None, metavar="DIR",
+                    help="cache gh api answers in DIR so a failed run resumes (default OUT/gh-cache; \"\" turns it off; "
+                         "scratch only, never committed)")
+    gh.add_argument("--from-json", default=None, metavar="DIR", help="replay saved gh answers, no network")
     args = ap.parse_args(argv)
     if args.cmd == "ledger":
         return run_ledger(args)
     if args.cmd == "cost":
         return cmd_cost(args)
+    if args.cmd == "github":
+        return run_github(args)
     try:
         config = registry.load_config(args.config)
         campaigns = registry.load_campaigns(args.campaigns)

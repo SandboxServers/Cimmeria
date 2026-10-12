@@ -1,0 +1,64 @@
+{
+  "repos/{owner}/{repo}/actions/runs?event=merge_group&created=>=2026-09-21&per_page=100": [
+    {"total_count": 3, "workflow_runs": [
+      {"name": "ci", "head_branch": "gh-readonly-queue/main/pr-102-9d2a4b1c", "conclusion": "success", "created_at": "2026-10-02T11:00:00Z"},
+      {"name": "ci", "head_branch": "gh-readonly-queue/main/pr-102-7e11c0ff", "conclusion": "failure", "created_at": "2026-10-02T10:00:00Z"},
+      {"name": "ci", "head_branch": "gh-readonly-queue/main/pr-101-0a1b2c3d", "conclusion": "success", "created_at": "2026-10-01T10:00:00Z"}
+    ]}
+  ],
+  "repos/{owner}/{repo}/pulls/101/files?per_page=100": [
+    [{"filename": "crates/sgw/src/lab.rs"}, {"filename": "docs/a.md"}]
+  ],
+  "repos/{owner}/{repo}/pulls/102/files?per_page=100": [
+    [{"filename": "tools/token-profile/metrics/github.py"}]
+  ],
+  "repos/{owner}/{repo}/pulls/103/files?per_page=100": [
+    [{"filename": "docs/notes.md"}]
+  ],
+  "repos/{owner}/{repo}/pulls/104/files?per_page=100": [
+    [{"filename": "crates/sgw/src/lab.rs"}]
+  ],
+  "repos/{owner}/{repo}/pulls/101/commits?per_page=100": [
+    [{"sha": "a101", "commit": {"committer": {"date": "2026-10-01T09:00:00Z"}}}]
+  ],
+  "repos/{owner}/{repo}/pulls/102/commits?per_page=100": [
+    [
+      {"sha": "b101", "commit": {"committer": {"date": "2026-10-02T09:00:00Z"}}},
+      {"sha": "b102", "commit": {"committer": {"date": "2026-10-02T11:00:00Z"}}}
+    ]
+  ],
+  "repos/{owner}/{repo}/pulls/103/commits?per_page=100": [
+    [{"sha": "c103", "commit": {"committer": {"date": "2026-10-03T09:00:00Z"}}}]
+  ],
+  "repos/{owner}/{repo}/pulls/104/commits?per_page=100": [
+    [{"sha": "d104", "commit": {"committer": {"date": "2026-10-04T08:30:00Z"}}}]
+  ],
+  "repos/{owner}/{repo}/commits/a101/check-runs?per_page=100": [
+    {"total_count": 2, "check_runs": [
+      {"name": "ci gate", "conclusion": "success", "started_at": "2026-10-01T09:01:00Z"},
+      {"name": "build", "conclusion": "success", "started_at": "2026-10-01T09:01:00Z"}
+    ]}
+  ],
+  "repos/{owner}/{repo}/commits/b101/check-runs?per_page=100": [
+    {"total_count": 2, "check_runs": [
+      {"name": "ci gate", "conclusion": "failure", "started_at": "2026-10-02T09:01:00Z"},
+      {"name": "build", "conclusion": "failure", "started_at": "2026-10-02T09:01:00Z"}
+    ]}
+  ],
+  "repos/{owner}/{repo}/commits/b102/check-runs?per_page=100": [
+    {"total_count": 2, "check_runs": [
+      {"name": "ci gate", "conclusion": "success", "started_at": "2026-10-02T11:01:00Z"},
+      {"name": "build", "conclusion": "success", "started_at": "2026-10-02T11:01:00Z"}
+    ]}
+  ],
+  "repos/{owner}/{repo}/commits/c103/check-runs?per_page=100": [
+    {"total_count": 1, "check_runs": [
+      {"name": "docs-lint", "conclusion": "success", "started_at": "2026-10-03T09:01:00Z"}
+    ]}
+  ],
+  "repos/{owner}/{repo}/commits/d104/check-runs?per_page=100": [
+    {"total_count": 1, "check_runs": [
+      {"name": "ci gate", "conclusion": "success", "started_at": "2026-10-04T08:31:00Z"}
+    ]}
+  ]
+}
