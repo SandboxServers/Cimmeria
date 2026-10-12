@@ -1186,7 +1186,7 @@ lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -DiffGolde
 lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3 -Heal
 ```
 
-**`lab watch`.** It shows a `lab uat` batch while it runs: the newest `batch-*` folder under the UAT root, or the `--batch` folder, redrawn every `--interval-seconds` (default 2, 1 to 60) in the terminal's alternate screen until Ctrl+C, which puts the screen back. The PowerShell spelling of every flag (`-Once`, `-IntervalSeconds`) still works. Run it in one terminal while the batch runs in another:
+**`lab watch`.** It shows a `lab uat` batch while it runs: the newest `batch-*` folder under the UAT root, or the `--batch` folder, redrawn every `--interval-seconds` (default 2, 1 to 60) in the terminal's alternate screen until you press `q`, `Esc` or Ctrl+C, which puts the screen back. The frame is the batch line (with a state word: `live` green, `done`, `interrupted` red), a progress bar of runs done out of runs planned, the instance table, the last failure with its issue tag, and the footer; it is drawn in colour and cut to the window, with a last line `… <n> more lines` when it is too tall. The PowerShell spelling of every flag (`-Once`, `-IntervalSeconds`) still works. Run it in one terminal while the batch runs in another:
 
 ```powershell
 lab uat first-session -Rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 -Leases 2 -RunsPerLease 3   # terminal 1
@@ -1204,7 +1204,7 @@ lab watch                                                                       
 ```
 
 - **Read-only.** It takes no lease and asks the daemon only for `GET /status`, so it can run beside any batch or agent. Lease ids are redacted from everything it prints.
-- **Exit codes.** 0 a snapshot was printed or Ctrl+C ended the view; 1 the daemon is down and there is no batch; 2 usage; 3 a `--once` read failed (a locked or denied batch folder or `labd.log`). Under `--json`, 2 and 3 print `{"ok":false,"exit":N,"error":"..."}`. A frame taller than the window is cut, with a last line saying how many lines it hid. With stdin redirected, Ctrl+C is the shell's own and the exit is not 0; Ctrl+Break or closing the window leaves the alternate screen without restoring it.
+- **Exit codes.** 0 a snapshot was printed or `q`, `Esc` or Ctrl+C ended the view; 1 the daemon is down and there is no batch; 2 usage; 3 a `--once` read failed (a locked or denied batch folder or `labd.log`). Under `--json`, 2 and 3 print `{"ok":false,"exit":N,"error":"..."}`. A frame taller than the window is cut, with a last line `… <n> more lines`. With stdin redirected the view reads no keys (`q` and `Esc` do nothing): Ctrl+C is the shell's own and the exit is not 0; Ctrl+Break or closing the window leaves the alternate screen without restoring it.
 - **Test seams.** `--status-file <path>` reads the `/status` JSON from a file instead of the daemon (a file without the daemon's shape reads as the daemon down), and `--log-file <path>` reads that file instead of `labd.log`. They exist for the tests in `crates/lab-cli/tests/` and for reading a saved snapshot; they are not in `lab help`.
 
 **`lab calibrate`.** It finds a pose again on the live client and proposes it as a spec diff, through `lab_uat_calibrate`; the how-to, the sweep and its score are in [Calibrate a row](automated-uat.md#calibrate-a-row).
