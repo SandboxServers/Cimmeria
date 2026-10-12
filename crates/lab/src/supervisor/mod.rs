@@ -48,6 +48,7 @@ pub mod input;
 pub mod instance;
 pub mod instance_profile;
 pub mod keys;
+pub mod lane_idle;
 mod lifecycle;
 pub mod login_servers;
 pub mod main_thread;
@@ -404,6 +405,9 @@ impl Supervisor {
         tokio::task::spawn_blocking(display::ensure_display_for_launch)
             .await
             .map_err(|e| format!("display check: {e}"))??;
+        // Starts on a saturated drive stall in page-in; give builds a bounded
+        // chance to finish first (LH-15).
+        lane_idle::wait_before_launch(cause).await;
         let install_dir = self
             .config
             .install_dir
