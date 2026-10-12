@@ -164,6 +164,19 @@ impl IngestError {
         }
     }
 
+    /// `true` for a refusal of the uploader's credential: no token, a token
+    /// that does not verify, or one that expired. It describes the
+    /// uploader's state, not the server's, so its row is SigNoz-only (see
+    /// [`super::refusal_log::AUTH_REFUSED_EVENT`]). The kill switch and an
+    /// unusable secret are server state and the rate limit is a budget, so
+    /// those are not credential refusals.
+    pub(super) fn is_credential_refusal(&self) -> bool {
+        matches!(
+            self.reason(),
+            "missing_token" | "bad_token" | "token_expired"
+        )
+    }
+
     /// The budget a refusal names, for its log row.
     pub(super) fn budget(&self) -> Option<&'static str> {
         match self {

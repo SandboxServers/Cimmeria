@@ -5,12 +5,33 @@
 //! A refused uploader usually keeps trying: the launcher and the DLL retry
 //! every flush, and an unauthenticated caller can repeat as fast as it
 //! likes. So the first refusal for an `(uploader, reason)` pair writes a
-//! row at once, the repeats inside [`WINDOW`] are counted, and the next row
-//! for the pair carries the count in `suppressed`. On top of that, at most
-//! [`GLOBAL_ROWS_PER_WINDOW`] rows are written per window across every
-//! uploader, so many distinct uploaders cannot turn refusals into a log
-//! flood either; a row held back by that ceiling is counted in its pair's
-//! `suppressed` like any other.
+//! row at once, the repeats inside the pair's window are counted, and the
+//! next row for the pair carries the count in `suppressed`.
+//!
+//! The window starts at [`WINDOW`] and doubles with every row the pair
+//! writes (10 s, 20 s, 40 s, ...) up to [`MAX_WINDOW`]. A fixed window
+//! never bites on a steady retrier slower than it: on 2026-10-12 an
+//! abandoned lab client retried an expired token every ~12 s for 4.5 h and
+//! got one row per retry, each with `suppressed=2`. With the doubling, a
+//! pair refused every 12 s writes about ten rows in its first hour and
+//! then four an hour. The window goes back to [`WINDOW`] once the pair has
+//! been quiet (no refusal at all, written or counted) for [`RESET_QUIET`].
+//! That is measured from the pair's last refusal rather than compared to
+//! its current window, because a reset tied to a 10 s window would let any
+//! retrier slower than about 20 s through on every retry, forever.
+//!
+//! On top of that, at most [`GLOBAL_ROWS_PER_WINDOW`] rows are written per
+//! [`WINDOW`] across every uploader, so many distinct uploaders cannot turn
+//! refusals into a log flood either; a row held back by that ceiling is
+//! counted in its pair's `suppressed` like any other, and does not widen
+//! the pair's window (no row was written).
+//!
+//! A refusal of the uploader's own credential (no token, a bad token, an
+//! expired one: [`IngestError::is_credential_refusal`]) carries
+//! `event = "upload_auth_refused"`; every other refusal carries
+//! `event = "upload_refused"`. The Discord layer keeps the first in SigNoz
+//! only (`SIGNOZ_ONLY_EVENTS`): it is the uploader's state, not a server
+//! fault. Both stay at their level, so SigNoz sees every row.
 //!
 //! The rows carry the route, the reason, the budget and limit that refused
 //! the upload, and the uploader's identity (the token's ids once it
@@ -30,11 +51,26 @@ use std::time::{Duration, Instant};
 use super::dto::IngestError;
 use super::upload_gate::{Route, Uploader};
 
-/// How long a pair's repeats are counted instead of written.
+/// A pair's first window: how long its repeats are counted instead of
+/// written after its first row. Also the global ceiling's window.
 pub(super) const WINDOW: Duration = Duration::from_secs(10);
+
+/// The widest a pair's window grows by doubling.
+pub(super) const MAX_WINDOW: Duration = Duration::from_secs(15 * 60);
+
+/// A pair quiet this long since its last refusal starts again at
+/// [`WINDOW`].
+pub(super) const RESET_QUIET: Duration = MAX_WINDOW;
 
 /// Rows written per [`WINDOW`] across every uploader.
 pub(super) const GLOBAL_ROWS_PER_WINDOW: u32 = 50;
+
+/// `event` on a refusal of the uploader's credential. SigNoz-only: the
+/// Discord layer's `SIGNOZ_ONLY_EVENTS` lists `("launcher.ingest", this)`.
+pub(super) const AUTH_REFUSED_EVENT: &str = "upload_auth_refused";
+
+/// `event` on every other refusal. These still post to Discord at WARN.
+pub(super) const REFUSED_EVENT: &str = "upload_refused";
 
 /// Slots in the per-pair table.
 const SLOTS: usize = 512;
@@ -42,7 +78,13 @@ const SLOTS: usize = 512;
 #[derive(Debug, Clone, Copy)]
 struct Slot {
     key: u64,
+    /// When the pair's current window opened (its last row, or the last
+    /// refusal the global ceiling held back).
     opened: Instant,
+    /// The pair's current window, [`WINDOW`] to [`MAX_WINDOW`].
+    window: Duration,
+    /// The pair's latest refusal, written or not.
+    last_seen: Instant,
     suppressed: u64,
 }
 
@@ -96,16 +138,26 @@ impl RefusalLog {
         // updated together below.
         let inner = &mut *guard;
         let idx = (key % SLOTS as u64) as usize;
-        let carried = match inner.slots[idx] {
-            Some(s) if s.key == key && now.saturating_duration_since(s.opened) < WINDOW => {
+        // `held_window` is the pair's window if the ceiling holds this one
+        // back (unchanged: no row is written); `next_window` if it emits.
+        let (carried, held_window, next_window) = match inner.slots[idx] {
+            Some(s) if s.key == key && now.saturating_duration_since(s.opened) < s.window => {
                 inner.slots[idx] = Some(Slot {
                     suppressed: s.suppressed + 1,
+                    last_seen: now,
                     ..s
                 });
                 return Decision::Suppress;
             }
-            Some(s) if s.key == key => s.suppressed,
-            _ => 0,
+            Some(s) if s.key == key => {
+                if now.saturating_duration_since(s.last_seen) >= RESET_QUIET {
+                    (s.suppressed, WINDOW, WINDOW)
+                } else {
+                    (s.suppressed, s.window, (s.window * 2).min(MAX_WINDOW))
+                }
+            }
+            // A new pair, or a takeover of a slot another pair held.
+            _ => (0, WINDOW, WINDOW),
         };
         let global = inner.global.get_or_insert(Global {
             opened: now,
@@ -122,6 +174,8 @@ impl RefusalLog {
             inner.slots[idx] = Some(Slot {
                 key,
                 opened: now,
+                window: held_window,
+                last_seen: now,
                 suppressed: carried + 1,
             });
             return Decision::Suppress;
@@ -130,6 +184,8 @@ impl RefusalLog {
         inner.slots[idx] = Some(Slot {
             key,
             opened: now,
+            window: next_window,
+            last_seen: now,
             suppressed: 0,
         });
         Decision::Emit {
@@ -147,6 +203,14 @@ impl RefusalLog {
         let Decision::Emit { suppressed } = self.decide(reason, subject, now) else {
             return;
         };
+        // A credential refusal is the uploader's state, not a server fault:
+        // its own `event` keeps it out of the Discord errors channel, at the
+        // same WARN level so SigNoz parity holds.
+        let event = if err.is_credential_refusal() {
+            AUTH_REFUSED_EVENT
+        } else {
+            REFUSED_EVENT
+        };
         // `tracing` fixes an event's level at the call site, so one call per
         // level; the macro keeps the field list in one place.
         macro_rules! refusal {
@@ -154,6 +218,7 @@ impl RefusalLog {
                 tracing::event!(
                     target: "launcher.ingest",
                     $level,
+                    event,
                     route = route.path(),
                     reason,
                     budget = err.budget(),

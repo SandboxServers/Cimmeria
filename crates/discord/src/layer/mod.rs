@@ -56,6 +56,13 @@ pub const SIGNOZ_ONLY_EVENTS: &[(&str, &str)] = &[
     // (Castle_CellBlock, one per login) spawn the same rows again, so it
     // posted the same handful of spawns all day (2026-09-29).
     ("spawner.npc_behaviour", "spawn_off_mesh"),
+    // A telemetry upload refused for the uploader's own credential (no
+    // token, a bad one, an expired one) is the uploader's state, not a
+    // server fault: an abandoned lab client retrying an expired token every
+    // ~12 s posted 1,363 rows in 6 h (2026-10-12). The ingest's other
+    // refusals (`event = "upload_refused"`: rate limit, budgets, kill
+    // switch, unusable secret) and its truncations still post.
+    ("launcher.ingest", "upload_auth_refused"),
 ];
 
 pub struct DiscordLayer {

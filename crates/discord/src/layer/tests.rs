@@ -227,6 +227,55 @@ async fn signoz_only_events_are_filtered() {
     );
 }
 
+/// A telemetry upload refused for the uploader's credential stays in
+/// SigNoz; the ingest's other refusals still post. Fields as
+/// `RefusalLog::report` writes them (2026-10-12 colo flood). Dropping the
+/// `launcher.ingest` row trips the first assertion.
+#[tokio::test(flavor = "current_thread")]
+async fn ingest_credential_refusals_do_not_post() {
+    let mock = MockSender::new();
+    let calls = mock.calls_handle();
+    let cfg = errors_only_config(true, true);
+    let (handle, _task) = spawn(mock, cfg.clone());
+
+    let subscriber = tracing_subscriber::registry().with(DiscordLayer::new(handle, cfg));
+    let _guard = tracing::subscriber::set_default(subscriber);
+
+    tracing::warn!(
+        target: "launcher.ingest",
+        event = "upload_auth_refused",
+        route = "upload-chunk",
+        reason = "token_expired",
+        cimmeria.session_kind = "lab",
+        peer = "198.51.100.7",
+        suppressed = 2u64,
+        "telemetry upload refused: token_expired"
+    );
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert!(
+        calls.lock().await.is_empty(),
+        "credential refusals must never post to Discord"
+    );
+
+    tracing::warn!(
+        target: "launcher.ingest",
+        event = "upload_refused",
+        route = "upload-chunk",
+        reason = "over_budget",
+        budget = "rows",
+        limit = 1000u64,
+        peer = "198.51.100.7",
+        suppressed = 0u64,
+        "telemetry upload refused: over_budget"
+    );
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert_eq!(
+        calls.lock().await.len(),
+        1,
+        "the ingest's other refusals still post"
+    );
+}
+
 /// Rows are distinct, and the matcher keys on target and event
 /// together: the same event on another target, or no event, posts.
 #[test]
