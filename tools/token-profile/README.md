@@ -12,6 +12,7 @@ Status: **Campaign closed (2026-10-03).** The data contract, ingest, reports, re
 | [`campaigns.json`](campaigns.json) | Which branches, branch prefixes and tracking issues belong to which campaign (a `docs/analysis/<campaign>/` folder). |
 | [`fixtures/build_fixtures.py`](fixtures/build_fixtures.py) | Builds a synthetic transcript tree, with an `expected.json` of what a correct ingest produces and hostile values a report must never show. |
 | [`ingest/`](ingest/) | The ingest: transcripts into the schema, incrementally, with trigger classification, prices and PR attribution. Its tests are `ingest/test_*.py`. |
+| [`metrics/`](metrics/) | Campaign metrics (CM-01..): the campaign registry and regime config. `metrics registry --check` validates `campaigns.json`. Its tests are `metrics/test_*.py`. |
 | [`report/`](report/) | The reports: raw tokens, estimated USD, context pressure, tool exposure, cost per merged PR and a cache-policy simulator, behind a privacy scrubber. See [Reports](#reports). |
 | [`reconcile/`](reconcile/) | Checks the profiler against Claude Code's `cost-state` records and OTel `api_request` events, with tolerances. See [Reconciliation](#reconciliation). |
 | [`cutlines/`](cutlines/) | Before-and-after measures across the ledger's cut lines. See [Cut lines](#cut-lines). |
