@@ -19,19 +19,24 @@
     [{"filename": "crates/sgw/src/lab.rs"}]
   ],
   "repos/{owner}/{repo}/pulls/101/commits?per_page=100": [
-    [{"sha": "a101", "commit": {"committer": {"date": "2026-10-01T09:00:00Z"}}}]
+    [{"sha": "a101", "parents": [{"sha": "p0"}],
+      "commit": {"author": {"date": "2026-10-01T09:00:00Z"}, "committer": {"date": "2026-10-01T09:00:00Z"}}}]
   ],
   "repos/{owner}/{repo}/pulls/102/commits?per_page=100": [
     [
-      {"sha": "b101", "commit": {"committer": {"date": "2026-10-02T09:00:00Z"}}},
-      {"sha": "b102", "commit": {"committer": {"date": "2026-10-02T11:00:00Z"}}}
+      {"sha": "b101", "parents": [{"sha": "p0"}],
+       "commit": {"author": {"date": "2026-10-02T08:00:00Z"}, "committer": {"date": "2026-10-02T09:00:00Z"}}},
+      {"sha": "b102", "parents": [{"sha": "b101"}, {"sha": "p1"}],
+       "commit": {"author": {"date": "2026-10-02T11:00:00Z"}, "committer": {"date": "2026-10-02T11:00:00Z"}}}
     ]
   ],
   "repos/{owner}/{repo}/pulls/103/commits?per_page=100": [
-    [{"sha": "c103", "commit": {"committer": {"date": "2026-10-03T09:00:00Z"}}}]
+    [{"sha": "c103", "parents": [{"sha": "p0"}],
+      "commit": {"author": {"date": "2026-10-03T09:00:00Z"}, "committer": {"date": "2026-10-03T09:00:00Z"}}}]
   ],
   "repos/{owner}/{repo}/pulls/104/commits?per_page=100": [
-    [{"sha": "d104", "commit": {"committer": {"date": "2026-10-04T08:30:00Z"}}}]
+    [{"sha": "d104", "parents": [{"sha": "p0"}],
+      "commit": {"author": {"date": "2026-10-04T08:30:00Z"}, "committer": {"date": "2026-10-04T08:30:00Z"}}}]
   ],
   "repos/{owner}/{repo}/commits/a101/check-runs?per_page=100": [
     {"total_count": 2, "check_runs": [

@@ -121,15 +121,23 @@ def stop_reason(stop):
     return "other"
 
 
+def _is_fix_named(agent):
+    """A worker named as a fix worker: `fix`, optionally numbered, as its own dash-separated word (cm01-fix1)."""
+    return re.search(r"(^|-)fix\d*[a-z0-9]*$", agent.get("name") or "") is not None
+
+
 def _fix_commits(pr, reviewers):
-    """Commits on the PR head after the first reviewer started. None without a PR, its commit times or a reviewer."""
+    """Commits on the PR head after the first reviewer started. None without a PR, its commit times or a reviewer.
+
+    A merge commit is not work, and a rebased commit keeps its author date, so the author date decides when it is there.
+    """
     if pr is None or pr.get("commits") is None:
         return None
     if not reviewers:
         # no reviewer session mapped: fix commits unknown
         return None
     start = _started(reviewers[0])
-    times = (_ts(c.get("committed")) for c in pr["commits"])
+    times = (_ts(c.get("authored") or c.get("committed")) for c in pr["commits"] if not c.get("merge"))
     return sum(1 for when in times if when and when > start)
 
 
@@ -150,9 +158,10 @@ def _escalation_target(coders, agents, roles, sessions, merged):
 
 def _join_packet(row, sessions, agents, stops, pr, roles, accepted):
     """One packet's record from its worker `sessions` (oldest first); `agents` is every worker, for escalation."""
-    coders = [a for a in sessions if role_of(a, roles) == "implementer-haiku"]
+    coders = [a for a in sessions if role_of(a, roles) == "implementer-haiku" and not _is_fix_named(a)]
     reviewers = [a for a in sessions if role_of(a, roles) == "reviewer"]
-    fixers = [a for a in sessions if role_of(a, roles) == "fixer"]
+    fixers = [a for a in sessions if role_of(a, roles) == "fixer"
+              or (role_of(a, roles) == "implementer-haiku" and _is_fix_named(a))]
     merged = _ts(pr.get("mergedAt")) if pr else None
     target = _escalation_target(coders, agents, roles, sessions, merged)
     escalated = bool(row["escalated"]) or target is not None

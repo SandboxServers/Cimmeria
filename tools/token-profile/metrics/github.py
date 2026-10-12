@@ -256,12 +256,14 @@ def collect_issues(run, since, until=None):
 
 
 def head_commits(run, pr):
-    """The PR's commits, oldest first, as {sha, committed}. Past MAX_COMMITS, the first and the last 50 are kept.
+    """The PR's commits, oldest first, as {sha, committed, authored, merge}. Past MAX_COMMITS, the first and last 50 stay.
 
+    `authored` is the author date, which a rebase keeps; `merge` is true for a commit with more than one parent.
     The first half feeds first_attempt and the last half feeds overall, so the cap keeps both ends.
     """
     rows = pages(run, f"repos/{{owner}}/{{repo}}/pulls/{pr['number']}/commits{PAGE}")
-    commits = sorted(({"sha": c["sha"], "committed": c["commit"]["committer"]["date"]} for c in rows),
+    commits = sorted(({"sha": c["sha"], "committed": c["commit"]["committer"]["date"],
+                       "authored": c["commit"]["author"]["date"], "merge": len(c["parents"]) > 1} for c in rows),
                      key=lambda c: c["committed"])
     if len(commits) > MAX_COMMITS:
         half = MAX_COMMITS // 2

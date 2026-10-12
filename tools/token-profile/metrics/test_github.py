@@ -91,7 +91,9 @@ class GithubTests(unittest.TestCase):
         self.assertEqual(tagged, {101: "lab-record", 102: "lab-record", 103: None, 104: None})
 
     def test_commits_are_capped_at_one_hundred_keeping_the_first_and_the_last_fifty(self):
-        commits = [{"sha": f"s{i}", "commit": {"committer": {"date": f"2026-10-01T{i // 60:02d}:{i % 60:02d}:00Z"}}}
+        commits = [{"sha": f"s{i}", "parents": [{"sha": "p"}],
+                    "commit": {"author": {"date": f"2026-10-01T{i // 60:02d}:{i % 60:02d}:00Z"},
+                               "committer": {"date": f"2026-10-01T{i // 60:02d}:{i % 60:02d}:00Z"}}}
                    for i in range(150)]
         run = lambda args: [commits]  # noqa: E731
         kept = [c["sha"] for c in gh.head_commits(run, {"number": 1})]
@@ -356,8 +358,9 @@ class GithubTests(unittest.TestCase):
     def test_a_traced_pr_records_its_commits_oldest_first(self):
         record = gh.collect(self.run, "2026-09-21", Campaigns({"lab-record": {"prefixes": ["lab/"]}}))
         row = {r["number"]: r for r in record["prs"]}[102]
-        self.assertEqual(row["commits"], [{"sha": "b101", "committed": "2026-10-02T09:00:00Z"},
-                                          {"sha": "b102", "committed": "2026-10-02T11:00:00Z"}])
+        self.assertEqual(row["commits"], [
+            {"sha": "b101", "committed": "2026-10-02T09:00:00Z", "authored": "2026-10-02T08:00:00Z", "merge": False},
+            {"sha": "b102", "committed": "2026-10-02T11:00:00Z", "authored": "2026-10-02T11:00:00Z", "merge": True}])
 
     def test_queue_runs_are_read_from_the_branch_and_the_earliest_run_is_the_first_attempt(self):
         record = gh.collect(self.run, "2026-09-21", Campaigns({"lab-record": {"prefixes": ["lab/"]}}),

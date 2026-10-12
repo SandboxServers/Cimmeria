@@ -353,6 +353,32 @@ class JoinTest(FixtureTest):
         self.assertIsNone(record["first_pass"])
         self.assertEqual(self.join(github=github)["campaigns"][CAMPAIGN]["first_pass"]["eligible"], 2)
 
+    def test_merges_and_rebases_are_not_fix_commits(self):
+        """After the review: a merge, a rebase (authored before the review, committed after) and one real fix. Reverting
+        the merge filter or the author date makes this 2."""
+        github = _github()
+        github["prs"][0]["commits"] = [
+            {"sha": "m1", "committed": "2026-10-01T11:00:00Z", "authored": "2026-10-01T11:00:00Z", "merge": True},
+            {"sha": "r1", "committed": "2026-10-01T11:10:00Z", "authored": "2026-10-01T08:00:00Z", "merge": False},
+            {"sha": "f1", "committed": "2026-10-01T11:20:00Z", "authored": "2026-10-01T11:20:00Z", "merge": False}]
+        self.assertEqual(_record(self.join(github=github), "LR-01")["fix_commits"], 1)
+
+    def test_fix_named_coder_is_a_fixer_not_a_second_coder(self):
+        agents = [_agent("cm01-a1", WORKTREE.format("lr-01"), "2026-10-01T06:00:00Z", "packet-coder", "packet-coder",
+                         name="cm01-a1"),
+                  _agent("cm01-rev1", WORKTREE.format("lr-01"), "2026-10-01T10:00:00Z", "packet-reviewer",
+                         "packet-reviewer", name="cm01-rev1"),
+                  _agent("cm01-fix1", WORKTREE.format("lr-01"), "2026-10-01T11:00:00Z", "packet-coder", "packet-coder",
+                         name="cm01-fix1")]
+        record = _record(self.join(agents=agents), "LR-01")
+        self.assertEqual((record["implementer_sessions"], record["fixer_sessions"], record["retries"],
+                          record["first_pass"]), (1, 1, [], False))
+
+    def test_a_second_non_fix_coder_still_makes_no_first_pass(self):
+        agents = [AGENTS[0], _agent("cm01-a2", WORKTREE.format("lr-01"), "2026-10-01T07:00:00Z", "packet-coder",
+                                    "packet-coder", name="cm01-a2")]
+        self.assertIs(_record(self.join(agents=agents), "LR-01")["first_pass"], False)
+
 
 class PacketsCommandTest(FixtureTest):
     """The packets subcommand writes packets.json and reports a missing input as status=error."""
