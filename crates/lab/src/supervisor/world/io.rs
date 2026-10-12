@@ -86,6 +86,15 @@ pub trait WorldIo {
     async fn target_unit(&mut self, slot: i32) -> Result<(), String>;
     /// Make sure the game reads the lab's input (virtual focus).
     async fn ensure_focus(&mut self) -> Result<(), String>;
+
+    /// The `(left, right)` lab key names the client binds to turn the pawn
+    /// (default Q and E).
+    async fn turn_keys(&mut self) -> Result<(String, String), String> {
+        Ok((
+            super::turn_keys::DEFAULT_LEFT.to_string(),
+            super::turn_keys::DEFAULT_RIGHT.to_string(),
+        ))
+    }
 }
 
 /// [`WorldIo`] over the running client.
@@ -466,5 +475,10 @@ impl WorldIo for LiveWorld<'_> {
 
     async fn ensure_focus(&mut self) -> Result<(), String> {
         self.sup.input_focus(true).await.map(|_| ())
+    }
+
+    async fn turn_keys(&mut self) -> Result<(String, String), String> {
+        let r = self.lua(super::turn_keys::TURN_KEYS_CHUNK).await?;
+        Ok(super::turn_keys::parse_turn_keys(&r))
     }
 }

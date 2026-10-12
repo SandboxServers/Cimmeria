@@ -7,7 +7,7 @@ use super::tool_tests::{client_point, room};
 
 #[tokio::test]
 async fn move_to_walks_to_a_point_and_lets_go_of_the_keys() {
-    let mut sim = Sim::new();
+    let mut sim = Sim::live();
     let out = movement::run(
         &mut sim,
         MoveRequest {
@@ -23,13 +23,39 @@ async fn move_to_walks_to_a_point_and_lets_go_of_the_keys() {
     assert!(!sim.keys["W"], "forward key left held");
 }
 
-/// Target behind, inverted and slow mouse, pawn does not turn standing:
-/// the controller learns all three and still arrives.
+/// The 2026-10-12 live defect (#1660 item 8): the pawn ignores mouse-look,
+/// so a controller that steers with it never turns and walks away. The
+/// target is 90 degrees to the left; only the turn keys can get there.
 #[tokio::test]
-async fn move_to_learns_an_inverted_gain_and_walking_turns() {
-    let mut sim = Sim::new();
-    sim.gain = -200.0;
-    sim.standing_turn = false;
+async fn move_to_turns_a_pawn_that_ignores_mouse_look() {
+    let mut sim = Sim::live();
+    let out = movement::run(
+        &mut sim,
+        MoveRequest {
+            point: Some(client_point(0.0, 3000.0, 0.0)),
+            ..MoveRequest::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(out["arrived"], true);
+    assert!(
+        sim.looks.is_empty(),
+        "steered with mouse-look: {:?}",
+        sim.looks
+    );
+    assert!((sim.pos.y - 3000.0).abs() <= 150.0 + 60.0);
+    assert!(out["turn_rate"]["samples"].as_u64().unwrap() >= 1);
+    assert!(!sim.keys["E"] && !sim.keys["W"], "keys left held");
+}
+
+/// A target behind, a slower pawn and a flipped key: the controller learns
+/// the rate and the sign from the yaw it reads and still arrives.
+#[tokio::test]
+async fn move_to_learns_the_turn_rate_and_a_flipped_key() {
+    let mut sim = Sim::live();
+    sim.turn_rate_rad_s = 1.0;
+    sim.right_raises_yaw = false;
     let out = movement::run(
         &mut sim,
         MoveRequest {
@@ -41,13 +67,56 @@ async fn move_to_learns_an_inverted_gain_and_walking_turns() {
     .await
     .unwrap();
     assert_eq!(out["arrived"], true);
-    assert!(out["turn_gain"]["counts_per_rad"].as_f64().unwrap() < 0.0);
-    assert_eq!(out["legs"][0]["standing_turn"], false);
+    assert!(out["turn_rate"]["sign_flips"].as_u64().unwrap() >= 1);
+    let rate = out["turn_rate"]["rad_s"].as_f64().unwrap();
+    assert!((rate - 1.0).abs() < 0.35, "learned {rate} rad/s");
+}
+
+/// The keys are the client's bindings, not a hard-coded Q/E.
+#[tokio::test]
+async fn move_to_presses_the_bound_turn_keys() {
+    let mut sim = Sim::live();
+    sim.turn_key_names = ("J".into(), "L".into());
+    let out = movement::run(
+        &mut sim,
+        MoveRequest {
+            point: Some(client_point(0.0, 3000.0, 0.0)),
+            ..MoveRequest::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(out["arrived"], true);
+    assert!(
+        sim.keys.contains_key("L"),
+        "the bound right key was never pressed"
+    );
+    assert!(!sim.keys.contains_key("E") && !sim.keys.contains_key("Q"));
+    assert!(!sim.keys["L"], "turn key left held");
+}
+
+/// A rooted pawn (turn rate 0) ends the walk honestly, with the keys up.
+#[tokio::test]
+async fn move_to_reports_a_pawn_that_does_not_turn() {
+    let mut sim = Sim::live();
+    sim.turn_rate_rad_s = 0.0;
+    let e = movement::run(
+        &mut sim,
+        MoveRequest {
+            point: Some(client_point(0.0, 3000.0, 0.0)),
+            ..MoveRequest::default()
+        },
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(e.step, "leg_0");
+    assert!(e.message.contains("did not turn"), "{}", e.message);
+    assert!(!sim.keys["E"] && !sim.keys["W"]);
 }
 
 #[tokio::test]
 async fn move_to_follows_waypoints_in_order() {
-    let mut sim = Sim::new();
+    let mut sim = Sim::live();
     let out = movement::run(
         &mut sim,
         MoveRequest {
@@ -64,7 +133,7 @@ async fn move_to_follows_waypoints_in_order() {
 
 #[tokio::test]
 async fn move_to_jumps_out_of_a_snag() {
-    let mut sim = Sim::new();
+    let mut sim = Sim::live();
     sim.wall_x = Some(1000.0);
     let out = movement::run(
         &mut sim,
@@ -80,7 +149,7 @@ async fn move_to_jumps_out_of_a_snag() {
 
 #[tokio::test]
 async fn move_to_reports_a_snag_it_cannot_clear() {
-    let mut sim = Sim::new();
+    let mut sim = Sim::live();
     sim.wall_x = Some(1000.0);
     sim.jump_clears_wall = false;
     let e = movement::run(
@@ -99,7 +168,7 @@ async fn move_to_reports_a_snag_it_cannot_clear() {
 
 #[tokio::test]
 async fn move_to_times_out_with_the_distance_left() {
-    let mut sim = Sim::new();
+    let mut sim = Sim::live();
     sim.speed_uu_s = 100.0;
     let e = movement::run(
         &mut sim,
@@ -121,6 +190,8 @@ async fn move_to_times_out_with_the_distance_left() {
 #[tokio::test]
 async fn move_to_an_entity_stops_beside_it() {
     let mut sim = room();
+    sim.live_pawn = true;
+    sim.standing_turn = false;
     let out = movement::run(
         &mut sim,
         MoveRequest {
@@ -139,7 +210,7 @@ async fn move_to_an_entity_stops_beside_it() {
 /// the result says so.
 #[tokio::test]
 async fn move_to_an_entity_already_in_range_presses_nothing() {
-    let mut sim = Sim::new().with_entity(10, "Quartermaster", Vec3::new(380.0, 0.0, 0.0));
+    let mut sim = Sim::live().with_entity(10, "Quartermaster", Vec3::new(380.0, 0.0, 0.0));
     let out = movement::run(
         &mut sim,
         MoveRequest {
@@ -158,7 +229,7 @@ async fn move_to_an_entity_already_in_range_presses_nothing() {
 /// A failed walk carries the evidence needed to tell a snag from drift.
 #[tokio::test]
 async fn move_to_failure_carries_path_gain_and_hint() {
-    let mut sim = Sim::new();
+    let mut sim = Sim::live();
     sim.wall_x = Some(1000.0);
     sim.jump_clears_wall = false;
     let e = movement::run(
@@ -173,7 +244,7 @@ async fn move_to_failure_carries_path_gain_and_hint() {
     let st = e.to_json()["state"].clone();
     assert!(st["start_distance_m"].as_f64().unwrap() > 20.0);
     assert!(st["path"].is_array());
-    assert!(st["turn_gain"]["counts_per_rad"].is_number());
+    assert!(st["turn_rate"]["rad_s"].is_number());
     assert!(st["hint"].as_str().unwrap().contains("waypoints"));
 }
 
@@ -181,7 +252,7 @@ async fn move_to_failure_carries_path_gain_and_hint() {
 /// a generic stuck/timeout (C-P6).
 #[tokio::test]
 async fn move_to_names_a_dead_forward_key() {
-    let mut sim = Sim::new();
+    let mut sim = Sim::live();
     sim.speed_uu_s = 0.0;
     let e = movement::run(
         &mut sim,
@@ -203,7 +274,7 @@ async fn move_to_names_a_dead_forward_key() {
 /// so success here proves the probe did not run.
 #[tokio::test]
 async fn move_to_in_range_does_not_probe() {
-    let mut sim = Sim::new();
+    let mut sim = Sim::live();
     sim.speed_uu_s = 0.0;
     let out = movement::run(
         &mut sim,
@@ -222,7 +293,7 @@ async fn move_to_in_range_does_not_probe() {
 /// still arrive, not be named a dead key.
 #[tokio::test]
 async fn move_to_probe_passes_a_slow_avatar() {
-    let mut sim = Sim::new();
+    let mut sim = Sim::live();
     sim.speed_uu_s = 60.0;
     let out = movement::run(
         &mut sim,

@@ -37,6 +37,7 @@ pub mod lua;
 pub mod memory;
 pub mod movement;
 pub mod steer;
+mod turn_keys;
 
 #[cfg(test)]
 mod camera_pitch_tests;
@@ -48,6 +49,8 @@ mod occlusion_tests;
 mod range_tests;
 #[cfg(test)]
 mod sim;
+#[cfg(test)]
+mod steer_tests;
 #[cfg(test)]
 mod tool_tests;
 

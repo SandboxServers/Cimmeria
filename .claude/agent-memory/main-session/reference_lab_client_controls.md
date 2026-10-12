@@ -9,7 +9,8 @@ Learned in the 2026-10-03 auto-attack UAT on colo:
 
 - Keys: Q/E rotate the character, A/D strafe, W/S move, B opens the bag
   (not I), Tab targets the next enemy without firing, R reloads.
-- Lab mouse-look does not move the camera: `client_camera` yaw and
+- (Partly superseded 2026-10-12, see the last bullet: mouse-look does move
+  the camera yaw offset.) On 2026-10-03, `client_camera` yaw and
   `client_world_click` auto-turn report `samples: 0`. Button presses go as
   window messages while motion goes through DirectInput, so the game never
   sees a held button. Camera follows the player after a GM teleport, so
@@ -25,3 +26,8 @@ Learned in the 2026-10-03 auto-attack UAT on colo:
   BSF_AUTO_CYCLING is 1 << 1, so the label is wrong.
 - `server_log_tail` keeps only 500 lines (mostly DEBUG); use the packet tap
   for evidence when SigNoz is down.
+- 2026-10-12: the pawn heading answers only to the turn keys (about 110
+  deg/s, E raises the yaw, standing or walking); `client_camera` mouse-look
+  moves the camera yaw offset only (600 counts = 65.9 deg), and `W` walks
+  along the pawn heading. `getBindingKey('TurnLeft'|'TurnRight', 1|2)`; an
+  unknown action returns an empty table.
