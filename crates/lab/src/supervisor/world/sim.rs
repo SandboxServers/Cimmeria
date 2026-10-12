@@ -22,6 +22,8 @@ use super::memory::{
 use super::NativeLevel;
 
 pub const PLAYER_ID: u32 = 1;
+/// A standing humanoid's body heights (units above Location): knee, chest, shoulders and head, not the feet.
+pub const REAL_BODY_DZ: [f64; 4] = [60.0, 100.0, 140.0, 180.0];
 pub const PLAYER_ACTOR: u32 = 0x9000;
 pub const UNITS: UnitSlots = UnitSlots {
     player: 0,
@@ -104,6 +106,19 @@ pub struct Sim {
     /// The pitch axis is inverted (flag 0x8): `pitch_gain` reads negative and
     /// +dy looks up.
     pub pitch_inverted: bool,
+    /// While the camera looks within this many radians of the bearing to the
+    /// entity, the avatar stands in front of it: mouse-over reports the
+    /// player. (The usual third-person cover.)
+    pub avatar_hides: Option<(u32, f64)>,
+    /// The avatar only covers the target at pointer heights below this many
+    /// units above the target's `Location` (the target's upper body shows
+    /// over the avatar's head). Default infinity: covers every height.
+    pub avatar_cover_dz: f64,
+    /// Heights (units above an entity's `Location`) the sim treats as body
+    /// when hit-testing the cursor. Default is the old permissive set that
+    /// includes the feet; `REAL_BODY_DZ` is a standing humanoid, whose feet
+    /// hover nothing (probe B-P2).
+    pub body_dz: Vec<f64>,
 }
 
 impl Sim {
@@ -147,6 +162,9 @@ impl Sim {
             unhoverable: Vec::new(),
             live_pitch_clamp: false,
             pitch_inverted: false,
+            avatar_hides: None,
+            avatar_cover_dz: f64::INFINITY,
+            body_dz: vec![-40.0, 0.0, 50.0, 90.0],
         }
     }
 
@@ -202,26 +220,44 @@ impl Sim {
                 return PLAYER_ID;
             }
         }
-        let mut best: Option<(f64, u32)> = None;
+        let mut best: Option<(f64, u32, f64)> = None;
         for e in self
             .entities
             .iter()
             .filter(|e| e.rendered && !self.unhoverable.contains(&e.id))
         {
-            for dz in [-40.0, 0.0, 50.0, 90.0] {
+            // The body height whose projection is nearest the cursor, if any
+            // is within 25 px.
+            let mut near: Option<(f64, f64)> = None;
+            for dz in self.body_dz.iter().copied() {
                 let Some((px, py)) = self.project_point(Vec3::new(e.pos.x, e.pos.y, e.pos.z + dz))
                 else {
                     continue;
                 };
-                if ((px - x).powi(2) + (py - y).powi(2)).sqrt() <= 25.0 {
-                    let dist = horizontal_m(self.pos, e.pos);
-                    if best.is_none_or(|(d, _)| dist < d) {
-                        best = Some((dist, e.id));
-                    }
+                let d_px = ((px - x).powi(2) + (py - y).powi(2)).sqrt();
+                if d_px <= 25.0 && near.is_none_or(|(d, _)| d_px < d) {
+                    near = Some((d_px, dz));
+                }
+            }
+            if let Some((_, dz)) = near {
+                let dist = horizontal_m(self.pos, e.pos);
+                if best.is_none_or(|(d, _, _)| dist < d) {
+                    best = Some((dist, e.id, dz));
                 }
             }
         }
-        best.map(|b| b.1).unwrap_or(0)
+        let hit = best.map(|b| b.1).unwrap_or(0);
+        if let Some((id, half)) = self.avatar_hides {
+            let off =
+                self.entities.iter().find(|e| e.id == id).map(|e| {
+                    wrap_pi(super::geometry::bearing(self.pos, e.pos) - self.cam_yaw).abs()
+                });
+            let low = best.is_some_and(|b| b.2 < self.avatar_cover_dz);
+            if hit == id && low && off.is_some_and(|o| o < half) {
+                return PLAYER_ID;
+            }
+        }
+        hit
     }
 
     fn advance(&mut self, ms: u64) {

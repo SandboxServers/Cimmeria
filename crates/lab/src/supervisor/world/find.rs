@@ -299,7 +299,7 @@ pub async fn run<W: WorldIo>(io: &mut W, req: FindRequest) -> Result<Value, Worl
         "unnamed_beyond_scan": r.unscanned,
         "screen": r.screen.map(|s| json!([s.w, s.h])),
         "projection_error": r.projection_error,
-        "note": "Positions come from each entity's actor (UE3 AActor::Location); `server` is the same point in BigWorld metres. `targetable` means it has an actor and the unit API knows it.",
+        "note": "Positions come from each entity's actor (UE3 AActor::Location, the FEET, in UE3 units of 100 per metre); `screen` is the projection of that feet point, not a clickable body point (client_world_click aims 100 units higher); `server` is the same point in BigWorld metres. `targetable` means it has an actor and the unit API knows it.",
     });
     Ok(steps.finish(io.now_ms(), out))
 }

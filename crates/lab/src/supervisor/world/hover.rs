@@ -20,7 +20,7 @@ use rmcp::schemars;
 use serde_json::{json, Value};
 
 use super::camera::Aim;
-use super::click::{hover_once, Hover, HOVER_OFFSETS, HOVER_WAIT_MS};
+use super::click_hover::{hover_once, Hover, HOVER_OFFSETS, HOVER_WAIT_MS};
 use super::find::{find_entities, FindRequest, Found, CLICK_MARGIN_PX};
 use super::geometry::Vec3;
 use super::io::WorldIo;
@@ -244,8 +244,16 @@ async fn probe<W: WorldIo>(
     let centre = match kind {
         AimKind::Entity(e) => {
             let t = io.now_ms();
-            let (chosen, tried) =
-                hover_once(io, steps, &mut aim, Some(e), units.mouse_over, false).await?;
+            let (chosen, tried) = hover_once(
+                io,
+                steps,
+                &mut aim,
+                Some(e),
+                units.mouse_over,
+                units.player,
+                false,
+            )
+            .await?;
             steps.used(NativeLevel::RealInput);
             steps.record("centre", t, io.now_ms(), json!({ "tried": tried }));
             match chosen {

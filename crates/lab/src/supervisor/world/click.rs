@@ -18,20 +18,21 @@ use rmcp::schemars;
 use serde_json::{json, Value};
 
 use super::camera::{face, Aim, DEFAULT_FACE_STEPS};
+use super::click_hover::{hover_once, wants_view_retry, Hover, HOVER_WAIT_MS, NEAR_AVATAR_M};
+pub use super::click_hover::{restore_pitch_counts, VIEW_RETRIES};
+// The hover_tests import path; the non-test build reads it from click_hover.
+#[cfg(test)]
+pub use super::click_hover::HOVER_OFFSETS;
 use super::find::{find_entities, FindRequest, Found, CLICK_MARGIN_PX};
-use super::geometry::Vec3;
+use super::geometry::distance_m;
 use super::io::WorldIo;
 use super::memory::{slot_entity, LAB_SLOT_BASE};
 use super::steer::TurnModel;
 use super::{NativeLevel, PointArg, Steps, TargetArg, WorldError};
 
-/// Heights tried on an entity's body, UE3 units above its actor location
-/// (the collision centre): centre, chest, legs, head.
-pub const HOVER_OFFSETS: [f64; 4] = [0.0, 50.0, -40.0, 90.0];
 /// Default wait for the click's effect.
 pub const DEFAULT_SETTLE_MS: u64 = 1200;
 const POLL_MS: u64 = 100;
-pub(super) const HOVER_WAIT_MS: u64 = 120;
 /// Private slot for the `targetUnit` fallback.
 const FALLBACK_SLOT: i32 = LAB_SLOT_BASE - 1;
 
@@ -106,15 +107,6 @@ async fn ui_snap<W: WorldIo>(io: &mut W, target_slot: i32, mo_slot: i32) -> Resu
         mouse_over: slot_entity(&slots, mo_slot),
         windows: io.visible_windows().await?,
     })
-}
-
-/// How the hover went at one height.
-#[derive(Debug, Clone, PartialEq)]
-pub(super) enum Hover {
-    Matched,
-    Nothing,
-    Other(u32),
-    OffScreen,
 }
 
 /// Is `after` what `expect` asked for?
@@ -265,6 +257,13 @@ pub async fn run<W: WorldIo>(
         }
     }
 
+    // How far the target is from the avatar, straight line (the server's
+    // interact range is 3D). Near targets sit behind or under the avatar.
+    let range_m = match (player, entity) {
+        (Some(p), Some(_)) => Some(distance_m(p.pos, aim.position(io).await)),
+        _ => None,
+    };
+    let near = range_m.is_some_and(|d| d <= NEAR_AVATAR_M);
     // 3. Hover: find a point on the body the client says is the entity.
     // When every point is covered or off screen, change the view (pitch
     // up over the occluder, yaw each way, zoom in) and try again; the bank
@@ -275,6 +274,7 @@ pub async fn run<W: WorldIo>(
     let mut chosen = None;
     let mut start_view: Option<Value> = None;
     let mut zoomed = 0;
+    let mut saw_own = false;
     for (i, adj) in std::iter::once(None)
         .chain(VIEW_RETRIES.iter().map(Some))
         .enumerate()
@@ -301,12 +301,14 @@ pub async fn run<W: WorldIo>(
             &mut aim,
             entity,
             units.mouse_over,
+            units.player,
             req.force,
         )
         .await?;
+        saw_own |= t.iter().any(|h| h["hover"] == "own_avatar");
         tried = t;
         chosen = c;
-        if chosen.is_some() {
+        if !wants_view_retry(&chosen, &tried, near, req.force) {
             break;
         }
     }
@@ -314,9 +316,14 @@ pub async fn run<W: WorldIo>(
     if !adjusted.is_empty() {
         hover_detail["view_retries"] = json!(adjusted);
     }
-    // Every retry failed: put the view back as it was (review of #1309).
-    // Yaw already nets to zero; zoom and a clamped pitch do not.
-    if chosen.is_none() && !adjusted.is_empty() {
+    if saw_own {
+        hover_detail["saw_own_avatar"] = json!(true);
+    }
+    // No retry verified a hover: put the view back as it was (review of
+    // #1309; yaw already nets to zero, zoom and a clamped pitch do not), and
+    // look again from the first view, whose unverified candidate (a `Nothing`
+    // pass, or a forced one) is the one to click.
+    if !matches!(chosen, Some((_, Hover::Matched))) && !adjusted.is_empty() {
         let now = io.camera_readout().await.ok();
         let dy = match (&start_view, &now) {
             (Some(a), Some(b)) => restore_pitch_counts(a, b),
@@ -327,13 +334,32 @@ pub async fn run<W: WorldIo>(
             .await
             .is_ok();
         hover_detail["view_restored"] = json!(restored);
+        if restored {
+            io.sleep(super::camera::LOOK_SETTLE_MS).await;
+            let (c, t) = hover_once(
+                io,
+                &mut steps,
+                &mut aim,
+                entity,
+                units.mouse_over,
+                units.player,
+                req.force,
+            )
+            .await?;
+            hover_detail["tried_after_restore"] = json!(t);
+            chosen = c;
+        }
     }
     steps.record("hover", t_hover, io.now_ms(), hover_detail.clone());
     let Some((pixel, hover)) = chosen else {
         return Err(steps.fail_with(
             io.now_ms(),
             "hover",
-            "every point on the target is off screen or covered by another entity, after the view retries (force=true clicks anyway)",
+            if saw_own {
+                "your own avatar covers the target at every height tried, even after the view retries: stand 3.5-4.5 m to the side of it (or turn the camera with client_camera yaw counts) and click with rotate_camera=false; force=true clicks anyway"
+            } else {
+                "every point on the target is off screen or covered by another entity, after the view retries (force=true clicks anyway)"
+            },
             hover_detail,
         ));
     };
@@ -356,117 +382,6 @@ pub async fn run<W: WorldIo>(
         found,
     };
     click_and_observe(io, steps, &req, plan).await
-}
-
-/// View changes tried, in order and cumulatively, when the target is
-/// covered: (yaw counts, pitch counts, zoom notches). At the live gain (20
-/// units per count) 300 counts is about 33 degrees.
-pub const VIEW_RETRIES: [(i32, i32, i32); 5] = [
-    (0, -300, 0),
-    (0, -300, 0),
-    (250, 0, 0),
-    (-500, 0, 0),
-    (250, 600, 4),
-];
-
-/// Pitch counts that take the camera from readout `now` back to `start`
-/// (`pitch_offset_deg` and `pitch_gain` from `camera_readout`); 0 when
-/// either readout lacks them.
-pub fn restore_pitch_counts(start: &Value, now: &Value) -> i32 {
-    let (Some(a), Some(b), Some(g)) = (
-        start["pitch_offset_deg"].as_f64(),
-        now["pitch_offset_deg"].as_f64(),
-        now["pitch_gain"].as_f64(),
-    ) else {
-        return 0;
-    };
-    if g.abs() < 1e-3 {
-        return 0;
-    }
-    ((a - b) * 65536.0 / 360.0 / g).round() as i32
-}
-
-/// One hover pass over the target's body heights: the chosen point and how
-/// each height went.
-pub(super) async fn hover_once<W: WorldIo>(
-    io: &mut W,
-    steps: &mut Steps,
-    aim: &mut Aim,
-    entity: Option<u32>,
-    mo_slot: i32,
-    force: bool,
-) -> Result<(Option<((f64, f64), Hover)>, Vec<Value>), WorldError> {
-    let base = aim.position(io).await;
-    let points: Vec<Vec3> = match entity {
-        Some(_) => HOVER_OFFSETS
-            .iter()
-            .map(|dz| Vec3::new(base.x, base.y, base.z + dz))
-            .collect(),
-        None => vec![base],
-    };
-    let pr = io
-        .project(&points)
-        .await
-        .map_err(|e| steps.fail(io.now_ms(), "project", e))?;
-    let mut tried = Vec::new();
-    let mut chosen: Option<((f64, f64), Hover)> = None;
-    for (i, px) in pr.points.iter().enumerate() {
-        let Some(p) = px.filter(|p| pr.screen.contains(*p, CLICK_MARGIN_PX)) else {
-            tried.push(json!({ "dz": HOVER_OFFSETS.get(i), "hover": "off_screen" }));
-            continue;
-        };
-        let (x, y) = (p.0.round() as i32, p.1.round() as i32);
-        let Some(e) = entity else {
-            io.place_cursor(x, y, true)
-                .await
-                .map_err(|e| steps.fail(io.now_ms(), "cursor", e))?;
-            chosen = Some((p, Hover::Nothing));
-            break;
-        };
-        let mut hover = Hover::OffScreen;
-        for mouse_move in [false, true] {
-            io.place_cursor(x, y, mouse_move)
-                .await
-                .map_err(|err| steps.fail(io.now_ms(), "cursor", err))?;
-            io.sleep(HOVER_WAIT_MS).await;
-            let slots = io
-                .slots()
-                .await
-                .map_err(|err| steps.fail(io.now_ms(), "read_mouse_over", err))?;
-            let mo = slot_entity(&slots, mo_slot);
-            hover = if mo == e {
-                Hover::Matched
-            } else if mo == 0 {
-                Hover::Nothing
-            } else {
-                Hover::Other(mo)
-            };
-            if hover != Hover::Nothing {
-                break;
-            }
-        }
-        tried.push(
-            json!({ "dz": HOVER_OFFSETS[i], "at": [x, y], "hover": match &hover {
-                Hover::Matched => json!("entity"),
-                Hover::Nothing => json!("nothing"),
-                Hover::Other(o) => json!({ "other_entity": o }),
-                Hover::OffScreen => json!("off_screen"),
-            }}),
-        );
-        match hover {
-            Hover::Matched => {
-                chosen = Some((p, Hover::Matched));
-                break;
-            }
-            // Nothing under the cursor is not proof of a miss (the client
-            // may only update mouse-over on its own schedule): keep it as
-            // a candidate but prefer a verified height.
-            Hover::Nothing if chosen.is_none() => chosen = Some((p, Hover::Nothing)),
-            Hover::Other(o) if force && chosen.is_none() => chosen = Some((p, Hover::Other(o))),
-            _ => {}
-        }
-    }
-    Ok((chosen, tried))
 }
 
 /// What the click step needs from the resolve and hover steps.
