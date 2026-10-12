@@ -8,8 +8,11 @@ use crate::daemon::status::StatusReply;
 /// How a check came out.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
+    /// The check is satisfied.
     Pass,
+    /// Something is off but nothing is broken; does not fail the command.
     Warn,
+    /// Broken; makes the command exit 1.
     Fail,
 }
 
@@ -27,8 +30,11 @@ impl Status {
 /// One check's result.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Check {
+    /// How the check came out.
     pub status: Status,
+    /// The check's name, as the PowerShell printed it.
     pub name: String,
+    /// What the check found.
     pub detail: String,
     /// What to do about it, e.g. `run lab install`; plain mode appends it to
     /// the detail after `; `, fancy mode prints it as its own `hint:` line.
@@ -89,9 +95,11 @@ pub enum ContentCheck {
 /// Everything read from the system, so the checks stay pure.
 #[derive(Debug, Clone)]
 pub struct Inputs {
+    /// `schtasks /Query /TN CimmeriaLabDaemon` exited 0.
     pub task_installed: bool,
     /// `GET /status`, or `None` when the daemon is down or refuses.
     pub status: Option<StatusReply>,
+    /// The daemon token is set (its value is never read into `Inputs`).
     pub token_set: bool,
     /// `CIMMERIA_LAB_INSTALL_DIR` from labd.env, trimmed; `None` when blank.
     pub install_dir: Option<String>,
@@ -99,6 +107,7 @@ pub struct Inputs {
     pub sgw_exe_exists: bool,
     /// The profile root as text.
     pub profile_root: String,
+    /// One entry per instance the checks cover.
     pub instances: Vec<InstanceFacts>,
     /// Pids of the running `SGW.exe` processes.
     pub running_sgw: Vec<u32>,

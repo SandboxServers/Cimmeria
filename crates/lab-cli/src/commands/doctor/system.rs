@@ -315,7 +315,7 @@ mod tests {
         let fake = dir.path().join("SGW.exe");
         std::fs::copy(&ping, &fake).unwrap();
         let mut child = Command::new(&fake)
-            .args(["-n", "20", "127.0.0.1"])
+            .args(["-n", "20", "localhost"])
             .stdout(Stdio::null())
             .spawn()
             .unwrap();

@@ -2,7 +2,7 @@
 //! of tools/lab/cli/test-ops.ps1 one-to-one (the PowerShell check is named in
 //! each `// ops:` comment) and pins the plain and fancy output.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use cimmeria_lab_cli::commands::doctor::checks::{
     account_check, binary_check, daemon_check, install_check, profile_root_check, run_all,
@@ -217,11 +217,13 @@ fn the_install_dir_needs_sgw_exe() {
     i.sgw_exe_exists = false;
     let c = install_check(&i);
     assert_eq!(c.status, Status::Fail);
-    assert_eq!(c.plain_detail(), "no C:\\Games\\SGW\\Binaries\\SGW.exe");
+    let exe = Path::new(INSTALL).join("Binaries").join("SGW.exe");
+    assert_eq!(c.plain_detail(), format!("no {}", exe.display()));
+    assert!(c.plain_detail().ends_with("SGW.exe"));
     i.sgw_exe_exists = true;
     let c = install_check(&i);
     assert_eq!(c.status, Status::Pass);
-    assert_eq!(c.plain_detail(), "C:\\Games\\SGW\\Binaries\\SGW.exe");
+    assert_eq!(c.plain_detail(), exe.display().to_string());
 }
 
 // ops: 'a missing p2 account file WARNs, naming p2' / 'the default account alone PASSes'
