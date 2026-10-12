@@ -51,6 +51,22 @@ pub const DROP_TARGET_OFFSET: u32 = 0x270;
 pub const DRAG_FLAGS_OFFSET: u32 = 0x23c;
 /// CEGUI `LeftButton`.
 pub const LEFT_BUTTON: u32 = 0;
+/// CEGUI `RightButton`. `Inventory.lua:729` documents `RightButton:
+/// mouseButton == 1`; left is 0 (proven live), so right is 1 and middle 2.
+pub const RIGHT_BUTTON: u32 = 1;
+/// CEGUI `MiddleButton`.
+pub const MIDDLE_BUTTON: u32 = 2;
+
+/// The CEGUI button index for the lab's button number (0 left, 1 right, 2
+/// middle).
+pub fn cegui_button(button: usize) -> Result<u32, String> {
+    match button {
+        0 => Ok(LEFT_BUTTON),
+        1 => Ok(RIGHT_BUTTON),
+        2 => Ok(MIDDLE_BUTTON),
+        other => Err(format!("mouse button {other} (0 left, 1 right, 2 middle)")),
+    }
+}
 
 /// A stock VA moved by the module slide.
 pub fn rebase(va: u32, slide: i64) -> u32 {
@@ -256,6 +272,15 @@ impl Cegui<'_> {
         )
         .await
         .map(|r| r & 0xFF != 0)
+    }
+
+    /// A whole click at the CEGUI cursor: injected button down, `hold`, button
+    /// up. True when CEGUI took the press.
+    pub async fn click(&self, button: u32, hold: std::time::Duration) -> Result<bool, String> {
+        let taken = self.button_down(button).await?;
+        tokio::time::sleep(hold).await;
+        self.button_up(button).await?;
+        Ok(taken)
     }
 
     /// The C++ `Window*` behind a named window: the word stored at the
