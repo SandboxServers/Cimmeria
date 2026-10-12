@@ -271,6 +271,7 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
             world_name,
             position,
             heading,
+            batch,
         } => {
             gm_spawn_npc(
                 entity_id,
@@ -279,6 +280,7 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
                 world_name,
                 position,
                 heading,
+                batch,
                 ctx.db_pool,
                 ctx.cell_tx,
                 ctx.transport,
@@ -515,6 +517,7 @@ pub(super) async fn gm_spawn_npc(
     world_name: String,
     position: [f32; 3],
     heading: f32,
+    batch: Option<u32>,
     db_pool: &Option<Arc<PgPool>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     transport: &Arc<dyn Transport>,
@@ -528,6 +531,7 @@ pub(super) async fn gm_spawn_npc(
         world_name,
         position,
         heading,
+        batch,
         db_pool,
         cell_tx,
         transport,

@@ -4,6 +4,7 @@ import { installBridgeLayer, InstallFailure, InstallStatus, InstallViewState, ma
 import type { SeedArchiveState } from './seed-archive-workflow';
 import { acquireSeedArchive, seedArchiveOfferText, seedArchiveShowsLine, seedArchiveText, SeedArchive } from './seed-archive-view';
 import type { Invoke } from './view';
+import { formatBytes, formatDuration, makeRateTracker, type TransferSample } from './transfer-rate';
 class Installation extends Context.Service<Installation,Effect.Success<typeof makeInstallWorkflow>>()('launcher/Installation') {}
 const errors:Record<InstallFailure['code'],string>={
   launcher_too_old:'Update the launcher before installing or playing this release. Your game files are preserved.',
@@ -19,7 +20,7 @@ const errors:Record<InstallFailure['code'],string>={
 };
 /** Application lifetime owns observation. Navigating tabs never disposes it. */
 /** `onFinished` runs each time an install, repair, uninstall or cleanup stops running. */
-export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=>crypto.randomUUID(),onFinished:()=>void=()=>{}) {
+export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=>crypto.randomUUID(),onFinished:()=>void=()=>{},now:()=>number=()=>performance.now()) {
   const runtime=ManagedRuntime.make(Layer.effect(Installation,makeInstallWorkflow).pipe(
     Layer.provide(installBridgeLayer(request=>invoke('install_command',{request}))),
   ));
@@ -35,6 +36,8 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
   const uninstallConfirmation=get('uninstall-confirmation');
   let uninstalling:{installationId:string;operationId:string;directory:string}|null=null;
   const progress=get<HTMLProgressElement>('install-progress');
+  // Speed and ETA come from readings of the active phase only; reset on phase change.
+  const rates=makeRateTracker(now);let progressPhase:string|null=null;
   const abort=new AbortController();
   let current:InstallViewState={status:null,busy:false,needsInspection:true,error:null};
   let disposed=false; let pending=false; let watching=false;
@@ -78,12 +81,15 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     progress.hidden=!active||!status?.progress;
     if(status?.progress){progress.max=Math.max(1,status.progress.total);progress.value=Math.min(status.progress.current,progress.max);
       if(!status.progress.total)progress.removeAttribute('value');}
+    const phase=status?.progress?.phase??null;
+    if(!active||!status?.progress||phase!==progressPhase){rates.reset();progressPhase=phase;}
+    const transfer=active&&status?.progress?rates.sample(status.progress.current,status.progress.total):null;
     let text='Checking installation…';
     if(current.error)text=operation?.kind==='repair'&&recovery&&['corrupt_state','recovery_required','io'].includes(current.error)?'Repair recovery remains blocked. Preserve the game, backup and stage. Recheck status; checkpoint recovery requires verified replacement evidence, and abandonment requires no commit checkpoint. An unknown helper outcome needs manual inspection.':errors[current.error];
     else if(pending)text='Checking installation status…';
     else if(status){
       if(operation?.kind==='launch')text='';
-      else if(operation?.kind==='repair')text=recovery?'Repair needs recovery. In Settings, finish checkpointed replacement or abandon preparation. Unknown helper outcomes stay blocked; preserve files and restart to recheck.':active?(operation.state==='cancel_requested'?'Cancellation requested. Waiting for repair to stop safely.':status.progress?.phase==='download'?'Downloading repair content…':status.progress?.phase==='extraction'?'Reconstructing game content…':'Preparing or committing repair…'):operation.state==='succeeded'?repairSuccess(status.repair?.backup):operation.state==='cancelled'?'Repair cancelled. The old game and retained staging files are preserved.':'Repair stopped. Recheck status; retained files are preserved.';
+      else if(operation?.kind==='repair')text=recovery?'Repair needs recovery. In Settings, finish checkpointed replacement or abandon preparation. Unknown helper outcomes stay blocked; preserve files and restart to recheck.':active?(operation.state==='cancel_requested'?'Cancellation requested. Waiting for repair to stop safely.':status.progress?.phase==='download'?progressLine('Downloading repair content…',status.progress,transfer):status.progress?.phase==='extraction'?progressLine('Reconstructing game content…',status.progress,transfer):'Preparing or committing repair…'):operation.state==='succeeded'?repairSuccess(status.repair?.backup):operation.state==='cancelled'?'Repair cancelled. The old game and retained staging files are preserved.':'Repair stopped. Recheck status; retained files are preserved.';
       else if(removed)text='Game uninstalled. You can install it again when ready.';
       else if(canPrepare)text='Game content is ready. Continue installation to check compatibility.';
       else if(runtimeSetup)text=recovery?(status.can_reconcile?'A saved compatibility result is available. Recover setup to finish checking its state.':'Compatibility setup was interrupted. Files are preserved; recovery requires inspection.'):active?(operation?.state==='cancel_requested'?'Cancellation requested. Waiting for compatibility setup to stop safely.':'Checking game compatibility…'):operation?.state==='succeeded'?'Prerequisites checked. Graphics and Play still need validation.':'Compatibility setup stopped. Game files are preserved.';
@@ -91,7 +97,7 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
       else if(operation?.state==='succeeded')text='Game content prepared. This build cannot continue compatibility setup for this installation.';
       else if(recovery)text=status.can_resume||status.can_reconcile?'An interrupted installation was found. Inspect files or explicitly resume the saved attempt.':'An interrupted compatibility operation was found. Files are preserved; recovery is not available in this build. You can recheck status.';
       else if(active)text=operation?.state==='cancel_requested'?'Cancellation requested. Waiting for the installer to stop safely.':
-        status.progress?.phase==='download'?'Downloading verified game content…':status.progress?.phase==='extraction'?'Extracting game content…':'Preparing installation…';
+        status.progress?.phase==='download'?progressLine('Downloading verified game content…',status.progress,transfer):status.progress?.phase==='extraction'?progressLine('Extracting game content…',status.progress,transfer):'Preparing installation…';
       else if(status.outcome==='rosetta_required')text='Rosetta is required to prepare Windows game compatibility on this Mac. No game was launched.';
       else if(status.outcome==='runtime_unavailable')text='Windows compatibility could not be prepared. Check your connection and available disk space. Existing files have been preserved.';
       else if(status.can_retry)text='Ready to retry installation.';
@@ -190,6 +196,25 @@ export function mountInstall(document:Document,invoke:Invoke,uuid:()=>string=()=
     await Effect.runPromise(Fiber.interrupt(watcher));await Promise.all([mutation,observation]);await runtime.dispose();
     await Effect.runPromise(Fiber.interrupt(archiveWatcher));await archiveHold.release();
   }};
+}
+
+/** Downloads smaller than this (100 MiB) show percent and size only, without speed or ETA. */
+const SPEED_MIN_TOTAL_BYTES = 100 * 1024 * 1024;
+
+/**
+ * Appends percent, size, speed and ETA to an active progress label. Download shows
+ * bytes; extraction counts are unitless, so it shows only the percent.
+ */
+function progressLine(label: string, progress: NonNullable<InstallStatus['progress']>, transfer: TransferSample | null): string {
+  if (!transfer || progress.total <= 0) return label;
+  if (progress.phase === 'extraction') return `${label} ${transfer.percent}%`;
+  const parts = [`${label} ${transfer.percent}%`, `${formatBytes(progress.current)} of ${formatBytes(progress.total)}`];
+  // Small blobs (patches) finish in seconds, so a speed and a jumping ETA would be noise.
+  if (progress.total >= SPEED_MIN_TOTAL_BYTES) {
+    if (transfer.rateBytesPerSec !== null) parts.push(`${formatBytes(transfer.rateBytesPerSec)}/s`);
+    if (transfer.etaSeconds !== null) parts.push(`about ${formatDuration(transfer.etaSeconds)} left`);
+  }
+  return parts.join(' · ');
 }
 
 function repairSuccess(backup: NonNullable<InstallStatus['repair']>['backup']): string {

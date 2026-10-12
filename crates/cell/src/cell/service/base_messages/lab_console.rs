@@ -12,12 +12,18 @@
 //! round-trips, teleports, witness fan-out) to the real base channel so the
 //! command's side effects still happen. No console handler is touched; the
 //! in-world path is unchanged.
+//!
+//! One command finishes after it returns: `.spawnrandom` (CH-13), whose
+//! spawned ids come back with the base's replies. Its reply is parked on the
+//! spawn batch and sent, summary line appended, when the batch closes
+//! (`console::spawn_batch`).
 
 use tokio::sync::{mpsc, oneshot};
 
 use cimmeria_content_engine::chain::ChainEngine;
 
 use crate::cell::console;
+use crate::cell::console::spawn_batch;
 use crate::cell::messages::{CellToBaseMsg, LabConsoleResult};
 use crate::cell::space_manager::SpaceManager;
 use crate::mercury::method_idx::ON_PLAYER_COMMUNICATION;
@@ -85,12 +91,20 @@ pub(super) async fn handle_lab_console_exec(
         "LabConsoleExec authorized"
     );
 
-    // Capture tee: run against a private channel, then drain it.
+    // Capture tee: run against a private channel, then drain it. The batch
+    // mark lets the tee find a `.spawnrandom` batch the command opens.
+    let batch_mark = spawn_batch::batches(space_mgr).next_id();
     let (cap_tx, mut cap_rx) = mpsc::channel::<CellToBaseMsg>(CAPTURE_CAPACITY);
     console::handle_console_command(entity_id, &line, &cap_tx, space_mgr, engine).await;
     drop(cap_tx);
 
     let mut lines = Vec::new();
+    // Once the base channel refuses a message it stays closed. The rest of
+    // the capture is still drained for its feedback lines; a batched spawn
+    // request that could not be forwarded is counted per batch, so the
+    // batch reports it as failed instead of waiting out its timeout.
+    let mut base_closed = false;
+    let mut unforwarded: Vec<(u32, u32)> = Vec::new();
     while let Ok(msg) = cap_rx.try_recv() {
         match msg {
             // Single-recipient GM feedback addressed to the acting entity is
@@ -109,23 +123,61 @@ pub(super) async fn handle_lab_console_exec(
             // teleport, witness fan-out): forward to base so the command's
             // effects happen exactly as the in-world path would produce them.
             other => {
-                if tx.send(other).await.is_err() {
-                    tracing::warn!(
-                        entity_id,
-                        entity_name = space_mgr.entity_label(entity_id),
-                        account_id = id.account_id,
-                        account_name = id.account_name,
-                        player_id = id.player_id,
-                        player_name = id.player_name,
-                        "LabConsoleExec: base channel closed while forwarding a side-effect message"
-                    );
-                    break;
+                let lost = if base_closed {
+                    other
+                } else {
+                    match tx.send(other).await {
+                        Ok(()) => continue,
+                        Err(mpsc::error::SendError(lost)) => {
+                            base_closed = true;
+                            tracing::warn!(
+                                entity_id,
+                                entity_name = space_mgr.entity_label(entity_id),
+                                account_id = id.account_id,
+                                account_name = id.account_name,
+                                player_id = id.player_id,
+                                player_name = id.player_name,
+                                "LabConsoleExec: base channel closed while forwarding a side-effect message"
+                            );
+                            lost
+                        }
+                    }
+                };
+                if let CellToBaseMsg::GmSpawnNpc {
+                    batch: Some(batch), ..
+                } = lost
+                {
+                    match unforwarded.iter_mut().find(|(b, _)| *b == batch) {
+                        Some((_, n)) => *n += 1,
+                        None => unforwarded.push((batch, 1)),
+                    }
                 }
             }
         }
     }
 
-    let _ = reply_tx.send(Ok(lines));
+    // A command that opened a `.spawnrandom` batch (CH-13) is not finished
+    // yet: its spawned ids arrive with the base's replies. Park the reply on
+    // the batch, which appends its summary line and answers when it closes
+    // (every copy answered, or the batch timed out). Nothing blocks — the
+    // cell loop moves on to its next message.
+    let waiter = spawn_batch::LabWaiter { lines, reply_tx };
+    if let Err(waiter) = spawn_batch::batches(space_mgr).attach_lab(entity_id, batch_mark, waiter) {
+        let _ = waiter.reply_tx.send(Ok(waiter.lines));
+    }
+    // Copies the base never got fail now; when none reached it, the batch
+    // closes here and the reply goes out at once.
+    for (batch, n) in unforwarded {
+        let done = spawn_batch::batches(space_mgr).undelivered(
+            batch,
+            n,
+            spawn_batch::CHANNEL_ERROR,
+            tokio::time::Instant::now(),
+        );
+        if let Some(done) = done {
+            spawn_batch::deliver(done, tx, space_mgr).await;
+        }
+    }
 }
 
 /// Decode the `Text` WSTRING out of an `onPlayerCommunication(Speaker,

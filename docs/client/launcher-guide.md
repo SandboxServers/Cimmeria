@@ -125,8 +125,9 @@ archive.org, then applies Cimmeria's patches to it. You don't need the old
    click **Choose folder…** and pick an empty folder, or a new folder inside
    one that exists. The launcher refuses a folder that already has files in
    it.
-2. Click **Install Stargate Worlds**. A progress bar shows the download and
-   the unpacking. The download is 4.1 GB, and the install drive needs about
+2. Click **Install Stargate Worlds**. A progress bar shows the percent and
+   size, plus the speed and time left for large downloads, and a percent
+   while unpacking. The download is 4.1 GB, and the install drive needs about
    14 GB free while it unpacks.
 3. When it finishes, the game is in a `game` folder inside the folder you
    chose.

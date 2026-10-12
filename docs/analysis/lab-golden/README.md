@@ -308,6 +308,11 @@ then the reference, not the spec.
   `docs/project-status.md` and `docs/gap-analysis*` are unchanged: their lab
   rows describe the bridge, supervisor and server endpoint, not UAT
   automation, and no earlier lab campaign added it there.
+- **Coordinator note, lab-chaos CH-09 (2026-10-11).** The stable `-Json`
+  API gains `chaos_divergence`, a second key with the `golden` shape,
+  present only under `-Chaos`; a chaos-only divergence exits 0, and
+  `lab_golden_record` refuses a chaos run with `cannot_record`. See the
+  contract's [Stable API](contract.md#stable-api-for-lab-chaos-and-lab-record).
 
 ## Lessons
 

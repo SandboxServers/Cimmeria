@@ -415,6 +415,7 @@ Its rows:
 | `ticket_unknown` | `warn!` | A Phase 3 login whose ticket is not in the pending map: unknown or already consumed. Refused; nothing registered. | `addr`, `ticket_prefix` |
 | `address_still_occupied` | `error!` | A login found a session it may not displace on its address, before eviction (`stage = before_eviction`) or still there after it (`after_eviction`), and was refused rather than orphan it. The address claim rules this out, so a row means a bug. | `addr`, `account_id`, `account_name`, `stage` |
 | `session_replaced` | `info!` | A task that resolved the address before a takeover found a newer session there and left it alone: the old tick-sync loop's teardown (with `disconnect_reason`), or a gate-transfer step (with `entity_id` and `step`: `reset_entities`, `store_pending_world_entry` or `abandon_unspaced_session`). | `addr`, `account_id`, `account_name`, `player_id`, `player_name` (the new session), plus `disconnect_reason` or `entity_id` and `step` |
+| `session_gone_or_replaced` | `warn!` | A `playCharacter` handler found, after an await, that the session it latched on was torn down or replaced by a newer one (`stage`: `before_reset_entities` or `store_world_entry`). The entry is abandoned: no RESET_ENTITIES, nothing stored, and the entity it created is destroyed on the cell (`DestroyEntity`, nothing persisted) and freed. | `addr`, `account_id`, `account_name`, `player_id`, `player_name`, `entity_id`, `entity_name` (the abandoned entry), `stage` |
 
 ## Unconsumed SIDs and tickets (TG-NET-05)
 

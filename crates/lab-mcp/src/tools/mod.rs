@@ -6,6 +6,10 @@
 //! set is fixed: no dynamic registration, no eval, no filesystem access.
 
 mod abilities;
+// The chaos tools' `account` lookup (CH-14); in tests too, so the ordinary
+// live-DB tier runs its query.
+#[cfg(any(test, feature = "lab-chaos"))]
+mod account_lookup;
 // The lab chaos tools (CH-05) exist only in a `lab-chaos` build.
 #[cfg(feature = "lab-chaos")]
 mod chaos;
@@ -14,6 +18,9 @@ mod chaos_args;
 #[cfg(all(test, feature = "lab-chaos"))]
 #[path = "chaos_args_tests.rs"]
 mod chaos_args_tests;
+#[cfg(all(test, feature = "lab-chaos"))]
+#[path = "chaos_arm_tests.rs"]
+mod chaos_arm_tests;
 #[cfg(test)]
 #[path = "chaos_tests.rs"]
 mod chaos_tests;

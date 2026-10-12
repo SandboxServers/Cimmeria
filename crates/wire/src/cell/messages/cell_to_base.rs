@@ -622,6 +622,13 @@ pub enum CellToBaseMsg {
     /// `space.createEntity(template, player.position, player.rotation)`. The
     /// native `gmSpawnByCmd` keeps sending `0.0` — its wire signature has no
     /// rotation argument, so there is nothing to forward.
+    ///
+    /// `batch` is `Some` only for a dot-console `.spawnrandom` copy (lab-chaos
+    /// CH-13): the cell's spawn batch id, echoed back on
+    /// [`crate::cell::messages::BaseToCellMsg::GmSpawnNpcReady`] or
+    /// [`crate::cell::messages::BaseToCellMsg::GmSpawnNpcFailed`] so the cell
+    /// can report every spawned id in one summary line. `None` (`.spawn`, the
+    /// native `gmSpawnByCmd`) keeps the per-spawn feedback lines.
     GmSpawnNpc {
         entity_id: u32,
         template_id: i32,
@@ -629,6 +636,7 @@ pub enum CellToBaseMsg {
         world_name: String,
         position: [f32; 3],
         heading: f32,
+        batch: Option<u32>,
     },
 
     /// Re-anchor the local pawn to a fresh actor without `RESET_ENTITIES`.

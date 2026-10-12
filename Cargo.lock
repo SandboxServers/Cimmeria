@@ -820,6 +820,7 @@ dependencies = [
  "cimmeria-base-crafting",
  "cimmeria-base-methods",
  "cimmeria-base-session",
+ "cimmeria-common",
  "cimmeria-discord",
  "cimmeria-entity",
  "cimmeria-mercury",

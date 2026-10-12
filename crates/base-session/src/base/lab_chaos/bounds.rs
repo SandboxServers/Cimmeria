@@ -2,9 +2,39 @@
 //! outside them rather than clamping it, so a run never silently tests
 //! something other than what it asked for.
 
-use super::{ChaosRefused, FlushChaos, NetChaos};
+use std::time::{Duration, Instant};
 
-pub(super) fn check_net(net: &NetChaos) -> Result<(), ChaosRefused> {
+use super::{ChaosRefused, FlushChaos, NetChaos, MAX_TTL_S};
+
+/// The checks [`super::LabChaos::set`] and [`super::LabChaos::arm`] share:
+/// a TTL of 1 to [`MAX_TTL_S`], at least one profile, every knob in its
+/// bound. Returns when a request made at `now` expires.
+pub(super) fn check_request(
+    net: Option<&NetChaos>,
+    flush: Option<&FlushChaos>,
+    ttl_s: u32,
+    now: Instant,
+) -> Result<Instant, ChaosRefused> {
+    if ttl_s == 0 {
+        return Err(ChaosRefused::BadTtl(ttl_s));
+    }
+    if ttl_s > MAX_TTL_S {
+        return Err(ChaosRefused::TtlTooLong(ttl_s));
+    }
+    if net.is_none() && flush.is_none() {
+        return Err(ChaosRefused::BadKnob("set needs a net or a flush profile"));
+    }
+    if let Some(net) = net {
+        check_net(net)?;
+    }
+    if let Some(flush) = flush {
+        check_flush(flush)?;
+    }
+    now.checked_add(Duration::from_secs(u64::from(ttl_s)))
+        .ok_or(ChaosRefused::BadTtl(ttl_s))
+}
+
+fn check_net(net: &NetChaos) -> Result<(), ChaosRefused> {
     if net.loss_per_thousand > 1000 {
         return Err(ChaosRefused::BadKnob("net loss is over 1000 per thousand"));
     }
@@ -40,7 +70,7 @@ pub const PACK_RECORDS_MAX: u16 = ((cimmeria_mercury::packet::FRAGMENT_BODY_SIZE
     - SHIFT_LEN_MAX as usize)
     / PHASE1_RECORD_LEN as usize) as u16;
 
-pub(super) fn check_flush(flush: &FlushChaos) -> Result<(), ChaosRefused> {
+fn check_flush(flush: &FlushChaos) -> Result<(), ChaosRefused> {
     match *flush {
         FlushChaos::Delay { ms } if ms > 60_000 => {
             Err(ChaosRefused::BadKnob("flush delay is over 60000 ms"))
