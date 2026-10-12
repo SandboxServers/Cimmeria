@@ -8,6 +8,22 @@ SECTIONS = ("first_pass", "retries", "escalation", "stop_context", "cycle_time")
 STAMP_KEYS = ("generated", "window", "price_table", "profiler_schema", "unattributed_share")
 
 
+def scalar_share(stamp):
+    """Return a copy of `stamp` with the unattributed share as a number (CM-10 real shape).
+
+    cost.json carries a dict of shares by family, request and dollars: the dollar share becomes `unattributed_share`,
+    the request share `unattributed_request_share`, and `by_family` is dropped. A number or a missing value passes through.
+    """
+    if stamp is None:
+        return None
+    out = copy.deepcopy(stamp)
+    share = out.get("unattributed_share")
+    if isinstance(share, dict):
+        out["unattributed_share"] = share.get("by_usd")
+        out["unattributed_request_share"] = share.get("by_request")
+    return out
+
+
 def assemble_core(name, cost_doc, packets_doc, ledger_doc):
     """Return the core record of campaign `name`; inputs are copied, never mutated, and a missing packets record becomes gaps."""
     cost_campaign = cost_doc["campaigns"][name]
@@ -25,7 +41,7 @@ def assemble_core(name, cost_doc, packets_doc, ledger_doc):
         out["regime"] = campaign_regime(packets)
 
     stamp = cost_doc.get("stamp") or {}
-    out["stamp"] = copy.deepcopy({key: stamp.get(key) for key in STAMP_KEYS})
+    out["stamp"] = scalar_share({key: stamp.get(key) for key in STAMP_KEYS})
     out["stamp"]["unmapped_share"] = (packets_doc.get("sessions") or {}).get("unmapped_share")
 
     for key in ("cost", "prs", "accepted"):
@@ -178,7 +194,7 @@ def assemble(inputs):
     fixer_requests = overstep_doc.get("fixer_requests")
     ledger_campaigns = ledger_doc.get("campaigns") or {}
     meta = {
-        "stamp": copy.deepcopy(cost_doc.get("stamp")),
+        "stamp": scalar_share(cost_doc.get("stamp")),
         "unmapped_share": (packets_doc.get("sessions") or {}).get("unmapped_share"),
         "untagged_prs": github_doc.get("untagged_prs"),
         "opus_subagents": overstep_doc.get("opus_subagents"),

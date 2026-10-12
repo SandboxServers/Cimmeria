@@ -10,7 +10,7 @@
   "profiler_schema": "6",
   "ledger": "applied",
   "untagged_pr_count": 2,
-  "unattributed_share": 0.16
+  "unattributed_share": {"by_family": {"lx": {"requests": 0.1, "usd": 0.2}}, "by_request": 0.12, "by_usd": 0.16, "requests": 1000}
  },
  "campaigns": {
   "alpha-old": {
