@@ -95,6 +95,22 @@ async fn move_to_presses_the_bound_turn_keys() {
     assert!(!sim.keys["L"], "turn key left held");
 }
 
+/// A cancelled walk's cleanup lets go of the bound turn keys, not just Q/E.
+#[tokio::test]
+async fn release_stray_lets_go_of_the_bound_turn_keys() {
+    let mut sim = Sim::live();
+    sim.turn_key_names = ("J".into(), "L".into());
+    for k in ["W", "J", "L"] {
+        sim.keys.insert(k.into(), true);
+    }
+    movement::release_stray(&mut sim).await;
+    assert!(
+        ["W", "J", "L"].iter().all(|k| !sim.keys[*k]),
+        "{:?}",
+        sim.keys
+    );
+}
+
 /// A rooted pawn (turn rate 0) ends the walk honestly, with the keys up.
 #[tokio::test]
 async fn move_to_reports_a_pawn_that_does_not_turn() {

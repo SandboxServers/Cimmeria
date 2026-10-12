@@ -98,7 +98,7 @@ impl LabServer {
 /// Releases the walk's keys if the tool future is dropped mid-walk (the
 /// client cancelled the call): movement::run releases them on every exit it
 /// gets to, but a dropped future gets to none. A held W or turn key would
-/// wreck every later lab step. Covers the stock and default-bound keys.
+/// wreck every later lab step. Covers the client's bound turn keys too.
 struct HeldKeysGuard {
     sup: Arc<Supervisor>,
     armed: bool,
@@ -114,9 +114,8 @@ impl Drop for HeldKeysGuard {
         };
         let sup = self.sup.clone();
         rt.spawn(async move {
-            for k in [movement::FORWARD_KEY, "A", "D", "Q", "E"] {
-                let _ = sup.input_key(k, "up", None).await;
-            }
+            let mut io = LiveWorld::new(&sup);
+            movement::release_stray(&mut io).await;
         });
     }
 }

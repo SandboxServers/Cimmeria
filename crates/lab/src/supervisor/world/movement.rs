@@ -175,6 +175,18 @@ async fn release<W: WorldIo>(io: &mut W, turn: &TurnKeys) {
     }
 }
 
+/// Let go of every key a walk may hold, including the client's bound turn
+/// keys (read again, since the cancelled walk's own copy is gone). For a
+/// dropped tool future; errors are ignored.
+pub async fn release_stray<W: WorldIo>(io: &mut W) {
+    let mut keys = TurnKeys::default();
+    if let Ok((left, right)) = io.turn_keys().await {
+        keys.left = left;
+        keys.right = right;
+    }
+    release(io, &keys).await;
+}
+
 /// `client_move_to`.
 pub async fn run<W: WorldIo>(io: &mut W, req: MoveRequest) -> Result<Value, WorldError> {
     let mut turn_keys = TurnKeys::default();
