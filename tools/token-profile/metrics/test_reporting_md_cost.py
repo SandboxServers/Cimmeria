@@ -71,6 +71,44 @@ class StampCostPrTest(unittest.TestCase):
         self.assertNotIn("|", out)
 
 
+class AcceptedFirstPassRetriesTest(unittest.TestCase):
+    def test_retries_none_sentence(self):
+        record = haiku_record()
+        record["retries"] = {"total": 0, "by_reason": {"ci": 0, "review": 0}}
+        self.assertEqual(md_campaign_cost.retries_md(record), "No retries.\n")
+
+    def test_retries_table_lists_non_zero_reasons(self):
+        out = md_campaign_cost.retries_md(haiku_record())
+        self.assertIn("- Retries: 2", out)
+        self.assertIn("| ci | 2 |", out)
+        self.assertNotIn("review", out)
+
+    def test_first_pass_table(self):
+        out = md_campaign_cost.first_pass_md(haiku_record())
+        self.assertIn("- First-pass rate: 33.0%", out)
+        self.assertIn("| CM-08f | 1 | 1 | 1 | no |", out)
+
+    def test_missing_section_renders_gap_not_table(self):
+        record = haiku_record()
+        record["first_pass"] = {}
+        record["first_pass_gap"] = "no eligible packets yet"
+        out = md_campaign_cost.first_pass_md(record)
+        self.assertIn("no eligible packets yet", out)
+        self.assertNotIn("|", out)
+
+    def test_no_zero_where_unknown(self):
+        record = haiku_record()
+        record["accepted"] = {"packets": 0, "cost_per_accepted_usd": None, "accepted_gap": "nothing accepted"}
+        out = md_campaign_cost.accepted_md(record)
+        self.assertNotIn("$0.00", out)
+        self.assertIn("n/a (nothing accepted)", out)
+        self.assertIn("nothing accepted", out)
+
+    def test_accepted_cost_renders_dollars(self):
+        out = md_campaign_cost.accepted_md(haiku_record())
+        self.assertIn("- Cost per accepted change: $15.00", out)
+
+
 class CellTest(unittest.TestCase):
     def test_cell_gap_beats_dash(self):
         self.assertEqual(md_common.cell(None, gap="no ledger"), "n/a (no ledger)")

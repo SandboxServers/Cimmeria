@@ -64,3 +64,43 @@ def prs_md(record):
     rows = [[cell(r["pr"]), cell(r["usd"], fmt=usd), cell(r["ci_first_pass"], fmt=_yes_no), cell(r["ci_runs"], fmt=num)]
             for r in p["per_pr"]]
     return "\n".join(lines) + "\n\n" + table(["PR", "USD", "CI first pass", "CI runs"], rows) + "\n"
+
+
+def accepted_md(record):
+    gap = _gap(record, "accepted")
+    if gap:
+        return gap + "\n"
+    a = record["accepted"]
+    note = gap_of(a, "accepted")
+    lines = [
+        f"- Accepted packets: {num(a['packets'])}",
+        f"- Cost per accepted change: {cell(a['cost_per_accepted_usd'], note, usd)}",
+    ]
+    out = "\n".join(lines) + "\n"
+    return out + "\n" + note + "\n" if note else out
+
+
+def first_pass_md(record):
+    gap = _gap(record, "first_pass")
+    if gap:
+        return gap + "\n"
+    f = record["first_pass"]
+    lines = [
+        f"- First-pass rate: {cell(f['rate'], fmt=pct)}",
+        f"- Eligible packets: {num(f['eligible'])}",
+    ]
+    rows = [[cell(p["id"]), cell(p["implementer_sessions"], fmt=num), cell(p["reviewer_sessions"], fmt=num),
+             cell(p["fix_commits"], fmt=num), cell(p["first_pass"], fmt=_yes_no)] for p in f["packets"]]
+    return "\n".join(lines) + "\n\n" + table(["id", "implementer sessions", "reviewer sessions", "fix commits",
+                                             "first pass"], rows) + "\n"
+
+
+def retries_md(record):
+    gap = _gap(record, "retries")
+    if gap:
+        return gap + "\n"
+    r = record["retries"]
+    if r["total"] == 0:
+        return "No retries.\n"
+    reasons = [[reason, num(n)] for reason, n in r["by_reason"].items() if n]
+    return f"- Retries: {cell(r['total'], fmt=num)}\n\n" + table(["reason", "count"], reasons) + "\n"
