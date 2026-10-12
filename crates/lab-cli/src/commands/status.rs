@@ -1,6 +1,6 @@
 //! `lab status`: the daemon and each lab instance, from the daemon's status
-//! endpoint. LX-02 gives it its clap arguments and help page; the body is
-//! still the PowerShell fallback.
+//! endpoint. Plain output is the text `status.ps1` printed; fancy output is
+//! a coloured table. Exits 1 when the daemon does not answer.
 
 use std::path::Path;
 
@@ -348,7 +348,7 @@ pub fn run(args: &Args, ctx: &Ctx) -> u8 {
 mod tests {
     use crate::commands::{parse_ok, try_parse, Command};
 
-    /// The `.EXAMPLE` line of status.ps1 parses.
+    /// `lab status` parses with no arguments and rejects a stray one.
     #[test]
     fn examples_parse() {
         assert!(matches!(parse_ok("status", &[]), Command::Status(_)));

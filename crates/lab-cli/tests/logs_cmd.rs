@@ -306,14 +306,26 @@ impl Follow {
     }
 
     /// Sets the stop flag (what Ctrl+C does) and returns the final output.
+    /// A loop that ignores the flag fails the test after 5 s instead of
+    /// hanging it.
     fn finish(mut self) -> String {
         self.stop.store(true, Ordering::SeqCst);
-        self.handle
-            .take()
-            .expect("handle")
-            .join()
-            .expect("follow thread");
-        self.text()
+        let handle = self.handle.take().expect("handle");
+        for _ in 0..250 {
+            if handle.is_finished() {
+                handle.join().expect("follow thread");
+                return self.text();
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        panic!("follow_file did not stop within 5 s of the stop flag");
+    }
+}
+
+impl Drop for Follow {
+    /// A test that panics before `finish` still tells the thread to stop.
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
     }
 }
 
@@ -387,11 +399,13 @@ fn follow_rereads_a_file_that_shrinks() {
         "2026-10-10T20:00:00Z  INFO serve: one\n2026-10-10T20:00:01Z  INFO serve: two\n2026-10-10T20:00:02Z  INFO serve: three\n",
     )
     .expect("write log");
-    let follow = Follow::start(path.clone(), None, None, 0);
-    std::thread::sleep(Duration::from_millis(150));
+    // Wait for the first snapshot so the rotation happens while polling.
+    let follow = Follow::start(path.clone(), None, None, 50);
+    follow.wait_for("serve: three");
     std::fs::write(&path, "2026-10-11T21:00:00Z  INFO serve: fresh\n").expect("rotate");
     follow.wait_for("serve: fresh");
-    follow.finish();
+    let text = follow.finish();
+    assert_eq!(text.matches("serve: fresh").count(), 1, "{text}");
 }
 
 // New: setting the stop flag (Ctrl+C) ends the loop with Ok.

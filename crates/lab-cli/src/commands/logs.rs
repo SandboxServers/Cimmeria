@@ -1,6 +1,5 @@
-//! `lab logs`: show the daemon log, filtered by instance or level.
-//! LX-02 gives it its clap arguments and help page; the body is still the
-//! PowerShell fallback.
+//! `lab logs`: show the daemon log, filtered by instance or level, with
+//! tokens masked. `--follow` polls the file and stops on Ctrl+C (exit 0).
 
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom, Write};
@@ -242,7 +241,7 @@ pub fn run(args: &Args, ctx: &Ctx) -> u8 {
 mod tests {
     use crate::commands::{parse_ok, try_parse, Command};
 
-    /// Both `.EXAMPLE` lines of logs.ps1 parse, with the right values.
+    /// Both documented example lines parse, with the right values.
     #[test]
     fn examples_parse() {
         let Command::Logs(a) = parse_ok("logs", &["-Lines", "5"]) else {
