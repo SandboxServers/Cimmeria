@@ -81,6 +81,14 @@ class OverstepSectionTest(unittest.TestCase):
         self.assertEqual(beta["recoverable_usd"], {"low": 2.0, "high": 5.0})
         self.assertEqual(beta["items"][0]["rule"], "O1")
 
+    def test_wasted_per_rule_and_total(self):
+        # Beta's O1 and O2 wasted 4.5 and 0.5; the campaign total is their sum, and alpha (no rules) has none.
+        beta = self.record_with_overstep("beta-haiku")["overstep"]
+        self.assertEqual(beta["rules"]["O1"], {"count": 2, "usd": 6.0, "wasted_usd": 4.5})
+        self.assertEqual(beta["rules"]["O2"]["wasted_usd"], 0.5)
+        self.assertEqual(beta["wasted_usd"], 5.0)
+        self.assertIsNone(self.record_with_overstep("alpha-old")["overstep"]["wasted_usd"])
+
     def test_haiku_without_entry_is_zeros(self):
         loaded = self.loaded
         record = assemble.assemble_core("beta-haiku", loaded["cost"], loaded["packets"], loaded["ledger"])

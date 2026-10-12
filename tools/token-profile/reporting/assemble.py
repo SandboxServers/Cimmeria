@@ -123,7 +123,9 @@ def attach_overstep(record, overstep_doc):
                 "opus_coding_usd": None,
                 "opus_research_usd": None,
                 "sonnet_implementing_usd": None,
+                "wasted_usd": None,
                 "recoverable_usd": {"low": None, "high": None},
+                "rules": {},
                 "items": [],
                 "overstep_gap": "predates the regime switch; the rules apply to the Haiku regime",
             }
@@ -132,7 +134,9 @@ def attach_overstep(record, overstep_doc):
                 "opus_coding_usd": 0.0,
                 "opus_research_usd": 0.0,
                 "sonnet_implementing_usd": 0.0,
+                "wasted_usd": 0.0,
                 "recoverable_usd": {"low": 0.0, "high": 0.0},
+                "rules": {},
                 "items": [],
             }
         return
@@ -142,7 +146,13 @@ def attach_overstep(record, overstep_doc):
         "opus_coding_usd": _usd(rules, "O1"),
         "opus_research_usd": _usd(rules, "O2"),
         "sonnet_implementing_usd": _usd(rules, "O3"),
+        # Wasted cost is the headline figure: the campaign total is the rounded sum over its rules, None without rules.
+        "wasted_usd": round(sum(body.get("wasted_usd") or 0.0 for body in rules.values()), 2) if rules else None,
         "recoverable_usd": {"low": entry.get("recoverable_low"), "high": entry.get("recoverable_high")},
+        "rules": {
+            rule: {"count": body.get("count"), "usd": body.get("usd"), "wasted_usd": body.get("wasted_usd")}
+            for rule, body in rules.items()
+        },
         "items": copy.deepcopy(entry.get("items") or []),
     }
 
