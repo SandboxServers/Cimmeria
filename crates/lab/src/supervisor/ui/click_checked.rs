@@ -47,6 +47,21 @@ pub fn handler_chunk(handler: &str, window: &str) -> String {
     )
 }
 
+/// Record in the trail when `ui_click` had to put the cursor down through
+/// Lua `setPosition` (native injection failed): that placement is N3, so a
+/// click that worked on top of it must not report `native_pass`.
+fn note_posted_cursor(clicked: &serde_json::Value, trail: &mut NativeTrail) {
+    if clicked["cursor_via"] == json!("lua_set_position") {
+        let why = clicked["cursor_fallback_reason"]
+            .as_str()
+            .unwrap_or("unknown");
+        trail.push(
+            format!("cursor via Lua setPosition (native injection failed: {why})"),
+            NativeLevel::ClientUiLua,
+        );
+    }
+}
+
 impl Supervisor {
     async fn click_took_effect(&self, done: &str) -> Result<bool, String> {
         tokio::time::sleep(SETTLE).await;
@@ -65,8 +80,9 @@ impl Supervisor {
     ) -> Result<(), String> {
         let mut tried: Vec<String> = Vec::new();
         match self.ui_click(window, 0).await {
-            Ok(_) => {
+            Ok(clicked) => {
                 if self.click_took_effect(done).await? {
+                    note_posted_cursor(&clicked, trail);
                     trail.push(format!("click {window}"), NativeLevel::RealInput);
                     return Ok(());
                 }
@@ -128,6 +144,22 @@ mod tests {
             .click_until("TabBtn", &visible_chunk("TabActive"), handler, &mut trail)
             .await;
         (r, trail, s)
+    }
+
+    /// A posted click that worked on a Lua-placed cursor is N3, not a native
+    /// pass.
+    #[test]
+    fn a_lua_placed_cursor_under_a_posted_click_is_n3() {
+        let mut trail = NativeTrail::default();
+        note_posted_cursor(
+            &json!({ "cursor_via": "lua_set_position", "cursor_fallback_reason": "boom" }),
+            &mut trail,
+        );
+        trail.push("click W", NativeLevel::RealInput);
+        assert_eq!(trail.overall(), Some(NativeLevel::ClientUiLua));
+        let mut native = NativeTrail::default();
+        note_posted_cursor(&json!({ "cursor_via": "native_inject" }), &mut native);
+        assert_eq!(native.overall(), None);
     }
 
     /// The posted click is unavailable in the fake (no game window), the
