@@ -7,6 +7,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [reference_cellblock_praxis_start_2026_10_13.md](reference_cellblock_praxis_start_2026_10_13.md) — fresh Praxis Commando starts in Castle_CellBlock and takes the non-Jaffa tutorial branch; fresh SGU Commando starts in SGC_W1
 - [reference_lab_login_focus_2026_10_13.md](reference_lab_login_focus_2026_10_13.md) — lab_login foregrounds the client once and verifies login fields with CEGUI dispatch hit-testing before typing; covering modals stop input and credential values stay out of step logs
 
+- [project_lab_uat_reliability_2026_10_13.md](project_lab_uat_reliability_2026_10_13.md) — merged lab packets still need live proofs; LR-05a needs endpoint binding; Cellblock run stopped at pistol combat before Livewire
 - [project_lab_wait_bridge_retry.md](project_lab_wait_bridge_retry.md) — UI condition waits retry transient bridge failures through the original deadline and report the last failure
 - [reference_lab_client_process_uptime_2026_10_13.md](reference_lab_client_process_uptime_2026_10_13.md) — `lab_client_status.uptime_ms` must use the live process creation time, not supervisor-local launch state; unavailable/exited states report zero
 

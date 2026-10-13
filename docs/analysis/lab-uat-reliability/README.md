@@ -44,21 +44,42 @@ live validation; an integration test alone leaves it UATPending.
 
 | Packet | Issue | Status | PR | Live proof |
 |---|---|---|---|---|
-| LR-01 prompt read | #1673 | Review | [#1691](https://github.com/SandboxServers/Cimmeria/pull/1691) | Hub prompt text/buttons |
-| LR-01b prompt discovery and briefs | #1673 | BlockedDependency: LR-01 | | Tool description and PROMPT macros |
-| LR-00 ring click grading | #1686 | Writing | | Honest N1/N3 and UAT tool lookup |
-| LR-02 covered click | #1676 | Writing | | Mail compose over inbox |
-| LR-03 bridge wait | #1677 | Review | | World load through `client_wait_for` |
-| LR-04a feedback metadata | #1679 | Review | [#1692](https://github.com/SandboxServers/Cimmeria/pull/1692) | Channel 9 colour and tab |
-| LR-04b relog capture | #1679 | BlockedDependency: LR-04a | | Welcome after relog |
-| LR-05a dead player observation | #1680 | Ready | | Defeat window state |
+| LR-01 prompt read | #1673 | UATPending | [#1691](https://github.com/SandboxServers/Cimmeria/pull/1691) | Hub prompt text/buttons |
+| LR-01b prompt discovery and briefs | #1673 | UATPending | [#1697](https://github.com/SandboxServers/Cimmeria/pull/1697) | Tool description and PROMPT macros |
+| LR-00 ring click grading | #1686 | UATPending | [#1696](https://github.com/SandboxServers/Cimmeria/pull/1696) | Method 91 packet tap and honest N1/N3 result |
+| LR-02 covered click | #1676 | UATPending | [#1695](https://github.com/SandboxServers/Cimmeria/pull/1695) | Mail compose over inbox |
+| LR-03 bridge wait | #1677 | UATPending | [#1693](https://github.com/SandboxServers/Cimmeria/pull/1693) | World load through `client_wait_for` |
+| LR-04a feedback metadata | #1679 | UATPending | [#1692](https://github.com/SandboxServers/Cimmeria/pull/1692) | Channel 9 colour and tab |
+| LR-04b relog capture | #1679 | UATPending | [#1700](https://github.com/SandboxServers/Cimmeria/pull/1700) | Welcome before the first post-load pump remains unobservable; report capture gap |
+| LR-05a dead player observation | [#1703](https://github.com/SandboxServers/Cimmeria/issues/1703) | BlockedDecision | | Match client peer to queried server; defeated IDs and local port survive |
 | LR-05b safe logout | #1680 | BlockedDependency: LR-05a | | Logout after death |
-| LR-05c process uptime | #1680 | Writing | | Status across supervisor restart |
-| LR-05d login focus recovery | #1680 | BlockedDependency: LR-02 | | Covered login after crash |
-| LR-06 target timeout and route correction | #1684 | Ready | | Hostile target while in combat; pod-safe route |
-| LR-07 native ring click | #1686 | BlockedDependency: LR-00 and native-input probe | | Fresh client mouse vs handler |
+| LR-05c process uptime | #1680 | UATPending | [#1698](https://github.com/SandboxServers/Cimmeria/pull/1698) | Status across supervisor restart |
+| LR-05d login focus recovery | #1680 | UATPending | [#1704](https://github.com/SandboxServers/Cimmeria/pull/1704) | Daemon foreground recovery passed live; covered modal remains a flow-test-only check |
+| LR-06 target timeout and route correction | #1684 | UATPending | [#1699](https://github.com/SandboxServers/Cimmeria/pull/1699) | Hostile target while in combat; pod-safe route |
+| LR-07 native ring click | #1686 | BlockedDependency: console hover and native-input probe | | Open the ring map, then compare native click with method 91 |
 | CA-MG-L0..L5 | #1685 | BlockedDependency: autoplay prerequisites | | Livewire N1 solve |
 | CA-AP-11 | #1689 | BlockedDependency: autoplay prerequisites | | Route to Mess Hall |
+
+## Live findings and follow-up issues, 13 October
+
+The lab started a fresh Praxis Commando in Castle_CellBlock (world 12).
+Native movement, Frost interaction, Guard corpse interaction by entity ID,
+and pistol equip advanced the first mission. The guard then defeated the
+character: the pistol showed 0/15 ammo and did no damage ([#1667](https://github.com/SandboxServers/Cimmeria/issues/1667)).
+The client respawned at the Mess Hall before the respawn helper could observe
+the defeat window ([#1668](https://github.com/SandboxServers/Cimmeria/issues/1668)).
+The end-to-end walkthrough has not reached Livewire or the destination ring.
+In a separate DebugArea probe, the ring console was rendered and in range,
+but an entity-ID click repeatedly timed out on mouse-over verification within
+the new bound ([#1684](https://github.com/SandboxServers/Cimmeria/issues/1684)).
+The destination map did not open, so LR-07 still lacks a native click probe.
+
+- [#1701](https://github.com/SandboxServers/Cimmeria/issues/1701): daemon restart can fail when the old process exits before `Stop-Process`.
+- [#1702](https://github.com/SandboxServers/Cimmeria/issues/1702): `client_batch` MCP schema declares strings while the runtime accepts step objects.
+- [#1703](https://github.com/SandboxServers/Cimmeria/issues/1703): defeated-player recovery needs a client-to-server endpoint binding. During a live defeat, `unitName(Unit.Player)` was blank but the client IDs and process-owned UDP port still matched the server row; the destination endpoint remains unproven.
+- [#1706](https://github.com/SandboxServers/Cimmeria/issues/1706): `lab_finish_dialog` reported success while a one-page dialog stayed open.
+- [#1708](https://github.com/SandboxServers/Cimmeria/issues/1708): clicking an unnamed corpse by point hit the player avatar; clicking its entity ID succeeded natively.
+- [#1342](https://github.com/SandboxServers/Cimmeria/issues/1342): watchdog launch overlapped a client start and left a second process.
 
 ## Validation rules
 
