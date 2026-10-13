@@ -16,5 +16,5 @@ Rules:
 - Group packets into **waves** that one packet-review-fixer can review in one context: about 6 small packets per wave.
 - Mark owner decisions `BlockedDecision` and list them in the report. The architect never asks the user itself.
 - Use PowerShell only, with absolute paths. Never run cargo directly; any compile check goes through `tools/build-lane/lane.ps1`.
-- Write the full report to the report path given in the brief. Keep `RESUME.md` at most 40 lines.
+- Write the full report to the report path given in the brief. Keep `RESUME.md` at most 40 lines. Files under `docs/` are CRLF.
 - Return one line: `architect done - <ledger path>`. Nothing else in the return.
