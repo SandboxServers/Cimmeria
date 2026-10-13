@@ -117,6 +117,43 @@ async fn target_clicks_the_entity_with_real_input() {
     assert_eq!(sim.buttons, vec![(0, true), (0, false)]);
 }
 
+#[tokio::test]
+async fn target_mouse_over_timeout_returns_without_changing_the_current_target() {
+    let mut sim = room();
+    sim.slots.insert(UNITS.target, 77);
+    sim.slots_never_after = Some(1);
+    let started = tokio::time::Instant::now();
+    let err = click::run(
+        &mut sim,
+        "client_target",
+        ClickRequest {
+            entity_id: Some(10),
+            ..ClickRequest::default()
+        },
+        Some((0, Expect::Target)),
+    )
+    .await
+    .unwrap_err();
+    assert!(started.elapsed() < std::time::Duration::from_secs(3));
+    assert_eq!(err.step, "read_mouse_over");
+    assert!(err.message.contains("transport timed out"));
+    assert_eq!(
+        err.state.as_ref().unwrap()["attempted_pixel"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    assert!(
+        err.state.as_ref().unwrap()["remaining_deadline_ms"]
+            .as_u64()
+            .unwrap()
+            > 0
+    );
+    assert_eq!(target_of(&sim), 77);
+    assert!(sim.buttons.is_empty());
+}
+
 /// Off to the side with an inverted, less sensitive mouse: the camera turns
 /// until the entity is on screen, then the click lands.
 #[tokio::test]

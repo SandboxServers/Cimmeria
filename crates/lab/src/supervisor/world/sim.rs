@@ -103,7 +103,18 @@ pub struct Sim {
     /// `slots` (the mouse-over read) fails once it has answered this many
     /// times, to prove a failing tool still puts the cursor back.
     pub fail_mouse_over_after: Option<u32>,
+    /// Return the bridge's own dispatch timeout after this many slot reads.
+    pub slots_dispatch_timeout_after: Option<u32>,
+    /// Make `slots` hang, as it does when the bridge stops answering.
+    pub slots_never_returns: bool,
+    /// Make `slots` hang after this many successful reads.
+    pub slots_never_after: Option<u32>,
     pub slots_reads: u32,
+    /// Model an unresponsive projection or camera bridge operation.
+    pub project_never_after: Option<u32>,
+    pub project_reads: u32,
+    pub camera_readout_never_returns: bool,
+    pub look_never_returns: bool,
     /// `place_cursor` without a mouse move (a cursor restore) fails.
     pub fail_cursor_restore: bool,
     /// Entities mouse-over never reports (rendered, but the client's trace
@@ -172,7 +183,14 @@ impl Sim {
             window_rects: Vec::new(),
             avatar_radius_px: None,
             fail_mouse_over_after: None,
+            slots_dispatch_timeout_after: None,
+            slots_never_returns: false,
+            slots_never_after: None,
             slots_reads: 0,
+            project_never_after: None,
+            project_reads: 0,
+            camera_readout_never_returns: false,
+            look_never_returns: false,
             fail_cursor_restore: false,
             unhoverable: Vec::new(),
             live_pitch_clamp: false,
@@ -386,6 +404,19 @@ impl WorldIo for Sim {
 
     async fn slots(&mut self) -> Result<Vec<(i32, u32)>, String> {
         if self
+            .slots_dispatch_timeout_after
+            .is_some_and(|after| self.slots_reads >= after)
+        {
+            return Err("dispatch timeout".into());
+        }
+        if self.slots_never_returns
+            || self
+                .slots_never_after
+                .is_some_and(|after| self.slots_reads >= after)
+        {
+            std::future::pending().await
+        }
+        if self
             .fail_mouse_over_after
             .is_some_and(|n| self.slots_reads >= n)
         {
@@ -434,6 +465,13 @@ impl WorldIo for Sim {
     }
 
     async fn project(&mut self, points: &[Vec3]) -> Result<Projected, String> {
+        if self
+            .project_never_after
+            .is_some_and(|after| self.project_reads >= after)
+        {
+            std::future::pending().await
+        }
+        self.project_reads += 1;
         self.advance(20);
         Ok(Projected {
             screen: self.screen,
@@ -451,6 +489,9 @@ impl WorldIo for Sim {
     }
 
     async fn look(&mut self, dx: i32, dy: i32, wheel: i32) -> Result<NativeLevel, String> {
+        if self.look_never_returns {
+            std::future::pending().await
+        }
         self.looks.push((dx, dy, wheel));
         self.cam_yaw = wrap_pi(self.cam_yaw + dx as f64 / self.gain);
         let sign = if self.pitch_inverted { -1.0 } else { 1.0 };
@@ -477,6 +518,9 @@ impl WorldIo for Sim {
     }
 
     async fn camera_readout(&mut self) -> Result<Value, String> {
+        if self.camera_readout_never_returns {
+            std::future::pending().await
+        }
         // Rotator units per mouse count: 65536 per turn over the sim's gain.
         // The readout's pitch rises with +dy, as the live camera's does.
         let units = 65536.0 / std::f64::consts::TAU;
