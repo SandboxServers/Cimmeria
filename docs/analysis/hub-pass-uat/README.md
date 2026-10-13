@@ -192,9 +192,9 @@ Statuses: Ready, Driving, Driven (report in), Verifying, Verified, Done (results
 | HP-P4 | p2 | U14, U15, U16 | 27 | HP-P1 | Ready |
 | HP-P5 | p2 | U17, U18, U19, U20 | 27 | HP-P1 | Ready |
 | HP-P6 | p2 | U9, U10, U2b relog | 18 | HP-P1; run last on p2 | Ready |
-| HP-D1 | p3 | DP-U1, U2, U4 | 22 | none; may end BLOCKED | Ready |
-| HP-D2 | p3 | DP-U3, U5, U8 | 25 | HP-D1 proves the ground cast | Ready after HP-D1 |
-| HP-D3 | p3 | DP-U6 | 24 | HP-D1 | Ready after HP-D1 |
+| HP-D1 | p3 | DP-U1, U2, U4 | 22 | none; may end BLOCKED | Verified 2026-10-13 (attempt 1): ground cast proven; U1 and U4 server-PASS, U2 shot void (pet in frame), retake in HP-D2 8.2 |
+| HP-D2 | p3 | DP-U3, U5, U8, DP-U2 retake | 28 | HP-D1 proved the ground cast; p2 pets lane idle (shared plaza) | Ready (brief fixed 2026-10-13) |
+| HP-D3 | p3 | DP-U6 | 26 | HP-D1; p2 pets lane idle (shared plaza, death site) | Ready (brief fixed 2026-10-13) |
 
 ## Results
 
@@ -232,10 +232,10 @@ Fill from the verifier reports. Result vocabulary: PASS, NATIVE_SHORTFALL, PARTI
 | U18 | HP-P5 | Pending | | | |
 | U19 | HP-P5 | Pending | | | |
 | U20 | HP-P5 | Pending | | | |
-| DP-U1 | HP-D1 | Pending | | | |
-| DP-U2 | HP-D1 | Pending | | | |
+| DP-U1 | HP-D1 | PARTIAL (visual) | N1 (`client_use_ability` key "1" plus a real world click; `place:true` = N3 setup) | 07:53:06Z `deployables.lifecycle` `deploy_launched` (DEBUG) ability 1012, template 400; 07:53:08Z `spawned` (INFO) at (256.20, 6.99, -923.01), 4.2 m from the caster, radius 10, pulses_total 30, entity 100478; 2 s warmup exact; DB abilities of player 73 = [1012]; no `deploy_refused`, no deployables WARN/ERROR; client-read: driver GC.3 listed "Deployable: Microwave Emitter" 100478 at 4.2 m. Looker `D1-warmup`: cast bar UNSURE (shot taken at GC.3, 6 s after the spawn, so it cannot show the warmup) | |
+| DP-U2 | HP-D1 | NOT-RUN (no valid shot; retake in HP-D2 8.2) | N1 | The three look shots show the p2 lane's "Summoned Straegis Fighter" pet (a blue crystalline creature) standing at the same spot, not the emitter: both lanes work in the same world 1300 space at the same plaza. Looker answers on `D1-object-front` are about the pet and are void. NEEDS_HUMAN stays open | |
 | DP-U3 | HP-D2 | Pending | | | |
-| DP-U4 | HP-D1 | Pending | | | |
+| DP-U4 | HP-D1 | PASS | N1 (as DP-U1) | 07:53:38Z INFO `despawned` reason `expired`, `lifetime_secs` 30.0005, `pulses` 30, entity 100478 (spawned 07:53:08Z); 30 DEBUG `deployables.pulse` rows 07:53:09Z-07:53:38Z. Client-read: driver found no match at ~07:53:5x (first absent read ~20 s after the despawn, the +20 s listed read was GC.3 at 07:53:14). Looker `D1-after-30s`: UNSURE (a pet hides the avatar, no device visible), consistent with gone | |
 | DP-U5 | HP-D2 | Pending | | | |
 | DP-U6 | HP-D3 | Pending | | | |
 | DP-U8 | HP-D2 | Pending | | | |
@@ -262,3 +262,12 @@ Verifier findings, HP-P2 (2026-10-13):
 - Lab (not product): `changePetStance(Unit.Pet1, 3)` sent no CM 90 at all (no inbound `petChangeStance`, no `rejected` row), so slot 3 -> Aggressive was not exercised on the wire. Cause unknown (client native may drop a value above 2); a follow-up should try it with the real bar once #1674 is fixed.
 - U4 leash: a GM teleport cannot exercise it (`on_owner_teleported` places the pet at once, `owner_follow.rs` leash is for a walking owner). A 50 m run along x 252 from z -935 to -885 is checked on the navmesh (one component, floor 7.0 to 7.4); whether the pet falls 40 m behind is unknown. See `briefs/HP-P2-u4.md` verifier notes.
 - No WARN/ERROR in pets.* in the window; one movement.speed_warning at 07:54:03Z (warn-only, expected for a run).
+
+Verifier findings, HP-D1 (2026-10-13):
+
+- Ground cast recipe (proven): `client_use_ability {ability_id:1012, place:true, observe_ms:1500}` (key "1", verdict `nothing_observed` is expected), then `client_world_click {point:{x:256,y:7,z:-923}, button:"left", expect:"nothing", settle_ms:3500, rotate_camera:true}`. The server logged `deploy_launched` 07:53:06Z, `spawned` 07:53:08Z at the clicked point, `despawned expired` 07:53:38Z. The click also selected entity 100477 (`target_after`): that is Hubpets' summoned Straegis Fighter (pets lane, `.pet summon 350` at 07:52:30Z), standing on the same plaza. It did not block the placement (the spawn point is the click point). HP-D2 and HP-D3 now use the recipe.
+- Design flaw (fixed in the schedule, not the product): the p2 pets lane and the p3 deployables lane share world 1300, space 65552 and the plaza centre. Hubdeploy sees Hubpets' pet (AoI enter at 07:52:30Z), it blocks the camera, and in HP-D2 it would fight the Rats. HP-D2 and HP-D3 run only while the pets lane is idle, and HP-D2 S2 checks for "Summoned" within 40 m.
+- Lab, not product: `client_camera` took `pitch_deg`/`yaw_offset_deg` as f64 (`CameraRequest`, `crates/lab/src/supervisor/world/camera.rs`); the refusal `invalid type: string "-15"` means the driver sent quoted strings. Working call: `{"lease_id":L,"face_point":{"x":256.2,"y":7.6,"z":-923.0},"pitch_deg":-15,"zoom_to":250}` with JSON numbers. `face_entity_id` on the deployable fails with "entity 100478 has no pose": `snapshot` leaves `pose` empty when the entity has no actor (actor 0) or the pose read fails, while `find` still lists it as rendered. Whether the emitter has a scene actor is unproven (no valid shot yet), so no issue yet; HP-D2 8.2 takes the shot, and a missing object in it with a "rendered" entity-table row is the evidence to file with. D2 and D3 face a point, never the entity.
+- Lab: `.gotolocation` to world 1300 breaks `client_wait_for` (`poll_until` returns `Err` on the first failed poll while the main thread loads the world): [#1677](https://github.com/SandboxServers/Cimmeria/issues/1677). D2 and D3 use fixed `client_batch` waits (2 x 20 s) instead.
+- Briefs: server replies arrive on channel `None` (id 9); D2 and D3 READs now use `contains` and no channel. HP-D1's own brief still has the old READ, PLAZA and ground-cast text: use the D2 text if D1 is re-run.
+- Unrelated WARN: 07:52:33Z `request_entity_update` `not_in_witness_aoi` cause `entity_gone` for entity 100476 (witness Hubdeploy); before the cast, same family as the closed #849. Not a deployables row.
