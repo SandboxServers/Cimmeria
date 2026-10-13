@@ -59,6 +59,38 @@ async fn point_on_entity_covered_by_own_avatar_uses_entity_hover_search() {
 }
 
 #[tokio::test]
+async fn point_click_rechecks_hover_after_final_cursor_move() {
+    let mut sim = medic_behind_the_avatar();
+    sim.body_dz = REAL_BODY_DZ.to_vec();
+    sim.avatar_cover_dz = 120.0;
+    // Chest hovers the avatar, shoulders hover the medic, then the final
+    // cursor move changes mouse-over back to the avatar.
+    sim.mouse_over_on_repeated_move = Some(super::sim::PLAYER_ID);
+    let e = click::run(
+        &mut sim,
+        "client_world_click",
+        ClickRequest {
+            point: Some(point(Vec3::new(1000.0, 0.0, 0.0))),
+            expect: Some(Expect::Window),
+            ..ClickRequest::default()
+        },
+        None,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(e.step, "hover");
+    assert_eq!(
+        e.state.as_ref().unwrap()["candidate_ids"],
+        serde_json::json!([11])
+    );
+    assert_eq!(
+        e.state.as_ref().unwrap()["mouse_over"],
+        super::sim::PLAYER_ID
+    );
+    assert!(sim.buttons.is_empty());
+}
+
+#[tokio::test]
 async fn point_on_covered_entity_refuses_input_and_reports_candidate() {
     let mut sim = medic_behind_the_avatar();
     let e = click::run(

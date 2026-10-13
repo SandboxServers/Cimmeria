@@ -85,6 +85,9 @@ pub struct Sim {
     pub windows: Vec<String>,
     pub keys: HashMap<String, bool>,
     pub cursor: (i32, i32),
+    /// Simulate mouse-over changing after a repeated final cursor move.
+    pub mouse_over_on_repeated_move: Option<u32>,
+    repeated_move_override_active: bool,
     pub looks: Vec<(i32, i32, i32)>,
     pub pins: u32,
     pub target_unit_calls: u32,
@@ -174,6 +177,8 @@ impl Sim {
             windows: vec!["ChatWin".into(), "SelfStatusWin".into()],
             keys: HashMap::new(),
             cursor: (0, 0),
+            mouse_over_on_repeated_move: None,
+            repeated_move_override_active: false,
             looks: Vec::new(),
             pins: 0,
             target_unit_calls: 0,
@@ -423,7 +428,12 @@ impl WorldIo for Sim {
             return Err("injected mouse-over read failure".into());
         }
         self.slots_reads += 1;
-        let mo = self.under_cursor();
+        let mo = if self.repeated_move_override_active {
+            self.mouse_over_on_repeated_move
+                .unwrap_or_else(|| self.under_cursor())
+        } else {
+            self.under_cursor()
+        };
         let hover_ok = !self.hover_needs_mouse_move || self.held("__mousemove");
         self.slots
             .insert(UNITS.mouse_over, if hover_ok { mo } else { 0 });
@@ -546,6 +556,9 @@ impl WorldIo for Sim {
     async fn place_cursor(&mut self, x: i32, y: i32, mouse_move: bool) -> Result<(), String> {
         if !mouse_move && self.fail_cursor_restore {
             return Err("injected cursor restore failure".into());
+        }
+        if mouse_move && self.cursor == (x, y) && self.mouse_over_on_repeated_move.is_some() {
+            self.repeated_move_override_active = true;
         }
         self.cursor = (x, y);
         self.keys.insert("__mousemove".into(), mouse_move);

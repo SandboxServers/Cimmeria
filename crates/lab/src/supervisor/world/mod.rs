@@ -29,6 +29,7 @@ pub mod camera;
 mod camera_read;
 pub mod click;
 mod click_hover;
+mod click_range;
 pub mod find;
 pub mod geometry;
 pub mod hover;
