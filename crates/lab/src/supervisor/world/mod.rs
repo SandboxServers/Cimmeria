@@ -37,6 +37,7 @@ pub mod io;
 pub mod lua;
 pub mod memory;
 pub mod movement;
+pub mod routes;
 pub mod steer;
 mod turn_keys;
 

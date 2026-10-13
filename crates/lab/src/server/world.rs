@@ -3,7 +3,8 @@
 //! result reports `native_level` (see that module).
 
 use rmcp::{
-    handler::server::wrapper::Parameters, model::*, tool, tool_router, ErrorData as McpError,
+    handler::server::wrapper::Parameters, model::*, schemars, tool, tool_router,
+    ErrorData as McpError,
 };
 use serde_json::Value;
 
@@ -15,6 +16,11 @@ use crate::supervisor::world::hover::HoverRequest;
 use crate::supervisor::world::io::LiveWorld;
 use crate::supervisor::world::movement::MoveRequest;
 use crate::supervisor::world::{camera, click, find, hover, movement, WorldError};
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+struct RouteName {
+    name: String,
+}
 
 #[tool_router(router = world_router, vis = "pub(super)")]
 impl LabServer {
@@ -68,6 +74,30 @@ impl LabServer {
         // Finished (and released by `run`): nothing left for the guard to do.
         guard.disarm();
         world_result(r)
+    }
+
+    #[tool(
+        description = "Begin recording a named Castle Cellblock walking leg. Samples the real player position at 2 Hz until lab_route_stop; read-only and does not move the avatar."
+    )]
+    async fn lab_route_record(
+        &self,
+        Parameters(a): Parameters<RouteName>,
+    ) -> Result<CallToolResult, McpError> {
+        let result = self
+            .route_recorder
+            .lock()
+            .await
+            .start(a.name, self.supervisor.clone())
+            .await;
+        route_result(result)
+    }
+
+    #[tool(
+        description = "Stop the active route recording and return simplified waypoints and a TOML candidate. The candidate must be reviewed and replayed before committing."
+    )]
+    async fn lab_route_stop(&self) -> Result<CallToolResult, McpError> {
+        let result = self.route_recorder.lock().await.stop().await;
+        route_result(result)
     }
 
     #[tool(
@@ -151,6 +181,15 @@ fn world_result(r: Result<Value, WorldError>) -> Result<CallToolResult, McpError
     }
 }
 
+fn route_result(r: Result<Value, String>) -> Result<CallToolResult, McpError> {
+    match r {
+        Ok(v) => Ok(CallToolResult::success(vec![ContentBlock::text(
+            v.to_string(),
+        )])),
+        Err(e) => Err(McpError::invalid_params(e, None)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -178,6 +217,8 @@ mod tests {
             "client_world_click",
             "client_target",
             "client_move_to",
+            "lab_route_record",
+            "lab_route_stop",
             "client_camera",
             "client_hover_probe",
         ] {

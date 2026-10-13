@@ -87,6 +87,9 @@ impl<I: ToolInvoker> Runner<'_, I> {
         let inv = self.on(who);
         match a.kind() {
             Ok(ActionKind::Tool) => {
+                if let Err(e) = a.route_args() {
+                    out.push(format!("spec: {e}"));
+                }
                 let t = a.tool.as_deref().unwrap_or_default();
                 let alt = a.fallback.iter().any(|f| self.action_available(who, f));
                 if !self.routed(who, t) && !alt {
