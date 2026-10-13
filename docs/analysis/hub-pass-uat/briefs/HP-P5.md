@@ -45,7 +45,7 @@ Replace `LINE ONE` etc. with the exact lines the step gives. This submits each l
 (b) `client_batch {"lease_id":L,"steps":[{"op":"lua","id":"t","chunk":"return Inst1Chat_Input:getText()"}]}` - the value must equal `<LINE>` exactly. If it does not: `client_batch` Lua `Inst1Chat_Input:setText('')`, then repeat (a) once.
 (c) only if it matched: `client_ui_sequence {"lease_id":L,"actions":[{"do":"key","key":"Enter"},{"do":"wait","ms":2000}]}`.
 
-**READ - read chat replies.** `client_chat_log {"lease_id":L,"cursor":"<new name>","contains":"<word from the expected reply>","max":20}` (add `"channel":"Feedback"` when the step says so). Record every returned line verbatim with its `channel`, `colour` and `tabs` fields and `seq`. Keep a number LASTSEQ = the highest `seq` any chat read has returned so far in this packet. From your second read on, add `"since_seq": <LASTSEQ>` to every read, so you only see lines newer than your last read (the first read of a packet may show older lines from earlier packets: ignore anything the step does not ask for). If a read returns `more: true`, read again once with the new LASTSEQ.
+**READ - read chat replies.** `client_chat_log {"lease_id":L,"cursor":"<new name>","contains":"<word from the expected reply>","max":20}` (never filter by `channel`: on the colo the server replies to GM commands and system actions arrive with `channel` null and `channel_id` 9, not `Feedback`, so a `Feedback` filter returns nothing; read unfiltered or use `contains`). Record every returned line verbatim with its `channel`, `colour` and `tabs` fields and `seq`. Keep a number LASTSEQ = the highest `seq` any chat read has returned so far in this packet. From your second read on, add `"since_seq": <LASTSEQ>` to every read, so you only see lines newer than your last read (the first read of a packet may show older lines from earlier packets: ignore anything the step does not ask for). If a read returns `more: true`, read again once with the new LASTSEQ.
 
 **SHOT - screenshot.** `lab_screenshot {"lease_id":L,"instance":"p2"}`. Report the path, next to the LABEL the step gives it.
 
@@ -62,7 +62,7 @@ Replace `LINE ONE` etc. with the exact lines the step gives. This submits each l
 
 **PET** = `{"op":"lua","id":"pet","chunk":"local o={} for _,u in ipairs({Unit.Pet1,Unit.Pet2}) do if unitExists(u) then o[#o+1]=tostring(unitName(u))..' L'..tostring(unitLevel(u)) end end if #o==0 then return 'no-pet' end return table.concat(o,'; ')"}` (names the pets you own).
 **BAR** = `{"op":"lua","id":"bar","chunk":"local s='' for i=1,3 do local w=_G['PetContainer1_StanceButton'..i] s=s..i..'='..tostring(w and w:isVisible())..' ' end return 'win='..tostring(PetContainer1Win and PetContainer1Win:isVisible())..' stance buttons '..s"}` (is the pet bar up).
-**KNOWN** = `{"op":"lua","id":"known","chunk":"local ok,l=pcall(getAbilityList) if not ok or type(l)~='table' then return 'nolist' end local s={} for _,e in pairs(l) do s[#s+1]=tostring(type(e)=='table' and e.id or e) end table.sort(s) return table.concat(s,',')"}` (ability ids you know; `nolist` means this client cannot list them: say so).
+**KNOWN** = `{"op":"lua","id":"known","chunk":"local ok,l=pcall(getAbilityList) if not ok or type(l)~='table' then return 'nolist' end local s={} for _,e in pairs(l) do s[#s+1]=tostring(type(e)=='table' and e.id or e) end table.sort(s) return table.concat(s,',')"}` (ability ids you know; `nolist` means this client cannot list them: say so; an empty string is a valid answer: the character knows no ability yet).
 **WORLD** = `{"op":"lua","id":"world","chunk":"return getCurrentWorldID()"}`.
 
 **PLAZA - go to the plaza.** If WORLD is not 1300: CHATX line `.gotolocation DebugArea 252.0 7.0 -923.0`, then `client_wait_for {"lease_id":L,"lua_condition":"getCurrentWorldID() == 1300","timeout_ms":90000}`, then `client_batch` `[{"op":"wait","ms":5000},{"op":"player_state","fields":["world_id","position"]}]`. (World 1300 loads slowly: 20 to 40 s is normal. Do not act during the load.) If it is already 1300 but you are more than 15 m from the plaza centre, repeat the `.gotolocation` line. Record the position exactly as the tool prints it. Near the plaza centre it reads about `[-92300, 25200, 700]` (the client prints z, x, y times 100).
@@ -92,12 +92,12 @@ You need a pet out for U17 and U18 and none for U20.
 ### U17 - Holy Warrior on, off
 
 **17.1 (3 calls).** Press 1: `client_use_ability {"lease_id":L,"ability_id":2824,"place":true,"observe_ms":2500}` (N1). Press 2: `client_use_ability {"lease_id":L,"ability_id":2824,"observe_ms":2500}` (N1). Then `client_batch` `[UTC]`. If the client refuses a press itself, the call result says so: record it verbatim.
-**17.2 (1 call).** READ `{"cursor":"p5a","channel":"Feedback","max":15}`. Expected `Holy Warrior is on.` then `Holy Warrior is off.` Verbatim. If the second press says it is on cooldown, wait 6 s and press once more, then read again.
+**17.2 (1 call).** READ `{"cursor":"p5a","max":15}`. Expected `Holy Warrior is on.` then `Holy Warrior is off.` Verbatim. If the second press says it is on cooldown, wait 6 s and press once more, then read again.
 
 ### U18 - To The Death
 
-**18.1 (3 calls).** Call 1: CHATX `/say HPUdone HP-P5 u17`, `.bug HPU HP-P5 u18 start`, `.pet summon 2826` (wait 2500) if PET says `no-pet`; then end the batch. Call 2: `client_use_ability {"lease_id":L,"ability_id":2839,"place":true,"observe_ms":4000}` (N1). Call 3, one batch: PET, UTC. READ in the next call `{"cursor":"p5b","channel":"Feedback","max":10}`. Expected `Your pet fights to the death: it dies in 60 seconds.` Verbatim, with the time you pressed.
-**18.2 (2 calls).** Cast it again: `client_use_ability {"lease_id":L,"ability_id":2839,"observe_ms":2500}` (N1); then READ `{"cursor":"p5c","channel":"Feedback","max":10}`. Expected `Your pet is already fighting to the death.`
+**18.1 (3 calls).** Call 1: CHATX `/say HPUdone HP-P5 u17`, `.bug HPU HP-P5 u18 start`, `.pet summon 2826` (wait 2500) if PET says `no-pet`; then end the batch. Call 2: `client_use_ability {"lease_id":L,"ability_id":2839,"place":true,"observe_ms":4000}` (N1). Call 3, one batch: PET, UTC. READ in the next call `{"cursor":"p5b","max":10}`. Expected `Your pet fights to the death: it dies in 60 seconds.` Verbatim, with the time you pressed.
+**18.2 (2 calls).** Cast it again: `client_use_ability {"lease_id":L,"ability_id":2839,"observe_ms":2500}` (N1); then READ `{"cursor":"p5c","max":10}`. Expected `Your pet is already fighting to the death.`
 **18.3 (2 calls).** Wait out the timer: `client_batch` `[{"op":"wait","ms":30000},PET]` twice (two calls; each shows the pet still alive at 30 s and at 60 s from the cast; the second may show it dead, which is fine). Record both PET answers and UTC.
 **18.4 (1 call).** `client_batch` `[{"op":"wait","ms":14000},PET,UTC]` then `client_entity_find {"lease_id":L,"max_distance_m":15,"fields":["matches"]}`. Expected: no pet, and no pet corpse listed within about 10 s after its death. Record.
 
@@ -108,8 +108,8 @@ You need a pet out for U17 and U18 and none for U20.
 
 ### U20 - no pet, no cooldown
 
-**20.1 (3 calls).** Call 1: CHATX lines `/say HPUdone HP-P5 u19`, `.bug HPU HP-P5 u20 start`, `.pet dismiss` (wait 2000), then end the batch. Call 2: `client_use_ability {"lease_id":L,"ability_id":2824,"place":true,"observe_ms":2500}` (N1). Then READ `{"cursor":"p5d","channel":"Feedback","max":10}`. Expected `You have no pet to use that on.` Verbatim.
-**20.2 (1 call).** Press again at once: `client_use_ability {"lease_id":L,"ability_id":2824,"observe_ms":2500}` (N1) and READ the Feedback channel again (cursor `p5e`): the same line again, with no cooldown message. Then CHATX `/say HPUdone HP-P5 u20`.
+**20.1 (3 calls).** Call 1: CHATX lines `/say HPUdone HP-P5 u19`, `.bug HPU HP-P5 u20 start`, `.pet dismiss` (wait 2000), then end the batch. Call 2: `client_use_ability {"lease_id":L,"ability_id":2824,"place":true,"observe_ms":2500}` (N1). Then READ `{"cursor":"p5d","max":10}`. Expected `You have no pet to use that on.` Verbatim.
+**20.2 (1 call).** Press again at once: `client_use_ability {"lease_id":L,"ability_id":2824,"observe_ms":2500}` (N1) and READ the chat log again (no channel filter) (cursor `p5e`): the same line again, with no cooldown message. Then CHATX `/say HPUdone HP-P5 u20`.
 
 **S9.** Release the lease and write the report. Rows: U17, U18, U19, U20.
 

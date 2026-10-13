@@ -186,7 +186,7 @@ Statuses: Ready, Driving, Driven (report in), Verifying, Verified, Done (results
 | HP-M4 | default | Mail 1 (window), 2 (window), 3a | 25 | HP-M1 | Ready |
 | HP-C1 | default | Chat 9, 9a, 7, flood probe | 19 | HP-M1 | Ready |
 | HP-C2 | default | Chat 9c, 10 | 23 | HP-M1; a quiet colo (D5) | Ready |
-| HP-P1 | p2 | U1, U2b, U3 | 25 | none | Ready |
+| HP-P1 | p2 | U1, U2b, U3 | 25 | none | Verified 2026-10-13 (attempt 1): U2b, U3 PASS; U1 PARTIAL, pet bar not shown (#1674); lab-harness note on #1660 |
 | HP-P2 | p2 | U4, U6, U12 | 22 | HP-P1 | Ready |
 | HP-P3 | p2 | U5, U7, U8 | 26 | HP-P1 | Ready |
 | HP-P4 | p2 | U14, U15, U16 | 27 | HP-P1 | Ready |
@@ -214,9 +214,9 @@ Fill from the verifier reports. Result vocabulary: PASS, NATIVE_SHORTFALL, PARTI
 | Chat 9a | HP-C1 | Pending | | | |
 | Chat 9c | HP-C2 | Pending | | | |
 | Chat 10 | HP-C2 | Pending | | | |
-| U1 | HP-P1 | Pending | | | |
-| U2b | HP-P1, HP-P6 | Pending | | | |
-| U3 | HP-P1 | Pending | | | |
+| U1 | HP-P1 | PARTIAL | G (`.pet summon 350`) | 07:50:59Z pets.lifecycle `summoned` + pets.command, template 350, pet 100447, owner 4; `follow_armed` 07:51:00; no WARN/ERROR; client: pet entity rendered at 2 m, but `PetContainer1Win` and the three stance buttons read invisible, and the 07:51:09Z shot (10 s later) shows no pet panel (looker UNSURE/NO, my read agrees). Window name is right per PetContainer.lua. Server cannot say whether the owner-only lists were sent (no log on success). Pet look: looker graded the wrong figure (an NPC); the dark spiky mesh in the foreground is the pet, NEEDS_HUMAN | [#1674](https://github.com/SandboxServers/Cimmeria/issues/1674) |
+| U2b | HP-P1, HP-P6 | PASS (HP-P1 half; relog half in HP-P6) | G (`.giveability 2826` x2) | 07:51:22Z INFO `GmGrantAbility: persisted` ability 2826, subject player 72; 07:51:24Z console.feedback ".giveability: entity 4 already knows 2826"; DB `abilities` = {2826}; client KNOWN "2826" after. Driver saw no Feedback line because the replies arrive on channel null / id 9 (briefs fixed) | |
+| U3 | HP-P1 | PASS | N1 (`client_use_ability` cast); the move-cancel was a GM teleport, not walking | 07:51:39Z `summon_launched` warmup 6 s, `summon_fired`+`summoned`(ability 2826)+`summon_spawned` 07:51:45Z (6 s); second cast 07:51:53Z fired 07:51:59Z with `summon_replaced_pet` 100475 and a `despawned` for it, one pet; third cast 07:52:12Z then `summon_interrupted` reason `caster_moved` 07:52:17Z and no `summon_spawned` until the manual `.pet summon` 07:52:30Z (the interrupt is logged at the end of the warmup, not at the move). No WARN/ERROR | |
 | U4 | HP-P2 | Pending | | | |
 | U5 | HP-P3 | Pending | | | |
 | U6 | HP-P2 | Pending | | | |

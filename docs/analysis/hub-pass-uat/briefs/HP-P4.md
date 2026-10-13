@@ -45,7 +45,7 @@ Replace `LINE ONE` etc. with the exact lines the step gives. This submits each l
 (b) `client_batch {"lease_id":L,"steps":[{"op":"lua","id":"t","chunk":"return Inst1Chat_Input:getText()"}]}` - the value must equal `<LINE>` exactly. If it does not: `client_batch` Lua `Inst1Chat_Input:setText('')`, then repeat (a) once.
 (c) only if it matched: `client_ui_sequence {"lease_id":L,"actions":[{"do":"key","key":"Enter"},{"do":"wait","ms":2000}]}`.
 
-**READ - read chat replies.** `client_chat_log {"lease_id":L,"cursor":"<new name>","contains":"<word from the expected reply>","max":20}` (add `"channel":"Feedback"` when the step says so). Record every returned line verbatim with its `channel`, `colour` and `tabs` fields and `seq`. Keep a number LASTSEQ = the highest `seq` any chat read has returned so far in this packet. From your second read on, add `"since_seq": <LASTSEQ>` to every read, so you only see lines newer than your last read (the first read of a packet may show older lines from earlier packets: ignore anything the step does not ask for). If a read returns `more: true`, read again once with the new LASTSEQ.
+**READ - read chat replies.** `client_chat_log {"lease_id":L,"cursor":"<new name>","contains":"<word from the expected reply>","max":20}` (never filter by `channel`: on the colo the server replies to GM commands and system actions arrive with `channel` null and `channel_id` 9, not `Feedback`, so a `Feedback` filter returns nothing; read unfiltered or use `contains`). Record every returned line verbatim with its `channel`, `colour` and `tabs` fields and `seq`. Keep a number LASTSEQ = the highest `seq` any chat read has returned so far in this packet. From your second read on, add `"since_seq": <LASTSEQ>` to every read, so you only see lines newer than your last read (the first read of a packet may show older lines from earlier packets: ignore anything the step does not ask for). If a read returns `more: true`, read again once with the new LASTSEQ.
 
 **SHOT - screenshot.** `lab_screenshot {"lease_id":L,"instance":"p2"}`. Report the path, next to the LABEL the step gives it.
 
@@ -62,7 +62,7 @@ Replace `LINE ONE` etc. with the exact lines the step gives. This submits each l
 
 **PET** = `{"op":"lua","id":"pet","chunk":"local o={} for _,u in ipairs({Unit.Pet1,Unit.Pet2}) do if unitExists(u) then o[#o+1]=tostring(unitName(u))..' L'..tostring(unitLevel(u)) end end if #o==0 then return 'no-pet' end return table.concat(o,'; ')"}` (names the pets you own).
 **BAR** = `{"op":"lua","id":"bar","chunk":"local s='' for i=1,3 do local w=_G['PetContainer1_StanceButton'..i] s=s..i..'='..tostring(w and w:isVisible())..' ' end return 'win='..tostring(PetContainer1Win and PetContainer1Win:isVisible())..' stance buttons '..s"}` (is the pet bar up).
-**KNOWN** = `{"op":"lua","id":"known","chunk":"local ok,l=pcall(getAbilityList) if not ok or type(l)~='table' then return 'nolist' end local s={} for _,e in pairs(l) do s[#s+1]=tostring(type(e)=='table' and e.id or e) end table.sort(s) return table.concat(s,',')"}` (ability ids you know; `nolist` means this client cannot list them: say so).
+**KNOWN** = `{"op":"lua","id":"known","chunk":"local ok,l=pcall(getAbilityList) if not ok or type(l)~='table' then return 'nolist' end local s={} for _,e in pairs(l) do s[#s+1]=tostring(type(e)=='table' and e.id or e) end table.sort(s) return table.concat(s,',')"}` (ability ids you know; `nolist` means this client cannot list them: say so; an empty string is a valid answer: the character knows no ability yet).
 **WORLD** = `{"op":"lua","id":"world","chunk":"return getCurrentWorldID()"}`.
 
 **PLAZA - go to the plaza.** If WORLD is not 1300: CHATX line `.gotolocation DebugArea 252.0 7.0 -923.0`, then `client_wait_for {"lease_id":L,"lua_condition":"getCurrentWorldID() == 1300","timeout_ms":90000}`, then `client_batch` `[{"op":"wait","ms":5000},{"op":"player_state","fields":["world_id","position"]}]`. (World 1300 loads slowly: 20 to 40 s is normal. Do not act during the load.) If it is already 1300 but you are more than 15 m from the plaza centre, repeat the `.gotolocation` line. Record the position exactly as the tool prints it. Near the plaza centre it reads about `[-92300, 25200, 700]` (the client prints z, x, y times 100).
@@ -93,7 +93,7 @@ The three summons: `1643` Summon Jaffa, `1644` Summon Lo'taur, `1645` Summon Pri
 **14.3 (4 calls) - the Lo'taur.** Same with ability 1644 (`client_use_ability`, N1); expected PET names a "Lo'Taur Servant"; TURN; SHOT, label `P4-lotaur`.
 **14.4 (4 calls) - the Prime.** Same with ability 1645 (`client_use_ability`, N1); expected PET names a "Jaffa Prime"; TURN; SHOT, label `P4-prime`.
 If a cast answers a cooldown or "already using an ability" message, wait 6 seconds and cast again once.
-**14.5 (1 call).** READ `{"cursor":"p4a","channel":"Feedback","max":15}`: any message from the casts. Verbatim.
+**14.5 (1 call).** READ `{"cursor":"p4a","max":15}`: any message from the casts. Verbatim.
 
 ### U15 - Lo'taur in a fight (record only)
 
@@ -105,7 +105,7 @@ If a cast answers a cooldown or "already using an ability" message, wait 6 secon
 
 **16.1 (1 call).** CHATX lines `/say HPUdone HP-P4 u15`, `.bug HPU HP-P4 u16 start`, `.pet summon 1645` (wait 2500) (the Prime), then PET, UTC.
 **16.2 (4 calls).** Select the Rat if one is still alive (`client_entity_find` then `client_world_click` with `button:"left"`, `expect:"target"`); if none is alive, skip the selection. Then order the ability with a real click (N1). Find the pet-bar ability button first: call `client_ui_state {"lease_id":L}` once and note the visible window under `PetContainer1` that is not a `StanceButton` and that carries the ability (record its exact name; if none is visible, record that and use the N3 fallback in gotcha 12). Then `client_ui_sequence {"lease_id":L,"actions":[{"do":"click","window":"<that window>"},{"do":"wait","ms":2500}]}`, then UTC. (Only if there is no pressable button: the stock Lua `usePetAbility(Unit.Pet1, 1654, Unit.Target)`, labelled N3.)
-**16.3 (1 call).** READ `{"cursor":"p4b","channel":"Feedback","max":10}`. Expected: `Your pet can't use that ability yet.` Verbatim.
+**16.3 (1 call).** READ `{"cursor":"p4b","max":10}`. Expected: `Your pet can't use that ability yet.` Verbatim.
 **16.4 (1 call).** CHATX `/say HPUdone HP-P4 u16`. Then `.pet dismiss` (wait 2000) as a cleanup, PET.
 
 **S9.** Release the lease and write the report. Rows: U14, U15 (record only), U16. Screenshots: `P4-jaffa`, `P4-lotaur`, `P4-prime`.
