@@ -244,6 +244,7 @@ async fn probe<W: WorldIo>(
     let centre = match kind {
         AimKind::Entity(e) => {
             let t = io.now_ms();
+            let mut attempted_pixel = None;
             let (chosen, tried) = hover_once(
                 io,
                 steps,
@@ -253,6 +254,7 @@ async fn probe<W: WorldIo>(
                 units.player,
                 false,
                 None,
+                &mut attempted_pixel,
             )
             .await?;
             steps.used(NativeLevel::RealInput);

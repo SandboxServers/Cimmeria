@@ -231,20 +231,37 @@ pub async fn run<W: WorldIo>(
         steps.subject(json!({ "entity_id": f.id, "name": f.name() }));
     }
 
-    let before = ui_snap(io, units.target, units.mouse_over)
-        .await
+    // The budget starts before the first bridge read. A stalled client must
+    // not hold a target attempt indefinitely before mouse-over begins.
+    let hover_deadline = tokio::time::Instant::now() + TARGET_HOVER_TIMEOUT;
+    let mut tried = Vec::new();
+    let mut attempted_pixel = None;
+    macro_rules! hover_wait {
+        ($phase:expr, $future:expr) => {
+            match tokio::time::timeout_at(hover_deadline, $future).await {
+                Ok(value) => value,
+                Err(_) => {
+                    return Err(hover_deadline_error(
+                        io,
+                        &steps,
+                        $phase,
+                        attempted_pixel,
+                        &tried,
+                        hover_deadline,
+                    ))
+                }
+            }
+        };
+    }
+    let before = hover_wait!("read_before", ui_snap(io, units.target, units.mouse_over))
         .map_err(|e| steps.fail(io.now_ms(), "read_before", e))?;
 
     // 2. On screen?
-    let player = io
-        .snapshot()
-        .await
+    let player = hover_wait!("snapshot", io.snapshot())
         .ok()
         .and_then(|s| s.player().and_then(|p| p.pose));
-    let pos = aim.position(io).await;
-    let pr = io
-        .project(&[pos])
-        .await
+    let pos = hover_wait!("position", aim.position(io));
+    let pr = hover_wait!("project", io.project(&[pos]))
         .map_err(|e| steps.fail(io.now_ms(), "project", e))?;
     let on_screen = pr
         .points
@@ -262,15 +279,17 @@ pub async fn run<W: WorldIo>(
                 json!({ "pixel": pr.points.first(), "screen": [pr.screen.w, pr.screen.h] }),
             ));
         }
-        let rep = face(
-            io,
-            &mut steps,
-            &mut aim,
-            player,
-            TurnModel::default(),
-            DEFAULT_FACE_STEPS,
-        )
-        .await?;
+        let rep = hover_wait!(
+            "face",
+            face(
+                io,
+                &mut steps,
+                &mut aim,
+                player,
+                TurnModel::default(),
+                DEFAULT_FACE_STEPS,
+            )
+        )?;
         face_json = rep.to_json();
         if !rep
             .pixel
@@ -291,7 +310,7 @@ pub async fn run<W: WorldIo>(
     // How far the target is from the avatar, straight line (the server's
     // interact range is 3D). Near targets sit behind or under the avatar.
     let range_m = match (player, entity) {
-        (Some(p), Some(_)) => Some(distance_m(p.pos, aim.position(io).await)),
+        (Some(p), Some(_)) => Some(distance_m(p.pos, hover_wait!("position", aim.position(io)))),
         _ => None,
     };
     let near = range_m.is_some_and(|d| d <= NEAR_AVATAR_M);
@@ -300,9 +319,7 @@ pub async fn run<W: WorldIo>(
     // up over the occluder, yaw each way, zoom in) and try again; the bank
     // UAT needed a hand-made pitch for exactly this (2026-10-10).
     let t_hover = io.now_ms();
-    let hover_deadline = tokio::time::Instant::now() + TARGET_HOVER_TIMEOUT;
     let mut adjusted = Vec::new();
-    let mut tried = Vec::new();
     let mut chosen = None;
     let mut start_view: Option<Value> = None;
     let mut zoomed = 0;
@@ -312,35 +329,46 @@ pub async fn run<W: WorldIo>(
         .enumerate()
     {
         if tokio::time::Instant::now() >= hover_deadline {
-            return Err(hover_deadline_error(io, &steps, &tried));
+            return Err(hover_deadline_error(
+                io,
+                &steps,
+                "hover",
+                attempted_pixel,
+                &tried,
+                hover_deadline,
+            ));
         }
         if let Some(&(dx, dy, notches)) = adj {
             if entity.is_none() || !req.rotate_camera.unwrap_or(true) {
                 break;
             }
             if start_view.is_none() {
-                start_view = io.camera_readout().await.ok();
+                start_view = hover_wait!("camera_readout", io.camera_readout()).ok();
             }
             zoomed += notches;
-            let level = io
-                .look(dx, dy, notches * super::camera::WHEEL_NOTCH)
-                .await
-                .map_err(|e| steps.fail(io.now_ms(), "view_retry", e))?;
+            let level = hover_wait!(
+                "view_retry",
+                io.look(dx, dy, notches * super::camera::WHEEL_NOTCH)
+            )
+            .map_err(|e| steps.fail(io.now_ms(), "view_retry", e))?;
             steps.used(level);
-            io.sleep(super::camera::LOOK_SETTLE_MS).await;
+            hover_wait!("view_retry", io.sleep(super::camera::LOOK_SETTLE_MS));
             adjusted.push(json!({ "retry": i, "yaw_counts": dx, "pitch_counts": dy, "zoom_notches": notches }));
         }
-        let (c, t) = hover_once(
-            io,
-            &mut steps,
-            &mut aim,
-            entity,
-            units.mouse_over,
-            units.player,
-            req.force,
-            Some(hover_deadline),
-        )
-        .await?;
+        let (c, t) = hover_wait!(
+            "hover",
+            hover_once(
+                io,
+                &mut steps,
+                &mut aim,
+                entity,
+                units.mouse_over,
+                units.player,
+                req.force,
+                Some(hover_deadline),
+                &mut attempted_pixel,
+            )
+        )?;
         saw_own |= t.iter().any(|h| h["hover"] == "own_avatar");
         tried = t;
         chosen = c;
@@ -349,7 +377,14 @@ pub async fn run<W: WorldIo>(
         }
     }
     if tokio::time::Instant::now() >= hover_deadline {
-        return Err(hover_deadline_error(io, &steps, &tried));
+        return Err(hover_deadline_error(
+            io,
+            &steps,
+            "hover",
+            attempted_pixel,
+            &tried,
+            hover_deadline,
+        ));
     }
     let mut hover_detail = json!({ "tried": tried });
     if !adjusted.is_empty() {
@@ -363,29 +398,33 @@ pub async fn run<W: WorldIo>(
     // look again from the first view, whose unverified candidate (a `Nothing`
     // pass, or a forced one) is the one to click.
     if !matches!(chosen, Some((_, Hover::Matched))) && !adjusted.is_empty() {
-        let now = io.camera_readout().await.ok();
+        let now = hover_wait!("restore_camera_readout", io.camera_readout()).ok();
         let dy = match (&start_view, &now) {
             (Some(a), Some(b)) => restore_pitch_counts(a, b),
             _ => 0,
         };
-        let restored = io
-            .look(0, dy, -zoomed * super::camera::WHEEL_NOTCH)
-            .await
-            .is_ok();
+        let restored = hover_wait!(
+            "restore_view",
+            io.look(0, dy, -zoomed * super::camera::WHEEL_NOTCH)
+        )
+        .is_ok();
         hover_detail["view_restored"] = json!(restored);
         if restored {
-            io.sleep(super::camera::LOOK_SETTLE_MS).await;
-            let (c, t) = hover_once(
-                io,
-                &mut steps,
-                &mut aim,
-                entity,
-                units.mouse_over,
-                units.player,
-                req.force,
-                Some(hover_deadline),
-            )
-            .await?;
+            hover_wait!("restore_view", io.sleep(super::camera::LOOK_SETTLE_MS));
+            let (c, t) = hover_wait!(
+                "hover_after_restore",
+                hover_once(
+                    io,
+                    &mut steps,
+                    &mut aim,
+                    entity,
+                    units.mouse_over,
+                    units.player,
+                    req.force,
+                    Some(hover_deadline),
+                    &mut attempted_pixel,
+                )
+            )?;
             hover_detail["tried_after_restore"] = json!(t);
             chosen = c;
         }
@@ -405,10 +444,10 @@ pub async fn run<W: WorldIo>(
     };
     let (x, y) = (pixel.0.round() as i32, pixel.1.round() as i32);
     if !matches!(hover, Hover::Matched) || tried.len() > 1 {
-        io.place_cursor(x, y, true)
-            .await
+        attempted_pixel = Some((x, y));
+        hover_wait!("cursor", io.place_cursor(x, y, true))
             .map_err(|e| steps.fail(io.now_ms(), "cursor", e))?;
-        io.sleep(HOVER_WAIT_MS).await;
+        hover_wait!("cursor", io.sleep(HOVER_WAIT_MS));
     }
     let plan = ClickPlan {
         button,
@@ -425,15 +464,19 @@ pub async fn run<W: WorldIo>(
     click_and_observe(io, steps, &req, plan).await
 }
 
-fn hover_deadline_error<W: WorldIo>(io: &W, steps: &Steps, tried: &[Value]) -> WorldError {
-    let attempted_pixel = tried
-        .last()
-        .and_then(|attempt| attempt["at"].as_array().map(|pixel| pixel.to_vec()));
+fn hover_deadline_error<W: WorldIo>(
+    io: &W,
+    steps: &Steps,
+    phase: &str,
+    attempted_pixel: Option<(i32, i32)>,
+    tried: &[Value],
+    deadline: tokio::time::Instant,
+) -> WorldError {
     steps.fail_with(
         io.now_ms(),
         "hover_timeout",
-        "target hover attempt exceeded its 10 s deadline",
-        json!({ "attempted_pixel": attempted_pixel, "remaining_deadline_ms": 0, "tried": tried }),
+        format!("target hover attempt exceeded its 10 s deadline during {phase}"),
+        json!({ "attempted_pixel": attempted_pixel, "remaining_deadline_ms": deadline.saturating_duration_since(tokio::time::Instant::now()).as_millis() as u64, "tried": tried }),
     )
 }
 

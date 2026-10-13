@@ -102,6 +102,7 @@ pub(super) async fn hover_once<W: WorldIo>(
     player_slot: i32,
     force: bool,
     deadline: Option<tokio::time::Instant>,
+    attempted_pixel: &mut Option<(i32, i32)>,
 ) -> Result<(Option<((f64, f64), Hover)>, Vec<Value>), WorldError> {
     let base = aim.position(io).await;
     let points: Vec<Vec3> = match entity {
@@ -123,6 +124,7 @@ pub(super) async fn hover_once<W: WorldIo>(
             continue;
         };
         let (x, y) = (p.0.round() as i32, p.1.round() as i32);
+        *attempted_pixel = Some((x, y));
         let Some(e) = entity else {
             io.place_cursor(x, y, true)
                 .await
@@ -198,6 +200,15 @@ pub(super) async fn read_mouse_over<W: WorldIo>(
     }
     match tokio::time::timeout(timeout, io.slots()).await {
         Ok(Ok(slots)) => Ok(slots),
+        Ok(Err(err)) if err.contains("dispatch timeout") => Err(steps.fail_with(
+            io.now_ms(),
+            "read_mouse_over",
+            err,
+            json!({
+                "attempted_pixel": pixel,
+                "remaining_deadline_ms": deadline.map(|d| d.saturating_duration_since(tokio::time::Instant::now()).as_millis() as u64),
+            }),
+        )),
         Ok(Err(err)) => Err(steps.fail(io.now_ms(), "read_mouse_over", err)),
         Err(_) => Err(steps.fail_with(
             io.now_ms(),

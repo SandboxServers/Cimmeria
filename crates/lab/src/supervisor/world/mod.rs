@@ -42,6 +42,8 @@ mod turn_keys;
 #[cfg(test)]
 mod camera_pitch_tests;
 #[cfg(test)]
+mod click_timeout_tests;
+#[cfg(test)]
 mod move_to_tests;
 #[cfg(test)]
 mod occlusion_tests;
