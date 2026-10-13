@@ -4,6 +4,8 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Open investigations
 
+- [project_four_zone_planning_2026_10_13.md](project_four_zone_planning_2026_10_13.md) — four-zone packet planning; source checks, missing handoff SQLite, owner story and zone decisions, client mission-catalog gate
+
 - [project_cellblock_681_hidden_2026_10_13.md](project_cellblock_681_hidden_2026_10_13.md) — 2026-10-13 Cellblock 681 tracker leak: lab baseline, hidden seed fix, live-DB guard; local client acceptance passed
 
 - [reference_cellblock_praxis_start_2026_10_13.md](reference_cellblock_praxis_start_2026_10_13.md) — fresh Praxis Commando starts in Castle_CellBlock and takes the non-Jaffa tutorial branch; fresh SGU Commando starts in SGC_W1
