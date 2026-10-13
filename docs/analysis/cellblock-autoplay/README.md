@@ -69,7 +69,7 @@ Status **PROPOSED** means the coordinator's recommended default. It becomes a de
 
 | ID | Status | Decision | Gates |
 |---|---|---|---|
-| D-AP1 | PROPOSED | The main run is a Tau'ri Commando (male, SGU). The Jaffa pass is a second section, and only W04, W05, W09 and W16 differ. It skips AMMO, because the staff takes no bullets. | AP-20, AP-22 |
+| D-AP1 | VERIFIED | The main run is a Praxis Commando (male), which starts in Castle_CellBlock and takes the server's non-Jaffa branch. A fresh SGU Commando starts in SGC_W1. The Jaffa pass is a second section, and only W04, W05, W09 and W16 differ. It skips AMMO, because the staff takes no bullets. | AP-20, AP-22 |
 | D-AP2 | PROPOSED | The walkthrough runs against a **local** server with a local `cimmeria-lab-mcp`. The colo endpoint refused the lab (403), and every server clause would be UNVERIFIED there. A colo run is a later option once that is fixed. | AP-00, AP-30 |
 | D-AP3 | PROPOSED | Moving the cursor through the virtual `GetCursorPos` plus CEGUI Lua, inside an N1 flow, counts as N1. `crates/lab/src/supervisor/input.rs` already assumes this; the owner confirms it. | MG-L3, AP-12 |
 | D-AP4 | PROPOSED | The Livewire hit map is generated at lab start from the user's own client copy. Nothing derived from client assets goes into git. | MG-L4 |
