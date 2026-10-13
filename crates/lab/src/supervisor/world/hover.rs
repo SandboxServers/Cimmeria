@@ -20,7 +20,7 @@ use rmcp::schemars;
 use serde_json::{json, Value};
 
 use super::camera::Aim;
-use super::click_hover::{hover_once, Hover, HOVER_OFFSETS, HOVER_WAIT_MS};
+use super::click_hover::{hover_once, read_mouse_over, Hover, HOVER_OFFSETS, HOVER_WAIT_MS};
 use super::find::{find_entities, FindRequest, Found, CLICK_MARGIN_PX};
 use super::geometry::Vec3;
 use super::io::WorldIo;
@@ -244,6 +244,7 @@ async fn probe<W: WorldIo>(
     let centre = match kind {
         AimKind::Entity(e) => {
             let t = io.now_ms();
+            let mut attempted_pixel = None;
             let (chosen, tried) = hover_once(
                 io,
                 steps,
@@ -252,6 +253,8 @@ async fn probe<W: WorldIo>(
                 units.mouse_over,
                 units.player,
                 false,
+                None,
+                &mut attempted_pixel,
             )
             .await?;
             steps.used(NativeLevel::RealInput);
@@ -351,10 +354,7 @@ async fn score_at<W: WorldIo>(
         .map_err(|e| steps.fail(io.now_ms(), "cursor", e))?;
     steps.used(NativeLevel::RealInput);
     io.sleep(HOVER_WAIT_MS).await;
-    let slots = io
-        .slots()
-        .await
-        .map_err(|e| steps.fail(io.now_ms(), "read_mouse_over", e))?;
+    let slots = read_mouse_over(io, steps, (x, y), None).await?;
     let mo = slot_entity(&slots, units.mouse_over);
     let player = slot_entity(&slots, units.player);
     Ok(classify(kind, mo, player, window_at(rects, x, y)))

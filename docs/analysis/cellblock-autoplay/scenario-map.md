@@ -228,7 +228,7 @@ Common blocks are defined in §5: **FIGHT** (target, auto-attack, reload, slap-p
 ### W03 · T26: Region8 guard ambush
 
 - **Do:**
-  - `client_move_to {waypoints:[stasis door threshold ≈ (-338.4,74.4,-213.9) = corner D], point:{x:-314,y:74.2,z:-186.7}}`. The exact door waypoint is **(unverified)**.
+  - `client_move_to {waypoints:[(-334,73.47,-226), (-322,73.47,-225), (-321,73.47,-210)], point:{x:-314,y:74.2,z:-186.7}}`. These approximate waypoints were observed on a walking route from near the guard body through the stasis room toward the Region8 corridor. The former `(-338.4,74.4,-213.9)` point is unverified and collided with a stasis pod; do not use it. The observed route is not a complete route proof and may depend on the spawn position.
   - Then FIGHT against "Cellblock Guard". It has weapon 55, so it drops loot table 2: a guaranteed slap pack plus 80% naquadah.
   - Then LOOT.
 - **Assert:**
