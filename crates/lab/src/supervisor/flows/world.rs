@@ -5,8 +5,8 @@ use std::time::{Duration, Instant};
 use serde_json::{json, Value};
 
 use super::widgets::{
-    self, CHAR_SELECT_PLAY, CHAR_SELECT_WIN, DIALOG_ACCEPT, DIALOG_DONE, DIALOG_NEXT, DIALOG_WIN,
-    MOVIE_WIN,
+    self, CHAR_SELECT_PLAY, CHAR_SELECT_WIN, DIALOG_ACCEPT, DIALOG_CLOSE, DIALOG_DONE, DIALOG_NEXT,
+    DIALOG_WIN, MOVIE_WIN,
 };
 use super::{settle, FlowError, FlowRun};
 use crate::supervisor::{LoginState, Supervisor};
@@ -88,6 +88,23 @@ pub enum DialogAction {
     Accept,
     Next,
     Stuck,
+}
+
+/// A Done click can be accepted by CEGUI without closing the dialog.
+/// Only a confirmed invisible window counts as a finished flow.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DialogCloseStep {
+    Finished,
+    ClickNativeClose,
+    Failed,
+}
+
+fn dialog_close_step(still_open: bool, native_close_tried: bool) -> DialogCloseStep {
+    match (still_open, native_close_tried) {
+        (false, _) => DialogCloseStep::Finished,
+        (true, false) => DialogCloseStep::ClickNativeClose,
+        (true, true) => DialogCloseStep::Failed,
+    }
 }
 
 pub fn dialog_probe_chunk() -> String {
@@ -244,7 +261,20 @@ impl Supervisor {
             settle(1000).await;
         }
         settle(1000).await;
-        let still_open = run.visible("after", DIALOG_WIN).await?;
+        let mut still_open = run.visible("after", DIALOG_WIN).await?;
+        if dialog_close_step(still_open, false) == DialogCloseStep::ClickNativeClose {
+            run.click("native_close", DIALOG_CLOSE).await?;
+            settle(500).await;
+            still_open = run.visible("after_native_close", DIALOG_WIN).await?;
+        }
+        if dialog_close_step(still_open, true) == DialogCloseStep::Failed {
+            return Err(run
+                .fail_with_state(
+                    "verify_closed",
+                    "DialogWin remained visible after Done/Accept and native close",
+                )
+                .await);
+        }
         Ok(run.finish(json!({
             "finished": true,
             "title": title,
@@ -351,6 +381,17 @@ mod tests {
             plan_dialog(&s(&["true", "false", "false", "false"]), false),
             DialogAction::Stuck
         );
+    }
+
+    #[test]
+    fn done_click_without_effect_requires_native_close_and_verified_closure() {
+        assert_eq!(
+            dialog_close_step(true, false),
+            DialogCloseStep::ClickNativeClose
+        );
+        assert_eq!(dialog_close_step(true, true), DialogCloseStep::Failed);
+        assert_eq!(dialog_close_step(false, true), DialogCloseStep::Finished);
+        assert_eq!(DIALOG_CLOSE, "DialogWin/DialogWin__auto_closebutton__");
     }
 
     #[test]
