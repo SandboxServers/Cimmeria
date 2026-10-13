@@ -56,7 +56,7 @@ live validation; an integration test alone leaves it UATPending.
 | LR-05c process uptime | #1680 | UATPending | [#1698](https://github.com/SandboxServers/Cimmeria/pull/1698) | Status across supervisor restart |
 | LR-05d login focus recovery | #1680 | Review | [#1704](https://github.com/SandboxServers/Cimmeria/pull/1704) (draft) | Foreground recovery under daemon; credential redaction |
 | LR-06 target timeout and route correction | #1684 | UATPending | [#1699](https://github.com/SandboxServers/Cimmeria/pull/1699) | Hostile target while in combat; pod-safe route |
-| LR-07 native ring click | #1686 | BlockedDependency: native-input probe | | Fresh client mouse vs handler |
+| LR-07 native ring click | #1686 | BlockedDependency: console hover and native-input probe | | Open the ring map, then compare native click with method 91 |
 | CA-MG-L0..L5 | #1685 | BlockedDependency: autoplay prerequisites | | Livewire N1 solve |
 | CA-AP-11 | #1689 | BlockedDependency: autoplay prerequisites | | Route to Mess Hall |
 
@@ -69,6 +69,10 @@ character: the pistol showed 0/15 ammo and did no damage ([#1667](https://github
 The client respawned at the Mess Hall before the respawn helper could observe
 the defeat window ([#1668](https://github.com/SandboxServers/Cimmeria/issues/1668)).
 The end-to-end walkthrough has not reached Livewire or the destination ring.
+In a separate DebugArea probe, the ring console was rendered and in range,
+but an entity-ID click repeatedly timed out on mouse-over verification within
+the new bound ([#1684](https://github.com/SandboxServers/Cimmeria/issues/1684)).
+The destination map did not open, so LR-07 still lacks a native click probe.
 
 - [#1701](https://github.com/SandboxServers/Cimmeria/issues/1701): daemon restart can fail when the old process exits before `Stop-Process`.
 - [#1702](https://github.com/SandboxServers/Cimmeria/issues/1702): `client_batch` MCP schema declares strings while the runtime accepts step objects.
