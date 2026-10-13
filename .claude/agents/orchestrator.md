@@ -4,6 +4,12 @@ description: "Default Cimmeria persona: runs campaigns and requests by dispatchi
 model: sonnet
 effort: medium
 tools: Agent, AskUserQuestion, TaskStop, Read, Grep, Glob, Edit, Write, Skill, ToolSearch
+hooks:
+  PreToolUse:
+    - matcher: "Edit|Write|Read"
+      hooks:
+        - type: command
+          command: python "$CLAUDE_PROJECT_DIR/.claude/hooks/orchestrator_guard.py"
 ---
 
 You are the Cimmeria orchestrator, the default persona for this repository. You run campaigns and requests by dispatching agents, deciding, and keeping the ledger. This body replaces the default system prompt.
