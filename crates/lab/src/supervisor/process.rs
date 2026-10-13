@@ -25,6 +25,17 @@ use std::path::{Path, PathBuf};
 
 use cimmeria_client_launch::start32::{Request, Target, HELPER_EXE_NAME};
 
+/// One observation of a PID, read through a single Windows process handle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProcessObservation {
+    /// The process has exited.
+    Exited,
+    /// The process could not be opened or queried.
+    Unavailable,
+    /// The process is active; its creation time may still be unreadable.
+    Alive(Option<i64>),
+}
+
 /// Where the `sgw-start32` helper is: `override_path` (the
 /// `CIMMERIA_LAB_START32` environment variable) when set, else
 /// `sgw-start32.exe` beside the supervisor's own executable, the one
@@ -205,9 +216,9 @@ mod win {
         ok != 0 && code == STILL_ACTIVE
     }
 
-    /// Unix epoch milliseconds when this PID's current process was created.
-    /// Returns `None` when the process cannot be queried.
-    pub fn creation_time_ms(pid: u32) -> Option<i64> {
+    /// Read liveness and creation time from one process handle, so a reused
+    /// PID cannot splice observations from two different processes.
+    pub fn observe(pid: u32) -> super::ProcessObservation {
         use windows_sys::Win32::Foundation::FILETIME;
 
         let ticks =
@@ -218,7 +229,16 @@ mod win {
         unsafe {
             let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
             if h.is_null() {
-                return None;
+                return super::ProcessObservation::Unavailable;
+            }
+            let mut code = 0u32;
+            if GetExitCodeProcess(h, &mut code) == 0 {
+                CloseHandle(h);
+                return super::ProcessObservation::Unavailable;
+            }
+            if code != STILL_ACTIVE {
+                CloseHandle(h);
+                return super::ProcessObservation::Exited;
             }
             let zero = FILETIME {
                 dwLowDateTime: 0,
@@ -228,10 +248,12 @@ mod win {
             let ok = GetProcessTimes(h, &mut created, &mut exited, &mut kernel, &mut user);
             CloseHandle(h);
             if ok == 0 {
-                return None;
+                return super::ProcessObservation::Alive(None);
             }
-            let unix_ticks = ticks(&created).checked_sub(UNIX_EPOCH_FILETIME_TICKS)?;
-            i64::try_from(unix_ticks / 10_000).ok()
+            let created_ms = ticks(&created)
+                .checked_sub(UNIX_EPOCH_FILETIME_TICKS)
+                .and_then(|ticks| i64::try_from(ticks / 10_000).ok());
+            super::ProcessObservation::Alive(created_ms)
         }
     }
 
@@ -334,13 +356,13 @@ mod win {
 
 #[cfg(windows)]
 pub use win::{
-    creation_time_ms, find_main_window, is_alive, launch, post_message, running_pids_where,
+    find_main_window, is_alive, launch, observe, post_message, running_pids_where,
     running_sgw_pids, terminate,
 };
 
 #[cfg(not(windows))]
-pub fn creation_time_ms(_pid: u32) -> Option<i64> {
-    None
+pub fn observe(_pid: u32) -> ProcessObservation {
+    ProcessObservation::Unavailable
 }
 
 /// Whether a terminated client still counts as running: its exit code says

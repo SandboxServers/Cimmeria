@@ -267,7 +267,7 @@ Supervisor (`cimmeria-lab` on the dev box: the [shared daemon](#the-shared-daemo
 | `client_batch` | Ordered read and probe steps in one call (`lua`, `mem_read`, `call_native`, `wait`, `player_state`, `window_text`) with `$id` references to earlier results. |
 | `client_ui_sequence` | One scripted UI step in one call: clicks, keys, typing, drags, window waits; reports the least native level used. |
 | `lab_client_start` / `_stop` / `_restart` | Own the SGW.exe lifecycle. `_stop` waits up to 10 s until the process and its window are gone, so a start right after it is not refused as "outside the lab". `exited: false` means the wait ran out (logged as a warning); the next start will refuse that client. |
-| `lab_client_status` | PID, uptime, heartbeat age, login state, crashes. |
+| `lab_client_status` | PID, process uptime, heartbeat age, login state, crashes. |
 | `lab_login` | Log in with the client's own input (Escape through the intro movies, type the account and password, pick the server) and stop at character select. Credentials default to `lab-account.json`. See [Client flows](#client-flows). |
 | `lab_characters` / `lab_create_character` / `lab_delete_character` / `lab_ensure_character_slot` | Character select: list, create, delete by name, keep free slots under the 8-character cap. |
 | `lab_play_character` / `lab_finish_dialog` / `lab_logout` | Enter the world (cutscene skipped), finish the open dialog with the green checkmark, `/logout` back to character select. |
@@ -309,6 +309,8 @@ Supervisor (`cimmeria-lab` on the dev box: the [shared daemon](#the-shared-daemo
 | `lab_record_status` | Open. This instance's recording: `{ok, recording, recording_id, instance, section, age_s, ticks, anchors}`; `recording` is false once the recorder stopped by itself and waits for a stop to collect it. |
 | `lab_record_stop` | Open, gated by the `recording_id`: a wrong id is refused and the recording keeps running. Waits at most 60 s for the recorder to end, transforms the log, and writes `<specs_dir>/drafts/<section>-<yyyyMMdd-HHmm>.toml`, never over an existing file. `{recording_id, character_expr?, profile?, no_draft?}` → `{ok, draft, rows, steps, todo, dropped, raw, ended?}` (`draft` a file name, `raw` the recording id); with `no_draft`, `{ok, recording_id, ticks, raw, ended?}`. A failure is `{ok: false, exit, error}`; it keeps the raw log and leaves the recording for a retry. |
 | `lab_record_transform` | Open: no client, no lease. Drafts a stopped recording already on disk again, with other options: `{dir, section?, character_expr?, profile?, specs_dir?}`. `dir` is the recording id or its folder, a direct child of `<uat root>/records/`; anything else (another path, `..`, UNC, `\\?\`, a link out of the folder) is refused. A recording without its stop line fails (exit 1). Writes `<name>-2.toml`, `-3`, ... when the draft exists, and answers like `lab_record_stop`. |
+
+For `lab_client_status`, `uptime_ms` is milliseconds since the verified client process was created. `uptime_state` is `available` only when the PID is alive and its creation time matches the value captured at launch. Otherwise uptime is zero and the state is `not_running`, `exited`, `process_unavailable`, `creation_time_unavailable`, `identity_unavailable`, or `pid_reused`; `running` follows the process query except for `pid_reused`, which is false because the launched client is gone.
 
 Server endpoint (`cimmeria-lab-mcp`, in-server, token-gated HTTP —
 WireGuard-only on the colo): `server_console_*`, `server_sessions`,

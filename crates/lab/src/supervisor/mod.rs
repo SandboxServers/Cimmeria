@@ -59,6 +59,7 @@ pub mod recovery;
 pub mod screenshot;
 pub mod session_file;
 pub mod stall_grace;
+mod status;
 pub mod telemetry_session;
 pub mod ui;
 mod watchdog;
@@ -67,16 +68,16 @@ pub mod world;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use serde_json::{json, Value};
+use serde_json::Value;
 use tokio::sync::Mutex;
 
 use crate::client::BridgeClient;
 use crate::timeline::client_events::HeartbeatSample;
 use crate::timeline::clock::ClockOffset;
 
-use heartbeat::{HeartbeatState, HeartbeatWatchdog};
+use heartbeat::HeartbeatWatchdog;
 use recovery::{CommandJournal, PersistentHooks, RecoveryTracker};
 use session_file::{DEFAULT_BRIDGE_BIND, DEFAULT_BRIDGE_PORT};
 
@@ -101,24 +102,6 @@ pub(crate) fn now_ms() -> i64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0)
-}
-
-fn client_process_status(
-    pid: Option<u32>,
-    now_ms: i64,
-    mut is_alive: impl FnMut(u32) -> bool,
-    mut creation_time_ms: impl FnMut(u32) -> Option<i64>,
-) -> (bool, i64, &'static str) {
-    let Some(pid) = pid else {
-        return (false, 0, "not_running");
-    };
-    if !is_alive(pid) {
-        return (false, 0, "exited");
-    }
-    let Some(created_ms) = creation_time_ms(pid) else {
-        return (true, 0, "creation_time_unavailable");
-    };
-    (true, now_ms.saturating_sub(created_ms).max(0), "available")
 }
 
 /// Where the client lives and how the bridge is reached.
@@ -229,7 +212,8 @@ impl LoginState {
 /// Mutable supervisor state behind one async lock.
 struct SupervisorState {
     pid: Option<u32>,
-    started_at: Option<Instant>,
+    /// Creation time captured at launch; used to reject a reused PID.
+    process_created_ms: Option<i64>,
     token: Option<String>,
     /// The last launch's telemetry grant, as `lab_client_start` reports it.
     telemetry: Option<Value>,
@@ -251,7 +235,7 @@ impl SupervisorState {
     fn new() -> Self {
         Self {
             pid: None,
-            started_at: None,
+            process_created_ms: None,
             token: None,
             telemetry: None,
             login: LoginState::NotStarted,
@@ -513,7 +497,10 @@ impl Supervisor {
         {
             let mut st = self.state.lock().await;
             lifecycle::record_pid(&mut st, pid, process::is_alive);
-            st.started_at = Some(Instant::now());
+            st.process_created_ms = match process::observe(pid) {
+                process::ProcessObservation::Alive(created_ms) => created_ms,
+                _ => None,
+            };
             st.token = Some(token);
             st.telemetry = Some(telemetry.status());
             st.login = LoginState::NotStarted;
@@ -527,56 +514,6 @@ impl Supervisor {
             grant,
         );
         Ok(pid)
-    }
-
-    /// `lab_client_status` — pid, uptime, heartbeat age, login state,
-    /// crash count. Polls the bridge for the heartbeat and folds it into
-    /// the watchdog (also the on-demand staleness check).
-    pub async fn status(&self) -> Result<Value, String> {
-        let (pid, login, crash_count, persistent_hooks) = {
-            let mut st = self.state.lock().await;
-            (
-                st.pid,
-                st.login,
-                st.recovery.recent_crash_count(now_ms()),
-                st.persistent_hooks.count(),
-            )
-        };
-        let (running, uptime_ms, uptime_state) =
-            client_process_status(pid, now_ms(), process::is_alive, process::creation_time_ms);
-
-        // Heartbeat poll happens without the state lock held.
-        let hb = self.bridge.heartbeat().await;
-        let (hb_count, hb_state, hb_age): (Option<u64>, &str, i64) = match hb {
-            Ok(count) => {
-                let mut st = self.state.lock().await;
-                let ts = now_ms();
-                st.record_heartbeat(count, ts);
-                let s = st.watchdog.observe(count, ts);
-                let age = st.watchdog.age_ms(ts);
-                (
-                    Some(count),
-                    if s == HeartbeatState::Stale {
-                        "stale"
-                    } else {
-                        "alive"
-                    },
-                    age,
-                )
-            }
-            Err(_) => (None, "unreachable", 0),
-        };
-
-        Ok(json!({
-            "pid": pid,
-            "running": running,
-            "uptime_ms": uptime_ms,
-            "uptime_state": uptime_state,
-            "login_state": login.as_str(),
-            "crash_count_10min": crash_count,
-            "persistent_hooks": persistent_hooks,
-            "heartbeat": { "tick_count": hb_count, "state": hb_state, "age_ms": hb_age },
-        }))
     }
 
     /// Record login progress for `lab_client_status`.
@@ -678,27 +615,5 @@ mod tests {
     fn login_state_strings_are_stable() {
         assert_eq!(LoginState::InWorld.as_str(), "in_world");
         assert_eq!(LoginState::Crashed.as_str(), "crashed");
-    }
-
-    #[test]
-    fn process_uptime_survives_supervisor_recreation_and_tracks_new_pid() {
-        let now = 50_000;
-        let process_creation = |pid| match pid {
-            41 => Some(10_000),
-            42 => Some(48_000),
-            _ => None,
-        };
-        let survives_restart = client_process_status(Some(41), now, |_| true, process_creation);
-        assert_eq!(survives_restart, (true, 40_000, "available"));
-        let new_process = client_process_status(Some(42), now, |_| true, process_creation);
-        assert_eq!(new_process, (true, 2_000, "available"));
-    }
-
-    #[test]
-    fn exited_or_unreadable_process_never_reports_stale_uptime() {
-        let exited = client_process_status(Some(41), 50_000, |_| false, |_| Some(10_000));
-        assert_eq!(exited, (false, 0, "exited"));
-        let unreadable = client_process_status(Some(41), 50_000, |_| true, |_| None);
-        assert_eq!(unreadable, (true, 0, "creation_time_unavailable"));
     }
 }

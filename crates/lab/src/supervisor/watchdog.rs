@@ -197,6 +197,7 @@ impl Supervisor {
             }
             st.login = LoginState::Crashed;
             st.pid = None;
+            st.process_created_ms = None;
             st.recovery.should_relaunch(now_ms())
         };
 

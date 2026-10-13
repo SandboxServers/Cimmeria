@@ -124,6 +124,7 @@ impl Supervisor {
         let pid = {
             let mut st = self.state.lock().await;
             let pid = st.pid.take();
+            st.process_created_ms = None;
             st.login = LoginState::NotStarted;
             pid
         };
