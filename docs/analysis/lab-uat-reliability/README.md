@@ -45,7 +45,7 @@ live validation; an integration test alone leaves it UATPending.
 | Packet | Issue | Status | PR | Live proof |
 |---|---|---|---|---|
 | LR-01 prompt read | #1673 | Ready | | Hub prompt text/buttons |
-| LR-02 covered click | #1676 | BlockedDependency: CEGUI hit-test probe | | Mail compose over inbox |
+| LR-02 covered click | #1676 | Ready | | Mail compose over inbox |
 | LR-03 bridge wait | #1677 | Ready | | World load through `client_wait_for` |
 | LR-04a feedback metadata | #1679 | Ready | | Channel 9 colour and tab |
 | LR-04b relog capture | #1679 | BlockedDependency: LR-04a | | Welcome after relog |
