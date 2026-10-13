@@ -14,6 +14,7 @@ use super::widgets::{
 };
 use super::{settle, FlowError, FlowRun};
 use crate::supervisor::session_file::LabAccount;
+use crate::supervisor::ui::window_click::{click_point, locate_chunk, refuse, ClickTarget};
 use crate::supervisor::{LoginState, Supervisor};
 
 /// How long the intro movies may take before the login screen shows.
@@ -26,6 +27,7 @@ const SERVER_TIMEOUT: Duration = Duration::from_secs(60);
 /// (`CharSelect_PlayButton`); the stock Lua is not in this repo, so the name
 /// is not yet checked on the live client.
 const CHAR_SELECT_BACK: &str = "CharSelect_BackButton";
+const CREDENTIAL_TRIES: usize = 2;
 
 /// `lab_login` arguments; each falls back to `lab-account.json`.
 #[derive(Debug, Clone, Default)]
@@ -143,6 +145,46 @@ pub const SELECTED_SERVER_CHUNK: &str = "local s = ServerSelect_List:getFirstSel
      return 'selected', tostring(s and s:getText())";
 
 impl Supervisor {
+    /// Put the desktop foreground on the client once, then confirm that the
+    /// real CEGUI dispatch path reaches the requested login edit box.
+    async fn prepare_login_field(
+        &self,
+        run: &mut FlowRun<'_>,
+        step: &str,
+        window: &str,
+    ) -> Result<(), FlowError> {
+        let hwnd = self
+            .game_hwnd()
+            .await
+            .map_err(|e| run.fail(step, format!("client foreground: {e}")))?;
+        if let Err(e) = focus_client_window_once(hwnd) {
+            return Err(run.fail(step, e));
+        }
+
+        self.verify_login_field_hit_test(run, step, window).await
+    }
+
+    async fn verify_login_field_hit_test(
+        &self,
+        run: &mut FlowRun<'_>,
+        step: &str,
+        window: &str,
+    ) -> Result<(), FlowError> {
+        let target = ClickTarget::Named(window.to_string());
+        let loc = self
+            .lua_json(&locate_chunk(&target))
+            .await
+            .map_err(|e| run.fail(step, format!("locate {window}: {e}")))?;
+        if let Some(why) = refuse(&target, &loc) {
+            return Err(run.fail(step, why));
+        }
+        let (x, y) = click_point(&loc).expect("refuse checked the login edit rectangle");
+        self.verify_click_target(window, x, y)
+            .await
+            .map(|_| ())
+            .map_err(|e| run.fail(step, e))
+    }
+
     /// `lab_login` — from the intro movies (or any startup screen) to
     /// character select.
     pub async fn login_flow(&self, req: LoginRequest) -> Result<Value, FlowError> {
@@ -239,8 +281,12 @@ impl Supervisor {
             // cause). Type the pair again, once.
             let mut attempt = 1;
             loop {
+                self.prepare_login_field(run, "account_focus", LOGIN_ACCOUNT_EDIT)
+                    .await?;
+                self.prepare_login_field(run, "password_focus", LOGIN_PASSWORD_EDIT)
+                    .await?;
                 let typed = match run
-                    .type_into("account", LOGIN_ACCOUNT_EDIT, &creds.account, false)
+                    .type_into("account", LOGIN_ACCOUNT_EDIT, &creds.account, true)
                     .await
                 {
                     Ok(()) => {
@@ -253,9 +299,9 @@ impl Supervisor {
                     Ok(()) => break,
                     // Only a box that read back wrong is worth typing again;
                     // a dead client or a revoked lease would fail the same
-                    // way twice. No regression test yet: the flow needs a
-                    // client, and it waits for the CI fake-client harness.
-                    Err(e) if attempt < CREDENTIAL_TRIES && e.message.contains("after typing") => {
+                    // way twice. A focused test pins the readback-mismatch
+                    // retry predicate; the fake bridge cannot type on Windows.
+                    Err(e) if retryable_credential_error(attempt, &e) => {
                         tracing::warn!(
                             attempt,
                             step = %e.step,
@@ -421,11 +467,47 @@ impl Supervisor {
     }
 }
 
-/// How many times the login types the account and password.
-const CREDENTIAL_TRIES: u32 = 2;
+fn retryable_credential_error(attempt: usize, error: &FlowError) -> bool {
+    attempt < CREDENTIAL_TRIES && error.message.contains("after typing")
+}
+
+fn focus_client_window_once(hwnd: isize) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::Foundation::HWND;
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            GetForegroundWindow, SetForegroundWindow,
+        };
+
+        let hwnd = hwnd as HWND;
+        let mut is_foreground = || unsafe { GetForegroundWindow() == hwnd };
+        let mut refocus = || unsafe { SetForegroundWindow(hwnd) != 0 };
+        if ensure_foreground_once(&mut is_foreground, &mut refocus) {
+            Ok(())
+        } else {
+            Err("client window is not foreground after one refocus attempt".into())
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = hwnd;
+        Err("desktop foreground verification is only available on Windows".into())
+    }
+}
+
+fn ensure_foreground_once(
+    is_foreground: &mut impl FnMut() -> bool,
+    refocus: &mut impl FnMut() -> bool,
+) -> bool {
+    is_foreground() || {
+        let _ = refocus();
+        is_foreground()
+    }
+}
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
 
     use super::*;
@@ -499,6 +581,66 @@ mod tests {
         );
         assert_eq!(classify_start(&s(&["false"; 4])), StartScreen::Other);
         assert_eq!(classify_start(&[]), StartScreen::Other);
+    }
+
+    #[test]
+    fn foreground_loss_gets_one_refocus_and_is_rechecked() {
+        let checks = AtomicUsize::new(0);
+        let refocuses = AtomicUsize::new(0);
+        let mut foreground = || checks.fetch_add(1, Ordering::SeqCst) == 1;
+        let mut refocus = || {
+            refocuses.fetch_add(1, Ordering::SeqCst);
+            true
+        };
+        assert!(ensure_foreground_once(&mut foreground, &mut refocus));
+        assert_eq!(checks.load(Ordering::SeqCst), 2);
+        assert_eq!(refocuses.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn login_field_hit_test_names_covering_modal_before_input() {
+        let input_calls = Arc::new(AtomicUsize::new(0));
+        let observed_calls = input_calls.clone();
+        let sup = fake_bridge::supervisor(Arc::new(move |method, params| {
+            if method != "lua_eval" {
+                observed_calls.fetch_add(1, Ordering::SeqCst);
+                return Err(format!("unexpected input call: {method}"));
+            }
+            let chunk = params["chunk"].as_str().unwrap_or_default();
+            if chunk.contains("getTargetChildAtPosition") {
+                let hit = json!({ "available": true, "target_name": LOGIN_ACCOUNT_EDIT,
+                    "received_by": "LoginNoticeModal", "ancestors": ["LoginNoticeModal", "Root"] });
+                return Ok(fake_bridge::lua_ok(&[hit.to_string()]));
+            }
+            let loc = json!({ "found": true, "name": LOGIN_ACCOUNT_EDIT,
+                "visible": true, "enabled": true, "rect": [0, 0, 40, 20] });
+            Ok(fake_bridge::lua_ok(&[loc.to_string()]))
+        }))
+        .await;
+        let mut run = FlowRun::new(&sup, "lab_login");
+        let error = sup
+            .verify_login_field_hit_test(&mut run, "account_focus", LOGIN_ACCOUNT_EDIT)
+            .await
+            .unwrap_err();
+        assert!(
+            error.message.contains("covered by LoginNoticeModal"),
+            "{error:?}"
+        );
+        assert_eq!(input_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn only_a_real_readback_mismatch_retries_and_only_once() {
+        let sup = fake_bridge::supervisor(Arc::new(|_, _| Ok(Value::Null))).await;
+        let run = FlowRun::new(&sup, "lab_login");
+        let mismatch = run.fail(
+            "account",
+            "Login_AccountEdit holds 1 characters after typing",
+        );
+        let other = run.fail("account", "the bridge disconnected");
+        assert!(retryable_credential_error(1, &mismatch));
+        assert!(!retryable_credential_error(2, &mismatch));
+        assert!(!retryable_credential_error(1, &other));
     }
 
     /// Fake client: the login window is hidden and character select is up,
