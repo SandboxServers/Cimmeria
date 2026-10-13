@@ -28,9 +28,10 @@ The local recovery also included episode #416 about David Read, chiefly relevant
 
 1. Start from a source-backed district, cast member, object or faction conflict in the zone mission matrix. Record the exact source row or map export.
 2. Give the player a visible action, a mid-quest state change and a closing conversation or reward. Tie the action to rescue, loyalty, investigation, supply or defense where it fits the zone. These are design principles drawn from #433, not original quest scripts.
-3. Label every new mission `CIMMERIA_AUTHORING`; distinguish pitch inspiration and oral-history recollection from shipped 2009 evidence. Do not copy a pitch beat that contradicts the current seed merely to make the arcs match.
-4. Target the owner's 5–8 side stories per large hub plus repeatables after recovered arcs pass UAT; rewards begin with useful supplies and modest XP/currency. Cellblock is a one-time exception.
-5. Review new quest premises against the original mission/dialog seed and `docs/content/external-data-analysis.md`, which analyzes the on-disk SGW Timeline, Progression and Milky Way mission workbooks. Those workbooks are more direct sources for quest order than the early narrated pitch.
+3. Label provenance **per story beat**, as the [index's evidence contract](README.md#evidence-contract) requires: a wholly new mission is `CIMMERIA_AUTHORING` throughout, and an authored beat added to a historical mission is labeled `CIMMERIA_AUTHORING` even when its neighbours are `RESTORED_SOURCE`. Distinguish pitch inspiration and oral-history recollection from shipped 2009 evidence. Do not copy a pitch beat that contradicts the current seed merely to make the arcs match.
+4. Make the label visible where maintainers read it: at minimum a comment on every authored seed row or chain block (`-- CIMMERIA_AUTHORING: <premise>`) and the beat's row in the zone's continuation ledger. Whether players also see a label in the client is an open owner question listed in the [index](README.md#open-questions); do not add player-facing copy for it until it is decided.
+5. Target the owner's 5–8 side stories per large hub plus repeatables after recovered arcs pass UAT; rewards begin with useful supplies and modest XP/currency. Cellblock is a one-time exception.
+6. Review new quest premises against the original mission/dialog seed and `docs/content/external-data-analysis.md`, which analyzes the on-disk SGW Timeline, Progression and Milky Way mission workbooks. Those workbooks are more direct sources for quest order than the early narrated pitch.
 
 ## Evidence gaps
 
