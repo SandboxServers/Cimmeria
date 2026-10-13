@@ -45,6 +45,7 @@ live validation; an integration test alone leaves it UATPending.
 | Packet | Issue | Status | PR | Live proof |
 |---|---|---|---|---|
 | LR-01 prompt read | #1673 | Review | [#1691](https://github.com/SandboxServers/Cimmeria/pull/1691) | Hub prompt text/buttons |
+| LR-01b prompt discovery and briefs | #1673 | BlockedDependency: LR-01 | | Tool description and PROMPT macros |
 | LR-00 ring click grading | #1686 | Writing | | Honest N1/N3 and UAT tool lookup |
 | LR-02 covered click | #1676 | Writing | | Mail compose over inbox |
 | LR-03 bridge wait | #1677 | Review | | World load through `client_wait_for` |
@@ -54,7 +55,7 @@ live validation; an integration test alone leaves it UATPending.
 | LR-05b safe logout | #1680 | BlockedDependency: LR-05a | | Logout after death |
 | LR-05c process uptime | #1680 | Ready | | Status across supervisor restart |
 | LR-05d login focus recovery | #1680 | BlockedDependency: LR-02 | | Covered login after crash |
-| LR-06 target timeout | #1684 | Ready | | Hostile target while in combat |
+| LR-06 target timeout and route correction | #1684 | Ready | | Hostile target while in combat; pod-safe route |
 | LR-07 native ring click | #1686 | BlockedDependency: LR-00 and native-input probe | | Fresh client mouse vs handler |
 | CA-MG-L0..L5 | #1685 | BlockedDependency: autoplay prerequisites | | Livewire N1 solve |
 | CA-AP-11 | #1689 | BlockedDependency: autoplay prerequisites | | Route to Mess Hall |
