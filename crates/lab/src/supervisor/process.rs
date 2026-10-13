@@ -32,8 +32,14 @@ pub enum ProcessObservation {
     Exited,
     /// The process could not be opened or queried.
     Unavailable,
-    /// The process is active; its creation time may still be unreadable.
-    Alive(Option<i64>),
+    /// The process is active; its creation FILETIME may still be unreadable.
+    Alive(Option<u64>),
+}
+
+/// Convert a Windows creation FILETIME (100 ns ticks since 1601) to Unix ms.
+pub fn unix_ms_from_creation_ticks(ticks: u64) -> Option<i64> {
+    const UNIX_EPOCH_FILETIME_TICKS: u64 = 116_444_736_000_000_000;
+    i64::try_from(ticks.checked_sub(UNIX_EPOCH_FILETIME_TICKS)? / 10_000).ok()
 }
 
 /// Where the `sgw-start32` helper is: `override_path` (the
@@ -223,8 +229,6 @@ mod win {
 
         let ticks =
             |ft: &FILETIME| (u64::from(ft.dwHighDateTime) << 32) | u64::from(ft.dwLowDateTime);
-        // FILETIME is 100 ns intervals since 1601-01-01; convert to Unix ms.
-        const UNIX_EPOCH_FILETIME_TICKS: u64 = 116_444_736_000_000_000;
         // SAFETY: OpenProcess/GetProcessTimes/CloseHandle with valid out-params.
         unsafe {
             let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
@@ -250,10 +254,9 @@ mod win {
             if ok == 0 {
                 return super::ProcessObservation::Alive(None);
             }
-            let created_ms = ticks(&created)
-                .checked_sub(UNIX_EPOCH_FILETIME_TICKS)
-                .and_then(|ticks| i64::try_from(ticks / 10_000).ok());
-            super::ProcessObservation::Alive(created_ms)
+            let created_ticks = ticks(&created);
+            let created = super::unix_ms_from_creation_ticks(created_ticks).map(|_| created_ticks);
+            super::ProcessObservation::Alive(created)
         }
     }
 

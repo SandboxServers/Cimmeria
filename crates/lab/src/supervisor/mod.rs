@@ -213,7 +213,7 @@ impl LoginState {
 struct SupervisorState {
     pid: Option<u32>,
     /// Creation time captured at launch; used to reject a reused PID.
-    process_created_ms: Option<i64>,
+    process_created_ticks: Option<u64>,
     token: Option<String>,
     /// The last launch's telemetry grant, as `lab_client_start` reports it.
     telemetry: Option<Value>,
@@ -235,7 +235,7 @@ impl SupervisorState {
     fn new() -> Self {
         Self {
             pid: None,
-            process_created_ms: None,
+            process_created_ticks: None,
             token: None,
             telemetry: None,
             login: LoginState::NotStarted,
@@ -282,12 +282,27 @@ pub struct Supervisor {
 }
 
 impl Supervisor {
+    /// Construct a supervisor, recovering only a registered process whose
+    /// creation identity still matches the live PID.
     pub fn new(bridge: Arc<BridgeClient>, config: SupervisorConfig) -> Self {
+        Self::new_with_process(bridge, config, process::observe)
+    }
+
+    fn new_with_process(
+        bridge: Arc<BridgeClient>,
+        config: SupervisorConfig,
+        observe: impl FnOnce(u32) -> process::ProcessObservation,
+    ) -> Self {
         display::spawn_keep_awake();
+        let mut state = SupervisorState::new();
+        if let Some((pid, created_ticks)) = status::recover_registered_process(&config, observe) {
+            state.pid = Some(pid);
+            state.process_created_ticks = Some(created_ticks);
+        }
         Self {
             bridge,
             config,
-            state: Arc::new(Mutex::new(SupervisorState::new())),
+            state: Arc::new(Mutex::new(state)),
             events: Arc::new(events::store::EventStore::default()),
             leases: Arc::new(crate::lease::LeaseBook::default()),
             account: Arc::new(std::sync::Mutex::new(account::AccountCache::default())),
@@ -481,7 +496,17 @@ impl Supervisor {
         })
         .await
         .map_err(|e| format!("launch task: {e}"))??;
-        if let Err(e) = instance::write_entry(&install_dir, inst, pid, self.config.port) {
+        let process_created_ticks = match process::observe(pid) {
+            process::ProcessObservation::Alive(created_ticks) => created_ticks,
+            _ => None,
+        };
+        if let Err(e) = instance::write_entry(
+            &install_dir,
+            inst,
+            pid,
+            self.config.port,
+            process_created_ticks,
+        ) {
             tracing::warn!(error = %e, "could not record this client for its peers");
         }
 
@@ -497,10 +522,7 @@ impl Supervisor {
         {
             let mut st = self.state.lock().await;
             lifecycle::record_pid(&mut st, pid, process::is_alive);
-            st.process_created_ms = match process::observe(pid) {
-                process::ProcessObservation::Alive(created_ms) => created_ms,
-                _ => None,
-            };
+            st.process_created_ticks = process_created_ticks;
             st.token = Some(token);
             st.telemetry = Some(telemetry.status());
             st.login = LoginState::NotStarted;
