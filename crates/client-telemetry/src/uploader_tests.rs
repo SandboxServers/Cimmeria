@@ -99,6 +99,8 @@ fn uploader_ships_batch_to_local_server() {
     let cfg = UploaderConfig {
         upload_endpoint: url,
         token: "test-token-XYZ".into(),
+        expires_at_ms: 0,
+        session_file: None,
         flush_interval: Duration::from_millis(100),
         max_batch: 10,
     };
@@ -150,6 +152,8 @@ fn stop_callback_exits_cleanly() {
         let cfg = UploaderConfig {
             upload_endpoint: url,
             token: "t".into(),
+            expires_at_ms: 0,
+            session_file: None,
             flush_interval: Duration::from_millis(50),
             max_batch: 100,
         };
@@ -221,6 +225,8 @@ fn retains_batch_after_failed_post() {
         let cfg = UploaderConfig {
             upload_endpoint: url,
             token: "t".into(),
+            expires_at_ms: 0,
+            session_file: None,
             flush_interval: Duration::from_millis(50),
             max_batch: 100,
         };
@@ -309,6 +315,8 @@ fn batch_caps_at_max_batch() {
     let cfg = UploaderConfig {
         upload_endpoint: url,
         token: "t".into(),
+        expires_at_ms: 0,
+        session_file: None,
         flush_interval: Duration::from_millis(50),
         max_batch: 10,
     };

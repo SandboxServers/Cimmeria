@@ -245,15 +245,17 @@ fn bootstrap_phase2() {
         &host_exe,
         std::env::var_os(crate::session::SESSION_FILE_ENV),
     );
-    let session = match session_path.and_then(|p| crate::session::load_session(&p)) {
-        Ok(s) => s,
-        Err(e) => {
-            crate::log::line(format_args!(
-                "no telemetry session ({e}); nothing installed"
-            ));
-            return;
-        }
-    };
+    // The path is kept: the uploader re-reads the file for a rotated token.
+    let (session, session_file) =
+        match session_path.and_then(|p| crate::session::load_session(&p).map(|s| (s, p))) {
+            Ok(s) => s,
+            Err(e) => {
+                crate::log::line(format_args!(
+                    "no telemetry session ({e}); nothing installed"
+                ));
+                return;
+            }
+        };
     crate::log::line(format_args!(
         "session {} loaded; uploading to {}",
         session.session_id, session.telemetry.upload_endpoint
@@ -338,7 +340,8 @@ fn bootstrap_phase2() {
     // `crate::shutdown`), then posts its last batch and signals done. The
     // JoinHandle is not kept: the hooks wait on the shutdown signal, which
     // is bounded, where a join would not be.
-    let cfg = crate::uploader::UploaderConfig::from_session(&session.telemetry);
+    let mut cfg = crate::uploader::UploaderConfig::from_session(&session.telemetry);
+    cfg.session_file = Some(session_file);
     let shutdown = crate::shutdown::global();
     shutdown.arm();
     let spawned = std::thread::Builder::new()

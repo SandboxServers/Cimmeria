@@ -17,29 +17,52 @@
 //! transfers control to [`run_uploader`] which never returns
 //! under normal operation.
 //!
-//! # Failure modes (current implementation)
+//! # Failure modes
 //!
-//! The Phase-2 uploader is deliberately minimal — it ships batches
-//! and retains them on failure but does not yet parse server hints
-//! or refresh credentials. Phase 3 will add the more sophisticated
-//! handling described in [docs/architecture/dev-session-telemetry.md].
+//! Every failed POST keeps its batch for a later attempt and is counted
+//! (`upload_failures_total` and `last_upload_status` on the health row,
+//! TG-PIPE-13). *When* the next attempt goes, and with which token, is
+//! [`crate::upload_gate::UploadGate`]'s decision:
 //!
-//! - **401 from server** — token rejected. Treated like any other
-//!   non-2xx: the batch is retained for retry on the next cadence
-//!   and the failure is counted (`upload_failures_total` and
-//!   `last_upload_status` on the health row, TG-PIPE-13). Phase 3
-//!   will re-read `current-session.json` to pick up a refreshed
-//!   token (the launcher rotates at 75% TTL).
-//! - **5xx from server** — overload / outage. Same path as 401:
-//!   retained for retry on the next cadence. `Retry-After` is not
-//!   parsed today; Phase 3 will honor it.
-//! - **Network error** — same path. The batch (which has already
-//!   been popped from the queue) is retained in the uploader's
-//!   `Vec` and re-attempted on the next flush cadence. When the
-//!   retained batch hits `max_batch` capacity, the oldest half is
-//!   dropped to bound memory at ~2× `max_batch` events.
+//! - **401 or 403 from server** — token refused (`token_expired` and the
+//!   like). The uploader re-reads `current-session.json`. A different token
+//!   there is swapped in and the batch is retried at once (no launcher
+//!   rewrites the file on refresh yet; see [`crate::upload_gate`]). The
+//!   same token, or no readable
+//!   file, pauses uploads: holds that start at the flush interval and double
+//!   up to 10 min ([`crate::upload_gate::BACKOFF_CAP`]), with a re-read of
+//!   the file at each deadline so a later rotation recovers. Before
+//!   2026-10-12 a 401 was retried every flush, forever: one lab client
+//!   whose token expired sent about three refused POSTs every 12 s for
+//!   4.5 h.
+//! - **An empty token** — never sent, the final POST at exit included; the
+//!   uploader holds and re-reads on the same backoff.
+//! - **A token past the file's `expires_at_ms` by this machine's clock** —
+//!   held the same way, but sent as one probe at once and then once per
+//!   10 min, because this clock may be ahead of the server's. A probe the
+//!   server accepts restores normal uploads; the final POST at exit never
+//!   spends a probe.
+//! - **5xx, another 4xx, or a network error** — the same bounded backoff.
+//!   A `Retry-After` in whole seconds that asks for longer wins (capped
+//!   too); the HTTP-date form is ignored.
+//! - **Memory** — the batch (already popped from the queue) stays in the
+//!   uploader's `Vec`. When a failed POST leaves it at `max_batch`, the
+//!   oldest half is dropped. While a hold runs, events from the ring stop
+//!   at `max_batch` (the ring absorbs, and counts, the overflow), but the
+//!   governor's rollup and health rows and the pause report still land in
+//!   the batch, so every loop pass also drops the oldest half once it
+//!   reaches 2× `max_batch`. Either way memory stays under ~2× `max_batch`
+//!   events, and every dropped event is counted in the health row's
+//!   `upload_dropped_total`.
 //! - **Disconnected channel** — Producer side hung up. Treated as
 //!   "uploader done" and the thread exits.
+//!
+//! An auth pause is reported once when it starts
+//! ([`UPLOAD_PAUSED_TARGET`]) and once when a POST goes through again
+//! ([`UPLOAD_RESUMED_TARGET`]), each as one event in the batch and one line
+//! in the local log. The paused row reaches the server with the first
+//! accepted POST, next to the resumed one; a client that never recovers has
+//! only the log line.
 //!
 //! Drops also happen at the queue itself when the producer side
 //! overflows the ring (see [`crate::queue`]) — those are accounted
@@ -48,15 +71,27 @@
 //! governor's `client.telemetry.health` event (see [`crate::governor`]),
 //! next to the failed-POST count.
 
-use std::io::Write;
-use std::time::{Duration, Instant};
+use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use crossbeam_channel::RecvTimeoutError;
-use flate2::write::GzEncoder;
-use flate2::Compression;
 
-use crate::events::{ClientNativeEvent, TelemetryEvent};
+use crate::events::ClientNativeEvent;
 use crate::queue::Consumer;
+use crate::upload_gate::{AfterRefusal, Credentials, Transition, UploadGate, BACKOFF_CAP};
+
+#[path = "uploader_post.rs"]
+mod post;
+#[cfg(test)]
+use post::encode_batch;
+use post::{build_agent, post_batch_within, record, PostError};
+
+/// Target of the one event written when uploads pause for want of a usable
+/// token.
+pub const UPLOAD_PAUSED_TARGET: &str = "client.telemetry.upload_paused";
+
+/// Target of the one event written when uploads go through again.
+pub const UPLOAD_RESUMED_TARGET: &str = "client.telemetry.upload_resumed";
 
 /// Uploader runtime configuration. Built from
 /// `current-session.json`'s `telemetry` block by the bootstrap
@@ -68,8 +103,15 @@ pub struct UploaderConfig {
     /// launcher's `TelemetryBlock.upload_endpoint`.
     pub upload_endpoint: String,
     /// Bearer HMAC token minted by `/api/auth/dev-session`. Used
-    /// verbatim in the `Authorization: Bearer ...` header.
+    /// verbatim in the `Authorization: Bearer ...` header, until a re-read
+    /// of [`UploaderConfig::session_file`] swaps in a newer one.
     pub token: String,
+    /// The token's expiry (ms since the epoch); `0` = not stated. A token
+    /// past it is never sent.
+    pub expires_at_ms: i64,
+    /// The `current-session.json` the session came from, re-read after an
+    /// auth refusal and while a pause lasts. `None` (tests) never re-reads.
+    pub session_file: Option<PathBuf>,
     /// Flush cadence — how often the uploader wakes to ship a
     /// batch even when the queue isn't full. Launcher default is
     /// 2000 ms; the DLL inherits whatever the launcher wrote.
@@ -90,11 +132,14 @@ impl UploaderConfig {
     pub const DEFAULT_MAX_BATCH: usize = 1000;
 
     /// Build from a `session::TelemetryBlock`, applying defaults
-    /// for any zero-valued field.
+    /// for any zero-valued field. [`UploaderConfig::session_file`] starts
+    /// unset; the bootstrap thread fills it in.
     pub fn from_session(block: &crate::session::TelemetryBlock) -> Self {
         Self {
             upload_endpoint: chunk_url(&block.upload_endpoint),
             token: block.token.clone(),
+            expires_at_ms: block.expires_at_ms,
+            session_file: None,
             flush_interval: if block.flush_interval_ms == 0 {
                 Self::DEFAULT_FLUSH_INTERVAL
             } else {
@@ -155,7 +200,7 @@ pub enum UploaderExit {
 /// The blocking shape is: `recv_timeout(flush_interval)` to wait
 /// for the next event or wake on cadence; then drain up to
 /// `max_batch` with `try_recv` (non-blocking); then ship if the
-/// batch is non-empty.
+/// batch is non-empty and the [`UploadGate`] lets a POST go.
 pub fn run_uploader(
     consumer: Consumer,
     cfg: UploaderConfig,
@@ -167,6 +212,15 @@ pub fn run_uploader(
     // Events discarded after failed POSTs. Reported by the governor's
     // health event, so a long outage is visible once the link returns.
     let mut upload_dropped: u64 = 0;
+    let mut gate = UploadGate::new(
+        Credentials {
+            token: cfg.token.clone(),
+            expires_at_ms: cfg.expires_at_ms,
+        },
+        cfg.flush_interval,
+        BACKOFF_CAP,
+    );
+    let reload = || cfg.session_file.as_deref().and_then(reload_credentials);
 
     loop {
         if should_stop() {
@@ -178,12 +232,25 @@ pub fn run_uploader(
             drain_into(&consumer, &mut batch, cfg.max_batch);
             consumer.governor_finish(upload_dropped, &mut batch);
             if !batch.is_empty() {
-                let result = post_batch_within(&client, &cfg, &batch, Some(FINAL_POST_TIMEOUT));
-                // No health row follows this one, so the local log is the
-                // only place a failed final POST can show.
-                if let Err(e) = record(&consumer, result) {
+                if gate.ready_for_final(wall_ms(), reload) {
+                    let result = post_batch_within(
+                        &client,
+                        &cfg.upload_endpoint,
+                        gate.token(),
+                        &batch,
+                        Some(FINAL_POST_TIMEOUT),
+                    );
+                    // No health row follows this one, so the local log is the
+                    // only place a failed final POST can show.
+                    if let Err(e) = record(&consumer, result) {
+                        crate::log::line(format_args!(
+                            "final POST of {} events failed: {e}",
+                            batch.len()
+                        ));
+                    }
+                } else {
                     crate::log::line(format_args!(
-                        "final POST of {} events failed: {e}",
+                        "final POST of {} events skipped: no usable token",
                         batch.len()
                     ));
                 }
@@ -197,15 +264,21 @@ pub fn run_uploader(
         //    flush, no reason to wake sooner). This avoids a 1 ms
         //    busy-spin when no events arrive but `last_flush` is
         //    older than `flush_interval`.
-        //  - non-empty batch: wait at most `flush_interval -
-        //    last_flush.elapsed()`, floored at 1 ms, so we ship
-        //    pending events on cadence even if the queue went quiet.
+        //  - non-empty batch: wait until the next POST could go: the
+        //    flush cadence (`flush_interval - last_flush.elapsed()`), or
+        //    the end of the gate's hold when that is later, floored at
+        //    1 ms. Without the hold term a held batch whose cadence had
+        //    passed spun at 1 ms for the whole hold (or for good with a
+        //    token that looks expired), ticking the governor's mutex.
         let recv_timeout = if batch.is_empty() {
             cfg.flush_interval
         } else {
-            cfg.flush_interval
-                .saturating_sub(last_flush.elapsed())
-                .max(Duration::from_millis(1))
+            let now = Instant::now();
+            let cadence = cfg.flush_interval.saturating_sub(last_flush.elapsed());
+            let hold = gate
+                .next_attempt()
+                .map_or(Duration::ZERO, |t| t.saturating_duration_since(now));
+            cadence.max(hold).max(Duration::from_millis(1))
         }
         // Wake often enough to notice `should_stop` inside the exit budget.
         .min(STOP_POLL);
@@ -213,8 +286,17 @@ pub fn run_uploader(
             Ok(ev) => batch.push(ev),
             Err(RecvTimeoutError::Timeout) => { /* fall through to flush */ }
             Err(RecvTimeoutError::Disconnected) => {
-                if !batch.is_empty() {
-                    let _ = record(&consumer, post_batch(&client, &cfg, &batch));
+                if !batch.is_empty() && gate.ready_for_final(wall_ms(), reload) {
+                    let _ = record(
+                        &consumer,
+                        post_batch_within(
+                            &client,
+                            &cfg.upload_endpoint,
+                            gate.token(),
+                            &batch,
+                            None,
+                        ),
+                    );
                 }
                 return UploaderExit::Disconnected;
             }
@@ -228,11 +310,13 @@ pub fn run_uploader(
         consumer.governor_tick(upload_dropped, &mut batch);
 
         // Ship when either the batch hit a meaningful size OR the
-        // flush interval elapsed since the last successful POST.
+        // flush interval elapsed since the last POST, and the gate is not
+        // holding uploads off (backoff, or no usable token).
         let should_flush = !batch.is_empty()
-            && (batch.len() >= cfg.max_batch || last_flush.elapsed() >= cfg.flush_interval);
+            && (batch.len() >= cfg.max_batch || last_flush.elapsed() >= cfg.flush_interval)
+            && gate.ready(Instant::now(), wall_ms(), reload);
         if should_flush {
-            match record(&consumer, post_batch(&client, &cfg, &batch)) {
+            match ship(&client, &consumer, &cfg, &mut gate, &batch, reload) {
                 Ok(()) => {
                     batch.clear();
                 }
@@ -240,35 +324,143 @@ pub fn run_uploader(
                     // Network/HTTP failure, counted by `record` for the
                     // health row's `upload_failures_total` and
                     // `last_upload_status` (TG-PIPE-13). Retain the batch for
-                    // retry on the next cadence rather than dropping
-                    // it. Bound memory: if the retained batch is
+                    // a later attempt (when, is the gate's call) rather than
+                    // dropping it. Bound memory: if the retained batch is
                     // already at `max_batch`, drop the oldest half
                     // to leave room for new events. This caps worst-
                     // case memory at ~2 × max_batch events while
                     // preferring newer telemetry over the very
                     // oldest.
                     if batch.len() >= cfg.max_batch {
-                        let n = batch.len() / 2;
-                        batch.drain(..n);
-                        upload_dropped += n as u64;
+                        upload_dropped += trim_oldest_half(&mut batch);
                     }
                 }
             }
             last_flush = Instant::now();
         }
+        // After a cleared batch, so a resume row ships with the next POST
+        // instead of being cleared with the batch it followed.
+        report_transitions(&consumer, &mut gate, &mut batch);
+        // While a hold runs nothing ships, but the governor keeps appending
+        // rollup and health rows past `max_batch`: bound the batch here
+        // too, not only after a failed POST.
+        if batch.len() >= 2 * cfg.max_batch {
+            upload_dropped += trim_oldest_half(&mut batch);
+        }
     }
 }
 
-/// Build the ureq agent we use for every POST. Single instance per
-/// thread — ureq keeps the underlying TCP connection alive across
-/// calls, which matters for the rapid-flush case where we ship
-/// every 2 s.
-fn build_agent() -> ureq::Agent {
-    ureq::AgentBuilder::new()
-        .timeout_connect(Duration::from_secs(10))
-        .timeout_read(Duration::from_secs(30))
-        .timeout_write(Duration::from_secs(30))
-        .build()
+/// Drop the oldest half of `batch`, preferring newer telemetry; returns how
+/// many events went.
+fn trim_oldest_half(batch: &mut Vec<ClientNativeEvent>) -> u64 {
+    let n = batch.len() / 2;
+    batch.drain(..n);
+    n as u64
+}
+
+/// One POST of `batch` through the gate: an auth refusal re-reads the
+/// session file and retries once at once when it carries a new token; every
+/// other outcome is handed to the gate to schedule the next attempt.
+fn ship(
+    client: &ureq::Agent,
+    consumer: &Consumer,
+    cfg: &UploaderConfig,
+    gate: &mut UploadGate,
+    batch: &[ClientNativeEvent],
+    reload: impl Fn() -> Option<Credentials>,
+) -> Result<(), PostError> {
+    let mut retried = false;
+    loop {
+        let result = post_batch_within(client, &cfg.upload_endpoint, gate.token(), batch, None);
+        let now = Instant::now();
+        match record(consumer, result) {
+            Ok(()) => {
+                gate.on_success(now);
+                return Ok(());
+            }
+            Err(e) => match e.auth_status() {
+                Some(status) => match gate.on_auth_refused(now, wall_ms(), status, &reload) {
+                    AfterRefusal::RetryNow if !retried => retried = true,
+                    _ => return Err(e),
+                },
+                None => {
+                    gate.on_transient(now, e.retry_after());
+                    return Err(e);
+                }
+            },
+        }
+    }
+}
+
+/// Turn the gate's pause and resume transitions into one event each in
+/// `batch` and one line each in the local log. The local line matters for
+/// a pause that never ends: its event never reaches the server.
+fn report_transitions(
+    consumer: &Consumer,
+    gate: &mut UploadGate,
+    batch: &mut Vec<ClientNativeEvent>,
+) {
+    for t in gate.take_transitions() {
+        let ev = match t {
+            Transition::Paused {
+                reason,
+                status,
+                retry_in,
+            } => {
+                crate::log::line(format_args!(
+                    "uploads paused: token {} (status {status:?}); re-reading the session file with backoff, first retry in {} ms",
+                    reason.as_str(),
+                    retry_in.as_millis()
+                ));
+                let mut b = ClientNativeEvent::builder(UPLOAD_PAUSED_TARGET, "warn")
+                    .field("reason", reason.as_str())
+                    .field(
+                        "retry_in_ms",
+                        serde_json::json!(retry_in.as_millis() as u64),
+                    );
+                if let Some(s) = status {
+                    b = b.field("status", serde_json::json!(s));
+                }
+                b
+            }
+            Transition::Resumed {
+                paused_for,
+                attempts,
+            } => {
+                crate::log::line(format_args!(
+                    "uploads resumed after {} ms and {attempts} held attempts",
+                    paused_for.as_millis()
+                ));
+                ClientNativeEvent::builder(UPLOAD_RESUMED_TARGET, "info")
+                    .field(
+                        "paused_ms",
+                        serde_json::json!(paused_for.as_millis() as u64),
+                    )
+                    .field("attempts", serde_json::json!(attempts))
+            }
+        };
+        batch.push(consumer.stamp(ev));
+    }
+}
+
+/// The token half of the session file at `path`, or `None` when it is gone,
+/// unreadable, unparsable or switched off (any of which means "no new
+/// token"; the gate keeps backing off).
+fn reload_credentials(path: &Path) -> Option<Credentials> {
+    crate::session::load_session(path)
+        .ok()
+        .map(|s| Credentials {
+            token: s.telemetry.token,
+            expires_at_ms: s.telemetry.expires_at_ms,
+        })
+}
+
+/// Wall-clock ms since the epoch, for comparing against `expires_at_ms`.
+fn wall_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 /// Pop as many events as we can from `consumer` without blocking,
@@ -282,125 +474,6 @@ fn drain_into(consumer: &Consumer, batch: &mut Vec<ClientNativeEvent>, max_batch
     }
 }
 
-/// Header carrying this process's id on every chunk. One lab session
-/// spans several launches, so the server needs the pid to tell them apart.
-const CLIENT_PID_HEADER: &str = "X-Cimmeria-Client-Pid";
-
-/// Serialize as NDJSON, gzip, POST with the Bearer token. Returns the HTTP
-/// status on a 2xx answer.
-///
-/// Returns `Err` on any network or non-2xx HTTP response. The
-/// caller (the uploader loop) retains the batch in memory on
-/// failure and re-attempts on the next flush cadence, so the
-/// delivery shape is at-least-once *with possible duplicates* if
-/// the server actually processed the batch before its response
-/// failed (since we cannot distinguish that case from a true POST
-/// failure). The server does **not** absorb those duplicates:
-/// `/api/telemetry/upload-chunk` replays every row it parses and keeps
-/// no `(session_id, seq)` set (see `admin-api` `routes/telemetry/mod.rs`),
-/// so a retried batch the server had already taken shows up twice in
-/// SigNoz, with the same `seq`.
-fn post_batch(
-    client: &ureq::Agent,
-    cfg: &UploaderConfig,
-    batch: &[ClientNativeEvent],
-) -> Result<u16, PostError> {
-    post_batch_within(client, cfg, batch, None)
-}
-
-/// Count a POST's outcome on the consumer (TG-PIPE-13): a failure bumps
-/// `upload_failures_total`, and every answer sets `last_upload_status`.
-fn record(consumer: &Consumer, result: Result<u16, PostError>) -> Result<(), PostError> {
-    match result {
-        Ok(status) => {
-            consumer.record_upload_ok(status);
-            Ok(())
-        }
-        Err(e) => {
-            consumer.record_upload_failure(e.status());
-            Err(e)
-        }
-    }
-}
-
-/// [`post_batch`] with an optional whole-request time limit (the final
-/// flush at exit passes one; the ordinary cadence does not).
-fn post_batch_within(
-    client: &ureq::Agent,
-    cfg: &UploaderConfig,
-    batch: &[ClientNativeEvent],
-    limit: Option<Duration>,
-) -> Result<u16, PostError> {
-    let body = encode_batch(batch)?;
-    let mut req = client
-        .post(&cfg.upload_endpoint)
-        .set("Authorization", &format!("Bearer {}", cfg.token))
-        .set("Content-Type", "application/x-ndjson")
-        .set("Content-Encoding", "gzip")
-        .set(CLIENT_PID_HEADER, &std::process::id().to_string());
-    if let Some(limit) = limit {
-        req = req.timeout(limit);
-    }
-    // ureq 2 reports a 4xx/5xx answer as `Error::Status`, not as a
-    // response; keep its status so the health row can say what the
-    // server answered.
-    let resp = match req.send_bytes(&body) {
-        Ok(resp) => resp,
-        Err(ureq::Error::Status(status, resp)) => {
-            return Err(PostError::Http {
-                status,
-                body: resp.into_string().unwrap_or_default(),
-            })
-        }
-        Err(e) => return Err(PostError::Network(e.to_string())),
-    };
-    let status = resp.status();
-    if !(200..300).contains(&status) {
-        return Err(PostError::Http {
-            status,
-            body: resp.into_string().unwrap_or_default(),
-        });
-    }
-    Ok(status)
-}
-
-/// NDJSON encode → gzip. Each event becomes one
-/// `TelemetryEvent::ClientNative(...)` JSON object on its own line.
-fn encode_batch(batch: &[ClientNativeEvent]) -> Result<Vec<u8>, PostError> {
-    let mut gz = GzEncoder::new(
-        Vec::with_capacity(batch.len() * 200),
-        Compression::default(),
-    );
-    for ev in batch {
-        let wrapped = TelemetryEvent::ClientNative(ev.clone());
-        serde_json::to_writer(&mut gz, &wrapped).map_err(PostError::Serialize)?;
-        gz.write_all(b"\n").map_err(PostError::Io)?;
-    }
-    gz.finish().map_err(PostError::Io)
-}
-
-#[derive(Debug, thiserror::Error)]
-enum PostError {
-    #[error("network: {0}")]
-    Network(String),
-    #[error("http {status}: {body}")]
-    Http { status: u16, body: String },
-    #[error("serialize: {0}")]
-    Serialize(#[source] serde_json::Error),
-    #[error("io: {0}")]
-    Io(#[source] std::io::Error),
-}
-
-impl PostError {
-    /// The server's HTTP status, when it answered at all.
-    fn status(&self) -> Option<u16> {
-        match self {
-            PostError::Http { status, .. } => Some(*status),
-            _ => None,
-        }
-    }
-}
-
 // Helper used by the uploader loop only — distinguishes Timeout
 // from Disconnected, which the public `Consumer::recv_timeout`
 // collapses to `None`. Uses the crate-internal `raw()` accessor.
@@ -410,6 +483,10 @@ fn recv_timeout_raw(
 ) -> Result<ClientNativeEvent, RecvTimeoutError> {
     consumer.raw().recv_timeout(timeout)
 }
+
+#[cfg(test)]
+#[path = "uploader_auth_tests.rs"]
+mod auth_tests;
 
 #[cfg(test)]
 #[path = "uploader_endpoint_tests.rs"]

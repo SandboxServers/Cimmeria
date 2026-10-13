@@ -4,12 +4,14 @@
 //!
 //! The launcher writes this file to
 //! `<install_dir>/Binaries/sessions/current-session.json` at session
-//! start (see `crates/launcher-core/src/telemetry/session.rs`). The DLL
-//! reads it during bootstrap, holds onto the relevant fields for
-//! the uploader thread's lifetime, and never re-reads the file in
-//! Phase 2 — the uploader runs until process exit. Token expiry
-//! and re-read on 401 land in Phase 3 (see
-//! `crate::uploader` failure-mode docs).
+//! start (see `crates/launcher-core/src/telemetry/session.rs`); the lab
+//! supervisor writes it once per launch. Neither rewrites it when a token
+//! is refreshed (as of 2026-10-12: the launchers keep the refreshed token
+//! in memory). The DLL reads it during bootstrap, and the uploader re-reads
+//! it (through [`load_session`]) after the server refuses the token and at
+//! each backoff deadline while uploads are paused, so a token written into
+//! the file later is picked up without a relaunch. See the failure-mode
+//! docs in `crate::uploader` and the retry rules in `crate::upload_gate`.
 //!
 //! # How the DLL finds the file
 //!
@@ -27,10 +29,10 @@
 //! The launcher's [`crate::session::TelemetryBlock`] has more fields
 //! than the DLL strictly needs (chunk_max_bytes, flush_interval_ms,
 //! enabled, expires_at_ms). We deserialize the full block so a future
-//! field addition on the launcher side doesn't break the parse — but
-//! the DLL only reads `token`, `upload_endpoint`, and `enabled`
-//! today. The other fields are reserved for Phase 3+ when token
-//! rotation and adaptive flush-cadence land.
+//! field addition on the launcher side doesn't break the parse. The DLL
+//! reads `token`, `upload_endpoint`, `enabled`, `flush_interval_ms` and
+//! `expires_at_ms` (a token past it is never sent); `chunk_max_bytes` is
+//! not used.
 
 use std::collections::HashMap;
 use std::fs;
@@ -138,15 +140,17 @@ pub struct TelemetryBlock {
     pub enabled: bool,
     pub token: String,
     pub upload_endpoint: String,
-    /// Reserved for Phase 3 — when the DLL rotates the token at
-    /// 75% TTL elapsed (mirrors launcher policy). Today: read but
-    /// not acted on.
+    /// When `token` expires, in ms since the epoch; `0` = not stated. The
+    /// uploader never sends a token past it and waits for a re-read of the
+    /// file to bring a new one (the DLL does not mint or rotate tokens
+    /// itself; the launcher does).
     #[serde(default)]
     pub expires_at_ms: i64,
-    /// Reserved — see fn doc.
+    /// Not used by the DLL.
     #[serde(default)]
     pub chunk_max_bytes: u64,
-    /// Reserved — see fn doc.
+    /// The uploader's flush cadence, and the first backoff hold after a
+    /// failed POST; `0` = the default.
     #[serde(default)]
     pub flush_interval_ms: u64,
 }
