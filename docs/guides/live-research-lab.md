@@ -265,7 +265,7 @@ Supervisor (`cimmeria-lab` on the dev box: the [shared daemon](#the-shared-daemo
 | `lab_lease_acquire` / `_renew` / `_release` / `_status` | Take, extend, give back and inspect the one-driver lab lease. A refusal names the holder; `force` with a `reason` takes over. |
 | `lab_ensure_in_world` | One call from any state to in the world as a character: start, wait for the window and bridge, log in, play (create when `create` is given), finish the intro dialog, virtual focus. Returns at once when already there. See [Fewer calls](#fewer-calls-composites-and-compact-results). |
 | `client_batch` | Ordered read and probe steps in one call (`lua`, `mem_read`, `call_native`, `wait`, `player_state`, `window_text`) with `$id` references to earlier results. |
-| `client_ui_sequence` | One scripted UI step in one call: clicks, keys, typing, drags, window waits; reports the least native level used. |
+| `client_ui_sequence` | One scripted UI step in one call: clicks, keys, typing, drags, window waits; reports the least native level used. Clicks and edit-box focus refuse a point covered by another CEGUI window before sending input. |
 | `lab_client_start` / `_stop` / `_restart` | Own the SGW.exe lifecycle. `_stop` waits up to 10 s until the process and its window are gone, so a start right after it is not refused as "outside the lab". `exited: false` means the wait ran out (logged as a warning); the next start will refuse that client. |
 | `lab_client_status` | PID, uptime, heartbeat age, login state, crashes. |
 | `lab_login` | Log in with the client's own input (Escape through the intro movies, type the account and password, pick the server) and stop at character select. Credentials default to `lab-account.json`. See [Client flows](#client-flows). |

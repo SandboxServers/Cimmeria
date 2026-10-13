@@ -425,6 +425,7 @@ impl Supervisor {
             .await?;
         let rect = parse_widget_rect(window, &results_of(&v))?;
         let (x, y) = rect.centre();
+        let received_by = self.verify_click_target(window, x, y).await?;
         let placed = self.place_cursor(x, y).await?;
         let at = placed.at;
         // Give the UI a frame to register the hover before the press.
@@ -433,6 +434,7 @@ impl Supervisor {
         let mut out = placed.to_json();
         out["window"] = json!(window);
         out["clicked_at"] = json!([at.0, at.1]);
+        out["received_by"] = json!(received_by);
         Ok(out)
     }
 
