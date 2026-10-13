@@ -52,16 +52,12 @@ pub const EXIT_REFUSED: i32 = 2;
 /// Every MCP session gets a clone of `server`, and every clone shares one
 /// [`crate::supervisor::Supervisor`]: that sharing is the point of the daemon.
 pub fn build_router(server: LabServer, token: &str) -> axum::Router {
-    let atlas_path = crate::supervisor::livewire_atlas::LivewireAtlas::installed_path();
-    if atlas_path.is_file() {
-        match crate::supervisor::livewire_atlas::LivewireAtlas::load(&atlas_path) {
-            Ok(atlas) => tracing::info!(
-                libraries = atlas.libraries.len(),
-                goal_art = atlas.library("gGreenBlack1").is_some(),
-                "Livewire hit atlas loaded"
-            ),
-            Err(error) => tracing::warn!(%error, "Livewire hit atlas unavailable"),
-        }
+    if let Some(atlas) = server.livewire_atlas() {
+        tracing::info!(
+            libraries = atlas.libraries.len(),
+            goal_art = atlas.library("gGreenBlack1").is_some(),
+            "Livewire hit atlas loaded"
+        );
     }
     let server_for_status = server.clone();
     let started = Arc::new(status::Started {

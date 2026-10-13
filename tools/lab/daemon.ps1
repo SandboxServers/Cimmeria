@@ -116,7 +116,14 @@ $ErrorActionPreference = 'Stop'
 
 $TaskName = 'CimmeriaLabDaemon'
 $TokenVar = 'CIMMERIA_LAB_DAEMON_TOKEN'
-$State = Join-Path $env:LOCALAPPDATA 'cimmeria-lab'
+$installedRoot = Split-Path $PSScriptRoot -Parent
+$State = if ($env:CIMMERIA_LAB_HOME) {
+    $env:CIMMERIA_LAB_HOME
+} elseif ((Split-Path $PSScriptRoot -Leaf) -eq 'labd' -and (Test-Path (Join-Path $installedRoot 'labd.env'))) {
+    $installedRoot
+} else {
+    Join-Path $env:LOCALAPPDATA 'cimmeria-lab'
+}
 $Bin = Join-Path $State 'labd'
 $DaemonExe = Join-Path $Bin 'cimmeria-lab.exe'
 $EnvFile = Join-Path $State 'labd.env'
@@ -471,6 +478,7 @@ switch ($Command) {
         # The scheduled task's action. Restarts the daemon after a crash,
         # stops on a clean exit or a refusal (restarting cannot fix those).
         New-Item -ItemType Directory -Force $State | Out-Null
+        [Environment]::SetEnvironmentVariable('CIMMERIA_LAB_HOME', $State, 'Process')
         $token = Get-Token
         if ($token) { [Environment]::SetEnvironmentVariable($TokenVar, $token, 'Process') }
         # The server endpoint's token and URL live in the user environment

@@ -1,12 +1,37 @@
 //! Private, client-derived Livewire hit atlas loaded by the lab solver.
 
 use std::collections::BTreeMap;
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
 const ATLAS_VERSION: u8 = 1;
 const HIT_STEP: i32 = 5;
+const WIRE_BASES: &[&str] = &[
+    "gBlackGreen",
+    "gGreenBlack",
+    "gRedSilver",
+    "oBlack",
+    "oGreen",
+    "oRed",
+    "mBlackStripe",
+    "mOrangeStripe",
+    "mPurpleStripe",
+    "mYellowStripe",
+    "pBronze",
+    "pGray",
+    "pGreen",
+    "pRust",
+];
+const ELECTRODES: &[&str] = &[
+    "mGear",
+    "mMicroChip1",
+    "mMicroChip2",
+    "pLEDBlue",
+    "pLEDGreen",
+    "pLEDRed",
+];
 
 #[derive(Debug, Deserialize)]
 pub struct LivewireAtlas {
@@ -35,13 +60,30 @@ impl LivewireAtlas {
         Ok(atlas)
     }
 
-    /// Default cache written by `lab install`; override for a private client copy.
+    /// Cache written by `lab install`; honor its custom lab home.
     pub fn installed_path() -> PathBuf {
-        if let Some(path) = std::env::var_os("CIMMERIA_LIVEWIRE_ATLAS") {
+        Self::path_from(
+            std::env::var_os("CIMMERIA_LIVEWIRE_ATLAS"),
+            std::env::var_os("CIMMERIA_LAB_HOME"),
+            std::env::var_os("LOCALAPPDATA"),
+        )
+    }
+
+    fn path_from(
+        atlas: Option<OsString>,
+        home: Option<OsString>,
+        local: Option<OsString>,
+    ) -> PathBuf {
+        if let Some(path) = atlas {
             return PathBuf::from(path);
         }
-        let base = std::env::var_os("LOCALAPPDATA").map_or_else(PathBuf::new, PathBuf::from);
-        base.join("cimmeria-lab").join("livewire_atlas.json")
+        if let Some(home) = home {
+            return PathBuf::from(home).join("livewire_atlas.json");
+        }
+        local
+            .map_or_else(std::env::temp_dir, PathBuf::from)
+            .join("cimmeria-lab")
+            .join("livewire_atlas.json")
     }
 
     pub fn library(&self, name: &str) -> Option<&HitLibrary> {
@@ -63,8 +105,15 @@ impl LivewireAtlas {
         {
             return Err("Livewire atlas lacks a valid movie SHA-256".into());
         }
-        if self.libraries.is_empty() {
-            return Err("Livewire atlas has no libraries".into());
+        if self.libraries.len() != 62
+            || WIRE_BASES.iter().any(|base| {
+                (1..=4).any(|variant| !self.libraries.contains_key(&format!("{base}{variant}")))
+            })
+            || ELECTRODES
+                .iter()
+                .any(|name| !self.libraries.contains_key(*name))
+        {
+            return Err("Livewire atlas does not contain the expected 62 libraries".into());
         }
         for (name, library) in &self.libraries {
             let [x0, x1, y0, y1] = library.bounds_twips;
@@ -102,21 +151,58 @@ impl LivewireAtlas {
 mod tests {
     use super::*;
 
-    #[test]
-    fn loader_rejects_off_grid_points_and_bad_bounds() {
-        let mut atlas = LivewireAtlas {
-            version: 1,
-            step: 5,
-            movie_sha256: "a".repeat(64),
-            libraries: BTreeMap::from([(
-                "gGreenBlack1".into(),
+    fn complete_atlas() -> LivewireAtlas {
+        let mut libraries = BTreeMap::new();
+        for base in WIRE_BASES {
+            for variant in 1..=4 {
+                libraries.insert(
+                    format!("{base}{variant}"),
+                    HitLibrary {
+                        bounds_twips: [0.0, 100.0, 0.0, 100.0],
+                        points: vec![[0, 0]],
+                    },
+                );
+            }
+        }
+        for name in ELECTRODES {
+            libraries.insert(
+                (*name).into(),
                 HitLibrary {
                     bounds_twips: [0.0, 100.0, 0.0, 100.0],
                     points: vec![[0, 0]],
                 },
-            )]),
-        };
+            );
+        }
+        LivewireAtlas {
+            version: 1,
+            step: 5,
+            movie_sha256: "a".repeat(64),
+            libraries,
+        }
+    }
+
+    #[test]
+    fn loader_rejects_off_grid_points_and_bad_bounds() {
+        let mut atlas = complete_atlas();
         assert!(atlas.validate().is_ok());
+        let removed = atlas.libraries.remove("gGreenBlack2").unwrap();
+        assert!(atlas
+            .validate()
+            .unwrap_err()
+            .contains("expected 62 libraries"));
+        atlas.libraries.insert(
+            "unrelated".into(),
+            HitLibrary {
+                bounds_twips: [0.0, 100.0, 0.0, 100.0],
+                points: vec![[0, 0]],
+            },
+        );
+        assert!(atlas
+            .validate()
+            .unwrap_err()
+            .contains("expected 62 libraries"));
+        atlas.libraries.remove("unrelated");
+        atlas.libraries.insert("gGreenBlack2".into(), removed);
         atlas.libraries.get_mut("gGreenBlack1").unwrap().points[0] = [3, 0];
         assert!(atlas.validate().unwrap_err().contains("off the hit grid"));
         atlas.libraries.get_mut("gGreenBlack1").unwrap().points[0] = [0, 0];
@@ -136,5 +222,26 @@ mod tests {
         let atlas = LivewireAtlas::load(Path::new(&path)).unwrap();
         assert!(atlas.library("gGreenBlack1").is_some());
         assert!(atlas.library("pGray4").is_some());
+    }
+
+    #[test]
+    fn atlas_path_follows_custom_lab_home() {
+        let custom = PathBuf::from(r"C:\custom-lab");
+        assert_eq!(
+            LivewireAtlas::path_from(
+                None,
+                Some(custom.clone().into_os_string()),
+                Some(OsString::from(r"C:\default"))
+            ),
+            custom.join("livewire_atlas.json")
+        );
+        assert_eq!(
+            LivewireAtlas::path_from(
+                Some(OsString::from(r"C:\override\atlas.json")),
+                Some(custom.into_os_string()),
+                None
+            ),
+            PathBuf::from(r"C:\override\atlas.json")
+        );
     }
 }

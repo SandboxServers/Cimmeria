@@ -258,6 +258,7 @@ pub struct InputFocusArgs {
 #[derive(Clone)]
 pub struct LabServer {
     supervisor: Arc<Supervisor>,
+    livewire_atlas: Option<Arc<crate::supervisor::livewire_atlas::LivewireAtlas>>,
     timeline: Arc<Timeline>,
     tool_router: ToolRouter<LabServer>,
     instances: Arc<Instances>,
@@ -269,12 +270,25 @@ pub struct LabServer {
 #[tool_router(router = tool_router)]
 impl LabServer {
     pub fn new(supervisor: Arc<Supervisor>) -> Self {
+        let atlas_path = crate::supervisor::livewire_atlas::LivewireAtlas::installed_path();
+        let livewire_atlas = if atlas_path.is_file() {
+            match crate::supervisor::livewire_atlas::LivewireAtlas::load(&atlas_path) {
+                Ok(atlas) => Some(Arc::new(atlas)),
+                Err(error) => {
+                    tracing::warn!(%error, "Livewire hit atlas unavailable");
+                    None
+                }
+            }
+        } else {
+            None
+        };
         let hosted = Hosted {
             label: supervisor.label().to_string(),
             supervisor: supervisor.clone(),
         };
         Self {
             supervisor,
+            livewire_atlas,
             timeline: Arc::new(Timeline::from_env()),
             instances: Arc::new(Instances::new(vec![hosted])),
             routed_explicitly: false,
@@ -291,6 +305,11 @@ impl LabServer {
                 + Self::composite_router()
                 + Self::lease_router(),
         }
+    }
+
+    /// The locally generated hit atlas shared by every clone and routed instance.
+    pub fn livewire_atlas(&self) -> Option<&crate::supervisor::livewire_atlas::LivewireAtlas> {
+        self.livewire_atlas.as_deref()
     }
 
     // ---- Phase 1: probe tools (proxied + journaled) ------------------
@@ -613,5 +632,29 @@ impl LabServer {
             }
             Err(e) => Err(McpError::internal_error(e, None)),
         }
+    }
+}
+
+#[cfg(test)]
+mod livewire_atlas_tests {
+    use super::*;
+    use crate::supervisor::livewire_atlas::LivewireAtlas;
+
+    #[test]
+    fn atlas_survives_server_clone_for_solver_calls() {
+        let mut server = crate::daemon::http_tests::test_server();
+        let atlas = Arc::new(LivewireAtlas {
+            version: 1,
+            step: 5,
+            movie_sha256: "a".repeat(64),
+            libraries: Default::default(),
+        });
+        server.livewire_atlas = Some(atlas.clone());
+        let clone = server.clone();
+        assert!(Arc::ptr_eq(clone.livewire_atlas.as_ref().unwrap(), &atlas));
+        assert_eq!(
+            clone.livewire_atlas().unwrap().movie_sha256,
+            atlas.movie_sha256
+        );
     }
 }
