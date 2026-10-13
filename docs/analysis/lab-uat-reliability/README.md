@@ -16,7 +16,7 @@ The [packet contracts](work-packets.md) are the implementation brief.
 | Feedback metadata and relog welcome absent | [#1679](https://github.com/SandboxServers/Cimmeria/issues/1679) | LR-04a/b | Chat capture |
 | Dead player confuses ensure; logout crashes; status uptime and login focus mislead recovery | [#1680](https://github.com/SandboxServers/Cimmeria/issues/1680) | LR-05a..d | Session flows and status |
 | Targeting stalls on mouse-over read | [#1684](https://github.com/SandboxServers/Cimmeria/issues/1684) | LR-06 | World hover |
-| Ring map native click mismatch | [#1686](https://github.com/SandboxServers/Cimmeria/issues/1686) | LR-07 | Input provenance |
+| Ring map pass grading and native click mismatch | [#1686](https://github.com/SandboxServers/Cimmeria/issues/1686) | LR-00, LR-07 | Input provenance |
 | Livewire board and real-input solve | [#1685](https://github.com/SandboxServers/Cimmeria/issues/1685) | CA-MG-L0..L5 | [Cellblock autoplay](../cellblock-autoplay/README.md) |
 | Routable Cellblock movement | [#1689](https://github.com/SandboxServers/Cimmeria/issues/1689) | CA-AP-11 | [Cellblock autoplay](../cellblock-autoplay/README.md) |
 
@@ -45,6 +45,7 @@ live validation; an integration test alone leaves it UATPending.
 | Packet | Issue | Status | PR | Live proof |
 |---|---|---|---|---|
 | LR-01 prompt read | #1673 | Ready | | Hub prompt text/buttons |
+| LR-00 ring click grading | #1686 | Ready | | Honest N1/N3 and UAT tool lookup |
 | LR-02 covered click | #1676 | Ready | | Mail compose over inbox |
 | LR-03 bridge wait | #1677 | Ready | | World load through `client_wait_for` |
 | LR-04a feedback metadata | #1679 | Ready | | Channel 9 colour and tab |
@@ -54,7 +55,7 @@ live validation; an integration test alone leaves it UATPending.
 | LR-05c process uptime | #1680 | Ready | | Status across supervisor restart |
 | LR-05d login focus recovery | #1680 | BlockedDependency: LR-02 | | Covered login after crash |
 | LR-06 target timeout | #1684 | Ready | | Hostile target while in combat |
-| LR-07 native ring click | #1686 | BlockedDependency: native-input probe | | Fresh client mouse vs handler |
+| LR-07 native ring click | #1686 | BlockedDependency: LR-00 and native-input probe | | Fresh client mouse vs handler |
 | CA-MG-L0..L5 | #1685 | BlockedDependency: autoplay prerequisites | | Livewire N1 solve |
 | CA-AP-11 | #1689 | BlockedDependency: autoplay prerequisites | | Route to Mess Hall |
 

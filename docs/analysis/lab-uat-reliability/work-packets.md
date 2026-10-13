@@ -23,6 +23,27 @@ command. No packet changes protocol indices or the game client binary.
   `docs/guides/live-research-lab.md` or `docs/guides/automated-uat.md`, and
   records a concise finding in `.claude/agent-memory/main-session/`.
 
+## LR-00 — honest ring-click grading (#1686)
+
+**Own:** `crates/lab/src/supervisor/ui/world_map.rs`,
+`crates/lab/src/uat/tools.rs` and their tests; ring-click and UAT tool docs.
+Branch `lab-uat-reliability/lr-00-ring-grading`; worktree
+`lr-00-ring-grading`; commit `fix(lab): grade ring clicks by delivered input and effect`.
+
+The independent review of merged #1687 found three gaps. A successful
+`input_mouse` dispatch may have placed the cursor through Lua
+(`mouse.cursor_via`), yet `client_world_map_click` reports N1. A click that
+leaves the map open and has `allow_lua_fallback:false` still reports
+`native_pass:true`. And `client_world_map_click` is absent from the automated
+UAT tool registry, so specs cannot resolve `@world_map_click`. Carry actual
+input provenance into the click result. `native_pass` requires the native
+cursor path, delivered click, method 91 and map closure; a failed effect is
+never a pass. Register the tool and its tier/alias in the existing UAT
+capability table. Test Lua cursor placement, failed effect with fallback
+disabled, a proven native pass, and UAT name/alias resolution. A live packet
+tap is required before claiming an N1 UAT result. Test type: unit plus UAT
+tool registry test.
+
 ## LR-01 — typed prompt reader (#1673)
 
 **Own:** `crates/lab/src/supervisor/ui/typed.rs` and its tests; the typed
@@ -190,6 +211,8 @@ unresponsive `WorldIo::slots()` future and assert a timely error; preserve
 the existing verified-hover success case. Test type: async timeout unit.
 
 ## LR-07 — native ring-map input (#1686)
+
+**Dependency:** LR-00 merged.
 
 **Own:** `crates/lab/src/supervisor/ui/world_map.rs`, relevant input
 adapter, and their tests; map-click docs. Branch
