@@ -194,7 +194,7 @@ Statuses: Ready, Driving, Driven (report in), Verifying, Verified, Done (results
 | HP-P6 | p2 | U9, U10, U2b relog | 18 | HP-P1; run last on p2 | Ready |
 | HP-D1 | p3 | DP-U1, U2, U4 | 22 | none; may end BLOCKED | Verified 2026-10-13 (attempt 1): ground cast proven; U1 and U4 server-PASS, U2 shot void (pet in frame), retake in HP-D2 8.2 |
 | HP-D2 | p3 | DP-U3, U5, U8, DP-U2 retake | 28 | HP-D1 proved the ground cast; p2 pets lane idle (shared plaza) | Done 2026-10-13 (Sonnet takeover after three Haiku attempts): U3 PASS, U5 PARTIAL (wall NOT-RUN), U8 PARTIAL (no pistol: WrongWeaponType), U2 look PASS(visual); no product bug filed |
-| HP-D3 | p3 | DP-U6 | 26 | HP-D1; p2 pets lane idle (shared plaza, death site) | Verified 2026-10-13 (attempt 2): B and C PASS (`owner_gone`); A void (no death, the driver fell through the ground at the squad); rerun A only with `briefs/HP-D3-a.md` while the pets lane is idle |
+| HP-D3 | p3 | DP-U6 | 26 | HP-D1; p2 pets lane idle (shared plaza, death site) | Verified 2026-10-13 (attempt 2): B and C PASS (`owner_gone`); A void (no death, the driver fell through the ground at the squad); attempt 3 (2026-10-13 08:36-08:38Z): A void, the Microwave Emitter expired (`reason=expired`, path sweep, 08:38:10Z, 30 s after placement 08:37:39.9Z) 6.9 s before the player died (08:38:16.9Z; the walk plus the death took too long); rerun A only with a faster kill (`.spawnrandom 1376 3 3 1` next to the deployable, or cast later) while the pets lane is idle |
 
 ## Results
 
