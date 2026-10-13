@@ -27,3 +27,11 @@ the snapshot from `ready` to `running` and recorded `opendoor`; the ended
 session retained its outcome and event history. Staging directly on step 2115
 did not enable the door because that omits dialog chain 1015's interaction
 action, so use the normal Region2/dialog route for subsequent live checks.
+
+Final release-build lab check: the real SWF sent `login` and `opendoor`.
+The snapshot showed the outbound `fullgamestate`, `onPlayerJoinGame`,
+`onGameBegin`, `opendoor`, and `timerupdate` commands in sequence. Opening
+the door changed `timer_state` from 0 to 1 and made the goal wires clickable.
+The unsolved attempt emitted `failure` and retained `outcome: canceled` with
+the ordered event history after teardown. No wire was cut in this check;
+successful solving still needs the follow-on solver and native input work.
