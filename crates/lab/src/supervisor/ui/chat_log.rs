@@ -18,9 +18,11 @@
 //! chat window uses for that channel (`ChatMod.ChannelMap`,
 //! `channelColors`, `channel2tabs`).
 //!
-//! Lines shown before the ring was first installed are not captured; read
-//! `client_ui_state`'s chat tail for those. Centre-screen splash text does
-//! not go through the chat handler and is not in this log.
+//! Lines shown before the ring was first installed, or while a recreated
+//! chat window has not yet been re-subscribed, are not captured. The result
+//! reports that capture gap; the HUD tail is not used to synthesize lines.
+//! Centre-screen splash text does not go through the chat handler and is not
+//! in this log.
 
 use std::time::Instant;
 
@@ -190,6 +192,18 @@ pub fn store_cursor(name: &str) -> String {
     format!("chat_log:{name}")
 }
 
+/// Acknowledge only the gap this reader saw. A later rebind or a rebuilt Lua
+/// state has a different status token and must keep its own warning.
+fn acknowledge_gap_chunk(status: &str) -> String {
+    let token = serde_json::to_string(status).expect("chat install status is a string");
+    format!(
+        "local L = rawget(_G, 'CimmeriaLab')\n\
+         local acked = type(L) == 'table' and L.chat_install_status == {token}\n\
+         if acked then L.chat_gap = nil end\n\
+         return __jenc({{ acked = acked }})"
+    )
+}
+
 /// A caller-facing warning when the chat capture was not already running, so
 /// lines from before this call may be missing from the log.
 pub fn capture_warning(install: &[(String, String)]) -> Option<&'static str> {
@@ -199,11 +213,20 @@ pub fn capture_warning(install: &[(String, String)]) -> Option<&'static str> {
         .map(|(_, s)| s.as_str())
     {
         Some("ok") => None,
-        Some(s) if s.starts_with("installed") => Some(
-            "the chat capture was installed during this call; lines shown before now are not in this log. Read client_ui_state's chat tail for them.",
+        Some(s) if s.starts_with("gap_installed@") || s == "installed" => Some(
+            "the chat hook was installed after the UI Lua state began; lines emitted before installation during world load, including the possible onClientReady welcome, are not in this log.",
+        ),
+        Some(s) if s.starts_with("gap_resubscribed@") || s == "resubscribed" => Some(
+            "the chat window was recreated and re-subscribed; lines emitted between recreation and re-subscription may be missing from this log.",
         ),
         Some("missing") => Some(
             "the chat window is not loaded (not in the world yet): nothing is being captured.",
+        ),
+        Some("missing_window") => Some(
+            "the chat module is loaded but its chat window is not available; nothing is being captured.",
+        ),
+        Some(s) if s.starts_with("failed:") => Some(
+            "the chat window could not be re-subscribed; see the chat entry in capture.lua_install for the Lua error.",
         ),
         _ => Some("the chat capture could not be read (see capture.lua_error)."),
     }
@@ -250,6 +273,17 @@ impl Supervisor {
         out["capture"] = rep.to_json();
         if let Some(w) = capture_warning(&rep.lua_install) {
             out["capture_warning"] = json!(w);
+        }
+        if !peek {
+            if let Some((_, status)) = rep
+                .lua_install
+                .iter()
+                .find(|(ring, status)| ring == "chat" && status.starts_with("gap_"))
+            {
+                if let Err(e) = self.lua_json(&acknowledge_gap_chunk(status)).await {
+                    out["capture_ack_error"] = json!(e);
+                }
+            }
         }
         if meta.is_null() {
             out["meta_error"] = json!("channel names, colours and tabs could not be read");
@@ -464,10 +498,18 @@ ChatMod = {
     fn capture_warning_names_a_late_or_absent_capture() {
         let s = |status: &str| vec![("chat".to_string(), status.to_string())];
         assert!(capture_warning(&s("ok")).is_none());
-        assert!(capture_warning(&s("installed"))
+        assert!(capture_warning(&s("gap_installed@epoch@1"))
             .unwrap()
-            .contains("installed during this call"));
-        assert!(capture_warning(&s("installed_no_resubscribe")).is_some());
+            .contains("onClientReady welcome"));
+        assert!(capture_warning(&s("gap_resubscribed@epoch@2"))
+            .unwrap()
+            .contains("between recreation and re-subscription"));
+        assert!(capture_warning(&s("failed: subscribe refused"))
+            .unwrap()
+            .contains("capture.lua_install"));
+        assert!(capture_warning(&s("missing_window"))
+            .unwrap()
+            .contains("module is loaded"));
         assert!(capture_warning(&s("missing"))
             .unwrap()
             .contains("not loaded"));
@@ -475,3 +517,7 @@ ChatMod = {
         assert!(capture_warning(&[]).unwrap().contains("could not be read"));
     }
 }
+
+#[cfg(test)]
+#[path = "chat_log_relog_tests.rs"]
+mod relog_tests;
