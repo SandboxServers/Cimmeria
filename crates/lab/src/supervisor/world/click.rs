@@ -497,10 +497,12 @@ pub async fn run<W: WorldIo>(
         }
     }
     steps.record("hover", t_hover, io.now_ms(), hover_detail.clone());
-    if req.point.is_some() && entity.is_some() && !matches!(chosen, Some((_, Hover::Matched))) {
-        return Err(steps.fail_with(io.now_ms(), "hover",
-            "point matched an entity but its ID was not verified under the cursor; target is occluded",
-            json!({ "candidate_ids": [entity.unwrap()], "hover": hover_detail })));
+    if req.point.is_some() && !matches!(chosen, Some((_, Hover::Matched))) {
+        if let Some(id) = entity {
+            return Err(steps.fail_with(io.now_ms(), "hover",
+                "point matched an entity but its ID was not verified under the cursor; target is occluded",
+                json!({ "candidate_ids": [id], "hover": hover_detail })));
+        }
     }
     let Some((pixel, hover)) = chosen else {
         return Err(steps.fail_with(
