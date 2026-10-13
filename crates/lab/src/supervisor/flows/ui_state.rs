@@ -2,7 +2,10 @@
 //! the flows share (result extraction, condition polling, the screen
 //! summary attached to flow errors).
 
-use std::time::{Duration, Instant};
+use std::{
+    future::Future,
+    time::{Duration, Instant},
+};
 
 use serde_json::{json, Map, Value};
 
@@ -243,7 +246,7 @@ impl Supervisor {
     }
 
     /// Poll `cond` every `poll` until it holds, `fail` yields a value, or
-    /// `timeout` passes. Bridge failures end the wait with `Err`.
+    /// `timeout` passes. Bridge failures are retried until the deadline.
     pub async fn poll_until(
         &self,
         cond: &str,
@@ -251,21 +254,40 @@ impl Supervisor {
         timeout: Duration,
         poll: Duration,
     ) -> Result<WaitOutcome, String> {
-        let t0 = Instant::now();
         let chunk = poll_chunk(cond, fail);
-        let mut polls = 0u32;
-        let mut last_error = None;
-        loop {
-            polls += 1;
-            let p = parse_poll(&self.lua_results(&chunk).await?)?;
-            let done =
-                |met: bool, fail_text: Option<String>, last_error: Option<String>| WaitOutcome {
-                    met,
-                    elapsed_ms: t0.elapsed().as_millis() as u64,
-                    polls,
-                    last_error,
-                    fail_text,
-                };
+        poll_until_with(timeout, poll, || self.lua_results(&chunk)).await
+    }
+}
+
+async fn poll_until_with<F, Fut>(
+    timeout: Duration,
+    poll: Duration,
+    mut read: F,
+) -> Result<WaitOutcome, String>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<Vec<String>, String>>,
+{
+    let t0 = Instant::now();
+    let mut polls = 0u32;
+    let mut last_error = None;
+    loop {
+        polls += 1;
+        let p = match read().await {
+            Ok(results) => Some(parse_poll(&results)?),
+            Err(error) => {
+                last_error = Some(error);
+                None
+            }
+        };
+        let done = |met: bool, fail_text: Option<String>, last_error: Option<String>| WaitOutcome {
+            met,
+            elapsed_ms: t0.elapsed().as_millis() as u64,
+            polls,
+            last_error,
+            fail_text,
+        };
+        if let Some(p) = p {
             if p.met {
                 return Ok(done(true, None, None));
             }
@@ -275,13 +297,15 @@ impl Supervisor {
             if p.fail.is_some() {
                 return Ok(done(false, p.fail, last_error));
             }
-            if t0.elapsed() >= timeout {
-                return Ok(done(false, None, last_error));
-            }
-            tokio::time::sleep(poll).await;
         }
+        if t0.elapsed() >= timeout {
+            return Ok(done(false, None, last_error));
+        }
+        tokio::time::sleep(poll.min(timeout.saturating_sub(t0.elapsed()))).await;
     }
+}
 
+impl Supervisor {
     /// `client_wait_for`.
     pub async fn wait_for(
         &self,
@@ -319,9 +343,58 @@ impl Supervisor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::VecDeque;
 
     fn s(v: &[&str]) -> Vec<String> {
         v.iter().map(|x| x.to_string()).collect()
+    }
+
+    #[tokio::test]
+    async fn poll_retries_bridge_errors_until_condition_is_met() {
+        let mut sequence = VecDeque::from([
+            Err("bridge unavailable".to_string()),
+            Err("bridge still unavailable".to_string()),
+            Ok(s(&["true", "", ""])),
+        ]);
+        let result = poll_until_with(Duration::from_secs(1), Duration::from_millis(1), || {
+            std::future::ready(sequence.pop_front().expect("poll sequence exhausted"))
+        })
+        .await
+        .unwrap();
+
+        assert!(result.met);
+        assert_eq!(result.polls, 3);
+        assert_eq!(result.last_error, None);
+    }
+
+    #[tokio::test]
+    async fn poll_returns_last_bridge_error_at_deadline() {
+        let mut polls = 0;
+        let result = poll_until_with(Duration::from_millis(12), Duration::from_millis(4), || {
+            polls += 1;
+            std::future::ready(Err("bridge unavailable".to_string()))
+        })
+        .await
+        .unwrap();
+
+        assert!(!result.met);
+        assert_eq!(result.last_error.as_deref(), Some("bridge unavailable"));
+        assert_eq!(result.polls as usize, polls);
+        assert!(result.polls >= 2);
+        assert!(result.elapsed_ms >= 12);
+    }
+
+    #[tokio::test]
+    async fn poll_preserves_explicit_condition_failure() {
+        let result = poll_until_with(Duration::from_secs(1), Duration::from_millis(1), || {
+            std::future::ready(Ok(s(&["false", "", "Login Failed"])))
+        })
+        .await
+        .unwrap();
+
+        assert!(!result.met);
+        assert_eq!(result.fail_text.as_deref(), Some("Login Failed"));
+        assert_eq!(result.polls, 1);
     }
 
     #[test]

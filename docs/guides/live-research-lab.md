@@ -273,7 +273,7 @@ Supervisor (`cimmeria-lab` on the dev box: the [shared daemon](#the-shared-daemo
 | `lab_play_character` / `lab_finish_dialog` / `lab_logout` | Enter the world (cutscene skipped), finish the open dialog with the green checkmark, `/logout` back to character select. |
 | `lab_disconnect` | From character select, click Back: the client sends the account `logOff` and shows the login screen. Already at the login screen is not an error. Leased. |
 | `client_ui_state` | One read: visible top-level windows, open dialog (title, text, buttons), prompts, mission tracker, chat tail. |
-| `client_wait_for` | Poll a Lua boolean expression until it holds or times out (`met: false` on timeout). |
+| `client_wait_for` | Poll a Lua boolean expression until it holds or times out (`met: false` on timeout). Transient bridge read errors are retried at the normal poll interval; a deadline result reports the last bridge error, elapsed time and poll count. |
 | `client_wait_event` | Wait for a client event matching a predicate (kind, name, entity id, text, fields; globs) or a window becoming visible, through a named persistent cursor. `arm: true` marks now. A timeout is `met: false`. See [Abilities, combat and event waits](#abilities-combat-and-event-waits). |
 | `client_hotbar` | The action bar: each button's action (ability or item id, name, quantity), cooldown, and both key bindings with the lab key that presses them. |
 | `client_use_ability` | Fire an ability by id or name like a player (bound key, button click, or the Ability window), then report what came back: sent, cast started, effect applied, refused, feedback text, cooldown. |
