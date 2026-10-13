@@ -205,7 +205,7 @@ pub fn dialog_probe_chunk() -> String {
 }
 
 /// Done (the green checkmark) wins; Accept only when asked; otherwise page
-/// with Next. Never the close X: it sends choice -1, not a finish.
+/// with Next. The caller uses the close X only when Done leaves the dialog open.
 pub fn plan_dialog(r: &[String], accept: bool) -> DialogAction {
     let v = |i: usize| r.get(i).map(String::as_str) == Some("true");
     if !v(0) {

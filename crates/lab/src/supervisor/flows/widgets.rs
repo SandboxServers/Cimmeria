@@ -33,7 +33,7 @@ pub const DIALOG_WIN: &str = "DialogWin";
 pub const DIALOG_NEXT: &str = "Dialog_NextButton";
 pub const DIALOG_DONE: &str = "Dialog_DoneButton";
 pub const DIALOG_ACCEPT: &str = "Dialog_AcceptButton";
-pub const DIALOG_CLOSE: &str = "DialogWin/DialogWin__auto_closebutton__";
+pub const DIALOG_CLOSE: &str = "DialogWin__auto_closebutton__";
 pub const MOVIE_WIN: &str = "MoviePlayerWin";
 
 /// Every button a dialog can show (`Core/Dialog/Dialog.lua`), reported by
