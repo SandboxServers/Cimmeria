@@ -52,7 +52,7 @@ Replace `LINE ONE` etc. with the exact lines the step gives. This submits each l
 
 **DIALOG - close an orphan dialog.** `client_batch` Lua `if DialogWin ~= nil and DialogWin:isVisible() then DialogMod.onDialogDoneClicked(DialogWin, DialogWin) return 'closed' end return 'none'`. A tutorial window on top: `client_window_click {"lease_id":L,"target":"TutorialWin__auto_closebutton__"}`.
 
-**PROMPT - find and dismiss a modal prompt.** `client_batch` Lua `for i=1,6 do local w=_G['Prompt'..i..'_PromptWin'] if w and w:isVisible() then return 'Prompt'..i end end return 'none'` -> if `PromptN`, read its text with `client_window_read {"lease_id":L,"kind":"prompt"}` if it works (else skip), then press its first button: `client_window_click {"lease_id":L,"target":"PromptN_Button1"}`; repeat the find until it answers `none`.
+**PROMPT - find and dismiss a modal prompt.** Read visible prompts with `client_window_read {"lease_id":L,"kind":"prompt"}`. If `state.prompts` is non-empty, read its title and message, then click the first enabled returned button using that button's `window` name; repeat the read until `state.prompts` is empty. Never guess a button name.
 
 **BUG - a timeline bookmark.** A step that says `BUG <text>` is the CHATX line `.bug HPU HP-M3 <text>`. The coordinator reads these on the server to find your row timing. They are not optional.
 
@@ -77,9 +77,9 @@ HDR = `{"op":"lua","id":"hdr","chunk":"local n=mailGetHeaderCount() local t={} f
 **5.3 (1 call).** SHOT, label `M3-cod-return-read`.
 **5.4 (1 call).** Real click on Return: `client_ui_sequence {"lease_id":L,"actions":[{"do":"click","window":"GateMailRead_ReturnMessageButton"},{"do":"wait","ms":1500}]}`.
 **5.5 (1 call).** PROMPT (find the visible prompt). SHOT, label `M3-return-prompt`, in the SAME turn as the find (two tool calls at once). Then read the prompt text with `client_ui_state {"lease_id":L}` only if the find answered `none`.
-**5.6 (1 call).** Confirm: `client_window_click {"lease_id":L,"target":"Prompt<N>_Button1"}` (N from the find; Button1 is the Yes button). If the prompt had two buttons and you are unsure, SHOT first and record the label.
+**5.6 (1 call).** Read `client_window_read {"lease_id":L,"kind":"prompt"}`, choose the visible button whose returned label is `Yes`, and click its returned `window` name. If the label is unclear, SHOT first and record it.
 **5.7 (1 call).** After 2500 ms: `client_batch` wait 2500, HDR, UTC. Expected: the returned mail is listed again (it comes back to you because you sent it); its COD is now 0 and its item is still there. Record the headers and whether Id R5ID still exists.
-**5.8 (1 call).** Try to return it a second time: Lua `mailReadMessage(<id of the returned mail>) return 'read'`, then a real click on `GateMailRead_ReturnMessageButton` (one `client_ui_sequence`, wait 1500), then PROMPT find; if a prompt shows, confirm Button1. Then READ `{"cursor":"m3a","channel":"Feedback","max":15}`. Expected: it cannot be returned again; record every line verbatim.
+**5.8 (1 call).** Try to return it a second time: Lua `mailReadMessage(<id of the returned mail>) return 'read'`, then a real click on `GateMailRead_ReturnMessageButton` (one `client_ui_sequence`, wait 1500), then use the PROMPT macro to read and dismiss any visible prompt by its returned button `window` name. Then READ `{"cursor":"m3a","channel":"Feedback","max":15}`. Expected: it cannot be returned again; record every line verbatim.
 
 ### ROW 6 - GM `.mailbox` and `.mail_expire`
 

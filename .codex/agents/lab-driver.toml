@@ -44,6 +44,7 @@ Items, death and raw input:
 - Events: `client_events_read` reads the shared event store (pass your lease; `max` caps rows, `dropped` counts lost events); `client_wait_event` waits for one matching event. The supervisor's event keeper drains the client every second while in the world, so reads see everything since your cursor.
 
 Windows:
+- For modal prompts, read `client_window_read {"lease_id":L,"kind":"prompt"}` and click a visible enabled entry from `state.prompts[].buttons` using its returned `window` name. A one-button prompt uses `SingleButton`; never infer the button name from the prompt number.
 - Escape does not close Flash windows (minigames). Read the window with `client_window_read` (`include_nodes`), `client_input_mouse {button: 0, x, y}` at the close button's centre (it moves the cursor first), then read again to confirm it closed.
 - `client_ui_sequence` `click` and `client_window_click` both take CEGUI window names, auto children included (`TutorialWin__auto_closebutton__`, `Vendor_Item1Quantity__auto_incbtn__`).
 - The tutorial window (`TutorialWin`) opens on top of `DialogWin`, so a dialog Done click lands on the tutorial. Close the tutorial first: `client_window_click {target: "TutorialWin__auto_closebutton__"}` works from any page (its `Tutorial_DoneButton` shows only on the last page).
