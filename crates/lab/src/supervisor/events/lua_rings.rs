@@ -177,18 +177,20 @@ if type(ChatMod) == "table" and type(ChatMod.onMessageReceived) == "function" th
     -- The module and wrapper can outlive the CEGUI window they were first
     -- attached to. Rebind to a recreated window, without subscribing twice
     -- when the same window remains alive across pumps.
+    L.chat_gap = had_host and "resubscribed" or "installed"
+    L.chat_gap_seq = (L.chat_gap_seq or 0) + 1
     if L.chat_host ~= nil then pcall(function() L.chat_host:unsubscribe(Events.MessageReceived) end) end
-    local oks = pcall(function() host:unsubscribe(Events.MessageReceived) host:subscribe(Events.MessageReceived, "ChatMod.onMessageReceived") end)
+    local oks, err = pcall(function() host:unsubscribe(Events.MessageReceived) host:subscribe(Events.MessageReceived, "ChatMod.onMessageReceived") end)
     if oks then
       L.chat_host = host
-      L.chat_gap = had_host and "resubscribed" or "installed"
     end
-    st_chat = oks and (had_host and "resubscribed" or "installed") or "installed_no_resubscribe"
+    st_chat = oks and (had_host and "resubscribed" or "installed") or "failed: " .. string.sub(clean(err), 1, 120)
   end
 end
-if L.chat_gap ~= nil then
-  st_chat = "gap_" .. L.chat_gap
-  if {max} > 0 then L.chat_gap = nil end
+if L.chat_gap ~= nil and (st_chat == "ok" or st_chat == "installed" or st_chat == "resubscribed") then
+  -- The token identifies this gap across unrelated pumps and Lua rebuilds.
+  -- Only the chat reader acknowledges the exact token after returning it.
+  st_chat = "gap_" .. L.chat_gap .. "@" .. L.epoch .. "@" .. tostring(L.chat_gap_seq)
 end
 L.chat_install_status = st_chat
 local function wname(w)
