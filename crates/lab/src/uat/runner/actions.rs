@@ -12,12 +12,21 @@ use crate::uat::evidence::{clip, ActionRecord, Attachment};
 use crate::uat::invoke::{ToolInvoker, ToolOutcome};
 use crate::uat::lab_commands;
 use crate::uat::spec::{ActionKind, ActionSpec, RowSpec};
-use crate::uat::tier::{self, Role};
+use crate::uat::tier::{self, Role, Tier};
 use crate::uat::tools::{STAND_TOOL, TARGET_PLAYER_TOOL};
 
 /// The press tool whose result carries the ability and the event seq the
 /// cast-id capture starts from.
 pub(crate) const USE_ABILITY_TOOL: &str = "client_use_ability";
+pub(crate) const RING_CLICK_TOOL: &str = "client_world_map_click";
+
+/// Hold a ring click below N1 until the row tap confirms method 91.
+pub(super) fn hold_ring_click(rec: &mut ActionRecord, name: &str) {
+    if name == RING_CLICK_TOOL && rec.tier == Some(Tier::N1) {
+        rec.tier = Some(Tier::N3);
+        rec.tier_source = Some("ring:awaiting_method91".into());
+    }
+}
 
 /// The tools a typed chat line expands into when `client_chat_send` is
 /// not routed: focus, Enter, type, Enter (the same keys `lab_logout`
@@ -282,6 +291,10 @@ impl<I: ToolInvoker> Runner<'_, I> {
                 rec.tier_source = Some(format!("reported:{word}"));
             }
         }
+        // Map closure only proves a client-side effect. Hold a would-be N1
+        // result at N3 until this row's server packet clause confirms method
+        // 91 reached the server. `packet_clauses` promotes the candidate.
+        hold_ring_click(rec, &name);
         // A press: find the cast it became, for `${cast_id}` (AB-L3).
         if name == USE_ABILITY_TOOL && out.ok && role != Role::Teardown {
             self.capture_cast_id(who, a.label.as_deref(), &out.json, ctx, rec)

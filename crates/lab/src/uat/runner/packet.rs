@@ -11,12 +11,13 @@
 use serde_json::{json, Value};
 
 use super::actions::subst;
+use super::actions::RING_CLICK_TOOL;
 use super::{now_ms, RowCtx, Runner};
 use crate::uat::clause::{describe, grade_packet};
 use crate::uat::evidence::{clip, ActionRecord, Attachment, ClauseResult, Verdict};
 use crate::uat::invoke::{ServerInvoker, ToolInvoker, ToolOutcome};
 use crate::uat::spec::{ExpectSpec, RowSpec, Source};
-use crate::uat::tier::Role;
+use crate::uat::tier::{Role, Tier};
 
 /// Ring size asked for: a row of casts and their fan-out fits; the
 /// server clamps it to its own ceiling (10 000).
@@ -334,13 +335,51 @@ impl<I: ToolInvoker> Runner<'_, I> {
     pub(crate) fn packet_clauses(
         &self,
         row: &RowSpec,
-        ctx: &RowCtx,
+        ctx: &mut RowCtx,
         results: &mut [Option<ClauseResult>],
     ) {
         for (i, c) in row.expect.iter().enumerate() {
             if c.source == Source::Packet && results[i].is_none() {
                 results[i] = Some(packet_clause(c, ctx));
             }
+        }
+        promote_ring_candidates(&mut ctx.actions, &row.expect, results);
+    }
+}
+
+/// The row tap is the only source of server proof. A closed map without a
+/// required, positive inbound method-91 clause remains an N3 observation.
+fn promote_ring_candidates(
+    actions: &mut [ActionRecord],
+    expects: &[ExpectSpec],
+    results: &[Option<ClauseResult>],
+) {
+    let proven = expects.iter().zip(results).any(|(c, r)| {
+        c.required
+            && c.source == Source::Packet
+            && c.direction.as_deref() == Some("to_server")
+            && c.message.as_deref() == Some("setRingTransporterDestination")
+            && c.min_rows.is_some_and(|n| n >= 1)
+            && r.as_ref().is_some_and(|r| {
+                r.verdict == Verdict::Pass
+                    && r.observed["matching_rows"].as_u64().is_some_and(|n| n >= 1)
+            })
+    });
+    if !proven {
+        return;
+    }
+    for a in actions {
+        if a.role == Role::Step
+            && a.client.is_none()
+            && a.tool.as_deref() == Some(RING_CLICK_TOOL)
+            && a.ok
+            && a.tier_source.as_deref() == Some("ring:awaiting_method91")
+            && a.result["native_candidate"] == json!(true)
+        {
+            a.tier = Some(Tier::N1);
+            a.tier_source = Some("ring:packet_method91".into());
+            a.result["packet_verified"] = json!(true);
+            a.result["native_pass"] = json!(true);
         }
     }
 }
@@ -402,6 +441,109 @@ fn packet_clause(c: &ExpectSpec, ctx: &RowCtx) -> ClauseResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::uat::evidence::RowResult;
+    use crate::uat::grade::grade;
+
+    fn ring_action() -> ActionRecord {
+        let mut action = ActionRecord {
+            index: 0,
+            role: Role::Step,
+            label: Some("pick".into()),
+            kind: "tool".into(),
+            requested: RING_CLICK_TOOL.into(),
+            tool: Some(RING_CLICK_TOOL.into()),
+            args: json!({ "x": 652, "y": 398 }),
+            tier: Some(Tier::N1),
+            tier_source: Some("tool".into()),
+            fallback_used: false,
+            host_started_ms: 0,
+            elapsed_ms: 1,
+            ok: true,
+            error: None,
+            result: json!({ "map_closed": true, "native_candidate": true, "native_pass": false }),
+            calls: vec![],
+            client: None,
+            optional: false,
+        };
+        super::super::actions::hold_ring_click(&mut action, RING_CLICK_TOOL);
+        action
+    }
+
+    fn ring_clause(min_rows: Option<u64>) -> ExpectSpec {
+        let min = min_rows.map_or(String::new(), |n| format!("min_rows = {n}\n"));
+        toml::from_str(&format!(
+            "id = 'ring'\ntext = 'destination sent'\nsource = 'packet'\nmessage = 'setRingTransporterDestination'\ndirection = 'to_server'\n{min}"
+        ))
+        .unwrap()
+    }
+
+    fn packet_result(verdict: Verdict, rows: u64) -> Option<ClauseResult> {
+        Some(ClauseResult {
+            id: "ring".into(),
+            text: "destination sent".into(),
+            source: Source::Packet,
+            required: true,
+            expected: "packet to_server setRingTransporterDestination".into(),
+            verdict,
+            observed: json!({ "matching_rows": rows }),
+            detail: None,
+            evaluated_ms: 0,
+            query: None,
+            evidence_refs: vec![],
+            client: None,
+        })
+    }
+
+    #[test]
+    fn closed_ring_map_without_packet_does_not_become_an_n1_pass() {
+        let mut actions = vec![ring_action()];
+        promote_ring_candidates(&mut actions, &[], &[]);
+        assert_eq!(actions[0].tier, Some(Tier::N3));
+        assert_eq!(actions[0].result["native_pass"], false);
+        assert_eq!(
+            grade(&[], &actions, &[], Tier::N1).result,
+            RowResult::NativeShortfall
+        );
+
+        promote_ring_candidates(
+            &mut actions,
+            &[ring_clause(Some(1))],
+            &[packet_result(Verdict::Fail, 0)],
+        );
+        assert_eq!(actions[0].tier, Some(Tier::N3));
+        assert_eq!(actions[0].result["native_pass"], false);
+
+        // A clause explicitly allowing zero rows cannot prove delivery.
+        promote_ring_candidates(
+            &mut actions,
+            &[ring_clause(Some(0))],
+            &[packet_result(Verdict::Pass, 0)],
+        );
+        assert_eq!(actions[0].tier, Some(Tier::N3));
+    }
+
+    #[test]
+    fn required_inbound_method_91_promotes_only_a_native_candidate() {
+        let clause = ring_clause(Some(1));
+        let result = packet_result(Verdict::Pass, 1);
+        let mut actions = vec![ring_action()];
+        promote_ring_candidates(
+            &mut actions,
+            std::slice::from_ref(&clause),
+            std::slice::from_ref(&result),
+        );
+        assert_eq!(actions[0].tier, Some(Tier::N1));
+        assert_eq!(actions[0].result["native_pass"], true);
+        assert_eq!(actions[0].result["packet_verified"], true);
+        assert_eq!(grade(&[], &actions, &[], Tier::N1).result, RowResult::Pass);
+
+        let mut closed_via_lua = ring_action();
+        closed_via_lua.result["native_candidate"] = json!(false);
+        let mut actions = vec![closed_via_lua];
+        promote_ring_candidates(&mut actions, &[clause], &[result]);
+        assert_eq!(actions[0].tier, Some(Tier::N3));
+        assert_eq!(actions[0].result["native_pass"], false);
+    }
 
     #[test]
     fn a_session_is_found_by_name_or_name_word() {
