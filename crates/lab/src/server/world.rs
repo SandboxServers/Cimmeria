@@ -52,7 +52,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Walk to a point (server metres by default, or space: client), an entity (entity_id or name; the goal follows it), through optional waypoints, with the movement keys: W held, turning with the client's bound turn keys (TurnLeft/TurnRight, Q/E by default), closed loop on the player's actor position every 100 ms. Learns the turn rate and key sign from the pawn's yaw, fails as did-not-turn when the keys do nothing, jumps/strafes out of snags, fails on a teleport, a snag it cannot clear, or the timeout (default 60 s) with the distance left. Always releases the keys."
+        description = "Walk to a point (server metres by default, or space: client), an entity (entity_id or name; the goal follows it), through optional waypoints, with the movement keys: W held, turning with the client's bound turn keys (TurnLeft/TurnRight, Q/E by default), closed loop on the player's actor position every 100 ms. Intermediate waypoints use a 0.5 m arrival radius by default (waypoint_arrival_m can tighten it); the final goal uses arrival_m. Learns the turn rate and key sign from the pawn's yaw, fails as did-not-turn when the keys do nothing, jumps/strafes out of snags, fails on a teleport, a snag it cannot clear, or the timeout (default 60 s) with the distance left. Always releases the keys."
     )]
     async fn client_move_to(
         &self,

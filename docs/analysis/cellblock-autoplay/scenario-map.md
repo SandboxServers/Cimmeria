@@ -99,7 +99,7 @@ Sources: `docs/guides/automated-uat.md`, `docs/guides/uat-specs/{castle-cellbloc
   - The spawnlist notes that it covers the stasis room "only in patches".
   - Preparation (Region10) and topside are disconnected components joined only by the rings.
 - **Doors** are client Kismet plus UE3 collision: sequence 10000 is the stasis door, 1749 the cell door. `move_to` stops at a closed door as "stuck", which doubles as a negative check.
-- **Room-to-room walking can use `server_nav_path`** for complete corridors in one loaded space: pass the returned `waypoints` to `client_move_to` and grade that walk as N1 only after the client reports `real_input` and the server confirms arrival. A `partial` result has no replayable waypoints. The Preparation-to-Mess-Hall leg crosses the ring transport boundary, so it must use the ring first; that transport receives its own UAT provenance. Recorded hand-authored legs and live corridor replay remain G-NAV1 work.
+- **Room-to-room walking can use `server_nav_path`** for complete corridors in one loaded space: pass the returned `waypoints` to `client_move_to` and grade that walk as N1 only after the client reports `real_input` and the server confirms arrival. A `partial` result or an end snap over 1.5 m from the requested destination has no replayable waypoints. Intermediate corners use a 0.5 m arrival radius by default; keep it tight at walls. The Preparation-to-Mess-Hall leg crosses the ring transport boundary, so it must use the ring first; that transport receives its own UAT provenance. Recorded hand-authored legs and live corridor replay remain G-NAV1 work.
 - **Room map** (point-set bounding boxes, server metres; use for waypoints and region assertions):
 
 | Region (set) | Room | x range | y | z range |

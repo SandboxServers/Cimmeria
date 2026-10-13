@@ -82,6 +82,9 @@ pub const DEFAULT_TIMEOUT_MS: u64 = 60_000;
 /// it). Inside the 3.5 to 4.5 m a right-click or a trainer window needs, so a
 /// target already in range is a no-op and a walk ends in range (#1660).
 pub const ENTITY_ARRIVAL_M: f64 = 4.0;
+/// Navmesh corridor corners need a tighter pass radius than the final goal:
+/// cutting one by 1.5 m can put the next straight leg through a wall.
+pub const WAYPOINT_ARRIVAL_M: f64 = 0.5;
 
 /// What a failed walk tells the caller to try. The walk is a straight line
 /// with no path-finding.
@@ -115,6 +118,10 @@ pub struct MoveRequest {
     /// Points to pass through first, in order (same space rules as `point`).
     #[serde(default)]
     pub waypoints: Vec<PointArg>,
+    /// Arrival radius for intermediate waypoints, metres (default 0.5).
+    /// The final point or entity still uses `arrival_m`.
+    #[serde(default)]
+    pub waypoint_arrival_m: Option<f64>,
     /// Arrival radius, metres (default 1.5 for a point, 4.0 for an entity).
     #[serde(default)]
     pub arrival_m: Option<f64>,
@@ -217,6 +224,16 @@ async fn walk<W: WorldIo>(
             "give entity_id, name, point or waypoints",
         ));
     }
+    if req
+        .waypoint_arrival_m
+        .is_some_and(|radius| !radius.is_finite() || !(0.2..=1.5).contains(&radius))
+    {
+        return Err(steps.fail(
+            io.now_ms(),
+            "arguments",
+            "waypoint_arrival_m must be between 0.2 and 1.5 metres",
+        ));
+    }
     io.ensure_focus()
         .await
         .map_err(|e| steps.fail(io.now_ms(), "focus", e))?;
@@ -232,7 +249,12 @@ async fn walk<W: WorldIo>(
     let mut legs: Vec<(Goal, f64)> = req
         .waypoints
         .iter()
-        .map(|w| (Goal::Point(w.to_client()), req.arrival_m.unwrap_or(1.5)))
+        .map(|w| {
+            (
+                Goal::Point(w.to_client()),
+                req.waypoint_arrival_m.unwrap_or(WAYPOINT_ARRIVAL_M),
+            )
+        })
         .collect();
     if let Some(p) = target.point {
         legs.push((Goal::Point(p.to_client()), req.arrival_m.unwrap_or(1.5)));

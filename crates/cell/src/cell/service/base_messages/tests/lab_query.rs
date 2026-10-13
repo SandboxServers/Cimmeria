@@ -115,6 +115,30 @@ async fn nav_path_only_exposes_complete_corridors() {
     };
     assert_ne!(status, "ok", "the ring boundary cannot be walked");
     assert!(waypoints.is_empty());
+
+    // Detour accepts a goal hovering within its loose end-poly search box;
+    // snapping it down nearly two metres would miss the requested point.
+    let LabQueryReply::NavPath {
+        status,
+        waypoints,
+        end_snap,
+        ..
+    } = query(
+        &mut mgr,
+        LabQuery::NavPath {
+            space_id,
+            from: start,
+            to: [start[0], start[1] + 1.9, start[2]],
+        },
+    )
+    .await
+    .unwrap()
+    else {
+        panic!("expected path")
+    };
+    assert_eq!(status, "end_snap_far");
+    assert!(end_snap.is_some());
+    assert!(waypoints.is_empty(), "off-mesh destination must not replay");
 }
 
 /// `EntityGet` returns a snapshot of the named entity; an unknown id yields a

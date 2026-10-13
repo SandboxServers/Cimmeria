@@ -16,6 +16,10 @@ use tokio::sync::oneshot;
 use crate::cell::messages::{LabQuery, LabQueryReply, LabQueryResult};
 use crate::cell::space_manager::SpaceManager;
 
+/// A destination snapped farther than the normal point arrival radius is a
+/// different destination, even if Detour found a complete polygon corridor.
+const MAX_END_SNAP_M: f32 = 1.5;
+
 /// Handle `BaseToCellMsg::LabQuery`. Synchronous and allocation-light: it reads
 /// the space manager and answers on the reply channel. Not `async` — there is
 /// nothing to await, and keeping it sync makes the read-only guarantee obvious.
@@ -52,13 +56,22 @@ pub(super) fn handle_lab_query(
                     let from = Vector3::new(from[0], from[1], from[2]);
                     let to = Vector3::new(to[0], to[1], to[2]);
                     let outcome = nav.find_path(&from, &to);
-                    let corners = if outcome.status == PathStatus::Ok {
+                    let end_snap_far = outcome.status == PathStatus::Ok
+                        && outcome
+                            .end_snap_dist(&to)
+                            .is_some_and(|distance| distance > MAX_END_SNAP_M);
+                    let corners = if outcome.status == PathStatus::Ok && !end_snap_far {
                         outcome.waypoints.iter().map(|p| [p.x, p.y, p.z]).collect()
                     } else {
                         Vec::new()
                     };
                     Ok(LabQueryReply::NavPath {
-                        status: outcome.status.label().into(),
+                        status: if end_snap_far {
+                            "end_snap_far"
+                        } else {
+                            outcome.status.label()
+                        }
+                        .into(),
                         waypoints: corners,
                         start_snap: outcome.start_snap.map(|p| [p.x, p.y, p.z]),
                         end_snap: outcome.end_snap.map(|p| [p.x, p.y, p.z]),
