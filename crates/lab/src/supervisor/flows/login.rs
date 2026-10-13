@@ -523,17 +523,41 @@ fn focus_client_window_once(hwnd: isize) -> Result<(), String> {
     #[cfg(windows)]
     {
         use windows_sys::Win32::Foundation::HWND;
+        use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
         use windows_sys::Win32::UI::WindowsAndMessaging::{
-            GetForegroundWindow, SetForegroundWindow,
+            GetForegroundWindow, GetWindowThreadProcessId, SetForegroundWindow,
         };
 
         let hwnd = hwnd as HWND;
         let mut is_foreground = || unsafe { GetForegroundWindow() == hwnd };
         let mut refocus = || unsafe { SetForegroundWindow(hwnd) != 0 };
-        if ensure_foreground_once(&mut is_foreground, &mut refocus) {
+        let mut refocus_from_foreground_thread = || unsafe {
+            let foreground = GetForegroundWindow();
+            if foreground.is_null() {
+                return false;
+            }
+            let foreground_thread = GetWindowThreadProcessId(foreground, std::ptr::null_mut());
+            let caller_thread = GetCurrentThreadId();
+            if foreground_thread == 0
+                || caller_thread == 0
+                || foreground_thread == caller_thread
+                || AttachThreadInput(caller_thread, foreground_thread, 1) == 0
+            {
+                return false;
+            }
+
+            let activated = SetForegroundWindow(hwnd) != 0;
+            let detached = AttachThreadInput(caller_thread, foreground_thread, 0) != 0;
+            activated && detached
+        };
+        if ensure_foreground_once(
+            &mut is_foreground,
+            &mut refocus,
+            &mut refocus_from_foreground_thread,
+        ) {
             Ok(())
         } else {
-            Err("client window is not foreground after one refocus attempt".into())
+            Err("client window is not foreground after direct and attached refocus attempts".into())
         }
     }
     #[cfg(not(windows))]
@@ -546,11 +570,17 @@ fn focus_client_window_once(hwnd: isize) -> Result<(), String> {
 fn ensure_foreground_once(
     is_foreground: &mut impl FnMut() -> bool,
     refocus: &mut impl FnMut() -> bool,
+    refocus_from_foreground_thread: &mut impl FnMut() -> bool,
 ) -> bool {
-    is_foreground() || {
-        let _ = refocus();
-        is_foreground()
+    if is_foreground() {
+        return true;
     }
+    let _ = refocus();
+    if is_foreground() {
+        return true;
+    }
+    let _ = refocus_from_foreground_thread();
+    is_foreground()
 }
 
 #[cfg(test)]

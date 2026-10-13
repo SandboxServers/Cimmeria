@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use super::*;
@@ -9,6 +9,7 @@ struct FakeCredentialIo<'a> {
     events: Vec<String>,
     typed_fields: Vec<&'static str>,
     cover_password: bool,
+    fail_account_focus: bool,
     account_mismatches: usize,
     retries: usize,
 }
@@ -20,6 +21,12 @@ impl LoginCredentialIo for FakeCredentialIo<'_> {
         _window: &'static str,
     ) -> Result<(), FlowError> {
         self.events.push(format!("prepare:{step}"));
+        if step == "account_focus" && self.fail_account_focus {
+            return Err(self.run.fail(
+                step,
+                "client window is not foreground after refocus attempts",
+            ));
+        }
         if step == "password_focus" && self.cover_password {
             return Err(self.run.fail(
                 step,
@@ -57,6 +64,7 @@ fn credential_io(sup: &Supervisor) -> FakeCredentialIo<'_> {
         events: Vec::new(),
         typed_fields: Vec::new(),
         cover_password: false,
+        fail_account_focus: false,
         account_mismatches: 0,
         retries: 0,
     }
@@ -136,14 +144,75 @@ fn start_screens_classify_in_priority_order() {
 fn foreground_loss_gets_one_refocus_and_is_rechecked() {
     let checks = AtomicUsize::new(0);
     let refocuses = AtomicUsize::new(0);
+    let attached_refocuses = AtomicUsize::new(0);
     let mut foreground = || checks.fetch_add(1, Ordering::SeqCst) == 1;
     let mut refocus = || {
         refocuses.fetch_add(1, Ordering::SeqCst);
         true
     };
-    assert!(ensure_foreground_once(&mut foreground, &mut refocus));
+    let mut attached_refocus = || {
+        attached_refocuses.fetch_add(1, Ordering::SeqCst);
+        false
+    };
+    assert!(ensure_foreground_once(
+        &mut foreground,
+        &mut refocus,
+        &mut attached_refocus
+    ));
     assert_eq!(checks.load(Ordering::SeqCst), 2);
     assert_eq!(refocuses.load(Ordering::SeqCst), 1);
+    assert_eq!(attached_refocuses.load(Ordering::SeqCst), 0);
+}
+
+#[test]
+fn failed_foreground_recovery_is_bounded_to_one_fallback() {
+    let checks = AtomicUsize::new(0);
+    let refocuses = AtomicUsize::new(0);
+    let attached_refocuses = AtomicUsize::new(0);
+    let mut foreground = || {
+        checks.fetch_add(1, Ordering::SeqCst);
+        false
+    };
+    let mut refocus = || {
+        refocuses.fetch_add(1, Ordering::SeqCst);
+        false
+    };
+    let mut attached_refocus = || {
+        attached_refocuses.fetch_add(1, Ordering::SeqCst);
+        false
+    };
+    assert!(!ensure_foreground_once(
+        &mut foreground,
+        &mut refocus,
+        &mut attached_refocus
+    ));
+    assert_eq!(checks.load(Ordering::SeqCst), 3);
+    assert_eq!(refocuses.load(Ordering::SeqCst), 1);
+    assert_eq!(attached_refocuses.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn attached_foreground_thread_recovers_when_direct_activation_is_denied() {
+    let active = AtomicBool::new(false);
+    let direct_attempts = AtomicUsize::new(0);
+    let attached_attempts = AtomicUsize::new(0);
+    let mut foreground = || active.load(Ordering::SeqCst);
+    let mut refocus = || {
+        direct_attempts.fetch_add(1, Ordering::SeqCst);
+        false
+    };
+    let mut attached_refocus = || {
+        attached_attempts.fetch_add(1, Ordering::SeqCst);
+        active.store(true, Ordering::SeqCst);
+        true
+    };
+    assert!(ensure_foreground_once(
+        &mut foreground,
+        &mut refocus,
+        &mut attached_refocus
+    ));
+    assert_eq!(direct_attempts.load(Ordering::SeqCst), 1);
+    assert_eq!(attached_attempts.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
@@ -167,6 +236,19 @@ async fn password_modal_after_account_readback_stops_before_password_input() {
         ]
     );
     assert_eq!(io.typed_fields, ["account"]);
+}
+
+#[tokio::test]
+async fn failed_foreground_recovery_stops_before_account_input() {
+    let sup = fake_bridge::supervisor(Arc::new(|_, _| Ok(Value::Null))).await;
+    let mut io = credential_io(&sup);
+    io.fail_account_focus = true;
+    let error = type_login_credentials(&mut io, "account", "secret")
+        .await
+        .unwrap_err();
+    assert!(error.message.contains("not foreground"), "{error:?}");
+    assert_eq!(io.events, ["prepare:account_focus"]);
+    assert!(io.typed_fields.is_empty());
 }
 
 #[tokio::test]
