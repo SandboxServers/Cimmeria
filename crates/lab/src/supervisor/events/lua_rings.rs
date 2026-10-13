@@ -151,7 +151,8 @@ if type(SCTMod) == "table" and type(SCTMod.onUnitCombat) == "function" then
   end
 end
 if type(ChatMod) == "table" and type(ChatMod.onMessageReceived) == "function" then
-  if ChatMod.onMessageReceived == L.chat_wrapper then st_chat = "ok" else
+  local wrapped = ChatMod.onMessageReceived == L.chat_wrapper
+  if not wrapped then
     local orig = ChatMod.onMessageReceived
     L.chat_wrapper = function(this, speaker, flags, channelId, channelName, text)
       if not L.chat_busy then
@@ -165,10 +166,31 @@ if type(ChatMod) == "table" and type(ChatMod.onMessageReceived) == "function" th
       return orig(this, speaker, flags, channelId, channelName, text)
     end
     ChatMod.onMessageReceived = L.chat_wrapper
-    local oks = pcall(function() Inst1ChatWin:unsubscribe(Events.MessageReceived) Inst1ChatWin:subscribe(Events.MessageReceived, "ChatMod.onMessageReceived") end)
-    st_chat = oks and "installed" or "installed_no_resubscribe"
+  end
+  local host = Inst1ChatWin
+  if host == nil then
+    st_chat = "missing_window"
+  elseif host == L.chat_host and wrapped then
+    st_chat = "ok"
+  else
+    local had_host = L.chat_host ~= nil
+    -- The module and wrapper can outlive the CEGUI window they were first
+    -- attached to. Rebind to a recreated window, without subscribing twice
+    -- when the same window remains alive across pumps.
+    if L.chat_host ~= nil then pcall(function() L.chat_host:unsubscribe(Events.MessageReceived) end) end
+    local oks = pcall(function() host:unsubscribe(Events.MessageReceived) host:subscribe(Events.MessageReceived, "ChatMod.onMessageReceived") end)
+    if oks then
+      L.chat_host = host
+      L.chat_gap = had_host and "resubscribed" or "installed"
+    end
+    st_chat = oks and (had_host and "resubscribed" or "installed") or "installed_no_resubscribe"
   end
 end
+if L.chat_gap ~= nil then
+  st_chat = "gap_" .. L.chat_gap
+  if {max} > 0 then L.chat_gap = nil end
+end
+L.chat_install_status = st_chat
 local function wname(w)
   if w == nil then return nil end
   local ok, n = pcall(function() return w:getName() end)

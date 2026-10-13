@@ -40,6 +40,8 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [reference_lab_hub_pass_lessons_2026_10_13.md](reference_lab_hub_pass_lessons_2026_10_13.md) — 2026-10-13 hub-pass lessons include the confirmed CEGUI top-child hit-test binding and covering-window refusal rule
 
 - [reference_lab_typed_prompt_reader_2026_10_13.md](reference_lab_typed_prompt_reader_2026_10_13.md) — Prompt1–5 typed reads expose visible button names; UAT briefs click returned names because SingleButton is the one-button OK control
+- [reference_lab_relog_chat_2026_10_13.md](reference_lab_relog_chat_2026_10_13.md) — chat capture rebinds to a recreated window without duplicate subscription; a persisted warning identifies lines that may have preceded re-arm during world load
+- [reference_lab_typed_prompt_reader_2026_10_13.md](reference_lab_typed_prompt_reader_2026_10_13.md) — Prompt1–5 typed reads use visible roots, message text, and visible buttons; SingleButton is the actual one-button OK control
 
 - [reference_lab_chat_metadata_2026_10_13.md](reference_lab_chat_metadata_2026_10_13.md) — stock channel 9 is Feedback; query built-in display metadata through `ChatMod.ChannelMap`, `channelColors` and `channel2tabs`, with no hard-coded color
 - [reference_lab_target_timeout_cellblock_route_2026_10_13.md](reference_lab_target_timeout_cellblock_route_2026_10_13.md) — target hover now bounds mouse-over reads and total hover retries; the reported Region8 route uses approximate pod-safe waypoints, still needs live validation

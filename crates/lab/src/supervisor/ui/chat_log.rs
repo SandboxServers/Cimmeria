@@ -18,9 +18,11 @@
 //! chat window uses for that channel (`ChatMod.ChannelMap`,
 //! `channelColors`, `channel2tabs`).
 //!
-//! Lines shown before the ring was first installed are not captured; read
-//! `client_ui_state`'s chat tail for those. Centre-screen splash text does
-//! not go through the chat handler and is not in this log.
+//! Lines shown before the ring was first installed, or while a recreated
+//! chat window has not yet been re-subscribed, are not captured. The result
+//! reports that capture gap; the HUD tail is not used to synthesize lines.
+//! Centre-screen splash text does not go through the chat handler and is not
+//! in this log.
 
 use std::time::Instant;
 
@@ -199,12 +201,19 @@ pub fn capture_warning(install: &[(String, String)]) -> Option<&'static str> {
         .map(|(_, s)| s.as_str())
     {
         Some("ok") => None,
-        Some(s) if s.starts_with("installed") => Some(
-            "the chat capture was installed during this call; lines shown before now are not in this log. Read client_ui_state's chat tail for them.",
+        Some("gap_installed") | Some("installed") => Some(
+            "the chat hook was installed after the UI Lua state began; lines emitted before installation during world load, including the possible onClientReady welcome, are not in this log.",
+        ),
+        Some("gap_resubscribed") | Some("resubscribed") => Some(
+            "the chat window was recreated and re-subscribed; lines emitted between recreation and re-subscription are not in this log.",
         ),
         Some("missing") => Some(
             "the chat window is not loaded (not in the world yet): nothing is being captured.",
         ),
+        Some("missing_window") => Some(
+            "the chat module is loaded but its chat window is not available; nothing is being captured.",
+        ),
+        Some(s) if s.starts_with("installed") => Some("the chat capture could not be re-subscribed (see capture.lua_error)."),
         _ => Some("the chat capture could not be read (see capture.lua_error)."),
     }
 }
@@ -464,14 +473,103 @@ ChatMod = {
     fn capture_warning_names_a_late_or_absent_capture() {
         let s = |status: &str| vec![("chat".to_string(), status.to_string())];
         assert!(capture_warning(&s("ok")).is_none());
-        assert!(capture_warning(&s("installed"))
+        assert!(capture_warning(&s("gap_installed"))
             .unwrap()
-            .contains("installed during this call"));
+            .contains("onClientReady welcome"));
+        assert!(capture_warning(&s("gap_resubscribed"))
+            .unwrap()
+            .contains("between recreation and re-subscription"));
         assert!(capture_warning(&s("installed_no_resubscribe")).is_some());
+        assert!(capture_warning(&s("missing_window"))
+            .unwrap()
+            .contains("module is loaded"));
         assert!(capture_warning(&s("missing"))
             .unwrap()
             .contains("not loaded"));
         // No install line at all (the Lua read failed).
         assert!(capture_warning(&[]).unwrap().contains("could not be read"));
+    }
+
+    #[test]
+    fn chat_capture_rebinds_once_when_the_window_is_recreated() {
+        use crate::supervisor::events::lua_rings;
+
+        let lua = mlua::Lua::new();
+        lua.load(
+            r#"
+Events = { MessageReceived = 1 }
+function getSystemTime() return 123 end
+local calls = 0
+ChatMod = { onMessageReceived = function() calls = calls + 1 end }
+local function window()
+  local w = { subscriptions = 0, active = false }
+  function w:unsubscribe(_) self.active = false end
+  function w:subscribe(_, _) self.subscriptions = self.subscriptions + 1; self.active = true end
+  function w:destroy() self.active = false end
+  function w:emit(speaker, flags, channel, name, text)
+    if self.active then ChatMod.onMessageReceived(self, speaker, flags, channel, name, text) end
+  end
+  return w
+end
+Inst1ChatWin = window()
+function make_window() return window() end
+function original_calls() return calls end
+"#,
+        )
+        .exec()
+        .unwrap();
+
+        let chunk = lua_rings::pump_chunk(0, 0, 0, 0);
+        let install = |lua: &mlua::Lua| {
+            // Run the exact production install block; the remainder reads
+            // unrelated combat and click state and is not needed here.
+            let end = chunk.find("local function wname").unwrap();
+            lua.load(&chunk[..end]).exec().unwrap();
+        };
+        install(&lua);
+        lua.load("Inst1ChatWin:emit('', 0, 9, 'Feedback', 'before logout')")
+            .exec()
+            .unwrap();
+        lua.load("Inst1ChatWin:destroy()").exec().unwrap();
+        lua.load("Inst1ChatWin = make_window()").exec().unwrap();
+        install(&lua);
+        lua.load("Inst1ChatWin:emit('', 0, 9, 'Feedback', 'Welcome after relog')")
+            .exec()
+            .unwrap();
+        install(&lua);
+        lua.load("Inst1ChatWin:emit('', 0, 9, 'Feedback', 'second line')")
+            .exec()
+            .unwrap();
+
+        let records: mlua::Table = lua
+            .globals()
+            .get::<mlua::Table>("CimmeriaLab")
+            .unwrap()
+            .get("chat")
+            .unwrap();
+        let items: mlua::Table = records.get("items").unwrap();
+        assert_eq!(items.raw_len(), 3);
+        assert_eq!(
+            items
+                .get::<mlua::Table>(2)
+                .unwrap()
+                .get::<String>("text")
+                .unwrap(),
+            "Welcome after relog"
+        );
+        let window: mlua::Table = lua.globals().get("Inst1ChatWin").unwrap();
+        assert_eq!(window.get::<u32>("subscriptions").unwrap(), 1);
+        let status: String = lua
+            .globals()
+            .get::<mlua::Table>("CimmeriaLab")
+            .unwrap()
+            .get("chat_install_status")
+            .unwrap();
+        assert_eq!(status, "gap_resubscribed");
+        assert_eq!(
+            lua.load("original_calls()").eval::<u32>().unwrap(),
+            3,
+            "the stock handler receives each line exactly once"
+        );
     }
 }
