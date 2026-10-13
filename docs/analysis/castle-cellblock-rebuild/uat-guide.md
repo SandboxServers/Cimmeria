@@ -609,7 +609,7 @@ Three of Col. Marsh's companion lines from dialog **5019** are now spoken as **c
 
 - Mission 680 completing again if you backtrack out of and into Region9.
 - Mission 681 completing after only one kill.
-- **Mission 681 appearing as a visible quest-log entry with a "Kill the Guards" step you are expected to track.** It is the only one of the six controller missions with `is_hidden = false` and `is_a_story = true`, unlike 682-686 which are all hidden. Record whether it shows in the log — a visible controller mission would be a UI defect worth its own issue.
+- **Mission 681 appearing as a visible quest-log entry with a "Kill the Guards" step you are expected to track.** All six controller missions are now seeded hidden (#1688); verify 681 has no tracker entry, mission toast, sound or objective popup when accepted or completed.
 - Killing both guards *without* flanking failing to complete 681. The flank objective **2725** never gates (D-CB05). Flank behaviour itself is scenario [T29](#t29--flank-objectives-2725-and-2731-c06).
 
 **Relog check:** relog mid-Mess-Hall. The kill counter (`messhall_kills`) is content-engine state; confirm that killing the remaining guard after a relog still completes 681.
@@ -685,14 +685,14 @@ Decision (@Cadacious, 2026-09-28). The playtest's second death sent `callForAid`
 **Steps (Mess Hall, objective 2725):**
 
 1. Walk into `Castle_Cellblock.Region9` so 681 is active.
-2. Open the mission log and note objective 2725 ("Take position behind the long table to flank the guards and negate their cover.") if 681 is visible to you.
+2. Confirm mission 681 is active in server evidence. This hidden controller and objective 2725 do not appear in the client mission log.
 3. Engage `MessHall_Guard1` / `MessHall_Guard2` from the front, near the long table, until a guard moves to cover.
 4. Move sideways so you are well off the guard's facing (roughly beyond 90 degrees from the direction the cover faces), staying alive.
 5. Watch the log and the client, then finish the fight.
 
 **Expected:**
 
-- When a guard gives up its cover because you flanked it, the objective **2725** ticks complete in the mission log (`onObjectiveUpdate`).
+- When a guard gives up its cover because you flanked it, server evidence shows objective **2725** completing (`Content: complete objective`, `mission_id=681 objective_id=2725 chain_id=1141`). The hidden mission sends no client objective update.
 - Mission 681 stays active until the second guard dies, then completes and accepts 682 as in T14.
 - Flanking again afterwards does nothing more (no repeat update).
 
@@ -704,7 +704,7 @@ Decision (@Cadacious, 2026-09-28). The playtest's second death sent `callForAid`
 
 **Steps (Hallway05, objective 2731):** repeat with mission 686 active in the Hallway05 area against `Hallway05_Guard1` / `Hallway05_Guard2`. Completing 686 must still fire the Straegis scene exactly as in T16.
 
-**Relog check:** relog with 2725 already complete: flanking again must not re-send it. Relog with it incomplete: it can still complete afterwards.
+**Relog check:** relog with 2725 already complete: flanking again must not complete it a second time in server evidence. Relog with it incomplete: it can still complete afterwards.
 
 **Server evidence:** `logs\content.log` for the `Content:` and `fire_player_flanked_npc` lines, `logs\server.log` for the NPC AI line (see [Before you start](#3-know-where-the-logs-are)): NPC AI target `npc_ai` line `cover_released_flanked`; `fire_player_flanked_npc: matched` with `npc_template=NID Guard`; then `Content: complete objective` with `mission_id=681 objective_id=2725 chain_id=1141` (or `686 / 2731 / 1142`).
 

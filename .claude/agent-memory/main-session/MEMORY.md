@@ -4,6 +4,8 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Open investigations
 
+- [project_cellblock_681_hidden_2026_10_13.md](project_cellblock_681_hidden_2026_10_13.md) — 2026-10-13 Cellblock 681 tracker leak: lab baseline, hidden seed fix, live-DB guard; local client acceptance passed
+
 - [reference_cellblock_praxis_start_2026_10_13.md](reference_cellblock_praxis_start_2026_10_13.md) — fresh Praxis Commando starts in Castle_CellBlock and takes the non-Jaffa tutorial branch; fresh SGU Commando starts in SGC_W1
 - [reference_lab_login_focus_2026_10_13.md](reference_lab_login_focus_2026_10_13.md) — lab_login foregrounds the client once and verifies login fields with CEGUI dispatch hit-testing before typing; covering modals stop input and credential values stay out of step logs
 
