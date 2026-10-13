@@ -1489,6 +1489,8 @@ dependencies = [
  "cimmeria-workspace-hack",
  "quick-xml 0.42.0",
  "rand 0.10.3",
+ "serde",
+ "serde_json",
  "socket2",
  "tokio",
  "tracing",

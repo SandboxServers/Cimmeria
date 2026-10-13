@@ -29,6 +29,8 @@ mod connection_span_tests;
 #[cfg(test)]
 mod listener_tests;
 #[cfg(test)]
+mod session_snapshot_tests;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod timeout_tests;

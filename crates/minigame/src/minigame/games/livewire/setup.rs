@@ -128,6 +128,7 @@ const WIRE_LOCATION_Y: &[f64] = &[391.0, 497.0, 577.0, 657.0, 783.0];
 impl LivewireGame {
     pub(super) fn init_game(&mut self) {
         self.initialized = true;
+        self.outcome = None;
         self.game_started = false;
         self.playfield_active = false;
         self.timer_state = 0;

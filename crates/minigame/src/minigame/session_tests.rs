@@ -230,7 +230,7 @@ async fn expects_peer_false_without_sessions() {
 // to `advance()` and these tests would have to sleep for real.
 
 /// Register a Livewire session for `entity_id` with no victory chains.
-async fn register_livewire(reg: &SessionRegistry, entity_id: u32) -> Option<String> {
+pub(super) async fn register_livewire(reg: &SessionRegistry, entity_id: u32) -> Option<String> {
     reg.register(
         entity_id,
         1,

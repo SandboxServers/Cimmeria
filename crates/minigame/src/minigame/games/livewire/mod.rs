@@ -16,7 +16,7 @@ use rand::SeedableRng;
 
 use crate::minigame::game::{GameOutput, MinigameInstance};
 use crate::minigame::protocol::SfsValue;
-use crate::minigame::session::MinigameSession;
+use crate::minigame::session::{BoardSnapshot, MinigameSession, WireSnapshot};
 use crate::sfs_vars;
 
 mod setup;
@@ -57,6 +57,7 @@ pub(super) struct LivewireGame {
 
     // State
     pub(super) initialized: bool,
+    pub(super) outcome: Option<&'static str>,
     pub(super) game_started: bool,
     pub(super) playfield_active: bool,
     pub(super) timer_state: u32, // 0=stopped, 1=countdown, 2=time-stop cheat, 3=time-reverse cheat
@@ -112,6 +113,7 @@ impl LivewireGame {
             instcc: -1,
             ca: [0; 5],
             initialized: false,
+            outcome: None,
             game_started: false,
             playfield_active: false,
             timer_state: 0,
@@ -133,6 +135,56 @@ impl LivewireGame {
 }
 
 impl MinigameInstance for LivewireGame {
+    fn board_snapshot(&self) -> Option<BoardSnapshot> {
+        if !self.initialized {
+            return None;
+        }
+        let mut wires: Vec<_> = self
+            .wires
+            .values()
+            .map(|w| WireSnapshot {
+                name: w.name.clone(),
+                lib: w.lib.clone(),
+                kind: match w.name.chars().next() {
+                    Some('g') => "goal",
+                    Some('p') => "playfield",
+                    Some('m') => "moving",
+                    Some('o') => "obstacle",
+                    _ => "unknown",
+                },
+                clickable: self.game_started
+                    && self.outcome.is_none()
+                    && !w.cut
+                    && (!w.name.starts_with('p') || self.playfield_active),
+                depth: w.depth,
+                x: w.x,
+                y: w.y,
+                cut: w.cut,
+            })
+            .collect();
+        wires.sort_by_key(|w| w.depth);
+        Some(BoardSnapshot {
+            entity_id: self.entity_id,
+            game_name: "Livewire".to_owned(),
+            state: if self.outcome.is_some() {
+                "finished"
+            } else if self.game_started {
+                "running"
+            } else {
+                "ready"
+            },
+            outcome: self.outcome,
+            difficulty: self.difficulty,
+            game_started: self.game_started,
+            timer_state: self.timer_state,
+            time_remaining: self.time_remaining,
+            goal_total: self.goal_total,
+            goal_cut: self.goal_cut,
+            wires,
+            events: Vec::new(),
+            events_dropped: 0,
+        })
+    }
     fn started(&mut self) -> Vec<GameOutput> {
         self.init_game();
         vec![GameOutput::Send(self.build_full_game_state())]
@@ -303,6 +355,7 @@ impl MinigameInstance for LivewireGame {
                 }));
 
                 if self.goal_cut == self.goal_total {
+                    self.outcome = Some("victory");
                     out.push(GameOutput::Send(sfs_vars! {
                         "_cmd" => SfsValue::String("victory".to_string()),
                     }));
@@ -363,6 +416,7 @@ impl MinigameInstance for LivewireGame {
         }
 
         if self.time_remaining <= 0.0 && self.timer_state >= 1 {
+            self.outcome = Some("defeat");
             self.timer_state = 0;
             self.game_started = false;
             return vec![
@@ -377,6 +431,7 @@ impl MinigameInstance for LivewireGame {
     }
 
     fn aborted(&mut self) -> Vec<GameOutput> {
+        self.outcome = Some("canceled");
         self.game_started = false;
         vec![GameOutput::Send(sfs_vars! {
             "_cmd" => SfsValue::String("failure".to_string()),

@@ -4,6 +4,7 @@
 //! handshake and claimed the registry entry, and hands back the
 //! [`SessionEnd`] that the closing row reports.
 
+use std::collections::{BTreeMap, HashMap};
 use std::time::Duration;
 
 use cimmeria_wire::cell::messages::CellToBaseMsg;
@@ -19,7 +20,7 @@ use super::result_dispatch::{
 use super::{EndReason, ReadState, SessionEnd};
 use crate::minigame::game::{GameOutput, MinigameInstance};
 use crate::minigame::games;
-use crate::minigame::protocol::{self, SfsMessage};
+use crate::minigame::protocol::{self, SfsMessage, SfsValue};
 use crate::minigame::session::{MinigameSession, SessionRegistry};
 
 /// A session's socket, which stops writing after the first failed send.
@@ -49,6 +50,71 @@ impl Outbound {
         self.broken = sent.is_err();
         sent
     }
+}
+
+/// Keep the lab tap small and free of login credentials or arbitrary SWF data.
+fn tap_params(vars: &HashMap<String, SfsValue>) -> BTreeMap<String, serde_json::Value> {
+    [
+        "wirename",
+        "timeRemaining",
+        "timerState",
+        "countdownRate",
+        "PlayerId",
+    ]
+    .into_iter()
+    .filter_map(|key| {
+        let value = match vars.get(key)? {
+            SfsValue::String(s) => serde_json::Value::String(s.chars().take(64).collect()),
+            SfsValue::Number(n) => serde_json::Number::from_f64(*n)?.into(),
+            SfsValue::Bool(b) => serde_json::Value::Bool(*b),
+            SfsValue::Object(_) => return None,
+        };
+        Some((key.to_owned(), value))
+    })
+    .collect()
+}
+
+async fn send_extension(
+    out: &mut Outbound,
+    registry: &SessionRegistry,
+    session: &MinigameSession,
+    vars: &HashMap<String, SfsValue>,
+) -> Result<(), ()> {
+    out.send(&protocol::encode_extension(vars)).await?;
+    let cmd = vars
+        .get("_cmd")
+        .and_then(SfsValue::as_str)
+        .unwrap_or("extension");
+    registry
+        .record_traffic(
+            session.entity_id,
+            &session.ticket,
+            "out",
+            cmd,
+            tap_params(vars),
+        )
+        .await;
+    Ok(())
+}
+
+async fn send_named(
+    out: &mut Outbound,
+    registry: &SessionRegistry,
+    session: &MinigameSession,
+    msg: &str,
+    cmd: &str,
+) -> Result<(), ()> {
+    out.send(msg).await?;
+    registry
+        .record_traffic(
+            session.entity_id,
+            &session.ticket,
+            "out",
+            cmd,
+            BTreeMap::new(),
+        )
+        .await;
+    Ok(())
 }
 
 /// Drive one authenticated session: room join, game loop, teardown.
@@ -108,7 +174,10 @@ pub(super) async fn run_session(
          <rm id='{room_id}' priv='0' temp='0' game='1' ucnt='1' maxu='1' scnt='0' maxs='100'>\
          <n><![CDATA[{game_name}-{room_id}]]></n></rm></body></msg>"
         );
-        if out.send(&rm_list).await.is_err() {
+        if send_named(&mut out, registry, &session, &rm_list, "rmList")
+            .await
+            .is_err()
+        {
             break 'session;
         }
 
@@ -116,7 +185,10 @@ pub(super) async fn run_session(
         let login_ok = protocol::encode_extension_raw(
             "<var n='id' t='n'>999</var><var n='_cmd' t='s'>loginSucceeded</var>",
         );
-        if out.send(&login_ok).await.is_err() {
+        if send_named(&mut out, registry, &session, &login_ok, "loginSucceeded")
+            .await
+            .is_err()
+        {
             break 'session;
         }
 
@@ -149,23 +221,36 @@ pub(super) async fn run_session(
             session.player_level,
             session.intelligence,
         );
-        if out.send(&join_ok).await.is_err() {
+        if send_named(&mut out, registry, &session, &join_ok, "joinOK")
+            .await
+            .is_err()
+        {
             break 'session;
         }
 
         // uCount
         let u_count =
             format!("<msg t='sys'><body action='uCount' r='{room_id}' u='1' s='0'></body></msg>");
-        if out.send(&u_count).await.is_err() {
+        if send_named(&mut out, registry, &session, &u_count, "uCount")
+            .await
+            .is_err()
+        {
             break 'session;
         }
 
         // Start the game — call started() on the instance
         let outputs = game.started();
+        if let Some(board) = game.board_snapshot() {
+            registry
+                .publish_board(entity_id, &session.ticket, board)
+                .await;
+        }
         for output in &outputs {
             if let GameOutput::Send(vars) = output {
-                let msg = protocol::encode_extension(vars);
-                if out.send(&msg).await.is_err() {
+                if send_extension(&mut out, registry, &session, vars)
+                    .await
+                    .is_err()
+                {
                     break 'session;
                 }
             }
@@ -175,13 +260,19 @@ pub(super) async fn run_session(
         let join_game = protocol::encode_extension_raw(&format!(
             "<var n='_cmd' t='s'>onPlayerJoinGame</var><var n='PlayerId' t='s'>{user_id}</var>"
         ));
-        if out.send(&join_game).await.is_err() {
+        if send_named(&mut out, registry, &session, &join_game, "onPlayerJoinGame")
+            .await
+            .is_err()
+        {
             break 'session;
         }
 
         // onGameBegin
         let game_begin = protocol::encode_extension_raw("<var n='_cmd' t='s'>onGameBegin</var>");
-        if out.send(&game_begin).await.is_err() {
+        if send_named(&mut out, registry, &session, &game_begin, "onGameBegin")
+            .await
+            .is_err()
+        {
             break 'session;
         }
 
@@ -223,12 +314,15 @@ pub(super) async fn run_session(
                             let parsed = protocol::parse_message(&msg);
                             match parsed {
                                 Ok(SfsMessage::ExtensionRequest { cmd, params }) => {
+                                    registry.record_traffic(entity_id, &session.ticket, "in", &cmd, tap_params(&params)).await;
                                     let outputs = game.message(&cmd, &params);
+                                    if let Some(board) = game.board_snapshot() {
+                                        registry.publish_board(entity_id, &session.ticket, board).await;
+                                    }
                                     for output in outputs {
                                         match output {
                                             GameOutput::Send(vars) => {
-                                                let encoded = protocol::encode_extension(&vars);
-                                                if out.send(&encoded).await.is_err() {
+                                                if send_extension(&mut out, registry, &session, &vars).await.is_err() {
                                                     if !result_reported {
                                                         end_reason = EndReason::SendFailed;
                                                     }
@@ -237,6 +331,7 @@ pub(super) async fn run_session(
                                                 }
                                             }
                                             GameOutput::Victory => {
+                                                registry.record_event(entity_id, &session.ticket, "result_victory", None).await;
                                                 tracing::info!(
                                                     entity_id,
                                                     entity_name = player.name(),
@@ -262,6 +357,7 @@ pub(super) async fn run_session(
                                                 .await;
                                             }
                                             GameOutput::Failure => {
+                                                registry.record_event(entity_id, &session.ticket, "result_defeat", None).await;
                                                 tracing::info!(
                                                     entity_id,
                                                     entity_name = player.name(),
@@ -373,11 +469,13 @@ pub(super) async fn run_session(
                     }
                 } => {
                     let outputs = game.tick();
+                    if let Some(board) = game.board_snapshot() {
+                        registry.publish_board(entity_id, &session.ticket, board).await;
+                    }
                     for output in outputs {
                         match output {
                             GameOutput::Send(vars) => {
-                                let encoded = protocol::encode_extension(&vars);
-                                if out.send(&encoded).await.is_err() {
+                                if send_extension(&mut out, registry, &session, &vars).await.is_err() {
                                     if !result_reported {
                                         end_reason = EndReason::SendFailed;
                                     }
@@ -386,6 +484,7 @@ pub(super) async fn run_session(
                                 }
                             }
                             GameOutput::Victory => {
+                                registry.record_event(entity_id, &session.ticket, "result_victory", None).await;
                                 tracing::info!(
                                     entity_id,
                                     entity_name = player.name(),
@@ -410,6 +509,7 @@ pub(super) async fn run_session(
                                 .await;
                             }
                             GameOutput::Failure => {
+                                registry.record_event(entity_id, &session.ticket, "result_defeat", None).await;
                                 tracing::info!(
                                     entity_id,
                                     entity_name = player.name(),
@@ -472,10 +572,17 @@ pub(super) async fn run_session(
         for output in game.aborted() {
             if let GameOutput::Send(vars) = output {
                 // Best-effort: the peer is usually already gone.
-                let encoded = protocol::encode_extension(&vars);
-                let _ = out.send(&encoded).await;
+                let _ = send_extension(&mut out, registry, &session, &vars).await;
             }
         }
+        if let Some(board) = game.board_snapshot() {
+            registry
+                .publish_board(entity_id, &session.ticket, board)
+                .await;
+        }
+        registry
+            .record_event(entity_id, &session.ticket, "result_canceled", None)
+            .await;
         send_minigame_result(
             result_tx,
             entity_id,
@@ -492,14 +599,14 @@ pub(super) async fn run_session(
     let leave = protocol::encode_extension_raw(&format!(
         "<var n='_cmd' t='s'>onPlayerLeaveGame</var><var n='PlayerId' t='s'>{user_id}</var>"
     ));
-    let _ = out.send(&leave).await;
+    let _ = send_named(&mut out, registry, &session, &leave, "onPlayerLeaveGame").await;
 
     let end = protocol::encode_extension_raw("<var n='_cmd' t='s'>onGameEnd</var>");
-    let _ = out.send(&end).await;
+    let _ = send_named(&mut out, registry, &session, &end, "onGameEnd").await;
 
     let room_del =
         format!("<msg t='sys'><body action='roomDel'><rm id='{room_id}' /></body></msg>");
-    let _ = out.send(&room_del).await;
+    let _ = send_named(&mut out, registry, &session, &room_del, "roomDel").await;
 
     SessionEnd {
         reason: end_reason,
