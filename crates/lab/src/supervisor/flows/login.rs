@@ -579,8 +579,8 @@ fn ensure_foreground_once(
     if is_foreground() {
         return true;
     }
-    let _ = refocus_from_foreground_thread();
-    is_foreground()
+    let attached_refocus_succeeded = refocus_from_foreground_thread();
+    attached_refocus_succeeded && is_foreground()
 }
 
 #[cfg(test)]

@@ -186,7 +186,7 @@ fn failed_foreground_recovery_is_bounded_to_one_fallback() {
         &mut refocus,
         &mut attached_refocus
     ));
-    assert_eq!(checks.load(Ordering::SeqCst), 3);
+    assert_eq!(checks.load(Ordering::SeqCst), 2);
     assert_eq!(refocuses.load(Ordering::SeqCst), 1);
     assert_eq!(attached_refocuses.load(Ordering::SeqCst), 1);
 }
@@ -213,6 +213,23 @@ fn attached_foreground_thread_recovers_when_direct_activation_is_denied() {
     ));
     assert_eq!(direct_attempts.load(Ordering::SeqCst), 1);
     assert_eq!(attached_attempts.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn failed_input_queue_detach_refuses_even_when_client_is_foreground() {
+    let active = AtomicBool::new(false);
+    let mut foreground = || active.load(Ordering::SeqCst);
+    let mut refocus = || false;
+    let mut attached_refocus = || {
+        active.store(true, Ordering::SeqCst);
+        false
+    };
+    assert!(!ensure_foreground_once(
+        &mut foreground,
+        &mut refocus,
+        &mut attached_refocus
+    ));
+    assert!(active.load(Ordering::SeqCst));
 }
 
 #[tokio::test]
@@ -249,6 +266,20 @@ async fn failed_foreground_recovery_stops_before_account_input() {
     assert!(error.message.contains("not foreground"), "{error:?}");
     assert_eq!(io.events, ["prepare:account_focus"]);
     assert!(io.typed_fields.is_empty());
+}
+
+#[tokio::test]
+async fn unsupported_secret_character_is_absent_from_error_and_steps() {
+    let sup = fake_bridge::supervisor(Arc::new(|_, _| Ok(Value::Null))).await;
+    let mut run = FlowRun::new(&sup, "lab_login");
+    let error = run
+        .type_into("password", LOGIN_PASSWORD_EDIT, "!", true)
+        .await
+        .unwrap_err();
+    let output = format!("{} {}", error.summary(), json!(error.steps));
+    assert!(error.message.contains("unsupported characters"));
+    assert!(!output.contains('!'), "secret character leaked: {output}");
+    assert!(error.steps.is_empty());
 }
 
 #[tokio::test]
