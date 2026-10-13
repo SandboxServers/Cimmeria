@@ -80,7 +80,7 @@ Modal prompt: a `.announce` shows a red line and a window titled "Server Message
 ### ROW 10 - GM broadcasts and GM feedback colour
 
 **10.1 (1 call).** CHATX lines `.bug HPU HP-C2 r10 start`, `.announce HPUannounce1` (wait 2500), UTC.
-**10.2 (2 calls in one turn).** PROMPT find, and SHOT with label `C2-server-message-prompt` (the modal should be up now).
+**10.2 (2 calls in one turn).** Read `client_window_read {"lease_id":L,"kind":"prompt"}` to observe the visible prompt and its buttons, and SHOT with label `C2-server-message-prompt` (the modal should be up now). Do not click until 10.4.
 **10.3 (1 call).** READ `{"cursor":"c2c","channel":"Server","max":10}`. Expected: one line with `HPUannounce1`, colour bright red; record `colour`, `tabs`, `seq`.
 **10.4 (1 call).** Read `client_window_read {"lease_id":L,"kind":"prompt"}` and click the visible enabled OK button using its returned `window` name. Then repeat the prompt read until it answers no visible prompts.
 **10.5.** CHATX line `.announce space HPUspace1` (wait 2500), then use the PROMPT macro to read and dismiss any visible prompt.

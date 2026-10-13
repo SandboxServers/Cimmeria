@@ -412,7 +412,7 @@ mod tests {
         let hardcoded_button = ["PromptN_Button", "1"].concat();
         let placeholder_button = ["Prompt<N>_Button", "1"].concat();
 
-        for entry in fs::read_dir(briefs).expect("hub-pass briefs directory exists") {
+        for entry in fs::read_dir(&briefs).expect("hub-pass briefs directory exists") {
             let path = entry.expect("brief directory entry").path();
             if path.extension().is_none_or(|extension| extension != "md")
                 || !path
@@ -446,5 +446,25 @@ mod tests {
         }
 
         assert!(checked > 0, "at least one hub-pass brief was checked");
+
+        // These screenshots must observe the prompt before a later step clicks it.
+        // The PROMPT macro dismisses the prompt, so calling it here loses the
+        // evidence and leaves the later confirmation step without a button.
+        for (file, step) in [("HP-M3.md", "**5.5"), ("HP-C2.md", "**10.2")] {
+            let path = briefs.join(file);
+            let brief = fs::read_to_string(&path).expect("hub-pass brief is UTF-8");
+            let observation = brief
+                .lines()
+                .find(|line| line.starts_with(step))
+                .expect("prompt observation step exists");
+            assert!(
+                observation.contains("client_window_read")
+                    && observation.contains("Do not click until")
+                    && !observation.contains("PROMPT"),
+                "{} {} must read the prompt without dismissing it",
+                path.display(),
+                step
+            );
+        }
     }
 }
