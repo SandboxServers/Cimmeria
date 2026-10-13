@@ -368,7 +368,9 @@ window closes. The reply includes the probe log, tap rows and before/after
 movie images. This N1 action requires the lab lease. For known placeholder
 games, pass `game` (Hack, Activate, Analyze, Bypass or Converse) when no board
 exists; the tool clicks the SWF `win_btn` with native input and leaves the
-outcome unverified for the UAT row's content-effect check.
+outcome unverified for the UAT row's content-effect check. A successful
+placeholder click followed by the client window closing passes the action;
+the row still has to prove the server-side content effect.
 
 `lab_uat_run` drives the packet tap itself for a row with `packet`
 clauses ([automated-uat.md](automated-uat.md#packet-clauses)): one tap

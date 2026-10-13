@@ -160,6 +160,25 @@ fn assessed_outcome(
     }
 }
 
+fn is_placeholder(game: &str) -> bool {
+    matches!(
+        game,
+        "Hack" | "Activate" | "Analyze" | "Bypass" | "Converse"
+    )
+}
+
+fn action_effect(game: &str, action_ok: bool, client_hidden: bool, outcome: &str) -> bool {
+    action_ok
+        && if is_placeholder(game) {
+            // Placeholder sessions have no published board/tap. The native
+            // button click and client close pass this action; row assertions
+            // verify the content effect.
+            client_hidden
+        } else {
+            outcome == "victory"
+        }
+}
+
 fn rollover(rows: &[Value], intended: &str) -> bool {
     let last = rows.iter().rev().find(|row| {
         row_is(row, "in", "processover", None) || row_is(row, "in", "processout", None)
@@ -244,6 +263,38 @@ fn calibration_point(plan: &livewire_solver::ClickPlan) -> Result<(&str, (f64, f
     Ok((&click.name, (f64::from(point.x), f64::from(point.y))))
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct LivewirePrelude {
+    mode: Opening,
+    open_at: Option<(i32, i32)>,
+    calibration: Option<(String, (i32, i32))>,
+    reset_at: (i32, i32),
+}
+
+fn livewire_prelude(
+    board: &Value,
+    plan: &livewire_solver::ClickPlan,
+    rect: Rect,
+) -> Result<LivewirePrelude, String> {
+    let mode = opening(board)?;
+    if plan.clicks.is_empty() && mode == Opening::OpenDoor {
+        return Err("Livewire plan contains no remaining goals".into());
+    }
+    let reset_at = stage_to_ui(rect, LIVEWIRE_STAGE, (363.4, 665.25))?;
+    let calibration = if plan.clicks.is_empty() {
+        None
+    } else {
+        let (name, stage) = calibration_point(plan)?;
+        Some((name.to_string(), stage_to_ui(rect, LIVEWIRE_STAGE, stage)?))
+    };
+    Ok(LivewirePrelude {
+        mode,
+        open_at: (mode == Opening::OpenDoor).then_some(reset_at),
+        calibration,
+        reset_at,
+    })
+}
+
 async fn native_click(supervisor: &Supervisor, at: (i32, i32)) -> Result<(), String> {
     native_move(supervisor, at).await?;
     tokio::time::sleep(Duration::from_millis(50)).await;
@@ -261,12 +312,8 @@ async fn run_livewire(
     probes: &mut Vec<Value>,
 ) -> Result<(), String> {
     let plan = livewire_solver::plan(board, atlas)?;
-    let mode = opening(board)?;
-    if plan.clicks.is_empty() && mode == Opening::OpenDoor {
-        return Err("Livewire plan contains no remaining goals".into());
-    }
-    if mode == Opening::OpenDoor {
-        let start = stage_to_ui(rect, LIVEWIRE_STAGE, (363.4, 665.25))?;
+    let prelude = livewire_prelude(board, &plan, rect)?;
+    if let Some(start) = prelude.open_at {
         native_click(supervisor, start).await?;
         if !await_rows(tap, server, entity_id, Duration::from_secs(2), |rows| {
             rows.iter().any(|row| row_is(row, "in", "opendoor", None))
@@ -280,12 +327,14 @@ async fn run_livewire(
             return Err("opendoor did not start the Livewire timer".into());
         }
     }
-    probes.push(json!({"kind":"opening","mode":format!("{mode:?}")}));
+    probes.push(json!({"kind":"opening","mode":format!("{:?}", prelude.mode)}));
     if plan.clicks.is_empty() {
         return Ok(());
     }
-    let (calibration_wire, calibration_stage) = calibration_point(&plan)?;
-    let centre = stage_to_ui(rect, LIVEWIRE_STAGE, calibration_stage)?;
+    let (calibration_wire, centre) = prelude
+        .calibration
+        .as_ref()
+        .ok_or("Livewire calibration target missing")?;
     let mut calibrated = false;
     for (dx, dy) in [(0, 0), (2, 0), (-2, 0), (0, 2), (0, -2)] {
         let at = (centre.0 + dx, centre.1 + dy);
@@ -305,8 +354,7 @@ async fn run_livewire(
             "calibration: no processover for {calibration_wire}"
         ));
     }
-    let reset = stage_to_ui(rect, LIVEWIRE_STAGE, (363.4, 665.25))?;
-    native_move(supervisor, reset).await?;
+    native_move(supervisor, prelude.reset_at).await?;
     for click in &plan.clicks {
         let mut matched = false;
         for point in &click.candidates {
@@ -371,12 +419,7 @@ pub async fn play(
     if visible["met"] != true {
         return Err("MinigameWin did not become visible".into());
     }
-    let placeholder = requested_game.is_some_and(|game| {
-        matches!(
-            game,
-            "Hack" | "Activate" | "Analyze" | "Bypass" | "Converse"
-        )
-    });
+    let placeholder = requested_game.is_some_and(is_placeholder);
     let board = if placeholder {
         board_read(&server, entity_id).await.ok()
     } else {
@@ -419,10 +462,7 @@ pub async fn play(
             }
             None => Err("installed Livewire hit atlas unavailable".into()),
         }
-    } else if matches!(
-        game,
-        "Hack" | "Activate" | "Analyze" | "Bypass" | "Converse"
-    ) {
+    } else if is_placeholder(game) {
         run_placeholder(supervisor, rect, &mut probes).await
     } else {
         Err(format!("minigame {game} has no verified native play flow"))
@@ -465,7 +505,7 @@ pub async fn play(
         server_outcome,
         terminal_failure(&tap.rows),
     );
-    let effect_ok = outcome == "victory";
+    let effect_ok = action_effect(game, action.is_ok(), hidden, outcome);
     Ok(PlayResult {
         report: json!({
             "entity_id": entity_id,
@@ -517,19 +557,35 @@ mod tests {
     fn running_board_resumes_without_another_open_click() {
         let ready = json!({"state":"ready","game_started":false,"time_remaining":20.0});
         let running = json!({"state":"running","game_started":true,"time_remaining":12.5});
-        assert_eq!(opening(&ready), Ok(Opening::OpenDoor));
-        assert_eq!(opening(&running), Ok(Opening::Resume));
-        assert!(
-            opening(&json!({"state":"running","game_started":true,"time_remaining":0.0})).is_err()
-        );
-        assert!(
-            opening(&json!({"state":"ready","game_started":true,"time_remaining":20.0})).is_err()
-        );
+        let rect = Rect {
+            left: 320.0,
+            top: 140.0,
+            right: 960.0,
+            bottom: 620.0,
+        };
+        let plan = one_click_plan();
+        let unopened = livewire_prelude(&ready, &plan, rect).unwrap();
+        assert_eq!(unopened.open_at, Some((502, 473)));
+        let resumed = livewire_prelude(&running, &plan, rect).unwrap();
+        assert_eq!(resumed.mode, Opening::Resume);
+        assert_eq!(resumed.open_at, None);
+        assert_eq!(resumed.calibration, Some(("g1".into(), (700, 345))));
+        assert!(livewire_prelude(
+            &json!({"state":"running","game_started":true,"time_remaining":0.0}),
+            &plan,
+            rect
+        )
+        .is_err());
+        assert!(livewire_prelude(
+            &json!({"state":"ready","game_started":true,"time_remaining":20.0}),
+            &plan,
+            rect
+        )
+        .is_err());
     }
 
-    #[test]
-    fn calibration_uses_an_exposed_plan_point_outside_the_cover() {
-        let plan = livewire_solver::ClickPlan {
+    fn one_click_plan() -> livewire_solver::ClickPlan {
+        livewire_solver::ClickPlan {
             status: "planned",
             goal_total: 1,
             clicks: vec![livewire_solver::PlannedClick {
@@ -545,13 +601,29 @@ mod tests {
             }],
             unattached: vec![],
             atlas_sha256: "a".repeat(64),
+        }
+    }
+
+    #[test]
+    fn flow_calibration_uses_an_exposed_plan_point_outside_the_cover() {
+        let board = json!({"state":"running","game_started":true,"time_remaining":12.5});
+        let rect = Rect {
+            left: 320.0,
+            top: 140.0,
+            right: 960.0,
+            bottom: 620.0,
         };
-        assert_eq!(calibration_point(&plan).unwrap(), ("g1", (760.0, 410.0)));
-        let mut covered = plan;
+        let mut covered = one_click_plan();
+        let prelude = livewire_prelude(&board, &covered, rect).unwrap();
+        assert_eq!(prelude.calibration, Some(("g1".into(), (700, 345))));
+        assert_eq!(prelude.reset_at, (502, 473));
         covered.clicks[0].candidates[0].x = 400;
-        assert!(calibration_point(&covered).is_err());
+        assert!(livewire_prelude(&board, &covered, rect).is_err());
         covered.clicks.clear();
-        assert!(calibration_point(&covered).is_err());
+        assert!(livewire_prelude(&board, &covered, rect)
+            .unwrap()
+            .calibration
+            .is_none());
     }
 
     #[test]
@@ -568,6 +640,15 @@ mod tests {
             assessed_outcome(true, true, false, Some("victory"), false),
             "unverified"
         );
+    }
+
+    #[test]
+    fn placeholder_native_click_can_reach_content_assertions_without_claiming_victory() {
+        assert!(action_effect("Hack", true, true, "unverified"));
+        assert!(!action_effect("Hack", false, true, "unverified"));
+        assert!(!action_effect("Hack", true, false, "unverified"));
+        assert!(!action_effect("Livewire", true, true, "unverified"));
+        assert!(action_effect("Livewire", true, true, "victory"));
     }
 
     #[test]
