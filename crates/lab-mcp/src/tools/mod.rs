@@ -417,6 +417,25 @@ impl LabTools {
         )
     }
 
+    /// Read the generated Livewire board for one active player session.
+    #[tool(
+        description = "Read-only active Livewire board snapshot by player entity id: goal counts, wire names, depths, positions and cut state. No ticket or control capability is returned; state is null before generation or after teardown."
+    )]
+    async fn server_minigame_state(
+        &self,
+        Parameters(args): Parameters<EntityGetArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let started = Instant::now();
+        let audit_args = json!({ "entity_id": args.entity_id });
+        let board = self.state.minigame_board(args.entity_id).await;
+        emit_result(
+            "server_minigame_state",
+            &audit_args,
+            started,
+            Ok(json!({ "entity_id": args.entity_id, "state": board })),
+        )
+    }
+
     /// Report who witnesses an entity and whom it witnesses (both directions).
     #[tool(
         description = "Report the bidirectional witness relationship for an entity: who has it in their AoI, and (for a player) whom it sees. Targets the invisible-corpse class of AoI bug."
@@ -546,6 +565,20 @@ mod tests {
 
     use super::*;
     use crate::test_support::LogCapture;
+
+    #[tokio::test]
+    async fn minigame_state_tool_is_registered_and_empty_without_session() {
+        let orchestrator = Arc::new(Orchestrator::new(Default::default()));
+        let tools = LabTools::new(LabState::new(orchestrator, LogBuffer::new()));
+        assert!(tools.tool_router.has_route("server_minigame_state"));
+        let result = tools
+            .server_minigame_state(Parameters(EntityGetArgs { entity_id: 42 }))
+            .await;
+        let value = serde_json::to_value(result.expect("tool must return an MCP result")).unwrap();
+        let text = value.to_string();
+        assert!(text.contains("\\\"entity_id\\\":42"));
+        assert!(text.contains("\\\"state\\\":null"));
+    }
 
     /// A bad or failed SQL call leaves one WARN `lab.tool_call` row carrying
     /// `error` and `duration_ms`. No database is connected here, so the call

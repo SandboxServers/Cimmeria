@@ -314,13 +314,20 @@ For `lab_client_status`, `uptime_ms` is milliseconds since the verified client p
 
 Server endpoint (`cimmeria-lab-mcp`, in-server, token-gated HTTP —
 WireGuard-only on the colo): `server_console_*`, `server_sessions`,
-`server_entity_*`, `server_witnesses`, `server_ability_state`, `server_packet_tap_*`,
+`server_entity_*`, `server_witnesses`, `server_ability_state`, `server_minigame_state`, `server_packet_tap_*`,
 `server_log_tail`, `server_content_reload`, `server_db_query`, and
 `server_stage_fixture`, which stages a UAT row fixture for an offline lab
 fixture character ([below](#staging-a-row-fixture-server_stage_fixture)).
 A lab-chaos build adds `server_chaos_set`, `server_chaos_clear` and
 `server_chaos_status`.
 See ADR §3.5 for the full set; `docs/operations/colo-deploy.md` for the port.
+
+`server_minigame_state {"entity_id": <player entity id>}` reads the active
+Livewire board after SmartFox login and board generation. Its `state` object
+contains the game phase (`ready`, `running`, or `finished`), outcome when
+finished, goal counts, and wires in ascending depth order with their names,
+positions and cut flags. Before generation and after session removal, `state`
+is null. This tool never returns the SmartFox ticket and cannot act on the board.
 `lab_uat_run` drives the packet tap itself for a row with `packet`
 clauses ([automated-uat.md](automated-uat.md#packet-clauses)): one tap
 per row from the anchor to teardown, always stopped.

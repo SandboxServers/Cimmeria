@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 
 use super::protocol::SfsValue;
+use super::session::BoardSnapshot;
 use super::session::MinigameSession;
 
 /// Output from a minigame instance.
@@ -22,6 +23,10 @@ pub enum GameOutput {
 /// its own game state and produces `GameOutput` messages in response to
 /// client actions and timer ticks.
 pub trait MinigameInstance: Send {
+    /// Read-only lab view of a generated board, when this game supports it.
+    fn board_snapshot(&self) -> Option<BoardSnapshot> {
+        None
+    }
     /// Called after successful login + room join. Initialize game state.
     /// Returns initial messages to send (typically `fullgamestate`).
     fn started(&mut self) -> Vec<GameOutput>;

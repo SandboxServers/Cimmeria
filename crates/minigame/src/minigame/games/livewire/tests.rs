@@ -32,6 +32,30 @@ fn make_session(difficulty: u32, tech: u32, level: u32) -> MinigameSession {
     }
 }
 
+#[test]
+fn generated_board_snapshot_is_ordered_and_matches_wire_state() {
+    let mut game = LivewireGame::new(&make_session(2, 30, 5));
+    assert!(game.board_snapshot().is_none());
+    game.started();
+    let board = game.board_snapshot().unwrap();
+    assert_eq!(board.goal_total, 4);
+    assert_eq!(board.goal_cut, 0);
+    assert_eq!(board.state, "ready");
+    assert_eq!(board.wires.len(), game.wires.len());
+    assert!(board
+        .wires
+        .windows(2)
+        .all(|pair| pair[0].depth < pair[1].depth));
+    for wire in &board.wires {
+        let original = &game.wires[&wire.depth];
+        assert_eq!(wire.name, original.name);
+        assert_eq!(
+            (wire.x, wire.y, wire.cut),
+            (original.x, original.y, original.cut)
+        );
+    }
+}
+
 /// `LivewireGame::new` clamps difficulty to [1, 4]. Pin so a
 /// future server bug (or malicious client) sending difficulty=0
 /// or difficulty=99 can't index out-of-bounds in

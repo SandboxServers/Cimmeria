@@ -162,6 +162,11 @@ pub(super) async fn run_session(
 
         // Start the game — call started() on the instance
         let outputs = game.started();
+        if let Some(board) = game.board_snapshot() {
+            registry
+                .publish_board(entity_id, &session.ticket, board)
+                .await;
+        }
         for output in &outputs {
             if let GameOutput::Send(vars) = output {
                 let msg = protocol::encode_extension(vars);
@@ -224,6 +229,9 @@ pub(super) async fn run_session(
                             match parsed {
                                 Ok(SfsMessage::ExtensionRequest { cmd, params }) => {
                                     let outputs = game.message(&cmd, &params);
+                                    if let Some(board) = game.board_snapshot() {
+                                        registry.publish_board(entity_id, &session.ticket, board).await;
+                                    }
                                     for output in outputs {
                                         match output {
                                             GameOutput::Send(vars) => {
@@ -373,6 +381,9 @@ pub(super) async fn run_session(
                     }
                 } => {
                     let outputs = game.tick();
+                    if let Some(board) = game.board_snapshot() {
+                        registry.publish_board(entity_id, &session.ticket, board).await;
+                    }
                     for output in outputs {
                         match output {
                             GameOutput::Send(vars) => {

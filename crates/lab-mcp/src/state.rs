@@ -55,6 +55,17 @@ impl LabState {
         state.base.online_players()
     }
 
+    pub async fn minigame_board(
+        &self,
+        entity_id: u32,
+    ) -> Option<cimmeria_services::minigame::session::BoardSnapshot> {
+        let state = self.orchestrator.state();
+        let state = state.read().await;
+        let registry = state.base.minigame_registry.clone();
+        drop(state);
+        registry.board_snapshot(entity_id).await
+    }
+
     /// Snapshot of the recent-log ring buffer (oldest first): the server
     /// ring, or with `include_client` also the forwarded client telemetry.
     pub fn log_snapshot(

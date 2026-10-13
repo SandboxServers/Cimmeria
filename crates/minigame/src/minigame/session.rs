@@ -8,10 +8,37 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rand::RngExt;
+use serde::Serialize;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
 
 pub use super::session_claim::ClaimRejection;
+
+/// Bounded, ticket-free view of the active Livewire board.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct BoardSnapshot {
+    pub entity_id: u32,
+    pub game_name: String,
+    pub state: &'static str,
+    pub outcome: Option<&'static str>,
+    pub goal_total: u32,
+    pub goal_cut: u32,
+    pub wires: Vec<WireSnapshot>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct WireSnapshot {
+    pub name: String,
+    pub depth: u32,
+    pub x: f64,
+    pub y: f64,
+    pub cut: bool,
+}
+
+struct PublishedBoard {
+    ticket: String,
+    snapshot: BoardSnapshot,
+}
 
 /// How long a session may sit in the registry after `register` before the
 /// sweep drops it, *if its SWF client never connected*.
@@ -92,6 +119,7 @@ pub struct SessionRegistry {
 struct SessionRegistryInner {
     /// entity_id → session
     sessions: HashMap<u32, MinigameSession>,
+    boards: HashMap<u32, PublishedBoard>,
     /// Next room ID (auto-incrementing from 1001)
     next_room_id: u32,
 }
@@ -115,6 +143,7 @@ impl SessionRegistry {
         Self {
             inner: Arc::new(Mutex::new(SessionRegistryInner {
                 sessions: HashMap::new(),
+                boards: HashMap::new(),
                 next_room_id: 1001,
             })),
         }
@@ -195,7 +224,33 @@ impl SessionRegistry {
             return None;
         }
         inner.sessions.insert(entity_id, session);
+        inner.boards.remove(&entity_id);
         Some(ticket)
+    }
+
+    /// Publish only for the session that produced this board.
+    pub async fn publish_board(&self, entity_id: u32, ticket: &str, snapshot: BoardSnapshot) {
+        let mut inner = self.inner.lock().await;
+        if inner
+            .sessions
+            .get(&entity_id)
+            .is_some_and(|s| s.ticket == ticket && s.connected)
+        {
+            inner.boards.insert(
+                entity_id,
+                PublishedBoard {
+                    ticket: ticket.to_owned(),
+                    snapshot,
+                },
+            );
+        }
+    }
+
+    pub async fn board_snapshot(&self, entity_id: u32) -> Option<BoardSnapshot> {
+        let inner = self.inner.lock().await;
+        let session = inner.sessions.get(&entity_id)?;
+        let board = inner.boards.get(&entity_id)?;
+        (session.connected && session.ticket == board.ticket).then(|| board.snapshot.clone())
     }
 
     /// Drop every registered-but-never-connected session older than `ttl`.
@@ -353,6 +408,7 @@ impl SessionRegistry {
     pub async fn remove(&self, entity_id: u32) {
         let mut inner = self.inner.lock().await;
         inner.sessions.remove(&entity_id);
+        inner.boards.remove(&entity_id);
     }
 
     /// Remove a session only if it is still the one that minted `ticket`.
@@ -373,6 +429,7 @@ impl SessionRegistry {
         match inner.sessions.get(&entity_id) {
             Some(session) if session.ticket == ticket => {
                 inner.sessions.remove(&entity_id);
+                inner.boards.remove(&entity_id);
                 true
             }
             Some(newer) => {
@@ -415,6 +472,7 @@ fn expire_pending_locked(inner: &mut SessionRegistryInner, ttl: Duration) -> Vec
 
     for entity_id in &expired {
         if let Some(session) = inner.sessions.remove(entity_id) {
+            inner.boards.remove(entity_id);
             // info!, not warn!: an abandoned launch is a player closing a
             // window, not a server fault. It is logged at all because a
             // "minigame won't start" report correlates directly with
