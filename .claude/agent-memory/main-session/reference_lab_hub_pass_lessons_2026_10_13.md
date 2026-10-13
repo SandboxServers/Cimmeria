@@ -5,7 +5,7 @@ metadata:
   type: reference
 ---
 
-From the hub pass UAT (`docs/analysis/hub-pass-uat/README.md`, 38 rows, 15 packets, three parallel clients). Lab issues filed: #1673, #1676, #1677, #1679, #1680 (plus a comment on #1660).
+Dated 2026-10-13, from the hub pass UAT (`docs/analysis/hub-pass-uat/README.md`, 38 rows, 15 packets, three parallel clients). Lab issues filed: #1673, #1676, #1677, #1679, #1680 (plus a comment on #1660).
 
 - **Lanes must not share a plaza.** Pets and deployables on one world-1300 space saw each other's pets, blocked camera shots, and pets fought the other lane's Rats. Run them one at a time.
 - **Server replies are on chat channel id 9**, which `client_chat_log` reports as `None` (no name, colour or tab: #1679). Filter by id `"9"` or `contains`, never `"Feedback"`.

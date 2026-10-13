@@ -21,6 +21,7 @@ Attempt 2 teleported to `.gotolocation DebugArea 458.0 12.5 -915.0` straight fro
 ## Verifier check (Sonnet, after the run)
 
 Window from the `dp6a2 start` bookmark, `$P` = player 73:
+
 - `deployables.lifecycle` `spawned` for the new object id, then `despawned` with `reason=owner_dead` (the pets code names the same reason; `path` may be `sweep` or a hook) within 1 s of the death row (`ch` for `$P AND (body LIKE '%resolve_death%' OR scope_name LIKE 'abilities.death%' OR body LIKE '%respawn%')`), `lifetime_secs` under 30, `pulses` under 30. A `reason=expired` after the death, or the object still listed after respawn, is a FAIL (file it). A `reason=expired` before any death makes the run void ("event too late"): re-run.
 - `npc_ai.aggro_scan` for `witness_name=Hubdeploy`: the Operatives must stop being `no_los` / `out_of_vertical_band` and an `aggro_acquired` row must follow.
 - If the walk still does not get the player killed, the untested fallback for a Sonnet takeover is `.spawnrandom 1376 3 3 1` (one hostile level-31 NID Operative on a 3 m ring, same template as the squad); it will keep hunting the player after the respawn, so despawn it with `server_console_exec despawn <id>` (the id is in the `spawnrandom:` reply). `/gmkilltarget` is NPC-only and `/gmsethealth` cannot target yourself (P1, #1660), so neither kills the player; `.dummy caster 1354` (Disabling Shot) only debuffs.

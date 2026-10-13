@@ -31,6 +31,7 @@ ORDER BY timestamp LIMIT 120 FORMAT Vertical
 $sql | ssh cimmeria-colo 'docker exec -i signoz-clickhouse clickhouse-client -n'
 }
 ```
+
 Times are `'YYYY-MM-DD HH:MM:SS'` UTC. Player filter: `toInt64(attributes_number['player_id'])=$pid`. Account filter: `toInt64(attributes_number['account_id'])=$acc`. Event filter: `(attributes_string['event']='<ev>' OR body LIKE '%<ev>%')`. `console.feedback` rows hold the GM command reply text only in `body` (first 400 chars). The SigNoz MCP returned 401 last round: use it only if it works; otherwise this helper is the method. If a query errors with BAD_GET, wrap numeric attribute reads in `toInt64()`.
 
 ## 4. The looker (visual checks)
@@ -39,10 +40,11 @@ For each screenshot the report names, start a Haiku looker: Agent tool, `subagen
 
 ## 5. Report format (your final message)
 
-```
+```text
 PACKET HP-C2 VERIFIED <UTC now> by Sonnet; driver attempts: <n>; server evidence window <t0>-<t1>
 | Row | Result | Tier | Server evidence (time, scope, event, key fields) | Client evidence | Looker | Notes |
 ```
+
 One line per row, then `FINDINGS:` (numbered; each with the row, the evidence and whether you filed an issue and its number), then `NOT RUN / BLOCKED:` with the reason, then `RESUME HINT:` (what the next driver attempt must redo, if any row needs a re-run).
 
 ## 6. When a row FAILs, or you find a bug
@@ -75,6 +77,7 @@ Looker `C2-chat-channels`: 1. Is a chat window visible with several tabs? 2. Is 
 ## Row 10 - GM broadcasts
 
 The broadcast goes to EVERY online player. Check, before you grade, that nobody but the lab accounts was online in the window (`ch ... "scope_name='chat' AND (attributes_string['event']='chat.gm_broadcast_delivered' OR body LIKE '%gm_broadcast_delivered%')"` shows `delivered`): if `delivered` is larger than the number of lab clients online, say so in NOTES (real testers saw a modal prompt).
+
 | Clause | Query | Expected |
 |---|---|---|
 | `.announce` | `ch ... "scope_name='chat' AND $P AND (attributes_string['event'] IN ('chat.gm_broadcast','chat.gm_broadcast_delivered') OR body LIKE '%gm_broadcast%')"` | `chat.gm_broadcast` INFO: `source`=`console`, `scope`=`global`, the text `HPUannounce1`; `chat.gm_broadcast_delivered` with `scope`=`global`, `delivered` >= 1 |

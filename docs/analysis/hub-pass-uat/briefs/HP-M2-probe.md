@@ -16,4 +16,3 @@ Run by the coordinator on instance `default` once the other driver is done. Lab-
 8. `lab_screenshot` once more; report path.
 
 Grade (coordinator, server side): mail.item_taken type_id 2893 right after the step-4 click and mail.cash_taken cash 200 after the step-7 click, naquadah +200 (CASH 775 to 975), DB: escrow for mail 5 gone. If the clicks reach the server and nothing is taken, or a refusal row appears, the bug is in the server: re-open the issue plan below. If no mail.* row appears with the compose window verifiably closed, the lab click path is at fault (see the lab issue).
-
