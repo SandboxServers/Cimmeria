@@ -14,6 +14,7 @@ use super::widgets::{
 };
 use super::{settle, FlowError, FlowRun};
 use crate::supervisor::session_file::LabAccount;
+use crate::supervisor::ui::window_click::{click_point, locate_chunk, refuse, ClickTarget};
 use crate::supervisor::{LoginState, Supervisor};
 
 /// How long the intro movies may take before the login screen shows.
@@ -26,6 +27,7 @@ const SERVER_TIMEOUT: Duration = Duration::from_secs(60);
 /// (`CharSelect_PlayButton`); the stock Lua is not in this repo, so the name
 /// is not yet checked on the live client.
 const CHAR_SELECT_BACK: &str = "CharSelect_BackButton";
+const CREDENTIAL_TRIES: usize = 2;
 
 /// `lab_login` arguments; each falls back to `lab-account.json`.
 #[derive(Debug, Clone, Default)]
@@ -143,6 +145,46 @@ pub const SELECTED_SERVER_CHUNK: &str = "local s = ServerSelect_List:getFirstSel
      return 'selected', tostring(s and s:getText())";
 
 impl Supervisor {
+    /// Put the desktop foreground on the client once, then confirm that the
+    /// real CEGUI dispatch path reaches the requested login edit box.
+    async fn prepare_login_field(
+        &self,
+        run: &mut FlowRun<'_>,
+        step: &str,
+        window: &str,
+    ) -> Result<(), FlowError> {
+        let hwnd = self
+            .game_hwnd()
+            .await
+            .map_err(|e| run.fail(step, format!("client foreground: {e}")))?;
+        if let Err(e) = focus_client_window_once(hwnd) {
+            return Err(run.fail(step, e));
+        }
+
+        self.verify_login_field_hit_test(run, step, window).await
+    }
+
+    async fn verify_login_field_hit_test(
+        &self,
+        run: &mut FlowRun<'_>,
+        step: &str,
+        window: &str,
+    ) -> Result<(), FlowError> {
+        let target = ClickTarget::Named(window.to_string());
+        let loc = self
+            .lua_json(&locate_chunk(&target))
+            .await
+            .map_err(|e| run.fail(step, format!("locate {window}: {e}")))?;
+        if let Some(why) = refuse(&target, &loc) {
+            return Err(run.fail(step, why));
+        }
+        let (x, y) = click_point(&loc).expect("refuse checked the login edit rectangle");
+        self.verify_click_target(window, x, y)
+            .await
+            .map(|_| ())
+            .map_err(|e| run.fail(step, e))
+    }
+
     /// `lab_login` — from the intro movies (or any startup screen) to
     /// character select.
     pub async fn login_flow(&self, req: LoginRequest) -> Result<Value, FlowError> {
@@ -237,42 +279,8 @@ impl Supervisor {
             // empty after typing (twice on 2026-10-10, both after 16 Escape
             // presses to skip the intro movies; late Escapes are the likely
             // cause). Type the pair again, once.
-            let mut attempt = 1;
-            loop {
-                let typed = match run
-                    .type_into("account", LOGIN_ACCOUNT_EDIT, &creds.account, false)
-                    .await
-                {
-                    Ok(()) => {
-                        run.type_into("password", LOGIN_PASSWORD_EDIT, &creds.password, true)
-                            .await
-                    }
-                    Err(e) => Err(e),
-                };
-                match typed {
-                    Ok(()) => break,
-                    // Only a box that read back wrong is worth typing again;
-                    // a dead client or a revoked lease would fail the same
-                    // way twice. No regression test yet: the flow needs a
-                    // client, and it waits for the CI fake-client harness.
-                    Err(e) if attempt < CREDENTIAL_TRIES && e.message.contains("after typing") => {
-                        tracing::warn!(
-                            attempt,
-                            step = %e.step,
-                            error = %e.message,
-                            "lab_login: credential typing missed; typing both again"
-                        );
-                        run.record(
-                            "retry_credentials",
-                            Instant::now(),
-                            json!({ "attempt": attempt, "step": e.step, "error": e.message }),
-                        );
-                        attempt += 1;
-                        settle(1000).await;
-                    }
-                    Err(e) => return Err(e),
-                }
-            }
+            let mut io = SupervisorLoginCredentialIo { sup: self, run };
+            type_login_credentials(&mut io, &creds.account, &creds.password).await?;
             run.click("login", LOGIN_BUTTON).await?;
         }
 
@@ -421,174 +429,160 @@ impl Supervisor {
     }
 }
 
-/// How many times the login types the account and password.
-const CREDENTIAL_TRIES: u32 = 2;
+fn retryable_credential_error(attempt: usize, error: &FlowError) -> bool {
+    attempt < CREDENTIAL_TRIES && error.message.contains("after typing")
+}
 
-#[cfg(test)]
-mod tests {
-    use std::sync::Arc;
+trait LoginCredentialIo {
+    async fn prepare_field(
+        &mut self,
+        step: &'static str,
+        window: &'static str,
+    ) -> Result<(), FlowError>;
 
-    use super::*;
-    use crate::supervisor::events::fake_bridge;
+    async fn type_field(
+        &mut self,
+        step: &'static str,
+        window: &'static str,
+        text: &str,
+    ) -> Result<(), FlowError>;
 
-    fn file() -> LabAccount {
-        LabAccount {
-            server: "colo".into(),
-            username: "lab".into(),
-            password: "test".into(),
-            character: "Labone".into(),
-        }
+    fn record_retry(&mut self, attempt: usize, error: &FlowError);
+}
+
+struct SupervisorLoginCredentialIo<'a, 'r> {
+    sup: &'a Supervisor,
+    run: &'a mut FlowRun<'r>,
+}
+
+impl LoginCredentialIo for SupervisorLoginCredentialIo<'_, '_> {
+    async fn prepare_field(
+        &mut self,
+        step: &'static str,
+        window: &'static str,
+    ) -> Result<(), FlowError> {
+        self.sup.prepare_login_field(self.run, step, window).await
     }
 
-    #[test]
-    fn request_overrides_the_account_file() {
-        let req = LoginRequest {
-            account: Some("other".into()),
-            password: None,
-            server: Some("local".into()),
-        };
-        let r = resolve_login(&req, Some(&file())).unwrap();
-        assert_eq!(r.account, "other");
-        assert_eq!(r.password, "test");
-        assert_eq!(r.server.as_deref(), Some("local"));
-        assert!(r.server_explicit);
+    async fn type_field(
+        &mut self,
+        step: &'static str,
+        window: &'static str,
+        text: &str,
+    ) -> Result<(), FlowError> {
+        self.run.type_into(step, window, text, true).await
     }
 
-    #[test]
-    fn account_file_supplies_the_defaults() {
-        let r = resolve_login(&LoginRequest::default(), Some(&file())).unwrap();
-        assert_eq!((r.account.as_str(), r.password.as_str()), ("lab", "test"));
-        assert_eq!(r.server.as_deref(), Some("colo"));
-        assert!(!r.server_explicit);
-    }
-
-    #[test]
-    fn missing_credentials_are_named() {
-        let e = resolve_login(&LoginRequest::default(), None).unwrap_err();
-        assert!(e.contains("no account"));
-        let req = LoginRequest {
-            account: Some("lab".into()),
-            ..Default::default()
-        };
-        assert!(resolve_login(&req, None)
-            .unwrap_err()
-            .contains("no password"));
-    }
-
-    fn s(v: &[&str]) -> Vec<String> {
-        v.iter().map(|x| x.to_string()).collect()
-    }
-
-    #[test]
-    fn start_screens_classify_in_priority_order() {
-        assert_eq!(
-            classify_start(&s(&["true", "true", "false", "false"])),
-            StartScreen::Eula
+    fn record_retry(&mut self, attempt: usize, error: &FlowError) {
+        tracing::warn!(
+            attempt,
+            step = %error.step,
+            error = %error.message,
+            "lab_login: credential typing missed; typing both again"
         );
-        assert_eq!(
-            classify_start(&s(&["false", "true", "true", "false"])),
-            StartScreen::ServerSelect
+        self.run.record(
+            "retry_credentials",
+            Instant::now(),
+            json!({ "attempt": attempt, "step": error.step, "error": error.message }),
         );
-        assert_eq!(
-            classify_start(&s(&["false", "false", "false", "true"])),
-            StartScreen::CharSelect
-        );
-        assert_eq!(
-            classify_start(&s(&["false", "true", "false", "false"])),
-            StartScreen::Login
-        );
-        assert_eq!(classify_start(&s(&["false"; 4])), StartScreen::Other);
-        assert_eq!(classify_start(&[]), StartScreen::Other);
-    }
-
-    /// Fake client: the login window is hidden and character select is up,
-    /// so the flow reaches the Back click. The Back widget has no rect, so
-    /// the click fails at its first step, and the error names that widget.
-    #[tokio::test]
-    async fn disconnect_flow_clicks_back() {
-        let sup = fake_bridge::supervisor(Arc::new(|method: &str, p: &Value| {
-            if method != "lua_eval" {
-                return Err(format!("no native path in the fake: {method}"));
-            }
-            let chunk = p["chunk"].as_str().unwrap_or_default();
-            if chunk.contains(CHAR_SELECT_BACK) {
-                return Err("no window".into());
-            }
-            if chunk.contains(LOGIN_WIN) {
-                return Ok(fake_bridge::lua_ok(&["false"]));
-            }
-            Ok(fake_bridge::lua_ok(&["true"]))
-        }))
-        .await;
-        let e = sup.disconnect_flow().await.unwrap_err();
-        assert_eq!(e.step, "click_back");
-        assert!(e.message.contains(CHAR_SELECT_BACK), "{}", e.message);
-    }
-
-    #[test]
-    fn server_select_chunk_quotes_the_name_and_lists_on_a_miss() {
-        let c = select_server_chunk("Cimmeria \"colo\"");
-        assert!(c.contains(r#"findColumnItemWithText("Cimmeria \"colo\"", 0, nil)"#));
-        assert!(c.contains("getShardInfo(i).name"));
-    }
-
-    fn creds(server: &str, explicit: bool) -> ResolvedLogin {
-        ResolvedLogin {
-            account: "a".into(),
-            password: "p".into(),
-            server: Some(server.into()),
-            server_explicit: explicit,
-        }
-    }
-
-    /// Live regression (2026-10-12): `server: "colo"` against a client whose
-    /// list has the one row "Test" failed `pick_server`. The chunk now falls
-    /// back to the only row and says so; the flow records it.
-    #[tokio::test]
-    async fn an_unknown_name_selects_the_only_row_and_says_so() {
-        let sup = fake_bridge::supervisor(Arc::new(|method: &str, p: &Value| {
-            assert_eq!(method, "lua_eval");
-            let chunk = p["chunk"].as_str().unwrap_or_default();
-            assert!(chunk.contains("findColumnItemWithText(\"colo\""), "{chunk}");
-            Ok(fake_bridge::lua_ok(&["selected", "Test", "only"]))
-        }))
-        .await;
-        let mut run = FlowRun::new(&sup, "lab_login");
-        let got = sup
-            .pick_server(&mut run, &creds("colo", true))
-            .await
-            .unwrap();
-        assert_eq!(got, "Test");
-        let step = run.steps.last().unwrap();
-        assert_eq!(step["detail"]["only_row"], true, "{step}");
-        assert_eq!(step["detail"]["requested"], "colo", "{step}");
-    }
-
-    /// With several rows and no match the explicit request still fails and
-    /// lists the rows (the guard against picking the wrong shard).
-    #[tokio::test]
-    async fn an_unknown_name_with_several_rows_is_still_an_error() {
-        let sup = fake_bridge::supervisor(Arc::new(|_, _| {
-            Ok(fake_bridge::lua_ok(&["missing", "Test, Dev"]))
-        }))
-        .await;
-        let mut run = FlowRun::new(&sup, "lab_login");
-        let e = sup
-            .pick_server(&mut run, &creds("colo", true))
-            .await
-            .unwrap_err();
-        assert!(
-            e.message.contains("no server named") && e.message.contains("Test, Dev"),
-            "{}",
-            e.message
-        );
-    }
-
-    #[test]
-    fn the_chunk_falls_back_to_a_single_row() {
-        let c = select_server_chunk("colo");
-        assert!(c.contains("if #names == 1 then"), "{c}");
-        assert!(c.contains("only = 'only'"), "{c}");
-        assert!(c.trim_end().ends_with("only"), "{c}");
     }
 }
+
+async fn type_login_credentials(
+    io: &mut impl LoginCredentialIo,
+    account: &str,
+    password: &str,
+) -> Result<(), FlowError> {
+    for attempt in 1..=CREDENTIAL_TRIES {
+        let typed = async {
+            io.prepare_field("account_focus", LOGIN_ACCOUNT_EDIT)
+                .await?;
+            io.type_field("account", LOGIN_ACCOUNT_EDIT, account)
+                .await?;
+            // Account entry can change window focus or expose a modal. Check
+            // the password field only after account readback, before use.
+            io.prepare_field("password_focus", LOGIN_PASSWORD_EDIT)
+                .await?;
+            io.type_field("password", LOGIN_PASSWORD_EDIT, password)
+                .await
+        }
+        .await;
+        match typed {
+            Ok(()) => return Ok(()),
+            Err(error) if retryable_credential_error(attempt, &error) => {
+                io.record_retry(attempt, &error);
+                settle(1000).await;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    unreachable!("credential retries always return or fail on the final attempt")
+}
+
+fn focus_client_window_once(hwnd: isize) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::Foundation::HWND;
+        use windows_sys::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
+        use windows_sys::Win32::UI::WindowsAndMessaging::{
+            GetForegroundWindow, GetWindowThreadProcessId, SetForegroundWindow,
+        };
+
+        let hwnd = hwnd as HWND;
+        let mut is_foreground = || unsafe { GetForegroundWindow() == hwnd };
+        let mut refocus = || unsafe { SetForegroundWindow(hwnd) != 0 };
+        let mut refocus_from_foreground_thread = || unsafe {
+            let foreground = GetForegroundWindow();
+            if foreground.is_null() {
+                return false;
+            }
+            let foreground_thread = GetWindowThreadProcessId(foreground, std::ptr::null_mut());
+            let caller_thread = GetCurrentThreadId();
+            if foreground_thread == 0
+                || caller_thread == 0
+                || foreground_thread == caller_thread
+                || AttachThreadInput(caller_thread, foreground_thread, 1) == 0
+            {
+                return false;
+            }
+
+            let activated = SetForegroundWindow(hwnd) != 0;
+            let detached = AttachThreadInput(caller_thread, foreground_thread, 0) != 0;
+            activated && detached
+        };
+        if ensure_foreground_once(
+            &mut is_foreground,
+            &mut refocus,
+            &mut refocus_from_foreground_thread,
+        ) {
+            Ok(())
+        } else {
+            Err("client window is not foreground after direct and attached refocus attempts".into())
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = hwnd;
+        Err("desktop foreground verification is only available on Windows".into())
+    }
+}
+
+fn ensure_foreground_once(
+    is_foreground: &mut impl FnMut() -> bool,
+    refocus: &mut impl FnMut() -> bool,
+    refocus_from_foreground_thread: &mut impl FnMut() -> bool,
+) -> bool {
+    if is_foreground() {
+        return true;
+    }
+    let _ = refocus();
+    if is_foreground() {
+        return true;
+    }
+    let attached_refocus_succeeded = refocus_from_foreground_thread();
+    attached_refocus_succeeded && is_foreground()
+}
+
+#[cfg(test)]
+#[path = "login_tests.rs"]
+mod tests;

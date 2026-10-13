@@ -194,9 +194,14 @@ impl<'a> FlowRun<'a> {
     ) -> Result<(), FlowError> {
         // Refuse untypeable text before touching the box.
         super::keys::plan_text(text).map_err(|e| {
+            let reason = if secret {
+                "contains unsupported characters"
+            } else {
+                &e
+            };
             self.fail(
                 step,
-                format!("{window}: {e} (the lab types letters, digits, space and -_/.)"),
+                format!("{window}: {reason} (the lab types letters, digits, space and -_/.)"),
             )
         })?;
         self.click(step, window).await?;

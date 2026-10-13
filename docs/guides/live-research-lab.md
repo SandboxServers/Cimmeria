@@ -667,6 +667,8 @@ The `lab_*` flow tools turn the scripts agents kept rewriting (log in, make a fr
 
 For the common case, getting in the world as the lab character, `lab_ensure_in_world` does all of this in one call ([Fewer calls](#fewer-calls-composites-and-compact-results)). `lab_login` itself now waits up to 90 s for a fresh client's window before its first step; it used to fail at `focus` after 0 ms.
 
+Before `lab_login` types credentials, it confirms the client is the desktop foreground window. If direct activation is refused, it makes one bounded activation attempt with its input queue attached to the current foreground thread. It then uses the CEGUI dispatch hit-test on both edit boxes. If activation still fails or an in-client window covers either field, login stops before typing that field. Account and password values are omitted from step logs. Unit tests cover bounded recovery and modal refusal; a live recovery probe remains pending.
+
 A typical run on a fresh character:
 
 1. `lab_client_start`, then `lab_login` (ends at character select with the list).
