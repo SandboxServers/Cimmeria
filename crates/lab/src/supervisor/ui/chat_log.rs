@@ -263,6 +263,54 @@ impl Supervisor {
 mod tests {
     use super::*;
 
+    /// Execute the same encoder and metadata Lua sent to the client against
+    /// stock-shaped tables. Feedback is intentionally absent from UIChannel.
+    fn client_meta() -> Value {
+        let lua = mlua::Lua::new();
+        lua.load(
+            r#"
+UIChannel = { Say = 1, Chat = 10 }
+UISpeakerFlags = { GM = 1 }
+ChatMod = {
+  ChannelMap = { [9] = function(id, _) assert(id == 9); return 3 end },
+  channelColors = { [3] = 'stock-feedback-colour' },
+  channel2tabs = { [3] = { [{ getName = function() return 'Inst1Chat_TabOutput' end }] = true } }
+}
+"#,
+        )
+        .exec()
+        .unwrap();
+        let source = super::super::lua_json::chunk(META_CHUNK);
+        let json: String = lua.load(&source).eval().unwrap();
+        serde_json::from_str(&json).unwrap()
+    }
+
+    #[test]
+    fn client_lua_reads_feedback_display_and_preserves_numeric_filter() {
+        let meta = client_meta();
+        assert_eq!(meta["channels"]["9"], "Feedback");
+        assert_eq!(meta["display"]["9"]["client_channel"], 3);
+        assert_eq!(meta["display"]["9"]["colour"], "stock-feedback-colour");
+        assert_eq!(meta["display"]["9"]["tabs"][0], "Inst1Chat_TabOutput");
+
+        let feedback = events()[2].clone();
+        let line = enrich(&feedback, &meta);
+        assert_eq!(line["channel_id"], 9);
+        assert_eq!(line["channel"], "Feedback");
+        assert_eq!(line["colour"], "stock-feedback-colour");
+        assert!(ChatFilter {
+            channel: Some("9".into()),
+            ..Default::default()
+        }
+        .matches(&line));
+
+        let mut unknown = feedback;
+        unknown.fields["channel"] = json!(77);
+        let unknown = enrich(&unknown, &meta);
+        assert!(unknown["colour"].is_null());
+        assert!(unknown["tabs"].is_null());
+    }
+
     fn meta() -> Value {
         json!({
             "channels": { "1": "Say", "7": "Tell", "9": "Feedback", "8": "Server" },
