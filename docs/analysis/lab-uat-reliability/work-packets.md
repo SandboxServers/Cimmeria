@@ -139,6 +139,41 @@ active Defeat window. If recovery cannot be proven, fail with a bounded
 diagnostic and leave the client running. Test healthy world, defeat window
 and character-select no-op. Test type: flow state-machine unit and live UAT.
 
+## LR-05c — report process uptime (#1680)
+
+**Own:** `crates/lab/src/supervisor/mod.rs`, the existing process helper if
+needed, and status tests; status docs. Branch
+`lab-uat-reliability/lr-05c-process-uptime`; worktree
+`lr-05c-process-uptime`; commit `fix(lab): report client process uptime`.
+
+`lab_client_status.uptime_ms` is described as client uptime, but the current
+value is elapsed time since this supervisor called `launch`; that timestamp
+can be absent or reset independently of the process. Verify the reported
+PID still identifies a live process, read that process's creation time through
+the existing Windows process helper, and calculate uptime from it. Keep
+`uptime_ms` zero or null with a clear state when the process has exited or
+its creation time cannot be read; never report a stale PID's elapsed time as
+client uptime. Test a process surviving a supervisor recreation, a new PID,
+and an exited PID with an injectable clock/process source. Test type: unit
+plus process simulation.
+
+## LR-05d — recover login input focus (#1680)
+
+**Dependency:** LR-02 merged. **Own:**
+`crates/lab/src/supervisor/flows/login.rs`, its focused flow tests, and
+login docs. Branch `lab-uat-reliability/lr-05d-login-focus`; worktree
+`lr-05d-login-focus`; commit `fix(lab): diagnose covered login fields`.
+
+After a client crash, `lab_login` observed only one account character after
+typing and a screenshot showed the client covered by another window. Before
+credential typing, verify the client window is foreground and the real CEGUI
+hit-test reaches the intended edit box. Re-focus once if the desktop window
+lost focus; if an in-client modal covers the field, return its window name
+and stop before sending credentials. Preserve the existing bounded typing
+retry for transient missed characters. Test focus recovered, in-client
+covering modal, and genuine typing mismatch. Never log credentials. Test
+type: flow state-machine unit plus live recovery probe.
+
 ## LR-06 — bounded target hover (#1684)
 
 **Own:** `crates/lab/src/supervisor/world/click_hover.rs`,

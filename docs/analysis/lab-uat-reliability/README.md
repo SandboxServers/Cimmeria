@@ -14,7 +14,7 @@ The [packet contracts](work-packets.md) are the implementation brief.
 | Covered button reports native success | [#1676](https://github.com/SandboxServers/Cimmeria/issues/1676) | LR-02 | Window click |
 | World-load bridge failure aborts wait | [#1677](https://github.com/SandboxServers/Cimmeria/issues/1677) | LR-03 | Polling |
 | Feedback metadata and relog welcome absent | [#1679](https://github.com/SandboxServers/Cimmeria/issues/1679) | LR-04a/b | Chat capture |
-| Dead player confuses ensure; logout crashes | [#1680](https://github.com/SandboxServers/Cimmeria/issues/1680) | LR-05a/b | Session flows |
+| Dead player confuses ensure; logout crashes; status uptime and login focus mislead recovery | [#1680](https://github.com/SandboxServers/Cimmeria/issues/1680) | LR-05a..d | Session flows and status |
 | Targeting stalls on mouse-over read | [#1684](https://github.com/SandboxServers/Cimmeria/issues/1684) | LR-06 | World hover |
 | Ring map native click mismatch | [#1686](https://github.com/SandboxServers/Cimmeria/issues/1686) | LR-07 | Input provenance |
 | Livewire board and real-input solve | [#1685](https://github.com/SandboxServers/Cimmeria/issues/1685) | CA-MG-L0..L5 | [Cellblock autoplay](../cellblock-autoplay/README.md) |
@@ -51,6 +51,8 @@ live validation; an integration test alone leaves it UATPending.
 | LR-04b relog capture | #1679 | BlockedDependency: LR-04a | | Welcome after relog |
 | LR-05a dead player observation | #1680 | Ready | | Defeat window state |
 | LR-05b safe logout | #1680 | BlockedDependency: LR-05a | | Logout after death |
+| LR-05c process uptime | #1680 | Ready | | Status across supervisor restart |
+| LR-05d login focus recovery | #1680 | BlockedDependency: LR-02 | | Covered login after crash |
 | LR-06 target timeout | #1684 | Ready | | Hostile target while in combat |
 | LR-07 native ring click | #1686 | BlockedDependency: native-input probe | | Fresh client mouse vs handler |
 | CA-MG-L0..L5 | #1685 | BlockedDependency: autoplay prerequisites | | Livewire N1 solve |
