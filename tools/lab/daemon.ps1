@@ -481,6 +481,19 @@ switch ($Command) {
                 [Environment]::SetEnvironmentVariable($name, $v, 'Process')
             }
         }
+        Import-EnvFile
+        $atlasScript = Join-Path $State 'atlas-tools\atlas.py'
+        $livewireUpk = if ($env:CIMMERIA_LAB_INSTALL_DIR) { Join-Path $env:CIMMERIA_LAB_INSTALL_DIR 'SGWGame\CookedPC\UI\Flash\Livewire.upk' } else { $null }
+        if ($livewireUpk -and (Test-Path -LiteralPath $atlasScript) -and (Test-Path -LiteralPath $livewireUpk) -and (Get-Command python -ErrorAction SilentlyContinue)) {
+            & python $atlasScript $livewireUpk (Join-Path $State 'livewire_atlas.json')
+            if ($LASTEXITCODE -ne 0) {
+                Remove-Item -LiteralPath (Join-Path $State 'livewire_atlas.json') -ErrorAction SilentlyContinue
+                Write-TaskLog "Livewire atlas generation failed with exit $LASTEXITCODE"
+            }
+        } else {
+            Remove-Item -LiteralPath (Join-Path $State 'livewire_atlas.json') -ErrorAction SilentlyContinue
+            Write-TaskLog 'Livewire atlas generator, client package or Python missing; auto-solve unavailable'
+        }
         $recent = New-Object System.Collections.Generic.List[datetime]
         while ($true) {
             Import-EnvFile
