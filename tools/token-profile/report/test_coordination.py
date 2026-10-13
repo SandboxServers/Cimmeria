@@ -1,11 +1,13 @@
 """The coordination overhead report over a three-request fixture: main Opus, packet-coder Haiku, reviewer Sonnet."""
 
+import contextlib
+import io
 import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
 
-from . import coordination
+from . import cli, coordination
 from .db import open_db
 from .scrub import Scrubber
 
@@ -112,6 +114,32 @@ class CoordinationTest(unittest.TestCase):
         self.assertEqual(rep["totals"]["requests"], 0)
         self.assertEqual(rep["by_role"], [])
         self.assertEqual(rep["coordination"]["share"], 0.0)
+
+    def test_window_is_since_inclusive_until_exclusive(self):
+        db = open_db(self.path)
+        try:
+            rep = coordination.build(db, Scrubber(use_local=False),
+                                     since="2026-10-01T12:01:00.000Z", until="2026-10-01T12:02:00.000Z")
+        finally:
+            db.close()
+        self.assertEqual([r["role"] for r in rep["by_role"]], ["packet-coder"])
+        self.assertEqual(rep["trigger_kinds"], [])
+        self.assertIsNone(rep["main_thread"]["avg_context"])
+        self.assertEqual(rep["coordination"]["requests"], 0)
+        self.assertEqual(rep["coordination"]["share"], 0.0)
+
+    def test_cli_subcommand_prints_report_and_reports_bad_database(self):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = cli.main(["coordination", "--db", str(self.path)])
+        self.assertEqual(code, 0)
+        self.assertIn("## Coordination share", out.getvalue())
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = cli.main(["coordination", "--db", str(self.path.with_name("missing.sqlite"))])
+        self.assertEqual(code, 2)
+        self.assertEqual(out.getvalue(), "")
+        self.assertIn("status=error", err.getvalue())
 
     def test_markdown_names_the_roles_and_the_share(self):
         db = open_db(self.path)
