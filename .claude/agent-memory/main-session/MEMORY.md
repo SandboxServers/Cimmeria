@@ -4,6 +4,8 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Open investigations
 
+- [reference_livewire_solver_2026_10_13.md](reference_livewire_solver_2026_10_13.md) — the installed atlas lives in labd, while the board and SmartFox tap live in the server; the solver plans stage points from a supplied board and requires rollover confirmation before clicks
+
 - [project_four_zone_planning_2026_10_13.md](project_four_zone_planning_2026_10_13.md) — four-zone packet planning; source checks, missing handoff SQLite, owner story and zone decisions, client mission-catalog gate
 
 - [project_cellblock_681_hidden_2026_10_13.md](project_cellblock_681_hidden_2026_10_13.md) — 2026-10-13 Cellblock 681 tracker leak: lab baseline, hidden seed fix, live-DB guard; local client acceptance passed

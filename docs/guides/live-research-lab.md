@@ -314,7 +314,7 @@ For `lab_client_status`, `uptime_ms` is milliseconds since the verified client p
 
 Server endpoint (`cimmeria-lab-mcp`, in-server, token-gated HTTP —
 WireGuard-only on the colo): `server_console_*`, `server_sessions`,
-`server_entity_*`, `server_witnesses`, `server_ability_state`, `server_minigame_state`, `server_packet_tap_*`,
+`server_entity_*`, `server_witnesses`, `server_ability_state`, `server_minigame_state`, `server_minigame_tap_read`, `server_packet_tap_*`,
 `server_log_tail`, `server_content_reload`, `server_db_query`, and
 `server_stage_fixture`, which stages a UAT row fixture for an offline lab
 fixture character ([below](#staging-a-row-fixture-server_stage_fixture)).
@@ -338,6 +338,21 @@ tickets and full board response arrays are excluded. The final board and
 events remain readable for ten minutes after teardown, unless a new session
 for that entity starts. Before board generation and after retention expires,
 `state` is null. This tool cannot act on the board.
+
+`server_minigame_tap_read {"entity_id": <player entity id>, "since_seq": 0}`
+reads the same bounded event ring without draining it. Increase `since_seq`
+to see only newer rows. Its `tap` is null before board generation or after
+retention expires; otherwise it includes the phase, retained outcome,
+`events_dropped`, and the filtered events.
+
+`lab_livewire_plan {"board": <server_minigame_state.state>}` uses the private
+installed-client atlas to return a read-only ordered click plan. Each click
+names a wire and up to five candidate points in 1280x960 movie stage
+coordinates, ranked by clear area. The plan marks missing, unattached art
+libraries and refuses a goal whose art is absent. Map stage points into the
+current movie area before input, and confirm the matching SmartFox
+`processover` through `server_minigame_tap_read` before each click. Planning
+does not send input or claim that a rollover was observed.
 
 `lab_uat_run` drives the packet tap itself for a row with `packet`
 clauses ([automated-uat.md](automated-uat.md#packet-clauses)): one tap
