@@ -230,7 +230,7 @@ async fn expects_peer_false_without_sessions() {
 // to `advance()` and these tests would have to sleep for real.
 
 /// Register a Livewire session for `entity_id` with no victory chains.
-async fn register_livewire(reg: &SessionRegistry, entity_id: u32) -> Option<String> {
+pub(super) async fn register_livewire(reg: &SessionRegistry, entity_id: u32) -> Option<String> {
     reg.register(
         entity_id,
         1,
@@ -246,49 +246,6 @@ async fn register_livewire(reg: &SessionRegistry, entity_id: u32) -> Option<Stri
         Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
     )
     .await
-}
-
-#[tokio::test]
-async fn board_snapshot_requires_claim_and_current_ticket() {
-    let reg = SessionRegistry::new();
-    let first = register_livewire(&reg, 42).await.unwrap();
-    let board = BoardSnapshot {
-        entity_id: 42,
-        game_name: "Livewire".into(),
-        state: "ready",
-        outcome: None,
-        goal_total: 2,
-        goal_cut: 0,
-        wires: vec![],
-    };
-    reg.publish_board(42, &first, board.clone()).await;
-    assert!(reg.board_snapshot(42).await.is_none());
-    reg.authenticate_and_claim(42, &first, "Livewire")
-        .await
-        .unwrap();
-    reg.publish_board(42, &first, board).await;
-    assert!(reg.board_snapshot(42).await.is_some());
-    reg.remove_if_ticket(42, &first).await;
-    assert!(reg.board_snapshot(42).await.is_none());
-    let second = register_livewire(&reg, 42).await.unwrap();
-    reg.authenticate_and_claim(42, &second, "Livewire")
-        .await
-        .unwrap();
-    reg.publish_board(
-        42,
-        &first,
-        BoardSnapshot {
-            entity_id: 42,
-            game_name: "Livewire".into(),
-            state: "ready",
-            outcome: None,
-            goal_total: 2,
-            goal_cut: 0,
-            wires: vec![],
-        },
-    )
-    .await;
-    assert!(reg.board_snapshot(42).await.is_none());
 }
 
 /// A session whose SWF never connected must be evicted once it is older

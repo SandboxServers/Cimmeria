@@ -8,37 +8,12 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rand::RngExt;
-use serde::Serialize;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
 
 pub use super::session_claim::ClaimRejection;
-
-/// Bounded, ticket-free view of the active Livewire board.
-#[derive(Debug, Clone, Serialize, PartialEq)]
-pub struct BoardSnapshot {
-    pub entity_id: u32,
-    pub game_name: String,
-    pub state: &'static str,
-    pub outcome: Option<&'static str>,
-    pub goal_total: u32,
-    pub goal_cut: u32,
-    pub wires: Vec<WireSnapshot>,
-}
-
-#[derive(Debug, Clone, Serialize, PartialEq)]
-pub struct WireSnapshot {
-    pub name: String,
-    pub depth: u32,
-    pub x: f64,
-    pub y: f64,
-    pub cut: bool,
-}
-
-struct PublishedBoard {
-    ticket: String,
-    snapshot: BoardSnapshot,
-}
+use super::session_snapshot::PublishedBoard;
+pub use super::session_snapshot::{BoardSnapshot, WireSnapshot};
 
 /// How long a session may sit in the registry after `register` before the
 /// sweep drops it, *if its SWF client never connected*.
@@ -223,8 +198,16 @@ impl SessionRegistry {
             }
             return None;
         }
+        inner.boards.insert(
+            entity_id,
+            PublishedBoard::new(ticket.clone(), session.created_at),
+        );
+        inner
+            .boards
+            .get_mut(&entity_id)
+            .unwrap()
+            .record("registered", None);
         inner.sessions.insert(entity_id, session);
-        inner.boards.remove(&entity_id);
         Some(ticket)
     }
 
@@ -236,21 +219,58 @@ impl SessionRegistry {
             .get(&entity_id)
             .is_some_and(|s| s.ticket == ticket && s.connected)
         {
-            inner.boards.insert(
-                entity_id,
-                PublishedBoard {
-                    ticket: ticket.to_owned(),
-                    snapshot,
-                },
-            );
+            if let Some(board) = inner.boards.get_mut(&entity_id) {
+                if board.ticket == ticket {
+                    if board.snapshot.is_none() {
+                        board.record("board_started", None);
+                    }
+                    board.snapshot = Some(snapshot);
+                }
+            }
+        }
+    }
+
+    /// Record selected SmartFox commands and outcome rows without storing packet payloads.
+    pub async fn record_event(
+        &self,
+        entity_id: u32,
+        ticket: &str,
+        event: &str,
+        wire_name: Option<&str>,
+    ) {
+        let mut inner = self.inner.lock().await;
+        if inner
+            .sessions
+            .get(&entity_id)
+            .is_some_and(|s| s.ticket == ticket && s.connected)
+        {
+            if let Some(board) = inner.boards.get_mut(&entity_id) {
+                if board.ticket == ticket {
+                    board.record(event, wire_name);
+                }
+            }
         }
     }
 
     pub async fn board_snapshot(&self, entity_id: u32) -> Option<BoardSnapshot> {
-        let inner = self.inner.lock().await;
-        let session = inner.sessions.get(&entity_id)?;
+        let mut inner = self.inner.lock().await;
+        if inner
+            .boards
+            .get(&entity_id)
+            .is_some_and(|board| board.is_expired(Instant::now()))
+        {
+            inner.boards.remove(&entity_id);
+            return None;
+        }
         let board = inner.boards.get(&entity_id)?;
-        (session.connected && session.ticket == board.ticket).then(|| board.snapshot.clone())
+        if let Some(session) = inner.sessions.get(&entity_id) {
+            if !session.connected || session.ticket != board.ticket {
+                return None;
+            }
+        } else if board.expires_at.is_none() {
+            return None;
+        }
+        board.read()
     }
 
     /// Drop every registered-but-never-connected session older than `ttl`.
@@ -330,7 +350,11 @@ impl SessionRegistry {
             });
         }
         session.connected = true;
-        Ok(session.clone())
+        let claimed = session.clone();
+        if let Some(board) = inner.boards.get_mut(&entity_id) {
+            board.record("claimed", None);
+        }
+        Ok(claimed)
     }
 
     /// Whether a registered session (pending or connected) belongs to a
@@ -429,7 +453,13 @@ impl SessionRegistry {
         match inner.sessions.get(&entity_id) {
             Some(session) if session.ticket == ticket => {
                 inner.sessions.remove(&entity_id);
-                inner.boards.remove(&entity_id);
+                if let Some(board) = inner.boards.get_mut(&entity_id) {
+                    if board.ticket == ticket && board.snapshot.is_some() {
+                        board.finish();
+                    } else {
+                        inner.boards.remove(&entity_id);
+                    }
+                }
                 true
             }
             Some(newer) => {
@@ -463,6 +493,7 @@ impl SessionRegistry {
 /// the non-reentrant `tokio::sync::Mutex`).
 fn expire_pending_locked(inner: &mut SessionRegistryInner, ttl: Duration) -> Vec<u32> {
     let now = Instant::now();
+    inner.boards.retain(|_, board| !board.is_expired(now));
     let expired: Vec<u32> = inner
         .sessions
         .iter()
@@ -501,3 +532,7 @@ fn generate_ticket() -> String {
 #[cfg(test)]
 #[path = "session_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "session_board_tests.rs"]
+mod board_tests;

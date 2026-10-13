@@ -228,6 +228,10 @@ pub(super) async fn run_session(
                             let parsed = protocol::parse_message(&msg);
                             match parsed {
                                 Ok(SfsMessage::ExtensionRequest { cmd, params }) => {
+                                    if matches!(cmd.as_str(), "processover" | "processmove" | "opendoor" | "processreset") {
+                                        let wire = params.get("wirename").and_then(|v| v.as_str());
+                                        registry.record_event(entity_id, &session.ticket, &cmd, wire).await;
+                                    }
                                     let outputs = game.message(&cmd, &params);
                                     if let Some(board) = game.board_snapshot() {
                                         registry.publish_board(entity_id, &session.ticket, board).await;
@@ -245,6 +249,7 @@ pub(super) async fn run_session(
                                                 }
                                             }
                                             GameOutput::Victory => {
+                                                registry.record_event(entity_id, &session.ticket, "result_victory", None).await;
                                                 tracing::info!(
                                                     entity_id,
                                                     entity_name = player.name(),
@@ -270,6 +275,7 @@ pub(super) async fn run_session(
                                                 .await;
                                             }
                                             GameOutput::Failure => {
+                                                registry.record_event(entity_id, &session.ticket, "result_defeat", None).await;
                                                 tracing::info!(
                                                     entity_id,
                                                     entity_name = player.name(),
@@ -397,6 +403,7 @@ pub(super) async fn run_session(
                                 }
                             }
                             GameOutput::Victory => {
+                                registry.record_event(entity_id, &session.ticket, "result_victory", None).await;
                                 tracing::info!(
                                     entity_id,
                                     entity_name = player.name(),
@@ -421,6 +428,7 @@ pub(super) async fn run_session(
                                 .await;
                             }
                             GameOutput::Failure => {
+                                registry.record_event(entity_id, &session.ticket, "result_defeat", None).await;
                                 tracing::info!(
                                     entity_id,
                                     entity_name = player.name(),
@@ -487,6 +495,14 @@ pub(super) async fn run_session(
                 let _ = out.send(&encoded).await;
             }
         }
+        if let Some(board) = game.board_snapshot() {
+            registry
+                .publish_board(entity_id, &session.ticket, board)
+                .await;
+        }
+        registry
+            .record_event(entity_id, &session.ticket, "result_canceled", None)
+            .await;
         send_minigame_result(
             result_tx,
             entity_id,

@@ -30,6 +30,7 @@ socket2 = { version = "0.6", features = ["all"] }
 cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
 [dev-dependencies]
+serde_json = { workspace = true }
 # Re-pull tokio with `test-util` so the session-expiry guards can freeze and
 # advance the clock (`#[tokio::test(start_paused = true)]` +
 # `tokio::time::advance`); the TTL is measured against `tokio::time::Instant`.

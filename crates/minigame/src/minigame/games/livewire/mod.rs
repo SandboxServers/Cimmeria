@@ -144,6 +144,7 @@ impl MinigameInstance for LivewireGame {
             .values()
             .map(|w| WireSnapshot {
                 name: w.name.clone(),
+                lib: w.lib.clone(),
                 depth: w.depth,
                 x: w.x,
                 y: w.y,
@@ -165,6 +166,8 @@ impl MinigameInstance for LivewireGame {
             goal_total: self.goal_total,
             goal_cut: self.goal_cut,
             wires,
+            events: Vec::new(),
+            events_dropped: 0,
         })
     }
     fn started(&mut self) -> Vec<GameOutput> {

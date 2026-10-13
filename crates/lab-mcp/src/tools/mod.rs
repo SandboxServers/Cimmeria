@@ -567,17 +567,77 @@ mod tests {
     use crate::test_support::LogCapture;
 
     #[tokio::test]
-    async fn minigame_state_tool_is_registered_and_empty_without_session() {
+    async fn minigame_state_tool_tracks_generated_board_update_and_teardown() {
         let orchestrator = Arc::new(Orchestrator::new(Default::default()));
-        let tools = LabTools::new(LabState::new(orchestrator, LogBuffer::new()));
+        let tools = LabTools::new(LabState::new(orchestrator.clone(), LogBuffer::new()));
         assert!(tools.tool_router.has_route("server_minigame_state"));
-        let result = tools
-            .server_minigame_state(Parameters(EntityGetArgs { entity_id: 42 }))
+        async fn read(tools: &LabTools) -> Value {
+            let result = tools
+                .server_minigame_state(Parameters(EntityGetArgs { entity_id: 42 }))
+                .await
+                .unwrap();
+            serde_json::from_str(&result.content[0].as_text().unwrap().text).unwrap()
+        }
+        assert!(read(&tools).await["state"].is_null());
+        let registry = orchestrator
+            .state()
+            .read()
+            .await
+            .base
+            .minigame_registry
+            .clone();
+        let ticket = registry
+            .register(
+                42,
+                1,
+                "Livewire".into(),
+                1,
+                30,
+                17,
+                0,
+                0,
+                1,
+                vec![],
+                None,
+                None,
+            )
+            .await
+            .unwrap();
+        let session = registry
+            .authenticate_and_claim(42, &ticket, "Livewire")
+            .await
+            .unwrap();
+        let mut game = cimmeria_services::minigame::game::create_game(&session).unwrap();
+        game.started();
+        registry
+            .publish_board(42, &ticket, game.board_snapshot().unwrap())
             .await;
-        let value = serde_json::to_value(result.expect("tool must return an MCP result")).unwrap();
-        let text = value.to_string();
-        assert!(text.contains("\\\"entity_id\\\":42"));
-        assert!(text.contains("\\\"state\\\":null"));
+        let ready = read(&tools).await;
+        assert_eq!(ready["state"]["state"], "ready");
+        assert_eq!(ready["state"]["goal_total"], 2);
+        assert!(ready["state"]["wires"].as_array().unwrap().len() > 2);
+        assert!(ready["state"]["wires"][0]["lib"].is_string());
+        assert!(!ready.to_string().contains(&ticket));
+        game.message("opendoor", &Default::default());
+        registry
+            .publish_board(42, &ticket, game.board_snapshot().unwrap())
+            .await;
+        assert_eq!(read(&tools).await["state"]["state"], "running");
+        game.aborted();
+        registry
+            .publish_board(42, &ticket, game.board_snapshot().unwrap())
+            .await;
+        registry
+            .record_event(42, &ticket, "result_canceled", None)
+            .await;
+        registry.remove_if_ticket(42, &ticket).await;
+        let final_state = read(&tools).await;
+        assert_eq!(final_state["state"]["outcome"], "canceled");
+        assert!(final_state["state"]["events"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|event| event["event"] == "ended"));
     }
 
     /// A bad or failed SQL call leaves one WARN `lab.tool_call` row carrying
