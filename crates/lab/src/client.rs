@@ -175,11 +175,23 @@ async fn connect_and_auth(addr: &str, token: &str) -> Result<TcpStream> {
     // First frame: the token.
     let auth = json!({ "token": token });
     write_frame(&mut stream, &serde_json::to_vec(&auth)?).await?;
-    // Bridge acks with {"ok":true} on success, or closes on a bad
-    // token (read then returns EOF).
-    let ack = read_frame(&mut stream)
-        .await
-        .context("bridge closed the connection (bad or missing token?)")?;
+    // A closed socket while reading the ack is ambiguous: the bridge also
+    // closes it for a rejected token, but a world load can reset it here.
+    let ack = read_frame(&mut stream).await.map_err(|error| {
+        let transient = error.downcast_ref::<std::io::Error>().is_some_and(|io| {
+            matches!(
+                io.kind(),
+                std::io::ErrorKind::UnexpectedEof
+                    | std::io::ErrorKind::ConnectionReset
+                    | std::io::ErrorKind::ConnectionAborted
+            ) || matches!(io.raw_os_error(), Some(10053 | 10054))
+        });
+        if transient {
+            error.context("bridge connection reset while authenticating; client may be loading")
+        } else {
+            error.context("bridge authentication acknowledgement read failed")
+        }
+    })?;
     let ack: Value = serde_json::from_slice(&ack).unwrap_or(Value::Null);
     if ack.get("ok").and_then(Value::as_bool) != Some(true) {
         bail!("bridge did not acknowledge the token: {ack}");
@@ -251,6 +263,46 @@ mod tests {
         });
         let mut c = TcpStream::connect(addr).await.unwrap();
         assert!(read_frame(&mut c).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn closed_auth_ack_is_ambiguous_but_explicit_rejection_is_permanent() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let _auth = read_frame(&mut socket).await.unwrap();
+            // The client sees EOF before an acknowledgement.
+        });
+        let error = connect_and_auth(&addr.to_string(), "test-token")
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("bridge connection reset while authenticating"),
+            "{error}"
+        );
+        assert!(!error.contains("bad or missing token"), "{error}");
+        server.await.unwrap();
+
+        // A bridge that explicitly rejects the token still uses the
+        // permanent acknowledgement-error path.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let _auth = read_frame(&mut socket).await.unwrap();
+            write_frame(&mut socket, br#"{"ok":false}"#).await.unwrap();
+        });
+        let error = connect_and_auth(&addr.to_string(), "test-token")
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("bridge did not acknowledge the token"),
+            "{error}"
+        );
+        server.await.unwrap();
     }
 
     /// A call dropped mid-exchange (the event keeper's tick timeout) must not

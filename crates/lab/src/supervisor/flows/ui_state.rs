@@ -2,7 +2,10 @@
 //! the flows share (result extraction, condition polling, the screen
 //! summary attached to flow errors).
 
-use std::time::{Duration, Instant};
+use std::{
+    future::Future,
+    time::{Duration, Instant},
+};
 
 use serde_json::{json, Map, Value};
 
@@ -71,15 +74,15 @@ pub struct Poll {
 }
 
 pub fn parse_poll(results: &[String]) -> Result<Poll, String> {
-    let nonempty = |s: Option<&String>| s.filter(|s| !s.is_empty()).cloned();
-    match results.first() {
-        Some(met) => Ok(Poll {
-            met: met == "true",
-            error: nonempty(results.get(1)),
-            fail: nonempty(results.get(2)),
-        }),
-        None => Err("condition poll returned nothing".to_string()),
+    if results.len() != 3 || !matches!(results[0].as_str(), "true" | "false") {
+        return Err(format!("malformed condition poll result: {results:?}"));
     }
+    let nonempty = |s: Option<&String>| s.filter(|s| !s.is_empty()).cloned();
+    Ok(Poll {
+        met: results[0] == "true",
+        error: nonempty(results.get(1)),
+        fail: nonempty(results.get(2)),
+    })
 }
 
 /// How a wait ended.
@@ -88,6 +91,7 @@ pub struct WaitOutcome {
     pub met: bool,
     pub elapsed_ms: u64,
     pub polls: u32,
+    pub failed_polls: u32,
     pub last_error: Option<String>,
     pub fail_text: Option<String>,
 }
@@ -98,6 +102,7 @@ impl WaitOutcome {
             "met": self.met,
             "elapsed_ms": self.elapsed_ms,
             "polls": self.polls,
+            "failed_polls": self.failed_polls,
             "last_error": self.last_error,
             "fail_text": self.fail_text,
         })
@@ -243,7 +248,7 @@ impl Supervisor {
     }
 
     /// Poll `cond` every `poll` until it holds, `fail` yields a value, or
-    /// `timeout` passes. Bridge failures end the wait with `Err`.
+    /// `timeout` passes. Bridge failures are retried until the deadline.
     pub async fn poll_until(
         &self,
         cond: &str,
@@ -251,21 +256,68 @@ impl Supervisor {
         timeout: Duration,
         poll: Duration,
     ) -> Result<WaitOutcome, String> {
-        let t0 = Instant::now();
         let chunk = poll_chunk(cond, fail);
-        let mut polls = 0u32;
-        let mut last_error = None;
-        loop {
-            polls += 1;
-            let p = parse_poll(&self.lua_results(&chunk).await?)?;
-            let done =
-                |met: bool, fail_text: Option<String>, last_error: Option<String>| WaitOutcome {
-                    met,
-                    elapsed_ms: t0.elapsed().as_millis() as u64,
-                    polls,
-                    last_error,
-                    fail_text,
-                };
+        poll_until_with(timeout, poll, || self.lua_results(&chunk)).await
+    }
+}
+
+async fn poll_until_with<F, Fut>(
+    timeout: Duration,
+    poll: Duration,
+    mut read: F,
+) -> Result<WaitOutcome, String>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<Vec<String>, String>>,
+{
+    let t0 = Instant::now();
+    let mut polls = 0u32;
+    let mut failed_polls = 0u32;
+    let mut last_error = None;
+    let deadline = t0 + timeout;
+    loop {
+        if Instant::now() >= deadline {
+            return Ok(WaitOutcome {
+                met: false,
+                elapsed_ms: t0.elapsed().as_millis() as u64,
+                polls,
+                failed_polls,
+                last_error,
+                fail_text: None,
+            });
+        }
+        polls += 1;
+        let response =
+            tokio::time::timeout_at(tokio::time::Instant::from_std(deadline), read()).await;
+        // A response arriving at or after the deadline cannot satisfy the wait.
+        if response.is_err() || Instant::now() >= deadline {
+            return Ok(WaitOutcome {
+                met: false,
+                elapsed_ms: t0.elapsed().as_millis() as u64,
+                polls,
+                failed_polls,
+                last_error,
+                fail_text: None,
+            });
+        }
+        let p = match response.expect("timeout returned above") {
+            Ok(results) => Some(parse_poll(&results)?),
+            Err(error) if transient_poll_error(&error) => {
+                failed_polls += 1;
+                last_error = Some(error);
+                None
+            }
+            Err(error) => return Err(error),
+        };
+        let done = |met: bool, fail_text: Option<String>, last_error: Option<String>| WaitOutcome {
+            met,
+            elapsed_ms: t0.elapsed().as_millis() as u64,
+            polls,
+            failed_polls,
+            last_error,
+            fail_text,
+        };
+        if let Some(p) = p {
             if p.met {
                 return Ok(done(true, None, None));
             }
@@ -275,13 +327,40 @@ impl Supervisor {
             if p.fail.is_some() {
                 return Ok(done(false, p.fail, last_error));
             }
-            if t0.elapsed() >= timeout {
-                return Ok(done(false, None, last_error));
-            }
-            tokio::time::sleep(poll).await;
         }
+        if t0.elapsed() >= timeout {
+            return Ok(done(false, None, last_error));
+        }
+        tokio::time::sleep(poll.min(timeout.saturating_sub(t0.elapsed()))).await;
     }
+}
 
+/// Only retry bridge transport/dispatch failures. Lua, lease and malformed
+/// response errors must surface immediately rather than waste the wait budget.
+fn transient_poll_error(error: &str) -> bool {
+    if !error.starts_with("bridge: ") {
+        return false;
+    }
+    let detail = &error[8..];
+    if detail.starts_with("bridge error ") {
+        return detail.contains("dispatch timeout") || detail.contains("dispatch queue full");
+    }
+    [
+        "connection reset",
+        "connection aborted",
+        "bridge connection reset while authenticating",
+        "early eof",
+        "unexpected eof",
+        "unexpected end of file",
+        "failed to fill whole buffer",
+        "os error 10053",
+        "os error 10054",
+    ]
+    .iter()
+    .any(|part| detail.to_ascii_lowercase().contains(part))
+}
+
+impl Supervisor {
     /// `client_wait_for`.
     pub async fn wait_for(
         &self,
@@ -319,9 +398,125 @@ impl Supervisor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::VecDeque;
 
     fn s(v: &[&str]) -> Vec<String> {
         v.iter().map(|x| x.to_string()).collect()
+    }
+
+    #[tokio::test]
+    async fn poll_retries_bridge_errors_until_condition_is_met() {
+        let mut sequence = VecDeque::from([
+            Err("bridge: bridge error -32603: dispatch timeout".to_string()),
+            Err("bridge: connection reset by peer (os error 10054)".to_string()),
+            Ok(s(&["true", "", ""])),
+        ]);
+        let result = poll_until_with(Duration::from_secs(1), Duration::from_millis(1), || {
+            std::future::ready(sequence.pop_front().expect("poll sequence exhausted"))
+        })
+        .await
+        .unwrap();
+
+        assert!(result.met);
+        assert_eq!(result.polls, 3);
+        assert_eq!(result.failed_polls, 2);
+        assert_eq!(result.to_json()["failed_polls"], 2);
+        assert_eq!(result.last_error, None);
+    }
+
+    #[tokio::test]
+    async fn poll_returns_last_bridge_error_at_deadline() {
+        let mut polls = 0;
+        let result = poll_until_with(Duration::from_millis(12), Duration::from_millis(4), || {
+            polls += 1;
+            std::future::ready(Err(
+                "bridge: bridge error -32001: dispatch queue full".to_string()
+            ))
+        })
+        .await
+        .unwrap();
+
+        assert!(!result.met);
+        assert_eq!(
+            result.last_error.as_deref(),
+            Some("bridge: bridge error -32001: dispatch queue full")
+        );
+        assert_eq!(result.failed_polls, result.polls);
+        assert_eq!(result.to_json()["failed_polls"], result.polls);
+        assert_eq!(result.polls as usize, polls);
+        assert!(result.polls >= 1);
+        assert!(result.elapsed_ms >= 12);
+    }
+
+    #[tokio::test]
+    async fn poll_preserves_explicit_condition_failure() {
+        let result = poll_until_with(Duration::from_secs(1), Duration::from_millis(1), || {
+            std::future::ready(Ok(s(&["false", "", "Login Failed"])))
+        })
+        .await
+        .unwrap();
+
+        assert!(!result.met);
+        assert_eq!(result.fail_text.as_deref(), Some("Login Failed"));
+        assert_eq!(result.polls, 1);
+        assert_eq!(result.failed_polls, 0);
+    }
+
+    #[tokio::test]
+    async fn permanent_lua_and_lease_errors_stop_without_retry() {
+        for error in [
+            "Lua error: attempt to index nil",
+            "lease revoked before bridge lua_eval",
+            "bridge: bridge response is not JSON",
+            "bridge: bridge error -32603: Lua failed",
+        ] {
+            let mut polls = 0;
+            let outcome = poll_until_with(Duration::from_secs(1), Duration::from_millis(1), || {
+                polls += 1;
+                std::future::ready(Err(error.to_string()))
+            })
+            .await;
+            assert_eq!(outcome.unwrap_err(), error);
+            assert_eq!(polls, 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn slow_positive_response_cannot_outlive_the_deadline() {
+        let result = poll_until_with(
+            Duration::from_millis(20),
+            Duration::from_millis(1),
+            || async {
+                tokio::time::sleep(Duration::from_millis(80)).await;
+                Ok(s(&["true", "", ""]))
+            },
+        )
+        .await
+        .unwrap();
+        assert!(!result.met);
+        assert_eq!(result.polls, 1);
+        assert_eq!(result.failed_polls, 0);
+    }
+
+    #[test]
+    fn only_known_bridge_transport_errors_are_transient() {
+        for error in [
+            "bridge: bridge error -32603: dispatch timeout",
+            "bridge: bridge error -32001: bridge dispatch queue full",
+            "bridge: bridge connection reset while authenticating; client may be loading",
+            "bridge: connection aborted by host (os error 10053)",
+            "bridge: early eof",
+        ] {
+            assert!(transient_poll_error(error), "{error}");
+        }
+        for error in [
+            "lease revoked: dispatch timeout",
+            "Lua error: dispatch timeout",
+            "bridge: bridge error -32603: Lua connection reset",
+            "bridge: bridge response had neither result nor error",
+        ] {
+            assert!(!transient_poll_error(error), "{error}");
+        }
     }
 
     #[test]
@@ -364,6 +559,8 @@ mod tests {
         assert_eq!(p.error.as_deref(), Some("nil index"));
         assert_eq!(p.fail.as_deref(), Some("Login Failed: bad password"));
         assert!(parse_poll(&[]).is_err());
+        assert!(parse_poll(&s(&["true"])).is_err());
+        assert!(parse_poll(&s(&["garbage", "", ""])).is_err());
     }
 
     #[test]
