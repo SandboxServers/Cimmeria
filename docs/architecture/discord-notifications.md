@@ -314,7 +314,7 @@ or every instance and has nothing new for an operator to act on:
 | Target | Event | Why it is SigNoz-only |
 |---|---|---|
 | `spawner.npc_behaviour` | `spawn_off_mesh` | Seed-placement data, read from the SigNoz views. It is deduplicated per spawn id per process, but the colo restarts on every deploy and Castle_CellBlock is instanced per login, so the same spawns posted all day (90 posts in 7 days, 2026-09-29). |
-| `launcher.ingest` | `upload_auth_refused` | A telemetry upload refused for the uploader's own credential (`reason` = `missing_token`, `bad_token` or `token_expired`). That is the uploader's state, not a server fault: an abandoned lab client retrying an expired token every ~12 s posted 1,363 rows in 6 h (2026-10-12). The ingest's other refusals (`event = "upload_refused"`: rate limit, budgets, body and archive errors, kill switch, unusable secret) and its truncations still post. Pinned by `ingest_credential_refusals_do_not_post`. |
+| `launcher.ingest` | `upload_auth_refused` | A telemetry upload refused for the uploader's own credential (`reason` = `missing_token`, `bad_token` or `token_expired`). That is the uploader's state, not a server fault: an abandoned lab client retrying an expired token every ~12 s posted 1,363 rows in 6 h (2026-10-12). The ingest's other refusals (`event = "upload_refused"`: rate limit, budgets, body and archive errors, kill switch, unusable secret) and its truncations still post. Pinned by `ingest_credential_refusals_do_not_post` (discord) and, end to end from a real refused upload, `ingest_credential_refusals_never_post_to_discord` (server). |
 
 `effect_script_unregistered` now fires only for a real missing registration (TG-CMB-04), so it is no longer SigNoz-only and posts to Discord.
 

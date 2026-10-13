@@ -20,6 +20,15 @@ Credential refusals (`missing_token`, `bad_token`, `token_expired`) now carry
 `event = "upload_auth_refused"`, listed in `SIGNOZ_ONLY_EVENTS`; other refusals
 carry `upload_refused` and still post.
 
+Review follow-up (same day): slot eviction and ceiling holds also undo
+escalation. Active pairs (seen within RESET_QUIET) now keep their slot (two
+candidate slots per key; a newcomer with both taken is written untracked under
+the ceiling), a ceiling hold marks the row `owed` instead of moving `opened`,
+and credential refusals have their own 50-row ceiling (`Pool`). The
+event-string tie between admin-api and discord is pinned end to end in
+`crates/server/src/logging/discord_ingest_tests.rs`, which POSTs to the real
+login-port router over a loopback socket (no tower dev-dep needed).
+
 **Why:** any per-key throttle on a client-driven retry loop has this shape.
 **How to apply:** when writing a log throttle for retried client traffic, test
 it with a periodic caller slower than the window (inject `Instant`s), not just

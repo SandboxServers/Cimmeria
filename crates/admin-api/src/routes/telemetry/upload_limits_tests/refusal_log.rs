@@ -8,8 +8,7 @@ use std::time::{Duration, Instant};
 use crate::routes::dev_session::AuthError;
 use crate::routes::telemetry::dto::IngestError;
 use crate::routes::telemetry::refusal_log::{
-    Decision, RefusalLog, AUTH_REFUSED_EVENT, GLOBAL_ROWS_PER_WINDOW, MAX_WINDOW, REFUSED_EVENT,
-    RESET_QUIET, WINDOW,
+    Decision, Pool, RefusalLog, GLOBAL_ROWS_PER_WINDOW, MAX_WINDOW, RESET_QUIET, WINDOW,
 };
 use crate::routes::telemetry::replay_tests::capture;
 use crate::routes::telemetry::upload_gate::{Route, Uploader};
@@ -21,14 +20,17 @@ fn repeated_refusals_are_throttled_with_a_count() {
     let log = RefusalLog::new();
     let t0 = Instant::now();
     assert_eq!(
-        log.decide("busy", "sess-a", t0),
+        log.decide(Pool::Server, "busy", "sess-a", t0),
         Decision::Emit { suppressed: 0 }
     );
     for _ in 0..4 {
-        assert_eq!(log.decide("busy", "sess-a", t0), Decision::Suppress);
+        assert_eq!(
+            log.decide(Pool::Server, "busy", "sess-a", t0),
+            Decision::Suppress
+        );
     }
     assert_eq!(
-        log.decide("busy", "sess-a", t0 + WINDOW),
+        log.decide(Pool::Server, "busy", "sess-a", t0 + WINDOW),
         Decision::Emit { suppressed: 4 }
     );
 }
@@ -39,13 +41,13 @@ fn repeated_refusals_are_throttled_with_a_count() {
 fn one_uploaders_refusals_do_not_hide_anothers() {
     let log = RefusalLog::new();
     let t0 = Instant::now();
-    log.decide("busy", "sess-a", t0);
+    log.decide(Pool::Server, "busy", "sess-a", t0);
     assert_eq!(
-        log.decide("busy", "sess-b", t0),
+        log.decide(Pool::Server, "busy", "sess-b", t0),
         Decision::Emit { suppressed: 0 }
     );
     assert_eq!(
-        log.decide("rate_limited", "sess-a", t0),
+        log.decide(Pool::Server, "rate_limited", "sess-a", t0),
         Decision::Emit { suppressed: 0 }
     );
 }
@@ -59,7 +61,12 @@ fn the_refusal_log_has_a_global_ceiling() {
     let emitted = (0..GLOBAL_ROWS_PER_WINDOW + 20)
         .filter(|i| {
             matches!(
-                log.decide("missing_token", &format!("198.51.100.{i}"), t0),
+                log.decide(
+                    Pool::Credential,
+                    "missing_token",
+                    &format!("198.51.100.{i}"),
+                    t0
+                ),
                 Decision::Emit { .. }
             )
         })
@@ -81,7 +88,7 @@ fn a_steady_retrier_slower_than_the_first_window_is_throttled() {
         for _ in 0..3 {
             refusals += 1;
             if matches!(
-                log.decide("token_expired", "sess-a", t0 + t),
+                log.decide(Pool::Credential, "token_expired", "sess-a", t0 + t),
                 Decision::Emit { .. }
             ) {
                 emitted += 1;
@@ -108,22 +115,22 @@ fn the_window_doubles_per_row_up_to_the_cap() {
     let log = RefusalLog::new();
     let t0 = Instant::now();
     assert_eq!(
-        log.decide("bad_token", "sess-a", t0),
+        log.decide(Pool::Credential, "bad_token", "sess-a", t0),
         Decision::Emit { suppressed: 0 }
     );
     // Second row at 10 s: the window is now 20 s.
     let mut at = t0 + WINDOW;
     assert_eq!(
-        log.decide("bad_token", "sess-a", at),
+        log.decide(Pool::Credential, "bad_token", "sess-a", at),
         Decision::Emit { suppressed: 0 }
     );
     assert_eq!(
-        log.decide("bad_token", "sess-a", at + WINDOW),
+        log.decide(Pool::Credential, "bad_token", "sess-a", at + WINDOW),
         Decision::Suppress,
         "the second row widened the window to 20 s"
     );
     assert_eq!(
-        log.decide("bad_token", "sess-a", at + 2 * WINDOW),
+        log.decide(Pool::Credential, "bad_token", "sess-a", at + 2 * WINDOW),
         Decision::Emit { suppressed: 1 }
     );
     at += 2 * WINDOW;
@@ -131,11 +138,16 @@ fn the_window_doubles_per_row_up_to_the_cap() {
     let mut window = 4 * WINDOW;
     while window < MAX_WINDOW {
         assert_eq!(
-            log.decide("bad_token", "sess-a", at + window - Duration::from_secs(1)),
+            log.decide(
+                Pool::Credential,
+                "bad_token",
+                "sess-a",
+                at + window - Duration::from_secs(1)
+            ),
             Decision::Suppress
         );
         assert_eq!(
-            log.decide("bad_token", "sess-a", at + window),
+            log.decide(Pool::Credential, "bad_token", "sess-a", at + window),
             Decision::Emit { suppressed: 1 }
         );
         at += window;
@@ -143,6 +155,7 @@ fn the_window_doubles_per_row_up_to_the_cap() {
     }
     assert_eq!(
         log.decide(
+            Pool::Credential,
             "bad_token",
             "sess-a",
             at + MAX_WINDOW - Duration::from_secs(1)
@@ -150,7 +163,7 @@ fn the_window_doubles_per_row_up_to_the_cap() {
         Decision::Suppress
     );
     assert_eq!(
-        log.decide("bad_token", "sess-a", at + MAX_WINDOW),
+        log.decide(Pool::Credential, "bad_token", "sess-a", at + MAX_WINDOW),
         Decision::Emit { suppressed: 1 },
         "the window is capped at MAX_WINDOW"
     );
@@ -167,7 +180,7 @@ fn a_quiet_pair_resets_to_the_first_window() {
     let mut at = t0;
     let end = t0 + Duration::from_secs(600);
     while at <= end {
-        log.decide("busy", "sess-a", at);
+        log.decide(Pool::Server, "busy", "sess-a", at);
         at += Duration::from_secs(12);
     }
     let last = at - Duration::from_secs(12);
@@ -175,16 +188,16 @@ fn a_quiet_pair_resets_to_the_first_window() {
     let probe = RefusalLog::new();
     let mut p = t0;
     while p <= end {
-        probe.decide("busy", "sess-a", p);
+        probe.decide(Pool::Server, "busy", "sess-a", p);
         p += Duration::from_secs(12);
     }
     let early = last + RESET_QUIET - Duration::from_secs(1);
     assert!(matches!(
-        probe.decide("busy", "sess-a", early),
+        probe.decide(Pool::Server, "busy", "sess-a", early),
         Decision::Emit { .. }
     ));
     assert_eq!(
-        probe.decide("busy", "sess-a", early + WINDOW),
+        probe.decide(Pool::Server, "busy", "sess-a", early + WINDOW),
         Decision::Suppress,
         "not quiet long enough: the window stays wide"
     );
@@ -192,15 +205,20 @@ fn a_quiet_pair_resets_to_the_first_window() {
     at = last + RESET_QUIET;
     // This row still reports what the wide window counted.
     assert!(matches!(
-        log.decide("busy", "sess-a", at),
+        log.decide(Pool::Server, "busy", "sess-a", at),
         Decision::Emit { suppressed } if suppressed > 0
     ));
     assert_eq!(
-        log.decide("busy", "sess-a", at + WINDOW - Duration::from_secs(1)),
+        log.decide(
+            Pool::Server,
+            "busy",
+            "sess-a",
+            at + WINDOW - Duration::from_secs(1)
+        ),
         Decision::Suppress
     );
     assert_eq!(
-        log.decide("busy", "sess-a", at + WINDOW),
+        log.decide(Pool::Server, "busy", "sess-a", at + WINDOW),
         Decision::Emit { suppressed: 1 },
         "after a quiet spell the window is back to 10 s"
     );
@@ -217,32 +235,50 @@ fn uploader() -> Uploader {
 
 /// Credential refusals carry the SigNoz-only `event`; server-state and
 /// budget refusals carry the ordinary one, and both stay WARN. Reverting
-/// the `event` split (or `is_credential_refusal`) trips this.
+/// the `event` split (or `is_credential_refusal`) trips this. The strings
+/// are literals on purpose: they must match the discord crate's
+/// `SIGNOZ_ONLY_EVENTS` row, which the server crate's
+/// `discord_ingest_tests` checks end to end.
 #[test]
 fn credential_refusals_carry_the_signoz_only_event() {
     let cases: Vec<(IngestError, &str)> = vec![
         (
             IngestError::Auth(AuthError::Expired { exp: 1, now: 2 }),
-            AUTH_REFUSED_EVENT,
+            "upload_auth_refused",
         ),
         (
             IngestError::Auth(AuthError::BadSignature),
-            AUTH_REFUSED_EVENT,
+            "upload_auth_refused",
         ),
-        (IngestError::MissingAuth, AUTH_REFUSED_EVENT),
+        (IngestError::MissingAuth, "upload_auth_refused"),
+        (
+            IngestError::Auth(AuthError::MissingScope { wanted: "x" }),
+            "upload_auth_refused",
+        ),
+        (
+            IngestError::Auth(AuthError::SessionLifetimeExceeded { elapsed: 2, cap: 1 }),
+            "upload_auth_refused",
+        ),
+        (
+            IngestError::Auth(AuthError::SecretTooShort { got: 1, min: 2 }),
+            "upload_refused",
+        ),
         (
             IngestError::Auth(AuthError::KillSwitchActive),
-            REFUSED_EVENT,
+            "upload_refused",
         ),
-        (IngestError::Auth(AuthError::SecretMissing), REFUSED_EVENT),
+        (
+            IngestError::Auth(AuthError::SecretMissing),
+            "upload_refused",
+        ),
         (
             IngestError::OverBudget {
                 what: "rows",
                 limit: 1,
             },
-            REFUSED_EVENT,
+            "upload_refused",
         ),
-        (IngestError::TooLarge(2, 1), REFUSED_EVENT),
+        (IngestError::TooLarge(2, 1), "upload_refused"),
     ];
     for (err, want) in cases {
         let log = RefusalLog::new();

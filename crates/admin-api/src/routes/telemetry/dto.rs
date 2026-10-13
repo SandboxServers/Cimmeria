@@ -170,11 +170,38 @@ impl IngestError {
     /// [`super::refusal_log::AUTH_REFUSED_EVENT`]). The kill switch and an
     /// unusable secret are server state and the rate limit is a budget, so
     /// those are not credential refusals.
+    ///
+    /// Every variant is listed, with no wildcard, so a new [`AuthError`] or
+    /// [`IngestError`] variant fails to compile here until someone decides
+    /// whether it posts to Discord.
     pub(super) fn is_credential_refusal(&self) -> bool {
-        matches!(
-            self.reason(),
-            "missing_token" | "bad_token" | "token_expired"
-        )
+        match self {
+            IngestError::Auth(e) => match e {
+                // The token the uploader sent: absent below, unreadable,
+                // forged, expired, unscoped or past its lifetime cap.
+                AuthError::BadPayload(_)
+                | AuthError::BadSignature
+                | AuthError::Expired { .. }
+                | AuthError::MissingScope { .. }
+                | AuthError::SessionLifetimeExceeded { .. }
+                | AuthError::BadInstallId(_)
+                | AuthError::BadField { .. }
+                | AuthError::Json(_) => true,
+                // Server configuration, an operator's switch, or a budget.
+                AuthError::SecretMissing
+                | AuthError::SecretTooShort { .. }
+                | AuthError::KillSwitchActive
+                | AuthError::QuotaExceeded(_) => false,
+            },
+            IngestError::MissingAuth => true,
+            IngestError::TooLarge(_, _)
+            | IngestError::Gzip(_)
+            | IngestError::Zip(_)
+            | IngestError::Multipart(_)
+            | IngestError::OverBudget { .. }
+            | IngestError::Body
+            | IngestError::Busy { .. } => false,
+        }
     }
 
     /// The budget a refusal names, for its log row.
