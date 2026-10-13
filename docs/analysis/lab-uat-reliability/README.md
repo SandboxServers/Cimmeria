@@ -53,7 +53,7 @@ live validation; an integration test alone leaves it UATPending.
 | LR-04b relog capture | #1679 | BlockedDependency: LR-04a | | Welcome after relog |
 | LR-05a dead player observation | #1680 | Ready | | Defeat window state |
 | LR-05b safe logout | #1680 | BlockedDependency: LR-05a | | Logout after death |
-| LR-05c process uptime | #1680 | Ready | | Status across supervisor restart |
+| LR-05c process uptime | #1680 | Writing | | Status across supervisor restart |
 | LR-05d login focus recovery | #1680 | BlockedDependency: LR-02 | | Covered login after crash |
 | LR-06 target timeout and route correction | #1684 | Ready | | Hostile target while in combat; pod-safe route |
 | LR-07 native ring click | #1686 | BlockedDependency: LR-00 and native-input probe | | Fresh client mouse vs handler |

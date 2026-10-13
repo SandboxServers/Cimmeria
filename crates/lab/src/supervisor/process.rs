@@ -127,8 +127,9 @@ mod win {
 
     use windows_sys::Win32::Foundation::{CloseHandle, FALSE, HWND, LPARAM};
     use windows_sys::Win32::System::Threading::{
-        GetExitCodeProcess, OpenProcess, QueryFullProcessImageNameW, TerminateProcess,
-        PROCESS_QUERY_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
+        GetExitCodeProcess, GetProcessTimes, OpenProcess, QueryFullProcessImageNameW,
+        TerminateProcess, PROCESS_QUERY_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION,
+        PROCESS_TERMINATE,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GetWindowTextLengthW, GetWindowThreadProcessId, IsWindowVisible, PostMessageW,
@@ -202,6 +203,36 @@ mod win {
         let ok = unsafe { GetExitCodeProcess(h, &mut code) };
         unsafe { CloseHandle(h) };
         ok != 0 && code == STILL_ACTIVE
+    }
+
+    /// Unix epoch milliseconds when this PID's current process was created.
+    /// Returns `None` when the process cannot be queried.
+    pub fn creation_time_ms(pid: u32) -> Option<i64> {
+        use windows_sys::Win32::Foundation::FILETIME;
+
+        let ticks =
+            |ft: &FILETIME| (u64::from(ft.dwHighDateTime) << 32) | u64::from(ft.dwLowDateTime);
+        // FILETIME is 100 ns intervals since 1601-01-01; convert to Unix ms.
+        const UNIX_EPOCH_FILETIME_TICKS: u64 = 116_444_736_000_000_000;
+        // SAFETY: OpenProcess/GetProcessTimes/CloseHandle with valid out-params.
+        unsafe {
+            let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+            if h.is_null() {
+                return None;
+            }
+            let zero = FILETIME {
+                dwLowDateTime: 0,
+                dwHighDateTime: 0,
+            };
+            let (mut created, mut exited, mut kernel, mut user) = (zero, zero, zero, zero);
+            let ok = GetProcessTimes(h, &mut created, &mut exited, &mut kernel, &mut user);
+            CloseHandle(h);
+            if ok == 0 {
+                return None;
+            }
+            let unix_ticks = ticks(&created).checked_sub(UNIX_EPOCH_FILETIME_TICKS)?;
+            i64::try_from(unix_ticks / 10_000).ok()
+        }
     }
 
     /// Terminate a PID (watchdog fired, or explicit stop). Best-effort.
@@ -303,9 +334,14 @@ mod win {
 
 #[cfg(windows)]
 pub use win::{
-    find_main_window, is_alive, launch, post_message, running_pids_where, running_sgw_pids,
-    terminate,
+    creation_time_ms, find_main_window, is_alive, launch, post_message, running_pids_where,
+    running_sgw_pids, terminate,
 };
+
+#[cfg(not(windows))]
+pub fn creation_time_ms(_pid: u32) -> Option<i64> {
+    None
+}
 
 /// Whether a terminated client still counts as running: its exit code says
 /// alive, or the start guard still sees its window (`window_pids` is

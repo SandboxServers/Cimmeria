@@ -103,6 +103,24 @@ pub(crate) fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
+fn client_process_status(
+    pid: Option<u32>,
+    now_ms: i64,
+    mut is_alive: impl FnMut(u32) -> bool,
+    mut creation_time_ms: impl FnMut(u32) -> Option<i64>,
+) -> (bool, i64, &'static str) {
+    let Some(pid) = pid else {
+        return (false, 0, "not_running");
+    };
+    if !is_alive(pid) {
+        return (false, 0, "exited");
+    }
+    let Some(created_ms) = creation_time_ms(pid) else {
+        return (true, 0, "creation_time_unavailable");
+    };
+    (true, now_ms.saturating_sub(created_ms).max(0), "available")
+}
+
 /// Where the client lives and how the bridge is reached.
 #[derive(Debug, Clone)]
 pub struct SupervisorConfig {
@@ -515,20 +533,17 @@ impl Supervisor {
     /// crash count. Polls the bridge for the heartbeat and folds it into
     /// the watchdog (also the on-demand staleness check).
     pub async fn status(&self) -> Result<Value, String> {
-        let (pid, uptime_ms, login, crash_count, persistent_hooks) = {
+        let (pid, login, crash_count, persistent_hooks) = {
             let mut st = self.state.lock().await;
-            let uptime = st
-                .started_at
-                .map(|t| t.elapsed().as_millis() as i64)
-                .unwrap_or(0);
             (
                 st.pid,
-                uptime,
                 st.login,
                 st.recovery.recent_crash_count(now_ms()),
                 st.persistent_hooks.count(),
             )
         };
+        let (running, uptime_ms, uptime_state) =
+            client_process_status(pid, now_ms(), process::is_alive, process::creation_time_ms);
 
         // Heartbeat poll happens without the state lock held.
         let hb = self.bridge.heartbeat().await;
@@ -554,8 +569,9 @@ impl Supervisor {
 
         Ok(json!({
             "pid": pid,
-            "running": pid.map(process::is_alive).unwrap_or(false),
+            "running": running,
             "uptime_ms": uptime_ms,
+            "uptime_state": uptime_state,
             "login_state": login.as_str(),
             "crash_count_10min": crash_count,
             "persistent_hooks": persistent_hooks,
@@ -662,5 +678,27 @@ mod tests {
     fn login_state_strings_are_stable() {
         assert_eq!(LoginState::InWorld.as_str(), "in_world");
         assert_eq!(LoginState::Crashed.as_str(), "crashed");
+    }
+
+    #[test]
+    fn process_uptime_survives_supervisor_recreation_and_tracks_new_pid() {
+        let now = 50_000;
+        let process_creation = |pid| match pid {
+            41 => Some(10_000),
+            42 => Some(48_000),
+            _ => None,
+        };
+        let survives_restart = client_process_status(Some(41), now, |_| true, process_creation);
+        assert_eq!(survives_restart, (true, 40_000, "available"));
+        let new_process = client_process_status(Some(42), now, |_| true, process_creation);
+        assert_eq!(new_process, (true, 2_000, "available"));
+    }
+
+    #[test]
+    fn exited_or_unreadable_process_never_reports_stale_uptime() {
+        let exited = client_process_status(Some(41), 50_000, |_| false, |_| Some(10_000));
+        assert_eq!(exited, (false, 0, "exited"));
+        let unreadable = client_process_status(Some(41), 50_000, |_| true, |_| None);
+        assert_eq!(unreadable, (true, 0, "creation_time_unavailable"));
     }
 }

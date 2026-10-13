@@ -5,6 +5,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 ## Open investigations
 
 - [project_lab_wait_bridge_retry.md](project_lab_wait_bridge_retry.md) — UI condition waits retry transient bridge failures through the original deadline and report the last failure
+- [reference_lab_client_process_uptime_2026_10_13.md](reference_lab_client_process_uptime_2026_10_13.md) — `lab_client_status.uptime_ms` must use the live process creation time, not supervisor-local launch state; unavailable/exited states report zero
 
 - [project_lab_spec_vocab_2026_10_11.md](project_lab_spec_vocab_2026_10_11.md) — 2026-10-11 lab-spec-vocab closed out (SV-01..14 released); SV-15 live acceptance paused: a loaded workstation starved the lab client
 - [project_dakara_dk05_population.md](project_dakara_dk05_population.md) — 2026-10-07 DK-05: four static cast spawns; owner chose a speculative military-outpost Repository/Loth'ta point at (290, -17, 95); mission dialog restore binds still await DK-10 onward; M2 client UAT pending
