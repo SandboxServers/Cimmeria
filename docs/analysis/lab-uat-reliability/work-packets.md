@@ -48,6 +48,14 @@ module only if needed, and the window-click section of
 `lab-uat-reliability/lr-02-covered-click`; worktree `lr-02-covered-click`;
 commit `fix(lab): refuse covered window clicks`.
 
+**Coordinator preflight:** prove that the stock Lua binding
+`Root:getTargetChildAtPosition(CEGUI.MouseCursor:getSingleton():getPosition())`
+is callable on the installed client, using the probe in
+`docs/analysis/lab-harness/packets-ui.md`. The underlying CEGUI hit-test
+walks visible children top first (`docs/reverse-engineering/findings/cegui-mouse-input-feed.md`
+section 7). If the Lua binding is absent, stop and write a native-call design
+before dispatching Luna; do not substitute rectangle overlap.
+
 Before `click_at`, determine the CEGUI window under the click point from the
 real hit-test/root z-order. If it is neither the target nor a descendant of
 the target, return a covered-target error naming the covering window. For a

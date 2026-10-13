@@ -45,14 +45,14 @@ live validation; an integration test alone leaves it UATPending.
 | Packet | Issue | Status | PR | Live proof |
 |---|---|---|---|---|
 | LR-01 prompt read | #1673 | Ready | | Hub prompt text/buttons |
-| LR-02 covered click | #1676 | Ready | | Mail compose over inbox |
+| LR-02 covered click | #1676 | BlockedDependency: CEGUI hit-test probe | | Mail compose over inbox |
 | LR-03 bridge wait | #1677 | Ready | | World load through `client_wait_for` |
 | LR-04a feedback metadata | #1679 | Ready | | Channel 9 colour and tab |
 | LR-04b relog capture | #1679 | BlockedDependency: LR-04a | | Welcome after relog |
 | LR-05a dead player observation | #1680 | Ready | | Defeat window state |
 | LR-05b safe logout | #1680 | BlockedDependency: LR-05a | | Logout after death |
 | LR-06 target timeout | #1684 | Ready | | Hostile target while in combat |
-| LR-07 native ring click | #1686 | Ready | | Fresh client mouse vs handler |
+| LR-07 native ring click | #1686 | BlockedDependency: native-input probe | | Fresh client mouse vs handler |
 | CA-MG-L0..L5 | #1685 | BlockedDependency: autoplay prerequisites | | Livewire N1 solve |
 | CA-AP-11 | #1689 | BlockedDependency: autoplay prerequisites | | Route to Mess Hall |
 
