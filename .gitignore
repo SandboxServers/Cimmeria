@@ -186,6 +186,9 @@ docs/design/*
 .mcp.json
 
 .claude/worktrees/
+# Lean orchestration: the active-campaign pointer and the per-packet report files.
+.claude/state/
+.claude/reports/
 
 data/cache/
 cimmeria-content-editor.exe
