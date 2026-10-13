@@ -4,8 +4,9 @@
 use serde_json::Value;
 
 use super::click::{self, ClickRequest, Expect};
-use super::geometry::Vec3;
+use super::geometry::{client_to_server, Vec3};
 use super::sim::{Sim, REAL_BODY_DZ};
+use super::PointArg;
 
 /// The `hover` step's detail from a result or an error's steps.
 fn hover_detail(steps: &[Value]) -> &Value {
@@ -22,6 +23,110 @@ fn medic_behind_the_avatar() -> Sim {
     s.entities[0].window = Some("DialogWin".into());
     s.avatar_hides = Some((11, 0.3));
     s
+}
+
+fn point(pos: Vec3) -> PointArg {
+    let p = client_to_server(pos);
+    PointArg {
+        x: p.x,
+        y: p.y,
+        z: p.z,
+        space: None,
+    }
+}
+
+#[tokio::test]
+async fn point_on_entity_covered_by_own_avatar_uses_entity_hover_search() {
+    let mut sim = medic_behind_the_avatar();
+    let out = click::run(
+        &mut sim,
+        "client_world_click",
+        ClickRequest {
+            point: Some(point(Vec3::new(1000.0, 0.0, 0.0))),
+            expect: Some(Expect::Window),
+            ..ClickRequest::default()
+        },
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(out["hover_verified"], true, "{out}");
+    assert_eq!(out["entity"]["id"], 11, "{out}");
+    assert_eq!(out["result"]["windows_opened"][0], "DialogWin");
+    let detail = hover_detail(out["steps"].as_array().unwrap());
+    assert_eq!(detail["saw_own_avatar"], true, "{detail}");
+    assert_eq!(detail["view_retries"][0]["yaw_counts"], 250, "{detail}");
+}
+
+#[tokio::test]
+async fn point_on_covered_entity_refuses_input_and_reports_candidate() {
+    let mut sim = medic_behind_the_avatar();
+    let e = click::run(
+        &mut sim,
+        "client_world_click",
+        ClickRequest {
+            point: Some(point(Vec3::new(1000.0, 0.0, 0.0))),
+            rotate_camera: Some(false),
+            force: true,
+            expect: Some(Expect::Window),
+            ..ClickRequest::default()
+        },
+        None,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(e.step, "hover");
+    assert_eq!(
+        e.state.as_ref().unwrap()["candidate_ids"],
+        serde_json::json!([11])
+    );
+    assert!(sim.buttons.is_empty());
+}
+
+#[tokio::test]
+async fn ambiguous_point_reports_all_candidates_without_clicking() {
+    let mut sim = Sim::new()
+        .with_entity(11, "First", Vec3::new(1000.0, 0.0, 0.0))
+        .with_entity(12, "Second", Vec3::new(1004.0, 0.0, 0.0));
+    let e = click::run(
+        &mut sim,
+        "client_world_click",
+        ClickRequest {
+            point: Some(point(Vec3::new(1000.0, 0.0, 0.0))),
+            ..ClickRequest::default()
+        },
+        None,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(e.step, "resolve_target");
+    assert_eq!(
+        e.state.as_ref().unwrap()["candidate_ids"],
+        serde_json::json!([11, 12])
+    );
+    assert!(sim.buttons.is_empty());
+}
+
+#[tokio::test]
+async fn unmatched_point_covered_by_avatar_refuses_input() {
+    let mut sim = medic_behind_the_avatar();
+    // This point is outside the entity matching radius yet projects through
+    // the avatar while the camera looks toward the medic.
+    let e = click::run(
+        &mut sim,
+        "client_world_click",
+        ClickRequest {
+            point: Some(point(Vec3::new(1050.0, 0.0, 0.0))),
+            rotate_camera: Some(false),
+            ..ClickRequest::default()
+        },
+        None,
+    )
+    .await
+    .unwrap_err();
+    assert_eq!(e.step, "hover");
+    assert_eq!(e.state.as_ref().unwrap()["tried"][0]["hover"], "own_avatar");
+    assert!(sim.buttons.is_empty());
 }
 
 #[tokio::test]

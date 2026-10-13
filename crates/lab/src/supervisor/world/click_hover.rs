@@ -129,7 +129,20 @@ pub(super) async fn hover_once<W: WorldIo>(
             io.place_cursor(x, y, true)
                 .await
                 .map_err(|e| steps.fail(io.now_ms(), "cursor", e))?;
-            chosen = Some((p, Hover::Nothing));
+            io.sleep(HOVER_WAIT_MS).await;
+            let slots = read_mouse_over(io, steps, (x, y), deadline).await?;
+            let mo = slot_entity(&slots, mo_slot);
+            let me = slot_entity(&slots, player_slot);
+            tried.push(json!({ "at": [x, y], "hover": if mo == 0 {
+                json!("nothing")
+            } else if mo == me {
+                json!("own_avatar")
+            } else {
+                json!({ "other_entity": mo })
+            }}));
+            if mo == 0 {
+                chosen = Some((p, Hover::Nothing));
+            }
             break;
         };
         let mut hover = Hover::OffScreen;

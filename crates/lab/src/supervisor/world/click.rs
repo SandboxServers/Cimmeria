@@ -89,7 +89,7 @@ pub struct ClickRequest {
     /// Nearest entity whose name contains this (case-insensitive).
     #[serde(default)]
     pub name: Option<String>,
-    /// Click a world point instead of an entity (no mouse-over check).
+    /// Click a world point. A point at a rendered entity requires its hover.
     #[serde(default)]
     pub point: Option<PointArg>,
     /// `left` or `right` (client_world_click default right = interact;
@@ -193,7 +193,66 @@ pub async fn run<W: WorldIo>(
 
     // 1. Resolve.
     let (mut aim, entity, found): (Aim, Option<u32>, Option<Found>) = match target.point {
-        Some(p) => (Aim::Point(p.to_client()), None, None),
+        Some(p) => {
+            let point = p.to_client();
+            let snap = io
+                .snapshot()
+                .await
+                .map_err(|e| steps.fail(io.now_ms(), "read_entities", e))?;
+            // Server points are commonly rounded to centimetres. Offset
+            // points intentionally aimed at a body part stay distinct.
+            let candidates: Vec<_> = snap
+                .entities
+                .iter()
+                .filter(|e| e.id != snap.player_id && e.rendered())
+                .filter(|e| {
+                    e.pose
+                        .is_some_and(|pose| distance_m(point, pose.pos) <= 0.05)
+                })
+                .map(|e| e.id)
+                .collect();
+            if candidates.len() > 1 {
+                return Err(steps.fail_with(
+                    io.now_ms(),
+                    "resolve_target",
+                    "world point matches multiple rendered entities; supply entity_id",
+                    json!({ "candidate_ids": candidates }),
+                ));
+            }
+            if let Some(id) = candidates.first().copied() {
+                let fr = FindRequest {
+                    entity_id: Some(id),
+                    rendered_only: true,
+                    limit: Some(1),
+                    ..FindRequest::default()
+                };
+                let r = find_entities(io, &fr, &mut steps).await?;
+                let m = r.matches.into_iter().next().ok_or_else(|| {
+                    steps.fail(
+                        io.now_ms(),
+                        "resolve_target",
+                        format!("matched entity {id} disappeared"),
+                    )
+                })?;
+                let pos = m.pose.ok_or_else(|| {
+                    steps.fail(
+                        io.now_ms(),
+                        "resolve_target",
+                        format!("matched entity {id} has no pose"),
+                    )
+                })?;
+                (
+                    Aim::Actor {
+                        actor: m.actor,
+                        last: pos.pos,
+                    },
+                    Some(id),
+                    Some(m),
+                )
+            } else {
+                (Aim::Point(point), None, None)
+            }
+        }
         None => {
             let fr = FindRequest {
                 entity_id: target.entity_id,
@@ -364,7 +423,7 @@ pub async fn run<W: WorldIo>(
                 entity,
                 units.mouse_over,
                 units.player,
-                req.force,
+                req.force && req.point.is_none(),
                 Some(hover_deadline),
                 &mut attempted_pixel,
             )
@@ -372,7 +431,7 @@ pub async fn run<W: WorldIo>(
         saw_own |= t.iter().any(|h| h["hover"] == "own_avatar");
         tried = t;
         chosen = c;
-        if !wants_view_retry(&chosen, &tried, near, req.force) {
+        if !wants_view_retry(&chosen, &tried, near, req.force && req.point.is_none()) {
             break;
         }
     }
@@ -387,6 +446,14 @@ pub async fn run<W: WorldIo>(
         ));
     }
     let mut hover_detail = json!({ "tried": tried });
+    hover_detail["candidate_ids"] = json!(tried
+        .iter()
+        .filter_map(|t| {
+            t["hover"]["other_entity"]
+                .as_u64()
+                .and_then(|id| u32::try_from(id).ok())
+        })
+        .collect::<Vec<_>>());
     if !adjusted.is_empty() {
         hover_detail["view_retries"] = json!(adjusted);
     }
@@ -420,7 +487,7 @@ pub async fn run<W: WorldIo>(
                     entity,
                     units.mouse_over,
                     units.player,
-                    req.force,
+                    req.force && req.point.is_none(),
                     Some(hover_deadline),
                     &mut attempted_pixel,
                 )
@@ -430,6 +497,11 @@ pub async fn run<W: WorldIo>(
         }
     }
     steps.record("hover", t_hover, io.now_ms(), hover_detail.clone());
+    if req.point.is_some() && entity.is_some() && !matches!(chosen, Some((_, Hover::Matched))) {
+        return Err(steps.fail_with(io.now_ms(), "hover",
+            "point matched an entity but its ID was not verified under the cursor; target is occluded",
+            json!({ "candidate_ids": [entity.unwrap()], "hover": hover_detail })));
+    }
     let Some((pixel, hover)) = chosen else {
         return Err(steps.fail_with(
             io.now_ms(),

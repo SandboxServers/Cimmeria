@@ -143,7 +143,7 @@ Sources: `docs/guides/automated-uat.md`, `docs/guides/uat-specs/{castle-cellbloc
 | Cellblock_ArmoryRingSwitch | 79 | 3 | NULL | (-54.88, 26.08, -163.84) | point |
 | Castle_SgtGerschon (world 8) | 112 | 149 | 7034 "Sgt. Gerschon" | (429.64, 70.11, 996.56) | name |
 
-- `client_world_click {point}` clicks a world point with **no mouse-over check**. Unnamed static objects can be clicked by their seed coordinates (the same in every instance), at N1. Whether the click lands on the object's pick volume at that height is **(unverified)**; add a `y` offset if not.
+- `client_world_click {point}` matches a rendered entity within 0.05 m of that point and uses entity hover search. It requires the matched entity's ID under the cursor before pressing the button, including when the avatar covers the initial projection. Multiple matches return their candidate IDs and require an explicit `entity_id`. For a point without a matching rendered entity, whether the click lands on a static object's pick volume at that height is **(unverified)**; add a `y` offset if needed.
 - `client_entity_find {mob_id}` filters on `unitMobId`. Whether that equals the server template id is **(unverified)**.
 - Click and move accept only `entity_id`, `name` or `point` (no `mob_id`). Entity ids are the BigWorld ids shared by client and server, but a spec cannot capture them (R4). Gap G-TGT1.
 
