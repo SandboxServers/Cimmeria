@@ -44,11 +44,11 @@ live validation; an integration test alone leaves it UATPending.
 
 | Packet | Issue | Status | PR | Live proof |
 |---|---|---|---|---|
-| LR-01 prompt read | #1673 | Ready | | Hub prompt text/buttons |
-| LR-00 ring click grading | #1686 | Ready | | Honest N1/N3 and UAT tool lookup |
-| LR-02 covered click | #1676 | Ready | | Mail compose over inbox |
-| LR-03 bridge wait | #1677 | Ready | | World load through `client_wait_for` |
-| LR-04a feedback metadata | #1679 | Ready | | Channel 9 colour and tab |
+| LR-01 prompt read | #1673 | Review | [#1691](https://github.com/SandboxServers/Cimmeria/pull/1691) | Hub prompt text/buttons |
+| LR-00 ring click grading | #1686 | Writing | | Honest N1/N3 and UAT tool lookup |
+| LR-02 covered click | #1676 | Writing | | Mail compose over inbox |
+| LR-03 bridge wait | #1677 | Review | | World load through `client_wait_for` |
+| LR-04a feedback metadata | #1679 | Review | [#1692](https://github.com/SandboxServers/Cimmeria/pull/1692) | Channel 9 colour and tab |
 | LR-04b relog capture | #1679 | BlockedDependency: LR-04a | | Welcome after relog |
 | LR-05a dead player observation | #1680 | Ready | | Defeat window state |
 | LR-05b safe logout | #1680 | BlockedDependency: LR-05a | | Logout after death |
