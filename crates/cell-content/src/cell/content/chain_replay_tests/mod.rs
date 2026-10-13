@@ -66,6 +66,7 @@ mod mission_680;
 mod mission_681_686;
 mod mission_681_686_backstop;
 mod mission_681_686_flank;
+mod mission_681_686_hidden;
 mod mission_686_straegis;
 mod mission_687;
 mod mission_687_crate;
