@@ -63,6 +63,7 @@ Gotchas:
 - Escape does not close Flash windows: read the close button's rect, move there, click.
 - Character names need 3+ letters; lab_create_character can't make single-name races.
 - Failed click: screenshot and look at the PNG before retrying.
+- On a ring destination map, use `client_world_map_click {x, y}` on the marker and verify method 91 with a packet tap. It tries real input first; if the map stays open, its default stock-Lua fallback is N3-assisted. Set `allow_lua_fallback: false` when the row requires a native pass. In one QA lab session, a plain `client_input_mouse` click reached `WorldMapImageWin` without triggering the handler subscribed on `WorldMapWin`.
 Steps: 1. ... 2. ...   Report: <exact fields>.
 ```
 

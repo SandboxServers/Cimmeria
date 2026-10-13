@@ -137,6 +137,23 @@ impl LabServer {
     }
 
     #[tool(
+        description = "Click a ring destination at UI pixel (x,y) on the open world map with a real left click. If the map stays open, allow_lua_fallback (default true) invokes the stock WorldMapMod.onClick at the same pixel and reports client_ui_lua (N3); false requires a native pass. map_closed/effect_ok report whether the click selected a destination; verify method 91 with a packet tap."
+    )]
+    async fn client_world_map_click(
+        &self,
+        Parameters(a): Parameters<WorldMapClickArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let t0 = Instant::now();
+        ui_result(
+            "client_world_map_click",
+            t0,
+            self.supervisor
+                .world_map_click(a.x, a.y, a.allow_lua_fallback.unwrap_or(true))
+                .await,
+        )
+    }
+
+    #[tool(
         description = "Chat lines the client showed (chat, feedback and /tell errors, Server Message, combat chatter): channel, speaker, colour, tabs, store seq. Reads through its own named `cursor`, so it never takes lines from client_wait_event or client_events_read; `since_seq` overrides the cursor, `peek` does not advance it. Filters: channel, contains, speaker. Lines from before the capture was first installed, and splash text, are not in the log. Native tier: read."
     )]
     async fn client_chat_log(

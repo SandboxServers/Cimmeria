@@ -69,6 +69,7 @@ pub const CAPABILITIES: &[Capability] = &[
     // `native_level`, which the runner applies over the floor here.
     read("entity_find", "client_entity_find"),
     drive("world_click", "client_world_click", Tier::N1),
+    drive("world_map_click", "client_world_map_click", Tier::N1),
     drive("target", "client_target", Tier::N1),
     drive("move_to", "client_move_to", Tier::N1),
     drive("camera", "client_camera", Tier::N1),
@@ -198,6 +199,14 @@ mod tests {
     #[test]
     fn an_alias_resolves_and_an_unknown_one_is_an_error() {
         assert_eq!(resolve("@world_click").unwrap(), "client_world_click");
+        assert_eq!(
+            resolve("@world_map_click").unwrap(),
+            "client_world_map_click"
+        );
+        assert_eq!(
+            lookup("client_world_map_click").unwrap().floor,
+            Some(Tier::N1)
+        );
         assert_eq!(resolve("client_ui_state").unwrap(), "client_ui_state");
         assert!(resolve("@nope").is_err());
         assert_eq!(lookup("client_item_action").unwrap().floor, Some(Tier::N1));

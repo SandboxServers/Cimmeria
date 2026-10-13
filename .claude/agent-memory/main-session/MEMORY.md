@@ -35,7 +35,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Reference
 
-- [reference_lab_hub_pass_lessons_2026_10_13.md](reference_lab_hub_pass_lessons_2026_10_13.md) — hub pass lab facts: lanes can't share a plaza, replies on chat channel id 9, no wait_for across world loads, ensure_in_world name-read quirk, Prompt1_SingleButton, death recipe, god mode, stale camera schema, covering windows (#1673, #1676, #1677, #1679, #1680)
+- [reference_lab_ring_map_click_2026_10_13.md](reference_lab_ring_map_click_2026_10_13.md) — QA lab map-image click reached `WorldMapImageWin`, not the parent listener; stock Lua handler at the same pixel and one-time image binding each sent method 91; explicit N3 fallback (#1686)
 - [reference_lab_harness_findings_2026_10_12.md](reference_lab_harness_findings_2026_10_12.md) — lab live facts: Stat['.get'] names, zero camera pose, Q/E turn the pawn (mouse-look only the camera), BackgroundWin click host, bag over vault, feet aim, 5 m 3D range, Lua rebuilt on relog
 - [reference_lab_cli_rust_2026_10_12.md](reference_lab_cli_rust_2026_10_12.md) — `lab.exe` (crates/lab-cli): bin\lab.exe layout, no fallback except the seven `run_script` wrappers, PowerShell flags rewritten, tests isolate `CIMMERIA_LAB_HOME`, JSON from `Serialize` structs; LX-20 live check owed
 - [reference_lab_driving_recipes_2026_10_12.md](reference_lab_driving_recipes_2026_10_12.md) — 2026-10-12 Haiku UAT round 1: teleport-then-click at 3.5-4.5 m, pitch_counts -650, Lua moveItem/useItem N3 fallbacks, HP staging, ClickHouse grading; lab bugs in #1660
