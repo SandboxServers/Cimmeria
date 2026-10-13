@@ -31,6 +31,7 @@ mod entities;
 mod fixture;
 mod logs;
 mod names;
+mod nav_path;
 mod packet_tap;
 mod sessions;
 mod witnesses;
@@ -100,6 +101,16 @@ struct DbQueryArgs {
 struct EntityGetArgs {
     /// Runtime entity id to snapshot.
     entity_id: u32,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
+struct NavPathArgs {
+    /// Loaded space instance id from server_entity_get or server_sessions.
+    space_id: u32,
+    /// Start in server metres, [x, y, z].
+    from: [f32; 3],
+    /// Destination in server metres, [x, y, z].
+    to: [f32; 3],
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -399,6 +410,24 @@ impl LabTools {
         )
     }
 
+    /// Return complete navmesh corridor corners for one loaded space.
+    #[tool(
+        description = "Read-only navmesh route between two server-metre points in one loaded space. Returns status and machine-readable waypoints for client_move_to; partial or failed corridors return no waypoints. This query never moves the player. A UAT row must still drive client_move_to with real input and grade its native_level."
+    )]
+    async fn server_nav_path(
+        &self,
+        Parameters(args): Parameters<NavPathArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let started = Instant::now();
+        let audit_args = json!({ "space_id": args.space_id, "from": args.from, "to": args.to });
+        emit_result(
+            "server_nav_path",
+            &audit_args,
+            started,
+            nav_path::nav_path(&self.state, args.space_id, args.from, args.to).await,
+        )
+    }
+
     /// One entity's ability state (AB-L1 over AB-T5's snapshot).
     #[tool(
         description = "Snapshot one live entity's ability state: the cast in its warmup (ability, cast_id, time left), running ability and moniker cooldowns with time left, pulsing effects (effect, invoker, cast_id, pulses left), timed and held effect-ledger entries (stat deltas, expiry or held, monikers, flags, absorb pools), owed effect-icon clears, state_field refcounts per bit, and every stat's cur/min/max. Times are seconds from now. Read-only; state is null for an unknown entity."
@@ -516,7 +545,8 @@ impl ServerHandler for LabTools {
              content reload, read-only SQL), stage a lab fixture for an \
              offline lab fixture character (server_stage_fixture), snapshot live \
              entities and witness relationships (entity_get/entity_query/witnesses), \
-             read one entity's ability state (ability_state), and capture \
+             read one entity's ability state (ability_state), query a read-only \
+             navmesh route (nav_path), and capture \
              decoded per-session Mercury traffic (packet_tap_start/read/stop).",
         )
     }
@@ -638,6 +668,18 @@ mod tests {
             .unwrap()
             .iter()
             .any(|event| event["event"] == "ended"));
+    }
+
+    #[test]
+    fn nav_path_is_routed_with_a_described_contract() {
+        let orchestrator = Arc::new(Orchestrator::new(Default::default()));
+        let tools = LabTools::new(LabState::new(orchestrator, LogBuffer::new()));
+        let route = tools.tool_router.get("server_nav_path").expect("routed");
+        assert!(route
+            .description
+            .as_deref()
+            .unwrap_or_default()
+            .contains("partial"));
     }
 
     /// A bad or failed SQL call leaves one WARN `lab.tool_call` row carrying

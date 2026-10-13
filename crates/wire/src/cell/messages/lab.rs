@@ -4,7 +4,7 @@
 //! [`crate::cell::messages::BaseToCellMsg::LabQuery`] — the read-only snapshot
 //! path the lab MCP endpoint (`cimmeria-lab-mcp`) uses to inspect live cell
 //! state (`server_entity_get` / `server_entity_query` / `server_witnesses` /
-//! `server_ability_state`).
+//! `server_ability_state` / `server_nav_path`).
 //!
 //! The cell loop owns `SpaceManager`; nothing outside the loop can read it. The
 //! one precedent for pulling a value back out is
@@ -58,6 +58,12 @@ pub enum LabQuery {
     /// One entity's ability state (ability-mechanics AB-L1 over AB-T5's
     /// [`AbilityStateSnapshot`]), or `None` if no such entity exists.
     AbilityState { entity_id: u32 },
+    /// Navmesh corridor in one loaded space. Read-only; never moves an entity.
+    NavPath {
+        space_id: u32,
+        from: [f32; 3],
+        to: [f32; 3],
+    },
 }
 
 /// Filter for [`LabQuery::EntityQuery`]. All fields are AND-combined; a `None`
@@ -118,6 +124,14 @@ pub enum LabQueryReply {
     Witnesses { report: LabWitnessReport },
     /// [`LabQuery::AbilityState`] — the snapshot, or `null` if absent.
     AbilityState { state: Option<AbilityStateSnapshot> },
+    /// Only a complete corridor has waypoints. Partial paths must not be
+    /// presented as a route to the requested destination.
+    NavPath {
+        status: String,
+        waypoints: Vec<[f32; 3]>,
+        start_snap: Option<[f32; 3]>,
+        end_snap: Option<[f32; 3]>,
+    },
 }
 
 /// A copied-out, allocation-bounded snapshot of one cell entity. Every field is

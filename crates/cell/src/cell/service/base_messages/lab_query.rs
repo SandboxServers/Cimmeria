@@ -9,6 +9,8 @@
 //! (`SpaceManager::lab_query_entities` caps at `LAB_ENTITY_QUERY_CAP`), so a
 //! query can never stall the tick.
 
+use cimmeria_common::Vector3;
+use cimmeria_entity::navigation::PathStatus;
 use tokio::sync::oneshot;
 
 use crate::cell::messages::{LabQuery, LabQueryReply, LabQueryResult};
@@ -34,6 +36,36 @@ pub(super) fn handle_lab_query(
         LabQuery::AbilityState { entity_id } => Ok(LabQueryReply::AbilityState {
             state: space_mgr.ability_state(entity_id),
         }),
+        LabQuery::NavPath { space_id, from, to } => {
+            if !from.into_iter().chain(to).all(f32::is_finite) {
+                Err("nav path coordinates must be finite".into())
+            } else {
+                let space = space_mgr
+                    .spaces
+                    .get(&space_id)
+                    .ok_or_else(|| format!("space {space_id} is not loaded"));
+                space.and_then(|space| {
+                    let nav = space
+                        .navmesh
+                        .as_ref()
+                        .ok_or_else(|| format!("space {space_id} has no navmesh"))?;
+                    let from = Vector3::new(from[0], from[1], from[2]);
+                    let to = Vector3::new(to[0], to[1], to[2]);
+                    let outcome = nav.find_path(&from, &to);
+                    let corners = if outcome.status == PathStatus::Ok {
+                        outcome.waypoints.iter().map(|p| [p.x, p.y, p.z]).collect()
+                    } else {
+                        Vec::new()
+                    };
+                    Ok(LabQueryReply::NavPath {
+                        status: outcome.status.label().into(),
+                        waypoints: corners,
+                        start_snap: outcome.start_snap.map(|p| [p.x, p.y, p.z]),
+                        end_snap: outcome.end_snap.map(|p| [p.x, p.y, p.z]),
+                    })
+                })
+            }
+        }
     };
 
     // The receiver is dropped only if the lab endpoint gave up waiting (client
