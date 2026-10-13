@@ -5,7 +5,7 @@ use std::time::Duration;
 use serde_json::{json, Value};
 use tokio::time::Instant;
 
-use super::input::{parse_widget_rect, widget_rect_chunk, CursorVia, Rect};
+use super::input::{parse_widget_rect, widget_rect_chunk, Rect};
 use super::livewire_atlas::LivewireAtlas;
 use super::livewire_solver;
 use super::screenshot::{self, Region};
@@ -144,6 +144,22 @@ fn terminal_failure(rows: &[Value]) -> bool {
     })
 }
 
+fn assessed_outcome(
+    action_ok: bool,
+    smartfox_victory: bool,
+    client_hidden: bool,
+    server_outcome: Option<&str>,
+    defeated: bool,
+) -> &'static str {
+    if action_ok && smartfox_victory && client_hidden && server_outcome == Some("victory") {
+        "victory"
+    } else if defeated {
+        "defeat"
+    } else {
+        "unverified"
+    }
+}
+
 fn rollover(rows: &[Value], intended: &str) -> bool {
     let last = rows.iter().rev().find(|row| {
         row_is(row, "in", "processover", None) || row_is(row, "in", "processout", None)
@@ -188,11 +204,44 @@ async fn await_rows(
 }
 
 async fn native_move(supervisor: &Supervisor, at: (i32, i32)) -> Result<(), String> {
-    let placed = supervisor.place_cursor(at.0, at.1).await?;
-    if !matches!(placed.via, CursorVia::NativeInject) {
-        return Err("native CEGUI cursor injection unavailable; refusing N1 claim".into());
-    }
+    supervisor.place_cursor_native(at.0, at.1).await?;
     Ok(())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Opening {
+    OpenDoor,
+    Resume,
+}
+
+fn opening(board: &Value) -> Result<Opening, String> {
+    match board["state"].as_str() {
+        Some("ready") if board["game_started"] == false => Ok(Opening::OpenDoor),
+        Some("running")
+            if board["game_started"] == true
+                && board["time_remaining"]
+                    .as_f64()
+                    .is_some_and(|time| time > 0.0) =>
+        {
+            Ok(Opening::Resume)
+        }
+        _ => Err("Livewire board is neither unopened nor running with time remaining".into()),
+    }
+}
+
+fn calibration_point(plan: &livewire_solver::ClickPlan) -> Result<(&str, (f64, f64)), String> {
+    let click = plan
+        .clicks
+        .first()
+        .ok_or("Livewire plan has no calibration wire")?;
+    let point = click
+        .candidates
+        .first()
+        .ok_or("Livewire plan has no exposed calibration point")?;
+    if !(445..=1270).contains(&point.x) || !(110..=890).contains(&point.y) {
+        return Err("Livewire calibration point is covered by SWF chrome".into());
+    }
+    Ok((&click.name, (f64::from(point.x), f64::from(point.y))))
 }
 
 async fn native_click(supervisor: &Supervisor, at: (i32, i32)) -> Result<(), String> {
@@ -212,51 +261,52 @@ async fn run_livewire(
     probes: &mut Vec<Value>,
 ) -> Result<(), String> {
     let plan = livewire_solver::plan(board, atlas)?;
-    if plan.clicks.is_empty() {
+    let mode = opening(board)?;
+    if plan.clicks.is_empty() && mode == Opening::OpenDoor {
         return Err("Livewire plan contains no remaining goals".into());
     }
-    let start = stage_to_ui(rect, LIVEWIRE_STAGE, (363.4, 665.25))?;
-    native_click(supervisor, start).await?;
-    if !await_rows(tap, server, entity_id, Duration::from_secs(2), |rows| {
-        rows.iter().any(|row| row_is(row, "in", "opendoor", None))
-    })
-    .await?
-    {
-        return Err("Open click produced no SmartFox opendoor".into());
+    if mode == Opening::OpenDoor {
+        let start = stage_to_ui(rect, LIVEWIRE_STAGE, (363.4, 665.25))?;
+        native_click(supervisor, start).await?;
+        if !await_rows(tap, server, entity_id, Duration::from_secs(2), |rows| {
+            rows.iter().any(|row| row_is(row, "in", "opendoor", None))
+        })
+        .await?
+        {
+            return Err("Open click produced no SmartFox opendoor".into());
+        }
+        let opened = board_read(server, entity_id).await?;
+        if opening(&opened) != Ok(Opening::Resume) {
+            return Err("opendoor did not start the Livewire timer".into());
+        }
     }
-    let opened = board_read(server, entity_id).await?;
-    if opened["state"] != "running" || opened["game_started"] != true {
-        return Err("opendoor did not start the Livewire timer".into());
+    probes.push(json!({"kind":"opening","mode":format!("{mode:?}")}));
+    if plan.clicks.is_empty() {
+        return Ok(());
     }
-    let electrode = board["wires"]
-        .as_array()
-        .and_then(|wires| wires.iter().find(|wire| wire["name"] == "pe1"))
-        .ok_or("Livewire calibration electrode pe1 is missing")?;
-    let centre = stage_to_ui(
-        rect,
-        LIVEWIRE_STAGE,
-        (
-            electrode["x"].as_f64().ok_or("pe1 has no x")?,
-            electrode["y"].as_f64().ok_or("pe1 has no y")?,
-        ),
-    )?;
+    let (calibration_wire, calibration_stage) = calibration_point(&plan)?;
+    let centre = stage_to_ui(rect, LIVEWIRE_STAGE, calibration_stage)?;
     let mut calibrated = false;
     for (dx, dy) in [(0, 0), (2, 0), (-2, 0), (0, 2), (0, -2)] {
         let at = (centre.0 + dx, centre.1 + dy);
         native_move(supervisor, at).await?;
         let hit = await_rows(tap, server, entity_id, Duration::from_millis(300), |rows| {
-            rollover(rows, "pe1")
+            rollover(rows, calibration_wire)
         })
         .await?;
-        probes.push(json!({"kind":"calibration","at":at,"rollover":hit}));
+        probes.push(json!({"kind":"calibration","wire":calibration_wire,"at":at,"rollover":hit}));
         if hit {
             calibrated = true;
             break;
         }
     }
     if !calibrated {
-        return Err("calibration: no processover for pe1".into());
+        return Err(format!(
+            "calibration: no processover for {calibration_wire}"
+        ));
     }
+    let reset = stage_to_ui(rect, LIVEWIRE_STAGE, (363.4, 665.25))?;
+    native_move(supervisor, reset).await?;
     for click in &plan.clicks {
         let mut matched = false;
         for point in &click.candidates {
@@ -405,26 +455,26 @@ pub async fn play(
         .is_some_and(|value| value["met"] == true);
     let final_state = board_read(&server, entity_id).await.ok();
     let after = capture(supervisor, rect).await;
-    let outcome = if victory
-        && hidden
-        && final_state
-            .as_ref()
-            .is_some_and(|state| state["outcome"] == "victory")
-    {
-        "victory"
-    } else if terminal_failure(&tap.rows) {
-        "defeat"
-    } else {
-        "unverified"
-    };
+    let server_outcome = final_state
+        .as_ref()
+        .and_then(|state| state["outcome"].as_str());
+    let outcome = assessed_outcome(
+        action.is_ok(),
+        victory,
+        hidden,
+        server_outcome,
+        terminal_failure(&tap.rows),
+    );
+    let effect_ok = outcome == "victory";
     Ok(PlayResult {
         report: json!({
             "entity_id": entity_id,
             "game": game,
             "outcome": outcome,
+            "effect_ok": effect_ok,
             "reason": action.err(),
             "smartfox_victory": victory,
-            "server_outcome": final_state.as_ref().and_then(|state| state["outcome"].as_str()),
+            "server_outcome": server_outcome,
             "client_window_hidden": hidden,
             "movie_rect": [rect.left, rect.top, rect.right, rect.bottom],
             "probes": probes,
@@ -461,6 +511,63 @@ mod tests {
             (790, 529)
         );
         assert!(stage_to_ui(rect, LIVEWIRE_STAGE, (-1.0, 30.0)).is_err());
+    }
+
+    #[test]
+    fn running_board_resumes_without_another_open_click() {
+        let ready = json!({"state":"ready","game_started":false,"time_remaining":20.0});
+        let running = json!({"state":"running","game_started":true,"time_remaining":12.5});
+        assert_eq!(opening(&ready), Ok(Opening::OpenDoor));
+        assert_eq!(opening(&running), Ok(Opening::Resume));
+        assert!(
+            opening(&json!({"state":"running","game_started":true,"time_remaining":0.0})).is_err()
+        );
+        assert!(
+            opening(&json!({"state":"ready","game_started":true,"time_remaining":20.0})).is_err()
+        );
+    }
+
+    #[test]
+    fn calibration_uses_an_exposed_plan_point_outside_the_cover() {
+        let plan = livewire_solver::ClickPlan {
+            status: "planned",
+            goal_total: 1,
+            clicks: vec![livewire_solver::PlannedClick {
+                name: "g1".into(),
+                kind: "goal".into(),
+                lib: "gGreenBlack1".into(),
+                depth: 100,
+                candidates: vec![livewire_solver::Candidate {
+                    x: 760,
+                    y: 410,
+                    clearance: 10,
+                }],
+            }],
+            unattached: vec![],
+            atlas_sha256: "a".repeat(64),
+        };
+        assert_eq!(calibration_point(&plan).unwrap(), ("g1", (760.0, 410.0)));
+        let mut covered = plan;
+        covered.clicks[0].candidates[0].x = 400;
+        assert!(calibration_point(&covered).is_err());
+        covered.clicks.clear();
+        assert!(calibration_point(&covered).is_err());
+    }
+
+    #[test]
+    fn failed_native_action_cannot_report_a_uat_pass() {
+        assert_eq!(
+            assessed_outcome(false, true, true, Some("victory"), false),
+            "unverified"
+        );
+        assert_eq!(
+            assessed_outcome(true, true, true, Some("victory"), false),
+            "victory"
+        );
+        assert_eq!(
+            assessed_outcome(true, true, false, Some("victory"), false),
+            "unverified"
+        );
     }
 
     #[test]

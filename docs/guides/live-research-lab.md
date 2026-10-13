@@ -356,9 +356,13 @@ does not send input or claim that a rollover was observed.
 
 `client_minigame_play {"entity_id": <player entity id>}` drives the visible
 Livewire movie through native CEGUI cursor movement and mouse-button messages.
-It reads the installed hit atlas and server board, clicks Open, calibrates on
-electrode `pe1`, then requires a matching `processover` for each planned wire
+It reads the installed hit atlas and server board, clicks Open for a ready
+board, calibrates on an exposed solver point outside the mouse-opaque cover,
+then requires a matching `processover` for each planned wire
 before clicking. It confirms `processmove` and `destroy` in the SmartFox tap.
+If the board is already running, it resumes the remaining plan without
+clicking Open again. A failed native cursor injection stops the flow without
+the Lua cursor fallback, and `effect_ok: false` prevents a UAT action pass.
 It reports victory only when the server outcome is victory and the client
 window closes. The reply includes the probe log, tap rows and before/after
 movie images. This N1 action requires the lab lease. For known placeholder
