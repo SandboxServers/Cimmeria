@@ -79,6 +79,7 @@ pub fn tool_floor(tool: &str) -> Option<Tier> {
         | "lab_ensure_character_slot"
         | "lab_play_character"
         | "lab_finish_dialog"
+        | "client_minigame_play"
         | "lab_logout"
         | "lab_client_start"
         | "lab_client_stop"

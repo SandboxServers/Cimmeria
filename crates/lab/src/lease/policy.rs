@@ -118,6 +118,7 @@ pub const LEASED: &[&str] = &[
     // Input.
     "client_input_key",
     "client_input_mouse",
+    "client_minigame_play",
     "client_input_focus",
     "client_input_release",
     "client_cursor_move",

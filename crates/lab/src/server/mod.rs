@@ -225,6 +225,16 @@ pub struct LivewirePlanArgs {
     pub board: Value,
 }
 
+/// Player whose active SmartFox minigame the client should play.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct MinigamePlayArgs {
+    /// Player entity ID from `server_sessions` or `server_entity_get`.
+    pub entity_id: u32,
+    /// Placeholder game name when the server has no Livewire board snapshot.
+    #[serde(default)]
+    pub game: Option<String>,
+}
+
 /// Args for `client_ui_click`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct UiClickArgs {
@@ -332,6 +342,37 @@ impl LabServer {
         let plan = crate::supervisor::livewire_solver::plan(&args.board, atlas)
             .map_err(|error| McpError::invalid_params(error, None))?;
         self.wrap(serde_json::to_value(plan).map_err(|error| error.to_string()))
+    }
+
+    #[tool(
+        description = "Play the current Livewire or placeholder minigame through native client mouse input. Reads the server board and ordered SmartFox tap, confirms rollover before every Livewire cut, and returns before/after movie images and the probe log. Requires the lab lease."
+    )]
+    async fn client_minigame_play(
+        &self,
+        Parameters(args): Parameters<MinigamePlayArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let result = crate::supervisor::minigame_play::play(
+            &self.supervisor,
+            self.livewire_atlas(),
+            args.entity_id,
+            args.game.as_deref(),
+        )
+        .await
+        .map_err(|error| McpError::internal_error(error, None))?;
+        let mut content = vec![ContentBlock::text(result.report.to_string())];
+        if let Some(before) = result.before {
+            content.push(ContentBlock::image(
+                crate::supervisor::screenshot::png_to_base64(&before),
+                "image/png",
+            ));
+        }
+        if let Some(after) = result.after {
+            content.push(ContentBlock::image(
+                crate::supervisor::screenshot::png_to_base64(&after),
+                "image/png",
+            ));
+        }
+        Ok(CallToolResult::success(content))
     }
 
     // ---- Phase 1: probe tools (proxied + journaled) ------------------
