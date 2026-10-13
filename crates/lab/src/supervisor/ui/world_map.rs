@@ -65,12 +65,14 @@ fn click_trail(click: &Value, fallback: bool) -> NativeTrail {
 fn stamp_click(result: &mut Value, click: &Value, fallback: bool, closed: bool) {
     click_trail(click, fallback).stamp(result);
     result["effect_ok"] = json!(closed);
-    result["native_pass"] = json!(native_pass(click, fallback, closed));
+    result["native_candidate"] = json!(native_candidate(click, fallback, closed));
+    // PostMessageW queues a click; the supervisor cannot see whether the
+    // server received method 91. A row tap must supply that proof.
+    result["native_pass"] = json!(false);
 }
 
-/// A ring click is an N1 pass only when native cursor placement delivered
-/// the requested left click and the map closed as its observed effect.
-fn native_pass(click: &Value, fallback: bool, closed: bool) -> bool {
+/// Native input and map closure make a candidate, not a proven destination.
+fn native_candidate(click: &Value, fallback: bool, closed: bool) -> bool {
     !fallback
         && closed
         && click["cursor_via"] == json!("native_inject")
@@ -153,7 +155,8 @@ mod tests {
             true,
         );
         assert_eq!(native["native_tier"], "N1");
-        assert_eq!(native["native_pass"], true);
+        assert_eq!(native["native_candidate"], true);
+        assert_eq!(native["native_pass"], false);
         assert_eq!(native["effect_ok"], true);
 
         let mut assisted = json!({});
@@ -165,6 +168,7 @@ mod tests {
         );
         assert_eq!(assisted["native_tier"], "N3");
         assert_eq!(assisted["native_pass"], false);
+        assert_eq!(assisted["native_candidate"], false);
         assert_eq!(assisted["native_level"], "client_ui_lua");
 
         let mut positioned_by_lua = json!({});
@@ -176,6 +180,7 @@ mod tests {
         );
         assert_eq!(positioned_by_lua["native_tier"], "N3");
         assert_eq!(positioned_by_lua["native_pass"], false);
+        assert_eq!(positioned_by_lua["native_candidate"], false);
 
         // With fallback disabled, a delivered mouse message that leaves the
         // map open is a failed effect, not an N1 pass.
@@ -187,6 +192,7 @@ mod tests {
             false,
         );
         assert_eq!(failed_without_fallback["native_pass"], false);
+        assert_eq!(failed_without_fallback["native_candidate"], false);
         assert_eq!(failed_without_fallback["effect_ok"], false);
 
         let mut missing_delivery = json!({});
@@ -197,5 +203,6 @@ mod tests {
             true,
         );
         assert_eq!(missing_delivery["native_pass"], false);
+        assert_eq!(missing_delivery["native_candidate"], false);
     }
 }
