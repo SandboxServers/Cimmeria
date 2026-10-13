@@ -324,16 +324,21 @@ See ADR §3.5 for the full set; `docs/operations/colo-deploy.md` for the port.
 
 `server_minigame_state {"entity_id": <player entity id>}` reads the Livewire
 board after SmartFox login and board generation. Its `state` object contains
-the game phase (`ready`, `running`, or `finished`), outcome when finished,
-goal counts, and wires in ascending depth order with names, art libraries,
-positions and cut flags. `events` is a 128-row ring of selected SmartFox
-commands (`processover`, `processmove`, `opendoor`, `processreset`) and
-registration, claim, board start, result and teardown events; each row has
-elapsed milliseconds and an optional wire name. `events_dropped` counts
-older rows discarded from the ring. The final board and events remain readable
-for ten minutes after teardown, unless a new session for that entity starts.
-Before board generation and after retention expires, `state` is null. This
-tool never returns the SmartFox ticket and cannot act on the board.
+the phase (`ready`, `running`, or `finished`), outcome when finished,
+difficulty, game-start flag, timer state and time remaining, goal counts, and
+wires in ascending depth order. Each wire has its name, art library, kind
+(`goal`, `playfield`, `moving`, or `obstacle`), clickability, position, depth,
+and cut flag. `events` is a 128-row ring of ordered SmartFox traffic and
+lifecycle rows. Each row has `seq`, `t_ms`, `dir` (`in`, `out`, or `internal`),
+`cmd`, whitelisted scalar `params`, the event label, elapsed milliseconds,
+and an optional wire name. Incoming login, hover, door and cut commands and
+outgoing startup, `over`, `destroy`, and `victory` responses are recorded.
+`events_dropped` counts older rows discarded from the ring. Passwords,
+tickets and full board response arrays are excluded. The final board and
+events remain readable for ten minutes after teardown, unless a new session
+for that entity starts. Before board generation and after retention expires,
+`state` is null. This tool cannot act on the board.
+
 `lab_uat_run` drives the packet tap itself for a row with `packet`
 clauses ([automated-uat.md](automated-uat.md#packet-clauses)): one tap
 per row from the anchor to teardown, always stopped.
