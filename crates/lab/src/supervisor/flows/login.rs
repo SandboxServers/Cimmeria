@@ -279,46 +279,8 @@ impl Supervisor {
             // empty after typing (twice on 2026-10-10, both after 16 Escape
             // presses to skip the intro movies; late Escapes are the likely
             // cause). Type the pair again, once.
-            let mut attempt = 1;
-            loop {
-                self.prepare_login_field(run, "account_focus", LOGIN_ACCOUNT_EDIT)
-                    .await?;
-                self.prepare_login_field(run, "password_focus", LOGIN_PASSWORD_EDIT)
-                    .await?;
-                let typed = match run
-                    .type_into("account", LOGIN_ACCOUNT_EDIT, &creds.account, true)
-                    .await
-                {
-                    Ok(()) => {
-                        run.type_into("password", LOGIN_PASSWORD_EDIT, &creds.password, true)
-                            .await
-                    }
-                    Err(e) => Err(e),
-                };
-                match typed {
-                    Ok(()) => break,
-                    // Only a box that read back wrong is worth typing again;
-                    // a dead client or a revoked lease would fail the same
-                    // way twice. A focused test pins the readback-mismatch
-                    // retry predicate; the fake bridge cannot type on Windows.
-                    Err(e) if retryable_credential_error(attempt, &e) => {
-                        tracing::warn!(
-                            attempt,
-                            step = %e.step,
-                            error = %e.message,
-                            "lab_login: credential typing missed; typing both again"
-                        );
-                        run.record(
-                            "retry_credentials",
-                            Instant::now(),
-                            json!({ "attempt": attempt, "step": e.step, "error": e.message }),
-                        );
-                        attempt += 1;
-                        settle(1000).await;
-                    }
-                    Err(e) => return Err(e),
-                }
-            }
+            let mut io = SupervisorLoginCredentialIo { sup: self, run };
+            type_login_credentials(&mut io, &creds.account, &creds.password).await?;
             run.click("login", LOGIN_BUTTON).await?;
         }
 
@@ -471,6 +433,92 @@ fn retryable_credential_error(attempt: usize, error: &FlowError) -> bool {
     attempt < CREDENTIAL_TRIES && error.message.contains("after typing")
 }
 
+trait LoginCredentialIo {
+    async fn prepare_field(
+        &mut self,
+        step: &'static str,
+        window: &'static str,
+    ) -> Result<(), FlowError>;
+
+    async fn type_field(
+        &mut self,
+        step: &'static str,
+        window: &'static str,
+        text: &str,
+    ) -> Result<(), FlowError>;
+
+    fn record_retry(&mut self, attempt: usize, error: &FlowError);
+}
+
+struct SupervisorLoginCredentialIo<'a, 'r> {
+    sup: &'a Supervisor,
+    run: &'a mut FlowRun<'r>,
+}
+
+impl LoginCredentialIo for SupervisorLoginCredentialIo<'_, '_> {
+    async fn prepare_field(
+        &mut self,
+        step: &'static str,
+        window: &'static str,
+    ) -> Result<(), FlowError> {
+        self.sup.prepare_login_field(self.run, step, window).await
+    }
+
+    async fn type_field(
+        &mut self,
+        step: &'static str,
+        window: &'static str,
+        text: &str,
+    ) -> Result<(), FlowError> {
+        self.run.type_into(step, window, text, true).await
+    }
+
+    fn record_retry(&mut self, attempt: usize, error: &FlowError) {
+        tracing::warn!(
+            attempt,
+            step = %error.step,
+            error = %error.message,
+            "lab_login: credential typing missed; typing both again"
+        );
+        self.run.record(
+            "retry_credentials",
+            Instant::now(),
+            json!({ "attempt": attempt, "step": error.step, "error": error.message }),
+        );
+    }
+}
+
+async fn type_login_credentials(
+    io: &mut impl LoginCredentialIo,
+    account: &str,
+    password: &str,
+) -> Result<(), FlowError> {
+    for attempt in 1..=CREDENTIAL_TRIES {
+        let typed = async {
+            io.prepare_field("account_focus", LOGIN_ACCOUNT_EDIT)
+                .await?;
+            io.type_field("account", LOGIN_ACCOUNT_EDIT, account)
+                .await?;
+            // Account entry can change window focus or expose a modal. Check
+            // the password field only after account readback, before use.
+            io.prepare_field("password_focus", LOGIN_PASSWORD_EDIT)
+                .await?;
+            io.type_field("password", LOGIN_PASSWORD_EDIT, password)
+                .await
+        }
+        .await;
+        match typed {
+            Ok(()) => return Ok(()),
+            Err(error) if retryable_credential_error(attempt, &error) => {
+                io.record_retry(attempt, &error);
+                settle(1000).await;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    unreachable!("credential retries always return or fail on the final attempt")
+}
+
 fn focus_client_window_once(hwnd: isize) -> Result<(), String> {
     #[cfg(windows)]
     {
@@ -506,231 +554,5 @@ fn ensure_foreground_once(
 }
 
 #[cfg(test)]
-mod tests {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Arc;
-
-    use super::*;
-    use crate::supervisor::events::fake_bridge;
-
-    fn file() -> LabAccount {
-        LabAccount {
-            server: "colo".into(),
-            username: "lab".into(),
-            password: "test".into(),
-            character: "Labone".into(),
-        }
-    }
-
-    #[test]
-    fn request_overrides_the_account_file() {
-        let req = LoginRequest {
-            account: Some("other".into()),
-            password: None,
-            server: Some("local".into()),
-        };
-        let r = resolve_login(&req, Some(&file())).unwrap();
-        assert_eq!(r.account, "other");
-        assert_eq!(r.password, "test");
-        assert_eq!(r.server.as_deref(), Some("local"));
-        assert!(r.server_explicit);
-    }
-
-    #[test]
-    fn account_file_supplies_the_defaults() {
-        let r = resolve_login(&LoginRequest::default(), Some(&file())).unwrap();
-        assert_eq!((r.account.as_str(), r.password.as_str()), ("lab", "test"));
-        assert_eq!(r.server.as_deref(), Some("colo"));
-        assert!(!r.server_explicit);
-    }
-
-    #[test]
-    fn missing_credentials_are_named() {
-        let e = resolve_login(&LoginRequest::default(), None).unwrap_err();
-        assert!(e.contains("no account"));
-        let req = LoginRequest {
-            account: Some("lab".into()),
-            ..Default::default()
-        };
-        assert!(resolve_login(&req, None)
-            .unwrap_err()
-            .contains("no password"));
-    }
-
-    fn s(v: &[&str]) -> Vec<String> {
-        v.iter().map(|x| x.to_string()).collect()
-    }
-
-    #[test]
-    fn start_screens_classify_in_priority_order() {
-        assert_eq!(
-            classify_start(&s(&["true", "true", "false", "false"])),
-            StartScreen::Eula
-        );
-        assert_eq!(
-            classify_start(&s(&["false", "true", "true", "false"])),
-            StartScreen::ServerSelect
-        );
-        assert_eq!(
-            classify_start(&s(&["false", "false", "false", "true"])),
-            StartScreen::CharSelect
-        );
-        assert_eq!(
-            classify_start(&s(&["false", "true", "false", "false"])),
-            StartScreen::Login
-        );
-        assert_eq!(classify_start(&s(&["false"; 4])), StartScreen::Other);
-        assert_eq!(classify_start(&[]), StartScreen::Other);
-    }
-
-    #[test]
-    fn foreground_loss_gets_one_refocus_and_is_rechecked() {
-        let checks = AtomicUsize::new(0);
-        let refocuses = AtomicUsize::new(0);
-        let mut foreground = || checks.fetch_add(1, Ordering::SeqCst) == 1;
-        let mut refocus = || {
-            refocuses.fetch_add(1, Ordering::SeqCst);
-            true
-        };
-        assert!(ensure_foreground_once(&mut foreground, &mut refocus));
-        assert_eq!(checks.load(Ordering::SeqCst), 2);
-        assert_eq!(refocuses.load(Ordering::SeqCst), 1);
-    }
-
-    #[tokio::test]
-    async fn login_field_hit_test_names_covering_modal_before_input() {
-        let input_calls = Arc::new(AtomicUsize::new(0));
-        let observed_calls = input_calls.clone();
-        let sup = fake_bridge::supervisor(Arc::new(move |method, params| {
-            if method != "lua_eval" {
-                observed_calls.fetch_add(1, Ordering::SeqCst);
-                return Err(format!("unexpected input call: {method}"));
-            }
-            let chunk = params["chunk"].as_str().unwrap_or_default();
-            if chunk.contains("getTargetChildAtPosition") {
-                let hit = json!({ "available": true, "target_name": LOGIN_ACCOUNT_EDIT,
-                    "received_by": "LoginNoticeModal", "ancestors": ["LoginNoticeModal", "Root"] });
-                return Ok(fake_bridge::lua_ok(&[hit.to_string()]));
-            }
-            let loc = json!({ "found": true, "name": LOGIN_ACCOUNT_EDIT,
-                "visible": true, "enabled": true, "rect": [0, 0, 40, 20] });
-            Ok(fake_bridge::lua_ok(&[loc.to_string()]))
-        }))
-        .await;
-        let mut run = FlowRun::new(&sup, "lab_login");
-        let error = sup
-            .verify_login_field_hit_test(&mut run, "account_focus", LOGIN_ACCOUNT_EDIT)
-            .await
-            .unwrap_err();
-        assert!(
-            error.message.contains("covered by LoginNoticeModal"),
-            "{error:?}"
-        );
-        assert_eq!(input_calls.load(Ordering::SeqCst), 0);
-    }
-
-    #[tokio::test]
-    async fn only_a_real_readback_mismatch_retries_and_only_once() {
-        let sup = fake_bridge::supervisor(Arc::new(|_, _| Ok(Value::Null))).await;
-        let run = FlowRun::new(&sup, "lab_login");
-        let mismatch = run.fail(
-            "account",
-            "Login_AccountEdit holds 1 characters after typing",
-        );
-        let other = run.fail("account", "the bridge disconnected");
-        assert!(retryable_credential_error(1, &mismatch));
-        assert!(!retryable_credential_error(2, &mismatch));
-        assert!(!retryable_credential_error(1, &other));
-    }
-
-    /// Fake client: the login window is hidden and character select is up,
-    /// so the flow reaches the Back click. The Back widget has no rect, so
-    /// the click fails at its first step, and the error names that widget.
-    #[tokio::test]
-    async fn disconnect_flow_clicks_back() {
-        let sup = fake_bridge::supervisor(Arc::new(|method: &str, p: &Value| {
-            if method != "lua_eval" {
-                return Err(format!("no native path in the fake: {method}"));
-            }
-            let chunk = p["chunk"].as_str().unwrap_or_default();
-            if chunk.contains(CHAR_SELECT_BACK) {
-                return Err("no window".into());
-            }
-            if chunk.contains(LOGIN_WIN) {
-                return Ok(fake_bridge::lua_ok(&["false"]));
-            }
-            Ok(fake_bridge::lua_ok(&["true"]))
-        }))
-        .await;
-        let e = sup.disconnect_flow().await.unwrap_err();
-        assert_eq!(e.step, "click_back");
-        assert!(e.message.contains(CHAR_SELECT_BACK), "{}", e.message);
-    }
-
-    #[test]
-    fn server_select_chunk_quotes_the_name_and_lists_on_a_miss() {
-        let c = select_server_chunk("Cimmeria \"colo\"");
-        assert!(c.contains(r#"findColumnItemWithText("Cimmeria \"colo\"", 0, nil)"#));
-        assert!(c.contains("getShardInfo(i).name"));
-    }
-
-    fn creds(server: &str, explicit: bool) -> ResolvedLogin {
-        ResolvedLogin {
-            account: "a".into(),
-            password: "p".into(),
-            server: Some(server.into()),
-            server_explicit: explicit,
-        }
-    }
-
-    /// Live regression (2026-10-12): `server: "colo"` against a client whose
-    /// list has the one row "Test" failed `pick_server`. The chunk now falls
-    /// back to the only row and says so; the flow records it.
-    #[tokio::test]
-    async fn an_unknown_name_selects_the_only_row_and_says_so() {
-        let sup = fake_bridge::supervisor(Arc::new(|method: &str, p: &Value| {
-            assert_eq!(method, "lua_eval");
-            let chunk = p["chunk"].as_str().unwrap_or_default();
-            assert!(chunk.contains("findColumnItemWithText(\"colo\""), "{chunk}");
-            Ok(fake_bridge::lua_ok(&["selected", "Test", "only"]))
-        }))
-        .await;
-        let mut run = FlowRun::new(&sup, "lab_login");
-        let got = sup
-            .pick_server(&mut run, &creds("colo", true))
-            .await
-            .unwrap();
-        assert_eq!(got, "Test");
-        let step = run.steps.last().unwrap();
-        assert_eq!(step["detail"]["only_row"], true, "{step}");
-        assert_eq!(step["detail"]["requested"], "colo", "{step}");
-    }
-
-    /// With several rows and no match the explicit request still fails and
-    /// lists the rows (the guard against picking the wrong shard).
-    #[tokio::test]
-    async fn an_unknown_name_with_several_rows_is_still_an_error() {
-        let sup = fake_bridge::supervisor(Arc::new(|_, _| {
-            Ok(fake_bridge::lua_ok(&["missing", "Test, Dev"]))
-        }))
-        .await;
-        let mut run = FlowRun::new(&sup, "lab_login");
-        let e = sup
-            .pick_server(&mut run, &creds("colo", true))
-            .await
-            .unwrap_err();
-        assert!(
-            e.message.contains("no server named") && e.message.contains("Test, Dev"),
-            "{}",
-            e.message
-        );
-    }
-
-    #[test]
-    fn the_chunk_falls_back_to_a_single_row() {
-        let c = select_server_chunk("colo");
-        assert!(c.contains("if #names == 1 then"), "{c}");
-        assert!(c.contains("only = 'only'"), "{c}");
-        assert!(c.trim_end().ends_with("only"), "{c}");
-    }
-}
+#[path = "login_tests.rs"]
+mod tests;
