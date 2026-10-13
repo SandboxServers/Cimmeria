@@ -2,6 +2,7 @@
 //! is the entity, and when to change the view and look again.
 
 use serde_json::{json, Value};
+use std::time::Duration;
 
 use super::camera::Aim;
 use super::find::CLICK_MARGIN_PX;
@@ -18,6 +19,8 @@ use super::{Steps, WorldError};
 pub const HOVER_OFFSETS: [f64; 4] = [100.0, 140.0, 170.0, 60.0];
 /// How long the client gets to update mouse-over after the cursor moves.
 pub(super) const HOVER_WAIT_MS: u64 = 120;
+/// A bridge slot read must not hold a lab call while the client is unresponsive.
+pub(super) const MOUSE_OVER_READ_TIMEOUT: Duration = Duration::from_millis(1_000);
 /// A target this close to the avatar sits behind or under it on a
 /// third-person camera, so an unverified hover is retried from another view.
 pub(super) const NEAR_AVATAR_M: f64 = 8.0;
@@ -98,6 +101,7 @@ pub(super) async fn hover_once<W: WorldIo>(
     mo_slot: i32,
     player_slot: i32,
     force: bool,
+    deadline: Option<tokio::time::Instant>,
 ) -> Result<(Option<((f64, f64), Hover)>, Vec<Value>), WorldError> {
     let base = aim.position(io).await;
     let points: Vec<Vec3> = match entity {
@@ -133,10 +137,7 @@ pub(super) async fn hover_once<W: WorldIo>(
                 .await
                 .map_err(|err| steps.fail(io.now_ms(), "cursor", err))?;
             io.sleep(HOVER_WAIT_MS).await;
-            let slots = io
-                .slots()
-                .await
-                .map_err(|err| steps.fail(io.now_ms(), "read_mouse_over", err))?;
+            let slots = read_mouse_over(io, steps, (x, y), deadline).await?;
             let mo = slot_entity(&slots, mo_slot);
             me = slot_entity(&slots, player_slot);
             hover = if mo == e {
@@ -175,6 +176,42 @@ pub(super) async fn hover_once<W: WorldIo>(
     Ok((chosen, tried))
 }
 
+/// Read `Unit.MouseOver`, reporting a timeout separately from an empty hover.
+pub(super) async fn read_mouse_over<W: WorldIo>(
+    io: &mut W,
+    steps: &Steps,
+    pixel: (i32, i32),
+    deadline: Option<tokio::time::Instant>,
+) -> Result<Vec<(i32, u32)>, WorldError> {
+    let now = tokio::time::Instant::now();
+    let remaining = deadline.map(|d| d.saturating_duration_since(now));
+    let timeout = remaining
+        .map(|d| d.min(MOUSE_OVER_READ_TIMEOUT))
+        .unwrap_or(MOUSE_OVER_READ_TIMEOUT);
+    if timeout.is_zero() {
+        return Err(steps.fail_with(
+            io.now_ms(),
+            "read_mouse_over",
+            "target hover deadline expired before mouse-over could be read",
+            json!({ "attempted_pixel": pixel, "remaining_deadline_ms": 0 }),
+        ));
+    }
+    match tokio::time::timeout(timeout, io.slots()).await {
+        Ok(Ok(slots)) => Ok(slots),
+        Ok(Err(err)) => Err(steps.fail(io.now_ms(), "read_mouse_over", err)),
+        Err(_) => Err(steps.fail_with(
+            io.now_ms(),
+            "read_mouse_over",
+            format!("mouse-over transport timed out after {} ms", timeout.as_millis()),
+            json!({
+                "attempted_pixel": pixel,
+                "read_timeout_ms": timeout.as_millis(),
+                "remaining_deadline_ms": deadline.map(|d| d.saturating_duration_since(tokio::time::Instant::now()).as_millis() as u64),
+            }),
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
@@ -189,6 +226,31 @@ mod tests {
     fn a_verified_hover_never_retries() {
         let matched = Some(((1.0, 2.0), Hover::Matched));
         assert!(!wants_view_retry(&matched, &[], true, false));
+    }
+
+    #[tokio::test]
+    async fn an_unresponsive_mouse_over_read_times_out_with_pixel_and_deadline() {
+        let mut sim = crate::supervisor::world::sim::Sim::new();
+        sim.slots_never_returns = true;
+        let steps = Steps::new("client_target", sim.now_ms());
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+        let started = tokio::time::Instant::now();
+        let err = read_mouse_over(&mut sim, &steps, (412, 286), Some(deadline))
+            .await
+            .unwrap_err();
+        assert!(started.elapsed() < Duration::from_secs(2));
+        assert_eq!(err.step, "read_mouse_over");
+        assert!(err.message.contains("transport timed out"));
+        assert_eq!(
+            err.state.as_ref().unwrap()["attempted_pixel"],
+            json!([412, 286])
+        );
+        assert!(
+            err.state.as_ref().unwrap()["remaining_deadline_ms"]
+                .as_u64()
+                .unwrap()
+                > 0
+        );
     }
 
     #[test]

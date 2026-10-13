@@ -33,6 +33,8 @@ use super::{NativeLevel, PointArg, Steps, TargetArg, WorldError};
 /// Default wait for the click's effect.
 pub const DEFAULT_SETTLE_MS: u64 = 1200;
 const POLL_MS: u64 = 100;
+/// Total time available for mouse-over verification, including view retries.
+const TARGET_HOVER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 /// Private slot for the `targetUnit` fallback.
 const FALLBACK_SLOT: i32 = LAB_SLOT_BASE - 1;
 /// The server's interaction range, metres, straight line
@@ -298,6 +300,7 @@ pub async fn run<W: WorldIo>(
     // up over the occluder, yaw each way, zoom in) and try again; the bank
     // UAT needed a hand-made pitch for exactly this (2026-10-10).
     let t_hover = io.now_ms();
+    let hover_deadline = tokio::time::Instant::now() + TARGET_HOVER_TIMEOUT;
     let mut adjusted = Vec::new();
     let mut tried = Vec::new();
     let mut chosen = None;
@@ -308,6 +311,9 @@ pub async fn run<W: WorldIo>(
         .chain(VIEW_RETRIES.iter().map(Some))
         .enumerate()
     {
+        if tokio::time::Instant::now() >= hover_deadline {
+            return Err(hover_deadline_error(io, &steps, &tried));
+        }
         if let Some(&(dx, dy, notches)) = adj {
             if entity.is_none() || !req.rotate_camera.unwrap_or(true) {
                 break;
@@ -332,6 +338,7 @@ pub async fn run<W: WorldIo>(
             units.mouse_over,
             units.player,
             req.force,
+            Some(hover_deadline),
         )
         .await?;
         saw_own |= t.iter().any(|h| h["hover"] == "own_avatar");
@@ -340,6 +347,9 @@ pub async fn run<W: WorldIo>(
         if !wants_view_retry(&chosen, &tried, near, req.force) {
             break;
         }
+    }
+    if tokio::time::Instant::now() >= hover_deadline {
+        return Err(hover_deadline_error(io, &steps, &tried));
     }
     let mut hover_detail = json!({ "tried": tried });
     if !adjusted.is_empty() {
@@ -373,6 +383,7 @@ pub async fn run<W: WorldIo>(
                 units.mouse_over,
                 units.player,
                 req.force,
+                Some(hover_deadline),
             )
             .await?;
             hover_detail["tried_after_restore"] = json!(t);
@@ -412,6 +423,18 @@ pub async fn run<W: WorldIo>(
         range_m,
     };
     click_and_observe(io, steps, &req, plan).await
+}
+
+fn hover_deadline_error<W: WorldIo>(io: &W, steps: &Steps, tried: &[Value]) -> WorldError {
+    let attempted_pixel = tried
+        .last()
+        .and_then(|attempt| attempt["at"].as_array().map(|pixel| pixel.to_vec()));
+    steps.fail_with(
+        io.now_ms(),
+        "hover_timeout",
+        "target hover attempt exceeded its 10 s deadline",
+        json!({ "attempted_pixel": attempted_pixel, "remaining_deadline_ms": 0, "tried": tried }),
+    )
 }
 
 /// What the click step needs from the resolve and hover steps.
