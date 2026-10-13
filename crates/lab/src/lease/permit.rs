@@ -62,6 +62,19 @@ pub fn ensure(action: &str) -> Result<(), String> {
     }
 }
 
+/// The exact lease admitted for this guarded tool call, when one exists.
+/// This does not renew it; background reads use `LeaseBook::holds` so a
+/// recorder never extends its owner's lease on its own.
+pub fn current_lease_id() -> Option<String> {
+    PERMIT
+        .try_with(|permit| match permit {
+            Permit::Lease { id, .. } => Some(id.clone()),
+            Permit::AnyHolder { .. } => None,
+        })
+        .ok()
+        .flatten()
+}
+
 /// Window messages that only let go of something.
 const RELEASES: [u32; 5] = [
     0x0101, // WM_KEYUP
@@ -100,6 +113,23 @@ mod tests {
     async fn outside_a_scope_everything_passes() {
         assert!(ensure("bridge lua_eval").is_ok());
         assert!(ensure_input(0x0100).is_ok());
+        assert_eq!(current_lease_id(), None);
+    }
+
+    #[tokio::test]
+    async fn route_owner_is_the_admitted_lease() {
+        let book = Arc::new(LeaseBook::default());
+        let lease = book.acquire(req("route", false)).unwrap();
+        scope(
+            Permit::Lease {
+                book,
+                id: lease.lease_id.clone(),
+            },
+            async {
+                assert_eq!(current_lease_id().as_deref(), Some(lease.lease_id.as_str()));
+            },
+        )
+        .await;
     }
 
     /// Regression guard: an admitted tool's next action fails once its

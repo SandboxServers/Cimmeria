@@ -10,6 +10,7 @@ use tokio::sync::Mutex;
 
 use super::geometry::{client_to_server, Vec3};
 use super::io::{LiveWorld, WorldIo};
+use crate::lease::LeaseBook;
 use crate::supervisor::Supervisor;
 
 const CATALOG: &str =
@@ -76,6 +77,7 @@ fn valid_name(name: &str) -> bool {
 
 struct Recording {
     name: String,
+    lease_id: String,
     samples: Arc<Mutex<Vec<Vec3>>>,
     task: tokio::task::JoinHandle<()>,
 }
@@ -87,36 +89,63 @@ pub struct RouteRecorder {
 }
 
 impl RouteRecorder {
+    fn discard_revoked(&mut self, book: &LeaseBook) {
+        if self
+            .active
+            .as_ref()
+            .is_some_and(|recording| !book.holds(&recording.lease_id))
+        {
+            if let Some(recording) = self.active.take() {
+                recording.task.abort();
+            }
+        }
+    }
+
     /// Start sampling the player position every 500 ms.
     pub async fn start(
         &mut self,
         name: String,
+        lease_id: String,
         supervisor: Arc<Supervisor>,
     ) -> Result<Value, String> {
         if !valid_name(&name) {
             return Err("route name must be lowercase letters, digits or hyphens (1..80)".into());
         }
+        let book = supervisor.leases().clone();
+        if !book.holds(&lease_id) {
+            return Err("route recording requires the current lease".into());
+        }
+        self.discard_revoked(&book);
         if self.active.is_some() {
             return Err("a route is already recording; call lab_route_stop first".into());
         }
         let mut io = LiveWorld::new(&supervisor);
         let first = player_position(&mut io).await?;
+        if !book.holds(&lease_id) {
+            return Err("route recording lease was revoked during the first sample".into());
+        }
         let samples = Arc::new(Mutex::new(vec![first]));
         let recorded = samples.clone();
+        let sample_lease = lease_id.clone();
         let task = tokio::spawn(async move {
             let mut io = LiveWorld::new(&supervisor);
             let mut tick = tokio::time::interval(Duration::from_millis(500));
             tick.tick().await;
             loop {
                 tick.tick().await;
+                if !book.holds(&sample_lease) {
+                    break;
+                }
                 match player_position(&mut io).await {
-                    Ok(point) => recorded.lock().await.push(point),
+                    Ok(point) if book.holds(&sample_lease) => recorded.lock().await.push(point),
+                    Ok(_) => break,
                     Err(error) => tracing::warn!(%error, "route sample skipped"),
                 }
             }
         });
         self.active = Some(Recording {
             name: name.clone(),
+            lease_id,
             samples,
             task,
         });
@@ -124,7 +153,14 @@ impl RouteRecorder {
     }
 
     /// Stop sampling and return a TOML candidate for human review.
-    pub async fn stop(&mut self) -> Result<Value, String> {
+    pub async fn stop(&mut self, lease_id: &str) -> Result<Value, String> {
+        if self
+            .active
+            .as_ref()
+            .is_some_and(|recording| recording.lease_id != lease_id)
+        {
+            return Err("route recording belongs to a different lease".into());
+        }
         let recording = self.active.take().ok_or("no active route recording")?;
         recording.task.abort();
         let samples = recording.samples.lock().await;
@@ -143,6 +179,14 @@ impl RouteRecorder {
     }
 }
 
+impl Drop for RouteRecorder {
+    fn drop(&mut self) {
+        if let Some(recording) = self.active.take() {
+            recording.task.abort();
+        }
+    }
+}
+
 async fn player_position<W: WorldIo>(io: &mut W) -> Result<Vec3, String> {
     let snapshot = io.snapshot().await?;
     let player = snapshot.player().ok_or("player not in entity map")?;
@@ -156,15 +200,31 @@ pub fn simplify(samples: &[Vec3]) -> Vec<Vec3> {
         return vec![];
     };
     let mut out = vec![first];
+    let mut heading = samples.windows(2).find_map(|pair| {
+        let dx = pair[1].x - pair[0].x;
+        let dz = pair[1].z - pair[0].z;
+        (dx * dx + dz * dz >= 0.01).then(|| dz.atan2(dx))
+    });
     for pair in samples.windows(3) {
-        let (before, point, after) = (pair[0], pair[1], pair[2]);
+        let (_, point, after) = (pair[0], pair[1], pair[2]);
         let last = *out.last().expect("start is present");
         let distance = ((point.x - last.x).powi(2) + (point.z - last.z).powi(2)).sqrt();
-        let a = (point.z - before.z).atan2(point.x - before.x);
-        let b = (after.z - point.z).atan2(after.x - point.x);
-        let angle = (b - a).sin().atan2((b - a).cos()).abs().to_degrees();
+        let dx = after.x - point.x;
+        let dz = after.z - point.z;
+        if dx * dx + dz * dz < 0.01 {
+            continue;
+        }
+        let current_heading = dz.atan2(dx);
+        let angle = heading.map_or(0.0, |h| {
+            (current_heading - h)
+                .sin()
+                .atan2((current_heading - h).cos())
+                .abs()
+                .to_degrees()
+        });
         if distance >= 8.0 || (distance >= 0.5 && angle > 20.0) {
             out.push(point);
+            heading = Some(current_heading);
         }
     }
     if let Some(&end) = samples.last() {
@@ -191,6 +251,63 @@ mod tests {
         ];
         let result = simplify(&points);
         assert_eq!(result, vec![points[0], points[2], points[3], points[5]]);
+    }
+
+    #[test]
+    fn gradual_quarter_turn_keeps_intermediate_corners() {
+        let points: Vec<_> = (0..=12)
+            .map(|i| {
+                let theta = std::f64::consts::FRAC_PI_2 * i as f64 / 12.0;
+                Vec3::new(4.0 * theta.sin(), 0.0, 4.0 * (1.0 - theta.cos()))
+            })
+            .collect();
+        let kept = simplify(&points);
+        assert_eq!(kept.first(), points.first());
+        assert_eq!(kept.last(), points.last());
+        assert!(kept.len() >= 4, "smooth bend was cut to {:?}", kept);
+    }
+
+    #[tokio::test]
+    async fn takeover_discards_recording_and_new_holder_cannot_read_it() {
+        use crate::lease::AcquireRequest;
+
+        let book = LeaseBook::default();
+        let first = book
+            .acquire(AcquireRequest {
+                owner: "first".into(),
+                purpose: "route".into(),
+                ..Default::default()
+            })
+            .unwrap();
+        let mut recorder = RouteRecorder {
+            active: Some(Recording {
+                name: "stasis".into(),
+                lease_id: first.lease_id.clone(),
+                samples: Arc::new(Mutex::new(vec![Vec3::new(0.0, 0.0, 0.0)])),
+                task: tokio::spawn(std::future::pending()),
+            }),
+        };
+        let second = book
+            .acquire(AcquireRequest {
+                owner: "second".into(),
+                purpose: "route".into(),
+                force: true,
+                reason: Some("takeover test".into()),
+                ..Default::default()
+            })
+            .unwrap();
+        assert!(recorder
+            .stop(&second.lease_id)
+            .await
+            .unwrap_err()
+            .contains("different lease"));
+        recorder.discard_revoked(&book);
+        assert!(recorder.active.is_none());
+        assert!(recorder
+            .stop(&second.lease_id)
+            .await
+            .unwrap_err()
+            .contains("no active"));
     }
 
     #[test]

@@ -281,7 +281,14 @@ pub struct LabServer {
     /// Whether the call chose its instance (an `instance` argument, or a
     /// lease id that matched one), rather than falling through to the first.
     routed_explicitly: bool,
-    route_recorder: Arc<tokio::sync::Mutex<crate::supervisor::world::routes::RouteRecorder>>,
+    route_recorders: Arc<
+        std::sync::Mutex<
+            std::collections::BTreeMap<
+                String,
+                Arc<tokio::sync::Mutex<crate::supervisor::world::routes::RouteRecorder>>,
+            >,
+        >,
+    >,
 }
 
 #[tool_router(router = tool_router)]
@@ -309,7 +316,7 @@ impl LabServer {
             timeline: Arc::new(Timeline::from_env()),
             instances: Arc::new(Instances::new(vec![hosted])),
             routed_explicitly: false,
-            route_recorder: Arc::new(tokio::sync::Mutex::new(Default::default())),
+            route_recorders: Arc::new(std::sync::Mutex::new(Default::default())),
             tool_router: Self::tool_router()
                 + Self::flows_router()
                 + Self::client_state_router()

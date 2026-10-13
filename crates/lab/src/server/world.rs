@@ -9,6 +9,7 @@ use rmcp::{
 use serde_json::Value;
 
 use super::LabServer;
+use crate::lease::permit;
 use crate::supervisor::world::camera::CameraRequest;
 use crate::supervisor::world::click::{ClickRequest, Expect};
 use crate::supervisor::world::find::FindRequest;
@@ -83,11 +84,12 @@ impl LabServer {
         &self,
         Parameters(a): Parameters<RouteName>,
     ) -> Result<CallToolResult, McpError> {
-        let result = self
-            .route_recorder
+        let lease_id = route_lease_id()?;
+        let recorder = self.route_recorder();
+        let result = recorder
             .lock()
             .await
-            .start(a.name, self.supervisor.clone())
+            .start(a.name, lease_id, self.supervisor.clone())
             .await;
         route_result(result)
     }
@@ -96,7 +98,9 @@ impl LabServer {
         description = "Stop the active route recording and return simplified waypoints and a TOML candidate. The candidate must be reviewed and replayed before committing."
     )]
     async fn lab_route_stop(&self) -> Result<CallToolResult, McpError> {
-        let result = self.route_recorder.lock().await.stop().await;
+        let lease_id = route_lease_id()?;
+        let recorder = self.route_recorder();
+        let result = recorder.lock().await.stop(&lease_id).await;
         route_result(result)
     }
 
@@ -190,6 +194,24 @@ fn route_result(r: Result<Value, String>) -> Result<CallToolResult, McpError> {
     }
 }
 
+fn route_lease_id() -> Result<String, McpError> {
+    permit::current_lease_id()
+        .ok_or_else(|| McpError::internal_error("route tool ran without its admitted lease", None))
+}
+
+impl LabServer {
+    fn route_recorder(
+        &self,
+    ) -> std::sync::Arc<tokio::sync::Mutex<crate::supervisor::world::routes::RouteRecorder>> {
+        self.route_recorders
+            .lock()
+            .expect("route recorder map poisoned")
+            .entry(self.supervisor.label().to_string())
+            .or_insert_with(|| std::sync::Arc::new(tokio::sync::Mutex::new(Default::default())))
+            .clone()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -228,6 +250,40 @@ mod tests {
                 .unwrap_or_else(|| panic!("{name} is not routed"));
             assert!(t.description.as_deref().unwrap_or_default().len() > 40);
         }
+    }
+
+    #[tokio::test]
+    async fn route_recorders_are_distinct_for_parallel_instances() {
+        let config = SupervisorConfig {
+            install_dir: None,
+            dll_path: None,
+            patches_dll: None,
+            helper_path: None,
+            bind: "127.0.0.1".into(),
+            port: 8770,
+            instance: None,
+            telemetry: Default::default(),
+        };
+        let bridge = Arc::new(BridgeClient::new("127.0.0.1:1", ""));
+        let first = LabServer::new(Arc::new(Supervisor::new(bridge.clone(), config.clone())));
+        let mut second = first.clone();
+        second.supervisor = Arc::new(Supervisor::new(
+            bridge,
+            SupervisorConfig {
+                instance: Some("p2".into()),
+                ..config
+            },
+        ));
+        let default_recorder = first.route_recorder();
+        let p2_recorder = second.route_recorder();
+        assert!(!Arc::ptr_eq(&default_recorder, &p2_recorder));
+        assert!(Arc::ptr_eq(&default_recorder, &first.route_recorder()));
+        assert!(Arc::ptr_eq(&p2_recorder, &second.route_recorder()));
+        let _default_busy = default_recorder.lock().await;
+        let _p2_free =
+            tokio::time::timeout(std::time::Duration::from_millis(50), p2_recorder.lock())
+                .await
+                .expect("p2 route recorder blocked behind default instance");
     }
 
     /// A dropped (cancelled) tool future must run the key release; a
