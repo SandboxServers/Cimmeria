@@ -41,7 +41,7 @@ Rows come from [unified-uat.md](../../guides/unified-uat.md): [Mail, chat and du
 | Pets U9, U10 | owner death; relog and zone change; the U2b relog half | HP-P6 | the second-character half of U10 is dropped |
 | Deployables DP-U1, DP-U2, DP-U4 | place one, what it looks like, 30 s lifetime | HP-D1 | the ground cast has never been done in a real client |
 | Deployables DP-U3, DP-U5, DP-U8 | it hurts Rats; cooldown and range refusals; cannot be attacked | HP-D2 | |
-| Deployables DP-U6 | gone on death, logout, zone change | HP-D3 | |
+| Deployables DP-U6 | gone on death, logout, zone change | HP-D3 | A PASS 2026-10-13 (attempt 4, Hubdeploy): `despawned` reason=owner_dead path=sweep at 08:40:53.01Z, 0.1 s after `player.death` 08:40:52.91Z, lifetime 19.7 s, 19 pulses; B and C PASS earlier. Done |
 
 ### Rows judged not runnable, or only partly
 
