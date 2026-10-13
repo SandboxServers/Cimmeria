@@ -25,6 +25,23 @@ use std::path::{Path, PathBuf};
 
 use cimmeria_client_launch::start32::{Request, Target, HELPER_EXE_NAME};
 
+/// One observation of a PID, read through a single Windows process handle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProcessObservation {
+    /// The process has exited.
+    Exited,
+    /// The process could not be opened or queried.
+    Unavailable,
+    /// The process is active; its creation FILETIME may still be unreadable.
+    Alive(Option<u64>),
+}
+
+/// Convert a Windows creation FILETIME (100 ns ticks since 1601) to Unix ms.
+pub fn unix_ms_from_creation_ticks(ticks: u64) -> Option<i64> {
+    const UNIX_EPOCH_FILETIME_TICKS: u64 = 116_444_736_000_000_000;
+    i64::try_from(ticks.checked_sub(UNIX_EPOCH_FILETIME_TICKS)? / 10_000).ok()
+}
+
 /// Where the `sgw-start32` helper is: `override_path` (the
 /// `CIMMERIA_LAB_START32` environment variable) when set, else
 /// `sgw-start32.exe` beside the supervisor's own executable, the one
@@ -127,8 +144,9 @@ mod win {
 
     use windows_sys::Win32::Foundation::{CloseHandle, FALSE, HWND, LPARAM};
     use windows_sys::Win32::System::Threading::{
-        GetExitCodeProcess, OpenProcess, QueryFullProcessImageNameW, TerminateProcess,
-        PROCESS_QUERY_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_TERMINATE,
+        GetExitCodeProcess, GetProcessTimes, OpenProcess, QueryFullProcessImageNameW,
+        TerminateProcess, PROCESS_QUERY_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION,
+        PROCESS_TERMINATE,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         EnumWindows, GetWindowTextLengthW, GetWindowThreadProcessId, IsWindowVisible, PostMessageW,
@@ -202,6 +220,44 @@ mod win {
         let ok = unsafe { GetExitCodeProcess(h, &mut code) };
         unsafe { CloseHandle(h) };
         ok != 0 && code == STILL_ACTIVE
+    }
+
+    /// Read liveness and creation time from one process handle, so a reused
+    /// PID cannot splice observations from two different processes.
+    pub fn observe(pid: u32) -> super::ProcessObservation {
+        use windows_sys::Win32::Foundation::FILETIME;
+
+        let ticks =
+            |ft: &FILETIME| (u64::from(ft.dwHighDateTime) << 32) | u64::from(ft.dwLowDateTime);
+        // SAFETY: OpenProcess/GetProcessTimes/CloseHandle with valid out-params.
+        unsafe {
+            let h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+            if h.is_null() {
+                return super::ProcessObservation::Unavailable;
+            }
+            let mut code = 0u32;
+            if GetExitCodeProcess(h, &mut code) == 0 {
+                CloseHandle(h);
+                return super::ProcessObservation::Unavailable;
+            }
+            if code != STILL_ACTIVE {
+                CloseHandle(h);
+                return super::ProcessObservation::Exited;
+            }
+            let zero = FILETIME {
+                dwLowDateTime: 0,
+                dwHighDateTime: 0,
+            };
+            let (mut created, mut exited, mut kernel, mut user) = (zero, zero, zero, zero);
+            let ok = GetProcessTimes(h, &mut created, &mut exited, &mut kernel, &mut user);
+            CloseHandle(h);
+            if ok == 0 {
+                return super::ProcessObservation::Alive(None);
+            }
+            let created_ticks = ticks(&created);
+            let created = super::unix_ms_from_creation_ticks(created_ticks).map(|_| created_ticks);
+            super::ProcessObservation::Alive(created)
+        }
     }
 
     /// Terminate a PID (watchdog fired, or explicit stop). Best-effort.
@@ -303,9 +359,14 @@ mod win {
 
 #[cfg(windows)]
 pub use win::{
-    find_main_window, is_alive, launch, post_message, running_pids_where, running_sgw_pids,
-    terminate,
+    find_main_window, is_alive, launch, observe, post_message, running_pids_where,
+    running_sgw_pids, terminate,
 };
+
+#[cfg(not(windows))]
+pub fn observe(_pid: u32) -> ProcessObservation {
+    ProcessObservation::Unavailable
+}
 
 /// Whether a terminated client still counts as running: its exit code says
 /// alive, or the start guard still sees its window (`window_pids` is

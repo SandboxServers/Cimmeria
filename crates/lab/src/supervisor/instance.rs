@@ -188,6 +188,9 @@ pub struct PeerEntry {
     pub instance: String,
     pub pid: u32,
     pub bridge_port: u16,
+    /// Client creation identity; absent in registries written before LR-05c.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub process_created_ticks: Option<u64>,
 }
 
 fn registry_path(install_dir: &Path, label: &str) -> PathBuf {
@@ -207,6 +210,7 @@ pub fn write_entry(
     instance: Option<&str>,
     pid: u32,
     bridge_port: u16,
+    process_created_ticks: Option<u64>,
 ) -> Result<(), String> {
     let label = label(instance);
     let path = registry_path(install_dir, label);
@@ -217,6 +221,7 @@ pub fn write_entry(
         instance: label.to_string(),
         pid,
         bridge_port,
+        process_created_ticks,
     };
     let bytes = serde_json::to_vec_pretty(&entry).map_err(|e| format!("serialize entry: {e}"))?;
     std::fs::write(&path, bytes).map_err(|e| format!("write {}: {e}", path.display()))
@@ -225,6 +230,14 @@ pub fn write_entry(
 /// Forget this instance's client (stop). Best effort.
 pub fn remove_entry(install_dir: &Path, instance: Option<&str>) {
     let _ = std::fs::remove_file(registry_path(install_dir, label(instance)));
+}
+
+/// This instance's registered client, if the file is valid and names us.
+pub fn read_own_entry(install_dir: &Path, instance: Option<&str>) -> Option<PeerEntry> {
+    let own = label(instance);
+    let bytes = std::fs::read(registry_path(install_dir, own)).ok()?;
+    let entry = serde_json::from_slice::<PeerEntry>(&bytes).ok()?;
+    (entry.instance == own).then_some(entry)
 }
 
 /// Every other instance's recorded client. The caller filters out the ones
@@ -297,6 +310,7 @@ mod tests {
             instance: instance.into(),
             pid,
             bridge_port: port,
+            process_created_ticks: None,
         }
     }
 
@@ -446,8 +460,8 @@ mod tests {
     #[test]
     fn registry_round_trips_and_a_peer_never_sees_itself() {
         let dir = tempfile::tempdir().unwrap();
-        write_entry(dir.path(), None, 1000, 8770).unwrap();
-        write_entry(dir.path(), Some("p2"), 2000, 8771).unwrap();
+        write_entry(dir.path(), None, 1000, 8770, None).unwrap();
+        write_entry(dir.path(), Some("p2"), 2000, 8771, None).unwrap();
 
         let seen_by_default = read_peers(dir.path(), None);
         assert_eq!(seen_by_default, vec![peer("p2", 2000, 8771)]);
@@ -456,6 +470,24 @@ mod tests {
 
         remove_entry(dir.path(), Some("p2"));
         assert!(read_peers(dir.path(), None).is_empty());
+    }
+
+    #[test]
+    fn own_registry_round_trips_identity_and_reads_legacy_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        write_entry(dir.path(), None, 41, 8770, Some(10_000)).unwrap();
+        let own = read_own_entry(dir.path(), None).unwrap();
+        assert_eq!(own.pid, 41);
+        assert_eq!(own.process_created_ticks, Some(10_000));
+
+        let path = registry_path(dir.path(), "default");
+        std::fs::write(
+            &path,
+            br#"{"instance":"default","pid":41,"bridge_port":8770}"#,
+        )
+        .unwrap();
+        let legacy = read_own_entry(dir.path(), None).unwrap();
+        assert_eq!(legacy.process_created_ticks, None);
     }
 
     #[test]

@@ -59,6 +59,7 @@ pub mod recovery;
 pub mod screenshot;
 pub mod session_file;
 pub mod stall_grace;
+mod status;
 pub mod telemetry_session;
 pub mod ui;
 mod watchdog;
@@ -67,16 +68,16 @@ pub mod world;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use serde_json::{json, Value};
+use serde_json::Value;
 use tokio::sync::Mutex;
 
 use crate::client::BridgeClient;
 use crate::timeline::client_events::HeartbeatSample;
 use crate::timeline::clock::ClockOffset;
 
-use heartbeat::{HeartbeatState, HeartbeatWatchdog};
+use heartbeat::HeartbeatWatchdog;
 use recovery::{CommandJournal, PersistentHooks, RecoveryTracker};
 use session_file::{DEFAULT_BRIDGE_BIND, DEFAULT_BRIDGE_PORT};
 
@@ -211,7 +212,8 @@ impl LoginState {
 /// Mutable supervisor state behind one async lock.
 struct SupervisorState {
     pid: Option<u32>,
-    started_at: Option<Instant>,
+    /// Creation time captured at launch; used to reject a reused PID.
+    process_created_ticks: Option<u64>,
     token: Option<String>,
     /// The last launch's telemetry grant, as `lab_client_start` reports it.
     telemetry: Option<Value>,
@@ -233,7 +235,7 @@ impl SupervisorState {
     fn new() -> Self {
         Self {
             pid: None,
-            started_at: None,
+            process_created_ticks: None,
             token: None,
             telemetry: None,
             login: LoginState::NotStarted,
@@ -280,12 +282,27 @@ pub struct Supervisor {
 }
 
 impl Supervisor {
+    /// Construct a supervisor, recovering only a registered process whose
+    /// creation identity still matches the live PID.
     pub fn new(bridge: Arc<BridgeClient>, config: SupervisorConfig) -> Self {
+        Self::new_with_process(bridge, config, process::observe)
+    }
+
+    fn new_with_process(
+        bridge: Arc<BridgeClient>,
+        config: SupervisorConfig,
+        observe: impl FnOnce(u32) -> process::ProcessObservation,
+    ) -> Self {
         display::spawn_keep_awake();
+        let mut state = SupervisorState::new();
+        if let Some((pid, created_ticks)) = status::recover_registered_process(&config, observe) {
+            state.pid = Some(pid);
+            state.process_created_ticks = Some(created_ticks);
+        }
         Self {
             bridge,
             config,
-            state: Arc::new(Mutex::new(SupervisorState::new())),
+            state: Arc::new(Mutex::new(state)),
             events: Arc::new(events::store::EventStore::default()),
             leases: Arc::new(crate::lease::LeaseBook::default()),
             account: Arc::new(std::sync::Mutex::new(account::AccountCache::default())),
@@ -479,7 +496,17 @@ impl Supervisor {
         })
         .await
         .map_err(|e| format!("launch task: {e}"))??;
-        if let Err(e) = instance::write_entry(&install_dir, inst, pid, self.config.port) {
+        let process_created_ticks = match process::observe(pid) {
+            process::ProcessObservation::Alive(created_ticks) => created_ticks,
+            _ => None,
+        };
+        if let Err(e) = instance::write_entry(
+            &install_dir,
+            inst,
+            pid,
+            self.config.port,
+            process_created_ticks,
+        ) {
             tracing::warn!(error = %e, "could not record this client for its peers");
         }
 
@@ -495,7 +522,7 @@ impl Supervisor {
         {
             let mut st = self.state.lock().await;
             lifecycle::record_pid(&mut st, pid, process::is_alive);
-            st.started_at = Some(Instant::now());
+            st.process_created_ticks = process_created_ticks;
             st.token = Some(token);
             st.telemetry = Some(telemetry.status());
             st.login = LoginState::NotStarted;
@@ -509,58 +536,6 @@ impl Supervisor {
             grant,
         );
         Ok(pid)
-    }
-
-    /// `lab_client_status` — pid, uptime, heartbeat age, login state,
-    /// crash count. Polls the bridge for the heartbeat and folds it into
-    /// the watchdog (also the on-demand staleness check).
-    pub async fn status(&self) -> Result<Value, String> {
-        let (pid, uptime_ms, login, crash_count, persistent_hooks) = {
-            let mut st = self.state.lock().await;
-            let uptime = st
-                .started_at
-                .map(|t| t.elapsed().as_millis() as i64)
-                .unwrap_or(0);
-            (
-                st.pid,
-                uptime,
-                st.login,
-                st.recovery.recent_crash_count(now_ms()),
-                st.persistent_hooks.count(),
-            )
-        };
-
-        // Heartbeat poll happens without the state lock held.
-        let hb = self.bridge.heartbeat().await;
-        let (hb_count, hb_state, hb_age): (Option<u64>, &str, i64) = match hb {
-            Ok(count) => {
-                let mut st = self.state.lock().await;
-                let ts = now_ms();
-                st.record_heartbeat(count, ts);
-                let s = st.watchdog.observe(count, ts);
-                let age = st.watchdog.age_ms(ts);
-                (
-                    Some(count),
-                    if s == HeartbeatState::Stale {
-                        "stale"
-                    } else {
-                        "alive"
-                    },
-                    age,
-                )
-            }
-            Err(_) => (None, "unreachable", 0),
-        };
-
-        Ok(json!({
-            "pid": pid,
-            "running": pid.map(process::is_alive).unwrap_or(false),
-            "uptime_ms": uptime_ms,
-            "login_state": login.as_str(),
-            "crash_count_10min": crash_count,
-            "persistent_hooks": persistent_hooks,
-            "heartbeat": { "tick_count": hb_count, "state": hb_state, "age_ms": hb_age },
-        }))
     }
 
     /// Record login progress for `lab_client_status`.
