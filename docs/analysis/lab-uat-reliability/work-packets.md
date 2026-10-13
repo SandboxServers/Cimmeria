@@ -90,18 +90,25 @@ client-Lua logic test when the CEGUI hit-test needs one. Test type: UI logic.
 
 ## LR-03 — bridge failures inside waits (#1677)
 
-**Own:** `crates/lab/src/supervisor/flows/ui_state.rs` and its tests, plus
-wait documentation. Branch `lab-uat-reliability/lr-03-bridge-wait`; worktree
+**Own:** `crates/lab/src/supervisor/flows/ui_state.rs`,
+`crates/lab/src/client.rs`, their tests, plus wait documentation. Branch
+`lab-uat-reliability/lr-03-bridge-wait`; worktree
 `lr-03-bridge-wait`; commit `fix(lab): keep polling through transient bridge failures`.
 
-Change `Supervisor::poll_until` so a transient `lua_results` transport error
-during a world load records `last_error`, sleeps until the next poll and
-retries while within the original deadline. Preserve a positive `met`, a
-condition error, and the explicit `fail` outcome. At deadline, return
-`met:false` with the last bridge error, elapsed time and poll count; do not
-return `met:true` or spin without sleeping. Use an injectable/fake poll
-sequence to test error → error → success and error → deadline; include a
-condition `fail` case. Test type: unit plus bridge failure simulation.
+Change `Supervisor::poll_until` so only recognized transient `lua_results`
+transport errors (dispatch timeout/queue full, connection reset/EOF, Windows
+10053/10054) during a world load record `last_error`, increment
+`failed_polls`, sleep until the next poll and retry within the original
+deadline. Permanent Lua errors, malformed responses and revoked leases return
+immediately. Bound each bridge read by the remaining deadline, so a late or
+hung read cannot report `met:true`. Preserve a positive `met`, a condition
+error, and the explicit `fail` outcome. At deadline, return `met:false` with
+the last bridge error, elapsed time, poll count and failed-poll count; do not
+spin. Distinguish EOF/reset on the authentication ack read in `client.rs`
+from a real rejected token. Use an injectable/fake poll sequence to test
+error → error → success, error → deadline, permanent error, delayed success
+past the deadline and condition `fail`. Test type: unit plus bridge failure
+simulation.
 
 ## LR-04a — feedback channel metadata (#1679)
 
