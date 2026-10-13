@@ -90,21 +90,107 @@ pub enum DialogAction {
     Stuck,
 }
 
-/// A Done click can be accepted by CEGUI without closing the dialog.
-/// Only a confirmed invisible window counts as a finished flow.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum DialogCloseStep {
-    Finished,
-    ClickNativeClose,
-    Failed,
+#[async_trait::async_trait]
+trait DialogDriver {
+    async fn read(&mut self) -> Result<Vec<String>, FlowError>;
+    async fn click(&mut self, step: &str, window: &str) -> Result<(), FlowError>;
+    async fn visible(&mut self, step: &str) -> Result<bool, FlowError>;
+    async fn fail(&mut self, step: &str, message: String) -> FlowError;
+    async fn stuck(&mut self, accept: bool) -> FlowError;
 }
 
-fn dialog_close_step(still_open: bool, native_close_tried: bool) -> DialogCloseStep {
-    match (still_open, native_close_tried) {
-        (false, _) => DialogCloseStep::Finished,
-        (true, false) => DialogCloseStep::ClickNativeClose,
-        (true, true) => DialogCloseStep::Failed,
+#[async_trait::async_trait]
+impl DialogDriver for FlowRun<'_> {
+    async fn read(&mut self) -> Result<Vec<String>, FlowError> {
+        self.lua("read_dialog", &dialog_probe_chunk()).await
     }
+
+    async fn click(&mut self, step: &str, window: &str) -> Result<(), FlowError> {
+        FlowRun::click(self, step, window).await
+    }
+
+    async fn visible(&mut self, step: &str) -> Result<bool, FlowError> {
+        FlowRun::visible(self, step, DIALOG_WIN).await
+    }
+
+    async fn fail(&mut self, step: &str, message: String) -> FlowError {
+        self.fail_with_state(step, message).await
+    }
+
+    async fn stuck(&mut self, accept: bool) -> FlowError {
+        let ui = self.sup.ui_state(Some(0)).await.ok();
+        let buttons = ui.map(|u| u["dialog"]["buttons"].clone());
+        FlowRun::fail(
+            self,
+            "read_dialog",
+            format!(
+                "the dialog shows neither Done nor Next{}; buttons: {}",
+                if accept { " nor Accept" } else { "" },
+                buttons.unwrap_or(Value::Null)
+            ),
+        )
+    }
+}
+
+/// Drive the complete dialog sequence through a replaceable client boundary.
+/// The result is only successful after the window is observed closed.
+async fn finish_dialog_steps<D: DialogDriver + Send>(
+    driver: &mut D,
+    accept: bool,
+    max_pages: u32,
+) -> Result<Option<(String, u32)>, FlowError> {
+    let mut pages = 0u32;
+    let mut title = String::new();
+    loop {
+        let r = driver.read().await?;
+        if title.is_empty() {
+            title = r.get(4).cloned().unwrap_or_default();
+        }
+        match plan_dialog(&r, accept) {
+            DialogAction::Closed if pages == 0 => return Ok(None),
+            DialogAction::Closed => break,
+            DialogAction::Done => {
+                driver.click("done", DIALOG_DONE).await?;
+                pages += 1;
+                break;
+            }
+            DialogAction::Accept => {
+                driver.click("accept", DIALOG_ACCEPT).await?;
+                pages += 1;
+                break;
+            }
+            DialogAction::Next => {
+                if pages >= max_pages {
+                    return Err(driver
+                        .fail(
+                            "next",
+                            format!("still paging after {max_pages} pages; no Done button"),
+                        )
+                        .await);
+                }
+                driver.click("next", DIALOG_NEXT).await?;
+                pages += 1;
+            }
+            DialogAction::Stuck => {
+                return Err(driver.stuck(accept).await);
+            }
+        }
+        settle(1000).await;
+    }
+    settle(1000).await;
+    if driver.visible("after").await? {
+        driver.click("native_close", DIALOG_CLOSE).await?;
+        settle(500).await;
+        if driver.visible("after_native_close").await? {
+            return Err(driver
+                .fail(
+                    "verify_closed",
+                    "DialogWin remained visible after Done/Accept and native close".to_string(),
+                )
+                .await);
+        }
+    }
+    Ok(Some((title, pages)))
 }
 
 pub fn dialog_probe_chunk() -> String {
@@ -211,76 +297,16 @@ impl Supervisor {
         max_pages: u32,
     ) -> Result<Value, FlowError> {
         let mut run = FlowRun::new(self, "lab_finish_dialog");
-        let mut pages = 0u32;
-        let mut title = String::new();
-        loop {
-            let r = run.lua("read_dialog", &dialog_probe_chunk()).await?;
-            if title.is_empty() {
-                title = r.get(4).cloned().unwrap_or_default();
-            }
-            match plan_dialog(&r, accept) {
-                DialogAction::Closed if pages == 0 => {
-                    return Ok(run.finish(json!({ "finished": false, "reason": "no dialog open" })));
-                }
-                DialogAction::Closed => break,
-                DialogAction::Done => {
-                    run.click("done", DIALOG_DONE).await?;
-                    pages += 1;
-                    break;
-                }
-                DialogAction::Accept => {
-                    run.click("accept", DIALOG_ACCEPT).await?;
-                    pages += 1;
-                    break;
-                }
-                DialogAction::Next => {
-                    if pages >= max_pages {
-                        return Err(run
-                            .fail_with_state(
-                                "next",
-                                format!("still paging after {max_pages} pages; no Done button"),
-                            )
-                            .await);
-                    }
-                    run.click("next", DIALOG_NEXT).await?;
-                    pages += 1;
-                }
-                DialogAction::Stuck => {
-                    let ui = self.ui_state(Some(0)).await.ok();
-                    let buttons = ui.map(|u| u["dialog"]["buttons"].clone());
-                    return Err(run.fail(
-                        "read_dialog",
-                        format!(
-                            "the dialog shows neither Done nor Next{}; buttons: {}",
-                            if accept { " nor Accept" } else { "" },
-                            buttons.unwrap_or(Value::Null)
-                        ),
-                    ));
-                }
-            }
-            settle(1000).await;
+        let result = finish_dialog_steps(&mut run, accept, max_pages).await?;
+        match result {
+            None => Ok(run.finish(json!({ "finished": false, "reason": "no dialog open" }))),
+            Some((title, pages)) => Ok(run.finish(json!({
+                "finished": true,
+                "title": title,
+                "pages_clicked": pages,
+                "dialog_still_open": false,
+            }))),
         }
-        settle(1000).await;
-        let mut still_open = run.visible("after", DIALOG_WIN).await?;
-        if dialog_close_step(still_open, false) == DialogCloseStep::ClickNativeClose {
-            run.click("native_close", DIALOG_CLOSE).await?;
-            settle(500).await;
-            still_open = run.visible("after_native_close", DIALOG_WIN).await?;
-        }
-        if dialog_close_step(still_open, true) == DialogCloseStep::Failed {
-            return Err(run
-                .fail_with_state(
-                    "verify_closed",
-                    "DialogWin remained visible after Done/Accept and native close",
-                )
-                .await);
-        }
-        Ok(run.finish(json!({
-            "finished": true,
-            "title": title,
-            "pages_clicked": pages,
-            "dialog_still_open": still_open,
-        })))
     }
 }
 
@@ -383,15 +409,64 @@ mod tests {
         );
     }
 
-    #[test]
-    fn done_click_without_effect_requires_native_close_and_verified_closure() {
+    struct FakeDialog {
+        visible: Vec<bool>,
+        clicks: Vec<String>,
+    }
+
+    #[async_trait::async_trait]
+    impl DialogDriver for FakeDialog {
+        async fn read(&mut self) -> Result<Vec<String>, FlowError> {
+            Ok(s(&["true", "true", "false", "false", "Pistol"]))
+        }
+
+        async fn click(&mut self, _step: &str, window: &str) -> Result<(), FlowError> {
+            self.clicks.push(window.to_string());
+            Ok(())
+        }
+
+        async fn visible(&mut self, _step: &str) -> Result<bool, FlowError> {
+            Ok(self.visible.remove(0))
+        }
+
+        async fn fail(&mut self, step: &str, message: String) -> FlowError {
+            FlowError(Box::new(super::super::FlowFailure {
+                flow: "lab_finish_dialog",
+                step: step.to_string(),
+                message,
+                state: None,
+                elapsed_ms: 0,
+                steps: vec![],
+            }))
+        }
+
+        async fn stuck(&mut self, accept: bool) -> FlowError {
+            self.fail("read_dialog", format!("stuck; accept={accept}"))
+                .await
+        }
+    }
+
+    #[tokio::test]
+    async fn done_no_effect_uses_native_close_and_verifies_it() {
+        let mut closed = FakeDialog {
+            visible: vec![true, false],
+            clicks: vec![],
+        };
         assert_eq!(
-            dialog_close_step(true, false),
-            DialogCloseStep::ClickNativeClose
+            finish_dialog_steps(&mut closed, false, 12).await.unwrap(),
+            Some(("Pistol".to_string(), 1))
         );
-        assert_eq!(dialog_close_step(true, true), DialogCloseStep::Failed);
-        assert_eq!(dialog_close_step(false, true), DialogCloseStep::Finished);
-        assert_eq!(DIALOG_CLOSE, "DialogWin/DialogWin__auto_closebutton__");
+        assert_eq!(closed.clicks, [DIALOG_DONE, DIALOG_CLOSE]);
+
+        let mut stuck = FakeDialog {
+            visible: vec![true, true],
+            clicks: vec![],
+        };
+        let error = finish_dialog_steps(&mut stuck, false, 12)
+            .await
+            .unwrap_err();
+        assert_eq!(error.step, "verify_closed");
+        assert_eq!(stuck.clicks, [DIALOG_DONE, DIALOG_CLOSE]);
     }
 
     #[test]
