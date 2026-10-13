@@ -9,11 +9,11 @@ Owner decision, 2026-10-13: the four zone campaigns share one content-chain ID t
 
 ## Chain IDs in use today
 
-Measured on 2026-10-13 at `origin/main` 885bbae05 from the `INSERT INTO content_chains` tuples in `db/resources/Content/Seed/*.sql` (`effects_chains.sql` uses multi-row `VALUES`, so read every tuple, not just the first). No `chain_id` appears in two files.
+Measured on 2026-10-13 at `origin/main` 885bbae05 from the first value of each `INSERT INTO content_chains` statement in `db/resources/Content/Seed/*.sql`. Every file uses single-row inserts; read only the `chain_id` column, because description strings such as `change_stat(8, 0, 100)` contain numbers that are not chain IDs. No `chain_id` appears in two files. Chain 4001 exists only in the one-off script `db/scripts/add_health_slappack_use_chain.sql`, not in the seed; it collides with nothing here.
 
 | Seed file | Chains | IDs in use |
 |---|---:|---|
-| `effects_chains.sql` | 9 | 8, 1627, 2001, 2011, 2021–2025 |
+| `effects_chains.sql` | 7 | 2001, 2011, 2021–2025 |
 | `castle_cellblock_chains.sql` | 120 | 1001–1195 (sparse: 1001–1025, 1031–1034, 1041–1046, 1051–1066, 1071–1074, 1081–1094, 1097–1112, 1121, 1131–1133, 1141–1142, 1151–1152, 1154, 1161–1162, 1171–1178, 1181–1195) and the single outlier 5030 |
 | `castle_701_chains.sql` | 18 | 1201–1205, 1231–1243 |
 | `castle_702_704_chains.sql` | 23 | 1261–1265, 1271–1276, 1291–1302 |
@@ -30,14 +30,15 @@ Measured on 2026-10-13 at `origin/main` 885bbae05 from the `INSERT INTO content_
 | `debug_area_ring_chains.sql` | 9 | 13810–13818 |
 | `debug_area_lineup_chains.sql` | 6 | 14090–14095 |
 
-The planning review's working figure of "castle_cellblock 1001–5030" was a min/max span, not a block. The real Cellblock chains stop at 1195 plus one outlier, 5030, so they do not overlap the Castle (1201–1365), effects (2001–2025) or SGC W1 (3001–3044) chains. The effects file also holds two outliers, 8 and 1627. Treat every listed ID as taken even where it sits inside another zone's span.
+The planning review's working figure of "castle_cellblock 1001–5030" was a min/max span, not a block. The real Cellblock chains stop at 1195 plus one outlier, 5030, so they do not overlap the Castle (1201–1365), effects (2001–2025) or SGC W1 (3001–3044) chains. Treat every listed ID as taken even where it sits inside another zone's span.
 
-**Free and cited:** 1381–1400, the range the old Castle CA15 draft proposed, has no chain today. Castle CS-00 may claim its restoration chains (CS-02, CS-03, CS-06, CS-08) from the free 1366–1400 block next to the existing Castle chains, and records the exact IDs here.
+**Free and cited:** 1381–1400, the range the old Castle CA15 draft proposed, has no chain today. **Proposal, pending owner sign-off** (not part of the owner's 2026-10-13 ID decision): Castle restoration chains (CS-02, CS-03, CS-06, CS-08) take the free 1366–1400 block next to the existing Castle chains. Until the owner signs off, CS-00 treats it as a candidate and records any claim here.
 
 ## Reserved blocks
 
 | Block | Owner | Use |
 |---|---|---|
+| 1366–1400 | Castle (proposed) | Castle restoration chains. Proposal pending owner sign-off; see above. |
 | 6001–6800 | Harset | Reserved by the old Harset ledger: space 6001–6099, Goa'uld 6101–6300, Jaffa 6301–6500, OP-CORE 6501–6800. Per-mission sub-ranges are in [harset-work-packets.md](harset-work-packets.md). |
 | 9000–9799 | Tollana | Tollana restoration, population, authored and repeatable chains. |
 | 9800–9999 | Tollana (Harset recipients) | Owner decision, 2026-10-13: Tollana authors the Harset-side recipient chains for 603, 611, 618, 621, 1626, 1632 and 1643 here. Harset HA-00b signs off the NPC tags they use. |
