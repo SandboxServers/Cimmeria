@@ -144,6 +144,34 @@ pub const READERS: &[TypedReader] = &[
         extra: "extra.active_text = __jcall(getActiveDialogText)",
     },
     TypedReader {
+        // Common/Prompt/Prompt.lua; ui_state_chunk uses instances 1 through 5.
+        kind: "prompt",
+        aliases: &[],
+        roots: &[
+            "Prompt1_PromptWin",
+            "Prompt2_PromptWin",
+            "Prompt3_PromptWin",
+            "Prompt4_PromptWin",
+            "Prompt5_PromptWin",
+        ],
+        extra: "local prompts = {} \
+                for i = 1, 5 do \
+                  local w = _G['Prompt' .. i .. '_PromptWin'] \
+                  if w ~= nil and w:isVisible() then \
+                    local buttons = {} \
+                    for _, suffix in ipairs({ 'Button1', 'Button2', 'SingleButton' }) do \
+                      local b = _G['Prompt' .. i .. '_' .. suffix] \
+                      if b ~= nil and b:isVisible() then \
+                        buttons[#buttons + 1] = { window = b:getName(), label = b:getText(), enabled = not b:isDisabled() } \
+                      end \
+                    end \
+                    local m = _G['Prompt' .. i .. '_Message'] \
+                    prompts[#prompts + 1] = { instance = i, title = w:getText(), message = m and m:getText() or '', buttons = buttons } \
+                  end \
+                end \
+                extra.prompts = prompts",
+    },
+    TypedReader {
         // Core/Greet/Greet.lua: topics are 1-based.
         kind: "greet",
         aliases: &[],
@@ -254,6 +282,7 @@ mod tests {
             "loot",
             "dhd",
             "blurb",
+            "prompt",
             "dialog",
             "vendor",
             "greet",
@@ -285,6 +314,49 @@ mod tests {
         assert!(c.contains("local okx, ex = pcall(function()"));
         assert!(c.contains("pcall(isCraftingAllowed, t)"));
         assert!(c.contains("local function __lab_items"));
+    }
+
+    #[test]
+    fn prompt_reader_finds_numbered_roots_and_preserves_prompt_data() {
+        let reader = find("prompt").expect("prompt reader");
+        let c = chunk(reader, WalkOptions::default());
+        for root in ["Prompt1_PromptWin", "Prompt5_PromptWin"] {
+            assert!(c.contains(&format!("__lab_walk(\"{root}\"")), "{root}");
+        }
+        assert!(c.contains("'SingleButton'"));
+        assert!(c.contains("enabled = not b:isDisabled()"));
+        let s = shape(
+            reader,
+            &json!({
+                "roots": [{ "window": "Prompt1_PromptWin", "found": true, "visible": true,
+                    "nodes": [{ "name": "Prompt1_PromptWin", "text": "Server Message" }] }],
+                "extra": { "prompts": [{ "instance": 1, "title": "Server Message",
+                    "message": "Maintenance begins soon.", "buttons": [
+                        { "window": "Prompt1_SingleButton", "label": "OK", "enabled": true }
+                    ] }] }
+            }),
+            false,
+        );
+        assert_eq!(s["primary"]["window"], "Prompt1_PromptWin");
+        assert_eq!(s["state"]["prompts"][0]["title"], "Server Message");
+        assert_eq!(
+            s["state"]["prompts"][0]["message"],
+            "Maintenance begins soon."
+        );
+        assert_eq!(s["state"]["prompts"][0]["buttons"][0]["label"], "OK");
+        assert_eq!(s["state"]["prompts"][0]["buttons"][0]["enabled"], true);
+    }
+
+    #[test]
+    fn prompt_reader_returns_closed_empty_result_when_no_prompt_is_visible() {
+        let s = shape(
+            find("prompt").expect("prompt reader"),
+            &json!({ "roots": [], "extra": { "prompts": [] } }),
+            false,
+        );
+        assert_eq!(s["open"], false);
+        assert!(s["primary"].is_null());
+        assert_eq!(s["state"]["prompts"], json!([]));
     }
 
     #[test]
