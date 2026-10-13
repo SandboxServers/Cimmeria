@@ -122,6 +122,7 @@ A Windows-only MCP server, over stdio (one per session, the original setup) or a
 | `lab_crash_report` | Last minidump path, last N bridge commands before the crash, quarantined commands. |
 | `lab_timeline` | Merge local client events with server packet-tap rows for a time window (§5). |
 | `lab_ensure_in_world`, `client_batch`, `client_ui_sequence` | Composites (2026-10-10): one call for a sequence an agent used to spend a turn per step on, built on the same flows and input paths. |
+| `client_world_map_click` | Try a real click on a ring-map pixel; if the image consumes the event before the parent listener sees it, optionally invoke the stock map handler at the same pixel. The fallback is reported as N3, so it cannot establish a native client UAT pass. |
 
 Results an MCP client receives are compacted in `call_tool` (one-line JSON, defaults left out, lists capped, no per-step trail; `verbose` / `fields` per call), and `tools/list` strips schema noise. The in-process UAT runner bypasses both and grades full results. The reason is cost: a lab-driving agent re-sends its whole context, schemas included, on every turn. Details: the operating guide, "Fewer calls".
 

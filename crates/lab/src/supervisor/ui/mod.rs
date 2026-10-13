@@ -29,6 +29,7 @@ pub mod typed;
 pub mod vendor_buy;
 pub mod window_click;
 pub mod window_read;
+pub mod world_map;
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};

@@ -68,6 +68,18 @@ pub struct WindowClickArgs {
     pub allow_lua_fallback: Option<bool>,
 }
 
+/// Click a ring destination on the world map. The coordinates are client-area
+/// UI pixels.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct WorldMapClickArgs {
+    pub x: i32,
+    pub y: i32,
+    /// If the real click leaves the map open, call the stock Lua click handler
+    /// at this pixel and report N3. Default true; false requires a native pass.
+    #[serde(default)]
+    pub allow_lua_fallback: Option<bool>,
+}
+
 /// Args for `client_chat_log`.
 #[derive(Debug, Default, serde::Deserialize, schemars::JsonSchema)]
 pub struct ChatLogArgs {
