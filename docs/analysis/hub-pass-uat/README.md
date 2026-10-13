@@ -187,7 +187,7 @@ Statuses: Ready, Driving, Driven (report in), Verifying, Verified, Done (results
 | HP-C1 | default | Chat 9, 9a, 7, flood probe | 19 | HP-M1 | Ready |
 | HP-C2 | default | Chat 9c, 10 | 23 | HP-M1; a quiet colo (D5) | Ready |
 | HP-P1 | p2 | U1, U2b, U3 | 25 | none | Verified 2026-10-13 (attempt 1): U2b, U3 PASS; U1 PARTIAL, pet bar not shown (#1674); lab-harness note on #1660 |
-| HP-P2 | p2 | U4, U6, U12 | 22 | HP-P1 | Ready |
+| HP-P2 | p2 | U4, U6, U12 | 22 | HP-P1 | Verified 2026-10-13 (attempt 1): U12 PASS; U4 PARTIAL (leash not run, rerun `briefs/HP-P2-u4.md`); U6 PARTIAL (pet bar blocked by #1674) |
 | HP-P3 | p2 | U5, U7, U8 | 26 | HP-P1 | Ready |
 | HP-P4 | p2 | U14, U15, U16 | 27 | HP-P1 | Ready |
 | HP-P5 | p2 | U17, U18, U19, U20 | 27 | HP-P1 | Ready |
@@ -217,14 +217,14 @@ Fill from the verifier reports. Result vocabulary: PASS, NATIVE_SHORTFALL, PARTI
 | U1 | HP-P1 | PARTIAL | G (`.pet summon 350`) | 07:50:59Z pets.lifecycle `summoned` + pets.command, template 350, pet 100447, owner 4; `follow_armed` 07:51:00; no WARN/ERROR; client: pet entity rendered at 2 m, but `PetContainer1Win` and the three stance buttons read invisible, and the 07:51:09Z shot (10 s later) shows no pet panel (looker UNSURE/NO, my read agrees). Window name is right per PetContainer.lua. Server cannot say whether the owner-only lists were sent (no log on success). Pet look: looker graded the wrong figure (an NPC); the dark spiky mesh in the foreground is the pet, NEEDS_HUMAN | [#1674](https://github.com/SandboxServers/Cimmeria/issues/1674) |
 | U2b | HP-P1, HP-P6 | PASS (HP-P1 half; relog half in HP-P6) | G (`.giveability 2826` x2) | 07:51:22Z INFO `GmGrantAbility: persisted` ability 2826, subject player 72; 07:51:24Z console.feedback ".giveability: entity 4 already knows 2826"; DB `abilities` = {2826}; client KNOWN "2826" after. Driver saw no Feedback line because the replies arrive on channel null / id 9 (briefs fixed) | |
 | U3 | HP-P1 | PASS | N1 (`client_use_ability` cast); the move-cancel was a GM teleport, not walking | 07:51:39Z `summon_launched` warmup 6 s, `summon_fired`+`summoned`(ability 2826)+`summon_spawned` 07:51:45Z (6 s); second cast 07:51:53Z fired 07:51:59Z with `summon_replaced_pet` 100475 and a `despawned` for it, one pet; third cast 07:52:12Z then `summon_interrupted` reason `caster_moved` 07:52:17Z and no `summon_spawned` until the manual `.pet summon` 07:52:30Z (the interrupt is logged at the end of the warmup, not at the move). No WARN/ERROR | |
-| U4 | HP-P2 | Pending | | | |
+| U4 | HP-P2 | PARTIAL (follow held; leash NOT-RUN) | G (`.pet summon 350`); walking by `W` hold (N1) | 07:53:56Z pets.ai DEBUG `follow_armed` (pet 100479; again 07:54:54Z pet 100480); no `owner_missing`, no WARN/ERROR in pets.*; client-read pet 2.1 m after the walk. The `W` 8 s run moved 0 m (blocked at (252.61, -908.73)), so no `pets.ai teleported` row. The 07:54:42Z `.gotolocation` made `pets.lifecycle owner_teleported` path `console_travel` (`teleported_with_owner`): a GM jump moves the pet with you and never uses the leash. Rerun: `briefs/HP-P2-u4.md` | |
 | U5 | HP-P3 | Pending | | | |
-| U6 | HP-P2 | Pending | | | |
+| U6 | HP-P2 | PARTIAL (console route PASS; pet-bar clause BLOCKED by #1674) | N3 (`changePetStance`) for the buttons (NATIVE_SHORTFALL at best); G for `.pet stance` | 07:55:06Z and 07:55:18Z wire `petChangeStance` (CM 90) and DEBUG `stance_set` `requested` 1, `source` stance_id, defensive to defensive (no change); the driver's `changePetStance(Unit.Pet1, 3)` produced no inbound CM 90 and no `rejected` row (nothing reached the server). Console: 07:55:19Z `stance_changed` defensive to passive, 07:55:23Z passive to aggressive, 07:55:26Z aggressive to defensive, 07:55:37Z defensive to aggressive; each followed by `gm_inspected`. Looker: no pet bar or highlight visible in any of the three shots (UNSURE x3); the chat in shot A shows the stance as defensive | [#1674](https://github.com/SandboxServers/Cimmeria/issues/1674) |
 | U7 | HP-P3 | Pending | | | |
 | U8 | HP-P3 | Pending | | | |
 | U9 | HP-P6 | Pending | | | |
 | U10 | HP-P6 | Pending | | | |
-| U12 | HP-P2 | Pending | | | |
+| U12 | HP-P2 | PASS | G (`.pet info`) | 07:55:41Z DEBUG `gm_inspected` verb info, and four `console.feedback` rows: `.pet info: pet 100480, template 350, owner Hubpets (4), summoned by ability 2826`; `stance aggressive (allowed: passive, defensive, aggressive), AI state Follow`; `abilities [221, 1156], toggled off []`; `distance to owner 2.0 u, last teleport never`. The driver missed the abilities line; the server sent it | |
 | U14 | HP-P4 | Pending | | | |
 | U15 | HP-P4 | Recorded only (K12) | | | |
 | U16 | HP-P4 | Pending | | | |
@@ -255,3 +255,10 @@ Verifier findings, HP-M4 (2026-10-13):
 - P8 (product, filed): [#1675](https://github.com/SandboxServers/Cimmeria/issues/1675) `/gmgiveitem` puts a mission-only (`{2}`) item in the Main bag; round 1's P5, confirmed on a second item (cause: `give.rs` requests INV_MAIN and `grant_container({2}, 1)` keeps it). No earlier issue existed for P5.
 - Not a defect: the refusal text "That item cannot be carried in a backpack or crafting bag" is correct for the item type (the recipient's take could never place it) and follows from P8; fixing P8 removes the case. The wording is a little confusing for an item already in the backpack but names the real reason.
 - Lab (not product): `GateMailCreate_ItemDragContainer:isVisible()` read false after `mailSetItemAttachment`; the widget is shown by an update event (`GateMailMod.onUpdateNewMessageItemAttachment`), so the read was early or the event did not fire for the Lua call. The native attachment state held the item at Send time (server saw item_id 10308), so the refusal came from the server, not the client. Read the widget after a short wait next time.
+
+Verifier findings, HP-P2 (2026-10-13):
+
+- U6 doc/brief mismatch (D): the brief expects bar button 1 = Passive, 2 = Defensive, 3 = Aggressive. The server resolves a requested value as an `EPetStance` id first, then as a 1-based slot (`crates/cell-pets/src/cell/cell_methods/player/pet/stance.rs`, A-07/N6 in `docs/analysis/pets/worknotes/pt-04.md`), so with the full list [passive, defensive, aggressive] bar buttons 1, 2, 3 give Defensive, Aggressive, Aggressive (Passive is unreachable from the small bar). This is a documented known limit, not new; seen on the wire as `requested` 1 -> `source` stance_id -> defensive. The real bar path is still unproven because the bar never shows (#1674). Not filed separately.
+- Lab (not product): `changePetStance(Unit.Pet1, 3)` sent no CM 90 at all (no inbound `petChangeStance`, no `rejected` row), so slot 3 -> Aggressive was not exercised on the wire. Cause unknown (client native may drop a value above 2); a follow-up should try it with the real bar once #1674 is fixed.
+- U4 leash: a GM teleport cannot exercise it (`on_owner_teleported` places the pet at once, `owner_follow.rs` leash is for a walking owner). A 50 m run along x 252 from z -935 to -885 is checked on the navmesh (one component, floor 7.0 to 7.4); whether the pet falls 40 m behind is unknown. See `briefs/HP-P2-u4.md` verifier notes.
+- No WARN/ERROR in pets.* in the window; one movement.speed_warning at 07:54:03Z (warn-only, expected for a run).
