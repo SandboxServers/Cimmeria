@@ -5,6 +5,11 @@
 
 Writes token-report.md and token-report.json into --out, or nothing at all
 if the privacy gate finds something (exit code 3).
+
+    python tools/token-profile/report coordination --db <profile.sqlite> [--since ISO] [--until ISO]
+        [--session ID] [--deny WORD ...]
+
+Prints the coordination overhead report (report/coordination.py) to stdout.
 """
 
 import argparse
@@ -12,6 +17,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from . import coordination
 from .db import ReportError
 from .generate import generate
 from .scrub import PrivacyError
@@ -26,7 +32,33 @@ def report_commit():
         return None
 
 
+def coordination_main(argv):
+    """The `coordination` subcommand: print the overhead report. Exit 2 on bad input, 3 at the privacy gate."""
+    ap = argparse.ArgumentParser(prog="token-profile report coordination",
+                                 description="coordination overhead: the main thread and the coordination agents' share")
+    ap.add_argument("--db", required=True, help="the profiler's SQLite database")
+    ap.add_argument("--since", help="first timestamp included (ISO-8601 UTC)")
+    ap.add_argument("--until", help="first timestamp excluded (ISO-8601 UTC)")
+    ap.add_argument("--session", help="only this session id")
+    ap.add_argument("--deny", action="append", default=[],
+                    help="a word the report may not contain, on top of the local user and machine names (repeatable)")
+    args = ap.parse_args(argv)
+    try:
+        md = coordination.generate(args.db, args.since, args.until, args.session, args.deny)
+    except PrivacyError as e:
+        print(f"status=refused {e}", file=sys.stderr)
+        return 3
+    except ReportError as e:
+        print(f"status=error {e}", file=sys.stderr)
+        return 2
+    sys.stdout.write(md)
+    return 0
+
+
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if argv[:1] == ["coordination"]:
+        return coordination_main(argv[1:])
     ap = argparse.ArgumentParser(prog="token-profile report", description=__doc__.split("\n\n")[0])
     ap.add_argument("--db", required=True, help="the profiler's SQLite database")
     ap.add_argument("--out", required=True, help="directory for token-report.md and token-report.json")
