@@ -89,7 +89,7 @@ fn drag_end(which: &str, a: &DragEndArg) -> Result<DragEnd, String> {
 #[tool_router(router = ui_router, vis = "pub(super)")]
 impl LabServer {
     #[tool(
-        description = "Read an open UI window: title, buttons (enabled), text, list rows; node rectangles with include_nodes. `window` reads any CEGUI window by name; `kind` is a typed reader that adds the module state: vault/bank, org_vault, trainer, discipline_trainer, crafting, pet, organization, mail, loot, dhd, dialog/blurb, greet, vendor, trade, character. Read-only (client_ui_lua)."
+        description = "Read an open UI window: title, buttons (enabled), text, list rows; node rectangles with include_nodes. `window` reads any CEGUI window by name; `kind` is a typed reader that adds the module state: vault/bank, org_vault, trainer, discipline_trainer, crafting, pet, organization, mail, loot, dhd, dialog/blurb, greet, vendor, trade, character, prompt. The `prompt` reader returns visible numbered prompts and their visible button names; click a returned button name. Read-only (client_ui_lua)."
     )]
     async fn client_window_read(
         &self,
@@ -371,5 +371,100 @@ mod tests {
         assert_eq!(mouse_button(None).unwrap(), 0);
         assert_eq!(mouse_button(Some("Right")).unwrap(), 1);
         assert!(mouse_button(Some("middle")).is_err());
+    }
+    #[test]
+    fn client_window_read_description_lists_prompt() {
+        use std::sync::Arc;
+
+        use crate::client::BridgeClient;
+        use crate::supervisor::{Supervisor, SupervisorConfig};
+
+        let config = SupervisorConfig {
+            install_dir: None,
+            dll_path: None,
+            patches_dll: None,
+            helper_path: None,
+            bind: "127.0.0.1".into(),
+            port: 8770,
+            instance: None,
+            telemetry: Default::default(),
+        };
+        let bridge = Arc::new(BridgeClient::new("127.0.0.1:1", ""));
+        let server = LabServer::new(Arc::new(Supervisor::new(bridge, config)));
+        let tool = server
+            .tool_router
+            .get("client_window_read")
+            .expect("client_window_read is routed");
+        assert!(tool
+            .description
+            .as_deref()
+            .unwrap_or_default()
+            .contains("`prompt`"));
+    }
+
+    #[test]
+    fn hub_pass_prompt_briefs_use_returned_button_names() {
+        use std::{fs, path::Path};
+
+        let briefs =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/analysis/hub-pass-uat/briefs");
+        let mut checked = 0;
+        let hardcoded_button = ["PromptN_Button", "1"].concat();
+        let placeholder_button = ["Prompt<N>_Button", "1"].concat();
+
+        for entry in fs::read_dir(&briefs).expect("hub-pass briefs directory exists") {
+            let path = entry.expect("brief directory entry").path();
+            if path.extension().is_none_or(|extension| extension != "md")
+                || !path
+                    .file_name()
+                    .is_some_and(|name| name.to_string_lossy().starts_with("HP-"))
+            {
+                continue;
+            }
+
+            let brief = fs::read_to_string(&path).expect("hub-pass brief is UTF-8");
+            for line in brief.lines().filter(|line| line.contains("**PROMPT")) {
+                assert!(
+                    line.contains("client_window_read")
+                        && line.contains("returned button")
+                        && line.contains("`window`"),
+                    "{} prompt macro does not use a returned button name",
+                    path.display()
+                );
+            }
+            assert!(
+                !brief.contains(hardcoded_button.as_str()),
+                "{} still assumes the first numbered prompt button",
+                path.display()
+            );
+            assert!(
+                !brief.contains(placeholder_button.as_str()),
+                "{} still assumes the first numbered prompt button",
+                path.display()
+            );
+            checked += 1;
+        }
+
+        assert!(checked > 0, "at least one hub-pass brief was checked");
+
+        // These screenshots must observe the prompt before a later step clicks it.
+        // The PROMPT macro dismisses the prompt, so calling it here loses the
+        // evidence and leaves the later confirmation step without a button.
+        for (file, step) in [("HP-M3.md", "**5.5"), ("HP-C2.md", "**10.2")] {
+            let path = briefs.join(file);
+            let brief = fs::read_to_string(&path).expect("hub-pass brief is UTF-8");
+            let observation = brief
+                .lines()
+                .find(|line| line.starts_with(step))
+                .expect("prompt observation step exists");
+            assert!(
+                observation.contains("client_window_read")
+                    && observation.contains("Do not click until")
+                    && !observation.contains("PROMPT"),
+                "{} {} must read the prompt without dismissing it",
+                path.display(),
+                step
+            );
+        }
     }
 }

@@ -52,7 +52,7 @@ Replace `LINE ONE` etc. with the exact lines the step gives. This submits each l
 
 **DIALOG - close an orphan dialog.** `client_batch` Lua `if DialogWin ~= nil and DialogWin:isVisible() then DialogMod.onDialogDoneClicked(DialogWin, DialogWin) return 'closed' end return 'none'`. A tutorial window on top: `client_window_click {"lease_id":L,"target":"TutorialWin__auto_closebutton__"}`.
 
-**PROMPT - find and dismiss a modal prompt.** `client_batch` Lua `for i=1,6 do local w=_G['Prompt'..i..'_PromptWin'] if w and w:isVisible() then return 'Prompt'..i end end return 'none'` -> if `PromptN`, read its text with `client_window_read {"lease_id":L,"kind":"prompt"}` if it works (else skip), then press its first button: `client_window_click {"lease_id":L,"target":"PromptN_Button1"}`; repeat the find until it answers `none`.
+**PROMPT - find and dismiss a modal prompt.** Read visible prompts with `client_window_read {"lease_id":L,"kind":"prompt"}`. If `state.prompts` is non-empty, read its title and message, then click the first enabled returned button using that button's `window` name; repeat the read until `state.prompts` is empty. Never guess a button name.
 
 **BUG - a timeline bookmark.** A step that says `BUG <text>` is the CHATX line `.bug HPU HP-D3 <text>`. The coordinator reads these on the server to find your row timing. They are not optional.
 

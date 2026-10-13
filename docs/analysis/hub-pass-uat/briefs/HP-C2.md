@@ -52,7 +52,7 @@ Replace `LINE ONE` etc. with the exact lines the step gives. This submits each l
 
 **DIALOG - close an orphan dialog.** `client_batch` Lua `if DialogWin ~= nil and DialogWin:isVisible() then DialogMod.onDialogDoneClicked(DialogWin, DialogWin) return 'closed' end return 'none'`. A tutorial window on top: `client_window_click {"lease_id":L,"target":"TutorialWin__auto_closebutton__"}`.
 
-**PROMPT - find and dismiss a modal prompt.** `client_batch` Lua `for i=1,6 do local w=_G['Prompt'..i..'_PromptWin'] if w and w:isVisible() then return 'Prompt'..i end end return 'none'` -> if `PromptN`, read its text with `client_window_read {"lease_id":L,"kind":"prompt"}` if it works (else skip), then press its first button: `client_window_click {"lease_id":L,"target":"PromptN_Button1"}`; repeat the find until it answers `none`.
+**PROMPT - find and dismiss a modal prompt.** Read visible prompts with `client_window_read {"lease_id":L,"kind":"prompt"}`. If `state.prompts` is non-empty, read its title and message, then click the first enabled returned button using that button's `window` name; repeat the read until `state.prompts` is empty. Never guess a button name.
 
 **BUG - a timeline bookmark.** A step that says `BUG <text>` is the CHATX line `.bug HPU HP-C2 <text>`. The coordinator reads these on the server to find your row timing. They are not optional.
 
@@ -62,12 +62,12 @@ Replace `LINE ONE` etc. with the exact lines the step gives. This submits each l
 
 ROWS: chat 9c, chat 10 (without the `.mute B` half, which needs a second player). ESTIMATE: 23 tool calls. Instance `default`, character Hubmail (made by `HP-M1`).
 What a GM account has at login: the client auto-joins three channels (`channel-chat`, `channel-roleplay`, `channel-alliance`), so you start with 3. The server allows 10 per player. Expected: `/chatjoin hproom` works (4), `/chatjoin hpa1`...`hpa6` work (10), `hpa7` is refused with "You are in too many chat channels already." (the exact 11th refusal depends on what the client already joined: record which join was the first refused).
-Modal prompt: a `.announce` shows a red line and a window titled "Server Message" with an OK button (windows named `Prompt1_PromptWin` ... , button `Prompt1_Button1`).
+Modal prompt: a `.announce` shows a red line and a window titled "Server Message" with one visible OK button. Use the prompt reader's returned button `window` name; the stock single-button control is `SingleButton`.
 
 ## Steps
 
 **S1 (2 calls).** L1; L2 (it answers `already:true` if the client is up; no WAIT17 then).
-**S2 (resume probe, 1 call).** `client_batch`: Lua `local o={} for k,v in pairs(getChannels()) do o[#o+1]=k..'='..tostring(v) end table.sort(o) return #o..': '..table.concat(o,',')` (CH_BEFORE), the PROMPT find Lua, UTC. If `hproom` is already in the list a predecessor did the first part of 9c: skip to the first `hpa` number missing. If a prompt is open, dismiss it (PROMPT macro) first.
+**S2 (resume probe, 2 calls, plus any prompt dismissal).** `client_batch`: Lua `local o={} for k,v in pairs(getChannels()) do o[#o+1]=k..'='..tostring(v) end table.sort(o) return #o..': '..table.concat(o,',')` (CH_BEFORE), UTC. If `hproom` is already in the list a predecessor did the first part of 9c: skip to the first `hpa` number missing. Then use the PROMPT macro to read and dismiss any open prompt.
 
 ### ROW 9c - repeats, bad leave, the cap
 
@@ -80,11 +80,11 @@ Modal prompt: a `.announce` shows a red line and a window titled "Server Message
 ### ROW 10 - GM broadcasts and GM feedback colour
 
 **10.1 (1 call).** CHATX lines `.bug HPU HP-C2 r10 start`, `.announce HPUannounce1` (wait 2500), UTC.
-**10.2 (2 calls in one turn).** PROMPT find, and SHOT with label `C2-server-message-prompt` (the modal should be up now).
+**10.2 (2 calls in one turn).** Read `client_window_read {"lease_id":L,"kind":"prompt"}` to observe the visible prompt and its buttons, and SHOT with label `C2-server-message-prompt` (the modal should be up now). Do not click until 10.4.
 **10.3 (1 call).** READ `{"cursor":"c2c","channel":"Server","max":10}`. Expected: one line with `HPUannounce1`, colour bright red; record `colour`, `tabs`, `seq`.
-**10.4 (1 call).** Dismiss the prompt: `client_window_click {"lease_id":L,"target":"Prompt<N>_Button1"}` with N from 10.2, then in the SAME turn PROMPT find again (it should answer `none`). Repeat the click once if a prompt is still open.
-**10.5 (1 call).** CHATX line `.announce space HPUspace1` (wait 2500), then the PROMPT find Lua in the same batch. Then dismiss as in 10.4 (1 call).
-**10.6 (1 call).** CHATX line `/gmsendgmshout 1 HPUshout1` (wait 2500) and the PROMPT find Lua. Expected: either a Server Message again, or no reply (record which). Dismiss any prompt (1 call).
+**10.4 (1 call).** Read `client_window_read {"lease_id":L,"kind":"prompt"}` and click the visible enabled OK button using its returned `window` name. Then repeat the prompt read until it answers no visible prompts.
+**10.5.** CHATX line `.announce space HPUspace1` (wait 2500), then use the PROMPT macro to read and dismiss any visible prompt.
+**10.6.** CHATX line `/gmsendgmshout 1 HPUshout1` (wait 2500), then use the PROMPT macro. Expected: either a Server Message again, or no reply (record which); the macro dismisses any visible prompt.
 **10.7 (1 call).** CHATX line `.location` (wait 1800). With nothing selected this command answers with an error line (it wants a selected NPC or object): that is still a GM feedback line and is what the colour check needs.
 **10.8 (1 call).** READ `{"cursor":"c2d","channel":"9","max":10}`. The `.location` answer is a GM feedback line: record its text, `colour` (expected sky blue) and `tabs` (expected Info).
 **10.8b (optional, 3 calls, only if you have used 22 calls or fewer).** If the answer asked for a selected NPC or object: `client_entity_find {"lease_id":L,"max_distance_m":15,"fields":["matches"]}`, pick any NPC in the list, `client_world_click {"lease_id":L,"entity_id":<id>,"button":"left","expect":"target","settle_ms":3000}`, then CHATX `.location` again and READ as in 10.8. Expected: a position report.
