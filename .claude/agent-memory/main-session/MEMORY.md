@@ -37,6 +37,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 - [reference_lab_typed_prompt_reader_2026_10_13.md](reference_lab_typed_prompt_reader_2026_10_13.md) — Prompt1–5 typed reads use visible roots, message text, and visible buttons; SingleButton is the actual one-button OK control
 
+- [reference_lab_chat_metadata_2026_10_13.md](reference_lab_chat_metadata_2026_10_13.md) — stock channel 9 is Feedback; query built-in display metadata through `ChatMod.ChannelMap`, `channelColors` and `channel2tabs`, with no hard-coded color
 - [reference_lab_ring_map_click_2026_10_13.md](reference_lab_ring_map_click_2026_10_13.md) — QA lab map-image click reached `WorldMapImageWin`, not the parent listener; stock Lua handler at the same pixel and one-time image binding each sent method 91; explicit N3 fallback (#1686)
 - [reference_lab_harness_findings_2026_10_12.md](reference_lab_harness_findings_2026_10_12.md) — lab live facts: Stat['.get'] names, zero camera pose, Q/E turn the pawn (mouse-look only the camera), BackgroundWin click host, bag over vault, feet aim, 5 m 3D range, Lua rebuilt on relog
 - [reference_lab_cli_rust_2026_10_12.md](reference_lab_cli_rust_2026_10_12.md) — `lab.exe` (crates/lab-cli): bin\lab.exe layout, no fallback except the seven `run_script` wrappers, PowerShell flags rewritten, tests isolate `CIMMERIA_LAB_HOME`, JSON from `Serialize` structs; LX-20 live check owed

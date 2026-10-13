@@ -38,20 +38,19 @@ local channels, flags, display = {}, {}, {}
 if type(UIChannel) == 'table' then
   for k, v in pairs(UIChannel) do if type(v) == 'number' then channels[tostring(v)] = k end end
 end
+channels['9'] = channels['9'] or 'Feedback'
 if type(UISpeakerFlags) == 'table' then
   for k, v in pairs(UISpeakerFlags) do if type(v) == 'number' then flags[k] = v end end
 end
-if type(ChatMod) == 'table' and type(UIChannel) == 'table' then
-  for _, id in pairs(UIChannel) do
-    if type(id) == 'number' and (UIChannel.Chat == nil or id < UIChannel.Chat) then
-      pcall(function()
-        local cch = ChatMod.ChannelMap[id](id, 0)
-        local tabs = {}
-        local l = ChatMod.channel2tabs[cch]
-        if l then for w, _ in pairs(l) do tabs[#tabs + 1] = __jcall(function() return w:getName() end) end end
-        display[tostring(id)] = { client_channel = cch, colour = ChatMod.channelColors[cch], tabs = tabs }
-      end)
-    end
+if type(ChatMod) == 'table' and type(UIChannel) == 'table' and type(UIChannel.Chat) == 'number' then
+  for id = 0, UIChannel.Chat - 1 do
+    pcall(function()
+      local cch = ChatMod.ChannelMap[id](id, 0)
+      local tabs = {}
+      local l = ChatMod.channel2tabs[cch]
+      if l then for w, _ in pairs(l) do tabs[#tabs + 1] = __jcall(function() return w:getName() end) end end
+      display[tostring(id)] = { client_channel = cch, colour = ChatMod.channelColors[cch], tabs = tabs }
+    end)
   end
 end
 return __jenc({ channels = channels, chat_base = UIChannel and UIChannel.Chat, flags = flags, display = display })"#;
@@ -269,7 +268,10 @@ mod tests {
             "channels": { "1": "Say", "7": "Tell", "9": "Feedback", "8": "Server" },
             "chat_base": 100,
             "flags": { "None": 0, "GM": 1, "Dev": 2 },
-            "display": { "1": { "client_channel": 1, "colour": "ffffffff", "tabs": ["Inst1Chat_TabOutput"] } }
+            "display": {
+                "1": { "client_channel": 1, "colour": "ffffffff", "tabs": ["Inst1Chat_TabOutput"] },
+                "9": { "client_channel": 9, "colour": "stock-feedback-colour", "tabs": ["Inst1Chat_TabOutput"] }
+            }
         })
     }
 
@@ -327,10 +329,21 @@ mod tests {
         assert_eq!(lines[0]["colour"], "ffffffff");
         assert_eq!(lines[0]["tabs"][0], "Inst1Chat_TabOutput");
         assert_eq!(lines[1]["channel"], "Feedback");
-        assert!(lines[1]["colour"].is_null());
+        assert_eq!(lines[1]["colour"], "stock-feedback-colour");
+        assert_eq!(lines[1]["tabs"][0], "Inst1Chat_TabOutput");
         // A custom channel keeps the server's name.
         assert_eq!(lines[2]["channel"], "Trade");
         assert_eq!(lines[2]["ts_ms"], 1013);
+    }
+
+    #[test]
+    fn unknown_channel_keeps_null_display_metadata() {
+        let mut event = events()[0].clone();
+        event.fields["channel"] = json!(77);
+        let line = enrich(&event, &meta());
+        assert_eq!(line["channel_id"], 77);
+        assert!(line["colour"].is_null());
+        assert!(line["tabs"].is_null());
     }
 
     #[test]
