@@ -45,7 +45,7 @@ Replace `LINE ONE` etc. with the exact lines the step gives. This submits each l
 (b) `client_batch {"lease_id":L,"steps":[{"op":"lua","id":"t","chunk":"return Inst1Chat_Input:getText()"}]}` - the value must equal `<LINE>` exactly. If it does not: `client_batch` Lua `Inst1Chat_Input:setText('')`, then repeat (a) once.
 (c) only if it matched: `client_ui_sequence {"lease_id":L,"actions":[{"do":"key","key":"Enter"},{"do":"wait","ms":2000}]}`.
 
-**READ - read chat replies.** `client_chat_log {"lease_id":L,"cursor":"<new name>","contains":"<word from the expected reply>","max":20}` (add `"channel":"Feedback"` when the step says so). Record every returned line verbatim with its `channel`, `colour` and `tabs` fields and `seq`. Keep a number LASTSEQ = the highest `seq` any chat read has returned so far in this packet. From your second read on, add `"since_seq": <LASTSEQ>` to every read, so you only see lines newer than your last read (the first read of a packet may show older lines from earlier packets: ignore anything the step does not ask for). If a read returns `more: true`, read again once with the new LASTSEQ.
+**READ - read chat replies.** `client_chat_log {"lease_id":L,"cursor":"<new name>","contains":"<word from the expected reply>","max":20}` (add `"channel":"9"` when the step says so: the server sends feedback lines on channel id 9 and the lab can label it `None`, so a `"Feedback"` name filter can match nothing; filter by the id 9. Do not expect the word `Feedback` in the line's `channel` field). Record every returned line verbatim with its `channel`, `colour` and `tabs` fields and `seq`. Keep a number LASTSEQ = the highest `seq` any chat read has returned so far in this packet. From your second read on, add `"since_seq": <LASTSEQ>` to every read, so you only see lines newer than your last read (the first read of a packet may show older lines from earlier packets: ignore anything the step does not ask for). If a read returns `more: true`, read again once with the new LASTSEQ.
 
 **SHOT - screenshot.** `lab_screenshot {"lease_id":L,"instance":"default"}`. Report the path, next to the LABEL the step gives it.
 
@@ -71,9 +71,9 @@ Modal prompt: a `.announce` shows a red line and a window titled "Server Message
 ### ROW 9c - repeats, bad leave, the cap
 
 **9c.1 (1 call).** CHATX lines `.bug HPU HP-C2 r9c start`, `/chatjoin hproom` (wait 1800), `/chatjoin hproom` (wait 1800, the repeat), `/chatleave hpnever` (wait 1800, a channel you never joined), UTC.
-**9c.2 (1 call).** READ `{"cursor":"c2a","channel":"Feedback","max":20}`. Expected: for the repeat `You are already in channel...`, for the bad leave `You are not in that chat channel.` Verbatim. (The first join prints a "You have joined channel" line on the Chat channel: record it too.)
+**9c.2 (1 call).** READ `{"cursor":"c2a","channel":"9","max":20}`. Expected: for the repeat `You are already in channel...`, for the bad leave `You are not in that chat channel.` Verbatim. (The first join prints a "You have joined channel" line on the Chat channel: record it too.)
 **9c.3 (1 call).** CHATX lines `/chatjoin hpa1` ... `/chatjoin hpa8` (eight lines, wait 1300 after each), UTC.
-**9c.4 (1 call).** READ `{"cursor":"c2b","channel":"Feedback","max":25}` and then, in the same turn, `client_batch` with the channel-list Lua of S2 (CH_AFTER). Record every refusal line and which `hpa` number was the first refused (the lines come in order). CH_AFTER should list 10 channels.
+**9c.4 (1 call).** READ `{"cursor":"c2b","channel":"9","max":25}` and then, in the same turn, `client_batch` with the channel-list Lua of S2 (CH_AFTER). Record every refusal line and which `hpa` number was the first refused (the lines come in order). CH_AFTER should list 10 channels.
 **9c.5 (1 call).** SHOT, label `C2-chat-channels`.
 
 ### ROW 10 - GM broadcasts and GM feedback colour
@@ -85,7 +85,7 @@ Modal prompt: a `.announce` shows a red line and a window titled "Server Message
 **10.5 (1 call).** CHATX line `.announce space HPUspace1` (wait 2500), then the PROMPT find Lua in the same batch. Then dismiss as in 10.4 (1 call).
 **10.6 (1 call).** CHATX line `/gmsendgmshout 1 HPUshout1` (wait 2500) and the PROMPT find Lua. Expected: either a Server Message again, or no reply (record which). Dismiss any prompt (1 call).
 **10.7 (1 call).** CHATX line `.location` (wait 1800). With nothing selected this command answers with an error line (it wants a selected NPC or object): that is still a GM feedback line and is what the colour check needs.
-**10.8 (1 call).** READ `{"cursor":"c2d","channel":"Feedback","max":10}`. The `.location` answer is a GM feedback line: record its text, `colour` (expected sky blue) and `tabs` (expected Info).
+**10.8 (1 call).** READ `{"cursor":"c2d","channel":"9","max":10}`. The `.location` answer is a GM feedback line: record its text, `colour` (expected sky blue) and `tabs` (expected Info).
 **10.8b (optional, 3 calls, only if you have used 22 calls or fewer).** If the answer asked for a selected NPC or object: `client_entity_find {"lease_id":L,"max_distance_m":15,"fields":["matches"]}`, pick any NPC in the list, `client_world_click {"lease_id":L,"entity_id":<id>,"button":"left","expect":"target","settle_ms":3000}`, then CHATX `.location` again and READ as in 10.8. Expected: a position report.
 **10.9 (1 call).** READ `{"cursor":"c2e","channel":"Server","max":10}`: all Server lines since 10.3 (the space one and the shout, if they arrived), verbatim with colour.
 

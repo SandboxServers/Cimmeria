@@ -182,7 +182,7 @@ Statuses: Ready, Driving, Driven (report in), Verifying, Verified, Done (results
 |---|---|---|---|---|---|
 | HP-M1 | default | Mail 1, 2, 3 | 23 | none | Verified 2026-10-13 (attempt 1) |
 | HP-M2 | default | Mail 4 | 24 | HP-M1 (the character) | Verified 2026-10-13 (attempt 1): pay half held; item/cash take not reached (driver error); rerun from 4.10b |
-| HP-M3 | default | Mail 5, 6 | 21 | HP-M1 | Ready |
+| HP-M3 | default | Mail 5, 6 | 21 | HP-M1 | Verified 2026-10-13 (attempt 1) |
 | HP-M4 | default | Mail 1 (window), 2 (window), 3a | 25 | HP-M1 | Ready |
 | HP-C1 | default | Chat 9, 9a, 7, flood probe | 19 | HP-M1 | Ready |
 | HP-C2 | default | Chat 9c, 10 | 23 | HP-M1; a quiet colo (D5) | Ready |
@@ -207,8 +207,8 @@ Fill from the verifier reports. Result vocabulary: PASS, NATIVE_SHORTFALL, PARTI
 | Mail 3 | HP-M1 | PASS | N1 (Take click; mail selected by Lua = setup) | 07:45:28Z `mail.item_taken` type 2893, container 1, slot 1; one 2893 row in `sgw_inventory`; `sgw_gate_mail_item` empty; no WARN/ERROR | |
 | Mail 3a | HP-M4 | Pending | | | |
 | Mail 4 | HP-M2 | PARTIAL | N3 (forced mailTakeItem probe), N1 (Pay click); inbox Take clicks N1 but never reached the server | 07:47:12Z mail.gm_action cod 200 item 2893; 07:47:24Z WARN mail.op_refused op take_item reason cod_unpaid; 07:47:32Z mail.cod_paid price 200, naquadah 600 to 400, payment_mail_id 6; DB: mail 5 cod_paid true, escrow 10295 type 2893 still held, mail 6 cash 200. No mail.* row after 07:47:32Z: the two later Take clicks never reached the server because GateMailReadWin (440x480, centred) covered the whole inbox (460x435, centred) and its Take button. Item take and payment-mail cash take NOT YET GRADED (rerun). Looker: read window open, 200 shown, item icon present, no inbox visible | none (driver error) |
-| Mail 5 | HP-M3 | Pending | | | |
-| Mail 6 | HP-M3 | Pending | | | |
+| Mail 5 | HP-M3 | PASS | N1 (Return click and prompt Yes click; mail opened by Lua = setup) | 07:50:18Z `mail.returned` mail 7, player 71, cod_cancelled=200 (a number, not a bool), item 10301 (type 2893); DB: returned true, cash 0, COD flag clear, escrow row kept; no second `mail.returned`, no `mail.op_refused`. The second Return click sent nothing: the stock client disables `GateMailRead_ReturnMessageButton` unless COD and cash > 0 (`GateMail.lua` ~594-606), and the returned mail has COD 0, so the clause is client-guard, client-read only. Looker: detail window open, prompt "Are you sure you want to return this message?" with Yes/No; Return and Pay shown as unlabeled icons (UNSURE) | |
+| Mail 6 | HP-M3 | PASS | G (`.mail`, `.mailbox`, `.mail_expire`) | 07:50:56Z `mail.expired` mail 8 path returned/source gm, 07:50:58Z mail 9 path deleted, 07:51:01Z mail 7 path quarantined reason already_returned (WARN); three `mail.gm_action` mail_expire and two `mailbox`; DB: 8 returned with no COD price and escrow kept, 9 gone, 7 quarantined true; second `.mailbox` quarantined 1 | |
 | Chat 7 (solo) | HP-C1 | Pending | | | |
 | Chat 9 | HP-C1 | Pending | | | |
 | Chat 9a | HP-C1 | Pending | | | |
@@ -241,3 +241,9 @@ Fill from the verifier reports. Result vocabulary: PASS, NATIVE_SHORTFALL, PARTI
 | DP-U8 | HP-D2 | Pending | | | |
 
 Findings and doc mismatches found by the verifiers go in two more tables here (`P` product findings with issue numbers, `D` doc mismatches with the fix), as in the [round 1 report](../haiku-lab-uat/README.md#product-findings). After the pass, the unified-uat.md Mail, Pets and Deployables sections get the results in the usual way (the campaign's close-out, not per packet: status docs change once per campaign).
+
+Verifier findings, HP-M3 (2026-10-13):
+
+- Lab (not product): `client_chat_log` labels GM feedback (server channel id 9, `CHAN_FEEDBACK`, sky blue Info tab per chat-system.md) as `None`, so `channel:"Feedback"` name filters can match nothing. Briefs HP-C1 and HP-C2 now filter by id `"9"`. Still to fix by the coordinator once not running: HP-M4 (READ macro and steps 1.4, 2.4, 2.5, 3a.5, 3a.7) and the other briefs that use `"channel":"Feedback"` (HP-M2, M3, P1-P6, D1-D3). The unified-uat expectation (sky blue, Info tab) is unchanged; the colour and tab are read from the line, not the name.
+- Lab gap: `client_window_read` has no `prompt` kind: [#1673](https://github.com/SandboxServers/Cimmeria/issues/1673).
+- Doc nit: Mail 6 in unified-uat expects `.mailbox` to show an escrow count and next expiry; the reply read "N open of 100, 0 archived, K from the system, Q quarantined" with neither.

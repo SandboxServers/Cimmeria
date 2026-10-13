@@ -45,7 +45,7 @@ Replace `LINE ONE` etc. with the exact lines the step gives. This submits each l
 (b) `client_batch {"lease_id":L,"steps":[{"op":"lua","id":"t","chunk":"return Inst1Chat_Input:getText()"}]}` - the value must equal `<LINE>` exactly. If it does not: `client_batch` Lua `Inst1Chat_Input:setText('')`, then repeat (a) once.
 (c) only if it matched: `client_ui_sequence {"lease_id":L,"actions":[{"do":"key","key":"Enter"},{"do":"wait","ms":2000}]}`.
 
-**READ - read chat replies.** `client_chat_log {"lease_id":L,"cursor":"<new name>","contains":"<word from the expected reply>","max":20}` (add `"channel":"Feedback"` when the step says so). Record every returned line verbatim with its `channel`, `colour` and `tabs` fields and `seq`. Keep a number LASTSEQ = the highest `seq` any chat read has returned so far in this packet. From your second read on, add `"since_seq": <LASTSEQ>` to every read, so you only see lines newer than your last read (the first read of a packet may show older lines from earlier packets: ignore anything the step does not ask for). If a read returns `more: true`, read again once with the new LASTSEQ.
+**READ - read chat replies.** `client_chat_log {"lease_id":L,"cursor":"<new name>","contains":"<word from the expected reply>","max":20}` (add `"channel":"9"` when the step says so: the server sends feedback lines on channel id 9 and the lab can label it `None`, so a `"Feedback"` name filter can match nothing; filter by the id 9. Do not expect the word `Feedback` in the line's `channel` field). Record every returned line verbatim with its `channel`, `colour` and `tabs` fields and `seq`. Keep a number LASTSEQ = the highest `seq` any chat read has returned so far in this packet. From your second read on, add `"since_seq": <LASTSEQ>` to every read, so you only see lines newer than your last read (the first read of a packet may show older lines from earlier packets: ignore anything the step does not ask for). If a read returns `more: true`, read again once with the new LASTSEQ.
 
 **SHOT - screenshot.** `lab_screenshot {"lease_id":L,"instance":"default"}`. Report the path, next to the LABEL the step gives it.
 
@@ -70,7 +70,7 @@ Colours and tabs: `client_chat_log` returns a `colour` and a `tabs` field per li
 
 ### ROW 9 - the login look
 
-**9.1 (1 call).** READ `{"cursor":"c1a","channel":"Feedback","max":25}`. Expected: a welcome line, `colour` sky blue (record the exact colour string), `tabs` containing the Info tab, and no "You have joined channel" line for say/emote/yell/team/squad/command/officer/server/feedback/tell/splash. (Lines for `channel-chat`, `channel-roleplay` and `channel-alliance` ARE normal for a GM account: record them.) Write every line verbatim with `channel`, `colour`, `tabs`, `seq`.
+**9.1 (1 call).** READ `{"cursor":"c1a","channel":"9","max":25}`. Expected: a welcome line, `colour` sky blue (record the exact colour string), `tabs` containing the Info tab, and no "You have joined channel" line for say/emote/yell/team/squad/command/officer/server/feedback/tell/splash. (Lines for `channel-chat`, `channel-roleplay` and `channel-alliance` ARE normal for a GM account: record them.) Write every line verbatim with `channel`, `colour`, `tabs`, `seq`.
 **9.2 (2 calls in one turn).** SHOT, label `C1-chat-after-login`; and `client_batch` with Lua `local o={} for i,t in ipairs(ChatMod.Tabs) do if t then o[#o+1]=i..':'..tostring(t:getText())..':'..tostring(t:isVisible()) end end return table.concat(o,' | ')`, Lua `for i=1,6 do local w=_G['Prompt'..i..'_PromptWin'] if w and w:isVisible() then return 'prompt'..i end end return 'no-prompt'`, UTC. Record the tab list and whether a popup is open ("no-prompt" is the expected answer).
 
 ### ROW 9a - say, emote and yell show exactly once
@@ -83,7 +83,7 @@ Colours and tabs: `client_chat_log` returns a `colour` and a `tabs` field per li
 ### ROW 7 - tells, solo
 
 **7.1 (1 call).** CHATX lines `.bug HPU HP-C1 r7 start`, `/tell Hubmail HPUtell1` (to yourself), `/tell Nobodyqqzz HPUtell2` (to a name nobody has), `/squad HPUsquad1` (wait 1800 after each), UTC.
-**7.2 (1 call).** READ `{"cursor":"c1c","channel":"Feedback","max":20}`. Expected: `You cannot send a tell to yourself.` and `Player Nobodyqqzz is not online.` and, for the squad line, some refusal (record whatever it says). Verbatim, with `colour` and `tabs`.
+**7.2 (1 call).** READ `{"cursor":"c1c","channel":"9","max":20}`. Expected: `You cannot send a tell to yourself.` and `Player Nobodyqqzz is not online.` and, for the squad line, some refusal (record whatever it says). Verbatim, with `colour` and `tabs`.
 
 ### EXTRA - ten lines fast (GM accounts skip the flood limit, so no refusal is expected)
 
