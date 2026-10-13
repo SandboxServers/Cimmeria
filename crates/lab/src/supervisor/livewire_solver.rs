@@ -97,7 +97,7 @@ fn clearance(shapes: &[Shape], cut: &BTreeSet<String>, target: usize, point: Poi
     radius
 }
 
-fn candidates(shapes: &[Shape], cut: &BTreeSet<String>, target: usize) -> Vec<Candidate> {
+fn candidates(shapes: &[Shape], cut: &BTreeSet<String>, target: usize) -> (usize, Vec<Candidate>) {
     let mut exposed: Vec<Candidate> = shapes[target]
         .cells
         .iter()
@@ -109,6 +109,7 @@ fn candidates(shapes: &[Shape], cut: &BTreeSet<String>, target: usize) -> Vec<Ca
             clearance: clearance(shapes, cut, target, point),
         })
         .collect();
+    let exposed_count = exposed.len();
     exposed.sort_by_key(|point| (-point.clearance, point.x, point.y));
     let mut chosen: Vec<Candidate> = Vec::new();
     for point in &exposed {
@@ -118,7 +119,7 @@ fn candidates(shapes: &[Shape], cut: &BTreeSet<String>, target: usize) -> Vec<Ca
         {
             chosen.push(point.clone());
             if chosen.len() == 5 {
-                return chosen;
+                return (exposed_count, chosen);
             }
         }
     }
@@ -133,7 +134,7 @@ fn candidates(shapes: &[Shape], cut: &BTreeSet<String>, target: usize) -> Vec<Ca
             chosen.push(point);
         }
     }
-    chosen
+    (exposed_count, chosen)
 }
 
 fn make_click(shape: &Shape, candidates: Vec<Candidate>) -> PlannedClick {
@@ -196,11 +197,15 @@ pub fn plan(board: &Value, atlas: &LivewireAtlas) -> Result<ClickPlan, String> {
         .collect();
     let mut clicks = Vec::new();
     for _ in 0..shapes.len() {
-        let mut goals: Vec<(usize, Vec<Candidate>)> = shapes
+        let mut goals: Vec<(usize, usize, Vec<Candidate>)> = shapes
             .iter()
             .enumerate()
             .filter(|(_, shape)| shape.wire.kind == "goal" && !cut.contains(&shape.wire.name))
-            .map(|(index, _)| (index, candidates(&shapes, &cut, index)))
+            .map(|(index, shape)| {
+                let (exposed, points) = candidates(&shapes, &cut, index);
+                let visible_band = shape.cells.iter().filter(|&&point| !blocked(point)).count();
+                (index, visible_band - exposed, points)
+            })
             .collect();
         if goals.is_empty() {
             return Ok(ClickPlan {
@@ -211,20 +216,20 @@ pub fn plan(board: &Value, atlas: &LivewireAtlas) -> Result<ClickPlan, String> {
                 atlas_sha256: atlas.movie_sha256.clone(),
             });
         }
-        goals.sort_by_key(|(index, points)| {
+        goals.sort_by_key(|(index, occluded, _)| {
             (
-                points.len(),
+                *occluded,
                 shapes[*index].wire.depth,
                 shapes[*index].wire.name.clone(),
             )
         });
-        if let Some((index, points)) = goals.iter().find(|(_, points)| !points.is_empty()) {
+        if let Some((index, _, points)) = goals.iter().find(|(_, _, points)| !points.is_empty()) {
             clicks.push(make_click(&shapes[*index], points.clone()));
             cut.insert(shapes[*index].wire.name.clone());
             continue;
         }
         let mut coverage = BTreeMap::<usize, usize>::new();
-        for (goal, _) in &goals {
+        for (goal, _, _) in &goals {
             for &point in &shapes[*goal].cells {
                 if blocked(point) {
                     continue;
@@ -238,13 +243,13 @@ pub fn plan(board: &Value, atlas: &LivewireAtlas) -> Result<ClickPlan, String> {
         }
         let target = coverage
             .into_iter()
-            .filter(|(index, _)| !candidates(&shapes, &cut, *index).is_empty())
+            .filter(|(index, _)| !candidates(&shapes, &cut, *index).1.is_empty())
             .max_by_key(|(_, cells)| *cells)
             .map(|(index, _)| index)
             .ok_or_else(|| "goal_fully_occluded".to_string())?;
         clicks.push(make_click(
             &shapes[target],
-            candidates(&shapes, &cut, target),
+            candidates(&shapes, &cut, target).1,
         ));
         cut.insert(shapes[target].wire.name.clone());
     }
@@ -255,10 +260,12 @@ pub fn plan(board: &Value, atlas: &LivewireAtlas) -> Result<ClickPlan, String> {
 mod tests {
     use super::*;
     use crate::supervisor::livewire_atlas::HitLibrary;
+    use cimmeria_minigame::minigame::game::create_game;
+    use cimmeria_minigame::minigame::session::MinigameSession;
 
     fn atlas() -> LivewireAtlas {
         let mut libraries = BTreeMap::new();
-        for base in [
+        for (base_index, base) in [
             "gBlackGreen",
             "gGreenBlack",
             "gRedSilver",
@@ -273,13 +280,24 @@ mod tests {
             "pGray",
             "pGreen",
             "pRust",
-        ] {
+        ]
+        .into_iter()
+        .enumerate()
+        {
             for variant in 1..=4 {
+                // A 900-stage-unit winding stroke with thickness and crossing
+                // variants, matching the atlas scale without shipping client art.
+                let points = (0..=180)
+                    .flat_map(|x| {
+                        let wave = ((x + base_index as i32 * 7 + variant * 11) % 41 - 20) * 3;
+                        [-5, 0, 5].map(move |dy| [x * 5, wave + dy])
+                    })
+                    .collect();
                 libraries.insert(
                     format!("{base}{variant}"),
                     HitLibrary {
-                        bounds_twips: [0.0, 21_000.0, -2_000.0, 2_000.0],
-                        points: (0..=180).map(|i| [i * 5, (i % 5 - 2) * 5]).collect(),
+                        bounds_twips: [0.0, 18_000.0, -1_300.0, 1_300.0],
+                        points,
                     },
                 );
             }
@@ -310,89 +328,69 @@ mod tests {
         }
     }
 
+    fn hit(wire: &Wire, point: &Candidate, atlas: &LivewireAtlas) -> bool {
+        atlas.library(&wire.lib).is_some_and(|library| {
+            library.points.iter().any(|[local_x, local_y]| {
+                let x = ((wire.x + f64::from(*local_x)) / 5.0).round() as i32 * 5;
+                let y = ((wire.y + f64::from(*local_y)) / 5.0).round() as i32 * 5;
+                point.x == x && point.y == y
+            })
+        })
+    }
+
     #[test]
-    fn seeded_boards_plan_only_exposed_topmost_points_at_all_difficulties() {
+    fn seeded_livewire_game_boards_plan_exposed_topmost_points_at_all_difficulties() {
         let atlas = atlas();
-        let mut seed = 0x5eed_u64;
-        let mut next = || {
-            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
-            (seed >> 32) as usize
-        };
         for difficulty in 1..=4 {
-            for _ in 0..25 {
-                let goals = if difficulty == 1 {
-                    2
-                } else if difficulty == 4 {
-                    6
-                } else {
-                    4
+            for seed in 1..=12 {
+                let session = MinigameSession {
+                    entity_id: 42,
+                    player_id: 17,
+                    game_name: "Livewire".into(),
+                    difficulty,
+                    tech_competency: 1,
+                    seed,
+                    abilities_mask: 0,
+                    intelligence: 0,
+                    player_level: 1,
+                    ticket: "test".into(),
+                    on_victory_chains: vec![],
+                    player_name: None,
+                    client_ip: None,
+                    created_at: tokio::time::Instant::now(),
+                    connected: true,
                 };
-                let mut wires = Vec::new();
-                for index in 0..(goals + 8) {
-                    let (name, lib, kind) = if index < goals {
-                        (
-                            format!("g{index}"),
-                            format!("gRedSilver{}", next() % 4 + 1),
-                            "goal",
-                        )
-                    } else if index < goals + 3 {
-                        (
-                            format!("o{index}"),
-                            format!("oBlack{}", next() % 4 + 1),
-                            "obstacle",
-                        )
-                    } else {
-                        (
-                            format!("p{index}"),
-                            format!("pGray{}", next() % 4 + 1),
-                            "playfield",
-                        )
-                    };
-                    let (depth, y) = if index < goals {
-                        (20 + index, 220.0 + index as f64 * 100.0)
-                    } else if index < goals + 3 {
-                        (60 + index, 220.0 + (next() % goals) as f64 * 100.0)
-                    } else {
-                        (index - goals, 220.0 + (next() % goals) as f64 * 100.0)
-                    };
-                    wires.push(serde_json::json!({"name": name, "lib": lib, "kind": kind,
-                        "depth": depth, "x": 275.6, "y": y, "cut": false}));
-                }
-                let board =
-                    serde_json::json!({"state":"running", "goal_total": goals, "wires": wires});
+                let mut game = create_game(&session).unwrap();
+                game.started();
+                let board = serde_json::to_value(game.board_snapshot().unwrap()).unwrap();
                 let result = plan(&board, &atlas).unwrap();
                 let parsed: Board = serde_json::from_value(board).unwrap();
                 let mut cut = BTreeSet::new();
-                let shapes: Vec<_> = parsed
-                    .wires
-                    .iter()
-                    .map(|wire| Shape {
-                        wire: wire.clone(),
-                        cells: atlas
-                            .library(&wire.lib)
-                            .unwrap()
-                            .points
-                            .iter()
-                            .map(|[x, y]| {
-                                (
-                                    grid(wire.x + f64::from(*x)).unwrap(),
-                                    grid(wire.y + f64::from(*y)).unwrap(),
-                                )
-                            })
-                            .collect(),
-                    })
-                    .collect();
                 for click in &result.clicks {
-                    let target = shapes
+                    let target = parsed
+                        .wires
                         .iter()
-                        .position(|shape| shape.wire.name == click.name)
+                        .find(|wire| wire.name == click.name)
                         .unwrap();
-                    assert!(!click.candidates.is_empty());
+                    assert!(
+                        !click.candidates.is_empty(),
+                        "difficulty={difficulty} seed={seed}"
+                    );
                     for point in &click.candidates {
-                        assert!(!blocked((point.x, point.y)));
-                        assert_eq!(top(&shapes, &cut, (point.x, point.y)), Some(target));
+                        assert!((445..=1270).contains(&point.x));
+                        assert!((110..=890).contains(&point.y));
+                        assert!(hit(target, point, &atlas), "target miss: {click:?}");
+                        assert!(
+                            !parsed.wires.iter().any(|wire| {
+                                wire.depth > target.depth
+                                    && !wire.cut
+                                    && !cut.contains(&wire.name)
+                                    && hit(wire, point, &atlas)
+                            }),
+                            "higher live wire covers {click:?}"
+                        );
                     }
-                    cut.insert(click.name.clone());
+                    assert!(cut.insert(click.name.clone()), "duplicate click: {click:?}");
                 }
                 assert_eq!(
                     result
@@ -400,9 +398,25 @@ mod tests {
                         .iter()
                         .filter(|click| click.kind == "goal")
                         .count(),
-                    goals
+                    parsed.goal_total as usize,
+                    "difficulty={difficulty} seed={seed}"
                 );
             }
         }
+    }
+
+    #[test]
+    fn goal_with_fewer_occluded_cells_is_planned_first() {
+        let mut atlas = atlas();
+        atlas.libraries.get_mut("gRedSilver1").unwrap().points = vec![[200, 0], [205, 0]];
+        atlas.libraries.get_mut("gBlackGreen1").unwrap().points = vec![[200, 0], [205, 0]];
+        atlas.libraries.get_mut("oBlack1").unwrap().points = vec![[200, 0]];
+        let board = serde_json::json!({"state":"ready", "goal_total":2, "wires":[
+            {"name":"g1","lib":"gRedSilver1","kind":"goal","depth":1,"x":275.6,"y":391.0,"cut":false},
+            {"name":"g2","lib":"gBlackGreen1","kind":"goal","depth":2,"x":275.6,"y":497.0,"cut":false},
+            {"name":"o1","lib":"oBlack1","kind":"obstacle","depth":3,"x":275.6,"y":391.0,"cut":false}
+        ]});
+        let result = plan(&board, &atlas).unwrap();
+        assert_eq!(result.clicks[0].name, "g2");
     }
 }
