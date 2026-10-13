@@ -64,9 +64,17 @@ fn click_trail(click: &Value, fallback: bool) -> NativeTrail {
 
 fn stamp_click(result: &mut Value, click: &Value, fallback: bool, closed: bool) {
     click_trail(click, fallback).stamp(result);
-    if !closed {
-        result["native_pass"] = json!(false);
-    }
+    result["effect_ok"] = json!(closed);
+    result["native_pass"] = json!(native_pass(click, fallback, closed));
+}
+
+/// A ring click is an N1 pass only when native cursor placement delivered
+/// the requested left click and the map closed as its observed effect.
+fn native_pass(click: &Value, fallback: bool, closed: bool) -> bool {
+    !fallback
+        && closed
+        && click["cursor_via"] == json!("native_inject")
+        && click["button"] == json!(0)
 }
 
 impl Supervisor {
@@ -136,31 +144,58 @@ mod tests {
     }
 
     #[test]
-    fn assisted_ring_selection_cannot_be_graded_as_native() {
+    fn ring_click_requires_native_cursor_delivery_and_map_closure() {
         let mut native = json!({});
-        click_trail(&json!({ "cursor_via": "native_inject" }), false).stamp(&mut native);
+        stamp_click(
+            &mut native,
+            &json!({ "cursor_via": "native_inject", "button": 0, "at": [652, 398] }),
+            false,
+            true,
+        );
         assert_eq!(native["native_tier"], "N1");
         assert_eq!(native["native_pass"], true);
+        assert_eq!(native["effect_ok"], true);
 
         let mut assisted = json!({});
-        click_trail(&json!({ "cursor_via": "native_inject" }), true).stamp(&mut assisted);
+        stamp_click(
+            &mut assisted,
+            &json!({ "cursor_via": "native_inject", "button": 0 }),
+            true,
+            true,
+        );
         assert_eq!(assisted["native_tier"], "N3");
         assert_eq!(assisted["native_pass"], false);
         assert_eq!(assisted["native_level"], "client_ui_lua");
 
         let mut positioned_by_lua = json!({});
-        click_trail(&json!({ "cursor_via": "lua_set_position" }), false)
-            .stamp(&mut positioned_by_lua);
+        stamp_click(
+            &mut positioned_by_lua,
+            &json!({ "cursor_via": "lua_set_position", "button": 0 }),
+            false,
+            true,
+        );
         assert_eq!(positioned_by_lua["native_tier"], "N3");
         assert_eq!(positioned_by_lua["native_pass"], false);
 
-        let mut missed = json!({});
+        // With fallback disabled, a delivered mouse message that leaves the
+        // map open is a failed effect, not an N1 pass.
+        let mut failed_without_fallback = json!({ "allow_lua_fallback": false });
         stamp_click(
-            &mut missed,
-            &json!({ "cursor_via": "native_inject" }),
+            &mut failed_without_fallback,
+            &json!({ "cursor_via": "native_inject", "button": 0 }),
             false,
             false,
         );
-        assert_eq!(missed["native_pass"], false);
+        assert_eq!(failed_without_fallback["native_pass"], false);
+        assert_eq!(failed_without_fallback["effect_ok"], false);
+
+        let mut missing_delivery = json!({});
+        stamp_click(
+            &mut missing_delivery,
+            &json!({ "cursor_via": "native_inject" }),
+            false,
+            true,
+        );
+        assert_eq!(missing_delivery["native_pass"], false);
     }
 }

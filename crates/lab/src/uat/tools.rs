@@ -217,4 +217,20 @@ mod tests {
         assert_eq!(resolve("@stand").unwrap(), "uat_stand");
         assert_eq!(lookup("@stand").unwrap().floor, Some(Tier::G));
     }
+
+    #[test]
+    fn ring_map_click_tool_and_alias_are_registered_at_n1() {
+        let capability = lookup("@world_map_click").unwrap();
+        assert_eq!(capability.alias, "world_map_click");
+        assert_eq!(capability.tool, "client_world_map_click");
+        assert_eq!(capability.floor, Some(Tier::N1));
+        assert_eq!(
+            lookup("client_world_map_click").map(|c| c.alias),
+            Some("world_map_click")
+        );
+        assert_eq!(
+            resolve("@world_map_click").unwrap(),
+            "client_world_map_click"
+        );
+    }
 }
