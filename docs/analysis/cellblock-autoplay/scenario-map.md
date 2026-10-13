@@ -169,7 +169,7 @@ Sources: `docs/guides/automated-uat.md`, `docs/guides/uat-specs/{castle-cellbloc
 
 ## 4. The walkthrough
 
-One section: `id = "castle-cellblock-walkthrough"`, `character = "fresh"`, `[section.fresh] alignment = "sgu", archetype = "Commando", gender = "male"` (Tau'ri branch), plus R2 `sequential` and R3 `finish_intro = false`. Rows default to `state = "in_world"`; the `.bug` anchor needs the GM account (the lab account is GM). `required_native = "N1"` unless noted.
+One section: `id = "castle-cellblock-walkthrough"`, `character = "fresh"`, `[section.fresh] alignment = "praxis", archetype = "Commando", gender = "male"` (the server's non-Jaffa branch). A fresh SGU Commando starts in SGC_W1, while a fresh Praxis Commando starts in Castle_CellBlock (verified live 2026-10-13). Add R2 `sequential` and R3 `finish_intro = false`. Rows default to `state = "in_world"`; the `.bug` anchor needs the GM account (the lab account is GM). `required_native = "N1"` unless noted.
 
 Common blocks are defined in §5: **FIGHT** (target, auto-attack, reload, slap-pack policy), **LOOT** (corpse loot) and **LIVEWIRE**.
 

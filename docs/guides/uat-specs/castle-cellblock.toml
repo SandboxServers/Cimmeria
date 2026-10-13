@@ -22,7 +22,7 @@ anchor = false
 known_issues = ["K6", "K7"]
 setup = [
   { tool = "lab_ensure_character_slot", args = { free_slots = 1, protect = ["${character}"] } },
-  { tool = "lab_create_character", args = { first = "Uat", last = "T${run_id}", alignment = "sgu", archetype = "Commando", gender = "male" } },
+  { tool = "lab_create_character", args = { first = "Uat", last = "T${run_id}", alignment = "praxis", archetype = "Commando", gender = "male" } },
 ]
 step = [
   { tool = "lab_play_character", args = { name = "T${run_id}" }, label = "play" },

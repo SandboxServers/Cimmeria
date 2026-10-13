@@ -74,7 +74,7 @@ Archetype branching matters in four places (missions 638, 641, 687, and the Afte
 
 There is no GM command that resets mission state. `/gmmissionreset`, `/gmmissionclearactive` and `/gmmissionclearhistory` exist in the client's `SGWGmPlayer.def` but have no server handler. **Delete the character at character-select to start the tutorial over** — `sgw_mission` and `sgw_inventory` cascade off `sgw_player`, so a delete + reroll is a genuinely clean run. Per-mission surgery with `/gmmissionclear <id>` then `/gmmissionassign <id> 1` also works when you only need to redo one beat.
 
-Praxis Goa'uld (char defs 10 and 19) also start here. They are excluded from the forced Prison Boots and they take the **Tau'ri** branch everywhere else, because Cimmeria's chains gate on `archetype neq 8` rather than the original Python's `archetype < 5`. Testing one is optional.
+For an automated fresh-character run, choose **Praxis Commando**: the current server starts Praxis in Castle_CellBlock and SGU in SGC_W1 (verified live 2026-10-13). Praxis characters take the **non-Jaffa** branch because Cimmeria's chains gate on `archetype neq 8` rather than the original Python's `archetype < 5`. The original client data's Tau'ri labels still describe that branch; they do not imply an SGU character will spawn here. Praxis Goa'uld (char defs 10 and 19) also start here and are excluded from the forced Prison Boots. Testing one is optional.
 
 ### 5. GM commands you will actually use
 
