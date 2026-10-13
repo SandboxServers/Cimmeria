@@ -47,7 +47,7 @@ Rows come from [unified-uat.md](../../guides/unified-uat.md): [Mail, chat and du
 
 | Row or half | Why | What would make it runnable |
 |---|---|---|
-| Chat 9, "paste ten lines fast: one 'too quickly' line" | GM accounts skip the flood limit (`docs/gameplay/chat-system.md`, "Access level GameMaster (2) and above skip the bucket"), and the lab accounts `lab`, `lab2`, `lab3` are access level 2. HP-C1 pastes ten lines anyway and records that none is refused | a non-GM account on the colo (decision D4) |
+| Chat 9, "paste ten lines fast: one 'too quickly' line" | GM accounts skip the flood limit (`docs/gameplay/chat-system.md`, "Access level GameMaster (2) and above skip the bucket"), and the lab accounts `lab`, `lab2`, `lab3` are access level 2. HP-C1 pastes ten lines anyway and records that none is refused | a non-GM account on the colo (decision D4: deferred to Session 7; the flood-limit clause is not graded in this pass) |
 | Chat 10, `.mute B 1` | needs a second player (dropped by the request) | two accounts |
 | Chat 7, DND and Ignore halves | need a second player | |
 | Mail 1, "B logs in later"; Mail 3, "retry with full bags" | need an offline recipient who logs in, and 100+ bag fills | a second character; a fill recipe |
@@ -100,9 +100,9 @@ All exist in the console registry (`crates/cell-console/src/cell/console/registr
 
 ## Preflight (the coordinator, before the first packet)
 
-1. **Kill the screensaver.** `Get-Process -Name Ribbons -ErrorAction SilentlyContinue | Stop-Process` (the lab's D3D preflight refuses to start a client while a screensaver runs; round 1 lost a start to `Ribbons.scr`). Check `Get-Process | Where-Object { $_.Path -like '*.scr' }` is empty.
+1. **Kill the screensaver, then hold the display awake.** `Get-Process -Name Ribbons -ErrorAction SilentlyContinue | Stop-Process` (round 1 lost a start to `Ribbons.scr`). Check `Get-Process | Where-Object { $_.Path -like '*.scr' }` is empty. `lab_ensure_in_world` fails with `D3DERR_NOTAVAILABLE` while the Ribbons.scr screensaver runs (its timeout on this workstation is 600 s), so killing it once is not enough: for the whole run, keep a process alive that calls `SetThreadExecutionState` with `ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED` (0x80000003) so the screensaver and display sleep never start again.
 2. **The build lane must be idle.** `python tools/build-lane/lane_stats.py --recent 3` shows nothing running, and `Get-ChildItem $env:LOCALAPPDATA\cimmeria-build\lane` has no `slot.*` folder. Round 1's three failed starts happened under other sessions' cargo jobs. Do not start a build while the lab runs.
-3. **The lab is installed and hosts three instances.** `%LOCALAPPDATA%\cimmeria-lab\labd.env` has `CIMMERIA_LAB_INSTANCES=default,p2,p3`; `lab instances status` shows `lab`, `lab2` and `lab3` account files and no running client; the daemon runs the current build (`lab restart` if you changed anything). Reconnect the MCP server with `/mcp` in the coordinator session after a restart, and start the driver agents after that, so their tool lists are current (LH-17 added `client_item_action`, `client_lua_eval`, `client_type_text`, `client_die_and_respawn` to `lab-driver`; a session that predates it still has the old agent).
+3. **The lab is installed and hosts three instances.** `%LOCALAPPDATA%\cimmeria-lab\labd.env` has `CIMMERIA_LAB_INSTANCES=default,p2,p3`; `lab instances status` shows `lab`, `lab2` and `lab3` account files and no running client; the daemon runs the current build (`lab restart` if you changed anything). Reconnect the MCP server with `/mcp` in the coordinator session after a restart, and start the driver agents after that, so their tool lists are current (LH-17 added `client_item_action`, `client_lua_eval`, `client_type_text`, `client_die_and_respawn` to `lab-driver`; D2 added `client_use_ability` and `client_hotbar`; a session that predates it still has the old agent).
 4. **The lab points at the colo.** `server_db_query` (lab-server) answers `SELECT now()` from the colo database, and the client's `LoginInternal.lua` has no stale `Local` row (a stale row once sent the lab to a local server while the database read the colo).
 5. **Server evidence works.** `ssh cimmeria-colo 'docker exec -i signoz-clickhouse clickhouse-client -q "SELECT count() FROM signoz_logs.distributed_logs_v2 WHERE timestamp > now() - INTERVAL 1 HOUR"'` returns a number. The SigNoz MCP returned 401 last round; use it only if it works now. Look at one pets row and one deployables row once to see whether DEBUG rows are exported (the pets and deployables telemetry is mostly DEBUG).
 6. **The accounts are GM and the build is the expected one.** `SELECT account_name, accesslevel FROM public.account WHERE account_name IN ('lab','lab2','lab3')` returns 2 for all three; the colo runs `v2026-10-12.3` or later (the latest `service.version` in ClickHouse).
@@ -162,11 +162,11 @@ Never for: re-driving a packet, finding a driving recipe, reading logs, grading 
 | # | Decision | Status | Why / what it blocks |
 |---|---|---|---|
 | D1 | Three characters, one per section and instance: `Hubmail` (`default`, mail and chat), `Hubpets` (`p2`), `Hubdeploy` (`p3`); SGU Soldier, male, first name `Uat` | Adopted | Round 1's recipe; lets the three lanes run in parallel without sharing a client |
-| D2 | Add `client_use_ability` (and `client_hotbar`) to the `lab-driver` tool list so casts and pet orders run at N1 | **Owner decision** | Today the driver casts with stock Lua (`useAbility`, `usePetAbility`: N3), so every cast row grades at best `NATIVE_SHORTFALL`. The tool costs about 1k tokens of schema per turn. Without it the pets and deployables rows can still prove the server behaviour. Recommended: yes, then re-run the NATIVE_SHORTFALL rows |
+| D2 | Add `client_use_ability` (and `client_hotbar`) to the `lab-driver` tool list so casts and pet orders run at N1 | **Decided yes, 2026-10-13, by the owner** | Today the driver casts with stock Lua (`useAbility`, `usePetAbility`: N3), so every cast row grades at best `NATIVE_SHORTFALL`. The tool costs about 1k tokens of schema per turn. Without it the pets and deployables rows can still prove the server behaviour. Effect: both tools are in `.claude/agents/lab-driver.md`; the pet and deployable briefs cast with `client_use_ability` (hotbar key or click, N1; `place:true` is N3 setup only), press pet-bar and stance buttons with `client_ui_sequence` clicks (the tool does not drive the separate pet bar), and keep stock Lua only as a labelled N3 fallback. The verify briefs expect N1 and PASS-eligible. A session that predates the agent edit needs a restart to see the tools |
 | D3 | Tier policy: a GM or slash command submitted by `ChatMod.onTextAccepted` (CHATX) counts as typed (G) when the command itself is the step; the cast, stance click, take, pay and return rows need N1 for `PASS` | Adopted | Matches round 1 ("typed") and the vocabulary in automated-uat.md; the real keys are used for `/say hi` (9a) where typing is the point |
-| D4 | A non-GM account on the colo, to test the chat flood limit ("too quickly") and the non-GM refusal of GM commands | **Owner decision** | The lab accounts are GM and exempt. Needed for Chat 9's last clause |
+| D4 | A non-GM account on the colo, to test the chat flood limit ("too quickly") and the non-GM refusal of GM commands | **Deferred, 2026-10-13, by the owner** (to Session 7 / a non-GM account) | The lab accounts are GM and exempt. Effect: Chat 9's flood-limit refusal is not graded in this pass. HP-C1 may still paste the ten lines when that is cheap and records the result as not graded |
 | D5 | HP-C2 runs alone, with no other lane driving, and only when `server_sessions` shows no real tester online | Adopted (a scheduling rule) | `.announce` and `/gmsendgmshout` open a modal prompt on every online client |
-| D6 | The KillCount half of Pets U8 needs a seeded mission with a kill counter that a Soldier can hold; none is wired for this pass | **Owner decision** (or skip) | Without it U8 stays PARTIAL |
+| D6 | The KillCount half of Pets U8 needs a seeded mission with a kill counter that a Soldier can hold; none is wired for this pass | **XP half only, decided 2026-10-13, by the owner** | Effect: U8 grades XP and kill credit; the KillCount half is PARTIAL / not run |
 | D7 | DP-U5's "behind a wall" case is a Sonnet exploration task after HP-D2: find a spot inside 5 m of an occluder, then click it with a top-down camera | Proposed | The hub room's occluder data is unchecked, and a click behind a wall needs a camera above it |
 | D8 | Pets and deployables use the Debug Area plaza, not the stasis-room hub | Adopted | Hostile mobs on demand, 12 m of clear floor, no travel between rows; the hub NPCs these rows would use are broken or not needed |
 | D9 | The looker's answers are a pre-screen. A visual-only row (the model on the ground, tab colours, the pet bar) stays `NEEDS_HUMAN` for the owner until a person confirms it | Adopted | automated-uat.md has `NEEDS_HUMAN` for exactly this |
@@ -186,14 +186,14 @@ Statuses: Ready, Driving, Driven (report in), Verifying, Verified, Done (results
 | HP-M4 | default | Mail 1 (window), 2 (window), 3a | 25 | HP-M1 | Ready |
 | HP-C1 | default | Chat 9, 9a, 7, flood probe | 19 | HP-M1 | Ready |
 | HP-C2 | default | Chat 9c, 10 | 23 | HP-M1; a quiet colo (D5) | Ready |
-| HP-P1 | p2 | U1, U2b, U3 | 22 | none | Ready |
+| HP-P1 | p2 | U1, U2b, U3 | 25 | none | Ready |
 | HP-P2 | p2 | U4, U6, U12 | 22 | HP-P1 | Ready |
-| HP-P3 | p2 | U5, U7, U8 | 24 | HP-P1 | Ready |
-| HP-P4 | p2 | U14, U15, U16 | 23 | HP-P1 | Ready |
-| HP-P5 | p2 | U17, U18, U19, U20 | 20 | HP-P1 | Ready |
+| HP-P3 | p2 | U5, U7, U8 | 26 | HP-P1 | Ready |
+| HP-P4 | p2 | U14, U15, U16 | 27 | HP-P1 | Ready |
+| HP-P5 | p2 | U17, U18, U19, U20 | 27 | HP-P1 | Ready |
 | HP-P6 | p2 | U9, U10, U2b relog | 18 | HP-P1; run last on p2 | Ready |
 | HP-D1 | p3 | DP-U1, U2, U4 | 22 | none; may end BLOCKED | Ready |
-| HP-D2 | p3 | DP-U3, U5, U8 | 24 | HP-D1 proves the ground cast | Ready after HP-D1 |
+| HP-D2 | p3 | DP-U3, U5, U8 | 25 | HP-D1 proves the ground cast | Ready after HP-D1 |
 | HP-D3 | p3 | DP-U6 | 24 | HP-D1 | Ready after HP-D1 |
 
 ## Results

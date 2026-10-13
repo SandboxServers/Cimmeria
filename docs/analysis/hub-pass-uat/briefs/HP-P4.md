@@ -19,7 +19,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 9. **Stand 3.5 to 4.5 m from an NPC** before right-clicking it (the server range is 5.0 m). Never walk to a target: teleport next to it, then click. Entity ids change after a relog or zone change: look an entity up by name with `client_entity_find` right before you use its id.
 10. **If a click opens nothing**, call `lab_screenshot` once, record the path, retry the click once unchanged, then record FAIL for that step and go on to the next independent step. Never improvise a workaround that this brief does not give.
 11. **Keys:** B opens the bag (not I). Q and E turn the avatar (about 110 degrees per second), W and S walk. To hold a key use `client_ui_sequence` with `{"do":"key","key":"w","hold_ms":2000}`.
-12. **Casting and pets use stock Lua.** `useAbility(<id>, Unit.Player)` casts on yourself, `useAbility(<id>, Unit.Target)` on your target. `usePetAbility(Unit.Pet1, <id>, Unit.Target)` orders your pet. `changePetStance(Unit.Pet1, <1|2|3>)` presses a stance button. These are N3 (stock Lua) calls: say so in the report, do not hide it.
+12. **Cast and press with the real tools; stock Lua is the labelled fallback.** To cast, call `client_use_ability {"lease_id":L,"ability_id":<id>,"place":true,"observe_ms":<ms>}` (or `"name":"<ability name>"`). It presses the ability's hotbar button by its bound key or by a click (N1); `place:true` first puts an ability that is not on the bar onto an empty button (that placement is N3 setup, the press is still N1) and `observe_ms` (default 2500, max 30000) holds the call open to read the result. The target is whatever is selected, so select it first. Read the call's own `native_level` and write it in the ROW tier. `client_hotbar {"lease_id":L}` lists the bar (read only). It does not drive the separate pet bar: press pet-bar and stance buttons with a real click, `client_ui_sequence {"lease_id":L,"actions":[{"do":"click","window":"<window>"},...]}` (stances are `PetContainer1_StanceButton1` to `3`; N1). Only if the real path errors twice, use the stock Lua `useAbility(<id>, Unit.Player|Unit.Target)`, `usePetAbility(Unit.Pet1, <id>, Unit.Target)` or `changePetStance(Unit.Pet1, <1|2|3>)`, and label that step **N3** in the ROW and the report (it grades NATIVE_SHORTFALL at best).
 13. **Do not restart or relaunch the client**, and do not call `lab_client_*` tools. If the client seems dead (`lab_client_status` says crashed, or every call fails), stop and report BLOCKED with the error text.
 14. **Your budget is 30 tool calls in total** (about 40-50k tokens of working context on top of the brief). Count them. At call 28, stop doing rows, write the report from what you have, release the lease and finish. Never start a row you cannot finish. Fewer calls are better: put reads in one `client_batch`, UI steps in one `client_ui_sequence`.
 15. **One retry per failed call, unchanged.** Then record the error text verbatim and continue.
@@ -71,13 +71,13 @@ Replace `LINE ONE` etc. with the exact lines the step gives. This submits each l
 
 **DONE <row>.** After each row's last check, add the CHATX line `/say HPUdone HP-P4 <row>` to that last batch. A successor reads them with `client_chat_log {"lease_id":L,"cursor":"probe","contains":"HPUdone HP-P4","channel":"Say","max":30}`; a row with a DONE line is finished (do not repeat it).
 
-**Casting.** `useAbility(<id>, Unit.Player)` in a `client_batch` Lua step. A summon has a 6 s warmup and a 5 s cooldown, so wait 8 seconds (`{"op":"wait","ms":8000}`) before you read the pet. Watch for the casting bar, but only the chat and the pet matter.
+**Casting.** `client_use_ability {"lease_id":L,"ability_id":<id>,"place":true,"observe_ms":9000}` (N1 press, see gotcha 12). A summon has a 6 s warmup and a 5 s cooldown; `observe_ms` 9000 keeps the call open past the warmup, so read the pet (PET) right after it returns. Where a step below says "wait N" after a cast, the `observe_ms` is that wait. Watch for the casting bar, but only the chat and the pet matter.
 
 ---
 
 # HP-P4: pets U14 (the three other pets), U15 (Lo'taur, record only), U16 (a pet-bar ability that does nothing)
 
-ROWS: U14, U15, U16. ESTIMATE: 23 tool calls. Instance `p2`, character Hubpets (made by `HP-P1`).
+ROWS: U14, U15, U16. ESTIMATE: 27 tool calls. Instance `p2`, character Hubpets (made by `HP-P1`).
 U15 is a KNOWN-BROKEN row (the Lo'taur never attacks or heals): you only RECORD what you see; the verifier will not grade it.
 The three summons: `1643` Summon Jaffa, `1644` Summon Lo'taur, `1645` Summon Prime. Each takes 6 s of warmup and has a 5 s cooldown. Casting one replaces the pet you have.
 
@@ -89,9 +89,9 @@ The three summons: `1643` Summon Jaffa, `1644` Summon Lo'taur, `1645` Summon Pri
 ### U14 - grant and cast each summon in turn
 
 **14.1 (1 call).** CHATX lines `.bug HPU HP-P4 u14 start`, `.giveability 1643` (wait 2200), `.giveability 1644` (wait 2200), `.giveability 1645` (wait 2200), then KNOWN, UTC. Expected KNOWN lists 1643, 1644, 1645 (and 2826 from before).
-**14.2 (3 calls) - the Jaffa.** `client_batch` `[{"op":"lua","id":"cast","chunk":"useAbility(1643, Unit.Player) return 'cast-jaffa'"},{"op":"wait","ms":9000},PET,BAR,UTC]` (expected: PET names a "Jaffa Soldier" and the stance buttons exist); then TURN; then SHOT, label `P4-jaffa`.
-**14.3 (3 calls) - the Lo'taur.** Same with `useAbility(1644, Unit.Player)`; expected PET names a "Lo'Taur Servant"; TURN; SHOT, label `P4-lotaur`.
-**14.4 (3 calls) - the Prime.** Same with `useAbility(1645, Unit.Player)`; expected PET names a "Jaffa Prime"; TURN; SHOT, label `P4-prime`.
+**14.2 (4 calls) - the Jaffa.** `client_use_ability {"lease_id":L,"ability_id":1643,"place":true,"observe_ms":9000}` (N1), then `client_batch` `[PET,BAR,UTC]` (expected: PET names a "Jaffa Soldier" and the stance buttons exist); then TURN; then SHOT, label `P4-jaffa`.
+**14.3 (4 calls) - the Lo'taur.** Same with ability 1644 (`client_use_ability`, N1); expected PET names a "Lo'Taur Servant"; TURN; SHOT, label `P4-lotaur`.
+**14.4 (4 calls) - the Prime.** Same with ability 1645 (`client_use_ability`, N1); expected PET names a "Jaffa Prime"; TURN; SHOT, label `P4-prime`.
 If a cast answers a cooldown or "already using an ability" message, wait 6 seconds and cast again once.
 **14.5 (1 call).** READ `{"cursor":"p4a","channel":"Feedback","max":15}`: any message from the casts. Verbatim.
 
@@ -104,7 +104,7 @@ If a cast answers a cooldown or "already using an ability" message, wait 6 secon
 ### U16 - an ability that does nothing is refused
 
 **16.1 (1 call).** CHATX lines `/say HPUdone HP-P4 u15`, `.bug HPU HP-P4 u16 start`, `.pet summon 1645` (wait 2500) (the Prime), then PET, UTC.
-**16.2 (2 calls).** Select the Rat if one is still alive (`client_entity_find` then `client_world_click` with `button:"left"`, `expect:"target"`); if none is alive, skip the selection. Then order the ability: `client_batch` `[{"op":"lua","id":"o","chunk":"usePetAbility(Unit.Pet1, 1654, Unit.Target) return 'ordered-1654'"},{"op":"wait","ms":2500},UTC]`.
+**16.2 (4 calls).** Select the Rat if one is still alive (`client_entity_find` then `client_world_click` with `button:"left"`, `expect:"target"`); if none is alive, skip the selection. Then order the ability with a real click (N1). Find the pet-bar ability button first: call `client_ui_state {"lease_id":L}` once and note the visible window under `PetContainer1` that is not a `StanceButton` and that carries the ability (record its exact name; if none is visible, record that and use the N3 fallback in gotcha 12). Then `client_ui_sequence {"lease_id":L,"actions":[{"do":"click","window":"<that window>"},{"do":"wait","ms":2500}]}`, then UTC. (Only if there is no pressable button: the stock Lua `usePetAbility(Unit.Pet1, 1654, Unit.Target)`, labelled N3.)
 **16.3 (1 call).** READ `{"cursor":"p4b","channel":"Feedback","max":10}`. Expected: `Your pet can't use that ability yet.` Verbatim.
 **16.4 (1 call).** CHATX `/say HPUdone HP-P4 u16`. Then `.pet dismiss` (wait 2000) as a cleanup, PET.
 

@@ -19,7 +19,7 @@ BRIEF FIELDS (the coordinator filled these in before pasting):
 9. **Stand 3.5 to 4.5 m from an NPC** before right-clicking it (the server range is 5.0 m). Never walk to a target: teleport next to it, then click. Entity ids change after a relog or zone change: look an entity up by name with `client_entity_find` right before you use its id.
 10. **If a click opens nothing**, call `lab_screenshot` once, record the path, retry the click once unchanged, then record FAIL for that step and go on to the next independent step. Never improvise a workaround that this brief does not give.
 11. **Keys:** B opens the bag (not I). Q and E turn the avatar (about 110 degrees per second), W and S walk. To hold a key use `client_ui_sequence` with `{"do":"key","key":"w","hold_ms":2000}`.
-12. **Casting and pets use stock Lua.** `useAbility(<id>, Unit.Player)` casts on yourself, `useAbility(<id>, Unit.Target)` on your target. `usePetAbility(Unit.Pet1, <id>, Unit.Target)` orders your pet. `changePetStance(Unit.Pet1, <1|2|3>)` presses a stance button. These are N3 (stock Lua) calls: say so in the report, do not hide it.
+12. **Cast and press with the real tools; stock Lua is the labelled fallback.** To cast, call `client_use_ability {"lease_id":L,"ability_id":<id>,"place":true,"observe_ms":<ms>}` (or `"name":"<ability name>"`). It presses the ability's hotbar button by its bound key or by a click (N1); `place:true` first puts an ability that is not on the bar onto an empty button (that placement is N3 setup, the press is still N1) and `observe_ms` (default 2500, max 30000) holds the call open to read the result. The target is whatever is selected, so select it first. Read the call's own `native_level` and write it in the ROW tier. `client_hotbar {"lease_id":L}` lists the bar (read only). It does not drive the separate pet bar: press pet-bar and stance buttons with a real click, `client_ui_sequence {"lease_id":L,"actions":[{"do":"click","window":"<window>"},...]}` (stances are `PetContainer1_StanceButton1` to `3`; N1). Only if the real path errors twice, use the stock Lua `useAbility(<id>, Unit.Player|Unit.Target)`, `usePetAbility(Unit.Pet1, <id>, Unit.Target)` or `changePetStance(Unit.Pet1, <1|2|3>)`, and label that step **N3** in the ROW and the report (it grades NATIVE_SHORTFALL at best).
 13. **Do not restart or relaunch the client**, and do not call `lab_client_*` tools. If the client seems dead (`lab_client_status` says crashed, or every call fails), stop and report BLOCKED with the error text.
 14. **Your budget is 30 tool calls in total** (about 40-50k tokens of working context on top of the brief). Count them. At call 28, stop doing rows, write the report from what you have, release the lease and finish. Never start a row you cannot finish. Fewer calls are better: put reads in one `client_batch`, UI steps in one `client_ui_sequence`.
 15. **One retry per failed call, unchanged.** Then record the error text verbatim and continue.
@@ -71,13 +71,13 @@ Replace `LINE ONE` etc. with the exact lines the step gives. This submits each l
 
 **DONE <row>.** After each row's last check, add the CHATX line `/say HPUdone HP-P5 <row>` to that last batch. A successor reads them with `client_chat_log {"lease_id":L,"cursor":"probe","contains":"HPUdone HP-P5","channel":"Say","max":30}`; a row with a DONE line is finished (do not repeat it).
 
-**Casting.** `useAbility(<id>, Unit.Player)` in a `client_batch` Lua step. A summon has a 6 s warmup and a 5 s cooldown, so wait 8 seconds (`{"op":"wait","ms":8000}`) before you read the pet. Watch for the casting bar, but only the chat and the pet matter.
+**Casting.** `client_use_ability {"lease_id":L,"ability_id":<id>,"place":true,"observe_ms":9000}` (N1 press, see gotcha 12). A summon has a 6 s warmup and a 5 s cooldown; `observe_ms` 9000 keeps the call open past the warmup, so read the pet (PET) right after it returns. Where a step below says "wait N" after a cast, the `observe_ms` is that wait. Watch for the casting bar, but only the chat and the pet matter.
 
 ---
 
 # HP-P5: pets U17 (Holy Warrior), U18 (To The Death), U19 (Heed Our Calling), U20 (no pet, no cooldown)
 
-ROWS: U17, U18, U19, U20. ESTIMATE: 20 tool calls. Instance `p2`, character Hubpets (made by `HP-P1`). Abilities: `2824` Holy Warrior (a toggle), `2839` To The Death (2 s warmup, the pet dies after 60 s), `2852` Heed Our Calling (a passive: the next summon has no warmup), `2826` Summon Straegis.
+ROWS: U17, U18, U19, U20. ESTIMATE: 27 tool calls. Instance `p2`, character Hubpets (made by `HP-P1`). Abilities: `2824` Holy Warrior (a toggle), `2839` To The Death (2 s warmup, the pet dies after 60 s), `2852` Heed Our Calling (a passive: the next summon has no warmup), `2826` Summon Straegis.
 You need a pet out for U17 and U18 and none for U20.
 
 ## Steps
@@ -91,25 +91,25 @@ You need a pet out for U17 and U18 and none for U20.
 
 ### U17 - Holy Warrior on, off
 
-**17.1 (1 call).** `client_batch` `[{"op":"lua","id":"a","chunk":"useAbility(2824, Unit.Player) return 'press1'"},{"op":"wait","ms":2500},{"op":"lua","id":"b","chunk":"useAbility(2824, Unit.Player) return 'press2'"},{"op":"wait","ms":2500},UTC]`.
+**17.1 (3 calls).** Press 1: `client_use_ability {"lease_id":L,"ability_id":2824,"place":true,"observe_ms":2500}` (N1). Press 2: `client_use_ability {"lease_id":L,"ability_id":2824,"observe_ms":2500}` (N1). Then `client_batch` `[UTC]`. If the client refuses a press itself, the call result says so: record it verbatim.
 **17.2 (1 call).** READ `{"cursor":"p5a","channel":"Feedback","max":15}`. Expected `Holy Warrior is on.` then `Holy Warrior is off.` Verbatim. If the second press says it is on cooldown, wait 6 s and press once more, then read again.
 
 ### U18 - To The Death
 
-**18.1 (1 call).** CHATX `/say HPUdone HP-P5 u17`, `.bug HPU HP-P5 u18 start`, `.pet summon 2826` (wait 2500) if PET says `no-pet`; then Lua `useAbility(2839, Unit.Player) return 'ttd'`, wait 4000, then PET, UTC. READ in the next call `{"cursor":"p5b","channel":"Feedback","max":10}`. Expected `Your pet fights to the death: it dies in 60 seconds.` Verbatim, with the time you pressed.
-**18.2 (1 call).** Cast it again: Lua `useAbility(2839, Unit.Player) return 'ttd2'`, wait 2500; then READ `{"cursor":"p5c","channel":"Feedback","max":10}`. Expected `Your pet is already fighting to the death.`
+**18.1 (3 calls).** Call 1: CHATX `/say HPUdone HP-P5 u17`, `.bug HPU HP-P5 u18 start`, `.pet summon 2826` (wait 2500) if PET says `no-pet`; then end the batch. Call 2: `client_use_ability {"lease_id":L,"ability_id":2839,"place":true,"observe_ms":4000}` (N1). Call 3, one batch: PET, UTC. READ in the next call `{"cursor":"p5b","channel":"Feedback","max":10}`. Expected `Your pet fights to the death: it dies in 60 seconds.` Verbatim, with the time you pressed.
+**18.2 (2 calls).** Cast it again: `client_use_ability {"lease_id":L,"ability_id":2839,"observe_ms":2500}` (N1); then READ `{"cursor":"p5c","channel":"Feedback","max":10}`. Expected `Your pet is already fighting to the death.`
 **18.3 (2 calls).** Wait out the timer: `client_batch` `[{"op":"wait","ms":30000},PET]` twice (two calls; each shows the pet still alive at 30 s and at 60 s from the cast; the second may show it dead, which is fine). Record both PET answers and UTC.
 **18.4 (1 call).** `client_batch` `[{"op":"wait","ms":14000},PET,UTC]` then `client_entity_find {"lease_id":L,"max_distance_m":15,"fields":["matches"]}`. Expected: no pet, and no pet corpse listed within about 10 s after its death. Record.
 
 ### U19 - Heed Our Calling makes the next summon instant
 
 **19.1 (1 call).** CHATX lines `/say HPUdone HP-P5 u18`, `.bug HPU HP-P5 u19 start`, `.pet dismiss` (wait 2000), `.giveability 2852` (wait 2500), then KNOWN, UTC.
-**19.2 (1 call).** Cast and poll: `client_batch` `[{"op":"lua","id":"cast","chunk":"useAbility(2826, Unit.Player) return 'cast'"},{"op":"wait","ms":1000},PET,{"op":"wait","ms":1000},PET,{"op":"wait","ms":1500},PET,{"op":"wait","ms":4000},PET,UTC]`. Record the four PET answers: expected a pet already at the first or second one (no 6 s warmup). If the pet only appears at the last, write that: it means no instant summon.
+**19.2 (2 calls).** Cast and poll: `client_use_ability {"lease_id":L,"ability_id":2826,"place":true,"observe_ms":300}` (N1), then at once `client_batch` `[{"op":"wait","ms":700},PET,{"op":"wait","ms":1000},PET,{"op":"wait","ms":1500},PET,{"op":"wait","ms":4000},PET,UTC]`. Record the four PET answers: expected a pet already at the first or second one (no 6 s warmup). If the pet only appears at the last, write that: it means no instant summon.
 
 ### U20 - no pet, no cooldown
 
-**20.1 (2 calls).** CHATX lines `/say HPUdone HP-P5 u19`, `.bug HPU HP-P5 u20 start`, `.pet dismiss` (wait 2000), then Lua `useAbility(2824, Unit.Player) return 'press'`, wait 2500, UTC. Then READ `{"cursor":"p5d","channel":"Feedback","max":10}`. Expected `You have no pet to use that on.` Verbatim.
-**20.2 (1 call).** Press again at once: `client_batch` `[{"op":"lua","id":"p","chunk":"useAbility(2824, Unit.Player) return 'press-again'"},{"op":"wait","ms":2500}]` and READ the Feedback channel again (cursor `p5e`): the same line again, with no cooldown message. Then CHATX `/say HPUdone HP-P5 u20`.
+**20.1 (3 calls).** Call 1: CHATX lines `/say HPUdone HP-P5 u19`, `.bug HPU HP-P5 u20 start`, `.pet dismiss` (wait 2000), then end the batch. Call 2: `client_use_ability {"lease_id":L,"ability_id":2824,"place":true,"observe_ms":2500}` (N1). Then READ `{"cursor":"p5d","channel":"Feedback","max":10}`. Expected `You have no pet to use that on.` Verbatim.
+**20.2 (1 call).** Press again at once: `client_use_ability {"lease_id":L,"ability_id":2824,"observe_ms":2500}` (N1) and READ the Feedback channel again (cursor `p5e`): the same line again, with no cooldown message. Then CHATX `/say HPUdone HP-P5 u20`.
 
 **S9.** Release the lease and write the report. Rows: U17, U18, U19, U20.
 
