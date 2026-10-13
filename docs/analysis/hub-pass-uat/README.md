@@ -180,7 +180,7 @@ Statuses: Ready, Driving, Driven (report in), Verifying, Verified, Done (results
 
 | Packet | Instance | Rows | Est. calls | Depends on | Status |
 |---|---|---|---|---|---|
-| HP-M1 | default | Mail 1, 2, 3 | 23 | none | Ready |
+| HP-M1 | default | Mail 1, 2, 3 | 23 | none | Verified 2026-10-13 (attempt 1) |
 | HP-M2 | default | Mail 4 | 24 | HP-M1 (the character) | Ready |
 | HP-M3 | default | Mail 5, 6 | 21 | HP-M1 | Ready |
 | HP-M4 | default | Mail 1 (window), 2 (window), 3a | 25 | HP-M1 | Ready |
@@ -202,9 +202,9 @@ Fill from the verifier reports. Result vocabulary: PASS, NATIVE_SHORTFALL, PARTI
 
 | Row | Packet | Result | Tier | Evidence (time, scope, event) | Issue |
 |---|---|---|---|---|---|
-| Mail 1 | HP-M1, HP-M4 | Pending | | | |
-| Mail 2 | HP-M1, HP-M4 | Pending | | | |
-| Mail 3 | HP-M1 | Pending | | | |
+| Mail 1 | HP-M1, HP-M4 | PARTIAL (visual) | G (`.mail`); mailbox opened by Lua (N3, setup) | 07:44:45 and 07:44:57Z mail `mail.gm_action` + `mail.system_sent` + `mail.notified` (header_pushed) for mail 1, 2; DB has both; looker: inbox open, HPUM1r1 listed, no New marker visible. `recipient_open_mail` is a mail count, not a window flag | |
+| Mail 2 | HP-M1, HP-M4 | PARTIAL (visual) | N1 (Take click; mail selected by Lua = setup) | 07:45:11Z `mail.cash_taken` cash 100, naquadah 0 to 100; DB naquadah 100, mail cash 0, no WARN/ERROR; looker saw an "Att:" label, not a coin icon, on the entry (NEEDS_HUMAN) | |
+| Mail 3 | HP-M1 | PASS | N1 (Take click; mail selected by Lua = setup) | 07:45:28Z `mail.item_taken` type 2893, container 1, slot 1; one 2893 row in `sgw_inventory`; `sgw_gate_mail_item` empty; no WARN/ERROR | |
 | Mail 3a | HP-M4 | Pending | | | |
 | Mail 4 | HP-M2 | Pending | | | |
 | Mail 5 | HP-M3 | Pending | | | |
