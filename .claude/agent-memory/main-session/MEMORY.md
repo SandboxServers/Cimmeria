@@ -37,6 +37,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [project_texture_upscale_forensics.md](project_texture_upscale_forensics.md) — 512x256 10-mip DXT1 shape is stock-valid; silent failures mean bad data below mip 0; pixel-format enum fixed in #839
 
 ## Reference
+- [reference_lab_hub_pass_lessons_2026_10_13.md](reference_lab_hub_pass_lessons_2026_10_13.md) — 2026-10-13 hub-pass lessons include the confirmed CEGUI top-child hit-test binding and covering-window refusal rule
 
 - [reference_lab_typed_prompt_reader_2026_10_13.md](reference_lab_typed_prompt_reader_2026_10_13.md) — Prompt1–5 typed reads expose visible button names; UAT briefs click returned names because SingleButton is the one-button OK control
 

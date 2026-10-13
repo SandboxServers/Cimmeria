@@ -182,6 +182,69 @@ pub fn click_point(loc: &Value) -> Option<(i32, i32)> {
     ))
 }
 
+/// Lua body: return the window CEGUI would dispatch to at `(x, y)`, plus its
+/// parent names up to the GUI root.
+pub fn hit_test_chunk(x: i32, y: i32, target: &str) -> String {
+    format!(
+        r#"{WALK_FN}
+local target = __lab_find({target})
+if target == nil then return __jenc({{ available = false, error = 'target window is unavailable' }}) end
+local target_name = target:getName()
+local root = getWindow('Root')
+if root == nil then return __jenc({{ available = false, error = 'Root window is unavailable' }}) end
+local ok, hit = pcall(function() return root:getTargetChildAtPosition(CEGUI.Vector2({x}, {y})) end)
+if not ok then return __jenc({{ available = false, error = tostring(hit) }}) end
+if hit == nil then return __jenc({{ available = true, target_name = target_name, ancestors = {{}} }}) end
+local ancestors, current = {{}}, hit
+for i = 1, 64 do
+  if current == nil then break end
+  local named, name = pcall(function() return current:getName() end)
+  if not named or type(name) ~= 'string' or name == '' then
+    return __jenc({{ available = false, error = 'could not read hit window name' }})
+  end
+  ancestors[#ancestors + 1] = name
+  local parented, parent = pcall(function() return current:getParent() end)
+  if not parented then return __jenc({{ available = false, error = tostring(parent) }}) end
+  current = parent
+end
+if current ~= nil then return __jenc({{ available = false, error = 'hit window ancestry exceeds 64 levels' }}) end
+return __jenc({{ available = true, target_name = target_name, received_by = ancestors[1], ancestors = ancestors }})"#,
+        target = lua_quote(target)
+    )
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum HitClassification {
+    Target,
+    Descendant,
+    Covered(String),
+    Empty,
+}
+
+/// Classify the CEGUI receiver against the requested window and its ancestors.
+fn classify_hit(
+    target: &str,
+    received_by: Option<&str>,
+    ancestors: &[String],
+) -> HitClassification {
+    match received_by {
+        Some(name) if name == target => HitClassification::Target,
+        Some(_) if ancestors.iter().any(|ancestor| ancestor == target) => {
+            HitClassification::Descendant
+        }
+        Some(name) => HitClassification::Covered(name.to_string()),
+        None => HitClassification::Empty,
+    }
+}
+
+fn hit_test_target(target: &ClickTarget, loc: &Value) -> Option<String> {
+    match target {
+        ClickTarget::Named(name) => Some(name.clone()),
+        ClickTarget::Text { .. } => loc["name"].as_str().map(str::to_string),
+        ClickTarget::Row { list, .. } => Some(list.clone()),
+    }
+}
+
 /// Why a located target cannot be clicked, if it cannot.
 pub fn refuse(target: &ClickTarget, loc: &Value) -> Option<String> {
     let what = match target {
@@ -217,6 +280,44 @@ pub fn refuse(target: &ClickTarget, loc: &Value) -> Option<String> {
 }
 
 impl Supervisor {
+    /// Refuse a click unless CEGUI dispatches its point to this window or a child.
+    pub(crate) async fn verify_click_target(
+        &self,
+        target: &str,
+        x: i32,
+        y: i32,
+    ) -> Result<String, String> {
+        let hit = self.lua_json(&hit_test_chunk(x, y, target)).await?;
+        if hit["available"] != json!(true) {
+            let why = hit["error"].as_str().unwrap_or("hit-test did not run");
+            return Err(format!(
+                "could not verify the CEGUI click target at ({x}, {y}): {why}; click not sent"
+            ));
+        }
+        let target_name = hit["target_name"]
+            .as_str()
+            .ok_or_else(|| "the resolved click target has no CEGUI window name".to_string())?;
+        let received_by = hit["received_by"].as_str();
+        let ancestors = hit["ancestors"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        match classify_hit(target_name, received_by, &ancestors) {
+            HitClassification::Target | HitClassification::Descendant => Ok(received_by
+                .expect("classified hit has a receiver")
+                .to_string()),
+            HitClassification::Covered(window) => Err(format!(
+                "covered-target: {target_name} is covered by {window} at ({x}, {y}); click not sent"
+            )),
+            HitClassification::Empty => Err(format!(
+                "no CEGUI window receives the click for {target_name} at ({x}, {y}); click not sent"
+            )),
+        }
+    }
+
     /// `client_window_click`.
     pub async fn window_click(
         &self,
@@ -235,6 +336,9 @@ impl Supervisor {
             trail.push("scroll_row_into_view", NativeLevel::ClientUiLua);
         }
         let (x, y) = click_point(&loc).expect("refuse() checked the point");
+        let target_name = hit_test_target(&target, &loc)
+            .ok_or_else(|| "the located click target has no CEGUI window name".to_string())?;
+        let received_by = self.verify_click_target(&target_name, x, y).await?;
         let placed = self.click_at(x, y, button, double).await?;
         placed.note_fallback(&mut trail);
         let at = placed.at;
@@ -246,6 +350,7 @@ impl Supervisor {
             "clicked_at": [at.0, at.1],
             "button": button,
             "double": double,
+            "received_by": received_by,
         });
         if let ClickTarget::Row { list, .. } = &target {
             let row = loc["row"].as_u64().unwrap_or_default() as u32;
@@ -278,6 +383,76 @@ impl Supervisor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    use crate::supervisor::composite::sequence::Action;
+    use crate::supervisor::events::fake_bridge::{self, lua_ok, Responder};
+
+    async fn covered_supervisor() -> (Supervisor, Arc<AtomicUsize>) {
+        let non_read_calls = Arc::new(AtomicUsize::new(0));
+        let calls = non_read_calls.clone();
+        let responder: Responder = Arc::new(move |method, params| {
+            if method != "lua_eval" {
+                calls.fetch_add(1, Ordering::SeqCst);
+                return Err(format!("unexpected input call: {method}"));
+            }
+            let chunk = params["chunk"].as_str().unwrap_or_default();
+            if chunk.contains("getTargetChildAtPosition") {
+                let hit = json!({ "available": true, "target_name": "TakeButton",
+                    "received_by": "GateMailCreateWin",
+                    "ancestors": ["GateMailCreateWin", "Root"] });
+                return Ok(lua_ok(&[hit.to_string()]));
+            }
+            if chunk.contains("return tostring(w:isVisible())") {
+                return Ok(lua_ok(&["true", "0", "0", "20", "20"]));
+            }
+            let loc = json!({ "found": true, "name": "GateMailInbox/TakeButton",
+                "visible": true, "enabled": true, "rect": [0, 0, 20, 20] });
+            Ok(lua_ok(&[loc.to_string()]))
+        });
+        (fake_bridge::supervisor(responder).await, non_read_calls)
+    }
+
+    #[tokio::test]
+    async fn covered_window_click_never_sends_button_input() {
+        let (sup, non_read_calls) = covered_supervisor().await;
+        let e = sup
+            .window_click(
+                ClickTarget::Named("GateMailInbox/TakeButton".into()),
+                0,
+                false,
+                false,
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            e.contains("covered-target: TakeButton is covered by GateMailCreateWin"),
+            "{e}"
+        );
+        assert_eq!(non_read_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn covered_sequence_click_never_sends_button_input_or_native_pass() {
+        let (sup, non_read_calls) = covered_supervisor().await;
+        let out = sup
+            .ui_sequence(
+                &[Action::Click {
+                    window: "GateMailInbox/TakeButton".into(),
+                    button: 0,
+                }],
+                true,
+            )
+            .await;
+        assert_eq!(out["stopped_at"], 1);
+        assert!(out["results"][0]["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("covered-target"));
+        assert_ne!(out["native_pass"], true);
+        assert_eq!(non_read_calls.load(Ordering::SeqCst), 0);
+    }
 
     #[test]
     fn click_point_prefers_the_point_then_the_rect_centre() {
@@ -334,6 +509,38 @@ mod tests {
         assert!(r.contains("getItemAtPoint(CEGUI.Vector2(cx, y))"));
         let n = locate_chunk(&ClickTarget::Named("Loot_LootAllButton".into()));
         assert!(n.contains(r#"__lab_find("Loot_LootAllButton")"#));
+    }
+
+    #[test]
+    fn hit_test_accepts_the_target_and_its_descendants_but_rejects_siblings() {
+        let ancestors = vec![
+            "TakeButtonLabel".to_string(),
+            "GateMailInbox".to_string(),
+            "Root".to_string(),
+        ];
+        assert_eq!(
+            classify_hit("TakeButtonLabel", Some("TakeButtonLabel"), &ancestors),
+            HitClassification::Target
+        );
+        assert_eq!(
+            classify_hit("GateMailInbox", Some("TakeButtonLabel"), &ancestors),
+            HitClassification::Descendant
+        );
+        assert_eq!(
+            classify_hit("GateMailInbox", Some("GateMailCreateWin"), &[]),
+            HitClassification::Covered("GateMailCreateWin".into())
+        );
+    }
+
+    #[test]
+    fn hit_test_chunk_uses_cegui_dispatch_order_and_reports_receiver_ancestry() {
+        let chunk = hit_test_chunk(123, 456, "GateMailInbox/TakeButton");
+        assert!(chunk.contains("local target_name = target:getName()"));
+        assert!(chunk.contains(r#"__lab_find("GateMailInbox/TakeButton")"#));
+        assert!(chunk.contains("getWindow('Root')"));
+        assert!(chunk.contains("getTargetChildAtPosition(CEGUI.Vector2(123, 456))"));
+        assert!(chunk.contains("current:getParent()"));
+        assert!(!chunk.contains("root:getChildAtPosition("));
     }
 
     #[test]

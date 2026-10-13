@@ -47,6 +47,7 @@ Windows:
 - For modal prompts, read `client_window_read {"lease_id":L,"kind":"prompt"}` and click a visible enabled entry from `state.prompts[].buttons` using its returned `window` name. A one-button prompt uses `SingleButton`; never infer the button name from the prompt number.
 - Escape does not close Flash windows (minigames). Read the window with `client_window_read` (`include_nodes`), `client_input_mouse {button: 0, x, y}` at the close button's centre (it moves the cursor first), then read again to confirm it closed.
 - `client_ui_sequence` `click` and `client_window_click` both take CEGUI window names, auto children included (`TutorialWin__auto_closebutton__`, `Vendor_Item1Quantity__auto_incbtn__`).
+- Both click tools refuse a covered point with `covered-target` and name the window receiving it. In mail, close the Create or Read window before clicking Inbox Take; retry only after checking that the covering window is gone.
 - The tutorial window (`TutorialWin`) opens on top of `DialogWin`, so a dialog Done click lands on the tutorial. Close the tutorial first: `client_window_click {target: "TutorialWin__auto_closebutton__"}` works from any page (its `Tutorial_DoneButton` shows only on the last page).
 - Buy N of a vendor row with `client_vendor_buy {row, quantity}` (not `setVendorSelectedQuantity`): stand 3.5-4.5 m from the vendor and open it first with `client_world_click` `button: "right"`. It clicks the spinner buttons and Buy, and the result reports `bought`, `items_gained` and `effect_ok`.
 

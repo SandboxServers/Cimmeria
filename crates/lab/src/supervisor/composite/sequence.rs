@@ -222,6 +222,7 @@ impl Supervisor {
         let mut trail = NativeTrail::default();
         let mut results = Vec::with_capacity(actions.len());
         let mut stopped_at = None;
+        let mut covered_click_failed = false;
         for (i, a) in actions.iter().enumerate() {
             match self.ui_action(a).await {
                 Ok((v, level)) => {
@@ -231,6 +232,7 @@ impl Supervisor {
                     results.push(v);
                 }
                 Err(e) => {
+                    covered_click_failed |= e.starts_with("covered-target:");
                     results.push(json!({ "error": e }));
                     if stop_on_error {
                         stopped_at = Some(i + 1);
@@ -244,6 +246,9 @@ impl Supervisor {
             out["stopped_at"] = json!(i);
         }
         trail.stamp(&mut out);
+        if covered_click_failed {
+            out["native_pass"] = json!(false);
+        }
         out
     }
 }

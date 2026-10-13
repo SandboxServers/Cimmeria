@@ -68,6 +68,8 @@ python tools/token-profile/report --db <profile.sqlite> --out <dir> [--since 202
 
 It reads the database read-only and writes `token-report.md` and `token-report.json` (schema `cimmeria-token-report/1`) into `--out`. `--since` is inclusive and `--until` exclusive, both compared with request timestamps. The price table defaults to the one the last successful ingest used.
 
+Coordination overhead (LO-07): `python tools/token-profile/report coordination --db <profile.sqlite> [--since ...] [--until ...] [--session <id>]` prints, to stdout, each role's spend, the main thread's first-request context p50, its trigger kinds, and the share of the total carried by the main thread, architect, packet-reviewer and packet-review-fixer, priced with the newest `price_tables` version.
+
 The layers stay separate:
 
 | Section | What it reports | Unit |
