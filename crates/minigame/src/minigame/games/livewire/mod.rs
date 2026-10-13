@@ -145,6 +145,17 @@ impl MinigameInstance for LivewireGame {
             .map(|w| WireSnapshot {
                 name: w.name.clone(),
                 lib: w.lib.clone(),
+                kind: match w.name.chars().next() {
+                    Some('g') => "goal",
+                    Some('p') => "playfield",
+                    Some('m') => "moving",
+                    Some('o') => "obstacle",
+                    _ => "unknown",
+                },
+                clickable: self.game_started
+                    && self.outcome.is_none()
+                    && !w.cut
+                    && (!w.name.starts_with('p') || self.playfield_active),
                 depth: w.depth,
                 x: w.x,
                 y: w.y,
@@ -163,6 +174,10 @@ impl MinigameInstance for LivewireGame {
                 "ready"
             },
             outcome: self.outcome,
+            difficulty: self.difficulty,
+            game_started: self.game_started,
+            timer_state: self.timer_state,
+            time_remaining: self.time_remaining,
             goal_total: self.goal_total,
             goal_cut: self.goal_cut,
             wires,

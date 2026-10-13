@@ -3,6 +3,7 @@
 //! Tracks pending minigame sessions (ticket → game params) and active rooms
 //! for spectator/helper broadcasting.
 
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -252,6 +253,29 @@ impl SessionRegistry {
         }
     }
 
+    /// Record a sanitized, ordered SmartFox row for the claimed session.
+    pub async fn record_traffic(
+        &self,
+        entity_id: u32,
+        ticket: &str,
+        dir: &'static str,
+        cmd: &str,
+        params: BTreeMap<String, serde_json::Value>,
+    ) {
+        let mut inner = self.inner.lock().await;
+        if inner
+            .sessions
+            .get(&entity_id)
+            .is_some_and(|s| s.ticket == ticket && s.connected)
+        {
+            if let Some(board) = inner.boards.get_mut(&entity_id) {
+                if board.ticket == ticket {
+                    board.record_traffic(dir, cmd, params);
+                }
+            }
+        }
+    }
+
     pub async fn board_snapshot(&self, entity_id: u32) -> Option<BoardSnapshot> {
         let mut inner = self.inner.lock().await;
         if inner
@@ -352,6 +376,7 @@ impl SessionRegistry {
         session.connected = true;
         let claimed = session.clone();
         if let Some(board) = inner.boards.get_mut(&entity_id) {
+            board.record_traffic("in", "login", BTreeMap::new());
             board.record("claimed", None);
         }
         Ok(claimed)

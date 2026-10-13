@@ -41,6 +41,10 @@ fn generated_board_snapshot_is_ordered_and_matches_wire_state() {
     assert_eq!(board.goal_total, 4);
     assert_eq!(board.goal_cut, 0);
     assert_eq!(board.state, "ready");
+    assert_eq!(board.difficulty, 2);
+    assert!(!board.game_started);
+    assert_eq!(board.timer_state, 0);
+    assert!(board.time_remaining > 0.0);
     assert_eq!(board.wires.len(), game.wires.len());
     assert!(board
         .wires
@@ -49,11 +53,59 @@ fn generated_board_snapshot_is_ordered_and_matches_wire_state() {
     for wire in &board.wires {
         let original = &game.wires[&wire.depth];
         assert_eq!(wire.name, original.name);
+        assert_eq!(wire.lib, original.lib);
+        assert!(!wire.clickable);
+        assert_eq!(
+            wire.kind,
+            match wire.name.chars().next().unwrap() {
+                'g' => "goal",
+                'p' => "playfield",
+                'm' => "moving",
+                'o' => "obstacle",
+                _ => "unknown",
+            }
+        );
         assert_eq!(
             (wire.x, wire.y, wire.cut),
             (original.x, original.y, original.cut)
         );
     }
+}
+
+#[test]
+fn board_snapshot_tracks_clickability_and_timer_transitions() {
+    let mut game = LivewireGame::new(&make_session(1, 30, 5));
+    game.started();
+    let ready = game.board_snapshot().unwrap();
+    let remaining = ready.time_remaining;
+    assert!(ready.wires.iter().all(|w| !w.clickable));
+    game.message("opendoor", &HashMap::new());
+    let running = game.board_snapshot().unwrap();
+    assert!(running.game_started);
+    assert_eq!(running.timer_state, 1);
+    assert!(running
+        .wires
+        .iter()
+        .any(|w| w.kind == "goal" && w.clickable));
+    assert!(running
+        .wires
+        .iter()
+        .filter(|w| w.kind == "playfield")
+        .all(|w| !w.clickable));
+    game.tick();
+    assert!(game.board_snapshot().unwrap().time_remaining < remaining);
+    let params = HashMap::from([("wirename".to_owned(), SfsValue::String("g1".to_owned()))]);
+    game.message("processmove", &params);
+    let cut = game.board_snapshot().unwrap();
+    assert_eq!(cut.goal_cut, 1);
+    assert!(cut
+        .wires
+        .iter()
+        .any(|w| w.name == "g1" && w.cut && !w.clickable));
+    game.aborted();
+    let finished = game.board_snapshot().unwrap();
+    assert_eq!(finished.outcome, Some("canceled"));
+    assert!(finished.wires.iter().all(|w| !w.clickable));
 }
 
 /// `LivewireGame::new` clamps difficulty to [1, 4]. Pin so a

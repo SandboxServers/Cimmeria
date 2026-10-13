@@ -10,6 +10,10 @@ fn board() -> BoardSnapshot {
         game_name: "Livewire".into(),
         state: "ready",
         outcome: None,
+        difficulty: 1,
+        game_started: false,
+        timer_state: 0,
+        time_remaining: 20.0,
         goal_total: 2,
         goal_cut: 0,
         wires: vec![],
@@ -46,6 +50,7 @@ async fn board_snapshot_retains_final_outcome_then_expires() {
             .collect::<Vec<_>>(),
         [
             "registered",
+            "login",
             "claimed",
             "board_started",
             "processover",
@@ -53,7 +58,11 @@ async fn board_snapshot_retains_final_outcome_then_expires() {
             "ended"
         ]
     );
-    assert_eq!(retained.events[3].wire_name.as_deref(), Some("g1"));
+    assert_eq!(retained.events[4].wire_name.as_deref(), Some("g1"));
+    assert!(retained
+        .events
+        .windows(2)
+        .all(|pair| pair[0].seq + 1 == pair[1].seq));
     tokio::time::advance(FINISHED_BOARD_TTL).await;
     assert!(reg.board_snapshot(42).await.is_none());
 }
@@ -92,6 +101,6 @@ async fn traffic_events_are_capped_and_do_not_include_ticket() {
     }
     let snapshot = reg.board_snapshot(42).await.unwrap();
     assert_eq!(snapshot.events.len(), 128);
-    assert_eq!(snapshot.events_dropped, 15);
+    assert_eq!(snapshot.events_dropped, 16);
     assert!(!serde_json::to_string(&snapshot).unwrap().contains(&ticket));
 }
