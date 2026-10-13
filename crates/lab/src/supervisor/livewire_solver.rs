@@ -289,14 +289,14 @@ mod tests {
                 // variants, matching the atlas scale without shipping client art.
                 let points = (0..=180)
                     .flat_map(|x| {
-                        let wave = ((x + base_index as i32 * 7 + variant * 11) % 41 - 20) * 3;
+                        let wave = ((x + base_index as i32 * 7 + variant * 11) % 41 - 20) * 5;
                         [-5, 0, 5].map(move |dy| [x * 5, wave + dy])
                     })
                     .collect();
                 libraries.insert(
                     format!("{base}{variant}"),
                     HitLibrary {
-                        bounds_twips: [0.0, 18_000.0, -1_300.0, 1_300.0],
+                        bounds_twips: [0.0, 18_000.0, -2_200.0, 2_200.0],
                         points,
                     },
                 );
@@ -320,12 +320,14 @@ mod tests {
                 },
             );
         }
-        LivewireAtlas {
+        let atlas = LivewireAtlas {
             version: 1,
             step: 5,
             movie_sha256: "a".repeat(64),
             libraries,
-        }
+        };
+        atlas.validate().unwrap();
+        atlas
     }
 
     fn hit(wire: &Wire, point: &Candidate, atlas: &LivewireAtlas) -> bool {

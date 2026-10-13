@@ -90,7 +90,7 @@ impl LivewireAtlas {
         self.libraries.get(name)
     }
 
-    fn validate(&self) -> Result<(), String> {
+    pub(crate) fn validate(&self) -> Result<(), String> {
         if self.version != ATLAS_VERSION || self.step != HIT_STEP {
             return Err(format!(
                 "unsupported Livewire atlas version/step: {}/{}",
