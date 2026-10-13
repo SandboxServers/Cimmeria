@@ -15,6 +15,6 @@ Dated 2026-10-13, from the hub pass UAT (`docs/analysis/hub-pass-uat/README.md`,
 - **Death recipe (Debug Area):** arrive at respawner 131 (`438.0 11.0 -916.0`) and walk east over the rise to the level-31 NID Operatives; a level-1 dies in about 10 s. A direct `.gotolocation` onto them dropped the client through the ground. Deployable lifetime is 30 s, so kill fast.
 - **God mode for pet tests** (`/gmsetgodmode 1`): without it the owner dies to the Rats; despawn leftover Rats between runs. Even so a Straegis pet loses to a Rat (#1681).
 - **The installed daemon's `client_camera` schema was stale:** numeric `pitch_deg`/`yaw_offset_deg` only; `face_entity_id` on a deployable fails ("no pose"), face a point.
-- **A covering window swallows native clicks (#1676):** the click reports pass while another window is on top. Hide the covering window first.
+- **A covering window swallows native clicks:** the client dispatches to the topmost visible child. On 2026-10-13 the live Lua preflight returned `BackgroundWin` from `Root:getTargetChildAtPosition` and `AttackDirectionQuartersWin` from `getChildAtPosition` at the same cursor point. The supervisor must use the former, check its parent chain, and refuse a click when the requested widget or owning list is not in that chain.
 - **Haiku drivers stayed within about 30 calls** a packet; after three failed attempts or a recipe gap use a Sonnet takeover.
 - **GM accounts skip the chat flood limit**, so "too quickly" needs a non-GM account.
