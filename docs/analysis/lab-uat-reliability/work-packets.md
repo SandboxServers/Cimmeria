@@ -63,9 +63,11 @@ guard must fail if the new reader is removed. Test type: UI logic unit.
 
 ## LR-02 — covered native click (#1676)
 
-**Own:** `crates/lab/src/supervisor/ui/window_click.rs`, a new focused test
-module only if needed, and the window-click section of
-`docs/guides/live-research-lab.md`. Branch
+**Own:** `crates/lab/src/supervisor/ui/window_click.rs`,
+`crates/lab/src/supervisor/composite/sequence.rs`, shared click helper and
+focused tests if needed; the window-click section of
+`docs/guides/live-research-lab.md` and `.claude/agents/lab-driver.md` gotcha
+sheet. Branch
 `lab-uat-reliability/lr-02-covered-click`; worktree `lr-02-covered-click`;
 commit `fix(lab): refuse covered window clicks`.
 
@@ -80,13 +82,37 @@ section 7). If a later client build lacks the Lua binding, stop and write a
 native-call design; do not substitute rectangle overlap.
 
 Before `click_at`, determine the CEGUI window under the click point from the
-real hit-test/root z-order. If it is neither the target nor a descendant of
-the target, return a covered-target error naming the covering window. For a
-row, accept the owning list and its descendants as the hit surface. Never
-stamp `native_pass` for a covered click. Avoid a blanket rectangle overlap
-test: a transparent frame can overlap without consuming input. Add a pure
-classification test for target, descendant and covering sibling, and a
-client-Lua logic test when the CEGUI hit-test needs one. Test type: UI logic.
+real hit-test/root z-order for both `client_window_click` and
+`client_ui_sequence`. Compare against the resolved target window's CEGUI
+`getName()`, not a path-style locator string. If the hit is neither that
+target nor a descendant, return a covered-target error naming the covering
+window. For a row, accept the owning list and its descendants as the hit
+surface. Never stamp `native_pass` for a covered click. Avoid a blanket
+rectangle overlap test: a transparent frame can overlap without consuming
+input. Successful click results include the CEGUI `received_by` window name.
+Add a pure classification test for target, descendant and covering
+sibling, plus a fake bridge test proving a covered click through each tool
+sends no button input. The lab-driver gotcha sheet should still tell drivers
+to close mail Create/Read windows before clicking inbox Take. Test type: UI
+logic and composite-flow simulation.
+
+## LR-01b — prompt discovery and UAT briefs (#1673)
+
+**Dependency:** LR-01 merged. **Own:**
+`crates/lab/src/server/ui/mod.rs`, the PROMPT macros in
+`docs/analysis/hub-pass-uat/briefs/HP-*.md`, `.claude/agents/lab-driver.md`,
+and tool description tests. Branch `lab-uat-reliability/lr-01b-prompt-briefs`;
+worktree `lr-01b-prompt-briefs`; commit
+`docs(lab): expose prompt reader in tool and driver briefs`.
+
+List `prompt` in the `client_window_read` MCP description so agents can
+discover the new kind. Reconcile every hub-pass PROMPT macro with the stock
+single-button shape: `PromptN_SingleButton` is the visible OK, while
+`PromptN_Button1` may be hidden; use the typed reader's returned button name
+instead of assuming either. Update the lab-driver gotcha sheet. Add a tool
+registry test for the description and a static brief check that rejects the
+old hardcoded `PromptN_Button1` instruction. Test type: tool registry and
+documentation validation.
 
 ## LR-03 — bridge failures inside waits (#1677)
 
@@ -206,7 +232,8 @@ type: flow state-machine unit plus live recovery probe.
 
 **Own:** `crates/lab/src/supervisor/world/click_hover.rs`,
 `crates/lab/src/supervisor/world/hover.rs`, and related hover tests; targeting
-docs. Branch `lab-uat-reliability/lr-06-target-timeout`; worktree
+docs and `docs/analysis/cellblock-autoplay/scenario-map.md`. Branch
+`lab-uat-reliability/lr-06-target-timeout`; worktree
 `lr-06-target-timeout`; commit `fix(lab): bound mouse-over reads in combat`.
 
 The `read_mouse_over` bridge operation blocked for 57 s in #1684. Bound
@@ -215,7 +242,12 @@ timeout from `Hover::Nothing` and include attempted pixel and remaining
 deadline in the error. Preserve the client's current target if verification
 is unavailable. Do not mark an unverified target as N1. Simulate an
 unresponsive `WorldIo::slots()` future and assert a timely error; preserve
-the existing verified-hover success case. Test type: async timeout unit.
+the existing verified-hover success case. Correct the scenario map's
+unverified `(-338.4, 74.4, -213.9)` waypoint, which collided with a stasis
+pod, and record the observed route through approximately
+`(-334,73.47,-226)`, `(-322,73.47,-225)`, `(-321,73.47,-210)`,
+`(-314,74.2,-186.7)` with its evidence/uncertainty. Test type: async
+timeout unit plus route documentation check.
 
 ## LR-07 — native ring-map input (#1686)
 
