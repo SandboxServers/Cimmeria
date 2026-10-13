@@ -32,7 +32,8 @@ def build_card(root):
     pointer = root / ".claude" / "state" / "active-campaign"
     if not pointer.is_file():
         return None
-    lines = pointer.read_text(encoding="utf-8", errors="replace").strip().splitlines()
+    # utf-8-sig: a pointer saved with a BOM (Windows editors) still names the folder.
+    lines = pointer.read_text(encoding="utf-8-sig", errors="replace").strip().splitlines()
     if not lines:
         return None
     name = lines[0].strip()
