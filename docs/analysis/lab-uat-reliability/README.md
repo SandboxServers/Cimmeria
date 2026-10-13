@@ -54,7 +54,7 @@ live validation; an integration test alone leaves it UATPending.
 | LR-05a dead player observation | [#1703](https://github.com/SandboxServers/Cimmeria/issues/1703) | BlockedDecision | | Match client peer to queried server; defeated IDs and local port survive |
 | LR-05b safe logout | #1680 | BlockedDependency: LR-05a | | Logout after death |
 | LR-05c process uptime | #1680 | UATPending | [#1698](https://github.com/SandboxServers/Cimmeria/pull/1698) | Status across supervisor restart |
-| LR-05d login focus recovery | #1680 | Review | [#1704](https://github.com/SandboxServers/Cimmeria/pull/1704) (draft) | Foreground recovery under daemon; credential redaction |
+| LR-05d login focus recovery | #1680 | UATPending | [#1704](https://github.com/SandboxServers/Cimmeria/pull/1704) | Daemon foreground recovery passed live; covered modal remains a flow-test-only check |
 | LR-06 target timeout and route correction | #1684 | UATPending | [#1699](https://github.com/SandboxServers/Cimmeria/pull/1699) | Hostile target while in combat; pod-safe route |
 | LR-07 native ring click | #1686 | BlockedDependency: console hover and native-input probe | | Open the ring map, then compare native click with method 91 |
 | CA-MG-L0..L5 | #1685 | BlockedDependency: autoplay prerequisites | | Livewire N1 solve |
