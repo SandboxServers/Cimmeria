@@ -29,6 +29,11 @@ fn shape(reply: LabQueryReply, space_id: u32) -> Result<Value, String> {
             start_snap,
             end_snap,
         } => {
+            let reason = match status.as_str() {
+                "ok" => None,
+                "end_snap_far" => Some("end_snap_far"),
+                _ => Some("no_path"),
+            };
             let waypoints: Vec<Value> = waypoints
                 .into_iter()
                 .map(|p| json!({"x": p[0], "y": p[1], "z": p[2]}))
@@ -36,6 +41,7 @@ fn shape(reply: LabQueryReply, space_id: u32) -> Result<Value, String> {
             Ok(json!({
                 "space_id": space_id,
                 "status": status,
+                "reason": reason,
                 "waypoints": waypoints,
                 "start_snap": start_snap,
                 "end_snap": end_snap,
@@ -63,7 +69,26 @@ mod tests {
         )
         .unwrap();
         assert_eq!(out["status"], "ok");
+        assert!(out["reason"].is_null());
         assert_eq!(out["waypoints"][1]["x"], -180.0);
         assert_eq!(out["native_level"], "read");
+    }
+
+    #[test]
+    fn unusable_corridors_explain_why_they_have_no_waypoints() {
+        for (status, reason) in [("partial", "no_path"), ("end_snap_far", "end_snap_far")] {
+            let out = shape(
+                LabQueryReply::NavPath {
+                    status: status.into(),
+                    waypoints: vec![],
+                    start_snap: Some([0.0, 0.0, 0.0]),
+                    end_snap: Some([1.0, 0.0, 0.0]),
+                },
+                100,
+            )
+            .unwrap();
+            assert_eq!(out["reason"], reason);
+            assert_eq!(out["waypoints"].as_array().unwrap().len(), 0);
+        }
     }
 }
