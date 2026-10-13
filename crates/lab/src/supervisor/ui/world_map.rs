@@ -50,13 +50,23 @@ fn validate_point(rect: &Value, x: i32, y: i32) -> Result<(), String> {
     Ok(())
 }
 
-fn click_trail(fallback: bool) -> NativeTrail {
+fn click_trail(click: &Value, fallback: bool) -> NativeTrail {
     let mut trail = NativeTrail::default();
     trail.push("click world map pixel", NativeLevel::RealInput);
+    if click["cursor_via"] == json!("lua_set_position") {
+        trail.push("cursor via Lua setPosition", NativeLevel::ClientUiLua);
+    }
     if fallback {
         trail.push("call stock WorldMapMod.onClick", NativeLevel::ClientUiLua);
     }
     trail
+}
+
+fn stamp_click(result: &mut Value, click: &Value, fallback: bool, closed: bool) {
+    click_trail(click, fallback).stamp(result);
+    if !closed {
+        result["native_pass"] = json!(false);
+    }
 }
 
 impl Supervisor {
@@ -106,7 +116,7 @@ impl Supervisor {
             "fallback": fallback,
             "mouse": click,
         });
-        click_trail(fallback).stamp(&mut result);
+        stamp_click(&mut result, &click, fallback, closed);
         Ok(result)
     }
 }
@@ -128,14 +138,29 @@ mod tests {
     #[test]
     fn assisted_ring_selection_cannot_be_graded_as_native() {
         let mut native = json!({});
-        click_trail(false).stamp(&mut native);
+        click_trail(&json!({ "cursor_via": "native_inject" }), false).stamp(&mut native);
         assert_eq!(native["native_tier"], "N1");
         assert_eq!(native["native_pass"], true);
 
         let mut assisted = json!({});
-        click_trail(true).stamp(&mut assisted);
+        click_trail(&json!({ "cursor_via": "native_inject" }), true).stamp(&mut assisted);
         assert_eq!(assisted["native_tier"], "N3");
         assert_eq!(assisted["native_pass"], false);
         assert_eq!(assisted["native_level"], "client_ui_lua");
+
+        let mut positioned_by_lua = json!({});
+        click_trail(&json!({ "cursor_via": "lua_set_position" }), false)
+            .stamp(&mut positioned_by_lua);
+        assert_eq!(positioned_by_lua["native_tier"], "N3");
+        assert_eq!(positioned_by_lua["native_pass"], false);
+
+        let mut missed = json!({});
+        stamp_click(
+            &mut missed,
+            &json!({ "cursor_via": "native_inject" }),
+            false,
+            false,
+        );
+        assert_eq!(missed["native_pass"], false);
     }
 }
