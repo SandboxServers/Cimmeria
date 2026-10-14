@@ -58,6 +58,7 @@ pub const OPEN: &[&str] = &[
     "lab_client_status",
     "lab_crash_report",
     "lab_timeline",
+    "lab_livewire_plan",
     "lab_uat_report",
     // Recording: status only reads the slot, and the stop is gated by the
     // recording id instead (it ends the recorder's own lease).

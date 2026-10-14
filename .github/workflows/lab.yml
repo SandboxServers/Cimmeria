@@ -45,6 +45,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
+  RECAST_VERSION: "1.6.0"
 
 permissions:
   contents: read
@@ -58,6 +59,16 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - name: hydrate external/recast
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path external -Force | Out-Null
+          $archive = Join-Path $env:RUNNER_TEMP 'recast.zip'
+          $extract = Join-Path $env:RUNNER_TEMP 'recast-extract'
+          Invoke-WebRequest -Uri "https://github.com/recastnavigation/recastnavigation/archive/refs/tags/v$env:RECAST_VERSION.zip" -OutFile $archive
+          Expand-Archive -LiteralPath $archive -DestinationPath $extract
+          Move-Item -LiteralPath (Join-Path $extract "recastnavigation-$env:RECAST_VERSION") -Destination 'external/recast'
+          if (-not (Test-Path 'external/recast/Detour/Source/DetourAssert.cpp')) { throw 'Recast hydration failed' }
       - uses: ./.github/actions/rust-toolchain
         with:
           components: clippy
@@ -79,6 +90,16 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - name: hydrate external/recast
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path external -Force | Out-Null
+          $archive = Join-Path $env:RUNNER_TEMP 'recast.zip'
+          $extract = Join-Path $env:RUNNER_TEMP 'recast-extract'
+          Invoke-WebRequest -Uri "https://github.com/recastnavigation/recastnavigation/archive/refs/tags/v$env:RECAST_VERSION.zip" -OutFile $archive
+          Expand-Archive -LiteralPath $archive -DestinationPath $extract
+          Move-Item -LiteralPath (Join-Path $extract "recastnavigation-$env:RECAST_VERSION") -Destination 'external/recast'
+          if (-not (Test-Path 'external/recast/Detour/Source/DetourAssert.cpp')) { throw 'Recast hydration failed' }
       - uses: ./.github/actions/rust-toolchain
       - uses: Swatinem/rust-cache@v2
         with:

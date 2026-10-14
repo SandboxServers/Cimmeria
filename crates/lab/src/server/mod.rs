@@ -219,6 +219,12 @@ pub struct InputMouseArgs {
     pub y: Option<i32>,
 }
 
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct LivewirePlanArgs {
+    /// The `state` object returned by `server_minigame_state`.
+    pub board: Value,
+}
+
 /// Args for `client_ui_click`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct UiClickArgs {
@@ -310,6 +316,22 @@ impl LabServer {
     /// The locally generated hit atlas shared by every clone and routed instance.
     pub fn livewire_atlas(&self) -> Option<&crate::supervisor::livewire_atlas::LivewireAtlas> {
         self.livewire_atlas.as_deref()
+    }
+
+    /// Plan read-only stage points against the installed client's hit atlas.
+    #[tool(
+        description = "Plan Livewire goal clicks from server_minigame_state.state using the installed-client hit atlas. Candidates are stage points (1280x960), not UI pixels; confirm each with processover before clicking. Read-only."
+    )]
+    async fn lab_livewire_plan(
+        &self,
+        Parameters(args): Parameters<LivewirePlanArgs>,
+    ) -> Result<CallToolResult, McpError> {
+        let atlas = self.livewire_atlas().ok_or_else(|| {
+            McpError::internal_error("installed Livewire hit atlas unavailable", None)
+        })?;
+        let plan = crate::supervisor::livewire_solver::plan(&args.board, atlas)
+            .map_err(|error| McpError::invalid_params(error, None))?;
+        self.wrap(serde_json::to_value(plan).map_err(|error| error.to_string()))
     }
 
     // ---- Phase 1: probe tools (proxied + journaled) ------------------

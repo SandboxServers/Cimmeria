@@ -27,6 +27,10 @@ The `test.yml`, `wireclient.yml` and `pr-container.yml` jobs run on the self-hos
 
 Two coverage jobs in `test.yml`, `coverage-workspace` and `coverage-live-db`, run at the same time in the nightly run on `main` (not per merge or per PR: each rebuilds the workspace instrumented), upload to Codecov (which merges them) and do not gate. A PR that wants its own coverage report gets the `coverage` label, then a push. Only runs on `main` save the Rust caches, and PRs and merge groups restore them (see [build-system.md §12](../architecture/build-system.md#12-ci-caches-are-saved-from-main-only)). Every six hours, [regen-docs.yml](../../.github/workflows/regen-docs.yml) reruns `tools/docs-gen/regen.py` on `main` and commits any generated doc blocks that changed, so they can lag `main` by up to six hours (`gh workflow run regen-docs.yml` runs it now); nothing in a PR checks them. The test runner in CI is [`cargo-nextest`](https://nexte.st/); install it once with `cargo install cargo-nextest --locked` (or `taiki-e/install-action@nextest` if you already use that pattern).
 
+The Windows lab clippy and nextest jobs hydrate `external/recast` before building.
+Lab tests that depend on the Rust minigame crate compile Detour through
+`cimmeria-entity`; a checkout without that source fails before Rust tests run.
+
 ## Merge queue
 
 `main` is protected by a repository ruleset. Here's what it enforces:

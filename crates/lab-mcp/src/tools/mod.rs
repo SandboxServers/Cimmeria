@@ -30,6 +30,7 @@ mod db;
 mod entities;
 mod fixture;
 mod logs;
+mod minigame_plan;
 mod names;
 mod packet_tap;
 mod sessions;
@@ -47,6 +48,7 @@ use serde_json::{json, Value};
 
 use crate::audit::{self, OUTCOME_ERROR, OUTCOME_OK};
 use crate::state::LabState;
+use minigame_plan::MinigameTapArgs;
 
 /// The MCP server handler holding the shared [`LabState`] and the generated
 /// tool router.
@@ -434,6 +436,20 @@ impl LabTools {
             started,
             Ok(json!({ "entity_id": args.entity_id, "state": board })),
         )
+    }
+
+    /// Read ordered SmartFox traffic and lifecycle rows without draining them.
+    #[tool(
+        description = "Read the bounded per-player minigame event ring after since_seq. Rows have seq, t_ms, dir, cmd and params; retained outcome remains readable after teardown. Read-only."
+    )]
+    async fn server_minigame_tap_read(
+        &self,
+        Parameters(args): Parameters<MinigameTapArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let started = Instant::now();
+        let audit_args = json!({ "entity_id": args.entity_id, "since_seq": args.since_seq });
+        let result = minigame_plan::tap_read(&self.state, &args).await;
+        emit_result("server_minigame_tap_read", &audit_args, started, Ok(result))
     }
 
     /// Report who witnesses an entity and whom it witnesses (both directions).
