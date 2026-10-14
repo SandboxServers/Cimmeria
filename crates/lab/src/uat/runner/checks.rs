@@ -130,6 +130,11 @@ impl<I: ToolInvoker> Runner<'_, I> {
                 }
             }
             Ok(ActionKind::Capture) => {
+                if let Some(t) = a.tool.as_deref() {
+                    if !tier::is_read_only(t) {
+                        out.push(format!("capture tool {t} is not read-only"));
+                    }
+                }
                 match a.capture.as_deref() {
                     Some("chat") if !inv.has_tool(CHAT_READ_TOOL) => {
                         out.push(format!("capture needs tool {CHAT_READ_TOOL}"));

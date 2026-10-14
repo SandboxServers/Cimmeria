@@ -390,7 +390,13 @@ fn check_action(row: &str, a: &ActionSpec, errs: &mut Vec<String>) {
             match a.capture.as_deref() {
                 Some("chat") if a.regex.is_some() && a.tool.is_none() && a.pointer.is_none() => {}
                 Some("tool" | "server")
-                    if a.tool.is_some() && a.pointer.is_some() && a.regex.is_none() => {}
+                    if a.tool.is_some() && a.pointer.is_some() && a.regex.is_none() =>
+                {
+                    let tool = a.tool.as_deref().unwrap_or_default();
+                    if !super::tier::is_read_only(tool) {
+                        errs.push(format!("{row}: capture tool {tool} is not read-only"));
+                    }
+                }
                 Some("chat") => errs.push(format!(
                     "{row}: chat capture needs regex, without tool or pointer"
                 )),

@@ -67,7 +67,7 @@ Long rows can outlast an MCP client's call timeout: run a section a few rows at 
 
 ### Capture values and compare changes
 
-A `capture` action saves a JSON value under `var` for later actions and clauses. Use `capture = "tool"` for a client read or `capture = "server"` for a server lab MCP read; both need `tool`, `pointer` and `var`, and may pass `args`. The pointer is a JSON pointer into the tool's result. The value keeps its JSON type, so an id or 64-bit bit field is not rounded through a floating-point number. The existing `capture = "chat"` form uses `regex` group 1 and `var`.
+A `capture` action saves a JSON value under `var` for later actions and clauses. Use `capture = "tool"` for a client read or `capture = "server"` for a server lab MCP read; both need `tool`, `pointer` and `var`, and may pass `args`. The pointer is a JSON pointer into the tool's result. The value keeps its JSON type, so an id or 64-bit bit field is not rounded through a floating-point number. The existing `capture = "chat"` form uses `regex` group 1 and `var`. Capture tools must be read-only; write tools such as `client_lua_eval` and `server_console_exec` are rejected before the row runs.
 
 ```toml
 step = [

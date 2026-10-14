@@ -24,6 +24,21 @@ fn lua_strings_compare_as_numbers() {
 }
 
 #[test]
+fn adjacent_u64_ids_above_f64_precision_are_not_equal() {
+    let low = json!(9_007_199_254_740_992_u64);
+    let high = json!(9_007_199_254_740_993_u64);
+    assert!(!loose_eq(&low, &high));
+    assert!(!loose_eq(&json!("9007199254740992"), &high));
+    assert!(loose_eq(&json!("9007199254740993"), &high));
+    assert!(!compare(
+        Some(Op::Any),
+        Some(&json!([{ "entity_id": 9_007_199_254_740_993_u64 }])),
+        Some(&json!({ "entity_id": 9_007_199_254_740_992_u64 })),
+    )
+    .unwrap());
+}
+
+#[test]
 fn selectors_pick_an_array_element_by_field() {
     let snap = json!({ "state": {
         "stats": [{ "stat_id": 4, "cur": 90 }, { "stat_id": 8, "cur": 140 }],

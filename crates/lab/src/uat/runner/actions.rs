@@ -230,6 +230,9 @@ impl<I: ToolInvoker> Runner<'_, I> {
         rec.requested = format!("capture {var} from {source}:{tool}{pointer}");
         rec.tool = Some(tool.into());
         rec.args = args.clone();
+        if !tier::is_read_only(tool) {
+            return fail(rec, format!("capture tool {tool} is not read-only"));
+        }
         if let Some(v) = unresolved(&args.to_string()) {
             return fail(rec, format!("unresolved variable {v}"));
         }

@@ -4,9 +4,11 @@ use serde_json::json;
 
 use super::test_server::FakeServer;
 use super::tests::{request, Fake};
-use super::Runner;
+use super::{RowCtx, Runner};
 use crate::uat::evidence::{RowResult, RunDir};
 use crate::uat::invoke::ServerInvoker;
+use crate::uat::spec;
+use crate::uat::tier::Role;
 
 const ROW: &str = r#"
 [[row]]
@@ -179,4 +181,95 @@ question = "Was the server value present?"
     let row = run(&fake, None, rows).await;
     assert_eq!(row.result, RowResult::Unverified, "{:?}", row.reasons);
     assert!(!fake.names().contains(&"client_type_text".to_string()));
+}
+
+#[test]
+fn capture_specs_reject_mutating_client_and_server_tools() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut valid = request(tmp.path(), ROW).sections.remove(0).spec;
+    for (source, tool) in [
+        ("tool", "client_lua_eval"),
+        ("server", "server_console_exec"),
+    ] {
+        valid.rows[0].steps[0].capture = Some(source.into());
+        valid.rows[0].steps[0].tool = Some(tool.into());
+        let error = spec::validate(&valid).unwrap_err();
+        assert!(
+            error.contains(&format!("capture tool {tool} is not read-only")),
+            "{error}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn mutated_capture_is_blocked_before_driving() {
+    let tmp = tempfile::tempdir().unwrap().keep();
+    let fake = Fake::new(&[]);
+    let server = FakeServer::new(json!({}));
+    let mut req = request(&tmp, ROW);
+    for (source, tool) in [
+        ("tool", "client_lua_eval"),
+        ("server", "server_console_exec"),
+    ] {
+        let action = &mut req.sections[0].spec.rows[0].steps[0];
+        action.capture = Some(source.into());
+        action.tool = Some(tool.into());
+        let out = Runner::new(&fake, Some(&server), req.clone())
+            .unwrap()
+            .run_all()
+            .await
+            .unwrap();
+        let row = RunDir::open(std::path::Path::new(&out.run_dir))
+            .unwrap()
+            .rows()
+            .unwrap()
+            .remove(0);
+        assert_eq!(row.result, RowResult::Blocked, "{tool}: {:?}", row.reasons);
+        assert!(row.reasons.iter().any(|r| r.contains("not read-only")));
+        assert!(!fake.names().contains(&tool.to_string()));
+        assert!(!server.calls.lock().unwrap().iter().any(|c| c.0 == tool));
+    }
+}
+
+#[tokio::test]
+async fn capture_execution_rechecks_read_only_before_invoking() {
+    let tmp = tempfile::tempdir().unwrap().keep();
+    let fake = Fake::new(&[]);
+    let server = FakeServer::new(json!({}));
+    let mut runner = Runner::new(&fake, Some(&server), request(&tmp, ROW)).unwrap();
+    for (source, tool) in [
+        ("tool", "client_lua_eval"),
+        ("server", "server_console_exec"),
+    ] {
+        let mut action = runner.req.sections[0].spec.rows[0].steps[0].clone();
+        action.capture = Some(source.into());
+        action.tool = Some(tool.into());
+        let mut ctx = RowCtx {
+            section: "test".into(),
+            row_id: "capture".into(),
+            vars: Default::default(),
+            actions: vec![],
+            blocked: vec![],
+            unverified: vec![],
+            chat_marks: Default::default(),
+            attachments: vec![],
+            character: json!({}),
+            anchor: None,
+            started_ms: 0,
+            tap: None,
+            event_marks: Default::default(),
+            fp: None,
+            fixture_mode: None,
+            session_end: vec![],
+            parity: None,
+            poses: vec![],
+            log_mark: None,
+            chaos: Default::default(),
+        };
+        let record = runner.exec(&action, Role::Step, &mut ctx).await;
+        assert!(!record.ok, "{tool}");
+        assert!(record.error.as_deref().unwrap().contains("not read-only"));
+        assert!(!fake.names().contains(&tool.to_string()));
+        assert!(!server.calls.lock().unwrap().iter().any(|c| c.0 == tool));
+    }
 }

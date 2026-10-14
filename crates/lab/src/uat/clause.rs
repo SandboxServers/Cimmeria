@@ -91,6 +91,21 @@ pub(crate) fn loose_eq(a: &Value, b: &Value) -> bool {
     if as_text(a) == as_text(b) {
         return true;
     }
+    // JSON integers retain all 64 bits. Comparing them as f64 would make
+    // adjacent entity IDs above 2^53 appear equal.
+    let integer = |v: &Value| match v {
+        Value::Number(n) => n
+            .as_i64()
+            .map(i128::from)
+            .or_else(|| n.as_u64().map(i128::from)),
+        Value::String(s) => s.trim().parse::<i128>().ok(),
+        _ => None,
+    };
+    match (integer(a), integer(b)) {
+        (Some(x), Some(y)) => return x == y,
+        (Some(x), None) | (None, Some(x)) if x.unsigned_abs() > (1_u128 << 53) => return false,
+        _ => {}
+    }
     match (as_f64(a), as_f64(b)) {
         (Some(x), Some(y)) if !matches!(a, Value::Bool(_)) && !matches!(b, Value::Bool(_)) => {
             (x - y).abs() < 1e-9
