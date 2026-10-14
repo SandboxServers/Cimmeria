@@ -412,6 +412,23 @@ impl Supervisor {
         }
     }
 
+    /// Place and confirm the cursor through native CEGUI injection only.
+    /// Minigame N1 input uses this so a failed native call never moves the
+    /// pointer through Lua before the caller can reject that fallback.
+    pub async fn place_cursor_native(&self, x: i32, y: i32) -> Result<(i32, i32), String> {
+        let cegui = self.cegui().await?;
+        self.inject_cursor(&cegui, (x, y)).await?;
+        let v = self
+            .bridge_call("lua_eval", json!({ "chunk": CURSOR_CHUNK }))
+            .await?;
+        match parse_point(&results_of(&v)) {
+            Some(p) if (p.0 - x).abs() <= 1 && (p.1 - y).abs() <= 1 => Ok(p),
+            other => Err(format!(
+                "native cursor did not reach ({x}, {y}); it is at {other:?}"
+            )),
+        }
+    }
+
     /// [`Self::place_cursor`], for callers that only need the point.
     pub async fn move_cursor(&self, x: i32, y: i32) -> Result<(i32, i32), String> {
         self.place_cursor(x, y).await.map(|p| p.at)

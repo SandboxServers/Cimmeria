@@ -354,6 +354,24 @@ current movie area before input, and confirm the matching SmartFox
 `processover` through `server_minigame_tap_read` before each click. Planning
 does not send input or claim that a rollover was observed.
 
+`client_minigame_play {"entity_id": <player entity id>}` drives the visible
+Livewire movie through native CEGUI cursor movement and mouse-button messages.
+It reads the installed hit atlas and server board, clicks Open for a ready
+board, calibrates on an exposed solver point outside the mouse-opaque cover,
+then requires a matching `processover` for each planned wire
+before clicking. It confirms `processmove` and `destroy` in the SmartFox tap.
+If the board is already running, it resumes the remaining plan without
+clicking Open again. A failed native cursor injection stops the flow without
+the Lua cursor fallback, and `effect_ok: false` prevents a UAT action pass.
+It reports victory only when the server outcome is victory and the client
+window closes. The reply includes the probe log, tap rows and before/after
+movie images. This N1 action requires the lab lease. For known placeholder
+games, pass `game` (Hack, Activate, Analyze, Bypass or Converse) when no board
+exists; the tool clicks the SWF `win_btn` with native input and leaves the
+outcome unverified for the UAT row's content-effect check. A successful
+placeholder click followed by the client window closing passes the action;
+the row still has to prove the server-side content effect.
+
 `lab_uat_run` drives the packet tap itself for a row with `packet`
 clauses ([automated-uat.md](automated-uat.md#packet-clauses)): one tap
 per row from the anchor to teardown, always stopped.

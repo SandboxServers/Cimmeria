@@ -4,6 +4,8 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Open investigations
 
+- [reference_livewire_play_2026_10_13.md](reference_livewire_play_2026_10_13.md) — native Livewire play maps stage to UI and requires SmartFox rollover evidence; live client proof remains pending
+
 - [reference_livewire_solver_2026_10_13.md](reference_livewire_solver_2026_10_13.md) — the installed atlas lives in labd, while the board and SmartFox tap live in the server; the solver plans stage points from a supplied board and requires rollover confirmation before clicks
 
 - [project_four_zone_planning_2026_10_13.md](project_four_zone_planning_2026_10_13.md) — four-zone packet planning; source checks, missing handoff SQLite, owner story and zone decisions, client mission-catalog gate

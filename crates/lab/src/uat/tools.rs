@@ -109,6 +109,8 @@ pub const CAPABILITIES: &[Capability] = &[
     drive("dummy", lab_commands::DUMMY_TOOL, Tier::G),
     drive("clear_effects", lab_commands::CLEAR_EFFECTS_TOOL, Tier::G),
     read("ability_state", "server_ability_state"),
+    read("minigame_state", "server_minigame_state"),
+    drive("minigame_play", "client_minigame_play", Tier::N1),
     // Not assigned yet (L11, L18).
     drive("chat_send", "client_chat_send", Tier::N1),
     drive("cache_files", "client_cache_files", Tier::N1),
