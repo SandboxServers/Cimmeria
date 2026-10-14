@@ -117,6 +117,110 @@ async fn multi_fragment_entries_arrive_whole() {
     assert_resync_converges(47_103, 3, stale_copy(3)).await;
 }
 
+/// An authored key must actually cross the real full-category transport.
+/// Checking only "client == server" could pass if insertion vanished from both.
+#[tokio::test]
+async fn authored_mission_catalog_reaches_stock_client() {
+    use cimmeria_resources::base::mission_additions::{TEST_MISSION_ADDITIONS, TEST_MISSION_XML};
+    use cimmeria_resources::base::resources::ResourceCache;
+
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/cache");
+    let raw = ResourceCache::load_raw_mission_category_for_test(dir).unwrap();
+    assert_eq!(raw.metadata, 7538);
+    assert_eq!(raw.elements.len(), 1040);
+    assert!(!raw.elements.contains_key(&61000));
+    let mut client = ClientModel::holding(3, raw.metadata, raw.elements.into_iter().collect());
+    let mut rig = rig(47_107);
+    rig.cache = std::sync::Arc::new(
+        ResourceCache::load_all_with_mission_additions(dir, TEST_MISSION_ADDITIONS).unwrap(),
+    );
+    let served = rig.cache.category(3).unwrap().metadata;
+    let expected: BTreeMap<_, _> = rig
+        .cache
+        .category(3)
+        .unwrap()
+        .elements
+        .clone()
+        .into_iter()
+        .collect();
+    rig.request(3, 7538).await;
+    rig.pump_until_idle().await;
+    let plaintexts = rig.take_plaintexts();
+    let sent: Vec<_> = plaintexts.iter().map(|pt| decode(pt)).collect();
+    assert_eq!(
+        sent.first(),
+        Some(&Sent::VersionInfo(VersionInfo {
+            category: 3,
+            version: !served,
+            required: 0,
+            invalidate_all: true,
+            keys: vec![],
+        }))
+    );
+    assert_eq!(
+        sent.last(),
+        Some(&Sent::VersionInfo(VersionInfo {
+            category: 3,
+            version: served,
+            required: 0,
+            invalidate_all: false,
+            keys: vec![],
+        }))
+    );
+    let authored: Vec<_> = sent
+        .iter()
+        .filter(|packet| {
+            matches!(
+                packet,
+                Sent::Fragment {
+                    head: Some((3, 61000)),
+                    ..
+                }
+            )
+        })
+        .collect();
+    assert_eq!(
+        authored.len(),
+        1,
+        "new mission 61000 must be transferred exactly once"
+    );
+    let Sent::Fragment { flags, body, .. } = authored[0] else {
+        unreachable!()
+    };
+    assert_eq!(*flags, crate::mercury::FRAG_FIRST_AND_LAST);
+    assert_eq!(body.len(), 1139);
+    assert_eq!(body, TEST_MISSION_XML.as_bytes());
+    client.apply_all(&plaintexts);
+    let held = &client.categories[&3];
+    assert_eq!(held.entries[&61000], TEST_MISSION_XML.as_bytes());
+    assert_eq!(held.entries.len(), 1041);
+    assert_eq!(held.entries, expected);
+    assert_eq!(held.version, served);
+    assert_eq!(held.required_updates, 0);
+    assert_eq!(client.writes[&3], 1041);
+    assert_eq!(
+        sent.iter()
+            .filter(|packet| matches!(
+                packet,
+                Sent::Fragment {
+                    head: Some((3, _)),
+                    ..
+                }
+            ))
+            .count(),
+        1041
+    );
+}
+
+#[test]
+fn authored_mission_admission_matches_transport_fragment_limit() {
+    assert_eq!(
+        cimmeria_resources::base::mission_additions::MAX_MISSION_XML_BYTES,
+        super::super::MAX_CHUNK * 256,
+    );
+    assert_eq!(super::super::MAX_CHUNK, 1390);
+}
+
 /// `CookedCharCreation` is one 169 KB entry: 122 fragments in one transfer.
 #[tokio::test]
 async fn a_122_fragment_entry_arrives_whole() {
