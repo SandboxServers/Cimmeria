@@ -1,0 +1,3 @@
+# Lab Driver Memory
+
+- 2026-10-14, issue #1684: `LiveWorld::slots` previously called `read_slots`, an in-order walk of the whole `GameEntityManager + 0x130` map on every hover sample. `client_entity_find` can pin 48 extra slots at 7700+, so a target click could issue dozens of synchronous `mem_read` bridge calls per cursor move. A targeted BST lookup for the three stock slots (`Unit.Player`, `Unit.Target`, `Unit.MouseOver`) is under test in `crates/lab/src/supervisor/world/memory.rs`. This explains avoidable bridge load; live improvement remains to be verified after installation. Source: code in `world/io.rs`, `world/memory.rs`, and #1684's lab trace.
