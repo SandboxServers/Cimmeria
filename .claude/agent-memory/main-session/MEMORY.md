@@ -4,7 +4,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Open investigations
 
-- [project_harset_continuation_2026_10_14.md](project_harset_continuation_2026_10_14.md) — continuation ledger, standing owner decisions and HA-1360a atomic receipt contract; authored catalog client proof remains open
+- [project_harset_continuation_2026_10_14.md](project_harset_continuation_2026_10_14.md) — continuation ledger and owner decisions; HA-1360a1/a2a integrated with test evidence, a2b/a2c/a3/b and client proof open
 - [reference_cb_n05a_catalog_seal_2026_10_14.md](reference_cb_n05a_catalog_seal_2026_10_14.md) — authored mission catalog seal: full resync/empty InvalidKeys, conservative key guard, test-only 61000–61003; live new-ID presentation pending
 
 - [reference_lab_login_foreground_lanes_2026_10_14.md](reference_lab_login_foreground_lanes_2026_10_14.md) — shared lab daemon serializes credential entry across instances; native two-client UAT pending
