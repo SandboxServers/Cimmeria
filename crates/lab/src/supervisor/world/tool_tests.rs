@@ -118,6 +118,28 @@ async fn target_clicks_the_entity_with_real_input() {
 }
 
 #[tokio::test]
+async fn report_only_click_survives_world_load_before_post_click_read() {
+    let mut sim = room();
+    sim.slots_dispatch_timeout_after_click = true;
+    let out = click::run(
+        &mut sim,
+        "client_world_click",
+        ClickRequest {
+            entity_id: Some(11),
+            expect: Some(Expect::Nothing),
+            ..ClickRequest::default()
+        },
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(sim.buttons, vec![(1, true), (1, false)]);
+    assert_eq!(out["native_level"], "real_input");
+    assert_eq!(out["result"]["after_observed"], false);
+    assert!(out["result"]["target_after"].is_null());
+}
+
+#[tokio::test]
 async fn target_mouse_over_timeout_returns_without_changing_the_current_target() {
     let mut sim = room();
     sim.slots.insert(UNITS.target, 77);

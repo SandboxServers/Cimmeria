@@ -51,7 +51,7 @@ pub enum Expect {
     Window,
     /// Either of the above.
     Any,
-    /// Nothing is required (report only; for "nothing should happen" steps).
+    /// Confirm native dispatch only; assert any effect separately.
     Nothing,
 }
 
@@ -597,21 +597,31 @@ async fn click_and_observe<W: WorldIo>(
     let settle = req.settle_ms.unwrap_or(DEFAULT_SETTLE_MS);
     let t_wait = io.now_ms();
     let mut after = before.clone();
-    let mut ok = false;
-    while io.now_ms().saturating_sub(t_wait) <= settle {
-        io.sleep(POLL_MS).await;
-        after = ui_snap(io, units.target, units.mouse_over)
-            .await
-            .map_err(|e| steps.fail(io.now_ms(), "read_after", e))?;
-        if expect != Expect::Nothing && met(expect, entity, &before, &after) {
-            ok = true;
-            break;
+    let mut ok = expect == Expect::Nothing;
+    if ok {
+        // A dispatched click can start a world load immediately. With no UI
+        // effect requested, the post-click bridge read is unnecessary and can
+        // fail while the client is changing worlds. The spec must check the
+        // destination separately.
+        io.sleep(settle).await;
+    } else {
+        while io.now_ms().saturating_sub(t_wait) <= settle {
+            io.sleep(POLL_MS).await;
+            after = ui_snap(io, units.target, units.mouse_over)
+                .await
+                .map_err(|e| steps.fail(io.now_ms(), "read_after", e))?;
+            if met(expect, entity, &before, &after) {
+                ok = true;
+                break;
+            }
         }
     }
-    if expect == Expect::Nothing {
-        ok = true;
-    }
-    steps.record("observe", t_wait, io.now_ms(), json!({ "met": ok }));
+    steps.record(
+        "observe",
+        t_wait,
+        io.now_ms(),
+        json!({ "met": ok, "after_observed": expect != Expect::Nothing }),
+    );
 
     let mut fallback = Value::Null;
     if !ok && expect == Expect::Target && req.allow_fallback {
@@ -644,7 +654,7 @@ async fn click_and_observe<W: WorldIo>(
         .iter()
         .filter(|w| !after.windows.contains(w))
         .collect();
-    let evidence = json!({
+    let mut evidence = json!({
         "target_before": before.target,
         "target_after": after.target,
         "target_is_entity": entity.is_some_and(|e| after.target == e),
@@ -653,6 +663,14 @@ async fn click_and_observe<W: WorldIo>(
         "mouse_over_after": after.mouse_over,
         "range": range_json(range_m),
     });
+    if expect == Expect::Nothing {
+        evidence["target_after"] = Value::Null;
+        evidence["target_is_entity"] = Value::Null;
+        evidence["windows_opened"] = Value::Null;
+        evidence["windows_closed"] = Value::Null;
+        evidence["mouse_over_after"] = Value::Null;
+        evidence["after_observed"] = json!(false);
+    }
     if !ok {
         return Err(steps.fail_with(
             io.now_ms(),
