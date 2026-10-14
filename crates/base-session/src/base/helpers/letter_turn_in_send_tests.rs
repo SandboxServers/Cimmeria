@@ -270,6 +270,13 @@ fn would_block_has_no_packet_or_registration_and_same_attempt_can_retry() {
         LetterTurnInSendOutcome::TransportError
     );
     assert!(rig.recorder.is_empty());
+    assert_eq!(
+        rig.connected.lock().unwrap()[&rig.addr]
+            .next_seq
+            .load(Ordering::Relaxed),
+        0,
+        "WouldBlock must leave the reliable candidate available"
+    );
     assert!(rig.connected.lock().unwrap()[&rig.addr]
         .channel
         .lock()
@@ -343,4 +350,250 @@ fn unsupported_sync_transport_fails_closed_without_registration() {
         .unwrap()
         .tx_window
         .is_empty());
+    assert_eq!(
+        rig.connected.lock().unwrap()[&rig.addr]
+            .next_seq
+            .load(Ordering::Relaxed),
+        0
+    );
+}
+
+#[test]
+fn would_block_retry_delivers_to_established_reliable_receiver_without_gap() {
+    use cimmeria_mercury::channel::{Channel, RxOutcome};
+    let rig = rig();
+    let transport: Arc<dyn Transport> = Arc::new(WouldBlockOnceTransport {
+        blocked: AtomicBool::new(true),
+        recorder: rig.recorder.clone(),
+    });
+    let mut receiver = Channel::new(rig.addr);
+    receiver.anchor_rx_seq(0);
+    assert_eq!(
+        send_letter_turn_in_method(
+            &rig.expected,
+            71,
+            &[0; 8],
+            &rig.transport,
+            &rig.connected,
+            &rig.mapping
+        ),
+        LetterTurnInSendOutcome::Sent
+    );
+    assert_eq!(
+        send_letter_turn_in_method(
+            &rig.expected,
+            71,
+            &[1; 8],
+            &transport,
+            &rig.connected,
+            &rig.mapping
+        ),
+        LetterTurnInSendOutcome::TransportError
+    );
+    assert_eq!(
+        send_letter_turn_in_method(
+            &rig.expected,
+            71,
+            &[2; 8],
+            &transport,
+            &rig.connected,
+            &rig.mapping
+        ),
+        LetterTurnInSendOutcome::Sent
+    );
+    let packets = rig.recorder.filter_to(rig.addr);
+    assert_eq!(packets.len(), 2);
+    for (seq, encrypted) in packets.iter().enumerate() {
+        let plain = MercuryEncryption::from_session_key([9; 32])
+            .decrypt(encrypted)
+            .unwrap();
+        let parsed = cimmeria_mercury::packet::parse_incoming(&plain).unwrap();
+        assert_eq!(parsed.seq_id, Some(seq as u32));
+        let delivered = receiver.receive_parsed(parsed).unwrap();
+        assert_eq!(delivered.outcome, RxOutcome::InOrder);
+        assert_eq!(delivered.bundles.len(), 1);
+    }
+}
+
+struct PausedWouldBlockTransport {
+    entered: Mutex<Option<std::sync::mpsc::Sender<()>>>,
+    release: Mutex<std::sync::mpsc::Receiver<()>>,
+}
+
+impl Transport for PausedWouldBlockTransport {
+    fn send_to<'life0, 'life1, 'async_trait>(
+        &'life0 self,
+        _: &'life1 [u8],
+        _: SocketAddr,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = std::io::Result<usize>> + Send + 'async_trait>,
+    >
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        Self: 'async_trait,
+    {
+        Box::pin(async { panic!("fenced send must use synchronous admission") })
+    }
+
+    fn try_send_to(&self, _: &[u8], _: SocketAddr) -> std::io::Result<usize> {
+        self.entered
+            .lock()
+            .unwrap()
+            .take()
+            .unwrap()
+            .send(())
+            .unwrap();
+        self.release.lock().unwrap().recv().unwrap();
+        Err(std::io::ErrorKind::WouldBlock.into())
+    }
+
+    fn local_addr(&self) -> std::io::Result<SocketAddr> {
+        Ok("127.0.0.1:1".parse().unwrap())
+    }
+}
+
+#[test]
+fn cloned_counter_reservation_waits_for_definite_no_send_and_reuses_candidate() {
+    let rig = rig();
+    let (entered_tx, entered_rx) = std::sync::mpsc::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    let transport: Arc<dyn Transport> = Arc::new(PausedWouldBlockTransport {
+        entered: Mutex::new(Some(entered_tx)),
+        release: Mutex::new(release_rx),
+    });
+    let (gate, counter) = {
+        let clients = rig.connected.lock().unwrap();
+        let state = &clients[&rig.addr];
+        (
+            Arc::clone(&state.reliable_seq_gate),
+            Arc::clone(&state.next_seq),
+        )
+    };
+    let expected = rig.expected.clone();
+    let connected = Arc::clone(&rig.connected);
+    let mapping = Arc::clone(&rig.mapping);
+    let sender = std::thread::spawn(move || {
+        send_letter_turn_in_method(&expected, 71, &[0; 8], &transport, &connected, &mapping)
+    });
+    entered_rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .unwrap();
+    assert!(
+        gate.try_lock().is_err(),
+        "candidate gate held through admission"
+    );
+    let (reserved_tx, reserved_rx) = std::sync::mpsc::channel();
+    let cloned_reservation = std::thread::spawn(move || {
+        let _guard = gate.lock().unwrap();
+        reserved_tx
+            .send(counter.fetch_add(1, Ordering::Relaxed))
+            .unwrap();
+    });
+    assert!(
+        reserved_rx
+            .recv_timeout(std::time::Duration::from_millis(50))
+            .is_err(),
+        "clone cannot reserve while admission is pending"
+    );
+    release_tx.send(()).unwrap();
+    assert_eq!(
+        sender.join().unwrap(),
+        LetterTurnInSendOutcome::TransportError
+    );
+    assert_eq!(
+        reserved_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .unwrap(),
+        0
+    );
+    cloned_reservation.join().unwrap();
+    assert_eq!(
+        rig.connected.lock().unwrap()[&rig.addr]
+            .next_seq
+            .load(Ordering::Relaxed),
+        1
+    );
+    assert_eq!(
+        send_letter_turn_in_method(
+            &rig.expected,
+            71,
+            &[0; 8],
+            &rig.transport,
+            &rig.connected,
+            &rig.mapping
+        ),
+        LetterTurnInSendOutcome::Sent
+    );
+    let packet = rig.recorder.filter_to(rig.addr).pop().unwrap();
+    let plain = MercuryEncryption::from_session_key([9; 32])
+        .decrypt(&packet)
+        .unwrap();
+    assert_eq!(
+        cimmeria_mercury::packet::parse_incoming(&plain)
+            .unwrap()
+            .seq_id,
+        Some(1)
+    );
+}
+
+struct PartialAdmissionTransport;
+
+impl Transport for PartialAdmissionTransport {
+    fn send_to<'life0, 'life1, 'async_trait>(
+        &'life0 self,
+        _: &'life1 [u8],
+        _: SocketAddr,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = std::io::Result<usize>> + Send + 'async_trait>,
+    >
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        Self: 'async_trait,
+    {
+        Box::pin(async { panic!("fenced send must use synchronous admission") })
+    }
+
+    fn try_send_to(&self, bytes: &[u8], _: SocketAddr) -> std::io::Result<usize> {
+        Ok(bytes.len() - 1)
+    }
+
+    fn local_addr(&self) -> std::io::Result<SocketAddr> {
+        Ok("127.0.0.1:1".parse().unwrap())
+    }
+}
+
+#[test]
+fn ambiguous_partial_admission_retires_sequence_and_cancels_session() {
+    let rig = rig();
+    let transport: Arc<dyn Transport> = Arc::new(PartialAdmissionTransport);
+    assert_eq!(
+        send_letter_turn_in_method(
+            &rig.expected,
+            71,
+            &[0; 8],
+            &transport,
+            &rig.connected,
+            &rig.mapping,
+        ),
+        LetterTurnInSendOutcome::ChannelError
+    );
+    let clients = rig.connected.lock().unwrap();
+    let state = &clients[&rig.addr];
+    assert!(state.cancelled.load(Ordering::Acquire));
+    assert_eq!(state.next_seq.load(Ordering::Relaxed), 1);
+    assert!(state.channel.lock().unwrap().tx_window.is_empty());
+    drop(clients);
+    assert_eq!(
+        send_letter_turn_in_method(
+            &rig.expected,
+            71,
+            &[0; 8],
+            &rig.transport,
+            &rig.connected,
+            &rig.mapping,
+        ),
+        LetterTurnInSendOutcome::Stale
+    );
 }

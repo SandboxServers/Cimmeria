@@ -197,6 +197,10 @@ pub struct ConnectedClientState {
     pub world_entry_sent: bool,
     pub pending_player_entity_id: Option<u32>,
     pub player_entity_id: Option<u32>,
+    /// Shared with every cloned reliable counter reservation. A sender that
+    /// has not admitted a datagram may leave its candidate sequence unused
+    /// only while this gate excludes all other reservers.
+    pub reliable_seq_gate: Arc<Mutex<()>>,
     pub next_seq: Arc<AtomicU32>,
     /// Sequence counter for **unreliable** outbound packets — kept separate
     /// from `next_seq` to preserve the contiguous reliable seq stream the

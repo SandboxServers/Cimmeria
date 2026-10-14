@@ -313,6 +313,21 @@ impl Transport for ChaosTransport {
         sent
     }
 
+    fn try_send_to(&self, bytes: &[u8], addr: SocketAddr) -> io::Result<usize> {
+        if !self.registry.has_net() {
+            if self.peer_count.load(Ordering::Acquire) > 0 {
+                self.forget_all();
+            }
+            return self.inner.try_send_to(bytes, addr);
+        }
+        self.sweep();
+        if self.entry_for(addr).is_some() {
+            // The async shaper cannot promise immediate wire admission.
+            return Err(io::ErrorKind::Unsupported.into());
+        }
+        self.inner.try_send_to(bytes, addr)
+    }
+
     fn local_addr(&self) -> io::Result<SocketAddr> {
         self.inner.local_addr()
     }

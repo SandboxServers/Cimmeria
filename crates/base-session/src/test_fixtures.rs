@@ -37,6 +37,7 @@ pub fn test_default_connected_client_state() -> ConnectedClientState {
         pending_player_entity_id: None,
         player_entity_id: None,
         next_seq: Arc::new(AtomicU32::new(0)),
+        reliable_seq_gate: Arc::new(Mutex::new(())),
         next_seq_unreliable: Arc::new(AtomicU32::new(0)),
         pending_acks: Arc::new(Mutex::new(Vec::new())),
         last_recv: Arc::new(Mutex::new(Instant::now())),

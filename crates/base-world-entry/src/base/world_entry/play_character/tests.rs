@@ -43,6 +43,7 @@ fn make_connected_state(account_id: u32) -> ConnectedClientState {
         pending_player_entity_id: None,
         player_entity_id: None,
         next_seq: Arc::new(AtomicU32::new(3)),
+        reliable_seq_gate: Arc::new(std::sync::Mutex::new(())),
         next_seq_unreliable: Arc::new(AtomicU32::new(0)),
         pending_acks: Arc::new(Mutex::new(Vec::new())),
         last_recv: Arc::new(Mutex::new(Instant::now())),

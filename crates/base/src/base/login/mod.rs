@@ -248,6 +248,7 @@ pub(crate) async fn handle_login(
                 pending_player_entity_id: None,
                 player_entity_id: None,
                 next_seq,
+                reliable_seq_gate: Arc::new(Mutex::new(())),
                 next_seq_unreliable,
                 pending_acks,
                 last_recv,
@@ -614,6 +615,10 @@ pub(crate) async fn handle_log_off(
             &mut client.pending_acks.lock().unwrap(),
             client.enc_version,
         );
+        let _seq_gate = client
+            .reliable_seq_gate
+            .lock()
+            .map_err(|_| "sequence gate poisoned")?;
         let seq = client
             .next_seq
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed)

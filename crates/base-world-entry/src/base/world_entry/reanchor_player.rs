@@ -194,7 +194,17 @@ pub(crate) async fn handle_reanchor_player(
         .copied()
         .ok_or("Reanchor: no client addr for entity")?;
 
-    let (key, enc_version, pending_acks_arc, next_seq, appearance_args, tint_args, class_id, id) = {
+    let (
+        key,
+        enc_version,
+        pending_acks_arc,
+        next_seq,
+        seq_gate,
+        appearance_args,
+        tint_args,
+        class_id,
+        id,
+    ) = {
         let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let c = clients
             .get(&addr)
@@ -204,6 +214,7 @@ pub(crate) async fn handle_reanchor_player(
             c.enc_version,
             Arc::clone(&c.pending_acks),
             Arc::clone(&c.next_seq),
+            Arc::clone(&c.reliable_seq_gate),
             c.cached_appearance_args.clone(),
             c.cached_tint_args.clone(),
             c.player_class_id,
@@ -250,8 +261,10 @@ pub(crate) async fn handle_reanchor_player(
         let mut pending = pending_acks_arc.lock().unwrap();
         cimmeria_mercury::packet::take_piggyback_acks(&mut pending, enc_version)
     };
-    let base_seq =
-        next_seq.fetch_add(total_seqs, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;
+    let base_seq = {
+        let _seq_gate = seq_gate.lock().map_err(|_| "sequence gate poisoned")?;
+        next_seq.fetch_add(total_seqs, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK
+    };
 
     let packets = build_reanchor_packets(
         &key,

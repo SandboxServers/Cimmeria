@@ -127,6 +127,7 @@ where
     let reserved = {
         let clients = connected.lock().unwrap();
         clients.get(&addr).map(|c| {
+            let _seq_gate = c.reliable_seq_gate.lock().unwrap();
             let raw_seq = c.next_seq.fetch_add(1, Ordering::Relaxed);
             let acks: Vec<u32> = cimmeria_mercury::packet::take_acks_for_plaintext(
                 &mut c.pending_acks.lock().unwrap(),
@@ -169,6 +170,9 @@ where
         if let Some(body) = reframe_body(&packet, &key, version) {
             let released = connected.lock().ok().is_some_and(|clients| {
                 clients.get(&addr).is_some_and(|c| {
+                    let Ok(_seq_gate) = c.reliable_seq_gate.lock() else {
+                        return false;
+                    };
                     c.next_seq
                         .compare_exchange(
                             raw_seq.wrapping_add(1),
@@ -410,6 +414,7 @@ pub(super) async fn send_bundle_reliable_to_addr(
         // Mask the base to the 28-bit Mercury space; per-fragment seqs
         // (base+1, base+2, ...) inherit the contiguous reservation and are
         // re-masked by build_fragmented_bundle internally.
+        let _seq_gate = c.reliable_seq_gate.lock().unwrap();
         let base_seq = c.next_seq.fetch_add(packet_count as u32, Ordering::Relaxed) & SEQUENCE_MASK;
         let key = c.key;
         let version = c.enc_version;

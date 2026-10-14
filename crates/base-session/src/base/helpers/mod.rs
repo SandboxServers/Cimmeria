@@ -282,6 +282,10 @@ pub fn drain_acks_and_seq(
         &mut c.pending_acks.lock().unwrap(),
         c.enc_version,
     );
+    let _seq_gate = c
+        .reliable_seq_gate
+        .lock()
+        .map_err(|_| "sequence gate poisoned")?;
     let seq = c.next_seq.fetch_add(1, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;
     Ok((acks, seq))
 }

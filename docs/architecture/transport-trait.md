@@ -69,11 +69,22 @@ next to `check_timeouts` / `keepalive_due` / `is_timed_out`.
 
    `UdpTransport` is the production impl (thin wrapper over `Arc<UdpSocket>`).
    `try_send_to` is object-safe and never awaits. Its default returns
-   `Unsupported`, so chaos and loss wrappers that have no proven synchronous
-   admission path fail closed. The letter turn-in maps that result, including
+   `Unsupported`. `ChaosTransport` passes synchronous sends directly to its
+   inner transport when the destination has no active net profile; an actively
+   shaped destination fails closed with `Unsupported`. `LossyTransport` and
+   any other wrapper without a proven synchronous admission path fail closed.
+   The letter turn-in maps that result, including
    `WouldBlock`, to uncertain delivery and retries the same receipt attempt;
    it does not emit a committed cell result. Production `UdpTransport` calls
    `UdpSocket::try_send_to`, and `TestTransport` records immediately.
+   Reliable sequence admission is serialized per session with the same gate
+   used by all production sequence allocators. A definite no-send keeps its
+   candidate sequence; a fully admitted datagram consumes it before channel
+   registration. An ambiguous transport outcome also retires its candidate;
+   either it or failed registration marks the session cancelled and blocks
+   further letter admission. That marker stops the tick loop, but the
+   synchronous sender has no full entity-teardown context. Other send paths
+   may continue until normal teardown, always using later sequences.
 
 2. **Add `TestTransport`** (`test_transport.rs`, behind the `test-support`
    feature) — a `Mutex<Vec<(SocketAddr, Vec<u8>)>>` recorder with

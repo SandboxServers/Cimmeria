@@ -345,6 +345,78 @@ async fn live_db_partial_sync_row_lock_orders_actual_move_item_after_admission()
 }
 
 #[tokio::test]
+async fn live_db_same_session_old_slot_update_precedes_actual_move_update() {
+    let pool = require_db_or_skip!();
+    let id = player(&pool, 76).await;
+    accept_and_advance(&pool, id).await;
+    let item_id = put_item(&pool, id, 3730, 2, 0, 2).await;
+    let rig = Rig::new(id, Some(Arc::new(pool.clone())));
+    assert_eq!(
+        sync_committed_letter(&pool, &rig.expected(), item_id, 1, rig.ctx())
+            .await
+            .unwrap(),
+        cimmeria_base_session::base::helpers::LetterTurnInSendOutcome::Sent
+    );
+    handle_move_inventory_item(
+        ENTITY,
+        id,
+        item_id,
+        2,
+        1,
+        -1,
+        &rig.pool,
+        &rig.tx,
+        &rig.transport,
+        &rig.connected,
+        &rig.mapping,
+    )
+    .await;
+    let slot: i32 = sqlx::query_scalar("SELECT slot_id FROM sgw_inventory WHERE item_id = $1")
+        .bind(item_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(slot, 1, "the actual move succeeded");
+
+    let sent = rig.recorder.filter_to(rig.addr);
+    assert_eq!(sent.len(), 2, "one letter CM72, then one move CM72");
+    let decode = |bytes: &[u8]| {
+        let plain = MercuryEncryption::from_session_key([9; 32])
+            .decrypt(bytes)
+            .unwrap();
+        let packet = cimmeria_mercury::packet::parse_incoming(&plain).unwrap();
+        assert_eq!(packet.body[0], 0xbd);
+        assert_eq!(packet.body[7], 72 - 61);
+        let count = u32::from_le_bytes(packet.body[8..12].try_into().unwrap());
+        let mut offset = 12;
+        let mut matching_slot = None;
+        for _ in 0..count {
+            let row_id = i32::from_le_bytes(packet.body[offset..offset + 4].try_into().unwrap());
+            let row_slot =
+                i32::from_le_bytes(packet.body[offset + 12..offset + 16].try_into().unwrap());
+            let ammo_count =
+                u32::from_le_bytes(packet.body[offset + 25..offset + 29].try_into().unwrap())
+                    as usize;
+            if row_id == item_id {
+                matching_slot = Some(row_slot);
+            }
+            offset += 37 + ammo_count * 4;
+        }
+        (packet.seq_id.unwrap(), matching_slot)
+    };
+    let old = decode(&sent[0]);
+    let new = decode(&sent[1]);
+    assert_eq!(old.1, Some(1), "letter CM72 uses the pre-move client slot");
+    assert_eq!(new.1, Some(2), "move CM72 uses the post-move client slot");
+    assert_eq!(
+        new.0,
+        old.0 + 1,
+        "same session reserves consecutive reliable sequences"
+    );
+    cleanup(&pool, id).await;
+}
+
+#[tokio::test]
 async fn live_db_letter_turn_in_route_commits_and_retries_with_targeted_removal() {
     let pool = require_db_or_skip!();
     let id = player(&pool, 70).await;

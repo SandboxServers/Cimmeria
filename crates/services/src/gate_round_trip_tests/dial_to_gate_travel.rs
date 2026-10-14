@@ -57,6 +57,7 @@ fn make_state() -> ConnectedClientState {
         pending_player_entity_id: Some(42),
         player_entity_id: Some(42),
         next_seq: Arc::new(AtomicU32::new(10)),
+        reliable_seq_gate: Arc::new(Mutex::new(())),
         next_seq_unreliable: Arc::new(AtomicU32::new(0)),
         pending_acks: Arc::new(Mutex::new(Vec::new())),
         last_recv: Arc::new(Mutex::new(Instant::now())),

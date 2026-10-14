@@ -1,6 +1,7 @@
 //! One-datagram client method send bound to the entry that accepted a letter turn-in.
 
 use std::collections::HashMap;
+use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -209,10 +210,14 @@ pub(super) fn send_with_probe_hook<F: FnOnce()>(
     else {
         return LetterTurnInSendOutcome::Stale;
     };
+    let Ok(_seq_gate) = state.reliable_seq_gate.lock() else {
+        return LetterTurnInSendOutcome::ChannelError;
+    };
     let Ok(mut channel) = state.channel.lock() else {
         return LetterTurnInSendOutcome::ChannelError;
     };
-    let seq = state.next_seq.fetch_add(1, Ordering::Relaxed) & SEQUENCE_MASK;
+    let candidate = state.next_seq.load(Ordering::Relaxed);
+    let seq = candidate & SEQUENCE_MASK;
     let version = state.enc_version;
     let packet = build_player_entity_method_packet(
         &expected.key,
@@ -228,13 +233,42 @@ pub(super) fn send_with_probe_hook<F: FnOnce()>(
     }
     match transport.try_send_to(&packet, expected.addr) {
         Ok(n) if n == packet.len() => {}
-        _ => return LetterTurnInSendOutcome::TransportError,
+        Err(error) if matches!(error.kind(), ErrorKind::WouldBlock | ErrorKind::Unsupported) => {
+            return LetterTurnInSendOutcome::TransportError;
+        }
+        result => {
+            // A nonstandard transport's partial/error outcome may already
+            // have admitted bytes. Retire the candidate before failing the
+            // session rather than ever reuse a possibly transmitted sequence.
+            state.next_seq.fetch_add(1, Ordering::Relaxed);
+            state.cancelled.store(true, Ordering::Release);
+            tracing::error!(
+                target: "harset.letter_turn_in",
+                event = "ambiguous_datagram_admission",
+                entity_id = expected.entity_id,
+                player_id = expected.player_id,
+                ?result,
+            );
+            return LetterTurnInSendOutcome::ChannelError;
+        }
     }
+    // Every production reliable allocator shares this gate. In particular,
+    // a cloned reanchor/gate-travel counter cannot reserve our candidate
+    // while a definite no-send leaves it available for the same attempt.
+    state.next_seq.fetch_add(1, Ordering::Relaxed);
     let sent = Packet::new(PacketFlags::default(), seq, Bytes::new());
     if channel
         .register_sent_packet(sent, Bytes::copy_from_slice(&packet))
         .is_err()
     {
+        state.cancelled.store(true, Ordering::Release);
+        tracing::error!(
+            target: "harset.letter_turn_in",
+            event = "admitted_datagram_not_registered",
+            entity_id = expected.entity_id,
+            player_id = expected.player_id,
+            seq,
+        );
         return LetterTurnInSendOutcome::ChannelError;
     }
     LetterTurnInSendOutcome::Sent

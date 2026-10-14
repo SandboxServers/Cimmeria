@@ -197,6 +197,7 @@ pub async fn handle_gate_travel(
         login_class_id,
         pending_acks_arc,
         next_seq,
+        seq_gate,
         exit_name,
         exit_from_world,
     ) = {
@@ -212,6 +213,7 @@ pub async fn handle_gate_travel(
             c.player_class_id,
             Arc::clone(&c.pending_acks),
             Arc::clone(&c.next_seq),
+            Arc::clone(&c.reliable_seq_gate),
             c.player_name.clone(),
             c.world_name.clone(),
         )
@@ -558,7 +560,10 @@ pub async fn handle_gate_travel(
         let mut pending = pending_acks_arc.lock().unwrap();
         cimmeria_mercury::packet::take_piggyback_acks(&mut pending, enc_version)
     };
-    let seq = next_seq.fetch_add(1, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;
+    let seq = {
+        let _seq_gate = seq_gate.lock().map_err(|_| "sequence gate poisoned")?;
+        next_seq.fetch_add(1, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK
+    };
     let pkt = build_reset_entities(&key, seq, &acks, enc_version);
     transport.send_to(&pkt, addr).await?;
     // RESET_ENTITIES is one-shot state — kicks off the cross-world
