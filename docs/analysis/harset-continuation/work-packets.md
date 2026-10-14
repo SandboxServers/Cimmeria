@@ -30,7 +30,8 @@ Each blocked row names the contract that must be closed before the original impl
 | HA-00b | Reset/evidence/restoration ID proposals | Integrated | Wave-0 documentation evidence only; three findings fixed by `22982c17a`, fresh rereview clean. Proposals stay inactive until allocation signoff |
 | HA-00c | Authored/repeatable exact IDs | BlockedEvidence | CB-N05a is merged; inspect stock catalog and Cellblock's first authored client proof, then perform current global ID audit under O14-04/10/13 |
 | HA-1360a1 | Atomic base transaction and writer fence | Ready | Exact [a1 manifest and guards](worknotes/HA-1360a-seal.md#ha-1360a1--transaction-and-stale-writer-fence) sealed after database, mission, authority and testing review; implementation/test proof open |
-| HA-1360a2 | Internal transport and session fence | Review | A1 interface; exact world-entry/token/teardown files and routing tests still to seal |
+| HA-1360a2a | Session token world-entry delivery and lifetime | Ready | [Exact manifest and deterministic replacement/reuse tests](worknotes/HA-1360a-seal.md#a2a-dispatch-seal); implementation and checks open |
+| HA-1360a2b | Correlated request/result routing and A1 invocation | BlockedDependency | A1 and a2a integrated; exact spawned DB handoff, wire DTO and routed live-DB tests still to seal |
 | HA-1360a3 | Strict action, pending/recovery and continuation | BlockedDependency | A2 transport interface; exact cell teardown and result manifest still to seal |
 | HA-1360b | Marsh receiving seed and cross-zone proof | BlockedDependency | HA-1360a integrated/reviewed; CS-08a actual crossing and retained letter; receiving graph signoff |
 | HA-01a | Travel/placement | BlockedEvidence | Four Market/Storage thresholds + arrivals, clearance, wrong-world and relog; preserve 6007/1361 linkage |
