@@ -1,5 +1,6 @@
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
+use tokio::sync::Notify;
 
 use super::*;
 use crate::supervisor::events::fake_bridge;
@@ -316,6 +317,135 @@ async fn second_readback_mismatch_stops_after_one_retry() {
     assert!(error.message.contains("after typing"));
     assert_eq!(io.retries, 1);
     assert_eq!(io.typed_fields, ["account", "account"]);
+}
+
+struct ConcurrentCredentialIo<'a> {
+    run: FlowRun<'a>,
+    lane: &'static str,
+    events: Arc<std::sync::Mutex<Vec<String>>>,
+    password_entered: Arc<Notify>,
+    release_password: Arc<Notify>,
+    block_password: bool,
+    fail_password: bool,
+}
+
+impl LoginCredentialIo for ConcurrentCredentialIo<'_> {
+    async fn prepare_field(
+        &mut self,
+        step: &'static str,
+        _window: &'static str,
+    ) -> Result<(), FlowError> {
+        self.events
+            .lock()
+            .unwrap()
+            .push(format!("{}:{step}", self.lane));
+        Ok(())
+    }
+
+    async fn type_field(
+        &mut self,
+        step: &'static str,
+        _window: &'static str,
+        _text: &str,
+    ) -> Result<(), FlowError> {
+        self.events
+            .lock()
+            .unwrap()
+            .push(format!("{}:{step}", self.lane));
+        if step == "password" && self.block_password {
+            self.password_entered.notify_one();
+            self.release_password.notified().await;
+            if self.fail_password {
+                return Err(self.run.fail(step, "password input failed"));
+            }
+        }
+        Ok(())
+    }
+
+    fn record_retry(&mut self, _attempt: usize, _error: &FlowError) {}
+}
+
+async fn credential_lanes_are_serialized(fail_first: bool) {
+    let events = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let password_entered = Arc::new(Notify::new());
+    let release_password = Arc::new(Notify::new());
+    let first_sup = fake_bridge::supervisor(Arc::new(|_, _| Ok(Value::Null))).await;
+    let second_sup = fake_bridge::supervisor(Arc::new(|_, _| Ok(Value::Null))).await;
+
+    let first_events = events.clone();
+    let first_entered = password_entered.clone();
+    let first_release = release_password.clone();
+    let first = tokio::spawn(async move {
+        let mut io = ConcurrentCredentialIo {
+            run: FlowRun::new(&first_sup, "lab_login"),
+            lane: "first",
+            events: first_events,
+            password_entered: first_entered,
+            release_password: first_release,
+            block_password: true,
+            fail_password: fail_first,
+        };
+        type_login_credentials(&mut io, "account", "secret").await
+    });
+    password_entered.notified().await;
+
+    let second_events = events.clone();
+    let second_started = Arc::new(Notify::new());
+    let started = second_started.clone();
+    let mut second = tokio::spawn(async move {
+        started.notify_one();
+        let mut io = ConcurrentCredentialIo {
+            run: FlowRun::new(&second_sup, "lab_login"),
+            lane: "second",
+            events: second_events,
+            password_entered: Arc::new(Notify::new()),
+            release_password: Arc::new(Notify::new()),
+            block_password: false,
+            fail_password: false,
+        };
+        type_login_credentials(&mut io, "account2", "secret2").await
+    });
+    second_started.notified().await;
+    // Give the second task a chance to contend while the first is suspended
+    // in password input. It cannot even prepare its account field yet.
+    assert!(tokio::time::timeout(Duration::from_millis(30), &mut second)
+        .await
+        .is_err());
+    assert_eq!(
+        *events.lock().unwrap(),
+        [
+            "first:account_focus",
+            "first:account",
+            "first:password_focus",
+            "first:password"
+        ]
+    );
+    release_password.notify_one();
+    assert_eq!(first.await.unwrap().is_err(), fail_first);
+    second.await.unwrap().unwrap();
+    assert_eq!(
+        *events.lock().unwrap(),
+        [
+            "first:account_focus",
+            "first:account",
+            "first:password_focus",
+            "first:password",
+            "second:account_focus",
+            "second:account",
+            "second:password_focus",
+            "second:password"
+        ]
+    );
+}
+
+#[tokio::test]
+async fn concurrent_login_lanes_wait_through_password() {
+    credential_lanes_are_serialized(false).await;
+}
+
+#[tokio::test]
+async fn failed_login_lane_releases_credential_lock() {
+    credential_lanes_are_serialized(true).await;
 }
 
 /// Fake client: the login window is hidden and character select is up,

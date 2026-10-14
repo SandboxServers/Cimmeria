@@ -7,6 +7,7 @@
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
+use tokio::sync::Mutex;
 
 use super::widgets::{
     self, CHAR_SELECT_WIN, EULA_ACCEPT, EULA_WIN, LOGIN_ACCOUNT_EDIT, LOGIN_BUTTON,
@@ -28,6 +29,8 @@ const SERVER_TIMEOUT: Duration = Duration::from_secs(60);
 /// is not yet checked on the live client.
 const CHAR_SELECT_BACK: &str = "CharSelect_BackButton";
 const CREDENTIAL_TRIES: usize = 2;
+// All lab instances in the daemon share one Windows desktop foreground.
+static CREDENTIAL_INPUT_LOCK: Mutex<()> = Mutex::const_new(());
 
 /// `lab_login` arguments; each falls back to `lab-account.json`.
 #[derive(Debug, Clone, Default)]
@@ -493,6 +496,9 @@ async fn type_login_credentials(
     account: &str,
     password: &str,
 ) -> Result<(), FlowError> {
+    // Hold through password readback and retries: another instance refocusing
+    // between the two edit boxes can send real input to the wrong client.
+    let _credential_input = CREDENTIAL_INPUT_LOCK.lock().await;
     for attempt in 1..=CREDENTIAL_TRIES {
         let typed = async {
             io.prepare_field("account_focus", LOGIN_ACCOUNT_EDIT)
