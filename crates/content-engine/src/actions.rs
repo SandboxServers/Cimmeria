@@ -139,6 +139,18 @@ pub enum Action {
     /// Mark the specified mission as complete.
     CompleteMission { mission_id: i32 },
 
+    /// Request the atomic Frost's Letter hand-in at Marsh. The executor
+    /// waits for a persisted result before showing or completing anything.
+    CompleteMissionWithItem {
+        mission_id: i32,
+        expected_step_id: i32,
+        item_id: i32,
+        quantity: i32,
+        dialog_id: i32,
+        dialog_set_id: i32,
+        slot: i32,
+    },
+
     /// Play an animation on the source or target entity.
     PlayAnimation { animation: String },
 

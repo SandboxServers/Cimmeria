@@ -8,6 +8,7 @@ mod action_spawn_conversion;
 mod chain_loading;
 mod condition_conversion;
 mod grant_ability_conversion;
+mod letter_turn_in_conversion;
 mod npc_bark_conversion;
 mod send_system_mail_conversion;
 mod trigger_conversion;

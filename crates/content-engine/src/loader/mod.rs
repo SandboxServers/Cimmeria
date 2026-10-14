@@ -27,6 +27,9 @@
 //!   refuses a chain whose `show_tutorial` or `tutorial_shown` id is not a
 //!   tutorial dialog once the caller has the dialog table
 //!
+//! - [`action_letter_turn_in`] — the fixed Frost's Letter hand-in. A malformed
+//!   mandatory row refuses its whole chain.
+//!
 //! `mod.rs` keeps the orchestration ([`build_chains_from_rows`]),
 //! the JSON loader, and the public DB row structs.
 
@@ -42,6 +45,7 @@ use crate::triggers::Trigger;
 mod action;
 mod action_ability;
 mod action_bark;
+mod action_letter_turn_in;
 mod action_loot;
 mod action_mail;
 mod action_spawn;
@@ -171,6 +175,27 @@ pub fn build_chains_from_rows(
         let mut actions: Vec<Action> = Vec::with_capacity(act_list.len());
         let mut action_delays: Vec<i32> = Vec::with_capacity(act_list.len());
         for a_row in &act_list {
+            if a_row.action_type == action_letter_turn_in::ACTION_TYPE {
+                match action_letter_turn_in::convert_letter_turn_in(a_row) {
+                    Ok(action) => {
+                        actions.push(action);
+                        action_delays.push(0);
+                    }
+                    Err(why) => {
+                        tracing::error!(
+                            target: "content",
+                            event = "chain_refused",
+                            reason = "complete_mission_with_item_invalid",
+                            chain_id,
+                            chain_name,
+                            params = %a_row.params,
+                            "complete_mission_with_item: {why}; the chain is not loaded"
+                        );
+                        continue 'chains;
+                    }
+                }
+                continue;
+            }
             // `grant_ability` is all-or-nothing for its chain (see
             // `action_ability`): a malformed grant refuses the chain.
             if a_row.action_type == action_ability::ACTION_TYPE {
