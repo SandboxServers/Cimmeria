@@ -312,7 +312,13 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
             .await
         }
         CellToBaseMsg::CancelMinigame { entity_id } => {
-            minigame::cancel_minigame(entity_id, ctx.minigame_registry).await
+            minigame::cancel_minigame(
+                entity_id,
+                ctx.minigame_registry,
+                ctx.connected,
+                ctx.entity_to_addr,
+            )
+            .await
         }
         CellToBaseMsg::MinigameResult {
             entity_id,

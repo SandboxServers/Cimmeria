@@ -24,6 +24,8 @@ use super::super::super::ConnectedClientState;
 pub(super) async fn cancel_minigame(
     entity_id: u32,
     registry: &Option<crate::minigame::SessionRegistry>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     let canceled = match registry {
         Some(registry) => registry.cancel(entity_id).await,
@@ -31,6 +33,7 @@ pub(super) async fn cancel_minigame(
     };
     tracing::info!(
         entity_id,
+        entity_name = entity_name_for(connected, entity_to_addr, entity_id),
         canceled,
         reason = "player_closed_window",
         "Minigame cancel handled"
