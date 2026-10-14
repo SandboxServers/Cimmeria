@@ -37,9 +37,11 @@ decision sits with the caller, not with a per-channel auto-accumulator.
   bundle to the session UDP socket + Channel TX-window registration. ✅
 - **Layer B (conservative slice for #356)**: the AoI EnteredAoI burst in
   [base/world_entry/cell_dispatch/deferred_flush.rs](../../crates/base-world-entry/src/base/world_entry/cell_dispatch/deferred_flush.rs)
-  now bundles into 2 cross-entity bundles (phase-1, phase-2) instead of
-  2 packets per NPC. Pinned by a regression test at 28 NPCs ≤ 15 packets
-  (was 56 pre-bundle). ✅
+  ordinarily bundles into 2 cross-entity bundles (phase-1, phase-2) instead
+  of 2 packets per NPC. Pinned by a regression test at 28 NPCs ≤ 15 packets
+  (was 56 pre-bundle). The first-login cinematic release uses one packet per
+  phase-1 *message* to avoid the client's stale request-cursor collision;
+  phase 2 remains bundled. ✅
 - **Layer C**: regression guards in place (compose↔build byte-equivalence,
   28-NPC burst budget). ✅
 - **#360 follow-up — world_entry_appearance migration**: the
@@ -270,7 +272,7 @@ because ACKs ride only the first fragment.
 ## Observed win
 
 The conservative Layer B slice migrates only the AoI `EnteredAoI` burst.
-For a Castle_CellBlock instance with 28 NPCs:
+For an ordinary pre-ready flush of a Castle_CellBlock instance with 28 NPCs:
 
 | Pre-bundle | Post-bundle |
 |---:|---:|
@@ -282,6 +284,14 @@ Regression-guarded at "≤ 15 packets" in
 [base/world_entry/cell_dispatch/tests.rs](../../crates/base-world-entry/src/base/world_entry/cell_dispatch/tests.rs)
 (`flush_deferred_aoi_bundles_28_npc_burst_under_packet_budget`) with
 comfortable headroom for cascade-payload growth.
+
+The first-login cinematic-hold release has a different phase-1 budget:
+28 NPCs yield 56 single-message packets before the phase-2 fragments.
+The client treats `CREATE_ENTITY` and `UPDATE_AVATAR` as two messages even
+though the composer returns one 37-byte record per NPC. A byte-exact
+flush test guards the split, and a near-full TX-window test guards queued
+reliable entries and ACK promotion. See
+[first-login-cinematic-aoi-hold.md](first-login-cinematic-aoi-hold.md).
 
 The #360 follow-up extends the same shape to the post-`onClientReady`
 appearance / chat / welcome burst on every world entry:

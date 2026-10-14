@@ -83,7 +83,7 @@ pub(crate) async fn flush_deferred_self_methods(
 /// `EnteredAoI` is the burst-shape failure mode — a Castle_CellBlock
 /// instance with 28 NPCs would pre-bundle emit 56 reliable packets
 /// (2 per NPC: CREATE_ENTITY/UPDATE_AVATAR pair, then cascade).
-/// Instead this function bundles into TWO logical client frames:
+/// Ordinarily this function bundles into TWO logical client frames:
 ///
 /// - **Phase-1 bundle**: every NPC's `CREATE_ENTITY + UPDATE_AVATAR`
 ///   body. Safe to combine cross-entity: CREATE_ENTITY(A) puts entity A
@@ -97,7 +97,7 @@ pub(crate) async fn flush_deferred_self_methods(
 ///   `cimmeria_mercury::channel_bundle` module doc and the deliberate
 ///   two-bundle split in `base/world_entry/map_loaded.rs`).
 ///
-/// For 28 NPCs: phase-1 ≈ 28×37 = 1 KB (1 fragment under
+/// For an ordinary 28-NPC flush: phase-1 ≈ 28×37 = 1 KB (1 fragment under
 /// `FRAGMENT_BODY_SIZE`=1300); phase-2 ≈ 28×442 = 12 KB (10 fragments
 /// at 1300 bytes each) ≈ **~11 reliable packets total**, down from 56.
 /// The regression guard at
@@ -105,6 +105,11 @@ pub(crate) async fn flush_deferred_self_methods(
 /// pins this at `≤15` to leave headroom for cascade-payload growth.
 /// The deferred-send queue still backstops the case where bundle
 /// finalize emits more than the remaining TX-window capacity.
+/// First-login cinematic release splits each 37-byte phase-1 record into
+/// its 11-byte CREATE_ENTITY and 26-byte UPDATE_AVATAR messages, one
+/// reliable packet each. This bypasses the client's stale request-offset
+/// collision on later message cursors; the TX deferred queue holds packets
+/// beyond its 32-entry window until ACKs promote them.
 ///
 /// `LeftAoI`, `EntityMethodCall`, `WitnessEntityMethod` and
 /// `EntityInvisible` stay on the per-message `send_to_witness_reliable` path. They preserve their **encounter
@@ -176,12 +181,19 @@ async fn dispatch_deferred(
     };
     #[cfg(not(feature = "lab-chaos"))]
     let phase1_shape = Phase1Shape::default();
+    // The first-login hold is vulnerable to the client's uninitialised
+    // next-request offset. A single packet may contain only one actual
+    // Mercury message, not one (two-message) NPC record. Lab chaos Pack and
+    // Shift deliberately retain the old shape for their fault probes.
+    let tail_safe_phase1 =
+        trigger == "cinematic_hold_release" && phase1_shape == Phase1Shape::default();
     for segment in segments {
         dispatch_segment(
             witness_id,
             witness_name,
             segment,
             &phase1_shape,
+            tail_safe_phase1,
             transport,
             connected,
             entity_to_addr,
@@ -197,6 +209,7 @@ async fn dispatch_segment(
     witness_name: Option<&'static str>,
     buffered: Vec<DeferredAoiMsg>,
     phase1_shape: &Phase1Shape,
+    tail_safe_phase1: bool,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
@@ -302,6 +315,7 @@ async fn dispatch_segment(
         phase1,
         phase2,
         phase1_shape,
+        tail_safe_phase1,
         transport,
         connected,
         entity_to_addr,
@@ -418,8 +432,8 @@ mod tests {
         );
         assert_eq!(
             sent.len(),
-            3,
-            "then the re-introduction's phase-1 and phase-2 bundles"
+            4,
+            "then the re-introduction's create, avatar and cascade packets"
         );
     }
 
