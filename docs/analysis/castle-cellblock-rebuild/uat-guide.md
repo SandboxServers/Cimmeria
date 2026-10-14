@@ -813,6 +813,8 @@ Goa'uld getting the Commando's set is intentional: before CS-04 the non-Jaffa ch
 3. Optionally kill `Cellblock_ArmoryGuard1` (spawn 27) at `(-49.69, 24.67, -127.11)`.
 4. Right-click `Cellblock_ArmoryRingSwitch` (spawn 79) at `(-54.88, 26.08, -163.84)`.
 
+**Lab approach note (2026-10-13):** Stand inside the ring circle on the raised floor before using the control. A player-provided approach point is `(-53.915, 24.957, -166.960)`, facing north with the camera above the character and pitched down about 30-45 degrees. The 2026-10-13 lab run confirmed the native right-click and Castle transfer from the floor circle near `(-54.88, 27, -167)`; the player-provided point itself has not yet been replayed in the lab. Positions beside the wall can leave the control visible but unclickable.
+
 **Expected:**
 
 - Blurb **2518** "Help Op-CORE secure the Armory by opening the doors." shows **exactly once** on accept — C07's deliverable for 688.
@@ -855,6 +857,8 @@ Goa'uld getting the Commando's set is intentional: before CS-04 the non-Jaffa ch
 - **Mission 1360 "Frost's Letter" is still active**, on step 4037. Step 4038 "Give Cpl. Frost's Letter to Col. Marsh" is Castle-side content and is out of this campaign's scope.
 - Frost's Letter (item 3730) is still in your mission inventory.
 - Gerschon is live and offers the mission-701 handoff (that is CA01's acceptance, not this campaign's — just confirm the handoff lands).
+
+**Lab observation (2026-10-13):** The native ring-control click from inside the Cellblock floor circle completed 688 and loaded Castle at `(466.365, 70.397, 991.466)`. The server restored mission 1360 on step 4037, and the client still had Frost's Letter in the Mission bag. Gerschon was live at `(429.64, 70.27, 996.56)`, about 37 m from the arrival point; the interaction-range expectation above was not met. His handoff was not exercised in that run.
 
 **Must NOT happen:**
 

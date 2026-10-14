@@ -216,7 +216,17 @@ impl<I: ToolInvoker> Runner<'_, I> {
     ) {
         rec.kind = "tool".into();
         let name = a.tool.clone().unwrap_or_default();
-        let args = subst(a.args.as_ref().unwrap_or(&json!({})), &ctx.vars);
+        let route_args = match a.route_args() {
+            Ok(args) => args,
+            Err(e) => return fail(rec, e),
+        };
+        let args = subst(
+            route_args
+                .as_ref()
+                .or(a.args.as_ref())
+                .unwrap_or(&json!({})),
+            &ctx.vars,
+        );
         rec.tool = Some(name.clone());
         rec.args = args.clone();
         match tier::resolve_tool(&name, a.tier) {

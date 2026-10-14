@@ -171,6 +171,9 @@ pub struct ActionSpec {
     pub tool: Option<String>,
     #[serde(default)]
     pub args: Option<Value>,
+    /// Named leg from the committed route catalog, for `client_move_to`.
+    #[serde(default)]
+    pub route: Option<String>,
     /// A line typed into chat (Enter, type, Enter), or sent through
     /// `client_chat_send` when that tool exists.
     #[serde(default)]
@@ -210,6 +213,33 @@ pub struct ActionSpec {
 }
 
 impl ActionSpec {
+    /// Resolve a route to ordinary `client_move_to` arguments.
+    pub fn route_args(&self) -> Result<Option<Value>, String> {
+        let Some(name) = &self.route else {
+            return Ok(None);
+        };
+        if !matches!(self.tool.as_deref(), Some("client_move_to" | "@move_to")) {
+            return Err("route requires client_move_to or @move_to".into());
+        }
+        let mut resolved = crate::supervisor::world::routes::move_args(name)?;
+        if let Some(args) = &self.args {
+            let extra = args
+                .as_object()
+                .ok_or("route action args must be a table")?;
+            if extra
+                .keys()
+                .any(|k| matches!(k.as_str(), "point" | "waypoints" | "entity_id" | "name"))
+            {
+                return Err("route cannot be combined with another move target".into());
+            }
+            resolved
+                .as_object_mut()
+                .expect("route arguments are an object")
+                .extend(extra.clone());
+        }
+        Ok(Some(resolved))
+    }
+
     /// Which of the five kinds this is, or why it is malformed.
     pub fn kind(&self) -> Result<ActionKind, String> {
         let set = [
@@ -642,6 +672,18 @@ pub fn parse(text: &str) -> Result<SectionSpec, String> {
     // `@capability` names become tool names first (super::tools).
     super::tools::resolve_section(&mut spec)?;
     validate(&spec)?;
+    for row in &spec.rows {
+        for action in row.setup.iter().chain(&row.steps).chain(&row.teardown) {
+            action
+                .route_args()
+                .map_err(|e| format!("row {}: {e}", row.id))?;
+            for fallback in &action.fallback {
+                fallback
+                    .route_args()
+                    .map_err(|e| format!("row {} fallback: {e}", row.id))?;
+            }
+        }
+    }
     Ok(spec)
 }
 

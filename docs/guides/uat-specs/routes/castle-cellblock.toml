@@ -1,0 +1,16 @@
+schema = 1
+
+# Recorded 2026-10-13 from the prisoner corridor and replayed twice in the
+# live client after mission 638 opened the cell door. Server nav-path waypoints
+# avoid the door frame that blocks a straight walk toward the Med Station.
+[[route]]
+name = "prisoner-to-med-station"
+space = "Castle_CellBlock"
+points = [
+  [-289.7, 65.6, -115.0],
+  [-288.7, 65.6, -115.9],
+  [-287.2, 65.6, -117.1],
+  [-285.7, 65.6, -117.7],
+  [-277.0, 65.6, -119.2],
+  [-235.8, 65.47, -123.3],
+]
