@@ -144,3 +144,11 @@ at runtime: `stock_id_collision` instead of `invalid_attribute_syntax`
 
 The insertion-only proof above remains applicable and its transport guard
 passed. Client presentation remains **UATPending**.
+
+## Review ledger and final gates
+
+Three fresh independent reviews examined the full diff from base `19eab88c9` through final `b1d93ba0`, against the tracked packet and seal. Round one found two P2 XML admission gaps and one P3 public-API documentation gap; the BigWorld/client review independently confirmed the declaration P2. The test review identified three guard gaps: exact MAX+1 oversize coverage, WARN severity/fields, and missing-required-child validation. Repair commit `e5d370fb` closed these findings and guards.
+
+Round two found one P2 gap: adjacent quoted XML attributes without required whitespace. Repair commit `b1d93ba0` added separator validation and atomic refusal coverage. Round three, a fresh Astra review of the full base-to-final diff, reported no findings. Review evidence is recorded in ignored `.claude/reports/four-zone/cb-n05a-*.md` reports. These reviews inspected source and tests; they do not attest live-client behavior.
+
+The final full workspace CI nextest result supersedes the earlier count above: **11,932 passed, 16 skipped, 1 leaky process** (exit 0), lane run `20261014-094016-47288`. Final workspace clippy passed (`20261014-093840-73828`), workspace build passed (`20261014-093912-15016`), and commands doctests passed, 4/0 (`20261014-094233-47992`). Repository Markdown lint reported 4,820 issues across 551 files; it is warn-only and nonblocking. Live-DB and figure checks were skipped as inapplicable to this packet. No live-client test or presentation claim was made; client presentation remains **UATPending**.
