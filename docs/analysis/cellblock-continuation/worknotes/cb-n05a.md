@@ -147,7 +147,7 @@ passed. Client presentation remains **UATPending**.
 
 ## Review ledger and final gates
 
-Three fresh independent reviews examined the full diff from base `19eab88c9` through final `b1d93ba0`, against the tracked packet and seal. Round one found two P2 XML admission gaps and one P3 public-API documentation gap; the BigWorld/client review independently confirmed the declaration P2. The test review identified three guard gaps: exact MAX+1 oversize coverage, WARN severity/fields, and missing-required-child validation. Repair commit `e5d370fb` closed these findings and guards.
+Three fresh independent reviews examined the cumulative diff from base `19eab88c9` at successive repair tips, ending at `b1d93ba0`, against the tracked packet and seal. Round one found two P2 XML admission gaps and one P3 public-API documentation gap; the BigWorld/client review independently confirmed the declaration P2. The test review identified three guard gaps: exact MAX+1 oversize coverage, WARN severity/fields, and missing-required-child validation. Repair commit `e5d370fb` closed these findings and guards.
 
 Round two found one P2 gap: adjacent quoted XML attributes without required whitespace. Repair commit `b1d93ba0` added separator validation and atomic refusal coverage. Round three, a fresh Astra review of the full base-to-final diff, reported no findings. Review evidence is recorded in ignored `.claude/reports/four-zone/cb-n05a-*.md` reports. These reviews inspected source and tests; they do not attest live-client behavior.
 
