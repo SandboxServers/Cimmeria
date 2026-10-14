@@ -12,7 +12,7 @@ exists. The following observations retain their original scope and date.
 |---|---|---|
 | CB-B01 | [2026-10-02 dossier, Session A](../playtests/2026-10-02-castle-signoz-dossier/README.md): 2026-09-28 dev entry 08:43:21 UTC, Castle entry 09:20:27, 37m06s and five logged Cellblock deaths. Completed 622/638–641/680–688; privileged access_level=2. | T: one historical observation, not target duration, average or normal-player success rate. Fresh timing/death count UATPending. |
 | CB-B02 | Same Session A: sequence 1751 dispatch at 09:06:45 after 686. Session B had client event telemetry, not visual/audio acceptance. | T: dispatch does not prove camera/rift/blood/playback or first-press delivery. N01/asset UATPending. |
-| CB-B03 | [Lab reliability follow-up](../lab-uat-reliability/README.md), 2026-10-13: corpse click/equip progressed first mission, first guard defeated character; pistol showed 0/15 and no damage. Walkthrough did not reach Livewire/destination ring. | C as reported, not independently rerun. Issue #1667 checked by gh on 2026-10-14: OPEN, updated 2026-10-13T22:50:06Z. Preserve known blocker; N02 needs bounded current reproducer and combat/items ownership. |
+| CB-B03 | [Lab reliability follow-up](../lab-uat-reliability/README.md), 2026-10-13: corpse click/equip progressed first mission, first guard defeated character; pistol showed 0/15 and no damage. [Issue #1667 comments](https://github.com/SandboxServers/Cimmeria/issues/1667) add a fresh zero-Focus observation with an “out of focus points” warning and a God-mode/full-Focus retest: first shot missed, second did 48 damage and consumed ammo. Walkthrough did not reach Livewire/destination ring. | C as reported, not independently rerun. #1667 is OPEN as of 2026-10-14. The warning does not establish a Focus-cost refusal: ability 592 requires ammo, and current server code has no Focus gate. The full-Focus shot disproves a blanket server damage failure; normal ammo/grant path and visible fire/recoil remain unproven. N02 needs a bounded current reproducer and combat/items ownership. |
 | CB-B04 | Same source: respawn at Mess Hall preceded helper observation (#1668); dialog-close helper reported success while dialog remained (#1706); unnamed corpse point hit avatar (#1708). | Harness/product distinction required. Lab campaign owns helper behavior; no content defect inferred from a tool success return. |
 | CB-B05 | Current seed 1172 delays dialog 5859 by 26100ms after scene start; 1161 delays 2516 by 10100ms. `mission_686_straegis.rs::live_db_straegis_followup_allows_aftermath_dialog_to_be_read` exists. Rebuild UAT guide cites #1721. | S: old short-gap repair already present; do not open duplicate N02 repair. Real dialog reading/closure remains UATPending. |
 | CB-B06 | Current seed 689 chains 1022–1025; all six 681–686 controllers hidden in missions.sql; hidden/backstop/flank tests exist. | S: earlier inert-boots/visible-controller claims cannot establish current defects. No compile or live-DB pass claimed here. |
@@ -22,6 +22,11 @@ Sources of planned probes:
 [rebuild UAT](../castle-cellblock-rebuild/uat-guide.md),
 [current spec](../../guides/uat-specs/castle-cellblock.toml),
 [asset UAT](../cellblock-asset-audit/uat-guide.md).
+The current `starter_kit_live_db.rs` guard fires loaded ability 592 at zero
+Focus and rejects an empty magazine; it is a server simulation, not a native
+client pass or proof that the normal tutorial grant/reload path worked. A
+native reload fills the magazine only after its completion tick. CB-U02 must
+observe that completion before attributing no damage to combat resolution.
 The old zone-audit count ending at 687 is a historical summary, not this baseline;
 688 and internal 689 are reconciled in the [matrix](evidence-matrix.md).
 
@@ -45,15 +50,16 @@ The next CB-U02 attempt must use a known fresh character and capture the actual
 
 ## Bounded fresh acceptance rows
 
-All rows below are **UATPending**. Obtain separate owner approval before any lab
-lease/start/server change. Record server/client/patch versions, player archetype,
+All rows below are **UATPending**. O14-08 grants standing approval for the four
+zone sessions to lease/start/restart the lab and select a reviewed local server,
+subject to one-lease coordination. Record server/client/patch versions, player archetype,
 scenario, timestamps and client-visible result beside server action evidence.
 Do not attest first-press feedback from `content.resolve` or a helper's return alone.
 
 | Row | Probe and required observation | Owner / dependency |
 |---|---|---|
 | CB-U01 | Fresh Human and Jaffa boot lock; use 3438, native Livewire, unlock; relog before/after. Show actual movement/UI plus 1022–1025 state. | N02; minigame/items, existing T25 |
-| CB-U02 | Frost/guard search, pistol equip and loaded ammo, first guard damage/fire/recoil. Capture refusal or combat trace correlated to visible action. Repeat/relog without duplicate grants. | N02; #1667 combat/items owner |
+| CB-U02 | On a fresh normal character, capture chain 1005 granting pistol 55 and ability 592, equip, native reload from 0/15 to loaded, Focus before guard acquisition, at least two native shots at about 3–4 m, ammo/guard HP and visible fire/recoil. Correlate server launch/refusal, ammo consumption, effect/sequence and packet results; repeat/relog without duplicate grants. A zero-Focus warning alone does not prove an ability refusal. | N02; #1667 combat/items/class-start owner |
 | CB-U03 | 329 dialog/door and med-station cover+kill in both orders; real cure feedback and sickness state. | N02/N03; T07 and existing route rows |
 | CB-U04 | Rings to Preparation/topside, Marsh first/repeat/relog escort/barks, terminal/pods. A completed mission alone cannot attest opening. | N01 + ring/asset/class-start |
 | CB-U05 | Mess Hall/Hallway05 guard acquires cover; player flanks with threat; objective credit and kill-only progression; out-of-order dead-guard restoration. | N03; existing T29 |

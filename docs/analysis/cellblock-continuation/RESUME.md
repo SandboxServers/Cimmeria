@@ -22,12 +22,18 @@
 - Checks: packet/fixer and wave-close whitespace, CRLF, scoped markdownlint and
   local file links pass. Repo-wide wrapper has pre-existing warnings.
   Anchors/remote links, runtime/seed checks and client UAT are untested.
-- Next action: obtain domain seals and exact current route/lineage evidence for
-  N01/N02; reconcile asset/ring/class-start/autoplay ownership before dispatch.
-- Blockers: UNSEALED live route and build joins, owner cast/story/placement/reward
-  decisions, reachability sign-off, ID reconciliation, and first-authored-quest
-  live journal/progression proof. CB-N05a infrastructure is on `main`;
-  production mission additions remain empty.
+- Integrated CB-N01: reviewed presentation/ownership handoff, no runtime proof.
+- Next action: reproduce the normal-resource guard route and #1667 in N02; seal the
+  first authored story for live catalog proof before any further authoring.
+- Blockers: UNSEALED live route and build joins, domain-reviewed
+  cast/story/placement/reward detail, reachability sign-off, individual ID
+  collision audits, and first-authored-quest live journal/progression proof.
+  O14-04/O14-10/O14-12 delegate these bounded seals; CB-N05a infrastructure
+  is on `main`, while production mission additions remain empty.
   All downstream implementation packets stay blocked pending their complete seals.
 - No lab lease, client launch/server change, push or PR occurred. FZ-99 owns
   shared status docs; this wave does not close the campaign.
+- [Standing O14 decisions](../four-zone-planning/owner-decisions-2026-10-14.md):
+  coordinated lab use is approved, not passed; unavailable-lab rows may be
+  `UATPending`, while observed gameplay failures block merge. Core pacing is
+  30–45 minutes, with at most 10 optional minutes; N06/N07 are conditional.

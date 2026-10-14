@@ -2,7 +2,7 @@
 
 > Opened 2026-10-14. Static baseline: `d3efb7d41aad0b6008397f112d224ce7430d7acf`.
 > **Type**: Reference. **Audience**: Engineers and campaign coordinators.
-> **Last updated**: 2026-10-14. **Companions**: [Wave resume](RESUME.md), [CB-N00 worknote](worknotes/cb-n00.md).
+> **Last updated**: 2026-10-14. **Companions**: [Wave resume](RESUME.md), [CB-N00 worknote](worknotes/cb-n00.md), [CB-N01 handoff](presentation-handoff.md).
 > CB-N00 is **Integrated** for the evidence/doc gate only. Fresh route acceptance is **UATPending**.
 
 This is the live ledger for the one-time escape in world 12. The
@@ -16,31 +16,36 @@ A completed source audit does not make a runtime packet Ready.
   current chain anchors and evidence limits.
 - [Route baseline](route-baseline.md): prior observations, current faults, ownership,
   development population and unverified safe pockets.
+- [Presentation handoff](presentation-handoff.md): asset, ring, class-start,
+  autoplay and lab-reliability ownership with evidence and client row boundaries.
 - [Decision log](decision-log.md): settled policy and outstanding design gates.
 - [Wave resume](RESUME.md): reviewed commits, checks, next action and blockers.
 - [CB-N00 worknote](worknotes/cb-n00.md): checks, scope and measurement handoff.
+- [CB-N01 worknote](worknotes/cb-n01.md): presentation handoff checks and limits.
 
 ## Packet status
 
 | Packet | Status | Dependencies and next seal |
 |---|---|---|
 | CB-N00 | Integrated | Evidence/doc gate passed two review rounds through `b59c4a124`; fresh route and lineage rows remain UNSEALED and client UATPending. No downstream runtime seal is granted. |
-| CB-N01 | BlockedDependency | Accept N00; reconcile asset, ring, class-start and autoplay branches; sign presentation ownership. |
-| CB-N02 | BlockedDependency | N00/N01; reproduce one current fault against exact seed/server/client revisions. #1667 remains open. |
+| CB-N01 | Integrated | Presentation and sibling ownership handoff passed independent review and focused status correction review; runtime and client rows remain UATPending. |
+| CB-N02 | BlockedDependency | Fresh known-character route and #1667 normal-resource reproduction against exact seed/server/client revisions before sealing any correction; CB-U02 itself is UATPending. |
 | CB-N03 | BlockedDependency | Current guard-cover reachability observation and combat/NPC/mission sign-off; no new mandatory kills. |
-| CB-N04 | BlockedDecision | Cast count/tone and physical placement approval; N00/N01; one room cluster per child. |
-| CB-N05a | BlockedDependency | Standalone catalog infrastructure seal/review on main; no client insertion proof claimed by N00. |
-| CB-N05 | BlockedDecision | Approved story/copy/reward/IDs; N05a merge and first authored catalog proof; N05b Castle recipient contract. |
+| CB-N04 | BlockedDependency | O14-12 delegates cast and placement approval; measure safe pockets, then seal one room cluster per child. |
+| CB-N05a | UATPending | Catalog infrastructure merged to `main` in #1734 and integrated here; the first real authored mission must pass journal, dialog, advance and relog before this gate closes. |
+| CB-N05 | BlockedDependency | O14-10 delegates bounded first story, copy, reward and IDs after review; seal the smallest first authored catalog proof, then verify it live. |
 | CB-N05b | BlockedDependency | N05 outline/IDs; Castle recipient ownership and same-feature-branch delivery. |
-| CB-N06 | BlockedDecision | Owner selects a second optional story after N05 pacing results. |
-| CB-N07 | BlockedDecision | Difficulty/time/death ceiling; N03 reachability; one approved room behavior. |
+| CB-N06 | BlockedDependency | Conditional under O14-15: include only after N05 live pacing and safety show benefit within the 10-minute optional budget. |
+| CB-N07 | BlockedDependency | Conditional under O14-15: include only after live pacing and safety show benefit; N03 reachability and one-room design remain gates. |
 | CB-N08 | BlockedDependency | Selected packets, sibling integrations, full local CI/fresh review; live rows UATPending until approved run. |
 
 The eleven packet families are scopes; an implementation child needs the complete
-seal required by the packet contract. No new ID, placement, dialogue or authored
-reward is approved here. Chain block 11000–11499 is the planning reservation;
-individual claims remain proposals until the coordinator reconciles all four gates.
-CB-N05a remains the early standalone PR exception. FZ-99 owns shared status docs.
+seal required by the packet contract. No production ID, placement, dialogue or
+authored reward has been sealed here. O14-04 and O14-10 delegate bounded approval
+after evidence and domain review. Chain block 11000–11499 is the planning
+reservation; each individual claim needs a stock-catalog, shared-table, seed
+and active-branch collision audit. CB-N05a is the merged early standalone PR
+exception. FZ-99 owns shared status docs.
 
 ## Integration boundary
 
