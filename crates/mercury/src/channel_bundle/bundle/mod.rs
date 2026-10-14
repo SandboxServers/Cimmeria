@@ -36,6 +36,8 @@ pub struct ChannelBundle {
     /// [`ChannelBundle::is_empty`] to distinguish "ack-only flush" from
     /// "no work to do."
     num_messages: usize,
+    /// Limit the first fragment to one complete message when possible.
+    isolate_first_fragment_message: bool,
 }
 
 impl ChannelBundle {
@@ -46,6 +48,7 @@ impl ChannelBundle {
             acks: Vec::new(),
             reliable,
             num_messages: 0,
+            isolate_first_fragment_message: false,
         }
     }
 
@@ -179,6 +182,13 @@ impl ChannelBundle {
         self.acks.len()
     }
 
+    /// Keep only the first complete framed message in the first fragment of
+    /// this bundle when it fits. Intended for the cinematic AoI cascade:
+    /// after the first fragment the client clears a stale request cursor.
+    pub fn isolate_first_fragment_message(&mut self) {
+        self.isolate_first_fragment_message = true;
+    }
+
     /// Predicted fragment count if the bundle were finalized now. Useful
     /// for caller-side TX-window-pressure checks before committing to a
     /// finalize.
@@ -190,7 +200,7 @@ impl ChannelBundle {
                 1
             }
         } else {
-            crate::packet::fragment_count(&self.body)
+            self.fragment_plan().ranges.len()
         }
     }
 
@@ -198,7 +208,11 @@ impl ChannelBundle {
     /// packet, plus the number of cuts moved off a message header. For
     /// flush-shape telemetry.
     pub fn fragment_plan(&self) -> crate::packet::FragmentPlan {
-        crate::packet::plan_fragments(&self.body)
+        if self.isolate_first_fragment_message {
+            crate::packet::plan_fragments_isolated_first_message(&self.body)
+        } else {
+            crate::packet::plan_fragments(&self.body)
+        }
     }
 
     /// Finalize the bundle into one or more encrypted Mercury packets.
@@ -240,8 +254,9 @@ impl ChannelBundle {
         if self.body.is_empty() && self.acks.is_empty() {
             return (Vec::new(), 0);
         }
-        crate::packet::build_fragmented_bundle(
-            base_flags, &self.body, base_seq, &self.acks, encrypt,
+        let plan = self.fragment_plan();
+        crate::packet::build_fragmented_bundle_with_plan(
+            base_flags, &self.body, base_seq, &self.acks, plan, encrypt,
         )
     }
 }

@@ -141,6 +141,18 @@ fn walk(body: &[u8]) -> Walk {
 /// Plan the packet cuts for `body`. A body of at most [`FRAGMENT_BODY_SIZE`]
 /// is one range.
 pub fn plan_fragments(body: &[u8]) -> FragmentPlan {
+    plan_fragments_inner(body, false)
+}
+
+/// Plan a fragmented body so its first packet ends with its first complete
+/// framed message, when that message fits in a packet. Later cuts retain the
+/// ordinary header guard. If the first message exceeds the packet body limit,
+/// the first cut remains inside its body at the ordinary limit.
+pub fn plan_fragments_isolated_first_message(body: &[u8]) -> FragmentPlan {
+    plan_fragments_inner(body, true)
+}
+
+fn plan_fragments_inner(body: &[u8], isolate_first: bool) -> FragmentPlan {
     if body.len() <= FRAGMENT_BODY_SIZE {
         return FragmentPlan {
             ranges: std::iter::once(0..body.len()).collect(),
@@ -154,7 +166,13 @@ pub fn plan_fragments(body: &[u8]) -> FragmentPlan {
     let mut guarded = 0usize;
     let mut start = 0usize;
     while body.len() - start > FRAGMENT_BODY_SIZE {
-        let mut cut = start + FRAGMENT_BODY_SIZE;
+        let mut cut = if start == 0 && isolate_first {
+            super::message_head::message_end(body, 0)
+                .filter(|&end| end < body.len() && end <= FRAGMENT_BODY_SIZE)
+                .unwrap_or(FRAGMENT_BODY_SIZE)
+        } else {
+            start + FRAGMENT_BODY_SIZE
+        };
         // At most two steps: the forbidden run is `s + 1, s + 2`.
         while forbidden.binary_search(&cut).is_ok() {
             cut -= 1;
@@ -195,6 +213,21 @@ mod tests {
     fn small_body_is_one_range() {
         let plan = plan_fragments(&word_msg(100));
         assert_eq!(plan.ranges, vec![0..103]);
+    }
+
+    #[test]
+    fn isolated_first_message_cuts_at_its_end_or_inside_a_large_body() {
+        let mut short = word_msg(97);
+        short.extend(word_msg(FRAGMENT_BODY_SIZE + 20));
+        let plan = plan_fragments_isolated_first_message(&short);
+        assert_eq!(plan.ranges[0], 0..100);
+        assert_eq!(plan.ranges.last().unwrap().end, short.len());
+
+        let mut long = word_msg(FRAGMENT_BODY_SIZE + 20);
+        long.extend(word_msg(97));
+        let plan = plan_fragments_isolated_first_message(&long);
+        assert_eq!(plan.ranges[0], 0..FRAGMENT_BODY_SIZE);
+        assert_eq!(plan.ranges.last().unwrap().end, long.len());
     }
 
     #[test]

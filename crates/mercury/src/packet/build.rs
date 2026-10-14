@@ -147,6 +147,26 @@ pub fn build_fragmented_bundle(
     acks: &[u32],
     encrypt: impl Fn(&[u8]) -> Vec<u8>,
 ) -> (Vec<Vec<u8>>, u32) {
+    build_fragmented_bundle_with_plan(
+        base_flags,
+        body,
+        base_seq,
+        acks,
+        super::plan_fragments(body),
+        encrypt,
+    )
+}
+
+/// Finalize using the same fragment plan used by the caller to reserve seqs
+/// and record fragment heads. The caller must plan this exact `body`.
+pub(crate) fn build_fragmented_bundle_with_plan(
+    base_flags: u8,
+    body: &[u8],
+    base_seq: u32,
+    acks: &[u32],
+    plan: super::FragmentPlan,
+    encrypt: impl Fn(&[u8]) -> Vec<u8>,
+) -> (Vec<Vec<u8>>, u32) {
     let base_seq = base_seq & super::SEQUENCE_MASK;
     if body.len() <= FRAGMENT_BODY_SIZE {
         // Fits in one packet — no fragmentation needed.
@@ -159,7 +179,6 @@ pub fn build_fragmented_bundle(
     // Calculate fragment count and sequence range. The cuts are planned on
     // message boundaries where a raw cut would split a message header (the
     // client discards the rest of a bundle whose header straddles packets).
-    let plan = super::plan_fragments(body);
     let num_frags = plan.ranges.len();
     let frag_begin = base_seq;
     // `wrapping_add` + mask: if `base_seq + num_frags - 1` straddles the 28-bit
