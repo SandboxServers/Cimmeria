@@ -49,6 +49,7 @@ mod deferred;
 mod dialog;
 mod dispatch;
 mod inventory;
+pub(crate) mod letter_turn_in;
 mod loot;
 mod mail;
 mod mission;
@@ -80,6 +81,7 @@ pub(super) use inventory::item_container;
 // `crate::cell::content::<fn>` depth as `build_engine` and the `fire_*`
 // dispatchers.
 pub use deferred::deferred_content_action_tick;
+pub use letter_turn_in::letter_turn_in_retry_tick;
 // The base's answer to `show_tutorial` (`BaseToCellMsg::TutorialRecorded`),
 // handled by `cell::service::base_messages`.
 pub use tutorial::apply_tutorial_recorded;

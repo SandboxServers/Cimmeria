@@ -52,6 +52,7 @@ pub use event_dispatch::{
 // per tick from `cell::service::message_loop`, same flat depth as the
 // `fire_*` dispatchers above.
 pub use executor::deferred_content_action_tick;
+pub use executor::letter_turn_in_retry_tick;
 // The `show_tutorial` round trip's second half (`BaseToCellMsg::TutorialRecorded`).
 pub use executor::apply_tutorial_recorded;
 // The H52 step-activation region replay. Its re-entrancy guard lives on

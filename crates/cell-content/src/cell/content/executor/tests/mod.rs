@@ -51,6 +51,7 @@ mod deferred;
 mod effects;
 mod grant_item;
 mod inventory_counter;
+mod letter_turn_in;
 mod mail;
 mod mission;
 mod negative_logging;
