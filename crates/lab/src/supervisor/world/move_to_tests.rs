@@ -145,6 +145,29 @@ async fn move_to_follows_waypoints_in_order() {
     .unwrap();
     assert_eq!(out["legs"].as_array().unwrap().len(), 2);
     assert_eq!(out["legs"][0]["outcome"]["arrived"], true);
+    let corner_m = out["legs"][0]["outcome"]["distance_m"].as_f64().unwrap();
+    assert!(corner_m <= 0.5, "cut navmesh corner by {corner_m} m");
+    assert_eq!(out["legs"][0]["arrival_m"], 0.5);
+    assert_eq!(out["legs"][1]["arrival_m"], 1.5);
+}
+
+#[tokio::test]
+async fn move_to_allows_a_tighter_corner_without_changing_final_arrival() {
+    let mut sim = Sim::live();
+    let out = movement::run(
+        &mut sim,
+        MoveRequest {
+            waypoints: vec![client_point(1000.0, 1000.0, 0.0)],
+            point: Some(client_point(0.0, 2000.0, 0.0)),
+            waypoint_arrival_m: Some(0.3),
+            ..MoveRequest::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(out["legs"][0]["arrival_m"], 0.3);
+    assert_eq!(out["legs"][1]["arrival_m"], 1.5);
+    assert_eq!(out["native_level"], "real_input");
 }
 
 #[tokio::test]

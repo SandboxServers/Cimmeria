@@ -45,6 +45,102 @@ async fn query(mgr: &mut SpaceManager, q: LabQuery) -> crate::cell::messages::La
     reply_rx.await.expect("LabQuery must always reply")
 }
 
+/// The path tool must never advertise a partial Detour corridor as a route
+/// to the requested room. Complete routes carry corners a lab can replay.
+#[tokio::test]
+async fn nav_path_only_exposes_complete_corridors() {
+    let mut mgr = make_manager();
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../data/spaces/castle_cellblock.nav");
+    let mesh = cimmeria_entity::navigation::NavMesh::load(&path).unwrap();
+    let space_id = mgr.space_id_for_world("Agnos").unwrap();
+    mgr.spaces.get_mut(&space_id).unwrap().navmesh = Some(mesh);
+    let start = [-96.25, 34.591, -91.59];
+
+    let LabQueryReply::NavPath {
+        status, waypoints, ..
+    } = query(
+        &mut mgr,
+        LabQuery::NavPath {
+            space_id,
+            from: start,
+            to: [-128.853, 39.552, -73.534],
+        },
+    )
+    .await
+    .unwrap()
+    else {
+        panic!("expected path")
+    };
+    assert_eq!(status, "ok");
+    assert!(waypoints.len() >= 2);
+
+    let LabQueryReply::NavPath {
+        status, waypoints, ..
+    } = query(
+        &mut mgr,
+        LabQuery::NavPath {
+            space_id,
+            from: start,
+            to: [-400.0, 0.2, -400.0],
+        },
+    )
+    .await
+    .unwrap()
+    else {
+        panic!("expected path")
+    };
+    assert_eq!(status, "partial");
+    assert!(
+        waypoints.is_empty(),
+        "a partial route would walk to the wrong room"
+    );
+
+    // The UAT failure's Preparation-to-Mess-Hall leg crosses a ring
+    // transport boundary; it cannot be presented as a single walk.
+    let LabQueryReply::NavPath {
+        status, waypoints, ..
+    } = query(
+        &mut mgr,
+        LabQuery::NavPath {
+            space_id,
+            from: [-196.0, 55.0, -150.0],
+            to: start,
+        },
+    )
+    .await
+    .unwrap()
+    else {
+        panic!("expected path")
+    };
+    assert_ne!(status, "ok", "the ring boundary cannot be walked");
+    assert!(waypoints.is_empty());
+
+    // Detour accepts a goal hovering within its loose end-poly search box;
+    // snapping it down nearly two metres would miss the requested point.
+    let LabQueryReply::NavPath {
+        status,
+        waypoints,
+        end_snap,
+        ..
+    } = query(
+        &mut mgr,
+        LabQuery::NavPath {
+            space_id,
+            from: start,
+            to: [start[0], start[1] + 1.9, start[2]],
+        },
+    )
+    .await
+    .unwrap()
+    else {
+        panic!("expected path")
+    };
+    assert_eq!(status, "end_snap_far");
+    assert!(end_snap.is_some());
+    assert!(waypoints.is_empty(), "off-mesh destination must not replay");
+}
+
 /// `EntityGet` returns a snapshot of the named entity; an unknown id yields a
 /// `null` entity (never an error).
 #[tokio::test]

@@ -1,0 +1,7 @@
+# Cellblock route findings
+
+- 2026-10-13: `client_move_to` already consumes ordered `waypoints` through real W and bound turn-key input and reports `native_level: real_input` (crates/lab/src/supervisor/world/movement.rs). The missing input was a navigable corridor source.
+- The shipped `castle_cellblock.nav` has separate islands. The 2026-10-13 UAT failure from Preparation near (-196,55,-150) toward Mess Hall Guard1 (-96.25,34.591,-91.59) crosses a ring transport boundary; a single walk cannot reach it. The new `server_nav_path` reports no replayable waypoints for that query, preserving transport provenance.
+- `NavMesh::find_path` can return `Partial` with a nonempty path that stops short of the requested end. Lab route output deliberately exposes corners only for `PathStatus::Ok`; regression guarded in `crates/cell/src/cell/service/base_messages/tests/lab_query.rs`.
+- 2026-10-13 review correction: `PathStatus::Ok` can still snap a requested destination over 1.5 m away; lab route output now returns `end_snap_far` and no corners in that case. `client_move_to` uses a separate 0.5 m intermediate-waypoint radius so navmesh corners are not cut by the final-point 1.5 m radius.
+- Partial navmesh corridors expose `reason: no_path` alongside their detailed status; an overly distant endpoint snap uses `reason: end_snap_far`. This lets route consumers branch without parsing every Detour status.
