@@ -188,8 +188,8 @@ async fn a_target_behind_the_avatar_is_clicked_after_a_yaw_retry() {
 
 /// Probe B-P2: the actor `Location` is the feet and hovering it gives
 /// nothing, so the click must aim at a body point. In this sim the feet hover
-/// nothing (`REAL_BODY_DZ`). Reverting `HOVER_OFFSETS` to a set that starts at
-/// the feet makes `tried[0]` a `nothing` at `dz` 0 and this test fails.
+/// nothing (`REAL_BODY_DZ`). The chest must stay first even though the
+/// entity hover search now tries the actor origin last for small props.
 #[tokio::test]
 async fn the_click_aims_above_the_feet() {
     let mut sim = Sim::new().with_entity(11, "Trainer", Vec3::new(1000.0, 0.0, 0.0));
@@ -217,6 +217,40 @@ async fn the_click_aims_above_the_feet() {
     let y = first["at"][1].as_f64().unwrap();
     assert!(y < feet.1 - 40.0, "aimed at y {y}, feet at {}", feet.1);
     assert!(detail["view_retries"].is_null(), "{detail}");
+}
+
+/// A vial on a desk has a hit shape at actor Location and none at humanoid
+/// body heights. The native cursor must reach the origin before clicking.
+#[tokio::test]
+async fn a_small_prop_clicks_at_its_actor_origin() {
+    let mut sim = Sim::new().with_entity(11, "Ambernol Vial", Vec3::new(400.0, 0.0, 0.0));
+    sim.entities[0].window = Some("VialWin".into());
+    sim.body_dz = vec![0.0];
+    let out = click::run(
+        &mut sim,
+        "client_world_click",
+        ClickRequest {
+            entity_id: Some(11),
+            expect: Some(Expect::Window),
+            ..ClickRequest::default()
+        },
+        None,
+    )
+    .await
+    .unwrap();
+    assert_eq!(out["hover_verified"], true, "{out}");
+    assert_eq!(out["result"]["windows_opened"][0], "VialWin");
+    assert_eq!(sim.buttons, vec![(1, true), (1, false)]);
+    let detail = hover_detail(out["steps"].as_array().unwrap());
+    let tried = detail["tried"].as_array().unwrap();
+    assert_eq!(tried.last().unwrap()["dz"], 0.0, "{detail}");
+    assert_eq!(tried.last().unwrap()["hover"], "entity", "{detail}");
+    assert!(
+        tried[..tried.len() - 1]
+            .iter()
+            .all(|t| t["hover"] != "entity"),
+        "{detail}"
+    );
 }
 
 /// The avatar covers the target's lower body only (the camera is behind and
