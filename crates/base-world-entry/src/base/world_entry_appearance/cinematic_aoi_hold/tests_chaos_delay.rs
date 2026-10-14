@@ -158,6 +158,7 @@ async fn delay_holds_aoi_traffic_without_stalling_client_ready() {
     let addr: SocketAddr = "127.0.0.1:55831".parse().unwrap();
     let mut state = test_default_connected_client_state();
     state.player_entity_id = Some(PLAYER);
+    state.active_player_id = Some(42);
     state.player_name = Some("Tester".to_string());
     state.pending_client_ready = Some(PendingClientReadyInfo {
         entity_id: PLAYER,
