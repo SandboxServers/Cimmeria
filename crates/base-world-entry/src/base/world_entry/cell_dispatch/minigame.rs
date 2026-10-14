@@ -200,9 +200,11 @@ async fn send_launch_failure(
 /// and forward the result to CellApp so it can fire any victory chains.
 pub(super) async fn minigame_result(
     entity_id: u32,
+    ticket: &str,
     result_code: u8,
     on_victory_chains: Vec<i64>,
     notify_client: bool,
+    registry: &Option<crate::minigame::SessionRegistry>,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
@@ -219,7 +221,11 @@ pub(super) async fn minigame_result(
     );
     // An explicit window close already hid the UI. A late onEndMinigame
     // would close a new board if the player reopened immediately.
-    if notify_client {
+    let replaced = match registry {
+        Some(registry) => registry.has_replacement_ticket(entity_id, ticket).await,
+        None => false,
+    };
+    if notify_client && !replaced {
         let method = crate::cell::dispatch::CLIENT_MG_ON_END_MINIGAME;
         send_to_witness_reliable(
             transport,
@@ -353,32 +359,58 @@ mod tests {
         let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(77u32, addr)])));
         let registry = SessionRegistry::new();
         let configured = Some(registry.clone());
-        for _ in 0..2 {
-            start_minigame(
-                77,
-                1,
-                "Livewire".into(),
-                1,
-                vec![],
-                &(transport.clone() as Arc<dyn Transport>),
-                &connected,
-                &entity_to_addr,
-                &configured,
-                "203.0.113.1",
-                9339,
-            )
-            .await;
-        }
+        start_minigame(
+            77,
+            1,
+            "Livewire".into(),
+            1,
+            vec![],
+            &(transport.clone() as Arc<dyn Transport>),
+            &connected,
+            &entity_to_addr,
+            &configured,
+            "203.0.113.1",
+            9339,
+        )
+        .await;
+        assert_eq!(transport.drain().len(), 1, "first click launches Livewire");
+        start_minigame(
+            77,
+            1,
+            "Livewire".into(),
+            1,
+            vec![],
+            &(transport.clone() as Arc<dyn Transport>),
+            &connected,
+            &entity_to_addr,
+            &configured,
+            "203.0.113.1",
+            9339,
+        )
+        .await;
         assert_eq!(registry.session_count().await, 1);
-        assert_eq!(
-            transport.send_count_to(addr),
-            2,
-            "first launch sends onStartMinigame; refused second click sends feedback"
+        let sent = transport.filter_to(addr);
+        assert_eq!(sent.len(), 1, "refused click emits exactly one packet");
+        let args = serialize_on_player_communication(
+            "SYSTEM",
+            0,
+            CHAN_FEEDBACK,
+            "Minigame could not start. Close any open minigame and try again.",
         );
+        let expected = build_player_entity_method_packet(
+            &[0u8; 32],
+            1,
+            &[],
+            77,
+            crate::mercury::method_idx::ON_PLAYER_COMMUNICATION,
+            &args,
+            cimmeria_mercury::encryption::EncryptionVersion::V1,
+        );
+        assert_eq!(sent[0], expected, "refused click uses CHAN_FEEDBACK");
     }
 
     #[tokio::test]
-    async fn explicit_window_close_result_does_not_end_a_reopened_board() {
+    async fn stale_result_does_not_end_a_reopened_board_even_if_fin_won() {
         let addr: SocketAddr = "10.0.0.5:5000".parse().unwrap();
         let transport = Arc::new(TestTransport::new());
         let connected = Arc::new(Mutex::new(HashMap::from([(
@@ -387,16 +419,55 @@ mod tests {
         )])));
         let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(77u32, addr)])));
         let (cell_tx, mut cell_rx) = mpsc::channel(2);
+        let registry = SessionRegistry::new();
+        let old_ticket = registry
+            .register(
+                77,
+                1,
+                "Livewire".into(),
+                1,
+                1,
+                0,
+                0,
+                0,
+                1,
+                vec![],
+                None,
+                Some(addr.ip()),
+            )
+            .await
+            .unwrap();
+        assert!(registry.cancel(77).await);
+        let new_ticket = registry
+            .register(
+                77,
+                1,
+                "Livewire".into(),
+                1,
+                1,
+                0,
+                0,
+                0,
+                1,
+                vec![],
+                None,
+                Some(addr.ip()),
+            )
+            .await
+            .unwrap();
+        assert_ne!(old_ticket, new_ticket);
 
         minigame_result(
             77,
+            &old_ticket,
             0,
             vec![],
-            false,
+            true,
+            &Some(registry.clone()),
             &(transport.clone() as Arc<dyn Transport>),
             &connected,
             &entity_to_addr,
-            &Some(cell_tx),
+            &Some(cell_tx.clone()),
         )
         .await;
         assert_eq!(
@@ -412,5 +483,23 @@ mod tests {
                 ..
             })
         ));
+        minigame_result(
+            77,
+            &new_ticket,
+            1,
+            vec![],
+            true,
+            &Some(registry),
+            &(transport.clone() as Arc<dyn Transport>),
+            &connected,
+            &entity_to_addr,
+            &Some(cell_tx),
+        )
+        .await;
+        assert_eq!(
+            transport.send_count_to(addr),
+            1,
+            "current result still ends its board"
+        );
     }
 }

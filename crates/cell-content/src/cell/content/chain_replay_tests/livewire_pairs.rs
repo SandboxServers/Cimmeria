@@ -388,9 +388,9 @@ async fn live_db_chain_1061_victory_completes_641_and_accepts_680() {
 
     assert_eq!(
         actions.len(),
-        6,
-        "chain 1061 must resolve exactly 6 actions (dialog + complete + \
-         accept + 3 interaction bits); got {actions:?}",
+        5,
+        "chain 1061 must resolve exactly 5 actions (dialog + complete + \
+         accept + 2 ring-switch bits); got {actions:?}",
     );
     assert!(
         matches!(&actions[0], Action::DisplayDialog { dialog_id: 3998 }),
@@ -428,13 +428,14 @@ async fn live_db_chain_1061_victory_completes_641_and_accepts_680() {
          (mask 2^30) on Preparation_RingSwitch; got {:?}",
         actions[4],
     );
+    // The terminal's bit is global to every witness. One player's victory
+    // must not remove the entry point for another player still at step 3564.
     assert!(
-        matches!(
-            &actions[5],
+        !actions.iter().any(|action| matches!(
+            action,
             Action::SetInteractionType { entity_tag, operation, mask: 256 }
             if entity_tag == "Preparation_Terminal" && operation == "~"
-        ),
-        "chain 1061 must clear the terminal only after victory; got {:?}",
-        actions[5],
+        )),
+        "chain 1061 must leave the shared terminal cue for other players; got {actions:?}",
     );
 }

@@ -475,6 +475,17 @@ impl SessionRegistry {
         true
     }
 
+    /// Whether the current registration belongs to this SmartFox ticket.
+    /// An absent registration is not a replacement; a different ticket is.
+    pub async fn has_replacement_ticket(&self, entity_id: u32, ticket: &str) -> bool {
+        self.inner
+            .lock()
+            .await
+            .sessions
+            .get(&entity_id)
+            .is_some_and(|session| session.ticket != ticket)
+    }
+
     /// Remove a session only if it is still the one that minted `ticket`.
     /// Returns whether it was removed.
     ///

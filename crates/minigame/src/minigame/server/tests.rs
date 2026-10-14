@@ -21,108 +21,116 @@ use crate::test_support::LogCapture;
 /// socket stays open, report Canceled, and allow another board immediately.
 #[tokio::test]
 async fn explicit_close_cancels_socket_and_allows_reopen() {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let mut client = TcpStream::connect(listener.local_addr().unwrap())
-        .await
-        .unwrap();
-    let (server, _) = listener.accept().await.unwrap();
-    let registry = SessionRegistry::new();
-    let ticket = registry
-        .register(
-            4304,
-            7,
-            "Hack".into(),
-            1,
-            1,
-            0,
-            0,
-            0,
-            1,
-            vec![4242],
-            None,
-            Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
-        )
-        .await
-        .unwrap();
-    let session = registry
-        .authenticate_and_claim(4304, &ticket, "Hack")
-        .await
-        .unwrap();
-    let game = create_game(&session).unwrap();
-    let (tx, mut rx) = mpsc::channel(16);
-    let active = registry.clone();
-    let handle = tokio::spawn(async move {
-        let end = run_session(
-            server,
-            &active,
-            &tx,
-            session,
-            game,
-            ReadState::empty(),
-            Duration::from_secs(1800),
-        )
-        .await;
-        active.remove_if_ticket(4304, &ticket).await;
-        end
-    });
+    // Both the close RPC and SWF FIN can become ready before run_session is
+    // polled. Repeating the race catches an unbiased select that sometimes
+    // misreports the explicit close as ClientClosed (notify_client=true).
+    for _ in 0..16 {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut client = TcpStream::connect(listener.local_addr().unwrap())
+            .await
+            .unwrap();
+        let (server, _) = listener.accept().await.unwrap();
+        let registry = SessionRegistry::new();
+        let ticket = registry
+            .register(
+                4304,
+                7,
+                "Hack".into(),
+                1,
+                1,
+                0,
+                0,
+                0,
+                1,
+                vec![4242],
+                None,
+                Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+            )
+            .await
+            .unwrap();
+        let session = registry
+            .authenticate_and_claim(4304, &ticket, "Hack")
+            .await
+            .unwrap();
+        let game = create_game(&session).unwrap();
+        let (tx, mut rx) = mpsc::channel(16);
+        let active = registry.clone();
+        let handle = tokio::spawn(async move {
+            let end = run_session(
+                server,
+                &active,
+                &tx,
+                session,
+                game,
+                ReadState::empty(),
+                Duration::from_secs(1800),
+            )
+            .await;
+            active.remove_if_ticket(4304, &ticket).await;
+            end
+        });
 
-    read_until_game_begin(&mut client).await;
-    assert!(registry.cancel(4304).await);
-    assert_eq!(registry.session_count().await, 0);
-    let replacement = registry
-        .register(
-            4304,
-            7,
-            "Hack".into(),
+        read_until_game_begin(&mut client).await;
+        assert!(registry.cancel(4304).await);
+        tokio::io::AsyncWriteExt::shutdown(&mut client)
+            .await
+            .unwrap();
+        assert_eq!(registry.session_count().await, 0);
+        let replacement = registry
+            .register(
+                4304,
+                7,
+                "Hack".into(),
+                1,
+                1,
+                0,
+                0,
+                0,
+                1,
+                vec![],
+                None,
+                Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+            )
+            .await
+            .expect("closing the window must release the entity immediately");
+        let end = tokio::time::timeout(Duration::from_secs(5), handle)
+            .await
+            .expect("cancel must stop the open socket")
+            .unwrap();
+        assert_eq!(end.reason, EndReason::PlayerCanceled);
+        assert_eq!(
+            registry.session_count().await,
             1,
-            1,
-            0,
-            0,
-            0,
-            1,
-            vec![],
-            None,
-            Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
-        )
-        .await
-        .expect("closing the window must release the entity immediately");
-    let end = tokio::time::timeout(Duration::from_secs(5), handle)
-        .await
-        .expect("cancel must stop the open socket")
-        .unwrap();
-    assert_eq!(end.reason, EndReason::PlayerCanceled);
-    assert_eq!(
-        registry.session_count().await,
-        1,
-        "old task teardown must not delete the replacement ticket"
-    );
-    assert!(registry
-        .authenticate(4304, &replacement, "Hack")
-        .await
-        .is_some());
-    assert!(matches!(
-        rx.try_recv(),
-        Ok(CellToBaseMsg::MinigameResult {
-            entity_id: 4304,
-            result_code: RESULT_CANCELED,
-            notify_client: false,
-            ..
-        })
-    ));
-    let mut buf = [0u8; 4096];
-    let n = tokio::time::timeout(Duration::from_secs(5), async {
-        loop {
-            let n = tokio::io::AsyncReadExt::read(&mut client, &mut buf)
-                .await
-                .unwrap();
-            if n == 0 {
-                return n;
+            "old task teardown must not delete the replacement ticket"
+        );
+        assert!(registry
+            .authenticate(4304, &replacement, "Hack")
+            .await
+            .is_some());
+        assert!(matches!(
+            rx.try_recv(),
+            Ok(CellToBaseMsg::MinigameResult {
+                entity_id: 4304,
+                result_code: RESULT_CANCELED,
+                notify_client: false,
+                ..
+            })
+        ));
+        let mut buf = [0u8; 4096];
+        let n = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let n = tokio::io::AsyncReadExt::read(&mut client, &mut buf)
+                    .await
+                    .unwrap();
+                if n == 0 {
+                    return n;
+                }
             }
-        }
-    })
-    .await
-    .expect("the SmartFox socket must close");
-    assert_eq!(n, 0);
+        })
+        .await
+        .expect("the SmartFox socket must close");
+        assert_eq!(n, 0);
+    }
 }
 
 /// A slot from a throwaway tracker, for driving [`handle_connection`]

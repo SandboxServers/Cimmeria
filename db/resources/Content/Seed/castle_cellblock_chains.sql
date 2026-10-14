@@ -1466,7 +1466,8 @@ VALUES
   -- minigame trigger; the player needs to know to right-click it to
   -- start the hack. INT_MinigameLivewire (256) renders the wrench cursor
   -- the rest of the cellblock arc uses for HackTheRings_Switch.
-  -- Cleared by chain 1060 when they engage; restored on login by chain 1065.
+  -- Restored on login by chain 1065. The shared marker stays after one
+  -- player's victory so another player at step 3564 can still enter.
   (1058, 'set_interaction_type', NULL, 'Preparation_Terminal',
    '{"op": "|", "mask": 256}', 0, 2);
 
@@ -1519,11 +1520,10 @@ VALUES
   -- has a visual cue. Cleared on teleport_in (chain 1072) when they
   -- actually use it; restored on login by chain 1074.
   (1061, 'set_interaction_type', NULL, 'Preparation_RingSwitch',
-   '{"op": "|", "mask": 1073741824}', 0, 4),
-  -- Keep the terminal clickable after cancel or a refused registration.
-  -- The Livewire marker leaves only after the board is actually won.
-  (1061, 'set_interaction_type', NULL, 'Preparation_Terminal',
-   '{"op": "~", "mask": 256}', 0, 5);
+   '{"op": "|", "mask": 1073741824}', 0, 4);
+-- The terminal marker is shared by all players in this space. Keep it so a
+-- second player at step 3564 can still right-click after the first wins;
+-- chain 1060's step_status condition rejects a completed player.
 
 -- ============================================================
 -- MISSION 680 — Escape the Cellblock

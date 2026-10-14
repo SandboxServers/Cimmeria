@@ -165,8 +165,12 @@ the connection task finishes or the owner closes the window. Three things end it
    and signals the SmartFox task. That task reports Canceled (0), sends its
    close sequence and closes the socket. A new interaction can register a
    fresh ticket immediately; ticket-scoped teardown cannot remove it. A
-   refused launch sends a feedback line, and the Preparation terminal keeps
-   its Livewire marker until victory.
+   result carries its old ticket so Base also skips `onEndMinigame` when a
+   replacement ticket is already registered, even if the SWF's FIN won a
+   race with the close RPC. A refused launch sends a feedback line. The
+   Preparation terminal keeps its shared Livewire marker after one player's
+   victory so other players still at mission 641 step 3564 can launch; the
+   mission step gates completed players from starting another board.
 3. **The expiry sweep.** A session whose SWF never connects has no task to
    clean it up. `spawn_sweep` runs every `SWEEP_INTERVAL` (60 s) and drops
    every unconnected session older than `PENDING_SESSION_TTL` (180 s).

@@ -307,6 +307,9 @@ pub(super) async fn run_session(
 
         loop {
             tokio::select! {
+                // A window close and the SWF's FIN can arrive together. The
+                // close RPC must win so its result cannot end a new board.
+                biased;
                 _ = async { let _ = cancel.wait_for(|requested| *requested).await; } => {
                     end_reason = EndReason::PlayerCanceled;
                     game_complete = true;
@@ -353,6 +356,7 @@ pub(super) async fn run_session(
                                                 send_minigame_result(
                                                     result_tx,
                                                     entity_id,
+                                                    &session.ticket,
                                                     &game_name,
                                                     &player,
                                                     RESULT_VICTORY,
@@ -379,6 +383,7 @@ pub(super) async fn run_session(
                                                 send_minigame_result(
                                                     result_tx,
                                                     entity_id,
+                                                    &session.ticket,
                                                     &game_name,
                                                     &player,
                                                     RESULT_DEFEAT,
@@ -507,6 +512,7 @@ pub(super) async fn run_session(
                                 send_minigame_result(
                                     result_tx,
                                     entity_id,
+                                    &session.ticket,
                                     &game_name,
                                     &player,
                                     RESULT_VICTORY,
@@ -533,6 +539,7 @@ pub(super) async fn run_session(
                                 send_minigame_result(
                                     result_tx,
                                     entity_id,
+                                    &session.ticket,
                                     &game_name,
                                     &player,
                                     RESULT_DEFEAT,
@@ -568,6 +575,11 @@ pub(super) async fn run_session(
     // original's cell handler is what cleared `BSF_PlayingMinigame` and
     // released the movement lock. When either of those lands, dropping this
     // report would strand the player.
+    // FIN may have won the read arm just before the close RPC reached the
+    // registry. Recheck the watch before reporting an aborted result.
+    if !result_reported && *cancel.borrow() {
+        end_reason = EndReason::PlayerCanceled;
+    }
     if !result_reported {
         tracing::info!(
             entity_id,
@@ -595,6 +607,7 @@ pub(super) async fn run_session(
         send_minigame_result(
             result_tx,
             entity_id,
+            &session.ticket,
             &game_name,
             &player,
             RESULT_CANCELED,

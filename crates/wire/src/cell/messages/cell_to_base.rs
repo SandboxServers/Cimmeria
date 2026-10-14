@@ -738,6 +738,9 @@ pub enum CellToBaseMsg {
     /// Minigame result callback (minigame server → Cell via Base).
     MinigameResult {
         entity_id: u32,
+        /// SmartFox session ticket. Base uses it to reject stale UI teardown
+        /// after a close and immediate reopen.
+        ticket: String,
         result_code: u8,
         on_victory_chains: Vec<i64>,
         /// Explicit window close already hid the UI. A late onEndMinigame
