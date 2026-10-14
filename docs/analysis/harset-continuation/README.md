@@ -213,7 +213,7 @@ Tollana owns all seven recipient graphs in 9800–9999, including steps already 
 | HA-00b | Integrated, documentation evidence only; two review rounds and exact checks in [worknote](worknotes/HA-00b.md#wave-0-closeout-2026-10-14) |
 | Implementation pilot | BlockedDependency: coordinator must seal one small restoration packet, then record actual cost/checks/review before scaling |
 | Local CI/reviewer/fixer rounds | Two rounds: initial three findings fixed by `22982c17a`; fresh rereview has no findings. Docs checks pass; fmt/clippy/tests not applicable, no lane run |
-| Client UAT | UATPending; O14-08 gives standing lab approval for the four campaigns, with one coordinated lease at a time; no Harset lease or client result is recorded yet |
+| Client UAT | UATPending; O14-08 records campaign lab intent, but current repo instructions require asking the user and waiting for a fresh yes before lease, client start/restart or lab server change. No Harset lease or client result is recorded yet |
 | Shared four-zone ID amendments | Harset-only restoration proposals recorded, coordinator signoff pending; no active claims |
 | HA-00c | BlockedEvidence: CB-N05a is merged, while stock catalog inspection, Cellblock's first authored client proof, active-branch collision audit and domain graph signoffs remain; O14-04/10/13 delegate bounded allocation and policy |
 | HA-1360a | A1 transaction and stale-writer fence integrated (670 nextest and seven live-DB tests); A2a token/epoch fence integrated (1,256 default and 274 `lab-chaos` tests); A2b plugin routing and A3a strict action dispatched; A3b/c continuation and client proof remain open. A2c tracks a separate preexisting post-handoff race. Old 6501 keeps the branch undeployable. |
