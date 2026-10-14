@@ -376,6 +376,22 @@ mod tests {
         );
     }
 
+    /// Stock `/gmkilltarget <number>` sends -1 as an INT64; method 190 uses
+    /// the extended cell sub-slot 129 (`0x81`) and a 13-byte payload.
+    #[test]
+    fn gm_kill_target_sentinel_wire_bytes() {
+        let got = GameSession::cell_method(190, 0x1234, &(-1i64).to_le_bytes());
+        assert_eq!(
+            got,
+            [
+                0xBD, 0x0D, 0x00, // word length: entity id + sub-slot + INT64
+                0x34, 0x12, 0x00, 0x00, // GM entity id, little endian
+                0x81, // method 190 - 61
+                0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
+            ]
+        );
+    }
+
     /// `organizationKick` (0xD1): `INT32 orgId, WSTRING name`, no entity id.
     #[test]
     fn base_method_encoding() {

@@ -32,8 +32,10 @@
 #   acquired) and read the NPC side from SigNoz `npc_ai.aggro` rows, which
 #   carry the spawn's `tag` (`DebugArea_*`). The arena keeps cycling for
 #   anyone within 150 u (K25): filter on the tag, as these clauses do.
-# - Rows that kill an NPC on purpose use `/gmkilltarget <id>` with the id
-#   read from `@entity_find`, so they set `required_native = "G"`.
+# - Rows that kill an NPC on purpose select it with `@target` before
+#   `/gmkilltarget <id>`. The stock slash command sends -1 regardless of the
+#   numeric id, so the server uses the current selection. These rows set
+#   `required_native = "G"`.
 # - Teardown returns to the Z1 arrival (respawner 130's point).
 # - The four character rows (DA-U39, DA-U40, DA-U42, DA-U44) make and
 #   delete their own character, like castle-cellblock T01/T02, because they
@@ -1156,6 +1158,7 @@ setup = [
 ]
 step = [
   { tool = "@entity_find", args = { name = "Rat", exact = true }, label = "find" },
+  { tool = "@target", args = { name = "Rat" }, label = "target" },
   { chat = "/gmkilltarget ${rat_id}", label = "kill", tier = "G" },
   { wait_ms = 26000, label = "respawned" },
 ]
@@ -1368,9 +1371,11 @@ setup = [
 ]
 step = [
   { tool = "@entity_find", args = { name = "Cellblock Guard", exact = true }, label = "find-fast" },
+  { tool = "@target", args = { name = "Cellblock Guard" }, label = "target-fast" },
   { chat = "/gmkilltarget ${fast_id}", label = "kill-fast", tier = "G" },
   { tool = "@move_to", args = { point = { x = 420, y = 10.5, z = -926 }, arrival_m = 1.5 }, label = "move" },
   { tool = "@entity_find", args = { name = "Cellblock Guard", exact = true }, label = "find-slow" },
+  { tool = "@target", args = { name = "Cellblock Guard" }, label = "target-slow" },
   { chat = "/gmkilltarget ${slow_id}", label = "kill-slow", tier = "G" },
   { wait_ms = 36000 },
 ]
