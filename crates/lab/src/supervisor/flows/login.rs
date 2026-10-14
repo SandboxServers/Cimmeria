@@ -148,8 +148,8 @@ pub const SELECTED_SERVER_CHUNK: &str = "local s = ServerSelect_List:getFirstSel
      return 'selected', tostring(s and s:getText())";
 
 impl Supervisor {
-    /// Put the desktop foreground on the client once, then confirm that the
-    /// real CEGUI dispatch path reaches the requested login edit box.
+    /// Try to put the desktop foreground on this client, then confirm that
+    /// the real CEGUI dispatch path reaches the requested login edit box.
     async fn prepare_login_field(
         &self,
         run: &mut FlowRun<'_>,
@@ -160,8 +160,18 @@ impl Supervisor {
             .game_hwnd()
             .await
             .map_err(|e| run.fail(step, format!("client foreground: {e}")))?;
-        if let Err(e) = focus_client_window_once(hwnd) {
-            return Err(run.fail(step, e));
+        let pid = self
+            .client_pid()
+            .await
+            .ok_or_else(|| run.fail(step, "no client running"))?;
+        match focus_client_window_once(hwnd, pid) {
+            Ok(Some(diagnostic)) => tracing::warn!(
+                step,
+                diagnostic,
+                "lab_login: physical activation denied; checking PID-scoped input path"
+            ),
+            Ok(None) => {}
+            Err(e) => return Err(run.fail(step, e)),
         }
 
         self.verify_login_field_hit_test(run, step, window).await
@@ -525,7 +535,32 @@ async fn type_login_credentials(
     unreachable!("credential retries always return or fail on the final attempt")
 }
 
-fn focus_client_window_once(hwnd: isize) -> Result<(), String> {
+/// A failed physical activation is diagnostic: key and mouse messages go to
+/// this HWND, and virtual focus makes the game process them. A wrong owner
+/// PID is fatal because then that input could reach another process.
+fn login_foreground_result(
+    hwnd: isize,
+    expected_pid: u32,
+    owner_pid: u32,
+    foreground: (isize, u32),
+    activated: bool,
+) -> Result<Option<String>, String> {
+    if owner_pid == 0 || owner_pid != expected_pid {
+        return Err(format!(
+            "login target hwnd={hwnd:#x} belongs to pid={owner_pid}, expected pid={expected_pid}; input not sent"
+        ));
+    }
+    if activated {
+        Ok(None)
+    } else {
+        Ok(Some(format!(
+            "target hwnd={hwnd:#x} pid={expected_pid}; foreground hwnd={:#x} pid={}; direct and attached activation denied",
+            foreground.0, foreground.1
+        )))
+    }
+}
+
+fn focus_client_window_once(hwnd: isize, expected_pid: u32) -> Result<Option<String>, String> {
     #[cfg(windows)]
     {
         use windows_sys::Win32::Foundation::HWND;
@@ -534,9 +569,14 @@ fn focus_client_window_once(hwnd: isize) -> Result<(), String> {
             GetForegroundWindow, GetWindowThreadProcessId, SetForegroundWindow,
         };
 
-        let hwnd = hwnd as HWND;
-        let mut is_foreground = || unsafe { GetForegroundWindow() == hwnd };
-        let mut refocus = || unsafe { SetForegroundWindow(hwnd) != 0 };
+        let target = hwnd as HWND;
+        let mut owner_pid = 0;
+        unsafe { GetWindowThreadProcessId(target, &mut owner_pid) };
+        if owner_pid == 0 || owner_pid != expected_pid {
+            return login_foreground_result(hwnd, expected_pid, owner_pid, (0, 0), false);
+        }
+        let mut is_foreground = || unsafe { GetForegroundWindow() == target };
+        let mut refocus = || unsafe { SetForegroundWindow(target) != 0 };
         let mut refocus_from_foreground_thread = || unsafe {
             let foreground = GetForegroundWindow();
             if foreground.is_null() {
@@ -552,23 +592,31 @@ fn focus_client_window_once(hwnd: isize) -> Result<(), String> {
                 return false;
             }
 
-            let activated = SetForegroundWindow(hwnd) != 0;
+            let activated = SetForegroundWindow(target) != 0;
             let detached = AttachThreadInput(caller_thread, foreground_thread, 0) != 0;
             activated && detached
         };
-        if ensure_foreground_once(
+        let activated = ensure_foreground_once(
             &mut is_foreground,
             &mut refocus,
             &mut refocus_from_foreground_thread,
-        ) {
-            Ok(())
-        } else {
-            Err("client window is not foreground after direct and attached refocus attempts".into())
+        );
+        let foreground = unsafe { GetForegroundWindow() };
+        let mut foreground_pid = 0;
+        if !foreground.is_null() {
+            unsafe { GetWindowThreadProcessId(foreground, &mut foreground_pid) };
         }
+        login_foreground_result(
+            hwnd,
+            expected_pid,
+            owner_pid,
+            (foreground as isize, foreground_pid),
+            activated,
+        )
     }
     #[cfg(not(windows))]
     {
-        let _ = hwnd;
+        let _ = (hwnd, expected_pid);
         Err("desktop foreground verification is only available on Windows".into())
     }
 }
