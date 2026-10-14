@@ -6,6 +6,7 @@ use sqlx::PgPool;
 
 use crate::cell::messages::SavedMission;
 
+pub mod letter_turn_in;
 pub mod state_lock;
 
 /// Read the saved missions, falling back to none when the read fails.
@@ -173,6 +174,44 @@ pub async fn handle_mission_update(
         }
     };
 
+    if mission_id == 1360 {
+        let result = letter_turn_in::persist_active_letter_mission(
+            pool.as_ref(),
+            player_id,
+            status,
+            current_step_id,
+            completed_step_ids,
+            completed_objective_ids,
+            active_objective_ids,
+            failed_objective_ids,
+            repeats,
+        )
+        .await;
+        match result {
+            Ok(true) => tracing::debug!(
+                player_id,
+                mission_id,
+                "Mission 1360 active snapshot persisted"
+            ),
+            Ok(false) => tracing::warn!(
+                player_id,
+                mission_id,
+                status,
+                current_step_id,
+                reason = "invalid_or_stale_snapshot",
+                "Mission 1360 generic update refused"
+            ),
+            Err(e) => tracing::error!(
+                player_id,
+                mission_id,
+                reason = "db_write_failed",
+                error = %e,
+                "Mission 1360 active snapshot write failed"
+            ),
+        }
+        return;
+    }
+
     // An abandon (#1315) arrives as `MISSION_NOT_ACTIVE`. With no completed
     // run to remember there is nothing to keep, so the row goes: the
     // mission loads as never taken. With `repeats > 0` the UPSERT below keeps
@@ -276,3 +315,9 @@ pub async fn handle_mission_update(
 // missions/mod.rs).
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod letter_turn_in_tests;
+
+#[cfg(test)]
+mod letter_turn_in_concurrency_tests;

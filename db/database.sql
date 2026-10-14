@@ -444,6 +444,7 @@
 \ir sgw/Mail/Tables/sgw_gate_mail.sql
 \ir sgw/Mail/Tables/sgw_gate_mail_item.sql
 \ir sgw/Missions/Tables/sgw_mission.sql
+\ir sgw/Missions/Tables/sgw_mission_1360_receipt.sql
 \ir sgw/Players/Tables/sgw_player.sql
 \ir sgw/Players/Tables/sgw_player_discipline_expertise.sql
 \ir sgw/Players/Tables/sgw_player_content_cooldown.sql
