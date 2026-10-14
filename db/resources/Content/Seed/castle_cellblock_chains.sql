@@ -2950,17 +2950,12 @@ VALUES (1171, 'display_dialog', 2309, NULL, '{}', 0, 0);
 -- 2516 at `delay_ms 10100`. Both chains default to `priority 0`, and the
 -- loader orders same-trigger chains by `chain_id`, so without a delay
 -- here 5859 would pop up at essentially the same instant chain 1161's
--- Matinee starts (found in review, 2026-09-18). `delay_ms` 10600 reads
--- 5859 after 2516 (10100 + a ~500ms read gap) instead of racing it.
--- DU-02a follow-up: 2516 and 5859 are now both button-less, so the ~500ms
--- read gap has a visible cost. A player who has not closed 2516 by the
--- time 5859 arrives has it evicted by the client (one non-tutorial dialog
--- slot), and the eviction emits dialogButtonChoice(2516, -1) into a server
--- that has already re-pinned to 5859 — which logs a rejection warn!. No
--- chain keys 2516, so nothing is lost, but the warn is a forgery/replay
--- signal and this makes it fire on every run of the scene. Packet DU-08
--- removes it by replacing the single open-dialog pin with a set; widen
--- this delay instead if DU-08 is dropped.
+-- Matinee starts (found in review, 2026-09-18). Dialog 2516 has about
+-- fifty words. Give it 16 seconds on screen after its 10100 ms arrival;
+-- the old 10600 ms delay evicted it after only 422 ms in live Cellblock UAT
+-- (#1721). Both dialogs are button-less, so 5859 may still evict 2516 and
+-- emit dialogButtonChoice(2516, -1) if the player leaves it open. Packet
+-- DU-08 addresses the server's single-dialog pin and its rejection warning.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1172, 'GC1a - Straegis scene: post-death "find a way out without Marsh" blurb', 'mission', 686, true, 0);
 
@@ -2968,7 +2963,7 @@ INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort
 VALUES (1172, 'mission_completed', '686', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (1172, 'display_dialog', 5859, NULL, '{}', 10600, 0);
+VALUES (1172, 'display_dialog', 5859, NULL, '{}', 26100, 0);
 
 -- Chain 1173 (GC1b-1): teleport-in to region 3 (same event chain 1072
 -- binds) → snap Marsh from his Preparation-room position onto the topside

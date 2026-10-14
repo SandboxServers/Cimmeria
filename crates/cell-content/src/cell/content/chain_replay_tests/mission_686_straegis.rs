@@ -80,6 +80,63 @@ async fn live_db_chain_1161_resolves_straegis_scene_with_exact_delays() {
     }
 }
 
+/// The button-less aftermath narration is about fifty words. Its follow-up
+/// blurb must wait long enough for a player to read it; the former 500 ms
+/// gap was measured as 422 ms on the live client (#1721).
+#[tokio::test]
+async fn live_db_straegis_followup_allows_aftermath_dialog_to_be_read() {
+    let pool = require_db_or_skip!();
+    let mut engine = ChainEngine::new();
+    for id in [1161, 1172] {
+        engine.register_chain(
+            load_single_chain_for_test(&pool, id)
+                .await
+                .unwrap_or_else(|e| panic!("DB query for chain {id} must succeed: {e}"))
+                .unwrap_or_else(|| panic!("chain {id} must exist in seeded content_chains")),
+        );
+    }
+
+    let mut ctx = ExecutionContext::new();
+    ctx.set_param("mission_id".to_string(), serde_json::json!(686));
+    let event = TriggerEvent {
+        trigger_type: TriggerType::MissionCompleted,
+        source_entity: None,
+        target_entity: None,
+        params: ctx.params.clone(),
+    };
+    let resolved = engine.resolve_event(&event, &ctx);
+    let dialogs: Vec<_> = resolved
+        .actions
+        .iter()
+        .zip(&resolved.action_delays)
+        .filter_map(|((chain_id, action), delay)| match action {
+            Action::DisplayDialog { dialog_id } if [1161, 1172].contains(chain_id) => {
+                Some((*chain_id, *dialog_id, *delay))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        dialogs.len(),
+        2,
+        "mission_completed 686 must show exactly the narration and follow-up blurb"
+    );
+    let narration = dialogs
+        .iter()
+        .find(|(chain_id, dialog_id, _)| *chain_id == 1161 && *dialog_id == 2516)
+        .expect("chain 1161 must show aftermath dialog 2516");
+    let followup = dialogs
+        .iter()
+        .find(|(chain_id, dialog_id, _)| *chain_id == 1172 && *dialog_id == 5859)
+        .expect("chain 1172 must show follow-up blurb 5859");
+    assert_eq!(narration.2, 10_100, "narration follows the 10 s Matinee");
+    assert_eq!(followup.2, 26_100, "follow-up is due 16 s after narration");
+    assert!(
+        followup.2 - narration.2 >= 15_000,
+        "aftermath narration must remain readable for at least 15 seconds"
+    );
+}
+
 /// Chain 1161 negative: a different mission completing must not resolve
 /// this chain — pins the `mission_completed` event_key match against
 /// '686' specifically, not any mission.
