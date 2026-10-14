@@ -732,11 +732,17 @@ pub enum CellToBaseMsg {
         on_victory_chains: Vec<i64>,
     },
 
+    /// The session owner closed the minigame window; cancel its SmartFox task.
+    CancelMinigame { entity_id: u32 },
+
     /// Minigame result callback (minigame server → Cell via Base).
     MinigameResult {
         entity_id: u32,
         result_code: u8,
         on_victory_chains: Vec<i64>,
+        /// Explicit window close already hid the UI. A late onEndMinigame
+        /// could close a newly opened board.
+        notify_client: bool,
     },
 
     /// Create a new contact list for the player.

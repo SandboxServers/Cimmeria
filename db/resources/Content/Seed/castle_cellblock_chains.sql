@@ -1500,13 +1500,7 @@ VALUES (1060, 'step_status', 641, '3564', 'eq', 'active', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
-  (1060, 'start_minigame', NULL, 'Livewire', '{"on_victory_chains": [1061]}', 0, 0),
-  -- Clear the Terminal's INT_MinigameLivewire (256) marker the moment the
-  -- minigame starts; player has engaged with it, no need to keep the cue
-  -- once they're in the minigame. Same shape as chain 1042 clearing the
-  -- Livewire icon off HackTheRings_Switch on victory.
-  (1060, 'set_interaction_type', NULL, 'Preparation_Terminal',
-   '{"op": "~", "mask": 256}', 0, 1);
+  (1060, 'start_minigame', NULL, 'Livewire', '{"on_victory_chains": [1061]}', 0, 0);
 
 -- Chain 1061: Livewire victory → display final dialog, complete 641, accept 680
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -1525,7 +1519,11 @@ VALUES
   -- has a visual cue. Cleared on teleport_in (chain 1072) when they
   -- actually use it; restored on login by chain 1074.
   (1061, 'set_interaction_type', NULL, 'Preparation_RingSwitch',
-   '{"op": "|", "mask": 1073741824}', 0, 4);
+   '{"op": "|", "mask": 1073741824}', 0, 4),
+  -- Keep the terminal clickable after cancel or a refused registration.
+  -- The Livewire marker leaves only after the board is actually won.
+  (1061, 'set_interaction_type', NULL, 'Preparation_Terminal',
+   '{"op": "~", "mask": 256}', 0, 5);
 
 -- ============================================================
 -- MISSION 680 — Escape the Cellblock

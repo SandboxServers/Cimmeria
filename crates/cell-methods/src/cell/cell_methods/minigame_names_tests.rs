@@ -24,18 +24,22 @@ fn space_with_player() -> SpaceManager {
 }
 
 #[tokio::test]
-async fn end_current_minigame_logs_with_wire_payload() {
+async fn end_current_minigame_routes_own_entity_to_base() {
     let capture = LogCapture::install();
     let mut mgr = space_with_player();
-    let (tx, _rx) = mpsc::channel(4);
+    let (tx, mut rx) = mpsc::channel(4);
     // A 4-byte `00000000` payload: `endCurrentMinigame` declares no arguments,
     // so the row must still appear and carry only `args_len`.
     let args = [0u8; 4];
     assert!(dispatch(1, END_CURRENT, &args, &tx, &mut mgr).await);
 
+    assert!(matches!(
+        rx.try_recv(),
+        Ok(crate::cell::messages::CellToBaseMsg::CancelMinigame { entity_id: 1 })
+    ));
     let row = capture
-        .find_message(Level::INFO, "UNIMPLEMENTED: endCurrentMinigame")
-        .expect("the stub logs every call, whatever its payload");
+        .find_message(Level::INFO, "Minigame cancel requested")
+        .expect("the close request logs every call, whatever its payload");
     assert!(row.has_field("entity_name", "Minigamer"), "{row:#?}");
     assert!(row.has_field("args_len", "4"), "{row:#?}");
 }

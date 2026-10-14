@@ -61,6 +61,7 @@ impl CellToBaseMsg {
             Self::WitnessEntityMethod { .. } => "witness_entity_method",
             Self::EntityInvisible { .. } => "entity_invisible",
             Self::StartMinigame { .. } => "start_minigame",
+            Self::CancelMinigame { .. } => "cancel_minigame",
             Self::MinigameResult { .. } => "minigame_result",
             Self::ContactListCreate { .. } => "contact_list_create",
             Self::ContactListDelete { .. } => "contact_list_delete",

@@ -311,15 +311,20 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
             )
             .await
         }
+        CellToBaseMsg::CancelMinigame { entity_id } => {
+            minigame::cancel_minigame(entity_id, ctx.minigame_registry).await
+        }
         CellToBaseMsg::MinigameResult {
             entity_id,
             result_code,
             on_victory_chains,
+            notify_client,
         } => {
             minigame_result(
                 entity_id,
                 result_code,
                 on_victory_chains,
+                notify_client,
                 ctx.transport,
                 ctx.connected,
                 ctx.entity_to_addr,
@@ -576,6 +581,7 @@ pub(super) async fn minigame_result(
     entity_id: u32,
     result_code: u8,
     on_victory_chains: Vec<i64>,
+    notify_client: bool,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
@@ -585,6 +591,7 @@ pub(super) async fn minigame_result(
         entity_id,
         result_code,
         on_victory_chains,
+        notify_client,
         transport,
         connected,
         entity_to_addr,

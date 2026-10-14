@@ -146,6 +146,7 @@ pub(super) async fn run_session(
     let entity_id = session.entity_id;
     let room_id = registry.allocate_room_id().await;
     let user_id = entity_id.to_string();
+    let mut cancel = session.cancel.subscribe();
 
     // Send login success sequence (matching C++ exactly)
     let game_name = session.game_name.clone();
@@ -306,6 +307,10 @@ pub(super) async fn run_session(
 
         loop {
             tokio::select! {
+                _ = async { let _ = cancel.wait_for(|requested| *requested).await; } => {
+                    end_reason = EndReason::PlayerCanceled;
+                    game_complete = true;
+                }
                 // Read incoming messages
                 result = read_null_terminated(&mut out.stream, &mut buf, &mut buf_len) => {
                     match result {
@@ -353,6 +358,7 @@ pub(super) async fn run_session(
                                                     RESULT_VICTORY,
                                                     on_victory_chains.clone(),
                                                     "victory_message",
+                                                    true,
                                                 )
                                                 .await;
                                             }
@@ -378,6 +384,7 @@ pub(super) async fn run_session(
                                                     RESULT_DEFEAT,
                                                     vec![],
                                                     "failure_message",
+                                                    true,
                                                 )
                                                 .await;
                                             }
@@ -505,6 +512,7 @@ pub(super) async fn run_session(
                                     RESULT_VICTORY,
                                     on_victory_chains.clone(),
                                     "victory_tick",
+                                                    true,
                                 )
                                 .await;
                             }
@@ -530,6 +538,7 @@ pub(super) async fn run_session(
                                     RESULT_DEFEAT,
                                     vec![],
                                     "failure_tick",
+                                                    true,
                                 )
                                 .await;
                             }
@@ -591,6 +600,7 @@ pub(super) async fn run_session(
             RESULT_CANCELED,
             vec![],
             "aborted",
+            end_reason != EndReason::PlayerCanceled,
         )
         .await;
     }

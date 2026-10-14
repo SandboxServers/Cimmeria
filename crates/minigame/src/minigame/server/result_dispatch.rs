@@ -32,6 +32,7 @@ pub(super) async fn send_minigame_result(
     result_code: u8,
     on_victory_chains: Vec<i64>,
     phase: &'static str,
+    notify_client: bool,
 ) {
     // Discord gameplay-channel: a minigame finished (on by default — low
     // volume / high signal). The player is the `player_id` and character
@@ -57,6 +58,7 @@ pub(super) async fn send_minigame_result(
             entity_id,
             result_code,
             on_victory_chains,
+            notify_client,
         })
         .await
     {
@@ -123,6 +125,7 @@ mod tests {
             RESULT_VICTORY,
             /* on_victory_chains */ vec![100, 200],
             /* phase */ "victory_message",
+            true,
         )
         .await;
 
@@ -188,6 +191,7 @@ mod tests {
             RESULT_DEFEAT,
             vec![],
             "failure_tick",
+            true,
         )
         .await;
 
@@ -196,10 +200,12 @@ mod tests {
                 entity_id,
                 result_code,
                 on_victory_chains,
+                notify_client,
             }) => {
                 assert_eq!(entity_id, 99);
                 assert_eq!(result_code, RESULT_DEFEAT);
                 assert!(on_victory_chains.is_empty());
+                assert!(notify_client);
             }
             other => panic!("expected MinigameResult, got {other:?}"),
         }

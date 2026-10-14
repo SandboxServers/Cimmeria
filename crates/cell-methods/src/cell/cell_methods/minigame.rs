@@ -14,7 +14,7 @@ pub async fn dispatch(
     entity_id: u32,
     method_index: u16,
     args: &[u8],
-    _tx: &mpsc::Sender<CellToBaseMsg>,
+    tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> bool {
     // Rare client calls: every call logs once with its `args_len`. Each arm
@@ -72,12 +72,18 @@ pub async fn dispatch(
             true
         }
         END_CURRENT => {
-            tracing::info!(
-                entity_id,
-                entity_name = mgr.entity_label(entity_id),
-                args_len,
-                "UNIMPLEMENTED: endCurrentMinigame"
-            );
+            if let Err(error) = tx.send(CellToBaseMsg::CancelMinigame { entity_id }).await {
+                tracing::error!(entity_id, entity_name = mgr.entity_label(entity_id), args_len,
+                    %error, reason = "base_channel_closed", "Minigame cancel lost");
+            } else {
+                tracing::info!(
+                    entity_id,
+                    entity_name = mgr.entity_label(entity_id),
+                    args_len,
+                    reason = "player_closed_window",
+                    "Minigame cancel requested"
+                );
+            }
             true
         }
         REQUEST_SPECTATE_LIST => {

@@ -207,6 +207,7 @@ pub async fn route_cell_message(
         | CellToBaseMsg::ConsoleSearch { .. }
         | CellToBaseMsg::GmSpawnNpc { .. }
         | CellToBaseMsg::StartMinigame { .. }
+        | CellToBaseMsg::CancelMinigame { .. }
         | CellToBaseMsg::MinigameResult { .. } => progression_dispatch::route(msg, &ctx).await,
 
         CellToBaseMsg::GmGiveAmmo(give) => {

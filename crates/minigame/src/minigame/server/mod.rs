@@ -212,6 +212,8 @@ pub(super) enum EndReason {
     Defeat,
     /// The client closed the socket (FIN) between frames.
     ClientClosed,
+    /// The authenticated game client closed the minigame window.
+    PlayerCanceled,
     /// The socket read failed with an I/O error.
     ReadFailed,
     /// A client frame went over the size limit.
@@ -230,6 +232,7 @@ impl EndReason {
             Self::Victory => "victory",
             Self::Defeat => "defeat",
             Self::ClientClosed => "client_closed",
+            Self::PlayerCanceled => "player_canceled",
             Self::ReadFailed => "read_error",
             Self::FrameTooLong => "frame_too_long",
             Self::IdleTimeout => "idle_timeout",

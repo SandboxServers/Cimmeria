@@ -347,11 +347,10 @@ async fn live_db_chain_1060_starts_livewire_and_reaches_base() {
     .await;
 }
 
-/// Chain 1060 also clears the terminal's Livewire cue the moment the
-/// minigame starts (not on victory, unlike 1042) — the player has engaged
-/// with it, so the "hack me" icon comes off immediately.
+/// A canceled or refused launch must leave the terminal's Livewire cue in
+/// place so the player can retry without relogging.
 #[tokio::test]
-async fn live_db_chain_1060_clears_the_terminal_cue_on_launch() {
+async fn live_db_chain_1060_preserves_terminal_cue_for_retry() {
     let pool = require_db_or_skip!();
     let actions = resolve_interact(
         &pool,
@@ -373,9 +372,8 @@ async fn live_db_chain_1060_clears_the_terminal_cue_on_launch() {
         })
         .count();
     assert_eq!(
-        clears, 1,
-        "chain 1060 must clear the Livewire cue (mask 256, op '~') on \
-         Preparation_Terminal at launch time; got {actions:?}",
+        clears, 0,
+        "chain 1060 must preserve the Livewire cue until a victory; got {actions:?}",
     );
 }
 
@@ -390,9 +388,9 @@ async fn live_db_chain_1061_victory_completes_641_and_accepts_680() {
 
     assert_eq!(
         actions.len(),
-        5,
-        "chain 1061 must resolve exactly 5 actions (dialog + complete + \
-         accept + 2 interaction bits); got {actions:?}",
+        6,
+        "chain 1061 must resolve exactly 6 actions (dialog + complete + \
+         accept + 3 interaction bits); got {actions:?}",
     );
     assert!(
         matches!(&actions[0], Action::DisplayDialog { dialog_id: 3998 }),
@@ -429,5 +427,14 @@ async fn live_db_chain_1061_victory_completes_641_and_accepts_680() {
         "chain 1061's fifth action must set the quest-highlight bit \
          (mask 2^30) on Preparation_RingSwitch; got {:?}",
         actions[4],
+    );
+    assert!(
+        matches!(
+            &actions[5],
+            Action::SetInteractionType { entity_tag, operation, mask: 256 }
+            if entity_tag == "Preparation_Terminal" && operation == "~"
+        ),
+        "chain 1061 must clear the terminal only after victory; got {:?}",
+        actions[5],
     );
 }

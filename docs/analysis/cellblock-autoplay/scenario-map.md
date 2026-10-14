@@ -545,7 +545,7 @@ Verified from `Core/Reload/Reload.lua`, `Core/WeaponBar/WeaponBar.lua` and the b
 5. **No tool can play it (G-MG1).** The wire list and x/y (Flash stage coordinates) exist only in the server's session state.
    - Proposal: a `server_minigame_state {entity_id}` lab-mcp tool returning the live session's wires `{name, x, y, cut}` and stage state, plus a `client_minigame_click {stage_x, stage_y}` supervisor tool that maps stage coordinates into `Minigame_Movie_Area`'s screen rect (`client_window_read {window:"Minigame_Movie_Area", include_nodes:true}`) and clicks with real input (N1).
    - How the SWF's "open door" start is triggered by the player is **(unverified)**; watch one human run.
-   - Interim: a GM `.minigame_win` console command that reports victory for the caller's open session (tier G, so these rows grade NATIVE_SHORTFALL). No such command exists today: `/debugminigamecomplete` is "Partly" and the cell's `endCurrentMinigame` / `debugStartMinigame` are `UNIMPLEMENTED` logs.
+   - Interim: a GM `.minigame_win` console command that reports victory for the caller's open session (tier G, so these rows grade NATIVE_SHORTFALL). No such command exists today: `/debugminigamecomplete` is "Partly" and `debugStartMinigame` remains an `UNIMPLEMENTED` log; `endCurrentMinigame` cancels an open session.
 6. **Assert:** `client_wait_event {name:"*onEndMinigame*"}`, the MinigameWin hides, the chain's step advances, and SigNoz `send_minigame_result` result 1.
 
 ---
