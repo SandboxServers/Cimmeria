@@ -8,7 +8,7 @@ This ledger replaces the old ledger as the continuation's dispatch record. The [
 
 ## Gate outcome
 
-HA-00a's 73-record census is accepted at CSV/seed relation level. HA-00b has reconciled the current artifacts, tags and candidate IDs. **HA-00b is Review; dependent implementation remains BlockedEvidence or BlockedDependency until its own manifest is sealed.** A complete evidence audit can identify a blocker without fabricating its answer. No later packet is Ready solely because it has a reserved numeric range.
+HA-00a's 73-record census is accepted at CSV/seed relation level. HA-00b has reconciled the current artifacts, tags and candidate IDs. **HA-00b is Review under its amended restoration/ledger scope; HA-00c owns authored/repeatable ID sealing. Dependent implementation remains BlockedEvidence or BlockedDependency until its own manifest is sealed.** A complete evidence audit can identify a blocker without fabricating its answer. No later packet is Ready solely because it has a reserved numeric range.
 
 The approved active selection is **29 ZIP-linked core + four non-ZIP records = at most 33**. Two of these, 1360 and 567, remain partial across Castle CS-08. Thus 31 have no CS-08 carry-in dependency; that arithmetic does not mean 31 are playable today. Only five complete Harset mission graphs exist in the seed: 742, 1200, 1324, 1326 and 1361. Of those, 1326's ordinary progression waits for the missing 1325 completion. Mission 1664 is a separate proposed Castle/Harset interface and is not silently counted into the 33.
 
@@ -26,7 +26,7 @@ Static evidence cannot promote a packet to Done. Current artifact + meaningful r
 | HA-D06 | Accepted tag interface, partial | Existing Harset tags below are signed off for exact spelling/world/template. Tollana owns both ends and chains 9800–9999. The recipients for 618 and 621 remain BlockedEvidence. |
 | HA-D07 | BlockedEvidence | Preserve enabled 6007/6511–6513/6528. Market/Storage doors require four doorway observations and proved arrivals or equivalent BSP evidence. |
 | HA-D08 | Accepted evidence correction | NA26/NA29/NA36/NA40 have already rebuilt Harset/interior meshes and removed the temporary gate pin. Do not reuse the old ledger's “no interior mesh” or 1,939-component premise. Remaining raised-position coverage and ordinary-player containment are still unproved; see [placements](placements.md). |
-| HA-D09 | Proposed claims | The exact IDs in [id-allocation.md](id-allocation.md) are collision-checked candidates. Coordinator integration into the shared four-zone table and graph sealing precede use. |
+| HA-D09 | Proposed claims | The exact IDs in [id-allocation.md](id-allocation.md) are collision-checked candidates. Restoration proposals are recorded in the shared table, inactive until coordinator signoff and graph sealing. HA-00c seals authored/repeatable IDs. |
 | HA-D10 | BlockedDecision | Vendor stock/trainer trees, item-4512 acquisition, rewards, population density, authored presentation and repeatable policy need their named source/owner gates. Historical proposed decisions are preserved in the old ledger. |
 
 ## Census dispositions
@@ -206,9 +206,10 @@ Tollana owns all seven recipient graphs in 9800–9999, including steps already 
 
 | Item | State |
 |---|---|
-| Evidence base | `d3efb7d41aad0b6008397f112d224ce7430d7acf`; registered branch `harset/ha-00b-ledger` |
-| HA-00b | Review; docs produced and static checks recorded in [worknote](worknotes/HA-00b.md) |
+| Evidence base | `d3efb7d41aad0b6008397f112d224ce7430d7acf`; HA-00b commit `37ffd858d73a47e9f68088af0b6cca2c3852c4b0` is integrated on `content/harset-campaign`; wave review pending |
+| HA-00b | Review under amended restoration/ledger scope; docs produced and static checks recorded in [worknote](worknotes/HA-00b.md) |
 | Implementation pilot | BlockedDependency: coordinator must seal one small restoration packet, then record actual cost/checks/review before scaling |
 | Local CI/reviewer/fixer rounds | No compiling lane run; fresh independent review owned by coordinator; no review round claimed |
 | Client UAT | UATPending; no lab permission, lease, client startup or server change in this packet |
-| Shared four-zone ID amendments | Coordinator pending; exact candidate proposals below are not global reservations |
+| Shared four-zone ID amendments | Harset-only restoration proposals recorded, coordinator signoff pending; no active claims |
+| HA-00c | BlockedDependency: exact authored/repeatable allocations need stock catalog/CB-N05a evidence and owner/advisor decisions; HA-17/18 require this gate AND CB-N05a |

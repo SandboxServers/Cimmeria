@@ -27,7 +27,8 @@ Each blocked row names the contract that must be closed before the original impl
 | Packet | Missions / scope | State | Gate before seal |
 |---|---|---|---|
 | HA-00a | 73 census | Done at CSV evidence level | Reviewed dispositions in README; missing build lineage remains held |
-| HA-00b | Reset/evidence/IDs | Review | Coordinator shared ID integration and independent docs review |
+| HA-00b | Reset/evidence/restoration ID proposals | Review | Amended scope; shared proposals recorded, coordinator signoff and fresh review pending |
+| HA-00c | Authored/repeatable exact IDs | BlockedDependency | CB-N05a insertion contract/catalog evidence; owner story/reward/reset choices and global ID audit |
 | HA-01a | Travel/placement | BlockedEvidence | Four Market/Storage thresholds + arrivals, clearance, wrong-world and relog; preserve 6007/1361 linkage |
 | HA-01b | 1664, proposed | BlockedEvidence | Castle CS-06 grant edge, Kaerlia identity, dialog/faction graph and placement |
 | HA-02 | Navigation/encounter anchors | BlockedEvidence | Current NA40 mesh coverage vs raised telemetry positions and current interior connectivity; non-GM containment proof |
@@ -56,13 +57,19 @@ Each blocked row names the contract that must be closed before the original impl
 | HA-15c | Trainers | BlockedDecision | Exact approved ability trees and teaching policy |
 | HA-16a | World-57 districts | BlockedDecision | Density/roles/placements; separate ambient templates from quest speakers |
 | HA-16b | Command Center ambient | BlockedDecision | Interior density/roles and shared-space load contract |
-| HA-17a | Two Jaffa stories | BlockedDependency | Restoration UAT + CB-N05a merged/client proof + premise/reward/presentation approval |
-| HA-17b | Two OP-CORE stories | BlockedDependency | Same catalog/provenance gates plus restored HA-09/10 and services |
-| HA-17c | Two Goa'uld stories | BlockedDependency | Same catalog/provenance gates plus restored HA-13/14 |
-| HA-18a | Jaffa repeatable | BlockedDecision | Reset/cooldown/persistence/anti-farm contract after HA-17a |
-| HA-18b | OP-CORE repeatable | BlockedDecision | Same, after HA-17b |
-| HA-18c | Goa'uld repeatable | BlockedDecision | Same, after HA-17c |
+| HA-17a | Two Jaffa stories | BlockedDependency | Restoration UAT + HA-00c sealed IDs AND CB-N05a merged/client proof + premise/reward/presentation approval |
+| HA-17b | Two OP-CORE stories | BlockedDependency | HA-00c AND CB-N05a, restoration UAT and catalog/provenance gates plus restored HA-09/10 and services |
+| HA-17c | Two Goa'uld stories | BlockedDependency | HA-00c AND CB-N05a, restoration UAT and catalog/provenance gates plus restored HA-13/14 |
+| HA-18a | Jaffa repeatable | BlockedDependency | HA-00c AND CB-N05a; owner reset/cooldown/persistence/anti-farm decision after HA-17a |
+| HA-18b | OP-CORE repeatable | BlockedDependency | HA-00c AND CB-N05a; same owner reset gates after HA-17b |
+| HA-18c | Goa'uld repeatable | BlockedDependency | HA-00c AND CB-N05a; same owner reset gates after HA-17c |
 | HA-19 | Integrated UAT/ledger closeout | BlockedDependency | Restoration graphs and authorized client UAT; FZ-99 owns shared status docs |
+
+## HA-00c specialist allocation gate
+
+The [HA-00c contract](../four-zone-planning/harset-work-packets.md#ha-00c--seal-authored-and-repeatable-id-allocations) owns six authored stories and three repeatables. It records exact mission/step/objective/task/dialog-map/dialog/item/chain IDs, client catalog source/build/hash, global seed and active-branch collisions, approved reuse, provenance and owner story/reward/reset decisions. No catalog IDs are sealed by HA-00b. A guessed stock gap, historical mission reuse or server-only row cannot close this gate.
+
+HA-00c is BlockedDependency until CB-N05a's insertion contract and inspected stock catalog establish a safe allocation path. Completion needs the mission advisor's nine graph signoffs and coordinator's shared claims signoff. HA-17a/b/c and HA-18a/b/c remain BlockedDependency on **HA-00c AND CB-N05a** merged, reviewed and client-proven, plus restoration UAT and owner decisions. This docs/research gate uses the parent contract's static checks and scratch duplicate failure proof; implementation retains its ordered lane checks.
 
 ## Castle 1664 provisional interface
 
@@ -100,4 +107,4 @@ Follow the parent contracts for ordered fmt, focused lane clippy/nextest, worktr
 
 Each later brief names telemetry for chain resolution/execution, mission/step/objective progress and refusal reason. Existing executor `Content: accept_mission refused by offer guard`, `once_spent` and mission objective signals can be reused only where they cover the actual edge. The specialist seal must identify the concrete event/message/fields for wrong world/state/faction/already-completed/missing-item refusal; a prose promise is not acceptance. Replay test telemetry where practical and attest runtime logs during authorized UAT.
 
-Implementation updates `docs/content/mission-chains.md` and its worknote. Engine semantic changes additionally update the matching existing mission bible chapter when present; per-mission graphs remain content documentation. HA-19 owns this ledger/UAT checklist, FZ-99 shared gap/status/zone-audit pages. The coordinator integrates index/shared-memory changes outside this packet's allowlist. Historical ledger decisions are not rewritten.
+Implementation updates `docs/content/mission-chains.md` and its worknote. Engine semantic changes additionally update the matching existing mission bible chapter when present; per-mission graphs remain content documentation. HA-19 owns this ledger/UAT checklist, FZ-99 shared gap/status/zone-audit pages. HA-00b integration adds the continuation index link and dated sourced main-session memory pointer. Historical ledger decisions are not rewritten.

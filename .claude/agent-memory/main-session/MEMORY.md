@@ -4,6 +4,8 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Open investigations
 
+- [project_harset_continuation_2026_10_14.md](project_harset_continuation_2026_10_14.md) — continuation ledger; restoration proposals inactive pending signoff, HA-00c and CB-N05a gate authored/repeatable IDs
+
 - [reference_lab_transition_click_2026_10_13.md](reference_lab_transition_click_2026_10_13.md) — report-only native click survives an immediate world load; live click passed, Castle transition replay remains pending
 - [project_cellblock_aftermath_dwell_2026_10_13.md](project_cellblock_aftermath_dwell_2026_10_13.md) — #1721: 2516 was evicted after 422 ms; chain 1172 now gives it 16 seconds before blurb 5859; live recheck pending
 - [reference_uat_capture_safety_2026_10_13.md](reference_uat_capture_safety_2026_10_13.md) — UAT JSON captures use the shared read-only tool classifier at spec validation, row preflight, and execution; JSON integer comparisons must avoid f64 above 2^53
@@ -48,6 +50,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [project_named_telemetry_campaign.md](project_named_telemetry_campaign.md) — Named telemetry closed 2026-10-05: IDs paired with names, unpaired 7,039 to 0, 795 nt:id-only marks; not yet read in a live SigNoz session
 
 ## External handoffs reviewed, not imported
+
 - [project_class_start_v5_handoff.md](project_class_start_v5_handoff.md) — 2026-10-05 class-start/gear/abilities v5 handoff: reverses D-SA1 + M687 two-way split, wrong mission names, needs GrantAbility action/start-level/Asgard ship world; not imported
 - [project_pass21_implementation_package.md](project_pass21_implementation_package.md) — 2026-10-03 Pass 21 package (86 Beta Site E2/Dakara/SGC W2 missions): duplicates the seed exactly apart from whitespace/mojibake; mission→dialog pairing is moniker-derived, not proven
 - [project_lore_vo_handoff.md](project_lore_vo_handoff.md) — 2026-10-03 Castle lore VO handoff: no audio included; seed claims verified (EventSet 282 → dialog_castle/lore/*); playback needs dialog_castle.fev + client patch
@@ -58,6 +61,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [project_texture_upscale_forensics.md](project_texture_upscale_forensics.md) — 512x256 10-mip DXT1 shape is stock-valid; silent failures mean bad data below mip 0; pixel-format enum fixed in #839
 
 ## Reference
+
 - [reference_lab_uat_capture_ids_2026_10_13.md](reference_lab_uat_capture_ids_2026_10_13.md) — UAT AP-03 id sources: server_sessions has optional player_id; client_player_state omits entity_id, so client_entity_find /player/id supplies it
 - [reference_lab_dialog_close_2026_10_13.md](reference_lab_dialog_close_2026_10_13.md) — one-page Cellblock Done click can leave DialogWin visible; verify closure and use the native close fallback
 - [reference_lab_hub_pass_lessons_2026_10_13.md](reference_lab_hub_pass_lessons_2026_10_13.md) — 2026-10-13 hub-pass lessons include the confirmed CEGUI top-child hit-test binding and covering-window refusal rule

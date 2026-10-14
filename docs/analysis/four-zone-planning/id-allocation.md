@@ -48,9 +48,29 @@ The planning review's working figure of "castle_cellblock 1001–5030" was a min
 
 13000–14999 holds the debug-area chains listed above; leave it alone.
 
+## Harset-proposed restoration subranges (inactive)
+
+HA-00b's documentation repair records the [exact Harset candidates](../harset-continuation/id-allocation.md). These are proposed internal subranges of Harset's existing 6001–6800 block and **are not active claims until coordinator signoff**, sibling-claim reconciliation and per-graph sealing. HA-00c separately owns authored/repeatable mission, step, objective, task, dialog, item and chain allocation; HA-17/18 cannot bypass HA-00c or CB-N05a using this restoration lock.
+
+| Restoration owner | Chain candidates |
+|---|---|
+| HA-01b provisional 1664 | 6008–6020 |
+| HA-01a doors / follow-up capacity | 6021–6024 / 6025–6032 |
+| HA-03 | 6311–6330 |
+| HA-04 / HA-05 | 6346–6380 / 6381–6400 |
+| HA-06a/b/c | 6401–6415 / 6416–6440 / 6441–6470 |
+| HA-07 | 6531–6570 |
+| HA-08a/b/c | 6571–6590 / 6646–6665 / 6691–6710 |
+| HA-09 | 6666–6680 / 6621–6645 |
+| HA-10a/b/c | 6591–6605 / 6606–6620 / 6681–6690 |
+| HA-11 / HA-12 | 6131–6165 / 6166–6200 |
+| HA-13a/b/c / HA-14 | 6201–6245 / 6246–6275 |
+
+Other restoration candidates: spawn IDs 360–379, templates 260–269, point sets 2130–2159 and points 2560–2679; existing Bar/pens reservations 2108/2109 retained. Local ledger rows bind these IDs to consumers and evidence gates. At `d3efb7d41aad0b6008397f112d224ce7430d7acf`, all 495 chain candidates and those other candidates are absent from globally scanned seed primary keys, with no overlap between exclusive ranges. The recorded registered-branch committed-snapshot scan found zero candidate collisions; see the bounded [collision record](../harset-continuation/id-allocation.md#collision-verification-and-limits) and fixer recheck in [HA-00b worknote](../harset-continuation/worknotes/HA-00b.md). Uncommitted and later sibling claims require coordinator reconciliation before activation.
+
 ## Other IDs
 
-Mission, step, objective, dialog, spawn, template, point-set and item IDs are not block-reserved here. Each zone's ID-lock packet (CB-N00, CS-00, HA-00b, T-01) allocates them against the current seed and every other zone's ledger, runs a no-collision check across all seed files and all active campaign branches, and records the result in its zone ledger. A new authored mission ID must also be absent from the stock `CookedDataMissions.pak`, since CB-N05a inserts it as a new catalog entry.
+Mission, step, objective, dialog, spawn, template, point-set and item IDs are not block-reserved here. Each zone's ID-lock packet (CB-N00, CS-00, HA-00b, T-01) allocates them against the current seed and every other zone's ledger, runs a no-collision check across all seed files and all active campaign branches, and records the result in its zone ledger. For Harset, HA-00b covers restoration proposals and HA-00c covers authored/repeatable allocations. A new authored mission ID must also be absent from the stock `CookedDataMissions.pak`, since CB-N05a inserts it as a new catalog entry.
 
 ## Keeping this table true
 

@@ -4,7 +4,7 @@
 > Audit base: `d3efb7d41aad0b6008397f112d224ce7430d7acf`.
 > Authoritative shared reservations: [four-zone ID table](../four-zone-planning/id-allocation.md).
 
-These are **proposed claims**, held pending coordinator integration into the shared four-zone table and exact graph approval. This parallel packet does not edit that shared file. “Free” means absent from inspected committed seed and branch snapshots; it is not authorization to invent an actor or interaction. Recheck at seal, including new claims from sibling evidence packets and uncommitted changes in their owned ledgers through coordinator review.
+These are **proposed claims**, held pending coordinator signoff in the shared four-zone table and exact graph approval. The fixer records Harset-only proposed subranges in that shared file; they remain inactive until signoff. “Free” means absent from inspected committed seed and branch snapshots; it is not authorization to invent an actor or interaction. Recheck at seal, including new claims from sibling evidence packets and uncommitted changes in their owned ledgers through coordinator review.
 
 ## Current Harset chain inventory
 
@@ -56,7 +56,7 @@ These existing range reservations are carried forward unchanged. Every integer i
 | HA-13a/b/c | 1244 / 1245 / 1246 | 6201–6215 / 6216–6230 / 6231–6245 |
 | HA-14 | 1247 / 1322 | 6246–6260 / 6261–6275 |
 
-Tollana alone owns recipient range 9800–9999; Harset proposes no IDs there. No authored mission, step, objective, item or dialog ID is allocated here. HA-17/18 must audit stock cooked missions plus all 77 reviewed IDs and the additional 1664 interface, and wait for CB-N05a client insertion proof. Existing dialog IDs are not free slots.
+Tollana alone owns recipient range 9800–9999; Harset proposes no IDs there. No authored mission, step, objective, item or dialog ID is allocated here. HA-00c owns that missing authored/repeatable allocation audit against stock cooked missions, all 77 reviewed IDs and the additional 1664 interface. HA-17/18 remain BlockedDependency on HA-00c AND CB-N05a merged/client proof. Existing dialog IDs are not free slots.
 
 ## Collision verification and limits
 
@@ -77,6 +77,6 @@ The audit reads INSERT column names and handles multi-row VALUES and quoted comm
 | mission_objectives.objective_id | 4037 / 4037 | 0 |
 | mission_tasks.task_id | 4358 / 4358 | 0 |
 
-A second committed-state scan enumerated **85 registered worktree branch refs**, compared each to the base for the five candidate seed-table files, and scanned changed committed seed snapshots on 72 refs. No collision was found for all 495 chain candidates (including every carried mission range), candidate actors/templates/regions/points or historical sets 2108/2109. Four campaign integration heads and evidence-worker refs were at the recorded base when inspected. This excludes uncommitted sibling work and durable claims written after the scan; the coordinator must reconcile those before freezing. It also excludes unrelated unregistered branches. No live database state was asserted.
+A second committed-state scan enumerated **85 registered worktree branch refs**, compared each to the base for the five candidate seed-table files, and scanned changed committed seed snapshots on 72 refs. No collision was found for all 495 chain candidates (including every carried mission range), candidate actors/templates/regions/points or historical sets 2108/2109. At that scan, Castle `d5b6790616dad0df2fe1281e25e4a5554e721c5e` and Cellblock `b59c4a1245f354d8de58e9c83b5c8d603c85446a` were documentation-only descendants of the base with identical relevant seed snapshots. The inspected Harset/Tollana integration and evidence-worker refs were at the base. This records seed equivalence, not four identical branch heads. This excludes uncommitted sibling work and durable claims written after the scan; the coordinator must reconcile those before freezing. It also excludes unrelated unregistered branches. No live database state was asserted.
 
 Existing Harset relevant tags are globally unique in spawnlist. Referenced existing templates for placement/interface actors are present. Census IDs are distinct; ranges above do not overlap each other or taken chains. Static reservation checks are not runtime regressions. The exact checks and their outcomes are recorded in [HA-00b worknote](worknotes/HA-00b.md).
