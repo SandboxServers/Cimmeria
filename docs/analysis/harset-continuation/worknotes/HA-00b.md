@@ -1,11 +1,11 @@
 # HA-00b: open the Harset continuation ledger
 
-> Type: worknote. Audience: four-zone coordinator and independent reviewer. Date: 2026-10-14.
-> Branch: `harset/ha-00b-ledger`; base: `d3efb7d41aad0b6008397f112d224ce7430d7acf`.
+> Type: reference. Audience: four-zone coordinator and independent reviewer. Date: 2026-10-14.
+> Original packet branch: `harset/ha-00b-ledger`; integration branch: `content/harset-campaign`; base: `d3efb7d41aad0b6008397f112d224ce7430d7acf`.
 
 ## Result
 
-Opened [the continuation ledger](../README.md), [current packet gates](../work-packets.md), [placement evidence](../placements.md) and [ID candidates](../id-allocation.md). Added one forward pointer to the historical rebuild README. The original packet changed no old decisions or shared ID table. The fixer records Harset-only inactive restoration proposals in that table. HA-00b awaits coordinator review/integration; it has produced the evidence contract, with unresolved items marked BlockedEvidence/BlockedDependency/BlockedDecision. No runtime packet is advertised as Ready.
+Opened [the continuation ledger](../README.md), [current packet gates](../work-packets.md), [placement evidence](../placements.md) and [ID candidates](../id-allocation.md). Added one forward pointer to the historical rebuild README. The original packet changed no old decisions or shared ID table. The fixer records Harset-only inactive restoration proposals in that table. HA-00b is Integrated for Wave-0 documentation evidence after two review rounds; it has produced the evidence contract, with unresolved items marked BlockedEvidence/BlockedDependency/BlockedDecision. No runtime packet is advertised as Ready.
 
 ## Reconciliation evidence
 
@@ -34,7 +34,7 @@ The parser reads named columns and multi-row VALUES with quoted commas. The prel
 
 ## Test and UAT limits
 
-No cargo/build/lane, database reload/live-DB test, client UAT, lab lease, client launch or server change occurred. Existing guards were inspected for exact action/side-effect and negative controls; historical worknotes record their revert proofs. HA-00b did not rerun those proofs and makes no fresh Rust pass or integrated-playability claim. Docs-only checks establish the ledger's consistency, not mission execution. A fresh independent review and any fix rounds belong to the coordinator.
+No cargo/build/lane, database reload/live-DB test, client UAT, lab lease, client launch or server change occurred. Existing guards were inspected for exact action/side-effect and negative controls; historical worknotes record their revert proofs. HA-00b did not rerun those proofs and makes no fresh Rust pass or integrated-playability claim. Docs-only checks establish the ledger's consistency, not mission execution. The coordinator completed the fresh independent review and repair cycle recorded below.
 
 ## Handoff
 
@@ -42,7 +42,7 @@ The coordinator signs the recorded inactive restoration proposals, reconciles si
 
 Reusable verified corrections (once semantics, current navmesh lineage and candidate/recipient caveats) are recorded in the ledger; the fixer adds the continuation link and a dated sourced shared-memory/index pointer under the amended documentation scope. Full audit report is gitignored at `.claude/reports/four-zone/ha-00b.md` in this registered worktree.
 
-Measurement: this is a specialist evidence gate, not a Haiku implementation pilot. A scoped cost estimate was not recorded in the dispatch brief; actual harness token totals and full elapsed/check time are unavailable to this worker and must be filled by coordinator token profiling. No estimate is represented as measured usage. No implementation pilot or reviewer/fixer round is counted.
+Measurement: this is a specialist evidence gate, not a Haiku implementation pilot. A scoped cost estimate was not recorded in the dispatch brief; actual harness token totals and full elapsed/check time are unavailable to this worker and must be filled by coordinator token profiling. No estimate is represented as measured usage. No implementation pilot is counted. Wave-0 now records two review rounds and one repair round below; actual token/time measurements remain unavailable.
 
 ## Final validation
 
@@ -56,7 +56,7 @@ Measurement: this is a specialist evidence gate, not a Haiku implementation pilo
 
 ## HA-00b fixer verification, 2026-10-14
 
-The amended [HA-00b contract](../../four-zone-planning/harset-work-packets.md#ha-00b--open-the-continuation-ledger-and-lock-restoration-id-proposals) covers ledger reconciliation and restoration ID proposals. [HA-00c](../../four-zone-planning/harset-work-packets.md#ha-00c--seal-authored-and-repeatable-id-allocations) separately seals all six authored stories and three repeatables after catalog, graph and owner gates. HA-17/18 remain BlockedDependency on HA-00c AND CB-N05a merged, reviewed and client-proven. No guessed stock catalog ID closes either gate. HA-00b remains Review until the coordinator's fresh review/signoff; local integration alone does not certify the wave.
+The amended [HA-00b contract](../../four-zone-planning/harset-work-packets.md#ha-00b--open-the-continuation-ledger-and-lock-restoration-id-proposals) covers ledger reconciliation and restoration ID proposals. [HA-00c](../../four-zone-planning/harset-work-packets.md#ha-00c--seal-authored-and-repeatable-id-allocations) separately seals all six authored stories and three repeatables after catalog, graph and owner gates. HA-17/18 remain BlockedDependency on HA-00c AND CB-N05a merged, reviewed and client-proven. No guessed stock catalog ID closes either gate. At fixer handoff, HA-00b remained Review until the coordinator's fresh review; the Wave-0 record below supersedes that status.
 
 Catalog search: `tools/README.md` and `crates/*/src/bin/` expose no Harset census/claim validator; existing census tools inspect map archetypes, ability seed tooling validates its workbook, and token-profile validation measures attribution. A bounded PowerShell check was saved only in gitignored `.claude/reports/four-zone/validate-harset.ps1`; no repository tool was added. It reads INSERT column names, scans VALUES while respecting quoted/escaped strings and tuple depth, and uses point_id (second column). Its command runs from the integration worktree: `pwsh -NoProfile -File <worktree>\.claude\reports\four-zone\validate-harset.ps1 <worktree>`.
 
@@ -71,3 +71,20 @@ Ordered lane checks: `status=not_applicable fmt`, `status=not_applicable clippy`
 Fresh committed-state recheck froze all 84 registered branch SHAs before reading their snapshots; 72 differed in relevant seed files, with zero candidate collisions. Four integration heads at that snapshot: Castle `1ebdff94fa4df3cb28fd9e5b4c83cfd63e7044bf`, Cellblock `457b4f75a57b74c6350fc29d93b5fa3f9df3ec5d`, Harset `37ffd858d73a47e9f68088af0b6cca2c3852c4b0`, Tollana `b105967cc7743601589fc5f304b581f3ca0ff9dd`. That count differs from the historical 85-ref scan because registered worktrees change. Relevant seed changes were inspected through Git objects only. Uncommitted/newer sibling claims remain outside this snapshot.
 
 Final documentation recheck: introduced relative paths and heading anchors resolve; all changed docs are CRLF and under 700 lines; scoped Markdown lint reports nine files and zero issues; `git diff --check` passes. Four pre-existing memory-index blank-line warnings were repaired while adding its new pointer. Existing historical doc warnings are not runtime test results.
+
+## Wave-0 closeout, 2026-10-14
+
+HA-00b is **Integrated for documentation evidence only** on `content/harset-campaign`. The cumulative reviewed range is `d3efb7d41aad0b6008397f112d224ce7430d7acf..22982c17ac571024c3bf0e95564e2b976dc3ad7c`; this closeout records the passed gate without changing its evidence or accepting a runtime packet. See the [wave resume](../RESUME.md) for the next action.
+
+| Round | Reviewer / range | Findings and disposition |
+|---|---|---|
+| 1 | Fresh Sol `packet-reviewer`, 2026-10-14; base through `37ffd858d73a47e9f68088af0b6cca2c3852c4b0`; initial session identity unavailable | Three findings: missing authored/repeatable ID gate, absent scratch failure proof, and inaccurate integration-head wording. Separate fixer `/root/harset_fix` resolves all three in `22982c17ac571024c3bf0e95564e2b976dc3ad7c`, also repairing shared proposals/index/memory links. |
+| 2 | Fresh Sol reviewer `/root/harset_rereview`, 2026-10-14; full base through `22982c17ac571024c3bf0e95564e2b976dc3ad7c` | No findings; confirms all initial findings fixed. Read-only report: `.claude/reports/four-zone/harset-rereview.md` (gitignored). |
+
+The rereviewer reruns the existing ignored validator: `pwsh -NoProfile -File .claude/reports/four-zone/validate-harset.ps1 .`. It confirms 73 unique census records, dispositions 29/39/2/3, four disjoint carry-ins, twelve matching seed row/distinct-key inventories, 495 collision-free chain candidates, and 84 committed branch snapshots with 72 differing relevant seed snapshots and no candidate collisions. Removing mission 571's disposition fails the same census checker; restoring it passes. These are recorded review results, not a new seed scan at this closeout.
+
+Closeout checks run on the four changed ledger files: relative-link path and heading-anchor validation; byte-level CRLF and line-cap validation (`RESUME.md` at most 40 lines); `npx --yes markdownlint-cli2 --no-globs docs/analysis/harset-continuation/README.md docs/analysis/harset-continuation/work-packets.md docs/analysis/harset-continuation/worknotes/HA-00b.md docs/analysis/harset-continuation/RESUME.md`; `git diff --check` and `git diff --cached --check`. Results: 29 local paths and five heading anchors resolve; all four files use CRLF and remain under their caps (`RESUME.md`: 21 lines); markdownlint checks four files with zero issues, exit 0; both whitespace checks exit 0. Exact outcomes are also in the ignored `.claude/reports/four-zone/harset-wave0-closeout.md`.
+
+Ordered runtime checks remain `status=not_applicable fmt`, `status=not_applicable clippy`, `status=not_applicable tests`: the amended HA-00b docs gate requires no cargo, so there is no lane/run ID or Rust pass. No database reload, live-DB test, historical revert rerun, lab lease, client startup, server change or client UAT occurred.
+
+HA-00c stays BlockedDependency on catalog/CB-N05a evidence and owner/advisor approvals. HA-17/18 require HA-00c AND CB-N05a merged, reviewed and client-proven. Restoration proposals remain inactive until coordinator allocation signoff and seal-time reconciliation. Travel/encounters, 1664 and 618/621 retain their named evidence gates; 1360/567 retain CS-08 and item-acquisition gates. Historical mission artifacts remain UATPending or blocked as recorded; none is newly certified playable. The measured small implementation pilot is still required before a larger runtime wave.

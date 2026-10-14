@@ -27,7 +27,7 @@ Each blocked row names the contract that must be closed before the original impl
 | Packet | Missions / scope | State | Gate before seal |
 |---|---|---|---|
 | HA-00a | 73 census | Done at CSV evidence level | Reviewed dispositions in README; missing build lineage remains held |
-| HA-00b | Reset/evidence/restoration ID proposals | Review | Amended scope; shared proposals recorded, coordinator signoff and fresh review pending |
+| HA-00b | Reset/evidence/restoration ID proposals | Integrated | Wave-0 documentation evidence only; three findings fixed by `22982c17a`, fresh rereview clean. Proposals stay inactive until allocation signoff |
 | HA-00c | Authored/repeatable exact IDs | BlockedDependency | CB-N05a insertion contract/catalog evidence; owner story/reward/reset choices and global ID audit |
 | HA-01a | Travel/placement | BlockedEvidence | Four Market/Storage thresholds + arrivals, clearance, wrong-world and relog; preserve 6007/1361 linkage |
 | HA-01b | 1664, proposed | BlockedEvidence | Castle CS-06 grant edge, Kaerlia identity, dialog/faction graph and placement |

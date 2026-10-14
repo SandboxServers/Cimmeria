@@ -2,13 +2,13 @@
 
 > Type: reference. Audience: campaign coordinator and packet reviewers. Updated: 2026-10-14.
 > Baseline: `origin/main` `d3efb7d41aad0b6008397f112d224ce7430d7acf`.
-> Companions: [packet contracts](work-packets.md), [placements](placements.md), [ID proposals](id-allocation.md), [HA-00b worknote](worknotes/HA-00b.md), [four-zone plan](../four-zone-planning/harset.md), [execution contract](../four-zone-planning/execution-contract.md).
+> Companions: [packet contracts](work-packets.md), [placements](placements.md), [ID proposals](id-allocation.md), [HA-00b worknote](worknotes/HA-00b.md), [wave resume](RESUME.md), [four-zone plan](../four-zone-planning/harset.md), [execution contract](../four-zone-planning/execution-contract.md).
 
 This ledger replaces the old ledger as the continuation's dispatch record. The [Harset rebuild](../harset-rebuild/README.md) remains historical evidence. HA-00b changes documentation only. It does not establish client UAT, run builds, reload a database or implement a mission.
 
 ## Gate outcome
 
-HA-00a's 73-record census is accepted at CSV/seed relation level. HA-00b has reconciled the current artifacts, tags and candidate IDs. **HA-00b is Review under its amended restoration/ledger scope; HA-00c owns authored/repeatable ID sealing. Dependent implementation remains BlockedEvidence or BlockedDependency until its own manifest is sealed.** A complete evidence audit can identify a blocker without fabricating its answer. No later packet is Ready solely because it has a reserved numeric range.
+HA-00a's 73-record census is accepted at CSV/seed relation level. HA-00b has reconciled the current artifacts, tags and candidate IDs. **HA-00b is Integrated for Wave-0 documentation evidence under its amended restoration/ledger scope; HA-00c owns authored/repeatable ID sealing. Dependent implementation remains BlockedEvidence or BlockedDependency until its own manifest is sealed.** A complete evidence audit can identify a blocker without fabricating its answer. No later packet is Ready solely because it has a reserved numeric range.
 
 The approved active selection is **29 ZIP-linked core + four non-ZIP records = at most 33**. Two of these, 1360 and 567, remain partial across Castle CS-08. Thus 31 have no CS-08 carry-in dependency; that arithmetic does not mean 31 are playable today. Only five complete Harset mission graphs exist in the seed: 742, 1200, 1324, 1326 and 1361. Of those, 1326's ordinary progression waits for the missing 1325 completion. Mission 1664 is a separate proposed Castle/Harset interface and is not silently counted into the 33.
 
@@ -206,10 +206,10 @@ Tollana owns all seven recipient graphs in 9800–9999, including steps already 
 
 | Item | State |
 |---|---|
-| Evidence base | `d3efb7d41aad0b6008397f112d224ce7430d7acf`; HA-00b commit `37ffd858d73a47e9f68088af0b6cca2c3852c4b0` is integrated on `content/harset-campaign`; wave review pending |
-| HA-00b | Review under amended restoration/ledger scope; docs produced and static checks recorded in [worknote](worknotes/HA-00b.md) |
+| Evidence base | `d3efb7d41aad0b6008397f112d224ce7430d7acf`; HA-00b `37ffd858d73a47e9f68088af0b6cca2c3852c4b0` plus repair `22982c17ac571024c3bf0e95564e2b976dc3ad7c` integrated on `content/harset-campaign`; Wave-0 evidence gate passed |
+| HA-00b | Integrated, documentation evidence only; two review rounds and exact checks in [worknote](worknotes/HA-00b.md#wave-0-closeout-2026-10-14) |
 | Implementation pilot | BlockedDependency: coordinator must seal one small restoration packet, then record actual cost/checks/review before scaling |
-| Local CI/reviewer/fixer rounds | No compiling lane run; fresh independent review owned by coordinator; no review round claimed |
+| Local CI/reviewer/fixer rounds | Two rounds: initial three findings fixed by `22982c17a`; fresh rereview has no findings. Docs checks pass; fmt/clippy/tests not applicable, no lane run |
 | Client UAT | UATPending; no lab permission, lease, client startup or server change in this packet |
 | Shared four-zone ID amendments | Harset-only restoration proposals recorded, coordinator signoff pending; no active claims |
 | HA-00c | BlockedDependency: exact authored/repeatable allocations need stock catalog/CB-N05a evidence and owner/advisor decisions; HA-17/18 require this gate AND CB-N05a |
