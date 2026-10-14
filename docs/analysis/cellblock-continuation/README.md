@@ -41,7 +41,7 @@ CB-N05a remains the early standalone PR exception. FZ-99 owns shared status docs
 
 ## Integration boundary
 
-Only the five CB-N00 allowlisted documents are changed. Global documentation-index
-and memory amendments are deferred to the coordinator because they are outside this
-packet's exact allowlist; the four-zone index already names this ledger directory.
+CB-N00 delivered its five allowlisted documents. Review fixes add the ledger link
+in `docs/readme.md` and a sourced project-memory pointer; the four-zone index also
+names this ledger directory. FZ-99 owns shared status documents.
 No runtime, seed, shared planning, client or lab changes occurred.

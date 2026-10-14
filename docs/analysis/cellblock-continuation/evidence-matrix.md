@@ -7,12 +7,12 @@
 
 | Tier | What it establishes | What it cannot establish |
 |---|---|---|
-| H â€” historical handoff CSV | Exact supplied row, named build where present, claimed relation and hash | Missing upstream extraction/database lineage; installed-client response |
-| P â€” package evidence | Existing address/export-cited asset-audit findings; archive bytes verified here | Gameplay linkage or playback merely from asset names |
-| L â€” legacy emulator | Giza/Atrea intended orchestration in deprecated/python | Original CME server truth or current behavior |
-| S â€” current seed/code | Defined Cimmeria chain, mission, spawn and test assertions at this commit | Deployed database parity or passing client UAT |
-| T â€” prior telemetry | The event recorded in the dated session | Delivered first-press feedback, visual/audio acceptance, current build parity |
-| C â€” prior client observation | Only the specific dated observation reported by its source | Whole-route acceptance or present behavior after intervening changes |
+| H — historical handoff CSV | Exact supplied row, named build where present, claimed relation and hash | Missing upstream extraction/database lineage; installed-client response |
+| P — package evidence | Existing address/export-cited asset-audit findings; archive bytes verified here | Gameplay linkage or playback merely from asset names |
+| L — legacy emulator | Giza/Atrea intended orchestration in deprecated/python | Original CME server truth or current behavior |
+| S — current seed/code | Defined Cimmeria chain, mission, spawn and test assertions at this commit | Deployed database parity or passing client UAT |
+| T — prior telemetry | The event recorded in the dated session | Delivered first-press feedback, visual/audio acceptance, current build parity |
+| C — prior client observation | Only the specific dated observation reported by its source | Whole-route acceptance or present behavior after intervening changes |
 
 High confidence below means the cited row exists, not that its historical lineage
 or client playback is sealed. `RESTORED_SOURCE` applies only to an exact supported
@@ -53,22 +53,22 @@ they were inspected, **not run** in this docs-only packet.
 
 | Mission / room / action | H/L anchor and provenance disposition | Current tag / chain anchors (S) | Intended response / existing assertion surface | Confidence / owner |
 |---|---|---|---|---|
-| 622 stasis / search bodies, equip | M:622; legacy ArmYourself. Historical corpse-search goal; added 80623/80622 steps and dialog 3996 are reconstruction. | ArmYourself_FrostBody, ArmYourself_GuardBody; 1001â€“1007, 1010; Region8 guard 1008/1009 | Letter/pistol grant, equip completes and opens stasis door; mission_622.rs, mission_622_core_tutorial.rs. Fresh visibility/fire UATPending. | High S; N02, class-start owns ability split |
-| 638 cells / release prisoner | M:638; legacy Prisoner_329; historical goal, current routing S/L | Prisoner_329, 329_CellDoorButton; 1011â€“1021 | Branch dialog, Livewire, advance 2115â†’2116, accept 639; mission_638.rs. Door motion UATPending. | High S; N02 + asset owner |
-| 639 med station / vial, cover, drone, cure | M:639; legacy FindAmbernol; historical objective texts, current AND gate reconstruction | ArmYourself_AmbernolVial, ArmYourself_PrisonerRetrievalUnit; 1031â€“1034, 1112, 1131â€“1133 | Both cover 2484 and kill 2482 before 2343; item 19 completes; mission_639.rs and mission_639_cover.rs. | High S; N02/N03; prop visual asset owner |
-| 640 cells / hack and ride | M:640; legacy HackRings; current restoration/reconstruction wiring | HackTheRings_Switch; 1041â€“1046, 1151 | Livewire then ring travel; relog bits by step; mission_640.rs. Native click/arrival not newly tested. | High S; N02 + ring owner |
-| 641 Preparation / gear, Marsh, terminal | M:641; legacy Preparation; current equip-step insertion reconstruction | Preparation_ColMarsh, Preparation_SMG1A, Preparation_Terminal; 1051â€“1066, 1152 | Gear/equip, dialog, Livewire completes 641/accepts 680; mission_641.rs. Pod opening is not proved by completion. | High S; N02; class-start/asset owners |
-| 680 Preparation to topside / escort | M:680; legacy EscapeTheCellblock; current escort/barks reconstructed | Preparation_RingSwitch, Preparation_ColMarsh; 1071â€“1074, 1171, 1173â€“1176 | Ring 2â†’3, follow, Region9 accepts 681; mission_680.rs. Current follow/first bark delivery UATPending. | High S; N02 + NPC/ring owners |
-| 681 Mess Hall / guards and flank | M:681; H says visible; S is hidden. Current tracked-not-gating flank is project decision. | MessHall_Guard1/2; 1081, 1085â€“1087, 1141, 1177, 1181â€“1183 | Kill-only completion; flank 2725 credit if reachable; mission_681_686_flank.rs, backstop/hidden siblings. | High S; N03; historical flag differs |
+| 622 stasis / search bodies, equip | M:622; legacy ArmYourself. Historical corpse-search goal; added 80623/80622 steps and dialog 3996 are reconstruction. | ArmYourself_FrostBody, ArmYourself_GuardBody; 1001–1007, 1010; Region8 guard 1008/1009 | Letter/pistol grant, equip completes and opens stasis door; mission_622.rs, mission_622_core_tutorial.rs. Fresh visibility/fire UATPending. | High S; N02, class-start owns ability split |
+| 638 cells / release prisoner | M:638; legacy Prisoner_329; historical goal, current routing S/L | Prisoner_329, 329_CellDoorButton; 1011–1021 | Branch dialog, Livewire, advance 2115→2116, accept 639; mission_638.rs. Door motion UATPending. | High S; N02 + asset owner |
+| 639 med station / vial, cover, drone, cure | M:639; legacy FindAmbernol; historical objective texts, current AND gate reconstruction | ArmYourself_AmbernolVial, ArmYourself_PrisonerRetrievalUnit; 1031–1034, 1112, 1131–1133 | Both cover 2484 and kill 2482 before 2343; item 19 completes; mission_639.rs and mission_639_cover.rs. | High S; N02/N03; prop visual asset owner |
+| 640 cells / hack and ride | M:640; legacy HackRings; current restoration/reconstruction wiring | HackTheRings_Switch; 1041–1046, 1151 | Livewire then ring travel; relog bits by step; mission_640.rs. Native click/arrival not newly tested. | High S; N02 + ring owner |
+| 641 Preparation / gear, Marsh, terminal | M:641; legacy Preparation; current equip-step insertion reconstruction | Preparation_ColMarsh, Preparation_SMG1A, Preparation_Terminal; 1051–1066, 1152 | Gear/equip, dialog, Livewire completes 641/accepts 680; mission_641.rs. Pod opening is not proved by completion. | High S; N02; class-start/asset owners |
+| 680 Preparation to topside / escort | M:680; legacy EscapeTheCellblock; current escort/barks reconstructed | Preparation_RingSwitch, Preparation_ColMarsh; 1071–1074, 1171, 1173–1176 | Ring 2→3, follow, Region9 accepts 681; mission_680.rs. Current follow/first bark delivery UATPending. | High S; N02 + NPC/ring owners |
+| 681 Mess Hall / guards and flank | M:681; H says visible; S is hidden. Current tracked-not-gating flank is project decision. | MessHall_Guard1/2; 1081, 1085–1087, 1141, 1177, 1181–1183 | Kill-only completion; flank 2725 credit if reachable; mission_681_686_flank.rs, backstop/hidden siblings. | High S; N03; historical flag differs |
 | 682 Hallway01 / guard | Absent H mission CSV; L/S controller, not evidence of missing gameplay | Hallway01_Guard; 1088, 1184 | Hidden controller completes on kill or pre-dead backstop; mission_681_686.rs/backstop. | High S; N02/N03 |
 | 683 Hallway02 / guard | Absent H; L/S controller | Hallway02_Guard; 1089, 1185; bridge 1082 | Hidden controller completes and advances 684; same replay family. | High S; N02/N03 |
 | 684 Hallway03 / guard | M:684; H visible vs S hidden | Hallway03_Guard; 1090, 1186 | Kill advances 685; same replay family. | High S; N02/N03 |
 | 685 Hallway04 / guard | Absent H; L/S controller | Hallway04_Guard; 1091, 1187; bridge 1083 | Kill advances 686; same replay family. | High S; N02/N03 |
-| 686 Hallway05 / flank and Straegis aftermath | M:686; H visible vs S hidden. Camera export supports scene; Marsh disappearance/dialog timing are current wiring. | Hallway05_Guard1/2; 1092â€“1094, 1142, 1178, 1188â€“1190; scene 1161/1162, 1172/1175 | Kill-only progress; sequence 1751; dialog 2516 at 10100ms, 5859 at 26100ms; mission_686_straegis.rs and flank/backstop/hidden tests. Playback UATPending. | High S; N02/N03, asset owner |
-| 687 barracks / crate and guards | M:687; historical Human/Jaffa goal; five-way class rewards explicitly project design | Cellblock_WoodenCrate, Barracks_Guard1/2/3; 1097â€“1104, 1191â€“1195 | Loot/equip resources and kill progression; mission_687.rs, mission_687_crate.rs. | High S; class-start owns reward split |
-| 688 armory / terminal then exit | M:688; optional guard/current extra step 80688 and cross-world fallback reconstruction | Cellblock_TerminalX, Cellblock_ArmoryGuard1, Cellblock_ArmoryRingSwitch; 1105â€“1111, 1154 | Terminal advances, ring completes/teleports; guard 4647 optional; mission_688.rs. Does not prove door/ring animation. | High S; N02 boundary; ring owns 1109 |
-| 689 boots / unlock | Absent H; internal Cimmeria lock controller, not a recovered mission catalog row | Item 3438, abilities 1597/1598; 1022â€“1025 | Accept/apply lock on load, Livewire on use, clear on victory; mission_689.rs, mission_689_hidden_frames.rs. | High S; N02; new client lock run pending |
-| 1360 optional / Frost's Letter | Absent H; historical letter item 3730; accepting mission on corpse search is Cimmeria reconstruction per C04/D-CB03 | ArmYourself_FrostBody; 1121 alongside 1003; step 4037 | Offer once and carry state; mission_1360.rs. Castle 4037â†’4038 leg belongs to CS-08, not a presumed completed handoff. | High S; Cellblock acceptance / Castle CS-08 / Harset recipient |
+| 686 Hallway05 / flank and Straegis aftermath | M:686; H visible vs S hidden. Camera export supports scene; Marsh disappearance/dialog timing are current wiring. | Hallway05_Guard1/2; 1092–1094, 1142, 1178, 1188–1190; scene 1161/1162, 1172/1175 | Kill-only progress; sequence 1751; dialog 2516 at 10100ms, 5859 at 26100ms; mission_686_straegis.rs and flank/backstop/hidden tests. Playback UATPending. | High S; N02/N03, asset owner |
+| 687 barracks / crate and guards | M:687; historical Human/Jaffa goal; five-way class rewards explicitly project design | Cellblock_WoodenCrate, Barracks_Guard1/2/3; 1097–1104, 1191–1195 | Loot/equip resources and kill progression; mission_687.rs, mission_687_crate.rs. | High S; class-start owns reward split |
+| 688 armory / terminal then exit | M:688; optional guard/current extra step 80688 and cross-world fallback reconstruction | Cellblock_TerminalX, Cellblock_ArmoryGuard1, Cellblock_ArmoryRingSwitch; 1105–1111, 1154 | Terminal advances, ring completes/teleports; guard 4647 optional; mission_688.rs. Does not prove door/ring animation. | High S; N02 boundary; ring owns 1109 |
+| 689 boots / unlock | Absent H; internal Cimmeria lock controller, not a recovered mission catalog row | Item 3438, abilities 1597/1598; 1022–1025 | Accept/apply lock on load, Livewire on use, clear on victory; mission_689.rs, mission_689_hidden_frames.rs. | High S; N02; new client lock run pending |
+| 1360 optional / Frost's Letter | Absent H; historical letter item 3730; accepting mission on corpse search is Cimmeria reconstruction per C04/D-CB03 | ArmYourself_FrostBody; 1121 alongside 1003; step 4037 | Offer once and carry state; mission_1360.rs. Castle 4037→4038 leg belongs to CS-08, not a presumed completed handoff. | High S; Cellblock acceptance / Castle CS-08 / Harset recipient |
 | 642 archival / Escape the Cells | Absent H; hidden skeleton in mission-chains; no activation inferred | missions.sql 642; no route chain assigned | Keep archival; no implementation or client claim. | High seed existence; archaeology owns hold |
 | 1654 off-route / Aftermath | M:1654 is level 5, SGC/Hammond objectives; moniker duplicates 687 | missions.sql 1654; no Cellblock route chain assigned | Exclude from escape; a compatible later arc needs separate source review. | High H/S disposition; offworld mission owner, not N02 |
 
@@ -78,7 +78,7 @@ mission/NPC/items/presentation approval as applicable.
 
 ## Historical comparison worlds
 
-`worlds.sql` 1201â€“1207, `entities/spaces.xml` and
+`worlds.sql` 1201–1207, `entities/spaces.xml` and
 `crates/resources/src/base/world_info_overrides.rs` agree on the aliases below.
 They are instanced archaeology spaces with `has_script=false`; no import into 12.
 The developer CSV reports 65 map rows per build (520 across seven builds + QA4046).
@@ -91,9 +91,9 @@ separate claims: exact final bytes can be patched, but no missing lineage is inf
 | 55124 / 1202 / CellBlock55 / C55124_CellBlock | Full build (handoff claim) | `fa6d3ad7d41f6ec7799b87425c3fea139331656c0a56d42fa859a0ebe9356a6b` | `fd6eddd3f9bd7c988158542cb1d6c558258366ea4f5a88dd9eb08792b743ea2a` |
 | 57050 / 1203 / CellBlock57 / C57050_CellBlock | Full build (handoff claim) | `fa6d3ad7d41f6ec7799b87425c3fea139331656c0a56d42fa859a0ebe9356a6b` | `2077567c31b80c19cd79b7a9781f8304d85d8bd6a5dcb63d774e7f96e14a7f40` |
 | 58674 / 1204 / CellBlock58 / C58674_CellBlock | Full build (handoff claim) | `fa6d3ad7d41f6ec7799b87425c3fea139331656c0a56d42fa859a0ebe9356a6b` | `4e7cae150a7c336e02dbd5976bb5c767dc968ebbb1ab303ed6152b8739e99a55` |
-| 60130 / 1205 / CellBlock60 / C60130_CellBlock | VPatch 58674â†’60130 | `fa6d3ad7d41f6ec7799b87425c3fea139331656c0a56d42fa859a0ebe9356a6b` | `c42a2a6b832366bf15349b0cbe93090561cb3ef0afa604983d5d34e786b07a38` |
-| 62429 / 1206 / CellBlock62 / C62429_CellBlock | VPatch 60130â†’62429 | `9b72f927e443696c2a1b2a31636d6dfac3ce8c97e4db00621666841766b22eff` | `b064f45a366eaa5d06fa112a0df90fa4bbee9511ff0a0230abfd60a85525b439` |
-| 63682 / 1207 / CellBlock63 / C63682_CellBlock | VPatch 62429â†’63682 | `e8c71aad68d11b2972002b65c0ba7338064f74a51106a0a6d6e14dc478f36e1f` | `727faae355c237a6b0c72a0fd0ba2aca202e39dc6058069a89183535d6001834` |
+| 60130 / 1205 / CellBlock60 / C60130_CellBlock | VPatch 58674→60130 | `fa6d3ad7d41f6ec7799b87425c3fea139331656c0a56d42fa859a0ebe9356a6b` | `c42a2a6b832366bf15349b0cbe93090561cb3ef0afa604983d5d34e786b07a38` |
+| 62429 / 1206 / CellBlock62 / C62429_CellBlock | VPatch 60130→62429 | `9b72f927e443696c2a1b2a31636d6dfac3ce8c97e4db00621666841766b22eff` | `b064f45a366eaa5d06fa112a0df90fa4bbee9511ff0a0230abfd60a85525b439` |
+| 63682 / 1207 / CellBlock63 / C63682_CellBlock | VPatch 62429→63682 | `e8c71aad68d11b2972002b65c0ba7338064f74a51106a0a6d6e14dc478f36e1f` | `727faae355c237a6b0c72a0fd0ba2aca202e39dc6058069a89183535d6001834` |
 
 The H root key is `01_MAP_PACKAGES.csv` `(Build, MapRelativeTail=Castle_CellBlock.umap)`.
 Aliased root key is historical client ZIP `PAYLOAD/SGWGame/CookedPC/Maps/<alias>/<alias>.umap`.
@@ -132,14 +132,14 @@ implementation tickets; the following dispositions apply to every row in each ta
 | `12_PLAYER_STARTS.csv` | 0 | H indexed relation; no current behavior inferred, exact build/export join required before reuse; N01/asset or ring owner |
 | `13_TRAVEL_TRANSPORT.csv` | 224 | H indexed relation; no current behavior inferred, exact build/export join required before reuse; N01/asset or ring owner |
 | `14_TRIGGER_ACCESS.csv` | 207 | H indexed relation; no current behavior inferred, exact build/export join required before reuse; N01/asset or ring owner |
-| `15_SPAWN_ENCOUNTER_ROOTS.csv` | 7 | H; seven Matinee roots R00042â€“R00048, EntitySpawnProven=False; asset owner, no NPC grant |
-| `16_SPAWN_ENCOUNTER_BINDINGS.csv` | 1 | H/P; QA4046 R00048 variable 988 â†’ CameraActor 89; asset owner, not server spawn |
+| `15_SPAWN_ENCOUNTER_ROOTS.csv` | 7 | H; seven Matinee roots R00042–R00048, EntitySpawnProven=False; asset owner, no NPC grant |
+| `16_SPAWN_ENCOUNTER_BINDINGS.csv` | 1 | H/P; QA4046 R00048 variable 988 → CameraActor 89; asset owner, not server spawn |
 
 The one independently corroborated camera binding is documented by
-[asset ledger E08â€“E10](../cellblock-asset-audit/evidence-ledger.md):
+[asset ledger E08–E10](../cellblock-asset-audit/evidence-ledger.md):
 QA `Castle_CellBlock-fffffffe.umap` SHA-256
 `d00b8261b7d882fd7ff6cf8329c21a347db7f5969175d186989610ebbfa0c4e2`,
-sequence export 953, InterpData 281 (10.0095968246s), variable 988 â†’ camera 89.
+sequence export 953, InterpData 281 (10.0095968246s), variable 988 → camera 89.
 This audit reuses that static finding; it does not claim a new Ghidra trace or render.
 The root keys are `(55124,R00042)`, `(57050,R00043)`, `(58674,R00044)`,
 `(60130,R00045)`, `(62429,R00046)`, `(63682,R00047)`, `(QA4046,R00048)`;

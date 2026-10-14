@@ -39,7 +39,7 @@ revert proof or client UAT applies to this docs-only change.
 
 ## Pilot measurement
 
-- Scoped estimate: 50â€“60k specialist working tokens in the original packet; no
+- Scoped estimate: 50–60k specialist working tokens in the original packet; no
   Haiku implementation assigned. Exact source/route scope fits one static gate.
 - Actual token/context usage: not exposed by this worker harness; coordinator must
   obtain telemetry, not infer usage from the estimate.
@@ -61,9 +61,9 @@ reproduce faults before opening N02 children.
 Recommend the Documentation Writer use this evidence packet only after coordinator
 and domain review: source matrix supplies summary, technical IDs/hashes, historical
 vs Cimmeria boundaries and open questions; route baseline supplies observations
-and ownership; decision log supplies design gates. Keep publication within the
-continuation ledger until FZ-99/shared indexes are authorized. Memory and global
-index edits are outside this exact allowlist and are handed to the coordinator.
+and ownership; decision log supplies design gates. The review fixer added the
+continuation-ledger link in `docs/readme.md` and a sourced project-memory pointer.
+FZ-99 owns shared status documents; it does not defer documentation-index updates.
 
 Commit: identified by `git log -1 --format=%H -- worknotes/cb-n00.md` from this
 folder's parent or by the final worker report (no self-referential SHA embedded).
