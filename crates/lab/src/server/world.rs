@@ -100,7 +100,11 @@ impl LabServer {
     async fn lab_route_stop(&self) -> Result<CallToolResult, McpError> {
         let lease_id = route_lease_id()?;
         let recorder = self.route_recorder();
-        let result = recorder.lock().await.stop(&lease_id).await;
+        let result = recorder
+            .lock()
+            .await
+            .stop(self.supervisor.leases(), &lease_id)
+            .await;
         route_result(result)
     }
 

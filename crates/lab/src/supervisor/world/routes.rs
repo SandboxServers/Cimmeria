@@ -153,7 +153,8 @@ impl RouteRecorder {
     }
 
     /// Stop sampling and return a TOML candidate for human review.
-    pub async fn stop(&mut self, lease_id: &str) -> Result<Value, String> {
+    pub async fn stop(&mut self, book: &LeaseBook, lease_id: &str) -> Result<Value, String> {
+        self.discard_revoked(book);
         if self
             .active
             .as_ref()
@@ -297,17 +298,11 @@ mod tests {
             })
             .unwrap();
         assert!(recorder
-            .stop(&second.lease_id)
-            .await
-            .unwrap_err()
-            .contains("different lease"));
-        recorder.discard_revoked(&book);
-        assert!(recorder.active.is_none());
-        assert!(recorder
-            .stop(&second.lease_id)
+            .stop(&book, &second.lease_id)
             .await
             .unwrap_err()
             .contains("no active"));
+        assert!(recorder.active.is_none());
     }
 
     #[test]
