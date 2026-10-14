@@ -28,8 +28,10 @@ Each blocked row names the contract that must be closed before the original impl
 |---|---|---|---|
 | HA-00a | 73 census | Done at CSV evidence level | Reviewed dispositions in README; missing build lineage remains held |
 | HA-00b | Reset/evidence/restoration ID proposals | Integrated | Wave-0 documentation evidence only; three findings fixed by `22982c17a`, fresh rereview clean. Proposals stay inactive until allocation signoff |
-| HA-00c | Authored/repeatable exact IDs | BlockedDependency | CB-N05a insertion contract/catalog evidence; owner story/reward/reset choices and global ID audit |
-| HA-1360a | Authoritative letter turn-in engine prerequisite | BlockedEvidence | Transaction/lock order, stale-writer CAS or proved serialization, correlated recovery and bounded file manifest need domain signoff |
+| HA-00c | Authored/repeatable exact IDs | BlockedEvidence | CB-N05a is merged; inspect stock catalog and Cellblock's first authored client proof, then perform current global ID audit under O14-04/10/13 |
+| HA-1360a1 | Atomic base transaction and writer fence | Ready | Exact [a1 manifest and guards](worknotes/HA-1360a-seal.md#ha-1360a1--transaction-and-stale-writer-fence) sealed after database, mission, authority and testing review; implementation/test proof open |
+| HA-1360a2 | Internal transport and session fence | Review | A1 interface; exact world-entry/token/teardown files and routing tests still to seal |
+| HA-1360a3 | Strict action, pending/recovery and continuation | BlockedDependency | A2 transport interface; exact cell teardown and result manifest still to seal |
 | HA-1360b | Marsh receiving seed and cross-zone proof | BlockedDependency | HA-1360a integrated/reviewed; CS-08a actual crossing and retained letter; receiving graph signoff |
 | HA-01a | Travel/placement | BlockedEvidence | Four Market/Storage thresholds + arrivals, clearance, wrong-world and relog; preserve 6007/1361 linkage |
 | HA-01b | 1664, proposed | BlockedEvidence | Castle CS-06 grant edge, Kaerlia identity, dialog/faction graph and placement |
@@ -54,24 +56,24 @@ Each blocked row names the contract that must be closed before the original impl
 | HA-13b | 1245 | BlockedEvidence | Private Storage Petbe clone template 221; immutable shared spawn 223 and bloody-robes source decision |
 | HA-13c | 1246 | BlockedEvidence | Contact and evidence/dialog chain; isolate from 1245 state |
 | HA-14 | 1247/1322 | BlockedDependency | HA-15a treat, HA-01a/02 private encounter placements |
-| HA-15a | Item 4512 source | BlockedDecision | Source/stock policy, owned acquisition rather than GM grant |
-| HA-15b | Faction vendors | BlockedDecision | Exact stock, prices, faction/level bands, template/dialog isolation |
-| HA-15c | Trainers | BlockedDecision | Exact approved ability trees and teaching policy |
-| HA-16a | World-57 districts | BlockedDecision | Density/roles/placements; separate ambient templates from quest speakers |
-| HA-16b | Command Center ambient | BlockedDecision | Interior density/roles and shared-space load contract |
-| HA-17a | Two Jaffa stories | BlockedDependency | Restoration UAT + HA-00c sealed IDs AND CB-N05a merged/client proof + premise/reward/presentation approval |
-| HA-17b | Two OP-CORE stories | BlockedDependency | HA-00c AND CB-N05a, restoration UAT and catalog/provenance gates plus restored HA-09/10 and services |
-| HA-17c | Two Goa'uld stories | BlockedDependency | HA-00c AND CB-N05a, restoration UAT and catalog/provenance gates plus restored HA-13/14 |
-| HA-18a | Jaffa repeatable | BlockedDependency | HA-00c AND CB-N05a; owner reset/cooldown/persistence/anti-farm decision after HA-17a |
-| HA-18b | OP-CORE repeatable | BlockedDependency | HA-00c AND CB-N05a; same owner reset gates after HA-17b |
-| HA-18c | Goa'uld repeatable | BlockedDependency | HA-00c AND CB-N05a; same owner reset gates after HA-17c |
+| HA-15a | Item 4512 source | BlockedEvidence | O14-12 allows a conservative item policy; an owned acquisition source remains unproved |
+| HA-15b | Faction vendors | BlockedEvidence | O14-12 permits tier-comparable stock/prices; audit existing tiers, faction/level bands and template/dialog isolation |
+| HA-15c | Trainers | BlockedEvidence | O14-12 permits conservative trees; audit existing ability tiers and teaching policy |
+| HA-16a | World-57 districts | BlockedEvidence | O14-12 permits conservative density; measure safe roles/placements and separate ambient templates from quest speakers |
+| HA-16b | Command Center ambient | BlockedEvidence | O14-12 permits conservative density; measure interior placements and shared-space load |
+| HA-17a | Two Jaffa stories | BlockedDependency | O14-10/11 delegate lore-safe premise/rewards and no player-facing label; restoration UAT, HA-00c IDs and Cellblock's first authored catalog client proof remain |
+| HA-17b | Two OP-CORE stories | BlockedDependency | Same O14-10/11 policy; HA-00c, authored catalog client proof, restoration UAT and HA-09/10/services remain |
+| HA-17c | Two Goa'uld stories | BlockedDependency | Same O14-10/11 policy; HA-00c, authored catalog client proof, restoration UAT and HA-13/14 remain |
+| HA-18a | Jaffa repeatable | BlockedDependency | O14-13 delegates persisted cooldown/reward/anti-farm design; HA-00c, authored catalog proof and HA-17a remain |
+| HA-18b | OP-CORE repeatable | BlockedDependency | Same O14-13 authority; HA-00c, authored catalog proof and HA-17b remain |
+| HA-18c | Goa'uld repeatable | BlockedDependency | Same O14-13 authority; HA-00c, authored catalog proof and HA-17c remain |
 | HA-19 | Integrated UAT/ledger closeout | BlockedDependency | Restoration graphs and authorized client UAT; FZ-99 owns shared status docs |
 
 ## HA-00c specialist allocation gate
 
 The [HA-00c contract](../four-zone-planning/harset-work-packets.md#ha-00c--seal-authored-and-repeatable-id-allocations) owns six authored stories and three repeatables. It records exact mission/step/objective/task/dialog-map/dialog/item/chain IDs, client catalog source/build/hash, global seed and active-branch collisions, approved reuse, provenance and owner story/reward/reset decisions. No catalog IDs are sealed by HA-00b. A guessed stock gap, historical mission reuse or server-only row cannot close this gate.
 
-HA-00c is BlockedDependency until CB-N05a's insertion contract and inspected stock catalog establish a safe allocation path. Completion needs the mission advisor's nine graph signoffs and coordinator's shared claims signoff. HA-17a/b/c and HA-18a/b/c remain BlockedDependency on **HA-00c AND CB-N05a** merged, reviewed and client-proven, plus restoration UAT and owner decisions. This docs/research gate uses the parent contract's static checks and scratch duplicate failure proof; implementation retains its ordered lane checks.
+CB-N05a is merged, but HA-00c remains BlockedEvidence until the stock catalog is inspected, Cellblock's first authored quest passes client journal/dialog/advance/relog proof, and the current active-branch collision audit is documented. O14-04/10/13 delegate individual allocation, lore-safe authored content and repeatable policy with domain review; no further owner vote is required inside those bounds. Completion needs the mission advisor's nine graph signoffs and coordinator's shared claims signoff. HA-17a/b/c and HA-18a/b/c remain BlockedDependency on HA-00c, that first authored client proof and restoration UAT. This docs/research gate uses the parent contract's static checks and scratch duplicate failure proof; implementation retains its ordered lane checks.
 
 ## Castle 1664 provisional interface
 
@@ -135,24 +137,22 @@ needs a bounded same-session retry and relog reconciliation; the existing
 entity-ID-only outbox is not sufficient. Without durable result acknowledgement,
 Marsh's transient 4576 dialog cannot be promised exactly once after a crash.
 
-The reviewed size calls for two children before dispatch: **HA-1360a1** owns the
-base transaction, mission writer guard and focused live-DB failure/concurrency
-proof; **HA-1360a2** owns the strict content action, internal messages, cell
-pending/result state, retry and relog proof. HA-1360b remains the seed/receipt
-child. Neither engine child is Ready until its exact file/function manifest,
-interface and revert tests are sealed. The first child must remain an undeployed
-campaign integration until 6501 is replaced: the old chain would otherwise
-remove a letter and have its independent completion rejected.
+The reviewed size calls for three engine children: **HA-1360a1** owns the base
+transaction, mission writer guard and live-DB failure/concurrency proof;
+**HA-1360a2** owns internal messages, base routing and session fence;
+**HA-1360a3** owns the strict content action, cell pending/result state,
+retry and relog proof. HA-1360b remains the seed/receipt child. A1 is Ready at
+the contract level after the focused 2026-10-14 signoffs; a2/a3 retain their
+named interface/manifest gates. No child has implementation or test proof yet.
+The engine children remain undeployed campaign integration until 6501 is
+replaced: the old chain would otherwise remove a letter and have its
+independent completion rejected.
 
-The seed sets `num_repeats=1`; generic Rust and Python mission rules permit a
-second run after the first completion, although normal Frost content offers the
-mission only once. A permanent terminal fence would narrow that rule. The
-preferred run-aware design compares the full active preimage at repeat `r`,
-commits the completed postimage at `r+1`, and recognizes only that exact postimage
-for a retry. Ordinary `MissionUpdate` lacks source intent, so an explicit
-reaccept/abandon write contract or a proved serialization rule is still required
-to distinguish fresh reacceptance from queued stale snapshots. The owner has
-been asked whether to preserve this seeded repeat; no one-shot change is sealed.
+O14-19 resolves the repeat question: mission 1360 is one-shot. HA-1360b changes
+the seed to `num_repeats=0`; the committed postimage has repeats 1. The
+mission-specific writer fence can reject every later nonterminal overwrite or
+abandon, including a queued stale snapshot. The reviewed a1/a2 contract, exact
+file scope and tests are in [the engine worknote](worknotes/HA-1360a-seal.md).
 
 **Candidate edit sites, to narrow at seal:** content-engine `actions.rs`, `loader/action.rs` and focused loader tests; cell-content `executor/{dispatch,mod,mission}.rs`, a focused turn-in handler/tests and `cell/missions/` pending guards; wire `cell/messages/{cell_to_base,base_to_cell,cell_to_base_kind}.rs`; base-world-entry `cell_dispatch/{mod,progression_dispatch}.rs`; base-methods `methods/missions/` focused handler/tests and existing mission writer only where stale-writer protection requires it; base-session `outbox/` and shared lock helper only if the chosen design requires them; cell `service/base_messages/` response handler/tests; entity `missions.rs` only for shared completion semantics. Routing/name exhaustiveness edits and any schema file must be explicitly named before Ready. No gameplay seed is edited by HA-1360a.
 
@@ -176,7 +176,7 @@ Replace 6501's independent removal/completion and precommit success side effects
 
 **Checks / telemetry:** common fmt, lane clippy/nextest for cell-content and services (plus any sealed changed crate), worktree-only seed reload, focused live-DB filters `mission_1360_harset` and the sealed cross-service filter, then merged-wave full checks and fresh review. Retain chain/step/refusal telemetry and HA-1360a committed-result correlation; negative guards inspect refusal reasons and absence of success events. Before a seed rollback, preserve the engine primitive for any in-flight durable result; restoring the old free-completion graph violates the accepted owner decision. Seal compatible disable/restore and persisted-state reconciliation with DB/mission reviewers.
 
-**UAT pending:** after explicit owner approval for lab lease/client/server operations, use an ordinary character to acquire 3730 in Cellblock, cross Castle→Harset, relog, deliver to Marsh, verify count/mission persistence and 1361 offer, repeat click/relog, then exercise missing-letter feedback and storage/overlap refusals. Attest against DB, structured server logs and packet tap; record fixture deviations. Planning source inspection and Rust tests do not establish client acceptance. HA-19 records the campaign outcome; FZ-99 owns shared status pages.
+**UAT pending:** O14-08 supplies standing owner approval for a coordinated lab lease/client/server run. Use an ordinary character to acquire 3730 in Cellblock, cross Castle→Harset, relog, deliver to Marsh, verify count/mission persistence and 1361 offer, repeat click/relog, then exercise missing-letter feedback and storage/overlap refusals. Attest against DB, structured server logs and packet tap; record fixture deviations. Planning source inspection and Rust tests do not establish client acceptance. HA-19 records the campaign outcome; FZ-99 owns shared status pages.
 
 **Future branch / worktree / commit:** `harset/ha-1360b-marsh-receipt` / `harset-ha-1360b` / `Harset HA-1360b: guard Marsh letter receipt`. No worker receives this packet until dependency and final file/test manifests are signed.
 

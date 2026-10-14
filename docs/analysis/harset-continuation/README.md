@@ -2,7 +2,7 @@
 
 > Type: reference. Audience: campaign coordinator and packet reviewers. Updated: 2026-10-14.
 > Baseline: `origin/main` `d3efb7d41aad0b6008397f112d224ce7430d7acf`.
-> Companions: [packet contracts](work-packets.md), [placements](placements.md), [ID proposals](id-allocation.md), [HA-00b worknote](worknotes/HA-00b.md), [wave resume](RESUME.md), [four-zone plan](../four-zone-planning/harset.md), [execution contract](../four-zone-planning/execution-contract.md).
+> Companions: [packet contracts](work-packets.md), [placements](placements.md), [ID proposals](id-allocation.md), [HA-00b worknote](worknotes/HA-00b.md), [HA-1360a engine contract](worknotes/HA-1360a-seal.md), [wave resume](RESUME.md), [four-zone plan](../four-zone-planning/harset.md), [execution contract](../four-zone-planning/execution-contract.md).
 
 This ledger replaces the old ledger as the continuation's dispatch record. The [Harset rebuild](../harset-rebuild/README.md) remains historical evidence. HA-00b changes documentation only. It does not establish client UAT, run builds, reload a database or implement a mission.
 
@@ -26,9 +26,9 @@ Static evidence cannot promote a packet to Done. Current artifact + meaningful r
 | HA-D06 | Accepted tag interface, partial | Existing Harset tags below are signed off for exact spelling/world/template. Tollana owns both ends and chains 9800–9999. The recipients for 618 and 621 remain BlockedEvidence. |
 | HA-D07 | BlockedEvidence | Preserve enabled 6007/6511–6513/6528. Market/Storage doors require four doorway observations and proved arrivals or equivalent BSP evidence. |
 | HA-D08 | Accepted evidence correction | NA26/NA29/NA36/NA40 have already rebuilt Harset/interior meshes and removed the temporary gate pin. Do not reuse the old ledger's “no interior mesh” or 1,939-component premise. Remaining raised-position coverage and ordinary-player containment are still unproved; see [placements](placements.md). |
-| HA-D09 | Proposed claims | The exact IDs in [id-allocation.md](id-allocation.md) are collision-checked candidates. Restoration proposals are recorded in the shared table, inactive until coordinator signoff and graph sealing. HA-00c seals authored/repeatable IDs. |
-| HA-D10 | BlockedDecision | Vendor stock/trainer trees, item-4512 acquisition, rewards, population density, authored presentation and repeatable policy need their named source/owner gates. Historical proposed decisions are preserved in the old ledger. |
-| HA-D11 | Accepted owner direction; implementation blocked | 2026-10-14: Marsh must require owned letter 3730 before 1360 completes. Explicitly expand into [HA-1360a engine prerequisite](work-packets.md#ha-1360a--authoritative-letter-turn-in-prerequisite) (BlockedEvidence) and [HA-1360b receipt](work-packets.md#ha-1360b--marsh-receiving-seed-and-cross-zone-proof) (BlockedDependency). Atomicity, stale writers/CAS, recovery/session fence and exact manifests need domain signoff; no architecture is sealed. |
+| HA-D09 | Accepted allocation authority; candidates inactive | O14-04 lets the coordinator allocate individual IDs after a stock catalog, shared table, seed and active-branch collision audit. The exact IDs in [id-allocation.md](id-allocation.md) remain collision-checked candidates until each graph is sealed and its claim recorded. HA-00c owns authored/repeatable IDs. |
+| HA-D10 | Accepted bounded policy; evidence gates remain | O14-10–13 delegate lore-safe authored premises/copy, modest rewards, conservative density, tier-comparable vendor/trainer stock and per-character repeatable rules to coordinator plus domain review. Record provenance, economy/performance reasoning, cooldown and anti-farm guards in each packet. Item 4512 still needs an owned acquisition source; missing door/actor locations and client catalog proof remain evidence gates. |
+| HA-D11 | Accepted owner direction; a1 sealed | O14-17/19 require owned letter 3730 and one-shot 1360. [HA-1360a engine prerequisite](work-packets.md#ha-1360a--authoritative-letter-turn-in-prerequisite) is split into a1 atomic transaction/stale-writer fence, a2 internal transport/session fence and a3 strict cell continuation; [HA-1360b receipt](work-packets.md#ha-1360b--marsh-receiving-seed-and-cross-zone-proof) follows. Database, mission, authority and testing reviews sealed the a1 implementation contract; no implementation or client proof is claimed. |
 
 ## Census dispositions
 
@@ -213,8 +213,8 @@ Tollana owns all seven recipient graphs in 9800–9999, including steps already 
 | HA-00b | Integrated, documentation evidence only; two review rounds and exact checks in [worknote](worknotes/HA-00b.md#wave-0-closeout-2026-10-14) |
 | Implementation pilot | BlockedDependency: coordinator must seal one small restoration packet, then record actual cost/checks/review before scaling |
 | Local CI/reviewer/fixer rounds | Two rounds: initial three findings fixed by `22982c17a`; fresh rereview has no findings. Docs checks pass; fmt/clippy/tests not applicable, no lane run |
-| Client UAT | UATPending; no lab permission, lease, client startup or server change in this packet |
+| Client UAT | UATPending; O14-08 gives standing lab approval for the four campaigns, with one coordinated lease at a time; no Harset lease or client result is recorded yet |
 | Shared four-zone ID amendments | Harset-only restoration proposals recorded, coordinator signoff pending; no active claims |
-| HA-00c | BlockedDependency: exact authored/repeatable allocations need stock catalog/CB-N05a evidence and owner/advisor decisions; HA-17/18 require this gate AND CB-N05a |
-| HA-1360a | BlockedEvidence: source defect established; DB/authority/mission/testing signoffs, atomicity, stale-writer/CAS, recovery and bounded manifest remain open |
+| HA-00c | BlockedEvidence: CB-N05a is merged, while stock catalog inspection, Cellblock's first authored client proof, active-branch collision audit and domain graph signoffs remain; O14-04/10/13 delegate bounded allocation and policy |
+| HA-1360a | Source defect established; four domain reviews sealed a1's transaction contract and exact manifest, while a2/a3 manifests, implementation and checks remain open |
 | HA-1360b | BlockedDependency: HA-1360a integrated/reviewed plus CS-08a crossing, retained letter and final receipt graph/tests required |
