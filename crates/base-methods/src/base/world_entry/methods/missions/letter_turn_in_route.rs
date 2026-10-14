@@ -23,6 +23,7 @@ use super::letter_turn_in::{
 };
 use crate::base::world_entry::methods::inventory::sync_committed_letter;
 
+/// Base plugin that accepts the internal Frost letter turn-in request.
 pub struct LetterTurnInPlugin;
 
 impl BasePlugin for LetterTurnInPlugin {
@@ -66,7 +67,8 @@ impl OwnedCtx {
     }
 }
 
-fn accepted_entry(
+/// Capture only a request bound to the currently connected world entry.
+pub(super) fn accepted_entry(
     request: &LetterTurnInRequest,
     ctx: BaseCtx<'_>,
 ) -> Option<ExpectedLetterTurnInEntry> {
@@ -129,6 +131,13 @@ async fn run_accepted(
             }
         }
     } else {
+        tracing::error!(
+            target: "harset.letter_turn_in",
+            event = "missing_db_pool",
+            entity_id = request.entity_id,
+            player_id = request.player_id,
+            "Letter turn-in cannot be committed without a database pool"
+        );
         LetterTurnInOutcome::UnknownRetryable
     };
 
@@ -152,6 +161,16 @@ async fn run_accepted(
             {
                 Ok(LetterTurnInSendOutcome::Sent) => outcome,
                 Ok(LetterTurnInSendOutcome::Stale) => return,
+                Ok(LetterTurnInSendOutcome::TransportError) => {
+                    tracing::warn!(
+                        target: "harset.letter_turn_in",
+                        event = "transport_uncertain",
+                        entity_id = request.entity_id,
+                        player_id = request.player_id,
+                        "Committed letter inventory datagram was not admitted; retry same attempt"
+                    );
+                    LetterTurnInOutcome::UnknownRetryable
+                }
                 Ok(other) => {
                     tracing::warn!(
                         target: "harset.letter_turn_in",
@@ -186,9 +205,21 @@ async fn send_result_if_current(
     ctx: &OwnedCtx,
 ) {
     let Some(tx) = ctx.cell_tx.as_ref() else {
+        tracing::error!(
+            target: "harset.letter_turn_in",
+            event = "missing_result_channel",
+            entity_id = expected.entity_id,
+            player_id = expected.player_id
+        );
         return;
     };
     let Ok(permit) = tx.reserve().await else {
+        tracing::error!(
+            target: "harset.letter_turn_in",
+            event = "closed_result_channel",
+            entity_id = expected.entity_id,
+            player_id = expected.player_id
+        );
         return;
     };
     let Ok(mapping) = ctx.entity_to_addr.lock() else {

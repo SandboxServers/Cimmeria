@@ -14,10 +14,16 @@ use cimmeria_wire::cell::messages::{
 };
 use sqlx::PgPool;
 use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 
-use super::letter_turn_in_route::{lowercase_hex, route_letter_turn_in, LetterTurnInPlugin};
+use super::letter_turn_in_route::{
+    accepted_entry, lowercase_hex, route_letter_turn_in, LetterTurnInPlugin,
+};
 use super::letter_turn_in_tests::{
     accept_and_advance, cleanup, mission_snapshot, player, put_item, receipt_count,
+};
+use crate::base::world_entry::methods::inventory::{
+    handle_move_inventory_item, sync_committed_letter,
 };
 use crate::test_support::{require_db_or_skip, test_default_connected_client_state, TestTransport};
 
@@ -78,6 +84,16 @@ impl Rig {
         }
     }
 
+    fn expected(&self) -> cimmeria_base_session::base::helpers::ExpectedLetterTurnInEntry {
+        let clients = self.connected.lock().unwrap();
+        cimmeria_base_session::base::helpers::ExpectedLetterTurnInEntry::capture(
+            self.addr,
+            &clients[&self.addr],
+            &self.request,
+        )
+        .unwrap()
+    }
+
     async fn dispatch(&self, request: LetterTurnInRequest) {
         route_letter_turn_in(PluginMsg::new(request), self.ctx()).await;
     }
@@ -124,6 +140,208 @@ async fn missing_pool_reports_retryable_without_client_effect() {
         LetterTurnInOutcome::UnknownRetryable
     ));
     assert!(rig.recorder.filter_to(rig.addr).is_empty());
+}
+
+struct AsyncOnlyTransport;
+
+impl Transport for AsyncOnlyTransport {
+    fn send_to<'life0, 'life1, 'async_trait>(
+        &'life0 self,
+        _bytes: &'life1 [u8],
+        _addr: SocketAddr,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = std::io::Result<usize>> + Send + 'async_trait>,
+    >
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        Self: 'async_trait,
+    {
+        Box::pin(async { panic!("fenced item sync must not await an async transport") })
+    }
+
+    fn local_addr(&self) -> std::io::Result<SocketAddr> {
+        Ok("127.0.0.1:1".parse().unwrap())
+    }
+}
+
+#[tokio::test]
+async fn live_db_unsupported_sync_transport_returns_retryable_without_committed_result() {
+    let pool = require_db_or_skip!();
+    let id = player(&pool, 74).await;
+    accept_and_advance(&pool, id).await;
+    put_item(&pool, id, 3730, 2, 0, 1).await;
+    let mut rig = Rig::new(id, Some(Arc::new(pool.clone())));
+    rig.transport = Arc::new(AsyncOnlyTransport);
+    rig.dispatch(rig.request).await;
+    assert!(matches!(
+        rig.result().await,
+        LetterTurnInOutcome::UnknownRetryable
+    ));
+    assert_eq!(
+        receipt_count(&pool, id).await,
+        1,
+        "durable commit remains, so retry reconciles receipt"
+    );
+    assert!(rig.recorder.is_empty());
+    assert!(rig.connected.lock().unwrap()[&rig.addr]
+        .channel
+        .lock()
+        .unwrap()
+        .tx_window
+        .is_empty());
+    cleanup(&pool, id).await;
+}
+
+struct HeldAdmissionTransport {
+    entered: Mutex<Option<oneshot::Sender<()>>>,
+    release: Mutex<std::sync::mpsc::Receiver<()>>,
+    recorder: Arc<TestTransport>,
+}
+
+impl Transport for HeldAdmissionTransport {
+    fn send_to<'life0, 'life1, 'async_trait>(
+        &'life0 self,
+        _bytes: &'life1 [u8],
+        _addr: SocketAddr,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = std::io::Result<usize>> + Send + 'async_trait>,
+    >
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        Self: 'async_trait,
+    {
+        Box::pin(async { panic!("fenced item sync must not await an async transport") })
+    }
+
+    fn try_send_to(&self, bytes: &[u8], addr: SocketAddr) -> std::io::Result<usize> {
+        if let Some(entered) = self.entered.lock().unwrap().take() {
+            let _ = entered.send(());
+        }
+        self.release.lock().unwrap().recv().unwrap();
+        self.recorder.try_send_to(bytes, addr)
+    }
+
+    fn local_addr(&self) -> std::io::Result<SocketAddr> {
+        Ok("127.0.0.1:1".parse().unwrap())
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn live_db_partial_sync_row_lock_orders_actual_move_item_after_admission() {
+    let pool = require_db_or_skip!();
+    let id = player(&pool, 75).await;
+    accept_and_advance(&pool, id).await;
+    let item_id = put_item(&pool, id, 3730, 2, 0, 2).await;
+    let rig = Rig::new(id, Some(Arc::new(pool.clone())));
+    let (entered_tx, entered_rx) = oneshot::channel();
+    let (release_tx, release_rx) = std::sync::mpsc::channel();
+    let held: Arc<dyn Transport> = Arc::new(HeldAdmissionTransport {
+        entered: Mutex::new(Some(entered_tx)),
+        release: Mutex::new(release_rx),
+        recorder: rig.recorder.clone(),
+    });
+    let sync_pool = pool.clone();
+    let expected = rig.expected();
+    let connected = rig.connected.clone();
+    let mapping = rig.mapping.clone();
+    let sync_task = tokio::spawn(async move {
+        let db_pool = Some(Arc::new(sync_pool.clone()));
+        let cell_tx = None;
+        sync_committed_letter(
+            &sync_pool,
+            &expected,
+            item_id,
+            1,
+            BaseCtx {
+                db_pool: &db_pool,
+                cell_tx: &cell_tx,
+                transport: &held,
+                connected: &connected,
+                entity_to_addr: &mapping,
+            },
+        )
+        .await
+        .unwrap()
+    });
+    tokio::time::timeout(Duration::from_secs(5), entered_rx)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        rig.recorder.is_empty(),
+        "admission is paused after the locked row read"
+    );
+
+    let move_rig = Rig::new(id, Some(Arc::new(pool.clone())));
+    let move_pool = move_rig.pool.clone();
+    let move_tx = move_rig.tx.clone();
+    let move_transport = move_rig.transport.clone();
+    let move_connected = move_rig.connected.clone();
+    let move_mapping = move_rig.mapping.clone();
+    let move_task = tokio::spawn(async move {
+        handle_move_inventory_item(
+            ENTITY,
+            id,
+            item_id,
+            2,
+            1,
+            -1,
+            &move_pool,
+            &move_tx,
+            &move_transport,
+            &move_connected,
+            &move_mapping,
+        )
+        .await;
+    });
+    let mut observed_wait = false;
+    for _ in 0..250 {
+        let waiting: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() \
+             AND wait_event_type = 'Lock' AND query LIKE '%sgw_inventory%' AND query LIKE '%FOR UPDATE%'"
+        ).fetch_one(&pool).await.unwrap();
+        if waiting > 0 {
+            observed_wait = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert!(
+        observed_wait,
+        "actual moveItem must reach and wait on the inventory row lock"
+    );
+    let before: (i32, i32) =
+        sqlx::query_as("SELECT container_id, slot_id FROM sgw_inventory WHERE item_id = $1")
+            .bind(item_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        before,
+        (2, 0),
+        "move cannot commit while letter update is paused"
+    );
+    release_tx.send(()).unwrap();
+    assert_eq!(
+        sync_task.await.unwrap(),
+        cimmeria_base_session::base::helpers::LetterTurnInSendOutcome::Sent
+    );
+    move_task.await.unwrap();
+    let after: (i32, i32) =
+        sqlx::query_as("SELECT container_id, slot_id FROM sgw_inventory WHERE item_id = $1")
+            .bind(item_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(after, (2, 1));
+    assert_eq!(
+        rig.recorder.len(),
+        1,
+        "one old-slot update admitted before move commit"
+    );
+    cleanup(&pool, id).await;
 }
 
 #[tokio::test]
@@ -257,20 +475,24 @@ async fn live_db_letter_turn_in_route_refuses_stale_identity_before_mutation() {
                     .insert(LetterTurnInEntryEpoch::new(2));
             }
             _ => {
-                // A relog may reuse the same address, entity and player IDs.
-                // Even a copied generation/key cannot reuse the old Arc.
+                // A relog may reuse the address, entity and player IDs, but
+                // must have a new entry incarnation (and session key).
                 let mut replacement = test_default_connected_client_state();
-                replacement.key = [9; 32];
-                replacement.connected_at = request.generation;
+                replacement.key = [8; 32];
+                replacement.enc = MercuryEncryption::from_session_key(replacement.key);
                 replacement.player_entity_id = Some(ENTITY);
                 replacement.active_player_id = Some(id);
                 replacement.world_name = Some("Harset_CmdCenter".to_owned());
                 replacement
                     .extensions
-                    .insert(LetterTurnInEntryEpoch::new(1));
+                    .insert(LetterTurnInEntryEpoch::new(2));
                 rig.connected.lock().unwrap().insert(rig.addr, replacement);
             }
         }
+        assert!(
+            accepted_entry(&request, rig.ctx()).is_none(),
+            "case {case} must never spawn a DB task"
+        );
         rig.dispatch(request).await;
         assert!(rig.recorder.filter_to(rig.addr).is_empty(), "case {case}");
         assert_eq!(receipt_count(&pool, id).await, 0, "case {case}");

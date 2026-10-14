@@ -6,7 +6,7 @@ use cimmeria_base_session::base::helpers::{
 use cimmeria_base_session::base::plugin::BaseCtx;
 use sqlx::PgPool;
 
-use super::{update_item_args, InventoryRow, INVENTORY_ONE_ITEM_SELECT};
+use super::{update_item_args, InventoryRow, INVENTORY_ONE_ITEM_LOCKED_SELECT};
 use crate::mercury::method_idx;
 
 pub(crate) async fn sync_committed_letter(
@@ -16,11 +16,15 @@ pub(crate) async fn sync_committed_letter(
     stack_after: i32,
     ctx: BaseCtx<'_>,
 ) -> Result<LetterTurnInSendOutcome, sqlx::Error> {
+    // Keep the row lock through synchronous UDP admission. `moveItem` takes
+    // this row lock before changing its slot and cannot commit a newer view
+    // until this packet has entered the transport and the TX window.
+    let mut tx = pool.begin().await?;
     let item = if stack_after > 0 {
-        sqlx::query_as::<_, InventoryRow>(INVENTORY_ONE_ITEM_SELECT)
+        sqlx::query_as::<_, InventoryRow>(INVENTORY_ONE_ITEM_LOCKED_SELECT)
             .bind(expected.player_id)
             .bind(item_id)
-            .fetch_optional(pool)
+            .fetch_optional(&mut *tx)
             .await?
     } else {
         None
@@ -35,13 +39,14 @@ pub(crate) async fn sync_committed_letter(
         args.extend_from_slice(&item_id.to_le_bytes());
         (method_idx::ON_REMOVE_ITEM, args)
     };
-    Ok(send_letter_turn_in_method(
+    let outcome = send_letter_turn_in_method(
         expected,
         method,
         &args,
         ctx.transport,
         ctx.connected,
         ctx.entity_to_addr,
-    )
-    .await)
+    );
+    tx.commit().await?;
+    Ok(outcome)
 }

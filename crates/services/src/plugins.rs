@@ -10,8 +10,7 @@
 //! scripts crate stays a leaf only this crate names.
 //!
 //! And the base plugin table ([`base_plugin_table`], #962 step 5): the same
-//! shape on the base track. Crafting (`cimmeria-base-crafting`) is its first
-//! plugin.
+//! shape on the base track. Crafting and Frost letter turn-in register here.
 
 use cimmeria_base_crafting::CraftingPlugin;
 use cimmeria_base_methods::base::world_entry::methods::missions::LetterTurnInPlugin;
@@ -48,9 +47,9 @@ pub fn cell_plugins() -> Result<CellPlugins, PluginError> {
 
 /// Every base plugin, in hook-firing order (#962 step 5, ADR §4.5).
 ///
-/// Crafting alone for now, so no two plugins share a hook point and the
-/// order reaches no wire output; a plugin that joins one of crafting's
-/// points must pin its order with a test (ADR §3.2).
+/// Crafting and Frost letter turn-in register disjoint message payloads, so
+/// their order does not affect wire output. A plugin joining a shared hook
+/// point must pin its order with a test (ADR §3.2).
 pub fn base_plugin_table() -> [&'static dyn BasePlugin; 2] {
     [&CraftingPlugin, &LetterTurnInPlugin]
 }

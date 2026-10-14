@@ -33,13 +33,21 @@ pub fn derive_letter_turn_in_token(key: &[u8; 32]) -> LetterTurnInToken {
 /// Exact connected entry captured at synchronous request acceptance.
 #[derive(Clone)]
 pub struct ExpectedLetterTurnInEntry {
+    /// Network address at request acceptance.
     pub addr: SocketAddr,
+    /// Cell entity bound to the accepted session.
     pub entity_id: u32,
+    /// Durable player identity.
     pub player_id: i32,
+    /// Cancellation marker unique to the captured session object.
     pub cancelled: Arc<AtomicBool>,
+    /// Captured encryption key, never included in debug output.
     pub key: [u8; 32],
+    /// Login generation for relog fencing.
     pub generation: Instant,
+    /// World-entry incarnation for same-session travel fencing.
     pub epoch: LetterTurnInEntryEpoch,
+    /// Domain-separated digest of the captured key.
     pub token: LetterTurnInToken,
 }
 
@@ -94,6 +102,7 @@ impl ExpectedLetterTurnInEntry {
         state.is_some_and(|state| self.matches_state(state))
     }
 
+    /// Check both the entity mapping and connected session against the capture.
     pub fn is_current(
         &self,
         connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -114,17 +123,25 @@ impl ExpectedLetterTurnInEntry {
     }
 }
 
+/// Outcome of a single bounded inventory datagram admission.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LetterTurnInSendOutcome {
+    /// Datagram admitted and registered for reliable retransmission.
     Sent,
+    /// Captured entry no longer owns the entity and address.
     Stale,
+    /// Packet exceeded one Mercury datagram.
     Oversized,
+    /// Datagram admission failed or is uncertain; retry the same attempt.
     TransportError,
+    /// Reliable channel could not record the admitted packet.
     ChannelError,
 }
 
 /// Admit exactly one small method on the captured key and channel.
-pub async fn send_letter_turn_in_method(
+/// Mapping, session, and channel stay locked through UDP admission and
+/// registration. No await may split the final validation from admission.
+pub fn send_letter_turn_in_method(
     expected: &ExpectedLetterTurnInEntry,
     method_index: u16,
     args: &[u8],
@@ -141,10 +158,10 @@ pub async fn send_letter_turn_in_method(
         entity_to_addr,
         || {},
     )
-    .await
 }
 
-pub(super) async fn send_with_probe_hook<F: FnOnce()>(
+/// Test seam between packet sizing and final entry admission.
+pub(super) fn send_with_probe_hook<F: FnOnce()>(
     expected: &ExpectedLetterTurnInEntry,
     method_index: u16,
     args: &[u8],
@@ -177,30 +194,26 @@ pub(super) async fn send_with_probe_hook<F: FnOnce()>(
     }
     after_probe();
 
-    // The mapping and session stay locked through sequence allocation. No
-    // replacement can lend its key or sequence to the accepted old entry.
-    let reserved = {
-        let Ok(mappings) = entity_to_addr.lock() else {
-            return LetterTurnInSendOutcome::Stale;
-        };
-        if mappings.get(&expected.entity_id) != Some(&expected.addr) {
-            return LetterTurnInSendOutcome::Stale;
-        }
-        let Ok(clients) = connected.lock() else {
-            return LetterTurnInSendOutcome::Stale;
-        };
-        clients.get(&expected.addr).and_then(|state| {
-            expected.matches_state(state).then(|| {
-                (
-                    state.next_seq.fetch_add(1, Ordering::Relaxed) & SEQUENCE_MASK,
-                    state.enc_version,
-                )
-            })
-        })
-    };
-    let Some((seq, version)) = reserved else {
+    let Ok(mappings) = entity_to_addr.lock() else {
         return LetterTurnInSendOutcome::Stale;
     };
+    if mappings.get(&expected.entity_id) != Some(&expected.addr) {
+        return LetterTurnInSendOutcome::Stale;
+    }
+    let Ok(clients) = connected.lock() else {
+        return LetterTurnInSendOutcome::Stale;
+    };
+    let Some(state) = clients
+        .get(&expected.addr)
+        .filter(|state| expected.matches_state(state))
+    else {
+        return LetterTurnInSendOutcome::Stale;
+    };
+    let Ok(mut channel) = state.channel.lock() else {
+        return LetterTurnInSendOutcome::ChannelError;
+    };
+    let seq = state.next_seq.fetch_add(1, Ordering::Relaxed) & SEQUENCE_MASK;
+    let version = state.enc_version;
     let packet = build_player_entity_method_packet(
         &expected.key,
         seq,
@@ -213,30 +226,10 @@ pub(super) async fn send_with_probe_hook<F: FnOnce()>(
     if packet.len() > PACKET_MAX_SIZE {
         return LetterTurnInSendOutcome::Oversized;
     }
-    if transport.send_to(&packet, expected.addr).await.is_err() {
-        return LetterTurnInSendOutcome::TransportError;
+    match transport.try_send_to(&packet, expected.addr) {
+        Ok(n) if n == packet.len() => {}
+        _ => return LetterTurnInSendOutcome::TransportError,
     }
-
-    // Registration is an atomic session check and channel mutation. A
-    // replacement never inherits retransmits encrypted under the old key.
-    let Ok(mappings) = entity_to_addr.lock() else {
-        return LetterTurnInSendOutcome::Stale;
-    };
-    if mappings.get(&expected.entity_id) != Some(&expected.addr) {
-        return LetterTurnInSendOutcome::Stale;
-    }
-    let Ok(clients) = connected.lock() else {
-        return LetterTurnInSendOutcome::Stale;
-    };
-    let Some(state) = clients
-        .get(&expected.addr)
-        .filter(|s| expected.matches_state(s))
-    else {
-        return LetterTurnInSendOutcome::Stale;
-    };
-    let Ok(mut channel) = state.channel.lock() else {
-        return LetterTurnInSendOutcome::ChannelError;
-    };
     let sent = Packet::new(PacketFlags::default(), seq, Bytes::new());
     if channel
         .register_sent_packet(sent, Bytes::copy_from_slice(&packet))

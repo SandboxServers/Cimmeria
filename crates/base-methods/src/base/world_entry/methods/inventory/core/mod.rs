@@ -115,6 +115,14 @@ pub(crate) const INVENTORY_ONE_ITEM_SELECT: &str = concat!(
     "WHERE inv.character_id = $1 AND inv.item_id = $2 AND inv.container_id <> 18\n",
 );
 
+/// The same single-row projection, locked until the letter sync datagram is
+/// admitted so a concurrent `moveItem` cannot commit a newer slot first.
+pub(crate) const INVENTORY_ONE_ITEM_LOCKED_SELECT: &str = concat!(
+    inventory_item_select_head!(),
+    "WHERE inv.character_id = $1 AND inv.item_id = $2 AND inv.container_id <> 18\n",
+    "FOR UPDATE OF inv\n",
+);
+
 #[derive(sqlx::FromRow)]
 struct InventoryRow {
     item_id: i32,
