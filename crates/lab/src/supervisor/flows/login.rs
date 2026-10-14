@@ -164,7 +164,22 @@ impl Supervisor {
             .client_pid()
             .await
             .ok_or_else(|| run.fail(step, "no client running"))?;
-        match focus_client_window_once(hwnd, pid) {
+        self.prepare_login_field_with_probe(run, step, window, hwnd, pid, focus_client_window_once)
+            .await
+    }
+
+    /// Test seam for Windows' foreground result; all remaining target checks
+    /// run through the same supervisor path as a real login.
+    async fn prepare_login_field_with_probe(
+        &self,
+        run: &mut FlowRun<'_>,
+        step: &str,
+        window: &str,
+        hwnd: isize,
+        pid: u32,
+        foreground_probe: impl FnOnce(isize, u32) -> Result<Option<String>, String>,
+    ) -> Result<(), FlowError> {
+        match foreground_probe(hwnd, pid) {
             Ok(Some(diagnostic)) => tracing::warn!(
                 step,
                 diagnostic,

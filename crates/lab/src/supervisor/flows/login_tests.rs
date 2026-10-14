@@ -303,6 +303,64 @@ async fn activation_denial_does_not_bypass_covered_password_field() {
     assert_eq!(io.typed_fields, ["account"]);
 }
 
+async fn prepare_with_denied_activation(covered: bool) -> Result<(), FlowError> {
+    let probes = Arc::new(AtomicUsize::new(0));
+    let seen = probes.clone();
+    let sup = fake_bridge::supervisor(Arc::new(move |method: &str, p: &Value| {
+        assert_eq!(method, "lua_eval");
+        let chunk = p["chunk"].as_str().unwrap_or_default();
+        seen.fetch_add(1, Ordering::SeqCst);
+        let value = if chunk.contains("getTargetChildAtPosition") {
+            let receiver = if covered {
+                "LoginNoticeModal"
+            } else {
+                LOGIN_ACCOUNT_EDIT
+            };
+            json!({
+                "available": true,
+                "target_name": LOGIN_ACCOUNT_EDIT,
+                "received_by": receiver,
+                "ancestors": [receiver]
+            })
+        } else {
+            assert!(chunk.contains("rect_centre"), "unexpected Lua: {chunk}");
+            json!({
+                "found": true,
+                "name": LOGIN_ACCOUNT_EDIT,
+                "visible": true,
+                "enabled": true,
+                "rect": [10, 20, 30, 40]
+            })
+        };
+        Ok(fake_bridge::lua_ok(&[value.to_string()]))
+    }))
+    .await;
+    let mut run = FlowRun::new(&sup, "lab_login");
+    let result = sup
+        .prepare_login_field_with_probe(
+            &mut run,
+            "account_focus",
+            LOGIN_ACCOUNT_EDIT,
+            0x1234,
+            7,
+            |hwnd, pid| login_foreground_result(hwnd, pid, 7, (0x5678, 9), false),
+        )
+        .await;
+    assert_eq!(probes.load(Ordering::SeqCst), 2);
+    result
+}
+
+#[tokio::test]
+async fn supervisor_field_preparation_continues_after_denied_activation() {
+    prepare_with_denied_activation(false).await.unwrap();
+}
+
+#[tokio::test]
+async fn supervisor_field_preparation_refuses_a_cover_after_denial() {
+    let error = prepare_with_denied_activation(true).await.unwrap_err();
+    assert!(error.message.contains("covered by LoginNoticeModal"));
+}
+
 #[tokio::test]
 async fn unsupported_secret_character_is_absent_from_error_and_steps() {
     let sup = fake_bridge::supervisor(Arc::new(|_, _| Ok(Value::Null))).await;
