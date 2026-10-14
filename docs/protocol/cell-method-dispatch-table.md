@@ -463,7 +463,7 @@ derived from `SGWGmPlayer.def` by `mercury::def_conformance` in `cimmeria-wire`
 |-------|--------|----------|------|-----------|
 | 133 | `gmGiveItem` | 185 | `WSTRING DesignId, INT32 Quantity` | Grants the item to the GM's own inventory via `GrantItem`. DesignId resolved as a positive numeric design id (internal-name resolution not wired in the cell — rejected with a warn). Quantity clamped to `[1, 1000]`. |
 | 163 | `gmGotoXYZ` | 348 | `FLOAT aX, FLOAT aY, FLOAT aZ` | Teleports the GM to the coordinate in their current space via `TeleportPlayer` (same-space FORCED_POSITION snap). Non-finite coordinates rejected. |
-| 190 | `gmKillTarget` | 482 | `INT64 TargetId` | Kills an NPC via the canonical death sequence (`abilities::kill_npc_out_of_band`). Refuses player targets and targets in a different space; INT64 ids out of `u32` range rejected. |
+| 190 | `gmKillTarget` | 482 | `INT64 TargetId` | The stock `/gmkilltarget <entityId>` sends `-1` as the INT64, so that sentinel resolves to the caller's `current_target_id` (set by `setTargetID`); an explicit valid ID takes precedence when sent directly. Zeroes and broadcasts NPC Health before the canonical death sequence (`abilities::kill_npc_out_of_band`). Refuses no selection, player targets, targets in a different space, and other INT64 ids out of `u32` range. |
 
 > The `class_id` flip and the per-method index counts are byte-verified server
 > side (see the wire-format test

@@ -4,13 +4,14 @@
 //! `handle_respawn`, and the `current_target_id` write + `onTargetUpdate`
 //! fanout).
 
+use cimmeria_entity::stats::HEALTH;
 use tokio::sync::mpsc;
 
 use super::feedback::send_gm_feedback;
 use super::{read_i32, read_i64};
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::{DespawnOutcome, EntityNames, SpaceManager};
-use crate::mercury::method_idx::ON_TARGET_UPDATE;
+use crate::mercury::method_idx::{ON_STAT_UPDATE, ON_TARGET_UPDATE};
 use crate::mercury::read_wstring;
 
 /// `gmKillTarget(INT64 TargetId)` — kill an NPC.
@@ -39,9 +40,32 @@ pub(super) async fn handle_kill_target(
             return true;
         }
     };
-    // Entity ids are u32 on the wire/grid; an out-of-range INT64 can't name a
-    // real entity. Reject rather than truncate.
-    let target_eid = match u32::try_from(target_i64) {
+    // The stock slash command sends -1 even when given a numeric id. Resolve
+    // only that sentinel through the server's live selection; other INT64s
+    // remain explicit ids and must never fall back to a selected bystander.
+    let resolved_id = if target_i64 == -1 {
+        match space_mgr
+            .get_entity(entity_id)
+            .and_then(|e| e.current_target_id)
+            .filter(|&id| id > 0)
+        {
+            Some(id) => i64::from(id),
+            None => {
+                tracing::warn!(
+                    entity_id,
+                    entity_name = space_mgr.entity_label(entity_id),
+                    "gmKillTarget: no selected target"
+                );
+                send_gm_feedback(entity_id, "gmKillTarget: select an NPC first", tx).await;
+                return true;
+            }
+        }
+    } else {
+        target_i64
+    };
+    // Entity ids are u32 on the wire/grid; other out-of-range INT64s cannot
+    // name an entity. Reject rather than truncate.
+    let target_eid = match u32::try_from(resolved_id) {
         Ok(id) => id,
         Err(_) => {
             tracing::warn!(
@@ -122,6 +146,35 @@ pub(super) async fn handle_kill_target(
         target_template_name = target_names.template_name,
         "gmKillTarget: killing NPC"
     );
+    // Normal combat reaches the death resolver after damage has already
+    // zeroed HEALTH and sent onStatUpdate. A GM kill has no damage phase, so
+    // give witnesses the same zero-health update before the death-state burst.
+    if !crate::cell::combat::is_dead_state(target.state_field) {
+        let health_payload = {
+            let target = space_mgr
+                .get_entity_mut(target_eid)
+                .expect("target existence checked above");
+            if let Some(health) = target.stats.get_mut(HEALTH) {
+                let max = health.max;
+                health.update(0, 0, max);
+                let payload = target.stats.serialize_dirty_public();
+                target.stats.clear_dirty();
+                Some(payload)
+            } else {
+                None
+            }
+        };
+        if let Some(payload) = health_payload.filter(|p| !p.is_empty()) {
+            crate::cell::abilities::send_entity_method(
+                target_eid,
+                ON_STAT_UPDATE,
+                payload,
+                tx,
+                space_mgr,
+            )
+            .await;
+        }
+    }
     // `attacker_is_player: false` — a GM `.kill` never went through the
     // combat HUD, so there is no reticle on the GM to drop.
     // `grant_xp: false` — an admin command must not mint levels.

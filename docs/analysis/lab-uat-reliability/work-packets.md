@@ -220,13 +220,15 @@ login docs. Branch `lab-uat-reliability/lr-05d-login-focus`; worktree
 
 After a client crash, `lab_login` observed only one account character after
 typing and a screenshot showed the client covered by another window. Before
-credential typing, verify the client window is foreground and the real CEGUI
-hit-test reaches the intended edit box. Re-focus once if the desktop window
-lost focus; if an in-client modal covers the field, return its window name
-and stop before sending credentials. Preserve the existing bounded typing
-retry for transient missed characters. Test focus recovered, in-client
-covering modal, and genuine typing mismatch. Never log credentials. Test
-type: flow state-machine unit plus live recovery probe.
+credential typing, verify the target HWND belongs to the client PID. Try
+one bounded desktop re-focus; if Windows denies activation, log target and
+foreground HWNDs and PIDs and use the PID-scoped window-message path with
+virtual focus. The real CEGUI hit-test, native edit click, and readback
+still gate input; if an in-client modal covers the field, return its
+window name and stop before sending credentials. Preserve the bounded
+retry for transient missed characters. Test recovered and denied desktop
+activation, in-client covering modal, and genuine typing mismatch. Never
+log credentials. Test type: flow state-machine unit plus live recovery probe.
 
 ## LR-06 — bounded target hover (#1684)
 

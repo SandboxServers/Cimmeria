@@ -30,6 +30,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Wire format
 
+- [gm-kill-target-sentinel.md](gm-kill-target-sentinel.md) — #1727: stock `/gmkilltarget <id>` sends method 190 INT64 -1; select the NPC first; explicit wire IDs still take precedence.
 - [error-strings-served-from-pak-not-seed.md](error-strings-served-from-pak-not-seed.md) — client error text = served ErrorStrings.pak (216), not the seed; patch Text or add the entry in attribute_patches.
 - [client-error-codes-and-ammo-chatter.md](client-error-codes-and-ammo-chatter.md) — create-failed codes are served ErrorStrings.pak ids, not error_texts; check the PAK text; "out of ammo" is the client reacting to AmmoSlotN = 0.
 - [wire-names-generated-tables.md](wire-names-generated-tables.md) — `cimmeria_wire::names` is generated from defs (regen cmd), doc-checked; naming rules for unknown entity types.
@@ -53,6 +54,8 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 - [entity-tint-packed-colours.md](entity-tint-packed-colours.md) — onEntityTint args are packed 0xRRGGBB__ colours; seed bigints = signed i32, send low 32 bits; opt-in send_tint.
 
 ## Lab supervisor
+
+- [lab-small-prop-hover-offsets.md](lab-small-prop-hover-offsets.md) — entity hover search tries actor origin last for small props; avatar proximity stays on humanoid heights.
 
 - [lab-template-id-mismatch.md](lab-template-id-mismatch.md) — `unitMobId` is not the server template id; join server entity snapshots to the client map by entity id for template and life-state selectors
 

@@ -20,7 +20,9 @@ use rmcp::schemars;
 use serde_json::{json, Value};
 
 use super::camera::Aim;
-use super::click_hover::{hover_once, read_mouse_over, Hover, HOVER_OFFSETS, HOVER_WAIT_MS};
+use super::click_hover::{
+    hover_once, read_mouse_over, Hover, ENTITY_HOVER_OFFSETS, HOVER_OFFSETS, HOVER_WAIT_MS,
+};
 use super::find::{find_entities, FindRequest, Found, CLICK_MARGIN_PX};
 use super::geometry::Vec3;
 use super::io::WorldIo;
@@ -209,7 +211,7 @@ async fn probe<W: WorldIo>(
     let t_proj = io.now_ms();
     let base = aim.position(io).await;
     let heights: Vec<Vec3> = match kind {
-        AimKind::Entity(_) => HOVER_OFFSETS
+        AimKind::Entity(_) => ENTITY_HOVER_OFFSETS
             .iter()
             .map(|dz| Vec3::new(base.x, base.y, base.z + dz))
             .collect(),

@@ -32,8 +32,8 @@ fn compute_metadata_bump_is_deterministic_across_calls() {
         ov(641, 2121, "<Steps>y</Steps>"),
     ];
     assert_eq!(
-        compute_metadata_bump(&overrides, &[]),
-        compute_metadata_bump(&overrides, &[]),
+        compute_metadata_bump(&overrides, &[], &[]),
+        compute_metadata_bump(&overrides, &[], &[]),
         "same overrides must hash to the same bump on every call",
     );
 }
@@ -42,10 +42,10 @@ fn compute_metadata_bump_is_deterministic_across_calls() {
 fn compute_metadata_bump_low_bit_is_always_set() {
     // Even an empty-overrides bump must be non-zero so a future caller
     // that hits this path doesn't leave metadata unchanged.
-    let bump_empty = compute_metadata_bump(&[], &[]);
+    let bump_empty = compute_metadata_bump(&[], &[], &[]);
     assert_eq!(bump_empty & 0x1, 0x1, "low bit must be set");
 
-    let bump_one = compute_metadata_bump(&[ov(1, 2, "x")], &[]);
+    let bump_one = compute_metadata_bump(&[ov(1, 2, "x")], &[], &[]);
     assert_eq!(bump_one & 0x1, 0x1, "low bit must be set");
 }
 
@@ -54,8 +54,8 @@ fn compute_metadata_bump_changes_when_xml_changes() {
     let a = [ov(622, 2113, "<Steps>aaa</Steps>")];
     let b = [ov(622, 2113, "<Steps>bbb</Steps>")];
     assert_ne!(
-        compute_metadata_bump(&a, &[]),
-        compute_metadata_bump(&b, &[]),
+        compute_metadata_bump(&a, &[], &[]),
+        compute_metadata_bump(&b, &[], &[]),
         "edits to injected XML must produce a different bump so the \
          client refetches the patched entry",
     );
@@ -72,8 +72,8 @@ fn compute_metadata_bump_changes_when_insert_after_changes() {
     let a = [ov(622, 2113, "<Steps>x</Steps>")];
     let b = [ov(622, 9999, "<Steps>x</Steps>")];
     assert_ne!(
-        compute_metadata_bump(&a, &[]),
-        compute_metadata_bump(&b, &[]),
+        compute_metadata_bump(&a, &[], &[]),
+        compute_metadata_bump(&b, &[], &[]),
         "insert_after_step_id must participate in the hash",
     );
 }
@@ -83,8 +83,8 @@ fn compute_metadata_bump_changes_when_mission_id_changes() {
     let a = [ov(622, 2113, "<Steps>x</Steps>")];
     let b = [ov(641, 2113, "<Steps>x</Steps>")];
     assert_ne!(
-        compute_metadata_bump(&a, &[]),
-        compute_metadata_bump(&b, &[])
+        compute_metadata_bump(&a, &[], &[]),
+        compute_metadata_bump(&b, &[], &[])
     );
 }
 
@@ -105,8 +105,8 @@ fn compute_metadata_bump_changes_when_step_text_override_changes() {
         new_step_display_log_text: "press 'b'",
     }];
     assert_ne!(
-        compute_metadata_bump(&[], &a),
-        compute_metadata_bump(&[], &b),
+        compute_metadata_bump(&[], &a, &[]),
+        compute_metadata_bump(&[], &b, &[]),
         "edits to step-text override caption must change the bump so \
          the client refetches the patched mission entry",
     );
@@ -166,7 +166,7 @@ fn apply_mission_overrides_patches_entries_and_bumps_metadata() {
         ),
     );
 
-    let overridden = ResourceCache::apply_mission_overrides(&mut categories);
+    let overridden = ResourceCache::apply_mission_overrides(&mut categories, &[]).unwrap();
 
     let missions = categories
         .get(&CATEGORY_MISSIONS)
@@ -216,7 +216,7 @@ fn apply_mission_overrides_bump_is_deterministic_per_content() {
             CATEGORY_MISSIONS,
             missions_category_with(&[(622, vec![2113]), (641, vec![2121, 3563, 3564])], 7538),
         );
-        ResourceCache::apply_mission_overrides(&mut categories);
+        ResourceCache::apply_mission_overrides(&mut categories, &[]).unwrap();
         categories.get(&CATEGORY_MISSIONS).unwrap().metadata
     };
     let second_meta = {
@@ -225,7 +225,7 @@ fn apply_mission_overrides_bump_is_deterministic_per_content() {
             CATEGORY_MISSIONS,
             missions_category_with(&[(622, vec![2113]), (641, vec![2121, 3563, 3564])], 7538),
         );
-        ResourceCache::apply_mission_overrides(&mut categories);
+        ResourceCache::apply_mission_overrides(&mut categories, &[]).unwrap();
         categories.get(&CATEGORY_MISSIONS).unwrap().metadata
     };
     assert_eq!(first_meta, second_meta);
@@ -238,7 +238,7 @@ fn apply_mission_overrides_bump_is_deterministic_per_content() {
 #[test]
 fn apply_mission_overrides_no_op_when_category_missing() {
     let mut categories: HashMap<u32, CategoryData> = HashMap::new();
-    let overridden = ResourceCache::apply_mission_overrides(&mut categories);
+    let overridden = ResourceCache::apply_mission_overrides(&mut categories, &[]).unwrap();
     assert!(
         overridden.is_empty(),
         "missing category must not produce override entries",
@@ -260,7 +260,7 @@ fn apply_mission_overrides_skips_missing_target_mission() {
         missions_category_with(&[(622, vec![2113])], 7538),
     );
 
-    let overridden = ResourceCache::apply_mission_overrides(&mut categories);
+    let overridden = ResourceCache::apply_mission_overrides(&mut categories, &[]).unwrap();
 
     let ids = overridden.get(&CATEGORY_MISSIONS).unwrap();
     assert!(ids.contains(&622), "mission 622 override must still apply",);

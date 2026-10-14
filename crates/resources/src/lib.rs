@@ -6,7 +6,7 @@
 //! - [`base::resources`]: `ResourceCache`, which loads every `data/cache/*.pak`
 //!   at startup, applies the overrides below in memory and bumps each patched
 //!   category's metadata, so the client's `versionInfoRequest` handshake
-//!   re-fetches exactly the patched entries. Also the inventory bag tables
+//!   resyncs the whole modified category. Also the inventory bag tables
 //!   (`BAG_FILL_ORDER`, `bag_max_slots`, `bag_min_slot`).
 //! - [`base::mission_overrides`], [`base::item_overrides`],
 //!   [`base::dialog_overrides`] and [`base::sequence_overrides`]: the
@@ -31,6 +31,7 @@ pub mod base {
     pub mod chardef;
     pub mod dialog_overrides;
     pub mod item_overrides;
+    pub mod mission_additions;
     pub mod mission_overrides;
     pub mod resources;
     pub mod sequence_overrides;

@@ -2,12 +2,12 @@
 title: "Cooked Data Pipeline"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-10-14
 ---
 
 # Cooked Data Pipeline
 
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-10-14
 > **RE Status**: Delivery path verified against `crates/` and `data/cache/`; the DB→PAK
 > *cooking* half is historical (original CME server) and no longer runs
 > **Sources**: `data/cache/` (21 PAKs, inspected directly), `db/resources/`,
@@ -31,6 +31,38 @@ last_updated: 2026-07-25
 ## Overview
 
 The cooked data pipeline transforms game content into XML documents packaged as PAK archives, which are served to the game client on demand.
+
+## Authored mission catalog admission
+
+The delivery loader now accepts complete category-3 mission XML from
+`MISSION_ADDITIONS` (production empty). `ResourceCache::load_all` and the
+fixture injection loader share one implementation. Before any mission mutation,
+`apply_mission_additions.rs` validates the entire batch with `quick-xml`, including
+stock collisions and the 355840-byte transfer limit. Rejection returns an error
+with every key, byte and metadata value unchanged. A valid batch with no loaded
+mission category warns `category_not_loaded` and creates no category.
+
+Admitted XML is inserted byte for byte before the existing ordered step and text
+patches. The category receives one final content-derived metadata bump from its
+original value. Complete additions hash in ascending ID order; an empty registry
+adds nothing to the legacy hash. The masked hash can collide. Override IDs are
+sorted/deduplicated bookkeeping for push logging; the resync streams **all keys**.
+
+Category 3 reuses the existing full resync: `onVersionInfo(!served, true, 0, [])`,
+every entry through paced `resourceFragment`, then
+`onVersionInfo(served, false, 0, [])`. The mission stream can continue after Play.
+Successful application logs `cooked_data.mission_catalog_inserted` with category,
+mission ID/name, byte count and final metadata; refusal logs
+`cooked_data.mission_catalog_rejected` with a stable reason and no XML body.
+Existing version/sync/miss telemetry records delivery.
+
+The [sealed fixture](../analysis/four-zone-planning/cb-n05a-seal.md) and
+[PAK format reference](cooked-data-pak-format.md#complete-authored-mission-entries)
+describe the admitted subset and source provenance. Production does not seed,
+offer or persist the fixture. Client parsing, presentation, progression and
+relog proof remain **UATPending** for the first real authored quest. The Bible's
+`spec.engine.cooked-data-pipeline` chapter is still listed as coming soon; this
+path consumes the existing protocol and RE evidence frozen in the seal.
 
 ## Architecture
 

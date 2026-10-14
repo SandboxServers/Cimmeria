@@ -1,5 +1,7 @@
 use super::*; // shared helpers from tests/mod.rs
 use crate::cell::messages::CellToBaseMsg;
+use cimmeria_common::EntityId;
+use cimmeria_entity::stats::HEALTH;
 use tokio::sync::mpsc;
 
 #[tokio::test]
@@ -31,6 +33,200 @@ async fn gm_kill_target_kills_npc_in_same_space() {
         fb.contains("killed"),
         "gmKillTarget success feedback must say it killed the npc, got: {fb}"
     );
+}
+
+#[tokio::test]
+async fn gm_kill_target_sentinel_kills_only_selected_npc() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    mgr.connect_entity(1);
+    mgr.create_entity(2, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.create_entity(3, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.get_entity_mut(1).unwrap().current_target_id = Some(2);
+    mgr.get_entity_mut(1).unwrap().witnesses.insert(EntityId(2));
+    mgr.get_entity_mut(2)
+        .unwrap()
+        .stats
+        .get_mut(HEALTH)
+        .unwrap()
+        .update(0, 100, 100);
+    let (tx, mut rx) = mpsc::channel(64);
+
+    assert!(
+        dispatch(
+            1,
+            GM_KILL_TARGET,
+            &(-1i64).to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
+    assert!(crate::cell::combat::is_dead_state(
+        mgr.get_entity(2).unwrap().state_field
+    ));
+    assert_eq!(mgr.get_entity(2).unwrap().stats.get(HEALTH).unwrap().cur, 0);
+    assert!(!crate::cell::combat::is_dead_state(
+        mgr.get_entity(3).unwrap().state_field
+    ));
+    let msgs = drain(&mut rx);
+    let stat_pos = msgs
+        .iter()
+        .position(|m| {
+            matches!(m,
+                CellToBaseMsg::WitnessEntityMethod {
+                    witness_id: 1, entity_id: 2, method_index, ..
+                } if *method_index == crate::mercury::method_idx::ON_STAT_UPDATE
+            )
+        })
+        .expect("the GM must see the selected NPC's zero-health stat update");
+    let CellToBaseMsg::WitnessEntityMethod { args, .. } = &msgs[stat_pos] else {
+        unreachable!("stat_pos selected a witness method")
+    };
+    let expected: Vec<u8> = [
+        1i32.to_le_bytes(), // one dirty public stat
+        HEALTH.to_le_bytes(),
+        0i32.to_le_bytes(),   // min
+        0i32.to_le_bytes(),   // current
+        100i32.to_le_bytes(), // max
+    ]
+    .concat();
+    assert_eq!(args, &expected, "the client health bar must reach zero");
+    let dead_pos = msgs
+        .iter()
+        .position(|m| {
+            matches!(m,
+                CellToBaseMsg::WitnessEntityMethod {
+                    witness_id: 1, entity_id: 2, method_index, ..
+                } if *method_index == crate::mercury::method_idx::ON_STATE_FIELD_UPDATE
+            )
+        })
+        .expect("the GM must see the selected NPC's dead-state update");
+    assert!(
+        stat_pos < dead_pos,
+        "health must reach the client before the dead-state burst"
+    );
+    assert!(feedback_text(&msgs, 1).unwrap().contains("killed npc 2"));
+}
+
+#[tokio::test]
+async fn gm_kill_target_sentinel_without_selection_refuses_bystander() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    mgr.create_entity(2, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    let (tx, mut rx) = mpsc::channel(8);
+
+    assert!(
+        dispatch(
+            1,
+            GM_KILL_TARGET,
+            &(-1i64).to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
+    assert!(!crate::cell::combat::is_dead_state(
+        mgr.get_entity(2).unwrap().state_field
+    ));
+    let msgs = drain(&mut rx);
+    assert!(feedback_text(&msgs, 1).unwrap().contains("select an NPC"));
+    assert!(msgs.iter().all(|m| matches!(
+        m,
+        CellToBaseMsg::EntityMethodCall {
+            method_index: 28,
+            ..
+        }
+    )));
+}
+
+#[tokio::test]
+async fn gm_kill_target_sentinel_refuses_selected_player() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    mgr.create_entity(2, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.get_entity_mut(2).unwrap().is_player = true;
+    mgr.get_entity_mut(2).unwrap().player_id = Some(200);
+    mgr.get_entity_mut(1).unwrap().current_target_id = Some(2);
+    let (tx, mut rx) = mpsc::channel(8);
+
+    assert!(
+        dispatch(
+            1,
+            GM_KILL_TARGET,
+            &(-1i64).to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
+    assert!(!crate::cell::combat::is_dead_state(
+        mgr.get_entity(2).unwrap().state_field
+    ));
+    assert!(feedback_text(&drain(&mut rx), 1)
+        .unwrap()
+        .contains("NPC-only"));
+}
+
+#[tokio::test]
+async fn gm_kill_target_sentinel_refuses_cross_space_selection() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    mgr.parse_spaces_xml(
+        r#"<Spaces><Space WorldName="Other" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#,
+    ).unwrap();
+    mgr.create_startup_spaces(r#"<Spaces><Space WorldName="Other" /></Spaces>"#)
+        .unwrap();
+    mgr.create_entity(2, "Other", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.get_entity_mut(1).unwrap().current_target_id = Some(2);
+    let (tx, mut rx) = mpsc::channel(8);
+
+    assert!(
+        dispatch(
+            1,
+            GM_KILL_TARGET,
+            &(-1i64).to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
+    assert!(!crate::cell::combat::is_dead_state(
+        mgr.get_entity(2).unwrap().state_field
+    ));
+    assert!(feedback_text(&drain(&mut rx), 1)
+        .unwrap()
+        .contains("different space"));
+}
+
+#[tokio::test]
+async fn gm_kill_target_explicit_id_precedes_selection() {
+    let mut mgr = mgr_with_player(1, "Castle");
+    mgr.create_entity(2, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.create_entity(3, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+    mgr.get_entity_mut(1).unwrap().current_target_id = Some(2);
+    let (tx, mut rx) = mpsc::channel(64);
+
+    assert!(
+        dispatch(
+            1,
+            GM_KILL_TARGET,
+            &3i64.to_le_bytes(),
+            &tx,
+            &mut mgr,
+            &test_engine()
+        )
+        .await
+    );
+    assert!(!crate::cell::combat::is_dead_state(
+        mgr.get_entity(2).unwrap().state_field
+    ));
+    assert!(crate::cell::combat::is_dead_state(
+        mgr.get_entity(3).unwrap().state_field
+    ));
+    assert!(feedback_text(&drain(&mut rx), 1)
+        .unwrap()
+        .contains("killed npc 3"));
 }
 
 #[tokio::test]

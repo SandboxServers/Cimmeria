@@ -81,6 +81,7 @@ pub fn pick_first_open_bag(
 // ── Resource cache ───────────────────────────────────────────────────────────
 
 /// Per-category cooked data loaded from a PAK file.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CategoryData {
     /// MetaData value (u32 from the PAK's MetaData entry).
     pub metadata: u32,
@@ -196,6 +197,7 @@ const CATEGORY_WORLD_INFO: u32 = 12;
 /// handshake.
 const CATEGORY_STARGATES: u32 = 13;
 
+mod apply_mission_additions;
 mod apply_overrides;
 mod metadata_bump;
 
@@ -212,6 +214,29 @@ impl ResourceCache {
     /// Load all PAK files from the given directory and apply Cimmeria
     /// overrides (mission XML for new "Equip the …" steps).
     pub fn load_all(data_dir: &str) -> Result<Self, String> {
+        Self::load_all_impl(data_dir, crate::base::mission_additions::MISSION_ADDITIONS)
+    }
+
+    /// Load through the production path with a test-only authored registry.
+    /// Invalid additions return an error before any mission patch is applied.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn load_all_with_mission_additions(
+        data_dir: &str,
+        additions: &[crate::base::mission_additions::MissionAddition],
+    ) -> Result<Self, String> {
+        Self::load_all_impl(data_dir, additions)
+    }
+
+    /// Unpatched committed mission bytes, independent of the served cache.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn load_raw_mission_category_for_test(data_dir: &str) -> Result<CategoryData, String> {
+        Self::load_pak(&format!("{data_dir}/CookedDataMissions.pak"))
+    }
+
+    fn load_all_impl(
+        data_dir: &str,
+        additions: &[crate::base::mission_additions::MissionAddition],
+    ) -> Result<Self, String> {
         let mut categories = HashMap::new();
 
         for &(cat_id, filename) in CATEGORY_PAKS {
@@ -243,22 +268,18 @@ impl ResourceCache {
             "Resource cache loaded"
         );
 
-        let mut overridden_elements = Self::apply_mission_overrides(&mut categories);
+        let mut overridden_elements = Self::apply_mission_overrides(&mut categories, additions)?;
         // Apply item overrides into the same overridden-elements map.
         // `extend` over disjoint category keys means each call owns its
         // own category id (missions=3, items=4) and there's no risk of
-        // one wiping the other's invalid-keys list. Cross-pollination
-        // between categories would surface as the client invalidating
-        // the wrong PAK category on handshake; the categories live in
-        // separate XML files on disk so it can't physically conflict,
-        // but keep both writes disjoint anyway in case a future
-        // override module starts producing entries for an existing
-        // category.
+        // one wiping the other's push-log bookkeeping. The resync task
+        // walks every key regardless of this map; keeping the category
+        // writes disjoint preserves their logging classification.
         let item_overridden = Self::apply_item_overrides(&mut categories);
         overridden_elements.extend(item_overridden);
         // Dialogs category (5) — disjoint from missions (3) / items (4),
         // so the same `extend` discipline applies: each call owns its own
-        // category id and can't clobber another's invalid-keys list.
+        // category id and can't clobber another's push-log bookkeeping.
         let dialog_overridden = Self::apply_dialog_overrides(&mut categories);
         overridden_elements.extend(dialog_overridden);
         // Kismet sequences category (1) — disjoint from the others.
@@ -329,11 +350,9 @@ impl ResourceCache {
     }
 
     /// Element IDs that Cimmeria overrides for the given category, sorted
-    /// ascending. Returns an empty slice for categories that are unmodified
-    /// (so the version-info handler can fall back to "echo current
-    /// version, no invalidation needed" when the client's already in
-    /// sync). Wrapped in a function so call sites don't need to reach
-    /// into the field directly.
+    /// ascending, for push-log classification. Returns an empty slice for
+    /// unmodified categories. Version mismatch resyncs every category key
+    /// independently of this slice.
     pub fn overridden_elements(&self, category_id: u32) -> &[u32] {
         self.overridden_elements
             .get(&category_id)
