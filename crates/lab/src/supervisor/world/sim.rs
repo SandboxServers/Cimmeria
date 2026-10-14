@@ -108,6 +108,8 @@ pub struct Sim {
     pub fail_mouse_over_after: Option<u32>,
     /// Return the bridge's own dispatch timeout after this many slot reads.
     pub slots_dispatch_timeout_after: Option<u32>,
+    /// Simulate the bridge becoming unavailable as soon as a click is sent.
+    pub slots_dispatch_timeout_after_click: bool,
     /// Make `slots` hang, as it does when the bridge stops answering.
     pub slots_never_returns: bool,
     /// Make `slots` hang after this many successful reads.
@@ -189,6 +191,7 @@ impl Sim {
             avatar_radius_px: None,
             fail_mouse_over_after: None,
             slots_dispatch_timeout_after: None,
+            slots_dispatch_timeout_after_click: false,
             slots_never_returns: false,
             slots_never_after: None,
             slots_reads: 0,
@@ -408,6 +411,11 @@ impl WorldIo for Sim {
     }
 
     async fn slots(&mut self) -> Result<Vec<(i32, u32)>, String> {
+        if self.slots_dispatch_timeout_after_click
+            && self.buttons.last().is_some_and(|(_, down)| !down)
+        {
+            return Err("dispatch timeout during world load".into());
+        }
         if self
             .slots_dispatch_timeout_after
             .is_some_and(|after| self.slots_reads >= after)
