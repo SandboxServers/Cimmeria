@@ -2,7 +2,7 @@
 title: "Cooked Data PAK File Format"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-10-14
 ---
 
 # Cooked Data PAK File Format
@@ -20,8 +20,40 @@ All `.pak` files are standard **ZIP archives** containing:
 
 The client sends `versionInfoRequest(categoryId)`, the server responds with
 `onVersionInfo(categoryId, version, ...)` where `version` is the MetaData value.
-If the client's cached version differs, it requests individual entries via
-`elementDataRequest(categoryId, key)`.
+If the client's cached version differs, Cimmeria sends the whole category through
+its paced resync task. `elementDataRequest(categoryId, key)` serves a lookup miss
+while the remaining entries stream.
+
+## Complete authored mission entries
+
+Category 3 can contain complete `COOKED_MISSION` entries admitted from
+`crates/resources/src/base/mission_additions.rs` after the committed ZIP loads.
+`MISSION_ADDITIONS` is currently empty in production. The registry carries the
+root mission ID and exact UTF-8 XML; insertion preserves those bytes, including
+child order and declaration whitespace. It does not modify the archive.
+
+The supported subset follows QA `_1624` (Ambush): required root boolean/integer
+fields, `MissionLabel` and `MissionDefn`, `HistoryText`, one or more `Steps` with
+`StepDisplayLogText`, and one or more `Objectives` with `DisplayLogText`. `Tasks`
+are optional; present tasks require their stock scalar attributes. Validation
+checks nesting/order, attributes, entities, unique positive IDs and a single
+closed root, and refuses DTD declarations. The whole additions batch is checked
+before either insertions or existing mission patches run.
+
+Admission caps XML at **355840 bytes** (256 fragments × 1390), root IDs at
+**1–65535** under repository policy, and nested IDs at positive signed INT32.
+The root bound is conservative policy; cooked element keys are 32-bit, as
+explained in the [crash finding](../reverse-engineering/findings/cooked-dialog-override-crash.md).
+Stock root collisions and repeat application fail instead of replacing entries.
+
+The test-only `CIMMERIA_AUTHORING` fixture reserves mission 61000, step 61001,
+objective 61002 and task 61003. Its 1139 bytes are pinned against an independent
+transformation of `_1624`; source, archive and fixture hashes are in the
+[CB-N05a seal](../analysis/four-zone-planning/cb-n05a-seal.md). The common cache
+loader and the real base-session transport/ClientModel tests verify exact
+insertion and delivery, including the full 1041-entry category. They do not
+attest client gSOAP parsing or rendered journal behavior; those remain
+**UATPending** until the first real authored quest is tested in the client.
 
 ## Three Known Sources
 

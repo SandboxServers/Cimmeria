@@ -4,7 +4,7 @@
 //! to decide whether to refresh anything at all. Each bump is hashed from
 //! every field that changes what the client would see, so two server starts
 //! on identical override content produce the same value (no re-invalidation
-//! churn) and any edit produces a different one (the client refetches).
+//! churn). The masked hash can collide; edits usually trigger a refetch.
 //!
 //! Two invariants are shared by all of them:
 //!
@@ -23,8 +23,8 @@
 /// The bump is hashed from every field that affects what the client sees:
 /// `mission_id`, `insert_after_step_id`, and the injected XML. Two server
 /// starts on the same override content produce the same bump (no
-/// re-invalidation churn); changing any field changes the bump (client
-/// mismatches and refetches).
+/// re-invalidation churn). Additions hash in ID order with their exact bytes.
+/// The effective 15-bit result can collide; it is not a unique content stamp.
 ///
 /// The result is OR'd with 1 so the low bit is always set — guards
 /// against the rare hash that lands on `0`, which would leave the
@@ -32,6 +32,7 @@
 pub(super) fn compute_metadata_bump(
     overrides: &[crate::base::mission_overrides::MissionOverride],
     text_overrides: &[crate::base::mission_overrides::StepTextOverride],
+    additions: &[crate::base::mission_additions::MissionAddition],
 ) -> u32 {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -44,6 +45,12 @@ pub(super) fn compute_metadata_bump(
         ov.mission_id.hash(&mut hasher);
         ov.step_id.hash(&mut hasher);
         ov.new_step_display_log_text.hash(&mut hasher);
+    }
+    let mut sorted: Vec<_> = additions.iter().collect();
+    sorted.sort_unstable_by_key(|addition| addition.mission_id);
+    for addition in sorted {
+        addition.mission_id.hash(&mut hasher);
+        addition.xml.hash(&mut hasher);
     }
     ((hasher.finish() as u32) & 0xFFFF) | 0x1
 }
