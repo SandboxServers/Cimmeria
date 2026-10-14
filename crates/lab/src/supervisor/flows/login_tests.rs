@@ -9,7 +9,9 @@ struct FakeCredentialIo<'a> {
     events: Vec<String>,
     typed_fields: Vec<&'static str>,
     cover_password: bool,
-    fail_account_focus: bool,
+    activation_denied: bool,
+    wrong_pid: bool,
+    activation_diagnostics: Vec<String>,
     account_mismatches: usize,
     retries: usize,
 }
@@ -21,11 +23,12 @@ impl LoginCredentialIo for FakeCredentialIo<'_> {
         _window: &'static str,
     ) -> Result<(), FlowError> {
         self.events.push(format!("prepare:{step}"));
-        if step == "account_focus" && self.fail_account_focus {
-            return Err(self.run.fail(
-                step,
-                "client window is not foreground after refocus attempts",
-            ));
+        let owner_pid = if self.wrong_pid { 8 } else { 7 };
+        let activation =
+            login_foreground_result(0x1234, 7, owner_pid, (0x5678, 9), !self.activation_denied)
+                .map_err(|e| self.run.fail(step, e))?;
+        if let Some(diagnostic) = activation {
+            self.activation_diagnostics.push(diagnostic);
         }
         if step == "password_focus" && self.cover_password {
             return Err(self.run.fail(
@@ -64,7 +67,9 @@ fn credential_io(sup: &Supervisor) -> FakeCredentialIo<'_> {
         events: Vec::new(),
         typed_fields: Vec::new(),
         cover_password: false,
-        fail_account_focus: false,
+        activation_denied: false,
+        wrong_pid: false,
+        activation_diagnostics: Vec::new(),
         account_mismatches: 0,
         retries: 0,
     }
@@ -256,16 +261,128 @@ async fn password_modal_after_account_readback_stops_before_password_input() {
 }
 
 #[tokio::test]
-async fn failed_foreground_recovery_stops_before_account_input() {
+async fn wrong_window_pid_stops_before_account_input() {
     let sup = fake_bridge::supervisor(Arc::new(|_, _| Ok(Value::Null))).await;
     let mut io = credential_io(&sup);
-    io.fail_account_focus = true;
+    io.wrong_pid = true;
     let error = type_login_credentials(&mut io, "account", "secret")
         .await
         .unwrap_err();
-    assert!(error.message.contains("not foreground"), "{error:?}");
+    assert!(error.message.contains("expected pid=7"), "{error:?}");
     assert_eq!(io.events, ["prepare:account_focus"]);
     assert!(io.typed_fields.is_empty());
+}
+
+#[tokio::test]
+async fn activation_denial_uses_verified_pid_scoped_input_and_readback() {
+    let sup = fake_bridge::supervisor(Arc::new(|_, _| Ok(Value::Null))).await;
+    let mut io = credential_io(&sup);
+    io.activation_denied = true;
+    io.account_mismatches = 1;
+    type_login_credentials(&mut io, "account", "secret")
+        .await
+        .unwrap();
+    assert_eq!(io.typed_fields, ["account", "account", "password"]);
+    assert_eq!(io.retries, 1);
+    assert_eq!(io.activation_diagnostics.len(), 3);
+    assert!(io.activation_diagnostics[0].contains("target hwnd=0x1234 pid=7"));
+    assert!(io.activation_diagnostics[0].contains("foreground hwnd=0x5678 pid=9"));
+}
+
+#[tokio::test]
+async fn activation_denial_does_not_bypass_covered_password_field() {
+    let sup = fake_bridge::supervisor(Arc::new(|_, _| Ok(Value::Null))).await;
+    let mut io = credential_io(&sup);
+    io.activation_denied = true;
+    io.cover_password = true;
+    let error = type_login_credentials(&mut io, "account", "secret")
+        .await
+        .unwrap_err();
+    assert!(error.message.contains("covered by LoginNoticeModal"));
+    assert_eq!(io.typed_fields, ["account"]);
+}
+
+async fn prepare_with_denied_activation(covered: bool) -> Result<(), FlowError> {
+    let probes = Arc::new(AtomicUsize::new(0));
+    let seen = probes.clone();
+    let sup = fake_bridge::supervisor(Arc::new(move |method: &str, p: &Value| {
+        assert_eq!(method, "lua_eval");
+        let chunk = p["chunk"].as_str().unwrap_or_default();
+        seen.fetch_add(1, Ordering::SeqCst);
+        let value = if chunk.contains("getTargetChildAtPosition") {
+            let receiver = if covered {
+                "LoginNoticeModal"
+            } else {
+                LOGIN_ACCOUNT_EDIT
+            };
+            json!({
+                "available": true,
+                "target_name": LOGIN_ACCOUNT_EDIT,
+                "received_by": receiver,
+                "ancestors": [receiver]
+            })
+        } else {
+            assert!(chunk.contains("rect_centre"), "unexpected Lua: {chunk}");
+            json!({
+                "found": true,
+                "name": LOGIN_ACCOUNT_EDIT,
+                "visible": true,
+                "enabled": true,
+                "rect": [10, 20, 30, 40]
+            })
+        };
+        Ok(fake_bridge::lua_ok(&[value.to_string()]))
+    }))
+    .await;
+    let mut run = FlowRun::new(&sup, "lab_login");
+    let result = sup
+        .prepare_login_field_with_probe(
+            &mut run,
+            "account_focus",
+            LOGIN_ACCOUNT_EDIT,
+            0x1234,
+            7,
+            |hwnd, pid| login_foreground_result(hwnd, pid, 7, (0x5678, 9), false),
+        )
+        .await;
+    assert_eq!(probes.load(Ordering::SeqCst), 2);
+    result
+}
+
+#[tokio::test]
+async fn supervisor_field_preparation_continues_after_denied_activation() {
+    prepare_with_denied_activation(false).await.unwrap();
+}
+
+#[tokio::test]
+async fn supervisor_field_preparation_refuses_a_cover_after_denial() {
+    let error = prepare_with_denied_activation(true).await.unwrap_err();
+    assert!(error.message.contains("covered by LoginNoticeModal"));
+}
+
+#[tokio::test]
+async fn supervisor_field_preparation_rejects_wrong_pid_before_cegui_queries() {
+    let queries = Arc::new(AtomicUsize::new(0));
+    let seen = queries.clone();
+    let sup = fake_bridge::supervisor(Arc::new(move |_, _| {
+        seen.fetch_add(1, Ordering::SeqCst);
+        Ok(Value::Null)
+    }))
+    .await;
+    let mut run = FlowRun::new(&sup, "lab_login");
+    let error = sup
+        .prepare_login_field_with_probe(
+            &mut run,
+            "account_focus",
+            LOGIN_ACCOUNT_EDIT,
+            0x1234,
+            7,
+            |hwnd, pid| login_foreground_result(hwnd, pid, 9, (0x5678, 9), false),
+        )
+        .await
+        .unwrap_err();
+    assert!(error.message.contains("belongs to pid=9"));
+    assert_eq!(queries.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]
@@ -408,3 +525,6 @@ fn the_chunk_falls_back_to_a_single_row() {
     assert!(c.contains("only = 'only'"), "{c}");
     assert!(c.trim_end().ends_with("only"), "{c}");
 }
+
+#[path = "login_credential_concurrency_tests.rs"]
+mod concurrency;

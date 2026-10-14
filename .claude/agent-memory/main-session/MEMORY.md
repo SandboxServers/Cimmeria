@@ -4,6 +4,8 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Open investigations
 
+- [reference_lab_login_foreground_lanes_2026_10_14.md](reference_lab_login_foreground_lanes_2026_10_14.md) — shared lab daemon serializes credential entry across instances; native two-client UAT pending
+
 - [reference_lab_transition_click_2026_10_13.md](reference_lab_transition_click_2026_10_13.md) — report-only native click survives an immediate world load; live click passed, Castle transition replay remains pending
 - [project_cellblock_aftermath_dwell_2026_10_13.md](project_cellblock_aftermath_dwell_2026_10_13.md) — #1721: 2516 was evicted after 422 ms; chain 1172 now gives it 16 seconds before blurb 5859; live recheck pending
 - [reference_uat_capture_safety_2026_10_13.md](reference_uat_capture_safety_2026_10_13.md) — UAT JSON captures use the shared read-only tool classifier at spec validation, row preflight, and execution; JSON integer comparisons must avoid f64 above 2^53

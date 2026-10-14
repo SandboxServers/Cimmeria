@@ -361,6 +361,7 @@ mod tests {
                     client_ip: None,
                     created_at: tokio::time::Instant::now(),
                     connected: true,
+                    cancel: tokio::sync::watch::channel(false).0,
                 };
                 let mut game = create_game(&session).unwrap();
                 game.started();
