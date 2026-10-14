@@ -43,6 +43,7 @@ The owner chose **Human first for implementation**, but **all three SGU race pat
 5. Are the zone ownership and receiving states sufficient for separate main sessions to implement without duplicating chains or accepting the wrong race's mission? Point to a missing travel, item, dialog or phasing contract.
 6. Are any planned first-Beta E1 missions actually from the later Closed-Beta revision or E2? Name exact IDs and build evidence for a correction.
 7. The Beta master marks some steps of 381, 1502 and 481 `OFFWORLD / HANDOFF` in its all-missions table but `BETA LOCAL` in race sections. Which locations do raw objective text, actor data and direct world bindings support? Mark unresolved rows explicitly.
+8. Mission 421 step 1460 names an “SGC Administrative Complex Infirmary.” Is that a Beta-local named facility or an offworld visit? Give the target world/map evidence and any receiver/return step before recommending that 421 leave its hold.
 
 Please classify each finding as **source contradiction**, **current-runtime conflict**, **untested technical assumption**, or **creative recommendation**, and give a file/row/ID citation. A claim from the progression spreadsheet alone should not override the cooked mission/dialog evidence. A source gap is valuable to report, but it is not proof the plan's chosen authored story is historical.
 
