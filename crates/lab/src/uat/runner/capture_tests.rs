@@ -243,6 +243,7 @@ fn capture_specs_reject_mutating_client_and_server_tools() {
         ("server", "server_chaos_clear"),
         ("server", "server_packet_tap_stop"),
         ("server", "server_packet_tap_start"),
+        ("server", "server_packet_tap_read"),
     ] {
         valid.rows[0].steps[0].capture = Some(source.into());
         valid.rows[0].steps[0].tool = Some(tool.into());
@@ -265,6 +266,7 @@ async fn mutated_capture_is_blocked_before_driving() {
         ("server", "server_console_exec"),
         ("server", "server_chaos_clear"),
         ("server", "server_packet_tap_stop"),
+        ("server", "server_packet_tap_read"),
     ] {
         let action = &mut req.sections[0].spec.rows[0].steps[0];
         action.capture = Some(source.into());
@@ -297,6 +299,7 @@ async fn capture_execution_rechecks_read_only_before_invoking() {
         ("server", "server_console_exec"),
         ("server", "server_chaos_clear"),
         ("server", "server_packet_tap_stop"),
+        ("server", "server_packet_tap_read"),
     ] {
         let mut action = runner.req.sections[0].spec.rows[0].steps[0].clone();
         action.capture = Some(source.into());
@@ -329,4 +332,85 @@ async fn capture_execution_rechecks_read_only_before_invoking() {
         assert!(!fake.names().contains(&tool.to_string()));
         assert!(!server.calls.lock().unwrap().iter().any(|c| c.0 == tool));
     }
+}
+
+#[test]
+fn capture_specs_reject_cross_backend_reads() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut valid = request(tmp.path(), ROW).sections.remove(0).spec;
+    for (source, tool) in [("tool", "server_sessions"), ("server", "client_inventory")] {
+        valid.rows[0].steps[0].capture = Some(source.into());
+        valid.rows[0].steps[0].tool = Some(tool.into());
+        let error = spec::validate(&valid).unwrap_err();
+        assert!(
+            error.contains(&format!("capture source {source} cannot call {tool}")),
+            "{error}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn capture_execution_rejects_cross_backend_reads_before_invoking() {
+    let tmp = tempfile::tempdir().unwrap().keep();
+    let fake = Fake::new(&[]).with("client_inventory");
+    let server = FakeServer::new(json!({}));
+    let mut runner = Runner::new(&fake, Some(&server), request(&tmp, ROW)).unwrap();
+    for (source, tool) in [("tool", "server_sessions"), ("server", "client_inventory")] {
+        let mut action = runner.req.sections[0].spec.rows[0].steps[0].clone();
+        action.capture = Some(source.into());
+        action.tool = Some(tool.into());
+        let mut ctx = RowCtx {
+            section: "test".into(),
+            row_id: "capture".into(),
+            vars: Default::default(),
+            actions: vec![],
+            blocked: vec![],
+            unverified: vec![],
+            chat_marks: Default::default(),
+            attachments: vec![],
+            character: json!({}),
+            anchor: None,
+            started_ms: 0,
+            tap: None,
+            event_marks: Default::default(),
+            fp: None,
+            fixture_mode: None,
+            session_end: vec![],
+            parity: None,
+            poses: vec![],
+            log_mark: None,
+            chaos: Default::default(),
+        };
+        let record = runner.exec(&action, Role::Step, &mut ctx).await;
+        assert!(!record.ok, "{source}:{tool}");
+        assert!(record.error.as_deref().unwrap().contains("cannot call"));
+        assert!(!fake.names().contains(&tool.to_string()));
+        assert!(!server.calls.lock().unwrap().iter().any(|c| c.0 == tool));
+    }
+}
+
+#[tokio::test]
+async fn literal_id_mentions_in_guide_prose_do_not_bind_runtime_ids() {
+    let fake = Fake::new(&[]).with("client_player_state");
+    let rows = r#"
+[[row]]
+id = "prose-ids"
+title = "Describe ${player_id}"
+expected = "Show the literal ${entity_id} token."
+notes = "Example: ${player_id}"
+known_issues = ["An old ${entity_id} example"]
+anchor = false
+step = [{ wait_ms = 1, label = "${player_id}" }]
+[[row.expect]]
+id = "read"
+text = "The guide says ${entity_id} here."
+source = "tool"
+tool = "client_player_state"
+pointer = "/name"
+op = "eq"
+value = "Labone"
+"#;
+    let row = run(&fake, None, rows).await;
+    assert_eq!(row.result, RowResult::Pass, "{:?}", row.reasons);
+    assert!(!fake.names().contains(&"client_entity_find".to_string()));
 }

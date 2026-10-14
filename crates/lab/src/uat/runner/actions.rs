@@ -233,6 +233,9 @@ impl<I: ToolInvoker> Runner<'_, I> {
         if !tier::is_read_only(tool) {
             return fail(rec, format!("capture tool {tool} is not read-only"));
         }
+        if (source == "server") != tool.starts_with("server_") {
+            return fail(rec, format!("capture source {source} cannot call {tool}"));
+        }
         if let Some(v) = unresolved(&args.to_string()) {
             return fail(rec, format!("unresolved variable {v}"));
         }

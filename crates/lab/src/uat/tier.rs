@@ -133,7 +133,6 @@ pub fn is_read_only(tool: &str) -> bool {
             | "server_minigame_state"
             | "server_minigame_tap_read"
             | "server_witnesses"
-            | "server_packet_tap_read"
             | "server_chaos_status"
     ) || (!tool.starts_with("server_")
         && super::tools::lookup(tool).is_some_and(|c| c.floor.is_none()))
@@ -294,6 +293,7 @@ mod tests {
             "server_chaos_clear",
             "server_packet_tap_start",
             "server_packet_tap_stop",
+            "server_packet_tap_read",
             "server_new_unknown_tool",
         ] {
             assert!(!is_read_only(t), "{t}");

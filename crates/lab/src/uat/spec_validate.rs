@@ -395,6 +395,13 @@ fn check_action(row: &str, a: &ActionSpec, errs: &mut Vec<String>) {
                     let tool = a.tool.as_deref().unwrap_or_default();
                     if !super::tier::is_read_only(tool) {
                         errs.push(format!("{row}: capture tool {tool} is not read-only"));
+                    } else if (a.capture.as_deref() == Some("server"))
+                        != tool.starts_with("server_")
+                    {
+                        errs.push(format!(
+                            "{row}: capture source {} cannot call {tool}",
+                            a.capture.as_deref().unwrap_or_default()
+                        ));
                     }
                 }
                 Some("chat") => errs.push(format!(

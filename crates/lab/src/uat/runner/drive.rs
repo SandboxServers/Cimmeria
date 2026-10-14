@@ -12,7 +12,7 @@ use super::players::Who;
 use super::{fingerprint, fixture, RowCtx, Runner};
 use crate::uat::evidence::ClauseResult;
 use crate::uat::invoke::ToolInvoker;
-use crate::uat::spec::{RowSpec, SectionSpec, Source};
+use crate::uat::spec::{ActionSpec, ExpectSpec, RowSpec, SectionSpec, Source};
 use crate::uat::tier::Role;
 
 impl<I: ToolInvoker> Runner<'_, I> {
@@ -235,9 +235,8 @@ impl<I: ToolInvoker> Runner<'_, I> {
     /// Bind only ids this row references, so ordinary rows remain usable
     /// against a client without the optional server endpoint.
     async fn bind_runtime_ids(&mut self, row: &RowSpec, ctx: &mut RowCtx) {
-        let rendered = format!("{row:?}");
-        let need_entity = rendered.contains("${entity_id}");
-        let need_player = rendered.contains("${player_id}");
+        let need_entity = row_uses_var(row, "entity_id");
+        let need_player = row_uses_var(row, "player_id");
         if need_entity {
             let state = self.setup_call("client_player_state", json!({}), ctx).await;
             let id = state
@@ -325,4 +324,72 @@ impl<I: ToolInvoker> Runner<'_, I> {
             }
         }
     }
+}
+
+/// Only fields the runner substitutes can require an automatic id read.
+/// Guide prose, labels and metadata may mention `${player_id}` literally.
+fn row_uses_var(row: &RowSpec, name: &str) -> bool {
+    let needle = format!("${{{name}}}");
+    fn value_uses(value: &Value, needle: &str) -> bool {
+        match value {
+            Value::String(s) => s.contains(needle),
+            Value::Array(values) => values.iter().any(|v| value_uses(v, needle)),
+            Value::Object(values) => values.values().any(|v| value_uses(v, needle)),
+            _ => false,
+        }
+    }
+    fn action_uses(action: &ActionSpec, needle: &str) -> bool {
+        [action.chat.as_deref(), action.regex.as_deref()]
+            .into_iter()
+            .flatten()
+            .any(|s| s.contains(needle))
+            || action.args.as_ref().is_some_and(|v| value_uses(v, needle))
+            || action.wait_server.as_ref().is_some_and(|wait| {
+                wait.log.contains(needle)
+                    || wait.target.as_deref().is_some_and(|s| s.contains(needle))
+                    || wait
+                        .fields
+                        .as_ref()
+                        .is_some_and(|fields| fields.values().any(|v| value_uses(v, needle)))
+            })
+            || action.fallback.iter().any(|f| action_uses(f, needle))
+    }
+    fn clause_uses(clause: &ExpectSpec, needle: &str) -> bool {
+        [
+            clause.contains.as_deref(),
+            clause.matches.as_deref(),
+            clause.chunk.as_deref(),
+            clause.lua_condition.as_deref(),
+            clause.filter.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .any(|s| s.contains(needle))
+            || [
+                clause.args.as_ref(),
+                clause.value.as_ref(),
+                clause.baseline.as_ref(),
+                clause.entity.as_ref(),
+            ]
+            .into_iter()
+            .flatten()
+            .any(|v| value_uses(v, needle))
+            || clause
+                .match_fields
+                .as_ref()
+                .is_some_and(|fields| fields.values().any(|v| value_uses(v, needle)))
+    }
+
+    row.setup
+        .iter()
+        .chain(&row.steps)
+        .chain(&row.teardown)
+        .any(|action| action_uses(action, &needle))
+        || row.expect.iter().any(|clause| clause_uses(clause, &needle))
+        || row.evidence.iter().any(|evidence| {
+            evidence
+                .args
+                .as_ref()
+                .is_some_and(|v| value_uses(v, &needle))
+        })
 }
