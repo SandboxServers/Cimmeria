@@ -118,14 +118,25 @@ pub fn is_read_only(tool: &str) -> bool {
             | "lab_pixel_probe"
             | "lab_crash_report"
             | "lab_timeline"
-    ) || tool.starts_with("server_")
-        // Server tools that write: a GM command, a content reload, and a
-        // staged fixture (it changes the character at its next login).
-        && !matches!(
-            tool,
-            "server_console_exec" | "server_content_reload" | "server_stage_fixture"
-        )
-        || super::tools::lookup(tool).is_some_and(|c| c.floor.is_none())
+    ) || matches!(
+        tool,
+        // An explicit list is required: new server tools must not become
+        // capture reads by default (chaos and packet-tap controls mutate).
+        "server_console_list"
+            | "server_sessions"
+            | "server_log_tail"
+            | "server_db_query"
+            | "server_entity_get"
+            | "server_entity_query"
+            | "server_nav_path"
+            | "server_ability_state"
+            | "server_minigame_state"
+            | "server_minigame_tap_read"
+            | "server_witnesses"
+            | "server_packet_tap_read"
+            | "server_chaos_status"
+    ) || (!tool.starts_with("server_")
+        && super::tools::lookup(tool).is_some_and(|c| c.floor.is_none()))
 }
 
 /// Map a tool's self-reported native level to a tier. The world tools
@@ -279,6 +290,11 @@ mod tests {
             "server_console_exec",
             "server_content_reload",
             "server_stage_fixture",
+            "server_chaos_set",
+            "server_chaos_clear",
+            "server_packet_tap_start",
+            "server_packet_tap_stop",
+            "server_new_unknown_tool",
         ] {
             assert!(!is_read_only(t), "{t}");
         }

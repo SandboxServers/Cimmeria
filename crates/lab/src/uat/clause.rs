@@ -212,7 +212,7 @@ pub fn compare_delta(
         signed_integer(base),
         signed_integer(want),
     ) {
-        return Ok(h - b == w);
+        return Ok(h.checked_sub(b).is_some_and(|delta| delta == w));
     }
     let (h, b, w) = (
         as_f64(have).ok_or("delta observation is not numeric")?,

@@ -5,6 +5,7 @@ use serde_json::json;
 use super::test_server::FakeServer;
 use super::tests::{request, Fake};
 use super::{RowCtx, Runner};
+use crate::uat::attest::{attest, AttestRequest};
 use crate::uat::evidence::{RowResult, RunDir};
 use crate::uat::invoke::ServerInvoker;
 use crate::uat::spec;
@@ -18,7 +19,7 @@ expected = "The inventory count drops by one."
 anchor = false
 step = [
   { capture = "tool", tool = "client_inventory", args = { container = 1 }, pointer = "/items/0/count", var = "before" },
-  { capture = "server", tool = "server_inventory", args = { player_id = "${player_id}" }, pointer = "/items/0/count", var = "server_before" },
+  { capture = "server", tool = "server_db_query", args = { sql = "SELECT ${player_id}" }, pointer = "/rows/0/n", var = "server_before" },
   { tool = "client_target", args = { entity_id = "${entity_id}" } },
 ]
 [[row.expect]]
@@ -73,10 +74,7 @@ async fn tool_and_server_captures_preserve_json_values_and_feed_later_reads() {
             "server_sessions",
             vec![json!({"sessions":[{"entity_id":7,"player_id":700,"name":"Labone"}]})],
         )
-        .answer(
-            "server_inventory",
-            vec![json!({"items":[{"count":99_u64}]})],
-        );
+        .answer("server_db_query", vec![json!({"rows":[{"n":99_u64}]})]);
     let row = run(&fake, Some(&server), ROW).await;
     assert_eq!(row.result, RowResult::Pass, "{:?}", row.reasons);
     assert_eq!(row.vars["before"], 3);
@@ -86,8 +84,8 @@ async fn tool_and_server_captures_preserve_json_values_and_feed_later_reads() {
     assert_eq!(row.clauses[0].observed, 2);
     let calls = server.calls.lock().unwrap();
     assert_eq!(
-        calls.iter().find(|c| c.0 == "server_inventory").unwrap().1["player_id"],
-        700
+        calls.iter().find(|c| c.0 == "server_db_query").unwrap().1["sql"],
+        "SELECT 700"
     );
 }
 
@@ -169,7 +167,7 @@ title = "capture"
 expected = "read server"
 anchor = false
 step = [
-  { capture = "server", tool = "server_inventory", args = {}, pointer = "/count", var = "count" },
+  { capture = "server", tool = "server_sessions", args = {}, pointer = "/count", var = "count" },
   { chat = ".help" },
 ]
 [[row.expect]]
@@ -183,6 +181,58 @@ question = "Was the server value present?"
     assert!(!fake.names().contains(&"client_type_text".to_string()));
 }
 
+#[tokio::test]
+async fn attestation_cannot_erase_an_unavailable_server_capture() {
+    let tmp = tempfile::tempdir().unwrap().keep();
+    let fake = Fake::new(&[]);
+    let rows = r#"
+[[row]]
+id = "capture-attest"
+title = "capture then attest"
+expected = "The server read succeeds."
+state = "any"
+anchor = false
+step = [
+  { wait_ms = 1, label = "before" },
+  { capture = "server", tool = "server_sessions", args = {}, pointer = "/count", var = "count" },
+]
+[[row.expect]]
+id = "log"
+text = "An unrelated server event occurred."
+source = "signoz"
+filter = "event = 'capture-test'"
+at = "before"
+"#;
+    let out = Runner::new(&fake, None, request(&tmp, rows))
+        .unwrap()
+        .run_all()
+        .await
+        .unwrap();
+    let run = RunDir::open(std::path::Path::new(&out.run_dir)).unwrap();
+    let row = run.rows().unwrap().remove(0);
+    assert_eq!(row.result, RowResult::Unverified);
+    assert_eq!(row.clauses.len(), 1);
+    assert_eq!(row.unverified.len(), 1);
+    assert!(row.unverified[0].contains("server lab MCP not configured"));
+
+    let attested = attest(&AttestRequest {
+        run_dir: run.root.clone(),
+        row: Some("capture-attest".into()),
+        clause: Some("log".into()),
+        row_count: Some(1),
+        ..Default::default()
+    })
+    .unwrap();
+    assert_eq!(attested["result"], "UNVERIFIED", "{attested}");
+    let persisted = run.rows().unwrap().remove(0);
+    assert_eq!(persisted.result, RowResult::Unverified);
+    assert_eq!(persisted.unverified, row.unverified);
+    assert!(persisted
+        .reasons
+        .iter()
+        .any(|reason| reason.contains("server lab MCP not configured")));
+}
+
 #[test]
 fn capture_specs_reject_mutating_client_and_server_tools() {
     let tmp = tempfile::tempdir().unwrap();
@@ -190,6 +240,9 @@ fn capture_specs_reject_mutating_client_and_server_tools() {
     for (source, tool) in [
         ("tool", "client_lua_eval"),
         ("server", "server_console_exec"),
+        ("server", "server_chaos_clear"),
+        ("server", "server_packet_tap_stop"),
+        ("server", "server_packet_tap_start"),
     ] {
         valid.rows[0].steps[0].capture = Some(source.into());
         valid.rows[0].steps[0].tool = Some(tool.into());
@@ -210,6 +263,8 @@ async fn mutated_capture_is_blocked_before_driving() {
     for (source, tool) in [
         ("tool", "client_lua_eval"),
         ("server", "server_console_exec"),
+        ("server", "server_chaos_clear"),
+        ("server", "server_packet_tap_stop"),
     ] {
         let action = &mut req.sections[0].spec.rows[0].steps[0];
         action.capture = Some(source.into());
@@ -240,6 +295,8 @@ async fn capture_execution_rechecks_read_only_before_invoking() {
     for (source, tool) in [
         ("tool", "client_lua_eval"),
         ("server", "server_console_exec"),
+        ("server", "server_chaos_clear"),
+        ("server", "server_packet_tap_stop"),
     ] {
         let mut action = runner.req.sections[0].spec.rows[0].steps[0].clone();
         action.capture = Some(source.into());

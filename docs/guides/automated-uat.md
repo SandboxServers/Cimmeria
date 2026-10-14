@@ -67,7 +67,7 @@ Long rows can outlast an MCP client's call timeout: run a section a few rows at 
 
 ### Capture values and compare changes
 
-A `capture` action saves a JSON value under `var` for later actions and clauses. Use `capture = "tool"` for a client read or `capture = "server"` for a server lab MCP read; both need `tool`, `pointer` and `var`, and may pass `args`. The pointer is a JSON pointer into the tool's result. The value keeps its JSON type, so an id or 64-bit bit field is not rounded through a floating-point number. The existing `capture = "chat"` form uses `regex` group 1 and `var`. Capture tools must be read-only; write tools such as `client_lua_eval` and `server_console_exec` are rejected before the row runs.
+A `capture` action saves a JSON value under `var` for later actions and clauses. Use `capture = "tool"` for a client read or `capture = "server"` for a server lab MCP read; both need `tool`, `pointer` and `var`, and may pass `args`. The pointer is a JSON pointer into the tool's result. The value keeps its JSON type, so an id or 64-bit bit field is not rounded through a floating-point number. The existing `capture = "chat"` form uses `regex` group 1 and `var`. Capture tools must be read-only; write tools such as `client_lua_eval`, `server_console_exec`, `server_chaos_clear` and `server_packet_tap_stop` are rejected before the row runs. Server capture tools use an explicit read allowlist, so a new server tool cannot become a capture read without review.
 
 ```toml
 step = [
@@ -88,7 +88,7 @@ value = -1
 
 `delta` checks observed minus `baseline` equals `value`. `bit_set` and `bit_clear` check every bit in the `value` mask on an integer observation; masks accept a JSON integer or a hexadecimal string such as `"0x40"`, without floating-point conversion. This works for `state_field` and 64-bit `interaction_type_flags`. `any` checks whether an observed array contains an object with every field in `value`, for example `op = "any", value = { name = "Health Slappack", delta = -1 }` on `/diff/by_item`. Extra fields in an array element are allowed.
 
-Rows that reference `${player_id}` get it from the named character's `server_sessions` entry after world entry. Rows that reference `${entity_id}` read the client player id; the current `client_player_state` omits it, so the runner falls back to `client_entity_find`'s `/player/id`. An unavailable server id or server capture leaves the row UNVERIFIED with the reason and stops actions that depend on that value.
+Rows that reference `${player_id}` get it from the named character's `server_sessions` entry after world entry. Rows that reference `${entity_id}` read the client player id; the current `client_player_state` omits it, so the runner falls back to `client_entity_find`'s `/player/id`. An unavailable server id or server capture leaves the row UNVERIFIED with the reason and stops actions that depend on that value. The reason is saved in the evidence bundle, and later attestations cannot turn that row into PASS.
 
 ### End of the run
 

@@ -136,6 +136,14 @@ fn delta_uses_a_captured_baseline() {
 }
 
 #[test]
+fn delta_outside_i128_range_is_false_without_wrapping() {
+    let min = json!(i128::MIN.to_string());
+    let max = json!(i128::MAX.to_string());
+    assert!(!compare_delta(Some(&json!(1)), Some(&min), Some(&min)).unwrap());
+    assert!(!compare_delta(Some(&json!(-1)), Some(&max), Some(&max)).unwrap());
+}
+
+#[test]
 fn bit_ops_keep_all_64_bits_exact() {
     let above_f64 = json!(9_007_199_254_740_993_u64);
     assert!(compare(Some(Op::BitSet), Some(&above_f64), Some(&json!(1))).unwrap());
