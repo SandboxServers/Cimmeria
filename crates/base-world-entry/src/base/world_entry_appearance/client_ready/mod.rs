@@ -373,7 +373,7 @@ pub async fn handle_on_client_ready(
     };
 
     if let Some(ref tx) = cell_tx {
-        let Some(session) = session else {
+        let Some(ref session) = session else {
             tracing::warn!(%addr, "onClientReady pending finalization lacks a live player session");
             return Ok(());
         };
@@ -420,6 +420,14 @@ pub async fn handle_on_client_ready(
         }
     }
 
+    let current = || {
+        session
+            .as_ref()
+            .is_some_and(|s| s.is_current(connected, addr, entity_id, pending.player_id))
+    };
+    if !current() {
+        return Ok(());
+    }
     // Bundle the post-onClientReady burst: BeingAppearance resend +
     // onEntityTint resend + onPlayerCommunication welcome. No onChatJoined:
     // the client hardcodes every built-in channel (SS-C4, D-ORG14; see the
@@ -455,6 +463,9 @@ pub async fn handle_on_client_ready(
     let bundle =
         build_on_client_ready_burst_bundle(entity_id, &appearance_args, &tint_args, &welcome_args);
     send_bundle_to_witness_reliable(transport, connected, entity_to_addr, entity_id, bundle).await;
+    if !current() {
+        return Ok(());
+    }
 
     // A non-GM refused a GM-only world (D-DA4) arrives here at their
     // faction's start: tell them why, now that the world has loaded.

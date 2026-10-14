@@ -72,6 +72,20 @@ impl SessionSnapshot {
             && state.extensions.get::<LetterTurnInEntryEpoch>() == Some(&self.epoch)
             && token_for_key(&state.key) == self.token
     }
+
+    pub(super) fn is_current(
+        &self,
+        connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+        addr: SocketAddr,
+        entity_id: u32,
+        player_id: i32,
+    ) -> bool {
+        connected.lock().ok().and_then(|clients| {
+            clients
+                .get(&addr)
+                .map(|state| self.matches(state, entity_id, player_id))
+        }) == Some(true)
+    }
 }
 
 pub(super) fn token_for_key(key: &[u8; 32]) -> LetterTurnInToken {
@@ -89,7 +103,7 @@ pub(super) struct HandoffContext<'a> {
     pub addr: SocketAddr,
     pub connected: &'a Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     pub tx: &'a mpsc::Sender<BaseToCellMsg>,
-    pub session: SessionSnapshot,
+    pub session: &'a SessionSnapshot,
     pub entity_id: u32,
     pub player_id: i32,
     pub account_id: u32,
@@ -110,8 +124,14 @@ impl HandoffContext<'_> {
             return SendOutcome::Closed;
         };
         #[cfg(test)]
-        if matches!(msg, BaseToCellMsg::ConnectEntity { .. }) {
-            super::session_token_tests::pause_after(self.addr, "connect_permit_acquired").await;
+        match msg {
+            BaseToCellMsg::ConnectEntity { .. } => {
+                super::session_token_tests::pause_after(self.addr, "connect_permit_acquired").await;
+            }
+            BaseToCellMsg::AdvanceRingDestination { .. } => {
+                super::session_token_tests::pause_after(self.addr, "ring_permit_acquired").await;
+            }
+            _ => {}
         }
         let Ok(clients) = self.connected.lock() else {
             return SendOutcome::Replaced;
@@ -208,7 +228,8 @@ pub(super) async fn send_handoff(
             })
             .await
         {
-            SendOutcome::Sent | SendOutcome::Replaced => {}
+            SendOutcome::Sent => {}
+            SendOutcome::Replaced => return false,
             SendOutcome::Closed => {
                 tracing::error!(
                     entity_id = ctx.entity_id,
@@ -219,5 +240,6 @@ pub(super) async fn send_handoff(
             }
         }
     }
-    true
+    ctx.session
+        .is_current(ctx.connected, ctx.addr, ctx.entity_id, ctx.player_id)
 }

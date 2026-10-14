@@ -38,6 +38,7 @@ fn session(addr: SocketAddr, state: ConnectedClientState) -> (Connected, EntityT
 fn pre_ready_session(addr: SocketAddr, first_login: i32) -> (Connected, EntityToAddr) {
     let mut state = test_default_connected_client_state();
     state.player_entity_id = Some(PLAYER);
+    state.active_player_id = Some(42);
     state.player_name = Some("Tester".to_string());
     state.pending_client_ready = Some(PendingClientReadyInfo {
         entity_id: PLAYER,

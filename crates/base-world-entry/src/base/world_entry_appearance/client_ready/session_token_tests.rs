@@ -64,8 +64,23 @@ fn start(
     tx: mpsc::Sender<BaseToCellMsg>,
     entity_id: u32,
 ) -> tokio::task::JoinHandle<()> {
+    start_with_transport(
+        addr,
+        connected,
+        tx,
+        entity_id,
+        Arc::new(TestTransport::default()),
+    )
+}
+
+fn start_with_transport(
+    addr: SocketAddr,
+    connected: Clients,
+    tx: mpsc::Sender<BaseToCellMsg>,
+    entity_id: u32,
+    transport: Arc<dyn Transport>,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let transport: Arc<dyn Transport> = Arc::new(TestTransport::default());
         let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(entity_id, addr)])));
         handle_on_client_ready(
             addr,
@@ -79,6 +94,49 @@ fn start(
         .await
         .unwrap();
     })
+}
+
+#[tokio::test]
+async fn on_client_ready_stops_old_continuation_after_ring_permit_replacement() {
+    let addr: SocketAddr = "127.0.0.1:55778".parse().unwrap();
+    let entity_id = 55778;
+    let generation = Instant::now();
+    let mut old = state(entity_id, 42, [1; 32], generation);
+    old.pending_destination_ring_id = Some(17);
+    let connected = Arc::new(Mutex::new(HashMap::from([(addr, old)])));
+    let (tx, mut rx) = mpsc::channel(4);
+    let typed = Arc::new(TestTransport::default());
+    let transport: Arc<dyn Transport> = typed.clone();
+    let (entered, release) = arm(addr, "ring_permit_acquired");
+    let task = start_with_transport(addr, connected.clone(), tx, entity_id, transport);
+    enter(entered).await;
+
+    // Replacement reuses all routing IDs while the old handler owns capacity.
+    connected.lock().unwrap().insert(
+        addr,
+        state(entity_id, 42, [2; 32], generation + Duration::from_nanos(1)),
+    );
+    release.send(()).unwrap();
+    tokio::time::timeout(Duration::from_secs(3), task)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let mut kinds = Vec::new();
+    while let Ok(msg) = rx.try_recv() {
+        kinds.push(match msg {
+            BaseToCellMsg::ConnectEntity { .. } => "connect",
+            BaseToCellMsg::LetterTurnInSession { .. } => "token",
+            BaseToCellMsg::InitPlayerState { .. } => "init",
+            BaseToCellMsg::AdvanceRingDestination { .. } => "ring",
+            _ => "other",
+        });
+    }
+    assert_eq!(kinds, ["connect", "token", "init"]);
+    assert!(
+        typed.filter_to(addr).is_empty(),
+        "old handler sent post-handoff packets"
+    );
 }
 
 async fn enter(pause: oneshot::Receiver<()>) {
