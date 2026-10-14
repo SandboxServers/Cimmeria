@@ -77,14 +77,16 @@ async fn resume_adopts_a_character_created_before_interruption() {
             "name": name, "archetype": "Commando"
         })
     );
-    drop(first); // Simulates the caller dying after character creation.
+    drop(first); // The manifest survives an interruption after character creation.
 
-    let fake = fresh_fake().answer(
-        "lab_characters",
-        vec![json!({
-            "characters": [{"name": format!("Uat {name}"), "archetype": "Commando"}]
-        })],
-    );
+    let fake = fresh_fake()
+        .answer(
+            "lab_characters",
+            vec![json!({
+                "characters": [{"name": format!("Uat {name}"), "archetype": "Commando"}]
+            })],
+        )
+        .answer("lab_play_character", vec![json!({ "dialog_open": true })]);
     let mut resumed = req;
     resumed.run_dir = Some(run_dir.clone());
     let out = Runner::new(&fake, None, resumed)
@@ -96,7 +98,7 @@ async fn resume_adopts_a_character_created_before_interruption() {
     let names = fake.names();
     assert!(names.contains(&"lab_play_character".to_string()));
     assert!(!names.contains(&"lab_create_character".to_string()));
-    assert!(!names.contains(&"lab_finish_dialog".to_string()));
+    assert!(names.contains(&"lab_finish_dialog".to_string()));
     let rows = RunDir::open(&run_dir).unwrap().rows().unwrap();
     assert_eq!(rows[0].character["name"], name);
 }

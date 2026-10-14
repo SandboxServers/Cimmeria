@@ -159,7 +159,6 @@ impl<I: ToolInvoker> Runner<'_, I> {
         }
         let name =
             want.ok_or("no character: set lab-account.json `character` or pass `character`")?;
-        let mut created = false;
         if spec.section.character == "fresh" {
             let f = spec
                 .section
@@ -208,15 +207,17 @@ impl<I: ToolInvoker> Runner<'_, I> {
                     ctx,
                 )
                 .await?;
-                created = true;
             }
         }
-        self.setup_call("lab_play_character", json!({ "name": name }), ctx)
+        let played = self
+            .setup_call("lab_play_character", json!({ "name": name }), ctx)
             .await?;
         self.in_world_as = Some(name);
-        if created && spec.section.fresh.as_ref().is_some_and(|f| f.finish_intro) {
-            // A new character lands in the intro dialog; finish it like a
-            // player (Next to Done). Best effort.
+        if spec.section.fresh.as_ref().is_some_and(|f| f.finish_intro)
+            && played.get("dialog_open").and_then(Value::as_bool) == Some(true)
+        {
+            // Creation may have happened before a resumed run. Follow the
+            // dialog Play actually found, finishing it like a player.
             let _ = self.setup_call("lab_finish_dialog", json!({}), ctx).await;
         }
         Ok(())

@@ -40,6 +40,7 @@ pub mod seed_tags;
 pub mod snapshot;
 pub mod spec;
 pub mod spec_fixture;
+pub mod spec_pose;
 pub mod spec_validate;
 pub mod tier;
 pub mod tools;
