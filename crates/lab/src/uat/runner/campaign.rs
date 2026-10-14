@@ -65,10 +65,16 @@ pub(super) fn prepare_fresh(
                 }
             }
         };
-        manifest.fresh_characters.insert(
-            section.id.clone(),
-            json!({ "name": name, "archetype": archetype }),
-        );
+        let mut record = json!({ "name": name, "archetype": archetype });
+        if manifest
+            .fresh_characters
+            .get(&section.id)
+            .and_then(|saved| saved["intro_pending"].as_bool())
+            == Some(true)
+        {
+            record["intro_pending"] = json!(true);
+        }
+        manifest.fresh_characters.insert(section.id.clone(), record);
         fresh.insert(section.id.clone(), name);
     }
     Ok(fresh)

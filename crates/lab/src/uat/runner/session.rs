@@ -46,6 +46,16 @@ pub(crate) fn fresh_name(run_id: &str, section_id: &str, nonce: u32) -> String {
 }
 
 impl<I: ToolInvoker> Runner<'_, I> {
+    fn set_fresh_intro_pending(&mut self, section_id: &str, pending: bool) -> Result<(), String> {
+        let record = self
+            .manifest
+            .fresh_characters
+            .get_mut(section_id)
+            .ok_or_else(|| format!("section {section_id}: missing fresh character record"))?;
+        record["intro_pending"] = json!(pending);
+        self.save_manifest()
+    }
+
     /// The character this section plays: lab-account's, or this run's
     /// fresh one (`<first> <Runid>`; its list name is the last name).
     pub(crate) fn character_name(&self, spec: &SectionSpec) -> Option<String> {
@@ -200,6 +210,11 @@ impl<I: ToolInvoker> Runner<'_, I> {
                     ctx,
                 )
                 .await?;
+                if f.finish_intro {
+                    // Persist intent before creation: an interrupted run can
+                    // adopt this character and finish only its pending intro.
+                    self.set_fresh_intro_pending(&spec.section.id, true)?;
+                }
                 self.setup_call(
                     "lab_create_character",
                     json!({ "first": f.first, "last": name, "alignment": f.alignment,
@@ -213,7 +228,14 @@ impl<I: ToolInvoker> Runner<'_, I> {
             .setup_call("lab_play_character", json!({ "name": name }), ctx)
             .await?;
         self.in_world_as = Some(name);
-        if spec.section.fresh.as_ref().is_some_and(|f| f.finish_intro) {
+        let intro_pending = spec.section.fresh.as_ref().is_some_and(|f| f.finish_intro)
+            && self
+                .manifest
+                .fresh_characters
+                .get(&spec.section.id)
+                .and_then(|record| record["intro_pending"].as_bool())
+                == Some(true);
+        if intro_pending {
             // Play returns when the world HUD appears. The intro dialog may
             // arrive a few frames later, so its immediate flag is not enough.
             let dialog_open = if played.get("dialog_open").and_then(Value::as_bool) == Some(true) {
@@ -232,24 +254,29 @@ impl<I: ToolInvoker> Runner<'_, I> {
                 .and_then(Value::as_bool)
                     == Some(true)
             };
-            if dialog_open {
-                // The intro cinematic can leave a letterbox over the dialog
-                // buttons for several seconds after the dialog itself opens.
-                let uncovered = self
-                    .setup_call(
-                        "client_wait_for",
-                        json!({
-                            "lua_condition": "not ((LetterboxedWin and LetterboxedWin:isVisible()) or (MoviePlayerWin and MoviePlayerWin:isVisible()))",
-                            "timeout_ms": 20000,
-                        }),
-                        ctx,
-                    )
-                    .await?;
-                if uncovered.get("met").and_then(Value::as_bool) != Some(true) {
-                    return Err("intro dialog remained covered by the arrival cinematic".into());
-                }
-                self.setup_call("lab_finish_dialog", json!({}), ctx).await?;
+            if !dialog_open {
+                return Err("fresh intro dialog did not appear within 15 seconds".into());
             }
+            // The intro cinematic can leave a letterbox over the dialog
+            // buttons for several seconds after the dialog itself opens.
+            let uncovered = self
+                .setup_call(
+                    "client_wait_for",
+                    json!({
+                        "lua_condition": "not ((LetterboxedWin and LetterboxedWin:isVisible()) or (MoviePlayerWin and MoviePlayerWin:isVisible()))",
+                        "timeout_ms": 20000,
+                    }),
+                    ctx,
+                )
+                .await?;
+            if uncovered.get("met").and_then(Value::as_bool) != Some(true) {
+                return Err("intro dialog remained covered by the arrival cinematic".into());
+            }
+            // The click can take effect even if its acknowledgement is
+            // lost. Clear the marker first so a resume cannot consume a
+            // later mission dialog after an ambiguous finish error.
+            self.set_fresh_intro_pending(&spec.section.id, false)?;
+            self.setup_call("lab_finish_dialog", json!({}), ctx).await?;
         }
         Ok(())
     }

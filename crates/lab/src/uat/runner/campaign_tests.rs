@@ -70,14 +70,21 @@ async fn resume_adopts_a_character_created_before_interruption() {
     let first = Runner::new(&interrupted_fake, None, req.clone()).unwrap();
     let run_dir = first.run.root.clone();
     let name = first.fresh["praxis"].clone();
-    let manifest: RunManifest = first.run.read_json(&first.run.run_json()).unwrap();
+    let mut manifest: RunManifest = first.run.read_json(&first.run.run_json()).unwrap();
     assert_eq!(
         manifest.fresh_characters["praxis"],
         json!({
             "name": name, "archetype": "Commando"
         })
     );
-    drop(first); // The manifest survives an interruption after character creation.
+    // Simulate an interruption after creation but before the intro was
+    // finished. The persisted marker survives the resumed runner's setup.
+    manifest.fresh_characters.get_mut("praxis").unwrap()["intro_pending"] = json!(true);
+    first
+        .run
+        .write_json(&first.run.run_json(), &manifest)
+        .unwrap();
+    drop(first);
 
     let fake = fresh_fake()
         .answer(
@@ -101,6 +108,38 @@ async fn resume_adopts_a_character_created_before_interruption() {
     assert!(names.contains(&"lab_finish_dialog".to_string()));
     let rows = RunDir::open(&run_dir).unwrap().rows().unwrap();
     assert_eq!(rows[0].character["name"], name);
+}
+
+#[tokio::test]
+async fn resumed_fresh_character_preserves_a_non_intro_dialog() {
+    let root = tempfile::tempdir().unwrap();
+    let spec = section("praxis", true, true, true, HELP);
+    let req = request(root.path(), vec![spec]);
+    let first_fake = fresh_fake();
+    let first = Runner::new(&first_fake, None, req.clone()).unwrap();
+    let run_dir = first.run.root.clone();
+    let name = first.fresh["praxis"].clone();
+    drop(first);
+
+    let fake = fresh_fake()
+        .answer(
+            "lab_characters",
+            vec![json!({
+                "characters": [{"name": format!("Uat {name}"), "archetype": "Commando"}]
+            })],
+        )
+        .answer("lab_play_character", vec![json!({ "dialog_open": true })]);
+    let mut resumed = req;
+    resumed.run_dir = Some(run_dir);
+    let out = Runner::new(&fake, None, resumed)
+        .unwrap()
+        .run_all()
+        .await
+        .unwrap();
+    assert_eq!(out.rows[0].result, "PASS", "{:?}", out.rows[0].reasons);
+    let names = fake.names();
+    assert!(!names.contains(&"lab_finish_dialog".to_string()));
+    assert!(!names.contains(&"client_wait_for".to_string()));
 }
 
 #[tokio::test]
@@ -251,15 +290,14 @@ async fn fresh_intro_arriving_after_play_is_finished_before_the_first_row() {
     let fake = fresh_fake()
         .answer("lab_play_character", vec![json!({ "dialog_open": false })])
         .answer("client_wait_for", vec![json!({ "met": true })]);
-    let out = Runner::new(
+    let runner = Runner::new(
         &fake,
         None,
         request(root.path(), vec![section("p", true, true, true, HELP)]),
     )
-    .unwrap()
-    .run_all()
-    .await
     .unwrap();
+    let run_dir = runner.run.root.clone();
+    let out = runner.run_all().await.unwrap();
     assert_eq!(out.rows[0].result, "PASS", "{:?}", out.rows[0].reasons);
     let names = fake.names();
     assert!(names.contains(&"client_wait_for".to_string()));
@@ -276,6 +314,35 @@ async fn fresh_intro_arriving_after_play_is_finished_before_the_first_row() {
     assert_eq!(waits[0]["timeout_ms"], 15000);
     assert_eq!(waits[1]["timeout_ms"], 20000);
     assert_eq!(waits[1]["lua_condition"], "not ((LetterboxedWin and LetterboxedWin:isVisible()) or (MoviePlayerWin and MoviePlayerWin:isVisible()))");
+    let manifest: RunManifest = RunDir::open(&run_dir)
+        .unwrap()
+        .read_json(&run_dir.join("run.json"))
+        .unwrap();
+    assert_eq!(manifest.fresh_characters["p"]["intro_pending"], false);
+}
+
+#[tokio::test]
+async fn fresh_intro_timeout_blocks_the_first_row_and_keeps_pending_marker() {
+    let root = tempfile::tempdir().unwrap();
+    let fake = fresh_fake()
+        .answer("lab_play_character", vec![json!({ "dialog_open": false })])
+        .answer("client_wait_for", vec![json!({ "met": false })]);
+    let runner = Runner::new(
+        &fake,
+        None,
+        request(root.path(), vec![section("p", true, true, true, HELP)]),
+    )
+    .unwrap();
+    let run_dir = runner.run.root.clone();
+    let out = runner.run_all().await.unwrap();
+    assert_eq!(out.rows[0].result, "BLOCKED");
+    assert!(out.rows[0].reasons[0].contains("intro dialog did not appear"));
+    assert!(!fake.names().contains(&"lab_finish_dialog".to_string()));
+    let manifest: RunManifest = RunDir::open(&run_dir)
+        .unwrap()
+        .read_json(&run_dir.join("run.json"))
+        .unwrap();
+    assert_eq!(manifest.fresh_characters["p"]["intro_pending"], true);
 }
 
 #[tokio::test]
