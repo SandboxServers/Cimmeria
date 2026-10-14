@@ -31,9 +31,9 @@ Each blocked row names the contract that must be closed before the original impl
 | HA-00c | Authored/repeatable exact IDs | BlockedEvidence | CB-N05a is merged; inspect stock catalog and Cellblock's first authored client proof, then perform current global ID audit under O14-04/10/13 |
 | HA-1360a1 | Atomic base transaction and writer fence | Integrated | Reviewed transaction and stale-writer guards; 670 nextest and seven live-DB tests passed |
 | HA-1360a2a | Session token world-entry delivery and lifetime | Integrated | Reviewed entry-epoch and replacement guards; default and `lab-chaos` lane suites passed |
-| HA-1360a2b | Correlated request/result routing and A1 invocation | Dispatched | [Exact plugin, DTO, client-sync and test manifest](worknotes/HA-1360a-seal.md#a2b-dispatch-seal); review and integration pending |
+| HA-1360a2b | Correlated request/result routing and A1 invocation | Integrated | [Packet and three reviewed repairs](worknotes/HA-1360a-seal.md#ha-1360a2--internal-transport-and-session-fence); default, `lab-chaos` and focused live-DB lane checks passed |
 | HA-1360a3a | Strict mandatory action and loader | Integrated | `dcf7423bf`; 299 nextest passed, independent review found no code defect; action/telemetry references updated |
-| HA-1360a3b/c | Pending/retry and correlated continuation | BlockedDependency | [Sequential manifests](worknotes/HA-1360a-seal.md#ha-1360a3--strict-action-pending-state-and-continuation); a2b DTO and prior A3 child integration |
+| HA-1360a3b/c | Pending/retry and correlated continuation | Ready | [Sequential manifests](worknotes/HA-1360a-seal.md#ha-1360a3--strict-action-pending-state-and-continuation); dispatch a3b before a3c |
 | HA-1360b | Marsh receiving seed and cross-zone proof | BlockedDependency | HA-1360a integrated/reviewed; CS-08a actual crossing and retained letter; receiving graph signoff |
 | HA-01a | Travel/placement | BlockedEvidence | Four Market/Storage thresholds + arrivals, clearance, wrong-world and relog; preserve 6007/1361 linkage |
 | HA-01b | 1664, proposed | BlockedEvidence | Castle CS-06 grant edge, Kaerlia identity, dialog/faction graph and placement |
@@ -101,7 +101,7 @@ For 567, first prove the item-2698 acquisition and faction-compatible Castle acc
 
 ## HA-1360a — authoritative letter turn-in prerequisite
 
-**Status: Implementing.** Audience: engine implementer and database, authority, mission and testing reviewers. The owner requires an owned letter for Marsh's completion. A1 transaction/receipt, A2a session-token/entry-epoch and A3a strict action are integrated with reviewed tests; A2b plugin route and guarded inventory sync are in review repair. A3b pending/retry and A3c continuation follow sequentially; B owns the seed and cross-zone proof. A2c separately tracks a preexisting general post-handoff race. [The engine worknote](worknotes/HA-1360a-seal.md) supersedes the provisional design details below and records the current exact manifests. This is a bounded mission-1360 seam, not a redesign of every inventory or mission writer. Split any child that exceeds the shared 40k working-token / 90k context envelope.
+**Status: Implementing.** Audience: engine implementer and database, authority, mission and testing reviewers. The owner requires an owned letter for Marsh's completion. A1 transaction/receipt, A2a session-token/entry-epoch, A2b plugin route/client sync and A3a strict action are integrated with reviewed tests. A3b pending/retry and A3c continuation follow sequentially; B owns the seed and cross-zone proof. A2c separately tracks a preexisting general post-handoff race. [The engine worknote](worknotes/HA-1360a-seal.md) supersedes the provisional design details below and records the current exact manifests. This is a bounded mission-1360 seam, not a redesign of every inventory or mission writer. Split any child that exceeds the shared 40k working-token / 90k context envelope.
 
 ### Current source evidence
 
@@ -147,7 +147,7 @@ preexisting general post-handoff entry race;
 **HA-1360a3** owns the strict content action, cell pending/result state,
 retry and relog proof, split into a3a parser, a3b request/retry and a3c
 result/continuation packets. HA-1360b remains the seed/receipt child. A1 and
-a2a are integrated with tests; a2b and a3a are dispatched.
+a2a, a2b and a3a are integrated with reviewed tests; a3b and a3c remain.
 The engine children remain undeployed campaign integration until 6501 is
 replaced: the old chain would otherwise remove a letter and have its
 independent completion rejected.
