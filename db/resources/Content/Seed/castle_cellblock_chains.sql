@@ -2954,8 +2954,8 @@ VALUES (1171, 'display_dialog', 2309, NULL, '{}', 0, 0);
 -- fifty words. Give it 16 seconds on screen after its 10100 ms arrival;
 -- the old 10600 ms delay evicted it after only 422 ms in live Cellblock UAT
 -- (#1721). Both dialogs are button-less, so 5859 may still evict 2516 and
--- emit dialogButtonChoice(2516, -1) if the player leaves it open. Packet
--- DU-08 addresses the server's single-dialog pin and its rejection warning.
+-- emit dialogButtonChoice(2516, -1) if the player leaves it open. DU-08's
+-- offered-dialog set accepts that close; no chain keys it.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (1172, 'GC1a - Straegis scene: post-death "find a way out without Marsh" blurb', 'mission', 686, true, 0);
 

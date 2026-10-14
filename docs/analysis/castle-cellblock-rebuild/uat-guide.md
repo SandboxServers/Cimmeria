@@ -18,7 +18,7 @@ This is the acceptance pass for everything the Castle Cellblock rebuild campaign
 | C07 | Accept blurbs 2305 / 4000 / 2518 on missions 640 / 641 / 688 (chains 1151/1152/1154) | #648 |
 | C08a | `content_actions.delay_ms` honoured by the executor | #646 |
 | C08b | Straegis attack scene: Matinee 1751, Marsh despawn, dialog 2516 at 10.1 s (chains 1161/1162) | #650 |
-| GC1a | Marsh dialog 2309 pre-departure; post-death blurb 5859 at 10.6 s (chains 1171/1172) | #655 |
+| GC1a | Marsh dialog 2309 pre-departure; post-death blurb 5859 at 26.1 s, giving 2516 sixteen seconds to read (chains 1171/1172) | #655, #1721 |
 | GC1b-0 | Engine: an NPC can follow a player; Marsh `move_speed` raised to 0.9 units/tick | #646 |
 | GC1b-1 | Marsh rides the rings to region 3 (chain 1173) | #655 |
 | GC1b-2 | Marsh follows the player topside; follow cleared at the Straegis scene (chains 1174/1175) | #655 |
@@ -928,7 +928,7 @@ that the absence of one breaks nothing, and that 3999 stops being a dead end.
 | 2 | Start mission 641's first briefing (4001 Tau'ri / 5022 Jaffa) and close it on **screen one** with the **X**. | Mission **641** is accepted exactly as if you had paged to the end — same as clicking Accept used to do, because that Accept was on screen one as well. The P90 locker lights up and Marsh's indicator clears. |
 | 3 | Same for dialog **2299** (mission 638's Human "agree to escape") — close it on screen one with the X. | Dialog 2298 shows, mission **639** is accepted and **638** completes. |
 | 4 | Let blurbs **2305** (after 640), **4000** (after 641) and **2518** (after 688) appear, and look at the button row. | **No Accept, no Decline, no More Info.** Only the title-bar X. Closing one does nothing else — none of the three is keyed to a chain. |
-| 5 | Reach the Straegis aftermath and let dialogs **2516** and **5859** appear. | Same: no buttons. These two have their own scenario, [T31](#t31--the-straegis-aftermath-and-the-first-eviction-close), because 5859 evicts 2516 half a second after it opens. |
+| 5 | Reach the Straegis aftermath and let dialogs **2516** and **5859** appear. | Same: no buttons. These two have their own scenario, [T31](#t31--the-straegis-aftermath-and-the-first-eviction-close); 2516 stays readable for about 16 seconds before 5859 appears. |
 | 6 | Reach the pre-ring-travel beat and close dialog **2309**. | Same. |
 
 **Must NOT happen:**
@@ -968,12 +968,10 @@ narration **2516** about ten seconds in; chain 1172 shows the "Without Marsh" bl
 
 **Must NOT happen:** any mission accepted, completed or advanced by closing either dialog.
 
-**Expected warning, not a failure.** Because the client holds one dialog at a time, 5859
-**evicts** 2516. Now that 2516 has no button, that eviction sends `(2516, -1)` — the first
-shipped eviction close. The server has already re-pinned to 5859, so it rejects that choice
-with a `warn!` in `logs\server.log`. It is correct behaviour on today's code and it costs
-nothing: no chain keys 2516. Packet DU-08 replaces the single open-dialog pin with a set
-and the warning goes away. Record it if you see it; do not file it.
+**Eviction close.** The client holds one dialog at a time, so 5859 replaces 2516 if the
+player leaves 2516 open. Its button-less close sends `(2516, -1)`. DU-08's offered-dialog
+set retains 2516 when 5859 arrives, so the server accepts the late close and no chain
+fires. A rejection warning is a regression; record it as a failure.
 
 **Timing.** Chain 1172 waits 26100 ms from mission 686 completion, giving the fifty-word
 2516 narration about 16 seconds on screen after the Matinee. The previous 10600 ms

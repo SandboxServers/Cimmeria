@@ -239,8 +239,8 @@ async fn live_db_chain_1171_does_not_fire_once_step_2344_advanced_past() {
 /// "find a way out without Marsh" beat, at `delay_ms = 10600` -- after
 /// C08b's own chain 1161 plays the StraegisAttack Matinee (delay_ms 0)
 /// and shows dialog 2516 (delay_ms 10100) on the same trigger. Pinning
-/// the exact delay (found in review, 2026-09-18) guards against 5859
-/// popping up while the Matinee is still playing.
+/// the follow-up delay leaves 16 seconds for the player to read 2516
+/// after the Matinee (#1721).
 #[tokio::test]
 async fn live_db_chain_1172_mission_686_complete_shows_post_death_dialog_5859() {
     let pool = require_db_or_skip!();
@@ -275,9 +275,9 @@ async fn live_db_chain_1172_mission_686_complete_shows_post_death_dialog_5859() 
         .collect();
     assert_eq!(
         shows,
-        vec![10600],
+        vec![26100],
         "chain 1172 must resolve exactly one DisplayDialog(5859) at \
-         delay_ms=10600 on mission 686 completion (after C08b's Matinee + \
+         delay_ms=26100 on mission 686 completion (16 seconds after \
          dialog 2516); got {shows:?}. Resolved: {:?}",
         resolved.actions,
     );
