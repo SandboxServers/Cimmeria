@@ -7,6 +7,10 @@ use sqlx::PgPool;
 use crate::cell::messages::SavedMission;
 
 pub mod letter_turn_in;
+mod letter_turn_in_route;
+#[cfg(test)]
+mod letter_turn_in_route_tests;
+pub use letter_turn_in_route::LetterTurnInPlugin;
 pub mod state_lock;
 
 /// Read the saved missions, falling back to none when the read fails.

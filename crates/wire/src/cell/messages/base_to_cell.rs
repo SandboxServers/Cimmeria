@@ -6,7 +6,7 @@ use super::data::SavedMission;
 use super::duel_base_to_cell::DuelBaseToCell;
 use super::item_use::ItemUseConsumed;
 use super::lab::{LabQuery, LabQueryResult};
-use super::letter_turn_in::LetterTurnInSession;
+use super::letter_turn_in::{LetterTurnInResult, LetterTurnInSession};
 use super::org_base_to_cell::OrgBaseToCell;
 
 /// Result of a [`BaseToCellMsg::LabConsoleExec`]: on success, the GM-feedback
@@ -74,6 +74,9 @@ pub enum BaseToCellMsg {
         entity_id: u32,
         session: LetterTurnInSession,
     },
+
+    /// Persisted turn-in verdict; A3 will correlate and apply its cell effects.
+    LetterTurnInResult(LetterTurnInResult),
 
     /// Remove client controller from an entity (player disconnected).
     ///

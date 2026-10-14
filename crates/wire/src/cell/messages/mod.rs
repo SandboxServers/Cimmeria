@@ -98,7 +98,11 @@ pub use lab::{
     LabEntityFilter, LabEntityNames, LabEntityRef, LabEntitySnapshot, LabQuery, LabQueryReply,
     LabQueryResult, LabRadius, LabRadiusCenter, LabWitnessReport, LAB_ENTITY_QUERY_CAP,
 };
-pub use letter_turn_in::{LetterTurnInEntryEpoch, LetterTurnInSession, LetterTurnInToken};
+pub use letter_turn_in::{
+    CommittedLetterTurnIn, LetterTurnInAttempt, LetterTurnInEntryEpoch, LetterTurnInOutcome,
+    LetterTurnInRefusal, LetterTurnInRequest, LetterTurnInResult, LetterTurnInSession,
+    LetterTurnInToken,
+};
 pub use loot_grant::{GrantRefusal, LootGrantSource};
 pub use mail_gm_cell_to_base::{MailGmActor, MailGmCellToBase};
 pub use org_base_to_cell::OrgBaseToCell;

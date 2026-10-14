@@ -41,6 +41,7 @@ cimmeria-minigame = { workspace = true }
 # deferred AoI, outbox, tick sync, cooked data, contact list, crafting, ...),
 # split out of this crate (B1). Re-exported at the old `base::` paths.
 cimmeria-base-session = { workspace = true }
+cimmeria-base-methods = { workspace = true }
 # The cell's world state (SpaceManager, the NPC AI's state primitives, the ring
 # FSM, the synchronous effect scripts, the GM gate, ContentEvents), split out
 # of this crate (C1). Re-exported at the old `cell::…` paths.

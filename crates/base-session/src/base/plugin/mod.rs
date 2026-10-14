@@ -108,6 +108,7 @@ pub const PLUGIN_CELL_MESSAGES: &[PluginMsgKind] = &[
     PluginMsgKind::of::<cimmeria_wire::crafting::RespecCraftOpen>(),
     PluginMsgKind::of::<cimmeria_wire::crafting::GmGrantExpertise>(),
     PluginMsgKind::of::<cimmeria_wire::crafting::GmGrantAppliedSciencePoints>(),
+    PluginMsgKind::of::<cimmeria_wire::cell::messages::LetterTurnInRequest>(),
 ];
 
 /// A payload type the envelope carries, for the startup checks.

@@ -622,6 +622,15 @@ pub use reliable_fit::send_reliable_to_addr;
 mod reliable_send;
 pub use reliable_send::shadow_register_reliable_send;
 
+mod letter_turn_in_send;
+pub use letter_turn_in_send::{
+    derive_letter_turn_in_token, send_letter_turn_in_method, ExpectedLetterTurnInEntry,
+    LetterTurnInSendOutcome,
+};
+
+#[cfg(test)]
+mod letter_turn_in_send_tests;
+
 mod departed_witnesses;
 pub use departed_witnesses::{
     note_witness_departed, unmap_departed_witness, witness_recently_departed, DEPARTED_WITNESS_TTL,

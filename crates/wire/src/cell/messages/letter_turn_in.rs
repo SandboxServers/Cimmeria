@@ -3,6 +3,8 @@
 use std::fmt;
 use std::time::Instant;
 
+use super::data::SavedMission;
+
 /// Process-local world-entry incarnation, strictly increasing on each entry.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LetterTurnInEntryEpoch(u64);
@@ -39,6 +41,71 @@ impl fmt::Debug for LetterTurnInToken {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("LetterTurnInToken([REDACTED])")
     }
+}
+
+/// One server-created turn-in attempt. Retained across uncertain retries.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct LetterTurnInAttempt([u8; 16]);
+
+impl LetterTurnInAttempt {
+    pub const fn from_bytes(bytes: [u8; 16]) -> Self {
+        Self(bytes)
+    }
+
+    pub const fn bytes(self) -> [u8; 16] {
+        self.0
+    }
+}
+
+impl fmt::Debug for LetterTurnInAttempt {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("LetterTurnInAttempt([REDACTED])")
+    }
+}
+
+/// A cell-verified interaction request; no client supplied item or mission fields.
+#[derive(Clone, Copy, Debug)]
+pub struct LetterTurnInRequest {
+    pub entity_id: u32,
+    pub player_id: i32,
+    pub attempt: LetterTurnInAttempt,
+    pub token: LetterTurnInToken,
+    pub generation: Instant,
+    pub epoch: LetterTurnInEntryEpoch,
+}
+
+#[derive(Clone, Debug)]
+pub struct CommittedLetterTurnIn {
+    pub mission: SavedMission,
+    pub item_id: i32,
+    pub container_id: i32,
+    pub stack_before: i32,
+    pub stack_after: i32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LetterTurnInRefusal {
+    InvalidCorrelation,
+    NoPlayer,
+    AlreadyCompleted,
+    NoAccessibleLetter,
+    WrongMissionState,
+    StateChanged,
+}
+
+#[derive(Clone, Debug)]
+pub enum LetterTurnInOutcome {
+    Committed(CommittedLetterTurnIn),
+    AlreadyCommitted(CommittedLetterTurnIn),
+    Refused(LetterTurnInRefusal),
+    /// The transaction or delivery may have committed; retry the same attempt.
+    UnknownRetryable,
+}
+
+#[derive(Clone, Debug)]
+pub struct LetterTurnInResult {
+    pub request: LetterTurnInRequest,
+    pub outcome: LetterTurnInOutcome,
 }
 
 /// Live player's token bound to one base-session generation.

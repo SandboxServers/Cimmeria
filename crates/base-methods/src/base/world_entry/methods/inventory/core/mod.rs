@@ -28,6 +28,9 @@ mod consume_for_use;
 mod consume_for_use_tests;
 #[cfg(test)]
 mod crafting_tools_tests;
+mod letter_turn_in_sync;
+#[cfg(test)]
+mod letter_turn_in_sync_tests;
 #[cfg(test)]
 mod one_item_select_tests;
 mod remove_by_type;
@@ -48,6 +51,7 @@ mod use_instance_discord_tests;
 mod use_instance_tests;
 
 pub use consume_for_use::handle_consume_item_for_use;
+pub(crate) use letter_turn_in_sync::sync_committed_letter;
 pub use remove_by_type::handle_remove_inventory_item_by_type;
 pub use remove_instance::handle_remove_inventory_item;
 pub use use_instance::handle_use_inventory_item;
