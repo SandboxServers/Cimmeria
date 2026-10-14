@@ -42,8 +42,10 @@ decision sits with the caller, not with a per-channel auto-accumulator.
   (was 56 pre-bundle). The first-login cinematic release uses one packet per
   phase-1 *message* to avoid the client's stale request-cursor collision;
   phase 2 remains bundled with its first fragment limited to the first
-  complete message when it fits in one packet. The short first fragment
-  still needs live-client validation. ✅
+  complete message when it fits in one packet. Even a sparse multi-message
+  cascade under 1300 bytes uses two fragments at that boundary; a single
+  message remains one packet. The short first fragment still needs
+  live-client validation. ✅
 - **Layer C**: regression guards in place (compose↔build byte-equivalence,
   28-NPC burst budget). ✅
 - **#360 follow-up — world_entry_appearance migration**: the
@@ -170,14 +172,16 @@ The bundle body is the same byte layout the services-layer
 Multiple messages concatenate in append order. On `finalize`, the body
 goes through `crate::packet::build_fragmented_bundle` which:
 
-- emits one non-fragmented packet for bodies ≤ `FRAGMENT_BODY_SIZE`
+- ordinarily emits one non-fragmented packet for bodies ≤ `FRAGMENT_BODY_SIZE`
   (1300 bytes — Mercury's `MAX_BODY_LENGTH` is 1411, minus per-packet
   footer overhead of flags(1) + seq(4) + frag_begin(4) + frag_end(4) +
   ack headroom, and AES-256-CBC encryption overhead of up to 16 bytes
   PKCS7 padding + 16-byte HMAC. The 111-byte slack on `MAX_BODY_LENGTH`
   is what keeps the encrypted datagram under the 1472-byte
   PACKET_MAX_SIZE = UDP MTU-safe size. See the constant doc in
-  [crates/mercury/src/packet/build.rs](../../crates/mercury/src/packet/build.rs).);
+  [crates/mercury/src/packet/build.rs](../../crates/mercury/src/packet/build.rs)).
+  The cinematic cascade's requested first-message cut is an exception: a
+  multi-message body of this size emits two fragments;
 - otherwise cuts the body into fragments of at most 1300 bytes, each
   carrying `FLAG_FRAGMENTED` + matching `frag_begin` / `frag_end` footers.
   The cuts are **message-aware**: a cut that would land inside a message

@@ -196,9 +196,11 @@ retaining reliable bookkeeping past the 32-packet TX window until ACKs
 promote entries. CH-07 lab-chaos Pack and Shift keep their explicit packed
 shapes so those fault probes still exercise the old layout. In the phase-2
 fragmented bundle, only cursor 1 is exposed to the stale offset before the
-first chain crossing clears it. A first message larger than 1300 bytes keeps
-the ordinary cut inside its body. The short-fragment shape needs live-client
-validation.
+first chain crossing clears it. This includes a sparse release whose
+multi-message cascade is at most 1300 bytes: it deliberately uses two
+fragments, cut after the first message. A one-message cascade stays in one
+packet. A first message larger than 1300 bytes keeps the ordinary cut inside
+its body. The short-fragment shape needs live-client validation.
 
 ### What you can see in SigNoz
 
