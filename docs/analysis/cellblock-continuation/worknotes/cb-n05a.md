@@ -122,3 +122,25 @@ and tests only; the coordinator's previous full-workspace results stand as
 recorded above. Client presentation remains **UATPending**.
 Targeted Markdown lint: 0 issues in the two changed documents; file links and
 CRLF checks passed. `git -c core.whitespace=cr-at-eol diff --check` passed.
+
+## Attribute-separator repair verification
+
+quick-xml's attribute iterator accepts adjacent quoted attributes without XML S.
+Admission now scans each bounded start/empty tag before the iterator and refuses
+missing separators with stable reason `invalid_attribute_syntax`. Both quote
+styles, XML S around equals signs, entity escapes and literal opposite quotes
+remain accepted without changing the stored bytes.
+
+The valid-first/bad-second root/start/empty-tag matrix pins WARN and unchanged
+keys, bytes and metadata. Against the previous validator it compiled and failed
+at runtime: `stock_id_collision` instead of `invalid_attribute_syntax`
+(lane `20261014-093200-80880`). Final required checks passed in order:
+
+- Format: `status=ok exit=0 ran=7.019s` (`20261014-093339-35736`).
+- Targeted clippy: `status=ok exit=0 ran=4.662s pruned=253MB`
+  (`20261014-093354-13816`).
+- Resources/base-session nextest: `status=ok exit=0 ran=19.674s pruned=425MB`,
+  **655 passed, 0 skipped** (`20261014-093406-76616`).
+
+The insertion-only proof above remains applicable and its transport guard
+passed. Client presentation remains **UATPending**.

@@ -268,6 +268,37 @@ fn validate(
     Ok(())
 }
 
+/// Check XML S between attributes; quick-xml permits adjacent quoted values.
+/// Scan the bounded raw tag without decoding entities or changing its bytes.
+fn attribute_syntax(element: &BytesStart<'_>, node: &str) -> Result<(), &'static str> {
+    let mut remaining = &element[node.len()..];
+    loop {
+        let trimmed = remaining.trim_start_matches(xml_space);
+        if trimmed.is_empty() {
+            return Ok(());
+        }
+        if trimmed.len() == remaining.len() {
+            return Err("invalid_attribute_syntax");
+        }
+        let end = trimmed
+            .find(|c| xml_space(c) || c == '=')
+            .filter(|&end| end > 0)
+            .ok_or("invalid_attribute_syntax")?;
+        let value = trimmed[end..]
+            .trim_start_matches(xml_space)
+            .strip_prefix('=')
+            .ok_or("invalid_attribute_syntax")?
+            .trim_start_matches(xml_space);
+        let quote = value.chars().next().ok_or("invalid_attribute_syntax")?;
+        if !matches!(quote, '\'' | '"') {
+            return Err("invalid_attribute_syntax");
+        }
+        let value = &value[1..];
+        let end = value.find(quote).ok_or("invalid_attribute_syntax")?;
+        remaining = &value[end + 1..];
+    }
+}
+
 fn attributes(
     element: &BytesStart<'_>,
     node: &str,
@@ -275,6 +306,7 @@ fn attributes(
     ids: &mut HashSet<i32>,
     name: &mut Option<String>,
 ) -> Result<(), &'static str> {
+    attribute_syntax(element, node)?;
     let (booleans, integers, texts): (&[&str], &[&str], &[&str]) = match node {
         "COOKED_MISSION" => (
             &[

@@ -442,6 +442,68 @@ fn invalid_xml_characters_text_and_outside_whitespace_refuse_atomically() {
 }
 
 #[test]
+fn adjacent_xml_attributes_refuse_atomically_in_root_start_and_empty_tags() {
+    let xml = stock_xml();
+    for (spaced, adjacent) in [
+        (
+            "AwardXP=\"true\" ShowFactionChangeIcon=\"false\"",
+            "AwardXP=\"true\"ShowFactionChangeIcon=\"false\"",
+        ),
+        (
+            "StepEnabled=\"false\" StepID=\"4818\"",
+            "StepEnabled=\"false\"StepID=\"4818\"",
+        ),
+        (
+            "TaskType=\"1\" TaskID=\"8213\"",
+            "TaskType=\"1\"TaskID=\"8213\"",
+        ),
+    ] {
+        assert!(xml.contains(spaced), "missing fixture anchor {spaced}");
+        for quote in ['"', '\''] {
+            for empty_task in [false, true] {
+                let bad = xml
+                    .replace(spaced, adjacent)
+                    .replace('"', &quote.to_string());
+                let bad = if empty_task {
+                    bad.replace("></Tasks>", "/>")
+                } else {
+                    bad
+                };
+                assert_atomic_rejection(1624, bad, "invalid_attribute_syntax");
+            }
+        }
+    }
+}
+
+#[test]
+fn legal_attribute_separators_quotes_and_escapes_preserve_exact_bytes() {
+    let xml = TEST_MISSION_XML
+        .replace(
+            "MissionDefn=\"CB-N05a catalog fixture\"",
+            "MissionDefn=\"CB-N05a &quot;quoted&quot; &apos;fixture&apos; &amp; &#65;\"",
+        )
+        .replace("></Tasks>", "/>");
+    for separator in [" ", "\t", "\r", "\n", " \t\r\n "] {
+        for quote in ['"', '\''] {
+            let quoted = xml.replace('"', &quote.to_string());
+            let quoted = if quote == '"' {
+                quoted.replace("&apos;", "'")
+            } else {
+                quoted.replace("&quot;", "\"")
+            };
+            // Change only the gaps around attribute names and equals signs.
+            let spaced = quoted
+                .replace(&format!("{quote} "), &format!("{quote}{separator}"))
+                .replace("=", &format!("{separator}={separator}"));
+            let batch = [addition(61000, spaced)];
+            let mut categories = HashMap::from([(3, raw())]);
+            ResourceCache::apply_mission_overrides(&mut categories, &batch).unwrap();
+            assert_eq!(categories[&3].elements[&61000], batch[0].xml.as_bytes());
+        }
+    }
+}
+
+#[test]
 fn missing_final_required_children_refuse_atomically() {
     let xml = stock_xml();
     let (before_steps, _) = xml.split_once("<Steps ").unwrap();
