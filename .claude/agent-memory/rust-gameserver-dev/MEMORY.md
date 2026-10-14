@@ -54,6 +54,8 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Lab supervisor
 
+- [lab-template-id-mismatch.md](lab-template-id-mismatch.md) — `unitMobId` is not the server template id; join server entity snapshots to the client map by entity id for template and life-state selectors
+
 - [lab-console-tee-deferred-reply](lab-console-tee-deferred-reply.md) — lab tee sees only sync lines; base round-trip results park the reply on a table (CH-13 spawn batches, batch id on GmSpawnNpc).
 - [lab-chaos-net-shim-generation-and-teardown](lab-chaos-net-shim-generation-and-teardown.md) — net shim keys on per-set generation; teardown discards held/delayed sends; bounded line; paused-clock tests.
 - [client-lua-cegui-global-subscribe](client-lua-cegui-global-subscribe.md) — client Lua `window:subscribeGlobal(ns, ev, 'Fn')`; no unsubscribe, so once per Lua state; args (this, eventWindow, ...).

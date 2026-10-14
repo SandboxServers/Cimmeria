@@ -144,8 +144,8 @@ Sources: `docs/guides/automated-uat.md`, `docs/guides/uat-specs/{castle-cellbloc
 | Castle_SgtGerschon (world 8) | 112 | 149 | 7034 "Sgt. Gerschon" | (429.64, 70.11, 996.56) | name |
 
 - `client_world_click {point}` matches a rendered entity within 0.05 m of that point and uses entity hover search. It requires the matched entity's ID under the cursor before pressing the button, including when the avatar covers the initial projection. Multiple matches return their candidate IDs and require an explicit `entity_id`. For a point without a matching rendered entity, whether the click lands on a static object's pick volume at that height is **(unverified)**; add a `y` offset if needed.
-- `client_entity_find {mob_id}` filters on `unitMobId`. Whether that equals the server template id is **(unverified)**.
-- Click and move accept only `entity_id`, `name` or `point` (no `mob_id`). Entity ids are the BigWorld ids shared by client and server, but a spec cannot capture them (R4). Gap G-TGT1.
+- `client_entity_find {mob_id}` filters on the client's `unitMobId`, which is **not** the server template id. In a live SGC_W1 probe, General Hammond reported client `unitMobId=2410` versus server `template_id=29`; Airman reported `0` versus `31`, and Ba'al's Jaffa reported `0` versus `35` (2026-10-13, client entity find compared with server entity get by entity id). Use `template_id` for seeded identities.
+- `client_entity_find {template_id, alive}` joins the visible client entities to `server_entity_query` in the player's space. Click, target and move accept the same selectors plus `nearest` (default true; false orders by entity id) and zero-based `index`. The server query resolves identity and life state; the click and walk still use real client input. The server lab MCP must be reachable. Entity ids are shared by client and server. A spec still needs runner capture R4 to carry a found id between actions.
 
 ### 3.3 Machine-checkable evidence (verified shapes)
 
@@ -568,11 +568,11 @@ Verified from `Core/Reload/Reload.lua`, `Core/WeaponBar/WeaponBar.lua` and the b
 | P0 | R1/R2/R3 | Resume recreates the character; rows don't stop on failure; the intro dialog is closed | one-character run | runner §1 |
 | P0 | R10 | `@window_click_row` → a nonexistent tool; consumables I2 args wrong | rows wrongly BLOCKED | one-line fixes |
 | P1 | G-NAV1 | No path planning; no Cellblock waypoints; the navmesh is patchy in the stasis room | every room change | `server_nav_path` (find_path corners), or a `lab_route_record` from one human run |
-| P1 | G-TGT1 | Most objects have no client name; click and move take no `mob_id`; no tool-result capture (R4) | corpses, drone, loot | `mob_id` in TargetArg + R4; the `point` click is the interim |
+| P1 | G-TGT1 | Most objects have no client name; runner tool-result capture (R4) is still needed for dynamic ids | corpses, drone, loot | AP-10 adds server `template_id` selectors; R4 carries captured ids |
 | P1 | G-CMB1 / R7 | No fight loop or repeat-until; slap-pack threshold needs a ratio | ~16 fights | `client_fight` composite and/or R7 |
 | P1 | G-SRV | Server clauses need a local lab-mcp (colo 403) and `${player_id}` (R5) | all mission-state asserts | local endpoint + R5 |
 | P2 | R6 | No `delta`, `bit_set` or `any` ops | ammo and stack deltas, BSF bits, item presence | clause ops |
-| P2 | G-TGT2 | `client_entity_find` has no dead/alive filter | LOOT by name | add a filter |
+| P2 | G-TGT2 | Dead/alive selection needs server evidence | LOOT by name | AP-10 adds `alive` backed by `server_entity_query` |
 | P2 | G-DLG1 | No dialog, mission or sequence ids on the client (C5); exactly-once rests on SigNoz attestation | T01, T05, T09, T11, T16 | backlog C5, or S4 `server_journal_tail` |
 | P2 | S2 | In-memory counters and fired-once chains not readable; `sgw_mission` lags | T14 counter, T15b | backlog S2 `server_mission_state` |
 | P2 | G-WEAP1 | No client holster binding; holster is automatic only | holster-on-demand | assert the auto-holster; drop the manual one |

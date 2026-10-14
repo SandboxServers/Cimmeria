@@ -92,7 +92,7 @@ Status vocabulary: **Ready**, **BlockedDependency**, **BlockedDecision**, **Writ
 | AP-02 | Runner: one character through a campaign | Ready | | |
 | AP-03 | Runner: tool captures, ids and clause ops | Writing | | Tool/server capture, runtime ids and clause ops implemented; crate tests pass, live integration pending. |
 | AP-04 | Runner: repeat-until, row timeouts, timing clauses | BlockedDependency | | AP-03 |
-| AP-10 | Targeting by template, alive or dead | Ready | | |
+| AP-10 | Targeting by template, alive or dead | Writing | | Live probe disproved client `unitMobId` = server template id; selectors use server query. |
 | AP-11 | Routes: server path tool, recorder, Cellblock routes | Ready | | live half after AP-00 |
 | AP-12 | `client_fight` composite | BlockedDependency | | AP-10 |
 | AP-13 | Server state tools (player, mission, inventory, journal) | Ready | | |
