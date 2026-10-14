@@ -100,7 +100,7 @@ For 567, first prove the item-2698 acquisition and faction-compatible Castle acc
 
 ## HA-1360a — authoritative letter turn-in prerequisite
 
-**Status: BlockedEvidence; design and seal required before implementation.** Audience: engine implementer and database, authority, mission and testing reviewers. The owner requires an owned letter for Marsh's completion; the exact primitive, signatures, pending state, storage and recovery design remain proposals. This is a bounded mission-1360 seam, not a redesign of every inventory or mission writer. Split into smaller children before dispatch if the sealed manifest exceeds the shared 40k working-token / 90k context envelope or contains multiple unresolved engine seams.
+**Status: Writing.** Audience: engine implementer and database, authority, mission and testing reviewers. The owner requires an owned letter for Marsh's completion. A1 transaction/receipt and A2a session-token/entry-epoch work are integrated with reviewed tests; A2b plugin route and guarded inventory sync are dispatched. A2c post-handoff entry fencing and A3 strict continuation remain open; B owns the seed and cross-zone proof. [The engine worknote](worknotes/HA-1360a-seal.md) supersedes the provisional design details below and records the current exact manifests. This is a bounded mission-1360 seam, not a redesign of every inventory or mission writer. Split any child that exceeds the shared 40k working-token / 90k context envelope.
 
 ### Current source evidence
 
@@ -112,7 +112,7 @@ For 567, first prove the item-2698 acquisition and faction-compatible Castle acc
 | `crates/base-methods/src/base/world_entry/methods/inventory/core/{remove_by_type,access}.rs` | Existing removal selects an owned, accessible row under `FOR UPDATE`, separately from mission persistence. It is not the proposed strict mission transaction. By-type content removal uses `VaultAccess::NO_SESSION`: containers 1–15, excluding buyback 16, bank 17, organization vault and escrow. |
 | `crates/base-session/src/base/inventory_locks.rs`; base-methods `missions/mod.rs::handle_mission_update`; base-session `outbox/mod.rs` | Shared advisory locks precede inventory/player rows. MissionUpdate uses an unconditional UPSERT. Outbox delivery is keyed by entity ID; durable delivery alone cannot prove character/session-safe result recovery or stale-update exclusion. |
 
-These observations establish a receiving defect by source inspection. No new engine implementation, atomicity proof, historical client behavior or live-client evidence is claimed.
+These observations established the receiving defect before the engine packets. A1's implementation and live-DB evidence are in the current worknote; historical client behavior and live-client receipt evidence remain unproved.
 
 ### Seal gates and required signoffs
 
@@ -125,7 +125,7 @@ These observations establish a receiving defect by source inspection. No new eng
 | Continuation | Success follows commit: display Marsh 4576 and clear DSM 5356 slot/template 10 before the mission-completed event opens 6511's 1361 offer. Refusal gives feedback on the first click, retains the binding and mission, and performs no success side effects. Duplicate results cannot consume or fire the offer again. Preserve ordinary completion behavior elsewhere. | mission-systems-advisor, server-authority-enforcer |
 | Regression proof and size | Seal actual test names, fixtures, filters, failure injection and revert mutations, plus exact bounded file/function allowlist, internal message/schema shapes, lane checks and measured packet budget. Confirm recovery/once-only assertions are observable rather than assumptions. | testing-validation-engineer, rust-gameserver-dev; coordinator approves manifest/budget |
 
-A compound action provisionally named `complete_mission_with_item` is a candidate. A base transaction with a correlated committed result and transactional outbox is also a candidate. Neither name nor architecture is settled here. A snapshot `HasItem` check followed by independent remove/complete cannot meet the atomicity gate. Broad loader hardening, generic turn-ins, client protocol extensions, inventory propID changes and mission 567 remain outside this packet.
+The reviewed implementation uses a strict `complete_mission_with_item` action, A1 atomic transaction/receipt and an A2 plugin-routed correlated result; no entity-ID-only outbox carries the turn-in result. A snapshot `HasItem` check followed by independent remove/complete cannot meet the atomicity gate. Broad loader hardening, generic turn-ins, client protocol extensions, inventory propID changes and mission 567 remain outside this packet.
 
 **2026-10-14 design review (conditional, not a Ready seal).** Database, authority,
 mission and testing reviewers agree that the current 6501 removal intent cannot
@@ -140,11 +140,11 @@ Marsh's transient 4576 dialog cannot be promised exactly once after a crash.
 
 The reviewed size calls for three engine children: **HA-1360a1** owns the base
 transaction, mission writer guard and live-DB failure/concurrency proof;
-**HA-1360a2** owns internal messages, base routing and session fence;
+**HA-1360a2** owns internal messages, base routing and session fence, split
+into a2a token/entry epoch, a2b route/sync and a2c post-handoff entry fence;
 **HA-1360a3** owns the strict content action, cell pending/result state,
-retry and relog proof. HA-1360b remains the seed/receipt child. A1 is Ready at
-the contract level after the focused 2026-10-14 signoffs; a2/a3 retain their
-named interface/manifest gates. No child has implementation or test proof yet.
+retry and relog proof. HA-1360b remains the seed/receipt child. A1 and a2a
+are integrated with tests; a2b is dispatched and a2c/a3 retain manifest gates.
 The engine children remain undeployed campaign integration until 6501 is
 replaced: the old chain would otherwise remove a letter and have its
 independent completion rejected.
@@ -163,7 +163,7 @@ file scope and tests are in [the engine worknote](worknotes/HA-1360a-seal.md).
 
 **Checks and docs after seal:** fmt; lane clippy and focused nextest for every changed crate in dependency order; worktree-only live-DB lane filters for transaction/concurrency/recovery tests; merged-wave full checks and independent reviewer/fixer. No cargo or database operation belongs to this planning gate. The implementation owes the game-systems/content-engine and persistence rows of the [doc-update map](../../agents/doc-update-map.md), existing mission engine bible/reference where applicable, and a worknote. Propose a missing engine chapter before writing parallel canon. Rollback scope includes schema/outbox compatibility and committed-result reconciliation; do not blindly delete persisted completions or restore consumed items. The DB and mission reviewers must sign a safe rollback/recovery procedure before Ready.
 
-**Future branch / worktree / commit:** `harset/ha-1360a-letter-turn-in` / `harset-ha-1360a` / `Harset HA-1360a: require committed letter turn-in`. Use the current recorded campaign integration SHA; no early standalone merge is authorized by this contract. Publish all signoffs and unresolved choices in this ledger before changing BlockedEvidence to Ready.
+**Branches and worktrees:** The current per-child branch, worktree, commit subject, manifest and checks are in [the engine worknote](worknotes/HA-1360a-seal.md). The integrated a1/a2a commits remain undeployed until a2b/a2c/a3/b complete and replace old chain 6501; no early standalone merge is authorized.
 
 ## HA-1360b — Marsh receiving seed and cross-zone proof
 
