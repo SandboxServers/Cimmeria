@@ -281,7 +281,13 @@ impl WorldIo for LiveWorld<'_> {
 
     async fn slots(&mut self) -> Result<Vec<(i32, u32)>, String> {
         let m = self.manager().await?;
-        memory::read_slots(&mut Reader(self.sup), m).await
+        let units = self.unit_slots().await?;
+        memory::read_selected_slots(
+            &mut Reader(self.sup),
+            m,
+            &[units.player, units.target, units.mouse_over],
+        )
+        .await
     }
 
     async fn unit_slots(&mut self) -> Result<UnitSlots, String> {

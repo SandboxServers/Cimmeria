@@ -23,7 +23,10 @@
 //!   helper `0x0054d8d0`, `g_pGLevel` at `0x01EE2684`).
 
 use super::geometry::{rotator_to_rad, Pose, Vec3};
-use crate::supervisor::entity_table::{self, walk_tree, Memory};
+#[cfg(test)]
+use crate::supervisor::entity_table::walk_tree;
+use crate::supervisor::entity_table::{self, Memory};
+use std::collections::HashSet;
 
 /// Offset of `AActor::Location` (then `Rotation` at +0xC).
 pub const ACTOR_LOCATION_OFF: u32 = 0xDC;
@@ -132,6 +135,7 @@ pub fn slot_entity(slots: &[(i32, u32)], slot: i32) -> u32 {
 }
 
 /// Read the slot map of the manager at `manager`.
+#[cfg(test)]
 pub async fn read_slots<M: Memory>(mem: &mut M, manager: u32) -> Result<Vec<(i32, u32)>, String> {
     let hdr = mem.read(manager + SLOT_MAP_OFF + 4, 8).await?;
     let (head, size) = (u32_at(&hdr, 0), u32_at(&hdr, 4));
@@ -141,6 +145,51 @@ pub async fn read_slots<M: Memory>(mem: &mut M, manager: u32) -> Result<Vec<(i32
         .into_iter()
         .map(|(k, v)| (k as i32, v))
         .collect())
+}
+
+/// Resolve only the requested unit slots through the map's search tree.
+/// Hover needs three stock slots, while entity discovery can pin 48 private
+/// slots; walking the entire map on every cursor move can starve the bridge.
+pub async fn read_selected_slots<M: Memory>(
+    mem: &mut M,
+    manager: u32,
+    keys: &[i32],
+) -> Result<Vec<(i32, u32)>, String> {
+    let hdr = mem.read(manager + SLOT_MAP_OFF + 4, 8).await?;
+    let (head, size) = (u32_at(&hdr, 0), u32_at(&hdr, 4));
+    if head == 0 {
+        return Err("slot map head is null".into());
+    }
+    if size > SLOT_MAP_MAX as u32 {
+        return Err(format!(
+            "slot map has {size} entries (limit {SLOT_MAP_MAX})"
+        ));
+    }
+    let root = entity_table::Node::decode(&mem.read(head, entity_table::NODE_LEN).await?)?.parent;
+    let mut result = Vec::with_capacity(keys.len());
+    for &key in keys {
+        let mut cur = root;
+        let mut seen = HashSet::new();
+        while cur != head && cur != 0 {
+            if seen.len() >= SLOT_MAP_MAX || !seen.insert(cur) {
+                return Err(format!("slot map search cycle or depth limit at {cur:#x}"));
+            }
+            let node = entity_table::Node::decode(&mem.read(cur, entity_table::NODE_LEN).await?)?;
+            if node.is_nil {
+                break;
+            }
+            if key == node.key as i32 {
+                result.push((key, node.value));
+                break;
+            }
+            cur = if key < node.key as i32 {
+                node.left
+            } else {
+                node.right
+            };
+        }
+    }
+    Ok(result)
 }
 
 /// Resolve the `GameEntityManager*` (null means "not in the world").
@@ -424,6 +473,18 @@ mod tests {
         }
     }
 
+    struct CountingFake {
+        mem: Fake,
+        reads: usize,
+    }
+
+    impl Memory for CountingFake {
+        async fn read(&mut self, addr: u32, len: u32) -> Result<Vec<u8>, String> {
+            self.reads += 1;
+            self.mem.read(addr, len).await
+        }
+    }
+
     fn words(ws: &[u32]) -> Vec<u8> {
         ws.iter().flat_map(|w| w.to_le_bytes()).collect()
     }
@@ -448,6 +509,52 @@ mod tests {
         let slots = read_slots(&mut Fake(m), mgr).await.unwrap();
         assert_eq!(slots, vec![(1, 42), (14, 0)]);
         assert_eq!(slot_entity(&slots, 1), 42);
+    }
+
+    #[tokio::test]
+    async fn selected_slots_skip_private_entity_search_slots() {
+        let (mgr, head) = (0x1000u32, 0x2000u32);
+        let mut keys = vec![1u32, 2, 14];
+        keys.extend(7700..7748);
+        let addresses: Vec<u32> = (0..keys.len()).map(|i| 0x3000 + i as u32 * 0x100).collect();
+        fn build(
+            lo: usize,
+            hi: usize,
+            parent: u32,
+            keys: &[u32],
+            addresses: &[u32],
+            map: &mut std::collections::HashMap<u32, Vec<u8>>,
+            head: u32,
+        ) -> u32 {
+            if lo == hi {
+                return head;
+            }
+            let mid = (lo + hi) / 2;
+            let addr = addresses[mid];
+            let left = build(lo, mid, addr, keys, addresses, map, head);
+            let right = build(mid + 1, hi, addr, keys, addresses, map, head);
+            map.insert(
+                addr,
+                node(left, parent, right, keys[mid], keys[mid] + 100, false),
+            );
+            addr
+        }
+        let mut map = std::collections::HashMap::new();
+        let root = build(0, keys.len(), head, &keys, &addresses, &mut map, head);
+        map.insert(
+            head,
+            node(addresses[0], root, *addresses.last().unwrap(), 0, 0, true),
+        );
+        map.insert(mgr + SLOT_MAP_OFF + 4, words(&[head, keys.len() as u32]));
+        let mut mem = CountingFake {
+            mem: Fake(map),
+            reads: 0,
+        };
+        let selected = read_selected_slots(&mut mem, mgr, &[1, 2, 14])
+            .await
+            .unwrap();
+        assert_eq!(selected, vec![(1, 101), (2, 102), (14, 114)]);
+        assert!(mem.reads < 30, "{} bridge reads for three slots", mem.reads);
     }
 
     /// Regression guard (2026-10-10): the camera is found by scanning the
