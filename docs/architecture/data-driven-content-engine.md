@@ -378,6 +378,7 @@ Multiple conditions on the same chain use **AND** logic — all must pass. For *
 | `accept_mission` | Mission ID | — | — | Player accepts mission |
 | `advance_step` | Mission ID | Step ID | — | Advance to specified step |
 | `complete_mission` | Mission ID | — | — | Complete mission |
+| `complete_mission_with_item` | `1360` | — | `{"expected_step_id":4038,"item_id":3730,"quantity":1,"dialog_id":4576,"dialog_set_id":120101,"slot":10}` | Frost's Letter receipt: request the owned-item and mission transaction, then apply the success continuation only from its committed result. `delay_ms` must be 0; a malformed field or `target_key` rejects the whole chain. |
 | `complete_objective` | Mission ID | Objective ID | — | Complete specific objective |
 | `fail_mission` | Mission ID | — | — | Fail mission |
 | `abandon_mission` | Mission ID | — | — | Abandon mission |

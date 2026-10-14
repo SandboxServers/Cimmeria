@@ -32,7 +32,7 @@ Each blocked row names the contract that must be closed before the original impl
 | HA-1360a1 | Atomic base transaction and writer fence | Integrated | Reviewed transaction and stale-writer guards; 670 nextest and seven live-DB tests passed |
 | HA-1360a2a | Session token world-entry delivery and lifetime | Integrated | Reviewed entry-epoch and replacement guards; default and `lab-chaos` lane suites passed |
 | HA-1360a2b | Correlated request/result routing and A1 invocation | Dispatched | [Exact plugin, DTO, client-sync and test manifest](worknotes/HA-1360a-seal.md#a2b-dispatch-seal); review and integration pending |
-| HA-1360a3a | Strict mandatory action and loader | Dispatched | [Exact parser and test manifest](worknotes/HA-1360a-seal.md#a3a-dispatch-seal); review and integration pending |
+| HA-1360a3a | Strict mandatory action and loader | Integrated | `dcf7423bf`; 299 nextest passed, independent review found no code defect; action/telemetry references updated |
 | HA-1360a3b/c | Pending/retry and correlated continuation | BlockedDependency | [Sequential manifests](worknotes/HA-1360a-seal.md#ha-1360a3--strict-action-pending-state-and-continuation); a2b DTO and prior A3 child integration |
 | HA-1360b | Marsh receiving seed and cross-zone proof | BlockedDependency | HA-1360a integrated/reviewed; CS-08a actual crossing and retained letter; receiving graph signoff |
 | HA-01a | Travel/placement | BlockedEvidence | Four Market/Storage thresholds + arrivals, clearance, wrong-world and relog; preserve 6007/1361 linkage |
@@ -101,7 +101,7 @@ For 567, first prove the item-2698 acquisition and faction-compatible Castle acc
 
 ## HA-1360a — authoritative letter turn-in prerequisite
 
-**Status: Implementing.** Audience: engine implementer and database, authority, mission and testing reviewers. The owner requires an owned letter for Marsh's completion. A1 transaction/receipt and A2a session-token/entry-epoch work are integrated with reviewed tests; A2b plugin route and guarded inventory sync and A3a strict action are dispatched. A3b pending/retry and A3c continuation follow sequentially; B owns the seed and cross-zone proof. A2c separately tracks a preexisting general post-handoff race. [The engine worknote](worknotes/HA-1360a-seal.md) supersedes the provisional design details below and records the current exact manifests. This is a bounded mission-1360 seam, not a redesign of every inventory or mission writer. Split any child that exceeds the shared 40k working-token / 90k context envelope.
+**Status: Implementing.** Audience: engine implementer and database, authority, mission and testing reviewers. The owner requires an owned letter for Marsh's completion. A1 transaction/receipt, A2a session-token/entry-epoch and A3a strict action are integrated with reviewed tests; A2b plugin route and guarded inventory sync are in review repair. A3b pending/retry and A3c continuation follow sequentially; B owns the seed and cross-zone proof. A2c separately tracks a preexisting general post-handoff race. [The engine worknote](worknotes/HA-1360a-seal.md) supersedes the provisional design details below and records the current exact manifests. This is a bounded mission-1360 seam, not a redesign of every inventory or mission writer. Split any child that exceeds the shared 40k working-token / 90k context envelope.
 
 ### Current source evidence
 
