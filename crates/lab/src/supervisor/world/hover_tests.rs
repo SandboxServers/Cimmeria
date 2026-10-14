@@ -55,6 +55,45 @@ async fn an_open_target_scores_full_jitter() {
 }
 
 #[tokio::test]
+async fn a_small_prop_probe_finds_its_origin_without_clicking() {
+    let mut sim = Sim::new().with_entity(10, "Ambernol Vial", Vec3::new(400.0, 0.0, 0.0));
+    sim.body_dz = vec![0.0];
+    sim.cursor = (3, 4);
+    let origin = sim.project_point(Vec3::new(400.0, 0.0, 0.0)).unwrap();
+    let out = run(
+        &mut sim,
+        HoverRequest {
+            entity_id: Some(10),
+            ..HoverRequest::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(out["verdict"], "ok", "{out}");
+    assert_eq!(out["hover"], "entity", "{out}");
+    assert_eq!(
+        out["pixel"],
+        json!([origin.0.round() as i32, origin.1.round() as i32])
+    );
+    assert_eq!(sim.cursor, (3, 4));
+    assert!(sim.buttons.is_empty());
+    let centre = out["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|step| step["step"] == "centre")
+        .expect("centre step");
+    assert_eq!(
+        centre["detail"]["tried"]
+            .as_array()
+            .unwrap()
+            .last()
+            .unwrap()["dz"],
+        0.0
+    );
+}
+
+#[tokio::test]
 async fn the_avatar_in_front_costs_the_pose() {
     // Looking steeply down from the head puts the avatar on screen, below
     // a target standing just ahead.

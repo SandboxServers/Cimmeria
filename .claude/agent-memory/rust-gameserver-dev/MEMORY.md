@@ -54,6 +54,8 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 
 ## Lab supervisor
 
+- [lab-small-prop-hover-offsets.md](lab-small-prop-hover-offsets.md) — entity hover search tries actor origin last for small props; avatar proximity stays on humanoid heights.
+
 - [lab-template-id-mismatch.md](lab-template-id-mismatch.md) — `unitMobId` is not the server template id; join server entity snapshots to the client map by entity id for template and life-state selectors
 
 - [lab-console-tee-deferred-reply](lab-console-tee-deferred-reply.md) — lab tee sees only sync lines; base round-trip results park the reply on a table (CH-13 spawn batches, batch id on GmSpawnNpc).
