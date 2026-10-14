@@ -168,8 +168,9 @@ pub(crate) fn build_fragmented_bundle_with_plan(
     encrypt: impl Fn(&[u8]) -> Vec<u8>,
 ) -> (Vec<Vec<u8>>, u32) {
     let base_seq = base_seq & super::SEQUENCE_MASK;
-    if body.len() <= FRAGMENT_BODY_SIZE {
-        // Fits in one packet — no fragmentation needed.
+    if plan.ranges.len() == 1 {
+        // The plan has one packet. The isolated-first-message option may
+        // request fragments even when the entire body fits this budget.
         let flags =
             base_flags | FLAG_HAS_SEQUENCE | if acks.is_empty() { 0 } else { FLAG_HAS_ACKS };
         let plaintext = build_outgoing(flags, body, Some(base_seq), acks, None);

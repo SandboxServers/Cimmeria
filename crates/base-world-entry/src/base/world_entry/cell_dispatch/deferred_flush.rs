@@ -432,8 +432,8 @@ mod tests {
         );
         assert_eq!(
             sent.len(),
-            4,
-            "then the re-introduction's create, avatar and cascade packets"
+            5,
+            "then the re-introduction's create, avatar and two cascade fragments"
         );
     }
 
