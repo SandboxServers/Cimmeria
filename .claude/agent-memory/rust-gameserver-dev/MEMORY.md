@@ -31,6 +31,7 @@ One line per topic file; the detail lives in the file. Keep hooks short (this in
 ## Wire format
 
 - [gm-kill-target-sentinel.md](gm-kill-target-sentinel.md) — #1727: stock `/gmkilltarget <id>` sends method 190 INT64 -1; select the NPC first; explicit wire IDs still take precedence.
+- [mercury-aoi-intro.md](mercury-aoi-intro.md) — first-login AoI NPC record is two messages (11-byte create, 26-byte avatar); one-message packets avoid later request-cursor collision, while queued TX entries retain ACK tracking beyond 32.
 - [error-strings-served-from-pak-not-seed.md](error-strings-served-from-pak-not-seed.md) — client error text = served ErrorStrings.pak (216), not the seed; patch Text or add the entry in attribute_patches.
 - [client-error-codes-and-ammo-chatter.md](client-error-codes-and-ammo-chatter.md) — create-failed codes are served ErrorStrings.pak ids, not error_texts; check the PAK text; "out of ammo" is the client reacting to AmmoSlotN = 0.
 - [wire-names-generated-tables.md](wire-names-generated-tables.md) — `cimmeria_wire::names` is generated from defs (regen cmd), doc-checked; naming rules for unknown entity types.
