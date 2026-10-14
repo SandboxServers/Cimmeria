@@ -1,7 +1,7 @@
 # Cellblock route baseline
 
 > Static baseline `d3efb7d41aad0b6008397f112d224ce7430d7acf`, audited 2026-10-14.
-> No fresh route run, deaths, duration, screenshots, packet tap or lab actions.
+> CB-N00 performed no fresh route run, deaths, duration, screenshots, packet tap or lab actions.
 
 ## Observations versus current faults
 
@@ -24,6 +24,24 @@ Sources of planned probes:
 [asset UAT](../cellblock-asset-audit/uat-guide.md).
 The old zone-audit count ending at 687 is a historical summary, not this baseline;
 688 and internal 689 are reconciled in the [matrix](evidence-matrix.md).
+
+## 2026-10-14 bounded lab follow-up
+
+This follow-up does not attest any route row. The first-session FS-P1–FS-P5 run
+stopped before world entry when the lab bridge could not connect to the default
+instance. Its gameplay rows are blocked; it supplies no current route result.
+
+On the separate `p2` instance, an existing level-1 Praxis Soldier character in
+world 12 equipped the backpack 9mm Pistol into bandolier slot 1 through the native
+client UI, and mission 622 completed. The pistol initially read 0/15; a native
+reload changed it to 15/15. The character walked to a living Cellblock Guard,
+targeted it at 7.78 m, and remained at full health and Focus. Native hotbar and
+Abilities-window attempts found no Pistol Shot (ability 592), so no shot was fired:
+ammunition, Focus and guard health stayed unchanged. This does not test damage,
+recoil or the first-guard fault in #1667. The character was pre-existing, and its
+creation path, server revision and ability-grant provenance were not established.
+The next CB-U02 attempt must use a known fresh character and capture the actual
+1005 grant before attributing the absent ability to server or client behavior.
 
 ## Bounded fresh acceptance rows
 
