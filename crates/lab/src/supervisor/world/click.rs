@@ -51,7 +51,7 @@ pub enum Expect {
     Window,
     /// Either of the above.
     Any,
-    /// Nothing is required (report only; for "nothing should happen" steps).
+    /// Confirm native dispatch only; assert any effect separately.
     Nothing,
 }
 
