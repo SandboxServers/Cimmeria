@@ -41,7 +41,9 @@ decision sits with the caller, not with a per-channel auto-accumulator.
   of 2 packets per NPC. Pinned by a regression test at 28 NPCs ≤ 15 packets
   (was 56 pre-bundle). The first-login cinematic release uses one packet per
   phase-1 *message* to avoid the client's stale request-cursor collision;
-  phase 2 remains bundled. ✅
+  phase 2 remains bundled with its first fragment limited to the first
+  complete message when it fits in one packet. The short first fragment
+  still needs live-client validation. ✅
 - **Layer C**: regression guards in place (compose↔build byte-equivalence,
   28-NPC burst budget). ✅
 - **#360 follow-up — world_entry_appearance migration**: the

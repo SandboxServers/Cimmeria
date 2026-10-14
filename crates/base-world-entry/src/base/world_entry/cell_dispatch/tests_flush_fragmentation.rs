@@ -15,7 +15,8 @@ use cimmeria_mercury::client_model::{unpack_packet_bodies, unpack_reliable_strea
 use cimmeria_mercury::consts::TX_WINDOW_SIZE;
 use cimmeria_mercury::encryption::MercuryEncryption;
 use cimmeria_mercury::packet::{
-    parse_incoming, Bytes, Packet, PacketFlags, FLAG_FRAGMENTED, FRAGMENT_BODY_SIZE,
+    parse_incoming, Bytes, Packet, PacketFlags, FLAG_FRAGMENTED, FLAG_HAS_REQUESTS,
+    FRAGMENT_BODY_SIZE,
 };
 use cimmeria_mercury::transport::Transport;
 
@@ -212,6 +213,38 @@ async fn cinematic_hold_sends_each_create_and_avatar_in_a_separate_packet() {
         assert_eq!(bundle.messages.len(), 1, "phase-1 packet {n}");
     }
     assert_eq!(messages_of(&bundles), expected_messages(0));
+}
+
+/// #1341: only cursor 1 can be exposed to the stale request offset in the
+/// first cascade fragment. The next fragment lacks a request footer, so the
+/// client's chain crossing replaces the stale value with zero.
+#[tokio::test]
+async fn cinematic_hold_cascade_first_fragment_has_one_message_cursor() {
+    let packets = flush_trigger(0, "cinematic_hold_release").await;
+    let cascade_at = (NPC_COUNT * 2) as usize;
+    let first = parse_incoming(&packets[cascade_at]).unwrap();
+    let second = parse_incoming(&packets[cascade_at + 1]).unwrap();
+    let cascade = cascade_body(0);
+    let first_len = 3 + usize::from(u16::from_le_bytes([cascade[1], cascade[2]]));
+    assert!(first_len < FRAGMENT_BODY_SIZE);
+    assert_eq!(first.body.as_ref(), &cascade[..first_len]);
+    assert_ne!(first.flags & FLAG_FRAGMENTED, 0);
+    assert_eq!(first.frag_begin, second.frag_begin);
+    assert_eq!(first.frag_end, second.frag_end);
+    assert_eq!(first.seq_id.unwrap() + 1, second.seq_id.unwrap());
+    assert_eq!(first.flags & FLAG_HAS_REQUESTS, 0);
+    assert_eq!(second.flags & FLAG_HAS_REQUESTS, 0);
+    assert_eq!(second.first_req_offset, None);
+    let first_dispatch = unpack_packet_bodies(&[first.body.as_ref()]);
+    assert_eq!(first_dispatch.abort, None);
+    assert_eq!(first_dispatch.messages.len(), 1, "only cursor 1 is exposed");
+    let bundles = unpack_reliable_stream(&packets);
+    assert!(bundles.iter().all(|bundle| bundle.abort.is_none()));
+    assert_eq!(messages_of(&bundles), expected_messages(0));
+    let pre_ready_packets = flush(0).await;
+    let first_cascade = parse_incoming(&pre_ready_packets[1]).unwrap();
+    assert_ne!(first_cascade.flags & FLAG_FRAGMENTED, 0);
+    assert_eq!(first_cascade.body.len(), FRAGMENT_BODY_SIZE);
 }
 
 /// The 48 single-message introduction packets exceed a nearly full TX

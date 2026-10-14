@@ -22,5 +22,14 @@ The split can send more than the Channel's 32-entry TX window. The
 `unsent_packets` deque stores reliable bookkeeping for packets already sent,
 up to 1024; ACKs of earlier entries promote queued entries into the window.
 Tests must assert wire sequence and both deques, then process selective ACKs.
-The mitigation has a live-client proof requirement; the fragmented phase-2
-first fragment remains a separate potential collision point.
+The mitigation has a live-client proof requirement.
+
+The phase-2 first-fragment follow-up uses `ChannelBundle::isolate_first_fragment_message`
+only on a default `cinematic_hold_release`. `estimated_packet_count`,
+`fragment_plan` and `finalize` share the same message-aware plan so reliable
+sequence reservation and watchdog heads match the emitted datagrams. If the
+first message fits within 1300 bytes, fragment 0 ends at its end; otherwise
+the normal header-safe 1300-byte cut falls within that message's body. One
+logical cascade bundle, its message order and CH-07 Pack/Shift remain intact.
+Wire tests prove the first fragment has only cursor 1 and later fragments
+have no request footer; live-client acceptance of the short fragment is owed.

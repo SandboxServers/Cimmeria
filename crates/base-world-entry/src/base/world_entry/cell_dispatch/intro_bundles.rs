@@ -145,6 +145,7 @@ pub(super) async fn send_intro_bundles(
                     Phase::CreateBase,
                     &[],
                     &[(*entity_id, body.clone())],
+                    false,
                     transport,
                     connected,
                     entity_to_addr,
@@ -158,6 +159,7 @@ pub(super) async fn send_intro_bundles(
                 Phase::CreateBase,
                 &[],
                 &[(*entity_id, body[..create_len].to_vec())],
+                false,
                 transport,
                 connected,
                 entity_to_addr,
@@ -169,6 +171,7 @@ pub(super) async fn send_intro_bundles(
                 Phase::CreateBase,
                 &[],
                 &[(*entity_id, body[create_len..].to_vec())],
+                false,
                 transport,
                 connected,
                 entity_to_addr,
@@ -182,6 +185,7 @@ pub(super) async fn send_intro_bundles(
                 Phase::Cascade,
                 &[],
                 &phase2,
+                true,
                 transport,
                 connected,
                 entity_to_addr,
@@ -210,6 +214,7 @@ pub(super) async fn send_intro_bundles(
             phase,
             filler,
             &records,
+            false,
             transport,
             connected,
             entity_to_addr,
@@ -225,11 +230,15 @@ async fn send_one(
     phase: Phase,
     filler: &[Vec<u8>],
     records: &[IntroRecord],
+    tail_safe_cascade: bool,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     let mut bundle = ChannelBundle::new(true);
+    if tail_safe_cascade {
+        bundle.isolate_first_fragment_message();
+    }
     // Per-message offset / id / entity (TG-AOI-09), logged on
     // `aoi.bundle_manifest` when the bundle is sent.
     let mut manifest = BundleManifest::new();
