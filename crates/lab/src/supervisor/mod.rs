@@ -50,6 +50,7 @@ pub mod instance_profile;
 pub mod keys;
 pub mod lane_idle;
 mod lifecycle;
+pub mod livewire_atlas;
 pub mod login_servers;
 pub mod main_thread;
 pub mod process;

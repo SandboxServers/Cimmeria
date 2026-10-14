@@ -1096,6 +1096,18 @@ command's own copy:
    `<worktree>\target\`), keeps each replaced file as
    `<name>.<yyyymmdd>.old`, skips a file whose content has not changed,
    and writes the source commit to `bin\installed-from.txt`.
+   When Python and the installed `SGWGame\CookedPC\UI\Flash\Livewire.upk`
+   are present, it also generates a private Livewire hit atlas at
+   `%LOCALAPPDATA%\cimmeria-lab\livewire_atlas.json`. The shared daemon
+   refreshes it from the local package when it starts. The installer also
+   refreshes the scheduled task's `labd\daemon.ps1` wrapper for this step.
+   The atlas contains
+   per-library 5-unit hit points and shape bounds; neither the movie nor
+   the generated JSON belongs in Git. `CIMMERIA_LAB_HOME` (or the install
+   script's `-LabHome`) moves the private cache with the rest of the lab.
+   Set `CIMMERIA_LIVEWIRE_ATLAS` to override the cache path for a solver
+   or test process. The supervisor retains the validated atlas across
+   cloned requests so the solver can read it without reparsing the movie.
 3. Restart the supervisor. With the
    [shared daemon](#the-shared-daemon-cimmeria-lab---http),
    `lab restart` (or `pwsh tools/lab/daemon.ps1 restart`) copies the new

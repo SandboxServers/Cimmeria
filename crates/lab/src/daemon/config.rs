@@ -57,9 +57,13 @@ pub fn evaluate(bind: &str, token: Option<String>) -> Result<(SocketAddr, String
     Ok((addr, token))
 }
 
-/// `%LOCALAPPDATA%\cimmeria-lab` (the temp dir when `LOCALAPPDATA` is unset):
+/// `CIMMERIA_LAB_HOME`, else `%LOCALAPPDATA%\cimmeria-lab`
+/// (the temp dir when `LOCALAPPDATA` is unset):
 /// the daemon's log, pidfile and the UAT evidence root live here.
 pub fn state_dir() -> PathBuf {
+    if let Some(home) = std::env::var_os("CIMMERIA_LAB_HOME") {
+        return PathBuf::from(home);
+    }
     std::env::var("LOCALAPPDATA")
         .map_or_else(|_| std::env::temp_dir(), PathBuf::from)
         .join("cimmeria-lab")

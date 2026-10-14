@@ -237,6 +237,40 @@ foreach ($item in $plan) {
     Install-LabFile -From $item.From -To $item.To -DryRun:$DryRun
 }
 
+# The scheduled task executes a separate script under labd/, not the CLI copy.
+# Refresh it as part of install so the next `lab restart` generates the atlas.
+$daemonScript = Join-Path $LabHome 'labd\daemon.ps1'
+if (Test-Path -LiteralPath $daemonScript) {
+    Install-LabFile -From (Join-Path $Worktree 'tools\lab\daemon.ps1') -To $daemonScript -DryRun:$DryRun
+}
+
+# Keep client-derived geometry private to this lab installation. Rebuild it
+# whenever the lab binaries are installed, so a changed client cannot leave a
+# stale Livewire hit map behind. The server never needs the client asset.
+$livewireUpk = Join-Path $InstallDir 'SGWGame\CookedPC\UI\Flash\Livewire.upk'
+$atlasGenerator = Join-Path $Worktree 'docs\analysis\cellblock-autoplay\livewire-spike\atlas.py'
+$atlasCache = Join-Path $LabHome 'livewire_atlas.json'
+$atlasTools = Join-Path $LabHome 'atlas-tools'
+if ($DryRun) {
+    Say "would generate: $atlasCache from $livewireUpk"
+} elseif ((Test-Path -LiteralPath $livewireUpk) -and (Get-Command python -ErrorAction SilentlyContinue)) {
+    New-Item -ItemType Directory -Force -Path $atlasTools | Out-Null
+    foreach ($file in 'atlas.py', 'shapes.py', 'bounds_core.py') {
+        Copy-Item -LiteralPath (Join-Path (Split-Path $atlasGenerator -Parent) $file) -Destination (Join-Path $atlasTools $file) -Force
+    }
+    Copy-Item -LiteralPath (Join-Path $Worktree 'tools\upk_parser.py') -Destination (Join-Path $atlasTools 'upk_parser.py') -Force
+    & python $atlasGenerator $livewireUpk $atlasCache
+    if ($LASTEXITCODE -ne 0) {
+        Remove-Item -LiteralPath $atlasCache -ErrorAction SilentlyContinue
+        Say "warning: Livewire atlas generation failed (exit $LASTEXITCODE); auto-solve unavailable"
+    } else {
+        Say "Livewire atlas: $atlasCache"
+    }
+} else {
+    Remove-Item -LiteralPath $atlasCache -ErrorAction SilentlyContinue
+    Say 'warning: Livewire atlas not generated (Livewire.upk or Python missing); Livewire auto-solve will be unavailable'
+}
+
 if (-not $DryRun) {
     Set-Content -Path (Join-Path $bin 'installed-from.txt') -Value @(
         "commit=$Commit", "subject=$Subject", "worktree=$Worktree",

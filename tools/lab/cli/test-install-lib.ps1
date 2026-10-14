@@ -193,7 +193,8 @@ try {
     Check ($installText -match "'release\\lab\.exe'") 'install.ps1 plans release\lab.exe'
     Check ($installText -match "Join-Path \`$bin 'lab\.exe'") 'install.ps1 installs it to bin\lab.exe'
     Check ($installText -match 'Install-LabFile -From') 'install.ps1 copies through Install-LabFile'
-    Check ($installText -notmatch 'Move-Item') 'install.ps1 no longer has its own rename-then-copy'
+    # Match the command token, not the `Move-Item` suffix in `Remove-Item`.
+    Check ($installText -notmatch '\bMove-Item\b') 'install.ps1 no longer has its own rename-then-copy'
     Check ($installText -notmatch '\(git [^)]*\)\.Trim\(\)') 'install.ps1 never calls .Trim() on raw git output (it is $null when git fails)'
 } finally {
     $env:CIMMERIA_LAB_HOME = $savedHome

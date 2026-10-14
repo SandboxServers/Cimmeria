@@ -116,7 +116,14 @@ $ErrorActionPreference = 'Stop'
 
 $TaskName = 'CimmeriaLabDaemon'
 $TokenVar = 'CIMMERIA_LAB_DAEMON_TOKEN'
-$State = Join-Path $env:LOCALAPPDATA 'cimmeria-lab'
+$installedRoot = Split-Path $PSScriptRoot -Parent
+$State = if ($env:CIMMERIA_LAB_HOME) {
+    $env:CIMMERIA_LAB_HOME
+} elseif ((Split-Path $PSScriptRoot -Leaf) -eq 'labd' -and (Test-Path (Join-Path $installedRoot 'labd.env'))) {
+    $installedRoot
+} else {
+    Join-Path $env:LOCALAPPDATA 'cimmeria-lab'
+}
 $Bin = Join-Path $State 'labd'
 $DaemonExe = Join-Path $Bin 'cimmeria-lab.exe'
 $EnvFile = Join-Path $State 'labd.env'
@@ -471,6 +478,7 @@ switch ($Command) {
         # The scheduled task's action. Restarts the daemon after a crash,
         # stops on a clean exit or a refusal (restarting cannot fix those).
         New-Item -ItemType Directory -Force $State | Out-Null
+        [Environment]::SetEnvironmentVariable('CIMMERIA_LAB_HOME', $State, 'Process')
         $token = Get-Token
         if ($token) { [Environment]::SetEnvironmentVariable($TokenVar, $token, 'Process') }
         # The server endpoint's token and URL live in the user environment
@@ -480,6 +488,19 @@ switch ($Command) {
             if ($v -and -not [Environment]::GetEnvironmentVariable($name, 'Process')) {
                 [Environment]::SetEnvironmentVariable($name, $v, 'Process')
             }
+        }
+        Import-EnvFile
+        $atlasScript = Join-Path $State 'atlas-tools\atlas.py'
+        $livewireUpk = if ($env:CIMMERIA_LAB_INSTALL_DIR) { Join-Path $env:CIMMERIA_LAB_INSTALL_DIR 'SGWGame\CookedPC\UI\Flash\Livewire.upk' } else { $null }
+        if ($livewireUpk -and (Test-Path -LiteralPath $atlasScript) -and (Test-Path -LiteralPath $livewireUpk) -and (Get-Command python -ErrorAction SilentlyContinue)) {
+            & python $atlasScript $livewireUpk (Join-Path $State 'livewire_atlas.json')
+            if ($LASTEXITCODE -ne 0) {
+                Remove-Item -LiteralPath (Join-Path $State 'livewire_atlas.json') -ErrorAction SilentlyContinue
+                Write-TaskLog "Livewire atlas generation failed with exit $LASTEXITCODE"
+            }
+        } else {
+            Remove-Item -LiteralPath (Join-Path $State 'livewire_atlas.json') -ErrorAction SilentlyContinue
+            Write-TaskLog 'Livewire atlas generator, client package or Python missing; auto-solve unavailable'
         }
         $recent = New-Object System.Collections.Generic.List[datetime]
         while ($true) {
