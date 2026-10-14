@@ -217,6 +217,8 @@ impl ResourceCache {
         Self::load_all_impl(data_dir, crate::base::mission_additions::MISSION_ADDITIONS)
     }
 
+    /// Load through the production path with a test-only authored registry.
+    /// Invalid additions return an error before any mission patch is applied.
     #[cfg(any(test, feature = "test-support"))]
     pub fn load_all_with_mission_additions(
         data_dir: &str,

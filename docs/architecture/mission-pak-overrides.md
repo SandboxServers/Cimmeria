@@ -43,6 +43,15 @@ Automated proof covers whole-batch refusal, baseline preservation, exact fixture
 bytes and actual transport/ClientModel delivery. Application emits
 `cooked_data.mission_catalog_inserted` after the final version is set, or
 `cooked_data.mission_catalog_rejected` with a stable reason. No XML is logged.
+
+Admission validates the complete optional XML declaration at the document start
+(after an optional UTF-8 BOM): mandatory version `1.0`, optional UTF-8 encoding,
+and optional `standalone="yes"` or `"no"`, in that order, with unique attributes.
+It rejects illegal XML characters in every token, literal `]]>` in ordinary
+text, and non-XML whitespace outside display/history text. Batch refusal guards
+use a valid first entry and invalid second entry, pin WARN context, and include
+missing final children and an exactly 355841-byte oversize entry.
+
 Client gSOAP parsing, journal/dialog presentation, progression and relog remain
 **UATPending** until the first real authored quest supplies live evidence.
 

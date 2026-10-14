@@ -94,11 +94,62 @@ fn xml_chars(text: &str) -> bool {
     )
 }
 
+fn xml_space(c: char) -> bool {
+    matches!(c, ' ' | '\t' | '\r' | '\n')
+}
+
+/// Validate only the XML 1.0 UTF-8 declaration supported by this catalog.
+fn declaration(text: &str) -> Result<(), &'static str> {
+    let mut remaining = text.strip_prefix("xml").ok_or("invalid_declaration")?;
+    let mut previous = 0;
+    loop {
+        let trimmed = remaining.trim_start_matches(xml_space);
+        if trimmed.is_empty() {
+            break;
+        }
+        // XML requires S before every pseudoattribute, including version.
+        if trimmed.len() == remaining.len() {
+            return Err("invalid_declaration");
+        }
+        let end = trimmed
+            .find(|c| xml_space(c) || c == '=')
+            .ok_or("invalid_declaration")?;
+        let key = &trimmed[..end];
+        let value = trimmed[end..]
+            .trim_start_matches(xml_space)
+            .strip_prefix('=')
+            .ok_or("invalid_declaration")?
+            .trim_start_matches(xml_space);
+        let quote = value.chars().next().ok_or("invalid_declaration")?;
+        if !matches!(quote, '\'' | '"') {
+            return Err("invalid_declaration");
+        }
+        let value = &value[1..];
+        let end = value.find(quote).ok_or("invalid_declaration")?;
+        let scalar = &value[..end];
+        let order = match key {
+            "version" if scalar == "1.0" => 1,
+            "encoding" if scalar.eq_ignore_ascii_case("UTF-8") => 2,
+            "standalone" if matches!(scalar, "yes" | "no") => 3,
+            _ => return Err("invalid_declaration"),
+        };
+        if order <= previous || (previous == 0 && order != 1) {
+            return Err("invalid_declaration");
+        }
+        previous = order;
+        remaining = &value[end + 1..];
+    }
+    if previous == 0 {
+        return Err("invalid_declaration");
+    }
+    Ok(())
+}
+
 fn check_text(stack: &[Frame], text: &str) -> Result<(), &'static str> {
     if !xml_chars(text) {
         return Err("invalid_xml_character");
     }
-    if !stack.last().is_some_and(|f| text_node(&f.node)) && !text.trim().is_empty() {
+    if !stack.last().is_some_and(|f| text_node(&f.node)) && !text.chars().all(xml_space) {
         return Err("unexpected_text");
     }
     Ok(())
@@ -121,13 +172,20 @@ fn validate(
     ids: &mut HashSet<i32>,
     name: &mut Option<String>,
 ) -> Result<(), &'static str> {
+    // The reader checks delimiters, but not XML characters in every event
+    // (notably comments and names). Bound this scan by admission's byte cap.
+    if !xml_chars(addition.xml) {
+        return Err("invalid_xml_character");
+    }
     let mut reader = Reader::from_str(addition.xml);
     reader.config_mut().check_comments = true;
     let mut stack: Vec<Frame> = Vec::new();
     let mut root_seen = false;
-    let mut declaration_seen = false;
+    let mut first_event = true;
     loop {
         let event = reader.read_event().map_err(|_| "malformed_xml")?;
+        let at_document_start = first_event;
+        first_event = false;
         let empty = matches!(event, Event::Empty(_));
         match event {
             Event::Start(e) | Event::Empty(e) => {
@@ -171,7 +229,12 @@ fn validate(
                 }
                 finish(&frame)?;
             }
-            Event::Text(t) => check_text(&stack, &t)?,
+            Event::Text(t) => {
+                if t.contains("]]>") {
+                    return Err("malformed_xml");
+                }
+                check_text(&stack, &t)?;
+            }
             Event::CData(t) => {
                 if !stack.last().is_some_and(|f| text_node(&f.node)) {
                     return Err("unexpected_text");
@@ -188,19 +251,10 @@ fn validate(
                 check_text(&stack, &decoded)?;
             }
             Event::Decl(decl) => {
-                if root_seen || declaration_seen {
+                if !at_document_start {
                     return Err("invalid_declaration");
                 }
-                declaration_seen = true;
-                if decl.version().map_err(|_| "invalid_declaration")? != "1.0"
-                    || decl
-                        .encoding()
-                        .transpose()
-                        .map_err(|_| "invalid_declaration")?
-                        .is_some_and(|encoding| !encoding.eq_ignore_ascii_case("UTF-8"))
-                {
-                    return Err("invalid_declaration");
-                }
+                declaration(&decl)?;
             }
             Event::DocType(_) => return Err("dtd_forbidden"),
             Event::Comment(_) => {}

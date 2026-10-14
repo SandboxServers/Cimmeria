@@ -66,7 +66,7 @@ restored. Production still loads the empty registry.
 - Relative Markdown file links resolve; changed docs retain CRLF.
 - `git -c core.whitespace=cr-at-eol diff --check`: passed. The flag treats required
   CRLF as an end-of-line marker; the two engine docs already contain tracked CRLF.
-- Eight added tests are below the 717-test inventory regeneration threshold.
+- Twelve added tests are below the 717-test inventory regeneration threshold.
 
 - Full workspace CI nextest, six CI exclusions: **11926 passed, 16 skipped**,
   with one leaky process reported (exit 0); lane run `20261014-090109-67968`.
@@ -87,3 +87,38 @@ Client presentation remains
 **UATPending**: XML and ClientModel checks cannot attest gSOAP parsing, rendered
 journal/dialog text, progression or relog. The first real authored quest provides
 that evidence after owner-approved lab access.
+
+## Review repair verification
+
+The declaration and lexical guards both failed against the original validator
+at runtime, reaching `stock_id_collision` instead of the required refusal
+(lane `20261014-091433-74552`, 2 failures). Declaration cases cover duplicates,
+ordering, standalone values, missing separators, unknown attributes and
+placement. Lexical cases cover `]]>`, non-XML whitespace, comment controls and
+invalid characters in attributes/names. Every case uses valid-first/bad-second
+and checks the unchanged category plus WARN reason, category, mission and bytes.
+
+The tightened oversize entry is exactly `MAX_MISSION_XML_BYTES + 1` bytes.
+Runtime mutation proofs compiled and failed as required:
+
+- Admit one extra byte: `xml_too_large` guard failed (`20261014-091831-66872`).
+- Disable required-child check: `missing_required_child` guard failed
+  (`20261014-091838-51316`), covering empty steps/objectives/display children.
+- Demote admission WARN to TRACE: refusal-log guard failed
+  (`20261014-091846-47496`).
+
+All temporary changes were restored byte-for-byte. Final lane results:
+
+- Format: `status=ok exit=0 ran=7.660s` (`20261014-091616-47300`).
+- Targeted clippy: `status=ok exit=0 ran=8.027s pruned=253MB`
+  (`20261014-091658-47496`).
+- Restored resources/base-session nextest: `status=ok exit=0 ran=19.163s
+  pruned=435MB`, **653 passed, 0 skipped** (`20261014-091925-54772`).
+
+The insertion-only runtime proof above remains applicable: insertion, fixture
+and the explicit one-transfer/body/client-entry assertions are unchanged, and
+the real resync guard passed in the final run. This repair changes admission
+and tests only; the coordinator's previous full-workspace results stand as
+recorded above. Client presentation remains **UATPending**.
+Targeted Markdown lint: 0 issues in the two changed documents; file links and
+CRLF checks passed. `git -c core.whitespace=cr-at-eol diff --check` passed.

@@ -31,6 +31,39 @@ fn addition(mission_id: u32, xml: String) -> MissionAddition {
     }
 }
 
+fn assert_atomic_rejection(id: u32, bad: String, reason: &str) {
+    let capture = LogCapture::install();
+    let mut categories = HashMap::from([(3, raw())]);
+    let before = categories.clone();
+    let batch = [
+        addition(61000, TEST_MISSION_XML.to_owned()),
+        addition(id, bad),
+    ];
+    let error = ResourceCache::apply_mission_overrides(&mut categories, &batch).unwrap_err();
+    assert!(error.starts_with(reason), "expected {reason}, got {error}");
+    assert_eq!(
+        categories, before,
+        "{reason} must leave every byte/key/version unchanged"
+    );
+    let events = capture.all();
+    assert!(
+        events.iter().any(|e| e.level == tracing::Level::WARN
+            && e.has_field("event", "cooked_data.mission_catalog_rejected")
+            && e.has_field("reason", reason)
+            && e.has_field("category_id", "3")
+            && e.has_field("category_name", "CookedDataMissions")
+            && e.has_field("mission_id", &id.to_string())
+            && e.has_field("bytes", &batch[1].xml.len().to_string())),
+        "missing refusal log for {reason}"
+    );
+    assert!(!events
+        .iter()
+        .any(|e| e.has_field("event", "cooked_data.mission_catalog_inserted")));
+    assert!(!events
+        .iter()
+        .any(|e| e.message_contains("Applied Cimmeria")));
+}
+
 #[test]
 fn fixture_is_exact_stock_transform_and_ids_are_test_only() {
     let stock = raw();
@@ -232,7 +265,8 @@ fn hash_and_synthetic_batch_are_order_independent_and_empty_is_legacy_neutral() 
 fn every_bad_second_entry_refuses_atomically_before_stock_patches_or_success_logs() {
     let xml = stock_xml();
     let duplicate_nested = xml.replace("StepID=\"4818\"", "StepID=\"61001\"");
-    let too_large = format!("{xml}{}", " ".repeat(355_841));
+    let too_large = format!("{xml}{}", " ".repeat(MAX_MISSION_XML_BYTES + 1 - xml.len()));
+    assert_eq!(too_large.len(), MAX_MISSION_XML_BYTES + 1);
     let cases = vec![
         (
             1624,
@@ -344,33 +378,99 @@ fn every_bad_second_entry_refuses_atomically_before_stock_patches_or_success_log
         ),
     ];
     for (id, bad, reason) in cases {
-        let capture = LogCapture::install();
+        assert_atomic_rejection(id, bad, reason);
+    }
+}
+
+#[test]
+fn invalid_declaration_grammar_and_placement_refuse_atomically() {
+    let xml = stock_xml();
+    let (_, body) = xml.split_once("?>").unwrap();
+    for declaration in [
+        "<?xml version=\"1.0\" version=\"1.0\"?>",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" encoding=\"UTF-16\"?>",
+        "<?xml version=\"1.0\" standalone=\"yes\" standalone=\"yes\"?>",
+        "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"bogus\"?>",
+        "<?xml encoding=\"UTF-8\" version=\"1.0\"?>",
+        "<?xml version=\"1.0\" standalone=\"no\" encoding=\"UTF-8\"?>",
+        "<?xml version=\"1.0\" extra=\"value\"?>",
+        "<?xml version=\"1.1\"?>",
+        "<?xml version=\"1.0\" encoding=\"UTF-16\"?>",
+        "<?xml standalone=\"yes\"?>",
+        "<?xml version=\"1.0\"encoding=\"UTF-8\"?>",
+        "<?xml version=\"1.0\" standalone=\"y&#101;s\"?>",
+        "<?xml version=\"1.0\" \u{a0}encoding=\"UTF-8\"?>",
+        "<?xml version=\"1.0\" junk?>",
+    ] {
+        assert_atomic_rejection(1624, format!("{declaration}{body}"), "invalid_declaration");
+    }
+    for prefix in [" ", "\n", "<!--before declaration-->"] {
+        assert_atomic_rejection(1624, format!("{prefix}{xml}"), "invalid_declaration");
+    }
+    assert_atomic_rejection(
+        1624,
+        format!("<?xml version=\"1.0\"?>{xml}"),
+        "invalid_declaration",
+    );
+}
+
+#[test]
+fn invalid_xml_characters_text_and_outside_whitespace_refuse_atomically() {
+    let xml = stock_xml();
+    let cases = [
+        (
+            xml.replace("<HistoryText>Ambush", "<HistoryText>]]>"),
+            "malformed_xml",
+        ),
+        (format!("{xml}\u{a0}"), "unexpected_text"),
+        (format!("\u{a0}{xml}"), "unexpected_text"),
+        (xml.replace("<Steps ", "\u{a0}<Steps "), "unexpected_text"),
+        (format!("{xml}<!--\0-->"), "invalid_xml_character"),
+        (format!("{xml}<!--\u{fffe}-->"), "invalid_xml_character"),
+        (
+            xml.replace("MissionDefn=\"Ambush\"", "MissionDefn=\"\u{ffff}\""),
+            "invalid_xml_character",
+        ),
+        (
+            xml.replace("</HistoryText>", "</HistoryText\0>"),
+            "invalid_xml_character",
+        ),
+    ];
+    for (bad, reason) in cases {
+        assert_atomic_rejection(1624, bad, reason);
+    }
+}
+
+#[test]
+fn missing_final_required_children_refuse_atomically() {
+    let xml = stock_xml();
+    let (before_steps, _) = xml.split_once("<Steps ").unwrap();
+    let (before_objectives, _) = xml.split_once("<Objectives ").unwrap();
+    let (before_display, _) = xml.split_once("<DisplayLogText>").unwrap();
+    for bad in [
+        format!("{before_steps}</COOKED_MISSION>"),
+        format!("{before_objectives}</Steps></COOKED_MISSION>"),
+        format!("{before_display}</Objectives></Steps></COOKED_MISSION>"),
+    ] {
+        assert_atomic_rejection(1624, bad, "missing_required_child");
+    }
+}
+
+#[test]
+fn supported_declarations_and_xml_whitespace_preserve_exact_bytes() {
+    let (_, body) = TEST_MISSION_XML.split_once("?>").unwrap();
+    for declaration in [
+        "",
+        "<?xml version='1.0'?>",
+        "<?xml version=\"1.0\" standalone='yes'?>",
+        "<?xml version='1.0' encoding='utf-8' standalone=\"no\" ?>",
+        "\u{feff}<?xml\tversion \r=\n'1.0'\tencoding='UTF-8'?>",
+    ] {
+        let xml = format!("{declaration}{body}\t\r\n ");
+        let batch = [addition(61000, xml)];
         let mut categories = HashMap::from([(3, raw())]);
-        let before = categories.clone();
-        let batch = [
-            addition(61000, TEST_MISSION_XML.to_owned()),
-            addition(id, bad),
-        ];
-        let error = ResourceCache::apply_mission_overrides(&mut categories, &batch).unwrap_err();
-        assert!(error.starts_with(reason), "expected {reason}, got {error}");
-        assert_eq!(
-            categories, before,
-            "{reason} must leave every byte/key/version unchanged"
-        );
-        let events = capture.all();
-        assert!(
-            events.iter().any(
-                |e| e.has_field("event", "cooked_data.mission_catalog_rejected")
-                    && e.has_field("reason", reason)
-            ),
-            "missing refusal log for {reason}"
-        );
-        assert!(!events
-            .iter()
-            .any(|e| e.has_field("event", "cooked_data.mission_catalog_inserted")));
-        assert!(!events
-            .iter()
-            .any(|e| e.message_contains("Applied Cimmeria")));
+        ResourceCache::apply_mission_overrides(&mut categories, &batch).unwrap();
+        assert_eq!(categories[&3].elements[&61000], batch[0].xml.as_bytes());
     }
 }
 
