@@ -130,8 +130,23 @@ impl<I: ToolInvoker> Runner<'_, I> {
                 }
             }
             Ok(ActionKind::Capture) => {
-                if !inv.has_tool(CHAT_READ_TOOL) {
-                    out.push(format!("capture needs tool {CHAT_READ_TOOL}"));
+                if let Some(t) = a.tool.as_deref() {
+                    if !tier::is_read_only(t) {
+                        out.push(format!("capture tool {t} is not read-only"));
+                    }
+                }
+                match a.capture.as_deref() {
+                    Some("chat") if !inv.has_tool(CHAT_READ_TOOL) => {
+                        out.push(format!("capture needs tool {CHAT_READ_TOOL}"));
+                    }
+                    Some("tool") if !a.tool.as_deref().is_some_and(|t| inv.has_tool(t)) => {
+                        out.push(format!(
+                            "capture needs tool {}",
+                            a.tool.as_deref().unwrap_or_default()
+                        ));
+                    }
+                    // Server absence is an UNVERIFIED read, not a static block.
+                    _ => {}
                 }
             }
             Ok(ActionKind::Wait) => {}

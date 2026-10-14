@@ -6,6 +6,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 - [reference_lab_transition_click_2026_10_13.md](reference_lab_transition_click_2026_10_13.md) — report-only native click survives an immediate world load; live click passed, Castle transition replay remains pending
 - [project_cellblock_aftermath_dwell_2026_10_13.md](project_cellblock_aftermath_dwell_2026_10_13.md) — #1721: 2516 was evicted after 422 ms; chain 1172 now gives it 16 seconds before blurb 5859; live recheck pending
+- [reference_uat_capture_safety_2026_10_13.md](reference_uat_capture_safety_2026_10_13.md) — UAT JSON captures use the shared read-only tool classifier at spec validation, row preflight, and execution; JSON integer comparisons must avoid f64 above 2^53
 
 - [reference_livewire_play_2026_10_13.md](reference_livewire_play_2026_10_13.md) — native Livewire play maps stage to UI and requires SmartFox rollover evidence; live client proof remains pending
 
@@ -56,6 +57,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [project_texture_upscale_forensics.md](project_texture_upscale_forensics.md) — 512x256 10-mip DXT1 shape is stock-valid; silent failures mean bad data below mip 0; pixel-format enum fixed in #839
 
 ## Reference
+- [reference_lab_uat_capture_ids_2026_10_13.md](reference_lab_uat_capture_ids_2026_10_13.md) — UAT AP-03 id sources: server_sessions has optional player_id; client_player_state omits entity_id, so client_entity_find /player/id supplies it
 - [reference_lab_dialog_close_2026_10_13.md](reference_lab_dialog_close_2026_10_13.md) — one-page Cellblock Done click can leave DialogWin visible; verify closure and use the native close fallback
 - [reference_lab_hub_pass_lessons_2026_10_13.md](reference_lab_hub_pass_lessons_2026_10_13.md) — 2026-10-13 hub-pass lessons include the confirmed CEGUI top-child hit-test binding and covering-window refusal rule
 

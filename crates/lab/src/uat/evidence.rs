@@ -203,6 +203,10 @@ pub struct RowEvidence {
     /// re-grade after an attestation starts from the same facts).
     #[serde(default)]
     pub blocked: Vec<String>,
+    /// Runtime reads that could not be verified, retained for re-grading
+    /// after a SigNoz or human attestation.
+    #[serde(default)]
+    pub unverified: Vec<String>,
     /// A chained fixture row's parity with its fixture (FX-10); absent on
     /// rows without a fixture and on rows that ran from their fixture.
     #[serde(default, skip_serializing_if = "Option::is_none")]

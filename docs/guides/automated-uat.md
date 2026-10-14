@@ -65,6 +65,31 @@ Start with `plan_only: true` to see what can run. Each row then runs as:
 
 Long rows can outlast an MCP client's call timeout: run a section a few rows at a time and pass the same `run_dir`.
 
+### Capture values and compare changes
+
+A `capture` action saves a JSON value under `var` for later actions and clauses. Use `capture = "tool"` for a client read or `capture = "server"` for a server lab MCP read; both need `tool`, `pointer` and `var`, and may pass `args`. The pointer is a JSON pointer into the tool's result. The value keeps its JSON type, so an id or 64-bit bit field is not rounded through a floating-point number. The existing `capture = "chat"` form uses `regex` group 1 and `var`. Capture tools must be read-only; write tools such as `client_lua_eval`, `server_console_exec`, `server_chaos_clear` and `server_packet_tap_stop` are rejected before the row runs. Server capture tools use an explicit read allowlist, so a new server tool cannot become a capture read without review. `server_packet_tap_read` drains the tap and cannot be used as a capture action; packet clauses read the tap at the row boundary. A `tool` capture must name a client read, and a `server` capture must name a server read.
+
+```toml
+step = [
+  { capture = "tool", tool = "client_inventory", args = { container = 1 }, pointer = "/items/0/count", var = "before" },
+  { tool = "client_item_action", args = { action = "use", name = "Health Slappack" } },
+]
+[[row.expect]]
+id = "one-used"
+text = "one slap pack was used"
+source = "tool"
+tool = "client_inventory"
+args = { container = 1 }
+pointer = "/items/0/count"
+op = "delta"
+baseline = "${before}"
+value = -1
+```
+
+`delta` checks observed minus `baseline` equals `value`. `bit_set` and `bit_clear` check every bit in the `value` mask on an integer observation; masks accept a JSON integer or a hexadecimal string such as `"0x40"`, without floating-point conversion. This works for `state_field` and 64-bit `interaction_type_flags`. `any` checks whether an observed array contains an object with every field in `value`, for example `op = "any", value = { name = "Health Slappack", delta = -1 }` on `/diff/by_item`. Extra fields in an array element are allowed.
+
+Rows that use `${player_id}` in a substituted field get it from the named character's `server_sessions` entry after world entry. Rows that use `${entity_id}` in a substituted field read the client player id; the current `client_player_state` omits it, so the runner falls back to `client_entity_find`'s `/player/id`. Guide prose, notes and labels do not trigger these id reads. An unavailable server id or server capture leaves the row UNVERIFIED with the reason and stops actions that depend on that value. The reason is saved in the evidence bundle, and later attestations cannot turn that row into PASS.
+
 ### End of the run
 
 After the last row, whatever the `rows` filter was, the runner ends the session the way a player does (telemetry-gaps TG-PIPE-08), so every run closes a session cleanly from the client to the server log:

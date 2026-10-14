@@ -41,7 +41,7 @@ use serde_json::{json, Map, Value};
 use super::evidence::{
     ActionRecord, Anchor, Attachment, ClauseResult, RowEvidence, RunDir, RunManifest, BUNDLE_SCHEMA,
 };
-use super::grade::grade;
+use super::grade::{grade, mark_unverified};
 use super::invoke::{ServerInvoker, ToolInvoker};
 use super::ledger;
 use super::spec::{PoseSpec, RowSpec, SectionSpec};
@@ -194,6 +194,8 @@ pub(crate) struct RowCtx {
     pub vars: Map<String, Value>,
     pub actions: Vec<ActionRecord>,
     pub blocked: Vec<String>,
+    /// A required server read could not be made; preserve UNVERIFIED.
+    pub unverified: Vec<String>,
     pub chat_marks: HashMap<String, Vec<String>>,
     pub attachments: Vec<Attachment>,
     pub character: Value,
@@ -487,6 +489,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             vars: self.base_vars(spec, row),
             actions: vec![],
             blocked: vec![],
+            unverified: vec![],
             chat_marks: HashMap::new(),
             attachments: vec![],
             character: json!({ "name": self.character_name(spec) }),
@@ -530,6 +533,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
 
         let clauses: Vec<ClauseResult> = results.into_iter().flatten().collect();
         let mut g = grade(&ctx.blocked, &ctx.actions, &clauses, row.required_native);
+        mark_unverified(&mut g, &ctx.unverified);
         // A failed session end does not change what the row proved, but the
         // next login may meet the character still online: show it.
         g.flags
@@ -575,6 +579,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             vars: Value::Object(ctx.vars),
             attestations: vec![],
             blocked: ctx.blocked,
+            unverified: ctx.unverified,
             fixture_parity: ctx.parity,
         }
     }
@@ -603,6 +608,8 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
 mod ability_tests;
 #[cfg(test)]
 mod campaign_tests;
+#[cfg(test)]
+mod capture_tests;
 #[cfg(test)]
 mod chaos_run_tests;
 #[cfg(test)]

@@ -20,6 +20,9 @@ use super::tier::Tier;
 
 pub use super::spec_fixture::FixtureSpec;
 pub use super::spec_validate::{validate, without_vars};
+#[path = "spec_parse.rs"]
+mod parse_impl;
+pub use parse_impl::parse;
 
 /// Current spec schema version.
 pub const SCHEMA: u32 = 1;
@@ -195,6 +198,9 @@ pub struct ActionSpec {
     pub capture: Option<String>,
     #[serde(default)]
     pub regex: Option<String>,
+    /// JSON pointer in a tool/server reply for `capture = "tool"|"server"`.
+    #[serde(default)]
+    pub pointer: Option<String>,
     #[serde(default)]
     pub var: Option<String>,
     // lab-spec-vocab (SV-03)
@@ -252,7 +258,7 @@ impl ActionSpec {
     /// Which of the five kinds this is, or why it is malformed.
     pub fn kind(&self) -> Result<ActionKind, String> {
         let set = [
-            self.tool.is_some(),
+            self.tool.is_some() && self.capture.is_none(),
             self.chat.is_some(),
             self.wait_ms.is_some(),
             self.capture.is_some(),
@@ -274,14 +280,14 @@ impl ActionSpec {
                 )
             }
         }
-        Ok(if self.tool.is_some() {
+        Ok(if self.capture.is_some() {
+            ActionKind::Capture
+        } else if self.tool.is_some() {
             ActionKind::Tool
         } else if self.chat.is_some() {
             ActionKind::Chat
         } else if self.wait_ms.is_some() {
             ActionKind::Wait
-        } else if self.capture.is_some() {
-            ActionKind::Capture
         } else {
             // lab-spec-vocab (SV-03)
             ActionKind::ServerWait
@@ -353,6 +359,13 @@ pub enum Op {
     LenGte,
     /// Numeric `value` within `tolerance` either way (`15 ± 1`).
     Approx,
+    /// Observed value minus `baseline` equals `value`.
+    Delta,
+    /// The observed integer has every bit in `value` set or clear.
+    BitSet,
+    BitClear,
+    /// Some observed array element contains all fields in `value`.
+    Any,
 }
 
 /// One expected clause. The fields used depend on `source`;
@@ -401,6 +414,9 @@ pub struct ExpectSpec {
     pub op: Option<Op>,
     #[serde(default)]
     pub value: Option<Value>,
+    /// `op = "delta"`: a captured numeric variable, e.g. `${ammo_before}`.
+    #[serde(default)]
+    pub baseline: Option<Value>,
     #[serde(default)]
     pub chunk: Option<String>,
     // wait
@@ -539,27 +555,6 @@ fn default_server_wait_ms() -> u64 {
     30000
 }
 // end lab-spec-vocab
-
-/// Parse and validate one section file.
-pub fn parse(text: &str) -> Result<SectionSpec, String> {
-    let mut spec: SectionSpec = toml::from_str(text).map_err(|e| format!("spec TOML: {e}"))?;
-    // `@capability` names become tool names first (super::tools).
-    super::tools::resolve_section(&mut spec)?;
-    validate(&spec)?;
-    for row in &spec.rows {
-        for action in row.setup.iter().chain(&row.steps).chain(&row.teardown) {
-            action
-                .route_args()
-                .map_err(|e| format!("row {}: {e}", row.id))?;
-            for fallback in &action.fallback {
-                fallback
-                    .route_args()
-                    .map_err(|e| format!("row {} fallback: {e}", row.id))?;
-            }
-        }
-    }
-    Ok(spec)
-}
 
 #[cfg(test)]
 #[path = "spec_tests.rs"]

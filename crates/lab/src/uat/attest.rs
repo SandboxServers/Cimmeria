@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 
 use super::clause::grade_signoz;
 use super::evidence::{clip, RowEvidence, RunDir, RunManifest, Verdict};
-use super::grade::grade;
+use super::grade::{grade, mark_unverified};
 use super::ledger;
 use super::snapshot::apply_parity;
 use super::spec::Source;
@@ -68,6 +68,7 @@ pub fn attest(req: &AttestRequest) -> Result<Value, String> {
             &row.clauses,
             row.required_native,
         );
+        mark_unverified(&mut g, &row.unverified);
         // A chained row's parity outlives the re-grade: an attestation that
         // turns the row PASS must still meet a fixture mismatch (FX-10).
         apply_parity(&mut g, row.fixture_parity.as_ref());

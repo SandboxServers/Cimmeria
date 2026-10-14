@@ -159,6 +159,22 @@ pub fn grade(
     }
 }
 
+/// Preserve unavailable runtime reads across bundle writes and attestation.
+/// A later attestation may resolve pending clauses, but cannot supply a
+/// value that a capture or automatic id lookup failed to read during the run.
+pub fn mark_unverified(g: &mut Grade, unverified: &[String]) {
+    if unverified.is_empty() {
+        return;
+    }
+    g.reasons.extend(unverified.iter().cloned());
+    if matches!(
+        g.result,
+        RowResult::Pass | RowResult::NeedsHuman | RowResult::NativeShortfall
+    ) {
+        g.result = RowResult::Unverified;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

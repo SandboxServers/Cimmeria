@@ -8,6 +8,7 @@ use serde_json::{json, Map, Value};
 
 use super::players::Who;
 use super::{now_ms, RowCtx, Runner};
+use crate::uat::clause::json_at;
 use crate::uat::evidence::{clip, ActionRecord, Attachment};
 use crate::uat::invoke::{ToolInvoker, ToolOutcome};
 use crate::uat::lab_commands;
@@ -96,7 +97,9 @@ impl<I: ToolInvoker> Runner<'_, I> {
     /// The action [`Self::exec`] runs: the primary, or when its tool is not
     /// routed the first available fallback (the primary again if none is).
     pub(crate) fn chosen_action<'a>(&self, who: Who, a: &'a ActionSpec) -> &'a ActionSpec {
-        if a.tool.as_deref().is_some_and(|t| !self.routed(who, t)) {
+        if a.kind() == Ok(ActionKind::Tool)
+            && a.tool.as_deref().is_some_and(|t| !self.routed(who, t))
+        {
             a.fallback
                 .iter()
                 .find(|f| self.action_available(who, f))
@@ -169,27 +172,31 @@ impl<I: ToolInvoker> Runner<'_, I> {
             }
             Ok(ActionKind::Capture) => {
                 rec.kind = "capture".into();
-                let re = chosen.regex.clone().unwrap_or_default();
                 let var = chosen.var.clone().unwrap_or_default();
-                rec.requested = format!("capture {var} from chat /{re}/");
-                match (self.read_chat_of(who).await, regex::Regex::new(&re)) {
-                    (Ok(lines), Ok(re)) => {
-                        let hit = lines.iter().rev().find_map(|l| {
-                            re.captures(l)
-                                .and_then(|c| c.get(1))
-                                .map(|m| m.as_str().to_string())
-                        });
-                        match hit {
-                            Some(v) => {
-                                let v = captured_value(&v);
-                                ctx.vars.insert(var.clone(), v.clone());
-                                rec.result = json!({ var: v });
+                if chosen.capture.as_deref() == Some("chat") {
+                    let re = chosen.regex.clone().unwrap_or_default();
+                    rec.requested = format!("capture {var} from chat /{re}/");
+                    match (self.read_chat_of(who).await, regex::Regex::new(&re)) {
+                        (Ok(lines), Ok(re)) => {
+                            let hit = lines.iter().rev().find_map(|l| {
+                                re.captures(l)
+                                    .and_then(|c| c.get(1))
+                                    .map(|m| m.as_str().to_string())
+                            });
+                            match hit {
+                                Some(v) => {
+                                    let v = captured_value(&v);
+                                    ctx.vars.insert(var.clone(), v.clone());
+                                    rec.result = json!({ var: v });
+                                }
+                                None => fail(&mut rec, "no chat line matched".into()),
                             }
-                            None => fail(&mut rec, "no chat line matched".into()),
                         }
+                        (Err(e), _) => fail(&mut rec, e),
+                        (_, Err(e)) => fail(&mut rec, e.to_string()),
                     }
-                    (Err(e), _) => fail(&mut rec, e),
-                    (_, Err(e)) => fail(&mut rec, e.to_string()),
+                } else {
+                    self.exec_json_capture(chosen, who, ctx, &mut rec).await;
                 }
             }
             // lab-spec-vocab (SV-03)
@@ -204,6 +211,70 @@ impl<I: ToolInvoker> Runner<'_, I> {
         }
         rec.elapsed_ms = t0.elapsed().as_millis() as u64;
         rec
+    }
+
+    /// Read a typed JSON value, preserving numbers larger than f64's
+    /// integer range for later bit and delta clauses.
+    async fn exec_json_capture(
+        &self,
+        a: &ActionSpec,
+        who: Who,
+        ctx: &mut RowCtx,
+        rec: &mut ActionRecord,
+    ) {
+        let source = a.capture.as_deref().unwrap_or_default();
+        let tool = a.tool.as_deref().unwrap_or_default();
+        let pointer = a.pointer.as_deref().unwrap_or_default();
+        let var = a.var.as_deref().unwrap_or_default();
+        let args = subst(a.args.as_ref().unwrap_or(&json!({})), &ctx.vars);
+        rec.requested = format!("capture {var} from {source}:{tool}{pointer}");
+        rec.tool = Some(tool.into());
+        rec.args = args.clone();
+        if !tier::is_read_only(tool) {
+            return fail(rec, format!("capture tool {tool} is not read-only"));
+        }
+        if (source == "server") != tool.starts_with("server_") {
+            return fail(rec, format!("capture source {source} cannot call {tool}"));
+        }
+        if let Some(v) = unresolved(&args.to_string()) {
+            return fail(rec, format!("unresolved variable {v}"));
+        }
+        let out = match source {
+            "tool" => {
+                if !self.on(who).has_tool(tool) {
+                    return fail(rec, format!("tool {tool} is not routed"));
+                }
+                self.on(who).call(tool, args).await
+            }
+            "server" => {
+                let Some(server) = self.server else {
+                    ctx.unverified.push(format!(
+                        "capture {var} unverified: server lab MCP not configured"
+                    ));
+                    return;
+                };
+                server.call(tool, args).await
+            }
+            _ => return fail(rec, format!("unknown capture source {source}")),
+        };
+        rec.calls.push(json!({"tool": tool, "ok": out.ok}));
+        if !out.ok {
+            let why = out.error.unwrap_or_else(|| "read failed".into());
+            if source == "server" {
+                ctx.unverified
+                    .push(format!("capture {var} unverified: {tool}: {why}"));
+            } else {
+                fail(rec, format!("{tool}: {why}"));
+            }
+            return;
+        }
+        match json_at(&out.json, Some(pointer)).filter(|v| !v.is_null()) {
+            Some(value) => {
+                ctx.vars.insert(var.into(), value.clone());
+                rec.result = json!({ var: value });
+            }
+            None => fail(rec, format!("{tool} has no value at {pointer}")),
+        }
     }
 
     async fn exec_tool(

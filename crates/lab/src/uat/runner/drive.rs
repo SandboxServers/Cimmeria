@@ -6,13 +6,13 @@
 
 use std::collections::HashSet;
 
-use serde_json::json;
+use serde_json::{json, Value};
 
 use super::players::Who;
 use super::{fingerprint, fixture, RowCtx, Runner};
 use crate::uat::evidence::ClauseResult;
 use crate::uat::invoke::ToolInvoker;
-use crate::uat::spec::{RowSpec, SectionSpec, Source};
+use crate::uat::spec::{ActionSpec, ExpectSpec, RowSpec, SectionSpec, Source};
 use crate::uat::tier::Role;
 
 impl<I: ToolInvoker> Runner<'_, I> {
@@ -68,6 +68,17 @@ impl<I: ToolInvoker> Runner<'_, I> {
             if let Err(e) = self.ensure_p2(ctx).await {
                 ctx.blocked
                     .push(format!("could not bring p2 in world: {e}"));
+                return;
+            }
+        }
+        if row.state == "in_world" {
+            self.bind_runtime_ids(row, ctx).await;
+            if !ctx.unverified.is_empty() {
+                if ctx.fixture_mode == Some(fixture::MODE_FIXTURE) {
+                    if let Err(e) = self.end_session(ctx).await {
+                        ctx.session_end.push(e);
+                    }
+                }
                 return;
             }
         }
@@ -144,6 +155,9 @@ impl<I: ToolInvoker> Runner<'_, I> {
             let what = rec.requested.clone();
             let err = rec.error.clone().unwrap_or_default();
             ctx.actions.push(rec);
+            if !ctx.unverified.is_empty() {
+                return false;
+            }
             self.fp_after_action(a, "setup", i, ctx).await;
             if failed {
                 ctx.blocked.push(format!("setup {what} failed: {err}"));
@@ -193,6 +207,9 @@ impl<I: ToolInvoker> Runner<'_, I> {
             ctx.log_mark = mark;
             let stop = !rec.ok && !a.optional;
             ctx.actions.push(rec);
+            if !ctx.unverified.is_empty() {
+                break;
+            }
             self.fp_after_action(a, "step", i, ctx).await;
             if let Some(label) = &a.label {
                 self.clauses_at(row, Some(label), ctx, results).await;
@@ -202,6 +219,10 @@ impl<I: ToolInvoker> Runner<'_, I> {
                 break;
             }
         }
+        if !ctx.unverified.is_empty() {
+            self.capture_final(ctx).await;
+            return true;
+        }
         self.clauses_at(row, None, ctx, results).await;
         self.evidence_at(row, None, ctx).await;
         self.capture_final(ctx).await;
@@ -209,6 +230,83 @@ impl<I: ToolInvoker> Runner<'_, I> {
             self.capture_final_p2(ctx).await;
         }
         true
+    }
+
+    /// Bind only ids this row references, so ordinary rows remain usable
+    /// against a client without the optional server endpoint.
+    async fn bind_runtime_ids(&mut self, row: &RowSpec, ctx: &mut RowCtx) {
+        let need_entity = row_uses_var(row, "entity_id");
+        let need_player = row_uses_var(row, "player_id");
+        if need_entity {
+            let state = self.setup_call("client_player_state", json!({}), ctx).await;
+            let id = state
+                .as_ref()
+                .ok()
+                .and_then(|v| v.get("entity_id"))
+                .and_then(Value::as_u64);
+            // The current client_player_state does not yet expose its id;
+            // the native entity-table reader does at /player/id.
+            let id = if id.is_some() {
+                id
+            } else {
+                self.setup_call("client_entity_find", json!({"limit": 1}), ctx)
+                    .await
+                    .ok()
+                    .and_then(|v| v.pointer("/player/id").and_then(Value::as_u64))
+            };
+            if let Some(id) = id {
+                ctx.vars.insert("entity_id".into(), json!(id));
+                ctx.vars.insert(super::packet::ENTITY_VAR.into(), json!(id));
+            } else {
+                ctx.unverified
+                    .push("entity_id unverified: client player id reader failed".into());
+            }
+        }
+        if need_player {
+            let Some(server) = self.server else {
+                ctx.unverified
+                    .push("player_id unverified: server lab MCP not configured".into());
+                return;
+            };
+            let out = self
+                .server_call(server, Role::Setup, "server_sessions", json!({}), ctx)
+                .await;
+            if !out.ok {
+                ctx.unverified.push(format!(
+                    "player_id unverified: server_sessions: {}",
+                    out.error.unwrap_or_default()
+                ));
+                return;
+            }
+            let Some(name) = ctx.character.get("name").and_then(Value::as_str) else {
+                ctx.unverified
+                    .push("player_id unverified: no character name".into());
+                return;
+            };
+            match super::packet::find_session(&out.json, name) {
+                Ok(entity) => {
+                    let id = out
+                        .json
+                        .get("sessions")
+                        .and_then(Value::as_array)
+                        .and_then(|a| {
+                            a.iter().find(|s| {
+                                s.get("entity_id").and_then(Value::as_u64)
+                                    == Some(u64::from(entity))
+                            })
+                        })
+                        .and_then(|s| s.get("player_id"))
+                        .cloned();
+                    if let Some(id) = id {
+                        ctx.vars.insert("player_id".into(), id);
+                    } else {
+                        ctx.unverified
+                            .push("player_id unverified: session has no player_id".into());
+                    }
+                }
+                Err(e) => ctx.unverified.push(format!("player_id unverified: {e}")),
+            }
+        }
     }
 
     /// Clauses whose `at` is `label` (or unset, for `None`), in spec order.
@@ -226,4 +324,72 @@ impl<I: ToolInvoker> Runner<'_, I> {
             }
         }
     }
+}
+
+/// Only fields the runner substitutes can require an automatic id read.
+/// Guide prose, labels and metadata may mention `${player_id}` literally.
+fn row_uses_var(row: &RowSpec, name: &str) -> bool {
+    let needle = format!("${{{name}}}");
+    fn value_uses(value: &Value, needle: &str) -> bool {
+        match value {
+            Value::String(s) => s.contains(needle),
+            Value::Array(values) => values.iter().any(|v| value_uses(v, needle)),
+            Value::Object(values) => values.values().any(|v| value_uses(v, needle)),
+            _ => false,
+        }
+    }
+    fn action_uses(action: &ActionSpec, needle: &str) -> bool {
+        [action.chat.as_deref(), action.regex.as_deref()]
+            .into_iter()
+            .flatten()
+            .any(|s| s.contains(needle))
+            || action.args.as_ref().is_some_and(|v| value_uses(v, needle))
+            || action.wait_server.as_ref().is_some_and(|wait| {
+                wait.log.contains(needle)
+                    || wait.target.as_deref().is_some_and(|s| s.contains(needle))
+                    || wait
+                        .fields
+                        .as_ref()
+                        .is_some_and(|fields| fields.values().any(|v| value_uses(v, needle)))
+            })
+            || action.fallback.iter().any(|f| action_uses(f, needle))
+    }
+    fn clause_uses(clause: &ExpectSpec, needle: &str) -> bool {
+        [
+            clause.contains.as_deref(),
+            clause.matches.as_deref(),
+            clause.chunk.as_deref(),
+            clause.lua_condition.as_deref(),
+            clause.filter.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .any(|s| s.contains(needle))
+            || [
+                clause.args.as_ref(),
+                clause.value.as_ref(),
+                clause.baseline.as_ref(),
+                clause.entity.as_ref(),
+            ]
+            .into_iter()
+            .flatten()
+            .any(|v| value_uses(v, needle))
+            || clause
+                .match_fields
+                .as_ref()
+                .is_some_and(|fields| fields.values().any(|v| value_uses(v, needle)))
+    }
+
+    row.setup
+        .iter()
+        .chain(&row.steps)
+        .chain(&row.teardown)
+        .any(|action| action_uses(action, &needle))
+        || row.expect.iter().any(|clause| clause_uses(clause, &needle))
+        || row.evidence.iter().any(|evidence| {
+            evidence
+                .args
+                .as_ref()
+                .is_some_and(|v| value_uses(v, &needle))
+        })
 }
