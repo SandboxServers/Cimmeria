@@ -19,7 +19,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [reference_livewire_solver_2026_10_13.md](reference_livewire_solver_2026_10_13.md) — the installed atlas lives in labd, while the board and SmartFox tap live in the server; the solver plans stage points from a supplied board and requires rollover confirmation before clicks
 - [reference_cellblock_routes_2026_10_13.md](reference_cellblock_routes_2026_10_13.md) — AP-11 route recorder/catalog implementation; prisoner-to-med-station recorded and replayed twice, other legs pending
 
-- [project_four_zone_planning_2026_10_13.md](project_four_zone_planning_2026_10_13.md) — four-zone packet planning; source checks, missing handoff SQLite, owner story and zone decisions, client mission-catalog gate
+- [project_four_zone_planning_2026_10_13.md](project_four_zone_planning_2026_10_13.md) — four-zone packet planning and active execution; source checks, missing handoff SQLite, owner decision register, client mission-catalog gate
 
 - [project_cellblock_681_hidden_2026_10_13.md](project_cellblock_681_hidden_2026_10_13.md) — 2026-10-13 Cellblock 681 tracker leak: lab baseline, hidden seed fix, live-DB guard; local client acceptance passed
 - [reference_lab_point_click_matching_2026_10_13.md](reference_lab_point_click_matching_2026_10_13.md) — Cellblock point clicks can hover the player's avatar over a rendered corpse; match nearby entity ID and require verified hover before input
