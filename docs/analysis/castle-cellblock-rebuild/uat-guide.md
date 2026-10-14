@@ -813,6 +813,8 @@ Goa'uld getting the Commando's set is intentional: before CS-04 the non-Jaffa ch
 3. Optionally kill `Cellblock_ArmoryGuard1` (spawn 27) at `(-49.69, 24.67, -127.11)`.
 4. Right-click `Cellblock_ArmoryRingSwitch` (spawn 79) at `(-54.88, 26.08, -163.84)`.
 
+**Lab approach note (2026-10-13):** Stand inside the ring circle on the raised floor before using the control. A player-provided approach point is `(-53.915, 24.957, -166.960)`, facing north with the camera above the character and pitched down about 30-45 degrees. The 2026-10-13 lab run confirmed the native right-click and Castle transfer from the floor circle near `(-54.88, 27, -167)`; the player-provided point itself has not yet been replayed in the lab. Positions beside the wall can leave the control visible but unclickable.
+
 **Expected:**
 
 - Blurb **2518** "Help Op-CORE secure the Armory by opening the doors." shows **exactly once** on accept — C07's deliverable for 688.
