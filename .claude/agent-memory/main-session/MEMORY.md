@@ -5,6 +5,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 ## Open investigations
 
 - [reference_lab_transition_click_2026_10_13.md](reference_lab_transition_click_2026_10_13.md) — report-only native click survives an immediate world load; live click passed, Castle transition replay remains pending
+- [project_cellblock_aftermath_dwell_2026_10_13.md](project_cellblock_aftermath_dwell_2026_10_13.md) — #1721: 2516 was evicted after 422 ms; chain 1172 now gives it 16 seconds before blurb 5859; live recheck pending
 
 - [reference_livewire_play_2026_10_13.md](reference_livewire_play_2026_10_13.md) — native Livewire play maps stage to UI and requires SmartFox rollover evidence; live client proof remains pending
 

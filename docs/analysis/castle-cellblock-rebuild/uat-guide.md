@@ -18,7 +18,7 @@ This is the acceptance pass for everything the Castle Cellblock rebuild campaign
 | C07 | Accept blurbs 2305 / 4000 / 2518 on missions 640 / 641 / 688 (chains 1151/1152/1154) | #648 |
 | C08a | `content_actions.delay_ms` honoured by the executor | #646 |
 | C08b | Straegis attack scene: Matinee 1751, Marsh despawn, dialog 2516 at 10.1 s (chains 1161/1162) | #650 |
-| GC1a | Marsh dialog 2309 pre-departure; post-death blurb 5859 at 10.6 s (chains 1171/1172) | #655 |
+| GC1a | Marsh dialog 2309 pre-departure; post-death blurb 5859 at 26.1 s, giving 2516 sixteen seconds to read (chains 1171/1172) | #655, #1721 |
 | GC1b-0 | Engine: an NPC can follow a player; Marsh `move_speed` raised to 0.9 units/tick | #646 |
 | GC1b-1 | Marsh rides the rings to region 3 (chain 1173) | #655 |
 | GC1b-2 | Marsh follows the player topside; follow cleared at the Straegis scene (chains 1174/1175) | #655 |
@@ -736,14 +736,14 @@ Four chains fire on the same `mission_completed 686` event. They are ordered by 
 2. **t = 0 s** — Col. Marsh is despawned. He was following you, so unlike the original plan he vanishes **in front of you**, not off-screen in the Preparation room.
 3. **t = 0 s** — his follow target is cleared (a harmless no-op, since the despawn already ran).
 4. **t ≈ 10.1 s** — dialog **2516** shows: "Something just took Marsh - it snatched him through a rift in this and space and left behind a puddle of blood…" (the typos are in the 2009 data).
-5. **t ≈ 10.6 s** — blurb **5859** shows: "Find a way out of the Cellblock. Without Marsh."
+5. **t ≈ 26.1 s** — after 16 seconds to read 2516, blurb **5859** shows: "Find a way out of the Cellblock. Without Marsh."
 6. Mission 686 completes; mission **687 "Aftermath"** is accepted, and the wooden crate is highlighted.
 
 **Camera caveat.** `play_sequence` hardcodes `ViewType = 0` (KISMET_VIEW_Witness) for every content chain; there is no per-action override. The cinematic docs suggest `3` (KISMET_VIEW_EventInvoker) is the usual value for non-combat camera cinematics like ring and stargate sequences. No legacy source exists for StraegisAttack to settle it. **If the camera is broken or disorienting, say so explicitly** — the fix is threading a `viewType` field through `Action::PlaySequence`, and this scenario is the evidence that justifies it.
 
 **Must NOT happen:**
 
-- Dialog 2516 or blurb 5859 appearing **during** the Matinee. 5859 racing 2516 was found and fixed in review; 5859 is now at `delay_ms` 10600 against 2516's 10100.
+- Dialog 2516 or blurb 5859 appearing **during** the Matinee. 5859 must wait until `delay_ms` 26100, 16 seconds after 2516's 10100.
 - 5859 appearing **before** 2516.
 - Control not returning to the player after the Matinee.
 - Marsh still standing there afterwards.
@@ -751,7 +751,7 @@ Four chains fire on the same `mission_completed 686` event. They are ordered by 
 
 **Relog check — the important half of this scenario.** Log out and back in with 686 completed and 687 not yet accepted. The per-player Castle_CellBlock instance is rebuilt from `resources.spawnlist` on every relog, so **Marsh would otherwise respawn**. Chain 1162 re-despawns him. Expect: Marsh gone, Matinee **not** replayed, dialogs 2516 and 5859 **not** replayed. Once 687 is accepted, chain 1162 stops matching — that is correct and intentional.
 
-**Server evidence:** `logs\content.log`. On the kill: `Content: playing sequence` `sequence_id=1751 chain_id=1161`, `Content: destroying tagged entity` `entity_tag=Preparation_ColMarsh chain_id=1161` (with a `witnesses_notified` field — that count should be non-zero), then two `Content: deferring action` DEBUG lines with `delay_ms=10100 chain_id=1161` and `delay_ms=10600 chain_id=1172`, followed ten seconds later by two `Content: firing deferred action` INFO lines and the matching `Content: displaying dialog` for 2516 then 5859.
+**Server evidence:** `logs\content.log`. On the kill: `Content: playing sequence` `sequence_id=1751 chain_id=1161`, `Content: destroying tagged entity` `entity_tag=Preparation_ColMarsh chain_id=1161` (with a `witnesses_notified` field — that count should be non-zero), then two `Content: deferring action` DEBUG lines with `delay_ms=10100 chain_id=1161` and `delay_ms=26100 chain_id=1172`. The matching `Content: displaying dialog` entries show 2516 first and 5859 at least 15 seconds later.
 
 ---
 
@@ -928,7 +928,7 @@ that the absence of one breaks nothing, and that 3999 stops being a dead end.
 | 2 | Start mission 641's first briefing (4001 Tau'ri / 5022 Jaffa) and close it on **screen one** with the **X**. | Mission **641** is accepted exactly as if you had paged to the end — same as clicking Accept used to do, because that Accept was on screen one as well. The P90 locker lights up and Marsh's indicator clears. |
 | 3 | Same for dialog **2299** (mission 638's Human "agree to escape") — close it on screen one with the X. | Dialog 2298 shows, mission **639** is accepted and **638** completes. |
 | 4 | Let blurbs **2305** (after 640), **4000** (after 641) and **2518** (after 688) appear, and look at the button row. | **No Accept, no Decline, no More Info.** Only the title-bar X. Closing one does nothing else — none of the three is keyed to a chain. |
-| 5 | Reach the Straegis aftermath and let dialogs **2516** and **5859** appear. | Same: no buttons. These two have their own scenario, [T31](#t31--the-straegis-aftermath-and-the-first-eviction-close), because 5859 evicts 2516 half a second after it opens. |
+| 5 | Reach the Straegis aftermath and let dialogs **2516** and **5859** appear. | Same: no buttons. These two have their own scenario, [T31](#t31--the-straegis-aftermath-and-the-first-eviction-close); 2516 stays readable for about 16 seconds before 5859 appears. |
 | 6 | Reach the pre-ring-travel beat and close dialog **2309**. | Same. |
 
 **Must NOT happen:**
@@ -948,12 +948,12 @@ that the absence of one breaks nothing, and that 3999 stops being a dead end.
 
 Run this straight after T16 / T17. Chain 1161 plays the Straegis Matinee and shows
 narration **2516** about ten seconds in; chain 1172 shows the "Without Marsh" blurb
-**5859** half a second after that. Both are now button-less.
+**5859** sixteen seconds after that. Both are button-less.
 
 **Steps:**
 
 1. Let Marsh be taken and watch the scene through without touching anything.
-2. Watch the two dialogs arrive.
+2. Read 2516 and verify it remains visible for at least 15 seconds before 5859 arrives.
 3. Close whatever is still on screen.
 4. Grep `logs\content.log` for `fire_dialog_choice`.
 
@@ -968,20 +968,15 @@ narration **2516** about ten seconds in; chain 1172 shows the "Without Marsh" bl
 
 **Must NOT happen:** any mission accepted, completed or advanced by closing either dialog.
 
-**Expected warning, not a failure.** Because the client holds one dialog at a time, 5859
-**evicts** 2516. Now that 2516 has no button, that eviction sends `(2516, -1)` — the first
-shipped eviction close. The server has already re-pinned to 5859, so it rejects that choice
-with a `warn!` in `logs\server.log`. It is correct behaviour on today's code and it costs
-nothing: no chain keys 2516. Packet DU-08 replaces the single open-dialog pin with a set
-and the warning goes away. Record it if you see it; do not file it.
+**Eviction close.** The client holds one dialog at a time, so 5859 replaces 2516 if the
+player leaves 2516 open. Its button-less close sends `(2516, -1)`. DU-08's offered-dialog
+set retains 2516 when 5859 arrives, so the server accepts the late close and no chain
+fires. A rejection warning is a regression; record it as a failure.
 
-**Pre-existing timing defect, for the owner, not a DU-02a bug.** 2516 is fifty words of
-narration and you get about **half a second** of it before 5859 takes the screen. You
-cannot read it. That was already true before this packet — the eviction happens either
-way, it was simply silent — so nothing here made it worse, and no change in this packet can
-make it better. The fix is a larger `delay_ms` on chain 1172, or dropping 2516 and letting
-5859 stand alone. **If you want to read 2516, that is a content decision someone has to
-make.** Note on this row whether you saw any of 2516 at all.
+**Timing.** Chain 1172 waits 26100 ms from mission 686 completion, giving the fifty-word
+2516 narration about 16 seconds on screen after the Matinee. The previous 10600 ms
+delay gave the client only 422 ms before 5859 replaced it (#1721). Record the measured
+interval in the lab; a gap under 15 seconds fails this row.
 
 **Server evidence:** `logs\content.log`. For step 1, grep `fire_dialog_choice: matched`
 and confirm `dialog_id=3999 button_id=-1` (or `5023`) followed by the step advance. A
