@@ -100,7 +100,7 @@ For 567, first prove the item-2698 acquisition and faction-compatible Castle acc
 
 ## HA-1360a — authoritative letter turn-in prerequisite
 
-**Status: Writing.** Audience: engine implementer and database, authority, mission and testing reviewers. The owner requires an owned letter for Marsh's completion. A1 transaction/receipt and A2a session-token/entry-epoch work are integrated with reviewed tests; A2b plugin route and guarded inventory sync are dispatched. A2c post-handoff entry fencing and A3 strict continuation remain open; B owns the seed and cross-zone proof. [The engine worknote](worknotes/HA-1360a-seal.md) supersedes the provisional design details below and records the current exact manifests. This is a bounded mission-1360 seam, not a redesign of every inventory or mission writer. Split any child that exceeds the shared 40k working-token / 90k context envelope.
+**Status: Writing.** Audience: engine implementer and database, authority, mission and testing reviewers. The owner requires an owned letter for Marsh's completion. A1 transaction/receipt and A2a session-token/entry-epoch work are integrated with reviewed tests; A2b plugin route and guarded inventory sync are dispatched. A3 strict continuation remains open; B owns the seed and cross-zone proof. A2c separately tracks a preexisting general post-handoff race. [The engine worknote](worknotes/HA-1360a-seal.md) supersedes the provisional design details below and records the current exact manifests. This is a bounded mission-1360 seam, not a redesign of every inventory or mission writer. Split any child that exceeds the shared 40k working-token / 90k context envelope.
 
 ### Current source evidence
 
@@ -141,10 +141,11 @@ Marsh's transient 4576 dialog cannot be promised exactly once after a crash.
 The reviewed size calls for three engine children: **HA-1360a1** owns the base
 transaction, mission writer guard and live-DB failure/concurrency proof;
 **HA-1360a2** owns internal messages, base routing and session fence, split
-into a2a token/entry epoch, a2b route/sync and a2c post-handoff entry fence;
+into a2a token/entry epoch and a2b route/sync; a2c separately tracks a
+preexisting general post-handoff entry race;
 **HA-1360a3** owns the strict content action, cell pending/result state,
 retry and relog proof. HA-1360b remains the seed/receipt child. A1 and a2a
-are integrated with tests; a2b is dispatched and a2c/a3 retain manifest gates.
+are integrated with tests; a2b is dispatched and a3 retains its manifest gate.
 The engine children remain undeployed campaign integration until 6501 is
 replaced: the old chain would otherwise remove a letter and have its
 independent completion rejected.

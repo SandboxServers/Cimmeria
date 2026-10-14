@@ -1,6 +1,6 @@
 # Harset continuation: work packet contracts
 
-> **Type:** Reference. **Audience:** Campaign coordinator, Haiku packet coder, domain reviewer and fixer. **Last updated:** 2026-10-14. **Status:** Planning only; no implementation dispatched. **Companions:** [Harset investigation](harset.md), [73-record evidence matrix](harset-73-mission-review.csv), [shared execution contract](execution-contract.md), [four-zone campaign rules](README.md), [existing Harset ledger](../harset-rebuild/README.md), [existing detailed H contracts](../harset-rebuild/work-packets.md), [placement ledger](../harset-rebuild/placements/README.md), [story evidence](story-research.md), [test picker](../../../TESTING.md), [doc-update map](../../agents/doc-update-map.md).
+> **Type:** Reference. **Audience:** Campaign coordinator, Haiku packet coder, domain reviewer and fixer. **Last updated:** 2026-10-14. **Status:** Planning for restoration waves; HA-1360a1/a2a are integrated and a2b is dispatched under the continuation worknote. **Companions:** [Harset investigation](harset.md), [73-record evidence matrix](harset-73-mission-review.csv), [shared execution contract](execution-contract.md), [four-zone campaign rules](README.md), [existing Harset ledger](../harset-rebuild/README.md), [existing detailed H contracts](../harset-rebuild/work-packets.md), [placement ledger](../harset-rebuild/placements/README.md), [story evidence](story-research.md), [test picker](../../../TESTING.md), [doc-update map](../../agents/doc-update-map.md).
 
 ## Contract and dispatch boundary
 
@@ -41,7 +41,7 @@ Common packet checks, in order: `cargo fmt --all -- --check`; focused `pwsh tool
 | Wave | Packets | Entry and exit |
 |---|---|---|
 | H0 evidence | HA-00a, HA-00b | 73-record matrix accepted; current ledger, ID table and dependency states pinned. No runtime change. |
-| H0 letter prerequisite | HA-1360a, then HA-1360b | BlockedEvidence engine seal followed by BlockedDependency receipt; requires CS-08a actual crossing and committed item/mission proof. No automatic dispatch in H0. |
+| H0 letter prerequisite | HA-1360a, then HA-1360b | A1/a2a integrated; a2b dispatched; a3 and B remain gated by reviewed engine and cross-zone proof. A2c tracks a separate general entry race. No deployment while old 6501 is live. |
 | H1 spaces and supply policy | HA-01a, HA-01b, HA-02, HA-15 policy/source gate | Door observations/arrival points and navigation decision proved; route and instance fixtures pass. HA-02 may leave world 57 advisory with a documented blocker. The confection/treat source is sealed before late arcs dispatch. |
 | H2 Jaffa | HA-03–HA-06 | Serial commits to `harset_jaffa_chains.sql`; one fresh wave reviewer checks full arc and two-player isolation. |
 | H3 OP-CORE | HA-07–HA-10 | Serial commits to `harset_opcore_chains.sql`; 1410 waits on objective-shape evidence. |
@@ -107,9 +107,9 @@ For HA-15a/b/c and HA-16a/b, the exact test module and changed crate are filled 
 
 ### HA-1360a / HA-1360b — Authoritative Frost's Letter receipt
 
-Owner decision, 2026-10-14: Marsh must require letter 3730 before completing 1360. The detailed [HA-1360a engine prerequisite](../harset-continuation/work-packets.md#ha-1360a--authoritative-letter-turn-in-prerequisite) is **BlockedEvidence** on database-persistence, server-authority-enforcer, mission-systems-advisor and testing-validation-engineer signoffs for atomic consumption/completion, stale-writer exclusion/CAS, committed-result/session recovery and exact budgeted file/test manifest. The proposed compound action and outbox design are not sealed.
+Owner decision, 2026-10-14: Marsh must require letter 3730 before completing 1360. The detailed [HA-1360a engine prerequisite](../harset-continuation/work-packets.md#ha-1360a--authoritative-letter-turn-in-prerequisite) has integrated A1 atomic consumption/receipt and stale-writer fencing and A2a token/entry-epoch fencing, both independently reviewed. A2b routing and guarded client sync are dispatched; A3 strict action/continuation is pending. A2c separately tracks a preexisting general post-handoff race. The [engine worknote](../harset-continuation/worknotes/HA-1360a-seal.md) is the current exact contract and test record; this planning section does not authorize deployment.
 
-The [HA-1360b receiving seed packet](../harset-continuation/work-packets.md#ha-1360b--marsh-receiving-seed-and-cross-zone-proof) is **BlockedDependency** on HA-1360a integrated/reviewed and CS-08a's actual Castle-origin crossing (chain 1366, single ID approved) retaining 3730. It owns 6501/6502/6505 only; 6503/6504 remain disabled and any new continuation ID returns to HA-00b for allocation. It owes production cross-service inventory/mission persistence proof beginning at Cellblock acceptance, independent seed/engine/crossing revert failures, refusal telemetry and authorized client UAT. Read the continuation contracts for candidate files, signoff gates, checks, rollback/recovery and future branch/commit names. Neither packet is Ready, and neither adds a second Castle grant/advance.
+The [HA-1360b receiving seed packet](../harset-continuation/work-packets.md#ha-1360b--marsh-receiving-seed-and-cross-zone-proof) is **BlockedDependency** on completed HA-1360a and CS-08a's actual Castle-origin crossing (chain 1366, single ID approved) retaining 3730. It owns 6501/6502/6505 only; 6503/6504 remain disabled and any new continuation ID returns to HA-00b for allocation. It owes production cross-service inventory/mission persistence proof beginning at Cellblock acceptance, independent seed/engine/crossing revert failures, refusal telemetry and client UAT after an explicit lab yes. Read the continuation contracts for candidate files, signoff gates, checks and rollback/recovery. No packet adds a second Castle grant/advance.
 
 ### HA-00c — Seal authored and repeatable ID allocations
 
@@ -227,7 +227,7 @@ For HA-03–HA-14, add the named mission replay file under `crates/cell-content/
 | Market/Storage doorway and quest pins | Observed client doorway points or proved BSP finding, then HA-01 tests | HA-03–HA-14 and ambient/story placement as applicable |
 | Nav and chase | HA-02 12-position comparison and pen-floor route evidence | HA-04/05/08/10/12/14 chase beats |
 | Castle 1360 crossing | CS-08a Castle-origin crossing, chain 1366 (single ID approved 2026-10-14), advances 4037→4038 retaining 3730; actual cross-zone proof | HA-1360b / completing 1360 |
-| Marsh authoritative receipt | HA-1360a BlockedEvidence until DB/authority/mission/testing seals transaction, stale-writer/CAS and recovery; HA-1360b BlockedDependency until prerequisite integration/review | Completing 1360 |
+| Marsh authoritative receipt | HA-1360a1/a2a integrated and reviewed; a2b dispatched; a3 and HA-1360b remain dependency gated; a2c is separate follow-up | Completing 1360 |
 | Castle 567 leg | CS-08 separate acquisition/handoff evidence and implementation; receiving 6503/6504 stay disabled | Completing 567 |
 | Item 2698 | Proved Castle grant (CS-08's 567 child) and travel persistence | Enabling mission 567 only |
 | 1664 mapping | Castle CS-00 and HA-00b confirm the proposed mapping (CS-06 grant at the exit, HA-01b steps 5224–5226); Kaerlia spawn sealed; CS-06 integrated | HA-01b |
