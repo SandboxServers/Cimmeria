@@ -8,10 +8,11 @@
 //! `.bug uat <row>` anchor → packet tap and client-event marks → setup →
 //! steps (a press also captures `${cast_id}`, see [`cast_id`]; clauses and
 //! evidence tied to a step label run right after it) → end
-//! clauses and evidence → teardown → grade → write. Rows are independent:
-//! a failed row never stops the section.
+//! clauses and evidence → teardown → grade → write. Rows are independent
+//! unless the section is sequential or a row declares dependencies.
 
 mod actions;
+mod campaign;
 mod cast_id;
 mod chaos;
 mod checks;
@@ -171,8 +172,8 @@ pub(crate) fn utc_of(ms: i64) -> String {
         .unwrap_or_default()
 }
 
-/// A run id made of lowercase letters (base 26 of the epoch tenth of a
-/// second), so it can also be a fresh character's name.
+/// A run id made of lowercase letters (time plus six random letters), so
+/// concurrent runs in the same decisecond get different character names.
 pub fn new_run_id(epoch_ds: i64) -> String {
     let mut n = epoch_ds.max(1) as u64;
     let mut s = Vec::new();
@@ -181,6 +182,8 @@ pub fn new_run_id(epoch_ds: i64) -> String {
         n /= 26;
     }
     s.reverse();
+    let random = uuid::Uuid::new_v4();
+    s.extend(random.as_bytes()[..6].iter().map(|b| b'a' + *b % 26));
     String::from_utf8(s).unwrap_or_default()
 }
 
@@ -278,9 +281,28 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
                 (run, m)
             }
             None => {
-                let run_id = new_run_id(t / 100);
                 let date = utc_of(t).get(..10).unwrap_or("0000-00-00").to_string();
-                let run = RunDir::create(&req.root, &date, req.server_version.as_deref(), &run_id)?;
+                // `create_exclusive` reserves the bundle path across lab
+                // processes. A rare random collision gets a new id rather
+                // than sharing evidence or a fresh character name.
+                let mut reserved = None;
+                for _ in 0..32 {
+                    let id = new_run_id(t / 100);
+                    match RunDir::create_exclusive(
+                        &req.root,
+                        &date,
+                        req.server_version.as_deref(),
+                        &id,
+                    ) {
+                        Ok(run) => {
+                            reserved = Some((id, run));
+                            break;
+                        }
+                        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                        Err(e) => return Err(format!("create run directory: {e}")),
+                    }
+                }
+                let (run_id, run) = reserved.ok_or("32 generated run ids collided")?;
                 let m = RunManifest {
                     schema: BUNDLE_SCHEMA,
                     run_id,
@@ -295,6 +317,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
                     client: req.client.clone(),
                     account: json!({ "name": req.account_name, "kind": null }),
                     characters: vec![],
+                    fresh_characters: Default::default(),
                     clocks: json!({ "host_start_ms": t, "host_start_utc": utc_of(t) }),
                     tools: inv.tool_names(),
                     specs: vec![],
@@ -306,6 +329,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
                 (run, m)
             }
         };
+        let fresh = campaign::prepare_fresh(&req.sections, &mut manifest, req.run_dir.is_some())?;
         let chaos = chaos::resolve(&req.chaos, req.plan_only, &mut manifest)?;
         let mut runner = Self {
             inv,
@@ -313,7 +337,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             run,
             manifest,
             req,
-            fresh: HashMap::new(),
+            fresh,
             characters: vec![],
             in_world_as: None,
             p2: Err(players::NO_P2.into()),
@@ -355,7 +379,12 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
                     }
                 }
                 self.progress_row_started(&loaded.spec.section.id, &row.id);
-                let ev = self.run_row(&loaded.spec, row).await;
+                let prior_blocks = if self.req.plan_only {
+                    vec![]
+                } else {
+                    campaign::blocks(&loaded.spec, row, &self.manifest)
+                };
+                let ev = self.run_row(&loaded.spec, row, prior_blocks).await;
                 self.last_row = Some(LastRow {
                     section: ev.section.clone(),
                     row_id: ev.row_id.clone(),
@@ -446,7 +475,12 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
 
     /// One row, start to finish. Never returns an error: every problem
     /// becomes a reason on the row.
-    async fn run_row(&mut self, spec: &SectionSpec, row: &RowSpec) -> RowEvidence {
+    async fn run_row(
+        &mut self,
+        spec: &SectionSpec,
+        row: &RowSpec,
+        prior_blocks: Vec<String>,
+    ) -> RowEvidence {
         let mut ctx = RowCtx {
             section: spec.section.id.clone(),
             row_id: row.id.clone(),
@@ -469,6 +503,7 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
             chaos: Default::default(),
         };
         ctx.blocked = self.static_blocks(spec, row);
+        ctx.blocked.extend(prior_blocks);
         ctx.blocked.extend(self.chaos_blocks(row));
         if let Some(r) = self.revocation_reason() {
             // The lease went before this row started: drive nothing.
@@ -566,6 +601,8 @@ impl<'a, I: ToolInvoker> Runner<'a, I> {
 
 #[cfg(test)]
 mod ability_tests;
+#[cfg(test)]
+mod campaign_tests;
 #[cfg(test)]
 mod chaos_run_tests;
 #[cfg(test)]

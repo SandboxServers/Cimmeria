@@ -54,6 +54,9 @@ pub struct SectionMeta {
     /// `fresh` (a new one per run, see [`FreshCharacter`]).
     #[serde(default = "default_character")]
     pub character: String,
+    /// Stop later rows after a prior FAIL or BLOCKED in this section.
+    #[serde(default)]
+    pub sequential: bool,
     #[serde(default)]
     pub fresh: Option<FreshCharacter>,
     /// Reusable fixture characters, by profile name (`[section.profiles.praxis]`).
@@ -83,6 +86,9 @@ pub struct FreshCharacter {
     pub gender: String,
     #[serde(default = "default_first")]
     pub first: String,
+    /// Finish the initial dialog after character creation (default true).
+    #[serde(default = "default_true")]
+    pub finish_intro: bool,
 }
 
 fn default_first() -> String {
@@ -95,6 +101,9 @@ fn default_first() -> String {
 pub struct RowSpec {
     /// The campaign's step id (`M1-1`, `U12`, `9a`).
     pub id: String,
+    /// Earlier row ids this row requires; FAIL or BLOCKED stops this row.
+    #[serde(default)]
+    pub depends_on: Vec<String>,
     pub title: String,
     /// The guide's "Expect" text, verbatim enough for the ledger's
     /// `Expected:` line.
