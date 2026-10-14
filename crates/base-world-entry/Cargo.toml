@@ -13,6 +13,7 @@ description = "The BaseApp's world entry for the Cimmeria server emulator: chara
 # keeps its old nesting under a `base::` skeleton, and cimmeria-services
 # re-exports `base::{world_entry, character}` at their old paths.
 [dependencies]
+sha2 = { workspace = true }
 # The feature handlers (player load, inventory, vendors, trade, mail,
 # missions, progression), re-exported at `base::world_entry::methods`.
 cimmeria-base-methods = { workspace = true }

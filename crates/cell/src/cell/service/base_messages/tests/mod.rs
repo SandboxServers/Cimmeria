@@ -41,6 +41,7 @@ mod item_events;
 mod lab_ability_state;
 mod lab_console;
 mod lab_query;
+mod letter_turn_in_session;
 mod minigame;
 mod movement;
 mod org;

@@ -25,6 +25,7 @@ use super::*;
 mod crafting_options;
 mod crafting_queue;
 mod debug_area_hub;
+mod entry_epoch;
 mod gm_only_world;
 mod plugin_hooks;
 mod session_replaced;

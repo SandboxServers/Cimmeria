@@ -19,6 +19,7 @@ use crate::base::contact_list::handlers::fanout_contact_event;
 use crate::base::contact_list::wire::EVENT_GATE_TRAVEL;
 use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{build_reset_entities, WorldEntryInfo, SGWPLAYER_CLASS_ID};
+use cimmeria_wire::cell::messages::LetterTurnInEntryEpoch;
 
 use super::super::session_identity;
 use super::super::ConnectedClientState;
@@ -301,6 +302,11 @@ pub async fn handle_gate_travel(
         .map_err(|_| "connected lock poisoned")?
         .get_mut(&addr)
     {
+        if session_owner::owns(c, entity_id) && c.active_player_id == Some(active_player_id) {
+            // A same-world hop retains the key and entity ID. The origin
+            // entry must stop accepting requests before the destination await.
+            c.extensions.remove::<LetterTurnInEntryEpoch>();
+        }
         plugins.run_session_state_hook(
             plugin::SessionStateHookPoint::GateTravelBeforeCreateEntity,
             c,

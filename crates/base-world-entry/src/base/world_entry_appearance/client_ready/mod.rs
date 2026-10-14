@@ -25,6 +25,7 @@ use super::builders::build_on_client_ready_burst_bundle;
 use super::cinematic::send_cinematic;
 use super::cinematic_aoi_hold;
 
+mod cell_handoff;
 mod mission_lock;
 mod player_init_row;
 
@@ -49,17 +50,8 @@ pub async fn handle_on_client_ready(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     db_pool: &Option<Arc<sqlx::PgPool>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // Cross-world transition fallback: the SGW client sends `mapLoaded`
-    // (cell method 0x99) on initial logins and same-instance respawns,
-    // but skips it on cross-world transitions via `gate_travel`
-    // (RESET_ENTITIES → ENABLE_ENTITIES → CREATE_BASE_PLAYER + onClientMapLoad).
-    // The client jumps straight to `onClientReady` instead. If the
-    // transition is mid-flight (`pending_map_loaded` still set, meaning
-    // the `mapLoaded` cell-method handler never ran), drive the
-    // enter-world bundle from here so the destination world finishes
-    // setup. After this synth call, `pending_client_ready` will be
-    // populated by `handle_map_loaded` and the rest of this function
-    // proceeds normally.
+    // Cross-world gate travel can skip mapLoaded. Synthesize it before
+    // taking pending_client_ready so destination setup completes.
     let pending_map_loaded_present = {
         let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         clients
@@ -114,17 +106,7 @@ pub async fn handle_on_client_ready(
         }
     }
 
-    // Take the pending finalization AND copy out the player_name in the
-    // same lock so the welcome-message send below doesn't need a second
-    // round-trip. `player_name` is set during `playCharacter` and stays
-    // for the session, so reading it here is safe.
-    //
-    // The first-login cinematic hold starts in this same critical section.
-    // Taking `pending_client_ready` opens the pre-ready AoI gate, and the
-    // cell answers `ConnectEntity` with `EnteredAoI` while this function is
-    // still awaiting DB reads — a hold armed any later (say, next to
-    // `send_cinematic`) lets those creates reach a client that is about to
-    // play a fullscreen movie. See `cinematic_aoi_hold`.
+    // Arm the cinematic hold before DB reads open the pre-ready AoI gate.
     let (
         pending,
         player_name,
@@ -135,6 +117,7 @@ pub async fn handle_on_client_ready(
         account_name,
         entry_cause,
         session_kind,
+        session,
     ) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let entry = clients.get_mut(&addr);
@@ -146,6 +129,10 @@ pub async fn handle_on_client_ready(
             // without trusting any client byte (#475 / CAT-N-03).
             Some(c) => {
                 let pending = c.pending_client_ready.take();
+                if pending.is_some() {
+                    let _ = cell_handoff::assign_entry_epoch(c);
+                }
+                let session = cell_handoff::SessionSnapshot::capture(c, pending.as_ref());
                 // Read before the listing below sets the flag: a character
                 // already listed is finishing a cross-world hop, not a login
                 // (TG-NET-15). `logOff` and teardown clear it, so the next
@@ -186,6 +173,7 @@ pub async fn handle_on_client_ready(
                     // Lab or player, resolved at Phase 3 from the account
                     // flag (TG-NET-16); the cell stamps it on its rows.
                     c.session_kind,
+                    session,
                 )
             }
             // No session for this addr: `pending` is `None` so we bail below
@@ -201,6 +189,7 @@ pub async fn handle_on_client_ready(
                 None,
                 WorldEntryCause::Login,
                 None,
+                None,
             ),
         }
     };
@@ -211,9 +200,10 @@ pub async fn handle_on_client_ready(
     };
 
     let entity_id = pending.entity_id;
-    // The character name for this function's lines: the entity is the
-    // player's own, so it names `entity_id` and `player_id` alike.
     let name = player_name.as_deref();
+
+    #[cfg(test)]
+    session_token_tests::pause_after_pending(addr).await;
 
     tracing::info!(
         %addr,
@@ -370,37 +360,37 @@ pub async fn handle_on_client_ready(
         )
     };
 
-    // Cross-world ring transport carry-through: take the pending ring id
-    // BEFORE we drop the connected lock so a concurrent disconnect can't
-    // strand it. Set in `gate_travel::handle_gate_travel` only when
-    // `Effect::TeleportCrossWorld` produced this hop — stargate dial
-    // travel leaves it None.
+    // Carry the ring destination only for this still-current session.
     let advance_ring_destination_id: Option<i32> = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-        clients
-            .get_mut(&addr)
-            .and_then(|c| c.pending_destination_ring_id.take())
+        clients.get_mut(&addr).and_then(|c| {
+            session
+                .as_ref()
+                .is_some_and(|session| session.matches(c, entity_id, pending.player_id))
+                .then(|| c.pending_destination_ring_id.take())
+                .flatten()
+        })
     };
 
     if let Some(ref tx) = cell_tx {
-        if let Err(e) = tx.send(BaseToCellMsg::ConnectEntity { entity_id }).await {
-            // ConnectEntity drop leaves the cell with no
-            // record of the new player — every subsequent AoI / method
-            // call for this entity would silently drop. error! because
-            // recovery requires the player to log out and back in.
-            tracing::error!(
+        let Some(session) = session else {
+            tracing::warn!(%addr, "onClientReady pending finalization lacks a live player session");
+            return Ok(());
+        };
+        if !cell_handoff::send_handoff(
+            cell_handoff::HandoffContext {
+                addr,
+                connected,
+                tx,
+                session,
                 entity_id,
-                entity_name = name,
+                player_id: pending.player_id,
                 account_id,
                 account_name,
-                player_id = pending.player_id,
-                player_name = name,
-                "ConnectEntity: base→cell send failed -- cell will not see this player, all AoI traffic will drop: {e}"
-            );
-        }
-
-        if let Err(e) = tx
-            .send(BaseToCellMsg::InitPlayerState {
+                player_name: name,
+                world_name: &pending.world_name,
+            },
+            BaseToCellMsg::InitPlayerState {
                 entity_id,
                 player_id: pending.player_id,
                 account_id,
@@ -421,48 +411,12 @@ pub async fn handle_on_client_ready(
                 shown_tutorials,
                 entry_cause,
                 session_kind,
-            })
-            .await
+            },
+            advance_ring_destination_id,
+        )
+        .await
         {
-            // same shape as the ConnectEntity error above —
-            // missing InitPlayerState leaves the cell with a connected
-            // entity but no mission/ability/bandolier state. Player
-            // will appear loaded but quests / hotbar will be empty.
-            tracing::error!(
-                entity_id,
-                entity_name = name,
-                account_id,
-                account_name,
-                player_id = pending.player_id,
-                player_name = name,
-                world = %pending.world_name,
-                "InitPlayerState: base→cell send failed -- player loaded with empty mission/ability state: {e}"
-            );
-        }
-
-        if let Some(region_id) = advance_ring_destination_id {
-            // Wake the destination ring's FSM. Sent AFTER InitPlayerState
-            // so the cell-side handler runs against the fully-initialised
-            // entity (player_id, missions, etc.) — `mark_player_loaded`
-            // doesn't need that state directly, but downstream chain
-            // events fired by the unlock cascade do.
-            if let Err(e) = tx
-                .send(BaseToCellMsg::AdvanceRingDestination {
-                    entity_id,
-                    region_id,
-                })
-                .await
-            {
-                // ring-destination drop strands the player
-                // mid-transport — they arrive at the destination but
-                // the ring FSM stays in RemoteLoadWait forever.
-                tracing::error!(
-                    entity_id,
-                    entity_name = name,
-                    region_id, // nt:id-only ring destination region; region names live on the cell
-                    "AdvanceRingDestination: base→cell send failed -- ring FSM stuck, player invisible to other ring riders: {e}"
-                );
-            }
+            return Ok(());
         }
     }
 
@@ -480,11 +434,6 @@ pub async fn handle_on_client_ready(
     // HOLD-FOR-TRANSACTION dropped. No CREATE_ENTITY / CELL_PLAYER fires
     // inside this handler, so the bundle is exclusively post-transaction
     // property/method updates — the canonical "safe to combine" case.
-    //
-    // Pre-bundle: 11 reliable packets (1 appearance + 1 tint + 8 chat-joined
-    // + 1 welcome), each consuming a TX-window slot. Post-bundle: 1 reliable
-    // packet; since SS-C4 it holds 3 messages, well under FRAGMENT_BODY_SIZE,
-    // pinned by [`super::builders::tests::on_client_ready_burst_bundles_to_single_packet`].
     //
     // `speaker` resolution mirrors the pre-bundle path: prefer the session's
     // `player_name`, fall back to "Server" with a WARN so the unexpected
@@ -734,5 +683,7 @@ pub async fn handle_on_client_ready(
 
 #[cfg(test)]
 mod plugin_hook_tests;
+#[cfg(test)]
+mod session_token_tests;
 #[cfg(test)]
 mod tests;

@@ -6,6 +6,7 @@ use super::data::SavedMission;
 use super::duel_base_to_cell::DuelBaseToCell;
 use super::item_use::ItemUseConsumed;
 use super::lab::{LabQuery, LabQueryResult};
+use super::letter_turn_in::LetterTurnInSession;
 use super::org_base_to_cell::OrgBaseToCell;
 
 /// Result of a [`BaseToCellMsg::LabConsoleExec`]: on success, the GM-feedback
@@ -67,6 +68,12 @@ pub enum BaseToCellMsg {
     /// Mark an entity as having a client controller (player).
     /// Sent after world entry packets are delivered to the client.
     ConnectEntity { entity_id: u32 },
+
+    /// Bind the live player's turn-in token before `InitPlayerState`.
+    LetterTurnInSession {
+        entity_id: u32,
+        session: LetterTurnInSession,
+    },
 
     /// Remove client controller from an entity (player disconnected).
     ///

@@ -4,18 +4,13 @@
 use super::*;
 
 // ──────────────────────────────────────────────────────────────────
-// Negative-logging regression guards: onClientReady
-// cell_tx sends. ConnectEntity / InitPlayerState / AdvanceRing-
-// Destination are critical handoffs from base to cell — dropping
-// any of them strands the player in a half-loaded state. The
-// guards drive `handle_on_client_ready` with a closed cell→base
-// channel and assert each of the three ERROR logs fires
-// independently so a partial revert (only one of three) is also
-// caught.
+// A closed cell channel stops the entry handoff at ConnectEntity.
+// The later failure sites are covered with deterministic pauses in
+// `session_token_tests` so an undelivered token cannot permit init.
 // ──────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn on_client_ready_errors_each_cell_tx_send_independently_when_closed() {
+async fn on_client_ready_stops_after_closed_connect_channel() {
     use crate::test_support::{test_default_connected_client_state, LogCapture, TestTransport};
     use tracing::Level;
 
@@ -24,10 +19,10 @@ async fn on_client_ready_errors_each_cell_tx_send_independently_when_closed() {
     let entity_id: u32 = 8888;
     let key = [0u8; 32];
 
-    // Pre-stage pending_client_ready + pending_destination_ring_id
-    // so the function reaches all three cell_tx send sites.
+    // Pre-stage pending_client_ready with a closed cell channel.
     let mut state = test_default_connected_client_state();
     state.player_entity_id = Some(entity_id);
+    state.active_player_id = Some(42);
     state.pending_client_ready = Some(crate::base::PendingClientReadyInfo {
         entity_id,
         player_id: 42,
@@ -36,7 +31,7 @@ async fn on_client_ready_errors_each_cell_tx_send_independently_when_closed() {
         tint_args: vec![0xCD],
         first_login: 0, // skip the cinematic + DB UPDATE branch
     });
-    // Non-None forces the AdvanceRingDestination send to fire.
+    // A ring destination must not be sent after a failed ConnectEntity.
     state.pending_destination_ring_id = Some(17);
     state.player_name = Some("Tester".to_string());
 
@@ -66,9 +61,6 @@ async fn on_client_ready_errors_each_cell_tx_send_independently_when_closed() {
     )
     .await;
 
-    // All three ERRORs must fire — assert each independently so a
-    // partial revert (e.g. only one of three reverted to `let _`)
-    // is also caught.
     assert!(
         capture
             .find_message(Level::ERROR, "ConnectEntity: base→cell send failed")
@@ -76,22 +68,18 @@ async fn on_client_ready_errors_each_cell_tx_send_independently_when_closed() {
         "negative-logging convention: ConnectEntity ERROR missing. Captured: {:#?}",
         capture.all()
     );
-    assert!(
-        capture
-            .find_message(Level::ERROR, "InitPlayerState: base→cell send failed")
-            .is_some(),
-        "negative-logging convention: InitPlayerState ERROR missing"
-    );
-    assert!(
-        capture
-            .find_message(
-                Level::ERROR,
-                "AdvanceRingDestination: base→cell send failed"
-            )
-            .is_some(),
-        "negative-logging convention: AdvanceRingDestination ERROR missing (requires \
-         pending_destination_ring_id to be Some; check test staging)"
-    );
+    assert!(capture
+        .find_message(Level::ERROR, "LetterTurnInSession: base→cell send failed")
+        .is_none());
+    assert!(capture
+        .find_message(Level::ERROR, "InitPlayerState: base→cell send failed")
+        .is_none());
+    assert!(capture
+        .find_message(
+            Level::ERROR,
+            "AdvanceRingDestination: base→cell send failed"
+        )
+        .is_none());
 }
 
 /// TG-NET-15: the `InitPlayerState` entry cause, as the cell would see it,
@@ -114,6 +102,7 @@ async fn init_fields_for(
     let entity_id: u32 = 8889;
     let mut state = test_default_connected_client_state();
     state.player_entity_id = Some(entity_id);
+    state.active_player_id = Some(42);
     state.player_name = Some("Tester".to_string());
     state.listed_online = listed_online;
     state.session_kind = session_kind;
@@ -227,6 +216,7 @@ async fn live_db_first_login_update_errors_when_player_row_missing() {
 
     let mut state = test_default_connected_client_state();
     state.player_entity_id = Some(entity_id);
+    state.active_player_id = Some(MISSING_PLAYER_ID);
     state.pending_client_ready = Some(crate::base::PendingClientReadyInfo {
         entity_id,
         player_id: MISSING_PLAYER_ID,
@@ -350,6 +340,7 @@ async fn live_db_on_client_ready_pushes_the_stored_crafting_state() {
     ])
     .unwrap();
     state.player_entity_id = Some(entity_id);
+    state.active_player_id = Some(PLAYER_ID);
     state.pending_client_ready = Some(crate::base::PendingClientReadyInfo {
         entity_id,
         player_id: PLAYER_ID,

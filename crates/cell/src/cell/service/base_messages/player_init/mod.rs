@@ -19,6 +19,7 @@ use crate::cell::space_manager::SpaceManager;
 use crate::cell::respawn::resync;
 pub(super) use crate::cell::respawn::send_known_abilities_update;
 
+pub(super) mod dispatch;
 pub(crate) mod mission_restore;
 
 /// Tag the active bandolier weapon's granted abilities on the cell entity at
