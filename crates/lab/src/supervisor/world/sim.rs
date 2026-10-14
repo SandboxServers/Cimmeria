@@ -12,6 +12,7 @@ use std::f64::consts::FRAC_PI_2;
 use serde_json::{json, Value};
 
 use super::camera::WHEEL_NOTCH;
+use super::find::ServerEntity;
 use super::geometry::{distance_m, horizontal_m, wrap_pi, Pose, Screen, Vec3};
 use super::io::{Projected, WorldIo};
 use super::lua::{UnitInfo, UnitSlots};
@@ -81,6 +82,10 @@ pub struct Sim {
     pub screen: Screen,
     pub hfov: f64,
     pub entities: Vec<SimEntity>,
+    pub dead_ids: Vec<u32>,
+    pub unknown_alive_ids: Vec<u32>,
+    pub server_templates: HashMap<u32, i32>,
+    pub server_unavailable: bool,
     pub slots: HashMap<i32, u32>,
     pub windows: Vec<String>,
     pub keys: HashMap<String, bool>,
@@ -175,6 +180,10 @@ impl Sim {
             },
             hfov: FRAC_PI_2,
             entities: Vec::new(),
+            dead_ids: Vec::new(),
+            unknown_alive_ids: Vec::new(),
+            server_templates: HashMap::new(),
+            server_unavailable: false,
             slots,
             windows: vec!["ChatWin".into(), "SelfStatusWin".into()],
             keys: HashMap::new(),
@@ -356,6 +365,33 @@ impl WorldIo for Sim {
         self.advance(ms);
     }
 
+    async fn server_entities(
+        &mut self,
+        _player_id: u32,
+        template_id: Option<i32>,
+    ) -> Result<Vec<ServerEntity>, String> {
+        if self.server_unavailable {
+            return Err("server lab MCP unavailable".into());
+        }
+        Ok(self
+            .entities
+            .iter()
+            .filter_map(|e| {
+                let id = self
+                    .server_templates
+                    .get(&e.id)
+                    .copied()
+                    .or_else(|| i32::try_from(e.id).ok()?.checked_add(1000))?;
+                (template_id.is_none_or(|t| t == id)).then(|| ServerEntity {
+                    id: e.id,
+                    template_id: Some(id),
+                    alive: (!self.unknown_alive_ids.contains(&e.id))
+                        .then_some(!self.dead_ids.contains(&e.id)),
+                })
+            })
+            .collect())
+    }
+
     async fn snapshot(&mut self) -> Result<WorldSnapshot, String> {
         let mut entities = vec![WorldEntity {
             id: PLAYER_ID,
@@ -471,7 +507,8 @@ impl WorldIo for Sim {
                         level: Some(5),
                         hostility: e.hostility.clone(),
                         is_friend: Some(e.hostility == "Friendly"),
-                        mob_id: Some(1000 + e.id as i64),
+                        // Client mob IDs differ from the server's template IDs.
+                        mob_id: Some(9000 + e.id as i64),
                     },
                     None => UnitInfo {
                         slot: *s,

@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
+use super::find::ServerEntity;
 use super::geometry::{Pose, Screen, Vec3};
 use super::lua::{self, UnitInfo, UnitSlots};
 use super::memory::{self, PlayerCamera, WorldSnapshot};
@@ -53,6 +54,14 @@ pub trait WorldIo {
     async fn pin(&mut self, slot: i32, entity: u32) -> Result<(), String>;
     /// The stock unit API's answers for the given slots.
     async fn unit_info(&mut self, slots: &[i32]) -> Result<Vec<UnitInfo>, String>;
+    /// Read-only server identity and life state in the player's space.
+    async fn server_entities(
+        &mut self,
+        _player_id: u32,
+        _template_id: Option<i32>,
+    ) -> Result<Vec<ServerEntity>, String> {
+        Err("template_id/alive needs the server lab MCP".into())
+    }
     /// Project client-space points with the game's own view.
     async fn project(&mut self, points: &[Vec3]) -> Result<Projected, String>;
     /// The local camera actor's pose, when the chain resolves.
@@ -328,6 +337,78 @@ impl WorldIo for LiveWorld<'_> {
         Ok(lua::parse_unit_info(
             &self.lua(&lua::unit_info_chunk(slots)).await?,
         ))
+    }
+
+    async fn server_entities(
+        &mut self,
+        player_id: u32,
+        template_id: Option<i32>,
+    ) -> Result<Vec<ServerEntity>, String> {
+        use crate::uat::invoke::ServerTools;
+
+        let server = ServerTools::from_env()
+            .ok_or("template_id/alive needs the server lab MCP (CIMMERIA_LAB_MCP_URL/_TOKEN)")?;
+        let player = server
+            .call("server_entity_get", json!({ "entity_id": player_id }))
+            .await;
+        if !player.ok {
+            return Err(format!(
+                "server_entity_get: {}",
+                player.error.unwrap_or_else(|| "unknown error".into())
+            ));
+        }
+        let space_id = player
+            .json
+            .pointer("/entity/space_id")
+            .and_then(Value::as_u64)
+            .ok_or_else(|| "server_entity_get: player space_id missing".to_string())?;
+        let reply = server
+            .call(
+                "server_entity_query",
+                json!({ "space_id": space_id, "template_id": template_id }),
+            )
+            .await;
+        if !reply.ok {
+            return Err(format!(
+                "server_entity_query: {}",
+                reply.error.unwrap_or_else(|| "unknown error".into())
+            ));
+        }
+        if reply.json.get("capped").and_then(Value::as_bool) == Some(true) {
+            return Err("server_entity_query capped its result; selector cannot be trusted".into());
+        }
+        let rows = reply
+            .json
+            .get("entities")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "server_entity_query: entities missing".to_string())?;
+        rows.iter()
+            .map(|row| {
+                let id = row
+                    .get("entity_id")
+                    .and_then(Value::as_u64)
+                    .and_then(|id| u32::try_from(id).ok())
+                    .ok_or_else(|| "server_entity_query: invalid entity_id".to_string())?;
+                let template_id = row
+                    .get("template_id")
+                    .and_then(Value::as_i64)
+                    .and_then(|id| i32::try_from(id).ok());
+                let flags = row
+                    .get("state_field")
+                    .and_then(Value::as_u64)
+                    .ok_or_else(|| format!("server_entity_query: state_field missing for {id}"))?;
+                let hp = row.get("health_cur").and_then(Value::as_i64);
+                Ok(ServerEntity {
+                    id,
+                    template_id,
+                    alive: if flags & 1 != 0 {
+                        Some(false)
+                    } else {
+                        hp.map(|hp| hp > 0)
+                    },
+                })
+            })
+            .collect()
     }
 
     async fn project(&mut self, points: &[Vec3]) -> Result<Projected, String> {

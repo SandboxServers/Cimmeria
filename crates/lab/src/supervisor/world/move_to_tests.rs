@@ -23,6 +23,33 @@ async fn move_to_walks_to_a_point_and_lets_go_of_the_keys() {
     assert!(!sim.keys["W"], "forward key left held");
 }
 
+#[tokio::test]
+async fn move_to_template_skips_the_nearer_dead_guard() {
+    let mut sim = Sim::live()
+        .with_entity(10, "Guard", Vec3::new(1000.0, 0.0, 0.0))
+        .with_entity(11, "Guard", Vec3::new(2000.0, 0.0, 0.0));
+    sim.server_templates.insert(10, 24);
+    sim.server_templates.insert(11, 24);
+    sim.dead_ids.push(10);
+    let out = movement::run(
+        &mut sim,
+        MoveRequest {
+            template_id: Some(24),
+            alive: Some(true),
+            ..MoveRequest::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(out["arrived"], true);
+    assert!(
+        sim.pos.x > 1300.0,
+        "stopped by the dead guard: {}",
+        sim.pos.x
+    );
+    assert_eq!(out["native_level"], "real_input");
+}
+
 /// The 2026-10-12 live defect (#1660 item 8): the pawn ignores mouse-look,
 /// so a controller that steers with it never turns and walks away. The
 /// target is 90 degrees to the left; only the turn keys can get there.

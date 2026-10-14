@@ -65,6 +65,7 @@ pub async fn run<W: WorldIo>(io: &mut W, req: HoverRequest) -> Result<Value, Wor
         entity_id: req.entity_id,
         name: None,
         point: req.point,
+        ..TargetArg::default()
     }
     .describe();
     subject["expect_entity"] = json!(req.expect_entity);

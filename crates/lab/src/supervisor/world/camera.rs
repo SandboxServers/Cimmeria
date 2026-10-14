@@ -477,6 +477,7 @@ pub async fn run<W: WorldIo>(io: &mut W, req: CameraRequest) -> Result<Value, Wo
         entity_id: req.face_entity_id,
         name: req.face_name.clone(),
         point: req.face_point,
+        ..TargetArg::default()
     };
     steps.subject(target.describe());
     io.ensure_focus()

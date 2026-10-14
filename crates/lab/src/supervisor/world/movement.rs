@@ -112,6 +112,15 @@ pub struct MoveRequest {
     /// ... or the nearest entity with this name ...
     #[serde(default)]
     pub name: Option<String>,
+    #[serde(default)]
+    pub template_id: Option<i32>,
+    #[serde(default)]
+    pub alive: Option<bool>,
+    #[serde(default)]
+    pub nearest: Option<bool>,
+    /// Zero-based match index after filtering and ordering.
+    #[serde(default)]
+    pub index: Option<usize>,
     /// ... or this point.
     #[serde(default)]
     pub point: Option<PointArg>,
@@ -215,13 +224,30 @@ async fn walk<W: WorldIo>(
         entity_id: req.entity_id,
         name: req.name.clone(),
         point: req.point,
+        template_id: req.template_id,
+        alive: req.alive,
+        nearest: req.nearest,
+        index: req.index,
     };
     steps.subject(target.describe());
     if target.is_empty() && req.waypoints.is_empty() {
         return Err(steps.fail(
             io.now_ms(),
             "arguments",
-            "give entity_id, name, point or waypoints",
+            "give entity_id, name, template_id, point or waypoints",
+        ));
+    }
+    if target.point.is_some()
+        && (target.entity_id.is_some()
+            || target.name.is_some()
+            || target.template_id.is_some()
+            || target.alive.is_some()
+            || target.index.is_some())
+    {
+        return Err(steps.fail(
+            io.now_ms(),
+            "arguments",
+            "point cannot be combined with entity selectors",
         ));
     }
     if req
@@ -258,17 +284,20 @@ async fn walk<W: WorldIo>(
         .collect();
     if let Some(p) = target.point {
         legs.push((Goal::Point(p.to_client()), req.arrival_m.unwrap_or(1.5)));
-    } else if target.entity_id.is_some() || target.name.is_some() {
+    } else if target.entity_id.is_some() || target.name.is_some() || target.template_id.is_some() {
         let fr = FindRequest {
             entity_id: target.entity_id,
             name: target.name.clone(),
+            template_id: target.template_id,
+            alive: target.alive,
+            nearest: target.nearest,
             rendered_only: true,
-            limit: Some(1),
+            limit: Some(target.index.unwrap_or(0).saturating_add(1)),
             project: Some(false),
             ..FindRequest::default()
         };
         let r = find_entities(io, &fr, &mut steps).await?;
-        let Some(m) = r.matches.into_iter().next() else {
+        let Some(m) = r.matches.into_iter().nth(target.index.unwrap_or(0)) else {
             return Err(steps.fail(
                 io.now_ms(),
                 "resolve_target",

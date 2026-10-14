@@ -56,6 +56,8 @@ mod sim;
 #[cfg(test)]
 mod steer_tests;
 #[cfg(test)]
+mod target_filter_tests;
+#[cfg(test)]
 mod tool_tests;
 
 use rmcp::schemars;
@@ -284,6 +286,14 @@ pub struct TargetArg {
     /// Name (case-insensitive substring; the nearest match wins).
     #[serde(default)]
     pub name: Option<String>,
+    #[serde(default)]
+    pub template_id: Option<i32>,
+    #[serde(default)]
+    pub alive: Option<bool>,
+    #[serde(default)]
+    pub nearest: Option<bool>,
+    #[serde(default)]
+    pub index: Option<usize>,
     /// A world point instead of an entity.
     #[serde(default)]
     pub point: Option<PointArg>,
@@ -294,12 +304,19 @@ impl TargetArg {
         json!({
             "entity_id": self.entity_id,
             "name": self.name,
+            "template_id": self.template_id,
+            "alive": self.alive,
+            "nearest": self.nearest,
+            "index": self.index,
             "point": self.point.map(|p| json!({ "x": p.x, "y": p.y, "z": p.z, "space": match p.space.unwrap_or(Space::Server) { Space::Server => "server", Space::Client => "client" } })),
         })
     }
 
     pub fn is_empty(&self) -> bool {
-        self.entity_id.is_none() && self.name.is_none() && self.point.is_none()
+        self.entity_id.is_none()
+            && self.name.is_none()
+            && self.template_id.is_none()
+            && self.point.is_none()
     }
 }
 

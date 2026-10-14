@@ -1,0 +1,3 @@
+# Lab template ID mismatch
+
+The client stock Lua `unitMobId` reads a mob type definition ID, not the server's `entity_templates.template_id`. A 2026-10-13 live SGC_W1 comparison by entity id found Hammond 2410 versus server 29, Airman 0 versus server 31, and a Jaffa 0 versus server 35. `crates/wire/src/mercury/aoi/create.rs` does not carry the server template id in its NPC create cascade. The AP-10 world-tool selector resolves templates and life state through `server_entity_query` in the player's space, then intersects the returned entity ids with the client's visible map. See `docs/analysis/cellblock-autoplay/scenario-map.md` for the interface.

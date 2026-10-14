@@ -32,9 +32,18 @@ pub struct FindRequest {
     pub name: Option<String>,
     #[serde(default)]
     pub exact: bool,
-    /// Template: the client's `unitMobId` (the NPC's mob/template id).
+    /// Client `unitMobId`, distinct from server `template_id`.
     #[serde(default)]
     pub mob_id: Option<i64>,
+    /// Server `entity_templates.template_id`; `unitMobId` is not this id.
+    #[serde(default)]
+    pub template_id: Option<i32>,
+    /// Server life state (`BSF_Dead` or zero health).
+    #[serde(default)]
+    pub alive: Option<bool>,
+    /// Sort nearest first (default) or by stable entity id.
+    #[serde(default)]
+    pub nearest: Option<bool>,
     /// `AggressionLevel` name from `unitHostilityToPlayer`, e.g. `Hostile`,
     /// `Friendly` (case-insensitive).
     #[serde(default)]
@@ -97,6 +106,7 @@ pub struct Found {
     pub pose: Option<Pose>,
     pub distance_m: Option<f64>,
     pub info: Option<UnitInfo>,
+    pub server: Option<ServerEntity>,
     pub screen_point: Option<(f64, f64)>,
     pub on_screen: bool,
 }
@@ -127,6 +137,8 @@ impl Found {
             "hostility": info.map(|i| i.hostility.clone()).filter(|h| !h.is_empty()),
             "is_friend": info.and_then(|i| i.is_friend),
             "mob_id": info.and_then(|i| i.mob_id),
+            "template_id": self.server.as_ref().and_then(|e| e.template_id),
+            "alive": self.server.as_ref().and_then(|e| e.alive),
             "unit_exists": info.map(|i| i.exists),
             "is_player": self.is_player,
             "rendered": self.rendered(),
@@ -137,6 +149,14 @@ impl Found {
             "on_screen": self.on_screen,
         })
     }
+}
+
+/// Read-only identity and life state from the live cell, keyed by entity id.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServerEntity {
+    pub id: u32,
+    pub template_id: Option<i32>,
+    pub alive: Option<bool>,
 }
 
 /// A find's result.
@@ -179,6 +199,7 @@ pub async fn find_entities<W: WorldIo>(
                 _ => None,
             },
             info: None,
+            server: None,
             screen_point: None,
             on_screen: false,
         })
@@ -188,12 +209,31 @@ pub async fn find_entities<W: WorldIo>(
             (None, _) => true,
         })
         .collect();
-    cands.sort_by(|a, b| {
-        a.distance_m
-            .unwrap_or(f64::INFINITY)
-            .total_cmp(&b.distance_m.unwrap_or(f64::INFINITY))
-            .then(a.id.cmp(&b.id))
-    });
+    if req.nearest.unwrap_or(true) {
+        cands.sort_by(|a, b| {
+            a.distance_m
+                .unwrap_or(f64::INFINITY)
+                .total_cmp(&b.distance_m.unwrap_or(f64::INFINITY))
+                .then(a.id.cmp(&b.id))
+        });
+    } else {
+        cands.sort_by_key(|c| c.id);
+    }
+    if req.template_id.is_some() || req.alive.is_some() {
+        let server = io
+            .server_entities(snap.player_id, req.template_id)
+            .await
+            .map_err(|e| steps.fail(io.now_ms(), "server_entity_query", e))?;
+        let by_id: std::collections::HashMap<_, _> =
+            server.into_iter().map(|e| (e.id, e)).collect();
+        cands.retain_mut(|c| {
+            c.server = by_id.get(&c.id).cloned();
+            c.server.as_ref().is_some_and(|s| {
+                req.template_id.is_none_or(|id| s.template_id == Some(id))
+                    && req.alive.is_none_or(|alive| s.alive == Some(alive))
+            })
+        });
+    }
     steps.record(
         "read_entities",
         t0,

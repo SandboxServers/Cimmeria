@@ -26,7 +26,7 @@ struct RouteName {
 #[tool_router(router = world_router, vis = "pub(super)")]
 impl LabServer {
     #[tool(
-        description = "Find entities the client knows, by entity_id, name (substring), mob_id (the client's template id), hostility or distance. Per match: id, name, level, hostility, mob id, rendered (actor in the scene), targetable, position (client UE3 units and server metres), distance from the player, and the screen point from the game's own worldToPixel. Read-only (native_level: read)."
+        description = "Find entities the client knows, by entity_id, name, mob_id (client-only), server template_id, alive/dead, hostility or distance. template_id and alive join a read-only server_entity_query in the player's space and require the server lab MCP. Per match: id, name, template and life state when queried, rendered, targetable, position, distance and screen point. Read-only."
     )]
     async fn client_entity_find(
         &self,
@@ -37,7 +37,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Click an entity (entity_id or name) or a world point in the 3D view like a player: turn the camera onto it when off screen, put the cursor on it, check the client's mouse-over (another entity in the way fails as occluded unless force), click with real buttons (default right = interact), then report target and window changes when an effect is expected. `expect` (target, window, any, nothing) decides pass/fail. With `expect: nothing` (also the default for point clicks), the tool confirms native click dispatch only: after-state fields are null and `after_observed` is false. Assert the destination world or other effect separately. Reports the straight-line distance to the entity and whether it is inside the server's 5 m interact range (result.range); a right-click that opened nothing from farther away says so. Reports native_level."
+        description = "Click an entity (entity_id, name or server template_id) or a world point in the 3D view like a player. Entity selectors accept alive, nearest (default true; false sorts by entity id) and zero-based index. Template/life filters require the server lab MCP; the click remains real input. Turns the camera, verifies mouse-over, then clicks (default right = interact). `expect` decides pass/fail. With `expect: nothing` (also the default for point clicks), the tool confirms native dispatch only: after-state fields are null and `after_observed` is false. Assert the destination world or other effect separately. Reports range and native_level."
     )]
     async fn client_world_click(
         &self,
@@ -48,7 +48,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Target an entity (entity_id or name) by left-clicking it in the 3D view (same path as client_world_click) and verify Unit.Target became that entity. With allow_fallback, a failed click falls back to the stock targetUnit() and the result says native_level: ui_lua (N3), which a UAT runner must not count as a native pass."
+        description = "Target an entity (entity_id, name or server template_id; optional alive, nearest and zero-based index) by real left-click and verify Unit.Target. Template/life filters require the server lab MCP. With allow_fallback, a failed click uses stock targetUnit() and reports ui_lua (N3), never a native pass."
     )]
     async fn client_target(
         &self,
@@ -59,7 +59,7 @@ impl LabServer {
     }
 
     #[tool(
-        description = "Walk to a point (server metres by default, or space: client), an entity (entity_id or name; the goal follows it), through optional waypoints, with the movement keys: W held, turning with the client's bound turn keys (TurnLeft/TurnRight, Q/E by default), closed loop on the player's actor position every 100 ms. Intermediate waypoints use a 0.5 m arrival radius by default (waypoint_arrival_m can tighten it); the final goal uses arrival_m. Learns the turn rate and key sign from the pawn's yaw, fails as did-not-turn when the keys do nothing, jumps/strafes out of snags, fails on a teleport, a snag it cannot clear, or the timeout (default 60 s) with the distance left. Always releases the keys."
+        description = "Walk with real movement keys to a point, an entity (entity_id, name or server template_id; optional alive, nearest and zero-based index), through optional waypoints. Template/life filters require the server lab MCP. The entity goal follows its actor. Turns with bound turn keys, handles snags and teleports, and releases keys on every exit."
     )]
     async fn client_move_to(
         &self,
