@@ -376,10 +376,11 @@ mod tests {
         );
     }
 
-    /// Stock `/gmkilltarget <number>` sends -1 as an INT64; method 190 uses
-    /// the extended cell sub-slot 129 (`0x81`) and a 13-byte payload.
+    /// Pin the extended method-190 envelope when supplied the observed -1
+    /// sentinel. Live packet evidence, rather than this builder test, must
+    /// establish which value the stock slash command actually sends.
     #[test]
-    fn gm_kill_target_sentinel_wire_bytes() {
+    fn gm_kill_target_sentinel_encoder_bytes() {
         let got = GameSession::cell_method(190, 0x1234, &(-1i64).to_le_bytes());
         assert_eq!(
             got,
