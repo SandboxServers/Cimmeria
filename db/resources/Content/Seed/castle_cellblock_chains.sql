@@ -1466,7 +1466,8 @@ VALUES
   -- minigame trigger; the player needs to know to right-click it to
   -- start the hack. INT_MinigameLivewire (256) renders the wrench cursor
   -- the rest of the cellblock arc uses for HackTheRings_Switch.
-  -- Cleared by chain 1060 when they engage; restored on login by chain 1065.
+  -- Restored on login by chain 1065. The shared marker stays after one
+  -- player's victory so another player at step 3564 can still enter.
   (1058, 'set_interaction_type', NULL, 'Preparation_Terminal',
    '{"op": "|", "mask": 256}', 0, 2);
 
@@ -1500,13 +1501,7 @@ VALUES (1060, 'step_status', 641, '3564', 'eq', 'active', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
-  (1060, 'start_minigame', NULL, 'Livewire', '{"on_victory_chains": [1061]}', 0, 0),
-  -- Clear the Terminal's INT_MinigameLivewire (256) marker the moment the
-  -- minigame starts; player has engaged with it, no need to keep the cue
-  -- once they're in the minigame. Same shape as chain 1042 clearing the
-  -- Livewire icon off HackTheRings_Switch on victory.
-  (1060, 'set_interaction_type', NULL, 'Preparation_Terminal',
-   '{"op": "~", "mask": 256}', 0, 1);
+  (1060, 'start_minigame', NULL, 'Livewire', '{"on_victory_chains": [1061]}', 0, 0);
 
 -- Chain 1061: Livewire victory → display final dialog, complete 641, accept 680
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -1526,6 +1521,9 @@ VALUES
   -- actually use it; restored on login by chain 1074.
   (1061, 'set_interaction_type', NULL, 'Preparation_RingSwitch',
    '{"op": "|", "mask": 1073741824}', 0, 4);
+-- The terminal marker is shared by all players in this space. Keep it so a
+-- second player at step 3564 can still right-click after the first wins;
+-- chain 1060's step_status condition rejects a completed player.
 
 -- ============================================================
 -- MISSION 680 — Escape the Cellblock

@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use rand::RngExt;
-use tokio::sync::Mutex;
+use tokio::sync::{watch, Mutex};
 use tokio::time::Instant;
 
 pub use super::session_claim::ClaimRejection;
@@ -23,13 +23,10 @@ pub use super::session_snapshot::{BoardSnapshot, WireSnapshot};
 /// any kind: `MinigameRequestManager::QueueEntry`
 /// (`deprecated/cpp/src/baseapp/minigame.hpp`) carries no timestamp, and
 /// entries left the queue only through an explicit remove or cancel. Its
-/// recovery path was two client-driven RPCs instead —
-/// `endMinigameForPlayer` (base) and `minigameStartCancel` (cell method
-/// 30, `MINIGAME_RESULT_NotStarted`). Cimmeria implements neither; cell
-/// method 30 still logs `UNIMPLEMENTED`. Wiring that RPC through to
-/// [`SessionRegistry::remove`] is the faithful fix, and this TTL remains
-/// useful afterwards for the case the original had no answer to either: a
-/// client that crashes without sending anything.
+/// recovery path included client-driven cancellation. Cimmeria handles
+/// window close through `endCurrentMinigame`; `minigameStartCancel` (cell
+/// method 30) remains unimplemented. This TTL backs up a client crash
+/// before the SWF connects.
 ///
 /// The value is sized off the handshake it has to outlast — base pushes
 /// `onStartMinigame(URL)`, the client opens the Flash surface, the SWF
@@ -84,6 +81,9 @@ pub struct MinigameSession {
     /// task removes it when the socket closes, and a long Livewire round can
     /// easily outlive [`PENDING_SESSION_TTL`].
     pub connected: bool,
+    /// The cell's explicit close request reaches the connection task even if
+    /// the SWF leaves its SmartFox socket open after hiding the window.
+    pub cancel: watch::Sender<bool>,
 }
 
 /// Thread-safe session registry shared between BaseApp and the minigame TCP server.
@@ -142,6 +142,7 @@ impl SessionRegistry {
         client_ip: Option<std::net::IpAddr>,
     ) -> Option<String> {
         let ticket = generate_ticket();
+        let (cancel, _) = watch::channel(false);
         let session = MinigameSession {
             entity_id,
             player_id,
@@ -158,6 +159,7 @@ impl SessionRegistry {
             client_ip,
             created_at: Instant::now(),
             connected: false,
+            cancel,
         };
 
         let mut inner = self.inner.lock().await;
@@ -458,6 +460,30 @@ impl SessionRegistry {
         let mut inner = self.inner.lock().await;
         inner.sessions.remove(&entity_id);
         inner.boards.remove(&entity_id);
+    }
+
+    /// Cancel the entity's current session and release its registration.
+    /// The connection task keeps its ticket and cancel receiver, so its
+    /// teardown cannot erase a replacement session registered immediately.
+    pub async fn cancel(&self, entity_id: u32) -> bool {
+        let mut inner = self.inner.lock().await;
+        let Some(session) = inner.sessions.remove(&entity_id) else {
+            return false;
+        };
+        session.cancel.send_replace(true);
+        inner.boards.remove(&entity_id);
+        true
+    }
+
+    /// Whether the current registration belongs to this SmartFox ticket.
+    /// An absent registration is not a replacement; a different ticket is.
+    pub async fn has_replacement_ticket(&self, entity_id: u32, ticket: &str) -> bool {
+        self.inner
+            .lock()
+            .await
+            .sessions
+            .get(&entity_id)
+            .is_some_and(|session| session.ticket != ticket)
     }
 
     /// Remove a session only if it is still the one that minted `ticket`.

@@ -29,6 +29,7 @@ fn make_session(difficulty: u32, tech: u32, level: u32) -> MinigameSession {
         client_ip: None,
         created_at: tokio::time::Instant::now(),
         connected: false,
+        cancel: tokio::sync::watch::channel(false).0,
     }
 }
 

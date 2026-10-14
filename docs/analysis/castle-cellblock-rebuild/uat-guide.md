@@ -467,8 +467,12 @@ Run **once as Jaffa and once as Tau'ri**. Before the C01 purge, a Jaffa interact
 
 **Steps:**
 
-1. Right-click the Preparation terminal (`Preparation_Terminal`, spawn 16, at `(-187.71, 55.85, -141.50)`) and win the Livewire minigame.
-2. Check the quest log.
+1. Right-click the Preparation terminal (`Preparation_Terminal`, spawn 16,
+   at `(-187.71, 55.85, -141.50)`), close Livewire with its X, then
+   right-click the same terminal. The second click opens a fresh board;
+   the terminal keeps its Livewire cursor after the cancel.
+2. Win the reopened Livewire minigame.
+3. Check the quest log.
 
 **Expected:**
 

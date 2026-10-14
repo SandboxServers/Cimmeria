@@ -22,8 +22,10 @@ async fn minigame_result_forwards_to_cell_service() {
     handle_cell_message(
         CellToBaseMsg::MinigameResult {
             entity_id: 10,
+            ticket: "test-ticket".into(),
             result_code: 2,
             on_victory_chains: vec![100, 200],
+            notify_client: true,
         },
         &transport,
         &connected,
@@ -66,8 +68,10 @@ async fn minigame_result_with_dropped_cell_receiver_logs_error() {
     handle_cell_message(
         CellToBaseMsg::MinigameResult {
             entity_id: 10,
+            ticket: "test-ticket".into(),
             result_code: 2,
             on_victory_chains: vec![100, 200],
+            notify_client: true,
         },
         &transport,
         &connected,
@@ -102,8 +106,10 @@ async fn minigame_result_without_cell_channel_logs_warn() {
     handle_cell_message(
         CellToBaseMsg::MinigameResult {
             entity_id: 10,
+            ticket: "test-ticket".into(),
             result_code: 2,
             on_victory_chains: vec![100],
+            notify_client: true,
         },
         &transport,
         &connected,

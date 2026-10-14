@@ -27,11 +27,13 @@ pub(super) const RESULT_DEFEAT: u8 = 2;
 pub(super) async fn send_minigame_result(
     result_tx: &mpsc::Sender<CellToBaseMsg>,
     entity_id: u32,
+    ticket: &str,
     game_name: &str,
     player: &cimmeria_discord::Named,
     result_code: u8,
     on_victory_chains: Vec<i64>,
     phase: &'static str,
+    notify_client: bool,
 ) {
     // Discord gameplay-channel: a minigame finished (on by default — low
     // volume / high signal). The player is the `player_id` and character
@@ -55,8 +57,10 @@ pub(super) async fn send_minigame_result(
     if let Err(e) = result_tx
         .send(CellToBaseMsg::MinigameResult {
             entity_id,
+            ticket: ticket.to_owned(),
             result_code,
             on_victory_chains,
+            notify_client,
         })
         .await
     {
@@ -118,11 +122,13 @@ mod tests {
         send_minigame_result(
             &tx,
             /* entity_id */ 4242,
+            /* ticket */ "first-ticket",
             /* game_name */ "livewire",
             &cimmeria_discord::Named::new(7, Some("Hacker".into())),
             RESULT_VICTORY,
             /* on_victory_chains */ vec![100, 200],
             /* phase */ "victory_message",
+            true,
         )
         .await;
 
@@ -183,23 +189,29 @@ mod tests {
         send_minigame_result(
             &tx,
             99,
+            "first-ticket",
             "hack",
             &cimmeria_discord::Named::default(),
             RESULT_DEFEAT,
             vec![],
             "failure_tick",
+            true,
         )
         .await;
 
         match rx.try_recv() {
             Ok(CellToBaseMsg::MinigameResult {
                 entity_id,
+                ticket,
                 result_code,
                 on_victory_chains,
+                notify_client,
             }) => {
                 assert_eq!(entity_id, 99);
+                assert_eq!(ticket, "first-ticket");
                 assert_eq!(result_code, RESULT_DEFEAT);
                 assert!(on_victory_chains.is_empty());
+                assert!(notify_client);
             }
             other => panic!("expected MinigameResult, got {other:?}"),
         }

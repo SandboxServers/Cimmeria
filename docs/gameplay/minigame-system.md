@@ -50,14 +50,15 @@ Content chain fires Action::StartMinigame { minigame_type, difficulty,
 | Livewire | DONE | Fully ported in `minigame/games/livewire/` |
 | Hack, Activate, Analyze, Bypass, Converse, ConverseBasicHumanoid | PLACEHOLDER | `games/placeholder.rs` — the only accepted client message is `victory`, which is an instant win. Matches the original `Placeholder.py`; these game types had no real SWF beyond a shell |
 | Alignment, GoauldCrystals | NOT IMPL | Still Python-only; the factory has commented-out arms awaiting a port. An unrecognised game name silently falls back to the auto-win placeholder |
-| `startMinigame` / `endCurrentMinigame` | STUB | Cell methods 24 / 25 log `UNIMPLEMENTED` |
+| `startMinigame` | STUB | Cell method 24 logs `UNIMPLEMENTED` |
+| `endCurrentMinigame` | DONE | Cell method 25 cancels the current session and closes SmartFox |
 | Debug start / spectate / join / instance | STUB | Cell methods 20–23 log `UNIMPLEMENTED` |
 | Spectating | STUB | `requestSpectateList` (26), `spectateMinigame` (27) log `UNIMPLEMENTED` |
 | Helper registration | STUB | `registerToMinigameHelp` (28), `updateRegisterToMinigameHelp` (29) log `UNIMPLEMENTED` |
 | Helper call protocol | STUB | `minigameCallAccept` (31), `Decline` (32), `Abort` (33) log `UNIMPLEMENTED` |
 | NPC contacts | STUB | `minigameContactRequest` (34) logs `UNIMPLEMENTED` |
 | Tech competency | PARTIAL | The ticket carries a tech-competency field, but it is hardcoded to `1` — the value is not yet read from the player entity |
-| `endMinigameForPlayer` / `minigameStartCancel` | NOT IMPL | The original's two client-driven session-cancel RPCs. Cell method 30 logs `UNIMPLEMENTED`; the TTL sweep is the stand-in |
+| `endMinigameForPlayer` / `minigameStartCancel` | PARTIAL | Window close is handled by `endCurrentMinigame`; pre-connect start-dialog cancel remains unimplemented |
 | Mob/item attempt tracking | NOT IMPL | `minigameMobAttemptTracker`, `minigameItemAttemptTracker` unused |
 | Item integration | NOT IMPL | `addItemToMinigame`, `consumeItemByMinigame` unused |
 | Cheat detection | NOT IMPL | `updateMinigameItemCheats` unused |
@@ -142,7 +143,7 @@ A ticket is minted by `SessionRegistry::register` when the content chain starts 
 ## Session lifecycle
 
 A session exists in `SessionRegistry` from the moment the chain fires until
-the connection task that owns it finishes. Two things end it:
+the connection task finishes or the owner closes the window. Three things end it:
 
 1. **The connection task.** Login validates the ticket and claims the
    session in one locked step (`authenticate_and_claim`), so a task can
@@ -153,13 +154,24 @@ the connection task that owns it finishes. Two things end it:
    the task unregisters the session. A connected session is never expired
    by age, because a Livewire round can run longer than the TTL.
 
-   The task only ends when the server notices the socket is gone: a FIN or
+   Without an explicit close request, the task ends when the server
+   notices the socket is gone: a FIN or
    RST, a send that fails or blocks past 10 s, TCP keepalive giving up
    (about 90 s for an idle connection whose peer vanished), or the 30-minute
    idle timeout. Until then a SWF that reconnects after a half-open drop is
    refused as `ticket_already_claimed`. See
    [Connection limits](#connection-limits).
-2. **The expiry sweep.** A session whose SWF never connects has no task to
+2. **The window-close RPC.** `endCurrentMinigame` releases the registry entry
+   and signals the SmartFox task. That task reports Canceled (0), sends its
+   close sequence and closes the socket. A new interaction can register a
+   fresh ticket immediately; ticket-scoped teardown cannot remove it. A
+   result carries its old ticket so Base also skips `onEndMinigame` when a
+   replacement ticket is already registered, even if the SWF's FIN won a
+   race with the close RPC. A refused launch sends a feedback line. The
+   Preparation terminal keeps its shared Livewire marker after one player's
+   victory so other players still at mission 641 step 3564 can launch; the
+   mission step gates completed players from starting another board.
+3. **The expiry sweep.** A session whose SWF never connects has no task to
    clean it up. `spawn_sweep` runs every `SWEEP_INTERVAL` (60 s) and drops
    every unconnected session older than `PENDING_SESSION_TTL` (180 s).
    `register` also sweeps before its duplicate check, so the next
@@ -171,12 +183,10 @@ entity id and every later interaction with the same object was rejected
 until the player relogged.
 
 The TTL is a **backstop, not a port**. The original had no timeout at all:
-its `MinigameRequestManager::QueueEntry` carries no timestamp. It relied on
-two client-driven RPCs instead — `endMinigameForPlayer` and
-`minigameStartCancel` — neither of which Cimmeria implements yet. Wiring
-those through to `SessionRegistry::remove` is the faithful fix; the TTL
-still earns its place afterwards for the case the original had no answer to
-either, a client that crashes without sending anything.
+its `MinigameRequestManager::QueueEntry` carries no timestamp. Cimmeria
+now handles window close through `endCurrentMinigame`; pre-connect
+`minigameStartCancel` remains open. The TTL backs up a client that
+crashes without sending either call.
 
 ### Connection limits
 
@@ -303,7 +313,8 @@ Either player:
 4. **Helper call protocol** — the whole request → PhaseTwo → accept/decline flow, including tip cash movement
 5. **Spectating** — `requestSpectateList` / `spectateMinigame`
 6. **NPC contacts** — contact acquisition and expiry mechanics
-7. **Session-cancel RPCs** — `endMinigameForPlayer` and `minigameStartCancel` (cell method 30). Until they land, an abandoned launch is recovered by the TTL sweep rather than by the client telling the server it closed the window
+7. **Pre-connect cancel** - `minigameStartCancel` (cell method 30) is
+   still a stub. The TTL recovers a pending launch when the SWF never connects.
 
 ## Related Docs
 

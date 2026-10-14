@@ -146,6 +146,7 @@ pub(super) async fn run_session(
     let entity_id = session.entity_id;
     let room_id = registry.allocate_room_id().await;
     let user_id = entity_id.to_string();
+    let mut cancel = session.cancel.subscribe();
 
     // Send login success sequence (matching C++ exactly)
     let game_name = session.game_name.clone();
@@ -306,6 +307,13 @@ pub(super) async fn run_session(
 
         loop {
             tokio::select! {
+                // A window close and the SWF's FIN can arrive together. The
+                // close RPC must win so its result cannot end a new board.
+                biased;
+                _ = async { let _ = cancel.wait_for(|requested| *requested).await; } => {
+                    end_reason = EndReason::PlayerCanceled;
+                    game_complete = true;
+                }
                 // Read incoming messages
                 result = read_null_terminated(&mut out.stream, &mut buf, &mut buf_len) => {
                     match result {
@@ -348,11 +356,13 @@ pub(super) async fn run_session(
                                                 send_minigame_result(
                                                     result_tx,
                                                     entity_id,
+                                                    &session.ticket,
                                                     &game_name,
                                                     &player,
                                                     RESULT_VICTORY,
                                                     on_victory_chains.clone(),
                                                     "victory_message",
+                                                    true,
                                                 )
                                                 .await;
                                             }
@@ -373,11 +383,13 @@ pub(super) async fn run_session(
                                                 send_minigame_result(
                                                     result_tx,
                                                     entity_id,
+                                                    &session.ticket,
                                                     &game_name,
                                                     &player,
                                                     RESULT_DEFEAT,
                                                     vec![],
                                                     "failure_message",
+                                                    true,
                                                 )
                                                 .await;
                                             }
@@ -500,11 +512,13 @@ pub(super) async fn run_session(
                                 send_minigame_result(
                                     result_tx,
                                     entity_id,
+                                    &session.ticket,
                                     &game_name,
                                     &player,
                                     RESULT_VICTORY,
                                     on_victory_chains.clone(),
                                     "victory_tick",
+                                                    true,
                                 )
                                 .await;
                             }
@@ -525,11 +539,13 @@ pub(super) async fn run_session(
                                 send_minigame_result(
                                     result_tx,
                                     entity_id,
+                                    &session.ticket,
                                     &game_name,
                                     &player,
                                     RESULT_DEFEAT,
                                     vec![],
                                     "failure_tick",
+                                                    true,
                                 )
                                 .await;
                             }
@@ -559,6 +575,11 @@ pub(super) async fn run_session(
     // original's cell handler is what cleared `BSF_PlayingMinigame` and
     // released the movement lock. When either of those lands, dropping this
     // report would strand the player.
+    // FIN may have won the read arm just before the close RPC reached the
+    // registry. Recheck the watch before reporting an aborted result.
+    if !result_reported && *cancel.borrow() {
+        end_reason = EndReason::PlayerCanceled;
+    }
     if !result_reported {
         tracing::info!(
             entity_id,
@@ -586,11 +607,13 @@ pub(super) async fn run_session(
         send_minigame_result(
             result_tx,
             entity_id,
+            &session.ticket,
             &game_name,
             &player,
             RESULT_CANCELED,
             vec![],
             "aborted",
+            end_reason != EndReason::PlayerCanceled,
         )
         .await;
     }
