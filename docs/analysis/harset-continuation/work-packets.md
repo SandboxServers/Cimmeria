@@ -29,10 +29,11 @@ Each blocked row names the contract that must be closed before the original impl
 | HA-00a | 73 census | Done at CSV evidence level | Reviewed dispositions in README; missing build lineage remains held |
 | HA-00b | Reset/evidence/restoration ID proposals | Integrated | Wave-0 documentation evidence only; three findings fixed by `22982c17a`, fresh rereview clean. Proposals stay inactive until allocation signoff |
 | HA-00c | Authored/repeatable exact IDs | BlockedEvidence | CB-N05a is merged; inspect stock catalog and Cellblock's first authored client proof, then perform current global ID audit under O14-04/10/13 |
-| HA-1360a1 | Atomic base transaction and writer fence | Ready | Exact [a1 manifest and guards](worknotes/HA-1360a-seal.md#ha-1360a1--transaction-and-stale-writer-fence) sealed after database, mission, authority and testing review; implementation/test proof open |
-| HA-1360a2a | Session token world-entry delivery and lifetime | Ready | [Exact manifest and deterministic replacement/reuse tests](worknotes/HA-1360a-seal.md#a2a-dispatch-seal); implementation and checks open |
-| HA-1360a2b | Correlated request/result routing and A1 invocation | BlockedDependency | A1 and a2a integrated; exact spawned DB handoff, wire DTO and routed live-DB tests still to seal |
-| HA-1360a3 | Strict action, pending/recovery and continuation | BlockedDependency | A2 transport interface; exact cell teardown and result manifest still to seal |
+| HA-1360a1 | Atomic base transaction and writer fence | Integrated | Reviewed transaction and stale-writer guards; 670 nextest and seven live-DB tests passed |
+| HA-1360a2a | Session token world-entry delivery and lifetime | Integrated | Reviewed entry-epoch and replacement guards; default and `lab-chaos` lane suites passed |
+| HA-1360a2b | Correlated request/result routing and A1 invocation | Dispatched | [Exact plugin, DTO, client-sync and test manifest](worknotes/HA-1360a-seal.md#a2b-dispatch-seal); review and integration pending |
+| HA-1360a3a | Strict mandatory action and loader | Dispatched | [Exact parser and test manifest](worknotes/HA-1360a-seal.md#a3a-dispatch-seal); review and integration pending |
+| HA-1360a3b/c | Pending/retry and correlated continuation | BlockedDependency | [Sequential manifests](worknotes/HA-1360a-seal.md#ha-1360a3--strict-action-pending-state-and-continuation); a2b DTO and prior A3 child integration |
 | HA-1360b | Marsh receiving seed and cross-zone proof | BlockedDependency | HA-1360a integrated/reviewed; CS-08a actual crossing and retained letter; receiving graph signoff |
 | HA-01a | Travel/placement | BlockedEvidence | Four Market/Storage thresholds + arrivals, clearance, wrong-world and relog; preserve 6007/1361 linkage |
 | HA-01b | 1664, proposed | BlockedEvidence | Castle CS-06 grant edge, Kaerlia identity, dialog/faction graph and placement |
@@ -100,7 +101,7 @@ For 567, first prove the item-2698 acquisition and faction-compatible Castle acc
 
 ## HA-1360a — authoritative letter turn-in prerequisite
 
-**Status: Writing.** Audience: engine implementer and database, authority, mission and testing reviewers. The owner requires an owned letter for Marsh's completion. A1 transaction/receipt and A2a session-token/entry-epoch work are integrated with reviewed tests; A2b plugin route and guarded inventory sync are dispatched. A3 strict continuation remains open; B owns the seed and cross-zone proof. A2c separately tracks a preexisting general post-handoff race. [The engine worknote](worknotes/HA-1360a-seal.md) supersedes the provisional design details below and records the current exact manifests. This is a bounded mission-1360 seam, not a redesign of every inventory or mission writer. Split any child that exceeds the shared 40k working-token / 90k context envelope.
+**Status: Implementing.** Audience: engine implementer and database, authority, mission and testing reviewers. The owner requires an owned letter for Marsh's completion. A1 transaction/receipt and A2a session-token/entry-epoch work are integrated with reviewed tests; A2b plugin route and guarded inventory sync and A3a strict action are dispatched. A3b pending/retry and A3c continuation follow sequentially; B owns the seed and cross-zone proof. A2c separately tracks a preexisting general post-handoff race. [The engine worknote](worknotes/HA-1360a-seal.md) supersedes the provisional design details below and records the current exact manifests. This is a bounded mission-1360 seam, not a redesign of every inventory or mission writer. Split any child that exceeds the shared 40k working-token / 90k context envelope.
 
 ### Current source evidence
 
@@ -144,8 +145,9 @@ transaction, mission writer guard and live-DB failure/concurrency proof;
 into a2a token/entry epoch and a2b route/sync; a2c separately tracks a
 preexisting general post-handoff entry race;
 **HA-1360a3** owns the strict content action, cell pending/result state,
-retry and relog proof. HA-1360b remains the seed/receipt child. A1 and a2a
-are integrated with tests; a2b is dispatched and a3 retains its manifest gate.
+retry and relog proof, split into a3a parser, a3b request/retry and a3c
+result/continuation packets. HA-1360b remains the seed/receipt child. A1 and
+a2a are integrated with tests; a2b and a3a are dispatched.
 The engine children remain undeployed campaign integration until 6501 is
 replaced: the old chain would otherwise remove a letter and have its
 independent completion rejected.
@@ -164,7 +166,7 @@ file scope and tests are in [the engine worknote](worknotes/HA-1360a-seal.md).
 
 **Checks and docs after seal:** fmt; lane clippy and focused nextest for every changed crate in dependency order; worktree-only live-DB lane filters for transaction/concurrency/recovery tests; merged-wave full checks and independent reviewer/fixer. No cargo or database operation belongs to this planning gate. The implementation owes the game-systems/content-engine and persistence rows of the [doc-update map](../../agents/doc-update-map.md), existing mission engine bible/reference where applicable, and a worknote. Propose a missing engine chapter before writing parallel canon. Rollback scope includes schema/outbox compatibility and committed-result reconciliation; do not blindly delete persisted completions or restore consumed items. The DB and mission reviewers must sign a safe rollback/recovery procedure before Ready.
 
-**Branches and worktrees:** The current per-child branch, worktree, commit subject, manifest and checks are in [the engine worknote](worknotes/HA-1360a-seal.md). The integrated a1/a2a commits remain undeployed until a2b/a2c/a3/b complete and replace old chain 6501; no early standalone merge is authorized.
+**Branches and worktrees:** The current per-child branch, worktree, commit subject, manifest and checks are in [the engine worknote](worknotes/HA-1360a-seal.md). The integrated a1/a2a commits remain undeployed until a2b/a3/b complete and replace old chain 6501; a2c is a separate world-entry follow-up. No early standalone merge is authorized.
 
 ## HA-1360b — Marsh receiving seed and cross-zone proof
 
@@ -172,7 +174,7 @@ file scope and tests are in [the engine worknote](worknotes/HA-1360a-seal.md).
 
 **Files and IDs:** `db/resources/Content/Seed/harset_opcore_chains.sql`, only 6501/6502/6505; `crates/cell-content/src/cell/content/chain_replay_tests/mission_1360_harset.rs`; one focused cross-service test/module declaration under `crates/services/src/` named at seal; `docs/content/mission-chains.md`, this ledger/RESUME and a HA-1360b worknote; UAT checklist and `docs/guides/unified-uat.md` when implementation publishes runnable steps. Preserve existing ID ownership: 6501 Marsh receipt, 6502 load/relog binding, 6505 post-1361 restore; 6503/6504 remain disabled for 567. No new content IDs are required by the proposed compound action. If a separate continuation chain becomes necessary, return to HA-00b to reserve and globally collision-check an individual free 6506–6510 ID before dispatch; the numeric gap is not an allocation.
 
-Replace 6501's independent removal/completion and precommit success side effects with the sealed HA-1360a operation/continuation. Retain world 68, active 1360/4038 and 1361/4694 disjointness guards, Marsh speaker routing, 4576, DSM 5356 template slot 10 and the 6511 offer order. Correct the obsolete container-filter and intentional missing-letter comments. Do not author `has_item`, add a duplicate Castle grant/advance, change 1361 rewards or enable 567. Bind restoration after refusal/relog must remain usable and cannot replay success into a new session.
+Replace 6501's independent removal/completion and precommit success side effects with the sealed HA-1360a operation/continuation. Retain world 68, active 1360/4038 and 1361/4694 disjointness guards, Marsh speaker routing, 4576 and the 6511 offer order. Reserve DSM 120101 as an interaction-only Marsh binding for slot 10 after a fresh collision check; leave stock DSM 5356 untouched. Correct the obsolete container-filter and intentional missing-letter comments. Do not author `has_item`, add a duplicate Castle grant/advance, change 1361 rewards or enable 567. Bind restoration after refusal/relog must remain usable and cannot replay success into a new session.
 
 **Tests and revert proof:** seeded exact-action replay plus production executor/base live-DB consumption/persistence. Begin at actual Cellblock acceptance/grant chains 1003/1121, execute CS-08a's actual Castle→Harset crossing, then the Harset world-68 receipt; injecting 4038 proves only the local graph. Include wrong 4037/world/recipient, missing/foreign/storage-only letter, active 1361/4694 overlap, duplicate click, relog before/after commit, recovered delivery and two characters on the shared Marsh. Assert exact owned decrement, persisted objectives/completion/repeats, binding/4576/6511 order, refusal feedback and no success frames/events through a real receiver. Existing executor message-count tests are insufficient. Separately remove the receiving action, HA-1360a executor/result arm and CS-08a advance in committed disposable reverts; the relevant guard must fail. Do not call a skipped live-DB pass acceptance.
 
