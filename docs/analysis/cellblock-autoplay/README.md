@@ -90,7 +90,7 @@ Status vocabulary: **Ready**, **BlockedDependency**, **BlockedDecision**, **Writ
 | AP-00 | Lab install script and local endpoint | Ready | | |
 | AP-01 | Spec and doc drift fixes | Ready | | |
 | AP-02 | Runner: one character through a campaign | Ready | | |
-| AP-03 | Runner: tool captures, ids and clause ops | Ready | | |
+| AP-03 | Runner: tool captures, ids and clause ops | Writing | | Tool/server capture, runtime ids and clause ops implemented; crate tests pass, live integration pending. |
 | AP-04 | Runner: repeat-until, row timeouts, timing clauses | BlockedDependency | | AP-03 |
 | AP-10 | Targeting by template, alive or dead | Ready | | |
 | AP-11 | Routes: server path tool, recorder, Cellblock routes | Ready | | live half after AP-00 |

@@ -112,6 +112,42 @@ fn approx_holds_within_the_tolerance_either_way() {
     assert!(compare(Some(Op::Approx), Some(&json!(15)), Some(&json!(15))).is_err());
 }
 
+#[test]
+fn delta_uses_a_captured_baseline() {
+    assert!(compare_delta(Some(&json!(7)), Some(&json!(10)), Some(&json!(-3))).unwrap());
+    assert!(!compare_delta(Some(&json!(8)), Some(&json!(10)), Some(&json!(-3))).unwrap());
+    assert!(compare_delta(Some(&json!("9.5")), Some(&json!(10.0)), Some(&json!(-0.5))).unwrap());
+    assert!(compare_delta(Some(&json!(7)), None, Some(&json!(-3))).is_err());
+}
+
+#[test]
+fn bit_ops_keep_all_64_bits_exact() {
+    let above_f64 = json!(9_007_199_254_740_993_u64);
+    assert!(compare(Some(Op::BitSet), Some(&above_f64), Some(&json!(1))).unwrap());
+    assert!(compare(
+        Some(Op::BitSet),
+        Some(&above_f64),
+        Some(&json!("0x20000000000000"))
+    )
+    .unwrap());
+    assert!(!compare(Some(Op::BitClear), Some(&above_f64), Some(&json!(1))).unwrap());
+    assert!(compare(Some(Op::BitClear), Some(&above_f64), Some(&json!(2))).unwrap());
+    assert!(compare(Some(Op::BitSet), Some(&json!(-1)), Some(&json!(1))).is_err());
+}
+
+#[test]
+fn any_matches_one_array_sub_object() {
+    let items = json!([{ "name": "Ammo", "delta": 2 }, { "name": "Health Slappack", "delta": -1, "before": 3 }]);
+    let want = json!({"name": "Health Slappack", "delta": -1});
+    assert!(compare(Some(Op::Any), Some(&items), Some(&want)).unwrap());
+    assert!(!compare(
+        Some(Op::Any),
+        Some(&items),
+        Some(&json!({"name": "Health Slappack", "delta": -2}))
+    )
+    .unwrap());
+}
+
 /// A canned `server_packet_tap_read` result: two timer sends for
 /// entity 7 (decoded 15.2 s and 14.6 s), one for entity 9, and an
 /// inbound cast request.

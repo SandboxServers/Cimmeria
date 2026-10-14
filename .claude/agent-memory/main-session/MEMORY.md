@@ -56,6 +56,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [project_texture_upscale_forensics.md](project_texture_upscale_forensics.md) — 512x256 10-mip DXT1 shape is stock-valid; silent failures mean bad data below mip 0; pixel-format enum fixed in #839
 
 ## Reference
+- [reference_lab_uat_capture_ids_2026_10_13.md](reference_lab_uat_capture_ids_2026_10_13.md) — UAT AP-03 id sources: server_sessions has optional player_id; client_player_state omits entity_id, so client_entity_find /player/id supplies it
 - [reference_lab_dialog_close_2026_10_13.md](reference_lab_dialog_close_2026_10_13.md) — one-page Cellblock Done click can leave DialogWin visible; verify closure and use the native close fallback
 - [reference_lab_hub_pass_lessons_2026_10_13.md](reference_lab_hub_pass_lessons_2026_10_13.md) — 2026-10-13 hub-pass lessons include the confirmed CEGUI top-child hit-test binding and covering-window refusal rule
 

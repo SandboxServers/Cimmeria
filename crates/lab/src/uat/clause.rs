@@ -140,6 +140,21 @@ pub fn compare_tol(
             // A hair of slack so `15 ± 1` keeps 16.0 after float noise.
             as_f64(obs).is_some_and(|h| (h - want).abs() <= tol + 1e-9)
         }
+        Op::Delta => return Err("delta needs a captured baseline".into()),
+        Op::BitSet => bit_compare(observed, need()?, true)?,
+        Op::BitClear => bit_compare(observed, need()?, false)?,
+        Op::Any => {
+            let fields = need()?.as_object().ok_or("any needs a sub-object value")?;
+            obs.as_array().is_some_and(|rows| {
+                rows.iter().any(|row| {
+                    row.as_object().is_some_and(|o| {
+                        fields
+                            .iter()
+                            .all(|(key, want)| o.get(key).is_some_and(|have| loose_eq(have, want)))
+                    })
+                })
+            })
+        }
         Op::Gt | Op::Gte | Op::Lt | Op::Lte | Op::LenGte => {
             let want = as_f64(need()?).ok_or("a numeric op needs a numeric value")?;
             let have = if op == Op::LenGte {
@@ -162,6 +177,74 @@ pub fn compare_tol(
                 _ => have <= want,
             }
         }
+    })
+}
+
+/// Compare with a captured baseline. Integer deltas stay exact; the
+/// floating fallback is for client health values that arrive as decimals.
+pub fn compare_delta(
+    observed: Option<&Value>,
+    baseline: Option<&Value>,
+    value: Option<&Value>,
+) -> Result<bool, String> {
+    let Some(have) = observed else {
+        return Ok(false);
+    };
+    let base = baseline.ok_or("delta needs a captured baseline")?;
+    let want = value.ok_or("delta needs a value")?;
+    if let (Some(h), Some(b), Some(w)) = (
+        signed_integer(have),
+        signed_integer(base),
+        signed_integer(want),
+    ) {
+        return Ok(h - b == w);
+    }
+    let (h, b, w) = (
+        as_f64(have).ok_or("delta observation is not numeric")?,
+        as_f64(base).ok_or("delta baseline is not numeric")?,
+        as_f64(want).ok_or("delta value is not numeric")?,
+    );
+    Ok(h.is_finite() && b.is_finite() && w.is_finite() && ((h - b) - w).abs() < 1e-9)
+}
+
+fn signed_integer(v: &Value) -> Option<i128> {
+    match v {
+        Value::Number(n) => n
+            .as_i64()
+            .map(i128::from)
+            .or_else(|| n.as_u64().map(i128::from)),
+        Value::String(s) => s.parse().ok(),
+        _ => None,
+    }
+}
+
+fn integer_bits(v: &Value) -> Result<u64, String> {
+    match v {
+        Value::Number(n) => n
+            .as_u64()
+            .ok_or_else(|| "bit op needs a non-negative u64".into()),
+        Value::String(s) => {
+            let s = s.trim();
+            if let Some(hex) = s.strip_prefix("0x") {
+                u64::from_str_radix(hex, 16).map_err(|_| "bit op needs a u64 mask".into())
+            } else {
+                s.parse().map_err(|_| "bit op needs a u64 mask".into())
+            }
+        }
+        _ => Err("bit op needs a u64 mask".into()),
+    }
+}
+
+fn bit_compare(observed: Option<&Value>, mask: &Value, set: bool) -> Result<bool, String> {
+    let mask = integer_bits(mask)?;
+    let Some(observed) = observed else {
+        return Ok(false);
+    };
+    let bits = integer_bits(observed)?;
+    Ok(if set {
+        bits & mask == mask
+    } else {
+        bits & mask == 0
     })
 }
 

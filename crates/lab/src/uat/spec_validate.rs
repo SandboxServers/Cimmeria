@@ -384,14 +384,28 @@ fn check_action(row: &str, a: &ActionSpec, errs: &mut Vec<String>) {
     match a.kind() {
         Err(e) => errs.push(format!("{row}: {e}")),
         Ok(ActionKind::Capture) => {
-            if a.regex.is_none() || a.var.is_none() {
-                errs.push(format!("{row}: capture needs regex and var"));
+            if a.var.as_deref().is_none_or(str::is_empty) {
+                errs.push(format!("{row}: capture needs var"));
             }
-            if a.capture.as_deref() != Some("chat") {
-                errs.push(format!("{row}: capture source must be \"chat\""));
+            match a.capture.as_deref() {
+                Some("chat") if a.regex.is_some() && a.tool.is_none() && a.pointer.is_none() => {}
+                Some("tool" | "server")
+                    if a.tool.is_some() && a.pointer.is_some() && a.regex.is_none() => {}
+                Some("chat") => errs.push(format!(
+                    "{row}: chat capture needs regex, without tool or pointer"
+                )),
+                Some("tool" | "server") => errs.push(format!(
+                    "{row}: tool/server capture needs tool and pointer, without regex"
+                )),
+                _ => errs.push(format!(
+                    "{row}: capture source must be chat, tool or server"
+                )),
             }
         }
         Ok(ActionKind::Tool) => {
+            if a.pointer.is_some() {
+                errs.push(format!("{row}: action pointer belongs to a capture"));
+            }
             // The ability lab commands are chat lines the runner builds:
             // a bad disposition or id is a spec error, not a typed typo.
             if let Some(t) = a.tool.as_deref() {
@@ -519,6 +533,23 @@ fn check_clause(c: &ExpectSpec) -> Result<(), String> {
             || !c.value.as_ref().is_some_and(Value::is_number))
     {
         return Err("op approx needs a numeric value and a finite tolerance >= 0".into());
+    }
+    if c.op == Some(Op::Delta)
+        && (c.baseline.is_none() || !c.value.as_ref().is_some_and(Value::is_number))
+    {
+        return Err("op delta needs baseline and numeric value".into());
+    }
+    if c.baseline.is_some() && c.op != Some(Op::Delta) {
+        return Err("baseline belongs to op delta".into());
+    }
+    if c.op == Some(Op::Delta) && !matches!(c.source, Source::Tool | Source::Server | Source::Lua) {
+        return Err("op delta applies to tool, server and lua clauses".into());
+    }
+    if matches!(c.op, Some(Op::BitSet | Op::BitClear)) && c.value.is_none() {
+        return Err("bit_set/bit_clear needs a mask value".into());
+    }
+    if c.op == Some(Op::Any) && !c.value.as_ref().is_some_and(Value::is_object) {
+        return Err("op any needs a sub-object value".into());
     }
     if let Some(re) = &c.matches {
         regex::Regex::new(&without_vars(re)).map_err(|e| format!("bad regex {re:?}: {e}"))?;

@@ -10,10 +10,10 @@ use super::packet::ENTITY_VAR;
 use super::players::Who;
 use super::server_wait::WAIT_POLL;
 use super::{now_ms, utc_of, RowCtx, Runner};
-use crate::uat::clause::{compare_tol, describe, eval_chat, json_at, new_lines};
+use crate::uat::clause::{compare_delta, compare_tol, describe, eval_chat, json_at, new_lines};
 use crate::uat::evidence::{clip, ClauseResult, Verdict};
 use crate::uat::invoke::ToolInvoker;
-use crate::uat::spec::{ExpectSpec, Source};
+use crate::uat::spec::{ExpectSpec, Op, Source};
 
 /// The server read `@ability_state` resolves to (AB-L1).
 const ABILITY_STATE_TOOL: &str = "server_ability_state";
@@ -345,6 +345,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
 pub(crate) fn with_vars(c: &ExpectSpec, vars: &serde_json::Map<String, Value>) -> ExpectSpec {
     let mut c = c.clone();
     c.value = c.value.map(|v| subst(&v, vars));
+    c.baseline = c.baseline.map(|v| subst(&v, vars));
     if let Some(m) = c.match_fields.take() {
         c.match_fields = subst(&Value::Object(m), vars).as_object().cloned();
     }
@@ -361,7 +362,12 @@ fn capture(c: &ExpectSpec, observed: Option<&Value>, ctx: &mut RowCtx) {
 }
 
 fn judge(c: &ExpectSpec, observed: Option<Value>, r: &mut ClauseResult) {
-    match compare_tol(c.op, observed.as_ref(), c.value.as_ref(), c.tolerance) {
+    let verdict = if c.op == Some(Op::Delta) {
+        compare_delta(observed.as_ref(), c.baseline.as_ref(), c.value.as_ref())
+    } else {
+        compare_tol(c.op, observed.as_ref(), c.value.as_ref(), c.tolerance)
+    };
+    match verdict {
         Ok(ok) => r.verdict = if ok { Verdict::Pass } else { Verdict::Fail },
         Err(e) => r.detail = Some(e),
     }
