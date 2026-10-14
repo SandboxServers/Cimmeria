@@ -256,3 +256,86 @@ async fn timed_out_tick_loop_does_not_destroy_the_session_that_replaced_it() {
     );
     assert!(!new_flag.load(Ordering::Relaxed));
 }
+
+#[tokio::test]
+async fn cancelled_tick_owner_removes_session_mapping_and_notifies_cell() {
+    let addr: SocketAddr = "127.0.0.1:52507".parse().unwrap();
+    let player_eid = 52_507;
+    let mut state = test_default_connected_client_state();
+    state.player_entity_id = Some(player_eid);
+    state.cancelled.store(true, Ordering::Release);
+    let cancelled = Arc::clone(&state.cancelled);
+    let connected: Connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
+    let mapping = Arc::new(Mutex::new(HashMap::from([(player_eid, addr)])));
+    let (cell_tx, mut cell_rx) = tokio::sync::mpsc::channel(1);
+    tokio::time::timeout(
+        Duration::from_secs(2),
+        crate::base::tick_sync::run_tick_loop(
+            transport(),
+            addr,
+            [0; 32],
+            Default::default(),
+            Arc::new(AtomicU32::new(0)),
+            Arc::new(Mutex::new(Vec::new())),
+            Arc::new(Mutex::new(Instant::now())),
+            cancelled,
+            Arc::clone(&connected),
+            Arc::new(Mutex::new(EntityManager::new())),
+            Some(cell_tx),
+            Arc::clone(&mapping),
+            None,
+        ),
+    )
+    .await
+    .expect("cancelled tick must exit");
+    assert!(!connected.lock().unwrap().contains_key(&addr));
+    assert!(!mapping.lock().unwrap().contains_key(&player_eid));
+    let msg = tokio::time::timeout(Duration::from_secs(2), cell_rx.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    let BaseToCellMsg::DisconnectEntity {
+        entity_id,
+        reply_tx,
+    } = msg
+    else {
+        panic!("expected cell disconnect");
+    };
+    assert_eq!(entity_id, player_eid);
+    reply_tx.send(()).unwrap();
+}
+
+#[tokio::test]
+async fn cancelled_old_tick_leaves_same_address_replacement_and_mapping() {
+    let addr: SocketAddr = "127.0.0.1:52508".parse().unwrap();
+    let new_entity = 52_508;
+    let mut replacement = test_default_connected_client_state();
+    replacement.player_entity_id = Some(new_entity);
+    let new_flag = Arc::clone(&replacement.cancelled);
+    let connected: Connected = Arc::new(Mutex::new(HashMap::from([(addr, replacement)])));
+    let mapping = Arc::new(Mutex::new(HashMap::from([(new_entity, addr)])));
+    let old_flag = Arc::new(AtomicBool::new(true));
+    tokio::time::timeout(
+        Duration::from_secs(2),
+        crate::base::tick_sync::run_tick_loop(
+            transport(),
+            addr,
+            [0; 32],
+            Default::default(),
+            Arc::new(AtomicU32::new(0)),
+            Arc::new(Mutex::new(Vec::new())),
+            Arc::new(Mutex::new(Instant::now())),
+            old_flag,
+            Arc::clone(&connected),
+            Arc::new(Mutex::new(EntityManager::new())),
+            None,
+            Arc::clone(&mapping),
+            None,
+        ),
+    )
+    .await
+    .expect("cancelled old tick must exit");
+    assert!(connected.lock().unwrap().contains_key(&addr));
+    assert_eq!(mapping.lock().unwrap().get(&new_entity), Some(&addr));
+    assert!(!new_flag.load(Ordering::Acquire));
+}

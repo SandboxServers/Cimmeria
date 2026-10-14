@@ -9,7 +9,9 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use cimmeria_entity::manager::EntityManager;
 use cimmeria_mercury::packet::{build_outgoing, FLAG_HAS_SEQUENCE, FLAG_ON_CHANNEL, FLAG_RELIABLE};
@@ -22,6 +24,13 @@ use tracing::Level;
 use crate::base::ConnectedClientState;
 use crate::cell::messages::BaseToCellMsg;
 use crate::test_support::{test_default_connected_client_state, LogCapture};
+use cimmeria_base_session::base::helpers::{
+    derive_letter_turn_in_token, send_letter_turn_in_method, ExpectedLetterTurnInEntry,
+    LetterTurnInSendOutcome,
+};
+use cimmeria_wire::cell::messages::{
+    LetterTurnInAttempt, LetterTurnInEntryEpoch, LetterTurnInRequest,
+};
 
 use super::handle_encrypted_datagram;
 
@@ -216,4 +225,232 @@ async fn a_too_short_payload_logs_a_negative_event_not_a_silent_drop() {
         dispatched(&mut rig).is_empty(),
         "a malformed payload must not reach the cell"
     );
+}
+
+struct PartialWire;
+
+impl Transport for PartialWire {
+    fn send_to<'life0, 'life1, 'async_trait>(
+        &'life0 self,
+        _: &'life1 [u8],
+        _: SocketAddr,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = std::io::Result<usize>> + Send + 'async_trait>,
+    >
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        Self: 'async_trait,
+    {
+        Box::pin(async { panic!("letter admission must be synchronous") })
+    }
+
+    fn try_send_to(&self, bytes: &[u8], _: SocketAddr) -> std::io::Result<usize> {
+        Ok(bytes.len() - 1)
+    }
+
+    fn local_addr(&self) -> std::io::Result<SocketAddr> {
+        Ok("127.0.0.1:1".parse().unwrap())
+    }
+}
+
+async fn assert_fatal_letter_admission_blocks_method_and_tears_down(full_queue: bool) {
+    let mut rig = rig();
+    let player_id = 40_001;
+    let (expected, cancelled, unreliable, pending, last_recv, key, version) = {
+        let mut clients = rig.connected.lock().unwrap();
+        let state = clients.get_mut(&rig.addr).unwrap();
+        state.active_player_id = Some(player_id);
+        state.world_name = Some("Harset_CmdCenter".to_owned());
+        let epoch = LetterTurnInEntryEpoch::new(1);
+        state.extensions.insert(epoch);
+        let request = LetterTurnInRequest {
+            entity_id: WITNESS_ID,
+            player_id,
+            attempt: LetterTurnInAttempt::from_bytes([4; 16]),
+            token: derive_letter_turn_in_token(&state.key),
+            generation: state.connected_at,
+            epoch,
+        };
+        (
+            ExpectedLetterTurnInEntry::capture(rig.addr, state, &request).unwrap(),
+            Arc::clone(&state.cancelled),
+            Arc::clone(&state.next_seq_unreliable),
+            Arc::clone(&state.pending_acks),
+            Arc::clone(&state.last_recv),
+            state.key,
+            state.enc_version,
+        )
+    };
+    rig.entity_to_addr
+        .lock()
+        .unwrap()
+        .insert(WITNESS_ID, rig.addr);
+    if full_queue {
+        use cimmeria_mercury::packet::{Bytes, Packet, PacketFlags};
+        let clients = rig.connected.lock().unwrap();
+        let mut channel = clients[&rig.addr].channel.lock().unwrap();
+        for seq in 1..=(cimmeria_mercury::consts::TX_WINDOW_SIZE
+            + cimmeria_mercury::consts::MAX_UNSENT_PACKETS)
+        {
+            channel
+                .register_sent_packet(
+                    Packet::new(PacketFlags::default(), seq as u32, Bytes::new()),
+                    Bytes::new(),
+                )
+                .unwrap();
+        }
+    }
+    let admission: Arc<dyn Transport> = if full_queue {
+        Arc::clone(&rig.transport)
+    } else {
+        Arc::new(PartialWire)
+    };
+    assert_eq!(
+        send_letter_turn_in_method(
+            &expected,
+            71,
+            &[0; 8],
+            &admission,
+            &rig.connected,
+            &rig.entity_to_addr,
+        ),
+        LetterTurnInSendOutcome::ChannelError
+    );
+    assert!(cancelled.load(Ordering::Acquire));
+    let prior_recv = Instant::now() - Duration::from_secs(30);
+    *last_recv.lock().unwrap() = prior_recv;
+    let valid_method = reliable_probe(&rig, 0, 99);
+    deliver(&rig, &valid_method).await;
+    assert!(
+        dispatched(&mut rig).is_empty(),
+        "cancelled owner cannot dispatch game method"
+    );
+    assert!(
+        pending.lock().unwrap().is_empty(),
+        "receive gate must not ACK it"
+    );
+    assert_eq!(
+        *last_recv.lock().unwrap(),
+        prior_recv,
+        "cancelled packet cannot refresh liveness"
+    );
+
+    tokio::time::timeout(
+        Duration::from_secs(2),
+        crate::base::tick_sync::run_tick_loop(
+            Arc::clone(&rig.transport),
+            rig.addr,
+            key,
+            version,
+            unreliable,
+            pending,
+            last_recv,
+            cancelled,
+            Arc::clone(&rig.connected),
+            Arc::clone(&rig.entity_manager),
+            rig.cell_tx.clone(),
+            Arc::clone(&rig.entity_to_addr),
+            None,
+        ),
+    )
+    .await
+    .expect("cancelled owner tick must exit");
+    assert!(!rig.connected.lock().unwrap().contains_key(&rig.addr));
+    assert!(!rig.entity_to_addr.lock().unwrap().contains_key(&WITNESS_ID));
+    let msg = tokio::time::timeout(Duration::from_secs(2), rig.cell_rx.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    let BaseToCellMsg::DisconnectEntity {
+        entity_id,
+        reply_tx,
+    } = msg
+    else {
+        panic!("expected exact cell disconnect");
+    };
+    assert_eq!(entity_id, WITNESS_ID);
+    reply_tx.send(()).unwrap();
+}
+
+#[tokio::test]
+async fn partial_letter_admission_blocks_encrypted_method_then_tick_tears_down_owner() {
+    assert_fatal_letter_admission_blocks_method_and_tears_down(false).await;
+}
+
+#[tokio::test]
+async fn unregistered_admitted_letter_blocks_encrypted_method_then_tick_tears_down_owner() {
+    assert_fatal_letter_admission_blocks_method_and_tears_down(true).await;
+}
+
+#[tokio::test]
+async fn stale_encrypted_packet_cannot_dispatch_into_same_key_address_replacement() {
+    let mut rig = rig();
+    let packet = reliable_probe(&rig, 0, 100);
+    let (old_enc, old_pending) = {
+        let clients = rig.connected.lock().unwrap();
+        (
+            clients[&rig.addr].enc.clone(),
+            Arc::clone(&clients[&rig.addr].pending_acks),
+        )
+    };
+    let mut replacement = test_default_connected_client_state();
+    replacement.player_entity_id = Some(WITNESS_ID);
+    replacement.channel = Mutex::new(crate::base::login::new_client_channel(rig.addr));
+    rig.connected.lock().unwrap().insert(rig.addr, replacement);
+    handle_encrypted_datagram(
+        &rig.transport,
+        rig.addr,
+        &packet,
+        old_enc,
+        rig.state_key,
+        0,
+        &old_pending,
+        &rig.connected,
+        &None,
+        &None,
+        &rig.entity_manager,
+        &rig.cell_tx,
+        &rig.entity_to_addr,
+    )
+    .await
+    .unwrap();
+    assert!(dispatched(&mut rig).is_empty());
+    assert!(old_pending.lock().unwrap().is_empty());
+    assert!(rig.connected.lock().unwrap().contains_key(&rig.addr));
+}
+
+#[tokio::test]
+async fn cancellation_after_channel_delivery_still_blocks_method_dispatch() {
+    let mut rig = rig();
+    let raw = reliable_probe(&rig, 0, 321);
+    let plain = rig.connected.lock().unwrap()[&rig.addr]
+        .enc
+        .decrypt(&raw)
+        .unwrap();
+    let parsed = cimmeria_mercury::packet::parse_incoming(&plain).unwrap();
+    let (delivery, class_id) =
+        super::receive_in_order(&rig.connected, rig.addr, &rig.pending_acks, parsed, 0).unwrap();
+    rig.connected.lock().unwrap()[&rig.addr]
+        .cancelled
+        .store(true, Ordering::Release);
+    super::dispatch_client_bundle(
+        &delivery.bundles[0],
+        delivery.bundle_seqs[0],
+        class_id,
+        &rig.transport,
+        rig.addr,
+        rig.state_key,
+        0,
+        &rig.pending_acks,
+        &rig.connected,
+        &None,
+        &None,
+        &rig.entity_manager,
+        &rig.cell_tx,
+        &rig.entity_to_addr,
+    )
+    .await
+    .unwrap();
+    assert!(dispatched(&mut rig).is_empty());
 }

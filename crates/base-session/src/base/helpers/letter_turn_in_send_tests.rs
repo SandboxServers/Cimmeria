@@ -597,3 +597,56 @@ fn ambiguous_partial_admission_retires_sequence_and_cancels_session() {
         LetterTurnInSendOutcome::Stale
     );
 }
+
+#[test]
+fn admitted_packet_with_full_channel_queue_cancels_without_reusing_sequence() {
+    use cimmeria_mercury::packet::{Bytes, Packet, PacketFlags};
+    let rig = rig();
+    {
+        let clients = rig.connected.lock().unwrap();
+        let state = &clients[&rig.addr];
+        let mut channel = state.channel.lock().unwrap();
+        let fill =
+            cimmeria_mercury::consts::TX_WINDOW_SIZE + cimmeria_mercury::consts::MAX_UNSENT_PACKETS;
+        for seq in 1..=fill {
+            channel
+                .register_sent_packet(
+                    Packet::new(PacketFlags::default(), seq as u32, Bytes::new()),
+                    Bytes::new(),
+                )
+                .unwrap();
+        }
+    }
+    assert_eq!(
+        send_letter_turn_in_method(
+            &rig.expected,
+            71,
+            &[0; 8],
+            &rig.transport,
+            &rig.connected,
+            &rig.mapping,
+        ),
+        LetterTurnInSendOutcome::ChannelError
+    );
+    assert_eq!(
+        rig.recorder.filter_to(rig.addr).len(),
+        1,
+        "datagram was admitted before registration failed"
+    );
+    let clients = rig.connected.lock().unwrap();
+    let state = &clients[&rig.addr];
+    assert!(state.cancelled.load(Ordering::Acquire));
+    assert_eq!(state.next_seq.load(Ordering::Relaxed), 1);
+    drop(clients);
+    assert_eq!(
+        send_letter_turn_in_method(
+            &rig.expected,
+            71,
+            &[0; 8],
+            &rig.transport,
+            &rig.connected,
+            &rig.mapping,
+        ),
+        LetterTurnInSendOutcome::Stale
+    );
+}

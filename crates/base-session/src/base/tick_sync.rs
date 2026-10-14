@@ -97,11 +97,10 @@ pub async fn run_tick_loop(
     let disconnect_reason: &'static str = loop {
         tokio::time::sleep(game_clock::TICK_SYNC_INTERVAL).await;
 
-        // The cancelled flag is set by `destroy_client_entities` (logOff,
-        // client disconnect, duplicate login, relaunch takeover), which
-        // has already torn the session down — return before the post-loop
-        // cleanup runs so we don't double-stamp a second disconnect event
-        // under a misleading reason.
+        // Cancellation may come from normal teardown or from a fatal
+        // admitted-send failure. Run the owner-checked post-loop teardown:
+        // it no-ops for an already removed or replaced session, and removes
+        // the still-mapped owner after the fatal send.
         if cancelled.load(Ordering::Relaxed) {
             let who = super::session_identity::identity_for_addr(&connected, addr);
             tracing::info!(
@@ -110,9 +109,9 @@ pub async fn run_tick_loop(
                 account_name = who.account_name,
                 player_id = who.player_id,
                 player_name = who.player_name,
-                "Tick-sync stopping: session cancelled (torn down elsewhere)"
+                "Tick-sync stopping: session cancelled"
             );
-            return;
+            break "send_error";
         }
 
         let idle = last_recv.lock().unwrap().elapsed();
@@ -226,9 +225,9 @@ pub async fn run_tick_loop(
                 account_name = who.account_name,
                 player_id = who.player_id,
                 player_name = who.player_name,
-                "Tick-sync stopping: session cancelled (torn down elsewhere)"
+                "Tick-sync stopping: session cancelled"
             );
-            return;
+            break "send_error";
         }
         // Each resend already has its row, `mercury.retransmit` (written by
         // the channel's scan, with the cause fields); only a failed send is

@@ -82,9 +82,9 @@ next to `check_timeouts` / `keepalive_due` / `is_timed_out`.
    candidate sequence; a fully admitted datagram consumes it before channel
    registration. An ambiguous transport outcome also retires its candidate;
    either it or failed registration marks the session cancelled and blocks
-   further letter admission. That marker stops the tick loop, but the
-   synchronous sender has no full entity-teardown context. Other send paths
-   may continue until normal teardown, always using later sequences.
+   further letter admission. Encrypted receive rejects that session before
+   channel and method dispatch. The tick loop then runs owner-checked entity,
+   mapping and cell teardown; a same-address replacement is left intact.
 
 2. **Add `TestTransport`** (`test_transport.rs`, behind the `test-support`
    feature) — a `Mutex<Vec<(SocketAddr, Vec<u8>)>>` recorder with

@@ -1,13 +1,11 @@
 //! Per-datagram dispatch for established encrypted channels.
 //!
-//! Decrypts the datagram, parses the Mercury packet, queues an ACK if the
-//! client message is reliable, then walks the bundle (the body can carry
-//! multiple back-to-back messages) and dispatches each one. The arm bodies
-//! for the larger families (account base methods, cell entity methods)
-//! delegate to sibling modules to keep this match readable.
+//! Decrypts, parses, ACKs reliable messages, and dispatches each bundle.
+//! Larger method families delegate to sibling modules.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 use cimmeria_mercury::transport::Transport;
@@ -36,11 +34,8 @@ use message_framing::{parse_request_entity_update, read_client_message_payload};
 
 /// Handle an encrypted datagram from a known connected client.
 ///
-/// This is the load-bearing dispatch seam for established sessions —
-/// every encrypted UDP packet from a logged-in client passes through
-/// here. The `#[instrument]` parents Mercury packet events, account
-/// ID, and any downstream method calls under one trace, so SigNoz
-/// shows "what did this packet do?" as a single tree per datagram.
+/// Every encrypted UDP packet from a logged-in client passes here.
+/// The span parents packet events and downstream method calls under one trace.
 ///
 /// `level = "debug"` because the recv-loop sibling [`handle_datagram`]
 /// already pays the per-packet span cost at debug; this nested span
@@ -67,6 +62,9 @@ pub(crate) async fn handle_encrypted_datagram(
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    if !entry_accepts_inbound(connected, addr, pending_acks) {
+        return Ok(());
+    }
     let plaintext = match enc.decrypt(raw) {
         Ok(p) => p,
         Err(e) => {
@@ -108,18 +106,16 @@ pub(crate) async fn handle_encrypted_datagram(
         "Decrypted packet received"
     );
 
-    // Route the client's ACKs of OUR reliable packets to the per-session
-    // Channel's TX window. Each ACK retires exactly the packet it names:
-    // the client acks packets it is buffering behind a gap, so reading an
-    // ACK as cumulative would retire the packet it is still waiting for
-    // (see `cimmeria_mercury::channel` `ack` module doc). The Channel feeds
-    // clean-round RTT samples to the per-peer adaptive RTO (Karn's
-    // algorithm) and tracks the transmit hole the tick-side watchdog
-    // reports.
+    // ACKs retire exact TX entries, not cumulative ranges: the client may
+    // ACK a later packet held behind a gap. The channel updates RTT and
+    // transmit-hole metrics (see `cimmeria_mercury::channel` `ack`).
     let mut acks_retired = 0;
     if !pkt.acks.is_empty() {
         if let Ok(clients) = connected.lock() {
-            if let Some(state) = clients.get(&addr) {
+            if let Some(state) = clients.get(&addr).filter(|state| {
+                Arc::ptr_eq(&state.pending_acks, pending_acks)
+                    && !state.cancelled.load(Ordering::Acquire)
+            }) {
                 if let Ok(mut channel) = state.channel.lock() {
                     let holes_before = channel.tx_holes;
                     let retired = channel.process_ack_footer(&pkt.acks);
@@ -145,15 +141,12 @@ pub(crate) async fn handle_encrypted_datagram(
         }
     }
 
-    // In-order delivery of the client's reliable stream, the gate a
-    // BigWorld receiver runs (NA38): a reliable packet behind a gap waits
-    // for the client's retransmit, a retransmitted duplicate (our ACK was
-    // lost) is dropped instead of being dispatched a second time, and
-    // unreliable packets (movement) go straight through. The gate's verdict
-    // also decides whether this datagram refreshes the inactivity clock: a
-    // datagram that authenticated but brings nothing new (a replay) does not
-    // keep the session alive (`liveness`).
-    let Some((delivery, class_id)) = receive_in_order(connected, addr, pkt, acks_retired) else {
+    // In-order delivery buffers reliable gaps, drops duplicates, and lets
+    // unreliable movement through (NA38). Its verdict also controls the
+    // inactivity clock, so a replay cannot keep the session alive.
+    let Some((delivery, class_id)) =
+        receive_in_order(connected, addr, pending_acks, pkt, acks_retired)
+    else {
         return Ok(());
     };
     if let Some(seq) = delivery.ack {
@@ -173,6 +166,7 @@ pub(crate) async fn handle_encrypted_datagram(
             addr,
             key,
             account_id,
+            pending_acks,
             connected,
             db_pool,
             resource_cache,
@@ -183,6 +177,24 @@ pub(crate) async fn handle_encrypted_datagram(
         .await?;
     }
     Ok(())
+}
+
+/// Match the captured session, including same-key address replacements.
+fn entry_accepts_inbound(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+    pending_acks: &Arc<Mutex<Vec<u32>>>,
+) -> bool {
+    connected
+        .lock()
+        .ok()
+        .and_then(|clients| {
+            clients.get(&addr).map(|state| {
+                Arc::ptr_eq(&state.pending_acks, pending_acks)
+                    && !state.cancelled.load(Ordering::Acquire)
+            })
+        })
+        .unwrap_or(false)
 }
 
 /// Run one decrypted client packet through the session's
@@ -198,6 +210,7 @@ pub(crate) async fn handle_encrypted_datagram(
 fn receive_in_order(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,
+    pending_acks: &Arc<Mutex<Vec<u32>>>,
     pkt: ParsedPacket,
     acks_retired: usize,
 ) -> Option<(RxDelivery, u8)> {
@@ -211,6 +224,9 @@ fn receive_in_order(
         );
         return None;
     };
+    if !Arc::ptr_eq(&state.pending_acks, pending_acks) || state.cancelled.load(Ordering::Acquire) {
+        return None;
+    }
     let received = state.channel.lock().ok()?.receive_parsed(pkt);
     liveness::record(
         state,
@@ -244,6 +260,7 @@ async fn dispatch_client_bundle(
     addr: SocketAddr,
     key: [u8; 32],
     account_id: u32,
+    pending_acks: &Arc<Mutex<Vec<u32>>>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     db_pool: &Option<Arc<PgPool>>,
     resource_cache: &Option<Arc<ResourceCache>>,
@@ -314,6 +331,10 @@ async fn dispatch_client_bundle(
         tracing::debug!(%addr, msg_id = format_args!("{:#04x}", msg_id), msg_name = names::server_msg_name(msg_id), method_name = names::inbound_method(class_id, msg_id, payload), entity_type = names::class_name(class_id), payload_len = payload.len(), "Client bundle message");
 
         crate::wire_log::log_inbound(addr, class_id, msg_id, payload);
+
+        if !entry_accepts_inbound(connected, addr, pending_acks) {
+            return Ok(());
+        }
 
         // Dispatch message.
         //
