@@ -214,6 +214,52 @@ async fn live_db_letter_turn_in_commits_exact_postimage_once() {
 }
 
 #[tokio::test]
+async fn live_db_letter_turn_in_deletes_single_letter_from_mission_bag() {
+    let pool = require_db_or_skip!();
+    let id = player(&pool, 2).await;
+    accept_and_advance(&pool, id).await;
+    let item_id = put_item(&pool, id, 3730, 2, 0, 1).await;
+
+    let result = commit_letter_turn_in(&pool, id, "single-letter", SESSION)
+        .await
+        .expect("commit result");
+    let LetterTurnInVerdict::Committed(committed) = result else {
+        panic!("expected commit, got {result:?}");
+    };
+    assert_eq!((committed.item_id, committed.container_id), (item_id, 2));
+    assert_eq!((committed.stack_before, committed.stack_after), (1, 0));
+    let item_count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM sgw_inventory WHERE item_id = $1")
+            .bind(item_id)
+            .fetch_one(&pool)
+            .await
+            .expect("item count");
+    assert_eq!(item_count, 0, "one-count letter row must be deleted");
+    let receipt: (i32, i32, i32, i32) = sqlx::query_as(
+        "SELECT item_id, container_id, stack_before, stack_after \
+         FROM sgw_mission_1360_receipt WHERE player_id = $1 AND mission_id = 1360",
+    )
+    .bind(id)
+    .fetch_one(&pool)
+    .await
+    .expect("committed receipt");
+    assert_eq!(receipt, (item_id, 2, 1, 0));
+    assert_eq!(
+        mission_snapshot(&pool, id).await,
+        (
+            2,
+            None,
+            vec![4037, 4038],
+            vec![4650, 4651],
+            vec![4651],
+            vec![],
+            1
+        )
+    );
+    cleanup(&pool, id).await;
+}
+
+#[tokio::test]
 async fn live_db_letter_turn_in_refuses_unowned_or_inaccessible_letter() {
     let pool = require_db_or_skip!();
     let id = player(&pool, 10).await;
@@ -221,6 +267,7 @@ async fn live_db_letter_turn_in_refuses_unowned_or_inaccessible_letter() {
     accept_and_advance(&pool, id).await;
     let banked = put_item(&pool, id, 3730, 17, 0, 1).await;
     let zero = put_item(&pool, id, 3730, 1, 0, 0).await;
+    let wrong_type = put_item(&pool, id, 3732, 1, 1, 1).await;
     let foreign = put_item(&pool, other, 3730, 1, 0, 1).await;
     assert!(matches!(
         commit_letter_turn_in(&pool, id, "bad-token", "ABCDEF0123456789ABCDEF0123456789")
@@ -240,13 +287,51 @@ async fn live_db_letter_turn_in_refuses_unowned_or_inaccessible_letter() {
     let rows: Vec<(i32, i32)> = sqlx::query_as(
         "SELECT item_id, stack_size FROM sgw_inventory WHERE item_id = ANY($1) ORDER BY item_id",
     )
-    .bind(&[banked, zero, foreign][..])
+    .bind(&[banked, zero, wrong_type, foreign][..])
     .fetch_all(&pool)
     .await
     .unwrap();
-    assert_eq!(rows, vec![(banked, 1), (zero, 0), (foreign, 1)]);
+    assert_eq!(
+        rows,
+        vec![(banked, 1), (zero, 0), (wrong_type, 1), (foreign, 1)]
+    );
     cleanup(&pool, id).await;
     cleanup(&pool, other).await;
+}
+
+#[tokio::test]
+async fn live_db_letter_turn_in_refuses_malformed_castle_postimage() {
+    let pool = require_db_or_skip!();
+    let id = player(&pool, 12).await;
+    accept_and_advance(&pool, id).await;
+    let item_id = put_item(&pool, id, 3730, 2, 0, 1).await;
+    sqlx::query(
+        "UPDATE sgw_mission SET completed_step_ids = ARRAY[]::integer[] \
+         WHERE player_id = $1 AND mission_id = 1360",
+    )
+    .bind(id)
+    .execute(&pool)
+    .await
+    .expect("corrupt Castle postimage");
+    let malformed = mission_snapshot(&pool, id).await;
+    assert_eq!(malformed.1, Some(4038));
+    assert!(malformed.2.is_empty());
+
+    assert!(matches!(
+        commit_letter_turn_in(&pool, id, "malformed-b", SESSION)
+            .await
+            .expect("refusal result"),
+        LetterTurnInVerdict::Refused(LetterTurnInRefusal::WrongMissionState)
+    ));
+    assert_eq!(mission_snapshot(&pool, id).await, malformed);
+    let stack: i32 = sqlx::query_scalar("SELECT stack_size FROM sgw_inventory WHERE item_id = $1")
+        .bind(item_id)
+        .fetch_one(&pool)
+        .await
+        .expect("letter still owned");
+    assert_eq!(stack, 1);
+    assert_eq!(receipt_count(&pool, id).await, 0);
+    cleanup(&pool, id).await;
 }
 
 #[tokio::test]
