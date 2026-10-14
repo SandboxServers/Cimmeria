@@ -246,6 +246,39 @@ async fn finish_intro_false_leaves_the_dialog_for_the_first_row() {
 }
 
 #[tokio::test]
+async fn fresh_intro_arriving_after_play_is_finished_before_the_first_row() {
+    let root = tempfile::tempdir().unwrap();
+    let fake = fresh_fake()
+        .answer("lab_play_character", vec![json!({ "dialog_open": false })])
+        .answer("client_wait_for", vec![json!({ "met": true })]);
+    let out = Runner::new(
+        &fake,
+        None,
+        request(root.path(), vec![section("p", true, true, true, HELP)]),
+    )
+    .unwrap()
+    .run_all()
+    .await
+    .unwrap();
+    assert_eq!(out.rows[0].result, "PASS", "{:?}", out.rows[0].reasons);
+    let names = fake.names();
+    assert!(names.contains(&"client_wait_for".to_string()));
+    assert!(names.contains(&"lab_finish_dialog".to_string()));
+    let waits: Vec<_> = fake
+        .log
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|(tool, _)| tool == "client_wait_for")
+        .map(|(_, args)| args.clone())
+        .collect();
+    assert_eq!(waits.len(), 2);
+    assert_eq!(waits[0]["timeout_ms"], 15000);
+    assert_eq!(waits[1]["timeout_ms"], 20000);
+    assert_eq!(waits[1]["lua_condition"], "not ((LetterboxedWin and LetterboxedWin:isVisible()) or (MoviePlayerWin and MoviePlayerWin:isVisible()))");
+}
+
+#[tokio::test]
 async fn two_fresh_sections_have_distinct_persisted_names_and_protected_slots() {
     let root = tempfile::tempdir().unwrap();
     let fake = fresh_fake();

@@ -213,12 +213,43 @@ impl<I: ToolInvoker> Runner<'_, I> {
             .setup_call("lab_play_character", json!({ "name": name }), ctx)
             .await?;
         self.in_world_as = Some(name);
-        if spec.section.fresh.as_ref().is_some_and(|f| f.finish_intro)
-            && played.get("dialog_open").and_then(Value::as_bool) == Some(true)
-        {
-            // Creation may have happened before a resumed run. Follow the
-            // dialog Play actually found, finishing it like a player.
-            let _ = self.setup_call("lab_finish_dialog", json!({}), ctx).await;
+        if spec.section.fresh.as_ref().is_some_and(|f| f.finish_intro) {
+            // Play returns when the world HUD appears. The intro dialog may
+            // arrive a few frames later, so its immediate flag is not enough.
+            let dialog_open = if played.get("dialog_open").and_then(Value::as_bool) == Some(true) {
+                true
+            } else {
+                self.setup_call(
+                    "client_wait_for",
+                    json!({
+                        "lua_condition": "DialogWin ~= nil and DialogWin:isVisible()",
+                        "timeout_ms": 15000,
+                    }),
+                    ctx,
+                )
+                .await?
+                .get("met")
+                .and_then(Value::as_bool)
+                    == Some(true)
+            };
+            if dialog_open {
+                // The intro cinematic can leave a letterbox over the dialog
+                // buttons for several seconds after the dialog itself opens.
+                let uncovered = self
+                    .setup_call(
+                        "client_wait_for",
+                        json!({
+                            "lua_condition": "not ((LetterboxedWin and LetterboxedWin:isVisible()) or (MoviePlayerWin and MoviePlayerWin:isVisible()))",
+                            "timeout_ms": 20000,
+                        }),
+                        ctx,
+                    )
+                    .await?;
+                if uncovered.get("met").and_then(Value::as_bool) != Some(true) {
+                    return Err("intro dialog remained covered by the arrival cinematic".into());
+                }
+                self.setup_call("lab_finish_dialog", json!({}), ctx).await?;
+            }
         }
         Ok(())
     }
