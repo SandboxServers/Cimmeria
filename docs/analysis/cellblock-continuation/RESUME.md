@@ -6,6 +6,9 @@
 > [execution contract](../four-zone-planning/execution-contract.md).
 
 - Base SHA: `d3efb7d41aad0b6008397f112d224ce7430d7acf`.
+- Main prerequisite `94b4a5754` (CB-N05a catalog) merged into this branch at
+  `67d3368e97ac49aa718835ca6d75bdeee9d35cc8`; pre-merge reviewed
+  Wave-0 tip was `457b4f75a57b74c6350fc29d93b5fa3f9df3ec5d`.
 - Integrated packet: CB-N00, evidence/doc gate only; client rows **UATPending**.
 - Packet HEAD: `63f609c4fd7519366199d2c1feb1252d3cb74512`.
 - Integration HEAD: `88e5f6d7554d3730e12798ec65fb16bad09e9ecc`.
@@ -22,7 +25,9 @@
 - Next action: obtain domain seals and exact current route/lineage evidence for
   N01/N02; reconcile asset/ring/class-start/autoplay ownership before dispatch.
 - Blockers: UNSEALED live route and build joins, owner cast/story/placement/reward
-  decisions, reachability sign-off, ID reconciliation, and CB-N05a catalog proof.
+  decisions, reachability sign-off, ID reconciliation, and first-authored-quest
+  live journal/progression proof. CB-N05a infrastructure is on `main`;
+  production mission additions remain empty.
   All downstream implementation packets stay blocked pending their complete seals.
 - No lab lease, client launch/server change, push or PR occurred. FZ-99 owns
   shared status docs; this wave does not close the campaign.
