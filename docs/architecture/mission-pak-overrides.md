@@ -2,14 +2,58 @@
 
 > **Type**: explanation
 > **Audience**: engineers
-> **Last updated**: 2026-09-28
+> **Last updated**: 2026-10-14
 > **Companion docs**: [docs/engine/cooked-data-pak-format.md](../engine/cooked-data-pak-format.md), [docs/protocol/message-catalog.md](../protocol/message-catalog.md), [docs/content/mission-chains.md](../content/mission-chains.md), [docs/content/equip-from-inventory-pattern.md](../content/equip-from-inventory-pattern.md), [TESTING.md](../../TESTING.md)
 
-This document explains how Cimmeria adds **new mission steps** that the client renders in its quest log without reshipping `CookedDataMissions.pak` to every player. If you only need the operator runbook ("I want to add an Equip-the-X step to mission N"), skip to [Adding a new override](#adding-a-new-override).
+This document explains how Cimmeria adds **complete mission entries and new mission steps** that the client renders in its quest log without reshipping `CookedDataMissions.pak` to every player. If you only need the operator runbook ("I want to add an Equip-the-X step to mission N"), skip to [Adding a new override](#adding-a-new-override).
 
-The same in-memory-override mechanism carries Cimmeria's item, dialog, Kismet sequence and world-info changes. The mission case is the worked example throughout; [Dialog overrides](#dialog-overrides) covers what is different about dialogs, which is the only category with two distinct override kinds, and [World info overrides](#world-info-overrides-category-12) covers new worlds.
+The same in-memory-override mechanism carries Cimmeria's item, dialog, Kismet sequence and world-info changes. The mission case is the worked example throughout; [Dialog overrides](#dialog-overrides) covers what is different about dialogs, and [World info overrides](#world-info-overrides-category-12) covers new worlds.
 
 Items (category 4) also have two kinds. The Slappack `ItemOverride` rows patch attributes of an entry the PAK already ships (the icon and the stack cap). Since the ammo campaign's AM-07 (#1044), `ITEM_ADDITIONS` in [`crates/resources/src/base/item_overrides/`](../../crates/resources/src/base/item_overrides/) adds **whole new entries** for ids the PAK does not ship: `new_items.rs` generates the `COOKED_ITEM` bytes and `ammo_items.rs` lists the 15 special-ammo items, 9000-9014. An addition that collides with a shipped id is skipped (`reason = "id_ships_in_pak"`), and the additions feed the items metadata bump, so every client resyncs the category once. That a client renders a wholly new id is unproven in game; the ammo UAT's first step checks it.
+
+## Complete authored mission catalog entries
+
+`MissionAddition { mission_id, xml }` in
+`crates/resources/src/base/mission_additions.rs` extends this path to wholly new
+mission IDs. `MISSION_ADDITIONS` stays empty until an authored content packet
+seals production XML. The [CB-N05a seal](../analysis/four-zone-planning/cb-n05a-seal.md)
+freezes the supported stock `_1624` schema and exact test-only 61000 fixture.
+The fixture is never seeded, offered or persisted.
+
+Whole-batch admission runs before any mission mutation, including old step/text
+patches. It validates XML/scalars/entities, required children and order, positive
+unique IDs, matching root ID, stock collisions and transport size. A bad later
+entry leaves the category unchanged. Valid additions with category 3 absent warn
+and create nothing. A stock root collision fails the batch; this differs from
+the item registry's skip policy. Reapplication to a mutated cache is unsupported.
+
+Admitted bytes are inserted exactly, then existing mission patches run in registry
+order (622's anchors depend on that order). The original metadata is bumped once;
+additions extend its hash in sorted ID order, while an empty registry preserves
+the old hash. Every stock entry retains its existing served bytes. Sorted unique
+override IDs select push log levels; **every category key** travels in full resync.
+
+Root IDs remain within **1–65535** (`MAX_COOKED_ELEMENT_ID`) as conservative
+repository admission policy. The [crash finding](../reverse-engineering/findings/cooked-dialog-override-crash.md)
+shows the keys are 32-bit and the observed mask concerns iteration position;
+this packet does not lift the policy. Nested IDs fit positive signed INT32 and
+XML is capped at **355840 bytes**, the existing 256 × 1390 fragment capacity.
+
+Automated proof covers whole-batch refusal, baseline preservation, exact fixture
+bytes and actual transport/ClientModel delivery. Application emits
+`cooked_data.mission_catalog_inserted` after the final version is set, or
+`cooked_data.mission_catalog_rejected` with a stable reason. No XML is logged.
+
+Admission validates the complete optional XML declaration at the document start
+(after an optional UTF-8 BOM): mandatory version `1.0`, optional UTF-8 encoding,
+and optional `standalone="yes"` or `"no"`, in that order, with unique attributes.
+It rejects illegal XML characters in every token, literal `]]>` in ordinary
+text, and non-XML whitespace outside display/history text. Batch refusal guards
+use a valid first entry and invalid second entry, pin WARN context, and include
+missing final children and an exactly 355841-byte oversize entry.
+
+Client gSOAP parsing, journal/dialog presentation, progression and relog remain
+**UATPending** until the first real authored quest supplies live evidence.
 
 ## The problem
 
@@ -167,8 +211,11 @@ The bump is content-derived (`crates/resources/src/base/resources/metadata_bump.
 let mut hasher = std::collections::hash_map::DefaultHasher::new();
 for ov in MISSION_OVERRIDES {
     ov.mission_id.hash(&mut hasher);
+    ov.insert_after_step_id.hash(&mut hasher);
     ov.injected_steps_xml.hash(&mut hasher);
 }
+// Step-text fields follow in registry order; complete additions follow in ID
+// order, hashing mission_id and exact XML. Empty slices write nothing extra.
 let bump = ((hasher.finish() as u32) & 0xFFFF) | 0x1;
 missions.metadata = missions.metadata.wrapping_add(bump);
 ```
@@ -178,7 +225,10 @@ Two design points worth calling out:
 - **`& 0xFFFF`** keeps the bump small. The QA-build `CookedDataMissions` MetaData is `7538`; bumping by up to 65535 still leaves the value far below the next category's range and well within `u32`.
 - **`| 0x1`** guarantees the bump is non-zero. A zero bump would leave `MetaData` unchanged across server starts — the client would never see a mismatch and the patched XML would never reach it. Belt-and-braces against a hash that happens to land on a multiple of 65536.
 
-Edit either an override's `mission_id` or `injected_steps_xml` and the hash changes, the bump changes, the client mismatches, and the category is resynced. Same content across two starts → same bump → same MetaData → no churn.
+Identical content across fresh loads gives the same bump and metadata. Editing
+content usually changes the bump and triggers a resync; `& 0xFFFF | 1` has an
+effective 15-bit hash and can collide. It does not guarantee that the version
+changes if and only if content changes.
 
 ## Dialog overrides
 
@@ -188,7 +238,7 @@ What makes dialogs different from missions: the server's `displayDialog` path ca
 
 ### Two override kinds
 
-**Full regeneration** — `DialogOverride`, in `crates/resources/src/base/dialog_overrides/mod.rs`. Emits a complete `<COOKED_DIALOG>` from Rust-authored text. Use it for a dialog Cimmeria invented, where there is no canonical entry worth preserving. The brand-new case (the NID Guard corpse's 3996, which the PAK never shipped) and the corrected case (Frost's 3995) are both just an `elements.insert`, and generation is infallible. A new dialog id must be at most 65535 (`MAX_COOKED_ELEMENT_ID`): overrides of 100100 and 100101 crashed the client on map load, so Cimmeria-authored dialogs use 60100-60199. `every_cooked_override_element_id_fits_in_16_bits` enforces the bound for every category; see `docs/reverse-engineering/findings/cooked-dialog-override-crash.md`.
+**Full regeneration** — `DialogOverride`, in `crates/resources/src/base/dialog_overrides/mod.rs`. Emits a complete `<COOKED_DIALOG>` from Rust-authored text. Use it for a dialog Cimmeria invented, where there is no canonical entry worth preserving. The brand-new case (the NID Guard corpse's 3996, which the PAK never shipped) and the corrected case (Frost's 3995) are both just an `elements.insert`, and generation is infallible. A new dialog id must be at most 65535 (`MAX_COOKED_ELEMENT_ID`) under conservative repository policy. Earlier overrides of 100100 and 100101 crashed on map load, but the subsequent finding established 32-bit keys; the observed mask applies to iteration position. Cimmeria-authored dialogs use 60100-60199. `every_cooked_override_element_id_fits_in_16_bits` enforces the bound for every category; see `docs/reverse-engineering/findings/cooked-dialog-override-crash.md`.
 
 **Patch** — `DialogPatch`, in `crates/resources/src/base/dialog_overrides/patch.rs`. Parses the entry the client already shipped, edits only what the plan names, and re-emits. Use it for one of the 5,405 dialogs the game shipped. Restating tens of screens of voiced dialogue in a Rust source file to move one button is a transcription error waiting to happen; a patch cannot make that mistake, because it never retypes the text.
 

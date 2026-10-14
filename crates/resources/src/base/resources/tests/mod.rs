@@ -13,6 +13,7 @@ mod category_map;
 mod committed_paks;
 mod dialog_overrides;
 mod inventory_slots;
+mod mission_additions;
 mod overrides;
 mod stargate_overrides;
 mod world_info_overrides;

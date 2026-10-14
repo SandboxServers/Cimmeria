@@ -11,12 +11,14 @@ use super::io::WorldIo;
 use super::memory::slot_entity;
 use super::{Steps, WorldError};
 
-/// Heights tried on an entity's body, UE3 units (100 per metre) above its
-/// actor `Location`, which is its FEET (probe B-P2: hovering the feet gives
-/// nothing). In order: chest, shoulders, head, knee. The own avatar covers the
-/// lower band when the camera is behind it, so the higher heights come first
-/// after the chest and the knee comes last.
+/// Humanoid heights above actor `Location`, which is the feet (probe B-P2).
+/// Keep these separate from the entity search: avatar proximity uses only
+/// body points, while a small prop can hover at its actor origin.
 pub const HOVER_OFFSETS: [f64; 4] = [100.0, 140.0, 170.0, 60.0];
+/// Try the chest, shoulders, head and knee before the actor origin. The
+/// origin is a last resort for desk props; trying it first would let the
+/// avatar's lower band intercept ordinary NPC clicks.
+pub const ENTITY_HOVER_OFFSETS: [f64; 5] = [100.0, 140.0, 170.0, 60.0, 0.0];
 /// How long the client gets to update mouse-over after the cursor moves.
 pub(super) const HOVER_WAIT_MS: u64 = 120;
 /// A bridge slot read must not hold a lab call while the client is unresponsive.
@@ -90,8 +92,8 @@ pub fn restore_pitch_counts(start: &Value, now: &Value) -> i32 {
     ((a - b) * 65536.0 / 360.0 / g).round() as i32
 }
 
-/// One hover pass over the target's body heights: the chosen point and how
-/// each height went. `player_slot` is the avatar's unit slot: a hover that
+/// One hover pass over the target's body heights and actor origin: the chosen
+/// point and how each height went. `player_slot` is the avatar's unit slot: a hover that
 /// lands on it is reported as `own_avatar`, not as another entity.
 pub(super) async fn hover_once<W: WorldIo>(
     io: &mut W,
@@ -106,7 +108,7 @@ pub(super) async fn hover_once<W: WorldIo>(
 ) -> Result<(Option<((f64, f64), Hover)>, Vec<Value>), WorldError> {
     let base = aim.position(io).await;
     let points: Vec<Vec3> = match entity {
-        Some(_) => HOVER_OFFSETS
+        Some(_) => ENTITY_HOVER_OFFSETS
             .iter()
             .map(|dz| Vec3::new(base.x, base.y, base.z + dz))
             .collect(),
@@ -118,9 +120,10 @@ pub(super) async fn hover_once<W: WorldIo>(
         .map_err(|e| steps.fail(io.now_ms(), "project", e))?;
     let mut tried = Vec::new();
     let mut chosen: Option<((f64, f64), Hover)> = None;
+    let mut body_occluded = false;
     for (i, px) in pr.points.iter().enumerate() {
         let Some(p) = px.filter(|p| pr.screen.contains(*p, CLICK_MARGIN_PX)) else {
-            tried.push(json!({ "dz": HOVER_OFFSETS.get(i), "hover": "off_screen" }));
+            tried.push(json!({ "dz": ENTITY_HOVER_OFFSETS.get(i), "hover": "off_screen" }));
             continue;
         };
         let (x, y) = (p.0.round() as i32, p.1.round() as i32);
@@ -167,7 +170,7 @@ pub(super) async fn hover_once<W: WorldIo>(
             }
         }
         tried.push(
-            json!({ "dz": HOVER_OFFSETS[i], "at": [x, y], "hover": match &hover {
+            json!({ "dz": ENTITY_HOVER_OFFSETS[i], "at": [x, y], "hover": match &hover {
                 Hover::Matched => json!("entity"),
                 Hover::Nothing => json!("nothing"),
                 Hover::Other(o) if *o == me => json!("own_avatar"),
@@ -175,6 +178,9 @@ pub(super) async fn hover_once<W: WorldIo>(
                 Hover::OffScreen => json!("off_screen"),
             }}),
         );
+        if i < HOVER_OFFSETS.len() && matches!(hover, Hover::Other(_)) {
+            body_occluded = true;
+        }
         match hover {
             Hover::Matched => {
                 chosen = Some((p, Hover::Matched));
@@ -183,7 +189,12 @@ pub(super) async fn hover_once<W: WorldIo>(
             // Nothing under the cursor is not proof of a miss (the client
             // may only update mouse-over on its own schedule): keep it as
             // a candidate but prefer a verified height.
-            Hover::Nothing if chosen.is_none() => chosen = Some((p, Hover::Nothing)),
+            // An empty origin is not a usable fallback when the avatar or
+            // another entity covered the body. Otherwise a humanoid could
+            // click through its occluder just because its feet are empty.
+            Hover::Nothing if chosen.is_none() && (i != HOVER_OFFSETS.len() || !body_occluded) => {
+                chosen = Some((p, Hover::Nothing));
+            }
             Hover::Other(o) if force && chosen.is_none() => chosen = Some((p, Hover::Other(o))),
             _ => {}
         }
@@ -302,12 +313,14 @@ mod tests {
         assert!(!wants_view_retry(&forced, &[], true, true));
     }
 
-    /// The aim never touches the feet (probe B-P2): every height is a body
-    /// point, the chest comes first, and the head is within a 1.8 m humanoid.
+    /// Avatar proximity stays on body points (probe B-P2), while entity
+    /// search tries the actor origin only after the humanoid heights.
     #[test]
-    fn the_aim_heights_are_above_the_feet() {
+    fn avatar_heights_stay_on_the_body_and_entity_origin_is_last() {
         assert_eq!(HOVER_OFFSETS[0], 100.0);
         assert!(HOVER_OFFSETS.iter().all(|dz| (60.0..=180.0).contains(dz)));
+        assert_eq!(&ENTITY_HOVER_OFFSETS[..HOVER_OFFSETS.len()], &HOVER_OFFSETS);
+        assert_eq!(ENTITY_HOVER_OFFSETS.last(), Some(&0.0));
     }
 
     #[test]

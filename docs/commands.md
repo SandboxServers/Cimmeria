@@ -325,7 +325,7 @@ Spawn, kill, and despawn NPCs.
 |---|---|---|---|---|
 | `/gmdespawn` | Remove an NPC from the space (NPC-only). The client sends no id, so the server removes the NPC you have selected; a player is refused | ✅ Yes | none (select the NPC first) | `/gmdespawn` |
 | `/gmdumpobjects` | Dump the object list to the log | ❌ Not yet | none | `/gmdumpobjects` |
-| `/gmkilltarget` | Kill an NPC via the canonical death sequence (NPC-only) | ✅ Yes | `<entityId>` (numeric) | `/gmkilltarget 5400` |
+| `/gmkilltarget` | Kill the selected NPC via the canonical death sequence (NPC-only) | ✅ Yes | `<entityId>` required by the stock slash command, but its wire call sends `-1` and the server uses your selected target | Select the NPC, then `/gmkilltarget 5400` |
 | `/gmrespawn` | Respawn after death | ✅ Yes | none | `/gmrespawn` |
 | `/gmspawnbycmd` | Spawn an NPC by template id at your position + offset | ✅ Yes | `<designId> <xOffset> <zOffset>` (numeric template id; float offsets) | `/gmspawnbycmd 3402 5.0 0.0` |
 | `/gmspawnentityloot` | Force-drop loot from an entity | ❌ Not yet | `<entity> <lootTableId>` | `/gmspawnentityloot` |

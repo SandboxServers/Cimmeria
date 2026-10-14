@@ -216,23 +216,31 @@ impl ResourceCache {
     /// with an empty vec is omitted.
     pub(super) fn apply_mission_overrides(
         categories: &mut HashMap<u32, CategoryData>,
-    ) -> HashMap<u32, Vec<u32>> {
+        additions: &[crate::base::mission_additions::MissionAddition],
+    ) -> Result<HashMap<u32, Vec<u32>>, String> {
         use crate::base::mission_overrides::{
             apply_override, apply_step_text_override, MISSION_OVERRIDES, STEP_TEXT_OVERRIDES,
         };
 
+        let prepared =
+            super::apply_mission_additions::prepare(categories.get(&CATEGORY_MISSIONS), additions)?;
         let mut overridden: HashMap<u32, Vec<u32>> = HashMap::new();
 
         let Some(missions) = categories.get_mut(&CATEGORY_MISSIONS) else {
             tracing::warn!(
-                category = CATEGORY_MISSIONS,
+                event = "cooked_data.mission_catalog_rejected",
+                category_id = CATEGORY_MISSIONS,
+                category_name = super::category_name(CATEGORY_MISSIONS).unwrap_or("unknown"),
+                reason = "category_not_loaded",
                 "CookedDataMissions not loaded; skipping mission overrides"
             );
-            return overridden;
+            return Ok(overridden);
         };
 
         let mut applied: Vec<u32> =
             Vec::with_capacity(MISSION_OVERRIDES.len() + STEP_TEXT_OVERRIDES.len());
+        super::apply_mission_additions::insert(missions, &prepared);
+        applied.extend(prepared.iter().map(|mission| mission.addition.mission_id));
         for ov in MISSION_OVERRIDES {
             let Some(original) = missions.elements.get(&ov.mission_id) else {
                 tracing::warn!(
@@ -247,7 +255,7 @@ impl ResourceCache {
                     missions.elements.insert(ov.mission_id, patched);
                     // A mission can have multiple overrides (e.g. 622 injects
                     // both the Guard-search and equip steps); list its id once
-                    // so InvalidKeys names each patched entry a single time.
+                    // so push-log bookkeeping names each patched entry once.
                     if !applied.contains(&ov.mission_id) {
                         applied.push(ov.mission_id);
                     }
@@ -309,9 +317,10 @@ impl ResourceCache {
         }
 
         if !applied.is_empty() {
-            let bump = compute_metadata_bump(MISSION_OVERRIDES, STEP_TEXT_OVERRIDES);
+            let bump = compute_metadata_bump(MISSION_OVERRIDES, STEP_TEXT_OVERRIDES, additions);
             missions.metadata = missions.metadata.wrapping_add(bump);
             applied.sort_unstable();
+            applied.dedup();
             tracing::info!(
                 category = CATEGORY_MISSIONS,
                 count = applied.len(),
@@ -322,7 +331,19 @@ impl ResourceCache {
             overridden.insert(CATEGORY_MISSIONS, applied);
         }
 
-        overridden
+        for mission in prepared {
+            tracing::info!(
+                event = "cooked_data.mission_catalog_inserted",
+                category_id = CATEGORY_MISSIONS,
+                category_name = super::category_name(CATEGORY_MISSIONS).unwrap_or("unknown"),
+                mission_id = mission.addition.mission_id,
+                mission_name = mission.name,
+                bytes = mission.addition.xml.len(),
+                metadata_version = missions.metadata,
+                "Authored mission catalog entry applied",
+            );
+        }
+        Ok(overridden)
     }
 
     /// Add Cimmeria's Kismet sequences to the freshly-loaded
