@@ -322,6 +322,14 @@ mod tests {
     }
 
     #[test]
+    fn recorded_med_station_leg_is_available_to_uat() {
+        let args = move_args("prisoner-to-med-station").unwrap();
+        assert_eq!(args["waypoints"][0]["x"], -289.7);
+        assert_eq!(args["waypoints"][4]["x"], -277.0);
+        assert_eq!(args["point"]["x"], -235.8);
+    }
+
+    #[test]
     fn uat_spec_rejects_an_unknown_route_before_running() {
         let text = r#"
 schema = 1
