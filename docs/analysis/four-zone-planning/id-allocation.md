@@ -2,8 +2,8 @@
 
 > **Type:** Reference
 > **Audience:** Zone campaign coordinators and the ID-lock packets (CB-N00, CS-00, HA-00b, T-01)
-> **Last updated:** 2026-10-13
-> **Companions:** [four-zone index](README.md), [execution contract](execution-contract.md), [Harset chain ranges](harset-work-packets.md#contract-and-dispatch-boundary), [Tollana packets](tollana-work-packets.md)
+> **Last updated:** 2026-10-14
+> **Companions:** [four-zone index](README.md), [execution contract](execution-contract.md), [2026-10-14 owner decisions](owner-decisions-2026-10-14.md), [Harset chain ranges](harset-work-packets.md#contract-and-dispatch-boundary), [Tollana packets](tollana-work-packets.md)
 
 Owner decision, 2026-10-13: the four zone campaigns share one content-chain ID table so that no two campaigns, branches or workers pick the same `chain_id`. This page is that table. A zone's ID-lock packet reads it, claims individual IDs inside its own block, and records the claim in its zone ledger before any coder receives an ID.
 
@@ -32,13 +32,14 @@ Measured on 2026-10-13 at `origin/main` 885bbae05 from the first value of each `
 
 The planning review's working figure of "castle_cellblock 1001–5030" was a min/max span, not a block. The real Cellblock chains stop at 1195 plus one outlier, 5030, so they do not overlap the Castle (1201–1365), effects (2001–2025) or SGC W1 (3001–3044) chains. Treat every listed ID as taken even where it sits inside another zone's span.
 
-**Free and cited:** 1381–1400, the range the old Castle CA15 draft proposed, has no chain today. **Proposal, pending owner sign-off** (not part of the owner's 2026-10-13 ID decision): Castle restoration chains (CS-02, CS-03, CS-06, CS-08) take the free 1366–1400 block next to the existing Castle chains. Until the owner signs off, CS-00 treats it as a candidate and records any claim here.
+**Free and cited:** 1381–1400, the range the old Castle CA15 draft proposed, had no chain at the 2026-10-13 scan. The owner separately approved 1366 for CS-08a and delegated individual Castle restoration-chain allocations in 1367–1400 on 2026-10-14, subject to the current collision audit in O14-04/O14-22. A free range is not a claim on every ID; CS-00 records each allocated ID here before dispatch.
 
 ## Reserved blocks
 
 | Block | Owner | Use |
 |---|---|---|
-| 1366–1400 | Castle (proposed) | Castle restoration chains. Proposal pending owner sign-off; see above. |
+| 1366 | Castle CS-08a | Individual reservation owner-approved 2026-10-14; Frost's Letter bridge. See dated reservation below. |
+| 1367–1400 | Castle restoration | Coordinator may allocate individual IDs after the documented stock/shared-table/seed/active-branch collision audit (owner decision O14-22, 2026-10-14). |
 | 6001–6800 | Harset | Reserved by the old Harset ledger: space 6001–6099, Goa'uld 6101–6300, Jaffa 6301–6500, OP-CORE 6501–6800. Per-mission sub-ranges are in [harset-work-packets.md](harset-work-packets.md). |
 | 9000–9799 | Tollana | Tollana restoration, population, authored and repeatable chains. |
 | 9800–9999 | Tollana (Harset recipients) | Owner decision, 2026-10-13: Tollana authors the Harset-side recipient chains for 603, 611, 618, 621, 1626, 1632 and 1643 here. Harset HA-00b signs off the NPC tags they use. |
@@ -69,6 +70,14 @@ HA-00b's documentation repair records the [exact Harset candidates](../harset-co
 Other restoration candidates: spawn IDs 360–379, templates 260–269, point sets 2130–2159 and points 2560–2679; existing Bar/pens reservations 2108/2109 retained. Local ledger rows bind these IDs to consumers and evidence gates. At `d3efb7d41aad0b6008397f112d224ce7430d7acf`, all 495 chain candidates and those other candidates are absent from globally scanned seed primary keys, with no overlap between exclusive ranges. The recorded registered-branch committed-snapshot scan found zero candidate collisions; see the bounded [collision record](../harset-continuation/id-allocation.md#collision-verification-and-limits) and fixer recheck in [HA-00b worknote](../harset-continuation/worknotes/HA-00b.md). Uncommitted and later sibling claims require coordinator reconciliation before activation.
 
 ## Other IDs
+
+### CS-08a individual reservation — 2026-10-14
+
+Owner explicitly approved **chain 1366**, 2026-10-14, reserved exclusively for Castle **CS-08a**, the [Frost's Letter bridge](../castle-continuation/worknotes/CS-08a.md). G-ID is closed for this single claim after collision recheck. The owner's later O14-22 decision delegates the remaining 1367–1400 restoration block to Castle's coordinator for individual audited claims; it does not allocate any particular ID in that block. Recheck live claims immediately before implementation; another packet cannot reuse 1366.
+
+First-tuple resource-seed checks found zero candidate-1366 hits at `origin/main` `19eab88c9`, Castle `3222e6b50`, Cellblock `457b4f75a`, Harset `72ad79648` and Tollana `93eae8cfd`. Content-chain INSERT scans of all four integration worktrees also found zero. Live continuation ledgers contain no individual chain-1366 claim; unrelated mission ID 1366 is a different namespace. This is a point-in-time collision check, not an atomic reservation. O14-22 does not waive the later per-ID recheck for 1367–1400.
+
+### Non-chain namespaces
 
 Mission, step, objective, dialog, spawn, template, point-set and item IDs are not block-reserved here. Each zone's ID-lock packet (CB-N00, CS-00, HA-00b, T-01) allocates them against the current seed and every other zone's ledger, runs a no-collision check across all seed files and all active campaign branches, and records the result in its zone ledger. For Harset, HA-00b covers restoration proposals and HA-00c covers authored/repeatable allocations. A new authored mission ID must also be absent from the stock `CookedDataMissions.pak`, since CB-N05a inserts it as a new catalog entry.
 
