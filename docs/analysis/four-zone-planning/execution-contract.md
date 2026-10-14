@@ -80,7 +80,7 @@ Owner decision, 2026-10-13: one final packet, **FZ-99**, updates the once-per-ca
 
 ## Cross-campaign order and ownership
 
-Cellblock escape and Castle share one story boundary; Castle may return while Cellblock stays one-time. Harset and Tollana share mission handoffs. Freeze a single owner for each cross-zone chain and let the receiving zone test the handoff without duplicating it. The four campaigns may plan in parallel, but implementation waves that depend on another campaign's unmerged contract wait. No new authored quest is labeled as shipped 2009 content. Side stories and repeatables follow restoration UAT, use the [story source guide](story-research.md), and begin with useful supplies and modest XP/currency.
+Cellblock escape and Castle share one story boundary; Castle may return while Cellblock stays one-time. Harset and Tollana share mission handoffs. Freeze a single owner for each cross-zone chain and let the receiving zone test the handoff without duplicating it. The four campaigns may plan in parallel, but implementation waves that depend on another campaign's unmerged contract wait. No new authored quest is labeled as shipped 2009 content. Side stories and repeatables follow restoration UAT, use the [story source guide](story-research.md), and begin with useful supplies and modest XP/currency. Under O14-10, the **first authored catalog proof only** may grant zero rewards so its native journal/dialog/advance/relog result isolates catalog behavior. If another zone completes that proof before CB-N05 dispatch, this exception no longer covers CB-N05: keep dispatch blocked and reseal/review it with a bounded normal reward or obtain a specific approved exception. Later gameplay side stories keep the supply and modest XP/currency guidance; this makes no general economy change.
 
 Single owners fixed by the owner on 2026-10-13:
 
@@ -91,7 +91,7 @@ Single owners fixed by the owner on 2026-10-13:
 | Mission 1664 | Owner: Castle the opening/exit beat, Harset the debrief. Proposed mapping (CS-00/HA-00b confirm): Castle CS-06 grants/accepts 1664 at the Castle exit; Harset HA-01b owns steps 5224, 5225 and 5226 | Each tests the other's handoff. |
 | Tollana turn-ins 603, 611, 618, 621, 1626, 1632, 1643 | Tollana, both ends, chains in 9800–9999 | Harset HA-00b signs off the NPC tags. |
 | Missions 1364, 1366 | Tollana T-05a/T-05b | Harset records the interface in HA-00b. |
-| CB-N05b Castle turn-in of the Cellblock story | Cellblock | Castle adds no duplicate recipient. |
+| CB-N05b future Castle evidence hand-in, separate from the first authored catalog proof | Cellblock | Castle adds no duplicate recipient; dispatch waits for the HA-1360 item receipt primitive. |
 
 ### Client mission catalog prerequisite
 

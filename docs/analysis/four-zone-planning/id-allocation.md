@@ -51,6 +51,22 @@ The planning review's working figure of "castle_cellblock 1001–5030" was a min
 
 ## Other IDs
 
+### CB-N05 individual claims — 2026-10-14
+
+These IDs belong only to the proposed first authored world-12 mission [*The Remaining Pods*](../cellblock-continuation/worknotes/cb-n05-seal.md). They are individual claims, not a new range reservation. The mission seal is still under review; no coder may use the claims until that review passes. Recheck immediately before implementation because the audit is point-in-time.
+
+| Namespace | Claimed ID | Exact use |
+|---|---:|---|
+| Mission | 62050 | *The Remaining Pods*; one-time, itemless, zero reward |
+| Mission step | 62051, 62054 | Prisoner report; Marsh warning |
+| Mission objective | 62052, 62055 | One required objective per step |
+| Mission task | 62053, 62056 | One task per objective |
+| Dialog root | 60150 | One-screen, zero-button, speaker-0 narrator dialog |
+| Dialog screen | 96110 | Sole screen of dialog 60150 |
+| Content chain | 11000–11005 | Offer, login restore, abandon restore, Prisoner click, nested accept, Marsh click; six individual IDs |
+
+The coordinator checked mission 62050 and nested IDs 62051–62056 against stock `CookedDataMissions.pak`, dialog 60150 against stock `CookedDataDialogs.pak`, and screen 96110 against stock dialog XML, with zero hits. On 2026-10-14, first-tuple checks of mission/dialog/content seed rows and resource registries in the four integration worktrees found zero candidate hits: Cellblock `71b470774`, Castle `3cdc609dd`, Harset `ce2ac3293`, Tollana `319d768e2`. The chain scan checked each `content_chains` first tuple; numbers inside action text and unrelated dialog screens are not chain claims. Existing dialog-set-map 2795 is reused, not claimed here. Castle's independently claimed chains 1367–1370 are outside Cellblock's block. The [Cellblock ledger](../cellblock-continuation/README.md) records review and UAT status.
+
 ### CS-08a individual reservation — 2026-10-14
 
 Owner explicitly approved **chain 1366**, 2026-10-14, reserved exclusively for Castle **CS-08a**, the [Frost's Letter bridge](../castle-continuation/worknotes/CS-08a.md). G-ID is closed for this single claim after collision recheck. The owner's later O14-22 decision delegates the remaining 1367–1400 restoration block to Castle's coordinator for individual audited claims; it does not allocate any particular ID in that block. Recheck live claims immediately before implementation; another packet cannot reuse 1366.

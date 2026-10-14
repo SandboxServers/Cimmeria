@@ -1,5 +1,7 @@
 # Cellblock route baseline
 
+> **Type:** Reference. **Audience:** Cellblock coordinators and UAT reviewers.
+> **Last updated:** 2026-10-14. **Companions:** [Ledger](README.md), [CB-N05 design seal](worknotes/cb-n05-seal.md), [UAT spec](../../guides/uat-specs/castle-cellblock.toml).
 > Static baseline `d3efb7d41aad0b6008397f112d224ce7430d7acf`, audited 2026-10-14.
 > CB-N00 performed no fresh route run, deaths, duration, screenshots, packet tap or lab actions.
 
@@ -48,6 +50,69 @@ creation path, server revision and ability-grant provenance were not established
 The next CB-U02 attempt must use a known fresh character and capture the actual
 1005 grant before attributing the absent ability to server or client behavior.
 
+A further p3 attempt held the lab lease from 20:47:13 to 20:53:20 UTC on
+2026-10-14, then released it. The
+`lab_ensure_in_world` call for a fresh Praxis character gave no result after about
+six minutes; read-only p3 status still showed `not_started`, so the call was
+interrupted. The daemon later logged a 394-second Start error because the lease
+had already been released; it never launched SGW.exe. No fresh character
+entered the world and no shot was attempted.
+At that time the default and p2 clients still reported world 19 and world 12
+respectively, while `server_sessions` returned zero and the queried server
+database had none of those client character names. Client-to-probed-server
+binding was therefore unverified; no server packet/log result is attributed to
+either client. CB-U02 remains UATPending for a fresh normal-character run.
+
+A second p3 diagnostic held the same coordinated lease from **21:00:22 to
+21:02:26 UTC** on 2026-10-14 and released it. The low-level `lab_client_start`
+call stayed pending for about two minutes while read-only p3 status remained
+`not_started`; the call was terminated. The daemon later logged a 45-second
+build-lane wait, then refused launch because the lease had been released.
+No client process or world entry resulted, no pistol step ran, and no server
+or gameplay result is inferred. This was a bounded pre-launch cancellation.
+
+On p4, low-level `lab_client_start` returned successfully around 21:03–21:04
+UTC. Read-only status at 21:06 showed a running client process but an
+unreachable bridge heartbeat and `login_state=not_started`. A fresh Praxis
+Soldier `lab_ensure_in_world` failed after 106.8 seconds with
+`WaitReady: no client running`; the coordinated lease was released. No world
+entry, tutorial grant or combat proof came from p4. Its process-start result
+does not establish a usable client bridge. The daemon log reports an idle
+main thread with no CPU or I/O; the watchdog terminated the process after
+122 seconds without a heartbeat. Post-run status reported
+`running=false`, `login_state=crashed`, one crash in ten minutes and an
+unreachable heartbeat; the crash report had no dump or command paths.
+
+On p5, the coordinated lease began at **21:07:57 UTC**. A fresh
+`lab_ensure_in_world(stop_at="running")` launched a client process, then
+returned `WaitReady: no client running` after 145 seconds including launch.
+The bridge heartbeat was unreachable, `login_state=crashed`, and status counted one crash
+in ten minutes. The daemon log reports an idle main thread with no CPU or
+I/O; the watchdog terminated the process after about 120 seconds without a
+heartbeat. The crash report had no dump or command paths. The lease was
+released. No character selection, world entry or combat occurred. Both p4
+and p5 minted telemetry for the selected local server but never logged in or
+established a server session. A subsequent read-only `lab doctor` passed
+daemon, install, account/profile and stray-process checks but did not
+explain the idle main-thread stall.
+
+After the operator confirmed the desktop was unlocked, a p4 retry held a lease from
+21:33:42 UTC. The daemon waited about 90 seconds for an active build-lane
+slot, logged `lane_busy_launch`, and started a process. The bridge stayed
+unreachable, and `lab_ensure_in_world(stop_at="running")` returned
+`WaitReady: the client has no main window after 120291 ms`. The process was
+stopped and the lease released. No character selection or gameplay occurred.
+This run alone does not isolate the window stall from concurrent build load.
+
+A final p4 isolation began at 21:46:42 UTC with the build lane idle and the
+desktop unlocked. Direct `lab_client_start` launched a process promptly, but
+no main window or bridge heartbeat appeared. The daemon observed process CPU
+and I/O throughout its load grace, then terminated it at 21:51:50 after
+305 seconds with `heartbeat unreachable`. The lease was released at 21:52:27.
+No login, world entry or combat occurred. This confirms a lab startup blocker
+even without concurrent build-lane activity; it does not implicate Cellblock
+content or prove any CB-U02 gameplay outcome.
+
 ## Bounded fresh acceptance rows
 
 All rows below are **UATPending**. O14-08 grants standing approval for the four
@@ -66,7 +131,8 @@ Do not attest first-press feedback from `content.resolve` or a helper's return a
 | CB-U06 | Straegis scene, Marsh departure, 2516 then 5859, actual readable interval; death/relog/late entry. | N01 + asset CA-U rows |
 | CB-U07 | Class crate once, terminal 2356→80688, skip optional armory kill, arrival in Castle; 1360 retained and no double reward on relog. | N02/N08 + ring 1109 and Castle CS-08 |
 | CB-U08 | Each candidate cast pocket: walk/collision/nav/LoS, camera and two-client AoI; no tutorial interaction occlusion or unintended aggro. | N04 seal; NPC/presentation |
-| CB-U09 | Complete routes with optional stories skipped/taken, separate archetypes, record duration and deaths individually. | N08 after selected packets and local review |
+| CB-U09 | **Pre-N05 dispatch gate:** run a fresh normal Human/Jaffa first-run core escape with optional content skipped; record each character's start/end, core duration, deaths and measured free time against O14-14's 30–45 minute core and 10-minute optional limit. Hold N05 implementation until this baseline supports its estimated detour. After integration, repeat complete routes with selected optional content taken/skipped and compare the added time. The old 37m06s privileged run does not satisfy this row. | N02/N08 baseline before N05; repeat after selected packets |
+| CB-U10 | First authored mission 62050: native Human and Jaffa first click on Prisoner 329 after 638, offer marker, category-3 journal/title and A→B advance, category-5 dialog 60150 render, Marsh B completion without losing core 1051/1052/1152, then repeat click, relog before/after completion, abandon/reaccept and skip. Record server/client/patch revisions, per-character mission/DB state, exact `(3, 62050)` and `(5, 60150)` transfer evidence, content/packet logs and optional elapsed time; blank dialog/crash/remote mutation/core briefing regression blocks. | N05 after CB-U09 pacing gate and integrated local review; CB-N05a first-catalog proof |
 
 ## Sibling ownership reconciliation
 
@@ -164,9 +230,10 @@ dialogue, count and rewards remain in the [decision log](decision-log.md).
 
 ## ID audit and limitations
 
-A declaration-only scan of every `db/resources/Content/Seed/*.sql` at baseline
-found 120 Cellblock-file chains and no duplicated chain IDs across seed files.
-No seeded chain occupies 11000–11499. This is a **current-seed check only**;
-no new IDs were allocated and no all-branch collision clearance is claimed.
-The shared allocation table is unchanged. Other-zone gate commits and stock mission
-catalog absence must be reconciled by the coordinator before any claim becomes Ready.
+A declaration-only scan of every `db/resources/Content/Seed/*.sql` at the
+CB-N00 baseline found 120 Cellblock-file chains and no duplicated chain IDs
+across seed files. No seeded chain occupied 11000–11499 at that baseline.
+This historical scan alone was not an all-branch collision clearance.
+The later proposed [CB-N05 individual claims](../four-zone-planning/id-allocation.md#cb-n05-individual-claims--2026-10-14)
+record a separate stock/seed/four-branch audit for 11000–11005 and the mission,
+dialog and screen IDs; recheck immediately before coder dispatch.
