@@ -1,5 +1,8 @@
 # Four-zone Haiku campaign execution contract
 
+> Type: reference. Audience: campaign coordinators, implementation workers and reviewers. Last updated: 2026-10-14.
+> Companions: [four-zone ledger](README.md), [Harset packet contracts](harset-work-packets.md), [Harset continuation](../harset-continuation/README.md).
+
 Status: planning contract only. This document governs four future campaigns; it does not dispatch them. The owner has chosen a campaign feature branch with wave integrations, local CI-equivalent checks and review before one remote PR per complete campaign. The `campaign-packet` skill's rule is one PR per packet; this contract deliberately overrides that rule for these four campaigns. The single exception is CB-N05a, which ships as its own early PR to `main` (owner decision, 2026-10-13; see [the catalog prerequisite](#client-mission-catalog-prerequisite)). Repository merge-queue and lab-lease rules still apply.
 
 ## Ledgers
@@ -82,11 +85,16 @@ Single owners fixed by the owner on 2026-10-13:
 | Cross-zone item | Owner | Receiving side |
 |---|---|---|
 | Chain 1109, Cellblock→Castle ring arrival | Ring-transport campaign (`docs/analysis/ring-transport-cellblock-castle/`) | Cellblock and Castle list it as an external dependency; the current `cross_world_teleport` stays as fallback. |
-| Missions 1360 and 567, Castle legs | Castle CS-08 | Harset owns its own legs; without CS-08 only 31 of Harset's 33 active records are completable. |
+| Mission 1360 crossing | Castle CS-08a: Castle-origin `stargate_crossed` Castle→Harset reconstruction, chain 1366 (single ID approved 2026-10-14), advances 4037→4038 and retains 3730 | Harset HA-1360a engine prerequisite is BlockedEvidence; HA-1360b receipt is BlockedDependency. Marsh must require the owned letter before completion. |
+| Mission 567, Castle leg | Castle CS-08 separate acquisition/handoff gate | Harset 6503/6504 stay disabled pending item-2698 acquisition evidence and cross-zone proof. |
 | Mission 1664 | Owner: Castle the opening/exit beat, Harset the debrief. Proposed mapping (CS-00/HA-00b confirm): Castle CS-06 grants/accepts 1664 at the Castle exit; Harset HA-01b owns steps 5224, 5225 and 5226 | Each tests the other's handoff. |
 | Tollana turn-ins 603, 611, 618, 621, 1626, 1632, 1643 | Tollana, both ends, chains in 9800–9999 | Harset HA-00b signs off the NPC tags. |
 | Missions 1364, 1366 | Tollana T-05a/T-05b | Harset records the interface in HA-00b. |
 | CB-N05b Castle turn-in of the Cellblock story | Cellblock | Castle adds no duplicate recipient. |
+
+### Frost's Letter receiving prerequisite
+
+Owner decision, 2026-10-14, explicitly expands the missing-letter requirement into separate Harset/engine work. Read [HA-1360a and HA-1360b](../harset-continuation/work-packets.md#ha-1360a--authoritative-letter-turn-in-prerequisite) before sealing either side. The engine seal requires DB persistence, server authority, mission and testing signoffs for exact authoritative item consumption and mission completion together, stale MissionUpdate/abandon exclusion (CAS or proved serialization), correlated recovery/session fences, failure/revert tests and a bounded file manifest. The compound action/outbox approach is proposed, not an accepted architecture. CS-08a can advance independently while retaining 3730; it cannot close Harset receipt. Existing 6501/6502/6505 remain Harset-owned, and intent-only removal tests cannot close the gate. HA-1360b waits for reviewed engine integration and a real Cellblock→Castle chain-1366 crossing→Marsh production bridge proof; client UAT remains pending until authorized and attested.
 
 ### Client mission catalog prerequisite
 

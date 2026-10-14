@@ -7,3 +7,4 @@
 - [Close-out flag flip traps](reference_closeout_flag_flip_traps.md) — Flipping a flag default breaks old fixtures; catalog drift sweep; harness worktree lacks external/; lane masks exit code.
 - [UAT spec authoring traps](reference_uat_spec_authoring.md) — "Ready" = MAIN_TOOLS in the plan test; typable chat; GM steps cost N1; which SigNoz rows carry the spawn tag.
 - [PowerShell alias traps in scripted sweeps](reference_powershell_alias_traps.md) — helpers named Rd/R are aliases (Remove-Item, Invoke-History); `Rd` deleted notes once.
+- 2026-10-14: [Harset letter prerequisite](../../../docs/analysis/harset-continuation/work-packets.md#ha-1360a--authoritative-letter-turn-in-prerequisite) records source evidence that chain 6501 requests item removal then completes without a committed verdict. Owner requires possession; HA-1360a/b remain blocked on atomicity, stale-writer/CAS, recovery and domain signoffs. A proposed compound action/outbox is not a sealed architecture.

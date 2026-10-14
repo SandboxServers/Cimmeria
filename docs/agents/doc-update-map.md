@@ -1,6 +1,6 @@
 # Doc-Update Map
 
-> **Last updated**: 2026-10-11
+> **Last updated**: 2026-10-14
 > **Audience**: Contributors and agents finishing a PR, and reviewers checking one
 > **Type**: Reference
 > **Companions**: [CLAUDE.md](../../CLAUDE.md), [pre-pr-checks.md](pre-pr-checks.md), [development-workflow.md](development-workflow.md), [../readme.md](../readme.md)
@@ -50,6 +50,7 @@ The map of "what changed → what to update":
 | Common first-day problems or known failure modes operators / contributors hit | [docs/troubleshooting.md](../troubleshooting.md) |
 | Per-system game-mechanic docs (combat, abilities, missions, inventory, social, ...) | [docs/gameplay/<system>.md](../gameplay/) and [docs/game-systems.md](../game-systems.md) for cross-system summaries |
 | UAT steps for a restored system (new or changed tester-facing behaviour) | The campaign's own checklist under [docs/analysis/](../analysis/) (its ledger stays canonical) **and** the matching section of [docs/guides/unified-uat.md](../guides/unified-uat.md), keeping the campaign's step ids; add a new system's section, its row in the guide's checklist table, and any new known issue to the guide's "Current known issues" table |
+| Campaign packet scope, owner decision, blocker or cross-campaign interface | The owning `docs/analysis/<campaign>/` README, packet contract and resume/worknote, plus the shared execution/dependency contract when another campaign consumes the interface. Keep proposals distinct from sealed contracts and implementation/client acceptance; shared status pages wait for the campaign close-out. |
 | Engine internals (BigWorld, CME, cooked-data pipeline, entity LOD, watchers, space management) | [docs/engine/<file>.md](../engine/) and the relevant `docs/reverse-engineering/findings/` entries if evidence shifts |
 | Client-side analysis (audio/voice, FaceFX, UI/Scaleform, asset inventories) | [docs/client/<file>.md](../client/) and the `docs/client-tools.md` index if a new tool surface is added |
 | Desktop launcher workflows, IPC, packaging or release (`crates/launcher/desktop/`, `crates/launcher-core/`, `launcher-release.yml`, `tools/launcher-release/`) | [Desktop README](../../crates/launcher/desktop/README.md) and contracts under its `docs/` (release changes: [release.md](../../crates/launcher/desktop/docs/release.md)), the player docs [launcher guide](../client/launcher-guide.md) and [macos.md](../guides/macos.md) when anything a player sees or does changes, [launcher-self-update.md](../client/launcher-self-update.md) when the updater changes, [launcher-distribution-setup.md](../client/launcher-distribution-setup.md) when a release secret, variable or key changes, the `launcher-core` row in [crates/README.md](../../crates/README.md), and the [implementation ledger](../analysis/playtests/2026-10-03-macos-wine/launcher-implementation-ledger.md). The retired egui launcher's [design page](../client/sgw-launcher.md) is archived: don't update it |

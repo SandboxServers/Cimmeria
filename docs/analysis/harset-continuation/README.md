@@ -20,7 +20,7 @@ Static evidence cannot promote a packet to Done. Current artifact + meaningful r
 |---|---|---|
 | HA-D01 | Accepted owner direction | Keep the 29 core rows and four carry-ins; hold 39 older revisions for compatible build lineage. The missing SQLite provides no usable lineage. See the [73-row matrix](../four-zone-planning/harset-73-mission-review.csv). |
 | HA-D02 | Accepted owner direction | Worlds 57/68 shared; Market 69 and Storage 70 per player. `entities/spaces.xml` governs instance behavior; `worlds.flags` is not the runtime ownership switch. |
-| HA-D03 | Accepted interface | Castle CS-08 owns 1360 step 4037→4038 and 567 acceptance, steps 2000/2012 and item 2698 grant. Harset owns its receiving legs only. |
+| HA-D03 | Accepted interface; amended 2026-10-14 | Castle CS-08a uses Castle-origin `stargate_crossed` Castle→Harset reconstruction, chain 1366 (single ID approved), to advance 1360 step 4037→4038 and retain item 3730. CS-08 retains the separately blocked 567 acquisition/step leg. Harset owns its receiving legs only. |
 | HA-D04 | BlockedEvidence | 567 remains disabled in chains 6503/6504 until an acquisition path and Castle step handoff are proved; a seed item row is insufficient. |
 | HA-D05 | Provisional | Castle exit accepts 1664; Harset owns 5224–5226. Step text plus Texts moniker 27315 `DN_npc_int_SgtKaerlia_Harset` support the proposed geography, but the exact Castle grant edge, Kaerlia template/placement, dialog mapping and faction presentation are unproved. CS-00 and HA-00b have not sealed this interface. |
 | HA-D06 | Accepted tag interface, partial | Existing Harset tags below are signed off for exact spelling/world/template. Tollana owns both ends and chains 9800–9999. The recipients for 618 and 621 remain BlockedEvidence. |
@@ -28,6 +28,7 @@ Static evidence cannot promote a packet to Done. Current artifact + meaningful r
 | HA-D08 | Accepted evidence correction | NA26/NA29/NA36/NA40 have already rebuilt Harset/interior meshes and removed the temporary gate pin. Do not reuse the old ledger's “no interior mesh” or 1,939-component premise. Remaining raised-position coverage and ordinary-player containment are still unproved; see [placements](placements.md). |
 | HA-D09 | Proposed claims | The exact IDs in [id-allocation.md](id-allocation.md) are collision-checked candidates. Restoration proposals are recorded in the shared table, inactive until coordinator signoff and graph sealing. HA-00c seals authored/repeatable IDs. |
 | HA-D10 | BlockedDecision | Vendor stock/trainer trees, item-4512 acquisition, rewards, population density, authored presentation and repeatable policy need their named source/owner gates. Historical proposed decisions are preserved in the old ledger. |
+| HA-D11 | Accepted owner direction; implementation blocked | 2026-10-14: Marsh must require owned letter 3730 before 1360 completes. Explicitly expand into [HA-1360a engine prerequisite](work-packets.md#ha-1360a--authoritative-letter-turn-in-prerequisite) (BlockedEvidence) and [HA-1360b receipt](work-packets.md#ha-1360b--marsh-receiving-seed-and-cross-zone-proof) (BlockedDependency). Atomicity, stale writers/CAS, recovery/session fence and exact manifests need domain signoff; no architecture is sealed. |
 
 ## Census dispositions
 
@@ -112,7 +113,7 @@ Each of the following 73 IDs occurs once in HA-00a's immutable CSV. Source relat
 | Non-ZIP carry-in | Current seed / chain evidence | Disposition |
 |---|---|---|
 | 567 Romney's Files | Steps 2000/2012/4039; Harset 6503/6504 disabled | Conditional active; CS-08 acquisition + handoff gate |
-| 1360 Frost's Letter | Steps 4037/4038; Cellblock acceptance exists; Harset 6501/6502/6505 enabled | Partial active; CS-08 must advance to 4038 |
+| 1360 Frost's Letter | Steps 4037/4038; Cellblock acceptance exists; Harset 6501/6502/6505 enabled | Partial active; CS-08a crossing plus HA-1360a/b receipt required |
 | 1377 Replitech | Step catalog exists; no Harset graph | Active restoration; HA-09 |
 | 1410 Trust | Step catalog exists, truncated device-removal shape | Active restoration; HA-10c BlockedEvidence |
 
@@ -150,7 +151,7 @@ Paths in the artifact/guard column are relative to `crates/`, except SQL referen
 | H26 | BlockedDependency | BlockedEvidence | No 1351 graph; HA-06a needs Opheltes dialog/social outcomes. |
 | H27 | BlockedDependency | BlockedEvidence | No 1352 graph; HA-06b needs Bar/body/monitoring-item mapping. |
 | H28 | BlockedDesign/Dependency | BlockedEvidence | No 1353 graph; HA-06c needs item 4512 source and Agnos policy. |
-| H30 | Written | BlockedDependency, partial | 1360 receiving 6501/6502/6505 and `mission_1360_harset.rs` exist; negative rejects 4037. 567 6503/6504 disabled. Both need CS-08; 567 also BlockedEvidence on grant. |
+| H30 | Written | BlockedDependency, partial | 1360 receiving 6501/6502/6505 and `mission_1360_harset.rs` exist; negative rejects 4037, but removal intent does not prove committed consumption. CS-08a and HA-1360a/b now own closure. 567 6503/6504 remain disabled pending CS-08's separate acquisition evidence. |
 | H31 | Written | UATPending | OP-CORE 6511–6528 sparse; `mission_1361/acceptance.rs` pins 6007↔6511/6512/6513/6528 enablement, plus progression/bind/disjointness tests. |
 | H32 | BlockedDependency | BlockedEvidence | No 1362/1363 graphs; HA-07 needs four location anchors/dart targets/item semantics. |
 | H33 | BlockedDependency/Evidence | BlockedEvidence | No 1365 graph; HA-08a needs private Storage cast/item source. |
@@ -180,7 +181,9 @@ H16–H19, H29, H38–H39 and H48–H49 have no old packet section; no missing i
 
 ### Castle carry-ins
 
-1360 starts in Cellblock via its current loot acceptance. No current seed action advances 4037→4038; the Harset test explicitly rejects 4037. CS-08 must preserve item 3730 and emit active step 4038 before Harset entry. Harset 6501 displays 4576, removes one 3730, clears DSM 5356 on template 10 and completes 1360; 6502 restores the binding and 6505 returns it after 1361. Replay has to start at the actual upstream accept edge, cross Castle, relog and execute the receiving action.
+1360 starts in Cellblock via its current loot acceptance. The owner selects CS-08a's Castle-origin `stargate_crossed` crossing to Harset, chain 1366, as a Cimmeria reconstruction for 4037→4038, retaining item 3730 (2026-10-14; only that Castle chain ID is approved). The existing Harset test rejects 4037. Current 6501 displays 4576, requests one 3730 removal, clears DSM 5356 on template 10 and completes 1360 without waiting for committed removal. Its missing-letter completion is a proved source defect, not accepted behavior. 6502 restores the binding and 6505 returns it after 1361.
+
+The owner's missing-letter requirement creates [HA-1360a](work-packets.md#ha-1360a--authoritative-letter-turn-in-prerequisite) (BlockedEvidence) and [HA-1360b](work-packets.md#ha-1360b--marsh-receiving-seed-and-cross-zone-proof) (BlockedDependency). These preserve 6501/6502/6505 ownership and 6503/6504's disabled state. DB persistence, server authority, mission and testing signoffs must seal atomic consumption/completion, stale-writer exclusion/CAS, session-safe committed-result recovery and the exact bounded manifest. End-to-end proof starts at the actual Cellblock accept/grant, crosses CS-08a, relogs and executes the production receiving bridge. No implementation or client acceptance is established by this planning amendment.
 
 567 has steps 2000 (retrieve), 2012 (leave Castle), 4039 (deliver). CS-08 owns accept/grant item 2698 and step movement through 2000/2012 to 4039. Harset 6503 displays 2044, removes one 2698, clears DSM 2817 on template 48 and completes; 6504 restores. Both are false today. Do not flip them because an item or mission row exists. Prove authoritative possession/consumption and duplicate refusal in the end-to-end contract.
 
@@ -213,3 +216,5 @@ Tollana owns all seven recipient graphs in 9800–9999, including steps already 
 | Client UAT | UATPending; no lab permission, lease, client startup or server change in this packet |
 | Shared four-zone ID amendments | Harset-only restoration proposals recorded, coordinator signoff pending; no active claims |
 | HA-00c | BlockedDependency: exact authored/repeatable allocations need stock catalog/CB-N05a evidence and owner/advisor decisions; HA-17/18 require this gate AND CB-N05a |
+| HA-1360a | BlockedEvidence: source defect established; DB/authority/mission/testing signoffs, atomicity, stale-writer/CAS, recovery and bounded manifest remain open |
+| HA-1360b | BlockedDependency: HA-1360a integrated/reviewed plus CS-08a crossing, retained letter and final receipt graph/tests required |
