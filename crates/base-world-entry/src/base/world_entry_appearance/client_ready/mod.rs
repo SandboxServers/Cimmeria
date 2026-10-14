@@ -419,7 +419,6 @@ pub async fn handle_on_client_ready(
             return Ok(());
         }
     }
-
     let current = || {
         session
             .as_ref()
