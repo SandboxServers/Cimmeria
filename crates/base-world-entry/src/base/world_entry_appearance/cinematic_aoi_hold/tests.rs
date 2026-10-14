@@ -118,8 +118,8 @@ async fn first_login_holds_entity_intro_until_the_movie_has_run_out() {
     assert_eq!(buffered(&connected, addr), 0);
     assert_eq!(
         typed_transport.len() - sent_at_ready,
-        3,
-        "the held introduction flushes as create, avatar and cascade packets"
+        4,
+        "the held introduction flushes as create, avatar and two cascade fragments"
     );
     let released = capture
         .find_message(Level::INFO, "Cinematic AoI hold: released")
@@ -180,8 +180,8 @@ async fn cancel_movie_releases_the_hold_and_flushes_in_order() {
     assert_eq!(buffered(&connected, addr), 0);
     assert_eq!(
         typed_transport.len(),
-        4,
-        "create, avatar, cascade, then the held witness method \
+        5,
+        "create, avatar, two cascade fragments, then the held witness method \
          (no cached appearance in this fixture, so no resend packet)"
     );
     let released = capture

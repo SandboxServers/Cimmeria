@@ -144,16 +144,22 @@ pub fn plan_fragments(body: &[u8]) -> FragmentPlan {
     plan_fragments_inner(body, false)
 }
 
-/// Plan a fragmented body so its first packet ends with its first complete
-/// framed message, when that message fits in a packet. Later cuts retain the
-/// ordinary header guard. If the first message exceeds the packet body limit,
-/// the first cut remains inside its body at the ordinary limit.
+/// Plan a body so its first packet ends with its first complete framed
+/// message, when that message fits in a packet and more messages follow.
+/// This can produce a fragment group even when the whole body fits in one
+/// packet. Later cuts retain the ordinary header guard. If the first message
+/// exceeds the packet body limit, the first cut remains inside its body at
+/// the ordinary limit.
 pub fn plan_fragments_isolated_first_message(body: &[u8]) -> FragmentPlan {
     plan_fragments_inner(body, true)
 }
 
 fn plan_fragments_inner(body: &[u8], isolate_first: bool) -> FragmentPlan {
-    if body.len() <= FRAGMENT_BODY_SIZE {
+    let first_cut = (isolate_first && !body.is_empty())
+        .then(|| super::message_head::message_end(body, 0))
+        .flatten()
+        .filter(|&end| end < body.len() && end <= FRAGMENT_BODY_SIZE);
+    if body.len() <= FRAGMENT_BODY_SIZE && first_cut.is_none() {
         return FragmentPlan {
             ranges: std::iter::once(0..body.len()).collect(),
             header_guarded_cuts: 0,
@@ -165,11 +171,9 @@ fn plan_fragments_inner(body: &[u8], isolate_first: bool) -> FragmentPlan {
     let mut ranges = Vec::with_capacity(body.len().div_ceil(FRAGMENT_BODY_SIZE));
     let mut guarded = 0usize;
     let mut start = 0usize;
-    while body.len() - start > FRAGMENT_BODY_SIZE {
-        let mut cut = if start == 0 && isolate_first {
-            super::message_head::message_end(body, 0)
-                .filter(|&end| end < body.len() && end <= FRAGMENT_BODY_SIZE)
-                .unwrap_or(FRAGMENT_BODY_SIZE)
+    while body.len() - start > FRAGMENT_BODY_SIZE || (start == 0 && first_cut.is_some()) {
+        let mut cut = if start == 0 {
+            first_cut.unwrap_or(FRAGMENT_BODY_SIZE)
         } else {
             start + FRAGMENT_BODY_SIZE
         };

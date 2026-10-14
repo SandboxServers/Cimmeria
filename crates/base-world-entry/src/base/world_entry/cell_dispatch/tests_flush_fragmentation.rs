@@ -81,11 +81,15 @@ fn pad_where_raw_split_breaks_the_client() -> usize {
 /// Flush 24 buffered introductions and return the decrypted wire packets in
 /// send order.
 async fn flush_trigger(pad: usize, trigger: &'static str) -> Vec<Vec<u8>> {
+    flush_trigger_count(pad, trigger, NPC_COUNT).await
+}
+
+async fn flush_trigger_count(pad: usize, trigger: &'static str, count: u32) -> Vec<Vec<u8>> {
     let addr: SocketAddr = "127.0.0.1:54601".parse().unwrap();
     let typed = Arc::new(TestTransport::new());
     let transport: Arc<dyn Transport> = typed.clone();
     let mut state = test_default_connected_client_state();
-    for i in 0..NPC_COUNT {
+    for i in 0..count {
         state.deferred_aoi_msgs.push(DeferredAoiMsg::EnteredAoI {
             entity_id: entity_id(i),
             class_id: CLASS_ID,
@@ -245,6 +249,60 @@ async fn cinematic_hold_cascade_first_fragment_has_one_message_cursor() {
     let first_cascade = parse_incoming(&pre_ready_packets[1]).unwrap();
     assert_ne!(first_cascade.flags & FLAG_FRAGMENTED, 0);
     assert_eq!(first_cascade.body.len(), FRAGMENT_BODY_SIZE);
+}
+
+/// A sparse cinematic flush also needs a chain crossing: the single NPC's
+/// multi-message cascade fits one datagram, but its later message cursors
+/// would remain vulnerable if sent without fragmentation.
+#[tokio::test]
+async fn cinematic_hold_one_npc_cascade_fragments_despite_fitting_one_packet() {
+    let cascade = compose_create_entity_cascade_body(entity_id(0), CLASS_ID, 1, Some(&npc(0, 0)));
+    assert!(cascade.len() < FRAGMENT_BODY_SIZE);
+    let expected_cascade = unpack_packet_bodies(&[&cascade]);
+    assert!(
+        expected_cascade.messages.len() > 1,
+        "fixture needs later cursors"
+    );
+    let packets = flush_trigger_count(0, "cinematic_hold_release", 1).await;
+    assert_eq!(
+        packets.len(),
+        4,
+        "two phase-1 packets and two cascade fragments"
+    );
+    let first = parse_incoming(&packets[2]).unwrap();
+    let second = parse_incoming(&packets[3]).unwrap();
+    let first_len = 3 + usize::from(u16::from_le_bytes([cascade[1], cascade[2]]));
+    assert_eq!(first.body.as_ref(), &cascade[..first_len]);
+    assert_eq!(second.body.as_ref(), &cascade[first_len..]);
+    assert_ne!(first.flags & FLAG_FRAGMENTED, 0);
+    assert_ne!(second.flags & FLAG_FRAGMENTED, 0);
+    assert_eq!((first.frag_begin, first.frag_end), (Some(2), Some(3)));
+    assert_eq!((second.frag_begin, second.frag_end), (Some(2), Some(3)));
+    assert_eq!(first.seq_id, Some(2));
+    assert_eq!(second.seq_id, Some(3));
+    assert_eq!(first.flags & FLAG_HAS_REQUESTS, 0);
+    assert_eq!(second.first_req_offset, None);
+    assert_eq!(
+        unpack_packet_bodies(&[first.body.as_ref()]).messages.len(),
+        1
+    );
+    let decoded = unpack_reliable_stream(&packets);
+    assert!(decoded.iter().all(|bundle| bundle.abort.is_none()));
+    let expected_base = compose_create_entity_base_body(entity_id(0), CLASS_ID, [0.0; 3], [0.0; 3]);
+    let mut expected = unpack_packet_bodies(&[&expected_base]).messages;
+    expected.extend(expected_cascade.messages);
+    assert_eq!(messages_of(&decoded), expected);
+
+    let pre_ready = flush_trigger_count(0, "on_client_ready", 1).await;
+    assert_eq!(
+        pre_ready.len(),
+        2,
+        "ordinary sparse flush stays two packets"
+    );
+    assert_eq!(
+        parse_incoming(&pre_ready[1]).unwrap().flags & FLAG_FRAGMENTED,
+        0
+    );
 }
 
 /// The 48 single-message introduction packets exceed a nearly full TX
