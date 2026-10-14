@@ -124,6 +124,36 @@ These observations establish a receiving defect by source inspection. No new eng
 
 A compound action provisionally named `complete_mission_with_item` is a candidate. A base transaction with a correlated committed result and transactional outbox is also a candidate. Neither name nor architecture is settled here. A snapshot `HasItem` check followed by independent remove/complete cannot meet the atomicity gate. Broad loader hardening, generic turn-ins, client protocol extensions, inventory propID changes and mission 567 remain outside this packet.
 
+**2026-10-14 design review (conditional, not a Ready seal).** Database, authority,
+mission and testing reviewers agree that the current 6501 removal intent cannot
+prove possession or consumption. A mission-1360-specific transaction can consume
+one owned, accessible 3730 and persist the exact `MissionInstance` completion
+postimage together, with an inventory-first lock order and exact mutation counts.
+The generic mission writer must reject independent 1360 completion and stale
+updates; abandon must not delete a committed completion. A correlated result
+needs a bounded same-session retry and relog reconciliation; the existing
+entity-ID-only outbox is not sufficient. Without durable result acknowledgement,
+Marsh's transient 4576 dialog cannot be promised exactly once after a crash.
+
+The reviewed size calls for two children before dispatch: **HA-1360a1** owns the
+base transaction, mission writer guard and focused live-DB failure/concurrency
+proof; **HA-1360a2** owns the strict content action, internal messages, cell
+pending/result state, retry and relog proof. HA-1360b remains the seed/receipt
+child. Neither engine child is Ready until its exact file/function manifest,
+interface and revert tests are sealed. The first child must remain an undeployed
+campaign integration until 6501 is replaced: the old chain would otherwise
+remove a letter and have its independent completion rejected.
+
+The seed sets `num_repeats=1`; generic Rust and Python mission rules permit a
+second run after the first completion, although normal Frost content offers the
+mission only once. A permanent terminal fence would narrow that rule. The
+preferred run-aware design compares the full active preimage at repeat `r`,
+commits the completed postimage at `r+1`, and recognizes only that exact postimage
+for a retry. Ordinary `MissionUpdate` lacks source intent, so an explicit
+reaccept/abandon write contract or a proved serialization rule is still required
+to distinguish fresh reacceptance from queued stale snapshots. The owner has
+been asked whether to preserve this seeded repeat; no one-shot change is sealed.
+
 **Candidate edit sites, to narrow at seal:** content-engine `actions.rs`, `loader/action.rs` and focused loader tests; cell-content `executor/{dispatch,mod,mission}.rs`, a focused turn-in handler/tests and `cell/missions/` pending guards; wire `cell/messages/{cell_to_base,base_to_cell,cell_to_base_kind}.rs`; base-world-entry `cell_dispatch/{mod,progression_dispatch}.rs`; base-methods `methods/missions/` focused handler/tests and existing mission writer only where stale-writer protection requires it; base-session `outbox/` and shared lock helper only if the chosen design requires them; cell `service/base_messages/` response handler/tests; entity `missions.rs` only for shared completion semantics. Routing/name exhaustiveness edits and any schema file must be explicitly named before Ready. No gameplay seed is edited by HA-1360a.
 
 **Required tests:** unit/loader guards for strict parameters, malformed-action fail-closed conversion, correlation, pending/refusal and duplicate/stale results; live-DB handler tests for counts 1/2, wrong type/owner, zero/missing and storage-only items, exact completed arrays/repeats, and mission-write/result-enqueue failure after item mutation rolling both changes back. Barrier-controlled live-DB concurrency exercises same-type replacement/storage movement, two clicks, competing consume/abandon and queued stale MissionUpdate with captured Results and timeouts. A legal outcome consumes exactly one and completes once, or refuses with active mission and no turn-in consumption. Test commit→crash, redelivery and relog using real receivers and persisted state. Existing inventory/mission serializers get byte-exact and transport smoke checks for committed frames once and no refusal success frames. Negative-log guards require observable refusal reasons. Commit before isolated revert probes; reverting ownership/access/count/transaction/CAS/result guards must fail their specific tests. Testing reviewer signs which guards fail each mutation.
