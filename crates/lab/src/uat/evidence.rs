@@ -224,6 +224,10 @@ pub struct RunManifest {
     pub client: Value,
     pub account: Value,
     pub characters: Vec<Value>,
+    /// Fresh character identity and archetype, keyed by section id. Written
+    /// before creation so a resumed run can adopt a character already made.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub fresh_characters: std::collections::BTreeMap<String, Value>,
     /// Host clock at start, and the best server-offset estimate.
     pub clocks: Value,
     /// Every tool the router exposed when the run started.
@@ -272,6 +276,7 @@ pub fn default_root() -> PathBuf {
 
 impl RunDir {
     /// `<root>/<date>-<build8>-<run_id>`.
+    #[cfg(test)]
     pub fn create(
         root: &Path,
         date: &str,
@@ -286,6 +291,29 @@ impl RunDir {
         ));
         std::fs::create_dir_all(dir.join("rows"))
             .map_err(|e| format!("create {}: {e}", dir.display()))?;
+        Ok(Self { root: dir })
+    }
+
+    /// Reserve a new bundle path atomically. The runner retries a colliding
+    /// generated id; it must never append two concurrent runs to one bundle.
+    pub(crate) fn create_exclusive(
+        root: &Path,
+        date: &str,
+        build: Option<&str>,
+        run_id: &str,
+    ) -> std::io::Result<Self> {
+        std::fs::create_dir_all(root)?;
+        let build8: String = build.unwrap_or("unknown").chars().take(8).collect();
+        let dir = root.join(format!(
+            "{date}-{}-{}",
+            path_safe(&build8),
+            path_safe(run_id)
+        ));
+        std::fs::create_dir(&dir)?;
+        if let Err(e) = std::fs::create_dir(dir.join("rows")) {
+            let _ = std::fs::remove_dir(&dir);
+            return Err(e);
+        }
         Ok(Self { root: dir })
     }
 

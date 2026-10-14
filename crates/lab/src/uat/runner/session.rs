@@ -20,23 +20,47 @@ use crate::uat::tier::{Role, Tier};
 const ANCHOR_REPLY: Duration = Duration::from_secs(4);
 
 fn letters_name(run_id: &str) -> String {
-    let mut s: String = run_id
-        .chars()
-        .filter(char::is_ascii_lowercase)
-        .take(10)
-        .collect();
+    let mut s: String = run_id.chars().filter(char::is_ascii_lowercase).collect();
     if let Some(f) = s.get_mut(..1) {
         f.make_ascii_uppercase();
     }
     s
 }
 
+/// Bundles written before AP-02 used at most ten run-id letters and no
+/// section suffix. Keep that identity when adopting an older fresh run.
+pub(crate) fn legacy_name(run_id: &str) -> String {
+    letters_name(&run_id.chars().take(10).collect::<String>())
+}
+
+/// The section suffix keeps two fresh sections in one run distinct. A
+/// collision is resolved while the manifest is built, then its chosen name
+/// is persisted so changing the section list cannot rename a resumed player.
+pub(crate) fn fresh_name(run_id: &str, section_id: &str, nonce: u32) -> String {
+    let digest = Sha256::digest(format!("{section_id}:{nonce}"));
+    let suffix: String = digest[..2]
+        .iter()
+        .map(|b| char::from(b'a' + *b % 26))
+        .collect();
+    format!("{}{}", letters_name(run_id), suffix)
+}
+
 impl<I: ToolInvoker> Runner<'_, I> {
+    fn set_fresh_intro_pending(&mut self, section_id: &str, pending: bool) -> Result<(), String> {
+        let record = self
+            .manifest
+            .fresh_characters
+            .get_mut(section_id)
+            .ok_or_else(|| format!("section {section_id}: missing fresh character record"))?;
+        record["intro_pending"] = json!(pending);
+        self.save_manifest()
+    }
+
     /// The character this section plays: lab-account's, or this run's
     /// fresh one (`<first> <Runid>`; its list name is the last name).
     pub(crate) fn character_name(&self, spec: &SectionSpec) -> Option<String> {
         if spec.section.character == "fresh" {
-            Some(letters_name(&self.manifest.run_id))
+            self.fresh.get(&spec.section.id).cloned()
         } else {
             self.req.lab_character.clone()
         }
@@ -45,10 +69,16 @@ impl<I: ToolInvoker> Runner<'_, I> {
     /// `{name, archetype, level}` from the last character list seen.
     pub(crate) fn character_value(&self, spec: &SectionSpec) -> Value {
         let name = self.character_name(spec);
-        let row = self
-            .characters
-            .iter()
-            .find(|c| c.get("name").and_then(Value::as_str) == name.as_deref());
+        let row = self.characters.iter().find(|c| {
+            c.get("name").and_then(Value::as_str).is_some_and(|listed| {
+                name.as_deref().is_some_and(|want| {
+                    listed.eq_ignore_ascii_case(want)
+                        || listed
+                            .split_whitespace()
+                            .any(|part| part.eq_ignore_ascii_case(want))
+                })
+            })
+        });
         character_json(name, row)
     }
 
@@ -139,37 +169,114 @@ impl<I: ToolInvoker> Runner<'_, I> {
         }
         let name =
             want.ok_or("no character: set lab-account.json `character` or pass `character`")?;
-        let mut created = false;
-        if spec.section.character == "fresh" && !self.fresh.contains_key(&spec.section.id) {
+        if spec.section.character == "fresh" {
             let f = spec
                 .section
                 .fresh
                 .clone()
                 .ok_or("character = fresh without [section.fresh]")?;
-            let protect: Vec<String> = self.req.lab_character.iter().cloned().collect();
-            self.setup_call(
-                "lab_ensure_character_slot",
-                json!({ "free_slots": 1, "protect": protect }),
-                ctx,
-            )
-            .await?;
-            self.setup_call(
-                "lab_create_character",
-                json!({ "first": f.first, "last": name, "alignment": f.alignment,
-                        "archetype": f.archetype, "gender": f.gender }),
-                ctx,
-            )
-            .await?;
-            self.fresh.insert(spec.section.id.clone(), name.clone());
-            created = true;
+            let list = self.setup_call("lab_characters", json!({}), ctx).await?;
+            let listed = list
+                .get("characters")
+                .and_then(Value::as_array)
+                .is_some_and(|rows| {
+                    rows.iter().any(|r| {
+                        r.get("name").and_then(Value::as_str).is_some_and(|n| {
+                            n.eq_ignore_ascii_case(&name)
+                                || n.split_whitespace()
+                                    .any(|part| part.eq_ignore_ascii_case(&name))
+                        })
+                    })
+                });
+            if !listed {
+                // Another fresh section in this run may already have a
+                // character; never free its slot to create this one.
+                let mut protect: Vec<String> = self.req.lab_character.iter().cloned().collect();
+                if let Some(rows) = list.get("characters").and_then(Value::as_array) {
+                    protect.extend(rows.iter().filter_map(|r| {
+                        let full = r.get("name")?.as_str()?;
+                        self.fresh
+                            .values()
+                            .any(|last| {
+                                full.split_whitespace()
+                                    .any(|part| part.eq_ignore_ascii_case(last))
+                            })
+                            .then(|| full.to_string())
+                    }));
+                }
+                self.setup_call(
+                    "lab_ensure_character_slot",
+                    json!({ "free_slots": 1, "protect": protect }),
+                    ctx,
+                )
+                .await?;
+                if f.finish_intro {
+                    // Persist intent before creation: an interrupted run can
+                    // adopt this character and finish only its pending intro.
+                    self.set_fresh_intro_pending(&spec.section.id, true)?;
+                }
+                self.setup_call(
+                    "lab_create_character",
+                    json!({ "first": f.first, "last": name, "alignment": f.alignment,
+                            "archetype": f.archetype, "gender": f.gender }),
+                    ctx,
+                )
+                .await?;
+            }
         }
-        self.setup_call("lab_play_character", json!({ "name": name }), ctx)
+        let played = self
+            .setup_call("lab_play_character", json!({ "name": name }), ctx)
             .await?;
         self.in_world_as = Some(name);
-        if created {
-            // A new character lands in the intro dialog; finish it like a
-            // player (Next to Done). Best effort.
-            let _ = self.setup_call("lab_finish_dialog", json!({}), ctx).await;
+        let intro_pending = spec.section.fresh.as_ref().is_some_and(|f| f.finish_intro)
+            && self
+                .manifest
+                .fresh_characters
+                .get(&spec.section.id)
+                .and_then(|record| record["intro_pending"].as_bool())
+                == Some(true);
+        if intro_pending {
+            // Play returns when the world HUD appears. The intro dialog may
+            // arrive a few frames later, so its immediate flag is not enough.
+            let dialog_open = if played.get("dialog_open").and_then(Value::as_bool) == Some(true) {
+                true
+            } else {
+                self.setup_call(
+                    "client_wait_for",
+                    json!({
+                        "lua_condition": "DialogWin ~= nil and DialogWin:isVisible()",
+                        "timeout_ms": 15000,
+                    }),
+                    ctx,
+                )
+                .await?
+                .get("met")
+                .and_then(Value::as_bool)
+                    == Some(true)
+            };
+            if !dialog_open {
+                return Err("fresh intro dialog did not appear within 15 seconds".into());
+            }
+            // The intro cinematic can leave a letterbox over the dialog
+            // buttons for several seconds after the dialog itself opens.
+            let uncovered = self
+                .setup_call(
+                    "client_wait_for",
+                    json!({
+                        "lua_condition": "not ((LetterboxedWin and LetterboxedWin:isVisible()) or (MoviePlayerWin and MoviePlayerWin:isVisible()))",
+                        "timeout_ms": 20000,
+                    }),
+                    ctx,
+                )
+                .await?;
+            if uncovered.get("met").and_then(Value::as_bool) != Some(true) {
+                return Err("intro dialog remained covered by the arrival cinematic".into());
+            }
+            // The click can take effect even if its acknowledgement is
+            // lost. Clear the marker first so a resume cannot consume a
+            // later mission dialog after an ambiguous finish error.
+            self.set_fresh_intro_pending(&spec.section.id, false)?;
+            self.setup_call("lab_finish_dialog", json!({}), ctx).await?;
         }
         Ok(())
     }
@@ -264,7 +371,7 @@ impl<I: ToolInvoker> Runner<'_, I> {
         // rows, not about ending the session the run left behind.
         let mut spec = spec.clone();
         spec.section.account = "gm".into();
-        let ev = self.run_row(&spec, &row).await;
+        let ev = self.run_row(&spec, &row, vec![]).await;
         self.in_world_as = None;
         Some(ev)
     }
@@ -335,6 +442,7 @@ fn session_end_row(in_world: bool, with_server: bool, account: Option<&str>) -> 
     }
     RowSpec {
         id: SESSION_END_ROW.into(),
+        depends_on: vec![],
         title: "end the run's session: logout and disconnect".into(),
         expected: "session.end disconnect_reason=logoff_character_select after the logout, \
                    then Client entities cleaned up disconnect_reason=logoff after the disconnect"
@@ -420,6 +528,10 @@ mod tests {
     fn fresh_names_are_capitalized_letters() {
         assert_eq!(letters_name("dqzkfma"), "Dqzkfma");
         assert_eq!(letters_name(""), "");
+        assert_ne!(
+            fresh_name("dqzkfma", "praxis", 0),
+            fresh_name("dqzkfma", "jaffa", 0)
+        );
     }
 
     #[test]

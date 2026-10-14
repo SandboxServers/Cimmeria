@@ -93,6 +93,17 @@ pub fn validate(spec: &SectionSpec) -> Result<(), String> {
     let mut ids = HashSet::new();
     for row in &spec.rows {
         let r = &row.id;
+        let mut dependencies = HashSet::new();
+        for prior in &row.depends_on {
+            if !ids.contains(prior) {
+                errs.push(format!(
+                    "{r}: depends_on {prior:?} must name an earlier row"
+                ));
+            }
+            if !dependencies.insert(prior) {
+                errs.push(format!("{r}: duplicate depends_on {prior:?}"));
+            }
+        }
         if !ids.insert(r.clone()) {
             errs.push(format!("{r}: duplicate row id"));
         }

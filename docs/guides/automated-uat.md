@@ -82,7 +82,7 @@ When every step, wait, coordinate and camera move is in the spec, no model is ne
 lab uat first-session --rows FS-01,FS-02,FS-P1,FS-P2,FS-P3,FS-P4,FS-P5 --leases 2 --runs-per-lease 5
 ```
 
-While a batch runs, [`lab watch`](live-research-lab.md#commands) in another terminal shows it live (each lane's run, the row under way, the last failure), and `lab watch --once --json` gives an agent a snapshot without waiting for the batch to end.
+While a batch runs, [`lab watch`](live-research-lab.md#commands) in another terminal shows it live (each lane's run, the row under way, the last failure), and `lab watch --once --json` gives an agent a snapshot without waiting for the batch to end. Run IDs include a random suffix, and each run reserves its bundle directory before writing; concurrent lanes therefore keep distinct bundles and fresh character names even when they start in the same decisecond.
 
 **`--heal`.** When a row fails because a pose's click, target or camera move missed in the world, its summary carries a heal hint, `heal: { pose, step }`, with `step` one of `hover`, `on_screen`, `face`, `abs_pitch` or `abs_yaw` (the camera steps only when the closed loop ran and missed, not when the readout was missing). With `--heal` (it needs `--leases 1`, else exit 2 before the daemon is asked), `lab uat` then recalibrates each distinct `(row, pose)` pair of the failed runs' hints with one `lab_uat_calibrate` call each, on the batch's instance, at the default budget ([Calibrate a row](#calibrate-a-row)). Each proposal is copied to `heal-<row>-<pose>.diff` in the batch folder and printed. `batch.json`, `summary.md` and the `--json` object gain `heal: [{row, pose, diff}]` only when a proposal was written (`--json` lists at most 3, then `more_heal: <n>`), and the command then exits **8**, over every other code, 1 and 5 included. Nothing is applied: the spec file is never written. With no hints it prints `heal: no failed row carries a heal hint` and exits as the batch would. A heal adds up to 15 minutes of lab time per pose; Ctrl+C during the batch skips it, and Ctrl+C during the heal keeps the diffs already written.
 
@@ -152,7 +152,7 @@ One directory per run under `CIMMERIA_LAB_UAT_DIR`, default `%LOCALAPPDATA%\cimm
   ledger.md                      summary table + one Recording-results block per row
 ```
 
-`run.json` holds the server build (`service.version` and where it came from: `arg`, `attested` or unknown), the client fingerprint (SHA-256 of `Binaries\SGW.exe` and of the injected telemetry and patch DLLs), the account, every character seen at character select, the host clock at start and the latest server offset (from the anchor's bookmark id), every tool the router exposed, each spec file with its SHA-256, and the owner approvals.
+`run.json` holds the server build (`service.version` and where it came from: `arg`, `attested` or unknown), the client fingerprint (SHA-256 of `Binaries\SGW.exe` and of the injected telemetry and patch DLLs), the account, every character seen at character select, each fresh section's chosen name and archetype (`fresh_characters`), the host clock at start and the latest server offset (from the anchor's bookmark id), every tool the router exposed, each spec file with its SHA-256, and the owner approvals.
 
 Each row JSON holds:
 
@@ -185,6 +185,7 @@ guide = "docs/guides/unified-uat.md#gm-console-command-parity"
 ledger = "docs/analysis/legacy-command-parity/README.md#validation-and-uat-gates"
 account = "gm"                       # gm | non-gm
 character = "lab"                    # lab | fresh (then a [section.fresh] table)
+sequential = false                    # true: FAIL/BLOCKED stops later rows
 
 [[row]]
 id = "M1-1"                          # the campaign's step id
@@ -207,7 +208,9 @@ matches = "searchitem 'pistol': [0-9]+ match"
 
 **Where rows run.** A row that tests a feature rather than a level (vendors, bankers, mail, trade, inventory, abilities, combat, chat) runs in the Debug Area (world 1300, `.gotolocation DebugArea`). It has a copy of every hub service, open ground and clear sight lines, where Castle_CellBlock's hub NPCs stand against walls the camera ends up behind. Use a level's own map only when the row is about that level: its missions, NPC placement, transitions or geometry.
 
-**Row fields:** `id`, `title`, `expected`, `required_native`, `state`, `players` (2 drives the second lab client, `p2`, and is BLOCKED with the reason when none is configured; above 2 is always BLOCKED), `known_issues`, `blocked` (a standing reason; nothing runs), `anchor` (default true in world), `relog` (what `After relog:` says when the row checks one), `notes`, `pose` (the row's interaction poses, [below](#targets-poses-and-waits)), `setup`, `step`, `teardown`, `expect`, `evidence`.
+**Campaign order:** `[section] sequential = true` makes a FAIL or BLOCKED row block every later row in that section, with `prior row <id> = <result>` in the reason. A row may also declare `depends_on = ["W03"]` for earlier rows in its section. NEEDS_HUMAN, UNVERIFIED and NATIVE_SHORTFALL leave the chain moving. A named dependency that was not run blocks its dependent row as `NOT_RUN`. On resume, the runner reads prior results from `run.json`. Fresh sections save their generated name and archetype in `run.json` before creation, then adopt that character at select on resume. Each fresh section gets a distinct name in one run. The runner records a pending introduction before creating a character; with the default `finish_intro = true`, it waits for that introduction and the arrival cinematic before closing the dialog. A missing introduction blocks the row, and a resumed character's later mission dialog is left for its row. `[section.fresh] finish_intro = false` leaves the opening dialog visible for the first row.
+
+**Row fields:** `id`, `depends_on`, `title`, `expected`, `required_native`, `state`, `players` (2 drives the second lab client, `p2`, and is BLOCKED with the reason when none is configured; above 2 is always BLOCKED), `known_issues`, `blocked` (a standing reason; nothing runs), `anchor` (default true in world), `relog` (what `After relog:` says when the row checks one), `notes`, `pose` (the row's interaction poses, [below](#targets-poses-and-waits)), `setup`, `step`, `teardown`, `expect`, `evidence`.
 
 **Actions** (exactly one of the first five):
 

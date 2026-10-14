@@ -1,6 +1,6 @@
 ---
 name: project_cellblock_autoplay_campaign
-description: Cellblock autoplay campaign (2026-09-29) — plan and packets in docs/analysis/cellblock-autoplay/; nothing built yet; installed labd predates #1099-#1102
+description: Cellblock autoplay campaign — plan and packets in docs/analysis/cellblock-autoplay/; AP-02 runner campaign lifecycle
 metadata:
   type: project
 ---
@@ -15,3 +15,11 @@ Facts found in the research that matter before any live work:
 - Cover in the Cellblock is server-only proximity (5 m of a cover node, 1 Hz); there is no client key.
 
 **How to apply:** resume from the README ledger; all D-AP rows were PROPOSED, awaiting the owner, when planned.
+
+AP-02 runner facts (2026-10-13): `RunManifest.fresh_characters` persists each fresh section's chosen name and archetype before character creation, so resuming after a successful create adopts the listed character. It has a serde default for older bundles. The section id is mixed into the generated last name, with collision resolution at manifest creation; a saved name wins on resume. `sequential = true` blocks rows after an earlier FAIL/BLOCKED, while row `depends_on` can name earlier rows explicitly. NEEDS_HUMAN, UNVERIFIED and NATIVE_SHORTFALL keep the chain moving. The runner asks `lab_characters` at character select before deciding whether to create; `finish_intro = false` keeps the intro dialog open after creation. Source: `crates/lab/src/uat/runner/{mod,session}.rs` and `campaign_tests.rs`.
+
+Concurrent runner IDs use time plus six random letters; `RunDir::create_exclusive` atomically reserves each bundle path, and the full ID remains in fresh section names. This fixes decisecond collisions between parallel lab lanes. A resumed old bundle without `fresh_characters` adopts the prior ten-letter run-id name. Source: `crates/lab/src/uat/runner/{mod,campaign,session}.rs`, `crates/lab/src/uat/evidence.rs`, `crates/lab/src/uat/runner/campaign_tests.rs`.
+
+AP-02 live check (2026-10-14, local server): `lab_play_character` reported `dialog_open: false` when the world HUD first appeared, but the fresh character's intro dialog appeared before the next row. A resumed row then timed out trying to log out under that dialog. The runner now waits briefly for the dialog when `finish_intro = true` and finishes it before starting the row; `finish_intro = false` still leaves it open. Source: `crates/lab/src/uat/runner/session.rs` and `campaign_tests.rs`.
+
+AP-02 review refinement: only an intro marked pending before fresh character creation is auto-finished. That marker survives an interrupted create/play and is cleared before clicking the final intro control, since the click may take effect even if its acknowledgement fails. A later mission dialog on an adopted character remains open for its UAT row. A missing pending intro is a setup block, not a pass. Source: `crates/lab/src/uat/runner/{campaign,session,campaign_tests}.rs`.

@@ -28,6 +28,8 @@ pub(super) struct Fake {
     /// The flows' client state: running, and the login screen reached.
     pub(super) running: Mutex<bool>,
     pub(super) login: Mutex<String>,
+    /// Characters created through the fake flow, as character select lists them.
+    created_characters: Mutex<Vec<Value>>,
     /// The character `client_player_state` reports.
     pub(super) name: String,
     /// The lab event store (`client_wait_event`), and the events a tool
@@ -102,6 +104,7 @@ impl Fake {
             log: Mutex::new(vec![]),
             running: Mutex::new(true),
             login: Mutex::new("in_world".into()),
+            created_characters: Mutex::new(vec![]),
             name: "Labone".into(),
             events: Mutex::new(vec![]),
             triggers: Mutex::new(vec![]),
@@ -211,6 +214,17 @@ impl ToolInvoker for Fake {
                 *self.login.lock().unwrap() = "in_world".into();
                 ok(json!({ "dialog_open": false }))
             }
+            "lab_create_character" => {
+                self.created_characters.lock().unwrap().push(json!({
+                    "name": format!("{} {}", args["first"].as_str().unwrap_or_default(),
+                        args["last"].as_str().unwrap_or_default()),
+                    "archetype": args["archetype"]
+                }));
+                ok(json!({ "created": true }))
+            }
+            "lab_characters" => ok(json!({
+                "characters": self.created_characters.lock().unwrap().clone()
+            })),
             "client_player_state" => ok(json!({ "name": self.name, "level": 12 })),
             "client_type_text" => {
                 *self.typed.lock().unwrap() = args["text"].as_str().unwrap_or_default().to_string();
