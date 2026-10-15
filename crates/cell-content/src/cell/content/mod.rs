@@ -22,6 +22,7 @@ mod engine_events;
 mod engine_loader;
 mod event_dispatch;
 mod executor;
+mod letter_turn_in_result;
 mod mission_context;
 pub mod spawn_sets;
 
@@ -53,6 +54,10 @@ pub use event_dispatch::{
 // `fire_*` dispatchers above.
 pub use executor::deferred_content_action_tick;
 pub use executor::letter_turn_in_retry_tick;
+pub use letter_turn_in_result::apply_letter_turn_in_result;
+
+#[cfg(test)]
+mod letter_turn_in_result_tests;
 // The `show_tutorial` round trip's second half (`BaseToCellMsg::TutorialRecorded`).
 pub use executor::apply_tutorial_recorded;
 // The H52 step-activation region replay. Its re-entrancy guard lives on
