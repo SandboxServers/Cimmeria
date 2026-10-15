@@ -159,7 +159,7 @@ pub(super) async fn request(
     };
 
     // A previously pending request may belong to a destroyed/reused player,
-    // a different entry or a changed interaction target. Clear it first.
+    // a different entry or a mission that is no longer eligible. Clear it first.
     let stale = space_mgr
         .get_entity(entity_id)
         .and_then(|player| player.extensions.get::<PendingLetterTurnIn>())
@@ -183,11 +183,29 @@ pub(super) async fn request(
         .get("target_entity_id")
         .and_then(serde_json::Value::as_u64)
         .and_then(|id| u32::try_from(id).ok());
-    let Some((target, session)) = target.and_then(|target| {
-        let player = space_mgr.get_entity(entity_id)?;
-        let session = *player.extensions.get::<LetterTurnInSession>()?;
-        Some((target, session))
-    }) else {
+    let Some(target) = target else {
+        tracing::info!(
+            entity_id,
+            player_id,
+            chain_id,
+            reason = "missing_target",
+            "Frost letter turn-in click refused"
+        );
+        feedback(entity_id, UNAVAILABLE, tx);
+        return;
+    };
+    let Some(session) = space_mgr
+        .get_entity(entity_id)
+        .and_then(|player| player.extensions.get::<LetterTurnInSession>())
+        .copied()
+    else {
+        tracing::info!(
+            entity_id,
+            player_id,
+            chain_id,
+            reason = "missing_session",
+            "Frost letter turn-in click refused"
+        );
         feedback(entity_id, UNAVAILABLE, tx);
         return;
     };
@@ -225,13 +243,13 @@ pub(super) async fn request(
         return;
     }
 
+    feedback(entity_id, PROCESSING, tx);
     send_request(&mut pending, tx);
     space_mgr
         .get_entity_mut(entity_id)
         .expect("validated live actor")
         .extensions
         .insert(pending);
-    feedback(entity_id, PROCESSING, tx);
 }
 
 /// Retry uncertain requests with their original attempt, and clear stale entries.

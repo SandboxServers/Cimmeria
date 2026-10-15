@@ -3,7 +3,9 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use cimmeria_entity::missions::{MissionInstance, MissionObjective, STATUS_ACTIVE};
+use cimmeria_entity::missions::{
+    MissionInstance, MissionObjective, STATUS_ACTIVE, STATUS_COMPLETED,
+};
 use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
 use cimmeria_wire::cell::messages::{LetterTurnInRequest, LetterTurnInSession, LetterTurnInToken};
 
@@ -103,16 +105,16 @@ async fn first_and_repeat_click_keep_one_attempt_without_early_success() {
     let mut mgr = rig();
     let (tx, mut rx) = mpsc::channel(8);
     press(&mut mgr, &tx).await;
-    let first_msg = rx.try_recv().unwrap();
-    let first = *first_msg
-        .plugin_payload::<LetterTurnInRequest>()
-        .expect("one plugin request first");
     let feedback_msg = rx.try_recv().unwrap();
     assert!(
         matches!(feedback_msg, CellToBaseMsg::EntityMethodCall { entity_id: PLAYER, method_index, args }
         if method_index == crate::cell::client_methods::communicator::ON_PLAYER_COMMUNICATION
             && args == serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, "Checking Frost's Letter..."))
     );
+    let first_msg = rx.try_recv().unwrap();
+    let first = *first_msg
+        .plugin_payload::<LetterTurnInRequest>()
+        .expect("one plugin request after feedback");
     assert!(rx.try_recv().is_err(), "no precommit success frame");
     let pending = mgr
         .get_entity(PLAYER)
@@ -166,7 +168,7 @@ async fn first_and_repeat_click_keep_one_attempt_without_early_success() {
 
 #[tokio::test]
 async fn forged_or_stale_actor_target_world_and_mission_never_queue_request() {
-    for case in 0..9 {
+    for case in 0..12 {
         let mut mgr = rig();
         let mut resolved = action();
         match case {
@@ -203,6 +205,26 @@ async fn forged_or_stale_actor_target_world_and_mission_never_queue_request() {
                 "Harset_CmdCenter".to_string(),
                 WorldRow::enforcing(57),
             )])),
+            9 => mgr
+                .get_entity_mut(PLAYER)
+                .unwrap()
+                .missions
+                .get_mission_mut(1360)
+                .unwrap()
+                .active_objectives
+                .clear(),
+            10 => {
+                mgr.get_entity_mut(PLAYER)
+                    .unwrap()
+                    .missions
+                    .get_mission_mut(1360)
+                    .unwrap()
+                    .active_objectives[0]
+                    .status = STATUS_COMPLETED
+            }
+            11 => {
+                resolved.params.remove("target_entity_id");
+            }
             _ => unreachable!(),
         }
         let (tx, mut rx) = mpsc::channel(8);
@@ -230,6 +252,91 @@ async fn forged_or_stale_actor_target_world_and_mission_never_queue_request() {
     let (tx, mut rx) = mpsc::channel(8);
     press(&mut mgr, &tx).await;
     assert!(requests(&mut rx).is_empty(), "Praxis return overlaps Marsh");
+}
+
+#[tokio::test]
+async fn one_free_slot_sends_feedback_and_retries_same_attempt_after_drain() {
+    let mut mgr = rig();
+    let (tx, mut rx) = mpsc::channel(1);
+    press(&mut mgr, &tx).await;
+    let pending = *mgr
+        .get_entity(PLAYER)
+        .unwrap()
+        .extensions
+        .get::<PendingLetterTurnIn>()
+        .unwrap();
+    let feedback_msg = rx
+        .try_recv()
+        .expect("processing feedback uses the only slot");
+    assert!(
+        matches!(feedback_msg, CellToBaseMsg::EntityMethodCall { entity_id: PLAYER, method_index, args }
+        if method_index == crate::cell::client_methods::communicator::ON_PLAYER_COMMUNICATION
+            && args == serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, "Checking Frost's Letter..."))
+    );
+    assert!(
+        rx.try_recv().is_err(),
+        "request was not queued behind feedback"
+    );
+    mgr.get_entity_mut(PLAYER)
+        .unwrap()
+        .extensions
+        .get_mut::<PendingLetterTurnIn>()
+        .unwrap()
+        .next_retry_at = Instant::now() - Duration::from_millis(1);
+    letter_turn_in_retry_tick(&tx, &mut mgr);
+    let retried = requests(&mut rx);
+    assert_eq!(retried.len(), 1);
+    assert_eq!(retried[0].attempt, pending.request.attempt);
+    assert_eq!(retried[0].token, pending.request.token);
+    assert_eq!(retried[0].generation, pending.request.generation);
+    assert_eq!(retried[0].epoch, pending.request.epoch);
+}
+
+#[tokio::test]
+async fn changed_token_or_generation_clears_old_pending_before_retry() {
+    for change_token in [true, false] {
+        let mut mgr = rig();
+        let (tx, mut rx) = mpsc::channel(8);
+        press(&mut mgr, &tx).await;
+        let old = requests(&mut rx);
+        assert_eq!(old.len(), 1);
+        let session = mgr
+            .get_entity_mut(PLAYER)
+            .unwrap()
+            .extensions
+            .get_mut::<LetterTurnInSession>()
+            .unwrap();
+        if change_token {
+            session.token = LetterTurnInToken::from_bytes([9; 16]);
+        } else {
+            session.generation += Duration::from_secs(1);
+        }
+        mgr.get_entity_mut(PLAYER)
+            .unwrap()
+            .extensions
+            .get_mut::<PendingLetterTurnIn>()
+            .unwrap()
+            .next_retry_at = Instant::now() - Duration::from_millis(1);
+        letter_turn_in_retry_tick(&tx, &mut mgr);
+        assert!(
+            requests(&mut rx).is_empty(),
+            "old entry retried: change_token={change_token}"
+        );
+        assert!(!mgr
+            .get_entity(PLAYER)
+            .unwrap()
+            .extensions
+            .contains::<PendingLetterTurnIn>());
+        press(&mut mgr, &tx).await;
+        let new = requests(&mut rx);
+        assert_eq!(new.len(), 1);
+        assert_ne!(new[0].attempt, old[0].attempt);
+        if change_token {
+            assert_ne!(new[0].token, old[0].token);
+        } else {
+            assert_ne!(new[0].generation, old[0].generation);
+        }
+    }
 }
 
 #[tokio::test]
