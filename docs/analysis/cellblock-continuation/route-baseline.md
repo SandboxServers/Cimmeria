@@ -1,7 +1,7 @@
 # Cellblock route baseline
 
 > **Type:** Reference. **Audience:** Cellblock coordinators and UAT reviewers.
-> **Last updated:** 2026-10-14. **Companions:** [Ledger](README.md), [CB-N05 design seal](worknotes/cb-n05-seal.md), [UAT spec](../../guides/uat-specs/castle-cellblock.toml).
+> **Last updated:** 2026-10-15. **Companions:** [Ledger](README.md), [CB-N05 design seal](worknotes/cb-n05-seal.md), [UAT spec](../../guides/uat-specs/castle-cellblock.toml).
 > Static baseline `d3efb7d41aad0b6008397f112d224ce7430d7acf`, audited 2026-10-14.
 > CB-N00 performed no fresh route run, deaths, duration, screenshots, packet tap or lab actions.
 
@@ -112,6 +112,83 @@ and I/O throughout its load grace, then terminated it at 21:51:50 after
 No login, world entry or combat occurred. This confirms a lab startup blocker
 even without concurrent build-lane activity; it does not implicate Cellblock
 content or prove any CB-U02 gameplay outcome.
+
+## 2026-10-15 fresh Human lab run
+
+The desktop screensaver was still active after the operator reported the screen
+unlocked. The first p2 launch returned `D3DERR_NOTAVAILABLE`; stopping the
+screensaver process allowed p2 and then p3 to start with live bridge heartbeats.
+P2 had no free character slot, so its client and lease were released. P3's
+unprotected lab fixture slot was freed and a **fresh Praxis Soldier Human**
+character was created. It entered world 12 at the stock character-creation
+position `(-334.23, 73.47, -228.03)` at about 02:00 UTC. This was a live client
+run, not a staged mission or GM progression.
+
+The first dialog rendered the two screens of 2982. Native movement and corpse
+clicks reached Frost, then the Guard's body. Frost's Letter appeared once in
+the Mission bag, and the Guard click put the SI 3 9mm Pistol in Main. The client
+reported learning abilities 592, 594, 597 and 1218, placed them on the action
+bar, and opened the Equipping a Weapon tutorial. Native inventory equip moved
+the pistol to bandolier slot 1 and completed 622. The pistol read **0/15**;
+clicking the native Reload button still read 0/15 immediately, then **15/15**
+after a 2.5-second completion wait.
+
+The character reached the living Cellblock Guard by native movement and
+targeted it at **3.1 m**, with 15/15 ammo, 760/760 Health and 470/1570 Focus
+at the last pre-shot snapshot. The guard had already depleted Focus from the
+earlier full 1570 while the probe read its state. Two native hotbar Pistol Shot
+presses each sent `useAbility`: the first missed and spent one round (15→14),
+and the second, at zero Focus, crit for **48 Health** and spent another round
+(14→13; guard 250→202 Health). The client also displayed the zero-Focus
+warning, so that warning did not mean the shot was refused. Four more native
+presses killed the guard; a seventh post-kill press also spent a round. The
+final magazine read 8/15 and the character survived. This narrows #1667: a
+fresh character's normal grant/reload/fire/damage path worked in this run, but
+one miss and severe incoming damage remain relevant to first-guard balance.
+No screenshot or verified visual recoil frame was captured.
+
+A character-select relog preserved the one equipped pistol, Frost's Letter,
+8/15 ammo and the four action-bar abilities. The mission tracker showed 622
+complete. The relog chat capture warned that its hook attached after world
+load, so absence of duplicate grant text is unproven; the persisted inventory
+contained no duplicate pistol or letter.
+
+The Codex `lab-server` MCP connection for this session was configured for a
+different server. Its `server_sessions` returned zero throughout; those reads
+cannot be attributed to this client. The lab daemon's local server setting and
+the client/server halves of the gameplay socket identified the matching local
+server. A direct read of that server's MCP endpoint found this character in
+world 12 after relog (entity 15, player 105). Its read-only database showed
+the character row; a live entity snapshot agreed with the client's later
+position. There was no packet tap covering the first guard, and the exact
+server source revision and client patch revision were not captured. The live
+server executable belonged to a separate AOI build target, not the campaign
+checkout. **CB-U02 remains UATPending** for the full revision-bound,
+packet-correlated and visual acceptance row.
+
+After the client stopped, a read-only query against the matching local server
+found mission 622 completed, mission 1360 active on step 4037, and mission 638
+active on step 2115. It found exactly one `type_id=55` pistol in Bandolier with
+8 rounds, one `type_id=3730` letter in Mission, and one tutorial-source grant
+row each for 592, 594, 597 and 1218. This corroborates the relog persistence
+and lack of duplicate item/ability rows, not the uncaptured first-guard packet
+sequence.
+
+The character then walked natively to Prisoner 329. Region2 accepted mission
+638; the Human dialog opened with the stock “You feel uncomfotable” text and
+advanced the tracker to the cell-door controls. A native click launched
+Livewire. The matching local server retained a `ready` board with two goals
+and no rollover/cut events. `client_minigame_play` did not return after more
+than two minutes; a separate `lab_screenshot` call also did not return. The
+client heartbeat remained alive, but after those calls the character was at
+about `(-79.21, 45.18, -163.82)` in the same world while mission 638 still
+required hacking the door. The matching server's live entity position agreed;
+its last persisted character position still preceded the door. No successful
+Livewire input, mission advance or legitimate route travel is inferred from
+that relocation. Both stalled calls were cancelled, the p3 client was stopped,
+and its lease released. **CB-U09 has no valid core-duration measurement**, and
+the minigame/screenshot stall plus unexpected relocation must be isolated
+before another fresh timing run.
 
 ## Bounded fresh acceptance rows
 

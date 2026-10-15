@@ -2,7 +2,7 @@
 
 > Opened 2026-10-14. Static baseline: `d3efb7d41aad0b6008397f112d224ce7430d7acf`.
 > **Type**: Reference. **Audience**: Engineers and campaign coordinators.
-> **Last updated**: 2026-10-14. **Companions**: [Wave resume](RESUME.md), [CB-N00 worknote](worknotes/cb-n00.md), [CB-N01 handoff](presentation-handoff.md), [CB-N05 proposed seal](worknotes/cb-n05-seal.md).
+> **Last updated**: 2026-10-15. **Companions**: [Wave resume](RESUME.md), [CB-N00 worknote](worknotes/cb-n00.md), [CB-N01 handoff](presentation-handoff.md), [CB-N05 proposed seal](worknotes/cb-n05-seal.md).
 > CB-N00 is **Integrated** for the evidence/doc gate only. Fresh route acceptance is **UATPending**.
 
 This is the live ledger for the one-time escape in world 12. The
@@ -30,7 +30,7 @@ A completed source audit does not make a runtime packet Ready.
 |---|---|---|
 | CB-N00 | Integrated | Evidence/doc gate passed two review rounds through `b59c4a124`; fresh route and lineage rows remain UNSEALED and client UATPending. No downstream runtime seal is granted. |
 | CB-N01 | Integrated | Presentation and sibling ownership handoff passed independent review and focused status correction review; runtime and client rows remain UATPending. |
-| CB-N02 | BlockedDependency | Fresh known-character route and #1667 normal-resource reproduction against exact seed/server/client revisions before sealing any correction. The p3 CB-U02 retry never entered the world; no gameplay pass occurred and CB-U02 remains UATPending. |
+| CB-N02 | BlockedDependency | The 2026-10-15 fresh Human p3 run verified native pistol grant, equip, reload and guard damage at zero Focus. CB-U02 remains UATPending for exact server/client/patch revision, local-server packet tap and visual recoil; the prior no-damage symptom did not reproduce. Livewire then stalled, so this was not a complete normal route. See [route baseline](route-baseline.md#2026-10-15-fresh-human-lab-run). |
 | CB-N03 | BlockedDependency | Current guard-cover reachability observation and combat/NPC/mission sign-off; no new mandatory kills. |
 | CB-N04 | BlockedDependency | O14-12 delegates cast and placement approval; measure safe pockets, then seal one room cluster per child. |
 | CB-N05a | UATPending | Catalog infrastructure merged to `main` in #1734 and integrated here; the first real authored mission must pass journal, dialog, advance and relog before this gate closes. |
@@ -39,6 +39,15 @@ A completed source audit does not make a runtime packet Ready.
 | CB-N06 | BlockedDependency | Conditional under O14-15: include only after N05 live pacing and safety show benefit within the 10-minute optional budget. |
 | CB-N07 | BlockedDependency | Conditional under O14-15: include only after live pacing and safety show benefit; N03 reachability and one-room design remain gates. |
 | CB-N08 | BlockedDependency | Selected packets, sibling integrations, full local CI/fresh review; live rows UATPending until approved run. |
+
+The fresh p3 client reached mission 638's Livewire door, but the native
+minigame helper and screenshot call stalled. The character then appeared
+farther down world 12 without mission advance. This invalidates CB-U09 timing;
+no CB-N05 coder dispatch follows from the partial run. The Codex `lab-server`
+connection also pointed at a different server, while direct read-only access
+to the matching local server confirmed the character session. The client and
+lease were stopped and released. The full evidence boundary is in the
+[route baseline](route-baseline.md#2026-10-15-fresh-human-lab-run).
 
 The eleven packet families are scopes; an implementation child needs the complete
 seal required by the packet contract. CB-N05 now has proposed exact copy and

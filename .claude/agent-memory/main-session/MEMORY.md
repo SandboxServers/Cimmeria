@@ -4,6 +4,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Open investigations
 
+- [reference_cellblock_lab_binding_2026_10_15.md](reference_cellblock_lab_binding_2026_10_15.md) — bind Codex server evidence to the client's actual lab server; Livewire/screenshot stall invalidated the 2026-10-15 fresh route timing
 - [reference_cellblock_n05_authority_2026_10_14.md](reference_cellblock_n05_authority_2026_10_14.md) — CB-N05 authority review uses validated `interact_tag` for authored mission acceptance; native marker/dialog proof remains pending
 - [reference_cellblock_continuation_evidence_2026_10_14.md](reference_cellblock_continuation_evidence_2026_10_14.md) - World-12 source/route evidence locations; payload hashes do not seal historical mission lineage or fresh client acceptance
 - [reference_cb_n05a_catalog_seal_2026_10_14.md](reference_cb_n05a_catalog_seal_2026_10_14.md) — authored mission catalog seal: full resync/empty InvalidKeys, conservative key guard, test-only 61000–61003; live new-ID presentation pending
