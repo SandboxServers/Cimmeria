@@ -107,8 +107,17 @@ the full per-index table lives in
 
 `crates/lab/src/workbench/slash_inventory.rs` parses the 162 patch 012 TOML
 words, events and ordered mandatory/optional parameter declarations.
-`slash_catalog.rs` projects them into disabled `Slash` descriptors with
-`native submission unproved`. An exact event-suffix match to a method name or
+`slash_catalog.rs` projects them into disabled `Slash` descriptors. DW-24B
+keeps them disabled because a stock-chat receipt for one plain-token command
+does not prove each command's parser, quoting, optional values, fingerprint
+or per-command server receipt. `slash_transport.rs` models that narrow
+candidate and separate client-submitted, client-acknowledged, outgoing-method
+and server-received states; absent trusted producers leave each unknown.
+`supervisor/slash_adapter.rs` builds a stock `ChatMod.onTextAccepted` call
+with exact input readback but exposes no callable submission method until the
+supervisor can verify client fingerprint and generation. Legacy `client_console`
+also rejects caller-supplied addresses: `execConsoleCommand` at `0x00539850`
+takes `FFrame`, and no string-taking ABI is established. An exact event-suffix match to a method name or
 an explicit slash-word row in `docs/protocol/cell-method-dispatch-table.md`
 records its index and DONE/ADAPT/NEW status as a **candidate**. The
 `/gmgivecash` and `/gmspawnbycmd` candidates infer from patch event names and
