@@ -323,6 +323,44 @@ A lab-chaos build adds `server_chaos_set`, `server_chaos_clear` and
 `server_chaos_status`.
 See ADR §3.5 for the full set; `docs/operations/colo-deploy.md` for the port.
 
+### Workbench Lua probes and object browser (DW-04)
+
+The local companion API saves named Lua snippets under the daemon's per-user
+`workbench/probes/<instance>/` data directory (`CIMMERIA_LAB_HOME`, otherwise
+`%LOCALAPPDATA%/cimmeria-lab`). Definitions have schema version 1 and a SHA-256
+of mode and source; a save or run with a stale hash is refused. The list API
+returns saved definitions, favorites and a bounded history of run names/statuses.
+History does not store parameters or result content. Concurrent saves check the expected hash under one catalog lock; a failed replacement preserves the previous definition. If a run succeeds but its history row cannot be saved, the result includes a `probe_history` gap. The browser session's
+instance, same-origin cookie and CSRF check apply to every write. Probe runs,
+global browsing and CEGUI window reads also require a current lab lease.
+
+The API paths are `GET /workbench/api/v1/probes?instance=<label>` and POST
+`/workbench/api/v1/probes/{save,run,globals,window}?instance=<label>`. Save takes
+`{instance,name,mode,chunk,expected_sha256,favorite}` where mode is `read` or
+`mutate`; run takes `{instance,lease_id,name,sha256,parameters}`. A snippet sees
+its parameters as the first Lua vararg (`local params = ...`). Parameters are
+converted to Lua literals as data, never spliced into source. The read label
+describes operator intent; arbitrary Lua source can still cause side effects,
+so inspect the snippet before running it. Mutate requires the same lease and
+CSRF boundary and receives an explicit mode badge in the result.
+
+The Lua wrapper uses the existing main-thread `client_lua_eval` bridge and a
+100,000-instruction debug-hook budget; it refuses execution if the hook is
+unavailable. Hook availability in the live client remains unverified. An
+operator-written snippet can disable its own hook, so this is a diagnostic
+budget, not a security boundary. The host wait is capped at 3 seconds. A
+blocking native C call may remain in flight after that timeout, so `timeout` means the result is
+unknown, not that the effect was cancelled. Result trees stop at depth 4,
+128 nodes and 1,024 bytes per string; bridge output stops at 32 KiB. Cycles,
+oversized values, Lua errors, missing return capture and partial trees are
+reported distinctly. Non-string and non-integer table keys are skipped with a partial-tree marker. Global enumeration uses `next` and `rawget` and leaves
+userdata opaque; the CEGUI branch reuses `client_window_read` with depth 4,
+128 nodes and 32 rows. No Lua namespace is retained across a relog.
+
+The probe list is initially empty. Built-in catalog snippets will be added
+only when their client behavior is source-backed; saved local snippets are
+operator experiments, not protocol evidence.
+
 ### GM workbench command catalog
 
 `server_console_list {"entity_id": <in-world GM entity id>}` first reads that

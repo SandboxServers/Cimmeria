@@ -13,11 +13,16 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use super::{cookie_value, session::SessionStore};
+
+#[path = "probe_api.rs"]
+mod probe_api;
 use crate::{
     lease::permit::{self, Permit},
     server::Instances,
     workbench::dossier,
 };
+#[cfg(test)]
+pub(crate) use probe_api::leased;
 
 const INDEX: &str = include_str!("../../../workbench/index.html");
 const JAVASCRIPT: &str = include_str!("../../../workbench/app.js");
@@ -29,6 +34,17 @@ pub fn router(instances: Instances) -> Router<Arc<SessionStore>> {
         .route("/workbench/api/v1/session", get(session))
         .route("/workbench/api/v1/dossier", get(target_dossier))
         .route("/workbench/api/v1/input/key", post(input_key))
+        .route("/workbench/api/v1/probes", get(probe_api::probe_list))
+        .route("/workbench/api/v1/probes/save", post(probe_api::probe_save))
+        .route("/workbench/api/v1/probes/run", post(probe_api::probe_run))
+        .route(
+            "/workbench/api/v1/probes/globals",
+            post(probe_api::probe_globals),
+        )
+        .route(
+            "/workbench/api/v1/probes/window",
+            post(probe_api::probe_window),
+        )
         .layer(Extension(instances))
 }
 

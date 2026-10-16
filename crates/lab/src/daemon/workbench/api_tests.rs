@@ -252,3 +252,78 @@ async fn input_mutation_requires_matching_query_body_session_csrf_and_lease() {
     assert_eq!(result["data"]["error"], "input_failed");
     assert_eq!(result["context"]["instance"], "p2");
 }
+
+#[tokio::test]
+async fn probe_route_requires_origin_csrf_matching_instance_and_lease() {
+    let server = test_server();
+    let supervisor = server.instances().first().supervisor.clone();
+    let base = spawn_daemon(server).await.replace("/mcp", "");
+    let http = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    let (cookie, csrf) = browser_session(&http, &base, "default").await;
+    let endpoint = format!("{base}/workbench/api/v1/probes/globals?instance=default");
+    let body = json!({"instance":"default","lease_id":"missing","name":"a"});
+    let send = |body: Value, origin: bool, csrf_header: bool| {
+        let mut request = http.post(&endpoint).header(COOKIE, &cookie).json(&body);
+        if origin {
+            request = request.header(ORIGIN, &base);
+        }
+        if csrf_header {
+            request = request.header("x-cimmeria-csrf", &csrf);
+        }
+        request
+    };
+    assert_eq!(
+        send(body.clone(), false, true)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        reqwest::StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        send(body.clone(), true, false)
+            .send()
+            .await
+            .unwrap()
+            .status(),
+        reqwest::StatusCode::FORBIDDEN
+    );
+    let mismatch = json!({"instance":"other","lease_id":"missing","name":"a"});
+    let response = send(mismatch, true, true).send().await.unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::FORBIDDEN);
+    assert_eq!(
+        response.json::<Value>().await.unwrap()["data"]["error"],
+        "instance_mismatch"
+    );
+    let response = send(body, true, true).send().await.unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::FORBIDDEN);
+    assert_eq!(
+        response.json::<Value>().await.unwrap()["data"]["error"],
+        "lease_invalid"
+    );
+
+    let lease = supervisor
+        .leases()
+        .acquire(AcquireRequest {
+            owner: "workbench-probe-test".into(),
+            purpose: "offline API test".into(),
+            ..Default::default()
+        })
+        .unwrap();
+    let response = send(
+        json!({"instance":"default","lease_id":lease.lease_id,"name":"x".repeat(129)}),
+        true,
+        true,
+    )
+    .send()
+    .await
+    .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+    assert_eq!(
+        response.json::<Value>().await.unwrap()["data"]["error"],
+        "global_invalid"
+    );
+}
