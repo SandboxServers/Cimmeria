@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Cimmeria Workbench</title>
   <link rel="stylesheet" href="/workbench/app.css">
+  <script src="/workbench/views/dossier.js" defer></script>
   <script src="/workbench/app.js" defer></script>
 </head>
 <body data-instance="__INSTANCE__">
@@ -37,6 +38,24 @@
         <div><dt>Source</dt><dd>Local lab daemon</dd></div>
       </dl>
       <p class="hint">To open another instance, run <code>lab workbench open --instance NAME</code>.</p>
+    </section>
+    <section id="dossier" class="panel" aria-labelledby="dossier-title" hidden>
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Target</p>
+          <h2 id="dossier-title">Entity dossier</h2>
+        </div>
+        <button type="button" id="dossier-refresh">Refresh dossier</button>
+      </div>
+      <p class="hint">Enter the runtime entity ID. A read needs no lab lease. Unknown and stale fields remain explicit.</p>
+      <form id="target-form" class="target-form">
+        <label for="target-entity-id">Runtime entity ID</label>
+        <input id="target-entity-id" name="entity_id" type="number" min="1" max="4294967295" step="1" inputmode="numeric" required>
+        <button type="submit">Inspect</button>
+        <button type="button" id="target-clear">Clear</button>
+      </form>
+      <p id="dossier-status" role="status" aria-live="polite"></p>
+      <div id="dossier-content"></div>
     </section>
     <section id="placeholder" class="panel" hidden aria-live="polite">
       <p class="eyebrow">Coming in a later packet</p>

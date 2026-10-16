@@ -189,6 +189,7 @@ async fn shell_assets_and_api_are_inside_the_session_gate() {
     for path in [
         "/workbench/",
         "/workbench/app.js",
+        "/workbench/views/dossier.js",
         "/workbench/app.css",
         "/workbench/api/v1/session?instance=default",
     ] {
@@ -210,7 +211,11 @@ async fn shell_assets_and_api_are_inside_the_session_gate() {
     let html = index.text().await.unwrap();
     assert!(html.contains("data-instance=\"default\""));
     assert!(!html.contains(TOKEN));
-    for (path, mime) in [("app.js", "text/javascript"), ("app.css", "text/css")] {
+    for (path, mime) in [
+        ("app.js", "text/javascript"),
+        ("views/dossier.js", "text/javascript"),
+        ("app.css", "text/css"),
+    ] {
         let response = http
             .get(format!("{base}/workbench/{path}"))
             .header(COOKIE, &cookie)
