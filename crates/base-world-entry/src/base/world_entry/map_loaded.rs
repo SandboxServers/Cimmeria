@@ -46,7 +46,7 @@ pub async fn handle_map_loaded(
     _db_pool: &Option<Arc<PgPool>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Take the pending data (consumes it -- enter-world only runs once per mapLoaded)
-    let (entry_info, player_data, who) = {
+    let (entry_info, player_data, who, next_seq, origin) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
         // The session's identity for this function's lines (Rules 5 and 6).
@@ -59,7 +59,13 @@ pub async fn handle_map_loaded(
             .pending_player_load_data
             .take()
             .unwrap_or_else(default_player_load_data);
-        (entry, data, who)
+        (
+            entry,
+            data,
+            who,
+            Arc::clone(&c.next_seq),
+            c.wire_send_origin(),
+        )
     };
 
     tracing::info!(
@@ -97,22 +103,19 @@ pub async fn handle_map_loaded(
     let enter_frags = fragment_count(&enter_body);
     let total_seqs = enter_frags + map_frags;
 
-    let (acks, base_seq, enc_version, next_seq, origin) = {
+    let (acks, base_seq, enc_version) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
+        if c.key != key || !super::same_direct_owner(c, &next_seq, origin.as_ref()) {
+            return Err("mapLoaded: original session replaced before packet build".into());
+        }
         let acks: Vec<u32> = cimmeria_mercury::packet::take_piggyback_acks(
             &mut c.pending_acks.lock().unwrap(),
             c.enc_version,
         );
         let seq = c.next_seq.fetch_add(total_seqs, Ordering::Relaxed)
             & cimmeria_mercury::packet::SEQUENCE_MASK;
-        (
-            acks,
-            seq,
-            c.enc_version,
-            Arc::clone(&c.next_seq),
-            (c.key == key).then(|| c.wire_send_origin()).flatten(),
-        )
+        (acks, seq, c.enc_version)
     };
 
     // Packet 1: VIEWPORT + (BeingAppearance + onEntityTint) + CELL_PLAYER + FORCED_POSITION.

@@ -276,7 +276,10 @@ pub(crate) async fn handle_reanchor_player(
     );
 
     for (i, pkt) in packets.iter().enumerate() {
-        super::send_direct(transport, pkt, addr, origin.as_ref()).await?;
+        // The Cell request carries an entity ID, not its connection generation.
+        // The reverse map may have been reused before our first lookup, so
+        // these bytes cannot be attributed to the observed current session.
+        super::send_direct(transport, pkt, addr, None).await?;
         // Reanchor burst is state-change traffic — register each packet
         // with the Channel for retransmit on loss. Derived seqs are masked
         // to the 28-bit space so the contiguous range stays in-band even

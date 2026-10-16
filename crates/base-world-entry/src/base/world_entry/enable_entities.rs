@@ -62,7 +62,14 @@ pub async fn handle_enable_entities(
         let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         if let Some(c) = clients.get(&addr) {
             match (c.pending_player_entity_id, c.pending_world_entry.clone()) {
-                (Some(eid), Some(entry)) => Some((eid, entry, c.pending_player_load_data.clone())),
+                (Some(eid), Some(entry)) => Some((
+                    eid,
+                    entry,
+                    c.pending_player_load_data.clone(),
+                    Arc::clone(&c.next_seq),
+                    c.wire_send_origin(),
+                    c.key,
+                )),
                 _ => None,
             }
         } else {
@@ -70,7 +77,10 @@ pub async fn handle_enable_entities(
         }
     };
 
-    if let Some((_eid, entry_info, load_data)) = pending {
+    if let Some((_eid, entry_info, load_data, next_seq, origin, source_key)) = pending {
+        if source_key != key {
+            return Err("create-player key no longer belongs to content owner".into());
+        }
         // -- Create player step: CREATE_BASE_PLAYER + appearance pre-warm + onClientMapLoad --
         // Send only the base entity and terrain load notification. The client
         // will load geometry and respond with `mapLoaded` (cell method index 25,
@@ -79,8 +89,10 @@ pub async fn handle_enable_entities(
         // The appearance pre-warm makes this body data-sized, so it goes
         // through the fitted send: ACKs sized to the body, and a body too big
         // for one datagram is fragmented instead of wedging the stream.
+        let owner_transport =
+            super::content_owner_transport(transport, connected, &next_seq, origin.as_ref());
         let outcome = super::super::helpers::send_reliable_to_addr(
-            transport,
+            &owner_transport,
             connected,
             addr,
             entry_info.player_entity_id,
@@ -124,7 +136,10 @@ pub async fn handle_enable_entities(
         // Send succeeded — now commit: take pending state and stage map_loaded data.
         {
             let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-            if let Some(c) = clients.get_mut(&addr) {
+            if let Some(c) = clients
+                .get_mut(&addr)
+                .filter(|c| super::same_direct_owner(c, &next_seq, origin.as_ref()))
+            {
                 c.pending_player_entity_id.take();
                 let entry = c.pending_world_entry.take().unwrap_or(entry_info);
                 let load = c.pending_player_load_data.take();
@@ -144,17 +159,18 @@ pub async fn handle_enable_entities(
     // Guard: only proceed if we haven't already sent the char list.
     // Note: char_list_sent is flipped only after send_to succeeds below, so a
     // transient failure permits retry on the next ENABLE_ENTITIES.
-    {
+    let (list_next_seq, list_origin) = {
         let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         match clients.get(&addr) {
             Some(c) if c.char_list_sent => return Ok(()),
-            Some(_) => {}
+            Some(c) if c.key == key => (Arc::clone(&c.next_seq), c.wire_send_origin()),
+            Some(_) => return Err("char list key no longer belongs to original session".into()),
             None => {
                 tracing::warn!(%addr, "enable_entities: addr not in connected map");
                 return Ok(());
             }
         }
-    }
+    };
 
     // Query characters from DB
     let account_name = identity_for_addr(connected, addr).account_name;
@@ -175,13 +191,16 @@ pub async fn handle_enable_entities(
     let (acks, seq, enc_version, next_seq, origin) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
+        if c.key != key || !super::same_direct_owner(c, &list_next_seq, list_origin.as_ref()) {
+            return Err("char list session replaced before packet build".into());
+        }
         let acks = cimmeria_mercury::packet::take_piggyback_acks(
             &mut c.pending_acks.lock().unwrap(),
             c.enc_version,
         );
         let seq =
             c.next_seq.fetch_add(1, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;
-        let origin = (c.key == key).then(|| c.wire_send_origin()).flatten();
+        let origin = list_origin;
         (acks, seq, c.enc_version, Arc::clone(&c.next_seq), origin)
     };
     let pkt = build_char_list(&key, seq, &acks, &characters, account_eid, enc_version);

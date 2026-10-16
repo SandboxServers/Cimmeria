@@ -59,6 +59,7 @@ pub(super) async fn send_direct(
 }
 
 /// Register only in the channel that reserved the packet before its send await.
+#[track_caller]
 fn register_direct_reliable(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,
@@ -73,18 +74,134 @@ fn register_direct_reliable(
     let Some(state) = clients.get(&addr) else {
         return;
     };
-    if !Arc::ptr_eq(&state.next_seq, next_seq)
-        || !same_direct_origin(state.wire_send_origin().as_ref(), origin)
-    {
+    if !same_direct_owner(state, next_seq, origin) {
         return;
     }
     let Ok(mut channel) = state.channel.lock() else {
         return;
     };
+    let wire_len = bytes.len();
+    let wire_fingerprint = cimmeria_mercury::instrumentation::wire_fingerprint(bytes);
+    let caller = std::panic::Location::caller();
+    let send_site = format!("{}:{}", caller.file(), caller.line());
     let packet = Packet::new(PacketFlags::default(), seq, Bytes::new());
     if let Err(error) = channel.register_sent_packet(packet, Bytes::copy_from_slice(bytes)) {
         tracing::warn!(%addr, seq, %error, "direct reliable send registration failed");
+        return;
     }
+    channel.set_sent_packet_context(seq, send_site.clone(), "direct", None, None, None);
+    let packet_max_size = cimmeria_mercury::consts::PACKET_MAX_SIZE;
+    if wire_len > packet_max_size {
+        tracing::warn!(
+            target: "mercury.reliable_send",
+            event = "reliable_send", peer = %addr, seq, wire_len, packet_max_size,
+            wire_fingerprint = %wire_fingerprint, %send_site, send_kind = "direct",
+            fragment_index = ?None::<usize>, fragment_count = ?None::<usize>,
+            message_count = ?None::<usize>, account_id = state.account_id,
+            account_name = state.account_name.as_deref(), player_id = state.active_player_id,
+            player_name = state.player_name.as_deref(), entity_id = state.player_entity_id,
+            entity_name = state.player_name.as_deref(),
+            "encrypted reliable datagram exceeds the Mercury UDP payload limit"
+        );
+    } else {
+        tracing::debug!(
+            target: "mercury.reliable_send",
+            event = "reliable_send", peer = %addr, seq, wire_len,
+            wire_fingerprint = %wire_fingerprint, %send_site, send_kind = "direct",
+            fragment_index = ?None::<usize>, fragment_count = ?None::<usize>,
+            message_count = ?None::<usize>, account_id = state.account_id,
+            account_name = state.account_name.as_deref(), player_id = state.active_player_id,
+            player_name = state.player_name.as_deref(), entity_id = state.player_entity_id,
+            entity_name = state.player_name.as_deref(),
+            "encrypted reliable datagram sent"
+        );
+    }
+}
+
+/// Match the original sequence allocator and immutable admission identity.
+pub(super) fn same_direct_owner(
+    state: &ConnectedClientState,
+    next_seq: &Arc<AtomicU32>,
+    origin: Option<&SendOrigin>,
+) -> bool {
+    Arc::ptr_eq(&state.next_seq, next_seq)
+        && same_direct_origin(state.wire_send_origin().as_ref(), origin)
+}
+
+struct ContentOwnerTransport {
+    inner: Arc<dyn Transport>,
+    connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    next_seq: Arc<AtomicU32>,
+    origin: Option<SendOrigin>,
+}
+
+impl ContentOwnerTransport {
+    fn still_owner(&self, addr: SocketAddr) -> bool {
+        self.connected.lock().ok().is_some_and(|clients| {
+            clients
+                .get(&addr)
+                .is_some_and(|state| same_direct_owner(state, &self.next_seq, self.origin.as_ref()))
+        })
+    }
+}
+
+impl Transport for ContentOwnerTransport {
+    fn send_to<'a, 'b, 'f>(
+        &'a self,
+        bytes: &'b [u8],
+        addr: SocketAddr,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = std::io::Result<usize>> + Send + 'f>>
+    where
+        'a: 'f,
+        'b: 'f,
+        Self: 'f,
+    {
+        Box::pin(async move {
+            if !self.still_owner(addr) {
+                return Err(std::io::Error::other("content owner replaced"));
+            }
+            self.inner.send_to(bytes, addr).await
+        })
+    }
+
+    fn send_to_with_origin<'a, 'b, 'c, 'f>(
+        &'a self,
+        bytes: &'b [u8],
+        addr: SocketAddr,
+        origin: &'c SendOrigin,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = std::io::Result<usize>> + Send + 'f>>
+    where
+        'a: 'f,
+        'b: 'f,
+        'c: 'f,
+        Self: 'f,
+    {
+        Box::pin(async move {
+            if !self.still_owner(addr) || !same_direct_origin(Some(origin), self.origin.as_ref()) {
+                return Err(std::io::Error::other("content owner replaced"));
+            }
+            self.inner.send_to_with_origin(bytes, addr, origin).await
+        })
+    }
+
+    fn local_addr(&self) -> std::io::Result<SocketAddr> {
+        self.inner.local_addr()
+    }
+}
+
+/// Fence a helper's later ticket against the session that supplied its content.
+pub(super) fn content_owner_transport(
+    inner: &Arc<dyn Transport>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    next_seq: &Arc<AtomicU32>,
+    origin: Option<&SendOrigin>,
+) -> Arc<dyn Transport> {
+    Arc::new(ContentOwnerTransport {
+        inner: Arc::clone(inner),
+        connected: Arc::clone(connected),
+        next_seq: Arc::clone(next_seq),
+        origin: origin.cloned(),
+    })
 }
 
 /// Compare the connection seed, allowing the player field to change within one session.

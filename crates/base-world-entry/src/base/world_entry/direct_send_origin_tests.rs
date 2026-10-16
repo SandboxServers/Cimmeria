@@ -178,6 +178,69 @@ async fn direct_send_origin_failed_send_records_no_successful_row() {
         .is_empty());
 }
 
+#[tokio::test]
+async fn direct_send_origin_content_owner_wrapper_rejects_b_ticket_for_a_content() {
+    let a = session("A", false);
+    let a_seq = Arc::clone(&a.next_seq);
+    let a_origin = a.wire_send_origin();
+    let connected = Arc::new(Mutex::new(HashMap::from([(peer(), a)])));
+    let wire = Arc::new(Wire::new(false, None));
+    let inner: Arc<dyn Transport> = wire.clone();
+    let guarded = super::content_owner_transport(&inner, &connected, &a_seq, a_origin.as_ref());
+    connected
+        .lock()
+        .unwrap()
+        .insert(peer(), session("B", false));
+    let b_origin = connected.lock().unwrap()[&peer()]
+        .wire_send_origin()
+        .unwrap();
+    assert!(guarded
+        .send_to_with_origin(b"A content", peer(), &b_origin)
+        .await
+        .is_err());
+    assert!(wire.rows.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn direct_send_origin_reanchor_stays_unproven_without_cell_generation() {
+    let connected = Arc::new(Mutex::new(HashMap::from([(peer(), session("A", false))])));
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(4242, peer())])));
+    let wire = Arc::new(Wire::new(false, None));
+    let transport: Arc<dyn Transport> = wire.clone();
+    super::reanchor_player::handle_reanchor_player(
+        4242,
+        0x0001_0042,
+        [0.0; 3],
+        [0.0; 3],
+        &transport,
+        &connected,
+        &entity_to_addr,
+    )
+    .await
+    .unwrap();
+    assert_eq!(wire.rows.lock().unwrap().len(), 1);
+    assert!(wire.rows.lock().unwrap().iter().all(|row| row.0.is_none()));
+}
+
+#[test]
+fn direct_send_origin_registration_retains_send_site_and_kind() {
+    let a = session("A", false);
+    let seq = Arc::clone(&a.next_seq);
+    let origin = a.wire_send_origin();
+    let connected = Arc::new(Mutex::new(HashMap::from([(peer(), a)])));
+    super::register_direct_reliable(&connected, peer(), 10, &[0xA1; 48], &seq, origin.as_ref());
+    let clients = connected.lock().unwrap();
+    let channel = clients[&peer()].channel.lock().unwrap();
+    let entry = channel.tx_window.front().unwrap();
+    assert_eq!(entry.raw_bytes.as_ref(), &[0xA1; 48]);
+    assert_eq!(entry.send_kind, Some("direct"));
+    assert!(entry
+        .send_site
+        .as_ref()
+        .unwrap()
+        .contains("direct_send_origin_tests.rs"));
+}
+
 #[test]
 fn direct_send_origin_family_census() {
     for (family, source, expected) in [
@@ -191,7 +254,7 @@ fn direct_send_origin_family_census() {
         assert_eq!(
             source.matches("send_direct(").count(),
             expected,
-            "{family} lost an origin-aware send"
+            "{family} lost a direct send conversion"
         );
     }
     for (family, source) in [
@@ -229,4 +292,15 @@ fn direct_send_origin_family_census() {
         2,
         "both logoff forms need their original ticket"
     );
+    let map = include_str!("map_loaded.rs");
+    assert!(map.contains("same_direct_owner(c, &next_seq, origin.as_ref())"));
+    let enable = include_str!("enable_entities.rs");
+    assert!(enable.contains("content_owner_transport(transport, connected, &next_seq"));
+    assert!(enable.contains("same_direct_owner(c, &list_next_seq, list_origin.as_ref())"));
+    let reanchor = include_str!("reanchor_player.rs");
+    assert!(reanchor.contains("send_direct(transport, pkt, addr, None)"));
+    let character = include_str!("../character/mod.rs");
+    assert!(character.contains("Arc::ptr_eq(&c.next_seq, expected_seq)"));
+    let create = include_str!("../../../../base/src/base/character_create/mod.rs");
+    assert!(create.contains("Arc::ptr_eq(&c.next_seq, &expected_seq)"));
 }
