@@ -60,6 +60,7 @@ mod mission_622_core_tutorial;
 mod mission_638;
 mod mission_639;
 mod mission_639_cover;
+mod mission_639_drone_relog;
 mod mission_640;
 mod mission_641;
 mod mission_680;

@@ -1048,6 +1048,26 @@ VALUES
   (1032, 'play_sequence',   10001, NULL,                               '{}',                             0, 5),
   (1032, 'advance_step',    639,  '2144',                              '{}',                             0, 6);
 
+-- Chain 1037 (CB-N02d): chain 1032 arms the drone (set_aggression 1;
+-- spawnlist row 10 seeds it NEUTRAL) when the vial is taken. A relog at
+-- step 2144 builds a fresh instance with the drone NEUTRAL again, so it
+-- never engages. Re-arm it on login while 2144 is active and the kill
+-- objective 2482 is still open. Like chain 1009: aggression level only,
+-- no generate_threat, no replay of sequence 10001.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1037, '639 - Zone load: step 2144 active, kill open -> re-arm ArmYourself_PrisonerRetrievalUnit (relog)', 'mission', 639, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1037, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1037, 'step_status', 639, '2144', 'eq', 'active', 0),
+  (1037, 'objective_status', 639, '2482', 'neq', 'completed', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1037, 'set_aggression', NULL, 'ArmYourself_PrisonerRetrievalUnit', '{"level": 1}', 0, 0);
+
 -- Chain 1033 is now defined above in the "TAKE-COVER OBJECTIVE (C05)"
 -- section (dual-objective gating for step 2144 -> 2343) alongside its
 -- 1131/1132/1133 siblings -- kept next to that logic instead of here so
