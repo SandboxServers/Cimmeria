@@ -18,6 +18,7 @@ The hook mode is `--record <event>`; the probe's own hook commands use it.
 import argparse
 import copy
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -43,6 +44,21 @@ def repo_root() -> Path:
     )
     top = done.stdout.strip()
     return Path(top) if done.returncode == 0 and top else Path.cwd()
+
+
+def default_codex() -> str:
+    """Return the newest Codex desktop-app binary on Windows, else the bare name `codex`.
+
+    The npm `codex` shim on PATH can be an older CLI that rejects newer models
+    (for example gpt-6-sol with a ChatGPT login). The desktop app's bundled CLI
+    reads the same ~/.codex config and login, so the probe prefers it."""
+    local = os.environ.get("LOCALAPPDATA")
+    if local:
+        bundled = Path(local, "OpenAI", "Codex", "bin").glob("*/codex.exe")
+        found = sorted(bundled, key=lambda path: path.stat().st_mtime)
+        if found:
+            return str(found[-1])
+    return "codex"
 
 
 def probe_hooks(original: dict, script: Path) -> dict:
@@ -184,7 +200,10 @@ def main(argv=None) -> int:
     """Run the probe (default), or act as the hook when given --record <event>."""
     parser = argparse.ArgumentParser(description="Probe which Codex hooks run.")
     parser.add_argument("--record", metavar="EVENT", help="hook mode: record one event from stdin")
-    parser.add_argument("--codex", default="codex", help="Codex executable (default: codex)")
+    parser.add_argument(
+        "--codex", default=None,
+        help="Codex executable (default: the desktop app's bundled CLI, else codex on PATH)",
+    )
     parser.add_argument("--timeout", type=int, default=180, help="per-call timeout in seconds")
     args = parser.parse_args(argv)
 
@@ -198,9 +217,10 @@ def main(argv=None) -> int:
             print(output)
         return 0
 
-    codex = shutil.which(args.codex)
+    requested = args.codex or default_codex()
+    codex = shutil.which(requested)
     if codex is None:
-        print(f"codex executable not found: {args.codex}", file=sys.stderr)
+        print(f"codex executable not found: {requested}", file=sys.stderr)
         return 3
     print(json.dumps(run_probe(root, codex, args.timeout), indent=2))
     return 0
