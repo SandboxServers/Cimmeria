@@ -104,7 +104,7 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 3 | DW-12A | GUI dossier view | 02B-03 | 30k | Integrated (#1760) |
 | 3 | DW-12B | GUI Lua probe/object view | 02B, 04 | 30k | Integrated (#1764) |
 | 3 | DW-12C | GUI spatial/bookmark view and actions | 02B, 05, 05A | 30k | BlockedDependency |
-| 3 | DW-12D | GUI mission X-ray view | 02B, 06 | 30k | Ready |
+| 3 | DW-12D | GUI mission X-ray view | 02B, 06 | 30k | Review |
 | 3 | DW-13 | One-click causal trace | 07-08 | 40k | Ready |
 | 3 | DW-14 | Trace and truth GUI | 09, 12A, 13 | 35k | Ready |
 | 3 | DW-15 | Both recorder GUI flows | 10-11, 12A | 40k | BlockedDependency |

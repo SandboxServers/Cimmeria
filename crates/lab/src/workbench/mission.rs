@@ -21,7 +21,9 @@ pub struct MissionInput {
     pub definition: Result<Sample, String>,
     pub title_candidates: Result<Sample, String>,
     pub steps: Result<Sample, String>,
+    pub objectives: Result<Sample, String>,
     pub chains: Result<Sample, String>,
+    pub live_server: Result<Sample, String>,
     pub server: Result<Sample, String>,
     pub wire: Result<Sample, String>,
     pub client: Result<Sample, String>,
@@ -99,9 +101,21 @@ pub fn build_mission(input: MissionInput) -> Value {
         input.now_ms,
         &mut gaps,
     );
+    let objectives = layer(
+        "resources.mission_objectives",
+        &input.objectives,
+        input.now_ms,
+        &mut gaps,
+    );
     let chains = layer(
         "resources.content_chains",
         &input.chains,
+        input.now_ms,
+        &mut gaps,
+    );
+    let live_server = layer(
+        "server_runtime.mission",
+        &input.live_server,
         input.now_ms,
         &mut gaps,
     );
@@ -194,7 +208,9 @@ pub fn build_mission(input: MissionInput) -> Value {
             "definition": definition,
             "title_candidates": title_candidates,
             "steps": steps,
+            "objectives": objectives,
             "chain_references": chains,
+            "live_server": live_server,
             "server": server,
             "wire": wire,
             "client": client,
@@ -367,6 +383,17 @@ pub async fn read_mission(
         "resources.mission_steps",
         "db_read_failed",
     );
+    let objectives = match server {
+        Some(server) => db_rows(server, format!("SELECT o.objective_id, o.step_id, o.display_log_text, o.is_enabled, o.is_hidden, o.is_optional FROM resources.mission_objectives o JOIN resources.mission_steps s ON s.step_id = o.step_id WHERE s.mission_id = {mission_id} ORDER BY s.index, o.objective_id")).await,
+        None => Err(unavailable()),
+    };
+    log_failure(
+        &objectives,
+        instance,
+        mission_id,
+        "resources.mission_objectives",
+        "db_read_failed",
+    );
     let chains = match server {
         Some(server) => db_rows(server, format!("SELECT chain_id, description, scope_type, scope_id, enabled FROM resources.content_chains WHERE scope_type = 'mission' AND scope_id = {mission_id} ORDER BY chain_id")).await,
         None => Err(unavailable()),
@@ -421,7 +448,9 @@ pub async fn read_mission(
         definition,
         title_candidates,
         steps,
+        objectives,
         chains,
+        live_server: Err("no bound live mission instance reader".into()),
         server: live,
         wire: Err("no session-bound decoded mission packet reader".into()),
         client: Err("no selected mission-ID client state reader".into()),

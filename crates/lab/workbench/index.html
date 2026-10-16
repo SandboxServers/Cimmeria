@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/workbench/app.css">
   <script src="/workbench/views/dossier.js" defer></script>
   <script src="/workbench/views/probe.js" defer></script>
+  <script src="/workbench/views/mission.js" defer></script>
   <script src="/workbench/app.js" defer></script>
 </head>
 <body data-instance="__INSTANCE__">
@@ -22,6 +23,7 @@
       <button type="button" data-view="overview" aria-current="page">Overview</button>
       <button type="button" data-view="dossier">Target dossier</button>
       <button type="button" data-view="probe">Lua probes</button>
+      <button type="button" data-view="mission">Mission X-ray</button>
       <button type="button" data-view="palette">GM palette</button>
       <button type="button" data-view="trace">Trace</button>
     </nav>
@@ -95,6 +97,21 @@
         </div>
       </div>
       <div id="probe-output" aria-live="polite"></div>
+    </section>
+    <section id="mission" class="panel" aria-labelledby="mission-title" hidden>
+      <div class="panel-heading">
+        <div><p class="eyebrow">Five sources</p><h2 id="mission-title">Mission X-ray</h2></div>
+        <button type="button" id="mission-refresh">Refresh mission</button>
+      </div>
+      <p class="hint">Inspect one authored mission ID. Definitions, persisted state, packets, client state and visible tracker are separate observations. A tracker line does not prove server progress.</p>
+      <form id="mission-form" class="target-form">
+        <label for="mission-id">Mission ID</label>
+        <input id="mission-id" name="mission_id" type="number" min="1" max="2147483647" step="1" inputmode="numeric" required>
+        <button type="submit">Inspect</button>
+        <button type="button" id="mission-clear">Clear</button>
+      </form>
+      <p id="mission-status" role="status" aria-live="polite"></p>
+      <div id="mission-content"></div>
     </section>
     <section id="placeholder" class="panel" hidden aria-live="polite">
       <p class="eyebrow">Coming in a later packet</p>
