@@ -1,6 +1,6 @@
 # Lean orchestration campaign
 
-> Type: campaign ledger. Audience: the owner, the coordinator and the agents that run packets. Opened 2026-10-13. Packets: [work-packets.md](work-packets.md).
+> Type: campaign ledger. Audience: the owner, the coordinator and the agents that run packets. Opened 2026-10-13. **Closed 2026-10-16 with owed items** ([Close-out](#close-out)). Packets: [work-packets.md](work-packets.md).
 
 ## Purpose
 
@@ -63,12 +63,12 @@ Owner interview, 2026-10-13.
 | D-LO11 | Agent report files live under a **gitignored** `.claude/reports/<campaign>/<packet>-<role>.md`, not in the ledger. Anything worth keeping is copied to `worknotes/` by the orchestrator. | Decided | The reports are transient, and committing them would add noise to every PR. |
 | D-LO12 | The orchestrator keeps Read, Grep, Glob, Edit and Write, but a PreToolUse hook limits its Edit and Write to `docs/analysis/**` and `.claude/state/**`, and its Read to files under 400 lines unless they are in a ledger. | Decided | It has to update ledger rows and the resume card itself; anything else goes to an agent. |
 | D-LO13 | An escape-hatch persona, `claude --agent hands-on` (Opus, all tools, today's behaviour), for one-off direct work. | Decided | Not every session is a campaign. |
-| D-LO14 | Success targets, measured on the first full campaign run under the new process: orchestrator first-request context ≤ 25k; orchestrator average context ≤ 120k; coordination (orchestrator + architect + reviewers) ≤ 40% of campaign spend, down from 97%; CI first-attempt rate and escaped defects no worse than the campaign-metrics baseline. | Decided | Lets LO-08 grade the change. |
-| D-LO15 | Which Codex sessions act as the orchestrator? **(A)** Only sessions that run or resume a campaign; other Codex sessions work directly under `AGENTS.md`. **(B)** Every Codex session starts as the orchestrator, as Claude Code does. Architect recommends **A**: Codex has no committed default-persona setting and no path guard (F10), so under B every Codex session would rely on instructions alone, and one-off Codex work would have no `hands-on` escape hatch. | **BlockedDecision** (owner) | Blocks LO-09a. The packet gives the exact text for both answers. |
+| D-LO14 | Success targets, measured on the first full campaign run under the new process: orchestrator first-request context ≤ 25k (**relaxed to about 35k by the owner, 2026-10-16**); orchestrator average context ≤ 120k; coordination (orchestrator + architect + reviewers) ≤ 40% of campaign spend, down from 97%; CI first-attempt rate and escaped defects no worse than the campaign-metrics baseline. | Decided; first-request target relaxed 2026-10-16 | Lets LO-08 grade the change. |
+| D-LO15 | Which Codex sessions act as the orchestrator? **(A)** Only sessions that run or resume a campaign; other Codex sessions work directly under `AGENTS.md`. **(B)** Every Codex session starts as the orchestrator, as Claude Code does. Architect recommends **A**: Codex has no committed default-persona setting and no path guard (F10), so under B every Codex session would rely on instructions alone, and one-off Codex work would have no `hands-on` escape hatch. | **Decided 2026-10-15: A** (campaign sessions only) | Applied by LO-09a (#1742). The packet gave the exact text for both answers. |
 | D-LO16 | A worker's report goes to `<worktree>\.claude\reports\<campaign>\<packet>-<role>.md` inside its own worktree. The brief passes the absolute path. Nobody writes a report to a fixed root-checkout path. The orchestrator copies anything worth keeping to `worknotes/` before ops retires the worktree, because retiring deletes the report. | Decided (owner, from the Codex review, 2026-10-15) | Workers write only inside their worktree. This amends where D-LO11 puts reports; they stay gitignored. |
-| D-LO17 | Should `sync.py` give each Codex agent a model that matches its Claude tier? Codex agents run on the session's model today (F9). | **BlockedDecision** (owner); no packet waits on it | Picking the OpenAI models is the owner's call. LO-09b documents the current limit. Revisit after the LO-08 Codex UAT. |
+| D-LO17 | Should `sync.py` give each Codex agent a model that matches its Claude tier? Codex agents run on the session's model today (F9). | **Open** (owner, 2026-10-16: stays open); no packet waits on it | Picking the OpenAI models is the owner's call. LO-09b documents the current limit. Revisit after the LO-08 Codex UAT. |
 | D-LO18 | Reset the main checkout's `main` to `origin/main`, after committing or stashing its uncommitted ledger and memory edits, then re-measure the first-request context (LO-10e). The 2 local-only commits are duplicate cherry-picks of the #1737 guard fix. | Decided (owner, 2026-10-16); the owner runs the reset, no packet touches git for it | The LO-08 pilot (48,349) launched 52 minutes before LO-05 merged, so it loaded the old CLAUDE.md and the memory-index import. The reset alone saves about 15.5k tokens (LO-10 architect estimate). |
-| D-LO19 | Which sessions keep direct MCP access: move the lab, RE and SigNoz servers out of the main thread into inline `mcpServers` on the subagents that use them, and turn off the claude.ai Docs connector for this project (LO-10 rank 6). | **Deferred** (owner, 2026-10-16); no wave 5 packet does this | Out of scope for now. About 2.4k tokens, but `hands-on`, the lab-uat grading step and ad hoc RE sessions call these servers from the main thread. Wave 5 reaches 25k without it. |
+| D-LO19 | Which sessions keep direct MCP access: move the lab, RE and SigNoz servers out of the main thread into inline `mcpServers` on the subagents that use them, and turn off the claude.ai Docs connector for this project (LO-10 rank 6). | **Deferred and still open** (owner, 2026-10-16); no wave 5 packet does this | Out of scope for now. About 2.4k tokens, but `hands-on`, the lab-uat grading step and ad hoc RE sessions call these servers from the main thread. Wave 5 reaches 25k without it. |
 
 ## Packets
 
@@ -77,14 +77,17 @@ Owner interview, 2026-10-13.
 | LO-01 | Orchestrator persona, settings and escape hatch | 1 | general-purpose (Sonnet) | Done (#1705) |
 | LO-02 | Architect and ops agents, report protocol | 1 | general-purpose (Sonnet) | Done (#1705) |
 | LO-03 | Context cap, resume-card hook and orchestrator path guard | 1 | packet-coder | Done (#1705) |
-| LO-04 | Agent tiers and one-line report contract | 2 | packet-coder | Reviewed; e3842f9a8 (lo-04); ship waits on #1736, #1737 |
-| LO-05 | Lean CLAUDE.md | 2 | documentation-writer | Reviewed; 0439b1c3b (lo-05); ship waits on #1736, #1737 |
-| LO-06 | campaign-packet skill and development-workflow rewrite | 2 | documentation-writer | Reviewed; afab72e0e (lo-06); ship waits on #1736, #1737 |
+| LO-04 | Agent tiers and one-line report contract | 2 | packet-coder | Done (#1739) |
+| LO-05 | Lean CLAUDE.md | 2 | documentation-writer | Done (#1739) |
+| LO-06 | campaign-packet skill and development-workflow rewrite | 2 | documentation-writer | Done (#1739) |
 | LO-07 | Coordination-overhead view in token-profile | 2 | packet-coder | Done (#1705) |
-| LO-09a | AGENTS.md campaign entry rule and task-specific reads | 3 | documentation-writer | BlockedDecision (D-LO15); also waits for wave 2 to merge and the LO-09c report |
-| LO-09b | Codex limits of sync.py, report path inside the worktree | 3 | documentation-writer | BlockedDependency (wave 2 merge; LO-09c report) |
-| LO-09c | Codex hook probe and resume-card wiring | 3 | packet-coder | BlockedDependency (wave 2 merge, #1737) |
-| LO-08 | Pilot run, measurement, Codex UAT and close-out | 4 | orchestrator + ops | BlockedDependency (wave 2, wave 3) |
+| LO-09a | AGENTS.md campaign entry rule and task-specific reads | 3 | documentation-writer | Done (#1742); D-LO15 = A |
+| LO-09b | Codex limits of sync.py, report path inside the worktree | 3 | documentation-writer | Done (#1742) |
+| LO-09c | Codex hook probe and resume-card wiring | 3 | packet-coder | Done (#1742); outcome inconclusive |
+| LO-08 | Pilot run, measurement, Codex UAT and close-out | 4 | orchestrator + ops | Closed with owed items (Claude UAT, Codex UAT C0-C5 and a second pilot not run) |
+| LO-10a | Probe: skills listing, agent listing, lab-driver line | 5 | packet-coder | Done (no PR) |
+| LO-10b/c/d | Orchestrator tool set, agent descriptions, memory index dedupe | 5 | mixed | Done (#1753) |
+| LO-10e | Re-measure and grade D-LO14 | 5 | documentation-writer | Done (#1754); owner-read number, not tool-measured |
 
 Wave 1 is reviewed by one packet-review-fixer (D-LO9), merged, and then the owner relaunches `claude` to get the new orchestrator for wave 2.
 
@@ -122,3 +125,44 @@ Wave 5 (LO-10b/c/d, PR #1753) cut the orchestrator's static context, and the own
 The P0 and P3 figures were recovered from the six LO-10a probe transcripts in `~/.claude/projects/C--Users-Steve-source-projects-Cimmeria--claude-worktrees-lo-10a/`, because the LO-10a report went away with its worktree. They map to the run table by file time and prompt (P1 22,585; P1b 22,601; P2 26,273; P2b 26,318). Treat them as a reconstruction. Per LO-10a's own rule, compare probe runs only with each other, never with the pilot: the probes run in a worktree without the user's auto-memory index and with a one-word prompt.
 
 Grade: **pass against the relaxed target** (originally: target missed, improved). On 2026-10-16 the owner accepted ~35k first-request context as good enough, so the D-LO14 first-request target of 25k is relaxed to ~35k. The original 25k target is kept here for the record. The owner-read ~32-35k is above that original 25k, but it meets the relaxed ~35k target. It is roughly 13-16k below the wave 2 baseline of 48,349 (48,349 - 35,000 = 13,349; 48,349 - 32,000 = 16,349), about a 28-34% cut. The number is an owner read of the Claude window, not a `usage` field, so treat it as approximate (the window figure is rounded and may count items a transcript `usage` would split differently). It also includes the user's auto-memory index and the real first prompt, which the LO-10a probes lacked; that is why it sits well above the P3 probe's 21,387 and why probes are never compared with it. Method and why: the transcript for the session was never found, so no tool could measure it, and a window read is the only observation of the real session available. A tool-measured rerun would still be the better number: the owner launches a fresh session from the main checkout, sends one short prompt and gives the session id (check that its `.jsonl` lands under `~/.claude/projects/c--Users-Steve-source-projects-Cimmeria/`). The remaining architect ranks are 3 (`disableBundledSkills`, owner decision, now unblocked by this number), 6 (deferred as D-LO19, owner decision) and 7 (the user's personal auto-memory, user decision); none is started.
+
+## Close-out
+
+Closed 2026-10-16 by owner decision. Waves 1 to 5 are merged (#1705, #1739, #1742, #1753, #1754). Several checks were never run. This section says plainly which.
+
+### Owner decisions, 2026-10-16
+
+| Topic | Decision |
+|---|---|
+| First-request context | About 32-35k (owner-read from the Claude window, see [Wave 5 re-measure](#wave-5-re-measure)) is accepted. D-LO14's first-request target is relaxed from 25k to about 35k. |
+| Coordination share | The pilot's 46.6% against the 40% target is accepted for now. It is likely inflated because the owner pasted a large Codex text block into the session instead of having an agent read it from a file. Revisit if it becomes a problem. |
+| Claude UAT and Codex UAT C0-C5 | Not run: the owner is out of tokens. They are owed, not failed. |
+| D-LO17, D-LO19 | Stay open. |
+| Stale worktrees | The owner still owes `pwsh tools\build-lane\rm-worktree.ps1 <name> --force` for the stale no-PR worktrees (the sweep skipped 120; lo-10a, lo-10c and lo-10d, among others, were NO_PR). |
+
+### D-LO14 final grade
+
+| Target | Result | Status |
+|---|---|---|
+| Orchestrator first-request context | 48,349 (pilot), then about 32-35k (owner-read) against the relaxed ~35k | Pass against the relaxed target; the original 25k was missed |
+| Orchestrator average context ≤ 120k | 75,159 (pilot) | Pass |
+| Coordination ≤ 40% of spend | 46.6% | Missed, accepted for now |
+| CI first-attempt rate, escaped defects | not measured by `token-profile` | Unverified |
+
+### Owed and unverified
+
+Nothing in this table has been tested. Do not treat any of it as working.
+
+| Item | State |
+|---|---|
+| Claude UAT (a fresh `claude` launch shows the `orchestrator` persona, the guard denies a crate edit, `/compact` shows the resume card) | **Not run** |
+| Frontmatter `hooks:` fire for the main-thread agent | **Unverified.** The guard is proven for subagents only (the LO-06 rerun); nobody has tried an Edit on a crate path from the main thread |
+| Codex UAT C0-C5 ([work-packets.md](work-packets.md#codex-uat-fresh-session-recorded-separately)) | **Not run.** There is no Codex UAT table because there are no results |
+| Codex hook enforcement | **Unverified.** LO-09c was inconclusive: no SessionStart or PreToolUse hook fired under Codex 0.162.0. The docs claim no Codex resume card and no Codex path guard |
+| Tool-measured first-request number | Missing; the ~32-35k is a window read |
+| Second pilot (the next real campaign) | Not run |
+| D-LO17 (Codex models matching tiers), D-LO19 (MCP servers out of the main thread) | Open decisions |
+| `rm-worktree.ps1 <name> --force` for stale no-PR worktrees | Owner action |
+| Architect ranks 3 (`disableBundledSkills`) and 7 | Not started; owner decisions |
+
+`docs/project-status.md` and the gap-analysis files are unchanged: this campaign alters agent tooling, not a game system, so no row there moves.

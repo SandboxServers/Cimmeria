@@ -19,3 +19,4 @@
   - D-LO15: DECIDED 2026-10-15 by the owner: campaign sessions only. Put this in the LO-09a brief.
   - D-LO17: should Codex agents get models that match their Claude tiers? No packet waits on it; revisit after the Codex UAT.
 - Unverified: whether frontmatter `hooks:` fire for the main-thread agent (check with one Edit on a crate path; it should be denied). Which Codex hooks run is LO-09c's probe.
+- 2026-10-16 FINAL: campaign CLOSED with owed items (README, Close-out). Owed and untested: Claude UAT, Codex UAT C0-C5, main-thread frontmatter hooks, Codex hook enforcement (LO-09c inconclusive), tool-measured first-request number. Accepted: first-request ~35k (D-LO14 relaxed from 25k), coordination share 46.6%. D-LO17 and D-LO19 open. Owner still runs `rm-worktree.ps1 <name> --force` for stale no-PR worktrees.
