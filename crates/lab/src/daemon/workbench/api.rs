@@ -19,7 +19,10 @@ mod probe_api;
 use crate::{
     lease::permit::{self, Permit},
     server::Instances,
-    workbench::dossier,
+    workbench::{
+        bookmarks::{BookmarkDraft, BookmarkStore},
+        dossier, spatial,
+    },
 };
 #[cfg(test)]
 pub(crate) use probe_api::leased;
@@ -30,9 +33,21 @@ const STYLESHEET: &str = include_str!("../../../workbench/app.css");
 
 /// Routes merged into the DW-02A browser router before its session layer.
 pub fn router(instances: Instances) -> Router<Arc<SessionStore>> {
+    router_with_store(instances, bookmark_store())
+}
+
+pub(crate) fn router_with_store(
+    instances: Instances,
+    store: BookmarkStore,
+) -> Router<Arc<SessionStore>> {
     Router::new()
         .route("/workbench/api/v1/session", get(session))
         .route("/workbench/api/v1/dossier", get(target_dossier))
+        .route("/workbench/api/v1/spatial", get(spatial_frame))
+        .route("/workbench/api/v1/bookmarks", get(bookmark_list))
+        .route("/workbench/api/v1/bookmarks/save", post(bookmark_save))
+        .route("/workbench/api/v1/bookmarks/delete", post(bookmark_delete))
+        .route("/workbench/api/v1/bookmarks/action", post(bookmark_action))
         .route("/workbench/api/v1/input/key", post(input_key))
         .route("/workbench/api/v1/probes", get(probe_api::probe_list))
         .route("/workbench/api/v1/probes/save", post(probe_api::probe_save))
@@ -45,6 +60,7 @@ pub fn router(instances: Instances) -> Router<Arc<SessionStore>> {
             "/workbench/api/v1/probes/window",
             post(probe_api::probe_window),
         )
+        .layer(Extension(store))
         .layer(Extension(instances))
 }
 
@@ -72,6 +88,270 @@ async fn target_dossier(
     };
     Json(dossier::read_dossier(&hosted.supervisor, &hosted.label, query.entity_id).await)
         .into_response()
+}
+
+fn bookmark_store() -> BookmarkStore {
+    BookmarkStore::new(crate::daemon::config::state_dir())
+}
+
+fn storage_failure_category(reason: &str) -> &'static str {
+    let lower = reason.to_ascii_lowercase();
+    if lower.contains("(os error 5)")
+        || lower.contains("(os error 13)")
+        || lower.contains("permission denied")
+        || lower.contains("access is denied")
+    {
+        "storage_permission_denied"
+    } else if lower.contains("(os error 112)")
+        || lower.contains("(os error 28)")
+        || lower.contains("no space left")
+        || lower.contains("disk is full")
+    {
+        "storage_disk_full"
+    } else if lower.contains(" at line ") && lower.contains(" column ") {
+        "storage_corrupt_json"
+    } else if matches!(
+        reason,
+        "bookmark file too large" | "bookmark count exceeds 256"
+    ) {
+        "storage_limit_exceeded"
+    } else if lower.contains("invalid") || lower.contains("mismatch") || lower.contains("missing") {
+        "bookmark_validation_failed"
+    } else {
+        "storage_other"
+    }
+}
+
+fn spatial_error(instance: &str, status: StatusCode, code: &str, detail: &str) -> Response {
+    let category = if matches!(
+        code,
+        "bookmark_read_failed" | "bookmark_save_failed" | "bookmark_delete_failed"
+    ) {
+        storage_failure_category(detail)
+    } else if code == "bookmark_action_unavailable" {
+        "session_identity_unbound"
+    } else {
+        code
+    };
+    tracing::warn!(target: "lab.workbench.spatial", instance, status = status.as_u16(), code, category, "spatial request failed");
+    let safe_detail = match code {
+        "instance_mismatch"
+        | "bookmark_missing"
+        | "lease_invalid"
+        | "cross_world_or_unknown"
+        | "cross_space_or_unknown" => detail,
+        "bookmark_action_unavailable" => {
+            "bookmark actions require a trusted client identity and guarded input boundary"
+        }
+        _ => "spatial operation failed; inspect the structured error code",
+    };
+    (
+        status,
+        reply(
+            instance,
+            json!({"error":code,"category":category,"detail":safe_detail}),
+            if code == "bookmark_action_unavailable" {
+                vec![json!({"source":"client_session","code":"session_identity_unbound"})]
+            } else {
+                vec![]
+            },
+        ),
+    )
+        .into_response()
+}
+
+fn request_instance(
+    sessions: &SessionStore,
+    headers: &HeaderMap,
+    requested: &str,
+) -> Result<String, Box<Response>> {
+    let instance = bound_instance(sessions, headers)
+        .ok_or_else(|| Box::new(StatusCode::UNAUTHORIZED.into_response()))?;
+    if !instance.eq_ignore_ascii_case(requested) {
+        return Err(Box::new(spatial_error(
+            &instance,
+            StatusCode::FORBIDDEN,
+            "instance_mismatch",
+            "browser session belongs to another instance",
+        )));
+    }
+    Ok(instance)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SpatialQuery {
+    instance: String,
+}
+
+async fn spatial_frame(
+    State(sessions): State<Arc<SessionStore>>,
+    Extension(instances): Extension<Instances>,
+    headers: HeaderMap,
+    Query(query): Query<SpatialQuery>,
+) -> Response {
+    let instance = match request_instance(&sessions, &headers, &query.instance) {
+        Ok(v) => v,
+        Err(r) => return *r,
+    };
+    let Some(hosted) = instances.by_label(&instance) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    Json(spatial::read_spatial(&hosted.supervisor, &hosted.label).await).into_response()
+}
+
+async fn bookmark_list(
+    State(sessions): State<Arc<SessionStore>>,
+    Extension(store): Extension<BookmarkStore>,
+    headers: HeaderMap,
+    Query(query): Query<SpatialQuery>,
+) -> Response {
+    let instance = match request_instance(&sessions, &headers, &query.instance) {
+        Ok(v) => v,
+        Err(r) => return *r,
+    };
+    match store.list(&instance) {
+        Ok(rows) => reply(&instance, json!({"bookmarks":rows}), vec![]).into_response(),
+        Err(reason) => spatial_error(
+            &instance,
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "bookmark_read_failed",
+            &reason,
+        ),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BookmarkSaveRequest {
+    instance: String,
+    id: Option<String>,
+    bookmark: BookmarkDraft,
+}
+
+async fn bookmark_save(
+    State(sessions): State<Arc<SessionStore>>,
+    Extension(store): Extension<BookmarkStore>,
+    headers: HeaderMap,
+    Json(body): Json<BookmarkSaveRequest>,
+) -> Response {
+    let instance = match request_instance(&sessions, &headers, &body.instance) {
+        Ok(v) => v,
+        Err(r) => return *r,
+    };
+    match store.save(&instance, body.id, body.bookmark) {
+        Ok(row) => reply(&instance, json!({"bookmark":row}), vec![]).into_response(),
+        Err(reason) => spatial_error(
+            &instance,
+            StatusCode::BAD_REQUEST,
+            "bookmark_save_failed",
+            &reason,
+        ),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BookmarkDeleteRequest {
+    instance: String,
+    id: String,
+}
+
+async fn bookmark_delete(
+    State(sessions): State<Arc<SessionStore>>,
+    Extension(store): Extension<BookmarkStore>,
+    headers: HeaderMap,
+    Json(body): Json<BookmarkDeleteRequest>,
+) -> Response {
+    let instance = match request_instance(&sessions, &headers, &body.instance) {
+        Ok(v) => v,
+        Err(r) => return *r,
+    };
+    match store.delete(&instance, &body.id) {
+        Ok(()) => reply(&instance, json!({"deleted":body.id}), vec![]).into_response(),
+        Err(reason) => spatial_error(
+            &instance,
+            StatusCode::NOT_FOUND,
+            "bookmark_delete_failed",
+            &reason,
+        ),
+    }
+}
+
+#[derive(Clone, Copy, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum BookmarkAction {
+    Click,
+    Teleport,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BookmarkActionRequest {
+    instance: String,
+    id: String,
+    lease_id: String,
+    action: BookmarkAction,
+}
+
+async fn bookmark_action(
+    State(sessions): State<Arc<SessionStore>>,
+    Extension(instances): Extension<Instances>,
+    Extension(store): Extension<BookmarkStore>,
+    headers: HeaderMap,
+    Json(body): Json<BookmarkActionRequest>,
+) -> Response {
+    let instance = match request_instance(&sessions, &headers, &body.instance) {
+        Ok(v) => v,
+        Err(r) => return *r,
+    };
+    let Some(hosted) = instances.by_label(&instance) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    let row = match store.list(&instance) {
+        Ok(rows) => match rows.into_iter().find(|row| row.id == body.id) {
+            Some(row) => row,
+            None => {
+                return spatial_error(
+                    &instance,
+                    StatusCode::NOT_FOUND,
+                    "bookmark_missing",
+                    "bookmark id is not saved",
+                )
+            }
+        },
+        Err(reason) => {
+            return spatial_error(
+                &instance,
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "bookmark_read_failed",
+                &reason,
+            )
+        }
+    };
+    let book = hosted.supervisor.leases().clone();
+    if book
+        .check(Some(&body.lease_id), "workbench.bookmark_action")
+        .is_err()
+    {
+        return spatial_error(
+            &instance,
+            StatusCode::FORBIDDEN,
+            "lease_invalid",
+            "a current lab lease is required",
+        );
+    }
+    let action = match body.action {
+        BookmarkAction::Click => "click",
+        BookmarkAction::Teleport => "teleport",
+    };
+    tracing::warn!(target: "lab.workbench.spatial", instance, action, bookmark_id = %row.id, "bookmark action refused without guarded client identity");
+    spatial_error(
+        &instance,
+        StatusCode::CONFLICT,
+        "bookmark_action_unavailable",
+        "bookmark actions require a trusted client identity and guarded input boundary",
+    )
 }
 
 fn bound_instance(sessions: &SessionStore, headers: &HeaderMap) -> Option<String> {

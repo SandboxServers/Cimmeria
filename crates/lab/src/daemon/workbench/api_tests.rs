@@ -5,6 +5,141 @@ use crate::daemon::http_tests::{spawn_daemon, test_server, TOKEN};
 use crate::lease::AcquireRequest;
 use crate::server::{Hosted, Instances, LabServer};
 
+#[tokio::test]
+async fn bookmark_actions_refuse_before_any_client_call_even_with_matching_world_data() {
+    use super::{router_with_store, SessionStore};
+    use crate::daemon::http_tests::spawn_router;
+    use crate::supervisor::events::fake_bridge::{self, Responder};
+    use crate::workbench::bookmarks::{BookmarkDraft, BookmarkStore};
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+
+    let calls = Arc::new(AtomicUsize::new(0));
+    let counted = calls.clone();
+    let responder: Responder = Arc::new(move |_, _| {
+        counted.fetch_add(1, Ordering::SeqCst);
+        Err("client call was not expected".into())
+    });
+    let supervisor = Arc::new(fake_bridge::supervisor(responder).await);
+    let lease = supervisor
+        .leases()
+        .acquire(AcquireRequest {
+            owner: "bookmark-action-test".into(),
+            purpose: "offline refusal guard".into(),
+            ..Default::default()
+        })
+        .unwrap();
+    let instances = Instances::new(vec![Hosted {
+        label: "default".into(),
+        supervisor,
+    }]);
+    let sessions = Arc::new(SessionStore::default());
+    let cookie = sessions.redeem(&sessions.open("default")).unwrap().cookie;
+    let csrf = sessions.identity(&cookie).unwrap().csrf;
+    let cookie = format!("cimmeria_workbench={cookie}");
+
+    let dir = tempfile::tempdir().unwrap();
+    let store = BookmarkStore::new(dir.path().to_path_buf());
+    let saved = store
+        .save(
+            "default",
+            None,
+            BookmarkDraft {
+                world_id: 7,
+                space_id: None,
+                position_m: [1.0, 2.0, 3.0],
+                facing_deg: Some(90.0),
+                label: "same-world marker".into(),
+                source: "operator".into(),
+                screenshot_path: None,
+                observed_at_ms: 1_000,
+            },
+        )
+        .unwrap();
+    assert_eq!(store.list("default").unwrap(), vec![saved.clone()]);
+
+    let router = router_with_store(instances, store.clone())
+        .route_layer(axum::middleware::from_fn_with_state(
+            sessions.clone(),
+            super::super::require_session,
+        ))
+        .with_state(sessions);
+    let base = spawn_router(router).await.replace("/mcp", "");
+    let http = reqwest::Client::new();
+    let endpoint = format!("{base}/workbench/api/v1/bookmarks/action?instance=default");
+
+    for action in ["click", "teleport"] {
+        let body = json!({
+            "instance":"default", "id":saved.id, "lease_id":lease.lease_id, "action":action
+        });
+        let missing_csrf = http
+            .post(&endpoint)
+            .header(COOKIE, &cookie)
+            .header(ORIGIN, &base)
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(missing_csrf.status(), reqwest::StatusCode::FORBIDDEN);
+        let response = http
+            .post(&endpoint)
+            .header(COOKIE, &cookie)
+            .header(ORIGIN, &base)
+            .header("x-cimmeria-csrf", &csrf)
+            .json(&body)
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::CONFLICT);
+        let result: Value = response.json().await.unwrap();
+        assert_eq!(result["data"]["error"], "bookmark_action_unavailable");
+        assert_eq!(result["gaps"][0]["code"], "session_identity_unbound");
+        assert_eq!(
+            calls.load(Ordering::SeqCst),
+            0,
+            "{action} reached the client bridge"
+        );
+    }
+    store.delete("default", &saved.id).unwrap();
+    assert!(store.list("default").unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn storage_failures_have_distinct_safe_categories() {
+    use super::spatial_error;
+    use axum::{body::to_bytes, http::StatusCode};
+
+    for (reason, category) in [
+        (
+            "expected value at line 1 column 1 private-marker",
+            "storage_corrupt_json",
+        ),
+        (
+            "Access is denied. (os error 5) private-marker",
+            "storage_permission_denied",
+        ),
+        (
+            "The disk is full. (os error 112) private-marker",
+            "storage_disk_full",
+        ),
+    ] {
+        let response = spatial_error(
+            "default",
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "bookmark_read_failed",
+            reason,
+        );
+        let bytes = to_bytes(response.into_body(), 1024 * 1024).await.unwrap();
+        let body: Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(body["data"]["category"], category);
+        assert!(!String::from_utf8(bytes.to_vec())
+            .unwrap()
+            .contains("private-marker"));
+    }
+}
+
 async fn browser_session(http: &reqwest::Client, base: &str, instance: &str) -> (String, String) {
     let response = http
         .post(format!("{base}/workbench/session/open"))

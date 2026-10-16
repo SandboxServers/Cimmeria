@@ -45,6 +45,7 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | D-DW15 | Decided (static source, 2026-10-16) | `Orchestrator::new` constructs Base, Cell and one in-process Tokio channel, and Cell consumes messages serially, but cloned senders and a retained Cell across Base starts have no source-proven owner order. Every player create needs an opaque incarnation and monotonic process-lifetime issue order reserved together before await, then finalized with the entity ID; Cell must acknowledge B's accepted claim and reject lower-order A before insertion. Any missing/shared-order proof, B ack, current occupant incarnation or unsupported process epoch is `owner_order_unknown` and blocks joined fields. T-O-S0/S1/I/V/F/Q and T-DB0/DB2/DB1 own the prerequisite proof and tests; until merged and passed, P1/P2/S/X/B remain `BlockedDependency`. |
 | D-DW16 | Decided (static source, 2026-10-16) | `CellToBaseMsg::GateTravel` omits source incarnation/epoch, while Base selects a current peer before minting and `persist_arrival` updates by account/player only after an awaited stargate query. A Cell-origin token must be compared before reservation; rejected/missing Cell create ack is terminal. T-K terminal Base handling must merge before O-F emits a live Cell rejection. DB0 records a selected-player claim before the first play-character await, while `active_player_id` may be `None`; a DB row owner claim and phase-3 takeover invalidation of active or in-flight selected claims (revoking old A before minting the invalidation order) with monotonic process order, plus exact-owner conditional arrival UPDATE must pass a takeover race before persistence is safe. Cross-process epoch rollover is unproven and remains `owner_db_unknown`/`BlockedDependency`. |
 | D-DW17 | BlockedDependency (static source, 2026-10-16) | `lifecycle.rs::persist_last_position` queues `CellToBaseMsg::PersistPosition` without an owner token, and `cell_dispatch/position.rs::persist_position` updates `sgw_player.world_location/pos_*` by player ID alone. A queued old A logout write could overwrite B after phase-3 takeover despite the guarded GateTravel arrival. A separately scoped owner-carrying conditional write plus old-A-after-B live-DB regression is required before S/X/B may expose complete joined fields. No packet here claims that guard; other tracks may proceed with joined fields unknown. |
+| D-DW18 | Decided | DW-05 ships spatial observations and local bookmark CRUD. Bookmark click and teleport return `bookmark_action_unavailable` with `session_identity_unbound` before client input. Same-world relog cannot be proven from world/PID/player equality, so `current` stays false until a trusted login generation exists. DW-05G establishes an execution-time input guard after DW-03S-B; DW-05A uses it for bookmark actions. The GUI keeps those controls disabled until DW-05A passes. |
 
 ## Packet ledger
 
@@ -85,7 +86,9 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 1B-e | DW-03S-I | Ingestion-time client event identity | 03S-C | 30k | BlockedDependency |
 | 1B-e | DW-03S-B | Supervisor binder and dossier integration | 03S-C, 03S-X, 03S-I, 03 | 45k | BlockedDependency |
 | 1 | DW-04 | Lua probe/object model | 01, 02B | 40k | Integrated (#1749) |
-| 1 | DW-05 | Spatial model/bookmarks | 01, 02B | 40k | Ready |
+| 1 | DW-05 | Spatial observations and bookmark CRUD | 01, 02B | 40k | Review |
+| 2 | DW-05G | Execution-time client input guard | 05, 03S-B | 45k | BlockedDependency |
+| 2 | DW-05A | Guarded bookmark actions | 05G | 35k | BlockedDependency |
 | 2 | DW-06 | Mission X-ray model | 01, 02B | 40k | Ready |
 | 2 | DW-07 | Client click/target correlation | 01 | 35k | Integrated |
 | 2 | DW-08 | Trace capture anchor | 01, 02B, 03S-B | 40k | BlockedDependency |
@@ -94,7 +97,7 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 2 | DW-11 | Triggered flight recorder | 08, 03S-B, LR-14/15 | 45k | BlockedDependency |
 | 3 | DW-12A | GUI dossier view | 02B-03 | 30k | Ready |
 | 3 | DW-12B | GUI Lua probe/object view | 02B, 04 | 30k | Ready |
-| 3 | DW-12C | GUI spatial/bookmark view | 02B, 05 | 30k | Ready |
+| 3 | DW-12C | GUI spatial/bookmark view and actions | 02B, 05, 05A | 30k | BlockedDependency |
 | 3 | DW-12D | GUI mission X-ray view | 02B, 06 | 30k | Ready |
 | 3 | DW-13 | One-click causal trace | 07-08 | 40k | Ready |
 | 3 | DW-14 | Trace and truth GUI | 09, 12A, 13 | 35k | Ready |
