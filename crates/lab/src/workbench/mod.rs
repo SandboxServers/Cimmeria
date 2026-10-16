@@ -10,6 +10,7 @@ pub mod mission;
 pub mod probe_catalog;
 pub mod probes;
 pub mod slash_catalog;
+pub mod slash_descriptors_1a;
 pub mod slash_inventory;
 pub mod slash_transport;
 pub mod spatial;
@@ -20,6 +21,8 @@ mod command_tests;
 mod mission_tests;
 #[cfg(test)]
 mod probes_tests;
+#[cfg(test)]
+mod slash_descriptors_1a_tests;
 #[cfg(test)]
 mod slash_inventory_tests;
 #[cfg(test)]

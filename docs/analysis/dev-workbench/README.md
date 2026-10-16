@@ -127,7 +127,7 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 5 | DW-24A | Slash inventory/parser/stock audit | 19 | 40k | Integrated (#1752) |
 | 5 | DW-24B | Native submission/quoting/receipt proof | 24A | 45k | BlockedDependency (offline candidate; binary/parser/live receipt proof pending) |
 | 6 | DW-25A-E | Slash evidence 1-27 | 24A | 40k | Integrated (#1768) |
-| 6 | DW-25A | Slash descriptors 1-27 | 25A-E | 40k | Ready |
+| 6 | DW-25A | Slash descriptors 1-27 | 25A-E | 40k | Implemented locally; PR pending |
 | 6 | DW-25B-E | Slash evidence 28-54 | 24A | 40k | Integrated (#1770) |
 | 6 | DW-25B | Slash descriptors 28-54 | 25B-E | 40k | Ready |
 | 6 | DW-26A-E | Slash evidence 55-81 | 24A | 40k | Review |
