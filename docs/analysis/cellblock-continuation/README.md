@@ -33,12 +33,12 @@ A completed source audit does not make a runtime packet Ready.
 | CB-N02 | Writing | Family row. The 2026-10-15 fresh Human p3 run verified pistol grant, equip, reload and guard damage; #1667 did not reproduce and is not a child. CB-U02 stays UATPending. Children below. See [route baseline](route-baseline.md#2026-10-15-native-livewire-retry-and-prisoner-relog-fault). |
 | CB-N02s | Integrated | Relog-restore audit, [cb-n02s.md](worknotes/cb-n02s.md); integrated at `e10fd1f0a`. Sealed gaps A, B, C. |
 | CB-N02a | Integrated, UATPending | Chains 1026/1027 restore Prisoner 329's dialog on login; integrated at `e10fd1f0a`. CB-U03 client check pending. |
-| CB-N02b | Ready | [w1b-packets.md](w1b-packets.md): chain 1028 restores the `329_CellDoorButton` bit at 638 step 2115 (strand). |
-| CB-N02c | Ready | [w1b-packets.md](w1b-packets.md): chain 1036 restores the Ambernol vial bit at 639 step 2145 (strand). |
-| CB-N02d | Ready | [w1b-packets.md](w1b-packets.md): chain 1037 re-arms the retrieval drone at 639 step 2144 (degraded play). |
-| CB-N02s2 | Ready | [work-packets.md](work-packets.md): bit-level check of the 622/640/641/680/687/688 restores and the relog state of sequences 1749 and 10001. May seal W1c children. |
-| CB-N03 | BlockedEvidence | No present 681/686 miss is established (route baseline CB-B06). CB-N03s decides from static evidence. |
-| CB-N03s | Ready | [work-packets.md](work-packets.md): `npc-ai-spawn-advisor` seal check; verdict is a seed fault (CB-N03a), an AI defect (CB-N03b, `rust-gameserver-dev`) or none (CB-U05 lab row). |
+| CB-N02b | Integrated, UATPending | [w1b-packets.md](w1b-packets.md): chain 1028 restores the `329_CellDoorButton` bit at 638 step 2115 (strand). Integrated at `a8d516d26` (packet `f3ee0adce`). CB-U03 client check pending. |
+| CB-N02c | Integrated, UATPending | [w1b-packets.md](w1b-packets.md): chain 1036 restores the Ambernol vial bit at 639 step 2145 (strand). Integrated at `654b2a3f2` (packet `1b7c05c28`). CB-U03 client check pending. |
+| CB-N02d | Integrated, UATPending | [w1b-packets.md](w1b-packets.md): chain 1037 re-arms the retrieval drone at 639 step 2144 (degraded play). Integrated at `52bde32a6`. CB-U03 client check pending. |
+| CB-N02s2 | Integrated | [work-packets.md](work-packets.md): bit-level check of the 622/640/641/680/687/688 restores and the relog state of sequences 1749 and 10001. Integrated at `0a2b5e803`. Verdict: no new gaps. Seals no children; W1c is not triggered by it. |
+| CB-N03 | BlockedEvidence | Blocked on CB-U05. CB-N03s found no static fault (no 681/686 miss established; route baseline CB-B06). The lab row CB-U05 decides. |
+| CB-N03s | Integrated | [work-packets.md](work-packets.md): `npc-ai-spawn-advisor` seal check. Integrated at `38bc2ad4f`. Verdict: no static fault, so CB-N03a and CB-N03b are not sealed; CB-U05 lab row pending. |
 | CB-N03a | BlockedDependency | Exists only if CB-N03s returns a seed fault; sealed in W1c. |
 | CB-N04 | BlockedDependency | O14-12 delegates cast and placement approval; measure safe pockets, then seal one room cluster per child. |
 | CB-N05a | UATPending | Catalog infrastructure merged to `main` in #1734 and integrated here; the first real authored mission must pass journal, dialog, advance and relog before this gate closes. |

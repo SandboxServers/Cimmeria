@@ -9,7 +9,9 @@
 --   Mission 622:  chains 1001-1010
 --   Mission 638:  chains 1011-1030
 --   Mission 638 login restore (2026-10-15): chains 1026-1027, the next free ids in the declared 1011-1030 range.
+--   Mission 638 door-button relog restore (2026-10-16, CB-N02b): chain 1028.
 --   Mission 639:  chains 1031-1040
+--   Mission 639 relog restores (2026-10-16, CB-N02c/d): chains 1036 (vial bit) and 1037 (drone re-arm).
 --   Mission 640:  chains 1041-1050
 --   Mission 641:  chains 1051-1070
 --   Mission 680:  chains 1071-1080
@@ -51,7 +53,7 @@
 --     chain_ids in 1176-1190 existed anywhere under
 --     db/resources/Content/Seed/. 1179-1190 remain free, which leaves
 --     GC1c (lockdown VFX, still BlockedEvidence) its headroom.
---   (next free inside 1001-1111: 1028-1030, 1036-1040, 1047-1050, 1067-1070,
+--   (next free inside 1001-1111: 1029-1030, 1038-1040, 1047-1050, 1067-1070,
 --    1075-1080, 1095-1096; next free above 1111 for an unreserved future
 --    packet: 1200+, since 1112-1199 are all pre-allocated per work-packets.md)
 --   Class Start v6, CS-04 (2026-10-05, docs/analysis/class-start-v6/README.md):

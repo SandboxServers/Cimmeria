@@ -14,7 +14,7 @@ Measured on 2026-10-13 at `origin/main` 885bbae05 from the first value of each `
 | Seed file | Chains | IDs in use |
 |---|---:|---|
 | `effects_chains.sql` | 7 | 2001, 2011, 2021–2025 |
-| `castle_cellblock_chains.sql` | 122 | 1001–1195 (sparse: 1001–1027, 1031–1034, 1041–1046, 1051–1066, 1071–1074, 1081–1094, 1097–1112, 1121, 1131–1133, 1141–1142, 1151–1152, 1154, 1161–1162, 1171–1178, 1181–1195) and the single outlier 5030 |
+| `castle_cellblock_chains.sql` | 125 | 1001–1195 (sparse: 1001–1028, 1031–1034, 1036–1037, 1041–1046, 1051–1066, 1071–1074, 1081–1094, 1097–1112, 1121, 1131–1133, 1141–1142, 1151–1152, 1154, 1161–1162, 1171–1178, 1181–1195) and the single outlier 5030 |
 | `castle_701_chains.sql` | 18 | 1201–1205, 1231–1243 |
 | `castle_702_704_chains.sql` | 23 | 1261–1265, 1271–1276, 1291–1302 |
 | `castle_706_708_chains.sql` | 28 | 1321–1323, 1341–1365 |
@@ -73,9 +73,9 @@ Three individual Cellblock chain claims for the wave 1b relog restores in the [C
 
 | Chain | Packet | Exact use | Status |
 |---:|---|---|---|
-| 1028 | CB-N02b | 638 `player_loaded` restore of the `329_CellDoorButton` Livewire bit at step 2115 | Claimed |
-| 1036 | CB-N02c | 639 `player_loaded` restore of the `ArmYourself_AmbernolVial` interact bit at step 2145 | Claimed |
-| 1037 | CB-N02d | 639 `player_loaded` re-arm of `ArmYourself_PrisonerRetrievalUnit` at step 2144 | Claimed |
+| 1028 | CB-N02b | 638 `player_loaded` restore of the `329_CellDoorButton` Livewire bit at step 2115 | In use (W1b-INT) |
+| 1036 | CB-N02c | 639 `player_loaded` restore of the `ArmYourself_AmbernolVial` interact bit at step 2145 | In use (W1b-INT) |
+| 1037 | CB-N02d | 639 `player_loaded` re-arm of `ArmYourself_PrisonerRetrievalUnit` at step 2144 | In use (W1b-INT) |
 
 Collision check, 2026-10-16: the first tuple of every `INSERT INTO content_chains` under `db/resources/Content/Seed/` at Cellblock `e10fd1f0a` uses none of the three, and a `git grep` of the same statements across all 703 local branches (every zone integration branch and packet branch) found zero hits. Point-in-time; W1b-INT moves the rows to the in-use table when it integrates them.
 
