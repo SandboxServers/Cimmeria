@@ -78,8 +78,8 @@ For mission readback, capture the authenticated caller's `player_id` and inspect
 - **Arguments:** Required `String MissionDesignId`; server requires positive numeric WSTRING ID.
 - **Target/scope:** One mission on the calling GM, not a catalog definition or selected player.
 - **Preconditions and authority:** Server GM gate, live caller and mission in their tracker; otherwise “not found on you.”
-- **Effects and impact:** Read-only feedback with mission status, current step, repeats and objective summary.
-- **Verification:** Capture feedback for the requested numeric ID and compare the same mission in mission X-ray/`sgw_mission`; missing row is an explicit not-found result.
+- **Effects and impact:** Read-only feedback with mission ID, status, current step and completed/total objective counts (`gm/missions.rs::mission_line`); it does not print repeat count.
+- **Verification:** Capture feedback for the requested numeric ID and compare the same mission in mission X-ray/`sgw_mission`. Read `sgw_mission.repeats` separately if needed; it is not in this command's feedback. A missing live mission yields an explicit not-found result.
 - **Compensation:** None.
 - **Availability:** Unsupported until native binding/submission proof; server read handler exists.
 
