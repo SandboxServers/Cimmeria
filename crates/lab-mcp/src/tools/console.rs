@@ -186,10 +186,7 @@ mod tests {
             })
             .map(|row| row["id"].as_str().unwrap())
             .collect();
-        assert_eq!(
-            runnable,
-            [".gotolocation", ".spawn", ".despawn", ".delspawn"]
-        );
+        assert_eq!(runnable, [".gotolocation", ".spawn", ".despawn"]);
 
         let xyz = rows.iter().find(|r| r["name"] == "gotoxyz").unwrap();
         assert_eq!(xyz["availability"], "unsupported");
@@ -262,14 +259,6 @@ mod tests {
                 json!([["entityId", "entity", false]]),
                 json!(["server_entity_get", "server_db_query"]),
             ),
-            (
-                "delspawn",
-                "spawnable",
-                "required",
-                "authoring",
-                json!([]),
-                json!(["server_entity_get", "server_db_query", ".seedpending"]),
-            ),
         ];
         for (name, target_kind, selection, impact, args, tools) in expected {
             let row = rows.iter().find(|row| row["name"] == name).unwrap();
@@ -318,6 +307,24 @@ mod tests {
             .unwrap()
             .contains("exact captured spawn_id"));
         let delspawn = rows.iter().find(|r| r["name"] == "delspawn").unwrap();
+        assert_eq!(delspawn["availability"], "unsupported");
+        assert_eq!(delspawn["manual_pending"], true);
+        assert_eq!(delspawn["target"]["kind"], "spawnable");
+        assert_eq!(delspawn["target"]["selection_rule"], "required");
+        assert_eq!(delspawn["impact"]["kind"], "authoring");
+        assert_eq!(delspawn["args"], json!([]));
+        assert_eq!(
+            delspawn["verify"]["read_tools"],
+            json!(["server_entity_get", "server_db_query", ".seedpending"])
+        );
+        assert!(delspawn["disposition_reason"]
+            .as_str()
+            .unwrap()
+            .contains("before record_spawn"));
+        assert!(delspawn["disposition_reason"]
+            .as_str()
+            .unwrap()
+            .contains("no pending SQL"));
         assert!(delspawn["forms"]
             .as_str()
             .unwrap()

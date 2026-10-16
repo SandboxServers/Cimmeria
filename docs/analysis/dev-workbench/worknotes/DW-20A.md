@@ -10,16 +10,18 @@ was corrected to include only `registry/{mod,workbench}.rs`, `console/mod.rs`
 and `crates/lab-mcp/src/tools/console.rs` to register and project the metadata.
 The DW-20A paragraph in `work-packets.md` records that correction.
 
-Four entries are marked runnable: `.gotolocation`, `.spawn`, `.despawn`,
-`.delspawn`. `.gotoxyz` has typed metadata but is disabled until an
+Three entries are marked runnable: `.gotolocation`, `.spawn`, `.despawn`.
+`.gotoxyz` has typed metadata but is disabled until an
 execution-time expected-subject gate can preserve its optional selection
 without silently falling back to the caller. Its impact is persistent for a
 player: base attempts an `sgw_player` position write and sends
 `BASEMSG_FORCED_POSITION`; both require separate readback. `.despawn` selected
-form can remove a pet, while its explicit ID form refuses pets. The remaining
-eleven entries are also disabled in the companion catalog. Their evidence
-requires server repairs or a conditional execution
-gate beyond this packet: `.goto`, `.summon`, `.gotospace` (subject-world GM
+form can remove a pet, while its explicit ID form refuses pets. `.delspawn`
+is disabled until a server-side player guard runs before `record_spawn` and a
+regression proves a seeded-looking selected player survives with no pending
+SQL. The remaining eleven entries are also disabled in the companion catalog.
+Their evidence requires server repairs or a conditional execution gate beyond
+this packet: `.goto`, `.summon`, `.gotospace` (subject-world GM
 policy and exact arrival), `.location`, `.rotation`, `.movehere`, `.savespawn`,
 `.autosavespawn` (pet class guard and player orientation), `.respawnall`
 (canonical respawn/grid/witness lifecycle), `.spawnset` (peer teardown before
@@ -30,14 +32,14 @@ evidence; catalog disabling is a palette disposition, not a server refusal.
 The command-level availability flag also disables two safe subforms:
 `.autosavespawn 0|false` and `.spawnset` with no arguments or `list`. Their
 metadata names them safe and deferred to DW-29/30 for per-form availability;
-the rest of those commands
-remain disabled. `.delspawn` targets a selected seeded spawnable with a
+the rest of those commands remain disabled. `.delspawn` targets a selected
+seeded spawnable with a
 template and `spawn_id`, not only an NPC. `.despawn` readback captures
 `spawn_id` before runtime removal and uses a read-only query of that exact
 `resources.spawnlist` row when one exists; a null entity alone does not prove
 the persistent row remains. `.delspawn` queues its DELETE before attempting
-runtime removal; the primitive can still refuse a player, so that rare path
-leaves a pending SQL change to inspect before confirmation.
+runtime removal; the primitive can still refuse a player, so that path leaves
+a pending SQL change to inspect before confirmation.
 
 `.gotolocation` remains runnable in the catalog with a conditional readback:
 same-space player snaps require a `wire.out.forced_position` `send=sent` row from
@@ -50,7 +52,7 @@ before execution.
 
 Existing handler tests cover wrong world/target refusal and same-space
 travel's position and forced-position output. This packet's tests pin exact
-family coverage, the four runnable contracts and metadata projection. The
+family coverage, the three runnable contracts and disabled-form projections. The
 companion GUI forms and execution flow are pending DW-28 and DW-29. No live
 client or lab lease was used.
 

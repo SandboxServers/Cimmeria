@@ -174,7 +174,7 @@ pub(super) fn metadata(name: &str) -> Option<WorkbenchMetadata> {
                 "Changes NPC home and queues INSERT/UPDATE; .seedconfirm writes live DB and emits SQL; seed commit remains manual",
                 "Read .seedpending; after .seedconfirm query exact spawn_id or emitted row, then inspect committed spawnlist.sql separately",
                 "Manual restoration; .seedcancel discards caller's entire pending authoring queue"),
-            "delspawn" => ("Spawn authoring", "runnable", "", NO_ARGS, "selected in-view seeded spawnable (no arguments)",
+            "delspawn" => ("Spawn authoring", "unsupported", "Target::Spawnable accepts players and the handler queues DELETE before player refusal; requires a server-side player guard before record_spawn and a regression proving a seeded-looking selected player survives with no pending SQL", NO_ARGS, "selected in-view seeded spawnable (no arguments)",
                 "GM; selected in-view spawnable with real spawn_id and template_id; runtime player removal is refused by the despawn primitive after the DELETE is queued",
                 "Queues DELETE before attempting runtime despawn; non-player target is then removed, but a player with spawn_id can leave a queued DELETE despite runtime refusal; .seedconfirm writes live DB; seed-file removal remains manual",
                 "Capture spawn_id; verify runtime removal separately from .seedpending, confirmed DB row absence and committed seed diff",
@@ -323,6 +323,7 @@ mod tests {
             "rotation",
             "movehere",
             "savespawn",
+            "delspawn",
             "autosavespawn",
             "respawnall",
             "spawnset",
@@ -342,7 +343,7 @@ mod tests {
             .filter(|row| metadata(&row.name).is_some() && row.availability == "runnable")
             .map(|row| row.name.as_str())
             .collect();
-        assert_eq!(runnable, ["gotolocation", "spawn", "despawn", "delspawn"]);
+        assert_eq!(runnable, ["gotolocation", "spawn", "despawn"]);
 
         let expected = [
             (
@@ -370,13 +371,6 @@ mod tests {
                 "transient",
                 &["entityId"][..],
                 &["server_entity_get", "server_db_query"][..],
-            ),
-            (
-                "delspawn",
-                "spawnable",
-                "authoring",
-                &[][..],
-                &["server_entity_get", "server_db_query", ".seedpending"][..],
             ),
         ];
         for (name, target, impact, args, read_tools) in expected {
@@ -435,6 +429,16 @@ mod tests {
         assert!(despawn.verify.contains("exact captured spawn_id"));
 
         let delspawn = catalog.iter().find(|row| row.name == "delspawn").unwrap();
+        assert_eq!(delspawn.availability, "unsupported");
+        assert!(delspawn.manual_pending);
+        assert_eq!(delspawn.target_policy, "spawnable");
+        assert_eq!(delspawn.impact_kind, "authoring");
+        assert_eq!(
+            delspawn.verify_tools,
+            ["server_entity_get", "server_db_query", ".seedpending"]
+        );
+        assert!(delspawn.disposition_reason.contains("before record_spawn"));
+        assert!(delspawn.disposition_reason.contains("no pending SQL"));
         assert!(delspawn.forms.contains("seeded spawnable"));
         assert!(delspawn.preconditions.contains("spawn_id and template_id"));
         assert!(delspawn

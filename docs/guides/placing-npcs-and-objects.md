@@ -115,8 +115,8 @@ lasts until you log out.
 ### Workbench readback for placement and travel
 
 The workbench's `server_console_list` catalog now provides reviewed metadata
-for 16 travel and spawn commands. Four entries are marked runnable:
-`.gotolocation`, `.spawn`, `.despawn` and `.delspawn`. The local companion GUI
+for 16 travel and spawn commands. Three entries are marked runnable:
+`.gotolocation`, `.spawn` and `.despawn`. The local companion GUI
 forms and execution flow are pending DW-28 and DW-29. Catalog availability
 does not make a form available yet. `.gotoxyz` remains disabled in the catalog
 until execution can recheck an optional selected subject without silently
@@ -141,10 +141,12 @@ entity form can remove a pet without its normal dismiss path. Capture the
 selected entity's `spawn_id` before despawning it; if one exists, use a
 read-only `server_db_query` for that exact `resources.spawnlist.spawn_id` to
 confirm the retained row. `.delspawn` accepts any selected in-view seeded
-spawnable with a template and `spawn_id`; its runtime removal and later
-database deletion require separate checks. The DELETE is queued before the
-runtime removal attempt; if that attempt refuses a player with a `spawn_id`,
-inspect `.seedpending` before confirming any queued changes.
+spawnable with a template and `spawn_id`. Its catalog action is disabled:
+the handler queues DELETE before runtime player refusal, so a seeded-looking
+player can leave pending SQL. A server-side player guard and regression are
+required before enabling it. Existing manual use requires separate checks of
+runtime removal and later database deletion; inspect `.seedpending` before
+confirming any queued changes.
 
 Other travel and spawn forms are marked unavailable in the catalog with their
 specific safety reason. In particular, selecting a summoned pet for

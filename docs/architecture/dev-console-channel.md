@@ -186,13 +186,15 @@ default (`COALESCE(s.patrol_path_id, t.patrol_path_id)`). Per-waypoint edits
 
 The GM-only `server_console_list` catalog now carries typed fields, accepted
 argument shapes, server preconditions, impact, readback and compensation for
-the 16 travel, placement and spawn commands. Four entries are marked runnable
+the 16 travel, placement and spawn commands. Three entries are marked runnable
 in the catalog; companion GUI forms and execution are pending DW-28 and DW-29.
 The other entries have named safety gaps and remain unavailable to the
 companion palette. In particular, `.gotoxyz` has an optional selected subject
 that can fall back to the caller if it goes stale. It needs an execution-time
-expected-subject check before its catalog entry can be enabled. A disabled
-catalog entry does not change what a GM can type in the in-game `.`-console.
+expected-subject check before its catalog entry can be enabled. `.delspawn`
+also stays disabled until the cell refuses a seeded-looking player before
+queueing any spawnlist DELETE. A disabled catalog entry does not change what
+a GM can type in the in-game `.`-console.
 
 The palette must refresh the server-side actor and target before dispatch.
 An initial travel receipt is only an enqueue acknowledgement. For a same-space
