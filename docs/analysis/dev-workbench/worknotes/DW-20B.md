@@ -38,4 +38,13 @@ No SQL query was added, so this packet has no live-DB test.
 Local checks through the PowerShell build lane: `cargo fmt -p
 cimmeria-cell-console` status=ok; `cargo clippy -p
 cimmeria-cell-console --all-targets -- -D warnings` status=ok; `cargo
-test -p cimmeria-cell-console --lib` status=ok, 563 passed and 0 failed.
+test -p cimmeria-cell-console --lib` status=ok, 564 passed and 0 failed.
+
+Review follow-up: the original inventory/nonempty test did not guard typed
+form drift. `every_world_author_form_has_exact_target_and_ordered_typed_signature`
+now pins the target policy and ordered argument name, kind, required flag,
+bounds and choices for each of the 28 rows. A temporary mutation changed
+`PATH_INDEX_SEQ.seqId` from `integer` to `float`; the targeted lane test
+failed at `.path_set_seq` with the differing field tuple. The mutation was
+restored before final checks. Baseline handler refusal tests show current
+dispatch behavior; the exact-signature test is the catalog regression guard.
