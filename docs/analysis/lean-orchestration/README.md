@@ -84,7 +84,7 @@ Owner interview, 2026-10-13.
 | LO-09a | AGENTS.md campaign entry rule and task-specific reads | 3 | documentation-writer | Done (#1742); D-LO15 = A |
 | LO-09b | Codex limits of sync.py, report path inside the worktree | 3 | documentation-writer | Done (#1742) |
 | LO-09c | Codex hook probe and resume-card wiring | 3 | packet-coder | Done (#1742); outcome inconclusive |
-| LO-08 | Pilot run, measurement, Codex UAT and close-out | 4 | orchestrator + ops | Closed with owed items (Claude UAT, Codex UAT C0-C5 and a second pilot not run) |
+| LO-08 | Pilot run, measurement, Codex UAT and close-out | 4 | orchestrator + ops | Closed with owed items (Claude UAT and second pilot); Codex UAT recorded below |
 | LO-10a | Probe: skills listing, agent listing, lab-driver line | 5 | packet-coder | Done (no PR) |
 | LO-10b/c/d | Orchestrator tool set, agent descriptions, memory index dedupe | 5 | mixed | Done (#1753) |
 | LO-10e | Re-measure and grade D-LO14 | 5 | documentation-writer | Done (#1754); owner-read number, not tool-measured |
@@ -136,7 +136,7 @@ Closed 2026-10-16 by owner decision. Waves 1 to 5 are merged (#1705, #1739, #174
 |---|---|
 | First-request context | About 32-35k (owner-read from the Claude window, see [Wave 5 re-measure](#wave-5-re-measure)) is accepted. D-LO14's first-request target is relaxed from 25k to about 35k. |
 | Coordination share | The pilot's 46.6% against the 40% target is accepted for now. It is likely inflated because the owner pasted a large Codex text block into the session instead of having an agent read it from a file. Revisit if it becomes a problem. |
-| Claude UAT and Codex UAT C0-C5 | Not run: the owner is out of tokens. They are owed, not failed. |
+| Claude UAT and Codex UAT C0-C5 | Claude UAT remains owed. Codex UAT ran on 2026-10-16; results and limits are below. |
 | D-LO17, D-LO19 | Stay open. |
 | Stale worktrees | The owner still owes `pwsh tools\build-lane\rm-worktree.ps1 <name> --force` for the stale no-PR worktrees (the sweep skipped 120; lo-10a, lo-10c and lo-10d, among others, were NO_PR). |
 
@@ -151,18 +151,33 @@ Closed 2026-10-16 by owner decision. Waves 1 to 5 are merged (#1705, #1739, #174
 
 ### Owed and unverified
 
-Nothing in this table has been tested. Do not treat any of it as working.
+The following items remain unverified. Do not treat them as working.
 
 | Item | State |
 |---|---|
 | Claude UAT (a fresh `claude` launch shows the `orchestrator` persona, the guard denies a crate edit, `/compact` shows the resume card) | **Not run** |
 | Frontmatter `hooks:` fire for the main-thread agent | **Unverified.** The guard is proven for subagents only (the LO-06 rerun); nobody has tried an Edit on a crate path from the main thread |
-| Codex UAT C0-C5 ([work-packets.md](work-packets.md#codex-uat-fresh-session-recorded-separately)) | **Not run.** There is no Codex UAT table because there are no results |
-| Codex hook enforcement | **Unverified.** LO-09c was inconclusive: no SessionStart or PreToolUse hook fired under Codex 0.162.0. The docs claim no Codex resume card and no Codex path guard |
 | Tool-measured first-request number | Missing; the ~32-35k is a window read |
 | Second pilot (the next real campaign) | Not run |
 | D-LO17 (Codex models matching tiers), D-LO19 (MCP servers out of the main thread) | Open decisions |
 | `rm-worktree.ps1 <name> --force` for stale no-PR worktrees | Owner action |
 | Architect ranks 3 (`disableBundledSkills`) and 7 | Not started; owner decisions |
+
+### Codex UAT, 2026-10-16
+
+Run against `origin/main` after close-out, using Codex CLI `0.162.0-alpha.17.2`. The root main checkout was five commits behind and held another session's staged work, so C1, C3 and C4 ran from a clean host worktree at `origin/main`, and C2 used its own packet worktree. C0's first probe ran from the main checkout as specified. This was agent-workflow UAT; no game client or frontend behavior was involved.
+
+| Check | Result | Evidence | Codex CLI | Date |
+|---|---|---|---|---|
+| C0: hook probe | **Pass as a probe; hook enforcement failed** | `codex_hook_probe.py --deny` returned JSON; `.codex/hooks.json` was unchanged afterward. `session_start_ran=false`, no PreToolUse tools, and `crates_edit_blocked=false`. The CLI reported `SessionStart Failed`. Two isolated reruns with one-off hook trust bypassed, including one with a Windows-specific probe command, also recorded no hook calls and reported `SessionStart Failed` and `PreToolUse Failed`. The exact failure cause remains unknown. | 0.162.0-alpha.17.2 | 2026-10-16 |
+| C1: campaign instructions | **Pass** | A fresh CLI session used `AGENTS.md`, then read `RESUME.md` and the ledger; it identified the campaign as closed and C0-C5 as owed. A separate non-campaign prompt about `sync.py` was answered directly from that file. | 0.162.0-alpha.17.2 | 2026-10-16 |
+| C2: packet/report contract | **Pass** | Codex `packet-coder` used `lo-uat-c`, committed only the one-line CRLF scratch file as `d94cadf74` with the specified subject, wrote its report inside that worktree, and returned one contract line. The orchestrating session did not edit the scratch file. | 0.162.0-alpha.17.2 | 2026-10-16 |
+| C3: resume | **Pass** | `codex exec resume` reopened the C1 session; it re-read `RESUME.md` and the ledger and reported the closed state and owed UAT. No resume card appeared. | 0.162.0-alpha.17.2 | 2026-10-16 |
+| C4: build lane | **Pass** | On `Run cargo check -p cimmeria-commands`, the fresh CLI session executed `pwsh tools/build-lane/lane.ps1 cargo check -p cimmeria-commands`; the lane returned `status=ok exit=0`. | 0.162.0-alpha.17.2 | 2026-10-16 |
+| C5: cleanup | **Fail as specified; cleanup complete** | `rm-worktree.ps1 lo-uat-c` skipped the unmerged `NO_PR` branch. `--force` retired the worktree but left the branch; the UAT verified that its only commit was the scratch file and deleted that exact branch. The worktree, branch and scratch file are absent from main. | 0.162.0-alpha.17.2 | 2026-10-16 |
+
+These results show Codex followed the written campaign, report and lane instructions in the tested sessions. They do not establish hook enforcement: the test edit under `crates/` was allowed, and the probe hooks failed even when trust was bypassed. The C5 packet's cleanup instruction also needs to account for the script's intentional `NO_PR` refusal and branch retention after `--force`. OpenAI's [Hooks documentation](https://learn.chatgpt.com/docs/hooks) says changed project hooks require a new trust decision and supports `commandWindows`; neither alone resolved this run.
+
+Codex's JSON event stream reported 227,500 input tokens (177,920 cached) and 2,527 output tokens for C1, and 395,742 input tokens (335,744 cached) and 3,036 output tokens for the resumed C3 turn. These are Codex CLI usage reports, separate from the Claude-only D-LO14 measurements.
 
 `docs/project-status.md` and the gap-analysis files are unchanged: this campaign alters agent tooling, not a game system, so no row there moves.
