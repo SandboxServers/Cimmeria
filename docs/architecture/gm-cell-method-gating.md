@@ -118,9 +118,15 @@ entity-stored value is equally authoritative — it comes from the same
 The workbench's dot catalog is projected from the existing `COMMANDS` table in
 `crates/cell-console/src/cell/console/registry/`. It exposes a stable target
 policy (`none`, `player`, `mob`, `mob_or_id`, `being`, `spawnable`) and metadata
-version 1. Every dot row currently carries `availability = unsupported` and
+version 1. The live `server_console_list` adapter requires an acting entity id
+and reads `EntityGet` before returning the catalog; the current cell snapshot
+must show a player with GameMaster access. Every dot row currently carries
+`availability = unsupported` and
 `manual_pending = true`: its typed arguments, impact, verification and recovery
 need per-command evidence before the palette may offer a runnable action.
+Pending rows serialize `target` as a structured policy (including `.despawn`'s
+`entityId` argument name), and leave `impact`, `verify` and `compensation`
+null rather than inventing them.
 The original raw `server_console_exec` remains available to authorized lab
 operators and is rechecked by the cell's GameMaster gate and target resolver.
 

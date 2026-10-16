@@ -33,17 +33,18 @@ fn descriptor() -> CommandDescriptor {
         target: TargetPolicy {
             kind: TargetKind::Mob,
             selection_rule: SelectionRule::Required,
+            argument_name: None,
         },
-        impact: Impact {
+        impact: Some(Impact {
             kind: ImpactKind::ReadOnly,
             summary: "Inspect".into(),
             preconditions: vec![],
-        },
-        verify: VerifyRecipe {
+        }),
+        verify: Some(VerifyRecipe {
             read_tools: vec!["server_sessions".into()],
             comparison_fields: vec!["entity_id".into()],
-        },
-        compensation: Compensation::None,
+        }),
+        compensation: Some(Compensation::None),
         metadata_version: COMMAND_METADATA_VERSION,
     }
 }
@@ -101,8 +102,9 @@ fn typed_action_refuses_stale_selection_and_wrong_target_kind() {
 fn entity_id_target_requires_fresh_server_resolution() {
     let mut command = descriptor();
     command.target.selection_rule = SelectionRule::SelectedOrArgument;
+    command.target.argument_name = Some("entityId".into());
     command.args.push(ArgDescriptor {
-        name: "entity_id".into(),
+        name: "entityId".into(),
         kind: ArgKind::Entity,
         required: false,
         default: None,
@@ -113,7 +115,7 @@ fn entity_id_target_requires_fresh_server_resolution() {
     });
     let mut requested = action();
     requested.selected_entity_id = None;
-    requested.typed_args.insert("entity_id".into(), json!(20));
+    requested.typed_args.insert("entityId".into(), json!(20));
     let mut snapshot = actor();
     snapshot.selected_entity_id = None;
     snapshot.selected_target_kind = None;
@@ -133,6 +135,58 @@ fn entity_id_target_requires_fresh_server_resolution() {
     snapshot.selected_entity_id = Some(30);
     snapshot.selected_target_kind = Some(TargetKind::Player);
     assert!(validate_command(&requested, &command, &snapshot).is_ok());
+}
+
+#[test]
+fn despawn_entity_id_uses_source_arg_name_not_snake_case_alias() {
+    let mut command = descriptor();
+    command.id = ".despawn".into();
+    command.target.selection_rule = SelectionRule::SelectedOrArgument;
+    command.target.argument_name = Some("entityId".into());
+    command.args = vec![ArgDescriptor {
+        name: "entityId".into(),
+        kind: ArgKind::Entity,
+        required: false,
+        default: None,
+        range: None,
+        choices: vec![],
+        help: "NPC entity id".into(),
+        sensitive: false,
+    }];
+    let mut requested = action();
+    requested.descriptor_id = ".despawn".into();
+    requested.selected_entity_id = None;
+    requested.typed_args = BTreeMap::from([("entityId".into(), json!(20))]);
+    let mut snapshot = actor();
+    snapshot.selected_entity_id = None;
+    snapshot.selected_target_kind = None;
+    snapshot.argument_target_entity_id = Some(20);
+    snapshot.argument_target_kind = Some(TargetKind::Mob);
+    assert!(validate_command(&requested, &command, &snapshot).is_ok());
+    snapshot.argument_target_entity_id = Some(21);
+    assert_eq!(
+        validate_command(&requested, &command, &snapshot).unwrap_err(),
+        Refusal::StaleTarget
+    );
+}
+
+#[test]
+fn channel_prefix_mismatch_is_refused_for_both_transports() {
+    let mut command = descriptor();
+    command.id = "/probe".into();
+    let mut requested = action();
+    requested.descriptor_id = "/probe".into();
+    assert_eq!(
+        validate_command(&requested, &command, &actor()).unwrap_err(),
+        Refusal::WrongDescriptor
+    );
+    command.channel = CommandChannel::Slash;
+    command.id = ".probe".into();
+    requested.descriptor_id = ".probe".into();
+    assert_eq!(
+        validate_command(&requested, &command, &actor()).unwrap_err(),
+        Refusal::WrongDescriptor
+    );
 }
 
 #[test]
@@ -167,6 +221,46 @@ fn manual_pending_metadata_is_never_executable() {
     pending.manual_pending = true;
     assert_eq!(
         validate_command(&action(), &pending, &actor()).unwrap_err(),
+        Refusal::Unsupported
+    );
+}
+
+#[test]
+fn pending_mcp_catalog_row_round_trips_without_invented_evidence() {
+    let row = json!({
+        "name": "despawn", "min_args": 0, "max_args": 1,
+        "help": "Destroy an NPC", "id": ".despawn", "channel": "dot",
+        "category": "Dot console", "aliases": [], "summary": "Destroy an NPC",
+        "example": null, "availability": "unsupported", "manual_pending": true,
+        "disposition_reason": "Typed arguments and verification require reviewed command evidence",
+        "args": [], "target_policy": "mob_or_id",
+        "target": { "kind": "mob_or_id", "selection_rule": "selected_or_argument",
+                    "argument_name": "entityId" },
+        "impact": null, "verify": null, "compensation": null,
+        "metadata_version": COMMAND_METADATA_VERSION
+    });
+    let descriptor: CommandDescriptor = serde_json::from_value(row).unwrap();
+    assert_eq!(descriptor.target.argument_name.as_deref(), Some("entityId"));
+    assert!(descriptor.impact.is_none());
+    assert!(descriptor.verify.is_none());
+    assert!(descriptor.compensation.is_none());
+    let round_trip: CommandDescriptor =
+        serde_json::from_value(serde_json::to_value(&descriptor).unwrap()).unwrap();
+    assert_eq!(round_trip, descriptor);
+    let mut requested = action();
+    requested.descriptor_id = ".despawn".into();
+    assert_eq!(
+        validate_command(&requested, &descriptor, &actor()).unwrap_err(),
+        Refusal::Unsupported
+    );
+}
+
+#[test]
+fn missing_reviewed_evidence_is_not_runnable_even_if_flagged_runnable() {
+    let mut command = descriptor();
+    command.impact = None;
+    assert_eq!(
+        validate_command(&action(), &command, &actor()).unwrap_err(),
         Refusal::Unsupported
     );
 }

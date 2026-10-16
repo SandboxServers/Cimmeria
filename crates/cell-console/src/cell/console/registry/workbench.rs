@@ -24,7 +24,7 @@ pub(crate) fn workbench_metadata(_spec: &Spec) -> WorkbenchMetadata {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cell::console::registry::COMMANDS;
+    use crate::cell::console::registry::{arg_specs, COMMANDS};
 
     #[test]
     fn every_registered_dot_command_has_pending_workbench_metadata() {
@@ -35,5 +35,16 @@ mod tests {
             assert!(!metadata.disposition_reason.is_empty(), ".{}", spec.name);
             assert_eq!(metadata.metadata_version, COMMAND_METADATA_VERSION);
         }
+    }
+
+    #[test]
+    fn despawn_target_argument_name_comes_from_registry_arg_spec() {
+        let row = crate::cell::console::command_catalog()
+            .into_iter()
+            .find(|row| row.name == "despawn")
+            .unwrap();
+        assert_eq!(row.target_policy, "mob_or_id");
+        assert_eq!(row.target_argument_name, Some(arg_specs("despawn")[0].name));
+        assert_eq!(row.target_argument_name, Some("entityId"));
     }
 }

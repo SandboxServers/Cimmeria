@@ -8,20 +8,32 @@
 use serde_json::{json, Value};
 use tokio::sync::oneshot;
 
-use cimmeria_services::cell::console::command_catalog;
-use cimmeria_services::cell::messages::BaseToCellMsg;
+use cimmeria_services::cell::console::{command_catalog, is_gm};
+use cimmeria_services::cell::messages::{BaseToCellMsg, LabQuery, LabQueryReply};
 
 use crate::state::LabState;
 
-/// Enumerate the `.`-console command registry with conservative workbench
-/// descriptors. Slash commands have a separate source and are added later.
-pub fn list_commands() -> Value {
-    list_commands_for_actor(true).expect("privileged internal catalog call")
+/// Enumerate the dot registry only after a fresh cell-side actor snapshot.
+/// Missing, disconnected and non-GM entities fail closed.
+pub async fn list_commands(state: &LabState, actor_entity_id: u32) -> Result<Value, String> {
+    let reply = state
+        .lab_query(LabQuery::EntityGet {
+            entity_id: actor_entity_id,
+        })
+        .await?;
+    let allowed = match reply {
+        LabQueryReply::Entity {
+            entity: Some(actor),
+        } => actor.entity_id == actor_entity_id && actor.is_player && is_gm(actor.access_level),
+        LabQueryReply::Entity { entity: None } => false,
+        other => return Err(format!("unexpected LabQuery reply variant: {other:?}")),
+    };
+    list_commands_for_actor(allowed).map_err(str::to_string)
 }
 
 /// Catalog entry point for a GM-scoped workbench API. The caller supplies a
 /// freshly checked server authority result, never a browser-provided flag.
-pub fn list_commands_for_actor(server_is_gm: bool) -> Result<Value, &'static str> {
+fn list_commands_for_actor(server_is_gm: bool) -> Result<Value, &'static str> {
     if !server_is_gm {
         return Err("not_gm");
     }
@@ -46,6 +58,15 @@ pub fn list_commands_for_actor(server_is_gm: bool) -> Result<Value, &'static str
                 "disposition_reason": c.disposition_reason,
                 "args": [],
                 "target_policy": c.target_policy,
+                "target": {
+                    "kind": c.target_policy,
+                    "selection_rule": match c.target_policy {
+                        "none" => "none",
+                        "mob_or_id" => "selected_or_argument",
+                        _ => "required",
+                    },
+                    "argument_name": c.target_argument_name,
+                },
                 "impact": null,
                 "verify": null,
                 "compensation": null,
@@ -104,6 +125,9 @@ mod tests {
             assert_eq!(row["channel"], "dot");
             assert_eq!(row["availability"], "unsupported");
             assert_eq!(row["manual_pending"], true);
+            if command.name == "despawn" {
+                assert_eq!(row["target"]["argument_name"], "entityId");
+            }
         }
     }
 }

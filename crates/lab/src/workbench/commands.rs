@@ -88,6 +88,8 @@ pub enum SelectionRule {
 pub struct TargetPolicy {
     pub kind: TargetKind,
     pub selection_rule: SelectionRule,
+    /// Name of the source-backed entity-id argument for `SelectedOrArgument`.
+    pub argument_name: Option<String>,
 }
 
 /// Persistence and reversibility category of a command's effect.
@@ -125,7 +127,8 @@ pub enum Compensation {
     Manual(String),
 }
 
-/// Stable metadata for one dot or native slash command.
+/// Stable metadata for one dot or native slash command. Pending evidence is
+/// represented by absent fields and can never pass the execution gate.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CommandDescriptor {
     pub id: String,
@@ -139,9 +142,9 @@ pub struct CommandDescriptor {
     pub manual_pending: bool,
     pub args: Vec<ArgDescriptor>,
     pub target: TargetPolicy,
-    pub impact: Impact,
-    pub verify: VerifyRecipe,
-    pub compensation: Compensation,
+    pub impact: Option<Impact>,
+    pub verify: Option<VerifyRecipe>,
+    pub compensation: Option<Compensation>,
     pub metadata_version: u32,
 }
 
@@ -218,7 +221,19 @@ pub fn validate_command(
     if action.descriptor_id != descriptor.id {
         return Err(Refusal::WrongDescriptor);
     }
+    if !matches!(
+        (descriptor.channel, descriptor.id.chars().next()),
+        (CommandChannel::Dot, Some('.')) | (CommandChannel::Slash, Some('/'))
+    ) {
+        return Err(Refusal::WrongDescriptor);
+    }
     if descriptor.availability != Availability::Runnable || descriptor.manual_pending {
+        return Err(Refusal::Unsupported);
+    }
+    if descriptor.impact.is_none()
+        || descriptor.verify.is_none()
+        || descriptor.compensation.is_none()
+    {
         return Err(Refusal::Unsupported);
     }
     if action.instance != actor.instance {
@@ -242,8 +257,19 @@ pub fn validate_command(
             actor.selected_entity_id.ok_or(Refusal::StaleTarget)?;
             Some(actor.selected_target_kind.ok_or(Refusal::StaleTarget)?)
         }
-        SelectionRule::SelectedOrArgument if action.typed_args.contains_key("entity_id") => {
-            let requested = action.typed_args.get("entity_id").and_then(Value::as_u64);
+        SelectionRule::SelectedOrArgument
+            if descriptor
+                .target
+                .argument_name
+                .as_ref()
+                .is_some_and(|name| action.typed_args.contains_key(name)) =>
+        {
+            let requested = descriptor
+                .target
+                .argument_name
+                .as_ref()
+                .and_then(|name| action.typed_args.get(name))
+                .and_then(Value::as_u64);
             if requested.is_none() || requested != actor.argument_target_entity_id.map(u64::from) {
                 return Err(Refusal::StaleTarget);
             }

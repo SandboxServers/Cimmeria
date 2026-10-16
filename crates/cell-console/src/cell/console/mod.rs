@@ -182,6 +182,8 @@ pub struct CommandInfo {
     pub disposition_reason: String,
     /// Stable selected-target policy identifier.
     pub target_policy: &'static str,
+    /// Source registry argument name for `mob_or_id`'s ID form, if any.
+    pub target_argument_name: Option<&'static str>,
     /// Version of this command's workbench metadata.
     pub metadata_version: u32,
 }
@@ -206,6 +208,9 @@ pub fn command_catalog() -> Vec<CommandInfo> {
                 manual_pending: true,
                 disposition_reason: metadata.disposition_reason.to_string(),
                 target_policy: s.target.key(),
+                target_argument_name: (s.target == registry::TargetPolicy::MobOrId)
+                    .then(|| registry::arg_specs(s.name).first().map(|arg| arg.name))
+                    .flatten(),
                 metadata_version: metadata.metadata_version,
             }
         })
