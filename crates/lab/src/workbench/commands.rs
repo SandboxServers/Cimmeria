@@ -81,6 +81,9 @@ pub enum SelectionRule {
     None,
     Required,
     SelectedOrArgument,
+    ArgumentRequired,
+    ArgumentRequiredOther,
+    ArgumentRequiredSelfZero,
 }
 
 /// Target type and selection rule, checked against a fresh actor snapshot.
@@ -88,7 +91,7 @@ pub enum SelectionRule {
 pub struct TargetPolicy {
     pub kind: TargetKind,
     pub selection_rule: SelectionRule,
-    /// Name of the source-backed entity-id argument for `SelectedOrArgument`.
+    /// Name of the source-backed entity-id argument when the rule uses one.
     pub argument_name: Option<String>,
 }
 
@@ -278,6 +281,43 @@ pub fn validate_command(
         SelectionRule::SelectedOrArgument => {
             actor.selected_entity_id.ok_or(Refusal::StaleTarget)?;
             Some(actor.selected_target_kind.ok_or(Refusal::StaleTarget)?)
+        }
+        SelectionRule::ArgumentRequired
+        | SelectionRule::ArgumentRequiredOther
+        | SelectionRule::ArgumentRequiredSelfZero => {
+            let name = descriptor
+                .target
+                .argument_name
+                .as_ref()
+                .ok_or(Refusal::WrongDescriptor)?;
+            let value = action
+                .typed_args
+                .get(name)
+                .ok_or(Refusal::MissingArgument)?;
+            let requested = value.as_u64().or_else(|| {
+                value.as_str().and_then(|text| {
+                    (!text.is_empty() && text.bytes().all(|b| b.is_ascii_digit()))
+                        .then(|| text.parse::<u64>().ok())
+                        .flatten()
+                })
+            });
+            let requested = requested.ok_or(Refusal::MalformedArgument)?;
+            let resolved = if requested == 0
+                && descriptor.target.selection_rule == SelectionRule::ArgumentRequiredSelfZero
+            {
+                u64::from(actor.entity_id)
+            } else {
+                requested
+            };
+            if resolved == 0 || Some(resolved) != actor.argument_target_entity_id.map(u64::from) {
+                return Err(Refusal::StaleTarget);
+            }
+            if descriptor.target.selection_rule == SelectionRule::ArgumentRequiredOther
+                && resolved == u64::from(actor.entity_id)
+            {
+                return Err(Refusal::StaleTarget);
+            }
+            Some(actor.argument_target_kind.ok_or(Refusal::StaleTarget)?)
         }
     };
     if target_kind.is_some_and(|kind| !target_matches(descriptor.target.kind, kind)) {

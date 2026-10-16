@@ -2,12 +2,14 @@
 
 use std::collections::BTreeMap;
 
+use serde_json::json;
+
 use super::commands::{
     validate_command, ActorSnapshot, Availability, CommandAction, CommandChannel, ImpactKind,
     Refusal, SelectionRule, TargetKind,
 };
 use super::slash_descriptors_1b::{descriptors_1b, NAMES};
-use super::slash_inventory::parse_patch_table;
+use super::slash_inventory::{parse_patch_table, SlashParameterType};
 
 const PATCH: &str =
     include_str!("../../../../data/client-patches/012-gm-slash-commands/commands.toml");
@@ -93,7 +95,25 @@ fn optional_and_wire_mismatches_are_visible_without_inventing_defaults() {
     for stat in &descriptors[9..13] {
         assert!(stat.args[1].help.contains("INT64"));
         assert_eq!(stat.args[1].range.as_ref().unwrap().min, Some(0.0));
+        assert_eq!(
+            stat.target.selection_rule,
+            SelectionRule::ArgumentRequiredSelfZero
+        );
+        assert_eq!(stat.target.argument_name.as_deref(), Some("TargetId"));
     }
+    assert_eq!(
+        descriptors[22].target.selection_rule,
+        SelectionRule::ArgumentRequired
+    );
+    assert_eq!(
+        descriptors[23].target.selection_rule,
+        SelectionRule::ArgumentRequiredOther
+    );
+    assert!(descriptors[22..24].iter().all(|descriptor| descriptor
+        .target
+        .argument_name
+        .as_deref()
+        == Some("TargetName")));
     assert!(descriptors[5].args.is_empty());
     assert!(descriptors[6].args.is_empty());
     assert!(descriptors[26].args.is_empty());
@@ -140,13 +160,20 @@ fn grants_reload_and_travel_keep_distinct_effect_and_readback_contracts() {
         ImpactKind::Transient
     );
     assert!(descriptors[26].summary.contains("Re-push"));
+    assert!(descriptors[26].verify.is_none());
     assert!(descriptors[26]
-        .verify
+        .disposition_reason
         .as_ref()
         .unwrap()
-        .read_tools
-        .iter()
-        .any(|tool| tool == "client_org_view"));
+        .contains("capture is pending"));
+    for ability in &descriptors[15..17] {
+        let fields = &ability.verify.as_ref().unwrap().comparison_fields;
+        assert!(fields.contains(&"sgw_player_ability_grants.ability_id".into()));
+        assert!(fields.contains(&"sgw_player_ability_grants.source_kind".into()));
+        assert!(!fields
+            .iter()
+            .any(|field| field.contains("gm_grant_provenance")));
+    }
     for unimplemented in [0, 3, 5, 6, 7, 8, 13, 14, 17, 19] {
         assert!(descriptors[unimplemented].impact.is_none());
         assert!(descriptors[unimplemented].verify.is_none());
@@ -160,6 +187,15 @@ fn source_drift_refuses_and_disabled_form_never_claims_acceptance() {
     assert!(descriptors_1b(&entries).is_err());
     let mut entries = slice();
     entries[0].access = "g".into();
+    assert!(descriptors_1b(&entries).is_err());
+    let mut entries = slice();
+    entries[21].event = "Event_SlashCmd_AnotherDHD".into();
+    assert!(descriptors_1b(&entries).is_err());
+    let mut entries = slice();
+    entries[21].parameters[0].parameter_type = SlashParameterType::Float;
+    assert!(descriptors_1b(&entries).is_err());
+    let mut entries = slice();
+    entries[21].parameters[0].name = "AnotherDestination".into();
     assert!(descriptors_1b(&entries).is_err());
     let descriptors = descriptors_1b(&slice()).unwrap();
     let descriptor = &descriptors[1];
@@ -183,5 +219,111 @@ fn source_drift_refuses_and_disabled_form_never_claims_acceptance() {
     assert_eq!(
         validate_command(&action, descriptor, &actor),
         Err(Refusal::Unsupported)
+    );
+}
+
+#[test]
+fn explicit_targets_require_fresh_argument_resolution_and_never_fall_back_to_selection() {
+    let descriptors = descriptors_1b(&slice()).unwrap();
+    for (index, key, value, target_id) in [
+        (9, "TargetId", json!(42), 42),
+        (22, "TargetName", json!("42"), 42),
+        (23, "TargetName", json!("42"), 42),
+    ] {
+        let mut descriptor = descriptors[index].clone();
+        descriptor.availability = Availability::Runnable;
+        descriptor.manual_pending = false;
+        let mut typed_args = BTreeMap::from([(key.into(), value)]);
+        if index == 9 {
+            typed_args.insert("Amount".into(), json!(10));
+        }
+        let mut action = CommandAction {
+            descriptor_id: descriptor.id.clone(),
+            instance: "lab".into(),
+            actor_entity_id: 7,
+            selected_entity_id: Some(99),
+            typed_args,
+            idempotency_key: "test".into(),
+        };
+        let mut actor = ActorSnapshot {
+            instance: "lab".into(),
+            entity_id: 7,
+            is_gm: true,
+            selected_entity_id: Some(99),
+            selected_target_kind: Some(TargetKind::Player),
+            argument_target_entity_id: Some(target_id),
+            argument_target_kind: Some(TargetKind::Mob),
+        };
+        assert!(validate_command(&action, &descriptor, &actor).is_ok());
+        actor.argument_target_entity_id = None;
+        assert_eq!(
+            validate_command(&action, &descriptor, &actor),
+            Err(Refusal::StaleTarget)
+        );
+        actor.argument_target_entity_id = Some(target_id + 1);
+        assert_eq!(
+            validate_command(&action, &descriptor, &actor),
+            Err(Refusal::StaleTarget)
+        );
+        actor.argument_target_entity_id = Some(target_id);
+        actor.argument_target_kind = Some(TargetKind::Spawnable);
+        assert_eq!(
+            validate_command(&action, &descriptor, &actor),
+            Err(Refusal::WrongTargetKind)
+        );
+        actor.argument_target_kind = Some(TargetKind::Mob);
+        action.typed_args.remove(key);
+        assert_eq!(
+            validate_command(&action, &descriptor, &actor),
+            Err(Refusal::MissingArgument)
+        );
+    }
+}
+
+#[test]
+fn stat_zero_resolves_only_to_caller_and_summon_rejects_self() {
+    let descriptors = descriptors_1b(&slice()).unwrap();
+    let mut stat = descriptors[9].clone();
+    stat.availability = Availability::Runnable;
+    stat.manual_pending = false;
+    let mut action = CommandAction {
+        descriptor_id: stat.id.clone(),
+        instance: "lab".into(),
+        actor_entity_id: 7,
+        selected_entity_id: None,
+        typed_args: BTreeMap::from([("Amount".into(), json!(10)), ("TargetId".into(), json!(0))]),
+        idempotency_key: "test".into(),
+    };
+    let mut actor = ActorSnapshot {
+        instance: "lab".into(),
+        entity_id: 7,
+        is_gm: true,
+        selected_entity_id: None,
+        selected_target_kind: None,
+        argument_target_entity_id: Some(7),
+        argument_target_kind: Some(TargetKind::Player),
+    };
+    assert!(validate_command(&action, &stat, &actor).is_ok());
+    actor.argument_target_entity_id = Some(8);
+    assert_eq!(
+        validate_command(&action, &stat, &actor),
+        Err(Refusal::StaleTarget)
+    );
+
+    let mut summon = descriptors[23].clone();
+    summon.availability = Availability::Runnable;
+    summon.manual_pending = false;
+    action.descriptor_id = summon.id.clone();
+    action.typed_args = BTreeMap::from([("TargetName".into(), json!("7"))]);
+    actor.argument_target_entity_id = Some(7);
+    assert_eq!(
+        validate_command(&action, &summon, &actor),
+        Err(Refusal::StaleTarget)
+    );
+    action.typed_args.insert("TargetName".into(), json!("0"));
+    actor.argument_target_entity_id = Some(0);
+    assert_eq!(
+        validate_command(&action, &summon, &actor),
+        Err(Refusal::StaleTarget)
     );
 }
