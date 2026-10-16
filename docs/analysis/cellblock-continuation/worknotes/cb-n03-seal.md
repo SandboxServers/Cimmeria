@@ -1,5 +1,9 @@
 # CB-N03 seal check: flank and cover reachability (681 / 686)
 
+> **Type:** Reference
+> **Audience:** Cellblock coordinator and the CB-N03 owners
+> **Last updated:** 2026-10-16
+
 Packet: CB-N03s (`npc-ai-spawn-advisor`, static: no lab, no Ghidra, no code, no build). Date 2026-10-16. Worktree base `e10fd1f0a`.
 
 ## Verdict: No static fault
@@ -10,7 +14,7 @@ Nothing in the seed or the AI code, read statically, stops `player_flanked_npc` 
 
 ### The four guards (all template 24 "NID Guard", faction 10, `use_cover = true`, ability set 3 / ability 559)
 
-World 12 cover nodes, horizontal distance from the authored spawn (spawn-hold radius is `COVER_ARRIVE_RADIUS` = 1.5 u, `SPAWN_HOLD_MAX_DY` = 2.0 u in `crates/cell-world/src/cell/cover/stance.rs`). Set id = chunk id, 1200000 + n.
+World 12 cover nodes, horizontal distance from the authored spawn (spawn-hold radius is `COVER_ARRIVE_RADIUS` = 1.5 u, defined at `crates/cell-cover/src/cell/cover/ai_integration.rs:61`; the vertical cap `SPAWN_HOLD_MAX_DY` = 2.0 u is at `crates/cell-world/src/cell/cover/stance.rs:40`). Set id = chunk id, 1200000 + n.
 
 | Spawn | Tag | Spawn position | Nearest nodes (chunk/node, dist, dy, height/quality, orient) | Spawn-hold |
 |---|---|---|---|---|
@@ -27,7 +31,7 @@ All four are within 1.5 u of at least one eligible node on the same floor (|dy| 
 2. `npc_name` is set to `record.template_name` at spawn (`crates/cell-world/src/cell/space_manager/spawn.rs:244`) = "NID Guard", which equals the chain filter (chains 1141 and 1142 trigger key `'NID Guard'`).
 3. Release rule (`crates/cell-cover/src/cell/cover/ai_integration.rs` step 1): the NPC holds a slot and `is_flanked(node.pos, node.orient, threat_pos)` is true when the facing dot is below -0.342, i.e. the target is more than 110 degrees off the node's facing. The flank test runs before the out-of-range test, so a flank wins even when the target is also out of reach.
 4. Required AI state: Fighting with a top-threat target (the cover branch runs from the fight tick). The target must be a player entity with a DB `player_id`, else `fire_player_flanked_npc` returns (`cover.rs:362-374`).
-5. Chain gates: 1141 needs mission 681 active and objective 2725 not completed; 1142 needs 686 active and 2731 not completed. The replay tests `mission_681_686_flank.rs` (333 lines) and `mission_681_686_backstop.rs` (303 lines) and `cover_flank_tests.rs` already guard the chain side, the cross-room isolation, and that completing only the flank objective leaves the mission active.
+5. Chain gates: 1141 needs mission 681 active and objective 2725 not completed; 1142 needs 686 active and 2731 not completed. The replay tests `mission_681_686_flank.rs` (364 lines) and `mission_681_686_backstop.rs` (334 lines) and `cover_flank_tests.rs` already guard the chain side, the cross-room isolation, and that completing only the flank objective leaves the mission active.
 6. Order of the two events and the Released arm are pinned by `npc_ai_cover.rs` (`npc_ai_fight_flanked_npc_raises_both_flank_events_in_order`, and the release test at ~290-313). `npc_ai_cover_seed.rs::flanking_the_guard_releases_its_slot_and_stance` pins the real-data release for MessHall_Guard1 only.
 
 ### Gaps that static reading cannot close
