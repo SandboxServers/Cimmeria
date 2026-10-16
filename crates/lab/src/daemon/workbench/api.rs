@@ -33,6 +33,13 @@ const STYLESHEET: &str = include_str!("../../../workbench/app.css");
 
 /// Routes merged into the DW-02A browser router before its session layer.
 pub fn router(instances: Instances) -> Router<Arc<SessionStore>> {
+    router_with_store(instances, bookmark_store())
+}
+
+pub(crate) fn router_with_store(
+    instances: Instances,
+    store: BookmarkStore,
+) -> Router<Arc<SessionStore>> {
     Router::new()
         .route("/workbench/api/v1/session", get(session))
         .route("/workbench/api/v1/dossier", get(target_dossier))
@@ -53,6 +60,7 @@ pub fn router(instances: Instances) -> Router<Arc<SessionStore>> {
             "/workbench/api/v1/probes/window",
             post(probe_api::probe_window),
         )
+        .layer(Extension(store))
         .layer(Extension(instances))
 }
 
@@ -86,8 +94,46 @@ fn bookmark_store() -> BookmarkStore {
     BookmarkStore::new(crate::daemon::config::state_dir())
 }
 
+fn storage_failure_category(reason: &str) -> &'static str {
+    let lower = reason.to_ascii_lowercase();
+    if lower.contains("(os error 5)")
+        || lower.contains("(os error 13)")
+        || lower.contains("permission denied")
+        || lower.contains("access is denied")
+    {
+        "storage_permission_denied"
+    } else if lower.contains("(os error 112)")
+        || lower.contains("(os error 28)")
+        || lower.contains("no space left")
+        || lower.contains("disk is full")
+    {
+        "storage_disk_full"
+    } else if lower.contains(" at line ") && lower.contains(" column ") {
+        "storage_corrupt_json"
+    } else if matches!(
+        reason,
+        "bookmark file too large" | "bookmark count exceeds 256"
+    ) {
+        "storage_limit_exceeded"
+    } else if lower.contains("invalid") || lower.contains("mismatch") || lower.contains("missing") {
+        "bookmark_validation_failed"
+    } else {
+        "storage_other"
+    }
+}
+
 fn spatial_error(instance: &str, status: StatusCode, code: &str, detail: &str) -> Response {
-    tracing::warn!(target: "lab.workbench.spatial", instance, status = status.as_u16(), code, "spatial request failed");
+    let category = if matches!(
+        code,
+        "bookmark_read_failed" | "bookmark_save_failed" | "bookmark_delete_failed"
+    ) {
+        storage_failure_category(detail)
+    } else if code == "bookmark_action_unavailable" {
+        "session_identity_unbound"
+    } else {
+        code
+    };
+    tracing::warn!(target: "lab.workbench.spatial", instance, status = status.as_u16(), code, category, "spatial request failed");
     let safe_detail = match code {
         "instance_mismatch"
         | "bookmark_missing"
@@ -103,7 +149,7 @@ fn spatial_error(instance: &str, status: StatusCode, code: &str, detail: &str) -
         status,
         reply(
             instance,
-            json!({"error":code,"detail":safe_detail}),
+            json!({"error":code,"category":category,"detail":safe_detail}),
             if code == "bookmark_action_unavailable" {
                 vec![json!({"source":"client_session","code":"session_identity_unbound"})]
             } else {
@@ -156,6 +202,7 @@ async fn spatial_frame(
 
 async fn bookmark_list(
     State(sessions): State<Arc<SessionStore>>,
+    Extension(store): Extension<BookmarkStore>,
     headers: HeaderMap,
     Query(query): Query<SpatialQuery>,
 ) -> Response {
@@ -163,7 +210,7 @@ async fn bookmark_list(
         Ok(v) => v,
         Err(r) => return *r,
     };
-    match bookmark_store().list(&instance) {
+    match store.list(&instance) {
         Ok(rows) => reply(&instance, json!({"bookmarks":rows}), vec![]).into_response(),
         Err(reason) => spatial_error(
             &instance,
@@ -184,6 +231,7 @@ struct BookmarkSaveRequest {
 
 async fn bookmark_save(
     State(sessions): State<Arc<SessionStore>>,
+    Extension(store): Extension<BookmarkStore>,
     headers: HeaderMap,
     Json(body): Json<BookmarkSaveRequest>,
 ) -> Response {
@@ -191,7 +239,7 @@ async fn bookmark_save(
         Ok(v) => v,
         Err(r) => return *r,
     };
-    match bookmark_store().save(&instance, body.id, body.bookmark) {
+    match store.save(&instance, body.id, body.bookmark) {
         Ok(row) => reply(&instance, json!({"bookmark":row}), vec![]).into_response(),
         Err(reason) => spatial_error(
             &instance,
@@ -211,6 +259,7 @@ struct BookmarkDeleteRequest {
 
 async fn bookmark_delete(
     State(sessions): State<Arc<SessionStore>>,
+    Extension(store): Extension<BookmarkStore>,
     headers: HeaderMap,
     Json(body): Json<BookmarkDeleteRequest>,
 ) -> Response {
@@ -218,7 +267,7 @@ async fn bookmark_delete(
         Ok(v) => v,
         Err(r) => return *r,
     };
-    match bookmark_store().delete(&instance, &body.id) {
+    match store.delete(&instance, &body.id) {
         Ok(()) => reply(&instance, json!({"deleted":body.id}), vec![]).into_response(),
         Err(reason) => spatial_error(
             &instance,
@@ -248,19 +297,9 @@ struct BookmarkActionRequest {
 async fn bookmark_action(
     State(sessions): State<Arc<SessionStore>>,
     Extension(instances): Extension<Instances>,
+    Extension(store): Extension<BookmarkStore>,
     headers: HeaderMap,
     Json(body): Json<BookmarkActionRequest>,
-) -> Response {
-    let store = bookmark_store();
-    bookmark_action_with_store(sessions, instances, headers, body, &store).await
-}
-
-async fn bookmark_action_with_store(
-    sessions: Arc<SessionStore>,
-    instances: Instances,
-    headers: HeaderMap,
-    body: BookmarkActionRequest,
-    store: &BookmarkStore,
 ) -> Response {
     let instance = match request_instance(&sessions, &headers, &body.instance) {
         Ok(v) => v,

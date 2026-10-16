@@ -5,10 +5,96 @@ use serde_json::json;
 use super::{
     bookmarks::{action_allowed, BookmarkDraft, BookmarkStore},
     spatial::{
-        current_frame, definition_query, definition_rows, fresh_frame, join_entity,
-        observed_frame_consistent, SpatialEntity,
+        assemble_spatial_frame, current_frame, definition_query, definition_rows, fresh_frame,
+        join_entity, observed_frame_consistent, SpatialEntity, SpatialFrameReads,
     },
 };
+
+#[test]
+fn production_spatial_assembly_never_promotes_same_world_relog_numbers_to_current() {
+    use crate::supervisor::combat::player::PlayerState;
+
+    let player = PlayerState {
+        world_id: Some(7),
+        world: Some("same-world".into()),
+        pos: Some([1.0, 2.0, 3.0]),
+        ..PlayerState::default()
+    };
+    let frame = assemble_spatial_frame(SpatialFrameReads {
+        instance: "default".into(),
+        started_ms: 900,
+        frame_at_ms: 1_000,
+        now_ms: 1_100,
+        before_pid: Some(100),
+        after_pid: Some(100),
+        before: Ok(player.clone()),
+        after: Ok(player),
+        found: Ok(
+            json!({"player":{"id":42},"matches":[{"id":42,"position":{"server":[1.0,2.0,3.0]}}]}),
+        ),
+        after_player_id: Some(42),
+        camera: Some(json!({"position":[1.0,2.0,3.0]})),
+        regions: Ok(json!({"rows":[]})),
+        spawns: Ok(json!({"rows":[]})),
+    });
+    assert_eq!(frame["context"]["observed_consistent"], true);
+    assert_eq!(frame["context"]["current"], false);
+    assert_eq!(frame["context"]["identity_verified"], false);
+    assert_eq!(
+        frame["data"]["client_entities"]["value"]["player"]["id"],
+        42
+    );
+    assert_eq!(frame["data"]["server_entities"], serde_json::Value::Null);
+    assert!(frame["gaps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|gap| gap["code"] == "client_identity_unbound"));
+}
+
+#[test]
+fn production_spatial_assembly_classifies_db_and_projection_without_raw_errors() {
+    use crate::supervisor::combat::player::PlayerState;
+
+    let player = PlayerState {
+        world_id: Some(7),
+        world: Some("same-world".into()),
+        ..PlayerState::default()
+    };
+    let frame = assemble_spatial_frame(SpatialFrameReads {
+        instance: "default".into(),
+        started_ms: 900,
+        frame_at_ms: 1_000,
+        now_ms: 1_100,
+        before_pid: Some(100),
+        after_pid: Some(100),
+        before: Ok(player.clone()),
+        after: Ok(player),
+        found: Ok(json!({"player":{"id":42},"projection_error":"private-marker"})),
+        after_player_id: Some(42),
+        camera: None,
+        regions: Err("db_query_failed"),
+        spawns: Err("db_result_truncated"),
+    });
+    let gaps = frame["gaps"].as_array().unwrap();
+    assert!(gaps
+        .iter()
+        .any(|gap| gap["source"] == "client_entity_find.projection"
+            && gap["category"] == "projection_failed"));
+    assert!(gaps
+        .iter()
+        .any(|gap| gap["source"] == "server_db_query.regions"
+            && gap["category"] == "db_query_failed"));
+    assert!(gaps
+        .iter()
+        .any(|gap| gap["source"] == "server_db_query.spawns"
+            && gap["category"] == "db_result_truncated"));
+    assert_eq!(
+        frame["data"]["client_entities"]["value"]["projection_error"],
+        "unavailable"
+    );
+    assert!(!frame.to_string().contains("private-marker"));
+}
 
 fn entity(world_id: i64, space_id: u64, at_ms: i64) -> SpatialEntity {
     SpatialEntity {
