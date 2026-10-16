@@ -31,6 +31,19 @@ Findings, each with the packet that answers it:
 | F5 | rust-gameserver-dev is pinned to `model: opus` and was 30% of all spend. Most domain advisors and documentation-writer are also pinned to Opus. | LO-04 |
 | F6 | In campaign-metrics, reviewers were 31% of the spend and 17 of 20 packets needed a fix round; the 13 small packets reviewed in one wave context were the cheapest per packet. | LO-06 |
 
+### Codex review findings (amendment, 2026-10-15)
+
+The owner had the campaign reviewed from Codex. Each finding was checked against the repo on 2026-10-15.
+
+| # | Finding | Packet |
+|---|---|---|
+| F7 | Nothing tells a Codex session how to run a campaign. `"agent": "orchestrator"` in `.claude/settings.json` sets Claude Code's default persona only; Codex reads `AGENTS.md`, which has no campaign rule. | LO-09a |
+| F8 | `AGENTS.md` "Start here" still tells every harness to read six sources before designing any change. LO-05 only swapped the memory-index read for a grep. LO-05's goal was task-specific reads. | LO-09a |
+| F9 | `tools/agent-skills/sync.py` turns each agent into a `.codex/agents/<name>.toml` with name, description, `model_reasoning_effort` and instructions only. It drops `model`, `tools`, `hooks`, `omitClaudeMd` and `maxTurns`, but its docstring and `development-workflow.md` name only `model`, `tools`, `color` and `memory`. A Codex agent runs on the session's model with every tool, and no frontmatter hook (such as `orchestrator_guard.py`) runs. | LO-09b |
+| F10 | `.codex/hooks.json` wires the board `SessionStart` hook and `shell_guard.py` (`Bash` matcher) only. There is no Codex resume card and no orchestrator path guard, and nobody has tested whether Codex can run either. | LO-09c, LO-09a |
+| F11 | `work-packets.md` gave one fixed report path in the root checkout. A worker can only write inside its own worktree, so reports go to a path in that worktree, passed in the brief. The campaign-packet skill (LO-06) and `orchestrator.md` give the relative path `.claude/reports/<campaign>/<packet>-<role>.md` without saying it is relative to the worktree. | Ledger (done), LO-09b |
+| F12 | LO-08 measures Claude sessions only. `token-profile` reads Claude Code transcripts, so it has no numbers for Codex. | LO-08 |
+
 ## Decisions
 
 Owner interview, 2026-10-13.
@@ -51,18 +64,26 @@ Owner interview, 2026-10-13.
 | D-LO12 | The orchestrator keeps Read, Grep, Glob, Edit and Write, but a PreToolUse hook limits its Edit and Write to `docs/analysis/**` and `.claude/state/**`, and its Read to files under 400 lines unless they are in a ledger. | Decided | It has to update ledger rows and the resume card itself; anything else goes to an agent. |
 | D-LO13 | An escape-hatch persona, `claude --agent hands-on` (Opus, all tools, today's behaviour), for one-off direct work. | Decided | Not every session is a campaign. |
 | D-LO14 | Success targets, measured on the first full campaign run under the new process: orchestrator first-request context ≤ 25k; orchestrator average context ≤ 120k; coordination (orchestrator + architect + reviewers) ≤ 40% of campaign spend, down from 97%; CI first-attempt rate and escaped defects no worse than the campaign-metrics baseline. | Decided | Lets LO-08 grade the change. |
+| D-LO15 | Which Codex sessions act as the orchestrator? **(A)** Only sessions that run or resume a campaign; other Codex sessions work directly under `AGENTS.md`. **(B)** Every Codex session starts as the orchestrator, as Claude Code does. Architect recommends **A**: Codex has no committed default-persona setting and no path guard (F10), so under B every Codex session would rely on instructions alone, and one-off Codex work would have no `hands-on` escape hatch. | **BlockedDecision** (owner) | Blocks LO-09a. The packet gives the exact text for both answers. |
+| D-LO16 | A worker's report goes to `<worktree>\.claude\reports\<campaign>\<packet>-<role>.md` inside its own worktree. The brief passes the absolute path. Nobody writes a report to a fixed root-checkout path. The orchestrator copies anything worth keeping to `worknotes/` before ops retires the worktree, because retiring deletes the report. | Decided (owner, from the Codex review, 2026-10-15) | Workers write only inside their worktree. This amends where D-LO11 puts reports; they stay gitignored. |
+| D-LO17 | Should `sync.py` give each Codex agent a model that matches its Claude tier? Codex agents run on the session's model today (F9). | **BlockedDecision** (owner); no packet waits on it | Picking the OpenAI models is the owner's call. LO-09b documents the current limit. Revisit after the LO-08 Codex UAT. |
 
 ## Packets
 
 | Packet | Title | Wave | Agent | Status |
 |---|---|---|---|---|
-| LO-01 | Orchestrator persona, settings and escape hatch | 1 | general-purpose (Sonnet) | Ready |
-| LO-02 | Architect and ops agents, report protocol | 1 | general-purpose (Sonnet) | Ready |
-| LO-03 | Context cap, resume-card hook and orchestrator path guard | 1 | packet-coder | Ready |
-| LO-04 | Agent tiers and one-line report contract | 2 | packet-coder | BlockedDependency (LO-02) |
-| LO-05 | Lean CLAUDE.md | 2 | documentation-writer | BlockedDependency (LO-01) |
-| LO-06 | campaign-packet skill and development-workflow rewrite | 2 | documentation-writer | BlockedDependency (LO-02, LO-03) |
-| LO-07 | Coordination-overhead view in token-profile | 2 | packet-coder | Ready |
-| LO-08 | Pilot run, measurement and close-out | 3 | orchestrator + ops | BlockedDependency (all) |
+| LO-01 | Orchestrator persona, settings and escape hatch | 1 | general-purpose (Sonnet) | Done (#1705) |
+| LO-02 | Architect and ops agents, report protocol | 1 | general-purpose (Sonnet) | Done (#1705) |
+| LO-03 | Context cap, resume-card hook and orchestrator path guard | 1 | packet-coder | Done (#1705) |
+| LO-04 | Agent tiers and one-line report contract | 2 | packet-coder | Reviewed; e3842f9a8 (lo-04); ship waits on #1736, #1737 |
+| LO-05 | Lean CLAUDE.md | 2 | documentation-writer | Reviewed; 0439b1c3b (lo-05); ship waits on #1736, #1737 |
+| LO-06 | campaign-packet skill and development-workflow rewrite | 2 | documentation-writer | Reviewed; afab72e0e (lo-06); ship waits on #1736, #1737 |
+| LO-07 | Coordination-overhead view in token-profile | 2 | packet-coder | Done (#1705) |
+| LO-09a | AGENTS.md campaign entry rule and task-specific reads | 3 | documentation-writer | BlockedDecision (D-LO15); also waits for wave 2 to merge and the LO-09c report |
+| LO-09b | Codex limits of sync.py, report path inside the worktree | 3 | documentation-writer | BlockedDependency (wave 2 merge; LO-09c report) |
+| LO-09c | Codex hook probe and resume-card wiring | 3 | packet-coder | BlockedDependency (wave 2 merge, #1737) |
+| LO-08 | Pilot run, measurement, Codex UAT and close-out | 4 | orchestrator + ops | BlockedDependency (wave 2, wave 3) |
 
 Wave 1 is reviewed by one packet-review-fixer (D-LO9), merged, and then the owner relaunches `claude` to get the new orchestrator for wave 2.
+
+Wave 3 is the Codex compatibility pass. It starts once wave 2 and the guard fix (#1737) are on `main`, because it edits files that LO-05 and LO-06 rewrite. Dispatch LO-09c first, on its own. When it returns, dispatch LO-09a (once D-LO15 is answered) and LO-09b together, because both repeat LO-09c's probe result. The three packets touch disjoint files, so ops can merge the branches into one PR without conflicts. One packet-review-fixer reviews all three. LO-08 (wave 4) starts after wave 3 merges.
