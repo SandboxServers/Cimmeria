@@ -18,4 +18,5 @@ mod command_tests;
 mod probes_tests;
 #[cfg(test)]
 mod slash_inventory_tests;
+#[cfg(test)]
 mod spatial_tests;
