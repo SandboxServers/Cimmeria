@@ -198,6 +198,7 @@ pub async fn handle_gate_travel(
         next_seq,
         exit_name,
         exit_from_world,
+        origin,
     ) = {
         let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let c = clients
@@ -213,6 +214,7 @@ pub async fn handle_gate_travel(
             Arc::clone(&c.next_seq),
             c.player_name.clone(),
             c.world_name.clone(),
+            c.wire_send_origin(),
         )
     };
 
@@ -548,21 +550,27 @@ pub async fn handle_gate_travel(
     if !session_owner::still_owned(connected, addr, entity_id, "reset_entities")? {
         return Ok(());
     }
+    // A recycled entity number at the same peer cannot turn this old packet
+    // into a new session's proof or reliable-window entry.
+    {
+        let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        if !clients.get(&addr).is_some_and(|c| {
+            Arc::ptr_eq(&c.next_seq, &next_seq)
+                && super::same_direct_origin(c.wire_send_origin().as_ref(), origin.as_ref())
+        }) {
+            return Ok(());
+        }
+    }
     let acks: Vec<u32> = {
         let mut pending = pending_acks_arc.lock().unwrap();
         cimmeria_mercury::packet::take_piggyback_acks(&mut pending, enc_version)
     };
     let seq = next_seq.fetch_add(1, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;
     let pkt = build_reset_entities(&key, seq, &acks, enc_version);
-    transport.send_to(&pkt, addr).await?;
+    super::send_direct(transport, &pkt, addr, origin.as_ref()).await?;
     // RESET_ENTITIES is one-shot state — kicks off the cross-world
     // handoff. Channel retransmit covers loss.
-    crate::base::helpers::shadow_register_reliable_send(
-        connected,
-        addr,
-        seq,
-        cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
-    );
+    super::register_direct_reliable(connected, addr, seq, &pkt, &next_seq, origin.as_ref());
 
     // Discord world-channel: emit only here, once the transition is
     // committed — past the active_player_id fail-closed early-returns and

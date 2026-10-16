@@ -16,15 +16,15 @@ use cimmeria_mercury::packet::{parse_incoming, FLAG_HAS_REQUESTS, FLAG_HAS_SEQUE
 use crate::auth::PendingLogin;
 use crate::cell::messages::BaseToCellMsg;
 use crate::credential_redaction::CredentialPrefix;
-use crate::mercury::{build_connect_reply, build_logged_off, build_time_sync, game_clock};
+use crate::mercury::{build_connect_reply, build_time_sync, game_clock};
 
-use super::helpers::{destroy_client_entities, to_hex};
+use super::helpers::to_hex;
 use super::service::session_wire_proof::SessionOriginIssuer;
-use super::session_identity;
 use super::tick_sync::run_tick_loop;
 use super::ConnectedClientState;
 
 mod eviction;
+pub(crate) use eviction::handle_log_off;
 pub(crate) mod relaunch;
 
 #[cfg(test)]
@@ -601,98 +601,6 @@ fn hex_nibble(b: u8) -> Result<u8, Box<dyn std::error::Error + Send + Sync>> {
         b'A'..=b'F' => Ok(b - b'A' + 10),
         _ => Err(format!("invalid hex character: {}", b as char).into()),
     }
-}
-
-/// Handle `logOff` (0xC2) -- the client is leaving the session.
-///
-/// Both "Change Server" and "Back" buttons in the character select UI call this.
-/// The C++ reference (`Account.py:logOff`) was a no-op (`pass`), which meant the
-/// server never cleaned up -- leaking sessions indefinitely.
-///
-/// Client flow (from Ghidra analysis of FUN_00def9f0):
-///   1. Both buttons emit `Event_NetOut_LogOff` -> sends logOff (0xC2)
-///   2. `relogin()` also sets a relogin flag before step 1
-///   3. Client fires `gotoLogin` state transition
-///   4. Client waits for Mercury channel to die (server closes or timeout)
-///   5. `Event_Net_Disconnected` fires -> disconnect callback (FUN_00de9bb0):
-///      - If relogin flag set -> `EntityManager::disconnected()` + SOAP re-login
-///      - If not set -> shows "disconnected from network" UI
-///
-/// We send `LOGGED_OFF` (0x37) to trigger an immediate channel teardown on the
-/// client side (via `ServerConnection::loggedOff -> Mercury::disconnect`).
-/// Without it, the client waits 30s for the Mercury channel timeout.
-pub(crate) async fn handle_log_off(
-    transport: &Arc<dyn Transport>,
-    addr: SocketAddr,
-    key: [u8; 32],
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    entity_manager: &Arc<Mutex<EntityManager>>,
-    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
-    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // The account pair is read before the session is removed below.
-    let identity = session_identity::identity_for_addr(connected, addr);
-    tracing::info!(
-        %addr,
-        account_id = identity.account_id,
-        account_name = identity.account_name,
-        "Client requests logOff -- sending LOGGED_OFF and cleaning up"
-    );
-
-    // Signal the tick-sync loop to stop and grab seq/acks for the final packet.
-    // Snapshot the identity + session duration here too, before
-    // `destroy_client_entities` removes the session from the map — the
-    // Discord logout emit below needs them.
-    let (acks, seq, enc_version, account, character, session_secs) = {
-        let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-        let client = clients.get_mut(&addr).ok_or("no session for addr")?;
-        client
-            .cancelled
-            .store(true, std::sync::atomic::Ordering::Relaxed);
-        let acks: Vec<u32> = cimmeria_mercury::packet::take_piggyback_acks(
-            &mut client.pending_acks.lock().unwrap(),
-            client.enc_version,
-        );
-        let seq = client
-            .next_seq
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-            & cimmeria_mercury::packet::SEQUENCE_MASK;
-        let enc_version = client.enc_version;
-        let account = client.discord_account();
-        let character = client.discord_character();
-        let session_secs = client.connected_at.elapsed().as_secs();
-        (acks, seq, enc_version, account, character, session_secs)
-    };
-
-    // Send LOGGED_OFF (0x37) with reason=0 to trigger immediate client-side
-    // channel teardown.  This fires ServerConnection::loggedOff -> Event_Net_Disconnected
-    // which triggers the relogin flow (Change Server) or disconnect UI (Back).
-    let pkt = build_logged_off(&key, seq, &acks, enc_version);
-    transport.send_to(&pkt, addr).await?;
-    tracing::debug!(%addr, seq, "Sent LOGGED_OFF (0x37)");
-
-    // Destroy entities and remove from connected map.
-    destroy_client_entities(
-        connected,
-        entity_manager,
-        addr,
-        cell_tx,
-        entity_to_addr,
-        transport,
-        // Account-side logOff is from character select: no character is in
-        // the world, so there is no offline presence to look up.
-        &None,
-        "logoff",
-    );
-
-    // Discord auth-channel: clean logout carries the session length. The
-    // lower-level teardown in `destroy_client_entities` also fires a
-    // `PlayerDisconnect { reason: Clean }` — by design (see the
-    // `DisconnectReason::Clean` doc): logout is the gameplay-level event,
-    // disconnect the connection-level one.
-    cimmeria_discord::emit_player_logout(account, character, session_secs);
-
-    Ok(())
 }
 
 #[cfg(test)]

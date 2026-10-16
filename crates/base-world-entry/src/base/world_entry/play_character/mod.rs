@@ -80,6 +80,7 @@ pub async fn handle_play_character(
                     c.enc_version,
                     c.account_name.clone(),
                     Arc::clone(&c.cancelled),
+                    (c.key == key).then(|| c.wire_send_origin()).flatten(),
                 ))
             } else {
                 None
@@ -90,10 +91,11 @@ pub async fn handle_play_character(
         }
     };
 
-    let (pending_acks_arc, next_seq, access_level, enc_version, account_name, owner) = match arcs {
-        Some(a) => a,
-        None => return Ok(()),
-    };
+    let (pending_acks_arc, next_seq, access_level, enc_version, account_name, owner, origin) =
+        match arcs {
+            Some(a) => a,
+            None => return Ok(()),
+        };
 
     // A staged lab fixture is written before the first world-entry read
     // below, so the login and the cell's restore chains run on it.
@@ -243,7 +245,7 @@ pub async fn handle_play_character(
             next_seq.fetch_add(1, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;
         let pkt = build_reset_entities(&key, seq, &acks, enc_version);
         tracing::trace!(%addr, len = pkt.len(), seq, "UDP_OUT RESET_ENTITIES (entity teardown)");
-        transport.send_to(&pkt, addr).await?;
+        super::send_direct(transport, &pkt, addr, origin.as_ref()).await?;
 
         // Store the world entry info and player load data for the
         // create-player step, on this entry's session only.
@@ -289,12 +291,7 @@ pub async fn handle_play_character(
         // Kick-off RESET_ENTITIES is reliable state-change. Registered after
         // the owner check above, so it never lands in a replacing session's
         // channel.
-        super::super::helpers::shadow_register_reliable_send(
-            connected,
-            addr,
-            seq,
-            cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
-        );
+        super::register_direct_reliable(connected, addr, seq, &pkt, &next_seq, origin.as_ref());
 
         tracing::info!(%addr, "Entity teardown sent -- waiting for ENABLE_ENTITIES from client");
 

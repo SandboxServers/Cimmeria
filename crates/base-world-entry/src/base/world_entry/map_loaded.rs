@@ -97,7 +97,7 @@ pub async fn handle_map_loaded(
     let enter_frags = fragment_count(&enter_body);
     let total_seqs = enter_frags + map_frags;
 
-    let (acks, base_seq, enc_version) = {
+    let (acks, base_seq, enc_version, next_seq, origin) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
         let acks: Vec<u32> = cimmeria_mercury::packet::take_piggyback_acks(
@@ -106,7 +106,13 @@ pub async fn handle_map_loaded(
         );
         let seq = c.next_seq.fetch_add(total_seqs, Ordering::Relaxed)
             & cimmeria_mercury::packet::SEQUENCE_MASK;
-        (acks, seq, c.enc_version)
+        (
+            acks,
+            seq,
+            c.enc_version,
+            Arc::clone(&c.next_seq),
+            (c.key == key).then(|| c.wire_send_origin()).flatten(),
+        )
     };
 
     // Packet 1: VIEWPORT + (BeingAppearance + onEntityTint) + CELL_PLAYER + FORCED_POSITION.
@@ -122,17 +128,12 @@ pub async fn handle_map_loaded(
         let seq = base_seq.wrapping_add(i as u32) & cimmeria_mercury::packet::SEQUENCE_MASK;
         tracing::debug!(%addr, len = pkt.len(), seq, part = i + 1, total = enter_packets.len(),
             "UDP_OUT enter world: VIEWPORT+CELL+FORCED (standalone)");
-        transport.send_to(pkt, addr).await?;
+        super::send_direct(transport, pkt, addr, origin.as_ref()).await?;
         // Register this reliable send with the per-session Channel's TX
         // window. ACK consumption + RTO sampling are live, and the
         // retransmit driver in `tick_sync.rs` will resend the cached bytes
         // if the RTO fires before the client acks.
-        super::super::helpers::shadow_register_reliable_send(
-            connected,
-            addr,
-            seq,
-            cimmeria_mercury::packet::Bytes::copy_from_slice(pkt),
-        );
+        super::register_direct_reliable(connected, addr, seq, pkt, &next_seq, origin.as_ref());
     }
 
     // Packet 2+: Entity methods (mapLoaded body, possibly fragmented).
@@ -157,7 +158,7 @@ pub async fn handle_map_loaded(
             map_base_seq.wrapping_add(i as u32) & cimmeria_mercury::packet::SEQUENCE_MASK;
         tracing::debug!(%addr, len = pkt_data.len(), seq = frag_seq,
             part = i + 1, total = map_packets.len(), "UDP_OUT mapLoaded entity data");
-        if let Err(e) = transport.send_to(pkt_data, addr).await {
+        if let Err(e) = super::send_direct(transport, pkt_data, addr, origin.as_ref()).await {
             // a single failed fragment leaves the client with
             // a partial enter-world bundle — invisible NPCs, missing
             // appearance, or stuck on the load screen. error! so a
@@ -172,11 +173,13 @@ pub async fn handle_map_loaded(
             );
             return Err(e.into());
         }
-        super::super::helpers::shadow_register_reliable_send(
+        super::register_direct_reliable(
             connected,
             addr,
             frag_seq,
-            cimmeria_mercury::packet::Bytes::copy_from_slice(pkt_data),
+            pkt_data,
+            &next_seq,
+            origin.as_ref(),
         );
     }
 

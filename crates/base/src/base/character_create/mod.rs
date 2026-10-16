@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 use cimmeria_mercury::transport::Transport;
@@ -11,9 +12,7 @@ use crate::mercury::read_wstring;
 
 use super::character::{query_character_list, send_char_create_failed};
 use super::chardef::{chardef_lookup, CharDefIdentity};
-use super::helpers::{
-    drain_acks_and_seq, get_access_level, get_account_entity_id, get_enc_version,
-};
+use super::helpers::{get_access_level, get_account_entity_id};
 use super::ConnectedClientState;
 
 mod fail_code;
@@ -633,8 +632,18 @@ pub(super) async fn create_character(
             )
             .await;
             let account_eid = get_account_entity_id(connected, addr)?;
-            let (acks, seq) = drain_acks_and_seq(connected, addr)?;
-            let enc_version = get_enc_version(connected, addr);
+            let (acks, seq, enc_version, origin) = {
+                let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+                let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
+                let acks = cimmeria_mercury::packet::take_piggyback_acks(
+                    &mut c.pending_acks.lock().unwrap(),
+                    c.enc_version,
+                );
+                let seq = c.next_seq.fetch_add(1, Ordering::Relaxed)
+                    & cimmeria_mercury::packet::SEQUENCE_MASK;
+                let origin = (c.key == key).then(|| c.wire_send_origin()).flatten();
+                (acks, seq, c.enc_version, origin)
+            };
             let pkt = crate::mercury::build_on_character_list(
                 &key,
                 seq,
@@ -644,7 +653,10 @@ pub(super) async fn create_character(
                 enc_version,
             );
             tracing::trace!(%addr, len = pkt.len(), seq, "UDP_OUT updated char_list");
-            transport.send_to(&pkt, addr).await?;
+            match origin.as_ref() {
+                Some(origin) => transport.send_to_with_origin(&pkt, addr, origin).await?,
+                None => transport.send_to(&pkt, addr).await?,
+            };
         }
         Err(e) => {
             let error_str = e.to_string();

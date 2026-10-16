@@ -11,6 +11,7 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 use cimmeria_mercury::transport::Transport;
@@ -23,9 +24,7 @@ use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{build_char_list, build_create_player};
 
 use super::super::character::query_character_list;
-use super::super::helpers::{
-    drain_acks_and_seq, get_account_entity_id, get_enc_version, WitnessSendOutcome,
-};
+use super::super::helpers::{get_account_entity_id, WitnessSendOutcome};
 use super::super::session_identity::identity_for_addr;
 use super::super::ConnectedClientState;
 
@@ -173,18 +172,23 @@ pub async fn handle_enable_entities(
         if characters.is_empty() { "creation screen" } else { "select screen" }
     );
 
-    let (acks, seq) = drain_acks_and_seq(connected, addr)?;
-    let enc_version = get_enc_version(connected, addr);
+    let (acks, seq, enc_version, next_seq, origin) = {
+        let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
+        let acks = cimmeria_mercury::packet::take_piggyback_acks(
+            &mut c.pending_acks.lock().unwrap(),
+            c.enc_version,
+        );
+        let seq =
+            c.next_seq.fetch_add(1, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;
+        let origin = (c.key == key).then(|| c.wire_send_origin()).flatten();
+        (acks, seq, c.enc_version, Arc::clone(&c.next_seq), origin)
+    };
     let pkt = build_char_list(&key, seq, &acks, &characters, account_eid, enc_version);
     tracing::trace!(%addr, len = pkt.len(), seq, hex = %super::super::helpers::to_hex(&pkt), "UDP_OUT char_list");
-    transport.send_to(&pkt, addr).await?;
+    super::send_direct(transport, &pkt, addr, origin.as_ref()).await?;
     // Char list is a one-shot state delivery; retransmit on loss.
-    super::super::helpers::shadow_register_reliable_send(
-        connected,
-        addr,
-        seq,
-        cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
-    );
+    super::register_direct_reliable(connected, addr, seq, &pkt, &next_seq, origin.as_ref());
 
     // Send succeeded -- mark char list as sent so we don't re-send on subsequent ENABLE_ENTITIES.
     {

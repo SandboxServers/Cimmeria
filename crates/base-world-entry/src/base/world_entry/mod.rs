@@ -33,6 +33,78 @@ pub(crate) mod shown_tutorials;
 mod teleport;
 
 #[cfg(test)]
+mod direct_send_origin_tests;
+
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::atomic::AtomicU32;
+use std::sync::{Arc, Mutex};
+
+use cimmeria_mercury::packet::{Bytes, Packet, PacketFlags};
+use cimmeria_mercury::transport::{SendOrigin, Transport};
+
+use super::ConnectedClientState;
+
+/// Send a direct datagram with its build-time ticket, or leave missing tickets unproven.
+pub(super) async fn send_direct(
+    transport: &Arc<dyn Transport>,
+    bytes: &[u8],
+    addr: SocketAddr,
+    origin: Option<&SendOrigin>,
+) -> std::io::Result<usize> {
+    match origin {
+        Some(origin) => transport.send_to_with_origin(bytes, addr, origin).await,
+        None => transport.send_to(bytes, addr).await,
+    }
+}
+
+/// Register only in the channel that reserved the packet before its send await.
+fn register_direct_reliable(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+    seq: u32,
+    bytes: &[u8],
+    next_seq: &Arc<AtomicU32>,
+    origin: Option<&SendOrigin>,
+) {
+    let Ok(clients) = connected.lock() else {
+        return;
+    };
+    let Some(state) = clients.get(&addr) else {
+        return;
+    };
+    if !Arc::ptr_eq(&state.next_seq, next_seq)
+        || !same_direct_origin(state.wire_send_origin().as_ref(), origin)
+    {
+        return;
+    }
+    let Ok(mut channel) = state.channel.lock() else {
+        return;
+    };
+    let packet = Packet::new(PacketFlags::default(), seq, Bytes::new());
+    if let Err(error) = channel.register_sent_packet(packet, Bytes::copy_from_slice(bytes)) {
+        tracing::warn!(%addr, seq, %error, "direct reliable send registration failed");
+    }
+}
+
+/// Compare the connection seed, allowing the player field to change within one session.
+pub(super) fn same_direct_origin(
+    current: Option<&SendOrigin>,
+    expected: Option<&SendOrigin>,
+) -> bool {
+    match (current, expected) {
+        (None, None) => true,
+        (Some(current), Some(expected)) => {
+            current.server_boot_id == expected.server_boot_id
+                && current.session_generation == expected.session_generation
+                && current.peer == expected.peer
+                && current.connected_at == expected.connected_at
+        }
+        _ => false,
+    }
+}
+
+#[cfg(test)]
 mod crafting_options_world_entry_tests;
 
 #[cfg(test)]
