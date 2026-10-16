@@ -44,6 +44,16 @@ pub(super) struct MissionQuery {
     mission_id: i32,
 }
 
+fn mission_refusal(
+    instance: &str,
+    mission_id: i32,
+    status: StatusCode,
+    error_code: &'static str,
+) -> Response {
+    tracing::warn!(target: "lab.workbench.mission", instance, mission_id, status = status.as_u16(), error_code, "mission request refused");
+    status.into_response()
+}
+
 /// Read independent evidence for the selected mission without mutating state.
 pub(super) async fn mission_xray(
     State(sessions): State<Arc<SessionStore>>,
@@ -56,13 +66,28 @@ pub(super) async fn mission_xray(
         return StatusCode::UNAUTHORIZED.into_response();
     };
     if !instance.eq_ignore_ascii_case(&query.instance) {
-        return StatusCode::FORBIDDEN.into_response();
+        return mission_refusal(
+            &instance,
+            query.mission_id,
+            StatusCode::FORBIDDEN,
+            "instance_mismatch",
+        );
     }
     if query.mission_id <= 0 {
-        return StatusCode::BAD_REQUEST.into_response();
+        return mission_refusal(
+            &instance,
+            query.mission_id,
+            StatusCode::BAD_REQUEST,
+            "mission_id_invalid",
+        );
     }
     let Some(hosted) = instances.by_label(&instance) else {
-        return StatusCode::NOT_FOUND.into_response();
+        return mission_refusal(
+            &instance,
+            query.mission_id,
+            StatusCode::NOT_FOUND,
+            "instance_unknown",
+        );
     };
     Json(
         mission::read_mission(

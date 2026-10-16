@@ -2,8 +2,16 @@ use std::sync::{Arc, Mutex};
 
 use reqwest::header::COOKIE;
 use serde_json::{json, Value};
+use tracing::{
+    field::{Field, Visit},
+    Event,
+};
+use tracing_subscriber::{
+    layer::{Context, SubscriberExt},
+    Layer,
+};
 
-use super::{router_with_mission_server, SessionStore};
+use super::{mission_refusal, router_with_mission_server, SessionStore};
 use crate::daemon::http_tests::{spawn_router, test_server};
 use crate::uat::invoke::{BoxedOutcome, ServerInvoker, ToolOutcome};
 
@@ -39,6 +47,120 @@ impl ServerInvoker for MissionQueryFixture {
                 ..Default::default()
             }
         })
+    }
+}
+
+#[tokio::test]
+async fn mission_route_refuses_invalid_id_and_unknown_bound_instance_without_queries() {
+    let sessions = Arc::new(SessionStore::default());
+    let default_cookie = sessions.redeem(&sessions.open("default")).unwrap().cookie;
+    let unknown_cookie = sessions.redeem(&sessions.open("missing")).unwrap().cookie;
+    let fixture = MissionQueryFixture::default();
+    let router = router_with_mission_server(
+        test_server().instances().clone(),
+        Some(Arc::new(fixture.clone())),
+    )
+    .with_state(sessions);
+    let base = spawn_router(router).await.replace("/mcp", "");
+    let http = reqwest::Client::new();
+    for mission_id in [0, -1] {
+        let response = http
+            .get(format!(
+                "{base}/workbench/api/v1/missions?instance=default&mission_id={mission_id}"
+            ))
+            .header(COOKIE, format!("cimmeria_workbench={default_cookie}"))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
+    }
+    let response = http
+        .get(format!(
+            "{base}/workbench/api/v1/missions?instance=missing&mission_id=622"
+        ))
+        .header(COOKIE, format!("cimmeria_workbench={unknown_cookie}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
+    assert!(fixture.0.lock().unwrap().is_empty());
+}
+
+#[derive(Clone, Default)]
+struct RefusalCapture(Arc<Mutex<Vec<String>>>);
+
+#[derive(Default)]
+struct RefusalFields(Vec<String>);
+
+impl Visit for RefusalFields {
+    fn record_str(&mut self, field: &Field, value: &str) {
+        self.0.push(format!("{}={value}", field.name()));
+    }
+
+    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+        self.0.push(format!("{}={value:?}", field.name()));
+    }
+}
+
+impl<S: tracing::Subscriber> Layer<S> for RefusalCapture {
+    fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+        if event.metadata().target() == "lab.workbench.mission" {
+            let mut fields = RefusalFields::default();
+            event.record(&mut fields);
+            self.0.lock().unwrap().push(fields.0.join(" "));
+        }
+    }
+}
+
+#[test]
+fn refusal_events_have_fixed_codes_and_bounded_context() {
+    let capture = RefusalCapture::default();
+    let _guard =
+        tracing::subscriber::set_default(tracing_subscriber::registry().with(capture.clone()));
+    assert_eq!(
+        mission_refusal(
+            "default",
+            -1,
+            axum::http::StatusCode::BAD_REQUEST,
+            "mission_id_invalid"
+        )
+        .status(),
+        axum::http::StatusCode::BAD_REQUEST
+    );
+    assert_eq!(
+        mission_refusal(
+            "missing",
+            622,
+            axum::http::StatusCode::NOT_FOUND,
+            "instance_unknown"
+        )
+        .status(),
+        axum::http::StatusCode::NOT_FOUND
+    );
+    let events = capture.0.lock().unwrap();
+    assert_eq!(events.len(), 2);
+    for expected in [
+        [
+            "instance=default",
+            "mission_id=-1",
+            "status=400",
+            "error_code=mission_id_invalid",
+        ],
+        [
+            "instance=missing",
+            "mission_id=622",
+            "status=404",
+            "error_code=instance_unknown",
+        ],
+    ] {
+        let event = &events[if expected[0] == "instance=default" {
+            0
+        } else {
+            1
+        }];
+        for field in expected {
+            assert!(event.contains(field), "missing {field}: {event}");
+        }
     }
 }
 #[tokio::test]

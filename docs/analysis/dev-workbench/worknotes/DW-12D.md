@@ -9,13 +9,14 @@
 - The comparison uses only the API's uniquely bound tracker match and selected-mission server state. Unknown server state leaves active step, objective progress and disagreement unknown. No tracker text populates server progress.
 - Extended the read-only mission API projection with objective rows joined to selected mission steps, with an independent gap when the objective query fails. This does not change mission mechanics or write persistence.
 - Registered the new script through the cookie-gated static asset route and added an asset-gate regression. The static assets and selected-mission HTTP route live in focused modules, with the mission route test beside its handler, keeping API files under the 500-line soft cap.
+- Mission route refusals for nonpositive IDs, mismatched instances and absent bound instances emit fixed reason codes with bounded instance, mission ID and HTTP status fields before returning. Invalid IDs and absent instances make no server query.
 
 ## Checks and UAT
 
 - `node --test` in `crates/lab/workbench`: `status=ok`, 32 passed.
 - Lane `cargo fmt -p cimmeria-lab`: `status=ok`.
 - Lane `cargo clippy -p cimmeria-lab --all-targets -- -D warnings`: `status=ok`. The first attempt failed because this worktree lacked its required `external` junction; restoring the junction fixed the dependency build.
-- Lane `cargo test -p cimmeria-lab`: `status=ok`, 1,550 passed.
+- Lane `cargo test -p cimmeria-lab`: `status=ok`, 1,552 passed.
 - JS REPL-style logic UAT: passed. It exercised per-instance mission-ID persistence and clear, mission switch with a late response, missing objective DB layer, tracker/server disagreement while verifying persisted step ID remained server-sourced, authored disabled flags, and a clock-controlled stale transition that updates badge text in place.
 - Not covered by the REPL pass: visual browser layout, a live authenticated daemon, a real client tracker, server binding, decoded packets and live mission persistence. No lab lease was taken.
 
