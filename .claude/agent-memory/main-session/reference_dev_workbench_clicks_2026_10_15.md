@@ -1,0 +1,5 @@
+# DW-07 click correlation (2026-10-15)
+
+- LR-10's CEGUI `Window/MouseClick` handler already records widget, top-level window and mouse button in a 512-row Lua ring, and the ring already has an epoch and sequence. DW-07 combines those as an event ID and samples `Unit.Target` existence/name in the callback; no keyboard text is read. Source: `crates/lab/src/supervisor/events/lua_rings.rs`.
+- `Unit.Target` is a slot, not an entity ID. The verified lab Lua readers expose target name and attributes but no entity-ID getter; the world tool resolves a slot through the native manager map later, which cannot establish target identity at the earlier click. DW-07 therefore keeps `selected_entity_id` and `client_tick` unknown; workbench rows state the ID gap. Source: `crates/lab/src/supervisor/world/memory.rs`, `docs/reverse-engineering/findings/ability-client-hook-anchors.md`, and the DW-07 packet.
+- The host timestamp on a stored `ui.click` is supervisor ingestion time. It can lag the CEGUI callback, so it must not be presented as an exact click timestamp. Source: `crates/lab/src/supervisor/events/mod.rs` and `store.rs`.

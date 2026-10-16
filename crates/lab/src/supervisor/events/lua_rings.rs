@@ -38,7 +38,7 @@
 //! button, ...`; `ChatMod.onTabButtonClicked`). Evidence and limits:
 //! `docs/analysis/lab-record/worknotes/LR-10.md`.
 //!
-//! Each record is `{ window, button, mouse }`: `button` is the clicked
+//! Each record keeps `{ window, button, mouse }`: `button` is the clicked
 //! window's name (`TutorialWin__auto_closebutton__`), `window` the
 //! top-level window holding it (the ancestor whose parent is `Root`, the
 //! same names `client_ui_state` lists), `mouse` `left`/`right`/`middle`.
@@ -218,6 +218,14 @@ local function pos_key(pos)
   local ok, k = pcall(function() return tostring(pos.x or pos.d_x) .. "," .. tostring(pos.y or pos.d_y) end)
   return ok and k or ""
 end
+local function target_at_click()
+  if type(Unit) ~= "table" or Unit.Target == nil or type(unitExists) ~= "function" then return "unknown", "" end
+  local ok, present = pcall(unitExists, Unit.Target)
+  if not ok then return "unknown", "" end
+  if not present then return "absent", "" end
+  local okn, target_name = pcall(unitName, Unit.Target)
+  return "present", okn and string.sub(clean(target_name), 1, 160) or ""
+end
 L.record_click = function(w, mouse, pos)
   local name = wname(w)
   -- An unhandled click bubbling all the way up fires once more for Root; it is never a click of its own.
@@ -238,7 +246,10 @@ L.record_click = function(w, mouse, pos)
     for i = 2, #last.chain do if last.chain[i] == name then return end end
   end
   L.click_last = {{ t = t, key = key, chain = chain }}
-  push(ring("click"), {{ t = t, window = clean(top), button = clean(name), mouse = mouse_name(mouse) }})
+  local target_state, target_name = target_at_click()
+  local e = {{ t = t, window = string.sub(clean(top), 1, 160), button = string.sub(clean(name), 1, 160), mouse = mouse_name(mouse), target_state = target_state, target_name = target_name }}
+  push(ring("click"), e)
+  e.event_id = L.epoch .. ":" .. tostring(e.seq)
 end
 L.on_click = function(this, window, position, moveDelta, button)
   if L.click_busy then return end
@@ -305,7 +316,7 @@ local k, q = ring("click"), 0
 for _, e in ipairs(k.items) do
   if e.seq > {click_after} and q < {max} then
     q = q + 1
-    add("click", e.seq, clean(e.t), e.window, e.button, e.mouse)
+    add("click", e.seq, clean(e.t), e.window, e.button, e.mouse, e.event_id, e.target_state, e.target_name)
   end
 end
 add("head", "click", k.seq)
@@ -328,7 +339,7 @@ pub struct RingRead {
     /// `(ring seq, fields)` per record.
     pub combat: Vec<(u64, Value)>,
     pub chat: Vec<(u64, Value)>,
-    /// Click records: `window`, `button`, `mouse` (LR-10).
+    /// Click records: LR-10 fields plus callback-time target observation and ID.
     pub click: Vec<(u64, Value)>,
     pub combat_head: u64,
     pub chat_head: u64,
@@ -378,7 +389,7 @@ pub fn parse_ring_read(lines: &[String]) -> RingRead {
             ["head", "combat", n] => r.combat_head = n.parse().unwrap_or(0),
             ["head", "chat", n] => r.chat_head = n.parse().unwrap_or(0),
             ["head", "click", n] => r.click_head = n.parse().unwrap_or(0),
-            ["click", seq, t, window, button, mouse] => match seq.parse::<u64>() {
+            ["click", seq, t, window, button, mouse, event_id, target_state, target_name] => match seq.parse::<u64>() {
                 Ok(seq) => r.click.push((
                     seq,
                     json!({
@@ -386,6 +397,12 @@ pub fn parse_ring_read(lines: &[String]) -> RingRead {
                         "button": button,
                         "mouse": mouse,
                         "ui_time": num(t),
+                        "event_id": event_id,
+                        "click_seq": seq,
+                        "click_epoch": r.epoch,
+                        "selected_entity_id": null,
+                        "selected_target_name": if *target_state == "present" && !target_name.is_empty() { Some(*target_name) } else { None },
+                        "target_present": match *target_state { "present" => Some(true), "absent" => Some(false), _ => None },
                     }),
                 )),
                 Err(_) => r.bad_lines.push(line.clone()),
@@ -468,9 +485,9 @@ mod tests {
         assert!(c.contains(r#"host:subscribeGlobal(ns, ev, "CimmeriaLab.on_click")"#));
         assert!(c.contains("L.on_click = function(this, window, position, moveDelta, button)"));
         // The record goes into its own capped ring.
-        assert!(c.contains(
-            r#"push(ring("click"), { t = t, window = clean(top), button = clean(name), mouse = mouse_name(mouse) })"#
-        ));
+        assert!(c.contains(r#"push(ring("click"), e)"#));
+        assert!(c.contains(r#"e.event_id = L.epoch .. ":" .. tostring(e.seq)"#));
+        assert!(c.contains("local target_state, target_name = target_at_click()"));
         // The top-level window is the ancestor below Root.
         assert!(c.contains(r#"if pn == nil or pn == "Root" then break end"#));
         // Read after the click mark, bounded, with its head and status.
@@ -580,8 +597,9 @@ mod tests {
     fn click_records_parse_with_window_and_button() {
         let r = parse_ring_read(&s(&[
             "install\tclick\tinstalled",
-            "click\t2\t812.25\tTutorialWin\tTutorialWin__auto_closebutton__\tleft",
-            "click\t3\t813\tChatWin\tChatWin_Tab2\t",
+            "epoch\tlua-a",
+            "click\t2\t812.25\tTutorialWin\tTutorialWin__auto_closebutton__\tleft\tlua-a:2\tpresent\tTarget One",
+            "click\t3\t813\tChatWin\tChatWin_Tab2\t\tlua-a:3\tabsent\t",
             "click\tnope\t1\ta\tb\tleft",
             "head\tclick\t3",
         ]));
@@ -597,7 +615,14 @@ mod tests {
         assert_eq!(ev["button"], "TutorialWin__auto_closebutton__");
         assert_eq!(ev["mouse"], "left");
         assert_eq!(ev["ui_time"], 812.25);
+        assert_eq!(ev["event_id"], "lua-a:2");
+        assert_eq!(ev["click_seq"], 2);
+        assert_eq!(ev["click_epoch"], "lua-a");
+        assert_eq!(ev["selected_target_name"], "Target One");
+        assert!(ev["selected_entity_id"].is_null());
+        assert_eq!(ev["target_present"], true);
         assert_eq!(r.click[1].1["mouse"], "");
+        assert!(r.click[1].1["selected_target_name"].is_null());
         assert_eq!(r.bad_lines, vec!["click\tnope\t1\ta\tb\tleft".to_string()]);
     }
 
