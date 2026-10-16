@@ -358,7 +358,7 @@ mod tests {
         // The callback took its timestamp before the newer callback but
         // reached the frame guard only after the newer callback finished.
         state.presented_at(0xa, 0, 1_000);
-        state.presented_at(0xb, 0, 2_000);
+        state.presented_at(0xb, 0, 3_000);
         assert_eq!(state.device.load(Ordering::Acquire), 0xa);
     }
 
