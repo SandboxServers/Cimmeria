@@ -245,7 +245,16 @@ async fn run_tick_loop_owned(
         // reliable arrivals), no TX window pressure.
         let tick = game_clock::game_ticks();
         let (seq_id, pkt) = tick_sync_packet(&next_seq_unreliable, &key, tick, &acks, enc_version);
+        if cancelled.load(Ordering::Relaxed) || !owns_current_session(&connected, addr, &cancelled)
+        {
+            return;
+        }
         if let Err(e) = send_with_origin(&transport, &pkt, addr, origin.as_ref()).await {
+            if cancelled.load(Ordering::Relaxed)
+                || !owns_current_session(&connected, addr, &cancelled)
+            {
+                return;
+            }
             tracing::debug!(%addr, "Tick-sync stopped (send error): {e}");
             break "send_error";
         }
@@ -284,11 +293,28 @@ async fn run_tick_loop_owned(
             Some(&cancelled),
         );
         for raw in &retransmits {
+            // The scan can yield several cached datagrams. A send may await
+            // while the peer is replaced; never emit another A packet then.
+            if cancelled.load(Ordering::Relaxed)
+                || !owns_current_session(&connected, addr, &cancelled)
+            {
+                return;
+            }
             if let Err(e) =
                 send_with_origin(&transport, &raw.bytes, addr, raw.origin.as_ref()).await
             {
+                if cancelled.load(Ordering::Relaxed)
+                    || !owns_current_session(&connected, addr, &cancelled)
+                {
+                    return;
+                }
                 tracing::debug!(%addr, "Retransmit send_to failed: {e}");
                 break;
+            }
+            if cancelled.load(Ordering::Relaxed)
+                || !owns_current_session(&connected, addr, &cancelled)
+            {
+                return;
             }
         }
 

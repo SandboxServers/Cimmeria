@@ -4,10 +4,12 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::atomic::AtomicU32;
 use std::sync::{Arc, Mutex};
 
 use cimmeria_mercury::channel::{MessageNames, TxEntry};
 use cimmeria_mercury::packet::MessageHead;
+use cimmeria_mercury::transport::SendOrigin;
 
 use super::ConnectedClientState;
 
@@ -61,6 +63,29 @@ pub fn shadow_register_reliable_send(
         seq,
         raw_bytes,
         ReliableSendDetails::default(),
+        None,
+    );
+}
+
+/// Register only in the channel that reserved this packet's sequence and
+/// supplied its send origin. The identity comparison and insertion share the
+/// connected-map lock, so a same-peer replacement cannot receive old bytes.
+#[track_caller]
+pub(crate) fn shadow_register_reliable_send_for_session(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+    seq: u32,
+    raw_bytes: cimmeria_mercury::packet::Bytes,
+    expected_seq: &Arc<AtomicU32>,
+    expected_origin: Option<&SendOrigin>,
+) {
+    shadow_register_reliable_send_with_details(
+        connected,
+        addr,
+        seq,
+        raw_bytes,
+        ReliableSendDetails::default(),
+        Some((expected_seq, expected_origin)),
     );
 }
 
@@ -136,6 +161,7 @@ pub(super) fn shadow_register_reliable_send_with_details(
     seq: u32,
     raw_bytes: cimmeria_mercury::packet::Bytes,
     details: ReliableSendDetails,
+    expected_session: Option<(&Arc<AtomicU32>, Option<&SendOrigin>)>,
 ) {
     use cimmeria_mercury::packet::{Bytes, Packet, PacketFlags};
 
@@ -150,6 +176,21 @@ pub(super) fn shadow_register_reliable_send_with_details(
     let Some(state) = clients.get(&addr) else {
         return;
     };
+    if expected_session.is_some_and(|(expected_seq, expected_origin)| {
+        let origin_matches = match (state.wire_send_origin(), expected_origin) {
+            (None, None) => true,
+            (Some(current), Some(expected)) => {
+                current.server_boot_id == expected.server_boot_id
+                    && current.session_generation == expected.session_generation
+                    && current.peer == expected.peer
+                    && current.connected_at == expected.connected_at
+            }
+            _ => false,
+        };
+        !Arc::ptr_eq(&state.next_seq, expected_seq) || !origin_matches
+    }) {
+        return;
+    }
     let Ok(mut channel) = state.channel.lock() else {
         return;
     };

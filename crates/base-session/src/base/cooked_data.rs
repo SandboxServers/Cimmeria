@@ -7,7 +7,7 @@ use cimmeria_mercury::transport::Transport;
 use crate::mercury::build_version_info;
 
 use super::cooked_sync::{self, EnqueueOutcome, SyncJob, VersionReply};
-use super::helpers::{origin_still_current, send_with_origin};
+use super::helpers::{send_with_origin, shadow_register_reliable_send_for_session};
 use super::resources::{category_name, ResourceCache};
 use super::ConnectedClientState;
 
@@ -115,7 +115,7 @@ pub async fn handle_version_info_request(
         }
     };
 
-    let (active_eid, acks, seq, enc_version, origin) = {
+    let (active_eid, acks, seq, enc_version, origin, session_seq) = {
         let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let state = clients.get(&addr).ok_or("addr not in connected map")?;
         if state.key != key {
@@ -136,6 +136,7 @@ pub async fn handle_version_info_request(
             seq,
             state.enc_version,
             state.wire_send_origin(),
+            Arc::clone(&state.next_seq),
         )
     };
     let pkt = build_version_info(
@@ -152,14 +153,14 @@ pub async fn handle_version_info_request(
     );
     send_with_origin(transport, &pkt, addr, origin.as_ref()).await?;
     // versionInfo response is one-shot state â€” register for retransmit.
-    if origin_still_current(connected, addr, origin.as_ref()) {
-        super::helpers::shadow_register_reliable_send(
-            connected,
-            addr,
-            seq,
-            cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
-        );
-    }
+    shadow_register_reliable_send_for_session(
+        connected,
+        addr,
+        seq,
+        cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
+        &session_seq,
+        origin.as_ref(),
+    );
     Ok(())
 }
 

@@ -593,6 +593,7 @@ pub use reliable_fit::{collect_pending_retransmits, send_reliable_to_addr, Pendi
 
 mod reliable_send;
 pub use reliable_send::shadow_register_reliable_send;
+pub(crate) use reliable_send::shadow_register_reliable_send_for_session;
 
 mod departed_witnesses;
 pub use departed_witnesses::{

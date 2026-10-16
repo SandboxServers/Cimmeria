@@ -32,7 +32,7 @@ use std::time::{Duration, Instant};
 use cimmeria_mercury::encryption::EncryptionVersion;
 use cimmeria_mercury::transport::Transport;
 
-use super::super::helpers::{send_with_origin, shadow_register_reliable_send};
+use super::super::helpers::{send_with_origin, shadow_register_reliable_send_for_session};
 use super::super::resources::{category_name, ResourceCache};
 use super::super::ConnectedClientState;
 use super::decision::resync_pending_version;
@@ -416,11 +416,13 @@ async fn send_paced(
     }) {
         return Err(Abandon::SessionGone);
     }
-    shadow_register_reliable_send(
+    shadow_register_reliable_send_for_session(
         &ctx.connected,
         ctx.addr,
         seq,
         cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
+        token,
+        origin.as_ref(),
     );
     Ok(())
 }

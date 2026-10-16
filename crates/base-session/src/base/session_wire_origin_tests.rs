@@ -2,8 +2,8 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Barrier, Mutex};
 use std::time::{Duration, Instant};
 
 use cimmeria_mercury::channel_bundle::ChannelBundle;
@@ -22,6 +22,8 @@ use crate::test_support::test_default_connected_client_state;
 struct OriginTransport {
     sent: Mutex<Vec<(Option<String>, Vec<u8>)>>,
     pause_next: AtomicBool,
+    pause_on_call: AtomicUsize,
+    calls: AtomicUsize,
     entered: Notify,
     release: Notify,
 }
@@ -31,19 +33,61 @@ impl OriginTransport {
         Self {
             sent: Mutex::new(Vec::new()),
             pause_next: AtomicBool::new(false),
+            pause_on_call: AtomicUsize::new(0),
+            calls: AtomicUsize::new(0),
             entered: Notify::new(),
             release: Notify::new(),
         }
     }
 
     async fn record(&self, bytes: &[u8], origin: Option<String>) -> std::io::Result<usize> {
-        if self.pause_next.swap(false, Ordering::SeqCst) {
+        let call = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
+        if self.pause_next.swap(false, Ordering::SeqCst)
+            || self.pause_on_call.load(Ordering::SeqCst) == call
+        {
             self.entered.notify_one();
             self.release.notified().await;
         }
         self.sent.lock().unwrap().push((origin, bytes.to_vec()));
         Ok(bytes.len())
     }
+}
+
+#[test]
+fn send_origin_registration_cannot_put_a_ciphertext_in_b_channel() {
+    let addr: SocketAddr = "127.0.0.1:54056".parse().unwrap();
+    let a = seeded(addr, "A");
+    let a_seq = Arc::clone(&a.next_seq);
+    let a_origin = a.wire_send_origin().unwrap();
+    let clients = Arc::new(Mutex::new(HashMap::from([(addr, a)])));
+    let ready = Arc::new(Barrier::new(2));
+    let resume = Arc::new(Barrier::new(2));
+    let worker_clients = Arc::clone(&clients);
+    let worker_ready = Arc::clone(&ready);
+    let worker_resume = Arc::clone(&resume);
+    let worker = std::thread::spawn(move || {
+        // The send completed for A; pause before retransmit registration.
+        worker_ready.wait();
+        worker_resume.wait();
+        super::helpers::shadow_register_reliable_send_for_session(
+            &worker_clients,
+            addr,
+            1,
+            Bytes::from(vec![0xA1; 48]),
+            &a_seq,
+            Some(&a_origin),
+        );
+    });
+    ready.wait();
+    clients.lock().unwrap().insert(addr, seeded(addr, "B"));
+    resume.wait();
+    worker.join().unwrap();
+    assert!(clients.lock().unwrap()[&addr]
+        .channel
+        .lock()
+        .unwrap()
+        .tx_window
+        .is_empty());
 }
 
 impl Transport for OriginTransport {
@@ -268,6 +312,88 @@ async fn send_origin_old_tick_cannot_scan_replacement_channel() {
     assert_eq!(sent.len(), 1, "A must not retransmit B's cached packet");
     assert_eq!(sent[0].0.as_deref(), Some("A"));
     assert_ne!(sent[0].1, vec![0xB2; 48]);
+}
+
+#[tokio::test]
+async fn send_origin_expired_retransmit_keeps_a_bytes_and_stops_after_takeover() {
+    let addr: SocketAddr = "127.0.0.1:54057".parse().unwrap();
+    let clock = Arc::new(ManualClock {
+        base: Instant::now(),
+        offset: Mutex::new(Duration::ZERO),
+    });
+    let mut a = seeded(addr, "A");
+    let first_wire = vec![0xA1; 48];
+    let second_wire = vec![0xA2; 48];
+    let mut channel = cimmeria_mercury::channel::Channel::with_clock(addr, clock.clone());
+    for (seq, wire) in [(1, &first_wire), (2, &second_wire)] {
+        channel
+            .register_sent_packet(
+                Packet::new(Default::default(), seq, Bytes::new()),
+                Bytes::copy_from_slice(wire),
+            )
+            .unwrap();
+    }
+    a.channel = Mutex::new(channel);
+    let cancelled_a = Arc::clone(&a.cancelled);
+    let clients = Arc::new(Mutex::new(HashMap::from([(addr, a)])));
+    let recorder = Arc::new(OriginTransport::new());
+    // First transport call is tick; pause the first actual cached resend.
+    recorder.pause_on_call.store(2, Ordering::SeqCst);
+    let transport: Arc<dyn Transport> = recorder.clone();
+    *clock.offset.lock().unwrap() += Duration::from_secs(5);
+    let (next, pending, last_recv) = {
+        let clients = clients.lock().unwrap();
+        let state = &clients[&addr];
+        (
+            Arc::clone(&state.next_seq_unreliable),
+            Arc::clone(&state.pending_acks),
+            Arc::clone(&state.last_recv),
+        )
+    };
+    let loop_future = super::tick_sync::run_tick_loop(
+        transport,
+        addr,
+        [0; 32],
+        Default::default(),
+        next,
+        pending,
+        last_recv,
+        cancelled_a,
+        Arc::clone(&clients),
+        Arc::new(Mutex::new(cimmeria_entity::manager::EntityManager::new())),
+        None,
+        Arc::new(Mutex::new(HashMap::new())),
+        None,
+    );
+    let task = tokio::spawn(loop_future);
+    tokio::time::timeout(Duration::from_secs(2), recorder.entered.notified())
+        .await
+        .unwrap();
+    let mut b = seeded(addr, "B");
+    let mut b_channel = cimmeria_mercury::channel::Channel::with_clock(addr, clock);
+    b_channel
+        .register_sent_packet(
+            Packet::new(Default::default(), 1, Bytes::new()),
+            Bytes::from(vec![0xB1; 48]),
+        )
+        .unwrap();
+    b.channel = Mutex::new(b_channel);
+    clients.lock().unwrap().insert(addr, b);
+    recorder.release.notify_one();
+    tokio::time::timeout(Duration::from_secs(2), task)
+        .await
+        .unwrap()
+        .unwrap();
+    let sent = recorder.sent.lock().unwrap();
+    assert_eq!(
+        sent.len(),
+        2,
+        "A's second resend must stop after B takeover"
+    );
+    assert_eq!(sent[0].0.as_deref(), Some("A"));
+    assert_eq!(sent[1], (Some("A".into()), first_wire));
+    assert_ne!(sent[1].1, second_wire);
+    assert_ne!(sent[1].1, vec![0xB1; 48]);
 }
 
 #[tokio::test]

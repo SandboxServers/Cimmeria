@@ -347,6 +347,7 @@ where
             // The closure encrypts the packet; its message is not seen here.
             first_message: None,
         },
+        Some((&session_seq, origin.as_ref())),
     );
     WitnessSendOutcome::Sent {
         addr,
@@ -542,9 +543,10 @@ async fn send_bundle_reliable_to_addr_owned(
             packet_count,
             witness_name,
             c.wire_send_origin(),
+            Arc::clone(&c.next_seq),
         )
     };
-    let (key, version, base_seq, packet_count, witness_name, origin) = send_data;
+    let (key, version, base_seq, packet_count, witness_name, origin, session_seq) = send_data;
 
     let num_messages = bundle.num_messages();
     let body_len = bundle.body_len();
@@ -665,6 +667,7 @@ async fn send_bundle_reliable_to_addr_owned(
                 // recorded the message it starts in, for `mercury.tx_hole`.
                 first_message: plan.heads.get(i).copied().flatten().filter(|_| i > 0),
             },
+            Some((&session_seq, origin.as_ref())),
         );
     }
 
