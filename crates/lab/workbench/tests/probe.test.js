@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createProbeController, resultPresentation, renderProbe } = require("../views/probe.js");
+const { createProbeController, resultPresentation, renderProbe, browserApi } = require("../views/probe.js");
 const { createWorkbenchState } = require("../app.js");
 
 function envelope(data, gaps = []) {
@@ -67,6 +67,24 @@ test("probe tab survives shell reload for the same instance", () => {
   assert.equal(createWorkbenchState(storage, "p2").view, "overview");
 });
 
+test("browser session request uses the gated route with an encoded instance", async () => {
+  const originalFetch = global.fetch;
+  const calls = [];
+  global.fetch = async (url, options) => {
+    calls.push({ url, options });
+    return { ok: true, json: async () => ({ instance: "p 2&x", csrf: "csrf-local" }) };
+  };
+  try {
+    const session = await browserApi("p 2&x").session();
+    assert.equal(session.csrf, "csrf-local");
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, "/workbench/session?instance=p%202%26x");
+    assert.equal(calls[0].options.credentials, "same-origin");
+  } finally {
+    global.fetch = originalFetch;
+  }
+});
+
 test("editing while a run is in flight discards its late result", async () => {
   const { controller, api } = fixture();
   await controller.load();
@@ -111,6 +129,35 @@ test("unleased run and browse fail locally before reaching the API", async () =>
   await controller.browse("globals", "Game");
   assert.equal(calls[1].body.lease_id, "lease-test");
   assert.equal(controller.snapshot.browser.result.partial, true);
+});
+
+test("removing a lease clears a successful result and blocks retry", async () => {
+  const { controller, calls } = fixture();
+  await controller.load();
+  controller.select("health");
+  controller.setLeaseId("lease-test");
+  await controller.run();
+  assert.equal(controller.snapshot.result.value.value, 1);
+  assert.equal(calls.length, 1);
+  controller.setLeaseId("");
+  assert.equal(controller.snapshot.result, null);
+  assert.equal(controller.snapshot.leaseReady, false);
+  await controller.run();
+  assert.equal(calls.length, 1);
+  assert.equal(controller.snapshot.result, null);
+  assert.match(controller.snapshot.error, /lease ID/);
+});
+
+test("CEGUI node limit reports partial even without an envelope gap", async () => {
+  const { controller, api } = fixture();
+  await controller.load();
+  controller.setLeaseId("lease-test");
+  api.browse = async () => envelope({ source: "client_window_read",
+    result: { window: "Root", found: true, nodes: [], truncated: true } });
+  await controller.browse("window", "Root");
+  assert.equal(controller.snapshot.browser.result.status, "ok");
+  assert.equal(controller.snapshot.browser.result.partial, true);
+  assert.equal(controller.snapshot.browser.result.value.truncated, true);
 });
 
 test("server lease refusal and Lua error are visible and never preserve a prior value", async () => {

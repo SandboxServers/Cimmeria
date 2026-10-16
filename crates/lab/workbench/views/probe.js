@@ -100,9 +100,12 @@ function createProbeController({ instance, api, onChange }) {
     result = null; browser = null; phase = "ready"; error = ""; publish();
   }
   function setLeaseId(value) {
-    if (value !== leaseId && (phase === "running" || phase === "browsing")) {
-      revision += 1;
-      phase = "ready"; result = null; browser = null;
+    if (value !== leaseId) {
+      if (phase === "running" || phase === "browsing") revision += 1;
+      if (phase === "running" || phase === "browsing" || phase === "result" || phase === "browser") {
+        phase = "ready";
+      }
+      result = null; browser = null;
     }
     leaseId = value; publish();
   }
@@ -160,7 +163,7 @@ function createProbeController({ instance, api, onChange }) {
       browser = { kind, name, source: data.source ?? "unknown",
         result: data.error ? { status: data.error, detail: data.detail ?? "", partial: true, value: null, gaps: [] }
           : kind === "window"
-            ? { status: "ok", detail: "", partial: payload.gaps.length > 0,
+            ? { status: "ok", detail: "", partial: payload.gaps.length > 0 || data.result?.truncated === true,
               value: data.result, gaps: payload.gaps.map(gap => gap.reason ?? "gap") }
             : resultPresentation({ result: data.result, gaps: payload.gaps }) };
       phase = "browser"; publish();
@@ -253,7 +256,8 @@ function browserApi(instance) {
   }
   return {
     session: async () => {
-      const response = await fetch("/workbench/session", { credentials: "same-origin", cache: "no-store" });
+      const response = await fetch(`/workbench/session?instance=${encodeURIComponent(instance)}`,
+        { credentials: "same-origin", cache: "no-store" });
       if (!response.ok) throw new Error(`Session HTTP ${response.status}`);
       return response.json();
     },
@@ -301,5 +305,5 @@ function mountProbe(document, instance) {
 }
 
 const exported = { createProbeController, resultPresentation, renderTree, renderProbe, mountProbe };
-if (typeof module !== "undefined") module.exports = exported;
+if (typeof module !== "undefined") module.exports = { ...exported, browserApi };
 if (typeof window !== "undefined") window.CimmeriaProbe = exported;
