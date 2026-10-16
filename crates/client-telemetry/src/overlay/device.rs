@@ -3,6 +3,7 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, AtomicUsize, Ordering};
 
 const MAX_FAULTS: u8 = 3;
+const OWNER_ABSENCE_PRESENTATIONS: u8 = 3;
 
 /// One bounded reason code; emitted later from a non-render D3D callback.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -29,6 +30,7 @@ pub(super) struct Lifecycle {
     device: AtomicUsize,
     ready: AtomicBool,
     in_frame: AtomicBool,
+    foreign_presentations: AtomicU8,
     faults: AtomicU8,
     disabled: AtomicBool,
     seen_reasons: AtomicU32,
@@ -44,6 +46,7 @@ impl Lifecycle {
             device: AtomicUsize::new(0),
             ready: AtomicBool::new(false),
             in_frame: AtomicBool::new(false),
+            foreign_presentations: AtomicU8::new(0),
             faults: AtomicU8::new(0),
             disabled: AtomicBool::new(false),
             seen_reasons: AtomicU32::new(0),
@@ -69,23 +72,54 @@ impl Lifecycle {
         }
     }
 
-    /// Select a different device only after a successful real EndScene.
+    /// Keep a presenting owner until it is lost or absent for several EndScenes.
     pub(super) fn presented(&self, ptr: usize, hr: i32) {
-        // A successful EndScene is evidence that this device actually draws.
-        // Never switch ownership while another frame holds the state guard.
-        if ptr != 0
-            && hr >= 0
-            && !self.disabled.load(Ordering::Acquire)
-            && !self.in_frame.load(Ordering::Acquire)
-            && self.device.load(Ordering::Acquire) != ptr
-        {
-            self.ready.store(false, Ordering::Release);
-            self.device.store(ptr, Ordering::Release);
-            self.ready.store(true, Ordering::Release);
-        }
+        self.presented_after_lock(ptr, hr, || {});
     }
 
-    fn lost(&self, ptr: usize) {
+    // The callback gives the concurrency regression a precise point inside
+    // the ownership guard; the production caller inlines an empty callback.
+    fn presented_after_lock(&self, ptr: usize, hr: i32, after_lock: impl FnOnce()) {
+        if ptr == 0 || hr < 0 || self.disabled.load(Ordering::Acquire) {
+            return;
+        }
+        // A frame and a handoff must own the same guard. In particular, a
+        // foreign EndScene cannot replace A while A still has a fault to log.
+        if self
+            .in_frame
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return;
+        }
+        let _guard = FrameGuard { state: self };
+        after_lock();
+        if self.disabled.load(Ordering::Acquire) {
+            return;
+        }
+        let owner = self.device.load(Ordering::Acquire);
+        if owner == ptr {
+            self.foreign_presentations.store(0, Ordering::Release);
+            return;
+        }
+        // A successful auxiliary frame alone does not mean the selected
+        // device retired. Count its absence only from real EndScene results.
+        let absent = self.foreign_presentations.load(Ordering::Acquire);
+        if self.ready.load(Ordering::Acquire)
+            && absent.saturating_add(1) < OWNER_ABSENCE_PRESENTATIONS
+        {
+            self.foreign_presentations
+                .store(absent.saturating_add(1), Ordering::Release);
+            return;
+        }
+        self.ready.store(false, Ordering::Release);
+        self.device.store(ptr, Ordering::Release);
+        self.foreign_presentations.store(0, Ordering::Release);
+        self.ready.store(true, Ordering::Release);
+    }
+
+    /// Mark only the selected device unavailable after a failed probe.
+    pub(super) fn lost(&self, ptr: usize) {
         if self.device.load(Ordering::Acquire) == ptr {
             self.ready.store(false, Ordering::Release);
         }
@@ -232,8 +266,53 @@ mod tests {
             assert!(state.enter(0xa).is_some());
             assert!(state.enter(foreign).is_none());
         }
-        state.presented(0xc, 0);
+        for _ in 0..OWNER_ABSENCE_PRESENTATIONS {
+            state.presented(0xc, 0);
+        }
         assert!(state.enter(0xc).is_some());
+    }
+
+    #[test]
+    fn ownership_decision_and_panel_frame_share_one_guard() {
+        use std::sync::{Arc, Barrier};
+
+        let state = Arc::new(Lifecycle::new());
+        state.created(0xa, true);
+        state.created(0xb, true);
+        for _ in 1..OWNER_ABSENCE_PRESENTATIONS {
+            state.presented(0xb, 0);
+        }
+        let entered = Arc::new(Barrier::new(2));
+        let release = Arc::new(Barrier::new(2));
+        let a_entered_during_handoff = std::thread::scope(|scope| {
+            let (state, entered, release) = (&state, &entered, &release);
+            scope.spawn(move || {
+                state.presented_after_lock(0xb, 0, || {
+                    entered.wait();
+                    release.wait();
+                });
+            });
+            entered.wait();
+            let a_entered = state.enter(0xa).is_some();
+            release.wait();
+            a_entered
+        });
+        assert!(
+            !a_entered_during_handoff,
+            "A cannot start a frame mid-handoff"
+        );
+        assert!(state.enter(0xb).is_some());
+
+        let active = Lifecycle::new();
+        active.created(0xa, true);
+        let frame = active.enter(0xa).expect("A owns a frame");
+        std::thread::scope(|scope| {
+            scope.spawn(|| active.presented(0xb, 0));
+        });
+        active.fault(0xa, FailureReason::Clear);
+        drop(frame);
+        assert_eq!(active.device.load(Ordering::Acquire), 0xa);
+        assert_eq!(active.failures.load(Ordering::Acquire), 1);
     }
 
     #[test]

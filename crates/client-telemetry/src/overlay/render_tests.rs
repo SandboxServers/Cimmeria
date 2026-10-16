@@ -152,7 +152,9 @@ fn successful_end_scene_selects_a_real_replacement_after_the_current_frame() {
     assert!(state.enter(0xb).is_none());
     drop(frame);
 
-    state.presented(0xb, 0);
+    for _ in 0..3 {
+        state.presented(0xb, 0);
+    }
     assert!(state.enter(0xa).is_none());
     let frame = state.enter(0xb).expect("successful replacement frame");
     let mut replacement = fake();
@@ -160,6 +162,37 @@ fn successful_end_scene_selects_a_real_replacement_after_the_current_frame() {
     assert_eq!(replacement.calls.len(), 3);
     assert_eq!(replacement.restored.get(), 1);
     drop(frame);
+}
+
+#[test]
+fn alternating_presenters_keep_the_healthy_owner_then_transfer_after_absence() {
+    let state = Lifecycle::new();
+    state.created(0xa, true);
+    state.created(0xb, true);
+    for _ in 0..64 {
+        let frame = state.enter(0xa).expect("healthy A keeps drawing");
+        drop(frame);
+        state.presented(0xa, 0);
+        state.presented(0xb, 0);
+        assert!(state.enter(0xb).is_none());
+        assert!(state.enter(0xa).is_some());
+    }
+    state.presented(0xb, 0);
+    assert!(state.enter(0xa).is_some());
+    state.presented(0xb, 0);
+    assert!(state.enter(0xa).is_none());
+    assert!(state.enter(0xb).is_some());
+}
+
+#[test]
+fn explicit_owner_loss_allows_the_next_successful_presenter_to_take_over() {
+    let state = Lifecycle::new();
+    state.created(0xa, true);
+    state.created(0xb, true);
+    state.lost(0xa);
+    assert!(state.enter(0xa).is_none());
+    state.presented(0xb, 0);
+    assert!(state.enter(0xb).is_some());
 }
 
 #[test]
