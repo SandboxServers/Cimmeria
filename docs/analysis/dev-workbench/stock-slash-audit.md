@@ -28,6 +28,16 @@ can assert complete slash coverage. No client launch or native submission
 occurred in DW-24A.
 
 The dispatch table's explicit indices and DONE/ADAPT/NEW statuses are used
-only when an event suffix exactly matches a method name. Such matches are
-reported as `binding_verified=false`; the protocol note says some slash
-events bind by different names and require client or packet evidence.
+when an event suffix matches a method name, or when its slash-word column
+names the patch word explicitly. Documented non-name candidates include
+`/gmgivecash` → `gmGiveCash` (134), `/gmspawnbycmd` → `gmSpawnByCmd` (185),
+`/gmsetfly` and `/gmsetghost` → `onPhysics` (221), and `/gmsendgmshout` →
+`sendGMShout` (222). All remain `binding_verified=false`: a documented
+method candidate does not prove the patch event's client binding.
+
+The guide at `docs/commands.md` shows three arguments for
+`/debugminigamecomplete` (`gameId`, `winnerId`, `loserId`), while patch 012
+declares one mandatory `Integer ResultCode` for that word. The inventory
+follows the maintained patch TOML. DW-24B must reconcile this guide drift
+against the native parser before enabling a form; no event binding or result
+semantics were inferred here.

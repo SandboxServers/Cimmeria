@@ -14,7 +14,7 @@ const DISPATCH_TABLE: &str =
     include_str!("../../../../docs/protocol/cell-method-dispatch-table.md");
 const STOCK_FIXTURE: &str = include_str!("fixtures/stock_slash_addendum.json");
 
-/// A same-name method row from the documented dispatch table. This is a
+/// A method row from the documented dispatch table. This is a
 /// candidate only: event-to-method binding still needs client-side proof.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct MethodCandidate {
@@ -24,7 +24,7 @@ pub struct MethodCandidate {
     pub binding_verified: bool,
 }
 
-/// One patch command with its disabled form and any exact-name method row.
+/// One patch command with its disabled form and any documented method row.
 #[derive(Clone, Debug, Serialize, PartialEq)]
 pub struct SlashCatalogEntry {
     pub source: SlashEntry,
@@ -68,7 +68,7 @@ pub fn patch_slash_catalog() -> Result<Vec<SlashCatalogEntry>, String> {
     Ok(entries
         .into_iter()
         .map(|source| {
-            let method_candidate = method_candidate(&source.event);
+            let method_candidate = method_candidate(&source);
             let descriptor = disabled_descriptor(&source);
             SlashCatalogEntry {
                 source,
@@ -122,14 +122,31 @@ fn disabled_descriptor(source: &SlashEntry) -> CommandDescriptor {
     }
 }
 
-fn method_candidate(event: &str) -> Option<MethodCandidate> {
-    let suffix = event.strip_prefix("Event_SlashCmd_")?;
-    let expected = format!("gm{suffix}");
+fn method_candidate(source: &SlashEntry) -> Option<MethodCandidate> {
+    let suffix = source.event.strip_prefix("Event_SlashCmd_")?;
+    // Only these non-name matches are named explicitly in the dispatch table's
+    // slash-word column. Keep the event in the key so a changed patch binding
+    // does not silently inherit an old candidate.
+    let documented_alias = match (source.name.as_str(), source.event.as_str()) {
+        ("/gmgivecash", "Event_SlashCmd_GiveNaqahdah") => Some(("gmGiveCash", 134)),
+        ("/gmspawnbycmd", "Event_SlashCmd_Spawn") => Some(("gmSpawnByCmd", 185)),
+        ("/gmsetfly", "Event_SlashCmd_SetFly") | ("/gmsetghost", "Event_SlashCmd_SetGhost") => {
+            Some(("onPhysics", 221))
+        }
+        ("/gmsendgmshout", "Event_SlashCmd_GMShout") => Some(("sendGMShout", 222)),
+        _ => None,
+    };
+    let expected = documented_alias
+        .map(|(name, _)| name.to_string())
+        .unwrap_or_else(|| format!("gm{suffix}"));
     let mut matches = DISPATCH_TABLE.lines().filter_map(|line| {
         let mut cells = line.split('|').map(str::trim);
         cells.next()?;
         let index = cells.next()?.parse::<u16>().ok()?;
         if !(109..=225).contains(&index) {
+            return None;
+        }
+        if documented_alias.is_some_and(|(_, expected_index)| index != expected_index) {
             return None;
         }
         let cell = cells.next()?;

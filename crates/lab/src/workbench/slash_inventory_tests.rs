@@ -44,6 +44,7 @@ fn mandatory_optional_order_and_types_survive_projection() {
     let source: toml::Value = toml::from_str(SOURCE).unwrap();
     let source_rows = source["command"].as_array().unwrap();
     let catalog = patch_slash_catalog().unwrap();
+    assert_eq!(source_rows.len(), catalog.len());
     for (raw, row) in source_rows.iter().zip(catalog.iter()) {
         assert_eq!(raw["name"].as_str(), Some(row.source.name.as_str()));
         assert_eq!(raw["event"].as_str(), Some(row.source.event.as_str()));
@@ -58,6 +59,7 @@ fn mandatory_optional_order_and_types_survive_projection() {
             })
             .collect();
         assert_eq!(row.source.parameters.len(), expected.len());
+        assert_eq!(row.descriptor.args.len(), expected.len());
         for ((declaration, required), (parsed, arg)) in expected
             .iter()
             .zip(row.source.parameters.iter().zip(&row.descriptor.args))
@@ -130,6 +132,48 @@ fn method_status_is_a_documented_candidate_not_a_verified_event_binding() {
         .find(|row| row.source.name == "/gmforceclientcrash")
         .unwrap();
     assert!(client_only.method_candidate.is_none());
+}
+
+#[test]
+fn documented_slash_aliases_keep_method_indices_without_claiming_event_binding() {
+    let catalog = patch_slash_catalog().unwrap();
+    for (word, event, index, name) in [
+        (
+            "/gmgivecash",
+            "Event_SlashCmd_GiveNaqahdah",
+            134,
+            "gmGiveCash",
+        ),
+        ("/gmspawnbycmd", "Event_SlashCmd_Spawn", 185, "gmSpawnByCmd"),
+        ("/gmsetfly", "Event_SlashCmd_SetFly", 221, "onPhysics"),
+        ("/gmsetghost", "Event_SlashCmd_SetGhost", 221, "onPhysics"),
+        (
+            "/gmsendgmshout",
+            "Event_SlashCmd_GMShout",
+            222,
+            "sendGMShout",
+        ),
+    ] {
+        let row = catalog.iter().find(|row| row.source.name == word).unwrap();
+        assert_eq!(row.source.event, event);
+        let candidate = row.method_candidate.as_ref().unwrap();
+        assert_eq!(
+            (
+                candidate.index,
+                candidate.name.as_str(),
+                candidate.status.as_str()
+            ),
+            (index, name, "DONE")
+        );
+        assert!(!candidate.binding_verified);
+    }
+    // The dispatch table names both gmDespawnByCmd and despawnMob, but does
+    // not bind /gmdespawn to either one; an arbitrary choice would mislead.
+    let despawn = catalog
+        .iter()
+        .find(|row| row.source.name == "/gmdespawn")
+        .unwrap();
+    assert!(despawn.method_candidate.is_none());
 }
 
 #[test]
