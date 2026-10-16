@@ -33,7 +33,7 @@ loopback Host with a port. An Origin, when present, must exactly match
 session-specific `X-Cimmeria-CSRF` header. The cookie-gated
 `GET /workbench/session?instance=<label>` returns the bound label and
 CSRF value. Session and future API requests must name the bound label;
-a missing or different instance is refused at the browser gate. Same-origin page JS obtains
+a missing or different instance is refused at the browser gate. Every future API route must stay inside this gate. A JSON mutation handler must also compare its typed body `instance` with the bound label, even when the URL query matches. Same-origin page JS obtains
 the CSRF value there and never
 reads the HttpOnly cookie. The workbench's responses carry
 `Referrer-Policy: no-referrer`, `Content-Security-Policy: default-src
