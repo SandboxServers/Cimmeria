@@ -21,7 +21,7 @@ You are the Cimmeria orchestrator, the default persona for this repository. You 
 - `game-archaeology-specialist` and `bigworld-engine-advisor` (Opus): hard research.
 - `documentation-writer` (Sonnet): docs under `docs/`.
 - `lab-driver` (Haiku): live client and lab use. Ask the user before any lab use.
-- `ops` (Haiku): worktrees, commits, PRs, merges, retires.
+- `ops` (Haiku): worktrees, commits, PRs, merges, retires, board posts.
 - `architect` (Opus): design, campaign folders, work packets.
 
 ## Brief format

@@ -11,10 +11,19 @@ The repo already ships the pieces. Anyone who clones it with Claude Code gets th
 - [`CLAUDE.md`](../../CLAUDE.md): the short core every session loads (repo invariants, the top project rules, the build-lane rule, the per-PR test and doc duty), linking to the long forms: the `lane-build` and `ship-pr` skills, [`pre-pr-checks.md`](pre-pr-checks.md) and [`rules-and-gotchas.md`](rules-and-gotchas.md#file-organization).
 - [`doc-update-map.md`](doc-update-map.md): which docs a change has to update. [`pre-pr-checks.md`](pre-pr-checks.md): what each CI check gates, and how to fix a red one.
 - [`AGENTS.md`](../../AGENTS.md) and [`.github/copilot-instructions.md`](../../.github/copilot-instructions.md): the same policy for other harnesses and for review bots. Copilot code review also reads the path-specific rules in [`.github/instructions/`](../../.github/instructions/) and the review skill in [`.github/skills/code-review/`](../../.github/skills/code-review/SKILL.md), which routes each area of a diff to the matching advisor brief below. Copilot reads all of these from the PR's head branch, so a PR that changes them is reviewed under its own rules.
-- [`.claude/agents/`](../../.claude/agents/): sixteen domain subagents (roster below).
+- [`.claude/agents/`](../../.claude/agents/): 24 subagents, from the default `orchestrator` persona and the campaign roles to the domain advisors (roster below).
 - `.claude/agent-memory/<agent>/`: what those agents learned on earlier runs, and `.claude/agent-memory/main-session/`: what top-level sessions learned. Committed on purpose; see [Project memory](#project-memory).
 - [`TESTING.md`](../../TESTING.md): the test-type picker and the review gotchas.
 - [`rules-and-gotchas.md`](rules-and-gotchas.md): decisions already made and traps already hit.
+
+## Default persona
+
+When you start `claude` in this repo you talk to the [`orchestrator`](../../.claude/agents/orchestrator.md), not to a general-purpose session. [`.claude/settings.json`](../../.claude/settings.json) sets `"agent": "orchestrator"`, and the agent's body replaces the default system prompt. `/status` shows `agent orchestrator` when it loaded. The reasons and the measurements are in the [lean-orchestration ledger](../analysis/lean-orchestration/README.md).
+
+- **It dispatches, decides and keeps the ledger.** It has no shell, and it reads no source, writes no code or docs, and runs no builds. Code questions go to `Explore` or a domain agent, design and packet slicing to `architect`, git and shipping to `ops`. Its routing table is in its definition.
+- **A path guard enforces that.** [`.claude/hooks/orchestrator_guard.py`](../../.claude/hooks/orchestrator_guard.py), wired in the agent's frontmatter, refuses an `Edit` or `Write` outside `docs/analysis/**` and `.claude/state/**`, and a `Read` of a file of 400 lines or more outside `docs/analysis/**` unless `limit` is 200 or less. It lets subagents through: the rules bind the orchestrator's own thread only.
+- **Its context is capped.** `CLAUDE_CODE_AUTO_COMPACT_WINDOW` is `200000`, so it compacts at 200k tokens instead of running to the model's limit. Campaign state lives on disk for that reason: `docs/analysis/<campaign>/RESUME.md` (at most 40 lines) and the pointer `.claude/state/active-campaign` (gitignored). After a compaction, the SessionStart hook [`.claude/hooks/resume_card.py`](../../.claude/hooks/resume_card.py) injects the first 40 lines of RESUME.md.
+- **The escape hatch is `claude --agent hands-on`.** The [`hands-on`](../../.claude/agents/hands-on.md) agent has every tool and today's direct behaviour, for one-off work you want to do yourself.
 
 ## The pipeline
 
@@ -38,6 +47,10 @@ Fix warranted adjacent problems in the same pass: a file your change pushed over
 
 | Area | Agent |
 |---|---|
+| Default persona: dispatching, deciding, keeping the ledger (Sonnet) | `orchestrator` |
+| Campaign design: ledger, packets, waves, `RESUME.md` (Opus) | `architect` |
+| One git or worktree operation: worktrees, PRs, merge, retire, board posts (Haiku) | `ops` |
+| Full-tool escape hatch for direct work (`claude --agent hands-on`) | `hands-on` |
 | Implementing server systems, wire handlers, persistence code | `rust-gameserver-dev` |
 | BigWorld conventions, cell/base split, Mercury, what the client assumes | `bigworld-engine-advisor` |
 | Who-sees-whom, witness lists, appearance rebroadcast, enter/leave AoI | `aoi-witness-broadcast` |
@@ -55,6 +68,7 @@ Fix warranted adjacent problems in the same pass: a file your change pushed over
 | Docs of any kind (Diátaxis-aware) | `documentation-writer` |
 | Ghidra work against `SGW.exe`, intent reconstruction | `game-archaeology-specialist` |
 | Implementing one prescriptive campaign packet (Haiku) | `packet-coder` |
+| Reviewing a whole wave of packets and fixing every verified finding (Sonnet) | `packet-review-fixer` |
 | Adversarial read-only review of one finished packet (Sonnet) | `packet-reviewer` |
 | Driving the live client through the lab MCP tools from a step list (Haiku) | `lab-driver` |
 
@@ -72,7 +86,7 @@ Repo skills live in [`.claude/skills/`](../../.claude/skills/), one directory ea
 | `telemetry-triage` | SigNoz and ClickHouse queries for server, client and network logs, and profiling Claude Code usage from the `claude-code` service |
 | `re-lookup` | Reverse-engineering questions in order: docs and dispatch tables, RE findings, Ghidra MCP, headless Ghidra, x64dbg; includes the re-verify parity loop |
 | `seed-change` | Changing game data in `db/resources/`, reloading the worktree database, live-DB guards, seeing it on a running server |
-| `campaign-packet` | Running a multi-PR campaign: ledger, prescriptive packets, one worker per worktree, review, close-out |
+| `campaign-packet` | Running a multi-PR campaign: architect, ops, one packet-coder per worktree, one review-fixer per wave, `RESUME.md`, close-out |
 
 The roster came from a week of Claude Code telemetry (2026-10-03 to 10-10): the 13 generic web and game-design commands it replaced were never loaded, while shipping, the lane, the lab, SigNoz, RE lookups and seed work made up most tool calls. Rerun that profile with the queries in the `telemetry-triage` skill before adding or retiring a skill.
 
@@ -93,8 +107,10 @@ Every request re-reads the agent's whole context, so a long-lived agent pays for
 
 **Worker lifetime:**
 
-- **One phase per worker.** One worker implements. Review fixes go to a fresh worker, and a mechanical rebase to a fresh worker or to the coordinator using git alone. Don't send the implementing worker back for round two.
-- **End a packet with `ship.sh`.** A worker ships with one call and reads one line back:
+- **One phase per worker, and one-shot agents.** A `packet-coder` implements one packet, commits locally and stops. One `packet-review-fixer` then reviews every packet of the wave and fixes what it verifies, in each packet's worktree; the orchestrator never fixes findings itself, and there is no separate read-only review followed by a fix worker. `ops` ships. Don't send the implementing worker back for round two, and never keep an agent alive as a teammate with `SendMessage`.
+- **Each worker writes a report file and returns one line.** The brief gives a report path, `.claude/reports/<campaign>/<packet>-<role>.md` (gitignored). The worker writes its full report there and returns exactly `<packet> <done|blocked|failed> <commit-sha|-> <report-path>`. The orchestrator updates the ledger row from that line and opens the report only on `blocked` or `failed`. With no report path, an agent keeps its final answer under 15 lines.
+- **Packets fit a small context.** The `architect` sizes a packet-coder packet at about 40k working tokens, with no medium size, and inlines the contract excerpt and the 5 to 10 repo rules it needs, because packet-coder skips `CLAUDE.md`. It groups packets into waves of about six, so one review-fixer can hold a wave. The [`campaign-packet` skill](../../.claude/skills/campaign-packet/SKILL.md) has the whole flow.
+- **`ops` ships a packet with `ship.ps1`.** Shipping is one call that reads one line back:
 
   ```bash
   SHIP_TRAILERS=$'Co-Authored-By: ...\nClaude-Session: ...' SHIP_PR_FOOTER='...' \
@@ -103,19 +119,19 @@ Every request re-reads the agent's whole context, so a long-lived agent pays for
   pwsh tools/build-lane/ship.ps1 pr -C <its worktree> -m "<message>" [--body-file <file>]
   ```
 
-  It stages every change, commits with the trailers, pushes and opens the PR (or finds the open one), and prints `status=ok branch=... pr=<N> url=... kind=docs|code`. It refuses (exit 2) unless `-C` is a registered worktree on a feature branch, so a worker whose worktree vanished cannot push the main checkout. The coordinator merges with `bash tools/build-lane/ship.sh merge <PR> --retire <worktree name>`: a `kind=docs` PR (only `*.md` and `.claude/agent-memory/`) is queued at once; a code PR waits for its PR checks (fmt, clippy, and build + nextest, which skips on a PR push unless the PR has the `full-ci` label), then is queued. Either way `ship.sh` adds it to `main`'s merge queue, waits up to `--queue-timeout` (60m) for it to land, and retires the worktree; a code PR is refused while a `main-red` issue is open. `status=queued` (exit 3) means it is still in the queue and will merge on its own: rerun the merge later to retire the worktree. The queue, the statuses and `--allow-red-main` are in [pre-pr-checks.md § Merge queue](pre-pr-checks.md#merge-queue) and [§ Main is red](pre-pr-checks.md#main-is-red). A failure prints the reason and a log path; the exit codes are in [`ship.py`](../../tools/build-lane/ship.py). Don't poll `gh pr checks`, call `gh pr merge` yourself, or chain `git add`/`commit`/`push` by hand.
+  It stages every change, commits with the trailers, pushes and opens the PR (or finds the open one), and prints `status=ok branch=... pr=<N> url=... kind=docs|code`. It refuses (exit 2) unless `-C` is a registered worktree on a feature branch, so a worker whose worktree vanished cannot push the main checkout. `ops` merges with `bash tools/build-lane/ship.sh merge <PR> --retire <worktree name>`: a `kind=docs` PR (only `*.md` and `.claude/agent-memory/`) is queued at once; a code PR waits for its PR checks (fmt, clippy, and build + nextest, which skips on a PR push unless the PR has the `full-ci` label), then is queued. Either way `ship.sh` adds it to `main`'s merge queue, waits up to `--queue-timeout` (60m) for it to land, and retires the worktree; a code PR is refused while a `main-red` issue is open. `status=queued` (exit 3) means it is still in the queue and will merge on its own: rerun the merge later to retire the worktree. The queue, the statuses and `--allow-red-main` are in [pre-pr-checks.md § Merge queue](pre-pr-checks.md#merge-queue) and [§ Main is red](pre-pr-checks.md#main-is-red). A failure prints the reason and a log path; the exit codes are in [`ship.py`](../../tools/build-lane/ship.py). Don't poll `gh pr checks`, call `gh pr merge` yourself, or chain `git add`/`commit`/`push` by hand.
 - **Stack a PR only when it really builds on an open one.** `ship.sh pr -C <worktree> -m <msg> --base <the other PR's branch>` opens it against that branch. `ship.sh merge` refuses it until the base merges; the base's merge then restacks it onto `main` (`rebase-pr.sh --upstream <the base's merged head> --push`, which replays only its own commits) and retargets it, and prints `restacked=<PR>`, or `restack_conflict=<PR>` when the rebase needs a worker.
 - **Rebase only when the PR needs it, and then with the script.** `ship.sh merge` does this for you. Run it when GitHub reports the PR as behind `main` or conflicting (`gh pr view <PR> --json mergeStateStatus` gives `BEHIND` or `DIRTY`), not as a routine step before every merge. `bash tools/build-lane/rebase-pr.sh <PR> --push` rebases the branch onto `origin/main` in a throwaway worktree. It is silent when the rebase is clean, resolves generated doc blocks and `Cargo.lock` by itself, and otherwise aborts, leaves the branch as it was, and prints `status=conflict` with the `semantic` files. Spawn a worker only for those, and give it that summary. In the three weeks to 2026-10-03, 494 of 607 rebases had no conflict at all, yet each cost a median of 4 requests at about 390k tokens of context ([TP-09](../analysis/token-usage/worknotes/TP-09.md)).
-- **The handoff is a worknote.** Before a worker stops, it writes `docs/analysis/<campaign>/worknotes/<packet>.md`: what is done, what is left, the branch and worktree, the commands to rerun, and the open questions. The next worker starts from the worknote, not from the old transcript.
-- **Hand off early.** At about 200 requests, or about 250k tokens of context, a worker writes its worknote and stops, and the coordinator starts a fresh one. Don't wait for an automatic compaction.
-- **Batch mechanical steps, or hand them to a small context.** Every request re-reads the whole context, so `git status`, `git add`, `git fetch`, `ls` or `date` run one per request at 400k tokens costs what a full turn of real work does. In the three weeks to 2026-10-03, requests over 200k tokens of context that ran only such plumbing (git, `gh`, `ls`, `date`, `echo`, `SendMessage`, task tools) cost 11.2% of all spend above what a fresh 70k context would have paid. Ship with `ship.sh` (above), check status and fetch in one call, and don't run `date` to timestamp a step. Once a worker is past about 200k tokens, finish its code and hand the commit, push and PR steps to the coordinator or a fresh worker with the worknote.
-- **Don't park a worker.** A worker that waits more than five minutes, for the coordinator, a review or a background job, writes its whole context to the cache again when it wakes. Those rewrites were 13.2% of all spend. Stop the worker at the end of its phase and start a fresh one for the next.
-- **Coordinators compact at wave boundaries.** Once the ledger and the resume note are current, compact with a pointer to them (`/compact` followed by the ledger path).
+- **Leftover work is a worknote.** When a packet ends with work left over, the worker (or the review-fixer) writes `docs/analysis/<campaign>/worknotes/<packet>.md`: what is done, what is left, the branch and worktree, the commands to rerun, and the open questions. The next worker starts from the worknote, not from the old transcript.
+- **Hand off early.** At about 200 requests, or about 250k tokens of context, a worker writes its worknote and stops, and the orchestrator starts a fresh one. Don't wait for an automatic compaction.
+- **Batch mechanical steps, or hand them to a small context.** Every request re-reads the whole context, so `git status`, `git add`, `git fetch`, `ls` or `date` run one per request at 400k tokens costs what a full turn of real work does. In the three weeks to 2026-10-03, requests over 200k tokens of context that ran only such plumbing (git, `gh`, `ls`, `date`, `echo`, `SendMessage`, task tools) cost 11.2% of all spend above what a fresh 70k context would have paid. Ship with `ship.sh` (above), check status and fetch in one call, and don't run `date` to timestamp a step. Workers commit locally and stop; push, PR and merge go to `ops`, which runs in a small context.
+- **Don't park a worker.** A worker that waits more than five minutes, for the orchestrator, a review or a background job, writes its whole context to the cache again when it wakes. Those rewrites were 13.2% of all spend. Stop the worker at the end of its phase and start a fresh one for the next.
+- **State goes to disk at every wave boundary.** The orchestrator rewrites `docs/analysis/<campaign>/RESUME.md` (current wave, packets in flight with their worktrees, next action, open decisions) and sets `.claude/state/active-campaign`. Compaction then costs nothing: the resume-card hook brings the card back (see [Default persona](#default-persona)).
 
 **Notifications:** each one wakes a context that may be hundreds of thousands of tokens.
 
-- **A worker reports once.** Either the final `SendMessage` or the completion notice carries the result, never both. A background subagent's last message already is the completion notice, so it does not also message the coordinator.
-- **Report results, not progress.** Don't message a coordinator that work is still running; it hears when the work finishes.
+- **A worker reports once.** The completion notice carries the one-line return; the worker sends no `SendMessage` of its own. Dispatch every independent packet of a wave in one message, in the background, so the orchestrator wakes once per return and does nothing but update a ledger row.
+- **Report results, not progress.** Don't message the orchestrator that work is still running; it hears when the work finishes.
 - **Monitors use `python` or `gh --jq`, not `jq`.** `jq` is not installed on every workstation; a watcher that pipes into it fails every poll and expires silently after 30 minutes.
 - **Batch cross-session messages.** Send a peer session one message per decision or wave, not one per event, and nothing it will see anyway in git or on the PR.
 
@@ -191,7 +207,7 @@ The script deletes the target dir, unlinks `external/`, removes the worktree, de
 
 `--force` overrides everything except a running build. `--merged` also skips anything committed to, checked out or built in the last 30 minutes, and deletes Dev Drive target dirs whose worktree is already gone. `ship.sh merge <PR> --retire <name>` runs it for you after the merge. It runs `git worktree prune` only when given `--prune`, because a prune deletes the entry of any worktree whose recorded path the pruning git can't resolve ([rules-and-gotchas.md](rules-and-gotchas.md#windows-and-tooling-traps)).
 
-**Orchestrators own their workers' worktrees.** A session that dispatched workers retires each worker's worktree when that worker's PR merges, not at the end of the campaign. That covers `isolation: "worktree"` agents (`agent-*`), workflow worktrees (`wf_*`) and `mk-worktree.sh` packets.
+**Orchestrators own their workers' worktrees.** A session that dispatched workers has `ops` retire each worker's worktree when that worker's PR merges (`ship.ps1 merge <PR> --retire <name>`), not at the end of the campaign. That covers `isolation: "worktree"` agents (`agent-*`), workflow worktrees (`wf_*`) and `mk-worktree.sh` packets.
 
 If you ever remove a worktree by hand on Windows, remove the junction first with plain `cmd /c rmdir <worktree>\external` (this removes only the link). Never use `rmdir /s`, `rm -rf`, or `Remove-Item -Recurse` on the junction or on a worktree that still contains it: a recursive delete can follow the link and empty the real `external/` directory.
 
