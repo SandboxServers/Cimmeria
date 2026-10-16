@@ -7,7 +7,7 @@ Static proof-path reconnaissance only; no lab lease, client start, network probe
 - Traced client Winsock receive event through bounded DLL ring and both supervisor drain paths. Exact encrypted receive fingerprint exists; injection bridge epoch and ingestion-time process identity do not.
 - Traced `Unit.Player` from Lua slot constant to numeric entity through the slot map.
 - Traced Phase 3 insertion, shared transport projection, reliable/unreliable/direct/Cell fan-out, and retransmit collection. `mercury.reliable_send` is a debug registration, not complete successful-send coverage.
-- Traced current `server_sessions` roster and gate travel's world mutation. No server boot/generation is exposed yet.
+- Traced current `server_sessions` roster and gate travel's delayed world mutation. The roster can remain in the origin world with unchanged status during an in-progress transfer; the downstream roster/binder needs an authoritative transition epoch/state or must fail closed. No server boot/generation is exposed yet.
 - Wrote synthetic fixture cases with source-local time anchors and explicit expected gaps in `evidence/DW-03S-E.md`.
 
 ## Blocking finding for next packet
