@@ -21,6 +21,30 @@ function createWorkbenchState(storage, instance) {
   };
 }
 
+function statusText(client, gaps = []) {
+  if (!client) {
+    const gap = gaps.find(item => item.source === "client");
+    return gap ? `Unavailable: ${gap.reason}` : "Unavailable";
+  }
+  if (client.running === true) {
+    return client.pid ? `Running (PID ${client.pid})` : "Running";
+  }
+  if (client.uptime_state === "process_unavailable") return "Unavailable: process status unknown";
+  if (client.uptime_state === "exited" || client.uptime_state === "pid_reused") {
+    return `Stopped (${client.uptime_state.replace("_", " ")})`;
+  }
+  return "Stopped";
+}
+
+function sessionData(payload, instance) {
+  if (payload.schema_version !== 1 || !Array.isArray(payload.gaps)
+      || payload.context?.instance?.toLowerCase() !== instance.toLowerCase()
+      || payload.data?.instance?.toLowerCase() !== instance.toLowerCase()) {
+    throw new Error("Invalid session response");
+  }
+  return payload.data;
+}
+
 if (typeof document !== "undefined") {
   const instance = document.body.dataset.instance;
   const state = createWorkbenchState(sessionStorage, instance);
@@ -42,27 +66,20 @@ if (typeof document !== "undefined") {
     }
   }
 
-  function statusText(data) {
-    const client = data.client;
-    if (!client) return data.gap ? `Unavailable: ${data.gap}` : "Unavailable";
-    if (client.pid) return `Running (PID ${client.pid})`;
-    return "Stopped";
-  }
-
   async function refresh() {
     const connection = document.getElementById("connection");
     connection.textContent = "Refreshing…";
     try {
-      const response = await fetch(`/workbench/api/status?instance=${encodeURIComponent(instance)}`, {
+      const response = await fetch(`/workbench/api/v1/session?instance=${encodeURIComponent(instance)}`, {
         credentials: "same-origin", cache: "no-store"
       });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.json();
-      if (data.instance.toLowerCase() !== instance.toLowerCase()) throw new Error("Instance mismatch");
-      document.getElementById("client-status").textContent = statusText(data);
+      const payload = await response.json();
+      const data = sessionData(payload, instance);
+      document.getElementById("client-status").textContent = statusText(data.client, payload.gaps);
       document.getElementById("lease-status").textContent = data.lease?.held
         ? `Held by ${data.lease.lease?.owner ?? "another session"}` : "Free";
-      connection.textContent = data.gap ? "Partial status" : "Connected";
+      connection.textContent = payload.gaps.length ? "Partial status" : "Connected";
     } catch (error) {
       connection.textContent = `Status unavailable: ${error.message}`;
       document.getElementById("client-status").textContent = "Unknown";
@@ -76,4 +93,8 @@ if (typeof document !== "undefined") {
   document.getElementById("refresh").addEventListener("click", refresh);
   renderView();
   refresh();
+}
+
+if (typeof module !== "undefined") {
+  module.exports = { createWorkbenchState, statusText, sessionData };
 }

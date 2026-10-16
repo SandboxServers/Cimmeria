@@ -10,7 +10,7 @@ use axum::{
     Json, Router,
 };
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{json, Value};
 
 use super::{cookie_value, session::SessionStore};
 use crate::{
@@ -25,14 +25,23 @@ const STYLESHEET: &str = include_str!("../../../workbench/app.css");
 /// Routes merged into the DW-02A browser router before its session layer.
 pub fn router(instances: Instances) -> Router<Arc<SessionStore>> {
     Router::new()
-        .route("/workbench/api/status", get(status))
-        .route("/workbench/api/input/key", post(input_key))
+        .route("/workbench/api/v1/session", get(session))
+        .route("/workbench/api/v1/input/key", post(input_key))
         .layer(Extension(instances))
 }
 
 fn bound_instance(sessions: &SessionStore, headers: &HeaderMap) -> Option<String> {
     let cookie = cookie_value(headers)?;
     sessions.identity(cookie).map(|identity| identity.instance)
+}
+
+fn reply(instance: &str, data: Value, gaps: Vec<Value>) -> Json<Value> {
+    Json(json!({
+        "schema_version": 1,
+        "context": { "instance": instance },
+        "data": data,
+        "gaps": gaps,
+    }))
 }
 
 /// Serve the shell with only the session's validated instance label embedded.
@@ -72,28 +81,35 @@ pub async fn stylesheet() -> Response {
     static_asset("text/css; charset=utf-8", STYLESHEET)
 }
 
-async fn status(
+async fn session(
     State(sessions): State<Arc<SessionStore>>,
     Extension(instances): Extension<Instances>,
     headers: HeaderMap,
 ) -> Response {
-    let Some(instance) = bound_instance(&sessions, &headers) else {
+    let Some(cookie) = cookie_value(&headers) else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
-    let Some(hosted) = instances.by_label(&instance) else {
+    let Some(identity) = sessions.identity(cookie) else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    let Some(hosted) = instances.by_label(&identity.instance) else {
         return StatusCode::NOT_FOUND.into_response();
     };
     let client = hosted.supervisor.status().await;
-    let (client, gap) = match client {
-        Ok(value) => (Some(value), None),
-        Err(reason) => (None, Some(reason)),
+    let (client, gaps) = match client {
+        Ok(value) => (Some(value), Vec::new()),
+        Err(reason) => (None, vec![json!({ "source": "client", "reason": reason })]),
     };
-    Json(json!({
-        "instance": hosted.label,
-        "client": client,
-        "lease": hosted.supervisor.leases().status(),
-        "gap": gap,
-    }))
+    reply(
+        &hosted.label,
+        json!({
+            "instance": hosted.label,
+            "csrf": identity.csrf,
+            "client": client,
+            "lease": hosted.supervisor.leases().status(),
+        }),
+        gaps,
+    )
     .into_response()
 }
 
@@ -124,7 +140,7 @@ async fn input_key(
     if !instance.eq_ignore_ascii_case(&body.instance) {
         return (
             StatusCode::FORBIDDEN,
-            Json(json!({ "error": "instance_mismatch" })),
+            reply(&instance, json!({ "error": "instance_mismatch" }), vec![]),
         )
             .into_response();
     }
@@ -138,7 +154,7 @@ async fn input_key(
     {
         return (
             StatusCode::BAD_REQUEST,
-            Json(json!({ "error": "input_invalid" })),
+            reply(&instance, json!({ "error": "input_invalid" }), vec![]),
         )
             .into_response();
     }
@@ -149,7 +165,7 @@ async fn input_key(
     {
         return (
             StatusCode::FORBIDDEN,
-            Json(json!({ "error": "lease_invalid" })),
+            reply(&instance, json!({ "error": "lease_invalid" }), vec![]),
         )
             .into_response();
     }
@@ -164,10 +180,19 @@ async fn input_key(
     )
     .await;
     match result {
-        Ok(value) => Json(json!({ "instance": hosted.label, "result": value })).into_response(),
+        Ok(value) => reply(
+            &hosted.label,
+            json!({ "instance": hosted.label, "result": value }),
+            vec![],
+        )
+        .into_response(),
         Err(reason) => (
             StatusCode::CONFLICT,
-            Json(json!({ "instance": hosted.label, "error": "input_failed", "detail": reason })),
+            reply(
+                &hosted.label,
+                json!({ "instance": hosted.label, "error": "input_failed", "detail": reason }),
+                vec![],
+            ),
         )
             .into_response(),
     }
