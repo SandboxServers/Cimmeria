@@ -1,32 +1,29 @@
-//! Offline regression guards for the disabled slash candidate.
+//! Offline regression guards for the structurally disabled slash candidate.
 
 use super::slash_transport::{PlainShoutCandidate, SlashObservation, SlashReceipt, SlashStage};
 use crate::supervisor::slash_adapter::stock_chat_chunk;
 
 fn candidate(line: &str) -> PlainShoutCandidate {
-    PlainShoutCandidate::parse(line, "unverified-build").expect("plain fixture")
+    PlainShoutCandidate::parse(line).expect("plain fixture")
 }
 
-fn observation(receipt: &SlashReceipt, stage: SlashStage) -> SlashObservation {
+fn claim(receipt: &SlashReceipt, stage: SlashStage) -> SlashObservation {
     SlashObservation {
         attempt_id: receipt.attempt_id,
         line: receipt.line.clone(),
-        fingerprint: receipt.fingerprint.clone(),
-        generation: receipt.generation,
+        fingerprint: "caller-supplied-build".into(),
+        generation: 7,
         stage,
-        independent_source: true,
     }
 }
 
-fn record(receipt: &mut SlashReceipt, stage: SlashStage) -> Result<(), String> {
-    let row = observation(receipt, stage);
-    receipt.observe(&row)
-}
-
 #[test]
-fn documented_plain_shout_shape_still_refuses_unverified_binary() {
+fn documented_plain_shout_shape_is_pure_and_carries_no_identity() {
     let plan = candidate("/gmsendgmshout 1 HPUshout1");
-    assert!(plan.require_verified_client().is_err());
+    assert_eq!(plan.line, "/gmsendgmshout 1 HPUshout1");
+    let receipt = SlashReceipt::new(plan);
+    assert_eq!(receipt.stage(SlashStage::ClientSubmitted), None);
+    assert_eq!(receipt.stage(SlashStage::ServerReceived), None);
 }
 
 #[test]
@@ -41,10 +38,7 @@ fn quotes_backslashes_empty_and_optional_shapes_are_refused() {
         "/gmsendgmshout 0 HPUshout1",
         "/gmspawn 7",
     ] {
-        assert!(
-            PlainShoutCandidate::parse(line, "unverified-build").is_err(),
-            "{line}"
-        );
+        assert!(PlainShoutCandidate::parse(line).is_err(), "{line}");
     }
 }
 
@@ -59,57 +53,44 @@ fn stock_chat_chunk_reads_back_before_submitting() {
 }
 
 #[test]
-fn submitted_or_forged_ack_never_means_accepted() {
-    let mut receipt = SlashReceipt::new(candidate("/gmsendgmshout 1 HPUshout1"), 7);
-    let forged = SlashObservation {
-        independent_source: false,
-        stage: SlashStage::ClientAcknowledged,
-        ..observation(&receipt, SlashStage::ClientSubmitted)
-    };
-    assert!(receipt.observe(&forged).is_err());
-    record(&mut receipt, SlashStage::ClientSubmitted).unwrap();
-    assert!(!receipt.accepted());
-    record(&mut receipt, SlashStage::ClientAcknowledged).unwrap();
-    assert!(!receipt.accepted());
+fn forged_fingerprint_and_generation_cannot_supply_supervisor_identity() {
+    let mut receipt = SlashReceipt::new(candidate("/gmsendgmshout 1 HPUshout1"));
+    let mut forged = claim(&receipt, SlashStage::ClientSubmitted);
+    for fingerprint in ["caller-supplied-build", "pretend-expected-build"] {
+        for generation in [7, 8] {
+            forged.fingerprint = fingerprint.into();
+            forged.generation = generation;
+            assert!(receipt.observe(&forged).is_err());
+            assert_eq!(receipt.stage(SlashStage::ClientSubmitted), None);
+        }
+    }
 }
 
 #[test]
-fn concurrent_attempts_never_cross_join() {
-    let mut first = SlashReceipt::new(candidate("/gmsendgmshout 1 First"), 7);
-    let mut second = SlashReceipt::new(candidate("/gmsendgmshout 1 Second"), 7);
-    assert_ne!(first.attempt_id, second.attempt_id);
-    record(&mut first, SlashStage::ClientSubmitted).unwrap();
-    record(&mut second, SlashStage::ClientSubmitted).unwrap();
-    assert!(first
-        .observe(&observation(&second, SlashStage::ClientAcknowledged))
-        .is_err());
-    assert!(first
-        .observe(&observation(&second, SlashStage::OutgoingMethod))
-        .is_err());
-    assert!(!first.accepted());
-    assert!(!second.accepted());
-}
-
-#[test]
-fn exact_order_and_generation_are_required_for_receipt() {
-    let mut receipt = SlashReceipt::new(candidate("/gmsendgmshout 1 HPUshout1"), 7);
-    assert!(record(&mut receipt, SlashStage::ServerReceived).is_err());
-    let wrong_generation = SlashObservation {
-        generation: 8,
-        ..observation(&receipt, SlashStage::ClientSubmitted)
-    };
-    assert!(receipt.observe(&wrong_generation).is_err());
+fn forged_ack_and_server_receipt_stay_unknown() {
+    let mut receipt = SlashReceipt::new(candidate("/gmsendgmshout 1 HPUshout1"));
     for stage in [
         SlashStage::ClientSubmitted,
         SlashStage::ClientAcknowledged,
         SlashStage::OutgoingMethod,
         SlashStage::ServerReceived,
     ] {
-        record(&mut receipt, stage).unwrap();
+        let row = claim(&receipt, stage);
+        assert!(receipt.observe(&row).is_err());
+        assert_eq!(receipt.stage(stage), None);
     }
-    assert!(receipt.server_received);
-    assert!(
-        !receipt.accepted(),
-        "synthetic stages cannot prove a cross-source join"
-    );
+    assert!(!receipt.accepted());
+}
+
+#[test]
+fn same_line_concurrent_attempts_cannot_cross_join() {
+    let line = "/gmsendgmshout 1 HPUshout1";
+    let mut first = SlashReceipt::new(candidate(line));
+    let mut second = SlashReceipt::new(candidate(line));
+    assert_ne!(first.attempt_id, second.attempt_id);
+    let second_row = claim(&second, SlashStage::ServerReceived);
+    assert!(first.observe(&second_row).is_err());
+    assert!(second.observe(&second_row).is_err());
+    assert_eq!(first.stage(SlashStage::ServerReceived), None);
+    assert_eq!(second.stage(SlashStage::ServerReceived), None);
 }

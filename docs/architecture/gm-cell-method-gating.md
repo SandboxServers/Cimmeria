@@ -112,9 +112,10 @@ keeps them disabled because a stock-chat receipt for one plain-token command
 does not prove each command's parser, quoting, optional values, fingerprint
 or per-command server receipt. `slash_transport.rs` models that narrow
 candidate and separate client-submitted, client-acknowledged, outgoing-method
-and server-received observations. `supervisor/slash_adapter.rs` prepares a
-stock `ChatMod.onTextAccepted` call with exact input readback but rejects live
-submission while its verified fingerprint is absent. Legacy `client_console`
+and server-received states; absent trusted producers leave each unknown.
+`supervisor/slash_adapter.rs` builds a stock `ChatMod.onTextAccepted` call
+with exact input readback but exposes no callable submission method until the
+supervisor can verify client fingerprint and generation. Legacy `client_console`
 also rejects caller-supplied addresses: `execConsoleCommand` at `0x00539850`
 takes `FFrame`, and no string-taking ABI is established. An exact event-suffix match to a method name or
 an explicit slash-word row in `docs/protocol/cell-method-dispatch-table.md`

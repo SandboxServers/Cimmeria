@@ -1,27 +1,25 @@
-//! Bounded stock-chat slash candidate and separate receipt observations.
+//! Bounded stock-chat slash candidate and fail-closed receipt stages.
 //!
-//! One hub-pass UAT used `/gmsendgmshout 1 HPUshout1` through
-//! `ChatMod.onTextAccepted` and saw a native server receipt. That proves a
-//! narrow plain-token precedent, not a general patch-table serializer.
+//! The hub-pass UAT used `/gmsendgmshout 1 HPUshout1` through
+//! `ChatMod.onTextAccepted` and saw a native server receipt. No supervisor
+//! producer currently proves the installed client fingerprint, generation,
+//! or a cross-source receipt binding for a new command attempt.
 
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 /// The only shape with a documented stock-chat server receipt so far.
 pub const PLAIN_SHOUT_WORD: &str = "/gmsendgmshout";
-/// No client binary fingerprint has been verified for this adapter.
-pub const VERIFIED_CHAT_FINGERPRINT: Option<&str> = None;
 
-/// A prepared command whose input shape matches the documented precedent.
+/// A pure parser candidate; this type grants no right to submit.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PlainShoutCandidate {
     pub line: String,
-    pub fingerprint: String,
 }
 
 impl PlainShoutCandidate {
     /// Refuse characters and optional shapes whose tokenizer is untraced.
-    pub fn parse(line: &str, fingerprint: &str) -> Result<Self, String> {
+    pub fn parse(line: &str) -> Result<Self, String> {
         if line.len() > 120 || line.chars().any(char::is_control) {
             return Err("slash line is unbounded or contains control characters".into());
         }
@@ -34,25 +32,11 @@ impl PlainShoutCandidate {
         {
             return Err("slash argument shape lacks parser and receipt proof".into());
         }
-        if fingerprint.is_empty() || fingerprint.len() > 128 {
-            return Err("client fingerprint is missing or unbounded".into());
-        }
-        Ok(Self {
-            line: line.into(),
-            fingerprint: fingerprint.into(),
-        })
-    }
-
-    /// A known command shape still needs a verified binary fingerprint.
-    pub fn require_verified_client(&self) -> Result<(), String> {
-        match VERIFIED_CHAT_FINGERPRINT {
-            Some(expected) if expected == self.fingerprint => Ok(()),
-            _ => Err("slash stock-chat submission blocked: client fingerprint unverified".into()),
-        }
+        Ok(Self { line: line.into() })
     }
 }
 
-/// A distinct observation stage. Only the server stage can establish receipt.
+/// A distinct observation stage. An untrusted stage claim proves nothing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SlashStage {
@@ -62,7 +46,7 @@ pub enum SlashStage {
     ServerReceived,
 }
 
-/// Source evidence for one stage, scoped to an attempt and client generation.
+/// A raw observation proposal. Its fields can be forged by a caller.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SlashObservation {
     pub attempt_id: Uuid,
@@ -70,67 +54,76 @@ pub struct SlashObservation {
     pub fingerprint: String,
     pub generation: u64,
     pub stage: SlashStage,
-    pub independent_source: bool,
 }
 
-/// Receipt state. A claimed acknowledgement alone cannot imply acceptance.
+/// A future supervisor-owned identity, never constructed from RPC arguments.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct VerifiedIdentity {
+    fingerprint: String,
+    generation: u64,
+}
+
+/// Four separate evidence states; `None` means no trusted observation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SlashReceipt {
     pub attempt_id: Uuid,
     pub line: String,
-    pub fingerprint: String,
-    pub generation: u64,
-    pub client_submitted: bool,
-    pub client_acknowledged: bool,
-    pub outgoing_method: bool,
-    pub server_received: bool,
-    receipt_binding_verified: bool,
+    identity: Option<VerifiedIdentity>,
+    client_submitted: Option<bool>,
+    client_acknowledged: Option<bool>,
+    outgoing_method: Option<bool>,
+    server_received: Option<bool>,
+    trusted_cross_source_binding: bool,
 }
 
 impl SlashReceipt {
-    /// Start a unique receipt for one command in one client generation.
-    pub fn new(candidate: PlainShoutCandidate, generation: u64) -> Self {
+    /// Start an unbound attempt. No caller can supply an identity here.
+    pub fn new(candidate: PlainShoutCandidate) -> Self {
         Self {
             attempt_id: Uuid::new_v4(),
             line: candidate.line,
-            fingerprint: candidate.fingerprint,
-            generation,
-            client_submitted: false,
-            client_acknowledged: false,
-            outgoing_method: false,
-            server_received: false,
-            receipt_binding_verified: false,
+            identity: None,
+            client_submitted: None,
+            client_acknowledged: None,
+            outgoing_method: None,
+            server_received: None,
+            trusted_cross_source_binding: false,
         }
     }
 
-    /// Fold independently sourced, exact-context observations only.
+    /// Read one stage without treating a missing producer as a negative event.
+    pub fn stage(&self, stage: SlashStage) -> Option<bool> {
+        match stage {
+            SlashStage::ClientSubmitted => self.client_submitted,
+            SlashStage::ClientAcknowledged => self.client_acknowledged,
+            SlashStage::OutgoingMethod => self.outgoing_method,
+            SlashStage::ServerReceived => self.server_received,
+        }
+    }
+
+    /// Reject raw claims until a supervisor-owned identity producer exists.
+    /// Even a matching line and attempt ID cannot authenticate a network row.
     pub fn observe(&mut self, observation: &SlashObservation) -> Result<(), String> {
-        if !observation.independent_source
-            || observation.attempt_id != self.attempt_id
+        let Some(identity) = &self.identity else {
+            return Err("slash observation blocked: no supervisor-verified identity".into());
+        };
+        if observation.attempt_id != self.attempt_id
             || observation.line != self.line
-            || observation.fingerprint != self.fingerprint
-            || observation.generation != self.generation
+            || observation.fingerprint != identity.fingerprint
+            || observation.generation != identity.generation
         {
-            return Err("slash observation has no matching independent provenance".into());
+            return Err("slash observation does not match verified context".into());
         }
-        match observation.stage {
-            SlashStage::ClientSubmitted => self.client_submitted = true,
-            SlashStage::ClientAcknowledged if self.client_submitted => {
-                self.client_acknowledged = true;
-            }
-            SlashStage::OutgoingMethod if self.client_submitted => self.outgoing_method = true,
-            SlashStage::ServerReceived if self.outgoing_method => self.server_received = true,
-            _ => return Err("slash observation arrived before its prerequisite".into()),
-        }
-        Ok(())
+        // A future producer must authenticate each source before it may
+        // promote this proposal. There is no such producer in DW-24B.
+        Err("slash observation blocked: trusted stage producer unavailable".into())
     }
 
-    /// Native acceptance needs a verified cross-source binding, unavailable
-    /// until the client and server emit a correlation key for this attempt.
+    /// A forged acknowledgement or server row cannot establish acceptance.
     pub fn accepted(&self) -> bool {
-        self.receipt_binding_verified
-            && self.client_acknowledged
-            && self.outgoing_method
-            && self.server_received
+        self.trusted_cross_source_binding
+            && self.client_acknowledged == Some(true)
+            && self.outgoing_method == Some(true)
+            && self.server_received == Some(true)
     }
 }
