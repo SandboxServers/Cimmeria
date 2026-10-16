@@ -331,7 +331,7 @@ No docs-index row is owed, because no doc is added or renamed. The doc-update ma
 ## LO-08 Pilot run, measurement, Codex UAT and close-out
 
 - Wave 4. Run by the new orchestrator, with ops for git. Starts after wave 3 merges.
-- **Status 2026-10-16: closed with owed items.** The pilot was measured; the Claude UAT, Codex UAT C0-C5 and the second pilot were not run (owner out of tokens). See the README's Close-out section.
+- **Status at close-out, 2026-10-16: closed with owed items.** The pilot was measured; the Claude UAT, Codex UAT C0-C5 and the second pilot had not run (owner out of tokens). Codex UAT C0-C5 ran later that day; see the README's Codex UAT section.
 - The owner relaunches `claude` after wave 1 merges and confirms that the persona loaded (`/status` shows agent orchestrator). Record the first-request context with LO-07.
 - Pilot: wave 2 of this campaign is the first pilot. Then run the next real campaign the owner picks. Grade against D-LO14 with `token-profile coordination` over each window, and write the numbers into this README.
 - Close-out: `docs/project-status.md` and the agent docs once; retire worktrees with ops (`--merged`); post a board handoff.
