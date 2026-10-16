@@ -32,19 +32,29 @@ pub struct ClientClick {
 
 impl ClientClick {
     /// Convert a stored click without consulting live client or server state.
-    pub fn from_stored(event: &StoredEvent, client_pid: u32) -> Option<Self> {
+    pub fn from_stored(event: &StoredEvent) -> Option<Self> {
         if event.kind != CLICK_KIND {
             return None;
         }
         let fields = &event.fields;
         let epoch = fields.get("click_epoch")?.as_str()?;
         let seq = fields.get("click_seq")?.as_u64()?;
+        if epoch.is_empty() || seq == 0 {
+            return None;
+        }
         let expected_id = format!("{epoch}:{seq}");
         if fields.get("event_id")?.as_str()? != expected_id {
             return None;
         }
+        let client_pid = u32::try_from(fields.get("client_pid")?.as_u64()?).ok()?;
+        if client_pid == 0 {
+            return None;
+        }
         let window = fields.get("window")?.as_str()?.to_owned();
         let button = fields.get("button")?.as_str()?.to_owned();
+        if window.is_empty() || button.is_empty() {
+            return None;
+        }
         let widget_path = if window == button {
             window.clone()
         } else {
@@ -87,18 +97,21 @@ pub struct ClickSequence {
     pub events: Vec<ClientClick>,
     pub missing_ring_rows: u64,
     pub evicted: u64,
+    /// Stored click rows rejected because identity or provenance was invalid.
+    pub rejected_identity_rows: u64,
 }
 
 impl ClickSequence {
     /// Read a supervisor slice; an epoch change resets only the ring-seq gap count.
-    pub fn from_stored<'a>(
-        events: impl IntoIterator<Item = &'a StoredEvent>,
-        client_pid: u32,
-    ) -> Self {
+    pub fn from_stored<'a>(events: impl IntoIterator<Item = &'a StoredEvent>) -> Self {
         let mut result = Self::default();
         let mut previous: Option<(String, u64)> = None;
         for stored in events {
-            let Some(click) = ClientClick::from_stored(stored, client_pid) else {
+            if stored.kind != CLICK_KIND {
+                continue;
+            }
+            let Some(click) = ClientClick::from_stored(stored) else {
+                result.rejected_identity_rows += 1;
                 continue;
             };
             let epoch = stored.fields["click_epoch"].as_str().unwrap_or("");

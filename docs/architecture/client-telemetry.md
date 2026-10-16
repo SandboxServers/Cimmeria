@@ -284,6 +284,8 @@ The lab supervisor also installs a bounded Lua CEGUI click ring. It is a lab-onl
 |---|---|---|---|
 | `ui.click` | Lua CEGUI global `Window/MouseClick` callback | `event_id = <Lua epoch>:<click sequence>`; existing top-level `window`, clicked-widget `button`, mouse-button `mouse`; target existence and name observed in the callback; workbench `host_ms` (supervisor ingestion time), `client_pid`, `widget_path`, `source`, `selected_entity_id: null`, `client_tick: null`, and `target_id_gap` | 512 in-client rows; no key or text input |
 
+Click `client_pid` is captured when the Lua ring is ingested and stored with that row; a PID change during the read leaves provenance unknown, so the workbench rejects that click instead of attributing it to a later session. Window and widget names remain exact through 1,024 bytes. Oversize or control-character names are rejected before the click ring and counted as `click_rejected_total` in the pump report; malformed or old-format click lines count in `click_rejected_lines`. A workbench slice also reports `rejected_identity_rows` for stored clicks with invalid identity or missing PID. These counts are evidence gaps, not replayable clicks.
+
 A target name is diagnostic only: the Lua unit slot has no verified entity-ID getter, so `target_id_gap` is `target_entity_id_unobservable_at_click`. Repeated clicks keep distinct IDs, a missing ring sequence is reported as a gap, and relog starts a new epoch. The recorder never reads a later target to fill an earlier click.
 
 ## Entity lifecycle, inbound and outbound messages, Lua errors and the CME catalog
