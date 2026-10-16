@@ -41,6 +41,35 @@ const ARGUMENTS: &[&str] = &[
     "Integer AbilityId",
     "Integer numPoints",
 ];
+const EVENTS: &[&str] = &[
+    "Event_SlashCmd_MissionAssign",
+    "Event_SlashCmd_MissionClear",
+    "Event_SlashCmd_MissionClearActive",
+    "Event_SlashCmd_MissionClearHistory",
+    "Event_SlashCmd_MissionList",
+    "Event_SlashCmd_MissionListFull",
+    "Event_SlashCmd_MissionDetails",
+    "Event_SlashCmd_MissionAdvance",
+    "Event_SlashCmd_MissionReset",
+    "Event_SlashCmd_MissionComplete",
+    "Event_SlashCmd_MissionSetAvailable",
+    "Event_SlashCmd_MissionAbandon",
+    "Event_SlashCmd_ShowTargetLocation",
+    "Event_SlashCmd_ListAbilities",
+    "Event_SlashCmd_ShowFlag",
+    "Event_SlashCmd_ListInteractions",
+    "Event_SlashCmd_GetMobAttribute",
+    "Event_SlashCmd_ShowMobCount",
+    "Event_SlashCmd_ShowIP",
+    "Event_SlashCmd_ShowInventory",
+    "Event_SlashCmd_ShowPlayer",
+    "Event_SlashCmd_GiveXp",
+    "Event_SlashCmd_GiveItem",
+    "Event_SlashCmd_GiveNaqahdah",
+    "Event_SlashCmd_GMDeleteItem",
+    "Event_SlashCmd_GiveAbility",
+    "Event_SlashCmd_GiveTrainingPoints",
+];
 
 /// Server status is distinct from the unproved client event binding and transport.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -69,7 +98,7 @@ struct Row {
     help: &'static str,
     target: &'static str,
     handler: HandlerAvailability,
-    impact: ImpactKind,
+    impact: Option<ImpactKind>,
     effect: &'static str,
     read_tool: &'static str,
     read_fields: &'static str,
@@ -79,13 +108,22 @@ struct Row {
     arg_help: &'static [&'static str],
 }
 
+macro_rules! impact {
+    (Unknown) => {
+        None
+    };
+    ($known:ident) => {
+        Some(ImpactKind::$known)
+    };
+}
+
 macro_rules! row {
     ($word:literal, $category:literal, $help:literal, $target:literal, $handler:ident,
      $impact:ident, $effect:literal, $tool:literal, $fields:literal, $readback:literal,
      $compensation:literal, $blocker:literal, [$($arg:literal),* $(,)?]) => {
         Row {
             word: $word, category: $category, help: $help, target: $target,
-            handler: HandlerAvailability::$handler, impact: ImpactKind::$impact,
+            handler: HandlerAvailability::$handler, impact: impact!($impact),
             effect: $effect, read_tool: $tool, read_fields: $fields,
             readback: $readback, compensation: $compensation, blocker: $blocker,
             arg_help: &[$($arg),*],
@@ -100,9 +138,9 @@ const ROWS: &[Row] = &[
     row!("/gmmissionclear", "missions", "Abandon one active mission on your GM character.", "caller player", Implemented,
         Persistent, "Abandons mission and fires mission_abandoned; non-repeat row may be deleted.", "server_db_query", "sgw_mission.status;sgw_mission.repeats;row presence", "Compare the exact caller/mission row after base processing; deletion can be expected.", "Manual reassign if offerable; progress and fired content are not restored.", "Native event binding and submission unproved.", ["Positive numeric active mission ID, entered as TOML String."]),
     row!("/gmmissionclearactive", "missions", "Clear active missions, according to the patch event name; no server handler exists.", "caller player, inferred event scope only", Absent,
-        ReadOnly, "No Cimmeria mutation through method 111.", "", "", "Active mission rows establish baseline only, never command success.", "", "Server handler absent; native binding unproved. Never expand into repeated clears.", []),
+        Unknown, "No Cimmeria mutation through method 111; original effect unknown.", "", "", "Active mission rows establish baseline only, never command success.", "", "Server handler absent; native binding unproved. Never expand into repeated clears.", []),
     row!("/gmmissionclearhistory", "missions", "Clear mission history, according to the patch event name; no server primitive exists.", "unimplemented history scope", Absent,
-        ReadOnly, "No Cimmeria mutation through method 112.", "", "", "History rows are diagnostic only; no accepted-effect recipe.", "", "Server handler absent; original semantics and native binding unproved.", []),
+        Unknown, "No Cimmeria mutation through method 112; original effect unknown.", "", "", "History rows are diagnostic only; no accepted-effect recipe.", "", "Server handler absent; original semantics and native binding unproved.", []),
     row!("/gmmissionlist", "mission inspection", "List your active missions from the live cell tracker.", "caller player", Implemented,
         ReadOnly, "Reports active mission IDs and states; no database write.", "mission X-ray", "mission IDs;status", "Compare GM feedback to the same caller's live mission X-ray.", "", "Native event binding and submission unproved.", []),
     row!("/gmmissionlistfull", "mission inspection", "List your loaded missions, including completed and hidden entries.", "caller player", Implemented,
@@ -113,13 +151,13 @@ const ROWS: &[Row] = &[
         Persistent, "Queues step/objective transition and step-region content replay.", "server_db_query", "sgw_mission.current_step_id;objective IDs;objective status", "Compare exact caller/mission DB state; feedback can precede a failed transition.", "No automatic reset; another advance does not undo fired chains.", "Native event binding and submission unproved.",
         ["Positive numeric held mission ID, entered as TOML String.", "Positive step ID owned by the mission."]),
     row!("/gmmissionreset", "missions", "Reset a mission to a step, according to the patch event name; no handler exists.", "no implemented target", Absent,
-        ReadOnly, "No reset mutation through method 117.", "", "", "Baseline mission state does not establish reset success.", "", "Handler absent and reset semantics unproved; never substitute advance.",
+        Unknown, "No reset mutation through method 117; original effect unknown.", "", "", "Baseline mission state does not establish reset success.", "", "Handler absent and reset semantics unproved; never substitute advance.",
         ["Mission design ID as TOML String; reset interpretation unproved.", "Step ID as TOML Integer; reset interpretation unproved."]),
     row!("/gmmissioncomplete", "missions", "Complete or turn in a mission, according to the patch event name; no handler exists.", "no implemented target", Absent,
-        ReadOnly, "No completion or reward mutation through method 118.", "", "", "Mission state and reward balances would need independent future reads.", "", "Handler absent; TurnIn reward semantics and native binding unproved.",
+        Unknown, "No completion or reward mutation through method 118; original effect unknown.", "", "", "Mission state and reward balances would need independent future reads.", "", "Handler absent; TurnIn reward semantics and native binding unproved.",
         ["Mission design ID as TOML String.", "Turn-in request as TOML Boolean; no reward guarantee."]),
     row!("/gmmissionsetavailable", "missions", "Set mission availability, according to the patch event name; no handler exists.", "no implemented target", Absent,
-        ReadOnly, "No availability writer through method 119.", "", "", "Offer visibility alone cannot prove this command acted.", "", "Handler absent; availability is not proven entity state.", ["Mission design ID as TOML String."]),
+        Unknown, "No availability writer through method 119; original effect unknown.", "", "", "Offer visibility alone cannot prove this command acted.", "", "Handler absent; availability is not proven entity state.", ["Mission design ID as TOML String."]),
     row!("/gmmissionabandon", "missions", "Abandon one active mission; server alias of mission clear.", "caller player", Implemented,
         Persistent, "Abandons mission and fires mission_abandoned; repeat history can remain.", "server_db_query", "sgw_mission.status;sgw_mission.repeats;row presence", "Compare exact caller/mission row after base processing and client removal separately.", "Manual reassign if offerable; progress and content effects are not undone.", "Native alias event binding and submission unproved.", ["Positive numeric active mission ID, entered as TOML String."]),
     row!("/gmshowtargetlocation", "entity inspection", "Show the in-view target's location, or your own if no valid target exists.", "in-view same-space target or caller", Implemented,
@@ -156,21 +194,51 @@ const ROWS: &[Row] = &[
         Persistent, "Base guarded UPDATE RETURNING persists additive training points, then mirrors them.", "server_db_query", "sgw_player.training_points", "Compare exact caller points after base completion; cell/client mirrors are separate.", "No inverse; a later spend is a different action.", "Native event binding and submission unproved.", ["Positive point count with no INT32 overflow."]),
 ];
 
-/// Build the first 27 forms in TOML order; a changed name or argument count fails closed.
+fn specific_preconditions(word: &str) -> &'static [&'static str] {
+    match word {
+        "/gmmissionassign" => &["Positive numeric design ID; loaded mission definition and first step; mission offerable and not already held"],
+        "/gmmissionclear" | "/gmmissionabandon" => &["Positive numeric ID of an active mission held by the caller"],
+        "/gmmissionlist" | "/gmmissionlistfull" => &["Live caller mission tracker; feedback reflects loaded tracker state"],
+        "/gmmissiondetails" => &["Positive numeric ID of a mission in the caller's loaded tracker"],
+        "/gmmissionadvance" => &["Active held mission and positive step ID owned by that mission"],
+        "/gmshowtargetlocation" => &["Valid in-view target in the same space, or caller fallback"],
+        "/gmlistabilities" => &["Valid in-view target in the same space, or caller fallback"],
+        "/gmshowflag" => &["Explicit bit index 0–31 required by server handler; omitted patch argument cannot satisfy it"],
+        "/gmgetmobattribute" => &["Explicit same-space target ID and supported attribute required by server; patch omits target ID"],
+        "/gmshowmobcount" => &["Loaded space ID, or 0 for caller's space; count covers live non-player entities"],
+        "/gmlistinteractions" | "/gmshowip" | "/gmshowinventory" => &["No server handler; target and effect cannot be established from patch text"],
+        "/gmshowplayer" => &["Server expects explicit same-space target ID; patch supplies no target bytes"],
+        "/gmgivexp" => &["Positive XP and connected caller character with a matching persistent player row"],
+        "/gmgiveitem" => &["Positive numeric item template ID, quantity at least 1 (server clamps above 1000), and base inventory capacity/container acceptance"],
+        "/gmgivecash" => &["Positive naquadah amount and matching persistent caller row"],
+        "/gmremoveitem" => &["Server requires caller-owned inventory instance ID and positive INT16 quantity; patch supplies ItemName"],
+        "/gmgiveability" => &["Existing positive ability ID not already known; matching caller player row"],
+        "/gmgivetrainingpoints" => &["Positive points; current matching player session and DB row; INT32 balance headroom"],
+        _ => &[], // Unknown-effect mission rows have no impact/precondition badge.
+    }
+}
+
+/// Build the first 27 forms in TOML order; changed words, events or arguments fail closed.
 pub fn slash_descriptors_1a() -> Result<Vec<SlashDescriptor1a>, String> {
     let entries = parse_patch_table(PATCH_TOML)?;
     descriptors_for(&entries)
 }
 
 pub(crate) fn descriptors_for(entries: &[SlashEntry]) -> Result<Vec<SlashDescriptor1a>, String> {
+    if ROWS.len() != ARGUMENTS.len() || ROWS.len() != EVENTS.len() {
+        return Err("slash evidence table lengths disagree".into());
+    }
     let slice = entries
         .get(..ROWS.len())
         .ok_or("patch slash slice is too short")?;
     slice
         .iter()
-        .zip(ROWS.iter().zip(ARGUMENTS))
-        .map(|(source, (row, expected_args))| {
-            if source.name != row.word || source.parameters.len() != row.arg_help.len() {
+        .zip(ROWS.iter().zip(ARGUMENTS).zip(EVENTS))
+        .map(|(source, ((row, expected_args), expected_event))| {
+            if source.name != row.word
+                || source.event != *expected_event
+                || source.parameters.len() != row.arg_help.len()
+            {
                 return Err(format!("slash evidence mismatch at {}", row.word));
             }
             let actual_args = source
@@ -227,7 +295,12 @@ pub(crate) fn descriptors_for(entries: &[SlashEntry]) -> Result<Vec<SlashDescrip
                 example: None,
                 availability: Availability::Unsupported,
                 disposition_reason: Some(format!(
-                    "{} Native submission unproved. See {EVIDENCE}#{}",
+                    "{}{} Native submission unproved. See {EVIDENCE}#{}",
+                    if row.impact.is_none() {
+                        "Original effect unknown; "
+                    } else {
+                        ""
+                    },
                     row.blocker,
                     &row.word[1..]
                 )),
@@ -238,13 +311,16 @@ pub(crate) fn descriptors_for(entries: &[SlashEntry]) -> Result<Vec<SlashDescrip
                     selection_rule: SelectionRule::None,
                     argument_name: None,
                 },
-                impact: Some(Impact {
-                    kind: row.impact,
+                impact: row.impact.map(|kind| Impact {
+                    kind,
                     summary: row.effect.into(),
-                    preconditions: vec![
+                    preconditions: [
                         "Live server-sourced GameMaster actor in this instance".into(),
                         row.target.into(),
-                    ],
+                    ]
+                    .into_iter()
+                    .chain(specific_preconditions(row.word).iter().map(|p| (*p).into()))
+                    .collect(),
                 }),
                 verify,
                 compensation: Some(if row.compensation.is_empty() {

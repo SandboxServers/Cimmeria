@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use serde_json::json;
+use serde_json::{json, Value};
 
 use super::commands::{
     validate_command, ActorSnapshot, ArgKind, Availability, CommandAction, ExecutionReceipt,
@@ -64,7 +64,6 @@ fn first_slice_names_and_typed_arguments_equal_toml() {
         assert!(!form.descriptor.summary.is_empty());
         assert!(!form.target_scope.is_empty());
         assert!(!form.readback_note.is_empty());
-        assert!(form.descriptor.impact.is_some());
         assert!(form.descriptor.compensation.is_some());
         assert!(form
             .descriptor
@@ -74,6 +73,13 @@ fn first_slice_names_and_typed_arguments_equal_toml() {
             .contains("unproved"));
         for (arg, parameter) in form.descriptor.args.iter().zip(&original.parameters) {
             assert_eq!(arg.name, parameter.name);
+            let expected_kind = match parameter.parameter_type {
+                SlashParameterType::Boolean => ArgKind::Boolean,
+                SlashParameterType::Integer => ArgKind::Integer,
+                SlashParameterType::Float => ArgKind::Float,
+                SlashParameterType::String => ArgKind::Text,
+            };
+            assert_eq!(arg.kind, expected_kind, "{} {}", original.name, arg.name);
             assert_eq!(arg.required, parameter.required);
             assert!(arg.default.is_none());
             assert!(!arg.help.is_empty());
@@ -82,10 +88,16 @@ fn first_slice_names_and_typed_arguments_equal_toml() {
 }
 
 #[test]
-fn changed_toml_name_type_or_optional_shape_fails_closed() {
+fn changed_toml_name_event_type_or_optional_shape_fails_closed() {
     let source = parse_patch_table(TOML).unwrap();
     let mut changed = source.clone();
     changed[0].name = "/different".into();
+    assert!(descriptors_for(&changed).is_err());
+    changed = source.clone();
+    changed[0].event = "Event_SlashCmd_Other".into();
+    assert!(descriptors_for(&changed).is_err());
+    changed = source.clone();
+    changed[23].event = "Event_SlashCmd_GiveCash".into();
     assert!(descriptors_for(&changed).is_err());
     changed = source.clone();
     changed[0].parameters[1].parameter_type = SlashParameterType::Integer;
@@ -93,6 +105,54 @@ fn changed_toml_name_type_or_optional_shape_fails_closed() {
     changed = source;
     changed[14].parameters[0].required = true;
     assert!(descriptors_for(&changed).is_err());
+}
+
+#[test]
+fn unknown_mission_effects_never_serialize_as_read_only() {
+    let forms = slash_descriptors_1a().unwrap();
+    for word in [
+        "/gmmissionclearactive",
+        "/gmmissionclearhistory",
+        "/gmmissionreset",
+        "/gmmissioncomplete",
+        "/gmmissionsetavailable",
+    ] {
+        let form = forms.iter().find(|f| f.source.name == word).unwrap();
+        assert!(form.descriptor.impact.is_none(), "{word}");
+        assert!(form
+            .descriptor
+            .disposition_reason
+            .as_ref()
+            .unwrap()
+            .contains("effect unknown"));
+        let serialized = serde_json::to_value(form).unwrap();
+        assert_eq!(serialized["descriptor"]["impact"], Value::Null, "{word}");
+    }
+    let list = forms
+        .iter()
+        .find(|f| f.source.name == "/gmmissionlist")
+        .unwrap();
+    let serialized = serde_json::to_value(list).unwrap();
+    assert_eq!(serialized["descriptor"]["impact"]["kind"], "read_only");
+}
+
+#[test]
+fn impact_preconditions_include_command_specific_evidence() {
+    let forms = slash_descriptors_1a().unwrap();
+    for (word, required) in [
+        ("/gmmissionassign", "offerable and not already held"),
+        ("/gmmissionadvance", "step ID owned by that mission"),
+        ("/gmgiveitem", "inventory capacity/container acceptance"),
+        ("/gmgivetrainingpoints", "INT32 balance headroom"),
+    ] {
+        let form = forms.iter().find(|f| f.source.name == word).unwrap();
+        let preconditions = &form.descriptor.impact.as_ref().unwrap().preconditions;
+        assert!(
+            preconditions.iter().any(|p| p.contains("GameMaster")),
+            "{word}"
+        );
+        assert!(preconditions.iter().any(|p| p.contains(required)), "{word}");
+    }
 }
 
 #[test]
