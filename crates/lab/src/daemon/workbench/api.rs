@@ -34,9 +34,10 @@ const STYLESHEET: &str = include_str!("../../../workbench/app.css");
 
 /// Routes merged into the DW-02A browser router before its session layer.
 pub fn router(instances: Instances) -> Router<Arc<SessionStore>> {
-    router_with_mission_server(instances, default_mission_server())
+    router_with_sources(instances, bookmark_store(), default_mission_server())
 }
 
+#[cfg(test)]
 pub(crate) fn router_with_store(
     instances: Instances,
     store: BookmarkStore,
@@ -51,6 +52,7 @@ fn default_mission_server() -> Option<Arc<dyn ServerInvoker>> {
 #[derive(Clone)]
 struct MissionServer(Option<Arc<dyn ServerInvoker>>);
 
+#[cfg(test)]
 fn router_with_mission_server(
     instances: Instances,
     server: Option<Arc<dyn ServerInvoker>>,
