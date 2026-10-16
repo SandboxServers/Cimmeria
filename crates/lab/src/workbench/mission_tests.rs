@@ -23,6 +23,9 @@ fn fixture() -> MissionInput {
         definition: sample(
             json!({"mission_id": 622, "mission_defn": "Arm Yourself!", "mission_label": "General"}),
         ),
+        title_candidates: sample(json!([
+            {"mission_id": 622, "mission_defn": "Arm Yourself!"}
+        ])),
         steps: sample(json!([
             {"step_id": 2113, "mission_id": 622, "step_display_log_text": "Search Frost"},
             {"step_id": 80623, "mission_id": 622, "step_display_log_text": "Search the Guard"},
@@ -101,6 +104,46 @@ fn duplicate_visible_titles_do_not_attribute_a_tracker_step() {
         {"kind": "mission", "text": "Arm Yourself!"},
         {"kind": "step", "text": "Search the Guard"},
     ], "errors": []}));
+    let model = build_mission(input);
+    assert!(model["data"]["matched_tracker"].is_null());
+    assert!(model["data"]["step_disagreement"].is_null());
+}
+
+#[test]
+fn one_visible_title_cannot_identify_one_of_two_authored_missions() {
+    let mut input = fixture();
+    input.mission_id = 1140;
+    input.definition = sample(json!({
+        "mission_id": 1140,
+        "mission_defn": "Investigate Ra's Tech",
+        "mission_label": "Men'fa"
+    }));
+    input.title_candidates = sample(json!([
+        {"mission_id": 1140, "mission_defn": "Investigate Ra's Tech"},
+        {"mission_id": 1173, "mission_defn": "Investigate Ra's Tech"}
+    ]));
+    input.steps = sample(json!([
+        {"step_id": 3423, "mission_id": 1140, "step_display_log_text": "Search the Archeology Site"}
+    ]));
+    input.server = sample(json!({"mission_id": 1140, "current_step_id": 3423, "status": 1}));
+    input.ui = sample(json!({"mission_tracker": [
+        {"kind": "mission", "text": "Investigate Ra's Tech"},
+        {"kind": "step", "text": "Locate radioactive soil"}
+    ], "errors": []}));
+    let model = build_mission(input);
+    assert!(model["data"]["matched_tracker"].is_null());
+    assert!(model["data"]["step_disagreement"].is_null());
+    assert!(model["gaps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|gap| gap["code"] == "title_ambiguous"));
+}
+
+#[test]
+fn title_lookup_failure_does_not_promote_visible_text() {
+    let mut input = fixture();
+    input.title_candidates = Err("database unavailable".into());
     let model = build_mission(input);
     assert!(model["data"]["matched_tracker"].is_null());
     assert!(model["data"]["step_disagreement"].is_null());

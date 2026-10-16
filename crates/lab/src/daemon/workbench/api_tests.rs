@@ -22,7 +22,9 @@ impl ServerInvoker for MissionQueryFixture {
             assert_eq!(name, "server_db_query");
             let sql = args["sql"].as_str().expect("read-only SQL argument");
             self.0.lock().unwrap().push(sql.to_owned());
-            let rows = if sql.contains("FROM resources.missions WHERE") {
+            let rows = if sql.contains("WHERE mission_defn = (SELECT mission_defn") {
+                json!([{"mission_id": 622, "mission_defn": "Arm Yourself!"}])
+            } else if sql.contains("FROM resources.missions WHERE") {
                 json!([{"mission_id": 622, "mission_defn": "Arm Yourself!", "mission_label": "General"}])
             } else if sql.contains("FROM resources.mission_steps WHERE") {
                 json!([{"mission_id": 622, "step_id": 80623, "step_display_log_text": "Search the Guard"}])
@@ -350,10 +352,11 @@ async fn mission_route_keeps_player_state_unknown_without_trusted_binding() {
             && gap["detail"] == "trusted client-to-server session binding unavailable"
     }));
     let queries = fixture.0.lock().unwrap().clone();
-    assert_eq!(queries.len(), 3);
+    assert_eq!(queries.len(), 4);
     assert_eq!(queries[0], "SELECT mission_id, mission_label, mission_defn, is_enabled, is_hidden, script_name FROM resources.missions WHERE mission_id = 622");
-    assert_eq!(queries[1], "SELECT step_id, mission_id, step_display_log_text, index, step_enabled FROM resources.mission_steps WHERE mission_id = 622 ORDER BY index, step_id");
-    assert_eq!(queries[2], "SELECT chain_id, description, scope_type, scope_id, enabled FROM resources.content_chains WHERE scope_type = 'mission' AND scope_id = 622 ORDER BY chain_id");
+    assert_eq!(queries[1], "SELECT mission_id, mission_defn FROM resources.missions WHERE mission_defn = (SELECT mission_defn FROM resources.missions WHERE mission_id = 622) ORDER BY mission_id");
+    assert_eq!(queries[2], "SELECT step_id, mission_id, step_display_log_text, index, step_enabled FROM resources.mission_steps WHERE mission_id = 622 ORDER BY index, step_id");
+    assert_eq!(queries[3], "SELECT chain_id, description, scope_type, scope_id, enabled FROM resources.content_chains WHERE scope_type = 'mission' AND scope_id = 622 ORDER BY chain_id");
     assert!(queries.iter().all(|query| !query.contains("sgw_mission")));
     assert_eq!(
         http.get(format!(

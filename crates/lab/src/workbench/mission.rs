@@ -19,6 +19,7 @@ pub struct MissionInput {
     pub instance: String,
     pub mission_id: i32,
     pub definition: Result<Sample, String>,
+    pub title_candidates: Result<Sample, String>,
     pub steps: Result<Sample, String>,
     pub chains: Result<Sample, String>,
     pub server: Result<Sample, String>,
@@ -86,6 +87,12 @@ pub fn build_mission(input: MissionInput) -> Value {
         input.now_ms,
         &mut gaps,
     );
+    let title_candidates = layer(
+        "resources.missions.title_candidates",
+        &input.title_candidates,
+        input.now_ms,
+        &mut gaps,
+    );
     let steps = layer(
         "resources.mission_steps",
         &input.steps,
@@ -137,9 +144,32 @@ pub fn build_mission(input: MissionInput) -> Value {
                         == Some(i64::from(input.mission_id))
             })
         });
-    let tracker = def_row
+    let title = def_row
         .and_then(|v| v.get("mission_defn"))
-        .and_then(Value::as_str)
+        .and_then(Value::as_str);
+    let candidates = row(&input.title_candidates)
+        .and_then(Value::as_array)
+        .map(Vec::as_slice);
+    let title_unique = match (title, candidates) {
+        (Some(title), Some([only]))
+            if only.get("mission_id").and_then(Value::as_i64)
+                == Some(i64::from(input.mission_id))
+                && only.get("mission_defn").and_then(Value::as_str) == Some(title) =>
+        {
+            true
+        }
+        (Some(_), Some(rows)) if rows.len() > 1 => {
+            gaps.push(json!({"source": "resources.missions.title_candidates", "code": "title_ambiguous", "detail": "multiple authored mission IDs share the tracker title"}));
+            false
+        }
+        (Some(_), Some(_)) => {
+            gaps.push(json!({"source": "resources.missions.title_candidates", "code": "title_unbound", "detail": "title lookup did not resolve to the selected mission ID"}));
+            false
+        }
+        _ => false,
+    };
+    let tracker = title
+        .filter(|_| title_unique)
         .and_then(|label| row(&input.ui).and_then(|ui| tracker_for(ui, label)));
     if input.ui.is_ok() && tracker.is_none() {
         gaps.push(json!({"source": "client_ui_state.mission_tracker", "code": "mission_unbound", "detail": "selected mission title is absent or ambiguous in the visible tracker"}));
@@ -162,6 +192,7 @@ pub fn build_mission(input: MissionInput) -> Value {
         "context": {"instance": input.instance, "mission_id": input.mission_id, "observed_at_ms": input.now_ms},
         "data": {
             "definition": definition,
+            "title_candidates": title_candidates,
             "steps": steps,
             "chain_references": chains,
             "server": server,
@@ -314,6 +345,17 @@ pub async fn read_mission(
         "resources.missions",
         "db_read_failed",
     );
+    let title_candidates = match server {
+        Some(server) => db_rows(server, format!("SELECT mission_id, mission_defn FROM resources.missions WHERE mission_defn = (SELECT mission_defn FROM resources.missions WHERE mission_id = {mission_id}) ORDER BY mission_id")).await,
+        None => Err(unavailable()),
+    };
+    log_failure(
+        &title_candidates,
+        instance,
+        mission_id,
+        "resources.missions.title_candidates",
+        "db_read_failed",
+    );
     let steps = match server {
         Some(server) => db_rows(server, format!("SELECT step_id, mission_id, step_display_log_text, index, step_enabled FROM resources.mission_steps WHERE mission_id = {mission_id} ORDER BY index, step_id")).await,
         None => Err(unavailable()),
@@ -377,6 +419,7 @@ pub async fn read_mission(
         instance: instance.into(),
         mission_id,
         definition,
+        title_candidates,
         steps,
         chains,
         server: live,
