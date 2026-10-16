@@ -496,9 +496,11 @@ it. Any other `.`-message is ordinary chat. Auth is checked against your account
 level server-side. Type `.help` (or `.help <word>`) in-game for the live list.
 
 The lab workbench catalog includes typed descriptors for the 27 progression,
-ability, stat, ammo and pet commands. The current catalog enables live reads
-such as `.effects` and the seven stat reports, plus `.cooldowns` and
-`.cleareffects` with their stated impact. Persistent grants including
+ability, stat, ammo and pet commands. The current catalog enables only live
+reads such as `.effects` and the seven stat reports. `.cooldowns` and
+`.cleareffects` remain visible but disabled until their forms enforce
+confirmation and capture a before-state snapshot. Persistent grants
+including
 `.givexp`, `.giveability` and `.giveammo` are shown with exact DB readback
 recipes but remain disabled as palette actions until queued requests and
 post-commit updates are bound to the original GM and subject sessions.
