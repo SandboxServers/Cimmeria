@@ -637,7 +637,7 @@ pub(super) async fn create_character(
             )
             .await;
             let account_eid = get_account_entity_id(connected, addr)?;
-            let (acks, seq, enc_version, origin) = {
+            let (acks, seq, enc_version) = {
                 let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
                 let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
                 if c.key != key || !Arc::ptr_eq(&c.next_seq, &expected_seq) {
@@ -649,8 +649,7 @@ pub(super) async fn create_character(
                 );
                 let seq = c.next_seq.fetch_add(1, Ordering::Relaxed)
                     & cimmeria_mercury::packet::SEQUENCE_MASK;
-                let origin = (c.key == key).then(|| c.wire_send_origin()).flatten();
-                (acks, seq, c.enc_version, origin)
+                (acks, seq, c.enc_version)
             };
             let pkt = crate::mercury::build_on_character_list(
                 &key,
@@ -661,10 +660,8 @@ pub(super) async fn create_character(
                 enc_version,
             );
             tracing::trace!(%addr, len = pkt.len(), seq, "UDP_OUT updated char_list");
-            match origin.as_ref() {
-                Some(origin) => transport.send_to_with_origin(&pkt, addr, origin).await?,
-                None => transport.send_to(&pkt, addr).await?,
-            };
+            // No ingress generation reaches this handler; the reply is unproven.
+            transport.send_to(&pkt, addr).await?;
         }
         Err(e) => {
             let error_str = e.to_string();

@@ -91,15 +91,16 @@ pub async fn handle_enable_entities(
         // for one datagram is fragmented instead of wedging the stream.
         let owner_transport =
             super::content_owner_transport(transport, connected, &next_seq, origin.as_ref());
-        let outcome = super::super::helpers::send_reliable_to_addr(
+        let outcome = super::super::helpers::send_reliable_to_addr_for_owner(
             &owner_transport,
             connected,
             addr,
             entry_info.player_entity_id,
-            "create_player",
+            "create_player_unproven",
             |key, version, seq, acks| {
                 build_create_player(key, seq, acks, &entry_info, load_data.as_ref(), version)
             },
+            &next_seq,
         )
         .await;
         let seq = match outcome {
@@ -205,14 +206,24 @@ pub async fn handle_enable_entities(
     };
     let pkt = build_char_list(&key, seq, &acks, &characters, account_eid, enc_version);
     tracing::trace!(%addr, len = pkt.len(), seq, hex = %super::super::helpers::to_hex(&pkt), "UDP_OUT char_list");
-    super::send_direct(transport, &pkt, addr, origin.as_ref()).await?;
+    super::send_direct(transport, &pkt, addr, None).await?;
     // Char list is a one-shot state delivery; retransmit on loss.
-    super::register_direct_reliable(connected, addr, seq, &pkt, &next_seq, origin.as_ref());
+    super::register_unproven_direct_reliable(
+        connected,
+        addr,
+        seq,
+        &pkt,
+        &next_seq,
+        origin.as_ref(),
+    );
 
     // Send succeeded -- mark char list as sent so we don't re-send on subsequent ENABLE_ENTITIES.
     {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-        if let Some(c) = clients.get_mut(&addr) {
+        if let Some(c) = clients
+            .get_mut(&addr)
+            .filter(|c| super::same_direct_owner(c, &next_seq, origin.as_ref()))
+        {
             c.char_list_sent = true;
         }
     }

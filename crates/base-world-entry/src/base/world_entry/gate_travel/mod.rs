@@ -567,10 +567,19 @@ pub async fn handle_gate_travel(
     };
     let seq = next_seq.fetch_add(1, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;
     let pkt = build_reset_entities(&key, seq, &acks, enc_version);
-    super::send_direct(transport, &pkt, addr, origin.as_ref()).await?;
+    // Cell supplies an entity number without the event's immutable session
+    // generation. A reused number cannot prove which login requested travel.
+    super::send_direct(transport, &pkt, addr, None).await?;
     // RESET_ENTITIES is one-shot state — kicks off the cross-world
     // handoff. Channel retransmit covers loss.
-    super::register_direct_reliable(connected, addr, seq, &pkt, &next_seq, origin.as_ref());
+    super::register_unproven_direct_reliable(
+        connected,
+        addr,
+        seq,
+        &pkt,
+        &next_seq,
+        origin.as_ref(),
+    );
 
     // Discord world-channel: emit only here, once the transition is
     // committed — past the active_player_id fail-closed early-returns and

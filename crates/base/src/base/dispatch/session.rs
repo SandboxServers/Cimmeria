@@ -72,7 +72,6 @@ pub(super) async fn handle_log_off(
         end_hints,
         pending_acks,
         next_seq,
-        origin,
     ) = {
         let mut clients = connected.lock().unwrap();
         match clients.get_mut(&addr) {
@@ -157,7 +156,6 @@ pub(super) async fn handle_log_off(
                     end_hints,
                     Some(Arc::clone(&c.pending_acks)),
                     Some(Arc::clone(&c.next_seq)),
-                    (c.key == key).then(|| c.wire_send_origin()).flatten(),
                 )
             }
             None => (
@@ -168,7 +166,6 @@ pub(super) async fn handle_log_off(
                 cimmeria_entity::cell_entity::PlayerIdentity::UNKNOWN,
                 0,
                 (0, false, None, None, Default::default()),
-                None,
                 None,
                 None,
             ),
@@ -311,7 +308,7 @@ pub(super) async fn handle_log_off(
             .fetch_add(1, Ordering::Relaxed)
             & cimmeria_mercury::packet::SEQUENCE_MASK;
         let pkt = crate::mercury::build_logged_off(&key, seq, &acks, enc_version);
-        send_direct(transport, &pkt, addr, origin.as_ref()).await?;
+        send_direct(transport, &pkt, addr, None).await?;
     } else {
         // Return to character select: reset state and send RESET_ENTITIES + char list
         tracing::info!(
@@ -378,7 +375,7 @@ pub(super) async fn handle_log_off(
             .fetch_add(1, Ordering::Relaxed)
             & cimmeria_mercury::packet::SEQUENCE_MASK;
         let pkt = crate::mercury::build_reset_entities(&key, seq, &acks, enc_version);
-        send_direct(transport, &pkt, addr, origin.as_ref()).await?;
+        send_direct(transport, &pkt, addr, None).await?;
 
         // The client responds with ENABLE_ENTITIES, which triggers the
         // char list flow (same as initial login). The char_list_sent flag

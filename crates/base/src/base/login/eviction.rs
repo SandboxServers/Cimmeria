@@ -289,7 +289,7 @@ pub(crate) async fn handle_log_off(
     // Snapshot the identity + session duration here too, before
     // `destroy_client_entities` removes the session from the map — the
     // Discord logout emit below needs them.
-    let (acks, seq, enc_version, account, character, session_secs, origin) = {
+    let (acks, seq, enc_version, account, character, session_secs) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let client = clients.get_mut(&addr).ok_or("no session for addr")?;
         client
@@ -307,25 +307,14 @@ pub(crate) async fn handle_log_off(
         let account = client.discord_account();
         let character = client.discord_character();
         let session_secs = client.connected_at.elapsed().as_secs();
-        let origin = (client.key == key)
-            .then(|| client.wire_send_origin())
-            .flatten();
-        (
-            acks,
-            seq,
-            enc_version,
-            account,
-            character,
-            session_secs,
-            origin,
-        )
+        (acks, seq, enc_version, account, character, session_secs)
     };
 
     // Send LOGGED_OFF (0x37) with reason=0 to trigger immediate client-side
     // channel teardown.  This fires ServerConnection::loggedOff -> Event_Net_Disconnected
     // which triggers the relogin flow (Change Server) or disconnect UI (Back).
     let pkt = build_logged_off(&key, seq, &acks, enc_version);
-    send_direct(transport, &pkt, addr, origin.as_ref()).await?;
+    send_direct(transport, &pkt, addr, None).await?;
     tracing::debug!(%addr, seq, "Sent LOGGED_OFF (0x37)");
 
     // Destroy entities and remove from connected map.

@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
 use cimmeria_mercury::encryption::EncryptionVersion;
-use cimmeria_mercury::transport::{SendOrigin, Transport};
+use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
 use crate::mercury::{
@@ -14,7 +14,7 @@ use crate::mercury::{
     SKIN_TINTS,
 };
 
-use super::helpers::{get_account_entity_id, send_reliable_to_addr};
+use super::helpers::get_account_entity_id;
 use super::session_identity::identity_for_addr;
 use super::ConnectedClientState;
 
@@ -23,10 +23,7 @@ fn direct_packet_state(
     addr: SocketAddr,
     key: &[u8; 32],
     expected_seq: &Arc<AtomicU32>,
-) -> Result<
-    (Vec<u32>, u32, EncryptionVersion, Option<SendOrigin>),
-    Box<dyn std::error::Error + Send + Sync>,
-> {
+) -> Result<(Vec<u32>, u32, EncryptionVersion), Box<dyn std::error::Error + Send + Sync>> {
     let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
     let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
     if c.key != *key || !Arc::ptr_eq(&c.next_seq, expected_seq) {
@@ -37,8 +34,7 @@ fn direct_packet_state(
         c.enc_version,
     );
     let seq = c.next_seq.fetch_add(1, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;
-    let origin = (c.key == *key).then(|| c.wire_send_origin()).flatten();
-    Ok((acks, seq, c.enc_version, origin))
+    Ok((acks, seq, c.enc_version))
 }
 
 #[cfg(test)]
@@ -155,10 +151,10 @@ pub async fn send_char_create_failed(
     expected_seq: &Arc<AtomicU32>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let account_eid = get_account_entity_id(connected, addr)?;
-    let (acks, seq, enc_version, origin) =
-        direct_packet_state(connected, addr, &key, expected_seq)?;
+    let (acks, seq, enc_version) = direct_packet_state(connected, addr, &key, expected_seq)?;
     let pkt = build_char_create_failed(&key, seq, &acks, error_code, account_eid, enc_version);
-    super::world_entry::send_direct(transport, &pkt, addr, origin.as_ref()).await?;
+    // Ingress did not carry the dispatch generation into this handler.
+    super::world_entry::send_direct(transport, &pkt, addr, None).await?;
     Ok(())
 }
 
@@ -242,11 +238,10 @@ pub async fn handle_delete_character(
 
     let characters = query_character_list(db_pool, account_id, account_name).await;
     let account_eid = get_account_entity_id(connected, addr)?;
-    let (acks, seq, enc_version, origin) =
-        direct_packet_state(connected, addr, &key, &expected_seq)?;
+    let (acks, seq, enc_version) = direct_packet_state(connected, addr, &key, &expected_seq)?;
     let pkt = build_on_character_list(&key, seq, &acks, &characters, account_eid, enc_version);
     tracing::trace!(%addr, len = pkt.len(), seq, "UDP_OUT updated char_list after delete");
-    super::world_entry::send_direct(transport, &pkt, addr, origin.as_ref()).await?;
+    super::world_entry::send_direct(transport, &pkt, addr, None).await?;
 
     Ok(())
 }
@@ -360,12 +355,12 @@ pub async fn handle_request_character_visuals(
                 &content_next_seq,
                 content_origin.as_ref(),
             );
-            let outcome = send_reliable_to_addr(
+            let outcome = super::helpers::send_reliable_to_addr_for_owner(
                 &owner_transport,
                 connected,
                 addr,
                 account_eid,
-                "character_visuals",
+                "character_visuals_unproven",
                 |key, version, seq, acks| {
                     build_character_visuals(
                         key,
@@ -381,6 +376,7 @@ pub async fn handle_request_character_visuals(
                         version,
                     )
                 },
+                &content_next_seq,
             )
             .await;
             tracing::trace!(%addr, ?outcome, "UDP_OUT onCharacterVisuals");

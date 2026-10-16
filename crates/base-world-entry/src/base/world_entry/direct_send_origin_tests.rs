@@ -1,14 +1,15 @@
-//! Direct world-entry sends retain the session that built their ciphertext.
+//! Direct world-entry sends preserve owner fences and explicit proof gaps.
 
 use std::collections::HashMap;
 use std::io;
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use cimmeria_base_session::base::SessionOriginSeed;
+use cimmeria_entity::manager::EntityManager;
 use cimmeria_mercury::instrumentation::wire_fingerprint;
 use cimmeria_mercury::transport::{SendOrigin, Transport};
 use tokio::sync::Notify;
@@ -134,13 +135,134 @@ async fn direct_send_origin_old_world_entry_cannot_register_in_new_peer_window()
         .insert(peer(), session("B", false));
     wire.release.notify_one();
     assert!(task.await.unwrap().is_err());
-    assert_eq!(wire.rows.lock().unwrap()[0].0.as_deref(), Some("A"));
+    assert_eq!(wire.rows.lock().unwrap()[0].0, None);
     assert!(connected.lock().unwrap()[&peer()]
         .channel
         .lock()
         .unwrap()
         .tx_window
         .is_empty());
+}
+
+#[tokio::test]
+async fn direct_send_origin_same_key_replacement_before_first_lock_is_unproven() {
+    let a = session("A", false);
+    let old_key = a.key;
+    let connected = Arc::new(Mutex::new(HashMap::from([(peer(), a)])));
+    connected
+        .lock()
+        .unwrap()
+        .insert(peer(), session("B", false));
+    let wire = Arc::new(Wire::new(false, None));
+    let transport: Arc<dyn Transport> = wire.clone();
+    assert_eq!(old_key, connected.lock().unwrap()[&peer()].key);
+    enter_world(&transport, &connected).await.unwrap();
+    assert!(!wire.rows.lock().unwrap().is_empty());
+    assert!(wire.rows.lock().unwrap().iter().all(|row| row.0.is_none()));
+    let clients = connected.lock().unwrap();
+    let channel = clients[&peer()].channel.lock().unwrap();
+    assert!(channel
+        .tx_window
+        .iter()
+        .all(|entry| entry.send_kind == Some("direct_unproven")));
+}
+
+#[tokio::test]
+async fn direct_send_origin_create_player_helper_does_not_prove_replaced_ingress() {
+    let a = session("A", false);
+    let old_key = a.key;
+    let mut b = session("B", false);
+    b.pending_player_entity_id = Some(4242);
+    b.pending_world_entry = b.pending_map_loaded.take();
+    let connected = Arc::new(Mutex::new(HashMap::from([(peer(), a)])));
+    connected.lock().unwrap().insert(peer(), b);
+    let wire = Arc::new(Wire::new(false, None));
+    let transport: Arc<dyn Transport> = wire.clone();
+    super::enable_entities::handle_enable_entities(
+        &transport,
+        peer(),
+        old_key,
+        1,
+        &connected,
+        &None,
+        &Arc::new(Mutex::new(EntityManager::new())),
+        &None,
+        &Arc::new(Mutex::new(HashMap::new())),
+    )
+    .await
+    .unwrap();
+    assert!(!wire.rows.lock().unwrap().is_empty());
+    assert!(wire.rows.lock().unwrap().iter().all(|row| row.0.is_none()));
+    let clients = connected.lock().unwrap();
+    let channel = clients[&peer()].channel.lock().unwrap();
+    assert!(channel
+        .tx_window
+        .iter()
+        .all(|entry| entry.send_kind == Some("create_player_unproven")));
+}
+
+#[tokio::test]
+async fn direct_send_origin_map_loaded_does_not_commit_a_state_into_b() {
+    let connected = Arc::new(Mutex::new(HashMap::from([(peer(), session("A", false))])));
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::new()));
+    let wire = Arc::new(Wire::new(true, None));
+    let transport: Arc<dyn Transport> = wire.clone();
+    let clients = Arc::clone(&connected);
+    let addresses = Arc::clone(&entity_to_addr);
+    let task = tokio::spawn(async move {
+        super::map_loaded::handle_map_loaded(
+            &transport,
+            peer(),
+            [0; 32],
+            &clients,
+            &None,
+            &addresses,
+            &None,
+        )
+        .await
+    });
+    wire.entered.notified().await;
+    connected
+        .lock()
+        .unwrap()
+        .insert(peer(), session("B", false));
+    wire.release.notify_one();
+    task.await.unwrap().unwrap();
+    assert!(entity_to_addr.lock().unwrap().is_empty());
+    assert!(connected.lock().unwrap()[&peer()]
+        .pending_client_ready
+        .is_none());
+}
+
+#[tokio::test]
+async fn direct_send_origin_char_list_does_not_mark_b_after_a_send() {
+    let mut a = session("A", false);
+    a.pending_map_loaded = None;
+    let connected = Arc::new(Mutex::new(HashMap::from([(peer(), a)])));
+    let wire = Arc::new(Wire::new(true, None));
+    let transport: Arc<dyn Transport> = wire.clone();
+    let clients = Arc::clone(&connected);
+    let task = tokio::spawn(async move {
+        super::enable_entities::handle_enable_entities(
+            &transport,
+            peer(),
+            [0; 32],
+            1,
+            &clients,
+            &None,
+            &Arc::new(Mutex::new(EntityManager::new())),
+            &None,
+            &Arc::new(Mutex::new(HashMap::new())),
+        )
+        .await
+    });
+    wire.entered.notified().await;
+    let mut b = session("B", false);
+    b.pending_map_loaded = None;
+    connected.lock().unwrap().insert(peer(), b);
+    wire.release.notify_one();
+    task.await.unwrap().unwrap();
+    assert!(!connected.lock().unwrap()[&peer()].char_list_sent);
 }
 
 #[tokio::test]
@@ -154,7 +276,7 @@ async fn direct_send_origin_fragments_share_a_and_have_distinct_fingerprints() {
         rows.len() >= 4,
         "long appearance must fragment both bundles"
     );
-    assert!(rows.iter().all(|row| row.0.as_deref() == Some("A")));
+    assert!(rows.iter().all(|row| row.0.is_none()));
     let unique: std::collections::HashSet<_> = rows.iter().map(|row| &row.1).collect();
     assert_eq!(
         unique.len(),
@@ -220,6 +342,18 @@ async fn direct_send_origin_reanchor_stays_unproven_without_cell_generation() {
     .unwrap();
     assert_eq!(wire.rows.lock().unwrap().len(), 1);
     assert!(wire.rows.lock().unwrap().iter().all(|row| row.0.is_none()));
+    {
+        let clients = connected.lock().unwrap();
+        let mut channel = clients[&peer()].channel.lock().unwrap();
+        for entry in &mut channel.tx_window {
+            assert_eq!(entry.send_kind, Some("direct_unproven"));
+            entry.last_sent = Instant::now() - Duration::from_secs(30);
+        }
+    }
+    let retransmits =
+        cimmeria_base_session::base::helpers::collect_pending_retransmits(&connected, peer());
+    assert!(!retransmits.is_empty());
+    assert!(retransmits.iter().all(|send| send.origin.is_none()));
 }
 
 #[test]
@@ -228,12 +362,19 @@ fn direct_send_origin_registration_retains_send_site_and_kind() {
     let seq = Arc::clone(&a.next_seq);
     let origin = a.wire_send_origin();
     let connected = Arc::new(Mutex::new(HashMap::from([(peer(), a)])));
-    super::register_direct_reliable(&connected, peer(), 10, &[0xA1; 48], &seq, origin.as_ref());
+    super::register_unproven_direct_reliable(
+        &connected,
+        peer(),
+        10,
+        &[0xA1; 48],
+        &seq,
+        origin.as_ref(),
+    );
     let clients = connected.lock().unwrap();
     let channel = clients[&peer()].channel.lock().unwrap();
     let entry = channel.tx_window.front().unwrap();
     assert_eq!(entry.raw_bytes.as_ref(), &[0xA1; 48]);
-    assert_eq!(entry.send_kind, Some("direct"));
+    assert_eq!(entry.send_kind, Some("direct_unproven"));
     assert!(entry
         .send_site
         .as_ref()
@@ -257,40 +398,23 @@ fn direct_send_origin_family_census() {
             "{family} lost a direct send conversion"
         );
     }
-    for (family, source) in [
-        (
-            "base_character_create",
-            include_str!("../../../../base/src/base/character_create/mod.rs"),
-        ),
-        (
-            "base_dispatch",
-            include_str!("../../../../base/src/base/dispatch/session.rs"),
-        ),
-        (
-            "base_eviction",
-            include_str!("../../../../base/src/base/login/eviction.rs"),
-        ),
-    ] {
-        assert!(
-            source.contains("send_to_with_origin("),
-            "{family} lost its origin-aware send"
-        );
-    }
+    let create = include_str!("../../../../base/src/base/character_create/mod.rs");
+    assert!(create.contains("transport.send_to(&pkt, addr).await?"));
     let login = include_str!("../../../../base/src/base/login/mod.rs");
     assert!(
         login.contains("pub(crate) use eviction::handle_log_off;"),
         "account logoff must retain its teardown handler"
     );
     let eviction = include_str!("../../../../base/src/base/login/eviction.rs");
-    assert!(
-        eviction.contains("send_direct(transport, &pkt, addr, origin.as_ref())"),
-        "account logoff lost its retained ticket"
-    );
+    assert!(eviction.contains("send_direct(transport, &pkt, old.addr, origin.as_ref())"));
+    assert!(eviction.contains("send_direct(transport, &pkt, addr, None)"));
     let dispatch = include_str!("../../../../base/src/base/dispatch/session.rs");
     assert_eq!(
-        dispatch.matches("send_direct(transport, &pkt").count(),
+        dispatch
+            .matches("send_direct(transport, &pkt, addr, None)")
+            .count(),
         2,
-        "both logoff forms need their original ticket"
+        "both ingress logoff forms must stay unproven"
     );
     let map = include_str!("map_loaded.rs");
     assert!(map.contains("same_direct_owner(c, &next_seq, origin.as_ref())"));
@@ -301,6 +425,10 @@ fn direct_send_origin_family_census() {
     assert!(reanchor.contains("send_direct(transport, pkt, addr, None)"));
     let character = include_str!("../character/mod.rs");
     assert!(character.contains("Arc::ptr_eq(&c.next_seq, expected_seq)"));
-    let create = include_str!("../../../../base/src/base/character_create/mod.rs");
     assert!(create.contains("Arc::ptr_eq(&c.next_seq, &expected_seq)"));
+    let gate = include_str!("gate_travel/mod.rs");
+    assert!(gate.contains("send_direct(transport, &pkt, addr, None)"));
+    let fit = include_str!("../../../../base-session/src/base/helpers/reliable_fit.rs");
+    assert!(fit.contains("send_reliable_to_addr_for_owner"));
+    assert!(fit.contains("kind.ends_with(\"_unproven\")"));
 }

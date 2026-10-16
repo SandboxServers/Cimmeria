@@ -58,15 +58,36 @@ pub(super) async fn send_direct(
     }
 }
 
-/// Register only in the channel that reserved the packet before its send await.
+/// Keep an unproven direct send unproven when its channel retransmits it.
 #[track_caller]
-fn register_direct_reliable(
+fn register_unproven_direct_reliable(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+    seq: u32,
+    bytes: &[u8],
+    next_seq: &Arc<AtomicU32>,
+    owner_origin: Option<&SendOrigin>,
+) {
+    register_direct_reliable_kind(
+        connected,
+        addr,
+        seq,
+        bytes,
+        next_seq,
+        owner_origin,
+        "direct_unproven",
+    );
+}
+
+#[track_caller]
+fn register_direct_reliable_kind(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,
     seq: u32,
     bytes: &[u8],
     next_seq: &Arc<AtomicU32>,
     origin: Option<&SendOrigin>,
+    kind: &'static str,
 ) {
     let Ok(clients) = connected.lock() else {
         return;
@@ -89,13 +110,13 @@ fn register_direct_reliable(
         tracing::warn!(%addr, seq, %error, "direct reliable send registration failed");
         return;
     }
-    channel.set_sent_packet_context(seq, send_site.clone(), "direct", None, None, None);
+    channel.set_sent_packet_context(seq, send_site.clone(), kind, None, None, None);
     let packet_max_size = cimmeria_mercury::consts::PACKET_MAX_SIZE;
     if wire_len > packet_max_size {
         tracing::warn!(
             target: "mercury.reliable_send",
             event = "reliable_send", peer = %addr, seq, wire_len, packet_max_size,
-            wire_fingerprint = %wire_fingerprint, %send_site, send_kind = "direct",
+            wire_fingerprint = %wire_fingerprint, %send_site, send_kind = kind,
             fragment_index = ?None::<usize>, fragment_count = ?None::<usize>,
             message_count = ?None::<usize>, account_id = state.account_id,
             account_name = state.account_name.as_deref(), player_id = state.active_player_id,
@@ -107,7 +128,7 @@ fn register_direct_reliable(
         tracing::debug!(
             target: "mercury.reliable_send",
             event = "reliable_send", peer = %addr, seq, wire_len,
-            wire_fingerprint = %wire_fingerprint, %send_site, send_kind = "direct",
+            wire_fingerprint = %wire_fingerprint, %send_site, send_kind = kind,
             fragment_index = ?None::<usize>, fragment_count = ?None::<usize>,
             message_count = ?None::<usize>, account_id = state.account_id,
             account_name = state.account_name.as_deref(), player_id = state.active_player_id,
@@ -180,7 +201,9 @@ impl Transport for ContentOwnerTransport {
             if !self.still_owner(addr) || !same_direct_origin(Some(origin), self.origin.as_ref()) {
                 return Err(std::io::Error::other("content owner replaced"));
             }
-            self.inner.send_to_with_origin(bytes, addr, origin).await
+            // The helper picked this owner only after inbound dispatch began;
+            // without an ingress token its successful wire send is unproven.
+            self.inner.send_to(bytes, addr).await
         })
     }
 

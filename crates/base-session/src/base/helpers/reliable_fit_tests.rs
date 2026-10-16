@@ -10,6 +10,7 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use cimmeria_mercury::channel_bundle::{ChannelBundle, IDBASE_SGW_PLAYER};
@@ -20,9 +21,52 @@ use cimmeria_mercury::transport::Transport;
 use tracing::Level;
 
 use super::{
-    send_bundle_to_witness_reliable, send_to_witness_reliable, ConnectedClientState,
-    WitnessSendOutcome,
+    send_bundle_to_witness_reliable, send_reliable_to_addr_for_owner, send_to_witness_reliable,
+    ConnectedClientState, WitnessSendOutcome,
 };
+
+#[tokio::test]
+async fn direct_send_origin_owner_guard_preserves_replacement_seq_and_acks() {
+    for npc in [petbe_hostile(), oversize_lineup()] {
+        let h = harness(EncryptionVersion::V1, 1..3);
+        let expected_seq = Arc::clone(&h.connected.lock().unwrap()[&h.addr].next_seq);
+        let swapped = AtomicBool::new(false);
+        let connected = Arc::clone(&h.connected);
+        let addr = h.addr;
+        let outcome = send_reliable_to_addr_for_owner(
+            &h.transport,
+            &h.connected,
+            h.addr,
+            NPC,
+            "direct_unproven",
+            |key, version, seq, acks| {
+                if !swapped.swap(true, Ordering::SeqCst) {
+                    let b = crate::test_support::test_default_connected_client_state();
+                    b.pending_acks.lock().unwrap().extend([10, 11]);
+                    connected.lock().unwrap().insert(addr, b);
+                }
+                build_create_entity_cascade(
+                    key,
+                    seq,
+                    acks,
+                    NPC,
+                    SGWMOB_CLASS_ID,
+                    42,
+                    Some(&npc),
+                    version,
+                )
+            },
+            &expected_seq,
+        )
+        .await;
+        assert!(matches!(outcome, WitnessSendOutcome::ClientDisconnected));
+        let clients = h.connected.lock().unwrap();
+        let b = &clients[&h.addr];
+        assert_eq!(b.next_seq.load(Ordering::Relaxed), 0);
+        assert_eq!(&*b.pending_acks.lock().unwrap(), &[10, 11]);
+        assert!(h.tt.filter_to(h.addr).is_empty());
+    }
+}
 use crate::cell::messages::NpcAoIData;
 use crate::mercury::{
     build_create_entity_cascade, compose_create_entity_cascade_body, SGWMOB_CLASS_ID,

@@ -285,7 +285,14 @@ pub(crate) async fn handle_reanchor_player(
         // to the 28-bit space so the contiguous range stays in-band even
         // when `base_seq + i` would otherwise cross `NULL_SEQUENCE`.
         let pkt_seq = base_seq.wrapping_add(i as u32) & cimmeria_mercury::packet::SEQUENCE_MASK;
-        super::register_direct_reliable(connected, addr, pkt_seq, pkt, &next_seq, origin.as_ref());
+        super::register_unproven_direct_reliable(
+            connected,
+            addr,
+            pkt_seq,
+            pkt,
+            &next_seq,
+            origin.as_ref(),
+        );
     }
 
     // Same journal as the cell side: a reanchor with no `world_enter` after it
