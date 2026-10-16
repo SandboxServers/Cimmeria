@@ -38,4 +38,11 @@ code { color: #b6e0f3; }
 .badge-stale { background: #67471f; color: #fff0cf; }
 .dossier-gaps { margin-top: 1.5rem; padding: 1rem; border: 1px solid #67471f; border-radius: .5rem; }
 .dossier-gaps ul { margin: .5rem 0 0; padding-left: 1.2rem; overflow-wrap: anywhere; }
+.probe-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 1.5rem; }
+.probe-fields { display: grid; align-content: start; gap: .6rem; }
+.probe-fields input:not([type="checkbox"]), .probe-fields select, .probe-fields textarea { width: 100%; padding: .65rem; border: 1px solid #4c657e; border-radius: .45rem; background: #111822; color: inherit; font: inherit; }
+.probe-fields textarea, #probe-output pre { overflow-wrap: anywhere; white-space: pre-wrap; }
+#probe-output { margin-top: 1.2rem; overflow-wrap: anywhere; }
+.probe-tree { padding-left: 1.2rem; overflow-wrap: anywhere; }
+#probe-status[data-state="error"] { color: #ffd38a; }
 @media (max-width: 620px) { .topbar { align-items: flex-start; flex-direction: column; } }

@@ -31,6 +31,7 @@ pub(crate) use probe_api::leased;
 const INDEX: &str = include_str!("../../../workbench/index.html");
 const JAVASCRIPT: &str = include_str!("../../../workbench/app.js");
 const DOSSIER_JAVASCRIPT: &str = include_str!("../../../workbench/views/dossier.js");
+const PROBE_JAVASCRIPT: &str = include_str!("../../../workbench/views/probe.js");
 const STYLESHEET: &str = include_str!("../../../workbench/app.css");
 
 /// Routes merged into the DW-02A browser router before its session layer.
@@ -470,6 +471,11 @@ pub async fn javascript() -> Response {
 /// Serve the read-only dossier view through the browser session gate.
 pub async fn dossier_javascript() -> Response {
     static_asset("text/javascript; charset=utf-8", DOSSIER_JAVASCRIPT)
+}
+
+/// Serve the leased probe view through the browser session gate.
+pub async fn probe_javascript() -> Response {
+    static_asset("text/javascript; charset=utf-8", PROBE_JAVASCRIPT)
 }
 
 /// Serve the bundled stylesheet through the browser session gate.

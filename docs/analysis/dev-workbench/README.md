@@ -97,7 +97,7 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 2 | DW-10 | Reproduction recorder enrichment | 07-08, 03S-B, LR-11 | 45k | BlockedDependency |
 | 2 | DW-11 | Triggered flight recorder | 08, 03S-B, LR-14/15 | 45k | BlockedDependency |
 | 3 | DW-12A | GUI dossier view | 02B-03 | 30k | Review |
-| 3 | DW-12B | GUI Lua probe/object view | 02B, 04 | 30k | Ready |
+| 3 | DW-12B | GUI Lua probe/object view | 02B, 04 | 30k | Review |
 | 3 | DW-12C | GUI spatial/bookmark view and actions | 02B, 05, 05A | 30k | BlockedDependency |
 | 3 | DW-12D | GUI mission X-ray view | 02B, 06 | 30k | Ready |
 | 3 | DW-13 | One-click causal trace | 07-08 | 40k | Ready |

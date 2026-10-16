@@ -2,6 +2,7 @@
 
 const views = {
   dossier: "Inspect the selected runtime entity and the evidence behind each field.",
+  probe: "Save and run Lua probes or browse bounded client objects.",
   palette: "Slash and dot GM command forms will appear here with preview and receipts.",
   trace: "Causal traces and five-layer truth snapshots will appear here."
 };
@@ -80,6 +81,8 @@ if (typeof document !== "undefined") {
   const overview = document.getElementById("overview");
   const placeholder = document.getElementById("placeholder");
   const dossier = document.getElementById("dossier");
+  const probe = document.getElementById("probe");
+  const probeController = window.CimmeriaProbe.mountProbe(document, instance);
   const targetInput = document.getElementById("target-entity-id");
   const dossierController = window.CimmeriaDossier.createDossierController({
     instance,
@@ -99,13 +102,15 @@ if (typeof document !== "undefined") {
     }
     overview.hidden = state.view !== "overview";
     dossier.hidden = state.view !== "dossier";
-    placeholder.hidden = state.view === "overview" || state.view === "dossier";
+    probe.hidden = state.view !== "probe";
+    placeholder.hidden = state.view === "overview" || state.view === "dossier" || state.view === "probe";
     if (!placeholder.hidden) {
       const tab = tabs.find(item => item.dataset.view === state.view);
       document.getElementById("placeholder-title").textContent = tab.textContent;
       document.getElementById("placeholder-description").textContent = views[state.view];
     }
     if (state.view === "dossier") dossierController.refresh();
+    if (state.view === "probe" && probeController.snapshot.phase === "empty") probeController.load();
   }
 
   async function refresh() {
