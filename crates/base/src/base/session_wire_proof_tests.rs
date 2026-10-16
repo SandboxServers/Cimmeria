@@ -260,6 +260,73 @@ async fn session_wire_proof_cancelled_await_is_a_permanent_gap() {
 }
 
 #[tokio::test]
+async fn session_wire_proof_untagged_send_stays_incomplete_past_gap_age() {
+    let wire = Arc::new(Wire::new());
+    wire.pause.store(true, Ordering::SeqCst);
+    let connected = connected();
+    let issuer = SessionOriginIssuer::new().unwrap();
+    let address = peer(30013);
+    install(&connected, address, issuer.issue(address, Instant::now()));
+    let observer = Arc::new(ProofTransport::new(wire.clone(), &connected, false));
+    let sending = tokio::spawn({
+        let observer = observer.clone();
+        async move { observer.send_to(b"paused", address).await }
+    });
+    wire.started.notified().await;
+    {
+        let mut ring = observer.ring.lock().unwrap();
+        ring.last_gap_at = Some(Instant::now() - MAX_AGE - Duration::from_millis(1));
+    }
+    let pending = observer.snapshot();
+    assert_eq!(pending.gaps.pending_untagged, 1);
+    assert!(!pending.coverage_complete);
+    wire.release.notify_one();
+    sending.await.unwrap().unwrap();
+    let completed = observer.snapshot();
+    assert_eq!(completed.gaps.pending_untagged, 0);
+    assert_eq!(completed.gaps.untagged, 1);
+    assert!(!completed.coverage_complete);
+}
+
+#[tokio::test]
+async fn session_wire_proof_mismatched_send_refreshes_gap_after_long_await() {
+    let wire = Arc::new(Wire::new());
+    wire.pause.store(true, Ordering::SeqCst);
+    let connected = connected();
+    let issuer = SessionOriginIssuer::new().unwrap();
+    let address = peer(30014);
+    let other = peer(30015);
+    install(&connected, address, issuer.issue(address, Instant::now()));
+    let observer = Arc::new(ProofTransport::new(wire.clone(), &connected, false));
+    let origin = connected.lock().unwrap()[&address]
+        .wire_send_origin()
+        .unwrap();
+    let sending = tokio::spawn({
+        let observer = observer.clone();
+        async move {
+            observer
+                .send_to_with_origin(b"paused", other, &origin)
+                .await
+        }
+    });
+    wire.started.notified().await;
+    {
+        let mut ring = observer.ring.lock().unwrap();
+        ring.last_gap_at = Some(Instant::now() - MAX_AGE - Duration::from_millis(1));
+    }
+    let pending = observer.snapshot();
+    assert_eq!(pending.gaps.pending_tagged, 1);
+    assert!(!pending.coverage_complete);
+    wire.release.notify_one();
+    sending.await.unwrap().unwrap();
+    let completed = observer.snapshot();
+    assert_eq!(completed.gaps.pending_tagged, 0);
+    assert_eq!(completed.gaps.origin_peer_mismatch, 1);
+    assert!(completed.rows.is_empty());
+    assert!(!completed.coverage_complete);
+}
+
+#[tokio::test]
 async fn session_wire_proof_snapshot_cannot_publish_a_after_b_relog() {
     let connected = connected();
     let wire = Arc::new(Wire::new());

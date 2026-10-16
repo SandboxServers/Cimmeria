@@ -71,14 +71,15 @@ pub(crate) struct ProofRow {
     pub fingerprint: String,
 }
 
-/// Named diagnostics. Totals are monotonic per boot; `pending_tagged` is a
-/// current gauge. Eligibility uses the latest gap in the bounded window.
+/// Named diagnostics. Totals are monotonic per boot; pending counts are
+/// current gauges. Eligibility uses the latest gap in the bounded window.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct ProofGaps {
     pub untagged: u64,
     pub pre_phase3_exempt: u64,
     pub origin_peer_mismatch: u64,
     pub pending_tagged: u64,
+    pub pending_untagged: u64,
     pub cancelled_send: u64,
     pub failed_send: u64,
     pub partial_send: u64,
@@ -116,17 +117,21 @@ struct Ring {
 /// A dropped send future must not disappear from coverage accounting.
 struct SendAttempt<'a> {
     ring: &'a Mutex<Ring>,
+    tagged: bool,
     completed: bool,
 }
 
 impl<'a> SendAttempt<'a> {
-    fn begin(ring: &'a Mutex<Ring>) -> Self {
-        ring.lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .gaps
-            .pending_tagged += 1;
+    fn begin(ring: &'a Mutex<Ring>, tagged: bool) -> Self {
+        let mut guard = ring.lock().unwrap_or_else(PoisonError::into_inner);
+        if tagged {
+            guard.gaps.pending_tagged += 1;
+        } else {
+            guard.gaps.pending_untagged += 1;
+        }
         Self {
             ring,
+            tagged,
             completed: false,
         }
     }
@@ -135,7 +140,11 @@ impl<'a> SendAttempt<'a> {
 impl Drop for SendAttempt<'_> {
     fn drop(&mut self) {
         let mut ring = self.ring.lock().unwrap_or_else(PoisonError::into_inner);
-        ring.gaps.pending_tagged -= 1;
+        if self.tagged {
+            ring.gaps.pending_tagged -= 1;
+        } else {
+            ring.gaps.pending_untagged -= 1;
+        }
         if !self.completed {
             ring.gaps.cancelled_send += 1;
             ring.note_gap(Instant::now());
@@ -145,11 +154,12 @@ impl Drop for SendAttempt<'_> {
 
 impl Ring {
     fn note_gap(&mut self, now: Instant) {
-        self.last_gap_at = Some(now);
+        self.last_gap_at = Some(self.last_gap_at.map_or(now, |previous| previous.max(now)));
     }
 
     fn coverage_incomplete(&self, now: Instant) -> bool {
         self.gaps.pending_tagged != 0
+            || self.gaps.pending_untagged != 0
             || self
                 .last_gap_at
                 .is_some_and(|gap| now.saturating_duration_since(gap) < MAX_AGE)
@@ -287,7 +297,14 @@ impl Transport for ProofTransport {
             ring.gaps.untagged += 1;
             ring.note_gap(Instant::now());
         }
-        self.inner.send_to(bytes, addr).await
+        let mut attempt = SendAttempt::begin(&self.ring, false);
+        let result = self.inner.send_to(bytes, addr).await;
+        self.ring
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .note_gap(Instant::now());
+        attempt.completed = true;
+        result
     }
 
     async fn send_to_pre_phase3(&self, bytes: &[u8], addr: SocketAddr) -> io::Result<usize> {
@@ -318,7 +335,7 @@ impl Transport for ProofTransport {
                 ring.note_gap(Instant::now());
             }
         }
-        let mut attempt = SendAttempt::begin(&self.ring);
+        let mut attempt = SendAttempt::begin(&self.ring, true);
         let result = self.inner.send_to(bytes, addr).await;
         {
             let mut ring = self.ring.lock().unwrap_or_else(PoisonError::into_inner);
@@ -334,7 +351,7 @@ impl Transport for ProofTransport {
                 Ok(_) if peer_matches && !self.chaos_unsafe => {
                     ring.record(bytes, &ticket, Instant::now())
                 }
-                Ok(_) => {}
+                Ok(_) => ring.note_gap(Instant::now()),
             }
         }
         attempt.completed = true;
