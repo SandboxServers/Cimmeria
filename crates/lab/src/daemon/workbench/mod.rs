@@ -32,6 +32,7 @@ pub fn router(sessions: Arc<SessionStore>, token: Arc<str>, instances: Instances
         .route("/workbench/app.js", get(api::javascript))
         .route("/workbench/views/dossier.js", get(api::dossier_javascript))
         .route("/workbench/views/probe.js", get(api::probe_javascript))
+        .route("/workbench/views/mission.js", get(api::mission_javascript))
         .route("/workbench/app.css", get(api::stylesheet))
         .route("/workbench/session", get(csrf).post(session_check))
         .merge(api::router(instances.clone()))

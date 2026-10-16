@@ -30,7 +30,12 @@ fn fixture() -> MissionInput {
             {"step_id": 2113, "mission_id": 622, "step_display_log_text": "Search Frost"},
             {"step_id": 80623, "mission_id": 622, "step_display_log_text": "Search the Guard"},
         ])),
+        objectives: sample(json!([
+            {"objective_id": 90, "step_id": 2113, "display_log_text": "Search Frost's body", "is_optional": false, "is_hidden": false},
+            {"objective_id": 91, "step_id": 80623, "display_log_text": "Search the Guard", "is_optional": true, "is_hidden": false}
+        ])),
         chains: sample(json!([{"chain_id": 1003, "scope_type": "mission", "scope_id": 622}])),
+        live_server: Err("no bound live mission instance reader".into()),
         server: sample(json!({"mission_id": 622, "current_step_id": 80623, "status": 1})),
         wire: Err("tap unbound".into()),
         client: Err("client mission state unavailable".into()),
@@ -57,6 +62,7 @@ fn persisted_step_and_visible_tracker_disagree_without_rewriting_state() {
     );
     assert_eq!(model["data"]["step_disagreement"], true);
     assert_eq!(model["data"]["server"]["source"], "sgw_mission");
+    assert!(model["data"]["live_server"]["value"].is_null());
     assert_eq!(model["data"]["ui"]["age_ms"], 100);
     assert!(model["gaps"]
         .as_array()
@@ -79,6 +85,20 @@ fn missing_definition_is_unknown_and_tracker_cannot_bind_to_id() {
         .unwrap()
         .iter()
         .any(|g| g["source"] == "resources.missions"));
+}
+
+#[test]
+fn authored_objective_failure_stays_separate_from_steps_and_tracker() {
+    let mut input = fixture();
+    input.objectives = Err("objective query unavailable".into());
+    let model = build_mission(input);
+    assert!(model["data"]["objectives"]["value"].is_null());
+    assert!(model["data"]["steps"]["value"].is_array());
+    assert!(model["data"]["matched_tracker"].is_object());
+    assert!(model["gaps"].as_array().unwrap().iter().any(|gap| {
+        gap["source"] == "resources.mission_objectives"
+            && gap["detail"] == "objective query unavailable"
+    }));
 }
 
 #[test]

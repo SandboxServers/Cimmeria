@@ -32,6 +32,7 @@ const INDEX: &str = include_str!("../../../workbench/index.html");
 const JAVASCRIPT: &str = include_str!("../../../workbench/app.js");
 const DOSSIER_JAVASCRIPT: &str = include_str!("../../../workbench/views/dossier.js");
 const PROBE_JAVASCRIPT: &str = include_str!("../../../workbench/views/probe.js");
+const MISSION_JAVASCRIPT: &str = include_str!("../../../workbench/views/mission.js");
 const STYLESHEET: &str = include_str!("../../../workbench/app.css");
 
 /// Routes merged into the DW-02A browser router before its session layer.
@@ -476,6 +477,11 @@ pub async fn dossier_javascript() -> Response {
 /// Serve the leased probe view through the browser session gate.
 pub async fn probe_javascript() -> Response {
     static_asset("text/javascript; charset=utf-8", PROBE_JAVASCRIPT)
+}
+
+/// Serve the read-only mission X-ray view through the browser session gate.
+pub async fn mission_javascript() -> Response {
+    static_asset("text/javascript; charset=utf-8", MISSION_JAVASCRIPT)
 }
 
 /// Serve the bundled stylesheet through the browser session gate.

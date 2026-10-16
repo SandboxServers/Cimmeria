@@ -3,6 +3,7 @@
 const views = {
   dossier: "Inspect the selected runtime entity and the evidence behind each field.",
   probe: "Save and run Lua probes or browse bounded client objects.",
+  mission: "Inspect mission definitions, progress, packets, client state and tracker evidence.",
   palette: "Slash and dot GM command forms will appear here with preview and receipts.",
   trace: "Causal traces and five-layer truth snapshots will appear here."
 };
@@ -82,7 +83,9 @@ if (typeof document !== "undefined") {
   const placeholder = document.getElementById("placeholder");
   const dossier = document.getElementById("dossier");
   const probe = document.getElementById("probe");
+  const mission = document.getElementById("mission");
   const probeController = window.CimmeriaProbe.mountProbe(document, instance);
+  const missionController = window.CimmeriaMission.mountMission(document, instance, sessionStorage);
   const targetInput = document.getElementById("target-entity-id");
   const dossierController = window.CimmeriaDossier.createDossierController({
     instance,
@@ -103,7 +106,9 @@ if (typeof document !== "undefined") {
     overview.hidden = state.view !== "overview";
     dossier.hidden = state.view !== "dossier";
     probe.hidden = state.view !== "probe";
-    placeholder.hidden = state.view === "overview" || state.view === "dossier" || state.view === "probe";
+    mission.hidden = state.view !== "mission";
+    placeholder.hidden = state.view === "overview" || state.view === "dossier"
+      || state.view === "probe" || state.view === "mission";
     if (!placeholder.hidden) {
       const tab = tabs.find(item => item.dataset.view === state.view);
       document.getElementById("placeholder-title").textContent = tab.textContent;
@@ -111,6 +116,7 @@ if (typeof document !== "undefined") {
     }
     if (state.view === "dossier") dossierController.refresh();
     if (state.view === "probe" && probeController.snapshot.phase === "empty") probeController.load();
+    if (state.view === "mission" && missionController.snapshot.phase === "empty") missionController.refresh();
   }
 
   async function refresh() {

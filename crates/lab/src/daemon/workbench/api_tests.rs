@@ -28,6 +28,8 @@ impl ServerInvoker for MissionQueryFixture {
                 json!([{"mission_id": 622, "mission_defn": "Arm Yourself!", "mission_label": "General"}])
             } else if sql.contains("FROM resources.mission_steps WHERE") {
                 json!([{"mission_id": 622, "step_id": 80623, "step_display_log_text": "Search the Guard"}])
+            } else if sql.contains("FROM resources.mission_objectives o JOIN") {
+                json!([{"step_id": 80623, "objective_id": 91023, "display_log_text": "Search the Guard", "is_enabled": true, "is_hidden": false, "is_optional": false}])
             } else if sql.contains("FROM resources.content_chains WHERE") {
                 json!([])
             } else {
@@ -228,6 +230,7 @@ async fn shell_assets_and_api_are_inside_the_session_gate() {
         "/workbench/app.js",
         "/workbench/views/dossier.js",
         "/workbench/views/probe.js",
+        "/workbench/views/mission.js",
         "/workbench/app.css",
         "/workbench/api/v1/session?instance=default",
     ] {
@@ -248,11 +251,14 @@ async fn shell_assets_and_api_are_inside_the_session_gate() {
     assert_eq!(index.status(), reqwest::StatusCode::OK);
     let html = index.text().await.unwrap();
     assert!(html.contains("data-instance=\"default\""));
+    assert!(html.contains("/workbench/views/mission.js"));
+    assert!(html.contains("data-view=\"mission\""));
     assert!(!html.contains(TOKEN));
     for (path, mime) in [
         ("app.js", "text/javascript"),
         ("views/dossier.js", "text/javascript"),
         ("views/probe.js", "text/javascript"),
+        ("views/mission.js", "text/javascript"),
         ("app.css", "text/css"),
     ] {
         let response = http
@@ -352,18 +358,24 @@ async fn mission_route_keeps_player_state_unknown_without_trusted_binding() {
     assert_eq!(response.status(), reqwest::StatusCode::OK);
     let model: Value = response.json().await.unwrap();
     assert_eq!(model["context"]["mission_id"], 622);
+    assert_eq!(
+        model["data"]["objectives"]["value"][0]["objective_id"],
+        91023
+    );
     assert!(model["data"]["server"]["value"].is_null());
+    assert!(model["data"]["live_server"]["value"].is_null());
     assert!(model["data"]["step_disagreement"].is_null());
     assert!(model["gaps"].as_array().unwrap().iter().any(|gap| {
         gap["source"] == "sgw_mission"
             && gap["detail"] == "trusted client-to-server session binding unavailable"
     }));
     let queries = fixture.0.lock().unwrap().clone();
-    assert_eq!(queries.len(), 4);
+    assert_eq!(queries.len(), 5);
     assert_eq!(queries[0], "SELECT mission_id, mission_label, mission_defn, is_enabled, is_hidden, script_name FROM resources.missions WHERE mission_id = 622");
     assert_eq!(queries[1], "SELECT mission_id, mission_defn FROM resources.missions WHERE mission_defn = (SELECT mission_defn FROM resources.missions WHERE mission_id = 622) ORDER BY mission_id");
     assert_eq!(queries[2], "SELECT step_id, mission_id, step_display_log_text, index, step_enabled FROM resources.mission_steps WHERE mission_id = 622 ORDER BY index, step_id");
-    assert_eq!(queries[3], "SELECT chain_id, description, scope_type, scope_id, enabled FROM resources.content_chains WHERE scope_type = 'mission' AND scope_id = 622 ORDER BY chain_id");
+    assert_eq!(queries[3], "SELECT o.objective_id, o.step_id, o.display_log_text, o.is_enabled, o.is_hidden, o.is_optional FROM resources.mission_objectives o JOIN resources.mission_steps s ON s.step_id = o.step_id WHERE s.mission_id = 622 ORDER BY s.index, o.objective_id");
+    assert_eq!(queries[4], "SELECT chain_id, description, scope_type, scope_id, enabled FROM resources.content_chains WHERE scope_type = 'mission' AND scope_id = 622 ORDER BY chain_id");
     assert!(queries.iter().all(|query| !query.contains("sgw_mission")));
     assert_eq!(
         http.get(format!(
