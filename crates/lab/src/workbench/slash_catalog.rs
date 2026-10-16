@@ -2,11 +2,14 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::commands::{
-    ArgDescriptor, ArgKind, Availability, CommandChannel, CommandDescriptor, SelectionRule,
-    TargetKind, TargetPolicy, COMMAND_METADATA_VERSION,
-};
-use super::slash_inventory::{parse_patch_table, SlashEntry, SlashParameterType};
+use super::commands::CommandDescriptor;
+use super::slash_descriptors_1a::descriptors_for as descriptors_1a;
+use super::slash_descriptors_1b::descriptors_1b;
+use super::slash_descriptors_2a::descriptors_for as descriptors_2a;
+use super::slash_descriptors_2b::descriptors_for as descriptors_2b;
+use super::slash_descriptors_3a::descriptors_3a;
+use super::slash_descriptors_3b::descriptors_3b;
+use super::slash_inventory::{parse_patch_table, SlashEntry};
 
 const PATCH_TOML: &str =
     include_str!("../../../../data/client-patches/012-gm-slash-commands/commands.toml");
@@ -64,62 +67,63 @@ pub fn stock_addendum() -> Result<StockAddendum, String> {
 
 /// Return all patch 012 words in source order as non-runnable typed entries.
 pub fn patch_slash_catalog() -> Result<Vec<SlashCatalogEntry>, String> {
-    let entries = parse_patch_table(PATCH_TOML)?;
-    Ok(entries
+    catalog_from_entries(parse_patch_table(PATCH_TOML)?)
+}
+
+pub(super) fn catalog_from_entries(
+    entries: Vec<SlashEntry>,
+) -> Result<Vec<SlashCatalogEntry>, String> {
+    if entries.len() != 162 {
+        return Err(format!(
+            "patch slash roster has {} entries, expected 162",
+            entries.len()
+        ));
+    }
+    let mut descriptors = Vec::with_capacity(entries.len());
+    descriptors.extend(
+        descriptors_1a(&entries)?
+            .into_iter()
+            .map(|row| row.descriptor),
+    );
+    descriptors.extend(descriptors_1b(&entries[27..54])?);
+    descriptors.extend(
+        descriptors_2a(&entries)?
+            .into_iter()
+            .map(|row| row.descriptor),
+    );
+    descriptors.extend(
+        descriptors_2b(&entries)?
+            .into_iter()
+            .map(|row| row.descriptor),
+    );
+    descriptors.extend(descriptors_3a(&entries[108..135])?);
+    descriptors.extend(
+        descriptors_3b(&entries[135..162])?
+            .into_iter()
+            .map(|row| row.descriptor),
+    );
+    if descriptors.len() != entries.len() {
+        return Err("six slash descriptor slices do not cover patch roster".into());
+    }
+    let mut seen = std::collections::HashSet::with_capacity(entries.len());
+    entries
         .into_iter()
-        .map(|source| {
+        .zip(descriptors)
+        .map(|(source, descriptor)| {
+            if source.name != descriptor.id || !seen.insert(descriptor.id.clone()) {
+                return Err(format!(
+                    "duplicate or noncanonical slash descriptor: {}",
+                    descriptor.id
+                ));
+            }
             let method_candidate = method_candidate(&source);
-            let descriptor = disabled_descriptor(&source);
-            SlashCatalogEntry {
+            Ok(SlashCatalogEntry {
                 source,
                 descriptor,
                 method_candidate,
-            }
+            })
         })
-        .collect())
-}
-
-fn disabled_descriptor(source: &SlashEntry) -> CommandDescriptor {
-    let args = source
-        .parameters
-        .iter()
-        .map(|parameter| ArgDescriptor {
-            name: parameter.name.clone(),
-            kind: match parameter.parameter_type {
-                SlashParameterType::Boolean => ArgKind::Boolean,
-                SlashParameterType::Integer => ArgKind::Integer,
-                SlashParameterType::Float => ArgKind::Float,
-                SlashParameterType::String => ArgKind::Text,
-            },
-            required: parameter.required,
-            default: None,
-            range: None,
-            choices: Vec::new(),
-            help: "Patch 012 client parser parameter; effect and formatting pending review".into(),
-            sensitive: false,
-        })
-        .collect();
-    CommandDescriptor {
-        id: source.name.clone(),
-        channel: CommandChannel::Slash,
-        category: "native slash inventory".into(),
-        aliases: Vec::new(),
-        summary: format!("{} client event (effect pending review)", source.event),
-        example: None,
-        availability: Availability::Unsupported,
-        disposition_reason: Some("native submission unproved".into()),
-        manual_pending: true,
-        args,
-        target: TargetPolicy {
-            kind: TargetKind::None,
-            selection_rule: SelectionRule::None,
-            argument_name: None,
-        },
-        impact: None,
-        verify: None,
-        compensation: None,
-        metadata_version: COMMAND_METADATA_VERSION,
-    }
+        .collect()
 }
 
 fn method_candidate(source: &SlashEntry) -> Option<MethodCandidate> {
