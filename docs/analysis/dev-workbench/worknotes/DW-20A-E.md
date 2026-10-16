@@ -1,0 +1,5 @@
+# DW-20A-E handoff
+
+`evidence/DW-20A-E.md` covers the exact eight travel and eight spawn registry specs with handler-backed arguments, target rules, effects, verification and compensation. It distinguishes same-space forced-position snaps from cross-space `GateTravel` enqueue/re-entry. `.spawn` and `.spawnrandom` create runtime entities from `resources.entity_templates`; only `.savespawn`/`.delspawn` queue spawnlist SQL, and `.seedconfirm` still does not edit the committed seed file.
+
+The `.spawnrandom` evidence marks the future typed form disabled until DW-20A adds cell-side validation: malformed `count` silently falls back to 1, template ID need not be positive, and finite range inputs can produce non-finite derived positions. Other readback gaps include independent autosave preference, spawn-set membership, NPC home/AI path and post-transfer client application. The metadata packet should carry those gaps explicitly and not infer success from a request line. No live lab/client was used.
