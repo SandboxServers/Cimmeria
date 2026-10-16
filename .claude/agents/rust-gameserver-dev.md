@@ -1,6 +1,6 @@
 ---
 name: rust-gameserver-dev
-description: "Implementation agent that turns specs and protocol docs into working Rust server code: game systems, Mercury messages, entity systems, wire (de)serialization, persistence and C++ ports."
+description: "Implementation agent turning specs and protocol docs into Rust server code: game systems, Mercury messages, wire (de)serialization, C++ ports."
 model: sonnet
 memory: project
 experimental:

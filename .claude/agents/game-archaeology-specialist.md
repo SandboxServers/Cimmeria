@@ -1,6 +1,6 @@
 ---
 name: "game-archaeology-specialist"
-description: "Reverse-engineers the 2009 SGW binaries (Ghidra, byte-level wire tracing) to recover original intent, map systems to Rust and write evidence-based findings. Use for unknown opcodes, server/client behavior mismatches, and reconnaissance before a new system."
+description: "Reverse-engineers 2009 SGW binaries (Ghidra, wire tracing) for intent and Rust mapping. Use for unknown opcodes and client/server mismatches."
 model: opus
 color: green
 memory: project

@@ -1,6 +1,6 @@
 ---
 name: database-persistence
-description: "PostgreSQL schema, seed and query work: new persistent data, entity (de)serialization, query tuning, pooling and transactions, anything under db/sgw/, db/resources/ or db/scripts/."
+description: "PostgreSQL schema, seed and query work: persistent data, entity (de)serialization, transactions, under db/sgw/, db/resources/ or db/scripts/."
 model: sonnet
 memory: project
 ---

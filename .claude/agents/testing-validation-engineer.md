@@ -1,6 +1,6 @@
 ---
 name: testing-validation-engineer
-description: "Test-strategy reviewer: picks the test type, checks that a regression guard fails when the fix is reverted, audits suites for theatre, flakiness and drift, and writes the missing tests."
+description: "Test-strategy reviewer: picks test type, checks regression guards fail when a fix is reverted, audits suites for theatre and flakiness, writes tests."
 model: sonnet
 memory: project
 ---

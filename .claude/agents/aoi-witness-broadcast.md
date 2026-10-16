@@ -1,6 +1,6 @@
 ---
 name: "aoi-witness-broadcast"
-description: "AoI and witness-list specialist: entity enter/leave/update lifecycle, BeingAppearance recomposite and rebroadcast, property sync to observers, position-snap AoI refresh and witness leaks. Use for who-sees-whom bugs and reviews of cell fan-out code."
+description: "AoI and witness-list specialist: entity enter/leave, property sync, witness leaks. Use for who-sees-whom bugs and cell fan-out review."
 model: sonnet
 color: blue
 memory: project

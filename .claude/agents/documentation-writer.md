@@ -1,6 +1,6 @@
 ---
 name: documentation-writer
-description: "Diátaxis-aware writer for reference docs, READMEs, runbooks, ADRs, guides, test inventories and doc-update sweeps after a feature lands; owns the Cimmeria Bible's writing apparatus and reviews other agents' docs."
+description: "Diátaxis-aware writer for reference docs, READMEs, runbooks, ADRs and doc sweeps; owns the Cimmeria Bible's writing apparatus and reviews docs."
 model: sonnet
 memory: project
 ---

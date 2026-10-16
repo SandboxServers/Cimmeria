@@ -1,6 +1,6 @@
 ---
 name: network-security-auth
-description: "Auth and network-security specialist: login flow, shard key exchange, packet encryption, session management and hardening, connection lifecycle and inactivity timeouts, console security."
+description: "Auth and network-security specialist: login flow, shard key exchange, packet encryption, sessions, connection timeouts, console security."
 model: sonnet
 memory: project
 ---

@@ -1,6 +1,6 @@
 ---
 name: minigame-systems-advisor
-description: "Advisor for minigames: the SmartFoxServer 1.x protocol the Flash minigames speak (Hack, Bypass, Livewire and the rest), ticket and session lifecycle, server-side result validation, and the hand-off to cell content chains."
+description: "Advisor for minigames: the SmartFoxServer 1.x protocol the Flash minigames speak, ticket and session lifecycle, result validation, cell hand-off."
 model: sonnet
 memory: project
 ---

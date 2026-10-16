@@ -1,6 +1,6 @@
 ---
 name: telemetry-triage
-description: Investigate Cimmeria behavior from SigNoz telemetry: server, network, trace and client logs; what a player session did; whether an event fired; and profiling of Claude Code usage (tools, skills, agents, MCP calls, cost). Use when asked to "check SigNoz", "look at the logs", "what happened in that session", "did X fire on the colo", "mine the telemetry", "profile our Claude usage", or when the SigNoz MCP is down and you need ClickHouse directly. Also covers the logging rules a restored system must meet so it is debuggable from SigNoz alone.
+description: 'Investigate Cimmeria behavior from SigNoz telemetry: server, network, trace and client logs; what a player session did; whether an event fired; and profiling of Claude Code usage (tools, skills, agents, MCP calls, cost). Use when asked to "check SigNoz", "look at the logs", "what happened in that session", "did X fire on the colo", "mine the telemetry", "profile our Claude usage", or when the SigNoz MCP is down and you need ClickHouse directly. Also covers the logging rules a restored system must meet so it is debuggable from SigNoz alone.'
 ---
 
 # Telemetry triage

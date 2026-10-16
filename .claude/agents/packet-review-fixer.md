@@ -1,6 +1,6 @@
 ---
 name: packet-review-fixer
-description: "Adversarial reviewer that also fixes: reviews one finished work packet against its spec, fixes every verified finding in the packet's worktree, reruns the packet's lane checks and commits. Use after a packet-coder commit when the coordinator should not write code; for a read-only review use packet-reviewer."
+description: "Adversarial reviewer that also fixes one finished packet: checks it against its spec, fixes verified findings, reruns lane checks and commits."
 model: sonnet
 effort: high
 maxTurns: 120

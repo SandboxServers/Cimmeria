@@ -1,6 +1,6 @@
 ---
 name: npc-ai-spawn-advisor
-description: "Advisor for NPC behavior: aiState, threat tables, ability selection, spawn sets and regions, respawn timers, patrols, leash, cover, and the spawner state machine."
+description: "Advisor for NPC behavior: aiState, threat tables, ability selection, spawn sets, respawn timers, patrols, leash, cover and spawner state."
 model: sonnet
 memory: project
 ---

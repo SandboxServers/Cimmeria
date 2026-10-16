@@ -1,6 +1,6 @@
 ---
 name: architect
-description: "Designs a campaign: researches a goal, decides, slices it into packets and waves, and writes README.md, work-packets.md and RESUME.md in a campaign folder per the campaign-packet skill. Use for design, packet slicing and hard trade-offs. It does not write code or ask the user."
+description: "Designs a campaign: researches, decides, slices it into packets and waves, writes its README, work-packets and RESUME. Writes no code."
 model: opus
 effort: high
 tools: Read, Grep, Glob, Write, Edit, PowerShell, Agent, Skill, ToolSearch

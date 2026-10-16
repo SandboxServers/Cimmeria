@@ -1,6 +1,6 @@
 ---
 name: packet-reviewer
-description: "Read-only adversarial reviewer for one finished work packet: checks the diff against its packet spec for correctness bugs, spec drift, missing or theatre tests, and repo-rule violations, and reports verified findings. Use after a packet-coder commit; it never edits."
+description: "Read-only adversarial reviewer for one finished packet: checks the diff against its spec for bugs, drift, theatre tests, rule breaks. Never edits."
 model: sonnet
 effort: high
 maxTurns: 60

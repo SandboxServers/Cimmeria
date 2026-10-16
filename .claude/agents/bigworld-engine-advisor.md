@@ -1,6 +1,6 @@
 ---
 name: bigworld-engine-advisor
-description: "Advisor on BigWorld engine internals and what the client protocol expects (entity defs, cell/base split, Mercury, ghosts, AoI, property sync, method dispatch). Consult before an architectural or modernization change the client might not tolerate."
+description: "Advisor on BigWorld internals and client protocol: entity defs, cell/base split, Mercury, ghosts, property sync. Consult before engine-facing changes."
 model: opus
 memory: project
 ---

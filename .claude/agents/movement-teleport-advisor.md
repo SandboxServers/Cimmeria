@@ -1,6 +1,6 @@
 ---
 name: "movement-teleport-advisor"
-description: "Advisor for anything that moves an avatar: position updates, teleports, ring transports, spawn and respawn placement, navmesh and speed validation, setMovementType, cell handoffs, BASEMSG_FORCED_POSITION versus onPlayerTeleport (116). Use proactively on PRs that touch movement or claim to teleport."
+description: "Advisor for avatar movement: position updates, teleports, spawn placement, navmesh and speed checks, cell handoffs. Use proactively on movement PRs."
 model: sonnet
 color: cyan
 memory: project
