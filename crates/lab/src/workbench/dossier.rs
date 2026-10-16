@@ -6,7 +6,8 @@ use crate::supervisor::world::geometry::{client_to_server, Vec3};
 use crate::supervisor::world::io::{LiveWorld, WorldIo};
 use crate::supervisor::world::memory::slot_entity;
 use crate::supervisor::Supervisor;
-use crate::uat::invoke::{ServerTools, ToolOutcome};
+use crate::uat::invoke::{ServerInvoker, ServerTools, ToolOutcome};
+use crate::workbench::context::CaptureContext;
 
 const RECENT_LIMIT: usize = 20;
 
@@ -21,13 +22,17 @@ pub struct Sample {
 #[derive(Debug, Clone)]
 pub struct DossierInput {
     pub instance: String,
+    pub client_pid: Option<u32>,
     pub entity_id: u32,
     pub selected_before: Result<Sample, String>,
     pub selected_after: Result<Sample, String>,
     pub client: Result<Sample, String>,
+    pub client_context: Option<CaptureContext>,
+    pub sessions: Result<Sample, String>,
     pub server: Result<Sample, String>,
     pub witnesses: Result<Sample, String>,
     pub messages: Result<Sample, String>,
+    pub log_tail_truncated: bool,
     pub now_ms: i64,
 }
 
@@ -89,6 +94,65 @@ fn position_delta(client: Option<&Sample>, server: Option<&Sample>) -> Option<Va
     })
 }
 
+fn server_bound(input: &DossierInput, gaps: &mut Vec<Value>) -> bool {
+    let Some(context) = &input.client_context else {
+        gap(
+            gaps,
+            "server.sessions",
+            "server_session_unbound",
+            "no client-to-server session binding is available",
+        );
+        return false;
+    };
+    let (Some(player), Some(session)) = (
+        context.player_entity_id,
+        context.server_session_id.as_deref(),
+    ) else {
+        gap(
+            gaps,
+            "server.sessions",
+            "server_session_unbound",
+            "capture lacks player entity or server session identity",
+        );
+        return false;
+    };
+    let Ok(sessions) = &input.sessions else {
+        gap(
+            gaps,
+            "server.sessions",
+            "server_session_unbound",
+            "server session roster unavailable",
+        );
+        return false;
+    };
+    let matches = sessions
+        .value
+        .get("sessions")
+        .and_then(Value::as_array)
+        .map(|rows| {
+            rows.iter()
+                .filter(|row| {
+                    row.get("session").and_then(Value::as_str) == Some(session)
+                        && row.get("entity_id").and_then(Value::as_u64) == Some(u64::from(player))
+                })
+                .count()
+        });
+    if context.instance != input.instance
+        || Some(context.client_pid) != input.client_pid
+        || context.selected_entity_id != Some(input.entity_id)
+        || matches != Some(1)
+    {
+        gap(
+            gaps,
+            "server.sessions",
+            "server_session_mismatch",
+            "client capture and server session roster do not identify the same player and target",
+        );
+        return false;
+    }
+    true
+}
+
 /// Compose one dossier; a target change invalidates all entity data.
 pub fn build_dossier(input: DossierInput) -> Value {
     let mut gaps = Vec::new();
@@ -108,15 +172,32 @@ pub fn build_dossier(input: DossierInput) -> Value {
     let client = current
         .then(|| result(&input.client, "client.entity", &mut gaps))
         .flatten();
-    let server = current
+    if let Some(error) = client.and_then(|s| path(Some(s), "pose_error")) {
+        gap(
+            &mut gaps,
+            "client.actor",
+            "pose_unavailable",
+            error.as_str().unwrap_or("actor pose read failed"),
+        );
+    }
+    let bound = current && server_bound(&input, &mut gaps);
+    let server = bound
         .then(|| result(&input.server, "server.entity", &mut gaps))
         .flatten();
-    let witness = current
+    let witness = bound
         .then(|| result(&input.witnesses, "server.witnesses", &mut gaps))
         .flatten();
-    let messages = current
+    let messages = bound
         .then(|| result(&input.messages, "server.log_tail", &mut gaps))
         .flatten();
+    if bound && input.log_tail_truncated {
+        gap(
+            &mut gaps,
+            "server.log_tail",
+            "log_tail_truncated",
+            "server returned fewer rows than its buffered match count",
+        );
+    }
     let id_matches = |s: &Sample| {
         s.value.get("entity_id").and_then(Value::as_u64) == Some(u64::from(input.entity_id))
     };
@@ -131,7 +212,7 @@ pub fn build_dossier(input: DossierInput) -> Value {
             "client row is not the selected entity",
         );
     }
-    if current && input.server.is_ok() && server.is_none() {
+    if bound && input.server.is_ok() && server.is_none() {
         gap(
             &mut gaps,
             "server.entity",
@@ -139,7 +220,7 @@ pub fn build_dossier(input: DossierInput) -> Value {
             "server row is not the selected entity",
         );
     }
-    if current && input.witnesses.is_ok() && witness.is_none() {
+    if bound && input.witnesses.is_ok() && witness.is_none() {
         gap(
             &mut gaps,
             "server.witnesses",
@@ -206,12 +287,7 @@ async fn client_entity(
     let snapshot = world.snapshot().await?;
     let entity = snapshot.entity(id).ok_or("entity absent from client map")?;
     let table = supervisor.entity_table(Some(vec![id]), false, None).await?;
-    let row = table
-        .pointer("/entities/details/0")
-        .ok_or("entity absent from client table")?;
-    if row.get("id").and_then(Value::as_u64) != Some(u64::from(id)) {
-        return Err("client table id mismatch".into());
-    }
+    let row = checked_client_row(&table, id, entity.ptr)?;
     let unit = world.unit_slots().await?;
     let info = world
         .unit_info(&[unit.target])
@@ -226,7 +302,21 @@ async fn client_entity(
         "mob_id": info.as_ref().and_then(|i| i.mob_id),
         "name": info.as_ref().map(|i| i.name.as_str()).filter(|name| !name.is_empty()),
         "position": entity.pose.map(|p| p.pos.to_json()),
+        "pose_error": entity.pose_error,
     })))
+}
+
+fn checked_client_row(table: &Value, id: u32, ptr: u32) -> Result<&Value, String> {
+    let row = table
+        .pointer("/entities/details/0")
+        .ok_or("entity absent from client table")?;
+    if row.get("id").and_then(Value::as_u64) != Some(u64::from(id))
+        || row.get("id_field_matches").and_then(Value::as_bool) != Some(true)
+        || row.get("ptr").and_then(Value::as_str) != Some(format!("{ptr:#x}").as_str())
+    {
+        return Err("client table id, id field, or pointer changed during read".into());
+    }
+    Ok(row)
 }
 
 async fn server_call(server: Option<&ServerTools>, tool: &str, id: u32) -> Result<Sample, String> {
@@ -248,7 +338,7 @@ async fn server_call(server: Option<&ServerTools>, tool: &str, id: u32) -> Resul
     Ok(sampled(value))
 }
 
-fn matching_messages(outcome: ToolOutcome, id: u32) -> Result<Sample, String> {
+fn matching_messages(outcome: ToolOutcome, id: u32) -> Result<(Sample, bool), String> {
     if !outcome.ok {
         return Err(outcome.error.unwrap_or("server_log_tail failed".into()));
     }
@@ -274,7 +364,24 @@ fn matching_messages(outcome: ToolOutcome, id: u32) -> Result<Sample, String> {
         .take(RECENT_LIMIT)
         .cloned()
         .collect();
-    Ok(sampled(json!(rows.into_iter().rev().collect::<Vec<_>>())))
+    let truncated = outcome
+        .json
+        .get("total_buffered")
+        .and_then(Value::as_u64)
+        .is_none_or(|total| total > entries.len() as u64);
+    Ok((
+        sampled(json!(rows.into_iter().rev().collect::<Vec<_>>())),
+        truncated,
+    ))
+}
+
+async fn read_messages(server: &dyn ServerInvoker, id: u32) -> Result<(Sample, bool), String> {
+    matching_messages(
+        server
+            .call("server_log_tail", json!({ "limit": 500 }))
+            .await,
+        id,
+    )
 }
 
 /// Read a live dossier without a lease or any slot-pinning calls.
@@ -283,35 +390,49 @@ pub async fn read_dossier(supervisor: &Supervisor, instance: &str, entity_id: u3
     let selected_before = selection(&mut world).await;
     let current =
         selected_before.as_ref().ok().and_then(|s| s.value.as_u64()) == Some(u64::from(entity_id));
-    let server = ServerTools::from_env();
-    let (client, entity, witnesses, messages) = if current {
-        let client = client_entity(supervisor, entity_id, &mut world).await;
-        let entity = server_call(server.as_ref(), "server_entity_get", entity_id).await;
-        let witnesses = server_call(server.as_ref(), "server_witnesses", entity_id).await;
-        let messages = match server.as_ref() {
-            Some(s) => matching_messages(
-                s.call("server_log_tail", json!({ "limit": 100 })).await,
-                entity_id,
-            ),
-            None => Err("server lab endpoint unavailable".into()),
-        };
-        (client, entity, witnesses, messages)
+    // The broker has no live producer of a client-bound server session yet.
+    // A numeric entity id alone cannot identify this daemon-global endpoint.
+    let client_context = None;
+    let client_pid = supervisor.client_pid().await;
+    let sessions = Err("no client-bound server session capture".into());
+    let client = if current {
+        client_entity(supervisor, entity_id, &mut world).await
     } else {
-        let absent = || Err("requested entity is not the selected target".into());
-        (absent(), absent(), absent(), absent())
+        Err("requested entity is not the selected target".into())
     };
-    let selected_after = selection(&mut LiveWorld::new(supervisor)).await;
-    build_dossier(DossierInput {
+    let mut input = DossierInput {
         instance: instance.into(),
+        client_pid,
         entity_id,
         selected_before,
-        selected_after,
+        selected_after: Err("selection pending".into()),
         client,
-        server: entity,
-        witnesses,
-        messages,
+        client_context,
+        sessions,
+        server: Err("server session unbound".into()),
+        witnesses: Err("server session unbound".into()),
+        messages: Err("server session unbound".into()),
+        log_tail_truncated: false,
         now_ms: crate::supervisor::now_ms(),
-    })
+    };
+    if current && server_bound(&input, &mut Vec::new()) {
+        let server = ServerTools::from_env();
+        input.server = server_call(server.as_ref(), "server_entity_get", entity_id).await;
+        input.witnesses = server_call(server.as_ref(), "server_witnesses", entity_id).await;
+        input.messages = match server.as_ref() {
+            Some(server) => match read_messages(server, entity_id).await {
+                Ok((sample, truncated)) => {
+                    input.log_tail_truncated = truncated;
+                    Ok(sample)
+                }
+                Err(reason) => Err(reason),
+            },
+            None => Err("server lab endpoint unavailable".into()),
+        };
+    }
+    input.selected_after = selection(&mut LiveWorld::new(supervisor)).await;
+    input.now_ms = crate::supervisor::now_ms();
+    build_dossier(input)
 }
 
 #[cfg(test)]
