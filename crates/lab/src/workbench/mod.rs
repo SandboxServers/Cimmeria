@@ -2,6 +2,7 @@
 
 pub mod bookmarks;
 pub mod broker;
+pub mod causal;
 pub mod clicks;
 pub mod commands;
 pub mod context;
