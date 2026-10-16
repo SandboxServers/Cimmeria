@@ -70,6 +70,18 @@ impl Lifecycle {
     }
 
     fn created_at(&self, ptr: usize, vtable_accepted: bool, now_ms: u64) {
+        self.created_after_claim(ptr, vtable_accepted, now_ms, || {});
+    }
+
+    // The callback lets the regression pause after ownership is published,
+    // before the initial timestamp, without changing the production path.
+    fn created_after_claim(
+        &self,
+        ptr: usize,
+        vtable_accepted: bool,
+        now_ms: u64,
+        after_claim: impl FnOnce(),
+    ) {
         // CreateDevice, Reset and TestCooperativeLevel also fire on auxiliary
         // devices using the patched vtable. Only the first accepted device
         // may claim an empty slot; later probes cannot displace its panel.
@@ -79,9 +91,12 @@ impl Lifecycle {
                 .compare_exchange(0, ptr, Ordering::AcqRel, Ordering::Acquire)
             {
                 Ok(_) => {
+                    after_claim();
                     self.last_owner_presentation_ms
-                        .store(now_ms.saturating_add(1), Ordering::Release);
-                    self.ready.store(true, Ordering::Release);
+                        .fetch_max(now_ms.saturating_add(1), Ordering::AcqRel);
+                    if self.device.load(Ordering::Acquire) == ptr {
+                        self.ready.store(true, Ordering::Release);
+                    }
                 }
                 Err(owner) if owner == ptr => self.ready.store(true, Ordering::Release),
                 Err(_) => {}
@@ -122,7 +137,7 @@ impl Lifecycle {
         let owner = self.device.load(Ordering::Acquire);
         if owner == ptr {
             self.last_owner_presentation_ms
-                .store(now_ms.saturating_add(1), Ordering::Release);
+                .fetch_max(now_ms.saturating_add(1), Ordering::AcqRel);
             return;
         }
         // Multiple auxiliary EndScenes can happen between two healthy owner
@@ -138,7 +153,7 @@ impl Lifecycle {
         self.ready.store(false, Ordering::Release);
         self.device.store(ptr, Ordering::Release);
         self.last_owner_presentation_ms
-            .store(now_ms.saturating_add(1), Ordering::Release);
+            .fetch_max(now_ms.saturating_add(1), Ordering::AcqRel);
         self.ready.store(true, Ordering::Release);
     }
 
@@ -309,6 +324,42 @@ mod tests {
         state.last_owner_presentation_ms.store(2, Ordering::Release);
         state.presented_at(0xb, 0, OWNER_INACTIVITY_MS + 1);
         assert_eq!(state.device.load(Ordering::Acquire), 0xb);
+    }
+
+    #[test]
+    fn delayed_creation_timestamp_cannot_age_a_newer_owner_frame() {
+        use std::sync::{Arc, Barrier};
+
+        let state = Arc::new(Lifecycle::new());
+        let claimed = Arc::new(Barrier::new(2));
+        let resume = Arc::new(Barrier::new(2));
+        std::thread::scope(|scope| {
+            let (state, claimed, resume) = (&state, &claimed, &resume);
+            scope.spawn(move || {
+                state.created_after_claim(0xa, true, 0, || {
+                    claimed.wait();
+                    resume.wait();
+                });
+            });
+            claimed.wait();
+            state.presented_at(0xa, 0, 1_999);
+            resume.wait();
+        });
+        state.presented_at(0xb, 0, 2_000);
+        assert_eq!(state.device.load(Ordering::Acquire), 0xa);
+        assert!(state.enter(0xa).is_some());
+    }
+
+    #[test]
+    fn delayed_owner_callback_cannot_age_a_newer_owner_frame() {
+        let state = Lifecycle::new();
+        state.created_at(0xa, true, 0);
+        state.presented_at(0xa, 0, 1_999);
+        // The callback took its timestamp before the newer callback but
+        // reached the frame guard only after the newer callback finished.
+        state.presented_at(0xa, 0, 1_000);
+        state.presented_at(0xb, 0, 2_000);
+        assert_eq!(state.device.load(Ordering::Acquire), 0xa);
     }
 
     #[test]
