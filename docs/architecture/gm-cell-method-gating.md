@@ -103,6 +103,19 @@ verified subset (gmGiveItem 133, gmGotoXYZ 163, gmKillTarget 190) is implemented
 the full per-index table lives in
 [cell-method-dispatch-table.md](../protocol/cell-method-dispatch-table.md#sgwgmplayer-extension-indices-109--473--cat-n-04).
 
+## Workbench slash inventory
+
+`crates/lab/src/workbench/slash_inventory.rs` parses the 162 patch 012 TOML
+words, events and ordered mandatory/optional parameter declarations.
+`slash_catalog.rs` projects them into disabled `Slash` descriptors with
+`native submission unproved`. An exact event-suffix match to a method name
+in `docs/protocol/cell-method-dispatch-table.md` records that row's documented
+index and DONE/ADAPT/NEW status as a **candidate**, never as proof that the
+client emits that method for the patch word. Unknown matches remain unknown.
+The client and cell method gate remain separate; a typed palette form cannot
+authorize or execute a slash command by itself. Stock XML completeness is
+tracked separately in [the DW-24A audit](../analysis/dev-workbench/stock-slash-audit.md).
+
 ## Why not per-call plumbing?
 
 The audit's literal suggestion was to widen `BaseToCellMsg::CellMethodCall`
