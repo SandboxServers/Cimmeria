@@ -337,6 +337,28 @@ The client's Mercury logger is a one-byte stub in this build (`0x0081c2e0` is `r
 | `client.mercury.bundle` | `Nub::processOrderedPacket` `0x0157c820` (game thread), fed per message by `Bundle::iterator::unpack` `0x01579830` | `phase=start` (assembled bundles only): `source`, `packets`, `total_bytes`, `seq_first`, `seq_last`, `boundaries` (payload offsets where each packet after the first begins). `phase=end`: the same plus `messages`, `dispatched` (the client's own counter), `nub_aborted_delta`, `consumed_bytes`, `unconsumed_bytes`, `straddled_messages`, `first_msg_id`, `last_msg_id`, `last_msg_offset`, `last_msg_len`, `exit` (`clean_end`, `unknown_message_id`, `corrupted_header`, `other`), `result`, and on an abort `abort_offset`, `abort_packet_index`, `abort_packet_seq`, `abort_msg_id`, `fault` (`header_does_not_fit_packet`, `body_runs_out_of_packets`, `length_expand_failed`), `header_len`, `header_bytes_in_packet`, `packet_len`, `abort_cursor` | `info` assembled, `debug` clean single-packet, `warn` abort |
 | `client.mercury.error` | paired with every non-happy event above, except a `packet_in` whose `disposition` is `old_duplicate` (that row already names it) | `stage` (`packet`, `fragment`, `bundle`), `reason`, plus the parent event's fields | `warn` |
 
+**Lab Mercury-shaped receive candidates (DW-03S-C, offline only).** A lab-bridge build
+mirrors each successful nonempty `recvfrom` read with a Mercury-shaped
+1472-byte request and zero flags as one **ineligible candidate** `mercury.wire_proof` event. The process-wide IAT slot also sees unrelated UDP reads of the same shape. Its fields
+are `bridge_epoch` (fresh OS-random 128-bit value per bridge startup,
+independent of the telemetry session ID), diagnostic `socket`, `peer` (parsed
+IPv4 source or null), exact UDP wire-byte `wire_len`, 16-digit FNV-1a
+`wire_fingerprint`, `eligible: false`, `source_kind: recvfrom_candidate`, `encryption_state: unknown`, `gap: mercury_socket_unverified`, and `peer_gap` (`peer_unavailable` when the source cannot be
+parsed). The surrounding `LabEvent.ts_ms` is the client observation clock. No payload bytes, PID or process creation time come from the DLL.
+The supervisor must stamp process identity when it ingests the event; a peer
+or socket alone cannot bind a game session.
+
+`events_read` reports `bridge_epoch` and
+`mercury_wire_proof: {hook_installed, received, rejected, dropped, gap}`
+alongside its existing event ring drop count. `hook_unobserved` means the IAT
+hook has not installed or no qualifying read has been seen; `rejected`
+includes all unverified candidates and reads outside the Mercury
+request shape; `dropped` counts proof rows refused by the bounded bridge
+ring. An absent row or a non-null gap cannot prove delivery or destination.
+The Phase-3 login reply is plaintext before the AES handshake; only proven post-handshake encrypted datagrams may become binding evidence. No static Mercury socket/caller discriminator or post-handshake classifier exists yet, so all current rows remain ineligible and DW-03S-B stays blocked. The 1472-byte request is supported by the static `FUN_0158a200`
+reconstruction; hook installation and actual receive behavior remain
+unverified in the live client.
+
 **Offsets** in `client.mercury.bundle` are payload offsets: every packet's bytes after its flags byte, concatenated, so a fragment boundary is a number and a message header at `abort_offset` straddling `boundaries[i]` is visible at a glance.
 
 **Volume.** Per-packet events are emitted for every fragment, every packet while a fragment group is in flight (until 5 s after the last fragment that left a group open), every packet buffered for a gap, and every non-happy packet, all unthrottled. Ordinary traffic goes through the per-name bucket (burst 8, 4/s). A non-happy outcome of any kind bypasses every throttle, by construction: the gate is a function of the outcome and is unit-tested (`report::tests`), not a property of the hook. A clean single-packet bundle is throttled; an assembled or aborted one never is.
