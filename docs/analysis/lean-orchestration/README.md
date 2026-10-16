@@ -67,6 +67,8 @@ Owner interview, 2026-10-13.
 | D-LO15 | Which Codex sessions act as the orchestrator? **(A)** Only sessions that run or resume a campaign; other Codex sessions work directly under `AGENTS.md`. **(B)** Every Codex session starts as the orchestrator, as Claude Code does. Architect recommends **A**: Codex has no committed default-persona setting and no path guard (F10), so under B every Codex session would rely on instructions alone, and one-off Codex work would have no `hands-on` escape hatch. | **BlockedDecision** (owner) | Blocks LO-09a. The packet gives the exact text for both answers. |
 | D-LO16 | A worker's report goes to `<worktree>\.claude\reports\<campaign>\<packet>-<role>.md` inside its own worktree. The brief passes the absolute path. Nobody writes a report to a fixed root-checkout path. The orchestrator copies anything worth keeping to `worknotes/` before ops retires the worktree, because retiring deletes the report. | Decided (owner, from the Codex review, 2026-10-15) | Workers write only inside their worktree. This amends where D-LO11 puts reports; they stay gitignored. |
 | D-LO17 | Should `sync.py` give each Codex agent a model that matches its Claude tier? Codex agents run on the session's model today (F9). | **BlockedDecision** (owner); no packet waits on it | Picking the OpenAI models is the owner's call. LO-09b documents the current limit. Revisit after the LO-08 Codex UAT. |
+| D-LO18 | Reset the main checkout's `main` to `origin/main`, after committing or stashing its uncommitted ledger and memory edits, then re-measure the first-request context (LO-10e). The 2 local-only commits are duplicate cherry-picks of the #1737 guard fix. | Decided (owner, 2026-10-16); the owner runs the reset, no packet touches git for it | The LO-08 pilot (48,349) launched 52 minutes before LO-05 merged, so it loaded the old CLAUDE.md and the memory-index import. The reset alone saves about 15.5k tokens (LO-10 architect estimate). |
+| D-LO19 | Which sessions keep direct MCP access: move the lab, RE and SigNoz servers out of the main thread into inline `mcpServers` on the subagents that use them, and turn off the claude.ai Docs connector for this project (LO-10 rank 6). | **Deferred** (owner, 2026-10-16); no wave 5 packet does this | Out of scope for now. About 2.4k tokens, but `hands-on`, the lab-uat grading step and ad hoc RE sessions call these servers from the main thread. Wave 5 reaches 25k without it. |
 
 ## Packets
 
@@ -87,3 +89,36 @@ Owner interview, 2026-10-13.
 Wave 1 is reviewed by one packet-review-fixer (D-LO9), merged, and then the owner relaunches `claude` to get the new orchestrator for wave 2.
 
 Wave 3 is the Codex compatibility pass. It starts once wave 2 and the guard fix (#1737) are on `main`, because it edits files that LO-05 and LO-06 rewrite. Dispatch LO-09c first, on its own. When it returns, dispatch LO-09a (once D-LO15 is answered) and LO-09b together, because both repeat LO-09c's probe result. The three packets touch disjoint files, so ops can merge the branches into one PR without conflicts. One packet-review-fixer reviews all three. LO-08 (wave 4) starts after wave 3 merges.
+
+## LO-08 pilot results
+
+Wave 2 is the first pilot (D-LO14). Measured 2026-10-16 with `python tools/token-profile/report coordination --db ~/token-profile-v6.sqlite --session ad5b8b9e-f562-4f8c-8286-1a6b8f544f2a --since 2026-10-16T02:44:00Z --until 2026-10-16T03:36:14Z`, priced with table 2026-10-12. The window runs from the orchestrator session's start to its first wave 3 dispatch (worktree `lo-09c`), so it covers LO-04, LO-05, LO-06, the guard fix (#1737), the wave 2 PR (#1739) and the retires. It also holds the architect's Codex amendment (02:55Z), which was unplanned design work. Claude sessions only (F12); Codex numbers go in their own table.
+
+| D-LO14 target | Pilot (wave 2) | Result |
+|---|---|---|
+| Orchestrator first-request context ≤ 25k | 48,349 | **Fail** |
+| Orchestrator average context ≤ 120k | 75,159 (58 requests, Sonnet) | Pass |
+| Coordination ≤ 40% of spend (was 97%) | 46.6% ($3.99 of $8.56) | **Fail**; 28.8% without the architect's Codex amendment ($2.14) |
+| CI first-attempt rate no worse than baseline | not measured by `token-profile` | Unverified |
+| Escaped defects no worse than baseline | not measured by `token-profile` | Unverified |
+
+Spend by role in the window: documentation-writer (Opus) $4.51, 52.7%; architect (Opus) $2.14, 25.0%; main thread (Sonnet) $1.06, 12.4%; packet-review-fixer (Sonnet) $0.79, 9.3%; packet-coder (Haiku) $0.05; ops (Haiku) $0.01. Total 255 requests. The largest cost is not coordination but the Opus documentation-writer, which D-LO14 does not count.
+
+For comparison, the same session after the window (wave 3, 03:36:14Z to its end) cost $3.75; coordination there was main thread 18.9% plus packet-review-fixer 24.9%, and the main thread's average context rose to 122,503, over the 120k target. The pre-relaunch orchestrator session `144dabfa` (Opus, 15 human-prompt requests, no dispatches) had a first-request context of 74,143.
+
+The second pilot, the next real campaign the owner picks, is still owed.
+
+### Wave 5 re-measure
+
+Wave 5 (LO-10b/c/d, PR #1753) cut the orchestrator's static context, and the owner reset the main checkout (D-LO18). LO-10e was to re-measure the first request of a fresh orchestrator session started from the main checkout (session `b424e6ee-45f1-49bf-8f24-e9b5a88b75f2`, first prompt "Resume work on lean orchestration campaign"). **The tool measurement was impossible.** No transcript named `b424e6ee-45f1-49bf-8f24-e9b5a88b75f2.jsonl` exists under any `~/.claude/projects/*/` directory (only a `subagents/` folder carries that id), and no transcript in the Cimmeria project slug contains the first prompt. `token-profile report coordination` also needs an ingested `--db`, so it had nothing to read. Instead the owner read the Claude window on a fresh session and reports a first-request context of **about 32-35k tokens** (owner-read from the Claude window, not tool-measured).
+
+| Run | First-request tokens | Source |
+|---|---|---|
+| Pilot (wave 2 orchestrator, old CLAUDE.md and memory import) | 48,349 | `token-profile`, LO-08 above |
+| LO-10a P0 (`orchestrator` persona before wave 5, `claude -p`, worktree) | 30,395 | first assistant `usage`: 2 + 30,393 cache-creation + 0 cache-read |
+| LO-10a P3 (`lo10-candidate` persona, the wave 5 shape) | 21,387 | first assistant `usage`: 2 + 21,385 cache-creation + 0 cache-read |
+| Wave 5 fresh session from the main checkout | ~32-35k | owner-read from the Claude window, not tool-measured |
+
+The P0 and P3 figures were recovered from the six LO-10a probe transcripts in `~/.claude/projects/C--Users-Steve-source-projects-Cimmeria--claude-worktrees-lo-10a/`, because the LO-10a report went away with its worktree. They map to the run table by file time and prompt (P1 22,585; P1b 22,601; P2 26,273; P2b 26,318). Treat them as a reconstruction. Per LO-10a's own rule, compare probe runs only with each other, never with the pilot: the probes run in a worktree without the user's auto-memory index and with a one-word prompt.
+
+Grade: **pass against the relaxed target** (originally: target missed, improved). On 2026-10-16 the owner accepted ~35k first-request context as good enough, so the D-LO14 first-request target of 25k is relaxed to ~35k. The original 25k target is kept here for the record. The owner-read ~32-35k is above that original 25k, but it meets the relaxed ~35k target. It is roughly 13-16k below the wave 2 baseline of 48,349 (48,349 - 35,000 = 13,349; 48,349 - 32,000 = 16,349), about a 28-34% cut. The number is an owner read of the Claude window, not a `usage` field, so treat it as approximate (the window figure is rounded and may count items a transcript `usage` would split differently). It also includes the user's auto-memory index and the real first prompt, which the LO-10a probes lacked; that is why it sits well above the P3 probe's 21,387 and why probes are never compared with it. Method and why: the transcript for the session was never found, so no tool could measure it, and a window read is the only observation of the real session available. A tool-measured rerun would still be the better number: the owner launches a fresh session from the main checkout, sends one short prompt and gives the session id (check that its `.jsonl` lands under `~/.claude/projects/c--Users-Steve-source-projects-Cimmeria/`). The remaining architect ranks are 3 (`disableBundledSkills`, owner decision, now unblocked by this number), 6 (deferred as D-LO19, owner decision) and 7 (the user's personal auto-memory, user decision); none is started.
