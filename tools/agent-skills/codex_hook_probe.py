@@ -94,12 +94,15 @@ def record(event: str, stdin_text: str, root: Path) -> str | None:
         payload = {}
     tool_input = payload.get("tool_input")
     keys = sorted(tool_input) if isinstance(tool_input, dict) else []
+    denied = event == "pre-tool-use-deny" and mentions_crates(tool_input)
     row = {
         "event": event,
         "source": payload.get("source"),
         "tool_name": payload.get("tool_name"),
         "keys": keys,
     }
+    if denied:
+        row["denied"] = True
     log = root / LOG
     log.parent.mkdir(parents=True, exist_ok=True)
     with log.open("a", encoding="utf-8") as handle:
@@ -107,7 +110,7 @@ def record(event: str, stdin_text: str, root: Path) -> str | None:
     if event == "session-start":
         output = {"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": TOKEN}}
         return json.dumps(output)
-    if event == "pre-tool-use-deny" and mentions_crates(tool_input):
+    if denied:
         output = {
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
@@ -166,6 +169,23 @@ def codex_call(args: list[str], root: Path, timeout: int, label: str, notes: lis
     except OSError as exc:
         notes.append(f"{label}: could not run ({exc})")
     return None
+
+
+def hook_lines(*runs) -> list[str]:
+    """Return up to 10 distinct stdout/stderr lines of the codex calls that mention a hook.
+
+    These lines tell "Codex never loaded the hooks" apart from "a hook command failed"
+    (for example `hook: SessionStart Failed`), which the log file alone cannot do."""
+    lines: list[str] = []
+    for run in runs:
+        if run is None:
+            continue
+        for text in (run.stdout, run.stderr):
+            for line in (text or "").splitlines():
+                line = line.strip()
+                if "hook" in line.lower() and line[:200] not in lines:
+                    lines.append(line[:200])
+    return lines[:10]
 
 
 def run_probe(root: Path, codex: str, timeout: int, deny: bool = False) -> dict:
@@ -236,12 +256,18 @@ def run_probe(root: Path, codex: str, timeout: int, deny: bool = False) -> dict:
         "resume_ran": bool(starts_2),
         "resume_source": starts_2[0].get("source") if starts_2 else None,
         "notes": notes,
+        "hook_output": hook_lines(first, second, third),
     }
     if deny:
+        denied_rows = [r for r in deny_rows if r.get("denied")]
         summary["deny_hook_ran"] = bool(deny_rows)
+        summary["denied_tools"] = distinct([r.get("tool_name") for r in denied_rows])
         summary["crates_file_created"] = crates_created
-        summary["crates_edit_blocked"] = bool(deny_rows) and not crates_created
-        notes.append("deny: crates/ edit is blocked only if the file was not created; any created file is deleted")
+        summary["crates_edit_blocked"] = bool(denied_rows) and not crates_created
+        notes.append(
+            "deny: crates/ edit is blocked only if the hook denied a call and the file was not "
+            "created (check denied_tools for an edit tool); any created file is deleted"
+        )
     return summary
 
 
