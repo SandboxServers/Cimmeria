@@ -119,10 +119,10 @@ const RANDOM: &[TypedArg] = &[
 pub(super) fn metadata(name: &str) -> Option<WorkbenchMetadata> {
     let (category, availability, reason, args, forms, preconditions, impact, verify, compensation) =
         match name {
-            "gotoxyz" => ("Travel", "runnable", "", XYZ, "x y z",
-                "GM; refresh selected subject in caller's space and view; finite coordinates",
+            "gotoxyz" => ("Travel", "unsupported", "Optional selection can fall back to the caller if it goes stale; the workbench lacks an execution-time expected-subject gate", XYZ, "x y z",
+                "GM; capture the selected subject or caller, then recheck the exact subject in caller's space and view at execution; finite coordinates",
                 "Authoritative same-space position/grid snap; player gets BASEMSG_FORCED_POSITION; duel may end; base attempts player-position persistence",
-                "Capture subject identity, space, position and direction with server_entity_get before and after; inspect wire.out.forced_position for player send; client application and DB persistence need separate proof",
+                "Capture subject identity, space, position and direction with server_entity_get before and after; for a player inspect wire.out.forced_position via server_log_tail and query sgw_player pos_x/pos_y/pos_z by captured player_id via server_db_query; client application and successful DB persistence remain unknown until independently observed",
                 "Manual .gotoxyz to captured position; side effects are not atomically undone"),
             "goto" => ("Travel", "unsupported", "Cross-space subject GM level and GM-only destination policy cannot be verified before dispatch", NAME, "playerName",
                 "GM; unique online destination player; subject in caller view; NPC only within its space; verify subject access for GM-only world",
@@ -164,9 +164,9 @@ pub(super) fn metadata(name: &str) -> Option<WorkbenchMetadata> {
                 "Cell/base request creates one runtime NPC; no spawnlist write even with autosave on",
                 "Wait for spawned npc <id> completion, then server_entity_get for ID/template/space/position and absent spawn_id; no completion means unknown",
                 "Manual .despawn <returnedId> while in same space; no seed row to undo"),
-            "despawn" => ("Spawn", "runnable", "", ENTITY_ID, "selected NPC | entityId",
-                "GM; selected visible non-player or explicit ID in caller's space; ID form excludes pet/prop/player",
-                "Removes runtime entity, combat links and witnesses; spawnlist row remains; ordinary respawn tick does not restore it",
+            "despawn" => ("Spawn", "runnable", "", ENTITY_ID, "selected in-view non-player (including pet) | entityId for same-space NPC/being (pet, prop and player refused)",
+                "GM; selected visible non-player, including a pet, or explicit NPC/being ID in caller's space; ID form excludes pet/prop/player",
+                "Selected form can remove a pet without its normal dismiss path; both forms remove runtime entity, combat links and witnesses; spawnlist row remains; ordinary respawn tick does not restore it",
                 "Capture entity identity/space before; confirm completion ID and server_entity_get null after, accounting for ID reuse; check spawnlist separately",
                 "No exact inverse; .spawn creates a different runtime ID and does not restore authored state"),
             "savespawn" => ("Spawn authoring", "unsupported", "Summoned pet can be queued as a persistent spawnlist INSERT; cell-side guard is absent", NO_ARGS, "selected non-player (no arguments)",
@@ -203,7 +203,7 @@ pub(super) fn metadata(name: &str) -> Option<WorkbenchMetadata> {
         };
     let impact_kind = match name {
         "savespawn" | "delspawn" => "authoring",
-        "gotolocation" | "gotospace" | "goto" | "summon" => "persistent",
+        "gotoxyz" | "gotolocation" | "gotospace" | "goto" | "summon" => "persistent",
         _ => "transient",
     };
     let verify_tools: &[&str] = match name {
@@ -212,6 +212,7 @@ pub(super) fn metadata(name: &str) -> Option<WorkbenchMetadata> {
         "autosavespawn" => &["GM feedback", ".seedpending"],
         "spawnrandom" => &["GM batch summary", "server_entity_get"],
         "spawn" => &["GM completion feedback", "server_entity_get"],
+        "gotoxyz" => &["server_entity_get", "server_log_tail", "server_db_query"],
         "goto" | "summon" | "gotolocation" | "gotospace" => {
             &["server_entity_get", "server_sessions", "server_db_query"]
         }
@@ -270,7 +271,7 @@ pub(super) fn metadata(name: &str) -> Option<WorkbenchMetadata> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cell::console::registry::COMMANDS;
+    use crate::cell::console::{command_catalog, registry::COMMANDS};
 
     #[test]
     fn travel_and_spawn_metadata_matches_exact_family_set() {
@@ -306,6 +307,7 @@ mod tests {
     #[test]
     fn unsafe_forms_are_disabled_with_a_reason() {
         for name in [
+            "gotoxyz",
             "goto",
             "summon",
             "gotospace",
@@ -322,5 +324,76 @@ mod tests {
             assert_eq!(row.availability, "unsupported", ".{name}");
             assert!(!row.disposition_reason.is_empty(), ".{name}");
         }
+    }
+
+    #[test]
+    fn runnable_family_contracts_pin_fields_used_by_the_palette() {
+        let catalog = command_catalog();
+        let runnable: Vec<_> = catalog
+            .iter()
+            .filter(|row| metadata(&row.name).is_some() && row.availability == "runnable")
+            .map(|row| row.name.as_str())
+            .collect();
+        assert_eq!(runnable, ["gotolocation", "spawn", "despawn", "delspawn"]);
+
+        let expected = [
+            (
+                "gotolocation",
+                "none",
+                "persistent",
+                &["worldName", "x", "y", "z"][..],
+                &["server_entity_get", "server_sessions", "server_db_query"][..],
+            ),
+            (
+                "spawn",
+                "none",
+                "transient",
+                &["templateId"][..],
+                &["GM completion feedback", "server_entity_get"][..],
+            ),
+            (
+                "despawn",
+                "mob_or_id",
+                "transient",
+                &["entityId"][..],
+                &["server_entity_get"][..],
+            ),
+            (
+                "delspawn",
+                "spawnable",
+                "authoring",
+                &[][..],
+                &["server_entity_get", "server_db_query", ".seedpending"][..],
+            ),
+        ];
+        for (name, target, impact, args, read_tools) in expected {
+            let row = catalog.iter().find(|row| row.name == name).unwrap();
+            assert_eq!(row.target_policy, target, ".{name}");
+            assert_eq!(row.impact_kind, impact, ".{name}");
+            assert_eq!(
+                row.args.iter().map(|a| a.name).collect::<Vec<_>>(),
+                args,
+                ".{name}"
+            );
+            assert_eq!(row.verify_tools, read_tools, ".{name}");
+            assert!(!row.verify.is_empty(), ".{name}");
+        }
+        let xyz = catalog.iter().find(|row| row.name == "gotoxyz").unwrap();
+        assert_eq!(xyz.availability, "unsupported");
+        assert_eq!(xyz.target_policy, "none");
+        assert_eq!(
+            xyz.args.iter().map(|a| a.name).collect::<Vec<_>>(),
+            ["x", "y", "z"]
+        );
+        assert!(xyz
+            .disposition_reason
+            .contains("execution-time expected-subject"));
+        assert_eq!(xyz.impact_kind, "persistent");
+        assert!(xyz.verify_tools.contains(&"server_db_query"));
+
+        let despawn = catalog.iter().find(|row| row.name == "despawn").unwrap();
+        assert!(despawn.forms.contains("including pet"));
+        assert!(despawn.forms.contains("pet, prop and player refused"));
+        assert!(despawn.impact.contains("without its normal dismiss path"));
     }
 }

@@ -161,17 +161,136 @@ mod tests {
     fn reviewed_travel_and_spawn_contracts_reach_catalog() {
         let catalog = list_commands_for_actor(true).unwrap();
         let rows = catalog["commands"].as_array().unwrap();
+        let family = [
+            "gotoxyz",
+            "goto",
+            "summon",
+            "gotolocation",
+            "gotospace",
+            "location",
+            "rotation",
+            "movehere",
+            "spawn",
+            "despawn",
+            "savespawn",
+            "delspawn",
+            "autosavespawn",
+            "respawnall",
+            "spawnset",
+            "spawnrandom",
+        ];
+        let runnable: Vec<_> = rows
+            .iter()
+            .filter(|row| {
+                family.contains(&row["name"].as_str().unwrap()) && row["availability"] == "runnable"
+            })
+            .map(|row| row["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            runnable,
+            [".gotolocation", ".spawn", ".despawn", ".delspawn"]
+        );
+
         let xyz = rows.iter().find(|r| r["name"] == "gotoxyz").unwrap();
-        assert_eq!(xyz["availability"], "runnable");
-        assert_eq!(xyz["manual_pending"], false);
-        assert_eq!(xyz["args"][0]["name"], "x");
-        assert_eq!(xyz["args"][0]["kind"], "float");
-        assert_eq!(xyz["impact"]["kind"], "transient");
+        assert_eq!(xyz["availability"], "unsupported");
+        assert_eq!(xyz["manual_pending"], true);
+        assert!(xyz["disposition_reason"]
+            .as_str()
+            .unwrap()
+            .contains("execution-time expected-subject"));
+        assert_eq!(xyz["target"]["kind"], "none");
+        assert_eq!(xyz["target"]["selection_rule"], "none");
+        assert_eq!(
+            xyz["args"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|arg| json!([arg["name"], arg["kind"], arg["required"]]))
+                .collect::<Vec<_>>(),
+            vec![
+                json!(["x", "float", true]),
+                json!(["y", "float", true]),
+                json!(["z", "float", true])
+            ]
+        );
+        assert_eq!(xyz["impact"]["kind"], "persistent");
         assert!(xyz["impact"]["summary"]
             .as_str()
             .unwrap()
             .contains("BASEMSG_FORCED_POSITION"));
-        assert_eq!(xyz["verify"]["read_tools"][0], "server_entity_get");
+        assert_eq!(
+            xyz["verify"]["read_tools"],
+            json!(["server_entity_get", "server_log_tail", "server_db_query"])
+        );
+        assert!(xyz["verify"]["recipe"]
+            .as_str()
+            .unwrap()
+            .contains("sgw_player"));
+
+        let expected = [
+            (
+                "gotolocation",
+                "none",
+                "none",
+                "persistent",
+                json!([
+                    ["worldName", "world", true],
+                    ["x", "float", false],
+                    ["y", "float", false],
+                    ["z", "float", false]
+                ]),
+                json!(["server_entity_get", "server_sessions", "server_db_query"]),
+            ),
+            (
+                "spawn",
+                "none",
+                "none",
+                "transient",
+                json!([["templateId", "template", true]]),
+                json!(["GM completion feedback", "server_entity_get"]),
+            ),
+            (
+                "despawn",
+                "mob_or_id",
+                "selected_or_argument",
+                "transient",
+                json!([["entityId", "entity", false]]),
+                json!(["server_entity_get"]),
+            ),
+            (
+                "delspawn",
+                "spawnable",
+                "required",
+                "authoring",
+                json!([]),
+                json!(["server_entity_get", "server_db_query", ".seedpending"]),
+            ),
+        ];
+        for (name, target_kind, selection, impact, args, tools) in expected {
+            let row = rows.iter().find(|row| row["name"] == name).unwrap();
+            assert_eq!(row["availability"], "runnable", ".{name}");
+            assert_eq!(row["target"]["kind"], target_kind, ".{name}");
+            assert_eq!(row["target"]["selection_rule"], selection, ".{name}");
+            assert_eq!(row["impact"]["kind"], impact, ".{name}");
+            let fields: Vec<_> = row["args"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|arg| json!([arg["name"], arg["kind"], arg["required"]]))
+                .collect();
+            assert_eq!(Value::Array(fields), args, ".{name}");
+            assert_eq!(row["verify"]["read_tools"], tools, ".{name}");
+            assert!(
+                !row["verify"]["recipe"].as_str().unwrap().is_empty(),
+                ".{name}"
+            );
+        }
+        let despawn = rows.iter().find(|r| r["name"] == "despawn").unwrap();
+        assert!(despawn["forms"].as_str().unwrap().contains("including pet"));
+        assert!(despawn["impact"]["summary"]
+            .as_str()
+            .unwrap()
+            .contains("without its normal dismiss path"));
         let unsafe_spawn = rows.iter().find(|r| r["name"] == "spawnrandom").unwrap();
         assert_eq!(unsafe_spawn["availability"], "unsupported");
         assert_eq!(unsafe_spawn["manual_pending"], true);

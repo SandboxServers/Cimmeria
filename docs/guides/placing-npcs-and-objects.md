@@ -114,16 +114,25 @@ lasts until you log out.
 
 ### Workbench readback for placement and travel
 
-The local developer workbench offers typed forms for `.gotoxyz`,
-`.gotolocation`, `.spawn`, `.despawn` and `.delspawn`. Capture the subject's
-entity ID, instance and position before moving it. A same-space player move
-updates the server's position and sends `BASEMSG_FORCED_POSITION`; inspect
-the subject again after the move and check the client's position separately.
-A world transfer needs a fresh destination read after re-entry, followed by a
-check of the saved world and coordinates if it must survive relog.
+The workbench's `server_console_list` catalog now provides reviewed metadata
+for 16 travel and spawn commands. Four entries are marked runnable:
+`.gotolocation`, `.spawn`, `.despawn` and `.delspawn`. The local companion GUI
+forms and execution flow are pending DW-28 and DW-29. Catalog availability
+does not make a form available yet. `.gotoxyz` remains disabled in the catalog
+until execution can recheck an optional selected subject without silently
+falling back to moving the GM. Its player move attempts a saved-position write
+and sends `BASEMSG_FORCED_POSITION`; neither client application nor database
+persistence follows from the command feedback alone.
 
-Other travel and spawn forms currently appear disabled in the palette with
-their specific safety reason. In particular, selecting a summoned pet for
+Before any manual move, capture the subject's entity ID, instance and
+position. Inspect the subject again after the move and check the client's
+position separately. A world transfer needs a fresh destination read after
+re-entry, followed by a check of the saved world and coordinates if it must
+survive relog. `.despawn` with an explicit ID refuses pets, while the selected
+entity form can remove a pet without its normal dismiss path.
+
+Other travel and spawn forms are marked unavailable in the catalog with their
+specific safety reason. In particular, selecting a summoned pet for
 `.savespawn` or enabling `.autosavespawn 1` can queue a persistent pet spawn.
 Keep pets out of authoring selections until the server has a class guard.
 `.seedpending` shows queued work; `.seedconfirm` requests a live database write;

@@ -186,15 +186,19 @@ default (`COALESCE(s.patrol_path_id, t.patrol_path_id)`). Per-waypoint edits
 
 The GM-only `server_console_list` catalog now carries typed fields, accepted
 argument shapes, server preconditions, impact, readback and compensation for
-the 16 travel, placement and spawn commands. Its `typed` entries can be shown
-as forms; `disabled` entries have a named safety gap and remain unavailable to
-the companion palette. A disabled catalog entry does not change what an
-existing GM can type in the in-game `.`-console.
+the 16 travel, placement and spawn commands. Four entries are marked runnable
+in the catalog; companion GUI forms and execution are pending DW-28 and DW-29.
+The other entries have named safety gaps and remain unavailable to the
+companion palette. In particular, `.gotoxyz` has an optional selected subject
+that can fall back to the caller if it goes stale. It needs an execution-time
+expected-subject check before its catalog entry can be enabled. A disabled
+catalog entry does not change what a GM can type in the in-game `.`-console.
 
 The palette must refresh the server-side actor and target before dispatch.
 An initial travel receipt is only an enqueue acknowledgement. For a same-space
-player snap, compare `server_entity_get` before and after and inspect the
-`wire.out.forced_position` send; for a world transfer, wait for re-entry and
+player snap, compare `server_entity_get` before and after, inspect the
+`wire.out.forced_position` send, and query the saved `sgw_player` position;
+for a world transfer, wait for re-entry and
 compare the destination instance, then read `sgw_player` world, position and
 known stargates. No server snapshot alone proves the client applied a snap.
 The full per-command evidence and disabled reasons are in
