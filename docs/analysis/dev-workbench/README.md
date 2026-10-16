@@ -44,9 +44,9 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 
 | Wave | ID | Result | Depends | Budget | Status |
 |---|---|---|---|---|---|
-| 1 | DW-01 | Capture contract and broker | — | 40k | Review |
-| 1 | DW-02A | GUI session security | — | 40k | Review |
-| 1 | DW-02B | GUI opener/static shell/API | 02A | 40k | Ready |
+| 1 | DW-01 | Capture contract and broker | — | 40k | Integrated |
+| 1 | DW-02A | GUI session security | — | 40k | Integrated |
+| 1 | DW-02B | GUI opener/static shell/API | 02A | 40k | Review |
 | 1 | DW-03 | Target dossier model | 01, 02B | 35k | Ready |
 | 1 | DW-04 | Lua probe/object model | 01, 02B | 40k | Ready |
 | 1 | DW-05 | Spatial model/bookmarks | 01, 02B | 40k | Ready |
