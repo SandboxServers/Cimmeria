@@ -115,7 +115,7 @@ async fn workbench_opener_redeems_once_and_cannot_authenticate_mcp() {
         .send()
         .await
         .unwrap();
-    assert_eq!(root.status(), reqwest::StatusCode::NO_CONTENT);
+    assert_eq!(root.status(), reqwest::StatusCode::OK);
     let mcp = http
         .post(format!("{base}/mcp"))
         .header(COOKIE, cookie)

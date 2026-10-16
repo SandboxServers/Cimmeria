@@ -1,5 +1,6 @@
 //! Isolated local-browser session boundary for the companion workbench.
 
+pub mod api;
 pub mod session;
 
 use std::sync::Arc;
@@ -27,8 +28,11 @@ const CSRF_HEADER: &str = "x-cimmeria-csrf";
 /// Mount the bearer-authenticated opener beside an independent browser gate.
 pub fn router(sessions: Arc<SessionStore>, token: Arc<str>, instances: Instances) -> Router {
     let browser = Router::new()
-        .route("/workbench/", get(root))
+        .route("/workbench/", get(api::index))
+        .route("/workbench/app.js", get(api::javascript))
+        .route("/workbench/app.css", get(api::stylesheet))
         .route("/workbench/session", get(csrf).post(session_check))
+        .merge(api::router(instances.clone()))
         .route_layer(axum::middleware::from_fn_with_state(
             sessions.clone(),
             require_session,
@@ -202,11 +206,6 @@ async fn redeem(
         HeaderValue::from_str(&cookie).expect("cookie is ASCII"),
     );
     secure_response(response)
-}
-
-async fn root() -> StatusCode {
-    // DW-02B mounts the static shell here. Keep its path session-gated now.
-    StatusCode::NO_CONTENT
 }
 
 async fn csrf(State(sessions): State<Arc<SessionStore>>, headers: HeaderMap) -> Response {

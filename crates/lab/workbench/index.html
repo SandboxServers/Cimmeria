@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cimmeria Workbench</title>
+  <link rel="stylesheet" href="/workbench/app.css">
+  <script src="/workbench/app.js" defer></script>
+</head>
+<body data-instance="__INSTANCE__">
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Live Research Lab</p>
+      <h1>Cimmeria Workbench</h1>
+    </div>
+    <div class="instance">Instance <strong id="instance">__INSTANCE__</strong></div>
+  </header>
+  <main>
+    <nav class="tabs" aria-label="Workbench views">
+      <button type="button" data-view="overview" aria-current="page">Overview</button>
+      <button type="button" data-view="dossier">Target dossier</button>
+      <button type="button" data-view="palette">GM palette</button>
+      <button type="button" data-view="trace">Trace</button>
+    </nav>
+    <section id="overview" class="panel" aria-labelledby="overview-title">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Session</p>
+          <h2 id="overview-title">Instance status</h2>
+        </div>
+        <button type="button" id="refresh">Refresh</button>
+      </div>
+      <p id="connection" role="status">Connecting to the local lab daemon…</p>
+      <dl class="facts">
+        <div><dt>Client</dt><dd id="client-status">Unknown</dd></div>
+        <div><dt>Lease</dt><dd id="lease-status">Unknown</dd></div>
+        <div><dt>Source</dt><dd>Local lab daemon</dd></div>
+      </dl>
+      <p class="hint">To open another instance, run <code>lab workbench open --instance NAME</code>.</p>
+    </section>
+    <section id="placeholder" class="panel" hidden aria-live="polite">
+      <p class="eyebrow">Coming in a later packet</p>
+      <h2 id="placeholder-title"></h2>
+      <p id="placeholder-description"></p>
+    </section>
+  </main>
+</body>
+</html>
