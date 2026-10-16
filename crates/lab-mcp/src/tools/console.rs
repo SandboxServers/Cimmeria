@@ -13,8 +13,8 @@ use cimmeria_services::cell::messages::{BaseToCellMsg, LabQuery, LabQueryReply};
 
 use crate::state::LabState;
 
-/// Enumerate the dot registry only after a fresh cell-side actor snapshot.
-/// Missing, disconnected and non-GM entities fail closed.
+/// Enumerate canonical dot actions and their raw spellings after a fresh
+/// cell-side actor snapshot. Missing, disconnected and non-GM entities fail closed.
 pub async fn list_commands(state: &LabState, actor_entity_id: u32) -> Result<Value, String> {
     let reply = state
         .lab_query(LabQuery::EntityGet {
@@ -40,6 +40,7 @@ fn list_commands_for_actor(server_is_gm: bool) -> Result<Value, &'static str> {
     let cmds = command_catalog();
     let commands: Vec<Value> = cmds
         .iter()
+        .filter(|c| c.alias_of.is_none())
         .map(|c| {
             json!({
                 "name": c.name,
@@ -50,7 +51,7 @@ fn list_commands_for_actor(server_is_gm: bool) -> Result<Value, &'static str> {
                 "id": format!(".{}", c.name),
                 "channel": c.channel,
                 "category": c.category,
-                "aliases": [],
+                "aliases": c.aliases.iter().map(|name| format!(".{name}")).collect::<Vec<_>>(),
                 "summary": c.help,
                 "example": null,
                 "availability": c.availability,
@@ -144,8 +145,16 @@ mod tests {
         let expected = command_catalog();
         let catalog = list_commands_for_actor(true).unwrap();
         let rows = catalog["commands"].as_array().unwrap();
-        assert_eq!(rows.len(), expected.len());
-        for (row, command) in rows.iter().zip(expected) {
+        assert_eq!(
+            expected.len(),
+            129,
+            "raw registry keeps both alias spellings"
+        );
+        assert_eq!(rows.len(), expected.len() - 2);
+        for (row, command) in rows
+            .iter()
+            .zip(expected.iter().filter(|c| c.alias_of.is_none()))
+        {
             assert_eq!(row["name"], command.name);
             assert_eq!(row["id"], format!(".{}", command.name));
             assert_eq!(row["channel"], "dot");
@@ -154,6 +163,22 @@ mod tests {
             if command.name == "despawn" {
                 assert_eq!(row["target"]["argument_name"], "entityId");
             }
+        }
+    }
+
+    #[test]
+    fn ammo_dot_aliases_search_as_one_canonical_action_each() {
+        let catalog = list_commands_for_actor(true).unwrap();
+        let rows = catalog["commands"].as_array().unwrap();
+        for (canonical, alias) in [
+            ("giveammo", "gmgiveammo"),
+            ("infiniteammo", "gmsetinfiniteammo"),
+        ] {
+            let row = rows.iter().find(|row| row["name"] == canonical).unwrap();
+            assert_eq!(row["aliases"], json!([format!(".{alias}")]));
+            assert_eq!(row["id"], format!(".{canonical}"));
+            assert!(rows.iter().all(|row| row["name"] != alias));
+            assert!(command_catalog().iter().any(|raw| raw.name == alias));
         }
     }
 

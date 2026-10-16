@@ -113,6 +113,7 @@ mod commands;
 pub(crate) use commands::COMMANDS;
 mod workbench;
 pub(crate) use workbench::workbench_metadata;
+mod workbench_progression;
 mod workbench_world_author;
 mod workbench_world_move;
 

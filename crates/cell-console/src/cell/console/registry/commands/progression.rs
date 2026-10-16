@@ -4,7 +4,7 @@
 
 use super::{spec, Spec, Target};
 
-pub(super) const SPECS: &[Spec] = &[
+pub(in crate::cell::console::registry) const SPECS: &[Spec] = &[
     // ── E. crafting / discipline ───────────────────────────────────────────
     spec(
         "allcraft",

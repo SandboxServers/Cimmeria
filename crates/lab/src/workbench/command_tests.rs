@@ -216,6 +216,52 @@ fn typed_action_refuses_malformed_missing_and_extra_args() {
 }
 
 #[test]
+fn cooldown_id_requires_reset_action() {
+    let mut command = descriptor();
+    command.id = ".cooldowns".into();
+    command.target.kind = TargetKind::None;
+    command.target.selection_rule = SelectionRule::None;
+    command.args = vec![
+        ArgDescriptor {
+            name: "action".into(),
+            kind: ArgKind::Enum,
+            required: false,
+            default: None,
+            range: None,
+            choices: vec![json!("reset")],
+            help: "reset".into(),
+            sensitive: false,
+        },
+        ArgDescriptor {
+            name: "abilityId".into(),
+            kind: ArgKind::Integer,
+            required: false,
+            default: None,
+            range: Some(ArgRange {
+                min: Some(1.0),
+                max: Some(i32::MAX as f64),
+            }),
+            choices: vec![],
+            help: "ability to reset".into(),
+            sensitive: false,
+        },
+    ];
+    let mut requested = action();
+    requested.descriptor_id = ".cooldowns".into();
+    requested.typed_args = BTreeMap::from([("abilityId".into(), json!(592))]);
+    assert_eq!(
+        validate_command(&requested, &command, &actor()).unwrap_err(),
+        Refusal::MissingArgument
+    );
+    requested.typed_args.insert("action".into(), json!("reset"));
+    assert!(validate_command(&requested, &command, &actor()).is_ok());
+    requested.typed_args.remove("abilityId");
+    assert!(validate_command(&requested, &command, &actor()).is_ok());
+    requested.typed_args.clear();
+    assert!(validate_command(&requested, &command, &actor()).is_ok());
+}
+
+#[test]
 fn integer_bounds_reject_values_that_round_to_an_allowed_f64() {
     const EXACT_LIMIT: i64 = 1_i64 << 53;
     let mut command = descriptor();

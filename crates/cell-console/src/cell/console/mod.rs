@@ -162,6 +162,10 @@ pub use crate::cell::dispatch::is_gm;
 pub struct CommandInfo {
     /// Command name as typed after the `.` (e.g. `"spawn"`).
     pub name: String,
+    /// Canonical dot command when this raw registry row is an alias.
+    pub alias_of: Option<&'static str>,
+    /// Other accepted dot spellings, populated only on the canonical row.
+    pub aliases: &'static [&'static str],
     /// Minimum positional argument count.
     pub min_args: usize,
     /// Maximum positional argument count; `None` means unbounded.
@@ -236,6 +240,16 @@ pub fn command_catalog() -> Vec<CommandInfo> {
             let metadata = registry::workbench_metadata(s);
             CommandInfo {
                 name: s.name.to_string(),
+                alias_of: match s.name {
+                    "gmgiveammo" => Some("giveammo"),
+                    "gmsetinfiniteammo" => Some("infiniteammo"),
+                    _ => None,
+                },
+                aliases: match s.name {
+                    "giveammo" => &["gmgiveammo"],
+                    "infiniteammo" => &["gmsetinfiniteammo"],
+                    _ => &[],
+                },
                 min_args: s.min,
                 max_args: (s.max != usize::MAX).then_some(s.max),
                 target: s.target.label().to_string(),

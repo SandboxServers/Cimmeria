@@ -379,13 +379,30 @@ privileged lab MCP bearer. An `EntityGet` result for that ID is not browser
 authorization. DW-30 must derive the browser actor from its authenticated,
 instance-bound session and recheck live cell authority when executing.
 
-The tool then projects every registered dot command from the same
-`COMMANDS` table that dispatches the in-world `.` console. Workbench fields
+The tool projects dot commands from the same
+`COMMANDS` table that dispatches the in-world `.` console. The raw
+registry retains 129 spellings; `.gmgiveammo` and `.gmsetinfiniteammo`
+are searchable aliases of `.giveammo` and `.infiniteammo`, so the
+workbench catalog exposes 127 actions. Workbench fields
 include `id`, `channel = dot`, stable `target_policy` and structured `target`, `metadata_version`,
-`availability = unsupported` and `manual_pending = true`. These conservative
-rows carry `impact = null`, `verify = null` and `compensation = null`, and are
-searchable but have no typed Run action until their argument,
-impact and readback contracts are reviewed. The native slash catalog is a
+per-command `availability`, typed arguments, impact, verification and
+compensation. Pending rows remain searchable without a typed Run action.
+The 27 progression, ability, stat, ammo and pet rows now carry source-reviewed
+forms from [DW-21-E](../analysis/dev-workbench/evidence/DW-21-E.md). Live cell
+reads such as `.effects` and stat reports can be runnable, but their
+snapshots do not prove persistence. For grants, capture the exact target
+`player_id`, query the named database columns before and after the Base
+result, and repeat after relog. A queued Cell line is not a commit; a DB
+delta does not prove client delivery or original-session ownership. Those
+grants stay disabled in the typed palette until owner fences and post-await
+sends are safe. A no-argument `.infiniteammo` read is safe in isolation, but
+the whole command is disabled because the current catalog has only
+command-level availability and the `on`/`off` forms are not safe to expose.
+The same applies to `.pet` info/list versus summon/dismiss/stance and static
+`.dummy` versus caster. If `server_entity_get` or `server_ability_state` has
+no entity during a transition, mark verification unknown rather than failed.
+These rows are offline source-reviewed contracts; no live client pass has
+been claimed. The native slash catalog is a
 separate source. Its first 27 patch-012 entries
 have typed, evidence-backed disabled forms in `slash_descriptors_1a`.
 Patch entries 55–81 also have standalone disabled forms in

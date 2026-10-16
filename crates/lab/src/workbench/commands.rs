@@ -345,6 +345,16 @@ pub fn validate_command(
     {
         return Err(Refusal::UnknownArgument);
     }
+    // The dot handler accepts an ability ID only in `.cooldowns reset ID`.
+    // Both fields are optional individually, so scalar validation alone
+    // would accept the invalid `.cooldowns ID` form.
+    if descriptor.channel == CommandChannel::Dot
+        && descriptor.id == ".cooldowns"
+        && resolved_args.contains_key("abilityId")
+        && resolved_args.get("action").and_then(Value::as_str) != Some("reset")
+    {
+        return Err(Refusal::MissingArgument);
+    }
     Ok(ValidatedAction {
         action: action.clone(),
         resolved_args,
