@@ -283,6 +283,15 @@ impl Supervisor {
         self.events.inner.lock().await.head()
     }
 
+    /// Read a bounded event-history slice without moving any named cursor.
+    pub async fn trace_snapshot(&self, after: u64, max: usize) -> (store::Slice, u64) {
+        let st = self.events.inner.lock().await;
+        (
+            st.since(after, max.min(store::STORE_CAP)),
+            st.upstream_dropped,
+        )
+    }
+
     /// `client_events_read`: pump the bridge ring, then return what the
     /// `events_read` cursor has not seen yet, and advance it. Each event is
     /// returned once to this reader, as before, but no other reader loses
@@ -319,6 +328,33 @@ impl Supervisor {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn trace_snapshot_is_bounded_reports_eviction_and_leaves_reader_cursor() {
+        let sup = super::fake_bridge::supervisor(Arc::new(|_, _| {
+            Err("bridge must not be called by a passive trace read".into())
+        }))
+        .await;
+        {
+            let mut st = sup.events.inner.lock().await;
+            *st = StoreInner::with_cap(2);
+            st.push("ui.click", 1, json!({}));
+            st.push("net.out", 2, json!({}));
+            st.push("ability.recv", 3, json!({}));
+            st.record_drops(2);
+            st.set_cursor(EVENTS_READ_CURSOR, 1);
+        }
+        let (slice, dropped) = sup.trace_snapshot(0, 1).await;
+        assert!(slice.gap);
+        assert_eq!(dropped, 2);
+        assert_eq!(slice.events.len(), 1);
+        assert_eq!(slice.events[0].seq, 2);
+        let st = sup.events.inner.lock().await;
+        assert_eq!(st.cursor(EVENTS_READ_CURSOR), Some(1));
+        assert_eq!(st.since(1, 2).events.len(), 2);
+    }
 
     #[test]
     fn bridge_results_land_in_order_with_their_fields() {

@@ -18,6 +18,8 @@ use super::{bound_instance, cookie_value, session::SessionStore};
 mod mission_api;
 #[path = "probe_api.rs"]
 mod probe_api;
+#[path = "trace_api.rs"]
+mod trace_api;
 use crate::{
     lease::permit::{self, Permit},
     server::Instances,
@@ -59,6 +61,7 @@ fn router_with_sources(
         .route("/workbench/api/v1/bookmarks/delete", post(bookmark_delete))
         .route("/workbench/api/v1/bookmarks/action", post(bookmark_action))
         .route("/workbench/api/v1/missions", get(mission_api::mission_xray))
+        .route("/workbench/api/v1/trace", get(trace_api::trace))
         .route("/workbench/api/v1/input/key", post(input_key))
         .route("/workbench/api/v1/probes", get(probe_api::probe_list))
         .route("/workbench/api/v1/probes/save", post(probe_api::probe_save))
