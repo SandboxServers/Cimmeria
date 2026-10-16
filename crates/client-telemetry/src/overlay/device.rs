@@ -52,10 +52,10 @@ impl Lifecycle {
     }
 
     fn created(&self, ptr: usize, vtable_accepted: bool) {
-        self.ready.store(false, Ordering::Release);
-        // A newer unsupported device must not leave an old device active.
-        self.device.store(0, Ordering::Release);
+        // Auxiliary devices with a different vtable cannot displace the
+        // device whose EndScene slot we actually patched.
         if ptr != 0 && vtable_accepted && !self.disabled.load(Ordering::Acquire) {
+            self.ready.store(false, Ordering::Release);
             self.device.store(ptr, Ordering::Release);
             self.ready.store(true, Ordering::Release);
         }
@@ -195,9 +195,11 @@ mod tests {
         let state = Lifecycle::new();
         state.created(0xa, true);
         assert!(state.enter(0xa).is_some());
-        state.created(0xb, false);
-        assert!(state.enter(0xa).is_none());
-        assert!(state.enter(0xb).is_none());
+        for foreign in [0xb, 0xc, 0xd, 0xe] {
+            state.created(foreign, false);
+            assert!(state.enter(0xa).is_some());
+            assert!(state.enter(foreign).is_none());
+        }
         state.created(0xc, true);
         assert!(state.enter(0xc).is_some());
     }

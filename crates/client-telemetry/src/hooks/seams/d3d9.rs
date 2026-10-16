@@ -23,8 +23,8 @@
 //!    (`TestCooperativeLevel`) and 16 (`Reset`), once.
 //! 3. Reset and TestCooperativeLevel then report.
 //!
-//! Only these three are hooked; `Present` (every frame) and the draw calls
-//! are deliberately not touched.
+//! Lab builds also patch `EndScene` on one accepted device vtable for the
+//! diagnostic status panel. `Present` and the draw calls are untouched.
 //!
 //! # Events
 //!
@@ -52,6 +52,12 @@
 //! layout); not yet seen from a live client.
 
 use serde_json::json;
+#[cfg(all(feature = "lab-bridge", any(all(windows, target_arch = "x86"), test)))]
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+#[cfg(all(feature = "lab-bridge", any(all(windows, target_arch = "x86"), test)))]
+use std::sync::Mutex;
+#[cfg(all(feature = "lab-bridge", windows, target_arch = "x86"))]
+use std::sync::OnceLock;
 
 use crate::hooks::sinks::emit::Fields;
 use crate::hooks::sinks::mem::{self, Reader};
@@ -68,24 +74,73 @@ pub const VT_RESET: usize = 16;
 /// `IDirect3DDevice9` vtable index of `EndScene` (Windows SDK `d3d9.h`).
 pub const VT_END_SCENE: usize = 42;
 
-/// The overlay install gate. `fingerprinted_hook` is true only after the
-/// globally gated D3D9 Create9 detour has actually run.
+#[cfg(all(feature = "lab-bridge", windows, target_arch = "x86"))]
+/// The exact boot verdict, retained before any hook changes its checked bytes.
+pub(crate) static OVERLAY_REPORT: OnceLock<crate::fingerprint::Report> = OnceLock::new();
+
+/// Retain the actual boot fingerprint report for later device creation.
+#[cfg(all(feature = "lab-bridge", windows, target_arch = "x86"))]
+pub(crate) fn record_overlay_report(report: &crate::fingerprint::Report) {
+    let _ = OVERLAY_REPORT.set(report.clone());
+}
+
+/// The overlay install gate uses the boot report and an observed Create9
+/// detour hit; device creation can happen well after boot.
 #[cfg(all(feature = "lab-bridge", any(all(windows, target_arch = "x86"), test)))]
 pub(crate) fn install_overlay_if_allowed(
+    report: Option<&crate::fingerprint::Report>,
     fingerprinted_hook: bool,
     lab_active: bool,
     patch: impl FnOnce() -> bool,
 ) -> bool {
-    if !fingerprinted_hook || !lab_active {
+    if !report.is_some_and(crate::fingerprint::Report::is_usable)
+        || !fingerprinted_hook
+        || !lab_active
+    {
         return false;
     }
     patch()
 }
 
-/// A second device is eligible only when it shares the one patched vtable.
+/// Outcome of one serialized attempt to claim the EndScene vtable.
 #[cfg(all(feature = "lab-bridge", any(all(windows, target_arch = "x86"), test)))]
-pub(crate) fn overlay_vtable_accepted(installed: bool, owner: usize, candidate: usize) -> bool {
-    installed && owner != 0 && owner == candidate
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum OverlayInstall {
+    Accepted,
+    Foreign,
+    PatchFailed,
+}
+
+/// Install once under a lock so concurrent device probes cannot overwrite
+/// the original callback or claim an unpatched vtable.
+#[cfg(all(feature = "lab-bridge", any(all(windows, target_arch = "x86"), test)))]
+pub(crate) fn install_overlay_vtable(
+    lock: &Mutex<()>,
+    owner: &AtomicUsize,
+    installed: &AtomicBool,
+    candidate: usize,
+    patch: impl FnOnce() -> bool,
+) -> OverlayInstall {
+    let _guard = lock
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if installed.load(Ordering::Acquire) {
+        return if owner.load(Ordering::Acquire) == candidate {
+            OverlayInstall::Accepted
+        } else {
+            OverlayInstall::Foreign
+        };
+    }
+    let current_owner = owner.load(Ordering::Acquire);
+    if candidate == 0 || (current_owner != 0 && current_owner != candidate) {
+        return OverlayInstall::Foreign;
+    }
+    if !patch() {
+        return OverlayInstall::PatchFailed;
+    }
+    owner.store(candidate, Ordering::Release);
+    installed.store(true, Ordering::Release);
+    OverlayInstall::Accepted
 }
 
 // The overlay belongs to this D3D seam so the player build never links it.
@@ -364,30 +419,62 @@ mod tests {
     #[cfg(feature = "lab-bridge")]
     #[test]
     fn unsupported_fingerprint_refuses_overlay_even_with_a_lab_session() {
-        // The boot gate never installs Create9 when the global report is
-        // unusable; without that detour hit the overlay marker stays false.
-        assert!(!crate::fingerprint::check(|_, _| None, &[]).is_usable());
+        let rejected = crate::fingerprint::check(|_, _| None, &[]);
+        assert!(!rejected.is_usable());
         let called = std::cell::Cell::new(0);
-        assert!(!install_overlay_if_allowed(false, true, || {
-            called.set(called.get() + 1);
-            true
-        }));
-        assert!(!install_overlay_if_allowed(true, false, || {
-            called.set(called.get() + 1);
-            true
-        }));
+        assert!(!install_overlay_if_allowed(
+            Some(&rejected),
+            true,
+            true,
+            || {
+                called.set(called.get() + 1);
+                true
+            }
+        ));
+        let supported = crate::fingerprint::Report {
+            code: crate::fingerprint::CODE_SITES
+                .iter()
+                .map(|site| (*site, crate::fingerprint::Prologue::Stock))
+                .collect(),
+            slots: crate::fingerprint::SLOT_SITES
+                .iter()
+                .map(|site| (*site, crate::fingerprint::SlotState::Stock))
+                .collect(),
+        };
+        assert!(supported.is_usable());
+        assert!(!install_overlay_if_allowed(
+            Some(&supported),
+            false,
+            true,
+            || {
+                called.set(called.get() + 1);
+                true
+            }
+        ));
+        assert!(!install_overlay_if_allowed(
+            Some(&supported),
+            true,
+            false,
+            || {
+                called.set(called.get() + 1);
+                true
+            }
+        ));
         assert_eq!(
             called.get(),
             0,
             "unsupported builds never reach the patch callback"
         );
-        assert!(install_overlay_if_allowed(true, true, || {
-            called.set(called.get() + 1);
-            true
-        }));
+        assert!(install_overlay_if_allowed(
+            Some(&supported),
+            true,
+            true,
+            || {
+                called.set(called.get() + 1);
+                true
+            }
+        ));
         assert_eq!(called.get(), 1);
-        assert!(overlay_vtable_accepted(true, 0x1000, 0x1000));
-        assert!(!overlay_vtable_accepted(true, 0x1000, 0x2000));
     }
 
     #[test]

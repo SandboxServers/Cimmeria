@@ -84,23 +84,6 @@ fn diagnostic_fields(d: device::Diagnostics) -> crate::hooks::sinks::emit::Field
     ]
 }
 
-#[cfg(test)]
-mod diagnostic_tests {
-    use super::*;
-
-    #[test]
-    fn the_non_render_drain_keeps_reason_and_terminal_count() {
-        let fields = diagnostic_fields(device::Diagnostics {
-            reasons: device::FailureReason::Patch as u32 | device::FailureReason::Restore as u32,
-            failures: 3,
-            disabled: true,
-        });
-        assert_eq!(fields[0].1, serde_json::json!(["patch", "restore"]));
-        assert_eq!(fields[1].1, serde_json::json!(3));
-        assert_eq!(fields[2].1, serde_json::json!(true));
-    }
-}
-
 /// Publish only coarse status bits. No command or bridge token enters pixels.
 #[cfg(all(windows, target_arch = "x86"))]
 #[allow(dead_code)] // DW-18 publishes these bits when controls land.
@@ -126,5 +109,22 @@ pub(crate) fn render_frame(device_ptr: usize) {
         start.elapsed() <= FRAME_BUDGET
     }) {
         device::on_fault(device_ptr, reason);
+    }
+}
+
+#[cfg(test)]
+mod diagnostic_tests {
+    use super::*;
+
+    #[test]
+    fn the_non_render_drain_keeps_reason_and_terminal_count() {
+        let fields = diagnostic_fields(device::Diagnostics {
+            reasons: device::FailureReason::Patch as u32 | device::FailureReason::Restore as u32,
+            failures: 3,
+            disabled: true,
+        });
+        assert_eq!(fields[0].1, serde_json::json!(["patch", "restore"]));
+        assert_eq!(fields[1].1, serde_json::json!(3));
+        assert_eq!(fields[2].1, serde_json::json!(true));
     }
 }

@@ -2,10 +2,56 @@
 
 use std::cell::Cell;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Barrier, Mutex};
 
 use super::device::FailureReason;
 use super::render::{draw_panel, DeviceOps, Rect, Snapshot};
 use super::{STATUS_GAP, STATUS_RECORDING, STATUS_TRACING};
+use crate::hooks::seams::d3d9::{install_overlay_vtable, OverlayInstall};
+
+#[test]
+fn concurrent_same_vtable_install_preserves_the_original() {
+    let lock = Arc::new(Mutex::new(()));
+    let owner = Arc::new(AtomicUsize::new(0));
+    let installed = Arc::new(AtomicBool::new(false));
+    let slot = Arc::new(AtomicUsize::new(0x1234));
+    let original = Arc::new(AtomicUsize::new(0));
+    let patches = Arc::new(AtomicUsize::new(0));
+    let barrier = Arc::new(Barrier::new(8));
+    std::thread::scope(|scope| {
+        for _ in 0..8 {
+            let (lock, owner, installed, slot, original, patches, barrier) = (
+                &lock, &owner, &installed, &slot, &original, &patches, &barrier,
+            );
+            scope.spawn(move || {
+                barrier.wait();
+                assert_eq!(
+                    install_overlay_vtable(lock, owner, installed, 0xa000, || {
+                        patches.fetch_add(1, Ordering::Relaxed);
+                        original.store(0x1234, Ordering::Release);
+                        slot.compare_exchange(0x1234, 0x5678, Ordering::AcqRel, Ordering::Acquire)
+                            .is_ok()
+                    }),
+                    OverlayInstall::Accepted
+                );
+            });
+        }
+    });
+    assert_eq!(patches.load(Ordering::Acquire), 1);
+    assert_eq!(original.load(Ordering::Acquire), 0x1234);
+    assert_eq!(slot.load(Ordering::Acquire), 0x5678);
+    for foreign in [0xb000, 0xc000, 0xd000, 0xe000] {
+        assert_eq!(
+            install_overlay_vtable(&lock, &owner, &installed, foreign, || panic!(
+                "foreign vtable patched"
+            )),
+            OverlayInstall::Foreign
+        );
+    }
+    assert_eq!(owner.load(Ordering::Acquire), 0xa000);
+    assert_eq!(patches.load(Ordering::Acquire), 1);
+}
 
 struct FakeDevice {
     size: (u32, u32),

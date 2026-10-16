@@ -6,6 +6,7 @@
 use std::ffi::c_void;
 use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering};
+use std::sync::Mutex;
 use std::time::Instant;
 
 #[cfg(feature = "lab-bridge")]
@@ -29,6 +30,9 @@ static OVERLAY_PATCHED: AtomicBool = AtomicBool::new(false);
 static FINGERPRINTED_CREATE9_SEEN: AtomicBool = AtomicBool::new(false);
 #[cfg(feature = "lab-bridge")]
 static PATCH_FAILURES: AtomicUsize = AtomicUsize::new(0);
+#[cfg(feature = "lab-bridge")]
+static OVERLAY_INSTALL_LOCK: Mutex<()> = Mutex::new(());
+static VTABLE_PATCH_LOCK: Mutex<()> = Mutex::new(());
 static D3D_PATCHED: AtomicBool = AtomicBool::new(false);
 static DEVICE_PATCHED: AtomicBool = AtomicBool::new(false);
 /// The last `TestCooperativeLevel` answer; `i64::MIN` = none yet.
@@ -45,6 +49,7 @@ fn overlay_patch_failed() {
 #[cfg(feature = "lab-bridge")]
 fn maybe_patch_overlay(device: usize) -> bool {
     install_overlay_if_allowed(
+        OVERLAY_REPORT.get(),
         FINGERPRINTED_CREATE9_SEEN.load(Ordering::Acquire),
         crate::bridge::bridge_epoch().is_some(),
         || {
@@ -52,37 +57,28 @@ fn maybe_patch_overlay(device: usize) -> bool {
                 return false;
             }
             let Some(vtable) = mem::read_u32(&process_reader, device).map(|p| p as usize) else {
-                overlay_patch_failed();
                 return false;
             };
-            let owner = OVERLAY_VTABLE.load(Ordering::Acquire);
-            if OVERLAY_PATCHED.load(Ordering::Acquire) {
-                if overlay_vtable_accepted(true, owner, vtable) {
-                    return true;
-                }
-                overlay_patch_failed();
-                return false;
-            }
-            if OVERLAY_VTABLE
-                .compare_exchange(0, vtable, Ordering::AcqRel, Ordering::Acquire)
-                .is_err_and(|owned| owned != vtable)
-            {
-                overlay_patch_failed();
-                return false;
-            }
-            if patch(
-                device,
-                VT_END_SCENE,
-                end_scene_detour as *const () as usize,
-                &ORIG_END_SCENE,
+            match install_overlay_vtable(
+                &OVERLAY_INSTALL_LOCK,
+                &OVERLAY_VTABLE,
+                &OVERLAY_PATCHED,
+                vtable,
+                || {
+                    patch(
+                        device,
+                        VT_END_SCENE,
+                        end_scene_detour as *const () as usize,
+                        &ORIG_END_SCENE,
+                    )
+                },
             ) {
-                OVERLAY_PATCHED.store(true, Ordering::Release);
-                true
-            } else {
-                let _ =
-                    OVERLAY_VTABLE.compare_exchange(vtable, 0, Ordering::AcqRel, Ordering::Acquire);
-                overlay_patch_failed();
-                false
+                OverlayInstall::Accepted => true,
+                OverlayInstall::Foreign => false,
+                OverlayInstall::PatchFailed => {
+                    overlay_patch_failed();
+                    false
+                }
             }
         },
     )
@@ -104,6 +100,9 @@ fn slot_of(obj: usize, index: usize) -> Option<usize> {
 /// A slot that already holds our detour (a second device from the same
 /// vtable) is left alone.
 fn patch(obj: usize, index: usize, detour: usize, orig: &AtomicUsize) -> bool {
+    let _guard = VTABLE_PATCH_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let Some(slot) = slot_of(obj, index) else {
         return false;
     };
@@ -111,18 +110,62 @@ fn patch(obj: usize, index: usize, detour: usize, orig: &AtomicUsize) -> bool {
         return false;
     };
     if current as usize == detour {
-        return true;
+        return orig.load(Ordering::Acquire) != 0;
+    }
+    let previous = orig.load(Ordering::Acquire);
+    if previous != 0 && previous != current as usize {
+        return false;
     }
     orig.store(current as usize, Ordering::Release);
-    // SAFETY: `slot` was just read, so it is mapped; the detour has the
-    // exact signature of the method.
-    match unsafe { crate::hooks::swap_vtable_slot(slot, detour) } {
-        Ok(_) => true,
-        Err(_) => {
-            orig.store(0, Ordering::Release);
-            false
-        }
+    // A live Reset/Test callback may call this while another thread reads
+    // the shared vtable. Exchange the aligned slot atomically after opening
+    // its page, and refuse an unexpected intervening hook.
+    let installed = unsafe { swap_live_vtable_slot(slot, current as usize, detour) };
+    if !installed {
+        orig.store(previous, Ordering::Release);
     }
+    installed
+}
+
+/// The slot is pointer-aligned COM data in this process, opened for writing
+/// only for the duration of the atomic compare/exchange.
+unsafe fn swap_live_vtable_slot(slot: usize, expected: usize, detour: usize) -> bool {
+    use windows_sys::Win32::System::Memory::{
+        VirtualProtect, PAGE_PROTECTION_FLAGS, PAGE_READWRITE,
+    };
+
+    if !slot.is_multiple_of(std::mem::align_of::<AtomicUsize>()) {
+        return false;
+    }
+    let pointer = slot as *mut c_void;
+    let mut old_protect: PAGE_PROTECTION_FLAGS = 0;
+    if unsafe {
+        VirtualProtect(
+            pointer,
+            std::mem::size_of::<usize>(),
+            PAGE_READWRITE,
+            &mut old_protect,
+        )
+    } == 0
+    {
+        return false;
+    }
+    // SAFETY: the caller has read this mapped, aligned pointer slot; the
+    // page is writable and AtomicUsize has the slot's pointer width.
+    let slot_ref = unsafe { &*(slot as *const AtomicUsize) };
+    let installed = slot_ref
+        .compare_exchange(expected, detour, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok();
+    let mut unused: PAGE_PROTECTION_FLAGS = 0;
+    let _ = unsafe {
+        VirtualProtect(
+            pointer,
+            std::mem::size_of::<usize>(),
+            old_protect,
+            &mut unused,
+        )
+    };
+    installed
 }
 
 /// `IDirect3D9* __stdcall Direct3DCreate9(UINT SDKVersion)`.
