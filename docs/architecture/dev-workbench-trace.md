@@ -14,9 +14,10 @@ client, acquire a lab lease, start a packet tap, or advance the
 `{schema_version, context, data, gaps}` envelope. `data` contains the
 requested `click_id`, all eight ordered stages, the first unobserved stage,
 the largest competing candidate count, `capture_gap`, and an optional
-`click_to_visible_ms` interval. Up to 64 later ring-order
-`unjoined_context_events` retain raw `cme.event` and `mercury.*` rows
-without claiming they belong to the click. Each stage contains `status` (`observed`,
+`click_to_visible_ms` interval. Up to 64 non-click
+`unjoined_context_events` retain raw bridge rows from the snapshot,
+including `cme.event` and `mercury.*`, without claiming they belong to the
+click. Each stage contains `status` (`observed`,
 `unknown`, or `ambiguous`), raw sourced evidence when uniquely matched,
 reason, and candidate count. A ring eviction or any bridge drop is reported
 in `gaps`; historical drops remain a conservative completeness warning.
@@ -37,12 +38,15 @@ happened.
 | `ServerSend` | Trusted, bound server send evidence | No server source is wired to the read API yet |
 | `ClientReceive` | `mercury.entity_method` or `ability.recv` | No uniquely correlated inbound row |
 | `ClientApply` | `ability.applied` | No domain-specific apply observation |
-| `VisibleResult` | `ability.shown` handler event | No domain-specific shown observation; pixels remain unverified |
+| `VisibleResult` | Correlated `ability.shown` handler with `status=ok` | A failed or unjoined handler is not a visible result; pixels remain unverified |
 
 `client.cme.event` is retained as unjoined context but is not
 classified as an apply or visible result: raising an event does not prove a
 handler changed client state or drew a frame. The assembler uses exact
-click, press, send, cast or Mercury sequence identity where available.
+click, press, send, cast or Mercury sequence identity where available. A
+press, send or cast ID requires a proven shared process or server session
+scope because those numbers can repeat after relog. A matching cast ID
+across different sessions is rejected.
 Mercury range joins also require the same bound server session because a
 sequence counter can be reused across sessions.
 Across different clock domains, the assembler also requires an exact unique
@@ -54,6 +58,17 @@ Multiple eligible candidates make the stage `ambiguous` and preserve their
 count. A later uniquely keyed stage may still be observed after an earlier
 gap; `first_unobserved_stage` is an evidence boundary, not a root-cause
 diagnosis.
+
+The supervisor ingests bridge rows before it reads the Lua click ring in
+one pump. Store sequence is therefore ingestion order, not causal click
+order; a send can have a lower store sequence than its click. The current
+`ui.click` row has `event_id`, while stock `ability.sent` and `net.out`
+rows do not carry it. Stock `ability.applied` and most `ability.shown`
+rows also lack a stable receive or cast join. These stages remain unknown
+for a production-shaped click; an offline fixture with injected IDs only
+tests the future contract. An `ability.shown` row with `status=failed`
+remains in the export as failure evidence and cannot count as a visible
+result or contribute a latency interval.
 
 `ui.click.ts_ms` is the host's ingest time for a Lua ring row. Bridge rows
 use the client's wall clock. Their offset and Lua sampling delay have no

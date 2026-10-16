@@ -147,6 +147,13 @@ fn sequence_matches(a: &Evidence, b: &Evidence) -> bool {
     ((seq.wrapping_sub(first)) & MERCURY_MASK) <= ((last.wrapping_sub(first)) & MERCURY_MASK)
 }
 
+fn scope_proven(a: &Evidence, b: &Evidence) -> bool {
+    same(a, b, "server_session_id")
+        || ["client_pid", "process_created_ticks", "bridge_epoch"]
+            .iter()
+            .all(|field| same(a, b, field))
+}
+
 fn linked(anchor: &Evidence, candidate: &Evidence) -> bool {
     for field in [
         "client_pid",
@@ -162,9 +169,15 @@ fn linked(anchor: &Evidence, candidate: &Evidence) -> bool {
             return false;
         }
     }
-    // These IDs are scoped by the bounded capture window and any available
-    // process/session fields. Method or entity equality alone is insufficient.
-    if ["click_id", "press_id", "send_id", "cast_id"]
+    // A click epoch/id is unique. Other IDs can reset at a process or
+    // session boundary, and require independent scope proof.
+    if same(anchor, candidate, "click_id") {
+        return true;
+    }
+    if !scope_proven(anchor, candidate) {
+        return false;
+    }
+    if ["press_id", "send_id", "cast_id"]
         .iter()
         .any(|field| same(anchor, candidate, field))
         || sequence_matches(anchor, candidate)
@@ -229,11 +242,10 @@ pub fn assemble(
         .chain(server.iter().take(MAX_EVENTS).cloned())
         .collect();
     let mut trace = assemble_evidence(click_id, &rows, capture_gap);
-    if let Some(click_seq) = trace.stages[0].evidence.as_ref().map(|e| e.seq) {
+    if trace.stages[0].evidence.is_some() {
         trace.unjoined_context_events = client
             .iter()
-            .filter(|row| row.seq > click_seq)
-            .filter(|row| row.kind == "cme.event" || row.kind.starts_with("mercury."))
+            .filter(|row| row.kind != "ui.click")
             .take(64)
             .map(StoredEvent::to_json)
             .collect();
@@ -277,10 +289,9 @@ pub fn assemble_evidence(click_id: &str, evidence: &[Evidence], capture_gap: boo
             .iter()
             .filter(|row| row.stage == stage)
             .filter(|row| {
-                click.as_ref().is_some_and(|c| {
-                    (row.source != "client_event_ring" || row.seq > c.seq)
-                        && (c.clock_domain != row.clock_domain || plausible_time(c, row))
-                })
+                click
+                    .as_ref()
+                    .is_some_and(|c| c.clock_domain != row.clock_domain || plausible_time(c, row))
             })
             .filter(|row| {
                 anchor
@@ -291,15 +302,23 @@ pub fn assemble_evidence(click_id: &str, evidence: &[Evidence], capture_gap: boo
             .collect();
         let count = candidates.len();
         let evidence = (count == 1).then(|| candidates[0].clone());
-        if let Some(row) = &evidence {
-            anchor = Some(row.clone());
+        let visible_ok = stage != Stage::VisibleResult
+            || evidence
+                .as_ref()
+                .is_some_and(|row| key(row, "status").and_then(Value::as_str) == Some("ok"));
+        if visible_ok {
+            if let Some(row) = &evidence {
+                anchor = Some(row.clone());
+            }
         }
         stages.push(StageResult {
             stage,
-            status: match count {
-                0 => "unknown",
-                1 => "observed",
-                _ => "ambiguous",
+            status: if count == 1 && visible_ok {
+                "observed"
+            } else if count > 1 {
+                "ambiguous"
+            } else {
+                "unknown"
             },
             evidence,
             reason: match count {
@@ -308,13 +327,18 @@ pub fn assemble_evidence(click_id: &str, evidence: &[Evidence], capture_gap: boo
                 } else {
                     "click_unbound"
                 }),
+                1 if !visible_ok => Some("visible_handler_failed_or_unverified"),
                 1 => None,
                 _ => Some("multiple_correlated_observations"),
             },
             competing_candidates: count,
         });
     }
-    let visible = stages.last().and_then(|stage| stage.evidence.as_ref());
+    let visible = stages.last().and_then(|stage| {
+        (stage.status == "observed")
+            .then_some(stage.evidence.as_ref())
+            .flatten()
+    });
     let click_to_visible_ms = click.as_ref().zip(visible).and_then(|(a, b)| latency(a, b));
     let first_unobserved_stage = stages
         .iter()

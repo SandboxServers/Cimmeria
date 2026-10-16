@@ -11,6 +11,12 @@ session-bound feed is still required for server receive/state/send stages.
 client wall time. Lua sampling delay has no finite bound; live
 click-to-visible latency must remain null until a calibrated source exists.
 `client.cme.event` alone is neither client-apply nor visible-result proof.
-Click, press, send, cast, or Mercury sequence identity can correlate
-observations; timestamp, entity, or method alone cannot. Ambiguous matches
-remain ambiguous, and first unobserved stage is not a causal diagnosis.
+One pump stores bridge rows before Lua click rows, so store seq does not
+order the click before its send. The click has `event_id`, but stock
+`ability.sent` and `net.out` lack it; apply/shown rows also lack a stable
+receive key in most paths. These are separate blocked DLL dependencies,
+not present live functionality. Press/send/cast IDs require proven common
+process or session scope and cannot cross relog by numeric equality alone.
+Failed shown handlers remain failure evidence, not visible result. Time,
+entity and method alone cannot join stages. The complete offline latency
+fixture assumes future verified identity and clock projection.
