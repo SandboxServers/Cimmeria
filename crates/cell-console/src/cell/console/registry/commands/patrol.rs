@@ -3,7 +3,7 @@
 
 use super::{spec, Spec, Target};
 
-pub(super) const SPECS: &[Spec] = &[
+pub(crate) const SPECS: &[Spec] = &[
     spec(
         "path_add",
         1,

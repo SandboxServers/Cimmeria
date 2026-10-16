@@ -115,7 +115,7 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 4 | DW-20A-E | Dot travel/spawn evidence, 16 specs | 19 | 35k | Integrated |
 | 4 | DW-20A | Dot travel/spawn metadata | 20A-E | 40k | Integrated (#1751) |
 | 4 | DW-20B-E | Dot patrol/authoring evidence, 28 specs | 19 | 45k | Integrated (#1765) |
-| 4 | DW-20B | Dot patrol/authoring metadata | 20B-E | 45k | Ready |
+| 4 | DW-20B | Dot patrol/authoring metadata | 20B-E | 45k | Review |
 | 5 | DW-21-E | Dot progression/ability/stat/ammo/pet evidence, 27 specs | 19 | 45k | Ready |
 | 5 | DW-21 | Dot progression/ability/stat/ammo/pet metadata | 21-E | 45k | Ready |
 | 5 | DW-22-E | Dot social/org/squad/bank/black-market evidence, 25 specs | 19 | 45k | Ready |
