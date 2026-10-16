@@ -18,13 +18,14 @@ use axum::{
 use serde_json::json;
 
 use super::auth;
+use crate::server::Instances;
 use session::SessionStore;
 
 const COOKIE_NAME: &str = "cimmeria_workbench";
 const CSRF_HEADER: &str = "x-cimmeria-csrf";
 
 /// Mount the bearer-authenticated opener beside an independent browser gate.
-pub fn router(sessions: Arc<SessionStore>, token: Arc<str>) -> Router {
+pub fn router(sessions: Arc<SessionStore>, token: Arc<str>, instances: Instances) -> Router {
     let browser = Router::new()
         .route("/workbench/", get(root))
         .route("/workbench/session", get(csrf).post(session_check))
@@ -39,7 +40,7 @@ pub fn router(sessions: Arc<SessionStore>, token: Arc<str>) -> Router {
             token,
             auth::require_bearer,
         ))
-        .with_state(sessions.clone());
+        .with_state((sessions.clone(), instances));
     let redeem = Router::new()
         .route("/workbench/session/redeem/{nonce}", get(redeem))
         .with_state(sessions);
@@ -63,14 +64,32 @@ fn local_host(headers: &HeaderMap) -> Option<&str> {
     }
 }
 
-fn valid_origin(headers: &HeaderMap, required: bool) -> bool {
-    let Some(host) = local_host(headers) else {
-        return false;
-    };
+fn check_origin(headers: &HeaderMap, required: bool) -> Result<(), &'static str> {
+    let host = local_host(headers).ok_or("host_invalid")?;
     match headers.get(ORIGIN) {
-        Some(origin) => origin.to_str().ok() == Some(format!("http://{host}").as_str()),
-        None => !required,
+        Some(origin) if origin.to_str().ok() == Some(format!("http://{host}").as_str()) => Ok(()),
+        None if !required => Ok(()),
+        _ => Err("origin_invalid"),
     }
+}
+
+fn refusal(status: StatusCode, reason: &'static str) -> Response {
+    tracing::warn!(target: "lab.workbench.auth", reason, "workbench request rejected");
+    secure_response(status.into_response())
+}
+
+fn requested_instance(uri: &axum::http::Uri) -> Option<&str> {
+    let mut values = uri
+        .query()?
+        .split('&')
+        .filter_map(|part| part.strip_prefix("instance="));
+    let value = values.next()?;
+    (values.next().is_none()
+        && !value.is_empty()
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'))
+    .then_some(value)
 }
 
 fn secure_response(mut response: Response) -> Response {
@@ -111,29 +130,51 @@ async fn require_session(
     let method = request.method();
     let mutating = !matches!(*method, Method::GET | Method::HEAD | Method::OPTIONS);
     let headers = request.headers();
-    if !valid_origin(headers, mutating) {
-        return secure_response(StatusCode::FORBIDDEN.into_response());
+    if let Err(reason) = check_origin(headers, mutating) {
+        return refusal(StatusCode::FORBIDDEN, reason);
     }
-    let Some(csrf) = cookie_value(headers).and_then(|cookie| sessions.csrf(cookie)) else {
-        return secure_response(StatusCode::UNAUTHORIZED.into_response());
+    let Some(identity) = cookie_value(headers).and_then(|cookie| sessions.identity(cookie)) else {
+        return refusal(StatusCode::UNAUTHORIZED, "cookie_invalid");
     };
+    if (request.uri().path() == "/workbench/session"
+        || request.uri().path().starts_with("/workbench/api/"))
+        && !requested_instance(request.uri())
+            .is_some_and(|instance| identity.instance.eq_ignore_ascii_case(instance))
+    {
+        return refusal(StatusCode::FORBIDDEN, "instance_mismatch");
+    }
     if mutating {
         let supplied = headers.get(CSRF_HEADER).and_then(|v| v.to_str().ok());
-        if !matches!(supplied, Some(value) if auth::constant_time_eq(value.as_bytes(), csrf.as_bytes()))
+        if !matches!(supplied, Some(value) if auth::constant_time_eq(value.as_bytes(), identity.csrf.as_bytes()))
         {
-            return secure_response(StatusCode::FORBIDDEN.into_response());
+            return refusal(StatusCode::FORBIDDEN, "csrf_invalid");
         }
     }
     secure_response(next.run(request).await)
 }
 
-async fn open(State(sessions): State<Arc<SessionStore>>, headers: HeaderMap) -> Response {
-    if !valid_origin(&headers, false) || headers.contains_key(ORIGIN) {
-        return secure_response(StatusCode::FORBIDDEN.into_response());
+#[derive(serde::Deserialize)]
+struct OpenRequest {
+    instance: String,
+}
+
+async fn open(
+    State((sessions, instances)): State<(Arc<SessionStore>, Instances)>,
+    headers: HeaderMap,
+    Json(request): Json<OpenRequest>,
+) -> Response {
+    if let Err(reason) = check_origin(&headers, false) {
+        return refusal(StatusCode::FORBIDDEN, reason);
     }
-    let nonce = sessions.open();
+    if headers.contains_key(ORIGIN) {
+        return refusal(StatusCode::FORBIDDEN, "origin_invalid");
+    }
+    let Some(hosted) = instances.by_label(&request.instance) else {
+        return refusal(StatusCode::BAD_REQUEST, "instance_unknown");
+    };
+    let nonce = sessions.open(&hosted.label);
     secure_response(
-        Json(json!({ "path": format!("/workbench/session/redeem/{nonce}") })).into_response(),
+        Json(json!({ "path": format!("/workbench/session/redeem/{nonce}"), "instance": hosted.label })).into_response(),
     )
 }
 
@@ -142,11 +183,11 @@ async fn redeem(
     Path(nonce): Path<String>,
     headers: HeaderMap,
 ) -> Response {
-    if !valid_origin(&headers, false) {
-        return secure_response(StatusCode::FORBIDDEN.into_response());
+    if let Err(reason) = check_origin(&headers, false) {
+        return refusal(StatusCode::FORBIDDEN, reason);
     }
     let Some(credentials) = sessions.redeem(&nonce) else {
-        return secure_response(StatusCode::UNAUTHORIZED.into_response());
+        return refusal(StatusCode::UNAUTHORIZED, "nonce_invalid");
     };
     let mut response = StatusCode::SEE_OTHER.into_response();
     response
@@ -169,10 +210,10 @@ async fn root() -> StatusCode {
 }
 
 async fn csrf(State(sessions): State<Arc<SessionStore>>, headers: HeaderMap) -> Response {
-    let Some(value) = cookie_value(&headers).and_then(|cookie| sessions.csrf(cookie)) else {
+    let Some(identity) = cookie_value(&headers).and_then(|cookie| sessions.identity(cookie)) else {
         return StatusCode::UNAUTHORIZED.into_response();
     };
-    Json(json!({ "csrf": value })).into_response()
+    Json(json!({ "instance": identity.instance, "csrf": identity.csrf })).into_response()
 }
 
 async fn session_check() -> StatusCode {

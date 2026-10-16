@@ -1,10 +1,16 @@
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use reqwest::header::{HeaderMap, HeaderValue, COOKIE, HOST, ORIGIN, SET_COOKIE};
 use serde_json::Value;
+use tracing::field::{Field, Visit};
+use tracing::Event;
+use tracing_subscriber::layer::{Context, SubscriberExt};
+use tracing_subscriber::Layer;
 
 use crate::daemon::http_tests::{initialize_body, spawn_daemon, spawn_router, test_server, TOKEN};
+use crate::server::{Hosted, Instances, LabServer};
 
 use super::SessionStore;
 
@@ -30,7 +36,7 @@ fn host_must_be_a_canonical_loopback_authority() {
 fn opener_is_one_use_and_expires_at_sixty_seconds() {
     let sessions = SessionStore::default();
     let now = Instant::now();
-    let nonce = sessions.open_at(now);
+    let nonce = sessions.open_at("default", now);
     assert_eq!(nonce.len(), 64);
     assert!(sessions
         .redeem_at(&nonce, now + Duration::from_secs(59))
@@ -39,7 +45,7 @@ fn opener_is_one_use_and_expires_at_sixty_seconds() {
         .redeem_at(&nonce, now + Duration::from_secs(59))
         .is_none());
 
-    let expired = sessions.open_at(now);
+    let expired = sessions.open_at("default", now);
     assert!(sessions
         .redeem_at(&expired, now + Duration::from_secs(60))
         .is_none());
@@ -49,15 +55,20 @@ fn opener_is_one_use_and_expires_at_sixty_seconds() {
 fn browser_session_is_bound_to_its_daemon_store() {
     let first = SessionStore::default();
     let second = SessionStore::default();
-    let cookie = first.redeem(&first.open()).unwrap().cookie;
-    assert!(first.csrf(&cookie).is_some());
-    assert!(second.csrf(&cookie).is_none());
+    let cookie = first.redeem(&first.open("default")).unwrap().cookie;
+    assert!(first.identity(&cookie).is_some());
+    assert!(second.identity(&cookie).is_none());
 }
 
 async fn open_workbench(http: &reqwest::Client, base: &str) -> String {
+    open_named_workbench(http, base, "default").await
+}
+
+async fn open_named_workbench(http: &reqwest::Client, base: &str, instance: &str) -> String {
     let response = http
         .post(format!("{base}/workbench/session/open"))
         .bearer_auth(TOKEN)
+        .json(&serde_json::json!({ "instance": instance }))
         .send()
         .await
         .unwrap();
@@ -142,7 +153,7 @@ async fn workbench_rejects_missing_csrf_foreign_origin_and_cross_instance_cookie
         .unwrap()
         .to_owned();
     let csrf_response = http
-        .get(format!("{base}/workbench/session"))
+        .get(format!("{base}/workbench/session?instance=default"))
         .header(COOKIE, cookie.as_str())
         .send()
         .await
@@ -150,7 +161,7 @@ async fn workbench_rejects_missing_csrf_foreign_origin_and_cross_instance_cookie
     assert_eq!(csrf_response.status(), reqwest::StatusCode::OK);
     let csrf: Value = csrf_response.json().await.unwrap();
     let csrf = csrf["csrf"].as_str().unwrap();
-    let endpoint = format!("{base}/workbench/session");
+    let endpoint = format!("{base}/workbench/session?instance=default");
     let missing = http
         .post(&endpoint)
         .header(COOKIE, cookie.as_str())
@@ -215,6 +226,7 @@ async fn workbench_rejects_foreign_host_and_expired_opener() {
         .post(format!("{base}/workbench/session/open"))
         .bearer_auth(TOKEN)
         .header(HOST, "evil.example:8779")
+        .json(&serde_json::json!({ "instance": "default" }))
         .send()
         .await
         .unwrap();
@@ -223,6 +235,7 @@ async fn workbench_rejects_foreign_host_and_expired_opener() {
         .post(format!("{base}/workbench/session/open"))
         .bearer_auth(TOKEN)
         .header(ORIGIN, base.as_str())
+        .json(&serde_json::json!({ "instance": "default" }))
         .send()
         .await
         .unwrap();
@@ -245,4 +258,195 @@ async fn workbench_rejects_foreign_host_and_expired_opener() {
         redeem_workbench(&http, &base, &path).await.status(),
         reqwest::StatusCode::SEE_OTHER
     );
+}
+
+#[tokio::test]
+async fn one_daemon_binds_each_opener_and_cookie_to_its_hosted_instance() {
+    let server = test_server();
+    let supervisor = server.instances().first().supervisor.clone();
+    let server = LabServer::new_multi(Instances::new(vec![
+        Hosted {
+            label: "default".into(),
+            supervisor: supervisor.clone(),
+        },
+        Hosted {
+            label: "p2".into(),
+            supervisor,
+        },
+    ]));
+    let base = spawn_daemon(server).await.replace("/mcp", "");
+    let http = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    let unknown = http
+        .post(format!("{base}/workbench/session/open"))
+        .bearer_auth(TOKEN)
+        .json(&serde_json::json!({ "instance": "not-hosted" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(unknown.status(), reqwest::StatusCode::BAD_REQUEST);
+
+    let path = open_named_workbench(&http, &base, "p2").await;
+    let response = redeem_workbench(&http, &base, &path).await;
+    assert_eq!(response.status(), reqwest::StatusCode::SEE_OTHER);
+    let cookie = response.headers()[SET_COOKIE]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned();
+    let wrong = http
+        .get(format!("{base}/workbench/session?instance=default"))
+        .header(COOKIE, &cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(wrong.status(), reqwest::StatusCode::FORBIDDEN);
+    let missing = http
+        .get(format!("{base}/workbench/session"))
+        .header(COOKIE, &cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(missing.status(), reqwest::StatusCode::FORBIDDEN);
+    let right = http
+        .get(format!("{base}/workbench/session?instance=p2"))
+        .header(COOKIE, &cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(right.status(), reqwest::StatusCode::OK);
+    let body: Value = right.json().await.unwrap();
+    assert_eq!(body["instance"], "p2");
+    let csrf = body["csrf"].as_str().unwrap();
+    let wrong_mutation = http
+        .post(format!("{base}/workbench/session?instance=default"))
+        .header(COOKIE, &cookie)
+        .header(ORIGIN, &base)
+        .header("x-cimmeria-csrf", csrf)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(wrong_mutation.status(), reqwest::StatusCode::FORBIDDEN);
+    let right_mutation = http
+        .post(format!("{base}/workbench/session?instance=p2"))
+        .header(COOKIE, &cookie)
+        .header(ORIGIN, &base)
+        .header("x-cimmeria-csrf", csrf)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(right_mutation.status(), reqwest::StatusCode::NO_CONTENT);
+}
+
+#[derive(Clone, Default)]
+struct RefusalCapture(Arc<Mutex<Vec<String>>>);
+
+#[derive(Default)]
+struct Fields(Vec<String>);
+
+impl Visit for Fields {
+    fn record_str(&mut self, field: &Field, value: &str) {
+        self.0.push(format!("{}={value}", field.name()));
+    }
+
+    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+        self.0.push(format!("{}={value:?}", field.name()));
+    }
+}
+
+impl<S: tracing::Subscriber> Layer<S> for RefusalCapture {
+    fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+        if event.metadata().target() == "lab.workbench.auth" {
+            let mut fields = Fields::default();
+            event.record(&mut fields);
+            self.0.lock().unwrap().push(fields.0.join(" "));
+        }
+    }
+}
+
+#[tokio::test]
+async fn refusals_log_static_reasons_without_credentials() {
+    let _ = tracing::subscriber::set_global_default(tracing_subscriber::registry());
+    let capture = RefusalCapture::default();
+    let _guard =
+        tracing::subscriber::set_default(tracing_subscriber::registry().with(capture.clone()));
+    let base = spawn_daemon(test_server()).await.replace("/mcp", "");
+    let http = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    let path = open_workbench(&http, &base).await;
+    let response = redeem_workbench(&http, &base, &path).await;
+    let cookie = response.headers()[SET_COOKIE]
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned();
+    let csrf_response = http
+        .get(format!("{base}/workbench/session?instance=default"))
+        .header(COOKIE, &cookie)
+        .send()
+        .await
+        .unwrap();
+    let csrf: Value = csrf_response.json().await.unwrap();
+    let csrf = csrf["csrf"].as_str().unwrap();
+
+    let host = http
+        .get(format!("{base}/workbench/"))
+        .header(HOST, "evil.example:8779")
+        .header(COOKIE, &cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(host.status(), reqwest::StatusCode::FORBIDDEN);
+    let origin = http
+        .post(format!("{base}/workbench/session?instance=default"))
+        .header(COOKIE, &cookie)
+        .header(ORIGIN, "http://evil.example")
+        .header("x-cimmeria-csrf", csrf)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(origin.status(), reqwest::StatusCode::FORBIDDEN);
+    let no_cookie = http.get(format!("{base}/workbench/")).send().await.unwrap();
+    assert_eq!(no_cookie.status(), reqwest::StatusCode::UNAUTHORIZED);
+    let bad_csrf = http
+        .post(format!("{base}/workbench/session?instance=default"))
+        .header(COOKIE, &cookie)
+        .header(ORIGIN, &base)
+        .header("x-cimmeria-csrf", "invalid")
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(bad_csrf.status(), reqwest::StatusCode::FORBIDDEN);
+    let nonce = redeem_workbench(&http, &base, &path).await;
+    assert_eq!(nonce.status(), reqwest::StatusCode::UNAUTHORIZED);
+
+    let rows = capture.0.lock().unwrap().clone();
+    for reason in [
+        "host_invalid",
+        "origin_invalid",
+        "cookie_invalid",
+        "csrf_invalid",
+        "nonce_invalid",
+    ] {
+        assert!(
+            rows.iter()
+                .any(|row| row.contains(&format!("reason={reason}"))),
+            "{reason}: {rows:?}"
+        );
+    }
+    let logged = rows.join(" ");
+    for secret in [TOKEN, path.as_str(), cookie.as_str(), csrf] {
+        assert!(
+            !logged.contains(secret),
+            "credential reached refusal log: {rows:?}"
+        );
+    }
 }

@@ -11,11 +11,17 @@ const MAX_SESSIONS: usize = 32;
 
 #[derive(Default)]
 struct Inner {
-    openers: HashMap<String, Instant>,
+    openers: HashMap<String, Opener>,
     sessions: HashMap<String, BrowserSession>,
 }
 
+struct Opener {
+    instance: String,
+    expires: Instant,
+}
+
 struct BrowserSession {
+    instance: String,
     csrf: String,
     expires: Instant,
 }
@@ -30,6 +36,12 @@ pub struct Credentials {
     pub cookie: String,
 }
 
+/// A live browser session's selected instance and CSRF value.
+pub struct SessionIdentity {
+    pub instance: String,
+    pub csrf: String,
+}
+
 fn secret() -> String {
     format!(
         "{}{}",
@@ -40,25 +52,31 @@ fn secret() -> String {
 
 impl SessionStore {
     /// Mint a 60-second opener for a bearer-authenticated local caller.
-    pub fn open(&self) -> String {
-        self.open_at(Instant::now())
+    pub fn open(&self, instance: &str) -> String {
+        self.open_at(instance, Instant::now())
     }
 
-    fn open_at(&self, now: Instant) -> String {
+    fn open_at(&self, instance: &str, now: Instant) -> String {
         let mut inner = self.0.lock().unwrap_or_else(|e| e.into_inner());
-        inner.openers.retain(|_, expires| *expires > now);
+        inner.openers.retain(|_, opener| opener.expires > now);
         if inner.openers.len() >= MAX_OPENERS {
             if let Some(oldest) = inner
                 .openers
                 .iter()
-                .min_by_key(|(_, t)| *t)
+                .min_by_key(|(_, opener)| opener.expires)
                 .map(|(k, _)| k.clone())
             {
                 inner.openers.remove(&oldest);
             }
         }
         let nonce = secret();
-        inner.openers.insert(nonce.clone(), now + OPENER_LIFETIME);
+        inner.openers.insert(
+            nonce.clone(),
+            Opener {
+                instance: instance.to_owned(),
+                expires: now + OPENER_LIFETIME,
+            },
+        );
         nonce
     }
 
@@ -69,8 +87,8 @@ impl SessionStore {
 
     fn redeem_at(&self, nonce: &str, now: Instant) -> Option<Credentials> {
         let mut inner = self.0.lock().unwrap_or_else(|e| e.into_inner());
-        let expires = inner.openers.remove(nonce)?;
-        if expires <= now {
+        let opener = inner.openers.remove(nonce)?;
+        if opener.expires <= now {
             return None;
         }
         inner.sessions.retain(|_, session| session.expires > now);
@@ -88,6 +106,7 @@ impl SessionStore {
         inner.sessions.insert(
             cookie.clone(),
             BrowserSession {
+                instance: opener.instance,
                 csrf: secret(),
                 expires: now + SESSION_LIFETIME,
             },
@@ -96,20 +115,23 @@ impl SessionStore {
     }
 
     /// Return the CSRF secret only for a live browser session.
-    pub fn csrf(&self, cookie: &str) -> Option<String> {
+    pub fn identity(&self, cookie: &str) -> Option<SessionIdentity> {
         let inner = self.0.lock().unwrap_or_else(|e| e.into_inner());
         inner
             .sessions
             .get(cookie)
             .filter(|s| s.expires > Instant::now())
-            .map(|s| s.csrf.clone())
+            .map(|s| SessionIdentity {
+                instance: s.instance.clone(),
+                csrf: s.csrf.clone(),
+            })
     }
 
     #[cfg(test)]
     pub(crate) fn expire_openers(&self) {
         let mut inner = self.0.lock().unwrap_or_else(|e| e.into_inner());
-        for expires in inner.openers.values_mut() {
-            *expires = Instant::now() - Duration::from_secs(1);
+        for opener in inner.openers.values_mut() {
+            opener.expires = Instant::now() - Duration::from_secs(1);
         }
     }
 }

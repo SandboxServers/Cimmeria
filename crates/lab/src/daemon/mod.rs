@@ -74,6 +74,7 @@ fn build_router_with_sessions(
         );
     }
     let server_for_status = server.clone();
+    let instances = server.instances().clone();
     let started = Arc::new(status::Started {
         at_ms: crate::supervisor::now_ms(),
         pid: std::process::id(),
@@ -97,7 +98,7 @@ fn build_router_with_sessions(
             token.clone(),
             auth::require_bearer,
         ));
-    bearer.merge(workbench::router(sessions, token))
+    bearer.merge(workbench::router(sessions, token, instances))
 }
 
 /// Serve until Ctrl-C (or the task is stopped).
