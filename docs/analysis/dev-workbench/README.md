@@ -130,7 +130,7 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 6 | DW-25A | Slash descriptors 1-27 | 25A-E | 40k | Ready |
 | 6 | DW-25B-E | Slash evidence 28-54 | 24A | 40k | Ready |
 | 6 | DW-25B | Slash descriptors 28-54 | 25B-E | 40k | Ready |
-| 6 | DW-26A-E | Slash evidence 55-81 | 24A | 40k | Ready |
+| 6 | DW-26A-E | Slash evidence 55-81 | 24A | 40k | Review |
 | 6 | DW-26A | Slash descriptors 55-81 | 26A-E | 40k | Ready |
 | 6 | DW-26B-E | Slash evidence 82-108 | 24A | 40k | Ready |
 | 6 | DW-26B | Slash descriptors 82-108 | 26B-E | 40k | Ready |

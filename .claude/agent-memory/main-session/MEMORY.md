@@ -4,6 +4,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Open investigations
 
+- [reference_dev_workbench_slash_2a_2026_10_16.md](reference_dev_workbench_slash_2a_2026_10_16.md) — DW-26A-E slash entries 55–81: gated non-gm debug word, separate minigame/vendor paths and patch/server signature gaps
 - [reference_dev_workbench_slash_1a_2026_10_16.md](reference_dev_workbench_slash_1a_2026_10_16.md) — DW-25A-E first 27 patch slash entries: client event/GM gate split, missing handlers, argument mismatches and mission/grant persistence
 - [reference_dev_workbench_patrol_authoring_2026_10_16.md](reference_dev_workbench_patrol_authoring_2026_10_16.md) — DW-20B-E shared path buffer, async live SQL result versus seed commit, `.lookat` autosave and `.visible true` no-op
 - [reference_dev_workbench_mission_2026_10_16.md](reference_dev_workbench_mission_2026_10_16.md) — DW-06 mission tracker lacks IDs; player state waits for trusted session binding; mission-scoped chain references are partial
