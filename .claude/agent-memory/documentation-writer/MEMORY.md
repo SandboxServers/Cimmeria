@@ -6,5 +6,5 @@
 - [Campaign close-out status sweep](reference_campaign_closeout_status_docs.md) — Other sections a close-out must touch; matrix rows are generator input, TOTALS generated; lint-md and MD029 traps.
 - [Close-out flag flip traps](reference_closeout_flag_flip_traps.md) — Flipping a flag default breaks old fixtures; catalog drift sweep; harness worktree lacks external/; lane masks exit code.
 - [UAT spec authoring traps](reference_uat_spec_authoring.md) — "Ready" = MAIN_TOOLS in the plan test; typable chat; GM steps cost N1; which SigNoz rows carry the spawn tag.
-- [Orchestrator guard leaks into subagents](reference_orchestrator_guard_scope.md) — orchestrator_guard.py refuses subagent Edit/Write too; script workaround; report it.
+- [Orchestrator guard leaks into subagents](reference_orchestrator_guard_scope.md) — a frontmatter hook on a persona agent fires in its subagents too; fixed in 6027cf892.
 - [PowerShell alias traps in scripted sweeps](reference_powershell_alias_traps.md) — helpers named Rd/R are aliases (Remove-Item, Invoke-History); `Rd` deleted notes once.
