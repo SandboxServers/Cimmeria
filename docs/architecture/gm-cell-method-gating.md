@@ -113,6 +113,25 @@ constant through every dispatch signature for no added correctness. The
 entity-stored value is equally authoritative — it comes from the same
 `ConnectedClientState.access_level`, set once at world entry.
 
+## Workbench GM command contract
+
+The workbench's dot catalog is projected from the existing `COMMANDS` table in
+`crates/cell-console/src/cell/console/registry/`. It exposes a stable target
+policy (`none`, `player`, `mob`, `mob_or_id`, `being`, `spawnable`) and metadata
+version 1. Every dot row currently carries `availability = unsupported` and
+`manual_pending = true`: its typed arguments, impact, verification and recovery
+need per-command evidence before the palette may offer a runnable action.
+The original raw `server_console_exec` remains available to authorized lab
+operators and is rechecked by the cell's GameMaster gate and target resolver.
+
+`crates/lab/src/workbench/commands.rs` defines separate dot and slash channels,
+typed arguments, target/impact/verification/compensation metadata, and an
+action receipt with independent submission, server-acceptance and verification
+states. Validation compares an action with a fresh server actor snapshot,
+including instance, actor ID, GM authority and selected target. A UI claim is
+never authority. Slash commands require native client submission and evidence
+of a received GM method; this dot catalog does not claim to enumerate or run
+them yet. A submitted line alone does not establish server acceptance.
 ## Moderation surface still missing
 
 Folded in from the superseded server-systems survey (see

@@ -11,7 +11,7 @@ use cimmeria_entity::cell_entity::CellEntity;
 /// caller's currently-selected entity (`current_target_id`, set by
 /// `setTargetID` / `gmSetTarget`).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum Target {
+pub enum TargetPolicy {
     /// No target needed. The handler operates on the caller (or its own args).
     /// A current target, if any, is still passed through for the few legacy
     /// commands that opt to use it.
@@ -33,7 +33,12 @@ pub(crate) enum Target {
     Spawnable,
 }
 
-impl Target {
+pub(crate) use TargetPolicy as Target;
+
+/// Version of the dot-console metadata contract consumed by the workbench.
+pub const COMMAND_METADATA_VERSION: u32 = 1;
+
+impl TargetPolicy {
     /// Does `e` satisfy this target-type requirement?
     pub(crate) fn matches(self, e: &CellEntity) -> bool {
         match self {
@@ -52,6 +57,18 @@ impl Target {
             Target::MobOrId => "an NPC (selected, or by entity id)",
             Target::Being => "a being",
             Target::Spawnable => "a spawnable entity",
+        }
+    }
+
+    /// Stable machine-readable name for a selected-target requirement.
+    pub const fn key(self) -> &'static str {
+        match self {
+            Target::None => "none",
+            Target::Player => "player",
+            Target::Mob => "mob",
+            Target::MobOrId => "mob_or_id",
+            Target::Being => "being",
+            Target::Spawnable => "spawnable",
         }
     }
 }
@@ -94,6 +111,8 @@ const fn spec(
 
 mod commands;
 pub(crate) use commands::COMMANDS;
+mod workbench;
+pub(crate) use workbench::workbench_metadata;
 
 /// One documented positional argument of a console command, used by
 /// `.help`'s `<= 3`-match detail view (mirrors the legacy `Command.args`
