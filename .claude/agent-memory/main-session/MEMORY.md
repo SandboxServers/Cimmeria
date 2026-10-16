@@ -4,6 +4,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Open investigations
 
+- [reference_dev_workbench_stock_slash_2026_10_16.md](reference_dev_workbench_stock_slash_2026_10_16.md) — DW-24A-S stock XML hashes, 98+4 rows, `/reload Access=qd` QA/Designer and unresolved GM binding
 - [reference_dev_workbench_slash_3a_2026_10_16.md](reference_dev_workbench_slash_3a_2026_10_16.md) — DW-27A 109–135: cover methods lack handlers/readback and safe inverse; fly/ghost share onPhysics, while PvP remains duel-gated
 
 - [reference_dev_workbench_progression_metadata_2026_10_16.md](reference_dev_workbench_progression_metadata_2026_10_16.md) — DW-21 typed dot progression/ammo/pet descriptors, command-wide mixed-form gate and owner-bound grant readback
