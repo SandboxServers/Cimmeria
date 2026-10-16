@@ -1,6 +1,8 @@
 # Native slash palette: typed metadata slices
 
-This reference describes the disabled, typed forms built by DW-25B from patch 012. The source inventory is `data/client-patches/012-gm-slash-commands/commands.toml`; the per-command evidence is [DW-25B-E](evidence/DW-25B-E.md). The Rust slice is `crates/lab/src/workbench/slash_descriptors_1b.rs`. Every entry remains unavailable until the native client event-to-method binding, serialization and accepted receipt are proved. Patch `access = "p"` is a client filter; the server checks GameMaster authority separately. A submitted line never establishes server acceptance or effect.
+This reference covers two disabled, typed slices from `data/client-patches/012-gm-slash-commands/commands.toml`: entries 28–54 from [DW-25B-E](evidence/DW-25B-E.md) in `crates/lab/src/workbench/slash_descriptors_1b.rs`, and entries 109–135 from [DW-27A-E](evidence/DW-27A-E.md) in `crates/lab/src/workbench/slash_descriptors_3a.rs`. Every entry remains unavailable until the native client event-to-method binding, serialization and accepted receipt are proved. Patch `access = "p"` is a client filter; the server checks GameMaster authority separately. A submitted line never establishes server acceptance or effect.
+
+## Entries 28–54 (DW-25B)
 
 | Words | Palette category | Source-backed behavior or blocker |
 |---|---|---|
