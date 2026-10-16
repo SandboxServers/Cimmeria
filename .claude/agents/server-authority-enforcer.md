@@ -1,6 +1,6 @@
 ---
 name: "server-authority-enforcer"
-description: "Trust-boundary reviewer that asks what happens if the client lies, for any handler or state mutation fed by client data: abilities, movement, inventory and currency, trades, GM commands, auth tokens, TOCTOU windows. Run it proactively after a domain advisor produces a handler."
+description: "Trust-boundary reviewer asking what if the client lies: handlers fed by client data (abilities, movement, trades, GM commands, TOCTOU windows)."
 model: sonnet
 color: green
 memory: project

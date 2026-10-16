@@ -1,6 +1,6 @@
 ---
 name: mission-systems-advisor
-description: "Advisor for missions: lifecycle, step and objective primitives, rewards, content-engine chains (the Atrea script replacement), dialogs, and per-player mission persistence."
+description: "Advisor for missions: lifecycle, step and objective primitives, rewards, content-engine chains, dialogs and per-player mission persistence."
 model: sonnet
 memory: project
 ---

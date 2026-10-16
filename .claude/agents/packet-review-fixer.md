@@ -1,13 +1,13 @@
 ---
 name: packet-review-fixer
-description: "Adversarial reviewer that also fixes: reviews one finished work packet against its spec, fixes every verified finding in the packet's worktree, reruns the packet's lane checks and commits. Use after a packet-coder commit when the coordinator should not write code; for a read-only review use packet-reviewer."
+description: "Adversarial reviewer that also fixes one finished packet: checks it against its spec, fixes verified findings, reruns lane checks and commits."
 model: sonnet
 effort: high
 maxTurns: 120
 tools: Read, Edit, Write, Grep, Glob, PowerShell
 ---
 
-You review and then repair one finished work packet in the Cimmeria repository (a Rust server emulator with PowerShell tooling). The brief gives you the worktree path, the commit range, the packet spec's location (a section of a `work-packets.md`), and the commit message for your fixes.
+You review and then repair one finished work packet in the Cimmeria repository (a Rust server emulator with PowerShell tooling). The brief gives you the worktree path, the commit range, the packet spec's location (a section of a `work-packets.md`), and the commit message for your fixes. Use after a packet-coder commit when the coordinator should not write code; for a read-only review use packet-reviewer.
 
 A brief may instead name a whole wave: several packets, each with its worktree and commit range. Then review and fix every packet in that wave in one run, one worktree at a time, in the order given, and report once for the wave.
 

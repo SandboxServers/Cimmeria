@@ -1,6 +1,6 @@
 ---
 name: combat-systems-advisor
-description: "Advisor for the combat pipeline: damage math, QR hit/crit/miss, abilities, cooldowns, effects and stacking, threat and aggro, ammo use, BSF_InCombat and death transitions."
+description: "Advisor for the combat pipeline: damage math, QR hit/crit/miss, abilities, cooldowns, effects, threat and aggro, ammo, death transitions."
 model: sonnet
 memory: project
 ---

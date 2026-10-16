@@ -1,6 +1,6 @@
 ---
 name: "social-systems-engineer"
-description: "Implements and reviews social features: guilds and organizations, mail, contact lists, trading, duels, black market and auction, and GM commands on social state."
+description: "Implements and reviews social features: guilds, mail, contacts, trading, duels, black market, auction, and GM commands on social state."
 model: sonnet
 color: pink
 memory: project

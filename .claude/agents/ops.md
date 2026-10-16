@@ -1,6 +1,6 @@
 ---
 name: ops
-description: "Runs exactly one requested git or worktree operation through the repo scripts: create a worktree, open a PR, merge and retire, remove worktrees, read PR, git log and status, or a board read or post. Anything else is refused as blocked. Writes no report file."
+description: "Runs one requested git or worktree op via repo scripts (worktree create/remove, PR open/merge/retire, board read/post); else refused as blocked."
 model: haiku
 effort: low
 omitClaudeMd: true

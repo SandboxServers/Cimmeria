@@ -1,6 +1,6 @@
 ---
 name: ship-pr
-description: Take a change in Cimmeria from a fresh worktree to a merged PR and a retired worktree, the way this repo ships. Use when starting a packet or fix that will become a PR, when committing/pushing/opening a PR, waiting on CI, getting a review, merging, or cleaning up a worktree after merge. Triggers include "open a PR", "ship it", "push this", "wait for CI", "merge #1234", "retire the worktree", "is CI green". Covers mk-worktree, the pre-PR checks, ship.py pr/merge, watching CI without polling loops, the adversarial review, and same-day retirement.
+description: 'Take a change in Cimmeria from a fresh worktree to a merged PR and a retired worktree, the way this repo ships. Use when starting a packet or fix that will become a PR, when committing/pushing/opening a PR, waiting on CI, getting a review, merging, or cleaning up a worktree after merge. Triggers include "open a PR", "ship it", "push this", "wait for CI", "merge #1234", "retire the worktree", "is CI green". Covers mk-worktree, the pre-PR checks, ship.py pr/merge, watching CI without polling loops, the adversarial review, and same-day retirement.'
 ---
 <!-- Generated from .claude/skills/ship-pr/ by tools/agent-skills/sync.py. Edit the source, then rerun the script. -->
 

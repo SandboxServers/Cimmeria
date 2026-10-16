@@ -1,6 +1,6 @@
 ---
 name: packet-coder
-description: "Implements one prescriptive work packet in a given Cimmeria worktree: edits only the files the packet names, runs the packet's build-lane checks, commits locally. Use for campaign packets written to be followed step by step; it does not design, push or open PRs."
+description: "Implements one prescriptive work packet in a Cimmeria worktree: edits only its named files, runs its lane checks, commits. Not for design or PRs."
 model: haiku
 omitClaudeMd: true
 effort: medium

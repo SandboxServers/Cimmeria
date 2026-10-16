@@ -1,6 +1,6 @@
 ---
 name: "items-systems-advisor"
-description: "Advisor for item subsystems: inventory move/equip/stack/split, bandolier slots and ammo, loot, vendor buy/sell/repair/recharge, items_event_sets and the UseInventoryItem to ItemUsed chain. Use proactively on content chains that touch inventory and on item propId wire changes."
+description: "Advisor for items: inventory move/equip/stack, bandolier, ammo, loot, vendors, items_event_sets and UseInventoryItem. Use on item propId wire changes."
 model: sonnet
 color: yellow
 memory: project
