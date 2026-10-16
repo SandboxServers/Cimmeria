@@ -1,0 +1,379 @@
+//! First slash slice contract and fail-closed preview guards.
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use serde_json::{json, Value};
+
+use super::commands::{
+    validate_command, ActorSnapshot, ArgKind, Availability, CommandAction, ExecutionReceipt,
+    Refusal,
+};
+use super::slash_descriptors_1a::{
+    descriptors_for, display_argument, slash_descriptors_1a, HandlerAvailability,
+};
+use super::slash_inventory::{parse_patch_table, SlashParameterType};
+use super::slash_transport::{PlainShoutCandidate, SlashObservation, SlashReceipt, SlashStage};
+
+const TOML: &str =
+    include_str!("../../../../data/client-patches/012-gm-slash-commands/commands.toml");
+const NAMES: &[&str] = &[
+    "/gmmissionassign",
+    "/gmmissionclear",
+    "/gmmissionclearactive",
+    "/gmmissionclearhistory",
+    "/gmmissionlist",
+    "/gmmissionlistfull",
+    "/gmmissiondetails",
+    "/gmmissionadvance",
+    "/gmmissionreset",
+    "/gmmissioncomplete",
+    "/gmmissionsetavailable",
+    "/gmmissionabandon",
+    "/gmshowtargetlocation",
+    "/gmlistabilities",
+    "/gmshowflag",
+    "/gmlistinteractions",
+    "/gmgetmobattribute",
+    "/gmshowmobcount",
+    "/gmshowip",
+    "/gmshowinventory",
+    "/gmshowplayer",
+    "/gmgivexp",
+    "/gmgiveitem",
+    "/gmgivecash",
+    "/gmremoveitem",
+    "/gmgiveability",
+    "/gmgivetrainingpoints",
+];
+
+#[test]
+fn first_slice_names_and_typed_arguments_equal_toml() {
+    let source = parse_patch_table(TOML).unwrap();
+    let forms = slash_descriptors_1a().unwrap();
+    let expected: BTreeSet<_> = NAMES.iter().copied().collect();
+    let actual: BTreeSet<_> = forms.iter().map(|form| form.source.name.as_str()).collect();
+    assert_eq!(forms.len(), 27);
+    assert_eq!(actual, expected);
+    for (form, original) in forms.iter().zip(&source[..27]) {
+        assert_eq!(&form.source, original);
+        assert_eq!(form.descriptor.id, original.name);
+        assert_eq!(form.descriptor.args.len(), original.parameters.len());
+        assert_eq!(form.descriptor.availability, Availability::Unsupported);
+        assert!(form.descriptor.manual_pending);
+        assert!(!form.descriptor.category.is_empty());
+        assert!(!form.descriptor.summary.is_empty());
+        assert!(!form.target_scope.is_empty());
+        assert!(!form.readback_note.is_empty());
+        assert!(form.descriptor.compensation.is_some());
+        assert!(form
+            .descriptor
+            .disposition_reason
+            .as_ref()
+            .unwrap()
+            .contains("unproved"));
+        for (arg, parameter) in form.descriptor.args.iter().zip(&original.parameters) {
+            assert_eq!(arg.name, parameter.name);
+            let expected_kind = match parameter.parameter_type {
+                SlashParameterType::Boolean => ArgKind::Boolean,
+                SlashParameterType::Integer => ArgKind::Integer,
+                SlashParameterType::Float => ArgKind::Float,
+                SlashParameterType::String => ArgKind::Text,
+            };
+            assert_eq!(arg.kind, expected_kind, "{} {}", original.name, arg.name);
+            assert_eq!(arg.required, parameter.required);
+            assert!(arg.default.is_none());
+            assert!(!arg.help.is_empty());
+        }
+    }
+}
+
+#[test]
+fn changed_toml_name_event_type_or_optional_shape_fails_closed() {
+    let source = parse_patch_table(TOML).unwrap();
+    let mut changed = source.clone();
+    changed[0].name = "/different".into();
+    assert!(descriptors_for(&changed).is_err());
+    changed = source.clone();
+    changed[0].event = "Event_SlashCmd_Other".into();
+    assert!(descriptors_for(&changed).is_err());
+    changed = source.clone();
+    changed[23].event = "Event_SlashCmd_GiveCash".into();
+    assert!(descriptors_for(&changed).is_err());
+    changed = source.clone();
+    changed[0].parameters[1].parameter_type = SlashParameterType::Integer;
+    assert!(descriptors_for(&changed).is_err());
+    changed = source;
+    changed[14].parameters[0].required = true;
+    assert!(descriptors_for(&changed).is_err());
+}
+
+#[test]
+fn unknown_mission_effects_never_serialize_as_read_only() {
+    let forms = slash_descriptors_1a().unwrap();
+    for word in [
+        "/gmmissionclearactive",
+        "/gmmissionclearhistory",
+        "/gmmissionreset",
+        "/gmmissioncomplete",
+        "/gmmissionsetavailable",
+    ] {
+        let form = forms.iter().find(|f| f.source.name == word).unwrap();
+        assert!(form.descriptor.impact.is_none(), "{word}");
+        assert!(form
+            .descriptor
+            .disposition_reason
+            .as_ref()
+            .unwrap()
+            .contains("effect unknown"));
+        let serialized = serde_json::to_value(form).unwrap();
+        assert_eq!(serialized["descriptor"]["impact"], Value::Null, "{word}");
+    }
+    let list = forms
+        .iter()
+        .find(|f| f.source.name == "/gmmissionlist")
+        .unwrap();
+    let serialized = serde_json::to_value(list).unwrap();
+    assert_eq!(serialized["descriptor"]["impact"]["kind"], "read_only");
+}
+
+#[test]
+fn unimplemented_inspection_forms_have_unknown_impact() {
+    let forms = slash_descriptors_1a().unwrap();
+    for word in ["/gmlistinteractions", "/gmshowip", "/gmshowinventory"] {
+        let form = forms.iter().find(|f| f.source.name == word).unwrap();
+        assert_eq!(form.handler_availability, HandlerAvailability::Absent);
+        assert!(form.descriptor.impact.is_none(), "{word}");
+        assert!(form.descriptor.verify.is_none(), "{word}");
+        assert!(form
+            .descriptor
+            .disposition_reason
+            .as_ref()
+            .unwrap()
+            .contains("effect unknown"));
+        assert_eq!(
+            serde_json::to_value(form).unwrap()["descriptor"]["impact"],
+            Value::Null,
+            "{word}"
+        );
+    }
+}
+
+#[test]
+fn mob_count_readback_requires_exact_npc_class_and_complete_space() {
+    let forms = slash_descriptors_1a().unwrap();
+    let form = forms
+        .iter()
+        .find(|f| f.source.name == "/gmshowmobcount")
+        .unwrap();
+    let recipe = form.descriptor.verify.as_ref().unwrap();
+    assert_eq!(recipe.read_tools, ["server_entity_query"]);
+    assert_eq!(
+        recipe.comparison_fields,
+        [
+            "space_id",
+            "class_id=0x04",
+            "is_player=false",
+            "capped=false",
+            "returned",
+            "total_matched",
+        ]
+    );
+    assert!(form.readback_note.contains("SpaceID=0"));
+    assert!(form.readback_note.contains("exact space"));
+    assert!(form
+        .descriptor
+        .impact
+        .as_ref()
+        .unwrap()
+        .preconditions
+        .iter()
+        .any(|precondition| precondition.contains("live SGWMob NPCs (class 0x04) only")));
+    assert!(form
+        .readback_note
+        .contains("no radius, template or tag filter"));
+    assert!(form.readback_note.contains("uncapped"));
+}
+
+#[test]
+fn persistent_mission_and_item_readbacks_bind_exact_owner_and_row_keys() {
+    let forms = slash_descriptors_1a().unwrap();
+    for word in [
+        "/gmmissionassign",
+        "/gmmissionclear",
+        "/gmmissionadvance",
+        "/gmmissionabandon",
+    ] {
+        let form = forms.iter().find(|f| f.source.name == word).unwrap();
+        let recipe = form.descriptor.verify.as_ref().unwrap();
+        assert_eq!(recipe.read_tools, ["server_db_query"], "{word}");
+        assert!(
+            recipe
+                .comparison_fields
+                .iter()
+                .any(|field| field == "sgw_mission.player_id"),
+            "{word}"
+        );
+        assert!(
+            recipe
+                .comparison_fields
+                .iter()
+                .any(|field| field == "sgw_mission.mission_id"),
+            "{word}"
+        );
+        assert!(form
+            .readback_note
+            .contains("authenticated caller player_id"));
+        assert!(form.readback_note.contains("requested mission_id"));
+    }
+    let item = forms
+        .iter()
+        .find(|f| f.source.name == "/gmgiveitem")
+        .unwrap();
+    let recipe = item.descriptor.verify.as_ref().unwrap();
+    assert_eq!(recipe.read_tools, ["server_db_query"]);
+    assert_eq!(
+        recipe.comparison_fields,
+        [
+            "sgw_inventory.character_id",
+            "sgw_inventory.item_id",
+            "sgw_inventory.type_id",
+            "sgw_inventory.stack_size",
+            "sgw_inventory.container_id",
+        ]
+    );
+    assert!(item
+        .readback_note
+        .contains("authenticated caller character_id"));
+    assert!(item.readback_note.contains("requested design type_id"));
+    assert!(item.readback_note.contains("resulting instance ID"));
+}
+
+#[test]
+fn impact_preconditions_include_command_specific_evidence() {
+    let forms = slash_descriptors_1a().unwrap();
+    for (word, required) in [
+        ("/gmmissionassign", "offerable and not already held"),
+        ("/gmmissionadvance", "step ID owned by that mission"),
+        ("/gmgiveitem", "inventory capacity/container acceptance"),
+        ("/gmgivetrainingpoints", "INT32 balance headroom"),
+    ] {
+        let form = forms.iter().find(|f| f.source.name == word).unwrap();
+        let preconditions = &form.descriptor.impact.as_ref().unwrap().preconditions;
+        assert!(
+            preconditions.iter().any(|p| p.contains("GameMaster")),
+            "{word}"
+        );
+        assert!(preconditions.iter().any(|p| p.contains(required)), "{word}");
+    }
+}
+
+#[test]
+fn boolean_and_optional_preview_preserves_toml_shape_without_native_serialization() {
+    let forms = slash_descriptors_1a().unwrap();
+    let assign = forms
+        .iter()
+        .find(|f| f.source.name == "/gmmissionassign")
+        .unwrap();
+    let popup = &assign.descriptor.args[1];
+    assert_eq!(popup.kind, ArgKind::Boolean);
+    assert!(popup.required);
+    assert_eq!(
+        display_argument(Some(&json!(true)), popup.kind).as_deref(),
+        Some("true")
+    );
+    assert_eq!(
+        display_argument(Some(&json!(false)), popup.kind).as_deref(),
+        Some("false")
+    );
+    assert!(display_argument(Some(&json!(1)), popup.kind).is_none());
+    let flag = forms
+        .iter()
+        .find(|f| f.source.name == "/gmshowflag")
+        .unwrap();
+    let optional = &flag.descriptor.args[0];
+    assert!(!optional.required);
+    assert!(optional.default.is_none());
+    assert_eq!(
+        display_argument(None, optional.kind).as_deref(),
+        Some("(omitted)")
+    );
+    assert_eq!(
+        flag.handler_availability,
+        HandlerAvailability::OptionalArgumentMismatch
+    );
+    assert!(flag.descriptor.verify.is_none());
+    assert!(flag
+        .descriptor
+        .disposition_reason
+        .as_ref()
+        .unwrap()
+        .contains("requires INT32"));
+}
+
+#[test]
+fn submission_alone_never_marks_server_acceptance_or_enables_form() {
+    let forms = slash_descriptors_1a().unwrap();
+    let grant = forms
+        .iter()
+        .find(|f| f.source.name == "/gmgivetrainingpoints")
+        .unwrap();
+    assert_eq!(grant.handler_availability, HandlerAvailability::Implemented);
+    assert!(grant.descriptor.verify.is_some());
+    let action = CommandAction {
+        descriptor_id: grant.descriptor.id.clone(),
+        instance: "lab-a".into(),
+        actor_entity_id: 10,
+        selected_entity_id: None,
+        typed_args: BTreeMap::from([("numPoints".into(), json!(1))]),
+        idempotency_key: "attempt-1".into(),
+    };
+    let actor = ActorSnapshot {
+        instance: "lab-a".into(),
+        entity_id: 10,
+        is_gm: true,
+        selected_entity_id: None,
+        selected_target_kind: None,
+        argument_target_entity_id: None,
+        argument_target_kind: None,
+    };
+    assert_eq!(
+        validate_command(&action, &grant.descriptor, &actor),
+        Err(Refusal::Unsupported)
+    );
+    let submitted = ExecutionReceipt {
+        descriptor_id: grant.descriptor.id.clone(),
+        submitted: true,
+        server_accepted: None,
+        verified: None,
+        feedback: vec![],
+        before_reads: vec![],
+        after_reads: vec![],
+        audit_id: None,
+        evidence_paths: vec![],
+    };
+    assert_eq!(submitted.server_accepted, None);
+    assert_eq!(submitted.verified, None);
+    let candidate = PlainShoutCandidate::parse("/gmsendgmshout 1 Probe123").unwrap();
+    let mut receipt = SlashReceipt::new(candidate);
+    let claim = SlashObservation {
+        attempt_id: receipt.attempt_id,
+        line: receipt.line.clone(),
+        fingerprint: "caller-claim".into(),
+        generation: 1,
+        stage: SlashStage::ClientSubmitted,
+    };
+    assert!(receipt.observe(&claim).is_err());
+    assert_eq!(receipt.stage(SlashStage::ClientSubmitted), None);
+    assert!(!receipt.accepted());
+}
+
+#[test]
+fn missing_or_mismatched_handlers_have_specific_disabled_reasons() {
+    let forms = slash_descriptors_1a().unwrap();
+    for form in forms {
+        if form.handler_availability != HandlerAvailability::Implemented {
+            assert!(form.descriptor.disposition_reason.as_ref().unwrap().len() > 75);
+            assert!(form.descriptor.verify.is_none());
+        }
+    }
+}

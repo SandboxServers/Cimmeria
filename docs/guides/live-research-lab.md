@@ -386,7 +386,14 @@ include `id`, `channel = dot`, stable `target_policy` and structured `target`, `
 rows carry `impact = null`, `verify = null` and `compensation = null`, and are
 searchable but have no typed Run action until their argument,
 impact and readback contracts are reviewed. The native slash catalog is a
-separate source and is still pending review. `server_console_exec` remains a
+separate source. Its first 27 patch-012 entries
+have typed, evidence-backed disabled forms in `slash_descriptors_1a`.
+Each form states its server handler status, caller or target scope, impact,
+readback, compensation and the specific reason it cannot run. See
+`docs/analysis/dev-workbench/evidence/DW-25A-E.md` for per-command sources.
+The native submission path and client event-to-method binding remain unproved,
+so a displayed preview or submitted string cannot establish server acceptance.
+`server_console_exec` remains a
 raw lab tool: the acting entity must still pass the cell-side GameMaster
 check. A future GM-scoped GUI catalog caller must pass a server-verified GM
 result, never a browser flag. The MCP list tool checks live cell authority on
