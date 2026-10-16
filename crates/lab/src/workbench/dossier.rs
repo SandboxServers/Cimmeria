@@ -130,17 +130,26 @@ fn server_bound(input: &DossierInput, gaps: &mut Vec<Value>) -> bool {
         .get("sessions")
         .and_then(Value::as_array)
         .map(|rows| {
-            rows.iter()
+            let session_rows = rows
+                .iter()
+                .filter(|row| row.get("session").and_then(Value::as_str) == Some(session))
+                .count();
+            let player_rows = rows
+                .iter()
                 .filter(|row| {
-                    row.get("session").and_then(Value::as_str) == Some(session)
-                        && row.get("entity_id").and_then(Value::as_u64) == Some(u64::from(player))
+                    row.get("entity_id").and_then(Value::as_u64) == Some(u64::from(player))
                 })
-                .count()
+                .count();
+            let paired = rows.iter().any(|row| {
+                row.get("session").and_then(Value::as_str) == Some(session)
+                    && row.get("entity_id").and_then(Value::as_u64) == Some(u64::from(player))
+            });
+            (session_rows, player_rows, paired)
         });
     if context.instance != input.instance
         || Some(context.client_pid) != input.client_pid
         || context.selected_entity_id != Some(input.entity_id)
-        || matches != Some(1)
+        || matches != Some((1, 1, true))
     {
         gap(
             gaps,
@@ -204,6 +213,14 @@ pub fn build_dossier(input: DossierInput) -> Value {
     let client = client.filter(|s| id_matches(s));
     let server = server.filter(|s| id_matches(s));
     let witness = witness.filter(|s| id_matches(s));
+    if current {
+        gap(
+            &mut gaps,
+            "client.target_slot",
+            "slot_metadata_unbound",
+            "target slot metadata has no entity id from the same observation",
+        );
+    }
     if current && input.client.is_ok() && client.is_none() {
         gap(
             &mut gaps,
@@ -229,6 +246,13 @@ pub fn build_dossier(input: DossierInput) -> Value {
         );
     }
     let now = input.now_ms;
+    let position_sample = client.zip(server).map(|(client, server)| {
+        if client.at_ms <= server.at_ms {
+            client
+        } else {
+            server
+        }
+    });
     json!({
         "schema_version": 1,
         "context": {
@@ -242,9 +266,9 @@ pub fn build_dossier(input: DossierInput) -> Value {
             "client": {
                 "actor": sourced("client.entity_table", client, path(client, "actor"), now),
                 "rendered": sourced("client.entity_table", client, path(client, "rendered"), now),
-                "targetable": sourced("client.target_slot", client, path(client, "targetable"), now),
-                "mob_id": sourced("client.unit_api", client, path(client, "mob_id"), now),
-                "name": sourced("client.unit_api", client, path(client, "name"), now),
+                "targetable": sourced("client.target_slot", None, None, now),
+                "mob_id": sourced("client.unit_api", None, None, now),
+                "name": sourced("client.unit_api", None, None, now),
                 "position_ue3": sourced("client.actor", client, path(client, "position"), now),
             },
             "server": {
@@ -258,7 +282,7 @@ pub fn build_dossier(input: DossierInput) -> Value {
                 "witnessed_by": sourced("server_witnesses", witness, path(witness, "witnessed_by"), now),
                 "witnesses": sourced("server_witnesses", witness, path(witness, "witnesses"), now),
             },
-            "position_delta": sourced("client_actor+server_entity_get", client, position_delta(client, server), now),
+            "position_delta": sourced("client_actor+server_entity_get", position_sample, position_delta(client, server), now),
             "recent_messages": sourced("server_log_tail", messages, messages.map(|s| s.value.clone()), now),
         },
         "gaps": gaps,
@@ -288,19 +312,10 @@ async fn client_entity(
     let entity = snapshot.entity(id).ok_or("entity absent from client map")?;
     let table = supervisor.entity_table(Some(vec![id]), false, None).await?;
     let row = checked_client_row(&table, id, entity.ptr)?;
-    let unit = world.unit_slots().await?;
-    let info = world
-        .unit_info(&[unit.target])
-        .await?
-        .into_iter()
-        .find(|i| i.slot == unit.target);
     Ok(sampled(json!({
         "entity_id": id,
         "actor": row.get("actor"),
         "rendered": entity.rendered(),
-        "targetable": entity.rendered() && info.as_ref().is_some_and(|i| i.exists),
-        "mob_id": info.as_ref().and_then(|i| i.mob_id),
-        "name": info.as_ref().map(|i| i.name.as_str()).filter(|name| !name.is_empty()),
         "position": entity.pose.map(|p| p.pos.to_json()),
         "pose_error": entity.pose_error,
     })))

@@ -59,7 +59,7 @@ fn same_numeric_player_on_another_server_session_never_joins() {
         { "entity_id": 7, "session": "session-A" }
     ] }));
     let dossier = build_dossier(input);
-    assert_eq!(dossier["data"]["client"]["mob_id"]["value"], 900);
+    assert_eq!(dossier["data"]["client"]["mob_id"]["value"], Value::Null);
     assert_eq!(
         dossier["data"]["server"]["template_id"]["value"],
         Value::Null
@@ -72,6 +72,97 @@ fn same_numeric_player_on_another_server_session_never_joins() {
         .unwrap()
         .iter()
         .any(|g| g["code"] == "server_session_mismatch"));
+}
+
+#[test]
+fn target_slot_metadata_from_another_entity_is_never_attributed_to_selected_id() {
+    let mut input = fixture();
+    input.client.as_mut().unwrap().value["slot_entity_id"] = json!(43);
+    input.client.as_mut().unwrap().value["targetable"] = json!(true);
+    input.client.as_mut().unwrap().value["mob_id"] = json!(943);
+    input.client.as_mut().unwrap().value["name"] = json!("entity 43");
+    let dossier = build_dossier(input);
+    assert_eq!(dossier["context"]["current"], true);
+    for field in ["targetable", "mob_id", "name"] {
+        assert_eq!(dossier["data"]["client"][field]["value"], Value::Null);
+        assert_eq!(dossier["data"]["client"][field]["at_ms"], Value::Null);
+    }
+    assert!(dossier["gaps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|g| g["source"] == "client.target_slot" && g["code"] == "slot_metadata_unbound"));
+}
+
+#[test]
+fn position_delta_age_uses_the_older_of_client_and_server_samples() {
+    let mut input = fixture();
+    input.client.as_mut().unwrap().at_ms = 990;
+    input.server.as_mut().unwrap().at_ms = 100;
+    let dossier = build_dossier(input);
+    assert_eq!(
+        dossier["data"]["position_delta"]["value"]["distance_m"],
+        0.0
+    );
+    assert_eq!(dossier["data"]["position_delta"]["at_ms"], 100);
+    assert_eq!(dossier["data"]["position_delta"]["age_ms"], 900);
+}
+
+#[test]
+fn server_binding_requires_same_instance_selected_id_player_and_unique_roster_row() {
+    for input in [
+        {
+            let mut f = fixture();
+            f.client_context.as_mut().unwrap().instance = "other".into();
+            f
+        },
+        {
+            let mut f = fixture();
+            f.client_context.as_mut().unwrap().selected_entity_id = Some(43);
+            f
+        },
+        {
+            let mut f = fixture();
+            f.client_context.as_mut().unwrap().player_entity_id = Some(8);
+            f
+        },
+        {
+            let mut f = fixture();
+            f.sessions = sample(json!({ "sessions": [
+            { "entity_id": 7, "session": "session-B" },
+            { "entity_id": 7, "session": "session-B" }
+        ] }));
+            f
+        },
+        {
+            let mut f = fixture();
+            f.sessions = sample(json!({ "sessions": [
+                { "entity_id": 7, "session": "session-B" },
+                { "entity_id": 8, "session": "session-B" }
+            ] }));
+            f
+        },
+        {
+            let mut f = fixture();
+            f.sessions = sample(json!({ "sessions": [
+                { "entity_id": 7, "session": "session-B" },
+                { "entity_id": 7, "session": "session-C" }
+            ] }));
+            f
+        },
+    ] {
+        let dossier = build_dossier(input);
+        assert_eq!(
+            dossier["data"]["server"]["template_id"]["value"],
+            Value::Null
+        );
+        assert_eq!(dossier["data"]["position_delta"]["value"], Value::Null);
+        assert!(dossier["gaps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|g| g["code"] == "server_session_mismatch"));
+    }
 }
 
 #[test]
@@ -209,10 +300,10 @@ async fn log_tail_keeps_structured_match_at_row_101_and_signals_truncation() {
 }
 
 #[test]
-fn mismatched_client_mob_and_server_template_keep_distinct_sources() {
+fn unbound_client_mob_and_server_template_keep_distinct_sources() {
     let dossier = build_dossier(fixture());
     assert_eq!(dossier["context"]["current"], true);
-    assert_eq!(dossier["data"]["client"]["mob_id"]["value"], 900);
+    assert_eq!(dossier["data"]["client"]["mob_id"]["value"], Value::Null);
     assert_eq!(
         dossier["data"]["client"]["mob_id"]["source"],
         "client.unit_api"
@@ -223,6 +314,11 @@ fn mismatched_client_mob_and_server_template_keep_distinct_sources() {
         "server_entity_get"
     );
     assert_eq!(dossier["data"]["server"]["template_id"]["age_ms"], 50);
+    assert!(dossier["gaps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|g| g["code"] == "slot_metadata_unbound"));
     assert_eq!(
         dossier["data"]["position_delta"]["value"]["distance_m"],
         0.0
