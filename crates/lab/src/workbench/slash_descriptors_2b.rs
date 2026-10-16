@@ -95,7 +95,7 @@ const ROWS: &[Row] = &[
     row!("/gmshowinstanceflag", "Event_SlashCmd_ShowInstanceFlag", "aFlagNumber:Integer:true", "instance", "Instance-flag reader is unavailable", "Proposed current instance; no implemented flag state", Absent, None, "No flag store or reader", "", "", "No response or independent flag readback", "", "Handler/state absent; native binding unproved"),
     row!("/gmsetinstanceflag", "Event_SlashCmd_SetInstanceFlag", "aFlagNumber:Integer:true,aFlagValue:Integer:true", "instance", "Instance-flag writer is unavailable", "Proposed current instance; co-located effect unknown", Absent, None, "TOML Integer flag value versus method INT8; no flag store", "", "", "No receipt, prior value or independent flag readback", "", "Handler/state absent; argument mismatch and native binding unproved"),
     row!("/gmspawnentityloot", "Event_SlashCmd_ShowSpawns", "EntityId:Integer:true,LootTableID:Integer:true", "loot", "GM spawn-loot handler is unavailable", "Proposed entity and loot table; no implemented resolver", Absent, None, "ShowSpawns event does not prove spawnEntityLoot binding", "", "", "Internal loot drop does not prove this command ran", "", "Event/method ambiguity and handler absence; native binding unproved"),
-    row!("/gmtestlos", "Event_SlashCmd_TestLOS", "sourceID:Integer:true,targetID:Integer:true", "diagnostics", "Read line of sight between two entities in caller's space", "Two explicit entities in the caller's exact space; caller-only feedback", Implemented, Some(ImpactKind::ReadOnly), "Both signed INT32 IDs must resolve in caller's space; UNKNOWN is not CLEAR", "", "", "Capture caller-only testLOS source to target feedback: CLEAR, BLOCKED, UNKNOWN, or target refusal; compare both IDs and space", "", "native event-to-method and submission proof pending"),
+    row!("/gmtestlos", "Event_SlashCmd_TestLOS", "sourceID:Integer:true,targetID:Integer:true", "diagnostics", "Read line of sight between two entities in caller's space", "Two explicit entities of any class, including props, in caller's exact space; caller-only feedback", Implemented, Some(ImpactKind::ReadOnly), "Both signed INT32 IDs must resolve in caller's space; UNKNOWN is not CLEAR", "", "", "Capture caller-only testLOS source to target feedback: CLEAR, BLOCKED, UNKNOWN, or target refusal; compare both IDs and space", "", "native event-to-method and submission proof pending"),
     row!("/gmtogglecombatlos", "Event_SlashCmd_ToggleCombatLOS", "", "combat", "Combat-LOS toggle is unavailable", "Combat scope unspecified; no proven audience", Absent, None, "Def-only bCombatLOS is not a handler", "", "", "Combat outcome cannot prove toggle", "", "Handler absent; native binding unproved"),
     row!("/gmtrackmob", "Event_SlashCmd_ShowMobPaths", "", "npc", "Mob path tracking is unavailable", "Proposed mob target unspecified", Absent, None, "No GM tracking subscription", "", "", "AI snapshot is separate, not tracking output", "", "Event/method ambiguity and handler absence; native binding unproved"),
     row!("/gmonxrayeyes", "Event_SlashCmd_XRayEyes", "on/off:Boolean:true", "client view", "X-ray-eyes client effect is unverified", "Calling GM's client view only", Absent, None, "No server handler or proven client-local presentation", "", "", "Visual client check needed; no server readback", "", "Handler/client effect and native submission unproved"),
@@ -211,7 +211,7 @@ pub fn descriptors_for(entries: &[SlashEntry]) -> Result<Vec<SlashDescriptor2b>,
 fn target_policy(word: &str) -> TargetPolicy {
     if word == "/gmtestlos" {
         TargetPolicy {
-            kind: TargetKind::Being,
+            kind: TargetKind::AnyEntity,
             selection_rule: SelectionRule::ArgumentRequired,
             argument_name: Some("targetID".into()),
         }
@@ -258,8 +258,8 @@ fn argument_help(word: &str, name: &str) -> &'static str {
     }
 }
 
-/// Format a preview or stored value without leaking sensitive announcement text.
-/// Callers must use this for history, audit, trace and screenshot surfaces.
+/// Pure formatter for a future preview. No companion history, audit, trace or
+/// screenshot renderer calls this yet; those surfaces must redact before save.
 pub fn display_argument(arg: &ArgDescriptor, value: &Value, reveal: bool) -> String {
     if arg.sensitive && !reveal {
         "[redacted]".into()
@@ -268,7 +268,8 @@ pub fn display_argument(arg: &ArgDescriptor, value: &Value, reveal: bool) -> Str
     }
 }
 
-/// Scope preview for a GM shout. Boolean is only a typed preview, not native encoding.
+/// Pure scope preview for a future GM shout form, not a wired companion view.
+/// Boolean is only a typed preview, not native encoding.
 pub fn shout_audience_preview(global: bool) -> &'static str {
     if global {
         "All online in-world players across instances"

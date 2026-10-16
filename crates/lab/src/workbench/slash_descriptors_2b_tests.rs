@@ -1,9 +1,12 @@
 //! Regression guards for slash words 82–108 and their disabled palette forms.
 
+use std::collections::BTreeMap;
+
 use serde_json::json;
 
 use super::commands::{
-    Availability, CommandChannel, Compensation, ImpactKind, SelectionRule, TargetKind,
+    validate_command, ActorSnapshot, Availability, CommandAction, CommandChannel, Compensation,
+    ImpactKind, Refusal, SelectionRule, TargetKind, VerifyRecipe,
 };
 use super::slash_descriptors_2b::{
     descriptors_for, display_argument, shout_audience_preview, slash_descriptors_2b, HandlerStatus,
@@ -132,7 +135,7 @@ fn target_words_never_infer_a_recipient_or_server_effect() {
         los.descriptor.impact.as_ref().unwrap().kind,
         ImpactKind::ReadOnly
     );
-    assert_eq!(los.descriptor.target.kind, TargetKind::Being);
+    assert_eq!(los.descriptor.target.kind, TargetKind::AnyEntity);
     assert_eq!(
         los.descriptor.target.selection_rule,
         SelectionRule::ArgumentRequired
@@ -142,11 +145,59 @@ fn target_words_never_infer_a_recipient_or_server_effect() {
         Some("targetID")
     );
     assert!(los.readback_note.contains("UNKNOWN"));
+    assert!(los.target_scope.contains("including props"));
+    assert!(los.precondition_note.contains("Both signed INT32 IDs"));
+    assert!(los.precondition_note.contains("caller's space"));
     assert!(los.descriptor.verify.is_none()); // Caller feedback, no independent read tool.
 }
 
 #[test]
-fn announcement_redacts_text_and_distinguishes_acceptance_from_delivery() {
+fn los_gate_accepts_a_prop_target_but_requires_both_explicit_ids() {
+    let form = slash_descriptors_2b().unwrap().remove(20);
+    // Exercise only the shared target/argument validator. The production form
+    // stays disabled and has no accepted-effect verification recipe.
+    let mut descriptor = form.descriptor;
+    descriptor.availability = Availability::Runnable;
+    descriptor.manual_pending = false;
+    descriptor.verify = Some(VerifyRecipe {
+        read_tools: vec!["client_chat_log".into()],
+        comparison_fields: vec!["feedback".into()],
+    });
+    let mut action = CommandAction {
+        descriptor_id: descriptor.id.clone(),
+        instance: "lab".into(),
+        actor_entity_id: 7,
+        selected_entity_id: None,
+        typed_args: BTreeMap::from([
+            ("sourceID".into(), json!(31)),
+            ("targetID".into(), json!(30)),
+        ]),
+        idempotency_key: "test".into(),
+    };
+    let actor = ActorSnapshot {
+        instance: "lab".into(),
+        entity_id: 7,
+        is_gm: true,
+        selected_entity_id: None,
+        selected_target_kind: None,
+        argument_target_entity_id: Some(30),
+        argument_target_kind: Some(TargetKind::Spawnable),
+    };
+    assert!(validate_command(&action, &descriptor, &actor).is_ok());
+    action.typed_args.remove("sourceID");
+    assert_eq!(
+        validate_command(&action, &descriptor, &actor),
+        Err(Refusal::MissingArgument)
+    );
+    // The server handler independently checks both IDs in the caller's space;
+    // ActorSnapshot has no source-space field, so this validator cannot prove it.
+    assert!(form
+        .precondition_note
+        .contains("Both signed INT32 IDs must resolve in caller's space"));
+}
+
+#[test]
+fn announcement_metadata_and_pure_preview_helpers_preserve_outcome_limits() {
     let forms = slash_descriptors_2b().unwrap();
     assert_eq!(
         forms
@@ -164,12 +215,11 @@ fn announcement_redacts_text_and_distinguishes_acceptance_from_delivery() {
     assert_eq!(shout.descriptor.compensation, Some(Compensation::None));
     assert!(shout.descriptor.args[1].sensitive);
     let secret = json!("Public test message");
-    for _surface in ["preview", "history", "audit", "trace", "screenshot"] {
-        assert_eq!(
-            display_argument(&shout.descriptor.args[1], &secret, false),
-            "[redacted]"
-        );
-    }
+    let redacted = display_argument(&shout.descriptor.args[1], &secret, false);
+    assert_eq!(redacted, "[redacted]");
+    assert!(!serde_json::to_string(&redacted)
+        .unwrap()
+        .contains("Public test message"));
     assert_eq!(
         display_argument(&shout.descriptor.args[1], &secret, true),
         secret.to_string()
