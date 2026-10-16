@@ -108,11 +108,13 @@ the full per-index table lives in
 `crates/lab/src/workbench/slash_inventory.rs` parses the 162 patch 012 TOML
 words, events and ordered mandatory/optional parameter declarations.
 `slash_catalog.rs` projects them into disabled `Slash` descriptors with
-`native submission unproved`. An exact event-suffix match to a method name,
-or an explicit slash-word alias in `docs/protocol/cell-method-dispatch-table.md`,
-records that row's documented index and DONE/ADAPT/NEW status as a
-**candidate**, never as proof that the client emits that method for the patch
-word. Unknown matches remain unknown.
+`native submission unproved`. An exact event-suffix match to a method name or
+an explicit slash-word row in `docs/protocol/cell-method-dispatch-table.md`
+records its index and DONE/ADAPT/NEW status as a **candidate**. The
+`/gmgivecash` and `/gmspawnbycmd` candidates infer from patch event names and
+the table's stock `/GiveNaqahdah` and `/Spawn` rows, respectively; the table
+does not name those patch words. No candidate proves that the client emits
+that method for the patch word. Unknown matches remain unknown.
 The client and cell method gate remain separate; a typed palette form cannot
 authorize or execute a slash command by itself. Stock XML completeness is
 tracked separately in [the DW-24A audit](../analysis/dev-workbench/stock-slash-audit.md).

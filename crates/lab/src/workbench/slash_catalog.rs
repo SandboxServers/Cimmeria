@@ -124,9 +124,11 @@ fn disabled_descriptor(source: &SlashEntry) -> CommandDescriptor {
 
 fn method_candidate(source: &SlashEntry) -> Option<MethodCandidate> {
     let suffix = source.event.strip_prefix("Event_SlashCmd_")?;
-    // Only these non-name matches are named explicitly in the dispatch table's
-    // slash-word column. Keep the event in the key so a changed patch binding
-    // does not silently inherit an old candidate.
+    // Fly, ghost and shout have explicit slash-word rows. GiveCash and SpawnByCmd
+    // are semantic candidates: the table names stock /GiveNaqahdah and /Spawn,
+    // while patch 012 names /gmgivecash and /gmspawnbycmd with matching events.
+    // Keep the event in the key so a changed patch binding does not silently
+    // inherit an old candidate. None of these prove the client's event binding.
     let documented_alias = match (source.name.as_str(), source.event.as_str()) {
         ("/gmgivecash", "Event_SlashCmd_GiveNaqahdah") => Some(("gmGiveCash", 134)),
         ("/gmspawnbycmd", "Event_SlashCmd_Spawn") => Some(("gmSpawnByCmd", 185)),

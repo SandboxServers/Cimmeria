@@ -8,13 +8,15 @@ each event, declared access string, and ordered `Boolean`, `Integer`, `Float`
 or `String` mandatory and optional parameters. All projected forms are
 `Unsupported` with reason `native submission unproved`.
 
-`docs/commands.md` was inspected for extra documented command words. Its
-`/debugperformance` row is outside the GM command section and the patch table.
-The client event appears in reverse-engineering notes, but neither the stock
-XML `Access` attribute nor a GM method binding is available here. It is an
-exclusion from the *verified GM* addendum, not evidence that the word is
-unavailable in the client. Existing GM command guide rows are already in
-patch 012.
+`docs/commands.md` was inspected for extra documented command words.
+`/debugperformance` and `/worldreset` appear outside the GM section and patch
+table. The former has a client event in reverse-engineering notes, but no
+stock XML `Access` attribute or GM method binding here. The latter has a
+GM-gated inherited method, `onWorldInstanceReset` (92), but its stock XML
+`Access` attribute and slash-event binding are unknown. Both remain unresolved
+stock candidates, excluded only from the *verified GM* addendum. Their
+presence in the client and eligibility for a GM palette are not established.
+Existing GM command guide rows are already in patch 012.
 
 The checkout does not contain stock
 `Common/xml/slash_commands/SlashCommands.xml` or
@@ -27,13 +29,15 @@ access masks, and add descriptors for every verified GM extra before DW-32
 can assert complete slash coverage. No client launch or native submission
 occurred in DW-24A.
 
-The dispatch table's explicit indices and DONE/ADAPT/NEW statuses are used
-when an event suffix matches a method name, or when its slash-word column
-names the patch word explicitly. Documented non-name candidates include
-`/gmgivecash` → `gmGiveCash` (134), `/gmspawnbycmd` → `gmSpawnByCmd` (185),
-`/gmsetfly` and `/gmsetghost` → `onPhysics` (221), and `/gmsendgmshout` →
-`sendGMShout` (222). All remain `binding_verified=false`: a documented
-method candidate does not prove the patch event's client binding.
+The dispatch table's explicit indices and DONE/ADAPT/NEW statuses supply
+method candidates. Event-suffix name matches are direct candidates. The table
+explicitly names `/gmsetfly` and `/gmsetghost` → `onPhysics` (221), and
+`/gmsendgmshout` → `sendGMShout` (222). It names stock `/GiveNaqahdah` →
+`gmGiveCash` (134) and `/Spawn` → `gmSpawnByCmd` (185); patch 012 instead
+declares `/gmgivecash` with `Event_SlashCmd_GiveNaqahdah` and `/gmspawnbycmd`
+with `Event_SlashCmd_Spawn`. Those two patch-word candidates are semantic
+inferences, not explicit dispatch-table aliases. Every candidate remains
+`binding_verified=false`; none proves the patch event's client binding.
 
 The guide at `docs/commands.md` shows three arguments for
 `/debugminigamecomplete` (`gameId`, `winnerId`, `loserId`), while patch 012

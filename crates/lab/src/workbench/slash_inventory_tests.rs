@@ -135,7 +135,7 @@ fn method_status_is_a_documented_candidate_not_a_verified_event_binding() {
 }
 
 #[test]
-fn documented_slash_aliases_keep_method_indices_without_claiming_event_binding() {
+fn explicit_and_semantic_slash_candidates_keep_indices_without_claiming_binding() {
     let catalog = patch_slash_catalog().unwrap();
     for (word, event, index, name) in [
         (
@@ -210,4 +210,8 @@ fn missing_stock_xml_cannot_be_reported_as_a_complete_empty_addendum() {
         .exclusions
         .iter()
         .any(|reason| reason.contains("/debugperformance")));
+    assert!(audit
+        .exclusions
+        .iter()
+        .any(|reason| reason.contains("/worldreset") && reason.contains("Access")));
 }
