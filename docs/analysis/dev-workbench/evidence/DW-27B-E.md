@@ -9,7 +9,7 @@ The SGWGmPlayer tail at cell indices 109–225 is server gated by `crates/cell/s
 - **Sources:** TOML `Event_SlashCmd_SetArchetype`; no `gmSetArchetype` row in `docs/protocol/cell-method-dispatch-table.md` or arm in `gm/mod.rs::dispatch`; `deprecated/python/cell/SGWBeing.py::setArchetype` is a server-internal setter, not this slash handler; `crates/base-methods/src/base/world_entry/methods/player_load/core/player_data.rs` loads `sgw_player.archetype`.
 - **Arguments:** None in TOML. `docs/commands.md` claims `<archetypeId>`, a direct schema conflict; no typed archetype can be inferred.
 - **Target/scope:** Unknown character; no selected-player or caller-only binding is proven.
-- **Preconditions and authority:** No Cimmeria slash method or validated archetype target. A future mutation would need server GM authority, valid archetype, character ownership and coordinated ability/stat updates.
+- **Preconditions and authority:** No Cimmeria slash method or validated archetype target. A future mutation would need server GM authority, a server-resolved target player identity and explicit target-scope policy, a valid archetype, and coordinated ability/stat updates.
 - **Effects and impact:** No implemented effect. A real archetype change would be persistent character mutation, unlike a client-only appearance update; the legacy setter broadcasts `onArchetypeUpdate` but does not prove a DB write.
 - **Verification:** No current effect to read back. For any future handler compare exact `sgw_player.archetype` for the captured `player_id`, then the reloaded cell archetype and client `onArchetypeUpdate`; a client update alone cannot prove persistence.
 - **Compensation:** None; no safe inverse for a changed ability tree or related character state is established.
@@ -22,7 +22,7 @@ The SGWGmPlayer tail at cell indices 109–225 is server gated by `crates/cell/s
 - **Target/scope:** Legacy primitive addresses the calling player's client, not a world clock; patch event target is unproved.
 - **Preconditions and authority:** No server slash handler. A local client display change does not authorize or persist a world change.
 - **Effects and impact:** Unproved for this event; legacy command changes presentation on one client, with no `sgw_player` or world seed mutation.
-- **Verification:** If independently proven, compare the recipient's `onTimeOfDay` packet and client rendered time/weather; no durable server readback exists for this slash word.
+- **Verification:** If independently proven, compare the recipient's `onTimeofDay` packet and client rendered time/weather; no durable server readback exists for this slash word.
 - **Compensation:** None; restoring previous presentation requires a separate known value and proven send path.
 - **Availability:** Disabled: event-to-handler binding and Cimmeria slash effect absent.
 
@@ -143,7 +143,7 @@ The SGWGmPlayer tail at cell indices 109–225 is server gated by `crates/cell/s
 - **Target/scope:** If method 89 is reached, caller-owned pet and one of its abilities.
 - **Preconditions and authority:** Ordinary pet ownership check, not GM-tail authorization; missing/unowned pet, unknown ability and invalid toggle refuse.
 - **Effects and impact:** Method 89 transiently changes pet `toggled_off` ability set and re-sends owner pet bar. No DB persistence proved; the slash event's effect is unverified.
-- **Verification:** For proven method 89, compare pet `toggled_off` and owner `onPetAbilityList`, including refusal resend. Packet submission alone is not a state change.
+- **Verification:** For proven method 89, `onPetAbilityList` proves only a resend to the owner: its ability IDs contain no `toggled_off` state, and refusals can resend the same list. Current lab snapshots have no direct toggle readback. An internal server state probe or separately validated post-cooldown behavior is needed to verify mutation; submission and resend alone are inconclusive.
 - **Compensation:** A later 0/1 toggle can restore previous transient state if pet/ability still exists; no slash inverse established.
 - **Availability:** Disabled: client event binding and Integer-to-INT8 serialization unproved.
 
@@ -184,12 +184,12 @@ The SGWGmPlayer tail at cell indices 109–225 is server gated by `crates/cell/s
 
 - **Sources:** TOML `Event_SlashCmd_SetRingTransporterDestination`; ordinary SGWPlayer cell method 91 has two `INT32`s in protocol table; `crates/cell-methods/src/cell/cell_methods/player/world/mod.rs::dispatch` calls `ring_transport::handle_select_destination`; `crates/cell-content/src/cell/ring_transport/tests/mod.rs` covers success/refusal.
 - **Arguments:** Required `Integer regionId`, `Integer destinationId`, matching method 91's width/order, but no event-to-method proof.
-- **Target/scope:** If method 91 is reached, calling player at an active ring transport interaction; destination may be cross-world, not an arbitrary target.
-- **Preconditions and authority:** Ordinary player method; ring state machine checks source/destination/occupancy and can refuse self/busy destinations. Slash prefix does not supply GM authority.
+- **Target/scope:** If method 91 is reached, it uses the calling player and packet-supplied source/destination ring IDs; destination may be cross-world. An active interaction with the claimed source is not currently enforced.
+- **Preconditions and authority:** Ordinary player method; loaded source, destination membership, mission and ring availability are checked, but there is no server-held caller/source interaction match. That guard is required before exposing a source-selection action. Slash prefix does not supply GM authority.
 - **Effects and impact:** Proven method 91 starts transient ring transfer, potentially a cross-world relocation; no durable character rewrite is implied by the slash word itself.
 - **Verification:** For proven method 91 correlate `ring_transport.select_destination`/arrival state, player world/position and any transfer packet, not just outgoing call or feedback. This event is not yet verified.
 - **Compensation:** Manual return travel only; no automatic inverse for concurrent ring state or triggered content.
-- **Availability:** Disabled: native slash event binding unproved despite an implemented ordinary method.
+- **Availability:** Disabled: native slash event binding is unproved, and the ordinary method lacks a server-held caller/source interaction guard. Do not expose this action until both are resolved.
 
 ## /gmdumpobjects
 
