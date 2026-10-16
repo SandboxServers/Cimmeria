@@ -17,11 +17,11 @@ Allowed operations:
 - `pwsh tools/build-lane/rm-worktree.ps1 <name>|--merged`
 - `gh pr view` and `gh pr checks` (reads only)
 - `python "$HOME\.agent-board\board.py" <command>` for board reads and posts, as the main session (no `--as`); call `board.py` directly, because the `board` shim is a `/bin/sh` script
-- Checkpoint commit: `git -C <wt> status` first; a clean tree returns `failed`. Then `git -C <wt> add -A` and `git -C <wt> commit -m <msg>`, with the caller's message and trailers verbatim. Never amend.
-- Rebase onto a recorded SHA: check that `git -C <wt> branch --list <branch>` shows the branch, `git -C <wt> status --porcelain` is empty, and `git -C <wt> rev-parse HEAD` equals `git -C <wt> rev-parse origin/main`. Then `git -C <wt> rebase --onto <sha> origin/main <branch>`. After it, `rev-parse HEAD` must equal `<sha>` and `git -C <wt> merge-base HEAD <base-branch>` must equal `<sha>`. Any mismatch or conflict returns `failed`; never reset, never `rebase --abort` and retry.
-- Reads: `git -C <wt> rev-parse`, `git -C <wt> merge-base`, `git -C <wt> diff --stat`, `git -C <wt> branch --list`, `git worktree list`, `git log`, `git status`.
+- Checkpoint commit in the one worktree named: `git -C <wt> status --porcelain` first; empty output returns `failed` (nothing to commit). Then `git -C <wt> add -A` and `git -C <wt> commit -m <msg>`, with the caller's message and trailers verbatim. If the commit fails (a hook, say), return `failed`; do not retry with other flags.
+- Rebase onto a recorded SHA, in the one worktree named, with a full 40-hex `<sha>` and a `<branch>` the caller gave you. Before: `git -C <wt> rev-parse --abbrev-ref HEAD` equals `<branch>`, `git -C <wt> status --porcelain` is empty, and `git -C <wt> rev-parse --verify <sha>` succeeds. Then run only `git -C <wt> rebase --onto <sha> origin/main <branch>` (no fetch). After: `git -C <wt> status --porcelain` is empty, `git -C <wt> rev-parse --abbrev-ref HEAD` equals `<branch>`, and `git -C <wt> merge-base HEAD <sha>` equals `<sha>`. Any mismatch or conflict returns `failed` with the `git -C <wt> status` text; leave the worktree exactly as it is, and run no `rebase --abort`, `--continue` or `--skip`, no reset, and no second attempt.
+- Reads, with read-only arguments (never a branch name to create or a ref to delete): `git -C <wt> rev-parse`, `git -C <wt> merge-base`, `git -C <wt> diff --stat`, `git -C <wt> branch --list`, `git worktree list`, `git log`, `git status`.
 
-Never run `git worktree prune`, `git stash`, `--force`, `--no-verify`, `reset`, `amend`, or a `push` outside `ship.ps1`, and never touch a worktree other than the one named. Anything not on that list: return `blocked`.
+Never run `git worktree prune`, `git stash`, `git reset`, `git checkout`, `git restore`, `git clean`, `git branch -d|-D|-m`, `--force`, `--force-with-lease`, `-f`, `--no-verify`, `--amend`, `rebase --abort`, or a `git push` (a push happens only inside `ship.ps1`). Never touch a worktree other than the one named, and never pass a path or branch that belongs to another worktree. Anything not on the allowed list: return `blocked`.
 
 Write no report file. Return one line:
-`ops <done|failed> <PR url, worktree path, commit sha or -> <one-clause reason on failure>`
+`ops <done|failed|blocked> <PR url, worktree path, commit sha or -> <one-clause reason on failure or refusal>`

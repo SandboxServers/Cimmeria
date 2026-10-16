@@ -51,7 +51,7 @@ The model column applies in Claude Code. Codex runs every agent on the session's
 |---|---|
 | Default persona: dispatching, deciding, keeping the ledger (Sonnet) | `orchestrator` |
 | Campaign design: ledger, packets, waves, `RESUME.md` (Opus) | `architect` |
-| One git or worktree operation: worktrees, PRs, merge, retire, board posts (Haiku) | `ops` |
+| One git or worktree operation: worktrees, PRs, merge, retire, board posts, checkpoint commit, rebase onto a recorded SHA (Haiku) | `ops` |
 | Full-tool escape hatch for direct work (`claude --agent hands-on`) | `hands-on` |
 | Implementing server systems, wire handlers, persistence code | `rust-gameserver-dev` |
 | BigWorld conventions, cell/base split, Mercury, what the client assumes | `bigworld-engine-advisor` |
