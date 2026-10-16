@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 use serde_json::json;
 
 use super::commands::{
-    validate_command, ActorSnapshot, Availability, CommandAction, CommandChannel, ImpactKind,
-    Refusal, SelectionRule, TargetKind,
+    validate_command, ActorSnapshot, Availability, CommandAction, CommandChannel,
+    CommandDescriptor, ImpactKind, Refusal, SelectionRule, TargetKind,
 };
 use super::slash_descriptors_1b::{descriptors_1b, NAMES};
 use super::slash_inventory::{parse_patch_table, SlashParameterType};
@@ -21,6 +21,33 @@ fn slice() -> Vec<super::slash_inventory::SlashEntry> {
         .skip(27)
         .take(27)
         .collect()
+}
+
+fn runnable(
+    index: usize,
+    typed_args: BTreeMap<String, serde_json::Value>,
+) -> (CommandDescriptor, CommandAction, ActorSnapshot) {
+    let mut descriptor = descriptors_1b(&slice()).unwrap()[index].clone();
+    descriptor.availability = Availability::Runnable;
+    descriptor.manual_pending = false;
+    let action = CommandAction {
+        descriptor_id: descriptor.id.clone(),
+        instance: "lab".into(),
+        actor_entity_id: 7,
+        selected_entity_id: None,
+        typed_args,
+        idempotency_key: "test".into(),
+    };
+    let actor = ActorSnapshot {
+        instance: "lab".into(),
+        entity_id: 7,
+        is_gm: true,
+        selected_entity_id: None,
+        selected_target_kind: None,
+        argument_target_entity_id: None,
+        argument_target_kind: None,
+    };
+    (descriptor, action, actor)
 }
 
 #[test]
@@ -133,6 +160,15 @@ fn grants_reload_and_travel_keep_distinct_effect_and_readback_contracts() {
         .comparison_fields
         .iter()
         .any(|field| field.contains("discipline_expertise")));
+    let expertise_fields = &descriptors[1].verify.as_ref().unwrap().comparison_fields;
+    for field in [
+        "sgw_player.player_id",
+        "sgw_player_discipline_expertise.player_id",
+        "sgw_player_discipline_expertise.discipline_id",
+        "sgw_player_discipline_expertise.expertise",
+    ] {
+        assert!(expertise_fields.contains(&field.into()));
+    }
     assert_eq!(
         descriptors[2].impact.as_ref().unwrap().kind,
         ImpactKind::Persistent
@@ -169,7 +205,9 @@ fn grants_reload_and_travel_keep_distinct_effect_and_readback_contracts() {
     for ability in &descriptors[15..17] {
         let fields = &ability.verify.as_ref().unwrap().comparison_fields;
         assert!(fields.contains(&"sgw_player_ability_grants.ability_id".into()));
+        assert!(fields.contains(&"sgw_player_ability_grants.player_id".into()));
         assert!(fields.contains(&"sgw_player_ability_grants.source_kind".into()));
+        assert!(fields.contains(&"sgw_player_ability_grants.source_id".into()));
         assert!(!fields
             .iter()
             .any(|field| field.contains("gm_grant_provenance")));
@@ -177,6 +215,117 @@ fn grants_reload_and_travel_keep_distinct_effect_and_readback_contracts() {
     for unimplemented in [0, 3, 5, 6, 7, 8, 13, 14, 17, 19] {
         assert!(descriptors[unimplemented].impact.is_none());
         assert!(descriptors[unimplemented].verify.is_none());
+    }
+}
+
+#[test]
+fn signed_int32_arguments_stop_at_the_source_wire_limit() {
+    let descriptors = descriptors_1b(&slice()).unwrap();
+    for (index, arg_name) in [
+        (1, "disciplineId"),
+        (1, "expertise"),
+        (2, "points"),
+        (9, "Amount"),
+    ] {
+        let arg = descriptors[index]
+            .args
+            .iter()
+            .find(|arg| arg.name == arg_name)
+            .unwrap();
+        assert_eq!(arg.range.as_ref().unwrap().max, Some(i32::MAX as f64));
+    }
+    assert_eq!(
+        descriptors[20].args[0].range.as_ref().unwrap().max,
+        Some(i32::MAX as f64)
+    );
+    let (expertise, mut action, actor) = runnable(
+        1,
+        BTreeMap::from([
+            ("disciplineId".into(), json!(1)),
+            ("expertise".into(), json!(i32::MAX)),
+        ]),
+    );
+    assert!(validate_command(&action, &expertise, &actor).is_ok());
+    action
+        .typed_args
+        .insert("expertise".into(), json!(i64::from(i32::MAX) + 1));
+    assert_eq!(
+        validate_command(&action, &expertise, &actor),
+        Err(Refusal::OutOfRange)
+    );
+    action.typed_args.insert("expertise".into(), json!(1));
+    action
+        .typed_args
+        .insert("disciplineId".into(), json!(i64::from(i32::MAX) + 1));
+    assert_eq!(
+        validate_command(&action, &expertise, &actor),
+        Err(Refusal::OutOfRange)
+    );
+
+    let (stat, mut action, mut actor) = runnable(
+        9,
+        BTreeMap::from([
+            ("Amount".into(), json!(i32::MAX)),
+            ("TargetId".into(), json!(0)),
+        ]),
+    );
+    actor.argument_target_entity_id = Some(7);
+    actor.argument_target_kind = Some(TargetKind::Player);
+    assert!(validate_command(&action, &stat, &actor).is_ok());
+    action
+        .typed_args
+        .insert("Amount".into(), json!(i64::from(i32::MAX) + 1));
+    assert_eq!(
+        validate_command(&action, &stat, &actor),
+        Err(Refusal::OutOfRange)
+    );
+}
+
+#[test]
+fn numeric_target_text_and_nonempty_world_name_are_enforced() {
+    let (target, mut action, actor) =
+        runnable(18, BTreeMap::from([("NameOrID".into(), json!("0"))]));
+    assert!(validate_command(&action, &target, &actor).is_ok());
+    action
+        .typed_args
+        .insert("NameOrID".into(), json!("not-a-number"));
+    assert_eq!(
+        validate_command(&action, &target, &actor),
+        Err(Refusal::MalformedArgument)
+    );
+    action.typed_args.insert("NameOrID".into(), json!("-1"));
+    assert_eq!(
+        validate_command(&action, &target, &actor),
+        Err(Refusal::OutOfRange)
+    );
+    action
+        .typed_args
+        .insert("NameOrID".into(), json!("2147483648"));
+    assert_eq!(
+        validate_command(&action, &target, &actor),
+        Err(Refusal::OutOfRange)
+    );
+    action
+        .typed_args
+        .insert("NameOrID".into(), json!(i32::MAX.to_string()));
+    assert!(validate_command(&action, &target, &actor).is_ok());
+
+    let (world, mut action, actor) = runnable(
+        24,
+        BTreeMap::from([
+            ("WorldName".into(), json!("Harset")),
+            ("X-Coordinate".into(), json!(1.0)),
+            ("Y-Coordinate".into(), json!(2.0)),
+            ("Z-Coordinate".into(), json!(3.0)),
+        ]),
+    );
+    assert!(validate_command(&action, &world, &actor).is_ok());
+    for bad in ["", "  \t "] {
+        action.typed_args.insert("WorldName".into(), json!(bad));
+        assert_eq!(
+            validate_command(&action, &world, &actor),
+            Err(Refusal::MalformedArgument)
+        );
     }
 }
 

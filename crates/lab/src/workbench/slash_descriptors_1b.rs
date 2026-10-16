@@ -231,9 +231,9 @@ fn argument_note(command: &str, name: &str) -> (&'static str, Option<f64>, Optio
     match (command, name) {
         ("/gmgiveexpertise", "disciplineId" | "expertise")
         | ("/gmgiveappliedsciencepoints", "points") =>
-            ("Positive signed 32-bit value; Base may refuse or cap the grant", Some(1.0), None),
+            ("Positive signed 32-bit value; Base may refuse or cap the grant", Some(1.0), Some(i32::MAX as f64)),
         ("/gmsethealth" | "/gmsethealthmax" | "/gmsetfocus" | "/gmsetfocusmax", "Amount") =>
-            ("Nonnegative requested value; stat bounds may clamp it", Some(0.0), None),
+            ("Nonnegative signed 32-bit value; stat bounds may clamp it", Some(0.0), Some(i32::MAX as f64)),
         ("/gmsethealth" | "/gmsethealthmax" | "/gmsetfocus" | "/gmsetfocusmax", "TargetId") =>
             ("Explicit same-space entity ID; 0 means the caller. Cell wire is INT64", Some(0.0), None),
         ("/gmsetgodmode", _) =>
@@ -241,7 +241,7 @@ fn argument_note(command: &str, name: &str) -> (&'static str, Option<f64>, Optio
         ("/gmsetnoaggro", _) =>
             ("Boolean spelling and effect are unproved", None, None),
         ("/gmsetmobabilityset", _) =>
-            ("Optional in TOML with no default; candidate server method requires INT32 bytes", None, None),
+            ("Optional in TOML with no default; candidate server method requires INT32 bytes", Some(i32::MIN as f64), Some(i32::MAX as f64)),
         ("/gmdhd", _) =>
             ("Positive destination ID; candidate cell wire is signed INT8, encoding unproved", Some(1.0), Some(127.0)),
         ("/gmgoto" | "/gmsummon", _) =>
@@ -267,8 +267,8 @@ fn detail_for(name: &str) -> Detail {
     use TargetKind::{Being, Mob, None as NoTarget, Player};
     match name {
         "/gmgiverespawner" => detail!("grant", "Respawner grant effect is unknown", "No server handler or native event binding", NoTarget, NoSelection, None, "Respawner validity and target path unknown", "", "", ""),
-        "/gmgiveexpertise" => detail!("crafting grant", "Add caller discipline expertise, capped at 100; Base commits later", "Native binding and accepted Base receipt unproved", Player, NoSelection, Some(Persistent), "Caller character and crafting DB pool; both values positive", "server_db_query", "sgw_player.discipline_ids|sgw_player_discipline_expertise.expertise", "Reconcile exact old expertise and discipline membership; clamp loses delta"),
-        "/gmgiveappliedsciencepoints" => detail!("crafting grant", "Add caller applied-science points, saturating at i32 maximum", "Native binding and accepted Base receipt unproved", Player, NoSelection, Some(Persistent), "Caller character and DB pool; points positive", "server_db_query", "sgw_player.applied_science_points", "Manually reconcile old balance and intervening spending; saturation loses delta"),
+        "/gmgiveexpertise" => detail!("crafting grant", "Add caller discipline expertise, capped at 100; Base commits later", "Native binding and accepted Base receipt unproved", Player, NoSelection, Some(Persistent), "Caller character and crafting DB pool; both values positive", "server_db_query", "sgw_player.player_id|sgw_player.discipline_ids|sgw_player_discipline_expertise.player_id|sgw_player_discipline_expertise.discipline_id|sgw_player_discipline_expertise.expertise", "Reconcile exact old expertise and discipline membership; clamp loses delta"),
+        "/gmgiveappliedsciencepoints" => detail!("crafting grant", "Add caller applied-science points, saturating at i32 maximum", "Native binding and accepted Base receipt unproved", Player, NoSelection, Some(Persistent), "Caller character and DB pool; points positive", "server_db_query", "sgw_player.player_id|sgw_player.applied_science_points", "Manually reconcile old balance and intervening spending; saturation loses delta"),
         "/gmgiveracialparadigmlevels" => detail!("grant", "Racial-paradigm grant effect is unknown", "No server handler or native binding", NoTarget, NoSelection, None, "Paradigm ID, level bounds and target path unknown", "", "", ""),
         "/gmsetgodmode" => detail!("combat", "Toggle caller's transient god-mode damage protection", "Native Boolean serialization and binding unproved", Player, NoSelection, Some(Transient), "Caller entity must exist", "", "", "Switch off in same session or relog; missed combat damage is not restored"),
         "/gmsetnoxp" => detail!("progression", "XP suppression effect is unknown", "No server handler or native binding", NoTarget, NoSelection, None, "Toggle semantics unknown; TOML has no argument", "", "", ""),
@@ -281,8 +281,8 @@ fn detail_for(name: &str) -> Detail {
         "/gmsetfocusmax" => detail!("stats", "Set same-space target's maximum Focus; current may clamp", "Native binding and Integer-to-INT64 target encoding unproved", Being, ArgumentRequiredSelfZero, Some(Transient), "Explicit TargetId, 0=self; nonnegative Amount; target has Focus stat", "server_entity_get", "focus_max|focus_cur", "Manually restore captured max and current Focus"),
         "/gmsetflag" => detail!("state", "Force-set flag effect is unknown", "No handler, ref-count-safe flag contract or native binding", NoTarget, NoSelection, None, "Flag ID, force value and target policy unknown", "", "", ""),
         "/gmsetlevel" => detail!("progression", "Level change effect is unknown", "No server handler or native binding", NoTarget, NoSelection, None, "Level range, rescale and persistence unknown", "", "", ""),
-        "/gmresetabilities" => detail!("abilities", "Persistently reset caller ability grants and refund spent tree points", "Native binding and accepted Base receipt unproved", Player, NoSelection, Some(Persistent), "Caller character, DB row and start profile required", "server_db_query", "sgw_player.abilities|sgw_player.training_points|sgw_player.trained_abilities|sgw_player.tree_points_spent|sgw_player_ability_grants.ability_id|sgw_player_ability_grants.source_kind", "Manually reconstruct captured abilities, provenance and tree state; no inverse"),
-        "/gmgiveallabilities" => detail!("abilities", "Persistently append missing archetype-tree abilities with GM provenance", "Native binding and accepted Base receipt unproved", Player, NoSelection, Some(Persistent), "Caller character, archetype tree and DB row required", "server_db_query", "sgw_player.abilities|sgw_player_ability_grants.ability_id|sgw_player_ability_grants.source_kind", "Manually restore prior ability and provenance rows; reset is not a precise inverse"),
+        "/gmresetabilities" => detail!("abilities", "Persistently reset caller ability grants and refund spent tree points", "Native binding and accepted Base receipt unproved", Player, NoSelection, Some(Persistent), "Caller character, DB row and start profile required", "server_db_query", "sgw_player.player_id|sgw_player.abilities|sgw_player.training_points|sgw_player.trained_abilities|sgw_player.tree_points_spent|sgw_player_ability_grants.player_id|sgw_player_ability_grants.ability_id|sgw_player_ability_grants.source_kind|sgw_player_ability_grants.source_id", "Manually reconstruct captured abilities, provenance and tree state; no inverse"),
+        "/gmgiveallabilities" => detail!("abilities", "Persistently append missing archetype-tree abilities with GM provenance", "Native binding and accepted Base receipt unproved", Player, NoSelection, Some(Persistent), "Caller character, archetype tree and DB row required", "server_db_query", "sgw_player.player_id|sgw_player.abilities|sgw_player_ability_grants.player_id|sgw_player_ability_grants.ability_id|sgw_player_ability_grants.source_kind|sgw_player_ability_grants.source_id", "Manually restore prior ability and provenance rows; reset is not a precise inverse"),
         "/gmrespec" => detail!("abilities", "GM respec effect is unknown", "No GM handler or native binding; trainer reset is different", NoTarget, NoSelection, None, "Target and cost policy unknown", "", "", ""),
         "/gmsettarget" => detail!("target", "Store caller current target ID and notify witnesses; 0 clears", "Native string quoting and binding unproved", Player, NoSelection, Some(Transient), "Caller exists; NameOrID must be nonnegative numeric text", "server_entity_get", "current_target_id", "Set captured prior ID or 0 in same session; target may have vanished"),
         "/gmsetmobstance" => detail!("npc", "Mob stance effect is unknown", "No handler, stance enum or native binding", NoTarget, NoSelection, None, "Target class and selection semantics unknown", "", "", ""),

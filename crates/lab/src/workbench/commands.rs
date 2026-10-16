@@ -333,6 +333,7 @@ pub fn validate_command(
             continue;
         };
         validate_value(value, arg)?;
+        validate_source_text(descriptor, arg, value)?;
         resolved_args.insert(arg.name.clone(), value.clone());
     }
     if action
@@ -358,6 +359,35 @@ fn target_matches(required: TargetKind, actual: TargetKind) -> bool {
         TargetKind::MobOrId | TargetKind::Mob => actual == TargetKind::Mob,
         TargetKind::Player => actual == TargetKind::Player,
     }
+}
+
+fn validate_source_text(
+    descriptor: &CommandDescriptor,
+    arg: &ArgDescriptor,
+    value: &Value,
+) -> Result<(), Refusal> {
+    match (
+        descriptor.channel,
+        descriptor.id.as_str(),
+        arg.name.as_str(),
+    ) {
+        (CommandChannel::Slash, "/gmsettarget", "NameOrID") => {
+            let text = value.as_str().ok_or(Refusal::MalformedArgument)?.trim();
+            let id = text
+                .parse::<i64>()
+                .map_err(|_| Refusal::MalformedArgument)?;
+            if !(0..=i64::from(i32::MAX)).contains(&id) {
+                return Err(Refusal::OutOfRange);
+            }
+        }
+        (CommandChannel::Slash, "/gmgotolocation", "WorldName")
+            if value.as_str().is_none_or(|text| text.trim().is_empty()) =>
+        {
+            return Err(Refusal::MalformedArgument);
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 fn validate_value(value: &Value, arg: &ArgDescriptor) -> Result<(), Refusal> {
