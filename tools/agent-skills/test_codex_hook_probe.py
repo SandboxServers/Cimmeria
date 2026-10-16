@@ -78,6 +78,17 @@ class RecordTest(unittest.TestCase):
             self.assertIsNone(probe.record("pre-tool-use", "not json", root))
             self.assertEqual(probe.read_rows(root)[0]["tool_name"], None)
 
+    def test_deny_hook_denies_crates_writes_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            crates = '{"tool_name":"apply_patch","tool_input":{"patch":"*** Add File: crates\\\\a.rs"}}'
+            out = probe.record("pre-tool-use-deny", crates, root)
+            decision = json.loads(out)["hookSpecificOutput"]
+            self.assertEqual(decision["permissionDecision"], "deny")
+            other = '{"tool_name":"apply_patch","tool_input":{"patch":".claude/state/x.txt"}}'
+            self.assertIsNone(probe.record("pre-tool-use-deny", other, root))
+            self.assertEqual([r["event"] for r in probe.read_rows(root)], ["pre-tool-use-deny"] * 2)
+
 
 class RunProbeTest(unittest.TestCase):
     def test_timeout_restores_hooks_byte_identical(self):

@@ -10,6 +10,7 @@ bytes are restored in every case, and the printed summary says which hooks ran.
 Usage:
   python tools/agent-skills/codex_hook_probe.py                 # run the probe
   python tools/agent-skills/codex_hook_probe.py --timeout 180   # per-call timeout (s)
+  python tools/agent-skills/codex_hook_probe.py --deny          # also test a crates/ deny
   python tools/agent-skills/codex_hook_probe.py --codex <exe>   # Codex executable
 
 The hook mode is `--record <event>`; the probe's own hook commands use it.
@@ -35,6 +36,12 @@ PROMPT_1 = (
     ".claude/state/codex-probe-edit.txt containing the word probe."
 )
 PROMPT_2 = "Reply DONE."
+DENY_TARGET = Path("crates/lo09c-deny-probe.txt")
+PROMPT_3 = (
+    "Create the file crates/lo09c-deny-probe.txt containing the word probe. "
+    "Reply DONE if the edit succeeded, otherwise reply BLOCKED."
+)
+DENY_REASON = "LO-09c probe: writes under crates/ are denied by the probe hook."
 
 
 def repo_root() -> Path:
@@ -61,12 +68,14 @@ def default_codex() -> str:
     return "codex"
 
 
-def probe_hooks(original: dict, script: Path) -> dict:
+def probe_hooks(original: dict, script: Path, deny: bool = False) -> dict:
     """Deep copy of `original` plus one SessionStart and one PreToolUse entry,
-    both with no matcher, each running `python "<script>" --record <event>`."""
+    both with no matcher, each running `python "<script>" --record <event>`.
+    With `deny`, the PreToolUse entry records as `pre-tool-use-deny`, which denies crates/ writes."""
     hooks = copy.deepcopy(original)
     entries = hooks.setdefault("hooks", {})
-    for event, name in (("SessionStart", "session-start"), ("PreToolUse", "pre-tool-use")):
+    pre_name = "pre-tool-use-deny" if deny else "pre-tool-use"
+    for event, name in (("SessionStart", "session-start"), ("PreToolUse", pre_name)):
         command = f'python "{script}" --record {name}'
         entry = {"hooks": [{"type": "command", "command": command, "timeout": 30}]}
         entries.setdefault(event, []).append(entry)
@@ -98,7 +107,28 @@ def record(event: str, stdin_text: str, root: Path) -> str | None:
     if event == "session-start":
         output = {"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": TOKEN}}
         return json.dumps(output)
+    if event == "pre-tool-use-deny" and mentions_crates(tool_input):
+        output = {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "deny",
+                "permissionDecisionReason": DENY_REASON,
+            }
+        }
+        return json.dumps(output)
     return None
+
+
+def mentions_crates(value) -> bool:
+    """True when any string inside `value` (nested dicts and lists included) names a crates/ path."""
+    if isinstance(value, str):
+        text = value.replace("\\", "/")
+        return "crates/" in text
+    if isinstance(value, dict):
+        return any(mentions_crates(item) for item in value.values())
+    if isinstance(value, list):
+        return any(mentions_crates(item) for item in value)
+    return False
 
 
 def read_rows(root: Path) -> list[dict]:
@@ -138,17 +168,20 @@ def codex_call(args: list[str], root: Path, timeout: int, label: str, notes: lis
     return None
 
 
-def run_probe(root: Path, codex: str, timeout: int) -> dict:
+def run_probe(root: Path, codex: str, timeout: int, deny: bool = False) -> dict:
     """Back up .codex/hooks.json bytes, write probe_hooks(), clear LOG, run the two
     codex calls below, and ALWAYS restore the original bytes in a finally block.
-    Also delete .claude/state/codex-probe-edit.txt in the finally. Return the summary."""
+    Also delete .claude/state/codex-probe-edit.txt in the finally. Return the summary.
+    With `deny`, a third call asks for an edit under crates/ and the summary reports
+    whether the deny hook ran and whether the file was created; any such file is deleted."""
     hooks_path = root / HOOKS
     original = hooks_path.read_bytes()
     notes: list[str] = []
-    first = second = None
+    first = second = third = None
+    rows_2: list[dict] = []
     try:
         script = Path(__file__).resolve()
-        hooks = probe_hooks(json.loads(original.decode("utf-8")), script)
+        hooks = probe_hooks(json.loads(original.decode("utf-8")), script, deny)
         hooks_path.write_text(json.dumps(hooks, indent=2) + "\n", encoding="utf-8")
         (root / LOG).parent.mkdir(parents=True, exist_ok=True)
         (root / LOG).write_text("", encoding="utf-8")
@@ -171,16 +204,26 @@ def run_probe(root: Path, codex: str, timeout: int) -> dict:
         if second is None or second.returncode != 0:
             notes.append("call 2 (resume): unsupported or failed; resume_ran cannot be shown")
         rows_2 = read_rows(root)
+        rows_3: list[dict] = []
+        if deny:
+            third = codex_call(
+                [codex, "exec", "--sandbox", "workspace-write", PROMPT_3],
+                root, timeout, "call 3 (deny)", notes,
+            )
+            rows_3 = read_rows(root)[len(rows_2):]
     finally:
         hooks_path.write_bytes(original)
         (root / EDIT).unlink(missing_ok=True)
+        crates_created = (root / DENY_TARGET).exists()
+        (root / DENY_TARGET).unlink(missing_ok=True)
 
     new_rows = rows_2[len(rows_1):]
     starts_1 = [r for r in rows_1 if r.get("event") == "session-start"]
     starts_2 = [r for r in new_rows if r.get("event") == "session-start"]
-    pre_rows = [r for r in rows_1 + new_rows if r.get("event") == "pre-tool-use"]
+    pre_rows = [r for r in rows_1 + new_rows + rows_3 if str(r.get("event", "")).startswith("pre-tool-use")]
     tools = distinct([r.get("tool_name") for r in pre_rows])
-    return {
+    deny_rows = [r for r in rows_3 if r.get("event") == "pre-tool-use-deny"]
+    summary = {
         "codex_version": codex_version,
         "session_start_ran": bool(starts_1),
         "session_start_sources": distinct([r.get("source") for r in starts_1]),
@@ -194,6 +237,12 @@ def run_probe(root: Path, codex: str, timeout: int) -> dict:
         "resume_source": starts_2[0].get("source") if starts_2 else None,
         "notes": notes,
     }
+    if deny:
+        summary["deny_hook_ran"] = bool(deny_rows)
+        summary["crates_file_created"] = crates_created
+        summary["crates_edit_blocked"] = bool(deny_rows) and not crates_created
+        notes.append("deny: crates/ edit is blocked only if the file was not created; any created file is deleted")
+    return summary
 
 
 def main(argv=None) -> int:
@@ -205,6 +254,10 @@ def main(argv=None) -> int:
         help="Codex executable (default: the desktop app's bundled CLI, else codex on PATH)",
     )
     parser.add_argument("--timeout", type=int, default=180, help="per-call timeout in seconds")
+    parser.add_argument(
+        "--deny", action="store_true",
+        help="also test a PreToolUse deny of an edit under crates/ (third call)",
+    )
     args = parser.parse_args(argv)
 
     root = repo_root()
@@ -222,7 +275,7 @@ def main(argv=None) -> int:
     if codex is None:
         print(f"codex executable not found: {requested}", file=sys.stderr)
         return 3
-    print(json.dumps(run_probe(root, codex, args.timeout), indent=2))
+    print(json.dumps(run_probe(root, codex, args.timeout, args.deny), indent=2))
     return 0
 
 
