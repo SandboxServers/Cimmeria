@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use axum::{
-    extract::{Extension, State},
+    extract::{Extension, Query, State},
     http::{header::CONTENT_TYPE, HeaderMap, HeaderValue, StatusCode},
     response::{Html, IntoResponse, Response},
     routing::{get, post},
@@ -16,6 +16,7 @@ use super::{cookie_value, session::SessionStore};
 use crate::{
     lease::permit::{self, Permit},
     server::Instances,
+    workbench::dossier,
 };
 
 const INDEX: &str = include_str!("../../../workbench/index.html");
@@ -26,8 +27,35 @@ const STYLESHEET: &str = include_str!("../../../workbench/app.css");
 pub fn router(instances: Instances) -> Router<Arc<SessionStore>> {
     Router::new()
         .route("/workbench/api/v1/session", get(session))
+        .route("/workbench/api/v1/dossier", get(target_dossier))
         .route("/workbench/api/v1/input/key", post(input_key))
         .layer(Extension(instances))
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DossierQuery {
+    instance: String,
+    entity_id: u32,
+}
+
+async fn target_dossier(
+    State(sessions): State<Arc<SessionStore>>,
+    Extension(instances): Extension<Instances>,
+    headers: HeaderMap,
+    Query(query): Query<DossierQuery>,
+) -> Response {
+    let Some(instance) = bound_instance(&sessions, &headers) else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    if !instance.eq_ignore_ascii_case(&query.instance) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    let Some(hosted) = instances.by_label(&instance) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    Json(dossier::read_dossier(&hosted.supervisor, &hosted.label, query.entity_id).await)
+        .into_response()
 }
 
 fn bound_instance(sessions: &SessionStore, headers: &HeaderMap) -> Option<String> {
