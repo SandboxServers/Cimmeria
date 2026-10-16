@@ -694,13 +694,21 @@ Three rules now keep that from recurring:
   `catch_unwind`, so a Rust panic cannot unwind into the game. The CME
   callbacks stay plain `thiscall`: they call nothing in the game.
 
+## Lab-only D3D9 status panel
+
+The `lab-bridge` build can patch `IDirect3DDevice9::EndScene` only after the global SGW.exe code/slot fingerprint gate has passed, a lab session has started its bridge, and the existing D3D9 IAT/CreateDevice path has observed a device. Boot retains its actual fingerprint report for the later device install decision. The player build contains no overlay module or EndScene detour. The original `EndScene` is always called. The first accepted device remains active through CreateDevice, Reset, and TestCooperativeLevel probes on auxiliary devices, even when they share its patched vtable. A second device becomes active after the owner is lost or after two seconds since accepted owner creation or the last successful owner EndScene, once a successful foreign EndScene arrives. Auxiliary EndScene frequency cannot displace an owner that continues presenting. Monotonic timestamp publication prevents delayed creation and older owner callbacks from aging a newer presentation. A handoff acquires the same guard as panel rendering, so a foreign EndScene cannot displace a frame that may still record a fault; a busy handoff waits for a later successful EndScene. A different vtable is refused without displacing the accepted device or incrementing the patch-failure counter. Concurrent install probes are serialized, and live vtable slot exchange uses an aligned atomic compare/exchange after temporary page unprotection.
+
+The panel is three opaque `Clear` rectangles: a dark base, a trace/gap indicator and a recorder indicator. It reads only atomic coarse status bits. It never receives command text, credentials, game state or bridge tokens. Each frame is bounded to one viewport query, one `D3DSBT_ALL` snapshot, at most three rectangle clears, and restoration/release; the code checks a one-millisecond software budget between calls. A slow driver call cannot be preempted. Rendering stops on loss or failed Reset, skips recursion, and stays disabled after three faults. Failed patch, viewport, state capture, clear and state restore operations set bounded atomic reason bits and a failure counter. A single lab-only worker drains those bits to `client.gfx.overlay_fault` off the render callback, reporting each reason once and the terminal shutoff once; EndScene performs no JSON formatting or telemetry enqueue. A successful Reset restores eligibility but cannot override fault shutoff. The same global boot fingerprint check that gates all hooks refuses an unsupported executable before any D3D9 patch can be installed.
+
+This seam is statically checked and fake-device tested. The client executable is absent here, and no live render, driver-loss or visual UAT is claimed. The companion GUI remains the dense user interface.
+
 ## What we DON'T hook
 
 To preserve "observe without changing behavior":
 
 - **`FMalloc::Malloc`** (`FMallocCME` at RTTI `0x01d8f87c`) — millions of calls/sec.
 - **`UObject::ConditionalDestroy`** and GC-adjacent paths — use-after-free risk.
-- **`BeginScene` / `EndScene`** and render-state-affecting D3D9 entry points.
+- **`BeginScene` and general render-state-affecting D3D9 entry points.** The lab-only `EndScene` exception above is gated separately.
 - **PhysX inner-loop callbacks** — high-frequency on dedicated threads.
 - **`wxWidgets`** (statically linked, Atrea editor framework) — irrelevant for the game client.
 
