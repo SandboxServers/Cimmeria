@@ -227,6 +227,7 @@ async fn shell_assets_and_api_are_inside_the_session_gate() {
         "/workbench/",
         "/workbench/app.js",
         "/workbench/views/dossier.js",
+        "/workbench/views/probe.js",
         "/workbench/app.css",
         "/workbench/api/v1/session?instance=default",
     ] {
@@ -251,6 +252,7 @@ async fn shell_assets_and_api_are_inside_the_session_gate() {
     for (path, mime) in [
         ("app.js", "text/javascript"),
         ("views/dossier.js", "text/javascript"),
+        ("views/probe.js", "text/javascript"),
         ("app.css", "text/css"),
     ] {
         let response = http
