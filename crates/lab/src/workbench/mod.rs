@@ -13,6 +13,7 @@ pub mod probes;
 pub mod slash_catalog;
 pub mod slash_descriptors_1a;
 pub mod slash_descriptors_1b;
+pub mod slash_descriptors_2a;
 pub mod slash_inventory;
 pub mod slash_transport;
 pub mod spatial;
@@ -27,6 +28,10 @@ mod probes_tests;
 mod slash_descriptors_1a_tests;
 #[cfg(test)]
 mod slash_descriptors_1b_tests;
+#[cfg(test)]
+mod slash_descriptors_2a_review_tests;
+#[cfg(test)]
+mod slash_descriptors_2a_tests;
 #[cfg(test)]
 mod slash_inventory_tests;
 #[cfg(test)]
