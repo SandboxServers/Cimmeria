@@ -34,6 +34,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use super::dispatch::{RpcResponse, INVALID_PARAMS};
+use crate::hooks::mercury_recv::wire::{ProofCounters, WireProof, PROOF_COUNTERS};
 
 /// Local ring capacity. Generous — the supervisor drains frequently and
 /// events are small. Overflow drops the newest and bumps [`DROPPED`].
@@ -82,6 +83,33 @@ pub fn push(kind: impl Into<String>, ts_ms: i64, fields: Value) {
     }
 }
 
+/// Mirror one byte-free Mercury receive proof into the bounded bridge ring.
+/// The proof's drop counter is separate from the ring's all-event total.
+pub(crate) fn push_mercury_proof(proof: WireProof) {
+    if !push_proof_to(&ring().0, &PROOF_COUNTERS, proof, super::crash::now_ms()) {
+        DROPPED.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+/// Isolated ring seam for the capacity-plus-one regression fixture.
+pub(crate) fn push_proof_to(
+    tx: &Sender<LabEvent>,
+    counters: &ProofCounters,
+    proof: WireProof,
+    ts_ms: i64,
+) -> bool {
+    let event = LabEvent {
+        kind: "mercury.wire_proof".to_owned(),
+        ts_ms,
+        fields: serde_json::to_value(proof).expect("wire proof is JSON serializable"),
+    };
+    if tx.try_send(event).is_err() {
+        counters.dropped();
+        return false;
+    }
+    true
+}
+
 /// Drain up to `max` events from the ring, oldest first. Returns the
 /// events and the dropped-since-last-drain count (reset to 0 here).
 ///
@@ -122,6 +150,8 @@ pub fn dispatch_read(id: Value, params: &Value) -> RpcResponse {
             "returned": events.len(),
             "dropped": dropped,
             "events": events,
+            "bridge_epoch": super::bridge_epoch(),
+            "mercury_wire_proof": PROOF_COUNTERS.snapshot(),
         }),
     )
 }
@@ -178,5 +208,39 @@ mod tests {
         let result = r.result.expect("ok");
         assert_eq!(result["returned"], 1);
         assert_eq!(result["events"][0]["kind"], "mercury.dispatch");
+    }
+
+    #[test]
+    fn mercury_recv_dispatch_serializes_proof_epoch_and_counters() {
+        let _guard = TEST_LOCK.lock().unwrap_or_else(PoisonError::into_inner);
+        let _ = drain(RING_CAPACITY);
+        let before = PROOF_COUNTERS.snapshot().received;
+        let proof = PROOF_COUNTERS
+            .observe(
+                "epoch-fixture",
+                7,
+                1472,
+                0,
+                b"hello",
+                Some("127.0.0.1:8080"),
+            )
+            .unwrap();
+        push_mercury_proof(proof);
+        let response = dispatch_read(json!(9), &json!({ "max": 1 }));
+        let result = response.result.unwrap();
+        assert_eq!(result["events"][0]["kind"], "mercury.wire_proof");
+        assert_eq!(
+            result["events"][0]["fields"]["bridge_epoch"],
+            "epoch-fixture"
+        );
+        assert_eq!(result["events"][0]["fields"]["wire_len"], 5);
+        assert_eq!(
+            result["events"][0]["fields"]["wire_fingerprint"],
+            "a430d84680aabd0b"
+        );
+        assert_eq!(result["mercury_wire_proof"]["received"], before + 1);
+        assert_eq!(result["mercury_wire_proof"]["hook_installed"], false);
+        assert_eq!(result["mercury_wire_proof"]["dropped"], 0);
+        assert!(!result.to_string().contains("hello"));
     }
 }

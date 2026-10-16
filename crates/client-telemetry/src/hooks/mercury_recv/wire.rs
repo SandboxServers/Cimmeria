@@ -20,6 +20,8 @@
 //!    unchanged, so the pair is the same on both threads.
 
 use std::cell::Cell;
+#[cfg(any(test, feature = "lab-bridge"))]
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use serde_json::json;
@@ -30,6 +32,130 @@ use super::{Fields, SEQ_MASK, SEQ_UNSET};
 /// returned length in `Mercury::Packet+0x24` (QA SGW.exe, Ghidra).
 const MERCURY_RECV_CAPACITY: i32 = 0x5c0;
 const WSAEWOULDBLOCK: i32 = 10035;
+
+/// Counters for the lab's Mercury-only receive candidate. A missing row is
+/// never evidence that a packet did not reach the client.
+#[cfg(any(test, feature = "lab-bridge"))]
+pub(crate) struct ProofCounters {
+    hook_installed: AtomicBool,
+    received: AtomicU64,
+    rejected: AtomicU64,
+    dropped: AtomicU64,
+}
+
+#[cfg(any(test, feature = "lab-bridge"))]
+impl ProofCounters {
+    pub(crate) const fn new() -> Self {
+        Self {
+            hook_installed: AtomicBool::new(false),
+            received: AtomicU64::new(0),
+            rejected: AtomicU64::new(0),
+            dropped: AtomicU64::new(0),
+        }
+    }
+
+    pub(crate) fn installed(&self) {
+        self.hook_installed.store(true, Ordering::Release);
+    }
+
+    pub(crate) fn dropped(&self) {
+        increment(&self.dropped);
+    }
+
+    pub(crate) fn snapshot(&self) -> ProofStatus {
+        let hook_installed = self.hook_installed.load(Ordering::Acquire);
+        let received = self.received.load(Ordering::Relaxed);
+        ProofStatus {
+            hook_installed,
+            received,
+            rejected: self.rejected.load(Ordering::Relaxed),
+            dropped: self.dropped.load(Ordering::Relaxed),
+            gap: (!hook_installed || received == 0).then_some("hook_unobserved"),
+        }
+    }
+
+    pub(crate) fn observe(
+        &self,
+        epoch: &str,
+        socket: usize,
+        requested_len: i32,
+        flags: i32,
+        wire: &[u8],
+        peer: Option<&str>,
+    ) -> Option<WireProof> {
+        if requested_len != MERCURY_RECV_CAPACITY
+            || flags != 0
+            || wire.is_empty()
+            || wire.len() > MERCURY_RECV_CAPACITY as usize
+        {
+            increment(&self.rejected);
+            return None;
+        }
+        if peer.is_none() {
+            increment(&self.rejected);
+        }
+        increment(&self.received);
+        Some(WireProof {
+            bridge_epoch: epoch.to_owned(),
+            socket: socket as u64,
+            peer: peer.map(str::to_owned),
+            wire_len: wire.len(),
+            wire_fingerprint: fingerprint_hex(fingerprint_u64(wire)),
+            gap: peer.is_none().then_some("peer_unavailable"),
+        })
+    }
+}
+
+#[cfg(any(test, feature = "lab-bridge"))]
+fn increment(counter: &AtomicU64) {
+    let _ = counter.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
+        Some(n.saturating_add(1))
+    });
+}
+
+/// A bounded, byte-free Winsock observation. Process identity is attached by
+/// the supervisor at ingestion; the socket and peer are diagnostic only.
+#[derive(Debug, serde::Serialize)]
+#[cfg(any(test, feature = "lab-bridge"))]
+pub(crate) struct WireProof {
+    pub(crate) bridge_epoch: String,
+    pub(crate) socket: u64,
+    pub(crate) peer: Option<String>,
+    pub(crate) wire_len: usize,
+    pub(crate) wire_fingerprint: String,
+    pub(crate) gap: Option<&'static str>,
+}
+
+/// Snapshot reported with each bridge drain, including an explicit absence
+/// reason until the hook installs and observes a candidate read.
+#[derive(Debug, serde::Serialize)]
+#[cfg(any(test, feature = "lab-bridge"))]
+pub(crate) struct ProofStatus {
+    pub(crate) hook_installed: bool,
+    pub(crate) received: u64,
+    pub(crate) rejected: u64,
+    pub(crate) dropped: u64,
+    pub(crate) gap: Option<&'static str>,
+}
+
+#[cfg(feature = "lab-bridge")]
+pub(crate) static PROOF_COUNTERS: ProofCounters = ProofCounters::new();
+
+#[cfg(feature = "lab-bridge")]
+pub(crate) fn record_proof(
+    socket: usize,
+    requested_len: i32,
+    flags: i32,
+    wire: Option<&[u8]>,
+    peer: Option<&str>,
+) {
+    let (Some(epoch), Some(wire)) = (crate::bridge::bridge_epoch(), wire) else {
+        return;
+    };
+    if let Some(proof) = PROOF_COUNTERS.observe(epoch, socket, requested_len, flags, wire, peer) {
+        crate::bridge::events::push_mercury_proof(proof);
+    }
+}
 
 /// FNV-1a hash of exact UDP bytes.
 pub(crate) fn fingerprint_u64(bytes: &[u8]) -> u64 {

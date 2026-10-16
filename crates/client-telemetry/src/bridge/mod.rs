@@ -93,6 +93,7 @@ struct PendingRequest {
 pub struct BridgeHandle {
     req_rx: Receiver<PendingRequest>,
     local_addr: SocketAddr,
+    epoch: String,
 }
 
 impl BridgeHandle {
@@ -100,6 +101,11 @@ impl BridgeHandle {
     /// config port was 0, e.g. in tests).
     pub fn local_addr(&self) -> SocketAddr {
         self.local_addr
+    }
+
+    /// Random identity of this bridge instance, independent of telemetry SID.
+    pub fn epoch(&self) -> &str {
+        &self.epoch
     }
 
     /// Drain every queued request, dispatch it on the calling
@@ -141,6 +147,7 @@ pub fn start(cfg: LabConfig) -> io::Result<BridgeHandle> {
             "lab token must be 32 bytes (64 hex chars)",
         ));
     }
+    let epoch = crate::session::mint_bridge_epoch()?;
     let listener = TcpListener::bind((cfg.bind.as_str(), cfg.port))?;
     let local_addr = listener.local_addr()?;
     let (req_tx, req_rx) = bounded::<PendingRequest>(QUEUE_CAPACITY);
@@ -148,7 +155,11 @@ pub fn start(cfg: LabConfig) -> io::Result<BridgeHandle> {
     std::thread::Builder::new()
         .name("cimmeria-lab-bridge-io".into())
         .spawn(move || accept_loop(listener, token, req_tx))?;
-    Ok(BridgeHandle { req_rx, local_addr })
+    Ok(BridgeHandle {
+        req_rx,
+        local_addr,
+        epoch,
+    })
 }
 
 /// The bridge half of the double gate: returns `None` (never binds a
@@ -161,6 +172,11 @@ pub fn maybe_start(session: &crate::session::DllSession) -> Option<io::Result<Br
 /// Process-global bridge handle, set once by `boot` after a
 /// successful [`maybe_start`], read by the Tick-drain hook.
 static BRIDGE: OnceLock<BridgeHandle> = OnceLock::new();
+
+/// Active bridge identity, absent until the lab-only listener starts.
+pub fn bridge_epoch() -> Option<&'static str> {
+    BRIDGE.get().map(BridgeHandle::epoch)
+}
 
 /// Install the handle so [`drain_main_thread`] can find it. Returns
 /// `false` if a handle was already installed.
@@ -343,6 +359,17 @@ mod tests {
     fn maybe_start_some_with_lab_block() {
         let h = maybe_start(&a_session(Some(lab_cfg(&"e".repeat(64)))));
         assert!(matches!(h, Some(Ok(_))));
+    }
+
+    #[test]
+    fn mercury_recv_bridge_reinitialization_rotates_epoch_with_same_session_id() {
+        let session = a_session(Some(lab_cfg(&"e".repeat(64))));
+        let first = maybe_start(&session).unwrap().unwrap();
+        let second = maybe_start(&session).unwrap().unwrap();
+        assert_eq!(session.session_id, "s");
+        assert_eq!(first.epoch().len(), 32);
+        assert_ne!(first.epoch(), second.epoch());
+        assert_ne!(first.epoch(), session.session_id);
     }
 
     #[test]

@@ -52,19 +52,13 @@
 //! 3. Restore the original page protection.
 //! 4. Remember the original address so the detour can chain to it.
 //!
-//! No code-byte patching, no trampolines — IAT hooks are the
-//! lightest-weight inline-hook alternative. The cost is that the
-//! hook only intercepts callers that go through the IAT (not direct
-//! `call <addr>` to the library entry from SGW.exe code that
-//! resolved the address some other way).
+//! IAT hooks intercept callers through the IAT, not direct calls to a
+//! library entry resolved elsewhere.
 //!
 //! # Safety
 //!
-//! The detour MUST match the imported function's calling convention
-//! EXACTLY or the stack will be corrupted on call/return. Windows
-//! APIs are `__stdcall` (callee cleans the stack); the Lua C API is
-//! `__cdecl` (caller cleans). Mismatching either way is undefined
-//! behavior and crashes the game.
+//! A detour must match its import's calling convention: Windows APIs
+//! use `__stdcall`, while the Lua C API uses `__cdecl`.
 
 #![allow(clippy::missing_safety_doc)] // FFI bindings — safety docs at fn-level
 
@@ -265,9 +259,12 @@ unsafe fn install_one(
         }
     };
 
-    // Publish the displaced original so the detour can chain through.
     // `Release` pairs with the detour's `Acquire` load.
     orig_slot.store(original, Ordering::Release);
+    #[cfg(feature = "lab-bridge")]
+    if hook_name == "recvfrom" {
+        super::mercury_recv::wire::PROOF_COUNTERS.installed();
+    }
 
     super::emit_info(
         producer,
@@ -613,10 +610,7 @@ unsafe extern "system" {
     fn WSASetLastError(error: i32);
 }
 
-/// `recvfrom(SOCKET, char*, int, int, sockaddr*, int*) -> int` — the
-/// Winsock boundary. The original runs first, before we inspect the raw
-/// encrypted bytes or the socket's failure code. Restore the thread's WSA
-/// error after telemetry so the client observes exactly the original result.
+/// Observe the Winsock boundary after the original call; preserve its error.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 #[allow(improper_ctypes_definitions)]
 unsafe extern "stdcall-unwind" fn recvfrom_detour(
@@ -647,15 +641,17 @@ unsafe extern "stdcall-unwind" fn recvfrom_detour(
         } else {
             None
         };
-        let peer =
-            if result >= 0 && !from.is_null() && !from_len.is_null() && unsafe { *from_len } >= 8 {
-                let bytes = unsafe { std::slice::from_raw_parts(from.cast::<u8>(), 8) };
-                super::mercury_recv::wire::ipv4_peer(bytes)
-            } else {
-                None
-            };
-        // Stashed for the packet filter, which this thread runs next on the
-        // same datagram (TG-MER-12 join key; see `mercury_recv::wire`).
+        let peer = if result > 0
+            && len == 0x5c0
+            && !from.is_null()
+            && !from_len.is_null()
+            && (8..=16).contains(&unsafe { *from_len })
+        {
+            let bytes = unsafe { std::slice::from_raw_parts(from.cast::<u8>(), 8) };
+            super::mercury_recv::wire::ipv4_peer(bytes)
+        } else {
+            None
+        };
         let wire_fp = super::mercury_recv::wire::stash_received(len, wire);
         if let Some((level, fields)) = super::mercury_recv::wire::recv_event(
             socket,
@@ -667,6 +663,8 @@ unsafe extern "stdcall-unwind" fn recvfrom_detour(
         ) {
             super::emit::emit("client.mercury.socket_recv", level, fields);
         }
+        #[cfg(feature = "lab-bridge")]
+        super::mercury_recv::wire::record_proof(socket, len, flags, wire, peer.as_deref());
     });
     if let Some(error) = error {
         unsafe { WSASetLastError(error) };
