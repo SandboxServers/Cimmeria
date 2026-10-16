@@ -19,9 +19,10 @@ mod probe_api;
 use crate::{
     lease::permit::{self, Permit},
     server::Instances,
+    uat::invoke::{ServerInvoker, ServerTools},
     workbench::{
         bookmarks::{BookmarkDraft, BookmarkStore},
-        dossier, spatial,
+        dossier, mission, spatial,
     },
 };
 #[cfg(test)]
@@ -34,12 +35,36 @@ const STYLESHEET: &str = include_str!("../../../workbench/app.css");
 
 /// Routes merged into the DW-02A browser router before its session layer.
 pub fn router(instances: Instances) -> Router<Arc<SessionStore>> {
-    router_with_store(instances, bookmark_store())
+    router_with_sources(instances, bookmark_store(), default_mission_server())
 }
 
+#[cfg(test)]
 pub(crate) fn router_with_store(
     instances: Instances,
     store: BookmarkStore,
+) -> Router<Arc<SessionStore>> {
+    router_with_sources(instances, store, default_mission_server())
+}
+
+fn default_mission_server() -> Option<Arc<dyn ServerInvoker>> {
+    ServerTools::from_env().map(|source| Arc::new(source) as Arc<dyn ServerInvoker>)
+}
+
+#[derive(Clone)]
+struct MissionServer(Option<Arc<dyn ServerInvoker>>);
+
+#[cfg(test)]
+fn router_with_mission_server(
+    instances: Instances,
+    server: Option<Arc<dyn ServerInvoker>>,
+) -> Router<Arc<SessionStore>> {
+    router_with_sources(instances, bookmark_store(), server)
+}
+
+fn router_with_sources(
+    instances: Instances,
+    store: BookmarkStore,
+    server: Option<Arc<dyn ServerInvoker>>,
 ) -> Router<Arc<SessionStore>> {
     Router::new()
         .route("/workbench/api/v1/session", get(session))
@@ -49,6 +74,7 @@ pub(crate) fn router_with_store(
         .route("/workbench/api/v1/bookmarks/save", post(bookmark_save))
         .route("/workbench/api/v1/bookmarks/delete", post(bookmark_delete))
         .route("/workbench/api/v1/bookmarks/action", post(bookmark_action))
+        .route("/workbench/api/v1/missions", get(mission_xray))
         .route("/workbench/api/v1/input/key", post(input_key))
         .route("/workbench/api/v1/probes", get(probe_api::probe_list))
         .route("/workbench/api/v1/probes/save", post(probe_api::probe_save))
@@ -63,6 +89,7 @@ pub(crate) fn router_with_store(
         )
         .layer(Extension(store))
         .layer(Extension(instances))
+        .layer(Extension(MissionServer(server)))
 }
 
 #[derive(Deserialize)]
@@ -353,6 +380,45 @@ async fn bookmark_action(
         "bookmark_action_unavailable",
         "bookmark actions require a trusted client identity and guarded input boundary",
     )
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MissionQuery {
+    instance: String,
+    mission_id: i32,
+}
+
+async fn mission_xray(
+    State(sessions): State<Arc<SessionStore>>,
+    Extension(instances): Extension<Instances>,
+    Extension(MissionServer(server)): Extension<MissionServer>,
+    headers: HeaderMap,
+    Query(query): Query<MissionQuery>,
+) -> Response {
+    let Some(instance) = bound_instance(&sessions, &headers) else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    if !instance.eq_ignore_ascii_case(&query.instance) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    if query.mission_id <= 0 {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
+    let Some(hosted) = instances.by_label(&instance) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    Json(
+        mission::read_mission(
+            &hosted.supervisor,
+            &hosted.label,
+            query.mission_id,
+            None,
+            server.as_deref(),
+        )
+        .await,
+    )
+    .into_response()
 }
 
 fn bound_instance(sessions: &SessionStore, headers: &HeaderMap) -> Option<String> {

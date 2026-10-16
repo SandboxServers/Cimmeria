@@ -18,6 +18,8 @@ In the **legacy SGW server**, dynamic Python scripts (`deprecated/python/cell/Mi
 
 In the **Cimmeria emulator**, mission lifecycle runs through the data-driven content engine. Mission state lives in `MissionInstance` ([crates/entity/src/missions.rs](../../crates/entity/src/missions.rs)); accept/advance/complete are mutated by chain actions executed in [crates/cell-content/src/cell/content/executor/mod.rs](../../crates/cell-content/src/cell/content/executor/mod.rs). The lifecycle table — which triggers fire at which stage, which conditions gate progression, which actions persist — is in [docs/content/content-engine.md](../content/content-engine.md) §9. Mission definitions are loaded from `db/resources/Missions/`; chain rows that drive mission progression live in `resources.content_*` tables.
 
+For read-only inspection of a selected mission's definition, persisted state and visible tracker as separate evidence, see the [lab workbench mission X-ray](../guides/live-research-lab.md#workbench-mission-x-ray). Its live server layer remains unknown until the lab can bind a client process to a server session.
+
 ## Implementation Status
 
 | Feature | Status | Notes |

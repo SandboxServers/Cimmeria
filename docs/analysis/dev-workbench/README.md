@@ -86,13 +86,14 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 1B-e | DW-03S-I | Ingestion-time client event identity | 03S-C | 30k | BlockedDependency |
 | 1B-e | DW-03S-B | Supervisor binder and dossier integration | 03S-C, 03S-X, 03S-I, 03 | 45k | BlockedDependency |
 | 1 | DW-04 | Lua probe/object model | 01, 02B | 40k | Integrated (#1749) |
-| 1 | DW-05 | Spatial observations and bookmark CRUD | 01, 02B | 40k | Review |
+| 1 | DW-05 | Spatial observations and bookmark CRUD | 01, 02B | 40k | Integrated (#1758) |
 | 2 | DW-05G | Execution-time client input guard | 05, 03S-B | 45k | BlockedDependency |
 | 2 | DW-05A | Guarded bookmark actions | 05G | 35k | BlockedDependency |
-| 2 | DW-06 | Mission X-ray model | 01, 02B | 40k | Ready |
+| 2 | DW-06 | Mission X-ray definition/UI model; server slot fail closed | 01, 02B | 40k | Review |
+| 2 | DW-06A | Live mission state from exact joined server session | 03S-B, 06 | 40k | BlockedDependency |
 | 2 | DW-07 | Client click/target correlation | 01 | 35k | Integrated |
 | 2 | DW-08 | Trace capture anchor | 01, 02B, 03S-B | 40k | BlockedDependency |
-| 2 | DW-09 | Five-layer truth assembler | 03S-B, 06, 08 | 40k | BlockedDependency |
+| 2 | DW-09 | Five-layer truth assembler | 03S-B, 06A, 08 | 40k | BlockedDependency |
 | 2 | DW-10 | Reproduction recorder enrichment | 07-08, 03S-B, LR-11 | 45k | BlockedDependency |
 | 2 | DW-11 | Triggered flight recorder | 08, 03S-B, LR-14/15 | 45k | BlockedDependency |
 | 3 | DW-12A | GUI dossier view | 02B-03 | 30k | Review |

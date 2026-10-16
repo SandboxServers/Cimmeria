@@ -4,6 +4,8 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Open investigations
 
+- [reference_dev_workbench_mission_2026_10_16.md](reference_dev_workbench_mission_2026_10_16.md) — DW-06 mission tracker lacks IDs; player state waits for trusted session binding; mission-scoped chain references are partial
+
 - [reference_workbench_gm_contract_2026_10_15.md](reference_workbench_gm_contract_2026_10_15.md) — DW-19 dot registry projection, cell GM gate, pending typed evidence and separate slash source
 - [reference_dev_workbench_dossier_2026_10_15.md](reference_dev_workbench_dossier_2026_10_15.md) — target dossier uses stock slot-map reads and entity id joins; client unitMobId and server template id are independent; log tail is nondestructive
 - [reference_dev_workbench_clicks_2026_10_15.md](reference_dev_workbench_clicks_2026_10_15.md) — DW-07 click IDs and callback-time target observation; entity ID and client tick stay unknown until a verified callback-time getter exists
