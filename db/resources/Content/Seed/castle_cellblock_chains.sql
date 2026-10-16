@@ -8,6 +8,7 @@
 -- Chain ID ranges (allocated statically to avoid seed-order sensitivity):
 --   Mission 622:  chains 1001-1010
 --   Mission 638:  chains 1011-1030
+--   Mission 638 login restore (2026-10-15): chains 1026-1027, the next free ids in the declared 1011-1030 range.
 --   Mission 639:  chains 1031-1040
 --   Mission 640:  chains 1041-1050
 --   Mission 641:  chains 1051-1070
@@ -31,8 +32,6 @@
 --     chain_id in this file, matching the method C01's worker used for
 --     chain 1008). Kept deliberately separate from C03's 1112-1120 range so
 --     the two packets' new ids never collide.
---   Mission 638 login restore (2026-10-15): chains 1026-1027, the next free
---     ids in the declared 1011-1030 range.
 --   C07 addition (2026-09-17): mission-accepted prompt blurbs, work-packets.md's
 --     reserved range 1151-1160. Used: 1151 (640), 1152 (641), 1154 (688).
 --     1153 skipped -- reserved for mission 680's blurb 2308 (D-CB08's fourth
