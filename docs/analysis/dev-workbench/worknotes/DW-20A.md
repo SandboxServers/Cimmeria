@@ -27,6 +27,15 @@ target validation) and `.spawnrandom` (server bounds and derived-position
 validation). The in-game dot console behavior remains as documented in the
 evidence; catalog disabling is a palette disposition, not a server refusal.
 
+`.gotolocation` remains runnable in the catalog with a conditional readback:
+same-space player snaps require a `wire.out.forced_position` `send=sent` row from
+`server_log_tail`; cross-space arrival requires destination re-entry, a
+matching `sgw_player` row and inspection of GateTravel persistence log
+warnings/errors (`rows_affected_zero` or `persist_arrival_failed`). Missing
+evidence means unknown. Explicit coordinates pass finite checks
+only; navmesh and Z containment are not validated, so geometry risk is shown
+before execution.
+
 Existing handler tests cover wrong world/target refusal and same-space
 travel's position and forced-position output. This packet's tests pin exact
 family coverage, the four runnable contracts and metadata projection. The

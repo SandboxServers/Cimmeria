@@ -239,7 +239,12 @@ mod tests {
                     ["y", "float", false],
                     ["z", "float", false]
                 ]),
-                json!(["server_entity_get", "server_sessions", "server_db_query"]),
+                json!([
+                    "server_entity_get",
+                    "server_sessions",
+                    "server_log_tail",
+                    "server_db_query"
+                ]),
             ),
             (
                 "spawn",
@@ -285,6 +290,19 @@ mod tests {
                 ".{name}"
             );
         }
+        let location = rows.iter().find(|r| r["name"] == "gotolocation").unwrap();
+        assert!(location["preconditions"]
+            .as_str()
+            .unwrap()
+            .contains("no navmesh or Z containment validation"));
+        assert!(location["impact"]["summary"]
+            .as_str()
+            .unwrap()
+            .contains("outside traversable or contained geometry"));
+        let recipe = location["verify"]["recipe"].as_str().unwrap();
+        assert!(recipe.contains("wire.out.forced_position send=sent"));
+        assert!(recipe.contains("rows_affected_zero, persist_arrival_failed"));
+        assert!(recipe.contains("evidence is unknown"));
         let despawn = rows.iter().find(|r| r["name"] == "despawn").unwrap();
         assert!(despawn["forms"].as_str().unwrap().contains("including pet"));
         assert!(despawn["impact"]["summary"]

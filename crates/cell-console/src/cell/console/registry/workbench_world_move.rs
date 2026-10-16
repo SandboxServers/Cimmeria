@@ -135,9 +135,9 @@ pub(super) fn metadata(name: &str) -> Option<WorkbenchMetadata> {
                 "Capture both players before; compare named subject after re-entry; inspect forced-position send for snap or sgw_player world/position/known_stargates after transfer",
                 "Manual return to captured origin; associated gameplay state has no automatic undo"),
             "gotolocation" => ("Travel", "runnable", "", WORLD, "worldName [x y z] (exactly 1 or 4 tokens)",
-                "GM; known canonical world; live caller; finite complete tuple or resolvable world entry point",
-                "Caller-only snap in current instance or GateTravel into world; arrival persistence attempted; no spawnlist write",
-                "Capture caller before and after by identity; check exact world/space/position after re-entry and sgw_player world/position/known_stargates; forced-position send is not client application",
+                "GM; known canonical world; live caller; finite complete tuple or resolvable world entry point; explicit coordinates have no navmesh or Z containment validation",
+                "Caller-only snap in current instance or GateTravel into world; arrival persistence attempted; explicit finite coordinates may place the caller outside traversable or contained geometry; no spawnlist write",
+                "Capture caller identity, player_id, world, space and position before; for a same-space snap compare server_entity_get after and require wire.out.forced_position send=sent via server_log_tail (send_failed is failure); for cross-space wait for re-entry, compare exact world/space/position, query sgw_player world/position/known_stargates and inspect GateTravel persistence warnings/errors (rows_affected_zero, persist_arrival_failed) via server_log_tail; absent send/arrival/persistence evidence is unknown, and no server read proves client application",
                 "Manual travel to captured origin if reachable; no general inverse for associated state"),
             "gotospace" => ("Travel", "unsupported", "Exact cross-instance arrival can be redirected by subject's GM-only-world policy", SPACE, "spaceId [x y z] (exactly 1 or 4 tokens)",
                 "GM; loaded positive instance; live subject; complete finite tuple or entry point; player required for cross-space",
@@ -213,7 +213,13 @@ pub(super) fn metadata(name: &str) -> Option<WorkbenchMetadata> {
         "spawnrandom" => &["GM batch summary", "server_entity_get"],
         "spawn" => &["GM completion feedback", "server_entity_get"],
         "gotoxyz" => &["server_entity_get", "server_log_tail", "server_db_query"],
-        "goto" | "summon" | "gotolocation" | "gotospace" => {
+        "gotolocation" => &[
+            "server_entity_get",
+            "server_sessions",
+            "server_log_tail",
+            "server_db_query",
+        ],
+        "goto" | "summon" | "gotospace" => {
             &["server_entity_get", "server_sessions", "server_db_query"]
         }
         _ => &["server_entity_get"],
@@ -342,7 +348,12 @@ mod tests {
                 "none",
                 "persistent",
                 &["worldName", "x", "y", "z"][..],
-                &["server_entity_get", "server_sessions", "server_db_query"][..],
+                &[
+                    "server_entity_get",
+                    "server_sessions",
+                    "server_log_tail",
+                    "server_db_query",
+                ][..],
             ),
             (
                 "spawn",
@@ -390,6 +401,26 @@ mod tests {
             .contains("execution-time expected-subject"));
         assert_eq!(xyz.impact_kind, "persistent");
         assert!(xyz.verify_tools.contains(&"server_db_query"));
+
+        let location = catalog
+            .iter()
+            .find(|row| row.name == "gotolocation")
+            .unwrap();
+        assert_eq!(location.availability, "runnable");
+        assert!(location.verify_tools.contains(&"server_log_tail"));
+        assert!(location
+            .verify
+            .contains("wire.out.forced_position send=sent"));
+        assert!(location
+            .verify
+            .contains("rows_affected_zero, persist_arrival_failed"));
+        assert!(location.verify.contains("evidence is unknown"));
+        assert!(location
+            .preconditions
+            .contains("no navmesh or Z containment validation"));
+        assert!(location
+            .impact
+            .contains("outside traversable or contained geometry"));
 
         let despawn = catalog.iter().find(|row| row.name == "despawn").unwrap();
         assert!(despawn.forms.contains("including pet"));

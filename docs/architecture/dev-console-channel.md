@@ -197,10 +197,16 @@ catalog entry does not change what a GM can type in the in-game `.`-console.
 The palette must refresh the server-side actor and target before dispatch.
 An initial travel receipt is only an enqueue acknowledgement. For a same-space
 player snap, compare `server_entity_get` before and after, inspect the
-`wire.out.forced_position` send, and query the saved `sgw_player` position;
-for a world transfer, wait for re-entry and
-compare the destination instance, then read `sgw_player` world, position and
-known stargates. No server snapshot alone proves the client applied a snap.
+`wire.out.forced_position` `send=sent` row, and query the saved `sgw_player`
+position;
+for a world transfer, wait for re-entry, compare the destination instance,
+read `sgw_player` world, position and known stargates, and inspect
+GateTravel persistence warnings/errors (`rows_affected_zero` or
+`persist_arrival_failed`) before claiming durable arrival. Missing
+send, arrival or persistence evidence is unknown. Explicit `.gotolocation`
+coordinates are finite checked but have no navmesh or Z containment guard,
+so the UI must display the geometry risk. No server snapshot alone proves the
+client applied a snap.
 The full per-command evidence and disabled reasons are in
 `docs/analysis/dev-workbench/evidence/DW-20A-E.md`.
 

@@ -126,9 +126,17 @@ persistence follows from the command feedback alone.
 
 Before any manual move, capture the subject's entity ID, instance and
 position. Inspect the subject again after the move and check the client's
-position separately. A world transfer needs a fresh destination read after
-re-entry, followed by a check of the saved world and coordinates if it must
-survive relog. `.despawn` with an explicit ID refuses pets, while the selected
+position separately. For a same-space `.gotolocation`, inspect the
+`wire.out.forced_position` `send=sent` through `server_log_tail` (a
+`send_failed` row means it was not sent); a new server position alone does
+not prove that a client received the snap. A world
+transfer needs a fresh destination read after re-entry, followed by a check
+of the saved world and coordinates and GateTravel persistence warnings/errors
+(`rows_affected_zero` or `persist_arrival_failed`).
+Missing send, arrival or persistence evidence means the outcome is unknown.
+Explicit coordinates are checked for finite values but not for navmesh or Z
+containment, so they can place the avatar outside traversable geometry.
+`.despawn` with an explicit ID refuses pets, while the selected
 entity form can remove a pet without its normal dismiss path.
 
 Other travel and spawn forms are marked unavailable in the catalog with their
