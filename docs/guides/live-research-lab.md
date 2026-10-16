@@ -388,9 +388,20 @@ searchable but have no typed Run action until their argument,
 impact and readback contracts are reviewed. The native slash catalog is a
 separate source. Its first 27 patch-012 entries
 have typed, evidence-backed disabled forms in `slash_descriptors_1a`.
+Patch entries 55–81 also have standalone disabled forms in
+`slash_descriptors_2a`, including the non-`/gm` word
+`/debugminigamecomplete`. They preserve the patch's exact 27 names,
+events and argument order. All free-text arguments are marked sensitive and
+redacted in audit previews. Those previews do not format a native slash line.
+The item recharge word has no GM handler, and the minigame completion word
+does not route to the separate ticketed SmartFox result path. Candidate
+server handlers for spawn, despawn, respawn and kill do not make their native
+client bindings or patch argument conversions proven. See
+`docs/analysis/dev-workbench/evidence/DW-26A-E.md` for each limitation.
 Each form states its server handler status, caller or target scope, impact,
-readback, compensation and the specific reason it cannot run. See
-`docs/analysis/dev-workbench/evidence/DW-25A-E.md` for per-command sources.
+readback, compensation and the specific reason it cannot run. See the
+`DW-25A-E.md` and `DW-26A-E.md` evidence files under
+`docs/analysis/dev-workbench/evidence/` for per-command sources.
 The native submission path and client event-to-method binding remain unproved,
 so a displayed preview or submitted string cannot establish server acceptance.
 `server_console_exec` remains a
