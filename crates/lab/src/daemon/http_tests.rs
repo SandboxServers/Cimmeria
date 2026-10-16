@@ -25,9 +25,12 @@ pub(crate) fn test_server() -> LabServer {
 
 /// Serve the daemon router on 127.0.0.1:0; returns the `/mcp` URL.
 pub(crate) async fn spawn_daemon(server: LabServer) -> String {
+    spawn_router(super::build_router(server, TOKEN)).await
+}
+
+pub(crate) async fn spawn_router(router: axum::Router) -> String {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    let router = super::build_router(server, TOKEN);
     tokio::spawn(async move {
         let _ = axum::serve(listener, router).await;
     });
@@ -63,7 +66,7 @@ fn rpc_body(text: &str) -> Value {
         .unwrap_or_else(|| panic!("no JSON-RPC response in {text:?}"))
 }
 
-fn initialize_body() -> Value {
+pub(crate) fn initialize_body() -> Value {
     json!({
         "jsonrpc": "2.0", "id": 1, "method": "initialize",
         "params": {
