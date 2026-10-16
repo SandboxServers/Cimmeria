@@ -40,8 +40,8 @@ For readback, `server_entity_get {entity_id}` returns the live cell snapshot (`c
 - **Arguments:** One signed `i32` `pathId`.
 - **Target/scope:** Global path ID and shared cell-process buffer, no selected target.
 - **Preconditions and authority:** GM and parseable ID; no ownership or existence check.
-- **Effects and impact:** Removes the session buffer immediately; queues two separate SQL DELETEs, child `point_set_points` then parent `point_sets`. `.seedconfirm` may delete live DB rows; emitted DELETEs remain only proposed seed edits until merged. Existing NPC patrol lists are not cleared by this handler.
-- **Verification:** `.path_show` proves buffer removal. After confirm, inspect each base result and `server_db_query` counts by exact `set_id` for both tables; queued status alone proves no deletion.
+- **Effects and impact:** Removes the shared path buffer immediately; queues two separate SQL DELETEs, child `point_set_points` then parent `point_sets`. `.seedconfirm` sends them as separate base writes with no transaction, so partial live-DB completion is possible. Emitted DELETEs remain only proposed seed edits until merged. Existing NPC patrol lists are not cleared by this handler.
+- **Verification:** `.path_show` proves buffer removal. After confirm, inspect **both** base results and `server_db_query` counts by exact `set_id` for both tables; one successful DELETE does not prove the other ran. Queued status proves no deletion.
 - **Compensation:** Recreate the exact captured header/points manually; `.path_add` cannot restore metadata, ordering, sequences and teleport fields. No automatic inverse.
 - **Availability:** Disabled until a server-side ownership/existence precondition and explicit destructive preview exist.
 
@@ -73,10 +73,10 @@ For readback, `server_entity_get {entity_id}` returns the live cell snapshot (`c
 - **Arguments:** Signed `i32` `pathId`, nonnegative `i32` zero-based `index`, signed `i32` `seqId`; exactly three tokens.
 - **Target/scope:** Nth DB waypoint ordered by `point_id`; no selected target.
 - **Preconditions and authority:** GM; parsable values; negative index refuses. Missing index/path is not checked before queue.
-- **Effects and impact:** Queues `UPDATE point_set_points SET sequence_id = seqId` for the offset row. No immediate patrol-memory change; confirm can write live DB, emitted SQL is not a seed commit.
-- **Verification:** Positive base row feedback then `server_db_query` ordered `point_id` row's `sequence_id`; zero rows means no live change.
+- **Effects and impact:** Queues `UPDATE point_set_points SET sequence_id = seqId` with an `ORDER BY point_id OFFSET index` subquery. That ordinal resolves only at `.seedconfirm`; an intervening insert/delete can retarget a different `point_id`. No immediate patrol-memory change; confirm can write live DB, emitted SQL is not a seed commit.
+- **Verification:** Base feedback for `path_seq` is shared with `.path_clear_seq`/`.path_set_tp_seq`, so a batched label alone cannot attribute success. Compare exact `point_id` and `sequence_id` before/after via `server_db_query`; zero rows means no live change.
 - **Compensation:** Queue old captured sequence ID manually, or `.path_clear_seq` if old value was NULL; no automatic inverse.
-- **Availability:** Disabled until path ownership and selected row existence are checked before queuing.
+- **Availability:** Disabled until path ownership is checked and `point_id` is pinned server-side in the queued operation; a previewed ordinal is insufficient.
 
 ### .path_clear_seq
 
@@ -84,10 +84,10 @@ For readback, `server_entity_get {entity_id}` returns the live cell snapshot (`c
 - **Arguments:** Signed `i32` `pathId`, nonnegative zero-based `i32` `index`; exactly two tokens.
 - **Target/scope:** Nth ordered DB waypoint, no selected target.
 - **Preconditions and authority:** GM; valid index syntax; no row/world ownership check.
-- **Effects and impact:** Queues `sequence_id = NULL`; no immediate memory edit. Confirm can change live DB; SQL is emitted, not committed to seed.
-- **Verification:** Exact `point_id`/`sequence_id` after positive base result; zero rows is no-op.
+- **Effects and impact:** Queues `sequence_id = NULL` with `ORDER BY point_id OFFSET index`, resolved only at `.seedconfirm`; intervening insert/delete can clear another `point_id`. No immediate memory edit. Confirm can change live DB; SQL is emitted, not committed to seed.
+- **Verification:** `path_seq` base-result label is shared with `.path_set_seq`/`.path_set_tp_seq`; label alone cannot attribute a batched success. Compare exact `point_id`/`sequence_id` before/after; zero rows is no-op.
 - **Compensation:** Restore captured sequence ID manually with `.path_set_seq`.
-- **Availability:** Disabled until path/row ownership and existence are checked.
+- **Availability:** Disabled until path/row ownership is checked and `point_id` is pinned server-side in the queued operation; a previewed ordinal is insufficient.
 
 ### .path_set_tp
 
@@ -95,10 +95,10 @@ For readback, `server_entity_get {entity_id}` returns the live cell snapshot (`c
 - **Arguments:** Signed `i32` `pathId`, nonnegative zero-based `i32` `index`.
 - **Target/scope:** Nth ordered DB waypoint; destination is caller's current position, not a selected target.
 - **Preconditions and authority:** GM; caller entity, valid index; no waypoint/world match check.
-- **Effects and impact:** Queues UPDATE of `teleport_x/y/z`; no immediate runtime path mutation or DB write. Confirm may write live DB; seed file remains unchanged.
-- **Verification:** Capture caller position and exact `point_id`; after positive base result, compare `teleport_x/y/z` via `server_db_query`. No client teleport occurs from this authoring command itself.
+- **Effects and impact:** Queues UPDATE of `teleport_x/y/z` with `ORDER BY point_id OFFSET index`, resolved only at `.seedconfirm`; intervening insert/delete can retarget another `point_id`. No immediate runtime path mutation or DB write. Confirm may write live DB; seed file remains unchanged.
+- **Verification:** Capture caller position and exact `point_id`; after positive base result, compare the intended row and neighboring ordered rows' `teleport_x/y/z` via `server_db_query`. No client teleport occurs from this authoring command itself.
 - **Compensation:** `.path_clear_tp` also clears arrival sequence/delay, so restore all captured fields manually if needed.
-- **Availability:** Disabled until row/world ownership and destination validity are checked.
+- **Availability:** Disabled until row/world ownership and destination validity are checked and `point_id` is pinned server-side in the queued operation; a previewed ordinal is insufficient.
 
 ### .path_clear_tp
 
@@ -106,10 +106,10 @@ For readback, `server_entity_get {entity_id}` returns the live cell snapshot (`c
 - **Arguments:** Signed `i32` `pathId`, nonnegative zero-based `i32` `index`.
 - **Target/scope:** Nth ordered DB waypoint; no selected target.
 - **Preconditions and authority:** GM; valid index syntax; no row existence check.
-- **Effects and impact:** Queues one UPDATE clearing `teleport_x/y/z`, `teleport_sequence_id`, and `teleport_delay`; no immediate memory effect. Confirm can change live DB; SQL remains uncommitted seed proposal.
+- **Effects and impact:** Queues one UPDATE clearing `teleport_x/y/z`, `teleport_sequence_id`, and `teleport_delay` with `ORDER BY point_id OFFSET index`, resolved only at `.seedconfirm`; intervening insert/delete can clear another `point_id`. No immediate memory effect. Confirm can change live DB; SQL remains uncommitted seed proposal.
 - **Verification:** Exact ordered `point_id` and all five NULL columns after positive base result; zero rows is no-op.
 - **Compensation:** Restore all five captured fields manually; `.path_set_tp` alone is incomplete.
-- **Availability:** Disabled until exact affected row and all five old values can be previewed.
+- **Availability:** Disabled until all five old values are read and `point_id` is pinned server-side in the queued operation; a previewed ordinal is insufficient.
 
 ### .path_set_tp_seq
 
@@ -117,10 +117,10 @@ For readback, `server_entity_get {entity_id}` returns the live cell snapshot (`c
 - **Arguments:** Signed `i32` `pathId`, nonnegative zero-based `i32` `index`, signed `i32` `seqId`.
 - **Target/scope:** Nth ordered DB waypoint; no selected target.
 - **Preconditions and authority:** GM; parsed args; no row/world check or teleport-destination prerequisite.
-- **Effects and impact:** Queues `teleport_sequence_id = seqId`; no immediate memory edit. Confirm may update live DB; emitted statement is not a seed commit.
-- **Verification:** Exact `point_id`/`teleport_sequence_id` via `server_db_query` after positive base result; zero rows is no-op.
+- **Effects and impact:** Queues `teleport_sequence_id = seqId` with `ORDER BY point_id OFFSET index`, resolved only at `.seedconfirm`; intervening insert/delete can retarget another `point_id`. No immediate memory edit. Confirm may update live DB; emitted statement is not a seed commit.
+- **Verification:** `path_seq` base-result label is shared with `.path_set_seq`/`.path_clear_seq`; label alone cannot attribute a batched success. Compare exact `point_id`/`teleport_sequence_id` via `server_db_query`; zero rows is no-op.
 - **Compensation:** Restore captured value manually; no dedicated clear command except `.path_clear_tp`, which clears other fields too.
-- **Availability:** Disabled until affected row and prior value are read and checked.
+- **Availability:** Disabled until prior value is read and `point_id` is pinned server-side in the queued operation; a previewed ordinal is insufficient.
 
 ### .path_set_tp_delay
 
@@ -128,10 +128,10 @@ For readback, `server_entity_get {entity_id}` returns the live cell snapshot (`c
 - **Arguments:** Signed `i32` `pathId`, nonnegative zero-based `i32` `index`, finite `f32` `delay`; no nonnegative bound.
 - **Target/scope:** Nth ordered DB waypoint; no selected target.
 - **Preconditions and authority:** GM; finite delay and nonnegative index; no row/world check or teleport-destination prerequisite.
-- **Effects and impact:** Queues `teleport_delay = delay`; no immediate memory edit. Confirm may write live DB; emitted SQL is uncommitted.
+- **Effects and impact:** Queues `teleport_delay = delay` with `ORDER BY point_id OFFSET index`, resolved only at `.seedconfirm`; intervening insert/delete can retarget another `point_id`. No immediate memory edit. Confirm may write live DB; emitted SQL is uncommitted.
 - **Verification:** Exact `point_id`/`teleport_delay` via `server_db_query` after positive base result; zero rows is no-op.
 - **Compensation:** Restore captured old value manually; clearing with `.path_clear_tp` also destroys destination/sequence fields.
-- **Availability:** Disabled until affected row exists and delay bounds/old value are checked.
+- **Availability:** Disabled until delay bounds/old value are checked and `point_id` is pinned server-side in the queued operation; a previewed ordinal is insufficient.
 
 ## Entity authoring commands
 
