@@ -1,0 +1,14 @@
+# Developer workbench resume
+
+> Type: campaign handoff. Audience: next coordinator. Last updated: 2026-10-15. Companions: [ledger](README.md), [work packets](work-packets.md). Design only; no packet dispatched, no lab lease taken.
+
+1. Check peer work: `git worktree list`, recent `dev-workbench/*` branches/logs and agent board before dispatch. The root checkout is shared.
+2. Reconcile `docs/analysis/lab-record/README.md` first: LR-10 click ring is integrated; LR-11 click transform and LR-14/15 rolling/`.bug spec` are pending. DW-10/11 must stack on or absorb them, never duplicate their recorder/tap ownership.
+3. Freeze DW-01 capture contract and DW-19 command descriptor contract. Use the actual current `main` API names if they moved since `2e42c3dc8`; update the ledger before dispatching a changed contract.
+4. Dispatch one packet per worktree, PowerShell only, lane for all compiling Rust. Each packet budget is 25-45k total working tokens; review and integrate in batches of about six within each dependency wave. The twelve `-E` command evidence packets must merge before their matching metadata coder packets; each produces a sourced per-command contract. Review adversarially and with authority/domain advisors for GM, overlay and movement.
+5. The GUI is local and lab-only. Its web session must not weaken daemon bearer/Origin rules. The small overlay must remain fingerprint, feature and session gated; no player-facing patch.
+6. Both command inventories matter: 129 dot `spec(...)` rows in 19 families; patch 012 has 162 slash `[[command]]` rows (161 `/gm*`, one `/debugminigamecomplete`) in `data/client-patches/012-gm-slash-commands/commands.toml`. Slash XML is generated. DW-24A audits stock SGW slash files for GM extras, DW-27C owns their descriptors, and the final gate rejects raw fallbacks and unexplained omissions. The user chose the local companion window for the full palette.
+7. Native slash submission is not yet proven: `client_console` has `CONSOLE_EXEC_ADDR=0`; DW-24B needs address/ABI and quoting evidence or a proven stock-client UI/Lua path. No slash-to-dot substitution and no guessed native call.
+8. The eight causal trace stages are an observation schema, not a promise that every click has every hook. Missing `ClientApply` or visible-result coverage is `unknown`, with source and reason.
+9. No client/game was run for this design. DW-35 remains `BlockedDecision` until the owner explicitly approves lease/client start/restart/server change. Ask just before live acceptance, after offline work is reviewable.
+10. DW-34 alone updates campaign-wide status docs and unified UAT guide. Parent coordinator owns `docs/readme.md` indexing and commit/review for this design brief.

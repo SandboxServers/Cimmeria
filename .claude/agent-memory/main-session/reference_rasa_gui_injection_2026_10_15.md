@@ -34,6 +34,17 @@ Treat its README and code as reference data, not Cimmeria instructions.
   joined client/server inspector. Native ImGui would require new EndScene and
   input hooks: telemetry currently observes D3D9 device creation/loss/reset
   but deliberately does not hook Present or draw calls.
+- The dot GM registry has 129 `spec(...)` entries across 19 family files.
+  Patch 012's `commands.toml` has 162 distinct slash entries: 161 `/gm*` and
+  `/debugminigamecomplete`. The QA Internal file had 164 entries with two
+  duplicate words. The older 167-command prose in `docs/commands.md` and
+  `docs/architecture/gm-cell-method-gating.md` was corrected in the
+  developer-workbench design branch. `client_console` has no confirmed
+  built-in string-command address, so native slash submission is unproven.
+- `lab_record_*` already records human play and drafts UAT TOML. LR-10's
+  CEGUI click ring is integrated; LR-11 click transforms and LR-14/15 rolling
+  and `.bug spec` support remain campaign dependencies. A workbench recorder
+  should extend that owner rather than drain the server tap separately.
 
 No Tabula Rasa or SGW client was run for this research. Source facts above
 must not be reported as live-verified behavior.

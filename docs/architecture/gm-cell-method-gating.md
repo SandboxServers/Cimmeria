@@ -159,9 +159,10 @@ things (static RE of SGW.exe, confirmed with lab memory reads in DA-06):
    `LaunchMisc__InitContentSystems` (`0x0041f9c0`) loads
    `Common/xml/slash_commands/InternalSlashCommands.xml`, then
    `FinalSlashCommands.xml`, into `SGWTextCommandMgr` (singleton at
-   `0x01ef227c`); `SlashCommands.xml` comes in from `FUN_0041d480`. All 167
-   `/gm*` commands are in the Internal file, which the QA client has and a
-   2009 retail launcher install does not. Without it the map holds 104
+   `0x01ef227c`); `SlashCommands.xml` comes in from `FUN_0041d480`. The QA
+   Internal file has 164 entries but 162 distinct command words (161 `/gm*`
+   and `/debugminigamecomplete`; two words are duplicated). The QA client has
+   this file, but a 2009 retail launcher install does not. Without it the map holds 104
    entries, none of them `/gm*`, and every one reads "Invalid command."
    (`FUN_00ae23f0`). The server cannot supply that file; it is client
    content. Client patch
