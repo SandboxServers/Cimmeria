@@ -279,6 +279,47 @@ async fn dossier_read_needs_session_but_no_lease_and_reports_missing_client() {
 }
 
 #[tokio::test]
+async fn mission_route_keeps_player_state_unknown_without_trusted_binding() {
+    let base = spawn_daemon(test_server()).await.replace("/mcp", "");
+    let http = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    let path = format!("{base}/workbench/api/v1/missions?instance=default&mission_id=622");
+    assert_eq!(
+        http.get(&path).send().await.unwrap().status(),
+        reqwest::StatusCode::UNAUTHORIZED
+    );
+    let (cookie, _) = browser_session(&http, &base, "default").await;
+    let response = http
+        .get(&path)
+        .header(COOKIE, &cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let model: Value = response.json().await.unwrap();
+    assert_eq!(model["context"]["mission_id"], 622);
+    assert!(model["data"]["server"]["value"].is_null());
+    assert!(model["data"]["step_disagreement"].is_null());
+    assert!(model["gaps"].as_array().unwrap().iter().any(|gap| {
+        gap["source"] == "sgw_mission"
+            && gap["detail"] == "trusted client-to-server session binding unavailable"
+    }));
+    assert_eq!(
+        http.get(format!(
+            "{base}/workbench/api/v1/missions?instance=other&mission_id=622"
+        ))
+        .header(COOKIE, &cookie)
+        .send()
+        .await
+        .unwrap()
+        .status(),
+        reqwest::StatusCode::FORBIDDEN
+    );
+}
+
+#[tokio::test]
 async fn input_mutation_requires_matching_query_body_session_csrf_and_lease() {
     let default_supervisor = test_server().instances().first().supervisor.clone();
     let p2_supervisor = test_server().instances().first().supervisor.clone();

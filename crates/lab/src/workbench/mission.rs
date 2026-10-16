@@ -138,7 +138,7 @@ pub fn build_mission(input: MissionInput) -> Value {
             })
         });
     let tracker = def_row
-        .and_then(|v| v.get("mission_label"))
+        .and_then(|v| v.get("mission_defn"))
         .and_then(Value::as_str)
         .and_then(|label| row(&input.ui).and_then(|ui| tracker_for(ui, label)));
     if input.ui.is_ok() && tracker.is_none() {
@@ -245,6 +245,51 @@ async fn bound_player(
         .ok_or("bound server player ID unavailable".into())
 }
 
+/// Accept tracker rows only after the mission UI section completed without error.
+pub(super) fn ui_sample(value: Value) -> Result<Sample, String> {
+    let errors = value
+        .get("errors")
+        .and_then(Value::as_array)
+        .ok_or("client UI section status unavailable")?;
+    if errors.iter().any(|error| {
+        error
+            .as_str()
+            .is_none_or(|text| text.starts_with("missions:"))
+    }) {
+        return Err("mission tracker section failed".into());
+    }
+    if value
+        .get("mission_tracker")
+        .and_then(Value::as_array)
+        .is_none()
+    {
+        return Err("mission tracker rows unavailable".into());
+    }
+    Ok(Sample {
+        at_ms: crate::supervisor::now_ms(),
+        value,
+    })
+}
+
+/// Emit bounded source and code fields without logging transport error text.
+pub(super) fn log_failure<T>(
+    result: &Result<T, String>,
+    instance: &str,
+    mission_id: i32,
+    source: &'static str,
+    error_code: &'static str,
+) {
+    if let Err(reason) = result {
+        let error_code = match reason.as_str() {
+            "server lab endpoint unavailable" => "endpoint_unavailable",
+            "trusted client-to-server session binding unavailable" => "binding_unavailable",
+            "mission tracker section failed" => "ui_section_failed",
+            _ => error_code,
+        };
+        tracing::warn!(target: "lab.workbench.mission", instance, mission_id, source, error_code, "mission evidence read failed");
+    }
+}
+
 /// Read one selected mission. The live route supplies no binding until DW-03S-B.
 pub async fn read_mission(
     supervisor: &Supervisor,
@@ -262,19 +307,48 @@ pub async fn read_mission(
             }),
         None => Err(unavailable()),
     };
+    log_failure(
+        &definition,
+        instance,
+        mission_id,
+        "resources.missions",
+        "db_read_failed",
+    );
     let steps = match server.as_ref() {
         Some(server) => db_rows(server, format!("SELECT step_id, mission_id, step_display_log_text, index, step_enabled FROM resources.mission_steps WHERE mission_id = {mission_id} ORDER BY index, step_id")).await,
         None => Err(unavailable()),
     };
+    log_failure(
+        &steps,
+        instance,
+        mission_id,
+        "resources.mission_steps",
+        "db_read_failed",
+    );
     let chains = match server.as_ref() {
         Some(server) => db_rows(server, format!("SELECT chain_id, description, scope_type, scope_id, enabled FROM resources.content_chains WHERE scope_type = 'mission' AND scope_id = {mission_id} ORDER BY chain_id")).await,
         None => Err(unavailable()),
     };
+    log_failure(
+        &chains,
+        instance,
+        mission_id,
+        "resources.content_chains",
+        "db_read_failed",
+    );
     let pid = supervisor.client_pid().await;
-    let player = match server.as_ref() {
-        Some(server) => bound_player(server, context, instance, pid).await,
-        None => Err(unavailable()),
+    let player = match (context, server.as_ref()) {
+        (None, _) => Err("trusted client-to-server session binding unavailable".into()),
+        (Some(context), Some(server)) => bound_player(server, Some(context), instance, pid).await,
+        (Some(_), None) => Err(unavailable()),
     };
+    log_failure(
+        &player,
+        instance,
+        mission_id,
+        "server_sessions",
+        "roster_unbound",
+    );
     let live = match (server.as_ref(), player) {
         (Some(server), Ok(player_id)) => db_rows(server, format!("SELECT mission_id, player_id, current_step_id, status, completed_step_ids, completed_objective_ids, active_objective_ids, failed_objective_ids, repeats FROM sgw_mission WHERE player_id = {player_id} AND mission_id = {mission_id}")).await
             .and_then(|sample| {
@@ -284,10 +358,21 @@ pub async fn read_mission(
         (_, Err(reason)) => Err(reason),
         _ => Err(unavailable()),
     };
-    let ui = supervisor.ui_state(Some(0)).await.map(|value| Sample {
-        at_ms: crate::supervisor::now_ms(),
-        value,
-    });
+    log_failure(
+        &live,
+        instance,
+        mission_id,
+        "sgw_mission",
+        "server_read_failed",
+    );
+    let ui = supervisor.ui_state(Some(0)).await.and_then(ui_sample);
+    log_failure(
+        &ui,
+        instance,
+        mission_id,
+        "client_ui_state.mission_tracker",
+        "bridge_or_section_read_failed",
+    );
     build_mission(MissionInput {
         instance: instance.into(),
         mission_id,

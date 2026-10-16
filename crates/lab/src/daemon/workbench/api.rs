@@ -48,7 +48,7 @@ pub(crate) fn router_with_store(
         .route("/workbench/api/v1/bookmarks/save", post(bookmark_save))
         .route("/workbench/api/v1/bookmarks/delete", post(bookmark_delete))
         .route("/workbench/api/v1/bookmarks/action", post(bookmark_action))
-        .route("/workbench/api/v1/mission", get(mission_xray))
+        .route("/workbench/api/v1/missions", get(mission_xray))
         .route("/workbench/api/v1/input/key", post(input_key))
         .route("/workbench/api/v1/probes", get(probe_api::probe_list))
         .route("/workbench/api/v1/probes/save", post(probe_api::probe_save))
