@@ -65,7 +65,7 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 1B-a-receive | DW-03S-R-P | Mercury socket and exact datagram provenance | 03S-R-E | 45k | BlockedDependency |
 | 1B-a-receive | DW-03S-R-C | Post-handshake decrypt/filter classifier | 03S-R-P | 45k | BlockedDependency |
 | 1B-a | DW-03S-P | Opt-in Mercury send-origin seam | 03S-E | 35k | Integrated (#1761) |
-| 1B-a | DW-03S-G | Base boot/generation and bounded proof observer | 03S-P | 45k | BlockedDependency |
+| 1B-a | DW-03S-G | Base boot/generation and bounded proof observer | 03S-P | 45k | Review |
 | 1B-a | DW-03S-H | Base-session reliable/unreliable/tick/retransmit origin | 03S-G | 45k | BlockedDependency |
 | 1B-a | DW-03S-D | World-entry and direct Base send origin | 03S-H | 45k | BlockedDependency |
 | 1B-b | DW-03S-F | Cell fan-out and complete send-path census | 03S-D | 40k | BlockedDependency |
@@ -94,15 +94,15 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 1 | DW-05 | Spatial observations and bookmark CRUD | 01, 02B | 40k | Integrated (#1758) |
 | 2 | DW-05G | Execution-time client input guard | 05, 03S-B | 45k | BlockedDependency |
 | 2 | DW-05A | Guarded bookmark actions | 05G | 35k | BlockedDependency |
-| 2 | DW-06 | Mission X-ray definition/UI model; server slot fail closed | 01, 02B | 40k | Review |
+| 2 | DW-06 | Mission X-ray definition/UI model; server slot fail closed | 01, 02B | 40k | Integrated (#1762) |
 | 2 | DW-06A | Live mission state from exact joined server session | 03S-B, 06 | 40k | BlockedDependency |
 | 2 | DW-07 | Client click/target correlation | 01 | 35k | Integrated |
 | 2 | DW-08 | Trace capture anchor | 01, 02B, 03S-B | 40k | BlockedDependency |
 | 2 | DW-09 | Five-layer truth assembler | 03S-B, 06A, 08 | 40k | BlockedDependency |
 | 2 | DW-10 | Reproduction recorder enrichment | 07-08, 03S-B, LR-11 | 45k | BlockedDependency |
 | 2 | DW-11 | Triggered flight recorder | 08, 03S-B, LR-14/15 | 45k | BlockedDependency |
-| 3 | DW-12A | GUI dossier view | 02B-03 | 30k | Review |
-| 3 | DW-12B | GUI Lua probe/object view | 02B, 04 | 30k | Review |
+| 3 | DW-12A | GUI dossier view | 02B-03 | 30k | Integrated (#1760) |
+| 3 | DW-12B | GUI Lua probe/object view | 02B, 04 | 30k | Integrated (#1764) |
 | 3 | DW-12C | GUI spatial/bookmark view and actions | 02B, 05, 05A | 30k | BlockedDependency |
 | 3 | DW-12D | GUI mission X-ray view | 02B, 06 | 30k | Ready |
 | 3 | DW-13 | One-click causal trace | 07-08 | 40k | Ready |
@@ -114,7 +114,7 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 4 | DW-19 | GM descriptor/authority contract | 01 | 45k | Integrated |
 | 4 | DW-20A-E | Dot travel/spawn evidence, 16 specs | 19 | 35k | Integrated |
 | 4 | DW-20A | Dot travel/spawn metadata | 20A-E | 40k | Integrated (#1751) |
-| 4 | DW-20B-E | Dot patrol/authoring evidence, 28 specs | 19 | 45k | Review |
+| 4 | DW-20B-E | Dot patrol/authoring evidence, 28 specs | 19 | 45k | Integrated (#1765) |
 | 4 | DW-20B | Dot patrol/authoring metadata | 20B-E | 45k | Ready |
 | 5 | DW-21-E | Dot progression/ability/stat/ammo/pet evidence, 27 specs | 19 | 45k | Ready |
 | 5 | DW-21 | Dot progression/ability/stat/ammo/pet metadata | 21-E | 45k | Ready |
@@ -124,7 +124,7 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 5 | DW-23A | Dot query/maintenance/meta metadata | 23A-E | 40k | Ready |
 | 5 | DW-23B-E | Dot net-debug evidence, 14 specs | 19 | 35k | Ready |
 | 5 | DW-23B | Dot net-debug metadata | 23B-E | 35k | Ready |
-| 5 | DW-24A | Slash inventory/parser/stock audit | 19 | 40k | Review |
+| 5 | DW-24A | Slash inventory/parser/stock audit | 19 | 40k | Integrated (#1752) |
 | 5 | DW-24B | Native submission/quoting/receipt proof | 24A | 45k | Ready |
 | 6 | DW-25A-E | Slash evidence 1-27 | 24A | 40k | Ready |
 | 6 | DW-25A | Slash descriptors 1-27 | 25A-E | 40k | Ready |
