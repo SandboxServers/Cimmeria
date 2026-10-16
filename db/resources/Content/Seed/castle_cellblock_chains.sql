@@ -854,6 +854,23 @@ VALUES
   (1031, 'advance_step', 639, '2145', '{}', 0, 0),
   (1031, 'set_interaction_type', NULL, 'ArmYourself_AmbernolVial', '{"op": "|", "mask": 1073741824}', 0, 1);
 
+-- Chain 1036 (CB-N02c): chain 1031 sets the vial's interact bit
+-- (mask 1073741824) only on the Region11 edge while step 2117 is active.
+-- A relog at step 2145 loads the vial (spawnlist row 12) with template
+-- flags 0, and 1031 cannot fire again because 2117 is done, so the vial
+-- cannot be used and 639 stalls. Re-paint the bit on login while 2145 is
+-- active; chain 1032 destroys the vial at 2145 -> 2144.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1036, '639 - Zone load: step 2145 active -> restore ArmYourself_AmbernolVial interact bit (relog)', 'mission', 639, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1036, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1036, 'step_status', 639, '2145', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1036, 'set_interaction_type', NULL, 'ArmYourself_AmbernolVial', '{"op": "|", "mask": 1073741824}', 0, 0);
 -- ============================================================
 -- TAKE-COVER OBJECTIVE (C05, replaces the COVER-SYSTEM DEMO chain 1035)
 -- ============================================================
