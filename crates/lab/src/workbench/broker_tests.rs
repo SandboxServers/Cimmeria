@@ -86,11 +86,55 @@ fn mismatched_identity_is_busy_and_cannot_mix_rows() {
     );
     assert_eq!(CaptureError::CaptureBusy.code(), "capture_busy");
     broker.push(Source::Client, &wrong_session, json!("wrong"));
+    broker.push(Source::Client, &context(8, "s1", 1), json!("wrong pid"));
     broker.push(Source::Client, &ctx, json!("right"));
     assert_eq!(broker.read(id, 10).rows[0].row, json!("right"));
+    assert_eq!(broker.rejections().identity, 2);
     broker.release(id);
     let replacement = broker.subscribe(key(&wrong_session), "two".into()).unwrap();
     assert!(broker.read(replacement, 10).rows.is_empty());
+}
+
+#[test]
+fn out_of_order_row_expires_behind_a_newer_front_row() {
+    let broker = CaptureBroker::new(4);
+    let ctx = context(7, "s1", 100_000);
+    let reader = broker.subscribe(key(&ctx), "reader".into()).unwrap();
+    broker.push(Source::Client, &ctx, json!("front"));
+    broker.push(
+        Source::Client,
+        &context(7, "s1", 50_000),
+        json!("old behind front"),
+    );
+    broker.push(Source::Client, &context(7, "s1", 350_001), json!("latest"));
+    let batch = broker.read(reader, 4);
+    assert_eq!(batch.dropped, 1);
+    assert_eq!(
+        batch.rows.iter().map(|row| &row.row).collect::<Vec<_>>(),
+        vec![&json!("front"), &json!("latest")]
+    );
+
+    broker.push(
+        Source::Client,
+        &context(7, "s1", 50_000),
+        json!("already stale"),
+    );
+    assert_eq!(broker.rejections().stale, 1);
+    assert!(broker.read(reader, 4).rows.is_empty());
+}
+
+#[test]
+fn oversized_json_is_rejected_without_consuming_history_capacity() {
+    let broker = CaptureBroker::new(1);
+    let ctx = context(7, "s1", 0);
+    let reader = broker.subscribe(key(&ctx), "reader".into()).unwrap();
+    broker.push(Source::Client, &ctx, json!("x".repeat(MAX_ROW_BYTES - 2)));
+    broker.push(Source::Client, &ctx, json!("x".repeat(MAX_ROW_BYTES - 1)));
+    let batch = broker.read(reader, 2);
+    assert_eq!(batch.rows.len(), 1);
+    assert_eq!(batch.rows[0].row.as_str().unwrap().len(), MAX_ROW_BYTES - 2);
+    assert_eq!(batch.dropped, 0);
+    assert_eq!(broker.rejections().oversized, 1);
 }
 
 #[test]

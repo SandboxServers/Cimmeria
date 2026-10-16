@@ -1,6 +1,7 @@
 //! Bounded client/server history with independent named cursors and exact eviction counts.
 
 use std::collections::{HashMap, VecDeque};
+use std::io::{self, Write};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -11,6 +12,7 @@ use super::context::CaptureContext;
 
 const MAX_ROWS_PER_SOURCE: usize = 4096;
 const MAX_CURSORS: usize = 64;
+const MAX_ROW_BYTES: usize = 64 * 1024;
 const HISTORY_MS: u64 = 300_000;
 const HISTORY_AGE: Duration = Duration::from_secs(300);
 
@@ -81,6 +83,33 @@ pub struct ReadBatch {
     pub dropped: u64,
 }
 
+/// Rejected rows since this broker was constructed, grouped by reason.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RejectionCounts {
+    /// Rows from a different client PID or server session while cursors hold this capture.
+    pub identity: u64,
+    /// Rows whose serialized JSON exceeds 64 KiB.
+    pub oversized: u64,
+    /// Rows already outside the 300-second monotonic history window on arrival.
+    pub stale: u64,
+}
+
+struct ByteLimit(usize);
+
+impl Write for ByteLimit {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        if bytes.len() > MAX_ROW_BYTES.saturating_sub(self.0) {
+            return Err(io::Error::other("capture row exceeds byte limit"));
+        }
+        self.0 += bytes.len();
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
 impl ReadBatch {
     fn empty() -> Self {
         Self {
@@ -108,6 +137,7 @@ struct BrokerState {
     next_seq: u64,
     next_cursor_id: u64,
     evicted: u64,
+    rejections: RejectionCounts,
     latest_monotonic_ms: u64,
     client: VecDeque<StoredRow>,
     server: VecDeque<StoredRow>,
@@ -129,20 +159,21 @@ impl BrokerState {
             Source::Client => &mut self.client,
             Source::Server => &mut self.server,
         };
-        while let Some(front) = queue.front() {
-            let too_many = queue.len() > capacity;
-            let too_old = now_ms.saturating_sub(front.value.context.monotonic_ms) > HISTORY_MS
-                || now.duration_since(front.inserted) > HISTORY_AGE;
-            if !too_many && !too_old {
-                break;
+        let mut removed = Vec::new();
+        queue.retain(|stored| {
+            let too_old = now_ms.saturating_sub(stored.value.context.monotonic_ms) > HISTORY_MS
+                || now.duration_since(stored.inserted) > HISTORY_AGE;
+            if too_old {
+                removed.push(stored.value.seq);
             }
-            let seq = queue.pop_front().expect("front exists").value.seq;
-            self.evicted += 1;
-            for cursor in self.cursors.values_mut() {
-                if seq > cursor.after {
-                    cursor.dropped += 1;
-                }
-            }
+            !too_old
+        });
+        while queue.len() > capacity {
+            removed.push(queue.pop_front().expect("over capacity").value.seq);
+        }
+        self.evicted += removed.len() as u64;
+        for cursor in self.cursors.values_mut() {
+            cursor.dropped += removed.iter().filter(|&&seq| seq > cursor.after).count() as u64;
         }
     }
 
@@ -168,6 +199,7 @@ impl CaptureBroker {
                 next_seq: 1,
                 next_cursor_id: 1,
                 evicted: 0,
+                rejections: RejectionCounts::default(),
                 latest_monotonic_ms: 0,
                 client: VecDeque::new(),
                 server: VecDeque::new(),
@@ -216,13 +248,26 @@ impl CaptureBroker {
         let key = CaptureKey::from(context);
         if state.key.as_ref().is_some_and(|active| active != &key) {
             if !state.cursors.is_empty() {
+                state.rejections.identity += 1;
                 return;
             }
             state.reset(key);
         } else if state.key.is_none() {
             state.key = Some(key);
         }
+        if serde_json::to_writer(ByteLimit(0), &row).is_err() {
+            state.rejections.oversized += 1;
+            return;
+        }
         let now = Instant::now();
+        if state
+            .latest_monotonic_ms
+            .saturating_sub(context.monotonic_ms)
+            > HISTORY_MS
+        {
+            state.rejections.stale += 1;
+            return;
+        }
         state.latest_monotonic_ms = state.latest_monotonic_ms.max(context.monotonic_ms);
         state.expire(self.capacity, now);
         let seq = state.next_seq;
@@ -242,6 +287,11 @@ impl CaptureBroker {
         }
         let latest_ms = state.latest_monotonic_ms;
         state.evict(source, self.capacity, latest_ms, now);
+    }
+
+    /// Return lifetime counts for rows refused before entering the history.
+    pub fn rejections(&self) -> RejectionCounts {
+        self.state.lock().unwrap().rejections
     }
 
     /// Read a bounded clone of rows after this cursor, advancing it independently.
