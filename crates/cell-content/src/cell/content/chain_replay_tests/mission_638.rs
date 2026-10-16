@@ -209,6 +209,9 @@ async fn live_db_mission_638_login_restores_only_active_archetype_dialog() {
         (8, "active", vec![(1027, 5866)]),
         (1, "completed", vec![]),
         (8, "completed", vec![]),
+        // Not yet accepted: Region2 entry (chains 1011/1012) binds it, not login.
+        (1, "not_active", vec![]),
+        (8, "not_active", vec![]),
     ] {
         let mut ctx = ExecutionContext::new();
         ctx.set_param(
@@ -241,6 +244,26 @@ async fn live_db_mission_638_login_restores_only_active_archetype_dialog() {
             "archetype={archetype}, mission_638_status={status}"
         );
     }
+
+    // The world key gates the restore: an active 638 loading into another
+    // world must not get the Cellblock dialog.
+    let mut ctx = ExecutionContext::new();
+    ctx.set_param("world_name".to_string(), serde_json::json!("SGC_W1"));
+    ctx.set_param(
+        "mission_638_status".to_string(),
+        serde_json::json!("active"),
+    );
+    ctx.set_param("archetype".to_string(), serde_json::json!(1));
+    let event = TriggerEvent {
+        trigger_type: TriggerType::PlayerLoaded,
+        source_entity: None,
+        target_entity: None,
+        params: ctx.params.clone(),
+    };
+    assert!(
+        engine.resolve_event(&event, &ctx).actions.is_empty(),
+        "login restore must not fire outside Castle_CellBlock"
+    );
 }
 
 /// Full-seed regression guard for audit.md defect B1 (the purged
