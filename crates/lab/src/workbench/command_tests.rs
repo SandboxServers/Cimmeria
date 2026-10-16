@@ -216,6 +216,38 @@ fn typed_action_refuses_malformed_missing_and_extra_args() {
 }
 
 #[test]
+fn integer_bounds_reject_values_that_round_to_an_allowed_f64() {
+    const EXACT_LIMIT: i64 = 1_i64 << 53;
+    let mut command = descriptor();
+    command.args[0].range = Some(ArgRange {
+        min: Some(-(EXACT_LIMIT as f64)),
+        max: Some(EXACT_LIMIT as f64),
+    });
+    let mut requested = action();
+
+    for accepted in [
+        json!(EXACT_LIMIT),
+        json!(-EXACT_LIMIT),
+        json!(EXACT_LIMIT as u64),
+    ] {
+        requested.typed_args.insert("count".into(), accepted);
+        assert!(validate_command(&requested, &command, &actor()).is_ok());
+    }
+    for rejected in [
+        json!(EXACT_LIMIT + 1),
+        json!(-(EXACT_LIMIT + 1)),
+        json!((EXACT_LIMIT as u64) + 1),
+        json!(u64::MAX),
+    ] {
+        requested.typed_args.insert("count".into(), rejected);
+        assert_eq!(
+            validate_command(&requested, &command, &actor()).unwrap_err(),
+            Refusal::OutOfRange
+        );
+    }
+}
+
+#[test]
 fn manual_pending_metadata_is_never_executable() {
     let mut pending = descriptor();
     pending.manual_pending = true;

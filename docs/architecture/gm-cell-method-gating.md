@@ -120,7 +120,14 @@ The workbench's dot catalog is projected from the existing `COMMANDS` table in
 policy (`none`, `player`, `mob`, `mob_or_id`, `being`, `spawnable`) and metadata
 version 1. The live `server_console_list` adapter requires an acting entity id
 and reads `EntityGet` before returning the catalog; the current cell snapshot
-must show a player with GameMaster access. Every dot row currently carries
+must show a player with GameMaster access.
+
+The acting ID is still supplied by the MCP caller. This check is safe only
+behind the privileged lab MCP bearer; `EntityGet` of that ID alone does not
+authorize a browser user. DW-30 must derive the actor from the authenticated,
+instance-bound workbench session and recheck cell authority at execution.
+
+Every dot row currently carries
 `availability = unsupported` and
 `manual_pending = true`: its typed arguments, impact, verification and recovery
 need per-command evidence before the palette may offer a runnable action.
@@ -137,7 +144,11 @@ states. Validation compares an action with a fresh server actor snapshot,
 including instance, actor ID, GM authority and selected target. A UI claim is
 never authority. Slash commands require native client submission and evidence
 of a received GM method; this dot catalog does not claim to enumerate or run
-them yet. A submitted line alone does not establish server acceptance.
+them yet. Integer arguments beyond the exact `f64` range (`-2^53` to `2^53`)
+are refused because their numeric bounds use `f64`; otherwise adjacent JSON
+integers could round to the same bound. A submitted line alone does not
+establish server acceptance.
+
 ## Moderation surface still missing
 
 Folded in from the superseded server-systems survey (see

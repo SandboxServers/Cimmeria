@@ -327,7 +327,14 @@ See ADR §3.5 for the full set; `docs/operations/colo-deploy.md` for the port.
 
 `server_console_list {"entity_id": <in-world GM entity id>}` first reads that
 entity through the live cell `EntityGet` query and refuses missing or
-non-GameMaster actors. It then projects every registered dot command from the same
+non-GameMaster actors.
+
+The `entity_id` is caller-supplied, so this tool is safe only behind the
+privileged lab MCP bearer. An `EntityGet` result for that ID is not browser
+authorization. DW-30 must derive the browser actor from its authenticated,
+instance-bound session and recheck live cell authority when executing.
+
+The tool then projects every registered dot command from the same
 `COMMANDS` table that dispatches the in-world `.` console. Workbench fields
 include `id`, `channel = dot`, stable `target_policy` and structured `target`, `metadata_version`,
 `availability = unsupported` and `manual_pending = true`. These conservative

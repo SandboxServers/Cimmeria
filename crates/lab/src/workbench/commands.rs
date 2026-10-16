@@ -321,6 +321,9 @@ fn target_matches(required: TargetKind, actual: TargetKind) -> bool {
 }
 
 fn validate_value(value: &Value, arg: &ArgDescriptor) -> Result<(), Refusal> {
+    // ArgRange stores f64 bounds. Larger integers cannot be compared to those
+    // bounds without rounding a distinct JSON integer onto a permitted value.
+    const MAX_EXACT_F64_INTEGER: i128 = 1_i128 << 53;
     let number = match arg.kind {
         ArgKind::Text | ArgKind::Enum | ArgKind::World => {
             if !value.is_string() {
@@ -334,10 +337,18 @@ fn validate_value(value: &Value, arg: &ArgDescriptor) -> Result<(), Refusal> {
             }
             None
         }
-        ArgKind::Integer => value
-            .as_i64()
-            .map(|v| v as f64)
-            .or_else(|| value.as_u64().map(|v| v as f64)),
+        ArgKind::Integer => {
+            let integer = value
+                .as_i64()
+                .map(i128::from)
+                .or_else(|| value.as_u64().map(i128::from));
+            if integer
+                .is_some_and(|v| !(-MAX_EXACT_F64_INTEGER..=MAX_EXACT_F64_INTEGER).contains(&v))
+            {
+                return Err(Refusal::OutOfRange);
+            }
+            integer.map(|v| v as f64)
+        }
         ArgKind::Entity | ArgKind::Template | ArgKind::Mission | ArgKind::Item => value
             .as_u64()
             .filter(|v| *v > 0 && *v <= u32::MAX as u64)
