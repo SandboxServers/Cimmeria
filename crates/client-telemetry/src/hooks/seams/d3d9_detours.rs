@@ -365,7 +365,11 @@ unsafe extern "stdcall-unwind" fn end_scene_detour(this: *mut c_void) -> i32 {
     {
         overlay::device::on_fault(this as usize, overlay::device::FailureReason::Panic);
     }
-    original(this)
+    let hr = original(this);
+    if crate::bridge::bridge_epoch().is_some() {
+        overlay::device::on_presented(this as usize, hr);
+    }
+    hr
 }
 
 #[cfg(test)]

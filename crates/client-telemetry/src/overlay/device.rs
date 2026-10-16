@@ -24,7 +24,8 @@ pub(crate) struct Diagnostics {
     pub disabled: bool,
 }
 
-struct Lifecycle {
+/// The one panel owner and its bounded draw/fault state.
+pub(super) struct Lifecycle {
     device: AtomicUsize,
     ready: AtomicBool,
     in_frame: AtomicBool,
@@ -37,7 +38,8 @@ struct Lifecycle {
 }
 
 impl Lifecycle {
-    const fn new() -> Self {
+    /// Start without a device; the first accepted creation can claim it.
+    pub(super) const fn new() -> Self {
         Self {
             device: AtomicUsize::new(0),
             ready: AtomicBool::new(false),
@@ -51,10 +53,32 @@ impl Lifecycle {
         }
     }
 
-    fn created(&self, ptr: usize, vtable_accepted: bool) {
-        // Auxiliary devices with a different vtable cannot displace the
-        // device whose EndScene slot we actually patched.
+    /// Accept a first owner or refresh the current owner's successful probe.
+    pub(super) fn created(&self, ptr: usize, vtable_accepted: bool) {
+        // CreateDevice, Reset and TestCooperativeLevel also fire on auxiliary
+        // devices using the patched vtable. Only the first accepted device
+        // may claim an empty slot; later probes cannot displace its panel.
         if ptr != 0 && vtable_accepted && !self.disabled.load(Ordering::Acquire) {
+            let owner = self
+                .device
+                .compare_exchange(0, ptr, Ordering::AcqRel, Ordering::Acquire)
+                .unwrap_or_else(|owner| owner);
+            if owner == 0 || owner == ptr {
+                self.ready.store(true, Ordering::Release);
+            }
+        }
+    }
+
+    /// Select a different device only after a successful real EndScene.
+    pub(super) fn presented(&self, ptr: usize, hr: i32) {
+        // A successful EndScene is evidence that this device actually draws.
+        // Never switch ownership while another frame holds the state guard.
+        if ptr != 0
+            && hr >= 0
+            && !self.disabled.load(Ordering::Acquire)
+            && !self.in_frame.load(Ordering::Acquire)
+            && self.device.load(Ordering::Acquire) != ptr
+        {
             self.ready.store(false, Ordering::Release);
             self.device.store(ptr, Ordering::Release);
             self.ready.store(true, Ordering::Release);
@@ -67,7 +91,8 @@ impl Lifecycle {
         }
     }
 
-    fn reset(&self, ptr: usize, hr: i32) {
+    /// Change readiness only for the selected device after its Reset.
+    pub(super) fn reset(&self, ptr: usize, hr: i32) {
         if self.device.load(Ordering::Acquire) == ptr {
             self.ready.store(
                 hr >= 0 && !self.disabled.load(Ordering::Acquire),
@@ -111,7 +136,8 @@ impl Lifecycle {
         })
     }
 
-    fn enter(&self, ptr: usize) -> Option<FrameGuard<'_>> {
+    /// Enter one bounded panel frame on the selected ready device.
+    pub(super) fn enter(&self, ptr: usize) -> Option<FrameGuard<'_>> {
         if ptr == 0
             || self.device.load(Ordering::Acquire) != ptr
             || !self.ready.load(Ordering::Acquire)
@@ -139,6 +165,12 @@ static LIFECYCLE: Lifecycle = Lifecycle::new();
 #[cfg(all(windows, target_arch = "x86"))]
 pub(crate) fn on_created(ptr: usize, vtable_accepted: bool) {
     LIFECYCLE.created(ptr, vtable_accepted);
+}
+
+#[cfg(all(windows, target_arch = "x86"))]
+/// Observe the original EndScene result before any ownership handoff.
+pub(crate) fn on_presented(ptr: usize, hr: i32) {
+    LIFECYCLE.presented(ptr, hr);
 }
 
 #[cfg(all(windows, target_arch = "x86"))]
@@ -200,7 +232,7 @@ mod tests {
             assert!(state.enter(0xa).is_some());
             assert!(state.enter(foreign).is_none());
         }
-        state.created(0xc, true);
+        state.presented(0xc, 0);
         assert!(state.enter(0xc).is_some());
     }
 

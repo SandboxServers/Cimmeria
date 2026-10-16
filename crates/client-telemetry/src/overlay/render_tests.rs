@@ -5,7 +5,7 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Barrier, Mutex};
 
-use super::device::FailureReason;
+use super::device::{FailureReason, Lifecycle};
 use super::render::{draw_panel, DeviceOps, Rect, Snapshot};
 use super::{STATUS_GAP, STATUS_RECORDING, STATUS_TRACING};
 use crate::hooks::seams::d3d9::{install_overlay_vtable, OverlayInstall};
@@ -118,6 +118,48 @@ fn fake() -> FakeDevice {
         fail_snapshot: false,
         fail_restore: Rc::new(Cell::new(false)),
     }
+}
+
+#[test]
+fn auxiliary_same_vtable_probes_do_not_steal_the_drawing_device() {
+    let state = Lifecycle::new();
+    state.created(0xa, true);
+    for _ in 0..5 {
+        // The auxiliary can be created, pass a cooperative-level probe and
+        // reset without ever submitting a frame through EndScene.
+        state.created(0xb, true);
+        state.created(0xb, true);
+        state.reset(0xb, 0);
+        assert!(state.enter(0xb).is_none());
+        let frame = state.enter(0xa).expect("primary device stays drawable");
+        let mut primary = fake();
+        draw_panel(&mut primary, STATUS_TRACING, || true).unwrap();
+        assert_eq!(primary.calls.len(), 3);
+        assert_eq!(primary.restored.get(), 1);
+        drop(frame);
+    }
+}
+
+#[test]
+fn successful_end_scene_selects_a_real_replacement_after_the_current_frame() {
+    let state = Lifecycle::new();
+    state.created(0xa, true);
+    state.created(0xb, true);
+    state.presented(0xb, -1);
+    assert!(state.enter(0xb).is_none());
+    let frame = state.enter(0xa).expect("primary frame");
+    state.presented(0xb, 0);
+    assert!(state.enter(0xb).is_none());
+    drop(frame);
+
+    state.presented(0xb, 0);
+    assert!(state.enter(0xa).is_none());
+    let frame = state.enter(0xb).expect("successful replacement frame");
+    let mut replacement = fake();
+    draw_panel(&mut replacement, STATUS_RECORDING, || true).unwrap();
+    assert_eq!(replacement.calls.len(), 3);
+    assert_eq!(replacement.restored.get(), 1);
+    drop(frame);
 }
 
 #[test]
