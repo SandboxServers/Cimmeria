@@ -8,6 +8,8 @@ This is the source contract for DW-22, not live-client acceptance. The inventory
 
 The existing `server_db_query` is a read-only, row-capped SQL tool; compare exact IDs and fields before and after a Base result, and reject truncated/unknown results. `server_log_tail` supplies correlated outcome events, not a state read. `.org_info`, `.org_list`, `.mailbox`, `.bankdump`, `.bm_list`, `.squad_info`, and `.duel_status` are their own limited display reads. `server_entity_get` does not expose mail, mute, auction, treasury, membership or vault contents. A successful GM feedback line may be lost or delivered to a reused entity after a commit; neither a line nor an accepted-command audit alone proves the state. The SQL recipes below name existing tables/fields, not a new tool or a permission to query arbitrary private data. `docs/commands.md` (GM command table) describes operator syntax; handlers and tests below govern behavior.
 
+Private read results still use entity-ID-addressed feedback. A later holder of that ID must not receive a previous GM's result; the availability decisions below require original-session delivery fences for such reads.
+
 ## Social, duel and mail
 
 ### .announce
@@ -30,7 +32,7 @@ The existing `server_db_query` is a read-only, row-capped SQL tool; compare exac
 - **Effects and impact:** Read-only live challenge/countdown/duel status, ID, stage, opponent and remaining time; no persistent write. Player names are sensitive in audit/history.
 - **Verification:** `.duel_status [name]` feedback is the actual live registry read; `duel.gm_status` log identifies the subject. No independent `server_entity_get` duel registry field; time-sensitive state can change immediately.
 - **Compensation:** None needed.
-- **Availability:** Runnable as a time-stamped Cell read; do not label its answer durable.
+- **Availability:** Disabled for the palette until the Cell-to-Base feedback is fenced to the original GM session; a time-stamped answer alone cannot prevent a recycled entity ID receiving the opponent's identity.
 
 ### .duel_end
 
@@ -138,22 +140,22 @@ The existing `server_db_query` is a read-only, row-capped SQL tool; compare exac
 - **Sources:** `crates/cell-console/src/cell/console/registry/commands/org.rs::SPECS`; `crates/cell-console/src/cell/console/org.rs::info`; `crates/base-session/src/base/organization/handlers/gm_inspect.rs::gm_info`; `crates/cell-console/src/cell/console/tests/org10_gm_suite.rs`.
 - **Arguments:** Optional one-token player name; absent means GM's own character. Base resolves offline names exactly first, then uniquely case-insensitive.
 - **Target/scope:** One player's Team/Command memberships, rank and permission mask; sensitive member identity and role.
-- **Preconditions and authority:** Base binds current GM player/entity session, re-reads access, requires DB; ambiguous/missing name refuses.
+- **Preconditions and authority:** Base binds current GM player/entity session and re-reads access before DB awaits; ambiguous/missing name refuses. It does not recheck the original session before sending the private result by entity ID.
 - **Effects and impact:** Read-only membership list; no DB mutation or org state push.
 - **Verification:** Base feedback header and per-membership rows, `org.gm_action action=gm_org_info` count; independently query `sgw_organization_members` by resolved player ID. Results can age.
 - **Compensation:** None needed; redact or restrict retained cross-player result.
-- **Availability:** Runnable as an authenticated, scoped read with result-retention controls.
+- **Availability:** Disabled until each private result is fenced to the original GM session after the DB read; result-retention controls alone cannot prevent delivery to a recycled entity ID.
 
 ### .org_list
 
 - **Sources:** `crates/cell-console/src/cell/console/registry/commands/org.rs::SPECS`; `crates/cell-console/src/cell/console/org.rs::list`; `crates/base-session/src/base/organization/handlers/gm_inspect.rs::{gm_list,ORG_LIST_MAX}`; `crates/cell-console/src/cell/console/tests/org10_gm_suite.rs`.
 - **Arguments:** None.
 - **Target/scope:** Every Team/Command; lists up to 50 oldest IDs, names, member counts and leader names. No selected entity.
-- **Preconditions and authority:** Base binds GM current player/entity session and re-reads GameMaster access; DB required.
+- **Preconditions and authority:** Base binds GM current player/entity session and re-reads GameMaster access before the DB await; DB required. It does not recheck the original session before sending leader names by entity ID.
 - **Effects and impact:** Read-only global organization metadata; leader names are sensitive.
 - **Verification:** `org_list` feedback and `org.gm_action action=gm_org_list` shown count; `server_db_query` `sgw_organizations` plus membership count. A `more than 50` marker means feedback is incomplete.
 - **Compensation:** None needed.
-- **Availability:** Runnable with explicit 50-row display cap/truncation label.
+- **Availability:** Disabled until each private result is fenced to the original GM session after the DB read; retain the 50-row display cap and truncation label.
 
 ### .org_set_perms
 
@@ -210,7 +212,7 @@ The existing `server_db_query` is a read-only, row-capped SQL tool; compare exac
 - **Effects and impact:** Read-only Cell squad registry display; no persistent write.
 - **Verification:** Its own feedback lines and `org.gm_action action=gm_squad_info`; no independent DB row because squads are live Cell state.
 - **Compensation:** None needed; restrict roster retention.
-- **Availability:** Runnable as time-stamped Cell read with sensitive-result handling.
+- **Availability:** Disabled until the Cell-to-Base feedback is fenced to the original GM session; a recycled entity ID can otherwise receive a private roster despite sensitive-result retention controls.
 
 ## Bank and treasury
 
@@ -262,13 +264,13 @@ The existing `server_db_query` is a read-only, row-capped SQL tool; compare exac
 
 ### .bm_seed
 
-- **Sources:** `crates/cell-console/src/cell/console/registry/commands/black_market.rs::SPECS`; `crates/cell-console/src/cell/console/black_market.rs::{parse_seed,seed}`; `crates/base-methods/src/base/world_entry/methods/black_market/gm/seed.rs::{gm_seed,insert_listings}`; `crates/cell-console/src/cell/console/tests/bm07_black_market.rs`; `crates/base-methods/src/base/world_entry/methods/black_market/gm/tests.rs`.
+- **Sources:** `crates/cell-console/src/cell/console/registry/commands/black_market.rs::SPECS`; `crates/cell-console/src/cell/console/black_market.rs::{parse_seed,seed}`; `crates/base-methods/src/base/world_entry/methods/black_market/gm/seed.rs::{gm_seed,insert_listings}`; `crates/base-methods/src/base/world_entry/methods/black_market/seed.rs::ensure_system_seller`; `crates/cell-console/src/cell/console/tests/bm07_black_market.rs`; `crates/base-methods/src/base/world_entry/methods/black_market/gm/tests.rs`.
 - **Arguments:** Optional unsigned count 1–60, default 8; Cell rejects zero/text/out-of-range. Base clamps count again, so it is not an independent authority bound.
 - **Target/scope:** Reserved system seller, global auction catalog and later buyers; no selected item argument. UAT item specs are selected by `uat_specs`, not user input.
-- **Preconditions and authority:** Cell GM gate and loaded player; Base checks reserved seller identity and DB. Base does not bind/recheck current GM access for `BmGmActor`.
-- **Effects and impact:** Transaction inserts count system listings with new auction IDs; later sale/expiry may mint item and move cash by settlement. Persistent global economy impact.
-- **Verification:** Base `bm.gm_action action=bm_seed` and ID range after transaction; query `sgw_auction.sequence_id,seller_id,item_def_id,stack_size,status,expires_at` for exact returned IDs. `.bm_list` shows only newest ten, so cannot prove all 60.
-- **Compensation:** `.bm_expire` is a settlement, not undo; active bids and mailed payouts cannot be reversed automatically.
+- **Preconditions and authority:** Cell GM gate and loaded player; Base calls `ensure_system_seller` before the listing transaction. That function independently inserts reserved account/character rows, disables an existing matching account, and reads back their identity; conflicts refuse listing. Base does not bind/recheck current GM access for `BmGmActor`.
+- **Effects and impact:** Reserved seller insertion or account disable can persist even when the later listing transaction fails. A separate transaction inserts count system listings with new auction IDs; later sale/expiry may mint item and move cash by settlement. Persistent global economy impact.
+- **Verification:** Read back reserved `account.account_id,account_name,enabled` and `sgw_player.player_id,account_id,player_name` even after listing refusal. Base `bm.gm_action action=bm_seed` reports count, first and last auction IDs after the listing transaction, but not the complete inserted ID set. Concurrent sequences can interleave, so the range is not a per-listing receipt; a query over it cannot attribute every row to this command. Require a complete committed-ID receipt before verifying each `sgw_auction.sequence_id,seller_id,item_def_id,stack_size,status,expires_at`. `.bm_list` shows only newest ten and cannot prove all 60.
+- **Compensation:** No automatic rollback of reserved seller insertion or account disable after listing failure; inspect those rows before any manual correction. `.bm_expire` is a settlement, not undo; active bids and mailed payouts cannot be reversed automatically.
 - **Availability:** Disabled until Base GM-session fence, ID-complete receipt and economic impact preview; no bulk auto-undo.
 
 ### .bm_expire
@@ -291,7 +293,7 @@ The existing `server_db_query` is a read-only, row-capped SQL tool; compare exac
 - **Effects and impact:** Read-only; returns ten newest active auctions and total count. Seller names and current bids are sensitive operator data.
 - **Verification:** Base feedback rows and `bm.gm_action action=bm_list` `total/shown`; query exact `sgw_auction` active `sequence_id,status,expires_at` with `ORDER BY sequence_id DESC LIMIT 10`. More than ten is intentionally truncated.
 - **Compensation:** None needed.
-- **Availability:** Runnable as time-stamped read only through the Cell GM gate, with sensitive-result retention and ten-row cap; Base session fence remains required before broader trusted palette execution.
+- **Availability:** Disabled until Base rechecks current GM authority and fences each private result to the original session after the DB read; retain the ten-row cap and truncation label.
 
 ## Source-check samples
 
