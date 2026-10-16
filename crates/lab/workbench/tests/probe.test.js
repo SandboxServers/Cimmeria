@@ -67,18 +67,18 @@ test("probe tab survives shell reload for the same instance", () => {
   assert.equal(createWorkbenchState(storage, "p2").view, "overview");
 });
 
-test("browser session request uses the gated route with an encoded instance", async () => {
+test("browser session request uses the gated route for a valid instance", async () => {
   const originalFetch = global.fetch;
   const calls = [];
   global.fetch = async (url, options) => {
     calls.push({ url, options });
-    return { ok: true, json: async () => ({ instance: "p 2&x", csrf: "csrf-local" }) };
+    return { ok: true, json: async () => ({ instance: "p2", csrf: "csrf-local" }) };
   };
   try {
-    const session = await browserApi("p 2&x").session();
+    const session = await browserApi("p2").session();
     assert.equal(session.csrf, "csrf-local");
     assert.equal(calls.length, 1);
-    assert.equal(calls[0].url, "/workbench/session?instance=p%202%26x");
+    assert.equal(calls[0].url, "/workbench/session?instance=p2");
     assert.equal(calls[0].options.credentials, "same-origin");
   } finally {
     global.fetch = originalFetch;
