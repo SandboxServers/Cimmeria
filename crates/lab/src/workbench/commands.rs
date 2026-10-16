@@ -81,6 +81,9 @@ pub enum SelectionRule {
     None,
     Required,
     SelectedOrArgument,
+    ArgumentRequired,
+    ArgumentRequiredOther,
+    ArgumentRequiredSelfZero,
 }
 
 /// Target type and selection rule, checked against a fresh actor snapshot.
@@ -88,7 +91,7 @@ pub enum SelectionRule {
 pub struct TargetPolicy {
     pub kind: TargetKind,
     pub selection_rule: SelectionRule,
-    /// Name of the source-backed entity-id argument for `SelectedOrArgument`.
+    /// Name of the source-backed entity-id argument when the rule uses one.
     pub argument_name: Option<String>,
 }
 
@@ -279,6 +282,43 @@ pub fn validate_command(
             actor.selected_entity_id.ok_or(Refusal::StaleTarget)?;
             Some(actor.selected_target_kind.ok_or(Refusal::StaleTarget)?)
         }
+        SelectionRule::ArgumentRequired
+        | SelectionRule::ArgumentRequiredOther
+        | SelectionRule::ArgumentRequiredSelfZero => {
+            let name = descriptor
+                .target
+                .argument_name
+                .as_ref()
+                .ok_or(Refusal::WrongDescriptor)?;
+            let value = action
+                .typed_args
+                .get(name)
+                .ok_or(Refusal::MissingArgument)?;
+            let requested = value.as_u64().or_else(|| {
+                value.as_str().and_then(|text| {
+                    (!text.is_empty() && text.bytes().all(|b| b.is_ascii_digit()))
+                        .then(|| text.parse::<u64>().ok())
+                        .flatten()
+                })
+            });
+            let requested = requested.ok_or(Refusal::MalformedArgument)?;
+            let resolved = if requested == 0
+                && descriptor.target.selection_rule == SelectionRule::ArgumentRequiredSelfZero
+            {
+                u64::from(actor.entity_id)
+            } else {
+                requested
+            };
+            if resolved == 0 || Some(resolved) != actor.argument_target_entity_id.map(u64::from) {
+                return Err(Refusal::StaleTarget);
+            }
+            if descriptor.target.selection_rule == SelectionRule::ArgumentRequiredOther
+                && resolved == u64::from(actor.entity_id)
+            {
+                return Err(Refusal::StaleTarget);
+            }
+            Some(actor.argument_target_kind.ok_or(Refusal::StaleTarget)?)
+        }
     };
     if target_kind.is_some_and(|kind| !target_matches(descriptor.target.kind, kind)) {
         return Err(Refusal::WrongTargetKind);
@@ -293,6 +333,7 @@ pub fn validate_command(
             continue;
         };
         validate_value(value, arg)?;
+        validate_source_text(descriptor, arg, value)?;
         resolved_args.insert(arg.name.clone(), value.clone());
     }
     if action
@@ -318,6 +359,35 @@ fn target_matches(required: TargetKind, actual: TargetKind) -> bool {
         TargetKind::MobOrId | TargetKind::Mob => actual == TargetKind::Mob,
         TargetKind::Player => actual == TargetKind::Player,
     }
+}
+
+fn validate_source_text(
+    descriptor: &CommandDescriptor,
+    arg: &ArgDescriptor,
+    value: &Value,
+) -> Result<(), Refusal> {
+    match (
+        descriptor.channel,
+        descriptor.id.as_str(),
+        arg.name.as_str(),
+    ) {
+        (CommandChannel::Slash, "/gmsettarget", "NameOrID") => {
+            let text = value.as_str().ok_or(Refusal::MalformedArgument)?.trim();
+            let id = text
+                .parse::<i64>()
+                .map_err(|_| Refusal::MalformedArgument)?;
+            if !(0..=i64::from(i32::MAX)).contains(&id) {
+                return Err(Refusal::OutOfRange);
+            }
+        }
+        (CommandChannel::Slash, "/gmgotolocation", "WorldName")
+            if value.as_str().is_none_or(|text| text.trim().is_empty()) =>
+        {
+            return Err(Refusal::MalformedArgument);
+        }
+        _ => {}
+    }
+    Ok(())
 }
 
 fn validate_value(value: &Value, arg: &ArgDescriptor) -> Result<(), Refusal> {
