@@ -398,6 +398,11 @@ does not route to the separate ticketed SmartFox result path. Candidate
 server handlers for spawn, despawn, respawn and kill do not make their native
 client bindings or patch argument conversions proven. See
 `docs/analysis/dev-workbench/evidence/DW-26A-E.md` for each limitation.
+Selected NPC and explicit entity targets in this slice carry fresh server
+target policies. The unproved `-1` kill sentinel fails closed in the typed
+validator. Debug readbacks use `client_chat_log` Feedback lines; world-action
+recipes name the additional server, packet and client state evidence needed
+before any effect could be verified from more than a snapshot.
 Each form states its server handler status, caller or target scope, impact,
 readback, compensation and the specific reason it cannot run. See the
 `DW-25A-E.md` and `DW-26A-E.md` evidence files under

@@ -23,4 +23,14 @@ client or lab was used.
 
 Checks: `cargo fmt -p cimmeria-lab` status=ok;
 `cargo clippy -p cimmeria-lab --all-targets -- -D warnings` status=ok;
-`cargo test -p cimmeria-lab` status=ok (1,564 passed).
+`cargo test -p cimmeria-lab` status=ok (1,567 passed after review corrections).
+
+Review correction: the selected-NPC forms require fresh mob selection, while
+`/gmmobdata` and positive-ID `/gmkilltarget` require fresh explicit target ID
+and kind resolution. The unproved `-1` kill sentinel is refused by the generic
+typed validator even if a mob is selected. Five combat-debug readbacks now
+name the actual `client_chat_log` Feedback source and identity/prefix checks.
+Spawn, despawn, respawn and kill recipes require feedback, packet, log or client
+state evidence in addition to entity snapshots; missing evidence leaves effect
+verification unknown. Negative tests exercise those target refusals with
+test-only runnable clones; shipped descriptors remain disabled.
