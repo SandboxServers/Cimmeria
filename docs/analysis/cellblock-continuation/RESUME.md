@@ -1,40 +1,37 @@
-# Cellblock Wave-0 resume
+# Cellblock continuation resume
 
-> **Type**: Reference. **Audience**: Engineers and campaign coordinators.
-> **Last updated**: 2026-10-15.
-> **Companions**: [Ledger](README.md), [CB-N00 worknote](worknotes/cb-n00.md),
-> [execution contract](../four-zone-planning/execution-contract.md).
+> **Type**: Reference. **Audience**: The Cellblock orchestrator.
+> **Last updated**: 2026-10-16 (wave 1b designed).
+> **Companions**: [Ledger](README.md), [work packets](work-packets.md), [W1b coder packets](w1b-packets.md).
 
-- Base SHA: `d3efb7d41aad0b6008397f112d224ce7430d7acf`.
-- CB-N05a catalog `94b4a5754` merged at `67d3368e9`; pre-merge Wave-0
-  tip `457b4f75a` was reviewed.
-- Integrated packet: CB-N00, evidence/doc gate only; client rows **UATPending**.
-- Packet `63f609c4f`; integration `88e5f6d75`; reviewed fixer `b59c4a124`.
-- Wave-close HEAD: resolve `git log -1 --format=%H -- RESUME.md` in this folder.
-- Branch/worktree: `content/cellblock-campaign`, `.claude/worktrees/zone-cellblock`.
-  Packet worktree `cellblock-cb-n00` is retired; integration worktree stays active.
-- `north_review` findings on punctuation, index/memory and FZ-99 boundary
-  were fixed; `north_rereview` found no further actionable issue.
-- Checks: whitespace, CRLF, scoped markdownlint and local links passed;
-  anchors/remote links and runtime/seed checks were not run.
-- Integrated CB-N01: reviewed presentation/ownership handoff, no runtime proof.
-- Next: complete 638 login-restore replay and restart-server client proof;
-  isolate the screenshot/Livewire helper stall and relocation; rerun fresh
-  Human/Jaffa CB-U09. N05 dispatch waits for valid pacing.
-- Blockers: UNSEALED live route/build joins, normal core/optional pacing,
-  cast/placement and reachability sign-off, first-proof eligibility, individual ID
-  collision audits, and first-authored-quest live journal/progression proof.
-  O14-04/O14-10/O14-12 delegate these bounded seals; CB-N05a infrastructure
-  is on `main`, while production mission additions remain empty.
-  All downstream implementation packets stay blocked pending their complete seals.
-- 2026-10-15: stopping an active screensaver let p3 enter world 12. A fresh
-  Human completed pistol grant/equip/reload and killed the first guard. The
-  Livewire helper and screenshot stalled; the character relocated without
-  mission advance. CB-U09 timing is invalid; CB-U02 lacks packet/visual proof.
-  A later native Livewire Open reached SmartFox but timed out. A verified
-  Prisoner click after relog reached the server without a dialog. Restore
-  chains 1026/1027 are in progress; p3 was stopped and released. See [route baseline](route-baseline.md#2026-10-15-native-livewire-retry-and-prisoner-relog-fault).
-- [Standing O14 decisions](../four-zone-planning/owner-decisions-2026-10-14.md):
-  coordinated lab use is approved, not passed; unavailable-lab rows may be
-  `UATPending`, while observed gameplay failures block merge. Core pacing is
-  30–45 minutes, with at most 10 optional minutes; N06/N07 are conditional.
+## State
+
+- Runs under the adopting orchestrator (D-CC1 = B). Feature SHA `e10fd1f0a` (W1a integrated). Not pushed; one PR at CB-N08.
+- Integrated: CB-N00, CB-N01, CB-N02s, CB-N02a. CB-N05a merged to main (#1734). UATPending: CB-U03 for 1026/1027.
+- Review rule (D-CC6): read-only `packet-reviewer`, fixes by `packet-coder`, fresh re-review; at most 3 rounds.
+- Old worktrees `cellblock-cb-n02s` and `cellblock-cb-n02a` are cherry-picked (no PR); the owner retires them.
+
+## Wave 1b (no packet in flight yet)
+
+Five packets in parallel, one worktree each, on `e10fd1f0a`:
+
+| Packet | Agent | Worktree |
+|---|---|---|
+| CB-N02b (chain 1028, door button) | packet-coder | cellblock-cb-n02b |
+| CB-N02c (chain 1036, Ambernol vial) | packet-coder | cellblock-cb-n02c |
+| CB-N02d (chain 1037, drone re-arm) | packet-coder | cellblock-cb-n02d |
+| CB-N02s2 (restore bit check) | mission-systems-advisor | cellblock-cb-n02s2 |
+| CB-N03s (flank/cover seal) | npc-ai-spawn-advisor | cellblock-cb-n03s |
+
+## Next actions
+
+1. Ops: five `mk-worktree` calls (branches in work-packets.md § W1b-R0), then the `rebase --onto` step. If ops refuses, dispatch W1b-R0 (packet-coder).
+2. Dispatch the five packets in one message, in the background (sections: w1b-packets.md for N02b/c/d, work-packets.md for N02s2/N03s).
+3. On return: reviewer A (CB-N02b/c/d) and reviewer B (CB-N02s2, CB-N03s), both `packet-reviewer`. Fix verdicts go to a `packet-coder` per worktree, then a fresh reviewer.
+4. All `ship`: dispatch W1b-INT in zone-cellblock (cherry-picks plus the header and id-allocation bookkeeping).
+5. If CB-N02s2 or CB-N03s seals children: architect pass for W1c. Otherwise W2 (CB-N04).
+6. Lab rows CB-U03 (relog at 2114/2115/2116/2145/2144) and CB-U05: ask the user first, then run once W1b is integrated.
+
+## Open questions (none block W1b)
+
+- Who owns the cell-door presentation after a relog (sequence 1749): CB-N02s2 answers, likely asset audit CA-03C/D.

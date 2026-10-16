@@ -2,7 +2,7 @@
 
 > Opened 2026-10-14. Static baseline: `d3efb7d41aad0b6008397f112d224ce7430d7acf`.
 > **Type**: Reference. **Audience**: Engineers and campaign coordinators.
-> **Last updated**: 2026-10-15. **Companions**: [Wave resume](RESUME.md), [CB-N00 worknote](worknotes/cb-n00.md), [CB-N01 handoff](presentation-handoff.md), [CB-N05 proposed seal](worknotes/cb-n05-seal.md).
+> **Last updated**: 2026-10-16. **Companions**: [Wave resume](RESUME.md), [Work packets](work-packets.md), [W1b coder packets](w1b-packets.md), [CB-N00 worknote](worknotes/cb-n00.md), [CB-N01 handoff](presentation-handoff.md), [CB-N05 proposed seal](worknotes/cb-n05-seal.md).
 > CB-N00 is **Integrated** for the evidence/doc gate only. Fresh route acceptance is **UATPending**.
 
 This is the live ledger for the one-time escape in world 12. The
@@ -30,8 +30,16 @@ A completed source audit does not make a runtime packet Ready.
 |---|---|---|
 | CB-N00 | Integrated | Evidence/doc gate passed two review rounds through `b59c4a124`; fresh route and lineage rows remain UNSEALED and client UATPending. No downstream runtime seal is granted. |
 | CB-N01 | Integrated | Presentation and sibling ownership handoff passed independent review and focused status correction review; runtime and client rows remain UATPending. |
-| CB-N02 | BlockedDependency | The 2026-10-15 fresh Human p3 run verified native pistol grant, equip, reload and guard damage at zero Focus. CB-U02 remains UATPending for exact server/client/patch revision, local-server packet tap and visual recoil; the prior no-damage symptom did not reproduce. A native Livewire Open reached SmartFox on retry, then timed out. A verified Prisoner 329 click after relog reached the server but returned no dialog; login-restore chains 1026/1027 and a replay test are in progress. No normal route time exists. See [route baseline](route-baseline.md#2026-10-15-native-livewire-retry-and-prisoner-relog-fault). |
-| CB-N03 | BlockedDependency | Current guard-cover reachability observation and combat/NPC/mission sign-off; no new mandatory kills. |
+| CB-N02 | Writing | Family row. The 2026-10-15 fresh Human p3 run verified pistol grant, equip, reload and guard damage; #1667 did not reproduce and is not a child. CB-U02 stays UATPending. Children below. See [route baseline](route-baseline.md#2026-10-15-native-livewire-retry-and-prisoner-relog-fault). |
+| CB-N02s | Integrated | Relog-restore audit, [cb-n02s.md](worknotes/cb-n02s.md); integrated at `e10fd1f0a`. Sealed gaps A, B, C. |
+| CB-N02a | Integrated, UATPending | Chains 1026/1027 restore Prisoner 329's dialog on login; integrated at `e10fd1f0a`. CB-U03 client check pending. |
+| CB-N02b | Ready | [w1b-packets.md](w1b-packets.md): chain 1028 restores the `329_CellDoorButton` bit at 638 step 2115 (strand). |
+| CB-N02c | Ready | [w1b-packets.md](w1b-packets.md): chain 1036 restores the Ambernol vial bit at 639 step 2145 (strand). |
+| CB-N02d | Ready | [w1b-packets.md](w1b-packets.md): chain 1037 re-arms the retrieval drone at 639 step 2144 (degraded play). |
+| CB-N02s2 | Ready | [work-packets.md](work-packets.md): bit-level check of the 622/640/641/680/687/688 restores and the relog state of sequences 1749 and 10001. May seal W1c children. |
+| CB-N03 | BlockedEvidence | No present 681/686 miss is established (route baseline CB-B06). CB-N03s decides from static evidence. |
+| CB-N03s | Ready | [work-packets.md](work-packets.md): `npc-ai-spawn-advisor` seal check; verdict is a seed fault (CB-N03a), an AI defect (CB-N03b, `rust-gameserver-dev`) or none (CB-U05 lab row). |
+| CB-N03a | BlockedDependency | Exists only if CB-N03s returns a seed fault; sealed in W1c. |
 | CB-N04 | BlockedDependency | O14-12 delegates cast and placement approval; measure safe pockets, then seal one room cluster per child. |
 | CB-N05a | UATPending | Catalog infrastructure merged to `main` in #1734 and integrated here; the first real authored mission must pass journal, dialog, advance and relog before this gate closes. |
 | CB-N05 | BlockedDependency | Proposed itemless, zero-reward *The Remaining Pods* design is in [the seal](worknotes/cb-n05-seal.md), design review complete. Before coder dispatch, CB-U09 must measure a fresh normal first-run core at 30–45 minutes and show room for this beat within the 10-minute optional budget (O14-14). Native CB-U10 then tests journal/dialog/advance/relog. |
@@ -56,6 +64,23 @@ authorize coder dispatch yet. No new placement, item or authored reward is
 sealed. Chain block 11000–11499 remains a planning reservation outside the six
 individually claimed CB-N05 chains. CB-N05a is the merged early standalone PR
 exception. FZ-99 owns shared status docs.
+
+## Orchestration decisions (D-CC)
+
+Ported on 2026-10-16 from the adopting orchestrator's main-checkout overlay. These are orchestration-only and never renumber the zone's CB-D rows in the [decision log](decision-log.md).
+
+| ID | Decision | Status | Reason |
+|---|---|---|---|
+| D-CC1 | Who runs Cellblock after the zone session went idle. | Decided 2026-10-16: **B**. The WIP was checkpointed as `14658b3b1`; the adopting orchestrator runs the campaign. | Owner ruling. |
+| D-CC2 | The main-checkout overlay stays uncommitted; this branch ledger is canonical. | Decided | One campaign branch, one ledger. The overlay was ported here in wave 1b. |
+| D-CC3 | O14-08 standing lab approval covers the adopting orchestrator (CB-U03, CB-U09 and the other CB-U rows). | Decided 2026-10-16: yes | Owner ruling. The orchestrator still asks before each lab use and waits until the lab is free. |
+| D-CC4 | Seed-only `player_loaded` restores are tested at resolve level; an execute-level test only when a packet changes executor code. | Decided | Precedents 622/701/708; the executor paths have their own tests. |
+| D-CC5 | Pilot re-run with measurement: CB-N02s about 78k tokens and 5 min, CB-N02a about 66k tokens and 22 min. | Done | CB-N00 had measured nothing. |
+| D-CC6 | Review is split from fixing: read-only `packet-reviewer`, fixes by `packet-coder`, fresh re-review; no `packet-review-fixer`. Haiku agents stay under 100k total tokens (the 90k hook is a deliberate stop-gap). | Decided 2026-10-16 | Owner rulings. Applies from wave 1b. |
+| D-CC7 | The drone relog restore (CB-N02d) sets aggression only, with no `generate_threat` and no sequence 10001 replay. | Decided | Chain 1009 precedent: the NPC engages through its normal hostile scan instead of being pulled across the map. |
+| D-CC8 | Only the wave's integration packet edits the seed's chain-range header and `id-allocation.md`. | Decided | Lets the three W1b seed packets run in parallel and cherry-pick without conflicts. |
+
+**Corrections to [cb-n02s.md](worknotes/cb-n02s.md).** `route-baseline.md` is present on this branch, and its core route matches the worknote's assumption. The three objects the worknote left `unchecked` are restored on login: `Cellblock_WoodenCrate` by chain 1104 (687 step 2354), `Cellblock_TerminalX` by 1110 (688 step 2356), `Cellblock_ArmoryRingSwitch` by 1111 (688 step 80688). Gap A's setter is the 1014/1015 dialog-choice edge with no archetype split, so one restore chain is enough. Gap B's bit is cleared by `destroy_entity` in chain 1032, so a restore gated on step 2145 cannot outlive its window.
 
 ## Integration boundary
 

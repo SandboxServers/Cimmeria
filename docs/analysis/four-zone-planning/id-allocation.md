@@ -2,7 +2,7 @@
 
 > **Type:** Reference
 > **Audience:** Zone campaign coordinators and the ID-lock packets (CB-N00, CS-00, HA-00b, T-01)
-> **Last updated:** 2026-10-14
+> **Last updated:** 2026-10-16
 > **Companions:** [four-zone index](README.md), [execution contract](execution-contract.md), [2026-10-14 owner decisions](owner-decisions-2026-10-14.md), [Harset chain ranges](harset-work-packets.md#contract-and-dispatch-boundary), [Tollana packets](tollana-work-packets.md)
 
 Owner decision, 2026-10-13: the four zone campaigns share one content-chain ID table so that no two campaigns, branches or workers pick the same `chain_id`. This page is that table. A zone's ID-lock packet reads it, claims individual IDs inside its own block, and records the claim in its zone ledger before any coder receives an ID.
@@ -66,6 +66,18 @@ These IDs belong only to the proposed first authored world-12 mission [*The Rema
 | Content chain | 11000–11005 | Offer, login restore, abandon restore, Prisoner click, nested accept, Marsh click; six individual IDs |
 
 The coordinator checked mission 62050 and nested IDs 62051–62056 against stock `CookedDataMissions.pak`, dialog 60150 against stock `CookedDataDialogs.pak`, and screen 96110 against stock dialog XML, with zero hits. On 2026-10-14, first-tuple checks of mission/dialog/content seed rows and resource registries in the four integration worktrees found zero candidate hits: Cellblock `71b470774`, Castle `3cdc609dd`, Harset `ce2ac3293`, Tollana `319d768e2`. The chain scan checked each `content_chains` first tuple; numbers inside action text and unrelated dialog screens are not chain claims. Existing dialog-set-map 2795 is reused, not claimed here. Castle's independently claimed chains 1367–1370 are outside Cellblock's block. The [Cellblock ledger](../cellblock-continuation/README.md) records review and UAT status.
+
+### CB-N02 restore claims — 2026-10-16
+
+Three individual Cellblock chain claims for the wave 1b relog restores in the [Cellblock ledger](../cellblock-continuation/w1b-packets.md). Each sits in the seed's own declared range for its mission (638: 1011–1030, 639: 1031–1040), so none comes from the 11000–11499 reservation.
+
+| Chain | Packet | Exact use | Status |
+|---:|---|---|---|
+| 1028 | CB-N02b | 638 `player_loaded` restore of the `329_CellDoorButton` Livewire bit at step 2115 | Claimed |
+| 1036 | CB-N02c | 639 `player_loaded` restore of the `ArmYourself_AmbernolVial` interact bit at step 2145 | Claimed |
+| 1037 | CB-N02d | 639 `player_loaded` re-arm of `ArmYourself_PrisonerRetrievalUnit` at step 2144 | Claimed |
+
+Collision check, 2026-10-16: the first tuple of every `INSERT INTO content_chains` under `db/resources/Content/Seed/` at Cellblock `e10fd1f0a` uses none of the three, and a `git grep` of the same statements across all 703 local branches (every zone integration branch and packet branch) found zero hits. Point-in-time; W1b-INT moves the rows to the in-use table when it integrates them.
 
 ### CS-08a individual reservation — 2026-10-14
 
