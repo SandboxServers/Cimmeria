@@ -269,22 +269,47 @@ fn malformed_or_duplicate_patch_entries_are_refused() {
 }
 
 #[test]
-fn missing_stock_xml_cannot_be_reported_as_a_complete_empty_addendum() {
+fn inspected_stock_xml_does_not_silently_drop_the_role_marked_candidate() {
     let audit = stock_addendum().unwrap();
-    assert_eq!(audit.stock_inventory, StockInventoryState::Unknown);
+    assert_eq!(audit.stock_inventory, StockInventoryState::Complete);
+    assert!(audit.missing_sources.is_empty());
     assert!(audit.verified_extras.is_empty());
-    assert!(audit
-        .missing_sources
+    let stock_sources: HashSet<_> = audit
+        .inspected_sources
         .iter()
-        .any(|path| path.contains("SlashCommands.xml")));
-    assert!(audit
-        .missing_sources
+        .filter(|source| source.starts_with("stock "))
+        .map(String::as_str)
+        .collect();
+    let expected: HashSet<_> = [
+        "stock Client/game/Common/xml/slash_commands/SlashCommands.xml sha256=6e34355a628bd3b5f95e31ef58e7a2e9700dcce6b9798c751bda2431ba0dcd66 commands=98",
+        "stock Client/game/Common/xml/slash_commands/FinalSlashCommands.xml sha256=7d166f89d3b6829d2fe6c891c90104c5562d1de653864b10d7dd06fbf97263db commands=4",
+        "stock Stargate Worlds-QA/Common/xml/slash_commands/SlashCommands.xml sha256=6e34355a628bd3b5f95e31ef58e7a2e9700dcce6b9798c751bda2431ba0dcd66 commands=98",
+        "stock Stargate Worlds-QA/Common/xml/slash_commands/FinalSlashCommands.xml sha256=7d166f89d3b6829d2fe6c891c90104c5562d1de653864b10d7dd06fbf97263db commands=4",
+    ]
+    .into_iter()
+    .collect();
+    assert_eq!(stock_sources, expected);
+    assert_eq!(
+        audit
+            .exclusions
+            .iter()
+            .filter(|reason| reason.contains("/reload") && reason.contains("Access=qd"))
+            .count(),
+        1
+    );
+    assert!(audit.exclusions.iter().any(|reason| {
+        reason.contains("/reload")
+            && reason.contains("role-marked")
+            && reason.contains("not a verified GM")
+    }));
+    assert!(!parse_patch_table(SOURCE)
+        .unwrap()
         .iter()
-        .any(|path| path.contains("FinalSlashCommands.xml")));
+        .any(|entry| entry.name == "/reload"));
     assert!(audit
         .exclusions
         .iter()
-        .any(|reason| reason.contains("/debugperformance")));
+        .any(|reason| reason.contains("/debugperformance") && reason.contains("no Access")));
     assert!(audit
         .exclusions
         .iter()
