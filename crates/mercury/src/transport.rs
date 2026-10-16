@@ -20,6 +20,7 @@
 use std::io;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Instant;
 
 use async_trait::async_trait;
 use cimmeria_observability::FirehoseSampler;
@@ -27,6 +28,25 @@ use tokio::net::UdpSocket;
 
 use crate::firehose::{log_mercury_packet, MERCURY_PACKET_SAMPLE_EVERY};
 use crate::instrumentation::Direction;
+
+/// Owned session identity captured when an outbound datagram is built.
+///
+/// The caller carries this snapshot across awaits. The peer is the session's
+/// peer at capture time, not an address to resolve back to a current session.
+/// This is diagnostic context only and is never serialized into Mercury bytes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SendOrigin {
+    /// Identity of the server process that created the session.
+    pub server_boot_id: Arc<str>,
+    /// Identity of this connection within the server process.
+    pub session_generation: Arc<str>,
+    /// Session peer at the time the datagram was built.
+    pub peer: SocketAddr,
+    /// Monotonic connection time within this server process.
+    pub connected_at: Instant,
+    /// Current player entity, if character selection has completed.
+    pub player_entity_id: Option<u32>,
+}
 
 /// The outbound side of the Mercury transport.
 ///
@@ -39,6 +59,28 @@ use crate::instrumentation::Direction;
 pub trait Transport: Send + Sync {
     /// Send `bytes` to `addr`. Errors propagate from the underlying I/O.
     async fn send_to(&self, bytes: &[u8], addr: SocketAddr) -> io::Result<usize>;
+
+    /// Send with an owned session origin supplied by the caller.
+    ///
+    /// The default implementation ignores the origin and delegates to
+    /// [`Self::send_to`]. It provides no proof row; an observing transport
+    /// must override this method to retain the ticket through the await.
+    async fn send_to_with_origin(
+        &self,
+        bytes: &[u8],
+        addr: SocketAddr,
+        _origin: &SendOrigin,
+    ) -> io::Result<usize> {
+        self.send_to(bytes, addr).await
+    }
+
+    /// Send one of the reviewed pre-Phase-3 handshake datagrams.
+    ///
+    /// Only callers that send before session insertion should use this
+    /// exemption. The default delegates unchanged and records no proof.
+    async fn send_to_pre_phase3(&self, bytes: &[u8], addr: SocketAddr) -> io::Result<usize> {
+        self.send_to(bytes, addr).await
+    }
 
     /// The address this transport is bound to. For
     /// [`crate::test_transport::TestTransport`] this is a synthetic loopback
@@ -163,3 +205,7 @@ mod tests {
         assert_eq!(transport.local_addr().unwrap(), expected);
     }
 }
+
+#[cfg(test)]
+#[path = "transport_origin_tests.rs"]
+mod origin_tests;

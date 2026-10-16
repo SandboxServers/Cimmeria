@@ -59,7 +59,7 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 1 | DW-03 | Target dossier model | 01, 02B | 35k | Integrated |
 | 1B-a | DW-03S-E | Static binding evidence and fixture contract | 03 | 30k | Integrated (#1750) |
 | 1B-a | DW-03S-C | Process-bound DLL Mercury observer | 03S-E | 40k | Ready |
-| 1B-a | DW-03S-P | Opt-in Mercury send-origin seam | 03S-E | 35k | Ready |
+| 1B-a | DW-03S-P | Opt-in Mercury send-origin seam | 03S-E | 35k | Review |
 | 1B-a | DW-03S-G | Base boot/generation and bounded proof observer | 03S-P | 45k | BlockedDependency |
 | 1B-a | DW-03S-H | Base-session reliable/unreliable/tick/retransmit origin | 03S-G | 45k | BlockedDependency |
 | 1B-a | DW-03S-D | World-entry and direct Base send origin | 03S-H | 45k | BlockedDependency |
