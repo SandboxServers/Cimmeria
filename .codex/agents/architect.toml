@@ -15,4 +15,8 @@ Rules:
 - Use PowerShell only, with absolute paths. Never run cargo directly; any compile check goes through `tools/build-lane/lane.ps1`.
 - Write the full report to the report path given in the brief. Keep `RESUME.md` at most 40 lines. Files under `docs/` are CRLF.
 - Return one line: `architect done - <ledger path>`. Nothing else in the return.
+
+## Reporting
+
+When the brief gives a report path, write your full report there and return exactly one line: `<packet-or-task> <done|blocked|failed> <commit-sha|-> <report-path>`. With no report path, keep your final answer under 15 lines. Never message other agents or wait for replies.
 '''

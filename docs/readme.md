@@ -13,7 +13,7 @@ If you've just cloned the repo, walk through these in order:
 1. **[../README.md](../README.md)** — project overview and current status.
 2. **[guides/getting-started.md](guides/getting-started.md)** — first-time setup tutorial: prerequisites, `setup.ps1`, verifying the server is up, connecting the client.
 3. **[building.md](building.md)** — how to build and run the Rust server, including the CI checks.
-4. **[../CLAUDE.md](../CLAUDE.md)** — repo invariants, build rules (Windows-native, pinned toolchain, the build lane), pre-PR checklist.
+4. **[../CLAUDE.md](../CLAUDE.md)** — the short core every agent session loads: repo invariants, the top project rules, the build lane, and links to the pre-PR checklist ([agents/pre-pr-checks.md](agents/pre-pr-checks.md)).
 5. **[../TESTING.md](../TESTING.md)** — test types, picker for which to use when, gotchas mined from PR reviews.
 6. **[connection-flow.md](connection-flow.md)** — end-to-end login + world entry. Once you've followed it through, the architecture starts to make sense.
 7. **[how-sgw-works.md](how-sgw-works.md)** — BigWorld, CME, and how the pieces fit together.
@@ -383,7 +383,7 @@ What an AI-assisted contributor (or their agents) needs that the code does not s
 |----------|-------------|--------|
 | [development-workflow.md](agents/development-workflow.md) | Ticket-to-PR pipeline, the roster of domain advisors under `.claude/agents/`, rules for running agents in parallel (worktrees, the build lane, one test DB each, Dev Drive seeding, cleanup), definition of done | Complete |
 | [doc-update-map.md](agents/doc-update-map.md) | The "what changed → what to update" map every PR is reviewed against; moved out of `CLAUDE.md` so it loads only when a PR is being finished or reviewed | Complete |
-| [pre-pr-checks.md](agents/pre-pr-checks.md) | What each CI check gates and when it runs, the full annotated pre-PR command list, and the fix for each failing check; the long form of the `CLAUDE.md` checklist | Complete |
+| [pre-pr-checks.md](agents/pre-pr-checks.md) | What each CI check gates and when it runs, the full annotated pre-PR command list, and the fix for each failing check; the checklist `CLAUDE.md` points to | Complete |
 | [rules-and-gotchas.md](agents/rules-and-gotchas.md) | Maintainer decisions and known traps: evidence rules, protocol traps (entity clientIndex), "free" vs client-patch scoping, UI feedback, GM command channels, seeds over migrations, the pinned toolchain and build-lane traps, Windows/CRLF/Git Bash traps, client assets and RE tooling | Complete |
 | [domain.md](agents/domain.md) | Where domain docs live (glossary = `spec/glossary.md`, ADRs = `architecture/`; no `CONTEXT.md` or `docs/adr/`), what to read before exploring, and what to do when sources disagree | Complete |
 | [issue-tracker.md](agents/issue-tracker.md) | GitHub Issues via the `gh` CLI; repo-specific `gh` traps; the ticket body contract; PRs-as-request-surface flag (off); wayfinder map / child / blocking conventions | Complete |
@@ -453,7 +453,7 @@ Practical guidance for contributors working on the RE effort or the emulator.
 | [automated-uat.md](guides/automated-uat.md) | **How-to + reference.** Run unified-UAT rows from the live research lab: row specs as TOML in [guides/uat-specs/](guides/uat-specs/), `lab_uat_run` / `lab_uat_attest` / `lab_uat_report`, the native levels (N1/N2/N3/G/X) a PASS needs, the evidence bundle, and the Recording-results blocks it writes for the campaign ledgers | Complete |
 | [uat-specs/drafts/README.md](guides/uat-specs/drafts/README.md) | **Reference.** The folder of draft row specs `lab record` writes from a person playing a section: never run by a plain `lab uat`, UNCONFIRMED until `lab golden record` agrees 5 times, TODO lines and commented rows, and how to promote one into a real spec | Complete |
 | [token-profiling.md](guides/token-profiling.md) | **How-to.** Measure what AI-assisted work costs with `tools/token-profile/`: ingest, report, reconcile, validate attribution, post a merged PR's stats comment and backfill, the daily and weekly scheduled jobs, how to read a stats comment (list-price USD, a floor; integration PRs carry only their own spend), and the privacy rules | Complete |
-| [autonomous-agent-kickoff.md](guides/autonomous-agent-kickoff.md) | **Kickoff prompt for unattended AI agents.** Issue selection and claim protocol, per-worktree build and DB discipline, draft-until-green PR flow with Cadacious as reviewer, budgets and escalation. Two marked deviations from the `CLAUDE.md` pre-PR checklist | Complete |
+| [autonomous-agent-kickoff.md](guides/autonomous-agent-kickoff.md) | **Kickoff prompt for unattended AI agents.** Issue selection and claim protocol, per-worktree build and DB discipline, draft-until-green PR flow with Cadacious as reviewer, budgets and escalation. Two marked deviations from the pre-PR checklist | Complete |
 
 Two former-guides files moved to their correct homes in #344: [evidence-standards.md](reverse-engineering/evidence-standards.md) is now under `reverse-engineering/` (it's the standards reference for the RE process), and [entity-def-guide.md](engine/entity-def-guide.md) is now under `engine/` (it's reference doc on entity definition files).
 

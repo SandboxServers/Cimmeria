@@ -3,9 +3,9 @@
 > **Last updated**: 2026-10-11
 > **Audience**: Contributors and agents about to open a PR, or looking at a red CI job
 > **Type**: Reference
-> **Companions**: [CLAUDE.md](../../CLAUDE.md) (the short runnable checklist), [doc-update-map.md](doc-update-map.md), [TESTING.md](../../TESTING.md), [build-system.md](../architecture/build-system.md), [troubleshooting.md](../troubleshooting.md#tests--ci)
+> **Companions**: [CLAUDE.md](../../CLAUDE.md) (the core that points here), [doc-update-map.md](doc-update-map.md), [TESTING.md](../../TESTING.md), [build-system.md](../architecture/build-system.md), [troubleshooting.md](../troubleshooting.md#tests--ci)
 
-What each CI check is worth, the full annotated pre-PR command list, and what to do when a check fails. The short version that loads every session is the "Pre-PR checklist" in [CLAUDE.md](../../CLAUDE.md); this page is the long form behind it.
+What each CI check is worth, the full annotated pre-PR command list, and what to do when a check fails. This page is the checklist: [CLAUDE.md](../../CLAUDE.md) only points here, and the `lane-build` skill runs the compiling lines.
 
 ## CI checks
 

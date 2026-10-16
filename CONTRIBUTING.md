@@ -19,7 +19,7 @@ Read these in order:
 
 1. [`README.md`](README.md) — what the project is and where it stands.
 2. [`docs/guides/getting-started.md`](docs/guides/getting-started.md) — get the server running on your machine. You cannot meaningfully contribute without this working.
-3. [`CLAUDE.md`](CLAUDE.md) — repo invariants, build rules (Windows-native builds, the pinned toolchain, the build lane), the **pre-PR checklist**. CI runs the checklist exactly; if you skip it locally you will round-trip.
+3. [`CLAUDE.md`](CLAUDE.md) — repo invariants, the top project rules and the build lane; then [`docs/agents/pre-pr-checks.md`](docs/agents/pre-pr-checks.md), the **pre-PR checklist**. CI runs the checklist exactly; if you skip it locally you will round-trip.
 4. [`TESTING.md`](TESTING.md) — test types and when to use which. The single biggest source of PR rework is "you wrote a unit test, this needed a live-DB regression guard."
 5. The relevant doc for the area you're touching — `docs/protocol/` for wire formats, `docs/gameplay/` for game systems, `docs/architecture/` for cross-cutting concerns, `docs/content/` for content engine work, `docs/operations/` for runtime/deployment.
 6. [`docs/agents/rules-and-gotchas.md`](docs/agents/rules-and-gotchas.md) — decisions the maintainers have already made (seeds over migrations, server-authoritative first, no dependency on third-party loaders) and traps contributors have already hit (sccache and `CARGO_INCREMENTAL`, CRLF docs, Git Bash path mangling).
@@ -107,13 +107,13 @@ git push -u origin your-handle/short-description
 gh pr create
 ```
 
-See [`CLAUDE.md`](CLAUDE.md) for the full pre-PR checklist, the build rules (Windows-native builds on a pinned toolchain, and the build lane agents use). The doc-update map is [`docs/agents/doc-update-map.md`](docs/agents/doc-update-map.md), and what each CI check gates and how to fix a red one is [`docs/agents/pre-pr-checks.md`](docs/agents/pre-pr-checks.md).
+The full pre-PR checklist is [`docs/agents/pre-pr-checks.md`](docs/agents/pre-pr-checks.md); the build rules (Windows-native builds on a pinned toolchain, and the build lane agents use) are in [`CLAUDE.md`](CLAUDE.md) and the [`lane-build`](.claude/skills/lane-build/SKILL.md) skill. The doc-update map is [`docs/agents/doc-update-map.md`](docs/agents/doc-update-map.md), and what each CI check gates and how to fix a red one is [`docs/agents/pre-pr-checks.md`](docs/agents/pre-pr-checks.md).
 
 ## Code style
 
 - **Rust** — `cargo fmt` is the source of truth. The project enforces `-D warnings` on clippy; project-level thresholds for `too_many_arguments` and `type_complexity` live in [`clippy.toml`](clippy.toml). Don't sprinkle `#[allow]` annotations per call site — fix the root cause.
 - **Comments** — default to writing none. When the *why* is non-obvious (a hidden constraint, a subtle invariant, a workaround for a specific bug), then a one-liner. The well-named identifier should explain the *what*.
-- **File organisation** — files should "do what it says on the tin" — predictable names, split along natural seams. Soft cap 500 lines, hard cap 700 lines, but seams matter more than counts. See [`CLAUDE.md`](CLAUDE.md) → "File organization."
+- **File organisation** — files should "do what it says on the tin" — predictable names, split along natural seams. Soft cap 500 lines, hard cap 700 lines, but seams matter more than counts. See [`docs/agents/rules-and-gotchas.md`](docs/agents/rules-and-gotchas.md#file-organization) → "File organization."
 - **Markdown** — `tools/lint-md.sh` (or `tools/lint-md.ps1` on Windows) checks the docs. Currently warn-only in CI but reviewers will nudge.
 
 ## Commit and PR conventions

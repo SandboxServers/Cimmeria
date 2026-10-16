@@ -18,4 +18,8 @@ Rules:
 - Your context limit is 95k tokens. Read only the line ranges you need (use Grep to find them). Past about 90k, stop, commit nothing half-done, and report what is done and what is left.
 
 Report, compactly: the files changed, each check's final `status=` line, the commit hash, and any deviation from the spec with its reason. No advice beyond that.
+
+## Reporting
+
+When the brief gives a report path, write your full report there and return exactly one line: `<packet-or-task> <done|blocked|failed> <commit-sha|-> <report-path>`. With no report path, keep your final answer under 15 lines. Never message other agents or wait for replies.
 '''
