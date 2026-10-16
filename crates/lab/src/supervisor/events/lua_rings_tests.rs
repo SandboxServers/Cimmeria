@@ -141,6 +141,56 @@ fn the_click_dedup_skips_ancestors_only() {
 }
 
 #[test]
+fn rejected_child_suppresses_its_bubbled_parent() {
+    let lua = mlua::Lua::new();
+    lua.globals()
+        .set("long_child_name", "x".repeat(CLICK_NAME_CAP + 1))
+        .unwrap();
+    lua.load(
+        r#"
+function getSystemTime() return 123 end
+Root = { getName = function() return "Root" end, getParent = function() return nil end }
+BackgroundWin = {
+  getName = function() return "BackgroundWin" end,
+  getParent = function() return Root end,
+  subscribeGlobal = function() end,
+}
+InventoryWin = {
+  getName = function() return "InventoryWin" end,
+  getParent = function() return BackgroundWin end,
+}
+Child = {
+  getName = function() return long_child_name end,
+  getParent = function() return InventoryWin end,
+}
+"#,
+    )
+    .exec()
+    .unwrap();
+    lua.load(pump_chunk(0, 0, 0, READ_MAX)).exec().unwrap();
+    lua.load(
+        r#"
+local pos = { x = 11, y = 17 }
+CimmeriaLab.on_click(nil, Child, pos, nil, 1)
+CimmeriaLab.on_click(nil, InventoryWin, pos, nil, 1)
+"#,
+    )
+    .exec()
+    .unwrap();
+    let state: mlua::Table = lua.globals().get("CimmeriaLab").unwrap();
+    let ring: mlua::Table = state.get("click").unwrap();
+    let items: mlua::Table = ring.get("items").unwrap();
+    assert_eq!(items.raw_len(), 0, "bubbled parent became a false click");
+    assert_eq!(state.get::<u64>("click_rejected").unwrap(), 1);
+
+    // A new click at a different position still records normally.
+    lua.load("CimmeriaLab.on_click(nil, InventoryWin, { x = 12, y = 17 }, nil, 1)")
+        .exec()
+        .unwrap();
+    assert_eq!(items.raw_len(), 1);
+}
+
+#[test]
 fn click_records_parse_with_window_and_button() {
     let r = parse_ring_read(&s(&[
             "install\tclick\tinstalled",

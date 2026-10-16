@@ -240,11 +240,6 @@ L.record_click = function(w, mouse, pos)
     top = pn chain[#chain + 1] = pn
     p = wparent(p) depth = depth + 1
   end
-  -- Exact widget identity is needed for replay. Never shorten a name into another widget's name.
-  if name == "" or top == "" or #name > {click_name_cap} or #top > {click_name_cap} or clean(name) ~= name or clean(top) ~= top then
-    L.click_rejected = (L.click_rejected or 0) + 1
-    return
-  end
   -- A bubbled fire reaches an ancestor of the last click at the same instant and cursor position.
   -- Only ancestors (chain[2..]) are skipped, so two real clicks on one widget both record; with no
   -- clock (t == 0) the position alone has to tell them apart.
@@ -254,6 +249,12 @@ L.record_click = function(w, mouse, pos)
     for i = 2, #last.chain do if last.chain[i] == name then return end end
   end
   L.click_last = {{ t = t, key = key, chain = chain }}
+  -- Remember even a rejected child's ancestors, so its bubbled parent cannot become a false click.
+  -- Exact widget identity is needed for replay. Never shorten a name into another widget's name.
+  if name == "" or top == "" or #name > {click_name_cap} or #top > {click_name_cap} or clean(name) ~= name or clean(top) ~= top then
+    L.click_rejected = (L.click_rejected or 0) + 1
+    return
+  end
   local target_state, target_name = target_at_click()
   local e = {{ t = t, window = clean(top), button = clean(name), mouse = mouse_name(mouse), target_state = target_state, target_name = target_name }}
   push(ring("click"), e)
