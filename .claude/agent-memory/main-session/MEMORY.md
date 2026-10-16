@@ -5,6 +5,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 ## Open investigations
 
 - [reference_dev_workbench_slash_2a_2026_10_16.md](reference_dev_workbench_slash_2a_2026_10_16.md) — DW-26A-E slash entries 55–81: gated non-gm debug word, separate minigame/vendor paths and patch/server signature gaps
+- [reference_dev_workbench_slash_2b_2026_10_16.md](reference_dev_workbench_slash_2b_2026_10_16.md) — DW-26B-E patch slash entries 82–108: targeted minigame/address type gaps, absent reload/flag handlers, caller-only LOS/physics, and scope/delivery split for GM shout
 - [reference_dev_workbench_slash_1a_2026_10_16.md](reference_dev_workbench_slash_1a_2026_10_16.md) — DW-25A-E first 27 patch slash entries: client event/GM gate split, missing handlers, argument mismatches and mission/grant persistence
 - [reference_dev_workbench_slash_28_54_2026_10_16.md](reference_dev_workbench_slash_28_54_2026_10_16.md) — patch-012 GM slice 28–54: optional/wire type gaps, organization state re-push and mob ability-set readback gap
 - [reference_dev_workbench_patrol_authoring_2026_10_16.md](reference_dev_workbench_patrol_authoring_2026_10_16.md) — DW-20B-E shared path buffer, async live SQL result versus seed commit, `.lookat` autosave and `.visible true` no-op
