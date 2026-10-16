@@ -1,6 +1,6 @@
 # Developer workbench resume
 
-> Type: campaign handoff. Audience: next coordinator. Last updated: 2026-10-15. Companions: [ledger](README.md), [work packets](work-packets.md). The plan merged in PR #1738; DW-01 and DW-02A are in review on `dev-workbench/dw-01-capture` and `dev-workbench/dw-02a-session`. No lab lease taken.
+> Type: campaign handoff. Audience: next coordinator. Last updated: 2026-10-15. Companions: [ledger](README.md), [work packets](work-packets.md). The plan merged in PR #1738; DW-01 and DW-02A merged in PRs #1740 and #1741. DW-02B is reviewed on `dev-workbench/dw-02b-shell`; DW-19 is in local review. No lab lease taken.
 
 1. Check peer work: `git worktree list`, recent `dev-workbench/*` branches/logs and agent board before dispatch. The root checkout is shared.
 2. Reconcile `docs/analysis/lab-record/README.md` first: LR-10 click ring is integrated; LR-11 click transform and LR-14/15 rolling/`.bug spec` are pending. DW-10/11 must stack on or absorb them, never duplicate their recorder/tap ownership.
@@ -10,5 +10,5 @@
 6. Both command inventories matter: 129 dot `spec(...)` rows in 19 families; patch 012 has 162 slash `[[command]]` rows (161 `/gm*`, one `/debugminigamecomplete`) in `data/client-patches/012-gm-slash-commands/commands.toml`. Slash XML is generated. DW-24A audits stock SGW slash files for GM extras, DW-27C owns their descriptors, and the final gate rejects raw fallbacks and unexplained omissions. The user chose the local companion window for the full palette.
 7. Native slash submission is not yet proven: `client_console` has `CONSOLE_EXEC_ADDR=0`; DW-24B needs address/ABI and quoting evidence or a proven stock-client UI/Lua path. No slash-to-dot substitution and no guessed native call.
 8. The eight causal trace stages are an observation schema, not a promise that every click has every hook. Missing `ClientApply` or visible-result coverage is `unknown`, with source and reason.
-9. No client/game was run for this design. DW-35 remains `BlockedDecision` until the owner explicitly approves lease/client start/restart/server change. Ask just before live acceptance, after offline work is reviewable.
+9. No client/game has been run for this campaign. DW-35 remains `BlockedDecision` until the owner explicitly approves lease/client start/restart/server change. Ask just before live acceptance, after offline work is reviewable.
 10. DW-34 alone updates campaign-wide status docs and unified UAT guide. Parent coordinator owns `docs/readme.md` indexing and commit/review for this design brief.
