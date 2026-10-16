@@ -46,7 +46,7 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 |---|---|---|---|---|---|
 | 1 | DW-01 | Capture contract and broker | — | 40k | Integrated |
 | 1 | DW-02A | GUI session security | — | 40k | Integrated |
-| 1 | DW-02B | GUI opener/static shell/API | 02A | 40k | Review |
+| 1 | DW-02B | GUI opener/static shell/API | 02A | 40k | Integrated |
 | 1 | DW-03 | Target dossier model | 01, 02B | 35k | Review |
 | 1 | DW-04 | Lua probe/object model | 01, 02B | 40k | Ready |
 | 1 | DW-05 | Spatial model/bookmarks | 01, 02B | 40k | Ready |
@@ -66,7 +66,7 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 4 | DW-16 | Overlay D3D9 render/device | 01 | 45k | Ready |
 | 4 | DW-17 | Overlay input/fingerprint | 16 | 45k | Ready |
 | 4 | DW-18 | Overlay target/status controls | 13, 15, 17 | 40k | BlockedDependency |
-| 4 | DW-19 | GM descriptor/authority contract | 01 | 45k | Review |
+| 4 | DW-19 | GM descriptor/authority contract | 01 | 45k | Integrated |
 | 4 | DW-20A-E | Dot travel/spawn evidence, 16 specs | 19 | 35k | Ready |
 | 4 | DW-20A | Dot travel/spawn metadata | 20A-E | 40k | Ready |
 | 4 | DW-20B-E | Dot patrol/authoring evidence, 28 specs | 19 | 45k | Ready |
