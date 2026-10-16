@@ -30,7 +30,6 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 - [project_cellblock_681_hidden_2026_10_13.md](project_cellblock_681_hidden_2026_10_13.md) — 2026-10-13 Cellblock 681 tracker leak: lab baseline, hidden seed fix, live-DB guard; local client acceptance passed
 - [reference_lab_point_click_matching_2026_10_13.md](reference_lab_point_click_matching_2026_10_13.md) — Cellblock point clicks can hover the player's avatar over a rendered corpse; match nearby entity ID and require verified hover before input
-- [reference_livewire_board_snapshot_2026_10_13.md](reference_livewire_board_snapshot_2026_10_13.md) — Livewire's generated board lives in the game instance; publish a ticket-checked, bounded copy for lab reads and clear it on session removal
 - [reference_livewire_board_snapshot_2026_10_13.md](reference_livewire_board_snapshot_2026_10_13.md) — Livewire's generated board lives in the game instance; publish a ticket-checked, bounded copy and retain final state briefly for lab reads
 
 - [reference_cellblock_praxis_start_2026_10_13.md](reference_cellblock_praxis_start_2026_10_13.md) — fresh Praxis Commando starts in Castle_CellBlock and takes the non-Jaffa tutorial branch; fresh SGU Commando starts in SGC_W1
@@ -76,13 +75,11 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [reference_lab_dialog_close_2026_10_13.md](reference_lab_dialog_close_2026_10_13.md) — one-page Cellblock Done click can leave DialogWin visible; verify closure and use the native close fallback
 - [reference_lab_hub_pass_lessons_2026_10_13.md](reference_lab_hub_pass_lessons_2026_10_13.md) — 2026-10-13 hub-pass lessons include the confirmed CEGUI top-child hit-test binding and covering-window refusal rule
 
-- [reference_lab_typed_prompt_reader_2026_10_13.md](reference_lab_typed_prompt_reader_2026_10_13.md) — Prompt1–5 typed reads expose visible button names; UAT briefs click returned names because SingleButton is the one-button OK control
 - [reference_lab_relog_chat_2026_10_13.md](reference_lab_relog_chat_2026_10_13.md) — chat capture rebinds to a recreated window without duplicate subscription; a persisted warning identifies lines that may have preceded re-arm during world load
 - [reference_lab_typed_prompt_reader_2026_10_13.md](reference_lab_typed_prompt_reader_2026_10_13.md) — Prompt1–5 typed reads use visible roots, message text, and visible buttons; SingleButton is the actual one-button OK control
 
 - [reference_lab_chat_metadata_2026_10_13.md](reference_lab_chat_metadata_2026_10_13.md) — stock channel 9 is Feedback; query built-in display metadata through `ChatMod.ChannelMap`, `channelColors` and `channel2tabs`, with no hard-coded color
 - [reference_lab_target_timeout_cellblock_route_2026_10_13.md](reference_lab_target_timeout_cellblock_route_2026_10_13.md) — target hover now bounds mouse-over reads and total hover retries; the reported Region8 route uses approximate pod-safe waypoints, still needs live validation
-- [reference_lab_ring_map_click_2026_10_13.md](reference_lab_ring_map_click_2026_10_13.md) — QA lab map-image click reached `WorldMapImageWin`, not the parent listener; stock Lua handler at the same pixel and one-time image binding each sent method 91; explicit N3 fallback (#1686)
 - [reference_lab_ring_map_click_2026_10_13.md](reference_lab_ring_map_click_2026_10_13.md) — QA lab map-image click reached `WorldMapImageWin`; N1 requires native cursor, delivered click and map closure, while a UAT packet tap must confirm method 91 (#1686)
 - [reference_lab_harness_findings_2026_10_12.md](reference_lab_harness_findings_2026_10_12.md) — lab live facts: Stat['.get'] names, zero camera pose, Q/E turn the pawn (mouse-look only the camera), BackgroundWin click host, bag over vault, feet aim, 5 m 3D range, Lua rebuilt on relog
 - [reference_lab_cli_rust_2026_10_12.md](reference_lab_cli_rust_2026_10_12.md) — `lab.exe` (crates/lab-cli): bin\lab.exe layout, no fallback except the seven `run_script` wrappers, PowerShell flags rewritten, tests isolate `CIMMERIA_LAB_HOME`, JSON from `Serialize` structs; LX-20 live check owed
@@ -127,14 +124,13 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 - [reference_npc_costume_components.md](reference_npc_costume_components.md) — NPC components must be BodyComponent exports (query-index scan); Ra kit + NPC_Ra_Head_00/RaG fingernail = placeholder cube; female Goa'uld armour is Anat's kit only
 - [reference_ihpet_crater_light_render_gaps.md](reference_ihpet_crater_light_render_gaps.md) — world 1300/73 map: terrain draws white, north palace terrace white/magenta with grey void east of it; put showcase NPCs on paving
-- [reference_lab_local_server.md](reference_lab_local_server.md) — local-server lab setup graduated to docs/guides/lab-contributor-setup.md (2026-10-11); kept: chat-focus, intro-dialog and teleport snap-back gotchas
+- [reference_lab_local_server.md](reference_lab_local_server.md) — local-server lab setup graduated to docs/guides/lab-contributor-setup.md (2026-10-11)
 - [reference_colo_docker_layout.md](reference_colo_docker_layout.md) — colo = two compose projects on signoz-net, mirrored in docker/ (2026-10-04); watchtower ignores compose edits; s6 cont-init can't gate the server; uid 1001; player telemetry via :8081; Wisp owns host 8080/2022, SigNoz UI on 8082 (2026-10-10)
 - [reference_agent_board.md](reference_agent_board.md) — board.cimmeria.app (2026-10-04): per-agent accounts and keys, broker for campaigns; colo /24 is Spamhaus-SBL-listed so mail goes via Graph; some Azure storage clusters unreachable from the colo
 - [reference_lab_client_controls.md](reference_lab_client_controls.md) — lab driving: Q/E rotate, B bag, Tab target; mouse-look broken (no DI button); .gotoxyz moves the selected target; inventory reader fallback
 
 - [reference_auto_cycle_client_telemetry_2026_10_03.md](reference_auto_cycle_client_telemetry_2026_10_03.md) — AutoAttack.lua icon vs T binding, Sep 29 target-0 clears; #1144 colo UAT passed 2026-10-03; auto-cycle no longer persisted (owner: always off on login, #1148)
 - [reference_castle_signoz_dossier_2026_10_02.md](reference_castle_signoz_dossier_2026_10_02.md) — full CellBlock→Castle→Harset dev run, partial colo Castle run, three gate crossings, dossier coverage limits; detailed report in docs/analysis/playtests/
-- [reference_mercury_selective_acks.md](reference_mercury_selective_acks.md) — client ACKs are per-packet incl. buffered-behind-gap; old cumulative drain wedged reliable streams (fixed 2026-09-27); `mercury.tx_hole` diagnoses a stuck client
 - [reference_mercury_selective_acks.md](reference_mercury_selective_acks.md) — client ACKs are per-packet, incl. buffered-behind-gap; cumulative drain wedged streams (fixed 2026-09-27); `mercury.tx_hole` finds a stuck client
 - [reference_map_arrival_points.md](reference_map_arrival_points.md) — cooked maps: PlayerStart only in Agnos/Beta Site/Tollana, no stargate/teleporter actors; bad gate rows (Agnos fixed, Menfa_Light 192 m under mesh)
 - [reference_client_ui_lua_overlay_testing.md](reference_client_ui_lua_overlay_testing.md) — client UI Lua is ASCII+CRLF, Debug:log logger, window-global naming, stock BlackMarket_ErrorText missing, Lua 5.1 UAT via lupa
