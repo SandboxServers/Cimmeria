@@ -100,13 +100,13 @@ This is the source contract for DW-21, not a live-client acceptance result. Its 
 
 ### .givexp
 
-- **Sources:** `registry/commands/progression.rs::SPECS`; `give.rs::give_xp`; `crates/base-methods/src/base/world_entry/methods/progression/mod.rs::handle_grant_xp`; `docs/gameplay/crafting-system.md`.
+- **Sources:** `registry/commands/progression.rs::SPECS`; `give.rs::give_xp`; `crates/base-methods/src/base/world_entry/methods/progression/{mod.rs,asp_earning.rs}::{handle_grant_xp,persist_grant}`; `docs/gameplay/crafting-system.md`.
 - **Arguments:** Positive signed `i32 amount`, forwarded as `u64` only after positive check.
 - **Target/scope:** Required selected player.
 - **Preconditions and authority:** Cell GM gate; Base resolves active character and persists before in-memory/client progression; no DB drops grant. No Base GM-level recheck on this message.
-- **Effects and impact:** Persistent XP, possibly level and training-point increases in one locked operation; may unlock ability-tree state and send XP/level updates. The amount is not equivalent to a final XP delta at cap.
-- **Verification:** Await definitive Base feedback, compare exact target `sgw_player` XP/level/training-point fields before/after with read-only SQL, then relog; `server_entity_get.level` is immediate corroboration only. Do not claim level from request amount.
-- **Compensation:** No safe inverse of level, spent points or unlocked actions; manual audited repair only.
+- **Effects and impact:** Persistent XP and possibly level, training-point **and Applied Science Point** increases in one row-locked SQL statement. `asp_earning::persist_grant` adds `APPLIED_SCIENCE_POINTS_PER_LEVEL` for each level gained relative to the locked DB row, saturating the ASP total at `i32::MAX`; no level gain earns no ASP. The handler may unlock ability-tree state and sends XP/level updates plus the ASP total when earned. The request amount is not necessarily the final XP delta at cap.
+- **Verification:** Await definitive Base feedback, then compare exact target `sgw_player.exp,level,training_points,applied_science_points` by `player_id` before/after and after relog. Correlate the `crafting` `asp_earned` row (`level_before,level_after,asp_before,asp_after`) when a level was gained; `server_entity_get.level` is immediate corroboration only. Do not infer level or ASP from request amount or feedback alone.
+- **Compensation:** No safe inverse of level, spent training/Applied Science Points, unlocked actions or subsequent crafting spends; manual audited repair of the captured full progression state only.
 - **Availability:** Disabled until multi-field before/after readback and explicit persistent-impact preview exist.
 
 ### .giveability
