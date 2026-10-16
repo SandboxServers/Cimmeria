@@ -6,7 +6,7 @@
 
 use super::{spec, Spec, Target};
 
-pub(super) const SPECS: &[Spec] = &[
+pub(in crate::cell::console::registry) const SPECS: &[Spec] = &[
     spec(
         "giveammo",
         2,

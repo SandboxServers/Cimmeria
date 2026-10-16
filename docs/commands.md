@@ -495,6 +495,20 @@ appears in anyone else's chat. A normal player who types a registered command
 it. Any other `.`-message is ordinary chat. Auth is checked against your account
 level server-side. Type `.help` (or `.help <word>`) in-game for the live list.
 
+The lab workbench catalog includes typed descriptors for the 27 progression,
+ability, stat, ammo and pet commands. The current catalog enables live reads
+such as `.effects` and the seven stat reports, plus `.cooldowns` and
+`.cleareffects` with their stated impact. Persistent grants including
+`.givexp`, `.giveability` and `.giveammo` are shown with exact DB readback
+recipes but remain disabled as palette actions until queued requests and
+post-commit updates are bound to the original GM and subject sessions.
+Commands that mix safe reads with unsafe mutations, including `.pet` and
+`.infiniteammo`, also remain disabled until the palette can gate each form.
+This does not change what a GM can type in the raw `.` console. See
+[`DW-21-E`](analysis/dev-workbench/evidence/DW-21-E.md) for the per-command
+evidence and the [lab guide](guides/live-research-lab.md#gm-workbench-command-catalog)
+for readback limits.
+
 ### Database persistence & the seed-commit flow
 
 Some `.`-commands change **persistent game data** (spawns, patrol paths). These
