@@ -51,7 +51,7 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 1 | DW-04 | Lua probe/object model | 01, 02B | 40k | Ready |
 | 1 | DW-05 | Spatial model/bookmarks | 01, 02B | 40k | Ready |
 | 2 | DW-06 | Mission X-ray model | 01, 02B | 40k | Ready |
-| 2 | DW-07 | Client click/target correlation | 01 | 35k | Writing |
+| 2 | DW-07 | Client click/target correlation | 01 | 35k | Review |
 | 2 | DW-08 | Trace capture anchor | 01, 02B | 40k | Ready |
 | 2 | DW-09 | Five-layer truth assembler | 03, 06, 08 | 40k | Ready |
 | 2 | DW-10 | Reproduction recorder enrichment | 07-08, LR-11 | 45k | BlockedDependency |

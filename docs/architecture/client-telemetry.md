@@ -278,6 +278,16 @@ The CEGUI message is read as an MSVC `std::wstring`, the type this client's CEGU
 
 Under the `lab-bridge` feature both events are also pushed to the bridge's local ring, as kinds `cme.event` and `cegui.log`, so `client_events_read` returns them without a SigNoz round trip.
 
+The lab supervisor also installs a bounded Lua CEGUI click ring. It is a lab-only reader, separate from the player DLL's upload stream and from the bridge's `cegui.log` event.
+
+| Local event | Reader | Fields | Limit |
+|---|---|---|---|
+| `ui.click` | Lua CEGUI global `Window/MouseClick` callback | `event_id = <Lua epoch>:<click sequence>`; existing top-level `window`, clicked-widget `button`, mouse-button `mouse`; target existence and name observed in the callback; workbench `host_ms` (supervisor ingestion time), `client_pid`, `widget_path`, `source`, `selected_entity_id: null`, `client_tick: null`, and `target_id_gap` | 512 in-client rows; no key or text input |
+
+Click `client_pid` is captured when the Lua ring is ingested and stored with that row; a PID change during the read leaves provenance unknown, so the workbench rejects that click instead of attributing it to a later session. Window and widget names remain exact through 1,024 bytes. Oversize or control-character names are rejected before the click ring and counted as `click_rejected_total` in the pump report; malformed or old-format click lines count in `click_rejected_lines`. A workbench slice also reports `rejected_identity_rows` for stored clicks with invalid identity or missing PID. These counts are evidence gaps, not replayable clicks.
+
+A target name is diagnostic only: the Lua unit slot has no verified entity-ID getter, so `target_id_gap` is `target_entity_id_unobservable_at_click`. Repeated clicks keep distinct IDs, a missing ring sequence is reported as a gap, and relog starts a new epoch. The recorder never reads a later target to fill an earlier click.
+
 ## Entity lifecycle, inbound and outbound messages, Lua errors and the CME catalog
 
 Added 2026-09-28 for the invisible-guard class of bug (#838): the client creates an NPC but does not render it, and the server cannot see why. Every anchor, argument count and layout is in [client-entity-lifecycle.md](../reverse-engineering/findings/client-entity-lifecycle.md); none of it has run in the live client yet. All of it is in the DLL every player gets (no `lab-bridge` needed), and each event is also pushed to the bridge's local ring under `lab-bridge` (kind = target without the `client.` prefix).

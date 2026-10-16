@@ -38,7 +38,7 @@
 //! button, ...`; `ChatMod.onTabButtonClicked`). Evidence and limits:
 //! `docs/analysis/lab-record/worknotes/LR-10.md`.
 //!
-//! Each record is `{ window, button, mouse }`: `button` is the clicked
+//! Each record keeps `{ window, button, mouse }`: `button` is the clicked
 //! window's name (`TutorialWin__auto_closebutton__`), `window` the
 //! top-level window holding it (the ancestor whose parent is `Root`, the
 //! same names `client_ui_state` lists), `mouse` `left`/`right`/`middle`.
@@ -70,6 +70,8 @@ use serde_json::{json, Value};
 pub const READ_MAX: u32 = 200;
 /// Records the in-client rings keep.
 pub const RING_CAP: u32 = 512;
+/// Callback-time name limit; larger click identities are rejected, never shortened.
+pub const CLICK_NAME_CAP: usize = 1024;
 
 /// Field separator inside one record line (a line is tab-separated; the
 /// stat list of a combat record uses record/unit separators).
@@ -218,10 +220,19 @@ local function pos_key(pos)
   local ok, k = pcall(function() return tostring(pos.x or pos.d_x) .. "," .. tostring(pos.y or pos.d_y) end)
   return ok and k or ""
 end
+local function target_at_click()
+  if type(Unit) ~= "table" or Unit.Target == nil or type(unitExists) ~= "function" then return "unknown", "" end
+  local ok, present = pcall(unitExists, Unit.Target)
+  if not ok then return "unknown", "" end
+  if not present then return "absent", "" end
+  local okn, target_name = pcall(unitName, Unit.Target)
+  return "present", okn and string.sub(clean(target_name), 1, 160) or ""
+end
 L.record_click = function(w, mouse, pos)
   local name = wname(w)
+  if name == nil then L.click_rejected = (L.click_rejected or 0) + 1 return end
   -- An unhandled click bubbling all the way up fires once more for Root; it is never a click of its own.
-  if name == nil or name == "Root" then return end
+  if name == "Root" then return end
   local chain, top, p, depth = {{ name }}, name, wparent(w), 0
   while p ~= nil and depth < 32 do
     local pn = wname(p)
@@ -238,7 +249,16 @@ L.record_click = function(w, mouse, pos)
     for i = 2, #last.chain do if last.chain[i] == name then return end end
   end
   L.click_last = {{ t = t, key = key, chain = chain }}
-  push(ring("click"), {{ t = t, window = clean(top), button = clean(name), mouse = mouse_name(mouse) }})
+  -- Remember even a rejected child's ancestors, so its bubbled parent cannot become a false click.
+  -- Exact widget identity is needed for replay. Never shorten a name into another widget's name.
+  if name == "" or top == "" or #name > {click_name_cap} or #top > {click_name_cap} or clean(name) ~= name or clean(top) ~= top then
+    L.click_rejected = (L.click_rejected or 0) + 1
+    return
+  end
+  local target_state, target_name = target_at_click()
+  local e = {{ t = t, window = clean(top), button = clean(name), mouse = mouse_name(mouse), target_state = target_state, target_name = target_name }}
+  push(ring("click"), e)
+  e.event_id = L.epoch .. ":" .. tostring(e.seq)
 end
 L.on_click = function(this, window, position, moveDelta, button)
   if L.click_busy then return end
@@ -305,12 +325,14 @@ local k, q = ring("click"), 0
 for _, e in ipairs(k.items) do
   if e.seq > {click_after} and q < {max} then
     q = q + 1
-    add("click", e.seq, clean(e.t), e.window, e.button, e.mouse)
+    add("click", e.seq, clean(e.t), e.window, e.button, e.mouse, e.event_id, e.target_state, e.target_name)
   end
 end
 add("head", "click", k.seq)
+add("rejected", "click", L.click_rejected or 0)
 return unpack(out)"#,
         cap = RING_CAP,
+        click_name_cap = CLICK_NAME_CAP,
         click_handler = CLICK_HANDLER,
     )
 }
@@ -328,12 +350,16 @@ pub struct RingRead {
     /// `(ring seq, fields)` per record.
     pub combat: Vec<(u64, Value)>,
     pub chat: Vec<(u64, Value)>,
-    /// Click records: `window`, `button`, `mouse` (LR-10).
+    /// Click records: LR-10 fields plus callback-time target observation and ID.
     pub click: Vec<(u64, Value)>,
     pub combat_head: u64,
     pub chat_head: u64,
     /// The click ring's latest seq, read or not.
     pub click_head: u64,
+    /// Oversize click identities rejected in this Lua epoch before entering the ring.
+    pub click_rejected_total: u64,
+    /// Malformed click lines rejected by the host parser in this read.
+    pub click_rejected_lines: u64,
     /// Lines that did not parse (kept for the error report, never fatal).
     pub bad_lines: Vec<String>,
 }
@@ -378,17 +404,24 @@ pub fn parse_ring_read(lines: &[String]) -> RingRead {
             ["head", "combat", n] => r.combat_head = n.parse().unwrap_or(0),
             ["head", "chat", n] => r.chat_head = n.parse().unwrap_or(0),
             ["head", "click", n] => r.click_head = n.parse().unwrap_or(0),
-            ["click", seq, t, window, button, mouse] => match seq.parse::<u64>() {
-                Ok(seq) => r.click.push((
+            ["rejected", "click", n] => r.click_rejected_total = n.parse().unwrap_or(0),
+            ["click", seq, t, window, button, mouse, event_id, target_state, target_name] => match seq.parse::<u64>() {
+                Ok(seq) if seq > 0 && !r.epoch.is_empty() && !window.is_empty() && !button.is_empty() && *event_id == format!("{}:{seq}", r.epoch) => r.click.push((
                     seq,
                     json!({
                         "window": window,
                         "button": button,
                         "mouse": mouse,
                         "ui_time": num(t),
+                        "event_id": event_id,
+                        "click_seq": seq,
+                        "click_epoch": r.epoch,
+                        "selected_entity_id": null,
+                        "selected_target_name": if *target_state == "present" && !target_name.is_empty() { Some(*target_name) } else { None },
+                        "target_present": match *target_state { "present" => Some(true), "absent" => Some(false), _ => None },
                     }),
                 )),
-                Err(_) => r.bad_lines.push(line.clone()),
+                _ => { r.bad_lines.push(line.clone()); r.click_rejected_lines += 1; },
             },
             ["combat", seq, t, ability, ability_name, hit, hit_name, source, sp, target, tp, mortal, stats] => {
                 match seq.parse::<u64>() {
@@ -427,237 +460,15 @@ pub fn parse_ring_read(lines: &[String]) -> RingRead {
                     Err(_) => r.bad_lines.push(line.clone()),
                 }
             }
-            _ => r.bad_lines.push(line.clone()),
+            _ => {
+                if f.first() == Some(&"click") { r.click_rejected_lines += 1; }
+                r.bad_lines.push(line.clone());
+            },
         }
     }
     r
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn s(v: &[&str]) -> Vec<String> {
-        v.iter().map(|x| x.to_string()).collect()
-    }
-
-    #[test]
-    fn chunk_wraps_both_handlers_and_reads_after_the_marks() {
-        let c = pump_chunk(12, 34, 56, 50);
-        assert!(c.contains("SCTMod.onUnitCombat = L.combat_wrapper"));
-        assert!(c.contains("ChatMod.onMessageReceived = L.chat_wrapper"));
-        // Re-subscribes by the stock name so a cached lookup is refreshed.
-        assert!(c.contains(r#"SCTWin:subscribe(Events.UnitCombat, "SCTMod.onUnitCombat")"#));
-        assert!(c.contains("e.seq > 12 and n < 50"));
-        assert!(c.contains("e.seq > 34 and m < 50"));
-        // The original is always called after recording.
-        assert!(c.contains("pcall(orig, window, abilityId, hitType, statList)"));
-        // Lua sees the separators as decimal escapes.
-        assert!(c.contains(r#""\31""#) && c.contains(r#""\30""#));
-    }
-
-    #[test]
-    fn chunk_subscribes_the_click_ring_globally_and_reads_after_its_mark() {
-        let c = pump_chunk(12, 34, 56, 50);
-        // CEGUI global event Window/MouseClick, through the stock binding,
-        // by the lab's handler name; bound constants preferred, literals
-        // as the fallback.
-        assert!(c.contains(r#"local ns, ev = "Window", "MouseClick""#));
-        assert!(c.contains("ns = CEGUI.Window.EventNamespace or ns"));
-        assert!(c.contains("ev = CEGUI.Window.EventMouseClick or ev"));
-        assert!(c.contains(r#"host:subscribeGlobal(ns, ev, "CimmeriaLab.on_click")"#));
-        assert!(c.contains("L.on_click = function(this, window, position, moveDelta, button)"));
-        // The record goes into its own capped ring.
-        assert!(c.contains(
-            r#"push(ring("click"), { t = t, window = clean(top), button = clean(name), mouse = mouse_name(mouse) })"#
-        ));
-        // The top-level window is the ancestor below Root.
-        assert!(c.contains(r#"if pn == nil or pn == "Root" then break end"#));
-        // Read after the click mark, bounded, with its head and status.
-        assert!(c.contains("e.seq > 56 and q < 50"));
-        assert!(c.contains(r#"add("head", "click", k.seq)"#));
-        assert!(c.contains(r#"add("install", "click", st_click)"#));
-        // The handler never returns a value: the click is never marked
-        // handled, so the stock UI still sees it.
-        let handler = &c[c.find("L.on_click = function").unwrap()..];
-        let handler = &handler[..handler.find("\nend").unwrap()];
-        assert!(!handler.contains("return true"), "{handler}");
-    }
-
-    /// The binding has no `unsubscribeGlobal`: a second subscribe would
-    /// stack a second handler. The chunk runs on every pump, so the
-    /// subscription must be gated on the per-Lua-state `L.click_host`, which
-    /// only a successful subscribe sets.
-    #[test]
-    fn the_click_install_is_idempotent() {
-        let c = pump_chunk(0, 0, 0, READ_MAX);
-        assert_eq!(c.matches("subscribeGlobal").count(), 1);
-        let gate = c
-            .find(r#"if L.click_host ~= nil then st_click = "ok host=" .. tostring(L.click_host_name) return end"#)
-            .expect("install gate");
-        let sub = c.find("host:subscribeGlobal").unwrap();
-        let set = c
-            .find("L.click_host = host")
-            .expect("host recorded only on success");
-        assert!(gate < sub && sub < set);
-        // BackgroundWin is tried first and Root is only the fallback: Root is
-        // not a child of a ScriptedWindow, so its subscribe raises.
-        let hosts = c
-            .find(r#"ipairs({ "BackgroundWin", "Root" })"#)
-            .expect("hosts in order, BackgroundWin first");
-        assert!(gate < hosts && hosts < sub);
-        assert!(
-            !c.contains(r#"pcall(getWindow, "Root")"#),
-            "the Root-only host choice is back"
-        );
-        // The handler is defined before the subscribe (it is bound by name).
-        assert!(c.find("L.on_click = function").unwrap() < sub);
-        // The install has its own pcall, opened before the gate, so a fault
-        // there cannot stop the combat and chat reads that follow.
-        let guard = c
-            .find("local okc, cerr = pcall(function()")
-            .expect("install pcall");
-        assert!(guard < gate && sub < c.find("add(\"head\", \"combat\"").unwrap());
-    }
-
-    /// A failed click install names every host it tried with the Lua error,
-    /// and the host that worked (#1660, probes C-P4 and C-P7). `failed` alone
-    /// gave the caller nothing to act on, and the Root-only choice failed
-    /// on every client.
-    #[test]
-    fn a_failed_click_install_reports_each_hosts_error_text() {
-        let c = pump_chunk(0, 0, 0, READ_MAX);
-        // Failure carries the error text of each host, clipped to 120 chars.
-        assert!(c.contains(r#"local oks, serr = pcall(function() host:subscribeGlobal(ns, ev, "CimmeriaLab.on_click") end)"#));
-        assert!(c.contains(r#"errs[#errs + 1] = hn .. "=" .. string.sub(clean(serr), 1, 120)"#));
-        assert!(c.contains(r#"st_click = "failed: " .. table.concat(errs, "; ")"#));
-        assert!(c.contains(
-            r#"if not okc then st_click = "failed: " .. string.sub(clean(cerr), 1, 120) end"#
-        ));
-        // Success names the host.
-        assert!(c.contains(r#"st_click = "installed host=" .. hn"#));
-        // The pump parses the new statuses as one field each.
-        let r = parse_ring_read(&s(&[
-            "install\tclick\tfailed: BackgroundWin=no window; Root=Window 'Root' is not a child of a ScriptedWindow",
-            "install\tchat\tok",
-        ]));
-        assert_eq!(
-            r.install[0],
-            (
-                "click".to_string(),
-                "failed: BackgroundWin=no window; Root=Window 'Root' is not a child of a ScriptedWindow".to_string()
-            )
-        );
-        assert!(r.bad_lines.is_empty());
-        let r = parse_ring_read(&s(&["install\tclick\tinstalled host=BackgroundWin"]));
-        assert_eq!(
-            r.install,
-            vec![(
-                "click".to_string(),
-                "installed host=BackgroundWin".to_string()
-            )]
-        );
-    }
-
-    /// A bubbled fire is skipped only on the last click's ancestors, never
-    /// on the clicked window itself, so two real clicks on one button both
-    /// record; a fire on Root is never a click.
-    #[test]
-    fn the_click_dedup_skips_ancestors_only() {
-        let c = pump_chunk(0, 0, 0, READ_MAX);
-        assert!(c.contains("if name == nil or name == \"Root\" then return end"));
-        assert!(c.contains("last.key == key and (t == 0 or last.t == t)"));
-        assert!(
-            c.contains("for i = 2, #last.chain do if last.chain[i] == name then return end end")
-        );
-        assert!(
-            !c.contains("ipairs(last.chain)"),
-            "the clicked window itself must not dedup"
-        );
-    }
-
-    #[test]
-    fn click_records_parse_with_window_and_button() {
-        let r = parse_ring_read(&s(&[
-            "install\tclick\tinstalled",
-            "click\t2\t812.25\tTutorialWin\tTutorialWin__auto_closebutton__\tleft",
-            "click\t3\t813\tChatWin\tChatWin_Tab2\t",
-            "click\tnope\t1\ta\tb\tleft",
-            "head\tclick\t3",
-        ]));
-        assert_eq!(
-            r.install,
-            vec![("click".to_string(), "installed".to_string())]
-        );
-        assert_eq!(r.click_head, 3);
-        assert_eq!(r.click.len(), 2);
-        let (seq, ev) = &r.click[0];
-        assert_eq!(*seq, 2);
-        assert_eq!(ev["window"], "TutorialWin");
-        assert_eq!(ev["button"], "TutorialWin__auto_closebutton__");
-        assert_eq!(ev["mouse"], "left");
-        assert_eq!(ev["ui_time"], 812.25);
-        assert_eq!(r.click[1].1["mouse"], "");
-        assert_eq!(r.bad_lines, vec!["click\tnope\t1\ta\tb\tleft".to_string()]);
-    }
-
-    #[test]
-    fn combat_records_parse_with_their_stat_list() {
-        let stats =
-            format!("1{US}Health{US}-57{US}0{US}Normal{US}2{RS}2{US}Focus{US}-5{US}0{US}{US}0");
-        let line = format!("combat\t3\t1234.5\t1100\tPistol Shot\t1\tHit\tLabone\t1\tCellblock Guard\t0\t0\t{stats}");
-        let r = parse_ring_read(&s(&[
-            "epoch\t0A1B2C3D-99.5",
-            "install\tcombat\tinstalled",
-            "install\tchat\tok",
-            &line,
-            "head\tcombat\t3",
-            "head\tchat\t0",
-        ]));
-        assert_eq!(r.epoch, "0A1B2C3D-99.5");
-        assert_eq!(
-            r.install,
-            vec![
-                ("combat".to_string(), "installed".to_string()),
-                ("chat".to_string(), "ok".to_string())
-            ]
-        );
-        assert_eq!(r.combat_head, 3);
-        let (seq, ev) = &r.combat[0];
-        assert_eq!(*seq, 3);
-        assert_eq!(ev["ability_id"], 1100);
-        assert_eq!(ev["hit_name"], "Hit");
-        assert_eq!(ev["source_is_player"], true);
-        assert_eq!(ev["target"], "Cellblock Guard");
-        assert_eq!(ev["mortal"], false);
-        assert_eq!(ev["stats"][0]["stat"], "Health");
-        assert_eq!(ev["stats"][0]["value"], -57);
-        assert_eq!(ev["stats"][1]["result_name"], "");
-        assert!(r.bad_lines.is_empty());
-    }
-
-    #[test]
-    fn chat_records_keep_text_with_spaces() {
-        let r = parse_ring_read(&s(&[
-            "chat\t7\t88\t9\tFeedback\t\t0\tYou must have a target",
-            "head\tchat\t7",
-        ]));
-        let (seq, ev) = &r.chat[0];
-        assert_eq!(*seq, 7);
-        assert_eq!(ev["channel"], 9);
-        assert_eq!(ev["text"], "You must have a target");
-        assert_eq!(r.chat_head, 7);
-    }
-
-    #[test]
-    fn malformed_lines_are_kept_not_fatal() {
-        let r = parse_ring_read(&s(&["combat\tnotanumber", "wat"]));
-        assert_eq!(r.bad_lines.len(), 2);
-        assert!(r.combat.is_empty());
-    }
-
-    #[test]
-    fn empty_stat_list_is_empty() {
-        assert!(parse_stats("").is_empty());
-    }
-}
+#[path = "lua_rings_tests.rs"]
+mod tests;
