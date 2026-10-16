@@ -33,7 +33,7 @@ The SGWGmPlayer tail at cell indices 109–225 is server gated by `crates/cell/s
 - **Target/scope:** The authenticated caller's auto-cycle mode and selected target; no other player's mode.
 - **Preconditions and authority:** Ordinary player method 83, not the GM tail. The event-to-method path is source-proven for the stock word, but registration/submission of the prefixed patch word remains unproved. Server decides target/ability validity.
 - **Effects and impact:** If routed to 83, transient `auto_cycle`, ability stash and `BSF_AUTO_CYCLING` change; enable may immediately fire a weapon/last ability. Login test starts with mode off, so do not label it persistent.
-- **Verification:** For a proven invocation, compare caller's cell `auto_cycle`, `auto_cycle_ability_id`, `state_field` bit and emitted state/ability packets; client button light or text submission alone is insufficient.
+- **Verification:** For a proven invocation, compare `server_entity_get.state_field` and emitted state/ability packets. `auto_cycle` and `auto_cycle_ability_id` are internal cell fields absent from `server_entity_get` and `server_ability_state`; direct readback of those fields is unavailable. Client button light or text submission alone is insufficient.
 - **Compensation:** Proven ordinary method 83 with `enabled=0` can turn a running loop off; it cannot reverse a shot already fired. No slash inverse is proven.
 - **Availability:** Disabled: native submission and prefixed parser registration remain unproved, despite the event-to-method trace and working method 83.
 
@@ -149,12 +149,12 @@ The SGWGmPlayer tail at cell indices 109–225 is server gated by `crates/cell/s
 
 ## /gmchangeammo
 
-- **Sources:** TOML `Event_SlashCmd_ChangeAmmo`; `crates/cell-methods/src/cell/cell_methods/inventory/dispatch.rs` routes a separate inventory `requestAmmoChange`, and `crates/cell-combat/src/cell/cell_methods/inventory/bandolier/ammo_change.rs` validates weapon compatibility; no `gmChangeAmmo` GM-tail method.
+- **Sources:** TOML `Event_SlashCmd_ChangeAmmo`; `crates/cell-methods/src/cell/cell_methods/inventory/dispatch.rs` routes a separate inventory `requestAmmoChange`, and `crates/cell-combat/src/cell/cell_methods/inventory/bandolier/ammo_change.rs` validates weapon compatibility and queues `BandolierAmmoUpdate`; `crates/base-methods/src/base/world_entry/methods/inventory/ammo.rs::update_bandolier_ammo` writes the exact inventory row; no `gmChangeAmmo` GM-tail method.
 - **Arguments:** Required `Integer ammoType`; `docs/commands.md`'s two-argument example does not match the patch.
 - **Target/scope:** No weapon instance is supplied by this slash schema. The ordinary inventory handler selects by a separately supplied item instance.
 - **Preconditions and authority:** No proven binding to inventory request; do not fill missing weapon from current selection without evidence.
-- **Effects and impact:** Unknown for slash. The separate inventory method changes a live bandolier slot and can alter later damage; it does not grant ammunition.
-- **Verification:** No readback for this event. For the ordinary handler only, compare slot `cur_ammo_type` and owner ammo property after server acceptance.
+- **Effects and impact:** Unknown for slash. On an accepted ordinary inventory request, the method changes the live bandolier slot and queues `BandolierAmmoUpdate`; if the Base write succeeds for the same weapon instance, it persists `sgw_inventory.cur_ammo_type` across relog. It can alter later damage but does not grant ammunition. Queue acceptance alone does not prove persistence.
+- **Verification:** No readback for this slash event. For the ordinary handler only, compare the live slot `cur_ammo_type` and active-weapon owner ammo property after acceptance; then read the captured weapon instance's exact `sgw_inventory.cur_ammo_type` row after successful Base writeback. A zero-row/stale write or failed send leaves durability unproved.
 - **Compensation:** None for this slash word; previous ammo type could be requested separately only if still compatible.
 - **Availability:** Disabled: no corresponding GM method and missing weapon binding.
 
@@ -237,14 +237,14 @@ The SGWGmPlayer tail at cell indices 109–225 is server gated by `crates/cell/s
 
 ## /gmconfirmeffect
 
-- **Sources:** TOML `Event_SlashCmd_ConfirmEffect`; ordinary `SGWAbilityManager.confirmationResponse` cell index 4 takes `INT32 aEffectId, UINT8 aAccepted` in protocol table; `crates/cell-methods/src/cell/cell_methods/ability_manager.rs::dispatch` currently **logs only**; `docs/protocol/message-catalog.md` names `Event_NetOut_ConfirmEffect` separately.
-- **Arguments:** Required `Integer EffectId`, `Boolean Response`; type/order resemble method 4 but slash-event-to-NetOut binding is unproved.
+- **Sources:** TOML `Event_SlashCmd_ConfirmEffect`; `docs/reverse-engineering/findings/ability-resolution-pipeline.md` proves the stock `SGWTextCommandMgr_HandleConfirmEffect` event-to-`Event_NetOut_ConfirmEffect` path; `docs/protocol/cell-method-dispatch-table.md` maps that NetOut to ordinary `SGWAbilityManager.confirmationResponse` cell index 4 with `INT32 aEffectId, UINT8 aAccepted`; `crates/cell-methods/src/cell/cell_methods/ability_manager.rs::dispatch` currently **logs only**.
+- **Arguments:** Required `Integer EffectId`, `Boolean Response`; the proven stock handler emits `aEffectId=EffectId` and `aAccepted=(Response == 1)`. Registration and submission of the prefixed patch word remain unproved.
 - **Target/scope:** Caller and one pending effect confirmation; whether `EffectId` is definition or instance ID is explicitly unproved in handler comment.
 - **Preconditions and authority:** Ordinary method 4, no GM-tail gate. No server effect application or pending-confirmation check in current handler.
 - **Effects and impact:** Current Cimmeria logs the response and returns; it does not commit/deny the effect. Any original-client behavior beyond that is unknown.
 - **Verification:** Correlate `confirmationResponse` log of exact caller/effect/accepted byte with unchanged effect state; a log receipt is not accepted effect state.
 - **Compensation:** None; no implemented mutation to reverse.
-- **Availability:** Disabled: event binding unknown and server handler is receipt-only.
+- **Availability:** Disabled: prefixed patch-word registration/submission remain unproved and the server handler is receipt-only, despite the proven stock event-to-NetOut-to-method path.
 
 ## /gmshowtriggers
 
