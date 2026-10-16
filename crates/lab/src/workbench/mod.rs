@@ -29,6 +29,8 @@ mod slash_descriptors_1a_tests;
 #[cfg(test)]
 mod slash_descriptors_1b_tests;
 #[cfg(test)]
+mod slash_descriptors_2a_review_tests;
+#[cfg(test)]
 mod slash_descriptors_2a_tests;
 #[cfg(test)]
 mod slash_inventory_tests;

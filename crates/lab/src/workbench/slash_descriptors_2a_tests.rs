@@ -319,7 +319,7 @@ fn explicit_target_forms_require_fresh_resolved_id_and_correct_kind_if_ever_enab
         (
             "/gmmobdata",
             BTreeMap::from([("SpaceId".into(), json!(1)), ("TargetId".into(), json!(30))]),
-            TargetKind::Being,
+            TargetKind::AnyEntity,
         ),
         (
             "/gmkilltarget",
@@ -356,11 +356,14 @@ fn explicit_target_forms_require_fresh_resolved_id_and_correct_kind_if_ever_enab
         );
         actor.argument_target_entity_id = Some(30);
         actor.argument_target_kind = Some(TargetKind::Spawnable);
-        assert_eq!(
-            validate_command(&action, &descriptor, &actor).unwrap_err(),
-            Refusal::WrongTargetKind,
-            "{word}"
-        );
+        if word == "/gmmobdata" {
+            assert!(validate_command(&action, &descriptor, &actor).is_ok());
+        } else {
+            assert_eq!(
+                validate_command(&action, &descriptor, &actor).unwrap_err(),
+                Refusal::WrongTargetKind
+            );
+        }
         actor.argument_target_kind = Some(TargetKind::Mob);
         assert!(
             validate_command(&action, &descriptor, &actor).is_ok(),

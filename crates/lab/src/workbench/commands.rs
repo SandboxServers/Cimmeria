@@ -67,6 +67,8 @@ pub struct ArgDescriptor {
 #[serde(rename_all = "snake_case")]
 pub enum TargetKind {
     None,
+    /// Any live entity kind, including props; the caller's space is rechecked by the handler.
+    AnyEntity,
     Player,
     Mob,
     MobOrId,
@@ -352,6 +354,10 @@ pub fn validate_command(
 fn target_matches(required: TargetKind, actual: TargetKind) -> bool {
     match required {
         TargetKind::None | TargetKind::Spawnable => true,
+        TargetKind::AnyEntity => matches!(
+            actual,
+            TargetKind::Player | TargetKind::Mob | TargetKind::Being | TargetKind::Spawnable
+        ),
         TargetKind::Being => matches!(
             actual,
             TargetKind::Player | TargetKind::Mob | TargetKind::Being
