@@ -28,7 +28,7 @@ When sending a `CellToBaseMsg::EntityMethodCall` or building a base→client pac
 
 ## Builds
 
-Builds run natively on Windows on the toolchain `rust-toolchain.toml` pins; the build rules are in `CLAUDE.md` ("Build rules"), and the reasons in `docs/architecture/build-system.md`.
+Builds run natively on Windows on the toolchain `rust-toolchain.toml` pins; the build rules are in the `lane-build` skill (`.claude/skills/lane-build/SKILL.md`), and the reasons in `docs/architecture/build-system.md`.
 
 1. Iterate with `cargo check -p <crate>` on the crate you changed. `cimmeria-services` is a small facade over the split crates, so `-p cimmeria-services` doesn't cover them.
 2. Agent and worker `cargo` calls go through the build lane, `tools/build-lane/lane.sh`, which limits how many builds run on the machine at once.

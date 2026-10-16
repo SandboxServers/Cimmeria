@@ -268,7 +268,7 @@ cargo check --workspace --exclude cimmeria-app --exclude cimmeria-content-editor
   --exclude cimmeria-scene-editor --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab
 ```
 
-See the root [CLAUDE.md](../CLAUDE.md) for the build rules and the build lane that agents and workers run cargo through.
+See the root [CLAUDE.md](../CLAUDE.md) and the [`lane-build` skill](../.claude/skills/lane-build/SKILL.md) for the build rules and the build lane that agents and workers run cargo through.
 
 ## Testing
 

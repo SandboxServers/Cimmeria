@@ -319,7 +319,7 @@ How the Rust workspace is built on developer and agent machines. Why each piece 
 
 ## Lint & Check Scripts
 
-Load-bearing scripts run as part of the pre-PR checklist (see [`CLAUDE.md`](../CLAUDE.md)). Each ships in both a POSIX (`.sh`) and PowerShell (`.ps1`) flavor:
+Load-bearing scripts run as part of the pre-PR checklist (see [`docs/agents/pre-pr-checks.md`](../docs/agents/pre-pr-checks.md)). Each ships in both a POSIX (`.sh`) and PowerShell (`.ps1`) flavor:
 
 | Script | Purpose |
 |---|---|

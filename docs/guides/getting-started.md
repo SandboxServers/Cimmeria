@@ -45,7 +45,7 @@ You'll need:
 
 Disk space: plan on **15 GB or more** for build output. A cold debug build of the workspace plus two rebuilds left a 14.2 GB target directory when the maintainers measured it in September 2026. PostgreSQL and the dependency cache come on top.
 
-> **Building often, or running AI agents in parallel?** Read "Build rules" in [`CLAUDE.md`](../../CLAUDE.md) before you do: agents build through a shared build lane, and an optional Windows Dev Drive makes builds faster. The details are in [`../agents/development-workflow.md`](../agents/development-workflow.md#builds-worktrees-and-test-databases).
+> **Building often, or running AI agents in parallel?** Read the [`lane-build` skill](../../.claude/skills/lane-build/SKILL.md) before you do: agents build through a shared build lane, and an optional Windows Dev Drive makes builds faster. The details are in [`../agents/development-workflow.md`](../agents/development-workflow.md#builds-worktrees-and-test-databases).
 
 ---
 
@@ -193,7 +193,7 @@ $env:DATABASE_URL = "postgres://w-testing:w-testing@localhost:5433/sgw"
 tools/test-live-db.ps1
 ```
 
-The full pre-PR checklist (formatting, clippy, build, tests, doctests, lint scripts) is in [`CLAUDE.md`](../../CLAUDE.md) → "Pre-PR checklist." CI runs it exactly — if you skip it locally, the PR will round-trip.
+The full pre-PR checklist (formatting, clippy, build, tests, doctests, lint scripts) is in [`docs/agents/pre-pr-checks.md`](../agents/pre-pr-checks.md). CI runs it exactly — if you skip it locally, the PR will round-trip.
 
 ---
 

@@ -1297,6 +1297,6 @@ Guards: `startup_report.rs` tests `cache_failed_logs_structured_warn`, `startup_
 ## Related
 
 - [TESTING.md](../../TESTING.md) — Test-type picker; regression-guard rules.
-- [CLAUDE.md](../../CLAUDE.md) — Doc-update map; pre-PR checklist.
+- [doc-update-map.md](../agents/doc-update-map.md) and [pre-pr-checks.md](../agents/pre-pr-checks.md) — Doc-update map; pre-PR checklist.
 - [crates/services/src/test_support.rs](../../crates/services/src/test_support.rs)
   — `LogCapture` helper used by guards.

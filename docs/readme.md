@@ -13,7 +13,7 @@ If you've just cloned the repo, walk through these in order:
 1. **[../README.md](../README.md)** — project overview and current status.
 2. **[guides/getting-started.md](guides/getting-started.md)** — first-time setup tutorial: prerequisites, `setup.ps1`, verifying the server is up, connecting the client.
 3. **[building.md](building.md)** — how to build and run the Rust server, including the CI checks.
-4. **[../CLAUDE.md](../CLAUDE.md)** — repo invariants, build rules (Windows-native, pinned toolchain, the build lane), pre-PR checklist.
+4. **[../CLAUDE.md](../CLAUDE.md)** — the short core every agent session loads: repo invariants, the top project rules, the build lane, and links to the pre-PR checklist ([agents/pre-pr-checks.md](agents/pre-pr-checks.md)).
 5. **[../TESTING.md](../TESTING.md)** — test types, picker for which to use when, gotchas mined from PR reviews.
 6. **[connection-flow.md](connection-flow.md)** — end-to-end login + world entry. Once you've followed it through, the architecture starts to make sense.
 7. **[how-sgw-works.md](how-sgw-works.md)** — BigWorld, CME, and how the pieces fit together.

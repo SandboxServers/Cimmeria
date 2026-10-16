@@ -35,9 +35,29 @@ pwsh tools/build-lane/lane.ps1 --exclusive cargo clippy --workspace <EXCL> --all
   (`-p cimmeria-cell`, `-p cimmeria-cell-content`, `-p cimmeria-base-methods`, ...). Build
   the workspace only for final validation.
 - The full pre-PR list (fmt, hakari, clippy, build, nextest, doctests, live-DB, lints) is
-  in [CLAUDE.md](../../../CLAUDE.md#pre-pr-checklist) and
-  [docs/agents/pre-pr-checks.md](../../../docs/agents/pre-pr-checks.md).
+  in [docs/agents/pre-pr-checks.md](../../../docs/agents/pre-pr-checks.md).
 - `cargo fmt` does not compile, so it can run outside the lane.
+
+## How the lane works
+
+- **One `cargo` per slot.** The slot count lives in `%LOCALAPPDATA%\cimmeria-build\lane\SLOTS`
+  (currently 4); `--exclusive` takes every slot, and `CARGO_BUILD_JOBS` defaults to cores ÷ slots.
+- **It sets up the environment:** a target dir per worktree (on the Dev Drive when one is set
+  up), incremental builds for workspace crates, and sccache for third-party crates, shared by
+  every worktree. A direct `cargo` call skips all of that and the slot count, which is why a
+  `PreToolUse` hook refuses it.
+- **It guards the disk.** After each job it deletes the worktree's stale incremental sessions
+  (`LANE_PRUNE=0` turns that off), and it refuses to start below `LANE_MIN_FREE_GB` (see the
+  failure table).
+- **Every script in `tools/build-lane/` has a `.ps1` twin** with the same options and output
+  (`mk-worktree`, `rm-worktree`, `reload-db`, `live-db-test`, `ship`, `rebase-pr`).
+- **The toolchain is pinned** in `rust-toolchain.toml` (rustfmt and clippy included), and CI
+  installs the same version, so your clippy is CI's. Bump it in its own PR and fix the new
+  lints there.
+- **Builds are Windows-native.** The WSL cross-compile is retired; CI builds on Linux runners.
+  The standalone desktop launcher in `crates/launcher/desktop/` is the one exception: it builds
+  natively on macOS and Windows, still through the lane
+  ([build-system.md](../../../docs/architecture/build-system.md#standalone-desktop-launcher-validation)).
 
 ## Read the result; don't rerun
 
@@ -72,7 +92,8 @@ pwsh tools/build-lane/lane.ps1 cargo build -p cimmeria-server --profile dev-debu
 On a Dev Drive, output goes to `$env:CIMMERIA_TARGET_ROOT\<worktree>\release\`, not
 `target\release\`. The lane prints the target dir when it starts. Copy the exe to the repo
 root when you need to run it. `dev-debug` builds into its own dir, so it never invalidates
-the normal dev build.
+the normal dev build. The dev profile keeps line tables only, so backtraces keep file:line
+but a debugger sees no variables; use `dev-debug` for a debugger session.
 
 ## Failures that aren't your code
 
