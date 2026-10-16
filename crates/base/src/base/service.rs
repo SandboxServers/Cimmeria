@@ -258,11 +258,11 @@ impl BaseService {
         // the registry (DEVELOPER_MODE), so a lab-chaos build without it runs
         // on the bare transport.
         #[cfg(feature = "lab-chaos")]
-        let bidi_transport = super::lab_chaos_transport::wrap_if_installed(bidi_transport);
+        let (bidi_transport, lab_chaos_active) =
+            super::lab_chaos_transport::wrap_if_installed(bidi_transport);
 
         #[cfg(feature = "lab-chaos")]
-        let chaos_unsafe =
-            chaos_override_active || cimmeria_base_session::base::lab_chaos::current().is_some();
+        let chaos_unsafe = chaos_override_active || lab_chaos_active;
         #[cfg(not(feature = "lab-chaos"))]
         let chaos_unsafe = chaos_override_active;
 
