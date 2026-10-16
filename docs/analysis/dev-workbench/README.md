@@ -135,7 +135,7 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 6 | DW-26B-E | Slash evidence 82-108 | 24A | 40k | Review |
 | 6 | DW-26B | Slash descriptors 82-108 | 26B-E | 40k | Review (local implementation; `worknotes/DW-26B.md`) |
 | 6 | DW-27A-E | Slash evidence 109-135 | 24A | 40k | Ready |
-| 6 | DW-27A | Slash descriptors 109-135 | 27A-E | 40k | Ready |
+| 6 | DW-27A | Slash descriptors 109-135 | 27A-E | 40k | Implemented locally; PR pending |
 | 6 | DW-27B-E | Slash evidence 136-162 | 24A | 40k | Ready |
 | 6 | DW-27B | Slash descriptors 136-162 and merge | 25A-27A, 27B-E | 45k | Ready |
 | 6 | DW-27C | Verified stock GM slash addendum | 24A, 24B, 27B | 30k | BlockedDependency |
