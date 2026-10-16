@@ -147,14 +147,13 @@ fn successful_end_scene_selects_a_real_replacement_after_the_current_frame() {
     state.created(0xb, true);
     state.presented(0xb, -1);
     assert!(state.enter(0xb).is_none());
+    state.presented_at(0xa, 0, 100);
     let frame = state.enter(0xa).expect("primary frame");
-    state.presented(0xb, 0);
+    state.presented_at(0xb, 0, 2_100);
     assert!(state.enter(0xb).is_none());
     drop(frame);
 
-    for _ in 0..3 {
-        state.presented(0xb, 0);
-    }
+    state.presented_at(0xb, 0, 2_100);
     assert!(state.enter(0xa).is_none());
     let frame = state.enter(0xb).expect("successful replacement frame");
     let mut replacement = fake();
@@ -165,21 +164,36 @@ fn successful_end_scene_selects_a_real_replacement_after_the_current_frame() {
 }
 
 #[test]
-fn alternating_presenters_keep_the_healthy_owner_then_transfer_after_absence() {
+fn multiple_foreign_end_scenes_between_owner_frames_do_not_steal_the_panel() {
     let state = Lifecycle::new();
     state.created(0xa, true);
     state.created(0xb, true);
-    for _ in 0..64 {
+    for frame_index in 0..64 {
         let frame = state.enter(0xa).expect("healthy A keeps drawing");
         drop(frame);
-        state.presented(0xa, 0);
-        state.presented(0xb, 0);
-        assert!(state.enter(0xb).is_none());
+        let now_ms = 100 + frame_index * 10;
+        state.presented_at(0xa, 0, now_ms);
+        for _ in 0..3 {
+            state.presented_at(0xb, 0, now_ms + 1);
+            assert!(state.enter(0xb).is_none());
+        }
         assert!(state.enter(0xa).is_some());
     }
-    state.presented(0xb, 0);
+    state.presented_at(0xb, 0, 2_729);
     assert!(state.enter(0xa).is_some());
-    state.presented(0xb, 0);
+    state.presented_at(0xb, 0, 2_730);
+    assert!(state.enter(0xa).is_none());
+    assert!(state.enter(0xb).is_some());
+}
+
+#[test]
+fn a_silent_owner_is_replaced_by_a_single_late_successful_presentation() {
+    let state = Lifecycle::new();
+    state.created(0xa, true);
+    state.presented_at(0xa, 0, 10);
+    state.presented_at(0xb, 0, 2_009);
+    assert!(state.enter(0xb).is_none());
+    state.presented_at(0xb, 0, 2_010);
     assert!(state.enter(0xa).is_none());
     assert!(state.enter(0xb).is_some());
 }

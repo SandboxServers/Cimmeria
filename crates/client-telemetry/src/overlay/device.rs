@@ -1,9 +1,16 @@
 //! Device ownership, loss/recursion guards and bounded fault diagnostics.
 
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU8, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering};
+use std::sync::OnceLock;
+use std::time::Instant;
 
 const MAX_FAULTS: u8 = 3;
-const OWNER_ABSENCE_PRESENTATIONS: u8 = 3;
+const OWNER_INACTIVITY_MS: u64 = 2_000;
+
+fn monotonic_ms() -> u64 {
+    static EPOCH: OnceLock<Instant> = OnceLock::new();
+    u64::try_from(EPOCH.get_or_init(Instant::now).elapsed().as_millis()).unwrap_or(u64::MAX)
+}
 
 /// One bounded reason code; emitted later from a non-render D3D callback.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -30,7 +37,8 @@ pub(super) struct Lifecycle {
     device: AtomicUsize,
     ready: AtomicBool,
     in_frame: AtomicBool,
-    foreign_presentations: AtomicU8,
+    // Zero means the first owner has not published its starting timestamp.
+    last_owner_presentation_ms: AtomicU64,
     faults: AtomicU8,
     disabled: AtomicBool,
     seen_reasons: AtomicU32,
@@ -46,7 +54,7 @@ impl Lifecycle {
             device: AtomicUsize::new(0),
             ready: AtomicBool::new(false),
             in_frame: AtomicBool::new(false),
-            foreign_presentations: AtomicU8::new(0),
+            last_owner_presentation_ms: AtomicU64::new(0),
             faults: AtomicU8::new(0),
             disabled: AtomicBool::new(false),
             seen_reasons: AtomicU32::new(0),
@@ -58,28 +66,42 @@ impl Lifecycle {
 
     /// Accept a first owner or refresh the current owner's successful probe.
     pub(super) fn created(&self, ptr: usize, vtable_accepted: bool) {
+        self.created_at(ptr, vtable_accepted, monotonic_ms());
+    }
+
+    fn created_at(&self, ptr: usize, vtable_accepted: bool, now_ms: u64) {
         // CreateDevice, Reset and TestCooperativeLevel also fire on auxiliary
         // devices using the patched vtable. Only the first accepted device
         // may claim an empty slot; later probes cannot displace its panel.
         if ptr != 0 && vtable_accepted && !self.disabled.load(Ordering::Acquire) {
-            let owner = self
+            match self
                 .device
                 .compare_exchange(0, ptr, Ordering::AcqRel, Ordering::Acquire)
-                .unwrap_or_else(|owner| owner);
-            if owner == 0 || owner == ptr {
-                self.ready.store(true, Ordering::Release);
+            {
+                Ok(_) => {
+                    self.last_owner_presentation_ms
+                        .store(now_ms.saturating_add(1), Ordering::Release);
+                    self.ready.store(true, Ordering::Release);
+                }
+                Err(owner) if owner == ptr => self.ready.store(true, Ordering::Release),
+                Err(_) => {}
             }
         }
     }
 
-    /// Keep a presenting owner until it is lost or absent for several EndScenes.
+    /// Keep a presenting owner until it is lost or inactive for two seconds.
     pub(super) fn presented(&self, ptr: usize, hr: i32) {
-        self.presented_after_lock(ptr, hr, || {});
+        self.presented_at(ptr, hr, monotonic_ms());
+    }
+
+    /// Observe a presentation at a supplied monotonic time for lifecycle tests.
+    pub(super) fn presented_at(&self, ptr: usize, hr: i32, now_ms: u64) {
+        self.presented_after_lock(ptr, hr, now_ms, || {});
     }
 
     // The callback gives the concurrency regression a precise point inside
     // the ownership guard; the production caller inlines an empty callback.
-    fn presented_after_lock(&self, ptr: usize, hr: i32, after_lock: impl FnOnce()) {
+    fn presented_after_lock(&self, ptr: usize, hr: i32, now_ms: u64, after_lock: impl FnOnce()) {
         if ptr == 0 || hr < 0 || self.disabled.load(Ordering::Acquire) {
             return;
         }
@@ -99,22 +121,24 @@ impl Lifecycle {
         }
         let owner = self.device.load(Ordering::Acquire);
         if owner == ptr {
-            self.foreign_presentations.store(0, Ordering::Release);
+            self.last_owner_presentation_ms
+                .store(now_ms.saturating_add(1), Ordering::Release);
             return;
         }
-        // A successful auxiliary frame alone does not mean the selected
-        // device retired. Count its absence only from real EndScene results.
-        let absent = self.foreign_presentations.load(Ordering::Acquire);
-        if self.ready.load(Ordering::Acquire)
-            && absent.saturating_add(1) < OWNER_ABSENCE_PRESENTATIONS
-        {
-            self.foreign_presentations
-                .store(absent.saturating_add(1), Ordering::Release);
+        // Multiple auxiliary EndScenes can happen between two healthy owner
+        // frames. Their call count says nothing about owner inactivity.
+        let last_owner_ms = self.last_owner_presentation_ms.load(Ordering::Acquire);
+        let ready = self.ready.load(Ordering::Acquire);
+        if ready && last_owner_ms == 0 {
+            return;
+        }
+        if ready && now_ms.saturating_sub(last_owner_ms - 1) < OWNER_INACTIVITY_MS {
             return;
         }
         self.ready.store(false, Ordering::Release);
         self.device.store(ptr, Ordering::Release);
-        self.foreign_presentations.store(0, Ordering::Release);
+        self.last_owner_presentation_ms
+            .store(now_ms.saturating_add(1), Ordering::Release);
         self.ready.store(true, Ordering::Release);
     }
 
@@ -266,10 +290,25 @@ mod tests {
             assert!(state.enter(0xa).is_some());
             assert!(state.enter(foreign).is_none());
         }
-        for _ in 0..OWNER_ABSENCE_PRESENTATIONS {
-            state.presented(0xc, 0);
-        }
+        state.presented_at(0xa, 0, 100);
+        state.presented_at(0xc, 0, 2_099);
+        assert!(state.enter(0xc).is_none());
+        state.presented_at(0xc, 0, 2_100);
         assert!(state.enter(0xc).is_some());
+    }
+
+    #[test]
+    fn foreign_cannot_take_owner_before_initial_timestamp_is_published() {
+        let state = Lifecycle::new();
+        // A concurrent same-device probe can mark ready between the first
+        // owner's pointer claim and its timestamp publication.
+        state.device.store(0xa, Ordering::Release);
+        state.ready.store(true, Ordering::Release);
+        state.presented_at(0xb, 0, OWNER_INACTIVITY_MS + 1);
+        assert_eq!(state.device.load(Ordering::Acquire), 0xa);
+        state.last_owner_presentation_ms.store(2, Ordering::Release);
+        state.presented_at(0xb, 0, OWNER_INACTIVITY_MS + 1);
+        assert_eq!(state.device.load(Ordering::Acquire), 0xb);
     }
 
     #[test]
@@ -277,17 +316,14 @@ mod tests {
         use std::sync::{Arc, Barrier};
 
         let state = Arc::new(Lifecycle::new());
-        state.created(0xa, true);
-        state.created(0xb, true);
-        for _ in 1..OWNER_ABSENCE_PRESENTATIONS {
-            state.presented(0xb, 0);
-        }
+        state.created_at(0xa, true, 0);
+        state.created_at(0xb, true, 0);
         let entered = Arc::new(Barrier::new(2));
         let release = Arc::new(Barrier::new(2));
         let a_entered_during_handoff = std::thread::scope(|scope| {
             let (state, entered, release) = (&state, &entered, &release);
             scope.spawn(move || {
-                state.presented_after_lock(0xb, 0, || {
+                state.presented_after_lock(0xb, 0, OWNER_INACTIVITY_MS, || {
                     entered.wait();
                     release.wait();
                 });
