@@ -1,6 +1,6 @@
 # Developer workbench resume
 
-> Type: campaign handoff. Audience: next coordinator. Last updated: 2026-10-16. Companions: [ledger](README.md), [work packets](work-packets.md). The plan merged in PR #1738; DW-01, DW-02A, DW-02B, DW-19, DW-03, DW-07, DW-20A-E, DW-04 and DW-03S-E merged in PRs #1740, #1741, #1743, #1744, #1745, #1746, #1747, #1749 and #1750. No lab lease taken.
+> Type: campaign handoff. Audience: next coordinator. Last updated: 2026-10-16. Companions: [ledger](README.md), [work packets](work-packets.md). The plan merged in PR #1738; DW-01, DW-02A, DW-02B, DW-19, DW-03, DW-07, DW-20A-E, DW-04, DW-03S-E and DW-20A merged in PRs #1740, #1741, #1743, #1744, #1745, #1746, #1747, #1749, #1750 and #1751. No lab lease taken.
 
 1. Check peer work: `git worktree list`, recent `dev-workbench/*` branches/logs and agent board before dispatch. The root checkout is shared.
 2. Reconcile `docs/analysis/lab-record/README.md` first: LR-10 click ring is integrated; LR-11 click transform and LR-14/15 rolling/`.bug spec` are pending. DW-10/11 must stack on or absorb them, never duplicate their recorder/tap ownership.
