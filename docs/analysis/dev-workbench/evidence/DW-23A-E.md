@@ -11,7 +11,7 @@ The query family contains **no counter increment or resource reload** in its cur
 - **Target/scope:** No selected target; item designs in `resources.items` on the base's live DB.
 - **Preconditions and authority:** Cell GM gate and argument count; base requires a live DB pool. The base search handler does not independently recheck GM/session generation when it receives the cell message.
 - **Effects and impact:** Read-only parameter-bound, case-insensitive literal substring `SELECT`, ordered by `item_id`, at most 25 displayed hits; no counter mutation, cache reload or grant. Query and feedback incur DB/network work.
-- **Verification:** GM feedback `searchitem '<query>': N match(es)` and `id: name` rows; compare with read-only `server_db_query` on `resources.items` for the same literal substring, allowing concurrent seed changes. A truncated reply is not the full result set. Missing DB reports `no live DB connection`.
+- **Verification:** Positive results send `searchitem '<query>': N match(es)` and `id: name` rows; zero hits instead send `searchitem: no matches for '<query>'`. Compare with read-only `server_db_query` on `resources.items` for the same literal substring, allowing concurrent seed changes. A truncated reply is not the full result set. Missing DB reports `no live DB connection`.
 - **Compensation:** None needed for data state; query/audit log cannot be erased by a command.
 - **Availability:** Disabled in the palette until the request and every base reply are fenced to the original GM session; recycled entity IDs could route results to another occupant. Also add an input-length bound before enabling.
 
@@ -22,7 +22,7 @@ The query family contains **no counter increment or resource reload** in its cur
 - **Target/scope:** No selection; `resources.missions.mission_defn` in the live DB.
 - **Preconditions and authority:** Cell GM gate and count; live DB required; base receives caller entity ID without independent session-generation check.
 - **Effects and impact:** Read-only, parameter-bound literal `ILIKE` `SELECT` ordered by `mission_id`, 25 displayed hits maximum. Does not mutate mission progress or counters and does not reload resources.
-- **Verification:** Match feedback IDs/names to a read-only `server_db_query` on `resources.missions`; respect the explicit truncation flag and `no live DB connection` failure.
+- **Verification:** Positive results send `searchmission '<query>': N match(es)` and `id: name` rows; zero hits instead send `searchmission: no matches for '<query>'`. Match feedback IDs/names to a read-only `server_db_query` on `resources.missions`; respect the explicit truncation flag and `no live DB connection` failure.
 - **Compensation:** None for state; accepted-command audit remains.
 - **Availability:** Disabled in the palette until immutable GM/session binding protects base replies; recycled entity IDs could route results to another occupant. Add an input-length bound too.
 
@@ -33,7 +33,7 @@ The query family contains **no counter increment or resource reload** in its cur
 - **Target/scope:** No selection; `resources.entity_templates.template_name` in live DB, not spawned NPCs.
 - **Preconditions and authority:** Cell GM gate, count, live DB. Base-side search has no independent GM/session-generation check.
 - **Effects and impact:** Read-only parameter-bound literal `ILIKE` `SELECT`, ordered by `template_id`, at most 25 displayed rows. No spawn, template cache reload or counter mutation.
-- **Verification:** Match feedback IDs/names to `server_db_query` on `resources.entity_templates`, accounting for truncation and DB-unavailable feedback.
+- **Verification:** Positive results send `searchtemplate '<query>': N match(es)` and `id: name` rows; zero hits instead send `searchtemplate: no matches for '<query>'`. Match feedback IDs/names to `server_db_query` on `resources.entity_templates`, accounting for truncation and DB-unavailable feedback.
 - **Compensation:** None for state; accepted-command audit remains.
 - **Availability:** Disabled in the palette until immutable GM/session binding protects base replies; recycled entity IDs could route results to another occupant. Add an input-length bound too.
 
@@ -175,10 +175,10 @@ The query family contains **no counter increment or resource reload** in its cur
 - **Arguments:** Zero to 64 whitespace tokens joined by spaces into a free-text note. No character/byte ceiling or secret scrub in the handler; quoted phrases are not preserved as a distinct syntax.
 - **Target/scope:** Caller, current selected in-view same-space target if any, and up to 32 nearby same-space entities within 60 units (selected target is retained even outside radius). Captures missions, **reads** counters, journal and ability state.
 - **Preconditions and authority:** Cell GM gate; caller entity must still exist or feedback says `caller entity not found`. No live client or DB requirement; telemetry sink availability is not checked before ack.
-- **Effects and impact:** **Telemetry write, not ReadOnly:** emits `playtest.bookmark` with note, account/player identity and scene, `playtest.bookmark.entity` per captured entity, plus `abilities.snapshot` for caller/target. No counter increment, game-state mutation or resource reload. Free text and snapshots may contain sensitive data; 64 tokens is not an output-size bound.
+- **Effects and impact:** **Telemetry write, not ReadOnly:** emits `playtest.bookmark` with note, account/player identity and scene, `playtest.bookmark.entity` per captured entity, plus `abilities.snapshot` for caller/target. Before this handler runs, `dispatch.rs::handle_console_command` also exports accepted raw arguments through `cimmeria_discord::emit_gm_command`; `crates/discord/src/embed/format_gameplay.rs::format_gameplay` uses those arguments as the GM audit embed description. No counter increment, game-state mutation or resource reload. Free text and snapshots may contain sensitive data; 64 tokens is not an output-size bound.
 - **Verification:** Match `Bookmark <id> recorded` feedback to `server_log_tail`/SigNoz rows by `bookmark_id` and target; assert header, captured entity rows and ability snapshots share that ID. Ack follows local tracing calls, not verified OTLP delivery. Tests assert emitted rows and ack, not remote retention.
-- **Compensation:** No inverse for already exported telemetry. Restrict/redact the note before submission; deletion from a downstream sink is a separate operator action.
-- **Availability:** Disabled for arbitrary free-text palette submission until an enforceable note size/redaction policy and telemetry delivery disposition are defined; a constrained local bookmark with no note may be offered only if this privacy contract is satisfied. The direct GM command remains registered.
+- **Compensation:** No inverse for arguments already exported to Discord or for telemetry. Apply note limits and redaction before dispatch to either sink; deletion from a downstream sink is a separate operator action.
+- **Availability:** Disabled for arbitrary free-text palette submission until note size/redaction is enforced before the Discord audit and bookmark telemetry sinks, and telemetry delivery disposition is defined. A note-free form remains gated on proving the pre-dispatch audit contains no private text. The direct GM command remains registered.
 
 ## .seedconfirm
 
@@ -187,9 +187,9 @@ The query family contains **no counter increment or resource reload** in its cur
 - **Target/scope:** Caller-owned cell authoring buffer; sends each server-generated SQL statement to BaseApp for live DB execution and emits per-file/structured spawn telemetry and an on-disk authoring block. Does not edit repository seed files.
 - **Preconditions and authority:** Cell GM gate; pending buffer required for an effect. Cell removes it before sends. Base executor trusts a cell-generated SQL message identified by entity ID; it has no independent current-GM/session-generation or per-statement approval check. DB pool may be absent.
 - **Effects and impact:** Disruptive live DB writes, one per queued statement, plus telemetry/log output, clearing the entire buffer. A live write can fail or affect zero rows while telemetry says confirmed; next deploy rebuilds from seeds. `confirmed_new_spawns` is updated for queued inserts before base confirms a DB result. No atomic transaction across statements and no committed seed change.
-- **Verification:** First inspect `.seedpending` and the per-session authoring log for **all** SQL/file targets. After confirmation, correlate batch ID in `authoring` telemetry, each base `authoring SQL executed`/zero-row/failure row and a read-only `server_db_query` on every affected table/key. Feedback `saved N` only proves cell emission; `live on this server now` reflects successful channel sends, not DB commit. Git seed diff/commit is the only seed durability proof.
+- **Verification:** `.seedpending` returns only counts per file. The on-disk authoring log is process-run global and includes queued, canceled and previously confirmed statements from multiple callers; it cannot identify the caller's exact current buffer or serve as an approval preview. After confirmation, correlate batch ID in `authoring` telemetry, each base `authoring SQL executed`/zero-row/failure row and a read-only `server_db_query` on every affected table/key. Feedback `saved N` only proves cell emission; `live on this server now` reflects successful channel sends, not DB commit. Git seed diff/commit is the only seed durability proof.
 - **Compensation:** No general inverse. Manual reviewed corrective SQL/seed edit may be needed; `.seedcancel` after confirm cannot undo sent DB writes or telemetry.
-- **Availability:** Disabled in the palette until exact whole-batch preview, explicit operator confirmation, immutable GM/session fencing across the cell-to-base message and per-statement result/readback are implemented. No one-click blind confirm.
+- **Availability:** Disabled in the palette until a caller-scoped API exposes the exact current SQL/file batch for preview, explicit operator confirmation, immutable GM/session fencing across the cell-to-base message and per-statement result/readback are implemented. The shared log and `.seedpending` count summary cannot replace that API. No one-click blind confirm.
 
 ## .seedpending
 
