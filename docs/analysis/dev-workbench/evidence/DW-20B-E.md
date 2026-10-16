@@ -135,7 +135,7 @@ For readback, `server_entity_get {entity_id}` returns the live cell snapshot (`c
 
 ## Entity authoring commands
 
-All entity entries below are immediate cell-memory edits unless explicitly stated. They do not call `seed::record` or `ExecuteAuthoringSql`, and they emit no seed SQL. `spawn/authoring.rs::save_spawn` persists only the spawnlist placement/heading/tag fields; it is not a generic save for the fields below. `placement.rs::settle_npc` is the exception: `.lookat` on an NPC also changes home facing and, if `.autosavespawn` is enabled, queues a separate `.savespawn` placement record. That record still needs confirmation, positive DB feedback, and developer seed merge. `tests/spawn_authoring.rs::{spawn_authoring_lookat_writes_yaw_not_a_vector,spawn_authoring_lookat_then_savespawn_saves_the_heading,spawn_authoring_autosave_queues_a_savespawn_after_movehere}` prove the positive seam, not a live-client appearance. For other entity commands, a successful feedback line does not establish persistence or client rendering.
+All entity entries below are immediate cell-memory edits unless explicitly stated. They do not call `seed::record` or `ExecuteAuthoringSql`, and they emit no seed SQL. `spawn/authoring.rs::save_spawn` persists only the spawnlist placement/heading/tag fields; it is not a generic save for the fields below. `placement.rs::settle_npc` is the exception: `.lookat` on **any non-player spawnable**, including a prop or pet admitted by `Target::Spawnable`, also changes home facing and stops movement; if `.autosavespawn` is enabled it calls `.savespawn`. That save may refuse for missing template/world or an already confirmed new spawn, or may queue placement SQL even for an inappropriate non-player class. A queued record still needs confirmation, positive DB feedback, and developer seed merge. `tests/spawn_authoring.rs::{spawn_authoring_lookat_writes_yaw_not_a_vector,spawn_authoring_lookat_then_savespawn_saves_the_heading,spawn_authoring_autosave_queues_a_savespawn_after_movehere}` prove the NPC positive seam, not behavior for every non-player class or a live-client appearance. For other entity commands, a successful feedback line does not establish persistence or client rendering.
 
 ### .tag
 
@@ -154,8 +154,8 @@ All entity entries below are immediate cell-memory edits unless explicitly state
 - **Arguments:** One or more whitespace tokens joined with single spaces; no quote preservation or length bound.
 - **Target/scope:** Selected same-space/in-view `Being` (registry currently matches any entity).
 - **Preconditions and authority:** GM/selection; no NPC-only check despite handler help saying NPC.
-- **Effects and impact:** Sets `npc_name` in memory; may appear on next AoI entry. No DB/SQL/seed write; `.savespawn` does not store this name.
-- **Verification:** `server_entity_get.name`/`entity_name` before/after; client display on AoI entry remains unverified.
+- **Effects and impact:** Sets `npc_name` in memory even for a player target; may appear on an NPC's next AoI entry. No DB/SQL/seed write; `.savespawn` does not store this name.
+- **Verification:** For an NPC, compare `server_entity_get.name`/`entity_name` before/after. `crates/cell-world/src/cell/space_manager/lab_snapshots.rs::{snapshot_entity,live_entity_name}` prefers `character_name`, so a player's snapshot name/entity_name does not show the `npc_name` edit; player readback is unavailable. Client display on AoI entry remains unverified.
 - **Compensation:** Reapply captured prior name if present; no clear command for a prior None value.
 - **Availability:** Disabled for typed palette until NPC class and clear/length semantics are defined.
 
@@ -231,10 +231,10 @@ All entity entries below are immediate cell-memory edits unless explicitly state
 - **Arguments:** None.
 - **Target/scope:** Selected same-space/in-view `Spawnable`; yaw toward caller's current x/z position.
 - **Preconditions and authority:** GM/selection/caller position. Coincident x/z refuses with feedback and no facing change.
-- **Effects and impact:** Sets in-memory direction `[0,yaw,0]`. NPC additionally gets home facing and stops movement; `.autosavespawn` may queue a separate spawnlist save of heading/placement. Without autosave, no SQL/DB/seed action. Autosave queue still needs confirm, positive base feedback, and seed merge.
-- **Verification:** `server_entity_get.direction` before/after; when autosave is on, `.seedpending` then exact spawnlist heading after positive base result. Client facing/witness application is unverified.
-- **Compensation:** `.rotation` with captured pitch/yaw/roll is a manual compensating action; it may itself autosave an NPC and cannot undo stopped movement.
-- **Availability:** Runnable for verified NPC with explicit autosave state and old facing captured; player/other spawnable form disabled pending wire and side-effect proof.
+- **Effects and impact:** Sets in-memory direction `[0,yaw,0]`. `settle_npc` gives **every non-player target** home facing and stops movement; `.autosavespawn` then calls `.savespawn`, which may refuse or queue spawnlist heading/placement SQL depending on template/world/confirmed-spawn state. With autosave off, no SQL/DB/seed action. A queue still needs confirm, positive base feedback, and seed merge.
+- **Verification:** `server_entity_get.direction` before/after; for any non-player target with autosave on, inspect refusal or `.seedpending`, then exact spawnlist heading only after positive base result. Client facing/witness application is unverified.
+- **Compensation:** `.rotation` with captured pitch/yaw/roll is a manual compensating action; it may itself autosave a non-player target and cannot undo stopped movement.
+- **Availability:** Runnable for verified NPC with explicit autosave state and old facing captured; player, prop, pet and other unverified classes disabled pending wire and side-effect proof.
 
 ### .visible
 
