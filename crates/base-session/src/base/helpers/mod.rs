@@ -589,7 +589,10 @@ pub use bundle_manifest::{BundleManifest, BundleManifestEntry, BUNDLE_MANIFEST_C
 
 mod reliable_fit;
 pub(crate) use reliable_fit::collect_pending_retransmits_for_session;
-pub use reliable_fit::{collect_pending_retransmits, send_reliable_to_addr, PendingRetransmit};
+pub use reliable_fit::{
+    collect_pending_retransmits, send_reliable_to_addr, send_reliable_to_addr_for_owner,
+    PendingRetransmit,
+};
 
 mod reliable_send;
 pub use reliable_send::shadow_register_reliable_send;

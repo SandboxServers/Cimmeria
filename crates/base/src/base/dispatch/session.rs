@@ -6,9 +6,10 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
-use cimmeria_mercury::transport::Transport;
+use cimmeria_mercury::transport::{SendOrigin, Transport};
 use sqlx::PgPool;
 use tokio::sync::mpsc;
 
@@ -21,6 +22,18 @@ use cimmeria_base_session::base::session_presence::{spawn_offline, EndedSession}
 use crate::cell::messages::BaseToCellMsg;
 
 use super::super::ConnectedClientState;
+
+async fn send_direct(
+    transport: &Arc<dyn Transport>,
+    packet: &[u8],
+    addr: SocketAddr,
+    origin: Option<&SendOrigin>,
+) -> std::io::Result<usize> {
+    match origin {
+        Some(origin) => transport.send_to_with_origin(packet, addr, origin).await,
+        None => transport.send_to(packet, addr).await,
+    }
+}
 
 /// `SGWPlayer.logOff(INT8 Disconnect)` — 0=return to char select, 1=full exit.
 pub(super) async fn handle_log_off(
@@ -49,7 +62,17 @@ pub(super) async fn handle_log_off(
     } else {
         "logoff_character_select"
     };
-    let (entity_id, enc_version, ended, plugins, identity, session_secs, end_hints) = {
+    let (
+        entity_id,
+        enc_version,
+        ended,
+        plugins,
+        identity,
+        session_secs,
+        end_hints,
+        pending_acks,
+        next_seq,
+    ) = {
         let mut clients = connected.lock().unwrap();
         match clients.get_mut(&addr) {
             Some(c) => {
@@ -131,6 +154,8 @@ pub(super) async fn handle_log_off(
                     identity,
                     session_secs,
                     end_hints,
+                    Some(Arc::clone(&c.pending_acks)),
+                    Some(Arc::clone(&c.next_seq)),
                 )
             }
             None => (
@@ -141,6 +166,8 @@ pub(super) async fn handle_log_off(
                 cimmeria_entity::cell_entity::PlayerIdentity::UNKNOWN,
                 0,
                 (0, false, None, None, Default::default()),
+                None,
+                None,
             ),
         }
     };
@@ -267,9 +294,21 @@ pub(super) async fn handle_log_off(
             player_name = identity.player_name,
             "logOff: full exit — sending loggedOff"
         );
-        let (acks, seq) = super::super::helpers::drain_acks_and_seq(connected, addr)?;
+        let acks = cimmeria_mercury::packet::take_piggyback_acks(
+            &mut pending_acks
+                .as_ref()
+                .ok_or("no session for addr")?
+                .lock()
+                .unwrap(),
+            enc_version,
+        );
+        let seq = next_seq
+            .as_ref()
+            .ok_or("no session for addr")?
+            .fetch_add(1, Ordering::Relaxed)
+            & cimmeria_mercury::packet::SEQUENCE_MASK;
         let pkt = crate::mercury::build_logged_off(&key, seq, &acks, enc_version);
-        transport.send_to(&pkt, addr).await?;
+        send_direct(transport, &pkt, addr, None).await?;
     } else {
         // Return to character select: reset state and send RESET_ENTITIES + char list
         tracing::info!(
@@ -322,9 +361,21 @@ pub(super) async fn handle_log_off(
         cimmeria_base_session::base::helpers::clear_lab_chaos_on_character_select(addr);
 
         // Send RESET_ENTITIES to tear down the world
-        let (acks, seq) = super::super::helpers::drain_acks_and_seq(connected, addr)?;
+        let acks = cimmeria_mercury::packet::take_piggyback_acks(
+            &mut pending_acks
+                .as_ref()
+                .ok_or("no session for addr")?
+                .lock()
+                .unwrap(),
+            enc_version,
+        );
+        let seq = next_seq
+            .as_ref()
+            .ok_or("no session for addr")?
+            .fetch_add(1, Ordering::Relaxed)
+            & cimmeria_mercury::packet::SEQUENCE_MASK;
         let pkt = crate::mercury::build_reset_entities(&key, seq, &acks, enc_version);
-        transport.send_to(&pkt, addr).await?;
+        send_direct(transport, &pkt, addr, None).await?;
 
         // The client responds with ENABLE_ENTITIES, which triggers the
         // char list flow (same as initial login). The char_list_sent flag

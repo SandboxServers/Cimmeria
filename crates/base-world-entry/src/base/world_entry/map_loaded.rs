@@ -46,7 +46,7 @@ pub async fn handle_map_loaded(
     _db_pool: &Option<Arc<PgPool>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Take the pending data (consumes it -- enter-world only runs once per mapLoaded)
-    let (entry_info, player_data, who) = {
+    let (entry_info, player_data, who, next_seq, origin) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
         // The session's identity for this function's lines (Rules 5 and 6).
@@ -59,7 +59,13 @@ pub async fn handle_map_loaded(
             .pending_player_load_data
             .take()
             .unwrap_or_else(default_player_load_data);
-        (entry, data, who)
+        (
+            entry,
+            data,
+            who,
+            Arc::clone(&c.next_seq),
+            c.wire_send_origin(),
+        )
     };
 
     tracing::info!(
@@ -100,6 +106,9 @@ pub async fn handle_map_loaded(
     let (acks, base_seq, enc_version) = {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
+        if c.key != key || !super::same_direct_owner(c, &next_seq, origin.as_ref()) {
+            return Err("mapLoaded: original session replaced before packet build".into());
+        }
         let acks: Vec<u32> = cimmeria_mercury::packet::take_piggyback_acks(
             &mut c.pending_acks.lock().unwrap(),
             c.enc_version,
@@ -122,16 +131,18 @@ pub async fn handle_map_loaded(
         let seq = base_seq.wrapping_add(i as u32) & cimmeria_mercury::packet::SEQUENCE_MASK;
         tracing::debug!(%addr, len = pkt.len(), seq, part = i + 1, total = enter_packets.len(),
             "UDP_OUT enter world: VIEWPORT+CELL+FORCED (standalone)");
-        transport.send_to(pkt, addr).await?;
+        super::send_direct(transport, pkt, addr, None).await?;
         // Register this reliable send with the per-session Channel's TX
         // window. ACK consumption + RTO sampling are live, and the
         // retransmit driver in `tick_sync.rs` will resend the cached bytes
         // if the RTO fires before the client acks.
-        super::super::helpers::shadow_register_reliable_send(
+        super::register_unproven_direct_reliable(
             connected,
             addr,
             seq,
-            cimmeria_mercury::packet::Bytes::copy_from_slice(pkt),
+            pkt,
+            &next_seq,
+            origin.as_ref(),
         );
     }
 
@@ -157,7 +168,7 @@ pub async fn handle_map_loaded(
             map_base_seq.wrapping_add(i as u32) & cimmeria_mercury::packet::SEQUENCE_MASK;
         tracing::debug!(%addr, len = pkt_data.len(), seq = frag_seq,
             part = i + 1, total = map_packets.len(), "UDP_OUT mapLoaded entity data");
-        if let Err(e) = transport.send_to(pkt_data, addr).await {
+        if let Err(e) = super::send_direct(transport, pkt_data, addr, None).await {
             // a single failed fragment leaves the client with
             // a partial enter-world bundle — invisible NPCs, missing
             // appearance, or stuck on the load screen. error! so a
@@ -172,11 +183,13 @@ pub async fn handle_map_loaded(
             );
             return Err(e.into());
         }
-        super::super::helpers::shadow_register_reliable_send(
+        super::register_unproven_direct_reliable(
             connected,
             addr,
             frag_seq,
-            cimmeria_mercury::packet::Bytes::copy_from_slice(pkt_data),
+            pkt_data,
+            &next_seq,
+            origin.as_ref(),
         );
     }
 
@@ -250,11 +263,6 @@ pub async fn handle_map_loaded(
     // resource responses and future client-targeted traffic can resolve the
     // transport, but defer CellService player initialization until the client
     // explicitly signals readiness (matches C++ SGWPlayer.onClientReady).
-    entity_to_addr
-        .lock()
-        .unwrap()
-        .insert(entry_info.player_entity_id, addr);
-
     // Cache BeingAppearance + onEntityTint args for resend after onClientReady.
     // The first copy in the mapLoaded bundle may be dropped because the entity is
     // still in a "transaction" during bundle processing (all messages in a reassembled
@@ -276,6 +284,13 @@ pub async fn handle_map_loaded(
     {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
+        if c.key != key || !super::same_direct_owner(c, &next_seq, origin.as_ref()) {
+            return Ok(());
+        }
+        entity_to_addr
+            .lock()
+            .unwrap()
+            .insert(entry_info.player_entity_id, addr);
         // Cache appearance data for resend after cinematic (cancelMovie).
         // PendingClientReadyInfo is consumed by onClientReady, but cancelMovie
         // may arrive later (after the cinematic ends).

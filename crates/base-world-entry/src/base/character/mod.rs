@@ -2,8 +2,10 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
+use cimmeria_mercury::encryption::EncryptionVersion;
 use cimmeria_mercury::transport::Transport;
 use sqlx::PgPool;
 
@@ -12,16 +14,56 @@ use crate::mercury::{
     SKIN_TINTS,
 };
 
-use super::helpers::{
-    drain_acks_and_seq, get_account_entity_id, get_enc_version, send_reliable_to_addr,
-};
+use super::helpers::get_account_entity_id;
 use super::session_identity::identity_for_addr;
 use super::ConnectedClientState;
+
+fn direct_packet_state(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+    key: &[u8; 32],
+    expected_seq: &Arc<AtomicU32>,
+) -> Result<(Vec<u32>, u32, EncryptionVersion), Box<dyn std::error::Error + Send + Sync>> {
+    let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+    let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
+    if c.key != *key || !Arc::ptr_eq(&c.next_seq, expected_seq) {
+        return Err("character reply session replaced before packet build".into());
+    }
+    let acks = cimmeria_mercury::packet::take_piggyback_acks(
+        &mut c.pending_acks.lock().unwrap(),
+        c.enc_version,
+    );
+    let seq = c.next_seq.fetch_add(1, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;
+    Ok((acks, seq, c.enc_version))
+}
 
 #[cfg(test)]
 mod delete_live_db_tests;
 #[cfg(test)]
 mod request_visuals_live_db_tests;
+
+#[cfg(test)]
+mod direct_send_origin_tests {
+    use super::*;
+
+    #[test]
+    fn direct_send_origin_character_reply_refuses_same_key_relog() {
+        let addr: SocketAddr = "127.0.0.1:55634".parse().unwrap();
+        let a = crate::test_support::test_default_connected_client_state();
+        let a_seq = Arc::clone(&a.next_seq);
+        let connected = Arc::new(Mutex::new(HashMap::from([(addr, a)])));
+        let b = crate::test_support::test_default_connected_client_state();
+        assert_eq!(connected.lock().unwrap()[&addr].key, b.key);
+        connected.lock().unwrap().insert(addr, b);
+        assert!(direct_packet_state(&connected, addr, &[0; 32], &a_seq).is_err());
+        assert_eq!(
+            connected.lock().unwrap()[&addr]
+                .next_seq
+                .load(Ordering::Relaxed),
+            0
+        );
+    }
+}
 
 /// Query the character list from the database.
 pub async fn query_character_list(
@@ -106,12 +148,13 @@ pub async fn send_char_create_failed(
     key: [u8; 32],
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     error_code: i32,
+    expected_seq: &Arc<AtomicU32>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let account_eid = get_account_entity_id(connected, addr)?;
-    let (acks, seq) = drain_acks_and_seq(connected, addr)?;
-    let enc_version = get_enc_version(connected, addr);
+    let (acks, seq, enc_version) = direct_packet_state(connected, addr, &key, expected_seq)?;
     let pkt = build_char_create_failed(&key, seq, &acks, error_code, account_eid, enc_version);
-    transport.send_to(&pkt, addr).await?;
+    // Ingress did not carry the dispatch generation into this handler.
+    super::world_entry::send_direct(transport, &pkt, addr, None).await?;
     Ok(())
 }
 
@@ -137,6 +180,15 @@ pub async fn handle_delete_character(
             tracing::warn!(%addr, "deleteCharacter: no DB pool");
             return Ok(());
         }
+    };
+    let expected_seq = {
+        let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        Arc::clone(
+            &clients
+                .get(&addr)
+                .ok_or("addr not in connected map")?
+                .next_seq,
+        )
     };
 
     // Locks the character's Teams and Commands before the delete, so the
@@ -186,11 +238,10 @@ pub async fn handle_delete_character(
 
     let characters = query_character_list(db_pool, account_id, account_name).await;
     let account_eid = get_account_entity_id(connected, addr)?;
-    let (acks, seq) = drain_acks_and_seq(connected, addr)?;
-    let enc_version = get_enc_version(connected, addr);
+    let (acks, seq, enc_version) = direct_packet_state(connected, addr, &key, &expected_seq)?;
     let pkt = build_on_character_list(&key, seq, &acks, &characters, account_eid, enc_version);
     tracing::trace!(%addr, len = pkt.len(), seq, "UDP_OUT updated char_list after delete");
-    transport.send_to(&pkt, addr).await?;
+    super::world_entry::send_direct(transport, &pkt, addr, None).await?;
 
     Ok(())
 }
@@ -219,12 +270,10 @@ pub async fn handle_request_character_visuals(
         }
     };
 
-    let account_id = {
+    let (account_id, content_next_seq, content_origin) = {
         let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-        clients
-            .get(&addr)
-            .ok_or("addr not in connected map")?
-            .account_id
+        let c = clients.get(&addr).ok_or("addr not in connected map")?;
+        (c.account_id, Arc::clone(&c.next_seq), c.wire_send_origin())
     };
 
     // `player_name` is read for the log lines only (Rule 6).
@@ -300,12 +349,18 @@ pub async fn handle_request_character_visuals(
             // The component list makes this body data-sized: the fitted send
             // keeps every datagram within the client's 1472-byte buffer, and
             // registers it for retransmit like every reliable packet.
-            let outcome = send_reliable_to_addr(
+            let owner_transport = super::world_entry::content_owner_transport(
                 transport,
+                connected,
+                &content_next_seq,
+                content_origin.as_ref(),
+            );
+            let outcome = super::helpers::send_reliable_to_addr_for_owner(
+                &owner_transport,
                 connected,
                 addr,
                 account_eid,
-                "character_visuals",
+                "character_visuals_unproven",
                 |key, version, seq, acks| {
                     build_character_visuals(
                         key,
@@ -321,6 +376,7 @@ pub async fn handle_request_character_visuals(
                         version,
                     )
                 },
+                &content_next_seq,
             )
             .await;
             tracing::trace!(%addr, ?outcome, "UDP_OUT onCharacterVisuals");

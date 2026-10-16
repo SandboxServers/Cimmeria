@@ -6,6 +6,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 - [reference_dev_workbench_slash_1b_2026_10_16.md](reference_dev_workbench_slash_1b_2026_10_16.md) — DW-25B typed slash entries 28–54 preserve patch options, disabled native binding, and grant/reload/travel readback limits
 - [reference_dev_workbench_causal_trace_2026_10_16.md](reference_dev_workbench_causal_trace_2026_10_16.md) — DW-13 passive eight-stage trace, client-only API and clock/ambiguity boundaries
+- [reference_dev_workbench_direct_sends_2026_10_16.md](reference_dev_workbench_direct_sends_2026_10_16.md) — DW-03S-D direct send tickets and cross-crate reliable-window guard
 
 - [reference_dev_workbench_slash_2a_2026_10_16.md](reference_dev_workbench_slash_2a_2026_10_16.md) — DW-26A-E slash entries 55–81: gated non-gm debug word, separate minigame/vendor paths and patch/server signature gaps
 - [reference_dev_workbench_slash_2b_2026_10_16.md](reference_dev_workbench_slash_2b_2026_10_16.md) — DW-26B-E patch slash entries 82–108: targeted minigame/address type gaps, absent reload/flag handlers, caller-only LOS/physics, and scope/delivery split for GM shout

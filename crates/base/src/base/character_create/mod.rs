@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 use cimmeria_mercury::transport::Transport;
@@ -11,9 +12,7 @@ use crate::mercury::read_wstring;
 
 use super::character::{query_character_list, send_char_create_failed};
 use super::chardef::{chardef_lookup, CharDefIdentity};
-use super::helpers::{
-    drain_acks_and_seq, get_access_level, get_account_entity_id, get_enc_version,
-};
+use super::helpers::{get_access_level, get_account_entity_id};
 use super::ConnectedClientState;
 
 mod fail_code;
@@ -69,6 +68,17 @@ pub(super) async fn create_character(
     db_pool: &Option<Arc<PgPool>>,
     force_debug_kit: bool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let expected_seq = {
+        let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        Arc::clone(
+            &clients
+                .get(&addr)
+                .ok_or("addr not in connected map")?
+                .next_seq,
+        )
+    };
+    let send_failed =
+        |code| send_char_create_failed(transport, addr, key, connected, code, &expected_seq);
     // The account's name, best-effort from the live session state. Every
     // refusal row names the account, so it is read before the first return.
     let account_name = connected
@@ -93,8 +103,7 @@ pub(super) async fn create_character(
         Ok(r) => r,
         Err(e) => {
             refusal.log(Reason::NameParseFailed, NOT_ENOUGH_INFORMATION, Some(&e));
-            send_char_create_failed(transport, addr, key, connected, NOT_ENOUGH_INFORMATION)
-                .await?;
+            send_failed(NOT_ENOUGH_INFORMATION).await?;
             return Ok(());
         }
     };
@@ -108,7 +117,7 @@ pub(super) async fn create_character(
             ..Detail::default()
         };
         refusal.log_detail(Reason::NameRejected, INVALID_CHARACTER_NAME, None, detail);
-        send_char_create_failed(transport, addr, key, connected, INVALID_CHARACTER_NAME).await?;
+        send_failed(INVALID_CHARACTER_NAME).await?;
         return Ok(());
     }
 
@@ -116,8 +125,7 @@ pub(super) async fn create_character(
         Ok(r) => r,
         Err(e) => {
             refusal.log(Reason::NameParseFailed, NOT_ENOUGH_INFORMATION, Some(&e));
-            send_char_create_failed(transport, addr, key, connected, NOT_ENOUGH_INFORMATION)
-                .await?;
+            send_failed(NOT_ENOUGH_INFORMATION).await?;
             return Ok(());
         }
     };
@@ -137,15 +145,14 @@ pub(super) async fn create_character(
                 None,
                 detail,
             );
-            send_char_create_failed(transport, addr, key, connected, INVALID_CHARACTER_NAME)
-                .await?;
+            send_failed(INVALID_CHARACTER_NAME).await?;
             return Ok(());
         }
     }
 
     if off + 4 > payload.len() {
         refusal.log(Reason::MalformedArgs, NOT_ENOUGH_INFORMATION, None);
-        send_char_create_failed(transport, addr, key, connected, NOT_ENOUGH_INFORMATION).await?;
+        send_failed(NOT_ENOUGH_INFORMATION).await?;
         return Ok(());
     }
     let char_def_id = i32::from_le_bytes([
@@ -160,7 +167,7 @@ pub(super) async fn create_character(
     // Parse ARRAY<VisualChoices> -- count + entries
     if off + 4 > payload.len() {
         refusal.log(Reason::MalformedArgs, NOT_ENOUGH_INFORMATION, None);
-        send_char_create_failed(transport, addr, key, connected, NOT_ENOUGH_INFORMATION).await?;
+        send_failed(NOT_ENOUGH_INFORMATION).await?;
         return Ok(());
     }
     let visual_count = u32::from_le_bytes([
@@ -173,7 +180,7 @@ pub(super) async fn create_character(
     // Each VisualChoices = { VisGroupId: INT32, ChoiceId: INT32 } = 8 bytes
     if off + visual_count * 8 > payload.len() {
         refusal.log(Reason::MalformedArgs, NOT_ENOUGH_INFORMATION, None);
-        send_char_create_failed(transport, addr, key, connected, NOT_ENOUGH_INFORMATION).await?;
+        send_failed(NOT_ENOUGH_INFORMATION).await?;
         return Ok(());
     }
     let mut visual_choices: Vec<(i32, i32)> = Vec::with_capacity(visual_count);
@@ -197,7 +204,7 @@ pub(super) async fn create_character(
 
     if off + 4 > payload.len() {
         refusal.log(Reason::MalformedArgs, NOT_ENOUGH_INFORMATION, None);
-        send_char_create_failed(transport, addr, key, connected, NOT_ENOUGH_INFORMATION).await?;
+        send_failed(NOT_ENOUGH_INFORMATION).await?;
         return Ok(());
     }
     let skin_tint_color_id = i32::from_le_bytes([
@@ -214,7 +221,7 @@ pub(super) async fn create_character(
             ..Detail::default()
         };
         refusal.log_detail(Reason::InvalidSkinTint, INVALID_SKIN_COLOR, None, detail);
-        send_char_create_failed(transport, addr, key, connected, INVALID_SKIN_COLOR).await?;
+        send_failed(INVALID_SKIN_COLOR).await?;
         return Ok(());
     }
 
@@ -228,8 +235,7 @@ pub(super) async fn create_character(
         Some(info) => info,
         None => {
             refusal.log(Reason::UnknownCharDef, INVALID_CHARACTER_TYPE, None);
-            send_char_create_failed(transport, addr, key, connected, INVALID_CHARACTER_TYPE)
-                .await?;
+            send_failed(INVALID_CHARACTER_TYPE).await?;
             return Ok(());
         }
     };
@@ -238,7 +244,7 @@ pub(super) async fn create_character(
         Some(p) => p,
         None => {
             refusal.log(Reason::NoDbPool, UNSPECIFIED, None);
-            send_char_create_failed(transport, addr, key, connected, UNSPECIFIED).await?;
+            send_failed(UNSPECIFIED).await?;
             return Ok(());
         }
     };
@@ -288,7 +294,7 @@ pub(super) async fn create_character(
         Ok(r) => r,
         Err(e) => {
             refusal.log(Reason::QueryFailed, UNSPECIFIED, Some(&e));
-            send_char_create_failed(transport, addr, key, connected, UNSPECIFIED).await?;
+            send_failed(UNSPECIFIED).await?;
             return Ok(());
         }
     };
@@ -350,20 +356,20 @@ pub(super) async fn create_character(
             Some(g) => g,
             None => {
                 refusal.log_detail(Reason::InvalidVisualGroup, UNSPECIFIED, None, detail());
-                send_char_create_failed(transport, addr, key, connected, UNSPECIFIED).await?;
+                send_failed(UNSPECIFIED).await?;
                 return Ok(());
             }
         };
         if group.vis_type != "VIS_Optional" {
             refusal.log_detail(Reason::ForcedGroupChoice, UNSPECIFIED, None, detail());
-            send_char_create_failed(transport, addr, key, connected, UNSPECIFIED).await?;
+            send_failed(UNSPECIFIED).await?;
             return Ok(());
         }
         let choice = match group.choices.get(&choice_id) {
             Some(c) => c,
             None => {
                 refusal.log_detail(Reason::InvalidChoice, UNSPECIFIED, None, detail());
-                send_char_create_failed(transport, addr, key, connected, UNSPECIFIED).await?;
+                send_failed(UNSPECIFIED).await?;
                 return Ok(());
             }
         };
@@ -401,8 +407,7 @@ pub(super) async fn create_character(
                     None,
                     detail,
                 );
-                send_char_create_failed(transport, addr, key, connected, NOT_ENOUGH_INFORMATION)
-                    .await?;
+                send_failed(NOT_ENOUGH_INFORMATION).await?;
                 return Ok(());
             }
         }
@@ -440,7 +445,7 @@ pub(super) async fn create_character(
             };
             let error = refused.error.as_ref().map(|e| e as &dyn std::fmt::Display);
             refusal.log_detail(refused.reason, refused.code, error, detail);
-            send_char_create_failed(transport, addr, key, connected, refused.code).await?;
+            send_failed(refused.code).await?;
             return Ok(());
         }
     };
@@ -455,7 +460,7 @@ pub(super) async fn create_character(
             // `start_kit` logged the ERROR; this is the client-refusal summary.
             let detail = Detail::kit("starter_abilities_load_failed", kit_failure, None);
             refusal.log_detail(Reason::StarterKitFailed, UNSPECIFIED, None, detail);
-            send_char_create_failed(transport, addr, key, connected, UNSPECIFIED).await?;
+            send_failed(UNSPECIFIED).await?;
             return Ok(());
         }
     };
@@ -501,7 +506,7 @@ pub(super) async fn create_character(
         Ok(tx) => tx,
         Err(e) => {
             refusal.log(Reason::DbWriteFailed, UNSPECIFIED, Some(&e));
-            send_char_create_failed(transport, addr, key, connected, UNSPECIFIED).await?;
+            send_failed(UNSPECIFIED).await?;
             return Ok(());
         }
     };
@@ -564,8 +569,7 @@ pub(super) async fn create_character(
                             Detail::kit("starter_item_failed", kit_failure, Some(player_id));
                         refusal.log_detail(Reason::StarterKitFailed, UNSPECIFIED, None, detail);
                         let _ = tx.rollback().await;
-                        send_char_create_failed(transport, addr, key, connected, UNSPECIFIED)
-                            .await?;
+                        send_failed(UNSPECIFIED).await?;
                         return Ok(());
                     }
                 };
@@ -577,12 +581,12 @@ pub(super) async fn create_character(
                 let detail = Detail::kit("starter_grant_failed", kit_failure, Some(player_id));
                 refusal.log_detail(Reason::StarterKitFailed, UNSPECIFIED, None, detail);
                 let _ = tx.rollback().await;
-                send_char_create_failed(transport, addr, key, connected, UNSPECIFIED).await?;
+                send_failed(UNSPECIFIED).await?;
                 return Ok(());
             }
             if let Err(e) = tx.commit().await {
                 refusal.log_detail(Reason::DbWriteFailed, UNSPECIFIED, Some(&e), inserted());
-                send_char_create_failed(transport, addr, key, connected, UNSPECIFIED).await?;
+                send_failed(UNSPECIFIED).await?;
                 return Ok(());
             }
 
@@ -633,8 +637,20 @@ pub(super) async fn create_character(
             )
             .await;
             let account_eid = get_account_entity_id(connected, addr)?;
-            let (acks, seq) = drain_acks_and_seq(connected, addr)?;
-            let enc_version = get_enc_version(connected, addr);
+            let (acks, seq, enc_version) = {
+                let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+                let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
+                if c.key != key || !Arc::ptr_eq(&c.next_seq, &expected_seq) {
+                    return Err("character create session replaced before reply build".into());
+                }
+                let acks = cimmeria_mercury::packet::take_piggyback_acks(
+                    &mut c.pending_acks.lock().unwrap(),
+                    c.enc_version,
+                );
+                let seq = c.next_seq.fetch_add(1, Ordering::Relaxed)
+                    & cimmeria_mercury::packet::SEQUENCE_MASK;
+                (acks, seq, c.enc_version)
+            };
             let pkt = crate::mercury::build_on_character_list(
                 &key,
                 seq,
@@ -644,6 +660,7 @@ pub(super) async fn create_character(
                 enc_version,
             );
             tracing::trace!(%addr, len = pkt.len(), seq, "UDP_OUT updated char_list");
+            // No ingress generation reaches this handler; the reply is unproven.
             transport.send_to(&pkt, addr).await?;
         }
         Err(e) => {
@@ -655,7 +672,7 @@ pub(super) async fn create_character(
                 refusal.log(Reason::DbWriteFailed, UNSPECIFIED, Some(&e));
                 UNSPECIFIED
             };
-            send_char_create_failed(transport, addr, key, connected, error_code).await?;
+            send_failed(error_code).await?;
         }
     }
 
