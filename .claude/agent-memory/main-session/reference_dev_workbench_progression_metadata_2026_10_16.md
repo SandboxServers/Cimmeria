@@ -13,3 +13,9 @@ character and can increase Applied Science Points. `.giveammo` readback must
 use carried bags only, full untruncated rows and the actual committed item
 type. The five family `SPECS` sets and catalog projection are compared in
 unit tests. No live client was used.
+
+Status 2026-10-16: combat-domain review also disabled `.cooldowns` (list
+shares reset forms) and `.cleareffects` (selected-subject cleanse-all). Their
+confirmation and before-state requirements cannot be enforced by command-wide
+availability; see docs/analysis/dev-workbench/worknotes/DW-21.md and
+workbench_progression.rs tests. No live client was used.

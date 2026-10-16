@@ -159,8 +159,8 @@ pub(super) fn metadata(name: &str) -> Option<WorkbenchMetadata> {
                 "Read-only cell warmup, cooldown, pulse, ledger, flags and stats snapshot; no DB write",
                 "Compare line with server_ability_state for exact entity_id at same time; advancing timers can differ; missing snapshot is unknown",
                 "None needed"),
-            "cooldowns" => ("Abilities", "runnable", "", COOLDOWNS, "no arguments: list | reset: all | reset abilityId: one positive i32 plus moniker groups",
-                "GM; caller ability state; case-sensitive reset; confirm transient impact for reset all; no catalog check on ID",
+            "cooldowns" => ("Abilities", "unsupported", "Reset forms share command-wide availability with list; confirmation and before-read cannot be enforced until per-form gating exists", COOLDOWNS, "no arguments: list | reset: all | reset abilityId: one positive i32 plus moniker groups",
+                "GM; caller ability state; case-sensitive reset; confirm both reset forms and capture before-state; no catalog check on ID",
                 "List is read-only; reset mutates caller transient cooldown maps and sends client timer clears, even if no timer existed",
                 "Compare server_ability_state caller cooldowns before/after and .cooldowns feedback; hotbar sweep needs separate client observation",
                 "No exact timer-history inverse; future casts restart cooldowns"),
@@ -169,7 +169,7 @@ pub(super) fn metadata(name: &str) -> Option<WorkbenchMetadata> {
                 "Static forms spawn transient 1,000,000-health NPC or clear owned dummies; caster launches real hostile ability at caller; no spawnlist write",
                 "Capture returned ID and compare server_entity_get template/space/health/faction; check absence after clear with ID-reuse guard; caster needs combat telemetry",
                 ".dummy clear removes owned dummies but not damage/effects already caused"),
-            "cleareffects" => ("Abilities", "runnable", "", NONE, "no arguments; selected in-view entity else caller",
+            "cleareffects" => ("Abilities", "unsupported", "Selected-subject confirmation and before-effect snapshot cannot be enforced by command-wide availability", NONE, "no arguments; selected in-view entity else caller",
                 "GM; exact live subject; capture before-state and confirm cleanse-all impact",
                 "Strip timed ledger and pulsing effects, run on_remove, restore affected stats and send icon clears; cooldown/warmup unchanged",
                 "Compare exact entity server_ability_state ledger/pulses/stats before/after; GM line lists IDs; client icon receipt needs separate observation",
@@ -381,6 +381,8 @@ mod tests {
             "missionrewards",
             "speed",
             "dummy",
+            "cooldowns",
+            "cleareffects",
             "infiniteammo",
             "gmsetinfiniteammo",
             "pet",
@@ -401,6 +403,22 @@ mod tests {
         assert!(ammo.verify.contains("container_id IN (1,15)"));
         assert!(ammo.verify.contains("truncated=false"));
         assert!(ammo.verify.contains("actual DB type_id"));
+    }
+
+    #[test]
+    fn unsafe_ability_actions_stay_disabled_in_projected_catalog() {
+        let catalog = command_catalog();
+        for (name, required_reason) in [
+            ("cooldowns", "per-form gating"),
+            ("cleareffects", "before-effect snapshot"),
+        ] {
+            let descriptor = metadata(name).unwrap();
+            let row = catalog.iter().find(|row| row.name == name).unwrap();
+            assert_eq!(descriptor.availability, "unsupported", ".{name}");
+            assert_eq!(row.availability, "unsupported", ".{name}");
+            assert!(row.manual_pending, ".{name}");
+            assert!(row.disposition_reason.contains(required_reason), ".{name}");
+        }
     }
 
     #[test]
