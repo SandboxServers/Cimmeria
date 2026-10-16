@@ -8,40 +8,42 @@ This is the source contract for DW-21, not a live-client acceptance result. Its 
 
 `server_entity_get {entity_id}` exposes `level`, `stats`, health/focus and state, but no cash, XP, inventory stacks, known abilities, crafting disciplines, blueprints, pet owner/stance, or infinite-ammo flag (`crates/wire/src/cell/messages/lab.rs::LabEntitySnapshot`). `server_ability_state {entity_id}` exposes cooldowns, pulsing effects, ledger entries and stats (`crates/lab-mcp/src/tools/abilities.rs::ability_state`); it is an immediate cell snapshot. `server_db_query` is read-only and row-capped (`crates/lab-mcp/src/tools/db.rs`); query exact `player_id` after a definitive Base result, and after relog when testing durability. `.effects`, `.cooldowns`, `.pet info`, `.pet list`, the stat commands and Base feedback are additional feedback surfaces, each with limits below. `server_entity_get`/`server_ability_state` may return no entity during transition: treat that as unknown, not a failed mutation. A snapshot of current state is not proof of persistence. `db/sgw/Players/Tables/{sgw_player,sgw_player_discipline_expertise,sgw_player_ability_grants}.sql` define the persistent fields.
 
+Several queued grants carry a cell entity ID, not an immutable session generation. The same numeric entity ID may name character A when the cell queues a command and character B by the time Base processes or finishes it. A DB write keyed to A can succeed while a post-commit UI push or GM feedback addressed by that ID reaches B. A database delta for A does not prove delivery or grant attribution to the original live session. Each affected row states its specific boundary; the typed palette must fail closed until the message and post-await sends are fenced to immutable GM and subject owners.
+
 ## Progression
 
 ### .allcraft
 
-- **Sources:** `registry/commands/progression.rs::SPECS`; `crafting.rs::{dispatch,all_craft}`; `crates/base-crafting/src/base/crafting/allcraft.rs::{handle_gm_all_craft,apply_all_craft}`; `allcraft_tests.rs`; `docs/gameplay/crafting-system.md`.
+- **Sources:** `registry/commands/progression.rs::SPECS`; `crafting.rs::{dispatch,all_craft}`; `crates/base-crafting/src/base/crafting/allcraft.rs::{handle_gm_all_craft,apply_all_craft}`; `options.rs::enable_craft_anywhere`; `allcraft_tests.rs`; `docs/gameplay/crafting-system.md`.
 - **Arguments:** None.
 - **Target/scope:** Required selected, in-view player; `player_id` from that entity. This does not fall back to the caller.
-- **Preconditions and authority:** Cell GM gate and Base `caller_access >= GM_ACCESS_LEVEL`; loaded catalog, paradigms, DB, target crafting row and transaction locks. Base refusal and failure lines are distinct.
-- **Effects and impact:** One transaction persists all catalog disciplines at expertise 100, all blueprints and racial paradigm levels at 7; pushes crafting UI state. It also enables craft-anywhere for that **session** after commit, lost at logout. Broad persistent grant plus transient session privilege.
-- **Verification:** Wait for Base `allcraft` granted feedback, then `server_db_query` exact `sgw_player.discipline_ids,blueprint_ids,racial_paradigm_levels` and `sgw_player_discipline_expertise` keyed by `player_id`; compare with catalog IDs, not merely counts. Relog and reread DB for durable grant; craft-anywhere must be checked in-session and must not be claimed after relog. UI push is separate client evidence.
+- **Preconditions and authority:** Cell GM gate and Base `caller_access >= GM_ACCESS_LEVEL` for the **current** holder of `gm_entity_id`; loaded catalog, paradigms, DB, target crafting row and transaction locks. `GmAllCraft` has no immutable GM/subject generation, and Base does not prove the current target holder still plays the saved `player_id`. Base refusal and DB-failure lines are distinct.
+- **Effects and impact:** One transaction persists all catalog disciplines at expertise 100, all blueprints and racial paradigm levels at 7; then attempts a crafting UI push and `enable_craft_anywhere(entity_id, ...)` for a **current** session. The latter returns `bool`, but `handle_gm_all_craft` ignores it and still logs/sends `granted` after a failed session update or push. A reused entity ID can send A's crafting state to B or enable B's craft-anywhere. Persistent grant and transient privilege are separate outcomes.
+- **Verification:** Compare exact A `sgw_player.discipline_ids,blueprint_ids,racial_paradigm_levels` and `sgw_player_discipline_expertise` by `player_id` with catalog IDs, then reread after relog. Base `allcraft granted` proves neither target-session craft-anywhere nor UI delivery: inspect `push_failed` and separately read the same owner session's craft-anywhere state/options. A reused GM ID can receive feedback intended for the original caller.
 - **Compensation:** No proven inverse of the full prior crafting state; restore a captured DB/seed-backed state manually. Logout only clears craft-anywhere.
-- **Availability:** Disabled for a one-click palette action until a complete before-state capture and explicit destructive-grant preview exist; the raw GM command works.
+- **Availability:** Disabled until an immutable GM/subject owner fence survives the DB awaits and post-commit pushes, `enable_craft_anywhere` failure changes the result, and a complete before-state/destructive-grant preview exists; the raw GM command works.
 
 ### .learndiscipline
 
 - **Sources:** `registry/commands/progression.rs::SPECS`; `crafting.rs::learn`; `crates/base-crafting/src/base/crafting/handlers.rs::{handle_grant_expertise,grant_expertise_in_db}`; `docs/gameplay/crafting-system.md`.
 - **Arguments:** Positive `i32 disciplineId`; optional positive `i32 expertise` delta, default 1. Large positive values saturate then clamp to 100.
 - **Target/scope:** Required selected player and its `player_id`.
-- **Preconditions and authority:** Cell GM gate and positive values. Base handler receives `GmGrantExpertise` without a second GM access check or catalog-discipline validation; DB/persistence failure drops the grant.
-- **Effects and impact:** Registers the ID in `discipline_ids` if absent and persists expertise raised by delta, clamped 0–100, then pushes method 136. The cell's immediate `+N` feedback is only enqueue intent. Base `gmGiveExpertise: ... now N` is sent to the **subject entity**, not reliably to a different GM caller.
-- **Verification:** Read `sgw_player.discipline_ids` and `sgw_player_discipline_expertise` for exact `player_id,discipline_id` before and after Base completion; reread after relog. A cell `+N` line alone is insufficient. No palette use of an arbitrary numeric ID until catalog validation is server enforced.
+- **Preconditions and authority:** Cell GM gate and positive values. Base handler receives `GmGrantExpertise {entity_id,player_id,...}` without a GM access check, catalog-discipline validation or target session-generation fence; DB/persistence failure drops the grant.
+- **Effects and impact:** Registers the ID in `discipline_ids` if absent and persists expertise raised by delta, clamped 0–100, then pushes method 136 by `entity_id`. The cell's immediate `+N` feedback is only enqueue intent. Base `gmGiveExpertise: ... now N` is addressed to the **subject entity**, not the GM; after A's DB commit a reused ID can route both feedback and update to B.
+- **Verification:** Read A's `sgw_player.discipline_ids` and `sgw_player_discipline_expertise` by exact `player_id,discipline_id` before/after and after relog. A cell `+N` line and a method 136 on current B are insufficient; require immutable owner evidence for the recipient. No arbitrary numeric ID until catalog validation is enforced.
 - **Compensation:** `.forgetdiscipline` drives expertise to zero but keeps the discipline known; restoring exact prior expertise requires a recorded before value and a separate plan.
-- **Availability:** Disabled: arbitrary positive discipline IDs can enter persistent state and selected-target Base feedback is not an unambiguous GM receipt.
+- **Availability:** Disabled: arbitrary positive IDs can enter persistent state, Base does not fence the target session after persistence, and feedback is neither an unambiguous GM receipt nor safe against entity-ID reuse.
 
 ### .forgetdiscipline
 
 - **Sources:** `registry/commands/progression.rs::SPECS`; `crafting.rs::forget`; `crates/base-crafting/src/base/crafting/handlers.rs::grant_expertise_in_db`; `docs/gameplay/crafting-system.md`.
 - **Arguments:** Positive `i32 disciplineId`.
 - **Target/scope:** Required selected player.
-- **Preconditions and authority:** Cell GM gate and parse/bound check; Base path lacks a second GM or catalog check. Missing DB prevents mutation.
+- **Preconditions and authority:** Cell GM gate and parse/bound check; Base path lacks a second GM/catalog check or target session-generation fence. Missing DB prevents mutation.
 - **Effects and impact:** Sends delta `-100`; Base clamps expertise to zero, registers an absent ID as known and persists it. **It does not delete the discipline row or remove the known ID.** Cell `-> expertise 0` feedback precedes persistence; Base result goes to the subject entity.
-- **Verification:** Compare exact `sgw_player.discipline_ids` and `sgw_player_discipline_expertise` row before/after Base result, then relog. Zero expertise is not proof the discipline was forgotten.
+- **Verification:** Compare A's exact `sgw_player.discipline_ids` and `sgw_player_discipline_expertise` row before/after and after relog. Base may push A's zero to reused entity B; its feedback or update alone does not prove the live recipient. Zero expertise is not proof the discipline was forgotten.
 - **Compensation:** Add the captured previous expertise through the grant path if possible; an initially absent discipline requires manual removal of both known ID and row. No automatic inverse.
-- **Availability:** Disabled: the name implies removal, while implementation preserves or creates a known discipline, and the receipt is not caller-bound.
+- **Availability:** Disabled: the name implies removal while implementation preserves or creates a known discipline; Base also lacks a post-commit target-owner fence and caller-bound receipt.
 
 ### .craftkit
 
@@ -52,18 +54,18 @@ This is the source contract for DW-21, not a live-client acceptance result. Its 
 - **Effects and impact:** Atomic crafting inventory transaction grants `count` times each component's quantity, sends inventory update and inventory events. This is a persistent item grant, not a blueprint unlock; success line lists applied stacks.
 - **Verification:** Wait for Base `craftkit [...] items granted` line; compare `sgw_inventory` rows by target `character_id`, including `item_id,type_id,stack_size,container_id,slot_id`, before/after and after relog. The line and inventory update alone do not prove client receipt. `server_entity_get` has no inventory list.
 - **Compensation:** No proven inverse: consuming/removing the granted stacks risks removing preexisting merged rounds/components. Manual reconciliation from captured instance/quantity diff only.
-- **Availability:** Disabled until the palette has an exact target inventory before/after readback and explicit multi-item grant preview; raw command is implemented.
+- **Availability:** Disabled until immutable GM and subject owners are fenced across Base catalog/DB awaits and post-commit inventory/feedback sends, and the palette has exact inventory readback plus a multi-item preview. A current GM holding a reused `gm_entity_id` can authorize an old message; a reused target ID can receive A's inventory update.
 
 ### .learnblueprint
 
 - **Sources:** `registry/commands/progression.rs::SPECS`; `crafting.rs::learn_blueprint`; `crates/base-crafting/src/base/crafting/gm_grant/{mod.rs,learn_blueprint.rs}::{handle_gm_craft_grant,handle_learn_blueprint,learn}`; `gm_grant/tests/learn_blueprint.rs`.
 - **Arguments:** One parseable `i32 blueprintId`; Base catalog validates existence.
 - **Target/scope:** Required selected player.
-- **Preconditions and authority:** Cell GM gate and Base GM recheck; unknown/already-known ID or failed DB write refuses.
+- **Preconditions and authority:** Cell GM gate and Base `caller_is_gm` check on the **current holder** of `gm_entity_id`; the queued `GmCraftGrant` carries no GM or subject session generation. Unknown/already-known ID or failed DB write refuses, but an A→B reuse can make B's access level authorize A's old request.
 - **Effects and impact:** Under player-wide lock, persists sorted `sgw_player.blueprint_ids` and pushes full known-crafts list (client method 139); no component items are granted.
-- **Verification:** Wait for Base learned/refused line, query `sgw_player.blueprint_ids` for exact `player_id` before/after, then relog and reread. A client list push is not DB proof.
+- **Verification:** Query A's `sgw_player.blueprint_ids` by exact `player_id` before/after and after relog. `handle_learn_blueprint` never proves `ids.entity_id` still plays `ids.player_id` before or after its DB awaits; `push_known_crafts` and `gm_line` address numeric IDs that may now belong to B. A success line or B's client list is not owner-bound proof.
 - **Compensation:** No console unlearn operation; manual restore of captured list is required.
-- **Availability:** Runnable with catalog-backed ID, exact selected-player confirmation and DB before/after readback; report client delivery separately.
+- **Availability:** Disabled until the queued grant carries immutable GM and subject session owners, Base fences both before the write and after awaits before sends, and an A→B ID-reuse replay test proves no cross-session authority or delivery. Catalog-backed ID and DB readback alone are insufficient.
 
 ### .missionfail
 
@@ -81,11 +83,11 @@ This is the source contract for DW-21, not a live-client acceptance result. Its 
 - **Sources:** `registry/commands/progression.rs::SPECS`; `mission.rs::rewards`; `docs/architecture/dev-console-channel.md`.
 - **Arguments:** One parseable `i32 missionId`.
 - **Target/scope:** Required selected player's cell mission tracker.
-- **Preconditions and authority:** Cell GM gate; target and integer. No catalog/DB lookup is made.
-- **Effects and impact:** Read-only chat line of current status and step, or “no mission”; **it does not display the reward set**, despite its name/help.
-- **Verification:** The returned `status`/`step` line is the only readback; it cannot verify rewards and may reflect transient tracker state. No relog is needed for this read.
+- **Preconditions and authority:** Cell GM gate; target and integer. No catalog/DB lookup **or mission-state lock check** is made. `crates/cell-content/src/cell/missions/state_lock.rs::is_state_unknown` can be true while the saved tracker is loading or unavailable.
+- **Effects and impact:** Read-only chat line of current status and step, or “no mission”; **it does not display the reward set**, despite its name/help. An empty locked tracker can produce a false “no mission” line.
+- **Verification:** The returned `status`/`step` is only a cell snapshot, not reward data. An absent line must be treated as **unknown** until the mission state is proven loaded and an exact `sgw_mission` read by `player_id,mission_id` agrees; no relog wait is needed for a loaded-state read.
 - **Compensation:** None needed.
-- **Availability:** Runnable only as “mission state preview”; hide any claimed reward preview until a reward catalog reader exists.
+- **Availability:** Disabled until the handler checks loaded mission state before returning absence and labels unknown/unavailable distinctly; a later reward catalog reader is required for the command's named purpose.
 
 ### .givecash
 
@@ -93,21 +95,21 @@ This is the source contract for DW-21, not a live-client acceptance result. Its 
 - **Arguments:** Positive signed `i32 amount` (max `i32::MAX`).
 - **Target/scope:** Required selected player; cash belongs to target `sgw_player.naquadah`, feedback to caller.
 - **Preconditions and authority:** Cell GM gate and positive amount/player ID; Base sink requires an entity address and DB row but does not recheck the recipient's player identity or GM rights from the message. No DB or failed update yields no committed grant.
-- **Effects and impact:** Persistent additive currency grant; Base sends target's property and caller's definitive line only after successful SQL `UPDATE`. No automatic cap or undo of a later spend.
-- **Verification:** Capture exact `sgw_player.naquadah` by target `player_id`, await Base success feedback, reread and compare committed delta; relog reread for durability. Do not infer success from Cell dispatch alone.
+- **Effects and impact:** Persistent additive currency grant keyed to A's `player_id`; after the SQL `UPDATE`, Base sends target property by numeric `entity_id` and GM feedback by numeric caller ID. If either ID has been reused, B can receive A's total or success line. No automatic cap or undo of a later spend.
+- **Verification:** Capture exact A `sgw_player.naquadah` by `player_id`, compare after the SQL write and after relog. Base feedback confirms a row update but is not fenced to the original GM; a property received by current B is not proof of A's client delivery. Do not infer success from Cell dispatch alone.
 - **Compensation:** No safe inverse after spending or concurrent grants; manual audited balance reconciliation from captured state.
-- **Availability:** Disabled until caller/target receipt can be bound to exact DB delta and an explicit currency-impact preview; raw GM path works.
+- **Availability:** Disabled until immutable GM/subject owner fencing covers the queued request and post-commit sends, receipt binds to A's exact DB delta, and the palette previews currency impact; raw GM path works.
 
 ### .givexp
 
 - **Sources:** `registry/commands/progression.rs::SPECS`; `give.rs::give_xp`; `crates/base-methods/src/base/world_entry/methods/progression/{mod.rs,asp_earning.rs}::{handle_grant_xp,persist_grant}`; `docs/gameplay/crafting-system.md`.
 - **Arguments:** Positive signed `i32 amount`, forwarded as `u64` only after positive check.
 - **Target/scope:** Required selected player.
-- **Preconditions and authority:** Cell GM gate; Base resolves active character and persists before in-memory/client progression; no DB drops grant. No Base GM-level recheck on this message.
+- **Preconditions and authority:** Cell GM gate; `GrantXP` carries `entity_id,xp_amount,gm_feedback_to` but no target `player_id` or session generation. Base reads the **current** `active_player_id` for that entity; after A queues a grant, reuse can credit B. No DB drops grant, and no Base GM-level recheck is made.
 - **Effects and impact:** Persistent XP and possibly level, training-point **and Applied Science Point** increases in one row-locked SQL statement. `asp_earning::persist_grant` adds `APPLIED_SCIENCE_POINTS_PER_LEVEL` for each level gained relative to the locked DB row, saturating the ASP total at `i32::MAX`; no level gain earns no ASP. The handler may unlock ability-tree state and sends XP/level updates plus the ASP total when earned. The request amount is not necessarily the final XP delta at cap.
-- **Verification:** Await definitive Base feedback, then compare exact target `sgw_player.exp,level,training_points,applied_science_points` by `player_id` before/after and after relog. Correlate the `crafting` `asp_earned` row (`level_before,level_after,asp_before,asp_after`) when a level was gained; `server_entity_get.level` is immediate corroboration only. Do not infer level or ASP from request amount or feedback alone.
-- **Compensation:** No safe inverse of level, spent training/Applied Science Points, unlocked actions or subsequent crafting spends; manual audited repair of the captured full progression state only.
-- **Availability:** Disabled until multi-field before/after readback and explicit persistent-impact preview exist.
+- **Verification:** Compare the intended A and actual current B `sgw_player.exp,level,training_points,applied_science_points` by their distinct `player_id`s before/after and after relog; correlate `crafting.asp_earned` with the credited ID. Base can also overwrite B's in-memory XP/level/points after its DB await because it updates the saved address without a post-await owner fence. A success line or `server_entity_get.level` on B cannot attribute the grant to A.
+- **Compensation:** No safe inverse of level, spent training/Applied Science Points, unlocked actions or subsequent crafting spends; if an A→B reuse occurred, audit **both** characters' DB and B's in-memory state before manual repair.
+- **Availability:** Disabled until `GrantXP` carries immutable target player/session generation, Base fences ownership before persistence and after awaits before in-memory/wire updates, and an A→B replay test plus multi-field readback prove the intended recipient.
 
 ### .giveability
 
@@ -262,14 +264,14 @@ All seven read commands below use `registry/commands/stats.rs::SPECS`, `stats.rs
 
 ### .giveammo
 
-- **Sources:** `registry/commands/ammo.rs::SPECS`; `gm/give_ammo.rs::{give_ammo,parse_ammo_type,MAX_ROUNDS}`; `crates/base-methods/src/base/world_entry/methods/inventory/ammo_gm_give/mod.rs::{handle_gm_give_ammo,grant_rounds}`; `tests/am06_ammo.rs`; `docs/gameplay/weapon-ammo-reload.md`.
+- **Sources:** `registry/commands/ammo.rs::SPECS`; `gm/give_ammo.rs::{give_ammo,parse_ammo_type,MAX_ROUNDS}`; `crates/base-methods/src/base/world_entry/methods/inventory/{ammo_gm_give,ammo_reserve}/mod.rs::{handle_gm_give_ammo,grant_rounds,return_rounds}`; `tests/am06_ammo.rs`; `docs/gameplay/weapon-ammo-reload.md`.
 - **Arguments:** Two whitespace words: catalog ammo type number/name/alias or reserve item ID, then positive `i32 rounds`; request over 5000 is **clamped** to 5000 with preflight note. Ambiguous `emp`, unknown/default type, no reserve item and nonpositive rounds refuse.
 - **Target/scope:** Selected in-view player else caller; selected non-player falls back to caller with warning. Stacks go to target bags.
-- **Preconditions and authority:** Cell GM gate, catalog mapping and player IDs; Base confirms active subject character and DB, then commits inventory transaction. Base message has no second access-level check. Bags may accept only part; zero accepted refuses.
-- **Effects and impact:** Persistent special-ammo reserve items in existing/new stacks, possibly partial because bags fill. Base sends full inventory update and definitive accepted/remainder feedback after commit; no clip fill.
-- **Verification:** Wait for Base grant/partial/refusal line and exact `returned,remainder,stack_before,stack_after` telemetry; compare `sgw_inventory` by target `character_id` and reserve `type_id`, including `item_id,stack_size,container_id,slot_id`, before/after and after relog. `server_entity_get` does not expose bags. Distinguish clamped request from bag remainder.
+- **Preconditions and authority:** Cell GM gate, catalog mapping and player IDs; Base confirms the active subject character **before** its DB transaction, then commits inventory. It does not recheck target/GM session generation after awaits or GM access level. Bags may accept only part; zero accepted refuses.
+- **Effects and impact:** Persistent special-ammo reserve items in existing/new stacks, possibly partial because bags fill. Base derives the actual reserve item again from `resources.ammo_item_types` inside `return_rounds`; that `out.item_id` can differ from the cell-captured `msg.item_id` if catalog data changed. Base then sends inventory update by numeric target ID after commit, so reused B can receive A's update. GM feedback is checked against `gm_player_id` at send time, but not generation: a new session of the same GM character can receive the old line. No clip fill.
+- **Verification:** Wait for Base grant/partial/refusal result and `returned,remainder,stack_before,stack_after` telemetry. Read `server_db_query` rows from `sgw_inventory` for target `character_id`, **only carried reserve bags `container_id IN (1,15)`**, keyed by the actual `resources.ammo_item_types.item_id` for `ammo_type`; require `truncated=false`, sum `stack_size` and compare exact `item_id,type_id,stack_size,container_id,slot_id` row diffs before/after and after relog. Verify actual DB item type equals the Cell-captured `msg.item_id` before enabling. The success line prints `msg.item_id`, not `out.item_id`; `server_entity_get` exposes no bags. Distinguish clamped request from bag remainder and B's UI receipt from A's DB grant.
 - **Compensation:** No safe inverse after stacks merge, ammo is used or another grant races; manual audited inventory reconciliation only.
-- **Availability:** Disabled until exact inventory readback and partial-grant semantics are shown in the palette.
+- **Availability:** Disabled until immutable GM/subject owner fencing covers pre/post-DB awaits and sends, actual DB item type matches the Cell-captured type, and bounded carried-bag readback plus partial-grant semantics are shown in the palette.
 
 ### .gmgiveammo
 
@@ -278,9 +280,9 @@ All seven read commands below use `registry/commands/stats.rs::SPECS`, `stats.rs
 - **Target/scope:** Same selected-player-or-caller resolution.
 - **Preconditions and authority:** Same GM and Base checks. This **dot alias** does not make native `/gmgiveammo` callable.
 - **Effects and impact:** Same persistent, possibly partial reserve-item grant.
-- **Verification:** Same exact inventory/feedback/relog recipe as `.giveammo`; label result as dot alias.
+- **Verification:** Same carried-bags-only, `truncated=false`, actual-DB-item-identity, exact row-diff and relog recipe as `.giveammo`; label result as dot alias.
 - **Compensation:** Same manual-only inventory reconciliation.
-- **Availability:** Disabled with `.giveammo` until exact inventory readback exists; show as an alias, not a separate action.
+- **Availability:** Disabled with `.giveammo` until owner fencing, DB item identity and exact carried-bag readback exist; show as an alias, not a separate action.
 
 ### .infiniteammo
 
