@@ -24,6 +24,7 @@ pub mod stop;
 pub mod uat;
 pub mod version;
 pub mod watch;
+pub mod workbench;
 
 use std::ffi::OsString;
 
@@ -119,6 +120,11 @@ pub const COMMANDS: &[CommandInfo] = &[
         name: "status",
         group: Group::Daemon,
         summary: "Show the daemon and each instance: account, client, port, lease, seed",
+    },
+    CommandInfo {
+        name: "workbench",
+        group: Group::Daemon,
+        summary: "Open the local companion workbench for an instance",
     },
     CommandInfo {
         name: "start",
@@ -226,6 +232,8 @@ pub enum Command {
     Golden(golden::Args),
     /// Show the daemon and each instance: account, client, port, lease, seed
     Status(status::Args),
+    /// Open the local companion workbench for an instance
+    Workbench(workbench::Args),
     /// Start the lab daemon (the CimmeriaLabDaemon scheduled task)
     Start(start::Args),
     /// Stop the lab daemon and close its lab clients
@@ -263,6 +271,7 @@ pub fn dispatch(cmd: &Command, ctx: &Ctx) -> u8 {
         Command::Calibrate(args) => calibrate::run(args, ctx),
         Command::Golden(args) => golden::run(args, ctx),
         Command::Status(args) => status::run(args, ctx),
+        Command::Workbench(args) => workbench::run(args, ctx),
         Command::Start(args) => start::run(args, ctx),
         Command::Stop(args) => stop::run(args, ctx),
         Command::Restart(args) => restart::run(args, ctx),

@@ -3,7 +3,7 @@
 > **Last updated**: 2026-10-15
 > **Audience**: Lab contributors and reviewers
 > **Type**: Architecture decision record
-> **Status**: Implemented boundary in DW-02A; shell and API pending DW-02B
+> **Status**: Implemented boundary in DW-02A and local shell/API facade in DW-02B
 > **Companion docs**: [live-research-lab.md](live-research-lab.md), [../analysis/dev-workbench/README.md](../analysis/dev-workbench/README.md)
 
 ## Context
@@ -46,6 +46,16 @@ or `instance_unknown`) under `lab.workbench.auth`. Request paths,
 cookies, CSRF values, bearer tokens, and submitted instance strings are
 not logged.
 
-The static shell and its API facade arrive in DW-02B. No workbench
-request reaches the game client in this packet. The daemon's existing
-lab lease rules will gate the later mutating API facade.
+DW-02B serves the static shell, stylesheet and script inside the same
+cookie gate. `GET /workbench/api/v1/session?instance=<label>` returns a
+versioned `{schema_version,context,data,gaps}` response with the bound
+instance, CSRF token, client status and lease status under `data`. Missing
+client observations appear in `gaps`. The shell reads status from this
+route and keeps view selection in per-instance browser session storage.
+
+`POST /workbench/api/v1/input/key?instance=<label>` is the first typed
+mutation facade. The browser gate checks the query, Origin and CSRF;
+the handler independently checks the body instance and the named lab
+lease before calling the existing supervisor input method. API JSON
+replies use the same versioned envelope. A retained PID alone does not
+mean a client is running; the shell reads `running` and `uptime_state`.
