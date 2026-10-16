@@ -4,7 +4,10 @@ use serde_json::json;
 
 use super::{
     bookmarks::{action_allowed, BookmarkDraft, BookmarkStore},
-    spatial::{fresh_frame, join_entity, SpatialEntity},
+    spatial::{
+        current_frame, definition_query, definition_rows, fresh_frame, join_entity,
+        observed_frame_consistent, SpatialEntity,
+    },
 };
 
 fn entity(world_id: i64, space_id: u64, at_ms: i64) -> SpatialEntity {
@@ -35,6 +38,67 @@ fn frame_expires_from_first_read_and_rejects_future_clock() {
     assert!(fresh_frame(1000, 3000));
     assert!(!fresh_frame(1000, 3001));
     assert!(!fresh_frame(3001, 3000));
+}
+
+#[test]
+fn same_world_relog_or_process_change_cannot_make_a_current_frame() {
+    assert!(!observed_frame_consistent(
+        Some(10),
+        Some(11),
+        Some(42),
+        Some(42)
+    ));
+    assert!(!observed_frame_consistent(
+        Some(10),
+        Some(10),
+        Some(42),
+        Some(43)
+    ));
+    assert!(!observed_frame_consistent(None, None, Some(42), Some(42)));
+    // Equal PID and player number can recur after a relog. Without a trusted
+    // login generation this is an observation, not a current joined frame.
+    assert!(observed_frame_consistent(
+        Some(10),
+        Some(10),
+        Some(42),
+        Some(42)
+    ));
+    assert!(!current_frame(true, false));
+    assert!(current_frame(true, true));
+}
+
+#[test]
+fn authored_regions_keep_all_corners_flags_and_metre_dimensions() {
+    let sql = definition_query(7, "regions").unwrap();
+    for column in [
+        "flags", "x1", "y1", "z1", "x2", "y2", "z2", "x3", "y3", "z3", "x4", "y4", "z4", "radius",
+        "height",
+    ] {
+        assert!(sql.contains(column), "missing {column}");
+    }
+    let row = json!({"region_id":5,"flags":3,"x1":1.0,"y1":2.0,"z1":3.0,"x2":4.0,"y2":5.0,"z2":6.0,"x3":7.0,"y3":8.0,"z3":9.0,"x4":10.0,"y4":11.0,"z4":12.0,"radius":13.0,"height":14.0,"world_id":7});
+    let rows = definition_rows(
+        &json!({"rows":[row.clone()],"truncated":false}),
+        7,
+        "regions",
+    )
+    .unwrap();
+    assert_eq!(rows["rows"][0], row);
+    assert_eq!(rows["position_unit"], "BigWorld m");
+    assert_eq!(rows["radius_unit"], "m");
+    assert_eq!(rows["height_unit"], "m");
+    assert_eq!(rows["heading_unit"], serde_json::Value::Null);
+}
+
+#[test]
+fn spawn_heading_is_radians_and_not_a_metre_dimension() {
+    let row = json!({"spawn_id":9,"x":1.0,"y":2.0,"z":3.0,"heading":1.57,"world_id":7});
+    let rows = definition_rows(&json!({"rows":[row.clone()]}), 7, "spawns").unwrap();
+    assert!(definition_query(7, "spawns").unwrap().contains("heading"));
+    assert_eq!(rows["rows"][0], row);
+    assert_eq!(rows["position_unit"], "BigWorld m");
+    assert_eq!(rows["heading_unit"], "rad");
+    assert_eq!(rows["radius_unit"], serde_json::Value::Null);
 }
 
 #[test]

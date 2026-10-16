@@ -16,16 +16,11 @@ use super::{cookie_value, session::SessionStore};
 
 #[path = "probe_api.rs"]
 mod probe_api;
-use crate::supervisor::world::{
-    click::{self, ClickRequest, Expect},
-    io::LiveWorld,
-    PointArg, Space,
-};
 use crate::{
     lease::permit::{self, Permit},
     server::Instances,
     workbench::{
-        bookmarks::{self, BookmarkDraft, BookmarkStore},
+        bookmarks::{BookmarkDraft, BookmarkStore},
         dossier, spatial,
     },
 };
@@ -92,9 +87,29 @@ fn bookmark_store() -> BookmarkStore {
 }
 
 fn spatial_error(instance: &str, status: StatusCode, code: &str, detail: &str) -> Response {
+    tracing::warn!(target: "lab.workbench.spatial", instance, status = status.as_u16(), code, "spatial request failed");
+    let safe_detail = match code {
+        "instance_mismatch"
+        | "bookmark_missing"
+        | "lease_invalid"
+        | "cross_world_or_unknown"
+        | "cross_space_or_unknown" => detail,
+        "bookmark_action_unavailable" => {
+            "bookmark actions require a trusted client identity and guarded input boundary"
+        }
+        _ => "spatial operation failed; inspect the structured error code",
+    };
     (
         status,
-        reply(instance, json!({"error":code,"detail":detail}), vec![]),
+        reply(
+            instance,
+            json!({"error":code,"detail":safe_detail}),
+            if code == "bookmark_action_unavailable" {
+                vec![json!({"source":"client_session","code":"session_identity_unbound"})]
+            } else {
+                vec![]
+            },
+        ),
     )
         .into_response()
 }
@@ -236,6 +251,17 @@ async fn bookmark_action(
     headers: HeaderMap,
     Json(body): Json<BookmarkActionRequest>,
 ) -> Response {
+    let store = bookmark_store();
+    bookmark_action_with_store(sessions, instances, headers, body, &store).await
+}
+
+async fn bookmark_action_with_store(
+    sessions: Arc<SessionStore>,
+    instances: Instances,
+    headers: HeaderMap,
+    body: BookmarkActionRequest,
+    store: &BookmarkStore,
+) -> Response {
     let instance = match request_instance(&sessions, &headers, &body.instance) {
         Ok(v) => v,
         Err(r) => return *r,
@@ -243,7 +269,7 @@ async fn bookmark_action(
     let Some(hosted) = instances.by_label(&instance) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    let row = match bookmark_store().list(&instance) {
+    let row = match store.list(&instance) {
         Ok(rows) => match rows.into_iter().find(|row| row.id == body.id) {
             Some(row) => row,
             None => {
@@ -276,59 +302,17 @@ async fn bookmark_action(
             "a current lab lease is required",
         );
     }
-    let permit = Permit::Lease {
-        book,
-        id: body.lease_id,
+    let action = match body.action {
+        BookmarkAction::Click => "click",
+        BookmarkAction::Teleport => "teleport",
     };
-    let result: Result<Value, String> = permit::scope(permit, async {
-        let before = hosted.supervisor.player_state().await?;
-        bookmarks::action_allowed(&row, &instance, before.world_id, None).map_err(str::to_owned)?;
-        let position = row.position_m;
-        let outcome = match body.action {
-            BookmarkAction::Click => {
-                let mut world = LiveWorld::new(&hosted.supervisor);
-                click::run(&mut world, "client_world_click", ClickRequest {
-                    point: Some(PointArg { x: position[0], y: position[1], z: position[2], space: Some(Space::Server) }),
-                    expect: Some(Expect::Nothing), ..ClickRequest::default()
-                }, None).await.map_err(|e| e.summary())?
-            }
-            BookmarkAction::Teleport => {
-                let command = format!("/gmgotoxyz {:.3} {:.3} {:.3}", position[0], position[1], position[2]);
-                hosted.supervisor.chat_command(&command).await?;
-                json!({"native_level":"slash_command","native_tier":"N2","submitted":true,"server_accepted":null})
-            }
-        };
-        let after = hosted.supervisor.player_state().await?;
-        let same_world = after.world_id == Some(row.world_id) && after.world == before.world;
-        Ok(json!({"bookmark_id":row.id,"action":match body.action { BookmarkAction::Click => "click", BookmarkAction::Teleport => "teleport" },"result":outcome,"world_still_current":same_world,"effect_verified":false,"space_verified":false,"source":row.source}))
-    }).await;
-    match result {
-        Ok(data) => reply(
-            &instance,
-            data,
-            vec![json!({"source":"server_entity_get","code":"effect_unverified"})],
-        )
-        .into_response(),
-        Err(reason)
-            if matches!(
-                reason.as_str(),
-                "instance_mismatch" | "cross_world_or_unknown" | "cross_space_or_unknown"
-            ) =>
-        {
-            spatial_error(
-                &instance,
-                StatusCode::CONFLICT,
-                &reason,
-                "saved bookmark is not in the current client world and space",
-            )
-        }
-        Err(reason) => spatial_error(
-            &instance,
-            StatusCode::CONFLICT,
-            "bookmark_action_failed",
-            &reason,
-        ),
-    }
+    tracing::warn!(target: "lab.workbench.spatial", instance, action, bookmark_id = %row.id, "bookmark action refused without guarded client identity");
+    spatial_error(
+        &instance,
+        StatusCode::CONFLICT,
+        "bookmark_action_unavailable",
+        "bookmark actions require a trusted client identity and guarded input boundary",
+    )
 }
 
 fn bound_instance(sessions: &SessionStore, headers: &HeaderMap) -> Option<String> {
