@@ -260,7 +260,7 @@ mod tests {
                 "selected_or_argument",
                 "transient",
                 json!([["entityId", "entity", false]]),
-                json!(["server_entity_get"]),
+                json!(["server_entity_get", "server_db_query"]),
             ),
             (
                 "delspawn",
@@ -309,6 +309,23 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("without its normal dismiss path"));
+        assert_eq!(
+            despawn["verify"]["comparison_fields"],
+            json!(["entity_id", "space_id", "spawn_id"])
+        );
+        assert!(despawn["verify"]["recipe"]
+            .as_str()
+            .unwrap()
+            .contains("exact captured spawn_id"));
+        let delspawn = rows.iter().find(|r| r["name"] == "delspawn").unwrap();
+        assert!(delspawn["forms"]
+            .as_str()
+            .unwrap()
+            .contains("seeded spawnable"));
+        assert!(delspawn["impact"]["summary"]
+            .as_str()
+            .unwrap()
+            .contains("DELETE before attempting runtime despawn"));
         let unsafe_spawn = rows.iter().find(|r| r["name"] == "spawnrandom").unwrap();
         assert_eq!(unsafe_spawn["availability"], "unsupported");
         assert_eq!(unsafe_spawn["manual_pending"], true);
@@ -316,5 +333,30 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("Server"));
+    }
+
+    #[test]
+    fn safe_subforms_are_explicitly_deferred_in_projected_catalog() {
+        let catalog = list_commands_for_actor(true).unwrap();
+        let rows = catalog["commands"].as_array().unwrap();
+        for (name, safe_form) in [
+            ("autosavespawn", "off: 0|false (safe, deferred)"),
+            ("spawnset", "no arguments or list (safe, deferred)"),
+        ] {
+            let row = rows.iter().find(|row| row["name"] == name).unwrap();
+            assert_eq!(row["availability"], "unsupported", ".{name}");
+            assert_eq!(row["manual_pending"], true, ".{name}");
+            assert!(
+                row["forms"].as_str().unwrap().contains(safe_form),
+                ".{name}"
+            );
+            assert!(
+                row["disposition_reason"]
+                    .as_str()
+                    .unwrap()
+                    .contains("command-level availability"),
+                ".{name}"
+            );
+        }
     }
 }

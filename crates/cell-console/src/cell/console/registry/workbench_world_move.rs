@@ -167,20 +167,20 @@ pub(super) fn metadata(name: &str) -> Option<WorkbenchMetadata> {
             "despawn" => ("Spawn", "runnable", "", ENTITY_ID, "selected in-view non-player (including pet) | entityId for same-space NPC/being (pet, prop and player refused)",
                 "GM; selected visible non-player, including a pet, or explicit NPC/being ID in caller's space; ID form excludes pet/prop/player",
                 "Selected form can remove a pet without its normal dismiss path; both forms remove runtime entity, combat links and witnesses; spawnlist row remains; ordinary respawn tick does not restore it",
-                "Capture entity identity/space before; confirm completion ID and server_entity_get null after, accounting for ID reuse; check spawnlist separately",
+                "Capture entity identity, space and spawn_id before; confirm completion ID and server_entity_get null after, accounting for ID reuse; if spawn_id exists, query resources.spawnlist by that exact captured spawn_id to confirm its row remains; absent DB readback is unknown",
                 "No exact inverse; .spawn creates a different runtime ID and does not restore authored state"),
             "savespawn" => ("Spawn authoring", "unsupported", "Summoned pet can be queued as a persistent spawnlist INSERT; cell-side guard is absent", NO_ARGS, "selected non-player (no arguments)",
                 "GM; selected in-view templated non-player with world; duplicate confirmed new spawn refuses",
                 "Changes NPC home and queues INSERT/UPDATE; .seedconfirm writes live DB and emits SQL; seed commit remains manual",
                 "Read .seedpending; after .seedconfirm query exact spawn_id or emitted row, then inspect committed spawnlist.sql separately",
                 "Manual restoration; .seedcancel discards caller's entire pending authoring queue"),
-            "delspawn" => ("Spawn authoring", "runnable", "", NO_ARGS, "selected seeded NPC (no arguments)",
-                "GM; selected in-view templated non-player with real spawn_id",
-                "Queues DELETE and immediately despawns runtime entity; .seedconfirm writes live DB; seed-file removal remains manual",
+            "delspawn" => ("Spawn authoring", "runnable", "", NO_ARGS, "selected in-view seeded spawnable (no arguments)",
+                "GM; selected in-view spawnable with real spawn_id and template_id; runtime player removal is refused by the despawn primitive after the DELETE is queued",
+                "Queues DELETE before attempting runtime despawn; non-player target is then removed, but a player with spawn_id can leave a queued DELETE despite runtime refusal; .seedconfirm writes live DB; seed-file removal remains manual",
                 "Capture spawn_id; verify runtime removal separately from .seedpending, confirmed DB row absence and committed seed diff",
                 "No built-in inverse; restore runtime and exact row/seed manually; .seedcancel clears whole queue"),
-            "autosavespawn" => ("Spawn authoring", "unsupported", "Turning on can autosave a selected pet through placement or .lookat; centralized cell-side guard is absent", BOOLEAN, "1|0|true|false",
-                "GM; valid boolean; off only until pet/class guard covers every placement path",
+            "autosavespawn" => ("Spawn authoring", "unsupported", "Off is safe, but command-level availability cannot enable only off; on can autosave a selected pet and awaits a cell-side class guard plus per-form availability in DW-29/30", BOOLEAN, "off: 0|false (safe, deferred) | on: 1|true (unsafe)",
+                "GM; valid boolean; off is safe; on needs a pet/class guard across every placement path",
                 "Caller-local toggle; later NPC placement may queue SQL, requiring .seedconfirm and seed commit",
                 "Feedback only; no independent preference readback exists; later .seedpending can show effects",
                 "Reissue prior boolean; this does not cancel already queued SQL"),
@@ -189,8 +189,8 @@ pub(super) fn metadata(name: &str) -> Option<WorkbenchMetadata> {
                 "Resets all SGWMob NPCs in caller space in memory; no spawnlist write",
                 "Compare per-ID position, health, focus, flags and AI state; current snapshot cannot prove grid, loot, threat or witness state",
                 "None proven"),
-            "spawnset" => ("Spawn sets", "unsupported", "on can clear active peer sets before target space/member validation; command-level action gate unavailable", SPAWN_SET, "list | on setId | off setId | clear",
-                "GM; on needs known nonempty spawnable set and loaded destination before peer teardown",
+            "spawnset" => ("Spawn sets", "unsupported", "No-argument/list is safe and read-only, but command-level availability cannot enable only those forms; on can clear active peer sets before validation and awaits per-form availability in DW-29/30", SPAWN_SET, "no arguments or list (safe, deferred) | on setId | off setId | clear",
+                "GM; no-argument/list is read-only; on needs known nonempty spawnable set and loaded destination before peer teardown",
                 "World-wide runtime set activation/deactivation; no DB/seed write; partial member failures possible",
                 "Re-read .spawnset list and member state; Shown count 0 is not success; structured independent set-state readback unavailable",
                 "off can reverse isolated on; peer teardown has no atomic inverse"),
@@ -208,6 +208,7 @@ pub(super) fn metadata(name: &str) -> Option<WorkbenchMetadata> {
     };
     let verify_tools: &[&str] = match name {
         "savespawn" | "delspawn" => &["server_entity_get", "server_db_query", ".seedpending"],
+        "despawn" => &["server_entity_get", "server_db_query"],
         "spawnset" => &[".spawnset list", "server_entity_query"],
         "autosavespawn" => &["GM feedback", ".seedpending"],
         "spawnrandom" => &["GM batch summary", "server_entity_get"],
@@ -227,6 +228,7 @@ pub(super) fn metadata(name: &str) -> Option<WorkbenchMetadata> {
     let comparison_fields: &[&str] = match name {
         "rotation" => &["entity_id", "space_id", "direction"],
         "savespawn" | "delspawn" => &["entity_id", "spawn_id", "template_id", "position"],
+        "despawn" => &["entity_id", "space_id", "spawn_id"],
         "spawnset" => &["set_id", "active", "member_count"],
         "autosavespawn" => &["feedback", "pending_count"],
         "spawn" | "spawnrandom" => &[
@@ -367,7 +369,7 @@ mod tests {
                 "mob_or_id",
                 "transient",
                 &["entityId"][..],
-                &["server_entity_get"][..],
+                &["server_entity_get", "server_db_query"][..],
             ),
             (
                 "delspawn",
@@ -426,5 +428,38 @@ mod tests {
         assert!(despawn.forms.contains("including pet"));
         assert!(despawn.forms.contains("pet, prop and player refused"));
         assert!(despawn.impact.contains("without its normal dismiss path"));
+        assert_eq!(
+            despawn.comparison_fields,
+            ["entity_id", "space_id", "spawn_id"]
+        );
+        assert!(despawn.verify.contains("exact captured spawn_id"));
+
+        let delspawn = catalog.iter().find(|row| row.name == "delspawn").unwrap();
+        assert!(delspawn.forms.contains("seeded spawnable"));
+        assert!(delspawn.preconditions.contains("spawn_id and template_id"));
+        assert!(delspawn
+            .impact
+            .contains("DELETE before attempting runtime despawn"));
+    }
+
+    #[test]
+    fn safe_subforms_wait_for_a_per_form_availability_gate() {
+        let autosave = metadata("autosavespawn").unwrap();
+        assert_eq!(autosave.availability, "unsupported");
+        assert!(autosave.forms.contains("off: 0|false (safe, deferred)"));
+        assert!(autosave
+            .disposition_reason
+            .contains("command-level availability"));
+        assert!(autosave.disposition_reason.contains("DW-29/30"));
+
+        let spawnset = metadata("spawnset").unwrap();
+        assert_eq!(spawnset.availability, "unsupported");
+        assert!(spawnset
+            .forms
+            .contains("no arguments or list (safe, deferred)"));
+        assert!(spawnset
+            .disposition_reason
+            .contains("command-level availability"));
+        assert!(spawnset.disposition_reason.contains("DW-29/30"));
     }
 }

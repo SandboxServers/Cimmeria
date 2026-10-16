@@ -137,11 +137,22 @@ Missing send, arrival or persistence evidence means the outcome is unknown.
 Explicit coordinates are checked for finite values but not for navmesh or Z
 containment, so they can place the avatar outside traversable geometry.
 `.despawn` with an explicit ID refuses pets, while the selected
-entity form can remove a pet without its normal dismiss path.
+entity form can remove a pet without its normal dismiss path. Capture the
+selected entity's `spawn_id` before despawning it; if one exists, use a
+read-only `server_db_query` for that exact `resources.spawnlist.spawn_id` to
+confirm the retained row. `.delspawn` accepts any selected in-view seeded
+spawnable with a template and `spawn_id`; its runtime removal and later
+database deletion require separate checks. The DELETE is queued before the
+runtime removal attempt; if that attempt refuses a player with a `spawn_id`,
+inspect `.seedpending` before confirming any queued changes.
 
 Other travel and spawn forms are marked unavailable in the catalog with their
 specific safety reason. In particular, selecting a summoned pet for
 `.savespawn` or enabling `.autosavespawn 1` can queue a persistent pet spawn.
+`.autosavespawn 0|false` and `.spawnset` with no arguments or `list` are safe
+subforms, but the current catalog can only enable or disable a whole command.
+They await per-form
+availability in DW-29/30 rather than being presented as unsafe actions.
 Keep pets out of authoring selections until the server has a class guard.
 `.seedpending` shows queued work; `.seedconfirm` requests a live database write;
 a developer still has to commit the emitted seed SQL. `.seedcancel` clears

@@ -27,6 +27,18 @@ target validation) and `.spawnrandom` (server bounds and derived-position
 validation). The in-game dot console behavior remains as documented in the
 evidence; catalog disabling is a palette disposition, not a server refusal.
 
+The command-level availability flag also disables two safe subforms:
+`.autosavespawn 0|false` and `.spawnset` with no arguments or `list`. Their
+metadata names them safe and deferred to DW-29/30 for per-form availability;
+the rest of those commands
+remain disabled. `.delspawn` targets a selected seeded spawnable with a
+template and `spawn_id`, not only an NPC. `.despawn` readback captures
+`spawn_id` before runtime removal and uses a read-only query of that exact
+`resources.spawnlist` row when one exists; a null entity alone does not prove
+the persistent row remains. `.delspawn` queues its DELETE before attempting
+runtime removal; the primitive can still refuse a player, so that rare path
+leaves a pending SQL change to inspect before confirmation.
+
 `.gotolocation` remains runnable in the catalog with a conditional readback:
 same-space player snaps require a `wire.out.forced_position` `send=sent` row from
 `server_log_tail`; cross-space arrival requires destination re-entry, a
@@ -47,5 +59,5 @@ reported two occupied slots indefinitely. Re-running the same command against th
 shared machine-wide lane completed normally. Compiling checks used that shared lane.
 
 Checks through the shared lane: cell-console fmt/clippy status=ok and
-556/556 lib tests passed; lab-mcp fmt/clippy status=ok and 59/59 lib tests
+557/557 lib tests passed; lab-mcp fmt/clippy status=ok and 60/60 lib tests
 passed. No new SQL query was added, so no live-DB check was required.
