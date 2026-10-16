@@ -243,57 +243,57 @@ The refused-grant spot check is `gm/tests/give.rs::gm_give_expertise_rejects_non
 
 ### /gmdhd
 
-- **Sources:** TOML `Event_SlashCmd_DHD`; dispatch table 159; `gm/travel/dhd.rs::handle_dhd`; `gm/tests/travel.rs`; `crate::cell::gate_travel::handle_dial_gate`.
+- **Sources:** TOML `Event_SlashCmd_DHD`; dispatch table 159; `gm/travel/dhd.rs::handle_dhd`; `gm/tests/travel.rs`; `crate::cell::gate_travel::handle_dial_gate`; `crates/base-world-entry/src/base/world_entry/gate_travel/{mod.rs,persist_arrival.rs}::persist_arrival`.
 - **Arguments:** Required `Integer DestinationId`; no TOML bound; cell method decodes signed `INT8`, only positive values accepted (0 list request unsupported). No quoting.
-- **Target/scope:** Calling GM's current world and target gate address; may grant address to caller's **live** address book for this session, except outbound-only hub.
+- **Target/scope:** Calling GM's current world and target gate address; the cell may directly add an address to the caller's live book before dialing, except for an outbound-only hub. A completed travel can also persist learned origin/destination gate IDs.
 - **Preconditions and authority:** Shared GM gate; known dialable address, different world and standable arrival; hub and failed dial refused.
-- **Effects and impact:** Cross-world `GateTravel` if accepted, with possible session-only address-book grant; disruptive movement, not a read or harmless query.
-- **Verification:** Feedback distinguishes dialing/refusal, then compare caller world/space and position after destination world entry via `server_entity_get`/`server_sessions`; feedback alone precedes settled travel.
-- **Compensation:** Manual return travel if available; no automatic restoration of prior world, combat/duel state or address-book side effect.
+- **Effects and impact:** Cross-world `GateTravel` if accepted. The direct GM address grant is in memory, but Base arrival conditionally persists destination world/position and appends eligible origin/destination gate IDs to `sgw_player.known_stargates` in one DB update. Disruptive, potentially persistent movement and grant; not a read or harmless query.
+- **Verification:** Feedback distinguishes dialing/refusal. Capture `sgw_player.world_location`, `pos_x/y/z` and `known_stargates` before, then compare the same columns via `server_db_query` after Base arrival as well as live world/space/position through `server_entity_get`/`server_sessions`; feedback alone precedes settled travel or DB commit. If persistence fails, a relog can restore the prior saved world.
+- **Compensation:** Manual return travel can restore location only if it succeeds. It does not remove learned persistent gate IDs or restore combat/duel state; no safe automatic inverse. Preserve the prior saved DB world/position/book for manual reconciliation.
 - **Availability:** Disabled until native binding and `Integer` to signed `INT8` range/encoding proof; server candidate implemented.
 
 ### /gmgoto
 
-- **Sources:** TOML `Event_SlashCmd_Goto`; dispatch table 160; `gm/travel/goto_summon.rs::handle_goto`; `gm/tests/travel.rs`.
+- **Sources:** TOML `Event_SlashCmd_Goto`; dispatch table 160; `gm/travel/goto_summon.rs::handle_goto`; `gm/tests/travel.rs`; `crates/base-world-entry/src/base/world_entry/teleport.rs::handle_teleport_player`.
 - **Arguments:** Required `String TargetName`; no quoting rule proven. Server accepts positive numeric entity ID only; names are not resolved.
 - **Target/scope:** Caller moves to a live target in the same space; target itself stays put.
 - **Preconditions and authority:** Shared GM gate; positive numeric ID, same-space target and caller must exist; cross-space or absent target refused.
-- **Effects and impact:** Transient authoritative position snap via spatial-grid update and `TeleportPlayer`; travel hook may end a duel and pet follows. No seed write.
-- **Verification:** Compare caller `space_id` and `position` against target with `server_entity_get` before/after; feedback does not prove client snap arrived.
-- **Compensation:** Manual return to captured position, if still safe; duel/other travel side effects have no inverse.
+- **Effects and impact:** Authoritative position snap via spatial-grid update and `TeleportPlayer`; travel hook may end a duel and pet follows. Base conditionally persists caller `sgw_player.pos_x/y/z` when a DB pool and active character identity are available; no seed write.
+- **Verification:** Compare caller `space_id` and `position` against target with `server_entity_get`, and capture then compare caller `sgw_player.pos_x/y/z` via `server_db_query`. Feedback does not prove client snap or DB write; Base logs a missing/failed update.
+- **Compensation:** Manual return requires the captured live and saved DB position; another `TeleportPlayer` may persist the return, if it succeeds. Duel/other travel side effects have no inverse.
 - **Availability:** Disabled until native string quoting/binding proof; numeric-ID server candidate implemented.
 
 ### /gmsummon
 
-- **Sources:** TOML `Event_SlashCmd_Summon`; dispatch table 161; `gm/travel/goto_summon.rs::handle_summon`; `gm/tests/travel.rs`.
+- **Sources:** TOML `Event_SlashCmd_Summon`; dispatch table 161; `gm/travel/goto_summon.rs::handle_summon`; `gm/tests/travel.rs`; `crates/base-world-entry/src/base/world_entry/teleport.rs::handle_teleport_player` for player targets.
 - **Arguments:** Required `String TargetName`; no quoting rule proven. Server accepts positive numeric entity ID only, not names.
 - **Target/scope:** Explicit other entity in caller's same space; player target receives `TeleportPlayer`, NPC target moves in cell spatial grid.
 - **Preconditions and authority:** Shared GM gate; cannot target self; absent or other-space target refused.
-- **Effects and impact:** Transient move of another entity to caller; travel hook may end target duel, and target's pet can follow. A player client needs authoritative snap; no DB/seed write here.
-- **Verification:** Compare selected entity's `space_id` and `position` with caller through `server_entity_get`; for a player verify client snap separately.
-- **Compensation:** Manual return to captured position; no inverse for duel and other intervening state.
+- **Effects and impact:** Move of another entity to caller; travel hook may end target duel, and target's pet can follow. For a player target, `TeleportPlayer` conditionally persists that player's `sgw_player.pos_x/y/z` when DB pool and identity are available. NPC move remains cell-only here; no seed write.
+- **Verification:** Compare target `space_id` and `position` with caller through `server_entity_get`. For a player, also capture and compare the **target player's** saved `sgw_player.pos_x/y/z` through `server_db_query`, plus client snap separately. An NPC has no player-position row to read.
+- **Compensation:** Manual return needs the target's prior live position and, for a player, prior saved DB position; a second teleport can restore both if successful. No inverse for duel or intervening state.
 - **Availability:** Disabled until native string quoting/binding proof; numeric-ID server candidate implemented.
 
 ### /gmgotolocation
 
-- **Sources:** TOML `Event_SlashCmd_GotoLocation`; dispatch table 162; `gm/travel/goto_location.rs::handle_goto_location`; `gm/tests/travel.rs`.
+- **Sources:** TOML `Event_SlashCmd_GotoLocation`; dispatch table 162; `gm/travel/goto_location.rs::handle_goto_location`; `gm/tests/travel.rs`; `crates/base-world-entry/src/base/world_entry/gate_travel/{mod.rs,persist_arrival.rs}::persist_arrival`.
 - **Arguments:** Required `String WorldName`, `Float X-Coordinate`, `Float Y-Coordinate`, `Float Z-Coordinate` in order. No quoting rule proven for spaces in world names; coordinates must be finite. `0,0,0` requests authored world entry point rather than literal origin.
 - **Target/scope:** Calling GM to named destination world; even same-world name uses full reload, not an in-place snap.
 - **Preconditions and authority:** Shared GM gate; caller exists, nonempty world, finite coordinates; absent entry point for zero sentinel refuses. Base handles unknown world after enqueue.
-- **Effects and impact:** Disruptive `GateTravel` and local teardown after queue confirmation; world entry and duel/pet effects possible. No direct seed mutation.
-- **Verification:** Compare world/space/position only after re-entry through `server_sessions` plus `server_entity_get`; the immediate `teleporting` feedback proves request path, not settled arrival.
-- **Compensation:** Manual return to captured world and position; no safe automatic rollback of transfer or surrounding state.
+- **Effects and impact:** Disruptive `GateTravel` and local teardown after queue confirmation. On arrival Base conditionally persists `sgw_player.world_location`, `world_id` and `pos_x/y/z`, and may append learned gate IDs; world entry and duel/pet effects also occur. No direct seed mutation.
+- **Verification:** Compare world/space/position only after re-entry through `server_sessions` plus `server_entity_get`, then compare saved `sgw_player.world_location`, `world_id`, `pos_x/y/z` and `known_stargates` via `server_db_query`. Immediate `teleporting` feedback proves only request path; persistence may fail independently.
+- **Compensation:** Manual return requires the captured live world/position and prior saved `sgw_player.world_location`, `world_id`, `pos_x/y/z` and gate book; a return travel may persist location but not remove newly learned gates or undo surrounding state. No safe automatic rollback.
 - **Availability:** Disabled until native string quoting/binding proof and accepted travel receipt; server candidate implemented.
 
 ### /gmgotoxyz
 
-- **Sources:** TOML `Event_SlashCmd_GotoXYZ`; dispatch table 163; `gm/travel/goto_xyz.rs::handle_goto_xyz`; `gm/tests/travel.rs`.
+- **Sources:** TOML `Event_SlashCmd_GotoXYZ`; dispatch table 163; `gm/travel/goto_xyz.rs::handle_goto_xyz`; `gm/tests/travel.rs`; `crates/base-world-entry/src/base/world_entry/teleport.rs::handle_teleport_player`.
 - **Arguments:** Required `Float X-Coordinate`, `Float Y-Coordinate`, `Float Z-Coordinate`; finite values only; no quoting.
 - **Target/scope:** Calling GM within current space; facing preserved.
 - **Preconditions and authority:** Shared GM gate, caller entity and finite coordinates; missing bytes/nonfinite refused.
-- **Effects and impact:** Transient authoritative same-space move: spatial grid update plus `TeleportPlayer`/forced-position snap; travel hook may affect duel and pet. No seed write.
-- **Verification:** Compare caller `space_id` and `position` with `server_entity_get` before/after; client snap is a separate observation.
-- **Compensation:** Manual return to captured coordinates; no undo for intervening duel/combat effects.
+- **Effects and impact:** Authoritative same-space move: spatial grid update plus `TeleportPlayer`/forced-position snap; Base conditionally persists caller `sgw_player.pos_x/y/z` when DB pool and active identity are available. Travel hook may affect duel and pet; no seed write.
+- **Verification:** Compare caller `space_id` and `position` with `server_entity_get` before/after, plus saved `sgw_player.pos_x/y/z` through `server_db_query`; client snap and DB write are separate observations.
+- **Compensation:** Manual return needs captured prior live coordinates and saved DB position; another `TeleportPlayer` can persist a return if successful. No undo for intervening duel/combat effects.
 - **Availability:** Disabled until native binding/submission proof; server candidate implemented.
 
 ### /gmreloadorganizations
