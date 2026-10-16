@@ -59,6 +59,7 @@ impl ProofCounters {
         self.hook_installed.store(true, Ordering::Release);
     }
 
+    #[cfg(feature = "lab-bridge")]
     pub(crate) fn dropped(&self) {
         increment(&self.dropped);
     }
