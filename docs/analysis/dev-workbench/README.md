@@ -22,6 +22,7 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | F7a | At the planning base, older prose in `docs/commands.md` and `docs/architecture/gm-cell-method-gating.md` said 167 `/gm*`, while the patch table has 161; `data/client-patches/README.md` describes 164 QA XML entries and 162 distinct words. Those two count docs were corrected in this design checkout. DW-24A must audit stock SGW `SlashCommands.xml`/`FinalSlashCommands.xml` for other GM-gated words before calling the slash catalog complete; those stock files are absent from this checkout. DW-27C owns descriptors for any verified extras. | 24A, 27C, 32 |
 | F8 | Seeds remain the source of truth. Live authoring commands can emit SQL and update memory/DB, but a palette must show that the emitted seed change needs committing and cannot imply a durable save. | 20B, 30-31 |
 | F9 | No Tabula Rasa client or SGW client was run in the source review. Lab-live verification remains unperformed and needs the user's explicit go-ahead before any lease, start/restart or server change. | 35 |
+| F10 | DW-03 deliberately leaves the server session unbound. The supervisor knows its PID and process creation ticks, while the server roster exposes a BaseApp UDP peer and player entity. The DLL's existing receive detour can observe a Mercury peer and encrypted-byte fingerprint, but issue #1703 records no live hook events and no proven endpoint. Entity ID, name, client destination and server source cannot by themselves bind the two sides, especially across NAT, relog or shard changes. | 03S-E, 03S-C, 03S-S, 03S-X, 03S-B |
 
 ## Decisions
 
@@ -37,6 +38,8 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | D-DW8 | Decided | Dot and native slash commands share one palette but have separate authoritative inventories and execution paths. All 162 patch-table slash entries, plus any stock GM-gated extras DW-24A verifies, receive typed forms, target/impact/readback metadata and availability; an unsupported handler or unproven native path is disabled per command with an explanation. A submitted slash string is not proof that the server accepted it. |
 | D-DW9 | BlockedDecision | Live lab acceptance requires the owner to approve taking the shared lab lease and, if necessary, starting or restarting the client. Code and offline tests can proceed. Ask immediately before DW-35; do not bundle approval into a code packet. |
 | D-DW10 | OutOfScope | Distributing the overlay or GUI to ordinary players would be a distinct product decision. No packet depends on it; this campaign does not ship that surface. |
+| D-DW11 | Decided | A trusted live join requires two distinct encrypted datagrams observed by the process-bound DLL and attributed to one current server connection generation, plus fresh, unique roster confirmation of that generation and player entity. Server and client UDP endpoints are diagnostics, not equality keys: NAT can rewrite the source. FNV wire fingerprints are correlation evidence, not credentials or authority for a GM action. Ambiguity, missed observations, stale generations, PID reuse, relog and gate travel clear the binding. |
+| D-DW12 | BlockedDecision | Exact live Mercury peer and fingerprint behavior, including the issue #1703 missing-hook case, requires a separately approved lab lease/client run. Offline proof and code packets may proceed; a binding cannot be called live verified until the owner approves that probe and its evidence passes. |
 
 ## Packet ledger
 
@@ -47,15 +50,20 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 1 | DW-01 | Capture contract and broker | — | 40k | Integrated |
 | 1 | DW-02A | GUI session security | — | 40k | Integrated |
 | 1 | DW-02B | GUI opener/static shell/API | 02A | 40k | Integrated |
-| 1 | DW-03 | Target dossier model | 01, 02B | 35k | Review |
+| 1 | DW-03 | Target dossier model | 01, 02B | 35k | Integrated |
+| 1B | DW-03S-E | Static binding evidence and fixture contract | 03 | 30k | Ready |
+| 1B | DW-03S-C | Process-bound DLL Mercury observer | 03S-E | 40k | BlockedDependency |
+| 1B | DW-03S-S | Server connection generation and wire proof producer | 03S-E | 45k | BlockedDependency |
+| 1B | DW-03S-X | Lab-only server proof read surface | 03S-S | 35k | BlockedDependency |
+| 1B | DW-03S-B | Supervisor binder and dossier integration | 03S-C, 03S-X, 03 | 45k | BlockedDependency |
 | 1 | DW-04 | Lua probe/object model | 01, 02B | 40k | Ready |
 | 1 | DW-05 | Spatial model/bookmarks | 01, 02B | 40k | Ready |
 | 2 | DW-06 | Mission X-ray model | 01, 02B | 40k | Ready |
-| 2 | DW-07 | Client click/target correlation | 01 | 35k | Review |
-| 2 | DW-08 | Trace capture anchor | 01, 02B | 40k | Ready |
-| 2 | DW-09 | Five-layer truth assembler | 03, 06, 08 | 40k | Ready |
-| 2 | DW-10 | Reproduction recorder enrichment | 07-08, LR-11 | 45k | BlockedDependency |
-| 2 | DW-11 | Triggered flight recorder | 08, LR-14/15 | 45k | BlockedDependency |
+| 2 | DW-07 | Client click/target correlation | 01 | 35k | Integrated |
+| 2 | DW-08 | Trace capture anchor | 01, 02B, 03S-B | 40k | BlockedDependency |
+| 2 | DW-09 | Five-layer truth assembler | 03S-B, 06, 08 | 40k | BlockedDependency |
+| 2 | DW-10 | Reproduction recorder enrichment | 07-08, 03S-B, LR-11 | 45k | BlockedDependency |
+| 2 | DW-11 | Triggered flight recorder | 08, 03S-B, LR-14/15 | 45k | BlockedDependency |
 | 3 | DW-12A | GUI dossier view | 02B-03 | 30k | Ready |
 | 3 | DW-12B | GUI Lua probe/object view | 02B, 04 | 30k | Ready |
 | 3 | DW-12C | GUI spatial/bookmark view | 02B, 05 | 30k | Ready |
@@ -67,7 +75,7 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 4 | DW-17 | Overlay input/fingerprint | 16 | 45k | Ready |
 | 4 | DW-18 | Overlay target/status controls | 13, 15, 17 | 40k | BlockedDependency |
 | 4 | DW-19 | GM descriptor/authority contract | 01 | 45k | Integrated |
-| 4 | DW-20A-E | Dot travel/spawn evidence, 16 specs | 19 | 35k | Review |
+| 4 | DW-20A-E | Dot travel/spawn evidence, 16 specs | 19 | 35k | Integrated |
 | 4 | DW-20A | Dot travel/spawn metadata | 20A-E | 40k | Ready |
 | 4 | DW-20B-E | Dot patrol/authoring evidence, 28 specs | 19 | 45k | Ready |
 | 4 | DW-20B | Dot patrol/authoring metadata | 20B-E | 45k | Ready |
@@ -95,8 +103,8 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 6 | DW-27B | Slash descriptors 136-162 and merge | 25A-27A, 27B-E | 45k | Ready |
 | 6 | DW-27C | Verified stock GM slash addendum | 24A, 24B, 27B | 30k | BlockedDependency |
 | 7 | DW-28 | Palette search/preferences | 02B, 19-27C | 35k | Ready |
-| 7 | DW-29 | Typed forms/target picker | 03, 19-28 | 45k | Ready |
-| 7 | DW-30 | Impact preview/execute/audit | 19-29, 24B | 45k | Ready |
+| 7 | DW-29 | Typed forms/target picker | 03S-B, 19-28 | 45k | BlockedDependency |
+| 7 | DW-30 | Impact preview/execute/audit | 19-29, 24B, 03S-B | 45k | BlockedDependency |
 | 7 | DW-31 | Readback/compensation/evidence | 09, 30 | 40k | Ready |
 | 7 | DW-32 | Dot and slash catalog coverage | 20A-31, 24B, 27C | 35k | Ready |
 | 7 | DW-33 | Frontend logic/offline UAT | 12A-15, 28-32 | 35k | Ready |
@@ -105,4 +113,4 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 
 ## Campaign acceptance
 
-Every view identifies its data source and freshness; an absent source is shown as unknown. The one-click trace identifies the first missing observed stage without mistaking a missing observation for proof that code did not run. Both recorders retain bounded evidence. The local companion palette covers every runnable dot and native-slash command with keyboard search, contextual help/examples, name/id resource lookup, typed controls, target/availability, impact preview, channel-specific execution, readback and evidence; each unsupported entry has a justified disabled status. Slash completeness includes the patch table and a stock-client command inventory audit. A raw form is not final coverage. A reviewer proves each regression guard fails when its fix is removed. Frontend packets include JS REPL-style state and persistence UAT plus visual review; DW-35 is real-client UAT after approval. Campaign status docs change only in DW-34.
+Every view identifies its data source and freshness; an absent source is shown as unknown. Joined server fields require DW-03S-B's unique, current process-to-server generation proof; offline fixtures cannot establish live hook behavior, which stays under D-DW12/DW-35. The one-click trace identifies the first missing observed stage without mistaking a missing observation for proof that code did not run. Both recorders retain bounded evidence. The local companion palette covers every runnable dot and native-slash command with keyboard search, contextual help/examples, name/id resource lookup, typed controls, target/availability, impact preview, channel-specific execution, readback and evidence; each unsupported entry has a justified disabled status. Slash completeness includes the patch table and a stock-client command inventory audit. A raw form is not final coverage. A reviewer proves each regression guard fails when its fix is removed. Frontend packets include JS REPL-style state and persistence UAT plus visual review; DW-35 is real-client UAT after approval. Campaign status docs change only in DW-34.
