@@ -834,6 +834,7 @@ VALUES (1028, 'step_status', 638, '2115', 'eq', 'active', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1028, 'set_interaction_type', NULL, '329_CellDoorButton', '{"op": "|", "mask": 256}', 0, 0);
+
 -- ============================================================
 -- MISSION 639 — Find Ambernol
 -- ============================================================
