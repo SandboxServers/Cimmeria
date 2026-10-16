@@ -407,6 +407,22 @@ before any effect could be verified from more than a snapshot.
 entity is a player, NPC or prop; its target kind is `any_entity`. Combat
 readbacks require the exact command prefix including `:` so AbilityOnMob and
 CombatVerbose feedback cannot satisfy the shorter command's recipe.
+Patch entries 82–108 have the same fail-closed typed treatment in
+`slash_descriptors_2b`; see
+`docs/analysis/dev-workbench/evidence/DW-26B-E.md` and its worknote.
+Their three implemented server methods (`testLOS`, `onPhysics`, `sendGMShout`)
+do not establish that the corresponding patch events invoke them. The
+contact/address words cannot resolve or mutate another player here.
+The `testLOS` descriptor accepts any fresh entity kind, including props,
+for its explicit target ID; the handler checks both supplied IDs in the
+GM's exact space.
+The `/gmsendgmshout` descriptor marks `Text` sensitive and has pure
+redaction and audience-preview helpers. The companion does not yet use
+them: DW-28–31 must redact before serializing history, audits, traces or
+screenshots and show exact-space versus all-online recipients before submit.
+A submitted line, server acceptance, aggregate delivery counts
+and receipt by one player are distinct outcomes. The native slash forms
+remain disabled pending client binding, encoding and submission proof.
 Each form states its server handler status, caller or target scope, impact,
 readback, compensation and the specific reason it cannot run. See the
 `DW-25A-E.md` and `DW-26A-E.md` evidence files under
