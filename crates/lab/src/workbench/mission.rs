@@ -3,7 +3,7 @@
 use serde_json::{json, Value};
 
 use crate::supervisor::Supervisor;
-use crate::uat::invoke::{ServerInvoker, ServerTools};
+use crate::uat::invoke::ServerInvoker;
 use crate::workbench::context::CaptureContext;
 
 /// One independently timed source reply.
@@ -296,10 +296,10 @@ pub async fn read_mission(
     instance: &str,
     mission_id: i32,
     context: Option<&CaptureContext>,
+    server: Option<&dyn ServerInvoker>,
 ) -> Value {
-    let server = ServerTools::from_env();
     let unavailable = || "server lab endpoint unavailable".to_owned();
-    let definition = match server.as_ref() {
+    let definition = match server {
         Some(server) => db_rows(server, format!("SELECT mission_id, mission_label, mission_defn, is_enabled, is_hidden, script_name FROM resources.missions WHERE mission_id = {mission_id}")).await
             .and_then(|sample| {
                 let [one] = sample.value.as_array().and_then(|v| <&[Value; 1]>::try_from(v.as_slice()).ok()).ok_or("mission definition row absent or ambiguous")?;
@@ -314,7 +314,7 @@ pub async fn read_mission(
         "resources.missions",
         "db_read_failed",
     );
-    let steps = match server.as_ref() {
+    let steps = match server {
         Some(server) => db_rows(server, format!("SELECT step_id, mission_id, step_display_log_text, index, step_enabled FROM resources.mission_steps WHERE mission_id = {mission_id} ORDER BY index, step_id")).await,
         None => Err(unavailable()),
     };
@@ -325,7 +325,7 @@ pub async fn read_mission(
         "resources.mission_steps",
         "db_read_failed",
     );
-    let chains = match server.as_ref() {
+    let chains = match server {
         Some(server) => db_rows(server, format!("SELECT chain_id, description, scope_type, scope_id, enabled FROM resources.content_chains WHERE scope_type = 'mission' AND scope_id = {mission_id} ORDER BY chain_id")).await,
         None => Err(unavailable()),
     };
@@ -337,7 +337,7 @@ pub async fn read_mission(
         "db_read_failed",
     );
     let pid = supervisor.client_pid().await;
-    let player = match (context, server.as_ref()) {
+    let player = match (context, server) {
         (None, _) => Err("trusted client-to-server session binding unavailable".into()),
         (Some(context), Some(server)) => bound_player(server, Some(context), instance, pid).await,
         (Some(_), None) => Err(unavailable()),
@@ -349,7 +349,7 @@ pub async fn read_mission(
         "server_sessions",
         "roster_unbound",
     );
-    let live = match (server.as_ref(), player) {
+    let live = match (server, player) {
         (Some(server), Ok(player_id)) => db_rows(server, format!("SELECT mission_id, player_id, current_step_id, status, completed_step_ids, completed_objective_ids, active_objective_ids, failed_objective_ids, repeats FROM sgw_mission WHERE player_id = {player_id} AND mission_id = {mission_id}")).await
             .and_then(|sample| {
                 let [one] = sample.value.as_array().and_then(|v| <&[Value; 1]>::try_from(v.as_slice()).ok()).ok_or("persisted mission row absent or ambiguous")?;

@@ -19,6 +19,7 @@ mod probe_api;
 use crate::{
     lease::permit::{self, Permit},
     server::Instances,
+    uat::invoke::{ServerInvoker, ServerTools},
     workbench::{
         bookmarks::{BookmarkDraft, BookmarkStore},
         dossier, mission, spatial,
@@ -33,12 +34,34 @@ const STYLESHEET: &str = include_str!("../../../workbench/app.css");
 
 /// Routes merged into the DW-02A browser router before its session layer.
 pub fn router(instances: Instances) -> Router<Arc<SessionStore>> {
-    router_with_store(instances, bookmark_store())
+    router_with_mission_server(instances, default_mission_server())
 }
 
 pub(crate) fn router_with_store(
     instances: Instances,
     store: BookmarkStore,
+) -> Router<Arc<SessionStore>> {
+    router_with_sources(instances, store, default_mission_server())
+}
+
+fn default_mission_server() -> Option<Arc<dyn ServerInvoker>> {
+    ServerTools::from_env().map(|source| Arc::new(source) as Arc<dyn ServerInvoker>)
+}
+
+#[derive(Clone)]
+struct MissionServer(Option<Arc<dyn ServerInvoker>>);
+
+fn router_with_mission_server(
+    instances: Instances,
+    server: Option<Arc<dyn ServerInvoker>>,
+) -> Router<Arc<SessionStore>> {
+    router_with_sources(instances, bookmark_store(), server)
+}
+
+fn router_with_sources(
+    instances: Instances,
+    store: BookmarkStore,
+    server: Option<Arc<dyn ServerInvoker>>,
 ) -> Router<Arc<SessionStore>> {
     Router::new()
         .route("/workbench/api/v1/session", get(session))
@@ -63,6 +86,7 @@ pub(crate) fn router_with_store(
         )
         .layer(Extension(store))
         .layer(Extension(instances))
+        .layer(Extension(MissionServer(server)))
 }
 
 #[derive(Deserialize)]
@@ -365,6 +389,7 @@ struct MissionQuery {
 async fn mission_xray(
     State(sessions): State<Arc<SessionStore>>,
     Extension(instances): Extension<Instances>,
+    Extension(MissionServer(server)): Extension<MissionServer>,
     headers: HeaderMap,
     Query(query): Query<MissionQuery>,
 ) -> Response {
@@ -380,8 +405,17 @@ async fn mission_xray(
     let Some(hosted) = instances.by_label(&instance) else {
         return StatusCode::NOT_FOUND.into_response();
     };
-    Json(mission::read_mission(&hosted.supervisor, &hosted.label, query.mission_id, None).await)
-        .into_response()
+    Json(
+        mission::read_mission(
+            &hosted.supervisor,
+            &hosted.label,
+            query.mission_id,
+            None,
+            server.as_deref(),
+        )
+        .await,
+    )
+    .into_response()
 }
 
 fn bound_instance(sessions: &SessionStore, headers: &HeaderMap) -> Option<String> {
