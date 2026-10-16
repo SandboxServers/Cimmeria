@@ -105,6 +105,45 @@ async fn shell_assets_and_api_are_inside_the_session_gate() {
 }
 
 #[tokio::test]
+async fn dossier_read_needs_session_but_no_lease_and_reports_missing_client() {
+    let base = spawn_daemon(test_server()).await.replace("/mcp", "");
+    let http = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .unwrap();
+    let path = format!("{base}/workbench/api/v1/dossier?instance=default&entity_id=42");
+    assert_eq!(
+        http.get(&path).send().await.unwrap().status(),
+        reqwest::StatusCode::UNAUTHORIZED
+    );
+    let (cookie, _) = browser_session(&http, &base, "default").await;
+    let response = http
+        .get(&path)
+        .header(COOKIE, &cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    let dossier: Value = response.json().await.unwrap();
+    assert_eq!(dossier["schema_version"], 1);
+    assert_eq!(dossier["context"]["current"], false);
+    assert!(dossier["gaps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|gap| gap["source"] == "client.target_slot"));
+    let other = http
+        .get(format!(
+            "{base}/workbench/api/v1/dossier?instance=other&entity_id=42"
+        ))
+        .header(COOKIE, &cookie)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(other.status(), reqwest::StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
 async fn input_mutation_requires_matching_query_body_session_csrf_and_lease() {
     let default_supervisor = test_server().instances().first().supervisor.clone();
     let p2_supervisor = test_server().instances().first().supervisor.clone();
