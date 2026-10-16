@@ -63,3 +63,20 @@ pub(super) const SPECS: &[Spec] = &[
         "Move the selected NPC/object to where you stand, facing where you face",
     ),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_travel_and_placement_spec_has_reviewed_metadata() {
+        assert_eq!(SPECS.len(), 8);
+        for spec in SPECS {
+            assert!(
+                super::super::super::workbench_world_move::metadata(spec.name).is_some(),
+                ".{} has no reviewed workbench contract",
+                spec.name
+            );
+        }
+    }
+}

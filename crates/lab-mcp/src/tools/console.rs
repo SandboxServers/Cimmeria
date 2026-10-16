@@ -56,7 +56,21 @@ fn list_commands_for_actor(server_is_gm: bool) -> Result<Value, &'static str> {
                 "availability": c.availability,
                 "manual_pending": c.manual_pending,
                 "disposition_reason": c.disposition_reason,
-                "args": [],
+                "args": c.args.iter().map(|a| json!({
+                    "name": a.name,
+                    "kind": a.kind,
+                    "required": a.required,
+                    "default": null,
+                    "range": (a.min.is_some() || a.max.is_some()).then(|| json!({
+                        "min": a.min,
+                        "max": a.max,
+                    })),
+                    "choices": a.choices,
+                    "help": a.help,
+                    "sensitive": false,
+                })).collect::<Vec<_>>(),
+                "forms": c.forms,
+                "preconditions": c.preconditions,
                 "target_policy": c.target_policy,
                 "target": {
                     "kind": c.target_policy,
@@ -67,9 +81,21 @@ fn list_commands_for_actor(server_is_gm: bool) -> Result<Value, &'static str> {
                     },
                     "argument_name": c.target_argument_name,
                 },
-                "impact": null,
-                "verify": null,
-                "compensation": null,
+                "impact": (!c.impact_kind.is_empty()).then(|| json!({
+                    "kind": c.impact_kind,
+                    "summary": c.impact,
+                    "preconditions": [c.preconditions],
+                })),
+                "verify": (!c.verify_tools.is_empty()).then(|| json!({
+                    "read_tools": c.verify_tools,
+                    "comparison_fields": c.comparison_fields,
+                    "recipe": c.verify,
+                })),
+                "compensation": match c.compensation_kind {
+                    "manual" => json!({"kind": "manual", "value": c.compensation}),
+                    "none" => json!({"kind": "none"}),
+                    _ => Value::Null,
+                },
                 "metadata_version": c.metadata_version,
             })
         })
@@ -123,11 +149,221 @@ mod tests {
             assert_eq!(row["name"], command.name);
             assert_eq!(row["id"], format!(".{}", command.name));
             assert_eq!(row["channel"], "dot");
-            assert_eq!(row["availability"], "unsupported");
-            assert_eq!(row["manual_pending"], true);
+            assert_eq!(row["availability"], command.availability);
+            assert_eq!(row["manual_pending"], command.manual_pending);
             if command.name == "despawn" {
                 assert_eq!(row["target"]["argument_name"], "entityId");
             }
+        }
+    }
+
+    #[test]
+    fn reviewed_travel_and_spawn_contracts_reach_catalog() {
+        let catalog = list_commands_for_actor(true).unwrap();
+        let rows = catalog["commands"].as_array().unwrap();
+        let family = [
+            "gotoxyz",
+            "goto",
+            "summon",
+            "gotolocation",
+            "gotospace",
+            "location",
+            "rotation",
+            "movehere",
+            "spawn",
+            "despawn",
+            "savespawn",
+            "delspawn",
+            "autosavespawn",
+            "respawnall",
+            "spawnset",
+            "spawnrandom",
+        ];
+        let runnable: Vec<_> = rows
+            .iter()
+            .filter(|row| {
+                family.contains(&row["name"].as_str().unwrap()) && row["availability"] == "runnable"
+            })
+            .map(|row| row["id"].as_str().unwrap())
+            .collect();
+        assert_eq!(runnable, [".gotolocation", ".spawn", ".despawn"]);
+
+        let xyz = rows.iter().find(|r| r["name"] == "gotoxyz").unwrap();
+        assert_eq!(xyz["availability"], "unsupported");
+        assert_eq!(xyz["manual_pending"], true);
+        assert!(xyz["disposition_reason"]
+            .as_str()
+            .unwrap()
+            .contains("execution-time expected-subject"));
+        assert_eq!(xyz["target"]["kind"], "none");
+        assert_eq!(xyz["target"]["selection_rule"], "none");
+        assert_eq!(
+            xyz["args"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|arg| json!([arg["name"], arg["kind"], arg["required"]]))
+                .collect::<Vec<_>>(),
+            vec![
+                json!(["x", "float", true]),
+                json!(["y", "float", true]),
+                json!(["z", "float", true])
+            ]
+        );
+        assert_eq!(xyz["impact"]["kind"], "persistent");
+        assert!(xyz["impact"]["summary"]
+            .as_str()
+            .unwrap()
+            .contains("BASEMSG_FORCED_POSITION"));
+        assert_eq!(
+            xyz["verify"]["read_tools"],
+            json!(["server_entity_get", "server_log_tail", "server_db_query"])
+        );
+        assert!(xyz["verify"]["recipe"]
+            .as_str()
+            .unwrap()
+            .contains("sgw_player"));
+
+        let expected = [
+            (
+                "gotolocation",
+                "none",
+                "none",
+                "persistent",
+                json!([
+                    ["worldName", "world", true],
+                    ["x", "float", false],
+                    ["y", "float", false],
+                    ["z", "float", false]
+                ]),
+                json!([
+                    "server_entity_get",
+                    "server_sessions",
+                    "server_log_tail",
+                    "server_db_query"
+                ]),
+            ),
+            (
+                "spawn",
+                "none",
+                "none",
+                "transient",
+                json!([["templateId", "template", true]]),
+                json!(["GM completion feedback", "server_entity_get"]),
+            ),
+            (
+                "despawn",
+                "mob_or_id",
+                "selected_or_argument",
+                "transient",
+                json!([["entityId", "entity", false]]),
+                json!(["server_entity_get", "server_db_query"]),
+            ),
+        ];
+        for (name, target_kind, selection, impact, args, tools) in expected {
+            let row = rows.iter().find(|row| row["name"] == name).unwrap();
+            assert_eq!(row["availability"], "runnable", ".{name}");
+            assert_eq!(row["target"]["kind"], target_kind, ".{name}");
+            assert_eq!(row["target"]["selection_rule"], selection, ".{name}");
+            assert_eq!(row["impact"]["kind"], impact, ".{name}");
+            let fields: Vec<_> = row["args"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|arg| json!([arg["name"], arg["kind"], arg["required"]]))
+                .collect();
+            assert_eq!(Value::Array(fields), args, ".{name}");
+            assert_eq!(row["verify"]["read_tools"], tools, ".{name}");
+            assert!(
+                !row["verify"]["recipe"].as_str().unwrap().is_empty(),
+                ".{name}"
+            );
+        }
+        let location = rows.iter().find(|r| r["name"] == "gotolocation").unwrap();
+        assert!(location["preconditions"]
+            .as_str()
+            .unwrap()
+            .contains("no navmesh or Z containment validation"));
+        assert!(location["impact"]["summary"]
+            .as_str()
+            .unwrap()
+            .contains("outside traversable or contained geometry"));
+        let recipe = location["verify"]["recipe"].as_str().unwrap();
+        assert!(recipe.contains("wire.out.forced_position send=sent"));
+        assert!(recipe.contains("rows_affected_zero, persist_arrival_failed"));
+        assert!(recipe.contains("evidence is unknown"));
+        let despawn = rows.iter().find(|r| r["name"] == "despawn").unwrap();
+        assert!(despawn["forms"].as_str().unwrap().contains("including pet"));
+        assert!(despawn["impact"]["summary"]
+            .as_str()
+            .unwrap()
+            .contains("without its normal dismiss path"));
+        assert_eq!(
+            despawn["verify"]["comparison_fields"],
+            json!(["entity_id", "space_id", "spawn_id"])
+        );
+        assert!(despawn["verify"]["recipe"]
+            .as_str()
+            .unwrap()
+            .contains("exact captured spawn_id"));
+        let delspawn = rows.iter().find(|r| r["name"] == "delspawn").unwrap();
+        assert_eq!(delspawn["availability"], "unsupported");
+        assert_eq!(delspawn["manual_pending"], true);
+        assert_eq!(delspawn["target"]["kind"], "spawnable");
+        assert_eq!(delspawn["target"]["selection_rule"], "required");
+        assert_eq!(delspawn["impact"]["kind"], "authoring");
+        assert_eq!(delspawn["args"], json!([]));
+        assert_eq!(
+            delspawn["verify"]["read_tools"],
+            json!(["server_entity_get", "server_db_query", ".seedpending"])
+        );
+        assert!(delspawn["disposition_reason"]
+            .as_str()
+            .unwrap()
+            .contains("before record_spawn"));
+        assert!(delspawn["disposition_reason"]
+            .as_str()
+            .unwrap()
+            .contains("no pending SQL"));
+        assert!(delspawn["forms"]
+            .as_str()
+            .unwrap()
+            .contains("seeded spawnable"));
+        assert!(delspawn["impact"]["summary"]
+            .as_str()
+            .unwrap()
+            .contains("DELETE before attempting runtime despawn"));
+        let unsafe_spawn = rows.iter().find(|r| r["name"] == "spawnrandom").unwrap();
+        assert_eq!(unsafe_spawn["availability"], "unsupported");
+        assert_eq!(unsafe_spawn["manual_pending"], true);
+        assert!(unsafe_spawn["disposition_reason"]
+            .as_str()
+            .unwrap()
+            .contains("Server"));
+    }
+
+    #[test]
+    fn safe_subforms_are_explicitly_deferred_in_projected_catalog() {
+        let catalog = list_commands_for_actor(true).unwrap();
+        let rows = catalog["commands"].as_array().unwrap();
+        for (name, safe_form) in [
+            ("autosavespawn", "off: 0|false (safe, deferred)"),
+            ("spawnset", "no arguments or list (safe, deferred)"),
+        ] {
+            let row = rows.iter().find(|row| row["name"] == name).unwrap();
+            assert_eq!(row["availability"], "unsupported", ".{name}");
+            assert_eq!(row["manual_pending"], true, ".{name}");
+            assert!(
+                row["forms"].as_str().unwrap().contains(safe_form),
+                ".{name}"
+            );
+            assert!(
+                row["disposition_reason"]
+                    .as_str()
+                    .unwrap()
+                    .contains("command-level availability"),
+                ".{name}"
+            );
         }
     }
 }
