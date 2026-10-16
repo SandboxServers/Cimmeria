@@ -817,6 +817,23 @@ VALUES
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1027, 'add_dialog_set', 5866, NULL, '{"slot": 17}', 0, 0);
 
+-- Chain 1028 (CB-N02b): chains 1014/1015 set the 329_CellDoorButton
+-- Livewire bit (mask 256) only on the step 2114 -> 2115 dialog edge, and
+-- interaction flags live in cell memory. A relog at step 2115 loads the
+-- button with template flags 0, so chain 1016 can never start the Livewire
+-- game and the player is stuck in the cell. Re-paint the bit on login while
+-- 2115 is active; chain 1017 clears it at 2116. Same shape as chain 1045.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1028, '638 - Zone load: step 2115 active -> restore 329_CellDoorButton Livewire bit (relog)', 'mission', 638, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1028, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1028, 'step_status', 638, '2115', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1028, 'set_interaction_type', NULL, '329_CellDoorButton', '{"op": "|", "mask": 256}', 0, 0);
 -- ============================================================
 -- MISSION 639 — Find Ambernol
 -- ============================================================
