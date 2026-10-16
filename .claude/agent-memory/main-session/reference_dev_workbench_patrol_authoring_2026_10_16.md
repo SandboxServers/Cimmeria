@@ -1,0 +1,5 @@
+# DW-20B-E patrol and authoring source findings (2026-10-16)
+
+- `crates/cell-console/src/cell/console/patrol.rs::{path_add,path_show,path_clear,path_assign}` uses `SpaceManager.patrol_authoring[path_id]`, shared by GMs in one cell process; only `seed.rs::record` queues SQL per caller. `.seedcancel` does not revert the shared path buffer or an already applied entity edit. See `docs/analysis/dev-workbench/evidence/DW-20B-E.md`.
+- `seed.rs::confirm` sends `ExecuteAuthoringSql` and reports the send before base SQL completes. `crates/base-session/src/base/console_authoring/mod.rs::handle_execute_authoring_sql` later distinguishes positive rows, zero rows, failure and absent DB. Neither stage edits `db/resources/` seed files; a developer must merge emitted SQL.
+- `crates/cell-console/src/cell/console/entity.rs::look_at` calls `placement.rs::settle_npc`, which queues a separate `.savespawn` if NPC autosave is enabled. The other entity-authoring handlers do not queue authoring SQL. `entity.rs::set_visible(true)` only acknowledges a future AoI refresh; it does not set a visibility field or send a show message.
