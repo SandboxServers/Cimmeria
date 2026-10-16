@@ -27,8 +27,8 @@ def run_hook(script, project, stdin_text):
     )
 
 
-def guard(project, tool, tool_input):
-    payload = json.dumps({"tool_name": tool, "tool_input": tool_input})
+def guard(project, tool, tool_input, **extra):
+    payload = json.dumps({"tool_name": tool, "tool_input": tool_input, **extra})
     return run_hook(ORCHESTRATOR_GUARD, project, payload)
 
 
@@ -186,6 +186,43 @@ class OrchestratorGuardTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         result = run_hook(ORCHESTRATOR_GUARD, self.project, "{broken")
         self.assertEqual(result.returncode, 0)
+
+    def test_subagent_payload_is_not_guarded(self):
+        # Hooks from orchestrator.md also fire inside dispatched subagents; their
+        # payload carries agent_id or agent_type, so code edits and big reads pass.
+        for marker in ({"agent_id": "a1b2c3"}, {"agent_type": "packet-coder"}):
+            result = guard(self.project, "Edit", {"file_path": "crates/foo.rs"}, **marker)
+            self.assertEqual(result.returncode, 0, result.stderr)
+        write_lines(self.project / "crates/big.rs", 500)
+        result = guard(self.project, "Read", {"file_path": "crates/big.rs"}, agent_id="a1b2c3")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_payload_without_marker_is_still_denied(self):
+        for marker in ({}, {"agent_id": ""}, {"agent_type": None}):
+            result = guard(self.project, "Edit", {"file_path": "crates/foo.rs"}, **marker)
+            self.assertEqual(result.returncode, 2, marker)
+
+    def test_allows_write_to_reports_dir(self):
+        target = ".claude/reports/lean-orchestration/lo-guard-coder.md"
+        result = guard(self.project, "Write", {"file_path": target})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        result = guard(self.project, "Edit", {"file_path": str(self.project / target)})
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_session_cwd_worktree_resolves_its_own_paths(self):
+        # The project root is the main checkout; a worktree under it is the session cwd.
+        worktree = self.project / "wt"
+        worktree.mkdir()
+        cwd = {"cwd": str(worktree)}
+        ledger = str(worktree / "docs" / "analysis" / "x" / "README.md")
+        self.assertEqual(guard(self.project, "Edit", {"file_path": ledger}, **cwd).returncode, 0)
+        relative = {"file_path": "docs/analysis/x/README.md"}
+        self.assertEqual(guard(self.project, "Edit", relative, **cwd).returncode, 0)
+        code = str(worktree / "crates" / "foo.rs")
+        self.assertEqual(guard(self.project, "Edit", {"file_path": code}, **cwd).returncode, 2)
+        write_lines(worktree / "crates" / "big.rs", 500)
+        result = guard(self.project, "Read", {"file_path": "crates/big.rs"}, **cwd)
+        self.assertEqual(result.returncode, 2)
 
 
 class WiringTest(unittest.TestCase):
