@@ -4,6 +4,8 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Open investigations
 
+- [reference_rasa_gui_injection_2026_10_15.md](reference_rasa_gui_injection_2026_10_15.md) — source-only comparison of Rasa's D3D9/ImGui, Python bridge, target-to-editor and save-verification patterns with Cimmeria's lab bridge
+
 - [reference_cb_n05a_catalog_seal_2026_10_14.md](reference_cb_n05a_catalog_seal_2026_10_14.md) — authored mission catalog seal: full resync/empty InvalidKeys, conservative key guard, test-only 61000–61003; live new-ID presentation pending
 
 - [reference_lab_login_foreground_lanes_2026_10_14.md](reference_lab_login_foreground_lanes_2026_10_14.md) — shared lab daemon serializes credential entry across instances; native two-client UAT pending
