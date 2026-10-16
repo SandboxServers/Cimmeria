@@ -93,7 +93,7 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 6 | DW-27A | Slash descriptors 109-135 | 27A-E | 40k | Ready |
 | 6 | DW-27B-E | Slash evidence 136-162 | 24A | 40k | Ready |
 | 6 | DW-27B | Slash descriptors 136-162 and merge | 25A-27A, 27B-E | 45k | Ready |
-| 6 | DW-27C | Verified stock GM slash addendum | 24A, 24B | 30k | BlockedDependency |
+| 6 | DW-27C | Verified stock GM slash addendum | 24A, 24B, 27B | 30k | BlockedDependency |
 | 7 | DW-28 | Palette search/preferences | 02B, 19-27C | 35k | Ready |
 | 7 | DW-29 | Typed forms/target picker | 03, 19-28 | 45k | Ready |
 | 7 | DW-30 | Impact preview/execute/audit | 19-29, 24B | 45k | Ready |
