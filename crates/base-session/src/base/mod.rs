@@ -55,6 +55,9 @@ pub mod tick_sync;
 pub mod user_channels;
 pub mod world_entry_chat;
 
+#[cfg(test)]
+mod session_wire_origin_tests;
+
 /// The world-entry leaf the methods crate needs below world entry: the
 /// `world_name` -> `space_id` registry, the GM-only world rule and the
 /// staged lab fixture store.

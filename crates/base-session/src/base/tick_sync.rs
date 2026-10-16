@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use cimmeria_mercury::transport::Transport;
+use cimmeria_mercury::transport::{SendOrigin, Transport};
 use tokio::sync::mpsc;
 
 use cimmeria_entity::manager::EntityManager;
@@ -15,7 +15,7 @@ use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::build_ongoing_tick_sync;
 use crate::mercury::game_clock;
 
-use super::helpers::destroy_owned_client_entities;
+use super::helpers::{destroy_owned_client_entities, send_with_origin};
 use super::ConnectedClientState;
 
 /// Builds one tickSync packet for a single loop iteration.
@@ -63,7 +63,7 @@ pub(crate) fn tick_sync_packet(
 /// retransmit driver needs the full channel state, not just the counter.
 ///
 /// [`Channel`]: cimmeria_mercury::channel::Channel
-pub async fn run_tick_loop(
+pub fn run_tick_loop(
     transport: Arc<dyn Transport>,
     addr: SocketAddr,
     key: [u8; 32],
@@ -77,6 +77,49 @@ pub async fn run_tick_loop(
     cell_tx: Option<mpsc::Sender<BaseToCellMsg>>,
     entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>>,
     db_pool: Option<Arc<sqlx::PgPool>>,
+) -> impl std::future::Future<Output = ()> + Send {
+    // A tokio task may first be polled after this peer has been replaced.
+    // Capture the original ticket synchronously, at the spawn call site.
+    let origin = connected.lock().ok().and_then(|clients| {
+        clients.get(&addr).and_then(|state| {
+            Arc::ptr_eq(&state.cancelled, &cancelled)
+                .then(|| state.wire_send_origin())
+                .flatten()
+        })
+    });
+    run_tick_loop_owned(
+        transport,
+        addr,
+        key,
+        enc_version,
+        next_seq_unreliable,
+        pending_acks,
+        last_recv,
+        cancelled,
+        connected,
+        entity_manager,
+        cell_tx,
+        entity_to_addr,
+        db_pool,
+        origin,
+    )
+}
+
+async fn run_tick_loop_owned(
+    transport: Arc<dyn Transport>,
+    addr: SocketAddr,
+    key: [u8; 32],
+    enc_version: EncryptionVersion,
+    next_seq_unreliable: Arc<AtomicU32>,
+    pending_acks: Arc<Mutex<Vec<u32>>>,
+    last_recv: Arc<Mutex<Instant>>,
+    cancelled: Arc<AtomicBool>,
+    connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_manager: Arc<Mutex<EntityManager>>,
+    cell_tx: Option<mpsc::Sender<BaseToCellMsg>>,
+    entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    db_pool: Option<Arc<sqlx::PgPool>>,
+    origin: Option<SendOrigin>,
 ) {
     // Server-side client-gone reap: if the peer sends nothing for 60 s, exit
     // the tick-sync loop and tear down session state. Distinct from UE3 R10's
@@ -102,7 +145,8 @@ pub async fn run_tick_loop(
         // has already torn the session down — return before the post-loop
         // cleanup runs so we don't double-stamp a second disconnect event
         // under a misleading reason.
-        if cancelled.load(Ordering::Relaxed) {
+        if cancelled.load(Ordering::Relaxed) || !owns_current_session(&connected, addr, &cancelled)
+        {
             let who = super::session_identity::identity_for_addr(&connected, addr);
             tracing::info!(
                 %addr,
@@ -201,7 +245,7 @@ pub async fn run_tick_loop(
         // reliable arrivals), no TX window pressure.
         let tick = game_clock::game_ticks();
         let (seq_id, pkt) = tick_sync_packet(&next_seq_unreliable, &key, tick, &acks, enc_version);
-        if let Err(e) = transport.send_to(&pkt, addr).await {
+        if let Err(e) = send_with_origin(&transport, &pkt, addr, origin.as_ref()).await {
             tracing::debug!(%addr, "Tick-sync stopped (send error): {e}");
             break "send_error";
         }
@@ -218,7 +262,8 @@ pub async fn run_tick_loop(
         // flag after the send's await: if a relaunch took the address over
         // meanwhile, the session there is not ours and its channel is not
         // ours to drive.
-        if cancelled.load(Ordering::Relaxed) {
+        if cancelled.load(Ordering::Relaxed) || !owns_current_session(&connected, addr, &cancelled)
+        {
             let who = super::session_identity::identity_for_addr(&connected, addr);
             tracing::info!(
                 %addr,
@@ -233,9 +278,15 @@ pub async fn run_tick_loop(
         // Each resend already has its row, `mercury.retransmit` (written by
         // the channel's scan, with the cause fields); only a failed send is
         // logged here.
-        let retransmits = super::helpers::collect_pending_retransmits(&connected, addr);
+        let retransmits = super::helpers::collect_pending_retransmits_for_session(
+            &connected,
+            addr,
+            Some(&cancelled),
+        );
         for raw in &retransmits {
-            if let Err(e) = transport.send_to(raw, addr).await {
+            if let Err(e) =
+                send_with_origin(&transport, &raw.bytes, addr, raw.origin.as_ref()).await
+            {
                 tracing::debug!(%addr, "Retransmit send_to failed: {e}");
                 break;
             }
@@ -268,4 +319,16 @@ pub async fn run_tick_loop(
         disconnect_reason,
         &cancelled,
     );
+}
+
+fn owns_current_session(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+    cancelled: &Arc<AtomicBool>,
+) -> bool {
+    connected.lock().ok().is_some_and(|clients| {
+        clients
+            .get(&addr)
+            .is_some_and(|state| Arc::ptr_eq(&state.cancelled, cancelled))
+    })
 }

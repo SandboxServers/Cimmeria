@@ -32,7 +32,7 @@ use std::time::{Duration, Instant};
 use cimmeria_mercury::encryption::EncryptionVersion;
 use cimmeria_mercury::transport::Transport;
 
-use super::super::helpers::{drain_acks_and_seq, get_enc_version, shadow_register_reliable_send};
+use super::super::helpers::{send_with_origin, shadow_register_reliable_send};
 use super::super::resources::{category_name, ResourceCache};
 use super::super::ConnectedClientState;
 use super::decision::resync_pending_version;
@@ -370,15 +370,6 @@ enum Target {
     Player(u32),
 }
 
-fn target(ctx: &SyncContext) -> Option<Target> {
-    let clients = ctx.connected.lock().ok()?;
-    let c = clients.get(&ctx.addr)?;
-    Some(match c.player_entity_id {
-        Some(eid) => Target::Player(eid),
-        None => Target::Account(c.account_entity_id),
-    })
-}
-
 /// Wait until the session's reliable window has room, then build, send and
 /// register one reliable packet.
 async fn send_paced(
@@ -387,15 +378,44 @@ async fn send_paced(
     build: impl FnOnce(u32, &[u32], EncryptionVersion, Target) -> Vec<u8>,
 ) -> Result<(), Abandon> {
     wait_for_window(ctx, token).await?;
-    let target = target(ctx).ok_or(Abandon::SessionGone)?;
-    let (acks, seq) =
-        drain_acks_and_seq(&ctx.connected, ctx.addr).map_err(|_| Abandon::SessionGone)?;
-    let enc = get_enc_version(&ctx.connected, ctx.addr);
+    let (target, acks, seq, enc, origin) = {
+        let clients = ctx.connected.lock().map_err(|_| Abandon::SessionGone)?;
+        let state = clients
+            .get(&ctx.addr)
+            .filter(|state| Arc::ptr_eq(&state.next_seq, token))
+            .ok_or(Abandon::SessionGone)?;
+        let target = match state.player_entity_id {
+            Some(eid) => Target::Player(eid),
+            None => Target::Account(state.account_entity_id),
+        };
+        let mut pending = state
+            .pending_acks
+            .lock()
+            .map_err(|_| Abandon::SessionGone)?;
+        let acks = cimmeria_mercury::packet::take_piggyback_acks(&mut pending, state.enc_version);
+        let seq = state
+            .next_seq
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            & cimmeria_mercury::packet::SEQUENCE_MASK;
+        (
+            target,
+            acks,
+            seq,
+            state.enc_version,
+            state.wire_send_origin(),
+        )
+    };
     let pkt = build(seq, &acks, enc, target);
-    ctx.transport
-        .send_to(&pkt, ctx.addr)
+    send_with_origin(&ctx.transport, &pkt, ctx.addr, origin.as_ref())
         .await
         .map_err(|_| Abandon::SendFailed)?;
+    if !ctx.connected.lock().ok().is_some_and(|clients| {
+        clients
+            .get(&ctx.addr)
+            .is_some_and(|state| Arc::ptr_eq(&state.next_seq, token))
+    }) {
+        return Err(Abandon::SessionGone);
+    }
     shadow_register_reliable_send(
         &ctx.connected,
         ctx.addr,

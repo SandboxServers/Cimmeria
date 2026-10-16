@@ -60,7 +60,7 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 use cimmeria_mercury::encryption::EncryptionVersion;
-use cimmeria_mercury::transport::Transport;
+use cimmeria_mercury::transport::{SendOrigin, Transport};
 
 // Test modules reach these through `use super::*`.
 #[cfg(test)]
@@ -191,76 +191,32 @@ impl BundleSendOutcome {
 /// The packet hex formatter for trace logs; shared with the wire firehose.
 pub use cimmeria_wire::hex::to_hex;
 
-/// Drain the per-session [`Channel`]'s retransmit queue: scan the TX
-/// window for entries past the adaptive RTO and return the encrypted
-/// bytes to re-send.
-///
-/// Called from `tick_sync`'s per-session loop every 100 ms. The Channel
-/// applies the per-tick budget (`RETRANSMIT_BUDGET_PER_TICK = 5`, issue
-/// #292 finding #6) and Karn's exponential backoff internally; the
-/// caller just iterates the returned bytes and `transport.send_to`s each.
-///
-/// Returns an empty vec on any lock-acquisition failure or missing
-/// session — the next tick will try again.
-///
-/// A capped entry that reached its cap unacked (the login reply and
-/// time-sync, #842) is dropped by the scan instead of resent; each one
-/// gets a single WARN here, `event = "reliable_resend_abandoned"`, with
-/// the session's `account_id` and the `seq`.
-///
-/// [`Channel`]: cimmeria_mercury::channel::Channel
-pub fn collect_pending_retransmits(
+/// Return ACKs taken for a packet that will not carry them to the front of
+/// the session's pending list, oldest first, so the next send takes them.
+pub(super) fn requeue_acks(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     addr: SocketAddr,
-) -> Vec<cimmeria_mercury::packet::Bytes> {
-    let Ok(clients) = connected.lock() else {
-        return Vec::new();
-    };
-    let Some(state) = clients.get(&addr) else {
-        return Vec::new();
-    };
-    let Ok(mut channel) = state.channel.lock() else {
-        return Vec::new();
-    };
-    // The channel's rows name the session (TG-MER-03); resynced each tick
-    // because login and character select change it.
-    channel.set_log_identity(crate::base::session_identity::channel_log_identity(state));
-    // Receive-stall watchdog, on the same 100 ms tick as the retransmit
-    // scan: a client reliable packet the client never resent is blocking
-    // everything it sent after it (NA38). The WARN is logged inside.
-    if let Some(stall) = channel.check_rx_stall() {
-        if stall.first_warning {
-            cimmeria_observability::counter!("mercury_rx_stalls_total");
+    session_seq: &Arc<std::sync::atomic::AtomicU32>,
+    acks: &[u32],
+) {
+    if let Ok(clients) = connected.lock() {
+        if let Some(c) = clients
+            .get(&addr)
+            .filter(|c| Arc::ptr_eq(&c.next_seq, session_seq))
+        {
+            let mut pending = c.pending_acks.lock().unwrap();
+            pending.splice(0..0, acks.iter().copied());
         }
     }
-    // Transmit-hole watchdog, the other direction: the client has acked
-    // reliable packets we sent after one it never acked, so it is holding
-    // everything behind that one (no entity creates, leaves or method
-    // calls reach it) until a resend lands. The WARN is logged inside.
-    if let Some(stall) = channel
-        .check_tx_hole_named(|entry| reliable_send::name_stalled_entry(&clients, &state.enc, entry))
-    {
-        if stall.first_warning {
-            cimmeria_observability::counter!("mercury_tx_hole_stalls_total");
-        }
-    }
-    let retransmits = channel.check_timeouts();
-    for dropped in channel.take_abandoned() {
-        // One row per packet, once: the channel has stopped resending it.
-        // For the login handshake this is a client that ignored both the
-        // original and every resend of seq 1 or 2 (#842).
-        tracing::warn!(
-            %addr,
-            account_id = state.account_id,
-            account_name = state.account_name.as_deref(),
-            seq = dropped.seq,
-            retransmit_count = dropped.retransmit_count,
-            event = "reliable_resend_abandoned",
-            reason = "retransmit_cap_reached",
-            "reliable packet reached its retransmit cap unacked; the channel stopped resending it"
-        );
-    }
-    retransmits
+}
+
+pub(super) fn log_client_disconnected(log_id: u32, addr: SocketAddr) {
+    tracing::debug!(
+        witness_id = log_id, // nt:id-only the session left mid-send, so nothing names it
+        %addr,
+        reason = "client_disconnected",
+        "AoI reliable: client disconnected mid-send -- packet dropped"
+    );
 }
 
 /// Drain pending ACKs and allocate the next sequence number, masked to
@@ -331,21 +287,6 @@ pub fn get_access_level(
         .unwrap_or(0)
 }
 
-/// Read the currently active entity ID for a connected client.
-///
-/// After world entry, the Account entity is destroyed and replaced by the
-/// SGWPlayer entity. Protocol messages like `onVersionInfo` must be addressed
-/// to whichever entity the client currently owns, otherwise the client
-/// silently drops the response.
-pub(crate) fn get_active_entity_id(
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    addr: SocketAddr,
-) -> Result<u32, Box<dyn std::error::Error + Send + Sync>> {
-    let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-    let c = clients.get(&addr).ok_or("addr not in connected map")?;
-    Ok(c.player_entity_id.unwrap_or(c.account_entity_id))
-}
-
 /// Send an AoI packet to a specific witness's client — **unreliable**
 /// variant. Use for self-correcting / ephemeral traffic where loss
 /// recovers naturally on the next emit (currently only avatar position
@@ -413,7 +354,7 @@ where
                     &mut c.pending_acks.lock().unwrap(),
                     c.enc_version,
                 );
-                Some((addr, key, version, seq, acks))
+                Some((addr, key, version, seq, acks, c.wire_send_origin()))
             }
             None => {
                 // Transient disconnect: client closed mid-AoI-update.
@@ -431,12 +372,12 @@ where
         }
     };
 
-    let Some((addr, key, version, seq, acks)) = send_data else {
+    let Some((addr, key, version, seq, acks, origin)) = send_data else {
         return WitnessSendOutcome::ClientDisconnected;
     };
     let packet = build_packet(&key, version, seq, &acks);
     let bytes = packet.len();
-    if let Err(e) = transport.send_to(&packet, addr).await {
+    if let Err(e) = send_with_origin(transport, &packet, addr, origin.as_ref()).await {
         tracing::warn!(
             witness_id,
             witness_name = crate::base::session_identity::entity_name_for(
@@ -455,6 +396,36 @@ where
         bytes,
         packets: 1,
     }
+}
+
+/// Preserve legacy gap accounting when a fixture or unmigrated session lacks a seed.
+pub(crate) async fn send_with_origin(
+    transport: &Arc<dyn Transport>,
+    bytes: &[u8],
+    addr: SocketAddr,
+    origin: Option<&SendOrigin>,
+) -> std::io::Result<usize> {
+    match origin {
+        Some(origin) => transport.send_to_with_origin(bytes, addr, origin).await,
+        None => transport.send_to(bytes, addr).await,
+    }
+}
+
+/// A completed send may belong to a session removed during its socket await.
+pub(crate) fn origin_still_current(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+    origin: Option<&SendOrigin>,
+) -> bool {
+    connected.lock().ok().is_some_and(|clients| {
+        clients.get(&addr).is_some_and(|state| match origin {
+            Some(origin) => state.wire_send_origin().as_ref().is_some_and(|current| {
+                current.server_boot_id == origin.server_boot_id
+                    && current.session_generation == origin.session_generation
+            }),
+            None => state.wire_send_origin().is_none(),
+        })
+    })
 }
 
 /// Send an AoI packet to a specific witness's client — **reliable**
@@ -617,7 +588,8 @@ mod bundle_manifest;
 pub use bundle_manifest::{BundleManifest, BundleManifestEntry, BUNDLE_MANIFEST_CAP};
 
 mod reliable_fit;
-pub use reliable_fit::send_reliable_to_addr;
+pub(crate) use reliable_fit::collect_pending_retransmits_for_session;
+pub use reliable_fit::{collect_pending_retransmits, send_reliable_to_addr, PendingRetransmit};
 
 mod reliable_send;
 pub use reliable_send::shadow_register_reliable_send;

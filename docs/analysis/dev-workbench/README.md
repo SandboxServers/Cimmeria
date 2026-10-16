@@ -66,7 +66,7 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 1B-a-receive | DW-03S-R-C | Post-handshake decrypt/filter classifier | 03S-R-P | 45k | BlockedDependency |
 | 1B-a | DW-03S-P | Opt-in Mercury send-origin seam | 03S-E | 35k | Integrated (#1761) |
 | 1B-a | DW-03S-G | Base boot/generation and bounded proof observer | 03S-P | 45k | Integrated (#1767) |
-| 1B-a | DW-03S-H | Base-session reliable/unreliable/tick/retransmit origin | 03S-G | 45k | BlockedDependency |
+| 1B-a | DW-03S-H | Base-session reliable/unreliable/tick/retransmit origin | 03S-G | 45k | Review |
 | 1B-a | DW-03S-D | World-entry and direct Base send origin | 03S-H | 45k | BlockedDependency |
 | 1B-b | DW-03S-F | Cell fan-out and complete send-path census | 03S-D | 40k | BlockedDependency |
 | 1B-b | DW-03S-T-C | Cell-authoritative travel epoch | 03S-E | 45k | Ready |
