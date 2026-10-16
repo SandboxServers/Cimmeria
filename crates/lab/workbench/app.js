@@ -13,7 +13,17 @@ function validEntityId(value) {
 
 function createWorkbenchState(storage, instance) {
   const prefix = `cimmeria.workbench.${instance.toLowerCase()}`;
-  const saved = storage.getItem(`${prefix}.view`);
+  const viewKey = `${prefix}.view`;
+  let saved = storage.getItem(viewKey);
+  if (saved === null) {
+    const legacyKey = `cimmeria.workbench.view.${instance}`;
+    const legacy = storage.getItem(legacyKey);
+    if (legacy === "overview" || Object.hasOwn(views, legacy)) {
+      saved = legacy;
+      storage.setItem(viewKey, legacy);
+      storage.removeItem(legacyKey);
+    }
+  }
   let view = saved === "overview" || Object.hasOwn(views, saved) ? saved : "overview";
   let target = validEntityId(storage.getItem(`${prefix}.target`));
   return {
@@ -22,7 +32,7 @@ function createWorkbenchState(storage, instance) {
     select(next) {
       if (next !== "overview" && !Object.hasOwn(views, next)) return false;
       view = next;
-      storage.setItem(`${prefix}.view`, next);
+      storage.setItem(viewKey, next);
       return true;
     },
     selectTarget(raw) {

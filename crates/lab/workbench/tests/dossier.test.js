@@ -104,6 +104,7 @@ test("DOM rendering uses text nodes and a target switch clears old content", () 
   function element(tag) {
     return {
       tag, children: [], textContent: "", dataset: {},
+      set innerHTML(_) { throw new Error("Unsafe HTML sink"); },
       appendChild(child) { this.children.push(child); },
       replaceChildren() { this.children = []; },
       setAttribute() {}
@@ -115,9 +116,20 @@ test("DOM rendering uses text nodes and a target switch clears old content", () 
     getElementById: id => id === "dossier-status" ? status : content,
     createElement: element
   };
-  const model = dossierPresentation(reply(42), "default", 42);
+  const hostileField = "<img src=x onerror=alert(1)>";
+  const hostileGap = "<script>alert(2)</script>";
+  const payload = reply(42);
+  payload.data.client.actor.value = hostileField;
+  payload.gaps[0].detail = hostileGap;
+  const model = dossierPresentation(payload, "default", 42);
   renderDossier(document, { phase: "current", entityId: 42, model });
   assert.ok(content.children.length > 0);
+  const descendants = (root) => [root, ...root.children.flatMap(descendants)];
+  const rendered = descendants(content);
+  assert.equal(rendered.find(item => item.tag === "dd" && item.textContent === hostileField)?.textContent, hostileField);
+  assert.equal(rendered.find(item => item.tag === "li")?.textContent,
+    `server.sessions: server_session_unbound — ${hostileGap}`);
+  assert.equal(rendered.filter(item => item.tag === "img" || item.tag === "script").length, 0);
   renderDossier(document, { phase: "loading", entityId: 43, model: null });
   assert.equal(content.children.length, 0);
   assert.match(status.textContent, /43/);

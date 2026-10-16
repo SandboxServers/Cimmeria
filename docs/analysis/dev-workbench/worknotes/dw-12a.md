@@ -14,8 +14,8 @@
 - Lane `cargo fmt -p cimmeria-lab`: `status=ok`.
 - Lane `cargo clippy -p cimmeria-lab --all-targets -- -D warnings`: `status=ok`.
 - Lane `cargo test -p cimmeria-lab`: `status=ok`, 1,521 passed.
-- `node --test crates/lab/workbench/app.test.js crates/lab/workbench/tests/*.test.js`: 11 passed.
-- JS REPL-style logic UAT: reloaded view/target persistence, stale response and clear transition passed. Fake-DOM render test confirmed an old target's content is removed during a switch; values use text nodes.
+- `node --test crates/lab/workbench/app.test.js crates/lab/workbench/tests/*.test.js`: 13 passed.
+- JS REPL-style logic UAT: legacy view-key migration, reloaded view/target persistence, stale response and clear transition passed. Fake-DOM render test confirmed an old target's content is removed during a switch; hostile field/gap strings remain literal text.
 - Native visual verification was unavailable: the in-app browser rejected a local-file URL by policy and forbade workaround. No browser layout, authenticated daemon session or real client was exercised. DW-35 remains the live gate.
 
 ## Handoff
