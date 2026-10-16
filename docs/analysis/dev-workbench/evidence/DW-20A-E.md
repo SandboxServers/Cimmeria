@@ -153,7 +153,7 @@ For spawn verification, `server_entity_get {entity_id}` gives `template_id`, `sp
 - **Effects and impact:** Inserts/removes caller ID from autosave set; future non-player placement calls `.savespawn`, still requiring `.seedconfirm`. Turning it on exposes the pet-target persistence hazard: a later pet placement can queue a spawnlist `INSERT`. The toggle itself writes no DB/seed row.
 - **Verification:** Feedback says on/off. There is no existing read-only lab field for `autosave_spawns`; a safe behavioral check is a later deliberate NPC placement plus `.seedpending`, but this mutates state. Until a read endpoint exists, independent preference readback is unavailable.
 - **Compensation:** Reissue with the prior boolean; this does not cancel SQL already queued while on.
-- **Availability:** Runnable only with explicit warning that enabling it makes pet-target placement unsafe until DW-20A adds a cell-side pet/class guard and regression. Label preference readback as feedback-only/unknown independently.
+- **Availability:** `off` is runnable. `on` is disabled until DW-20A adds a centralized cell-side pet/class guard and regression for every autosaved placement path, including `.lookat`; a palette warning alone cannot prevent the persistent pet spawnlist insert. Label preference readback as feedback-only/unknown independently.
 
 ## .respawnall
 
