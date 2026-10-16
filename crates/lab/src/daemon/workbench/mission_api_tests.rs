@@ -4,6 +4,7 @@ use reqwest::header::COOKIE;
 use serde_json::{json, Value};
 use tracing::{
     field::{Field, Visit},
+    instrument::WithSubscriber,
     Event,
 };
 use tracing_subscriber::{
@@ -11,7 +12,7 @@ use tracing_subscriber::{
     Layer,
 };
 
-use super::{mission_refusal, router_with_mission_server, SessionStore};
+use super::{router_with_mission_server, SessionStore};
 use crate::daemon::http_tests::{spawn_router, test_server};
 use crate::uat::invoke::{BoxedOutcome, ServerInvoker, ToolOutcome};
 
@@ -50,17 +51,29 @@ impl ServerInvoker for MissionQueryFixture {
     }
 }
 
+fn refusal_router(
+    sessions: Arc<SessionStore>,
+    fixture: MissionQueryFixture,
+    capture: RefusalCapture,
+) -> axum::Router {
+    let subscriber = tracing::Dispatch::new(tracing_subscriber::registry().with(capture));
+    router_with_mission_server(test_server().instances().clone(), Some(Arc::new(fixture)))
+        .route_layer(axum::middleware::from_fn(
+            move |request: axum::extract::Request, next: axum::middleware::Next| {
+                let subscriber = subscriber.clone();
+                async move { next.run(request).with_subscriber(subscriber).await }
+            },
+        ))
+        .with_state(sessions)
+}
+
 #[tokio::test]
-async fn mission_route_refuses_invalid_id_and_unknown_bound_instance_without_queries() {
+async fn mission_route_refuses_invalid_id_and_mismatch_with_events() {
     let sessions = Arc::new(SessionStore::default());
     let default_cookie = sessions.redeem(&sessions.open("default")).unwrap().cookie;
-    let unknown_cookie = sessions.redeem(&sessions.open("missing")).unwrap().cookie;
     let fixture = MissionQueryFixture::default();
-    let router = router_with_mission_server(
-        test_server().instances().clone(),
-        Some(Arc::new(fixture.clone())),
-    )
-    .with_state(sessions);
+    let capture = RefusalCapture::default();
+    let router = refusal_router(sessions, fixture.clone(), capture.clone());
     let base = spawn_router(router).await.replace("/mcp", "");
     let http = reqwest::Client::new();
     for mission_id in [0, -1] {
@@ -76,14 +89,75 @@ async fn mission_route_refuses_invalid_id_and_unknown_bound_instance_without_que
     }
     let response = http
         .get(format!(
+            "{base}/workbench/api/v1/missions?instance=other&mission_id=622"
+        ))
+        .header(COOKIE, format!("cimmeria_workbench={default_cookie}"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(response.status(), reqwest::StatusCode::FORBIDDEN);
+    assert!(fixture.0.lock().unwrap().is_empty());
+    let events = capture.0.lock().unwrap();
+    assert_eq!(
+        events.len(),
+        3,
+        "expected one event per refused route: {events:?}"
+    );
+    for (event, expected) in events.iter().zip([
+        [
+            "instance=default",
+            "mission_id=0",
+            "status=400",
+            "error_code=mission_id_invalid",
+        ],
+        [
+            "instance=default",
+            "mission_id=-1",
+            "status=400",
+            "error_code=mission_id_invalid",
+        ],
+        [
+            "instance=default",
+            "mission_id=622",
+            "status=403",
+            "error_code=instance_mismatch",
+        ],
+    ]) {
+        for field in expected {
+            assert!(event.contains(field), "missing {field}: {event}");
+        }
+    }
+}
+
+#[tokio::test]
+async fn mission_route_unknown_bound_instance_emits_event_without_query() {
+    let sessions = Arc::new(SessionStore::default());
+    let cookie = sessions.redeem(&sessions.open("missing")).unwrap().cookie;
+    let fixture = MissionQueryFixture::default();
+    let capture = RefusalCapture::default();
+    let base = spawn_router(refusal_router(sessions, fixture.clone(), capture.clone()))
+        .await
+        .replace("/mcp", "");
+    let response = reqwest::Client::new()
+        .get(format!(
             "{base}/workbench/api/v1/missions?instance=missing&mission_id=622"
         ))
-        .header(COOKIE, format!("cimmeria_workbench={unknown_cookie}"))
+        .header(COOKIE, format!("cimmeria_workbench={cookie}"))
         .send()
         .await
         .unwrap();
     assert_eq!(response.status(), reqwest::StatusCode::NOT_FOUND);
     assert!(fixture.0.lock().unwrap().is_empty());
+    let events = capture.0.lock().unwrap();
+    assert_eq!(events.len(), 1, "expected one route refusal: {events:?}");
+    for field in [
+        "instance=missing",
+        "mission_id=622",
+        "status=404",
+        "error_code=instance_unknown",
+    ] {
+        assert!(events[0].contains(field), "missing {field}: {}", events[0]);
+    }
 }
 
 #[derive(Clone, Default)]
@@ -112,57 +186,6 @@ impl<S: tracing::Subscriber> Layer<S> for RefusalCapture {
     }
 }
 
-#[test]
-fn refusal_events_have_fixed_codes_and_bounded_context() {
-    let capture = RefusalCapture::default();
-    let _guard =
-        tracing::subscriber::set_default(tracing_subscriber::registry().with(capture.clone()));
-    assert_eq!(
-        mission_refusal(
-            "default",
-            -1,
-            axum::http::StatusCode::BAD_REQUEST,
-            "mission_id_invalid"
-        )
-        .status(),
-        axum::http::StatusCode::BAD_REQUEST
-    );
-    assert_eq!(
-        mission_refusal(
-            "missing",
-            622,
-            axum::http::StatusCode::NOT_FOUND,
-            "instance_unknown"
-        )
-        .status(),
-        axum::http::StatusCode::NOT_FOUND
-    );
-    let events = capture.0.lock().unwrap();
-    assert_eq!(events.len(), 2);
-    for expected in [
-        [
-            "instance=default",
-            "mission_id=-1",
-            "status=400",
-            "error_code=mission_id_invalid",
-        ],
-        [
-            "instance=missing",
-            "mission_id=622",
-            "status=404",
-            "error_code=instance_unknown",
-        ],
-    ] {
-        let event = &events[if expected[0] == "instance=default" {
-            0
-        } else {
-            1
-        }];
-        for field in expected {
-            assert!(event.contains(field), "missing {field}: {event}");
-        }
-    }
-}
 #[tokio::test]
 async fn mission_route_keeps_player_state_unknown_without_trusted_binding() {
     let sessions = Arc::new(SessionStore::default());
