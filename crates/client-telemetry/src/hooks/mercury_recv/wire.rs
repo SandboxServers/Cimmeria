@@ -1,5 +1,6 @@
 //! Raw `recvfrom` observations, before Mercury's packet filter or cipher.
-//! The server uses the same fingerprint for its cached encrypted payload.
+//! The server uses the same fingerprint for its cached encrypted payload,
+//! but request size alone does not prove the socket or encryption phase.
 //!
 //! The fingerprint is also the join key that lets a client fault row be
 //! matched to the server's send of the same datagram. It reaches the fault
@@ -70,7 +71,11 @@ impl ProofCounters {
             received,
             rejected: self.rejected.load(Ordering::Relaxed),
             dropped: self.dropped.load(Ordering::Relaxed),
-            gap: (!hook_installed || received == 0).then_some("hook_unobserved"),
+            gap: Some(if !hook_installed || received == 0 {
+                "hook_unobserved"
+            } else {
+                "mercury_socket_unverified"
+            }),
         }
     }
 
@@ -91,9 +96,9 @@ impl ProofCounters {
             increment(&self.rejected);
             return None;
         }
-        if peer.is_none() {
-            increment(&self.rejected);
-        }
+        // The process-wide IAT slot also observes unrelated UDP sockets.
+        // There is no statically proven Mercury socket discriminator yet.
+        increment(&self.rejected);
         increment(&self.received);
         Some(WireProof {
             bridge_epoch: epoch.to_owned(),
@@ -101,7 +106,11 @@ impl ProofCounters {
             peer: peer.map(str::to_owned),
             wire_len: wire.len(),
             wire_fingerprint: fingerprint_hex(fingerprint_u64(wire)),
-            gap: peer.is_none().then_some("peer_unavailable"),
+            eligible: false,
+            source_kind: "recvfrom_candidate",
+            encryption_state: "unknown",
+            peer_gap: peer.is_none().then_some("peer_unavailable"),
+            gap: Some("mercury_socket_unverified"),
         })
     }
 }
@@ -123,6 +132,11 @@ pub(crate) struct WireProof {
     pub(crate) peer: Option<String>,
     pub(crate) wire_len: usize,
     pub(crate) wire_fingerprint: String,
+    /// A shape match is never sufficient for a client/server binding.
+    pub(crate) eligible: bool,
+    pub(crate) source_kind: &'static str,
+    pub(crate) encryption_state: &'static str,
+    pub(crate) peer_gap: Option<&'static str>,
     pub(crate) gap: Option<&'static str>,
 }
 

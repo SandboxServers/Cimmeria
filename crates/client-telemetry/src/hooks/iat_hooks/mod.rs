@@ -75,6 +75,13 @@ mod imports;
 // unit-tested everywhere.
 #[cfg_attr(not(all(target_os = "windows", target_arch = "x86")), allow(dead_code))]
 mod lua_error;
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+mod os_detours;
+#[cfg(all(target_os = "windows", target_arch = "x86"))]
+mod recvfrom;
+
+#[cfg(all(test, target_os = "windows", target_arch = "x86"))]
+use os_detours::{get_foreground_window_detour, read_ascii_bounded};
 
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 use crate::hooks::ability_trace::shown;
@@ -141,35 +148,35 @@ unsafe fn install_inner(producer: Producer) {
         &producer,
         "create_thread",
         IAT_CREATE_THREAD,
-        create_thread_detour as *const c_void as usize,
+        os_detours::create_thread_detour as *const c_void as usize,
         &ORIG_CREATE_THREAD,
     );
     install_one(
         &producer,
         "load_library_w",
         IAT_LOAD_LIBRARY_W,
-        load_library_w_detour as *const c_void as usize,
+        os_detours::load_library_w_detour as *const c_void as usize,
         &ORIG_LOAD_LIBRARY_W,
     );
     install_one(
         &producer,
         "load_library_a",
         IAT_LOAD_LIBRARY_A,
-        load_library_a_detour as *const c_void as usize,
+        os_detours::load_library_a_detour as *const c_void as usize,
         &ORIG_LOAD_LIBRARY_A,
     );
     install_one(
         &producer,
         "get_foreground_window",
         IAT_GET_FOREGROUND_WINDOW,
-        get_foreground_window_detour as *const c_void as usize,
+        os_detours::get_foreground_window_detour as *const c_void as usize,
         &ORIG_GET_FOREGROUND_WINDOW,
     );
     install_one(
         &producer,
         "recvfrom",
         IAT_RECVFROM,
-        recvfrom_detour as *const c_void as usize,
+        recvfrom::recvfrom_detour as *const c_void as usize,
         &ORIG_RECVFROM,
     );
     // The two ways the client quits; the detours flush telemetry first
@@ -478,220 +485,6 @@ unsafe extern "C-unwind" fn lua_newstate_detour(f: *mut c_void, ud: *mut c_void)
     let original: unsafe extern "C-unwind" fn(*mut c_void, *mut c_void) -> *mut c_void =
         unsafe { std::mem::transmute(orig_addr) };
     original(f, ud)
-}
-
-/// `HANDLE CreateThread(LPSECURITY_ATTRIBUTES, SIZE_T stack_size,
-///   LPTHREAD_START_ROUTINE start, LPVOID parameter, DWORD flags,
-///   LPDWORD out_thread_id)` — `__stdcall`.
-#[cfg(all(target_os = "windows", target_arch = "x86"))]
-#[allow(improper_ctypes_definitions)]
-unsafe extern "stdcall-unwind" fn create_thread_detour(
-    sec_attrs: *mut c_void,
-    stack_size: usize,
-    start_routine: *mut c_void,
-    parameter: *mut c_void,
-    flags: u32,
-    out_thread_id: *mut u32,
-) -> *mut c_void {
-    let _ = std::panic::catch_unwind(|| {
-        if let Some(p) = crate::boot::producer() {
-            p.try_emit(
-                crate::events::ClientNativeEvent::builder("client.os.create_thread", "info")
-                    .field("stack_size", serde_json::json!(stack_size))
-                    .field("flags", serde_json::json!(flags)),
-            );
-        }
-    });
-
-    let orig_addr = ORIG_CREATE_THREAD.load(Ordering::Acquire);
-    if orig_addr == 0 {
-        return std::ptr::null_mut();
-    }
-    let original: unsafe extern "stdcall-unwind" fn(
-        *mut c_void,
-        usize,
-        *mut c_void,
-        *mut c_void,
-        u32,
-        *mut u32,
-    ) -> *mut c_void = unsafe { std::mem::transmute(orig_addr) };
-    original(
-        sec_attrs,
-        stack_size,
-        start_routine,
-        parameter,
-        flags,
-        out_thread_id,
-    )
-}
-
-/// `HMODULE LoadLibraryW(LPCWSTR lib_filename)` — `__stdcall`.
-#[cfg(all(target_os = "windows", target_arch = "x86"))]
-#[allow(improper_ctypes_definitions)]
-unsafe extern "stdcall-unwind" fn load_library_w_detour(lib_filename: *const u16) -> *mut c_void {
-    let _ = std::panic::catch_unwind(|| {
-        if let Some(p) = crate::boot::producer() {
-            let name = super::inline_hooks::read_utf16_bounded(lib_filename, 256);
-            p.try_emit(
-                crate::events::ClientNativeEvent::builder("client.os.load_library", "info")
-                    .field("encoding", serde_json::json!("wide"))
-                    .field("name", serde_json::Value::String(name)),
-            );
-        }
-    });
-
-    let orig_addr = ORIG_LOAD_LIBRARY_W.load(Ordering::Acquire);
-    if orig_addr == 0 {
-        return std::ptr::null_mut();
-    }
-    let original: unsafe extern "stdcall-unwind" fn(*const u16) -> *mut c_void =
-        unsafe { std::mem::transmute(orig_addr) };
-    original(lib_filename)
-}
-
-/// `HMODULE LoadLibraryA(LPCSTR lib_filename)` — `__stdcall`.
-#[cfg(all(target_os = "windows", target_arch = "x86"))]
-#[allow(improper_ctypes_definitions)]
-unsafe extern "stdcall-unwind" fn load_library_a_detour(lib_filename: *const u8) -> *mut c_void {
-    let _ = std::panic::catch_unwind(|| {
-        if let Some(p) = crate::boot::producer() {
-            let name = read_ascii_bounded(lib_filename, 256);
-            p.try_emit(
-                crate::events::ClientNativeEvent::builder("client.os.load_library", "info")
-                    .field("encoding", serde_json::json!("ansi"))
-                    .field("name", serde_json::Value::String(name)),
-            );
-        }
-    });
-
-    let orig_addr = ORIG_LOAD_LIBRARY_A.load(Ordering::Acquire);
-    if orig_addr == 0 {
-        return std::ptr::null_mut();
-    }
-    let original: unsafe extern "stdcall-unwind" fn(*const u8) -> *mut c_void =
-        unsafe { std::mem::transmute(orig_addr) };
-    original(lib_filename)
-}
-
-/// `HWND GetForegroundWindow(void)` — `__stdcall`.
-#[cfg(all(target_os = "windows", target_arch = "x86"))]
-#[allow(improper_ctypes_definitions)]
-unsafe extern "stdcall-unwind" fn get_foreground_window_detour() -> *mut c_void {
-    let _ = std::panic::catch_unwind(|| {
-        if GET_FOREGROUND_WINDOW_SAMPLER.should_emit() {
-            if let Some(p) = crate::boot::producer() {
-                p.try_emit(crate::events::ClientNativeEvent::builder(
-                    "client.os.get_foreground_window",
-                    "debug",
-                ));
-            }
-        }
-    });
-
-    // Lab virtual focus: report the game window as foreground so a lab
-    // client in the background keeps processing the injected input.
-    #[cfg(feature = "lab-bridge")]
-    if let Some(hwnd) = crate::bridge::input::virtual_focus_hwnd() {
-        return hwnd as *mut c_void;
-    }
-    let orig_addr = ORIG_GET_FOREGROUND_WINDOW.load(Ordering::Acquire);
-    if orig_addr == 0 {
-        return std::ptr::null_mut();
-    }
-    let original: unsafe extern "stdcall-unwind" fn() -> *mut c_void =
-        unsafe { std::mem::transmute(orig_addr) };
-    original()
-}
-
-#[cfg(all(target_os = "windows", target_arch = "x86"))]
-#[link(name = "Ws2_32")]
-unsafe extern "system" {
-    fn WSAGetLastError() -> i32;
-    fn WSASetLastError(error: i32);
-}
-
-/// Observe the Winsock boundary after the original call; preserve its error.
-#[cfg(all(target_os = "windows", target_arch = "x86"))]
-#[allow(improper_ctypes_definitions)]
-unsafe extern "stdcall-unwind" fn recvfrom_detour(
-    socket: usize,
-    buf: *mut u8,
-    len: i32,
-    flags: i32,
-    from: *mut c_void,
-    from_len: *mut i32,
-) -> i32 {
-    let orig_addr = ORIG_RECVFROM.load(Ordering::Acquire);
-    if orig_addr == 0 {
-        return -1;
-    }
-    let original: unsafe extern "stdcall-unwind" fn(
-        usize,
-        *mut u8,
-        i32,
-        i32,
-        *mut c_void,
-        *mut i32,
-    ) -> i32 = unsafe { std::mem::transmute(orig_addr) };
-    let result = unsafe { original(socket, buf, len, flags, from, from_len) };
-    let error = (result < 0).then(|| unsafe { WSAGetLastError() });
-    let _ = std::panic::catch_unwind(|| {
-        let wire = if result >= 0 && result <= len && !buf.is_null() {
-            Some(unsafe { std::slice::from_raw_parts(buf, result as usize) })
-        } else {
-            None
-        };
-        let peer = if result > 0
-            && len == 0x5c0
-            && !from.is_null()
-            && !from_len.is_null()
-            && (8..=16).contains(&unsafe { *from_len })
-        {
-            let bytes = unsafe { std::slice::from_raw_parts(from.cast::<u8>(), 8) };
-            super::mercury_recv::wire::ipv4_peer(bytes)
-        } else {
-            None
-        };
-        let wire_fp = super::mercury_recv::wire::stash_received(len, wire);
-        if let Some((level, fields)) = super::mercury_recv::wire::recv_event(
-            socket,
-            len,
-            wire,
-            wire_fp,
-            error,
-            peer.as_deref(),
-        ) {
-            super::emit::emit("client.mercury.socket_recv", level, fields);
-        }
-        #[cfg(feature = "lab-bridge")]
-        super::mercury_recv::wire::record_proof(socket, len, flags, wire, peer.as_deref());
-    });
-    if let Some(error) = error {
-        unsafe { WSASetLastError(error) };
-    }
-    result
-}
-
-/// ASCII-bounded string read for `LoadLibraryA` — same safety
-/// contract as `inline_hooks::read_utf16_bounded` but for narrow
-/// strings.
-#[cfg(all(target_os = "windows", target_arch = "x86"))]
-fn read_ascii_bounded(ptr: *const u8, max_chars: usize) -> String {
-    if ptr.is_null() {
-        return "<null>".into();
-    }
-    let mut len = 0usize;
-    while len < max_chars {
-        // SAFETY: bounded by max_chars; caller's buffer is the
-        // path passed to LoadLibraryA which is always NUL-terminated.
-        let ch = unsafe { *ptr.add(len) };
-        if ch == 0 {
-            break;
-        }
-        len += 1;
-    }
-    let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
-    String::from_utf8_lossy(slice).into_owned()
 }
 
 #[cfg(test)]

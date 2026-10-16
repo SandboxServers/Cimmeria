@@ -234,6 +234,11 @@ mod tests {
             "epoch-fixture"
         );
         assert_eq!(result["events"][0]["fields"]["wire_len"], 5);
+        assert_eq!(result["events"][0]["fields"]["eligible"], false);
+        assert_eq!(
+            result["events"][0]["fields"]["gap"],
+            "mercury_socket_unverified"
+        );
         assert_eq!(
             result["events"][0]["fields"]["wire_fingerprint"],
             "a430d84680aabd0b"
