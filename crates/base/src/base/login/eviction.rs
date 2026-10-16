@@ -233,7 +233,14 @@ async fn send_logged_off(
                     & cimmeria_mercury::packet::SEQUENCE_MASK;
                 (acks, seq, old.origin.clone())
             }
-            _ => (vec![], 0, None),
+            _ => {
+                tracing::debug!(
+                    old_addr = %old.addr,
+                    reason = "displaced_owner_replaced",
+                    "Skipping LOGGED_OFF for a replaced displaced session"
+                );
+                return Ok(());
+            }
         }
     };
     let pkt = build_logged_off(&old.key, seq, &acks, old.enc_version);
@@ -346,18 +353,21 @@ mod direct_send_origin_tests {
     use super::*;
     use async_trait::async_trait;
     use cimmeria_base_session::base::SessionOriginSeed;
+    use std::sync::atomic::{AtomicUsize, Ordering};
     use tokio::sync::Notify;
 
     struct Wire {
         entered: Notify,
         release: Notify,
         fail: bool,
+        sends: AtomicUsize,
         rows: Mutex<Vec<String>>,
     }
 
     #[async_trait]
     impl Transport for Wire {
         async fn send_to(&self, bytes: &[u8], _addr: SocketAddr) -> std::io::Result<usize> {
+            self.sends.fetch_add(1, Ordering::SeqCst);
             if self.fail {
                 Err(std::io::Error::other("synthetic failure"))
             } else {
@@ -371,6 +381,7 @@ mod direct_send_origin_tests {
             _addr: SocketAddr,
             origin: &SendOrigin,
         ) -> std::io::Result<usize> {
+            self.sends.fetch_add(1, Ordering::SeqCst);
             self.entered.notify_one();
             self.release.notified().await;
             if self.fail {
@@ -418,6 +429,7 @@ mod direct_send_origin_tests {
             entered: Notify::new(),
             release: Notify::new(),
             fail,
+            sends: AtomicUsize::new(0),
             rows: Mutex::new(Vec::new()),
         });
         let transport: Arc<dyn Transport> = wire.clone();
@@ -445,5 +457,41 @@ mod direct_send_origin_tests {
     #[tokio::test]
     async fn direct_send_origin_failed_displaced_logoff_has_no_proof_row() {
         assert!(run_replacement(true).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn direct_send_origin_replaced_before_reservation_sends_no_logout() {
+        let addr: SocketAddr = "127.0.0.1:55632".parse().unwrap();
+        let a = session(addr, "A");
+        let old = Displaced {
+            addr,
+            key: a.key,
+            enc_version: a.enc_version,
+            next_seq: Arc::clone(&a.next_seq),
+            origin: a.wire_send_origin(),
+            identity: session_identity::session_identity(&a),
+            session_secs: 0,
+            idle_ms: 0,
+            in_world: false,
+        };
+        let b = session(addr, "B");
+        assert_eq!(a.key, b.key, "fixture must exercise same-key replacement");
+        b.pending_acks.lock().unwrap().extend([10, 11]);
+        let connected = Arc::new(Mutex::new(HashMap::from([(addr, b)])));
+        let wire = Arc::new(Wire {
+            entered: Notify::new(),
+            release: Notify::new(),
+            fail: false,
+            sends: AtomicUsize::new(0),
+            rows: Mutex::new(Vec::new()),
+        });
+        let transport: Arc<dyn Transport> = wire.clone();
+        send_logged_off(&transport, &connected, &old).await.unwrap();
+        assert_eq!(wire.sends.load(Ordering::SeqCst), 0);
+        assert!(wire.rows.lock().unwrap().is_empty());
+        let clients = connected.lock().unwrap();
+        let b = &clients[&addr];
+        assert_eq!(b.next_seq.load(Ordering::Relaxed), 0);
+        assert_eq!(&*b.pending_acks.lock().unwrap(), &[10, 11]);
     }
 }
