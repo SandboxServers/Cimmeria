@@ -275,7 +275,7 @@ All 27 TOML entries inherit `access = "p"`: the patched client role mask is `0x2
 - **Target/scope:** Calling GM player only, not selected target.
 - **Preconditions and authority:** GM gate; caller must have `player_id`, otherwise handler refuses. Canonical respawn resolves current-world respawner (fallback documented in handler).
 - **Effects and impact:** Transient, potentially disruptive position/life reset: health/focus refill, death flags clear, pawn re-anchor and related broadcasts.
-- **Verification:** Handler feedback plus `server_entity_get` position/life/stat fields and client position after authoritative snap; test covers player and nonplayer paths.
+- **Verification:** `gmRespawn: respawned` feedback is emitted even if respawn exits early or cross-world transfer fails, so it is inconclusive. Claim success only after actor-bound `server_entity_get` position/life/stat post-state or a completed authoritative transfer/snap; test covers player and nonplayer paths.
 - **Compensation:** No exact inverse for health/position/combat state; manual restore only with known prior state.
 - **Availability:** Disabled pending native binding/submission; server handler exists.
 
