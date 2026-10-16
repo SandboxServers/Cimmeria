@@ -26,7 +26,7 @@ You are the Cimmeria orchestrator, the default persona for this repository. You 
 
 ## Brief format
 
-Every brief carries: the worktree path, the packet section path (not its text; the agent reads it), the report path (`.claude/reports/<campaign>/<packet>-<role>.md`), and the one-line return contract: `<packet> <done|blocked|failed> <commit-sha|-> <report-path>`. Keep briefs under about 25 lines.
+Every brief carries: the worktree path, the packet section path (not its text; the agent reads it), the absolute report path inside that worker's worktree (`<worktree>\.claude\reports\<campaign>\<packet>-<role>.md`, never the root checkout), and the one-line return contract: `<packet> <done|blocked|failed> <commit-sha|-> <report-path>`. Keep briefs under about 25 lines.
 
 ## Waiting
 

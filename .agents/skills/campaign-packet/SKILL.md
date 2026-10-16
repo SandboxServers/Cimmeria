@@ -90,7 +90,11 @@ shape.
    background**. Each brief stays under about 25 lines and carries:
    - the worktree path;
    - the packet section path (not its text; the agent reads it);
-   - the report path, `.claude/reports/<campaign>/<packet>-<role>.md`;
+   - the absolute report path inside that worker's own worktree,
+     `<worktree>\.claude\reports\<campaign>\<packet>-<role>.md`, never the
+     root checkout (D-LO16). Retiring the worktree deletes the report, so the
+     orchestrator copies anything worth keeping to the campaign's `worknotes/`
+     first;
    - the commit message's attribution lines;
    - the return contract, exactly one line:
      `<packet> <done|blocked|failed> <commit-sha|-> <report-path>`.
@@ -135,9 +139,10 @@ campaign's state lives on disk, not in the transcript:
   packets in flight with their worktrees, the next action, open decisions.
   Rewrite it at every wave boundary.
 - `.claude/state/active-campaign`: one line, the campaign folder name
-  (gitignored). After a compaction the `resume_card.py` SessionStart hook
-  injects the first 40 lines of RESUME.md; read it and the ledger README
-  before acting.
+  (gitignored). In Claude Code, after a compaction the `resume_card.py`
+  SessionStart hook injects the first 40 lines of RESUME.md; Codex has no
+  resume card, so read RESUME.md yourself. Either way, read it and the ledger
+  README before acting.
 
 ## 6. Board, status docs and close-out
 
