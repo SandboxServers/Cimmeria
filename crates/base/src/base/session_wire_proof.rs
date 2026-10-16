@@ -71,7 +71,8 @@ pub(crate) struct ProofRow {
     pub fingerprint: String,
 }
 
-/// Named reasons proof coverage is incomplete. Counts are monotonic per boot.
+/// Named diagnostics. Totals are monotonic per boot; `pending_tagged` is a
+/// current gauge. Eligibility uses the latest gap in the bounded window.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct ProofGaps {
     pub untagged: u64,
@@ -84,21 +85,6 @@ pub(crate) struct ProofGaps {
     pub chaos_simulated: u64,
     pub ring_overflow: u64,
     pub ring_expired: u64,
-}
-
-impl ProofGaps {
-    #[allow(dead_code)] // Read by the DW-03S-S snapshot endpoint.
-    fn incomplete(&self) -> bool {
-        self.untagged != 0
-            || self.origin_peer_mismatch != 0
-            || self.pending_tagged != 0
-            || self.cancelled_send != 0
-            || self.failed_send != 0
-            || self.partial_send != 0
-            || self.chaos_simulated != 0
-            || self.ring_overflow != 0
-            || self.ring_expired != 0
-    }
 }
 
 /// A bounded snapshot. Only generations still in the connected map appear.
@@ -124,6 +110,7 @@ struct Ring {
     next_sequence: u64,
     dropped: u64,
     gaps: ProofGaps,
+    last_gap_at: Option<Instant>,
 }
 
 /// A dropped send future must not disappear from coverage accounting.
@@ -151,11 +138,23 @@ impl Drop for SendAttempt<'_> {
         ring.gaps.pending_tagged -= 1;
         if !self.completed {
             ring.gaps.cancelled_send += 1;
+            ring.note_gap(Instant::now());
         }
     }
 }
 
 impl Ring {
+    fn note_gap(&mut self, now: Instant) {
+        self.last_gap_at = Some(now);
+    }
+
+    fn coverage_incomplete(&self, now: Instant) -> bool {
+        self.gaps.pending_tagged != 0
+            || self
+                .last_gap_at
+                .is_some_and(|gap| now.saturating_duration_since(gap) < MAX_AGE)
+    }
+
     fn expire(&mut self, now: Instant) {
         while self
             .rows
@@ -174,6 +173,7 @@ impl Ring {
             self.rows.pop_front();
             self.dropped += 1;
             self.gaps.ring_overflow += 1;
+            self.note_gap(now);
         }
         self.next_sequence += 1;
         let sent_at_ms = SystemTime::now()
@@ -222,23 +222,35 @@ impl ProofTransport {
     /// Read the current generations without exposing stale disconnect rows.
     #[allow(dead_code)] // DW-03S-S exposes this through its authorized read path.
     pub(crate) fn snapshot(&self) -> ProofSnapshot {
-        let active = self.connected.upgrade().and_then(|connected| {
-            connected.lock().ok().map(|sessions| {
-                sessions
-                    .iter()
-                    .filter_map(|(addr, session)| {
-                        let origin = session.send_origin()?;
-                        (origin.peer == *addr).then_some((
-                            origin.server_boot_id,
-                            origin.session_generation,
-                            origin.peer,
-                        ))
-                    })
-                    .collect::<Vec<_>>()
-            })
+        self.snapshot_after_lock(|| {})
+    }
+
+    fn snapshot_after_lock(&self, after_lock: impl FnOnce()) -> ProofSnapshot {
+        let connected = self.connected.upgrade();
+        // Lock order is connected -> ring. Transport sends take ring only;
+        // session insertion/eviction takes connected only, and releases it
+        // before any awaited send. Keep the connected guard through row
+        // filtering so a relog cannot publish B before A's snapshot returns.
+        let sessions = connected
+            .as_ref()
+            .and_then(|connected| connected.lock().ok());
+        let active = sessions.as_ref().map(|sessions| {
+            sessions
+                .iter()
+                .filter_map(|(addr, session)| {
+                    let origin = session.wire_send_origin()?;
+                    (origin.peer == *addr).then_some((
+                        origin.server_boot_id,
+                        origin.session_generation,
+                        origin.peer,
+                    ))
+                })
+                .collect::<Vec<_>>()
         });
+        after_lock();
         let mut ring = self.ring.lock().unwrap_or_else(PoisonError::into_inner);
-        ring.expire(Instant::now());
+        let now = Instant::now();
+        ring.expire(now);
         let rows = active
             .as_ref()
             .map(|active| {
@@ -260,7 +272,9 @@ impl ProofTransport {
             next_sequence: ring.next_sequence,
             dropped: ring.dropped,
             gaps: ring.gaps.clone(),
-            coverage_complete: active.is_some() && !self.chaos_unsafe && !ring.gaps.incomplete(),
+            coverage_complete: active.is_some()
+                && !self.chaos_unsafe
+                && !ring.coverage_incomplete(now),
         }
     }
 }
@@ -268,11 +282,11 @@ impl ProofTransport {
 #[async_trait]
 impl Transport for ProofTransport {
     async fn send_to(&self, bytes: &[u8], addr: SocketAddr) -> io::Result<usize> {
-        self.ring
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .gaps
-            .untagged += 1;
+        {
+            let mut ring = self.ring.lock().unwrap_or_else(PoisonError::into_inner);
+            ring.gaps.untagged += 1;
+            ring.note_gap(Instant::now());
+        }
         self.inner.send_to(bytes, addr).await
     }
 
@@ -297,9 +311,11 @@ impl Transport for ProofTransport {
             let mut ring = self.ring.lock().unwrap_or_else(PoisonError::into_inner);
             if !peer_matches {
                 ring.gaps.origin_peer_mismatch += 1;
+                ring.note_gap(Instant::now());
             }
             if self.chaos_unsafe {
                 ring.gaps.chaos_simulated += 1;
+                ring.note_gap(Instant::now());
             }
         }
         let mut attempt = SendAttempt::begin(&self.ring);
@@ -307,8 +323,14 @@ impl Transport for ProofTransport {
         {
             let mut ring = self.ring.lock().unwrap_or_else(PoisonError::into_inner);
             match &result {
-                Err(_) => ring.gaps.failed_send += 1,
-                Ok(n) if *n != bytes.len() => ring.gaps.partial_send += 1,
+                Err(_) => {
+                    ring.gaps.failed_send += 1;
+                    ring.note_gap(Instant::now());
+                }
+                Ok(n) if *n != bytes.len() => {
+                    ring.gaps.partial_send += 1;
+                    ring.note_gap(Instant::now());
+                }
                 Ok(_) if peer_matches && !self.chaos_unsafe => {
                     ring.record(bytes, &ticket, Instant::now())
                 }

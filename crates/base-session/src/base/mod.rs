@@ -384,7 +384,7 @@ pub fn discord_world(world: &str) -> cimmeria_discord::Named {
 impl ConnectedClientState {
     /// Copy a send ticket from this session before releasing its map lock.
     /// A fixture without a Phase 3 seed has no eligible send origin.
-    pub fn send_origin(&self) -> Option<SendOrigin> {
+    pub fn wire_send_origin(&self) -> Option<SendOrigin> {
         let seed = self.extensions.get::<SessionOriginSeed>()?;
         Some(SendOrigin {
             server_boot_id: Arc::clone(&seed.server_boot_id),
