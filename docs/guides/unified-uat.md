@@ -2,7 +2,7 @@
 title: Unified In-Game UAT Guide
 type: how-to
 audience: in-game testers (the owner and playtesters) working through the restored systems on the colo; no programming needed
-last_updated: 2026-10-12
+last_updated: 2026-10-15
 companion_docs:
   - organizations-uat.md
   - ../content/debug-hub.md
@@ -18,7 +18,7 @@ companion_docs:
 # Unified In-Game UAT Guide
 
 > Type: how-to. Audience: an in-game tester who is not a programmer.
-> Updated: 2026-10-12. Companions: [debug hub](../content/debug-hub.md), [commands](../commands.md), [organizations UAT](organizations-uat.md), [Cellblock UAT guide](../analysis/castle-cellblock-rebuild/uat-guide.md), [zone operator guide](../analysis/zone-restoration-operator-guide.md), [telemetry runbook](../operations/npc-ai-telemetry-runbook.md).
+> Updated: 2026-10-15. Companions: [debug hub](../content/debug-hub.md), [commands](../commands.md), [organizations UAT](organizations-uat.md), [Cellblock UAT guide](../analysis/castle-cellblock-rebuild/uat-guide.md), [zone operator guide](../analysis/zone-restoration-operator-guide.md), [telemetry runbook](../operations/npc-ai-telemetry-runbook.md).
 
 ## Purpose and how to use it
 
@@ -709,8 +709,8 @@ Relog checks are part of almost every scenario: the full guide says what must co
 | SK1 | New character (any class), and each seeded character after a colo deploy: open the inventory, the bandolier and the ability list; press Heal Focus, Health Heal and Recuperation with nothing selected; at the first hostile (T26's guard), press Pistol Shot | The SI 3 9mm Pistol is in the first bandolier slot with a full magazine (15); abilities Pistol Shot, Strike, Heal Focus, Health Heal and Recuperation are known; each heal lands on you; the first Pistol Shot draws the holstered pistol (about 1 s), then fires; later presses fire at once. No out-of-ammo error at any point. | New 2026-10-04 (starter kit). The seeded characters restart this tutorial after every deploy (K24). Log: `event=character_created` lists `abilities` and `items`, `armed=true`. [Debug Area](#debug-area) DA-U39 to DA-U42 run the same checks at the training dummies, plus the patch-009 hotbar |
 | T01/T02 | Enter the world; read the dialog; check the quest log and debuff bar | Dialog 2982 ("The last thing you remember..."); mission 622 on step 2113; Frost's body searchable, the Guard's not yet. | K7: no Stasis Sickness icon expected. Record whether one appears |
 | T03/T04 | Search Cpl. Frost's corpse; then the NID Guard's corpse; equip the SI 3 9mm Pistol | Dialog 3995; Frost's Letter (3730) in mission inventory; mission 1360 on step 4037; then dialog 3996, the pistol in your backpack, step 80622; equipping opens the stasis door and completes 622. Human or Loyalist Jaffa (Class Start v6): the Guard search also prints four "You have learned …" lines (Pistol Shot, Strike, Heal Focus, Medical Attention: Recuperation; none for an ability the character already started with) and then opens tutorial 5882 "Equipping a Weapon", once per character; the first NPC attack afterwards opens tutorial 5883 "Combat", once. Goa'uld: the pistol and the step only. | Guard corpse may be invisible (K5). Since 2026-10-04 you already hold a starter pistol in the bandolier: the looted one goes to the backpack, and dragging either pistol into the bandolier from another container completes 622 |
-| T05/T06 | Cross into Region2; right-click Prisoner 329; pick "Free Prisoner 329". Once per archetype | 638 accepted exactly once; exactly one topic: Tau'ri dialog 2300, Jaffa dialog 5021 ("My symbiote will cure me..."). Advances to 2115. | Two topics, or the other archetype's line, is a fail. The "uncomfotable" typo is 2009 data |
-| T07 | Win Livewire on the cell-door button; talk to 329 again; agree | Step 2116, the cell door opens; follow-up 2299 (Tau'ri) or 5020 (Jaffa); blurb 2298; 638 completes; 639 accepted. | |
+| T05/T06 | Cross into Region2; right-click Prisoner 329; pick "Free Prisoner 329". Relog on steps 2114 and 2115, and click again. Once per archetype | 638 accepted exactly once; exactly one topic before and after each relog: Tau'ri dialog 2300, Jaffa dialog 5021 ("My symbiote will cure me..."). Advances to 2115. | Restore chains 1026/1027 rebind the topic on login while 638 is active. Two topics, no dialog after a verified click, or the other archetype's line is a fail. The "uncomfotable" typo is 2009 data |
+| T07 | Win Livewire on the cell-door button; relog on step 2116; talk to 329 again; agree. Also retry after a timed-out Livewire round | Step 2116, the cell door opens; follow-up 2299 (Tau'ri) or 5020 (Jaffa); blurb 2298; 638 completes; 639 accepted. After timeout, the step-2114 prisoner topic works again, including after relog. | A verified click that reaches the server without a dialog is a fail |
 | T26 | Walk into Region8 | The NID guard turns aggressive and comes at you without being shot. | |
 | T08 | Pick up the Ambernol vial; take cover behind the med-station desk; kill the drone. Run twice: cover first, then kill first | The TakeCoverIndicator shows on pickup and hides in cover; step 2144 needs **both** objectives before advancing to 2343. | K8: the second checkbox may not tick. 639 completing outright is a hard fail |
 | T09 | Use the Ambernol Vial from mission inventory; relog | Exactly one vial consumed; 639 completes; 640 accepted; blurb 2305. After the relog, Stasis Sickness is not re-launched. | K7: no visible debuff change |

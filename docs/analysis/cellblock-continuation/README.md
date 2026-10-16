@@ -30,7 +30,7 @@ A completed source audit does not make a runtime packet Ready.
 |---|---|---|
 | CB-N00 | Integrated | Evidence/doc gate passed two review rounds through `b59c4a124`; fresh route and lineage rows remain UNSEALED and client UATPending. No downstream runtime seal is granted. |
 | CB-N01 | Integrated | Presentation and sibling ownership handoff passed independent review and focused status correction review; runtime and client rows remain UATPending. |
-| CB-N02 | BlockedDependency | The 2026-10-15 fresh Human p3 run verified native pistol grant, equip, reload and guard damage at zero Focus. CB-U02 remains UATPending for exact server/client/patch revision, local-server packet tap and visual recoil; the prior no-damage symptom did not reproduce. Livewire then stalled, so this was not a complete normal route. See [route baseline](route-baseline.md#2026-10-15-fresh-human-lab-run). |
+| CB-N02 | BlockedDependency | The 2026-10-15 fresh Human p3 run verified native pistol grant, equip, reload and guard damage at zero Focus. CB-U02 remains UATPending for exact server/client/patch revision, local-server packet tap and visual recoil; the prior no-damage symptom did not reproduce. A native Livewire Open reached SmartFox on retry, then timed out. A verified Prisoner 329 click after relog reached the server but returned no dialog; login-restore chains 1026/1027 and a replay test are in progress. No normal route time exists. See [route baseline](route-baseline.md#2026-10-15-native-livewire-retry-and-prisoner-relog-fault). |
 | CB-N03 | BlockedDependency | Current guard-cover reachability observation and combat/NPC/mission sign-off; no new mandatory kills. |
 | CB-N04 | BlockedDependency | O14-12 delegates cast and placement approval; measure safe pockets, then seal one room cluster per child. |
 | CB-N05a | UATPending | Catalog infrastructure merged to `main` in #1734 and integrated here; the first real authored mission must pass journal, dialog, advance and relog before this gate closes. |
@@ -41,13 +41,13 @@ A completed source audit does not make a runtime packet Ready.
 | CB-N08 | BlockedDependency | Selected packets, sibling integrations, full local CI/fresh review; live rows UATPending until approved run. |
 
 The fresh p3 client reached mission 638's Livewire door, but the native
-minigame helper and screenshot call stalled. The character then appeared
-farther down world 12 without mission advance. This invalidates CB-U09 timing;
-no CB-N05 coder dispatch follows from the partial run. The Codex `lab-server`
-connection also pointed at a different server, while direct read-only access
-to the matching local server confirmed the character session. The client and
-lease were stopped and released. The full evidence boundary is in the
-[route baseline](route-baseline.md#2026-10-15-fresh-human-lab-run).
+minigame helper and screenshot call stalled. A later direct native Open reached
+SmartFox and timed out; the relogged Prisoner 329 interaction reached the
+matching server with no dialog response. These runs cannot measure CB-U09
+timing, so no CB-N05 coder dispatch follows. The Codex `lab-server` connection
+pointed at a different server; direct access to the matching local server
+provided the packet evidence. The client and lease were stopped and released.
+See the [route baseline](route-baseline.md#2026-10-15-native-livewire-retry-and-prisoner-relog-fault).
 
 The eleven packet families are scopes; an implementation child needs the complete
 seal required by the packet contract. CB-N05 now has proposed exact copy and

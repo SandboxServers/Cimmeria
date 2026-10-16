@@ -185,6 +185,64 @@ async fn live_db_chain_1012_does_not_match_non_jaffa_archetype() {
     assert_region_enter_does_not_resolve(1012, ARCHETYPE_SOLDIER).await;
 }
 
+/// A relog recreates the cell entity with an empty available_interactions map.
+/// The Region2 accept edge has already passed, so the active mission must
+/// restore exactly its own archetype's Prisoner 329 dialog on player_loaded.
+/// Completed mission 638 must not regain the topic.
+#[tokio::test]
+async fn live_db_mission_638_login_restores_only_active_archetype_dialog() {
+    use cimmeria_content_engine::actions::Action;
+
+    let pool = require_db_or_skip!();
+    let mut engine = ChainEngine::new();
+    for chain_id in [1026, 1027] {
+        engine.register_chain(
+            load_single_chain_for_test(&pool, chain_id)
+                .await
+                .unwrap_or_else(|e| panic!("DB query for chain {chain_id} failed: {e}"))
+                .unwrap_or_else(|| panic!("login restore chain {chain_id} must exist")),
+        );
+    }
+
+    for (archetype, status, expected) in [
+        (1, "active", vec![(1026, 2794)]),
+        (8, "active", vec![(1027, 5866)]),
+        (1, "completed", vec![]),
+        (8, "completed", vec![]),
+    ] {
+        let mut ctx = ExecutionContext::new();
+        ctx.set_param(
+            "world_name".to_string(),
+            serde_json::json!("Castle_CellBlock"),
+        );
+        ctx.set_param("mission_638_status".to_string(), serde_json::json!(status));
+        ctx.set_param("archetype".to_string(), serde_json::json!(archetype));
+        let event = TriggerEvent {
+            trigger_type: TriggerType::PlayerLoaded,
+            source_entity: None,
+            target_entity: None,
+            params: ctx.params.clone(),
+        };
+        let resolved = engine.resolve_event(&event, &ctx);
+        let bindings: Vec<_> = resolved
+            .actions
+            .iter()
+            .filter_map(|(chain_id, action)| match action {
+                Action::AddDialogSet {
+                    dialog_set_id,
+                    slot: 17,
+                    ..
+                } => Some((*chain_id, *dialog_set_id)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            bindings, expected,
+            "archetype={archetype}, mission_638_status={status}"
+        );
+    }
+}
+
 /// Full-seed regression guard for audit.md defect B1 (the purged
 /// `space_castle_cellblock_chains.sql` auto-export). Unlike the helpers
 /// above, which load ONE named chain and so can never observe a second,

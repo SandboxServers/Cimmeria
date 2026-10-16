@@ -20,3 +20,9 @@ The same run reached Livewire by a native door click, but both screenshot and
 minigame helper calls stalled. The client stayed responsive and later appeared
 elsewhere in world 12 without mission advance. The cause is unverified; a
 fresh core-route timing run must start after that lab issue is isolated.
+
+In a later retry, native Livewire Open reached SmartFox but timed out. After
+relog, a verified Prisoner 329 right-click at 1.9 m sent `interact` method 74
+to the matching local server without a dialog response. Mission 638's initial
+Region2 chains bind the dialog only when the mission is not active; the
+cell-local binding is lost on relog. See the [retry evidence](../../../docs/analysis/cellblock-continuation/route-baseline.md#2026-10-15-native-livewire-retry-and-prisoner-relog-fault).

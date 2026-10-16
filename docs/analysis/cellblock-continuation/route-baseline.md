@@ -190,6 +190,28 @@ and its lease released. **CB-U09 has no valid core-duration measurement**, and
 the minigame/screenshot stall plus unexpected relocation must be isolated
 before another fresh timing run.
 
+### 2026-10-15 native Livewire retry and prisoner relog fault
+
+The same Human was returned to Prisoner 329 by a GM position command, so this
+retry supplies interaction evidence but no normal route time. A native door
+click opened Livewire. The matching local server reported a ready two-goal
+board. A native click on Open reached SmartFox as `opendoor` and changed the
+board to `running`. The 20-second round then timed out before a verified goal
+cut; SmartFox reported failure, cancellation and end. Mission 638 returned to
+step 2114. No Livewire victory or door opening was observed.
+
+After a relog, the client still showed step 2114. At 1.9 m, a native right-click
+had Prisoner 329 (entity 101267) under the cursor, within the 5 m interaction
+range. No dialog window opened. A packet tap on the matching local server
+recorded the inbound `interact` method 74 and no outgoing dialog response.
+This rules out a missed click or wrong server for that attempt. The source
+seed binds the Prisoner dialog only on Region2's first mission accept, while
+`available_interactions` is cell-local and disappears on relog. Chains 1026
+and 1027 are being added to restore the archetype-specific dialog while 638
+is active. Their live-DB replay and a restarted-server client retry remain
+required before the fault is called fixed. The retry ended with the p3 client
+stopped and its lab lease released.
+
 ## Bounded fresh acceptance rows
 
 All rows below are **UATPending**. O14-08 grants standing approval for the four

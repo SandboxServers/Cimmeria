@@ -1,9 +1,9 @@
 # Castle Cellblock In-Game UAT Guide
 
 > Type: how-to. Audience: the project owner, running the real SGW client against a local server.
-> Updated: 2026-09-19. Companions: [launch prompt and decisions](README.md), [spec audit](audit.md), [packet ledger](work-packets.md), [session resume handoff](handoffs/session-resume.md), [mission chains](../../content/mission-chains.md), [commands reference](../../commands.md).
+> Updated: 2026-10-15. Companions: [launch prompt and decisions](README.md), [spec audit](audit.md), [packet ledger](work-packets.md), [session resume handoff](handoffs/session-resume.md), [mission chains](../../content/mission-chains.md), [commands reference](../../commands.md).
 
-This is the acceptance pass for everything the Castle Cellblock rebuild campaign has merged to `main`. You run it with the game open; each scenario tells you exactly what to click, what you should see, and what would count as a regression. Nothing here has been run in-client before — every scenario is pending.
+This is the acceptance pass for the Castle Cellblock rebuild. You run it with the game open; each scenario tells you exactly what to click, what you should see, and what would count as a regression. A partial 2026-10-15 Human run covered the first guard and reached the prisoner door; the full route and the rows below remain pending. See the [continuation evidence](../cellblock-continuation/route-baseline.md#2026-10-15-fresh-human-lab-run).
 
 ## What this covers
 
@@ -214,7 +214,7 @@ Two things are explicitly unverified and this test is what resolves them:
 
 ### T05 / T06 — Prisoner 329, one dialog per archetype (C01)
 
-**Packets:** C01. **Chains:** 1011, 1012, 1013. **Mission:** 638 "Speak to Prisoner 329".
+**Packets:** C01, CB-N02 restore. **Chains:** 1011, 1012, 1013, 1026, 1027. **Mission:** 638 "Speak to Prisoner 329".
 
 This is the scenario the whole C01 purge exists for. Before the purge, the auto-exported chains 5004/5005 bound **both** archetypes' dialog sets to the prisoner and issued `accept_mission 638` up to four times.
 
@@ -241,9 +241,9 @@ This is the scenario the whole C01 purge exists for. Before the purge, the auto-
 - Mission 638 being accepted more than once — you would see duplicate accept toasts or a mission-offer refusal warning in the log.
 - Any system message on entering Region2. Chain 1013 fires `system_message 5040` but the executor's `SystemMessage` arm is a stub with the wire format still unresolved (issue #268), so nothing should render.
 
-**Relog check:** relog on step 2114 — the prisoner's dialog set is re-bound by mission-accept state, so the topic must still be there and must still be the single correct one.
+**Relog check:** relog on step 2114 and right-click again. The active-mission login chain (1026 Tau'ri, 1027 Jaffa) must restore one correct topic without accepting 638 again. Also relog on step 2115 before the door and verify the prisoner still opens the same topic.
 
-**Server evidence:** `logs\content.log`, grep `Content: adding dialog set`. You should see **exactly one** line, with `dialog_set_map_id=2794` (Tau'ri) or `dialog_set_map_id=5866` (Jaffa), from `chain_id=1011` or `1012` respectively. Two lines is a fail. Also `fire_enter_region: matched` in the same file with `region_tag=Castle_Cellblock.Region2`.
+**Server evidence:** `logs\content.log`, grep `Content: adding dialog set`. The first Region2 entry adds `dialog_set_map_id=2794` (Tau'ri) or `5866` (Jaffa) from chain 1011 or 1012. Each relog while 638 is active adds that same archetype's map once from chain 1026 or 1027; no repeat mission accept. Also check `fire_enter_region: matched` with `region_tag=Castle_Cellblock.Region2` on first entry.
 
 ### T07 — Cell door Livewire
 
@@ -269,7 +269,7 @@ This is the scenario the whole C01 purge exists for. Before the purge, the auto-
 - A Tau'ri player being routed through the Jaffa follow-up 5020 (or vice versa). This was a real drift: the earlier archetype fix corrected the topic dialog but missed the post-Livewire follow-up.
 - The prisoner still offering the "Free Prisoner 329" topic after you agree.
 
-**Relog check:** relog on step 2116 before agreeing — the follow-up path must still work.
+**Relog check:** relog on step 2116 before agreeing — the restored topic must open and the follow-up path must still work. On a timed-out Livewire attempt, verify that step 2114 can recover by talking to Prisoner 329 again, including after a relog; a click that reaches the server without a dialog is a fail.
 
 **Server evidence:** `logs\content.log`, `Content: playing sequence` `sequence_id=1749`; `Content: removing dialog set`; `Content: accepting mission` `mission_id=639`.
 

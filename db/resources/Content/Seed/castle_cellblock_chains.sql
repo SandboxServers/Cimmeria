@@ -31,6 +31,8 @@
 --     chain_id in this file, matching the method C01's worker used for
 --     chain 1008). Kept deliberately separate from C03's 1112-1120 range so
 --     the two packets' new ids never collide.
+--   Mission 638 login restore (2026-10-15): chains 1026-1027, the next free
+--     ids in the declared 1011-1030 range.
 --   C07 addition (2026-09-17): mission-accepted prompt blurbs, work-packets.md's
 --     reserved range 1151-1160. Used: 1151 (640), 1152 (641), 1154 (688).
 --     1153 skipped -- reserved for mission 680's blurb 2308 (D-CB08's fourth
@@ -50,7 +52,7 @@
 --     chain_ids in 1176-1190 existed anywhere under
 --     db/resources/Content/Seed/. 1179-1190 remain free, which leaves
 --     GC1c (lockdown VFX, still BlockedEvidence) its headroom.
---   (next free inside 1001-1111: 1026-1030, 1036-1040, 1047-1050, 1067-1070,
+--   (next free inside 1001-1111: 1028-1030, 1036-1040, 1047-1050, 1067-1070,
 --    1075-1080, 1095-1096; next free above 1111 for an unreserved future
 --    packet: 1200+, since 1112-1199 are all pre-allocated per work-packets.md)
 --   Class Start v6, CS-04 (2026-10-05, docs/analysis/class-start-v6/README.md):
@@ -783,6 +785,38 @@ VALUES
   (1019, 'accept_mission',  639, NULL, '{}', 0, 1),
   (1019, 'complete_mission', 638, NULL, '{}', 0, 2),
   (1019, 'remove_dialog_set', 2794, NULL, '{"slot": 17}', 0, 3);
+
+-- Chains 1026/1027: available_interactions is cell-local and disappears on
+-- relog. Region2's accept chains cannot restore it because 638 is already
+-- active. Rebind the archetype-specific Prisoner 329 topic for every active
+-- step (2114, 2115, or 2116); completion stops the restore.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1026, '638 - Restore Prisoner 329 Human dialog on login', 'mission', 638, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1026, 'player_loaded', 'Castle_CellBlock', 'player', true, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1026, 'mission_status', 638, NULL, 'eq', 'active', 0),
+  (1026, 'archetype', NULL, NULL, 'neq', '8', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1026, 'add_dialog_set', 2794, NULL, '{"slot": 17}', 0, 0);
+
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1027, '638 - Restore Prisoner 329 Jaffa dialog on login', 'mission', 638, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1027, 'player_loaded', 'Castle_CellBlock', 'player', true, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1027, 'mission_status', 638, NULL, 'eq', 'active', 0),
+  (1027, 'archetype', NULL, NULL, 'eq', '8', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1027, 'add_dialog_set', 5866, NULL, '{"slot": 17}', 0, 0);
 
 -- ============================================================
 -- MISSION 639 — Find Ambernol

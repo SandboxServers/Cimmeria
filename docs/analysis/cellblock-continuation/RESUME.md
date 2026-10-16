@@ -18,9 +18,9 @@
 - Checks: whitespace, CRLF, scoped markdownlint and local links passed;
   anchors/remote links and runtime/seed checks were not run.
 - Integrated CB-N01: reviewed presentation/ownership handoff, no runtime proof.
-- Next: bind Codex's `lab-server` to the client server; isolate the
-  screenshot/Livewire stall and relocation; rerun fresh Human/Jaffa CB-U09.
-  N05 design passed review; dispatch waits for valid pacing.
+- Next: complete 638 login-restore replay and restart-server client proof;
+  isolate the screenshot/Livewire helper stall and relocation; rerun fresh
+  Human/Jaffa CB-U09. N05 dispatch waits for valid pacing.
 - Blockers: UNSEALED live route/build joins, normal core/optional pacing,
   cast/placement and reachability sign-off, first-proof eligibility, individual ID
   collision audits, and first-authored-quest live journal/progression proof.
@@ -31,7 +31,9 @@
   Human completed pistol grant/equip/reload and killed the first guard. The
   Livewire helper and screenshot stalled; the character relocated without
   mission advance. CB-U09 timing is invalid; CB-U02 lacks packet/visual proof.
-  P3 was stopped and released. See [route baseline](route-baseline.md#2026-10-15-fresh-human-lab-run).
+  A later native Livewire Open reached SmartFox but timed out. A verified
+  Prisoner click after relog reached the server without a dialog. Restore
+  chains 1026/1027 are in progress; p3 was stopped and released. See [route baseline](route-baseline.md#2026-10-15-native-livewire-retry-and-prisoner-relog-fault).
 - [Standing O14 decisions](../four-zone-planning/owner-decisions-2026-10-14.md):
   coordinated lab use is approved, not passed; unavailable-lab rows may be
   `UATPending`, while observed gameplay failures block merge. Core pacing is
