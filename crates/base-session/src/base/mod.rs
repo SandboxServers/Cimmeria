@@ -8,6 +8,7 @@
 //! `cimmeria-base-world-entry`; `cimmeria-services` re-exports this module's
 //! items at their old `base::` paths.
 
+use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, AtomicU32};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -15,6 +16,7 @@ use std::time::Instant;
 use cimmeria_common::EntityId;
 use cimmeria_mercury::channel::Channel;
 use cimmeria_mercury::encryption::{EncryptionVersion, MercuryEncryption};
+use cimmeria_mercury::transport::SendOrigin;
 
 use serde::Serialize;
 
@@ -141,6 +143,22 @@ pub struct PendingClientReadyInfo {
     /// `handle_on_client_ready` — see issue #288. Type mirrors the DB
     /// column (`sgw_player.first_login INT`) and `PlayerLoadData::first_login`.
     pub first_login: i32,
+}
+
+/// Immutable Phase 3 identity stored with the connected session.
+///
+/// The player entity is deliberately absent: it is sampled when a packet is
+/// built, so pre-selection sends retain `None` and later sends see the player.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SessionOriginSeed {
+    /// Process boot that admitted this connection.
+    pub server_boot_id: Arc<str>,
+    /// Unique Phase 3 generation within that boot.
+    pub session_generation: Arc<str>,
+    /// Peer bound to this generation, never inferred from a later send.
+    pub peer: SocketAddr,
+    /// Admission time on the server monotonic clock.
+    pub connected_at: Instant,
 }
 
 /// State held for each client that has completed the Phase 3 handshake.
@@ -364,6 +382,19 @@ pub fn discord_world(world: &str) -> cimmeria_discord::Named {
 }
 
 impl ConnectedClientState {
+    /// Copy a send ticket from this session before releasing its map lock.
+    /// A fixture without a Phase 3 seed has no eligible send origin.
+    pub fn send_origin(&self) -> Option<SendOrigin> {
+        let seed = self.extensions.get::<SessionOriginSeed>()?;
+        Some(SendOrigin {
+            server_boot_id: Arc::clone(&seed.server_boot_id),
+            session_generation: Arc::clone(&seed.session_generation),
+            peer: seed.peer,
+            connected_at: seed.connected_at,
+            player_entity_id: self.player_entity_id,
+        })
+    }
+
     /// Next sequence number for an **unreliable** outbound packet —
     /// fetch-add on the unreliable counter, masked to the 28-bit Mercury
     /// sequence space. Use this from any code path that sends a packet

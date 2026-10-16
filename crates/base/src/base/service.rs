@@ -25,10 +25,14 @@ use crate::minigame::SessionRegistry;
 
 use super::world_entry::methods::mail::expiry as mail_expiry;
 use super::{
-    archetype_name, black_market, connect_loop::run_connect_loop, dispatch_timing, outbox,
-    resources::ResourceCache, session_identity, world_entry::route_cell_message, BaseError,
+    archetype_name, black_market, connect_loop::run_connect_loop_with_issuer, dispatch_timing,
+    outbox, resources::ResourceCache, session_identity, world_entry::route_cell_message, BaseError,
     ConnectedClientState, OnlinePlayer,
 };
+
+#[path = "session_wire_proof.rs"]
+pub(crate) mod session_wire_proof;
+use session_wire_proof::{ProofTransport, SessionOriginIssuer};
 
 /// BaseApp service -- manages persistent entity state and client connections.
 pub struct BaseService {
@@ -75,6 +79,11 @@ pub struct BaseService {
     /// to the cell-message loop. Empty on a bare service.
     plugins: BasePlugins,
 
+    /// Minted for each service start; its counter never follows a peer relog.
+    origin_issuer: Option<Arc<SessionOriginIssuer>>,
+    /// The same observer covers the recv loop and all projected send clones.
+    proof_transport: Option<Arc<ProofTransport>>,
+
     /// Test-only transport substitute for `start()`'s recv loop -- lets a
     /// services-layer chaos integration test spin up a real `BaseService`
     /// against a `LossyTransport` instead of a plain `UdpTransport`,
@@ -109,6 +118,8 @@ impl BaseService {
             minigame_external_port: config.minigame_port,
             enc_version: EncryptionVersion::from_config_u8(config.mercury_encryption_version),
             plugins: BasePlugins::empty(),
+            origin_issuer: None,
+            proof_transport: None,
             #[cfg(feature = "chaos-testing")]
             transport_override: None,
         }
@@ -193,6 +204,7 @@ impl BaseService {
 
     /// Start the Mercury UDP listener on `listener_addr`.
     pub async fn start(&mut self) -> Result<(), BaseError> {
+        let issuer = Arc::new(SessionOriginIssuer::new()?);
         tracing::info!(addr = %self.listener_addr, "Starting base service UDP listener");
 
         // The orchestrator refuses to start on an incomplete plugin table;
@@ -211,6 +223,10 @@ impl BaseService {
         // `LossyTransport`-wrapped) transport via `set_transport_override`.
         // When present, skip binding a second socket entirely -- the
         // override IS the recv-loop transport.
+        #[cfg(feature = "chaos-testing")]
+        let chaos_override_active = self.transport_override.is_some();
+        #[cfg(not(feature = "chaos-testing"))]
+        let chaos_override_active = false;
         #[cfg(feature = "chaos-testing")]
         let bidi_transport: Arc<dyn cimmeria_mercury::transport::BidirectionalTransport> =
             if let Some(t) = self.transport_override.take() {
@@ -243,6 +259,22 @@ impl BaseService {
         // on the bare transport.
         #[cfg(feature = "lab-chaos")]
         let bidi_transport = super::lab_chaos_transport::wrap_if_installed(bidi_transport);
+
+        #[cfg(feature = "lab-chaos")]
+        let chaos_unsafe =
+            chaos_override_active || cimmeria_base_session::base::lab_chaos::current().is_some();
+        #[cfg(not(feature = "lab-chaos"))]
+        let chaos_unsafe = chaos_override_active;
+
+        let proof_transport = Arc::new(ProofTransport::new(
+            bidi_transport,
+            &self.connected_clients,
+            chaos_unsafe,
+        ));
+        let bidi_transport: Arc<dyn cimmeria_mercury::transport::BidirectionalTransport> =
+            proof_transport.clone();
+        self.origin_issuer = Some(Arc::clone(&issuer));
+        self.proof_transport = Some(proof_transport);
 
         let pending_logins = Arc::clone(&self.pending_logins);
         let db_pool = self.db_pool.clone();
@@ -308,7 +340,7 @@ impl BaseService {
         let enc_version = self.enc_version;
         tokio::spawn(async move {
             tracing::trace!("Base service UDP receive loop started");
-            run_connect_loop(
+            run_connect_loop_with_issuer(
                 bidi_transport,
                 pending_logins,
                 db_pool,
@@ -319,6 +351,7 @@ impl BaseService {
                 entity_to_addr_for_loop,
                 enc_version,
                 plugins_for_loop,
+                issuer,
             )
             .await;
             tracing::trace!("Base service UDP receive loop exited");

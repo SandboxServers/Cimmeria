@@ -47,9 +47,10 @@ cimmeria-observability = { workspace = true }
 tokio = { workspace = true }
 sqlx = { workspace = true }
 tracing = { workspace = true }
-# The lab chaos net shim's `Transport` impls (`base/lab_chaos_transport.rs`);
-# only the `lab-chaos` feature links it.
-async-trait = { workspace = true, optional = true }
+# The lab chaos shim and the proof observer both implement the transport.
+async-trait = { workspace = true }
+# Each BaseService start mints a fresh 128-bit boot id from the OS CSPRNG.
+getrandom = "0.4"
 cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
 [features]
@@ -69,7 +70,6 @@ chaos-testing = ["cimmeria-mercury/test-support"]
 # reuses. Command line only, never from a dependency entry.
 lab-chaos = [
     "chaos-testing",
-    "dep:async-trait",
     "cimmeria-base-session/lab-chaos",
     "cimmeria-base-world-entry/lab-chaos",
 ]

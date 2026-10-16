@@ -19,6 +19,7 @@ use crate::credential_redaction::CredentialPrefix;
 use crate::mercury::{build_connect_reply, build_logged_off, build_time_sync, game_clock};
 
 use super::helpers::{destroy_client_entities, to_hex};
+use super::service::session_wire_proof::SessionOriginIssuer;
 use super::session_identity;
 use super::tick_sync::run_tick_loop;
 use super::ConnectedClientState;
@@ -26,17 +27,7 @@ use super::ConnectedClientState;
 mod eviction;
 pub(crate) mod relaunch;
 
-/// Validate ticket, send Phase 3 reply + time-sync, register the encrypted channel.
-///
-/// `level = "info"` because login is low-frequency and high-signal —
-/// every successful auth shows up in SigNoz as a span you can drill
-/// into for ticket lookup, duplicate-eviction, and tick-loop spawn.
-#[tracing::instrument(
-    name = "base.login",
-    level = "info",
-    skip_all,
-    fields(peer = %addr, request_id, account_id = tracing::field::Empty),
-)]
+#[cfg(test)]
 pub(crate) async fn handle_login(
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,
@@ -50,6 +41,51 @@ pub(crate) async fn handle_login(
     db_pool: &Option<Arc<PgPool>>,
     enc_version: EncryptionVersion,
     plugins: &BasePlugins,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let issuer = SessionOriginIssuer::new()?;
+    handle_login_with_issuer(
+        transport,
+        addr,
+        request_id,
+        ticket,
+        pending_logins,
+        connected,
+        entity_manager,
+        cell_tx,
+        entity_to_addr,
+        db_pool,
+        enc_version,
+        plugins,
+        &issuer,
+    )
+    .await
+}
+
+/// Validate ticket, send Phase 3 reply + time-sync, register the encrypted channel.
+///
+/// `level = "info"` because login is low-frequency and high-signal —
+/// every successful auth shows up in SigNoz as a span you can drill
+/// into for ticket lookup, duplicate-eviction, and tick-loop spawn.
+#[tracing::instrument(
+    name = "base.login",
+    level = "info",
+    skip_all,
+    fields(peer = %addr, request_id, account_id = tracing::field::Empty),
+)]
+pub(crate) async fn handle_login_with_issuer(
+    transport: &Arc<dyn Transport>,
+    addr: SocketAddr,
+    request_id: u32,
+    ticket: &str,
+    pending_logins: &Arc<Mutex<HashMap<String, PendingLogin>>>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_manager: &Arc<Mutex<EntityManager>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    db_pool: &Option<Arc<PgPool>>,
+    enc_version: EncryptionVersion,
+    plugins: &BasePlugins,
+    issuer: &SessionOriginIssuer,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Peek before consuming: a ticket that is too old, or that may not take
     // over the session already on this address (a relaunched client, routed
@@ -197,12 +233,12 @@ pub(crate) async fn handle_login(
         enc_version,
     );
     tracing::trace!(%addr, len = reply.len(), hex = %to_hex(&reply), "UDP_OUT connect_reply");
-    transport.send_to(&reply, addr).await?;
+    transport.send_to_pre_phase3(&reply, addr).await?;
 
     // time-sync bundle at seq=2, carrying the server's current game time.
     let sync = build_time_sync(&key, TIME_SYNC_SEQ, game_clock::game_ticks(), enc_version);
     tracing::trace!(%addr, len = sync.len(), hex = %to_hex(&sync), "UDP_OUT time_sync");
-    transport.send_to(&sync, addr).await?;
+    transport.send_to_pre_phase3(&sync, addr).await?;
 
     // Both went out with `FLAG_RELIABLE`, so the new channel tracks them
     // like any other reliable send: a lost one is resent on RTO (#842).
@@ -229,6 +265,9 @@ pub(crate) async fn handle_login(
         // Rule 6: helpers that log only an `account_id` name it from here.
         cimmeria_entity::known_names::remember_account(login.account_id, &login.account_name);
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        let connected_at = Instant::now();
+        let mut extensions = relaunch::binding_extensions(ticket_ip_matched);
+        extensions.insert(issuer.issue(addr, connected_at));
         clients.insert(
             addr,
             ConnectedClientState {
@@ -251,7 +290,7 @@ pub(crate) async fn handle_login(
                 next_seq_unreliable,
                 pending_acks,
                 last_recv,
-                connected_at: Instant::now(),
+                connected_at,
                 account_entity_id: entity_manager.lock().unwrap().create_entity("Account").0 as u32,
                 next_data_id: 0,
                 pending_world_entry: None,
@@ -281,7 +320,7 @@ pub(crate) async fn handle_login(
                 channel: Mutex::new(channel),
                 // Whether the ticket was issued to this address's IP (the
                 // relaunch gate's rule 4).
-                extensions: relaunch::binding_extensions(ticket_ip_matched),
+                extensions,
                 // The service's plugin table (#962 step 5): hook sites
                 // read it off the session.
                 plugins: plugins.clone(),
