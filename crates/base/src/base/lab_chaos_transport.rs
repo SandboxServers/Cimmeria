@@ -47,20 +47,28 @@ const SHED_WARN_EVERY: Duration = Duration::from_secs(10);
 
 /// Wraps the base's transport in the shim when the lab registry is installed
 /// (a `lab-chaos` build started with `DEVELOPER_MODE`); otherwise returns it
-/// unchanged.
+/// unchanged. The flag comes from the same registry read that chooses the
+/// transport, so the proof observer can suppress simulated send receipts.
 pub(crate) fn wrap_if_installed(
     inner: Arc<dyn BidirectionalTransport>,
-) -> Arc<dyn BidirectionalTransport> {
-    match cimmeria_base_session::base::lab_chaos::current() {
+) -> (Arc<dyn BidirectionalTransport>, bool) {
+    wrap_with_registry(inner, cimmeria_base_session::base::lab_chaos::current())
+}
+
+fn wrap_with_registry(
+    inner: Arc<dyn BidirectionalTransport>,
+    registry: Option<&'static LabChaos>,
+) -> (Arc<dyn BidirectionalTransport>, bool) {
+    match registry {
         Some(registry) => {
             tracing::warn!(
                 target: "lab.chaos",
                 event = "lab_chaos_net_shim",
                 "base transport runs through the lab chaos net shim"
             );
-            Arc::new(ChaosTransport::new(inner, registry))
+            (Arc::new(ChaosTransport::new(inner, registry)), true)
         }
-        None => inner,
+        None => (inner, false),
     }
 }
 

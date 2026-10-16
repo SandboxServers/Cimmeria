@@ -7,7 +7,7 @@ use cimmeria_mercury::transport::Transport;
 use crate::mercury::build_version_info;
 
 use super::cooked_sync::{self, EnqueueOutcome, SyncJob, VersionReply};
-use super::helpers::{drain_acks_and_seq, get_active_entity_id, get_enc_version};
+use super::helpers::{send_with_origin, shadow_register_reliable_send_for_session};
 use super::resources::{category_name, ResourceCache};
 use super::ConnectedClientState;
 
@@ -115,9 +115,30 @@ pub async fn handle_version_info_request(
         }
     };
 
-    let active_eid = get_active_entity_id(connected, addr)?;
-    let (acks, seq) = drain_acks_and_seq(connected, addr)?;
-    let enc_version = get_enc_version(connected, addr);
+    let (active_eid, acks, seq, enc_version, origin, session_seq) = {
+        let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        let state = clients.get(&addr).ok_or("addr not in connected map")?;
+        if state.key != key {
+            return Err("versionInfoRequest session key changed before send".into());
+        }
+        let active_eid = state.player_entity_id.unwrap_or(state.account_entity_id);
+        let acks = cimmeria_mercury::packet::take_piggyback_acks(
+            &mut state.pending_acks.lock().unwrap(),
+            state.enc_version,
+        );
+        let seq = state
+            .next_seq
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            & cimmeria_mercury::packet::SEQUENCE_MASK;
+        (
+            active_eid,
+            acks,
+            seq,
+            state.enc_version,
+            state.wire_send_origin(),
+            Arc::clone(&state.next_seq),
+        )
+    };
     let pkt = build_version_info(
         &key,
         seq,
@@ -130,13 +151,15 @@ pub async fn handle_version_info_request(
         active_eid,
         enc_version,
     );
-    transport.send_to(&pkt, addr).await?;
+    send_with_origin(transport, &pkt, addr, origin.as_ref()).await?;
     // versionInfo response is one-shot state â€” register for retransmit.
-    super::helpers::shadow_register_reliable_send(
+    shadow_register_reliable_send_for_session(
         connected,
         addr,
         seq,
         cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
+        &session_seq,
+        origin.as_ref(),
     );
     Ok(())
 }
