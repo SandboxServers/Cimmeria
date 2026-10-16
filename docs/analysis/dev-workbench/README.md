@@ -23,7 +23,7 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | F8 | Seeds remain the source of truth. Live authoring commands can emit SQL and update memory/DB, but a palette must show that the emitted seed change needs committing and cannot imply a durable save. | 20B, 30-31 |
 | F9 | No Tabula Rasa client or SGW client was run in the source review. Lab-live verification remains unperformed and needs the user's explicit go-ahead before any lease, start/restart or server change. | 35 |
 | F10 | DW-03 leaves live server fields unbound. DW-03S-E traced a specific producer gap: Mercury `Transport::send_to` has only bytes/peer, retransmit collection returns `Vec<Bytes>`, and a BaseService peer lookup after await could label delayed A traffic as replacement B. Cell origin teardown can also precede Base's GateTravel handling while the ordinary roster remains unchanged. A queued old A `GateTravel` can borrow B's current session before reservation, and an old A `CreateEntity` can overwrite B's reused Cell entity. Source ownership, Base terminal reject before Cell rejection activates, accepted ordered Cell claim, in-flight selected-player takeover invalidation and exact DB conditional arrival are mandatory. An immutable send ticket must cross the actual await and a Cell travel epoch must gate the join. No live hook event or endpoint is proven. | 03S-E, 03S-P/G/H/D/F/S, 03S-T-C/T-O-M/T-O-C/T-O-S0/T-O-S1/T-O-I/T-O-V/T-O-F/T-O-Q/T-DB0/T-DB2/T-K/T-DB1/T-P1/T-P2/T-A/T-R, 03S-X/I/B |
-| F11 | The `recvfrom` IAT slot is process-wide. A 1472-byte request with zero flags is a candidate shape, not Mercury socket identity; the Phase-3 login reply is plaintext before AES. DW-03S-C candidate rows are ineligible until a proven socket/caller discriminator and post-handshake classifier exist. | 03S-C, 03S-B |
+| F11 | The `recvfrom` IAT slot is process-wide. A 1472-byte request with zero flags is a candidate shape, not Mercury socket identity; the Phase-3 login reply is plaintext before AES. The receive-path notes identify `FUN_0158a200` and `PacketEncrypter::recv` but do not supply the exact original-SGW.exe x86 hook contract for a new seam. DW-03S-C candidate rows remain ineligible until R-E verifies that contract, R-P proves Mercury provenance and R-C proves post-handshake decrypt/filter disposition for the same datagram. | 03S-C, 03S-R-E/R-P/R-C, 03S-B |
 
 ## Decisions
 
@@ -47,7 +47,7 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | D-DW16 | Decided (static source, 2026-10-16) | `CellToBaseMsg::GateTravel` omits source incarnation/epoch, while Base selects a current peer before minting and `persist_arrival` updates by account/player only after an awaited stargate query. A Cell-origin token must be compared before reservation; rejected/missing Cell create ack is terminal. T-K terminal Base handling must merge before O-F emits a live Cell rejection. DB0 records a selected-player claim before the first play-character await, while `active_player_id` may be `None`; a DB row owner claim and phase-3 takeover invalidation of active or in-flight selected claims (revoking old A before minting the invalidation order) with monotonic process order, plus exact-owner conditional arrival UPDATE must pass a takeover race before persistence is safe. Cross-process epoch rollover is unproven and remains `owner_db_unknown`/`BlockedDependency`. |
 | D-DW17 | BlockedDependency (static source, 2026-10-16) | `lifecycle.rs::persist_last_position` queues `CellToBaseMsg::PersistPosition` without an owner token, and `cell_dispatch/position.rs::persist_position` updates `sgw_player.world_location/pos_*` by player ID alone. A queued old A logout write could overwrite B after phase-3 takeover despite the guarded GateTravel arrival. A separately scoped owner-carrying conditional write plus old-A-after-B live-DB regression is required before S/X/B may expose complete joined fields. No packet here claims that guard; other tracks may proceed with joined fields unknown. |
 | D-DW18 | Decided | DW-05 ships spatial observations and local bookmark CRUD. Bookmark click and teleport return `bookmark_action_unavailable` with `session_identity_unbound` before client input. Same-world relog cannot be proven from world/PID/player equality, so `current` stays false until a trusted login generation exists. DW-05G establishes an execution-time input guard after DW-03S-B; DW-05A uses it for bookmark actions. The GUI keeps those controls disabled until DW-05A passes. |
-| D-DW19 | BlockedDependency (static receive-path review, 2026-10-16) | A process-wide `recvfrom` IAT slot plus 1472-byte/zero-flags shape does not establish Mercury socket identity or encryption phase. DW-03S-C emits diagnostic candidate rows only, with `eligible:false` and `mercury_socket_unverified`; the Phase-3 reply is plaintext before AES. DW-03S-B must reject candidates until a separately scoped, statically proven socket/caller discriminator and post-handshake classifier are reviewed and merged. No peer, fingerprint or successful bridge read can bypass this gate. |
+| D-DW19 | BlockedDependency (static receive-path review, 2026-10-16) | A process-wide `recvfrom` IAT slot plus 1472-byte/zero-flags shape does not establish Mercury socket identity or encryption phase. DW-03S-C emits diagnostic candidate rows only, with `eligible:false` and `mercury_socket_unverified`; the Phase-3 reply is plaintext before AES. DW-03S-R-E must first verify exact x86 ABI, prologue, call bytes, object lifetime and original-build fingerprint against the original SGW.exe, which is absent from this checkout. R-P/R-C must add every new target to the global boot `CODE_SITES` gate and hook inventory; a byte mismatch blocks installation before any new detour runs. R-P may prove Mercury receive provenance; R-C must pair that exact datagram with successful post-handshake `PacketEncrypter::recv` and downstream filter disposition before any row becomes eligible. DW-03S-B requires all three reviewed and merged. No peer, fingerprint, packet shape or successful bridge read bypasses the gate. |
 
 ## Packet ledger
 
@@ -60,9 +60,12 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 1 | DW-02B | GUI opener/static shell/API | 02A | 40k | Integrated |
 | 1 | DW-03 | Target dossier model | 01, 02B | 35k | Integrated |
 | 1B-a | DW-03S-E | Static binding evidence and fixture contract | 03 | 30k | Integrated (#1750) |
-| 1B-a | DW-03S-C | Process-bound DLL Mercury candidate observer | 03S-E | 40k | Review |
+| 1B-a | DW-03S-C | Process-bound DLL Mercury candidate observer | 03S-E | 40k | Integrated (#1763) |
+| 1B-a-receive | DW-03S-R-E | Original-client receive/cipher hook evidence | 03S-C, original SGW.exe | 30k | BlockedDependency |
+| 1B-a-receive | DW-03S-R-P | Mercury socket and exact datagram provenance | 03S-R-E | 45k | BlockedDependency |
+| 1B-a-receive | DW-03S-R-C | Post-handshake decrypt/filter classifier | 03S-R-P | 45k | BlockedDependency |
 | 1B-a | DW-03S-P | Opt-in Mercury send-origin seam | 03S-E | 35k | Integrated (#1761) |
-| 1B-a | DW-03S-G | Base boot/generation and bounded proof observer | 03S-P | 45k | BlockedDependency |
+| 1B-a | DW-03S-G | Base boot/generation and bounded proof observer | 03S-P | 45k | Review |
 | 1B-a | DW-03S-H | Base-session reliable/unreliable/tick/retransmit origin | 03S-G | 45k | BlockedDependency |
 | 1B-a | DW-03S-D | World-entry and direct Base send origin | 03S-H | 45k | BlockedDependency |
 | 1B-b | DW-03S-F | Cell fan-out and complete send-path census | 03S-D | 40k | BlockedDependency |
@@ -86,20 +89,20 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 1B-e | DW-03S-S | Server proof snapshot/eligibility gate | 03S-F, 03S-T-R, queued PersistPosition guard (unscoped) | 35k | BlockedDependency |
 | 1B-e | DW-03S-X | Lab-only generation/transition roster | 03S-S, 03S-T-R | 35k | BlockedDependency |
 | 1B-e | DW-03S-I | Ingestion-time client event identity | 03S-C | 30k | BlockedDependency |
-| 1B-e | DW-03S-B | Supervisor binder and dossier integration | 03S-C, 03S-X, 03S-I, proven Mercury/post-handshake discriminator, 03 | 45k | BlockedDependency |
+| 1B-e | DW-03S-B | Supervisor binder and dossier integration | 03S-R-E/R-P/R-C, 03S-X, 03S-I, 03 | 45k | BlockedDependency |
 | 1 | DW-04 | Lua probe/object model | 01, 02B | 40k | Integrated (#1749) |
 | 1 | DW-05 | Spatial observations and bookmark CRUD | 01, 02B | 40k | Integrated (#1758) |
 | 2 | DW-05G | Execution-time client input guard | 05, 03S-B | 45k | BlockedDependency |
 | 2 | DW-05A | Guarded bookmark actions | 05G | 35k | BlockedDependency |
-| 2 | DW-06 | Mission X-ray definition/UI model; server slot fail closed | 01, 02B | 40k | Review |
+| 2 | DW-06 | Mission X-ray definition/UI model; server slot fail closed | 01, 02B | 40k | Integrated (#1762) |
 | 2 | DW-06A | Live mission state from exact joined server session | 03S-B, 06 | 40k | BlockedDependency |
 | 2 | DW-07 | Client click/target correlation | 01 | 35k | Integrated |
 | 2 | DW-08 | Trace capture anchor | 01, 02B, 03S-B | 40k | BlockedDependency |
 | 2 | DW-09 | Five-layer truth assembler | 03S-B, 06A, 08 | 40k | BlockedDependency |
 | 2 | DW-10 | Reproduction recorder enrichment | 07-08, 03S-B, LR-11 | 45k | BlockedDependency |
 | 2 | DW-11 | Triggered flight recorder | 08, 03S-B, LR-14/15 | 45k | BlockedDependency |
-| 3 | DW-12A | GUI dossier view | 02B-03 | 30k | Review |
-| 3 | DW-12B | GUI Lua probe/object view | 02B, 04 | 30k | Review |
+| 3 | DW-12A | GUI dossier view | 02B-03 | 30k | Integrated (#1760) |
+| 3 | DW-12B | GUI Lua probe/object view | 02B, 04 | 30k | Integrated (#1764) |
 | 3 | DW-12C | GUI spatial/bookmark view and actions | 02B, 05, 05A | 30k | BlockedDependency |
 | 3 | DW-12D | GUI mission X-ray view | 02B, 06 | 30k | Ready |
 | 3 | DW-13 | One-click causal trace | 07-08 | 40k | Ready |
@@ -111,7 +114,7 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 4 | DW-19 | GM descriptor/authority contract | 01 | 45k | Integrated |
 | 4 | DW-20A-E | Dot travel/spawn evidence, 16 specs | 19 | 35k | Integrated |
 | 4 | DW-20A | Dot travel/spawn metadata | 20A-E | 40k | Integrated (#1751) |
-| 4 | DW-20B-E | Dot patrol/authoring evidence, 28 specs | 19 | 45k | Review |
+| 4 | DW-20B-E | Dot patrol/authoring evidence, 28 specs | 19 | 45k | Integrated (#1765) |
 | 4 | DW-20B | Dot patrol/authoring metadata | 20B-E | 45k | Ready |
 | 5 | DW-21-E | Dot progression/ability/stat/ammo/pet evidence, 27 specs | 19 | 45k | Ready |
 | 5 | DW-21 | Dot progression/ability/stat/ammo/pet metadata | 21-E | 45k | Ready |
@@ -121,7 +124,7 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 5 | DW-23A | Dot query/maintenance/meta metadata | 23A-E | 40k | Ready |
 | 5 | DW-23B-E | Dot net-debug evidence, 14 specs | 19 | 35k | Ready |
 | 5 | DW-23B | Dot net-debug metadata | 23B-E | 35k | Ready |
-| 5 | DW-24A | Slash inventory/parser/stock audit | 19 | 40k | Review |
+| 5 | DW-24A | Slash inventory/parser/stock audit | 19 | 40k | Integrated (#1752) |
 | 5 | DW-24B | Native submission/quoting/receipt proof | 24A | 45k | Ready |
 | 6 | DW-25A-E | Slash evidence 1-27 | 24A | 40k | Ready |
 | 6 | DW-25A | Slash descriptors 1-27 | 25A-E | 40k | Ready |
