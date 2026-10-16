@@ -1,6 +1,6 @@
 # Developer workbench resume
 
-> Type: campaign handoff. Audience: next coordinator. Last updated: 2026-10-15. Companions: [ledger](README.md), [work packets](work-packets.md). Design only; no packet dispatched, no lab lease taken.
+> Type: campaign handoff. Audience: next coordinator. Last updated: 2026-10-15. Companions: [ledger](README.md), [work packets](work-packets.md). The plan merged in PR #1738; DW-01 and DW-02A are in review on `dev-workbench/dw-01-capture` and `dev-workbench/dw-02a-session`. No lab lease taken.
 
 1. Check peer work: `git worktree list`, recent `dev-workbench/*` branches/logs and agent board before dispatch. The root checkout is shared.
 2. Reconcile `docs/analysis/lab-record/README.md` first: LR-10 click ring is integrated; LR-11 click transform and LR-14/15 rolling/`.bug spec` are pending. DW-10/11 must stack on or absorb them, never duplicate their recorder/tap ownership.

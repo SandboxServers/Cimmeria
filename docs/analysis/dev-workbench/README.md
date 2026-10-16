@@ -40,12 +40,12 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 
 ## Packet ledger
 
-`Ready` means design-ready, not dispatched. Each packet estimates **25-45k working tokens total** including implementation, tests, docs and review overhead; none is intended to exceed 50k. Evidence packets (`-E`) produce a sourced per-command contract before their metadata coder packet may run; the coder cannot invent behavior. Waves are dependency phases; within a wave, review and integration proceed in batches of about six packets. Packet specs carry contract and rules independently for fresh workers. Wave 8 is a live gate.
+`Ready` means design-ready, not dispatched; `Writing` means a packet owns a branch and worktree; `Review` means its implementation is committed and under adversarial review. Each packet estimates **25-45k working tokens total** including implementation, tests, docs and review overhead; none is intended to exceed 50k. Evidence packets (`-E`) produce a sourced per-command contract before their metadata coder packet may run; the coder cannot invent behavior. Waves are dependency phases; within a wave, review and integration proceed in batches of about six packets. Packet specs carry contract and rules independently for fresh workers. Wave 8 is a live gate.
 
 | Wave | ID | Result | Depends | Budget | Status |
 |---|---|---|---|---|---|
-| 1 | DW-01 | Capture contract and broker | — | 40k | Ready |
-| 1 | DW-02A | GUI session security | — | 40k | Ready |
+| 1 | DW-01 | Capture contract and broker | — | 40k | Review |
+| 1 | DW-02A | GUI session security | — | 40k | Review |
 | 1 | DW-02B | GUI opener/static shell/API | 02A | 40k | Ready |
 | 1 | DW-03 | Target dossier model | 01, 02B | 35k | Ready |
 | 1 | DW-04 | Lua probe/object model | 01, 02B | 40k | Ready |
