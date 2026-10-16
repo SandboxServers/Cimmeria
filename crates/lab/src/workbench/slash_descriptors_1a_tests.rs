@@ -137,6 +137,110 @@ fn unknown_mission_effects_never_serialize_as_read_only() {
 }
 
 #[test]
+fn unimplemented_inspection_forms_have_unknown_impact() {
+    let forms = slash_descriptors_1a().unwrap();
+    for word in ["/gmlistinteractions", "/gmshowip", "/gmshowinventory"] {
+        let form = forms.iter().find(|f| f.source.name == word).unwrap();
+        assert_eq!(form.handler_availability, HandlerAvailability::Absent);
+        assert!(form.descriptor.impact.is_none(), "{word}");
+        assert!(form.descriptor.verify.is_none(), "{word}");
+        assert!(form
+            .descriptor
+            .disposition_reason
+            .as_ref()
+            .unwrap()
+            .contains("effect unknown"));
+        assert_eq!(
+            serde_json::to_value(form).unwrap()["descriptor"]["impact"],
+            Value::Null,
+            "{word}"
+        );
+    }
+}
+
+#[test]
+fn mob_count_readback_requires_exact_npc_class_and_complete_space() {
+    let forms = slash_descriptors_1a().unwrap();
+    let form = forms
+        .iter()
+        .find(|f| f.source.name == "/gmshowmobcount")
+        .unwrap();
+    let recipe = form.descriptor.verify.as_ref().unwrap();
+    assert_eq!(recipe.read_tools, ["server_entity_query"]);
+    assert_eq!(
+        recipe.comparison_fields,
+        [
+            "space_id",
+            "class_id=0x04",
+            "is_player=false",
+            "capped=false",
+            "returned",
+            "total_matched",
+        ]
+    );
+    assert!(form.readback_note.contains("SpaceID=0"));
+    assert!(form.readback_note.contains("exact space"));
+    assert!(form
+        .readback_note
+        .contains("no radius, template or tag filter"));
+    assert!(form.readback_note.contains("uncapped"));
+}
+
+#[test]
+fn persistent_mission_and_item_readbacks_bind_exact_owner_and_row_keys() {
+    let forms = slash_descriptors_1a().unwrap();
+    for word in [
+        "/gmmissionassign",
+        "/gmmissionclear",
+        "/gmmissionadvance",
+        "/gmmissionabandon",
+    ] {
+        let form = forms.iter().find(|f| f.source.name == word).unwrap();
+        let recipe = form.descriptor.verify.as_ref().unwrap();
+        assert_eq!(recipe.read_tools, ["server_db_query"], "{word}");
+        assert!(
+            recipe
+                .comparison_fields
+                .iter()
+                .any(|field| field == "sgw_mission.player_id"),
+            "{word}"
+        );
+        assert!(
+            recipe
+                .comparison_fields
+                .iter()
+                .any(|field| field == "sgw_mission.mission_id"),
+            "{word}"
+        );
+        assert!(form
+            .readback_note
+            .contains("authenticated caller player_id"));
+        assert!(form.readback_note.contains("requested mission_id"));
+    }
+    let item = forms
+        .iter()
+        .find(|f| f.source.name == "/gmgiveitem")
+        .unwrap();
+    let recipe = item.descriptor.verify.as_ref().unwrap();
+    assert_eq!(recipe.read_tools, ["server_db_query"]);
+    assert_eq!(
+        recipe.comparison_fields,
+        [
+            "sgw_inventory.character_id",
+            "sgw_inventory.item_id",
+            "sgw_inventory.type_id",
+            "sgw_inventory.stack_size",
+            "sgw_inventory.container_id",
+        ]
+    );
+    assert!(item
+        .readback_note
+        .contains("authenticated caller character_id"));
+    assert!(item.readback_note.contains("requested design type_id"));
+    assert!(item.readback_note.contains("resulting instance ID"));
+}
+
+#[test]
 fn impact_preconditions_include_command_specific_evidence() {
     let forms = slash_descriptors_1a().unwrap();
     for (word, required) in [

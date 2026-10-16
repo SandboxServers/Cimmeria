@@ -4,7 +4,7 @@ The headings are the first 27 `[[command]]` names in `data/client-patches/012-gm
 
 The patch's `access = "p"` is a client parser role filter; `data/client-patches/README.md` documents its unusual mask calculation. It does **not** grant authority. `crates/cell/src/cell/dispatch/router.rs::dispatch_cell_method` calls `crates/cell-world/src/cell/dispatch/gm_gate.rs::enforce_gm_gate` before method routing: every SGWGmPlayer index 109+ requires the server-sourced `CellEntity.access_level >= GameMaster`, with missing entities refused. The palette must recheck a live actor/instance; a browser's role, target or successful text submission is not acceptance. For implemented methods, `crates/cell-console/src/cell/console/gm/mod.rs::dispatch` is the handler roster. A fall-through index is authorized but **unimplemented**, not success.
 
-For mission readback, capture the authenticated caller's `player_id` and inspect that exact player's `sgw_mission` rows via read-only `server_db_query`, alongside the current mission X-ray if a trusted session binding exists. `crates/base-methods/src/base/world_entry/methods/missions/mod.rs::handle_mission_update` UPSERTs current mission state, but an abandoned non-repeat mission deletes its row; `MissionUpdate` is asynchronous and can fail or lack a DB pool. Feedback and client UI update alone do not prove persistence. `crates/cell-console/src/cell/console/gm/tests/missions.rs` covers assign, advance, abandon and their persistence paths. For grants, read exact `sgw_player` columns or `sgw_inventory` rows for the captured character after base completion, never infer a commit from the cell's queue send. `server_db_query` is read-only and row-capped (`crates/lab-mcp/src/tools/db.rs`). Compensating a persistent grant requires a separate approved operation; no general undo is claimed.
+For mission readback, capture the authenticated caller's `player_id` and the requested `mission_id`. Predicate every before/after `sgw_mission` query on **both** `sgw_mission.player_id` and `sgw_mission.mission_id`; inspect `status`, `current_step_id` and the actual objective array columns as appropriate. A matching mission ID on another player proves nothing. Use the current mission X-ray alongside DB rows if a trusted session binding exists. `crates/base-methods/src/base/world_entry/methods/missions/mod.rs::handle_mission_update` UPSERTs current mission state, but an abandoned non-repeat mission deletes its row; `MissionUpdate` is asynchronous and can fail or lack a DB pool. Feedback and client UI update alone do not prove persistence. `crates/cell-console/src/cell/console/gm/tests/missions.rs` covers assign, advance, abandon and their persistence paths. For item grants, predicate `sgw_inventory.character_id` on the authenticated caller and `sgw_inventory.type_id` on the requested design. Compare `item_id` (instance ID), `stack_size` and `container_id` before/after; a similarly named item on another character or a different design is not grant proof. For other grants, read exact `sgw_player` columns for the captured character after base completion, never infer a commit from the cell's queue send. `server_db_query` is read-only and row-capped (`crates/lab-mcp/src/tools/db.rs`). Compensating a persistent grant requires a separate approved operation; no general undo is claimed.
 
 ## /gmmissionassign
 
@@ -177,7 +177,7 @@ For mission readback, capture the authenticated caller's `player_id` and inspect
 - **Arguments:** None.
 - **Target/scope:** Interaction target/scope not implemented for this method.
 - **Preconditions and authority:** GM gate would apply; no feedback handler.
-- **Effects and impact:** No implemented effect; do not infer a list from current target's separate interaction API.
+- **Effects and impact:** Original effect unknown; Cimmeria has no implemented handler. Do not label the patch form read-only or infer a list from current target's separate interaction API.
 - **Verification:** No accepted-effect recipe.
 - **Compensation:** None.
 - **Availability:** Unsupported: server handler absent and native binding unproved.
@@ -197,10 +197,10 @@ For mission readback, capture the authenticated caller's `player_id` and inspect
 
 - **Sources:** TOML `Event_SlashCmd_ShowMobCount`; candidate 128; `gm/query.rs::handle_show_mob_count`.
 - **Arguments:** Required `Integer SpaceID`; server INT32 `0` means caller's current space, positive ID selects that space.
-- **Target/scope:** Counts NPC entities in the requested loaded space, not all shard or DB spawns.
+- **Target/scope:** Counts `all_npc_entity_ids()` (`class_id = 0x04`, `is_player = false`) in the requested loaded space, excluding other non-player classes such as pets; not all shard or DB spawns.
 - **Preconditions and authority:** Server GM gate; valid space ID or caller space.
 - **Effects and impact:** Read-only cell count feedback.
-- **Verification:** Compare to `server_entity_query` in the exact space, counting `is_player=false` in a complete, uncapped result. The query has no non-player-only filter, so a capped result cannot independently verify this count; `total_matched` includes players.
+- **Verification:** Resolve `SpaceID = 0` to the caller's actual space ID, then call `server_entity_query` with that exact `space_id` and `class_id = 0x04`, with no template, tag or radius filter. Require `capped = false`, `returned = total_matched` and every returned entity to be non-player class `0x04`; only then compare the returned count to GM feedback. An unfiltered `total_matched` includes players and pets, and a capped query does not independently verify the full count.
 - **Compensation:** None.
 - **Availability:** Unsupported until native binding/submission proof; server read handler exists.
 
@@ -210,7 +210,7 @@ For mission readback, capture the authenticated caller's `player_id` and inspect
 - **Arguments:** None in TOML, while documented method takes a target ID.
 - **Target/scope:** Unknown; no entity-to-address handler implemented.
 - **Preconditions and authority:** GM gate would apply; any future address display must be authorized and redacted in exported evidence.
-- **Effects and impact:** No implemented read; network address would be sensitive if a later handler supplied one.
+- **Effects and impact:** Original effect unknown; there is no implemented read handler. Do not label this patch form read-only. A network address would be sensitive if a later handler supplied one.
 - **Verification:** No accepted-effect recipe and no IP export.
 - **Compensation:** None.
 - **Availability:** Unsupported: absent handler, argument mismatch and native binding gap.
@@ -221,7 +221,7 @@ For mission readback, capture the authenticated caller's `player_id` and inspect
 - **Arguments:** None in TOML; method signature includes target ID.
 - **Target/scope:** Unknown for patch event; no server read handler.
 - **Preconditions and authority:** GM gate would apply; no base round-trip or target authorization is wired.
-- **Effects and impact:** No implemented read.
+- **Effects and impact:** Original effect unknown; there is no implemented read handler. Do not label this patch form read-only.
 - **Verification:** No accepted-effect recipe; read-only `sgw_inventory` query for an explicitly authorized player is a separate lab operation, not command success.
 - **Compensation:** None.
 - **Availability:** Unsupported: handler absent, argument mismatch and native binding gap.
@@ -255,7 +255,7 @@ For mission readback, capture the authenticated caller's `player_id` and inspect
 - **Target/scope:** Calling GM's own character inventory; selected entity ignored.
 - **Preconditions and authority:** Server GM gate, live player ID, valid item template and base inventory capacity/container rules; internal item name is refused.
 - **Effects and impact:** Persistent inventory grant with possible placement in a non-main container; base sends definitive feedback after write and client item update.
-- **Verification:** Compare exact character's `sgw_inventory` instance/count/container rows before/after plus base feedback; do not assume the requested main bag is final placement.
+- **Verification:** For the authenticated caller's `sgw_inventory.character_id` and requested design `sgw_inventory.type_id`, compare `item_id` (instance ID), `stack_size` and `container_id` before/after plus definitive base feedback. Do not attribute another character's row to this grant or assume the requested main bag is final placement.
 - **Compensation:** No safe automatic inverse: remove requires a resulting **instance ID** and current quantity; manual removal only after fresh read and approval.
 - **Availability:** Unsupported until native binding/submission proof; server handler exists.
 
