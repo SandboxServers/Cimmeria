@@ -6,7 +6,7 @@ or write code, so this hook refuses:
 
 1. Edit or Write outside `docs/analysis/**`, `.claude/state/**` and `.claude/reports/**`.
    Code goes to packet-coder and docs to documentation-writer. Calls from a subagent
-   (payload `agent_id` or `agent_type`) are allowed.
+   (payload `agent_id`) are allowed.
 2. Read of a file of 400 lines or more outside `docs/analysis/**`, unless `limit`
    is given and is at most 200. Large reads go to Explore.
 
@@ -43,18 +43,36 @@ def project_dir():
 def is_subagent(payload):
     """True when the hook fired inside a subagent.
 
-    Subagent hook payloads carry `agent_id` and/or `agent_type`; either one counts.
+    Only a nonempty string `agent_id` counts. `agent_type` is not used: with
+    `claude --agent orchestrator` the main-thread payload may carry `agent_type`,
+    and exempting on it would disable the guard for the orchestrator itself.
     Observed: the hooks in orchestrator.md frontmatter also fire inside the subagents
     the orchestrator dispatches, so without this exemption packet-coder was denied its
     own Edit and Write calls. The guard constrains the orchestrator session only.
     """
-    return any(isinstance(payload.get(key), str) and payload.get(key) for key in ("agent_id", "agent_type"))
+    agent_id = payload.get("agent_id")
+    return isinstance(agent_id, str) and bool(agent_id)
+
+
+def in_scope_cwd(root, cwd):
+    """True when cwd is the project root or a directory under <root>/.claude/worktrees/<name>."""
+    if not Path(cwd).is_absolute():
+        return False
+    base = Path(os.path.normcase(os.path.realpath(root)))
+    target = Path(os.path.normcase(os.path.realpath(cwd)))
+    if target == base:
+        return True
+    try:
+        parts = target.relative_to(base).parts
+    except ValueError:
+        return False
+    return len(parts) >= 3 and parts[:2] == (".claude", "worktrees") and target.is_dir()
 
 
 def scope_roots(payload, root):
-    """The project root and, when the payload names one, the session cwd (a worktree)."""
+    """The project root and, when the payload cwd is in scope, that cwd (a worktree)."""
     cwd = payload.get("cwd")
-    if isinstance(cwd, str) and cwd:
+    if isinstance(cwd, str) and cwd and in_scope_cwd(root, cwd):
         return [root, Path(cwd)]
     return [root]
 

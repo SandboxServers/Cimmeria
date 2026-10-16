@@ -189,16 +189,17 @@ class OrchestratorGuardTest(unittest.TestCase):
 
     def test_subagent_payload_is_not_guarded(self):
         # Hooks from orchestrator.md also fire inside dispatched subagents; their
-        # payload carries agent_id or agent_type, so code edits and big reads pass.
-        for marker in ({"agent_id": "a1b2c3"}, {"agent_type": "packet-coder"}):
-            result = guard(self.project, "Edit", {"file_path": "crates/foo.rs"}, **marker)
-            self.assertEqual(result.returncode, 0, result.stderr)
+        # payload carries agent_id, so code edits and big reads pass.
+        result = guard(self.project, "Edit", {"file_path": "crates/foo.rs"}, agent_id="a1b2c3")
+        self.assertEqual(result.returncode, 0, result.stderr)
         write_lines(self.project / "crates/big.rs", 500)
         result = guard(self.project, "Read", {"file_path": "crates/big.rs"}, agent_id="a1b2c3")
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_payload_without_marker_is_still_denied(self):
-        for marker in ({}, {"agent_id": ""}, {"agent_type": None}):
+    def test_payload_without_agent_id_is_still_denied(self):
+        # agent_type alone must not exempt: the orchestrator main thread may carry it.
+        for marker in ({}, {"agent_id": ""}, {"agent_id": None}, {"agent_type": None},
+                       {"agent_type": "packet-coder"}, {"agent_type": "orchestrator"}):
             result = guard(self.project, "Edit", {"file_path": "crates/foo.rs"}, **marker)
             self.assertEqual(result.returncode, 2, marker)
 
@@ -210,9 +211,9 @@ class OrchestratorGuardTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_session_cwd_worktree_resolves_its_own_paths(self):
-        # The project root is the main checkout; a worktree under it is the session cwd.
-        worktree = self.project / "wt"
-        worktree.mkdir()
+        # The project root is the main checkout; a managed worktree under it is the session cwd.
+        worktree = self.project / ".claude" / "worktrees" / "x"
+        worktree.mkdir(parents=True)
         cwd = {"cwd": str(worktree)}
         ledger = str(worktree / "docs" / "analysis" / "x" / "README.md")
         self.assertEqual(guard(self.project, "Edit", {"file_path": ledger}, **cwd).returncode, 0)
@@ -223,6 +224,22 @@ class OrchestratorGuardTest(unittest.TestCase):
         write_lines(worktree / "crates" / "big.rs", 500)
         result = guard(self.project, "Read", {"file_path": "crates/big.rs"}, **cwd)
         self.assertEqual(result.returncode, 2)
+
+    def test_cwd_outside_project_is_ignored(self):
+        # A payload cwd that is not the project root or a managed worktree grants nothing.
+        outside = tempfile.TemporaryDirectory()
+        self.addCleanup(outside.cleanup)
+        target = str(Path(outside.name) / "docs" / "analysis" / "x" / "README.md")
+        result = guard(self.project, "Write", {"file_path": target}, cwd=outside.name)
+        self.assertEqual(result.returncode, 2, result.stderr)
+
+    def test_cwd_outside_managed_worktrees_is_ignored(self):
+        # Inside the project but not under .claude/worktrees/<name> is not a session scope.
+        plain = self.project / "wt"
+        plain.mkdir()
+        target = str(plain / "docs" / "analysis" / "x" / "README.md")
+        result = guard(self.project, "Write", {"file_path": target}, cwd=str(plain))
+        self.assertEqual(result.returncode, 2, result.stderr)
 
 
 class WiringTest(unittest.TestCase):
