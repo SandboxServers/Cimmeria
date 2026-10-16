@@ -56,7 +56,21 @@ fn list_commands_for_actor(server_is_gm: bool) -> Result<Value, &'static str> {
                 "availability": c.availability,
                 "manual_pending": c.manual_pending,
                 "disposition_reason": c.disposition_reason,
-                "args": [],
+                "args": c.args.iter().map(|a| json!({
+                    "name": a.name,
+                    "kind": a.kind,
+                    "required": a.required,
+                    "default": null,
+                    "range": (a.min.is_some() || a.max.is_some()).then(|| json!({
+                        "min": a.min,
+                        "max": a.max,
+                    })),
+                    "choices": a.choices,
+                    "help": a.help,
+                    "sensitive": false,
+                })).collect::<Vec<_>>(),
+                "forms": c.forms,
+                "preconditions": c.preconditions,
                 "target_policy": c.target_policy,
                 "target": {
                     "kind": c.target_policy,
@@ -67,9 +81,21 @@ fn list_commands_for_actor(server_is_gm: bool) -> Result<Value, &'static str> {
                     },
                     "argument_name": c.target_argument_name,
                 },
-                "impact": null,
-                "verify": null,
-                "compensation": null,
+                "impact": (!c.impact_kind.is_empty()).then(|| json!({
+                    "kind": c.impact_kind,
+                    "summary": c.impact,
+                    "preconditions": [c.preconditions],
+                })),
+                "verify": (!c.verify_tools.is_empty()).then(|| json!({
+                    "read_tools": c.verify_tools,
+                    "comparison_fields": c.comparison_fields,
+                    "recipe": c.verify,
+                })),
+                "compensation": match c.compensation_kind {
+                    "manual" => json!({"kind": "manual", "value": c.compensation}),
+                    "none" => json!({"kind": "none"}),
+                    _ => Value::Null,
+                },
                 "metadata_version": c.metadata_version,
             })
         })
@@ -123,11 +149,35 @@ mod tests {
             assert_eq!(row["name"], command.name);
             assert_eq!(row["id"], format!(".{}", command.name));
             assert_eq!(row["channel"], "dot");
-            assert_eq!(row["availability"], "unsupported");
-            assert_eq!(row["manual_pending"], true);
+            assert_eq!(row["availability"], command.availability);
+            assert_eq!(row["manual_pending"], command.manual_pending);
             if command.name == "despawn" {
                 assert_eq!(row["target"]["argument_name"], "entityId");
             }
         }
+    }
+
+    #[test]
+    fn reviewed_travel_and_spawn_contracts_reach_catalog() {
+        let catalog = list_commands_for_actor(true).unwrap();
+        let rows = catalog["commands"].as_array().unwrap();
+        let xyz = rows.iter().find(|r| r["name"] == "gotoxyz").unwrap();
+        assert_eq!(xyz["availability"], "runnable");
+        assert_eq!(xyz["manual_pending"], false);
+        assert_eq!(xyz["args"][0]["name"], "x");
+        assert_eq!(xyz["args"][0]["kind"], "float");
+        assert_eq!(xyz["impact"]["kind"], "transient");
+        assert!(xyz["impact"]["summary"]
+            .as_str()
+            .unwrap()
+            .contains("BASEMSG_FORCED_POSITION"));
+        assert_eq!(xyz["verify"]["read_tools"][0], "server_entity_get");
+        let unsafe_spawn = rows.iter().find(|r| r["name"] == "spawnrandom").unwrap();
+        assert_eq!(unsafe_spawn["availability"], "unsupported");
+        assert_eq!(unsafe_spawn["manual_pending"], true);
+        assert!(unsafe_spawn["disposition_reason"]
+            .as_str()
+            .unwrap()
+            .contains("Server"));
     }
 }

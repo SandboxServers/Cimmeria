@@ -68,3 +68,20 @@ pub(super) const SPECS: &[Spec] = &[
         "Spawn N copies of a template on a ring around you, then report their entity ids (templateId xRange zRange [count])",
     ),
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_spawn_spec_has_reviewed_metadata() {
+        assert_eq!(SPECS.len(), 8);
+        for spec in SPECS {
+            assert!(
+                super::super::super::workbench_world_move::metadata(spec.name).is_some(),
+                ".{} has no reviewed workbench contract",
+                spec.name
+            );
+        }
+    }
+}

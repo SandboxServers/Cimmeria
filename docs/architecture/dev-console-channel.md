@@ -182,6 +182,24 @@ default (`COALESCE(s.patrol_path_id, t.patrol_path_id)`). Per-waypoint edits
 
 ## Consequences / follow-ups
 
+### Developer workbench travel and spawn catalog (DW-20A)
+
+The GM-only `server_console_list` catalog now carries typed fields, accepted
+argument shapes, server preconditions, impact, readback and compensation for
+the 16 travel, placement and spawn commands. Its `typed` entries can be shown
+as forms; `disabled` entries have a named safety gap and remain unavailable to
+the companion palette. A disabled catalog entry does not change what an
+existing GM can type in the in-game `.`-console.
+
+The palette must refresh the server-side actor and target before dispatch.
+An initial travel receipt is only an enqueue acknowledgement. For a same-space
+player snap, compare `server_entity_get` before and after and inspect the
+`wire.out.forced_position` send; for a world transfer, wait for re-entry and
+compare the destination instance, then read `sgw_player` world, position and
+known stargates. No server snapshot alone proves the client applied a snap.
+The full per-command evidence and disabled reasons are in
+`docs/analysis/dev-workbench/evidence/DW-20A-E.md`.
+
 - New cell→base messages: `ExecuteAuthoringSql`, `ConsoleSearch`.
 - New `SpaceManager` fields: `authoring_changes`, `autosave_spawns`,
   `patrol_authoring` (all ephemeral, server-side).

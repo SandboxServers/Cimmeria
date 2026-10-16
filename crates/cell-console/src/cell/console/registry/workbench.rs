@@ -9,15 +9,38 @@ pub(crate) struct WorkbenchMetadata {
     pub availability: &'static str,
     pub disposition_reason: &'static str,
     pub metadata_version: u32,
+    pub args: &'static [super::workbench_world_move::TypedArg],
+    pub forms: &'static str,
+    pub preconditions: &'static str,
+    pub impact: &'static str,
+    pub verify: &'static str,
+    pub compensation: &'static str,
+    pub impact_kind: &'static str,
+    pub verify_tools: &'static [&'static str],
+    pub comparison_fields: &'static [&'static str],
+    pub compensation_kind: &'static str,
 }
 
 /// Return conservative metadata for a row in the only command registry.
-pub(crate) fn workbench_metadata(_spec: &Spec) -> WorkbenchMetadata {
+pub(crate) fn workbench_metadata(spec: &Spec) -> WorkbenchMetadata {
+    if let Some(metadata) = super::workbench_world_move::metadata(spec.name) {
+        return metadata;
+    }
     WorkbenchMetadata {
         category: "Dot console",
         availability: "unsupported",
         disposition_reason: "Typed arguments and verification require reviewed command evidence",
         metadata_version: COMMAND_METADATA_VERSION,
+        args: &[],
+        forms: "",
+        preconditions: "",
+        impact: "",
+        verify: "",
+        compensation: "",
+        impact_kind: "",
+        verify_tools: &[],
+        comparison_fields: &[],
+        compensation_kind: "",
     }
 }
 
@@ -31,8 +54,12 @@ mod tests {
         assert_eq!(COMMANDS.len(), 129);
         for spec in COMMANDS {
             let metadata = workbench_metadata(spec);
-            assert_eq!(metadata.availability, "unsupported", ".{}", spec.name);
-            assert!(!metadata.disposition_reason.is_empty(), ".{}", spec.name);
+            if super::super::workbench_world_move::metadata(spec.name).is_none() {
+                assert_eq!(metadata.availability, "unsupported", ".{}", spec.name);
+            }
+            if metadata.availability != "runnable" {
+                assert!(!metadata.disposition_reason.is_empty(), ".{}", spec.name);
+            }
             assert_eq!(metadata.metadata_version, COMMAND_METADATA_VERSION);
         }
     }

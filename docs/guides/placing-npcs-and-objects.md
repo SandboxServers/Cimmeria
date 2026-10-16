@@ -112,6 +112,24 @@ lasts until you log out.
 
 ## Things to know
 
+### Workbench readback for placement and travel
+
+The local developer workbench offers typed forms for `.gotoxyz`,
+`.gotolocation`, `.spawn`, `.despawn` and `.delspawn`. Capture the subject's
+entity ID, instance and position before moving it. A same-space player move
+updates the server's position and sends `BASEMSG_FORCED_POSITION`; inspect
+the subject again after the move and check the client's position separately.
+A world transfer needs a fresh destination read after re-entry, followed by a
+check of the saved world and coordinates if it must survive relog.
+
+Other travel and spawn forms currently appear disabled in the palette with
+their specific safety reason. In particular, selecting a summoned pet for
+`.savespawn` or enabling `.autosavespawn 1` can queue a persistent pet spawn.
+Keep pets out of authoring selections until the server has a class guard.
+`.seedpending` shows queued work; `.seedconfirm` requests a live database write;
+a developer still has to commit the emitted seed SQL. `.seedcancel` clears
+your whole pending queue and does not undo an in-world move or despawn.
+
 - **Save as often as you like; confirm once.** Saving the same NPC twice
   before you confirm keeps only the latest save.
 - **After you confirm a new NPC, you can't save it again** until the server
