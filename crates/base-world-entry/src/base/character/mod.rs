@@ -174,6 +174,13 @@ pub async fn handle_delete_character(
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     db_pool: &Option<Arc<PgPool>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let pool = match db_pool {
+        Some(p) => p,
+        None => {
+            tracing::warn!(%addr, "deleteCharacter: no DB pool");
+            return Ok(());
+        }
+    };
     let expected_seq = {
         let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         Arc::clone(
@@ -182,13 +189,6 @@ pub async fn handle_delete_character(
                 .ok_or("addr not in connected map")?
                 .next_seq,
         )
-    };
-    let pool = match db_pool {
-        Some(p) => p,
-        None => {
-            tracing::warn!(%addr, "deleteCharacter: no DB pool");
-            return Ok(());
-        }
     };
 
     // Locks the character's Teams and Commands before the delete, so the
