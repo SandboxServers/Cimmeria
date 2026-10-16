@@ -6,6 +6,7 @@ pub mod clicks;
 pub mod commands;
 pub mod context;
 pub mod dossier;
+pub mod mission;
 pub mod probe_catalog;
 pub mod probes;
 pub mod slash_catalog;
@@ -14,6 +15,8 @@ pub mod spatial;
 
 #[cfg(test)]
 mod command_tests;
+#[cfg(test)]
+mod mission_tests;
 #[cfg(test)]
 mod probes_tests;
 #[cfg(test)]

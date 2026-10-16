@@ -21,7 +21,7 @@ use crate::{
     server::Instances,
     workbench::{
         bookmarks::{BookmarkDraft, BookmarkStore},
-        dossier, spatial,
+        dossier, mission, spatial,
     },
 };
 #[cfg(test)]
@@ -48,6 +48,7 @@ pub(crate) fn router_with_store(
         .route("/workbench/api/v1/bookmarks/save", post(bookmark_save))
         .route("/workbench/api/v1/bookmarks/delete", post(bookmark_delete))
         .route("/workbench/api/v1/bookmarks/action", post(bookmark_action))
+        .route("/workbench/api/v1/mission", get(mission_xray))
         .route("/workbench/api/v1/input/key", post(input_key))
         .route("/workbench/api/v1/probes", get(probe_api::probe_list))
         .route("/workbench/api/v1/probes/save", post(probe_api::probe_save))
@@ -352,6 +353,35 @@ async fn bookmark_action(
         "bookmark_action_unavailable",
         "bookmark actions require a trusted client identity and guarded input boundary",
     )
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MissionQuery {
+    instance: String,
+    mission_id: i32,
+}
+
+async fn mission_xray(
+    State(sessions): State<Arc<SessionStore>>,
+    Extension(instances): Extension<Instances>,
+    headers: HeaderMap,
+    Query(query): Query<MissionQuery>,
+) -> Response {
+    let Some(instance) = bound_instance(&sessions, &headers) else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    if !instance.eq_ignore_ascii_case(&query.instance) {
+        return StatusCode::FORBIDDEN.into_response();
+    }
+    if query.mission_id <= 0 {
+        return StatusCode::BAD_REQUEST.into_response();
+    }
+    let Some(hosted) = instances.by_label(&instance) else {
+        return StatusCode::NOT_FOUND.into_response();
+    };
+    Json(mission::read_mission(&hosted.supervisor, &hosted.label, query.mission_id, None).await)
+        .into_response()
 }
 
 fn bound_instance(sessions: &SessionStore, headers: &HeaderMap) -> Option<String> {
