@@ -323,6 +323,29 @@ A lab-chaos build adds `server_chaos_set`, `server_chaos_clear` and
 `server_chaos_status`.
 See ADR §3.5 for the full set; `docs/operations/colo-deploy.md` for the port.
 
+### GM workbench command catalog
+
+`server_console_list {"entity_id": <in-world GM entity id>}` first reads that
+entity through the live cell `EntityGet` query and refuses missing or
+non-GameMaster actors.
+
+The `entity_id` is caller-supplied, so this tool is safe only behind the
+privileged lab MCP bearer. An `EntityGet` result for that ID is not browser
+authorization. DW-30 must derive the browser actor from its authenticated,
+instance-bound session and recheck live cell authority when executing.
+
+The tool then projects every registered dot command from the same
+`COMMANDS` table that dispatches the in-world `.` console. Workbench fields
+include `id`, `channel = dot`, stable `target_policy` and structured `target`, `metadata_version`,
+`availability = unsupported` and `manual_pending = true`. These conservative
+rows carry `impact = null`, `verify = null` and `compensation = null`, and are
+searchable but have no typed Run action until their argument,
+impact and readback contracts are reviewed. The native slash catalog is a
+separate source and is still pending review. `server_console_exec` remains a
+raw lab tool: the acting entity must still pass the cell-side GameMaster
+check. A future GM-scoped GUI catalog caller must pass a server-verified GM
+result, never a browser flag. The MCP list tool checks live cell authority on
+every call. No live-client validation is claimed here.
 `server_minigame_state {"entity_id": <player entity id>}` reads the Livewire
 board after SmartFox login and board generation. Its `state` object contains
 the phase (`ready`, `running`, or `finished`), outcome when finished,

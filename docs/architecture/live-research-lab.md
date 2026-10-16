@@ -151,7 +151,7 @@ In-process, started from `crates/server/src/main.rs` beside the admin API but on
 
 | Tool | Purpose |
 |---|---|
-| `server_console_list` / `server_console_exec` | The 88-command dot-console (`cell/console/registry`), with captured output. Covers spawn, travel, give, mission, patrol, and net-debug families on day one. |
+| `server_console_list` / `server_console_exec` | The registry-backed dot console (`cell/console/registry`), with captured output. Listing requires an acting in-world GM entity id and a fresh cell authority read; execution is gated again by the cell. Covers spawn, travel, give, mission, patrol, and net-debug families. |
 | `server_sessions` | Connected accounts, characters, entity ids, spaces, addresses. |
 | `server_entity_get` / `server_entity_query` | Live entity snapshot; filter by space, type, radius, template. `server_entity_get` also returns focus and every stat (`cur`/`min`/`max`); a query returns health and focus only, so a 256-entity reply stays small (ability-mechanics AB-L1). Every ID carries its name (Rule 6, NT-41). |
 | `server_witnesses` | Who witnesses an entity, and whom it witnesses. Directly targets the invisible-corpse class of AoI bug. Each listed entity carries its name and template (NT-41). |

@@ -4,6 +4,8 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Open investigations
 
+- [reference_workbench_gm_contract_2026_10_15.md](reference_workbench_gm_contract_2026_10_15.md) — DW-19 dot registry projection, cell GM gate, pending typed evidence and separate slash source
+
 - [reference_codex_worktree_lane_2026_10_15.md](reference_codex_worktree_lane_2026_10_15.md) — Codex packet worktrees need the repo's external junction; sandboxed lane calls can miss the shared lock and require an escalated machine-wide lane call
 
 - [reference_rasa_gui_injection_2026_10_15.md](reference_rasa_gui_injection_2026_10_15.md) — source-only comparison of Rasa's D3D9/ImGui, Python bridge, target-to-editor and save-verification patterns with Cimmeria's lab bridge

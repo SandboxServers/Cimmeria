@@ -139,6 +139,7 @@ pub(crate) use dispatch::refuse_non_gm_command;
 pub(crate) use parse::{parse_bool, parse_f32, parse_i32};
 pub(crate) use player_commands::handle_player_command;
 pub(crate) use registry::{Spec, COMMANDS};
+pub use registry::{TargetPolicy, COMMAND_METADATA_VERSION};
 pub use spawn::batch as spawn_batch;
 
 // `exec` is only driven directly by the dispatch-coverage test and by the
@@ -169,6 +170,22 @@ pub struct CommandInfo {
     pub target: String,
     /// One-line summary (the `.help` text).
     pub help: String,
+    /// Stable dot command channel, distinct from native slash commands.
+    pub channel: &'static str,
+    /// Workbench grouping; family packets will refine it from reviewed evidence.
+    pub category: String,
+    /// Workbench availability. Pending commands cannot be run as typed actions.
+    pub availability: &'static str,
+    /// Explicit marker for commands awaiting source-backed typed metadata.
+    pub manual_pending: bool,
+    /// Why a pending command has no typed action yet.
+    pub disposition_reason: String,
+    /// Stable selected-target policy identifier.
+    pub target_policy: &'static str,
+    /// Source registry argument name for `mob_or_id`'s ID form, if any.
+    pub target_argument_name: Option<&'static str>,
+    /// Version of this command's workbench metadata.
+    pub metadata_version: u32,
 }
 
 /// Enumerate every registered `.`-console command, in `.help` order. The single
@@ -177,12 +194,25 @@ pub struct CommandInfo {
 pub fn command_catalog() -> Vec<CommandInfo> {
     COMMANDS
         .iter()
-        .map(|s| CommandInfo {
-            name: s.name.to_string(),
-            min_args: s.min,
-            max_args: (s.max != usize::MAX).then_some(s.max),
-            target: s.target.label().to_string(),
-            help: s.help.to_string(),
+        .map(|s| {
+            let metadata = registry::workbench_metadata(s);
+            CommandInfo {
+                name: s.name.to_string(),
+                min_args: s.min,
+                max_args: (s.max != usize::MAX).then_some(s.max),
+                target: s.target.label().to_string(),
+                help: s.help.to_string(),
+                channel: "dot",
+                category: metadata.category.to_string(),
+                availability: metadata.availability,
+                manual_pending: true,
+                disposition_reason: metadata.disposition_reason.to_string(),
+                target_policy: s.target.key(),
+                target_argument_name: (s.target == registry::TargetPolicy::MobOrId)
+                    .then(|| registry::arg_specs(s.name).first().map(|arg| arg.name))
+                    .flatten(),
+                metadata_version: metadata.metadata_version,
+            }
         })
         .collect()
 }
