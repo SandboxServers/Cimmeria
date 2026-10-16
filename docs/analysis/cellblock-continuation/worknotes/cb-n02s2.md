@@ -15,7 +15,7 @@ Static check of every `set_interaction_type`, `set_aggression` and `add_dialog_s
 
 ## Binding table
 
-Masks: 256 `INT_MinigameLivewire`, 32 RingNetwork, 8388608 Col Marsh mission-available, 1073741824 `INT_MissionWorldObject`, 4194304 body search.
+Masks: 256 `INT_MinigameLivewire`, 32 RingNetwork, 8388608 Col Marsh mission-available, 1073741824 `INT_MissionWorldObject`, 4194304 `INT_A_STORY_MISSION_PENDING` (interaction_flags.rs:66; the seed clears it on body search).
 
 | Tag / dialog set | Mask / level | Setter (chain, step) | Clearer (chain, step) | Restore chain | Restore condition | Verdict |
 |---|---|---|---|---|---|---|
@@ -27,7 +27,7 @@ Masks: 256 `INT_MinigameLivewire`, 32 RingNetwork, 8388608 Col Marsh mission-ava
 | `HackTheRings_Switch` | 32 | 1042, 2215 | 1044, teleport_in region 2 | 1046 | `step_status` 640 `2215` active | exact in window. Template base is 32, so after 1044 clears it a relog re-lights it (over, harmless: 1043 is gated on step 2215). |
 | `HackTheRings_Switch` | 1073741824 | 1042, 2215 | 1043, interact at 2215 | 1046 | `step_status` 640 `2215` active | exact, with a cosmetic over: a relog after the 1043 interact but before 1044 re-lights a cleared highlight. |
 | `Preparation_ColMarsh` (tmpl 10) | 8388608 | 1044 (640 done); 1066 (step 3563) | 1053/1054 (641 accepted); 1058/1059 | 1063; 1064 | 640 completed AND 641 not_active; `step_status` 641 `3563` active | exact. No bit is needed at step 80641. |
-| `Preparation_SMG1A` (spawn 11, tmpl 8) | 1073741824 | 1053/1054, step 2121 | 1055, pickup | 1062 | `step_status` 641 `2121` active | exact. Template 8 base is 32 (see Observations). |
+| `Preparation_SMG1A` (spawn 11, tmpl 8) | 1073741824 | 1053/1054, step 2121 | 1055, pickup | 1062 | `step_status` 641 `2121` active | exact in window; template base 32 is over, harmless (see Observations). |
 | `Preparation_Terminal` (spawn 16, tmpl 19) | 256 | 1058/1059, step 3564 | none, by design (shared marker) | 1065 | `step_status` 641 `3564` active | exact; the in-session over is intentional (seed comment ~1557). |
 | `Preparation_RingSwitch` (spawn 17, tmpl 3) | 32 | 1061, 641 to 680 | 1072, teleport_in region 3 | 1074 | `step_status` 680 `2344` active | exact in window. Template 32 re-lights after 1072 (over, harmless: 1071 is step-gated). |
 | `Preparation_RingSwitch` | 1073741824 | 1061 | 1072 | 1074 | `step_status` 680 `2344` active | exact |
@@ -48,7 +48,7 @@ Context rows, outside the six missions but part of the same relog window:
 Observations (none of them a new gap):
 
 - Template 3 gives all three ring switches base `interaction_type` 32 and template 8 gives the SMG-1A locker 32. So every clear of bit 32 (1044, 1072) is a no-op across a relog, and the fresh state already shows the RingNetwork icon outside the mission windows. Every ring interact chain (1043, 1071) is gated on its step, so the click does nothing out of window. The ring campaign owns the switch presentation and chain 1109; this is recorded for them, not sealed here.
-- Restore chains are not `once`, so each login fires them once per fresh instance, which is what is wanted.
+- Restore chains are not `once`, except 1026/1027 (`once` is per cell-entity life, so a fresh instance fires them again). Each login therefore fires them once per fresh instance, which is what is wanted.
 
 ## Sequences 1749 and 10001
 
@@ -57,11 +57,11 @@ Observations (none of them a new gap):
 - Setter: chain 1017 (Livewire victory) runs `advance_step` 2116, `play_sequence` 1749, then clears the button bit. No `player_loaded` chain replays 1749.
 - Is the state needed to progress after a relog at 2116? No, per the seed. Step 2116 advances only through `dialog_choice` chains 1020/1021 and then 1018/1019, all gated on `step_status` 638 `2116`, and the dialog set is restored by 1026/1027. Nothing in the seed reads the door's open state.
 - The door's open state is client-map state: the QA map `fffefffd` has a `Prisoner329CellDoor` event driving SetBool, PlaySound and Interp, with no server-side persistence ([presentation-handoff](../presentation-handoff.md), doors row). Whether a relog leaves the door visually closed or physically blocking is unproven ([route-baseline](../route-baseline.md) line 321: door swing and release state not physically checked).
-- Owner: Asset audit packets CA-03C/D (Ready, CA-06B BlockedEvidence, branch `origin/docs/cellblock-asset-audit`), relog scenario CA-U17. Cellblock opens a CB-N02 child only if CA-U17 or CB-U03 reproduces a stranded player. Precedent if the owners decide a replay is needed: chain 1002 already replays `play_sequence` 10000 on every load once 622 is complete. No client patch is proposed, and no child is sealed on a speculative fault.
+- Owner: Asset audit packets CA-03A (door trace, Ready) and CA-06D (relog replay, BlockedEvidence; branch `origin/docs/cellblock-asset-audit`), relog scenario CA-U17. Cellblock opens a CB-N02 child only if CA-U17 or CB-U03 reproduces a stranded player. Precedent if the owners decide a replay is needed: chain 1002 already replays `play_sequence` 10000 on every load once 622 is complete. No client patch is proposed, and no child is sealed on a speculative fault.
 
 ### 10001 (TakeCoverIndicator, chain 1032)
 
-- Chain 1032 plays 10001 at 639 step 2144 when the vial is used; the hide counterpart is 10014 (chains 1132/1133).
+- Chain 1032 (step 2145, vial interact) plays 10001, then advances to 2144; the hide counterpart is 10014 (chains 1132/1133).
 - After a relog at 2144 the indicator is gone. It is a hint only: cover progress is driven by `player_entered_cover`, independent of the indicator, so the state is not needed to progress.
 - Owner: presentation/asset audit. The drone re-arm that does matter for the fight is already CB-N02d (chain 1037).
 
