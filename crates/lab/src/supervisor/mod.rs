@@ -61,6 +61,7 @@ pub mod record_slot;
 pub mod recovery;
 pub mod screenshot;
 pub mod session_file;
+pub mod slash_adapter;
 pub mod stall_grace;
 mod status;
 pub mod telemetry_session;
