@@ -97,8 +97,10 @@ local function __tree(v, depth)
     if key == nil then break end
     scanned = scanned + 1
     local kt = type(key)
-    if kt == 'string' or kt == 'number' then
+  if kt == 'string' or (kt == 'number' and key % 1 == 0) then
       items[#items+1] = {key=__tree(key, depth+1), value=__tree(rawget(v,key), depth+1)}
+  else
+    __partial = true
     end
   end
   if key ~= nil then __partial = true end
@@ -134,20 +136,30 @@ fn bounded(value: &Value, depth: usize, nodes: &mut usize, partial: &mut bool) -
             *partial = true;
             Value::String(s.chars().take(1_024).collect())
         }
-        Value::Array(items) => Value::Array(
-            items
-                .iter()
-                .take(64)
-                .map(|v| bounded(v, depth + 1, nodes, partial))
-                .collect(),
-        ),
-        Value::Object(items) => Value::Object(
-            items
-                .iter()
-                .take(64)
-                .map(|(k, v)| (k.clone(), bounded(v, depth + 1, nodes, partial)))
-                .collect(),
-        ),
+        Value::Array(items) => {
+            if items.len() > 64 {
+                *partial = true;
+            }
+            Value::Array(
+                items
+                    .iter()
+                    .take(64)
+                    .map(|v| bounded(v, depth + 1, nodes, partial))
+                    .collect(),
+            )
+        }
+        Value::Object(items) => {
+            if items.len() > 64 {
+                *partial = true;
+            }
+            Value::Object(
+                items
+                    .iter()
+                    .take(64)
+                    .map(|(k, v)| (k.clone(), bounded(v, depth + 1, nodes, partial)))
+                    .collect(),
+            )
+        }
         _ => value.clone(),
     }
 }

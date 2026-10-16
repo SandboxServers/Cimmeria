@@ -3,12 +3,23 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
+use std::sync::{Mutex, OnceLock};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 const MAX_CHUNK: usize = 8_192;
 const MAX_PROBES: usize = 128;
+// JSON escapes a control byte as up to six ASCII bytes.
+const MAX_FILE: usize = MAX_CHUNK * 6 + 1_024;
+static CATALOG_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn catalog_lock() -> std::sync::MutexGuard<'static, ()> {
+    CATALOG_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+}
 
 /// Operator intent; Lua source is not statically proven pure.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -34,6 +45,9 @@ impl ProbeDefinition {
     /// Validate and construct a versioned definition with a reproducible hash.
     pub fn new(name: String, mode: ProbeMode, chunk: String) -> Result<Self, String> {
         valid_name(&name)?;
+        if name.eq_ignore_ascii_case("history") {
+            return Err("probe name is reserved".into());
+        }
         if chunk.is_empty() || chunk.len() > MAX_CHUNK || chunk.as_bytes().contains(&0) {
             return Err("probe chunk must be 1..8192 bytes without NUL".into());
         }
@@ -113,7 +127,7 @@ impl ProbeCatalog {
                 continue;
             }
             let bytes = fs::read(&path).map_err(|e| e.to_string())?;
-            if bytes.len() > MAX_CHUNK + 1_024 {
+            if bytes.len() > MAX_FILE {
                 return Err(format!("probe file too large: {}", path.display()));
             }
             let def: ProbeDefinition = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
@@ -131,8 +145,29 @@ impl ProbeCatalog {
 
     /// Save one definition atomically after validating the existing catalog.
     pub fn save(&self, instance: &str, def: ProbeDefinition) -> Result<ProbeDefinition, String> {
+        self.save_checked(instance, def, None, false)
+    }
+
+    /// Check the caller's version and replace under the same catalog lock.
+    pub fn save_checked(
+        &self,
+        instance: &str,
+        def: ProbeDefinition,
+        expected_sha256: Option<&str>,
+        check_version: bool,
+    ) -> Result<ProbeDefinition, String> {
+        let _guard = catalog_lock();
         let def = def.checked()?;
         let list = self.list(instance)?;
+        if check_version
+            && list
+                .iter()
+                .find(|old| old.name == def.name)
+                .map(|old| old.sha256.as_str())
+                != expected_sha256
+        {
+            return Err("probe_stale".into());
+        }
         if list.len() >= MAX_PROBES && !list.iter().any(|old| old.name == def.name) {
             return Err("probe count exceeds 128".into());
         }
@@ -142,16 +177,19 @@ impl ProbeCatalog {
         let temp = dir.join(format!(".{}.{}.tmp", def.name, uuid::Uuid::new_v4()));
         let bytes = serde_json::to_vec_pretty(&def).map_err(|e| e.to_string())?;
         fs::write(&temp, bytes).map_err(|e| e.to_string())?;
-        if path.exists() {
-            fs::remove_file(&path).map_err(|e| e.to_string())?;
+        if let Err(e) = replace_file(&temp, &path) {
+            let _ = fs::remove_file(&temp);
+            return Err(e.to_string());
         }
-        fs::rename(&temp, &path).map_err(|e| e.to_string())?;
         Ok(def)
     }
 
     /// Load a named definition, if present.
     pub fn get(&self, instance: &str, name: &str) -> Result<Option<ProbeDefinition>, String> {
         valid_name(name)?;
+        if name.eq_ignore_ascii_case("history") {
+            return Err("probe name is reserved".into());
+        }
         Ok(self
             .list(instance)?
             .into_iter()
@@ -160,20 +198,31 @@ impl ProbeCatalog {
 
     /// Store a bounded, metadata-only history row without result content.
     pub fn record(&self, instance: &str, name: &str, status: &str) -> Result<(), String> {
+        let _guard = catalog_lock();
         valid_name(name)?;
+        if name.eq_ignore_ascii_case("history") {
+            return Err("probe name is reserved".into());
+        }
         let dir = self.directory(instance)?;
         fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         let path = dir.join("history.json");
-        let mut rows: Vec<serde_json::Value> = fs::read(&path)
-            .ok()
-            .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or_default();
+        let mut rows: Vec<serde_json::Value> = match fs::read(&path) {
+            Ok(bytes) => serde_json::from_slice(&bytes).map_err(|e| e.to_string())?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+            Err(e) => return Err(e.to_string()),
+        };
         rows.push(serde_json::json!({"name": name, "status": status, "at_ms": chrono::Utc::now().timestamp_millis()}));
         if rows.len() > 100 {
             rows.drain(..rows.len() - 100);
         }
-        fs::write(path, serde_json::to_vec(&rows).map_err(|e| e.to_string())?)
-            .map_err(|e| e.to_string())
+        let temp = dir.join(format!(".history.{}.tmp", uuid::Uuid::new_v4()));
+        fs::write(&temp, serde_json::to_vec(&rows).map_err(|e| e.to_string())?)
+            .map_err(|e| e.to_string())?;
+        if let Err(e) = replace_file(&temp, &path) {
+            let _ = fs::remove_file(&temp);
+            return Err(e.to_string());
+        }
+        Ok(())
     }
 
     /// Read recent metadata without source or result bytes.
@@ -185,6 +234,44 @@ impl ProbeCatalog {
             Err(e) => Err(e.to_string()),
         }
     }
+}
+
+#[cfg(windows)]
+/// Atomically replace a catalog file on Windows, preserving the old file on error.
+pub(super) fn replace_file(
+    source: &std::path::Path,
+    destination: &std::path::Path,
+) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows_sys::Win32::Storage::FileSystem::{
+        MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+    };
+    let wide = |path: &std::path::Path| {
+        path.as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect::<Vec<_>>()
+    };
+    if unsafe {
+        MoveFileExW(
+            wide(source).as_ptr(),
+            wide(destination).as_ptr(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+        )
+    } == 0
+    {
+        return Err(std::io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+/// Atomically replace a catalog file on non-Windows test hosts.
+pub(super) fn replace_file(
+    source: &std::path::Path,
+    destination: &std::path::Path,
+) -> std::io::Result<()> {
+    fs::rename(source, destination)
 }
 
 /// Separate caller-owned root for deterministic tests.

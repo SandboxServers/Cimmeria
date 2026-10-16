@@ -4,6 +4,7 @@ use serde_json::{json, Map, Value};
 
 use super::probe_catalog::{test_catalog, ProbeDefinition, ProbeMode};
 use super::probes::{decode_bridge, execute, globals_chunk, run_chunk};
+use std::sync::{Arc, Barrier};
 
 #[test]
 fn mutation_execution_refuses_missing_or_foreign_lease() {
@@ -99,7 +100,7 @@ fn global_browser_uses_raw_access_and_marks_opaque_values() {
     assert_eq!(outcome.value.unwrap()["kind"], "table");
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn fake_executor_surfaces_lua_error_and_timeout() {
     let def = read("error", "error('bad')");
     let result = execute(&def, &Map::new(), |_chunk| async {
@@ -109,4 +110,98 @@ async fn fake_executor_surfaces_lua_error_and_timeout() {
     .unwrap();
     assert_eq!(result.status, "lua_error");
     assert_eq!(result.detail.as_deref(), Some("bad"));
+    let timed_out = execute(&def, &Map::new(), |_chunk| async {
+        std::future::pending::<Result<Value, String>>().await
+    })
+    .await
+    .unwrap();
+    assert_eq!(timed_out.status, "timeout");
+    assert_eq!(timed_out.gaps, ["execution_unknown"]);
+}
+
+#[test]
+fn valid_escaped_chunk_survives_catalog_reload() {
+    let temp = tempfile::tempdir().unwrap();
+    let catalog = test_catalog(temp.path());
+    let def = read("escaped", &"\u{0001}".repeat(8_192));
+    catalog.save("default", def.clone()).unwrap();
+    assert_eq!(catalog.get("default", "escaped").unwrap(), Some(def));
+    assert!(ProbeDefinition::new("history".into(), ProbeMode::Read, "return 1".into()).is_err());
+}
+
+#[test]
+fn failed_replace_preserves_existing_probe_bytes() {
+    let temp = tempfile::tempdir().unwrap();
+    let target = temp.path().join("probe.json");
+    std::fs::write(&target, b"old bytes").unwrap();
+    assert!(super::probe_catalog::replace_file(&temp.path().join("missing.tmp"), &target).is_err());
+    assert_eq!(std::fs::read(target).unwrap(), b"old bytes");
+}
+
+#[test]
+fn concurrent_versioned_saves_and_history_keep_every_accepted_update() {
+    let temp = tempfile::tempdir().unwrap();
+    let catalog = test_catalog(temp.path());
+    let original = read("race", "return 1");
+    catalog.save("default", original.clone()).unwrap();
+    let gate = Arc::new(Barrier::new(3));
+    let mut threads = Vec::new();
+    for chunk in ["return 2", "return 3"] {
+        let catalog = catalog.clone();
+        let gate = gate.clone();
+        let hash = original.sha256.clone();
+        threads.push(std::thread::spawn(move || {
+            gate.wait();
+            catalog.save_checked("default", read("race", chunk), Some(&hash), true)
+        }));
+    }
+    gate.wait();
+    let results: Vec<_> = threads
+        .into_iter()
+        .map(|thread| thread.join().unwrap())
+        .collect();
+    assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1);
+    assert_eq!(
+        results
+            .iter()
+            .filter(|result| result.as_ref().err().is_some_and(|e| e == "probe_stale"))
+            .count(),
+        1
+    );
+    assert_eq!(
+        catalog.get("default", "race").unwrap().unwrap().sha256,
+        results.into_iter().find_map(Result::ok).unwrap().sha256
+    );
+
+    let gate = Arc::new(Barrier::new(9));
+    let mut threads = Vec::new();
+    for _ in 0..8 {
+        let catalog = catalog.clone();
+        let gate = gate.clone();
+        threads.push(std::thread::spawn(move || {
+            gate.wait();
+            catalog.record("default", "race", "ok")
+        }));
+    }
+    gate.wait();
+    for thread in threads {
+        thread.join().unwrap().unwrap();
+    }
+    assert_eq!(catalog.history("default").unwrap().len(), 8);
+}
+
+#[test]
+fn unsupported_lua_keys_mark_tree_partial() {
+    let lua = unsafe { mlua::Lua::unsafe_new() };
+    let def = read(
+        "keys",
+        "local t = {}; t[function() end] = 1; t[1.5] = 2; t.good = 3; return t",
+    );
+    let response: String = lua
+        .load(run_chunk(&def, &Map::new()).unwrap())
+        .eval()
+        .unwrap();
+    let outcome = decode_bridge(json!({"ok":true,"results":[response]}));
+    assert_eq!(outcome.status, "partial");
+    assert_eq!(outcome.gaps, ["tree_truncated"]);
 }

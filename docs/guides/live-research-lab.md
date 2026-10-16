@@ -330,7 +330,7 @@ The local companion API saves named Lua snippets under the daemon's per-user
 `%LOCALAPPDATA%/cimmeria-lab`). Definitions have schema version 1 and a SHA-256
 of mode and source; a save or run with a stale hash is refused. The list API
 returns saved definitions, favorites and a bounded history of run names/statuses.
-History does not store parameters or result content. The browser session's
+History does not store parameters or result content. Concurrent saves check the expected hash under one catalog lock; a failed replacement preserves the previous definition. If a run succeeds but its history row cannot be saved, the result includes a `probe_history` gap. The browser session's
 instance, same-origin cookie and CSRF check apply to every write. Probe runs,
 global browsing and CEGUI window reads also require a current lab lease.
 
@@ -353,7 +353,7 @@ blocking native C call may remain in flight after that timeout, so `timeout` mea
 unknown, not that the effect was cancelled. Result trees stop at depth 4,
 128 nodes and 1,024 bytes per string; bridge output stops at 32 KiB. Cycles,
 oversized values, Lua errors, missing return capture and partial trees are
-reported distinctly. Global enumeration uses `next` and `rawget` and leaves
+reported distinctly. Non-string and non-integer table keys are skipped with a partial-tree marker. Global enumeration uses `next` and `rawget` and leaves
 userdata opaque; the CEGUI branch reuses `client_window_read` with depth 4,
 128 nodes and 32 rows. No Lua namespace is retained across a relog.
 
