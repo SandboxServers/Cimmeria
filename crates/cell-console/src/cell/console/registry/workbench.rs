@@ -26,6 +26,9 @@ pub(crate) fn workbench_metadata(spec: &Spec) -> WorkbenchMetadata {
     if let Some(metadata) = super::workbench_world_move::metadata(spec.name) {
         return metadata;
     }
+    if let Some(metadata) = super::workbench_world_author::metadata(spec.name) {
+        return metadata;
+    }
     WorkbenchMetadata {
         category: "Dot console",
         availability: "unsupported",
@@ -54,7 +57,9 @@ mod tests {
         assert_eq!(COMMANDS.len(), 129);
         for spec in COMMANDS {
             let metadata = workbench_metadata(spec);
-            if super::super::workbench_world_move::metadata(spec.name).is_none() {
+            if super::super::workbench_world_move::metadata(spec.name).is_none()
+                && super::super::workbench_world_author::metadata(spec.name).is_none()
+            {
                 assert_eq!(metadata.availability, "unsupported", ".{}", spec.name);
             }
             if metadata.availability != "runnable" {

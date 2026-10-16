@@ -11,6 +11,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [reference_dev_workbench_patrol_authoring_2026_10_16.md](reference_dev_workbench_patrol_authoring_2026_10_16.md) — DW-20B-E shared path buffer, async live SQL result versus seed commit, `.lookat` autosave and `.visible true` no-op
 - [reference_workbench_slash_transport_2026_10_16.md](reference_workbench_slash_transport_2026_10_16.md) — DW-24B stock chat plain-token precedent, blocked fingerprint/parser/receipt proof, and fail-closed legacy console address
 
+- [reference_dev_workbench_patrol_metadata_2026_10_16.md](reference_dev_workbench_patrol_metadata_2026_10_16.md) — DW-20B metadata seam, two catalog-runnable actions, and queued SQL/live DB/seed commit boundary
 - [reference_dev_workbench_mission_2026_10_16.md](reference_dev_workbench_mission_2026_10_16.md) — DW-06 mission tracker lacks IDs; player state waits for trusted session binding; mission-scoped chain references are partial
 
 - [reference_workbench_gm_contract_2026_10_15.md](reference_workbench_gm_contract_2026_10_15.md) — DW-19 dot registry projection, cell GM gate, pending typed evidence and separate slash source

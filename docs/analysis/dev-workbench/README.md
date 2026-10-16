@@ -115,7 +115,7 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 4 | DW-20A-E | Dot travel/spawn evidence, 16 specs | 19 | 35k | Integrated |
 | 4 | DW-20A | Dot travel/spawn metadata | 20A-E | 40k | Integrated (#1751) |
 | 4 | DW-20B-E | Dot patrol/authoring evidence, 28 specs | 19 | 45k | Integrated (#1765) |
-| 4 | DW-20B | Dot patrol/authoring metadata | 20B-E | 45k | Ready |
+| 4 | DW-20B | Dot patrol/authoring metadata | 20B-E | 45k | Review |
 | 5 | DW-21-E | Dot progression/ability/stat/ammo/pet evidence, 27 specs | 19 | 45k | Ready |
 | 5 | DW-21 | Dot progression/ability/stat/ammo/pet metadata | 21-E | 45k | Ready |
 | 5 | DW-22-E | Dot social/org/squad/bank/black-market evidence, 25 specs | 19 | 45k | Ready |
@@ -128,7 +128,7 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 5 | DW-24B | Native submission/quoting/receipt proof | 24A | 45k | BlockedDependency (offline candidate; binary/parser/live receipt proof pending) |
 | 6 | DW-25A-E | Slash evidence 1-27 | 24A | 40k | Integrated (#1768) |
 | 6 | DW-25A | Slash descriptors 1-27 | 25A-E | 40k | Ready |
-| 6 | DW-25B-E | Slash evidence 28-54 | 24A | 40k | Review |
+| 6 | DW-25B-E | Slash evidence 28-54 | 24A | 40k | Integrated (#1770) |
 | 6 | DW-25B | Slash descriptors 28-54 | 25B-E | 40k | Ready |
 | 6 | DW-26A-E | Slash evidence 55-81 | 24A | 40k | Review |
 | 6 | DW-26A | Slash descriptors 55-81 | 26A-E | 40k | Ready |
