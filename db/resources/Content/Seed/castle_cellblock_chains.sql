@@ -871,6 +871,7 @@ VALUES (1036, 'step_status', 639, '2145', 'eq', 'active', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (1036, 'set_interaction_type', NULL, 'ArmYourself_AmbernolVial', '{"op": "|", "mask": 1073741824}', 0, 0);
+
 -- ============================================================
 -- TAKE-COVER OBJECTIVE (C05, replaces the COVER-SYSTEM DEMO chain 1035)
 -- ============================================================
