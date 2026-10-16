@@ -84,6 +84,9 @@ fn unproved_handlers_remain_disabled_with_per_command_reason() {
         HandlerStatus::ImplementedOrdinaryMethod
     );
     assert_eq!(rows[21].handler_status, HandlerStatus::ReceiptOnly);
+    for row in &rows[18..21] {
+        assert_eq!(row.handler_status, HandlerStatus::Absent);
+    }
 }
 
 #[test]

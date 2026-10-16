@@ -3,12 +3,16 @@
 use serde::{Deserialize, Serialize};
 
 use super::commands::CommandDescriptor;
-use super::slash_descriptors_1a::descriptors_for as descriptors_1a;
+use super::slash_descriptors_1a::{
+    descriptors_for as descriptors_1a, HandlerAvailability as Status1a,
+};
 use super::slash_descriptors_1b::descriptors_1b;
-use super::slash_descriptors_2a::descriptors_for as descriptors_2a;
-use super::slash_descriptors_2b::descriptors_for as descriptors_2b;
+use super::slash_descriptors_2a::{
+    descriptors_for as descriptors_2a, HandlerAvailability as Status2a,
+};
+use super::slash_descriptors_2b::{descriptors_for as descriptors_2b, HandlerStatus as Status2b};
 use super::slash_descriptors_3a::descriptors_3a;
-use super::slash_descriptors_3b::descriptors_3b;
+use super::slash_descriptors_3b::{descriptors_3b, HandlerStatus as Status3b};
 use super::slash_inventory::{parse_patch_table, SlashEntry};
 
 const PATCH_TOML: &str =
@@ -33,6 +37,37 @@ pub struct SlashCatalogEntry {
     pub source: SlashEntry,
     pub descriptor: CommandDescriptor,
     pub method_candidate: Option<MethodCandidate>,
+    /// Sourced handler, scope and readback claims. None means that slice did
+    /// not make a separate claim; it never means the slash transport is proved.
+    pub evidence: SlashCatalogEvidence,
+}
+
+/// Per-entry source claims kept separate from availability and transport proof.
+#[derive(Clone, Debug, Default, Serialize, PartialEq, Eq)]
+pub struct SlashCatalogEvidence {
+    pub handler_status: Option<SlashHandlerStatus>,
+    pub target_scope: Option<String>,
+    pub precondition_note: Option<String>,
+    pub readback_note: Option<String>,
+    pub source_document: String,
+}
+
+/// The combined vocabulary of independently sourced slash handler findings.
+#[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SlashHandlerStatus {
+    Implemented,
+    ImplementedOrdinaryMethod,
+    ReceiptOnly,
+    Absent,
+    SignatureMismatch,
+    OptionalArgumentMismatch,
+    ClientEffectUnverified,
+}
+
+struct CatalogProjection {
+    descriptor: CommandDescriptor,
+    evidence: SlashCatalogEvidence,
 }
 
 /// Result of inspecting stock files, distinct from the patch 012 table.
@@ -79,37 +114,112 @@ pub(super) fn catalog_from_entries(
             entries.len()
         ));
     }
-    let mut descriptors = Vec::with_capacity(entries.len());
-    descriptors.extend(
-        descriptors_1a(&entries)?
+    let mut projected = Vec::with_capacity(entries.len());
+    projected.extend(descriptors_1a(&entries)?.into_iter().map(|row| {
+        let handler_status = match row.handler_availability {
+            Status1a::Implemented => SlashHandlerStatus::Implemented,
+            Status1a::Absent => SlashHandlerStatus::Absent,
+            Status1a::SignatureMismatch => SlashHandlerStatus::SignatureMismatch,
+            Status1a::OptionalArgumentMismatch => SlashHandlerStatus::OptionalArgumentMismatch,
+        };
+        CatalogProjection {
+            descriptor: row.descriptor,
+            evidence: SlashCatalogEvidence {
+                handler_status: Some(handler_status),
+                target_scope: Some(row.target_scope),
+                readback_note: Some(row.readback_note),
+                source_document: row.evidence,
+                ..Default::default()
+            },
+        }
+    }));
+    projected.extend(
+        descriptors_1b(&entries[27..54])?
             .into_iter()
-            .map(|row| row.descriptor),
+            .map(|descriptor| CatalogProjection {
+                descriptor,
+                evidence: SlashCatalogEvidence {
+                    source_document: "docs/analysis/dev-workbench/evidence/DW-25B-E.md".into(),
+                    ..Default::default()
+                },
+            }),
     );
-    descriptors.extend(descriptors_1b(&entries[27..54])?);
-    descriptors.extend(
+    projected.extend(
         descriptors_2a(&entries)?
             .into_iter()
-            .map(|row| row.descriptor),
+            .map(|row| CatalogProjection {
+                descriptor: row.descriptor,
+                evidence: SlashCatalogEvidence {
+                    handler_status: Some(match row.handler_availability {
+                        Status2a::Implemented => SlashHandlerStatus::Implemented,
+                        Status2a::Absent => SlashHandlerStatus::Absent,
+                    }),
+                    target_scope: Some(row.target_scope),
+                    readback_note: Some(row.readback_note),
+                    source_document: row.evidence,
+                    ..Default::default()
+                },
+            }),
     );
-    descriptors.extend(
+    projected.extend(
         descriptors_2b(&entries)?
             .into_iter()
-            .map(|row| row.descriptor),
+            .map(|row| CatalogProjection {
+                descriptor: row.descriptor,
+                evidence: SlashCatalogEvidence {
+                    handler_status: Some(match row.handler_status {
+                        Status2b::Implemented => SlashHandlerStatus::Implemented,
+                        Status2b::Absent => SlashHandlerStatus::Absent,
+                    }),
+                    target_scope: Some(row.target_scope),
+                    precondition_note: Some(row.precondition_note),
+                    readback_note: Some(row.readback_note),
+                    source_document: row.evidence,
+                },
+            }),
     );
-    descriptors.extend(descriptors_3a(&entries[108..135])?);
-    descriptors.extend(
-        descriptors_3b(&entries[135..162])?
+    projected.extend(
+        descriptors_3a(&entries[108..135])?
             .into_iter()
-            .map(|row| row.descriptor),
+            .map(|descriptor| CatalogProjection {
+                descriptor,
+                evidence: SlashCatalogEvidence {
+                    source_document: "docs/analysis/dev-workbench/evidence/DW-27A-E.md".into(),
+                    ..Default::default()
+                },
+            }),
     );
-    if descriptors.len() != entries.len() {
+    projected.extend(descriptors_3b(&entries[135..162])?.into_iter().map(|row| {
+        CatalogProjection {
+            descriptor: row.descriptor,
+            evidence: SlashCatalogEvidence {
+                handler_status: Some(match row.handler_status {
+                    Status3b::ImplementedOrdinaryMethod => {
+                        SlashHandlerStatus::ImplementedOrdinaryMethod
+                    }
+                    Status3b::ReceiptOnly => SlashHandlerStatus::ReceiptOnly,
+                    Status3b::Absent => SlashHandlerStatus::Absent,
+                    Status3b::ClientEffectUnverified => SlashHandlerStatus::ClientEffectUnverified,
+                }),
+                target_scope: Some(row.target_scope),
+                readback_note: Some(row.readback_note),
+                source_document: row.evidence,
+                ..Default::default()
+            },
+        }
+    }));
+    if projected.len() != entries.len() {
         return Err("six slash descriptor slices do not cover patch roster".into());
     }
     let mut seen = std::collections::HashSet::with_capacity(entries.len());
     entries
         .into_iter()
-        .zip(descriptors)
-        .map(|(source, descriptor)| {
+        .zip(projected)
+        .map(|(source, row)| {
+            let CatalogProjection {
+                descriptor,
+                evidence,
+            } = row;
             if source.name != descriptor.id || !seen.insert(descriptor.id.clone()) {
                 return Err(format!(
                     "duplicate or noncanonical slash descriptor: {}",
@@ -121,6 +231,7 @@ pub(super) fn catalog_from_entries(
                 source,
                 descriptor,
                 method_candidate,
+                evidence,
             })
         })
         .collect()

@@ -6,7 +6,8 @@ use sha2::{Digest, Sha256};
 
 use super::commands::{ArgKind, Availability, CommandChannel};
 use super::slash_catalog::{
-    catalog_from_entries, patch_slash_catalog, stock_addendum, StockInventoryState,
+    catalog_from_entries, patch_slash_catalog, stock_addendum, SlashHandlerStatus,
+    StockInventoryState,
 };
 use super::slash_inventory::{parse_patch_table, SlashParameterType};
 
@@ -106,6 +107,70 @@ fn all_patch_descriptors_are_disabled_until_native_submission_is_proven() {
             assert!(matches!(method.status.as_str(), "DONE" | "ADAPT" | "NEW"));
         }
     }
+}
+
+#[test]
+fn six_slice_catalog_keeps_source_claims_and_readback_limits() {
+    let catalog = patch_slash_catalog().unwrap();
+    let find = |word| catalog.iter().find(|row| row.source.name == word).unwrap();
+    let mission = find("/gmmissionassign");
+    assert_eq!(
+        mission.evidence.handler_status,
+        Some(SlashHandlerStatus::Implemented)
+    );
+    assert!(mission
+        .evidence
+        .target_scope
+        .as_deref()
+        .is_some_and(|scope| !scope.is_empty()));
+    assert!(mission
+        .evidence
+        .readback_note
+        .as_deref()
+        .is_some_and(|note| !note.is_empty()));
+    let query = find("/gmusers");
+    assert_eq!(
+        query.evidence.handler_status,
+        Some(SlashHandlerStatus::Implemented)
+    );
+    assert!(query
+        .evidence
+        .readback_note
+        .as_deref()
+        .is_some_and(|note| !note.is_empty()));
+    let ring = find("/gmsetringdestination");
+    assert_eq!(
+        ring.evidence.handler_status,
+        Some(SlashHandlerStatus::ImplementedOrdinaryMethod)
+    );
+    assert!(ring
+        .evidence
+        .target_scope
+        .as_deref()
+        .unwrap()
+        .contains("Caller"));
+    assert!(ring
+        .evidence
+        .readback_note
+        .as_deref()
+        .unwrap()
+        .contains("arrival world/position"));
+    assert!(ring.evidence.source_document.ends_with("DW-27B-E.md"));
+    assert!(ring.descriptor.verify.is_none());
+    for word in [
+        "/gmspacequeuestatus",
+        "/gmspacequeuedresponse",
+        "/gmspacequeuereadyresponse",
+    ] {
+        assert_eq!(
+            find(word).evidence.handler_status,
+            Some(SlashHandlerStatus::Absent)
+        );
+    }
+    assert_eq!(
+        find("/gmconfirmeffect").evidence.handler_status,
+        Some(SlashHandlerStatus::ReceiptOnly)
+    );
 }
 
 #[test]
