@@ -3,6 +3,7 @@
 #[cfg(all(windows, target_arch = "x86"))]
 use std::ffi::c_void;
 
+use super::device::FailureReason;
 use super::{STATUS_GAP, STATUS_RECORDING, STATUS_TRACING};
 
 pub(super) trait Snapshot {
@@ -32,15 +33,15 @@ pub(super) fn draw_panel<D: DeviceOps>(
     device: &mut D,
     status: u32,
     within_budget: impl Fn() -> bool,
-) -> Result<(), ()> {
+) -> Result<(), FailureReason> {
     if !within_budget() {
         return Ok(());
     }
-    let (width, height) = device.viewport()?;
+    let (width, height) = device.viewport().map_err(|()| FailureReason::Viewport)?;
     if width < 216 || height < 60 || !within_budget() {
         return Ok(());
     }
-    let mut state = device.snapshot()?;
+    let mut state = device.snapshot().map_err(|()| FailureReason::State)?;
     let base = Rect {
         x1: 12,
         y1: 12,
@@ -51,44 +52,52 @@ pub(super) fn draw_panel<D: DeviceOps>(
         if !within_budget() {
             return Ok(());
         }
-        device.clear(base, 0xff10_1720)?;
+        device
+            .clear(base, 0xff10_1720)
+            .map_err(|()| FailureReason::Clear)?;
         if !within_budget() {
             return Ok(());
         }
-        device.clear(
-            Rect {
-                x1: 18,
-                y1: 18,
-                x2: 112,
-                y2: 46,
-            },
-            if status & STATUS_GAP != 0 {
-                0xffe0_5b43
-            } else if status & STATUS_TRACING != 0 {
-                0xff44_a6e0
-            } else {
-                0xff66_7480
-            },
-        )?;
+        device
+            .clear(
+                Rect {
+                    x1: 18,
+                    y1: 18,
+                    x2: 112,
+                    y2: 46,
+                },
+                if status & STATUS_GAP != 0 {
+                    0xffe0_5b43
+                } else if status & STATUS_TRACING != 0 {
+                    0xff44_a6e0
+                } else {
+                    0xff66_7480
+                },
+            )
+            .map_err(|()| FailureReason::Clear)?;
         if !within_budget() {
             return Ok(());
         }
-        device.clear(
-            Rect {
-                x1: 118,
-                y1: 18,
-                x2: 198,
-                y2: 46,
-            },
-            if status & STATUS_RECORDING != 0 {
-                0xffe0_aa44
-            } else {
-                0xff42_4b54
-            },
-        )
+        device
+            .clear(
+                Rect {
+                    x1: 118,
+                    y1: 18,
+                    x2: 198,
+                    y2: 46,
+                },
+                if status & STATUS_RECORDING != 0 {
+                    0xffe0_aa44
+                } else {
+                    0xff42_4b54
+                },
+            )
+            .map_err(|()| FailureReason::Clear)
     })();
-    let restore = state.restore();
-    result.and(restore)
+    let restore = state.restore().map_err(|()| FailureReason::Restore);
+    // Restoration failure takes priority; no caller may assume device state
+    // is safe just because a draw operation also failed.
+    restore.and(result)
 }
 
 /// Thin COM adapter. Only used on the 32-bit Windows injected DLL.

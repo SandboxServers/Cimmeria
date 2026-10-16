@@ -27,39 +27,65 @@ static OVERLAY_VTABLE: AtomicUsize = AtomicUsize::new(0);
 static OVERLAY_PATCHED: AtomicBool = AtomicBool::new(false);
 #[cfg(feature = "lab-bridge")]
 static FINGERPRINTED_CREATE9_SEEN: AtomicBool = AtomicBool::new(false);
+#[cfg(feature = "lab-bridge")]
+static PATCH_FAILURES: AtomicUsize = AtomicUsize::new(0);
 static D3D_PATCHED: AtomicBool = AtomicBool::new(false);
 static DEVICE_PATCHED: AtomicBool = AtomicBool::new(false);
 /// The last `TestCooperativeLevel` answer; `i64::MIN` = none yet.
 static LAST_STATE: AtomicI64 = AtomicI64::new(i64::MIN);
 
 #[cfg(feature = "lab-bridge")]
-fn maybe_patch_overlay(device: usize) {
-    if !overlay_install_allowed(
+fn overlay_patch_failed() {
+    overlay::device::on_install_failure();
+    if PATCH_FAILURES.fetch_add(1, Ordering::AcqRel) + 1 >= 3 {
+        overlay::device::on_install_disabled();
+    }
+}
+
+#[cfg(feature = "lab-bridge")]
+fn maybe_patch_overlay(device: usize) -> bool {
+    install_overlay_if_allowed(
         FINGERPRINTED_CREATE9_SEEN.load(Ordering::Acquire),
         crate::bridge::bridge_epoch().is_some(),
-    ) || OVERLAY_PATCHED.load(Ordering::Acquire)
-    {
-        return;
-    }
-    let Some(vtable) = mem::read_u32(&process_reader, device).map(|p| p as usize) else {
-        return;
-    };
-    if OVERLAY_VTABLE
-        .compare_exchange(0, vtable, Ordering::AcqRel, Ordering::Acquire)
-        .is_err_and(|owned| owned != vtable)
-    {
-        return;
-    }
-    if patch(
-        device,
-        VT_END_SCENE,
-        end_scene_detour as *const () as usize,
-        &ORIG_END_SCENE,
-    ) {
-        OVERLAY_PATCHED.store(true, Ordering::Release);
-    } else {
-        let _ = OVERLAY_VTABLE.compare_exchange(vtable, 0, Ordering::AcqRel, Ordering::Acquire);
-    }
+        || {
+            if PATCH_FAILURES.load(Ordering::Acquire) >= 3 || !overlay::start_diagnostic_drain() {
+                return false;
+            }
+            let Some(vtable) = mem::read_u32(&process_reader, device).map(|p| p as usize) else {
+                overlay_patch_failed();
+                return false;
+            };
+            let owner = OVERLAY_VTABLE.load(Ordering::Acquire);
+            if OVERLAY_PATCHED.load(Ordering::Acquire) {
+                if overlay_vtable_accepted(true, owner, vtable) {
+                    return true;
+                }
+                overlay_patch_failed();
+                return false;
+            }
+            if OVERLAY_VTABLE
+                .compare_exchange(0, vtable, Ordering::AcqRel, Ordering::Acquire)
+                .is_err_and(|owned| owned != vtable)
+            {
+                overlay_patch_failed();
+                return false;
+            }
+            if patch(
+                device,
+                VT_END_SCENE,
+                end_scene_detour as *const () as usize,
+                &ORIG_END_SCENE,
+            ) {
+                OVERLAY_PATCHED.store(true, Ordering::Release);
+                true
+            } else {
+                let _ =
+                    OVERLAY_VTABLE.compare_exchange(vtable, 0, Ordering::AcqRel, Ordering::Acquire);
+                overlay_patch_failed();
+                false
+            }
+        },
+    )
 }
 
 pub(in crate::hooks) const IMPORT_CREATE9: SlotImport = SlotImport {
@@ -201,8 +227,8 @@ unsafe extern "stdcall-unwind" fn create_device_detour(
                 }
                 #[cfg(feature = "lab-bridge")]
                 {
-                    overlay::device::on_created(dev);
-                    maybe_patch_overlay(dev);
+                    let accepted = maybe_patch_overlay(dev);
+                    overlay::device::on_created(dev, accepted);
                 }
             }
         }
@@ -230,7 +256,13 @@ unsafe extern "stdcall-unwind" fn reset_detour(this: *mut c_void, params: *mut c
     // A reset changes the answer the cooperative level will give next.
     LAST_STATE.store(i64::MIN, Ordering::Relaxed);
     #[cfg(feature = "lab-bridge")]
-    overlay::device::on_reset(this as usize, hr);
+    {
+        if hr >= 0 {
+            let accepted = maybe_patch_overlay(this as usize);
+            overlay::device::on_created(this as usize, accepted);
+        }
+        overlay::device::on_reset(this as usize, hr);
+    }
     let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
         emit(
             RESET_TARGET,
@@ -254,7 +286,8 @@ unsafe extern "stdcall-unwind" fn test_detour(this: *mut c_void) -> i32 {
     let hr = original(this);
     #[cfg(feature = "lab-bridge")]
     if hr >= 0 {
-        maybe_patch_overlay(this as usize);
+        let accepted = maybe_patch_overlay(this as usize);
+        overlay::device::on_created(this as usize, accepted);
     } else {
         overlay::device::on_lost(this as usize);
     }
@@ -287,7 +320,7 @@ unsafe extern "stdcall-unwind" fn end_scene_detour(this: *mut c_void) -> i32 {
     }))
     .is_err()
     {
-        overlay::device::on_fault(this as usize);
+        overlay::device::on_fault(this as usize, overlay::device::FailureReason::Panic);
     }
     original(this)
 }

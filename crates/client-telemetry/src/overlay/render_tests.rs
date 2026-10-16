@@ -3,6 +3,7 @@
 use std::cell::Cell;
 use std::rc::Rc;
 
+use super::device::FailureReason;
 use super::render::{draw_panel, DeviceOps, Rect, Snapshot};
 use super::{STATUS_GAP, STATUS_RECORDING, STATUS_TRACING};
 
@@ -11,14 +12,21 @@ struct FakeDevice {
     calls: Vec<(Rect, u32)>,
     restored: Rc<Cell<u32>>,
     fail_draw: bool,
+    fail_viewport: bool,
+    fail_snapshot: bool,
+    fail_restore: Rc<Cell<bool>>,
 }
 
-struct FakeSnapshot(Rc<Cell<u32>>);
+struct FakeSnapshot(Rc<Cell<u32>>, Rc<Cell<bool>>);
 
 impl Snapshot for FakeSnapshot {
     fn restore(&mut self) -> Result<(), ()> {
         self.0.set(self.0.get() + 1);
-        Ok(())
+        if self.1.get() {
+            Err(())
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -26,11 +34,22 @@ impl DeviceOps for FakeDevice {
     type Saved = FakeSnapshot;
 
     fn viewport(&mut self) -> Result<(u32, u32), ()> {
-        Ok(self.size)
+        if self.fail_viewport {
+            Err(())
+        } else {
+            Ok(self.size)
+        }
     }
 
     fn snapshot(&mut self) -> Result<Self::Saved, ()> {
-        Ok(FakeSnapshot(self.restored.clone()))
+        if self.fail_snapshot {
+            Err(())
+        } else {
+            Ok(FakeSnapshot(
+                self.restored.clone(),
+                self.fail_restore.clone(),
+            ))
+        }
     }
 
     fn clear(&mut self, rect: Rect, color: u32) -> Result<(), ()> {
@@ -49,6 +68,9 @@ fn fake() -> FakeDevice {
         calls: Vec::new(),
         restored: Rc::new(Cell::new(0)),
         fail_draw: false,
+        fail_viewport: false,
+        fail_snapshot: false,
+        fail_restore: Rc::new(Cell::new(false)),
     }
 }
 
@@ -67,8 +89,35 @@ fn status_panel_is_bounded_opaque_and_restores_state() {
 fn gap_and_failed_draw_restore_the_captured_state() {
     let mut device = fake();
     device.fail_draw = true;
-    assert_eq!(draw_panel(&mut device, STATUS_GAP, || true), Err(()));
+    assert_eq!(
+        draw_panel(&mut device, STATUS_GAP, || true),
+        Err(FailureReason::Clear)
+    );
     assert_eq!(device.calls[0].1, 0xff10_1720);
+    assert_eq!(device.restored.get(), 1);
+}
+
+#[test]
+fn each_failed_operation_has_a_reason_and_restore_failure_wins() {
+    let mut device = fake();
+    device.fail_viewport = true;
+    assert_eq!(
+        draw_panel(&mut device, 0, || true),
+        Err(FailureReason::Viewport)
+    );
+    device.fail_viewport = false;
+    device.fail_snapshot = true;
+    assert_eq!(
+        draw_panel(&mut device, 0, || true),
+        Err(FailureReason::State)
+    );
+    device.fail_snapshot = false;
+    device.fail_draw = true;
+    device.fail_restore.set(true);
+    assert_eq!(
+        draw_panel(&mut device, 0, || true),
+        Err(FailureReason::Restore)
+    );
     assert_eq!(device.restored.get(), 1);
 }
 

@@ -71,8 +71,21 @@ pub const VT_END_SCENE: usize = 42;
 /// The overlay install gate. `fingerprinted_hook` is true only after the
 /// globally gated D3D9 Create9 detour has actually run.
 #[cfg(all(feature = "lab-bridge", any(all(windows, target_arch = "x86"), test)))]
-pub(crate) fn overlay_install_allowed(fingerprinted_hook: bool, lab_active: bool) -> bool {
-    fingerprinted_hook && lab_active
+pub(crate) fn install_overlay_if_allowed(
+    fingerprinted_hook: bool,
+    lab_active: bool,
+    patch: impl FnOnce() -> bool,
+) -> bool {
+    if !fingerprinted_hook || !lab_active {
+        return false;
+    }
+    patch()
+}
+
+/// A second device is eligible only when it shares the one patched vtable.
+#[cfg(all(feature = "lab-bridge", any(all(windows, target_arch = "x86"), test)))]
+pub(crate) fn overlay_vtable_accepted(installed: bool, owner: usize, candidate: usize) -> bool {
+    installed && owner != 0 && owner == candidate
 }
 
 // The overlay belongs to this D3D seam so the player build never links it.
@@ -354,9 +367,27 @@ mod tests {
         // The boot gate never installs Create9 when the global report is
         // unusable; without that detour hit the overlay marker stays false.
         assert!(!crate::fingerprint::check(|_, _| None, &[]).is_usable());
-        assert!(!overlay_install_allowed(false, true));
-        assert!(!overlay_install_allowed(true, false));
-        assert!(overlay_install_allowed(true, true));
+        let called = std::cell::Cell::new(0);
+        assert!(!install_overlay_if_allowed(false, true, || {
+            called.set(called.get() + 1);
+            true
+        }));
+        assert!(!install_overlay_if_allowed(true, false, || {
+            called.set(called.get() + 1);
+            true
+        }));
+        assert_eq!(
+            called.get(),
+            0,
+            "unsupported builds never reach the patch callback"
+        );
+        assert!(install_overlay_if_allowed(true, true, || {
+            called.set(called.get() + 1);
+            true
+        }));
+        assert_eq!(called.get(), 1);
+        assert!(overlay_vtable_accepted(true, 0x1000, 0x1000));
+        assert!(!overlay_vtable_accepted(true, 0x1000, 0x2000));
     }
 
     #[test]
