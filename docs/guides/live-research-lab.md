@@ -379,8 +379,11 @@ privileged lab MCP bearer. An `EntityGet` result for that ID is not browser
 authorization. DW-30 must derive the browser actor from its authenticated,
 instance-bound session and recheck live cell authority when executing.
 
-The tool then projects every registered dot command from the same
-`COMMANDS` table that dispatches the in-world `.` console. Workbench fields
+The tool projects dot commands from the same
+`COMMANDS` table that dispatches the in-world `.` console. The raw
+registry retains 129 spellings; `.gmgiveammo` and `.gmsetinfiniteammo`
+are searchable aliases of `.giveammo` and `.infiniteammo`, so the
+workbench catalog exposes 127 actions. Workbench fields
 include `id`, `channel = dot`, stable `target_policy` and structured `target`, `metadata_version`,
 per-command `availability`, typed arguments, impact, verification and
 compensation. Pending rows remain searchable without a typed Run action.

@@ -421,6 +421,22 @@ mod tests {
     }
 
     #[test]
+    fn ammo_registry_aliases_point_to_one_canonical_palette_action() {
+        let catalog = command_catalog();
+        for (canonical, alias) in [
+            ("giveammo", "gmgiveammo"),
+            ("infiniteammo", "gmsetinfiniteammo"),
+        ] {
+            let primary = catalog.iter().find(|row| row.name == canonical).unwrap();
+            let raw_alias = catalog.iter().find(|row| row.name == alias).unwrap();
+            assert_eq!(primary.aliases, [alias]);
+            assert_eq!(primary.alias_of, None);
+            assert_eq!(raw_alias.alias_of, Some(canonical));
+            assert!(raw_alias.aliases.is_empty());
+        }
+    }
+
+    #[test]
     fn read_only_and_unavailable_readback_are_distinct() {
         let catalog = command_catalog();
         for name in [
