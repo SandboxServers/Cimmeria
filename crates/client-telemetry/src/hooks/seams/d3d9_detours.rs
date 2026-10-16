@@ -8,6 +8,8 @@ use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering};
 use std::time::Instant;
 
+#[cfg(feature = "lab-bridge")]
+use super::d3d9::overlay;
 use super::d3d9::*;
 use crate::hooks::sinks::emit::emit;
 use crate::hooks::sinks::install::SlotImport;
@@ -17,10 +19,48 @@ pub(in crate::hooks) static ORIG_CREATE9: AtomicUsize = AtomicUsize::new(0);
 static ORIG_CREATE_DEVICE: AtomicUsize = AtomicUsize::new(0);
 static ORIG_RESET: AtomicUsize = AtomicUsize::new(0);
 static ORIG_TEST: AtomicUsize = AtomicUsize::new(0);
+#[cfg(feature = "lab-bridge")]
+static ORIG_END_SCENE: AtomicUsize = AtomicUsize::new(0);
+#[cfg(feature = "lab-bridge")]
+static OVERLAY_VTABLE: AtomicUsize = AtomicUsize::new(0);
+#[cfg(feature = "lab-bridge")]
+static OVERLAY_PATCHED: AtomicBool = AtomicBool::new(false);
+#[cfg(feature = "lab-bridge")]
+static FINGERPRINTED_CREATE9_SEEN: AtomicBool = AtomicBool::new(false);
 static D3D_PATCHED: AtomicBool = AtomicBool::new(false);
 static DEVICE_PATCHED: AtomicBool = AtomicBool::new(false);
 /// The last `TestCooperativeLevel` answer; `i64::MIN` = none yet.
 static LAST_STATE: AtomicI64 = AtomicI64::new(i64::MIN);
+
+#[cfg(feature = "lab-bridge")]
+fn maybe_patch_overlay(device: usize) {
+    if !overlay_install_allowed(
+        FINGERPRINTED_CREATE9_SEEN.load(Ordering::Acquire),
+        crate::bridge::bridge_epoch().is_some(),
+    ) || OVERLAY_PATCHED.load(Ordering::Acquire)
+    {
+        return;
+    }
+    let Some(vtable) = mem::read_u32(&process_reader, device).map(|p| p as usize) else {
+        return;
+    };
+    if OVERLAY_VTABLE
+        .compare_exchange(0, vtable, Ordering::AcqRel, Ordering::Acquire)
+        .is_err_and(|owned| owned != vtable)
+    {
+        return;
+    }
+    if patch(
+        device,
+        VT_END_SCENE,
+        end_scene_detour as *const () as usize,
+        &ORIG_END_SCENE,
+    ) {
+        OVERLAY_PATCHED.store(true, Ordering::Release);
+    } else {
+        let _ = OVERLAY_VTABLE.compare_exchange(vtable, 0, Ordering::AcqRel, Ordering::Acquire);
+    }
+}
 
 pub(in crate::hooks) const IMPORT_CREATE9: SlotImport = SlotImport {
     slot: IAT_DIRECT3D_CREATE9,
@@ -71,6 +111,10 @@ pub(in crate::hooks) unsafe extern "stdcall-unwind" fn create9_detour(
     let original: unsafe extern "stdcall-unwind" fn(u32) -> *mut c_void =
         unsafe { std::mem::transmute(orig) };
     let d3d = original(sdk_version);
+    #[cfg(feature = "lab-bridge")]
+    if !d3d.is_null() {
+        FINGERPRINTED_CREATE9_SEEN.store(true, Ordering::Release);
+    }
     if !d3d.is_null() && !D3D_PATCHED.load(Ordering::Acquire) {
         let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
             if patch(
@@ -137,22 +181,29 @@ unsafe extern "stdcall-unwind" fn create_device_detour(
             "gfx.device_created",
             created_fields(hr, adapter, behaviour, requested),
         );
-        if hr >= 0 && !DEVICE_PATCHED.load(Ordering::Acquire) {
+        if hr >= 0 {
             if let Some(dev) = mem::read_u32(&process_reader, device_out as usize) {
                 let dev = dev as usize;
-                let ok_test = patch(
-                    dev,
-                    VT_TEST_COOPERATIVE_LEVEL,
-                    test_detour as *const () as usize,
-                    &ORIG_TEST,
-                );
-                let ok_reset = patch(
-                    dev,
-                    VT_RESET,
-                    reset_detour as *const () as usize,
-                    &ORIG_RESET,
-                );
-                DEVICE_PATCHED.store(ok_test && ok_reset, Ordering::Release);
+                if !DEVICE_PATCHED.load(Ordering::Acquire) {
+                    let ok_test = patch(
+                        dev,
+                        VT_TEST_COOPERATIVE_LEVEL,
+                        test_detour as *const () as usize,
+                        &ORIG_TEST,
+                    );
+                    let ok_reset = patch(
+                        dev,
+                        VT_RESET,
+                        reset_detour as *const () as usize,
+                        &ORIG_RESET,
+                    );
+                    DEVICE_PATCHED.store(ok_test && ok_reset, Ordering::Release);
+                }
+                #[cfg(feature = "lab-bridge")]
+                {
+                    overlay::device::on_created(dev);
+                    maybe_patch_overlay(dev);
+                }
             }
         }
     }));
@@ -178,6 +229,8 @@ unsafe extern "stdcall-unwind" fn reset_detour(this: *mut c_void, params: *mut c
     let elapsed_ms = started.elapsed().as_secs_f64() * 1000.0;
     // A reset changes the answer the cooperative level will give next.
     LAST_STATE.store(i64::MIN, Ordering::Relaxed);
+    #[cfg(feature = "lab-bridge")]
+    overlay::device::on_reset(this as usize, hr);
     let _ = std::panic::catch_unwind(AssertUnwindSafe(|| {
         emit(
             RESET_TARGET,
@@ -199,6 +252,12 @@ unsafe extern "stdcall-unwind" fn test_detour(this: *mut c_void) -> i32 {
     let original: unsafe extern "stdcall-unwind" fn(*mut c_void) -> i32 =
         unsafe { std::mem::transmute(orig) };
     let hr = original(this);
+    #[cfg(feature = "lab-bridge")]
+    if hr >= 0 {
+        maybe_patch_overlay(this as usize);
+    } else {
+        overlay::device::on_lost(this as usize);
+    }
     let previous = LAST_STATE.swap(i64::from(hr), Ordering::Relaxed);
     let previous = (previous != i64::MIN).then_some(previous as i32);
     if state_changed(previous, hr) {
@@ -212,6 +271,25 @@ unsafe extern "stdcall-unwind" fn test_detour(this: *mut c_void) -> i32 {
         }));
     }
     hr
+}
+
+#[cfg(feature = "lab-bridge")]
+#[allow(improper_ctypes_definitions)]
+unsafe extern "stdcall-unwind" fn end_scene_detour(this: *mut c_void) -> i32 {
+    let orig = ORIG_END_SCENE.load(Ordering::Acquire);
+    if orig == 0 {
+        return 0x8876_086C_u32 as i32;
+    }
+    let original: unsafe extern "stdcall-unwind" fn(*mut c_void) -> i32 =
+        unsafe { std::mem::transmute(orig) };
+    if std::panic::catch_unwind(AssertUnwindSafe(|| {
+        overlay::render_frame(this as usize);
+    }))
+    .is_err()
+    {
+        overlay::device::on_fault(this as usize);
+    }
+    original(this)
 }
 
 #[cfg(test)]

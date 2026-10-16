@@ -5,6 +5,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 ## Open investigations
 
 - [reference_dev_workbench_slash_3a_2026_10_16.md](reference_dev_workbench_slash_3a_2026_10_16.md) — DW-27A 109–135: cover methods lack handlers/readback and safe inverse; fly/ghost share onPhysics, while PvP remains duel-gated
+- [reference_dev_workbench_overlay_2026_10_16.md](reference_dev_workbench_overlay_2026_10_16.md) — DW-16 D3D9 COM slot evidence, lab gate, bounded clear panel and static-only validation
 
 - [reference_dev_workbench_slash_1b_2026_10_16.md](reference_dev_workbench_slash_1b_2026_10_16.md) — DW-25B typed slash entries 28–54 preserve patch options, disabled native binding, and grant/reload/travel readback limits
 - [reference_dev_workbench_causal_trace_2026_10_16.md](reference_dev_workbench_causal_trace_2026_10_16.md) — DW-13 passive eight-stage trace, client-only API and clock/ambiguity boundaries

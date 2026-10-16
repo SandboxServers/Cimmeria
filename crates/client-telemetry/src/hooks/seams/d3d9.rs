@@ -65,6 +65,20 @@ pub const VT_CREATE_DEVICE: usize = 16;
 pub const VT_TEST_COOPERATIVE_LEVEL: usize = 3;
 /// `IDirect3DDevice9` vtable index of `Reset`.
 pub const VT_RESET: usize = 16;
+/// `IDirect3DDevice9` vtable index of `EndScene` (Windows SDK `d3d9.h`).
+pub const VT_END_SCENE: usize = 42;
+
+/// The overlay install gate. `fingerprinted_hook` is true only after the
+/// globally gated D3D9 Create9 detour has actually run.
+#[cfg(all(feature = "lab-bridge", any(all(windows, target_arch = "x86"), test)))]
+pub(crate) fn overlay_install_allowed(fingerprinted_hook: bool, lab_active: bool) -> bool {
+    fingerprinted_hook && lab_active
+}
+
+// The overlay belongs to this D3D seam so the player build never links it.
+#[cfg(all(feature = "lab-bridge", any(all(windows, target_arch = "x86"), test)))]
+#[path = "../../overlay/mod.rs"]
+pub(crate) mod overlay;
 
 /// Target of a device creation.
 pub const CREATED_TARGET: &str = "client.gfx.device_created";
@@ -330,7 +344,19 @@ mod tests {
         assert_eq!(VT_CREATE_DEVICE, 16);
         assert_eq!(VT_TEST_COOPERATIVE_LEVEL, 3);
         assert_eq!(VT_RESET, 16);
+        assert_eq!(VT_END_SCENE, 42);
         assert_eq!(IAT_DIRECT3D_CREATE9, 0x017e_ffd8);
+    }
+
+    #[cfg(feature = "lab-bridge")]
+    #[test]
+    fn unsupported_fingerprint_refuses_overlay_even_with_a_lab_session() {
+        // The boot gate never installs Create9 when the global report is
+        // unusable; without that detour hit the overlay marker stays false.
+        assert!(!crate::fingerprint::check(|_, _| None, &[]).is_usable());
+        assert!(!overlay_install_allowed(false, true));
+        assert!(!overlay_install_allowed(true, false));
+        assert!(overlay_install_allowed(true, true));
     }
 
     #[test]
