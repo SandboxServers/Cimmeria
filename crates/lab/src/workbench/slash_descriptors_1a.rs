@@ -205,7 +205,7 @@ fn specific_preconditions(word: &str) -> &'static [&'static str] {
         "/gmlistabilities" => &["Valid in-view target in the same space, or caller fallback"],
         "/gmshowflag" => &["Explicit bit index 0–31 required by server handler; omitted patch argument cannot satisfy it"],
         "/gmgetmobattribute" => &["Explicit same-space target ID and supported attribute required by server; patch omits target ID"],
-        "/gmshowmobcount" => &["Loaded space ID, or 0 for caller's space; count covers live non-player entities"],
+        "/gmshowmobcount" => &["Loaded space ID, or 0 for caller's space; count covers live SGWMob NPCs (class 0x04) only"],
         "/gmlistinteractions" | "/gmshowip" | "/gmshowinventory" => &["No server handler; target and effect cannot be established from patch text"],
         "/gmshowplayer" => &["Server expects explicit same-space target ID; patch supplies no target bytes"],
         "/gmgivexp" => &["Positive XP and connected caller character with a matching persistent player row"],

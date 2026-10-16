@@ -181,6 +181,14 @@ fn mob_count_readback_requires_exact_npc_class_and_complete_space() {
     assert!(form.readback_note.contains("SpaceID=0"));
     assert!(form.readback_note.contains("exact space"));
     assert!(form
+        .descriptor
+        .impact
+        .as_ref()
+        .unwrap()
+        .preconditions
+        .iter()
+        .any(|precondition| precondition.contains("live SGWMob NPCs (class 0x04) only")));
+    assert!(form
         .readback_note
         .contains("no radius, template or tag filter"));
     assert!(form.readback_note.contains("uncapped"));
