@@ -110,7 +110,7 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 3 | DW-13 | One-click causal trace | 07-08 | 40k | Integrated (#1780); joined capture waits on 08 |
 | 3 | DW-14 | Trace and truth GUI | 09, 12A, 13 | 35k | BlockedDependency |
 | 3 | DW-15 | Both recorder GUI flows | 10-11, 12A | 40k | BlockedDependency |
-| 4 | DW-16 | Overlay D3D9 render/device | 01 | 45k | PR #1789 open; review/CI pending |
+| 4 | DW-16 | Overlay D3D9 render/device | 01 | 45k | PR #1789 queued after own CI; not integrated |
 | 4 | DW-17 | Overlay input/fingerprint | 16 | 45k | BlockedDependency |
 | 4 | DW-18 | Overlay target/status controls | 13, 15, 17 | 40k | BlockedDependency |
 | 4 | DW-19 | GM descriptor/authority contract | 01 | 45k | Integrated |
@@ -124,12 +124,12 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 5 | DW-22 | Dot social/org/squad/bank/black-market metadata | 22-E | 45k | Ready |
 | 5 | DW-23A-E | Dot query/maintenance/meta evidence, 19 specs | 19 | 35k | Integrated (#1787) |
 | 5 | DW-23A | Dot query/maintenance/meta metadata | 23A-E | 40k | Ready |
-| 5 | DW-23B-E | Dot net-debug evidence, 14 specs | 19 | 35k | Writing; not integrated |
+| 5 | DW-23B-E | Dot net-debug evidence, 14 specs | 19 | 35k | PR #1792 open; own checks green; not integrated |
 | 5 | DW-23B-TV | Prove net_seq being targets before fan-out | 23B-E | 40k | BlockedDependency |
 | 5 | DW-23B-SAFE | Guard player/mob binding and threat arithmetic | 23B-E, 23B-TV | 40k | BlockedDependency |
 | 5 | DW-23B | Dot net-debug metadata | 23B-E, 23B-TV, 23B-SAFE; 22-AUDIT for private Runnable forms | 35k | BlockedDependency |
 | 5 | DW-24A | Slash inventory/parser/stock audit | 19 | 40k | Integrated (#1752) |
-| 5 | DW-24A-S | Correct stock XML audit and fixture | 24A, offline client | 30k | Review locally; not integrated |
+| 5 | DW-24A-S | Correct stock XML audit and fixture | 24A, offline client | 30k | PR #1791 open; CI pending; not integrated |
 | 5 | DW-22-AUDIT | Redact private dot audit and feedback telemetry | 22-E, 23A-E, 23B-E | 45k | BlockedDependency |
 | 5 | DW-24B-E | Static parser, binding and quoting evidence | 24A-S | 30k | BlockedDependency (offline packet ready after stock correction) |
 | 5 | DW-24B-T | Main-thread Lua native slash submit | 24B-E | 40k | BlockedDependency |
@@ -145,7 +145,7 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 6 | DW-27A-E | Slash evidence 109-135 | 24A | 40k | Integrated (#1774) |
 | 6 | DW-27A | Slash descriptors 109-135 | 27A-E | 40k | Integrated (#1785) |
 | 6 | DW-27B-E | Slash evidence 136-162 | 24A | 40k | Integrated (#1775) |
-| 6 | DW-27B | Slash descriptors 136-162 and merge | 25A-27A, 27B-E | 45k | PR #1790 open; not integrated |
+| 6 | DW-27B | Slash descriptors 136-162 and merge | 25A-27A, 27B-E | 45k | Integrated (#1790, 22:12 UTC) |
 | 6 | DW-27B-RG | Server-held ring source guard for method 91 | 27B-E | 40k | Ready; /gmsetringdestination stays disabled |
 | 6 | DW-27C | Verified stock GM slash addendum | 24A-S, 27B; 24B-R for Runnable | 30k | BlockedDependency |
 | 7 | DW-28 | Palette search/preferences | 02B, 19, 24A, merged descriptors; 27C for completeness | 35k | Ready for disabled catalog |
