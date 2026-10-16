@@ -210,9 +210,9 @@ fn argument_note(command: &str, name: &str) -> (&'static str, Option<f64>, Optio
             None,
         ),
         ("/gmrepairitem", "ItemId") => (
-            "Item instance ID, not design ID; method takes signed INT32",
-            Some(0.0),
-            Some(i32::MAX as f64),
+            "Item instance ID, not design ID; method takes signed INT32 but accepted range is unproved",
+            None,
+            None,
         ),
         ("/gmrepairitem", "RepairRatio") => (
             "Method takes FLOAT; valid repair ratio and vendor context unproved",
@@ -255,7 +255,7 @@ fn detail_for(name: &str) -> Detail {
         "/gmgiveblueprint" => detail!("crafting", "Unknown blueprint grant", "No blueprint ID, owner, handler or native binding", NoTarget, None, "No recipe row is bound to this event"),
         "/gmgivegearset" => detail!("inventory", "Unknown gearset grant", "No gearset ID, recipient, handler or native binding", NoTarget, None, "Bulk inventory changes need exact instance receipts"),
         "/gmgiveinventory" => detail!("inventory", "Unknown bulk inventory effect", "No contents, owner, handler or native binding; gmGiveItem is distinct", NoTarget, None, "Do not borrow gmGiveItem arguments"),
-        "/gmdebugminigameinstance" => detail!("minigame", "Request a caller minigame debug instance; server currently logs a stub", "MinigamePlayer 23 is unimplemented; native binding and accepted instance readback absent", Player, None, "A stub log proves receipt only, never an opened session"),
+        "/gmdebugminigameinstance" => detail!("minigame", "Potential request for a caller minigame debug instance; server method logs a stub", "MinigamePlayer 23 is unimplemented; native binding and accepted instance readback absent", Player, None, "A stub log proves receipt only, never an opened session"),
         "/gmdebugflash" => detail!("debug", "Unknown client Flash debug display", "Client handler effect and native submission unproved", NoTarget, None, "A client UI observation would be required"),
         "/gmshowlog" => detail!("debug", "Potentially change caller client log visibility", "Boolean omission, native submission and observed client result unproved", NoTarget, None, "Client log visibility must be observed; server reads cannot prove it"),
         "/gmsetinfiniteammo" => detail!("combat", "Native slash ammo effect unknown", "No native server effect/readback; dot .infiniteammo is separate", NoTarget, None, "Do not present the dot toggle as a slash inverse"),

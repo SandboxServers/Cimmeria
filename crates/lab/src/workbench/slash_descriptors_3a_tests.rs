@@ -220,8 +220,9 @@ fn optional_toggles_and_candidate_handlers_do_not_borrow_dot_or_selection() {
         .as_ref()
         .unwrap()
         .contains("unimplemented"));
-    assert_eq!(
-        descriptors[5].args[0].range.as_ref().unwrap().max,
-        Some(i32::MAX as f64)
-    );
+    assert_eq!(descriptors[5].args[0].range, None);
+    assert!(descriptors[5].args[0]
+        .help
+        .contains("accepted range is unproved"));
+    assert!(descriptors[14].summary.starts_with("Potential request"));
 }
