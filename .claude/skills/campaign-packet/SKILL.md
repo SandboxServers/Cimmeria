@@ -81,8 +81,8 @@ shape.
 
 ## 3. Dispatch a wave
 
-1. Ask `ops` for one worktree per packet
-   (`pwsh tools/build-lane/mk-worktree.ps1 <campaign>/<packet>-<slug> <name>`).
+1. Ask `ops` for one worktree per packet, one `ops` dispatch each, all in one
+   message (`pwsh tools/build-lane/mk-worktree.ps1 <campaign>/<packet>-<slug> <name>`).
    One worktree and one test database (`sgw_<name>`) per worker; never two
    implementers in one checkout.
 2. Dispatch every independent packet of the wave **in one message, in the
@@ -146,5 +146,6 @@ campaign's state lives on disk, not in the transcript:
   change **once**, in the close-out packet, never per packet.
 - Close-out also updates `docs/guides/unified-uat.md` with the UAT steps the
   owner still has to run, retires every worker worktree through `ops`
-  (`rm-worktree.ps1 --merged`), clears `.claude/state/active-campaign`, and
-  posts a handoff to the board.
+  (`rm-worktree.ps1 --merged`), empties `.claude/state/active-campaign` (Write an
+  empty file; the orchestrator has no shell to delete it, and an empty pointer
+  makes `resume_card.py` print nothing), and posts a handoff to the board.
