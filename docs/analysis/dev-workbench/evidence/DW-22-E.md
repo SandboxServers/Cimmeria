@@ -221,11 +221,11 @@ Private read results still use entity-ID-addressed feedback. A later holder of t
 - **Sources:** `crates/cell-console/src/cell/console/registry/commands/bank.rs::SPECS`; `crates/cell-console/src/cell/console/bank.rs::open`; `crates/cell-interactions/src/cell/interactions/bank/open.rs::open_vault_gm`; `crates/cell-console/src/cell/console/tests/bv02_bank.rs`.
 - **Arguments:** None.
 - **Target/scope:** GM's own personal vault session in current space; no Banker needed and no selected target.
-- **Preconditions and authority:** Cell GM gate; caller entity and space must exist. Non-GM path gives explicit refusal.
+- **Preconditions and authority:** Cell GM gate at open; caller entity and space must exist. Non-GM open gives explicit refusal. Later bank moves accept the `banker_id=None` session without rechecking current GM access, so access revocation while the session remains open does not revoke its proximity bypass.
 - **Effects and impact:** Sets transient `vault_session` with `banker_id=None` and sends `onVaultOpen`; later bank moves skip Banker proximity until any interact closes session. Does not itself move items or cash.
 - **Verification:** `vault_session_opened` and `bank: personal vault opened` feedback; client `onVaultOpen`/window or subsequent guarded bank access needed to prove it reached client. No `server_entity_get` vault-session field.
 - **Compensation:** Interact closes the session; no item/cash undo needed for opening alone.
-- **Availability:** Runnable with clear proximity-bypass scope and no claim that vault contents changed.
+- **Availability:** Disabled until GM downgrade revokes bankerless vault sessions or every subsequent move rechecks current access, with a downgrade-while-open regression guard; opening alone does not change vault contents.
 
 ### .bankdump
 
@@ -291,7 +291,7 @@ Private read results still use entity-ID-addressed feedback. A later holder of t
 - **Target/scope:** Global active auction catalog, including seller name, item, price, bidder presence and expiry; no selected target.
 - **Preconditions and authority:** Cell GM gate and loaded actor; Base needs DB but does not separately recheck current GM access.
 - **Effects and impact:** Read-only; returns ten newest active auctions and total count. Seller names and current bids are sensitive operator data.
-- **Verification:** Base feedback rows and `bm.gm_action action=bm_list` `total/shown`; query `sgw_auction` with `status=ACTIVE AND expires_at > now()`, selecting exact `sequence_id,status,expires_at` with `ORDER BY sequence_id DESC LIMIT 10`. More than ten is intentionally truncated.
+- **Verification:** Base feedback rows and `bm.gm_action action=bm_list` `total/shown`; query `sgw_auction` with `status=ACTIVE AND expires_at > now()`, selecting exact `sequence_id,status,expires_at` with `ORDER BY sequence_id DESC LIMIT 10`. More than ten is intentionally truncated. Count and row pages are separate DB queries, not one snapshot; concurrent auction changes can make the returned total and ten rows disagree.
 - **Compensation:** None needed.
 - **Availability:** Disabled until Base rechecks current GM authority and fences each private result to the original session after the DB read; retain the ten-row cap and truncation label.
 
