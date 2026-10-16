@@ -15,8 +15,8 @@ client, acquire a lab lease, start a packet tap, or advance the
 requested `click_id`, all eight ordered stages, the first unobserved stage,
 the largest competing candidate count, `capture_gap`, and an optional
 `click_to_visible_ms` interval. Up to 64 non-click
-`unjoined_context_events` retain raw bridge rows from the snapshot,
-including `cme.event` and `mercury.*`, without claiming they belong to the
+`unjoined_context_events` retain raw bridge rows nearest the requested
+click by ring sequence, including `cme.event` and `mercury.*`, without claiming they belong to the
 click. Each stage contains `status` (`observed`,
 `unknown`, or `ambiguous`), raw sourced evidence when uniquely matched,
 reason, and candidate count. A ring eviction or any bridge drop is reported
@@ -51,7 +51,9 @@ Mercury range joins also require the same bound server session because a
 sequence counter can be reused across sessions.
 Across different clock domains, the assembler also requires an exact unique
 click ID or a trusted projection into one bounded domain. A matching send
-ID on unprojected client and server clocks remains unknown.
+ID on unprojected client and server clocks remains unknown. Within one
+clock domain, a missing finite uncertainty bound also prevents a reused
+ID from joining; only the exact unique click ID can cross that gap.
 Method and arguments need an entity or bound session as well. Entity,
 method, or nearby time alone cannot promote a candidate to observed.
 Multiple eligible candidates make the stage `ambiguous` and preserve their

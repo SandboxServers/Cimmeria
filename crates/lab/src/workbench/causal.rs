@@ -198,7 +198,7 @@ fn plausible_time(click: &Evidence, candidate: &Evidence) -> bool {
         return same(click, candidate, "click_id");
     }
     let (Some(a), Some(b)) = (click.uncertainty_ms, candidate.uncertainty_ms) else {
-        return true;
+        return same(click, candidate, "click_id");
     };
     let slack = i64::try_from(a.saturating_add(b)).unwrap_or(i64::MAX);
     candidate.at_ms >= click.at_ms.saturating_sub(slack)
@@ -242,13 +242,12 @@ pub fn assemble(
         .chain(server.iter().take(MAX_EVENTS).cloned())
         .collect();
     let mut trace = assemble_evidence(click_id, &rows, capture_gap);
-    if trace.stages[0].evidence.is_some() {
-        trace.unjoined_context_events = client
-            .iter()
-            .filter(|row| row.kind != "ui.click")
-            .take(64)
-            .map(StoredEvent::to_json)
-            .collect();
+    if let Some(click) = trace.stages[0].evidence.as_ref() {
+        let mut nearby: Vec<_> = client.iter().filter(|row| row.kind != "ui.click").collect();
+        nearby.sort_by_key(|row| (row.seq.abs_diff(click.seq), row.seq));
+        nearby.truncate(64);
+        nearby.sort_by_key(|row| row.seq);
+        trace.unjoined_context_events = nearby.into_iter().map(StoredEvent::to_json).collect();
     }
     trace
 }

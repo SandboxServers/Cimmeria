@@ -290,6 +290,50 @@ fn matching_send_id_across_unbounded_clocks_is_not_observed() {
 }
 
 #[test]
+fn repeated_send_id_after_window_with_unknown_bound_is_not_observed() {
+    let mut rows = [
+        evidence(1, Stage::UiEvent, 100, json!({"event_id":"E:1"})),
+        evidence(
+            2,
+            Stage::ClientSend,
+            105,
+            json!({"click_id":"E:1","send_id":7}),
+        ),
+        evidence(3, Stage::ServerReceive, 31_106, json!({"send_id":7})),
+    ];
+    rows[2].uncertainty_ms = None;
+    let trace = assemble_evidence("E:1", &rows, false);
+    assert_eq!(stage(&trace, Stage::ClientSend).status, "observed");
+    assert_eq!(stage(&trace, Stage::ServerReceive).status, "unknown");
+    assert!(stage(&trace, Stage::ServerReceive).evidence.is_none());
+}
+
+#[test]
+fn tail_click_exports_nearest_unjoined_context() {
+    let mut rows: Vec<_> = (1..=100)
+        .map(|seq| row(seq, "cme.event", seq as i64, json!({"name":"prior"})))
+        .collect();
+    rows.push(click(101, "E:1", 101));
+    rows.extend((102..=104).map(|seq| {
+        row(
+            seq,
+            "mercury.socket_recv",
+            seq as i64,
+            json!({"name":"after"}),
+        )
+    }));
+    let trace = assemble("E:1", &rows, &[], false);
+    assert_eq!(trace.unjoined_context_events.len(), 64);
+    assert_eq!(trace.unjoined_context_events[0]["seq"], 40);
+    assert_eq!(trace.unjoined_context_events[63]["seq"], 104);
+    assert!(trace
+        .unjoined_context_events
+        .iter()
+        .all(|row| row["seq"].as_u64().is_some_and(|seq| seq >= 40)));
+    assert_eq!(stage(&trace, Stage::ClientSend).status, "unknown");
+}
+
+#[test]
 fn future_click_id_can_join_a_bridge_row_stored_before_lua_pump() {
     let rows = [
         row(
