@@ -1,0 +1,11 @@
+# DW-26B: native slash forms 82–108
+
+Patch 012's 27 words from `/gmgiveminigamecontact` through `/gmsendgmshout` now have typed, disabled palette descriptors in `crates/lab/src/workbench/slash_descriptors_2b.rs`. The source inventory is `data/client-patches/012-gm-slash-commands/commands.toml`; per-word evidence is [DW-26B-E](../evidence/DW-26B-E.md). Every descriptor checks the exact patch word, event, ordered parameter spelling, type, required flag and `p` access filter. The filter is a client parse condition; server GameMaster gating is independent.
+
+The wrapper reports server handler status separately. Twenty-four words have no Cimmeria handler. The four target-naming minigame/contact/address words have neither a trusted resolver nor an accepted-effect readback. Their typed arguments do not imply that another player was changed. The sole implemented diagnostic, `/gmtestlos`, reads two explicit same-space entities and reports CLEAR, BLOCKED or UNKNOWN to the caller. `/gmonphysics` can change only the caller's transient movement validator; the patch Boolean encoding and client-local physics effect are unproved. Neither has an independent current-state read tool, so feedback and actor-bound logs are labelled limited evidence rather than a verified readback recipe.
+
+`/gmsendgmshout` is an irreversible public announcement. The form requires an exact-space versus all-online audience preview and marks `Text` sensitive. `display_argument` redacts it by default for companion history, audit, traces and screenshots. Server acceptance, aggregate fan-out counts and receipt by any particular client are separate facts. Overlapping shouts lack a per-shout delivery correlation ID. The server itself intentionally logs accepted announcement text; operators should treat it as public.
+
+All 27 forms remain unavailable until DW-24B proves native submission, parsing and event-to-method binding. No raw slash form or dot substitution is supplied. Unit tests pin exact source names/types, fail closed on changed event/argument/access, and guard target, status, redaction, scope and outcome semantics. No live client or lab lease was used.
+
+This packet changes Rust catalog metadata only; it does not add a JavaScript UI flow or persistence transition that a JS REPL could exercise. Visual and client-native behavior were not covered.
