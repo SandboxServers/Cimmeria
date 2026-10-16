@@ -4,6 +4,8 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Open investigations
 
+- [reference_dev_workbench_slash_3b_2026_10_16.md](reference_dev_workbench_slash_3b_2026_10_16.md) — DW-27B final 27 patch slash words: all six slices reconciled; pet/ring/queue signature and native binding limits remain
+
 - [reference_dev_workbench_slash_3a_2026_10_16.md](reference_dev_workbench_slash_3a_2026_10_16.md) — DW-27A 109–135: cover methods lack handlers/readback and safe inverse; fly/ghost share onPhysics, while PvP remains duel-gated
 
 - [reference_dev_workbench_progression_metadata_2026_10_16.md](reference_dev_workbench_progression_metadata_2026_10_16.md) — DW-21 typed dot progression/ammo/pet descriptors, command-wide mixed-form gate and owner-bound grant readback

@@ -5,7 +5,10 @@ use std::collections::HashSet;
 use sha2::{Digest, Sha256};
 
 use super::commands::{ArgKind, Availability, CommandChannel};
-use super::slash_catalog::{patch_slash_catalog, stock_addendum, StockInventoryState};
+use super::slash_catalog::{
+    catalog_from_entries, patch_slash_catalog, stock_addendum, SlashHandlerStatus,
+    StockInventoryState,
+};
 use super::slash_inventory::{parse_patch_table, SlashParameterType};
 
 const SOURCE: &str =
@@ -32,6 +35,9 @@ fn patch_roster_is_exact_and_has_no_duplicates() {
     );
     let names: HashSet<_> = catalog.iter().map(|row| row.source.name.as_str()).collect();
     assert_eq!(names.len(), 162);
+    for row in &catalog {
+        assert_eq!(row.source.name, row.descriptor.id);
+    }
     let mut names: Vec<_> = names.into_iter().collect();
     names.sort_unstable();
     let digest = Sha256::digest(names.join("\n").as_bytes());
@@ -89,20 +95,89 @@ fn all_patch_descriptors_are_disabled_until_native_submission_is_proven() {
     for row in catalog {
         assert_eq!(row.descriptor.channel, CommandChannel::Slash);
         assert_eq!(row.descriptor.availability, Availability::Unsupported);
-        assert_eq!(
-            row.descriptor.disposition_reason.as_deref(),
-            Some("native submission unproved")
-        );
+        assert!(row
+            .descriptor
+            .disposition_reason
+            .as_ref()
+            .is_some_and(|reason| !reason.is_empty()));
         assert!(row.descriptor.manual_pending);
-        assert!(row.descriptor.impact.is_none());
-        assert!(row.descriptor.verify.is_none());
-        assert!(row.descriptor.compensation.is_none());
         if let Some(method) = row.method_candidate {
             assert!((109..=225).contains(&method.index));
             assert!(!method.binding_verified);
             assert!(matches!(method.status.as_str(), "DONE" | "ADAPT" | "NEW"));
         }
     }
+}
+
+#[test]
+fn six_slice_catalog_keeps_source_claims_and_readback_limits() {
+    let catalog = patch_slash_catalog().unwrap();
+    let find = |word| catalog.iter().find(|row| row.source.name == word).unwrap();
+    let mission = find("/gmmissionassign");
+    assert_eq!(
+        mission.evidence.handler_status,
+        Some(SlashHandlerStatus::Implemented)
+    );
+    assert!(mission
+        .evidence
+        .target_scope
+        .as_deref()
+        .is_some_and(|scope| !scope.is_empty()));
+    assert!(mission
+        .evidence
+        .readback_note
+        .as_deref()
+        .is_some_and(|note| !note.is_empty()));
+    let query = find("/gmusers");
+    assert_eq!(
+        query.evidence.handler_status,
+        Some(SlashHandlerStatus::Implemented)
+    );
+    assert!(query
+        .evidence
+        .readback_note
+        .as_deref()
+        .is_some_and(|note| !note.is_empty()));
+    let ring = find("/gmsetringdestination");
+    assert_eq!(
+        ring.evidence.handler_status,
+        Some(SlashHandlerStatus::ImplementedOrdinaryMethod)
+    );
+    assert!(ring
+        .evidence
+        .target_scope
+        .as_deref()
+        .unwrap()
+        .contains("Caller"));
+    assert!(ring
+        .evidence
+        .readback_note
+        .as_deref()
+        .unwrap()
+        .contains("arrival world/position"));
+    assert!(ring.evidence.source_document.ends_with("DW-27B-E.md"));
+    assert!(ring.descriptor.verify.is_none());
+    for word in [
+        "/gmspacequeuestatus",
+        "/gmspacequeuedresponse",
+        "/gmspacequeuereadyresponse",
+    ] {
+        assert_eq!(
+            find(word).evidence.handler_status,
+            Some(SlashHandlerStatus::Absent)
+        );
+    }
+    assert_eq!(
+        find("/gmconfirmeffect").evidence.handler_status,
+        Some(SlashHandlerStatus::ReceiptOnly)
+    );
+}
+
+#[test]
+fn six_slice_catalog_rejects_changed_toml_argument_type() {
+    let mut entries = parse_patch_table(SOURCE).unwrap();
+    entries[136].parameters[0].parameter_type = SlashParameterType::String;
+    assert!(catalog_from_entries(entries).is_err());
 }
 
 #[test]

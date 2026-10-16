@@ -1,6 +1,6 @@
 # Native slash palette: typed metadata slices
 
-This reference covers two disabled, typed slices from `data/client-patches/012-gm-slash-commands/commands.toml`: entries 28–54 from [DW-25B-E](evidence/DW-25B-E.md) in `crates/lab/src/workbench/slash_descriptors_1b.rs`, and entries 109–135 from [DW-27A-E](evidence/DW-27A-E.md) in `crates/lab/src/workbench/slash_descriptors_3a.rs`. Every entry remains unavailable until the native client event-to-method binding, serialization and accepted receipt are proved. Patch `access = "p"` is a client filter; the server checks GameMaster authority separately. A submitted line never establishes server acceptance or effect.
+This reference covers disabled, typed slices from `data/client-patches/012-gm-slash-commands/commands.toml`: entries 28–54 from [DW-25B-E](evidence/DW-25B-E.md), entries 109–135 from [DW-27A-E](evidence/DW-27A-E.md), and entries 136–162 from [DW-27B-E](evidence/DW-27B-E.md). `crates/lab/src/workbench/slash_catalog.rs` now merges all six 27-word descriptor slices and rejects a missing, duplicated, reordered or changed typed patch entry. Every entry remains unavailable until native client event-to-method binding, serialization and accepted receipt are proved. Patch `access = "p"` is a client filter; the server checks GameMaster authority separately. A submitted line never establishes server acceptance or effect.
 
 ## Entries 28–54 (DW-25B)
 
@@ -39,3 +39,19 @@ The fourth 27-word patch slice is implemented in `slash_descriptors_3a.rs` and g
 | `/gmsetpvp` | At most a player flag request; it does not grant attack rights. Duel combat remains gated by an engaged `DuelRegistry` pair. | `setPvPFlag` is internal, not GM callable. No accepted slash handler or authoritative PvP setter receipt exists. |
 
 The typed inputs preserve all patch parameter names, types, order and optional flags. The three cover forms are marked potentially irreversible, with no compensation recipe. Every row is unsupported with a command-specific reason; no row claims a verified readback from a generic entity or DB query.
+
+## Entries 136–162 (DW-27B)
+
+`slash_descriptors_3b.rs` records the exact final 27 patch words, typed arguments, target scope, potential impact, handler status and readback limit independently. All remain unsupported. An implemented ordinary player method is not a verified binding for its similarly named prefixed slash event.
+
+| Words | Operator consequence | Blocker and readback limit |
+|---|---|---|
+| `/gmsetarchetype`, `/gmtimeofday`, `/gmshowcover`, `/gmshowcommandwaypoints`, `/gmshowspawnset`, `/gmshowarea`, `/gmshowregion` | Archetype mutation is potentially persistent; time and overlays may be client-local. | Archetype has no TOML argument or handler. Display events need direct client proof; inbound callbacks do not prove outbound requests. |
+| `/gmtoggleautocycleability`, `/gmpetinvokeability`, `/gmpetinvokecommand`, `/gmpetabilitytoggle`, `/gmchangeammo` | Combat, pet and ammo names resemble ordinary player methods. | The prefixed word is unproved. Pet invoke omits method 88's target ID; pet toggle Integer must narrow to INT8 0/1; ammo lacks a weapon instance. Current pet-bar resend does not expose the toggled-off bit. |
+| `/gmchat`, `/gmloadinteractionset`, `/gmdumpobjects` | Chat may transmit sensitive operator text; reload and dump scopes are unknown. | No GMChat audience or handler. No interaction-set reload receipt. No object-dump output classification or redacted readback. Text is marked sensitive in metadata. |
+| `/gmforceclientcrash`, `/gmforcerendercrash` | Potential local client or render-thread termination. | Deliberately disabled; no destructive probe or recovery claim. |
+| `/gmsetringdestination` | Ordinary method 91 can relocate the caller, potentially across worlds. | Native event binding and a server-held caller/source interaction guard are absent. A submitted line or selection response cannot prove arrival. |
+| `/gmspacequeuestatus`, `/gmspacequeuedresponse`, `/gmspacequeuereadyresponse`, `/gmconfirmeffect` | Queue and effect responses may affect caller protocol state. | Queue base methods are trace stubs, and both response words omit the required accept byte. Stock ConfirmEffect has an event-to-method trace, but Cimmeria's method logs only; the prefixed registration remains unproved. |
+| `/gmshowtriggers`, `/gmshowwaypoints`, `/gmshownavmesh`, `/gmshowmemory`, `/gmdebugtarget` | Potential local debug views or target inspection. | Inbound waypoint/navmesh callbacks are not outbound handlers; navmesh method expects an absent Boolean. DebugTarget has no explicit target or handler. Memory/object output needs redaction before evidence export. |
+
+The exact six-slice catalog exposes all 162 patch words with command-specific disabled reasons and retains separately sourced handler status, target scope, readback limits and evidence citations where supplied. The three space-queue words have absent effective handlers (legacy trace stubs); only `/gmconfirmeffect` has a receipt-only handler. It does not establish extra stock GM words: `stock-slash-audit.md` still records unknown stock XML coverage. Native submission, handler acceptance and effect readback remain separate gates.
