@@ -83,10 +83,9 @@ pub(super) unsafe extern "stdcall-unwind" fn recvfrom_detour(
 #[cfg(all(test, feature = "lab-bridge"))]
 mod tests {
     use super::*;
+    use crate::bridge::events::LAB_EVENT_TEST_LOCK;
     use crate::hooks::mercury_recv::wire::PROOF_COUNTERS;
-    use std::sync::Mutex;
-
-    static DETOUR_TEST: Mutex<()> = Mutex::new(());
+    use std::sync::PoisonError;
 
     unsafe extern "stdcall-unwind" fn stub_recvfrom(
         socket: usize,
@@ -115,7 +114,9 @@ mod tests {
 
     #[test]
     fn mercury_recv_native_detour_records_candidate_and_restores_wsa_error() {
-        let _guard = DETOUR_TEST.lock().unwrap();
+        let _guard = LAB_EVENT_TEST_LOCK
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         if crate::bridge::bridge_epoch().is_none() {
             let handle = crate::bridge::start(crate::session::LabConfig {
                 bind: "127.0.0.1".into(),

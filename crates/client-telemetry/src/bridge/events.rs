@@ -62,6 +62,10 @@ static DROPPED: AtomicU64 = AtomicU64::new(0);
 /// The ring, created on first use.
 static RING: OnceLock<(Sender<LabEvent>, Receiver<LabEvent>)> = OnceLock::new();
 
+/// Serializes tests that inspect the process-global event ring or proof counters.
+#[cfg(test)]
+pub(crate) static LAB_EVENT_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn ring() -> &'static (Sender<LabEvent>, Receiver<LabEvent>) {
     RING.get_or_init(|| bounded(RING_CAPACITY))
 }
@@ -160,18 +164,16 @@ pub fn dispatch_read(id: Value, params: &Value) -> RpcResponse {
 mod tests {
     use super::*;
     use serde_json::json;
-    use std::sync::{Mutex, PoisonError};
-
-    /// The ring is a process-global, so these tests would otherwise stomp
-    /// each other under nextest's parallel execution. Serialize them.
-    static TEST_LOCK: Mutex<()> = Mutex::new(());
+    use std::sync::PoisonError;
 
     /// Push then drain preserves order and clears the ring. (Runs
     /// against the process-global ring; drain-to-empty first so the
     /// assertion is deterministic under any test ordering.)
     #[test]
     fn push_then_drain_round_trips_in_order() {
-        let _guard = TEST_LOCK.lock().unwrap_or_else(PoisonError::into_inner);
+        let _guard = LAB_EVENT_TEST_LOCK
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         let _ = drain(RING_CAPACITY); // clear
         push("hook.hit", 1, json!({ "a": 1 }));
         push("lua.print", 2, json!({ "line": "hi" }));
@@ -187,7 +189,9 @@ mod tests {
     /// `max` bounds the drain; the rest stays for the next read.
     #[test]
     fn drain_respects_max() {
-        let _guard = TEST_LOCK.lock().unwrap_or_else(PoisonError::into_inner);
+        let _guard = LAB_EVENT_TEST_LOCK
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         let _ = drain(RING_CAPACITY);
         for i in 0..5 {
             push("k", i, json!({}));
@@ -200,7 +204,9 @@ mod tests {
 
     #[test]
     fn dispatch_read_reports_shape() {
-        let _guard = TEST_LOCK.lock().unwrap_or_else(PoisonError::into_inner);
+        let _guard = LAB_EVENT_TEST_LOCK
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         let _ = drain(RING_CAPACITY);
         push("mercury.dispatch", 7, json!({ "msg_id": 42 }));
         let r = dispatch_read(json!(1), &json!({ "max": 10 }));
@@ -212,7 +218,9 @@ mod tests {
 
     #[test]
     fn mercury_recv_dispatch_serializes_proof_epoch_and_counters() {
-        let _guard = TEST_LOCK.lock().unwrap_or_else(PoisonError::into_inner);
+        let _guard = LAB_EVENT_TEST_LOCK
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         let _ = drain(RING_CAPACITY);
         let before = PROOF_COUNTERS.snapshot().received;
         let proof = PROOF_COUNTERS
