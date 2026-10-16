@@ -4,40 +4,37 @@ use std::sync::Arc;
 
 use axum::{
     extract::{Extension, Query, State},
-    http::{header::CONTENT_TYPE, HeaderMap, HeaderValue, StatusCode},
-    response::{Html, IntoResponse, Response},
+    http::{HeaderMap, StatusCode},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use super::{cookie_value, session::SessionStore};
+use super::{bound_instance, cookie_value, session::SessionStore};
 
+#[path = "mission_api.rs"]
+mod mission_api;
 #[path = "probe_api.rs"]
 mod probe_api;
 use crate::{
     lease::permit::{self, Permit},
     server::Instances,
-    uat::invoke::{ServerInvoker, ServerTools},
+    uat::invoke::ServerInvoker,
     workbench::{
         bookmarks::{BookmarkDraft, BookmarkStore},
-        dossier, mission, spatial,
+        dossier, spatial,
     },
 };
 #[cfg(test)]
 pub(crate) use probe_api::leased;
 
-const INDEX: &str = include_str!("../../../workbench/index.html");
-const JAVASCRIPT: &str = include_str!("../../../workbench/app.js");
-const DOSSIER_JAVASCRIPT: &str = include_str!("../../../workbench/views/dossier.js");
-const PROBE_JAVASCRIPT: &str = include_str!("../../../workbench/views/probe.js");
-const MISSION_JAVASCRIPT: &str = include_str!("../../../workbench/views/mission.js");
-const STYLESHEET: &str = include_str!("../../../workbench/app.css");
+use mission_api::MissionServer;
 
 /// Routes merged into the DW-02A browser router before its session layer.
 pub fn router(instances: Instances) -> Router<Arc<SessionStore>> {
-    router_with_sources(instances, bookmark_store(), default_mission_server())
+    router_with_sources(instances, bookmark_store(), mission_api::default_server())
 }
 
 #[cfg(test)]
@@ -45,22 +42,7 @@ pub(crate) fn router_with_store(
     instances: Instances,
     store: BookmarkStore,
 ) -> Router<Arc<SessionStore>> {
-    router_with_sources(instances, store, default_mission_server())
-}
-
-fn default_mission_server() -> Option<Arc<dyn ServerInvoker>> {
-    ServerTools::from_env().map(|source| Arc::new(source) as Arc<dyn ServerInvoker>)
-}
-
-#[derive(Clone)]
-struct MissionServer(Option<Arc<dyn ServerInvoker>>);
-
-#[cfg(test)]
-fn router_with_mission_server(
-    instances: Instances,
-    server: Option<Arc<dyn ServerInvoker>>,
-) -> Router<Arc<SessionStore>> {
-    router_with_sources(instances, bookmark_store(), server)
+    router_with_sources(instances, store, mission_api::default_server())
 }
 
 fn router_with_sources(
@@ -76,7 +58,7 @@ fn router_with_sources(
         .route("/workbench/api/v1/bookmarks/save", post(bookmark_save))
         .route("/workbench/api/v1/bookmarks/delete", post(bookmark_delete))
         .route("/workbench/api/v1/bookmarks/action", post(bookmark_action))
-        .route("/workbench/api/v1/missions", get(mission_xray))
+        .route("/workbench/api/v1/missions", get(mission_api::mission_xray))
         .route("/workbench/api/v1/input/key", post(input_key))
         .route("/workbench/api/v1/probes", get(probe_api::probe_list))
         .route("/workbench/api/v1/probes/save", post(probe_api::probe_save))
@@ -384,50 +366,6 @@ async fn bookmark_action(
     )
 }
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct MissionQuery {
-    instance: String,
-    mission_id: i32,
-}
-
-async fn mission_xray(
-    State(sessions): State<Arc<SessionStore>>,
-    Extension(instances): Extension<Instances>,
-    Extension(MissionServer(server)): Extension<MissionServer>,
-    headers: HeaderMap,
-    Query(query): Query<MissionQuery>,
-) -> Response {
-    let Some(instance) = bound_instance(&sessions, &headers) else {
-        return StatusCode::UNAUTHORIZED.into_response();
-    };
-    if !instance.eq_ignore_ascii_case(&query.instance) {
-        return StatusCode::FORBIDDEN.into_response();
-    }
-    if query.mission_id <= 0 {
-        return StatusCode::BAD_REQUEST.into_response();
-    }
-    let Some(hosted) = instances.by_label(&instance) else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
-    Json(
-        mission::read_mission(
-            &hosted.supervisor,
-            &hosted.label,
-            query.mission_id,
-            None,
-            server.as_deref(),
-        )
-        .await,
-    )
-    .into_response()
-}
-
-fn bound_instance(sessions: &SessionStore, headers: &HeaderMap) -> Option<String> {
-    let cookie = cookie_value(headers)?;
-    sessions.identity(cookie).map(|identity| identity.instance)
-}
-
 fn reply(instance: &str, data: Value, gaps: Vec<Value>) -> Json<Value> {
     Json(json!({
         "schema_version": 1,
@@ -435,58 +373,6 @@ fn reply(instance: &str, data: Value, gaps: Vec<Value>) -> Json<Value> {
         "data": data,
         "gaps": gaps,
     }))
-}
-
-/// Serve the shell with only the session's validated instance label embedded.
-pub async fn index(State(sessions): State<Arc<SessionStore>>, headers: HeaderMap) -> Response {
-    let Some(instance) = bound_instance(&sessions, &headers) else {
-        return StatusCode::UNAUTHORIZED.into_response();
-    };
-    // Instance labels are constrained to this alphabet by the supervisor.
-    if !instance
-        .bytes()
-        .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
-    {
-        return StatusCode::INTERNAL_SERVER_ERROR.into_response();
-    }
-    Html(INDEX.replace("__INSTANCE__", &instance)).into_response()
-}
-
-fn static_asset(content_type: &'static str, body: &'static str) -> Response {
-    let mut response = body.into_response();
-    response
-        .headers_mut()
-        .insert(CONTENT_TYPE, HeaderValue::from_static(content_type));
-    response.headers_mut().insert(
-        "x-content-type-options",
-        HeaderValue::from_static("nosniff"),
-    );
-    response
-}
-
-/// Serve the bundled shell script through the browser session gate.
-pub async fn javascript() -> Response {
-    static_asset("text/javascript; charset=utf-8", JAVASCRIPT)
-}
-
-/// Serve the read-only dossier view through the browser session gate.
-pub async fn dossier_javascript() -> Response {
-    static_asset("text/javascript; charset=utf-8", DOSSIER_JAVASCRIPT)
-}
-
-/// Serve the leased probe view through the browser session gate.
-pub async fn probe_javascript() -> Response {
-    static_asset("text/javascript; charset=utf-8", PROBE_JAVASCRIPT)
-}
-
-/// Serve the read-only mission X-ray view through the browser session gate.
-pub async fn mission_javascript() -> Response {
-    static_asset("text/javascript; charset=utf-8", MISSION_JAVASCRIPT)
-}
-
-/// Serve the bundled stylesheet through the browser session gate.
-pub async fn stylesheet() -> Response {
-    static_asset("text/css; charset=utf-8", STYLESHEET)
 }
 
 async fn session(

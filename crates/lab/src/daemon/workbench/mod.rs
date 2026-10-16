@@ -1,6 +1,7 @@
 //! Isolated local-browser session boundary for the companion workbench.
 
 pub mod api;
+pub mod assets;
 pub mod session;
 
 use std::sync::Arc;
@@ -28,12 +29,18 @@ const CSRF_HEADER: &str = "x-cimmeria-csrf";
 /// Mount the bearer-authenticated opener beside an independent browser gate.
 pub fn router(sessions: Arc<SessionStore>, token: Arc<str>, instances: Instances) -> Router {
     let browser = Router::new()
-        .route("/workbench/", get(api::index))
-        .route("/workbench/app.js", get(api::javascript))
-        .route("/workbench/views/dossier.js", get(api::dossier_javascript))
-        .route("/workbench/views/probe.js", get(api::probe_javascript))
-        .route("/workbench/views/mission.js", get(api::mission_javascript))
-        .route("/workbench/app.css", get(api::stylesheet))
+        .route("/workbench/", get(assets::index))
+        .route("/workbench/app.js", get(assets::javascript))
+        .route(
+            "/workbench/views/dossier.js",
+            get(assets::dossier_javascript),
+        )
+        .route("/workbench/views/probe.js", get(assets::probe_javascript))
+        .route(
+            "/workbench/views/mission.js",
+            get(assets::mission_javascript),
+        )
+        .route("/workbench/app.css", get(assets::stylesheet))
         .route("/workbench/session", get(csrf).post(session_check))
         .merge(api::router(instances.clone()))
         .route_layer(axum::middleware::from_fn_with_state(
@@ -127,6 +134,11 @@ fn cookie_value(headers: &HeaderMap) -> Option<&str> {
         }
     }
     found
+}
+
+fn bound_instance(sessions: &SessionStore, headers: &HeaderMap) -> Option<String> {
+    let cookie = cookie_value(headers)?;
+    sessions.identity(cookie).map(|identity| identity.instance)
 }
 
 async fn require_session(

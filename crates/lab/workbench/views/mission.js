@@ -19,7 +19,7 @@ function validMissionId(raw) {
   return Number.isSafeInteger(id) && id <= 2147483647 ? id : null;
 }
 
-function missionPresentation(payload, instance, missionId) {
+function missionPresentation(payload, instance, missionId, receivedAt = performance.now()) {
   if (payload?.schema_version !== 1 || !Array.isArray(payload.gaps)
       || payload.context?.instance?.toLowerCase() !== instance.toLowerCase()
       || payload.context?.mission_id !== missionId || !payload.data
@@ -62,7 +62,7 @@ function missionPresentation(payload, instance, missionId) {
     && typeof payload.data.step_disagreement === "boolean"
     ? payload.data.step_disagreement : null;
   return {
-    missionId, layers, gaps, matchedTracker, activeStep, disagreement,
+    missionId, layers, gaps, matchedTracker, activeStep, disagreement, receivedAt,
     observedAt: Number.isFinite(payload.context.observed_at_ms)
       ? payload.context.observed_at_ms : null
   };
@@ -128,18 +128,30 @@ function addText(document, parent, tag, text, className) {
   return element;
 }
 
-function showLayer(document, content, layer) {
+function showLayer(document, content, layer, ageTargets) {
   const section = addText(document, content, "section", "", "dossier-group");
   addText(document, section, "h3", layer.label);
-  addText(document, section, "span", layer.status, `badge badge-${layer.status}`);
-  let provenance = layer.source;
-  if (layer.at !== null) provenance += ` · ${new Date(layer.at).toLocaleString()}`;
-  if (layer.age !== null) provenance += ` · ${Math.round(layer.age / 1000)}s old`;
-  addText(document, section, "p", provenance, "provenance");
+  const badge = addText(document, section, "span", "", "badge");
+  const provenance = addText(document, section, "p", "", "provenance");
+  ageTargets.push({ layer, badge, provenance });
   if (layer.value === null) {
     addText(document, section, "p", `Unknown${layer.reason ? `: ${layer.reason}` : ""}`);
   }
   return section;
+}
+
+function updateMissionAges(ageTargets, receivedAt, now) {
+  const elapsedMs = Math.max(0, now - receivedAt);
+  for (const { layer, badge, provenance } of ageTargets) {
+    const age = layer.age === null ? null : layer.age + elapsedMs;
+    const status = layer.value === null ? "unknown" : age === null || age > 5000 ? "stale" : "observed";
+    badge.textContent = status;
+    badge.className = `badge badge-${status}`;
+    let text = layer.source;
+    if (layer.at !== null) text += ` · ${new Date(layer.at).toLocaleString()}`;
+    if (age !== null) text += ` · ${Math.round(age / 1000)}s old`;
+    provenance.textContent = text;
+  }
 }
 
 function showRows(document, parent, rows, describe) {
@@ -149,7 +161,7 @@ function showRows(document, parent, rows, describe) {
   for (const row of rows) addText(document, list, "li", describe(row));
 }
 
-function renderMission(document, snapshot) {
+function renderMission(document, snapshot, now = performance.now()) {
   const status = document.getElementById("mission-status");
   const content = document.getElementById("mission-content");
   content.replaceChildren();
@@ -157,45 +169,46 @@ function renderMission(document, snapshot) {
   if (snapshot.phase === "empty") {
     status.textContent = snapshot.missionId === null ? "Enter a mission ID to inspect."
       : `Mission ${snapshot.missionId} is selected; refresh to read it.`;
-    return;
+    return [];
   }
   if (snapshot.phase === "loading") {
     status.textContent = `Loading mission ${snapshot.missionId}…`;
-    return;
+    return [];
   }
   if (snapshot.phase === "error") {
     status.textContent = `Mission ${snapshot.missionId}: read unavailable (${snapshot.error}).`;
-    return;
+    return [];
   }
   const model = snapshot.model;
+  const ageTargets = [];
   status.textContent = `Mission ${model.missionId}: independent source observations`;
   if (model.observedAt !== null) {
     addText(document, content, "p", `Response assembled ${new Date(model.observedAt).toLocaleString()}`, "sample-time");
   }
   const { layers } = model;
-  const definition = showLayer(document, content, layers.definition);
+  const definition = showLayer(document, content, layers.definition, ageTargets);
   if (layers.definition.value !== null) {
     const row = layers.definition.value;
     addText(document, definition, "p", `ID ${row.mission_id} · ${row.mission_defn ?? "title unknown"}`);
     if (row.mission_label) addText(document, definition, "p", `Label: ${row.mission_label}`);
   }
-  const steps = showLayer(document, content, layers.steps);
+  const steps = showLayer(document, content, layers.steps, ageTargets);
   if (layers.steps.value !== null) {
     showRows(document, steps, layers.steps.value, row =>
-      `Step ${row.step_id}: ${row.step_display_log_text ?? "description unknown"}`);
+      `Step ${row.step_id}: ${row.step_display_log_text ?? "description unknown"} · step_enabled: ${row.step_enabled ?? "unknown"}`);
   }
-  const objectives = showLayer(document, content, layers.objectives);
+  const objectives = showLayer(document, content, layers.objectives, ageTargets);
   if (layers.objectives.value !== null) {
     showRows(document, objectives, layers.objectives.value, row =>
-      `Step ${row.step_id}, objective ${row.objective_id}: ${row.display_log_text ?? "description unknown"}${row.is_optional ? " · optional" : ""}${row.is_hidden ? " · hidden" : ""}`);
+      `Step ${row.step_id}, objective ${row.objective_id}: ${row.display_log_text ?? "description unknown"} · is_enabled: ${row.is_enabled ?? "unknown"}${row.is_optional ? " · optional" : ""}${row.is_hidden ? " · hidden" : ""}`);
   }
-  const chains = showLayer(document, content, layers.chain_references);
+  const chains = showLayer(document, content, layers.chain_references, ageTargets);
   if (layers.chain_references.value !== null) {
     showRows(document, chains, layers.chain_references.value, row =>
       `Chain ${row.chain_id}: ${row.description ?? "description unknown"}`);
   }
-  showLayer(document, content, layers.live_server);
-  const server = showLayer(document, content, layers.server);
+  showLayer(document, content, layers.live_server, ageTargets);
+  const server = showLayer(document, content, layers.server, ageTargets);
   if (layers.server.value !== null) {
     const row = layers.server.value;
     addText(document, server, "p", `Mission ${row.mission_id} · status ${row.status ?? "unknown"} · persisted step ${row.current_step_id ?? "none"}`);
@@ -205,10 +218,10 @@ function renderMission(document, snapshot) {
     }
   }
   for (const key of ["wire", "client"]) {
-    const section = showLayer(document, content, layers[key]);
+    const section = showLayer(document, content, layers[key], ageTargets);
     if (layers[key].value !== null) addText(document, section, "pre", JSON.stringify(layers[key].value, null, 2).slice(0, 4000));
   }
-  const tracker = showLayer(document, content, layers.ui);
+  const tracker = showLayer(document, content, layers.ui, ageTargets);
   if (layers.ui.value !== null) {
     const rows = layers.ui.value.mission_tracker;
     showRows(document, tracker, rows, row => `${row.kind ?? "line"}: ${row.text ?? ""}`);
@@ -228,11 +241,14 @@ function renderMission(document, snapshot) {
     showRows(document, section, model.gaps,
       gap => `${gap.source}: ${gap.code}${gap.detail ? ` — ${gap.detail}` : ""}`);
   }
+  updateMissionAges(ageTargets, model.receivedAt, now);
+  return ageTargets;
 }
 
 function mountMission(document, instance, storage) {
+  let ageTargets = [];
   const controller = createMissionController({
-    instance, storage, onChange: state => renderMission(document, state),
+    instance, storage, onChange: state => { ageTargets = renderMission(document, state); },
     fetchMission: async (missionId, signal) => {
       const url = `/workbench/api/v1/missions?instance=${encodeURIComponent(instance)}&mission_id=${missionId}`;
       const response = await fetch(url, { credentials: "same-origin", cache: "no-store", signal });
@@ -257,10 +273,15 @@ function mountMission(document, instance, storage) {
   });
   document.getElementById("mission-refresh").addEventListener("click", () => controller.refresh());
   input.value = controller.snapshot.missionId ?? "";
-  renderMission(document, controller.snapshot);
+  ageTargets = renderMission(document, controller.snapshot);
+  window.setInterval(() => {
+    if (controller.snapshot.phase === "ready") {
+      updateMissionAges(ageTargets, controller.snapshot.model.receivedAt, performance.now());
+    }
+  }, 1000);
   return controller;
 }
 
-const exported = { validMissionId, missionPresentation, createMissionController, renderMission, mountMission };
+const exported = { validMissionId, missionPresentation, createMissionController, renderMission, updateMissionAges, mountMission };
 if (typeof module !== "undefined") module.exports = exported;
 if (typeof window !== "undefined") window.CimmeriaMission = exported;

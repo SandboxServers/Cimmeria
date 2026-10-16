@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { validMissionId, missionPresentation, createMissionController, renderMission } = require("../views/mission.js");
+const { validMissionId, missionPresentation, createMissionController, renderMission, updateMissionAges, mountMission } = require("../views/mission.js");
 const { createWorkbenchState } = require("../app.js");
 
 function sample(source, value, age_ms = 100) {
@@ -16,10 +16,10 @@ function response(missionId = 622) {
     data: {
       definition: sample("resources.missions", { mission_id: missionId, mission_defn: "Arm Yourself!" }),
       steps: sample("resources.mission_steps", [
-        { mission_id: missionId, step_id: 80623, step_display_log_text: "Search the Guard" }
+        { mission_id: missionId, step_id: 80623, step_display_log_text: "Search the Guard", step_enabled: false }
       ]),
       objectives: sample("resources.mission_objectives", [
-        { step_id: 80623, objective_id: 91023, display_log_text: "Search the Guard", is_optional: false }
+        { step_id: 80623, objective_id: 91023, display_log_text: "Search the Guard", is_enabled: false, is_optional: false }
       ]),
       chain_references: sample("resources.content_chains", []),
       live_server: sample("server_runtime.mission", null, null),
@@ -55,10 +55,13 @@ function fakeDocument() {
     return {
       tag, textContent: "", children: [], dataset: {},
       appendChild(child) { this.children.push(child); },
-      replaceChildren() { this.children = []; }
+      replaceChildren() { this.children = []; },
+      addEventListener() {}, setCustomValidity() {}, reportValidity() {}
     };
   }
-  const nodes = { "mission-status": element("p"), "mission-content": element("div") };
+  const nodes = { "mission-status": element("p"), "mission-content": element("div"),
+    "mission-id": element("input"), "mission-form": element("form"),
+    "mission-clear": element("button"), "mission-refresh": element("button") };
   return { getElementById: id => nodes[id], createElement: element, nodes };
 }
 
@@ -158,12 +161,55 @@ test("tracker/server disagreement renders both values without rewriting persiste
   const rendered = allText(document.nodes["mission-content"]);
   assert.match(rendered, /Authored objectives/);
   assert.match(rendered, /objective 91023/);
+  assert.match(rendered, /step_enabled: false/);
+  assert.match(rendered, /is_enabled: false/);
   assert.match(rendered, /Active step 80623: Search the Guard/);
   assert.match(rendered, /visible step: Search Frost/);
   assert.match(rendered, /Disagreement observed/);
   assert.match(rendered, /no decoded packet reader/);
   assert.match(rendered, /Live server mission instance/);
   assert.match(rendered, /no bound live mission instance reader/);
+});
+
+test("displayed sample ages and stale badges advance while the response stays open", () => {
+  const model = missionPresentation(response(), "default", 622, 1000);
+  const document = fakeDocument();
+  const snapshot = { phase: "ready", missionId: 622, model };
+  const ageTargets = renderMission(document, snapshot, 1000);
+  const sameContent = document.nodes["mission-content"].children[1];
+  const initial = allText(document.nodes["mission-content"]);
+  assert.match(initial, /observed/);
+  assert.match(initial, /0s old/);
+  updateMissionAges(ageTargets, model.receivedAt, 7000);
+  assert.equal(document.nodes["mission-content"].children[1], sameContent);
+  const aged = allText(document.nodes["mission-content"]);
+  assert.match(aged, /stale/);
+  assert.match(aged, /6s old/);
+  assert.equal(model.layers.server.value.current_step_id, 80623);
+});
+
+test("mounted mission age timer updates badges without replacing evidence content", async () => {
+  const oldWindow = global.window;
+  const oldFetch = global.fetch;
+  let tick;
+  global.window = { setInterval: callback => { tick = callback; } };
+  global.fetch = async () => ({ ok: true, json: async () => response(622) });
+  try {
+    const document = fakeDocument();
+    const controller = mountMission(document, "default", storage());
+    controller.select("622");
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(controller.snapshot.phase, "ready");
+    const content = document.nodes["mission-content"].children[1];
+    controller.snapshot.model.receivedAt -= 6100;
+    tick();
+    assert.equal(document.nodes["mission-content"].children[1], content);
+    assert.match(allText(document.nodes["mission-content"]), /stale/);
+    assert.match(allText(document.nodes["mission-content"]), /6s old/);
+  } finally {
+    global.window = oldWindow;
+    global.fetch = oldFetch;
+  }
 });
 
 test("response envelope rejects wrong instance and mission ID", () => {
