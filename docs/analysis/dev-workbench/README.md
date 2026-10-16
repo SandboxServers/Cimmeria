@@ -22,7 +22,7 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | F7a | At the planning base, older prose in `docs/commands.md` and `docs/architecture/gm-cell-method-gating.md` said 167 `/gm*`, while the patch table has 161; `data/client-patches/README.md` describes 164 QA XML entries and 162 distinct words. DW-24A found that stock SGW `SlashCommands.xml`/`FinalSlashCommands.xml` are absent from this checkout, so [its stock audit](stock-slash-audit.md) is explicitly unknown. DW-27C owns descriptors for any verified extras once those files can be inspected; DW-32 cannot claim complete coverage yet. | 24A, 27C, 32 |
 | F8 | Seeds remain the source of truth. Live authoring commands can emit SQL and update memory/DB, but a palette must show that the emitted seed change needs committing and cannot imply a durable save. | 20B, 30-31 |
 | F9 | No Tabula Rasa client or SGW client was run in the source review. Lab-live verification remains unperformed and needs the user's explicit go-ahead before any lease, start/restart or server change. | 35 |
-| F10 | DW-03 deliberately leaves the server session unbound. The supervisor knows its PID and process creation ticks, while the server roster exposes a BaseApp UDP peer and player entity. The DLL's existing receive detour can observe a Mercury peer and encrypted-byte fingerprint, but issue #1703 records no live hook events and no proven endpoint. Entity ID, name, client destination and server source cannot by themselves bind the two sides, especially across NAT, relog or shard changes. The current `server_sessions` peer roster and read-time event PID labels cannot prove a generation join. | 03S-E, 03S-C, 03S-S, 03S-X, 03S-I, 03S-B |
+| F10 | DW-03 leaves live server fields unbound. DW-03S-E traced a specific producer gap: Mercury `Transport::send_to` has only bytes/peer, retransmit collection returns `Vec<Bytes>`, and a BaseService peer lookup after await could label delayed A traffic as replacement B. Cell origin teardown can also precede Base's GateTravel handling while the ordinary roster remains unchanged. An immutable send ticket must cross the actual await and a Cell travel epoch must gate the join. No live hook event or endpoint is proven. | 03S-E, 03S-P/G/H/D/F/S, 03S-T-C/T-R, 03S-X/I/B |
 
 ## Decisions
 
@@ -38,8 +38,9 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | D-DW8 | Decided | Dot and native slash commands share one palette but have separate authoritative inventories and execution paths. All 162 patch-table slash entries, plus any stock GM-gated extras DW-24A verifies, receive typed forms, target/impact/readback metadata and availability; an unsupported handler or unproven native path is disabled per command with an explanation. A submitted slash string is not proof that the server accepted it. |
 | D-DW9 | BlockedDecision | Live lab acceptance requires the owner to approve taking the shared lab lease and, if necessary, starting or restarting the client. Code and offline tests can proceed. Ask immediately before DW-35; do not bundle approval into a code packet. |
 | D-DW10 | OutOfScope | Distributing the overlay or GUI to ordinary players would be a distinct product decision. No packet depends on it; this campaign does not ship that surface. |
-| D-DW11 | Decided | A trusted live join requires two distinct encrypted datagrams observed by the process-bound DLL and attributed to one current server connection generation, plus fresh, unique generation-bearing roster confirmation of that generation, player entity and world before and after server reads. The server mints a CSPRNG boot ID on each service start and carries an immutable origin generation with each queued/awaited send, including a send that completes after same-peer relog. The supervisor stamps PID, process creation ticks, bridge epoch and capture time when each client event enters the store, never when it is later read. Client and server wall clocks may differ; check source-local freshness and pair-to-pair offset consistency. Server and client UDP endpoints are diagnostics, not equality keys: NAT can rewrite the source. FNV wire fingerprints are correlation evidence, not credentials or authority for a GM action. Ambiguity, missed observations, stale generations, PID reuse, relog and gate travel clear the binding. |
+| D-DW11 | Decided | A trusted live join requires two distinct encrypted datagrams observed by the process-bound DLL and attributed to one current server connection generation, plus fresh, unique generation-bearing roster confirmation of that generation, player entity and world before and after server reads. The server mints a CSPRNG boot ID on each service start and carries an immutable origin generation with each queued/awaited send, including a send that completes after same-peer relog. The supervisor stamps PID, process creation ticks, bridge epoch and capture time when each client event enters the store, never when it is later read. Client and server wall clocks may differ; check source-local freshness and pair-to-pair offset consistency. Server and client UDP endpoints are diagnostics, not equality keys: NAT can rewrite the source. FNV wire fingerprints are correlation evidence, not credentials or authority for a GM action. Ambiguity, missed observations, incomplete send-path coverage, stale generations, PID reuse, relog and Cell-authoritative travel epoch/state changes clear the binding. A Base roster that looks unchanged during Cell teardown is insufficient; X/B require matching stable Cell/Base epochs. |
 | D-DW12 | BlockedDecision | Exact live Mercury peer and fingerprint behavior, including the issue #1703 missing-hook case, requires a separately approved lab lease/client run. Offline proof and code packets may proceed; a binding cannot be called live verified until the owner approves that probe and its evidence passes. |
+| D-DW13 | Decided (static evidence, 2026-10-16) | The send proof is opt-in at Mercury's transport trait and immutable at the packet's originating session, including retransmit collection. The Base observer records only a full successful send and treats untagged or uncensused paths as incomplete. Cell `SpaceManager::destroy_entity` supplies an authoritative per-player travel epoch at origin teardown; destination `onClientReady` settles the exact epoch. X/B require a matching stable Cell/Base epoch, including for same-world travel. No address lookup after send or unchanged-roster shortcut is permitted. |
 
 ## Packet ledger
 
@@ -51,12 +52,19 @@ The source review of the attached Rasa archive and Rasa.NET is recorded in `.cla
 | 1 | DW-02A | GUI session security | — | 40k | Integrated |
 | 1 | DW-02B | GUI opener/static shell/API | 02A | 40k | Integrated |
 | 1 | DW-03 | Target dossier model | 01, 02B | 35k | Integrated |
-| 1B | DW-03S-E | Static binding evidence and fixture contract | 03 | 30k | Ready |
-| 1B | DW-03S-C | Process-bound DLL Mercury observer | 03S-E | 40k | BlockedDependency |
-| 1B | DW-03S-S | Server connection generation and wire proof producer | 03S-E | 45k | BlockedDependency |
-| 1B | DW-03S-X | Lab-only server proof read surface | 03S-S | 35k | BlockedDependency |
-| 1B | DW-03S-I | Ingestion-time client event identity | 03S-C | 30k | BlockedDependency |
-| 1B | DW-03S-B | Supervisor binder and dossier integration | 03S-C, 03S-X, 03S-I, 03 | 45k | BlockedDependency |
+| 1B-a | DW-03S-E | Static binding evidence and fixture contract | 03 | 30k | Review (#1750) |
+| 1B-a | DW-03S-C | Process-bound DLL Mercury observer | 03S-E | 40k | BlockedDependency |
+| 1B-a | DW-03S-P | Opt-in Mercury send-origin seam | 03S-E | 35k | BlockedDependency |
+| 1B-a | DW-03S-G | Base boot/generation and bounded proof observer | 03S-P | 45k | BlockedDependency |
+| 1B-a | DW-03S-H | Base-session reliable/unreliable/tick/retransmit origin | 03S-G | 45k | BlockedDependency |
+| 1B-a | DW-03S-D | World-entry and direct Base send origin | 03S-H | 45k | BlockedDependency |
+| 1B-b | DW-03S-F | Cell fan-out and complete send-path census | 03S-D | 40k | BlockedDependency |
+| 1B-b | DW-03S-T-C | Cell-authoritative travel epoch | 03S-E | 40k | BlockedDependency |
+| 1B-b | DW-03S-T-R | Destination readiness and epoch settlement | 03S-T-C, 03S-G | 40k | BlockedDependency |
+| 1B-b | DW-03S-S | Server proof snapshot/eligibility gate | 03S-F, 03S-T-R | 35k | BlockedDependency |
+| 1B-c | DW-03S-X | Lab-only generation/transition roster | 03S-S, 03S-T-R | 35k | BlockedDependency |
+| 1B-c | DW-03S-I | Ingestion-time client event identity | 03S-C | 30k | BlockedDependency |
+| 1B-c | DW-03S-B | Supervisor binder and dossier integration | 03S-C, 03S-X, 03S-I, 03 | 45k | BlockedDependency |
 | 1 | DW-04 | Lua probe/object model | 01, 02B | 40k | Review |
 | 1 | DW-05 | Spatial model/bookmarks | 01, 02B | 40k | Ready |
 | 2 | DW-06 | Mission X-ray model | 01, 02B | 40k | Ready |
