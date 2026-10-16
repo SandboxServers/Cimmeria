@@ -1,6 +1,6 @@
 # Developer workbench resume
 
-> Type: campaign handoff. Audience: next coordinator. Last updated: 2026-10-16. Companions: [ledger](README.md), [work packets](work-packets.md). The plan merged in PR #1738; DW-01, DW-02A, DW-02B, DW-19 and DW-03 merged in PRs #1740, #1741, #1743, #1744 and #1745. DW-07 and DW-20A-E have open PRs #1746 and #1747. No lab lease taken.
+> Type: campaign handoff. Audience: next coordinator. Last updated: 2026-10-16. Companions: [ledger](README.md), [work packets](work-packets.md). The plan merged in PR #1738; DW-01, DW-02A, DW-02B, DW-19, DW-03, DW-07 and DW-20A-E merged in PRs #1740, #1741, #1743, #1744, #1745, #1746 and #1747. No lab lease taken.
 
 1. Check peer work: `git worktree list`, recent `dev-workbench/*` branches/logs and agent board before dispatch. The root checkout is shared.
 2. Reconcile `docs/analysis/lab-record/README.md` first: LR-10 click ring is integrated; LR-11 click transform and LR-14/15 rolling/`.bug spec` are pending. DW-10/11 must stack on or absorb them, never duplicate their recorder/tap ownership.
@@ -11,7 +11,7 @@
 7. Native slash submission is not yet proven: `client_console` has `CONSOLE_EXEC_ADDR=0`; DW-24B needs address/ABI and quoting evidence or a proven stock-client UI/Lua path. No slash-to-dot substitution and no guessed native call.
 8. The eight causal trace stages are an observation schema, not a promise that every click has every hook. Missing `ClientApply` or visible-result coverage is `unknown`, with source and reason.
 9. DW-03's live reader intentionally leaves server fields unknown: there is no trusted client-instance/PID to server-session/player-entity binding producer yet. Its fake-backed composition tests do not establish that live binding; see `worknotes/DW-03.md`.
-10. The five DW-03S packets in wave 1B add source proof, client and server observers, a lab-only proof read surface, then the binder. Dispatch DW-03S-E first; no entity/name/port shortcut. See `worknotes/DW-03S-design.md`.
+10. The six DW-03S packets in wave 1B add source proof, client and server observers, a lab-only generation-bearing roster, ingestion-time client event identity, then the binder. Dispatch DW-03S-E first; DW-03S-I depends on C, and B depends on C, X and I. No entity/name/port shortcut. The binder replaces `dossier.rs`'s peer-based roster predicate and hardcoded unavailable roster, checks the unique boot/generation/player/world row before and after server reads, and rejects old epoch rows after restart. DW-03S-S uses a CSPRNG server boot ID. See `worknotes/DW-03S-design.md`.
 11. DW-08/09/10/11 and palette actor/target packets depend on DW-03S-B for joined evidence. D-DW12 shares the live-client approval gate with DW-35; offline tests are allowed, but issue #1703's missing hook observations are not live proof.
 12. No client/game has been run for this campaign. DW-35 remains `BlockedDecision` until the owner explicitly approves lease/client start/restart/server change. Ask just before live acceptance, after offline work is reviewable.
 13. DW-34 alone updates campaign-wide status docs and unified UAT guide. Parent coordinator owns `docs/readme.md` indexing and commit/review for this design brief.
