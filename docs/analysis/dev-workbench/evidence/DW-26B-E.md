@@ -288,7 +288,7 @@ Only `/gmsendgmshout` is an announcement in this slice. Its accepted text is int
 - **Target/scope:** Calling GM entity's server movement validator only; no other player audience.
 - **Preconditions and authority:** GM gate and extant caller entity; missing/truncated byte gets GM feedback and no state change.
 - **Effects and impact:** If 221 is reached, toggles transient validator bypass. Stock fly/ghost also toggle client pawn physics immediately; this patch word's client-local effect is unverified. No persistence or world broadcast.
-- **Verification:** On actual state change, caller GM feedback says movement validation disabled/restored and an info log records `unrestricted`; no feedback for a no-op. Read the same entity's `movement_unrestricted` in a trusted entity view; no DB row.
+- **Verification:** On actual state change, caller GM feedback says movement validation disabled/restored and an actor-bound info log records `unrestricted`; no feedback or info log for a no-op. Current `server_entity_get`/`LabEntitySnapshot` do not expose `movement_unrestricted`, so direct flag readback is unavailable; the feedback/logs give limited change evidence, and a direct check needs a new trusted server read surface. No DB row.
 - **Compensation:** A verified method 221 call restoring physics (`on=1`) clears bypass, but cannot retroactively validate moves.
 - **Availability:** Disabled pending proof that this patch event invokes 221 and native submission/Boolean formatting; method handler alone is insufficient.
 
