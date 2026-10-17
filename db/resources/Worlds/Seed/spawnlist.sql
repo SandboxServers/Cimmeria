@@ -191,6 +191,13 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (80, -87.0400009, 46.2399979, -160.319992, 2.59664607, 12, 3, 'Cellblock_UnusedRingSwitch', NULL);
 
+-- CB-N04a (2026-10-17): Cellblock ambient cast, cells. Friendly Op-CORE
+-- prisoners (faction 1, no ability set), held in place by is_stationary.
+-- Placement, nav probe and guard clearance:
+-- docs/analysis/cellblock-continuation/worknotes/cb-n04-seal.md.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (520, -271.0, 65.45, -135.0, 1.570796, 12, 176, 'Cellblock_Ambient_Prisoner1', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (521, -254.0, 65.45, -135.0, 4.712389, 12, 176, 'Cellblock_Ambient_Prisoner2', NULL, true);
+
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (87, 352.691986, 70.2720032, 952.320007, 0, 8, 48, 'Castle_Coppleman', NULL);
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (37, 4.40700006, -68.9570007, 31.5249996, 3.13996291, 57, 1, 'Harset_DHD', NULL);

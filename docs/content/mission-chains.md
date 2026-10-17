@@ -745,6 +745,14 @@ This is an orphaned hidden mission with step text that parallels missions 641 an
 
 ---
 
+#### Cellblock ambient cast (CB-N04a)
+
+| Chain | Trigger | Conditions | Actions |
+|---|---|---|---|
+| 11010 | `enter_region('Castle_Cellblock.Region2')` (once) | `step_status(639, 2117) = 'active'` | `npc_bark(200160)`: one line in chat, speaker `Op-CORE Soldier` |
+
+The cast is two stationary Op-CORE prisoners (template 176, spawns 520 and 521, tags `Cellblock_Ambient_Prisoner1` and `Cellblock_Ambient_Prisoner2`) in the north cell blocks of Region2. Placement, nav probe and guard clearance are sealed in [cb-n04-seal.md](../analysis/cellblock-continuation/worknotes/cb-n04-seal.md).
+
 ### Castle (Persistent Zone)
 
 **Confidence**: CONFIRMED for 701 and for every mission's DB data; RECONSTRUCTION for the 702/703/704/706/708 chains

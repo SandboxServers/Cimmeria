@@ -33,6 +33,7 @@
 mod black_market_auctioneer;
 mod castle_702_704_executor;
 mod castle_loot_containers;
+mod cellblock_ambience;
 mod cellblock_dialog_closes;
 mod class_start_cellblock_scope;
 mod class_start_sgc;

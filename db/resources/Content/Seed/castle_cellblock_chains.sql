@@ -3463,3 +3463,28 @@ VALUES (5030, 'interact_tag', 'BlackMarket_Auctioneer', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (5030, 'open_black_market', NULL, NULL, '{}', 0, 0);
+
+-- =====================================================================
+-- CB-N04a (2026-10-17): Cellblock ambient cast, cells
+-- =====================================================================
+-- Two friendly Op-CORE prisoners (spawns 520, 521) show the escape is under
+-- way. Chain 11010 speaks one line into the crossing player's chat on the
+-- first entry to Castle_Cellblock.Region2 while mission 639 step 2117 (find
+-- Ambernol in the Med Station) is active. once = true stops the H52
+-- step-activation replay speaking twice in a visit; the step gate stops it
+-- once the vial step is done. Seal: docs/analysis/cellblock-continuation/
+-- worknotes/cb-n04-seal.md. Holder dialog 60160 is never displayed.
+
+-- Chain 11010: Region2 entry during 639/2117 -> Op-CORE prisoner bark
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (11010, 'CB-N04a - cells ambience: enter Region2 during 639 step 2117 -> Op-CORE prisoner bark', 'mission', 639, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (11010, 'enter_region', 'Castle_Cellblock.Region2', 'player', true, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (11010, 'step_status', 639, '2117', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (11010, 'npc_bark', NULL, NULL,
+ '{"screen_id": 200160, "speaker": "Op-CORE Soldier", "channel": "say"}', 0, 0);
