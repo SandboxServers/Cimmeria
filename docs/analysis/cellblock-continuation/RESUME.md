@@ -1,37 +1,39 @@
 # Cellblock continuation resume
 
 > **Type**: Reference. **Audience**: The Cellblock orchestrator.
-> **Last updated**: 2026-10-16 (wave 1b designed).
-> **Companions**: [Ledger](README.md), [work packets](work-packets.md), [W1b coder packets](w1b-packets.md).
+> **Last updated**: 2026-10-17 (wave 2 designed).
+> **Companions**: [Ledger](README.md), [work packets](work-packets.md), [W2 packets](w2-packets.md).
 
 ## State
 
-- Runs under the adopting orchestrator (D-CC1 = B). Feature SHA `e10fd1f0a` (W1a integrated). Not pushed; one PR at CB-N08.
-- Integrated: CB-N00, CB-N01, CB-N02s, CB-N02a. CB-N05a merged to main (#1734). UATPending: CB-U03 for 1026/1027.
-- Review rule (D-CC6): read-only `packet-reviewer`, fixes by `packet-coder`, fresh re-review; at most 3 rounds.
-- Old worktrees `cellblock-cb-n02s` and `cellblock-cb-n02a` are cherry-picked (no PR); the owner retires them.
+- Runs under the adopting orchestrator (D-CC1 = B). W1a and W1b integrated; feature SHA `0fca3114f`. Not pushed; one PR at CB-N08.
+- UATPending: CB-U03 (relog at 2114/2115/2116/2144/2145; chains 1026-1028, 1036, 1037).
+- W1c not triggered: CB-N02s2 and CB-N03s sealed no children. CB-N03 is BlockedEvidence on CB-U05.
+- Review rule (D-CC6): read-only `packet-reviewer`, fixes by `packet-coder`, fresh re-review; at most 3 rounds. Haiku agents under 100k tokens.
+- Owner retires the cherry-picked W1 worktrees (`rm-worktree.ps1 <name> --force`): cellblock-cb-n02s, -n02a, -n02b, -n02c, -n02d, -n02s2, -n03s.
 
-## Wave 1b (no packet in flight yet)
+## Wave 2 (no packet in flight yet)
 
-Five packets in parallel, one worktree each, on `e10fd1f0a`:
+Sequential, cluster 1 of CB-N04 only ([w2-packets.md](w2-packets.md)):
 
-| Packet | Agent | Worktree |
-|---|---|---|
-| CB-N02b (chain 1028, door button) | packet-coder | cellblock-cb-n02b |
-| CB-N02c (chain 1036, Ambernol vial) | packet-coder | cellblock-cb-n02c |
-| CB-N02d (chain 1037, drone re-arm) | packet-coder | cellblock-cb-n02d |
-| CB-N02s2 (restore bit check) | mission-systems-advisor | cellblock-cb-n02s2 |
-| CB-N03s (flank/cover seal) | npc-ai-spawn-advisor | cellblock-cb-n03s |
+| Step | Packet | Agent | Worktree |
+|---|---|---|---|
+| 1 | CB-N04s (cast seal) | npc-ai-spawn-advisor | cellblock-cb-n04s on the W2 architect commit |
+| 2 | CB-N04m (mission sign-off) | mission-systems-advisor | cellblock-cb-n04s |
+| 3 | CB-N04a (spawns, holder dialog, barks, tests) | packet-coder | cellblock-cb-n04a on the CB-N04s tip |
+| 4 | Review, fixes, re-review | packet-reviewer / packet-coder | per packet |
+| 5 | W2-INT | packet-coder | zone-cellblock |
+
+Claimed IDs: spawns 520-522, dialog 60160, screens 200160-200162, chains 11010-11012 (id-allocation.md, CB-N04 claims).
 
 ## Next actions
 
-1. Ops: five `mk-worktree` calls (branches in work-packets.md § W1b-R0), then the `rebase --onto` step. If ops refuses, dispatch W1b-R0 (packet-coder).
-2. Dispatch the five packets in one message, in the background (sections: w1b-packets.md for N02b/c/d, work-packets.md for N02s2/N03s).
-3. On return: reviewer A (CB-N02b/c/d) and reviewer B (CB-N02s2, CB-N03s), both `packet-reviewer`. Fix verdicts go to a `packet-coder` per worktree, then a fresh reviewer.
-4. All `ship`: dispatch W1b-INT in zone-cellblock (cherry-picks plus the header and id-allocation bookkeeping).
-5. If CB-N02s2 or CB-N03s seals children: architect pass for W1c. Otherwise W2 (CB-N04).
-6. Lab rows CB-U03 (relog at 2114/2115/2116/2145/2144) and CB-U05: ask the user first, then run once W1b is integrated.
+1. Ops: `mk-worktree.ps1 cellblock/cb-n04s-cast-seal cellblock-cb-n04s`, then `rebase --onto <W2 architect commit> HEAD cellblock/cb-n04s-cast-seal`.
+2. Dispatch CB-N04s. If the verdict is `no safe pocket`, CB-N04 becomes BlockedEvidence on CB-U08; ask the user for a lab run.
+3. Dispatch CB-N04m in the same worktree. On `approve` or `change`: ops makes `cellblock-cb-n04a` on the CB-N04s tip (branch `cellblock/cb-n04-<room>`); dispatch CB-N04a.
+4. One reviewer for all three; then W2-INT.
+5. Lab rows CB-U03, CB-U05, CB-U08 and CB-U09: ask the user first (D-CC3).
 
-## Open questions (none block W1b)
+## Open decisions
 
-- Who owns the cell-door presentation after a relog (sequence 1749): CB-N02s2 answers, likely asset audit CA-03C/D.
+- D-CC11 (owner): CB-N07's acceptable death, difficulty and time impact. Ask after CB-U05 and CB-U09 have run.

@@ -2,7 +2,7 @@
 
 > **Type:** Reference
 > **Audience:** Zone campaign coordinators and the ID-lock packets (CB-N00, CS-00, HA-00b, T-01)
-> **Last updated:** 2026-10-16
+> **Last updated:** 2026-10-17
 > **Companions:** [four-zone index](README.md), [execution contract](execution-contract.md), [2026-10-14 owner decisions](owner-decisions-2026-10-14.md), [Harset chain ranges](harset-work-packets.md#contract-and-dispatch-boundary), [Tollana packets](tollana-work-packets.md)
 
 Owner decision, 2026-10-13: the four zone campaigns share one content-chain ID table so that no two campaigns, branches or workers pick the same `chain_id`. This page is that table. A zone's ID-lock packet reads it, claims individual IDs inside its own block, and records the claim in its zone ledger before any coder receives an ID.
@@ -78,6 +78,19 @@ Three individual Cellblock chain claims for the wave 1b relog restores in the [C
 | 1037 | CB-N02d | 639 `player_loaded` re-arm of `ArmYourself_PrisonerRetrievalUnit` at step 2144 | In use (W1b-INT) |
 
 Collision check, 2026-10-16: the first tuple of every `INSERT INTO content_chains` under `db/resources/Content/Seed/` at Cellblock `e10fd1f0a` uses none of the three, and a `git grep` of the same statements across all 703 local branches (every zone integration branch and packet branch) found zero hits. Point-in-time; W1b-INT moves the rows to the in-use table when it integrates them.
+
+### CB-N04 claims — 2026-10-17
+
+Individual claims for the wave 2 ambient cast (cluster 1) in the [Cellblock ledger](../cellblock-continuation/w2-packets.md). The chains come from the 11000–11499 Cellblock authored block, beside CB-N05's 11000–11005. The seal (CB-N04s) uses the lowest IDs it needs; W2-INT marks the rest released.
+
+| Namespace | Claimed IDs | Exact use | Status |
+|---|---|---|---|
+| Content chain | 11010, 11011, 11012 | One `enter_region` ambient `npc_bark` chain per bark (1 or 2 expected) | Claimed (W2 architect) |
+| Spawn (world 12) | 520, 521, 522 | Static friendly Op-CORE prisoners tagged `Cellblock_Ambient_*` (1 to 3) | Claimed (W2 architect) |
+| Dialog root | 60160 | Seed-only bark holder, never displayed, no override | Claimed (W2 architect) |
+| Dialog screen | 200160, 200161, 200162 | One bark line each, under dialog 60160 | Claimed (W2 architect) |
+
+Collision check, 2026-10-17, at Cellblock `0fca3114f`: a `git grep` across all 740 local branches for these IDs as the first value of a `VALUES (` tuple (chains and triggers under `db/resources/Content`, spawns in `spawnlist.sql`, dialogs and screens under `db/resources/Dialogs`) found zero hits. The same patterns found known rows (chain 1177, spawns 400–499, screens 200000–200003, dialog 60102), so the search works. Dialog 60160 sits in the Cimmeria-authored 60100–60199 range, clear of the bank's 60110–60119 and CB-N05's 60150. The screens are at 200000 or above, clear of the client PAK's screens, which run to 120383. Point-in-time; CB-N04s rechecks before it seals.
 
 ### CS-08a individual reservation — 2026-10-14
 
