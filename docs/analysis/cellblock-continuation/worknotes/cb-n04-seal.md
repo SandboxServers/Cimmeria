@@ -152,7 +152,6 @@ data/spaces/castle_cellblock.nav --probes <file>`; lane log
 `cellblock-cb-n04s/20261017-180839-35552.log`.
 
 ```text
-components  17 (total walkable XZ area 674552.9 m^2)
   3    293          4688.1   [-341.8, -213.1] / [65.4, 73.8] / [-236.2, -102.4]
 probes (h-tol 2.00 m, v-tol 3.00 m)
   CastA_Prisoner1      poly=644    component=3    h=0.00 m  dy=-0.03 m  ok
@@ -160,17 +159,15 @@ probes (h-tol 2.00 m, v-tol 3.00 m)
   Prisoner329          poly=990    component=3    h=0.00 m  dy=-0.13 m  ok
 ```
 
-All three land in component 3 of the rebuilt 17-component mesh (#694), within
-0.13 m of the floor. The cast is stationary (skips `spawn_off_mesh`), so this
-proves the player's route around the NPCs, not their pathing.
+All three land in component 3 (rebuilt mesh, #694), within 0.13 m of the
+floor. The cast is stationary, so this proves the player's route, not pathing.
 
 ### Region1 containment (D-CC12)
 
 `Castle_Cellblock.Region1` is point set 2032, points (x, z): (-347.17,
--230.14), (-327.67, -240.70), (-318.89, -224.51), (-338.39, -213.94). Ray cast
-in x/z: cast 1 (-271.0, -135.0) and cast 2 (-254.0, -135.0) are both outside
-(Region1's largest x is -318.89, 47 m west of cast 1). Both lie inside Region2
-(y box 65.32 to 75.43; cast y 65.45).
+-230.14), (-327.67, -240.70), (-318.89, -224.51), (-338.39, -213.94). Casts
+1 (-271.0, -135.0) and 2 (-254.0, -135.0) are outside it (largest x -318.89)
+and inside Region2 (y box 65.32 to 75.43). The test ray-casts both.
 
 ### Distances (horizontal x/z, metres)
 
@@ -181,11 +178,9 @@ in x/z: cast 1 (-271.0, -135.0) and cast 2 (-254.0, -135.0) are both outside
 | spawn 20 `ArmYourself_NIDGuard` | 15 | 26.69 | 40.36 | +3.09 |
 | spawn 10 `ArmYourself_PrisonerRetrievalUnit` | 4 | 52.54 | 36.39 | +1.29 |
 | spawn 36 `Barracks_Guard3` | 24 | 134.62 | 117.62 | -40.78 |
-| spawn 26 `Barracks_Guard2` | 24 | 140.68 | 123.84 | -40.78 |
-| spawn 25 `Barracks_Guard1` | 24 | 153.50 | 136.61 | -40.78 |
 
-Of 14 hostile rows, these are the five nearest. Template-24 minimum 117.62 gives `GUARD_CLEARANCE_M` 117. The test counts
-template 24 only.
+Of 14 hostile rows, these are the nearest. The test pins templates 15 and 4
+at 23 m (`HOSTILE_CLEARANCE_M`) and template 24 at 117 m (`GUARD_CLEARANCE_M`).
 
 | Protected anchor | To cast 1 | To cast 2 |
 |---|---|---|
@@ -202,53 +197,42 @@ The minimum is 22.46 (cast 2 to the vial), so `PROTECTED_CLEARANCE_M` is 22.
 ### Aggro and assist radius
 
 - `crates/cell-world/src/cell/combat/aggression.rs:24` sets
-  `DEFAULT_AGGRO_RADIUS` 18.0 u; line 36 sets `AGGRO_VERTICAL_BAND` 4.0 u.
-  Templates 15 and 4 have no assist radius; template 24 has `assist_radius` 26
-  (NA14, from the NPC memory notes).
+  `DEFAULT_AGGRO_RADIUS` 18.0 u (line 36: vertical band 4.0 u). Templates 15
+  and 4 have no assist radius; template 24 has 26 (NA14 memory notes).
 - Floors: spawn 20 (template 15) 18 + 5 = 23 m, measured 26.69 (dy 3.09 is
   inside the 4 u band, so the horizontal figure decides); spawn 10 (template
   4) 23 m, measured 36.39; template 24 26 + 5 = 31 m, measured 117.62.
-- The cast is faction 1, friendly to everyone in the reaction table, and
-  NPC-vs-NPC aggro is witness-gated, so a guard never targets the prisoners.
-  The distances hold anyway, so a player who stops to look never pulls a guard.
+- The cast is faction 1 and NPC-vs-NPC aggro is witness-gated, so a guard
+  never targets a prisoner; the distances hold anyway.
 
 ### Template and chain checks
 
 - Template 176 `Castle_OpCoreSoldier_Unarmed`: class `mob`, faction 1,
-  `interaction_type` 0, `event_set_id` 570, level 4, `name_id` 7552, no
-  ability set, no weapon. It already spawns in world 8 (`Castle_Pop_*`, spawns
-  193 and 199-203), so mesh and body set are known to render.
+  `interaction_type` 0, `event_set_id` 570, level 4, no ability set, no
+  weapon. It already spawns in world 8 (spawns 193, 199-203): mesh is known.
 - No chain, dialog or mission seed names `OpCoreSoldier`, `Cellblock_Ambient`
-  or template 176. No chain in `castle_cellblock_chains.sql` aims
-  `add_dialog_set`, `set_interaction_type`, `move_entity` or `set_aggression`
-  at a tag the cast uses (targets are `ArmYourself_*`, `329_CellDoorButton`,
-  `HackTheRings_Switch`, `Preparation_*` and the like).
-- Region2 carries chains 1011 and 1012 (gate: 638 `not_active`, so they never
-  match in 639/2117) and 1013 (no condition, `once` false, system message
-  5040). **1013 shares this crossing in every phase, including 639/2117.**
-  CB-N04m rules on it; the message text was not read here.
+  or template 176, and no chain aims `add_dialog_set`, `move_entity` or
+  `set_aggression` at a tag the cast uses.
+- Region2 carries chains 1011 and 1012 (gate 638 `not_active`, never true in
+  639/2117) and 1013 (no condition, `once` false, system message 5040). 1013
+  shares the crossing in every phase; CB-N04m rules on it (Mission sign-off).
 - Gate: `mission_639_step_2117_status` is the key a `step_status` row reads
   (`crates/content-engine/src/conditions/tests.rs`). Step 2117 text: "Look in
   the Med Station down the hall for some Ambernol." Chains 1018/1019 accept 639
   and complete 638 at the Prisoner 329 dialog; chain 1031 moves 2117 to 2145 on
   Region11 entry.
 - Replay: accepting 639 activates 2117, so H52 replays mission-gated
-  `enter_region` chains if the server-known position is in Region2. Prisoner
-  329 stands at z -113.14, 2 m outside Region2, so the line speaks at that
-  replay or at the first Region2 crossing, once. `once` is in memory only: a
-  relog still on step 2117 lets the next crossing speak it once more. The gate
-  closes when step 2145 begins.
+  `enter_region` chains if the server-known position is in Region2. `once` is
+  in memory only: a relog on step 2117 lets the next crossing speak once more.
+  The gate closes when step 2145 begins.
 
 ### ID collision check
 
-The packet's literal regex over all 719 local branches returns 16,491 hits,
-all legacy rows that reuse the numbers in other ID spaces (for example
-`dialog_screen_buttons` ids 520-522 and `dialog_screens` dialog ids 520 and
-521); it is too loose to gate on. A table-anchored regex over the same branches
-and paths (`INSERT INTO spawnlist` with spawn 520-522, `dialogs` 60160,
-`dialog_screens` with screen_id 200160-200162, and the four `content_*`
-tables with chain 11010-11012, plus continuation lines) returns **0 hits on
-719 branches**. CB-N04a's Step 0 grep of the four seed files is the second gate.
+The literal regex over 719 local branches returns 16,491 hits, all legacy rows
+reusing the numbers in other ID spaces; too loose to gate on. A table-anchored
+regex (spawnlist 520-522, dialogs 60160, dialog_screens 200160-200162,
+`content_*` chains 11010-11012) returns **0 hits on 719 branches**. CB-N04a's
+Step 0 grep is the second gate.
 
 ## CB-U08 steps
 
@@ -265,8 +249,8 @@ user first, D-CC3). One character, then a second client for AoI.
    whether the cast stands in an open corridor or behind a door (the navmesh
    cannot tell; record it).
 4. Chat shows the 11010 line once, on the first Region2 entry (or at the 329
-   dialog if the player is already inside Region2). Record it **with** chain
-   1013's system message 5040 at the same crossing, in order.
+   dialog if the player is already inside Region2). Expect only this line:
+   chain 1013 logs `Content: system message (stub...)` and shows nothing.
 5. Leave and re-enter Region2 on step 2117: no second line. Relog on 2117 and
    cross Region2: one more line is expected. Take the vial (step 2145): none
    on any later crossing.
@@ -287,8 +271,8 @@ SigNoz (service `cell`):
 
 **sealed.** Pocket `cells`: Region2 north cell blocks, two template-176 rows
 (spawns 520 and 521), one bark (chain 11010 on Region2 during 639/2117). Open
-for CB-N04m: chain 1013 shares the crossing; the relog replay on step 2117; the
-copy against the CB-N05 story. Open for CB-U08: facing and the 329 door state.
+for CB-N04m: the relog replay on step 2117; the copy against the CB-N05 story.
+Open for CB-U08: facing and the 329 door state.
 
 ## Measurement
 

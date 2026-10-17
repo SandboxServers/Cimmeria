@@ -8,8 +8,9 @@
 //!   re-fires mission-gated `enter_region` chains; `once` stops a second
 //!   line in one visit).
 //! - The placement test pins world, template and tag for every cast row,
-//!   and the static clearances the seal measured from every world-12 NID
-//!   guard (template 24) and every protected anchor.
+//!   the static clearances the seal measured from every world-12 hostile
+//!   (templates 4, 15 and 24) and every protected anchor, and that no cast
+//!   row lies inside `Castle_Cellblock.Region1` (D-CC12).
 
 use cimmeria_content_engine::actions::Action;
 use cimmeria_content_engine::chain::{ChainEngine, ResolvedActions};
@@ -19,6 +20,7 @@ use sqlx::PgPool;
 
 use super::super::engine_loader::load_single_chain_for_test;
 use super::assert_no_deferred_actions;
+use crate::cell::spawner::region_contains_xz;
 use crate::test_support::require_db_or_skip;
 
 type Params = &'static [(&'static str, &'static str)];
@@ -58,7 +60,10 @@ const CAST: &[(&str, i32, i32)] = &[
     ("Cellblock_Ambient_Prisoner1", 520, 176),
     ("Cellblock_Ambient_Prisoner2", 521, 176),
 ];
+/// Template 24 (`Barracks_Guard*`, assist radius 26): the measured minimum.
 const GUARD_CLEARANCE_M: f64 = 117.0;
+/// Templates 15 and 4: aggro radius 18 u plus 5 m.
+const HOSTILE_CLEARANCE_M: f64 = 23.0;
 const PROTECTED_CLEARANCE_M: f64 = 22.0;
 const PROTECTED: &[(&str, [f64; 3])] = &[
     ("WakePod", [-334.23, 73.47, -228.03]),
@@ -179,17 +184,33 @@ async fn live_db_cellblock_ambience_cast_rows_are_placed_safely() {
         "exactly the sealed cast rows: {rows:?}"
     );
 
-    let guards: Vec<(f64, f64, f64)> = sqlx::query_as(
-        "SELECT x::float8, y::float8, z::float8 FROM resources.spawnlist \
-         WHERE world_id = 12 AND template_id = 24",
+    // Hostiles 15 (spawn 20) and 4 (spawn 10) are the nearest; 24 is the
+    // Barracks guard set. Each row is checked against its own floor.
+    let hostiles: Vec<(i32, f64, f64, f64)> = sqlx::query_as(
+        "SELECT template_id::int4, x::float8, y::float8, z::float8 FROM resources.spawnlist \
+         WHERE world_id = 12 AND template_id IN (4, 15, 24)",
     )
     .fetch_all(&pool)
     .await
-    .expect("guard scan must succeed");
-    assert!(
-        !guards.is_empty(),
-        "no world-12 NID guards: the seed did not load"
-    );
+    .expect("hostile scan must succeed");
+    for template in [4, 15, 24] {
+        assert!(
+            hostiles.iter().any(|h| h.0 == template),
+            "no world-12 template {template} hostile: the seed did not load"
+        );
+    }
+
+    let region1: Vec<[f32; 3]> = sqlx::query_as::<_, (f32, f32, f32)>(
+        "SELECT x, y, z FROM resources.point_set_points \
+         WHERE set_id = 2032 ORDER BY point_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("Region1 (set 2032) must load")
+    .into_iter()
+    .map(|(x, y, z)| [x, y, z])
+    .collect();
+    assert_eq!(region1.len(), 4, "Region1 is the four-corner set 2032");
 
     let dist = |a: [f64; 3], b: [f64; 3]| {
         ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
@@ -206,13 +227,22 @@ async fn live_db_cellblock_ambience_cast_rows_are_placed_safely() {
             "{tag} must be is_stationary (D-CC12: no path, no cover)"
         );
         let at = [*x, *y, *z];
-        for g in &guards {
-            let d = dist(at, [g.0, g.1, g.2]);
+        for (template, hx, hy, hz) in &hostiles {
+            let floor = if *template == 24 {
+                GUARD_CLEARANCE_M
+            } else {
+                HOSTILE_CLEARANCE_M
+            };
+            let d = dist(at, [*hx, *hy, *hz]);
             assert!(
-                d >= GUARD_CLEARANCE_M,
-                "{tag} is {d:.1} m from an NID guard"
+                d >= floor,
+                "{tag} is {d:.1} m from template {template} (floor {floor} m)"
             );
         }
+        assert!(
+            !region_contains_xz(&region1, *x as f32, *z as f32),
+            "{tag} lies inside Castle_Cellblock.Region1 (D-CC12)"
+        );
         for (name, anchor) in PROTECTED {
             let d = dist(at, *anchor);
             assert!(d >= PROTECTED_CLEARANCE_M, "{tag} is {d:.1} m from {name}");
