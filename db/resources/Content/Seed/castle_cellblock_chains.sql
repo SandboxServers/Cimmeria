@@ -53,6 +53,7 @@
 --     chain_ids in 1176-1190 existed anywhere under
 --     db/resources/Content/Seed/. 1179-1190 remain free, which leaves
 --     GC1c (lockdown VFX, still BlockedEvidence) its headroom.
+--   Cellblock ambient cast (CB-N04a, 2026-10-17): chain(s) 11010, individual claims in the 11000-11499 Cellblock authored block (id-allocation.md, CB-N04 claims).
 --   (next free inside 1001-1111: 1029-1030, 1038-1040, 1047-1050, 1067-1070,
 --    1075-1080, 1095-1096; next free above 1111 for an unreserved future
 --    packet: 1200+, since 1112-1199 are all pre-allocated per work-packets.md)

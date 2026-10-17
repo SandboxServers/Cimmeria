@@ -50,7 +50,7 @@
 | W1a (pilot) | CB-N02s, then CB-N02a | **Integrated** at `e10fd1f0a`. CB-U03 client check of 1026/1027 UATPending. |
 | W1b | W1b-R0 (only if ops refuses the rebase), then in parallel CB-N02b, CB-N02c, CB-N02d, CB-N02s2, CB-N03s; review; W1b-INT | **Integrated** at `0fca3114f`. CB-U03 UATPending for 1028/1036/1037. |
 | W1c | Children sealed by CB-N02s2 or CB-N03s (for example CB-N03a), each from a new architect pass | **Not triggered**: neither advisor sealed a child (2026-10-17 architect pass). CB-N03a reopens only if CB-U05 shows a seed fault. |
-| W2 | [w2-packets.md](w2-packets.md): CB-N04s, then CB-N04m, then CB-N04a; review; W2-INT; CB-U08 (ask first). CB-N07 held (BlockedEvidence on CB-U05 and CB-U09, BlockedDecision D-CC11). | W1 integrated (met). Feature SHA `0fca3114f`; W2 worktrees branch from the W2 architect tip (main overlay RESUME.md names it). D-CC12: cast rows stationary, outside Region1. |
+| W2 | [w2-packets.md](w2-packets.md): CB-N04s, then CB-N04m, then CB-N04a; review; W2-INT; CB-U08 (ask first). CB-N07 held (BlockedEvidence on CB-U05 and CB-U09, BlockedDecision D-CC11). | **Integrated** at `139342746` (cherry-picks `ce1381581`, `86b5485bc`, `908cef5a5`, `139342746`). CB-U08 UATPending (ask first). W1 integrated (met). Feature SHA `0fca3114f`; W2 worktrees branch from the W2 architect tip (main overlay RESUME.md names it). D-CC12: cast rows stationary, outside Region1. |
 | W3 | CB-N05 (Remaining Pods), then CB-N05b (held on HA-1360), then CB-N06 (conditional) | CB-U09 measured |
 | W4 | CB-N08 | All above Integrated or UATPending with documented lab unavailability (O14-09) |
 

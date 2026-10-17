@@ -14,7 +14,7 @@ Measured on 2026-10-13 at `origin/main` 885bbae05 from the first value of each `
 | Seed file | Chains | IDs in use |
 |---|---:|---|
 | `effects_chains.sql` | 7 | 2001, 2011, 2021–2025 |
-| `castle_cellblock_chains.sql` | 125 | 1001–1195 (sparse: 1001–1028, 1031–1034, 1036–1037, 1041–1046, 1051–1066, 1071–1074, 1081–1094, 1097–1112, 1121, 1131–1133, 1141–1142, 1151–1152, 1154, 1161–1162, 1171–1178, 1181–1195) and the single outlier 5030 |
+| `castle_cellblock_chains.sql` | 126 | 1001–1195 (sparse: 1001–1028, 1031–1034, 1036–1037, 1041–1046, 1051–1066, 1071–1074, 1081–1094, 1097–1112, 1121, 1131–1133, 1141–1142, 1151–1152, 1154, 1161–1162, 1171–1178, 1181–1195) and the single outlier 5030, and 11010–11010 |
 | `castle_701_chains.sql` | 18 | 1201–1205, 1231–1243 |
 | `castle_702_704_chains.sql` | 23 | 1261–1265, 1271–1276, 1291–1302 |
 | `castle_706_708_chains.sql` | 28 | 1321–1323, 1341–1365 |
@@ -85,10 +85,10 @@ Individual claims for the wave 2 ambient cast (cluster 1) in the [Cellblock ledg
 
 | Namespace | Claimed IDs | Exact use | Status |
 |---|---|---|---|
-| Content chain | 11010, 11011, 11012 | One `enter_region` ambient `npc_bark` chain per bark (1 or 2 expected) | Claimed (W2 architect) |
-| Spawn (world 12) | 520, 521, 522 | Static friendly Op-CORE prisoners tagged `Cellblock_Ambient_*` (1 to 3) | Claimed (W2 architect) |
-| Dialog root | 60160 | Seed-only bark holder, never displayed, no override | Claimed (W2 architect) |
-| Dialog screen | 200160, 200161, 200162 | One bark line each, under dialog 60160 | Claimed (W2 architect) |
+| Content chain | 11010, 11011, 11012 | One `enter_region` ambient `npc_bark` chain per bark (1 or 2 expected) | In use (W2-INT): 11010. Released (W2-INT): 11011, 11012 |
+| Spawn (world 12) | 520, 521, 522 | Static friendly Op-CORE prisoners tagged `Cellblock_Ambient_*` (1 to 3) | In use (W2-INT): 520, 521. Released (W2-INT): 522 |
+| Dialog root | 60160 | Seed-only bark holder, never displayed, no override | In use (W2-INT): 60160 |
+| Dialog screen | 200160, 200161, 200162 | One bark line each, under dialog 60160 | In use (W2-INT): 200160. Released (W2-INT): 200161, 200162 |
 
 Collision check, 2026-10-17, at Cellblock `0fca3114f`: a `git grep` across all 740 local branches for these IDs as the first value of a `VALUES (` tuple (chains and triggers under `db/resources/Content`, spawns in `spawnlist.sql`, dialogs and screens under `db/resources/Dialogs`) found zero hits. The same patterns found known rows (chain 1177, spawns 400–499, screens 200000–200003, dialog 60102), so the search works. Dialog 60160 sits in the Cimmeria-authored 60100–60199 range, clear of the bank's 60110–60119 and CB-N05's 60150. The screens are at 200000 or above, clear of the client PAK's screens, which run to 120383. Point-in-time; CB-N04s rechecks before it seals.
 

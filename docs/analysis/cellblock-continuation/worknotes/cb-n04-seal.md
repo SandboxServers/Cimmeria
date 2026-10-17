@@ -270,9 +270,8 @@ SigNoz (service `cell`):
 ## Verdict
 
 **sealed.** Pocket `cells`: Region2 north cell blocks, two template-176 rows
-(spawns 520 and 521), one bark (chain 11010 on Region2 during 639/2117). Open
-for CB-N04m: the relog replay on step 2117; the copy against the CB-N05 story.
-Open for CB-U08: facing and the 329 door state.
+(spawns 520 and 521), one bark (chain 11010 on Region2 during 639/2117). CB-N04m
+signed off (approve, see Mission sign-off). Open for CB-U08: facing and the 329 door state.
 
 ## Measurement
 
