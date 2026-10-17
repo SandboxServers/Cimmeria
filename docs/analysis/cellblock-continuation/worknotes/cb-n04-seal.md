@@ -297,3 +297,21 @@ copy against the CB-N05 story. Open for CB-U08: facing and the 329 door state.
   restarted fresh); end 2026-10-17 UTC.
 - Lane runs: 1 final `nav_inspect` (exit 0, 2.8 s) plus earlier probe runs.
 - Review rounds: 0.
+
+## Mission sign-off
+
+Signed by CB-N04m (mission-systems-advisor, 2026-10-17). Verdict: **approve**. No edit to `## Values` or `## SQL`.
+
+| # | Check | Result | Evidence |
+|---|---|---|---|
+| 1 | Gate | Pass | Chain 11010 gates on `step_status 639/2117 eq active`. 1018/1019 accept 639 and complete 638 at the Prisoner 329 dialog, which activates 2117. The refused cases are the adjacent states: `not_active` (638 phase, 639 unaccepted) and `completed` (2145 onward; chain 1031 moves 2117 to 2145 on Region11 entry). Region2 carries no other chain that fires in 639/2117 except 1013. |
+| 2 | No overlap | Pass | Region2 `enter_region` chains are only 1011/1012 (gate 638 `not_active`, never true in 639/2117) and 1013. Marsh barks 1176 (teleport_in), 1177 (Region3), 1178 (Region5) are other triggers. CB-N05 chains 11000-11005 key on `mission_completed`, `player_loaded`, `mission_abandoned`, `mission_accepted` and `interact_tag`, never `enter_region`. No tutorial chain names Region2 or step 2117. |
+| 3 | Suppression | Pass, with the stated relog limit | `once` is true. The gate closes at 2145 and `completed` is refused. 11010 is mission-gated, so the H52 step-activation replay admits it (an ungated 1013 is refused on replay). There is no `player_loaded` bark. `once` is cell-entity memory, so a relog on 2117 allows one more line; one extra line per relog during one phase is acceptable and needs no persisted gate. |
+| 4 | Cast | Pass | No seed under `db/resources/Content` names `Cellblock_Ambient`, `Castle_OpCoreSoldier_Unarmed` or template 176. No chain aims `add_dialog_set`, `set_interaction_type`, `move_entity` or `set_aggression` at the cast. |
+| 5 | Copy | Pass | Prisoners react to the open cell, which fits the 639 escape phase. The line names no Prisoner 329, pods, Marsh or rescue, so it does not pre-empt the CB-N05 "Remaining Pods" story, which starts only after 638 completes and is offered by 329 and Marsh. |
+
+Ruling on chain 1013: `system_message` is a stub in the executor (`executor/dispatch.rs`, `Action::SystemMessage` logs "Content: system message (stub)" and sends nothing). Chain 1013 therefore adds no player-visible line at the crossing, in any phase, and does not collide with the bark. The 1013 text (5040) is the original "System Communications" entry for Region2.
+
+Correction for CB-U08 step 4: do not expect message 5040 in chat. Expect only the 11010 bark line, plus an INFO `Content: system message (stub...)` row for chain 1013 in SigNoz. The stub means a future wiring of `system_message` would put 5040 beside the bark; re-check the overlap then.
+
+Verdict: **approve**.
