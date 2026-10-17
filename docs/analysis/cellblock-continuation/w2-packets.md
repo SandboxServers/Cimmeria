@@ -15,7 +15,7 @@ Wave 2 covers CB-N04 (the ambient cast) and CB-N07 (one room's encounter respons
 
 | Step | Packet | Agent | Worktree / branch | Runs after |
 |---|---|---|---|---|
-| 1 | [CB-N04s](#cb-n04s--seal-the-cluster-1-cast) | `npc-ai-spawn-advisor` | `cellblock-cb-n04s` / `cellblock/cb-n04s-cast-seal` | Worktree on feature SHA `0fca3114f` |
+| 1 | [CB-N04s](#cb-n04s--seal-the-cluster-1-cast) | `npc-ai-spawn-advisor` | `cellblock-cb-n04s` / `cellblock/cb-n04s-cast-seal` | Worktree on the W2 architect tip (the newest commit that touches this file; the main overlay RESUME.md names its SHA) |
 | 2 | [CB-N04m](#cb-n04m--mission-sign-off-on-the-seal) | `mission-systems-advisor` | the same worktree, after CB-N04s commits | CB-N04s returns `done` with verdict `sealed` |
 | 3 | [CB-N04a](#cb-n04a--build-the-cluster-1-cast) | `packet-coder` | `cellblock-cb-n04a` / `cellblock/cb-n04-<room>` | CB-N04m returns `done` with verdict `approve` |
 | 4 | Review | `packet-reviewer`, read-only | all three commits | CB-N04a returns `done` |
@@ -45,6 +45,7 @@ Steps 1 to 3 are sequential because each one reads the previous one's output. Th
 | Ambient bark shape | `enter_region` trigger on an **existing** point set key (exact string: every Cellblock region is `Castle_Cellblock.RegionN` with a lowercase b, except `Castle_CellBlock.Region8`), scope `player`, **`once` true**. Mission-state conditions decide the phase. One `npc_bark` action: `{"screen_id": N, "speaker": "<name>", "channel": "say"}`. The server reads the text from `dialog_screens` and sends it only to the crossing player's chat (onPlayerCommunication). Precedent: chains 1176-1178. |
 | Why `once` true | The H52 step-activation replay re-fires `enter_region` for mission-gated chains when a step activates while the player stands in the region. `once` stops a second line in the same space visit. The mission gate stops it across visits and relogs. The fired-once set is in memory only. |
 | Telemetry (owner rule, 2026-10-13) | Progress events, all existing: span `content.npc_bark`, INFO `Content: npc bark` with `chain_id` and `screen_id` (the line was spoken). The executor's WARN with `reason` = `screen_not_cached`, `empty_text` or `actor_not_player` (refused). The spawner's per-entity spawn log line (CB-N04s names it). No new telemetry code. |
+| Cast rows (D-CC12) | Every cast spawn row sets `is_stationary` = `true` (10-column insert form, precedent spawn 10 and the debug hub 400-490). A stationary spawn keeps its authored height, never takes cover, never requests a path and skips the spawner's `spawn_off_mesh` check. No cast position may lie inside `Castle_Cellblock.Region1` (point set 2032, the stasis room that is the debug hub floor): `live_db_debug_hub_stationary` counts every spawn whose x/z falls in that polygon. |
 | Holder dialog | Seed-only dialog 60160, never displayed, so it needs no `DIALOG_OVERRIDES` entry (new overrides are quarantined). Screens 200160+ hang off it. Precedent: dialog 60102. |
 
 ### Repo rules every packet carries
@@ -94,6 +95,7 @@ Steps 1 to 3 are sequential because each one reads the previous one's output. Th
 3. **Place each NPC:** exact `x, y, z, heading` (BigWorld, y up). Probe every position with one route anchor in the same room. Write a probes file under the scratch folder and run:
    `Set-Location <wt>; pwsh tools/build-lane/lane.ps1 cargo run -p cimmeria-navmesh-extractor --bin nav_inspect -- data/spaces/castle_cellblock.nav --probes <abs probes file>`
    Exit 0 is required. Exit 2 means a probe has no polygon, so move it. Exit 3 means the probes are split across components, so move it. Paste the output into the seal.
+   Then show, for each position, that its x/z lies outside the `Castle_Cellblock.Region1` polygon (point set 2032; list the polygon's points and give the containment result). A position inside it is excluded (contract row "Cast rows"). The cast is `is_stationary` = `true`, so the nav probe proves the player's route around the NPC, not the NPC's own pathing.
 4. **Clearance.** For each cast position, compute the distance to every world-12 template-24 spawn, and cite the guard's aggro radius from step 8 of Read. The minimum must be at least the radius plus 5 m. Do this even if hostiles ignore friendly NPCs, so that a player who stops to look never pulls a guard. Also compute the distance to each protected anchor: the wake-up pod, the med station, each ring pad and the Hallway05 and Mess Hall guard spawns. Give each anchor's coordinates and source row. Then set `GUARD_CLEARANCE_M` and `PROTECTED_CLEARANCE_M`, the values the test will enforce: the measured minimum rounded down to a whole metre.
 5. **Choose the trigger:** one existing region the player crosses on first approach to the cluster, and its mission gate (the phase). Use 1 bark, or 2 at most. Check step 7's list. The bark must not share a crossing and phase with a tutorial prompt, a Marsh bark (1176-1178) or a CB-N05 chain (11000-11005). Write each chain's happy-path params and its two adjacent wrong states (the phase not reached and the phase passed), as `mission_<m>_status` or `mission_<m>_step_<s>_status` keys with the values `active`, `completed` or `not_active`.
 6. **Write the copy:** one line per bark, at most 200 characters, in the prisoners' voice. It reacts to the escape (the player is up and moving). No instructions, no tutorial hints, no promise of a mission, no pods, no new named characters. The speaker string is `Op-CORE Soldier` (moniker 7552) unless you show evidence for another.
@@ -180,9 +182,10 @@ The seal fills these in. They are shown here so that the reviewer can diff the r
 
 ```sql
 -- CB-N04a (2026-10-17): Cellblock ambient cast, <room>. Friendly Op-CORE
--- prisoners (faction 1, no ability set), static. Placement, nav probe and
--- guard clearance: docs/analysis/cellblock-continuation/worknotes/cb-n04-seal.md.
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (520, <x>, <y>, <z>, <heading>, 12, <template>, 'Cellblock_Ambient_<Name>', NULL);
+-- prisoners (faction 1, no ability set), held in place by is_stationary.
+-- Placement, nav probe and guard clearance:
+-- docs/analysis/cellblock-continuation/worknotes/cb-n04-seal.md.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (520, <x>, <y>, <z>, <heading>, 12, <template>, 'Cellblock_Ambient_<Name>', NULL, true);
 ```
 
 ```sql
@@ -357,8 +360,9 @@ async fn live_db_cellblock_ambience_barks_refuse_adjacent_states() {
 #[tokio::test]
 async fn live_db_cellblock_ambience_cast_rows_are_placed_safely() {
     let pool = require_db_or_skip!();
-    let rows: Vec<(i32, String, i32, i32, f64, f64, f64)> = sqlx::query_as(
+    let rows: Vec<(i32, String, i32, i32, bool, f64, f64, f64)> = sqlx::query_as(
         "SELECT spawn_id::int4, tag, template_id::int4, world_id::int4, \
+         COALESCE(is_stationary, false), \
          x::float8, y::float8, z::float8 FROM resources.spawnlist \
          WHERE tag LIKE 'Cellblock\\_Ambient\\_%' ORDER BY spawn_id",
     )
@@ -379,10 +383,11 @@ async fn live_db_cellblock_ambience_cast_rows_are_placed_safely() {
     let dist = |a: [f64; 3], b: [f64; 3]| {
         ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
     };
-    for ((spawn_id, tag, template, world, x, y, z), (want_tag, want_id, want_tpl)) in
+    for ((spawn_id, tag, template, world, stationary, x, y, z), (want_tag, want_id, want_tpl)) in
         rows.iter().zip(CAST)
     {
         assert_eq!((spawn_id, tag.as_str(), template, world), (want_id, *want_tag, want_tpl, &12));
+        assert!(*stationary, "{tag} must be is_stationary (D-CC12: no path, no cover)");
         let at = [*x, *y, *z];
         for g in &guards {
             let d = dist(at, [g.0, g.1, g.2]);
@@ -398,7 +403,7 @@ async fn live_db_cellblock_ambience_cast_rows_are_placed_safely() {
 
 `spawnlist.tag` may be `NULL` on other rows. The `LIKE` filter returns only cast rows, so `String` decodes. If `cargo clippy` objects to the tuple comparison's mixed references, compare the fields one by one. Keep each assertion message.
 
-**Why the tests fail on revert.** Without the chain rows, `engine_for` panics. Without the spawn rows, the count is 0 and `assert_eq!` fails. A wrong gate either fails the happy path or resolves on a refused case. The existing guard `marsh_barks::seed_shape::live_db_every_seeded_bark_names_a_real_screen_and_a_named_speaker` now also covers the new barks: a missing or blank screen fails it. `live_db_player_loaded_into_castle_cellblock_resolves_no_bark` fails if a bark lands on `player_loaded`.
+**Why the tests fail on revert.** Without the chain rows, `engine_for` panics. Without the spawn rows, the count is 0 and `assert_eq!` fails. Without `is_stationary`, the stationary assertion fails. A wrong gate either fails the happy path or resolves on a refused case. The existing guard `marsh_barks::seed_shape::live_db_every_seeded_bark_names_a_real_screen_and_a_named_speaker` now also covers the new barks: a missing or blank screen fails it. `live_db_player_loaded_into_castle_cellblock_resolves_no_bark` fails if a bark lands on `player_loaded`.
 
 **Mutation proof (required).** In one edit, change chain 11010's first condition value `'active'` to `'completed'` and spawn 520's `world_id` from `12` to `13`. Run `live-db-test.ps1 cellblock_ambience`. The fire test and the placement test must fail. Undo both edits with the Edit tool (no git restore), rerun, and confirm green. Record both runs in the report.
 
@@ -414,7 +419,8 @@ async fn live_db_cellblock_ambience_cast_rows_are_placed_safely() {
 3. `pwsh tools/build-lane/lane.ps1 cargo nextest run -p cimmeria-cell-content --filter-expr 'test(cellblock_ambience) | test(marsh_barks)'`
 4. `pwsh tools/build-lane/live-db-test.ps1 cellblock_ambience`. All three tests must pass, not skip.
 5. `pwsh tools/build-lane/live-db-test.ps1 marsh_barks`. The all-bark guards must stay green.
-6. `git -C <wt> diff --check`, plus rule 6 for every seed and doc.
+6. `pwsh tools/build-lane/live-db-test.ps1 debug_hub_stationary`, then `pwsh tools/build-lane/live-db-test.ps1 spawnlist_sequence` (cell-catalog spawn guards: the stasis-room count and the spawn id sequence must stay green).
+7. `git -C <wt> diff --check`, plus rule 6 for every seed and doc.
 
 **Not in scope:** the seed header, `id-allocation.md`, `crates/cell-chatter/`, `entity_templates.sql`, executor code, a lab run, and any ID not in the seal.
 
@@ -438,7 +444,7 @@ async fn live_db_cellblock_ambience_cast_rows_are_placed_safely() {
    - `castle_cellblock_chains.sql` header: directly before the line starting `--   (next free inside 1001-1111:`, add `--   Cellblock ambient cast (CB-N04a, 2026-10-17): chain(s) <used ids>, individual claims in the 11000-11499 Cellblock authored block (id-allocation.md, CB-N04 claims).`
    - `docs/analysis/four-zone-planning/id-allocation.md`, "Chain IDs in use today" Cellblock row: add the number of chains used to the count `125`, and append `, and 11010–<last>` after `the single outlier 5030`. In the "CB-N04 claims — 2026-10-17" table, mark each used ID `In use (W2-INT)` and each unused one `Released (W2-INT)`.
    - `docs/analysis/cellblock-continuation/README.md`: the CB-N04s, CB-N04m and CB-N04a rows become `Integrated` with their SHAs (CB-N04a also `UATPending` on CB-U08).
-4. Lane checks (prefix `Set-Location <wt>;`): `pwsh tools/build-lane/lane.ps1 cargo clippy -p cimmeria-cell-content --all-targets -- -D warnings`, then `pwsh tools/build-lane/live-db-test.ps1 cellblock_ambience`, then `pwsh tools/build-lane/live-db-test.ps1 marsh_barks`. All must pass, not skip.
+4. Lane checks (prefix `Set-Location <wt>;`): `pwsh tools/build-lane/lane.ps1 cargo clippy -p cimmeria-cell-content --all-targets -- -D warnings`, then `pwsh tools/build-lane/live-db-test.ps1 cellblock_ambience`, then `pwsh tools/build-lane/live-db-test.ps1 marsh_barks`, then `pwsh tools/build-lane/live-db-test.ps1 debug_hub_stationary`. All must pass, not skip.
 5. Report the integrated SHAs. No push.
 
 Repo rules 1, 2, 3, 6, 9 and 10.

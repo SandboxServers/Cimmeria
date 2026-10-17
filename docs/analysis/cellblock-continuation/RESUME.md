@@ -24,7 +24,7 @@ Sequential, cluster 1 of CB-N04 only ([w2-packets.md](w2-packets.md)):
 | 4 | Review, fixes, re-review | packet-reviewer / packet-coder | per packet |
 | 5 | W2-INT | packet-coder | zone-cellblock |
 
-Claimed IDs: spawns 520-522, dialog 60160, screens 200160-200162, chains 11010-11012 (id-allocation.md, CB-N04 claims).
+Cast rows are `is_stationary` and outside Region1 (D-CC12). Claimed IDs: spawns 520-522, dialog 60160, screens 200160-200162, chains 11010-11012 (id-allocation.md, CB-N04 claims).
 
 ## Next actions
 
