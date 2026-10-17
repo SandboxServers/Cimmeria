@@ -36,6 +36,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [reference_cb_n05a_catalog_seal_2026_10_14.md](reference_cb_n05a_catalog_seal_2026_10_14.md) — authored mission catalog seal: full resync/empty InvalidKeys, conservative key guard, test-only 61000–61003; live new-ID presentation pending
 
 - [reference_lab_login_foreground_lanes_2026_10_14.md](reference_lab_login_foreground_lanes_2026_10_14.md) — shared lab daemon serializes credential entry across instances; native two-client UAT pending
+- [First-login AoI phase-2 fragment](../rust-gameserver-dev/mercury-aoi-intro.md) — cinematic release now limits the cascade's first fragment to its first framed message when it fits; wire and lab-chaos suites pass, short-fragment client acceptance is pending
 
 - [reference_lab_transition_click_2026_10_13.md](reference_lab_transition_click_2026_10_13.md) — report-only native click survives an immediate world load; live click passed, Castle transition replay remains pending
 - [project_cellblock_aftermath_dwell_2026_10_13.md](project_cellblock_aftermath_dwell_2026_10_13.md) — #1721: 2516 was evicted after 422 ms; chain 1172 now gives it 16 seconds before blurb 5859; live recheck pending

@@ -346,10 +346,18 @@ async fn drain_and_lift(
             }
             flushed += state.deferred_aoi_msgs.len();
         }
+        // CH-07 Delay also uses this hold on returning players. Its
+        // ClientReady release is the ordinary pre-ready flush, so retain
+        // the packed shape while cinematic exits use the tail-safe one.
+        let trigger = if reason == ReleaseReason::ClientReady {
+            "on_client_ready"
+        } else {
+            "cinematic_hold_release"
+        };
         flush_deferred_aoi(
             witness_id,
             addr,
-            "cinematic_hold_release",
+            trigger,
             transport,
             connected,
             entity_to_addr,

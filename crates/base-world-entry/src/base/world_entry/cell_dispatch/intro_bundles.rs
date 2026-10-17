@@ -1,10 +1,11 @@
-//! The two introduction bundles a deferred-AoI flush sends for one lifecycle
-//! segment: phase 1 (each entity's `CREATE_ENTITY + UPDATE_AVATAR` record)
-//! then phase 2 (each entity's `createOnClient()` cascade). Why they are two
-//! bundles and never one is on [`super::deferred_flush`]'s `dispatch_deferred`.
+//! Deferred-AoI introduction packets for one lifecycle segment: phase 1
+//! (`CREATE_ENTITY` and `UPDATE_AVATAR` per entity), then phase 2 (the
+//! `createOnClient()` cascade). Ordinary flushes use two cross-entity bundles.
+//! First-login cinematic release sends each phase-1 message separately to
+//! keep the client's stale request cursor from dropping the tail.
 //!
-//! [`Phase1Shape`] is the one knob on the shape. Its default is the ordinary
-//! flush, one phase-1 bundle holding every record; the lab chaos flush modes
+//! [`Phase1Shape`] controls the ordinary flush shape. Its default is one
+//! phase-1 bundle holding every record; the lab chaos flush modes
 //! (CH-07, `flush_chaos.rs`) cut the first bundle short and put filler
 //! messages ahead of its first record.
 
@@ -106,10 +107,93 @@ pub(super) async fn send_intro_bundles(
     mut phase1: Vec<IntroRecord>,
     phase2: Vec<IntroRecord>,
     shape: &Phase1Shape,
+    tail_safe_phase1: bool,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
+    if tail_safe_phase1 {
+        // One IntroRecord is TWO Mercury messages. In the first-login hold,
+        // put each message in its own reliable packet so the client's stale
+        // next-request offset cannot collide with a later message cursor.
+        // The create packet ends its transaction before that entity's avatar
+        // update, and all updates precede the property cascade below.
+        for (entity_id, body) in &phase1 {
+            let create_len = body
+                .get(1..3)
+                .map(|len| usize::from(u16::from_le_bytes([len[0], len[1]])) + 3);
+            let Some(create_len) = create_len
+                // This composer emits precisely the 11-byte create and
+                // 26-byte avatar update. If that contract changes, keep the
+                // record intact and flag the wire assumption for review.
+                .filter(|&len| {
+                    len == 11
+                        && body.len() == 37
+                        && body.first() == Some(&0x09)
+                        && body.get(len) == Some(&0x10)
+                })
+            else {
+                tracing::error!(
+                    witness_id,
+                    entity_id,
+                    body_len = body.len(),
+                    "AoI tail-safe flush: unexpected create/update body; sending intact"
+                );
+                send_one(
+                    witness_id,
+                    witness_name,
+                    Phase::CreateBase,
+                    &[],
+                    &[(*entity_id, body.clone())],
+                    false,
+                    transport,
+                    connected,
+                    entity_to_addr,
+                )
+                .await;
+                continue;
+            };
+            send_one(
+                witness_id,
+                witness_name,
+                Phase::CreateBase,
+                &[],
+                &[(*entity_id, body[..create_len].to_vec())],
+                false,
+                transport,
+                connected,
+                entity_to_addr,
+            )
+            .await;
+            send_one(
+                witness_id,
+                witness_name,
+                Phase::CreateBase,
+                &[],
+                &[(*entity_id, body[create_len..].to_vec())],
+                false,
+                transport,
+                connected,
+                entity_to_addr,
+            )
+            .await;
+        }
+        if !phase2.is_empty() {
+            send_one(
+                witness_id,
+                witness_name,
+                Phase::Cascade,
+                &[],
+                &phase2,
+                true,
+                transport,
+                connected,
+                entity_to_addr,
+            )
+            .await;
+        }
+        return;
+    }
     let entered = phase1.len();
     let cut = shape
         .first_bundle_records
@@ -130,6 +214,7 @@ pub(super) async fn send_intro_bundles(
             phase,
             filler,
             &records,
+            false,
             transport,
             connected,
             entity_to_addr,
@@ -145,11 +230,15 @@ async fn send_one(
     phase: Phase,
     filler: &[Vec<u8>],
     records: &[IntroRecord],
+    tail_safe_cascade: bool,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
 ) {
     let mut bundle = ChannelBundle::new(true);
+    if tail_safe_cascade {
+        bundle.isolate_first_fragment_message();
+    }
     // Per-message offset / id / entity (TG-AOI-09), logged on
     // `aoi.bundle_manifest` when the bundle is sent.
     let mut manifest = BundleManifest::new();
