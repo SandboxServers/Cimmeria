@@ -776,6 +776,27 @@ Marsh's core chains 1051/1052 still fire beside 11005; 1152 is unchanged. Seal: 
 
 One alarm line as the player enters the barracks to fight its three guards (spawns 25, 26, 36). It changes no AI, spawn or objective state. Sealed in [cb-n07-seal.md](../analysis/cellblock-continuation/worknotes/cb-n07-seal.md).
 
+#### Mission 62060: "Before the Patrol Returns" (CB-N06, CIMMERIA_AUTHORING)
+
+An optional, one-time choice after 638, with no XP, naquadah or mission reward. Both Op-CORE prisoners offer it: helping one hide (a second click on a prisoner) or jamming the cell-door panel beside Prisoner 329 completes the mission and gives two Health Slappacks (item 2893).
+
+| Chain | Trigger | Gate | Actions |
+|---|---|---|---|
+| 11030 | `MissionCompleted`, `mission_id` 638 | 638 `completed`, 641 `not_active`, 62060 `not_active` | `AddDialogSet { dialog_set_id: 3862, slot: 176, mission_id: None }` |
+| 11031 | `PlayerLoaded`, `world_name` `Castle_CellBlock` | same | same |
+| 11032 | `PlayerLoaded`, `world_name` `Castle_CellBlock` | step 62061 `active` | `AddDialogSet { 3862, 176, None }`, `AddDialogSet { dialog_set_id: 7509, slot: 22, mission_id: None }` |
+| 11033 | `InteractTag`, `entity_tag` `Cellblock_Ambient_Prisoner1` | 638 `completed`, 641 `not_active`, 62060 `not_active` | `AcceptMission { mission_id: 62060 }` |
+| 11034 | `InteractTag`, `entity_tag` `Cellblock_Ambient_Prisoner2` | same | same |
+| 11035 | `MissionAccepted`, `mission_id` 62060 | step 62061 `active` | `AddDialogSet { 7509, 22, None }`, `DisplayDialog { dialog_id: 60151 }` |
+| 11036 | `InteractTag`, `Cellblock_Ambient_Prisoner1` | step 62061 `active` | `GrantItem { item_id: 2893, count: 2, container_id: Some(0) }`, `RemoveDialogSet { dialog_set_id: 7509, slot: 22 }`, `RemoveDialogSet { dialog_set_id: 3862, slot: 176 }`, `CompleteObjective { mission_id: 62060, objective_id: 62062 }` |
+| 11037 | `InteractTag`, `Cellblock_Ambient_Prisoner2` | same | same as 11036 |
+| 11038 | `InteractTag`, `329_CellDoorButton` | same | same as 11036 |
+| 11039 | `MissionAbandoned`, `mission_id` 62060 | none | `RemoveDialogSet { 7509, 22 }` |
+| 11040 | `MissionAccepted`, `mission_id` 641 | 62060 `not_active` | `RemoveDialogSet { 3862, 176 }` |
+| 11041 | `MissionAbandoned`, `mission_id` 62060 | 641 `neq not_active` | `RemoveDialogSet { 3862, 176 }` |
+
+Stock chains 1016/1017/1028 on the panel are gated on 638 step 2115 and stay disjoint; 1152 co-fires with 11040. Seal: `docs/analysis/cellblock-continuation/worknotes/cb-n06-seal.md`.
+
 ### Castle (Persistent Zone)
 
 **Confidence**: CONFIRMED for 701 and for every mission's DB data; RECONSTRUCTION for the 702/703/704/706/708 chains

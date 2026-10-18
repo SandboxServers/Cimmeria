@@ -58,6 +58,7 @@ mod mission_1361;
 mod mission_1562;
 mod mission_567;
 mod mission_62050;
+mod mission_62060;
 mod mission_622;
 mod mission_622_core_tutorial;
 mod mission_638;
