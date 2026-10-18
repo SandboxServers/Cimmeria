@@ -235,3 +235,9 @@ lab-account.json
 !.codex/agents/
 .codex/agents/*
 !.codex/agents/*.toml
+
+# Local tool output
+.codex-remote-attachments/
+/crates/launcher/binaries/
+/crates/launcher/gen/
+/sgw-launcher.exe
