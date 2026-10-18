@@ -25,6 +25,10 @@ name: senpai-review
 # Cost: Sonnet, at most 25 turns and an estimated $1.50 per run
 # (`--max-budget-usd` is a client-side estimate and can be passed slightly).
 # The whole budget is about $30, so treat it as roughly 20 reviews.
+# Billing: the Claude step uses the ANTHROPIC_SERVICE_ACCOUNT_API_KEY secret,
+# an Anthropic service-account key scoped to the owner's workspace (Anthropic
+# recommends service-account keys over a personal key for CI). The key is
+# already workspace-scoped, so no workspace header is passed.
 #
 # Identity and permissions: comments post as the Senpai GitHub App (secrets
 # APP_ID and APP_PRIVATE_KEY), with an installation token scoped to
@@ -190,7 +194,7 @@ jobs:
         timeout-minutes: 15
         uses: anthropics/claude-code-action@f27be6b65a4652f08a2ba3cff79114829b588967 # v1.0.252
         with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_SERVICE_ACCOUNT_API_KEY }}
           github_token: ${{ steps.senpai-token.outputs.token }}
           claude_args: >-
             --model claude-sonnet-5-5
@@ -394,7 +398,8 @@ jobs:
       # show_full_output stays false: it would print every message, tool
       # results included, to a public log. This prints only the CLI's final
       # `result` string (for a run that dies before its first turn, the API
-      # error, such as an invalid key or no credit), key-shaped text redacted.
+      # error, such as an invalid key or no credit), key-shaped text redacted,
+      # and the result's `api_error_status` (the HTTP status, or "none").
       # The action sets `execution_file` on failure too; the fallback is the
       # path it writes ($RUNNER_TEMP/claude-execution-output.json).
       - name: Explain a failed Claude run
@@ -418,8 +423,13 @@ jobs:
             | sed -E 's/sk-ant-[A-Za-z0-9_-]*/sk-ant-[redacted]/g; s/sk-[A-Za-z0-9_-]{16,}/sk-[redacted]/g')
           [[ -n "${msg// /}" ]] || msg="(the result message was empty)"
           (( ${#msg} <= 300 )) || msg="${msg:0:300}..."
-          echo "::error title=Claude error::${msg//%/%25}"
+          status=$(jq -r '.[] | select(.type=="result") | (.api_error_status // "none")' "$f" 2>/dev/null | tail -n 1 || true)
+          # A status code or "none"; anything else is not trusted into the title.
+          status=$(printf '%s' "$status" | tr -cd 'A-Za-z0-9_-' | cut -c1-32)
+          [[ -n "$status" ]] || status="unknown"
+          echo "::error title=Claude error (API status ${status})::${msg//%/%25}"
           echo "message=$msg" >> "$GITHUB_OUTPUT"
+          echo "api_status=$status" >> "$GITHUB_OUTPUT"
 
       # The Claude step can end "success" without ever replacing the stub (it
       # ran out of turns or posted somewhere else). No review posted is a
@@ -451,6 +461,8 @@ jobs:
           PR: ${{ steps.pr.outputs.number }}
           # One redacted line from "Explain a failed Claude run", or empty.
           CLAUDE_ERROR: ${{ steps.senpai-error.outputs.message }}
+          # The result's api_error_status from the same step, or empty.
+          CLAUDE_API_STATUS: ${{ steps.senpai-error.outputs.api_status }}
         run: |
           set -euo pipefail
           [[ "$PR" =~ ^[0-9]+$ ]] || exit 0
@@ -461,7 +473,7 @@ jobs:
             [[ "$body" == *'<!-- senpai-stub -->'* ]] || exit 0
             said=""
             # $(...) would drop the trailing blank line, so build it directly.
-            [[ -z "$CLAUDE_ERROR" ]] || said="**Claude said:** \`${CLAUDE_ERROR}\`"$'\n\n'
+            [[ -z "$CLAUDE_ERROR" ]] || said="**Claude said** (API status \`${CLAUDE_API_STATUS:-unknown}\`): \`${CLAUDE_ERROR}\`"$'\n\n'
             printf '%s\n## Episode %s: Senpai fell asleep\n\n> *The review run failed before a review was posted. Remove and re-add the **senpai** label to try again.*\n\n%s<sup>[Run log](%s)</sup>\n' \
               '<!-- senpai-reviewer -->' "$PR" "$said" "$RUN_URL" > "$note"
             gh api -X PATCH "repos/$REPO/issues/comments/$COMMENT_ID" -F body=@"$note" > /dev/null
