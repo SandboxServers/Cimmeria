@@ -5,6 +5,9 @@
 
 use tokio::sync::mpsc;
 
+use cimmeria_cell_world::cell::interaction_pose::{
+    self, InteractionKind, InteractionRoute, PoseExtra,
+};
 use cimmeria_content_engine::chain::ChainEngine;
 
 use crate::cell::content;
@@ -145,6 +148,21 @@ pub(super) async fn handle_item_used(
             return;
         }
     };
+    // D-PC4: only a use aimed at another live entity has a stand-off pose.
+    if let Ok(target) = u32::try_from(target_id) {
+        if let Some(pose) = interaction_pose::capture_interaction_pose(space_mgr, entity_id, target)
+        {
+            let _ = interaction_pose::emit_interaction_pose(
+                &pose,
+                InteractionKind::UseItem,
+                InteractionRoute::ItemUsed,
+                PoseExtra {
+                    dialog_id: None,
+                    item_type_id: Some(type_id),
+                },
+            );
+        }
+    }
     tracing::debug!(
         entity_id,
         entity_name = space_mgr.entity_label(entity_id),
