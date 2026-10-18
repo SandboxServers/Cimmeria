@@ -1,0 +1,79 @@
+# Rebase the current branch of one worktree onto a commit, for `ops`. It runs `git rebase <onto>`,
+# or `git rebase --onto <onto> <upstream>` when -Upstream is given (the commit the branch was cut
+# from, so a stacked branch does not replay its parent's commits). It never fetches. A conflict,
+# or any failed rebase step, runs `git rebase --abort` (only while a rebase is in progress) and
+# exits 1, so the worktree is left as it was before the call. Hooks still run.
+#
+#   pwsh tools/build-lane/rebase-onto.ps1 -C <worktree> -Onto <rev> [-Upstream <rev>]
+#
+# Refuses (exit 2) when -C is not the root of a non-main worktree, HEAD is detached, the tree is
+# dirty (any `git status --porcelain` output), -Onto does not name a commit, or -Upstream is given
+# and is not an ancestor of HEAD.
+# Prints status=ok tip=<sha> branch=<name> after a rebase, status=up-to-date tip=<sha> branch=<name>
+# when HEAD already contains -Onto and nothing moves, or status=failed reason=<why>.
+# Exit codes: 0 rebased or up to date, 2 refused by a guard, 1 the rebase failed (aborted).
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory)][string]$C,
+    [Parameter(Mandatory)][string]$Onto,
+    [string]$Upstream = ''
+)
+$ErrorActionPreference = 'Stop'
+
+function Stop-Refused([string]$reason) {
+    Write-Output "status=refused reason=$reason"
+    exit 2
+}
+
+function Get-FullPath([string]$p) {
+    [System.IO.Path]::GetFullPath($p).TrimEnd('\', '/').Replace('\', '/')
+}
+
+if (-not (Test-Path -LiteralPath $C -PathType Container)) { Stop-Refused "not-a-directory: $C" }
+$top = (& git -C $C rev-parse --show-toplevel 2>$null)
+if ($LASTEXITCODE -ne 0) { Stop-Refused "not-a-git-worktree: $C" }
+if ((Get-FullPath $top) -ine (Get-FullPath $C)) { Stop-Refused "not-the-worktree-root: $C" }
+
+$main = (& git -C $C worktree list --porcelain | Select-Object -First 1) -replace '^worktree ', ''
+if ((Get-FullPath $main) -ieq (Get-FullPath $C)) { Stop-Refused 'main-checkout: refuse to rebase the main checkout' }
+
+& git -C $C symbolic-ref -q HEAD *> $null
+if ($LASTEXITCODE -ne 0) { Stop-Refused 'detached-head: a rebase there is held by no branch' }
+$branch = (& git -C $C rev-parse --abbrev-ref HEAD).Trim()
+
+$dirty = (& git -C $C status --porcelain | Out-String).Trim()
+if ($dirty) { Stop-Refused 'dirty-tree: commit or remove these first' }
+
+$ontoSha = (& git -C $C rev-parse --verify --quiet "$Onto^{commit}" | Out-String).Trim()
+if (-not $ontoSha) { Stop-Refused "not-a-commit: $Onto" }
+
+if ($Upstream) {
+    $upSha = (& git -C $C rev-parse --verify --quiet "$Upstream^{commit}" | Out-String).Trim()
+    if (-not $upSha) { Stop-Refused "not-a-commit: $Upstream" }
+    & git -C $C merge-base --is-ancestor $upSha HEAD
+    if ($LASTEXITCODE -ne 0) { Stop-Refused "upstream-not-ancestor: $Upstream is not in $branch" }
+    $rebaseArgs = @('rebase', '--onto', $ontoSha, $upSha)
+} else {
+    $rebaseArgs = @('rebase', $ontoSha)
+}
+
+& git -C $C merge-base --is-ancestor $ontoSha HEAD
+if ($LASTEXITCODE -eq 0 -and -not $Upstream) {
+    $tip = (& git -C $C rev-parse HEAD).Trim()
+    Write-Output "status=up-to-date tip=$tip branch=$branch"
+    exit 0
+}
+
+$null = & git -C $C @rebaseArgs 2>&1
+if ($LASTEXITCODE -ne 0) {
+    $gitDir = (& git -C $C rev-parse --absolute-git-dir).Trim()
+    if ((Test-Path -LiteralPath (Join-Path $gitDir 'rebase-merge')) -or (Test-Path -LiteralPath (Join-Path $gitDir 'rebase-apply'))) {
+        & git -C $C rebase --abort
+    }
+    Write-Output "status=failed reason=rebase-aborted branch=$branch"
+    exit 1
+}
+
+$tip = (& git -C $C rev-parse HEAD).Trim()
+Write-Output "status=ok tip=$tip branch=$branch"
+exit 0
