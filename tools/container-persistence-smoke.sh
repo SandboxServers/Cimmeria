@@ -153,16 +153,20 @@ assert_log "rebuild"
 assert_eq "scenario 3 resources reseeded" "$ORIG_NAME" \
   "$(psql_in "SELECT name FROM resources.items WHERE item_id = (SELECT min(item_id) FROM resources.items)")"
 assert_eq "scenario 3 sentinel kept (D3)" 1 "$(psql_in "SELECT count(*) FROM sgw_player WHERE player_id = $S1")"
-# The seed-account top-up (seed-accounts.sql) ships with PP-17. While the image
-# does not carry it, the rebuild skips the top-up and only the "existing accounts
-# untouched" check applies; once it is in the image the full checks engage.
-if docker exec "$NAME" test -f /opt/cimmeria/db/persistent/seed-accounts.sql; then
-  assert_eq "scenario 3 account 15 re-added" 1 "$(psql_in "SELECT count(*) FROM public.account WHERE account_id = 15")"
-  assert_eq "scenario 3 insert_seed_account rows" 1 \
-    "$(psql_in "SELECT count(*) FROM cimmeria_meta.reconcile_log WHERE action = 'insert_seed_account'")"
-else
-  echo "note: seed-accounts.sql is not in the image (PP-17 pending); top-up asserts skipped"
-fi
+# Seed-account stage (before the carry) and top-up (after it): account 15 was
+# deleted, so the top-up re-adds it; the carried account 13 stays as changed.
+assert_eq "scenario 3 account 15 re-added" 1 "$(psql_in "SELECT count(*) FROM public.account WHERE account_id = 15")"
+assert_eq "scenario 3 insert_seed_account rows" 1 \
+  "$(psql_in "SELECT count(*) FROM cimmeria_meta.reconcile_log WHERE action = 'insert_seed_account'")"
+assert_eq "scenario 3 carried accounts kept (stage ran before the carry)" t \
+  "$(psql_in "SELECT count(*) >= 14 FROM public.account")"
+# Step 6 (setval for every carried sequence). A bad generated statement makes the
+# rebuild fail; this also proves the values: the sentinel player id is far above
+# the fresh dump's sequence, so a skipped setval leaves last_value below it.
+assert_eq "scenario 3 sgw_player sequence follows the carried rows" t \
+  "$(psql_in "SELECT last_value >= (SELECT max(player_id) FROM sgw_player) FROM public.sgw_characters_character_id_seq")"
+assert_eq "scenario 3 account sequence follows the carried rows" t \
+  "$(psql_in "SELECT last_value >= (SELECT max(account_id) FROM public.account) FROM public.accounts_account_id_seq")"
 assert_eq "scenario 3 account 13 untouched (D6)" 9 \
   "$(psql_in "SELECT accesslevel FROM public.account WHERE account_id = 13")"
 BACKUP="$(ls -1t "$BAK"/sgw-*.dump 2>/dev/null | head -1)"
