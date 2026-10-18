@@ -204,3 +204,14 @@ HA-1360b1 (coder attempt 3). Base `d2a6913cd`. Commits: `311bde360` (seed, repla
 - Deviation: `mission_1360_harset.rs` is 681 lines (under the 700 hard cap, over the 600 split trigger). The new tests were not moved to `mission_1360_harset_receipt.rs`; a split is left for review.
 - `git diff --check` flags the CR bytes of the CRLF docs; checked with `git -c core.whitespace=cr-at-eol diff --check`.
 - Still UATPending: client acceptance, the NULL-dialog prompt in the client, and the cross-service replay (HA-1360b2).
+
+### Result: HA-1360b2 (cross-service guard)
+
+Branch `harset/ha-1360b2-cross-service`. Tests only; no production code changed. New files: `crates/services/src/mission_letter_receipt_tests.rs` (harness plus full-replay, pending and one-shot re-accept tests) and `crates/services/src/mission_letter_receipt_tests/negative.rs` (extra file, eight adjacent-negative, relog and refusal tests). The harness drives the real cell and base through `route_cell_message` with the shipped `base_plugins()` table and the production `build_engine(Some(&pool))`. Sentinel window `0x7000_8600..=0x7000_86FF`.
+
+- Seal discrepancy: section 7 expects "one 6511 offer" after the receipt. It is not a frame. Chain 6511 (`mission_completed 1360`) runs in the same result application and adds a slot-10 bind (DSM 5254) via `add_dialog_set`, which pushes only InteractionType flags. The test asserts the bind (slot 10 holds 5254, not 120101) and exactly four frames [105, 82, 81, 80]. `load_single_chain_for_test` loads only 6511's first trigger, so the harness uses `build_engine`. No production change is needed; the seal wording should read "one 6511 bind".
+- Also asserted: mission 1360 completed, step None, completed_steps [4037, 4038], completed_objectives [4650, 4651], active [4651] (production postimage), repeats 1, letter count 0, one receipt row, 1361 not accepted.
+- Negative cases (negative.rs): wrong state (4037, wrong world, wrong tag, 1361 at 4694) refuses with no success frames; missing, foreign-owned or storage-container letter is a refusal; duplicate click is one attempt; relog after commit does not replay; relog before commit keeps the offer; recovered delivery is AlreadyCommitted; two characters are isolated; without chain 6501 nothing reaches base.
+- Revert probes (disposable edit, `live-db-test.ps1 -p cimmeria-services -- mission_letter_receipt`, restored with `git checkout` and mtime touch, status clean each time): (1) 6501 disabled: 1 passed, 10 failed. (2) executor `CompleteMissionWithItem` arm no longer calls `letter_turn_in::request`: 1 passed, 10 failed. (3) chain 1366 `advance_step` target changed 4038 to 4037: 0 passed, 11 failed.
+- Not covered: telemetry event assertions beyond what the test log capture exposes cheaply (seal section 8); left to review.
+- Still UATPending: client acceptance and the NULL-dialog prompt in the client.
