@@ -16,6 +16,7 @@ pub mod deployables;
 pub mod dispatch;
 pub mod duel;
 pub mod effects;
+pub mod interaction_pose;
 pub mod org_creation;
 pub mod pets;
 pub mod playtest_friction;
