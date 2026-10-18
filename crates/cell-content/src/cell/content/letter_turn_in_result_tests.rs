@@ -5,6 +5,7 @@ use std::time::Instant;
 
 use cimmeria_content_engine::actions::Action;
 use cimmeria_content_engine::chain::{Chain, ChainEngine};
+use cimmeria_content_engine::conditions::{ComparisonOp, Condition, MissionStatusValue};
 use cimmeria_content_engine::triggers::Trigger;
 use cimmeria_entity::missions::{
     MissionInstance, MissionObjective, MISSION_COMPLETED, STATUS_ACTIVE,
@@ -194,12 +195,15 @@ async fn committed_result_installs_postimage_and_orders_visuals_then_opens_1361_
             _ => None,
         })
         .collect();
-    assert_eq!(&frame_args[0][..4], &4651i32.to_le_bytes());
-    assert_eq!(&frame_args[1][..4], &4038i32.to_le_bytes());
-    assert_eq!(&frame_args[2][..4], &1360i32.to_le_bytes());
-    assert_eq!(frame_args[0][4], 1);
-    assert_eq!(frame_args[1][4], 1);
-    assert_eq!(frame_args[2][4], 2);
+    assert_eq!(
+        frame_args[0],
+        [&4651i32.to_le_bytes()[..], &[1, 0, 0]].concat()
+    );
+    assert_eq!(frame_args[1], [&4038i32.to_le_bytes()[..], &[1]].concat());
+    assert_eq!(
+        frame_args[2],
+        [&1360i32.to_le_bytes()[..], &[2], &0i32.to_le_bytes()[..]].concat()
+    );
 
     apply_letter_turn_in_result(committed(request), &tx, &mut mgr, &engine).await;
     apply_letter_turn_in_result(
@@ -310,15 +314,34 @@ async fn uncertain_result_keeps_attempt_and_walking_away_suppresses_dialog_only(
         &engine(),
     )
     .await;
-    assert!(mgr
-        .get_entity(PLAYER)
-        .unwrap()
-        .extensions
-        .contains::<PendingLetterTurnIn>());
+    assert_eq!(
+        mgr.get_entity(PLAYER)
+            .unwrap()
+            .extensions
+            .get::<PendingLetterTurnIn>()
+            .unwrap()
+            .request
+            .attempt,
+        request.attempt,
+        "uncertain outcome retains the original attempt"
+    );
     assert!(drained(&mut rx).is_empty());
     mgr.get_entity_mut(PLAYER).unwrap().last_interaction_target = None;
     mgr.get_entity_mut(MARSH).unwrap().position.x = 20.0;
-    apply_letter_turn_in_result(committed(request), &tx, &mut mgr, &engine()).await;
+    let result = committed(request);
+    let LetterTurnInOutcome::Committed(receipt) = result.outcome else {
+        unreachable!();
+    };
+    apply_letter_turn_in_result(
+        LetterTurnInResult {
+            request,
+            outcome: LetterTurnInOutcome::AlreadyCommitted(receipt),
+        },
+        &tx,
+        &mut mgr,
+        &engine(),
+    )
+    .await;
     assert_eq!(
         mgr.get_entity(PLAYER)
             .unwrap()
@@ -328,5 +351,135 @@ async fn uncertain_result_keeps_attempt_and_walking_away_suppresses_dialog_only(
             .status,
         MISSION_COMPLETED
     );
-    assert!(!drained(&mut rx).iter().any(|msg| matches!(msg, CellToBaseMsg::EntityMethodCall { method_index, .. } if *method_index == crate::mercury::method_idx::ON_DIALOG_DISPLAY)));
+    let messages = drained(&mut rx);
+    assert!(!messages.iter().any(|msg| matches!(msg, CellToBaseMsg::EntityMethodCall { method_index, .. } if *method_index == crate::mercury::method_idx::ON_DIALOG_DISPLAY)));
+    let terminal: Vec<_> = messages
+        .iter()
+        .filter_map(|msg| match msg {
+            CellToBaseMsg::EntityMethodCall {
+                method_index, args, ..
+            } if (80..=82).contains(method_index) => Some((*method_index, args.clone())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        terminal,
+        vec![
+            (82, [&4651i32.to_le_bytes()[..], &[1, 0, 0]].concat()),
+            (81, [&4038i32.to_le_bytes()[..], &[1]].concat()),
+            (
+                80,
+                [&1360i32.to_le_bytes()[..], &[2], &0i32.to_le_bytes()[..]].concat()
+            ),
+            (
+                80,
+                [&1361i32.to_le_bytes()[..], &[0], &0i32.to_le_bytes()[..]].concat()
+            ),
+            (81, [&4694i32.to_le_bytes()[..], &[0]].concat()),
+        ]
+    );
+    assert!(mgr
+        .get_entity(PLAYER)
+        .unwrap()
+        .missions
+        .get_mission(1361)
+        .is_some());
+    assert!(!mgr
+        .get_entity(PLAYER)
+        .unwrap()
+        .extensions
+        .contains::<PendingLetterTurnIn>());
+    apply_letter_turn_in_result(committed(request), &tx, &mut mgr, &engine()).await;
+    assert!(
+        drained(&mut rx).is_empty(),
+        "receipt retry completed only once"
+    );
+}
+
+#[tokio::test]
+async fn invalid_persisted_postimage_retains_attempt_without_success_effects() {
+    let (mut mgr, request) = rig();
+    let (tx, mut rx) = mpsc::channel(32);
+    let mut result = committed(request);
+    let LetterTurnInOutcome::Committed(ref mut receipt) = result.outcome else {
+        unreachable!();
+    };
+    receipt.mission.completed_objective_ids = vec![4650];
+    apply_letter_turn_in_result(result, &tx, &mut mgr, &engine()).await;
+    let player = mgr.get_entity(PLAYER).unwrap();
+    assert!(player.extensions.contains::<PendingLetterTurnIn>());
+    assert_eq!(player.missions.get_mission(1360).unwrap().status, 1);
+    assert!(player.missions.get_mission(1361).is_none());
+    assert!(player.available_interactions.contains_key(&10));
+    assert!(drained(&mut rx).is_empty());
+}
+
+#[tokio::test]
+async fn old_entry_result_drops_and_loaded_terminal_state_opens_1361() {
+    let (mut mgr, old_request) = rig();
+    let (tx, mut rx) = mpsc::channel(32);
+    {
+        let player = mgr.get_entity_mut(PLAYER).unwrap();
+        player.extensions.remove::<PendingLetterTurnIn>();
+        player.extensions.insert(LetterTurnInSession {
+            player_id: PLAYER_ID,
+            token: LetterTurnInToken::from_bytes([8; 16]),
+            generation: Instant::now(),
+            epoch: LetterTurnInEntryEpoch::new(2),
+        });
+        let mut loaded = player.missions.get_mission(1360).unwrap().clone();
+        loaded.status = MISSION_COMPLETED;
+        loaded.current_step_id = None;
+        loaded.completed_steps = vec![4037, 4038];
+        loaded.completed_objectives = vec![4650, 4651];
+        loaded.repeats = 1;
+        player.missions.add_mission(loaded);
+    }
+    apply_letter_turn_in_result(committed(old_request), &tx, &mut mgr, &engine()).await;
+    assert!(
+        drained(&mut rx).is_empty(),
+        "old entry cannot replay success"
+    );
+    let mut loaded_engine = ChainEngine::new();
+    loaded_engine.register_chain(Chain {
+        id: 6511,
+        name: "restore Praxis offer".into(),
+        enabled: true,
+        trigger: Trigger::OnPlayerLoaded {
+            world_name: Some("Harset_CmdCenter".into()),
+        },
+        conditions: vec![Condition::MissionStatus {
+            mission_id: 1360,
+            operator: ComparisonOp::Eq,
+            expected_status: MissionStatusValue::Completed,
+        }],
+        actions: vec![Action::AcceptMission { mission_id: 1361 }],
+        action_delays: vec![0],
+        priority: 0,
+        once: false,
+    });
+    super::fire_player_loaded(
+        PLAYER,
+        PLAYER_ID,
+        "Harset_CmdCenter",
+        &loaded_engine,
+        &tx,
+        &mut mgr,
+    )
+    .await;
+    let player = mgr.get_entity(PLAYER).unwrap();
+    assert_eq!(
+        player.missions.get_mission(1360).unwrap().status,
+        MISSION_COMPLETED
+    );
+    assert!(player.missions.get_mission(1361).is_some());
+    let frames = drained(&mut rx);
+    assert!(!frames.iter().any(|msg| matches!(
+        msg,
+        CellToBaseMsg::EntityMethodCall { method_index, args, .. }
+            if (*method_index == 80 && args.starts_with(&1360i32.to_le_bytes()))
+                || (*method_index == 81 && args.starts_with(&4038i32.to_le_bytes()))
+                || (*method_index == 82 && args.starts_with(&4651i32.to_le_bytes()))
+                || *method_index == crate::mercury::method_idx::ON_DIALOG_DISPLAY
+    )));
 }

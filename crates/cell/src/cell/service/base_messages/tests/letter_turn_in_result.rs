@@ -153,20 +153,24 @@ async fn receiver_delivers_actual_terminal_frames_and_rejects_duplicate() {
         [crate::mercury::method_idx::ON_DIALOG_DISPLAY, 82, 81, 80]
     );
     assert_eq!(
-        &methods[0].1[..8],
-        &[102i32.to_le_bytes(), 4576i32.to_le_bytes()].concat()
+        methods[0].1,
+        [
+            &102i32.to_le_bytes()[..],
+            &4576i32.to_le_bytes()[..],
+            &0i32.to_le_bytes()[..],
+            &[1],
+            &0i32.to_le_bytes()[..],
+        ]
+        .concat()
     );
     assert_eq!(
-        &methods[1].1[..5],
-        &[4651i32.to_le_bytes().as_slice(), &[1]].concat()
+        methods[1].1,
+        [&4651i32.to_le_bytes()[..], &[1, 0, 0]].concat()
     );
+    assert_eq!(methods[2].1, [&4038i32.to_le_bytes()[..], &[1]].concat());
     assert_eq!(
-        &methods[2].1[..5],
-        &[4038i32.to_le_bytes().as_slice(), &[1]].concat()
-    );
-    assert_eq!(
-        &methods[3].1[..5],
-        &[1360i32.to_le_bytes().as_slice(), &[2]].concat()
+        methods[3].1,
+        [&1360i32.to_le_bytes()[..], &[2], &0i32.to_le_bytes()[..]].concat()
     );
     assert!(interaction, "DSM removal changed the visible Marsh flags");
     assert!(!mgr
