@@ -12,6 +12,6 @@ The machine-wide build lane every agent `cargo` call goes through, and the workt
 | `ship.sh` / `.ps1` (`ship.py`) | `pr -C <worktree> -m <msg>` commits, pushes and opens the PR; `merge <PR> --retire <name>` merges and retires |
 | `rebase-pr.sh` / `.ps1` (`rebase_pr.py`) | Rebase a PR branch onto `origin/main`, resolving only mechanical conflicts |
 
-`lane_summary.py` writes the agent summary, `lane-slots.ps1` holds the slot protocol, and `test_*.py` / `test-*.ps1` are their tests. The [tools catalog](../README.md#tools-catalog) has every script's summary.
+`lane_summary.py` writes the agent summary, `lane-slots.ps1` holds the slot protocol, and `test_*.py` / `test-*.ps1` are their tests. CI runs the `.sh` twins on Linux (bash -n, shellcheck and the Python tests), and the `.ps1` tests on Windows ([build-lane-scripts.yml](../../.github/workflows/build-lane-scripts.yml)). The [tools catalog](../README.md#tools-catalog) has every script's summary.
 
 How to use them day to day: [development-workflow.md](../../docs/agents/development-workflow.md#builds-worktrees-and-test-databases). Why the lane exists, with measurements: [build-system.md](../../docs/architecture/build-system.md).
