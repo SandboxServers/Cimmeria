@@ -252,7 +252,7 @@ A worktree that already has a local `target\` keeps building there, so a job in 
 
 Live-DB tests reload and mutate the database, so each worktree uses its own on the bundled Postgres (`:5433`). Never reload a database another run is using.
 
-- `pwsh tools/build-lane/reload-db.ps1` or `bash tools/build-lane/reload-db.sh`, run from the worktree root, drops and reloads the worktree's database from `db/database.sql` and prints the `DATABASE_URL` to use. The database is `sgw_<worktree name>`; the main checkout keeps `sgw`. `CIMMERIA_TEST_DB=<name>` overrides it.
+- `pwsh tools/build-lane/reload-db.ps1` or `bash tools/build-lane/reload-db.sh`, run from the worktree root, drops and reloads the worktree's database from `db/database.sql` and prints the `DATABASE_URL` to use. The database is `sgw_<worktree name>`; the main checkout uses `sgwtest` (never `sgw`, the play database; the script refuses it, also through `CIMMERIA_TEST_DB`). `CIMMERIA_TEST_DB=<name>` overrides it.
 - `pwsh tools/build-lane/live-db-test.ps1 <test-name filter>` or `bash tools/build-lane/live-db-test.sh <test-name filter>` reloads that database, then runs the live-DB tier (`tools/test-live-db.ps1` or `.sh`, the same crates and profile as CI) in one lane slot. The tier clones the database into one copy per live-DB slot, `sgw_<worktree name>_0` .. `_<N-1>`, and each running live-DB test uses its slot's copy.
 
 Starting the bundled Postgres is documented in [`docs/architecture/integration-test-infra.md`](../architecture/integration-test-infra.md).

@@ -2,10 +2,11 @@
 # Wipe and reload THIS worktree's own test database from ./db/database.sql, on the
 # bundled Postgres at localhost:5433. Prints the DATABASE_URL to use.
 #
-# Database name: sgw_<worktree dir name> (non [A-Za-z0-9_] characters become `_`); the
-# main checkout keeps `sgw`. Override with CIMMERIA_TEST_DB=<name>. One database per
-# worktree lets live-DB runs from different worktrees proceed concurrently without one
-# reload landing under another's tests.
+# Database name: sgw_<worktree dir name> (non [A-Za-z0-9_] characters become `_`). The
+# main checkout uses `sgwtest`, not `sgw`: `sgw` is the play database that setup.ps1
+# owns. The script refuses `sgw` even via CIMMERIA_TEST_DB. Override with
+# CIMMERIA_TEST_DB=<name>. One database per worktree lets live-DB runs from different
+# worktrees proceed concurrently without one reload landing under another's tests.
 set -euo pipefail
 if [ ! -f db/database.sql ]; then
   echo "reload-db: run from a repo/worktree root (db/database.sql not found in $(pwd))" >&2; exit 2
@@ -13,8 +14,12 @@ fi
 TOP="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 MAIN="$(dirname "$(cd "$(git rev-parse --git-common-dir)" && pwd)")"
 NAME="$(basename "$TOP" | tr -c 'A-Za-z0-9_\n' '_' | tr 'A-Z' 'a-z')"
-if [ "$TOP" = "$MAIN" ]; then DB="sgw"; else DB="sgw_${NAME}"; fi
+if [ "$TOP" = "$MAIN" ]; then DB="sgwtest"; else DB="sgw_${NAME}"; fi
 DB="${CIMMERIA_TEST_DB:-$DB}"
+if [ "${DB,,}" = "sgw" ]; then
+  echo "reload-db: refusing to reload 'sgw': it is the play database. Use setup.ps1 -ForceDatabase (resources only) or -WipeDatabase (full wipe)." >&2
+  exit 2
+fi
 PSQL="${PSQL:-$MAIN/external/postgresql_server/bin/psql.exe}"
 [ -x "$PSQL" ] || PSQL="$(command -v psql)"
 export PGPASSWORD="${PGPASSWORD:-w-testing}"

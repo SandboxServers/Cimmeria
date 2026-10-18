@@ -6,7 +6,7 @@
 # end-to-end tests instead, under the `wireclient-e2e` profile.
 #
 # Usage:
-#   DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw tools/test-live-db.sh [args...]
+#   DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgwtest tools/test-live-db.sh [args...]
 #   tools/test-live-db.sh --llvm-cov [args...]   # under `cargo llvm-cov --no-report nextest`
 #   tools/test-live-db.sh [--llvm-cov] --build-only   # compile only; no database needed
 #   tools/test-live-db.sh [--llvm-cov] [--build-only] --wireclient [args...]   # the wireclient e2e tests only
