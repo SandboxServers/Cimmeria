@@ -19,7 +19,7 @@ The machine-wide build lane every agent `cargo` call goes through, and the workt
 
 `lane_summary.py` writes the agent summary, `lane-slots.ps1` holds the slot protocol, and `test_*.py` / `test-*.ps1` are their tests. CI runs the `.sh` twins on Linux (bash -n, shellcheck and the Python tests), and the `.ps1` tests on Windows ([build-lane-scripts.yml](../../.github/workflows/build-lane-scripts.yml)). The [tools catalog](../README.md#tools-catalog) has every script's summary.
 
-The ops git verbs (`commit-paths`, `merge-noff`, `branch-at`, `push-branch`, `rebase-onto`) each have a `test-<name>.ps1` that builds a throwaway repository, worktree and local bare remote under the temp directory; none touches the network, a real remote or `cargo`, CI runs them in the Windows build-lane job, with the .sh twins' Python tests under Git Bash and the parity test (test_git_verb_parity.py); the Linux job runs the .sh tests and shellcheck. Run them after any change to those scripts:
+The ops git verbs (`commit-paths`, `merge-noff`, `branch-at`, `push-branch`, `rebase-onto`) each have a `test-<name>.ps1` that builds a throwaway repository, worktree and local bare remote under the temp directory; none touches the network, a real remote or `cargo`, and CI runs them in the Windows build-lane job, with the .sh twins' Python tests under Git Bash and the parity test (test_git_verb_parity.py); the Linux job runs the .sh tests and shellcheck. Run them after any change to those scripts:
 
 ```powershell
 Get-ChildItem tools/build-lane/test-*.ps1 | ForEach-Object { pwsh -NoProfile -File $_.FullName }

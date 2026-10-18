@@ -9,32 +9,21 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+from test_lane_stats import find_bash  # noqa: E402  Git Bash on Windows, PATH bash elsewhere
+
 ROOT = HERE.parent.parent
 VERBS = ["commit-paths", "merge-noff", "branch-at", "push-branch", "rebase-onto"]
 BEGIN = "# --- git-verb common (C11) ---"
 END = "# --- end common ---"
 STATUS = re.compile(r"\bstatus=(\S+)")
 REASON = re.compile(r"\breason=([^:\s]*)")
-
-
-def find_bash():
-    """Git Bash that runs the .sh twins natively. On Windows the `bash` on PATH is usually the WSL
-    launcher (System32 or a WindowsApps alias), which runs them in another filesystem."""
-    if os.name != "nt":
-        return shutil.which("bash")
-    git = shutil.which("git")
-    roots = [Path(git).resolve().parent.parent] if git else []   # <Git>\cmd\git.exe -> <Git>
-    roots.append(Path(r"C:\Program Files\Git"))
-    for root in roots:
-        for candidate in (root / "bin" / "bash.exe", root / "usr" / "bin" / "bash.exe"):
-            if candidate.exists():
-                return str(candidate)
-    return None
 
 
 def git(cwd, *args):
@@ -118,9 +107,10 @@ CASES = [
      lambda c: ["-C", c["C"], "-Message", "m", "-Paths", "new.txt", "-ExpectBranch", "Main"]),
     ("commit-paths", "bogus option", "new",
      lambda c: ["-C", c["C"], "-Message", "m", "-Paths", "new.txt", "-Bogus", "x"]),
-    # `-Message -x` is not a parity case: pwsh -File binds "-x" as the value, while the C11 loop refuses it
-    # as a usage error (D-AH40). The attached form `-Message:-x` is the one both sides accept.
-    ("commit-paths", "message starts with dash", "new", lambda c: ["-C", c["C"], "-Message:-x", "-Paths", "new.txt"]),
+    # A value token that starts with "-" is taken as the value on both sides: pwsh -File binds "-x" to
+    # -Message, and the C11 loop takes the next token verbatim to match it.
+    ("commit-paths", "message starts with dash", "new", lambda c: ["-C", c["C"], "-Message", "-x", "-Paths", "new.txt"]),
+    ("commit-paths", "message attached form", "new", lambda c: ["-C", c["C"], "-Message:-x", "-Paths", "new.txt"]),
     ("merge-noff", "ok", "base", lambda c: ["-C", c["C"], "-Branch", "topic"]),
     ("merge-noff", "up to date", "base", lambda c: ["-C", c["C"], "-Branch", "older"]),
     ("merge-noff", "no such local branch", "base", lambda c: ["-C", c["C"], "-Branch", "no-such-local-branch"]),
