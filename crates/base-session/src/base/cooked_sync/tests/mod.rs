@@ -14,6 +14,7 @@ mod ordering;
 mod pacing;
 mod resync;
 mod resync_cellblock;
+mod resync_cellblock_62060;
 mod robustness;
 mod telemetry;
 
