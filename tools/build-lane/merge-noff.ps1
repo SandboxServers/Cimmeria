@@ -2,18 +2,19 @@
 # A conflict or any failed merge step runs `git merge --abort` (only when a merge is in
 # progress) and exits 1, so the worktree is left as it was before the call. Hooks still run.
 #
-#   pwsh tools/build-lane/merge-noff.ps1 -C <worktree> -Branch <name>
+#   pwsh tools/build-lane/merge-noff.ps1 -C <worktree> -Branch <name> [-ExpectBranch <current>]
 #
 # Refuses (exit 2) when -C is not the root of a non-main worktree, HEAD is detached, -Branch
-# is not a valid name or no local branch of that name, -Branch is the current branch, or the
-# tree is dirty (any `git status --porcelain` output).
+# is not a valid name or no local branch of that name, -Branch is the current branch, the current
+# branch is not -ExpectBranch (when given), or the tree is dirty (any `git status --porcelain` output).
 # Prints status=ok merge=<sha> branch=<name>, status=up-to-date merge=<sha> branch=<name> when
 # <name> is already contained in HEAD, or status=failed reason=<why> files=<conflicted paths>.
 # Exit codes: 0 merged or up to date, 2 refused by a guard, 1 the merge failed (aborted).
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$C,
-    [Parameter(Mandatory)][string]$Branch
+    [Parameter(Mandatory)][string]$Branch,
+    [string]$ExpectBranch = ''
 )
 $ErrorActionPreference = 'Stop'
 
@@ -37,6 +38,7 @@ if ((Get-FullPath $main) -ieq (Get-FullPath $C)) { Stop-Refused 'main-checkout: 
 & git -C $C symbolic-ref -q HEAD *> $null
 if ($LASTEXITCODE -ne 0) { Stop-Refused 'detached-head: a merge there is held by no branch' }
 $current = (& git -C $C rev-parse --abbrev-ref HEAD).Trim()
+if ($ExpectBranch -and $current -ne $ExpectBranch) { Stop-Refused "branch-mismatch: HEAD is $current, not $ExpectBranch" }
 
 & git -C $C check-ref-format --branch $Branch *> $null
 if ($LASTEXITCODE -ne 0) { Stop-Refused "bad-branch-name: $Branch" }

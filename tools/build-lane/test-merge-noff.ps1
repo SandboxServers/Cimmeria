@@ -14,8 +14,10 @@ function Check([bool]$cond, [string]$what) {
 }
 
 # Runs the script in-process and returns its exit code and printed text.
-function Invoke-Merge([string]$wt, [string]$branch) {
-    $out = (& $script -C $wt -Branch $branch 2>&1 | Out-String)
+function Invoke-Merge([string]$wt, [string]$branch, [string]$expect = '') {
+    $params = @{ C = $wt; Branch = $branch }
+    if ($expect) { $params.ExpectBranch = $expect }
+    $out = (& $script @params 2>&1 | Out-String)
     return @{ code = $LASTEXITCODE; out = $out }
 }
 
@@ -60,10 +62,12 @@ try {
     $r = Invoke-Merge $wt 'feat/src'
     Check ($r.code -eq 2 -and $r.out -match 'dirty-tree') 'refuses a dirty tree, untracked files included'
     Remove-Item -LiteralPath (Join-Path $wt 'junk.txt')
+    $r = Invoke-Merge $wt 'feat/src' 'some/other-branch'
+    Check ($r.code -eq 2 -and $r.out -match 'branch-mismatch') '-ExpectBranch that differs from HEAD is refused'
     Check ((Git-Out $wt @('rev-parse', 'HEAD')) -eq $before) 'the refusals moved nothing'
 
     # --- clean --no-ff merge -----------------------------------------------------------
-    $r = Invoke-Merge $wt 'feat/src'
+    $r = Invoke-Merge $wt 'feat/src' 'feat/target'
     $parents = (Git-Out $wt @('rev-list', '--parents', '-n', '1', 'HEAD')) -split ' '
     Check ($r.code -eq 0 -and $r.out -match 'status=ok merge=[0-9a-f]{40} branch=feat/src') "merges with --no-ff (exit $($r.code)): $($r.out)"
     Check ($parents.Count -eq 3) 'the merge commit has two parents'
