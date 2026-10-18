@@ -19,8 +19,6 @@ pub(super) const CHAINS: [i32; 12] = [
 ];
 
 /// `resources.worlds.world_id` of `Castle_CellBlock`.
-// Unused until CB-N06-4 and CB-N06-5 fill resolve and executor.
-#[allow(dead_code)]
 pub(super) const CELLBLOCK_WORLD_ID: i32 = 12;
 
 /// Build an [`ExecutionContext`] for one replay: `world` goes to
@@ -28,8 +26,6 @@ pub(super) const CELLBLOCK_WORLD_ID: i32 = 12;
 /// fails closed on), each `(key, value)` pair becomes a string param (the
 /// `mission_<m>_status` and `mission_<m>_step_<s>_status` keys), and
 /// `archetype` becomes an i64 param.
-// Unused until CB-N06-4 and CB-N06-5 fill resolve and executor.
-#[allow(dead_code)]
 pub(super) fn ctx(
     world: Option<i32>,
     params: &[(&str, &str)],
