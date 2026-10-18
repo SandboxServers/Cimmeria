@@ -170,6 +170,66 @@ try {
     Check ((Git-Out $main @('rev-parse', 'refs/heads/main')) -eq $mainBefore) 'a GIT_DIR pointing at the main checkout did not move main'
     Check ((Git-Out $wt @('rev-parse', '--verify', 'HEAD^{commit}')) -match '^[0-9a-f]{40}$') 'the worktree branch tip is a readable commit'
 
+    # --- a merge already in progress is the caller's: refused, never aborted ----------------
+    # `merge --no-commit -s ours` leaves MERGE_HEAD with an index equal to HEAD (a clean tree).
+    $script:side = 0
+    function New-Side([string]$branch, [string]$base, [string]$file, [string]$text) {
+        $script:side++
+        $dir = Join-Path $tmp "side$($script:side)"
+        & git -C $main worktree add -q -b $branch $dir $base
+        Set-Content -LiteralPath (Join-Path $dir $file) $text
+        & git -C $dir add -- $file
+        & git -C $dir commit -q -m "$branch $file"
+    }
+    New-Side 'side/open' $initSha 'open.txt' 'open'
+    New-Side 'side/other' $initSha 'other.txt' 'other'
+    & git -C $wt merge -q --no-commit --no-ff -s ours side/open *> $null
+    $openHead = Git-Out $wt @('rev-parse', '-q', '--verify', 'MERGE_HEAD')
+    $r = Invoke-Merge $wt 'side/other'
+    Check ($r.code -eq 2 -and $r.out -match 'operation-in-progress: MERGE_HEAD') "a merge in progress is refused (exit $($r.code)): $($r.out.Trim())"
+    Check ((Git-Out $wt @('rev-parse', '-q', '--verify', 'MERGE_HEAD')) -eq $openHead) "the caller's merge is still open"
+    & git -C $wt merge --abort *> $null
+
+    # --- branch.<current>.mergeOptions does not reach the merge ------------------------------
+    # git parses it before argv and `-s` accumulates: `-s ours` would drop the branch, `--no-commit`
+    # would leave the merge open, `-Xours` would resolve a conflict silently to this side.
+    New-Side 'side/mo1' $initSha 'mo1.txt' 'mo1'
+    & git -C $main config branch.feat/target.mergeoptions '-s ours'
+    $r = Invoke-Merge $wt 'side/mo1'
+    Check ($r.code -eq 0 -and (Test-Path -LiteralPath (Join-Path $wt 'mo1.txt'))) "mergeoptions '-s ours' does not drop the branch (exit $($r.code)): $($r.out.Trim())"
+    New-Side 'side/mo2' $initSha 'mo2.txt' 'mo2'
+    & git -C $main config branch.feat/target.mergeoptions '--no-commit'
+    $r = Invoke-Merge $wt 'side/mo2'
+    $parents = (Git-Out $wt @('rev-list', '--parents', '-n', '1', 'HEAD')) -split ' '
+    & git -C $wt rev-parse -q --verify MERGE_HEAD *> $null
+    $leftOpen = ($LASTEXITCODE -eq 0)
+    Check ($r.code -eq 0 -and $parents.Count -eq 3 -and -not $leftOpen) "mergeoptions '--no-commit' does not leave the merge open (exit $($r.code)): $($r.out.Trim())"
+    if ($leftOpen) { & git -C $wt merge --abort *> $null }
+    New-Side 'side/mo3' $initSha 'a.txt' 'mo3 side of a'
+    & git -C $main config branch.feat/target.mergeoptions '-Xours'
+    $before = Git-Out $wt @('rev-parse', 'HEAD')
+    $r = Invoke-Merge $wt 'side/mo3'
+    Check ($r.code -eq 1 -and $r.out -match 'reason=merge-aborted files="a.txt"' -and (Git-Out $wt @('rev-parse', 'HEAD')) -eq $before) "mergeoptions '-Xours' does not resolve the conflict silently (exit $($r.code)): $($r.out.Trim())"
+    & git -C $main config --unset branch.feat/target.mergeoptions
+    # `-c key=value` splits at the first `=`, so a branch named `mo=x` needs the override another way.
+    $eqWt = Join-Path $tmp 'eq'
+    & git -C $main worktree add -q -b 'mo=x' $eqWt $initSha
+    New-Side 'side/mo4' $initSha 'mo4.txt' 'mo4'
+    & git -C $main config 'branch.mo=x.mergeoptions' '-s ours'
+    $r = Invoke-Merge $eqWt 'side/mo4'
+    Check ($r.code -eq 0 -and (Test-Path -LiteralPath (Join-Path $eqWt 'mo4.txt'))) "mergeoptions of a branch named 'mo=x' is overridden too (exit $($r.code)): $($r.out.Trim())"
+
+    # --- a conflicted file name cannot plant a status= token in the failed line -------------
+    $injWt = Join-Path $tmp 'inj'
+    $injName = 'q status=ok.txt'
+    & git -C $main worktree add -q -b feat/inj $injWt $initSha
+    Set-Content -LiteralPath (Join-Path $injWt $injName) 'target'
+    & git -C $injWt add -- $injName
+    & git -C $injWt commit -q -m 'inj target'
+    New-Side 'side/inj' $initSha $injName 'side'
+    $r = Invoke-Merge $injWt 'side/inj'
+    Check ($r.code -eq 1 -and $r.out -match 'files="q status%3Dok.txt"' -and [regex]::Matches($r.out, 'status=').Count -eq 1) "a file name holding status= is encoded (exit $($r.code)): $($r.out.Trim())"
+
     # --- conflict: aborted, worktree back to its pre-merge state ----------------------
     & git -C $main worktree add -q (Join-Path $tmp 'conf') feat/conf
     Set-Content -LiteralPath (Join-Path $tmp 'conf\a.txt') 'conflicting'
@@ -178,7 +238,7 @@ try {
     & git -C $wt commit -q -am 'other side'
     $before = Git-Out $wt @('rev-parse', 'HEAD')
     $r = Invoke-Merge $wt 'feat/conf'
-    Check ($r.code -eq 1 -and $r.out -match 'status=failed reason=merge-aborted files=a.txt detail=\S') "a conflict exits 1, names the file and carries git's last line (exit $($r.code)): $($r.out)"
+    Check ($r.code -eq 1 -and $r.out -match 'status=failed reason=merge-aborted files="a.txt" detail="CONFLICT \(content\): Merge conflict in a.txt"') "a conflict exits 1, names the file and carries git's CONFLICT line (exit $($r.code)): $($r.out)"
     Check ((Git-Out $wt @('rev-parse', 'HEAD')) -eq $before) 'the aborted merge left HEAD where it was'
     & git -C $wt rev-parse -q --verify MERGE_HEAD *> $null
     Check ($LASTEXITCODE -ne 0) 'no merge is left in progress'
