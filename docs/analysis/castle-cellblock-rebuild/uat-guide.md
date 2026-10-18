@@ -36,7 +36,7 @@ The content chains live in `resources.content_*` rows loaded at boot. If your `s
 pwsh setup.ps1 -SkipBuild -ForceDatabase
 ```
 
-That drops and recreates `sgw` and reloads `db/database.sql` plus every seed file under `db/resources/`. If the data directory itself is suspect, the nuclear form is `pwsh setup.ps1 -ResetDatabase -SkipBuild -NoLaunch`.
+That refreshes the `resources` tables in `sgw` from the seeds and keeps your accounts and characters. If you want a clean slate, `pwsh setup.ps1 -SkipBuild -WipeDatabase` backs up and then reloads everything. If the data directory itself is suspect, the nuclear form is `pwsh setup.ps1 -ResetDatabase -SkipBuild -NoLaunch`.
 
 Do **not** use `db.bat start` to bring Postgres up for this. `db.bat` points at `external/postgresql_server/data`; the bootstrap seeds `<repo>/server/pgdata`. They are different instances and `db.bat` will start the empty one. Connection string for anything you want to inspect by hand: `postgres://w-testing:w-testing@localhost:5433/sgw`.
 

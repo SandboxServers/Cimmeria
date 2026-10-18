@@ -94,8 +94,11 @@ Build-CimmeriaServer -Configuration Release
 Start-CimmeriaServer
 Stop-CimmeriaServer
 
-# Wipe and reload database:
+# Refresh resources, keep accounts and characters:
 Initialize-CimmeriaDatabase -Force
+
+# Back up, then wipe and reload (destroys player data):
+Initialize-CimmeriaDatabase -WipeDatabase
 
 # Patch game client:
 Update-CimmeriaClient
