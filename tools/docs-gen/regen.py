@@ -291,7 +291,7 @@ def gen_harness_agents(ctx: Context, args: list[str], after: str) -> str:
     return _harness_tables().render_agents(ctx.root)
 
 
-Generator =Callable[[Context, list, str], str]
+Generator = Callable[[Context, list, str], str]
 
 GENERATORS: dict[str, Generator] = {
     "tests-total": lambda ctx, a, s: n(ctx.tests.total),

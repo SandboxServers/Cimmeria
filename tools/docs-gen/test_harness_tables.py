@@ -5,6 +5,7 @@ import json
 import pathlib
 import sys
 import tempfile
+import types
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -100,9 +101,32 @@ class HarnessTablesTest(unittest.TestCase):
         for path in scripts:
             self.assertTrue(ht.script_reason(path), f"{path.name} has no docstring or # reason")
 
+    def test_missing_reason_and_inline_command_are_marked(self):
+        settings = {"hooks": {"Stop": [{"hooks": [
+            {"type": "command", "command": "echo done"},
+            {"type": "command", "command": 'f="$CLAUDE_PROJECT_DIR/.claude/hooks/bare.py"; . "$f"'},
+        ]}]}}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            _write(root, ".claude/settings.json", json.dumps(settings))
+            _write(root, ".claude/hooks/bare.py", "import sys\n")
+            out = ht.render_hooks(root)
+        self.assertIn("| Stop | (all) | `.claude/settings.json` | `(inline)` | (no reason: add a docstring) |", out)
+        self.assertIn("| Stop | (all) | `.claude/settings.json` | `bare.py` | (no reason: add a docstring) |", out)
+
     def test_generators_registered(self):
         self.assertIn("harness-hooks", regen.GENERATORS)
         self.assertIn("harness-agents", regen.GENERATORS)
+
+    def test_registered_generators_render_their_own_table(self):
+        # A swapped or mis-wired registration would still pass the membership check above.
+        ctx = types.SimpleNamespace(root=REPO)
+        hooks = regen.GENERATORS["harness-hooks"](ctx, [], "")
+        agents = regen.GENERATORS["harness-agents"](ctx, [], "")
+        self.assertEqual(hooks, ht.render_hooks(REPO))
+        self.assertEqual(agents, ht.render_agents(REPO))
+        self.assertIn("| Event | Matcher |", hooks)
+        self.assertIn("| Agent | Model |", agents)
 
 
 if __name__ == "__main__":
