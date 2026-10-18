@@ -382,9 +382,14 @@ jobs:
             - You are a **tsundere**. You absolutely did NOT want to review this PR,
               you just happened to have free time, it's not like you CARE or anything.
               Compliments must be delivered grudgingly and immediately undercut.
-            - Address the author as `@${{ steps.pr.outputs.author }}-kun`
+            - Address the author as `${{ steps.pr.outputs.author }}-kun`
               (switch to `-chan` if the PR is tiny and adorable, `-sama` only if it is
               genuinely flawless, which you will be visibly annoyed about).
+              The honorific goes on the bare name, never on an @-mention: `-` is
+              legal in a GitHub login, so `@name-kun` pings a user called
+              `name-kun` and the author never gets the notification. Mention them
+              exactly as `@${{ steps.pr.outputs.author }}`, with a space or
+              punctuation right after it.
             - Refer to the PR as "this episode", bugs as "plot holes", tests as
               "training arcs", refactors as "power-ups", tech debt as "the curse",
               and the main branch as "the final boss".
@@ -441,7 +446,7 @@ jobs:
 
             > *<one-line cold-open narration about the PR, e.g. "The CI light flickered. Somewhere, a linter wept.">*
 
-            Tch. @${{ steps.pr.outputs.author }}-kun. I-it's not like I wanted to review this or anything… <2–3 sentence in-character summary of what the PR does>
+            Tch. ${{ steps.pr.outputs.author }}-kun (@${{ steps.pr.outputs.author }}). I-it's not like I wanted to review this or anything… <2–3 sentence in-character summary of what the PR does>
 
             ### Power Level: <0–9000+> / 9000
             <one line justifying the number — real quality assessment, dressed up>
@@ -521,6 +526,8 @@ jobs:
       # final reply if the file is missing. The text is taken from the
       # reviewer marker on, a wrapping code fence is dropped, and the stub
       # marker is stripped so the checks below can't mistake it for a stub.
+      # An honorific glued to the author's mention (`@name-kun`) is moved off
+      # it (`name-kun (@name)`) so the author is actually pinged.
       # No marker, no post: the run fails instead.
       - name: Post the review
         id: post
@@ -528,13 +535,15 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.senpai-token.outputs.token }}
           COMMENT_ID: ${{ steps.stub.outputs.comment_id }}
+          AUTHOR: ${{ steps.pr.outputs.author }}
         run: |
           set -euo pipefail
           review="$RUNNER_TEMP/senpai-review.md"
           jq -r '.result // ""' "$RUNNER_TEMP/senpai-result.json" > "$RUNNER_TEMP/senpai-reply.md"
           python3 - .senpai/review.md "$RUNNER_TEMP/senpai-reply.md" > "$review" <<'PY'
-          import re, sys
+          import os, re, sys
           marker = "<!-- senpai-reviewer -->"
+          HONORIFICS = "kun|chan|sama|san|senpai|sensei|dono|tan|chin|kouhai"
           for path in sys.argv[1:]:
               try:
                   text = open(path, encoding="utf-8", errors="replace").read()
@@ -545,6 +554,17 @@ jobs:
                   continue
               text = text[i:].replace("<!-- senpai-stub -->", "").strip()
               text = re.sub(r"\n```\s*$", "", text).rstrip()
+              # `-` is legal in a login, so `@name-kun` mentions a user called
+              # `name-kun` and the author is never pinged. Move the honorific
+              # off the mention: `@name-kun` becomes `name-kun (@name)`.
+              author = os.environ.get("AUTHOR", "")
+              if author:
+                  text = re.sub(
+                      rf"@({re.escape(author)})-({HONORIFICS})(?![A-Za-z0-9-])",
+                      r"\1-\2 (@\1)",
+                      text,
+                      flags=re.IGNORECASE,
+                  )
               print(f"::notice title=Senpai::Posting the review from {path.rsplit('/', 1)[-1]}.", file=sys.stderr)
               # GitHub rejects comment bodies over 65536 characters.
               print(text[:65000])
