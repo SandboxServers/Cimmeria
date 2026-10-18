@@ -20,7 +20,7 @@ use crate::test_support::require_db_or_skip;
 
 /// Sentinel base for the mission round trips. Was `0x7000_0400`, shared
 /// with `missions/tests.rs` in `cimmeria-base-methods` (#800). Offsets run
-/// to `+601`, so this owns `0x7000_8200..=0x7000_84FF`.
+/// to `+603`, so this owns `0x7000_8200..=0x7000_84FF`.
 const TEST_PLAYER_BASE: i32 = 0x7000_8200;
 
 /// sgw_mission has a FK to sgw_player. Cleanup deletes the account, which
@@ -28,6 +28,10 @@ const TEST_PLAYER_BASE: i32 = 0x7000_8200;
 /// they reference are deleted (or via the FK rule). Mission rows are also
 /// deleted explicitly first to avoid relying on cascade ordering.
 async fn cleanup(pool: &PgPool, account_id: i32, player_id: i32) {
+    let _ = sqlx::query("DELETE FROM sgw_inventory WHERE character_id = $1")
+        .bind(player_id)
+        .execute(pool)
+        .await;
     let _ = sqlx::query("DELETE FROM sgw_mission WHERE player_id = $1")
         .bind(player_id)
         .execute(pool)
@@ -379,144 +383,290 @@ async fn live_db_second_completion_advances_persisted_repeats_counter_end_to_end
     cleanup(&pool, account_id, player_id).await;
 }
 
-/// C04 (Castle Cellblock rebuild, docs/analysis/castle-cellblock-rebuild/
-/// work-packets.md#c04): mission 1360 ("Frost's Letter") is accepted by
-/// chain 1121 when the player loots Frost's body (dialog_open 3995) while
-/// mission 622's step 2113 is active. The packet's own acceptance criterion
-/// is "a live-DB test that the row persists across the 688 transition path".
-///
-/// `cross_world_teleport` (crates/cell-content/src/cell/content/executor/
-/// transport.rs), the executor arm chain 1109 uses for the Cellblock →
-/// Castle hop, does exactly two things to the entity: flushes dirty
-/// bandolier ammo and calls `SpaceManager::destroy_entity`. Neither touches
-/// `sgw_mission` or the entity's in-memory `missions` list at all — it does
-/// not special-case missions in any way. The cell entity that arrives in
-/// Castle is rebuilt from scratch via `BaseToCellMsg::InitPlayerState`
-/// (crates/cell/src/cell/service/base_messages/player_init/mod.rs),
-/// which is fed a `Vec<SavedMission>` built by `query_saved_missions` —
-/// the exact same function and the exact same restore path an ordinary
-/// relog uses (see `mission_completion_cell_to_base_to_db_to_relogin_round_trip`
-/// and `second_completion_advances_persisted_repeats_counter_end_to_end`
-/// above, and `player_init::tests::relog_mission_resurrection`'s #411
-/// guard). So "does 1360 survive the Cellblock → Castle hop" reduces
-/// entirely to "does an accepted mission's row survive an ordinary
-/// cell → base → DB write and read-back" — there is no cross-world-specific
-/// code path to test, because there isn't one. This test pins exactly that
-/// reduction, driven through the same production `handle_cell_message`
-/// bridge the completion-round-trip tests above use, so a future change
-/// that special-cases `MissionUpdate` handling for player_id vs. entity_id,
-/// or that ties mission persistence to the *entity* rather than the
-/// *player_id*, would break here first.
-#[tokio::test]
-async fn live_db_frosts_letter_accept_round_trips_cell_to_base_to_db() {
-    use crate::base::world_entry::handle_cell_message;
-    use crate::cell::messages::CellToBaseMsg;
-    use crate::cell::missions::accept_mission;
-    use crate::cell::space_manager::SpaceManager;
+/// Fresh entities use the production world-entry mission hydrator; the base
+/// inventory remains a separate query because carried bags live on the base.
+async fn fresh_letter_entity(
+    pool: &PgPool,
+    account_id: i32,
+    player_id: i32,
+    world: &str,
+) -> crate::cell::space_manager::SpaceManager {
+    use crate::cell::spawner::{
+        load_item_containers, load_mission_defs, load_step_objectives, load_world_rows,
+    };
+    let mut mgr = crate::cell::space_manager::SpaceManager::new(1);
+    mgr.parse_spaces_xml(&format!(
+        r#"<Spaces><Space WorldName="{world}" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#
+    )).unwrap();
+    mgr.create_startup_spaces(&format!(
+        r#"<Spaces><Space WorldName="{world}" /></Spaces>"#
+    ))
+    .unwrap();
+    mgr.stamp_world_rows(&load_world_rows(pool).await.unwrap());
+    mgr.mission_defs = load_mission_defs(pool).await.unwrap();
+    mgr.step_objectives = load_step_objectives(pool).await.unwrap();
+    mgr.item_containers = load_item_containers(pool).await.unwrap();
+    mgr.create_entity(1, world, [0.0; 3], [0.0; 3]).unwrap();
+    let db_pool = Some(Arc::new(pool.clone()));
+    let saved = query_saved_missions(&db_pool, player_id).await;
+    let restored = cimmeria_cell::cell::build_restored_missions_for_test(&saved, &mgr);
+    let load = crate::base::world_entry::methods::query_player_load_data(
+        &db_pool,
+        account_id as u32,
+        player_id,
+    )
+    .await;
+    assert_eq!(
+        load.player_id, player_id,
+        "production inventory/player hydration"
+    );
+    let entity = mgr.get_entity_mut(1).unwrap();
+    entity.player_id = Some(player_id);
+    entity.archetype_id = Some(load.archetype);
+    entity.missions.mark_loaded();
+    for mission in restored {
+        entity.missions.add_mission(mission);
+    }
+    mgr
+}
+
+async fn letter_inventory(
+    pool: &PgPool,
+    account_id: i32,
+    player_id: i32,
+) -> Vec<(i32, i32, i32, i32)> {
+    let load = crate::base::world_entry::methods::query_player_load_data(
+        &Some(Arc::new(pool.clone())),
+        account_id as u32,
+        player_id,
+    )
+    .await;
+    assert_eq!(load.player_id, player_id);
+    load.items
+        .into_iter()
+        .map(|i| {
+            assert_eq!(i.dbid, 3730, "only the real Cellblock letter was granted");
+            (i.id, i.stack_size, i.container_id, i.slot_id)
+        })
+        .collect()
+}
+
+fn drain_letter_traffic(
+    rx: &mut tokio::sync::mpsc::Receiver<crate::cell::messages::CellToBaseMsg>,
+) -> Vec<crate::cell::messages::CellToBaseMsg> {
+    let mut messages = Vec::new();
+    while let Ok(msg) = rx.try_recv() {
+        messages.push(msg);
+    }
+    messages
+}
+
+/// Route the inspected, actual messages through the production cell/base bridge.
+async fn persist_letter_traffic(
+    pool: &PgPool,
+    messages: Vec<crate::cell::messages::CellToBaseMsg>,
+) {
     use crate::test_support::TestTransport;
-    use cimmeria_entity::missions::MISSION_ACTIVE;
     use cimmeria_mercury::transport::Transport;
     use std::collections::HashMap;
     use std::sync::Mutex;
-    use tokio::sync::mpsc;
-
-    let pool = require_db_or_skip!();
-    let account_id = TEST_PLAYER_BASE + 600;
-    let player_id = TEST_PLAYER_BASE + 601;
-    cleanup(&pool, account_id, player_id).await;
-    insert_account_and_player(&pool, account_id, player_id).await;
-    let db_pool = Some(Arc::new(pool.clone()));
-
-    // Real mission/step ids (not sentinels) — chain 1121's own seeded
-    // `accept_mission` action targets 1360 by id, and 4037 is the real
-    // "Find a way to get Cpl. Frost's Letter to his family" step
-    // (db/resources/Missions/Seed/mission_steps.sql), so the round trip
-    // exercises the actual row this packet's chain will produce.
-    const MISSION_ID: i32 = 1360;
-    const STEP_ID: i32 = 4037;
-    const ENTITY_ID: u32 = 1;
-
-    let mut mgr = SpaceManager::new(1);
-    let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" Instanced="true" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#;
-    let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle_CellBlock" /></Spaces>"#;
-    mgr.parse_spaces_xml(xml).unwrap();
-    mgr.create_startup_spaces(cxml).unwrap();
-    mgr.create_entity(ENTITY_ID, "Castle_CellBlock", [0.0; 3], [0.0; 3])
-        .unwrap();
-    mgr.mission_defs.insert(
-        MISSION_ID,
-        crate::cell::spawner::MissionDefEntry {
-            step_id: STEP_ID,
-            objectives: vec![],
-            is_hidden: false,
-            num_repeats: 1,
-            can_repeat_on_fail: true,
-        },
-    );
-
-    // ── 1. Cell-side accept (what chain 1121 drives on dialog_open 3995) ─
-    let (tx, _rx) = mpsc::channel::<CellToBaseMsg>(64);
-    let accepted = accept_mission(ENTITY_ID, MISSION_ID, STEP_ID, vec![], &tx, &mut mgr).await;
-    assert!(
-        accepted,
-        "accept_mission(1360) must succeed against a not_active mission \
-         (the offer guard chain 1121's own `mission_status 1360 eq not_active` \
-         condition backstops server-side)"
-    );
-
-    // ── 2. Build the EXACT message the AcceptMission executor arm emits ──
-    let msg = CellToBaseMsg::MissionUpdate {
-        player_id,
-        mission_id: MISSION_ID,
-        status: MISSION_ACTIVE,
-        current_step_id: Some(STEP_ID),
-        completed_step_ids: vec![],
-        completed_objective_ids: vec![],
-        active_objective_ids: vec![],
-        failed_objective_ids: vec![],
-        repeats: 0,
-    };
-
-    // ── 3. Drive through the production cell_dispatch arm ──────
     let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
     let connected = Arc::new(Mutex::new(HashMap::new()));
     let entity_to_addr = Arc::new(Mutex::new(HashMap::new()));
-    let cell_tx_opt: Option<mpsc::Sender<crate::cell::messages::BaseToCellMsg>> = None;
-    let minigame_registry = None;
-    handle_cell_message(
-        msg,
-        &transport,
-        &connected,
-        &entity_to_addr,
-        &cell_tx_opt,
-        &db_pool,
-        &minigame_registry,
-        "127.0.0.1",
-        0,
-    )
-    .await;
+    for msg in messages {
+        crate::base::world_entry::handle_cell_message(
+            msg,
+            &transport,
+            &connected,
+            &entity_to_addr,
+            &None,
+            &Some(Arc::new(pool.clone())),
+            &None,
+            "127.0.0.1",
+            0,
+        )
+        .await;
+    }
+}
 
-    // ── 4. The persistence guarantee C04 needs: the row survives, keyed
-    //    on player_id alone — independent of the entity_id that accepted
-    //    it, which is exactly what changes across a cross-world hop (the
-    //    old entity is destroyed; InitPlayerState builds a brand new one
-    //    on the far side and re-hydrates it from this same query). ──
-    let restored = query_saved_missions(&db_pool, player_id).await;
-    let mission = restored
+/// CS-08a1: the seeded Cellblock grant/accept reaches the Castle crossing,
+/// persists 4038, and hydrates in Harset with the same letter instance.
+/// Removing bridge 1366 must strand this unchanged test at 4037.
+#[tokio::test]
+async fn live_db_frosts_letter_seeded_bridge_round_trip() {
+    use crate::cell::content::{
+        fire_dialog_open, fire_stargate_crossed, load_single_chain_for_test,
+    };
+    use crate::cell::messages::CellToBaseMsg;
+    use cimmeria_content_engine::chain::ChainEngine;
+    use cimmeria_entity::missions::{MissionInstance, MISSION_ACTIVE, STATUS_ACTIVE};
+    use tokio::sync::mpsc;
+    let pool = require_db_or_skip!();
+    let account_id = TEST_PLAYER_BASE + 600;
+    let player_id = TEST_PLAYER_BASE + 601;
+    let other_account = TEST_PLAYER_BASE + 602;
+    let other_player = TEST_PLAYER_BASE + 603;
+    for (a, p) in [(account_id, player_id), (other_account, other_player)] {
+        cleanup(&pool, a, p).await;
+        insert_account_and_player(&pool, a, p).await;
+    }
+    let mut engine = ChainEngine::new();
+    for id in [1003, 1121, 1366] {
+        // A missing bridge remains missing: reachability below must fail at
+        // 4037, rather than substituting a handwritten advance action.
+        if let Some(chain) = load_single_chain_for_test(&pool, id).await.unwrap() {
+            engine.register_chain(chain);
+        }
+    }
+    let mut cellblock = fresh_letter_entity(&pool, account_id, player_id, "Castle_CellBlock").await;
+    cellblock
+        .get_entity_mut(1)
+        .unwrap()
+        .missions
+        .add_mission(MissionInstance::new(622, 2113, vec![]));
+    let (tx, mut rx) = mpsc::channel(128);
+    fire_dialog_open(1, player_id, 3995, &engine, &tx, &mut cellblock).await;
+    let grant = drain_letter_traffic(&mut rx);
+    assert_eq!(
+        grant
+            .iter()
+            .filter(|m| matches!(
+                m,
+                CellToBaseMsg::GrantItem {
+                    item_id: 3730,
+                    container_id: 2,
+                    count: 1,
+                    ..
+                }
+            ))
+            .count(),
+        1
+    );
+    assert_eq!(
+        grant
+            .iter()
+            .filter(|m| matches!(
+                m,
+                CellToBaseMsg::MissionUpdate {
+                    mission_id: 1360,
+                    current_step_id: Some(4037),
+                    ..
+                }
+            ))
+            .count(),
+        1
+    );
+    persist_letter_traffic(&pool, grant).await;
+    let letter = letter_inventory(&pool, account_id, player_id).await;
+    assert_eq!(letter.len(), 1);
+    assert_eq!(
+        (letter[0].1, letter[0].2),
+        (1, 2),
+        "one letter in mission bag"
+    );
+    assert!(letter_inventory(&pool, other_account, other_player)
+        .await
+        .is_empty());
+    drop(cellblock);
+
+    let mut castle = fresh_letter_entity(&pool, account_id, player_id, "Castle").await;
+    assert_eq!(castle.get_entity_world_id(1), Some(8));
+    let accepted = castle
+        .get_entity(1)
+        .unwrap()
+        .missions
+        .get_mission(1360)
+        .unwrap();
+    assert_eq!(
+        (accepted.status, accepted.current_step_id),
+        (MISSION_ACTIVE, Some(4037))
+    );
+    assert_eq!(accepted.active_objectives[0].objective_id, 4650);
+    fire_stargate_crossed(1, player_id, "Harset", &engine, &tx, &mut castle).await;
+    assert_eq!(
+        castle
+            .get_entity(1)
+            .unwrap()
+            .missions
+            .get_mission(1360)
+            .unwrap()
+            .current_step_id,
+        Some(4038),
+        "real Castle crossing must reach delivery; missing bridge strands 4037"
+    );
+    let crossed = drain_letter_traffic(&mut rx);
+    assert!(
+        crossed.iter().all(|m| matches!(
+            m,
+            CellToBaseMsg::MissionUpdate { .. } | CellToBaseMsg::EntityMethodCall { .. }
+        )),
+        "Castle must emit no inventory/binding/transport mutation: {crossed:?}"
+    );
+    let updates: Vec<_> = crossed
         .iter()
-        .find(|m| m.mission_id == MISSION_ID)
-        .expect("mission 1360 must round-trip cell → base → DB → re-login query");
-    assert_eq!(
-        mission.status, MISSION_ACTIVE,
-        "mission 1360 must persist as ACTIVE — this is the exact status an \
-         InitPlayerState restore on the Castle side reads back, whether that \
-         restore follows an ordinary relog or the CrossWorldTeleport hop"
-    );
-    assert_eq!(
-        mission.current_step_id,
-        Some(STEP_ID),
-        "step 4037 must persist alongside the ACTIVE status"
-    );
+        .filter(|m| {
+            matches!(
+                m,
+                CellToBaseMsg::MissionUpdate {
+                    mission_id: 1360,
+                    ..
+                }
+            )
+        })
+        .collect();
+    assert_eq!(updates.len(), 1);
+    assert!(matches!(updates[0], CellToBaseMsg::MissionUpdate {
+        status: MISSION_ACTIVE, current_step_id: Some(4038),
+        completed_step_ids, completed_objective_ids, active_objective_ids,
+        failed_objective_ids, repeats: 0, ..
+    } if completed_step_ids == &[4037] && completed_objective_ids == &[4650]
+        && active_objective_ids == &[4651] && failed_objective_ids.is_empty()));
+    persist_letter_traffic(&pool, crossed).await;
+    let db_pool = Some(Arc::new(pool.clone()));
+    let saved = query_saved_missions(&db_pool, player_id).await;
+    let delivery = saved.iter().find(|m| m.mission_id == 1360).unwrap();
+    assert_eq!(delivery.current_step_id, Some(4038));
+    assert_eq!(delivery.completed_step_ids, vec![4037]);
+    assert_eq!(delivery.completed_objective_ids, vec![4650]);
+    assert_eq!(delivery.active_objective_ids, vec![4651]);
+    assert_eq!(letter_inventory(&pool, account_id, player_id).await, letter);
+    drop(castle);
 
-    cleanup(&pool, account_id, player_id).await;
+    // Travel and ordinary relog both rebuild from saved rows. Even a relog
+    // back in Castle cannot re-credit the crossing once 4038 is persisted.
+    for world in ["Harset", "Harset", "Castle"] {
+        let mut fresh = fresh_letter_entity(&pool, account_id, player_id, world).await;
+        let mission = fresh
+            .get_entity(1)
+            .unwrap()
+            .missions
+            .get_mission(1360)
+            .unwrap();
+        assert_eq!(
+            (mission.status, mission.current_step_id),
+            (MISSION_ACTIVE, Some(4038))
+        );
+        assert_eq!(mission.completed_steps, vec![4037]);
+        assert_eq!(mission.completed_objectives, vec![4650]);
+        assert_eq!(mission.active_objectives.len(), 1);
+        assert_eq!(
+            (
+                mission.active_objectives[0].objective_id,
+                mission.active_objectives[0].status
+            ),
+            (4651, STATUS_ACTIVE)
+        );
+        fire_stargate_crossed(1, player_id, "Harset", &engine, &tx, &mut fresh).await;
+        assert!(drain_letter_traffic(&mut rx).is_empty());
+        assert_eq!(letter_inventory(&pool, account_id, player_id).await, letter);
+    }
+    assert!(query_saved_missions(&db_pool, other_player)
+        .await
+        .is_empty());
+    assert!(letter_inventory(&pool, other_account, other_player)
+        .await
+        .is_empty());
+    for (a, p) in [(account_id, player_id), (other_account, other_player)] {
+        cleanup(&pool, a, p).await;
+    }
 }

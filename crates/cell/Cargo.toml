@@ -53,6 +53,10 @@ sqlx = { workspace = true }
 tracing = { workspace = true }
 cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 
+[features]
+# Cross-service tests reuse the production mission hydrator.
+test-support = []
+
 [dev-dependencies]
 # `start_profiles::fixture`: the start-profile audit test.
 cimmeria-resources = { workspace = true, features = ["test-support"] }

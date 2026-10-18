@@ -1,0 +1,6 @@
+# Castle letter bridge and persistence seam
+
+- Owner-approved reconstruction chain **1366** advances mission **1360** from 4037 to 4038 on Castle-origin world **8** `stargate_crossed('Harset')`. Chain **1360** itself completes mission **708**; the namespaces must not be confused. Contract: `docs/analysis/castle-continuation/worknotes/CS-08a.md`.
+- Seeded Cellblock chains 1003/1121 grant 3730 and accept 1360. Container 0 requests automatic placement; `load_item_containers` and the grant resolver choose the letter's mission bag **2**. Castle emits no inventory mutation. Live-DB guard: `crates/services/src/mission_round_trip_tests.rs::live_db_frosts_letter_seeded_bridge_round_trip`.
+- Cross-service tests can call `cimmeria_cell::cell::build_restored_missions_for_test` with `test-support`; it delegates to the production `InitPlayerState` restorer. Inventory is loaded separately through public `query_player_load_data`. This avoids handwritten restore or persistence messages agreeing with themselves.
+- Crossing credit occurs before destination hydration. Travel failure may leave 4038 active in Castle; GM teleport provides no catch-up. Harset receipt still depends on HA-1360a/b successful consumption before completion. Offline bridge results do not establish client journal rendering or full playable delivery.

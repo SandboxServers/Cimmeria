@@ -1166,9 +1166,9 @@ INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_
 
 INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (528, 439, false, 1, false, false, false, ' ');
 
-INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (4650, 4037, false, 1, false, false, false, ' ');
+INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (4650, 4037, false, 1, true, false, false, ' ');
 
-INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (4651, 4038, false, 1, false, false, false, ' ');
+INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (4651, 4038, false, 1, true, false, false, ' ');
 
 INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (4654, 4040, false, 1, false, false, false, ' ');
 

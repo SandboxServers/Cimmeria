@@ -65,6 +65,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Reference
 
+- [reference_castle_letter_bridge_2026_10_14.md](reference_castle_letter_bridge_2026_10_14.md) — chain 1366 advances mission 1360; mission bag 2 letter retention and production cross-service hydration seam
 - [reference_lab_uat_capture_ids_2026_10_13.md](reference_lab_uat_capture_ids_2026_10_13.md) — UAT AP-03 id sources: server_sessions has optional player_id; client_player_state omits entity_id, so client_entity_find /player/id supplies it
 - [reference_lab_dialog_close_2026_10_13.md](reference_lab_dialog_close_2026_10_13.md) — one-page Cellblock Done click can leave DialogWin visible; verify closure and use the native close fallback
 - [reference_lab_hub_pass_lessons_2026_10_13.md](reference_lab_hub_pass_lessons_2026_10_13.md) — 2026-10-13 hub-pass lessons include the confirmed CEGUI top-child hit-test binding and covering-window refusal rule

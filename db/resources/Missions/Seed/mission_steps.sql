@@ -1105,9 +1105,9 @@ INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabl
 
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (439, 136, false, 1, false, 'Report back to Capt. Coppelmann.', 6);
 
-INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (4037, 1360, false, 1, false, 'Find a way to get Cpl. Frost''s Letter to his family.', 0);
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (4037, 1360, false, 1, true, 'Find a way to get Cpl. Frost''s Letter to his family.', 0);
 
-INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (4038, 1360, false, 1, false, 'Give Cpl. Frost''s Letter to Col. Marsh.', 1);
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (4038, 1360, false, 1, true, 'Give Cpl. Frost''s Letter to Col. Marsh.', 1);
 
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (4040, 1361, false, 1, false, 'Talk to Moh''katan.', 0);
 

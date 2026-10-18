@@ -123,6 +123,11 @@ chaos-testing = ["cimmeria-base/chaos-testing"]
 lab-chaos = ["cimmeria-base/lab-chaos", "cimmeria-base-session/lab-chaos"]
 
 [dev-dependencies]
+# The persisted mission bridge drives the production hydrator and seeded
+# content executor across the cell/base boundary.
+cimmeria-cell = { workspace = true, features = ["test-support"] }
+cimmeria-cell-content = { workspace = true, features = ["test-support"] }
+
 # Mercury with the `test-support` feature, so the cross-track tests can use
 # `cimmeria_mercury::test_transport::TestTransport` (the recording UDP fake)
 # in place of a real socket. Only the tests name mercury since wave C6, so it

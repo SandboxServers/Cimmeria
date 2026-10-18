@@ -394,6 +394,7 @@
 \ir resources/Content/Seed/castle_701_chains.sql
 \ir resources/Content/Seed/castle_706_708_chains.sql
 \ir resources/Content/Seed/castle_702_704_chains.sql
+\ir resources/Content/Seed/castle_carry_in_chains.sql
 \ir resources/Content/Seed/effects_chains.sql
 \ir resources/Content/Seed/harset_goauld_chains.sql
 \ir resources/Content/Seed/harset_jaffa_chains.sql
