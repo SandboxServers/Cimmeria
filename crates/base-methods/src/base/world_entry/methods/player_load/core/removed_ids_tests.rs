@@ -107,7 +107,8 @@ async fn live_db_player_load_logs_no_degraded_event_for_removed_ids() {
     let _ = query_saved_missions(&db, TEST_BASE + 1).await;
     cleanup(&pool, TEST_BASE).await;
 
-    assert_eq!(data.player_id, TEST_BASE + 1);
+    // Log assertions first: they prove the capture sees a degraded load when the
+    // loader breaks (the player_id check below would otherwise mask them).
     assert!(
         capture
             .find_event(Level::ERROR, "", "player_row_missing")
@@ -120,4 +121,5 @@ async fn live_db_player_load_logs_no_degraded_event_for_removed_ids() {
             "removed ids must not log reason={reason}"
         );
     }
+    assert_eq!(data.player_id, TEST_BASE + 1);
 }
