@@ -565,36 +565,6 @@ async fn deliver(
     drain(rx)
 }
 
-/// Smoke test for the harness: the Cellblock grant, the Castle crossing, the
-/// Harset bind and the Marsh click reach the turn-in request, and nothing
-/// succeeds before a correlated result. Later tests build on this path.
-#[tokio::test]
-async fn live_db_marsh_receipt_click_is_pending_before_the_result() {
-    let pool = require_db_or_skip!();
-    let (account_id, player_id) = (TEST_BASE + 1, TEST_BASE + 2);
-    cleanup(&pool, account_id, player_id).await;
-    insert_account_and_player(&pool, account_id, player_id).await;
-    let driver = Driver::new(pool.clone(), account_id, player_id, &RECEIPT_CHAINS).await;
-    let (tx, mut rx) = mpsc::channel(128);
-    let mut harset = stage_at_marsh(&driver, &tx, &mut rx, false).await;
-
-    let click = click_marsh(&driver, &tx, &mut rx, &mut harset).await;
-    let requests = click
-        .iter()
-        .filter(|m| matches!(m, CellToBaseMsg::Plugin(_)))
-        .count();
-    assert_eq!(requests, 1, "the click queues exactly one turn-in request");
-    driver.route(click).await;
-    assert_eq!(
-        driver.letter_count().await,
-        1,
-        "no success before a correlated result: the letter is still held"
-    );
-    assert_eq!(driver.step_1360().await, Some(4038));
-
-    cleanup(&pool, account_id, player_id).await;
-}
-
 /// The positive path, once: the click commits, the correlated result consumes
 /// the one letter, completes 1360 with the exact terminal arrays and `repeats`
 /// 1, writes the receipt row, and the cell opens the 1361 offer.
@@ -666,45 +636,5 @@ async fn live_db_marsh_receipt_full_replay_delivers_the_letter_once() {
     cleanup(&pool, account_id, player_id).await;
 }
 
-/// A completed 1360 is not accepted again: a re-accept attempt on the Cellblock
-/// grant chain is refused, and the mission row and the letter count are unchanged.
-#[tokio::test]
-async fn live_db_mission_1360_reaccept_is_refused_after_completion() {
-    let pool = require_db_or_skip!();
-    let (account_id, player_id) = (TEST_BASE + 5, TEST_BASE + 6);
-    cleanup(&pool, account_id, player_id).await;
-    insert_account_and_player(&pool, account_id, player_id).await;
-    let mut driver = Driver::new(pool.clone(), account_id, player_id, &RECEIPT_CHAINS).await;
-    let (tx, mut rx) = mpsc::channel(128);
-    let mut harset = stage_at_marsh(&driver, &tx, &mut rx, true).await;
-    let frames = deliver(&mut driver, &tx, &mut rx, &mut harset).await;
-    driver.route(frames).await;
-    let before = driver.row_1360().await;
-    assert_eq!(before.0, i32::from(MISSION_COMPLETED));
-    assert_eq!(before.6, 1);
-
-    let mut cellblock = driver.hydrate("Castle_CellBlock").await;
-    fire_dialog_open(
-        PLAYER_EID,
-        player_id,
-        3995,
-        &driver.engine,
-        &tx,
-        &mut cellblock,
-    )
-    .await;
-    let attempt = drain(&mut rx);
-    assert!(
-        !frame_methods(&attempt)
-            .iter()
-            .any(|m| MISSION_FRAMES.contains(m)),
-        "a completed 1360 sends no accept, step or completion frame"
-    );
-    driver.route(attempt).await;
-    assert_eq!(driver.row_1360().await, before, "the row is unchanged");
-    assert_eq!(driver.letter_count().await, 0, "no letter is re-granted");
-
-    cleanup(&pool, account_id, player_id).await;
-}
-
 mod negative;
+mod reaccept;

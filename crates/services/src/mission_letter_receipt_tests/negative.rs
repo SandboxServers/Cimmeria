@@ -426,3 +426,33 @@ async fn live_db_marsh_receipt_without_6501_does_nothing() {
     assert!(problems_if_consumed(&driver).await.is_empty());
     teardown(&pool, 21).await;
 }
+
+/// Smoke test for the harness: the Cellblock grant, the Castle crossing, the
+/// Harset bind and the Marsh click reach the turn-in request, and nothing
+/// succeeds before a correlated result. Later tests build on this path.
+#[tokio::test]
+async fn live_db_marsh_receipt_click_is_pending_before_the_result() {
+    let pool = require_db_or_skip!();
+    let (account_id, player_id) = (TEST_BASE + 1, TEST_BASE + 2);
+    cleanup(&pool, account_id, player_id).await;
+    insert_account_and_player(&pool, account_id, player_id).await;
+    let driver = Driver::new(pool.clone(), account_id, player_id, &RECEIPT_CHAINS).await;
+    let (tx, mut rx) = mpsc::channel(128);
+    let mut harset = stage_at_marsh(&driver, &tx, &mut rx, false).await;
+
+    let click = click_marsh(&driver, &tx, &mut rx, &mut harset).await;
+    let requests = click
+        .iter()
+        .filter(|m| matches!(m, CellToBaseMsg::Plugin(_)))
+        .count();
+    assert_eq!(requests, 1, "the click queues exactly one turn-in request");
+    driver.route(click).await;
+    assert_eq!(
+        driver.letter_count().await,
+        1,
+        "no success before a correlated result: the letter is still held"
+    );
+    assert_eq!(driver.step_1360().await, Some(4038));
+
+    cleanup(&pool, account_id, player_id).await;
+}
