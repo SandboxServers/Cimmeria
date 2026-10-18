@@ -397,3 +397,94 @@ The scan fails on a clean tree (a seed changed since the seal: update the affect
 ## 12. What this does not prove
 
 It does not prove any item can be obtained in game, that a client dialog references 4512 or 2714, that a Harset vendor or trainer would render, or what the economy should be. It proves only what the committed seeds hold at the sealed tip and that the scan catches drift. HA-15a, HA-15b and HA-15c implementation, HA-06c and HA-14 stay blocked until the section 7 and 8 decisions and HA-01 placements exist.
+
+## 13. Result (audit re-run, 2026-10-18)
+
+Frozen SHA: `2785df72153ead16101b058d6a83281a5889a6f5` (branch `content/harset-campaign`, worktree status clean before the run; seal commit `3e5f503e8`). Scan extracted verbatim from section 9 to `.claude/reports/harset-continuation/ha15_audit.py` (gitignored) and run as `python -I .claude/reports/harset-continuation/ha15_audit.py` from the worktree root. No lane, cargo, lab, client, seed or DB write was used.
+
+Outcome: `RESULT PASS`, exit 0. No claim in sections 3 and 4 moved: census 46 spawns and 0 service spawns, 6 service templates (none spawned in a Harset world), 4 item lists, 2 trainer lists, 0 orphan trainer rows, 23 required items (3 HAS, 1 XZONE, 19 GAP). Raw output:
+
+```text
+## A. Harset NPC census (spawn, template, services)
+world 57 Harset: spawns=35 templates=15 service_spawns=0
+world 68 Harset_CmdCenter: spawns=11 templates=11 service_spawns=0
+world 69 Harset_Market: spawns=0 templates=0 service_spawns=0
+world 70 Harset_StorageRm: spawns=0 templates=0 service_spawns=0
+TOTAL spawns=46 service_spawns=0
+
+## B. Every template with a vendor or trainer field, and where it spawns
+25 Interaction Debug NPC - DO NOT USE {'buy_item_list': 1, 'sell_item_list': 2, 'repair_item_list': 2, 'recharge_item_list': 2, 'trainer_ability_list_id': 1} itype 0 worlds []
+300 Debug Hub - Vendor {'buy_item_list': 1, 'sell_item_list': 2, 'repair_item_list': 2, 'recharge_item_list': 2} itype 65536 worlds [12, 1300]
+301 Debug Hub - Trainer {'trainer_ability_list_id': 1} itype 128 worlds [12, 1300]
+314 Debug Hub - Crafting Supplies {'buy_item_list': 310} itype 65536 worlds [12, 1300]
+360 Debug Hub - Pet Trainer {'trainer_ability_list_id': 350} itype 128 worlds [12, 1300]
+1302 Debug Area - Munitions Vendor {'buy_item_list': 1300, 'sell_item_list': 2, 'repair_item_list': 2, 'recharge_item_list': 2} itype 49152 worlds [1300]
+service templates spawned in a Harset world: []
+
+## C. Item lists
+1 'Test vendor buy list' rows 3 templates [25, 300] naquadah min/max (0, 100)
+2 'Test vendor sell/repair/recharge list' rows 3 templates [25, 25, 25, 300, 300, 300, 1302, 1302, 1302] naquadah min/max (100, 1000)
+310 'Debug hub crafting supplies' rows 24 templates [314] naquadah min/max (1, 1)
+1300 'Debug Area munitions' rows 19 templates [1302] naquadah min/max (1, 1000)
+item_list_items rows pointing at a missing list: []
+item_list_items design_ids missing from items.sql: []
+
+## D. Trainer lists
+1 'Debug ability list' rows 439 archetypes 7 templates [25, 301]
+350 'Pet trainer (debug hub)' rows 6 archetypes 1 templates [360]
+trainer_abilities rows not in archetype_ability_tree: 0
+ARCHETYPE_Archeologist nodes 65 level min/max 1 50
+ARCHETYPE_Asgard nodes 66 level min/max 1 50
+ARCHETYPE_Commando nodes 64 level min/max 1 50
+ARCHETYPE_Goauld nodes 62 level min/max 1 50
+ARCHETYPE_Scientist nodes 59 level min/max 1 50
+ARCHETYPE_Sholva nodes 51 level min/max 1 50
+ARCHETYPE_Soldier nodes 72 level min/max 1 50
+
+## E. Mission-required items
+2698 "Romney's Files" | missions 567 | sources [] | item_events [] -> GAP (declared GAP)
+2714 'Delicious Confection' | missions 1353,1247 alt | sources [] | item_events [] -> GAP (declared GAP)
+2720 "Dawson's Symbiote" | missions 1365 | sources [] | item_events [] -> GAP (declared GAP)
+2734 'Monitoring Device' | missions 1352,1362 | sources [] | item_events [] -> GAP (declared GAP)
+2743 'Tollan Control Technology' | missions 1365 | sources [] | item_events [(2410, 5)] -> GAP (declared GAP)
+2818 "Goa'uld Symbiote" | missions 1353,741 | sources [] | item_events [(2068, 5)] -> GAP (declared GAP)
+2819 'Jaffa Disguise' | missions 742 | sources [('chain_add_item', 6102, 'harset_goauld_chains.sql')] | item_events [(597, 5)] -> HAS (declared HAS)
+2820 'Scarab Listening Device' | missions 742,1243 | sources [('chain_add_item', 6101, 'harset_goauld_chains.sql')] | item_events [] -> HAS (declared HAS)
+2823 "Petbe's Robes" | missions 1245 | sources [] | item_events [(597, 5)] -> GAP (declared GAP)
+2825 "Petbe's Bloody Robes" | missions 1245 | sources [] | item_events [] -> GAP (declared GAP)
+2864 'Scarab Listening Device Map' | missions 742 | sources [('chain_add_item', 6110, 'harset_goauld_chains.sql')] | item_events [(597, 5)] -> HAS (declared HAS)
+3730 "Frost's Letter" | missions 1360 | sources [('chain_add_item', 1003, 'castle_cellblock_chains.sql'), ('chain_param:complete_mission_with_item', 6501, 'harset_opcore_chains.sql'), ('loot_table', 1, 'loot.sql')] | item_events [] -> XZONE (declared XZONE)
+4396 'Straegis Scanner' | missions 1374 | sources [] | item_events [(2092, 5)] -> GAP (declared GAP)
+4512 '"Death by Chocolate"' | missions 1353,1247 | sources [] | item_events [] -> GAP (declared GAP)
+4690 'Nanite Tracking Gun' | missions 1363 | sources [] | item_events [(2409, 5)] -> GAP (declared GAP)
+5146 'Straegis beacon core' | missions 1241 | sources [] | item_events [] -> GAP (declared GAP)
+5703 'Life Theme' | missions 1246 | sources [] | item_events [] -> GAP (declared GAP)
+5704 'Forces Theme' | missions 1246 | sources [] | item_events [] -> GAP (declared GAP)
+5706 'Matter Theme' | missions 1246 | sources [] | item_events [] -> GAP (declared GAP)
+5736 "Lethander's Head" | missions 1247 | sources [] | item_events [] -> GAP (declared GAP)
+5760 'Life Shard' | missions 1353 | sources [] | item_events [] -> GAP (declared GAP)
+5763 'Matter Shard' | missions 1353 | sources [] | item_events [] -> GAP (declared GAP)
+5766 'Forces Shard' | missions 1353 | sources [] | item_events [] -> GAP (declared GAP)
+
+## F. Baselines (a drift fails the scan and forces a re-seal)
+{'harset_spawns': 46, 'harset_service_spawns': 0, 'service_templates_total': 6, 'item_lists_total': 4, 'trainer_lists_total': 2}
+
+RESULT PASS
+```
+
+### 13.1 Extra evidence for the 4512 decision (grep only)
+
+- Seeds: `4512` and `2714` appear in `db/resources` only as unrelated ids in other tables (mission_steps, mission_tasks, effects, abilities, dialogs and similar). Neither appears as an item id in any `add_item` action, `mission_rewards` row, loot row, `item_list_items` row or `items_event_sets` row (scan section E, sources empty for both).
+- Docs: the rebuild work-packets name 4512 for mission 1353 (step 4013, buy confection) and 1247 (step 3629, purchase treat); the rebuild audit line for 1247 reads "4512 or 2714 treat" with "GH2 (purchase) or grant". The four-zone HA-15 text and the continuation ledger name only 4512. These are claims, not client evidence.
+
+### 13.2 BlockedDecision for the owner (nothing here is resolved)
+
+| Decision | Options and the evidence behind each |
+|---|---|
+| Treat item (HA-15a) | 4512 `"Death by Chocolate"`: named by the four-zone text, ledger and rebuild step lists. 2714 `Delicious Confection`: named as the alternate by the rebuild audit. Both exist in the item seed with no source and no item event. BlockedEvidence: no client dialog or mission text check has been done. |
+| Acquisition path for the treat | Vendor purchase: needs a Harset market spawn, but world 69 has 0 spawns (HA-01) and a vendor purchase lands in bag 1 and ignores `max_stack_size`. Visible chain grant: Harset chains in the 6000 range already grant items (6101, 6102, 6110), grant must precede any equip. Loot: only the generic loot table exists for XZONE items. No option is chosen; invisible auto-completion is excluded by the ledger. |
+| Economy, prices, stock (HA-15b) | No Harset price or stock row exists; debug lists span 0 to 1000 Naquadah per row. Owner sets envelope, per-faction stock, and tier comparison (section 7, items 1 to 3, 5). |
+| Faction isolation | Vendor engine has no faction gate: per-faction templates and dialogs, or a server gate (section 7, item 3). |
+| Trainers (HA-15c) | Generator-owned seed; owner sets NPCs, archetype and level coverage, costs (section 8). |
+
+Nothing in this audit says any item can be obtained or any vendor or trainer is playable.
