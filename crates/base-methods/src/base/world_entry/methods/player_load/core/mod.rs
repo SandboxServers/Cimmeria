@@ -11,6 +11,8 @@
 mod bank_load_tests;
 mod inventory_items;
 mod player_data;
+#[cfg(test)]
+mod removed_ids_tests;
 
 // Internal callers reach this via `inventory_items::`; only this module's
 // test mod uses the bare import, so gate it to the test build.
