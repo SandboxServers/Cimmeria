@@ -104,6 +104,48 @@ async fn continuation_stops_at_each_stage_boundary_when_session_replaced() {
     }
 }
 
+/// A replacement that lands inside a callee's window, after the cinematic
+/// stage guard passed and before `send_cinematic`, must not put the old
+/// entry's cinematic packet on the wire under the new key.
+#[tokio::test]
+async fn replacement_inside_a_callee_window_drops_the_old_entry_send() {
+    let addr: SocketAddr = "127.0.0.1:56040".parse().unwrap();
+    let entity_id = 56040;
+    let generation = Instant::now();
+    let connected = Arc::new(Mutex::new(HashMap::from([(
+        addr,
+        first_login_state(entity_id, [1; 32], generation),
+    )])));
+    let (tx, _rx) = mpsc::channel(32);
+    let typed = Arc::new(TestTransport::default());
+    let transport: Arc<dyn Transport> = typed.clone();
+    let (entered, release) = arm(addr, "cinematic_late");
+    let task = start_with_transport(addr, connected.clone(), tx, entity_id, transport);
+    enter(entered).await;
+
+    // Same address, entity and player; new key and generation.
+    connected.lock().unwrap().insert(
+        addr,
+        first_login_state(entity_id, [2; 32], generation + Duration::from_nanos(1)),
+    );
+    let sent_before = typed.filter_to(addr).len();
+    release.send(()).unwrap();
+    tokio::time::timeout(Duration::from_secs(3), task)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert!(
+        reached(addr).contains(&"cinematic"),
+        "the cinematic stage guard should have passed before the replacement"
+    );
+    assert_eq!(
+        typed.filter_to(addr).len(),
+        sent_before,
+        "the old entry's cinematic send reached the replaced session"
+    );
+}
+
 #[tokio::test]
 async fn continuation_replacement_with_no_session_for_addr_stops_quietly() {
     let addr: SocketAddr = "127.0.0.1:56030".parse().unwrap();

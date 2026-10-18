@@ -33,6 +33,7 @@ pub(super) fn assign_entry_epoch(
 }
 
 /// Identity captured with the pending finalization under one session lock.
+#[derive(Clone)]
 pub(super) struct SessionSnapshot {
     cancelled: Arc<AtomicBool>,
     generation: Instant,

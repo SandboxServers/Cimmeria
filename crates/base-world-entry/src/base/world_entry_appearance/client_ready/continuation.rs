@@ -21,7 +21,7 @@ use tokio::sync::mpsc;
 use crate::base::{ConnectedClientState, PendingClientReadyInfo};
 use crate::cell::messages::BaseToCellMsg;
 
-use super::super::super::helpers::send_bundle_to_witness_reliable;
+use super::super::super::helpers::{scoped, send_bundle_to_witness_reliable, EntryGuard};
 use super::super::super::world_entry_chat::build_welcome_message_args;
 use super::super::builders::build_on_client_ready_burst_bundle;
 use super::super::cinematic::send_cinematic;
@@ -63,7 +63,26 @@ pub(super) struct ContinuationCtx<'a> {
 }
 
 /// Finish world entry for a session that passed the post-handoff check.
+///
+/// The stages run inside an entry guard for `addr`: a reliable or unreliable
+/// send to `addr` made after the session there was replaced is dropped at the
+/// send chokepoint, so the callees cannot leak this entry's packets.
 pub(super) async fn run_continuation(
+    ctx: ContinuationCtx<'_>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let addr = ctx.addr;
+    let entity_id = ctx.entity_id;
+    let player_id = ctx.pending.player_id;
+    let session = ctx.session.clone();
+    let guard = EntryGuard::new(addr, move |state| {
+        session.matches(state, entity_id, player_id)
+    });
+    scoped(guard, run_stages(ctx)).await
+}
+
+/// The continuation stages, run under the entry guard set up by
+/// [`run_continuation`].
+async fn run_stages(
     ctx: ContinuationCtx<'_>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let ContinuationCtx {
