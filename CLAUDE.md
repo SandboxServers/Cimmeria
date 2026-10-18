@@ -1,5 +1,7 @@
 # Cimmeria — Stargate Worlds Emulator
 
+> **Session mode.** Claude Code starts here as the `orchestrator` persona (`.claude/settings.json`): it dispatches agents and has no shell. For direct work run `claude --agent hands-on`. How the AI workflow works: [README § How AI development works here](README.md#how-ai-development-works-here).
+
 A server emulator for Stargate Worlds, written in Rust (`crates/`); the overview is [README.md](README.md). This file is the core every session loads. The detail lives in the linked docs and in the skills under `.claude/skills/`.
 
 ## Repo invariants
