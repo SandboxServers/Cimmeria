@@ -71,7 +71,7 @@ try {
         $r = Invoke-BranchAt $main $amb $first
         Check ($r.code -eq 2 -and $r.out -match 'status=refused') "refuses the ambiguous name '$amb' (exit $($r.code))"
     }
-    foreach ($pseudo in 'REBASE_HEAD', 'AUTO_MERGE', 'REVERT_HEAD', 'BISECT_HEAD', 'head', 'Orig_Head') {
+    foreach ($pseudo in 'REBASE_HEAD', 'AUTO_MERGE', 'REVERT_HEAD', 'BISECT_HEAD', 'head', 'Orig_Head', 'Rebase_Head', 'Auto_Merge', 'Revert_Head') {
         $r = Invoke-BranchAt $main $pseudo $first
         Check ($r.code -eq 2 -and $r.out -match 'ambiguous-branch-name') "refuses the pseudo-ref shaped name '$pseudo' (exit $($r.code))"
     }
@@ -94,6 +94,32 @@ try {
         $r = Invoke-BranchAt $main $ok $first
         Check ($r.code -eq 0 -and $r.out -match "status=ok branch=$ok ") "an ordinary name '$ok' stays valid (exit $($r.code)): $($r.out.Trim())"
     }
+
+    # --- a case variant of an existing branch is refused, also once its ref is packed -------
+    # `topic` exists (created above). On NTFS a loose refs/heads/Topic would shadow the packed
+    # refs/heads/topic and silently re-point it.
+    & git -C $main pack-refs --all
+    $topicBefore = (& git -C $main rev-parse refs/heads/topic).Trim()
+    foreach ($variant in 'Topic', 'tOPIC') {
+        $r = Invoke-BranchAt $main $variant $second
+        Check ($r.code -eq 2 -and $r.out -match 'branch-exists') "refuses '$variant' while topic exists (exit $($r.code)): $($r.out.Trim())"
+    }
+    foreach ($df in 'topic/sub', 'Topic/sub') {
+        $r = Invoke-BranchAt $main $df $second
+        Check ($r.code -eq 2 -and $r.out -match 'branch-exists') "refuses '$df' under the existing branch topic (exit $($r.code))"
+    }
+    $r = Invoke-BranchAt $main 'feat' $second
+    Check ($r.code -eq 2 -and $r.out -match 'branch-exists') "refuses 'feat', a path prefix of the existing feat/wt (exit $($r.code))"
+    Check ((& git -C $main rev-parse refs/heads/topic).Trim() -eq $topicBefore -and (& git -C $main rev-parse topic).Trim() -eq $topicBefore) 'topic did not move'
+    Check ($null -eq (& git -C $main for-each-ref refs/heads/Topic refs/heads/TOPIC)) 'no case-variant ref was created'
+
+    # A failed `git branch` reports git's last line.
+    $gitDir = (& git -C $main rev-parse --absolute-git-dir).Trim()
+    New-Item -ItemType Directory (Join-Path $gitDir 'refs/heads') -Force | Out-Null
+    New-Item -ItemType File (Join-Path $gitDir 'refs/heads/lockme.lock') | Out-Null
+    $r = Invoke-BranchAt $main 'lockme' $first
+    Check ($r.code -eq 1 -and $r.out -match 'status=failed reason=git-branch detail=\S+') "a failed git branch carries git's last line as detail (exit $($r.code)): $($r.out.Trim())"
+    Remove-Item -LiteralPath (Join-Path $gitDir 'refs/heads/lockme.lock')
 
     # GIT_DIR in the environment must not move the branch into another repository.
     $other = Join-Path $tmp 'other'
