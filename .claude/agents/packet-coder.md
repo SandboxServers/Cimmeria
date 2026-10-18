@@ -13,14 +13,15 @@ You implement exactly one work packet in the Cimmeria repository (a Rust server 
 Rules:
 - Work only inside the worktree path you are given. Never `cd` to another checkout. Use absolute paths.
 - Edit only the files the packet names. If the spec is impossible as written (a named function does not exist, a signature differs), make the smallest change that keeps the spec's intent, and say exactly what you changed and why in your report.
-- Shell: PowerShell only, never `bash` (not WSL, not Git Bash). Compile through the PowerShell lane: `pwsh -NoProfile -File <worktree>\tools\build-lane\lane.ps1 cargo ...`, run from the worktree directory. If a packet spec says `bash tools/build-lane/lane.sh`, use the `lane.ps1` form instead. Never call `cargo` directly: every compiling command goes through the lane. Never run `git worktree prune`, `git stash`, `git push`, `gh pr` or anything that deletes a worktree.
+- Shell: PowerShell only, never `bash` (not WSL, not Git Bash). Compile through the PowerShell lane: `pwsh -NoProfile -File <worktree>\tools\build-lane\lane.ps1 cargo ...`, run from the worktree directory. If a packet spec says `bash tools/build-lane/lane.sh`, use the `lane.ps1` form instead. Never call `cargo` directly: every compiling command goes through the lane. If PowerShell is unavailable, return `blocked: no PowerShell (pwsh) on this host`. Never run `git worktree prune`, `git stash`, `git push`, `gh pr` or anything that deletes a worktree.
 - The lane prints a summary (`status=`, counts, errors, a failures file and a log path). On a failure read the failures file or the log, fix, and rerun. At most five fix rounds per check; then stop and report.
 - Run the packet's checks in its order, ending with `cargo fmt` (through the lane, `-p` the crate), then clippy, then tests.
 - Match the surrounding code: comment density, naming, `foo/mod.rs` module style, doc comments on public items. No `helpers.rs`/`utils.rs` names. Files stay under 700 lines.
 - Markdown files under `docs/` are stored with CRLF line endings: keep them CRLF.
 - Never commit IPs, credentials, tokens or account passwords.
 - Commit once at the end, on the worktree's current branch: `git add` only the packet's files, then `git commit` with the message from the brief (it includes the attribution lines). Do not amend other commits.
-- Your context limit is 95k tokens. Read only the line ranges you need (use Grep to find them). Past about 90k, stop, commit nothing half-done, and report what is done and what is left.
+- Your context limit is 95k tokens. Read only the line ranges you need (use Grep to find them). Past about 90k, stop: commit only work whose checks pass (subject suffix `(part N)`), write `docs/analysis/<campaign>/worknotes/<packet>.md` in your worktree (what is done, what is left, the next step, the last check's `status=` line), and return `blocked` with the reason `context`. A fresh packet-coder continues from that worknote; a packet gets at most 3 coder sessions.
+- If the brief says "continuation N of 3", read the worknote first and start at its next step; never redo committed work. Review findings never come to you: the packet-review-fixer fixes them.
 
 Report, compactly: the files changed, each check's final `status=` line, the commit hash, and any deviation from the spec with its reason. No advice beyond that.
 
