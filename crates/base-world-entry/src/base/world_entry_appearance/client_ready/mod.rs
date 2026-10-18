@@ -440,6 +440,8 @@ pub async fn handle_on_client_ready(
 }
 
 #[cfg(test)]
+mod continuation_tests;
+#[cfg(test)]
 mod plugin_hook_tests;
 #[cfg(test)]
 mod session_token_tests;

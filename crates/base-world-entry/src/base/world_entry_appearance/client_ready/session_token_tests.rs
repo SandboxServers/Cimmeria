@@ -22,7 +22,10 @@ pub(super) async fn pause_after(addr: SocketAddr, stage: &'static str) {
     }
 }
 
-fn arm(addr: SocketAddr, stage: &'static str) -> (oneshot::Receiver<()>, oneshot::Sender<()>) {
+pub(super) fn arm(
+    addr: SocketAddr,
+    stage: &'static str,
+) -> (oneshot::Receiver<()>, oneshot::Sender<()>) {
     let (entered_tx, entered_rx) = oneshot::channel();
     let (release_tx, release_rx) = oneshot::channel();
     assert!(PAUSES
@@ -33,7 +36,7 @@ fn arm(addr: SocketAddr, stage: &'static str) -> (oneshot::Receiver<()>, oneshot
     (entered_rx, release_tx)
 }
 
-fn state(
+pub(super) fn state(
     entity_id: u32,
     player_id: i32,
     key: [u8; 32],
@@ -73,7 +76,7 @@ fn start(
     )
 }
 
-fn start_with_transport(
+pub(super) fn start_with_transport(
     addr: SocketAddr,
     connected: Clients,
     tx: mpsc::Sender<BaseToCellMsg>,
@@ -139,7 +142,7 @@ async fn on_client_ready_stops_old_continuation_after_ring_permit_replacement() 
     );
 }
 
-async fn enter(pause: oneshot::Receiver<()>) {
+pub(super) async fn enter(pause: oneshot::Receiver<()>) {
     tokio::time::timeout(Duration::from_secs(3), pause)
         .await
         .expect("pause not reached")

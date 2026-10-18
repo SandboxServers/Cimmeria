@@ -28,6 +28,23 @@ use super::super::cinematic::send_cinematic;
 use super::super::cinematic_aoi_hold;
 use super::cell_handoff::SessionSnapshot;
 
+/// One stage boundary: the test pause and mark hooks, and the session check
+/// that ends the continuation before the stage's side effect. `$current` is
+/// the `session.is_current(..)` closure; `$name` is the stage name.
+macro_rules! stage {
+    ($addr:expr, $current:expr, $name:literal) => {
+        #[cfg(test)]
+        super::session_token_tests::pause_after($addr, $name).await;
+        if !$current() {
+            return Ok(());
+        }
+        #[cfg(test)]
+        super::continuation_tests::mark($addr, $name);
+        #[cfg(test)]
+        super::session_token_tests::pause_after($addr, concat!($name, "_late")).await;
+    };
+}
+
 /// Everything the continuation reads from the session it is finalizing.
 pub(super) struct ContinuationCtx<'a> {
     pub(super) addr: SocketAddr,
@@ -100,15 +117,14 @@ pub(super) async fn run_continuation(
     });
     let welcome_args = build_welcome_message_args(speaker, entity_id);
 
+    stage!(addr, current, "burst");
     let bundle =
         build_on_client_ready_burst_bundle(entity_id, &appearance_args, &tint_args, &welcome_args);
     send_bundle_to_witness_reliable(transport, connected, entity_to_addr, entity_id, bundle).await;
-    if !current() {
-        return Ok(());
-    }
 
     // A non-GM refused a GM-only world (D-DA4) arrives here at their
     // faction's start: tell them why, now that the world has loaded.
+    stage!(addr, current, "gm_redirect");
     if let Some(line) = cimmeria_base_session::base::world_entry::gm_only_worlds::take_redirect_line(
         pending.player_id,
     ) {
@@ -126,6 +142,7 @@ pub(super) async fn run_continuation(
     // Runs after the burst bundle so the entity is fully live on the client
     // before we start sending list-method packets. Also creates the system
     // lists on first login (idempotent via ensure_system_lists).
+    stage!(addr, current, "contact_lists");
     super::super::super::contact_list::handlers::push_contact_lists_on_login(
         entity_id,
         pending.player_id,
@@ -140,6 +157,7 @@ pub(super) async fn run_continuation(
     // roster, then its online members marked Online; and the other online
     // members told this character is online. Every world entry, so gate
     // travel refreshes the entity id their rosters hold.
+    stage!(addr, current, "org_restore");
     cimmeria_base_session::base::organization::handlers::restore_on_login(
         &cimmeria_base_session::base::organization::handlers::OrgCtx {
             db_pool,
@@ -162,6 +180,7 @@ pub(super) async fn run_continuation(
     // in one bundle. After the burst for the same reason as the contact
     // lists: the entity is live and the crafting UI has loaded. Runs on every
     // onClientReady, so a world change resends it too.
+    stage!(addr, current, "plugin_hook");
     plugins
         .run_world_entry_hook(
             WorldEntryHookPoint::ClientReadyAfterOrgRestore,
@@ -184,6 +203,7 @@ pub(super) async fn run_continuation(
     // to the cell entity (spatial chat), D-SS15. Here, after InitPlayerState,
     // so every world entry re-seeds it: gate travel creates a fresh cell
     // entity whose set would otherwise be empty.
+    stage!(addr, current, "ignore_resync");
     super::super::super::contact_list::ignore::resync_ignore_cache(
         super::super::super::contact_list::ignore::IgnoreSyncCtx {
             db_pool,
@@ -200,6 +220,7 @@ pub(super) async fn run_continuation(
     // Gate-mail expiry for this player's own mailbox (SS-M4, D-SS04), so
     // mail that expired while they were away has taken its path before
     // they can open the mailbox.
+    stage!(addr, current, "mail_sweep");
     if let Some(pool) = db_pool {
         super::super::super::world_entry::methods::mail::expiry::spawn_login_sweep(
             Arc::clone(pool),
@@ -214,6 +235,7 @@ pub(super) async fn run_continuation(
     // Runs after the list-push so the player is fully set up before watchers
     // are notified. Fire-and-forget via tokio::spawn — the login burst is
     // already complete and we must not block it on per-watcher DB + sends.
+    stage!(addr, current, "login_fanout");
     if let Some(ref name) = player_name {
         let name_owned = name.clone();
         let player_id_owned = pending.player_id;
@@ -240,6 +262,7 @@ pub(super) async fn run_continuation(
     // gate) lets the cinematic-exit CollectGarbage reclaim the in-flight
     // appearance asset and produces a "dev cube" flash. Issue #288.
     if pending.first_login != 0 {
+        stage!(addr, current, "cinematic");
         send_cinematic(
             transport,
             addr,
@@ -300,6 +323,7 @@ pub(super) async fn run_continuation(
     // introductions stay buffered until the movie is cancelled or runs out.
     // A hold with no cinematic (lab chaos `Delay`) is released here, and the
     // release keeps it up for the delay from a spawned timer.
+    stage!(addr, current, "aoi_flush");
     if let Some(hold) = aoi_hold {
         cinematic_aoi_hold::on_client_ready(
             hold,
