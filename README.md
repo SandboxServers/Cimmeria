@@ -109,6 +109,7 @@ Source: [campaign-metrics findings](docs/analysis/campaign-metrics/findings.md).
 - The campaign cycle: the [campaign-packet skill](.claude/skills/campaign-packet/SKILL.md). Codex: [AGENTS.md](AGENTS.md).
 
 **Platform:** Windows with PowerShell 7 is fully supported; WSL, Linux, and Git Bash on Windows are not validated, but not unsupported ([details](docs/agents/development-workflow.md#wsl-and-linux-hosts)).
+
 ## Quick Start
 
 ```bash
