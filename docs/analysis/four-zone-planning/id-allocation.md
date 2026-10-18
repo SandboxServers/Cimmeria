@@ -40,7 +40,7 @@ The planning review's working figure of "castle_cellblock 1001–5030" was a min
 |---|---|---|
 | 1366–1400 | Castle (proposed) | Castle restoration chains. Proposal pending owner sign-off; see above. |
 | 6001–6800 | Harset | Reserved by the old Harset ledger: space 6001–6099, Goa'uld 6101–6300, Jaffa 6301–6500, OP-CORE 6501–6800. Per-mission sub-ranges are in [harset-work-packets.md](harset-work-packets.md). |
-| 8001–8499 | Dakara_E1 | Dakara_E1 rebuild ([ledger](../dakara-e1-rebuild/README.md)): space and travel 8001–8039 (8001–8006 in use), mission 1570 8040–8079, mission 1645 8080–8119, mission 1646 8120–8159, later missions 8160–8499. Per-file ranges: [Dakara work packets, C3](../dakara-e1-rebuild/work-packets.md#c3-seed-files-and-chain-ranges-d-dk14). |
+| 8001–8499 | Dakara_E1 | Dakara_E1 rebuild ([ledger](../dakara-e1-rebuild/README.md)): space and travel 8001–8039 (8001–8006 in use), mission 1570 8040–8074 and 8160–8179, mission 1645 8080–8119, mission 1646 8120–8159, later missions 8180–8499 (8075–8079 unassigned). Per-file ranges: [Dakara work packets, C3](../dakara-e1-rebuild/work-packets.md#c3-seed-files-and-chain-ranges-d-dk14). |
 | 9000–9799 | Tollana | Tollana restoration, population, authored and repeatable chains. |
 | 9800–9999 | Tollana (Harset recipients) | Owner decision, 2026-10-13: Tollana authors the Harset-side recipient chains for 603, 611, 618, 621, 1626, 1632 and 1643 here. Harset HA-00b signs off the NPC tags they use. |
 | 10000–10999 | Castle | Castle authored stories and repeatables (CS-04a/b/c, CS-05). |
