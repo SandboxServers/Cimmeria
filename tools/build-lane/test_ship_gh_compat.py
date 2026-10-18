@@ -148,7 +148,8 @@ class OldGhTests(OldGhCase):
         self.set_rollup([[
             check_run(g, "COMPLETED", "FAILURE" if g == "cargo clippy -D warnings" else "SUCCESS") for g in GREEN
         ]])
-        code, f, _ = self.merge()
+        # A short timeout so a revert (checks always []) fails in seconds, not after 30 minutes.
+        code, f, _ = self.merge("--timeout", "3s")
         self.assertEqual((code, f["status"], f["checks"]), (1, "ci-failed", "cargo clippy -D warnings"))
         self.assertEqual(self.calls(["pr", "merge"]), [])
 
