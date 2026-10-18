@@ -63,7 +63,7 @@ while [ $# -gt 0 ]; do
     -*:*) name=${tok%%:*}; val=${tok#*:} ;;
     -*)   name=$tok
           [ $# -gt 0 ] || usage_error "missing a value for $name"
-          case $1 in -[A-Za-z]*) usage_error "missing a value for $name" ;; esac
+          # taken verbatim, as the .ps1 binds it: a value such as -x is not a flag
           val=$1; shift ;;
     *)    usage_error "unexpected argument: $tok" ;;
   esac
