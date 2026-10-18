@@ -99,6 +99,9 @@ mod mission_abandon_round_trip_tests;
 #[cfg(test)]
 mod mission_62050_round_trip_tests;
 
+#[cfg(test)]
+mod mission_62060_round_trip_tests;
+
 /// TG-DB-12: unreadable saved missions lock instead of letting a re-accept
 /// overwrite a completed row. Test-only.
 #[cfg(test)]
