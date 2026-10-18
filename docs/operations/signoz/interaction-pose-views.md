@@ -64,7 +64,7 @@ ORDER BY kind
 
 ## Approach trails
 
-The approach row holds the last few positions before the interaction. Join it to its pose row on `pose_seq`, which is process-global and restarts at 1 with the server, so also bound the time:
+The approach row holds the last few positions before the interaction. Join it to its pose row on `pose_seq`, which is process-global and restarts at 1 with the server, so also bound the time (the approach row is written right after its pose row; the bound sits in `WHERE` because a ClickHouse join condition between the two sides is not available on every version):
 
 ```sql
 SELECT
@@ -80,11 +80,12 @@ INNER JOIN signoz_logs.distributed_logs_v2 AS a
   ON toInt64(a.attributes_number['pose_seq']) = toInt64(p.attributes_number['pose_seq'])
  AND a.resources_string['service.name'] = 'cimmeria-server'
  AND a.scope_name = 'interaction.approach'
- AND a.timestamp BETWEEN p.timestamp AND p.timestamp + 5000000000
 WHERE p.resources_string['service.name'] = 'cimmeria-server'
   AND p.scope_name = 'interaction.pose'
   AND p.attributes_string['cimmeria.session_kind'] = 'player'
   AND p.timestamp > toUnixTimestamp(now() - INTERVAL 1 DAY) * 1000000000
+  AND a.timestamp > toUnixTimestamp(now() - INTERVAL 1 DAY) * 1000000000
+  AND toInt64(a.timestamp) - toInt64(p.timestamp) BETWEEN 0 AND 5000000000
 ORDER BY t DESC
 LIMIT 50
 ```
@@ -119,13 +120,15 @@ The lab tools read flat JSONL: one object per line, keyed by the tracing field n
 - a number: `if(mapContains(attributes_number, 'k'), attributes_number['k'], NULL) AS k`
 - a text: `nullIf(attributes_string['k'], '') AS k`
 
+**The `timestamp` key is integer milliseconds.** The tools read `timestamp` as integer milliseconds or RFC 3339, never as nanoseconds, and the column is nanoseconds. Each query below therefore reads the raw column as `t` in an inner query and writes `intDiv(t, 1000000) AS timestamp` outside, because an alias named `timestamp` would shadow the column in the time filter. `SETTINGS output_format_json_quote_64bit_integers = 0` keeps that integer unquoted.
+
 For access to the ClickHouse container, use the recipe in the [telemetry-triage skill](../../../.claude/skills/telemetry-triage/SKILL.md) and [signoz-deployment.md](../signoz-deployment.md); put your own SSH alias in, and commit no host. Pipe the result to a `.jsonl` file. In PowerShell, write it as UTF-8 (a leading BOM is tolerated).
 
 ### 1. Pose rows
 
 ```sql
 SELECT
-  timestamp,
+  intDiv(t, 1000000) AS timestamp,
   nullIf(attributes_string['kind'], '') AS kind,
   nullIf(attributes_string['route'], '') AS route,
   nullIf(attributes_string['cimmeria.session_kind'], '') AS `cimmeria.session_kind`,
@@ -147,49 +150,86 @@ SELECT
   if(mapContains(attributes_number, 'facing_error_deg'), attributes_number['facing_error_deg'], NULL) AS facing_error_deg,
   if(mapContains(attributes_number, 'pose_seq'), attributes_number['pose_seq'], NULL) AS pose_seq,
   if(mapContains(attributes_number, 'mercury_seq'), attributes_number['mercury_seq'], NULL) AS mercury_seq
-FROM signoz_logs.distributed_logs_v2
-WHERE resources_string['service.name'] = 'cimmeria-server'
-  AND scope_name = 'interaction.pose'
-  AND timestamp > toUnixTimestamp(now() - INTERVAL 14 DAY) * 1000000000
-ORDER BY timestamp
+FROM (
+  SELECT timestamp AS t, attributes_string, attributes_number
+  FROM signoz_logs.distributed_logs_v2
+  WHERE resources_string['service.name'] = 'cimmeria-server'
+    AND scope_name = 'interaction.pose'
+    AND timestamp > toUnixTimestamp(now() - INTERVAL 14 DAY) * 1000000000
+)
+ORDER BY t
+SETTINGS output_format_json_quote_64bit_integers = 0
 FORMAT JSONEachRow
 ```
 
-`timestamp` comes out in nanoseconds. Keep the column list in step with the [field list](../../architecture/observability-target-catalog.md#interactionpose-and-interactionapproach); add `space_id`, `world_id`, `dialog_*` and `item_*` columns the same way if a tool needs them.
+Keep the column list in step with the [field list](../../architecture/observability-target-catalog.md#interactionpose-and-interactionapproach); add `space_id`, `world_id`, `dialog_*` and `item_*` columns the same way if a tool needs them.
 
 ### 2. Approach rows
 
-Same pattern over `scope_name = 'interaction.approach'`. Columns: `timestamp`, `cimmeria.session_kind`, `world`, `target_tag`, `points` as text; `pose_seq`, `entity_id`, `player_id`, `target_entity_id`, `n_points`, `span_s`, `path_len_m` as numbers.
+```sql
+SELECT
+  intDiv(t, 1000000) AS timestamp,
+  nullIf(attributes_string['cimmeria.session_kind'], '') AS `cimmeria.session_kind`,
+  nullIf(attributes_string['world'], '') AS world,
+  nullIf(attributes_string['target_tag'], '') AS target_tag,
+  nullIf(attributes_string['points'], '') AS points,
+  if(mapContains(attributes_number, 'pose_seq'), attributes_number['pose_seq'], NULL) AS pose_seq,
+  if(mapContains(attributes_number, 'entity_id'), attributes_number['entity_id'], NULL) AS entity_id,
+  if(mapContains(attributes_number, 'player_id'), attributes_number['player_id'], NULL) AS player_id,
+  if(mapContains(attributes_number, 'target_entity_id'), attributes_number['target_entity_id'], NULL) AS target_entity_id,
+  if(mapContains(attributes_number, 'n_points'), attributes_number['n_points'], NULL) AS n_points,
+  if(mapContains(attributes_number, 'span_s'), attributes_number['span_s'], NULL) AS span_s,
+  if(mapContains(attributes_number, 'path_len_m'), attributes_number['path_len_m'], NULL) AS path_len_m
+FROM (
+  SELECT timestamp AS t, attributes_string, attributes_number
+  FROM signoz_logs.distributed_logs_v2
+  WHERE resources_string['service.name'] = 'cimmeria-server'
+    AND scope_name = 'interaction.approach'
+    AND timestamp > toUnixTimestamp(now() - INTERVAL 14 DAY) * 1000000000
+)
+ORDER BY t
+SETTINGS output_format_json_quote_64bit_integers = 0
+FORMAT JSONEachRow
+```
 
 ### 3. Friction rows
 
-For `lab friction-drafts`. The reader needs `signal`, `reason`, `world`, `timestamp`, `player_id` and `cimmeria.session_kind`, and drops every row whose kind is not `player` (D-PC1).
+For `lab friction-drafts`. The reader needs `signal`, `reason`, `world`, `timestamp`, `player_id` and `cimmeria.session_kind`, and drops every row whose kind is not `player` (D-PC1). It groups rows by signal, reason, world and a subject: the first present of `tag`, `template_name`, `item_id`, `step_id`, `mission_id`, `region_tag` and `dialog_id`. Leave the subject columns out and every row of a signal falls into one cluster, so the query carries all seven. The friction rows also carry account and character names; this query does not select them, and the reader drops them again from its samples.
 
 ```sql
 SELECT
-  timestamp,
+  intDiv(t, 1000000) AS timestamp,
   nullIf(attributes_string['signal'], '') AS signal,
   nullIf(attributes_string['reason'], '') AS reason,
   nullIf(attributes_string['world'], '') AS world,
   nullIf(attributes_string['cimmeria.session_kind'], '') AS `cimmeria.session_kind`,
-  if(mapContains(attributes_number, 'player_id'), attributes_number['player_id'], NULL) AS player_id
-FROM signoz_logs.distributed_logs_v2
-WHERE resources_string['service.name'] = 'cimmeria-server'
-  AND scope_name = 'playtest.friction'
-  AND timestamp > toUnixTimestamp(now() - INTERVAL 14 DAY) * 1000000000
-ORDER BY timestamp
+  nullIf(attributes_string['tag'], '') AS tag,
+  nullIf(attributes_string['template_name'], '') AS template_name,
+  nullIf(attributes_string['region_tag'], '') AS region_tag,
+  if(mapContains(attributes_number, 'player_id'), attributes_number['player_id'], NULL) AS player_id,
+  if(mapContains(attributes_number, 'item_id'), attributes_number['item_id'], NULL) AS item_id,
+  if(mapContains(attributes_number, 'step_id'), attributes_number['step_id'], NULL) AS step_id,
+  if(mapContains(attributes_number, 'mission_id'), attributes_number['mission_id'], NULL) AS mission_id,
+  if(mapContains(attributes_number, 'dialog_id'), attributes_number['dialog_id'], NULL) AS dialog_id
+FROM (
+  SELECT timestamp AS t, attributes_string, attributes_number
+  FROM signoz_logs.distributed_logs_v2
+  WHERE resources_string['service.name'] = 'cimmeria-server'
+    AND scope_name = 'playtest.friction'
+    AND timestamp > toUnixTimestamp(now() - INTERVAL 14 DAY) * 1000000000
+)
+ORDER BY t
+SETTINGS output_format_json_quote_64bit_integers = 0
 FORMAT JSONEachRow
 ```
 
-Add the other friction fields you want carried into a draft (for example `step_id` or `tag`, whatever the signal names) with the same helpers.
-
 ### 4. Camera rows
 
-For `lab pose-library --camera`: both `client.camera.at_interact` and `client.camera.sent_seq`, which carry the keys the sequence join needs. These are client telemetry, replayed by admin-api under the `client.native` target and indexed under the `cimmeria-client` service. The client's own target is the attribute `client_target`.
+For `lab pose-library --camera`: both `client.camera.at_interact` and `client.camera.sent_seq`, which carry the keys the sequence join needs. These are client telemetry, replayed by admin-api under the `client.native` target and indexed under the `cimmeria-client` service. The client's own target is the attribute `client_target`. A camera row's `timestamp` is when admin-api replayed the upload, not when the player clicked; the join keys are `server_ts_ms` and `ts_ms`, so they are exported as they are.
 
 ```sql
 SELECT
-  timestamp,
+  intDiv(t, 1000000) AS timestamp,
   nullIf(attributes_string['client_target'], '') AS client_target,
   nullIf(attributes_string['session_id'], '') AS session_id,
   nullIf(attributes_string['cimmeria.session_kind'], '') AS `cimmeria.session_kind`,
@@ -208,17 +248,20 @@ SELECT
   if(mapContains(attributes_number, 'camera_yaw_deg'), attributes_number['camera_yaw_deg'], NULL) AS camera_yaw_deg,
   if(mapContains(attributes_number, 'mercury_seq_first'), attributes_number['mercury_seq_first'], NULL) AS mercury_seq_first,
   if(mapContains(attributes_number, 'mercury_seq_last'), attributes_number['mercury_seq_last'], NULL) AS mercury_seq_last
-FROM signoz_logs.distributed_logs_v2
-WHERE resources_string['service.name'] = 'cimmeria-client'
-  AND scope_name = 'client.native'
-  AND attributes_string['client_target'] LIKE 'client.camera.%'
-  AND timestamp > toUnixTimestamp(now() - INTERVAL 14 DAY) * 1000000000
-ORDER BY timestamp
+FROM (
+  SELECT timestamp AS t, attributes_string, attributes_number
+  FROM signoz_logs.distributed_logs_v2
+  WHERE resources_string['service.name'] = 'cimmeria-client'
+    AND scope_name = 'client.native'
+    AND attributes_string['client_target'] LIKE 'client.camera.%'
+    AND timestamp > toUnixTimestamp(now() - INTERVAL 14 DAY) * 1000000000
+)
+ORDER BY t
+SETTINGS output_format_json_quote_64bit_integers = 0
 FORMAT JSONEachRow
 ```
 
 Check before you trust it: run `SELECT DISTINCT scope_name, resources_string['service.name'] ... LIMIT 20` on a day with a camera upload. If the rows sit under another service name, change the `WHERE`, not the column list. The `pawn_*` columns are left out on purpose; add them the same way if you want the pawn pose beside the camera.
-
 ## Friction is DEBUG now (D-PC11)
 
 `playtest.friction` is exported at DEBUG through its own `OTEL_FILTER` row (`crates/server/src/logging/filters.rs`). A saved view or alert that filters it on WARN severity shows nothing. Filter on `scope_name = 'playtest.friction'` and drop the severity condition. The owner updates the live "Playtest: friction" saved view; this repository does not hold its export, and no worker edits it.

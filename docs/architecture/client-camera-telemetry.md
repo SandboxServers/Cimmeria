@@ -53,7 +53,7 @@ Both rows are DLL events (`client.camera.*`) that admin-api replays under the tr
 
 It has no pose keys.
 
-**The clock.** The DLL stamps every upload with an `X-Cimmeria-Client-Sent-Ms` header, its wall clock at send. For each chunk, admin-api computes the offset `server receive time - client sent time`, keeps the smallest offset seen in the last five minutes, and sets `server_ts_ms = ts_ms + offset`, capped at the chunk's receive time. The smallest offset is the least-delayed upload, so the error that remains is that upload's network delay, plus drift inside the window. A session with no observed offset (an upload without the header) has neither field.
+**The clock.** The DLL stamps every upload with an `X-Cimmeria-Client-Sent-Ms` header, its wall clock at send. For each chunk, admin-api computes the offset `server receive time - client sent time`. The client sent time is the header when the chunk has one and it is not older than the chunk's newest row `ts_ms`; otherwise it is that newest row's `ts_ms`, which also includes the time the row waited to be flushed. admin-api keeps the smallest offset seen in the last five minutes and sets `server_ts_ms = ts_ms + offset`, capped at the chunk's receive time. The smallest offset is the least-delayed upload, so the error that remains is that upload's network delay, plus drift inside the window. An upload without the header still gets both fields, from the newest-row fallback, and the offset then runs larger by the flush age; only a session with no observed offset at all has neither field.
 
 ## Joining the camera to `interaction.pose`
 
@@ -72,26 +72,31 @@ For `interact` the server records the sequence of the call exactly. For `useItem
 
 **3. Fallback**, for rows from before the clock fields existed (no `server_ts_ms`): the client `ts_ms` within 1 s of the pose row's time. The two clocks are unsynchronised, so use this only on old data and expect false matches.
 
-A sketch of join 1, with the wrap rule left to the caller (ClickHouse does not have `seq_in_range`; export both sets and join in the tool, or add the modulo yourself):
+A sketch of join 1, with the wrap rule left to the caller (ClickHouse does not have `seq_in_range`; export both sets and join in the tool, or add the modulo yourself). The camera row's own `timestamp` is when admin-api replayed the upload, so the time bound uses `server_ts_ms`, and the conditions that are not equalities sit in `WHERE` because older ClickHouse versions refuse them in `ON`. Both sides are cast with `toInt64` before they are subtracted, because `timestamp` is an unsigned nanosecond count and an unsigned subtraction that goes below zero wraps to a huge number instead of a negative one.
 
 ```sql
-SELECT c.attributes_number['pitch_offset_deg'] AS pitch_offset_deg, p.attributes_string['target_tag'] AS target_tag
+SELECT
+  c.attributes_number['pitch_offset_deg'] AS pitch_offset_deg,
+  p.attributes_string['target_tag'] AS target_tag
 FROM signoz_logs.distributed_logs_v2 AS c
 INNER JOIN signoz_logs.distributed_logs_v2 AS s
   ON s.attributes_string['session_id'] = c.attributes_string['session_id']
  AND toInt64(s.attributes_number['send_id']) = toInt64(c.attributes_number['send_id'])
- AND s.attributes_string['client_target'] = 'client.camera.sent_seq'
 INNER JOIN signoz_logs.distributed_logs_v2 AS p
   ON toInt64(p.attributes_number['entity_id']) = toInt64(c.attributes_number['entity_id'])
- AND p.scope_name = 'interaction.pose'
- AND toInt64(p.attributes_number['mercury_seq']) BETWEEN toInt64(s.attributes_number['mercury_seq_first']) AND toInt64(s.attributes_number['mercury_seq_last'])
- AND abs(p.timestamp - c.timestamp) < 60000000000
 WHERE c.attributes_string['client_target'] = 'client.camera.at_interact'
   AND c.attributes_string['cimmeria.session_kind'] = 'player'
+  AND s.attributes_string['client_target'] = 'client.camera.sent_seq'
+  AND p.scope_name = 'interaction.pose'
+  AND toInt64(p.attributes_number['mercury_seq']) BETWEEN toInt64(s.attributes_number['mercury_seq_first']) AND toInt64(s.attributes_number['mercury_seq_last'])
+  AND abs(intDiv(toInt64(p.timestamp), 1000000) - toInt64(c.attributes_number['server_ts_ms'])) < 60000
+  AND c.timestamp > toUnixTimestamp(now() - INTERVAL 1 DAY) * 1000000000
+  AND s.timestamp > toUnixTimestamp(now() - INTERVAL 1 DAY) * 1000000000
+  AND p.timestamp > toUnixTimestamp(now() - INTERVAL 1 DAY) * 1000000000
 LIMIT 20
 ```
 
-This sketch is untested and ignores the wrap; use it to see the shape. The exports that feed `lab pose-library --camera` are in [interaction-pose-views.md](../operations/signoz/interaction-pose-views.md#4-camera-rows).
+This sketch is untested and ignores the wrap; use it to see the shape. It drops camera rows that have no `server_ts_ms` (join 3 covers those). The exports that feed `lab pose-library --camera` are in [interaction-pose-views.md](../operations/signoz/interaction-pose-views.md#4-camera-rows).
 
 **Mapping to the lab pose keys.**
 
@@ -109,7 +114,7 @@ S-CAM asked which rotation the avatar update carries to the server: the camera's
 
 - The server's `player_yaw_deg` on a pose row is the pawn's body facing. It says nothing about where the player was looking, which is why the camera is read at all.
 - `wire_pitch_deg` is the pawn's pitch: 0 while the avatar walks or falls, and double the true pitch because the server unpacks pitch at the yaw scale.
-- The DLL reads the pawn pose (`pawn_*`) beside the camera so the two can be compared on the same click. Had the verdict been B, the pawn would be passed as absent and no `pawn_*` key would ever be written; the code keeps that path.
+- The DLL reads the pawn pose (`pawn_*`) beside the camera so the two can be compared on the same click. The read is unconditional: the code has no verdict-B path. A row has no `pawn_*` keys only when the pawn pointer chain is null or unreadable at that moment.
 
 ## Known gaps
 
