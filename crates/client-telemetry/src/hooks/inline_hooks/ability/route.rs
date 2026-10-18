@@ -273,6 +273,60 @@ impl Drop for RouteProbe {
     }
 }
 
+/// A camera method's router call (player-capture-bots, D-PC19): a send id
+/// before the original runs, and a joiner tag if a `start*Message` ran.
+pub(in crate::hooks::inline_hooks) struct ReachProbe {
+    method: &'static str,
+    send_id: u32,
+    prev_in_route: bool,
+    prev_reached: bool,
+}
+
+impl ReachProbe {
+    /// Called before the original, for `interact` or `useItem`.
+    pub(in crate::hooks::inline_hooks) fn begin(method: &'static str) -> Self {
+        let send_id = next_send_id();
+        Self {
+            method,
+            send_id,
+            prev_in_route: IN_ROUTE.try_with(|c| c.replace(true)).unwrap_or(false),
+            prev_reached: REACHED_START
+                .try_with(|c| c.replace(false))
+                .unwrap_or(false),
+        }
+    }
+
+    /// The send id this call carries, shared with `client.ability.sent`.
+    pub(in crate::hooks::inline_hooks) fn send_id(&self) -> u32 {
+        self.send_id
+    }
+
+    /// After the original: notes `SentTag { send_id, press_id: None, method,
+    /// ability_id: None }` when `REACHED_START` is set. Returns whether it
+    /// noted one.
+    pub(in crate::hooks::inline_hooks) fn finish(self) -> bool {
+        let reached = REACHED_START.try_with(Cell::get).unwrap_or(false);
+        if !reached {
+            return false;
+        }
+        let tag = SentTag {
+            send_id: self.send_id,
+            press_id: None,
+            method: self.method,
+            ability_id: None,
+        };
+        with_joiner(|j| j.note_sent(tag));
+        true
+    }
+}
+
+impl Drop for ReachProbe {
+    fn drop(&mut self) {
+        let _ = IN_ROUTE.try_with(|c| c.set(self.prev_in_route));
+        let _ = REACHED_START.try_with(|c| c.set(self.prev_reached));
+    }
+}
+
 fn note_start() {
     if IN_ROUTE.try_with(Cell::get).unwrap_or(false) {
         let _ = REACHED_START.try_with(|c| c.set(true));
