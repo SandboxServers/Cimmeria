@@ -210,6 +210,38 @@ class OrchestratorGuardTest(unittest.TestCase):
         result = guard(self.project, "Edit", {"file_path": str(self.project / target)})
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_allows_worktree_ledger_from_main_checkout(self):
+        # The orchestrator's cwd is the main checkout, so no payload cwd names the worktree.
+        worktree = self.project / ".claude" / "worktrees" / "x"
+        ledger = str(worktree / "docs" / "analysis" / "x" / "README.md")
+        result = guard(self.project, "Write", {"file_path": ledger})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        state = str(worktree / ".claude" / "state" / "active-campaign")
+        result = guard(self.project, "Write", {"file_path": state})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = str(worktree / ".claude" / "reports" / "x" / "r.md")
+        result = guard(self.project, "Edit", {"file_path": report})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        write_lines(worktree / "docs" / "analysis" / "x" / "big.md", 500)
+        big = str(worktree / "docs" / "analysis" / "x" / "big.md")
+        result = guard(self.project, "Read", {"file_path": big})
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_denies_worktree_code_from_main_checkout(self):
+        worktree = self.project / ".claude" / "worktrees" / "x"
+        code = str(worktree / "crates" / "foo.rs")
+        self.assertEqual(guard(self.project, "Edit", {"file_path": code}).returncode, 2)
+        write_lines(worktree / "crates" / "big.rs", 500)
+        big = str(worktree / "crates" / "big.rs")
+        self.assertEqual(guard(self.project, "Read", {"file_path": big}).returncode, 2)
+
+    def test_denies_escape_through_worktrees_dotdot(self):
+        escape = str(self.project / ".claude" / "worktrees" / "x" / ".." / ".." / ".." / "crates" / "foo.rs")
+        self.assertEqual(guard(self.project, "Write", {"file_path": escape}).returncode, 2)
+        # No worktree-name segment: parts[3:] is ("analysis", "a.md"), which matches no dir.
+        no_name = str(self.project / ".claude" / "worktrees" / "docs" / "analysis" / "a.md")
+        self.assertEqual(guard(self.project, "Write", {"file_path": no_name}).returncode, 2)
+
     def test_session_cwd_worktree_resolves_its_own_paths(self):
         # The project root is the main checkout; a managed worktree under it is the session cwd.
         worktree = self.project / ".claude" / "worktrees" / "x"

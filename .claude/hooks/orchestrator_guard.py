@@ -5,10 +5,11 @@ The orchestrator dispatches, decides and keeps the ledger. It does not research
 or write code, so this hook refuses:
 
 1. Edit or Write outside `docs/analysis/**`, `.claude/state/**` and `.claude/reports/**`.
-   Code goes to packet-coder and docs to documentation-writer. Calls from a subagent
-   (payload `agent_id`) are allowed.
-2. Read of a file of 400 lines or more outside `docs/analysis/**`, unless `limit`
-   is given and is at most 200. Large reads go to Explore.
+   A campaign worktree under `.claude/worktrees/<name>/` counts with the same dirs, so
+   its ledger paths pass while its code does not. Code goes to packet-coder and docs to
+   documentation-writer. Calls from a subagent (payload `agent_id`) are allowed.
+2. Read of a file of 400 lines or more outside `docs/analysis/**` (and the same dirs in a
+   worktree), unless `limit` is given and is at most 200. Large reads go to Explore.
 
 Hook protocol as in shell_guard.py: the tool call arrives as JSON on stdin; exit
 code 2 refuses it and the stderr text goes back to the model. Any parse failure
@@ -27,7 +28,8 @@ READABLE_DIRS = (("docs", "analysis"),)
 
 WRITE_REASON = (
     "orchestrator_guard: the orchestrator writes only docs/analysis/**, .claude/state/** "
-    "and .claude/reports/**. Dispatch packet-coder for code or documentation-writer for docs."
+    "and .claude/reports/** (in the main checkout or a campaign worktree under .claude/worktrees/<name>/). "
+    "Dispatch packet-coder for code or documentation-writer for docs."
 )
 READ_REASON = (
     "orchestrator_guard: file is 400+ lines outside docs/analysis/**. Dispatch Explore "
@@ -94,6 +96,18 @@ def under_dirs(root, target, dirs):
     return any(parts[: len(prefix)] == prefix for prefix in dirs)
 
 
+def under_worktree_dirs(root, target, dirs):
+    """True when target lies under <root>/.claude/worktrees/<name>/ followed by one of the dirs."""
+    try:
+        parts = target.relative_to(Path(os.path.normcase(os.path.realpath(root)))).parts
+    except ValueError:
+        return False
+    if len(parts) < 4 or parts[:2] != (".claude", "worktrees"):
+        return False
+    rest = parts[3:]
+    return any(rest[: len(prefix)] == prefix for prefix in dirs)
+
+
 def has_at_least_lines(path, count):
     """True when the file has at least count lines. Unreadable files count as short."""
     try:
@@ -120,9 +134,16 @@ def verdict(payload, root):
     roots = scope_roots(payload, root)
     target = resolve_target(roots[-1], file_path)
     if tool in ("Edit", "Write"):
-        return None if any(under_dirs(r, target, WRITABLE_DIRS) for r in roots) else WRITE_REASON
+        allowed = any(
+            under_dirs(r, target, WRITABLE_DIRS) or under_worktree_dirs(r, target, WRITABLE_DIRS)
+            for r in roots
+        )
+        return None if allowed else WRITE_REASON
     if tool == "Read":
-        if any(under_dirs(r, target, READABLE_DIRS) for r in roots):
+        if any(
+            under_dirs(r, target, READABLE_DIRS) or under_worktree_dirs(r, target, READABLE_DIRS)
+            for r in roots
+        ):
             return None
         limit = tool_input.get("limit")
         if isinstance(limit, int) and not isinstance(limit, bool) and limit <= READ_LIMIT_MAX:
