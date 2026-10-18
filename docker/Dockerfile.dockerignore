@@ -34,6 +34,7 @@ build.sh
 # CI-only: run on the runner against the built image, never inside it.
 # Excluded so editing it does not invalidate the builder layer (COPY tools).
 tools/container-smoke.sh
+tools/container-persistence-smoke.sh
 
 # IDE + VCS
 .git/
