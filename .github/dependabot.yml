@@ -25,6 +25,10 @@ updates:
     labels:
       - dependencies
       - docker
+    # A Postgres major needs a pg_upgrade plan (owner D7), not an automated bump.
+    ignore:
+      - dependency-name: "postgres"
+        update-types: ["version-update:semver-major"]
 
   # All SHA-pinned `uses:` references in .github/workflows/*.yml.
   # Dependabot resolves new release SHAs and opens PRs with both the
