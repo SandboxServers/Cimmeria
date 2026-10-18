@@ -28,7 +28,7 @@ Each blocked row names the contract that must be closed before the original impl
 |---|---|---|---|
 | HA-00a | 73 census | Done at CSV evidence level | Reviewed dispositions in README; missing build lineage remains held |
 | HA-00b | Reset/evidence/restoration ID proposals | Integrated | Wave-0 documentation evidence only; three findings fixed by `22982c17a`, fresh rereview clean. Proposals stay inactive until allocation signoff |
-| HA-00c | Authored/repeatable exact IDs | BlockedEvidence | CB-N05a is merged; inspect stock catalog and Cellblock's first authored client proof, then perform current global ID audit under O14-04/10/13; static half sealed in [HA-00c seal](worknotes/HA-00c.md) (no IDs allocated); first authored client proof stays BlockedEvidence |
+| HA-00c | Authored/repeatable exact IDs | BlockedEvidence | CB-N05a is merged; inspect stock catalog and Cellblock's first authored client proof, then perform current global ID audit under O14-04/10/13; static half executed 2026-10-18 at tip `3e5f503e8`, zero collisions across 109 refs, see [HA-00c result](worknotes/HA-00c.md) (no IDs allocated); first authored client proof stays BlockedEvidence |
 | HA-1360a1 | Atomic base transaction and writer fence | Integrated | Reviewed transaction and stale-writer guards; 670 nextest and seven live-DB tests passed |
 | HA-1360a2a | Session token world-entry delivery and lifetime | Integrated | Reviewed entry-epoch and replacement guards; default and `lab-chaos` lane suites passed |
 | HA-1360a2b | Correlated request/result routing and A1 invocation | Integrated | [Packet and three reviewed repairs](worknotes/HA-1360a-seal.md#ha-1360a2--internal-transport-and-session-fence); default, `lab-chaos` and focused live-DB lane checks passed |
