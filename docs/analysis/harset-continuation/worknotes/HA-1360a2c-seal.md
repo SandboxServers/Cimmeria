@@ -154,3 +154,23 @@ Independent read-only `packet-reviewer`, then `server-authority-enforcer` on the
 ## 7. Not claimed
 
 No client or lab behaviour; no proof that a real replacement during login is rare or common; no cover for residuals (a)-(c) in section 1; actual token cost is unmeasured and the 30k figures are estimates.
+
+### A result (Haiku attempt 2)
+
+- Commits: `a8063de5b` (wip 1/2, extraction) and `c06dc74b4` (wip 2/2, guards, stage marks, tests), then the final step commit.
+- Deviation: `stage!(addr, current, "<name>")` takes the address, the existing `current()` closure and the stage name, not `(ctx, name)`. The closure already carries the session check, so the macro reuses it.
+- Placement: the `burst` stage sits before the burst bundle send; the post-bundle check became the `gm_redirect` stage, so the guard count and order match the ten names.
+- Checks: `cargo fmt -p` and `fmt --all --check` ok; clippy `--all-targets` 0 warnings; nextest `cimmeria-base-world-entry` 254 passed (251 existing + 3 new); nextest with `--features lab-chaos` 278 passed.
+- Revert probes (one guard replaced by `|| true` at a time, file restored from backup, `restored=True`): `burst`, `gm_redirect`, `contact_lists`, `plugin_hook`, `ignore_resync`, `mail_sweep`, `login_fanout`, `cinematic`, `aoi_flush`: the replacement test fails (1 failed of 3). `org_restore`: replacement and no-session tests fail (2 failed). Deleting the `cinematic` stage: control and replacement tests fail (2 failed).
+- No lab, client, push or PR. Lines: `client_ready/mod.rs` 429, `continuation.rs` 336, `session_token_tests.rs` 376, `continuation_tests.rs` 114.
+
+### B result (Haiku attempt 2)
+
+- Commits: `59445b904` (wip 1/2, `entry_guard` module, its seven tests, the unreliable, single-path and bundle checks) and `1bb783ee9` (wip 2/2, `scoped` wrap, `SessionSnapshot` Clone, replacement test), then the final step commit.
+- Deviation: the wrap is a split, not an inline block. `run_continuation` builds the guard from the snapshot and calls `scoped(guard, run_stages(ctx))`; `run_stages` is the unchanged former body.
+- Line cap: `helpers/mod.rs` is 696 lines after wip 1/2, one over the 695 figure in section 4. Step B made no further edit to it; it is under the 700 cap.
+- Checks: `cargo fmt --all -- --check` ok; clippy `-p cimmeria-base-session -p cimmeria-base-world-entry --all-targets` and `-p cimmeria-base-methods -p cimmeria-services --all-targets` ok; nextest both crates 756 passed; nextest with `--features lab-chaos` 812 passed; `git diff --check` clean.
+- Revert probes (one check removed at a time, file restored from a scratchpad backup, `git diff` empty after restore): single-path reliable (both filters): `entry_guard_superseded_reliable_send_...` fails; bundle arm: `entry_guard_superseded_bundle_send_...` fails; unreliable arm: `entry_guard_superseded_unreliable_send_...` fails; `superseded` ignoring addr: `entry_guard_other_address_is_not_affected` fails; `scoped` wrap removed: `replacement_inside_a_callee_window_drops_the_old_entry_send` fails (left 2, right 1), no other test fails.
+- Probe artifact: restoring a file from a backup kept its old mtime, so cargo reused the previous probe build for `entry_guard.rs`. The `scoped` probe was re-run after touching the restored files; only the replacement test failed then.
+- Lines: `helpers/entry_guard.rs` 58, `helpers/entry_guard_tests.rs` 196, `helpers/mod.rs` 696, `helpers/reliable_fit.rs` 559, `client_ready/continuation.rs` 376, `continuation_tests.rs` 171, `cell_handoff.rs` 246.
+- No lab, client, push or PR.

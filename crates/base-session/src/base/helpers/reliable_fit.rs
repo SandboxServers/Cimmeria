@@ -41,6 +41,7 @@ use cimmeria_mercury::packet::{
 use cimmeria_mercury::transport::Transport;
 
 use super::bundle_manifest::{log_bundle_manifest, BundleManifestEntry, ManifestSend};
+use super::entry_guard::superseded;
 use super::reliable_send::{shadow_register_reliable_send_with_details, ReliableSendDetails};
 use super::{BundleSendOutcome, ConnectedClientState, WitnessSendOutcome};
 
@@ -76,10 +77,12 @@ pub async fn send_reliable_to_addr<F>(
 where
     F: Fn(&[u8; 32], EncryptionVersion, u32, &[u32]) -> Vec<u8>,
 {
-    let session = connected
-        .lock()
-        .ok()
-        .and_then(|clients| clients.get(&addr).map(|c| (c.key, c.enc_version)));
+    let session = connected.lock().ok().and_then(|clients| {
+        clients
+            .get(&addr)
+            .filter(|c| !superseded(addr, c))
+            .map(|c| (c.key, c.enc_version))
+    });
     let Some((key, version)) = session else {
         log_client_disconnected(log_id, addr);
         return WitnessSendOutcome::ClientDisconnected;
@@ -126,16 +129,19 @@ where
     // same pair, so it frames exactly as the probe measured.
     let reserved = {
         let clients = connected.lock().unwrap();
-        clients.get(&addr).map(|c| {
-            let _seq_gate = c.reliable_seq_gate.lock().unwrap();
-            let raw_seq = c.next_seq.fetch_add(1, Ordering::Relaxed);
-            let acks: Vec<u32> = cimmeria_mercury::packet::take_acks_for_plaintext(
-                &mut c.pending_acks.lock().unwrap(),
-                plaintext_bound,
-                version,
-            );
-            (raw_seq, acks)
-        })
+        clients
+            .get(&addr)
+            .filter(|c| !superseded(addr, c))
+            .map(|c| {
+                let _seq_gate = c.reliable_seq_gate.lock().unwrap();
+                let raw_seq = c.next_seq.fetch_add(1, Ordering::Relaxed);
+                let acks: Vec<u32> = cimmeria_mercury::packet::take_acks_for_plaintext(
+                    &mut c.pending_acks.lock().unwrap(),
+                    plaintext_bound,
+                    version,
+                );
+                (raw_seq, acks)
+            })
     };
     let Some((raw_seq, acks)) = reserved else {
         log_client_disconnected(log_id, addr);
@@ -381,6 +387,8 @@ pub(super) async fn send_bundle_reliable_to_addr(
     let send_data = {
         let clients = connected.lock().unwrap();
         let c = match clients.get(&addr) {
+            // Replaced by a new entry: nothing drains, nothing is reserved.
+            Some(c) if superseded(addr, c) => return BundleSendOutcome::ClientDisconnected,
             Some(c) => c,
             None => {
                 tracing::debug!(

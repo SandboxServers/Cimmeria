@@ -403,6 +403,17 @@ where
 
         let clients = connected.lock().unwrap();
         match clients.get(&addr) {
+            Some(c) if entry_guard::superseded(addr, c) => {
+                // The session at `addr` was replaced by a new entry while this
+                // continuation was in flight: the old entry's packet is dropped.
+                tracing::debug!(
+                    witness_id, // nt:id-only the session was replaced mid-send, so nothing names it
+                    %addr,
+                    reason = "entry_superseded",
+                    "AoI: session entry superseded mid-send -- packet dropped"
+                );
+                None
+            }
             Some(c) => {
                 let key = c.key;
                 let version = c.enc_version;
@@ -634,6 +645,12 @@ pub use letter_turn_in_send::{
 
 #[cfg(test)]
 mod letter_turn_in_send_tests;
+
+mod entry_guard;
+pub use entry_guard::{scoped, EntryGuard};
+
+#[cfg(test)]
+mod entry_guard_tests;
 
 mod departed_witnesses;
 pub use departed_witnesses::{
