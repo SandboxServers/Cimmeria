@@ -4,17 +4,20 @@
 # or any failed rebase step, runs `git rebase --abort` (only while a rebase is in progress) and
 # exits 1, so the worktree is left as it was before the call. Hooks still run.
 #
-#   pwsh tools/build-lane/rebase-onto.ps1 -C <worktree> -Onto <rev> [-Upstream <rev>]
+#   pwsh tools/build-lane/rebase-onto.ps1 -C <worktree> -Onto <40-hex> [-Upstream <40-hex>]
 #
 # Merge commits on the branch are kept (`--rebase-merges`), so a `--no-ff` topology survives.
 #
 # Refuses (exit 2) when -C is not the root of a non-main worktree, HEAD is detached, the tree is
-# dirty (any `git status --porcelain` output), -Onto does not name a commit, or -Upstream is given
-# and is not an ancestor of HEAD or is HEAD itself (nothing to replay: that would be a reset).
+# dirty (any `git status --porcelain` output), -Onto or -Upstream is not 40 lowercase hex digits
+# or names no commit, -Upstream is not an ancestor of HEAD or is HEAD itself (nothing to replay:
+# that would be a reset), or -Onto is already in HEAD while -Upstream is not in -Onto (the
+# rebase would drop the commits between them). Rebase config such as rebase.updateRefs is
+# overridden (--no-update-refs), so no other branch moves.
 # Prints status=ok tip=<sha> branch=<name> after a rebase, status=up-to-date tip=<sha> branch=<name>
 # when HEAD already contains -Onto and nothing moves, or status=failed reason=<why>.
 # Exit codes: 0 rebased or up to date, 2 refused by a guard, 1 the rebase failed (aborted).
-[CmdletBinding()]
+[CmdletBinding(PositionalBinding = $false)]
 param(
     [Parameter(Mandatory)][string]$C,
     [Parameter(Mandatory)][string]$Onto,
@@ -46,6 +49,8 @@ $branch = (& git -C $C rev-parse --abbrev-ref HEAD).Trim()
 $dirty = (& git -C $C status --porcelain | Out-String).Trim()
 if ($dirty) { Stop-Refused 'dirty-tree: commit or remove these first' }
 
+if ($Onto -cnotmatch '^[0-9a-f]{40}$') { Stop-Refused "sha-not-full-40-hex: $Onto" }
+if ($Upstream -and $Upstream -cnotmatch '^[0-9a-f]{40}$') { Stop-Refused "sha-not-full-40-hex: $Upstream" }
 $ontoSha = (& git -C $C rev-parse --verify --quiet "$Onto^{commit}" | Out-String).Trim()
 if (-not $ontoSha) { Stop-Refused "not-a-commit: $Onto" }
 
@@ -57,9 +62,16 @@ if ($Upstream) {
     # HEAD is its own ancestor; --onto <x> HEAD replays nothing and would move the branch to <x>.
     $replay = (& git -C $C rev-list --count "$upSha..HEAD" | Out-String).Trim()
     if ($upSha -eq (& git -C $C rev-parse HEAD).Trim() -or $replay -eq '0') { Stop-Refused "nothing-to-replay: $Upstream is the tip of $branch" }
-    $rebaseArgs = @('rebase', '--rebase-merges', '--onto', $ontoSha, $upSha)
+    # An -Onto already inside HEAD only makes sense when -Upstream sits at or below it; otherwise
+    # --onto <old commit> <newer commit> silently drops everything between the two.
+    & git -C $C merge-base --is-ancestor $ontoSha HEAD
+    if ($LASTEXITCODE -eq 0) {
+        & git -C $C merge-base --is-ancestor $upSha $ontoSha
+        if ($LASTEXITCODE -ne 0) { Stop-Refused "would-drop-commits: $Upstream is not in $Onto, so the commits between them would be lost" }
+    }
+    $rebaseArgs = @('rebase', '--no-update-refs', '--rebase-merges', '--onto', $ontoSha, $upSha)
 } else {
-    $rebaseArgs = @('rebase', '--rebase-merges', $ontoSha)
+    $rebaseArgs = @('rebase', '--no-update-refs', '--rebase-merges', $ontoSha)
 }
 
 & git -C $C merge-base --is-ancestor $ontoSha HEAD

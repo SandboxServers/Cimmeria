@@ -10,7 +10,7 @@
 # Prints status=ok merge=<sha> branch=<name>, status=up-to-date merge=<sha> branch=<name> when
 # <name> is already contained in HEAD, or status=failed reason=<why> files=<conflicted paths>.
 # Exit codes: 0 merged or up to date, 2 refused by a guard, 1 the merge failed (aborted).
-[CmdletBinding()]
+[CmdletBinding(PositionalBinding = $false)]
 param(
     [Parameter(Mandatory)][string]$C,
     [Parameter(Mandatory)][string]$Branch,
@@ -49,14 +49,14 @@ if ($Branch -eq $current) { Stop-Refused "same-branch: $Branch is the current br
 $dirty = (& git -C $C status --porcelain | Out-String).Trim()
 if ($dirty) { Stop-Refused 'dirty-tree: commit or remove these first' }
 
-& git -C $C merge-base --is-ancestor $Branch HEAD
+& git -C $C merge-base --is-ancestor "refs/heads/$Branch" HEAD
 if ($LASTEXITCODE -eq 0) {
     $sha = (& git -C $C rev-parse HEAD).Trim()
     Write-Output "status=up-to-date merge=$sha branch=$Branch"
     exit 0
 }
 
-$null = & git -C $C merge --no-ff --no-edit $Branch 2>&1
+$null = & git -C $C merge --no-ff --no-edit "refs/heads/$Branch" 2>&1
 if ($LASTEXITCODE -ne 0) {
     $files = (& git -C $C diff --name-only --diff-filter=U | Out-String).Trim() -replace "`r?`n", ','
     & git -C $C rev-parse -q --verify MERGE_HEAD *> $null

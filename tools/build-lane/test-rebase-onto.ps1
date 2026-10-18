@@ -13,16 +13,23 @@ function Check([bool]$cond, [string]$what) {
     if ($cond) { Write-Host "ok   $what" } else { Write-Host "FAIL $what"; $script:failed++ }
 }
 
-# Runs the script in-process and returns its exit code and printed text.
+# Runs the script the way ops does, as a child `pwsh -File`, and returns its exit code and printed
+# text. In-process calls would skip how a real command line binds its parameters.
 function Invoke-Rebase([string]$wt, [string]$onto, [string]$upstream = '') {
-    $params = @{ C = $wt; Onto = $onto }
-    if ($upstream) { $params.Upstream = $upstream }
-    $out = (& $script @params 2>&1 | Out-String)
+    $argv = @('-NoProfile', '-File', $script, '-C', $wt, '-Onto', $onto)
+    if ($upstream) { $argv += @('-Upstream', $upstream) }
+    $out = (& pwsh @argv 2>&1 | Out-String)
     return @{ code = $LASTEXITCODE; out = $out }
 }
 
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("rebase-onto-test-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory $tmp | Out-Null
+# Isolate git from the developer's global and system config (commit.gpgsign, core.hooksPath,
+# rebase.updateRefs ...): both point at an empty file inside the throwaway directory.
+$emptyConfig = Join-Path $tmp 'empty.gitconfig'
+New-Item -ItemType File $emptyConfig | Out-Null
+$env:GIT_CONFIG_GLOBAL = $emptyConfig
+$env:GIT_CONFIG_SYSTEM = $emptyConfig
 try {
     $main = Join-Path $tmp 'main'
     $wt = Join-Path $tmp 'wt'
@@ -43,26 +50,32 @@ try {
     $mainTip = (& git -C $main rev-parse HEAD).Trim()
 
     # --- refusals leave the branch alone ---------------------------------------------
-    $r = Invoke-Rebase $main 'main'
+    $r = Invoke-Rebase $main $mainTip
     Check ($r.code -eq 2 -and $r.out -match 'main-checkout') 'refuses the main checkout'
-    $r = Invoke-Rebase $wt 'no-such-rev'
+    $r = Invoke-Rebase $wt ('0' * 40)
     Check ($r.code -eq 2 -and $r.out -match 'not-a-commit') 'refuses an -Onto that names no commit'
+    foreach ($loose in 'main', 'HEAD', $mainTip.Substring(0, 12), $mainTip.ToUpper()) {
+        $r = Invoke-Rebase $wt $loose
+        Check ($r.code -eq 2 -and $r.out -match 'sha-not-full-40-hex') "refuses -Onto '$loose', which is not a full 40-hex SHA"
+        $r = Invoke-Rebase $wt $mainTip $loose
+        Check ($r.code -eq 2 -and $r.out -match 'sha-not-full-40-hex') "refuses -Upstream '$loose', which is not a full 40-hex SHA"
+    }
     Set-Content -LiteralPath (Join-Path $wt 'dirty.txt') 'untracked'
     $before = (& git -C $wt rev-parse HEAD).Trim()
-    $r = Invoke-Rebase $wt 'main'
+    $r = Invoke-Rebase $wt $mainTip
     Check ($r.code -eq 2 -and $r.out -match 'dirty-tree') 'refuses a dirty tree'
     Check ((& git -C $wt rev-parse HEAD).Trim() -eq $before) 'the dirty refusal did not move HEAD'
     Remove-Item -LiteralPath (Join-Path $wt 'dirty.txt')
 
     # --- a clean rebase replays the branch onto the new tip --------------------------
-    $r = Invoke-Rebase $wt 'main'
+    $r = Invoke-Rebase $wt $mainTip
     $tip = (& git -C $wt rev-parse HEAD).Trim()
     Check ($r.code -eq 0 -and $r.out -match "status=ok tip=$tip branch=feat/x") "rebases onto main (exit $($r.code)): $($r.out.Trim())"
     Check ((& git -C $wt merge-base HEAD main).Trim() -eq $mainTip) 'HEAD now contains main'
     Check (Test-Path -LiteralPath (Join-Path $wt 'b.txt')) 'the branch commit survived the rebase'
     Check ((& git -C $wt status --porcelain | Out-String).Trim() -eq '') 'the tree is clean after the rebase'
 
-    $r = Invoke-Rebase $wt 'main'
+    $r = Invoke-Rebase $wt $mainTip
     Check ($r.code -eq 0 -and $r.out -match 'status=up-to-date') "a second rebase onto main is up to date (exit $($r.code))"
 
     # --- -Upstream must be an ancestor of HEAD ----------------------------------------
@@ -70,7 +83,7 @@ try {
     & git -C $main add -- d.txt
     & git -C $main commit -q -m 'main d'
     $newMain = (& git -C $main rev-parse HEAD).Trim()
-    $r = Invoke-Rebase $wt 'main' $newMain
+    $r = Invoke-Rebase $wt $newMain $newMain
     Check ($r.code -eq 2 -and $r.out -match 'upstream-not-ancestor') 'refuses an -Upstream that HEAD does not contain'
 
     # --- a conflict is aborted and leaves the worktree as it was ---------------------
@@ -78,7 +91,7 @@ try {
     & git -C $wt add -- d.txt
     & git -C $wt commit -q -m 'feat d'
     $before = (& git -C $wt rev-parse HEAD).Trim()
-    $r = Invoke-Rebase $wt 'main'
+    $r = Invoke-Rebase $wt $newMain
     $gitDir = (& git -C $wt rev-parse --absolute-git-dir).Trim()
     Check ($r.code -eq 1 -and $r.out -match 'status=failed reason=rebase-aborted') "a conflicting rebase fails and aborts (exit $($r.code))"
     Check ((& git -C $wt rev-parse HEAD).Trim() -eq $before) 'the conflict left HEAD where it was'
@@ -121,6 +134,13 @@ try {
     Check ($r.code -eq 2 -and $r.out -match 'nothing-to-replay') '-Upstream equal to HEAD is refused'
     Check ((& git -C $wtZ rev-parse HEAD).Trim() -eq $before) 'the nothing-to-replay refusal did not move HEAD'
 
+    # An -Onto already inside HEAD with an -Upstream above it would drop the commits between them
+    # (a partial reset): `--onto <old> <newer>` keeps only the commits after <newer>.
+    $r = Invoke-Rebase $wtZ $base $newY
+    Check ($r.code -eq 2 -and $r.out -match 'would-drop-commits') "-Onto below -Upstream is refused (exit $($r.code)): $($r.out.Trim())"
+    Check ((& git -C $wtZ rev-parse HEAD).Trim() -eq $before) 'the would-drop-commits refusal did not move HEAD'
+    Check (Test-Path -LiteralPath (Join-Path $wtZ 'y.txt')) 'the commits that would have been dropped are still there'
+
     # A merge commit on the branch survives the rebase (--rebase-merges).
     $wtM = Join-Path $tmp 'wtm'
     $wtS = Join-Path $tmp 'wts'
@@ -136,6 +156,21 @@ try {
     $r = Invoke-Rebase $wtM $mTip $mBase
     Check ($r.code -eq 0 -and $r.out -match 'status=ok') "a branch with a merge commit rebases (exit $($r.code)): $($r.out.Trim())"
     Check (@(& git -C $wtM rev-list --merges "$mTip..HEAD").Count -eq 1) 'the merge commit survived the rebase'
+
+    # rebase.updateRefs=true would move other local branches that point into the rebased range.
+    $wtU = Join-Path $tmp 'wtu'
+    & git -C $main worktree add -q -b feat/u $wtU $mTip
+    New-Commit $wtU 'u1.txt' 'u1'
+    & git -C $wtU branch inner
+    $inner = (& git -C $main rev-parse refs/heads/inner).Trim()
+    New-Commit $wtU 'u2.txt' 'u2'
+    New-Commit $main 'g.txt' 'main g'
+    $gTip = (& git -C $main rev-parse HEAD).Trim()
+    & git -C $main config rebase.updateRefs true
+    $r = Invoke-Rebase $wtU $gTip
+    Check ($r.code -eq 0 -and $r.out -match 'status=ok') "rebases with rebase.updateRefs=true set (exit $($r.code)): $($r.out.Trim())"
+    Check ((& git -C $wtU merge-base HEAD $gTip).Trim() -eq $gTip) 'setup: the branch now sits on the new main tip'
+    Check ((& git -C $main rev-parse refs/heads/inner).Trim() -eq $inner) 'the unrelated branch inside the range was not moved'
 }
 finally {
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue

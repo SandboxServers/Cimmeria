@@ -27,6 +27,12 @@ function Git-Out([string]$wt, [string[]]$gitArgs) {
 
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("merge-noff-test-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory $tmp | Out-Null
+# Isolate git from the developer's global and system config (commit.gpgsign, core.hooksPath,
+# rebase.updateRefs ...): both point at an empty file inside the throwaway directory.
+$emptyConfig = Join-Path $tmp 'empty.gitconfig'
+New-Item -ItemType File $emptyConfig | Out-Null
+$env:GIT_CONFIG_GLOBAL = $emptyConfig
+$env:GIT_CONFIG_SYSTEM = $emptyConfig
 try {
     $main = Join-Path $tmp 'main'
     $wt = Join-Path $tmp 'wt'
@@ -78,6 +84,25 @@ try {
     $r = Invoke-Merge $wt 'feat/old'
     Check ($r.code -eq 0 -and $r.out -match 'status=up-to-date') 'an already-merged branch reports up-to-date'
     Check ((Git-Out $wt @('rev-parse', 'HEAD')) -eq $sha) 'up-to-date moved nothing'
+
+    # --- a tag with the branch's name does not win: the branch is what is merged ------------
+    # `t1` is a tag at s2 and a branch at s3. A bare `t1` resolves to the tag (git warns that the
+    # name is ambiguous), which would merge the wrong commit or report up-to-date.
+    $srcWt = Join-Path $tmp 'src'
+    Set-Content -LiteralPath (Join-Path $srcWt 's2.txt') 's2'
+    & git -C $srcWt add -- s2.txt
+    & git -C $srcWt commit -q -m 's2'
+    & git -C $srcWt tag t1
+    Set-Content -LiteralPath (Join-Path $srcWt 's3.txt') 's3'
+    & git -C $srcWt add -- s3.txt
+    & git -C $srcWt commit -q -m 's3'
+    & git -C $srcWt branch t1
+    $s3 = Git-Out $srcWt @('rev-parse', 'refs/heads/t1')
+    $r = Invoke-Merge $wt 't1'
+    $parents = (Git-Out $wt @('rev-list', '--parents', '-n', '1', 'HEAD')) -split ' '
+    Check ($r.code -eq 0 -and $r.out -match 'status=ok') "merges the branch t1, not the tag (exit $($r.code)): $($r.out.Trim())"
+    Check ($parents.Count -eq 3 -and $parents[2] -eq $s3) "the second parent is the branch tip: $($parents -join ' ')"
+    Check (Test-Path -LiteralPath (Join-Path $wt 's3.txt')) 'the branch-only commit s3 is in the worktree'
 
     # --- conflict: aborted, worktree back to its pre-merge state ----------------------
     & git -C $main worktree add -q (Join-Path $tmp 'conf') feat/conf
