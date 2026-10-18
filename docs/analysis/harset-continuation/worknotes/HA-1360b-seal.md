@@ -133,11 +133,11 @@ Harness rules: route the Plugin through `route_cell_message` with the installed 
 
 | Test | Kind | Assertion |
 |---|---|---|
-| `live_db_marsh_receipt_full_replay_delivers_the_letter_once` | positive | Before the result: processing feedback, no success. After the correlated result: one owned 3730 consumed; mission 1360 completed with exact terminal arrays and `repeats = 1`; `sgw_mission_1360_receipt` row; ordered dialog 4576, DSM 120101/slot 10 removal, objective 4651, step 4038, mission 1360 frames, then one 6511 offer. |
+| `live_db_marsh_receipt_full_replay_delivers_the_letter_once` | positive | Before the result: processing feedback, no success. After the correlated result: one owned 3730 consumed; mission 1360 completed with exact terminal arrays and `repeats = 1`; `sgw_mission_1360_receipt` row; ordered dialog 4576, DSM 120101/slot 10 removal, objective 4651, step 4038, mission 1360 frames, then one 6511 bind (DSM 5254 slot 10 via `add_dialog_set`; no dialog frame). |
 | `live_db_marsh_receipt_wrong_state_refuses_without_success` | adjacent negative | Parameterised: still on 4037, wrong world, wrong recipient (not Marsh), active 1361/4694 overlap: no consume, no completion, no success frames/events. |
 | `live_db_marsh_receipt_missing_item_is_a_refusal` | adjacent negative | No 3730, foreign-owned 3730, and storage-only 3730 each refuse with a reason and no success; mission stays active. |
 | `live_db_marsh_receipt_duplicate_click_is_one_attempt` | adjacent negative | Two clicks in one entry produce one request and one consume; second click reports processing. |
-| `live_db_marsh_receipt_relog_after_commit_does_not_replay` | relog | Commit, drop the session, reload: DB terminal state, bind absent, 6511 offer restored by `player_loaded`, no replayed dialog or second consume. |
+| `live_db_marsh_receipt_relog_after_commit_does_not_replay` | relog | Commit, drop the session, reload: DB terminal state, bind absent, 6511 bind restored by `player_loaded`, no replayed dialog or second consume. |
 | `live_db_marsh_receipt_relog_before_commit_keeps_the_offer` | relog | Relog with the request unresolved: letter still held, 6502 re-adds 120101, click again succeeds. |
 | `live_db_marsh_receipt_recovered_delivery_is_already_committed` | relog | Ambiguous commit then retry yields `AlreadyCommitted`; one consume total, one set of frames. |
 | `live_db_marsh_receipt_two_characters_are_isolated` | adjacent negative | Two characters on the shared Marsh: A's commit does not consume, complete or unbind for B. |
@@ -215,3 +215,5 @@ Branch `harset/ha-1360b2-cross-service`. Tests only; no production code changed.
 - Revert probes (disposable edit, `live-db-test.ps1 -p cimmeria-services -- mission_letter_receipt`, restored with `git checkout` and mtime touch, status clean each time): (1) 6501 disabled: 1 passed, 10 failed. (2) executor `CompleteMissionWithItem` arm no longer calls `letter_turn_in::request`: 1 passed, 10 failed. (3) chain 1366 `advance_step` target changed 4038 to 4037: 0 passed, 11 failed.
 - Not covered: telemetry event assertions beyond what the test log capture exposes cheaply (seal section 8); left to review.
 - Still UATPending: client acceptance and the NULL-dialog prompt in the client.
+
+> Correction 2026-10-18: earlier wording "one 6511 offer" in the section 7 table was wrong. Chain 6511 binds DSM 5254 to slot 10 and pushes only InteractionType flags; the frames are exactly 105, 82, 81, 80.
