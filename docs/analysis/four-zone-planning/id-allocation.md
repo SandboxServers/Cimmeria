@@ -14,7 +14,7 @@ Measured on 2026-10-13 at `origin/main` 885bbae05 from the first value of each `
 | Seed file | Chains | IDs in use |
 |---|---:|---|
 | `effects_chains.sql` | 7 | 2001, 2011, 2021–2025 |
-| `castle_cellblock_chains.sql` | 127 | 1001–1195 (sparse: 1001–1028, 1031–1034, 1036–1037, 1041–1046, 1051–1066, 1071–1074, 1081–1094, 1097–1112, 1121, 1131–1133, 1141–1142, 1151–1152, 1154, 1161–1162, 1171–1178, 1181–1195) and the single outlier 5030, and 11010–11010, and 11000–11005, 11020 |
+| `castle_cellblock_chains.sql` | 139 | 1001–1195 (sparse: 1001–1028, 1031–1034, 1036–1037, 1041–1046, 1051–1066, 1071–1074, 1081–1094, 1097–1112, 1121, 1131–1133, 1141–1142, 1151–1152, 1154, 1161–1162, 1171–1178, 1181–1195) and the single outlier 5030, and 11010–11010, and 11000–11005, 11020, 11030–11041 |
 | `castle_701_chains.sql` | 18 | 1201–1205, 1231–1243 |
 | `castle_702_704_chains.sql` | 23 | 1261–1265, 1271–1276, 1291–1302 |
 | `castle_706_708_chains.sql` | 28 | 1321–1323, 1341–1365 |
@@ -109,13 +109,13 @@ Individual claims for the wave 5 optional choice *Before the Patrol Returns* (CB
 
 | Namespace | Claimed ID | Exact use | Status |
 |---|---|---|---|
-| Mission | 62060 | *Before the Patrol Returns*; one-time, two Health Slappacks, no XP | Claimed (W5 architect) |
-| Mission step | 62061 | The choice step | Claimed (W5 architect) |
-| Mission objective | 62062 | Help the prisoners or jam the panel | Claimed (W5 architect) |
-| Mission task | 62063 | One task for the objective | Claimed (W5 architect) |
-| Dialog root | 60151 | One-screen, zero-button, speaker-0 monologue shown on accept | Claimed (W5 architect) |
-| Dialog screen | 96111 | Sole screen of dialog 60151 | Claimed (W5 architect) |
-| Content chain | 11030–11041 | Offer, two login restores, two accepts, follow-up, aid x2, sabotage, abandon, 641 withdrawal, abandon after 641; twelve individual IDs | Claimed (W5 architect) |
+| Mission | 62060 | *Before the Patrol Returns*; one-time, two Health Slappacks, no XP | In use (W5-INT) |
+| Mission step | 62061 | The choice step | In use (W5-INT) |
+| Mission objective | 62062 | Help the prisoners or jam the panel | In use (W5-INT) |
+| Mission task | 62063 | One task for the objective | In use (W5-INT) |
+| Dialog root | 60151 | One-screen, zero-button, speaker-0 monologue shown on accept | In use (W5-INT) |
+| Dialog screen | 96111 | Sole screen of dialog 60151 | In use (W5-INT) |
+| Content chain | 11030–11041 | Offer, two login restores, two accepts, follow-up, aid x2, sabotage, abandon, 641 withdrawal, abandon after 641; twelve individual IDs | In use (W5-INT) |
 
 Collision check, 2026-10-17, at Cellblock `12fcfb5db`: a `git grep` across all 744 local branches for these IDs as the first value of a `VALUES (` tuple under `db/resources/Content`, `db/resources/Missions` and `db/resources/Dialogs`, and for screen 96111 anywhere under `db/resources/Dialogs`, found zero hits. The same patterns found chain 11010, mission 62050, dialog 60150 and screen 96110 on this branch, so the search works. Mission 62060–62063 and dialog 60151 are absent from the stock paks (CB-N06-1 and CB-N06-2 prove it in tests). Point-in-time; CB-N06s rechecks before it seals, and W5-INT moves the rows to In use.
 ### CS-08a individual reservation — 2026-10-14

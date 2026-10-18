@@ -56,6 +56,7 @@
 --   Cellblock ambient cast (CB-N04a, 2026-10-17): chain(s) 11010, individual claims in the 11000-11499 Cellblock authored block (id-allocation.md, CB-N04 claims).
 --   Cellblock authored story CB-N05 (2026-10-17): chains 11000-11005, mission 62050 "The Remaining Pods" (id-allocation.md, CB-N05 individual claims).
 --   Cellblock barracks response CB-N07a (2026-10-17): chain 11020 (id-allocation.md, CB-N07 claims).
+--   Cellblock optional choice CB-N06 (2026-10-17): chains 11030-11041, mission 62060 "Before the Patrol Returns" (id-allocation.md, CB-N06 claims).
 --   (next free inside 1001-1111: 1029-1030, 1038-1040, 1047-1050, 1067-1070,
 --    1075-1080, 1095-1096; next free above 1111 for an unreserved future
 --    packet: 1200+, since 1112-1199 are all pre-allocated per work-packets.md)
