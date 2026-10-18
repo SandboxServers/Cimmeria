@@ -28649,6 +28649,9 @@ INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUE
 -- Speaker 0: npc_bark supplies the chat prefix from its own params.
 INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (60160, 200160, 'Somebody is loose out there. I heard a cell lock give way. Nobody walks out of this block. Nobody.', 0, 0);
 
+-- Cellblock continuation CB-N07a: barracks alarm bark (CIMMERIA_AUTHORING).
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (60160, 200170, 'Intruder in the barracks! One of the prisoners got loose. Weapons free!', 0, 1);
+
 -- Cellblock continuation CB-N05: dialog 60150's only screen (CIMMERIA_AUTHORING).
 INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (60150, 96110, 'Prisoner 329 says there are still people in the other pods. Tell Col. Marsh to check them before you leave.', 0, 0);
 
@@ -28658,5 +28661,5 @@ INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUE
 -- Name: dialog_screens_screen_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('dialog_screens_screen_id_seq', 200160, true);
+SELECT pg_catalog.setval('dialog_screens_screen_id_seq', 200170, true);
 

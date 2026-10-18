@@ -768,6 +768,14 @@ An optional, one-time story after 638, with no reward. Prisoner 329 offers the m
 
 Marsh's core chains 1051/1052 still fire beside 11005; 1152 is unchanged. Seal: [cb-n05-seal.md](../analysis/cellblock-continuation/worknotes/cb-n05-seal.md).
 
+#### Cellblock barracks response (CB-N07a)
+
+| Chain | Trigger | Conditions | Actions |
+|---|---|---|---|
+| 11020 | `enter_region('Castle_Cellblock.Region12')` (once) | `step_status(687, 2355) = 'active'` | `npc_bark(200170)`: one line in chat, speaker `NID Guard` |
+
+One alarm line as the player enters the barracks to fight its three guards (spawns 25, 26, 36). It changes no AI, spawn or objective state. Sealed in [cb-n07-seal.md](../analysis/cellblock-continuation/worknotes/cb-n07-seal.md).
+
 ### Castle (Persistent Zone)
 
 **Confidence**: CONFIRMED for 701 and for every mission's DB data; RECONSTRUCTION for the 702/703/704/706/708 chains

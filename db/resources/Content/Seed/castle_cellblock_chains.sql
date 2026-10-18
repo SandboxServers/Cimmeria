@@ -3603,3 +3603,29 @@ VALUES
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (11005, 'complete_objective', 62050, '62055', '{}', 0, 0);
+
+-- =====================================================================
+-- CB-N07a (2026-10-17): Cellblock barracks escape response
+-- =====================================================================
+-- One NID Guard alarm line when the escaping player first enters the
+-- barracks (Castle_Cellblock.Region12) while mission 687 step 2355
+-- (eliminate the guards in the barracks) is active. It adds no spawn,
+-- aggression, threat or objective: the three barracks guards already pull
+-- as one pack. once = true stops the H52 step-activation replay speaking
+-- twice in a visit; the step gate stops it after the fight. Seal:
+-- docs/analysis/cellblock-continuation/worknotes/cb-n07-seal.md. Holder
+-- dialog 60160 is never displayed. Rollback: enabled = false on 11020.
+
+-- Chain 11020: Region12 entry during 687/2355 -> NID guard alarm bark
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (11020, 'CB-N07a - barracks response: enter Region12 during 687 step 2355 -> NID guard alarm bark', 'mission', 687, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (11020, 'enter_region', 'Castle_Cellblock.Region12', 'player', true, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (11020, 'step_status', 687, '2355', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (11020, 'npc_bark', NULL, NULL,
+ '{"screen_id": 200170, "speaker": "NID Guard", "channel": "say"}', 0, 0);
