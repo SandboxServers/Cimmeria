@@ -10,7 +10,7 @@ use serde_json::json;
 use super::read::{self, ActorPose, CameraState};
 use crate::hooks::entity_trace::Fields;
 
-/// The camera block's counter, cached once a valid camera is found.
+/// The cached `ASGWCamera_Player` pointer; [`read::camera_ptr`] rechecks its vtable on every use.
 #[cfg(all(target_os = "windows", target_arch = "x86"))]
 static CAMERA: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 

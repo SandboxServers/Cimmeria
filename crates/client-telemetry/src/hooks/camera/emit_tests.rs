@@ -98,9 +98,14 @@ fn pawn_fields_follow_s_cam() {
         None,
         Some(cam(1.0, 0, 0)),
         None,
-        Some(pose([0.0; 3], 16384)),
+        Some(pose([100.0, 200.0, 300.0], 16384)),
     );
     assert_eq!(num(&f, "pawn_yaw_deg"), 90.0);
+    // The pawn position is in server units, like the camera's.
+    assert_eq!(num(&f, "pawn_x"), 2.0);
+    assert_eq!(num(&f, "pawn_y"), 3.0);
+    assert_eq!(num(&f, "pawn_z"), 1.0);
+    assert_eq!(num(&f, "pawn_pitch_deg"), 0.0);
     // Under S-CAM B the live reader passes `None` for the pawn, and then no
     // `pawn_*` key is written at all.
     let without = camera_fields("interact", Some(7), None, Some(cam(1.0, 0, 0)), None, None);
