@@ -17,9 +17,15 @@ IMAGE="${1:?usage: container-persistence-smoke.sh <image> <logs-dir>}"
 LOG_DIR="${2:?usage: container-persistence-smoke.sh <image> <logs-dir>}"
 VOL=cimmeria-persist-smoke-pgdata
 NAME=cimmeria-persist
-BAK="$(mktemp -d)"
-chmod 777 "$BAK"
 mkdir -p "$LOG_DIR"
+# The backup dir is bind-mounted into the container, so the Docker daemon must see
+# the same path. On the self-hosted runners the daemon is a docker-in-docker
+# sidecar that shares only the job work dir (/home/runner/_work) with the runner,
+# so a mktemp under /tmp would be a different, empty directory on the daemon side
+# (the dump was written but never visible here). RUNNER_TEMP is under that work
+# dir; $LOG_DIR is under it too, so fall back to its parent when RUNNER_TEMP is unset.
+BAK="$(mktemp -d "${RUNNER_TEMP:-$(dirname "$LOG_DIR")}/cimmeria-persist-bak.XXXXXX")"
+chmod 777 "$BAK"
 
 # Ids that cannot collide with seed data (seed ids are small).
 S1=900000001
