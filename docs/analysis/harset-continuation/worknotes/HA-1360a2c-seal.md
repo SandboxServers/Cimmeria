@@ -154,3 +154,12 @@ Independent read-only `packet-reviewer`, then `server-authority-enforcer` on the
 ## 7. Not claimed
 
 No client or lab behaviour; no proof that a real replacement during login is rare or common; no cover for residuals (a)-(c) in section 1; actual token cost is unmeasured and the 30k figures are estimates.
+
+### A result (Haiku attempt 2)
+
+- Commits: `a8063de5b` (wip 1/2, extraction) and `c06dc74b4` (wip 2/2, guards, stage marks, tests), then the final step commit.
+- Deviation: `stage!(addr, current, "<name>")` takes the address, the existing `current()` closure and the stage name, not `(ctx, name)`. The closure already carries the session check, so the macro reuses it.
+- Placement: the `burst` stage sits before the burst bundle send; the post-bundle check became the `gm_redirect` stage, so the guard count and order match the ten names.
+- Checks: `cargo fmt -p` and `fmt --all --check` ok; clippy `--all-targets` 0 warnings; nextest `cimmeria-base-world-entry` 254 passed (251 existing + 3 new); nextest with `--features lab-chaos` 278 passed.
+- Revert probes (one guard replaced by `|| true` at a time, file restored from backup, `restored=True`): `burst`, `gm_redirect`, `contact_lists`, `plugin_hook`, `ignore_resync`, `mail_sweep`, `login_fanout`, `cinematic`, `aoi_flush`: the replacement test fails (1 failed of 3). `org_restore`: replacement and no-session tests fail (2 failed). Deleting the `cinematic` stage: control and replacement tests fail (2 failed).
+- No lab, client, push or PR. Lines: `client_ready/mod.rs` 429, `continuation.rs` 336, `session_token_tests.rs` 376, `continuation_tests.rs` 114.
