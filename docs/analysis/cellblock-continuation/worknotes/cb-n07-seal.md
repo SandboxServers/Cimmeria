@@ -155,3 +155,43 @@ Pass: steps 1-5. This is also the check for A1's client half: if step 2 shows no
 line on entry and the server log shows no `triggerClientHintedGenericRegion` for
 Region12, the client never sends that hint and the beat is dropped by setting
 `enabled = false` on chain 11020 (CB-N07 closes as `Done / omitted`).
+
+## Mission sign-off
+
+Verdict: **approve** (CB-N07m, mission-systems-advisor, 2026-10-17, static, no lab).
+No edit to Values, Copy or SQL. CB-N07b (Tier 1) is omitted by owner decision;
+only the Tier 0 bark (CB-N07a) proceeds.
+
+1. **Gate.** `step_status(687, '2355') = 'active'` is false during 2354 (the
+   crate-search step; the key `mission_687_step_2355_status` reads `not_active`),
+   true from the `advance_step 2355` of chains 1098/1099 (and the 1192-1195
+   variants) until `complete_mission 687` from chain 1103, and `completed`
+   afterwards. A walk into the barracks during 2354 fails the condition, so the
+   once gate is not consumed and the line still plays on the first entry in 2355.
+2. **Suppression.** `once` stops a repeat within one visit and the step gate stops
+   it after the fight. A relog during 2355 can give at most one more line, the same
+   accepted behaviour as 11010. An abandon and restart of 687 replays the beat once;
+   that is intended.
+3. **No progress change.** The chain has one `npc_bark` action and no
+   `advance_step`, counter, grant or completion. Objectives 1100-1103 gate on
+   `entity_dead_tag` and do not read the region or the bark; completion still runs
+   through chain 1103 (`counter barracks_kills gte 2` is read before the third
+   increment lands, unchanged by this packet). Chain 11020 adds no mission-state write.
+4. **Text.** Mission 687 "Aftermath": step 2354 "Search the crate for any useful
+   items", step 2355 "Eliminate the guards in the barracks." The line announces
+   guards reacting to an escaped prisoner, which agrees with both. Marsh's barks
+   (1176 teleport_in/680, 1177 Region3/681, 1178 Region5 with 686 active and 687
+   `not_active`) cannot co-fire: 1178 is switched off by 687 being active. It does
+   not contradict 11010 ("Somebody is loose", mission 639).
+5. **A2.** Acceptable for the beat. Either the replay on step activation (player
+   inside the room or within 1.5 u of it) or the first step into Region12 plays the
+   line once; neither needs the crate to sit inside the volume. The beat is
+   cosmetic, so dropping it via `enabled = false` (CB-U11 step 2 fallback) loses no
+   progression.
+
+ID recheck, chain-table pattern. Pattern `VALUES \(11020, '` (and `\(11020,`) over
+`db/resources/Content/Seed`, plus `200170` over `Content` and `Dialogs`, at HEAD
+and on all 736 local branches: 0 hits. Control `VALUES \(11010, '` hits at HEAD
+(`castle_cellblock_chains.sql:3481`). The seal's chain-table pattern is correct
+and avoids the `texts.sql` moniker false positive. CB-N07a should use it for its
+collision check.
