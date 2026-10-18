@@ -130,3 +130,62 @@ async fn live_db_progression_smoke_passes_against_seed_data() {
         .await
         .expect("progression_smoke.sql must run without raising an exception");
 }
+
+const PERSISTENT_META_SQL: &str = include_str!("../../../../db/persistent/meta.sql");
+const PERSISTENT_RECONCILE_SQL: &str = include_str!("../../../../db/persistent/reconcile.sql");
+const PERSISTENT_RECONCILE_SMOKE_SQL: &str =
+    include_str!("../../../../tools/persistent_reconcile_smoke.sql");
+
+/// Replace each `--#include <file>` line with that persistent SQL file.
+/// The smokes cannot `\ir` (they run through sqlx), so the harness expands them.
+/// PP-17 adds `seed-accounts-stage.sql` and `seed-accounts.sql` here.
+fn expand_persistent_includes(sql: &str) -> String {
+    let mut out = String::new();
+    for line in sql.lines() {
+        match line.trim() {
+            "--#include meta.sql" => out.push_str(PERSISTENT_META_SQL),
+            "--#include reconcile.sql" => out.push_str(PERSISTENT_RECONCILE_SQL),
+            other if other.starts_with("--#include ") => {
+                panic!("smoke_tests: unknown include marker: {other}")
+            }
+            _ => out.push_str(line),
+        }
+        out.push('\n');
+    }
+    out
+}
+
+#[tokio::test]
+async fn live_db_persistent_reconcile_smoke_passes_against_seed_data() {
+    let pool = require_db_or_skip!();
+    let sql = strip_psql_metacommands(&expand_persistent_includes(PERSISTENT_RECONCILE_SMOKE_SQL));
+    sqlx::raw_sql(AssertSqlSafe(sql))
+        .execute(&pool)
+        .await
+        .expect("persistent_reconcile_smoke.sql must pass: see the RAISE message");
+}
+
+#[tokio::test]
+async fn live_db_persistent_reconcile_raises_when_fallback_world_missing() {
+    let pool = require_db_or_skip!();
+    // No BEGIN/ROLLBACK in the SQL: the sqlx transaction is dropped without commit.
+    let mut tx = pool.begin().await.expect("begin");
+    let sql = format!(
+        "{}\nSET LOCAL cimmeria.image_id = 'pp01-raise';\n\
+         UPDATE sgw_player SET \
+             world_id = (SELECT w.world_id FROM resources.worlds w WHERE w.world <> 'Castle_CellBlock' ORDER BY w.world_id LIMIT 1), \
+             world_location = (SELECT w.world FROM resources.worlds w WHERE w.world <> 'Castle_CellBlock' ORDER BY w.world_id LIMIT 1) \
+         WHERE world_location = 'Castle_CellBlock';\n\
+         UPDATE resources.worlds SET world = 'Castle_CellBlock_pp01_renamed' \
+         WHERE world = 'Castle_CellBlock';\n{}",
+        PERSISTENT_META_SQL, PERSISTENT_RECONCILE_SQL
+    );
+    let err = sqlx::raw_sql(AssertSqlSafe(sql))
+        .execute(&mut *tx)
+        .await
+        .expect_err("reconcile must RAISE when the fallback world is missing");
+    assert!(
+        err.to_string().contains("fallback world Castle_CellBlock"),
+        "unexpected error: {err}"
+    );
+}
