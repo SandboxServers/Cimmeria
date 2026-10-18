@@ -59,6 +59,12 @@ pub async fn dispatch_cell_method(
     // The receipt row of an ability method (AB-C7), before the GM gate so
     // a refused `gmDebug*` call still records that it arrived.
     super::ability_receipt::log_receipt(entity_id, method_index, args, packet_seq, space_mgr);
+    // player-capture-bots: the pose row's mercury_seq (PC-26).
+    cimmeria_cell_world::cell::interaction_pose::inbound::note_inbound(
+        entity_id,
+        method_index,
+        packet_seq,
+    );
 
     // Server-authority GM gate (#475 / CAT-N-03). For GM/debug method
     // indices, reject any caller whose `CellEntity::access_level` is below

@@ -73,6 +73,8 @@ pub fn emit_interaction_pose_at(
     extra: PoseExtra,
     now: Instant,
 ) -> Option<u64> {
+    // Taken before the throttle, so a throttled row still uses up its seq (PC-26).
+    let mercury_seq = super::inbound::take_inbound(pose.entity_id, kind, now);
     if !admit(pose.entity_id, now) {
         return None;
     }
@@ -113,6 +115,7 @@ pub fn emit_interaction_pose_at(
         item_type_id = extra.item_type_id,
         item_name = item_name,
         pose_seq = seq,
+        mercury_seq = mercury_seq,
         "interaction.pose: player pose at a successful interaction"
     );
     if let Some(trail) = pose.approach.as_ref() {
