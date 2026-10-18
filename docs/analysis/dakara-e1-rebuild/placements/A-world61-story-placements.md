@@ -98,6 +98,20 @@ The strings name "Dakara Superweapon Courtyard" as a discovery area and mission 
 
 "Vocuum" (`_int_Vocuum`, the optional objective) has no landmark: it is in the README's No idea list.
 
+## Drop locations (A-17 to A-21)
+
+Mission 1646 step 4908 asks the player to plant coded messages at "Drop Location #1" to "#5" for Moh'katan's scouts. No mesh, prefab, label or actor in the client map is named for a drop, and no position survives in the strings, so these five points are map estimates: each sits on the walkable floor of navmesh component 279 (the walled city, reachable on foot from the gate plaza), chosen by a 12 m grid probe of that component and spread across it by farthest-point selection. Each is at least 15 m from a tent mesh and from every earlier row, and the five are 190 m or more apart, so they sit near the city's edges rather than at any place the story names.
+
+| ID | What | World | X | Y | Z | Heading | Evidence class | Confidence | Checks run | How to verify in-client | How to correct |
+|---|---|---:|---:|---:|---:|---:|---|---|---|---|---|
+| PL-DK-A-17 | Drop Location #1 (mission 1646 step 4908, scout coded message), west of the city | 61 | -90.00 | -16.65 | 281.00 | 0.0000 | INFERRED (spread point; no label) + MAP-GEOMETRY (walkable floor) | LOW | on-mesh, component **279**, h 0.00 m, dy 0.00 m at floor -16.65 (grid dy -0.35 m); nearest tent mesh 276 m; nearest row more than 140 m; no-tent and no-row rules hold | Walk to the point in world 61 and read the floor; there is no in-client marker to match | Replace with the spot the scouts' drop prop appears at; update the probe line and this row |
+| PL-DK-A-18 | Drop Location #2, east of the city | 61 | 318.00 | -16.36 | 341.00 | 0.0000 | same | LOW | on-mesh, component **279**, h 0.84 m, dy 0.00 m at floor -16.36 (grid dy -0.64 m); nearest tent mesh 122 m; nearest row more than 140 m | same | same |
+| PL-DK-A-19 | Drop Location #3, north of the city, inside the north opening | 61 | 90.00 | -16.76 | 437.00 | 0.0000 | same | LOW | on-mesh, component **279**, h 0.00 m, dy 0.00 m at floor -16.76 (grid dy -0.24 m); nearest tent mesh 286 m; nearest row more than 140 m; 18 m from the arch at the north opening (72.1, 441.7) | same | same |
+| PL-DK-A-20 | Drop Location #4, south-west of the city | 61 | 6.00 | -17.91 | 113.00 | 0.0000 | same | LOW | on-mesh, component **279**, h 0.00 m, dy 0.00 m at floor -17.91 (grid dy +0.91 m, the largest step of the five); nearest tent mesh 271 m; nearest row more than 140 m | same | same |
+| PL-DK-A-21 | Drop Location #5, south-east of the city | 61 | 342.00 | -17.04 | -43.00 | 0.0000 | same | LOW | on-mesh, component **279**, h 0.00 m, dy 0.00 m at floor -17.04 (grid dy +0.04 m); nearest tent mesh 127 m; nearest row more than 140 m | same | same |
+
+The headings are placeholders (the drops have no facing). DK-09 seeds spawns 8011 to 8015 at these points.
+
 ## Counts
 
-16 candidate rows on world 61: 2 HIGH for the position (A-12, A-13), 1 MEDIUM for the plaza and LOW for the metre (A-06), 3 LOW-MEDIUM (A-10, A-11, A-14), and 10 LOW (A-01 to A-05, A-07 to A-09, A-15, A-16). Headings of props with no facing meaning (A-07 to A-09, A-12, A-13, A-14) are placeholders, not derived. World 62: [B-world62-tent-interior.md](B-world62-tent-interior.md).
+21 candidate rows on world 61: 2 HIGH for the position (A-12, A-13), 1 MEDIUM for the plaza and LOW for the metre (A-06), 3 LOW-MEDIUM (A-10, A-11, A-14), and 15 LOW (A-01 to A-05, A-07 to A-09, A-15, A-16, and the five drop locations A-17 to A-21). Headings of props with no facing meaning (A-07 to A-09, A-12, A-13, A-14) are placeholders, not derived. World 62: [B-world62-tent-interior.md](B-world62-tent-interior.md).
