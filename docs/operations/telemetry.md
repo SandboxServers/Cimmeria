@@ -728,7 +728,7 @@ first opt-in, and applies from the next Play.
 While it is on, Play mints a player session on the installation's first
 login server before the game starts, writes `current-session.json` beside
 the game and injects the telemetry DLL after the client patches (owner
-decision 2026-09-29). Its sessions carry the tags `desktop-launcher`, the
+decision 2026-09-29; the same opt-in covers the camera read at an interact or item use, owner 2026-10-18, [details](../architecture/client-camera-telemetry.md)). Its sessions carry the tags `desktop-launcher`, the
 host OS and `wine` or `native`. The launcher also tails the game's logs,
 uploads them in chunks, refreshes its own token, and at game exit sends a
 `game_exited` event and the end-of-session bundle. Release launchers carry
