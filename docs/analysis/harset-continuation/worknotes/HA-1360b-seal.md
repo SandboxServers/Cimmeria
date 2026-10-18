@@ -194,4 +194,13 @@ Not sealable now: HA-01a/b, 02-14, 16 (placement, encounter or recipient evidenc
 
 ### Result
 
-Pending. The packet-coder fills this subsection with the verified base SHA, commit SHA, preflight outputs, lane results with test counts, and revert-proof outcomes.
+HA-1360b1 (coder attempt 3). Base `d2a6913cd`. Commits: `311bde360` (seed, replay and linter tests, wip 1/3), then the docs commit with the final subject.
+
+- Preflight: `git log --grep "cherry picked from commit 65d3e88be" -1` present (carry-in). `120101` appears only in the opcore seed and the new DSM row; `reload-db.ps1` runs per live-DB invocation and the worktree DB is reloaded with the row and `num_repeats` 0.
+- `live-db-test.ps1 -p cimmeria-cell-content -- mission_1360_harset mission_1361`: 42 passed (before the docs commit).
+- `lane.ps1 cargo fmt -p cimmeria-content-engine -p cimmeria-cell-content`: status=ok. `lane.ps1 cargo clippy -p cimmeria-content-engine -p cimmeria-cell-content --all-targets`: status=ok.
+- `lane.ps1 cargo nextest run -p cimmeria-content-engine -p cimmeria-cell-content`: 1240 passed, 0 skipped.
+- Revert proofs (disposable edits to the seed or missions row, restored from a backup each time, `git status` clean after each): (1) old four-action 6501 body: `live_db_chain_6501_is_one_strict_receipt_action` fails (also the executor and malformed tests). (2) 6502 back to 5356: `live_db_chain_6502_rebinds_dsm_120101_on_world_entry` fails. (3) `num_repeats` 1: `live_db_mission_1360_is_one_shot_in_the_seed` fails. (4) 120101 insert dropped: `live_db_dsm_120101_is_interaction_only_and_5356_is_untouched` fails.
+- Deviation: `mission_1360_harset.rs` is 681 lines (under the 700 hard cap, over the 600 split trigger). The new tests were not moved to `mission_1360_harset_receipt.rs`; a split is left for review.
+- `git diff --check` flags the CR bytes of the CRLF docs; checked with `git -c core.whitespace=cr-at-eol diff --check`.
+- Still UATPending: client acceptance, the NULL-dialog prompt in the client, and the cross-service replay (HA-1360b2).
