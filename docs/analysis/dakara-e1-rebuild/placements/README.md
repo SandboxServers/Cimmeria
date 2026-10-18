@@ -45,7 +45,7 @@ So: **no row in this ledger assumes a compass direction.** The gate rows are nam
 
 ## No idea
 
-These are **unplaced**. Nothing was invented to fill them. Each names what was searched and what was missing.
+These are **unplaced**. Nothing was invented to fill them. Each names what was searched and what was missing. The five mission 1646 drop locations were in this list; they are now LOW map estimates in [A-world61, Drop locations](A-world61-story-placements.md#drop-locations-a-17-to-a-21).
 
 1. **Naquadah Repository and Loth'ta's camp** (missions 1570 step 4902, 1645, 1648). DK-02 found no matching mesh, prefab or actor name; its only lead was an isolated military outpost at x 261 to 341, z 23 to 130. The owner subsequently chose a **speculative** DK-05 placement there, `DK-05-A-01` at `(290, -17, 95)` ([worknote](../worknotes/DK-05.md)). This records an implementation choice, not new map evidence. The true location and mission 1645's optional path still need a client walk.
 2. **The "Eastern tents"** (mission text). 39 tent groups exist ([tent_groups.tsv](data/Dakara_E1_tent_groups.tsv)), none named; with no axis the choice among them is open. The nearest groups (G01 to G05) are camps A to D and the merchant rows.
