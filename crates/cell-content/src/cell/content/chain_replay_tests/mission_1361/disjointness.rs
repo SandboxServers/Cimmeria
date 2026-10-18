@@ -132,7 +132,7 @@ async fn live_db_mohkatan_interact_chains_are_pairwise_disjoint() {
 /// entry whose `dialog_id` is non-NULL — so a second live dialog-carrying
 /// bind on one slot makes one of them permanently unreachable. Slot 10
 /// (Col. Marsh, template 10) is the one at risk: mission 1360's letter
-/// bind (dsm 5356), the Praxis offer (5254) and the Praxis turn-in (5253)
+/// bind (dsm 120101), the Praxis offer (5254) and the Praxis turn-in (5253)
 /// all target it, and all three carry a real dialog.
 ///
 /// This walks every `player_loaded` bind chain in the file and asserts
@@ -247,12 +247,12 @@ async fn live_db_chain_6505_hands_the_letter_indicator_back_when_1361_completes(
     assert_eq!(
         got,
         vec![Action::AddDialogSet {
-            dialog_set_id: 5356,
+            dialog_set_id: 120101,
             slot: 10,
             mission_id: Some(1360)
         }],
         "completing 1361 while Frost's letter is still undelivered must re-bind dsm \
-         5356 to template slot 10, or Marsh goes unclickable and mission 1360 \
+         120101 to template slot 10, or Marsh goes unclickable and mission 1360 \
          dead-ends until the player crosses a world boundary"
     );
 
