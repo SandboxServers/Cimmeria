@@ -20,6 +20,7 @@ Wave 3 builds CB-N05, *The Remaining Pods* (mission 62050): Cellblock's first au
 | 1 | [CB-N05-3](#cb-n05-3--chains-11000-11005-and-resolve-matrix) | `packet-coder` | `cellblock-cb-n05-3` / `cellblock/cb-n05-3-chains` | W3 architect commit | dispatch |
 | 2 | W3a review | `packet-reviewer` (read-only), one for all three | the three worktrees | - | all of step 1 `done` |
 | 3 | Fixes, then re-review | `packet-coder` in the owning worktree, then a fresh `packet-reviewer` | owning worktree | - | only on `fix`; at most 3 rounds (D-CC6) |
+| 3 | [CB-N05-3f](#cb-n05-3f--review-1-fixes-for-cb-n05-3) (round 1 fix) | `packet-coder` | `cellblock-cb-n05-3` / `cellblock/cb-n05-3-chains` | `5836675d5` | W3a review 1 verdict `fix` for CB-N05-3 (CB-N05-1 and -2 `ship`) |
 | 4 | [W3a-INT](#w3a-int--integrate-the-data) | `packet-coder` | `zone-cellblock` / `content/cellblock-campaign` | branch tip | every W3a packet `ship` |
 | 5 | [CB-N05-4](#cb-n05-4--cooked-sync-transfer-proof) | `packet-coder` | `cellblock-cb-n05-4` / `cellblock/cb-n05-4-transfer` | W3a-INT commit | W3a-INT `done` |
 | 5 | [CB-N05-5](#cb-n05-5--interaction-dispatch-negatives) | `rust-gameserver-dev` | `cellblock-cb-n05-5` / `cellblock/cb-n05-5-dispatch` | W3a-INT commit | W3a-INT `done` |
@@ -153,6 +154,57 @@ Packets inside one step touch disjoint files and run in parallel, each in its ow
 5. Lanes: `cargo fmt --all -- --check`; `cargo clippy -p cimmeria-cell-content --all-targets -- -D warnings`; `cargo nextest run -p cimmeria-cell-content` (non-DB part); `pwsh tools/build-lane/live-db-test.ps1 mission_62050` (all seven must run and pass, not skip; the log shows the count).
 6. Revert proof: delete the chain 11005 condition row `(11005, 'mission_status', 640, ...)`, rerun `live-db-test.ps1 mission_62050`; the 640 `active` refusal must fail. Restore.
 
+## CB-N05-3f — Review 1 fixes for CB-N05-3
+
+| Field | Value |
+|---|---|
+| Agent | `packet-coder` |
+| Size | About 12k working tokens |
+| Branch / worktree | `cellblock/cb-n05-3-chains` / `C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\cellblock-cb-n05-3` |
+| Base | `5836675d5` (the CB-N05-3 commit). Before editing: `git -C <wt> rev-parse --short HEAD` = `5836675d5` and `git -C <wt> status --porcelain` empty. Otherwise stop, `blocked`. |
+| Writes | `crates/content-engine/tests/it/interact_tag_linter.rs` (one added line); `docs/content/mission-chains.md` (one added blank line). Nothing else. |
+| Commit | `fix(cellblock): allowlist the Prisoner 329 per-player bind` |
+| Report | `C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\cellblock-cb-n05-3\.claude\reports\cellblock-continuation\CB-N05-3f-coder.md` |
+| Source | W3a review 1 findings 1 and 2 (`.claude\reports\cellblock-continuation\W3a-review1.md`) and the architect decision (`.claude\reports\cellblock-continuation\CB-N05-3f-architect.md`), both in the zone-cellblock worktree |
+
+**Why.** `every_interact_tag_chain_has_set_interaction_type` in `cimmeria-content-engine` scans every `*_chains.sql` file. It fails on chain 11003 (`interact_tag 'Prisoner_329'`) because nothing in the file runs `set_interaction_type` on that tag. That action is correctly absent: the click bit comes from the **per-player** bind of dialog-set-map 2795 (`interaction_flags` 1073741824, `dialog_set_maps.sql` line 1907) on slot 17, which chains 11000, 11001 and 11002 add. Entity template 17 (Prisoner 329) has `interaction_type = 0` and `static_interaction_sets = '{}'`, so the bind is the only source of the bit. A `set_interaction_type` would light Prisoner 329 for every player in the world and break the seal rule "do not change the global NPC interaction flags". This is the same case as the `castle_701` and `harset_*` allowlist entries. F4 stays as it is.
+
+**Rule exception (this packet only).** `interact_tag_linter.rs` is already 753 lines, over the 700 hard cap. You may add exactly one line to it and nothing else. Do not split it or tidy other entries.
+
+**Steps.**
+
+1. `crates/content-engine/tests/it/interact_tag_linter.rs`: find this line (about line 143):
+   ```rust
+           | ("castle_cellblock_chains.sql", 1060) // Preparation_Terminal: needs verification (see above TODO)
+   ```
+   Directly after it, add this line (8 spaces of indentation, same as its neighbours):
+   ```rust
+           | ("castle_cellblock_chains.sql", 11003) // Prisoner_329 (CB-N05): per-player bind, dsm 2795 slot 17 (flags 1073741824) by chains 11000/11001/11002; template 17 interaction_type 0
+   ```
+   Line count afterwards: `(Get-Content <abs path>).Count` = 754. `git -C <wt> diff --stat` for this file: `1 insertion(+)`.
+2. `docs/content/mission-chains.md` (`i/crlf`): add one blank CRLF line between the line that ends `cb-n05-seal.md).` (the CB-N05 section's last line, about line 769) and `### Castle (Persistent Zone)`. Use exactly this command:
+   ```powershell
+   $p='C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\cellblock-cb-n05-3\docs\content\mission-chains.md'; $t=[IO.File]::ReadAllText($p); $old=".md).`r`n### Castle (Persistent Zone)"; if (([regex]::Matches($t,[regex]::Escape($old))).Count -ne 1) { throw 'pattern count != 1' }; [IO.File]::WriteAllText($p, $t.Replace($old, ".md).`r`n`r`n### Castle (Persistent Zone)"))
+   ```
+   If it throws, stop and report `blocked`. Then `git -C <wt> diff --stat -- docs/content/mission-chains.md` must show `1 insertion(+)` and `git -C <wt> ls-files --eol docs/content/mission-chains.md` must show `i/crlf w/crlf`.
+3. Lanes, in order, each from `Set-Location C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\cellblock-cb-n05-3;`:
+   - `pwsh tools/build-lane/lane.ps1 cargo fmt --all -- --check`
+   - `pwsh tools/build-lane/lane.ps1 cargo clippy -p cimmeria-content-engine --all-targets -- -D warnings`
+   - `pwsh tools/build-lane/lane.ps1 cargo nextest run -p cimmeria-content-engine --filter-expr 'not test(dialog_button_linter)'`: all tests must pass, including `interact_tag_linter::every_interact_tag_chain_has_set_interaction_type`.
+   - `pwsh tools/build-lane/lane.ps1 cargo nextest run -p cimmeria-content-engine --no-fail-fast --filter-expr 'test(dialog_button_linter)'`: **record the result and do not fix it.** It may fail on this branch alone, because chain 11004 displays dialog 60150 and the `dialogs.sql` row for 60150 is on the CB-N05-2 branch (review 1, CB-N05-2 notes). That clears at W3a-INT, where CB-N05-2 is cherry-picked first. If any failure message does **not** name 60150, stop and report `failed` with the log path.
+   - `pwsh tools/build-lane/lane.ps1 cargo nextest run -p cimmeria-cell-content` (non-DB part; it must still pass unchanged).
+4. `git -C <wt> diff --check` must print nothing. `git -C <wt> add` the two files and commit with the message above. Then `git -C <wt> status --porcelain` is empty.
+5. Revert proof (after the commit): delete the added line 11003 from `interact_tag_linter.rs` with Edit, then run `pwsh tools/build-lane/lane.ps1 cargo nextest run -p cimmeria-content-engine --filter-expr 'test(every_interact_tag_chain_has_set_interaction_type)'`. It must fail with a message containing `castle_cellblock_chains.sql:chain 11003 (interact_tag 'Prisoner_329')`. Restore with `git -C <wt> checkout -- crates/content-engine/tests/it/interact_tag_linter.rs`, rerun the same command (pass), and confirm `git -C <wt> status --porcelain` is empty. Record the failing assertion text in the report.
+
+**Not in this packet (accepted or deferred by the architect; do not touch).**
+
+- Review finding 3: `chain_replay_tests/mission_62050/rows.rs` (255 lines) was outside CB-N05-3's Writes. **Accepted** as a file-cap split; W3a-INT records it. The ragged doc-comment wrap in `mission_62050/mod.rs` is cosmetic; leave it.
+- CB-N05-2's stale assertion message at `crates/resources/src/base/resources/tests/dialog_overrides.rs:88` ("the two mission-622 corpses") is on another branch; W3a-INT records it as a follow-up.
+
+**Report.** Use the contract format: the two diffs (`diff --stat`), each lane's result and log path, the dialog_button_linter outcome quoted, the revert-proof failure text, the commit SHA, and `## Measurement`. Return exactly one line: `CB-N05-3f <done|blocked|failed> <commit-sha|-> <report-path>`.
+
+Repo rules 1-10 apply, except for the one-line cap exception above.
+
 ## W3a-INT — Integrate the data
 
 | Field | Value |
@@ -164,9 +216,14 @@ Packets inside one step touch disjoint files and run in parallel, each in its ow
 | Report | `C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\zone-cellblock\.claude\reports\cellblock-continuation\W3a-INT-coder.md` |
 
 1. Confirm `git -C <zone-cellblock> status --porcelain` shows only the untracked `lab-server*.log` files (leave them; never add them).
-2. `git -C <zone-cellblock> cherry-pick -x` each W3a commit in order CB-N05-1, CB-N05-2, CB-N05-3, then each fix commit after its packet. On a conflict: `git cherry-pick --abort` and report `blocked`.
-3. Lanes from zone-cellblock: `cargo fmt --all -- --check`; `cargo clippy -p cimmeria-resources -p cimmeria-base-session -p cimmeria-cell-content --all-targets -- -D warnings`; `cargo nextest run -p cimmeria-resources -p cimmeria-base-session -p cimmeria-cell-content`; `pwsh tools/build-lane/live-db-test.ps1 mission_62050`; `pwsh tools/build-lane/live-db-test.ps1 chain_replay_tests`.
+2. `git -C <zone-cellblock> cherry-pick -x` each W3a commit in order CB-N05-1, CB-N05-2, CB-N05-3, then each fix commit after its packet (CB-N05-3f's commit right after CB-N05-3's `5836675d5`). On a conflict: `git cherry-pick --abort` and report `blocked`. CB-N05-2 must land before CB-N05-3: the dialog button linter needs the 60150 `dialogs.sql` row that chain 11004 references.
+3. Lanes from zone-cellblock: `cargo fmt --all -- --check`; `cargo clippy -p cimmeria-resources -p cimmeria-base-session -p cimmeria-cell-content -p cimmeria-content-engine --all-targets -- -D warnings`; `cargo nextest run -p cimmeria-resources -p cimmeria-base-session -p cimmeria-cell-content -p cimmeria-content-engine` (content-engine carries the seed linters: interact-tag, region-key and dialog-button; all must pass, `dialog_button_linter` included); `pwsh tools/build-lane/live-db-test.ps1 mission_62050`; `pwsh tools/build-lane/live-db-test.ps1 chain_replay_tests`.
 4. Return the tip SHA. It is the W3b base. No bookkeeping commit here.
+5. Notes carried to the report's `## Notes for W3-INT` (W3-INT copies them into `worknotes/cb-n05.md`). Do not fix any of them here.
+   - CB-N05-3 added `crates/cell-content/src/cell/content/chain_replay_tests/mission_62050/rows.rs` (255 lines), which was outside its Writes list. Review 1 and the architect accepted it as a file-cap split of `resolve.rs`.
+   - `crates/resources/src/base/resources/tests/dialog_overrides.rs:88`: the assertion message still says "the two mission-622 corpses" (with a doubled run of spaces) after CB-N05-2 added 60150. Cosmetic; deferred to the next packet that touches the file.
+   - `mission_62050/mod.rs` has a ragged doc-comment wrap. Cosmetic; deferred.
+   - `interact_tag_linter.rs` is 754 lines, over the 700 hard cap from before this campaign. CB-N05-3f added one line by exception. Follow-up: issue #97's entity-template walker, or a per-player-bind exemption, would shrink the allowlist.
 
 ## CB-N05-4 — Cooked-sync transfer proof
 
@@ -279,9 +336,9 @@ Lanes: `cargo fmt --all -- --check`; `cargo clippy -p cimmeria-cell-content --al
    - Chain seed header: add one line directly before the line starting `--   (next free inside 1001-1111:`: `--   Cellblock authored story CB-N05 (2026-10-17): chains 11000-11005, mission 62050 "The Remaining Pods" (id-allocation.md, CB-N05 individual claims).` (CRLF file; `diff --stat` must show 1 line.)
    - `id-allocation.md` § CB-N05 individual claims: add a `Status` column to the table, every row `In use (W3-INT)`; replace "The mission seal is still under review; no coder may use the claims until that review passes." with "The seal passed review; W3-INT (2026-10-17) moved every claim to in use." Add `, and 11000–11005` to the `castle_cellblock_chains.sql` row of the "Chain IDs in use today" table (after `11010–11010`, keeping its style). Update **Last updated**.
    - Branch `README.md`: row CB-N05 -> `Integrated (W3-INT)`, CB-U10 -> `UATPending (owner)`; nothing else.
-   - `worknotes/cb-n05.md` (new, under 80 lines): commits integrated, test names per packet, revert proofs recorded by each packet, what is proven statically versus what only CB-U10 can prove (client renders the journal and 60150, no crash, first-press feedback, relog in the real client).
+   - `worknotes/cb-n05.md` (new, under 80 lines): commits integrated, test names per packet, revert proofs recorded by each packet, what is proven statically versus what only CB-U10 can prove (client renders the journal and 60150, no crash, first-press feedback, relog in the real client), and a `## Follow-ups` list copied from W3a-INT's `## Notes for W3-INT`.
    - CRLF for all docs (rule 6).
-4. Lanes from zone-cellblock: `cargo fmt --all -- --check`; `cargo clippy -p cimmeria-resources -p cimmeria-base-session -p cimmeria-cell-content -p cimmeria-cell-methods -p cimmeria-services --all-targets -- -D warnings`; `cargo nextest run` for the same five crates; `pwsh tools/build-lane/live-db-test.ps1 mission_62050`; `pwsh tools/build-lane/live-db-test.ps1 chain_replay_tests`.
+4. Lanes from zone-cellblock: `cargo fmt --all -- --check`; `cargo clippy -p cimmeria-resources -p cimmeria-base-session -p cimmeria-cell-content -p cimmeria-cell-methods -p cimmeria-services -p cimmeria-content-engine --all-targets -- -D warnings`; `cargo nextest run` for the same six crates (content-engine carries the seed linters); `pwsh tools/build-lane/live-db-test.ps1 mission_62050`; `pwsh tools/build-lane/live-db-test.ps1 chain_replay_tests`.
 
 ## Held: CB-N05b and CB-N06
 

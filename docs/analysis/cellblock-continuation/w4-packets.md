@@ -306,7 +306,7 @@ One alarm line as the player enters the barracks to fight its three guards (spaw
 
 **Mutation proofs** (rule 9; one at a time, in the seed, then `live-db-test.ps1 cellblock_barracks_response`): (a) the condition value `'active'` to `'completed'`: the fire test fails; (b) the trigger key `Region12` to `Region6`: the fire test and the other-room test fail. Restore each with Edit; `diff --stat` back to step 1's count.
 
-Lanes, in order: `pwsh tools/build-lane/lane.ps1 cargo fmt --all -- --check`; `pwsh tools/build-lane/lane.ps1 cargo clippy -p cimmeria-cell-content --all-targets -- -D warnings`; `pwsh tools/build-lane/lane.ps1 cargo nextest run -p cimmeria-cell-content --filter-expr 'test(cellblock_barracks_response)'`; `pwsh tools/build-lane/live-db-test.ps1 cellblock_barracks_response` (3 pass, none skipped); `pwsh tools/build-lane/live-db-test.ps1 marsh_barks`; `pwsh tools/build-lane/live-db-test.ps1 cellblock_ambience`.
+Lanes, in order: `pwsh tools/build-lane/lane.ps1 cargo fmt --all -- --check`; `pwsh tools/build-lane/lane.ps1 cargo clippy -p cimmeria-cell-content --all-targets -- -D warnings`; `pwsh tools/build-lane/lane.ps1 cargo nextest run -p cimmeria-cell-content --filter-expr 'test(cellblock_barracks_response)'`; `pwsh tools/build-lane/lane.ps1 cargo nextest run -p cimmeria-content-engine` (the seed linters: chain 11020's `Castle_Cellblock.Region12` key must match `point_sets.sql` set 2043, and the interact-tag and dialog-button linters must stay green; on failure stop and report `failed`, never add an allowlist entry); `pwsh tools/build-lane/live-db-test.ps1 cellblock_barracks_response` (3 pass, none skipped); `pwsh tools/build-lane/live-db-test.ps1 marsh_barks`; `pwsh tools/build-lane/live-db-test.ps1 cellblock_ambience`.
 
 Repo rules 1-10.
 
@@ -330,7 +330,7 @@ Repo rules 1-10.
    - `id-allocation.md` § CB-N07 claims: every `Status` cell becomes `In use (W4-INT)`. In "Chain IDs in use today", the `castle_cellblock_chains.sql` row: count +1, and append `, 11020` after the 11000-11005/11010 entries in the same style. **Last updated** stays or becomes the commit date.
    - Branch `README.md`: CB-N03t -> `Integrated` (or `Done / skipped` if not run); CB-N07s, CB-N07m -> `Integrated`; CB-N07a -> `Integrated, UATPending` (CB-U11); each with its integrated SHA. Nothing else.
    - CRLF for all docs (rule 6).
-4. Lanes from zone-cellblock: `pwsh tools/build-lane/lane.ps1 cargo fmt --all -- --check`; `pwsh tools/build-lane/lane.ps1 cargo clippy -p cimmeria-cell -p cimmeria-cell-content --all-targets -- -D warnings`; `pwsh tools/build-lane/lane.ps1 cargo nextest run -p cimmeria-cell -p cimmeria-cell-content`; `pwsh tools/build-lane/live-db-test.ps1 chain_replay_tests`.
+4. Lanes from zone-cellblock: `pwsh tools/build-lane/lane.ps1 cargo fmt --all -- --check`; `pwsh tools/build-lane/lane.ps1 cargo clippy -p cimmeria-cell -p cimmeria-cell-content -p cimmeria-content-engine --all-targets -- -D warnings`; `pwsh tools/build-lane/lane.ps1 cargo nextest run -p cimmeria-cell -p cimmeria-cell-content -p cimmeria-content-engine`; `pwsh tools/build-lane/live-db-test.ps1 chain_replay_tests`.
 5. Return the tip SHA. The owner's lab rows run on it.
 
 Repo rules 1, 2, 3, 6, 10.
