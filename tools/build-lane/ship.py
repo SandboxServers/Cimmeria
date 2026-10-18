@@ -63,6 +63,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import ship_queue  # noqa: E402
+import gh_compat  # noqa: E402
 
 GH = [os.environ.get("SHIP_GH", "gh")]
 REBASE = [sys.executable, str(HERE / "rebase_pr.py")]
@@ -329,11 +330,7 @@ def wait_for_checks(pr: str, repo: str, deadline: float) -> None:
     always = [g for g in os.environ.get("SHIP_GATING_CHECKS", "\n".join(GATING)).splitlines() if g.strip()]
     conditional = [g for g in os.environ.get("SHIP_CONDITIONAL_CHECKS", "\n".join(CONDITIONAL)).splitlines() if g.strip()]
     while True:
-        p = gh("pr", "checks", pr, "--json", "name,bucket", cwd=repo, check=False)
-        try:
-            checks = json.loads(p.stdout or "[]")
-        except json.JSONDecodeError:
-            checks = []   # "no checks reported" yet
+        checks = gh_compat.checks(gh, pr, repo)
         buckets = {}
         for c in checks:
             buckets.setdefault(RENAMED.get(c["name"], c["name"]), []).append(c["bucket"])
@@ -433,7 +430,7 @@ def restack(repo: str, branch: str, head: str) -> tuple[list[str], list[str]]:
             failed.append(n)
             continue
         if child["baseRefName"] != "main":
-            gh("pr", "edit", n, "--base", "main", cwd=repo, check=False)
+            gh_compat.set_base(gh, n, "main", repo)
         done.append(n)
     return done, failed
 
