@@ -108,7 +108,7 @@ fn with<R>(f: impl FnOnce(&mut Detectors) -> R) -> R {
 /// An interact reached the end of the dispatcher with nothing to do.
 ///
 /// The names (Rule 6) and the target's `tag` are looked up only when the
-/// warn fires.
+/// row is written.
 pub fn interact_no_effect(
     space_mgr: &SpaceManager,
     entity_id: u32,
