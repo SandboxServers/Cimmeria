@@ -21,3 +21,19 @@ pub(super) const REMAINING_PODS_DIALOG: DialogOverride = DialogOverride {
         buttons: &[],
     }],
 };
+
+/// Mission 62060 *Before the Patrol Returns* (CB-N06): the choice, shown by
+/// chain 11035 after the accept. Closing it (`dialogButtonChoice(60151, -1)`)
+/// has no content action. Frozen in w5-frozen.md (F3).
+pub(super) const PRISONER_CHOICE_DIALOG: DialogOverride = DialogOverride {
+    dialog_id: 60151,
+    dialog_flags: 0,
+    kismet_event_set_id: 0,
+    ui_screen_type: 2,
+    screens: &[DialogScreen {
+        screen_id: 96111,
+        speaker_id: 0,
+        text: "The two prisoners are too weak to run, and the patrol is coming back. There is time for one thing: help them hide, or jam the cell-door panel by Prisoner 329 so the guards cannot seal the block.",
+        buttons: &[],
+    }],
+};

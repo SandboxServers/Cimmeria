@@ -59,6 +59,8 @@ mod patches_cellblock;
 #[cfg(test)]
 mod override_seed_agreement_cellblock_62050;
 #[cfg(test)]
+mod override_seed_agreement_cellblock_62060;
+#[cfg(test)]
 mod override_seed_agreement_debug_hub;
 #[cfg(test)]
 mod patch_seed_agreement_castle;
@@ -207,6 +209,9 @@ pub const DIALOG_OVERRIDES: &[DialogOverride] = &[
     // CB-N05 mission 62050: Prisoner 329's report (dialog 60150), the
     // served one-screen speaker-0 shape. See overrides_cellblock.rs.
     overrides_cellblock::REMAINING_PODS_DIALOG,
+    // CB-N06 mission 62060: the patrol choice (dialog 60151), the served
+    // one-screen speaker-0 shape. See overrides_cellblock.rs.
+    overrides_cellblock::PRISONER_CHOICE_DIALOG,
 ];
 
 /// Cimmeria-authored overrides that are defined but NOT served: nothing
