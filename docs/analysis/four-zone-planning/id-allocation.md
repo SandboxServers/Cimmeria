@@ -14,7 +14,7 @@ Measured on 2026-10-13 at `origin/main` 885bbae05 from the first value of each `
 | Seed file | Chains | IDs in use |
 |---|---:|---|
 | `effects_chains.sql` | 7 | 2001, 2011, 2021–2025 |
-| `castle_cellblock_chains.sql` | 126 | 1001–1195 (sparse: 1001–1028, 1031–1034, 1036–1037, 1041–1046, 1051–1066, 1071–1074, 1081–1094, 1097–1112, 1121, 1131–1133, 1141–1142, 1151–1152, 1154, 1161–1162, 1171–1178, 1181–1195) and the single outlier 5030, and 11010–11010, and 11000–11005 |
+| `castle_cellblock_chains.sql` | 127 | 1001–1195 (sparse: 1001–1028, 1031–1034, 1036–1037, 1041–1046, 1051–1066, 1071–1074, 1081–1094, 1097–1112, 1121, 1131–1133, 1141–1142, 1151–1152, 1154, 1161–1162, 1171–1178, 1181–1195) and the single outlier 5030, and 11010–11010, and 11000–11005, 11020 |
 | `castle_701_chains.sql` | 18 | 1201–1205, 1231–1243 |
 | `castle_702_704_chains.sql` | 23 | 1261–1265, 1271–1276, 1291–1302 |
 | `castle_706_708_chains.sql` | 28 | 1321–1323, 1341–1365 |
@@ -98,8 +98,8 @@ Individual claims for the wave 4 barracks escape response (CB-N07a) in the [Cell
 
 | Namespace | Claimed ID | Exact use | Status |
 |---|---|---|---|
-| Content chain | 11020 | `enter_region('Castle_Cellblock.Region12')` during 687 step 2355 -> one NID Guard `npc_bark` | Claimed (W4 architect) |
-| Dialog screen | 200170 | The alarm line, under dialog 60160 at `index` 1 | Claimed (W4 architect) |
+| Content chain | 11020 | `enter_region('Castle_Cellblock.Region12')` during 687 step 2355 -> one NID Guard `npc_bark` | In use (W4-INT) |
+| Dialog screen | 200170 | The alarm line, under dialog 60160 at `index` 1 | In use (W4-INT) |
 
 Collision check, 2026-10-17, at Cellblock `634b76558`: a `git grep` across all 731 local branches for `VALUES (11020,` under `db/resources/Content` and for a `dialog_screens` tuple with screen 200170 under `db/resources/Dialogs` found zero hits. The same patterns found chain 11010 and screen 200160 on the two branches that carry them, so the search works. Point-in-time; CB-N07s rechecks before it seals, and W4-INT moves the rows to In use.
 

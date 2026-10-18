@@ -40,7 +40,7 @@ A completed source audit does not make a runtime packet Ready.
 | CB-N03 | BlockedEvidence | Blocked on CB-U05. CB-N03s found no static fault (no 681/686 miss established; route baseline CB-B06). The lab row CB-U05 decides. |
 | CB-N03s | Integrated | [work-packets.md](work-packets.md): `npc-ai-spawn-advisor` seal check. Integrated at `38bc2ad4f`. Verdict: no static fault, so CB-N03a and CB-N03b are not sealed; CB-U05 lab row pending. |
 | CB-N03a | BlockedEvidence | CB-N03s sealed no seed fault, so W1c is not triggered. Exists only if CB-U05 shows a seed fault; then a new architect pass seals it. |
-| CB-N03t | Ready (optional) | [w4-packets.md](w4-packets.md#cb-n03t--cover-guard-seed-test-optional): static test that the other three cover guards (spawns 28, 32, 33) hold, defend and release when flanked on the real navmesh and cover seed. Strengthens CB-N03's evidence; CB-U05 still decides. |
+| CB-N03t | Integrated | Integrated at `090af3c5f`. [w4-packets.md](w4-packets.md#cb-n03t--cover-guard-seed-test-optional): static test that the other three cover guards (spawns 28, 32, 33) hold, defend and release when flanked on the real navmesh and cover seed. Strengthens CB-N03's evidence; CB-U05 still decides. |
 | CB-N04 | Integrated, UATPending | Family row, cluster 1 only in W2 ([w2-packets.md](w2-packets.md)). O14-12 delegates cast and placement to the coordinator and domain reviewers. A second cluster is considered only after CB-U08 and CB-U09. |
 | CB-N04s | Integrated | Integrated at `ce1381581` (from `de3528669`). `npc-ai-spawn-advisor` seal: cluster, cast, nav_inspect probes, guard and protected-area clearance, gate, copy, filled SQL. Worktree `cellblock-cb-n04s` on the W2 architect commit (child of `0fca3114f`). |
 | CB-N04m | Integrated | Integrated at `86b5485bc` (from `8e29559e4`). `mission-systems-advisor` sign-off on the seal (gate, overlap, suppression, copy). After CB-N04s. |
@@ -55,9 +55,9 @@ A completed source audit does not make a runtime packet Ready.
 | CB-N06-1 to CB-N06-3 | BlockedDependency | W5a data packets: catalog entry and mission seeds; dialog 60151; chains 11030-11041, rows and linters. After W4-INT and CB-N06m `approve`. |
 | CB-N06-4 to CB-N06-7 | BlockedDependency | W5b proofs: resolve matrix, executor replay, cooked-sync transfer, services round trip (inventory and mission guard). After W5a-INT. |
 | CB-N07 | Ready (Tier 0) | Family row. D-CC16: the default-safe tier is built from static evidence. The difficulty tier CB-N07b is omitted (D-CC19) ([w4-packets.md](w4-packets.md)). |
-| CB-N07s | Ready | `npc-ai-spawn-advisor` seal of the barracks alarm bark (Region12, mission 687 step 2355, chain 11020, screen 200170), assumptions A1-A4. May run beside W3. |
-| CB-N07m | BlockedDependency | `mission-systems-advisor` sign-off on the CB-N07s seal. After CB-N07s `seal`. |
-| CB-N07a | BlockedDependency | `packet-coder`: chain 11020, screen 200170, `cellblock_barracks_response` live-DB tests. After W3-INT and CB-N07m `approve`/`change`. Owner-run CB-U11 UATPending after W4-INT. |
+| CB-N07s | Integrated | Integrated at `556bb40c6`. `npc-ai-spawn-advisor` seal of the barracks alarm bark (Region12, mission 687 step 2355, chain 11020, screen 200170), assumptions A1-A4. May run beside W3. |
+| CB-N07m | Integrated | Integrated at `4d759f735`. `mission-systems-advisor` sign-off on the CB-N07s seal. After CB-N07s `seal`. |
+| CB-N07a | Integrated, UATPending | Integrated at `dde1a75ed`. `packet-coder`: chain 11020, screen 200170, `cellblock_barracks_response` live-DB tests. After W3-INT and CB-N07m `approve`/`change`. Owner-run CB-U11 UATPending after W4-INT. |
 | CB-N07b | Done / omitted | D-CC19 (owner, 2026-10-17): no Tier 1 difficulty change. The barracks pack already pulls as one; the Tier 0 bark (CB-N07a) stays. |
 | CB-N08 | BlockedDependency | Split into CB-N08a (UAT reconciliation), CB-N08b (close-out docs), CB-N08-CI (full local CI), CB-N08-R (campaign review) and ship ([w4-packets.md](w4-packets.md), D-CC17). After W5-INT and the owner's lab rows CB-U03, U05, U08-U12 (or O14-09). |
 
