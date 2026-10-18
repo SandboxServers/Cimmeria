@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 use cimmeria_base_session::base::helpers::derive_letter_turn_in_token;
 use cimmeria_base_session::base::ConnectedClientState;
 use cimmeria_content_engine::chain::ChainEngine;
-use cimmeria_entity::missions::{MissionInstance, MISSION_COMPLETED};
+use cimmeria_entity::missions::{MissionInstance, MISSION_ACTIVE, MISSION_COMPLETED};
 use cimmeria_mercury::encryption::MercuryEncryption;
 use cimmeria_mercury::test_transport::TestTransport;
 use cimmeria_mercury::transport::Transport;
@@ -438,7 +438,7 @@ async fn stage(
         );
         drop(castle);
     }
-    enter(driver, tx, rx, opts).await
+    enter(driver, tx, rx, opts).await.harset
 }
 
 /// A fresh hydrate in `opts.world` beside the tagged NPC, the world-entry
@@ -448,7 +448,7 @@ async fn enter(
     tx: &mpsc::Sender<CellToBaseMsg>,
     rx: &mut mpsc::Receiver<CellToBaseMsg>,
     opts: Stage,
-) -> SpaceManager {
+) -> Entered {
     let mut harset = driver.hydrate(opts.world).await;
     let space = harset.get_entity(PLAYER_EID).unwrap().space_id.0 as u32;
     harset
@@ -482,8 +482,45 @@ async fn enter(
         &mut harset,
     )
     .await;
-    driver.route(drain(rx)).await;
-    harset
+    let queued = drain(rx);
+    let methods = frame_methods(&queued);
+    let requests = request_count(&queued);
+    let receipt_dialog = shows_receipt_dialog(&queued);
+    driver.route(queued).await;
+    Entered {
+        harset,
+        methods,
+        requests,
+        receipt_dialog,
+    }
+}
+
+/// What a world entry left behind: the manager and the cell's queued frames.
+struct Entered {
+    harset: SpaceManager,
+    /// Method indices the entry queued for the client, in order.
+    methods: Vec<u16>,
+    /// Turn-in requests the entry queued for the base.
+    requests: usize,
+    /// Whether the entry displayed the receipt dialog 4576.
+    receipt_dialog: bool,
+}
+
+/// Whether `messages` display the receipt dialog 4576 (the success dialog).
+fn shows_receipt_dialog(messages: &[CellToBaseMsg]) -> bool {
+    messages.iter().any(|msg| {
+        matches!(msg, CellToBaseMsg::EntityMethodCall { method_index, args, .. }
+            if *method_index == ON_DIALOG_DISPLAY
+                && args.windows(4).any(|w| w == 4576i32.to_le_bytes()))
+    })
+}
+
+/// How many turn-in requests `messages` carry.
+fn request_count(messages: &[CellToBaseMsg]) -> usize {
+    messages
+        .iter()
+        .filter(|m| matches!(m, CellToBaseMsg::Plugin(_)))
+        .count()
 }
 
 /// The real click: `CM_INTERACT` on Marsh through the cell's method router.
@@ -669,3 +706,5 @@ async fn live_db_mission_1360_reaccept_is_refused_after_completion() {
 
     cleanup(&pool, account_id, player_id).await;
 }
+
+mod negative;
