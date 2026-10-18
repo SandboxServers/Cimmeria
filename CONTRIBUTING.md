@@ -107,7 +107,7 @@ git push -u origin your-handle/short-description
 gh pr create
 ```
 
-The full pre-PR checklist is [`docs/agents/pre-pr-checks.md`](docs/agents/pre-pr-checks.md); the build rules (Windows-native builds on a pinned toolchain, and the build lane agents use) are in [`CLAUDE.md`](CLAUDE.md) and the [`lane-build`](.claude/skills/lane-build/SKILL.md) skill. The doc-update map is [`docs/agents/doc-update-map.md`](docs/agents/doc-update-map.md), and what each CI check gates and how to fix a red one is [`docs/agents/pre-pr-checks.md`](docs/agents/pre-pr-checks.md).
+The full pre-PR checklist is [`docs/agents/pre-pr-checks.md`](docs/agents/pre-pr-checks.md); the build rules (Windows with PowerShell 7 as the validated platform, a pinned toolchain, and the build lane agents use) are in [`CLAUDE.md`](CLAUDE.md) and the [`lane-build`](.claude/skills/lane-build/SKILL.md) skill. The doc-update map is [`docs/agents/doc-update-map.md`](docs/agents/doc-update-map.md), and what each CI check gates and how to fix a red one is [`docs/agents/pre-pr-checks.md`](docs/agents/pre-pr-checks.md).
 
 ## Code style
 
