@@ -10,6 +10,7 @@ pub mod commands;
 pub mod daemon;
 pub mod fallback;
 pub mod help;
+pub mod human;
 pub mod known_issues;
 pub mod log_filter;
 pub mod processes;
