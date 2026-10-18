@@ -84,7 +84,7 @@ fn apply_dialog_overrides_regenerates_existing_and_inserts_new() {
         .expect("dialogs must appear in the returned map");
     assert_eq!(
         ids.as_slice(),
-        &[3995u32, 3996u32],
+        &[3995u32, 3996u32, 60150u32],
         "overridden_elements must name every regenerated dialog id (the two          mission-622 corpses) in ascending order, and no quarantined one",
     );
 

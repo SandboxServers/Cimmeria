@@ -50,11 +50,14 @@
 //! contract this module implements.
 
 pub mod emit;
+mod overrides_cellblock;
 pub mod parse;
 pub mod patch;
 mod patches_castle;
 mod patches_cellblock;
 
+#[cfg(test)]
+mod override_seed_agreement_cellblock_62050;
 #[cfg(test)]
 mod override_seed_agreement_debug_hub;
 #[cfg(test)]
@@ -201,6 +204,9 @@ pub const DIALOG_OVERRIDES: &[DialogOverride] = &[
             buttons: &[],
         }],
     },
+    // CB-N05 mission 62050: Prisoner 329's report (dialog 60150), the
+    // served one-screen speaker-0 shape. See overrides_cellblock.rs.
+    overrides_cellblock::REMAINING_PODS_DIALOG,
 ];
 
 /// Cimmeria-authored overrides that are defined but NOT served: nothing

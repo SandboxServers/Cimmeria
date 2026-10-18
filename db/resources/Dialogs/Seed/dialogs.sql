@@ -10863,6 +10863,10 @@ INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags
 -- displayed; npc_bark reads its screens' text. Seed-only, no override.
 INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (60160, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Cellblock - ambient cast bark holder (never displayed)');
 
+-- Cellblock continuation CB-N05: Prisoner 329's report for mission 62050 (CIMMERIA_AUTHORING).
+-- Speaker-0 monologue, served by DIALOG_OVERRIDES (overrides_cellblock.rs).
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (60150, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Cellblock - The Remaining Pods: Prisoner 329 report');
+
 --
 -- TOC entry 3312 (class 0 OID 0)
 -- Dependencies: 309
