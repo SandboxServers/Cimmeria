@@ -1,6 +1,6 @@
 # Triage Labels
 
-> **Last updated**: 2026-09-19
+> **Last updated**: 2026-10-18
 > **Audience**: Agent skills that triage, and the maintainers who label
 > **Type**: Reference
 
@@ -45,3 +45,7 @@ The ticket body should follow the contract in [`issue-tracker.md`](issue-tracker
 These existing labels describe what an issue is about and sit alongside the triage role: `bug`, `enhancement`, `documentation`, `security`. `duplicate` and `invalid` are closing reasons, applied by a maintainer when closing. `good first issue` and `help wanted` are for human newcomers and do not imply `ready-for-agent`. `question` is not a substitute for `needs-info`.
 
 `/wayfinder` adds its own `wayfinder:map` and `wayfinder:<type>` labels as described in [`issue-tracker.md`](issue-tracker.md).
+
+## PR labels that start workflows
+
+`full-ci`, `coverage` and `senpai` go on pull requests, not issues, and each one starts a CI job ([pre-pr-checks.md § CI checks](pre-pr-checks.md#ci-checks)). `senpai` asks [senpai-review.yml](../../.github/workflows/senpai-review.yml) for one in-character Claude review, which costs API money from a fixed budget; the workflow removes the label when it ends. Agents don't add `senpai` unless a human asks for the review.
