@@ -11,6 +11,7 @@
 
 use cimmeria_content_engine::context::ExecutionContext;
 
+mod executor;
 mod resolve;
 mod rows;
 
