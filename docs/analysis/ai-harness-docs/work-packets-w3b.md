@@ -8,6 +8,8 @@ The owner took over Aura's PR #1797 on 2026-10-18 rather than wait for another r
 
 **Waves.** W3b = AH-11a to AH-11f, all parallel, disjoint files (AH-11d and AH-11e both touch `ship.py`, in different hunks). **Merge AH-11e first**, so the PRs of AH-11b, AH-11c and AH-11d run its Linux job. AH-11a merges before AH-11f (AH-11f links the section AH-11a creates). W3c = AH-11g and AH-11h, after every W3b PR has merged. AH-11i, the closing reply on #1797, is an owner action after W3c merges.
 
+**After #1824 (2026-10-18).** #1824 added five ops git verbs as `.ps1` only. Wave 3d ([work-packets-w3d.md](work-packets-w3d.md)) writes their `.sh` twins (AH-11j to AH-11o). It also holds AH-11a-r (the #1829 conflict), AH-11p (parity and CI) and the full merge order. W3c now waits for W3d too.
+
 ### Rules for every AH-11 packet
 
 Each packet below says "the AH-11 rules"; these are they.
@@ -47,7 +49,7 @@ AH-11h puts this in place of the C7 long form. It is the reconciled decision 4 (
 | anything else (`linux`, `darwin`) | Bash | `bash tools/build-lane/<script>.sh ...`, same arguments |
 | the needed tool is missing | none | `blocked`, with the reason `no PowerShell tool on win32` or `no Bash tool on <platform>` |
 
-The `.sh` and `.ps1` twins take the same options and print the same output with the same exit codes (tools/build-lane/README.md). On Linux, `ops` never runs a `.ps1` under Linux `pwsh`: `mk-worktree.ps1` makes a junction, and `ship.ps1` calls `python` (F25).
+The `.sh` and `.ps1` twins take the same options and print the same output with the same exit codes (tools/build-lane/README.md). This covers every script `ops.md` names: `mk-worktree`, `ship` and `rm-worktree`, plus #1824's five git verbs `commit-paths`, `merge-noff`, `branch-at`, `push-branch` and `rebase-onto`, whose `.sh` twins come from W3d. The twins of the git verbs take full option names only, with no PowerShell abbreviations (D-AH40). On Linux, `ops` never runs a `.ps1` under Linux `pwsh`: `mk-worktree.ps1` makes a junction, and `ship.ps1` calls `python` (F25).
 
 ---
 
@@ -58,7 +60,7 @@ Agent: packet-coder. Branch `ai-harness-docs/ah-11a-takeover`, worktree name `ah
 **Rules:** the AH-11 rules, plus:
 
 - **CLAUDE.md stays at or under 4,500 bytes**: `(Get-Item <wt>\CLAUDE.md).Length`. It is 4,194 before the cherry-pick.
-- Leave `.claude/agents/ops.md` and `.codex/agents/ops.toml` exactly as the cherry-pick leaves them; AH-11g rewrites that line.
+- Leave `.claude/agents/ops.md` and `.codex/agents/ops.toml` exactly as the cherry-pick leaves them; AH-11g rewrites that line. (2026-10-18: #1824 merged first and rewrote that paragraph, so #1829 conflicts. [AH-11a-r](work-packets-w3d.md#ah-11a-r-merge-main-into-ah-11a-1829) resolves it by the conflict rule there.)
 - Two commits: the cherry-pick (Aura's, unchanged) and your trim commit.
 
 **Steps:**

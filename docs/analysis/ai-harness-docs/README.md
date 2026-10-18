@@ -1,6 +1,6 @@
 # ai-harness-docs: explain and harden the AI harness
 
-Ledger for the ai-harness-docs campaign. Packets: [work-packets.md](work-packets.md) (dispatch rules, contract, waves 1-2), [work-packets-w3b.md](work-packets-w3b.md) (wave 3b, the #1797 takeover and the Linux scripts) and [work-packets-w3.md](work-packets-w3.md) (waves 3, 3c and 4). Resume card: [RESUME.md](RESUME.md). Survey and the owner's binding decisions: [survey-and-decisions.md](survey-and-decisions.md). Closing reply for Aura's #1797: [pr-1797-close.md](pr-1797-close.md); the earlier reply, already posted, is [pr-1797-reply.md](pr-1797-reply.md).
+Ledger for the ai-harness-docs campaign. Packets: [work-packets.md](work-packets.md) (dispatch rules, contract, waves 1-2), [work-packets-w3b.md](work-packets-w3b.md) (wave 3b, the #1797 takeover and the Linux scripts), [work-packets-w3d.md](work-packets-w3d.md) (after #1824: AH-11a-r, wave 3d with the `.sh` twins of the ops git verbs, AH-11p, and the merge order) and [work-packets-w3.md](work-packets-w3.md) (waves 3, 3c and 4). Resume card: [RESUME.md](RESUME.md). Survey and the owner's binding decisions: [survey-and-decisions.md](survey-and-decisions.md). Closing reply for Aura's #1797: [pr-1797-close.md](pr-1797-close.md); the earlier reply, already posted, is [pr-1797-reply.md](pr-1797-reply.md).
 
 ## Purpose
 
@@ -49,6 +49,16 @@ F1-F16 were verified against origin/main da1703d01 on 2026-10-18, and F17-F27 ag
 | F25 | The `.ps1` twins don't work under Linux `pwsh`: `mk-worktree.ps1` makes a Windows junction, and `ship.ps1` calls `python`. So `ops` on Linux runs the `.sh` twins, not the `.ps1`. Fixing the `.ps1` twins for Linux is a follow-up. | mk-worktree.ps1, ship.ps1 | AH-11g (follow-up) |
 | F26 | #1797's bullet "`rm-worktree.sh` is Windows-shaped" is inaccurate: it falls back from `cygpath` and `cmd`, and removes a symlinked `external/` with `rm -f`. What failed was `ship.sh merge --retire`, which stopped at `python` before reaching it. | F17 probe; rm-worktree.sh | AH-11a, AH-11h |
 | F27 | `ops` has no `gh pr comment` or `gh pr close`, so closing #1797 with a reply is an owner action. | ops.md allowed list | AH-11i |
+| F28 | **#1824 merged on 2026-10-18 at 18:29Z as 9664e56f4**, outside this campaign. It adds `commit-paths.ps1`, `merge-noff.ps1`, `branch-at.ps1`, `push-branch.ps1` and `rebase-onto.ps1`, each with a `test-<name>.ps1`. In `ops.md` it rewrites the description, adds five allowed-op lines, extends the Reads line, adds a "Script results" paragraph and rewrites the Never paragraph. It ships no `.sh` twins, so C10 had no twin for five of the eight scripts `ops.md` names. Verified on 9664e56f4 (F28-F37). | `gh pr view 1824`; ops.md | W3d, AH-11g |
+| F29 | #1829 (AH-11a) conflicts with main in `.claude/agents/ops.md` and `.codex/agents/ops.toml` only. Aura's sentence was appended to the old Never paragraph, which #1824 rewrote. CLAUDE.md, development-workflow.md and the kickoff guide merge cleanly. | `git merge-tree origin/main 8d202b67f` | AH-11a-r |
+| F30 | The generated agents table (docs/agents/ai-harness.md:47) still shows ops's pre-#1824 description ("checkpoint commit"). regen-docs.yml refreshes it every 6 h, and test.yml's regen `--check` is informational. | grep | AH-11g |
+| F31 | tools/build-lane/README.md:22 says CI does not run the five `test-<name>.ps1` files. That is wrong: the Windows job of build-lane-scripts.yml runs every `test-*.ps1` (line 38). | build-lane-scripts.yml | AH-11p |
+| F32 | PowerShell's `-match`, `-eq`, `-contains` and `-like` ignore case; only the `c`-prefixed forms don't. branch-at's reserved-name and `refs/` checks are therefore case-insensitive, while `-ExpectBranch` and `not-current-branch` are case-sensitive. A literal bash port would flip them. | the five `.ps1` | W3d rule 2 |
+| F33 | The verbs need git 2.38 (`rebase --no-update-refs`) and 2.31 (`GIT_CONFIG_COUNT`, `--path-format`). WSL Ubuntu's git 2.43, Git for Windows and `ubuntu-latest` all qualify. macOS ships bash 3.2, which limits the syntax. | rebase-onto.ps1:119; merge-noff.ps1:117 | W3d rule 3, C11 |
+| F34 | When Git Bash runs `git.exe`, it rewrites an argument that starts with `/`. commit-paths refuses rooted paths before git sees them, so the `.sh` must keep that guard order. | MSYS path conversion | W3d rule 6 |
+| F35 | The `.ps1` bind with `PositionalBinding = $false` and Mandatory parameters. PowerShell also accepts abbreviated names and `-Switch:$true`, which a plain bash loop does not. | commit-paths.ps1:27-34 | D-AH40 |
+| F36 | Size of each verb (script lines / test lines / Checks): commit-paths 159/305/56, merge-noff 153/253/36, branch-at 106/154/30, push-branch 101/185/36, rebase-onto 155/240/44. commit-paths needs two packets to stay within about 40k tokens each. | line counts | W3d |
+| F37 | The W3b PRs #1825 to #1828 are MERGEABLE on 9664e56f4; only #1829 conflicts. | `gh pr view` | none |
 
 ## Decisions
 
@@ -90,10 +100,17 @@ All rows are decided by the architect except where marked owner. Status: Decided
 | D-AH32 | **#1797 is closed as superseded, with credit, not merged.** The owner posts pr-1797-close.md and closes it after W3c merges (AH-11i). | Merging her branch directly would need pushes to her branch (maintainerCanModify is false) or a merge of the unrevised status line followed by a fix-up. The posted reply already promised the content would land with her credit. The cherry-pick keeps her commit in the history either way. |
 | D-AH33 | **BlockedDecision:** is AH-15's Linux or WSL leg required or best effort? **Recommendation: required for the `ops` path** (L1-L7), on any WSL Ubuntu with `git`, `gh`, `python3` and Claude Code. Even a pass leaves Linux "not validated" for full sessions (C7b). | CI tests the scripts, but only a human-launched session tests `ops` choosing Bash from its Platform line. The owner decides whether to spend that run. |
 | D-AH34 | **Waves:** W3b = AH-11a to AH-11f, parallel and file-disjoint, merging AH-11e first and AH-11a before AH-11f; W3c = AH-11g and AH-11h after all of W3b; then AH-11i (owner); W4 = AH-15, then AH-16. | AH-11g's doc claims and AH-11h's "fixed" bullets are only true once the script fixes have merged. Six W3b packets fit one review-fixer context. |
+| D-AH35 | **Closed by events:** wait for #1824's own effort, or have this campaign carry it? #1824 merged at 18:29Z on 2026-10-18, before this amendment was committed, so nothing is left to decide. The question was never put to the owner, and nobody merged it as a decision. | F28 |
+| D-AH36 | **W3d writes `.sh` twins of the five verbs** (AH-11j to AH-11o), so C10 holds for every script `ops.md` names, and AH-11g's `test_ops_twins.py` requires a twin for each. The `.ps1` is the spec: same guards and order, `reason=` strings, status lines, fields and exit codes. | F25, F28. `ops` on Linux never runs a `.ps1` (C10). |
+| D-AH37 | **C11:** one common bash block (env clearing, `stop_refused`, `encode_field`, `detail_of`, option parsing), pasted verbatim into each twin between markers. AH-11p asserts that the five copies are identical. | A sourced library would need a packet before the other five, serialising the wave. The pasted copy lets five coders work in parallel, keeps each script self-contained like the other twins, and the identity test stops the copies drifting apart. |
+| D-AH38 | **Tests:** each twin gets a Python `unittest` that ports every `Check` of its `test-<name>.ps1`, under Git Bash locally and on Linux in AH-11e's job. AH-11p adds a parity test that runs `.ps1` and `.sh` on identical fixtures and compares exit codes and reason tokens. It runs on Windows only, and the Windows build-lane job gains that step. | Extends D-AH31. Parity needs both pwsh and Git Bash, and only the Windows runner has both. |
+| D-AH39 | **#1829 is resolved by merging origin/main into `ah-11a`** (AH-11a-r): keep #1824's `ops.md`, append Aura's sentence to the end of the Never paragraph, and regenerate `ops.toml` with sync.py. `ops` then pushes with a plain `push-branch.ps1`. | A merge needs no force-push and leaves Aura's commit untouched. The queue squashes anyway. AH-11g replaces the sentence later. |
+| D-AH40 | **The git-verb `.sh` twins take full option names only.** PowerShell's abbreviations and `-Switch:$true` are not mirrored; either one is a usage error (exit 1, which `ops` maps to `failed`). AH-11p documents this in the README rows. | F35. `ops.md` always spells options in full, so mirroring the binder would add code with no caller. |
+| D-AH41 | **Re-keyed waves:** W3d (6 packets, one review-fixer) can run as soon as AH-11e has merged. W3c (AH-11g, AH-11h, AH-11p) waits for W3b, #1824 and W3d. AH-11g's anchors quote #1824's `ops.md` and keep its description. AH-11g keeps only the `ai-harness.md` change regen makes. | D-AH34 extended. Full order: [work-packets-w3d.md § Merge order](work-packets-w3d.md#merge-order). |
 
 ### BlockedDecision (for the orchestrator to ask the owner)
 
-- **None blocks a W3b or W3c packet.**
+- **None blocks a W3b, W3d or W3c packet.** D-AH35 (wait for #1824 or carry it) closed when #1824 merged on 2026-10-18.
 - **D-AH33:** is the AH-15 Linux or WSL leg required (recommended) or best effort? Ask before AH-15.
 - **D-AH29 (non-blocking, default no):** a bash path for `packet-coder`, `packet-review-fixer` and the lane. Ask any time; a yes becomes a new campaign.
 - **Owner action, AH-11i:** after W3c merges, post pr-1797-close.md (PR numbers filled in) on #1797 and close it. `ops` cannot (F27).
@@ -115,16 +132,24 @@ All rows are decided by the architect except where marked owner. Status: Decided
 | AH-12 | 3 | packet-coder | rules-and-gotchas promotions | W2 | Integrated (#1817) |
 | AH-13 | 3 | documentation-writer | `docs/agents/ai-harness.md` reference, review bots and index row | W2 | Integrated (#1818) |
 | AH-14 | 3 | documentation-writer | README section, doc-update-map row and regen | AH-13 | Integrated (#1819) |
-| AH-11a | 3b | packet-coder | Take over #1797: cherry-pick, then trim to decision 4 | ledger merged | Ready |
-| AH-11b | 3b | packet-coder | `mk-worktree.sh` symlinks `external/` off Windows | ledger merged | Ready |
-| AH-11c | 3b | packet-coder | `ship.sh` and `rebase-pr.sh` find `python3` | ledger merged | Ready |
-| AH-11d | 3b | packet-coder | `gh_compat.py`: old-`gh` fallbacks in ship.py | ledger merged | Ready |
-| AH-11e | 3b | packet-coder | Linux CI job for the build-lane shell scripts (merge first) | ledger merged | Ready |
+| AH-11a | 3b | packet-coder | Take over #1797: cherry-pick, then trim to decision 4 | ledger merged | Review (#1829, conflicts: AH-11a-r) |
+| AH-11a-r | 3b | packet-coder | Merge origin/main into `ah-11a`; `ops.md` by the conflict rule | W3b review-fixer returned | Ready |
+| AH-11b | 3b | packet-coder | `mk-worktree.sh` symlinks `external/` off Windows | ledger merged | Review (#1826) |
+| AH-11c | 3b | packet-coder | `ship.sh` and `rebase-pr.sh` find `python3` | ledger merged | Review (#1827) |
+| AH-11d | 3b | packet-coder | `gh_compat.py`: old-`gh` fallbacks in ship.py | ledger merged | Review (#1828) |
+| AH-11e | 3b | packet-coder | Linux CI job for the build-lane shell scripts (merge first) | ledger merged | Review (#1825) |
 | AH-11f | 3b | packet-coder | Platform wording outside #1797's files | AH-11a merged before it | Ready |
-| AH-11g | 3c | packet-coder | `ops` runs the `.sh` twins off Windows | W3b merged | BlockedDependency |
-| AH-11h | 3c | packet-coder | WSL and Linux docs and the agent rule to the new state | W3b merged | BlockedDependency |
-| AH-11i | 3c | owner | Close #1797 with pr-1797-close.md | AH-11g, AH-11h merged | BlockedDependency |
+| AH-11j | 3d | packet-coder | `commit-paths.sh`: guards and the happy path | AH-11e merged | Ready after AH-11e |
+| AH-11k | 3d | packet-coder | `commit-paths.sh` hard cases (stacked on AH-11j) | AH-11j committed | BlockedDependency |
+| AH-11l | 3d | packet-coder | `merge-noff.sh` | AH-11e merged | Ready after AH-11e |
+| AH-11m | 3d | packet-coder | `branch-at.sh` | AH-11e merged | Ready after AH-11e |
+| AH-11n | 3d | packet-coder | `push-branch.sh` | AH-11e merged | Ready after AH-11e |
+| AH-11o | 3d | packet-coder | `rebase-onto.sh` | AH-11e merged | Ready after AH-11e |
+| AH-11g | 3c | packet-coder | `ops` runs the `.sh` twins off Windows (on #1824's `ops.md`) | W3b, #1824, W3d merged | BlockedDependency |
+| AH-11h | 3c | packet-coder | WSL and Linux docs and the agent rule to the new state | W3b, #1824, W3d merged | BlockedDependency |
+| AH-11p | 3c | packet-coder | `.sh`/`.ps1` parity test, CI wiring and README rows | W3b, #1824, W3d merged | BlockedDependency |
+| AH-11i | 3c | owner | Close #1797 with pr-1797-close.md | AH-11g, AH-11h, AH-11p merged | BlockedDependency |
 | AH-15 | 4 | owner / hands-on | Fresh-clone smoke test, Windows plus the Linux leg | W3c merged; D-AH33 | BlockedDependency |
 | AH-16 | 4 | packet-coder | Close-out | AH-15 | BlockedDependency |
 
-AH-04 and AH-10 were folded into AH-03 and AH-06 during slicing; their IDs are not reused. The old AH-11 (platform reconciliation after #1797) is replaced by AH-11a to AH-11i.
+AH-04 and AH-10 were folded into AH-03 and AH-06 during slicing; their IDs are not reused. The old AH-11 (platform reconciliation after #1797) is replaced by AH-11a to AH-11i. AH-11a-r and AH-11j to AH-11p were added on 2026-10-18 for #1824 (D-AH35 to D-AH41).
