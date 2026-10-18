@@ -21,6 +21,12 @@ function Invoke-BranchAt([string]$repo, [string]$name, [string]$sha) {
 
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("branch-at-test-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory $tmp | Out-Null
+# Isolate git from the developer's global and system config (commit.gpgsign, core.hooksPath,
+# rebase.updateRefs ...): both point at an empty file inside the throwaway directory.
+$emptyConfig = Join-Path $tmp 'empty.gitconfig'
+New-Item -ItemType File $emptyConfig | Out-Null
+$env:GIT_CONFIG_GLOBAL = $emptyConfig
+$env:GIT_CONFIG_SYSTEM = $emptyConfig
 try {
     $main = Join-Path $tmp 'main'
     $wt = Join-Path $tmp 'wt'
@@ -37,6 +43,7 @@ try {
     $second = (& git -C $main rev-parse HEAD).Trim()
     & git -C $main worktree add -q -b feat/wt $wt
     & git -C $main remote add origin (Join-Path $tmp 'origin.git')
+    & git -C $main tag v9 $first
     $refsBefore = (& git -C $main for-each-ref --format='%(refname) %(objectname)' | Out-String)
 
     # --- refusals -----------------------------------------------------------------------
@@ -48,6 +55,16 @@ try {
     Check ($r.code -eq 2 -and $r.out -match 'no-such-commit') 'refuses a SHA that names no commit'
     $r = Invoke-BranchAt $main '--force' $first
     Check ($r.code -eq 2 -and $r.out -match 'bad-branch-name') 'refuses a name that starts with a dash'
+    foreach ($plus in '+x', '+main') {
+        $r = Invoke-BranchAt $main $plus $first
+        Check ($r.code -eq 2 -and $r.out -match 'bad-branch-name') "refuses the name '$plus' (a leading + is a force refspec when pushed)"
+    }
+    foreach ($hex in 'abc1234', ('a' * 40), $second.Substring(0, 7)) {
+        $r = Invoke-BranchAt $main $hex $first
+        Check ($r.code -eq 2 -and $r.out -match 'looks like a commit hash') "refuses the hash-like name '$hex'"
+    }
+    $r = Invoke-BranchAt $main 'v9' $second
+    Check ($r.code -eq 2 -and $r.out -match 'existing tag') 'refuses a name equal to an existing tag'
     $r = Invoke-BranchAt $main 'bad..name' $first
     Check ($r.code -eq 2 -and $r.out -match 'bad-branch-name') 'refuses an invalid branch name'
     foreach ($amb in '@', 'HEAD', 'FETCH_HEAD', 'origin/main', 'origin', 'tags/x', 'heads/x', 'remotes/x', 'refs/heads/zz') {

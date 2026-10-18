@@ -5,12 +5,12 @@
 #
 # <repo> is the main checkout or any worktree of the repository. Refuses (exit 2) when <sha> is
 # not 40 lowercase hex digits or names no commit, <name> is not a valid branch name, <name> is
-# ambiguous (starts with `refs/`, is `@` or a pseudo-ref such as HEAD or FETCH_HEAD, or its first
+# ambiguous (looks like a hex hash of 7 to 40 digits, names an existing tag, starts with `+`, `-` or `refs/`, is `@` or a pseudo-ref such as HEAD or FETCH_HEAD, or its first
 # segment is a configured remote or `heads`, `tags` or `remotes`: a local `origin/main` would
 # shadow the remote-tracking ref in later rev lookups), or refs/heads/<name> already exists. Prints status=ok branch=<name> sha=<sha>, or
 # status=refused reason=<why> / status=failed reason=<why>. Exit codes: 0 created, 2 refused,
 # 1 git failed.
-[CmdletBinding()]
+[CmdletBinding(PositionalBinding = $false)]
 param(
     [Parameter(Mandatory)][string]$C,
     [Parameter(Mandatory)][string]$Name,
@@ -31,7 +31,10 @@ if ($Sha -cnotmatch '^[0-9a-f]{40}$') { Stop-Refused "sha-not-full-40-hex: $Sha"
 & git -C $C rev-parse --verify --quiet "$Sha^{commit}" *> $null
 if ($LASTEXITCODE -ne 0) { Stop-Refused "no-such-commit: $Sha" }
 
-if ($Name.StartsWith('-')) { Stop-Refused "bad-branch-name: $Name" }
+if ($Name.StartsWith('-') -or $Name.StartsWith('+')) { Stop-Refused "bad-branch-name: $Name" }
+if ($Name -cmatch '^[0-9a-f]{7,40}$') { Stop-Refused "ambiguous-branch-name: $Name looks like a commit hash" }
+& git -C $C show-ref --verify --quiet "refs/tags/$Name"
+if ($LASTEXITCODE -eq 0) { Stop-Refused "ambiguous-branch-name: $Name is an existing tag" }
 & git -C $C check-ref-format --branch $Name *> $null
 if ($LASTEXITCODE -ne 0) { Stop-Refused "bad-branch-name: $Name" }
 if ($Name -match '^refs/' -or $Name -iin '@', 'HEAD', 'FETCH_HEAD', 'ORIG_HEAD', 'MERGE_HEAD', 'CHERRY_PICK_HEAD') { Stop-Refused "ambiguous-branch-name: $Name" }

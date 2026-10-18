@@ -23,6 +23,12 @@ function Invoke-Push([string]$wt, [string]$branch, [switch]$force) {
 
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("push-branch-test-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory $tmp | Out-Null
+# Isolate git from the developer's global and system config (commit.gpgsign, core.hooksPath,
+# rebase.updateRefs ...): both point at an empty file inside the throwaway directory.
+$emptyConfig = Join-Path $tmp 'empty.gitconfig'
+New-Item -ItemType File $emptyConfig | Out-Null
+$env:GIT_CONFIG_GLOBAL = $emptyConfig
+$env:GIT_CONFIG_SYSTEM = $emptyConfig
 try {
     $bare = Join-Path $tmp 'origin.git'
     $main = Join-Path $tmp 'main'
@@ -98,6 +104,25 @@ try {
     $r = Invoke-Push $wt 'feat/x' -force
     Check ($r.code -eq 1 -and $r.out -match 'status=failed reason=git-push') "-Force is rejected when the remote moved (exit $($r.code)): $($r.out.Trim())"
     Check ((& $remoteRef) -eq $theirs) 'the rejected -Force left the other push in place'
+
+    # --- a name that starts with + is refused: pushed raw it is a force refspec ------------
+    # Remote `victim` holds a commit that local branch `+victim` does not contain. Pushing the raw
+    # name `+victim` would force-push `victim` over it and bypass the main/master check.
+    & git -C $bare branch victim $theirs
+    $wtPlus = Join-Path $tmp 'wtplus'
+    & git -C $main worktree add -q -b '+victim' $wtPlus main
+    Set-Content -LiteralPath (Join-Path $wtPlus 'v.txt') 'v'
+    & git -C $wtPlus add -- v.txt
+    & git -C $wtPlus commit -q -m 'victim rewrite'
+    foreach ($plus in '+victim', '+main') {
+        if ($plus -eq '+main') { & git -C $wtPlus checkout -q -b '+main' }
+        $r = Invoke-Push $wtPlus $plus
+        Check ($r.code -eq 2 -and $r.out -match 'bad-branch-name') "refuses the branch '$plus' (exit $($r.code)): $($r.out.Trim())"
+        $r = Invoke-Push $wtPlus $plus -force
+        Check ($r.code -eq 2 -and $r.out -match 'bad-branch-name') "refuses the branch '$plus' with -Force too (exit $($r.code))"
+    }
+    Check ((& git -C $bare rev-parse refs/heads/victim).Trim() -eq $theirs) 'the remote victim branch was not overwritten'
+    Check ($null -eq (& git -C $bare rev-parse --verify --quiet refs/heads/+victim)) 'no +victim branch was created on the remote'
 }
 finally {
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
