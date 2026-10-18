@@ -290,16 +290,27 @@ The function at `0x00de1720` packs three float angles (yaw, pitch, roll) into 3 
 ```c
 // Pseudocode reconstructed from FUN_00de1720 at 0x00de1720
 void packDirection(uint8* out, float yaw, float pitch, float roll) {
-    // yaw uses a different scale constant than pitch/roll
-    // DAT_01851a30 ≈ 256/(2*pi) for yaw, DAT_01847294 ≈ 256/(2*pi) for pitch/roll
-    // DAT_019002fc = scaling factor, DAT_01816a8c = rounding bias
-    out[0] = (int8)(yaw   * SCALE_YAW   * INV_2PI + 0.5);   // yaw   -> [-128, 127]
-    out[1] = (int8)(pitch * SCALE_PITCH  * INV_2PI + 0.5);   // pitch -> [-128, 127]
-    out[2] = (int8)(roll  * SCALE_PITCH  * INV_2PI + 0.5);   // roll  -> [-128, 127]
+    // DAT_01851a30 = 128.0 (yaw), DAT_01847294 = 256.0 (pitch/roll)
+    // DAT_019002fc = 1/pi, DAT_01816a8c = 0.5 rounding bias
+    out[0] = (int8)(yaw   * 128.0 * INV_PI + 0.5);   // yaw:   256 steps per turn
+    out[1] = (int8)(pitch * 256.0 * INV_PI + 0.5);   // pitch: 512 steps per turn
+    out[2] = (int8)(roll  * 256.0 * INV_PI + 0.5);   // roll:  512 steps per turn
 }
 ```
 
-Each angle is quantized to 256 steps over the full circle (2*pi radians), giving ~1.4 degree precision per byte. The function uses IEEE 754 rounding tricks (add bias, mask mantissa) to achieve fast float-to-int rounding.
+Yaw is quantized to 256 steps per turn (about 1.4° per step). Pitch and roll use BigWorld half-angle packing: 512 steps per turn (about 0.7° per step), so `pitch_rad = byte × π/256`. An earlier version of this section gave 256/(2π) for all three; corrected 2026-10-18 from the decompile (see [avatar-update-rotation-source.md](../reverse-engineering/findings/avatar-update-rotation-source.md)). The function uses IEEE 754 rounding tricks (add bias, mask mantissa) to achieve fast float-to-int rounding.
+
+### Rotation source
+
+The three angles are the **controlled pawn's `Rotation`**, never the camera's view rotation (recovered 2026-10-18; full evidence in [avatar-update-rotation-source.md](../reverse-engineering/findings/avatar-update-rotation-source.md)):
+
+- The periodic sender `FUN_00dd06a0` reads the actor of the controlled entity (`[[EntityManager+0x10]+0x08]`) and passes its `Rotation` (`+0xE8`) through `FUN_0084a8a0` to `addMove` (`0x00dd9330`).
+- `FUN_0084a8a0` turns UE units into radians (2π/65536): yaw = `Rotation.Yaw`, pitch = `-Rotation.Pitch`, roll = `-Rotation.Roll`.
+- The camera's own yaw and pitch (`ASGWCamera_Player +0x36C`, `+0x368`) only *read* the pawn's yaw. They are never written back into the pawn or the message. Mouse-look does not change the wire bytes.
+- `SGWGamePawn.FaceRotation` zeroes `Pitch` while walking or falling, so byte1 is 0 for a walking avatar.
+- Rotation does not trigger a send. A pawn turn made while standing still reaches the server only on the next idle-interval move.
+
+The server unpacks all three bytes at 2π/256 (`unpack_angle`), which is right for yaw but doubles pitch and roll. Bytes round-trip unchanged on rebroadcast; only code that reads `direction.x` as an angle sees the factor of two.
 
 ### Position Format (Confirmed)
 
