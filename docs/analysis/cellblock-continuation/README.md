@@ -2,7 +2,7 @@
 
 > Opened 2026-10-14. Static baseline: `d3efb7d41aad0b6008397f112d224ce7430d7acf`.
 > **Type**: Reference. **Audience**: Engineers and campaign coordinators.
-> **Last updated**: 2026-10-17. **Companions**: [Wave resume](RESUME.md), [Work packets](work-packets.md), [W1b coder packets](w1b-packets.md), [W2 packets](w2-packets.md), [CB-N00 worknote](worknotes/cb-n00.md), [CB-N01 handoff](presentation-handoff.md), [CB-N05 proposed seal](worknotes/cb-n05-seal.md).
+> **Last updated**: 2026-10-17. **Companions**: [Wave resume](RESUME.md), [Work packets](work-packets.md), [W1b coder packets](w1b-packets.md), [W2 packets](w2-packets.md), [W3 packets](w3-packets.md), [W3 frozen literals](w3-frozen.md), [Owner lab checklist](owner-lab-checklist.md), [CB-N00 worknote](worknotes/cb-n00.md), [CB-N01 handoff](presentation-handoff.md), [CB-N05 proposed seal](worknotes/cb-n05-seal.md).
 > CB-N00 is **Integrated** for the evidence/doc gate only. Fresh route acceptance is **UATPending**.
 
 This is the live ledger for the one-time escape in world 12. The
@@ -45,25 +45,27 @@ A completed source audit does not make a runtime packet Ready.
 | CB-N04m | Integrated | Integrated at `86b5485bc` (from `8e29559e4`). `mission-systems-advisor` sign-off on the seal (gate, overlap, suppression, copy). After CB-N04s. |
 | CB-N04a | Integrated, UATPending | Integrated at `139342746` (packet `908cef5a5` from `bb7605dba`, review fix `21f72c4e2` from `139342746`). CB-U08 UATPending (ask first). `packet-coder`: spawns 520-522, holder dialog 60160, screens 200160-200162, chains 11010-11012 (lowest needed) and the `cellblock_ambience` live-DB tests. After CB-N04m returns `approve` or `change`. CB-U08 UATPending afterwards. |
 | CB-N05a | UATPending | Catalog infrastructure merged to `main` in #1734 and integrated here; the first real authored mission must pass journal, dialog, advance and relog before this gate closes. |
-| CB-N05 | BlockedDependency | Proposed itemless, zero-reward *The Remaining Pods* design is in [the seal](worknotes/cb-n05-seal.md), design review complete. Before coder dispatch, CB-U09 must measure a fresh normal first-run core at 30–45 minutes and show room for this beat within the 10-minute optional budget (O14-14). Native CB-U10 then tests journal/dialog/advance/relog. |
-| CB-N05b | BlockedDependency | Separate Castle evidence hand-in is held for Harset HA-1360's reviewed atomic item receipt primitive, Castle recipient ownership and a new item/reward/ID seal. It does not gate CB-N05. |
-| CB-N06 | BlockedDependency | Conditional under O14-15: include only after N05 live pacing and safety show benefit within the 10-minute optional budget. |
+| CB-N05 | Ready | Itemless, zero-reward *The Remaining Pods* ([the seal](worknotes/cb-n05-seal.md)). Built before CB-U09/CB-U10 under D-CC13, split into CB-N05-1 to CB-N05-7 plus W3a-INT and W3-INT under D-CC14 ([w3-packets.md](w3-packets.md), literals in [w3-frozen.md](w3-frozen.md)). After W3-INT: Integrated, UATPending on owner-run CB-U09 (pacing, 10-minute beat, O14-14) and CB-U10 (native journal, dialog, advance, relog). |
+| CB-N05b | BlockedDependency | Separate Castle evidence hand-in is held for Harset HA-1360's reviewed atomic item receipt primitive, Castle recipient ownership and a new item/reward/ID seal. It does not gate CB-N05. No W3 packet. |
+| CB-N06 | BlockedEvidence, BlockedDecision | Conditional under O14-15: include only after CB-N05's live pacing and safety (owner-run CB-U09, CB-U10) show benefit within the 10-minute optional budget, and after the owner names the quest and prop (D-CC15). No W3 packet. |
 | CB-N07 | BlockedEvidence, BlockedDecision | Conditional under O14-15. Needs CB-U05 (N03 reachability), CB-U09 (pacing) and owner decision D-CC11 (death, difficulty and time impact). No W2 packet; a later architect pass writes the CB-N07s seal. |
 | CB-N08 | BlockedDependency | Selected packets, sibling integrations, full local CI/fresh review; live rows UATPending until approved run. |
 
 The fresh p3 client reached mission 638's Livewire door, but the native
 minigame helper and screenshot call stalled. A later direct native Open reached
 SmartFox and timed out; the relogged Prisoner 329 interaction reached the
-matching server with no dialog response. These runs cannot measure CB-U09
-timing, so no CB-N05 coder dispatch follows. The Codex `lab-server` connection
+matching server with no dialog response. These runs could not measure CB-U09
+timing. On 2026-10-17 the owner stopped agent-driven lab work, so D-CC13 lets
+CB-N05 be built first and leaves CB-U09 and CB-U10 to the owner
+([owner-lab-checklist.md](owner-lab-checklist.md)). The Codex `lab-server` connection
 pointed at a different server; direct access to the matching local server
 provided the packet evidence. The client and lease were stopped and released.
 See the [route baseline](route-baseline.md#2026-10-15-native-livewire-retry-and-prisoner-relog-fault).
 
 The eleven packet families are scopes; an implementation child needs the complete
 seal required by the packet contract. CB-N05 now has proposed exact copy and
-individual ID claims under O14-04/O14-10, with review pending. They do not
-authorize coder dispatch yet. No new placement, item or authored reward is
+individual ID claims under O14-04/O14-10, design review complete; W3 builds
+them from the frozen literals in [w3-frozen.md](w3-frozen.md). No new placement, item or authored reward is
 sealed. Chain block 11000–11499 remains a planning reservation outside the six
 individually claimed CB-N05 chains. CB-N05a is the merged early standalone PR
 exception. FZ-99 owns shared status docs.
@@ -76,7 +78,7 @@ Ported on 2026-10-16 from the adopting orchestrator's main-checkout overlay. The
 |---|---|---|---|
 | D-CC1 | Who runs Cellblock after the zone session went idle. | Decided 2026-10-16: **B**. The WIP was checkpointed as `14658b3b1`; the adopting orchestrator runs the campaign. | Owner ruling. |
 | D-CC2 | The main-checkout overlay stays uncommitted; this branch ledger is canonical. | Decided | One campaign branch, one ledger. The overlay was ported here in wave 1b. |
-| D-CC3 | O14-08 standing lab approval covers the adopting orchestrator (CB-U03, CB-U09 and the other CB-U rows). | Decided 2026-10-16: yes | Owner ruling. The orchestrator still asks before each lab use and waits until the lab is free. |
+| D-CC3 | O14-08 standing lab approval covers the adopting orchestrator (CB-U03, CB-U09 and the other CB-U rows). | Decided 2026-10-16: yes. **Superseded 2026-10-17**: the owner runs every lab row; agents never drive the lab. | Owner ruling. See [owner-lab-checklist.md](owner-lab-checklist.md) and D-CC13. |
 | D-CC4 | Seed-only `player_loaded` restores are tested at resolve level; an execute-level test only when a packet changes executor code. | Decided | Precedents 622/701/708; the executor paths have their own tests. |
 | D-CC5 | Pilot re-run with measurement: CB-N02s about 78k tokens and 5 min, CB-N02a about 66k tokens and 22 min. | Done | CB-N00 had measured nothing. |
 | D-CC6 | Review is split from fixing: read-only `packet-reviewer`, fixes by `packet-coder`, fresh re-review; no `packet-review-fixer`. Haiku agents stay under 100k total tokens (the 90k hook is a deliberate stop-gap). | Decided 2026-10-16 | Owner rulings. Applies from wave 1b. |
@@ -86,6 +88,9 @@ Ported on 2026-10-16 from the adopting orchestrator's main-checkout overlay. The
 | D-CC10 | CB-N04a is built before the CB-U08 lab row. The static seal (nav_inspect probes, measured clearance from guards and protected anchors, mission sign-off) is the gate before dispatch. CB-U08 runs on the integrated branch and the campaign PR waits on it or on O14-09. | Decided 2026-10-17 (architect) | Two-client AoI and the camera check need the cast to exist; the contract gives that visual UAT to CB-N08. A failed CB-U08 opens a fix child. |
 | D-CC11 | CB-N07: what death, difficulty and time impact is acceptable for a one-room encounter response. | **BlockedDecision** (owner) | The CB-N07 contract says the owner sets it. Ask only once CB-U05 and CB-U09 have run, so that the answer can use measured pacing. |
 | D-CC12 | CB-N04 cast rows set `is_stationary` = `true` and stay outside `Castle_Cellblock.Region1` (the debug hub floor). CB-N04a's placement test asserts the flag; its lane adds the `debug_hub_stationary` and `spawnlist_sequence` guards. | Decided 2026-10-17 (architect, W2 resume pass) | A mobile spawn off the patchy navmesh warns `spawn_off_mesh` on every instance and may take cover or path. A spawn inside Region1 breaks `live_db_debug_hub_stationary`. Precedent: spawn 10 and the hub rows 400-490. |
+| D-CC13 | CB-N05 is built before CB-U09 and CB-U10. Both become owner-run UATPending rows ([owner-lab-checklist.md](owner-lab-checklist.md)); the campaign PR waits on them or on O14-09. A slow 62050 beat lets the coordinator drop 62050 or open a fix packet. A blank dialog, client crash, missing first-press response, lost progress or changed core Marsh briefing blocks the PR. Rollback: move dialog 60150 into the quarantine and delete the client's dialog cache pak. | Decided 2026-10-17 (architect, under the owner's lab-abandon directive; D-CC10 precedent) | No agent may wait on a lab result any more. CB-N05 is optional, itemless and zero-reward, so building it first risks only a removable beat; the static tests prove the catalog, the dialog bytes, the chains and the persistence. |
+| D-CC14 | CB-N05's allowlist adds `overrides_cellblock.rs` (with `mod.rs` growing by at most 6 lines), `mission_additions_cellblock.rs` (two edits in `mission_additions.rs`), `resync_cellblock.rs` (instead of growing `resync.rs`), a `mission_62050/` test module and rig-stamped world rows. The packet is split into CB-N05-1 to CB-N05-7 with W3a-INT and W3-INT. | Decided 2026-10-17 (architect) | Keeps every touched file under the 700-line hard cap and every packet near 40k tokens; the frozen literals let three packets run in parallel. |
+| D-CC15 | CB-N06: does it exist, and if so which quest and which prop. | **BlockedDecision** (owner) | O14-15 makes it conditional on measured pacing; ask after the owner's CB-U09 and CB-U10. |
 
 **Corrections to [cb-n02s.md](worknotes/cb-n02s.md).** `route-baseline.md` is present on this branch, and its core route matches the worknote's assumption. The three objects the worknote left `unchecked` are restored on login: `Cellblock_WoodenCrate` by chain 1104 (687 step 2354), `Cellblock_TerminalX` by 1110 (688 step 2356), `Cellblock_ArmoryRingSwitch` by 1111 (688 step 80688). Gap A's setter is the 1014/1015 dialog-choice edge with no archetype split, so one restore chain is enough. Gap B's bit is cleared by `destroy_entity` in chain 1032, so a restore gated on step 2145 cannot outlive its window.
 

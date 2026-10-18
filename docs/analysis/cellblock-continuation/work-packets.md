@@ -3,7 +3,7 @@
 > **Type:** Work packets (canonical; ported from the main-checkout overlay on 2026-10-16, D-CC2)
 > **Audience:** The Cellblock orchestrator and the agents it dispatches
 > **Last updated:** 2026-10-17
-> **Scope source:** [cellblock-work-packets.md](../four-zone-planning/cellblock-work-packets.md). Packets that already have a section there are referenced by its heading and are not retyped here. This file holds the dispatch rules, the contract, the waves, the W1b advisor and integration packets. The W1b coder packets (CB-N02b, CB-N02c, CB-N02d) are in [w1b-packets.md](w1b-packets.md). Wave 2 (CB-N04s, CB-N04m, CB-N04a, W2-INT, and the CB-N07 hold) is in [w2-packets.md](w2-packets.md), which carries its own contract with the W2 feature SHA.
+> **Scope source:** [cellblock-work-packets.md](../four-zone-planning/cellblock-work-packets.md). Packets that already have a section there are referenced by its heading and are not retyped here. This file holds the dispatch rules, the contract, the waves, the W1b advisor and integration packets. The W1b coder packets (CB-N02b, CB-N02c, CB-N02d) are in [w1b-packets.md](w1b-packets.md). Wave 2 (CB-N04s, CB-N04m, CB-N04a, W2-INT, and the CB-N07 hold) is in [w2-packets.md](w2-packets.md), which carries its own contract with the W2 feature SHA. Wave 3 (CB-N05-1 to CB-N05-7, W3a-INT, W3-INT, and the CB-N05b/CB-N06 holds) is in [w3-packets.md](w3-packets.md), with its frozen literals in [w3-frozen.md](w3-frozen.md). The owner's lab rows are in [owner-lab-checklist.md](owner-lab-checklist.md).
 
 ## Dispatch rules
 
@@ -11,7 +11,7 @@
 2. Workers commit locally and stop. They never push, open a PR, merge, or edit another worktree. Reviewed packet commits are cherry-picked into `content/cellblock-campaign` by the integration packet of the wave, in the order it lists. One remote PR per campaign: `content/cellblock-campaign` to `main` at CB-N08.
 3. **Review is split from fixing (D-CC6, owner ruling 2026-10-16).** A read-only `packet-reviewer` reviews; a `packet-coder` implements the verified findings in the packet's worktree; a fresh `packet-reviewer` re-reviews the fixed packets. At most 3 rounds, after which the packet goes back to the architect. Do not use `packet-review-fixer` in this campaign.
 4. Haiku agents (`packet-coder`) must stay under 100k total tokens; the 90k hook is a deliberate stop-gap. Packets are sized at about 40k working tokens.
-5. No packet in this file takes a lab lease. Lab rows (CB-U03, CB-U05, CB-U09) run only after the orchestrator asks the user and the lab is free (D-CC3 covers this orchestrator under O14-08).
+5. No packet takes a lab lease, and no agent drives the lab (owner directive, 2026-10-17, which supersedes D-CC3's agent lab runs). The owner runs every lab row (CB-U03, CB-U05, CB-U08, CB-U09, CB-U10) at the end from [owner-lab-checklist.md](owner-lab-checklist.md). A packet that needs lab evidence is built from static evidence and the seal, and its lab row stays UATPending for the owner (D-CC13).
 6. Seed header bookkeeping (the chain-range comments at the top of `castle_cellblock_chains.sql`) and `id-allocation.md` are edited only by the integration packet, never by a coder packet (D-CC8). This keeps parallel packets free of conflicts.
 
 ## Contract
@@ -51,8 +51,8 @@
 | W1b | W1b-R0 (only if ops refuses the rebase), then in parallel CB-N02b, CB-N02c, CB-N02d, CB-N02s2, CB-N03s; review; W1b-INT | **Integrated** at `0fca3114f`. CB-U03 UATPending for 1028/1036/1037. |
 | W1c | Children sealed by CB-N02s2 or CB-N03s (for example CB-N03a), each from a new architect pass | **Not triggered**: neither advisor sealed a child (2026-10-17 architect pass). CB-N03a reopens only if CB-U05 shows a seed fault. |
 | W2 | [w2-packets.md](w2-packets.md): CB-N04s, then CB-N04m, then CB-N04a; review; W2-INT; CB-U08 (ask first). CB-N07 held (BlockedEvidence on CB-U05 and CB-U09, BlockedDecision D-CC11). | **Integrated** at `139342746` (cherry-picks `ce1381581`, `86b5485bc`, `908cef5a5`, `139342746`). CB-U08 UATPending (ask first). W1 integrated (met). Feature SHA `0fca3114f`; W2 worktrees branch from the W2 architect tip (main overlay RESUME.md names it). D-CC12: cast rows stationary, outside Region1. |
-| W3 | CB-N05 (Remaining Pods), then CB-N05b (held on HA-1360), then CB-N06 (conditional) | CB-U09 measured |
-| W4 | CB-N08 | All above Integrated or UATPending with documented lab unavailability (O14-09) |
+| W3 | [w3-packets.md](w3-packets.md): W3a = CB-N05-1 (catalog + mission seeds), CB-N05-2 (dialog 60150), CB-N05-3 (chains 11000-11005) in parallel; review; W3a-INT. W3b = CB-N05-4 (cooked-sync), CB-N05-5 (dispatch negatives), CB-N05-6 (persistence), CB-N05-7 (executor replay) in parallel on the W3a-INT tip; review; W3-INT. CB-N05b held (BlockedDependency, HA-1360). CB-N06 held (BlockedEvidence CB-U09/U10, BlockedDecision D-CC15). | Ready. Built before CB-U09/U10 (D-CC13); W3a branches from the W3 architect commit (main overlay RESUME.md names it). CB-U09 and CB-U10 are owner-run UATPending after W3-INT. |
+| W4 | CB-N08 | All above Integrated or UATPending; the owner's lab rows recorded (or O14-09 documented unavailability). CB-U10 failures that the seal calls blockers stop the PR. |
 
 ---
 
@@ -212,4 +212,4 @@ Repo rules 1, 2, 3, 6, 9 and 10.
 
 ## Packets specified on the campaign branch
 
-CB-N05, CB-N05b, CB-N06, CB-N07 and CB-N08 are dispatched from their sections in [cellblock-work-packets.md](../four-zone-planning/cellblock-work-packets.md). CB-N04 has passed its architect check; its packets are in [w2-packets.md](w2-packets.md). Their statuses are in [README.md](README.md#packet-status). Before any of them goes to `packet-coder`, an architect pass checks it against the 40k budget and this file's contract and repo rules. CB-N05 (new mission, six nested missions, dialog, screen, chains 11000-11005) will need splitting.
+CB-N05b, CB-N06, CB-N07 and CB-N08 are dispatched from their sections in [cellblock-work-packets.md](../four-zone-planning/cellblock-work-packets.md). CB-N04 has passed its architect check; its packets are in [w2-packets.md](w2-packets.md). CB-N05 passed its architect check on 2026-10-17 and is split into CB-N05-1 to CB-N05-7 in [w3-packets.md](w3-packets.md) (D-CC14). Their statuses are in [README.md](README.md#packet-status). Before any other one goes to `packet-coder`, an architect pass checks it against the 40k budget and this file's contract and repo rules.

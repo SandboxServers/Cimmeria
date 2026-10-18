@@ -1,0 +1,113 @@
+# Cellblock continuation: owner lab checklist
+
+> **Type:** How-to (owner-run UAT)
+> **Audience:** The owner, running the Cellblock lab rows by hand
+> **Last updated:** 2026-10-17
+> **Companions:** [README.md](README.md) (row status), [route-baseline.md § bounded fresh acceptance rows](route-baseline.md#bounded-fresh-acceptance-rows) (the row definitions), [w3-packets.md](w3-packets.md), [CB-N03 seal](worknotes/cb-n03-seal.md), [CB-N04 seal](worknotes/cb-n04-seal.md), [CB-N05 seal](worknotes/cb-n05-seal.md)
+
+Owner directive, 2026-10-17: agents no longer drive the lab. The owner runs every row below once the agents are done, and records the result in the README row (pass, fail with what was seen, or skipped). Agents never start a lab session for these rows.
+
+| Row | Proves | Run after | Unblocks |
+|---|---|---|---|
+| CB-U03 | Relog restores the 638/639 interactions | now (W1b integrated) | CB-N02 Done |
+| CB-U05 | Mess Hall and Hallway05 guards flank and use cover | now | CB-N03, CB-N07 (with D-CC11) |
+| CB-U08 | The ambient cast stands where sealed and barks once | now (W2 integrated) | CB-N04 Done; a second cluster |
+| CB-U09 | A fresh core escape takes 30-45 minutes, plus the 62050 beat | W3-INT | CB-N06 (with D-CC15), CB-N07 |
+| CB-U10 | Mission 62050 works in the native client | W3-INT | the campaign PR; CB-N05/CB-N05a Done |
+
+## Setup (every row)
+
+1. **Run exactly one `cimmeria-server`.** On 2026-10-17 a second server from the `castle-cs-01b` worktree also listened on auth port 13001, the client logged into it, and every lab result that day was invalid. Before you start, check: `Get-NetTCPConnection -LocalPort 13001 -State Listen | ForEach-Object { (Get-Process -Id $_.OwningProcess).Path }`. It must print one path, inside `.claude\worktrees\zone-cellblock\`. Stop any other server first.
+2. Build and run the server from `C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\zone-cellblock` (branch `content/cellblock-campaign`) against its own database `sgw_zone_cellblock`.
+3. Reload that database from seeds so it has every wave's rows: `Set-Location C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\zone-cellblock; pwsh tools/build-lane/reload-db.ps1`. **This wipes characters.** Restart the server afterwards.
+4. Use **fresh characters** made after the reload (a Human and a Loyalist Jaffa for CB-U09/U10). Characters from another worktree's database do not exist here.
+5. For CB-U10 only: delete the client's `Cache.en-US\CookedDataDialogs.pak` before the first login, so the client takes the served dialog 60150 fresh. Delete it again if you roll back.
+6. GM commands need client patch 012. Without it, use the `.`-console equivalents (`.gotolocation`, and so on).
+
+## GM shortcuts
+
+| Purpose | Command |
+|---|---|
+| Stand next to Prisoner 329 (spawn at -289.8, 65.5, -113.1) | `/gmgotolocation Castle_CellBlock -287 65.5 -113` |
+| Stand next to Col. Marsh (spawn at -191, 54.7, -138.6) | `/gmgotolocation Castle_CellBlock -189 54.7 -138.6` |
+| Mess Hall guards (about -96, 34.6, -95) | `/gmgotolocation Castle_CellBlock -110 34.6 -95` (stand off, west) |
+| Hallway05 guards (about -101, 24.7, -47) | `/gmgotolocation Castle_CellBlock -101 24.7 -30` |
+| Give a mission | `/gmmissionassign <missionId> 1` |
+| Jump a mission to a step | `/gmmissionadvance <missionId> <stepId>` |
+| Kill the target, refill health | `/gmkilltarget`, `/gmsethealthmax`, `/gmsethealth <n>` |
+
+Prefer playing the real route. Use the shortcuts only to reach a row's start state, and say in the result which ones you used.
+
+## SigNoz
+
+Filter every query on `service.name = 'cimmeria-server'` and the time window of your run.
+
+| What | Query |
+|---|---|
+| Mission flow | log body contains one of `Content: accepting mission`, `Content: advancing step`, `Content: complete objective`, `Content: completing mission`, `Content: abandoning mission` |
+| Offers and dialogs | `Content: adding dialog set`, `Content: removing dialog set`, `Content: displaying dialog` |
+| Step changes | span name `mission.advance_step` |
+| Catalog insert at startup | attribute `event = cooked_data.mission_catalog_inserted` (expect `mission_id` 62050); `cooked_data.mission_catalog_rejected` must be absent |
+| Ambient cast | DEBUG `Spawned instance NPC from DB` with tag like `Cellblock_Ambient_%`; INFO `instance_populated` |
+| Ambient bark | span `content.npc_bark`, INFO `Content: npc bark` with `chain_id` 11010 and `screen_id` 200160; WARN with `reason` in (`screen_not_cached`, `empty_text`, `actor_not_player`) must be absent |
+
+## CB-U03 — Relog restores (chains 1026-1028, 1036, 1037)
+
+At each step below: reach it, log out, log back in, then use the named object on the **first** press.
+
+1. 638 step 2114, Human: Prisoner 329 offers his dialog (chain 1026). Jaffa: the same with the Jaffa dialog (1027). An unconfirmed 2026-10-17 note says 329 gave no dialog here; that run used the wrong server, so check this first.
+2. 638 step 2115: the `329_CellDoorButton` Livewire panel opens (1028).
+3. 638 step 2116: the med station: take cover and kill in both orders; the cure gives real feedback and the sickness state clears.
+4. 639 step 2144: the Prisoner Retrieval Unit is armed again and can be killed (1037).
+5. 639 step 2145: the Ambernol vial can be picked up (1036).
+
+Pass: every object answers the first press after relog. Record any that needed a second press.
+
+## CB-U05 — Flank and cover (Mess Hall, Hallway05)
+
+Guards: `MessHall_Guard1` (spawn 1200046), `MessHall_Guard2` (1200053), `Hallway05_Guard1` (1200056), `Hallway05_Guard2` (1200044).
+
+1. Enter the Mess Hall from the west and pull both guards. Watch that a guard moves to cover (`cover.hold` or `spawn_reserved` in the server log), stays in cover while you are in front, and that a guard tries to flank you west of x = -97.
+2. Step around a guard in cover: the log shows `cover_released_flanked`, and `fire_player_flanked_npc` matches.
+3. Kill both: objective 2725 completes. Repeat at Hallway05: objective 2731.
+4. Negatives: no guard runs through a wall, leaves the room more than a few metres, or stands frozen with no target.
+
+Pass: steps 1-3 seen on both rooms, no negative. Note how long each fight took.
+
+## CB-U08 — Ambient cast (spawns 520, 521; chain 11010)
+
+1. Fresh character. Talk to Prisoner 329, then walk east.
+2. Stop about 6 m west of the cast at (-271, 65.45, -135) and (-254, 65.45, -135). Both stand still, name plate `Op-CORE Soldier`, friendly.
+3. During 639 step 2117, on first entry to Region2, one line appears in chat once (chain 11010, screen 200160). Leave and re-enter: no repeat. Relog: at most once more. After the vial step 2145: no line.
+4. With a second client in the same area: both see the cast; only the crossing player gets the line.
+
+Pass: placement, plate, once-only bark, AoI on the second client, and the SigNoz ambient rows above.
+
+## CB-U09 — Core-run pacing (after W3-INT)
+
+1. Fresh Human: play the core escape from the stasis pod to the 688 exit, skipping optional content (do not take 62050). Record wall-clock time. Target 30-45 minutes.
+2. Same on a fresh Loyalist Jaffa.
+3. Then time the 62050 beat alone on one of them: from the first Prisoner click after 638 to the completion at Marsh. Budget: 10 minutes or less (O14-14).
+
+Pass: both core runs inside 30-45 minutes and the beat inside 10. A slow beat does not block the PR by itself: tell the coordinator, who can drop 62050 or open a fix packet.
+
+## CB-U10 — Mission 62050 in the native client (after W3-INT)
+
+Run on a fresh Human and a fresh Loyalist Jaffa; setup step 5 first.
+
+1. **First offer.** Complete 638. Go to Prisoner 329: a usable offer marker or topic (`Free Prisoner 329`) is there on the **first** look and first press.
+2. **Accept.** One click on Prisoner 329: the journal shows *The Remaining Pods* with step "Tell Col. Marsh there may be prisoners in the other pods." and objective "Warn Col. Marsh."; dialog 60150 shows one screen, Prisoner 329's report, and closes cleanly. The offer is gone.
+3. **Repeat click.** Click Prisoner 329 again: nothing new (no second accept, no second dialog).
+4. **Relog** at step B: the journal still shows step B; the offer does not return.
+5. **Complete.** Talk to Col. Marsh (after 640): his normal briefing (4001 Human, 5022 Jaffa) still shows and 62050 completes. Relog: still complete; no new offer.
+6. **Abandon** (second character or a fresh one): accept, abandon from the journal: the offer returns at Prisoner 329; re-accept works.
+7. **Skip.** Ignore 62050 and finish the core route to 688: nothing blocks.
+8. Evidence: the SigNoz mission-flow rows; the startup `cooked_data.mission_catalog_inserted` event; if you capture packets, the cooked-sync heads `(3, 62050)` and `(5, 60150)`.
+
+**Blockers (not "pending"):** a blank dialog, a client crash, a missing first-press response, lost progress, or a changed core Marsh briefing blocks the campaign PR.
+
+**Rollback if 60150 crashes the client:** tell the coordinator (a fix packet moves 60150 into the dialog quarantine), and delete `Cache.en-US\CookedDataDialogs.pak` on the client.
+
+## Rows owned by CB-N08
+
+CB-U01, CB-U02, CB-U04, CB-U06 and CB-U07 belong to the close-out packet CB-N08 and are listed in [route-baseline.md](route-baseline.md#bounded-fresh-acceptance-rows).
