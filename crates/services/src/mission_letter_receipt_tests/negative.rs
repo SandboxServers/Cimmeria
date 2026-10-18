@@ -240,6 +240,10 @@ async fn live_db_marsh_receipt_duplicate_click_is_one_attempt() {
         0,
         "the second click is not a request"
     );
+    assert!(
+        shows_processing_feedback(&second),
+        "the second click reports processing while the first is in flight"
+    );
 
     let result = driver.next_result().await;
     assert!(matches!(result.outcome, LetterTurnInOutcome::Committed(_)));

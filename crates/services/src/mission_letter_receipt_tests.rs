@@ -20,6 +20,7 @@ use cimmeria_entity::missions::{MissionInstance, MISSION_ACTIVE, MISSION_COMPLET
 use cimmeria_mercury::encryption::MercuryEncryption;
 use cimmeria_mercury::test_transport::TestTransport;
 use cimmeria_mercury::transport::Transport;
+use cimmeria_wire::cell::chat::{serialize_on_player_communication, CHAN_FEEDBACK};
 use cimmeria_wire::cell::messages::{
     BaseToCellMsg, LetterTurnInEntryEpoch, LetterTurnInResult, LetterTurnInSession,
     LetterTurnInToken,
@@ -53,6 +54,10 @@ const TEST_BASE: i32 = 0x7000_8600;
 const CM_INTERACT: u16 = 74;
 /// The player method index that displays a dialog (`client_methods/player.rs`).
 const ON_DIALOG_DISPLAY: u16 = 105;
+/// The chat frame the cell's feedback rides on.
+const ON_PLAYER_COMMUNICATION: u16 = 28;
+/// The processing line the cell shows before the base answers.
+const PROCESSING_FEEDBACK: &str = "Checking Frost's Letter...";
 /// The mission accept, step and completion frames (`client_methods`).
 const MISSION_FRAMES: std::ops::RangeInclusive<u16> = 80..=82;
 /// The item the Cellblock grant hands over (the real Frost's Letter row).
@@ -137,8 +142,6 @@ struct Driver {
     engine: ChainEngine,
     plugins: cimmeria_base_session::base::plugin::BasePlugins,
     transport: Arc<dyn Transport>,
-    /// The same transport as `transport`, kept to read what the base sent.
-    recorder: Arc<TestTransport>,
     connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>>,
     base_tx: mpsc::Sender<BaseToCellMsg>,
@@ -159,15 +162,13 @@ impl Driver {
         }
         let plugins = base_plugins().expect("the shipped base plugin table must build");
         let (base_tx, base_rx) = mpsc::channel(64);
-        let recorder = Arc::new(TestTransport::new());
         Self {
             pool,
             account_id,
             player_id,
             engine,
             plugins,
-            transport: recorder.clone(),
-            recorder,
+            transport: Arc::new(TestTransport::new()),
             connected: Arc::new(Mutex::new(HashMap::new())),
             entity_to_addr: Arc::new(Mutex::new(HashMap::new())),
             base_tx,
@@ -523,6 +524,34 @@ fn request_count(messages: &[CellToBaseMsg]) -> usize {
         .count()
 }
 
+/// Whether `messages` carry the seal's processing feedback: the chat frame on
+/// the feedback channel with the `Checking Frost's Letter...` line.
+fn shows_processing_feedback(messages: &[CellToBaseMsg]) -> bool {
+    let want = serialize_on_player_communication("SYSTEM", 0, CHAN_FEEDBACK, PROCESSING_FEEDBACK);
+    messages.iter().any(|msg| {
+        matches!(msg, CellToBaseMsg::EntityMethodCall { method_index, args, .. }
+            if *method_index == ON_PLAYER_COMMUNICATION && *args == want)
+    })
+}
+
+/// The journal frames in `messages` as (method, leading id), in order. Each of
+/// `onMissionUpdate`, `onStepUpdate` and `onObjectiveUpdate` leads with its
+/// INT32 id.
+fn journal_ids(messages: &[CellToBaseMsg]) -> Vec<(u16, i32)> {
+    messages
+        .iter()
+        .filter_map(|msg| match msg {
+            CellToBaseMsg::EntityMethodCall {
+                method_index, args, ..
+            } if MISSION_FRAMES.contains(method_index) => Some((
+                *method_index,
+                i32::from_le_bytes(args.get(..4)?.try_into().ok()?),
+            )),
+            _ => None,
+        })
+        .collect()
+}
+
 /// The real click: `CM_INTERACT` on Marsh through the cell's method router.
 /// Returns what the cell queued for it, unrouted.
 async fn click_marsh(
@@ -578,7 +607,29 @@ async fn live_db_marsh_receipt_full_replay_delivers_the_letter_once() {
     let (tx, mut rx) = mpsc::channel(128);
     let mut harset = stage_at_marsh(&driver, &tx, &mut rx, true).await;
 
-    let frames = deliver(&mut driver, &tx, &mut rx, &mut harset).await;
+    // The click is inline (not `deliver`) so its frames are kept: the processing
+    // feedback must arrive before the result, with no success frame in front.
+    let click = click_marsh(&driver, &tx, &mut rx, &mut harset).await;
+    assert_eq!(
+        request_count(&click),
+        1,
+        "the click queues one turn-in request"
+    );
+    assert!(
+        shows_processing_feedback(&click),
+        "the click shows 'Checking Frost's Letter...' before the result"
+    );
+    assert!(
+        !frame_methods(&click)
+            .iter()
+            .any(|m| *m == ON_DIALOG_DISPLAY || MISSION_FRAMES.contains(m)),
+        "no dialog or journal frame before the result: {:?}",
+        frame_methods(&click)
+    );
+    driver.route(click).await;
+    let result = driver.next_result().await;
+    apply_letter_turn_in_result(result, &tx, &mut harset, &driver.engine).await;
+    let frames = drain(&mut rx);
 
     // The cell's frames: 4576 dialog, then the mission frames in order.
     let methods = frame_methods(&frames);
@@ -586,6 +637,15 @@ async fn live_db_marsh_receipt_full_replay_delivers_the_letter_once() {
         &methods[..4],
         &[ON_DIALOG_DISPLAY, 82, 81, 80],
         "dialog 4576, then the 4651 and 4038 frames and the 1360 completion"
+    );
+    assert!(
+        shows_receipt_dialog(&frames),
+        "the first frame displays the receipt dialog 4576"
+    );
+    assert_eq!(
+        journal_ids(&frames),
+        [(82, 4651), (81, 4038), (80, 1360)],
+        "objective 4651, step 4038, then mission 1360"
     );
     // The seal (section 7) says "then one 6511 offer" as if it were a frame. It
     // is not: chain 6511 is `add_dialog_set` 5254 on slot 10, a bind, and a bind
@@ -625,12 +685,10 @@ async fn live_db_marsh_receipt_full_replay_delivers_the_letter_once() {
     assert!(failed.is_empty());
     assert_eq!(repeats, 1);
     assert_eq!(driver.receipt_rows().await, 1);
-    // The inventory datagram for the removal reached the client. Its bytes are
-    // not decoded here: the DSM slot-10 removal is asserted by the base tests.
-    assert!(
-        !driver.recorder.filter_to(client_addr()).is_empty(),
-        "the committed removal was sent to the client"
-    );
+    // The DSM 120101 slot-10 removal is asserted by the end state of
+    // `available_interactions` above. No client-side check is made for it: a
+    // non-empty frame filter for the client would also pass on the bind and
+    // feedback frames already sent to that address, so it proves nothing.
 
     driver.route(frames).await;
     cleanup(&pool, account_id, player_id).await;
