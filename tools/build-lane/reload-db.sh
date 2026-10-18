@@ -16,7 +16,7 @@ MAIN="$(dirname "$(cd "$(git rev-parse --git-common-dir)" && pwd)")"
 NAME="$(basename "$TOP" | tr -c 'A-Za-z0-9_\n' '_' | tr 'A-Z' 'a-z')"
 if [ "$TOP" = "$MAIN" ]; then DB="sgwtest"; else DB="sgw_${NAME}"; fi
 DB="${CIMMERIA_TEST_DB:-$DB}"
-if [ "${DB,,}" = "sgw" ]; then
+if [ "$(printf '%s' "$DB" | tr 'A-Z' 'a-z')" = "sgw" ]; then
   echo "reload-db: refusing to reload 'sgw': it is the play database. Use setup.ps1 -ForceDatabase (resources only) or -WipeDatabase (full wipe)." >&2
   exit 2
 fi
