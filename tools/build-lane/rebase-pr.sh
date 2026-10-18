@@ -11,4 +11,16 @@
 #    status=conflict with the semantic files, and exits 1.
 # The rebase runs in a throwaway sparse worktree. Details: rebase_pr.py.
 set -euo pipefail
-exec "${PYTHON:-python}" "$(dirname "$0")/rebase_pr.py" "$@"
+# $PYTHON, else the first of python3, python, py that runs (lane.sh's order). Running it
+# with -c '' skips the Windows Store python3 stub, which exists but is not Python.
+py="${PYTHON:-}"
+if [ -z "$py" ]; then
+  for p in python3 python py; do
+    if command -v "$p" >/dev/null 2>&1 && "$p" -c '' >/dev/null 2>&1; then py="$p"; break; fi
+  done
+fi
+if [ -z "$py" ]; then
+  echo 'status=refused reason="no Python: none of python3, python, py runs; install Python 3 or set PYTHON"'
+  exit 2
+fi
+exec "$py" "$(dirname "$0")/rebase_pr.py" "$@"
