@@ -22,7 +22,7 @@ Windows with PowerShell 7 is fully supported; WSL, Linux, and Git Bash on Window
 
 ## Agents
 
-The frontmatter of each `.claude/agents/*.md` file sets how the agent runs. `model` and `effort` pick the reasoning tier and depth, `maxTurns` caps the turns so a runaway session stops, and `tools` lists the only tools the agent gets. `omitClaudeMd: true` skips loading CLAUDE.md, which is why packet-coder gets its rules from the packet itself.
+The frontmatter of each `.claude/agents/*.md` file sets how the agent runs. `model` and `effort` pick the reasoning tier and depth, `maxTurns` caps the turns so a runaway session stops, and `tools` lists the only tools the agent gets; `omitClaudeMd: true` skips loading CLAUDE.md, which is why packet-coder gets its rules from the packet itself.
 
 <!-- gen:harness-agents -->
 
@@ -58,11 +58,11 @@ The frontmatter of each `.claude/agents/*.md` file sets how the agent runs. `mod
 <!-- /gen:harness-agents -->
 
 - **`hands-on`** (Opus, every tool) is the escape hatch. Start it with `claude --agent hands-on` for one piece of direct work. It has no orchestration and no ledger.
-- **`orchestrator`** is the default, set by `"agent"` in `.claude/settings.json`. D-LO1 in the [lean-orchestration ledger](../analysis/lean-orchestration/README.md) made it the default for every Claude Code launch, headless and CI runs included. The orchestrator has no shell, so a CI job that needs one must override the default. Its frontmatter hook limits its writes (see [Hooks and guards](#hooks-and-guards)).
+- **`orchestrator`** is the default, set by `"agent"` in `.claude/settings.json`. D-LO1 in the [lean-orchestration ledger](../analysis/lean-orchestration/README.md) made it the default for every Claude Code launch, headless and CI runs included. The orchestrator has no shell, so a headless or CI job that needs one passes `--agent <name>` or `--setting-sources user`, as Senpai does (D-AH19 in the [ai-harness-docs ledger](../analysis/ai-harness-docs/README.md)). Its frontmatter hook limits its writes (see [Hooks and guards](#hooks-and-guards)).
 
 ## Skills
 
-Skills live in `.claude/skills/<name>/SKILL.md`. Edit only `.claude/skills/`: `python tools/agent-skills/sync.py` mirrors them to `.agents/skills/` and `.codex/agents/`.
+Skills live in `.claude/skills/<name>/SKILL.md`. Edit only `.claude/skills/`: `python tools/agent-skills/sync.py` mirrors the skills to `.agents/skills/` and writes a Codex agent in `.codex/agents/` for each `.claude/agents/*.md`.
 
 | Skill | Use it for |
 |---|---|
@@ -95,7 +95,7 @@ Hooks are commands the harness runs at an event. The Python hooks run through `.
 <!-- /gen:harness-hooks -->
 
 - **shell_guard** (`.claude/hooks/shell_guard.py`, PreToolUse on Bash and PowerShell). It refuses a direct compiling `cargo` call unless the build lane runs it, and it refuses a pure read or search command (grep, cat, `sed -n`, Get-Content), because the Read, Grep and Glob tools do that job cheaper. The reason is one week of telemetry (2026-10-03..10): 326 direct `cargo` calls and about 10,000 shell reads and searches. Bypass: end the command with `# guard-ok`, which skips both rules on purpose. Codex gets the cargo rule only, because it has no Read or Grep tools.
-- **orchestrator_guard** (`.claude/hooks/orchestrator_guard.py`, in the orchestrator's frontmatter). Edit and Write work only under `docs/analysis/**`, `.claude/state/**` and `.claude/reports/**`, in the main checkout or in a campaign worktree under `.claude/worktrees/<name>/` (AH-01). A read of a file of 400 lines or more needs a `limit` of at most 200, and larger reads go to Explore. Calls from a subagent (payload `agent_id`) are exempt, so dispatched agents can write code.
+- **orchestrator_guard** (`.claude/hooks/orchestrator_guard.py`, in the orchestrator's frontmatter). Edit and Write work only under `docs/analysis/**`, `.claude/state/**` and `.claude/reports/**`, in the main checkout or in a campaign worktree under `.claude/worktrees/<name>/` (AH-01). Outside `docs/analysis/**`, a read of a file of 400 lines or more needs a `limit` of at most 200, and larger reads go to Explore. Calls from a subagent (payload `agent_id`) are exempt, so dispatched agents can write code.
 - **resume_card** (`.claude/hooks/resume_card.py`, SessionStart `compact`). After a compaction it injects the first 40 lines of RESUME.md, so the orchestrator resumes from the ledger and not from a summary. Codex has no such hook: after a compaction or a resume, read RESUME.md again.
 - **mode_banner** (`.claude/hooks/mode_banner.sh`, the first SessionStart entry). It tells the user and the model which persona runs. It also warns when no python3, python or py is on PATH, because then the shell and orchestrator guards are off. It is pure POSIX sh, so the warning still prints where Python is missing.
 - **py.sh** (`.claude/hooks/py.sh`) is the launcher. It finds python3, python or py and execs it. On Windows under Git Bash it tries python first, because the Microsoft Store `python3.exe` stub is on the PATH of machines whose python.org install ships no `python3.exe`. Elsewhere it tries python3 first. With no interpreter it prints a warning and exits 1: exit 2 would block every tool call, and exit 1 keeps the failure visible without blocking. Timing numbers are in [hook-timing.md](../analysis/ai-harness-docs/hook-timing.md).
@@ -128,7 +128,7 @@ Each count has a limit, and the ladder moves up when a limit runs out:
 The ladder:
 
 - **Coder:** 3 Haiku sessions, then 1 Sonnet implementer (`rust-gameserver-dev` for code and tools, `documentation-writer` for docs), then `architect` re-slices. Haiku comes first, and a packet is sized to about 40k working tokens, because about 35-40k of each session is fixed overhead. Nine of 34 Haiku sessions hit the 90k cap before a re-slice, and 0 of 36 did after. A fresh session starts because Haiku 5.5 bills 5x per request above a 100k prompt, so the loop restarts from the worknote instead of growing one session. Sonnet is the next step for packets that still fail: 16.9% of Haiku-regime packets escalated (44 of 261), and each accepted packet needed 0.60 retries. Opus never implements: $107.43 went to Opus oversteps, of which $53.72 to $84.20 was recoverable at the intended tier.
-- **Reviewer:** the verdict is `ship`, `recheck` or `decision`, with at most 3 passes. Review is a built-in step because only 4.8% of Haiku packets finished on the first pass, nearly all of them after a review fix.
+- **Reviewer:** the verdict is `ship`, `recheck` or `decision`, with at most 3 passes. Review is a built-in step because only 4.8% of judged Haiku packets were accepted on the first pass: almost every packet needed a review fix.
 - **Ruling:** after 3 passes without `ship`, or on `decision`, `architect` (or the Opus advisor for protocol or RE work) writes a ruling note with no code. A fresh Sonnet review-fixer applies it. An owner call is a BlockedDecision.
 
 The cost is 2.5x lower per 1,000 changed lines ($3.03 against $7.44 for Opus implementing). That is the fair comparison. The per-PR figures are not: Haiku campaigns implement from a finished spec, and the cost of writing that spec sits in the Opus coordinator. The median main-session request carried 349k tokens of context, which is why the harness has no teammates and no parked workers.
