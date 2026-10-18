@@ -285,3 +285,39 @@ fn row_carries_mercury_seq_once() {
         "the second row must not reuse the seq"
     );
 }
+
+/// Pins that a throttled row still takes its seq, so a later row never borrows an earlier call's seq.
+#[test]
+fn throttled_row_uses_up_its_seq() {
+    let id = 9229;
+    let (mgr, npc) = scene(id, 0.0);
+    let guard = LogCapture::install();
+    let t0 = Instant::now();
+    assert!(emit_at(&mgr, id, npc, PoseExtra::default(), t0).is_some());
+    super::inbound::note_inbound_at(
+        id,
+        cimmeria_wire::cell::cell_methods::player::INTERACT,
+        Some(31337),
+        t0 + Duration::from_millis(10),
+    );
+    let throttled = t0 + Duration::from_millis(20);
+    assert!(emit_at(&mgr, id, npc, PoseExtra::default(), throttled).is_none());
+    assert!(emit_at(
+        &mgr,
+        id,
+        npc,
+        PoseExtra::default(),
+        t0 + POSE_MIN_INTERVAL + Duration::from_millis(50)
+    )
+    .is_some());
+    let rows: Vec<_> = guard
+        .all()
+        .into_iter()
+        .filter(|c| c.target == "interaction.pose")
+        .collect();
+    assert_eq!(rows.len(), 2, "the throttled row writes nothing");
+    assert!(
+        rows.iter().all(|r| !r.fields.contains_key("mercury_seq")),
+        "the seq died with the throttled row"
+    );
+}
