@@ -2106,6 +2106,9 @@ INSERT INTO missions (mission_id, history_text, award_xp, can_abandon, can_fail,
 -- Cellblock continuation CB-N05 (CIMMERIA_AUTHORING): The Remaining Pods, optional one-time story after 638. Seal: docs/analysis/cellblock-continuation/worknotes/cb-n05-seal.md.
 INSERT INTO missions (mission_id, history_text, award_xp, can_abandon, can_fail, can_repeat_on_fail, difficulty, is_a_story, is_enabled, is_hidden, is_override_mission, is_shareable, level, mission_defn, mission_label, num_repeats, show_faction_change_icon, show_instance_icon, show_pvp_icon, script_name, reward_naq, reward_xp, script_spaces) VALUES (62050, 'Prisoner 329 heard other captives in nearby pods. Tell Col. Marsh so they are not left behind.', false, true, false, false, 1, true, true, false, false, false, 1, 'The Remaining Pods', 'General', 0, false, false, false, NULL, 0, 0, NULL);
 
+-- Cellblock continuation CB-N06 (CIMMERIA_AUTHORING): Before the Patrol Returns, optional one-time choice after 638 (new Cimmeria content, D-CC18). Literals: docs/analysis/cellblock-continuation/w5-frozen.md.
+INSERT INTO missions (mission_id, history_text, award_xp, can_abandon, can_fail, can_repeat_on_fail, difficulty, is_a_story, is_enabled, is_hidden, is_override_mission, is_shareable, level, mission_defn, mission_label, num_repeats, show_faction_change_icon, show_instance_icon, show_pvp_icon, script_name, reward_naq, reward_xp, script_spaces) VALUES (62060, 'Two prisoners in the cell block are too weak to escape with you. Before the patrol returns there is time for one thing: help them hide, or jam the cell-door panel so the guards cannot seal the block.', false, true, false, false, 1, true, true, false, false, false, 1, 'Before the Patrol Returns', 'General', 0, false, false, false, NULL, 0, 0, NULL);
+
 --
 -- TOC entry 3327 (class 0 OID 0)
 -- Dependencies: 315

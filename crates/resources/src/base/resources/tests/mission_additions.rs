@@ -122,13 +122,13 @@ fn fixture_is_exact_stock_transform_and_ids_are_test_only() {
             }
         }
     }
-    // CB-N05 added the first production entry.
+    // CB-N05 and CB-N06 added the production entries.
     assert_eq!(
         MISSION_ADDITIONS
             .iter()
             .map(|a| a.mission_id)
             .collect::<Vec<_>>(),
-        vec![62050]
+        vec![62050, 62060]
     );
 }
 

@@ -8125,3 +8125,6 @@ INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_
 
 INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (62055, 62054, false, 1, false, false, false, 'Warn Col. Marsh.');
 
+-- Cellblock continuation CB-N06 (CIMMERIA_AUTHORING): mission 62060 objective.
+INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (62062, 62061, false, 1, false, false, false, 'Help the prisoners or jam the panel.');
+

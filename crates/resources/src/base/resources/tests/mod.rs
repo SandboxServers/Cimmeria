@@ -15,6 +15,7 @@ mod dialog_overrides;
 mod inventory_slots;
 mod mission_additions;
 mod mission_additions_cellblock;
+mod mission_additions_cellblock_62060;
 mod overrides;
 mod stargate_overrides;
 mod world_info_overrides;

@@ -1,7 +1,7 @@
 //! CB-N05 *The Remaining Pods* (mission 62050): frozen bytes, stock absence, served cache and seeds.
 
 use super::super::*;
-use crate::base::mission_additions::REMAINING_PODS_XML;
+use crate::base::mission_additions::{MISSION_ADDITIONS, REMAINING_PODS_XML};
 use crate::test_support::LogCapture;
 
 const DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/cache");
@@ -55,7 +55,7 @@ fn production_cache_serves_remaining_pods() {
     assert_eq!(served.get(3, 62050).unwrap(), REMAINING_PODS_XML.as_bytes());
     assert_eq!(
         served.category(3).unwrap().elements.len(),
-        raw.elements.len() + 1
+        raw.elements.len() + MISSION_ADDITIONS.len()
     );
     assert_ne!(
         served.category(3).unwrap().metadata,
@@ -77,8 +77,13 @@ fn production_load_logs_the_insert() {
         .iter()
         .filter(|e| e.has_field("event", "cooked_data.mission_catalog_inserted"))
         .collect();
-    assert_eq!(inserted.len(), 1);
-    assert!(inserted[0].has_field("mission_id", "62050"));
+    assert_eq!(
+        inserted
+            .iter()
+            .filter(|e| e.has_field("mission_id", "62050"))
+            .count(),
+        1
+    );
 }
 
 #[test]

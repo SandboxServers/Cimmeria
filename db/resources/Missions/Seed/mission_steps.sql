@@ -7331,3 +7331,6 @@ INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabl
 
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (62054, 62050, false, 1, false, 'Tell Col. Marsh there may be prisoners in the other pods.', 1);
 
+-- Cellblock continuation CB-N06 (CIMMERIA_AUTHORING): mission 62060 step.
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (62061, 62060, false, 1, false, 'Help the prisoners hide, or jam the cell-door panel.', 0);
+
