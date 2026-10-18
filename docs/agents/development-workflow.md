@@ -180,7 +180,7 @@ Tip: `git config rerere.enabled true` makes git remember how you resolved a conf
 
 ## Builds, worktrees and test databases
 
-Development builds run natively on Windows, from PowerShell or Git Bash. The tools below live under `tools/build-lane/`, `tools/dev-drive/`, `tools/build-hygiene/` and `tools/build-metrics/`; why they exist and what they measured is in [`docs/architecture/build-system.md`](../architecture/build-system.md).
+Development builds are validated on Windows with PowerShell 7; Git Bash, WSL and Linux are not validated, but not unsupported ([WSL and Linux hosts](#wsl-and-linux-hosts)). The tools below live under `tools/build-lane/`, `tools/dev-drive/`, `tools/build-hygiene/` and `tools/build-metrics/`; why they exist and what they measured is in [`docs/architecture/build-system.md`](../architecture/build-system.md).
 
 Every shell script in `tools/build-lane/` has a PowerShell 7 twin next to it (`lane.ps1`, `mk-worktree.ps1`, `rm-worktree.ps1`, `reload-db.ps1`, `live-db-test.ps1`, `ship.ps1`, `rebase-pr.ps1`) with the same options, output and exit codes, so a Windows session never needs bash. Run them as `pwsh tools/build-lane/<script>.ps1 ...`. The `.sh` scripts stay for CI, Linux and macOS, and for Git Bash. The examples below show both forms.
 
@@ -265,26 +265,26 @@ Starting the bundled Postgres is documented in [`docs/architecture/integration-t
 
 ## WSL and Linux hosts
 
-**Status: not supported for interactive sessions. Use the Windows checkout.** The documented stance is Windows-native development ([building.md](../building.md#prerequisites): "no WSL or cross-compile path for development"), and nothing here reverses it. This section records what you hit if you start `claude` from WSL or another Linux host anyway, so you don't rediscover it. Whether the repo supports or forbids WSL is a maintainer decision, tracked as an open question in the PR that added this section.
+**Status: Windows with PowerShell 7 is fully supported. WSL, Linux, and Git Bash on Windows are not validated, but not unsupported.** The build lane, the ship scripts and every agent rule are validated on Windows with PowerShell 7. The build-lane scripts have `.sh` twins and CI builds on Linux, but nobody runs development sessions there routinely, so expect the gaps below and report new ones. Agents use PowerShell; an agent on a host without it returns `blocked: no PowerShell (pwsh) on this host`. The documented build path is still Windows with PowerShell 7 ([building.md](../building.md#prerequisites)); this section records what you hit elsewhere, so you don't rediscover it.
 
 CI is Linux, so a local Linux test pass is representative for tests. The Windows build is a separate matter.
 
 ### What breaks
 
-- **No documented path.** [building.md](../building.md#prerequisites) and the `lane-build` skill say Windows only, and the `ship-pr` skill says not to use bash. Every `tools/build-lane/*.ps1` has a `.sh` twin ([README](../../tools/build-lane/README.md)), but none is documented as supported on a developer host.
-- **`ops` cannot run.** [`ops`](../../.claude/agents/ops.md) has only the PowerShell and Read tools and runs only `.ps1` commands. Where PowerShell is unavailable it returns `blocked` (now with the reason stated), so worktree, git and PR work goes around it.
+- **Not validated.** [building.md](../building.md#prerequisites) and the `lane-build` skill name Windows with PowerShell 7 as the validated platform. Every `tools/build-lane/*.ps1` has a `.sh` twin ([README](../../tools/build-lane/README.md)), but nobody runs them routinely on a developer host.
+- **`ops` cannot run.** [`ops`](../../.claude/agents/ops.md) has only the PowerShell and Read tools and runs only `.ps1` commands. Where PowerShell is unavailable it returns `blocked` and says why, so worktree, git and PR work goes around it.
 - **Repo scripts that fail on Linux or WSL:**
-  - `mk-worktree.sh` dies at `cygpath` after it creates the worktree, so `external/` is not linked. Link it by hand with `ln -s <main-checkout>/external <worktree>/external` (Windows worktrees use a junction instead), and remove the symlink before `git worktree remove`.
+  - `mk-worktree.sh` dies at `cygpath` after it creates the worktree, so `external/` is not linked. Link it by hand with a symlink, as [Create a worktree that builds](#create-a-worktree-that-builds) says, and retire the worktree with `rm-worktree.sh`, which removes the link before `git worktree remove`.
   - `ship.sh` calls `python`, which a Linux host may not have. Run `python3 tools/build-lane/ship.py pr ...` directly.
   - `ship.py merge` polls until it times out when the installed `gh` has no `gh pr checks --json` (2.45 has none). Read plain `gh pr checks <n>`, then `gh pr merge <n> --squash --match-head-commit <sha>`.
   - `gh pr edit` fails with a GraphQL error about classic projects on an old `gh`. Edit the body with `gh api -X PATCH repos/<owner>/<repo>/pulls/<n> -F body=@file`.
-  - `rm-worktree.sh` is Windows-shaped. Retire by hand: the `external/` symlink, the worktree, the branch, the `sgw_<name>` database and its `_0`..`_7` clones, and the worktree's lane log directory.
-- **Closed loopback ports hang.** Under WSL2 mirrored networking, connecting to a closed loopback port hangs until the caller's own deadline instead of being refused, so a test that expects "connection refused" waits or times out ([details](../../.claude/agent-memory/main-session/reference_loopback_exporter_test_seams_2026_10_04.md)).
+  - `rm-worktree.sh` does run on Linux and WSL: it falls back from `cygpath` and `cmd`, and removes a symlinked `external/` with `rm -f`. `ship.sh merge --retire` never reaches it while `ship.sh` stops at `python`, so run `bash tools/build-lane/rm-worktree.sh <name>` yourself.
+- **Closed loopback ports hang.** Under WSL2 mirrored networking, connecting to a closed loopback port hangs until the caller's own deadline instead of being refused, so a test that expects "connection refused" waits or times out. Point such a test at `[::1]:9` instead, which is refused at once (other `127/8` addresses are too, but macOS has no `127.0.0.2` by default).
 - **Live-DB tests need a database you start.** Nothing listens on port 5433 by default. Run the same `postgres:17.9` image CI uses in a container, then `tools/build-lane/live-db-test.sh`. Two worktrees testing at once exhaust `max_connections`; pass `--test-threads=4`.
 - **The Linux build excludes six crates and needs system packages.** The CI invocation excludes `cimmeria-app`, `cimmeria-content-editor`, `cimmeria-scene-editor`, `cimmeria-client-telemetry`, `cimmeria-client-patches` and `cimmeria-lab`. Dropping `cimmeria-client-telemetry` makes a Linux host need the xkbcommon and xcb dev packages. The authoritative list is [`test.yml`](../../.github/workflows/test.yml); the same list and package note are in [troubleshooting](../troubleshooting.md#local-tests-pass-but-ci-fails-on-clippy) and the kickoff guide.
 - **The one Linux guide conflicts with the lane rule.** [`autonomous-agent-kickoff.md`](../guides/autonomous-agent-kickoff.md) uses `flock` and a shared `CARGO_TARGET_DIR`, while [CLAUDE.md](../../CLAUDE.md) requires every compiling `cargo` call to go through the lane, which gives each worktree its own target dir.
 
-The lane itself does run on Linux: `bash tools/build-lane/lane.sh cargo ...` initialises its state under `~/.local/share/cimmeria-build`. That is an observation, not a supported configuration.
+The lane itself does run on Linux: `bash tools/build-lane/lane.sh cargo ...` initialises its state under `~/.local/share/cimmeria-build`. That is an observation, not a validated configuration.
 
 ### Headless and CI launches get the orchestrator too
 
@@ -293,7 +293,7 @@ The lane itself does run on Linux: `bash tools/build-lane/lane.sh cargo ...` ini
 - `--agent <name>` picks another persona, for example `hands-on` (all tools) or a specific advisor.
 - `--setting-sources user` skips the project's `settings.json`, so the default persona never loads. It also skips the project's hooks and `env` block.
 
-Interactively, `claude --agent hands-on` is the documented escape hatch.
+Interactively, `claude --agent hands-on` is the documented escape hatch. No setting limits the default persona to interactive sessions, so it stays on for every launch, and the session banner (`.claude/hooks/mode_banner.sh`) names the persona at the start of each one.
 
 ## Agent board
 

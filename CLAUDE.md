@@ -32,13 +32,13 @@ Project memory: grep `.claude/agent-memory/` before researching a topic.
 
 ## Builds
 
-Windows-native, on the toolchain `rust-toolchain.toml` pins. **Every compiling `cargo` call (`check`, `build`, `test`, `nextest`, `clippy`) goes through the build lane**; a hook refuses direct calls:
+Windows with PowerShell 7 is the validated platform, on the toolchain `rust-toolchain.toml` pins. **Every compiling `cargo` call (`check`, `build`, `test`, `nextest`, `clippy`) goes through the build lane**; a hook refuses direct calls:
 
 ```powershell
 pwsh tools/build-lane/lane.ps1 cargo check -p <crate>
 ```
 
-Load the `lane-build` skill for workspace runs, live-DB tests, the server build and lane failures. The reasons: [build-system.md](docs/architecture/build-system.md). WSL/Linux hosts are not supported for interactive sessions; what breaks, and how headless launches differ: [§ WSL and Linux hosts](docs/agents/development-workflow.md#wsl-and-linux-hosts).
+Load the `lane-build` skill for workspace runs, live-DB tests, the server build and lane failures. The reasons: [build-system.md](docs/architecture/build-system.md). WSL, Linux and Git Bash are not validated, but not unsupported; what breaks, and how headless launches differ: [§ WSL and Linux hosts](docs/agents/development-workflow.md#wsl-and-linux-hosts).
 
 ## Every PR needs tests and docs
 
