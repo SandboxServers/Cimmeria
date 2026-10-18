@@ -3,7 +3,7 @@
 //! [`super`]; the retry decision is [`crate::upload_gate`].
 
 use std::io::Write;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use flate2::write::GzEncoder;
 use flate2::Compression;
@@ -26,6 +26,10 @@ pub(super) fn build_agent() -> ureq::Agent {
 /// Header carrying this process's id on every chunk. One lab session
 /// spans several launches, so the server needs the pid to tell them apart.
 pub(super) const CLIENT_PID_HEADER: &str = "X-Cimmeria-Client-Pid";
+
+/// The DLL's wall clock when this POST was built, unix ms, on the same clock
+/// as each row's `ts_ms`. admin-api measures the clock skew from it.
+pub(super) const CLIENT_SENT_MS_HEADER: &str = "X-Cimmeria-Client-Sent-Ms";
 
 /// Serialize as NDJSON, gzip, POST with the Bearer `token` to `endpoint`,
 /// with an optional whole-request time limit (the final flush at exit
@@ -51,12 +55,18 @@ pub(super) fn post_batch_within(
     limit: Option<Duration>,
 ) -> Result<u16, PostError> {
     let body = encode_batch(batch)?;
+    // Stamped per attempt: a retry calls this again and carries a fresh clock.
+    let sent_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
     let mut req = client
         .post(endpoint)
         .set("Authorization", &format!("Bearer {token}"))
         .set("Content-Type", "application/x-ndjson")
         .set("Content-Encoding", "gzip")
-        .set(CLIENT_PID_HEADER, &std::process::id().to_string());
+        .set(CLIENT_PID_HEADER, &std::process::id().to_string())
+        .set(CLIENT_SENT_MS_HEADER, &sent_ms.to_string());
     if let Some(limit) = limit {
         req = req.timeout(limit);
     }

@@ -127,26 +127,46 @@ impl Joiner {
     }
 }
 
-/// `client.ability.sent_seq` for each send carried by one bundle. `seqs`
-/// are the values `FUN_0158bb40` returned during that `Nub::send`, in
-/// order; empty when the bundle went out without the reliable counter.
+/// Target of the camera send rows (`interact`, `useItem`), PC-16b.
+pub(crate) const TARGET_CAMERA_SENT_SEQ: &str = "client.camera.sent_seq";
+
+/// Whether a send's method is a camera method, so its row goes to
+/// `client.camera.sent_seq` and carries no press or ability.
+pub(crate) fn is_camera_method(m: &str) -> bool {
+    matches!(m, "interact" | "useItem")
+}
+
+/// `client.ability.sent_seq` (or `client.camera.sent_seq` for a camera
+/// method) for each send carried by one bundle. `seqs` are the values
+/// `FUN_0158bb40` returned during that `Nub::send`, in order; empty when the
+/// bundle went out without the reliable counter.
 pub(crate) fn sent_seq_outs(tags: &[SentTag], seqs: &[u32], evicted: u64) -> Vec<Out> {
     let first = seqs.first().copied();
     let last = seqs.last().copied();
     tags.iter()
         .enumerate()
         .map(|(i, t)| {
-            let mut f = vec![
-                ("send_id", json!(t.send_id)),
-                (
+            let camera = is_camera_method(t.method);
+            let target = if camera {
+                TARGET_CAMERA_SENT_SEQ
+            } else {
+                TARGET_SENT_SEQ
+            };
+            let mut f = vec![("send_id", json!(t.send_id))];
+            if !camera {
+                f.push((
                     "press_id",
                     t.press_id.map(Value::from).unwrap_or(Value::Null),
-                ),
-                ("method", json!(t.method)),
-                (
+                ));
+            }
+            f.push(("method", json!(t.method)));
+            if !camera {
+                f.push((
                     "ability_id",
                     t.ability_id.map(Value::from).unwrap_or(Value::Null),
-                ),
+                ));
+            }
+            f.extend([
                 (
                     "mercury_seq_first",
                     first.map(Value::from).unwrap_or(Value::Null),
@@ -157,14 +177,14 @@ pub(crate) fn sent_seq_outs(tags: &[SentTag], seqs: &[u32], evicted: u64) -> Vec
                 ),
                 ("packets", json!(seqs.len())),
                 ("seq_bits", json!(28)),
-            ];
+            ]);
             if i == 0 && evicted > 0 {
                 f.push(("evicted_unmatched", json!(evicted)));
             }
             Out {
-                target: TARGET_SENT_SEQ,
+                target,
                 level: "info",
-                key: format!("{TARGET_SENT_SEQ}:{}", t.method),
+                key: format!("{target}:{}", t.method),
                 fields: f,
             }
         })
@@ -262,5 +282,31 @@ mod tests {
             Some(&Value::Null)
         );
         assert_eq!(field(&none[0].fields, "evicted_unmatched"), None);
+    }
+
+    /// A camera send and an ability send in one bundle get one row each, on
+    /// their own target; the camera row has no press or ability keys.
+    #[test]
+    fn camera_tags_get_their_own_target() {
+        let camera = SentTag {
+            send_id: 9,
+            press_id: None,
+            method: "interact",
+            ability_id: None,
+        };
+        let outs = sent_seq_outs(&[tag(1), camera], &[10, 11], 0);
+        assert_eq!(outs.len(), 2);
+        assert_eq!(outs[0].target, TARGET_SENT_SEQ);
+        assert_eq!(outs[1].target, TARGET_CAMERA_SENT_SEQ);
+        assert_eq!(outs[1].key, "client.camera.sent_seq:interact");
+        for o in &outs {
+            assert_eq!(field(&o.fields, "mercury_seq_first"), Some(&json!(10)));
+            assert_eq!(field(&o.fields, "mercury_seq_last"), Some(&json!(11)));
+        }
+        assert_eq!(field(&outs[1].fields, "send_id"), Some(&json!(9)));
+        assert_eq!(field(&outs[1].fields, "press_id"), None);
+        assert_eq!(field(&outs[1].fields, "ability_id"), None);
+        assert!(is_camera_method("useItem"));
+        assert!(!is_camera_method("useAbility"));
     }
 }

@@ -71,6 +71,7 @@ fn reason(outs: &[Out]) -> Option<String> {
 }
 
 mod press_chain;
+mod reach_probe;
 mod router_exit;
 mod router_probe;
 mod sequence_join;

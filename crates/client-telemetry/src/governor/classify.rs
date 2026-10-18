@@ -83,6 +83,10 @@ pub enum KeepReason {
     /// its answer, and a second budget here would drop events the hook's
     /// `suppressed` count does not know about.
     AbilityTrace,
+    /// `client.camera.*`: the camera as the player clicked (PC-16) and its
+    /// Mercury sequence join (PC-16b). The hook throttles them per method, and
+    /// a camera row must stay joinable to its pose row.
+    InteractionCamera,
 }
 
 impl KeepReason {
@@ -98,6 +102,7 @@ impl KeepReason {
             KeepReason::Failure => "failure",
             KeepReason::SelfReport => "self_report",
             KeepReason::AbilityTrace => "ability_trace",
+            KeepReason::InteractionCamera => "interaction_camera",
         }
     }
 }
@@ -218,6 +223,8 @@ pub const RULES: &[Rule] = &[
     // Every ability row (AB-C1 to AB-C5): throttled per name at the hook,
     // and the governor must not split a press from its answer.
     keep(Prefix("client.ability."), KeepReason::AbilityTrace),
+    // The camera at interact and useItem (PC-16), and its send join (PC-16b).
+    keep(Prefix("client.camera."), KeepReason::InteractionCamera),
     // Per-entity streams: the first K per entity survive world entry.
     per_entity(Exact("client.cme.event"), "name"),
     per_entity(Exact("client.mercury.entity_method"), "msg_id"),
