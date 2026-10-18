@@ -390,7 +390,7 @@ pub(crate) const OTEL_FILTER: &str = "info,\
                 mission.step_context=debug,\
                 mission.step_anchor=info,\
                 movement.movement_type=debug,\
-                movement.position_sample=debug,\
+                movement.position_sample=debug,playtest.friction=debug,\
                 movement.teleport=debug,\
                 movement.validation=debug,\
                 player.journal=debug,player.respawn=debug,\

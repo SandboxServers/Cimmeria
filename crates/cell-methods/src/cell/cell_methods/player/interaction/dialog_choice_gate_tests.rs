@@ -385,9 +385,23 @@ async fn follow_up_of_an_answered_dialog_is_not_reported_as_displaced() {
 
     assert!(
         capture
-            .find_message(tracing::Level::WARN, "friction: a dialog was replaced")
+            .find_message(tracing::Level::DEBUG, "friction: a dialog was replaced")
             .is_none(),
         "a dialog displayed after the player answered the previous one          did not displace it"
+    );
+
+    // Positive control: with no answered choice the same pair IS a displacement,
+    // so the DEBUG level filter above cannot be passing vacuously.
+    const CONTROL: u32 = 947_300;
+    crate::cell::playtest_friction::forget(CONTROL);
+    crate::cell::playtest_friction::dialog_shown(CONTROL, 2299);
+    crate::cell::playtest_friction::dialog_shown(CONTROL, 2298);
+    crate::cell::playtest_friction::forget(CONTROL);
+    assert!(
+        capture
+            .find_message(tracing::Level::DEBUG, "friction: a dialog was replaced")
+            .is_some(),
+        "an unanswered dialog replaced inside 3 s must still log a DEBUG friction row"
     );
 }
 

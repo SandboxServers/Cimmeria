@@ -321,7 +321,7 @@ fn friction_rows_carry_session_kind() {
         .all()
         .into_iter()
         .filter(|c| {
-            c.level == tracing::Level::WARN
+            c.level == tracing::Level::DEBUG
                 && c.target == "playtest.friction"
                 && c.fields.get("entity_id").map(String::as_str) == Some("917017")
         })

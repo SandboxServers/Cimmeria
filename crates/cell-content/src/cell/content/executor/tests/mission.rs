@@ -239,7 +239,7 @@ async fn complete_mission_reports_only_objectives_a_chain_completes() {
         .all()
         .into_iter()
         .filter(|c| {
-            c.level == Level::WARN && c.has_field("reason", "objective_open_at_mission_complete")
+            c.level == Level::DEBUG && c.has_field("reason", "objective_open_at_mission_complete")
         })
         .filter_map(|c| c.fields.get("objective_id").cloned())
         .collect();

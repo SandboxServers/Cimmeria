@@ -16,9 +16,10 @@
 //! (when a dialog is displayed) and `objective_never_completed` (when a chain
 //! force-completes a mission).
 //!
-//! One event shape, target `playtest.friction`, WARN, discriminated by
-//! `signal`. A detector fires **once per episode**: when the same
-//! `(actor, subject)` pair repeats `threshold` times inside `window`. A
+//! One event shape, target `playtest.friction`, DEBUG, discriminated by
+//! `signal`. DEBUG, not WARN, so the Discord layer never posts it (D-PC11);
+//! `OTEL_FILTER` exports it. A detector fires **once per episode**: when the
+//! same `(actor, subject)` pair repeats `threshold` times inside `window`. A
 //! condition that persists re-fires once per window, so volume is bounded by
 //! construction.
 
@@ -107,7 +108,7 @@ fn with<R>(f: impl FnOnce(&mut Detectors) -> R) -> R {
 /// An interact reached the end of the dispatcher with nothing to do.
 ///
 /// The names (Rule 6) and the target's `tag` are looked up only when the
-/// warn fires.
+/// row is written.
 pub fn interact_no_effect(
     space_mgr: &SpaceManager,
     entity_id: u32,
@@ -127,7 +128,7 @@ pub fn interact_no_effect(
         let id = row.identity;
         let target = space_mgr.entity_names(target_entity_id);
         let target_entity = space_mgr.get_entity(target_entity_id);
-        tracing::warn!(
+        tracing::debug!(
             target: "playtest.friction",
             signal = "repeat_interact_no_effect",
             reason = "interact_dead_end",
@@ -167,7 +168,7 @@ pub fn item_use_no_chain(space_mgr: &SpaceManager, entity_id: u32, item_id: i32)
     });
     if let Some(count) = fired {
         let row = RowContext::of(space_mgr, entity_id);
-        tracing::warn!(
+        tracing::debug!(
             target: "playtest.friction",
             signal = "repeat_item_use_no_chain",
             reason = "no_chain_matched",
@@ -207,7 +208,7 @@ pub fn console_rejected(space_mgr: &SpaceManager, entity_id: u32, command: &str,
     });
     if let Some(count) = fired {
         let row = RowContext::of(space_mgr, entity_id);
-        tracing::warn!(
+        tracing::debug!(
             target: "playtest.friction",
             signal = "console_reject_streak",
             reason = reject,
@@ -248,7 +249,7 @@ pub fn escort_tick(
     if let Some(count) = fired {
         // The followed player's context: identity, world, session kind.
         let leader = RowContext::of(space_mgr, target_id);
-        tracing::warn!(
+        tracing::debug!(
             target: "playtest.friction",
             signal = "escort_separated",
             reason = if routed { "cannot_keep_up" } else { "unrouted" },
@@ -323,10 +324,10 @@ mod tests {
         assert_eq!(c.note((7, 7), 5, w, t0), None, "count restarted at 1");
     }
 
-    /// The DHD shape: 76 dead-end clicks must produce one warn, not zero and
-    /// not 76.
+    /// The DHD shape: 76 dead-end clicks must produce one row, not zero and
+    /// not 76. Checked at DEBUG: friction rows are DEBUG since D-PC11.
     #[test]
-    fn repeat_dead_end_interacts_warn_once() {
+    fn repeat_dead_end_interacts_log_once() {
         let logs = crate::test_support::LogCapture::install();
         let space_mgr = crate::test_fixtures::make_space_manager();
         for _ in 0..20 {
@@ -334,11 +335,11 @@ mod tests {
         }
         let ev = logs
             .find_event(
-                tracing::Level::WARN,
+                tracing::Level::DEBUG,
                 "keeps interacting with a target",
                 "interact_dead_end",
             )
-            .expect("friction warn");
+            .expect("friction debug row");
         assert_eq!(ev.target, "playtest.friction");
         assert!(ev.has_field("signal", "repeat_interact_no_effect"));
         assert!(ev.has_field("interaction_flags", "16"));
