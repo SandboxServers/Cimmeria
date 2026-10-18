@@ -255,6 +255,9 @@ pub(super) fn replay_event(claims: &TokenClaims, ev: TelemetryEvent, names: &Rep
                 fields = %serde_json::Value::Object(e.fields),
             );
         }
+        TelemetryEvent::ClientNative(e) if super::replay_camera::is_camera_target(&e.target) => {
+            super::replay_camera::replay_camera(claims, e, names);
+        }
         TelemetryEvent::ClientNative(e) => {
             replay_client_native_stamped(
                 claims,
