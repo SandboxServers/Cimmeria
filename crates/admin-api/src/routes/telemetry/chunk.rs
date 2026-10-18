@@ -86,6 +86,10 @@ async fn chunk_flow(
     let (parts, body) = request.into_parts();
     let Admitted { claims, slot } = admit(state, policy, Route::Chunk, &parts.headers, who, now)?;
     let client_pid = client_pid_header(&parts.headers);
+    let client_sent_ms = client_sent_ms_header(&parts.headers);
+    // Taken before the body is read, so the body transfer stays out of the
+    // clock sample.
+    let recv = SystemTime::now();
     let limits = state.limits.clone();
 
     let deadline = tokio::time::Instant::now() + limits.body_timeout;
@@ -120,7 +124,8 @@ async fn chunk_flow(
         &claims.sub,
         &events,
         &admitted_rows,
-        SystemTime::now(),
+        recv,
+        client_sent_ms,
         entity_labels::link(),
     )
     .await;
@@ -190,6 +195,24 @@ pub(super) fn client_pid_header(headers: &HeaderMap) -> Option<u32> {
         .trim()
         .parse()
         .ok()
+}
+
+/// The header the DLL sends its send time in, in ms on its clock, with each
+/// chunk (PC-16).
+pub(super) const CLIENT_SENT_MS_HEADER: &str = "x-cimmeria-client-sent-ms";
+
+/// The upload's send stamp from [`CLIENT_SENT_MS_HEADER`]. Absent, not an
+/// `i64`, or `<= 0` reads as `None`: a bad stamp must not refuse the chunk,
+/// and it only ever sharpens the clock sample, never replaces a good one.
+pub(super) fn client_sent_ms_header(headers: &HeaderMap) -> Option<i64> {
+    headers
+        .get(CLIENT_SENT_MS_HEADER)?
+        .to_str()
+        .ok()?
+        .trim()
+        .parse::<i64>()
+        .ok()
+        .filter(|&ms| ms > 0)
 }
 
 /// A chunk's rows, and where it was cut if it passed a budget.

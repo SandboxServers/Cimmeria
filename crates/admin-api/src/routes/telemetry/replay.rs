@@ -91,7 +91,16 @@ pub async fn replay_ndjson_named(
 ) -> Result<ReplayCounts, ReplayError> {
     let events = parse_ndjson(ndjson)?;
     let admitted = vec![true; events.len()];
-    let labels = name_chunk(&claims.sid, &claims.sub, &events, &admitted, recv, link).await;
+    let labels = name_chunk(
+        &claims.sid,
+        &claims.sub,
+        &events,
+        &admitted,
+        recv,
+        None,
+        link,
+    )
+    .await;
     Ok(replay_events(claims, events, &labels, &admitted))
 }
 
@@ -164,6 +173,7 @@ pub(super) fn replay_events_from_client(
                 book: &book,
                 entity_label: &|id| labels.label(row, id),
                 client_pid,
+                clock: labels.clock(),
             };
             replay_event(claims, ev, &names);
             counts.accepted += 1;

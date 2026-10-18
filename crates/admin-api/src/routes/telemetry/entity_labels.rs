@@ -15,7 +15,9 @@
 //! - **The time, on the server clock.** Lifetimes are stamped with the
 //!   server's wall clock and the client's clock is its own. For each chunk
 //!   the session observes an offset: the server's receive time minus the
-//!   newest `ts_ms` in it. That is the true clock difference plus the
+//!   newest `ts_ms` in it, or minus the upload's send stamp when it carries
+//!   one (the stamp replaces the newest row's `ts_ms` as the sample, which
+//!   drops the DLL's flush delay). That is the true clock difference plus the
 //!   chunk's upload delay, never less, so the session uses the smallest
 //!   offset seen in the last [`OFFSET_WINDOW`]: an old sample ages out, so
 //!   a clock step heals within the window instead of skewing the rest of
@@ -225,6 +227,20 @@ fn with_session_clock<R>(
         .entry(sid, install_id, now_ms))
 }
 
+/// One chunk's clock: the session offset after this chunk, and when it arrived.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct ChunkClock {
+    pub(super) offset_ms: i64,
+    pub(super) recv_ms: i64,
+}
+
+impl ChunkClock {
+    /// A client `ts_ms` on the server clock, never later than the receive time.
+    pub(super) fn server_ts_ms(&self, ts_ms: i64) -> i64 {
+        ts_ms.saturating_add(self.offset_ms).min(self.recv_ms)
+    }
+}
+
 /// The entity names for one chunk's rows, resolved by the cell.
 #[derive(Debug, Default)]
 pub(super) struct EntityLabels {
@@ -232,6 +248,8 @@ pub(super) struct EntityLabels {
     spaces: Vec<Option<u32>>,
     /// The cell's answer for each (space, entity) pair it knew.
     labels: HashMap<(u32, u32), &'static str>,
+    /// The chunk's clock, if the session had an offset for it.
+    clock: Option<ChunkClock>,
 }
 
 impl EntityLabels {
@@ -245,6 +263,11 @@ impl EntityLabels {
         let space = (*self.spaces.get(row)?)?;
         self.labels.get(&(space, entity_id)).copied()
     }
+
+    /// The chunk's clock, if the session had an offset for it.
+    pub(super) fn clock(&self) -> Option<ChunkClock> {
+        self.clock
+    }
 }
 
 /// A chunk's row spaces and the questions they need, before the cell
@@ -253,18 +276,21 @@ impl EntityLabels {
 pub(super) struct NamingPlan {
     spaces: Vec<Option<u32>>,
     queries: Vec<EntityLabelQuery>,
+    clock: Option<ChunkClock>,
 }
 
 impl NamingPlan {
     /// Place the `client.native` rows of a chunk received at `recv`, and
     /// list one question per (space, entity) pair among the rows `admitted`
     /// says will replay, at the time of the pair's first such row, capped
-    /// at [`ENTITY_LABEL_QUERY_CAP`]. `clock` is the session's state from
-    /// earlier chunks, updated here from every row.
+    /// at [`ENTITY_LABEL_QUERY_CAP`]. `client_sent_ms` is the upload's send
+    /// stamp, if it had one. `clock` is the session's state from earlier
+    /// chunks, updated here from every row.
     pub(super) fn build(
         events: &[TelemetryEvent],
         admitted: &[bool],
         recv: SystemTime,
+        client_sent_ms: Option<i64>,
         clock: &mut SessionClock,
     ) -> Self {
         let recv_ms = millis(recv);
@@ -273,10 +299,19 @@ impl NamingPlan {
             .filter_map(|ev| native(ev).map(|(ts, _)| ts))
             .max()
         {
-            clock.observe(recv_ms, newest);
+            // A stamp older than the newest row, or after receipt, is
+            // incoherent and reads as absent.
+            let stamp = client_sent_ms
+                .filter(|s| *s >= newest && *s <= recv_ms)
+                .unwrap_or(newest);
+            clock.observe(recv_ms, stamp);
         }
-        let offset = clock.offset_ms();
-        let mut plan = Self::default();
+        let mut plan = Self {
+            clock: clock
+                .offset_ms()
+                .map(|offset_ms| ChunkClock { offset_ms, recv_ms }),
+            ..Self::default()
+        };
         let mut asked = HashSet::new();
         for (row, ev) in events.iter().enumerate() {
             let Some((ts_ms, fields)) = native(ev) else {
@@ -287,14 +322,14 @@ impl NamingPlan {
                 clock.space_id = Some(space);
             }
             plan.spaces.push(clock.space_id);
-            let (Some(space_id), Some(offset), true) = (
+            let (Some(space_id), Some(chunk_clock), true) = (
                 clock.space_id,
-                offset,
+                plan.clock,
                 admitted.get(row).copied().unwrap_or(false),
             ) else {
                 continue;
             };
-            let Some(at) = from_millis(ts_ms.saturating_add(offset).min(recv_ms)) else {
+            let Some(at) = from_millis(chunk_clock.server_ts_ms(ts_ms)) else {
                 continue;
             };
             for entity_id in ENTITY_KEYS
@@ -322,6 +357,12 @@ impl NamingPlan {
         &self.queries
     }
 
+    /// The chunk's clock, for tests.
+    #[cfg(test)]
+    pub(super) fn clock(&self) -> Option<ChunkClock> {
+        self.clock
+    }
+
     /// The plan with the cell's answers: `labels[i]` answers `queries[i]`.
     fn answered(self, labels: EntityLabelsReply) -> EntityLabels {
         let labels = self
@@ -333,22 +374,25 @@ impl NamingPlan {
         EntityLabels {
             spaces: self.spaces,
             labels,
+            clock: self.clock,
         }
     }
 }
 
 /// Plan a chunk for session `sid` of install `install_id` against its
 /// stored clock, and resolve the rows `admitted` marks through `link`.
+/// `client_sent_ms` is the upload's send stamp, if it had one.
 pub(super) async fn name_chunk(
     sid: &str,
     install_id: &str,
     events: &[TelemetryEvent],
     admitted: &[bool],
     recv: SystemTime,
+    client_sent_ms: Option<i64>,
     link: Option<&EntityLabelLink>,
 ) -> EntityLabels {
     let plan = with_session_clock(sid, install_id, millis(recv), |clock| {
-        NamingPlan::build(events, admitted, recv, clock)
+        NamingPlan::build(events, admitted, recv, client_sent_ms, clock)
     });
     resolve(sid, plan, link).await
 }

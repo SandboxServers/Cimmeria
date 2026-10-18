@@ -9,8 +9,9 @@ use std::time::Instant;
 use axum::body::Body;
 use axum::extract::Request;
 use axum::http::header::AUTHORIZATION;
+use axum::http::{HeaderMap, HeaderValue};
 
-use super::chunk::{chunk_inner, CLIENT_PID_HEADER};
+use super::chunk::{chunk_inner, client_sent_ms_header, CLIENT_PID_HEADER, CLIENT_SENT_MS_HEADER};
 use super::replay_tests::{capture_async, Row};
 use super::upload_gate::{UploadLimits, UploadPolicy, UploadState};
 use super::upload_limits_tests::{gzip, run, token, Env, PEER};
@@ -65,6 +66,24 @@ fn an_upload_without_the_header_has_no_client_pid() {
         "{:?}",
         rows[0].fields
     );
+}
+
+/// The send stamp parses when it is a positive number, and reads as absent
+/// otherwise, so a bad stamp never refuses a chunk.
+#[test]
+fn sent_ms_header_parses_or_reads_none() {
+    let read = |v: Option<&'static str>| {
+        let mut headers = HeaderMap::new();
+        if let Some(v) = v {
+            headers.insert(CLIENT_SENT_MS_HEADER, HeaderValue::from_static(v));
+        }
+        client_sent_ms_header(&headers)
+    };
+    assert_eq!(read(Some("1700000000123")), Some(1_700_000_000_123));
+    assert_eq!(read(None), None);
+    assert_eq!(read(Some("abc")), None);
+    assert_eq!(read(Some("-5")), None);
+    assert_eq!(read(Some("0")), None);
 }
 
 /// **A bad header is absent too.** The chunk is still accepted, and the row
