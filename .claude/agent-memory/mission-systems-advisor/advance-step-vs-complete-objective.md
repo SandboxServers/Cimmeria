@@ -16,6 +16,10 @@ metadata:
    step frames. (The 2026-09-18 version of this note said it sent no ticks —
    that was fixed; do not re-report it.)
 2. Pushes old step to `completed_steps`, loads new step objectives.
+   This includes OPTIONAL objectives: an optional objective in the old step is
+   force-credited, not skipped (568 step 1965: 2312 is credited by the advance
+   to 1966 even if no prop credited it). A chain that wants it "uncredited"
+   cannot use advance_step to leave that step.
 3. Does NOT run the all-required-done auto-complete, which is why chains use
    it to leave a step whose last required objective would otherwise end the
    mission (688 chain 1107 → 80688; 622 → 80622).

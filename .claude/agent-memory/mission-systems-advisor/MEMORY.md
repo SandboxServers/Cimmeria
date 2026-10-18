@@ -2,7 +2,7 @@
 
 - [content-engine-once-semantics.md](content-engine-once-semantics.md) — `once` fires once per player per cell-entity life since #802 (re-arms on relog and world change); not persisted. Once-per-character needs a persisted condition.
 - [multi-chain-dispatch-semantics.md](multi-chain-dispatch-semantics.md) — CRITICAL: one event fires EVERY matching chain; conditions frozen at resolve time; `priority` never excludes. Sibling chains on one trigger key must be pairwise disjoint.
-- [interact-dialog-routing-traps.md](interact-dialog-routing-traps.md) — CRITICAL: an `interact_tag` chain short-circuits `handle_interact`, so `last_interaction_target` is never pinned and a follow-up `dialog_choice → display_dialog` bails. Also: no distance check on tag chains; nested mission-event dispatch runs mid action list.
+- [interact-dialog-routing-traps.md](interact-dialog-routing-traps.md) — `interact_tag` match skips bind auto-display (pin + range gate FIXED 2026-10-17, older branches may lack it); nested mission-event dispatch runs mid action list.
 - [condition-column-layout.md](condition-column-layout.md) — Which `content_conditions` column each condition type reads; a malformed row leaves the chain UNGATED, not disabled.
 - [advance-step-vs-complete-objective.md](advance-step-vs-complete-objective.md) — advance_step force-completes + ticks objectives; turn-in objectives only CompleteMission closes; finished rows persist NULL step.
 - [castle-cellblock-chains.md](castle-cellblock-chains.md) — Mission 622/638/639/640/641 chain shapes, interactability gating, re-loot guards, dialog-set→template binding; Region3 (not Region9) is the Mess Hall.
@@ -13,3 +13,4 @@
 - [mission-1360-step-4038-unreachable.md](mission-1360-step-4038-unreachable.md) — Nothing advances Frost's Letter 4037→4038, so Harset chain 6501 can never fire; needs an owner decision.
 - [hidden-mission-frame-gate.md](hidden-mission-frame-gate.md) — #715: hidden missions (682-686, 689) send no client frames; new send sites must call `suppress_hidden_mission_frames`; client abandon refuses them.
 - [dakara-e1-evidence.md](dakara-e1-evidence.md) — Worlds 61/62: twelve missions (1570 + 1645-1655, labelled General), the arc assumes an SGC start, one location clue (dialog 6110), no positions or encounters anywhere.
+- [tollana-568-spec.md](tollana-568-spec.md) — Sealed T-03a design for Tollana 568 (chains 9001-9018): one-bind-per-state slot hygiene, accept-on-close wart, one-shot via chain gate.

@@ -85,3 +85,4 @@
 - [project_lab_fixture_fx02_review.md](project_lab_fixture_fx02_review.md) — FX-02/FX-04 lab fixture: account-scoped take; FX-04 stage tool cleared; any-GM-account scope residual
 - [project_lab_chaos_ch04_review.md](project_lab_chaos_ch04_review.md) — CH-04 chaos registry: addr key outlives session (no teardown clear), TTL cap only in CH-05, knob effects outlive TTL
 - [project_lab_chaos_ch13_review.md](project_lab_chaos_ch13_review.md) — CH-13 .despawn <id> + spawnrandom batches cleared; Low: cross-space class oracle, summary to recycled slot
+- [project_lab_record_lr07_review.md](project_lab_record_lr07_review.md) — LR-07 record tools: lease/takeover/camera cleared; no-spawn-under-permit rule; open stop + specs_dir residuals
