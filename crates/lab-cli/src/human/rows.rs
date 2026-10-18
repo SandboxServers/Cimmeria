@@ -41,7 +41,10 @@ impl Row {
 }
 
 /// Parses JSONL text: one JSON object per non-blank line. An error names its line as `line N: ...`.
+///
+/// A leading UTF-8 byte-order mark is ignored, since Windows tools add one to redirected output.
 pub fn parse_jsonl(text: &str) -> Result<Vec<Row>, String> {
+    let text = text.strip_prefix('\u{feff}').unwrap_or(text);
     let mut rows = Vec::new();
     for (index, line) in text.lines().enumerate() {
         let number = index + 1;

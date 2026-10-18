@@ -32,6 +32,43 @@ fn blank_lines_are_skipped() {
     assert_eq!(rows.len(), 2);
 }
 
+/// Windows tools prefix redirected output with a byte-order mark; without stripping it the first line fails to parse.
+#[test]
+fn a_leading_byte_order_mark_is_ignored() {
+    let rows =
+        parse_jsonl("\u{feff}{\"signal\":\"a\"}\r\n{\"signal\":\"b\"}\r\n").expect("BOM, CRLF");
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0].str("signal"), Some("a"));
+}
+
+/// A line that is valid JSON but not an object is an error naming its line.
+#[test]
+fn a_non_object_line_is_an_error() {
+    let err = parse_jsonl("{\"signal\":\"a\"}\n[1,2]\n").expect_err("array line");
+    assert!(err.contains("line 2"), "{err}");
+}
+
+/// Rows without a `player_id` each count as their own player, so two anonymous rows are two players.
+#[test]
+fn rows_without_a_player_id_count_as_separate_players() {
+    let text = concat!(
+        r#"{"signal":"s","cimmeria.session_kind":"player"}"#,
+        "\n",
+        r#"{"signal":"s","cimmeria.session_kind":"player"}"#,
+        "\n",
+        r#"{"signal":"s","cimmeria.session_kind":"player","player_id":7}"#,
+        "\n",
+        r#"{"signal":"s","cimmeria.session_kind":"player","player_id":"7"}"#,
+        "\n",
+    );
+    let clusters = cluster_friction(&parse_jsonl(text).expect("valid JSONL"));
+    assert_eq!(clusters.len(), 1);
+    assert_eq!(clusters[0].count, 4);
+    assert_eq!(clusters[0].players, 3);
+    assert_eq!(clusters[0].subject, "-");
+    assert_eq!(clusters[0].world, "-");
+}
+
 /// Clusters must key on signal, world and subject, and drop lab rows; reverting any of these changes the count.
 #[test]
 fn friction_clusters_by_signal_world_subject() {

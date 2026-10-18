@@ -75,6 +75,71 @@ fn card_has_no_personal_names() {
     assert!(card.contains("- x: 12.5"), "card:\n{card}");
 }
 
+/// A newline or quote in an exported value must not leave an uncommented line in the toml fence or close it early.
+#[test]
+fn hostile_values_cannot_escape_the_commented_fence() {
+    let mut stuck = clusters(EXPORT).remove(0);
+    stuck.subject = "door\n```\nid = \"x\"\n\"quoted\"".to_string();
+    stuck.sample.0.insert(
+        "template_name".to_string(),
+        serde_json::json!("npc\n## Expected"),
+    );
+    let card = render_card(&stuck);
+    for line in toml_fence(&card) {
+        assert!(line.starts_with("# "), "uncommented line: {line:?}");
+    }
+    let fence_lines = card.lines().filter(|l| l.starts_with("```")).count();
+    assert_eq!(fence_lines, 2, "card:\n{card}");
+    let expected_heads = card.lines().filter(|l| *l == "## Expected").count();
+    assert_eq!(expected_heads, 1, "card:\n{card}");
+    assert!(card.contains(r#"\"quoted\""#), "card:\n{card}");
+}
+
+/// An export that cannot be read exits 1 and writes nothing.
+#[test]
+fn a_missing_export_exits_one() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let out = dir.path().join("drafts");
+    let args = Args {
+        rows: dir.path().join("absent.jsonl"),
+        out: out.clone(),
+        top: 20,
+        min_count: 2,
+        json: false,
+    };
+    let ctx = Ctx {
+        ui: Ui::plain(),
+        command: "friction-drafts".into(),
+        raw: vec![],
+    };
+    assert_eq!(run(&args, &ctx), 1);
+    assert!(!out.exists(), "nothing is created for an unreadable export");
+}
+
+/// `--top` caps the number of cards, most frequent first.
+#[test]
+fn top_caps_the_cards() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let rows = dir.path().join("friction.jsonl");
+    std::fs::write(&rows, EXPORT).expect("write export");
+    let out = dir.path().join("drafts");
+    let args = Args {
+        rows,
+        out: out.clone(),
+        top: 1,
+        min_count: 1,
+        json: true,
+    };
+    let ctx = Ctx {
+        ui: Ui::plain(),
+        command: "friction-drafts".into(),
+        raw: vec![],
+    };
+    assert_eq!(run(&args, &ctx), 0);
+    let names: Vec<_> = std::fs::read_dir(&out).expect("drafts folder").collect();
+    assert_eq!(names.len(), 1);
+}
+
 /// Two clusters of at least two rows give two cards; the singleton gets none.
 #[test]
 fn writes_one_card_per_cluster() {

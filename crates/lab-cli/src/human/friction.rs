@@ -26,9 +26,13 @@ const SUBJECT_KEYS: &[&str] = &[
 /// One group of player friction rows that share a signal, reason, world and subject.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FrictionCluster {
+    /// The `signal` the rows share.
     pub signal: String,
+    /// The `reason` the rows share, or `"-"` when they carry none.
     pub reason: String,
+    /// The `world` the rows share, or `"-"` when they carry none.
     pub world: String,
+    /// The first present subject key's value (tag, template, item, step, ...), or `"-"`.
     pub subject: String,
     /// Rows in the cluster.
     pub count: usize,
