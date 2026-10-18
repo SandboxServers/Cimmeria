@@ -90,8 +90,11 @@ pwsh setup.ps1 -WithAdmin -WithLauncher
 # Use Docker for PostgreSQL instead of local binaries
 pwsh setup.ps1 -UseDocker
 
-# Re-seed the database without rebuilding
+# Refresh the seeded resources without rebuilding (keeps accounts and characters)
 pwsh setup.ps1 -SkipBuild -ForceDatabase
+
+# Wipe the database (destroys accounts and characters) and reload it from the seeds
+pwsh setup.ps1 -SkipBuild -WipeDatabase
 
 # Build + DB init but don't launch (CI-style)
 pwsh setup.ps1 -NoLaunch

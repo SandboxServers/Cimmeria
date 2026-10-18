@@ -51,13 +51,21 @@
     DATABASE FLAGS
     ----------------------------------------------
 
-      -ForceDatabase      Drop and recreate the 'sgw' database, then reload all
-                          schemas and seed data. PostgreSQL itself stays intact.
+      -ForceDatabase      Refresh resources in 'sgw' from the seeds. Accounts and
+                          characters are kept: the database is copied, carried over
+                          and swapped by rename, and the old one stays as sgw_prev.
+                          A pg_dump backup is written to server/backups first.
+
+      -WipeDatabase       Print player counts, back up 'sgw' to server/backups, drop
+                          it and load a new one from the seeds. Destroys all accounts
+                          and characters (the backup is the only copy). Not with
+                          -ForceDatabase.
 
       -ResetDatabase      Nuclear option. Stops PostgreSQL, deletes the entire
                           pgdata directory (or removes the Docker container),
-                          and re-initializes everything from scratch. Use this
-                          when pgdata is corrupted or the PG version changed.
+                          and re-initializes everything from scratch. Destroys
+                          player data. Use this when pgdata is corrupted or the
+                          PG version changed. Prints the player counts first.
 
       -UseDocker          Use a Docker container (postgres:17) instead of the
                           local PostgreSQL binaries. Requires Docker Desktop or
@@ -72,8 +80,11 @@
       - Schema check:  looks for the 'account' table and 'resources' schema.
       - Seed check:    looks for the test account, shard record, and resources data.
       - If both exist, skips loading entirely (no duplicate insert errors).
-      - If schema exists but seed data is incomplete, attempts a reload, suppressing
-        "already exists" errors for objects that were already created.
+      - If schema exists but seed data is incomplete and accounts exist, refreshes the
+        resources and keeps every account and character (-ForceDatabase does the same).
+      - If schema exists but seed data is incomplete and there are no accounts, attempts
+        a reload, suppressing "already exists" errors for objects that were already created.
+      - -ForceDatabase and -WipeDatabase together are rejected before any SQL runs.
       - pgdata version is validated against the installed PostgreSQL major version.
         A mismatch aborts with a message to use -ResetDatabase.
 
@@ -87,8 +98,11 @@
       # Rebuild server only, don't touch DB or launch
       pwsh setup.ps1 -NoLaunch
 
-      # Wipe and reload the database (keep builds)
+      # Refresh resources, keep accounts and characters (keep builds)
       pwsh setup.ps1 -SkipBuild -ForceDatabase -NoLaunch
+
+      # Wipe the database and reload from the seeds (backs up first; destroys player data)
+      pwsh setup.ps1 -SkipBuild -WipeDatabase -NoLaunch
 
       # Full nuclear reset of PostgreSQL
       pwsh setup.ps1 -SkipBuild -ResetDatabase -NoLaunch
@@ -116,7 +130,8 @@
       Install-CimmeriaLauncher                          # Released launcher zip only
       Initialize-CimmeriaDatabase                       # DB init (idempotent)
       Initialize-CimmeriaDatabase -UseDocker            # DB via Docker
-      Initialize-CimmeriaDatabase -ResetDatabase        # Nuke and rebuild
+      Initialize-CimmeriaDatabase -ResetDatabase        # Nuke and rebuild (destroys player data)
+      Initialize-CimmeriaDatabase -WipeDatabase         # Back up, drop and reload sgw
       Start-CimmeriaServer                              # Launch the server
       Stop-CimmeriaServer                               # Stop server + PG
       Update-CimmeriaClient                             # Patch game client files
@@ -148,15 +163,22 @@
     debug symbols, or "Release" for optimized binaries.
 
 .PARAMETER ForceDatabase
-    Drop and recreate the 'sgw' database before loading schemas. The PostgreSQL
-    data directory (pgdata) is preserved -- only the database contents are wiped.
-    Active connections are terminated before the drop.
+    Refresh resources in the 'sgw' database and keep every account and character.
+    The database is rebuilt from the seeds as 'sgw_next', the player tables are
+    carried over and reconciled, then renamed into place; the old database is kept
+    as 'sgw_prev'. A pg_dump backup is written to server/backups first.
+
+.PARAMETER WipeDatabase
+    Print player counts, back up 'sgw' to server/backups, drop it and load a new
+    database from the seeds. Destroys all accounts and characters after the backup.
+    Cannot be combined with -ForceDatabase (throws before any SQL runs).
 
 .PARAMETER ResetDatabase
     Delete the PostgreSQL data directory entirely and re-initialize from scratch.
     On local mode: stops pg_ctl, removes server/pgdata/, runs initdb again.
     On Docker mode: removes the cimmeria-postgres container and creates a new one.
     This is the fix for pgdata version mismatches or corrupted data directories.
+    Destroys player data; the player counts are printed first.
 
 .PARAMETER UseDocker
     Run PostgreSQL in a Docker container instead of local binaries. Creates a
@@ -195,7 +217,12 @@
 .EXAMPLE
     pwsh setup.ps1 -ForceDatabase -SkipBuild -NoLaunch
 
-    Wipe and reload the database only. No builds, no server launch.
+    Refresh resources only; accounts and characters are kept. No builds, no server launch.
+
+.EXAMPLE
+    pwsh setup.ps1 -WipeDatabase -SkipBuild -NoLaunch
+
+    Back up, drop and reload the database from the seeds. Destroys player data.
 
 .EXAMPLE
     pwsh setup.ps1 -SkipDownload -SkipBuild -NoLaunch
@@ -214,6 +241,7 @@ param(
     [switch]$NoLaunch,
     [ValidateSet("Debug","Release")][string]$Configuration = "Debug",
     [switch]$ForceDatabase,
+    [switch]$WipeDatabase,
     [switch]$ResetDatabase,
     [switch]$UseDocker,
     [switch]$WithReToolchain,

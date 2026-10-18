@@ -19,6 +19,7 @@ on:
       - ".mcp.json.example"
       - "bootstrap/**"
       - "setup.ps1"
+      - "db/persistent/**"
       - ".github/workflows/bootstrap-lint.yml"
 
 permissions: {}
@@ -115,3 +116,53 @@ jobs:
       - name: bootstrap/tests/test-install-launcher.ps1
         shell: pwsh
         run: pwsh -NoProfile -File bootstrap/tests/test-install-launcher.ps1
+
+  # Resources-only refresh, -WipeDatabase routing and the -ForceDatabase case run against
+  # a real PostgreSQL 17 service. Ubuntu, not Windows: a Windows PostgreSQL service is
+  # unverified. CI_REQUIRE_PG=1 makes the test fail, not skip, when PostgreSQL is missing.
+  database-refresh:
+    name: database refresh tests (PostgreSQL 17)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 15
+    env:
+      CI_REQUIRE_PG: "1"
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          # Local test only: lets psql connect as postgres and w-testing without PGPASSWORD.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: install PostgreSQL 17 client tools (psql, pg_dump) from PGDG
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-17
+          psql --version
+          pg_dump --version
+      - name: ensure pwsh is installed
+        run: |
+          command -v pwsh >/dev/null || sudo snap install powershell --classic
+          pwsh --version
+      - name: create role w-testing (superuser, as the local setup does)
+        run: |
+          psql -h localhost -p 5433 -U postgres -c "CREATE ROLE \"w-testing\" WITH LOGIN SUPERUSER CREATEDB PASSWORD 'w-testing'"
+      - name: bootstrap/tests/test-database-refresh.ps1
+        shell: pwsh
+        run: pwsh -NoProfile -File bootstrap/tests/test-database-refresh.ps1

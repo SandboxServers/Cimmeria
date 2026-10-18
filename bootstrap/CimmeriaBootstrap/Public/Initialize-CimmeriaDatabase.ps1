@@ -18,6 +18,9 @@ function Initialize-CimmeriaDatabase {
     .PARAMETER Force
         Drop and recreate the sgw database before loading schemas.
 
+    .PARAMETER WipeDatabase
+        Prints player counts, backs up the database to server/backups, drops it and
+        reloads it from the seeds. Destroys player data (after the backup). Not with -Force.
     .PARAMETER ResetDatabase
         Nuclear option: stop PostgreSQL, delete pgdata entirely, re-initialize from scratch.
         On Docker mode, removes and recreates the container.
@@ -42,8 +45,18 @@ function Initialize-CimmeriaDatabase {
         [int]$Port = 5433,
         [switch]$Force,
         [switch]$ResetDatabase,
-        [switch]$UseDocker
+        [switch]$UseDocker,
+        [switch]$WipeDatabase
     )
+
+    # Routing errors and the reset counts come before any docker or psql work.
+    if ((Resolve-CimmeriaDatabaseAction -Force:$Force -Wipe:$WipeDatabase) -eq 'Throw') {
+        throw "-Force and -WipeDatabase cannot be combined: -Force keeps player data, -WipeDatabase destroys it."
+    }
+    if ($ResetDatabase) {
+        # Counts first, while the old data can still be reached. Best effort.
+        try { Invoke-CimmeriaDatabaseWipe -PsqlExe (Find-PsqlExecutable -Port $Port -UseDocker:$UseDocker) -Port $Port -UseDocker:$UseDocker -CountsOnly } catch { }
+    }
 
     $paths = Get-ProjectPaths
     $isWin = $IsWindows -or (-not (Test-Path variable:IsWindows))
@@ -55,7 +68,7 @@ function Initialize-CimmeriaDatabase {
     if ($UseDocker) {
         Initialize-DockerPostgreSQL -Port $Port -ResetDatabase:$ResetDatabase
         $psqlExe = Find-PsqlExecutable -Port $Port -UseDocker
-        Invoke-SchemaLoad -PsqlExe $psqlExe -Port $Port -Force:$Force -UseDocker
+        Invoke-SchemaLoad -PsqlExe $psqlExe -Port $Port -Force:$Force -UseDocker -WipeDatabase:$WipeDatabase
         return
     }
 
@@ -198,7 +211,7 @@ function Initialize-CimmeriaDatabase {
         $psqlExe = $psqlCmd.Source
     }
 
-    Invoke-SchemaLoad -PsqlExe $psqlExe -Port $Port -Force:$Force
+    Invoke-SchemaLoad -PsqlExe $psqlExe -Port $Port -Force:$Force -WipeDatabase:$WipeDatabase
 }
 
 # ─── Docker PostgreSQL ──────────────────────────────────────────────────────
@@ -394,7 +407,8 @@ function Invoke-SchemaLoad {
         [string]$PsqlExe,
         [int]$Port = 5433,
         [switch]$Force,
-        [switch]$UseDocker
+        [switch]$UseDocker,
+        [switch]$WipeDatabase
     )
 
     $paths = Get-ProjectPaths
@@ -420,6 +434,13 @@ function Invoke-SchemaLoad {
     }
     & $PsqlExe @hostArgs -p $Port -U postgres -c "ALTER ROLE `"w-testing`" WITH LOGIN CREATEDB PASSWORD 'w-testing'" 2>&1 | Out-Null
 
+    # Wipe mode: counts, backup and drop; the create step below rebuilds 'sgw' empty.
+    # Declined by -WhatIf: then nothing is dropped and the routing below ignores the flag.
+    $doWipe = $WipeDatabase -and $PSCmdlet.ShouldProcess("database 'sgw'", "Back up and drop")
+    if ($doWipe) {
+        Invoke-CimmeriaDatabaseWipe -PsqlExe $PsqlExe -Port $Port -UseDocker:$UseDocker | Out-Null
+    }
+
     # Check for existing database
     Write-Status "Checking for existing database..." "DarkGray"
     $dbExists = (& $PsqlExe @hostArgs -p $Port -U postgres -tAc "SELECT 1 FROM pg_database WHERE datname='sgw'" 2>$null) -match '1'
@@ -439,55 +460,20 @@ function Invoke-SchemaLoad {
         Write-Status "Database 'sgw' created." "Green"
     }
 
-    # ── Force mode: drop and recreate ─────────────────────────────────────
-    if ($Force) {
-        if ($PSCmdlet.ShouldProcess("database 'sgw'", "Drop and recreate")) {
-            Write-Status "Force flag set - dropping and recreating database 'sgw'..." "Yellow"
-            # Terminate existing connections before dropping
-            & $PsqlExe @hostArgs -p $Port -U postgres -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='sgw' AND pid <> pg_backend_pid()" 2>&1 | Out-Null
-            & $PsqlExe @hostArgs -p $Port -U postgres -c "DROP DATABASE IF EXISTS sgw" | Out-Null
-            & $PsqlExe @hostArgs -p $Port -U postgres -c "CREATE DATABASE sgw OWNER `"w-testing`"" | Out-Null
-            if ($LASTEXITCODE -ne 0) {
-                throw "Failed to recreate database 'sgw' under -Force."
-            }
-            Write-Status "Database 'sgw' recreated." "Green"
-            $dbExists = $false
-        }
-    }
-
-    # ── Check existing schema and data ────────────────────────────────────
-    $schemaExists = $false
-    $seedDataExists = $false
-
-    if ($dbExists -or (-not $Force)) {
-        # Check if schemas are loaded (look for key tables)
-        $accountTableCheck = & $PsqlExe @hostArgs -p $Port -U "w-testing" -d sgw -tAc "SELECT 1 FROM information_schema.tables WHERE table_name='account'" 2>$null
-        $resourcesSchemaCheck = & $PsqlExe @hostArgs -p $Port -U "w-testing" -d sgw -tAc "SELECT 1 FROM information_schema.schemata WHERE schema_name='resources'" 2>$null
-
-        if (($accountTableCheck -match '1') -and ($resourcesSchemaCheck -match '1')) {
-            $schemaExists = $true
-            Write-Status "Schema exists (account table + resources schema found)." "DarkGray"
-
-            # Check if seed data exists
-            $testAccountCheck = & $PsqlExe @hostArgs -p $Port -U "w-testing" -d sgw -tAc "SELECT 1 FROM account WHERE account_id = 2" 2>$null
-            $shardsCheck = & $PsqlExe @hostArgs -p $Port -U "w-testing" -d sgw -tAc "SELECT 1 FROM shards WHERE shard_id = 1" 2>$null
-            $resourcesDataCheck = & $PsqlExe @hostArgs -p $Port -U "w-testing" -d sgw -tAc "SELECT 1 FROM resources.worlds LIMIT 1" 2>$null
-
-            if (($testAccountCheck -match '1') -and ($shardsCheck -match '1') -and ($resourcesDataCheck -match '1')) {
-                $seedDataExists = $true
-                Write-Status "Seed data exists (test account, shards, resources data found)." "DarkGray"
-            } else {
-                Write-Status "Schema loaded but seed data appears incomplete." "Yellow"
-            }
-        }
-    }
+    # ── Check existing schema and data, then route (see Resolve-CimmeriaDatabaseAction) ──
+    $state = Get-CimmeriaDatabaseState -PsqlExe $PsqlExe -Port $Port -UseDocker:$UseDocker
+    $dbAction = Resolve-CimmeriaDatabaseAction -Force:$Force -Wipe:$doWipe -SchemaExists:$state.SchemaExists -SeedComplete:$state.SeedComplete -HasAccounts:$state.HasAccounts
 
     # ── Load schemas and seed data ────────────────────────────────────────
     $databaseSql = Join-Path $paths.DbDir "database.sql"
 
-    if ($schemaExists -and $seedDataExists) {
-        Write-Status "Database is fully initialized. Use -Force to drop and reload, or -ResetDatabase for a full reset." "DarkGray"
-    } elseif ($schemaExists -and -not $seedDataExists) {
+    if ($dbAction -eq 'Skip') {
+        Write-Status "Database is fully initialized. Use -Force to refresh resources, -WipeDatabase to reload, or -ResetDatabase for a full reset." "DarkGray"
+    } elseif ($dbAction -eq 'Refresh') {
+        if ($PSCmdlet.ShouldProcess("database 'sgw'", "Refresh resources, keeping player data")) {
+            Invoke-CimmeriaResourcesRefresh -PsqlExe $PsqlExe -Port $Port -UseDocker:$UseDocker | Out-Null
+        }
+    } elseif ($dbAction -eq 'Replay') {
         Write-Status "Schema exists but seed data is incomplete." "Yellow"
         Write-Status "  Attempting to reload database.sql (may show constraint errors for existing objects)..." "Yellow"
         $resolvedSql = Resolve-SqlIncludes $databaseSql
@@ -502,6 +488,12 @@ function Invoke-SchemaLoad {
         Remove-Item $resolvedSql -ErrorAction SilentlyContinue
         Write-Status "Schema reload attempted." "Yellow"
     } else {
+        if ($Force -and $dbExists -and $PSCmdlet.ShouldProcess("database 'sgw'", "Drop and recreate (no public.account)")) {
+            # The state check passed with no public.account, so no player rows can exist
+            Write-Status "Force: 'sgw' has no schema; dropping and recreating it." "Yellow"
+            & $PsqlExe @hostArgs -p $Port -U postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS sgw WITH (FORCE)" -c "CREATE DATABASE sgw OWNER `"w-testing`"" | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "Failed to recreate database 'sgw' under -Force." }
+        }
         Write-Status "Loading database schema and seed data..." "White"
         $resolvedSql = Resolve-SqlIncludes $databaseSql
         $resolvedSize = Format-FileSize (Get-Item $resolvedSql).Length

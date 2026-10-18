@@ -38,7 +38,8 @@ Build-CimmeriaServer -Configuration Release  # Build release
 Build-CimmeriaApp -Configuration Release     # Build Tauri admin app
 Install-CimmeriaLauncher                     # Download the released game launcher
 Sync-CimmeriaGameData                        # Copy client PAK files into data/cache/
-Initialize-CimmeriaDatabase -Force           # Wipe and reload database
+Initialize-CimmeriaDatabase -Force           # Refresh resources, keep accounts and characters
+Initialize-CimmeriaDatabase -WipeDatabase    # Back up, drop and reload (destroys player data)
 Start-CimmeriaServer                         # Launch server
 Stop-CimmeriaServer                          # Shut down everything
 Update-CimmeriaClient                        # Patch game client
@@ -71,8 +72,11 @@ pwsh setup.ps1 -SkipBuild
 # Build Release configuration:
 pwsh setup.ps1 -Configuration Release
 
-# Wipe and reload the database:
+# Refresh the seeded resources (keeps accounts and characters):
 pwsh setup.ps1 -SkipBuild -ForceDatabase
+
+# Wipe and reload the database (destroys accounts and characters; backs up first):
+pwsh setup.ps1 -SkipBuild -WipeDatabase
 
 # Install the reverse-engineering toolchain (Ghidra + GhidraMCP + x64dbg +
 # x64dbg-automate + MCP venvs + .mcp.json). Opt-in; Windows-only:
