@@ -81,7 +81,7 @@ try {
     & git -C $wt commit -q --amend -m 'feat one rewritten'
     $rewritten = (& git -C $wt rev-parse HEAD).Trim()
     $r = Invoke-Push $wt 'feat/x'
-    Check ($r.code -eq 1 -and $r.out -match 'status=failed reason=git-push') "a plain push of a rewritten branch fails (exit $($r.code))"
+    Check ($r.code -eq 1 -and $r.out -match 'status=failed reason=git-push branch=feat/x detail=\S') "a plain push of a rewritten branch fails and says why (exit $($r.code)): $($r.out.Trim())"
     Check ((& $remoteRef) -eq $head) 'the failed plain push left the remote unchanged'
 
     # -Force needs the remote sha the caller last saw: a bare lease is defeated by any fetch.
@@ -125,6 +125,22 @@ try {
     $r = Invoke-Push $wt 'feat/x' -force -expect $theirs
     Check ($r.code -eq 0 -and $r.out -match 'status=ok') "-Force with the sha the caller really saw succeeds (exit $($r.code))"
     Check ((& $remoteRef) -eq (& git -C $wt rev-parse HEAD).Trim()) 'the remote is at the local tip after the informed force'
+
+    # --- the push runs in the repository named by -C, whatever GIT_DIR says ----------------
+    # `other` holds feat/x at an older commit than the remote, so a push from it would be a
+    # rejected non-fast-forward; the script has to clear GIT_DIR and push from the worktree.
+    $env:GIT_DIR = (Join-Path $other '.git')
+    try { $r = Invoke-Push $wt 'feat/x' }
+    finally { Remove-Item Env:GIT_DIR -ErrorAction SilentlyContinue }
+    Check ($r.code -eq 0 -and $r.out -match 'status=ok') "pushes the worktree's branch with GIT_DIR set to another repository (exit $($r.code)): $($r.out.Trim())"
+
+    # --- -C must be the worktree root, not a subdirectory of the main checkout ---------------
+    $mainSub = Join-Path $main 'sub'
+    New-Item -ItemType Directory $mainSub | Out-Null
+    $r = Invoke-Push $mainSub 'main'
+    Check ($r.code -eq 2 -and $r.out -match 'not-the-worktree-root') "refuses a subdirectory of the main checkout (exit $($r.code)): $($r.out.Trim())"
+    $r = Invoke-Push (Join-Path $wt 'sub-none') 'feat/x'
+    Check ($r.code -eq 2) 'refuses a path below the worktree that is not a directory'
 
     # --- the full refspec is pushed: a tag named like the branch must not make the push ambiguous ----
     & git -C $main worktree add -q -b amb (Join-Path $tmp 'wtamb') main

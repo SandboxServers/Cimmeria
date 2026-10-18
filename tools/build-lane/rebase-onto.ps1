@@ -15,7 +15,7 @@
 # rebase would drop the commits between them). Rebase config such as rebase.updateRefs is
 # overridden (--no-update-refs), so no other branch moves.
 # Prints status=ok tip=<sha> branch=<name> after a rebase, status=up-to-date tip=<sha> branch=<name>
-# when HEAD already contains -Onto and nothing moves, or status=failed reason=<why>.
+# when HEAD already contains -Onto and nothing moves, or status=failed reason=<why> detail=<git's last output line>.
 # Exit codes: 0 rebased or up to date, 2 refused by a guard, 1 the rebase failed (aborted).
 [CmdletBinding(PositionalBinding = $false)]
 param(
@@ -25,9 +25,11 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
-# Variables that redirect git to another repository, index, config or transport; the guards below
-# would be checked against one repository while git acts on another.
-foreach ($v in 'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_NAMESPACE', 'GIT_CONFIG_COUNT', 'GIT_CONFIG_PARAMETERS', 'GIT_SSH_COMMAND', 'GIT_EXEC_PATH') {
+# Variables that redirect git to another repository, index, object store, injected config or transport;
+# the guards below would be checked against one repository while git acts on another. GIT_CONFIG_GLOBAL
+# and GIT_CONFIG_SYSTEM are NOT cleared: they are the caller's own config choice (the tests use them to
+# isolate git from the developer's config).
+foreach ($v in 'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_NAMESPACE', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_CONFIG_COUNT', 'GIT_CONFIG_PARAMETERS', 'GIT_SSH_COMMAND', 'GIT_EXEC_PATH') {
     Remove-Item -LiteralPath "Env:$v" -ErrorAction SilentlyContinue
 }
 
@@ -38,6 +40,17 @@ function Stop-Refused([string]$reason) {
 
 function Get-FullPath([string]$p) {
     [System.IO.Path]::GetFullPath($p).TrimEnd('\', '/').Replace('\', '/')
+}
+
+# One line saying why git failed: the last error-looking line of its output (fatal:, error:, a
+# rejected ref, a CONFLICT), else the last non-empty line. URL credentials are masked.
+function Get-Detail($lines) {
+    $all = @($lines | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+    $errs = @($all | Where-Object { $_ -match '^(?:fatal:|error:|CONFLICT|!\s)' -and $_ -notmatch 'failed to push some refs' })
+    $pick = if ($errs.Count -gt 0) { $errs[-1] } else { $all | Select-Object -Last 1 }
+    $text = ("$pick" -replace '://[^/@\s]+@', '://' -replace '[\x00-\x1f\x7f]+', ' ').Trim()
+    if ($text.Length -gt 200) { $text = $text.Substring(0, 200) }
+    if ($text) { $text } else { 'none' }
 }
 
 if (-not (Test-Path -LiteralPath $C -PathType Container)) { Stop-Refused "not-a-directory: $C" }
@@ -87,13 +100,13 @@ if ($LASTEXITCODE -eq 0 -and -not $Upstream) {
     exit 0
 }
 
-$null = & git -C $C @rebaseArgs 2>&1
+$out = & git -C $C @rebaseArgs 2>&1
 if ($LASTEXITCODE -ne 0) {
     $gitDir = (& git -C $C rev-parse --absolute-git-dir).Trim()
     if ((Test-Path -LiteralPath (Join-Path $gitDir 'rebase-merge')) -or (Test-Path -LiteralPath (Join-Path $gitDir 'rebase-apply'))) {
         & git -C $C rebase --abort
     }
-    Write-Output "status=failed reason=rebase-aborted branch=$branch"
+    Write-Output "status=failed reason=rebase-aborted branch=$branch detail=$(Get-Detail $out)"
     exit 1
 }
 

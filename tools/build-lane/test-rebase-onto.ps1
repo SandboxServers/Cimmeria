@@ -93,10 +93,45 @@ try {
     $before = (& git -C $wt rev-parse HEAD).Trim()
     $r = Invoke-Rebase $wt $newMain
     $gitDir = (& git -C $wt rev-parse --absolute-git-dir).Trim()
-    Check ($r.code -eq 1 -and $r.out -match 'status=failed reason=rebase-aborted') "a conflicting rebase fails and aborts (exit $($r.code))"
+    Check ($r.code -eq 1 -and $r.out -match 'status=failed reason=rebase-aborted branch=feat/x detail=\S') "a conflicting rebase fails, aborts and says why (exit $($r.code)): $($r.out.Trim())"
     Check ((& git -C $wt rev-parse HEAD).Trim() -eq $before) 'the conflict left HEAD where it was'
     Check ((& git -C $wt status --porcelain | Out-String).Trim() -eq '') 'the conflict left the tree clean'
     Check (-not (Test-Path -LiteralPath (Join-Path $gitDir 'rebase-merge')) -and -not (Test-Path -LiteralPath (Join-Path $gitDir 'rebase-apply'))) 'no rebase is left in progress'
+
+    # --- guards that nothing else covers ------------------------------------------------
+    $mainSub = Join-Path $main 'sub'
+    New-Item -ItemType Directory $mainSub | Out-Null
+    $mainHead = (& git -C $main rev-parse HEAD).Trim()
+    $r = Invoke-Rebase $mainSub $newMain
+    Check ($r.code -eq 2 -and $r.out -match 'not-the-worktree-root') "refuses a subdirectory of the main checkout (exit $($r.code)): $($r.out.Trim())"
+    Check ((& git -C $main rev-parse HEAD).Trim() -eq $mainHead) 'the main checkout did not move'
+    $before = (& git -C $wt rev-parse HEAD).Trim()
+    & git -C $wt checkout -q --detach
+    $r = Invoke-Rebase $wt $mainTip
+    Check ($r.code -eq 2 -and $r.out -match 'detached-head') "refuses a detached HEAD (exit $($r.code)): $($r.out.Trim())"
+    & git -C $wt checkout -q feat/x
+    Check ((& git -C $wt rev-parse HEAD).Trim() -eq $before) 'the guard refusals moved nothing'
+
+    # GIT_DIR and GIT_OBJECT_DIRECTORY in the environment must not retarget the rebase.
+    $wtE = Join-Path $tmp 'wte'
+    $eBase = (& git -C $main rev-parse HEAD).Trim()
+    & git -C $main worktree add -q -b feat/e $wtE $eBase
+    Set-Content -LiteralPath (Join-Path $wtE 'e1.txt') 'e1'
+    & git -C $wtE add -- e1.txt
+    & git -C $wtE commit -q -m 'e1'
+    Set-Content -LiteralPath (Join-Path $main 'e0.txt') 'e0'
+    & git -C $main add -- e0.txt
+    & git -C $main commit -q -m 'main e0'
+    $eOnto = (& git -C $main rev-parse HEAD).Trim()
+    $objDir = Join-Path $tmp 'odd-objects'
+    New-Item -ItemType Directory $objDir | Out-Null
+    $env:GIT_DIR = (Join-Path $main '.git')
+    $env:GIT_OBJECT_DIRECTORY = $objDir
+    try { $r = Invoke-Rebase $wtE $eOnto }
+    finally { Remove-Item Env:GIT_DIR, Env:GIT_OBJECT_DIRECTORY -ErrorAction SilentlyContinue }
+    Check ($r.code -eq 0 -and $r.out -match 'status=ok' -and $r.out -match 'branch=feat/e') "rebases with GIT_DIR and GIT_OBJECT_DIRECTORY set (exit $($r.code)): $($r.out.Trim())"
+    Check ((& git -C $main rev-parse HEAD).Trim() -eq $eOnto) 'main did not move'
+    Check ((& git -C $wtE merge-base HEAD $eOnto).Trim() -eq $eOnto) 'feat/e now sits on the new tip'
 
     # --- the -Upstream (--onto) path: success, stacked branches, and no hidden reset ----
     function New-Commit([string]$dir, [string]$file, [string]$msg) {

@@ -110,6 +110,66 @@ try {
     Check ($parents.Count -eq 3 -and $parents[2] -eq $s3) "the second parent is the branch tip: $($parents -join ' ')"
     Check (Test-Path -LiteralPath (Join-Path $wt 's3.txt')) 'the branch-only commit s3 is in the worktree'
 
+    # --- --no-ff: a target that could fast-forward still gets a merge commit ----------------
+    $ffWt = Join-Path $tmp 'ff'
+    & git -C $main worktree add -q -b feat/ff $ffWt (Git-Out $wt @('rev-parse', 'HEAD'))
+    Set-Content -LiteralPath (Join-Path $ffWt 'ff.txt') 'ff'
+    & git -C $ffWt add -- ff.txt
+    & git -C $ffWt commit -q -m 'ff commit'
+    $ffTip = Git-Out $ffWt @('rev-parse', 'HEAD')
+    $r = Invoke-Merge $wt 'feat/ff'
+    $parents = (Git-Out $wt @('rev-list', '--parents', '-n', '1', 'HEAD')) -split ' '
+    Check ($r.code -eq 0 -and $parents.Count -eq 3 -and $parents[2] -eq $ffTip) "a fast-forwardable merge still has two parents (exit $($r.code)): $($parents -join ' ')"
+
+    # --- the merge subject names the branch, not refs/heads/<branch> -------------------------
+    $subject = Git-Out $wt @('log', '-1', '--format=%s')
+    Check ($subject -ceq "Merge branch 'feat/ff' into feat/target") "the merge subject is: $subject"
+
+    # --- the strategy is pinned: pull.twohead=ours must not drop the branch ------------------
+    $thWt = Join-Path $tmp 'th'
+    $initSha = Git-Out $main @('rev-list', '--max-parents=0', 'HEAD')
+    & git -C $main worktree add -q -b feat/th $thWt $initSha
+    Set-Content -LiteralPath (Join-Path $thWt 'th.txt') 'th'
+    & git -C $thWt add -- th.txt
+    & git -C $thWt commit -q -m 'th commit'
+    Set-Content -LiteralPath (Join-Path $wt 'a.txt') 'diverge for th'
+    & git -C $wt commit -q -am 'diverge for th'
+    & git -C $main config pull.twohead ours
+    $r = Invoke-Merge $wt 'feat/th'
+    & git -C $main config --unset pull.twohead
+    Check ($r.code -eq 0 -and (Test-Path -LiteralPath (Join-Path $wt 'th.txt'))) "a configured pull.twohead=ours does not drop the branch's changes (exit $($r.code)): $($r.out.Trim())"
+
+    # --- guards that nothing else covers -------------------------------------------------
+    $before = Git-Out $wt @('rev-parse', 'HEAD')
+    & git -C $main branch feat/guard $initSha
+    $subdir = Join-Path $main 'sub'
+    New-Item -ItemType Directory $subdir -Force | Out-Null
+    $mainBefore = Git-Out $main @('rev-parse', 'HEAD')
+    $r = Invoke-Merge $subdir 'feat/guard'
+    Check ($r.code -eq 2 -and $r.out -match 'not-the-worktree-root') "refuses a subdirectory of the main checkout (exit $($r.code)): $($r.out.Trim())"
+    Check ((Git-Out $main @('rev-parse', 'HEAD')) -eq $mainBefore) 'the main checkout did not move'
+    & git -C $wt checkout -q --detach
+    $r = Invoke-Merge $wt 'feat/old'
+    Check ($r.code -eq 2 -and $r.out -match 'detached-head') "refuses a detached HEAD (exit $($r.code)): $($r.out.Trim())"
+    & git -C $wt checkout -q feat/target
+    Check ((Git-Out $wt @('rev-parse', 'HEAD')) -eq $before) 'the guard refusals moved nothing'
+
+    # GIT_OBJECT_DIRECTORY / GIT_DIR must not redirect the merge: with an empty object store the
+    # merge cannot read a single object, so the script has to clear the variable.
+    $objDir = Join-Path $tmp 'odd-objects'
+    New-Item -ItemType Directory $objDir | Out-Null
+    & git -C $main worktree add -q -b feat/env (Join-Path $tmp 'envwt') $initSha
+    Set-Content -LiteralPath (Join-Path $tmp 'envwt\env.txt') 'env'
+    & git -C (Join-Path $tmp 'envwt') add -- env.txt
+    & git -C (Join-Path $tmp 'envwt') commit -q -m 'env commit'
+    $env:GIT_OBJECT_DIRECTORY = $objDir
+    $env:GIT_DIR = (Join-Path $main '.git')
+    try { $r = Invoke-Merge $wt 'feat/env' }
+    finally { Remove-Item Env:GIT_OBJECT_DIRECTORY, Env:GIT_DIR -ErrorAction SilentlyContinue }
+    Check ($r.code -eq 0 -and $r.out -match 'status=ok' -and (Test-Path -LiteralPath (Join-Path $wt 'env.txt'))) "merges with GIT_OBJECT_DIRECTORY and GIT_DIR set (exit $($r.code)): $($r.out.Trim())"
+    Check ((Git-Out $main @('rev-parse', 'refs/heads/main')) -eq $mainBefore) 'a GIT_DIR pointing at the main checkout did not move main'
+    Check ((Git-Out $wt @('rev-parse', '--verify', 'HEAD^{commit}')) -match '^[0-9a-f]{40}$') 'the worktree branch tip is a readable commit'
+
     # --- conflict: aborted, worktree back to its pre-merge state ----------------------
     & git -C $main worktree add -q (Join-Path $tmp 'conf') feat/conf
     Set-Content -LiteralPath (Join-Path $tmp 'conf\a.txt') 'conflicting'
@@ -118,7 +178,7 @@ try {
     & git -C $wt commit -q -am 'other side'
     $before = Git-Out $wt @('rev-parse', 'HEAD')
     $r = Invoke-Merge $wt 'feat/conf'
-    Check ($r.code -eq 1 -and $r.out -match 'status=failed reason=merge-aborted files=a.txt') "a conflict exits 1 and names the file (exit $($r.code)): $($r.out)"
+    Check ($r.code -eq 1 -and $r.out -match 'status=failed reason=merge-aborted files=a.txt detail=\S') "a conflict exits 1, names the file and carries git's last line (exit $($r.code)): $($r.out)"
     Check ((Git-Out $wt @('rev-parse', 'HEAD')) -eq $before) 'the aborted merge left HEAD where it was'
     & git -C $wt rev-parse -q --verify MERGE_HEAD *> $null
     Check ($LASTEXITCODE -ne 0) 'no merge is left in progress'
