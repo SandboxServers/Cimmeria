@@ -1,0 +1,95 @@
+diff --git a/.claude/agents/ops.md b/.claude/agents/ops.md
+index 20e6d712c3..a56c52ba83 100644
+--- a/.claude/agents/ops.md
++++ b/.claude/agents/ops.md
+@@ -21,7 +21,7 @@ Allowed operations:
+ - Rebase onto a recorded SHA, in the one worktree named, with a full 40-hex `<sha>`, a `<branch>` and a full 40-hex `<old-base>` (the commit the branch was cut from, which for a stacked branch is its parent branch tip, not `origin/main`) the caller gave you. Before: `git -C <wt> rev-parse --abbrev-ref HEAD` equals `<branch>`, `git -C <wt> status --porcelain` is empty, `git -C <wt> rev-parse --verify <sha>` succeeds, and `git -C <wt> merge-base HEAD <old-base>` equals `<old-base>` (it is an ancestor of the branch). Then run only `git -C <wt> rebase --onto <sha> <old-base> <branch>` (no fetch). After: `git -C <wt> status --porcelain` is empty, `git -C <wt> rev-parse --abbrev-ref HEAD` equals `<branch>`, and `git -C <wt> merge-base HEAD <sha>` equals `<sha>`. Any mismatch or conflict returns `failed` with the `git -C <wt> status` text; leave the worktree exactly as it is, and run no `rebase --abort`, `--continue` or `--skip`, no reset, and no second attempt.
+ - Reads, with read-only arguments (never a branch name to create or a ref to delete): `git -C <wt> rev-parse`, `git -C <wt> merge-base`, `git -C <wt> diff --stat`, `git -C <wt> branch --list`, `git worktree list`, `git log`, `git status`.
+ 
+-Never run `git worktree prune`, `git stash`, `git reset`, `git checkout`, `git restore`, `git clean`, `git branch -d|-D|-m`, `--force`, `--force-with-lease`, `-f`, `--no-verify`, `--amend`, `rebase --abort`, or a `git push` (a push happens only inside `ship.ps1`). Never touch a worktree other than the one named, and never pass a path or branch that belongs to another worktree. Anything not on the allowed list: return `blocked`.
++Never run `git worktree prune`, `git stash`, `git reset`, `git checkout`, `git restore`, `git clean`, `git branch -d|-D|-m`, `--force`, `--force-with-lease`, `-f`, `--no-verify`, `--amend`, `rebase --abort`, or a `git push` (a push happens only inside `ship.ps1`). Never touch a worktree other than the one named, and never pass a path or branch that belongs to another worktree. Anything not on the allowed list: return `blocked`. If the PowerShell tool is unavailable (a Linux or WSL host), return `blocked` and state that reason in the one-clause reason; never a bare `blocked`.
+ 
+ Write no report file. Return one line:
+ `ops <done|failed|blocked> <PR url, worktree path, commit sha or -> <one-clause reason on failure or refusal>`
+diff --git a/.codex/agents/ops.toml b/.codex/agents/ops.toml
+index 6349730fa4..64c26b4a61 100644
+--- a/.codex/agents/ops.toml
++++ b/.codex/agents/ops.toml
+@@ -16,7 +16,7 @@ Allowed operations:
+ - Rebase onto a recorded SHA, in the one worktree named, with a full 40-hex `<sha>`, a `<branch>` and a full 40-hex `<old-base>` (the commit the branch was cut from, which for a stacked branch is its parent branch tip, not `origin/main`) the caller gave you. Before: `git -C <wt> rev-parse --abbrev-ref HEAD` equals `<branch>`, `git -C <wt> status --porcelain` is empty, `git -C <wt> rev-parse --verify <sha>` succeeds, and `git -C <wt> merge-base HEAD <old-base>` equals `<old-base>` (it is an ancestor of the branch). Then run only `git -C <wt> rebase --onto <sha> <old-base> <branch>` (no fetch). After: `git -C <wt> status --porcelain` is empty, `git -C <wt> rev-parse --abbrev-ref HEAD` equals `<branch>`, and `git -C <wt> merge-base HEAD <sha>` equals `<sha>`. Any mismatch or conflict returns `failed` with the `git -C <wt> status` text; leave the worktree exactly as it is, and run no `rebase --abort`, `--continue` or `--skip`, no reset, and no second attempt.
+ - Reads, with read-only arguments (never a branch name to create or a ref to delete): `git -C <wt> rev-parse`, `git -C <wt> merge-base`, `git -C <wt> diff --stat`, `git -C <wt> branch --list`, `git worktree list`, `git log`, `git status`.
+ 
+-Never run `git worktree prune`, `git stash`, `git reset`, `git checkout`, `git restore`, `git clean`, `git branch -d|-D|-m`, `--force`, `--force-with-lease`, `-f`, `--no-verify`, `--amend`, `rebase --abort`, or a `git push` (a push happens only inside `ship.ps1`). Never touch a worktree other than the one named, and never pass a path or branch that belongs to another worktree. Anything not on the allowed list: return `blocked`.
++Never run `git worktree prune`, `git stash`, `git reset`, `git checkout`, `git restore`, `git clean`, `git branch -d|-D|-m`, `--force`, `--force-with-lease`, `-f`, `--no-verify`, `--amend`, `rebase --abort`, or a `git push` (a push happens only inside `ship.ps1`). Never touch a worktree other than the one named, and never pass a path or branch that belongs to another worktree. Anything not on the allowed list: return `blocked`. If the PowerShell tool is unavailable (a Linux or WSL host), return `blocked` and state that reason in the one-clause reason; never a bare `blocked`.
+ 
+ Write no report file. Return one line:
+ `ops <done|failed|blocked> <PR url, worktree path, commit sha or -> <one-clause reason on failure or refusal>`
+diff --git a/CLAUDE.md b/CLAUDE.md
+index 7b31883f21..b3c8b93c72 100644
+--- a/CLAUDE.md
++++ b/CLAUDE.md
+@@ -36,7 +36,7 @@ Windows-native, on the toolchain `rust-toolchain.toml` pins. **Every compiling `
+ pwsh tools/build-lane/lane.ps1 cargo check -p <crate>
+ ```
+ 
+-Load the `lane-build` skill for workspace runs, live-DB tests, the server build and lane failures. The reasons: [build-system.md](docs/architecture/build-system.md).
++Load the `lane-build` skill for workspace runs, live-DB tests, the server build and lane failures. The reasons: [build-system.md](docs/architecture/build-system.md). WSL/Linux hosts are not supported for interactive sessions; what breaks, and how headless launches differ: [§ WSL and Linux hosts](docs/agents/development-workflow.md#wsl-and-linux-hosts).
+ 
+ ## Every PR needs tests and docs
+ 
+diff --git a/docs/agents/development-workflow.md b/docs/agents/development-workflow.md
+index 6ebd15d871..57d764e9d0 100644
+--- a/docs/agents/development-workflow.md
++++ b/docs/agents/development-workflow.md
+@@ -262,6 +262,38 @@ Starting the bundled Postgres is documented in [`docs/architecture/integration-t
+ - `tools/build-hygiene/sweep.ps1` trims every target dir on the machine: the main checkout, `.claude/worktrees/*` and the Dev Drive. Through `cargo-sweep` (`cargo install --locked cargo-sweep`) it keeps only artifacts from the pinned toolchain and drops those unused for `-Days` (default 14). It also deletes stale incremental sessions, incremental caches not compiled for `-IncrementalHours` (default 24), and feature variants no build has read for `-VariantHours` (default 24), such as a crate's builds from before a rebase changed its dependencies. `-DryRun` prints what it would free per target dir, and `-Only <worktree>` limits it to one. It skips target dirs a lane job is building in. **Don't run it while anything else builds:** it can delete files a running build is about to use.
+ - `tools/build-metrics/measure-build.ps1` gives controlled numbers (cold build, edit loop, `cargo check`, peak memory, target size). Run it under `lane.sh --exclusive` from a worktree with an empty target dir, and re-measure before changing the slot count or `CARGO_BUILD_JOBS`.
+ 
++## WSL and Linux hosts
++
++**Status: not supported for interactive sessions. Use the Windows checkout.** The documented stance is Windows-native development ([building.md](../building.md#prerequisites): "no WSL or cross-compile path for development"), and nothing here reverses it. This section records what you hit if you start `claude` from WSL or another Linux host anyway, so you don't rediscover it. Whether the repo supports or forbids WSL is a maintainer decision, tracked as an open question in the PR that added this section.
++
++CI is Linux, so a local Linux test pass is representative for tests. The Windows build is a separate matter.
++
++### What breaks
++
++- **No documented path.** [building.md](../building.md#prerequisites) and the `lane-build` skill say Windows only, and the `ship-pr` skill says not to use bash. Every `tools/build-lane/*.ps1` has a `.sh` twin ([README](../../tools/build-lane/README.md)), but none is documented as supported on a developer host.
++- **`ops` cannot run.** [`ops`](../../.claude/agents/ops.md) has only the PowerShell and Read tools and runs only `.ps1` commands. Where PowerShell is unavailable it returns `blocked` (now with the reason stated), so worktree, git and PR work goes around it.
++- **Repo scripts that fail on Linux or WSL:**
++  - `mk-worktree.sh` dies at `cygpath` after it creates the worktree, so `external/` is not linked. Link it by hand with `ln -s <main-checkout>/external <worktree>/external` (Windows worktrees use a junction instead), and remove the symlink before `git worktree remove`.
++  - `ship.sh` calls `python`, which a Linux host may not have. Run `python3 tools/build-lane/ship.py pr ...` directly.
++  - `ship.py merge` polls until it times out when the installed `gh` has no `gh pr checks --json` (2.45 has none). Read plain `gh pr checks <n>`, then `gh pr merge <n> --squash --match-head-commit <sha>`.
++  - `gh pr edit` fails with a GraphQL error about classic projects on an old `gh`. Edit the body with `gh api -X PATCH repos/<owner>/<repo>/pulls/<n> -F body=@file`.
++  - `rm-worktree.sh` is Windows-shaped. Retire by hand: the `external/` symlink, the worktree, the branch, the `sgw_<name>` database and its `_0`..`_7` clones, and the worktree's lane log directory.
++- **Closed loopback ports hang.** Under WSL2 mirrored networking, connecting to a closed loopback port hangs until the caller's own deadline instead of being refused, so a test that expects "connection refused" waits or times out ([details](../../.claude/agent-memory/main-session/reference_loopback_exporter_test_seams_2026_10_04.md)).
++- **Live-DB tests need a database you start.** Nothing listens on port 5433 by default. Run the same `postgres:17.9` image CI uses in a container, then `tools/build-lane/live-db-test.sh`. Two worktrees testing at once exhaust `max_connections`; pass `--test-threads=4`.
++- **The Linux build excludes six crates and needs system packages.** The CI invocation excludes `cimmeria-app`, `cimmeria-content-editor`, `cimmeria-scene-editor`, `cimmeria-client-telemetry`, `cimmeria-client-patches` and `cimmeria-lab`. Dropping `cimmeria-client-telemetry` makes a Linux host need the xkbcommon and xcb dev packages. The authoritative list is [`test.yml`](../../.github/workflows/test.yml); the same list and package note are in [troubleshooting](../troubleshooting.md#local-tests-pass-but-ci-fails-on-clippy) and the kickoff guide.
++- **The one Linux guide conflicts with the lane rule.** [`autonomous-agent-kickoff.md`](../guides/autonomous-agent-kickoff.md) uses `flock` and a shared `CARGO_TARGET_DIR`, while [CLAUDE.md](../../CLAUDE.md) requires every compiling `cargo` call to go through the lane, which gives each worktree its own target dir.
++
++The lane itself does run on Linux: `bash tools/build-lane/lane.sh cargo ...` initialises its state under `~/.local/share/cimmeria-build`. That is an observation, not a supported configuration.
++
++### Headless and CI launches get the orchestrator too
++
++`"agent": "orchestrator"` in [`.claude/settings.json`](../../.claude/settings.json) (decision D-LO1 in the [lean-orchestration ledger](../analysis/lean-orchestration/README.md)) applies to **every** Claude Code launch in a checkout, not only interactive ones: headless `claude -p` runs and CI runs such as `claude-code-action` load the [orchestrator](#default-persona) as well. The orchestrator has no Bash, so a CI job that needs a shell must override the default:
++
++- `--agent <name>` picks another persona, for example `hands-on` (all tools) or a specific advisor.
++- `--setting-sources user` skips the project's `settings.json`, so the default persona never loads. It also skips the project's hooks and `env` block.
++
++Interactively, `claude --agent hands-on` is the documented escape hatch.
++
+ ## Agent board
+ 
+ Sessions and agents across the SandboxServers repos coordinate on the agent board, <https://board.cimmeria.app>. Read [the agent board guide](https://github.com/SandboxServers/agent-board/blob/main/docs/guide.md) before your first post, and install the tooling once per machine from [SandboxServers/agent-board](https://github.com/SandboxServers/agent-board) with `python cli/install.py --operator <steven|derek>`.
+diff --git a/docs/guides/autonomous-agent-kickoff.md b/docs/guides/autonomous-agent-kickoff.md
+index fd6a251c8a..53a1f6afd1 100644
+--- a/docs/guides/autonomous-agent-kickoff.md
++++ b/docs/guides/autonomous-agent-kickoff.md
+@@ -9,6 +9,8 @@ Main checkout: `/home/derek/code_stuff/Cimmeria`. Host: WSL2 Ubuntu 24.04, 24 CP
+ Docker, passwordless sudo. `gh` is authenticated as the repo owner's account and every agent
+ shares it, so "assigned to me" means "claimed by some agent", not "claimed by you".
+ 
++> **Conflict with the lane rule.** This guide's `flock` plus shared `CARGO_TARGET_DIR` is not the build-lane workflow that [CLAUDE.md](../../CLAUDE.md) requires, and WSL is not a supported interactive host. See [WSL and Linux hosts](../agents/development-workflow.md#wsl-and-linux-hosts). Which of the two wins on Linux is an open maintainer question.
++
+ ## Hard rules
+ 
+ 1. **Never touch the main checkout's working tree or branches.** No `checkout`, `pull`, `reset`,
