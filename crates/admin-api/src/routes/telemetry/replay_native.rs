@@ -221,7 +221,6 @@ pub(super) struct ReplayNames<'a> {
     /// The uploading process's id, if its header carried one.
     pub client_pid: Option<u32>,
     /// The chunk's clock, for rows that carry `server_ts_ms`.
-    #[allow(dead_code)] // Read by PC-17, which writes `server_ts_ms`.
     pub clock: Option<super::entity_labels::ChunkClock>,
 }
 

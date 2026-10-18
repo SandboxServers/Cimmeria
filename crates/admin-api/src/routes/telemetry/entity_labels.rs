@@ -299,11 +299,12 @@ impl NamingPlan {
             .filter_map(|ev| native(ev).map(|(ts, _)| ts))
             .max()
         {
-            // A stamp older than the newest row, or after receipt, is
-            // incoherent and reads as absent.
-            let stamp = client_sent_ms
-                .filter(|s| *s >= newest && *s <= recv_ms)
-                .unwrap_or(newest);
+            // A stamp older than the newest row is incoherent and reads as
+            // absent. There is no upper bound: the stamp is on the client's
+            // clock, which may run ahead of the server's, so comparing it to
+            // the receive time would reject every honest stamp from such a
+            // client.
+            let stamp = client_sent_ms.filter(|s| *s >= newest).unwrap_or(newest);
             clock.observe(recv_ms, stamp);
         }
         let mut plan = Self {

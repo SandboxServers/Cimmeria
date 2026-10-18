@@ -86,6 +86,70 @@ fn sent_ms_header_parses_or_reads_none() {
     assert_eq!(read(Some("0")), None);
 }
 
+/// Upload one camera row with client time `ts_ms` from session `sid`, with
+/// `sent` as the send-stamp header if given, and return the `clock_offset_ms`
+/// the replayed row carries, with the server's unix ms before and after.
+fn camera_offset(sid: &str, ts_ms: i64, sent: Option<i64>) -> (i64, i64, i64) {
+    let now_ms = || {
+        let d = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap();
+        i64::try_from(d.as_millis()).unwrap()
+    };
+    let _env = Env::install();
+    let state = UploadState::new(UploadLimits::default());
+    let row = format!(
+        r#"{{"type":"client_native","ts_ms":{ts_ms},"seq":0,"target":"client.camera.at_interact","level":"info","fields":{{"zoom":1.0}}}}"#
+    );
+    let mut builder = Request::builder()
+        .method("POST")
+        .uri("/upload-chunk")
+        .header(AUTHORIZATION, format!("Bearer {}", token(sid)));
+    if let Some(sent) = sent {
+        builder = builder.header(CLIENT_SENT_MS_HEADER, sent.to_string());
+    }
+    let request = builder.body(Body::from(gzip(row.as_bytes()))).unwrap();
+    let before = now_ms();
+    let (resp, rows) = run(capture_async(chunk_inner(
+        &state,
+        &UploadPolicy::defaults(),
+        PEER,
+        request,
+        Instant::now(),
+    )));
+    let after = now_ms();
+    resp.expect("the chunk is accepted");
+    let row = rows
+        .into_iter()
+        .find(|r| r.target == "client.native")
+        .expect("the camera row replays");
+    (
+        row.fields["clock_offset_ms"].parse().unwrap(),
+        before,
+        after,
+    )
+}
+
+/// **The header reaches the clock.** A stamp 50 s after the row's own time
+/// makes the offset sample `recv - stamp`, not `recv - ts_ms`; without the
+/// header the sample is the old one. Dropping the wiring in `chunk_flow`
+/// fails the first half.
+#[test]
+fn the_send_stamp_header_sets_the_clock_offset() {
+    let ts_ms = 1_000_000;
+    let sent = ts_ms + 50_000;
+    let (offset, before, after) = camera_offset("sess-clock-stamped", ts_ms, Some(sent));
+    assert!(
+        (before - sent..=after - sent).contains(&offset),
+        "offset {offset} is not recv - stamp"
+    );
+    let (offset, before, after) = camera_offset("sess-clock-unstamped", ts_ms, None);
+    assert!(
+        (before - ts_ms..=after - ts_ms).contains(&offset),
+        "offset {offset} is not recv - ts_ms"
+    );
+}
+
 /// **A bad header is absent too.** The chunk is still accepted, and the row
 /// is not stamped with a made-up pid.
 #[test]

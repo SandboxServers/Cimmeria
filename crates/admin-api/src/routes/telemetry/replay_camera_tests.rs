@@ -153,3 +153,15 @@ fn lift_reads_numeric_strings() {
     let lift = CameraLift::from_fields(bag.as_object().unwrap());
     assert_eq!(lift.zoom, Some(400.0));
 }
+
+/// A string that parses as a non-finite float reads as absent, so no `NaN`
+/// or infinity reaches the log attributes.
+#[test]
+fn lift_drops_non_finite_numbers() {
+    let bag = json!({ "zoom": "NaN", "camera_x": "inf", "camera_y": "-inf", "camera_z": "1.5" });
+    let lift = CameraLift::from_fields(bag.as_object().unwrap());
+    assert_eq!(lift.zoom, None);
+    assert_eq!(lift.camera_x, None);
+    assert_eq!(lift.camera_y, None);
+    assert_eq!(lift.camera_z, Some(1.5));
+}

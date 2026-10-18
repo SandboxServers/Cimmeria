@@ -205,17 +205,18 @@ fn incoherent_stamp_falls_back_to_newest() {
     assert_eq!(clock.offset_ms(), Some(1_005_000));
 }
 
-/// A stamp after the receive time is incoherent, so it reads as absent.
+/// A client clock ahead of the server's puts the stamp after the receive
+/// time; that is honest, so the sample is still `recv - stamp`.
 #[test]
-fn future_stamp_falls_back_to_newest() {
+fn stamp_from_a_fast_client_clock_is_honoured() {
     let mut clock = SessionClock::default();
     plan_sent(
-        &[native(10_000, json!({}))],
+        &[native(2_000_000, json!({}))],
         at(1_015_000),
-        Some(1_020_000),
+        Some(2_000_100),
         &mut clock,
     );
-    assert_eq!(clock.offset_ms(), Some(1_005_000));
+    assert_eq!(clock.offset_ms(), Some(-985_100));
 }
 
 /// The plan carries the chunk's clock, so the replay can stamp `server_ts_ms`.

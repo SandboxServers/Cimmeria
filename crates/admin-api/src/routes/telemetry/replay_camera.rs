@@ -64,13 +64,15 @@ pub(super) struct CameraLift {
     pub packets: Option<u32>,
 }
 
-/// A JSON number, or a string holding one.
+/// A finite JSON number, or a string holding one. A string such as `"NaN"` or
+/// `"inf"` parses as a float but is not a number to lift, so it reads as absent.
 fn number(v: &Value) -> Option<f64> {
-    match v {
+    let n = match v {
         Value::Number(n) => n.as_f64(),
         Value::String(s) => s.trim().parse().ok(),
         _ => None,
-    }
+    };
+    n.filter(|n| n.is_finite())
 }
 
 /// A whole JSON number, or a string holding one.
