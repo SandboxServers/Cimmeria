@@ -9,10 +9,16 @@ name: senpai-review
 # budget, so a human asks for each one. The label is removed at the end of
 # the run, so adding it again asks for a fresh review.
 #
-# Not a gate. Every step that can fail is `continue-on-error`, so a broken
-# or over-budget Senpai run still shows green and never trips the
-# `gh pr checks --watch --fail-fast` loop in the ship-pr skill. A failed run
-# leaves a warning annotation and rewrites the stub comment to say so.
+# Status: a run that was asked for and did not post a review goes red. Any
+# failed step fails the job: the token mint, the PR lookup, checkout, the stub
+# comment, the Claude step, or a stub Claude never replaced. A failed mint
+# says which secret to fix. On a failure the last steps rewrite the stub
+# comment (or post one) to say so, with the run link; only those best-effort
+# steps are `continue-on-error`. Runs that skip on purpose (another label,
+# fork PR, Dependabot, closed PR) end skipped or green.
+#
+# Not a gate: `main`'s ruleset requires only `ci gate`, and the ship-pr skill
+# watches `gh pr checks --required`, so a red Senpai run blocks nothing.
 #
 # Cost: Sonnet, at most 25 turns and an estimated $1.50 per run
 # (`--max-budget-usd` is a client-side estimate and can be passed slightly).
@@ -71,7 +77,6 @@ jobs:
       # app's name and avatar instead of github-actions[bot].
       - name: Put on the Senpai mask
         id: senpai-token
-        continue-on-error: true
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           app-id: ${{ secrets.APP_ID }}
@@ -80,12 +85,18 @@ jobs:
           permission-pull-requests: write
           permission-issues: write
 
+      # The action's own error is easy to misread, and a bad key is the usual
+      # cause. This names the fix without looking at the secret itself.
+      - name: Explain a failed token mint
+        if: failure() && steps.senpai-token.outcome == 'failure'
+        run: |
+          echo "::error title=Senpai token::Could not mint the Senpai GitHub App token. APP_PRIVATE_KEY must be the GitHub App's .pem (-----BEGIN RSA PRIVATE KEY-----), not an OpenSSH key, and APP_ID must be the App's numeric ID."
+          exit 1
+
       # Resolve the PR from whichever event fired and apply the guards the
       # job-level `if` cannot see on workflow_dispatch (fork, author, state).
       - name: Resolve the PR
         id: pr
-        if: steps.senpai-token.outputs.token != ''
-        continue-on-error: true
         env:
           GH_TOKEN: ${{ steps.senpai-token.outputs.token }}
           PR_INPUT: ${{ github.event.pull_request.number || inputs.pr_number }}
@@ -117,7 +128,6 @@ jobs:
       - name: Checkout PR head
         id: checkout
         if: steps.pr.outputs.skip == 'false'
-        continue-on-error: true
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: refs/pull/${{ steps.pr.outputs.number }}/head
@@ -129,8 +139,7 @@ jobs:
       # only ever reads config from the base branch.
       - name: Restore trusted Claude config from the base branch
         id: restore
-        if: steps.checkout.outcome == 'success'
-        continue-on-error: true
+        if: steps.pr.outputs.skip == 'false'
         env:
           BASE: ${{ steps.pr.outputs.base }}
         run: |
@@ -151,8 +160,7 @@ jobs:
       # gets visible feedback in seconds. Claude then overwrites this comment.
       - name: Post the stub comment
         id: stub
-        if: steps.restore.outcome == 'success'
-        continue-on-error: true
+        if: steps.pr.outputs.skip == 'false'
         env:
           GH_TOKEN: ${{ steps.senpai-token.outputs.token }}
           PR: ${{ steps.pr.outputs.number }}
@@ -175,8 +183,7 @@ jobs:
 
       - name: Summon Senpai
         id: senpai
-        if: steps.restore.outcome == 'success'
-        continue-on-error: true
+        if: steps.pr.outputs.skip == 'false'
         timeout-minutes: 15
         uses: anthropics/claude-code-action@f27be6b65a4652f08a2ba3cff79114829b588967 # v1.0.252
         with:
@@ -238,12 +245,8 @@ jobs:
                not load it for you. Then run `gh pr view ${{ steps.pr.outputs.number }}`
                and `gh pr diff ${{ steps.pr.outputs.number }}` to read the PR.
             2. A stub comment is already up so the author knows you are coming.
-               Its id is `${{ steps.stub.outputs.comment_id }}`. If that id is empty,
-               post the stub yourself before anything else: Write a short in-character
-               "review in progress" note to `.senpai/review.md` starting with the line
-               `<!-- senpai-reviewer -->`, run
-               `gh api repos/${{ github.repository }}/issues/${{ steps.pr.outputs.number }}/comments -F body=@.senpai/review.md --jq .id`,
-               and use the id it prints from then on.
+               Its id is `${{ steps.stub.outputs.comment_id }}`. The run fails if
+               that stub is still there when you finish.
             3. **Build a dossier on the author** (see "Opposition Research" below).
             4. Read any surrounding files you need to actually understand the change.
                Do NOT guess. A real bug you catch is worth 100 jokes; a fake bug you
@@ -252,7 +255,7 @@ jobs:
                using the Write tool. The file MUST begin with the line
                `<!-- senpai-reviewer -->`. It is the only file you may write.
             6. Replace the stub with it, in place:
-               `gh api -X PATCH repos/${{ github.repository }}/issues/comments/<ID> -F body=@.senpai/review.md`
+               `gh api -X PATCH repos/${{ github.repository }}/issues/comments/${{ steps.stub.outputs.comment_id }} -F body=@.senpai/review.md`
                This is your one comment. Never create a second one, and do not
                approve, request changes, or edit code — you only comment.
 
@@ -385,28 +388,52 @@ jobs:
             <sup>*Senpai Reviewer is an automated agent. Senpai is never wrong, but Senpai is occasionally mistaken. Verify fixes yourself.*</sup>
             ```
 
-      # A run that died (budget, turns, timeout, API error) must not leave a
-      # "review in progress" stub that never resolves.
+      # The Claude step can end "success" without ever replacing the stub (it
+      # ran out of turns or posted somewhere else). No review posted is a
+      # failed run.
+      - name: Check the review was posted
+        if: steps.pr.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ steps.senpai-token.outputs.token }}
+          COMMENT_ID: ${{ steps.stub.outputs.comment_id }}
+        run: |
+          set -euo pipefail
+          body=$(gh api "repos/$REPO/issues/comments/$COMMENT_ID" --jq .body)
+          if [[ "$body" == *'<!-- senpai-stub -->'* ]]; then
+            echo "::error title=Senpai::The Claude step ended but the stub comment was never replaced with a review."
+            exit 1
+          fi
+
+      # A failed run must not leave a "review in progress" stub that never
+      # resolves, or a label press with no answer at all. Best effort: the job
+      # is already red, so this step must not hide or replace that.
       - name: Report a failed episode
-        if: always() && steps.stub.outputs.comment_id != '' && steps.senpai.outcome != 'skipped'
+        if: failure() && steps.senpai-token.outputs.token != ''
         continue-on-error: true
         env:
           GH_TOKEN: ${{ steps.senpai-token.outputs.token }}
           COMMENT_ID: ${{ steps.stub.outputs.comment_id }}
+          # Set only once the PR resolved, so this never comments on a number
+          # the lookup rejected.
           PR: ${{ steps.pr.outputs.number }}
-          OUTCOME: ${{ steps.senpai.outcome }}
         run: |
           set -euo pipefail
-          body=$(gh api "repos/$REPO/issues/comments/$COMMENT_ID" --jq .body)
-          [[ "$body" == *'<!-- senpai-stub -->'* ]] || exit 0
-          printf '%s\n## Episode %s: Senpai fell asleep\n\n> *The review did not finish (step outcome: %s). Remove and re-add the **senpai** label to try again.*\n\n<sup>[Run log](%s)</sup>\n' \
-            '<!-- senpai-reviewer -->' "$PR" "$OUTCOME" "$RUN_URL" > .senpai/failed.md
-          gh api -X PATCH "repos/$REPO/issues/comments/$COMMENT_ID" -F body=@.senpai/failed.md > /dev/null
-          echo "::warning title=Senpai::The review did not finish; the stub comment now says so."
-
-      - name: Warn when Senpai did not run
-        if: always() && steps.pr.outputs.skip != 'true' && steps.senpai.outcome != 'success'
-        run: echo "::warning title=Senpai::No review was posted (token, checkout or Claude step failed). See the step logs."
+          [[ "$PR" =~ ^[0-9]+$ ]] || exit 0
+          note="$RUNNER_TEMP/senpai-failed.md"
+          if [[ -n "$COMMENT_ID" ]]; then
+            body=$(gh api "repos/$REPO/issues/comments/$COMMENT_ID" --jq .body)
+            # Claude already replaced the stub with a review: leave it alone.
+            [[ "$body" == *'<!-- senpai-stub -->'* ]] || exit 0
+            printf '%s\n## Episode %s: Senpai fell asleep\n\n> *The review run failed before a review was posted. Remove and re-add the **senpai** label to try again.*\n\n<sup>[Run log](%s)</sup>\n' \
+              '<!-- senpai-reviewer -->' "$PR" "$RUN_URL" > "$note"
+            gh api -X PATCH "repos/$REPO/issues/comments/$COMMENT_ID" -F body=@"$note" > /dev/null
+          else
+            # Failed before the stub went up. No reviewer marker, so the next
+            # run's stub step doesn't mistake this note for a past verdict.
+            printf '**Senpai review failed** before it could start. See the [run log](%s), then remove and re-add the **senpai** label to try again.\n' \
+              "$RUN_URL" > "$note"
+            gh api "repos/$REPO/issues/$PR/comments" -F body=@"$note" > /dev/null
+          fi
 
       # Removing the label lets someone ask again by re-adding it. Removal
       # fires `unlabeled`, which this workflow ignores, so there is no loop.

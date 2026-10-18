@@ -34,9 +34,10 @@ PR and whenever a check fails. Every compiling command goes through the lane (se
 - Blocking only when figures or `docs/drafts/spec/` chapters change: `figure-sources-in-sync`,
   `figure-style-lint`.
 - Warn-only: `markdownlint`, `spec-lint`.
-- Opt-in and never red: `senpai review` ([senpai-review.yml](../../../.github/workflows/senpai-review.yml)),
+- Opt-in and not required: `senpai review` ([senpai-review.yml](../../../.github/workflows/senpai-review.yml)),
   a paid in-character Claude review that runs only when someone adds the `senpai` label.
-  Don't add the label as a routine ship step.
+  It goes red when it fails to post a review, which blocks nothing. Don't add the label as
+  a routine ship step.
 
 Before opening the PR, also:
 
@@ -67,8 +68,14 @@ Never write `sleep`/`until`/`Start-Sleep` loops around `gh pr checks`. Telemetry
 220 such polling calls in one week, each one a full model turn. Use one blocking call:
 
 ```powershell
-gh pr checks <PR> --watch --fail-fast
+gh pr checks <PR> --required --watch --fail-fast
 ```
+
+`--required` watches only what `main`'s ruleset requires (`ci gate`), so a red check that
+blocks nothing, such as an opt-in `senpai review` or a warn-only lint, can't read as red CI.
+Path-filtered checks aren't ruleset-required either: `ship.py merge` still waits for
+the lab and build-lane ones (step 6), and after a figure change run one plain
+`gh pr checks <PR>` once CI settles to see the figure checks.
 
 Run it as a background task if the harness supports that, and you are notified when it
 exits. Alternatively let `ship.py merge` do the waiting (step 6).
