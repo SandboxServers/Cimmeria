@@ -35,6 +35,36 @@ fn player_in(mgr: &mut SpaceManager, entity_id: u32, world: &str) -> u32 {
 
 // ── Accepted-position sampling (item 4) ───────────────────────────────
 
+/// The accept path feeds the approach ring for players only, at 1 Hz,
+/// and not through the 5 s sample throttle.
+#[test]
+fn the_accept_path_feeds_the_approach_ring() {
+    let mut mgr = make_manager();
+    let t0 = Instant::now();
+    player_in(&mut mgr, 7120, "Agnos");
+    for i in 0..3 {
+        mgr.sample_accepted_position_at(
+            7120,
+            [11.0 + i as f32, 0.0, 20.0],
+            t0 + Duration::from_secs(i),
+        );
+    }
+    let trail = mgr
+        .movement_telemetry
+        .approach_trail(7120, t0 + Duration::from_secs(2))
+        .unwrap();
+    assert_eq!(trail.points.len(), 3);
+
+    // An NPC is never on the ring.
+    mgr.create_entity(7121, "Agnos", SPAWN, [0.0; 3]).unwrap();
+    mgr.sample_accepted_position_at(7121, [11.0, 0.0, 20.0], t0);
+    assert_eq!(
+        mgr.movement_telemetry
+            .approach_trail(7121, t0 + Duration::from_secs(1)),
+        None
+    );
+}
+
 fn sample_rows(
     capture: &crate::test_support::LogCaptureGuard,
 ) -> Vec<crate::test_support::Captured> {
