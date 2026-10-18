@@ -12,7 +12,7 @@ name: senpai-review
 # Status: a run that was asked for and did not post a review goes red. Any
 # failed step fails the job: the token mint, the PR lookup, checkout, the stub
 # comment, the CLI install, the Claude step (any result but a clean success),
-# or a stub Claude never replaced. A failed mint
+# the post, or a stub that was never replaced. A failed mint
 # says which secret to fix. On a failure the last steps rewrite the stub
 # comment (or post one) to say so, with the run link and, when Claude itself
 # failed, its one-line error; only those best-effort steps are
@@ -44,8 +44,11 @@ name: senpai-review
 #
 # Identity and permissions: comments post as the Senpai GitHub App (secrets
 # APP_ID and APP_PRIVATE_KEY), with an installation token scoped to
-# contents:read, pull-requests:write and issues:write. The workflow's own
-# GITHUB_TOKEN gets contents:read and nothing else.
+# contents:read, pull-requests:write and issues:write. Only the workflow's
+# own steps hold that token. Claude gets the workflow's GITHUB_TOKEN
+# (contents:read, pull-requests:read), so it can read the PR but cannot post,
+# and a PR cannot talk it into posting anything. Claude writes the review;
+# the "Post the review" step puts it over the stub.
 #
 # Trust: the PR head is checked out without credentials, and the paths
 # Claude Code loads config from (.claude/, CLAUDE.md, .mcp.json, ...) are
@@ -67,6 +70,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 # One Senpai episode per PR at a time; a second request waits rather than
 # cancelling a run that has already spent money. Label events for any other
@@ -173,6 +177,8 @@ jobs:
               git checkout "origin/${BASE}" -- "$p"
             fi
           done
+          # A PR could commit its own .senpai/review.md or previous.md.
+          rm -rf .senpai
           mkdir -p .senpai
 
       # Post (or reset) the one Senpai comment right away, so the label press
@@ -285,11 +291,18 @@ jobs:
             < "$prompt" > "$result" || rc=$?
           summary=$(jq -r '"subtype=\(.subtype) is_error=\(.is_error) turns=\(.num_turns) cost_usd=\(.total_cost_usd)"' "$result" 2>/dev/null || echo "no parsable result")
           echo "Claude Code exited ${rc}: ${summary}"
+          # What Claude was refused and how its last reply starts, so a run
+          # without a review says why. Cut short, key-shaped text redacted,
+          # every line prefixed so none can start a workflow command.
+          redact() { sed -E 's/sk-ant-[A-Za-z0-9_-]*/sk-ant-[redacted]/g; s/sk-[A-Za-z0-9_-]{16,}/sk-[redacted]/g'; }
+          jq -r '(.permission_denials // [])[] | "denied: \(.tool_name) \(.tool_input | tostring | .[0:200])"' "$result" 2>/dev/null | redact || true
+          jq -r '.result // "" | tostring | .[0:600]' "$result" 2>/dev/null | redact | sed 's/^/reply: /' || true
           jq -e '.type == "result" and .subtype == "success" and .is_error == false' "$result" > /dev/null 2>&1 || exit 1
           exit "$rc"
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_SERVICE_ACCOUNT_API_KEY }}
-          GH_TOKEN: ${{ steps.senpai-token.outputs.token }}
+          # Read-only on purpose (see the header); never the App token.
+          GH_TOKEN: ${{ github.token }}
           CLAUDE_BIN: ${{ steps.claude-install.outputs.bin }}
           DISABLE_AUTOUPDATER: '1'
           SENPAI_PROMPT: |
@@ -307,7 +320,7 @@ jobs:
             - Batch independent read-only calls (several tool calls in one reply).
             - Spend turns on the code, not on the dossier.
             - By turn 20 at the latest, stop exploring and do steps 5 and 6. A
-              review that never gets posted is worth nothing.
+              review that never gets written is worth nothing.
             - If `gh pr diff` is too long to read in one go, read it per file with
               `git diff origin/${{ steps.pr.outputs.base }}...HEAD -- <path>`
               (`git diff --stat origin/${{ steps.pr.outputs.base }}...HEAD` lists them).
@@ -317,8 +330,8 @@ jobs:
                not load it for you. Then run `gh pr view ${{ steps.pr.outputs.number }}`
                and `gh pr diff ${{ steps.pr.outputs.number }}` to read the PR.
             2. A stub comment is already up so the author knows you are coming.
-               Its id is `${{ steps.stub.outputs.comment_id }}`. The run fails if
-               that stub is still there when you finish.
+               When you finish, the workflow replaces it with your review. You
+               post nothing yourself: your GitHub token can only read.
             3. **Build a dossier on the author** (see "Opposition Research" below).
             4. Read any surrounding files you need to actually understand the change.
                Do NOT guess. A real bug you catch is worth 100 jokes; a fake bug you
@@ -326,10 +339,11 @@ jobs:
             5. Write the finished review (exact format below) to `.senpai/review.md`
                using the Write tool. The file MUST begin with the line
                `<!-- senpai-reviewer -->`. It is the only file you may write.
-            6. Replace the stub with it, in place:
-               `gh api -X PATCH repos/${{ github.repository }}/issues/comments/${{ steps.stub.outputs.comment_id }} -F body=@.senpai/review.md`
-               This is your one comment. Never create a second one, and do not
-               approve, request changes, or edit code — you only comment.
+            6. End the run with a final reply that is the review itself: the
+               same text as the file, starting with `<!-- senpai-reviewer -->`,
+               with nothing before or after it. If the Write tool is refused,
+               this reply is used instead, so it alone must be complete.
+               Never comment, approve, request changes, or edit code.
 
             ## Opposition Research (the bullying is personal, but only about code)
             Before writing a word, dig up material on
@@ -502,9 +516,46 @@ jobs:
           echo "message=$msg" >> "$GITHUB_OUTPUT"
           echo "api_status=$status" >> "$GITHUB_OUTPUT"
 
-      # The Claude step can end "success" without ever replacing the stub (it
-      # ran out of turns or posted somewhere else). No review posted is a
-      # failed run.
+      # Claude never posts (its token can only read). This posts what it
+      # wrote over the stub, with the App token: .senpai/review.md, or its
+      # final reply if the file is missing. The text is taken from the
+      # reviewer marker on, a wrapping code fence is dropped, and the stub
+      # marker is stripped so the checks below can't mistake it for a stub.
+      # No marker, no post: the run fails instead.
+      - name: Post the review
+        id: post
+        if: steps.senpai.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ steps.senpai-token.outputs.token }}
+          COMMENT_ID: ${{ steps.stub.outputs.comment_id }}
+        run: |
+          set -euo pipefail
+          review="$RUNNER_TEMP/senpai-review.md"
+          jq -r '.result // ""' "$RUNNER_TEMP/senpai-result.json" > "$RUNNER_TEMP/senpai-reply.md"
+          python3 - .senpai/review.md "$RUNNER_TEMP/senpai-reply.md" > "$review" <<'PY'
+          import re, sys
+          marker = "<!-- senpai-reviewer -->"
+          for path in sys.argv[1:]:
+              try:
+                  text = open(path, encoding="utf-8", errors="replace").read()
+              except FileNotFoundError:
+                  continue
+              i = text.find(marker)
+              if i < 0:
+                  continue
+              text = text[i:].replace("<!-- senpai-stub -->", "").strip()
+              text = re.sub(r"\n```\s*$", "", text).rstrip()
+              print(f"::notice title=Senpai::Posting the review from {path.rsplit('/', 1)[-1]}.", file=sys.stderr)
+              # GitHub rejects comment bodies over 65536 characters.
+              print(text[:65000])
+              sys.exit(0)
+          sys.exit("::error title=Senpai::Claude wrote no review: neither .senpai/review.md nor its final reply contains the reviewer marker.")
+          PY
+          printf '\n<sup>[Run log](%s)</sup>\n' "$RUN_URL" >> "$review"
+          gh api -X PATCH "repos/$REPO/issues/comments/$COMMENT_ID" -F body=@"$review" > /dev/null
+
+      # Belt and braces: whatever happened above, a stub still standing at
+      # this point is a failed run.
       - name: Check the review was posted
         if: steps.pr.outputs.skip == 'false'
         env:
