@@ -96,6 +96,12 @@ mod mission_round_trip_tests;
 #[cfg(test)]
 mod mission_abandon_round_trip_tests;
 
+/// The Marsh letter receipt end to end (HA-1360b2): the Cellblock grant, the
+/// Castle crossing, the Harset bind and the Marsh `CM_INTERACT` click, routed
+/// through the shipped base plugin table. Test-only.
+#[cfg(test)]
+mod mission_letter_receipt_tests;
+
 /// TG-DB-12: unreadable saved missions lock instead of letting a re-accept
 /// overwrite a completed row. Test-only.
 #[cfg(test)]
