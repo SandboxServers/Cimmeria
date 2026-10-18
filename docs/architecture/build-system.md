@@ -138,9 +138,9 @@ python tools/build-lane/lane_stats.py --csv jobs.csv     # every field, for a sp
 
 The log mixes very different jobs (a one-crate `cargo check` and a workspace `nextest` are both "a build"), so compare like with like with `--kind` and `--match`. A job's sccache hits and misses come from the shared sccache server, so they include any build that overlapped it; `busy_at_start` records how many did. The lowest free RAM is sampled every 2 seconds, so it is the figure to watch before raising the slot count.
 
-### 11. No WSL builds
+### 11. Platforms, and the retired WSL cross-compile
 
-Development builds run natively on Windows (PowerShell or Git Bash, driven by Claude Code). The WSL cross-compile path and its memory rules are retired.
+Development builds are validated natively on Windows with PowerShell 7. WSL, Linux, and Git Bash on Windows are not validated, but not unsupported ([WSL and Linux hosts](../agents/development-workflow.md#wsl-and-linux-hosts)). The WSL cross-compile path and its memory rules are retired.
 
 - CI still builds on Linux runners, so the `x86_64-unknown-linux-gnu` linker settings in `.cargo/config.toml` stay.
 - The bootstrap module's WSL branches stay for contributors who run setup there.

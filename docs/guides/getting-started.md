@@ -34,7 +34,7 @@ You'll need:
 
 | Requirement | Where to get it | Why |
 |---|---|---|
-| **Windows 11** (or Windows 10) | — | The server targets Windows and you build it natively there; the game client is Windows-only. There is no WSL build path. |
+| **Windows 11** (or Windows 10) | — | The server targets Windows and you build it natively there; the game client is Windows-only. Windows with PowerShell 7 is the validated setup; WSL and Linux are not validated, but not unsupported ([WSL and Linux hosts](../agents/development-workflow.md#wsl-and-linux-hosts)). |
 | **PowerShell 7+** | [PowerShell/PowerShell](https://github.com/PowerShell/PowerShell) | The bootstrap is a PowerShell script. PowerShell 7 ships with Windows 11. Check with `pwsh --version`. |
 | **Rust (rustup)** | [rustup.rs](https://rustup.rs) | `cargo build` needs it. You don't pick a version: [`rust-toolchain.toml`](../../rust-toolchain.toml) pins Rust 1.98.1, rustup picks it up automatically, and CI uses the same one. The setup script installs rustup if it's missing. |
 | **Visual Studio Build Tools** (MSVC) | [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/) | Cargo needs the MSVC linker on Windows. Install the "Desktop development with C++" workload. |

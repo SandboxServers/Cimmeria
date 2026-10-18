@@ -22,7 +22,7 @@ The active Cimmeria server is a Rust workspace under [`crates/`](../crates/). Th
 ## Prerequisites
 
 - **PowerShell 7+** (`pwsh`) — ships with Windows 11; install from [PowerShell/PowerShell](https://github.com/PowerShell/PowerShell) on other platforms.
-- **Windows, with the MSVC build tools.** Development builds run natively on Windows (PowerShell or Git Bash). CI builds on Linux, but there is no WSL or cross-compile path for development.
+- **Windows, with the MSVC build tools.** Development builds are validated on Windows with PowerShell 7. CI builds on Linux. WSL, Linux, and Git Bash on Windows are not validated, but not unsupported ([WSL and Linux hosts](agents/development-workflow.md#wsl-and-linux-hosts)); the old WSL cross-compile path is retired.
 - **Rust via rustup** — install from [rustup.rs](https://rustup.rs). You don't pick a version: [`rust-toolchain.toml`](../rust-toolchain.toml) pins Rust 1.98.1 with rustfmt and clippy, rustup picks it up automatically, and CI builds with the same version.
 - **Node.js 22+** — only required for the Tauri admin app (`-WithAdmin`).
 - **PostgreSQL 17** — `setup.ps1` provisions a local managed instance on port 5433 automatically. Pass `-UseDocker` to run it in a container instead.

@@ -54,7 +54,7 @@ pwsh tools/build-lane/lane.ps1 --exclusive cargo clippy --workspace <EXCL> --all
 - **The toolchain is pinned** in `rust-toolchain.toml` (rustfmt and clippy included), and CI
   installs the same version, so your clippy is CI's. Bump it in its own PR and fix the new
   lints there.
-- **Builds are Windows-native.** The WSL cross-compile is retired; CI builds on Linux runners.
+- **Windows with PowerShell 7 is the validated platform.** WSL, Linux and Git Bash are not validated, but not unsupported; the WSL cross-compile is retired, and CI builds on Linux runners.
   The standalone desktop launcher in `crates/launcher/desktop/` is the one exception: it builds
   natively on macOS and Windows, still through the lane
   ([build-system.md](../../../docs/architecture/build-system.md#standalone-desktop-launcher-validation)).
