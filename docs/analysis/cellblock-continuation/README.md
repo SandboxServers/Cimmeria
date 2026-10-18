@@ -2,7 +2,7 @@
 
 > Opened 2026-10-14. Static baseline: `d3efb7d41aad0b6008397f112d224ce7430d7acf`.
 > **Type**: Reference. **Audience**: Engineers and campaign coordinators.
-> **Last updated**: 2026-10-17. **Companions**: [Wave resume](RESUME.md), [Work packets](work-packets.md), [W1b coder packets](w1b-packets.md), [W2 packets](w2-packets.md), [W3 packets](w3-packets.md), [W3 frozen literals](w3-frozen.md), [Owner lab checklist](owner-lab-checklist.md), [CB-N00 worknote](worknotes/cb-n00.md), [CB-N01 handoff](presentation-handoff.md), [CB-N05 proposed seal](worknotes/cb-n05-seal.md), [W4 packets](w4-packets.md), [W5 packets (CB-N06)](w5-packets.md), [W5 frozen literals](w5-frozen.md).
+> **Last updated**: 2026-10-17. **Companions**: [Wave resume](RESUME.md), [Work packets](work-packets.md), [W1b coder packets](w1b-packets.md), [W2 packets](w2-packets.md), [W3 packets](w3-packets.md), [W3 frozen literals](w3-frozen.md), [Owner lab checklist](owner-lab-checklist.md), [CB-N00 worknote](worknotes/cb-n00.md), [CB-N01 handoff](presentation-handoff.md), [CB-N05 proposed seal](worknotes/cb-n05-seal.md), [W4 packets](w4-packets.md), [W5 packets (CB-N06)](w5-packets.md), [W5 frozen literals](w5-frozen.md), [CB-N08 acceptance](worknotes/cb-n08-acceptance.md), [CB-N08 close-out](worknotes/cb-n08.md).
 > CB-N00 is **Integrated** for the evidence/doc gate only. Fresh route acceptance is **UATPending**.
 
 This is the live ledger for the one-time escape in world 12. The
@@ -23,6 +23,7 @@ A completed source audit does not make a runtime packet Ready.
 - [CB-N00 worknote](worknotes/cb-n00.md): checks, scope and measurement handoff.
 - [CB-N01 worknote](worknotes/cb-n01.md): presentation handoff checks and limits.
 - [CB-N05 proposed seal](worknotes/cb-n05-seal.md): exact first authored story, copy, IDs, action order and review/UAT gates.
+- [CB-N08 close-out](worknotes/cb-n08.md) and [acceptance reconciliation](worknotes/cb-n08-acceptance.md): what was tested versus never tested, and every owner row's state.
 
 ## Packet status
 
@@ -30,36 +31,36 @@ A completed source audit does not make a runtime packet Ready.
 |---|---|---|
 | CB-N00 | Integrated | Evidence/doc gate passed two review rounds through `b59c4a124`; fresh route and lineage rows remain UNSEALED and client UATPending. No downstream runtime seal is granted. |
 | CB-N01 | Integrated | Presentation and sibling ownership handoff passed independent review and focused status correction review; runtime and client rows remain UATPending. |
-| CB-N02 | Writing | Family row. The 2026-10-15 fresh Human p3 run verified pistol grant, equip, reload and guard damage; #1667 did not reproduce and is not a child. CB-U02 stays UATPending. Children below. See [route baseline](route-baseline.md#2026-10-15-native-livewire-retry-and-prisoner-relog-fault). |
+| CB-N02 | Integrated, UATPending (CB-U02, CB-U03) | Family row. The 2026-10-15 fresh Human p3 run verified pistol grant, equip, reload and guard damage; #1667 did not reproduce and is not a child. CB-U02 stays UATPending. Children below. See [route baseline](route-baseline.md#2026-10-15-native-livewire-retry-and-prisoner-relog-fault). |
 | CB-N02s | Integrated | Relog-restore audit, [cb-n02s.md](worknotes/cb-n02s.md); integrated at `e10fd1f0a`. Sealed gaps A, B, C. |
 | CB-N02a | Integrated, UATPending | Chains 1026/1027 restore Prisoner 329's dialog on login; integrated at `e10fd1f0a`. CB-U03 client check pending. |
 | CB-N02b | Integrated, UATPending | [w1b-packets.md](w1b-packets.md): chain 1028 restores the `329_CellDoorButton` bit at 638 step 2115 (strand). Integrated at `a8d516d26` (packet `f3ee0adce`). CB-U03 client check pending. |
 | CB-N02c | Integrated, UATPending | [w1b-packets.md](w1b-packets.md): chain 1036 restores the Ambernol vial bit at 639 step 2145 (strand). Integrated at `654b2a3f2` (packet `1b7c05c28`). CB-U03 client check pending. |
 | CB-N02d | Integrated, UATPending | [w1b-packets.md](w1b-packets.md): chain 1037 re-arms the retrieval drone at 639 step 2144 (degraded play). Integrated at `52bde32a6`. CB-U03 client check pending. |
 | CB-N02s2 | Integrated | [work-packets.md](work-packets.md): bit-level check of the 622/640/641/680/687/688 restores and the relog state of sequences 1749 and 10001. Integrated at `0a2b5e803`. Verdict: no new gaps. Seals no children; W1c is not triggered by it. |
-| CB-N03 | BlockedEvidence | Blocked on CB-U05. CB-N03s found no static fault (no 681/686 miss established; route baseline CB-B06). The lab row CB-U05 decides. |
+| CB-N03 | Integrated, UATPending (CB-U05) | CB-N03s found no static fault (no 681/686 miss established; route baseline CB-B06) and CB-N03t pins the other three cover guards statically. No seed changed. The owner row CB-U05 decides; it has not run. |
 | CB-N03s | Integrated | [work-packets.md](work-packets.md): `npc-ai-spawn-advisor` seal check. Integrated at `38bc2ad4f`. Verdict: no static fault, so CB-N03a and CB-N03b are not sealed; CB-U05 lab row pending. |
-| CB-N03a | BlockedEvidence | CB-N03s sealed no seed fault, so W1c is not triggered. Exists only if CB-U05 shows a seed fault; then a new architect pass seals it. |
+| CB-N03a | Done / omitted | CB-N03s sealed no seed fault, so W1c was never triggered and no CB-N03a packet exists. Evidence: [the CB-N03 seal](worknotes/cb-n03-seal.md). It reopens only if the owner's CB-U05 run shows a seed fault; a new architect pass would then seal it. |
 | CB-N03t | Integrated | Integrated at `090af3c5f`. [w4-packets.md](w4-packets.md#cb-n03t--cover-guard-seed-test-optional): static test that the other three cover guards (spawns 28, 32, 33) hold, defend and release when flanked on the real navmesh and cover seed. Strengthens CB-N03's evidence; CB-U05 still decides. |
 | CB-N04 | Integrated, UATPending | Family row, cluster 1 only in W2 ([w2-packets.md](w2-packets.md)). O14-12 delegates cast and placement to the coordinator and domain reviewers. A second cluster is considered only after CB-U08 and CB-U09. |
 | CB-N04s | Integrated | Integrated at `ce1381581` (from `de3528669`). `npc-ai-spawn-advisor` seal: cluster, cast, nav_inspect probes, guard and protected-area clearance, gate, copy, filled SQL. Worktree `cellblock-cb-n04s` on the W2 architect commit (child of `0fca3114f`). |
 | CB-N04m | Integrated | Integrated at `86b5485bc` (from `8e29559e4`). `mission-systems-advisor` sign-off on the seal (gate, overlap, suppression, copy). After CB-N04s. |
 | CB-N04a | Integrated, UATPending | Integrated at `139342746` (packet `908cef5a5` from `bb7605dba`, review fix `21f72c4e2` from `139342746`). CB-U08 UATPending (ask first). `packet-coder`: spawns 520-522, holder dialog 60160, screens 200160-200162, chains 11010-11012 (lowest needed) and the `cellblock_ambience` live-DB tests. After CB-N04m returns `approve` or `change`. CB-U08 UATPending afterwards. |
-| CB-N05a | UATPending | Catalog infrastructure merged to `main` in #1734 and integrated here; the first real authored mission must pass journal, dialog, advance and relog before this gate closes. |
-| CB-N05 | Integrated (W3-INT) | Itemless, zero-reward *The Remaining Pods* ([the seal](worknotes/cb-n05-seal.md)). Built before CB-U09/CB-U10 under D-CC13, split into CB-N05-1 to CB-N05-7 plus W3a-INT and W3-INT under D-CC14 ([w3-packets.md](w3-packets.md), literals in [w3-frozen.md](w3-frozen.md)). After W3-INT: Integrated, UATPending on owner-run CB-U09 (pacing, 10-minute beat, O14-14) and CB-U10 (native journal, dialog, advance, relog). |
-| CB-U10 | UATPending (owner) | Owner-run lab rows for this wave: native journal, dialog 60150, first press, advance and relog in the real client ([owner-lab-checklist.md](owner-lab-checklist.md)). A blocking failure there blocks the campaign PR. |
+| CB-N05a | Integrated, UATPending (CB-U10) | Catalog infrastructure merged to `main` in #1734 and integrated here; the first real authored mission must pass journal, dialog, advance and relog before this gate closes. |
+| CB-N05 | Integrated, UATPending (CB-U09, CB-U10) | Itemless, zero-reward *The Remaining Pods* ([the seal](worknotes/cb-n05-seal.md)). Built before CB-U09/CB-U10 under D-CC13, split into CB-N05-1 to CB-N05-7 plus W3a-INT and W3-INT under D-CC14 ([w3-packets.md](w3-packets.md), literals in [w3-frozen.md](w3-frozen.md)). After W3-INT: Integrated, UATPending on owner-run CB-U09 (pacing, 10-minute beat, O14-14) and CB-U10 (native journal, dialog, advance, relog). |
+| CB-U03, U05, U08-U12 | UATPending (owner) | Owner-run lab rows (the CB-U10 detail follows; every row is in the checklist and none has a result): native journal, dialog 60150, first press, advance and relog in the real client ([owner-lab-checklist.md](owner-lab-checklist.md)). A blocking failure there blocks the campaign PR. |
 | CB-N05b | BlockedDependency | Separate Castle evidence hand-in is held for Harset HA-1360's reviewed atomic item receipt primitive, Castle recipient ownership and a new item/reward/ID seal. It does not gate CB-N05. No W3 packet. |
 | CB-N06 | Integrated, UATPending (CB-U12) | D-CC18: included as new Cimmeria content (`CIMMERIA_AUTHORING`). *Before the Patrol Returns* (mission 62060): after 638, both Op-CORE ambient prisoners offer one choice: hide them (second prisoner click) or jam the cell-door panel (`329_CellDoorButton`); either branch gives two Health Slappacks (item 2893) once and closes the other. Values in [w5-frozen.md](w5-frozen.md); packets in [w5-packets.md](w5-packets.md). After W5-INT: Integrated, UATPending (owner-run CB-U12). |
 | CB-N06s | Integrated at `259127199` (from `bbdfd2fe9`) | `mission-systems-advisor` static seal of the W5 design (checks G1-G11). May run beside W3 and W4 from the W5 architect commit. `reject` closes CB-N06 `Done / omitted`. |
 | CB-N06m | Integrated at `fedc51359` (from `6fc43280c`) | `items-systems-advisor` sign-off on the grant (item 2893 x2, full bag, first-press feedback, no farming). After CB-N06s `seal`. |
 | CB-N06-1 to CB-N06-3 | Integrated at `03dc96faf`, `050f67f2f`, `de581adf9`; fixes `f893ea0c5`, `a83509799` | W5a data packets: catalog entry and mission seeds; dialog 60151; chains 11030-11041, rows and linters. After W4-INT and CB-N06m `approve`. |
 | CB-N06-4 to CB-N06-7 | Integrated at `0fe86243b`, `d12b03b5b`, `8aacbde8a`, `04ea037c1` (from `2c3141cd3`, `c10160cce`, `21c21c8b9`, `2d3dd71c0`) | W5b proofs: resolve matrix, executor replay, cooked-sync transfer, services round trip (inventory and mission guard). After W5a-INT. |
-| CB-N07 | Ready (Tier 0) | Family row. D-CC16: the default-safe tier is built from static evidence. The difficulty tier CB-N07b is omitted (D-CC19) ([w4-packets.md](w4-packets.md)). |
+| CB-N07 | Integrated, UATPending (CB-U11) | Family row. D-CC16: the default-safe tier is built from static evidence (CB-N07a). The difficulty tier CB-N07b is omitted (D-CC19) ([w4-packets.md](w4-packets.md)). |
 | CB-N07s | Integrated | Integrated at `556bb40c6`. `npc-ai-spawn-advisor` seal of the barracks alarm bark (Region12, mission 687 step 2355, chain 11020, screen 200170), assumptions A1-A4. May run beside W3. |
 | CB-N07m | Integrated | Integrated at `4d759f735`. `mission-systems-advisor` sign-off on the CB-N07s seal. After CB-N07s `seal`. |
 | CB-N07a | Integrated, UATPending | Integrated at `dde1a75ed`. `packet-coder`: chain 11020, screen 200170, `cellblock_barracks_response` live-DB tests. After W3-INT and CB-N07m `approve`/`change`. Owner-run CB-U11 UATPending after W4-INT. |
 | CB-N07b | Done / omitted | D-CC19 (owner, 2026-10-17): no Tier 1 difficulty change. The barracks pack already pulls as one; the Tier 0 bark (CB-N07a) stays. |
-| CB-N08 | BlockedDependency | Split into CB-N08a (UAT reconciliation), CB-N08b (close-out docs), CB-N08-CI (full local CI), CB-N08-R (campaign review) and ship ([w4-packets.md](w4-packets.md), D-CC17). After W5-INT and the owner's lab rows CB-U03, U05, U08-U12 (or O14-09). |
+| CB-N08 | Integrated, UATPending (CB-U03, U05, U08-U12) | Split into CB-N08a (UAT reconciliation, [acceptance](worknotes/cb-n08-acceptance.md)), CB-N08b (close-out docs, [summary](worknotes/cb-n08.md)), CB-N08-CI (full local CI), CB-N08-R (campaign review) and ship ([w4-packets.md](w4-packets.md), D-CC17). The docs and the static reconciliation are done; CI, review and ship follow. Every client row is `UNTESTED: owner lab not run (O14-09)`. |
 
 The fresh p3 client reached mission 638's Livewire door, but the native
 minigame helper and screenshot call stalled. A later direct native Open reached
@@ -119,3 +120,21 @@ Wave 0 integrates the static evidence only. `north_review` findings were fixed i
 `b59c4a124`; fresh reviewer `north_rereview` found no actionable issues in the
 full baseline-to-fixer diff. Downstream statuses stay blocked until their named
 seals are complete; no runtime packet becomes Ready from this gate alone.
+
+## FZ-99 handoff
+
+FZ-99 owns the shared status documents (`docs/gap-analysis*`, `docs/project-status.md`, `docs/content/zone-audit.md`); this campaign did not touch them. This section is the input for its Cellblock row. The owner has run no lab row, so nothing below is a client pass; the full state of every row is in the [acceptance reconciliation](worknotes/cb-n08-acceptance.md).
+
+**What changed in world 12** (claimed IDs and the rollback for each are in the [CB-N08 close-out](worknotes/cb-n08.md)):
+
+- **Chains.** Relog restores 1026-1028, 1036 and 1037 (CB-N02a-d). Ambient bark 11010 (CB-N04a). The *The Remaining Pods* chains from the 11000-11005 claim (CB-N05). Barracks alarm bark 11020 (CB-N07a). The *Before the Patrol Returns* chains 11030-11041 (CB-N06).
+- **Missions.** 62050 *The Remaining Pods* (itemless, zero reward) and 62060 *Before the Patrol Returns* (two Health Slappacks, item 2893, once; new Cimmeria content, `CIMMERIA_AUTHORING`), both in `MISSION_ADDITIONS` as served catalog entries.
+- **Spawns.** Three stationary ambient cast rows, 520-522 (520 and 521 are the Op-CORE prisoners).
+- **Dialogs.** Holder dialog 60160 with screens 200160-200162 (ambient) and 200170 (barracks); served dialogs 60150 and 60151.
+- **Not changed.** No presentation asset, ring, class-start, editor or frontend code. CB-N07b (difficulty) is omitted (D-CC19). CB-N05b is held (below).
+
+**Open UATPending rows** (owner-run, none run): CB-U03, CB-U05, CB-U08, CB-U09, CB-U10, CB-U11, CB-U12, plus the route rows CB-U01, CB-U02, CB-U04, CB-U06, CB-U07 and CA-U01 to CA-U20.
+
+**Known blockers.** [#1667](https://github.com/SandboxServers/Cimmeria/issues/1667) (pistol: no fire animation, recoil or guard damage after pickup) is open; one 2026-10-15 fresh Human run did not reproduce it, and CB-U02 decides. CB-N05b is `BlockedDependency` on Harset HA-1360 and sits outside this PR.
+
+**Rows FZ-99 should write.** Cellblock: "Integrated, UATPending" for chains, missions and cast, naming the rows above; "client rows UNTESTED (owner lab not run)"; the pacing number (O14-14) does not exist yet. Known gaps to list: death around key transitions has no row and no test, and only archetypes 1 and 8 are exercised.

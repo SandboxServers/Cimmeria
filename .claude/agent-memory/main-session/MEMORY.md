@@ -4,6 +4,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Open investigations
 
+- [project_cellblock_continuation_closeout.md](project_cellblock_continuation_closeout.md) — Cellblock continuation closed out 2026-10-17: ID claims, bark and choice-bind patterns, `CIMMERIA_AUTHORING`, owner-run lab rule, ledger location
 - [reference_cellblock_lab_binding_2026_10_15.md](reference_cellblock_lab_binding_2026_10_15.md) — bind server evidence to the client's actual lab server; Livewire/screenshot stall invalidated fresh timing, and a verified post-relog Prisoner interaction received no dialog
 - [reference_cellblock_n05_authority_2026_10_14.md](reference_cellblock_n05_authority_2026_10_14.md) — CB-N05 authority review uses validated `interact_tag` for authored mission acceptance; native marker/dialog proof remains pending
 - [reference_cellblock_continuation_evidence_2026_10_14.md](reference_cellblock_continuation_evidence_2026_10_14.md) - World-12 source/route evidence locations; payload hashes do not seal historical mission lineage or fresh client acceptance

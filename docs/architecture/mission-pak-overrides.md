@@ -15,8 +15,12 @@ Items (category 4) also have two kinds. The Slappack `ItemOverride` rows patch a
 
 `MissionAddition { mission_id, xml }` in
 `crates/resources/src/base/mission_additions.rs` extends this path to wholly new
-mission IDs. `MISSION_ADDITIONS` stays empty until an authored content packet
-seals production XML. The [CB-N05a seal](../analysis/four-zone-planning/cb-n05a-seal.md)
+mission IDs. `MISSION_ADDITIONS` carries two production entries: mission 62050
+(*The Remaining Pods*, CB-N05, see the
+[CB-N05 seal](../analysis/cellblock-continuation/worknotes/cb-n05-seal.md)) and
+mission 62060 (*Before the Patrol Returns*, CB-N06, new Cimmeria content, see the
+[CB-N06 seal](../analysis/cellblock-continuation/worknotes/cb-n06-seal.md)). Both
+still need an owner client run (CB-U10, CB-U12). The [CB-N05a seal](../analysis/four-zone-planning/cb-n05a-seal.md)
 freezes the supported stock `_1624` schema and exact test-only 61000 fixture.
 The fixture is never seeded, offered or persisted.
 

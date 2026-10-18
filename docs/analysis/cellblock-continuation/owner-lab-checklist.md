@@ -7,15 +7,17 @@
 
 Owner directive, 2026-10-17: agents no longer drive the lab. The owner runs every row below once the agents are done, and records the result in the README row (pass, fail with what was seen, or skipped). Agents never start a lab session for these rows.
 
-| Row | Proves | Run after | Unblocks |
-|---|---|---|---|
-| CB-U03 | Relog restores the 638/639 interactions | now (W1b integrated) | CB-N02 Done |
-| CB-U05 | Mess Hall and Hallway05 guards flank and use cover | now | CB-N03 (CB-N07b is omitted, D-CC19) |
-| CB-U08 | The ambient cast stands where sealed and barks once | now (W2 integrated) | CB-N04 Done; a second cluster |
-| CB-U09 | A fresh core escape takes 30-45 minutes, plus the 62050 and 62060 beats | W3-INT (62060 part after W5-INT) | the pacing gate (O14-14) for CB-N05 and CB-N06 |
-| CB-U10 | Mission 62050 works in the native client | W3-INT | the campaign PR; CB-N05/CB-N05a Done |
-| CB-U11 | The barracks alarm line plays once, only during 687 step 2355 | W4-INT | CB-N07a Done |
-| CB-U12 | Mission 62060 *Before the Patrol Returns* (new Cimmeria content) works in the native client: one choice, one reward | W5-INT | the campaign PR; CB-N06 Done |
+**State at close-out (CB-N08b):** the owner has run no row. Every "Owner result" cell reads `Not run (O14-09)`; replace it with `Pass`, `Fail: <what you saw>` or `Skipped: <why>` and the date, and copy the result into the README row. The same state is in [worknotes/cb-n08-acceptance.md](worknotes/cb-n08-acceptance.md).
+
+| Row | Proves | Run after | Unblocks | Owner result |
+|---|---|---|---|---|
+| CB-U03 | Relog restores the 638/639 interactions | now (W1b integrated) | CB-N02 Done | Not run (O14-09) |
+| CB-U05 | Mess Hall and Hallway05 guards flank and use cover | now | CB-N03 (CB-N07b is omitted, D-CC19) | Not run (O14-09) |
+| CB-U08 | The ambient cast stands where sealed and barks once | now (W2 integrated) | CB-N04 Done; a second cluster | Not run (O14-09) |
+| CB-U09 | A fresh core escape takes 30-45 minutes, plus the 62050 and 62060 beats | W3-INT (62060 part after W5-INT) | the pacing gate (O14-14) for CB-N05 and CB-N06 | Not run (O14-09) |
+| CB-U10 | Mission 62050 works in the native client | W3-INT | the campaign PR; CB-N05/CB-N05a Done | Not run (O14-09) |
+| CB-U11 | The barracks alarm line plays once, only during 687 step 2355 | W4-INT | CB-N07a Done | Not run (O14-09) |
+| CB-U12 | Mission 62060 *Before the Patrol Returns* (new Cimmeria content) works in the native client: one choice, one reward | W5-INT | the campaign PR; CB-N06 Done | Not run (O14-09) |
 
 ## Setup (every row)
 
@@ -144,6 +146,7 @@ New Cimmeria content (D-CC18), not 2009 content. Run on a fresh Human and a fres
 **Blockers (not "pending"):** a blank dialog, a client crash, a missing first-press response, a lost or doubled reward, both branches paying out, or any change to the core route blocks the campaign PR.
 
 **If you dislike the quest, the copy or the reward**, say so: a fix packet sets `enabled = false` on chains 11030-11041, moves 60151 into the dialog quarantine and drops 62060 from the served catalog; delete `Cache.en-US\CookedDataDialogs.pak` on the client. CB-N06 then closes `Done / omitted`.
+
 ## Rows owned by CB-N08
 
-CB-U01, CB-U02, CB-U04, CB-U06 and CB-U07 belong to the close-out packet CB-N08 and are listed in [route-baseline.md](route-baseline.md#bounded-fresh-acceptance-rows).
+CB-U01, CB-U02, CB-U04, CB-U06 and CB-U07 belong to the close-out packet CB-N08 and are listed in [route-baseline.md](route-baseline.md#bounded-fresh-acceptance-rows). None has a result: each reads `Not run (O14-09)` in the [acceptance reconciliation](worknotes/cb-n08-acceptance.md#route-baseline-rows).
