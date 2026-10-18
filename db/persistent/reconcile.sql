@@ -15,8 +15,10 @@ DECLARE
     t   text;
 BEGIN
     -- sgw_inventory INHERITS sgw_inventory_base: ONLY keeps each delete and its
-    -- log row on the table that actually holds the row.
-    FOREACH t IN ARRAY ARRAY['sgw_inventory', 'sgw_inventory_base',
+    -- log row on the table that actually holds the row. The base is listed first on
+    -- purpose: without ONLY it would also delete (and log, truncated to the base
+    -- columns) the child rows, which the smoke detects.
+    FOREACH t IN ARRAY ARRAY['sgw_inventory_base', 'sgw_inventory',
                              'sgw_gate_mail_item', 'sgw_organization_vault_items']
     LOOP
         EXECUTE format($q$

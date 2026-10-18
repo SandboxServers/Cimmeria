@@ -79,6 +79,15 @@ BEGIN
     SELECT count(*) INTO n FROM cimmeria_meta.reconcile_log
      WHERE image_id = 'pp01-smoke' AND action = 'delete_dangling_item' AND NOT (detail ? 'item_id');
     IF n <> 0 THEN RAISE EXCEPTION 'delete log rows without a full row: %', n; END IF;
+    -- The child row must be logged whole (child-only columns), under the child table.
+    SELECT count(*) INTO n FROM cimmeria_meta.reconcile_log
+     WHERE image_id = 'pp01-smoke' AND action = 'delete_dangling_item'
+       AND table_name = 'sgw_inventory' AND detail ? 'character_id' AND detail->>'item_id' = '2147000020';
+    IF n <> 1 THEN RAISE EXCEPTION 'child inventory row not logged whole under sgw_inventory: %', n; END IF;
+    SELECT count(*) INTO n FROM cimmeria_meta.reconcile_log
+     WHERE image_id = 'pp01-smoke' AND action = 'delete_dangling_item'
+       AND table_name = 'sgw_inventory_base' AND detail->>'item_id' = '2147000021';
+    IF n <> 1 THEN RAISE EXCEPTION 'base inventory row not logged under sgw_inventory_base: %', n; END IF;
     SELECT count(*) INTO n FROM ONLY pp01_probe.sgw_inventory WHERE type_id = 2147000001;
     IF n <> 0 THEN RAISE EXCEPTION 'dangling child inventory row remains'; END IF;
     SELECT count(*) INTO n FROM ONLY pp01_probe.sgw_inventory_base WHERE type_id = 2147000001;
