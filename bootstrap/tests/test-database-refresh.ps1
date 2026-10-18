@@ -52,6 +52,12 @@ foreach ($r in $routes) {
 $threw = ''
 try { Initialize-CimmeriaDatabase -Port 5433 -Force -WipeDatabase | Out-Null } catch { $threw = $_.Exception.Message }
 Check 'throw: -Force with -WipeDatabase' ($threw -match 'cannot be combined') $threw
+# setup.ps1 -> Invoke-CimmeriaBootstrap must reject the pair before the dependency install,
+# the builds and the server stop (so a typo costs nothing). Do not run this check against a
+# build with the early throw removed: it would then start the real pipeline.
+$threw = ''
+try { Invoke-CimmeriaBootstrap -ForceDatabase -WipeDatabase -SkipDownload -SkipBuild -NoLaunch | Out-Null } catch { $threw = $_.Exception.Message }
+Check 'throw: bootstrap -ForceDatabase with -WipeDatabase, before any step' (($threw -match 'cannot be combined') -and ($threw -match '^-ForceDatabase')) $threw
 
 $psql = @(
     (Join-Path $root 'external/postgresql_server/bin/psql.exe'),
@@ -63,6 +69,11 @@ if (-not $psql) { Write-Host 'skip: psql not found'; if ($env:CI_REQUIRE_PG -eq 
 $up = $false
 try { $t = [Net.Sockets.TcpClient]::new(); $t.Connect('localhost', $port); $t.Close(); $up = $true } catch { }
 if (-not $up) { Write-Host "skip: PostgreSQL not reachable on :$port"; if ($env:CI_REQUIRE_PG -eq '1' -or $failed) { exit 1 }; exit 0 }
+
+# Every psql, pg_dump and Invoke-CimmeriaPsql call below connects over TCP: the CI service
+# container listens on localhost:5433 and has no unix socket (Invoke-CimmeriaPsql adds -h
+# only with -UseDocker). psql and pg_dump read PGHOST.
+$env:PGHOST = 'localhost'
 
 function Q([string]$sql, [string]$d = $db) {
     $r = & $psql -X -q -p $port -U postgres -d $d -tAc $sql 2>&1
@@ -153,10 +164,51 @@ try {
     Check 'case3 sentinel account survives' ((Q "SELECT count(*) FROM account WHERE account_id = 1879048193") -eq '1')
     Check 'case3 sentinel character survives' ((Q "SELECT count(*) FROM sgw_player WHERE player_id = 1879048194") -eq '1')
     Check 'case3 _prev exists' (DbExists "${db}_prev")
+    # Carried rows keep their ids, so every sequence must sit at or above max(column), else the
+    # next new character or account collides with a carried row.
+    Check 'case3 player id sequence at max' ((Q "SELECT last_value >= (SELECT max(player_id) FROM sgw_player) FROM sgw_characters_character_id_seq") -eq 't')
+    Check 'case3 account id sequence at max' ((Q "SELECT last_value >= (SELECT max(account_id) FROM account) FROM accounts_account_id_seq") -eq 't')
+} finally {
+    try { DropAll } catch { Write-Host "cleanup: $($_.Exception.Message)" }
+    Remove-Item $backupDir -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# Case 4: Invoke-CimmeriaDatabaseWipe (-WipeDatabase). Database sgw_pp13_wipe, never `sgw`.
+$db = 'sgw_pp13_wipe'
+try {
+    NewGameDb
+    AddSentinel
+    $w = { param($p, $port, $d, $bd, $co) if ($co) { Invoke-CimmeriaDatabaseWipe -PsqlExe $p -Port $port -Database $d -BackupDir $bd -CountsOnly } else { Invoke-CimmeriaDatabaseWipe -PsqlExe $p -Port $port -Database $d -BackupDir $bd } }
+    & $mod $w $psql $port $db $backupDir $true | Out-Null
+    Check 'case4 counts only keeps the database and writes no backup' ((DbExists $db) -and -not (Test-Path $backupDir))
+
+    # A backup that cannot be written must stop the wipe before the drop.
+    $blocker = Join-Path ([IO.Path]::GetTempPath()) "cimmeria-wipe-blocker-$PID"
+    Set-Content $blocker 'x'
+    $threw = $false
+    try { & $mod $w $psql $port $db (Join-Path $blocker 'sub') $false | Out-Null } catch { $threw = $true }
+    Remove-Item $blocker -Force -ErrorAction SilentlyContinue
+    Check 'case4 failed backup throws' $threw
+    Check 'case4 failed backup leaves the database and sentinel' ((DbExists $db) -and (Q "SELECT count(*) FROM sgw_player WHERE player_id = 1879048194") -eq '1')
+
+    $backup = & $mod $w $psql $port $db $backupDir $false | Select-Object -Last 1
+    Check 'case4 wipe returns a non-empty backup' ($backup -and (Test-Path $backup) -and (Get-Item $backup).Length -gt 0) "got $backup"
+    Check 'case4 wipe drops the database' (-not (DbExists $db))
+
+    # A later refresh prunes its own dumps only, even with -BackupKeep 0.
+    NewGameDb
+    & $mod { param($p, $port, $d, $bd) Invoke-CimmeriaResourcesRefresh -PsqlExe $p -Port $port -Database $d -BackupDir $bd -BackupKeep 0 | Out-Null } $psql $port $db $backupDir
+    Check 'case4 refresh prune keeps the wipe backup' ($backup -and (Test-Path $backup))
 } finally {
     try { DropAll } catch { Write-Host "cleanup: $($_.Exception.Message)" }
     Remove-Item $backupDir -Recurse -Force -ErrorAction SilentlyContinue
     $db = 'sgw_pp13_refresh'
 }
+
+# Case 5: the state check fails closed. A database it cannot query must throw, not read as
+# "no schema" (-Force drops a database that looks empty).
+$threw = ''
+try { & $mod { param($p, $port) Get-CimmeriaDatabaseState -PsqlExe $p -Port $port -Database 'sgw_pp13_no_such_db' | Out-Null } $psql $port } catch { $threw = $_.Exception.Message }
+Check 'case5 state of an unreadable database throws' ($threw -match 'Cannot read the state') $threw
 if ($failed) { Write-Host "$failed check(s) failed"; exit 1 }
 Write-Host 'all checks passed'

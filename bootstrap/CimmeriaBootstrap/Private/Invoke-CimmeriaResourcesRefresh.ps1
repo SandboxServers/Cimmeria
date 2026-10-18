@@ -61,8 +61,11 @@ function Invoke-CimmeriaResourcesRefresh {
         New-Item -ItemType Directory $BackupDir -Force | Out-Null
         $backupPath = Join-Path $BackupDir "$Database-$stamp.dump"
         Invoke-CimmeriaPsql @conn -Admin -Exe $pgDump -Database $Database -ExtraArgs @('-Fc', '-f', $backupPath) -What "backup of $Database" | Out-Null
-        Get-ChildItem $BackupDir -Filter "$Database-*.dump" | Sort-Object Name -Descending |
-            Select-Object -Skip $BackupKeep | Remove-Item -Force
+        # Only this function's own dumps are pruned; a -WipeDatabase backup (<Database>-wipe-...)
+        # is the only copy of the player data after the drop and is never matched.
+        Get-ChildItem $BackupDir -Filter "$Database-*.dump" |
+            Where-Object { $_.Name -match "^$([regex]::Escape($Database))-\d{8}T\d{6}Z\.dump$" } |
+            Sort-Object Name -Descending | Select-Object -Skip $BackupKeep | Remove-Item -Force
 
         # c. fresh database from the seeds, plus cimmeria_meta
         Write-Status "Refresh: loading seeds into '$fresh'..." "White"
@@ -112,6 +115,10 @@ function Invoke-CimmeriaResourcesRefresh {
             Invoke-CimmeriaPsql @conn -Database $next -File (Join-Path $persist 'reconcile.sql') -What 'reconcile.sql' | Out-Null
             Invoke-CimmeriaPsql @conn -Database $next -File (Join-Path $persist 'seed-accounts.sql') -What 'seed-accounts.sql' | Out-Null
         } finally { $env:PGOPTIONS = $oldEnv }
+
+        # Sequences: pg_dump -a -t emits setval for each sequence owned by a dumped column, so the
+        # carry-over also moves them (the container path drops those lines and fixes them in step 6).
+        # Guarded by the case 3 sequence checks in test-database-refresh.ps1.
 
         Invoke-CimmeriaPsql @conn -Database $next -Sql "ANALYZE" -What 'analyze' | Out-Null
         Invoke-CimmeriaPsql @conn -Database $next -Sql "UPDATE cimmeria_meta.db_state SET state = 'live', image_id = '$imageId', first_seeded_at = COALESCE(first_seeded_at, now()), last_rebuild_at = now(), rebuild_count = $oldRebuilds + 1 WHERE id = 1" -What 'db_state update' | Out-Null

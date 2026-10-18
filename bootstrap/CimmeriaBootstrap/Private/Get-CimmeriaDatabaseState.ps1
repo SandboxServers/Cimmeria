@@ -4,7 +4,7 @@ function Get-CimmeriaDatabaseState {
         Reads what is loaded in the game database: schema, seed data and accounts.
     .DESCRIPTION
         SchemaExists is true when public.account exists (the player data this tool must
-        keep). SeedComplete also needs the test account, shards and resources data.
+        keep). Throws when the database cannot be queried. SeedComplete also needs the test account, shards and resources data.
         HasAccounts is true when public.account has any row.
     .OUTPUTS
         Object with SchemaExists, SeedComplete and HasAccounts.
@@ -20,7 +20,13 @@ function Get-CimmeriaDatabaseState {
     $query = { param($sql) "$(& $PsqlExe @hostArgs -p $Port -U "w-testing" -d $Database -tAc $sql 2>$null)" }
     $state = [pscustomobject]@{ SchemaExists = $false; SeedComplete = $false; HasAccounts = $false }
 
-    if ((& $query "SELECT 1 FROM information_schema.tables WHERE table_name='account'") -match '1') {
+    # Fail closed: a failed query (wrong role, server down) must not read as "no schema",
+    # because -Force drops a database that looks empty. Only this first query is strict;
+    # the seed checks below may fail on a half-loaded schema and then mean "incomplete".
+    $accountTable = & $PsqlExe @hostArgs -p $Port -U "w-testing" -d $Database -tAc "SELECT to_regclass('public.account') IS NOT NULL" 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "Cannot read the state of database '$Database' (psql exit $LASTEXITCODE): $("$accountTable".Trim())" }
+
+    if ("$accountTable".Trim() -eq 't') {
         $state.SchemaExists = $true
         Write-Status "Schema exists (account table found)." "DarkGray"
 

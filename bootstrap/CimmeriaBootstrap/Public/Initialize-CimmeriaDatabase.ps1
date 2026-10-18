@@ -434,8 +434,10 @@ function Invoke-SchemaLoad {
     }
     & $PsqlExe @hostArgs -p $Port -U postgres -c "ALTER ROLE `"w-testing`" WITH LOGIN CREATEDB PASSWORD 'w-testing'" 2>&1 | Out-Null
 
-    # Wipe mode: counts, backup and drop; the create step below rebuilds 'sgw' empty
-    if ($WipeDatabase) {
+    # Wipe mode: counts, backup and drop; the create step below rebuilds 'sgw' empty.
+    # Declined by -WhatIf: then nothing is dropped and the routing below ignores the flag.
+    $doWipe = $WipeDatabase -and $PSCmdlet.ShouldProcess("database 'sgw'", "Back up and drop")
+    if ($doWipe) {
         Invoke-CimmeriaDatabaseWipe -PsqlExe $PsqlExe -Port $Port -UseDocker:$UseDocker | Out-Null
     }
 
@@ -460,7 +462,7 @@ function Invoke-SchemaLoad {
 
     # ── Check existing schema and data, then route (see Resolve-CimmeriaDatabaseAction) ──
     $state = Get-CimmeriaDatabaseState -PsqlExe $PsqlExe -Port $Port -UseDocker:$UseDocker
-    $dbAction = Resolve-CimmeriaDatabaseAction -Force:$Force -Wipe:$WipeDatabase -SchemaExists:$state.SchemaExists -SeedComplete:$state.SeedComplete -HasAccounts:$state.HasAccounts
+    $dbAction = Resolve-CimmeriaDatabaseAction -Force:$Force -Wipe:$doWipe -SchemaExists:$state.SchemaExists -SeedComplete:$state.SeedComplete -HasAccounts:$state.HasAccounts
 
     # ── Load schemas and seed data ────────────────────────────────────────
     $databaseSql = Join-Path $paths.DbDir "database.sql"
@@ -468,7 +470,9 @@ function Invoke-SchemaLoad {
     if ($dbAction -eq 'Skip') {
         Write-Status "Database is fully initialized. Use -Force to refresh resources, -WipeDatabase to reload, or -ResetDatabase for a full reset." "DarkGray"
     } elseif ($dbAction -eq 'Refresh') {
-        Invoke-CimmeriaResourcesRefresh -PsqlExe $PsqlExe -Port $Port -UseDocker:$UseDocker | Out-Null
+        if ($PSCmdlet.ShouldProcess("database 'sgw'", "Refresh resources, keeping player data")) {
+            Invoke-CimmeriaResourcesRefresh -PsqlExe $PsqlExe -Port $Port -UseDocker:$UseDocker | Out-Null
+        }
     } elseif ($dbAction -eq 'Replay') {
         Write-Status "Schema exists but seed data is incomplete." "Yellow"
         Write-Status "  Attempting to reload database.sql (may show constraint errors for existing objects)..." "Yellow"
@@ -484,10 +488,11 @@ function Invoke-SchemaLoad {
         Remove-Item $resolvedSql -ErrorAction SilentlyContinue
         Write-Status "Schema reload attempted." "Yellow"
     } else {
-        if ($Force -and $dbExists) {
-            # No public.account, so no player rows can exist: recreate the empty database
+        if ($Force -and $dbExists -and $PSCmdlet.ShouldProcess("database 'sgw'", "Drop and recreate (no public.account)")) {
+            # The state check passed with no public.account, so no player rows can exist
             Write-Status "Force: 'sgw' has no schema; dropping and recreating it." "Yellow"
-            & $PsqlExe @hostArgs -p $Port -U postgres -c "DROP DATABASE IF EXISTS sgw WITH (FORCE)" -c "CREATE DATABASE sgw OWNER `"w-testing`"" | Out-Null
+            & $PsqlExe @hostArgs -p $Port -U postgres -v ON_ERROR_STOP=1 -c "DROP DATABASE IF EXISTS sgw WITH (FORCE)" -c "CREATE DATABASE sgw OWNER `"w-testing`"" | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "Failed to recreate database 'sgw' under -Force." }
         }
         Write-Status "Loading database schema and seed data..." "White"
         $resolvedSql = Resolve-SqlIncludes $databaseSql

@@ -94,6 +94,11 @@ function Invoke-CimmeriaBootstrap {
     $ErrorActionPreference = "Stop"
     $pipelineStart = Get-Date
 
+    # Flag conflict: fail before the dependency install, builds and the server stop below.
+    if ((Resolve-CimmeriaDatabaseAction -Force:$ForceDatabase -Wipe:$WipeDatabase) -eq 'Throw') {
+        throw "-ForceDatabase and -WipeDatabase cannot be combined: -ForceDatabase keeps player data, -WipeDatabase destroys it."
+    }
+
     # Count steps dynamically
     $steps = @("Prerequisites", "Dependencies", "Build Server")
     if (-not $SkipBuild) {

@@ -4,7 +4,8 @@ function Invoke-CimmeriaDatabaseWipe {
         Prints player counts, backs up and drops the game database (-WipeDatabase).
     .DESCRIPTION
         Counts the accounts and characters (sgw_player). Writes a pg_dump -Fc backup to
-        <BackupDir>/<Database>-<UTC>.dump, terminates the sessions and drops the database.
+        <BackupDir>/<Database>-wipe-<UTC>.dump (the resources refresh never prunes this
+        name), terminates the sessions and drops the database.
         Does nothing after the counts when <Database> does not exist. With -CountsOnly
         it prints the counts and returns, so -ResetDatabase can show what it destroys.
         Backups are never pruned here.
@@ -52,8 +53,9 @@ function Invoke-CimmeriaDatabaseWipe {
     $stamp = (Get-Date).ToUniversalTime().ToString("yyyyMMdd'T'HHmmss'Z'")
     Write-Status "Wipe: backing up '$Database'..." "White"
     New-Item -ItemType Directory $BackupDir -Force | Out-Null
-    $backupPath = Join-Path $BackupDir "$Database-$stamp.dump"
+    $backupPath = Join-Path $BackupDir "$Database-wipe-$stamp.dump"
     Invoke-CimmeriaPsql @conn -Admin -Exe $pgDump -Database $Database -ExtraArgs @('-Fc', '-f', $backupPath) -What "backup of $Database" | Out-Null
+    if (-not (Test-Path $backupPath) -or (Get-Item $backupPath).Length -eq 0) { throw "Wipe: backup file $backupPath is missing or empty; '$Database' was not dropped." }
 
     Write-Status "Wipe: dropping '$Database'..." "Yellow"
     Invoke-CimmeriaPsql @conn -Admin -Sql "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$Database' AND pid <> pg_backend_pid()" -What "terminate $Database" | Out-Null
