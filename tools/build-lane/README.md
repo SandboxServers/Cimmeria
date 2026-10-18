@@ -17,7 +17,7 @@ The machine-wide build lane every agent `cargo` call goes through, and the workt
 | `push-branch.ps1` | Push the worktree's current branch to origin for `ops` (`-u`; `-Force` needs `-ExpectRemoteSha <40-hex>` and runs `--force-with-lease=refs/heads/<b>:<sha>` only); refuses main, master, other branches and names not starting with a letter, digit or `_`; pushes the full `refs/heads/<b>` refspec |
 | `rebase-onto.ps1` | Rebase the current branch onto a commit (40-hex `-Onto`, optional 40-hex `-Upstream` for `--onto`; refused when it is HEAD or when the rebase would drop commits; ignores `rebase.updateRefs`) on a clean tree for `ops`, keeping merge commits; a conflict is aborted and exits 1; refuses while a rebase, merge, cherry-pick or revert is in progress |
 
-`lane_summary.py` writes the agent summary, `lane-slots.ps1` holds the slot protocol, and `test_*.py` / `test-*.ps1` are their tests. The [tools catalog](../README.md#tools-catalog) has every script's summary.
+`lane_summary.py` writes the agent summary, `lane-slots.ps1` holds the slot protocol, and `test_*.py` / `test-*.ps1` are their tests. CI runs the `.sh` twins on Linux (bash -n, shellcheck and the Python tests), and the `.ps1` tests on Windows ([build-lane-scripts.yml](../../.github/workflows/build-lane-scripts.yml)). The [tools catalog](../README.md#tools-catalog) has every script's summary.
 
 The ops git verbs (`commit-paths`, `merge-noff`, `branch-at`, `push-branch`, `rebase-onto`) each have a `test-<name>.ps1` that builds a throwaway repository, worktree and local bare remote under the temp directory; none touches the network, a real remote or `cargo`, and CI does not run them, so run them after any change to those scripts:
 
