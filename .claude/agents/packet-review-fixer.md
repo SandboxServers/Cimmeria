@@ -32,4 +32,4 @@ Report once, compactly: the findings (file:line, one line each, marked fixed or 
 
 ## Reporting
 
-When the brief gives a report path, write your full report there and return exactly one line: `<packet-or-task> <done|blocked|failed> <commit-sha|-> <report-path>`. With no report path, keep your final answer under 15 lines. Never message other agents or wait for replies.
+When the brief gives a report path, write your full report there and return exactly one line: `<packet-or-task> <done|blocked|failed> <commit-sha|-> <report-path>`, followed by ` verdicts=<packet>:<verdict>,...` (that line is the only addition to the one line). With no report path, keep your final answer under 15 lines. Never message other agents or wait for replies.
