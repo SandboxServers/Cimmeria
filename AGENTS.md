@@ -2,7 +2,7 @@
 
 ## Start here
 
-These rules apply to every harness: Claude Code, Codex, Copilot and the rest. Read [CLAUDE.md](CLAUDE.md) first. It is the short core: repo invariants, the top project rules, the build-lane rule and the test and doc duty for every PR. It applies to every agent, not only Claude. After that, read only what your task needs:
+These rules apply to every harness: Claude Code, Codex, Copilot and the rest. Read [CLAUDE.md](CLAUDE.md) first. It is the short core: repo invariants, the top project rules, the build-lane rule and the test and doc duty for every PR. It applies to every agent, not only Claude. After that, read only what your task needs. How the AI workflow works, for every harness: [README § How AI development works here](README.md#how-ai-development-works-here) and [docs/agents/ai-harness.md](docs/agents/ai-harness.md).
 
 | Before you... | Read |
 |---|---|
@@ -31,7 +31,7 @@ When you orchestrate a campaign, in any harness:
 1. Before acting, read `docs/analysis/<campaign>/RESUME.md` and then the ledger `README.md`. Open a packet's section in `work-packets.md` only when you dispatch or review that packet.
 2. Write the campaign's folder name to `.claude/state/active-campaign`.
 3. Give each packet its own worktree (`pwsh tools/build-lane/mk-worktree.ps1 <campaign>/<packet>-<slug> <name>`) and one implementing agent: the one the packet names. Codex agents are in `.codex/agents/`. The brief carries the worktree path, the path of the packet section, the report path `<worktree>\.claude\reports\<campaign>\<packet>-<role>.md` inside that worktree, and the one-line return `<packet> <done|blocked|failed> <commit-sha|-> <report-path>`.
-4. Review each wave with one `packet-review-fixer` run that covers every packet in the wave.
+4. Review each wave with one `packet-review-fixer` run that covers every packet in the wave. It returns `ship`, `recheck` or `decision` per packet; a `recheck` gets a fresh review-fixer for that packet, up to 3 passes. A coder that stops on context gets a fresh coder that continues from its worknote, up to 3 sessions, then one Sonnet implementer. The full ladder is in the campaign-packet skill.
 5. Ship, merge and retire with `pwsh tools/build-lane/ship.ps1` and `pwsh tools/build-lane/rm-worktree.ps1`. Never run `git worktree prune`. Before a worktree is retired, copy anything worth keeping from its report to `docs/analysis/<campaign>/worknotes/`.
 6. At every wave boundary, update the ledger rows and `RESUME.md`. Keep RESUME.md to 40 lines at most: the current wave, the packets in flight and their worktrees, the next action, and open decisions.
 7. Every compiling `cargo` call goes through the build lane (`pwsh tools/build-lane/lane.ps1 cargo ...`). Put that rule in every brief.
@@ -39,8 +39,10 @@ When you orchestrate a campaign, in any harness:
 Codex does not enforce these, as of 2026-10-15, so do them yourself:
 
 - **No resume card.** Claude Code's SessionStart hook shows RESUME.md again after a compaction; Codex does not. After a compaction or codex resume, read RESUME.md again before acting.
-- **No path guard.** While you orchestrate, edit only `docs/analysis/**` and `.claude/state/**`, and hand everything else to an agent. In Claude Code, a hook enforces this for the orchestrator.
+- **No path guard.** While you orchestrate, edit only `docs/analysis/**`, `.claude/state/**` and `.claude/reports/**` (in the main checkout or a campaign worktree), and hand everything else to an agent. In Claude Code, a hook enforces this for the orchestrator.
 - **No model tiers or tool lists.** A Codex agent runs on the session's model with every tool. The `model` and `tools` lines in `.claude/agents/*.md` apply in Claude Code only.
+- **No mode banner.** Claude Code prints the session's persona at start (`.claude/hooks/mode_banner.sh`). Codex has no default persona, so there is nothing to announce.
+- **Hooks need Python.** The shell guard runs through `.claude/hooks/py.sh` in both harnesses. With no python3, python or py on PATH it warns once per call and does nothing.
 
 ## Frontend UAT Rule
 
