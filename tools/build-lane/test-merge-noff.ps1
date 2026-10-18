@@ -70,6 +70,12 @@ try {
     Remove-Item -LiteralPath (Join-Path $wt 'junk.txt')
     $r = Invoke-Merge $wt 'feat/src' 'some/other-branch'
     Check ($r.code -eq 2 -and $r.out -match 'branch-mismatch') '-ExpectBranch that differs from HEAD is refused'
+    $r = Invoke-Merge $wt 'feat/src' 'FEAT/TARGET'
+    Check ($r.code -eq 2 -and $r.out -match 'branch-mismatch') '-ExpectBranch is compared case-sensitively'
+    # A bare second token must be a parameter error: with positional binding it would become -Branch
+    # and merge feat/src, a mergeable branch here.
+    $raw = (& pwsh -NoProfile -File $script -C $wt feat/src 2>&1 | Out-String)
+    Check ($LASTEXITCODE -ne 0 -and $raw -notmatch 'status=ok') "a positional branch token is a parameter error, not a merge (exit $LASTEXITCODE)"
     Check ((Git-Out $wt @('rev-parse', 'HEAD')) -eq $before) 'the refusals moved nothing'
 
     # --- clean --no-ff merge -----------------------------------------------------------

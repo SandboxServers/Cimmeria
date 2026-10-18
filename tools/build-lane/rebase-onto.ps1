@@ -25,6 +25,12 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
+# Variables that redirect git to another repository, index, config or transport; the guards below
+# would be checked against one repository while git acts on another.
+foreach ($v in 'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_NAMESPACE', 'GIT_CONFIG_COUNT', 'GIT_CONFIG_PARAMETERS', 'GIT_SSH_COMMAND', 'GIT_EXEC_PATH') {
+    Remove-Item -LiteralPath "Env:$v" -ErrorAction SilentlyContinue
+}
+
 function Stop-Refused([string]$reason) {
     Write-Output "status=refused reason=$reason"
     exit 2

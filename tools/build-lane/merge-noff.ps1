@@ -6,7 +6,9 @@
 #
 # Refuses (exit 2) when -C is not the root of a non-main worktree, HEAD is detached, -Branch
 # is not a valid name or no local branch of that name, -Branch is the current branch, the current
-# branch is not -ExpectBranch (when given), or the tree is dirty (any `git status --porcelain` output).
+# branch is not -ExpectBranch (when given; compared case-sensitively), or the tree is dirty (any
+# `git status --porcelain` output). A parameter-binding error (a missing or unknown parameter,
+# such as a second positional token) prints no status= line and exits 1.
 # Prints status=ok merge=<sha> branch=<name>, status=up-to-date merge=<sha> branch=<name> when
 # <name> is already contained in HEAD, or status=failed reason=<why> files=<conflicted paths>.
 # Exit codes: 0 merged or up to date, 2 refused by a guard, 1 the merge failed (aborted).
@@ -17,6 +19,12 @@ param(
     [string]$ExpectBranch = ''
 )
 $ErrorActionPreference = 'Stop'
+
+# Variables that redirect git to another repository, index, config or transport; the guards below
+# would be checked against one repository while git acts on another.
+foreach ($v in 'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_NAMESPACE', 'GIT_CONFIG_COUNT', 'GIT_CONFIG_PARAMETERS', 'GIT_SSH_COMMAND', 'GIT_EXEC_PATH') {
+    Remove-Item -LiteralPath "Env:$v" -ErrorAction SilentlyContinue
+}
 
 function Stop-Refused([string]$reason) {
     Write-Output "status=refused reason=$reason"
@@ -35,10 +43,11 @@ if ((Get-FullPath $top) -ine (Get-FullPath $C)) { Stop-Refused "not-the-worktree
 $main = (& git -C $C worktree list --porcelain | Select-Object -First 1) -replace '^worktree ', ''
 if ((Get-FullPath $main) -ieq (Get-FullPath $C)) { Stop-Refused 'main-checkout: refuse to merge in the main checkout' }
 
-& git -C $C symbolic-ref -q HEAD *> $null
+$headRef = (& git -C $C symbolic-ref -q HEAD 2>$null)
 if ($LASTEXITCODE -ne 0) { Stop-Refused 'detached-head: a merge there is held by no branch' }
-$current = (& git -C $C rev-parse --abbrev-ref HEAD).Trim()
-if ($ExpectBranch -and $current -ne $ExpectBranch) { Stop-Refused "branch-mismatch: HEAD is $current, not $ExpectBranch" }
+# symbolic-ref, not `rev-parse --abbrev-ref`: the latter answers `heads/<b>` when a tag has the same name.
+$current = ($headRef.Trim() -replace '^refs/heads/', '')
+if ($ExpectBranch -and $current -cne $ExpectBranch) { Stop-Refused "branch-mismatch: HEAD is $current, not $ExpectBranch" }
 
 & git -C $C check-ref-format --branch $Branch *> $null
 if ($LASTEXITCODE -ne 0) { Stop-Refused "bad-branch-name: $Branch" }

@@ -71,6 +71,10 @@ try {
         $r = Invoke-BranchAt $main $amb $first
         Check ($r.code -eq 2 -and $r.out -match 'status=refused') "refuses the ambiguous name '$amb' (exit $($r.code))"
     }
+    foreach ($pseudo in 'REBASE_HEAD', 'AUTO_MERGE', 'REVERT_HEAD', 'BISECT_HEAD', 'head', 'Orig_Head') {
+        $r = Invoke-BranchAt $main $pseudo $first
+        Check ($r.code -eq 2 -and $r.out -match 'ambiguous-branch-name') "refuses the pseudo-ref shaped name '$pseudo' (exit $($r.code))"
+    }
     $r = Invoke-BranchAt $main 'feat/wt' $second
     Check ($r.code -eq 2 -and $r.out -match 'branch-exists') 'refuses to overwrite an existing branch'
     $r = Invoke-BranchAt $wt 'feat/wt' $second
@@ -86,6 +90,20 @@ try {
     Check ((& git -C $wt rev-parse --abbrev-ref HEAD).Trim() -eq 'feat/wt') 'the worktree did not move'
     $r = Invoke-BranchAt $main 'originals/x' $first
     Check ($r.code -eq 0) 'a name that only starts with a remote name as a prefix is allowed'
+    foreach ($ok in 'topic', 'Zed', 'topic_x', 'v1') {
+        $r = Invoke-BranchAt $main $ok $first
+        Check ($r.code -eq 0 -and $r.out -match "status=ok branch=$ok ") "an ordinary name '$ok' stays valid (exit $($r.code)): $($r.out.Trim())"
+    }
+
+    # GIT_DIR in the environment must not move the branch into another repository.
+    $other = Join-Path $tmp 'other'
+    & git clone -q $main $other
+    $env:GIT_DIR = (Join-Path $other '.git')
+    try { $r = Invoke-BranchAt $main 'env/probe' $first }
+    finally { Remove-Item Env:GIT_DIR -ErrorAction SilentlyContinue }
+    Check ($r.code -eq 0) "creates the branch with GIT_DIR set (exit $($r.code)): $($r.out.Trim())"
+    Check ($null -ne (& git -C $main rev-parse --verify --quiet refs/heads/env/probe)) 'the branch is in the repository named by -C'
+    Check ($null -eq (& git -C $other rev-parse --verify --quiet refs/heads/env/probe)) 'the repository GIT_DIR named got no branch'
 }
 finally {
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue

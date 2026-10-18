@@ -5,7 +5,7 @@
 #
 # <repo> is the main checkout or any worktree of the repository. Refuses (exit 2) when <sha> is
 # not 40 lowercase hex digits or names no commit, <name> is not a valid branch name, <name> is
-# ambiguous (looks like a hex hash of 7 to 40 digits, names an existing tag, starts with `+`, `-` or `refs/`, is `@` or a pseudo-ref such as HEAD or FETCH_HEAD, or its first
+# ambiguous (looks like a hex hash of 7 to 40 digits, names an existing tag, starts with `+`, `-` or `refs/`, is `@`, is HEAD, FETCH_HEAD, ORIG_HEAD, MERGE_HEAD or CHERRY_PICK_HEAD in any case, is all upper-case letters, digits and `_` (pseudo-ref shaped: REBASE_HEAD, AUTO_MERGE), or its first
 # segment is a configured remote or `heads`, `tags` or `remotes`: a local `origin/main` would
 # shadow the remote-tracking ref in later rev lookups), or refs/heads/<name> already exists. Prints status=ok branch=<name> sha=<sha>, or
 # status=refused reason=<why> / status=failed reason=<why>. Exit codes: 0 created, 2 refused,
@@ -17,6 +17,12 @@ param(
     [Parameter(Mandatory)][string]$Sha
 )
 $ErrorActionPreference = 'Stop'
+
+# Variables that redirect git to another repository, index, config or transport; the guards below
+# would be checked against one repository while git acts on another.
+foreach ($v in 'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_NAMESPACE', 'GIT_CONFIG_COUNT', 'GIT_CONFIG_PARAMETERS', 'GIT_SSH_COMMAND', 'GIT_EXEC_PATH') {
+    Remove-Item -LiteralPath "Env:$v" -ErrorAction SilentlyContinue
+}
 
 function Stop-Refused([string]$reason) {
     Write-Output "status=refused reason=$reason"
@@ -37,7 +43,9 @@ if ($Name -cmatch '^[0-9a-f]{7,40}$') { Stop-Refused "ambiguous-branch-name: $Na
 if ($LASTEXITCODE -eq 0) { Stop-Refused "ambiguous-branch-name: $Name is an existing tag" }
 & git -C $C check-ref-format --branch $Name *> $null
 if ($LASTEXITCODE -ne 0) { Stop-Refused "bad-branch-name: $Name" }
-if ($Name -match '^refs/' -or $Name -iin '@', 'HEAD', 'FETCH_HEAD', 'ORIG_HEAD', 'MERGE_HEAD', 'CHERRY_PICK_HEAD') { Stop-Refused "ambiguous-branch-name: $Name" }
+# Git's top-level pseudo-refs (REBASE_HEAD, AUTO_MERGE, REVERT_HEAD, BISECT_HEAD ...) are all-caps
+# and win over refs/heads/ in a rev lookup. Ordinary lower-case names such as `feat` stay valid.
+if ($Name -match '^refs/' -or $Name -cmatch '^[A-Z][A-Z0-9_]*$' -or $Name -iin '@', 'HEAD', 'FETCH_HEAD', 'ORIG_HEAD', 'MERGE_HEAD', 'CHERRY_PICK_HEAD') { Stop-Refused "ambiguous-branch-name: $Name" }
 $first = ($Name -split '/')[0]
 $remotes = @(& git -C $C remote)
 $reserved = @('heads', 'tags', 'remotes') + $remotes
