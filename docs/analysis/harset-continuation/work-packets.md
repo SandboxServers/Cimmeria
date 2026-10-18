@@ -34,8 +34,8 @@ Each blocked row names the contract that must be closed before the original impl
 | HA-1360a2b | Correlated request/result routing and A1 invocation | Integrated | [Packet and three reviewed repairs](worknotes/HA-1360a-seal.md#ha-1360a2--internal-transport-and-session-fence); default, `lab-chaos` and focused live-DB lane checks passed |
 | HA-1360a3a | Strict mandatory action and loader | Integrated | `dcf7423bf`; 299 nextest passed, independent review found no code defect; action/telemetry references updated |
 | HA-1360a3b | Pending request and same-attempt retry | Integrated | [Reviewed packet and repair](worknotes/HA-1360a-seal.md#ha-1360a3--strict-action-pending-state-and-continuation); 1,608 affected-crate tests passed |
-| HA-1360a3c | Correlated result and continuation | Ready | [Exact result manifest](worknotes/HA-1360a-seal.md#ha-1360a3--strict-action-pending-state-and-continuation); dispatch from integrated a3b |
-| HA-1360b | Marsh receiving seed and cross-zone proof | BlockedDependency | HA-1360a integrated/reviewed; CS-08a actual crossing and retained letter; receiving graph signoff |
+| HA-1360a3c | Correlated result and continuation | Integrated (campaign tip `e7dd74336`) | [Exact result manifest](worknotes/HA-1360a-seal.md#ha-1360a3--strict-action-pending-state-and-continuation); dispatch from integrated a3b |
+| HA-1360b | Marsh receiving seed and cross-zone proof | Sealed; dispatch gated on the Castle CS-08a1 carry-in base ([HA-1360b seal](worknotes/HA-1360b-seal.md)) | HA-1360a integrated/reviewed; CS-08a actual crossing and retained letter; receiving graph signoff |
 | HA-01a | Travel/placement | BlockedEvidence | Four Market/Storage thresholds + arrivals, clearance, wrong-world and relog; preserve 6007/1361 linkage |
 | HA-01b | 1664, proposed | BlockedEvidence | Castle CS-06 grant edge, Kaerlia identity, dialog/faction graph and placement |
 | HA-02 | Navigation/encounter anchors | BlockedEvidence | Current NA40 mesh coverage vs raised telemetry positions and current interior connectivity; non-GM containment proof |
