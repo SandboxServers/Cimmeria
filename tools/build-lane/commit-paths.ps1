@@ -17,8 +17,9 @@
 # stage a file that was not named (`widened-pathspec`, e.g. a deleted directory name), or
 # `git diff --cached --check` finds whitespace errors AND the repository configures
 # core.whitespace or a whitespace attribute; without such a policy that is only a warning on
-# stderr, as plain `git commit` accepts it. -ExpectBranch is compared case-sensitively. Git's hooks
-# still run (a hook is the repository's own gate). Because the index is empty on entry, a failed
+# stderr, as plain `git commit` accepts it. A merge, cherry-pick or revert in progress (MERGE_HEAD,
+# CHERRY_PICK_HEAD or REVERT_HEAD) is refused as `merge-in-progress`. -ExpectBranch is compared
+# case-sensitively. Git's hooks still run (a hook is the repository's own gate). Because the index is empty on entry, a failed
 # check or commit unstages what the add staged and leaves it empty again, exactly as it was found.
 # Prints one line: status=ok sha=<sha> branch=<branch>, or status=refused|failed reason=<why>.
 # Exit codes: 0 committed, 2 refused by a guard, 1 a git step failed. A parameter-binding error
@@ -33,9 +34,11 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
-# Variables that redirect git to another repository, index, config or transport; the guards below
-# would be checked against one repository while git acts on another.
-foreach ($v in 'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_NAMESPACE', 'GIT_CONFIG_COUNT', 'GIT_CONFIG_PARAMETERS', 'GIT_SSH_COMMAND', 'GIT_EXEC_PATH') {
+# Variables that redirect git to another repository, index, object store, injected config or transport;
+# the guards below would be checked against one repository while git acts on another. GIT_CONFIG_GLOBAL
+# and GIT_CONFIG_SYSTEM are NOT cleared: they are the caller's own config choice (the tests use them to
+# isolate git from the developer's config).
+foreach ($v in 'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_NAMESPACE', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_CONFIG_COUNT', 'GIT_CONFIG_PARAMETERS', 'GIT_SSH_COMMAND', 'GIT_EXEC_PATH') {
     Remove-Item -LiteralPath "Env:$v" -ErrorAction SilentlyContinue
 }
 
@@ -70,6 +73,13 @@ if ($LASTEXITCODE -ne 0) { Stop-Refused 'detached-head: a commit there is held b
 # symbolic-ref, not `rev-parse --abbrev-ref`: the latter answers `heads/<b>` when a tag has the same name.
 $branch = ($headRef.Trim() -replace '^refs/heads/', '')
 if ($ExpectBranch -and $branch -cne $ExpectBranch) { Stop-Refused "branch-mismatch: HEAD is $branch, not $ExpectBranch" }
+
+# A merge, cherry-pick or revert in progress would be concluded by `git commit` (a merge commit
+# with a second parent), whatever the named paths hold.
+foreach ($pending in 'MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD') {
+    & git -C $C rev-parse -q --verify $pending *> $null
+    if ($LASTEXITCODE -eq 0) { Stop-Refused "merge-in-progress: $pending exists; finish or abort it first" }
+}
 
 if (-not $Message.Trim()) { Stop-Refused 'empty-message' }
 

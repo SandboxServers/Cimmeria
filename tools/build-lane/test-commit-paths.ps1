@@ -232,6 +232,30 @@ try {
     Set-Content -LiteralPath (Join-Path $wt 'a.txt') 'trailing   '
     $r = Invoke-Commit $wt @('a.txt')
     Check ($r.code -eq 0 -and $r.out -match 'status=ok' -and $r.out -match 'warning') "without core.whitespace a whitespace error is a warning, not a refusal (exit $($r.code)): $($r.out.Trim())"
+
+    # --- GIT_OBJECT_DIRECTORY would send the new objects to a store the branch cannot read -------
+    Set-Content -LiteralPath (Join-Path $wt 'a.txt') 'object dir'
+    $objDir = Join-Path $tmp 'odd-objects'
+    New-Item -ItemType Directory $objDir | Out-Null
+    $env:GIT_OBJECT_DIRECTORY = $objDir
+    try { $r = Invoke-Commit $wt @('a.txt') }
+    finally { Remove-Item Env:GIT_OBJECT_DIRECTORY -ErrorAction SilentlyContinue }
+    $tipOk = & git -C $wt rev-parse --verify --quiet 'HEAD^{commit}'
+    Check ($r.code -eq 0 -and $null -ne $tipOk -and $LASTEXITCODE -eq 0) "a GIT_OBJECT_DIRECTORY in the environment does not strand the commit (exit $($r.code)): $($r.out.Trim())"
+
+    # --- a merge in progress is not concluded by a path commit ------------------------------
+    # `git merge --no-commit` leaves MERGE_HEAD with an index equal to HEAD; a plain `git commit`
+    # would then record a two-parent commit holding only the edited file.
+    $mergeSide = (& git -C $wt commit-tree 'HEAD^{tree}' -p HEAD -m 'side').Trim()
+    & git -C $wt merge -q --no-commit --no-ff -s ours $mergeSide *> $null
+    Set-Content -LiteralPath (Join-Path $wt 'a.txt') 'edited during a merge'
+    $before = & $head
+    $r = Invoke-Commit $wt @('a.txt')
+    & git -C $wt rev-parse -q --verify MERGE_HEAD *> $null
+    $mergeStillOpen = ($LASTEXITCODE -eq 0)
+    Check ($r.code -eq 2 -and $r.out -match 'merge-in-progress') "refuses while a merge is in progress (exit $($r.code)): $($r.out.Trim())"
+    Check ((& $head) -eq $before -and $mergeStillOpen) 'the merge-in-progress refusal committed nothing and left the merge open'
+    & git -C $wt merge --abort *> $null
 }
 finally {
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
