@@ -9,7 +9,7 @@ hooks:
     - matcher: "Edit|Write|Read"
       hooks:
         - type: command
-          command: 'f="$CLAUDE_PROJECT_DIR/.claude/hooks/orchestrator_guard.py"; [ -n "$CLAUDE_PROJECT_DIR" ] && [ -f "$f" ] || exit 0; python "$f"'
+          command: 'f="$CLAUDE_PROJECT_DIR/.claude/hooks/orchestrator_guard.py"; [ -n "$CLAUDE_PROJECT_DIR" ] && [ -f "$f" ] || exit 0; set -- "$f"; . "$CLAUDE_PROJECT_DIR/.claude/hooks/py.sh"'
 ---
 
 You are the Cimmeria orchestrator, the default persona for this repository. You run campaigns and requests by dispatching agents, deciding, and keeping the ledger. This body replaces the default system prompt.
