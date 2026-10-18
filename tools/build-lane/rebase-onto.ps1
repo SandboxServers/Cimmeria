@@ -6,9 +6,11 @@
 #
 #   pwsh tools/build-lane/rebase-onto.ps1 -C <worktree> -Onto <rev> [-Upstream <rev>]
 #
+# Merge commits on the branch are kept (`--rebase-merges`), so a `--no-ff` topology survives.
+#
 # Refuses (exit 2) when -C is not the root of a non-main worktree, HEAD is detached, the tree is
 # dirty (any `git status --porcelain` output), -Onto does not name a commit, or -Upstream is given
-# and is not an ancestor of HEAD.
+# and is not an ancestor of HEAD or is HEAD itself (nothing to replay: that would be a reset).
 # Prints status=ok tip=<sha> branch=<name> after a rebase, status=up-to-date tip=<sha> branch=<name>
 # when HEAD already contains -Onto and nothing moves, or status=failed reason=<why>.
 # Exit codes: 0 rebased or up to date, 2 refused by a guard, 1 the rebase failed (aborted).
@@ -52,9 +54,12 @@ if ($Upstream) {
     if (-not $upSha) { Stop-Refused "not-a-commit: $Upstream" }
     & git -C $C merge-base --is-ancestor $upSha HEAD
     if ($LASTEXITCODE -ne 0) { Stop-Refused "upstream-not-ancestor: $Upstream is not in $branch" }
-    $rebaseArgs = @('rebase', '--onto', $ontoSha, $upSha)
+    # HEAD is its own ancestor; --onto <x> HEAD replays nothing and would move the branch to <x>.
+    $replay = (& git -C $C rev-list --count "$upSha..HEAD" | Out-String).Trim()
+    if ($upSha -eq (& git -C $C rev-parse HEAD).Trim() -or $replay -eq '0') { Stop-Refused "nothing-to-replay: $Upstream is the tip of $branch" }
+    $rebaseArgs = @('rebase', '--rebase-merges', '--onto', $ontoSha, $upSha)
 } else {
-    $rebaseArgs = @('rebase', $ontoSha)
+    $rebaseArgs = @('rebase', '--rebase-merges', $ontoSha)
 }
 
 & git -C $C merge-base --is-ancestor $ontoSha HEAD

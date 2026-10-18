@@ -84,6 +84,58 @@ try {
     Check ((& git -C $wt rev-parse HEAD).Trim() -eq $before) 'the conflict left HEAD where it was'
     Check ((& git -C $wt status --porcelain | Out-String).Trim() -eq '') 'the conflict left the tree clean'
     Check (-not (Test-Path -LiteralPath (Join-Path $gitDir 'rebase-merge')) -and -not (Test-Path -LiteralPath (Join-Path $gitDir 'rebase-apply'))) 'no rebase is left in progress'
+
+    # --- the -Upstream (--onto) path: success, stacked branches, and no hidden reset ----
+    function New-Commit([string]$dir, [string]$file, [string]$msg) {
+        Set-Content -LiteralPath (Join-Path $dir $file) $msg
+        & git -C $dir add -- $file
+        & git -C $dir commit -q -m $msg
+    }
+    $base = (& git -C $main rev-parse HEAD).Trim()
+    $wtY = Join-Path $tmp 'wty'
+    $wtZ = Join-Path $tmp 'wtz'
+    & git -C $main worktree add -q -b feat/y $wtY $base
+    New-Commit $wtY 'y.txt' 'y1'
+    $yTip = (& git -C $wtY rev-parse HEAD).Trim()
+    & git -C $main worktree add -q -b feat/z $wtZ $yTip
+    New-Commit $wtZ 'z.txt' 'z1'
+    New-Commit $main 'e.txt' 'main e'
+    $newTip = (& git -C $main rev-parse HEAD).Trim()
+
+    # The parent branch is rebased first; its tip changes, so the child still sits on the old y1.
+    $r = Invoke-Rebase $wtY $newTip $base
+    Check ($r.code -eq 0 -and $r.out -match 'status=ok') "-Upstream rebases the parent branch (exit $($r.code)): $($r.out.Trim())"
+    $newY = (& git -C $wtY rev-parse HEAD).Trim()
+    Check ((& git -C $wtY rev-parse 'HEAD~1').Trim() -eq $newTip) 'the parent branch now sits on the new main tip'
+
+    # The child replays only z1 on top of the rewritten parent, not the old y1 again.
+    $r = Invoke-Rebase $wtZ $newY $yTip
+    Check ($r.code -eq 0 -and $r.out -match 'status=ok') "-Upstream rebases a stacked branch (exit $($r.code)): $($r.out.Trim())"
+    Check ((& git -C $wtZ rev-parse 'HEAD~1').Trim() -eq $newY) 'the stacked branch sits directly on the new parent tip'
+    $subjects = @(& git -C $wtZ log --format=%s "$newTip..HEAD")
+    Check (($subjects -join ',') -eq 'z1,y1') "the stacked branch holds z1 and one y1 only: $($subjects -join ',')"
+
+    # -Upstream equal to HEAD would replay nothing and move the branch to -Onto: a hidden reset.
+    $before = (& git -C $wtZ rev-parse HEAD).Trim()
+    $r = Invoke-Rebase $wtZ $base $before
+    Check ($r.code -eq 2 -and $r.out -match 'nothing-to-replay') '-Upstream equal to HEAD is refused'
+    Check ((& git -C $wtZ rev-parse HEAD).Trim() -eq $before) 'the nothing-to-replay refusal did not move HEAD'
+
+    # A merge commit on the branch survives the rebase (--rebase-merges).
+    $wtM = Join-Path $tmp 'wtm'
+    $wtS = Join-Path $tmp 'wts'
+    $mBase = (& git -C $main rev-parse HEAD).Trim()
+    & git -C $main worktree add -q -b feat/m $wtM $mBase
+    New-Commit $wtM 'm1.txt' 'm1'
+    & git -C $main worktree add -q -b side $wtS $mBase
+    New-Commit $wtS 's1.txt' 's1'
+    & git -C $wtM merge -q --no-ff -m 'merge side' side
+    New-Commit $main 'f.txt' 'main f'
+    $mTip = (& git -C $main rev-parse HEAD).Trim()
+    Check (@(& git -C $wtM rev-list --merges "$mBase..HEAD").Count -eq 1) 'setup: the branch holds one merge commit'
+    $r = Invoke-Rebase $wtM $mTip $mBase
+    Check ($r.code -eq 0 -and $r.out -match 'status=ok') "a branch with a merge commit rebases (exit $($r.code)): $($r.out.Trim())"
+    Check (@(& git -C $wtM rev-list --merges "$mTip..HEAD").Count -eq 1) 'the merge commit survived the rebase'
 }
 finally {
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
