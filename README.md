@@ -51,6 +51,65 @@ The Rust workspace currently carries **<!-- gen:tests-total -->14,621<!-- /gen:t
 
 For the test-type taxonomy (unit / wire-format / live-DB / smoke / concurrency / chain-replay), when each is appropriate, common gotchas, and the patterns reviewers expect to see, read **[TESTING.md](TESTING.md)**.
 
+## How AI development works here
+
+Claude Code starts as the `orchestrator` persona, which dispatches agents and has no shell. The session banner says so. `claude --agent hands-on` gives a full-tool session.
+
+The cycle:
+
+1. `orchestrator` (Sonnet) takes the request.
+2. `architect` (Opus) designs and writes the packets. This is the packet writer step (D-AH1).
+3. `ops` (Haiku) makes the worktrees.
+4. `packet-coder` (Haiku) implements each packet, with at most 3 sessions per packet for the context limit.
+5. `packet-review-fixer` (Sonnet) reviews and fixes each wave, with at most 3 passes.
+6. `ops` ships through the merge queue.
+
+Escalation:
+
+- **Coder:** 3 Haiku sessions, then 1 Sonnet implementer (`rust-gameserver-dev` for code and tools, `documentation-writer` for docs), then `architect` re-slices. Opus never implements.
+- **Reviewer:** the verdict is `ship`, `recheck` or `decision`, with at most 3 passes. Then `architect` writes a ruling note with no code, and a fresh Sonnet review-fixer applies it. An owner call is BlockedDecision.
+
+**Why it works this way:**
+
+| Measure | Opus implements (before 2026-10-10) | Haiku packets, Sonnet review | Source |
+|---|---|---|---|
+| Cost per 1,000 changed lines | $7.44 | $3.03 (2.5x cheaper) | campaign-metrics findings.md |
+| Cost per accepted change | $18.65 | $2.35 | same |
+| Cost per merged PR, mean / median | $22.01 / $18.18 (248 PRs, $5,727.50) | $2.67 / $0.91 (185 PRs, $594.06) | same |
+| Spend by tier | Opus 93% | Opus 75%, Sonnet 22%, Haiku 2% | same |
+
+Source: [campaign-metrics findings](docs/analysis/campaign-metrics/findings.md).
+
+- **The caveat:** the work differs. Haiku campaigns implement from a finished spec, and the spec's cost sits in the Opus coordinator. The 2.5x per 1,000 lines is the fair comparison, not the per-PR figures.
+- **Packet size:** 9 of 34 Haiku sessions hit the 90k cap before the re-slice, and 0 of 36 after. About 35-40k of a Haiku session is fixed overhead, so a packet is about 40k working tokens.
+- **Fresh sessions:** Haiku 5.5 bills 5x per request above a 100k prompt, which is why the coder loop starts a fresh session instead of growing one.
+- **Opus doesn't code:** $107.43 went to oversteps, of which $53.72 to $84.20 was recoverable at the intended tier.
+
+**Hooks:** every hook the harness runs, with its event, matcher, script and reason, is listed below; the bypasses are in [ai-harness.md](docs/agents/ai-harness.md#hooks-and-guards).
+
+<!-- gen:harness-hooks -->
+
+
+| Event | Matcher | Configured in | Runs | Why |
+|---|---|---|---|---|
+| SessionStart | (all) | `.claude/settings.json` | `mode_banner.sh` | SessionStart mode banner: tells the user and the model which persona this session runs as. |
+| SessionStart | (all) | `.claude/settings.json` | `agent-board` | Agent board: registers the session and shows unread board activity. External tool, skipped when it is not installed. |
+| SessionStart | compact | `.claude/settings.json` | `resume_card.py` | SessionStart hook for the "compact" matcher: re-reads the active campaign. |
+| PreToolUse | Bash\|PowerShell | `.claude/settings.json` | `shell_guard.py` | PreToolUse guard for shell tool calls (Bash and PowerShell). |
+| PreToolUse | Edit\|Write\|Read | `agent: orchestrator` | `orchestrator_guard.py` | PreToolUse guard for the orchestrator persona (Edit, Write and Read). |
+| SessionStart | (all) | `.codex/hooks.json` | `agent-board` | Agent board: registers the session and shows unread board activity. External tool, skipped when it is not installed. |
+| PreToolUse | Bash | `.codex/hooks.json` | `shell_guard.py` | PreToolUse guard for shell tool calls (Bash and PowerShell). |
+
+
+<!-- /gen:harness-hooks -->
+
+**Everything else:**
+
+- Settings, agents, skills, board, memory and review bots: [ai-harness.md](docs/agents/ai-harness.md). The workflow and roster: [development-workflow.md](docs/agents/development-workflow.md).
+- The campaign cycle: the [campaign-packet skill](.claude/skills/campaign-packet/SKILL.md). Codex: [AGENTS.md](AGENTS.md).
+
+**Platform:** Windows with PowerShell 7 is fully supported; WSL, Linux, and Git Bash on Windows are not validated, but not unsupported ([details](docs/agents/development-workflow.md#wsl-and-linux-hosts)).
+
 ## Quick Start
 
 ```bash
