@@ -91,9 +91,10 @@ model (the DB is rebuilt from `db/resources/`; live writes are lost on rebuild;
    starts walking now).
 2. **Writes the live DB** via `CellToBaseMsg::ExecuteAuthoringSql` → a base
    handler runs the statement and reports rows-affected to the GM. The cell has
-   no DB pool, so this crosses to base. The write is **transient** — it lets the
-   developer see the change hold across reconnects within the deploy, and the
-   next deploy rebuilds from seeds and wipes it.
+   no DB pool, so this crosses to base. The write to a `resources` table is **transient** — it lets the
+   developer see the change hold across reconnects, and the next resources
+   reseed (the next deploy) rebuilds from seeds and wipes it. A write to a
+   player table persists.
 3. **Records the canonical seed SQL** for a human to commit. Each statement is
    appended to a **per-session on-disk log** (`logs/seed-authoring-<session>.sql`,
    dir overridable via `CIMMERIA_AUTHORING_LOG_DIR`) as it happens, and buffered

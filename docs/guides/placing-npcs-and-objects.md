@@ -24,7 +24,7 @@ Read this once before you start.
    and server restarts only after the later database result reports success;
    zero affected rows or a failed query must be investigated.
 4. **A developer has to merge the batch** into the game's data files, or the
-   next server update wipes it. Send them the batch id.
+   next server update's resources reseed discards it. Send them the batch id.
 
 In short: place things, save each one, confirm when you're happy, and send
 the batch id to a developer.
