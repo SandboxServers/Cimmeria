@@ -10,6 +10,7 @@ pub mod clients;
 pub mod completions;
 pub mod doctor;
 pub mod env;
+pub mod friction_drafts;
 pub mod golden;
 pub mod install;
 pub mod instances;
@@ -110,6 +111,11 @@ pub const COMMANDS: &[CommandInfo] = &[
         name: "calibrate",
         group: Group::RunAndRecord,
         summary: "Recalibrate a row's poses by hover and propose a spec diff",
+    },
+    CommandInfo {
+        name: "friction-drafts",
+        group: Group::RunAndRecord,
+        summary: "Turn exported human friction rows into bug cards",
     },
     CommandInfo {
         name: "golden",
@@ -228,6 +234,8 @@ pub enum Command {
     Record(record::Args),
     /// Recalibrate a row's poses by hover and propose a spec diff
     Calibrate(calibrate::Args),
+    /// Turn exported human friction rows into bug cards
+    FrictionDrafts(friction_drafts::Args),
     /// Record or show a golden fingerprint
     Golden(golden::Args),
     /// Show the daemon and each instance: account, client, port, lease, seed
@@ -269,6 +277,7 @@ pub fn dispatch(cmd: &Command, ctx: &Ctx) -> u8 {
         Command::Watch(args) => watch::run(args, ctx),
         Command::Record(args) => record::run(args, ctx),
         Command::Calibrate(args) => calibrate::run(args, ctx),
+        Command::FrictionDrafts(args) => friction_drafts::run(args, ctx),
         Command::Golden(args) => golden::run(args, ctx),
         Command::Status(args) => status::run(args, ctx),
         Command::Workbench(args) => workbench::run(args, ctx),
