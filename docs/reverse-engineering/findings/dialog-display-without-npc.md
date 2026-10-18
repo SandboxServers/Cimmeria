@@ -12,7 +12,7 @@ Dialogs 5815 and 5816 (1570 step 4905, "Use your radio to contact Gen. Hammond")
 |---|---|---|---|---|
 | 4905 | 1570 SG-18 | 5815, 5816 | 2609 (Hammond) | `mission_steps.sql:2376` |
 | 4916 | 1647 Enemy at the Gates | 5824 | 945 (Moh'katan) | `mission_steps.sql:2787` |
-| 4921 | 1649 Moh'katan | 5833 | 2323 (Bra'tac) on screen 0, 2179 on screens 4 and 6 | `mission_steps.sql:2803` |
+| 4921 | 1649 Moh'katan | 5833 | 2179 (Teal'c per the audit) on every NPC screen (0, 2, 4, 6) | `mission_steps.sql:2803` |
 | 4937 | 1653 Superweapon | 5848, 5849 (the audit does not map the step to one of them) | 2323 (Bra'tac) | `mission_steps.sql:2847` |
 
 Dialog ids come from `docs/analysis/dakara-e1-rebuild/audit.md` (line 114 names 5815/5816, 5824 and 5833; line 97 names 5848/5849 for 1653).
@@ -56,7 +56,7 @@ Applied to the three cases in the question:
 | EntityId sent | Window and text | Name label | Portrait |
 |---|---|---|---|
 | Id of an NPC not in the player's AoI listener table | Shown (unconditional emit) | From `SpeakerID`, Hammond | Blank: the lookup misses, so no pin reaches slot `0x11` |
-| The player's own entity id | Shown | From `SpeakerID`, Hammond | Renders the player's head if the player's entity is in its own listener table. Not verified; MEDIUM |
+| The player's own entity id | Shown | From `SpeakerID`, Hammond | Renders the player's head if the player's entity is in its own listener table. The server already sends the player's id for every monologue dialog (`display()` line 85, about 42% of authored screens per its comment) and intends the player portrait there, so the client accepts this id. Not verified for a screen named for Hammond; MEDIUM |
 | `0` | Shown | From `SpeakerID`, Hammond | Blank. The slot is pinned only for a non-zero entity (`dialog-portrait-lookup.md` line 96), so no portrait is raised. MEDIUM |
 
 **Answer to Q1 (confidence MEDIUM overall):** the client shows the window and the text for any EntityId, including `0` and an id it cannot find. The EntityId only decides the portrait. The speaker name comes from the screen's `SpeakerID`, so Hammond's name shows without Hammond present. The risky case is the player's own id: the portrait would show the player for Hammond's lines.
@@ -64,7 +64,7 @@ Applied to the three cases in the question:
 ### Q2. Any client-side radio, comm or remote-speaker path?
 
 - **Radio type 4 (`RadioType`)** exists: `Dialog.RadioType = 4` (`dialog-controller-wire-flow.md` line 89). It registers to `DialogWin` and `DialogMod.initDialog`, the same window as types 2 and 5 (table at lines 110-117). Its only extra effect is a **radio icon**, a lure: a non-immediate dialog raises `Event_UI_DialogAvailable` and waits for the player to click the icon (lines 66, 119). The lure is not a remote-speaker path. It does not change the portrait, the name or the window.
-- **The type comes from the client's cooked data, not from the server seed.** The client reads `CookedDataDialogs.pak` (`dialog-controller-wire-flow.md` line 19). `db/resources/Dialogs/Seed/dialogs.sql` has `ui_screen_type` = `DUIST_DefaultDialog` (type 2) on all 4287 dialog rows and `DUIST_DefaultRadio` (the enum value; its mapping to client type 4 is not verified here) on none. The radio dialogs are type 2. A server-side seed edit cannot change what the client shows. Changing the type needs a cooked override, which is a different pipeline (`crates/resources/src/base/dialog_overrides/`) with a documented crash risk (`docs/reverse-engineering/findings/cooked-dialog-override-crash.md`).
+- **The type comes from the client's cooked data, not from the server seed.** The client reads `CookedDataDialogs.pak` (`dialog-controller-wire-flow.md` line 19). `db/resources/Dialogs/Seed/dialogs.sql` has `ui_screen_type` = `DUIST_DefaultDialog` on 4287 of its 5418 dialog rows (the rest: 988 `DUIST_DefaultBlurb`, 128 `DUIST_None`, 15 `DUIST_DefaultTutorial`) and `DUIST_DefaultRadio` (the enum value; its mapping to client type 4 is not verified here) on none. All six radio dialogs (5815, 5816, 5824, 5833, 5848, 5849) are `DUIST_DefaultDialog`, type 2. A server-side seed edit cannot change what the client shows. Changing the type needs a cooked override, which is a different pipeline (`crates/resources/src/base/dialog_overrides/`) with a documented crash risk (`docs/reverse-engineering/findings/cooked-dialog-override-crash.md`).
 - **Non-modal line:** the server's `NpcBark` action (`crates/cell-content/src/cell/content/executor/bark.rs`, header lines 1-12) sends a non-modal companion line in the chat window. The docs say it is the only non-modal text route the client honours today. It is not a dialog: no window, no buttons, no portrait, no `dialogButtonChoice`.
 - **No remote-speaker event-set or `dialog_flags` bit was found.** The `dialog_flags` column (`dialogs.sql`) is not decoded in any finding. Not traced here; a flag that the client reads would need a Ghidra session, which this packet does not run.
 
@@ -95,7 +95,7 @@ The server change for DK-06b:
 
 - **File:** `crates/cell-content/src/cell/content/executor/dialog/mod.rs`.
 - **Function:** `display()`, lines 55-114.
-- **Change:** before the monologue test, read `params.get("speaker")`. When it equals `"none"`, set `npc_entity_id = 0` and skip the `target_entity_id` and pin lookup, so no warn fires. `send_dialog_display` passes the id to `npc_name`, which converts it with `u32::try_from` (`crates/cell-content/src/cell/interactions/dialog.rs` lines 113-117). Id 0 is passed through to `entity_names(0)`; that it returns no name is not verified here, and only the log line depends on it.
+- **Change:** before the monologue test, read `params.get("speaker")`. When it equals `"none"`, set `npc_entity_id = 0` and skip the `target_entity_id` and pin lookup, so no warn fires. `send_dialog_display` passes the id to `npc_name`, which converts it with `u32::try_from` (`crates/cell-content/src/cell/interactions/dialog.rs` lines 113-117). Id 0 is passed through to `entity_names(0)`, which returns `EntityNames::default()` for an id with no entity (`crates/cell-world/src/cell/space_manager/entity_labels.rs:109-113`), so it cannot panic; only the log line depends on it. What the client does with id 0 is the unverified part (Q1 row 3).
 - **Seed:** the radio chain rows (`db/resources/Content/Seed/`, a DK-06b file) must carry `params` `{"speaker": "none"}` on their `display_dialog` action. The seed change is DK-06b's, not this packet's.
 - **Tests:** a unit test in `executor/dialog/tests.rs` that a `speaker = none` display sends EntityId 0 and does not warn. The live-DB replay is the reviewer's call.
 
