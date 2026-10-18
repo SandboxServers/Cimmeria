@@ -59,7 +59,7 @@ run_sql() {
 }
 
 [ -f "$FRESH" ] || fail "missing $FRESH"
-for f in reconcile.sql reseed-public-tables.txt persistent-public-tables.txt; do
+for f in reconcile.sql seed-accounts-stage.sql seed-accounts.sql reseed-public-tables.txt persistent-public-tables.txt; do
     [ -f "$P/$f" ] || fail "missing $P/$f"
 done
 
@@ -87,6 +87,13 @@ pg_restore --no-owner --exit-on-error $PGR -d "$NEXT" "$FRESH" 2>"$WORK/err" \
 # step 3: none (reconcile.sql has no pre-check phase)
 echo "[db-rebuild] step 3 pre-checks: none"
 
+# step 3a: stage the seed accounts. This must run on the fresh load, BEFORE the
+# carry: seed-accounts-stage.sql copies the seed rows to cimmeria_seed.account
+# and empties account so the live accounts can land; run after the carry it
+# would empty the carried accounts.
+echo "[db-rebuild] step 3a stage seed accounts"
+run_sql "$P/seed-accounts-stage.sql" "seed-accounts-stage.sql"
+
 # step 4
 echo "[db-rebuild] step 4 carry player data from $SRC"
 pg_dump -Fc $PGR -d "$SRC" -f "$WORK/src.dump" 2>"$WORK/err" || fail "dump of $SRC failed: $(lasterr "$WORK/err")"
@@ -109,21 +116,14 @@ awk -v schemas="$PLAYER_SCHEMAS" -v carry="$WORK/carry.list" -v reseed="$WORK/re
         if ((key in keep) || ($(i + 2) in ps)) print
     }' "$WORK/toc.full" > "$WORK/toc.filtered"
 [ -s "$WORK/toc.filtered" ] || fail "carry TOC is empty; source dump has no player tables"
-# fresh.dump may hold seeded rows in carried tables (account); the live rows
-# replace them. One TRUNCATE for the whole set so foreign keys never block it.
+# fresh.dump may hold seeded rows in carried tables (account is already empty
+# after step 3a); the live rows replace them. One TRUNCATE for the whole set so
+# foreign keys never block it.
 TLIST=$(sed -e 's/^\([^.]*\)\.\(.*\)$/"\1"."\2"/' "$WORK/carry.list" | paste -sd, -)
 $PSQL -d "$NEXT" -c "TRUNCATE $TLIST" 2>"$WORK/err" || fail "truncate of carried tables failed: $(lasterr "$WORK/err")"
 pg_restore --data-only --disable-triggers --exit-on-error -L "$WORK/toc.filtered" \
     $PGR -d "$NEXT" "$WORK/src.dump" 2>"$WORK/err" \
     || fail "carry-over rejected: $(lasterr "$WORK/err")"
-
-# step 4a (the top-up SQL ships separately from the wave 1 files)
-echo "[db-rebuild] step 4a stage seed accounts"
-if [ -f "$P/seed-accounts-stage.sql" ]; then
-    run_sql "$P/seed-accounts-stage.sql" "seed-accounts-stage.sql"
-else
-    echo "[db-rebuild] step 4a skipped: $P/seed-accounts-stage.sql not in this image"
-fi
 
 # step 5
 echo "[db-rebuild] step 5 reconcile"
@@ -131,11 +131,7 @@ run_sql "$P/reconcile.sql" "reconcile.sql"
 
 # step 5a
 echo "[db-rebuild] step 5a seed account top-up"
-if [ -f "$P/seed-accounts.sql" ]; then
-    run_sql "$P/seed-accounts.sql" "seed-accounts.sql"
-else
-    echo "[db-rebuild] step 5a skipped: $P/seed-accounts.sql not in this image"
-fi
+run_sql "$P/seed-accounts.sql" "seed-accounts.sql"
 
 # Carry the DR restore marker (db-sync.sh, CIMMERIA_DB_RESTORE) across the swap.
 # Without it a CIMMERIA_DB_RESTORE left in the environment would restore the
@@ -157,7 +153,7 @@ fi
 echo "[db-rebuild] step 6 sequences"
 INLIST=$(sed -e "s/^\([^.]*\)\.\(.*\)\$/('\1','\2')/" "$WORK/carry.list" | paste -sd, -)
 $PSQL -d "$NEXT" -At -c "
-    SELECT format('SELECT setval(%L, GREATEST(COALESCE((SELECT max(%I) FROM %I.%I), 1), 1), true)',
+    SELECT format('SELECT setval(%L, GREATEST(COALESCE((SELECT max(%I) FROM %I.%I), 1), 1), true);',
                   pg_get_serial_sequence(format('%I.%I', table_schema, table_name), column_name),
                   column_name, table_schema, table_name)
     FROM information_schema.columns

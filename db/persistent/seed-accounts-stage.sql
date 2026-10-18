@@ -5,4 +5,7 @@
 CREATE SCHEMA IF NOT EXISTS cimmeria_seed;
 DROP TABLE IF EXISTS cimmeria_seed.account;
 CREATE TABLE cimmeria_seed.account AS SELECT * FROM account;
-TRUNCATE account;
+-- CASCADE: sgw_player and the other player tables reference account, and a plain
+-- TRUNCATE refuses while a referencing table exists, even an empty one. In the
+-- container rebuild those tables are carried and truncated again right after.
+TRUNCATE account CASCADE;

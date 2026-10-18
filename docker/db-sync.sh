@@ -118,6 +118,9 @@ restore_db() {
     psqlq postgres "CREATE DATABASE sgw_restore"
     pg_restore --no-owner -h 127.0.0.1 -U w-testing -d sgw_restore "$FILE"
     psqlq sgw_restore "CREATE SCHEMA IF NOT EXISTS cimmeria_meta; CREATE TABLE IF NOT EXISTS cimmeria_meta.restore_done (file text primary key, at timestamptz default now()); INSERT INTO cimmeria_meta.restore_done (file) VALUES ('$SQL_FILE') ON CONFLICT DO NOTHING"
+    # The restore took a while: drop any session (healthcheck) that reconnected to sgw
+    # since the first terminate, or the rename below fails with "being accessed".
+    psqlq postgres "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$DB' AND pid <> pg_backend_pid()" >/dev/null
     psql -h 127.0.0.1 -U w-testing -d postgres -X -q -v ON_ERROR_STOP=1 <<EOF
 DROP DATABASE IF EXISTS sgw_prev;
 BEGIN;
