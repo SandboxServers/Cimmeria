@@ -3489,3 +3489,116 @@ VALUES (11010, 'step_status', 639, '2117', 'eq', 'active', 0);
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (11010, 'npc_bark', NULL, NULL,
  '{"screen_id": 200160, "speaker": "Op-CORE Soldier", "channel": "say"}', 0, 0);
+
+-- =====================================================================
+-- CB-N05 (2026-10-17): The Remaining Pods, mission 62050 (CIMMERIA_AUTHORING)
+-- =====================================================================
+-- Optional one-time story after stock 638. Prisoner 329 offers 62050 through
+-- the existing interaction-only dialog-set-map 2795 at slot 17 (per player).
+-- A validated Prisoner click accepts; the nested mission_accepted follow-up
+-- advances A -> B, removes the offer and shows monologue 60150. A validated
+-- Marsh click completes B, which completes the mission. No reward, no
+-- dialog_choice or initialResponse path. Core Marsh chains 1051/1052/1152 are
+-- unchanged. Seal: docs/analysis/cellblock-continuation/worknotes/cb-n05-seal.md.
+
+-- Chain 11000: 638 completed -> offer 62050 at Prisoner 329
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (11000, 'CB-N05 - 638 completed: offer The Remaining Pods at Prisoner 329', 'mission', 62050, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (11000, 'mission_completed', '638', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (11000, 'world', 12, NULL, 'eq', NULL, 0),
+  (11000, 'mission_status', 638, NULL, 'eq', 'completed', 1),
+  (11000, 'mission_status', 641, NULL, 'eq', 'not_active', 2),
+  (11000, 'mission_status', 62050, NULL, 'eq', 'not_active', 3);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (11000, 'add_dialog_set', 2795, NULL, '{"slot": 17}', 0, 0);
+
+-- Chain 11001: login in Castle_CellBlock -> restore the 62050 offer
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (11001, 'CB-N05 - login: restore The Remaining Pods offer at Prisoner 329', 'mission', 62050, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (11001, 'player_loaded', 'Castle_CellBlock', 'player', true, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (11001, 'world', 12, NULL, 'eq', NULL, 0),
+  (11001, 'mission_status', 638, NULL, 'eq', 'completed', 1),
+  (11001, 'mission_status', 641, NULL, 'eq', 'not_active', 2),
+  (11001, 'mission_status', 62050, NULL, 'eq', 'not_active', 3);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (11001, 'add_dialog_set', 2795, NULL, '{"slot": 17}', 0, 0);
+
+-- Chain 11002: 62050 abandoned -> restore the offer
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (11002, 'CB-N05 - 62050 abandoned: restore The Remaining Pods offer', 'mission', 62050, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (11002, 'mission_abandoned', '62050', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (11002, 'world', 12, NULL, 'eq', NULL, 0),
+  (11002, 'mission_status', 638, NULL, 'eq', 'completed', 1),
+  (11002, 'mission_status', 641, NULL, 'eq', 'not_active', 2),
+  (11002, 'mission_status', 62050, NULL, 'eq', 'not_active', 3);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (11002, 'add_dialog_set', 2795, NULL, '{"slot": 17}', 0, 0);
+
+-- Chain 11003: validated Prisoner 329 click -> accept 62050 (no other action)
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (11003, 'CB-N05 - interact Prisoner 329: accept The Remaining Pods', 'mission', 62050, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (11003, 'interact_tag', 'Prisoner_329', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (11003, 'world', 12, NULL, 'eq', NULL, 0),
+  (11003, 'mission_status', 638, NULL, 'eq', 'completed', 1),
+  (11003, 'mission_status', 641, NULL, 'eq', 'not_active', 2),
+  (11003, 'mission_status', 62050, NULL, 'eq', 'not_active', 3);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (11003, 'accept_mission', 62050, NULL, '{}', 0, 0);
+
+-- Chain 11004: nested mission_accepted 62050 -> A to B, drop the offer, report
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (11004, 'CB-N05 - 62050 accepted: advance to 62054, remove offer 2795, show dialog 60150', 'mission', 62050, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (11004, 'mission_accepted', '62050', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (11004, 'world', 12, NULL, 'eq', NULL, 0),
+  (11004, 'step_status', 62050, '62051', 'eq', 'active', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (11004, 'advance_step', 62050, '62054', '{}', 0, 0),
+  (11004, 'remove_dialog_set', 2795, NULL, '{"slot": 17}', 0, 1),
+  (11004, 'display_dialog', 60150, NULL, '{}', 0, 2);
+
+-- Chain 11005: validated Col. Marsh click while B is active -> complete B
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (11005, 'CB-N05 - interact Col. Marsh during 62054: complete objective 62055', 'mission', 62050, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (11005, 'interact_tag', 'Preparation_ColMarsh', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (11005, 'world', 12, NULL, 'eq', NULL, 0),
+  (11005, 'mission_status', 640, NULL, 'eq', 'completed', 1),
+  (11005, 'step_status', 62050, '62054', 'eq', 'active', 2);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (11005, 'complete_objective', 62050, '62055', '{}', 0, 0);
