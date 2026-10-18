@@ -8120,3 +8120,8 @@ INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_
 
 INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (3214, 2722, false, 2, false, false, false, ' ');
 
+-- Cellblock continuation CB-N05 (CIMMERIA_AUTHORING): mission 62050 objectives A and B.
+INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (62052, 62051, false, 1, false, false, false, 'Speak to Prisoner 329.');
+
+INSERT INTO mission_objectives (objective_id, step_id, award_xp, difficulty, is_enabled, is_hidden, is_optional, display_log_text) VALUES (62055, 62054, false, 1, false, false, false, 'Warn Col. Marsh.');
+

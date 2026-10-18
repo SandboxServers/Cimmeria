@@ -7326,3 +7326,8 @@ INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabl
 
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (2722, 99, false, 2, true, 'Get Opheltes to live up to his end of the bargain', 5);
 
+-- Cellblock continuation CB-N05 (CIMMERIA_AUTHORING): mission 62050 steps A and B.
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (62051, 62050, false, 1, false, 'Ask Prisoner 329 about the other pods.', 0);
+
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (62054, 62050, false, 1, false, 'Tell Col. Marsh there may be prisoners in the other pods.', 1);
+

@@ -8720,3 +8720,8 @@ INSERT INTO mission_tasks (task_id, objective_id, award_xp, difficulty, is_enabl
 
 INSERT INTO mission_tasks (task_id, objective_id, award_xp, difficulty, is_enabled, task_type) VALUES (3899, 3214, false, 2, true, 1);
 
+-- Cellblock continuation CB-N05 (CIMMERIA_AUTHORING): mission 62050 tasks A and B.
+INSERT INTO mission_tasks (task_id, objective_id, award_xp, difficulty, is_enabled, task_type) VALUES (62053, 62052, false, 1, true, 1);
+
+INSERT INTO mission_tasks (task_id, objective_id, award_xp, difficulty, is_enabled, task_type) VALUES (62056, 62055, false, 1, true, 1);
+

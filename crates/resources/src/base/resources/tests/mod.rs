@@ -14,6 +14,7 @@ mod committed_paks;
 mod dialog_overrides;
 mod inventory_slots;
 mod mission_additions;
+mod mission_additions_cellblock;
 mod overrides;
 mod stargate_overrides;
 mod world_info_overrides;

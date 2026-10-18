@@ -1,5 +1,5 @@
 //! Complete authored mission entries, admitted before any mission patches.
-//! Production authoring belongs here only after a mission packet seals its XML.
+//! Production entries are added only by a mission packet that sealed its XML (CB-N05: 62050).
 
 /// One complete authored category-3 entry, validated before batch application.
 #[derive(Debug)]
@@ -10,8 +10,17 @@ pub struct MissionAddition {
     pub xml: &'static str,
 }
 
-/// Production authored entries; empty until a mission packet seals its XML.
-pub const MISSION_ADDITIONS: &[MissionAddition] = &[];
+/// CB-N05 *The Remaining Pods* (CIMMERIA_AUTHORING): the exact category-3
+/// entry for mission 62050, 1678 bytes, frozen in
+/// docs/analysis/cellblock-continuation/w3-frozen.md (F1).
+pub const REMAINING_PODS_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<COOKED_MISSION xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:CookedData1="SGW" AwardXP="false" ShowFactionChangeIcon="false" ShowInstanceIcon="false" ShowPVPIcon="false" IsShareable="false" NumRepeats="0" CanAbandon="true" CanRepeatOnFail="false" CanFail="false" Level="1" IsHidden="false" IsOverrideMission="false" IsEnabled="true" IsAStory="true" Difficulty="1" MissionLabel="General" MissionDefn="The Remaining Pods" MissionID="62050"><HistoryText>Prisoner 329 heard other captives in nearby pods. Tell Col. Marsh so they are not left behind.</HistoryText><Steps StepEnabled="false" StepID="62051" AwardXP="false" Difficulty="1"><StepDisplayLogText>Ask Prisoner 329 about the other pods.</StepDisplayLogText><Objectives IsOptional="false" ObjectiveID="62052" AwardXP="false" IsHidden="false" IsEnabled="false" Difficulty="1"><DisplayLogText>Speak to Prisoner 329.</DisplayLogText><Tasks TaskType="1" TaskID="62053" AwardXP="false" IsEnabled="true" Difficulty="1"></Tasks></Objectives></Steps><Steps StepEnabled="false" StepID="62054" AwardXP="false" Difficulty="1"><StepDisplayLogText>Tell Col. Marsh there may be prisoners in the other pods.</StepDisplayLogText><Objectives IsOptional="false" ObjectiveID="62055" AwardXP="false" IsHidden="false" IsEnabled="false" Difficulty="1"><DisplayLogText>Warn Col. Marsh.</DisplayLogText><Tasks TaskType="1" TaskID="62056" AwardXP="false" IsEnabled="true" Difficulty="1"></Tasks></Objectives></Steps></COOKED_MISSION>"#;
+
+/// Production authored entries: CB-N05's mission 62050 only.
+pub const MISSION_ADDITIONS: &[MissionAddition] = &[MissionAddition {
+    mission_id: 62050,
+    xml: REMAINING_PODS_XML,
+}];
 
 /// Cooked-sync supports at most 256 fragments of 1390 bytes per entry.
 /// Base-session tests cross-check this boundary against its transport constant.
