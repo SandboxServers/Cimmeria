@@ -2,7 +2,7 @@
 //! [`InteractionPose`]. Read-only: no logging and no throttle.
 
 use super::geometry::{pose_geometry, wrap_deg_180, wrap_deg_360, PoseGeometry};
-use crate::cell::space_manager::SpaceManager;
+use crate::cell::space_manager::{ApproachTrail, SpaceManager};
 
 /// The `world` value when the actor's space has no loaded world name.
 const UNKNOWN_WORLD: &str = "unknown";
@@ -40,6 +40,8 @@ pub struct InteractionPose {
     pub target_yaw_deg: f32,
     /// The player's geometry relative to the target.
     pub geometry: PoseGeometry,
+    /// The player's approach trail at capture, if it has two or more points.
+    pub approach: Option<ApproachTrail>,
 }
 
 /// Captures the pose of player `entity_id` relative to `target_entity_id`.
@@ -82,5 +84,8 @@ pub fn capture_interaction_pose(
         target_tag: target.tag.clone(),
         target_yaw_deg: wrap_deg_360(target.direction.y.to_degrees()),
         geometry: pose_geometry(player_pos, actor.direction.y, target_pos),
+        approach: mgr
+            .movement_telemetry
+            .approach_trail(entity_id, std::time::Instant::now()),
     })
 }

@@ -1,6 +1,8 @@
 //! `interaction.pose`: where a player stood, and which way they faced, when an
 //! interaction succeeded. Feeds the lab's stand-off poses (D-SV3) from real play.
 //! Campaign: docs/analysis/player-capture-bots/.
+#[cfg(test)]
+mod approach_emit_tests;
 mod capture;
 mod emit;
 #[cfg(test)]

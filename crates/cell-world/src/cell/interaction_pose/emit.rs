@@ -62,6 +62,10 @@ pub fn emit_interaction_pose(
 
 /// Writes the `interaction.pose` row as of `now`. Returns the row's
 /// `pose_seq`, or `None` when the row was throttled (no log line then).
+///
+/// When the pose carries an approach trail, a second `interaction.approach`
+/// row follows the pose row with the same `pose_seq`. A throttled pose
+/// writes neither row.
 pub fn emit_interaction_pose_at(
     pose: &InteractionPose,
     kind: InteractionKind,
@@ -111,5 +115,25 @@ pub fn emit_interaction_pose_at(
         pose_seq = seq,
         "interaction.pose: player pose at a successful interaction"
     );
+    if let Some(trail) = pose.approach.as_ref() {
+        tracing::info!(
+            target: "interaction.approach",
+            event = "interaction_approach",
+            pose_seq = seq,
+            cimmeria.session_kind = pose.session_kind,
+            entity_id = pose.entity_id, // nt:id-only privacy: no personal names (D-PC2)
+            player_id = pose.player_id, // nt:id-only privacy: no personal names (D-PC2)
+            target_entity_id = pose.target_entity_id, // nt:id-only privacy: no personal names (D-PC2)
+            world = %pose.world,
+            target_tag = pose.target_tag.as_deref(),
+            target_template_id = pose.target_template_id,
+            target_template_name = target_template_name,
+            n_points = trail.points.len(),
+            span_s = trail.span_s(),
+            path_len_m = trail.path_len_m(),
+            points = %trail.encode(),
+            "interaction.approach: the player's path to a successful interaction"
+        );
+    }
     Some(seq)
 }
