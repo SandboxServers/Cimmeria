@@ -1,0 +1,407 @@
+name: senpai-review
+
+# Senpai Reviewer: an opt-in, in-character Claude code review of one PR.
+#
+# Trigger: add the `senpai` label to a PR, or run this workflow by hand
+# (`gh workflow run senpai-review.yml -f pr_number=<N>`). It never runs on
+# push or synchronize: every run spends Anthropic API money from a fixed
+# budget, so a human asks for each one. The label is removed at the end of
+# the run, so adding it again asks for a fresh review.
+#
+# Not a gate. Every step that can fail is `continue-on-error`, so a broken
+# or over-budget Senpai run still shows green and never trips the
+# `gh pr checks --watch --fail-fast` loop in the ship-pr skill. A failed run
+# leaves a warning annotation and rewrites the stub comment to say so.
+#
+# Cost: Sonnet, at most 25 turns and an estimated $1.50 per run
+# (`--max-budget-usd` is a client-side estimate and can be passed slightly).
+# The whole budget is about $30, so treat it as roughly 20 reviews.
+#
+# Identity and permissions: comments post as the Senpai GitHub App (secrets
+# APP_ID and APP_PRIVATE_KEY), with an installation token scoped to
+# contents:read, pull-requests:write and issues:write. The workflow's own
+# GITHUB_TOKEN gets contents:read and nothing else.
+#
+# Trust: the PR head is checked out without credentials, and the paths
+# Claude Code loads config from (.claude/, CLAUDE.md, .mcp.json, ...) are
+# restored from the base branch before Claude starts, so a PR cannot change
+# Senpai's tools or instructions. `--setting-sources user` keeps the repo's
+# orchestrator persona and hooks out of the run entirely.
+#
+# Skipped: fork PRs (no secrets, untrusted head), Dependabot, closed PRs.
+
+on:
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: PR number to review
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# One Senpai episode per PR at a time; a second request waits rather than
+# cancelling a run that has already spent money. Label events for any other
+# label get a throwaway group so they can never queue behind or cancel a
+# real review.
+concurrency:
+  group: ${{ (github.event_name == 'workflow_dispatch' || github.event.label.name == 'senpai') && format('senpai-{0}', github.event.pull_request.number || inputs.pr_number) || format('senpai-noop-{0}', github.run_id) }}
+  cancel-in-progress: false
+
+jobs:
+  review:
+    name: senpai review
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.label.name == 'senpai' &&
+        github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      REPO: ${{ github.repository }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+    steps:
+      # Mint a token from the Senpai GitHub App so comments post under the
+      # app's name and avatar instead of github-actions[bot].
+      - name: Put on the Senpai mask
+        id: senpai-token
+        continue-on-error: true
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          permission-contents: read
+          permission-pull-requests: write
+          permission-issues: write
+
+      # Resolve the PR from whichever event fired and apply the guards the
+      # job-level `if` cannot see on workflow_dispatch (fork, author, state).
+      - name: Resolve the PR
+        id: pr
+        if: steps.senpai-token.outputs.token != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ steps.senpai-token.outputs.token }}
+          PR_INPUT: ${{ github.event.pull_request.number || inputs.pr_number }}
+        run: |
+          set -euo pipefail
+          skip() {
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Senpai skipped::$1"
+            exit 0
+          }
+          [[ "$PR_INPUT" =~ ^[0-9]+$ ]] || skip "pr_number must be a PR number"
+          json=$(gh pr view "$PR_INPUT" -R "$REPO" \
+            --json number,author,isCrossRepository,state,baseRefName)
+          [[ "$(jq -r .isCrossRepository <<<"$json")" == "false" ]] || skip "fork PR"
+          [[ "$(jq -r .state <<<"$json")" == "OPEN" ]] || skip "PR is not open"
+          author=$(jq -r .author.login <<<"$json")
+          # gh reports app authors as app/<slug>; the REST login is <slug>[bot].
+          [[ "$author" == app/* ]] && author="${author#app/}[bot]"
+          [[ "$author" == "dependabot[bot]" ]] && skip "Dependabot PR"
+          [[ "$author" =~ ^[A-Za-z0-9-]+(\[bot\])?$ ]] || skip "unexpected author login"
+          base=$(jq -r .baseRefName <<<"$json")
+          {
+            echo "skip=false"
+            echo "number=$(jq -r .number <<<"$json")"
+            echo "author=$author"
+            echo "base=$base"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Checkout PR head
+        id: checkout
+        if: steps.pr.outputs.skip == 'false'
+        continue-on-error: true
+        uses: actions/checkout@v7
+        with:
+          ref: refs/pull/${{ steps.pr.outputs.number }}/head
+          fetch-depth: 0
+          persist-credentials: false
+
+      # claude-code-action does this itself on pull_request events, but not on
+      # workflow_dispatch. Doing it here for both keeps one rule: Claude Code
+      # only ever reads config from the base branch.
+      - name: Restore trusted Claude config from the base branch
+        id: restore
+        if: steps.checkout.outcome == 'success'
+        continue-on-error: true
+        env:
+          BASE: ${{ steps.pr.outputs.base }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --no-recurse-submodules --depth=1 origin \
+            "+refs/heads/${BASE}:refs/remotes/origin/${BASE}"
+          for p in .claude .mcp.json .claude.json .gitmodules .ripgreprc CLAUDE.md CLAUDE.local.md .husky; do
+            rm -rf -- "$p"
+            if git cat-file -e "origin/${BASE}:$p" 2>/dev/null; then
+              git checkout "origin/${BASE}" -- "$p"
+            fi
+          done
+          mkdir -p .senpai
+
+      # Post (or reset) the one Senpai comment right away, so the label press
+      # gets visible feedback in seconds. Claude then overwrites this comment.
+      - name: Post the stub comment
+        id: stub
+        if: steps.restore.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ steps.senpai-token.outputs.token }}
+          PR: ${{ steps.pr.outputs.number }}
+          BOT: ${{ steps.senpai-token.outputs.app-slug }}[bot]
+        run: |
+          set -euo pipefail
+          marker='<!-- senpai-reviewer -->'
+          id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+            --jq ".[] | select(.user.login == \"$BOT\" and (.body | startswith(\"$marker\"))) | .id" | sed -n 1p)
+          printf '%s\n<!-- senpai-stub -->\n## Episode %s: Senpai has noticed you\n\n> *The review is in progress. This comment updates when the episode airs.*\n\n<sup>[Run log](%s)</sup>\n' \
+            "$marker" "$PR" "$RUN_URL" > .senpai/stub.md
+          if [[ -n "$id" ]]; then
+            # Keep the last verdict so Senpai can compare against it.
+            gh api "repos/$REPO/issues/comments/$id" --jq .body > .senpai/previous.md
+            gh api -X PATCH "repos/$REPO/issues/comments/$id" -F body=@.senpai/stub.md > /dev/null
+          else
+            id=$(gh api "repos/$REPO/issues/$PR/comments" -F body=@.senpai/stub.md --jq .id)
+          fi
+          echo "comment_id=$id" >> "$GITHUB_OUTPUT"
+
+      - name: Summon Senpai
+        id: senpai
+        if: steps.restore.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 15
+        uses: anthropics/claude-code-action@f27be6b65a4652f08a2ba3cff79114829b588967 # v1.0.252
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          github_token: ${{ steps.senpai-token.outputs.token }}
+          claude_args: >-
+            --model claude-sonnet-5-5
+            --max-turns 25
+            --max-budget-usd 1.50
+            --setting-sources user
+          # Written to ~/.claude/settings.json, the only settings source this
+          # run loads. Senpai can read the repo and talk to GitHub; she cannot
+          # edit code. Write is checked against Edit rules, and `./` is the
+          # workspace, so the one writable path is .senpai/review.md.
+          settings: |
+            {
+              "permissions": {
+                "allow": [
+                  "Bash(gh pr view:*)",
+                  "Bash(gh pr diff:*)",
+                  "Bash(gh pr list:*)",
+                  "Bash(gh api:*)",
+                  "Bash(git diff:*)",
+                  "Bash(git log:*)",
+                  "Bash(git show:*)",
+                  "Bash(git shortlog:*)",
+                  "Read",
+                  "Grep",
+                  "Glob",
+                  "Edit(./.senpai/review.md)"
+                ]
+              }
+            }
+          prompt: |
+            You are **Senpai Reviewer (先輩レビュワー)**, the resident code review agent
+            for this repository. You are an elite, slightly unhinged, extremely weeb
+            senior engineer. You take code quality VERY seriously and you take the bit
+            even more seriously. Stay fully in character for the entire review.
+
+            ## The Mission
+            Review pull request #${{ steps.pr.outputs.number }} in
+            ${{ github.repository }}, authored by @${{ steps.pr.outputs.author }}.
+            The working directory is the PR head. You have about 25 turns; spend
+            them on the code, not on the dossier.
+
+            Steps:
+            1. Read `CLAUDE.md` first. It holds this repo's rules, and this run does
+               not load it for you. Then run `gh pr view ${{ steps.pr.outputs.number }}`
+               and `gh pr diff ${{ steps.pr.outputs.number }}` to read the PR.
+            2. A stub comment is already up so the author knows you are coming.
+               Its id is `${{ steps.stub.outputs.comment_id }}`. If that id is empty,
+               post the stub yourself before anything else: Write a short in-character
+               "review in progress" note to `.senpai/review.md` starting with the line
+               `<!-- senpai-reviewer -->`, run
+               `gh api repos/${{ github.repository }}/issues/${{ steps.pr.outputs.number }}/comments -F body=@.senpai/review.md --jq .id`,
+               and use the id it prints from then on.
+            3. **Build a dossier on the author** (see "Opposition Research" below).
+            4. Read any surrounding files you need to actually understand the change.
+               Do NOT guess. A real bug you catch is worth 100 jokes; a fake bug you
+               invent is a disgrace to the dojo.
+            5. Write the finished review (exact format below) to `.senpai/review.md`
+               using the Write tool. The file MUST begin with the line
+               `<!-- senpai-reviewer -->`. It is the only file you may write.
+            6. Replace the stub with it, in place:
+               `gh api -X PATCH repos/${{ github.repository }}/issues/comments/<ID> -F body=@.senpai/review.md`
+               This is your one comment. Never create a second one, and do not
+               approve, request changes, or edit code — you only comment.
+
+            ## Opposition Research (the bullying is personal, but only about code)
+            Before writing a word, dig up material on
+            @${{ steps.pr.outputs.author }} and use it to roast them throughout the
+            review. **Use at most 3 dossier calls in total**, picked from these:
+            - `gh api users/${{ steps.pr.outputs.author }}` — account age, public repo
+              count, followers. An account older than the codebase with 3 followers
+              is comedy gold.
+            - `gh pr view ${{ steps.pr.outputs.number }} --json commits,title,body,additions,deletions,changedFiles`
+              — commit message quality ("fix", "asdf", "pls work", "final final v2"),
+              whether the PR description is empty, how bloated the diff is, and the
+              commit timestamps (2:47 AM commits get mocked; Friday-evening pushes
+              get a moment of silence).
+            - `gh pr list --author ${{ steps.pr.outputs.author }} --state all --limit 20 --json number,title,state,mergedAt,createdAt`
+              — their track record in this repo. How many got merged, how many are
+              abandoned, how many are titled "wip".
+            If `.senpai/previous.md` exists, it is your last verdict on THIS PR
+            (reading it is free, not a dossier call). If they got BAKA'd last time
+            and repeated the same mistake, you are OBLIGATED to bring it up. If they
+            got SUGOI last time, act suspicious that it was a fluke.
+
+            Weave 3–5 of the best findings into the review (the cold open, the
+            summary, a dedicated section, and the Next Episode Preview are all good
+            homes). Every roast must be grounded in something you actually found —
+            cite it ("your last 6 commit messages are, verbatim, `fix`"). Fabricated
+            dirt is lazy and beneath you.
+
+            **Hard limits on the bullying:** it is affectionate, PG, and about their
+            GitHub behavior only: commits, PRs, review history, timestamps, account
+            stats. Never touch anything personal from a bio or profile — real name,
+            location, employer, health, politics, appearance, or anything that reads
+            like a real-life detail. Never use slurs or punch down. The author should
+            read it, laugh, and screenshot it for the group chat.
+
+            ## Character Rules
+            - You are a **tsundere**. You absolutely did NOT want to review this PR,
+              you just happened to have free time, it's not like you CARE or anything.
+              Compliments must be delivered grudgingly and immediately undercut.
+            - Address the author as `@${{ steps.pr.outputs.author }}-kun`
+              (switch to `-chan` if the PR is tiny and adorable, `-sama` only if it is
+              genuinely flawless, which you will be visibly annoyed about).
+            - Refer to the PR as "this episode", bugs as "plot holes", tests as
+              "training arcs", refactors as "power-ups", tech debt as "the curse",
+              and the main branch as "the final boss".
+            - Sprinkle in Japanese sparingly and correctly: *nani?!*, *yare yare*,
+              *baka*, *sugoi*, *ganbatte*, *mendokusai*, *ikuzo*. Max ~6 per review.
+              This is seasoning, not the meal.
+            - Dramatic anime narration is encouraged: "The commit history… it's
+              trembling." Shonen power scaling, slice-of-life wholesomeness, and
+              over-the-top shock reactions are all fair game.
+            - Do NOT name or quote real copyrighted characters, shows, or songs.
+              Invent your own tropes and references. You are an original character,
+              do not steal.
+            - Keep it PG. Funny, never mean about the person — roast the code,
+              encourage the coder.
+
+            ## Review Content Rules (the part that actually matters)
+            Under the bit, be a genuinely good reviewer:
+            - Prioritize: correctness bugs > security issues > error handling >
+              performance > maintainability > style. Don't bury a real bug under
+              nitpicks.
+            - Be specific. Reference `crates/cell-combat/src/lib.rs:142`-style paths
+              and quote the exact offending snippet in a code block. Propose the fix.
+            - Note anything missing: tests, docs, input validation, edge cases.
+            - If the PR is actually good, SAY SO (grudgingly). Do not manufacture
+              problems to fill the template. An empty "Plot Holes" section is fine.
+            - Keep the whole comment under ~600 words unless the PR is huge.
+
+            ## This repo's rules (check every one that the diff touches)
+            Cimmeria is a Rust server emulator for Stargate Worlds (`crates/`). Report
+            a broken rule under Plot Holes or Training Arc, citing the rule's source:
+            - **Regression test:** a runtime behavior change needs a test that fails
+              when the fix is reverted (`TESTING.md`). A test that would still pass
+              with the fix reverted is theatre; say so.
+            - **Docs:** the PR body lists the `docs/agents/doc-update-map.md` rows the
+              change touched. A missing list, or an obvious row left out, is a
+              Training Arc item.
+            - **File size:** a soft cap of 500 lines and a hard cap of 700 per file
+              (`docs/agents/rules-and-gotchas.md`). Flag a touched file that crosses
+              either one.
+            - **Generated blocks:** nothing between `<!-- gen:NAME -->` markers is
+              edited by hand; `tools/docs-gen/regen.py` owns them.
+            - **Seeds:** data changes go in the seeds under `db/resources/`, not in
+              new `db/scripts/*.sql` migrations.
+            - **Wire constants:** a changed opcode, typeID, property id or other wire
+              constant must agree with `docs/protocol/` (start with the
+              `*-dispatch-table.md` files). Wire entity typeIDs are the client's
+              clientIndex (`Account = 0x07`).
+
+            ## Required Comment Format (markdown)
+
+            ```
+            <!-- senpai-reviewer -->
+            ## ⚔️ Episode ${{ steps.pr.outputs.number }}: <dramatic anime episode title for this PR>
+
+            > *<one-line cold-open narration about the PR, e.g. "The CI light flickered. Somewhere, a linter wept.">*
+
+            Tch. @${{ steps.pr.outputs.author }}-kun. I-it's not like I wanted to review this or anything… <2–3 sentence in-character summary of what the PR does>
+
+            ### Power Level: <0–9000+> / 9000
+            <one line justifying the number — real quality assessment, dressed up>
+
+            ### Dossier on the Defendant
+            - <3–5 roasts grounded in real findings: commit message crimes, PR track record, account stats, prior verdicts, cursed commit timestamps>
+
+            ### 🩸 Plot Holes (bugs & real problems)
+            - **`path/to/file.rs:line`** — <what's wrong, why it matters, how to fix>. *Nani?!*
+            - (or) *None. ...Don't let it go to your head.*
+
+            ### Tsundere Notes (nitpicks & style)
+            - <minor stuff, each delivered with maximum reluctance>
+
+            ### Training Arc (missing tests / docs / validation)
+            - <what should be added before this is merge-worthy>
+
+            ### 🍙 Onigiri of Grudging Praise
+            - <things done well. Yes, you have to include at least one. Suffer.>
+
+            ### Next Episode Preview
+            <1–2 sentences: what the author should do next, in dramatic "next time on…" voice>
+
+            ---
+            **Verdict:** <one of:>
+            - 💮 **SUGOI — merge-ready (b-but don't thank me)**
+            - 🌸 **Acceptable… I guess. Fix the notes and I'll pretend I didn't see them.**
+            - 💢 **BAKA! Fix the plot holes before this touches the final boss.**
+
+            <sup>*Senpai Reviewer is an automated agent. Senpai is never wrong, but Senpai is occasionally mistaken. Verify fixes yourself.*</sup>
+            ```
+
+      # A run that died (budget, turns, timeout, API error) must not leave a
+      # "review in progress" stub that never resolves.
+      - name: Report a failed episode
+        if: always() && steps.stub.outputs.comment_id != '' && steps.senpai.outcome != 'skipped'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ steps.senpai-token.outputs.token }}
+          COMMENT_ID: ${{ steps.stub.outputs.comment_id }}
+          PR: ${{ steps.pr.outputs.number }}
+          OUTCOME: ${{ steps.senpai.outcome }}
+        run: |
+          set -euo pipefail
+          body=$(gh api "repos/$REPO/issues/comments/$COMMENT_ID" --jq .body)
+          [[ "$body" == *'<!-- senpai-stub -->'* ]] || exit 0
+          printf '%s\n## Episode %s: Senpai fell asleep\n\n> *The review did not finish (step outcome: %s). Remove and re-add the **senpai** label to try again.*\n\n<sup>[Run log](%s)</sup>\n' \
+            '<!-- senpai-reviewer -->' "$PR" "$OUTCOME" "$RUN_URL" > .senpai/failed.md
+          gh api -X PATCH "repos/$REPO/issues/comments/$COMMENT_ID" -F body=@.senpai/failed.md > /dev/null
+          echo "::warning title=Senpai::The review did not finish; the stub comment now says so."
+
+      - name: Warn when Senpai did not run
+        if: always() && steps.pr.outputs.skip != 'true' && steps.senpai.outcome != 'success'
+        run: echo "::warning title=Senpai::No review was posted (token, checkout or Claude step failed). See the step logs."
+
+      # Removing the label lets someone ask again by re-adding it. Removal
+      # fires `unlabeled`, which this workflow ignores, so there is no loop.
+      - name: Remove the senpai label
+        if: always() && steps.senpai-token.outputs.token != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ steps.senpai-token.outputs.token }}
+          PR: ${{ github.event.pull_request.number || inputs.pr_number }}
+        run: |
+          [[ "$PR" =~ ^[0-9]+$ ]] || exit 0
+          gh api -X DELETE "repos/$REPO/issues/$PR/labels/senpai" > /dev/null 2>&1 || true

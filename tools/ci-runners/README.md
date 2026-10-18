@@ -163,7 +163,7 @@ Three pools:
 | --- | --- | --- |
 | `cimmeria-linux` | Builds: clippy, build-and-test, coverage, wireclient e2e, pr-container, client-launch coverage, spec-lint | Five per node, plus three on the operator's desktop |
 | `cimmeria-linux-quick` | Seconds-long jobs: `changes`, `fmt` (ci, client-patches, client-telemetry), `overlay-lua`, markdownlint, spec-touch, agent-skills, figure-sources, figure-style, and the `main-red` reporters (`test.yml`'s `nightly-report`, `pr-container.yml`'s `report`) | Two per node: compose `quick1`/`quick2`, no dind, 2 CPUs and 4 GB each |
-| `ubuntu-latest` | Fork PRs, Dependabot PRs, overflow, anything sent there by a variable, and jobs that publish or need tools the image lacks: release-container, regen-docs, prune-container, the release dispatchers, bootstrap-lint (PowerShell) | GitHub-hosted |
+| `ubuntu-latest` | Fork PRs, Dependabot PRs, overflow, anything sent there by a variable, and jobs that publish or need tools the image lacks: release-container, regen-docs, prune-container, the release dispatchers, bootstrap-lint (PowerShell), senpai-review (opt-in, per `senpai` label) | GitHub-hosted |
 
 GitHub has no overflow between pools (a job waits for a runner with its label), so
 `test.yml`'s `changes` job decides: it counts idle, online `cimmeria-linux` runners

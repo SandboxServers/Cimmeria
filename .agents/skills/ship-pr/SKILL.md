@@ -34,6 +34,9 @@ PR and whenever a check fails. Every compiling command goes through the lane (se
 - Blocking only when figures or `docs/drafts/spec/` chapters change: `figure-sources-in-sync`,
   `figure-style-lint`.
 - Warn-only: `markdownlint`, `spec-lint`.
+- Opt-in and never red: `senpai review` ([senpai-review.yml](../../../.github/workflows/senpai-review.yml)),
+  a paid in-character Claude review that runs only when someone adds the `senpai` label.
+  Don't add the label as a routine ship step.
 
 Before opening the PR, also:
 
