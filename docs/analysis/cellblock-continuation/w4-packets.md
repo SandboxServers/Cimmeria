@@ -1,16 +1,17 @@
 # Cellblock continuation: wave 4 packets and close-out
 
 > **Type:** Work packets (canonical, on `content/cellblock-campaign`)
-> **Audience:** The Cellblock orchestrator, and the agents it dispatches for CB-N03t, CB-N07s, CB-N07m, CB-N07a, W4-INT, CB-N08a, CB-N08b, CB-N08-CI and CB-N08-R
+> **Audience:** The Cellblock orchestrator, and the agents it dispatches for CB-N03t, CB-N07s, CB-N07m, CB-N07a, W4-INT, CB-N08a, CB-N08b, CB-N08-CI and CB-N08-R (wave 5, CB-N06, is in [w5-packets.md](w5-packets.md))
 > **Last updated:** 2026-10-17
 > **Companions:** [work-packets.md](work-packets.md) (dispatch rules, waves), [w3-packets.md](w3-packets.md) (wave 3, runs first), [README.md](README.md) (status, D-CC decisions), [owner-lab-checklist.md](owner-lab-checklist.md), [CB-N07 contract](../four-zone-planning/cellblock-work-packets.md#cb-n07--one-rooms-authored-encounter-response-conditional), [CB-N08 contract](../four-zone-planning/cellblock-work-packets.md#cb-n08--full-escape-acceptance-and-campaign-closeout), [execution contract](../four-zone-planning/execution-contract.md)
 
 This file pre-writes every packet left in the campaign, so that what remains is coding, review and the owner's lab rows.
 
 - **No packet drives the lab** (owner directive, 2026-10-17). No packet takes a lab lease or dispatches `lab-driver`. Lab evidence comes only from the owner's rows in [owner-lab-checklist.md](owner-lab-checklist.md).
-- **CB-N07 ships a default-safe tier (D-CC16).** CB-N07a adds one gated, fire-once NID Guard alarm line in the barracks. It adds no spawn, aggression, threat, objective, death risk or time, so it needs no D-CC11 answer. Lab-dependent inputs are stated as assumptions A1-A4 and checked by the owner in the new row CB-U11. Anything that changes difficulty (Tier 1) stays held as CB-N07b.
+- **CB-N07 ships a default-safe tier (D-CC16).** CB-N07a adds one gated, fire-once NID Guard alarm line in the barracks. It adds no spawn, aggression, threat, objective, death risk or time, so it needs no D-CC11 answer. Lab-dependent inputs are stated as assumptions A1-A4 and checked by the owner in the new row CB-U11. The difficulty tier CB-N07b is omitted (D-CC19).
 - **CB-N03t** is an optional static test: the other three cover guards hold, defend and release like `MessHall_Guard1`. It strengthens CB-N03's evidence before CB-U05; it does not replace CB-U05.
-- **Held, not pre-writable:** CB-N07b (D-CC11 plus CB-U05/U09), CB-N06 build children (D-CC15 names the quest and prop), CB-N05b (HA-1360). See [§ Held](#held-packets).
+- **Owner decisions 2026-10-17.** D-CC18: CB-N06 is included as new Cimmeria content; its packets are in [w5-packets.md](w5-packets.md) (wave 5, after W4-INT). D-CC19: CB-N07b is omitted (`Done / omitted`); the CB-N07a Tier 0 bark stays.
+- **Held:** CB-N05b only (HA-1360). See [§ Held](#held-packets).
 - **CB-N08** is split into four parts under the 40k cap: CB-N08a (UAT reconciliation), CB-N08b (close-out docs), CB-N08-CI (full local CI) and CB-N08-R (campaign-level review). Ops then ships one PR.
 
 ## Dispatch plan
@@ -25,8 +26,9 @@ This file pre-writes every packet left in the campaign, so that what remains is 
 | 3 | Fixes, then re-review | `packet-coder` in the owning worktree, then a fresh `packet-reviewer` | owning worktree | - | only on `fix`; at most 3 rounds (D-CC6) |
 | 4 | [W4-INT](#w4-int--integrate-wave-4-and-bookkeeping) | `packet-coder` | `zone-cellblock` / `content/cellblock-campaign` | branch tip | every W4a packet `ship` |
 | - | CB-U03, U05, U08, U09, U10, U11 | **the owner** | lab | - | after W4-INT; never dispatched by an agent |
-| - | D-CC15 (and D-CC11 only if CB-N07b is wanted) | orchestrator asks the owner | - | - | after the owner's CB-U09/U10 results |
-| 5 | [CB-N08a](#cb-n08a--uat-reconciliation) | `testing-validation-engineer` | `zone-cellblock` | W4-INT tip | owner lab results recorded, or O14-09 documented unavailability |
+| W5 | CB-N06s, CB-N06m, CB-N06-1 to -7, W5a-INT, W5-INT ([w5-packets.md](w5-packets.md)) | per w5-packets.md | per w5-packets.md | W4-INT tip (W5a) | W4-INT `done`; CB-N06s/m may start at once |
+| - | CB-U12 | **the owner** | lab | - | after W5-INT; never dispatched by an agent |
+| 5 | [CB-N08a](#cb-n08a--uat-reconciliation) | `testing-validation-engineer` | `zone-cellblock` | **W5-INT tip** (W4-INT tip if CB-N06 closed `Done / omitted` at its seal) | owner lab results recorded, or O14-09 documented unavailability |
 | 6 | [CB-N08b](#cb-n08b--close-out-docs) | `documentation-writer` | `zone-cellblock` | CB-N08a tip | CB-N08a `done` |
 | 7 | [CB-N08-CI](#cb-n08-ci--full-local-ci) | `packet-coder` | `zone-cellblock` | CB-N08b tip | CB-N08b `done` |
 | 8 | [CB-N08-R](#cb-n08-r--campaign-review) | `packet-reviewer`, fixes by `packet-coder` | `zone-cellblock` | CB-N08-CI tip | CB-N08-CI `done`; at most 3 rounds, CI rerun after any fix |
@@ -214,7 +216,7 @@ Verdict `approve`, `change` (make the edit in the seal and say what), or `reject
 | Agent | `packet-coder` |
 | Size | About 35k working tokens: two seed blocks, one test file, one module line, one docs section, one worknote |
 | Branch / worktree | `cellblock/cb-n07-barracks` / `C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\cellblock-cb-n07a` (on the **W3-INT** commit) |
-| Writes | `db/resources/Content/Seed/castle_cellblock_chains.sql` (append); `db/resources/Dialogs/Seed/dialog_screens.sql` (one row, one setval value); `crates/cell-content/src/cell/content/chain_replay_tests/cellblock_barracks_response.rs` (new, about 150 lines); `crates/cell-content/src/cell/content/chain_replay_tests/mod.rs` (one line); `docs/content/mission-chains.md` (one section); `docs/analysis/cellblock-continuation/worknotes/cb-n07a.md` (new, under 60 lines) |
+| Writes | `db/resources/Content/Seed/castle_cellblock_chains.sql` (append); `db/resources/Dialogs/Seed/dialog_screens.sql` (one row, one setval value); `crates/cell-content/src/cell/content/chain_replay_tests/cellblock_barracks_response.rs` (new, about 150 lines); `crates/cell-content/src/cell/content/chain_replay_tests/mod.rs` (one line); `crates/cell-content/src/cell/content/chain_replay_tests/na13_chain_armed_aggro.rs` (the once set and its doc comment, step 3b); `docs/content/mission-chains.md` (one section); `docs/analysis/cellblock-continuation/worknotes/cb-n07a.md` (new, under 60 lines) |
 | Commit | `feat(cellblock): stage barracks escape response` |
 | Report | `C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\cellblock-cb-n07a\.claude\reports\cellblock-continuation\CB-N07a-coder.md` |
 
@@ -261,6 +263,8 @@ Then change `SELECT pg_catalog.setval('dialog_screens_screen_id_seq', 200160, tr
 
 **Step 3.** **`chain_replay_tests/mod.rs`:** add `mod cellblock_barracks_response;` directly after `mod cellblock_ambience;`.
 
+**Step 3b.** **`na13_chain_armed_aggro.rs`**, test `live_db_once_chains_match_the_seeded_set` (added by W3 commit `12fcfb5db`): chain 11020 is `once = true`, so the full-load once set grows. Change `vec![1008, 1026, 1027, 1044, 11001, 11010]` to `vec![1008, 1026, 1027, 1044, 11001, 11010, 11020]`; in its doc comment change `exactly the six` to `exactly the seven` and `11010 (CB-N04a cells ambience) are once by design` to `11010 (CB-N04a cells ambience) and 11020 (CB-N07a barracks bark) are once by design`. Nothing else in the file. Without this step the W3 guard fails as soon as 11020 is seeded.
+
 **Step 4.** **Test file.** Copy the imports, `type Params`, `engine_for` and `resolve_region_enter` from `cellblock_ambience.rs` in the same folder (drop the `region_contains_xz` import). Constants:
 
 ```rust
@@ -306,7 +310,7 @@ One alarm line as the player enters the barracks to fight its three guards (spaw
 
 **Mutation proofs** (rule 9; one at a time, in the seed, then `live-db-test.ps1 cellblock_barracks_response`): (a) the condition value `'active'` to `'completed'`: the fire test fails; (b) the trigger key `Region12` to `Region6`: the fire test and the other-room test fail. Restore each with Edit; `diff --stat` back to step 1's count.
 
-Lanes, in order: `pwsh tools/build-lane/lane.ps1 cargo fmt --all -- --check`; `pwsh tools/build-lane/lane.ps1 cargo clippy -p cimmeria-cell-content --all-targets -- -D warnings`; `pwsh tools/build-lane/lane.ps1 cargo nextest run -p cimmeria-cell-content --filter-expr 'test(cellblock_barracks_response)'`; `pwsh tools/build-lane/lane.ps1 cargo nextest run -p cimmeria-content-engine` (the seed linters: chain 11020's `Castle_Cellblock.Region12` key must match `point_sets.sql` set 2043, and the interact-tag and dialog-button linters must stay green; on failure stop and report `failed`, never add an allowlist entry); `pwsh tools/build-lane/live-db-test.ps1 cellblock_barracks_response` (3 pass, none skipped); `pwsh tools/build-lane/live-db-test.ps1 marsh_barks`; `pwsh tools/build-lane/live-db-test.ps1 cellblock_ambience`.
+Lanes, in order: `pwsh tools/build-lane/lane.ps1 cargo fmt --all -- --check`; `pwsh tools/build-lane/lane.ps1 cargo clippy -p cimmeria-cell-content --all-targets -- -D warnings`; `pwsh tools/build-lane/lane.ps1 cargo nextest run -p cimmeria-cell-content --filter-expr 'test(cellblock_barracks_response)'`; `pwsh tools/build-lane/lane.ps1 cargo nextest run -p cimmeria-content-engine` (the seed linters: chain 11020's `Castle_Cellblock.Region12` key must match `point_sets.sql` set 2043, and the interact-tag and dialog-button linters must stay green; on failure stop and report `failed`, never add an allowlist entry); `pwsh tools/build-lane/live-db-test.ps1 cellblock_barracks_response` (3 pass, none skipped); `pwsh tools/build-lane/live-db-test.ps1 marsh_barks`; `pwsh tools/build-lane/live-db-test.ps1 cellblock_ambience`; `pwsh tools/build-lane/live-db-test.ps1 once_chains_match_the_seeded_set` (passes with step 3b; fails without it).
 
 Repo rules 1-10.
 
@@ -343,18 +347,18 @@ Repo rules 1, 2, 3, 6, 10.
 |---|---|
 | Agent | `testing-validation-engineer` |
 | Size | About 40k working tokens. Static: docs, seeds and test inventory. No lab. |
-| Worktree | `C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\zone-cellblock` (W4-INT tip) |
+| Worktree | `C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\zone-cellblock` (W5-INT tip) |
 | Writes | `docs/analysis/cellblock-continuation/worknotes/cb-n08-acceptance.md` (new, under 300 lines); `docs/guides/uat-specs/castle-cellblock.toml` only if step 2 finds a stale literal |
 | Commit | `docs(cellblock): reconcile escape acceptance rows` |
 | Report | `C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\zone-cellblock\.claude\reports\cellblock-continuation\CB-N08a-testing-validation-engineer.md` |
 
-**Input from the orchestrator (in the brief):** the owner's result for each of CB-U03, U05, U08, U09, U10 and U11 (pass, fail with what was seen, skipped), or the O14-09 note that the lab was unavailable, and the D-CC15 answer.
+**Input from the orchestrator (in the brief):** the owner's result for each of CB-U03, U05, U08, U09, U10, U11 and U12 (pass, fail with what was seen, skipped), or the O14-09 note that the lab was unavailable. D-CC18 (CB-N06 included) and D-CC19 (CB-N07b omitted) are already decided; no decision input is needed.
 
-1. **Acceptance matrix.** One table row per scenario the CB-N08 contract lists: fresh Human and Jaffa full runs, another archetype where class branches differ, skip both optional stories, accept each story, relog and death before and after key transitions, two-client AoI, boots Livewire, Marsh escort, combat/flank, first-press feedback, Castle boundary. Plus the presentation rows CA-U01-21 ([castle-cellblock-rebuild uat-guide](../castle-cellblock-rebuild/uat-guide.md)), class-start and ring travel ([presentation-handoff.md](presentation-handoff.md)). Columns: scenario, covering owner row or test, evidence (client, server log, test name), state (`pass`, `fail`, `UNTESTED: <reason>`). Never infer a pass from logs or tests alone where the row needs the client.
+1. **Acceptance matrix.** One table row per scenario the CB-N08 contract lists: fresh Human and Jaffa full runs, another archetype where class branches differ, skip both optional stories (62050 and 62060), accept each story, take each 62060 branch (aid, sabotage) once, relog and death before and after key transitions, two-client AoI, boots Livewire, Marsh escort, combat/flank, first-press feedback, Castle boundary. Plus the presentation rows CA-U01-21 ([castle-cellblock-rebuild uat-guide](../castle-cellblock-rebuild/uat-guide.md)), class-start and ring travel ([presentation-handoff.md](presentation-handoff.md)). Columns: scenario, covering owner row or test, evidence (client, server log, test name), state (`pass`, `fail`, `UNTESTED: <reason>`). Never infer a pass from logs or tests alone where the row needs the client.
 2. **Spec check.** `castle-cellblock.toml` has one row, T01/T02. Verify its literals against the seeds (dialog 2982, mission 622 step 2113). Change it only if a literal is stale. Add no lab rows (owner directive).
 3. **Route-baseline rows** CB-U01, U02, U04, U06, U07: the owner's result if given, else `UNTESTED: owner lab not run`.
 4. **Issue #1667** (first-guard pistol damage): a known blocker; record its state from `gh issue view 1667 --json state,title` (read-only).
-5. **Blockers.** Any CB-U10 blocker (blank dialog, crash, missing first-press response, lost progress, changed Marsh briefing), any mandatory route blocker, duplicated reward, impossible branch or uncontrolled aggro: list it under `## Blockers` and return `blocked`. The orchestrator then opens a fix packet through the architect.
+5. **Blockers.** Any CB-U10 or CB-U12 blocker (blank dialog, crash, missing first-press response, lost progress, changed Marsh briefing), any mandatory route blocker, duplicated reward, impossible branch or uncontrolled aggro: list it under `## Blockers` and return `blocked`. The orchestrator then opens a fix packet through the architect.
 6. **Test inventory.** List the campaign's new tests by file with counts (`git -C <wt> diff --stat main...HEAD -- crates`), and confirm each live-DB test name contains `live_db`.
 
 Repo rules 1, 3, 6, 7, 10.
@@ -374,13 +378,13 @@ Repo rules 1, 3, 6, 7, 10.
 
 Status docs (`docs/gap-analysis*`, `docs/project-status.md`, `docs/content/zone-audit.md`) belong to FZ-99: do not touch them.
 
-1. **README.md:** every packet row reaches a final state: `Done`, `Integrated, UATPending (<row>)`, `Done / omitted` (with evidence), or `BlockedDependency` (CB-N05b, HA-1360). CB-N06: `Done / omitted` unless D-CC15 was answered yes (then `BlockedDecision`, a later campaign). CB-N07b: `Done / omitted` unless D-CC11 asked for it. CB-N03 and CB-N03a: from the CB-U05 result. Add `## FZ-99 handoff`: what changed in world 12 (chains, missions, spawns, dialogs), the open UATPending rows, known blockers (#1667), and the rows FZ-99 should write into the status docs.
+1. **README.md:** every packet row reaches a final state: `Done`, `Integrated, UATPending (<row>)`, `Done / omitted` (with evidence), or `BlockedDependency` (CB-N05b, HA-1360). CB-N06 (D-CC18): `Integrated, UATPending (CB-U12)`, or `Pass` on a CB-U12 pass, or `Done / omitted` with the seal or the owner's veto as evidence if the seal rejected it or the rollback fix packet ran. CB-N07b: `Done / omitted (D-CC19)`. CB-N03 and CB-N03a: from the CB-U05 result. Add `## FZ-99 handoff`: what changed in world 12 (chains, missions, spawns, dialogs), the open UATPending rows, known blockers (#1667), and the rows FZ-99 should write into the status docs.
 2. **decision-log.md:** one dated entry per CB-D or D-CC decision taken since its last entry; link the README table rather than copying it.
 3. **owner-lab-checklist.md:** record each owner result next to its row; keep the steps.
 4. **worknotes/cb-n08.md** (new): the close-out summary, linking `cb-n08-acceptance.md`, with what was tested versus never tested stated up front.
-5. **unified-uat.md**, section `## Castle Cellblock tutorial` only: add rows for the continuation's tester-facing behaviour with new ids `CB1`-`CB6` (relog restores 1026-1028/1036/1037, ambient cast and bark 11010, *The Remaining Pods* 62050, barracks bark 11020, cover flank in Mess Hall/Hallway05, core pacing), each linking the matching [owner-lab-checklist.md](../analysis/cellblock-continuation/owner-lab-checklist.md) section. Keep the existing T rows and ids. Do not edit a `<!-- gen:... -->` block.
-6. **mission-pak-overrides.md:** the sentence "`MISSION_ADDITIONS` stays empty until an authored content packet seals production XML." becomes a statement that mission 62050 (*The Remaining Pods*, CB-N05) is the first production entry, with a link to `worknotes/cb-n05-seal.md`.
-7. **Project memory:** `.claude/agent-memory/main-session/project_cellblock_continuation_closeout.md` (frontmatter as in the sibling `reference_cellblock_*` files): durable facts only (ID claims, the bark pattern, the owner-run lab rule, where the ledger is). No IPs, credentials or account names. Add its one-line entry to `.claude/agent-memory/main-session/MEMORY.md`.
+5. **unified-uat.md**, section `## Castle Cellblock tutorial` only: add rows for the continuation's tester-facing behaviour with new ids `CB1`-`CB7` (relog restores 1026-1028/1036/1037, ambient cast and bark 11010, *The Remaining Pods* 62050, barracks bark 11020, cover flank in Mess Hall/Hallway05, core pacing, *Before the Patrol Returns* 62060 marked new Cimmeria content), each linking the matching [owner-lab-checklist.md](../analysis/cellblock-continuation/owner-lab-checklist.md) section. Keep the existing T rows and ids. Do not edit a `<!-- gen:... -->` block.
+6. **mission-pak-overrides.md:** the sentence "`MISSION_ADDITIONS` stays empty until an authored content packet seals production XML." becomes a statement that missions 62050 (*The Remaining Pods*, CB-N05) and 62060 (*Before the Patrol Returns*, CB-N06, new Cimmeria content) are the production entries, with links to `worknotes/cb-n05-seal.md` and `worknotes/cb-n06-seal.md`.
+7. **Project memory:** `.claude/agent-memory/main-session/project_cellblock_continuation_closeout.md` (frontmatter as in the sibling `reference_cellblock_*` files): durable facts only (ID claims including CB-N06's 62060-62063/60151/96111/11030-11041, the bark pattern, the per-player choice-bind pattern of CB-N06, `CIMMERIA_AUTHORING` labelling of new content, the owner-run lab rule, where the ledger is). No IPs, credentials or account names. Add its one-line entry to `.claude/agent-memory/main-session/MEMORY.md`.
 8. **Doc-update map:** walk [doc-update-map.md](../../agents/doc-update-map.md) and list the rows touched in the report (expected: content chains, complete authored mission catalog entries, UAT steps, project memory). The ship step copies the list into the PR body.
 9. Checks: `pwsh tools/lint-md.ps1` on the changed docs (warn-only, fix what is yours); `python tools/docs-gen/regen.py --check`; `git -C <wt> diff --check`; CRLF on every changed `docs/` file.
 
@@ -421,7 +425,7 @@ Report each step's result, test counts, and the log paths. Repo rules 1, 2, 3, 1
 |---|---|
 | Agent | `packet-reviewer` (fresh, read-only); fixes by `packet-coder` |
 | Size | About 60k (reviewer, not Haiku); fixes about 20k each |
-| Scope | `git -C <zone-cellblock> diff main...HEAD` (the whole campaign) against the [execution contract](../four-zone-planning/execution-contract.md), this file, w1b/w2/w3 packets and the seals |
+| Scope | `git -C <zone-cellblock> diff main...HEAD` (the whole campaign) against the [execution contract](../four-zone-planning/execution-contract.md), this file, w1b/w2/w3/w5 packets, w5-frozen.md and the seals; CB-N06 content must carry `CIMMERIA_AUTHORING` and never claim 2009 provenance |
 | Report | `C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\zone-cellblock\.claude\reports\cellblock-continuation\CB-N08-R<round>-reviewer.md` |
 
 Review for: correctness bugs, spec drift, theatre tests (a test that passes with its change reverted), repo-rule breaches (file caps, CRLF, generated blocks, `db/scripts`, IDs outside the claims, committed IPs or names), and missing docs rows. Verdict `ship` or `fix` with verified findings. On `fix`: one `packet-coder` per finding group, in zone-cellblock, commit `fix(cellblock): campaign review round <n>`; rerun CB-N08-CI steps 2, 4, 6 and 8; then a fresh reviewer. At most 3 rounds; then back to the architect.
@@ -432,9 +436,9 @@ Review for: correctness bugs, spec drift, theatre tests (a test that passes with
 
 `ops`, one operation per dispatch, after CB-N08-R `ship`:
 
-1. From the main checkout (the branch's own copy of `tools/build-lane/` predates `ship.py`): `python C:\Users\Steve\source\projects\Cimmeria\tools\build-lane\ship.py pr -C C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\zone-cellblock -m "feat(cellblock): relog restores, ambient cast, The Remaining Pods, barracks response" --body-file <body.md>`. The body names the UATPending owner rows, #1667, the doc-update-map rows from CB-N08b, and ends with the attribution the orchestrator gives.
+1. From the main checkout (the branch's own copy of `tools/build-lane/` predates `ship.py`): `python C:\Users\Steve\source\projects\Cimmeria\tools\build-lane\ship.py pr -C C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\zone-cellblock -m "feat(cellblock): relog restores, ambient cast, The Remaining Pods, Before the Patrol Returns, barracks response" --body-file <body.md>`. The body names the UATPending owner rows, #1667, the doc-update-map rows from CB-N08b, and ends with the attribution the orchestrator gives.
 2. After the owner's go: `python C:\Users\Steve\source\projects\Cimmeria\tools\build-lane\ship.py merge <PR> --retire zone-cellblock` (it waits for CI and the merge queue).
-3. Retire every packet worktree, one `rm-worktree.ps1 --force <name>` each (all NO_PR, integrated by cherry-pick): `cellblock-cb-n02a`, `cellblock-cb-n02b`, `cellblock-cb-n02c`, `cellblock-cb-n02d`, `cellblock-cb-n02s`, `cellblock-cb-n02s2`, `cellblock-cb-n03s`, `cellblock-cb-n04s`, `cellblock-cb-n04a2`, `cellblock-cb-n05-1` to `cellblock-cb-n05-7`, `cellblock-cb-n03t`, `cellblock-cb-n07s`, `cellblock-cb-n07a`. **`cellblock-cb-n04a`** (branch `cellblock/cb-n04-region2`, dirty, stale) only on the owner's word (salvage or retire). Never `git worktree prune`.
+3. Retire every packet worktree, one `rm-worktree.ps1 --force <name>` each (all NO_PR, integrated by cherry-pick): `cellblock-cb-n02a`, `cellblock-cb-n02b`, `cellblock-cb-n02c`, `cellblock-cb-n02d`, `cellblock-cb-n02s`, `cellblock-cb-n02s2`, `cellblock-cb-n03s`, `cellblock-cb-n04s`, `cellblock-cb-n04a2`, `cellblock-cb-n05-1` to `cellblock-cb-n05-7`, `cellblock-cb-n03t`, `cellblock-cb-n07s`, `cellblock-cb-n07a`, `cellblock-cb-n06s`, `cellblock-cb-n06-1` to `cellblock-cb-n06-7`. **`cellblock-cb-n04a`** (branch `cellblock/cb-n04-region2`, dirty, stale) only on the owner's word (salvage or retire). Never `git worktree prune`.
 4. The orchestrator then empties `.claude/state/active-campaign` and posts the board handoff through ops.
 
 ---
@@ -443,7 +447,7 @@ Review for: correctness bugs, spec drift, theatre tests (a test that passes with
 
 | Packet | Status | Blocked on | What unblocks it | Default at close-out |
 |---|---|---|---|---|
-| CB-N07b (Tier 1: difficulty, aggression or reinforcement) | BlockedDecision D-CC11, BlockedEvidence CB-U05/U09 | The barracks pack already pulls as one (spacing 13.1-24.96 m, assist radius 26), so a scripted aggression adds nothing; a reinforcement spawn is an added unavoidable fight, which the contract forbids. A real difficulty change belongs in a room with a flank objective (likely the Mess Hall) and needs CB-U05 and measured pacing. | Owner answers D-CC11 after CB-U05/U09; a new architect pass seals it | `Done / omitted` |
-| CB-N06 (second optional prisoner-aid choice) | BlockedDecision D-CC15, BlockedEvidence CB-U09/U10 | The owner must say whether it exists and name the quest and the prop; the contract freezes branches, copy, IDs, item and reward at seal time. | D-CC15 yes: dispatch a seal packet CB-N06s (`mission-systems-advisor` with `items-systems-advisor` as second reader, writes `worknotes/cb-n06-seal.md`, about 40k), then an architect pass splits the build | `Done / omitted` with evidence |
+| CB-N07b (Tier 1: difficulty, aggression or reinforcement) | **`Done / omitted` (D-CC19, owner 2026-10-17)** | Not held any more. The barracks pack already pulls as one (spacing 13.1-24.96 m, assist radius 26), and a reinforcement spawn would be an added unavoidable fight. The Tier 0 bark (CB-N07a) stays. | - | `Done / omitted (D-CC19)` |
+| CB-N06 (second optional prisoner-aid choice) | **Released (D-CC18, owner 2026-10-17)** | Not held any more: wave 5, [w5-packets.md](w5-packets.md), values in [w5-frozen.md](w5-frozen.md) | - | `Integrated, UATPending (CB-U12)` |
 | CB-N05b (Castle evidence hand-in) | BlockedDependency | Harset HA-1360's atomic possession, consume and completion primitive is not on `main` | A later campaign after HA-1360 merges | Recorded as deferred, outside this PR |
 | CB-N03a/b | BlockedEvidence | Exists only if CB-U05 (or CB-N03t) shows a seed fault | A new architect pass | `Done / not needed` on a CB-U05 pass |

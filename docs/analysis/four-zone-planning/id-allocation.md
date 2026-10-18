@@ -103,6 +103,21 @@ Individual claims for the wave 4 barracks escape response (CB-N07a) in the [Cell
 
 Collision check, 2026-10-17, at Cellblock `634b76558`: a `git grep` across all 731 local branches for `VALUES (11020,` under `db/resources/Content` and for a `dialog_screens` tuple with screen 200170 under `db/resources/Dialogs` found zero hits. The same patterns found chain 11010 and screen 200160 on the two branches that carry them, so the search works. Point-in-time; CB-N07s rechecks before it seals, and W4-INT moves the rows to In use.
 
+### CB-N06 claims — 2026-10-17
+
+Individual claims for the wave 5 optional choice *Before the Patrol Returns* (CB-N06, new Cimmeria content under D-CC18) in the [Cellblock ledger](../cellblock-continuation/w5-packets.md), with every literal in [w5-frozen.md](../cellblock-continuation/w5-frozen.md). The chains come from the 11000–11499 Cellblock authored block; the mission IDs follow CB-N05's 62050 pattern. Reused, not claimed: dialog-set-maps 3862 (slot 176) and 7509 (slot 22), item 2893, spawns 520, 521 and 22.
+
+| Namespace | Claimed ID | Exact use | Status |
+|---|---|---|---|
+| Mission | 62060 | *Before the Patrol Returns*; one-time, two Health Slappacks, no XP | Claimed (W5 architect) |
+| Mission step | 62061 | The choice step | Claimed (W5 architect) |
+| Mission objective | 62062 | Help the prisoners or jam the panel | Claimed (W5 architect) |
+| Mission task | 62063 | One task for the objective | Claimed (W5 architect) |
+| Dialog root | 60151 | One-screen, zero-button, speaker-0 monologue shown on accept | Claimed (W5 architect) |
+| Dialog screen | 96111 | Sole screen of dialog 60151 | Claimed (W5 architect) |
+| Content chain | 11030–11041 | Offer, two login restores, two accepts, follow-up, aid x2, sabotage, abandon, 641 withdrawal, abandon after 641; twelve individual IDs | Claimed (W5 architect) |
+
+Collision check, 2026-10-17, at Cellblock `12fcfb5db`: a `git grep` across all 744 local branches for these IDs as the first value of a `VALUES (` tuple under `db/resources/Content`, `db/resources/Missions` and `db/resources/Dialogs`, and for screen 96111 anywhere under `db/resources/Dialogs`, found zero hits. The same patterns found chain 11010, mission 62050, dialog 60150 and screen 96110 on this branch, so the search works. Mission 62060–62063 and dialog 60151 are absent from the stock paks (CB-N06-1 and CB-N06-2 prove it in tests). Point-in-time; CB-N06s rechecks before it seals, and W5-INT moves the rows to In use.
 ### CS-08a individual reservation — 2026-10-14
 
 Owner explicitly approved **chain 1366**, 2026-10-14, reserved exclusively for Castle **CS-08a**, the [Frost's Letter bridge](../castle-continuation/worknotes/CS-08a.md). G-ID is closed for this single claim after collision recheck. The owner's later O14-22 decision delegates the remaining 1367–1400 restoration block to Castle's coordinator for individual audited claims; it does not allocate any particular ID in that block. Recheck live claims immediately before implementation; another packet cannot reuse 1366.

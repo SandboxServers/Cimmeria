@@ -3,26 +3,27 @@
 > **Type:** How-to (owner-run UAT)
 > **Audience:** The owner, running the Cellblock lab rows by hand
 > **Last updated:** 2026-10-17
-> **Companions:** [README.md](README.md) (row status), [route-baseline.md § bounded fresh acceptance rows](route-baseline.md#bounded-fresh-acceptance-rows) (the row definitions), [w3-packets.md](w3-packets.md), [CB-N03 seal](worknotes/cb-n03-seal.md), [CB-N04 seal](worknotes/cb-n04-seal.md), [CB-N05 seal](worknotes/cb-n05-seal.md)
+> **Companions:** [README.md](README.md) (row status), [route-baseline.md § bounded fresh acceptance rows](route-baseline.md#bounded-fresh-acceptance-rows) (the row definitions), [w3-packets.md](w3-packets.md), [CB-N03 seal](worknotes/cb-n03-seal.md), [CB-N04 seal](worknotes/cb-n04-seal.md), [CB-N05 seal](worknotes/cb-n05-seal.md), [w5-packets.md](w5-packets.md) and [w5-frozen.md](w5-frozen.md) (CB-N06)
 
 Owner directive, 2026-10-17: agents no longer drive the lab. The owner runs every row below once the agents are done, and records the result in the README row (pass, fail with what was seen, or skipped). Agents never start a lab session for these rows.
 
 | Row | Proves | Run after | Unblocks |
 |---|---|---|---|
 | CB-U03 | Relog restores the 638/639 interactions | now (W1b integrated) | CB-N02 Done |
-| CB-U05 | Mess Hall and Hallway05 guards flank and use cover | now | CB-N03, CB-N07b (with D-CC11) |
+| CB-U05 | Mess Hall and Hallway05 guards flank and use cover | now | CB-N03 (CB-N07b is omitted, D-CC19) |
 | CB-U08 | The ambient cast stands where sealed and barks once | now (W2 integrated) | CB-N04 Done; a second cluster |
-| CB-U09 | A fresh core escape takes 30-45 minutes, plus the 62050 beat | W3-INT | CB-N06 (with D-CC15), CB-N07b (with D-CC11) |
+| CB-U09 | A fresh core escape takes 30-45 minutes, plus the 62050 and 62060 beats | W3-INT (62060 part after W5-INT) | the pacing gate (O14-14) for CB-N05 and CB-N06 |
 | CB-U10 | Mission 62050 works in the native client | W3-INT | the campaign PR; CB-N05/CB-N05a Done |
 | CB-U11 | The barracks alarm line plays once, only during 687 step 2355 | W4-INT | CB-N07a Done |
+| CB-U12 | Mission 62060 *Before the Patrol Returns* (new Cimmeria content) works in the native client: one choice, one reward | W5-INT | the campaign PR; CB-N06 Done |
 
 ## Setup (every row)
 
 1. **Run exactly one `cimmeria-server`.** On 2026-10-17 a second server from the `castle-cs-01b` worktree also listened on auth port 13001, the client logged into it, and every lab result that day was invalid. Before you start, check: `Get-NetTCPConnection -LocalPort 13001 -State Listen | ForEach-Object { (Get-Process -Id $_.OwningProcess).Path }`. It must print one path, inside `.claude\worktrees\zone-cellblock\`. Stop any other server first.
 2. Build and run the server from `C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\zone-cellblock` (branch `content/cellblock-campaign`) against its own database `sgw_zone_cellblock`.
 3. Reload that database from seeds so it has every wave's rows: `Set-Location C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\zone-cellblock; pwsh tools/build-lane/reload-db.ps1`. **This wipes characters.** Restart the server afterwards.
-4. Use **fresh characters** made after the reload (a Human and a Loyalist Jaffa for CB-U09/U10). Characters from another worktree's database do not exist here.
-5. For CB-U10 only: delete the client's `Cache.en-US\CookedDataDialogs.pak` before the first login, so the client takes the served dialog 60150 fresh. Delete it again if you roll back.
+4. Use **fresh characters** made after the reload (a Human and a Loyalist Jaffa for CB-U09, U10 and U12). Characters from another worktree's database do not exist here.
+5. For CB-U10 and CB-U12: delete the client's `Cache.en-US\CookedDataDialogs.pak` before the first login, so the client takes the served dialogs 60150 and 60151 fresh. Delete it again if you roll back.
 6. GM commands need client patch 012. Without it, use the `.`-console equivalents (`.gotolocation`, and so on).
 
 ## GM shortcuts
@@ -33,6 +34,8 @@ Owner directive, 2026-10-17: agents no longer drive the lab. The owner runs ever
 | Stand next to Col. Marsh (spawn at -191, 54.7, -138.6) | `/gmgotolocation Castle_CellBlock -189 54.7 -138.6` |
 | Mess Hall guards (about -96, 34.6, -95) | `/gmgotolocation Castle_CellBlock -110 34.6 -95` (stand off, west) |
 | Hallway05 guards (about -101, 24.7, -47) | `/gmgotolocation Castle_CellBlock -101 24.7 -30` |
+| Stand by the two Op-CORE prisoners (spawns 520, 521 at -271 and -254, 65.45, -135) | `/gmgotolocation Castle_CellBlock -265 65.45 -135` |
+| Cell-door panel `329_CellDoorButton` (spawn 22 at -287.3, 67.3, -115.0) | the Prisoner 329 shortcut above; the panel is 3.2 m from him |
 | Give a mission | `/gmmissionassign <missionId> 1` |
 | Jump a mission to a step | `/gmmissionadvance <missionId> <stepId>` |
 | Kill the target, refill health | `/gmkilltarget`, `/gmsethealthmax`, `/gmsethealth <n>` |
@@ -48,7 +51,8 @@ Filter every query on `service.name = 'cimmeria-server'` and the time window of 
 | Mission flow | log body contains one of `Content: accepting mission`, `Content: advancing step`, `Content: complete objective`, `Content: completing mission`, `Content: abandoning mission` |
 | Offers and dialogs | `Content: adding dialog set`, `Content: removing dialog set`, `Content: displaying dialog` |
 | Step changes | span name `mission.advance_step` |
-| Catalog insert at startup | attribute `event = cooked_data.mission_catalog_inserted` (expect `mission_id` 62050); `cooked_data.mission_catalog_rejected` must be absent |
+| Catalog insert at startup | attribute `event = cooked_data.mission_catalog_inserted` (expect `mission_id` 62050, and 62060 after W5-INT); `cooked_data.mission_catalog_rejected` must be absent |
+| Item grant (CB-U12) | `Content: granting item` with item 2893, count 2 |
 | Ambient cast | DEBUG `Spawned instance NPC from DB` with tag like `Cellblock_Ambient_%`; INFO `instance_populated` |
 | Ambient bark | span `content.npc_bark`, INFO `Content: npc bark` with `chain_id` 11010 and `screen_id` 200160; WARN with `reason` in (`screen_not_cached`, `empty_text`, `actor_not_player`) must be absent |
 
@@ -88,9 +92,9 @@ Pass: placement, plate, once-only bark, AoI on the second client, and the SigNoz
 
 1. Fresh Human: play the core escape from the stasis pod to the 688 exit, skipping optional content (do not take 62050). Record wall-clock time. Target 30-45 minutes.
 2. Same on a fresh Loyalist Jaffa.
-3. Then time the 62050 beat alone on one of them: from the first Prisoner click after 638 to the completion at Marsh. Budget: 10 minutes or less (O14-14).
+3. Then time the 62050 beat alone on one of them: from the first Prisoner click after 638 to the completion at Marsh. After W5-INT also time the 62060 beat (from the first click on an Op-CORE prisoner to the reward). Budget: 10 minutes or less for both optional beats together (O14-14).
 
-Pass: both core runs inside 30-45 minutes and the beat inside 10. A slow beat does not block the PR by itself: tell the coordinator, who can drop 62050 or open a fix packet.
+Pass: both core runs inside 30-45 minutes and the optional beats inside 10 together. A slow beat does not block the PR by itself: tell the coordinator, who can drop 62050 or 62060 or open a fix packet.
 
 ## CB-U10 — Mission 62050 in the native client (after W3-INT)
 
@@ -122,6 +126,24 @@ Run after W4-INT, on any fresh character that reaches mission 687. The barracks 
 
 Pass: steps 1-5. If you dislike the line or it fires at the wrong time, say so: the rollback is `enabled = false` on chain 11020, and CB-N07 closes as `Done / omitted`.
 
+## CB-U12 — Before the Patrol Returns in the native client (after W5-INT)
+
+New Cimmeria content (D-CC18), not 2009 content. Run on a fresh Human and a fresh Loyalist Jaffa; setup step 5 first. The two Op-CORE prisoners stand at (-271, -135) and (-254, -135); the cell-door panel is beside Prisoner 329.
+
+1. **No early offer.** Before 638 completes, click each Op-CORE prisoner: nothing happens.
+2. **Offer.** Complete 638. Each prisoner is now usable on the **first** look and first press (topic `Mend Slave Cages`, if the client shows it).
+3. **Accept.** One click on either prisoner: the journal shows *Before the Patrol Returns* with step "Help the prisoners hide, or jam the cell-door panel." and objective "Help the prisoners or jam the panel."; dialog 60151 shows one screen ("The two prisoners are too weak to run…") and closes cleanly. **No item yet.**
+4. **Choose (character A: aid).** Click a prisoner again: two Health Slappacks arrive in the bag on that click, and the mission completes. Then click both prisoners and the panel: nothing new, no second reward.
+5. **Choose (character B: sabotage).** After accepting, click the cell-door panel: two Health Slappacks arrive on that click, and the mission completes. Then click a prisoner and the panel again: nothing new. The panel does not start the 638 Livewire minigame.
+6. **Relog** after step 3 (choice still open): the prisoners and the panel still answer the first press. Relog after the reward: no offer, no second reward, the journal shows it complete.
+7. **Abandon** (a fresh character): accept, abandon from the journal: the panel stops answering, the prisoners offer again, and re-accepting works.
+8. **Skip.** Ignore 62060, accept 641 at Col. Marsh: the prisoners stop offering and the core route to 688 is unchanged.
+9. **Pacing.** Time the beat for CB-U09 step 3.
+10. SigNoz: the mission-flow and dialog rows, the item grant row (item 2893, count 2), and the startup catalog insert for 62060.
+
+**Blockers (not "pending"):** a blank dialog, a client crash, a missing first-press response, a lost or doubled reward, both branches paying out, or any change to the core route blocks the campaign PR.
+
+**If you dislike the quest, the copy or the reward**, say so: a fix packet sets `enabled = false` on chains 11030-11041, moves 60151 into the dialog quarantine and drops 62060 from the served catalog; delete `Cache.en-US\CookedDataDialogs.pak` on the client. CB-N06 then closes `Done / omitted`.
 ## Rows owned by CB-N08
 
 CB-U01, CB-U02, CB-U04, CB-U06 and CB-U07 belong to the close-out packet CB-N08 and are listed in [route-baseline.md](route-baseline.md#bounded-fresh-acceptance-rows).

@@ -9,7 +9,7 @@ Wave 3 builds CB-N05, *The Remaining Pods* (mission 62050): Cellblock's first au
 
 - **No lab in this wave (owner directive, 2026-10-17).** The owner runs every lab row at the end ([owner-lab-checklist.md](owner-lab-checklist.md)). D-CC13 builds CB-N05 before CB-U09 (pacing) and CB-U10 (native client proof). Both stay UATPending for the owner, and the campaign PR waits for them.
 - **Seven build packets in two parallel waves.** The contract's single CB-N05 packet is far over 40k working tokens, so D-CC14 splits it along file seams. W3a writes the data (catalog, dialog, chains) and its own unit and resolve tests. W3b proves the runtime paths on the integrated data.
-- **CB-N05b gets no packet.** The Castle evidence hand-in is BlockedDependency on Harset HA-1360's possession and consume primitive (not on `main`). **CB-N06 gets no packet.** It is BlockedEvidence (CB-U09, CB-U10) and BlockedDecision (D-CC15). See [§ Held](#held-cb-n05b-and-cb-n06).
+- **CB-N05b gets no packet.** The Castle evidence hand-in is BlockedDependency on Harset HA-1360's possession and consume primitive (not on `main`). **CB-N06 gets no packet in this wave.** The owner included it on 2026-10-17 (D-CC18); its packets are wave 5, [w5-packets.md](w5-packets.md). See [§ Held](#held-cb-n05b-and-cb-n06).
 
 ## Dispatch plan
 
@@ -345,7 +345,7 @@ Lanes: `cargo fmt --all -- --check`; `cargo clippy -p cimmeria-cell-content --al
 | Packet | Status | Blocked on | Unblock |
 |---|---|---|---|
 | CB-N05b (Castle evidence hand-in, item-bearing; not step B of 62050) | BlockedDependency | Harset HA-1360's atomic possession, consume and mission-completion primitive is not on `main` and not on this branch; the Castle recipient owner and the mission, items and authority reviewers must then reseal item, recipient, copy, reward and IDs | A later architect pass after HA-1360 merges |
-| CB-N06 (second authored quest) | BlockedEvidence + BlockedDecision | CB-U09 (pacing headroom) and CB-U10 (62050 renders safely in the real client); owner decision D-CC15 (whether a second quest exists, which one, which prop) | Owner runs CB-U09/U10, then answers D-CC15; then an architect pass seals CB-N06s |
+| CB-N06 (second authored quest) | **Released** (owner D-CC18, 2026-10-17: included as new Cimmeria content) | Nothing: the W5 architect pass chose the quest and prop from static evidence | Wave 5: [w5-packets.md](w5-packets.md) (CB-N06s seal first), values in [w5-frozen.md](w5-frozen.md); the owner checks it in CB-U12 |
 
 ## Owner lab rows for this wave
 
