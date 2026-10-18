@@ -93,10 +93,31 @@ try {
     $before = (& git -C $wt rev-parse HEAD).Trim()
     $r = Invoke-Rebase $wt $newMain
     $gitDir = (& git -C $wt rev-parse --absolute-git-dir).Trim()
-    Check ($r.code -eq 1 -and $r.out -match 'status=failed reason=rebase-aborted branch=feat/x detail=\S') "a conflicting rebase fails, aborts and says why (exit $($r.code)): $($r.out.Trim())"
+    Check ($r.code -eq 1 -and $r.out -match 'status=failed reason=rebase-aborted branch=feat/x detail="[^"]*(?:CONFLICT|could not apply)') "a conflicting rebase fails, aborts and says why (exit $($r.code)): $($r.out.Trim())"
     Check ((& git -C $wt rev-parse HEAD).Trim() -eq $before) 'the conflict left HEAD where it was'
     Check ((& git -C $wt status --porcelain | Out-String).Trim() -eq '') 'the conflict left the tree clean'
     Check (-not (Test-Path -LiteralPath (Join-Path $gitDir 'rebase-merge')) -and -not (Test-Path -LiteralPath (Join-Path $gitDir 'rebase-apply'))) 'no rebase is left in progress'
+
+    # --- a rebase left by someone else is refused, not aborted -------------------------
+    # An interrupted rebase, then `checkout -f` back onto the branch and a new commit: HEAD is
+    # attached and the tree clean, but the stale rebase-merge directory remains. Running the rebase
+    # there fails on it, and an abort would reset the branch to that rebase's starting commit.
+    & git -C $wt rebase $newMain *> $null
+    Check (Test-Path -LiteralPath (Join-Path $gitDir 'rebase-merge')) 'setup: a hand-run rebase stopped on its conflict'
+    & git -C $wt checkout -q -f feat/x
+    Set-Content -LiteralPath (Join-Path $wt 'precious.txt') 'precious work'
+    & git -C $wt add -- precious.txt
+    & git -C $wt commit -q -m 'precious work'
+    $precious = (& git -C $wt rev-parse HEAD).Trim()
+    $r = Invoke-Rebase $wt $newMain (& git -C $wt rev-parse 'HEAD~2').Trim()
+    Check ($r.code -eq 2 -and $r.out -match 'operation-in-progress: rebase-merge') "a stale rebase directory is refused (exit $($r.code)): $($r.out.Trim())"
+    Check ((& git -C $wt rev-parse refs/heads/feat/x).Trim() -eq $precious -and (Test-Path -LiteralPath (Join-Path $wt 'precious.txt'))) 'the stale-rebase refusal kept the branch and its newest commit'
+    & git -C $wt rebase --quit *> $null
+    & git -C $wt merge -q --no-commit --no-ff -s ours $newMain *> $null
+    $r = Invoke-Rebase $wt $newMain
+    Check ($r.code -eq 2 -and $r.out -match 'operation-in-progress: MERGE_HEAD') "a merge in progress is refused (exit $($r.code)): $($r.out.Trim())"
+    & git -C $wt merge --abort *> $null
+    & git -C $wt reset -q --hard $before
 
     # --- guards that nothing else covers ------------------------------------------------
     $mainSub = Join-Path $main 'sub'
@@ -202,8 +223,11 @@ try {
     New-Commit $main 'g.txt' 'main g'
     $gTip = (& git -C $main rev-parse HEAD).Trim()
     & git -C $main config rebase.updateRefs true
+    # A tag with the branch's name makes `rev-parse --abbrev-ref HEAD` answer `heads/feat/u`.
+    & git -C $main tag feat/u $mTip
     $r = Invoke-Rebase $wtU $gTip
     Check ($r.code -eq 0 -and $r.out -match 'status=ok') "rebases with rebase.updateRefs=true set (exit $($r.code)): $($r.out.Trim())"
+    Check ($r.out -match 'branch=feat/u(?:\s|$)') "the branch is named plainly although a tag has its name: $($r.out.Trim())"
     Check ((& git -C $wtU merge-base HEAD $gTip).Trim() -eq $gTip) 'setup: the branch now sits on the new main tip'
     Check ((& git -C $main rev-parse refs/heads/inner).Trim() -eq $inner) 'the unrelated branch inside the range was not moved'
 }
