@@ -61,6 +61,10 @@ use crate::queue::Producer;
 // join behind the i686 detours.
 #[cfg_attr(not(target_arch = "x86"), allow(dead_code))]
 pub(crate) mod ability_trace;
+// The player camera and pawn-pose readers (`client.camera.*`); driven only by
+// the i686 emitter.
+#[cfg_attr(not(target_arch = "x86"), allow(dead_code))]
+pub(crate) mod camera;
 // Pure helpers run only from the i686 CEGUI logger detour.
 #[cfg_attr(not(target_arch = "x86"), allow(dead_code))]
 mod cegui_log;

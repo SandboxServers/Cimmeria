@@ -89,6 +89,7 @@ mod field_caps;
 mod launcher_summary;
 mod refusal_log;
 mod replay;
+mod replay_camera;
 mod replay_native;
 mod session_budget;
 mod upload_gate;
@@ -98,6 +99,8 @@ mod upload_slots;
 mod client_pid_tests;
 #[cfg(test)]
 mod entity_labels_tests;
+#[cfg(test)]
+mod replay_camera_tests;
 #[cfg(test)]
 mod replay_names_tests;
 #[cfg(test)]

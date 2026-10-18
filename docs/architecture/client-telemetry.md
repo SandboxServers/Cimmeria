@@ -18,7 +18,7 @@ The motivating use case: the cold-relog freeze investigation (2026-05-26). Serve
 
 ## Trust model
 
-Same machine, same user, same launcher session. The launcher is already a trusted desktop app the developer installed — DLL injection doesn't escalate privileges. The DLL ships in the launcher zip's `windows\` folder, and the launcher refuses to inject a copy whose SHA-256 is not the one compiled into it (releases are not code-signed, D-LX10). No remote-code-execution surface: the DLL itself only reads from SGW.exe's memory; outbound network traffic is HTTPS to the launcher's HMAC-protected `/api/telemetry/upload-chunk` endpoint.
+Same machine, same user, same launcher session. The launcher is already a trusted desktop app the developer installed — DLL injection doesn't escalate privileges. The DLL ships in the launcher zip's `windows\` folder, and the launcher refuses to inject a copy whose SHA-256 is not the one compiled into it (releases are not code-signed, D-LX10). No remote-code-execution surface: the DLL itself only reads from SGW.exe's memory (the camera at an interaction is one such read: [client-camera-telemetry.md](client-camera-telemetry.md)); outbound network traffic is HTTPS to the launcher's HMAC-protected `/api/telemetry/upload-chunk` endpoint, and every POST carries the `X-Cimmeria-Client-Sent-Ms` header (the DLL's wall clock at send).
 
 **Project preference (issue #417):** authored from scratch. AteraLoader.exe / AtreaRL.dll are reverse-engineering references only — their behaviour in [`docs/technical/atrearl-loader.md`](../technical/atrearl-loader.md) is useful for "what hooks work in practice," not as code we extend or wrap.
 

@@ -126,13 +126,21 @@ Agent: documentation-writer. **Stacked on `ai-harness-docs/ah-13-harness-referen
 
 ---
 
-## Wave 3c: AH-11g to AH-11i
+## Wave 3c: AH-11g to AH-11i, and AH-11p
 
-Dispatch after every W3b PR has merged. "The AH-11 rules", C7b and C10 are in [work-packets-w3b.md](work-packets-w3b.md#rules-for-every-ah-11-packet); the decisions and findings are in the [README](README.md#decisions).
+Dispatch AH-11g, AH-11h and AH-11p ([AH-11p is in work-packets-w3d.md](work-packets-w3d.md#ah-11p-parity-ci-and-the-readme-rows-wave-3c)) together. Before that, three things must have merged:
+
+- every W3b PR, including #1829 after AH-11a-r;
+- #1824 (merged 2026-10-18 as 9664e56f4);
+- every W3d PR (AH-11j to AH-11o).
+
+The full merge order is in [work-packets-w3d.md](work-packets-w3d.md#merge-order). "The AH-11 rules", C7b and C10 are in [work-packets-w3b.md](work-packets-w3b.md#rules-for-every-ah-11-packet); the decisions and findings are in the [README](README.md#decisions).
+
+**Anchors.** AH-11g's steps quote `ops.md` as #1824 left it (9664e56f4), with Aura's sentence appended by AH-11a-r. They do not quote the pre-#1824 text.
 
 ### AH-11g: `ops` runs the `.sh` twins off Windows
 
-Agent: packet-coder. Branch `ai-harness-docs/ah-11g-ops-bash`, worktree name `ah-11g`. Size: about 30k working tokens. Wave 3c, after every W3b PR has merged. Commit subject: `feat(agents): ops uses the bash twins on Linux and WSL hosts (AH-11g)`.
+Agent: packet-coder. Branch `ai-harness-docs/ah-11g-ops-bash`, worktree name `ah-11g`. Size: about 35k working tokens. Wave 3c: dispatch only after every W3b PR, #1824 and every W3d PR has merged, because `test_ops_twins.py` needs all eight `.sh` twins on main. Commit subject: `feat(agents): ops uses the bash twins on Linux and WSL hosts (AH-11g)`.
 
 **Rules:** the AH-11 rules. Edit only:
 
@@ -140,47 +148,63 @@ Agent: packet-coder. Branch `ai-harness-docs/ah-11g-ops-bash`, worktree name `ah
 - `.claude/skills/ship-pr/SKILL.md` (lines 8-10);
 - `.claude/skills/campaign-packet/SKILL.md` (§ 3, item 3);
 - the new `tools/agent-skills/test_ops_twins.py`;
-- the mirrors `python tools/agent-skills/sync.py` regenerates (`.codex/agents/ops.toml`, `.agents/skills/**`).
+- the mirrors `python tools/agent-skills/sync.py` regenerates (`.codex/agents/ops.toml`, `.agents/skills/**`);
+- `docs/agents/ai-harness.md`, only as `regen.py` rewrites it (step 7).
 
-Keep ops's `description` line unchanged: the generated agents table in `docs/agents/ai-harness.md` is built from it.
+Keep ops's `description` line unchanged. It is #1824's: `Runs one requested git or worktree op via repo scripts (worktree create/remove, PR open/merge/retire, board read/post, explicit-path commit, merge --no-ff, branch at SHA, push, rebase onto a recorded SHA); else refused as blocked.`
+
+**Before you edit:** confirm that `ops.md` is the #1824 text. Line 3 must be that description, and the file must contain `commit-paths.ps1`. Also check whether its `Never run `git merge`` paragraph ends with Aura's sentence (``If the PowerShell tool is unavailable (a Linux or WSL host), return `blocked` and state that reason in the one-clause reason; never a bare `blocked`.``), and record the answer in the report. If `commit-paths.ps1` is missing, return `blocked` with the reason `ops.md predates #1824`.
 
 **Steps:**
 
 1. `ops.md` frontmatter: `tools: PowerShell, Read` → `tools: PowerShell, Bash, Read`.
-2. `ops.md` body:
-   - After the first paragraph, insert:
+2. `ops.md` body, the shell rule. After the first paragraph (the one ending `Nothing else.`), insert:
    ```text
    **Pick the shell from the host.** Read the `Platform:` line of your environment. On `win32`, use the PowerShell tool and the `pwsh ... .ps1` commands below; never use Bash there. On any other platform (`linux`, `darwin`), use the Bash tool and the `.sh` twin given in brackets, with the same arguments: the twins take the same options and print the same output with the same exit codes. Never run a `.ps1` on Linux. If the tool you need is unavailable, return `blocked` with the reason `no PowerShell tool on win32` or `no Bash tool on <platform>`, never a bare `blocked`.
    ```
-   - Append a bracketed twin to each script line:
-     - mk-worktree: `[bash tools/build-lane/mk-worktree.sh <branch> <name>]`;
-     - both ship lines: `[bash tools/build-lane/ship.sh ...same arguments]`;
-     - rm-worktree: `[bash tools/build-lane/rm-worktree.sh <name>|--merged]`.
-   - Replace the board line with: ``- Board reads and posts, as the main session (no `--as`): on `win32`, `python "$HOME\.agent-board\board.py" <command>` (call `board.py` directly, because the `board` shim is a `/bin/sh` script); elsewhere, `"$HOME/.agent-board/board" <command>`.``
-   - In the "Never run" paragraph:
-     - change `a push happens only inside `ship.ps1`` to `a push happens only inside `ship.ps1` or `ship.sh``;
-     - delete the sentence `If the PowerShell tool is unavailable (a Linux or WSL host), return `blocked` and state that reason in the one-clause reason; never a bare `blocked`.`, which the new paragraph replaces.
-3. `ship-pr/SKILL.md`: replace `Run everything\nfrom PowerShell; do not use bash.` with `Run everything\nfrom PowerShell on Windows; on a Linux or WSL host, \`ops\` runs the \`.sh\` twins with the same arguments.` Keep the line break where it is, and remove the backslashes (quoting rule 8).
-4. `campaign-packet/SKILL.md` § 3 item 3: after `They commit locally and\n   stop.` add ` On a Linux or WSL host only \`ops\` has a shell path (the \`.sh\` twins); a packet worker without PowerShell returns \`blocked\`.` Remove the backslashes.
-5. Create `tools/agent-skills/test_ops_twins.py`, a **unit test** of the agent contract that the existing agent-skills CI job runs (`python3 -m unittest discover -s tools/agent-skills`):
+3. `ops.md`, the allowed list. Append a bracketed twin to each script line, right after its `pwsh ...` command (before the parenthesis or sentence that follows it):
+   - mk-worktree: `[bash tools/build-lane/mk-worktree.sh <branch> <name>]`;
+   - both ship lines: `[bash tools/build-lane/ship.sh` + the same arguments`]`;
+   - rm-worktree: `[bash tools/build-lane/rm-worktree.sh <name>|--merged]`;
+   - the five #1824 lines: after each `pwsh -NoProfile -File tools/build-lane/<verb>.ps1 <args>` command, add `[bash tools/build-lane/<verb>.sh <args>]`. Use the same `<args>` text (for push-branch, the plain form). The bash form drops `-NoProfile -File`.
+
+   The verbs are `commit-paths`, `merge-noff`, `branch-at`, `push-branch` and `rebase-onto`. In the rebase line, the twin goes after `-Upstream <old-base>`.
+
+   Then replace the board line (#1824 left it unchanged) with: ``- Board reads and posts, as the main session (no `--as`): on `win32`, `python "$HOME\.agent-board\board.py" <command>` (call `board.py` directly, because the `board` shim is a `/bin/sh` script); elsewhere, `"$HOME/.agent-board/board" <command>`.``
+4. `ops.md`, the "Script results map to the one return line" paragraph. Replace `(a PowerShell parameter-binding error: a missing or unknown parameter, a second positional token)` with `(a PowerShell parameter-binding error, or a usage error from a .sh twin: a missing, unknown or repeated parameter, a positional token; the .sh twins take full option names only)`, with backticks around `.sh`.
+5. `ops.md`, the paragraph that starts ``Never run `git merge` ``. Make four replacements, each matched exactly:
+   - ``those run only through `commit-paths.ps1`, `merge-noff.ps1`, `branch-at.ps1`, `push-branch.ps1` and `rebase-onto.ps1` (`ship.ps1` pushes only inside its own `pr` step)`` → ``those run only through `commit-paths`, `merge-noff`, `branch-at`, `push-branch` and `rebase-onto` (the `.ps1` or its `.sh` twin; `ship.ps1` or `ship.sh` pushes only inside its own `pr` step)``;
+   - ``the only force is the `-Force` switch of `push-branch.ps1` (which runs`` → ``the only force is the `-Force` switch of `push-branch.ps1` or `push-branch.sh` (which runs``;
+   - ``to `rm-worktree.ps1` (the script itself accepts them;`` → ``to `rm-worktree.ps1` or `rm-worktree.sh` (the scripts themselves accept them;``;
+   - delete `` If the PowerShell tool is unavailable (a Linux or WSL host), return `blocked` and state that reason in the one-clause reason; never a bare `blocked`.`` (with its leading space) if AH-11a-r put it there. The paragraph from step 2 replaces it. If it is absent, say so in the report.
+6. `ship-pr/SKILL.md`: replace `Run everything\nfrom PowerShell; do not use bash.` with `Run everything\nfrom PowerShell on Windows; on a Linux or WSL host, \`ops\` runs the \`.sh\` twins with the same arguments.` Keep the line break where it is, and remove the backslashes (quoting rule 8).
+7. `campaign-packet/SKILL.md` § 3 item 3: after `They commit locally and\n   stop.` add ` On a Linux or WSL host only \`ops\` has a shell path (the \`.sh\` twins); a packet worker without PowerShell returns \`blocked\`.` Remove the backslashes.
+8. Create `tools/agent-skills/test_ops_twins.py`. It is a **unit test** of the agent contract, and the existing agent-skills CI job runs it (`python3 -m unittest discover -s tools/agent-skills`).
    - It reads `.claude/agents/ops.md` (path from `Path(__file__).resolve().parents[2]`).
-   - `test_every_script_has_its_bash_twin`: for each `tools/build-lane/<name>.ps1` named in ops.md, `tools/build-lane/<name>.sh` exists, and `bash tools/build-lane/<name>.sh` appears in ops.md.
+   - `test_every_script_has_its_bash_twin`: collect every `tools/build-lane/([a-z][a-z-]*)\.ps1` match in ops.md.
+     - Assert that the set contains at least `mk-worktree`, `ship`, `rm-worktree`, `commit-paths`, `merge-noff`, `branch-at`, `push-branch` and `rebase-onto`.
+     - For each name, `tools/build-lane/<name>.sh` exists, and `bash tools/build-lane/<name>.sh` appears in ops.md.
+     - Use `subTest(name=...)`.
    - `test_frontmatter_grants_bash_and_the_body_keys_on_platform`: the frontmatter `tools:` line lists `Bash`, and the body contains `Platform:` and `win32`.
 
-   **Reverted** (ops.md back to PowerShell only), both tests fail.
-6. Run `python tools/agent-skills/sync.py`, then `python tools/docs-gen/regen.py --check --skip-crate-graph`. ai-harness.md must not be listed as stale; if it is, ops's description changed, so undo that.
+   **Reverted** (ops.md back to #1824's PowerShell-only text), both tests fail: no `bash tools/build-lane/` text, no `Bash` tool. Deleting one W3d `.sh` also fails the first test.
+9. Run `python tools/agent-skills/sync.py`, then `python tools/docs-gen/regen.py --skip-crate-graph`.
+   - Keep the change to `docs/agents/ai-harness.md` if regen made one. Its generated agents table may still show ops's pre-#1824 description, and regen brings in #1824's.
+   - Run `git restore -- <file>` on every other file regen touched.
+   - Then `python tools/docs-gen/regen.py --check --skip-crate-graph` must not list `docs/agents/ai-harness.md` as stale. If it does, the description changed, so undo that.
 
 **Checks:**
 
 - `Set-Location <wt>; python -m unittest discover -s tools/agent-skills -p "test_*.py"`;
 - `python tools/agent-skills/sync.py --check`;
-- the regen `--check` from step 6.
+- the regen `--check` from step 9;
+- `Select-String <abs ops.md> -Pattern 'bash tools/build-lane/' | Measure-Object` counts at least 9 lines: mk-worktree, two ship lines, rm-worktree and the five verbs.
 
 **Docs owed:** the doc-update-map "AI-harness wiring" row (an agent's frontmatter: AH-14 added it); list it. The prose that row asks for is AH-11h's.
 
 ### AH-11h: the WSL and Linux section and the agent rule, to the new state
 
-Agent: packet-coder. Branch `ai-harness-docs/ah-11h-linux-docs`, worktree name `ah-11h`. Size: about 25k working tokens. Wave 3c, parallel with AH-11g. Commit subject: `docs(agents): Linux script fixes and the ops bash path in the platform docs (AH-11h)`.
+Agent: packet-coder. Branch `ai-harness-docs/ah-11h-linux-docs`, worktree name `ah-11h`. Size: about 25k working tokens. Wave 3c, parallel with AH-11g and AH-11p, after W3b, #1824 and W3d have merged. Commit subject: `docs(agents): Linux script fixes and the ops bash path in the platform docs (AH-11h)`.
 
 **Rules:** the AH-11 rules. Edit only `docs/agents/development-workflow.md` and `docs/agents/rules-and-gotchas.md`.
 
@@ -200,6 +224,7 @@ Agent: packet-coder. Branch `ai-harness-docs/ah-11h-linux-docs`, worktree name `
      - `rm-worktree.sh` runs on Linux and WSL, and `ship.sh merge --retire` calls it.
    ```
 4. § Builds, worktrees and test databases. Find `The \`.sh\` scripts stay for CI, Linux and macOS, and for Git Bash.` Replace it with `The \`.sh\` scripts stay for CI, Linux and macOS, for Git Bash, and for \`ops\` on a Linux or WSL host.` Remove the backslashes.
+   Same paragraph: find `` `ship.ps1`, `rebase-pr.ps1`) with the same options`` and replace it with `` `ship.ps1`, `rebase-pr.ps1`, and the `ops` git verbs `commit-paths.ps1`, `merge-noff.ps1`, `branch-at.ps1`, `push-branch.ps1` and `rebase-onto.ps1`) with the same options``. The git verbs' `.sh` twins come from W3d; the list now matches tools/build-lane.
 5. Same section, § Create a worktree that builds. Find `junctions \`external/\` in` and replace it with `links \`external/\` in (a junction on Windows, a symlink elsewhere)`.
 6. Find `- **\`ops\` ships a packet with \`ship.ps1\`.**` and replace it with `- **\`ops\` ships a packet with \`ship.ps1\`** (\`ship.sh\` on a Linux or WSL host).` Remove the backslashes.
 7. `docs/agents/rules-and-gotchas.md` line 102. Find `- **Agents use PowerShell, the validated path.** An agent on a host without \`pwsh\` returns \`blocked\` and says why. Humans may use the \`.sh\` twins; agents don't.` Replace it with:

@@ -104,19 +104,31 @@ unsafe extern "stdcall-unwind" fn route_detour(
         return;
     };
     let original: RouteFn = unsafe { std::mem::transmute(t) };
-    guarded(|| observe(entity, method));
+    let camera = guarded(|| observe(entity, method)).flatten();
+    let reach = camera.map(|(m, _)| super::ability::route::ReachProbe::begin(m));
+    // The camera is read before the original runs, so it is the camera as the
+    // player clicked.
+    #[cfg(all(target_os = "windows", target_arch = "x86"))]
+    if let (Some((m, local)), Some(r)) = (camera, reach.as_ref()) {
+        guarded(|| crate::hooks::camera::emit::at_interact(m, local, Some(r.send_id())));
+    }
     let probe = super::ability::route::RouteProbe::begin(entity, method, args);
     original(entity, desc, method, args);
     if let Some(p) = probe {
         p.finish();
     }
+    if let Some(r) = reach {
+        r.finish();
+    }
 }
 
-fn observe(entity: *mut c_void, method: *mut c_void) {
+/// The camera methods (`interact`, `useItem`) this call sends, with the local
+/// player's id, or `None` for any other method or an unreadable descriptor.
+fn observe(entity: *mut c_void, method: *mut c_void) -> Option<(&'static str, Option<i32>)> {
     let m = method as u32;
     let word = |off: u32| LiveMem.u32_at(m.wrapping_add(off));
     let (Some(flags), Some(msg_id), Some(sub)) = (word(0x1c), word(0x44), word(0x48)) else {
-        return;
+        return None;
     };
     let name = crate::msvc_string::read_checked(
         method as usize,
@@ -158,6 +170,11 @@ fn observe(entity: *mut c_void, method: *mut c_void) {
     let decision = trace::throttle(&format!("{target}:{name_key}"), key);
     if let Some(f) = trace::with_suppressed(fields, decision) {
         crate::hooks::emit::emit(target, "info", f);
+    }
+    match name_key {
+        "interact" => Some(("interact", local_id)),
+        "useItem" => Some(("useItem", local_id)),
+        _ => None,
     }
 }
 

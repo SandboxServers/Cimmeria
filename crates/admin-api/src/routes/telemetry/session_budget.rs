@@ -216,6 +216,10 @@ const PRIORITY_PREFIXES: &[&str] = &[
     // shown): must-keep in the DLL's governor, already held to a
     // per-name budget at the hook.
     "client.ability.",
+    // The camera at interact and its Mercury send join (PC-16, PC-16b):
+    // must-keep in the DLL's governor, throttled per method at the hook, and
+    // a camera row that is cut can no longer be joined to its pose row.
+    "client.camera.",
 ];
 
 /// Decide, for each event of one parsed chunk of `claims.sid` at

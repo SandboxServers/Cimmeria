@@ -247,3 +247,77 @@ fn row_has_at_most_31_fields() {
         .count();
     assert!(fields <= 31, "row has {fields} fields");
 }
+
+/// Pins that a noted seq lands on the first row only: a later row, inside the throttle or not, has none.
+#[test]
+fn row_carries_mercury_seq_once() {
+    let id = 9227;
+    let (mgr, npc) = scene(id, 0.0);
+    let guard = LogCapture::install();
+    let t0 = Instant::now();
+    super::inbound::note_inbound_at(
+        id,
+        cimmeria_wire::cell::cell_methods::player::INTERACT,
+        Some(4242),
+        t0,
+    );
+    assert!(emit_at(&mgr, id, npc, PoseExtra::default(), t0).is_some());
+    assert!(emit_at(
+        &mgr,
+        id,
+        npc,
+        PoseExtra::default(),
+        t0 + Duration::from_millis(300)
+    )
+    .is_some());
+    let rows: Vec<_> = guard
+        .all()
+        .into_iter()
+        .filter(|c| c.target == "interaction.pose")
+        .collect();
+    assert_eq!(rows.len(), 2, "two admitted rows for actor {id}");
+    assert_eq!(
+        rows[0].fields.get("mercury_seq").map(String::as_str),
+        Some("4242")
+    );
+    assert!(
+        !rows[1].fields.contains_key("mercury_seq"),
+        "the second row must not reuse the seq"
+    );
+}
+
+/// Pins that a throttled row still takes its seq, so a later row never borrows an earlier call's seq.
+#[test]
+fn throttled_row_uses_up_its_seq() {
+    let id = 9229;
+    let (mgr, npc) = scene(id, 0.0);
+    let guard = LogCapture::install();
+    let t0 = Instant::now();
+    assert!(emit_at(&mgr, id, npc, PoseExtra::default(), t0).is_some());
+    super::inbound::note_inbound_at(
+        id,
+        cimmeria_wire::cell::cell_methods::player::INTERACT,
+        Some(31337),
+        t0 + Duration::from_millis(10),
+    );
+    let throttled = t0 + Duration::from_millis(20);
+    assert!(emit_at(&mgr, id, npc, PoseExtra::default(), throttled).is_none());
+    assert!(emit_at(
+        &mgr,
+        id,
+        npc,
+        PoseExtra::default(),
+        t0 + POSE_MIN_INTERVAL + Duration::from_millis(50)
+    )
+    .is_some());
+    let rows: Vec<_> = guard
+        .all()
+        .into_iter()
+        .filter(|c| c.target == "interaction.pose")
+        .collect();
+    assert_eq!(rows.len(), 2, "the throttled row writes nothing");
+    assert!(
+        rows.iter().all(|r| !r.fields.contains_key("mercury_seq")),
+        "the seq died with the throttled row"
+    );
+}

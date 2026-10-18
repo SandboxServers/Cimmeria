@@ -46,6 +46,8 @@ mod gm_dispatch_tests;
 #[cfg(test)]
 mod plugin_routing_tests;
 #[cfg(test)]
+mod pose_inbound_tests;
+#[cfg(test)]
 mod tests;
 
 // Re-export the public API at the module root so external paths

@@ -2,7 +2,8 @@ name: build-lane-scripts
 
 # Path-filtered: the build lane's PowerShell (tools/build-lane/*.ps1), which
 # every agent and session compiles through. Its Python tests run in `ci`;
-# this covers the PowerShell twins' own tests (test-*.ps1), on Windows.
+# this covers the PowerShell twins' own tests (test-*.ps1) on Windows, and the
+# .sh twins on Linux (bash -n, shellcheck and the Python tests that drive them).
 
 on:
   push:
@@ -45,3 +46,20 @@ jobs:
             if ($code -ne 0) { $failed += $t.Name; Write-Host "::error::$($t.Name) exited $code" }
           }
           if ($failed) { exit 1 }
+
+  shell:
+    name: build-lane shell scripts (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: bash -n (every script parses)
+        run: for f in tools/build-lane/*.sh; do bash -n "$f" || exit 1; done
+      - name: shellcheck (warnings on the scripts ops runs, errors on all)
+        run: |
+          shellcheck -S warning tools/build-lane/mk-worktree.sh tools/build-lane/ship.sh tools/build-lane/rebase-pr.sh
+          shellcheck -S error tools/build-lane/*.sh
+      - name: build-lane Python tests (they drive the .sh twins with bash)
+        run: python3 -m unittest discover -s tools/build-lane -p "test_*.py"

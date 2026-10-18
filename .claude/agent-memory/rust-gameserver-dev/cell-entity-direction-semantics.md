@@ -34,39 +34,31 @@ Evidence (legacy python, same convention):
   `direction.y = dx.atan2(dz)`. Recommended for P48's scope.
 - `console/spawn/mod.rs`'s `heading_of` had the same `atan2(x, z)` bug —
   already fixed.
-- **Inbound client direction is never unpacked.**
-  `base/connect_loop/encrypted/mod.rs:278` reads three raw packed-angle
-  bytes (`payload[32..35] as i8`) and they reach `direction` as `i8 as f32`
-  via `apply_client_position_update_at` -> `update_entity_position`. So a
-  moving player's `direction` holds byte units (-128..127), which
-  `pack_angle` then re-packs as if they were radians. Needs an
-  `unpack_angle` on the inbound path. Flagged in P18's handoff; not yet
-  ticketed as of 2026-09-17.
+- **Inbound client direction is unpacked since P49.**
+  `base/connect_loop/encrypted/mod.rs` reads three raw packed-angle bytes
+  (`payload[32..35] as i8`, wire order yaw, pitch, roll). `update_entity_position`
+  unpacks them with `unpack_angle` into `[pitch, yaw, roll]` radians, so a
+  moving player's `direction` holds radians like everything else. Caveat
+  ([avatar-update-rotation-source.md](../../../docs/reverse-engineering/findings/avatar-update-rotation-source.md)):
+  `unpack_angle` uses 2*pi/256 per step for all three bytes, but the client
+  packs pitch and roll at pi/256 per step, so the stored pitch (`direction.x`)
+  and roll are twice the true value. It round-trips unchanged on re-pack. Only
+  a reader that converts `direction.x` to degrees (`wire_pitch_deg` on
+  `interaction.pose`) sees the doubling; it is 0 while walking.
 
-## `update_entity_position` zeroes facing
+## Teleports keep facing
 
-`SpaceManager::update_entity_position(entity_id, position: [f32;3],
-direction: [i8;3], velocity: [f32;3])` writes
-`cell_entity.direction = Vector3::new(d[0] as f32, d[1] as f32, d[2] as f32)`
-**unconditionally**. Every server-authoritative caller passes `[0, 0, 0]`:
-`.gotoxyz`, native `gmGotoXYZ`/`gmGoto`/`gmSummon`, respawn, ring transport,
-the content executor's transport action. All of them silently reset the
-moved entity's facing.
+`SpaceManager::update_entity_position(entity_id, position, direction: [i8;3],
+velocity)` writes `direction` **unconditionally**, from the client's packed
+bytes. A server-authoritative move (GM travel, `.gotoxyz`, respawn, ring
+transport, the content executor's transport action) has no new facing to
+supply, so it uses `update_position_preserving_facing(entity_id, position,
+velocity)`, which never writes `direction`. Passing `[0, 0, 0]` to
+`update_entity_position` would snap the entity's facing to north; do not.
 
-The `[i8; 3]` parameter cannot express a float orientation at all. To set or
-preserve a real orientation, use the established pattern:
-
-```rust
-let facing = e.direction;                 // capture BEFORE
-space_mgr.update_entity_position(id, pos, [0, 0, 0], [0.0; 3]);
-if let Some(e) = space_mgr.get_entity_mut(id) {
-    e.direction = facing;                 // or a new Vector3::new(p, y, r)
-}
-```
-
-`cell/service/ticks/npc_movement.rs` and
-`cell/console/placement.rs::location` (P18) are the only two callers that do
-this today.
+To set a real orientation, write `e.direction = Vector3::new(p, y, r)` through
+`get_entity_mut` after the move. `cell/service/ticks/npc_movement.rs` and
+`cell/console/placement.rs::location` (P18) do this.
 
 ## AoI fan-out for orientation
 

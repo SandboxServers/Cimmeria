@@ -125,6 +125,76 @@ fn uploader_ships_batch_to_local_server() {
     }
 }
 
+/// **Every upload carries the DLL's send stamp (D-PC18).** The header is
+/// unix ms when the POST was built, so it is near the test's own clock and
+/// not before any row's `ts_ms`. Removing the header fails the parse.
+#[test]
+fn upload_carries_the_send_stamp() {
+    let server = tiny_http::Server::http("127.0.0.1:0").unwrap();
+    let addr = server.server_addr().to_ip().unwrap();
+    let url = format!(
+        "http://{}:{}/api/telemetry/upload-chunk",
+        addr.ip(),
+        addr.port()
+    );
+
+    let received: Arc<std::sync::Mutex<Option<(String, String)>>> = Arc::new(Default::default());
+    let received_clone = received.clone();
+    let server_handle = thread::spawn(move || {
+        if let Ok(mut req) = server.recv() {
+            let sent = header_value(req.headers(), "X-Cimmeria-Client-Sent-Ms");
+            let mut body = Vec::new();
+            req.as_reader().read_to_end(&mut body).unwrap();
+            let mut dec = flate2::read::GzDecoder::new(&body[..]);
+            let mut decoded = String::new();
+            dec.read_to_string(&mut decoded).unwrap();
+            *received_clone.lock().unwrap() = Some((sent, decoded));
+            req.respond(tiny_http::Response::from_string("ok")).ok();
+        }
+    });
+
+    let (p, c) = channel();
+    for i in 0..3 {
+        p.try_emit(
+            ClientNativeEvent::builder("client.test", "info").field("i", serde_json::json!(i)),
+        );
+    }
+    drop(p);
+
+    let cfg = UploaderConfig {
+        upload_endpoint: url,
+        token: "test-token-XYZ".into(),
+        expires_at_ms: 0,
+        session_file: None,
+        flush_interval: Duration::from_millis(100),
+        max_batch: 10,
+    };
+    let before = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+    let exit = run_uploader(c, cfg, || false);
+    server_handle.join().unwrap();
+    let after = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as i64;
+
+    assert_eq!(exit, UploaderExit::Disconnected);
+    let got = received.lock().unwrap();
+    let (sent, body) = got.as_ref().expect("one POST");
+    let sent: i64 = sent.parse().expect("the send stamp is an i64");
+    assert!(
+        sent >= before - 60_000 && sent <= after + 60_000,
+        "stamp {sent} is not near the test clock {before}..{after}"
+    );
+    for line in body.lines() {
+        let v: serde_json::Value = serde_json::from_str(line).unwrap();
+        let ts = v["ts_ms"].as_i64().expect("each row has ts_ms");
+        assert!(sent >= ts, "stamp {sent} is before row ts_ms {ts}");
+    }
+}
+
 /// **Stop-callback drains and exits.** The DLL doesn't use
 /// this in production (parks until process exit), but the test
 /// path needs a way to tell the loop to stop without dropping

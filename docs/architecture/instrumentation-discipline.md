@@ -194,7 +194,7 @@ open-ended growth.
 
 The accepted-position sampler is the one place this codebase emits a
 **success-side** row on a per-packet path, so it is worth stating the
-budget explicitly.
+budget explicitly (`interaction.pose` is the throttled INFO sibling, per interaction, ≤ 1 row / 250 ms per actor).
 
 | Question | Answer |
 |---|---|

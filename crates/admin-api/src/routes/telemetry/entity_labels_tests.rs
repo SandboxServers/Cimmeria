@@ -10,8 +10,8 @@ use cimmeria_services::cell::messages::{EntityLabelsRequest, ENTITY_LABEL_QUERY_
 
 use super::dto::{ClientNativeEvent, TelemetryEvent};
 use super::entity_labels::{
-    resolve, EntityLabelLink, NamingPlan, SessionClock, SessionClocks, CELL_REPLY_TIMEOUT,
-    MAX_SESSIONS_PER_INSTALL, OFFSET_WINDOW,
+    resolve, ChunkClock, EntityLabelLink, NamingPlan, SessionClock, SessionClocks,
+    CELL_REPLY_TIMEOUT, MAX_SESSIONS_PER_INSTALL, OFFSET_WINDOW,
 };
 use super::replay_tests::capture_async;
 
@@ -39,7 +39,17 @@ fn in_space(space: u32) -> SessionClock {
 
 /// Build a plan for `events`, every row admitted.
 fn plan(events: &[TelemetryEvent], recv: SystemTime, clock: &mut SessionClock) -> NamingPlan {
-    NamingPlan::build(events, &all(events), recv, clock)
+    NamingPlan::build(events, &all(events), recv, None, clock)
+}
+
+/// The plan for `events` with the upload's send stamp `sent`.
+fn plan_sent(
+    events: &[TelemetryEvent],
+    recv: SystemTime,
+    sent: Option<i64>,
+    clock: &mut SessionClock,
+) -> NamingPlan {
+    NamingPlan::build(events, &all(events), recv, sent, clock)
 }
 
 /// Each chunk's observed offset is the true offset plus its upload delay;
@@ -163,9 +173,80 @@ fn rows_the_budget_refuses_are_not_asked_about() {
         native(1_000, json!({ "entity_id": 5 })),
         native(1_000, json!({ "entity_id": 6 })),
     ];
-    let p = NamingPlan::build(&events, &[false, true], at(1_000), &mut clock);
+    let p = NamingPlan::build(&events, &[false, true], at(1_000), None, &mut clock);
     let ids: Vec<_> = p.queries().iter().map(|q| q.entity_id).collect();
     assert_eq!(ids, [6]);
+}
+
+/// The send stamp, not the newest row, is the sample, so a flushed row's age
+/// does not inflate the offset.
+#[test]
+fn sent_stamp_removes_flush_age() {
+    let mut clock = SessionClock::default();
+    plan_sent(
+        &[native(10_000, json!({}))],
+        at(1_015_000),
+        Some(14_900),
+        &mut clock,
+    );
+    assert_eq!(clock.offset_ms(), Some(1_000_100));
+}
+
+/// A stamp older than the newest row is incoherent, so the row's ts is used.
+#[test]
+fn incoherent_stamp_falls_back_to_newest() {
+    let mut clock = SessionClock::default();
+    plan_sent(
+        &[native(10_000, json!({}))],
+        at(1_015_000),
+        Some(9_000),
+        &mut clock,
+    );
+    assert_eq!(clock.offset_ms(), Some(1_005_000));
+}
+
+/// A client clock ahead of the server's puts the stamp after the receive
+/// time; that is honest, so the sample is still `recv - stamp`.
+#[test]
+fn stamp_from_a_fast_client_clock_is_honoured() {
+    let mut clock = SessionClock::default();
+    plan_sent(
+        &[native(2_000_000, json!({}))],
+        at(1_015_000),
+        Some(2_000_100),
+        &mut clock,
+    );
+    assert_eq!(clock.offset_ms(), Some(-985_100));
+}
+
+/// The plan carries the chunk's clock, so the replay can stamp `server_ts_ms`.
+#[test]
+fn plan_carries_the_chunk_clock() {
+    let mut clock = SessionClock::default();
+    let p = plan_sent(
+        &[native(10_000, json!({}))],
+        at(1_015_000),
+        Some(14_900),
+        &mut clock,
+    );
+    assert_eq!(
+        p.clock(),
+        Some(ChunkClock {
+            offset_ms: 1_000_100,
+            recv_ms: 1_015_000,
+        })
+    );
+}
+
+/// The server time of a row is capped at the chunk's receive time.
+#[test]
+fn server_ts_is_capped_at_receive() {
+    let c = ChunkClock {
+        offset_ms: 100,
+        recv_ms: 5_100,
+    };
+    assert_eq!(c.server_ts_ms(1_000), 1_100);
+    assert_eq!(c.server_ts_ms(5_050), 5_100);
 }
 
 /// One install minting many sessions evicts its own oldest clock, never
