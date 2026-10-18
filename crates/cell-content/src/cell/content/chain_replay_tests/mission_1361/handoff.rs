@@ -63,7 +63,7 @@ async fn resolve_expansion_as_if_enabled(
 /// past that edge. 6511's gate includes
 /// `step_status 1360/4038 neq active`, which opens the instant chain 6501
 /// completes mission 1360 — inside world 68, with no second world entry
-/// coming. And 6501's own `remove_dialog_set 5356` clears the only bind on
+/// coming. And 6501's receipt result clears DSM 120101, the only bind on
 /// template slot 10 in the same click, so Marsh would go completely
 /// unclickable: `entity_templates` row 10 ships `interaction_type = 0` and
 /// `static_interaction_sets = '{}'`, meaning the client stops registering
