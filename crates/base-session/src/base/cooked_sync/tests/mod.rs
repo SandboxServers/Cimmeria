@@ -13,6 +13,7 @@ mod misses;
 mod ordering;
 mod pacing;
 mod resync;
+mod resync_cellblock;
 mod robustness;
 mod telemetry;
 
