@@ -2,7 +2,7 @@
 title: Unified In-Game UAT Guide
 type: how-to
 audience: in-game testers (the owner and playtesters) working through the restored systems on the colo; no programming needed
-last_updated: 2026-10-15
+last_updated: 2026-10-17
 companion_docs:
   - organizations-uat.md
   - ../content/debug-hub.md
@@ -18,7 +18,7 @@ companion_docs:
 # Unified In-Game UAT Guide
 
 > Type: how-to. Audience: an in-game tester who is not a programmer.
-> Updated: 2026-10-15. Companions: [debug hub](../content/debug-hub.md), [commands](../commands.md), [organizations UAT](organizations-uat.md), [Cellblock UAT guide](../analysis/castle-cellblock-rebuild/uat-guide.md), [zone operator guide](../analysis/zone-restoration-operator-guide.md), [telemetry runbook](../operations/npc-ai-telemetry-runbook.md).
+> Updated: 2026-10-17. Companions: [debug hub](../content/debug-hub.md), [commands](../commands.md), [organizations UAT](organizations-uat.md), [Cellblock UAT guide](../analysis/castle-cellblock-rebuild/uat-guide.md), [zone operator guide](../analysis/zone-restoration-operator-guide.md), [telemetry runbook](../operations/npc-ai-telemetry-runbook.md).
 
 ## Purpose and how to use it
 
@@ -734,7 +734,7 @@ Rows CB1-CB7 are the Cellblock continuation: server-side content added after the
 | T23 | Relog at every step boundary above | Each restore chain repaints what it should; no one-shot cinematic or blurb replays on login. | The full restore table is in the guide |
 | T30, T31 | See [Dialog UI](#dialog-ui) | | |
 | CB1 | Relog at 638 step 2114 (Human and Jaffa), 2115, 2116, then 639 steps 2144 and 2145; use the named object on the first press. Continuation | Prisoner 329 offers his dialog, the `329_CellDoorButton` panel opens, the med station answers, the drone is armed again and the vial can be picked up, each on the first press after relog. Detail: [CB-U03](../analysis/cellblock-continuation/owner-lab-checklist.md#cb-u03--relog-restores-chains-1026-1028-1036-1037) | Restore chains 1026-1028, 1036, 1037. UNTESTED: owner lab not run |
-| CB2 | Walk east after Prisoner 329 to the two Op-CORE prisoners; enter Region2 during 639 step 2117; leave and re-enter; relog; use a second client. Continuation | Two friendly stationary `Op-CORE Soldier` NPCs; one bark (chain 11010) once per player; no repeat on re-entry; the second client sees both NPCs but only the crossing player gets the line. Detail: [CB-U08](../analysis/cellblock-continuation/owner-lab-checklist.md#cb-u08--ambient-cast-spawns-520-521-chain-11010) | Spawns 520-522. UNTESTED: owner lab not run |
+| CB2 | Walk east after Prisoner 329 to the two Op-CORE prisoners; enter Region2 during 639 step 2117; leave and re-enter; relog; use a second client. Continuation | Two friendly stationary `Op-CORE Soldier` NPCs; one bark (chain 11010) once per player; no repeat on re-entry; the second client sees both NPCs but only the crossing player gets the line. Detail: [CB-U08](../analysis/cellblock-continuation/owner-lab-checklist.md#cb-u08--ambient-cast-spawns-520-521-chain-11010) | Spawns 520 and 521. UNTESTED: owner lab not run |
 | CB3 | After 638, click Prisoner 329 for *The Remaining Pods* (62050); repeat the click; relog; report to Col. Marsh; abandon on a second character; skip it. Human and Jaffa. Continuation | The offer is there on the first press; one dialog (60150) closes cleanly; the journal shows the step; nothing doubles; Marsh's normal briefing (4001 or 5022) is unchanged; no reward. Detail: [CB-U10](../analysis/cellblock-continuation/owner-lab-checklist.md#cb-u10--mission-62050-in-the-native-client-after-w3-int) | Zero-reward, itemless. UNTESTED: owner lab not run |
 | CB4 | Reach mission 687; walk into the barracks before and after step 2355; leave and re-enter; relog. Continuation | No line during 2354. One line, "NID Guard: Intruder in the barracks! ...", once during 2355; no repeat; no extra guard; no line after 687 completes. Detail: [CB-U11](../analysis/cellblock-continuation/owner-lab-checklist.md#cb-u11--barracks-alarm-bark-chain-11020) | Chain 11020. UNTESTED: owner lab not run |
 | CB5 | Pull the Mess Hall and Hallway05 guards, hold in front, then step around. Continuation | A guard holds cover while you are in front and leaves it when flanked; objectives 2725 and 2731 complete on the kills; no guard runs through a wall. Detail: [CB-U05](../analysis/cellblock-continuation/owner-lab-checklist.md#cb-u05--flank-and-cover-mess-hall-hallway05) | Extends T29. UNTESTED: owner lab not run |

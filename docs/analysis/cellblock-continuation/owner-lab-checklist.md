@@ -72,7 +72,7 @@ Pass: every object answers the first press after relog. Record any that needed a
 
 ## CB-U05 — Flank and cover (Mess Hall, Hallway05)
 
-Guards: `MessHall_Guard1` (spawn 1200046), `MessHall_Guard2` (1200053), `Hallway05_Guard1` (1200056), `Hallway05_Guard2` (1200044).
+Guards (chunk IDs, not spawn IDs, so they are not in `spawnlist.sql`): `MessHall_Guard1` (chunk 1200046), `MessHall_Guard2` (chunk 1200053), `Hallway05_Guard1` (chunk 1200056), `Hallway05_Guard2` (chunk 1200044).
 
 1. Enter the Mess Hall from the west and pull both guards. Watch that a guard moves to cover (`cover.hold` or `spawn_reserved` in the server log), stays in cover while you are in front, and that a guard tries to flank you west of x = -97.
 2. Step around a guard in cover: the log shows `cover_released_flanked`, and `fire_player_flanked_npc` matches.
@@ -142,6 +142,10 @@ New Cimmeria content (D-CC18), not 2009 content. Run on a fresh Human and a fres
 8. **Skip.** Ignore 62060, accept 641 at Col. Marsh: the prisoners stop offering and the core route to 688 is unchanged.
 9. **Pacing.** Time the beat for CB-U09 step 3.
 10. SigNoz: the mission-flow and dialog rows, the item grant row (item 2893, count 2), and the startup catalog insert for 62060.
+11. **Walk-back (observe).** Between 640 (ring-out) and 641, walk from the ring back to the prisoners. If you cannot, note it: the offer is then reachable only from 638 to 640 and the aid/sabotage beat shrinks.
+12. **Full bag (observe).** Once with a full bag, run steps 3-4. The mission completes once and the reward is refused, which shows only in the log as `grant_refused`. Note it; a lost reward blocks the campaign as listed below.
+13. **Accept on click (observe).** One click accepts and opens dialog 60151 together. A second click on a prisoner is the aid branch, so check that the dialog was read before the second click.
+Items 11-13 are the known risks from the [CB-N06 seal](worknotes/cb-n06-seal.md) (G8 and G11). They supersede that note for CB-U12.
 
 **Blockers (not "pending"):** a blank dialog, a client crash, a missing first-press response, a lost or doubled reward, both branches paying out, or any change to the core route blocks the campaign PR.
 

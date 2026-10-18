@@ -747,6 +747,8 @@ This is an orphaned hidden mission with step text that parallels missions 641 an
 
 #### Cellblock ambient cast (CB-N04a)
 
+**Confidence**: HIGH for the seeded rows (spawns, chain, screen); UNTESTED in the client (owner lab not run).
+
 | Chain | Trigger | Conditions | Actions |
 |---|---|---|---|
 | 11010 | `enter_region('Castle_Cellblock.Region2')` (once) | `step_status(639, 2117) = 'active'` | `npc_bark(200160)`: one line in chat, speaker `Op-CORE Soldier` |
@@ -754,6 +756,8 @@ This is an orphaned hidden mission with step text that parallels missions 641 an
 The cast is two stationary Op-CORE prisoners (template 176, spawns 520 and 521, tags `Cellblock_Ambient_Prisoner1` and `Cellblock_Ambient_Prisoner2`) in the north cell blocks of Region2. Placement, nav probe and guard clearance are sealed in [cb-n04-seal.md](../analysis/cellblock-continuation/worknotes/cb-n04-seal.md).
 
 #### Mission 62050: "The Remaining Pods" (CB-N05, CIMMERIA_AUTHORING)
+
+**Confidence**: HIGH for the seeded rows; CIMMERIA_AUTHORING (new Cimmeria content under D-CC18, not 2009 data); UNTESTED in the client (owner lab not run).
 
 An optional, one-time story after 638, with no reward. Prisoner 329 offers the mission through dialog-set-map 2795 at slot 17, and accepting it moves the player to the Marsh step.
 
@@ -770,6 +774,8 @@ Marsh's core chains 1051/1052 still fire beside 11005; 1152 is unchanged. Seal: 
 
 #### Cellblock barracks response (CB-N07a)
 
+**Confidence**: HIGH for the seeded row; UNTESTED in the client (owner lab not run).
+
 | Chain | Trigger | Conditions | Actions |
 |---|---|---|---|
 | 11020 | `enter_region('Castle_Cellblock.Region12')` (once) | `step_status(687, 2355) = 'active'` | `npc_bark(200170)`: one line in chat, speaker `NID Guard` |
@@ -777,6 +783,8 @@ Marsh's core chains 1051/1052 still fire beside 11005; 1152 is unchanged. Seal: 
 One alarm line as the player enters the barracks to fight its three guards (spawns 25, 26, 36). It changes no AI, spawn or objective state. Sealed in [cb-n07-seal.md](../analysis/cellblock-continuation/worknotes/cb-n07-seal.md).
 
 #### Mission 62060: "Before the Patrol Returns" (CB-N06, CIMMERIA_AUTHORING)
+
+**Confidence**: HIGH for the seeded rows; CIMMERIA_AUTHORING (new Cimmeria content under D-CC18, not 2009 data); UNTESTED in the client (owner lab not run).
 
 An optional, one-time choice after 638, with no XP, naquadah or mission reward. Both Op-CORE prisoners offer it: helping one hide (a second click on a prisoner) or jamming the cell-door panel beside Prisoner 329 completes the mission and gives two Health Slappacks (item 2893).
 

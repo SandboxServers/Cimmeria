@@ -5,7 +5,8 @@
 //! seal is `docs/analysis/cellblock-continuation/worknotes/cb-n06-seal.md`.
 //!
 //! [`rows`] pins the seeded rows and the load path. [`resolve`] and
-//! [`executor`] are filled by CB-N06-4 and CB-N06-5.
+//! [`executor`] pin the resolver and the chain executor against the real
+//! seeded chains.
 
 use cimmeria_content_engine::context::ExecutionContext;
 

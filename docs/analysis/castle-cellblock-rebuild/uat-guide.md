@@ -1,7 +1,7 @@
 # Castle Cellblock In-Game UAT Guide
 
 > Type: how-to. Audience: the project owner, running the real SGW client against a local server.
-> Updated: 2026-10-15. Companions: [launch prompt and decisions](README.md), [spec audit](audit.md), [packet ledger](work-packets.md), [session resume handoff](handoffs/session-resume.md), [mission chains](../../content/mission-chains.md), [commands reference](../../commands.md).
+> Updated: 2026-10-17. Companions: [launch prompt and decisions](README.md), [spec audit](audit.md), [packet ledger](work-packets.md), [session resume handoff](handoffs/session-resume.md), [mission chains](../../content/mission-chains.md), [commands reference](../../commands.md).
 
 This is the acceptance pass for the Castle Cellblock rebuild. You run it with the game open; each scenario tells you exactly what to click, what you should see, and what would count as a regression. A partial 2026-10-15 Human run covered the first guard and reached the prisoner door; the full route and the rows below remain pending. See the [continuation evidence](../cellblock-continuation/route-baseline.md#2026-10-15-fresh-human-lab-run).
 
