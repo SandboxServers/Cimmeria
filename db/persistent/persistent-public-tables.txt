@@ -1,0 +1,28 @@
+# Tables that hold player data and are carried over on every rebuild.
+# Each name is one public table under db/sgw/*/Tables/. A table is in
+# exactly one of this file and reseed-public-tables.txt.
+# Lint: crates/content-engine/tests/it/table_classification_linter.rs
+account
+cell_event_outbox
+login_audit
+sgw_auction
+sgw_auction_bid
+sgw_contact_list
+sgw_contact_list_member
+sgw_gate_mail
+sgw_gate_mail_item
+sgw_inventory
+sgw_inventory_base
+sgw_mission
+sgw_organization_cash_log
+sgw_organization_events
+sgw_organization_members
+sgw_organization_ranks
+sgw_organization_vault_items
+sgw_organization_vault_log
+sgw_organizations
+sgw_player
+sgw_player_ability_grants
+sgw_player_content_cooldown
+sgw_player_discipline_expertise
+sgw_player_tutorials

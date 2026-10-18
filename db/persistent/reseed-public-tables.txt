@@ -1,0 +1,5 @@
+# Tables that are refilled from the seed on every rebuild.
+# Each name is one public table under db/sgw/*/Tables/. A table is in
+# exactly one of this file and persistent-public-tables.txt.
+# Lint: crates/content-engine/tests/it/table_classification_linter.rs
+shards
