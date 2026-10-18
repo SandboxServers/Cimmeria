@@ -85,7 +85,25 @@ fn pose_row_with_trail_writes_a_joined_approach_row() {
     assert_eq!(row.fields["pose_seq"], pose_rows[0].fields["pose_seq"]);
     assert_eq!(row.fields["n_points"], "3");
     assert_eq!(row.fields["points"].matches(';').count(), 2);
-    for banned in ["account_name", "player_name", "entity_name"] {
+    let field = |k: &str| row.fields.get(k).map(String::as_str);
+    assert_eq!(field("event"), Some("interaction_approach"));
+    assert_eq!(field("cimmeria.session_kind"), Some("player"));
+    assert_eq!(field("world"), Some("Agnos"));
+    assert_eq!(field("target_tag"), Some("PoseProbe"));
+    assert_eq!(field("target_template_id"), Some("700"));
+    assert_eq!(field("target_entity_id"), Some(npc.to_string().as_str()));
+    assert_eq!(field("player_id"), Some("12"));
+    let path: f32 = row.fields["path_len_m"].parse().unwrap();
+    assert!((path - 2.0).abs() < 0.01, "path_len_m {path}");
+    let span: f32 = row.fields["span_s"].parse().unwrap();
+    assert!((span - 2.0).abs() < 0.1, "span_s {span}");
+    for banned in [
+        "account_name",
+        "player_name",
+        "entity_name",
+        "target_entity_name",
+        "account_id",
+    ] {
         assert!(
             !row.fields.contains_key(banned),
             "{banned} must not be emitted"
