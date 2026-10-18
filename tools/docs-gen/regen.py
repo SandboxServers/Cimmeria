@@ -34,6 +34,8 @@ Generators (NAME [ARGS]):
     gap-systems         number of system rows in the matrix
     tools-catalog       every script under tools/ and crate binary, grouped by task, from
                         tools_catalog.py and the rules in tools_catalog.toml
+    harness-hooks       every hook in .claude/settings.json, agent frontmatter and .codex/hooks.json, with its reason, from harness_tables.py
+    harness-agents      every .claude/agents/*.md: model, effort, max turns and role, from harness_tables.py
 
 Usage:
     python tools/docs-gen/regen.py                # rewrite stale blocks (same as --write)
@@ -277,7 +279,19 @@ def gen_tools_catalog(ctx: Context, args: list[str], after: str) -> str:
     return tc.render(ctx.root)
 
 
-Generator = Callable[[Context, list, str], str]
+def _harness_tables():
+    return sys.modules.get("harness_tables") or _load("harness_tables", pathlib.Path(__file__).with_name("harness_tables.py"))
+
+
+def gen_harness_hooks(ctx: Context, args: list[str], after: str) -> str:
+    return _harness_tables().render_hooks(ctx.root)
+
+
+def gen_harness_agents(ctx: Context, args: list[str], after: str) -> str:
+    return _harness_tables().render_agents(ctx.root)
+
+
+Generator =Callable[[Context, list, str], str]
 
 GENERATORS: dict[str, Generator] = {
     "tests-total": lambda ctx, a, s: n(ctx.tests.total),
@@ -296,6 +310,8 @@ GENERATORS: dict[str, Generator] = {
     "gap-pct": gen_gap_pct,
     "gap-systems": lambda ctx, a, s: n(len(ctx.gap.rows)),
     "tools-catalog": gen_tools_catalog,
+    "harness-hooks": gen_harness_hooks,
+    "harness-agents": gen_harness_agents,
 }
 
 

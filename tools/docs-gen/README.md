@@ -72,6 +72,8 @@ regenerated blocks: the workflow does that after the merge.
 | `gap-pct` | statuses, then decimals (default 1) | That sum as a percentage of the total | same |
 | `gap-systems` | | Number of system rows | same |
 | `tools-catalog` | | Every script under `tools/` and every crate binary, grouped by task: path, how to run it, and its first summary line, or `(no summary)` | [`tools_catalog.py`](tools_catalog.py), with the entry-point, run and grouping rules in [`tools_catalog.toml`](tools_catalog.toml); the files come from `git ls-files`, so a new tool appears once it is `git add`ed |
+| `harness-hooks` | | Every hook in `.claude/settings.json`, agent frontmatter and `.codex/hooks.json`: event, matcher, script and its reason, from the script's first docstring or `# ` line | [`harness_tables.py`](harness_tables.py) |
+| `harness-agents` | | Every `.claude/agents/*.md`: model, effort, max turns and role | same |
 
 The gap-analysis generators read the matrix rows and skip its TOTALS line, so the
 TOTALS line and the summary percentages can never disagree with the rows. The rows
