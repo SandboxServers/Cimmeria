@@ -36,7 +36,7 @@ Windows-native, on the toolchain `rust-toolchain.toml` pins. **Every compiling `
 pwsh tools/build-lane/lane.ps1 cargo check -p <crate>
 ```
 
-Load the `lane-build` skill for workspace runs, live-DB tests, the server build and lane failures. The reasons: [build-system.md](docs/architecture/build-system.md).
+Load the `lane-build` skill for workspace runs, live-DB tests, the server build and lane failures. The reasons: [build-system.md](docs/architecture/build-system.md). WSL/Linux hosts are not supported for interactive sessions; what breaks, and how headless launches differ: [§ WSL and Linux hosts](docs/agents/development-workflow.md#wsl-and-linux-hosts).
 
 ## Every PR needs tests and docs
 

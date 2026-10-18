@@ -9,6 +9,8 @@ Main checkout: `/home/derek/code_stuff/Cimmeria`. Host: WSL2 Ubuntu 24.04, 24 CP
 Docker, passwordless sudo. `gh` is authenticated as the repo owner's account and every agent
 shares it, so "assigned to me" means "claimed by some agent", not "claimed by you".
 
+> **Conflict with the lane rule.** This guide's `flock` plus shared `CARGO_TARGET_DIR` is not the build-lane workflow that [CLAUDE.md](../../CLAUDE.md) requires, and WSL is not a supported interactive host. See [WSL and Linux hosts](../agents/development-workflow.md#wsl-and-linux-hosts). Which of the two wins on Linux is an open maintainer question.
+
 ## Hard rules
 
 1. **Never touch the main checkout's working tree or branches.** No `checkout`, `pull`, `reset`,

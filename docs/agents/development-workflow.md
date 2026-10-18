@@ -262,6 +262,38 @@ Starting the bundled Postgres is documented in [`docs/architecture/integration-t
 - `tools/build-hygiene/sweep.ps1` trims every target dir on the machine: the main checkout, `.claude/worktrees/*` and the Dev Drive. Through `cargo-sweep` (`cargo install --locked cargo-sweep`) it keeps only artifacts from the pinned toolchain and drops those unused for `-Days` (default 14). It also deletes stale incremental sessions, incremental caches not compiled for `-IncrementalHours` (default 24), and feature variants no build has read for `-VariantHours` (default 24), such as a crate's builds from before a rebase changed its dependencies. `-DryRun` prints what it would free per target dir, and `-Only <worktree>` limits it to one. It skips target dirs a lane job is building in. **Don't run it while anything else builds:** it can delete files a running build is about to use.
 - `tools/build-metrics/measure-build.ps1` gives controlled numbers (cold build, edit loop, `cargo check`, peak memory, target size). Run it under `lane.sh --exclusive` from a worktree with an empty target dir, and re-measure before changing the slot count or `CARGO_BUILD_JOBS`.
 
+## WSL and Linux hosts
+
+**Status: not supported for interactive sessions. Use the Windows checkout.** The documented stance is Windows-native development ([building.md](../building.md#prerequisites): "no WSL or cross-compile path for development"), and nothing here reverses it. This section records what you hit if you start `claude` from WSL or another Linux host anyway, so you don't rediscover it. Whether the repo supports or forbids WSL is a maintainer decision, tracked as an open question in the PR that added this section.
+
+CI is Linux, so a local Linux test pass is representative for tests. The Windows build is a separate matter.
+
+### What breaks
+
+- **No documented path.** [building.md](../building.md#prerequisites) and the `lane-build` skill say Windows only, and the `ship-pr` skill says not to use bash. Every `tools/build-lane/*.ps1` has a `.sh` twin ([README](../../tools/build-lane/README.md)), but none is documented as supported on a developer host.
+- **`ops` cannot run.** [`ops`](../../.claude/agents/ops.md) has only the PowerShell and Read tools and runs only `.ps1` commands. Where PowerShell is unavailable it returns `blocked` (now with the reason stated), so worktree, git and PR work goes around it.
+- **Repo scripts that fail on Linux or WSL:**
+  - `mk-worktree.sh` dies at `cygpath` after it creates the worktree, so `external/` is not linked. Link it by hand with `ln -s <main-checkout>/external <worktree>/external` (Windows worktrees use a junction instead), and remove the symlink before `git worktree remove`.
+  - `ship.sh` calls `python`, which a Linux host may not have. Run `python3 tools/build-lane/ship.py pr ...` directly.
+  - `ship.py merge` polls until it times out when the installed `gh` has no `gh pr checks --json` (2.45 has none). Read plain `gh pr checks <n>`, then `gh pr merge <n> --squash --match-head-commit <sha>`.
+  - `gh pr edit` fails with a GraphQL error about classic projects on an old `gh`. Edit the body with `gh api -X PATCH repos/<owner>/<repo>/pulls/<n> -F body=@file`.
+  - `rm-worktree.sh` is Windows-shaped. Retire by hand: the `external/` symlink, the worktree, the branch, the `sgw_<name>` database and its `_0`..`_7` clones, and the worktree's lane log directory.
+- **Closed loopback ports hang.** Under WSL2 mirrored networking, connecting to a closed loopback port hangs until the caller's own deadline instead of being refused, so a test that expects "connection refused" waits or times out ([details](../../.claude/agent-memory/main-session/reference_loopback_exporter_test_seams_2026_10_04.md)).
+- **Live-DB tests need a database you start.** Nothing listens on port 5433 by default. Run the same `postgres:17.9` image CI uses in a container, then `tools/build-lane/live-db-test.sh`. Two worktrees testing at once exhaust `max_connections`; pass `--test-threads=4`.
+- **The Linux build excludes six crates and needs system packages.** The CI invocation excludes `cimmeria-app`, `cimmeria-content-editor`, `cimmeria-scene-editor`, `cimmeria-client-telemetry`, `cimmeria-client-patches` and `cimmeria-lab`. Dropping `cimmeria-client-telemetry` makes a Linux host need the xkbcommon and xcb dev packages. The authoritative list is [`test.yml`](../../.github/workflows/test.yml); the same list and package note are in [troubleshooting](../troubleshooting.md#local-tests-pass-but-ci-fails-on-clippy) and the kickoff guide.
+- **The one Linux guide conflicts with the lane rule.** [`autonomous-agent-kickoff.md`](../guides/autonomous-agent-kickoff.md) uses `flock` and a shared `CARGO_TARGET_DIR`, while [CLAUDE.md](../../CLAUDE.md) requires every compiling `cargo` call to go through the lane, which gives each worktree its own target dir.
+
+The lane itself does run on Linux: `bash tools/build-lane/lane.sh cargo ...` initialises its state under `~/.local/share/cimmeria-build`. That is an observation, not a supported configuration.
+
+### Headless and CI launches get the orchestrator too
+
+`"agent": "orchestrator"` in [`.claude/settings.json`](../../.claude/settings.json) (decision D-LO1 in the [lean-orchestration ledger](../analysis/lean-orchestration/README.md)) applies to **every** Claude Code launch in a checkout, not only interactive ones: headless `claude -p` runs and CI runs such as `claude-code-action` load the [orchestrator](#default-persona) as well. The orchestrator has no Bash, so a CI job that needs a shell must override the default:
+
+- `--agent <name>` picks another persona, for example `hands-on` (all tools) or a specific advisor.
+- `--setting-sources user` skips the project's `settings.json`, so the default persona never loads. It also skips the project's hooks and `env` block.
+
+Interactively, `claude --agent hands-on` is the documented escape hatch.
+
 ## Agent board
 
 Sessions and agents across the SandboxServers repos coordinate on the agent board, <https://board.cimmeria.app>. Read [the agent board guide](https://github.com/SandboxServers/agent-board/blob/main/docs/guide.md) before your first post, and install the tooling once per machine from [SandboxServers/agent-board](https://github.com/SandboxServers/agent-board) with `python cli/install.py --operator <steven|derek>`.
