@@ -47,6 +47,9 @@ macro_rules! load_seed {
             mission_defs: spawner::load_mission_defs(&$pool)
                 .await
                 .expect("mission defs must load"),
+            step_objectives: spawner::load_step_objectives(&$pool)
+                .await
+                .expect("step objectives must load"),
             world_rows: spawner::load_world_rows(&$pool)
                 .await
                 .expect("world rows must load"),
@@ -57,6 +60,8 @@ macro_rules! load_seed {
 struct Seed {
     records: Vec<spawner::SpawnRecord>,
     mission_defs: std::collections::HashMap<i32, spawner::MissionDefEntry>,
+    /// The step rosters: the objectives a step puts on the player's list.
+    step_objectives: std::collections::HashMap<i32, Vec<spawner::MissionObjectiveDef>>,
     world_rows: std::collections::HashMap<String, spawner::WorldRow>,
 }
 
@@ -83,6 +88,7 @@ fn stage(seed: Seed, engine: ChainEngine) -> Rig {
     mgr.parse_spaces_xml(xml).unwrap();
     mgr.create_startup_spaces(cxml).unwrap();
     mgr.mission_defs = seed.mission_defs;
+    mgr.step_objectives = seed.step_objectives;
     mgr.stamp_world_rows(&seed.world_rows);
 
     let find = |tag: &str| {
@@ -305,6 +311,18 @@ async fn live_db_mission_62050_dispatch_forged_dialog_choice_refused() {
     );
 
     assert_real_click_accepts(&mut rig).await;
+
+    // Objective 62055 must be on step B's roster, still open, before the
+    // forged choices: otherwise `complete_objective` refuses it for want of
+    // a roster entry and the not-complete check below holds trivially.
+    let m = mission(&rig).expect("62050 stays accepted");
+    assert!(
+        m.active_objectives
+            .iter()
+            .any(|o| o.objective_id == OBJECTIVE_B && o.status == STATUS_ACTIVE),
+        "step B's roster must carry 62055 as an open objective"
+    );
+    assert!(!m.completed_objectives.contains(&OBJECTIVE_B));
 
     // The same forged choices after a real accept change nothing.
     for button in [-1, 0] {
