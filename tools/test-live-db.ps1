@@ -5,7 +5,7 @@
 # tools/test-live-db.sh; see that file for why the list exists and why it is one run.
 #
 # Usage:
-#   $env:DATABASE_URL = 'postgres://w-testing:w-testing@localhost:5433/sgw'
+#   $env:DATABASE_URL = 'postgres://w-testing:w-testing@localhost:5433/sgwtest'
 #   tools/test-live-db.ps1 [args...]
 #   tools/test-live-db.ps1 --llvm-cov [args...]   # under `cargo llvm-cov --no-report nextest`
 #   tools/test-live-db.ps1 [--llvm-cov] --build-only   # compile only; no database needed

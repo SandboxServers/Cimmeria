@@ -2,12 +2,15 @@
 # bundled Postgres at localhost:5433. Prints the DATABASE_URL to use. PowerShell 7 twin
 # of reload-db.sh.
 #
-# Usage (from a repo or worktree root): pwsh tools/build-lane/reload-db.ps1
+# Usage (from a repo or worktree root): pwsh tools/build-lane/reload-db.ps1 [-DryRun]
 #
-# Database name: sgw_<worktree dir name> (non [A-Za-z0-9_] characters become `_`); the
-# main checkout keeps `sgw`. Override with CIMMERIA_TEST_DB=<name>. One database per
-# worktree lets live-DB runs from different worktrees proceed concurrently without one
-# reload landing under another's tests.
+# Database name: sgw_<worktree dir name> (non [A-Za-z0-9_] characters become `_`). The
+# main checkout uses `sgwtest`, not `sgw`: `sgw` is the play database that setup.ps1
+# owns. The script refuses `sgw` even via CIMMERIA_TEST_DB. Override with
+# CIMMERIA_TEST_DB=<name>. One database per worktree lets live-DB runs from different
+# worktrees proceed concurrently without one reload landing under another's tests.
+# -DryRun prints the resolved database name and exits before touching Postgres.
+param([switch]$DryRun)
 $ErrorActionPreference = 'Stop'
 if (-not (Test-Path -LiteralPath 'db/database.sql')) {
     [Console]::Error.WriteLine("reload-db: run from a repo/worktree root (db/database.sql not found in $((Get-Location).Path))"); exit 2
@@ -17,8 +20,14 @@ if (-not $Top) { $Top = (Get-Location).Path }
 $Main = Split-Path -Parent (git rev-parse --path-format=absolute --git-common-dir)
 $Name = ((Split-Path -Leaf $Top) -replace '[^A-Za-z0-9_]', '_').ToLowerInvariant()
 $same = [System.IO.Path]::GetFullPath($Top).TrimEnd('\', '/') -eq [System.IO.Path]::GetFullPath($Main).TrimEnd('\', '/')
-$Db = if ($same) { 'sgw' } else { "sgw_$Name" }
+$Db = if ($same) { 'sgwtest' } else { "sgw_$Name" }
 if ($env:CIMMERIA_TEST_DB) { $Db = $env:CIMMERIA_TEST_DB }
+if ($Db -ieq 'sgw') {
+    [Console]::Error.WriteLine("reload-db: refusing to reload 'sgw': it is the play database. Use `setup.ps1 -ForceDatabase` (resources only) or `-WipeDatabase` (full wipe, prints counts and backs up first).")
+    exit 2
+}
+if ($DryRun) { Write-Output "reload-db: target database $Db"; exit 0 }
+# psql is resolved after the dry run so that -DryRun works on a machine without Postgres.
 $Psql = if ($env:PSQL) { $env:PSQL } else { Join-Path $Main 'external/postgresql_server/bin/psql.exe' }
 if (-not (Test-Path -LiteralPath $Psql)) { $Psql = (Get-Command psql -CommandType Application).Source }
 if (-not $env:PGPASSWORD) { $env:PGPASSWORD = 'w-testing' }

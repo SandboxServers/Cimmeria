@@ -280,7 +280,7 @@ cargo test --workspace --exclude cimmeria-app --exclude cimmeria-content-editor 
   --exclude cimmeria-scene-editor --exclude cimmeria-client-telemetry --exclude cimmeria-client-patches --exclude cimmeria-lab
 
 # Live-DB tests (start the bundled Postgres on :5433 first, then):
-DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
+DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgwtest \
   ../tools/test-live-db.sh
 ```
 
