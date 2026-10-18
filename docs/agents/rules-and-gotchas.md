@@ -1,6 +1,6 @@
 # Project Rules and Gotchas
 
-> **Last updated**: 2026-10-15
+> **Last updated**: 2026-10-18
 > **Audience**: Contributors and their agents, before proposing an approach
 > **Type**: Reference
 
@@ -71,8 +71,9 @@ Files should "do what it says on the tin": a reader, human or LLM, should predic
 ## Build and CI
 
 - **The toolchain is pinned; bump it on purpose.** `rust-toolchain.toml` pins Rust 1.98.1, and every CI workflow installs that version through `.github/actions/rust-toolchain`, so local clippy is CI's clippy. This replaces the old gotcha: CI used to float on stable, its clippy ran ahead of yours, and the workaround was a side-by-side `cargo +<version> clippy`. Don't do that anymore. Bump the version in its own PR: change the file, run the pre-PR checklist, and fix the new lints in that PR. Clippy stops at the first failing target, so rerun until it exits 0.
-- **Builds are Windows-native.** The WSL cross-compile and its memory rules (the ~47 GB link, `pkill -f rustc`, `CARGO_BUILD_JOBS=2`) are retired. The 47 GB figure predates `rust-lld` on Windows. See [`docs/architecture/build-system.md`](../architecture/build-system.md).
+- **Windows with PowerShell 7 is the validated platform.** WSL, Linux, and Git Bash on Windows are not validated, but not unsupported ([WSL and Linux hosts](development-workflow.md#wsl-and-linux-hosts)). The WSL cross-compile and its memory rules (the ~47 GB link, `pkill -f rustc`, `CARGO_BUILD_JOBS=2`) are retired; the 47 GB figure predates `rust-lld` on Windows. See [`docs/architecture/build-system.md`](../architecture/build-system.md).
 - **The build lane is per machine, not per worktree.** Every agent or worker `cargo` call that compiles goes through `tools/build-lane/lane.sh`, including agents running in parallel in separate worktrees. See [`development-workflow.md`](development-workflow.md#build-through-the-lane).
+- **Never pass `--target-dir target/desktop`** (or any relative `--target-dir`) in a lane command or a brief. It overrides the lane's per-worktree target on the Dev Drive and builds a multi-GB tree inside the worktree on C:. On 2026-10-12, about 19 packet worktrees filled C: this way. For `crates/launcher/desktop/Cargo.toml`, omit it.
 - **sccache and `CARGO_INCREMENTAL=1` don't mix.** sccache refuses to run when `CARGO_INCREMENTAL` is set to anything but `0`. The lane drops sccache for such a job; a direct `cargo` call with sccache as `RUSTC_WRAPPER` fails. Leave `CARGO_INCREMENTAL` unset: the dev profile already builds workspace crates incrementally.
 - **Don't run `tools/build-hygiene/sweep.ps1` while anything builds.** cargo-sweep can delete files a running build is about to use.
 - **A PR with merge conflicts gets no CI run at all.** Merge `main` first.
@@ -98,6 +99,12 @@ Files should "do what it says on the tin": a reader, human or LLM, should predic
 
 What AI-assisted work costs here is measured by the token profiler ([how-to](../guides/token-profiling.md), [ledger](../analysis/token-usage/README.md)). The rules it produced are in [development-workflow.md](development-workflow.md#worker-lifetime-and-notifications); the ones contributors miss most:
 
+- **Agents use PowerShell, the validated path.** An agent on a host without `pwsh` returns `blocked` and says why. Humans may use the `.sh` twins; agents don't.
+- **Model roles have reasons.** Haiku implements prescriptive packets, Sonnet reviews and fixes, Opus designs and rules but writes no code. Per 1,000 changed lines this cut cost 2.5x ($7.44 to $3.03), and Opus oversteps (coding, implementing a Haiku packet, or researching in the main session) cost $107.43 ([campaign-metrics](../analysis/campaign-metrics/findings.md)).
+- **Run agents as defined.** No model override on a dispatch; the agent file's `model` is the decision. Lab driving through `lab-driver` is the one documented exception.
+- **A packet is about 40k working tokens, and a coder gets at most 3 sessions.** About 35-40k of a Haiku session is fixed overhead, and 9 of 34 sessions hit the 90k cap before packets were re-sliced (0 of 36 after). The ladder: [campaign-packet skill](../../.claude/skills/campaign-packet/SKILL.md#sessions-passes-and-escalation).
+- **Every PR gets an adversarial review by an agent that didn't write it.** For a campaign packet that is the wave's packet-review-fixer; otherwise a fresh read-only reviewer (the `ship-pr` skill § 5). Every Haiku commit is reviewed by Sonnet before it ships.
+- **Workers run lane checks in the foreground**, with `Set-Location <worktree>;` at the start of each call, and commit as soon as the checks pass. On 2026-10-11, workers that backgrounded their lane calls sat idle for an hour with uncommitted work, and others ran lanes from the main checkout.
 - **One phase per worker, and hand off by worknote** at about 200 requests or 250k tokens. Every request re-reads the whole context.
 - **Batch mechanical steps.** One git or `ls` call per request in a large context was 11.2% of all spend. Chain them, or hand them to a fresh context.
 - **Don't park workers.** A worker that waits more than five minutes rewrites its whole cache when it wakes; that was 13.2% of spend.
@@ -107,6 +114,7 @@ What AI-assisted work costs here is measured by the token profiler ([how-to](../
 ## Client assets and RE tooling
 
 - **The game client is not in the repo.** `game/sgw/` is a placeholder. Map recon, prefab positions, navmesh extraction, and any `crates/upk-objects` or `crates/navmesh-extractor` work needs your own copy of the client; point the tool at its `SGWGame/CookedPC/` directory. Do not conclude that assets are missing because the repo does not contain them.
+- **Never rehost or mirror the game client or its seed archive.** Seed bytes come only from the archive.org source in the signed manifest or the player's own copy; a file index of paths, sizes and hashes is fine ([launcher distribution](../client/launcher-distribution-setup.md)).
 - **The client ships no `.nav` files.** The ones under `data/spaces/` are original server assets.
 - **Breakpoints on a live, server-connected `SGW.exe` must not pause it.** A paused client stalls its network thread, Mercury keepalive times out, and the server disconnects it. In x64dbg use a logging breakpoint: `SetBreakpointCondition <addr>, 0`, `SetBreakpointLogCondition <addr>, 1`, `SetBreakpointLog <addr>, "<text with {expr} captures>"`. The zero condition alone keeps it from pausing. **Leave fast resume off** (`SetBreakpointFastResume <addr>, 0`, the default): with it on, a breakpoint whose condition doesn't break performs "no GUI, plugin, logging or any other action" ([x64dbg docs](https://help.x64dbg.com/en/latest/commands/conditional-breakpoint-control/SetBreakpointFastResume.html)), so the log never fires. This was also confirmed live in [`black-market-client-window-patch.md`](../reverse-engineering/findings/black-market-client-window-patch.md). Since the breakpoint never stops, encode the registers and stack slots you want into the log text.
 - **Client-side instrumentation is written from scratch.** `AteraLoader.exe` and `AtreaRL.dll` are third-party. [`docs/technical/atrealoader-exe.md`](../technical/atrealoader-exe.md) and [`atrearl-loader.md`](../technical/atrearl-loader.md) are references for what to hook, not code to extend, wrap, or ship. Depending on the output of `AtreaFixASLR.bat` (an `SGW.exe` with ASLR cleared) is fine.
@@ -120,3 +128,4 @@ What AI-assisted work costs here is measured by the token profiler ([how-to](../
 - **A ledger that says "not started" does not mean nobody is on it.** Before dispatching workers for a ledgered campaign, look for campaign branches and worktrees created or committed in the last few hours (`git worktree list`, `git log --since`), and ask whether another session owns the work. A packet that was dispatched minutes ago looks exactly like an abandoned one: a clean worktree at `main`'s head.
 - Playtest reports: `docs/analysis/playtests/`.
 - Agent-written project memory, dated and sourced but not yet verified to `docs/` standard: `.claude/agent-memory/<agent>/` for subagents and `.claude/agent-memory/main-session/` for top-level sessions. See [`development-workflow.md`](development-workflow.md#project-memory).
+- **Committed files carry no IPs, credentials or account names**, memory files included.
