@@ -320,9 +320,10 @@ async fn live_db_marsh_receipt_relog_before_commit_keeps_the_offer() {
     teardown(&pool, 16).await;
 }
 
-/// An ambiguous commit is retried with the same attempt: the base answers
-/// `AlreadyCommitted`, the letter is consumed once and the stale answer sends
-/// no second set of frames.
+/// The base commits, the cell never applies the first result (it is lost), and
+/// the same request is resent while the click is still pending. The base answers
+/// `AlreadyCommitted`; the cell applies that postimage once: the four frames,
+/// one consume and one receipt row, and no second result.
 #[tokio::test]
 async fn live_db_marsh_receipt_recovered_delivery_is_already_committed() {
     let pool = require_db_or_skip!();
@@ -330,13 +331,43 @@ async fn live_db_marsh_receipt_recovered_delivery_is_already_committed() {
     let (tx, mut rx) = mpsc::channel(128);
     let mut harset = stage(&driver, &tx, &mut rx, Stage::MARSH).await;
 
+    // The click shows processing and queues one request; no result frame yet.
     let click = click_marsh(&driver, &tx, &mut rx, &mut harset).await;
+    assert_eq!(
+        request_count(&click),
+        1,
+        "the click queues one turn-in request"
+    );
+    assert!(
+        shows_processing_feedback(&click),
+        "the click shows processing"
+    );
+    assert!(
+        !frame_methods(&click)
+            .iter()
+            .any(|m| *m == ON_DIALOG_DISPLAY || MISSION_FRAMES.contains(m)),
+        "no dialog or journal frame before a result: {:?}",
+        frame_methods(&click)
+    );
     driver.route(click).await;
-    let first = driver.next_result().await;
-    let request = first.request;
-    apply_letter_turn_in_result(first, &tx, &mut harset, &driver.engine).await;
-    drain(&mut rx);
 
+    // The base commits, but the result is lost before the cell applies it. The
+    // cell stays pending with the same attempt.
+    let lost = driver.next_result().await;
+    assert!(
+        matches!(lost.outcome, LetterTurnInOutcome::Committed(_)),
+        "{:?}",
+        lost.outcome
+    );
+    let request = lost.request;
+    drop(lost);
+    assert_eq!(
+        driver.letter_count().await,
+        0,
+        "the base consumed the letter"
+    );
+
+    // The pending request is resent unchanged (the retry path keeps its attempt).
     driver
         .route(vec![CellToBaseMsg::Plugin(PluginMsg::new(request))])
         .await;
@@ -347,13 +378,31 @@ async fn live_db_marsh_receipt_recovered_delivery_is_already_committed() {
         retry.outcome
     );
     apply_letter_turn_in_result(retry, &tx, &mut harset, &driver.engine).await;
-    let queued = drain(&mut rx);
-    let methods = frame_methods(&queued);
-    assert!(
-        !methods.iter().any(|m| MISSION_FRAMES.contains(m)) && !shows_receipt_dialog(&queued),
-        "the retry replays no frame: {methods:?}"
+    let frames = drain(&mut rx);
+
+    // Exactly the full-replay frame set, once and in order.
+    assert_eq!(
+        frame_methods(&frames),
+        [ON_DIALOG_DISPLAY, 82, 81, 80],
+        "dialog 4576, then the 4651 and 4038 frames and the 1360 completion"
     );
+    assert!(
+        shows_receipt_dialog(&frames),
+        "the receipt dialog 4576 is shown"
+    );
+    assert_eq!(
+        journal_ids(&frames),
+        [(82, 4651), (81, 4038), (80, 1360)],
+        "objective 4651, step 4038, then mission 1360"
+    );
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(
+        driver.base_rx.try_recv().is_err(),
+        "one attempt gets one result"
+    );
+
     assert_eq!(driver.letter_count().await, 0, "one consume in total");
+    assert_eq!(driver.row_1360().await.0, i32::from(MISSION_COMPLETED));
     assert_eq!(driver.receipt_rows().await, 1);
     teardown(&pool, 17).await;
 }
