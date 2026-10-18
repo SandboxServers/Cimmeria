@@ -155,6 +155,11 @@ fn observe(entity: *mut c_void, method: *mut c_void) {
     if name_key == "versionInfoRequest" {
         super::cooked_cache::note_version_request();
     }
+    // player-capture-bots: the camera as the player clicked (D-PC3, diagnostics opt-in).
+    #[cfg(all(target_os = "windows", target_arch = "x86"))]
+    if matches!(name_key, "interact" | "useItem") {
+        crate::hooks::camera::emit::at_interact(name_key, local_id, None);
+    }
     let decision = trace::throttle(&format!("{target}:{name_key}"), key);
     if let Some(f) = trace::with_suppressed(fields, decision) {
         crate::hooks::emit::emit(target, "info", f);

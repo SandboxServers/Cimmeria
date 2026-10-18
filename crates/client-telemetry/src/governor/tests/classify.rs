@@ -70,6 +70,7 @@ fn the_must_keep_targets_are_never_summarized() {
         ("client.ability.recv_skipped", KeepReason::AbilityTrace),
         ("client.ability.applied", KeepReason::AbilityTrace),
         ("client.ability.shown", KeepReason::AbilityTrace),
+        ("client.camera.at_interact", KeepReason::InteractionCamera),
     ];
     for (target, reason) in cases {
         assert_eq!(class_of(target), Class::MustKeep(*reason), "{target}");

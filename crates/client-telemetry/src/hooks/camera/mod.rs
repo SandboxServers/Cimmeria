@@ -7,9 +7,12 @@
 //! on interact and useItem). They ride the existing diagnostics opt-in
 //! (D-PC3 and F13), and add no consent of their own.
 
-// Until the PC-16 emitter lands, only the tests call these readers.
+// Only the 32-bit target runs the live readers; host builds use the pure parts.
 #![cfg_attr(not(test), allow(dead_code))]
 
+pub mod emit;
+#[cfg(test)]
+mod emit_tests;
 pub mod layout;
 pub mod read;
 #[cfg(test)]
