@@ -18,7 +18,8 @@ name: senpai-review
 # fork PR, Dependabot, closed PR) end skipped or green.
 #
 # Not a gate: `main`'s ruleset requires only `ci gate`, and the ship-pr skill
-# watches `gh pr checks --required`, so a red Senpai run blocks nothing.
+# reads CI's verdict from `gh pr checks --required`, so a red Senpai run
+# blocks nothing.
 #
 # Cost: Sonnet, at most 25 turns and an estimated $1.50 per run
 # (`--max-budget-usd` is a client-side estimate and can be passed slightly).

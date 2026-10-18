@@ -65,20 +65,28 @@ python tools/build-lane/ship.py pr -C .claude/worktrees/<name> -m "feat(vendor):
 ## 4. Wait for CI without polling
 
 Never write `sleep`/`until`/`Start-Sleep` loops around `gh pr checks`. Telemetry showed about
-220 such polling calls in one week, each one a full model turn. Use one blocking call:
+220 such polling calls in one week, each one a full model turn. Block on one call, then read the verdict with a second:
 
 ```powershell
-gh pr checks <PR> --required --watch --fail-fast
+gh pr checks <PR> --watch --fail-fast
+gh pr checks <PR> --required
 ```
 
-`--required` watches only what `main`'s ruleset requires (`ci gate`), so a red check that
-blocks nothing, such as an opt-in `senpai review` or a warn-only lint, can't read as red CI.
-Path-filtered checks aren't ruleset-required either: `ship.py merge` still waits for
-the lab and build-lane ones (step 6), and after a figure change run one plain
-`gh pr checks <PR>` once CI settles to see the figure checks.
+The first call waits, and stops at the first red check of any kind. The second is the verdict:
+CI is green when `ci gate`, the one check `main`'s ruleset requires, passes. A red check that
+blocks nothing, such as an opt-in `senpai review` or a warn-only lint, isn't red CI.
 
-Run it as a background task if the harness supports that, and you are notified when it
-exits. Alternatively let `ship.py merge` do the waiting (step 6).
+- If the second call prints `no required checks reported`, `ci gate` hasn't started: it runs
+  only after fmt, clippy and build + nextest finish. Usually a non-required failure stopped
+  the first call early. Rerun the first call without `--fail-fast`, then the second.
+- Don't put `--required` on the `--watch` call. `gh` exits at once with that same error until
+  `ci gate` exists.
+- Path-filtered checks aren't ruleset-required either. `ship.py merge` still waits for the lab
+  and build-lane ones (step 6). After a figure change, read the figure checks in the first
+  call's output.
+
+Run the first call as a background task if the harness supports that, and you are notified
+when it exits. Alternatively let `ship.py merge` do the waiting (step 6).
 
 ## 5. Adversarial review
 
