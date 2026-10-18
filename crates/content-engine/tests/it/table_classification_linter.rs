@@ -48,16 +48,22 @@ fn parse_list(text: &str) -> Vec<String> {
         .collect()
 }
 
+/// `strip_prefix` that ignores ASCII case, so `create table` is not missed.
+fn strip_prefix_ci<'a>(text: &'a str, prefix: &str) -> Option<&'a str> {
+    let head = text.get(..prefix.len())?;
+    head.eq_ignore_ascii_case(prefix)
+        .then(|| &text[prefix.len()..])
+}
+
 /// Table names created by the `CREATE TABLE` lines of one SQL file.
 fn create_table_names(sql: &str) -> Vec<String> {
     let mut names = Vec::new();
     for line in sql.lines() {
-        let Some(rest) = line.trim_start().strip_prefix("CREATE TABLE ") else {
+        let Some(rest) = strip_prefix_ci(line.trim_start(), "CREATE TABLE ") else {
             continue;
         };
         let rest = rest.trim_start();
-        let rest = rest
-            .strip_prefix("IF NOT EXISTS ")
+        let rest = strip_prefix_ci(rest, "IF NOT EXISTS ")
             .unwrap_or(rest)
             .trim_start();
         let token = rest
@@ -253,5 +259,14 @@ fn create_table_names_handles_prefixes_and_quotes() {
     assert_eq!(
         create_table_names(sql),
         vec!["sgw_player".to_string(), "account".to_string()]
+    );
+}
+
+#[test]
+fn create_table_names_ignores_keyword_case() {
+    let sql = "create table sgw_new (id int);\nCreate Table If Not Exists other (id int);\n";
+    assert_eq!(
+        create_table_names(sql),
+        vec!["sgw_new".to_string(), "other".to_string()]
     );
 }
