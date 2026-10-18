@@ -297,7 +297,7 @@ fn emit(entity_id: u32, ctx: RowContext, f: &Friction) {
             x,
             z,
             open_objectives,
-        } => tracing::warn!(
+        } => tracing::debug!(
             target: "playtest.friction",
             signal = "step_stalled",
             reason = "step_not_advancing",
@@ -323,7 +323,7 @@ fn emit(entity_id: u32, ctx: RowContext, f: &Friction) {
             region_id,
             region_tag,
             dwell_secs,
-        } => tracing::warn!(
+        } => tracing::debug!(
             target: "playtest.friction",
             signal = "region_dwell_no_hint",
             reason = "client_region_hint_missing",
@@ -344,7 +344,7 @@ fn emit(entity_id: u32, ctx: RowContext, f: &Friction) {
             secs_since_respawn,
             travelled,
             hints_before_respawn,
-        } => tracing::warn!(
+        } => tracing::debug!(
             target: "playtest.friction",
             signal = "death_then_silence",
             reason = "no_region_hints_since_respawn",
@@ -365,7 +365,7 @@ fn emit(entity_id: u32, ctx: RowContext, f: &Friction) {
             dialog_id,
             replaced_dialog_id,
             ms_since_previous,
-        } => tracing::warn!(
+        } => tracing::debug!(
             target: "playtest.friction",
             signal = "dialog_displaced",
             reason = "dialog_replaced_too_fast",
@@ -529,7 +529,7 @@ pub fn objectives_never_completed(entity_id: u32, mission_id: i32, open: &[(i32,
         session_kind,
     } = watched_context(entity_id);
     for &(objective_id, optional) in open {
-        tracing::warn!(
+        tracing::debug!(
             target: "playtest.friction",
             signal = "objective_never_completed",
             reason = "objective_open_at_mission_complete",
@@ -568,7 +568,7 @@ pub fn leader_teleported(space_mgr: &crate::cell::space_manager::SpaceManager, l
             continue;
         }
         let names = crate::cell::space_manager::EntityNames::of(npc);
-        tracing::warn!(
+        tracing::debug!(
             target: "playtest.friction",
             signal = "escort_leader_teleported",
             reason = "leader_teleported",

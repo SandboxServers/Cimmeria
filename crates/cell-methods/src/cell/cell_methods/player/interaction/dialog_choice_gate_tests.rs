@@ -385,7 +385,7 @@ async fn follow_up_of_an_answered_dialog_is_not_reported_as_displaced() {
 
     assert!(
         capture
-            .find_message(tracing::Level::WARN, "friction: a dialog was replaced")
+            .find_message(tracing::Level::DEBUG, "friction: a dialog was replaced")
             .is_none(),
         "a dialog displayed after the player answered the previous one          did not displace it"
     );

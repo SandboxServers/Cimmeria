@@ -141,7 +141,7 @@ async fn friction_rows_before_first_tick_carry_session_kind() {
         .all()
         .into_iter()
         .filter(|c| {
-            c.level == Level::WARN
+            c.level == Level::DEBUG
                 && c.target == "playtest.friction"
                 && c.fields.get("entity_id").map(String::as_str) == Some("7017")
         })

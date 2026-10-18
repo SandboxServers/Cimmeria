@@ -45,7 +45,7 @@ the press needs visible feedback. The gate and the dispatcher share one lookup
 (`dispatch::find_command`). The refusal is one DEBUG line with
 `reason = "not_gm"` and the sender's identity, on `pets.command` for `.pet` and
 on the `cell::console::dispatch` module target for every other command. It is
-not a playtest-friction line, whose streak detector is a WARN a player could
+not a playtest-friction line, whose streak detector is a DEBUG row a player could
 raise by typing, so players cannot flood the WARN stream. Any other non-GM `.`-text falls through to normal chat. Authorization is on the server-side `access_level` (sourced from
 `account.accesslevel` at login, never a client byte) — the same trust model as
 `cell::dispatch::gm_gate`. Every accepted command is logged at `info` for the
