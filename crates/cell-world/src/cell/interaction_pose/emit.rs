@@ -55,7 +55,7 @@ pub fn emit_interaction_pose(
     pose: &InteractionPose,
     kind: InteractionKind,
     route: InteractionRoute,
-    extra: &PoseExtra,
+    extra: PoseExtra,
 ) -> Option<u64> {
     emit_interaction_pose_at(pose, kind, route, extra, Instant::now())
 }
@@ -66,7 +66,7 @@ pub fn emit_interaction_pose_at(
     pose: &InteractionPose,
     kind: InteractionKind,
     route: InteractionRoute,
-    extra: &PoseExtra,
+    extra: PoseExtra,
     now: Instant,
 ) -> Option<u64> {
     if !admit(pose.entity_id, now) {

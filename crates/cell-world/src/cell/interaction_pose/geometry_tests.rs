@@ -71,6 +71,8 @@ fn cardinal_bearings() {
 fn wrap_bounds() {
     assert!((wrap_deg_360(-37.5) - 322.5).abs() < 1e-4);
     assert_eq!(wrap_deg_360(360.0), 0.0);
+    // rem_euclid rounds a tiny negative up to 360.0 in f32; the result must stay below 360.
+    assert!(wrap_deg_360(-1e-7) < 360.0);
     assert!((wrap_deg_180(190.0) + 170.0).abs() < 1e-4);
     assert!((wrap_deg_180(-190.0) - 170.0).abs() < 1e-4);
     assert_eq!(wrap_deg_180(180.0), 180.0);

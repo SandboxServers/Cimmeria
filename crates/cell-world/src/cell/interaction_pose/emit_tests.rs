@@ -39,7 +39,7 @@ fn emit_at(
     mgr: &SpaceManager,
     id: u32,
     target: u32,
-    extra: &PoseExtra,
+    extra: PoseExtra,
     now: Instant,
 ) -> Option<u64> {
     let pose = capture_interaction_pose(mgr, id, target).unwrap();
@@ -74,6 +74,32 @@ fn capture_reads_both_poses() {
     assert_eq!(pose.world_id, mgr.get_entity_world_id(id));
 }
 
+/// Pins that capture wraps the entity's radian yaw and pitch into degree ranges, not raw negatives.
+#[test]
+fn capture_wraps_yaw_and_pitch() {
+    let id = 9208;
+    let (mut mgr, npc) = scene(id, -0.5);
+    mgr.get_entity_mut(id).unwrap().direction.x = -0.25;
+    mgr.get_entity_mut(npc).unwrap().direction.y = -1.0;
+    let pose = capture_interaction_pose(&mgr, id, npc).unwrap();
+    assert!(
+        (pose.player_yaw_deg - 331.35).abs() < 0.05,
+        "{}",
+        pose.player_yaw_deg
+    );
+    assert!(
+        (pose.wire_pitch_deg + 14.32).abs() < 0.05,
+        "{}",
+        pose.wire_pitch_deg
+    );
+    assert!(
+        (pose.target_yaw_deg - 302.70).abs() < 0.05,
+        "{}",
+        pose.target_yaw_deg
+    );
+    assert_eq!(pose.target_template_id, Some(700));
+}
+
 /// Pins that capture refuses NPC actors, self-targets and missing targets, so no row is built for them.
 #[test]
 fn capture_skips_npc_actor_self_and_missing() {
@@ -91,7 +117,7 @@ fn row_carries_pose_and_no_names() {
     let id = 9203;
     let (mgr, npc) = scene(id, 0.0);
     let guard = LogCapture::install();
-    let seq = emit_at(&mgr, id, npc, &PoseExtra::default(), Instant::now());
+    let seq = emit_at(&mgr, id, npc, PoseExtra::default(), Instant::now());
     assert!(seq.is_some());
     let row = guard
         .all()
@@ -130,19 +156,19 @@ fn throttle_drops_rows_inside_250ms() {
     let (mgr, npc) = scene(id, 0.0);
     let guard = LogCapture::install();
     let t0 = Instant::now();
-    let first = emit_at(&mgr, id, npc, &PoseExtra::default(), t0);
+    let first = emit_at(&mgr, id, npc, PoseExtra::default(), t0);
     let dropped = emit_at(
         &mgr,
         id,
         npc,
-        &PoseExtra::default(),
+        PoseExtra::default(),
         t0 + Duration::from_millis(100),
     );
     let third = emit_at(
         &mgr,
         id,
         npc,
-        &PoseExtra::default(),
+        PoseExtra::default(),
         t0 + Duration::from_millis(300),
     );
     assert!(first.is_some());
@@ -168,7 +194,7 @@ fn extra_fields_are_named() {
         dialog_id: Some(1),
         item_type_id: Some(42),
     };
-    assert!(emit_at(&mgr, id, npc, &extra, Instant::now()).is_some());
+    assert!(emit_at(&mgr, id, npc, extra, Instant::now()).is_some());
     let with = guard
         .all()
         .into_iter()
@@ -183,7 +209,7 @@ fn extra_fields_are_named() {
         &bare_mgr,
         bare_id,
         bare_npc,
-        &PoseExtra::default(),
+        PoseExtra::default(),
         Instant::now()
     )
     .is_some());
@@ -208,7 +234,7 @@ fn row_has_at_most_31_fields() {
         dialog_id: Some(1),
         item_type_id: Some(42),
     };
-    assert!(emit_at(&mgr, id, npc, &extra, Instant::now()).is_some());
+    assert!(emit_at(&mgr, id, npc, extra, Instant::now()).is_some());
     let row = guard
         .all()
         .into_iter()
