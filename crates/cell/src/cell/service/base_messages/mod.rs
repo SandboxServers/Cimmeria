@@ -138,15 +138,7 @@ pub(super) async fn handle_base_message(
         }
 
         BaseToCellMsg::LetterTurnInResult(result) => {
-            // A3 owns the correlated state transition. Until then, never
-            // convert a persisted verdict into an unguarded cell success.
-            tracing::debug!(
-                target: "harset.letter_turn_in",
-                event = "deferred_result",
-                entity_id = result.request.entity_id,
-                player_id = result.request.player_id,
-                "Letter turn-in result awaits the guarded cell continuation"
-            );
+            crate::cell::content::apply_letter_turn_in_result(result, tx, space_mgr, engine).await;
         }
 
         BaseToCellMsg::DisconnectEntity {
