@@ -118,8 +118,22 @@ try {
     New-Item -ItemType Directory (Join-Path $gitDir 'refs/heads') -Force | Out-Null
     New-Item -ItemType File (Join-Path $gitDir 'refs/heads/lockme.lock') | Out-Null
     $r = Invoke-BranchAt $main 'lockme' $first
-    Check ($r.code -eq 1 -and $r.out -match 'status=failed reason=git-branch detail=\S+') "a failed git branch carries git's last line as detail (exit $($r.code)): $($r.out.Trim())"
+    Check ($r.code -eq 1 -and $r.out -match 'status=failed reason=git-branch detail="[^"]*cannot lock') "a failed git branch carries git's lock error as detail (exit $($r.code)): $($r.out.Trim())"
     Remove-Item -LiteralPath (Join-Path $gitDir 'refs/heads/lockme.lock')
+
+    # --- a name that already resolves (refs/<name>) would shadow the branch ------------------
+    # git's rev lookup tries refs/<name> before refs/heads/<name>: with a stash present a branch
+    # `stash` would never be what `stash` names.
+    Set-Content -LiteralPath (Join-Path $main 'a.txt') 'stashed edit'
+    & git -C $main stash -q
+    & git -C $main update-ref refs/bisect/good-x $first
+    foreach ($shadowed in 'stash', 'bisect/good-x') {
+        $r = Invoke-BranchAt $main $shadowed $second
+        Check ($r.code -eq 2 -and $r.out -match 'ambiguous-branch-name: \S+ already resolves') "refuses '$shadowed', which refs/$shadowed already answers (exit $($r.code)): $($r.out.Trim())"
+        Check ($null -eq (& git -C $main for-each-ref "refs/heads/$shadowed")) "no branch $shadowed was created"
+    }
+    & git -C $main stash drop -q
+    & git -C $main update-ref -d refs/bisect/good-x
 
     # GIT_DIR in the environment must not move the branch into another repository.
     $other = Join-Path $tmp 'other'
