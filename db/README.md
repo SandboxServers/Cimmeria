@@ -68,8 +68,11 @@ Core game tables: accounts, characters, character inventory, missions, effects, 
 # Full pipeline (recommended):
 pwsh setup.ps1
 
-# Database only (wipe and reload):
+# Database only (refresh resources, keep accounts and characters):
 pwsh setup.ps1 -SkipBuild -ForceDatabase
+
+# Database only (destroy player data, backs up first, then reload):
+pwsh setup.ps1 -SkipBuild -WipeDatabase
 
 # Manual:
 .\db.bat

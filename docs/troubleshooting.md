@@ -226,17 +226,17 @@ The `ci-live-db` profile serialises tests (`threads-required = "num-test-threads
 
 ### Database load fails partway with "already exists"
 
-**Symptom.** `setup.ps1 -ForceDatabase` reports "relation already exists" errors during the schema load.
+**Symptom.** The schema load reports "relation already exists" errors during the schema load.
 
 **Root cause.** A previous load was interrupted mid-way — the schema is partially in place but seed data isn't, and the script's idempotent path didn't detect the partial state.
 
 **Fix.**
 
 ```powershell
-pwsh setup.ps1 -ForceDatabase -SkipBuild -NoLaunch
+pwsh setup.ps1 -WipeDatabase -SkipBuild -NoLaunch
 ```
 
-`-ForceDatabase` drops and recreates the `sgw` database before loading, so a partial load is cleaned up. If `-ForceDatabase` alone still fails, escalate to `-ResetDatabase`.
+`-WipeDatabase` backs up `sgw` to `server/backups`, drops it and loads a new one from the seeds, so a partial load is cleaned up. It destroys every account and character (the backup is the only copy), which is fine after an interrupted first load. `-ForceDatabase` is not the fix here: it refreshes resources and keeps player data. If `-WipeDatabase` alone still fails, escalate to `-ResetDatabase`.
 
 ---
 

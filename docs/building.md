@@ -45,11 +45,12 @@ The bootstrap pipeline is documented in detail in [`bootstrap/README.md`](../boo
 | `-WithAdmin` | Also build the Tauri admin panel (`tools/`). Needs Node.js. |
 | `-WithLauncher` | Also download the released desktop launcher (`launcher-current`), check it against its `.sha256` and unpack it into `launcher\` beside the server. Nothing is built. |
 | `-UseDocker` | Run PostgreSQL in a `postgres:17` container instead of locally. |
-| `-ForceDatabase` | Drop and recreate the `sgw` database, then reload the schema. |
+| `-ForceDatabase` | Refresh the resources in `sgw` from the seeds (backs up to `server/backups` first). Accounts and characters are kept; the old database stays as `sgw_prev`. |
+| `-WipeDatabase` | Print player counts, back up `sgw`, drop it and reload from the seeds. Destroys every account and character, so the backup is the only copy. Not with `-ForceDatabase`. |
 | `-ResetDatabase` | Nuclear option — stop Postgres, delete the entire `pgdata` directory, re-initialise from scratch. |
 | `-WithReToolchain` | Install the reverse-engineering toolchain (Ghidra, GhidraMCP, x64dbg, MCP venvs, `.mcp.json`). Opt-in; Windows-only. |
 | `-NoLaunch` | Build only; don't start the server. |
-| `-SkipBuild` | Skip the Cargo build (useful with `-ForceDatabase` to re-seed without rebuilding). |
+| `-SkipBuild` | Skip the Cargo build (useful with `-ForceDatabase` to refresh the seeds without rebuilding). |
 
 ## Direct `cargo` builds
 
