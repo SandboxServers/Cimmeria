@@ -28655,9 +28655,9 @@ INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUE
 -- Cellblock continuation CB-N05: dialog 60150's only screen (CIMMERIA_AUTHORING).
 INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (60150, 96110, 'Prisoner 329 says there are still people in the other pods. Tell Col. Marsh to check them before you leave.', 0, 0);
 
-
 -- Cellblock continuation CB-N06: dialog 60151's only screen (CIMMERIA_AUTHORING).
 INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (60151, 96111, 'The two prisoners are too weak to run, and the patrol is coming back. There is time for one thing: help them hide, or jam the cell-door panel by Prisoner 329 so the guards cannot seal the block.', 0, 0);
+
 --
 -- TOC entry 3309 (class 0 OID 0)
 -- Dependencies: 310

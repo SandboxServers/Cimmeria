@@ -10867,10 +10867,10 @@ INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags
 -- Speaker-0 monologue, served by DIALOG_OVERRIDES (overrides_cellblock.rs).
 INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (60150, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Cellblock - The Remaining Pods: Prisoner 329 report');
 
-
 -- Cellblock continuation CB-N06: the patrol choice for mission 62060 (CIMMERIA_AUTHORING).
 -- Speaker-0 monologue, served by DIALOG_OVERRIDES (overrides_cellblock.rs).
 INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (60151, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Cellblock - Before the Patrol Returns: the choice');
+
 --
 -- TOC entry 3312 (class 0 OID 0)
 -- Dependencies: 309
