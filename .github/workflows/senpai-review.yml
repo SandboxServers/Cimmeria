@@ -3,7 +3,8 @@ name: senpai-review
 # Senpai Reviewer: an opt-in, in-character Claude code review of one PR.
 #
 # Trigger: add the `senpai` label to a PR, or run this workflow by hand
-# (`gh workflow run senpai-review.yml -f pr_number=<N>`). It never runs on
+# (`gh workflow run senpai-review.yml -f pr_number=<N>`; GitHub offers that
+# only once this file is on the default branch). It never runs on
 # push or synchronize: every run spends Anthropic API money from a fixed
 # budget, so a human asks for each one. The label is removed at the end of
 # the run, so adding it again asks for a fresh review.
@@ -117,7 +118,7 @@ jobs:
         id: checkout
         if: steps.pr.outputs.skip == 'false'
         continue-on-error: true
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: refs/pull/${{ steps.pr.outputs.number }}/head
           fetch-depth: 0
@@ -134,7 +135,9 @@ jobs:
           BASE: ${{ steps.pr.outputs.base }}
         run: |
           set -euo pipefail
-          git fetch --no-tags --no-recurse-submodules --depth=1 origin \
+          # No --depth: on this full clone it would make the repo shallow and
+          # drop the merge base that `git diff origin/<base>...HEAD` needs.
+          git fetch --no-tags --no-recurse-submodules origin \
             "+refs/heads/${BASE}:refs/remotes/origin/${BASE}"
           for p in .claude .mcp.json .claude.json .gitmodules .ripgreprc CLAUDE.md CLAUDE.local.md .husky; do
             rm -rf -- "$p"
@@ -188,8 +191,11 @@ jobs:
           # run loads. Senpai can read the repo and talk to GitHub; she cannot
           # edit code. Write is checked against Edit rules, and `./` is the
           # workspace, so the one writable path is .senpai/review.md.
+          # bashOutputMaxChars keeps most `gh pr diff` output inline instead of
+          # spilling it to a file outside the workspace.
           settings: |
             {
+              "bashOutputMaxChars": 80000,
               "permissions": {
                 "allow": [
                   "Bash(gh pr view:*)",
@@ -216,8 +222,16 @@ jobs:
             ## The Mission
             Review pull request #${{ steps.pr.outputs.number }} in
             ${{ github.repository }}, authored by @${{ steps.pr.outputs.author }}.
-            The working directory is the PR head. You have about 25 turns; spend
-            them on the code, not on the dossier.
+            The working directory is the PR head; the base branch is
+            `origin/${{ steps.pr.outputs.base }}`. You have 25 turns and the run
+            ends hard at the last one, so:
+            - Batch independent read-only calls (several tool calls in one reply).
+            - Spend turns on the code, not on the dossier.
+            - By turn 20 at the latest, stop exploring and do steps 5 and 6. A
+              review that never gets posted is worth nothing.
+            - If `gh pr diff` is too long to read in one go, read it per file with
+              `git diff origin/${{ steps.pr.outputs.base }}...HEAD -- <path>`
+              (`git diff --stat origin/${{ steps.pr.outputs.base }}...HEAD` lists them).
 
             Steps:
             1. Read `CLAUDE.md` first. It holds this repo's rules, and this run does
