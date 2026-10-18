@@ -4,8 +4,10 @@
 #   pwsh tools/build-lane/branch-at.ps1 -C <repo> -Name <branch> -Sha <40-hex>
 #
 # <repo> is the main checkout or any worktree of the repository. Refuses (exit 2) when <sha> is
-# not 40 lowercase hex digits or names no commit, <name> is not a valid branch name, or
-# refs/heads/<name> already exists. Prints status=ok branch=<name> sha=<sha>, or
+# not 40 lowercase hex digits or names no commit, <name> is not a valid branch name, <name> is
+# ambiguous (starts with `refs/`, is `@` or a pseudo-ref such as HEAD or FETCH_HEAD, or its first
+# segment is a configured remote or `heads`, `tags` or `remotes`: a local `origin/main` would
+# shadow the remote-tracking ref in later rev lookups), or refs/heads/<name> already exists. Prints status=ok branch=<name> sha=<sha>, or
 # status=refused reason=<why> / status=failed reason=<why>. Exit codes: 0 created, 2 refused,
 # 1 git failed.
 [CmdletBinding()]
@@ -32,6 +34,13 @@ if ($LASTEXITCODE -ne 0) { Stop-Refused "no-such-commit: $Sha" }
 if ($Name.StartsWith('-')) { Stop-Refused "bad-branch-name: $Name" }
 & git -C $C check-ref-format --branch $Name *> $null
 if ($LASTEXITCODE -ne 0) { Stop-Refused "bad-branch-name: $Name" }
+if ($Name -match '^refs/' -or $Name -iin '@', 'HEAD', 'FETCH_HEAD', 'ORIG_HEAD', 'MERGE_HEAD', 'CHERRY_PICK_HEAD') { Stop-Refused "ambiguous-branch-name: $Name" }
+$first = ($Name -split '/')[0]
+$remotes = @(& git -C $C remote)
+$reserved = @('heads', 'tags', 'remotes') + $remotes
+if ($Name.Contains('/') -or $remotes -contains $Name) {
+    if ($reserved -contains $first) { Stop-Refused "ambiguous-branch-name: $Name shadows a ref namespace or a remote" }
+}
 & git -C $C show-ref --verify --quiet "refs/heads/$Name"
 if ($LASTEXITCODE -eq 0) { Stop-Refused "branch-exists: $Name is not overwritten" }
 

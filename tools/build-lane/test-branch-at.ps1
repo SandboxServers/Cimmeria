@@ -36,6 +36,7 @@ try {
     & git -C $main commit -q -am 'second'
     $second = (& git -C $main rev-parse HEAD).Trim()
     & git -C $main worktree add -q -b feat/wt $wt
+    & git -C $main remote add origin (Join-Path $tmp 'origin.git')
     $refsBefore = (& git -C $main for-each-ref --format='%(refname) %(objectname)' | Out-String)
 
     # --- refusals -----------------------------------------------------------------------
@@ -49,6 +50,10 @@ try {
     Check ($r.code -eq 2 -and $r.out -match 'bad-branch-name') 'refuses a name that starts with a dash'
     $r = Invoke-BranchAt $main 'bad..name' $first
     Check ($r.code -eq 2 -and $r.out -match 'bad-branch-name') 'refuses an invalid branch name'
+    foreach ($amb in '@', 'HEAD', 'FETCH_HEAD', 'origin/main', 'origin', 'tags/x', 'heads/x', 'remotes/x', 'refs/heads/zz') {
+        $r = Invoke-BranchAt $main $amb $first
+        Check ($r.code -eq 2 -and $r.out -match 'status=refused') "refuses the ambiguous name '$amb' (exit $($r.code))"
+    }
     $r = Invoke-BranchAt $main 'feat/wt' $second
     Check ($r.code -eq 2 -and $r.out -match 'branch-exists') 'refuses to overwrite an existing branch'
     $r = Invoke-BranchAt $wt 'feat/wt' $second
@@ -62,6 +67,8 @@ try {
     Check ((& git -C $main rev-parse refs/heads/feat/at-first).Trim() -eq $first) 'the new ref points at the SHA'
     Check ((& git -C $main rev-parse --abbrev-ref HEAD).Trim() -eq 'main') 'the checkout of main did not move'
     Check ((& git -C $wt rev-parse --abbrev-ref HEAD).Trim() -eq 'feat/wt') 'the worktree did not move'
+    $r = Invoke-BranchAt $main 'originals/x' $first
+    Check ($r.code -eq 0) 'a name that only starts with a remote name as a prefix is allowed'
 }
 finally {
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
