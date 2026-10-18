@@ -1,0 +1,2178 @@
+{
+  "tables": {
+    "account": {
+      "columns": [
+        {
+          "name": "accesslevel",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "account_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "nextval('accounts_account_id_seq'::regclass)"
+        },
+        {
+          "name": "account_name",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": "NULL::character varying"
+        },
+        {
+          "name": "enabled",
+          "data_type": "boolean",
+          "is_nullable": "NO",
+          "column_default": "true"
+        },
+        {
+          "name": "password",
+          "data_type": "character varying",
+          "is_nullable": "YES",
+          "column_default": "NULL::character varying"
+        },
+        {
+          "name": "password_algo",
+          "data_type": "smallint",
+          "is_nullable": "NO",
+          "column_default": "1"
+        },
+        {
+          "name": "password_hash_v2",
+          "data_type": "text",
+          "is_nullable": "YES",
+          "column_default": ""
+        },
+        {
+          "name": "test_account",
+          "data_type": "boolean",
+          "is_nullable": "NO",
+          "column_default": "false"
+        }
+      ],
+      "constraints": [
+        {
+          "name": "account_pkey",
+          "type": "p"
+        }
+      ],
+      "indexes": [
+        "account_pkey"
+      ]
+    },
+    "cell_event_outbox": {
+      "columns": [
+        {
+          "name": "attempts",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "created_at",
+          "data_type": "timestamp with time zone",
+          "is_nullable": "NO",
+          "column_default": "now()"
+        },
+        {
+          "name": "delivered_at",
+          "data_type": "timestamp with time zone",
+          "is_nullable": "YES",
+          "column_default": ""
+        },
+        {
+          "name": "entity_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "event_type",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "id",
+          "data_type": "bigint",
+          "is_nullable": "NO",
+          "column_default": "nextval('cell_event_outbox_id_seq'::regclass)"
+        },
+        {
+          "name": "last_error",
+          "data_type": "text",
+          "is_nullable": "YES",
+          "column_default": ""
+        },
+        {
+          "name": "payload",
+          "data_type": "jsonb",
+          "is_nullable": "NO",
+          "column_default": ""
+        }
+      ],
+      "constraints": [
+        {
+          "name": "cell_event_outbox_pkey",
+          "type": "p"
+        }
+      ],
+      "indexes": [
+        "cell_event_outbox_pkey",
+        "idx_cell_event_outbox_undelivered"
+      ]
+    },
+    "login_audit": {
+      "columns": [
+        {
+          "name": "account_id",
+          "data_type": "integer",
+          "is_nullable": "YES",
+          "column_default": ""
+        },
+        {
+          "name": "account_name",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "detail",
+          "data_type": "text",
+          "is_nullable": "YES",
+          "column_default": ""
+        },
+        {
+          "name": "event_time",
+          "data_type": "timestamp with time zone",
+          "is_nullable": "NO",
+          "column_default": "now()"
+        },
+        {
+          "name": "id",
+          "data_type": "bigint",
+          "is_nullable": "NO",
+          "column_default": "nextval('login_audit_id_seq'::regclass)"
+        },
+        {
+          "name": "ip_address",
+          "data_type": "inet",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "outcome",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "phase",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "shard",
+          "data_type": "character varying",
+          "is_nullable": "YES",
+          "column_default": ""
+        }
+      ],
+      "constraints": [
+        {
+          "name": "login_audit_pkey",
+          "type": "p"
+        },
+        {
+          "name": "outcome_check",
+          "type": "c"
+        },
+        {
+          "name": "phase_check",
+          "type": "c"
+        }
+      ],
+      "indexes": [
+        "idx_login_audit_account_time",
+        "idx_login_audit_event_time",
+        "login_audit_pkey"
+      ]
+    },
+    "sgw_auction": {
+      "columns": [
+        {
+          "name": "auction_length",
+          "data_type": "smallint",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "buyout_price",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "charges",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "created_at",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "current_bid",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "current_bidder",
+          "data_type": "integer",
+          "is_nullable": "YES",
+          "column_default": ""
+        },
+        {
+          "name": "durability",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "expires_at",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "item_def_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "item_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "seller_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "sequence_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "nextval('sgw_auction_sequence_id_seq'::regclass)"
+        },
+        {
+          "name": "stack_size",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "1"
+        },
+        {
+          "name": "starting_price",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "status",
+          "data_type": "smallint",
+          "is_nullable": "NO",
+          "column_default": "0"
+        }
+      ],
+      "constraints": [
+        {
+          "name": "sgw_auction_current_bidder_fkey",
+          "type": "f"
+        },
+        {
+          "name": "sgw_auction_pkey",
+          "type": "p"
+        },
+        {
+          "name": "sgw_auction_seller_id_fkey",
+          "type": "f"
+        }
+      ],
+      "indexes": [
+        "sgw_auction_expiry_idx",
+        "sgw_auction_pkey",
+        "sgw_auction_seller_idx"
+      ]
+    },
+    "sgw_auction_bid": {
+      "columns": [
+        {
+          "name": "amount",
+          "data_type": "bigint",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "bid_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "nextval('sgw_auction_bid_bid_id_seq'::regclass)"
+        },
+        {
+          "name": "bidder_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "created_at",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "sequence_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        }
+      ],
+      "constraints": [
+        {
+          "name": "sgw_auction_bid_bidder_id_fkey",
+          "type": "f"
+        },
+        {
+          "name": "sgw_auction_bid_pkey",
+          "type": "p"
+        },
+        {
+          "name": "sgw_auction_bid_sequence_id_fkey",
+          "type": "f"
+        }
+      ],
+      "indexes": [
+        "sgw_auction_bid_pkey",
+        "sgw_auction_bid_sequence_idx"
+      ]
+    },
+    "sgw_contact_list": {
+      "columns": [
+        {
+          "name": "flags",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "list_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "nextval('sgw_contact_list_list_id_seq'::regclass)"
+        },
+        {
+          "name": "name",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "player_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        }
+      ],
+      "constraints": [
+        {
+          "name": "sgw_contact_list_pkey",
+          "type": "p"
+        },
+        {
+          "name": "sgw_contact_list_player_id_fkey",
+          "type": "f"
+        },
+        {
+          "name": "sgw_contact_list_player_id_name_key",
+          "type": "u"
+        }
+      ],
+      "indexes": [
+        "sgw_contact_list_pkey",
+        "sgw_contact_list_player_id_name_key"
+      ]
+    },
+    "sgw_contact_list_member": {
+      "columns": [
+        {
+          "name": "list_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "player_name",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": ""
+        }
+      ],
+      "constraints": [
+        {
+          "name": "sgw_contact_list_member_list_id_fkey",
+          "type": "f"
+        },
+        {
+          "name": "sgw_contact_list_member_pkey",
+          "type": "p"
+        },
+        {
+          "name": "sgw_contact_list_member_player_name_nonempty",
+          "type": "c"
+        }
+      ],
+      "indexes": [
+        "sgw_contact_list_member_list_lower_name_key",
+        "sgw_contact_list_member_pkey",
+        "sgw_contact_list_member_player_name_idx"
+      ]
+    },
+    "sgw_gate_mail": {
+      "columns": [
+        {
+          "name": "cash",
+          "data_type": "bigint",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "character_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "cod_paid",
+          "data_type": "boolean",
+          "is_nullable": "NO",
+          "column_default": "false"
+        },
+        {
+          "name": "expires_at",
+          "data_type": "integer",
+          "is_nullable": "YES",
+          "column_default": ""
+        },
+        {
+          "name": "flags",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "item_id",
+          "data_type": "integer",
+          "is_nullable": "YES",
+          "column_default": ""
+        },
+        {
+          "name": "mail_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "nextval('sgw_gate_mail_mail_id_seq'::regclass)"
+        },
+        {
+          "name": "message",
+          "data_type": "text",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "quarantined",
+          "data_type": "boolean",
+          "is_nullable": "NO",
+          "column_default": "false"
+        },
+        {
+          "name": "read_time",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "returned",
+          "data_type": "boolean",
+          "is_nullable": "NO",
+          "column_default": "false"
+        },
+        {
+          "name": "sender_id",
+          "data_type": "integer",
+          "is_nullable": "YES",
+          "column_default": ""
+        },
+        {
+          "name": "sender_name",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": "''::character varying"
+        },
+        {
+          "name": "sent_time",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "subject",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": "NULL::character varying"
+        }
+      ],
+      "constraints": [
+        {
+          "name": "sgw_gate_mail_cash_nonnegative_chk",
+          "type": "c"
+        },
+        {
+          "name": "sgw_gate_mail_character_id_fkey",
+          "type": "f"
+        },
+        {
+          "name": "sgw_gate_mail_pkey",
+          "type": "p"
+        },
+        {
+          "name": "sgw_gate_mail_sender_id_fkey",
+          "type": "f"
+        }
+      ],
+      "indexes": [
+        "mail_expiry_index",
+        "mail_lookup_index",
+        "mail_reverse_lookup_index",
+        "sgw_gate_mail_pkey"
+      ]
+    },
+    "sgw_gate_mail_item": {
+      "columns": [
+        {
+          "name": "ammo",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "ammo_type",
+          "data_type": "USER-DEFINED",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "ammo_types",
+          "data_type": "ARRAY",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "bound",
+          "data_type": "boolean",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "charges",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "cur_ammo_type",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "durability",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "escrowed_at",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "flags",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "item_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "mail_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "source_character_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "stack_size",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "type_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        }
+      ],
+      "constraints": [
+        {
+          "name": "sgw_gate_mail_item_item_id_key",
+          "type": "u"
+        },
+        {
+          "name": "sgw_gate_mail_item_local_id_check",
+          "type": "c"
+        },
+        {
+          "name": "sgw_gate_mail_item_mail_id_fkey",
+          "type": "f"
+        },
+        {
+          "name": "sgw_gate_mail_item_pkey",
+          "type": "p"
+        },
+        {
+          "name": "sgw_gate_mail_item_stack_size_positive_chk",
+          "type": "c"
+        },
+        {
+          "name": "sgw_gate_mail_item_type_id_fkey",
+          "type": "f"
+        }
+      ],
+      "indexes": [
+        "sgw_gate_mail_item_item_id_key",
+        "sgw_gate_mail_item_pkey"
+      ]
+    },
+    "sgw_inventory": {
+      "columns": [
+        {
+          "name": "ammo",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "ammo_type",
+          "data_type": "USER-DEFINED",
+          "is_nullable": "NO",
+          "column_default": "'AMMO_NONE'::resources.\"EAmmoType\""
+        },
+        {
+          "name": "ammo_types",
+          "data_type": "ARRAY",
+          "is_nullable": "NO",
+          "column_default": "'{}'::resources.\"EAmmoType\"[]"
+        },
+        {
+          "name": "bound",
+          "data_type": "boolean",
+          "is_nullable": "NO",
+          "column_default": "false"
+        },
+        {
+          "name": "character_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "charges",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "container_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "cur_ammo_type",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "durability",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "'-1'::integer"
+        },
+        {
+          "name": "flags",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "item_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "nextval('sgw_inventory_item_id_seq'::regclass)"
+        },
+        {
+          "name": "slot_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "stack_size",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "1"
+        },
+        {
+          "name": "type_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        }
+      ],
+      "constraints": [
+        {
+          "name": "local_id_check",
+          "type": "c"
+        },
+        {
+          "name": "sgw_inventory_character_id_fkey",
+          "type": "f"
+        },
+        {
+          "name": "sgw_inventory_cur_ammo_type_nonnegative_chk",
+          "type": "c"
+        },
+        {
+          "name": "sgw_inventory_pkey",
+          "type": "p"
+        },
+        {
+          "name": "sgw_inventory_type_id_fkey",
+          "type": "f"
+        }
+      ],
+      "indexes": [
+        "sgw_inventory_Index01",
+        "sgw_inventory_pkey",
+        "sgw_inventory_unique_slot"
+      ]
+    },
+    "sgw_inventory_base": {
+      "columns": [
+        {
+          "name": "ammo_type",
+          "data_type": "USER-DEFINED",
+          "is_nullable": "NO",
+          "column_default": "'AMMO_NONE'::resources.\"EAmmoType\""
+        },
+        {
+          "name": "ammo_types",
+          "data_type": "ARRAY",
+          "is_nullable": "NO",
+          "column_default": "'{}'::resources.\"EAmmoType\"[]"
+        },
+        {
+          "name": "charges",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "container_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "durability",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "'-1'::integer"
+        },
+        {
+          "name": "flags",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "item_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "nextval('sgw_inventory_base_item_id_seq'::regclass)"
+        },
+        {
+          "name": "slot_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "stack_size",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "1"
+        },
+        {
+          "name": "type_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        }
+      ],
+      "constraints": [
+        {
+          "name": "sgw_inventory_base_pkey",
+          "type": "p"
+        }
+      ],
+      "indexes": [
+        "sgw_inventory_base_pkey"
+      ]
+    },
+    "sgw_mission": {
+      "columns": [
+        {
+          "name": "active_objective_ids",
+          "data_type": "ARRAY",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "completed_objective_ids",
+          "data_type": "ARRAY",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "completed_step_ids",
+          "data_type": "ARRAY",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "current_step_id",
+          "data_type": "integer",
+          "is_nullable": "YES",
+          "column_default": ""
+        },
+        {
+          "name": "failed_objective_ids",
+          "data_type": "ARRAY",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "mission_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "player_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "repeats",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "status",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        }
+      ],
+      "constraints": [
+        {
+          "name": "missions_pkey",
+          "type": "p"
+        },
+        {
+          "name": "missions_player_id_fkey",
+          "type": "f"
+        }
+      ],
+      "indexes": [
+        "missions_pkey"
+      ]
+    },
+    "sgw_organization_cash_log": {
+      "columns": [
+        {
+          "name": "account_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "amount",
+          "data_type": "bigint",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "direction",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "log_id",
+          "data_type": "bigint",
+          "is_nullable": "NO",
+          "column_default": "nextval('sgw_organization_cash_log_log_id_seq'::regclass)"
+        },
+        {
+          "name": "logged_at",
+          "data_type": "timestamp with time zone",
+          "is_nullable": "NO",
+          "column_default": "now()"
+        },
+        {
+          "name": "org_cash_after",
+          "data_type": "bigint",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "org_cash_before",
+          "data_type": "bigint",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "org_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "org_type",
+          "data_type": "smallint",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "player_cash_after",
+          "data_type": "integer",
+          "is_nullable": "YES",
+          "column_default": ""
+        },
+        {
+          "name": "player_cash_before",
+          "data_type": "integer",
+          "is_nullable": "YES",
+          "column_default": ""
+        },
+        {
+          "name": "player_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "rank",
+          "data_type": "smallint",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "tx_id",
+          "data_type": "bigint",
+          "is_nullable": "NO",
+          "column_default": "txid_current()"
+        },
+        {
+          "name": "vault_slots_after",
+          "data_type": "smallint",
+          "is_nullable": "YES",
+          "column_default": ""
+        },
+        {
+          "name": "vault_slots_before",
+          "data_type": "smallint",
+          "is_nullable": "YES",
+          "column_default": ""
+        }
+      ],
+      "constraints": [
+        {
+          "name": "sgw_organization_cash_log_amount_check",
+          "type": "c"
+        },
+        {
+          "name": "sgw_organization_cash_log_arithmetic_check",
+          "type": "c"
+        },
+        {
+          "name": "sgw_organization_cash_log_direction_check",
+          "type": "c"
+        },
+        {
+          "name": "sgw_organization_cash_log_nonneg_check",
+          "type": "c"
+        },
+        {
+          "name": "sgw_organization_cash_log_pkey",
+          "type": "p"
+        }
+      ],
+      "indexes": [
+        "sgw_organization_cash_log_org_idx",
+        "sgw_organization_cash_log_pkey"
+      ]
+    },
+    "sgw_organization_events": {
+      "columns": [
+        {
+          "name": "at",
+          "data_type": "timestamp with time zone",
+          "is_nullable": "NO",
+          "column_default": "now()"
+        },
+        {
+          "name": "event",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "exported_at",
+          "data_type": "timestamp with time zone",
+          "is_nullable": "YES",
+          "column_default": ""
+        },
+        {
+          "name": "from_account_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "from_player_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "org_event_id",
+          "data_type": "bigint",
+          "is_nullable": "NO",
+          "column_default": "nextval('sgw_organization_events_org_event_id_seq'::regclass)"
+        },
+        {
+          "name": "org_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "reason",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "to_account_id",
+          "data_type": "integer",
+          "is_nullable": "YES",
+          "column_default": ""
+        },
+        {
+          "name": "to_player_id",
+          "data_type": "integer",
+          "is_nullable": "YES",
+          "column_default": ""
+        },
+        {
+          "name": "tx_id",
+          "data_type": "bigint",
+          "is_nullable": "NO",
+          "column_default": "txid_current()"
+        }
+      ],
+      "constraints": [
+        {
+          "name": "sgw_organization_events_event_check",
+          "type": "c"
+        },
+        {
+          "name": "sgw_organization_events_pkey",
+          "type": "p"
+        },
+        {
+          "name": "sgw_organization_events_reason_check",
+          "type": "c"
+        },
+        {
+          "name": "sgw_organization_events_to_check",
+          "type": "c"
+        }
+      ],
+      "indexes": [
+        "sgw_organization_events_pkey",
+        "sgw_organization_events_unexported_idx"
+      ]
+    },
+    "sgw_organization_members": {
+      "columns": [
+        {
+          "name": "account_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "joined_at",
+          "data_type": "timestamp with time zone",
+          "is_nullable": "NO",
+          "column_default": "now()"
+        },
+        {
+          "name": "note",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": "''::character varying"
+        },
+        {
+          "name": "officer_note",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": "''::character varying"
+        },
+        {
+          "name": "org_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "org_type",
+          "data_type": "smallint",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "player_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "rank",
+          "data_type": "smallint",
+          "is_nullable": "NO",
+          "column_default": ""
+        }
+      ],
+      "constraints": [
+        {
+          "name": "sgw_organization_members_org_fkey",
+          "type": "f"
+        },
+        {
+          "name": "sgw_organization_members_pkey",
+          "type": "p"
+        },
+        {
+          "name": "sgw_organization_members_player_fkey",
+          "type": "f"
+        },
+        {
+          "name": "sgw_organization_members_player_id_org_type_key",
+          "type": "u"
+        },
+        {
+          "name": "sgw_organization_members_rank_fkey",
+          "type": "f"
+        }
+      ],
+      "indexes": [
+        "sgw_organization_members_one_leader_idx",
+        "sgw_organization_members_pkey",
+        "sgw_organization_members_player_id_org_type_key"
+      ]
+    },
+    "sgw_organization_ranks": {
+      "columns": [
+        {
+          "name": "name",
+          "data_type": "character varying",
+          "is_nullable": "YES",
+          "column_default": ""
+        },
+        {
+          "name": "org_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "org_type",
+          "data_type": "smallint",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "permissions",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "rank",
+          "data_type": "smallint",
+          "is_nullable": "NO",
+          "column_default": ""
+        }
+      ],
+      "constraints": [
+        {
+          "name": "sgw_organization_ranks_leader_all_check",
+          "type": "c"
+        },
+        {
+          "name": "sgw_organization_ranks_org_fkey",
+          "type": "f"
+        },
+        {
+          "name": "sgw_organization_ranks_permissions_check",
+          "type": "c"
+        },
+        {
+          "name": "sgw_organization_ranks_pkey",
+          "type": "p"
+        },
+        {
+          "name": "sgw_organization_ranks_rank_in_type_check",
+          "type": "c"
+        }
+      ],
+      "indexes": [
+        "sgw_organization_ranks_pkey"
+      ]
+    },
+    "sgw_organization_vault_items": {
+      "columns": [
+        {
+          "name": "ammo",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "ammo_type",
+          "data_type": "USER-DEFINED",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "ammo_types",
+          "data_type": "ARRAY",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "bound",
+          "data_type": "boolean",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "charges",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "container_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "cur_ammo_type",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "deposited_at",
+          "data_type": "timestamp with time zone",
+          "is_nullable": "NO",
+          "column_default": "now()"
+        },
+        {
+          "name": "deposited_by_player_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "durability",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "flags",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "item_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "org_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "org_type",
+          "data_type": "smallint",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "slot_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "stack_size",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "type_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        }
+      ],
+      "constraints": [
+        {
+          "name": "sgw_organization_vault_items_container_check",
+          "type": "c"
+        },
+        {
+          "name": "sgw_organization_vault_items_local_id_check",
+          "type": "c"
+        },
+        {
+          "name": "sgw_organization_vault_items_not_bound_chk",
+          "type": "c"
+        },
+        {
+          "name": "sgw_organization_vault_items_org_fkey",
+          "type": "f"
+        },
+        {
+          "name": "sgw_organization_vault_items_pkey",
+          "type": "p"
+        },
+        {
+          "name": "sgw_organization_vault_items_slot_check",
+          "type": "c"
+        },
+        {
+          "name": "sgw_organization_vault_items_slot_key",
+          "type": "u"
+        },
+        {
+          "name": "sgw_organization_vault_items_stack_size_positive_chk",
+          "type": "c"
+        },
+        {
+          "name": "sgw_organization_vault_items_type_id_fkey",
+          "type": "f"
+        }
+      ],
+      "indexes": [
+        "sgw_organization_vault_items_pkey",
+        "sgw_organization_vault_items_slot_key"
+      ]
+    },
+    "sgw_organization_vault_log": {
+      "columns": [
+        {
+          "name": "account_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "direction",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "item_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "kind",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "log_id",
+          "data_type": "bigint",
+          "is_nullable": "NO",
+          "column_default": "nextval('sgw_organization_vault_log_log_id_seq'::regclass)"
+        },
+        {
+          "name": "logged_at",
+          "data_type": "timestamp with time zone",
+          "is_nullable": "NO",
+          "column_default": "now()"
+        },
+        {
+          "name": "new_item_id",
+          "data_type": "integer",
+          "is_nullable": "YES",
+          "column_default": ""
+        },
+        {
+          "name": "org_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "org_type",
+          "data_type": "smallint",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "player_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "quantity",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "rank",
+          "data_type": "smallint",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "source_container_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "source_slot_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "source_stack_after",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "source_stack_before",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "target_container_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "target_slot_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "target_stack_after",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "target_stack_before",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "tx_id",
+          "data_type": "bigint",
+          "is_nullable": "NO",
+          "column_default": "txid_current()"
+        },
+        {
+          "name": "type_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        }
+      ],
+      "constraints": [
+        {
+          "name": "sgw_organization_vault_log_direction_check",
+          "type": "c"
+        },
+        {
+          "name": "sgw_organization_vault_log_kind_check",
+          "type": "c"
+        },
+        {
+          "name": "sgw_organization_vault_log_pkey",
+          "type": "p"
+        },
+        {
+          "name": "sgw_organization_vault_log_quantity_check",
+          "type": "c"
+        }
+      ],
+      "indexes": [
+        "sgw_organization_vault_log_org_idx",
+        "sgw_organization_vault_log_pkey"
+      ]
+    },
+    "sgw_organizations": {
+      "columns": [
+        {
+          "name": "cash",
+          "data_type": "bigint",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "created_at",
+          "data_type": "timestamp with time zone",
+          "is_nullable": "NO",
+          "column_default": "now()"
+        },
+        {
+          "name": "experience",
+          "data_type": "bigint",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "motd",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": "''::character varying"
+        },
+        {
+          "name": "name",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "name_key",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "org_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "nextval('sgw_organizations_org_id_seq'::regclass)"
+        },
+        {
+          "name": "org_type",
+          "data_type": "smallint",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "vault_slots",
+          "data_type": "smallint",
+          "is_nullable": "NO",
+          "column_default": "40"
+        }
+      ],
+      "constraints": [
+        {
+          "name": "sgw_organizations_cash_nonneg_check",
+          "type": "c"
+        },
+        {
+          "name": "sgw_organizations_name_nonempty_check",
+          "type": "c"
+        },
+        {
+          "name": "sgw_organizations_org_id_org_type_key",
+          "type": "u"
+        },
+        {
+          "name": "sgw_organizations_org_id_range_check",
+          "type": "c"
+        },
+        {
+          "name": "sgw_organizations_org_type_check",
+          "type": "c"
+        },
+        {
+          "name": "sgw_organizations_org_type_name_key_key",
+          "type": "u"
+        },
+        {
+          "name": "sgw_organizations_pkey",
+          "type": "p"
+        },
+        {
+          "name": "sgw_organizations_vault_slots_check",
+          "type": "c"
+        }
+      ],
+      "indexes": [
+        "sgw_organizations_org_id_org_type_key",
+        "sgw_organizations_org_type_name_key_key",
+        "sgw_organizations_pkey"
+      ]
+    },
+    "sgw_player": {
+      "columns": [
+        {
+          "name": "abilities",
+          "data_type": "ARRAY",
+          "is_nullable": "NO",
+          "column_default": "'{}'::integer[]"
+        },
+        {
+          "name": "access_level",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "account_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "alignment",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "applied_science_points",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "applied_science_points_spent",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "archetype",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "auto_reload",
+          "data_type": "boolean",
+          "is_nullable": "NO",
+          "column_default": "true"
+        },
+        {
+          "name": "bandolier_slot",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "bank_slots",
+          "data_type": "smallint",
+          "is_nullable": "NO",
+          "column_default": "40"
+        },
+        {
+          "name": "blueprint_ids",
+          "data_type": "ARRAY",
+          "is_nullable": "NO",
+          "column_default": "'{}'::integer[]"
+        },
+        {
+          "name": "bodyset",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": "NULL::character varying"
+        },
+        {
+          "name": "components",
+          "data_type": "ARRAY",
+          "is_nullable": "NO",
+          "column_default": "'{}'::character varying[]"
+        },
+        {
+          "name": "debug_kit",
+          "data_type": "boolean",
+          "is_nullable": "NO",
+          "column_default": "false"
+        },
+        {
+          "name": "discipline_ids",
+          "data_type": "ARRAY",
+          "is_nullable": "NO",
+          "column_default": "'{}'::integer[]"
+        },
+        {
+          "name": "exp",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "extra_name",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": "NULL::character varying"
+        },
+        {
+          "name": "first_login",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "1"
+        },
+        {
+          "name": "gender",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "heading",
+          "data_type": "smallint",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "interaction_maps",
+          "data_type": "ARRAY",
+          "is_nullable": "YES",
+          "column_default": ""
+        },
+        {
+          "name": "known_respawners",
+          "data_type": "ARRAY",
+          "is_nullable": "NO",
+          "column_default": "'{}'::integer[]"
+        },
+        {
+          "name": "known_stargates",
+          "data_type": "ARRAY",
+          "is_nullable": "NO",
+          "column_default": "'{}'::integer[]"
+        },
+        {
+          "name": "level",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "1"
+        },
+        {
+          "name": "looted_containers",
+          "data_type": "ARRAY",
+          "is_nullable": "NO",
+          "column_default": "'{}'::character varying[]"
+        },
+        {
+          "name": "naquadah",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "player_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "nextval('sgw_characters_character_id_seq'::regclass)"
+        },
+        {
+          "name": "player_name",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": "NULL::character varying"
+        },
+        {
+          "name": "pos_x",
+          "data_type": "real",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "pos_y",
+          "data_type": "real",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "pos_z",
+          "data_type": "real",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "racial_paradigm_levels",
+          "data_type": "ARRAY",
+          "is_nullable": "NO",
+          "column_default": "'{5,1,1,1,1}'::integer[]"
+        },
+        {
+          "name": "reload_on_activate",
+          "data_type": "boolean",
+          "is_nullable": "NO",
+          "column_default": "false"
+        },
+        {
+          "name": "skin_color_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "state_field",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "title",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "trained_abilities",
+          "data_type": "ARRAY",
+          "is_nullable": "NO",
+          "column_default": "'{}'::integer[]"
+        },
+        {
+          "name": "training_points",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "tree_points_spent",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "0"
+        },
+        {
+          "name": "world_id",
+          "data_type": "integer",
+          "is_nullable": "YES",
+          "column_default": ""
+        },
+        {
+          "name": "world_location",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": "NULL::character varying"
+        }
+      ],
+      "constraints": [
+        {
+          "name": "alignment_sanity",
+          "type": "c"
+        },
+        {
+          "name": "archetype_sanity",
+          "type": "c"
+        },
+        {
+          "name": "bandolier_slot_sanity",
+          "type": "c"
+        },
+        {
+          "name": "bank_slots_sanity",
+          "type": "c"
+        },
+        {
+          "name": "gender_sanity",
+          "type": "c"
+        },
+        {
+          "name": "level_sanity",
+          "type": "c"
+        },
+        {
+          "name": "sgw_player_account_id_fkey",
+          "type": "f"
+        },
+        {
+          "name": "sgw_player_pkey",
+          "type": "p"
+        },
+        {
+          "name": "sgw_player_player_id_account_id_key",
+          "type": "u"
+        },
+        {
+          "name": "sgw_player_player_name_key",
+          "type": "u"
+        },
+        {
+          "name": "sgw_player_world_id_fkey",
+          "type": "f"
+        },
+        {
+          "name": "sgw_player_world_location_fkey",
+          "type": "f"
+        },
+        {
+          "name": "skin_color_sanity",
+          "type": "c"
+        },
+        {
+          "name": "tree_points_spent_sanity",
+          "type": "c"
+        }
+      ],
+      "indexes": [
+        "sgw_player_pkey",
+        "sgw_player_player_id_account_id_key",
+        "sgw_player_player_name_key",
+        "sgw_player_player_name_lower_idx"
+      ]
+    },
+    "sgw_player_ability_grants": {
+      "columns": [
+        {
+          "name": "ability_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "granted_at",
+          "data_type": "timestamp with time zone",
+          "is_nullable": "NO",
+          "column_default": "now()"
+        },
+        {
+          "name": "player_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "source_id",
+          "data_type": "integer",
+          "is_nullable": "YES",
+          "column_default": ""
+        },
+        {
+          "name": "source_kind",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": ""
+        }
+      ],
+      "constraints": [
+        {
+          "name": "sgw_player_ability_grants_pkey",
+          "type": "p"
+        },
+        {
+          "name": "sgw_player_ability_grants_player_id_fkey",
+          "type": "f"
+        },
+        {
+          "name": "sgw_player_ability_grants_source_kind_check",
+          "type": "c"
+        }
+      ],
+      "indexes": [
+        "sgw_player_ability_grants_pkey"
+      ]
+    },
+    "sgw_player_content_cooldown": {
+      "columns": [
+        {
+          "name": "cooldown_key",
+          "data_type": "character varying",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "last_used_at",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "player_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        }
+      ],
+      "constraints": [
+        {
+          "name": "sgw_player_content_cooldown_pkey",
+          "type": "p"
+        },
+        {
+          "name": "sgw_player_content_cooldown_player_id_fkey",
+          "type": "f"
+        }
+      ],
+      "indexes": [
+        "sgw_player_content_cooldown_pkey"
+      ]
+    },
+    "sgw_player_discipline_expertise": {
+      "columns": [
+        {
+          "name": "discipline_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "expertise",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "1"
+        },
+        {
+          "name": "player_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        }
+      ],
+      "constraints": [
+        {
+          "name": "sgw_player_discipline_expertise_expertise_check",
+          "type": "c"
+        },
+        {
+          "name": "sgw_player_discipline_expertise_pkey",
+          "type": "p"
+        },
+        {
+          "name": "sgw_player_discipline_expertise_player_id_fkey",
+          "type": "f"
+        }
+      ],
+      "indexes": [
+        "sgw_player_discipline_expertise_pkey"
+      ]
+    },
+    "sgw_player_tutorials": {
+      "columns": [
+        {
+          "name": "player_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "shown_at",
+          "data_type": "timestamp with time zone",
+          "is_nullable": "NO",
+          "column_default": "now()"
+        },
+        {
+          "name": "tutorial_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        }
+      ],
+      "constraints": [
+        {
+          "name": "sgw_player_tutorials_pkey",
+          "type": "p"
+        },
+        {
+          "name": "sgw_player_tutorials_player_id_fkey",
+          "type": "f"
+        }
+      ],
+      "indexes": [
+        "sgw_player_tutorials_pkey"
+      ]
+    }
+  }
+}

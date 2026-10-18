@@ -19,3 +19,6 @@ cimmeria-workspace-hack = { version = "0.1", path = "../workspace-hack" }
 [dev-dependencies]
 # `LogCapture` for the `content.resolve` log assertions in `chain/tests.rs`.
 cimmeria-test-support = { workspace = true }
+# The PP-11 schema snapshot test reads the live catalog (`tests/it/persistent_schema_snapshot.rs`).
+sqlx = { workspace = true }
+tokio = { workspace = true }
