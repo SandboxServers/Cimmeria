@@ -49,7 +49,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-all_lines() { docker logs "$NAME" 2>&1 | grep '^\[db-sync\]' || true; }
+all_lines() { docker logs "$NAME" 2>&1 | grep -E '^\[db-(sync|rebuild)\]' || true; }
 boot_lines() { all_lines | tail -n +$((MARK + 1)); }
 assert_log() {
   boot_lines | grep -q "^\[db-sync\] $1" || {
@@ -76,7 +76,10 @@ restart() { MARK="$(all_lines | wc -l)"; docker restart "$NAME" >/dev/null || er
 
 state() { docker inspect -f '{{.State.Status}}' "$NAME" 2>/dev/null || echo missing; }
 
-# Ready = postgres answers and this boot has logged a [db-sync] decision.
+# Ready = postgres answers and this boot's db-sync has finished: a terminal
+# decision (first-boot, skip, restore) or the end of a rebuild/adopt
+# ("[db-rebuild] swapped"). The earlier "backup", "rebuild" and "adopt" lines
+# come before the swap, so they must not count.
 wait_db() {
   i=0
   while [ "$i" -lt 150 ]; do
@@ -84,7 +87,7 @@ wait_db() {
       exited|dead|missing) err "container exited before becoming ready" ;;
     esac
     if docker exec "$NAME" pg_isready -h 127.0.0.1 -q >/dev/null 2>&1 \
-       && [ -n "$(boot_lines)" ]; then
+       && boot_lines | grep -qE '^\[db-sync\] (first-boot|skip|restore)|^\[db-rebuild\] swapped'; then
       return 0
     fi
     sleep 2; i=$((i + 1))
@@ -150,9 +153,16 @@ assert_log "rebuild"
 assert_eq "scenario 3 resources reseeded" "$ORIG_NAME" \
   "$(psql_in "SELECT name FROM resources.items WHERE item_id = (SELECT min(item_id) FROM resources.items)")"
 assert_eq "scenario 3 sentinel kept (D3)" 1 "$(psql_in "SELECT count(*) FROM sgw_player WHERE player_id = $S1")"
-assert_eq "scenario 3 account 15 re-added" 1 "$(psql_in "SELECT count(*) FROM public.account WHERE account_id = 15")"
-assert_eq "scenario 3 insert_seed_account rows" 1 \
-  "$(psql_in "SELECT count(*) FROM cimmeria_meta.reconcile_log WHERE action = 'insert_seed_account'")"
+# The seed-account top-up (seed-accounts.sql) ships with PP-17. While the image
+# does not carry it, the rebuild skips the top-up and only the "existing accounts
+# untouched" check applies; once it is in the image the full checks engage.
+if docker exec "$NAME" test -f /opt/cimmeria/db/persistent/seed-accounts.sql; then
+  assert_eq "scenario 3 account 15 re-added" 1 "$(psql_in "SELECT count(*) FROM public.account WHERE account_id = 15")"
+  assert_eq "scenario 3 insert_seed_account rows" 1 \
+    "$(psql_in "SELECT count(*) FROM cimmeria_meta.reconcile_log WHERE action = 'insert_seed_account'")"
+else
+  echo "note: seed-accounts.sql is not in the image (PP-17 pending); top-up asserts skipped"
+fi
 assert_eq "scenario 3 account 13 untouched (D6)" 9 \
   "$(psql_in "SELECT accesslevel FROM public.account WHERE account_id = 13")"
 BACKUP="$(ls -1t "$BAK"/sgw-*.dump 2>/dev/null | head -1)"

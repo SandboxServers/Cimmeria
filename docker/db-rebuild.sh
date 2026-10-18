@@ -137,6 +137,22 @@ else
     echo "[db-rebuild] step 5a skipped: $P/seed-accounts.sql not in this image"
 fi
 
+# Carry the DR restore marker (db-sync.sh, CIMMERIA_DB_RESTORE) across the swap.
+# Without it a CIMMERIA_DB_RESTORE left in the environment would restore the
+# same backup again on the first boot after this rebuild.
+HAS_RD=$($PSQL -d "$SRC" -At -c "SELECT to_regclass('cimmeria_meta.restore_done') IS NOT NULL" 2>/dev/null || true)
+if [ "$HAS_RD" = t ]; then
+    echo "[db-rebuild] step 5b carry restore marker"
+    $PSQL -d "$SRC" -c "COPY cimmeria_meta.restore_done TO STDOUT" > "$WORK/restore_done.copy" 2>"$WORK/err" \
+        || fail "read of restore_done failed: $(lasterr "$WORK/err")"
+    {
+        echo "CREATE TABLE IF NOT EXISTS cimmeria_meta.restore_done (file text primary key, at timestamptz default now());"
+        echo "COPY cimmeria_meta.restore_done FROM STDIN;"
+        cat "$WORK/restore_done.copy"
+        printf '%s\n' '\.'
+    } | $PSQL -d "$NEXT" >/dev/null 2>"$WORK/err" || fail "carry of restore_done failed: $(lasterr "$WORK/err")"
+fi
+
 # step 6: setval for every sequence owned by a carried column
 echo "[db-rebuild] step 6 sequences"
 INLIST=$(sed -e "s/^\([^.]*\)\.\(.*\)\$/('\1','\2')/" "$WORK/carry.list" | paste -sd, -)
@@ -190,14 +206,16 @@ esac
 SHA=""
 if [ -f "$SHAFILE" ]; then SHA=$(tr -d '\r\n ' < "$SHAFILE"); fi
 # State columns are those of db/persistent/meta.sql (last_rebuild_at, rebuild_count).
-$PSQL -d "$NEXT" -v "id=$ID" -v "old=$OLD" -v "sha=$SHA" -c "
-    UPDATE cimmeria_meta.db_state
-       SET state = 'live', image_id = :'id',
-           db_source_sha256 = CASE WHEN :'sha' = '' THEN db_source_sha256 ELSE :'sha' END,
-           first_seeded_at = COALESCE(first_seeded_at, now()),
-           last_rebuild_at = now(),
-           rebuild_count = :'old'::integer + 1
-     WHERE id = 1" 2>"$WORK/err" || fail "state write failed: $(lasterr "$WORK/err")"
+# psql does not interpolate :'var' in a -c string, so the statement goes in on stdin.
+$PSQL -d "$NEXT" -v "id=$ID" -v "old=$OLD" -v "sha=$SHA" 2>"$WORK/err" <<'SQL' || fail "state write failed: $(lasterr "$WORK/err")"
+UPDATE cimmeria_meta.db_state
+   SET state = 'live', image_id = :'id',
+       db_source_sha256 = CASE WHEN :'sha' = '' THEN db_source_sha256 ELSE :'sha' END,
+       first_seeded_at = COALESCE(first_seeded_at, now()),
+       last_rebuild_at = now(),
+       rebuild_count = :'old'::integer + 1
+ WHERE id = 1;
+SQL
 $PSQL -d postgres -c "ALTER DATABASE \"$NEXT\" RESET synchronous_commit" 2>"$WORK/err" \
     || fail "reset synchronous_commit failed: $(lasterr "$WORK/err")"
 

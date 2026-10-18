@@ -95,7 +95,10 @@ reuse_backup() {
     [ "$FAILED_ID" = "$NEW_ID" ] || return 1
     NEWEST=$(ls -1t "$BACKUP_DIR"/sgw-*.dump 2>/dev/null | head -n 1)
     [ -n "$NEWEST" ] || return 1
-    [ "$(stat -c %Y "$NEWEST")" -gt "$FAILED_EPOCH" ] || return 1
+    # The failure is recorded after the backup was taken, so the failed boot
+    # touches the backup it used (see the rebuild failure path): mtime >= failure.
+    [ "$(stat -c %Y "$NEWEST")" -ge "$FAILED_EPOCH" ] || return 1
+    NAME=${NEWEST##*/}
     log "reusing backup $NEWEST"
 }
 
@@ -145,7 +148,8 @@ fi
 
 # Rule 2: first boot of the baked image.
 if [ "$HAS_META" = t ] && [ "$STATE" = baked ]; then
-    psqlq "$DB" "UPDATE cimmeria_meta.db_state SET state = 'live', applied_at = now()"
+    # db_state has no applied_at column (db/persistent/meta.sql); first_seeded_at is the stamp.
+    psqlq "$DB" "UPDATE cimmeria_meta.db_state SET state = 'live', first_seeded_at = coalesce(first_seeded_at, now())"
     log "first-boot image_id=$CUR_ID"
     exit 0
 fi
@@ -177,12 +181,23 @@ if [ "$FORCED" = 1 ] || [ "$CUR_ID" != "$NEW_ID" ]; then
     log "rebuild reason=$REASON old=$CUR_ID new=$NEW_ID"
     if ! /opt/cimmeria/bin/db-rebuild.sh "$DB" "$NEW_ID"; then
         psqlq "$DB" "UPDATE cimmeria_meta.db_state SET last_failed_image_id = '$NEW_ID', last_failed_at = now()" >/dev/null 2>&1 || true
+        # Keep the backup newer than the failure so a crash-looping restart
+        # reuses it instead of dumping again and evicting older backups.
+        touch "$BACKUP_DIR/$NAME" 2>/dev/null || true
         log "ERROR rebuild failed, sgw untouched"
         exit 1
     fi
     exit 0
 fi
 
-# Rule 5: nothing to do.
-log "skip image_id=$CUR_ID"
+# Rule 5: nothing to do. The server starts after this, so an earlier failure
+# marker is now stale (and must not make a later forced rebuild reuse a backup
+# that predates the data the server is about to change): report it, then clear it.
+LAST_FAILED=$(psqlq "$DB" "SELECT coalesce(last_failed_image_id, '') FROM cimmeria_meta.db_state" 2>/dev/null) || LAST_FAILED=""
+if [ -n "$LAST_FAILED" ]; then
+    log "skip image_id=$CUR_ID (an earlier rebuild to $LAST_FAILED failed; set CIMMERIA_DB_FORCE_REBUILD=1 to retry)"
+    psqlq "$DB" "UPDATE cimmeria_meta.db_state SET last_failed_image_id = NULL, last_failed_at = NULL" >/dev/null 2>&1 || true
+else
+    log "skip image_id=$CUR_ID"
+fi
 exit 0

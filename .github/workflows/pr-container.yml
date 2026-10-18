@@ -239,6 +239,9 @@ jobs:
       - name: validate docker/compose.yml
         run: docker compose -f docker/compose.yml config -q
         env:
+          # compose.yml requires BASE_EXTERNAL (`${BASE_EXTERNAL:?...}`), so
+          # `config` fails without it.
+          BASE_EXTERNAL: 127.0.0.1
           CIMMERIA_BACKUP_DIR: ${{ runner.temp }}/backups
 
       - name: persistence smoke (keep / rebuild / restore / wipe)
@@ -255,6 +258,7 @@ jobs:
           path: ${{ runner.temp }}/container-persistence-logs
           if-no-files-found: ignore
           retention-days: 14
+
   # Main only: a failed build or smoke on main opens (or updates) the
   # `main-red` issue for this check, and a passing one closes it. A run that
   # was cancelled or superseded says nothing either way. A manual dispatch on
