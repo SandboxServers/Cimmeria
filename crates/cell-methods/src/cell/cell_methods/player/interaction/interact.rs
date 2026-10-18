@@ -3,6 +3,9 @@
 
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
+use cimmeria_cell_world::cell::interaction_pose::{
+    self, InteractionKind, InteractionRoute, PoseExtra,
+};
 use cimmeria_content_engine::chain::ChainEngine;
 use tokio::sync::mpsc;
 
@@ -162,6 +165,11 @@ pub(super) async fn handle_interact(
     // signals.
     crate::cell::interactions::pin_interaction_target(space_mgr, entity_id, target_entity_u32);
 
+    // Where the player stood when the click was accepted (player-capture-bots).
+    let pose = interaction_pose::capture_interaction_pose(space_mgr, entity_id, target_entity_u32);
+    let mut route = InteractionRoute::Trainer;
+    let mut dialog_id: Option<i32> = None;
+
     // Trainer NPC check — runs BEFORE the tag/template chain
     // dispatch so a trainer's UI opens directly rather than the
     // generic dialog. A trainer is any NPC whose template_id has
@@ -199,6 +207,9 @@ pub(super) async fn handle_interact(
                     space_mgr,
                 )
                 .await;
+                if handled {
+                    route = InteractionRoute::ChainTag;
+                }
             }
 
             if !handled {
@@ -213,13 +224,17 @@ pub(super) async fn handle_interact(
                         space_mgr,
                     )
                     .await;
+                    if handled {
+                        route = InteractionRoute::ChainTemplate;
+                    }
                 }
             }
         }
     }
 
     if !handled {
-        let dialog_id =
+        route = InteractionRoute::Fallback;
+        dialog_id =
             crate::cell::interactions::handle_interact(entity_id, target_entity_u32, tx, space_mgr)
                 .await;
 
@@ -236,6 +251,18 @@ pub(super) async fn handle_interact(
         // and returns true, so this path can only be reached when the target is
         // a player or a non-hostile faction — neither of which should trigger
         // combat from an interact request.
+    }
+
+    if let Some(pose) = pose {
+        let _ = interaction_pose::emit_interaction_pose(
+            &pose,
+            InteractionKind::Interact,
+            route,
+            PoseExtra {
+                dialog_id,
+                item_type_id: None,
+            },
+        );
     }
 }
 
@@ -440,3 +467,7 @@ mod hostile_target_tests {
         );
     }
 }
+
+#[cfg(test)]
+#[path = "interact_pose_tests.rs"]
+mod pose_tests;
