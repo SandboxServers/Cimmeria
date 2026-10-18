@@ -12,12 +12,17 @@
 # Refuses (exit 2) when -C is not the root of a non-main worktree, HEAD is detached, the branch
 # is not -ExpectBranch (when given), a path is a glob, a directory, `.`, `..`, or starts with `-`
 # or `:`, is rooted (a drive, a UNC share or a leading slash: give paths relative to -C) or
-# resolves outside -C, the index already holds ANY staged file (a rename counts as both of its
-# paths; a named path staged earlier counts too), or `git diff --cached --check` finds whitespace
-# errors. Git's hooks still run. Because the index is empty on entry, a failed check or commit
-# unstages the named paths and leaves it empty again, exactly as it was found.
+# resolves outside -C, lies below a junction or symlink, the index already holds ANY staged file
+# (a rename counts as both of its paths; a named path staged earlier counts too), the add would
+# stage a file that was not named (`widened-pathspec`, e.g. a deleted directory name), or
+# `git diff --cached --check` finds whitespace errors AND the repository configures
+# core.whitespace or a whitespace attribute; without such a policy that is only a warning on
+# stderr, as plain `git commit` accepts it. -ExpectBranch is compared case-sensitively. Git's hooks
+# still run (a hook is the repository's own gate). Because the index is empty on entry, a failed
+# check or commit unstages what the add staged and leaves it empty again, exactly as it was found.
 # Prints one line: status=ok sha=<sha> branch=<branch>, or status=refused|failed reason=<why>.
-# Exit codes: 0 committed, 2 refused by a guard, 1 a git step failed.
+# Exit codes: 0 committed, 2 refused by a guard, 1 a git step failed. A parameter-binding error
+# (a missing or unknown parameter) prints no status= line and exits 1.
 [CmdletBinding(PositionalBinding = $false)]
 param(
     [Parameter(Mandatory)][string]$C,
@@ -28,6 +33,12 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
+# Variables that redirect git to another repository, index, config or transport; the guards below
+# would be checked against one repository while git acts on another.
+foreach ($v in 'GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_NAMESPACE', 'GIT_CONFIG_COUNT', 'GIT_CONFIG_PARAMETERS', 'GIT_SSH_COMMAND', 'GIT_EXEC_PATH') {
+    Remove-Item -LiteralPath "Env:$v" -ErrorAction SilentlyContinue
+}
+
 function Stop-Refused([string]$reason) {
     Write-Output "status=refused reason=$reason"
     exit 2
@@ -37,9 +48,13 @@ function Get-FullPath([string]$p) {
     [System.IO.Path]::GetFullPath($p).TrimEnd('\', '/').Replace('\', '/')
 }
 
-# Puts the named paths back out of the index (the working tree is untouched).
+# Puts the named paths, and anything else the add staged, back out of the index (the working tree
+# is untouched). The index was empty on entry, so nothing the caller staged is lost.
 function Undo-Staging {
     foreach ($q in $clean) { & git -C $C --literal-pathspecs restore --staged -- $q *> $null }
+    foreach ($q in @(& git -C $C -c core.quotepath=off diff --cached --name-only --no-renames)) {
+        & git -C $C --literal-pathspecs restore --staged -- $q *> $null
+    }
 }
 
 if (-not (Test-Path -LiteralPath $C -PathType Container)) { Stop-Refused "not-a-directory: $C" }
@@ -50,10 +65,11 @@ if ((Get-FullPath $top) -ine (Get-FullPath $C)) { Stop-Refused "not-the-worktree
 $main = (& git -C $C worktree list --porcelain | Select-Object -First 1) -replace '^worktree ', ''
 if ((Get-FullPath $main) -ieq (Get-FullPath $C)) { Stop-Refused 'main-checkout: refuse to commit in the main checkout' }
 
-& git -C $C symbolic-ref -q HEAD *> $null
+$headRef = (& git -C $C symbolic-ref -q HEAD 2>$null)
 if ($LASTEXITCODE -ne 0) { Stop-Refused 'detached-head: a commit there is held by no branch' }
-$branch = (& git -C $C rev-parse --abbrev-ref HEAD).Trim()
-if ($ExpectBranch -and $branch -ne $ExpectBranch) { Stop-Refused "branch-mismatch: HEAD is $branch, not $ExpectBranch" }
+# symbolic-ref, not `rev-parse --abbrev-ref`: the latter answers `heads/<b>` when a tag has the same name.
+$branch = ($headRef.Trim() -replace '^refs/heads/', '')
+if ($ExpectBranch -and $branch -cne $ExpectBranch) { Stop-Refused "branch-mismatch: HEAD is $branch, not $ExpectBranch" }
 
 if (-not $Message.Trim()) { Stop-Refused 'empty-message' }
 
@@ -68,6 +84,15 @@ foreach ($raw in ($Paths | ForEach-Object { $_ -split ',' })) {
     $full = Get-FullPath ([System.IO.Path]::Combine($C, $q))
     if (-not $full.StartsWith((Get-FullPath $C) + '/', [System.StringComparison]::OrdinalIgnoreCase)) { Stop-Refused "outside-worktree: $q" }
     if (Test-Path -LiteralPath $full -PathType Container) { Stop-Refused "directory: $q" }
+    # A junction or symlink above the file would carry a file that lives outside -C into the commit.
+    $walk = Get-FullPath $C
+    $segments = @($q -split '/')
+    for ($i = 0; $i -lt $segments.Count - 1; $i++) {
+        $walk = "$walk/$($segments[$i])"
+        $item = Get-Item -LiteralPath $walk -Force -ErrorAction SilentlyContinue
+        if (-not $item) { break }
+        if ($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) { Stop-Refused "reparse-point: $q passes through the junction or symlink $($segments[$i])" }
+    }
     $clean += $q
 }
 
@@ -80,12 +105,27 @@ if ($LASTEXITCODE -ne 0) {
     Write-Output 'status=failed reason=git-add'
     exit 1
 }
-if (@(& git -C $C diff --cached --name-only --no-renames).Count -eq 0) { Stop-Refused 'nothing-to-commit' }
+$stagedNow = @(& git -C $C -c core.quotepath=off diff --cached --name-only --no-renames)
+if ($stagedNow.Count -eq 0) { Stop-Refused 'nothing-to-commit' }
+# A literal pathspec still matches a directory prefix, so naming a deleted directory stages every
+# deletion beneath it. Only the files that were named may be staged.
+$widened = @($stagedNow | Where-Object { $clean -inotcontains $_ })
+if ($widened.Count -gt 0) {
+    Undo-Staging
+    Stop-Refused "widened-pathspec: the paths would also stage $($widened -join ', '); name each file (the paths were unstaged again)"
+}
 
+# Plain `git commit` accepts trailing whitespace, so this is a refusal only where the repository
+# declares a whitespace policy (core.whitespace or a whitespace attribute); elsewhere it warns.
 & git -C $C diff --cached --check
 if ($LASTEXITCODE -ne 0) {
-    Undo-Staging
-    Stop-Refused 'diff-check: whitespace errors (the paths were unstaged again)'
+    $policy = (& git -C $C config --get core.whitespace 2>$null)
+    $attrs = @(& git -C $C check-attr whitespace -- @clean | Where-Object { $_ -notmatch ': whitespace: unspecified$' })
+    if ($policy -or $attrs.Count -gt 0) {
+        Undo-Staging
+        Stop-Refused 'diff-check: whitespace errors (the paths were unstaged again)'
+    }
+    Write-Warning 'warning=diff-check: whitespace errors in the staged changes (the repository sets no whitespace policy, so the commit goes ahead)'
 }
 
 $lines = @($Trailers | ForEach-Object { $_ -split ';;|\r?\n' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })

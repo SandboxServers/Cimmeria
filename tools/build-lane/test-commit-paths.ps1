@@ -167,6 +167,71 @@ try {
     Check ($r.code -eq 0 -and $r.out -match 'status=ok') "commits the deletion of a named file (exit $($r.code)): $($r.out.Trim())"
     $deleted = @(& git -C $wt show --name-status --format= HEAD)
     Check ($deleted.Count -eq 1 -and $deleted[0] -match '^D\s+r\.txt$') "the commit is the deletion of r.txt: $($deleted -join ';')"
+
+    # --- naming a deleted directory must not stage every deletion beneath it -----------------
+    New-Item -ItemType Directory (Join-Path $wt 'd') | Out-Null
+    Set-Content -LiteralPath (Join-Path $wt 'd\x.txt') 'x'
+    Set-Content -LiteralPath (Join-Path $wt 'd\y.txt') 'y'
+    & git -C $wt add -- d
+    & git -C $wt commit -q -m 'add d'
+    Remove-Item -LiteralPath (Join-Path $wt 'd') -Recurse -Force
+    $before = & $head
+    $r = Invoke-Commit $wt @('d')
+    Check ($r.code -eq 2 -and $r.out -match 'widened-pathspec') "refuses a deleted directory name (exit $($r.code)): $($r.out.Trim())"
+    Check ((& $head) -eq $before) 'the deleted-directory refusal did not commit'
+    Check (@(& git -C $wt diff --cached --name-only).Count -eq 0) 'the deleted-directory refusal left nothing staged'
+    $r = Invoke-Commit $wt @('d/x.txt')
+    $deleted = @(& git -C $wt show --name-status --format= HEAD)
+    Check ($r.code -eq 0 -and $deleted.Count -eq 1 -and $deleted[0] -match '^D\s+d/x\.txt$') "a deleted file inside the directory can still be named (exit $($r.code)): $($deleted -join ';')"
+    & git -C $wt reset -q --hard HEAD
+
+    # --- a junction inside the worktree must not carry a file from outside it --------------
+    $outside = Join-Path $tmp 'outside'
+    New-Item -ItemType Directory $outside | Out-Null
+    Set-Content -LiteralPath (Join-Path $outside 'secret.txt') 'outside the worktree'
+    $junction = Join-Path $wt 'jd'
+    New-Item -ItemType Junction -Path $junction -Target $outside | Out-Null
+    $before = & $head
+    $r = Invoke-Commit $wt @('jd/secret.txt')
+    [System.IO.Directory]::Delete($junction)
+    Check ($r.code -eq 2 -and $r.out -match 'reparse-point') "refuses a path below a junction (exit $($r.code)): $($r.out.Trim())"
+    Check ((& $head) -eq $before) 'the junction refusal did not commit'
+    Check (@(& git -C $wt diff --cached --name-only).Count -eq 0) 'the junction refusal left nothing staged'
+
+    # --- GIT_DIR / GIT_WORK_TREE in the environment cannot retarget the commit ----------------
+    Set-Content -LiteralPath (Join-Path $wt 'a.txt') 'env change'
+    $mainTip = (& git -C $main rev-parse refs/heads/main).Trim()
+    $env:GIT_DIR = (Join-Path $main '.git')
+    $env:GIT_WORK_TREE = $wt
+    try { $r = Invoke-Commit $wt @('a.txt') }
+    finally { Remove-Item Env:GIT_DIR, Env:GIT_WORK_TREE -ErrorAction SilentlyContinue }
+    Check ((& git -C $main rev-parse refs/heads/main).Trim() -eq $mainTip) 'a GIT_DIR pointing at the main checkout did not move main'
+    Check ($r.code -eq 0 -and $r.out -match 'branch=feat/x') "the commit still lands on the worktree's branch (exit $($r.code)): $($r.out.Trim())"
+
+    # --- the branch compare is case-sensitive --------------------------------------------
+    Set-Content -LiteralPath (Join-Path $wt 'a.txt') 'case change'
+    $before = & $head
+    $r = Invoke-Commit $wt @('a.txt') @() 'FEAT/X'
+    Check ($r.code -eq 2 -and $r.out -match 'branch-mismatch') "-ExpectBranch FEAT/X does not match feat/x (exit $($r.code))"
+    Check ((& $head) -eq $before) 'the case mismatch did not commit'
+
+    # --- whitespace: a refusal only where the repo configures a whitespace policy -----------
+    # core.whitespace is set above, so a trailing-space line was refused. Without it the same
+    # content commits and a warning is printed: plain `git commit` would accept it too.
+    & git -C $main config --unset core.whitespace
+    # A whitespace attribute is a policy too: that file stays a refusal.
+    $attrFile = Join-Path $wt '.gitattributes'
+    Set-Content -LiteralPath $attrFile '*.ws whitespace=trailing-space'
+    Set-Content -LiteralPath (Join-Path $wt 'w.ws') 'attr   '
+    $before = & $head
+    $r = Invoke-Commit $wt @('w.ws')
+    Remove-Item -LiteralPath $attrFile
+    Check ($r.code -eq 2 -and $r.out -match 'diff-check') "a whitespace attribute keeps the whitespace refusal (exit $($r.code)): $($r.out.Trim())"
+    Check ((& $head) -eq $before -and @(& git -C $wt diff --cached --name-only).Count -eq 0) 'the attribute refusal committed and staged nothing'
+    Remove-Item -LiteralPath (Join-Path $wt 'w.ws')
+    Set-Content -LiteralPath (Join-Path $wt 'a.txt') 'trailing   '
+    $r = Invoke-Commit $wt @('a.txt')
+    Check ($r.code -eq 0 -and $r.out -match 'status=ok' -and $r.out -match 'warning') "without core.whitespace a whitespace error is a warning, not a refusal (exit $($r.code)): $($r.out.Trim())"
 }
 finally {
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
