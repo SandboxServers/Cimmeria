@@ -87,6 +87,7 @@ impl SpaceManager {
         let verdict = self.diagnose_point(entity_id, &pos);
         let navmesh_hash = self.navmesh_short_hash(entity_id).map(str::to_owned);
         let identity = self.player_identity(entity_id);
+        let session_kind = self.get_entity(entity_id).and_then(|e| e.session_kind);
 
         self.movement_telemetry.position_samples.insert(
             entity_id,
@@ -99,6 +100,7 @@ impl SpaceManager {
         tracing::debug!(
             target: "movement.position_sample",
             event = "position_sample",
+            cimmeria.session_kind = session_kind,
             entity_id,
             entity_name = identity.player_name,
             account_id = identity.account_id,

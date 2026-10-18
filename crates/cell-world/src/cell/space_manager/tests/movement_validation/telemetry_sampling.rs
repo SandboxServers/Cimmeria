@@ -295,6 +295,41 @@ fn the_sampler_honours_the_injected_processing_clock() {
     );
 }
 
+/// Without `cimmeria.session_kind` on the sample, lab walks pollute the
+/// walked-surface map and cannot be filtered out with `= 'player'`.
+#[test]
+fn position_sample_carries_session_kind() {
+    let capture = LogCapture::install();
+    let mut mgr = make_manager();
+    player_in(&mut mgr, 7110, "Agnos");
+    mgr.get_entity_mut(7110).unwrap().session_kind = Some("lab");
+
+    mgr.sample_accepted_position_at(7110, [11.0, 0.0, 20.0], Instant::now());
+
+    let rows = sample_rows(&capture);
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        rows[0]
+            .fields
+            .get("cimmeria.session_kind")
+            .map(String::as_str),
+        Some("lab"),
+        "{:#?}",
+        rows[0]
+    );
+
+    // A player with no session kind must omit the key, not invent one.
+    player_in(&mut mgr, 7111, "Agnos");
+    mgr.sample_accepted_position_at(7111, [11.0, 0.0, 20.0], Instant::now());
+    let rows = sample_rows(&capture);
+    assert_eq!(rows.len(), 2);
+    assert!(
+        !rows[1].fields.contains_key("cimmeria.session_kind"),
+        "{:#?}",
+        rows[1]
+    );
+}
+
 /// Sanity: the diagnosis seam agrees with the boolean one the validator
 /// actually gates on, at the `SpaceManager` level too (the entity crate
 /// pins the same invariant inside `NavMesh`). A meshless space returns
