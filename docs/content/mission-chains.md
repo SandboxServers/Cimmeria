@@ -767,6 +767,7 @@ An optional, one-time story after 638, with no reward. Prisoner 329 offers the m
 | 11005 | `interact_tag('Preparation_ColMarsh')` | `world = 12`; `mission_status(640) = completed`; `step_status(62050, 62054) = 'active'` | `complete_objective(62050, 62055)` |
 
 Marsh's core chains 1051/1052 still fire beside 11005; 1152 is unchanged. Seal: [cb-n05-seal.md](../analysis/cellblock-continuation/worknotes/cb-n05-seal.md).
+
 ### Castle (Persistent Zone)
 
 **Confidence**: CONFIRMED for 701 and for every mission's DB data; RECONSTRUCTION for the 702/703/704/706/708 chains

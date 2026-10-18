@@ -141,6 +141,7 @@ fn allowlist(filename: &str, chain_id: i32) -> bool {
         // adding the action; if the terminal template already has the bit,
         // remove this entry and document below.
         | ("castle_cellblock_chains.sql", 1060) // Preparation_Terminal: needs verification (see above TODO)
+        | ("castle_cellblock_chains.sql", 11003) // Prisoner_329 (CB-N05): per-player bind, dsm 2795 slot 17 (flags 1073741824) by chains 11000/11001/11002; template 17 interaction_type 0
         // harset_space_chains.sql — the five Harset ring switches (packet H10).
         // reason: all five spawns (spawnlist.sql rows 4/127/128/129/130) use
         // entity template 3 "Ring Transporter Switch", whose
