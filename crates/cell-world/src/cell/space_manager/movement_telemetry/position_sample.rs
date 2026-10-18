@@ -65,6 +65,13 @@ impl SpaceManager {
             return;
         }
 
+        // Approach ring (player-capture-bots): 1 Hz, independent of the 5 s sample.
+        let yaw_deg = self.get_entity(entity_id).map_or(0.0, |e| {
+            crate::cell::interaction_pose::wrap_deg_360(e.direction.y.to_degrees())
+        });
+        self.movement_telemetry
+            .note_approach_point(entity_id, position, yaw_deg, now);
+
         match self.movement_telemetry.position_samples.get(&entity_id) {
             Some(prev)
                 if now.saturating_duration_since(prev.at) < POSITION_SAMPLE_MIN_INTERVAL

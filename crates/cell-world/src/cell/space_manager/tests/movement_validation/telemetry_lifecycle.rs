@@ -51,9 +51,10 @@ fn telemetry_state_is_released_when_the_entity_is_destroyed() {
     mgr.sample_accepted_position_at(7006, SPAWN, Instant::now());
     assert_eq!(
         mgr.movement_telemetry.tracked(),
-        2,
-        "precondition: both the reject throttle and the position sample \
-         must have a slot, or this test cannot prove they are both freed"
+        3,
+        "precondition: the reject throttle, the position sample and the \
+         approach ring must each have a slot, or this test cannot prove \
+         they are all freed"
     );
 
     mgr.destroy_entity(7006);

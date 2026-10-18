@@ -47,18 +47,22 @@
 //! times over, once per outcome, which is exactly how the accounting
 //! came to be applied to only one of them (see [`reject`]).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
 use cimmeria_common::Vector3;
 use cimmeria_entity::navigation::NavMeshFingerprint;
 
+mod approach;
 mod position_sample;
 mod reject;
 mod teleport;
 
+pub use approach::{ApproachPoint, ApproachTrail};
 pub use reject::{HardReject, RecoveryReport, RejectReport, SuppressionReport};
 
+#[cfg(test)]
+mod approach_tests;
 #[cfg(test)]
 mod tests;
 
@@ -306,6 +310,8 @@ pub struct MovementTelemetry {
     pub(crate) gm_bypass_log: LogThrottle,
     /// Last accepted-position sample per player.
     position_samples: HashMap<u32, PositionSample>,
+    /// Approach ring per player, see [`approach`].
+    approach: HashMap<u32, VecDeque<(Instant, [f32; 3], f32)>>,
 }
 
 impl MovementTelemetry {
@@ -327,6 +333,7 @@ impl MovementTelemetry {
         self.advisory_off_mesh_log.forget(entity_id);
         self.gm_bypass_log.forget(entity_id);
         self.position_samples.remove(&entity_id);
+        self.approach.remove(&entity_id);
     }
 
     /// Test-only: total tracked slots across every map.
@@ -338,5 +345,6 @@ impl MovementTelemetry {
             + self.advisory_off_mesh_log.tracked()
             + self.gm_bypass_log.tracked()
             + self.position_samples.len()
+            + self.approach.len()
     }
 }

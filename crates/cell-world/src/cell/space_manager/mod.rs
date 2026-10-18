@@ -96,7 +96,8 @@ pub use step_region_replay::{StepRegionReplayGuard, MAX_REPLAY_DEPTH};
 mod xml;
 
 pub use movement_telemetry::{
-    HardReject, LogThrottle, MovementTelemetry, RecoveryReport, RejectReport, SuppressionReport,
+    ApproachPoint, ApproachTrail, HardReject, LogThrottle, MovementTelemetry, RecoveryReport,
+    RejectReport, SuppressionReport,
 };
 
 #[cfg(test)]
