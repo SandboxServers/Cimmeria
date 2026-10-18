@@ -44,7 +44,7 @@ The frontmatter of each `.claude/agents/*.md` file sets how the agent runs. `mod
 | movement-teleport-advisor | sonnet | - | - | Advisor for avatar movement: position updates, teleports, spawn placement, navmesh and speed checks, cell handoffs. |
 | network-security-auth | sonnet | - | - | Auth and network-security specialist: login flow, shard key exchange, packet encryption, sessions, connection timeouts, console security. |
 | npc-ai-spawn-advisor | sonnet | - | - | Advisor for NPC behavior: aiState, threat tables, ability selection, spawn sets, respawn timers, patrols, leash, cover and spawner state. |
-| ops | haiku | low | 30 | Runs one requested git or worktree op via repo scripts (worktree create/remove, PR open/merge/retire, board read/post, checkpoint commit, rebase onto a recorded SHA); else refused as blocked. |
+| ops | haiku | low | 30 | Runs one requested git or worktree op via repo scripts (worktree create/remove, PR open/merge/retire, board read/post, explicit-path commit, merge --no-ff, branch at SHA, push, rebase onto a recorded SHA); else refused as blocked. |
 | orchestrator | sonnet | medium | - | Default Cimmeria persona: runs campaigns and requests by dispatching agents, deciding, and keeping the ledger. |
 | packet-coder | haiku | medium | 90 | Implements one prescriptive work packet in a Cimmeria worktree: edits only its named files, runs its lane checks, commits. |
 | packet-review-fixer | sonnet | high | 120 | Adversarial reviewer that also fixes one finished packet: checks it against its spec, fixes verified findings, reruns lane checks and commits. |
