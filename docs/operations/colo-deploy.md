@@ -2,7 +2,7 @@
 title: "Colo / single-host auto-update deployment"
 type: how-to
 audience: operators
-last_updated: 2026-10-10
+last_updated: 2026-10-18
 ---
 
 # Colo / single-host auto-update deployment
@@ -11,7 +11,7 @@ How to host a public Cimmeria server on a Linux box you don't want to babysit, t
 
 Everything here lives in [`docker/`](../../docker/). The files in the repo are the files the colo runs; what differs between hosts goes in two `.env` files.
 
-This is **not** a hardened production setup. The image bundles Postgres with baked credentials and resets the database on every start ([container.md → Security](container.md#security)). It suits a public server for a trusted community, not a multi-tenant one.
+This is **not** a hardened production setup. The image bundles Postgres with baked credentials ([container.md → Security](container.md#security)); the database persists on a named volume, but the credentials are still baked. It suits a public server for a trusted community, not a multi-tenant one.
 
 ## What runs
 
@@ -99,9 +99,10 @@ Server logs go to `CIMMERIA_LOG_DIR` (the colo uses a directory on its data disk
 
    Allow about two minutes for the first boot (schema migrations). Then open `http://<SIGNOZ_UI_BIND>:8082` (or tunnel to it: `ssh -L 8082:127.0.0.1:8082 <host>`) and create the admin account. The first visitor creates it, so do this straight away.
 
-4. **Start the game server:**
+4. **Start the game server.** Create the database volume first; it is external, so compose does not create it:
 
    ```bash
+   docker volume create cimmeria-server-pgdata
    cd /opt/cimmeria
    install -m 0600 .env.example .env
    $EDITOR .env         # BASE_EXTERNAL is the one required value
@@ -109,6 +110,8 @@ Server logs go to `CIMMERIA_LOG_DIR` (the colo uses a directory on its data disk
    ```
 
    `BASE_EXTERNAL` is the address players connect to, handed to them during login. Compose refuses to start without it. Getting it wrong is the most common failure: players log in, then get bounced back to the login screen.
+
+   The first start of an empty volume is a first boot: the database is the image's seeds, with the seed accounts and nothing else. Optionally set `CIMMERIA_BACKUP_DIR` in `.env` to a directory on a roomy disk; backups go there ([persistent-player-data.md](persistent-player-data.md#backups)).
 
 5. **Check it:**
 
@@ -121,25 +124,25 @@ Server logs go to `CIMMERIA_LOG_DIR` (the colo uses a directory on its data disk
 
 ## What happens on every update
 
-Watchtower checks `ghcr.io/sandboxservers/cimmeria-server:latest-prerelease` every five minutes. When the digest changes, it pulls the new image, stops and removes the `cimmeria` container, starts a replacement with the same settings, and deletes the old image. Downtime is about 30 seconds.
+Watchtower checks `ghcr.io/sandboxservers/cimmeria-server:latest-prerelease` every five minutes. When the digest changes, it pulls the new image, stops and removes the `cimmeria` container, starts a replacement with the same settings, and deletes the old image. Downtime is about 30 seconds plus the database step: `db-sync` takes a backup and rebuilds the resources tables before the server starts, so allow a few minutes (the healthcheck waits up to 300 s).
 
 It touches nothing else. `WATCHTOWER_LABEL_ENABLE=true` limits it to containers labelled `com.centurylinklabs.watchtower.enable=true`, which only the `cimmeria` service is. Never run a watchtower without that or a `WATCHTOWER_SCOPE`: it would update every container on the host. `DOCKER_API_VERSION=1.44` is required on Docker 29 and later, which refuses watchtower's default API version, and watchtower then fails every poll.
 
-Stopping the old container saves every in-world player's position and ammo first, for up to 10 s (TG-DB-02). Two settings in `compose.yml` give it the time: `stop_grace_period: 45s` on `cimmeria` (for `docker compose` stops) and `WATCHTOWER_TIMEOUT: 45s` on watchtower (for swaps). Both defaults are 10 s, which kills the server mid-save. Inside the image, s6 waits for the server to exit before stopping postgres, and the Dockerfile raises s6-overlay's `S6_KILL_GRACETIME` and `S6_SERVICES_GRACETIME` from their 3 s defaults to 25 s and 20 s, so s6 never cuts the save short either. A miss shows as `player_state_not_persisted` in the old build's last rows. Both arrived with the TG-DB-02 compose change, so run `docker compose up -d` once after pulling it.
+Stopping the old container saves every in-world player's position and ammo first, for up to 10 s (TG-DB-02). Two settings in `compose.yml` give it the time: `stop_grace_period: 45s` on `cimmeria` (for `docker compose` stops) and `WATCHTOWER_TIMEOUT: 45s` on watchtower (for swaps). Both defaults are 10 s, which kills the server mid-save. Inside the image, s6 waits for the server to exit before stopping postgres, and the Dockerfile raises s6-overlay's `S6_KILL_GRACETIME` and `S6_SERVICES_GRACETIME` from their 3 s defaults to 25 s and 20 s, so s6 never cuts the save short either. A miss shows as `player_state_not_persisted` in the old build's last rows. The database shuts down after the server, inside the same grace time, so a stop that runs into the 45 s limit leaves Postgres to crash-recover on the next start. Both arrived with the TG-DB-02 compose change, so run `docker compose up -d` once after pulling it.
 
 **Edits to the compose files or `.env` don't reach the running container until you run `docker compose up -d`.** Watchtower builds each replacement from the *old container's* settings, not from the files. Get into the habit: edit, then `docker compose up -d`, then check `docker inspect cimmeria` shows the change.
 
 Releases are cut by hand (`/release` on a merged PR, or a manual run of `release-container.yml`), so merging to `main` alone never restarts the colo.
 
-## The database resets on every start
+## The database persists across restarts
 
-[`docker/entrypoint.sh`](../../docker/entrypoint.sh) copies the image's baked database over `/var/lib/postgresql/data` every time the container starts. An image update, `docker restart cimmeria`, a Docker restart and a host reboot all start from a clean database. Characters, missions and inventory do not survive any of them. This is deliberate while the schema keeps changing.
+The database lives in the named, external Docker volume `cimmeria-server-pgdata`, mounted at `/var/lib/postgresql/data`. [`docker/entrypoint.sh`](../../docker/entrypoint.sh) copies the image's baked database into it only when the volume is empty; an existing cluster is kept. `docker restart cimmeria`, a Docker restart and a host reboot (the colo reboots at 04:30 when a security update needs it) keep every account and character.
 
-The reset is in the entrypoint because Docker volume mechanics can't do it: watchtower attaches the old container's anonymous volume to its replacement before removing the old one, so Docker refuses to delete it, and the database would carry over. `WATCHTOWER_REMOVE_VOLUMES=true` is set but doesn't change this.
+An image update rebuilds only the resources (items, worlds, missions and the rest) from the new seeds, after a backup, and carries the player tables across. A seed account that is missing is inserted again; existing accounts are never touched. The `db-sync` step ([`docker/db-sync.sh`](../../docker/db-sync.sh)) makes that decision on every start and logs it as `[db-sync] ...`.
 
-Mounting a volume does not make the database persistent; the entrypoint overwrites whatever is there. The route to persistence is an external Postgres via `DB_URL` ([container.md](container.md#volume--persistence)), and then you own schema drift between releases.
+The volume is external, so `docker compose down -v` does not remove it, and watchtower's `--remove-volumes` only removes the replaced container's anonymous volumes. The old anonymous-volume problem (watchtower attaching the old volume to the replacement) no longer matters, because nothing depends on a volume being thrown away.
 
-Hosts with automatic security updates and reboots (the colo reboots at 04:30 when an update needs it) reset the database on those reboots too.
+Backups, restore, the forced rebuild, the log lines and the deliberate full wipe: [persistent-player-data.md](persistent-player-data.md).
 
 ## Optional overlays
 
@@ -239,7 +242,7 @@ find /path/to/logs/archive -mindepth 1 -maxdepth 1 -type d -mtime +14 -exec rm -
 
 Container stdout is capped by the json-file driver (5 × 50 MB for `cimmeria`).
 
-Container recreations occasionally leave an unused anonymous volume of about 100 MB (an old Postgres data directory). `docker volume prune` removes unused anonymous volumes; named volumes such as SigNoz's are kept.
+Container recreations occasionally leave an unused anonymous volume of about 100 MB (an old Postgres data directory). Remove those by name. Do not run a blanket `docker volume prune`: it also removes any named volume no container is using at that moment, and a stopped `cimmeria` makes `cimmeria-server-pgdata` (your players) unused. Nothing here prunes that volume on purpose; see [persistent-player-data.md](persistent-player-data.md#the-docker-volume).
 
 SigNoz retention (how long logs, traces and metrics are kept) is set in the SigNoz UI under Settings. ClickHouse is the only thing on the host that grows without bound, so check `docker system df -v` now and then.
 
@@ -267,7 +270,7 @@ Upgrading SigNoz: [signoz-deployment.md → Upgrading SigNoz](signoz-deployment.
 
 ## When to move off this setup
 
-- **Persistent characters** → an external Postgres via `DB_URL`, and a migration plan for each release.
+- **Schema changes beyond additive ones** → an owner call per change; the persistent tables change additively only ([persistent-player-data.md](persistent-player-data.md#what-persists)).
 - **More than one host** → an orchestrator; watchtower doesn't coordinate across nodes.
 - **Staged rollouts** → a CI/CD pipeline with a canary, not a polling auto-updater.
 

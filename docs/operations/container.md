@@ -2,7 +2,7 @@
 title: "Container distribution"
 type: how-to
 audience: operators
-last_updated: 2026-10-11
+last_updated: 2026-10-18
 ---
 
 # Container distribution
@@ -50,7 +50,7 @@ docker run -d --name cimmeria \
   ghcr.io/sandboxservers/cimmeria-server:latest-prerelease
 ```
 
-No volume mount for the database — the container reseeds pgdata from the image on every start, so mounting a volume there preserves nothing. See [Volume / persistence](#volume--persistence).
+Add `-v cimmeria-server-pgdata:/var/lib/postgresql/data` to keep the database across restarts and image updates; without it Docker makes an anonymous volume that a watchtower swap discards. Create the named volume once with `docker volume create cimmeria-server-pgdata`. See [Volume / persistence](#volume--persistence).
 
 | Port | Protocol | Purpose |
 |---|---|---|
@@ -102,6 +102,10 @@ Not baked into the image, but read by the server and worth setting on a real dep
 | `CIMMERIA_TELEMETRY_UPLOAD_QUOTA_PER_IP` | `600` | Chunk uploads per peer address per minute; `0` disables. Shared by everyone behind one address. See [telemetry operations](telemetry.md#upload-size-and-rate-limits). |
 | `CIMMERIA_TELEMETRY_BUNDLE_QUOTA_PER_IP` | `30` | Bundle uploads per peer address per hour; `0` disables. |
 | `CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP` | `12` | Requests per peer address per minute on the anonymous launcher-summary route; `0` disables. Everyone behind one address shares it, so raise it for a large deployment behind one. See [telemetry operations](telemetry.md). |
+| `CIMMERIA_DB_BACKUP_KEEP` | `10` | How many pre-rebuild backups `db-sync` keeps in `/var/backups/cimmeria`. Must be a whole number of 1 or more, or the start stops. |
+| `CIMMERIA_DB_FORCE_REBUILD` | (unset) | `1` rebuilds the resources tables at the next start even if the image is unchanged. Player data is kept. Remove it afterwards. See [the runbook](persistent-player-data.md#forced-resources-rebuild). |
+| `CIMMERIA_DB_RESTORE` | (unset) | Disaster recovery only. A backup file name (or container path) that `db-sync` restores over the live database once, after taking a safety backup. See [Restore](persistent-player-data.md#restore). |
+| `CIMMERIA_BACKUP_DIR` | `./backups` | A compose variable, not a container one: the host directory bound to `/var/backups/cimmeria`. |
 | `DISCORD_CONFIG_TOML` | (unset) | Read by the entrypoint, not the server: when set, its contents are written to `/opt/cimmeria/config/discord.toml` (mode 0440) before the server starts. [`docker/compose.discord.yml`](../../docker/compose.discord.yml) sets it. Unset leaves any existing file alone. |
 | `CIMMERIA_LAB_MCP_ALLOWED_HOSTS` | (unset) | Extra `Host` header values the lab MCP endpoint accepts, comma-separated, on top of `localhost`, `127.0.0.1` and `::1`. [`docker/compose.lab.yml`](../../docker/compose.lab.yml) sets it to `CIMMERIA_WG_IP`. |
 
@@ -111,37 +115,41 @@ Not baked into the image, but read by the server and worth setting on a real dep
 
 ## Volume / persistence
 
-> **The database in this image is ephemeral. There is currently no way to persist it across container starts.**
+> **The database persists on the named volume `cimmeria-server-pgdata`.** A restart, a reboot and an image update keep accounts and characters; an image update rebuilds only the resources tables. Operating it: [persistent-player-data.md](persistent-player-data.md).
 
-The DB lives at `/var/lib/postgresql/data` (declared as a `VOLUME`), but the image's [entrypoint](../../docker/entrypoint.sh) **unconditionally reseeds** that path from the baked fallback at `/var/lib/postgresql/initial-data` on *every* container start, before Postgres boots. It clears the directory and copies the pristine layer over it — there is no "only if empty" guard.
+The database lives at `/var/lib/postgresql/data` (declared as a `VOLUME`). On start, the [entrypoint](../../docker/entrypoint.sh) copies the baked database from `/var/lib/postgresql/initial-data` into that path only when it holds no cluster (`PG_VERSION` absent), and keeps an existing cluster as it is.
 
-That applies regardless of how the path is mounted: anonymous volume, named volume, or bind mount. A named volume will survive as a Docker object, but its contents are overwritten on each start, so it buys you nothing. A plain `docker restart cimmeria` — no image swap involved — also wipes the database.
+[`docker/compose.yml`](../../docker/compose.yml) mounts the external named volume `cimmeria-server-pgdata` there. A bare `docker run` with no `-v` gets an anonymous volume, which behaves as a fresh server after a container recreate, because the replacement does not keep the old container's anonymous volume. Pass the named volume to keep the data.
 
-This is deliberate. The design intent is "ephemeral DB, fresh every deploy" while the schema is still churning, and the reseed lives in the entrypoint because the alternative (relying on `WATCHTOWER_REMOVE_VOLUMES=true` to drop the anonymous volume) does not actually work — watchtower attaches the old volume to the new container before removing the old one, so Docker refuses the deletion and the stale database survives. Observed on the colo on 2026-05-26. The entrypoint's header comment documents the full mechanic.
+After Postgres is up, the s6 oneshot `db-sync` ([`docker/db-sync.sh`](../../docker/db-sync.sh)) decides what to do with the database: `first-boot` for a new volume, `skip` for the same image, `rebuild` for a new image or `CIMMERIA_DB_FORCE_REBUILD`, `adopt` for a database from before this feature, `restore` for `CIMMERIA_DB_RESTORE`. The server starts only when it exits 0. Backups of `sgw` go to `/var/backups/cimmeria` (a `VOLUME`; compose binds `${CIMMERIA_BACKUP_DIR:-./backups}` to it).
 
-If you need a database that outlives a restart, run Postgres outside this image and point `DB_URL` at it — see [colo-deploy.md → When to move off this setup](colo-deploy.md#when-to-move-off-this-setup).
+An external Postgres via `DB_URL` still works, with the schema drift between releases being yours to manage.
 
 ### Reset to a fresh server
 
-Any restart already gives you a fresh server. To also discard the container and image:
+A restart keeps the data, so a fresh server is a deliberate action: remove the container and its volume, then start again. The next start is a first boot from the image's seeds.
 
 ```bash
 docker rm -f cimmeria
-docker run ...   # same flags as before — the entrypoint reseeds pgdata on start
+docker volume rm cimmeria-server-pgdata
+docker volume create cimmeria-server-pgdata
+docker run ...   # same flags as before, with -v cimmeria-server-pgdata:/var/lib/postgresql/data
 ```
+
+Take a backup first if you might want the players back: [persistent-player-data.md → Backups](persistent-player-data.md#backups). These commands are untested on the colo.
 
 ## What's inside
 
 - `cimmeria-server` (Linux x86_64), built `cargo build -p cimmeria-server --release`.
 - `data/cache/*.pak` — cooked game data (22 files, required at runtime).
 - `data/spaces/*.nav` — navmeshes (5 files, optional but shipped — without them combat AI / line-of-sight degrades).
-- Postgres 17.9 + pgdata pre-loaded from `db/database.sql` (schema + seeds, `\ir`'d from `db/sgw/` and `db/resources/`).
-- s6-overlay v3 supervising postgres + cimmeria-server. Postgres starts first, the server waits for `pg_isready` and then for a working login with `DB_URL`, and server death brings the container down so the orchestrator restarts it cleanly.
+- Postgres 17.9 + pgdata pre-loaded from `db/database.sql` (schema + seeds, `\ir`'d from `db/sgw/` and `db/resources/`), plus a fresh dump and the `db/persistent/` SQL that `db-sync` uses to rebuild the resources on an image update.
+- s6-overlay v3 supervising postgres, `db-sync` and cimmeria-server. Postgres starts first, `db-sync` decides what to do with the database, the server waits for `pg_isready` and then for a working login with `DB_URL`, and server death brings the container down so the orchestrator restarts it cleanly.
 
 ## What's NOT inside
 
 - No Rust source, no `target/`, no build tooling.
-- No `.sql` files. The DB is *identity-baked* — schema + seed data are part of the image's tag, not lazily applied state.
+- No `db/*.sql` seed files for the server to apply lazily. The DB is *identity-baked* — schema + seed data are part of the image's tag; the `db/persistent/` SQL and the fresh dump ship only so `db-sync` can rebuild the resources.
 - No `data/scripts/`, `entities/defs/`, `external/`, or `tools/`. Those are compile-time inputs; the runtime never reads them.
 
 ## Image architecture (Dockerfile stages)
@@ -154,7 +162,7 @@ Source: [`docker/Dockerfile`](../../docker/Dockerfile). Stage names are stable a
 
 ## Healthcheck
 
-`HEALTHCHECK` checks two things:
+`HEALTHCHECK` has a 300 s start period, so a resources rebuild by `db-sync` after an image update does not count against the container. It checks two things:
 
 1. `cimmeria-server --check-db`: the server's own connection string can log in and run `SELECT 1`. `pg_isready` alone passes while the user, password or database name is wrong.
 2. A TCP probe (`bash -c 'exec 3<>/dev/tcp/127.0.0.1/$LOGON_PORT'`) confirming the SOAP login listener is bound — this is the port the game client logs in through.
@@ -179,7 +187,9 @@ On every run the script prints the container state and `docker logs`, and copies
 
 The smoke stops at the handshake. Character select and world entry need a character row, and the image's database is the plain seed; that path is covered by the live-DB wireclient tests instead (`crates/wireclient/tests/it/`).
 
-To run it locally with Docker:
+A second smoke, [`tools/container-persistence-smoke.sh`](../../tools/container-persistence-smoke.sh), runs in `pr-container.yml` on the same triggers. It boots the image against its own scratch volume and walks first boot, skip, forced rebuild with seed-account top-up, reconcile, a failed rebuild, adopt, restore and a full wipe. It never touches `cimmeria-server-pgdata`.
+
+To run the login smoke locally with Docker:
 
 ```bash
 docker buildx build -f docker/Dockerfile -t cimmeria-server:local --load .
@@ -251,7 +261,7 @@ docker run -d --name cimmeria \
 
 | Flag | Why |
 |---|---|
-| `--read-only` | Root filesystem is immutable. Stops a compromised process from persisting changes to the image content. The `VOLUME`-declared pgdata and log paths are the only writable locations, by design. |
+| `--read-only` | Root filesystem is immutable. Stops a compromised process from persisting changes to the image content. The `VOLUME`-declared pgdata, log and backup paths are the only writable locations, by design. |
 | `--tmpfs /run /tmp /var/run` | s6-overlay and Postgres both write status / sockets / lock files to these paths. Tmpfs satisfies them without dropping `--read-only`. |
 | `--cap-drop=ALL` + selective `--cap-add` | Default Docker capabilities are over-broad. The added five are what s6-overlay's `s6-setuidgid` privilege drops and Postgres's directory-perm enforcement actually need. Anything else is excess. |
 | `--security-opt=no-new-privileges` | Hard kernel-level block on `setuid` / `setcap` escalation paths. Belt to the cap-drop suspenders. |
