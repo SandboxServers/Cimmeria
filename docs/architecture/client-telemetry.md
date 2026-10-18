@@ -278,6 +278,16 @@ The CEGUI message is read as an MSVC `std::wstring`, the type this client's CEGU
 
 Under the `lab-bridge` feature both events are also pushed to the bridge's local ring, as kinds `cme.event` and `cegui.log`, so `client_events_read` returns them without a SigNoz round trip.
 
+The lab supervisor also installs a bounded Lua CEGUI click ring. It is a lab-only reader, separate from the player DLL's upload stream and from the bridge's `cegui.log` event.
+
+| Local event | Reader | Fields | Limit |
+|---|---|---|---|
+| `ui.click` | Lua CEGUI global `Window/MouseClick` callback | `event_id = <Lua epoch>:<click sequence>`; existing top-level `window`, clicked-widget `button`, mouse-button `mouse`; target existence and name observed in the callback; workbench `host_ms` (supervisor ingestion time), `client_pid`, `widget_path`, `source`, `selected_entity_id: null`, `client_tick: null`, and `target_id_gap` | 512 in-client rows; no key or text input |
+
+Click `client_pid` is captured when the Lua ring is ingested and stored with that row; a PID change during the read leaves provenance unknown, so the workbench rejects that click instead of attributing it to a later session. Window and widget names remain exact through 1,024 bytes. Oversize or control-character names are rejected before the click ring and counted as `click_rejected_total` in the pump report; malformed or old-format click lines count in `click_rejected_lines`. A workbench slice also reports `rejected_identity_rows` for stored clicks with invalid identity or missing PID. These counts are evidence gaps, not replayable clicks.
+
+A target name is diagnostic only: the Lua unit slot has no verified entity-ID getter, so `target_id_gap` is `target_entity_id_unobservable_at_click`. Repeated clicks keep distinct IDs, a missing ring sequence is reported as a gap, and relog starts a new epoch. The recorder never reads a later target to fill an earlier click.
+
 ## Entity lifecycle, inbound and outbound messages, Lua errors and the CME catalog
 
 Added 2026-09-28 for the invisible-guard class of bug (#838): the client creates an NPC but does not render it, and the server cannot see why. Every anchor, argument count and layout is in [client-entity-lifecycle.md](../reverse-engineering/findings/client-entity-lifecycle.md); none of it has run in the live client yet. All of it is in the DLL every player gets (no `lab-bridge` needed), and each event is also pushed to the bridge's local ring under `lab-bridge` (kind = target without the `client.` prefix).
@@ -326,6 +336,28 @@ The client's Mercury logger is a one-byte stub in this build (`0x0081c2e0` is `r
 | `client.mercury.fragment` | `Nub::processPacket` `0x0157fd20` | `outcome` (`group_started`, `added`, `completed`, `duplicate`, `mangled_footers`, `bundle_missing`, `group_restarted`, `group_discarded`, `illegal_footers`, `no_channel`), `seq`, `frag_first`, `frag_last`, `expected_fragments`, `payload_len`, `remaining_before`/`_after`, `held_before`/`_after`, `held_bytes_*`, `open_group_last`, and on a fragment that did not simply join `held_seqs`; on `completed`: `assembled_packets`, `assembled_bytes`, `expected`, `count_matches` | `info` happy, `warn` non-happy |
 | `client.mercury.bundle` | `Nub::processOrderedPacket` `0x0157c820` (game thread), fed per message by `Bundle::iterator::unpack` `0x01579830` | `phase=start` (assembled bundles only): `source`, `packets`, `total_bytes`, `seq_first`, `seq_last`, `boundaries` (payload offsets where each packet after the first begins). `phase=end`: the same plus `messages`, `dispatched` (the client's own counter), `nub_aborted_delta`, `consumed_bytes`, `unconsumed_bytes`, `straddled_messages`, `first_msg_id`, `last_msg_id`, `last_msg_offset`, `last_msg_len`, `exit` (`clean_end`, `unknown_message_id`, `corrupted_header`, `other`), `result`, and on an abort `abort_offset`, `abort_packet_index`, `abort_packet_seq`, `abort_msg_id`, `fault` (`header_does_not_fit_packet`, `body_runs_out_of_packets`, `length_expand_failed`), `header_len`, `header_bytes_in_packet`, `packet_len`, `abort_cursor` | `info` assembled, `debug` clean single-packet, `warn` abort |
 | `client.mercury.error` | paired with every non-happy event above, except a `packet_in` whose `disposition` is `old_duplicate` (that row already names it) | `stage` (`packet`, `fragment`, `bundle`), `reason`, plus the parent event's fields | `warn` |
+
+**Lab Mercury-shaped receive candidates (DW-03S-C, offline only).** A lab-bridge build
+mirrors each successful nonempty `recvfrom` read with a Mercury-shaped
+1472-byte request and zero flags as one **ineligible candidate** `mercury.wire_proof` event. The process-wide IAT slot also sees unrelated UDP reads of the same shape. Its fields
+are `bridge_epoch` (fresh OS-random 128-bit value per bridge startup,
+independent of the telemetry session ID), diagnostic `socket`, `peer` (parsed
+IPv4 source or null), exact UDP wire-byte `wire_len`, 16-digit FNV-1a
+`wire_fingerprint`, `eligible: false`, `source_kind: recvfrom_candidate`, `encryption_state: unknown`, `gap: mercury_socket_unverified`, and `peer_gap` (`peer_unavailable` when the source cannot be
+parsed). The surrounding `LabEvent.ts_ms` is the client observation clock. No payload bytes, PID or process creation time come from the DLL.
+The supervisor must stamp process identity when it ingests the event; a peer
+or socket alone cannot bind a game session.
+
+`events_read` reports `bridge_epoch` and
+`mercury_wire_proof: {hook_installed, received, rejected, dropped, gap}`
+alongside its existing event ring drop count. `hook_unobserved` means the IAT
+hook has not installed or no qualifying read has been seen; `rejected`
+includes all unverified candidates and reads outside the Mercury
+request shape; `dropped` counts proof rows refused by the bounded bridge
+ring. An absent row or a non-null gap cannot prove delivery or destination.
+The Phase-3 login reply is plaintext before the AES handshake; only proven post-handshake encrypted datagrams may become binding evidence. No static Mercury socket/caller discriminator or post-handshake classifier exists yet, so all current rows remain ineligible and DW-03S-B stays blocked. The 1472-byte request is supported by the static `FUN_0158a200`
+reconstruction; hook installation and actual receive behavior remain
+unverified in the live client.
 
 **Offsets** in `client.mercury.bundle` are payload offsets: every packet's bytes after its flags byte, concatenated, so a fragment boundary is a number and a message header at `abort_offset` straddling `boundaries[i]` is visible at a glance.
 
@@ -662,13 +694,21 @@ Three rules now keep that from recurring:
   `catch_unwind`, so a Rust panic cannot unwind into the game. The CME
   callbacks stay plain `thiscall`: they call nothing in the game.
 
+## Lab-only D3D9 status panel
+
+The `lab-bridge` build can patch `IDirect3DDevice9::EndScene` only after the global SGW.exe code/slot fingerprint gate has passed, a lab session has started its bridge, and the existing D3D9 IAT/CreateDevice path has observed a device. Boot retains its actual fingerprint report for the later device install decision. The player build contains no overlay module or EndScene detour. The original `EndScene` is always called. The first accepted device remains active through CreateDevice, Reset, and TestCooperativeLevel probes on auxiliary devices, even when they share its patched vtable. A second device becomes active after the owner is lost or after two seconds since accepted owner creation or the last successful owner EndScene, once a successful foreign EndScene arrives. Auxiliary EndScene frequency cannot displace an owner that continues presenting. Monotonic timestamp publication prevents delayed creation and older owner callbacks from aging a newer presentation. A handoff acquires the same guard as panel rendering, so a foreign EndScene cannot displace a frame that may still record a fault; a busy handoff waits for a later successful EndScene. A different vtable is refused without displacing the accepted device or incrementing the patch-failure counter. Concurrent install probes are serialized, and live vtable slot exchange uses an aligned atomic compare/exchange after temporary page unprotection.
+
+The panel is three opaque `Clear` rectangles: a dark base, a trace/gap indicator and a recorder indicator. It reads only atomic coarse status bits. It never receives command text, credentials, game state or bridge tokens. Each frame is bounded to one viewport query, one `D3DSBT_ALL` snapshot, at most three rectangle clears, and restoration/release; the code checks a one-millisecond software budget between calls. A slow driver call cannot be preempted. Rendering stops on loss or failed Reset, skips recursion, and stays disabled after three faults. Failed patch, viewport, state capture, clear and state restore operations set bounded atomic reason bits and a failure counter. A single lab-only worker drains those bits to `client.gfx.overlay_fault` off the render callback, reporting each reason once and the terminal shutoff once; EndScene performs no JSON formatting or telemetry enqueue. A successful Reset restores eligibility but cannot override fault shutoff. The same global boot fingerprint check that gates all hooks refuses an unsupported executable before any D3D9 patch can be installed.
+
+This seam is statically checked and fake-device tested. The client executable is absent here, and no live render, driver-loss or visual UAT is claimed. The companion GUI remains the dense user interface.
+
 ## What we DON'T hook
 
 To preserve "observe without changing behavior":
 
 - **`FMalloc::Malloc`** (`FMallocCME` at RTTI `0x01d8f87c`) — millions of calls/sec.
 - **`UObject::ConditionalDestroy`** and GC-adjacent paths — use-after-free risk.
-- **`BeginScene` / `EndScene`** and render-state-affecting D3D9 entry points.
+- **`BeginScene` and general render-state-affecting D3D9 entry points.** The lab-only `EndScene` exception above is gated separately.
 - **PhysX inner-loop callbacks** — high-frequency on dedicated threads.
 - **`wxWidgets`** (statically linked, Atrea editor framework) — irrelevant for the game client.
 

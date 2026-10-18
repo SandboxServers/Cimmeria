@@ -323,6 +323,134 @@ A lab-chaos build adds `server_chaos_set`, `server_chaos_clear` and
 `server_chaos_status`.
 See ADR §3.5 for the full set; `docs/operations/colo-deploy.md` for the port.
 
+### Workbench Lua probes and object browser (DW-04)
+
+The local companion API saves named Lua snippets under the daemon's per-user
+`workbench/probes/<instance>/` data directory (`CIMMERIA_LAB_HOME`, otherwise
+`%LOCALAPPDATA%/cimmeria-lab`). Definitions have schema version 1 and a SHA-256
+of mode and source; a save or run with a stale hash is refused. The list API
+returns saved definitions, favorites and a bounded history of run names/statuses.
+History does not store parameters or result content. Concurrent saves check the expected hash under one catalog lock; a failed replacement preserves the previous definition. If a run succeeds but its history row cannot be saved, the result includes a `probe_history` gap. The browser session's
+instance, same-origin cookie and CSRF check apply to every write. Probe runs,
+global browsing and CEGUI window reads also require a current lab lease.
+
+The API paths are `GET /workbench/api/v1/probes?instance=<label>` and POST
+`/workbench/api/v1/probes/{save,run,globals,window}?instance=<label>`. Save takes
+`{instance,name,mode,chunk,expected_sha256,favorite}` where mode is `read` or
+`mutate`; run takes `{instance,lease_id,name,sha256,parameters}`. A snippet sees
+its parameters as the first Lua vararg (`local params = ...`). Parameters are
+converted to Lua literals as data, never spliced into source. The read label
+describes operator intent; arbitrary Lua source can still cause side effects,
+so inspect the snippet before running it. Mutate requires the same lease and
+CSRF boundary and receives an explicit mode badge in the result.
+
+The Lua wrapper uses the existing main-thread `client_lua_eval` bridge and a
+100,000-instruction debug-hook budget; it refuses execution if the hook is
+unavailable. Hook availability in the live client remains unverified. An
+operator-written snippet can disable its own hook, so this is a diagnostic
+budget, not a security boundary. The host wait is capped at 3 seconds. A
+blocking native C call may remain in flight after that timeout, so `timeout` means the result is
+unknown, not that the effect was cancelled. Result trees stop at depth 4,
+128 nodes and 1,024 bytes per string; bridge output stops at 32 KiB. Cycles,
+oversized values, Lua errors, missing return capture and partial trees are
+reported distinctly. Non-string and non-integer table keys are skipped with a partial-tree marker. Global enumeration uses `next` and `rawget` and leaves
+userdata opaque; the CEGUI branch reuses `client_window_read` with depth 4,
+128 nodes and 32 rows. No Lua namespace is retained across a relog.
+
+The probe list is initially empty. Built-in catalog snippets will be added
+only when their client behavior is source-backed; saved local snippets are
+operator experiments, not protocol evidence.
+
+### Companion Lua probe view (DW-12B)
+
+Open `lab workbench open --instance <name>` and select **Lua probes**. The catalog lists named definitions; **New probe** opens an empty editor. Edit the name, read/mutate mode, Lua source and favorite flag, then press **Save probe**. Unsaved edits stay in the page only: switching definitions is refused, and **Reload catalog** asks before discarding them. Save uses the previous SHA-256 so a concurrent edit fails visibly rather than replacing it. A changed name saves a new definition, leaving the old one intact. The catalog survives page reload; no Lua runtime namespace does.
+
+Enter a current lab lease ID in the local companion window to enable **Run saved probe** and **Read object**. The browser checks for a nonempty ID before sending either request; the daemon validates the lease for the bound instance. The run button also requires a saved, unchanged definition and sends JSON object parameters as data. Mutate mode asks for an explicit confirmation. Read mode describes intent, not guaranteed purity: inspect the source before execution. A result shows its status, error detail and partial/truncated markers; cyclic or truncated tree nodes are labeled. The object browser reads a named Lua global or CEGUI window with the bounded DW-04 API. The lease ID stays only in page memory and is never saved with a probe.
+
+A Lua error or expired lease is shown in the result/status area. A timeout means the host wait ended and the client effect may still be in flight. This view has offline logic and route checks; real client execution and visual layout still require DW-35 lab UAT with an approved lease.
+### GM workbench command catalog
+
+`server_console_list {"entity_id": <in-world GM entity id>}` first reads that
+entity through the live cell `EntityGet` query and refuses missing or
+non-GameMaster actors.
+
+The `entity_id` is caller-supplied, so this tool is safe only behind the
+privileged lab MCP bearer. An `EntityGet` result for that ID is not browser
+authorization. DW-30 must derive the browser actor from its authenticated,
+instance-bound session and recheck live cell authority when executing.
+
+The tool projects dot commands from the same
+`COMMANDS` table that dispatches the in-world `.` console. The raw
+registry retains 129 spellings; `.gmgiveammo` and `.gmsetinfiniteammo`
+are searchable aliases of `.giveammo` and `.infiniteammo`, so the
+workbench catalog exposes 127 actions. Workbench fields
+include `id`, `channel = dot`, stable `target_policy` and structured `target`, `metadata_version`,
+per-command `availability`, typed arguments, impact, verification and
+compensation. Pending rows remain searchable without a typed Run action.
+The 27 progression, ability, stat, ammo and pet rows now carry source-reviewed
+forms from [DW-21-E](../analysis/dev-workbench/evidence/DW-21-E.md). Live cell
+reads such as `.effects` and stat reports can be runnable, but their
+snapshots do not prove persistence. For grants, capture the exact target
+`player_id`, query the named database columns before and after the Base
+result, and repeat after relog. A queued Cell line is not a commit; a DB
+delta does not prove client delivery or original-session ownership. Those
+grants stay disabled in the typed palette until owner fences and post-await
+sends are safe. A no-argument `.infiniteammo` read is safe in isolation, but
+the whole command is disabled because the current catalog has only
+command-level availability and the `on`/`off` forms are not safe to expose.
+The same applies to `.pet` info/list versus summon/dismiss/stance and static
+`.dummy` versus caster. If `server_entity_get` or `server_ability_state` has
+no entity during a transition, mark verification unknown rather than failed.
+These rows are offline source-reviewed contracts; no live client pass has
+been claimed. The native slash catalog is a
+separate source. Its first 27 patch-012 entries
+have typed, evidence-backed disabled forms in `slash_descriptors_1a`.
+Patch entries 55–81 also have standalone disabled forms in
+`slash_descriptors_2a`, including the non-`/gm` word
+`/debugminigamecomplete`. They preserve the patch's exact 27 names,
+events and argument order. All free-text arguments are marked sensitive and
+redacted in audit previews. Those previews do not format a native slash line.
+The item recharge word has no GM handler, and the minigame completion word
+does not route to the separate ticketed SmartFox result path. Candidate
+server handlers for spawn, despawn, respawn and kill do not make their native
+client bindings or patch argument conversions proven. See
+`docs/analysis/dev-workbench/evidence/DW-26A-E.md` for each limitation.
+Selected NPC and explicit entity targets in this slice carry fresh server
+target policies. The unproved `-1` kill sentinel fails closed in the typed
+validator. Debug readbacks use `client_chat_log` Feedback lines; world-action
+recipes name the additional server, packet and client state evidence needed
+before any effect could be verified from more than a snapshot.
+`/gmmobdata` accepts a fresh, same-space entity ID regardless of whether the
+entity is a player, NPC or prop; its target kind is `any_entity`. Combat
+readbacks require the exact command prefix including `:` so AbilityOnMob and
+CombatVerbose feedback cannot satisfy the shorter command's recipe.
+Patch entries 82–108 have the same fail-closed typed treatment in
+`slash_descriptors_2b`; see
+`docs/analysis/dev-workbench/evidence/DW-26B-E.md` and its worknote.
+Their three implemented server methods (`testLOS`, `onPhysics`, `sendGMShout`)
+do not establish that the corresponding patch events invoke them. The
+contact/address words cannot resolve or mutate another player here.
+The `testLOS` descriptor accepts any fresh entity kind, including props,
+for its explicit target ID; the handler checks both supplied IDs in the
+GM's exact space.
+The `/gmsendgmshout` descriptor marks `Text` sensitive and has pure
+redaction and audience-preview helpers. The companion does not yet use
+them: DW-28–31 must redact before serializing history, audits, traces or
+screenshots and show exact-space versus all-online recipients before submit.
+A submitted line, server acceptance, aggregate delivery counts
+and receipt by one player are distinct outcomes. The native slash forms
+remain disabled pending client binding, encoding and submission proof.
+Each form states its server handler status, caller or target scope, impact,
+readback, compensation and the specific reason it cannot run. See the
+`DW-25A-E.md` and `DW-26A-E.md` evidence files under
+`docs/analysis/dev-workbench/evidence/` for per-command sources.
+The native submission path and client event-to-method binding remain unproved,
+so a displayed preview or submitted string cannot establish server acceptance.
+`server_console_exec` remains a
+raw lab tool: the acting entity must still pass the cell-side GameMaster
+check. A future GM-scoped GUI catalog caller must pass a server-verified GM
+result, never a browser flag. The MCP list tool checks live cell authority on
+every call. No live-client validation is claimed here.
 `server_minigame_state {"entity_id": <player entity id>}` reads the Livewire
 board after SmartFox login and board generation. Its `state` object contains
 the phase (`ready`, `running`, or `finished`), outcome when finished,
@@ -1194,11 +1322,37 @@ Upgrading from the PowerShell `lab` command: run `pwsh <checkout>\tools\lab\cli\
 
 ### Help, flags and output
 
-- **Help.** `lab` or `lab help` prints the commands in four groups: Run and record UAT (`uat`, `watch`, `record`, `calibrate`, `golden`), Daemon (`status`, `start`, `stop`, `restart`, `logs`, `doctor`), Instances and clients (`instances`, `clients`), and Install and configure (`env`, `install`, `setup`, `local-setup`, `version`, `completions`), with a line for each, then examples. `lab help <command>` (or `lab <command> --help`) prints that command's page: its arguments, a longer description and examples; `lab <command> -h` prints the shorter page, without the long description. A mistyped command exits 2 and names the nearest commands (`lab stauts` suggests `status`).
+- **Help.** `lab` or `lab help` prints the commands in four groups: Run and record UAT (`uat`, `watch`, `record`, `calibrate`, `golden`), Daemon (`status`, `workbench`, `start`, `stop`, `restart`, `logs`, `doctor`), Instances and clients (`instances`, `clients`), and Install and configure (`env`, `install`, `setup`, `local-setup`, `version`, `completions`), with a line for each, then examples. `lab help <command>` (or `lab <command> --help`) prints that command's page: its arguments, a longer description and examples; `lab <command> -h` prints the shorter page, without the long description. A mistyped command exits 2 and names the nearest commands (`lab stauts` suggests `status`).
 - **Flags.** Flags are `--long-flags`, which is how this guide writes them. The PowerShell spellings still work: `-Rows`, `-PlanOnly` and `-Instance:p2` run the same as `--rows`, `--plan-only` and `--instance=p2`, because `lab` rewrites them before it parses anything. Commands, scripts and agent briefs written either way keep working.
 - **Colour and plain output.** On a terminal, `lab` prints colour, glyphs and tables. When stdout is redirected (a pipe or a file), when `NO_COLOR` is set to a non-empty value, or when `TERM` is `dumb`, it prints plain text with no colour codes or glyphs, in the line format that scripts and agents read. `--json` output and exit codes are the same either way.
 - **Completions.** `lab completions powershell | Out-String | Invoke-Expression` loads tab completion for the current session. `lab completions powershell --install` runs `pwsh` once to find `$PROFILE.CurrentUserAllHosts` (so it needs `pwsh` on the `PATH`), adds a guarded line to it once: `if (Test-Path -LiteralPath '<lab.exe>') { & '<lab.exe>' completions powershell | Out-String | Invoke-Expression }`, with lab.exe's full path, so the profile never errors when lab is not on the `PATH` or has moved (it looks for the line first, so running it again changes nothing; a line an earlier version wrote, exactly `lab completions powershell | Out-String | Invoke-Expression` or the same guarded line for another path, is replaced in place; any other line of yours is left alone) and says what it did; open a new terminal afterwards, and `lab u` then Tab completes to `lab uat`. `lab completions bash`, `zsh` and `fish` print their scripts for you to load; `--install` is for PowerShell only.
 
+### Workbench target dossier
+
+`GET /workbench/api/v1/dossier?instance=<name>&entity_id=<id>` reads the current `Unit.Target` slot twice and accepts the requested runtime entity id only when both reads agree. The browser session must be bound to the same instance. A target change clears the entity fields in the response, so a delayed read cannot present the previous target as current. The read does not need a lab lease and does not pin a private client unit slot.
+
+The response has `schema_version`, `context`, `data` and `gaps`. Each field carries its source, sample time and age. Client actor/render remain separate from the server's template, health, spawn, witnesses and position. Targetability, `unitMobId` and target name are null with a `slot_metadata_unbound` gap: the client unit-slot reply has no entity id from the same observation, so a target switch and return could attach another entity's metadata. The position delta converts client UE3 units to server metres before comparison and uses the older of its client and server sample times for age. The selected id is never inferred from a name. The client table's embedded id and pointer must agree with the world snapshot; an actor pose read failure adds a client gap.
+
+The server endpoint is shared by all lab instances. The dossier currently has no live capture that binds a client player and server session, so server template, health, spawn, witnesses, recent messages and position delta are null with a `server_session_unbound` gap, even when the selected numeric entity id exists on the server. A future live binding needs a trusted capture of client instance, process, selected id, player id and server session from the same connection, plus a unique server roster row for both session and player; a numeric id or fabricated context is insufficient. Only then may the reader join server fields. The nondestructive log read then requests the full 500-row server ring and filters structured entity-id fields; `log_tail_truncated` marks any incomplete reply. An empty message array only means no matching rows in the returned ring.
+
+The companion page now has a dossier view. Open it with `lab workbench open --instance <name>`, select Target dossier, enter the runtime entity ID, and press Inspect. The choice survives a page reload for that browser session and instance. Refresh dossier rereads it; Clear removes the saved target. A changed or unconfirmed target hides prior values, a failed read clears them, and every field shows observed, unknown or stale with its source and sample time. Stale means the response target changed or its reported sample age exceeds five seconds; it does not certify that the target still exists at render time. The current live server join remains unavailable pending the session binding packets, so server fields stay unknown.
+
+### Workbench spatial frame and bookmarks (DW-05)
+
+`GET /workbench/api/v1/spatial?instance=<label>` samples the client player world, actor positions and screen projections through `client_entity_find`, and the camera through its existing memory reader. Actor positions have both UE3 units (100 per metre) and converted BigWorld metres; projected screen positions are UI pixels. The response carries the hosted instance, world ID, sample window and frame time. A world or sampled process/player change, or a projection older than two seconds, clears observed client rows and marks a gap. A coherent observation can show source, time and units, but `current` and `identity_verified` remain false with `client_identity_unbound`: the reader cannot distinguish a same-process relog into the same player until a trusted login generation is available. The client entity map may be truncated, and the response says so.
+
+Authored `resources.generic_regions` and `resources.spawnlist` rows come from the existing capped, read-only `server_db_query` filtered by the client-reported world ID. They are labelled definitions: region corner coordinates, radius and height are BigWorld metres; region flags are unitless; spawn coordinates are BigWorld metres and `heading` is radians. Region rows retain all four corners and flags. These are not live spawns. The server runtime entity list remains null with `server_session_unbound` until a trusted client/server binding exists; a matching numeric entity ID is not enough to join the two sources. Server query failure or truncation leaves that layer unknown.
+
+`GET /workbench/api/v1/bookmarks?instance=<label>` lists local observations. `POST /workbench/api/v1/bookmarks/save?instance=<label>` accepts `{instance,id?,bookmark:{world_id,space_id?,position_m:[x,y,z],facing_deg?,label,source,screenshot_path?,observed_at_ms}}`. Omit `id` to create a stable UUID; provide it to update. Delete accepts `{instance,id}` at `/bookmarks/delete`. The JSON file lives in the daemon's per-user `workbench/bookmarks/` data directory. A bookmark never changes seed content. Its `source` is an operator-supplied label, not proof of a client or server read. The screenshot path is a label only; this API does not open or write that path. Saves and deletes use the browser's same-origin session and CSRF check.
+
+`POST /workbench/api/v1/bookmarks/action?instance=<label>` accepts `{instance,id,lease_id,action}` with `click` or `teleport`. It reloads the saved record and requires the current lab lease, then refuses both `click` and `teleport` with `bookmark_action_unavailable` and a `session_identity_unbound` gap before client input. A saved bookmark with `space_id` is likewise non-actionable. Enabling actions requires a trusted BoundSession and a guard at the actual mouse-down or final Enter input boundary; checking only before a multi-step click or chat action leaves a world-change race. The companion spatial view follows in DW-12C.
+### Workbench mission X-ray
+
+`GET /workbench/api/v1/missions?instance=<name>&mission_id=<positive integer>` is a read-only, cookie-gated route for the local companion. The browser session's instance must match the query. It returns the selected mission's `resources.missions` definition, ordered `resources.mission_steps`, authored `resources.mission_objectives` joined through those steps, mission-scoped `resources.content_chains` references, the visible tracker, and explicit live-server/wire/client gaps. Each observed layer has its source, capture time and age. The tracker title is matched only to the definition's exact `mission_defn` when it occurs once among visible tracker entries **and** a bounded authored lookup proves exactly one mission ID owns that title; `mission_label` is not the title. Duplicate authored titles leave tracker binding and step disagreement unknown even if only one matching title is visible. A failed `missions:` UI section makes the tracker layer unknown even if partial rows arrived before the error. Tracker step text never becomes persisted state. The pure model can show a disagreement between a trusted server active step and tracker text for a uniquely titled mission, but today's route leaves player-specific server state and live disagreement unknown because no trusted client-to-server binding is produced. DW-06A adds that read only after DW-03S-B's generation and Cell-epoch binder is available. The route does not take a lease or activate the server packet tap. See [Mission System](../gameplay/mission-system.md) for mission lifecycle and persistence.
+
+Open `lab workbench open --instance <name>`, select **Mission X-ray**, enter an authored mission ID and press **Inspect**. The ID, but no evidence payload, survives a page reload for that browser session and instance. **Refresh mission** takes another read; **Clear** removes the saved ID. Switching IDs immediately hides the prior mission's definition and progress, and a late or failed response cannot restore it. The companion lists authored step and objective rows independently, including each step's `step_enabled` and each objective's `is_enabled`, hidden and optional flags, plus mission-scoped chain references. An objective query failure leaves that layer unknown without erasing a successful step read. Each layer shows its own source, age and gap reason. Displayed ages advance while the view remains open, using the response age plus elapsed local monotonic time. Samples over five seconds are marked stale; an old sample is not a current-state guarantee.
+
+The persisted `sgw_mission` row, decoded packet evidence, client mission state and visible tracker occupy separate sections. Only the selected mission's bound server row can show an active step or objective IDs. A tracker title must pass the API's unique authored-title check before comparison; visible text alone never supplies a mission ID or persisted progress. A comparison is **unknown** when the bound server step or unique tracker observation is missing; if both exist, the page shows agreement or disagreement without changing either value. The current route still lacks the trusted player binding and live server, decoded packet and client mission-ID readers, so those sections show explicit unknown reasons. The view is read-only and takes no lab lease.
 ### Commands
 
 `lab help` lists the commands and `lab help <command>` prints one command's page. The table gives each command's `--flag` forms; every flag also accepts its PowerShell spelling. The last column gives the exit codes: 0 is success, and 2 usually means a usage error (a mistyped flag, a missing argument).
@@ -1207,6 +1361,7 @@ Upgrading from the PowerShell `lab` command: run `pwsh <checkout>\tools\lab\cli\
 |---|---|---|
 | `lab help [<command>]` | lists the commands by group, or prints one command's page | 0; 2 for an unknown command |
 | `lab status` | daemon pid, uptime and version, then one row per instance: account, client pid, bridge port, lease (owner, purpose, time left; never an id) and whether its profile is seeded. On a terminal it prints a coloured table (`●` or `○` for the daemon, a `PROFILE` column reading `seeded` or `not seeded`); redirected, it prints the plain text the PowerShell command printed. It takes no flags | 0; 1 when the daemon is down (it still lists the `labd.env` instances with the seed column) |
+| `lab workbench open [--instance p2]` | opens the local companion window for the selected instance (default if omitted). The CLI uses its daemon bearer token to obtain a one-use browser URL; it never prints that URL. The browser receives a scoped HttpOnly cookie and uses only `/workbench/api/v1/*`, never `/mcp`. The versioned session response supplies client and lease status, an explicit gap list, and a CSRF token for leased mutations; the dossier and mission views read without a lease; Lua probe runs and object reads require a current lab lease; palette and trace remain placeholders | 0 opened; 1 daemon, token, instance or browser error; 2 usage |
 | `lab version` | the CLI's version line (`lab <version> (<sha>)`, `dev` for a build `lab install` did not stamp) and the daemon's version (`daemon <version>`, or `daemon: not running` when it does not answer) | 0 |
 | `lab start`, `lab stop [--force]`, `lab restart [--force]` | the `CimmeriaLabDaemon` task, through `daemon.ps1`; `stop` and `restart` also close the lab clients (see [A new build](#run-it)) | `daemon.ps1`'s: 3 when a leased client refused the stop |
 | `lab logs [--lines 50] [--instance p2] [--level warn] [--follow]` | the last lines of `labd.log`, filtered by instance and minimum level; a continuation line (a panic body, a backtrace) goes with its entry; bearer and 64-hex tokens print as `<redacted>`. `--follow` first prints the last `--lines` filtered lines (as without it; an unfinished last line waits for its newline), then polls the file every 500 ms for new lines and stops on Ctrl+C; the `-Lines`, `-Instance`, `-Level` and `-Follow` spellings still work. On a terminal the timestamp is dim and the level word coloured | 0 (also after Ctrl+C under `--follow`); 1 when there is no log |

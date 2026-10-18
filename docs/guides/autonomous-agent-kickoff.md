@@ -150,7 +150,7 @@ and pick another issue.
 
 ## Defaults you take alone, decisions you do not
 
-Take alone: file placement and naming per `CLAUDE.md`; test type per `TESTING.md`; which advisor
+Take alone: file placement and naming per `docs/agents/rules-and-gotchas.md`; test type per `TESTING.md`; which advisor
 to consult; splitting one claim into two PRs; any under-specified detail, provided you write your
 interpretation into "Done when" and the PR body.
 
@@ -227,7 +227,7 @@ Always, locally:
 - if `docs/drafts/spec/figures/**` changed: `tools/check-figure-sources.sh` and
   `tools/lint-figure-style.sh`
 
-**[deviation]** The workspace-wide `clippy`, `build`, and `nextest` in `CLAUDE.md`'s pre-PR
+**[deviation]** The workspace-wide `clippy`, `build`, and `nextest` in the `pre-pr-checks.md` pre-PR
 checklist run locally only when the lock is free and your change touches a crate others depend
 on (`cargo tree -i -p <crate>` lists dependents). Otherwise open the PR as a draft and let CI be
 the workspace runner. It finishes in about 12 minutes on fresh runners and does not compete for
@@ -240,7 +240,7 @@ gh pr checks <n> --watch --fail-fast
 A runtime-behaviour change needs a test of the right type from `TESTING.md`. A regression guard
 must fail with the fix reverted: prove it once by reverting the hunk, running, and restoring (no
 stash), and say so in the PR. A change to user-visible behaviour, public surface, layout, build
-steps, or test policy needs the doc rows mapped in `CLAUDE.md`, plus `docs/readme.md` and the
+steps, or test policy needs the doc rows mapped in `docs/agents/doc-update-map.md`, plus `docs/readme.md` and the
 section README if you added a document.
 
 ## Commit and PR
@@ -281,7 +281,7 @@ Agent: <AGENT_ID>
 - Not covered: what did not run or cannot be checked on this host (client, visual, Windows build), and why
 
 ## Doc updates
-- `CLAUDE.md` map rows touched, or "none required because ..."
+- `docs/agents/doc-update-map.md` rows touched, or "none required because ..."
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 ```

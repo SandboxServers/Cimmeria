@@ -235,7 +235,7 @@ Help, who is online, and odds and ends.
 
 > **Tip for GMs:** these commands take **numbers**, not names. Use a target's numeric id (not a player's name), and they only affect things in your own area.
 
-> **"Invalid command." on every `/gm` command?** The game only knows these commands if your install has `Common\xml\slash_commands\InternalSlashCommands.xml`. The client reads that file (then `FinalSlashCommands.xml`) at startup, and it defines all 167 `/gm*` commands. A launcher install from the 2009 retail set ships only `SlashCommands.xml` and `FinalSlashCommands.xml`, so it has no `/gm` commands at all, whatever your account level (DA-06; the QA client tree has the file). The `.`-commands below work without it. With the file in place, a GameMaster account's characters can use them: the client checks each command's role mask (`0x2FF` for the `/gm` commands) against the access level the server sends, and 2 passes (confirmed in the lab, DA-F8). The launcher's patch `012-gm-slash-commands` (Update installs it) adds a project-written copy of the file: see [client patches](../data/client-patches/README.md#012-gm-slash-commands).
+> **"Invalid command." on every `/gm` command?** The game only knows these commands if your install has `Common\xml\slash_commands\InternalSlashCommands.xml`. The client reads that file (then `FinalSlashCommands.xml`) at startup. The QA file has 164 entries but 162 distinct command words: 161 `/gm*` commands and `/debugminigamecomplete`; two words are defined twice. A launcher install from the 2009 retail set ships only `SlashCommands.xml` and `FinalSlashCommands.xml`, so it has no `/gm` commands at all, whatever your account level (DA-06; the QA client tree has the file). The `.`-commands below work without it. With the file in place, a GameMaster account's characters can use them: the client checks each command's role mask (`0x2FF` for the `/gm` commands) against the access level the server sends, and 2 passes (confirmed in the lab, DA-F8). The launcher's patch `012-gm-slash-commands` (Update installs it) adds a project-written copy of the file with those 162 distinct words: see [client patches](../data/client-patches/README.md#012-gm-slash-commands).
 
 ### Teleporting
 
@@ -494,6 +494,22 @@ appears in anyone else's chat. A normal player who types a registered command
 (`.pet`, `.giveability`, ...) gets "is a GM command" back and nobody else sees
 it. Any other `.`-message is ordinary chat. Auth is checked against your account
 level server-side. Type `.help` (or `.help <word>`) in-game for the live list.
+
+The lab workbench catalog includes typed descriptors for the 27 progression,
+ability, stat, ammo and pet commands. The current catalog enables only live
+reads such as `.effects` and the seven stat reports. `.cooldowns` and
+`.cleareffects` remain visible but disabled until their forms enforce
+confirmation and capture a before-state snapshot. Persistent grants
+including
+`.givexp`, `.giveability` and `.giveammo` are shown with exact DB readback
+recipes but remain disabled as palette actions until queued requests and
+post-commit updates are bound to the original GM and subject sessions.
+Commands that mix safe reads with unsafe mutations, including `.pet` and
+`.infiniteammo`, also remain disabled until the palette can gate each form.
+This does not change what a GM can type in the raw `.` console. See
+[`DW-21-E`](analysis/dev-workbench/evidence/DW-21-E.md) for the per-command
+evidence and the [lab guide](guides/live-research-lab.md#gm-workbench-command-catalog)
+for readback limits.
 
 ### Database persistence & the seed-commit flow
 

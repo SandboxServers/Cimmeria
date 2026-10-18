@@ -1,0 +1,19 @@
+{
+  "stock_inventory": "unknown",
+  "inspected_sources": [
+    "docs/commands.md",
+    "docs/protocol/cell-method-dispatch-table.md",
+    "data/client-patches/012-gm-slash-commands/commands.toml",
+    "data/client-patches/012-gm-slash-commands/InternalSlashCommands.xml"
+  ],
+  "missing_sources": [
+    "stock Common/xml/slash_commands/SlashCommands.xml",
+    "stock Common/xml/slash_commands/FinalSlashCommands.xml"
+  ],
+  "verified_extras": [],
+  "exclusions": [
+    "docs/commands.md lists /debugperformance outside the GM section; its event exists in client reverse-engineering notes, but no stock XML Access attribute or GM method binding is available, so it is not a verified GM addendum word",
+    "docs/commands.md lists /worldreset outside the GM section; inherited method 92 onWorldInstanceReset is GM-gated, but stock XML Access and slash-event binding are unknown, so it is unresolved rather than a verified GM addendum word",
+    "patch 012 InternalSlashCommands.xml is generated from commands.toml and is not independent stock evidence"
+  ]
+}

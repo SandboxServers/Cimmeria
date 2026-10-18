@@ -61,7 +61,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 INVENTORY_DIR = REPO_ROOT / "docs" / "testing" / "inventory"
 
-#: Packages CI does not build or run (see the pre-PR checklist in CLAUDE.md).
+#: Packages CI does not build or run (see docs/agents/pre-pr-checks.md).
 CI_EXCLUDED_PACKAGES = frozenset(
     {
         "cimmeria-app",

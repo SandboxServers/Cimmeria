@@ -194,7 +194,17 @@ pub(crate) async fn handle_reanchor_player(
         .copied()
         .ok_or("Reanchor: no client addr for entity")?;
 
-    let (key, enc_version, pending_acks_arc, next_seq, appearance_args, tint_args, class_id, id) = {
+    let (
+        key,
+        enc_version,
+        pending_acks_arc,
+        next_seq,
+        appearance_args,
+        tint_args,
+        class_id,
+        id,
+        origin,
+    ) = {
         let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         let c = clients
             .get(&addr)
@@ -208,6 +218,7 @@ pub(crate) async fn handle_reanchor_player(
             c.cached_tint_args.clone(),
             c.player_class_id,
             session_identity::session_identity(c),
+            c.wire_send_origin(),
         )
     };
 
@@ -265,17 +276,22 @@ pub(crate) async fn handle_reanchor_player(
     );
 
     for (i, pkt) in packets.iter().enumerate() {
-        transport.send_to(pkt, addr).await?;
+        // The Cell request carries an entity ID, not its connection generation.
+        // The reverse map may have been reused before our first lookup, so
+        // these bytes cannot be attributed to the observed current session.
+        super::send_direct(transport, pkt, addr, None).await?;
         // Reanchor burst is state-change traffic — register each packet
         // with the Channel for retransmit on loss. Derived seqs are masked
         // to the 28-bit space so the contiguous range stays in-band even
         // when `base_seq + i` would otherwise cross `NULL_SEQUENCE`.
         let pkt_seq = base_seq.wrapping_add(i as u32) & cimmeria_mercury::packet::SEQUENCE_MASK;
-        super::super::helpers::shadow_register_reliable_send(
+        super::register_unproven_direct_reliable(
             connected,
             addr,
             pkt_seq,
-            cimmeria_mercury::packet::Bytes::copy_from_slice(pkt),
+            pkt,
+            &next_seq,
+            origin.as_ref(),
         );
     }
 

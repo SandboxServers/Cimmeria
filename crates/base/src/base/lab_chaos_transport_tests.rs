@@ -122,6 +122,24 @@ impl Rig {
     }
 }
 
+#[test]
+fn wrap_reports_whether_it_installed_the_chaos_shim() {
+    let (inject, rx) = mpsc::unbounded_channel();
+    let wire: Arc<dyn BidirectionalTransport> = Arc::new(FakeWire {
+        sent: Mutex::new(Vec::new()),
+        inbound: tokio::sync::Mutex::new(rx),
+    });
+    let (plain, plain_unsafe) = wrap_with_registry(wire.clone(), None);
+    assert!(Arc::ptr_eq(&plain, &wire));
+    assert!(!plain_unsafe);
+
+    let registry: &'static LabChaos = Box::leak(Box::new(LabChaos::new()));
+    let (shaped, shaped_unsafe) = wrap_with_registry(wire.clone(), Some(registry));
+    assert!(!Arc::ptr_eq(&shaped, &wire));
+    assert!(shaped_unsafe);
+    drop(inject);
+}
+
 fn addr(port: u16) -> SocketAddr {
     SocketAddr::from(([127, 0, 0, 1], port))
 }

@@ -485,6 +485,8 @@ fn gate_and_install(producer: crate::queue::Producer) -> bool {
         .collect();
 
     let report = crate::fingerprint::check(read_bytes, &owners);
+    #[cfg(feature = "lab-bridge")]
+    crate::hooks::seams::d3d9::record_overlay_report(&report);
     for line in report.lines() {
         crate::log::line(line);
     }

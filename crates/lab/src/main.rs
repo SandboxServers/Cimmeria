@@ -69,6 +69,9 @@ mod server;
 mod supervisor;
 mod timeline;
 mod uat;
+// DW-01 defines the pure contract before later packets wire it into the supervisor.
+#[allow(dead_code)]
+mod workbench;
 
 use client::BridgeClient;
 use daemon::config::Mode;

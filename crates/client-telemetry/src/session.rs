@@ -41,6 +41,37 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use thiserror::Error;
 
+/// OS-random identity for one lab bridge startup, independent of the SID.
+#[cfg(feature = "lab-bridge")]
+pub(crate) fn mint_bridge_epoch() -> std::io::Result<String> {
+    let mut bytes = [0u8; 16];
+    #[cfg(windows)]
+    {
+        #[link(name = "bcrypt")]
+        unsafe extern "system" {
+            fn BCryptGenRandom(
+                algorithm: *mut std::ffi::c_void,
+                buffer: *mut u8,
+                len: u32,
+                flags: u32,
+            ) -> i32;
+        }
+        // BCRYPT_USE_SYSTEM_PREFERRED_RNG needs no algorithm handle.
+        let status = unsafe { BCryptGenRandom(std::ptr::null_mut(), bytes.as_mut_ptr(), 16, 2) };
+        if status < 0 {
+            return Err(std::io::Error::other(format!(
+                "bridge epoch RNG failed: {status:#x}"
+            )));
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        use std::io::Read;
+        std::fs::File::open("/dev/urandom")?.read_exact(&mut bytes)?;
+    }
+    Ok(bytes.iter().map(|b| format!("{b:02x}")).collect())
+}
+
 #[derive(Debug, Error)]
 pub enum SessionError {
     #[error("could not derive install_dir from host executable path: {0}")]

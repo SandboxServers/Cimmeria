@@ -8,7 +8,7 @@
 
 - [ ] Test type chosen with the picker in `TESTING.md`:
 - [ ] The guard fails with the fix reverted (I checked), or this PR changes no runtime behaviour
-- [ ] Pre-PR checklist from `CLAUDE.md` run locally, with clippy on current stable Rust
+- [ ] Pre-PR checklist from `docs/agents/pre-pr-checks.md` run locally, with clippy on the toolchain `rust-toolchain.toml` pins
 
 ## Doc updates
 

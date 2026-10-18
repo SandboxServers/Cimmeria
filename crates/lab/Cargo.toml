@@ -79,6 +79,7 @@ windows-sys = { version = "0.61", features = [
     "Win32_UI_WindowsAndMessaging",
     "Win32_Graphics_Gdi",
     "Win32_Storage_Xps",
+    "Win32_Storage_FileSystem",
     # display.rs: keep the display awake (SetThreadExecutionState) and
     # probe Direct3D 9 before a launch.
     "Win32_System_Power",

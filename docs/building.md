@@ -107,7 +107,7 @@ The headless `cimmeria-wireclient` in [`crates/wireclient/`](../crates/wireclien
 
 ## Running the test suite
 
-The five gating checks CI runs are documented in [`CLAUDE.md`](../CLAUDE.md) under "Pre-PR checklist." The short version:
+The five gating checks CI runs are documented in [`docs/agents/pre-pr-checks.md`](agents/pre-pr-checks.md). The short version:
 
 ```bash
 cargo fmt --all -- --check
@@ -145,7 +145,7 @@ The full list of first-day problems lives in [`troubleshooting.md`](troubleshoot
 - [`README.md`](../README.md) — project overview and status
 - [`bootstrap/README.md`](../bootstrap/README.md) — the `setup.ps1` pipeline and the `CimmeriaBootstrap` PowerShell module
 - [`crates/README.md`](../crates/README.md) — crate layout, dependency graph, key source files
-- [`CLAUDE.md`](../CLAUDE.md) — repo invariants, build rules, pre-PR checklist
+- [`CLAUDE.md`](../CLAUDE.md) — repo invariants and the build-lane rule; [`docs/agents/pre-pr-checks.md`](agents/pre-pr-checks.md) — pre-PR checklist
 - [`architecture/build-system.md`](architecture/build-system.md) — why the toolchain is pinned, the profiles, the build lane, Dev Drive and cleanup
 - [`TESTING.md`](../TESTING.md) — test types, picker, gotchas
 - [`guides/getting-started.md`](guides/getting-started.md) — first-time walkthrough

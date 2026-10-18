@@ -15,13 +15,14 @@ sees them in chat.
 Read this once before you start.
 
 1. **Everything you do shows up at once**, for you and for every player nearby.
-2. **Nothing is saved until you type `.seedconfirm`.** Until then your changes
-   wait in a queue. `.seedpending` shows how many are waiting, and `.seedcancel`
-   throws the queue away.
-3. **`.seedconfirm` saves to the running server** and sends your changes to
-   our log system as a **batch**. It answers with a batch id, such as
+2. **Authoring SQL waits until `.seedconfirm`.** In-world movement and shared
+   path-buffer edits already happened. `.seedpending` shows your SQL queue;
+   `.seedcancel` discards that queue but does not undo in-memory changes.
+3. **`.seedconfirm` sends queued SQL to the running server** and sends your
+   proposed seed changes to our log system as a **batch**. It answers with a batch id, such as
    `Sent for merge as batch 12-1790553600123`. Your changes now survive logouts
-   and server restarts.
+   and server restarts only after the later database result reports success;
+   zero affected rows or a failed query must be investigated.
 4. **A developer has to merge the batch** into the game's data files, or the
    next server update wipes it. Send them the batch id.
 
@@ -111,6 +112,87 @@ lasts until you log out.
 | `.help <word>` | Lists commands matching the word. |
 
 ## Things to know
+
+### Workbench readback for placement and travel
+
+The workbench's `server_console_list` catalog now provides reviewed metadata
+for 16 travel and spawn commands. Three entries are marked runnable:
+`.gotolocation`, `.spawn` and `.despawn`. The local companion GUI
+forms and execution flow are pending DW-28 and DW-29. Catalog availability
+does not make a form available yet. `.gotoxyz` remains disabled in the catalog
+until execution can recheck an optional selected subject without silently
+falling back to moving the GM. Its player move attempts a saved-position write
+and sends `BASEMSG_FORCED_POSITION`; neither client application nor database
+persistence follows from the command feedback alone.
+
+Before any manual move, capture the subject's entity ID, instance and
+position. Inspect the subject again after the move and check the client's
+position separately. For a same-space `.gotolocation`, inspect the
+`wire.out.forced_position` `send=sent` through `server_log_tail` (a
+`send_failed` row means it was not sent); a new server position alone does
+not prove that a client received the snap. A world
+transfer needs a fresh destination read after re-entry, followed by a check
+of the saved world and coordinates and GateTravel persistence warnings/errors
+(`rows_affected_zero` or `persist_arrival_failed`).
+Missing send, arrival or persistence evidence means the outcome is unknown.
+Explicit coordinates are checked for finite values but not for navmesh or Z
+containment, so they can place the avatar outside traversable geometry.
+`.despawn` with an explicit ID refuses pets, while the selected
+entity form can remove a pet without its normal dismiss path. Capture the
+selected entity's `spawn_id` before despawning it; if one exists, use a
+read-only `server_db_query` for that exact `resources.spawnlist.spawn_id` to
+confirm the retained row. `.delspawn` accepts any selected in-view seeded
+spawnable with a template and `spawn_id`. Its catalog action is disabled:
+the handler queues DELETE before runtime player refusal, so a seeded-looking
+player can leave pending SQL. A server-side player guard and regression are
+required before enabling it. Existing manual use requires separate checks of
+runtime removal and later database deletion; inspect `.seedpending` before
+confirming any queued changes.
+
+Other travel and spawn forms are marked unavailable in the catalog with their
+specific safety reason. In particular, selecting a summoned pet for
+`.savespawn` or enabling `.autosavespawn 1` can queue a persistent pet spawn.
+`.autosavespawn 0|false` and `.spawnset` with no arguments or `list` are safe
+subforms, but the current catalog can only enable or disable a whole command.
+They await per-form
+availability in DW-29/30 rather than being presented as unsafe actions.
+Keep pets out of authoring selections until the server has a class guard.
+`.seedpending` shows queued work; `.seedconfirm` requests a live database write;
+a developer still has to commit the emitted seed SQL. `.seedcancel` clears
+your whole pending queue and does not undo an in-world move or despawn.
+
+### Workbench patrol and entity authoring
+
+The reviewed catalog has typed fields and readback plans for all 11 `.path_*`
+and 17 entity-authoring commands. Only `.path_show` and `.tag` are marked
+runnable. `.path_show` reads the shared **session buffer**, not a saved path.
+`.tag` edits the selected entity's in-memory tag; a separate `.savespawn`
+and positive database result are needed to change a live spawnlist row.
+Neither action commits a seed file. The remaining commands are searchable
+with specific disabled reasons; the old in-game console still accepts them.
+
+Patrol authoring needs care even through the old console. The path buffer is
+shared across GMs, while each GM owns a separate SQL queue. A second GM can
+queue a point without owning the header; confirming can fail its foreign key
+or attach it to an existing same-ID path in another world. `.path_clear`
+removes the buffer immediately and queues two separate deletes, so one live
+database operation may succeed while the other fails. Six waypoint edits
+address an ordinal index; the actual `point_id` is resolved only when the
+queued SQL runs, after intervening edits may have changed the order. The
+palette keeps these actions disabled until the server binds ownership and
+pins the row at confirmation. Inspect both base results and exact
+`resources.point_sets`/`resources.point_set_points` rows after confirmation;
+a batch id or queued count alone does not prove a live database edit.
+
+Entity appearance and dialog commands mostly change memory only. `.name`
+also accepts a selected player, but player snapshot names do not read back
+the `npc_name` it writes. `.lookat` turns any non-player target, including a
+pet or prop, and can queue spawnlist SQL when autosave is enabled; it is
+disabled as a palette action until target class and autosave state can be
+rechecked at execution. `.visible true` does not send an active show message.
+Read [the per-command evidence](../analysis/dev-workbench/evidence/DW-20B-E.md)
+before using a disabled command manually. No queued SQL or positive live
+database result is a committed change to `db/resources/`.
 
 - **Save as often as you like; confirm once.** Saving the same NPC twice
   before you confirm keeps only the latest save.

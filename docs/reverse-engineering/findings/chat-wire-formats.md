@@ -211,6 +211,19 @@ already pinned by audit A-28, and nothing found here contradicts it. Treat the e
 heuristic (e.g. does a leading token like "global" or "space" select `isGlobal`?) as UNRESOLVED;
 it is non-blocking for SS-C2, which only needs to decode the two fields the def already declares.
 
+DW-24B (2026-10-16) preserves that boundary. The hub-pass UAT ledger
+(`docs/analysis/hub-pass-uat/README.md`, Chat 10) records
+`/gmsendgmshout 1 HPUshout1` submitted by the stock `ChatMod.onTextAccepted`
+route and independently received by the server as a native global shout.
+`ChatWindow.lua` line 320 passes input to `processTextCommand(text)`
+(`chat-speaker-echo.md:103-108`). The existing confirmed
+`APlayerController::execConsoleCommand` at `0x00539850` is an `FFrame` thunk,
+not a raw string target (`crates/client-telemetry/src/bridge/console.rs`).
+These sources prove one plain-token path; they do not establish the native
+tokenizer for embedded spaces, quotes, backslashes, omitted/empty optional
+arguments, or any other patch 012 command. No client binary was available for
+new address/ABI verification, and no lab client was used for this packet.
+
 ### C-Q3 — chat input max length (CLOSED — negative evidence)
 
 `ChatWindow.layout`'s `Chat_Input` control (`Window Type="RichTextEditbox"`) has **no

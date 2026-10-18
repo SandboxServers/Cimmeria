@@ -91,6 +91,7 @@ mod ss_u1_mail;
 mod ss_u2_duel;
 #[cfg(test)]
 mod target_in_view;
+mod workbench_world_author;
 
 /// Build a SpaceManager with a GM player (entity 1, access_level 2) targeting an
 /// NPC (entity 100001) in a small test world.

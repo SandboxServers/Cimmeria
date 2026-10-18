@@ -182,6 +182,36 @@ default (`COALESCE(s.patrol_path_id, t.patrol_path_id)`). Per-waypoint edits
 
 ## Consequences / follow-ups
 
+### Developer workbench travel and spawn catalog (DW-20A)
+
+The GM-only `server_console_list` catalog now carries typed fields, accepted
+argument shapes, server preconditions, impact, readback and compensation for
+the 16 travel, placement and spawn commands. Three entries are marked runnable
+in the catalog; companion GUI forms and execution are pending DW-28 and DW-29.
+The other entries have named safety gaps and remain unavailable to the
+companion palette. In particular, `.gotoxyz` has an optional selected subject
+that can fall back to the caller if it goes stale. It needs an execution-time
+expected-subject check before its catalog entry can be enabled. `.delspawn`
+also stays disabled until the cell refuses a seeded-looking player before
+queueing any spawnlist DELETE. A disabled catalog entry does not change what
+a GM can type in the in-game `.`-console.
+
+The palette must refresh the server-side actor and target before dispatch.
+An initial travel receipt is only an enqueue acknowledgement. For a same-space
+player snap, compare `server_entity_get` before and after, inspect the
+`wire.out.forced_position` `send=sent` row, and query the saved `sgw_player`
+position;
+for a world transfer, wait for re-entry, compare the destination instance,
+read `sgw_player` world, position and known stargates, and inspect
+GateTravel persistence warnings/errors (`rows_affected_zero` or
+`persist_arrival_failed`) before claiming durable arrival. Missing
+send, arrival or persistence evidence is unknown. Explicit `.gotolocation`
+coordinates are finite checked but have no navmesh or Z containment guard,
+so the UI must display the geometry risk. No server snapshot alone proves the
+client applied a snap.
+The full per-command evidence and disabled reasons are in
+`docs/analysis/dev-workbench/evidence/DW-20A-E.md`.
+
 - New cell→base messages: `ExecuteAuthoringSql`, `ConsoleSearch`.
 - New `SpaceManager` fields: `authoring_changes`, `autosave_spawns`,
   `patrol_authoring` (all ephemeral, server-side).

@@ -1,12 +1,12 @@
 # Project Rules and Gotchas
 
-> **Last updated**: 2026-10-11
+> **Last updated**: 2026-10-15
 > **Audience**: Contributors and their agents, before proposing an approach
 > **Type**: Reference
 
 Decisions the maintainers have already made, and traps contributors have already hit. None of this is derivable from reading the code, which is why it is written down. Read it before proposing an approach. If a rule here blocks something you think is right, say so in the PR or issue; do not work around it.
 
-Each entry says what to do and why. Build commands, the pre-PR checklist and the test policy stay in [`CLAUDE.md`](../../CLAUDE.md) and [`TESTING.md`](../../TESTING.md), the doc-update map in [doc-update-map.md](doc-update-map.md), and the CI-failure notes in [pre-pr-checks.md](pre-pr-checks.md); none of them are repeated here.
+Each entry says what to do and why. [`CLAUDE.md`](../../CLAUDE.md) repeats the rules that cost the most, one line each, and links back here. Build commands live in the `lane-build` skill ([`.claude/skills/lane-build/SKILL.md`](../../.claude/skills/lane-build/SKILL.md)), the pre-PR checklist in [pre-pr-checks.md](pre-pr-checks.md), the test policy in [`TESTING.md`](../../TESTING.md), the doc-update map in [doc-update-map.md](doc-update-map.md), and the CI-failure notes in [pre-pr-checks.md](pre-pr-checks.md); none of them are repeated here.
 
 ## Evidence and reverse engineering
 
@@ -55,6 +55,18 @@ Classify before you design.
 ## Tools and scripts
 
 - **Look for an existing tool before you write one.** Before writing a script, parser, decoder, extractor or CLI, search the [tools catalog](../../tools/README.md#tools-catalog) (every script under `tools/` and every crate binary, grouped by task, with how to run it), `crates/*/src/bin/` and [`crates/README.md`](../../crates/README.md). Extend the tool that already does most of the job instead of adding a sibling, and give a new tool a one-line summary (module docstring, leading comment, `.SYNOPSIS`, or `//!` for a Rust binary) so the generated catalog picks it up. Why: the repo has about 150 tools, and before the catalog most crate binaries were described only in campaign worknotes, so sessions that could not find a tool wrote another beside it, with its own bugs to rediscover.
+
+## File organization
+
+Files should "do what it says on the tin": a reader, human or LLM, should predict a file's contents from its name. Split large files along natural seams so both LLM context and human review stay tractable.
+
+- **Soft cap 500 lines, hard cap 700.** Under 500, leave the file alone. Between 500 and 700, split it if a natural seam exists (handler groups, lifecycle phases, message-type families); if it is one cohesive concept with no seam, leave it. Over 700, split it.
+- **Split along natural seams, not line counts.** Group methods that share state, lifecycle or call patterns. The line count is a signal to look for seams, not a target.
+- **Flat names for 2–3 siblings, a directory for 4 or more.** Prefer `inventory_grant.rs` + `inventory_move.rs` over `inventory/grant.rs` + `inventory/move.rs`, and promote to a directory once a theme crosses four files.
+- **Re-export after a split.** When a file becomes a directory, its new `mod.rs` `pub use`s the submodules' public types, so callers' imports don't change. A split is an internal refactor, not a public-surface change.
+- **Foresight.** When you can already name three or more sibling files a new file will grow into (handler per message, method per feature), start it as a directory. The canonical example is `crates/base-methods/src/base/world_entry/methods/vendor/`.
+- **Names say what's inside.** No `helpers.rs`, `utils.rs`, `misc.rs` or `extra.rs`; use `cooldowns.rs`, `damage_resolution.rs`, `witness_list.rs`.
+- **Module style is `foo/mod.rs`**, not `foo.rs` beside `foo/`. Stay consistent.
 
 ## Build and CI
 

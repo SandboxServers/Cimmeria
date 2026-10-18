@@ -16,27 +16,18 @@ use cimmeria_mercury::packet::{parse_incoming, FLAG_HAS_REQUESTS, FLAG_HAS_SEQUE
 use crate::auth::PendingLogin;
 use crate::cell::messages::BaseToCellMsg;
 use crate::credential_redaction::CredentialPrefix;
-use crate::mercury::{build_connect_reply, build_logged_off, build_time_sync, game_clock};
+use crate::mercury::{build_connect_reply, build_time_sync, game_clock};
 
-use super::helpers::{destroy_client_entities, to_hex};
-use super::session_identity;
+use super::helpers::to_hex;
+use super::service::session_wire_proof::SessionOriginIssuer;
 use super::tick_sync::run_tick_loop;
 use super::ConnectedClientState;
 
 mod eviction;
+pub(crate) use eviction::handle_log_off;
 pub(crate) mod relaunch;
 
-/// Validate ticket, send Phase 3 reply + time-sync, register the encrypted channel.
-///
-/// `level = "info"` because login is low-frequency and high-signal —
-/// every successful auth shows up in SigNoz as a span you can drill
-/// into for ticket lookup, duplicate-eviction, and tick-loop spawn.
-#[tracing::instrument(
-    name = "base.login",
-    level = "info",
-    skip_all,
-    fields(peer = %addr, request_id, account_id = tracing::field::Empty),
-)]
+#[cfg(test)]
 pub(crate) async fn handle_login(
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,
@@ -50,6 +41,51 @@ pub(crate) async fn handle_login(
     db_pool: &Option<Arc<PgPool>>,
     enc_version: EncryptionVersion,
     plugins: &BasePlugins,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let issuer = SessionOriginIssuer::new()?;
+    handle_login_with_issuer(
+        transport,
+        addr,
+        request_id,
+        ticket,
+        pending_logins,
+        connected,
+        entity_manager,
+        cell_tx,
+        entity_to_addr,
+        db_pool,
+        enc_version,
+        plugins,
+        &issuer,
+    )
+    .await
+}
+
+/// Validate ticket, send Phase 3 reply + time-sync, register the encrypted channel.
+///
+/// `level = "info"` because login is low-frequency and high-signal —
+/// every successful auth shows up in SigNoz as a span you can drill
+/// into for ticket lookup, duplicate-eviction, and tick-loop spawn.
+#[tracing::instrument(
+    name = "base.login",
+    level = "info",
+    skip_all,
+    fields(peer = %addr, request_id, account_id = tracing::field::Empty),
+)]
+pub(crate) async fn handle_login_with_issuer(
+    transport: &Arc<dyn Transport>,
+    addr: SocketAddr,
+    request_id: u32,
+    ticket: &str,
+    pending_logins: &Arc<Mutex<HashMap<String, PendingLogin>>>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_manager: &Arc<Mutex<EntityManager>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    db_pool: &Option<Arc<PgPool>>,
+    enc_version: EncryptionVersion,
+    plugins: &BasePlugins,
+    issuer: &SessionOriginIssuer,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Peek before consuming: a ticket that is too old, or that may not take
     // over the session already on this address (a relaunched client, routed
@@ -197,12 +233,12 @@ pub(crate) async fn handle_login(
         enc_version,
     );
     tracing::trace!(%addr, len = reply.len(), hex = %to_hex(&reply), "UDP_OUT connect_reply");
-    transport.send_to(&reply, addr).await?;
+    transport.send_to_pre_phase3(&reply, addr).await?;
 
     // time-sync bundle at seq=2, carrying the server's current game time.
     let sync = build_time_sync(&key, TIME_SYNC_SEQ, game_clock::game_ticks(), enc_version);
     tracing::trace!(%addr, len = sync.len(), hex = %to_hex(&sync), "UDP_OUT time_sync");
-    transport.send_to(&sync, addr).await?;
+    transport.send_to_pre_phase3(&sync, addr).await?;
 
     // Both went out with `FLAG_RELIABLE`, so the new channel tracks them
     // like any other reliable send: a lost one is resent on RTO (#842).
@@ -229,6 +265,9 @@ pub(crate) async fn handle_login(
         // Rule 6: helpers that log only an `account_id` name it from here.
         cimmeria_entity::known_names::remember_account(login.account_id, &login.account_name);
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        let connected_at = Instant::now();
+        let mut extensions = relaunch::binding_extensions(ticket_ip_matched);
+        extensions.insert(issuer.issue(addr, connected_at));
         clients.insert(
             addr,
             ConnectedClientState {
@@ -251,7 +290,7 @@ pub(crate) async fn handle_login(
                 next_seq_unreliable,
                 pending_acks,
                 last_recv,
-                connected_at: Instant::now(),
+                connected_at,
                 account_entity_id: entity_manager.lock().unwrap().create_entity("Account").0 as u32,
                 next_data_id: 0,
                 pending_world_entry: None,
@@ -281,7 +320,7 @@ pub(crate) async fn handle_login(
                 channel: Mutex::new(channel),
                 // Whether the ticket was issued to this address's IP (the
                 // relaunch gate's rule 4).
-                extensions: relaunch::binding_extensions(ticket_ip_matched),
+                extensions,
                 // The service's plugin table (#962 step 5): hook sites
                 // read it off the session.
                 plugins: plugins.clone(),
@@ -562,98 +601,6 @@ fn hex_nibble(b: u8) -> Result<u8, Box<dyn std::error::Error + Send + Sync>> {
         b'A'..=b'F' => Ok(b - b'A' + 10),
         _ => Err(format!("invalid hex character: {}", b as char).into()),
     }
-}
-
-/// Handle `logOff` (0xC2) -- the client is leaving the session.
-///
-/// Both "Change Server" and "Back" buttons in the character select UI call this.
-/// The C++ reference (`Account.py:logOff`) was a no-op (`pass`), which meant the
-/// server never cleaned up -- leaking sessions indefinitely.
-///
-/// Client flow (from Ghidra analysis of FUN_00def9f0):
-///   1. Both buttons emit `Event_NetOut_LogOff` -> sends logOff (0xC2)
-///   2. `relogin()` also sets a relogin flag before step 1
-///   3. Client fires `gotoLogin` state transition
-///   4. Client waits for Mercury channel to die (server closes or timeout)
-///   5. `Event_Net_Disconnected` fires -> disconnect callback (FUN_00de9bb0):
-///      - If relogin flag set -> `EntityManager::disconnected()` + SOAP re-login
-///      - If not set -> shows "disconnected from network" UI
-///
-/// We send `LOGGED_OFF` (0x37) to trigger an immediate channel teardown on the
-/// client side (via `ServerConnection::loggedOff -> Mercury::disconnect`).
-/// Without it, the client waits 30s for the Mercury channel timeout.
-pub(crate) async fn handle_log_off(
-    transport: &Arc<dyn Transport>,
-    addr: SocketAddr,
-    key: [u8; 32],
-    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
-    entity_manager: &Arc<Mutex<EntityManager>>,
-    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
-    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    // The account pair is read before the session is removed below.
-    let identity = session_identity::identity_for_addr(connected, addr);
-    tracing::info!(
-        %addr,
-        account_id = identity.account_id,
-        account_name = identity.account_name,
-        "Client requests logOff -- sending LOGGED_OFF and cleaning up"
-    );
-
-    // Signal the tick-sync loop to stop and grab seq/acks for the final packet.
-    // Snapshot the identity + session duration here too, before
-    // `destroy_client_entities` removes the session from the map — the
-    // Discord logout emit below needs them.
-    let (acks, seq, enc_version, account, character, session_secs) = {
-        let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-        let client = clients.get_mut(&addr).ok_or("no session for addr")?;
-        client
-            .cancelled
-            .store(true, std::sync::atomic::Ordering::Relaxed);
-        let acks: Vec<u32> = cimmeria_mercury::packet::take_piggyback_acks(
-            &mut client.pending_acks.lock().unwrap(),
-            client.enc_version,
-        );
-        let seq = client
-            .next_seq
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-            & cimmeria_mercury::packet::SEQUENCE_MASK;
-        let enc_version = client.enc_version;
-        let account = client.discord_account();
-        let character = client.discord_character();
-        let session_secs = client.connected_at.elapsed().as_secs();
-        (acks, seq, enc_version, account, character, session_secs)
-    };
-
-    // Send LOGGED_OFF (0x37) with reason=0 to trigger immediate client-side
-    // channel teardown.  This fires ServerConnection::loggedOff -> Event_Net_Disconnected
-    // which triggers the relogin flow (Change Server) or disconnect UI (Back).
-    let pkt = build_logged_off(&key, seq, &acks, enc_version);
-    transport.send_to(&pkt, addr).await?;
-    tracing::debug!(%addr, seq, "Sent LOGGED_OFF (0x37)");
-
-    // Destroy entities and remove from connected map.
-    destroy_client_entities(
-        connected,
-        entity_manager,
-        addr,
-        cell_tx,
-        entity_to_addr,
-        transport,
-        // Account-side logOff is from character select: no character is in
-        // the world, so there is no offline presence to look up.
-        &None,
-        "logoff",
-    );
-
-    // Discord auth-channel: clean logout carries the session length. The
-    // lower-level teardown in `destroy_client_entities` also fires a
-    // `PlayerDisconnect { reason: Clean }` — by design (see the
-    // `DisconnectReason::Clean` doc): logout is the gameplay-level event,
-    // disconnect the connection-level one.
-    cimmeria_discord::emit_player_logout(account, character, session_secs);
-
-    Ok(())
 }
 
 #[cfg(test)]

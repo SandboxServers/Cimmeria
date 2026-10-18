@@ -54,6 +54,10 @@ pub struct PumpReport {
     pub combat: usize,
     pub chat: usize,
     pub click: usize,
+    /// Click identities rejected in the current Lua epoch before ring insertion.
+    pub click_rejected_total: u64,
+    /// Malformed click lines rejected while parsing this Lua read.
+    pub click_rejected_lines: u64,
     /// `(ring, status)` from the Lua install step; empty when not pumped.
     pub lua_install: Vec<(String, String)>,
     /// The Lua step failed (not in the world, a Lua error); the bridge
@@ -74,6 +78,8 @@ impl PumpReport {
             "combat": self.combat,
             "chat": self.chat,
             "click": self.click,
+            "click_rejected_total": self.click_rejected_total,
+            "click_rejected_lines": self.click_rejected_lines,
             "lua_install": self.lua_install.iter()
                 .map(|(r, s)| json!({ "ring": r, "status": s }))
                 .collect::<Vec<_>>(),
@@ -152,7 +158,11 @@ fn ingest_ring(
 }
 
 /// Fold one Lua ring read into the store, advancing the ring marks.
-pub fn ingest_rings(st: &mut StoreInner, r: &lua_rings::RingRead) -> RingIngest {
+pub fn ingest_rings(
+    st: &mut StoreInner,
+    r: &lua_rings::RingRead,
+    client_pid: Option<u32>,
+) -> RingIngest {
     let epoch_changed = !st.combat_mark.epoch.is_empty() && st.combat_mark.epoch != r.epoch;
     let now = now_ms();
     let (combat_mark, chat_mark, click_mark) = (
@@ -164,7 +174,16 @@ pub fn ingest_rings(st: &mut StoreInner, r: &lua_rings::RingRead) -> RingIngest 
     st.combat_mark = m;
     let (m, chat) = ingest_ring(st, KIND_CHAT, &chat_mark, &r.epoch, &r.chat, now);
     st.chat_mark = m;
-    let (m, click) = ingest_ring(st, KIND_CLICK, &click_mark, &r.epoch, &r.click, now);
+    let click_rows: Vec<_> = r
+        .click
+        .iter()
+        .map(|(seq, fields)| {
+            let mut fields = fields.clone();
+            fields["client_pid"] = json!(client_pid.filter(|pid| *pid != 0));
+            (*seq, fields)
+        })
+        .collect();
+    let (m, click) = ingest_ring(st, KIND_CLICK, &click_mark, &r.epoch, &click_rows, now);
     st.click_mark = m;
     RingIngest {
         combat,
@@ -215,6 +234,7 @@ impl Supervisor {
             } else {
                 lua_rings::pump_chunk(combat_after, chat_after, click_after, lua_rings::READ_MAX)
             };
+            let pid_before = self.client_pid().await;
             match self.lua_ring_read(&chunk).await {
                 Ok(mut read) => {
                     if !epoch.is_empty() && read.epoch != epoch {
@@ -227,11 +247,19 @@ impl Supervisor {
                             read = full;
                         }
                     }
+                    let pid_after = self.client_pid().await;
+                    let client_pid = if pid_before == pid_after {
+                        pid_after
+                    } else {
+                        None
+                    };
                     let mut st = self.events.inner.lock().await;
-                    let got = ingest_rings(&mut st, &read);
+                    let got = ingest_rings(&mut st, &read, client_pid);
                     rep.combat = got.combat;
                     rep.chat = got.chat;
                     rep.click = got.click;
+                    rep.click_rejected_total = read.click_rejected_total;
+                    rep.click_rejected_lines = read.click_rejected_lines;
                     rep.lua_epoch_changed = got.epoch_changed;
                     rep.lua_install = read.install;
                 }
@@ -253,6 +281,15 @@ impl Supervisor {
     /// The store's newest seq, without pumping.
     pub async fn event_head(&self) -> u64 {
         self.events.inner.lock().await.head()
+    }
+
+    /// Read a bounded event-history slice without moving any named cursor.
+    pub async fn trace_snapshot(&self, after: u64, max: usize) -> (store::Slice, u64) {
+        let st = self.events.inner.lock().await;
+        (
+            st.since(after, max.min(store::STORE_CAP)),
+            st.upstream_dropped,
+        )
     }
 
     /// `client_events_read`: pump the bridge ring, then return what the
@@ -292,6 +329,33 @@ impl Supervisor {
 mod tests {
     use super::*;
 
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn trace_snapshot_is_bounded_reports_eviction_and_leaves_reader_cursor() {
+        let sup = super::fake_bridge::supervisor(Arc::new(|_, _| {
+            Err("bridge must not be called by a passive trace read".into())
+        }))
+        .await;
+        {
+            let mut st = sup.events.inner.lock().await;
+            *st = StoreInner::with_cap(2);
+            st.push("ui.click", 1, json!({}));
+            st.push("net.out", 2, json!({}));
+            st.push("ability.recv", 3, json!({}));
+            st.record_drops(2);
+            st.set_cursor(EVENTS_READ_CURSOR, 1);
+        }
+        let (slice, dropped) = sup.trace_snapshot(0, 1).await;
+        assert!(slice.gap);
+        assert_eq!(dropped, 2);
+        assert_eq!(slice.events.len(), 1);
+        assert_eq!(slice.events[0].seq, 2);
+        let st = sup.events.inner.lock().await;
+        assert_eq!(st.cursor(EVENTS_READ_CURSOR), Some(1));
+        assert_eq!(st.since(1, 2).events.len(), 2);
+    }
+
     #[test]
     fn bridge_results_land_in_order_with_their_fields() {
         let mut st = StoreInner::with_cap(16);
@@ -328,12 +392,16 @@ mod tests {
     fn ring_records_are_ingested_once() {
         let mut st = StoreInner::with_cap(16);
         assert_eq!(
-            counts(ingest_rings(&mut st, &read("e1", &[1, 2], &[1]))),
+            counts(ingest_rings(&mut st, &read("e1", &[1, 2], &[1]), Some(412))),
             (2, 1, 0, false)
         );
         // The same records again (a pump that re-read them) add nothing.
         assert_eq!(
-            counts(ingest_rings(&mut st, &read("e1", &[1, 2, 3], &[1]))),
+            counts(ingest_rings(
+                &mut st,
+                &read("e1", &[1, 2, 3], &[1]),
+                Some(412)
+            )),
             (1, 0, 0, false)
         );
         let kinds: Vec<String> = st.since(0, 10).events.into_iter().map(|e| e.kind).collect();
@@ -347,8 +415,8 @@ mod tests {
     #[test]
     fn a_new_epoch_takes_the_restarted_ring_from_seq_one() {
         let mut st = StoreInner::with_cap(16);
-        ingest_rings(&mut st, &read("e1", &[1, 2, 3, 4, 5], &[]));
-        let got = ingest_rings(&mut st, &read("e2", &[1, 2], &[]));
+        ingest_rings(&mut st, &read("e1", &[1, 2, 3, 4, 5], &[]), Some(412));
+        let got = ingest_rings(&mut st, &read("e2", &[1, 2], &[]), Some(412));
         assert!(got.epoch_changed);
         assert_eq!(got.combat, 2, "seqs 1 and 2 of the new ring are new events");
         assert_eq!(st.combat_mark.seq, 2);
@@ -371,24 +439,34 @@ mod tests {
             click(1, "TutorialWin", "TutorialWin__auto_closebutton__"),
             click(2, "ChatWin", "ChatWin_Tab2"),
         ];
-        assert_eq!(counts(ingest_rings(&mut st, &r)), (0, 0, 2, false));
+        assert_eq!(
+            counts(ingest_rings(&mut st, &r, Some(412))),
+            (0, 0, 2, false)
+        );
         let evs = st.since(0, 10).events;
         assert_eq!(evs.len(), 2);
         assert_eq!(evs[0].kind, KIND_CLICK);
         assert_eq!(evs[0].fields["window"], "TutorialWin");
         assert_eq!(evs[0].fields["button"], "TutorialWin__auto_closebutton__");
         assert_eq!(evs[0].fields["ring_seq"], 1);
+        assert_eq!(evs[0].fields["client_pid"], 412);
         assert_eq!(st.click_mark.seq, 2);
         // Re-read with one more: only the new one lands; the other marks
         // are untouched by click traffic.
         r.click
             .push(click(3, "BagWin", "BagWin__auto_closebutton__"));
-        assert_eq!(counts(ingest_rings(&mut st, &r)), (0, 0, 1, false));
+        assert_eq!(
+            counts(ingest_rings(&mut st, &r, Some(412))),
+            (0, 0, 1, false)
+        );
         assert_eq!(st.combat_mark.seq, 0);
         // A new Lua state: its click ring restarted at 1.
         let mut fresh = read("e2", &[], &[]);
         fresh.click = vec![click(1, "TutorialWin", "TutorialWin__auto_closebutton__")];
-        assert_eq!(counts(ingest_rings(&mut st, &fresh)), (0, 0, 1, true));
+        assert_eq!(
+            counts(ingest_rings(&mut st, &fresh, Some(412))),
+            (0, 0, 1, true)
+        );
         assert_eq!(
             st.click_mark,
             store::LuaRingMark {
@@ -396,5 +474,31 @@ mod tests {
                 seq: 1
             }
         );
+    }
+
+    #[test]
+    fn click_pid_is_fixed_at_ingest_across_relog() {
+        let mut st = StoreInner::with_cap(16);
+        let mut old = read("e1", &[], &[]);
+        old.click = vec![click(1, "Win", "Button")];
+        ingest_rings(&mut st, &old, Some(412));
+        let mut fresh = read("e2", &[], &[]);
+        fresh.click = vec![click(1, "Win", "Button")];
+        ingest_rings(&mut st, &fresh, Some(913));
+        let events = st.since(0, 10).events;
+        assert_eq!(events[0].fields["client_pid"], 412);
+        assert_eq!(events[1].fields["client_pid"], 913);
+    }
+
+    #[test]
+    fn pump_report_exposes_click_rejections() {
+        let report = PumpReport {
+            click_rejected_total: 2,
+            click_rejected_lines: 1,
+            ..Default::default()
+        };
+        let value = report.to_json();
+        assert_eq!(value["click_rejected_total"], 2);
+        assert_eq!(value["click_rejected_lines"], 1);
     }
 }

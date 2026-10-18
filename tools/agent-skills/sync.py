@@ -19,8 +19,12 @@ It also writes a Codex agent, .codex/agents/<name>.toml, for every
                              sonnet -> medium, opus -> high; omitted when neither
   developer_instructions  <- the Markdown body, as a TOML literal string
 
-Claude-only frontmatter (`model`, `tools`, `color`, `memory`) has no Codex
-field and is dropped: a Codex agent runs on the session's model with its tools.
+Every other frontmatter field is dropped, including `model`, `tools`, `hooks`,
+`omitClaudeMd`, `maxTurns`, `color` and `memory`. So in Codex an agent runs on
+the session's model, not the tier its `model` line names; it has every tool the
+session has; and its frontmatter hooks (such as the orchestrator's path guard)
+do not run. Nothing here enforces tiers, tool lists or agent hooks in Codex;
+see D-LO17 in docs/analysis/lean-orchestration/README.md.
 
 Usage:
   python tools/agent-skills/sync.py           # write the mirror

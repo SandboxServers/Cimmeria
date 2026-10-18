@@ -8,6 +8,35 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [reference_cellblock_lab_binding_2026_10_15.md](reference_cellblock_lab_binding_2026_10_15.md) — bind server evidence to the client's actual lab server; Livewire/screenshot stall invalidated fresh timing, and a verified post-relog Prisoner interaction received no dialog
 - [reference_cellblock_n05_authority_2026_10_14.md](reference_cellblock_n05_authority_2026_10_14.md) — CB-N05 authority review uses validated `interact_tag` for authored mission acceptance; native marker/dialog proof remains pending
 - [reference_cellblock_continuation_evidence_2026_10_14.md](reference_cellblock_continuation_evidence_2026_10_14.md) - World-12 source/route evidence locations; payload hashes do not seal historical mission lineage or fresh client acceptance
+- [reference_dev_workbench_slash_3b_2026_10_16.md](reference_dev_workbench_slash_3b_2026_10_16.md) — DW-27B final 27 patch slash words: all six slices reconciled; pet/ring/queue signature and native binding limits remain
+
+- [reference_dev_workbench_slash_3a_2026_10_16.md](reference_dev_workbench_slash_3a_2026_10_16.md) — DW-27A 109–135: cover methods lack handlers/readback and safe inverse; fly/ghost share onPhysics, while PvP remains duel-gated
+- [reference_dev_workbench_overlay_2026_10_16.md](reference_dev_workbench_overlay_2026_10_16.md) — DW-16 D3D9 COM slot evidence, lab gate, bounded clear panel and static-only validation
+
+- [reference_dev_workbench_progression_metadata_2026_10_16.md](reference_dev_workbench_progression_metadata_2026_10_16.md) — DW-21 typed dot progression/ammo/pet descriptors, command-wide mixed-form gate and owner-bound grant readback
+- [reference_dev_workbench_slash_1b_2026_10_16.md](reference_dev_workbench_slash_1b_2026_10_16.md) — DW-25B typed slash entries 28–54 preserve patch options, disabled native binding, and grant/reload/travel readback limits
+- [reference_dev_workbench_causal_trace_2026_10_16.md](reference_dev_workbench_causal_trace_2026_10_16.md) — DW-13 passive eight-stage trace, client-only API and clock/ambiguity boundaries
+- [reference_dev_workbench_direct_sends_2026_10_16.md](reference_dev_workbench_direct_sends_2026_10_16.md) — DW-03S-D direct send tickets and cross-crate reliable-window guard
+
+- [reference_dev_workbench_slash_2a_metadata_2026_10_16.md](reference_dev_workbench_slash_2a_metadata_2026_10_16.md) — DW-26A disabled forms preserve 27 patch entries, redact text audit previews, and separate absent GM item/minigame handlers from other server paths
+- [reference_dev_workbench_slash_2a_2026_10_16.md](reference_dev_workbench_slash_2a_2026_10_16.md) — DW-26A-E slash entries 55–81: gated non-gm debug word, separate minigame/vendor paths and patch/server signature gaps
+- [reference_dev_workbench_slash_2b_2026_10_16.md](reference_dev_workbench_slash_2b_2026_10_16.md) — DW-26B-E patch slash entries 82–108: targeted minigame/address type gaps, absent reload/flag handlers, caller-only LOS/physics, and scope/delivery split for GM shout
+- [reference_dev_workbench_slash_1a_2026_10_16.md](reference_dev_workbench_slash_1a_2026_10_16.md) — DW-25A-E first 27 patch slash entries: client event/GM gate split, missing handlers, argument mismatches and mission/grant persistence
+- [reference_dev_workbench_slash_28_54_2026_10_16.md](reference_dev_workbench_slash_28_54_2026_10_16.md) — patch-012 GM slice 28–54: optional/wire type gaps, organization state re-push and mob ability-set readback gap
+- [reference_dev_workbench_patrol_authoring_2026_10_16.md](reference_dev_workbench_patrol_authoring_2026_10_16.md) — DW-20B-E shared path buffer, async live SQL result versus seed commit, `.lookat` autosave and `.visible true` no-op
+- [reference_workbench_slash_transport_2026_10_16.md](reference_workbench_slash_transport_2026_10_16.md) — DW-24B stock chat plain-token precedent, blocked fingerprint/parser/receipt proof, and fail-closed legacy console address
+
+- [reference_dev_workbench_patrol_metadata_2026_10_16.md](reference_dev_workbench_patrol_metadata_2026_10_16.md) — DW-20B metadata seam, two catalog-runnable actions, and queued SQL/live DB/seed commit boundary
+- [reference_dev_workbench_mission_2026_10_16.md](reference_dev_workbench_mission_2026_10_16.md) — DW-06 mission tracker lacks IDs; player state waits for trusted session binding; mission-scoped chain references are partial
+
+- [reference_workbench_gm_contract_2026_10_15.md](reference_workbench_gm_contract_2026_10_15.md) — DW-19 dot registry projection, cell GM gate, pending typed evidence and separate slash source
+- [reference_dev_workbench_dossier_2026_10_15.md](reference_dev_workbench_dossier_2026_10_15.md) — target dossier uses stock slot-map reads and entity id joins; client unitMobId and server template id are independent; log tail is nondestructive
+- [reference_dev_workbench_clicks_2026_10_15.md](reference_dev_workbench_clicks_2026_10_15.md) — DW-07 click IDs and callback-time target observation; entity ID and client tick stay unknown until a verified callback-time getter exists
+
+- [reference_codex_worktree_lane_2026_10_15.md](reference_codex_worktree_lane_2026_10_15.md) — Codex packet worktrees need the repo's external junction; sandboxed lane calls can miss the shared lock and require an escalated machine-wide lane call
+
+- [reference_rasa_gui_injection_2026_10_15.md](reference_rasa_gui_injection_2026_10_15.md) — source-only comparison of Rasa's D3D9/ImGui, Python bridge, target-to-editor and save-verification patterns with Cimmeria's lab bridge
+
 - [reference_cb_n05a_catalog_seal_2026_10_14.md](reference_cb_n05a_catalog_seal_2026_10_14.md) — authored mission catalog seal: full resync/empty InvalidKeys, conservative key guard, test-only 61000–61003; live new-ID presentation pending
 
 - [reference_lab_login_foreground_lanes_2026_10_14.md](reference_lab_login_foreground_lanes_2026_10_14.md) — shared lab daemon serializes credential entry across instances; native two-client UAT pending
@@ -26,7 +55,6 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 - [project_cellblock_681_hidden_2026_10_13.md](project_cellblock_681_hidden_2026_10_13.md) — 2026-10-13 Cellblock 681 tracker leak: lab baseline, hidden seed fix, live-DB guard; local client acceptance passed
 - [reference_lab_point_click_matching_2026_10_13.md](reference_lab_point_click_matching_2026_10_13.md) — Cellblock point clicks can hover the player's avatar over a rendered corpse; match nearby entity ID and require verified hover before input
-- [reference_livewire_board_snapshot_2026_10_13.md](reference_livewire_board_snapshot_2026_10_13.md) — Livewire's generated board lives in the game instance; publish a ticket-checked, bounded copy for lab reads and clear it on session removal
 - [reference_livewire_board_snapshot_2026_10_13.md](reference_livewire_board_snapshot_2026_10_13.md) — Livewire's generated board lives in the game instance; publish a ticket-checked, bounded copy and retain final state briefly for lab reads
 
 - [reference_cellblock_praxis_start_2026_10_13.md](reference_cellblock_praxis_start_2026_10_13.md) — fresh Praxis Commando starts in Castle_CellBlock and takes the non-Jaffa tutorial branch; fresh SGU Commando starts in SGC_W1
@@ -68,17 +96,16 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 ## Reference
 
+- [reference_codex_workflow_uat_2026_10_16.md](reference_codex_workflow_uat_2026_10_16.md) — Codex C1-C4 written workflow checks passed; hooks failed to enforce; NO_PR cleanup needed force and exact branch deletion; ledger holds evidence
 - [reference_lab_uat_capture_ids_2026_10_13.md](reference_lab_uat_capture_ids_2026_10_13.md) — UAT AP-03 id sources: server_sessions has optional player_id; client_player_state omits entity_id, so client_entity_find /player/id supplies it
 - [reference_lab_dialog_close_2026_10_13.md](reference_lab_dialog_close_2026_10_13.md) — one-page Cellblock Done click can leave DialogWin visible; verify closure and use the native close fallback
 - [reference_lab_hub_pass_lessons_2026_10_13.md](reference_lab_hub_pass_lessons_2026_10_13.md) — 2026-10-13 hub-pass lessons include the confirmed CEGUI top-child hit-test binding and covering-window refusal rule
 
-- [reference_lab_typed_prompt_reader_2026_10_13.md](reference_lab_typed_prompt_reader_2026_10_13.md) — Prompt1–5 typed reads expose visible button names; UAT briefs click returned names because SingleButton is the one-button OK control
 - [reference_lab_relog_chat_2026_10_13.md](reference_lab_relog_chat_2026_10_13.md) — chat capture rebinds to a recreated window without duplicate subscription; a persisted warning identifies lines that may have preceded re-arm during world load
 - [reference_lab_typed_prompt_reader_2026_10_13.md](reference_lab_typed_prompt_reader_2026_10_13.md) — Prompt1–5 typed reads use visible roots, message text, and visible buttons; SingleButton is the actual one-button OK control
 
 - [reference_lab_chat_metadata_2026_10_13.md](reference_lab_chat_metadata_2026_10_13.md) — stock channel 9 is Feedback; query built-in display metadata through `ChatMod.ChannelMap`, `channelColors` and `channel2tabs`, with no hard-coded color
 - [reference_lab_target_timeout_cellblock_route_2026_10_13.md](reference_lab_target_timeout_cellblock_route_2026_10_13.md) — target hover now bounds mouse-over reads and total hover retries; the reported Region8 route uses approximate pod-safe waypoints, still needs live validation
-- [reference_lab_ring_map_click_2026_10_13.md](reference_lab_ring_map_click_2026_10_13.md) — QA lab map-image click reached `WorldMapImageWin`, not the parent listener; stock Lua handler at the same pixel and one-time image binding each sent method 91; explicit N3 fallback (#1686)
 - [reference_lab_ring_map_click_2026_10_13.md](reference_lab_ring_map_click_2026_10_13.md) — QA lab map-image click reached `WorldMapImageWin`; N1 requires native cursor, delivered click and map closure, while a UAT packet tap must confirm method 91 (#1686)
 - [reference_lab_harness_findings_2026_10_12.md](reference_lab_harness_findings_2026_10_12.md) — lab live facts: Stat['.get'] names, zero camera pose, Q/E turn the pawn (mouse-look only the camera), BackgroundWin click host, bag over vault, feet aim, 5 m 3D range, Lua rebuilt on relog
 - [reference_lab_cli_rust_2026_10_12.md](reference_lab_cli_rust_2026_10_12.md) — `lab.exe` (crates/lab-cli): bin\lab.exe layout, no fallback except the seven `run_script` wrappers, PowerShell flags rewritten, tests isolate `CIMMERIA_LAB_HOME`, JSON from `Serialize` structs; LX-20 live check owed
@@ -130,7 +157,6 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 - [reference_auto_cycle_client_telemetry_2026_10_03.md](reference_auto_cycle_client_telemetry_2026_10_03.md) — AutoAttack.lua icon vs T binding, Sep 29 target-0 clears; #1144 colo UAT passed 2026-10-03; auto-cycle no longer persisted (owner: always off on login, #1148)
 - [reference_castle_signoz_dossier_2026_10_02.md](reference_castle_signoz_dossier_2026_10_02.md) — full CellBlock→Castle→Harset dev run, partial colo Castle run, three gate crossings, dossier coverage limits; detailed report in docs/analysis/playtests/
-- [reference_mercury_selective_acks.md](reference_mercury_selective_acks.md) — client ACKs are per-packet incl. buffered-behind-gap; old cumulative drain wedged reliable streams (fixed 2026-09-27); `mercury.tx_hole` diagnoses a stuck client
 - [reference_mercury_selective_acks.md](reference_mercury_selective_acks.md) — client ACKs are per-packet, incl. buffered-behind-gap; cumulative drain wedged streams (fixed 2026-09-27); `mercury.tx_hole` finds a stuck client
 - [reference_map_arrival_points.md](reference_map_arrival_points.md) — cooked maps: PlayerStart only in Agnos/Beta Site/Tollana, no stargate/teleporter actors; bad gate rows (Agnos fixed, Menfa_Light 192 m under mesh)
 - [reference_client_ui_lua_overlay_testing.md](reference_client_ui_lua_overlay_testing.md) — client UI Lua is ASCII+CRLF, Debug:log logger, window-global naming, stock BlackMarket_ErrorText missing, Lua 5.1 UAT via lupa

@@ -674,7 +674,7 @@ Launch and injection (`launch`, `inject`) live in the shared
 `unpack/` and `client_setup/` started as directories; `app/`, `worker/`, and
 `telemetry/` were each promoted from a flat file once they crossed the
 4-siblings-on-one-theme threshold in
-[CLAUDE.md's file organization rules](../../CLAUDE.md).
+[the file organization rules](../agents/rules-and-gotchas.md#file-organization).
 
 The experimental desktop launcher now displays signature-verified manifest
 patch notes through its Patch Notes tab. This does not establish installed

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cimmeria Workbench</title>
+  <link rel="stylesheet" href="/workbench/app.css">
+  <script src="/workbench/views/dossier.js" defer></script>
+  <script src="/workbench/views/probe.js" defer></script>
+  <script src="/workbench/views/mission.js" defer></script>
+  <script src="/workbench/app.js" defer></script>
+</head>
+<body data-instance="__INSTANCE__">
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">Live Research Lab</p>
+      <h1>Cimmeria Workbench</h1>
+    </div>
+    <div class="instance">Instance <strong id="instance">__INSTANCE__</strong></div>
+  </header>
+  <main>
+    <nav class="tabs" aria-label="Workbench views">
+      <button type="button" data-view="overview" aria-current="page">Overview</button>
+      <button type="button" data-view="dossier">Target dossier</button>
+      <button type="button" data-view="probe">Lua probes</button>
+      <button type="button" data-view="mission">Mission X-ray</button>
+      <button type="button" data-view="palette">GM palette</button>
+      <button type="button" data-view="trace">Trace</button>
+    </nav>
+    <section id="overview" class="panel" aria-labelledby="overview-title">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Session</p>
+          <h2 id="overview-title">Instance status</h2>
+        </div>
+        <button type="button" id="refresh">Refresh</button>
+      </div>
+      <p id="connection" role="status">Connecting to the local lab daemon…</p>
+      <dl class="facts">
+        <div><dt>Client</dt><dd id="client-status">Unknown</dd></div>
+        <div><dt>Lease</dt><dd id="lease-status">Unknown</dd></div>
+        <div><dt>Source</dt><dd>Local lab daemon</dd></div>
+      </dl>
+      <p class="hint">To open another instance, run <code>lab workbench open --instance NAME</code>.</p>
+    </section>
+    <section id="dossier" class="panel" aria-labelledby="dossier-title" hidden>
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Target</p>
+          <h2 id="dossier-title">Entity dossier</h2>
+        </div>
+        <button type="button" id="dossier-refresh">Refresh dossier</button>
+      </div>
+      <p class="hint">Enter the runtime entity ID. A read needs no lab lease. Unknown and stale fields remain explicit.</p>
+      <form id="target-form" class="target-form">
+        <label for="target-entity-id">Runtime entity ID</label>
+        <input id="target-entity-id" name="entity_id" type="number" min="1" max="4294967295" step="1" inputmode="numeric" required>
+        <button type="submit">Inspect</button>
+        <button type="button" id="target-clear">Clear</button>
+      </form>
+      <p id="dossier-status" role="status" aria-live="polite"></p>
+      <div id="dossier-content"></div>
+    </section>
+    <section id="probe" class="panel" aria-labelledby="probe-title" hidden>
+      <div class="panel-heading">
+        <div><p class="eyebrow">Client Lua</p><h2 id="probe-title">Probes and object browser</h2></div>
+        <button type="button" id="probe-reload">Reload catalog</button>
+      </div>
+      <p class="hint">Save named snippets locally. A current lab lease ID is required to run or browse. Read mode describes intent; review source before execution.</p>
+      <p id="probe-status" role="status" aria-live="polite">Loading…</p>
+      <div class="probe-grid">
+        <div class="probe-fields">
+          <label for="probe-list">Saved probes</label>
+          <select id="probe-list"><option value="">New probe</option></select>
+          <button type="button" id="probe-new">New probe</button>
+          <label for="probe-name">Name</label>
+          <input id="probe-name" maxlength="64" autocomplete="off">
+          <label for="probe-mode">Mode</label>
+          <select id="probe-mode"><option value="read">Read</option><option value="mutate">Mutate</option></select>
+          <span id="probe-mode-badge" class="badge badge-unknown">READ</span>
+          <label><input id="probe-favorite" type="checkbox"> Favorite</label>
+          <label for="probe-chunk">Lua source</label>
+          <textarea id="probe-chunk" rows="9" spellcheck="false"></textarea>
+          <button type="button" id="probe-save">Save probe</button>
+        </div>
+        <div class="probe-fields">
+          <label for="probe-lease">Current lab lease ID</label>
+          <input id="probe-lease" type="password" autocomplete="off" spellcheck="false">
+          <label for="probe-parameters">Parameters (JSON object)</label>
+          <textarea id="probe-parameters" rows="3" spellcheck="false">{}</textarea>
+          <button type="button" id="probe-run" disabled>Run saved probe</button>
+          <label for="probe-browse-kind">Object browser</label>
+          <select id="probe-browse-kind"><option value="globals">Lua global</option><option value="window">CEGUI window</option></select>
+          <label for="probe-browse-name">Global or window name</label>
+          <input id="probe-browse-name" autocomplete="off" spellcheck="false">
+          <button type="button" id="probe-browse" disabled>Read object</button>
+        </div>
+      </div>
+      <div id="probe-output" aria-live="polite"></div>
+    </section>
+    <section id="mission" class="panel" aria-labelledby="mission-title" hidden>
+      <div class="panel-heading">
+        <div><p class="eyebrow">Five sources</p><h2 id="mission-title">Mission X-ray</h2></div>
+        <button type="button" id="mission-refresh">Refresh mission</button>
+      </div>
+      <p class="hint">Inspect one authored mission ID. Definitions, persisted state, packets, client state and visible tracker are separate observations. A tracker line does not prove server progress.</p>
+      <form id="mission-form" class="target-form">
+        <label for="mission-id">Mission ID</label>
+        <input id="mission-id" name="mission_id" type="number" min="1" max="2147483647" step="1" inputmode="numeric" required>
+        <button type="submit">Inspect</button>
+        <button type="button" id="mission-clear">Clear</button>
+      </form>
+      <p id="mission-status" role="status" aria-live="polite"></p>
+      <div id="mission-content"></div>
+    </section>
+    <section id="placeholder" class="panel" hidden aria-live="polite">
+      <p class="eyebrow">Coming in a later packet</p>
+      <h2 id="placeholder-title"></h2>
+      <p id="placeholder-description"></p>
+    </section>
+  </main>
+</body>
+</html>

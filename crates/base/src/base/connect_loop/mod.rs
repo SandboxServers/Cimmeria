@@ -23,8 +23,9 @@ use cimmeria_mercury::transport::{BidirectionalTransport, Transport};
 use crate::cell::messages::BaseToCellMsg;
 use crate::credential_redaction::CredentialPrefix;
 
-use super::login::{handle_login, parse_baseapp_login, relaunch};
+use super::login::{handle_login_with_issuer, parse_baseapp_login, relaunch};
 use super::resources::ResourceCache;
+use super::service::session_wire_proof::SessionOriginIssuer;
 use super::ConnectedClientState;
 
 mod account_arms;
@@ -47,7 +48,7 @@ pub(crate) use encrypted::handle_encrypted_datagram;
 /// real recv loop under simulated transatlantic loss / latency / duplication.
 /// See `docs/architecture/transport-trait.md` and
 /// `docs/architecture/network-chaos-testing.md`.
-pub(crate) async fn run_connect_loop(
+pub(crate) async fn run_connect_loop_with_issuer(
     transport: Arc<dyn BidirectionalTransport>,
     pending_logins: Arc<Mutex<HashMap<String, crate::auth::PendingLogin>>>,
     db_pool: Option<Arc<PgPool>>,
@@ -58,6 +59,7 @@ pub(crate) async fn run_connect_loop(
     entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>>,
     enc_version: EncryptionVersion,
     plugins: BasePlugins,
+    issuer: Arc<SessionOriginIssuer>,
 ) {
     let mut buf = [0u8; 4096];
 
@@ -72,7 +74,7 @@ pub(crate) async fn run_connect_loop(
                 // Full row to base.log, a counted, hex-free sample to
                 // SigNoz (NA25).
                 crate::firehose::log_udp_in(&crate::firehose::UDP_IN_SAMPLER, addr, &buf[..len]);
-                if let Err(e) = handle_datagram(
+                if let Err(e) = handle_datagram_with_issuer(
                     &send_transport,
                     addr,
                     &buf[..len],
@@ -85,6 +87,7 @@ pub(crate) async fn run_connect_loop(
                     &entity_to_addr,
                     enc_version,
                     &plugins,
+                    &issuer,
                 )
                 .await
                 {
@@ -114,6 +117,36 @@ pub(crate) async fn run_connect_loop(
             }
         }
     }
+}
+
+#[cfg(test)]
+pub(crate) async fn run_connect_loop(
+    transport: Arc<dyn BidirectionalTransport>,
+    pending_logins: Arc<Mutex<HashMap<String, crate::auth::PendingLogin>>>,
+    db_pool: Option<Arc<PgPool>>,
+    resource_cache: Option<Arc<ResourceCache>>,
+    cell_tx: Option<mpsc::Sender<BaseToCellMsg>>,
+    connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_manager: Arc<Mutex<EntityManager>>,
+    entity_to_addr: Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    enc_version: EncryptionVersion,
+    plugins: BasePlugins,
+) {
+    let issuer = Arc::new(SessionOriginIssuer::new().expect("test boot CSPRNG"));
+    run_connect_loop_with_issuer(
+        transport,
+        pending_logins,
+        db_pool,
+        resource_cache,
+        cell_tx,
+        connected,
+        entity_manager,
+        entity_to_addr,
+        enc_version,
+        plugins,
+        issuer,
+    )
+    .await;
 }
 
 /// How long one `WSAECONNRESET` row covers. Resets inside the window are
@@ -248,12 +281,7 @@ fn log_unknown_peer_at(
 /// `level = "debug"` keeps these out of the SigNoz default-info filter
 /// — they're high-volume; turn them on at the operator's discretion
 /// (`RUST_LOG=cimmeria_base::base::connect_loop=debug`).
-#[tracing::instrument(
-    name = "base.datagram",
-    level = "debug",
-    skip_all,
-    fields(peer = %addr, len = raw.len()),
-)]
+#[cfg(test)]
 async fn handle_datagram(
     transport: &Arc<dyn Transport>,
     addr: SocketAddr,
@@ -267,6 +295,46 @@ async fn handle_datagram(
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     enc_version: EncryptionVersion,
     plugins: &BasePlugins,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let issuer = SessionOriginIssuer::new()?;
+    handle_datagram_with_issuer(
+        transport,
+        addr,
+        raw,
+        pending_logins,
+        connected,
+        db_pool,
+        resource_cache,
+        entity_manager,
+        cell_tx,
+        entity_to_addr,
+        enc_version,
+        plugins,
+        &issuer,
+    )
+    .await
+}
+
+#[tracing::instrument(
+    name = "base.datagram",
+    level = "debug",
+    skip_all,
+    fields(peer = %addr, len = raw.len()),
+)]
+async fn handle_datagram_with_issuer(
+    transport: &Arc<dyn Transport>,
+    addr: SocketAddr,
+    raw: &[u8],
+    pending_logins: &Arc<Mutex<HashMap<String, crate::auth::PendingLogin>>>,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    db_pool: &Option<Arc<PgPool>>,
+    resource_cache: &Option<Arc<ResourceCache>>,
+    entity_manager: &Arc<Mutex<EntityManager>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    enc_version: EncryptionVersion,
+    plugins: &BasePlugins,
+    issuer: &SessionOriginIssuer,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     if raw.is_empty() {
         return Ok(());
@@ -302,7 +370,7 @@ async fn handle_datagram(
                 ticket_prefix = %CredentialPrefix(&ticket_str),
                 "baseAppLogin with a fresh ticket on an established channel (client relaunch?)"
             );
-            return handle_login(
+            return handle_login_with_issuer(
                 transport,
                 addr,
                 request_id,
@@ -315,6 +383,7 @@ async fn handle_datagram(
                 db_pool,
                 enc_version,
                 plugins,
+                issuer,
             )
             .await;
         }
@@ -349,7 +418,7 @@ async fn handle_datagram(
     match parse_baseapp_login(raw) {
         Ok((request_id, ticket_str)) => {
             tracing::info!(%addr, ticket_prefix = %CredentialPrefix(&ticket_str), "baseAppLogin received");
-            handle_login(
+            handle_login_with_issuer(
                 transport,
                 addr,
                 request_id,
@@ -362,6 +431,7 @@ async fn handle_datagram(
                 db_pool,
                 enc_version,
                 plugins,
+                issuer,
             )
             .await
         }

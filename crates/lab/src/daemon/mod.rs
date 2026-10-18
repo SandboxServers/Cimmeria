@@ -12,10 +12,11 @@
 //! The HTTP edge is fail-closed, like the in-server lab endpoint
 //! (`crates/lab-mcp`):
 //! - loopback bind only ([`config::evaluate`]);
-//! - `Authorization: Bearer <CIMMERIA_LAB_DAEMON_TOKEN>` on every request,
-//!   32 bytes minimum ([`auth`]);
+//! - `Authorization: Bearer <CIMMERIA_LAB_DAEMON_TOKEN>` on `/mcp`, `/status`
+//!   and the one-use workbench opener, 32 bytes minimum ([`auth`]);
 //! - rmcp's DNS-rebinding guard with loopback `Host` values only, and any
-//!   browser `Origin` refused;
+//!   browser `Origin` refused on `/mcp`;
+//! - an independent cookie, local-origin and CSRF boundary on `/workbench/`;
 //! - one daemon per logon session ([`single_instance`]).
 //!
 //! - [`config`] — argument parsing and the fail-closed rules.
@@ -29,6 +30,7 @@ pub mod config;
 pub mod log_file;
 pub mod single_instance;
 pub mod status;
+pub mod workbench;
 
 #[cfg(test)]
 pub(crate) mod http_tests;
@@ -46,12 +48,24 @@ pub const EXIT_ALREADY_RUNNING: i32 = 3;
 /// Exit code for a configuration refusal (bad bind, missing/short token).
 pub const EXIT_REFUSED: i32 = 2;
 
-/// The axum router: the MCP service at `/mcp` and the read-only `/status`
-/// behind the bearer gate.
+/// The axum router: MCP and status behind the bearer gate, with an isolated
+/// workbench session boundary.
 ///
 /// Every MCP session gets a clone of `server`, and every clone shares one
 /// [`crate::supervisor::Supervisor`]: that sharing is the point of the daemon.
 pub fn build_router(server: LabServer, token: &str) -> axum::Router {
+    build_router_with_sessions(
+        server,
+        token,
+        Arc::new(workbench::session::SessionStore::default()),
+    )
+}
+
+fn build_router_with_sessions(
+    server: LabServer,
+    token: &str,
+    sessions: Arc<workbench::session::SessionStore>,
+) -> axum::Router {
     if let Some(atlas) = server.livewire_atlas() {
         tracing::info!(
             libraries = atlas.libraries.len(),
@@ -60,6 +74,7 @@ pub fn build_router(server: LabServer, token: &str) -> axum::Router {
         );
     }
     let server_for_status = server.clone();
+    let instances = server.instances().clone();
     let started = Arc::new(status::Started {
         at_ms: crate::supervisor::now_ms(),
         pid: std::process::id(),
@@ -73,16 +88,17 @@ pub fn build_router(server: LabServer, token: &str) -> axum::Router {
             .enforce_origin_validation(),
     );
     let token: Arc<str> = Arc::from(token);
-    axum::Router::new()
+    let bearer = axum::Router::new()
         .nest_service("/mcp", service)
         .route(
             "/status",
             axum::routing::get(status::handler).with_state((server_for_status, started)),
         )
         .layer(axum::middleware::from_fn_with_state(
-            token,
+            token.clone(),
             auth::require_bearer,
-        ))
+        ));
+    bearer.merge(workbench::router(sessions, token, instances))
 }
 
 /// Serve until Ctrl-C (or the task is stopped).

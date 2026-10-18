@@ -69,6 +69,12 @@ struct ConsoleExecArgs {
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
+struct ConsoleListArgs {
+    /// Acting in-world player entity id, checked against fresh cell authority.
+    entity_id: u32,
+}
+
+#[derive(Debug, Deserialize, JsonSchema)]
 struct LogTailArgs {
     /// Max number of recent lines to return (default 100).
     #[serde(default)]
@@ -176,13 +182,22 @@ impl LabTools {
         Self { state, tool_router }
     }
 
-    /// Enumerate every `.`-console command with its arg/target contract.
-    #[tool(description = "List all server dot-console commands (name, arg counts, target, help).")]
-    async fn server_console_list(&self) -> Result<CallToolResult, ErrorData> {
+    /// Enumerate dot-console commands for a currently authorized GM entity.
+    #[tool(
+        description = "List server dot-console commands for an in-world GameMaster entity_id, checked against fresh cell authority."
+    )]
+    async fn server_console_list(
+        &self,
+        Parameters(args): Parameters<ConsoleListArgs>,
+    ) -> Result<CallToolResult, ErrorData> {
         let started = Instant::now();
-        let v = console::list_commands();
-        audit::emit("server_console_list", &json!({}), OUTCOME_OK, None, started);
-        ok(v)
+        let audit_args = json!({ "entity_id": args.entity_id });
+        emit_result(
+            "server_console_list",
+            &audit_args,
+            started,
+            console::list_commands(&self.state, args.entity_id).await,
+        )
     }
 
     /// Run a dot-console line as a given entity and return the captured output.
@@ -602,135 +617,4 @@ fn err(msg: String) -> Result<CallToolResult, ErrorData> {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::sync::Arc;
-
-    use cimmeria_admin_api::ws::broadcast_layer::LogBuffer;
-    use cimmeria_services::orchestrator::Orchestrator;
-    use tracing::Level;
-
-    use super::*;
-    use crate::test_support::LogCapture;
-
-    #[tokio::test]
-    async fn minigame_state_tool_tracks_generated_board_update_and_teardown() {
-        let orchestrator = Arc::new(Orchestrator::new(Default::default()));
-        let tools = LabTools::new(LabState::new(orchestrator.clone(), LogBuffer::new()));
-        assert!(tools.tool_router.has_route("server_minigame_state"));
-        async fn read(tools: &LabTools) -> Value {
-            let result = tools
-                .server_minigame_state(Parameters(EntityGetArgs { entity_id: 42 }))
-                .await
-                .unwrap();
-            serde_json::from_str(&result.content[0].as_text().unwrap().text).unwrap()
-        }
-        assert!(read(&tools).await["state"].is_null());
-        let registry = orchestrator
-            .state()
-            .read()
-            .await
-            .base
-            .minigame_registry
-            .clone();
-        let ticket = registry
-            .register(
-                42,
-                1,
-                "Livewire".into(),
-                1,
-                30,
-                17,
-                0,
-                0,
-                1,
-                vec![],
-                None,
-                None,
-            )
-            .await
-            .unwrap();
-        let session = registry
-            .authenticate_and_claim(42, &ticket, "Livewire")
-            .await
-            .unwrap();
-        let mut game = cimmeria_services::minigame::game::create_game(&session).unwrap();
-        game.started();
-        registry
-            .publish_board(42, &ticket, game.board_snapshot().unwrap())
-            .await;
-        let ready = read(&tools).await;
-        assert_eq!(ready["state"]["state"], "ready");
-        assert_eq!(ready["state"]["goal_total"], 2);
-        assert!(ready["state"]["wires"].as_array().unwrap().len() > 2);
-        assert!(ready["state"]["wires"][0]["lib"].is_string());
-        assert!(!ready.to_string().contains(&ticket));
-        game.message("opendoor", &Default::default());
-        registry
-            .publish_board(42, &ticket, game.board_snapshot().unwrap())
-            .await;
-        assert_eq!(read(&tools).await["state"]["state"], "running");
-        game.aborted();
-        registry
-            .publish_board(42, &ticket, game.board_snapshot().unwrap())
-            .await;
-        registry
-            .record_event(42, &ticket, "result_canceled", None)
-            .await;
-        registry.remove_if_ticket(42, &ticket).await;
-        let final_state = read(&tools).await;
-        assert_eq!(final_state["state"]["outcome"], "canceled");
-        assert!(final_state["state"]["events"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|event| event["event"] == "ended"));
-    }
-
-    #[test]
-    fn nav_path_is_routed_with_a_described_contract() {
-        let orchestrator = Arc::new(Orchestrator::new(Default::default()));
-        let tools = LabTools::new(LabState::new(orchestrator, LogBuffer::new()));
-        let route = tools.tool_router.get("server_nav_path").expect("routed");
-        assert!(route
-            .description
-            .as_deref()
-            .unwrap_or_default()
-            .contains("partial"));
-    }
-
-    /// A bad or failed SQL call leaves one WARN `lab.tool_call` row carrying
-    /// `error` and `duration_ms`. No database is connected here, so the call
-    /// fails on the pool check, which takes the same error path as bad SQL.
-    #[tokio::test]
-    async fn bad_sql_audit_row_has_error() {
-        let capture = LogCapture::install();
-        let orchestrator = Arc::new(Orchestrator::new(Default::default()));
-        let tools = LabTools::new(LabState::new(orchestrator, LogBuffer::new()));
-        let result = tools
-            .server_db_query(Parameters(DbQueryArgs {
-                sql: "SELEC nonsense".to_string(),
-            }))
-            .await;
-        assert!(
-            result.is_ok(),
-            "a failed query is a tool-level error result"
-        );
-
-        let event = capture
-            .find_message(Level::WARN, "lab MCP tool call")
-            .expect("an error outcome logs at WARN");
-        assert!(event
-            .fields
-            .get("tool")
-            .is_some_and(|t| t.contains("server_db_query")));
-        assert!(event
-            .fields
-            .get("outcome")
-            .is_some_and(|o| o.contains("error")));
-        assert!(event.fields.contains_key("duration_ms"));
-        assert!(event
-            .fields
-            .get("error")
-            .is_some_and(|e| e.contains("database not connected")));
-    }
-}
+mod tests;

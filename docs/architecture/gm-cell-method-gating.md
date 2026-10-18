@@ -103,6 +103,31 @@ verified subset (gmGiveItem 133, gmGotoXYZ 163, gmKillTarget 190) is implemented
 the full per-index table lives in
 [cell-method-dispatch-table.md](../protocol/cell-method-dispatch-table.md#sgwgmplayer-extension-indices-109--473--cat-n-04).
 
+## Workbench slash inventory
+
+`crates/lab/src/workbench/slash_inventory.rs` parses the 162 patch 012 TOML
+words, events and ordered mandatory/optional parameter declarations.
+`slash_catalog.rs` projects them into disabled `Slash` descriptors. DW-24B
+keeps them disabled because a stock-chat receipt for one plain-token command
+does not prove each command's parser, quoting, optional values, fingerprint
+or per-command server receipt. `slash_transport.rs` models that narrow
+candidate and separate client-submitted, client-acknowledged, outgoing-method
+and server-received states; absent trusted producers leave each unknown.
+`supervisor/slash_adapter.rs` builds a stock `ChatMod.onTextAccepted` call
+with exact input readback but exposes no callable submission method until the
+supervisor can verify client fingerprint and generation. Legacy `client_console`
+also rejects caller-supplied addresses: `execConsoleCommand` at `0x00539850`
+takes `FFrame`, and no string-taking ABI is established. An exact event-suffix match to a method name or
+an explicit slash-word row in `docs/protocol/cell-method-dispatch-table.md`
+records its index and DONE/ADAPT/NEW status as a **candidate**. The
+`/gmgivecash` and `/gmspawnbycmd` candidates infer from patch event names and
+the table's stock `/GiveNaqahdah` and `/Spawn` rows, respectively; the table
+does not name those patch words. No candidate proves that the client emits
+that method for the patch word. Unknown matches remain unknown.
+The client and cell method gate remain separate; a typed palette form cannot
+authorize or execute a slash command by itself. Stock XML completeness is
+tracked separately in [the DW-24A audit](../analysis/dev-workbench/stock-slash-audit.md).
+
 ## Why not per-call plumbing?
 
 The audit's literal suggestion was to widen `BaseToCellMsg::CellMethodCall`
@@ -112,6 +137,42 @@ change mid-connection), so a per-call parameter would thread the same
 constant through every dispatch signature for no added correctness. The
 entity-stored value is equally authoritative — it comes from the same
 `ConnectedClientState.access_level`, set once at world entry.
+
+## Workbench GM command contract
+
+The workbench's dot catalog is projected from the existing `COMMANDS` table in
+`crates/cell-console/src/cell/console/registry/`. It exposes a stable target
+policy (`none`, `player`, `mob`, `mob_or_id`, `being`, `spawnable`) and metadata
+version 1. The live `server_console_list` adapter requires an acting entity id
+and reads `EntityGet` before returning the catalog; the current cell snapshot
+must show a player with GameMaster access.
+
+The acting ID is still supplied by the MCP caller. This check is safe only
+behind the privileged lab MCP bearer; `EntityGet` of that ID alone does not
+authorize a browser user. DW-30 must derive the actor from the authenticated,
+instance-bound workbench session and recheck cell authority at execution.
+
+Every dot row currently carries
+`availability = unsupported` and
+`manual_pending = true`: its typed arguments, impact, verification and recovery
+need per-command evidence before the palette may offer a runnable action.
+Pending rows serialize `target` as a structured policy (including `.despawn`'s
+`entityId` argument name), and leave `impact`, `verify` and `compensation`
+null rather than inventing them.
+The original raw `server_console_exec` remains available to authorized lab
+operators and is rechecked by the cell's GameMaster gate and target resolver.
+
+`crates/lab/src/workbench/commands.rs` defines separate dot and slash channels,
+typed arguments, target/impact/verification/compensation metadata, and an
+action receipt with independent submission, server-acceptance and verification
+states. Validation compares an action with a fresh server actor snapshot,
+including instance, actor ID, GM authority and selected target. A UI claim is
+never authority. Slash commands require native client submission and evidence
+of a received GM method; this dot catalog does not claim to enumerate or run
+them yet. Integer arguments beyond the exact `f64` range (`-2^53` to `2^53`)
+are refused because their numeric bounds use `f64`; otherwise adjacent JSON
+integers could round to the same bound. A submitted line alone does not
+establish server acceptance.
 
 ## Moderation surface still missing
 
@@ -159,9 +220,10 @@ things (static RE of SGW.exe, confirmed with lab memory reads in DA-06):
    `LaunchMisc__InitContentSystems` (`0x0041f9c0`) loads
    `Common/xml/slash_commands/InternalSlashCommands.xml`, then
    `FinalSlashCommands.xml`, into `SGWTextCommandMgr` (singleton at
-   `0x01ef227c`); `SlashCommands.xml` comes in from `FUN_0041d480`. All 167
-   `/gm*` commands are in the Internal file, which the QA client has and a
-   2009 retail launcher install does not. Without it the map holds 104
+   `0x01ef227c`); `SlashCommands.xml` comes in from `FUN_0041d480`. The QA
+   Internal file has 164 entries but 162 distinct command words (161 `/gm*`
+   and `/debugminigamecomplete`; two words are duplicated). The QA client has
+   this file, but a 2009 retail launcher install does not. Without it the map holds 104
    entries, none of them `/gm*`, and every one reads "Invalid command."
    (`FUN_00ae23f0`). The server cannot supply that file; it is client
    content. Client patch

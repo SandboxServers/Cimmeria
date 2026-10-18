@@ -20,24 +20,24 @@
 
 use super::{spec, Spec, Target};
 
-mod abilities;
-mod ammo;
+pub(super) mod abilities;
+pub(super) mod ammo;
 mod bank;
 mod black_market;
-mod entity_authoring;
+pub(super) mod entity_authoring;
 mod maintenance;
 mod meta;
 mod net_debug;
 mod org;
 mod org_create;
-mod patrol;
-mod pet;
-mod progression;
+pub(super) mod patrol;
+pub(super) mod pet;
+pub(super) mod progression;
 mod query;
 mod social;
 mod spawn;
 mod squad;
-mod stats;
+pub(super) mod stats;
 mod travel;
 
 /// The per-family tables, in the order they appeared in the flat table (and

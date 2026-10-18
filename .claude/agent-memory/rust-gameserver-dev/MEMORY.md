@@ -1,5 +1,7 @@
 # Rust Gameserver Dev Memory
 
+- [reference_dw03s_h_2026_10_16.md](reference_dw03s_h_2026_10_16.md) — channel-coupled resend provenance and synchronous tick-origin capture.
+
 One line per topic file; the detail lives in the file. Keep hooks short (this index must stay under ~17 KB).
 
 ## Build environment

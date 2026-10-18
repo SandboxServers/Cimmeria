@@ -13,7 +13,7 @@ If you've just cloned the repo, walk through these in order:
 1. **[../README.md](../README.md)** — project overview and current status.
 2. **[guides/getting-started.md](guides/getting-started.md)** — first-time setup tutorial: prerequisites, `setup.ps1`, verifying the server is up, connecting the client.
 3. **[building.md](building.md)** — how to build and run the Rust server, including the CI checks.
-4. **[../CLAUDE.md](../CLAUDE.md)** — repo invariants, build rules (Windows-native, pinned toolchain, the build lane), pre-PR checklist.
+4. **[../CLAUDE.md](../CLAUDE.md)** — the short core every agent session loads: repo invariants, the top project rules, the build lane, and links to the pre-PR checklist ([agents/pre-pr-checks.md](agents/pre-pr-checks.md)).
 5. **[../TESTING.md](../TESTING.md)** — test types, picker for which to use when, gotchas mined from PR reviews.
 6. **[connection-flow.md](connection-flow.md)** — end-to-end login + world entry. Once you've followed it through, the architecture starts to make sense.
 7. **[how-sgw-works.md](how-sgw-works.md)** — BigWorld, CME, and how the pieces fit together.
@@ -38,8 +38,8 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** �
 | Python game logic scripts | 164 |
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
-| Documentation files | <!-- gen:docs-md-count -->1,028<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->14,369<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,358<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->12,068<!-- /gen:tests-ci-gated --> gated in CI) |
+| Documentation files | <!-- gen:docs-md-count -->1,085<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->14,621<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,400<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->12,135<!-- /gen:tests-ci-gated --> gated in CI) |
 | Live-DB regression guards | <!-- gen:tests-live-db -->1,767<!-- /gen:tests-live-db --> |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
@@ -95,6 +95,8 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** �
 | [Lab fixtures](analysis/lab-fixtures/README.md) | Campaign ledger (`FX-`): each UAT row declares its starting state (character, world, missions, items, position) and the runner sets it with lab-only `.fixture` commands, so rows run alone, in any order or 20 times; `lab rewind` later; packet specs for Haiku workers |
 | [Lab golden runs](analysis/lab-golden/README.md) | Campaign ledger (`GD-`): a normalised run fingerprint from the packet tap, a variance model, `lab golden record` (golden only when 5 runs agree) and `lab uat -DiffGolden` with a one-line first divergence; packet specs for Haiku workers |
 | [Lab record](analysis/lab-record/README.md) | Campaign ledger (`LR-`): `lab record` turns a human play session into a draft UAT spec by a deterministic transform of the packet tap, UI reads and server state, plus an opt-in lab-only `.bug spec`; packet specs for Haiku workers |
+| [Developer workbench](analysis/dev-workbench/README.md) | Lab-only client overlay and local GUI plan: target, Lua, spatial and mission inspectors; causal and five-layer tracing; reproduction and flight recording; a full typed GM palette for both `/` and `.` commands. [Work packets](analysis/dev-workbench/work-packets.md) |
+| [Workbench causal trace](architecture/dev-workbench-trace.md) | Eight-stage observation and join rules, passive local read API, ambiguity, source gaps and latency bounds. |
 | [Client limits](analysis/client-limits/README.md) | Campaign ledger (`CL-`): measure and document the SGW client's bounds (datagram and bundle sizes, pacing, AoI entity counts, address space, engine pools, timing), each with its source, and which of them could be raised |
 | [Lab chaos](analysis/lab-chaos/README.md) | Campaign ledger (`CH-`): `lab uat -Chaos` profiles (`cpu`, `net`, `flush`, `burst`) bounded by the client limits, gated to lab builds, reporting against the golden fingerprint; acceptance is reproducing #1341 on demand |
 | [Lab watch](analysis/lab-watch/README.md) | Campaign ledger (`LW-`): `lab watch`, a read-only terminal dashboard of lab instances and running UAT batches, with a compact `-Once -Json` snapshot for agents |
@@ -140,6 +142,7 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** �
 | [Open-Issue Triage 2026-09-25](analysis/issue-triage-2026-09-25/README.md) | Evidence-backed verdict (keep / rewrite / close / needs-owner) and priority for all 123 open GitHub issues against main, with ready-to-post comments and replacement bodies, owner answers, and the execution checklist for the follow-up session |
 | [Ammo Restoration](analysis/ammo/README.md) | Campaign ledger for finite, lootable special ammo (Hollow Point, Armor Piercing, Incendiary, EMP, Explosive, darts): reload/bandolier and cooked-data-push audit, RE findings on the reserve model and toggle-ability linkage, owner decisions, and a wide-fan-out packet ledger with a file-ownership matrix |
 | [Campaign Metrics](analysis/campaign-metrics/README.md) | Campaign ledger for what each campaign cost and how clean it was, old model against the Haiku packet model: cost per PR and per accepted change, first-pass completion, retries, CI, escaped defects, escalation, cycle time and overstep, from the profiler database, the ledgers and GitHub |
+| [Lean Orchestration](analysis/lean-orchestration/README.md) | Campaign ledger (closed 2026-10-16, with owed UATs) for the Sonnet orchestrator persona, agent tiers, lean CLAUDE.md, one-line report contract, Codex compatibility pass and the context-diet measurements |
 | [Token Usage Profiling](analysis/token-usage/README.md) | Campaign ledger for #957 (closed 2026-10-03): what AI-assisted work here costs in tokens, estimated USD, context and orchestration overhead; owner decisions, corrections to the issue, the pre-profiler baseline, the packet table, the close-out with early before-and-after numbers and the open levers, and the cut-line log. How-to: [guides/token-profiling.md](guides/token-profiling.md) |
 | [Connection Flow](connection-flow.md) | End-to-end login and world entry sequence |
 | [Network Messages](network-messages.md) | High-level catalog of client-server messages |
@@ -288,7 +291,7 @@ See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-an
 
 ### `architecture/` -- Cimmeria Server Architecture
 
-How the Cimmeria emulator itself is structured. <!-- gen:section-table-rows -->47<!-- /gen:section-table-rows --> documents.
+How the Cimmeria emulator itself is structured. <!-- gen:section-table-rows -->48<!-- /gen:section-table-rows --> documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
@@ -333,6 +336,7 @@ How the Cimmeria emulator itself is structured. <!-- gen:section-table-rows -->4
 | [discord-notifications.md](architecture/discord-notifications.md) | Discord notification design + ops: `EventKind` catalogue, channel routing, embed formatting, default toggles | Complete |
 | [atrea-editor-bridge.md](architecture/atrea-editor-bridge.md) | ADR for the Atrea Editor bridge — an MCP server exposing the in-game UnrealEd surface | Complete |
 | [live-research-lab.md](architecture/live-research-lab.md) | ADR (Proposed) for the live research lab: inbound bridge in the client-telemetry DLL (Lua eval, memory, dynamic hooks, native calls), the `cimmeria-lab` supervisor (lifecycle, autologin, screenshots, crash recovery), and the token-gated in-server MCP endpoint (console passthrough, live entity queries, packet taps) | Proposed |
+| [dev-workbench-auth.md](architecture/dev-workbench-auth.md) | ADR for the local development workbench's bearer opener, instance-bound browser session, exact-origin and CSRF gates, and refusal telemetry | Implemented boundary |
 | [mercury-loopback-harness.md](architecture/mercury-loopback-harness.md) | ADR for the Tier-2 Mercury loopback session harness: channel state, retransmit, fragmentation, keepalive, ack, RTO test seam | Complete |
 | [network-chaos-testing.md](architecture/network-chaos-testing.md) | ADR for the network-chaos apparatus: lossy-socket wrappers, pcap-replay infra, chaos scenarios over the L2 trait | Complete |
 | [wireclient.md](architecture/wireclient.md) | ADR for `cimmeria-wireclient`: headless wire-level test client, `session_trace` JSONL schema, pcap exporter | Complete |
@@ -383,7 +387,7 @@ What an AI-assisted contributor (or their agents) needs that the code does not s
 |----------|-------------|--------|
 | [development-workflow.md](agents/development-workflow.md) | Ticket-to-PR pipeline, the roster of domain advisors under `.claude/agents/`, rules for running agents in parallel (worktrees, the build lane, one test DB each, Dev Drive seeding, cleanup), definition of done | Complete |
 | [doc-update-map.md](agents/doc-update-map.md) | The "what changed → what to update" map every PR is reviewed against; moved out of `CLAUDE.md` so it loads only when a PR is being finished or reviewed | Complete |
-| [pre-pr-checks.md](agents/pre-pr-checks.md) | What each CI check gates and when it runs, the full annotated pre-PR command list, and the fix for each failing check; the long form of the `CLAUDE.md` checklist | Complete |
+| [pre-pr-checks.md](agents/pre-pr-checks.md) | What each CI check gates and when it runs, the full annotated pre-PR command list, and the fix for each failing check; the checklist `CLAUDE.md` points to | Complete |
 | [rules-and-gotchas.md](agents/rules-and-gotchas.md) | Maintainer decisions and known traps: evidence rules, protocol traps (entity clientIndex), "free" vs client-patch scoping, UI feedback, GM command channels, seeds over migrations, the pinned toolchain and build-lane traps, Windows/CRLF/Git Bash traps, client assets and RE tooling | Complete |
 | [domain.md](agents/domain.md) | Where domain docs live (glossary = `spec/glossary.md`, ADRs = `architecture/`; no `CONTEXT.md` or `docs/adr/`), what to read before exploring, and what to do when sources disagree | Complete |
 | [issue-tracker.md](agents/issue-tracker.md) | GitHub Issues via the `gh` CLI; repo-specific `gh` traps; the ticket body contract; PRs-as-request-surface flag (off); wayfinder map / child / blocking conventions | Complete |
@@ -453,7 +457,7 @@ Practical guidance for contributors working on the RE effort or the emulator.
 | [automated-uat.md](guides/automated-uat.md) | **How-to + reference.** Run unified-UAT rows from the live research lab: row specs as TOML in [guides/uat-specs/](guides/uat-specs/), `lab_uat_run` / `lab_uat_attest` / `lab_uat_report`, the native levels (N1/N2/N3/G/X) a PASS needs, the evidence bundle, and the Recording-results blocks it writes for the campaign ledgers | Complete |
 | [uat-specs/drafts/README.md](guides/uat-specs/drafts/README.md) | **Reference.** The folder of draft row specs `lab record` writes from a person playing a section: never run by a plain `lab uat`, UNCONFIRMED until `lab golden record` agrees 5 times, TODO lines and commented rows, and how to promote one into a real spec | Complete |
 | [token-profiling.md](guides/token-profiling.md) | **How-to.** Measure what AI-assisted work costs with `tools/token-profile/`: ingest, report, reconcile, validate attribution, post a merged PR's stats comment and backfill, the daily and weekly scheduled jobs, how to read a stats comment (list-price USD, a floor; integration PRs carry only their own spend), and the privacy rules | Complete |
-| [autonomous-agent-kickoff.md](guides/autonomous-agent-kickoff.md) | **Kickoff prompt for unattended AI agents.** Issue selection and claim protocol, per-worktree build and DB discipline, draft-until-green PR flow with Cadacious as reviewer, budgets and escalation. Two marked deviations from the `CLAUDE.md` pre-PR checklist | Complete |
+| [autonomous-agent-kickoff.md](guides/autonomous-agent-kickoff.md) | **Kickoff prompt for unattended AI agents.** Issue selection and claim protocol, per-worktree build and DB discipline, draft-until-green PR flow with Cadacious as reviewer, budgets and escalation. Two marked deviations from the pre-PR checklist | Complete |
 
 Two former-guides files moved to their correct homes in #344: [evidence-standards.md](reverse-engineering/evidence-standards.md) is now under `reverse-engineering/` (it's the standards reference for the RE process), and [entity-def-guide.md](engine/entity-def-guide.md) is now under `engine/` (it's reference doc on entity definition files).
 

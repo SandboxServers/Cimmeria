@@ -326,6 +326,10 @@ lab uat first-session --rows FS-01,FS-02
 
 Next, get the lab character into the world with `lab_ensure_in_world {create: {alignment, archetype, gender}}`, then read [automated UAT](automated-uat.md) and the [rulebook](live-research-lab.md).
 
+## Inspect a target in the companion window
+
+With the daemon and lab command installed, run `lab workbench open --instance <name>` and select **Target dossier**. Enter the numeric runtime entity ID and press **Inspect**. The read does not require a lab lease. **Refresh dossier** reads it again; **Clear** removes the saved selection. The view remembers the selected tab and target for that browser session and instance. Unknown and stale badges show where evidence is missing or aged. A changed target or failed read clears prior values. Server fields currently remain unknown until a trusted client-to-server session binding exists; a matching entity number alone is insufficient.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |

@@ -11,6 +11,7 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 use cimmeria_mercury::transport::Transport;
@@ -23,9 +24,7 @@ use crate::cell::messages::BaseToCellMsg;
 use crate::mercury::{build_char_list, build_create_player};
 
 use super::super::character::query_character_list;
-use super::super::helpers::{
-    drain_acks_and_seq, get_account_entity_id, get_enc_version, WitnessSendOutcome,
-};
+use super::super::helpers::{get_account_entity_id, WitnessSendOutcome};
 use super::super::session_identity::identity_for_addr;
 use super::super::ConnectedClientState;
 
@@ -63,7 +62,14 @@ pub async fn handle_enable_entities(
         let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         if let Some(c) = clients.get(&addr) {
             match (c.pending_player_entity_id, c.pending_world_entry.clone()) {
-                (Some(eid), Some(entry)) => Some((eid, entry, c.pending_player_load_data.clone())),
+                (Some(eid), Some(entry)) => Some((
+                    eid,
+                    entry,
+                    c.pending_player_load_data.clone(),
+                    Arc::clone(&c.next_seq),
+                    c.wire_send_origin(),
+                    c.key,
+                )),
                 _ => None,
             }
         } else {
@@ -71,7 +77,10 @@ pub async fn handle_enable_entities(
         }
     };
 
-    if let Some((_eid, entry_info, load_data)) = pending {
+    if let Some((_eid, entry_info, load_data, next_seq, origin, source_key)) = pending {
+        if source_key != key {
+            return Err("create-player key no longer belongs to content owner".into());
+        }
         // -- Create player step: CREATE_BASE_PLAYER + appearance pre-warm + onClientMapLoad --
         // Send only the base entity and terrain load notification. The client
         // will load geometry and respond with `mapLoaded` (cell method index 25,
@@ -80,15 +89,18 @@ pub async fn handle_enable_entities(
         // The appearance pre-warm makes this body data-sized, so it goes
         // through the fitted send: ACKs sized to the body, and a body too big
         // for one datagram is fragmented instead of wedging the stream.
-        let outcome = super::super::helpers::send_reliable_to_addr(
-            transport,
+        let owner_transport =
+            super::content_owner_transport(transport, connected, &next_seq, origin.as_ref());
+        let outcome = super::super::helpers::send_reliable_to_addr_for_owner(
+            &owner_transport,
             connected,
             addr,
             entry_info.player_entity_id,
-            "create_player",
+            "create_player_unproven",
             |key, version, seq, acks| {
                 build_create_player(key, seq, acks, &entry_info, load_data.as_ref(), version)
             },
+            &next_seq,
         )
         .await;
         let seq = match outcome {
@@ -125,7 +137,10 @@ pub async fn handle_enable_entities(
         // Send succeeded — now commit: take pending state and stage map_loaded data.
         {
             let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-            if let Some(c) = clients.get_mut(&addr) {
+            if let Some(c) = clients
+                .get_mut(&addr)
+                .filter(|c| super::same_direct_owner(c, &next_seq, origin.as_ref()))
+            {
                 c.pending_player_entity_id.take();
                 let entry = c.pending_world_entry.take().unwrap_or(entry_info);
                 let load = c.pending_player_load_data.take();
@@ -145,17 +160,18 @@ pub async fn handle_enable_entities(
     // Guard: only proceed if we haven't already sent the char list.
     // Note: char_list_sent is flipped only after send_to succeeds below, so a
     // transient failure permits retry on the next ENABLE_ENTITIES.
-    {
+    let (list_next_seq, list_origin) = {
         let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
         match clients.get(&addr) {
             Some(c) if c.char_list_sent => return Ok(()),
-            Some(_) => {}
+            Some(c) if c.key == key => (Arc::clone(&c.next_seq), c.wire_send_origin()),
+            Some(_) => return Err("char list key no longer belongs to original session".into()),
             None => {
                 tracing::warn!(%addr, "enable_entities: addr not in connected map");
                 return Ok(());
             }
         }
-    }
+    };
 
     // Query characters from DB
     let account_name = identity_for_addr(connected, addr).account_name;
@@ -173,23 +189,41 @@ pub async fn handle_enable_entities(
         if characters.is_empty() { "creation screen" } else { "select screen" }
     );
 
-    let (acks, seq) = drain_acks_and_seq(connected, addr)?;
-    let enc_version = get_enc_version(connected, addr);
+    let (acks, seq, enc_version, next_seq, origin) = {
+        let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+        let c = clients.get_mut(&addr).ok_or("addr not in connected map")?;
+        if c.key != key || !super::same_direct_owner(c, &list_next_seq, list_origin.as_ref()) {
+            return Err("char list session replaced before packet build".into());
+        }
+        let acks = cimmeria_mercury::packet::take_piggyback_acks(
+            &mut c.pending_acks.lock().unwrap(),
+            c.enc_version,
+        );
+        let seq =
+            c.next_seq.fetch_add(1, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;
+        let origin = list_origin;
+        (acks, seq, c.enc_version, Arc::clone(&c.next_seq), origin)
+    };
     let pkt = build_char_list(&key, seq, &acks, &characters, account_eid, enc_version);
     tracing::trace!(%addr, len = pkt.len(), seq, hex = %super::super::helpers::to_hex(&pkt), "UDP_OUT char_list");
-    transport.send_to(&pkt, addr).await?;
+    super::send_direct(transport, &pkt, addr, None).await?;
     // Char list is a one-shot state delivery; retransmit on loss.
-    super::super::helpers::shadow_register_reliable_send(
+    super::register_unproven_direct_reliable(
         connected,
         addr,
         seq,
-        cimmeria_mercury::packet::Bytes::copy_from_slice(&pkt),
+        &pkt,
+        &next_seq,
+        origin.as_ref(),
     );
 
     // Send succeeded -- mark char list as sent so we don't re-send on subsequent ENABLE_ENTITIES.
     {
         let mut clients = connected.lock().map_err(|_| "connected lock poisoned")?;
-        if let Some(c) = clients.get_mut(&addr) {
+        if let Some(c) = clients
+            .get_mut(&addr)
+            .filter(|c| super::same_direct_owner(c, &next_seq, origin.as_ref()))
+        {
             c.char_list_sent = true;
         }
     }

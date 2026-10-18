@@ -24,6 +24,8 @@ pub(crate) mod after_fault;
 pub(crate) mod bundle;
 pub(crate) mod fragment;
 pub(crate) mod iterator;
+#[cfg(test)]
+mod peer_proof_tests;
 pub(crate) mod report;
 pub(crate) mod tail;
 pub(crate) mod window;
