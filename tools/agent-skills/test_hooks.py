@@ -298,6 +298,29 @@ class WiringTest(unittest.TestCase):
         # Write and Read; the guard must skip when the file is absent.
         self.assertIn("|| exit 0", command)
 
+    def test_banner_is_the_first_session_start_entry(self):
+        settings = json.loads((REPO / ".claude/settings.json").read_text(encoding="utf-8"))
+        first = settings["hooks"]["SessionStart"][0]
+        self.assertNotIn("matcher", first)
+        command = first["hooks"][0]["command"]
+        self.assertIn("mode_banner.sh", command)
+        self.assertIn("|| exit 0", command)
+
+    def test_every_python_hook_goes_through_the_launcher(self):
+        settings = json.loads((REPO / ".claude/settings.json").read_text(encoding="utf-8"))
+        commands = [h["command"] for event in ("SessionStart", "PreToolUse")
+                    for entry in settings["hooks"][event] for h in entry["hooks"]]
+        front = (REPO / ".claude/agents/orchestrator.md").read_text(encoding="utf-8").split("---")[1]
+        commands.append(re.search(r"command: (.+)", front).group(1))
+        codex = json.loads((REPO / ".codex/hooks.json").read_text(encoding="utf-8"))
+        commands += [h["command"] for event in codex["hooks"].values()
+                     for entry in event for h in entry["hooks"]]
+        python_commands = [c for c in commands if ".py" in c]
+        self.assertTrue(python_commands)
+        for command in python_commands:
+            self.assertIn("py.sh", command)
+            self.assertNotIn("; python ", command)
+
 
 if __name__ == "__main__":
     unittest.main()

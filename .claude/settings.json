@@ -9,6 +9,15 @@
         "hooks": [
           {
             "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/mode_banner.sh\"; [ -n \"$CLAUDE_PROJECT_DIR\" ] && [ -f \"$f\" ] || exit 0; . \"$f\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
             "command": "[ -x \"$HOME/.agent-board/board\" ] && \"$HOME/.agent-board/board\" hook session-start; exit 0",
             "timeout": 30
           }
@@ -19,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/resume_card.py\"; [ -n \"$CLAUDE_PROJECT_DIR\" ] && [ -f \"$f\" ] || exit 0; python \"$f\"",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/resume_card.py\"; [ -n \"$CLAUDE_PROJECT_DIR\" ] && [ -f \"$f\" ] || exit 0; set -- \"$f\"; . \"$CLAUDE_PROJECT_DIR/.claude/hooks/py.sh\"",
             "timeout": 10
           }
         ]
@@ -31,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/shell_guard.py\"; [ -n \"$CLAUDE_PROJECT_DIR\" ] && [ -f \"$f\" ] || exit 0; python \"$f\" --harness claude",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/hooks/shell_guard.py\"; [ -n \"$CLAUDE_PROJECT_DIR\" ] && [ -f \"$f\" ] || exit 0; set -- \"$f\" --harness claude; . \"$CLAUDE_PROJECT_DIR/.claude/hooks/py.sh\"",
             "timeout": 10
           }
         ]

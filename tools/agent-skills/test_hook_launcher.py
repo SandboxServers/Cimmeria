@@ -11,6 +11,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 PY_SH = REPO / ".claude/hooks/py.sh"
+BANNER = REPO / ".claude/hooks/mode_banner.sh"
 
 
 def posix_shell():
@@ -82,6 +83,50 @@ class PyLauncherTest(unittest.TestCase):
             result = run_launcher(["/hooks/guard.py"], path, ostype="msys")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.strip(), "python")
+
+
+def run_banner(payload, path):
+    """Run mode_banner.sh with payload on stdin and PATH set to path; the banner needs no Python."""
+    env = {"PATH": path, "BANNER": BANNER.as_posix()}
+    env.update({k: os.environ[k] for k in ("SYSTEMROOT", "TEMP", "TMP") if k in os.environ})
+    return subprocess.run(
+        [SHELL, "-c", '. "$BANNER"'],
+        env=env,
+        input=json.dumps(payload),
+        capture_output=True,
+        text=True,
+    )
+
+
+@unittest.skipIf(SHELL is None, "no POSIX shell")
+class ModeBannerTest(unittest.TestCase):
+    def test_default_session_names_orchestrator_and_hands_on(self):
+        result = run_banner({"session_id": "s", "source": "startup"}, os.path.dirname(sys.executable))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertIn("Mode: orchestrator", output["systemMessage"])
+        self.assertIn("claude --agent hands-on", output["systemMessage"])
+        self.assertIn("additionalContext", output["hookSpecificOutput"])
+        self.assertNotIn("WARNING", result.stdout)
+
+    def test_agent_flag_names_that_agent(self):
+        result = run_banner({"agent_type": "hands-on"}, os.path.dirname(sys.executable))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertTrue(output["systemMessage"].startswith("Mode: hands-on"))
+        self.assertNotIn("hookSpecificOutput", output)
+
+    def test_unsafe_agent_type_falls_back_and_stays_valid_json(self):
+        result = run_banner({"agent_type": "x;rm -rf"}, os.path.dirname(sys.executable))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        output = json.loads(result.stdout)
+        self.assertIn("Mode: orchestrator", output["systemMessage"])
+
+    def test_warns_when_no_python(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            result = run_banner({"session_id": "s", "source": "startup"}, tmp)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("WARNING: no python3, python or py", json.loads(result.stdout)["systemMessage"])
 
 
 if __name__ == "__main__":
