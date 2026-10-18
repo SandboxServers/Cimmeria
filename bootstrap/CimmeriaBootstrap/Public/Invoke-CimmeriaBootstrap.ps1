@@ -37,10 +37,17 @@ function Invoke-CimmeriaBootstrap {
         Build configuration: "Debug" (default) or "Release".
 
     .PARAMETER ForceDatabase
-        Drop and recreate the sgw database before loading schemas.
+        Refresh resources in the sgw database and keep accounts and characters
+        (a backup is written first). Use -WipeDatabase to start from empty player data.
+
+    .PARAMETER WipeDatabase
+        Print player counts, back up sgw to server/backups, drop it and reload it from
+        the seeds. Destroys player data (after the backup). Cannot be combined with
+        -ForceDatabase.
 
     .PARAMETER ResetDatabase
         Nuclear option: stop PostgreSQL, delete pgdata, re-initialize everything from scratch.
+        Destroys player data.
 
     .PARAMETER UseDocker
         Use a Docker container for PostgreSQL instead of local binaries.
@@ -77,6 +84,7 @@ function Invoke-CimmeriaBootstrap {
         [ValidateSet("Debug", "Release")]
         [string]$Configuration = "Debug",
         [switch]$ForceDatabase,
+        [switch]$WipeDatabase,
         [switch]$ResetDatabase,
         [switch]$UseDocker,
         [switch]$WithReToolchain,
@@ -215,7 +223,7 @@ function Invoke-CimmeriaBootstrap {
         Write-Host ""
         Write-Host "--- Step $step/$totalSteps`: Database ---" -ForegroundColor Cyan
         try {
-            Initialize-CimmeriaDatabase -Force:$ForceDatabase -ResetDatabase:$ResetDatabase -UseDocker:$UseDocker
+            Initialize-CimmeriaDatabase -Force:$ForceDatabase -WipeDatabase:$WipeDatabase -ResetDatabase:$ResetDatabase -UseDocker:$UseDocker
         } catch {
             Write-Host ""
             Write-Host "FAILED at Step $step`: Initialize-CimmeriaDatabase" -ForegroundColor Red
