@@ -13,8 +13,9 @@ name: senpai-review
 # failed step fails the job: the token mint, the PR lookup, checkout, the stub
 # comment, the Claude step, or a stub Claude never replaced. A failed mint
 # says which secret to fix. On a failure the last steps rewrite the stub
-# comment (or post one) to say so, with the run link; only those best-effort
-# steps are `continue-on-error`. Runs that skip on purpose (another label,
+# comment (or post one) to say so, with the run link and, when Claude itself
+# failed, its one-line error; only those best-effort steps are
+# `continue-on-error`. Runs that skip on purpose (another label,
 # fork PR, Dependabot, closed PR) end skipped or green.
 #
 # Not a gate: `main`'s ruleset requires only `ci gate`, and the ship-pr skill
@@ -80,6 +81,7 @@ jobs:
         id: senpai-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
+          # `app-id` warns as deprecated (use `client-id`); switching needs the App's Client ID as a new secret, so it stays for now.
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
           permission-contents: read
@@ -389,6 +391,36 @@ jobs:
             <sup>*Senpai Reviewer is an automated agent. Senpai is never wrong, but Senpai is occasionally mistaken. Verify fixes yourself.*</sup>
             ```
 
+      # show_full_output stays false: it would print every message, tool
+      # results included, to a public log. This prints only the CLI's final
+      # `result` string (for a run that dies before its first turn, the API
+      # error, such as an invalid key or no credit), key-shaped text redacted.
+      # The action sets `execution_file` on failure too; the fallback is the
+      # path it writes ($RUNNER_TEMP/claude-execution-output.json).
+      - name: Explain a failed Claude run
+        id: senpai-error
+        if: failure() && steps.senpai.outcome == 'failure'
+        continue-on-error: true
+        env:
+          EXECUTION_FILE: ${{ steps.senpai.outputs.execution_file }}
+        run: |
+          set -euo pipefail
+          f="${EXECUTION_FILE:-$RUNNER_TEMP/claude-execution-output.json}"
+          if [[ ! -f "$f" ]]; then
+            echo "::warning title=Claude error::No execution output file, so no error text to show."
+            exit 0
+          fi
+          msg=$(jq -r '[.[]? | select(.type? == "result")] | last
+            | (.result // "") as $r
+            | if $r != "" then $r else ((.errors // []) | map(tostring) | join(", ")) end' "$f" 2>/dev/null || true)
+          # One line, no key-shaped text, no backticks (it goes in a code span).
+          msg=$(printf '%s' "$msg" | tr '\r\n\t`' '    ' \
+            | sed -E 's/sk-ant-[A-Za-z0-9_-]*/sk-ant-[redacted]/g; s/sk-[A-Za-z0-9_-]{16,}/sk-[redacted]/g')
+          [[ -n "${msg// /}" ]] || msg="(the result message was empty)"
+          (( ${#msg} <= 300 )) || msg="${msg:0:300}..."
+          echo "::error title=Claude error::${msg//%/%25}"
+          echo "message=$msg" >> "$GITHUB_OUTPUT"
+
       # The Claude step can end "success" without ever replacing the stub (it
       # ran out of turns or posted somewhere else). No review posted is a
       # failed run.
@@ -417,6 +449,8 @@ jobs:
           # Set only once the PR resolved, so this never comments on a number
           # the lookup rejected.
           PR: ${{ steps.pr.outputs.number }}
+          # One redacted line from "Explain a failed Claude run", or empty.
+          CLAUDE_ERROR: ${{ steps.senpai-error.outputs.message }}
         run: |
           set -euo pipefail
           [[ "$PR" =~ ^[0-9]+$ ]] || exit 0
@@ -425,8 +459,11 @@ jobs:
             body=$(gh api "repos/$REPO/issues/comments/$COMMENT_ID" --jq .body)
             # Claude already replaced the stub with a review: leave it alone.
             [[ "$body" == *'<!-- senpai-stub -->'* ]] || exit 0
-            printf '%s\n## Episode %s: Senpai fell asleep\n\n> *The review run failed before a review was posted. Remove and re-add the **senpai** label to try again.*\n\n<sup>[Run log](%s)</sup>\n' \
-              '<!-- senpai-reviewer -->' "$PR" "$RUN_URL" > "$note"
+            said=""
+            # $(...) would drop the trailing blank line, so build it directly.
+            [[ -z "$CLAUDE_ERROR" ]] || said="**Claude said:** \`${CLAUDE_ERROR}\`"$'\n\n'
+            printf '%s\n## Episode %s: Senpai fell asleep\n\n> *The review run failed before a review was posted. Remove and re-add the **senpai** label to try again.*\n\n%s<sup>[Run log](%s)</sup>\n' \
+              '<!-- senpai-reviewer -->' "$PR" "$said" "$RUN_URL" > "$note"
             gh api -X PATCH "repos/$REPO/issues/comments/$COMMENT_ID" -F body=@"$note" > /dev/null
           else
             # Failed before the stub went up. No reviewer marker, so the next
