@@ -8,7 +8,8 @@ name: pr-container
 # Two triggers, two path lists:
 #
 #   * pull_request: only the files that are the container itself (the
-#     Dockerfile and s6 tree, the smoke script, the Trivy policy, these
+#     Dockerfile and s6 tree, the smoke scripts (login and persistence), the DB
+#     seeds that feed db-sync (db/sgw, db/persistent), the Trivy policy, these
 #     workflows) and the dependency set Trivy scans (Cargo.lock). Until
 #     2026-10-11 every crates/** or db/** PR ran it, which made it the
 #     self-hosted pool's largest load (more runner time than the gating
@@ -32,6 +33,9 @@ on:
       - '.github/workflows/pr-container.yml'
       - '.github/workflows/release-container.yml'
       - 'tools/container-smoke.sh'
+      - 'tools/container-persistence-smoke.sh'
+      - 'db/sgw/**'
+      - 'db/persistent/**'
   push:
     branches: [main]
     paths:
@@ -50,6 +54,7 @@ on:
       - '.github/workflows/pr-container.yml'
       - '.github/workflows/release-container.yml'
       - 'tools/container-smoke.sh'
+      - 'tools/container-persistence-smoke.sh'
   workflow_dispatch:
 
 # Top-level: deny everything. Each job opts into the minimum it needs.
@@ -73,9 +78,10 @@ jobs:
     permissions:
       contents: read   # actions/checkout
     # Hard ceiling on runner minutes. Cold cache + full Rust build is
-    # ~15 min; warm PRs are 5 min. 30 catches a runaway / hung step
-    # without wrecking legitimate cold builds.
-    timeout-minutes: 30
+    # ~15 min; warm PRs are 5 min; the persistence smoke adds eight
+    # scenarios with several 1-5 minute boots. 45 catches a runaway / hung
+    # step without wrecking legitimate cold builds.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -229,6 +235,29 @@ jobs:
             exit 1
           fi
           echo "refused as expected (exit $code)"
+
+      - name: validate docker/compose.yml
+        run: docker compose -f docker/compose.yml config -q
+        env:
+          # compose.yml requires BASE_EXTERNAL (`${BASE_EXTERNAL:?...}`), so
+          # `config` fails without it.
+          BASE_EXTERNAL: 127.0.0.1
+          CIMMERIA_BACKUP_DIR: ${{ runner.temp }}/backups
+
+      - name: persistence smoke (keep / rebuild / restore / wipe)
+        run: |
+          bash tools/container-persistence-smoke.sh \
+            "cimmeria-server:pr-${{ github.event.pull_request.number || 'dispatch' }}" \
+            "${{ runner.temp }}/container-persistence-logs"
+
+      - name: upload persistence smoke logs
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: container-persistence-logs
+          path: ${{ runner.temp }}/container-persistence-logs
+          if-no-files-found: ignore
+          retention-days: 14
 
   # Main only: a failed build or smoke on main opens (or updates) the
   # `main-red` issue for this check, and a passing one closes it. A run that

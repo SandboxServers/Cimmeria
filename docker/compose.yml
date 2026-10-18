@@ -102,7 +102,7 @@ services:
       #   CIMMERIA_TELEMETRY_UPLOAD_QUOTA_PER_IP=3000
       #   CIMMERIA_TELEMETRY_BUNDLE_QUOTA_PER_IP=150
       # Any change needs the container recreated, which restarts the
-      # game server and reseeds the database (see below). Recipes:
+      # game server (the database is kept; see the volumes below). Recipes:
       # docs/operations/telemetry.md, "Kill switch" and "Changing a quota".
       CIMMERIA_TELEMETRY_KILL_SWITCH: "${CIMMERIA_TELEMETRY_KILL_SWITCH:-}"
       CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP: "${CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP:-}"
@@ -119,14 +119,25 @@ services:
       # next image sets. Runbook: docs/operations/colo-deploy.md.
       DEVELOPER_MODE: "${DEVELOPER_MODE:-false}"
       RUST_LOG: "${RUST_LOG:-info}"
-    # No volume for /var/lib/postgresql/data on purpose: the entrypoint
-    # (docker/entrypoint.sh) reseeds it from the image on every container
-    # start, so every start, update or restart, begins with a fresh DB.
+      # Database maintenance, read by the container's db-sync step (see
+      # .env.example). Leave FORCE_REBUILD and RESTORE blank normally.
+      CIMMERIA_DB_FORCE_REBUILD: "${CIMMERIA_DB_FORCE_REBUILD:-}"
+      CIMMERIA_DB_RESTORE: "${CIMMERIA_DB_RESTORE:-}"
+      CIMMERIA_DB_BACKUP_KEEP: "${CIMMERIA_DB_BACKUP_KEEP:-10}"
+    # The database persists on the external volume cimmeria-server-pgdata,
+    # so restarts and image updates keep player data. Each image update
+    # rebuilds only the resources tables and keeps accounts and characters
+    # (docker/entrypoint.sh, db-sync.sh). Backups go to CIMMERIA_BACKUP_DIR.
     volumes:
       # Server logs (logs/*.log, plus logs/archive/<timestamp>/ per start).
       # A host bind mount survives watchtower swaps. The files have no
       # rotation of their own; point CIMMERIA_LOG_DIR at a roomy disk.
       - "${CIMMERIA_LOG_DIR:-./logs}:/var/log/cimmeria"
+      # Database (see the top-level volumes block). Create it once with
+      # `docker volume create cimmeria-server-pgdata`.
+      - "cimmeria-server-pgdata:/var/lib/postgresql/data"
+      # Pre-rebuild database backups (newest CIMMERIA_DB_BACKUP_KEEP kept).
+      - "${CIMMERIA_BACKUP_DIR:-./backups}:/var/backups/cimmeria"
     networks:
       - signoz-net
     logging:
@@ -149,7 +160,10 @@ services:
     environment:
       WATCHTOWER_POLL_INTERVAL: "300"
       WATCHTOWER_CLEANUP: "true"          # delete the replaced image
-      WATCHTOWER_REMOVE_VOLUMES: "true"   # see colo-deploy.md: does not actually free the pgdata volume
+      # --remove-volumes removes only the replaced container's anonymous
+      # volumes. cimmeria-server-pgdata is an external named volume, not an
+      # anonymous one, so it is never removed by a swap. Do not change this.
+      WATCHTOWER_REMOVE_VOLUMES: "true"
       # Only containers labelled watchtower.enable=true (the cimmeria
       # service above). Without this, watchtower updates every container on
       # the host, including other projects'.
@@ -174,3 +188,12 @@ networks:
   signoz-net:
     name: signoz-net
     external: true
+
+volumes:
+  # Player data lives here and survives `docker restart`, image updates
+  # and `docker compose down -v` (an external volume is never removed by
+  # compose). Create it once: docker volume create cimmeria-server-pgdata
+  # Removing it by hand is the deliberate full wipe.
+  cimmeria-server-pgdata:
+    external: true
+    name: cimmeria-server-pgdata

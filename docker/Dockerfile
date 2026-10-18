@@ -4,11 +4,15 @@
 #   builder  → compiles cimmeria-server against the Rust workspace (and the
 #              CI login probe, exported only by the `login-probe` target).
 #   db-init  → initialises a Postgres data directory with schema + seeds.
-#   runtime  → carries the binary, cooked data, the loaded pgdata, and
-#              s6-overlay supervising postgres + cimmeria-server together.
+#   runtime  → carries the binary, cooked data, the loaded pgdata, the
+#              db-sync inputs, and s6-overlay supervising postgres, db-sync
+#              and cimmeria-server together.
 #
-# The runtime image carries zero .sql files and zero Rust source — the
-# DB is identity-baked at build time and the runtime never re-runs psql.
+# The runtime image carries /opt/cimmeria/db/ (the baked fresh.dump, image-id,
+# db-source.sha256 and the persistent/ SQL) and /opt/cimmeria/bin/ (db-sync.sh,
+# db-rebuild.sh). The pgdata is baked once and copied to the named volume on
+# first start only; db-sync decides at every boot whether to keep, adopt or
+# rebuild. The runtime image carries no Rust source.
 
 # Base images pinned by digest, not just tag. Tags are mutable on
 # Docker Hub (a compromised account or registry could repoint
@@ -119,9 +123,13 @@ COPY --from=builder /tmp/login-probe /login-probe
 
 # ─── Stage 2: db-init ────────────────────────────────────────────
 # Initialise pgdata against a stopped Postgres, load the full schema +
-# seed data, then capture the resulting directory. The runtime stage
-# COPYs this directory and never sees the .sql files.
+# seed data, stamp the baked cimmeria_meta row, then capture the pgdata,
+# the dump, the ids and the persistent SQL. The runtime stage COPYs only
+# those outputs from /tmp/out; the schema seeds stay in this stage.
 FROM ${POSTGRES_IMAGE} AS db-init
+
+# ARGs do not cross stages, so the image id needs its own declaration here.
+ARG CIMMERIA_GIT_SHA=unknown
 
 ENV POSTGRES_USER=w-testing \
     POSTGRES_PASSWORD=w-testing \
@@ -147,8 +155,16 @@ RUN set -eux; \
         -c \"CREATE DATABASE $POSTGRES_DB OWNER \\\"$POSTGRES_USER\\\";\""; \
     su postgres -s /bin/bash -c "cd /tmp/db && \
         psql -U \"$POSTGRES_USER\" -d $POSTGRES_DB -v ON_ERROR_STOP=1 -f /tmp/db/database.sql"; \
+    mkdir -p /tmp/out; \
+    ( cd /tmp/db && find database.sql sgw resources persistent -type f | LC_ALL=C sort | xargs cat | sha256sum | cut -d' ' -f1 ) > /tmp/out/db-source.sha256; \
+    printf '%s-%s\n' "$CIMMERIA_GIT_SHA" "$(cut -c1-12 /tmp/out/db-source.sha256)" > /tmp/out/image-id; \
+    chown postgres:postgres /tmp/out; \
+    su postgres -s /bin/bash -c "psql -U \"$POSTGRES_USER\" -d $POSTGRES_DB -v ON_ERROR_STOP=1 -f /tmp/db/persistent/meta.sql"; \
+    su postgres -s /bin/bash -c "psql -U \"$POSTGRES_USER\" -d $POSTGRES_DB -v ON_ERROR_STOP=1 \
+        -c \"INSERT INTO cimmeria_meta.db_state (id, state, image_id, db_source_sha256) VALUES (1, 'baked', '$(cat /tmp/out/image-id)', '$(cat /tmp/out/db-source.sha256)')\""; \
+    su postgres -s /bin/bash -c "pg_dump -Fc -U \"$POSTGRES_USER\" -d $POSTGRES_DB -f /tmp/out/fresh.dump"; \
     su postgres -s /bin/bash -c "pg_ctl -D $PGDATA -m fast -w stop"; \
-    rm -rf /tmp/db
+    mkdir -p /tmp/out/persistent && cp -a /tmp/db/persistent/. /tmp/out/persistent/ && rm -rf /tmp/db
 
 
 # ─── Stage 3: runtime ────────────────────────────────────────────
@@ -258,15 +274,27 @@ COPY --from=db-init --chown=postgres:postgres /var/lib/postgresql/data \
 # box; the entrypoint also re-asserts at boot to cover bind-mount cases.
 RUN chmod 700 /var/lib/postgresql/data /var/lib/postgresql/initial-data
 
+# Baked dump, ids and persistent SQL for db-sync (root-owned, read-only in use).
+# db-sync.sh decides at each boot whether to keep, adopt or rebuild the live DB.
+COPY --from=db-init /tmp/out/fresh.dump /tmp/out/image-id /tmp/out/db-source.sha256 /opt/cimmeria/db/
+COPY --from=db-init /tmp/out/persistent/ /opt/cimmeria/db/persistent/
+COPY docker/db-sync.sh docker/db-rebuild.sh /opt/cimmeria/bin/
+RUN chmod 0755 /opt/cimmeria/bin/db-sync.sh /opt/cimmeria/bin/db-rebuild.sh \
+ && mkdir -p /var/backups/cimmeria \
+ && chown postgres:postgres /var/backups/cimmeria
+
 # s6-rc service definitions.
 COPY docker/s6/postgres          /etc/s6-overlay/s6-rc.d/postgres
 COPY docker/s6/cimmeria-server   /etc/s6-overlay/s6-rc.d/cimmeria-server
+COPY docker/s6/db-sync           /etc/s6-overlay/s6-rc.d/db-sync
 RUN mkdir -p /etc/s6-overlay/s6-rc.d/user/contents.d \
  && touch    /etc/s6-overlay/s6-rc.d/user/contents.d/postgres \
+             /etc/s6-overlay/s6-rc.d/user/contents.d/db-sync \
              /etc/s6-overlay/s6-rc.d/user/contents.d/cimmeria-server \
  && chmod +x /etc/s6-overlay/s6-rc.d/postgres/run \
              /etc/s6-overlay/s6-rc.d/cimmeria-server/run \
-             /etc/s6-overlay/s6-rc.d/cimmeria-server/finish
+             /etc/s6-overlay/s6-rc.d/cimmeria-server/finish \
+             /etc/s6-overlay/s6-rc.d/db-sync/up
 
 # Wrapper that self-heals empty bind-mount pgdata then hands off to s6.
 COPY docker/entrypoint.sh /usr/local/bin/cimmeria-entrypoint
@@ -324,6 +352,11 @@ ENV AUTH_HOST=0.0.0.0 \
     # is never cut at 3 s, and kept under compose's 45 s stop_grace_period.
     S6_SERVICES_GRACETIME=20000 \
     S6_KILL_GRACETIME=25000 \
+    # A db-sync rebuild can run for minutes; no startup wait limit (0 = none),
+    # so the wait for it cannot kill the boot. A failed service stops the
+    # container (exit 2) instead of leaving it up without its database.
+    S6_CMD_WAIT_FOR_SERVICES_MAXTIME=0 \
+    S6_BEHAVIOUR_IF_STAGE2_FAILS=2 \
     S6_KEEP_ENV=1
 
 # Ports actually bound by the Rust server. The legacy Python console
@@ -331,7 +364,7 @@ ENV AUTH_HOST=0.0.0.0 \
 # so we don't EXPOSE it.
 EXPOSE 13001 32832/udp 50000/udp 8081 8443 30000
 
-VOLUME ["/var/lib/postgresql/data", "/var/log/cimmeria"]
+VOLUME ["/var/lib/postgresql/data", "/var/log/cimmeria", "/var/backups/cimmeria"]
 
 # Liveness probe: the server's own DB_URL can log in and run a query (not
 # just pg_isready, which passes while the configured user, password or
@@ -341,7 +374,9 @@ VOLUME ["/var/lib/postgresql/data", "/var/log/cimmeria"]
 # clients log in through) must also be bound. Not AUTH_PORT: nothing binds 13001, so
 # probing it marked every container unhealthy. Bash's /dev/tcp gives us a
 # zero-dep TCP probe without pulling in netcat/curl just for this.
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+# The 300s start period covers a resources rebuild by db-sync on first boot
+# after an image change, before the server can answer.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=300s --retries=3 \
     CMD PGCONNECT_TIMEOUT=5 /opt/cimmeria/bin/cimmeria-server --check-db >/dev/null 2>&1 \
         && bash -c "exec 3<>/dev/tcp/127.0.0.1/${LOGON_PORT}" \
         || exit 1
