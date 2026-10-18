@@ -135,16 +135,25 @@ const PERSISTENT_META_SQL: &str = include_str!("../../../../db/persistent/meta.s
 const PERSISTENT_RECONCILE_SQL: &str = include_str!("../../../../db/persistent/reconcile.sql");
 const PERSISTENT_RECONCILE_SMOKE_SQL: &str =
     include_str!("../../../../tools/persistent_reconcile_smoke.sql");
+const PERSISTENT_SEED_ACCOUNTS_STAGE_SQL: &str =
+    include_str!("../../../../db/persistent/seed-accounts-stage.sql");
+const PERSISTENT_SEED_ACCOUNTS_SQL: &str =
+    include_str!("../../../../db/persistent/seed-accounts.sql");
+const PERSISTENT_SEED_ACCOUNTS_SMOKE_SQL: &str =
+    include_str!("../../../../tools/persistent_seed_accounts_smoke.sql");
 
 /// Replace each `--#include <file>` line with that persistent SQL file.
 /// The smokes cannot `\ir` (they run through sqlx), so the harness expands them.
-/// PP-17 adds `seed-accounts-stage.sql` and `seed-accounts.sql` here.
 fn expand_persistent_includes(sql: &str) -> String {
     let mut out = String::new();
     for line in sql.lines() {
         match line.trim() {
             "--#include meta.sql" => out.push_str(PERSISTENT_META_SQL),
             "--#include reconcile.sql" => out.push_str(PERSISTENT_RECONCILE_SQL),
+            "--#include seed-accounts-stage.sql" => {
+                out.push_str(PERSISTENT_SEED_ACCOUNTS_STAGE_SQL)
+            }
+            "--#include seed-accounts.sql" => out.push_str(PERSISTENT_SEED_ACCOUNTS_SQL),
             other if other.starts_with("--#include ") => {
                 panic!("smoke_tests: unknown include marker: {other}")
             }
@@ -153,6 +162,18 @@ fn expand_persistent_includes(sql: &str) -> String {
         out.push('\n');
     }
     out
+}
+
+#[tokio::test]
+async fn live_db_persistent_seed_accounts_smoke_passes_against_seed_data() {
+    let pool = require_db_or_skip!();
+    let sql = strip_psql_metacommands(&expand_persistent_includes(
+        PERSISTENT_SEED_ACCOUNTS_SMOKE_SQL,
+    ));
+    sqlx::raw_sql(AssertSqlSafe(sql))
+        .execute(&pool)
+        .await
+        .expect("persistent_seed_accounts_smoke.sql must pass: see the RAISE message");
 }
 
 #[tokio::test]
