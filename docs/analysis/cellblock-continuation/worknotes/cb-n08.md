@@ -47,7 +47,7 @@ CB-N05 and CB-N06 are Cimmeria's own content, labelled `CIMMERIA_AUTHORING` in t
 - A blank dialog, client crash, missing first-press response, lost progress or doubled reward on CB-U10 or CB-U12 blocks the campaign PR. A slow optional beat does not by itself.
 - FZ-99 takes the [FZ-99 handoff](../README.md#fz-99-handoff) into the shared status docs. This packet did not touch them.
 - `docs/readme.md` still has the Cellblock row that says "first authored mission design passed review, while fresh client acceptance remains pending". That row is left to FZ-99 with the other shared status rows; the campaign did not change it.
-- Follow-up, not done here: `crates/content-engine/tests/it/interact_tag_linter.rs` is 715 lines (713 on main), over the 700-line hard cap. The campaign added 2 lines against the spec allowance of +1. Split the table out in a later cleanup and add no more lines to it.
+- Follow-up, not done here: `crates/content-engine/tests/it/interact_tag_linter.rs` is 755 lines (753 on main), over the 700-line hard cap. The campaign added 2 lines against the spec allowance of +1. Split the table out in a later cleanup and add no more lines to it.
 
 ## Doc-update map rows touched
 
