@@ -1,33 +1,35 @@
 # ai-harness-docs: resume card
 
-Ledger: docs/analysis/ai-harness-docs/README.md. Packets: work-packets.md (rules, contract C1-C9, W1-W2) and work-packets-w3.md (W3-W4).
+Ledger: docs/analysis/ai-harness-docs/README.md. Packets: work-packets.md (rules, contract C1-C9), work-packets-w3b.md (W3b: AH-11 rules, C7b, C10, AH-11a..f) and work-packets-w3.md (W3c, W4).
 
 ## State (2026-10-18)
 
-- Design done. No packet dispatched yet. Ledger worktree: `.claude/worktrees/ai-harness-docs` (branch ai-harness-docs), committed locally, not pushed.
-- No BlockedDecision blocks W1.
+- W1, W2 and W3 (AH-12..14) are merged. The old AH-11 is replaced by the #1797 takeover (D-AH26..34).
+- Ledger update: worktree `.claude/worktrees/ah-11-design` (branch ai-harness-docs/ah-11-design), committed locally, not pushed.
+- Nothing in flight. No BlockedDecision blocks W3b or W3c.
 
 ## Next action
 
-1. `ops`: ship the ledger worktree as a docs PR and merge it (dispatch rule 1), so packet worktrees contain the packets.
-2. `ops`: worktrees ah-01, ah-02, ah-05 from origin/main (one dispatch each, one message).
-3. Dispatch AH-01, AH-02, AH-05 (packet-coder) in the background.
-4. When AH-02 returns `done` with `Verdict: go` in hook-timing.md: an ah-03 worktree stacked on its branch, then AH-03.
-   If AH-02 is `blocked` with no-go: ask the owner (D-AH8) before AH-03.
-5. W1 done: one packet-review-fixer over AH-01, 02, 03, 05; then ship (AH-03 with `--base` the AH-02 branch, merge AH-02 first).
+1. `ops`: ship ah-11-design as a docs PR and merge it, so packet worktrees contain w3b.
+2. `ops`: worktrees ah-11a..ah-11f from origin/main (branches in each packet), one dispatch each, one message.
+3. Dispatch AH-11a..AH-11f (packet-coder) in the background. AH-11a must reach Aura's commit f6f180ef (it fetches `docs/wsl-host-reality` if missing).
+4. W3b done: one packet-review-fixer over all six. AH-11e's CI job is proven by its own PR run.
+5. Ship order: **AH-11e first**, then AH-11b, c, d (their PRs then run the Linux job), AH-11a, then AH-11f.
+   AH-11a uses `--title` and `--body-file` from its packet; the body says "Supersedes #1797", not "Closes".
 
-## Later waves
+## Later
 
-- W2: AH-06..AH-09 after W1 merges. AH-06..08 run sync.py; disjoint files.
-- W3: AH-12, AH-13, then AH-14 stacked on AH-13. AH-11 waits on #1797 (merged → path A; closed → path B; still open after AH-14 merges → ask the owner).
-- W4: AH-15 is the owner's smoke test (ask first); AH-16 close-out.
+- W3c: AH-11g (ops bash path; runs sync.py) and AH-11h (docs) in parallel, after all W3b merges.
+- AH-11i: owner posts pr-1797-close.md with the PR numbers filled in, then closes #1797.
+- W4: AH-15 (owner; ask D-AH33 first: Linux leg required or best effort), then AH-16.
 
-## Owner actions open
+## Owner questions open
 
-- Post the #1797 reply (pr-1797-reply.md), or OK ops to post it.
-- Run, or approve a hands-on run of, AH-15.
+- D-AH33: AH-15 Linux/WSL leg required (recommended) or best effort.
+- D-AH29 (default no, non-blocking): a bash path for packet workers and the lane.
+- Owner actions: AH-11i reply and close; the AH-15 run.
 
-## Loop rules (until AH-07/AH-08 land)
+## Loop rules
 
-- Coder `blocked` with reason `context` → fresh packet-coder, "continuation N of 3", same worknote. Then one Sonnet implementer.
-- Review-fixer `recheck` → fresh review-fixer for that packet, up to 3 passes, then architect ruling.
+- Coder `blocked` with reason `context`: fresh packet-coder, "continuation N of 3", same worknote; then one Sonnet implementer.
+- Review-fixer `recheck`: fresh review-fixer for that packet, up to 3 passes, then an architect ruling.

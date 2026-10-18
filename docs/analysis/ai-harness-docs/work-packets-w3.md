@@ -1,62 +1,10 @@
 # ai-harness-docs: work packets, waves 3 and 4
 
-Continued from [work-packets.md](work-packets.md). The dispatch rules, the quoting convention (rule 8) and the contract (C1-C9) are there; packets below cite them by number.
+Continued from [work-packets.md](work-packets.md). The dispatch rules, the quoting convention (rule 8) and the contract (C1-C9) are there; packets below cite them by number. Wave 3b (AH-11a to AH-11f), with the AH-11 rules, C7b and C10, is in [work-packets-w3b.md](work-packets-w3b.md).
 
-## Wave 3: docs
+## Wave 3: docs (merged)
 
-### AH-11: platform reconciliation (after #1797)
-
-Agent: packet-coder. Branch `ai-harness-docs/ah-11-platform`, worktree name `ah-11`. Size: about 30k working tokens. Commit subject: `docs: one platform statement: Windows with PowerShell 7 supported, others not validated (AH-11)`.
-
-**Gate (the orchestrator checks this before dispatch):** #1797's state, through `ops` (`gh pr view 1797 --json state`).
-
-- **Path A (merged):** cut the worktree from `origin/main`, which contains #1797's "WSL and Linux hosts" section.
-- **Path B (closed without merging):** cut from `origin/main`. Step 0 applies `docs/analysis/ai-harness-docs/pr-1797.diff` with `git -C <wt> apply --3way <abs diff path>`, and the commit message gets an extra trailer, `Co-authored-by: aurablacklight <89038013+aurablacklight@users.noreply.github.com>`.
-- **Still open** when W3 starts: dispatch the other W3 packets and hold AH-11. If it is still open after AH-14 merges, ask the owner whether to wait or take path B.
-
-**Rules for this packet:**
-
-- Work only in your worktree, with absolute paths. Start each PowerShell call with `Set-Location <worktree>;`, and run every check in the foreground.
-- PowerShell only. No `cargo`. Never run `git stash`, `git push`, `git worktree prune` or `gh pr`.
-- Use the Edit tool. Every `.md` file is CRLF in the working tree; keep it CRLF. Check with `-match "(?<!\r)\n"` → `False`.
-- **CLAUDE.md stays at or under 4,500 bytes.**
-- Never hand-edit a `<!-- gen: -->` block.
-- Do not edit `docs/agents/rules-and-gotchas.md` (AH-12 owns it), and leave the agent files alone (W2 did those).
-- After editing `.claude/skills/lane-build/SKILL.md`, run `python tools/agent-skills/sync.py` and commit what it regenerates.
-- Commit once at the end.
-
-**Steps:** use the C7 wording. For each site, Grep for the quoted old text and replace only that sentence.
-
-| # | File | Old text (find it) | New text |
-|---|---|---|---|
-| 1 | `docs/agents/development-workflow.md`, § WSL and Linux hosts | the paragraph starting `**Status: not supported for interactive sessions.` | the C7 long form, followed by: `The documented build path is still Windows-native ([building.md](../building.md#prerequisites)); this section records what you hit elsewhere, so you don't rediscover it.` |
-| 2 | same section, bullet `**No documented path.**` | that bullet's first two sentences | `- **Not validated.** [building.md](../building.md#prerequisites) and the \`lane-build\` skill name Windows with PowerShell 7 as the validated platform. Every \`tools/build-lane/*.ps1\` has a \`.sh\` twin ([README](../../tools/build-lane/README.md)), but nobody runs them routinely on a developer host.` |
-| 3 | same section | `That is an observation, not a supported configuration.` | `That is an observation, not a validated configuration.` |
-| 4 | same section, end of `### Headless and CI launches...` | `Interactively, \`claude --agent hands-on\` is the documented escape hatch.` | append ` The session banner (\`.claude/hooks/mode_banner.sh\`) names the persona at the start of every session.` |
-| 5 | `docs/agents/development-workflow.md` § Builds | `Development builds run natively on Windows, from PowerShell or Git Bash.` | `Development builds are validated on Windows with PowerShell 7; Git Bash, WSL and Linux are not validated, but not unsupported ([WSL and Linux hosts](#wsl-and-linux-hosts)).` |
-| 6 | `CLAUDE.md` | `Windows-native, on the toolchain` | `Windows with PowerShell 7 is the validated platform, on the toolchain` |
-| 7 | `CLAUDE.md` | `WSL/Linux hosts are not supported for interactive sessions; what breaks, and how headless launches differ:` | `WSL, Linux and Git Bash are not validated, but not unsupported; what breaks, and how headless launches differ:` |
-| 8 | `CONTRIBUTING.md` | `(Windows-native builds on a pinned toolchain, and the build lane agents use)` | `(Windows with PowerShell 7 as the validated platform, a pinned toolchain, and the build lane agents use)` |
-| 9 | `docs/architecture/build-system.md` | heading `### 11. No WSL builds` | `### 11. Platforms, and the retired WSL cross-compile`. Then Grep the repo for `#11-no-wsl-builds`, and change each hit to `#11-platforms-and-the-retired-wsl-cross-compile`. |
-| 10 | same file | `Development builds run natively on Windows (PowerShell or Git Bash, driven by Claude Code).` | `Development builds are validated natively on Windows with PowerShell 7. WSL, Linux, and Git Bash on Windows are not validated, but not unsupported ([WSL and Linux hosts](../agents/development-workflow.md#wsl-and-linux-hosts)).` |
-| 11 | `docs/building.md` | `Development builds run natively on Windows (PowerShell or Git Bash). CI builds on Linux, but there is no WSL or cross-compile path for development.` | `Development builds are validated on Windows with PowerShell 7. CI builds on Linux. WSL, Linux, and Git Bash on Windows are not validated, but not unsupported ([WSL and Linux hosts](agents/development-workflow.md#wsl-and-linux-hosts)); the old WSL cross-compile path is retired.` |
-| 12 | the development-workflow section from row 1 | any quote of building.md's old text (`no WSL or cross-compile path for development`) | `the old WSL cross-compile path is retired` |
-| 13 | `docs/guides/getting-started.md` line 37 | `There is no WSL build path.` | `Windows with PowerShell 7 is the validated setup; WSL and Linux are not validated, but not unsupported ([WSL and Linux hosts](../agents/development-workflow.md#wsl-and-linux-hosts)).` |
-| 14 | `.github/copilot-instructions.md` line 40 | `development builds run natively on Windows;` | `development builds are validated on Windows with PowerShell 7 (WSL, Linux and Git Bash are not validated, but not unsupported);` |
-| 15 | `.claude/skills/lane-build/SKILL.md` line 57 | `- **Builds are Windows-native.** The WSL cross-compile is retired; CI builds on Linux runners.` | `- **Windows with PowerShell 7 is the validated platform.** WSL, Linux and Git Bash are not validated, but not unsupported; the WSL cross-compile is retired, and CI builds on Linux runners.` |
-| 16 | `docs/guides/autonomous-agent-kickoff.md`, the note #1797 added | `and WSL is not a supported interactive host` / `Which of the two wins on Linux is an open maintainer question.` | `and WSL is not a validated host` / `Until this guide is revised, CLAUDE.md's lane rule wins.` |
-
-Then:
-
-- Grep the repo (`*.md`, `*.yml`, `*.py`, `*.ps1`) for `nopjmp` and `Linux pipeline`. Expect no hits; record the result. If there is a hit, delete that sentence.
-- Leave `ship.py`, `lane-slots.ps1` and the `pre-pr-checks.md` "macOS / Linux / WSL" labels unchanged: they state facts, not a support policy.
-- If a site's old text is not found (for example, #1797 changed it), apply the C7 meaning to whatever the sentence now says, and list it in the report as a deviation.
-
-**Test type:** none (docs only).
-
-**Checks:** the CRLF check on every edited `.md`, the CLAUDE.md size check, and `python tools/agent-skills/sync.py --check`.
-
-**Docs owed:** doc-update-map row 18 (CLAUDE.md) and row 17 (build commands and invariants: copilot-instructions); list them.
+AH-12 (#1817), AH-13 (#1818) and AH-14 (#1819) are merged; their sections stay as the record. The old AH-11 (paths A and B, waiting on #1797) is replaced by the #1797 takeover: wave 3b in [work-packets-w3b.md](work-packets-w3b.md) and wave 3c below.
 
 ### AH-12: rules-and-gotchas promotions
 
@@ -178,11 +126,116 @@ Agent: documentation-writer. **Stacked on `ai-harness-docs/ah-13-harness-referen
 
 ---
 
+## Wave 3c: AH-11g to AH-11i
+
+Dispatch after every W3b PR has merged. "The AH-11 rules", C7b and C10 are in [work-packets-w3b.md](work-packets-w3b.md#rules-for-every-ah-11-packet); the decisions and findings are in the [README](README.md#decisions).
+
+### AH-11g: `ops` runs the `.sh` twins off Windows
+
+Agent: packet-coder. Branch `ai-harness-docs/ah-11g-ops-bash`, worktree name `ah-11g`. Size: about 30k working tokens. Wave 3c, after every W3b PR has merged. Commit subject: `feat(agents): ops uses the bash twins on Linux and WSL hosts (AH-11g)`.
+
+**Rules:** the AH-11 rules. Edit only:
+
+- `.claude/agents/ops.md`;
+- `.claude/skills/ship-pr/SKILL.md` (lines 8-10);
+- `.claude/skills/campaign-packet/SKILL.md` (§ 3, item 3);
+- the new `tools/agent-skills/test_ops_twins.py`;
+- the mirrors `python tools/agent-skills/sync.py` regenerates (`.codex/agents/ops.toml`, `.agents/skills/**`).
+
+Keep ops's `description` line unchanged: the generated agents table in `docs/agents/ai-harness.md` is built from it.
+
+**Steps:**
+
+1. `ops.md` frontmatter: `tools: PowerShell, Read` → `tools: PowerShell, Bash, Read`.
+2. `ops.md` body:
+   - After the first paragraph, insert:
+   ```text
+   **Pick the shell from the host.** Read the `Platform:` line of your environment. On `win32`, use the PowerShell tool and the `pwsh ... .ps1` commands below; never use Bash there. On any other platform (`linux`, `darwin`), use the Bash tool and the `.sh` twin given in brackets, with the same arguments: the twins take the same options and print the same output with the same exit codes. Never run a `.ps1` on Linux. If the tool you need is unavailable, return `blocked` with the reason `no PowerShell tool on win32` or `no Bash tool on <platform>`, never a bare `blocked`.
+   ```
+   - Append a bracketed twin to each script line:
+     - mk-worktree: `[bash tools/build-lane/mk-worktree.sh <branch> <name>]`;
+     - both ship lines: `[bash tools/build-lane/ship.sh ...same arguments]`;
+     - rm-worktree: `[bash tools/build-lane/rm-worktree.sh <name>|--merged]`.
+   - Replace the board line with: ``- Board reads and posts, as the main session (no `--as`): on `win32`, `python "$HOME\.agent-board\board.py" <command>` (call `board.py` directly, because the `board` shim is a `/bin/sh` script); elsewhere, `"$HOME/.agent-board/board" <command>`.``
+   - In the "Never run" paragraph:
+     - change `a push happens only inside `ship.ps1`` to `a push happens only inside `ship.ps1` or `ship.sh``;
+     - delete the sentence `If the PowerShell tool is unavailable (a Linux or WSL host), return `blocked` and state that reason in the one-clause reason; never a bare `blocked`.`, which the new paragraph replaces.
+3. `ship-pr/SKILL.md`: replace `Run everything\nfrom PowerShell; do not use bash.` with `Run everything\nfrom PowerShell on Windows; on a Linux or WSL host, \`ops\` runs the \`.sh\` twins with the same arguments.` Keep the line break where it is, and remove the backslashes (quoting rule 8).
+4. `campaign-packet/SKILL.md` § 3 item 3: after `They commit locally and\n   stop.` add ` On a Linux or WSL host only \`ops\` has a shell path (the \`.sh\` twins); a packet worker without PowerShell returns \`blocked\`.` Remove the backslashes.
+5. Create `tools/agent-skills/test_ops_twins.py`, a **unit test** of the agent contract that the existing agent-skills CI job runs (`python3 -m unittest discover -s tools/agent-skills`):
+   - It reads `.claude/agents/ops.md` (path from `Path(__file__).resolve().parents[2]`).
+   - `test_every_script_has_its_bash_twin`: for each `tools/build-lane/<name>.ps1` named in ops.md, `tools/build-lane/<name>.sh` exists, and `bash tools/build-lane/<name>.sh` appears in ops.md.
+   - `test_frontmatter_grants_bash_and_the_body_keys_on_platform`: the frontmatter `tools:` line lists `Bash`, and the body contains `Platform:` and `win32`.
+
+   **Reverted** (ops.md back to PowerShell only), both tests fail.
+6. Run `python tools/agent-skills/sync.py`, then `python tools/docs-gen/regen.py --check --skip-crate-graph`. ai-harness.md must not be listed as stale; if it is, ops's description changed, so undo that.
+
+**Checks:**
+
+- `Set-Location <wt>; python -m unittest discover -s tools/agent-skills -p "test_*.py"`;
+- `python tools/agent-skills/sync.py --check`;
+- the regen `--check` from step 6.
+
+**Docs owed:** the doc-update-map "AI-harness wiring" row (an agent's frontmatter: AH-14 added it); list it. The prose that row asks for is AH-11h's.
+
+### AH-11h: the WSL and Linux section and the agent rule, to the new state
+
+Agent: packet-coder. Branch `ai-harness-docs/ah-11h-linux-docs`, worktree name `ah-11h`. Size: about 25k working tokens. Wave 3c, parallel with AH-11g. Commit subject: `docs(agents): Linux script fixes and the ops bash path in the platform docs (AH-11h)`.
+
+**Rules:** the AH-11 rules. Edit only `docs/agents/development-workflow.md` and `docs/agents/rules-and-gotchas.md`.
+
+**Steps** (find each text exactly as AH-11a left it, and replace only that):
+
+1. § WSL and Linux hosts, the status paragraph. Find the sentence from `The build lane, the ship scripts and every agent rule are validated` through `returns \`blocked: no PowerShell (pwsh) on this host\`.` Replace that span with everything in C7b after its bold first sentence. Keep the bold sentence, and keep the building.md sentence that follows the span.
+2. Find the bullet that starts `- **\`ops\` cannot run.**` (the whole line). Replace it with:
+   ```text
+   - **`ops` runs the `.sh` twins.** On a host whose `Platform` is not `win32`, [`ops`](../../.claude/agents/ops.md) uses the Bash tool and runs `bash tools/build-lane/<script>.sh` with the same arguments as the `.ps1` commands. The packet workers (`packet-coder`, `packet-review-fixer`) still use PowerShell only, and without it they return `blocked: no PowerShell (pwsh) on this host`.
+   ```
+3. Find `- **Repo scripts that fail on Linux or WSL:**`. Replace it with `- **Repo scripts on Linux or WSL** (fixed in the scripts; CI tests them on Linux):`. Then replace its five sub-bullets, in order, with:
+   ```text
+     - `mk-worktree.sh` symlinks `external/` on Linux and WSL (a junction under Git Bash), and warns when the main checkout has no `external/` yet; see [Create a worktree that builds](#create-a-worktree-that-builds).
+     - `ship.sh` and `rebase-pr.sh` use `$PYTHON`, else the first of `python3`, `python` and `py` that runs, in the same order as `lane.sh`.
+     - `ship.py merge` reads the checks from `gh pr view --json statusCheckRollup` when the installed `gh` has no `gh pr checks --json` (2.45 has none).
+     - `ship.py` retargets restacked PRs through `gh api -X PATCH` when `gh pr edit --base` fails on an old `gh` (a GraphQL error about classic projects). Editing a PR body by hand hits the same error; use `gh api -X PATCH repos/<owner>/<repo>/pulls/<n> -F body=@file`.
+     - `rm-worktree.sh` runs on Linux and WSL, and `ship.sh merge --retire` calls it.
+   ```
+4. § Builds, worktrees and test databases. Find `The \`.sh\` scripts stay for CI, Linux and macOS, and for Git Bash.` Replace it with `The \`.sh\` scripts stay for CI, Linux and macOS, for Git Bash, and for \`ops\` on a Linux or WSL host.` Remove the backslashes.
+5. Same section, § Create a worktree that builds. Find `junctions \`external/\` in` and replace it with `links \`external/\` in (a junction on Windows, a symlink elsewhere)`.
+6. Find `- **\`ops\` ships a packet with \`ship.ps1\`.**` and replace it with `- **\`ops\` ships a packet with \`ship.ps1\`** (\`ship.sh\` on a Linux or WSL host).` Remove the backslashes.
+7. `docs/agents/rules-and-gotchas.md` line 102. Find `- **Agents use PowerShell, the validated path.** An agent on a host without \`pwsh\` returns \`blocked\` and says why. Humans may use the \`.sh\` twins; agents don't.` Replace it with:
+   ```text
+   - **Agents use PowerShell, the validated path; `ops` alone also has a bash path.** On a Linux or WSL host, `ops` runs the `.sh` twins, which CI tests on Linux. Every other agent on a host without `pwsh` returns `blocked` and says why. Humans may use the `.sh` twins too.
+   ```
+   Then set line 3 to `> **Last updated**: <today's date>`.
+
+**Test type:** none (docs only). AH-11b to AH-11e and AH-11g carry the tests.
+
+**Checks:**
+
+- The CRLF check on both files.
+- `Select-String` development-workflow.md for `cannot run`, `that fail on Linux` and `not supported`: no hits.
+- Every anchor these steps use resolves. Grep the headings `## WSL and Linux hosts` and `### Create a worktree that builds`.
+
+**Docs owed:** the doc-update-map rows for a new project rule (rules-and-gotchas) and for AI-harness wiring (the prose); list both.
+
+### AH-11i: close #1797 with a reply (owner action)
+
+Not a packet-agent task. `ops` has no `gh pr comment` or `gh pr close` (F27), and the reply speaks for the maintainers to a contributor. The text is [pr-1797-close.md](pr-1797-close.md); fill in the PR numbers when you post it. After AH-11g and AH-11h merge, the owner (or a `hands-on` session the owner approves) runs:
+
+```powershell
+gh pr comment 1797 --body-file <abs path to a copy of the text below pr-1797-close.md's line, PR numbers filled in>
+gh pr close 1797
+```
+
+Then the orchestrator sets AH-11i to Done in the README.
+
+---
+
 ## Wave 4: acceptance and close-out
 
 ### AH-15: fresh-clone smoke test (acceptance)
 
-Agent: **the owner, or a `hands-on` session the owner approves.** No packet agent can run it, because it needs a human-launched Claude Code session with no memory. Status starts at BlockedDependency (W3 merged) and becomes UATPending.
+Agent: **the owner, or a `hands-on` session the owner approves.** No packet agent can run it, because it needs a human-launched Claude Code session with no memory. Status starts at BlockedDependency (W3c merged) and becomes UATPending.
 
 **Windows (required):**
 
@@ -198,7 +251,22 @@ Agent: **the owner, or a `hands-on` session the owner approves.** No packet agen
    - **Expect** the banner WARNING, and a visible hook error, not silence, on the first shell call.
 6. Record each result, pass or fail, in `docs/analysis/ai-harness-docs/worknotes/AH-15.md`.
 
-**WSL or Linux (best effort):** repeat steps 2-5 with only `python3` installed. **Expect** the banner without a WARNING, and the guards active.
+**Linux or WSL leg (D-AH33: BlockedDecision, required or best effort; the recommendation is required).** It is the only end-to-end proof of the `ops` bash path, since CI tests the scripts but not the agent. Run it on a WSL Ubuntu or Linux host with `git`, `gh`, `python3` and Claude Code, signed in to `gh`. `pwsh` is not needed.
+
+- L1. Clone into the Linux filesystem (for example `~/src/cimmeria`, not under `/mnt/c`). Skip `setup.ps1`, and run `mkdir external` so that worktrees have something to link.
+- L2. Start Claude Code with no `--agent`.
+  - **Expect** `Mode: orchestrator...` with no WARNING: `py.sh` finds `python3`.
+- L3. Ask: "Have ops create the worktree ah15-probe on branch probe/ah15, then remove it."
+  - **Expect** ops to use the Bash tool (not a refusal and not a `.ps1`), and `bash tools/build-lane/mk-worktree.sh probe/ah15 ah15-probe` to print `(external/ symlinked)`.
+  - **Expect** `bash tools/build-lane/rm-worktree.sh ah15-probe` to succeed, after which `git worktree list` no longer shows it.
+- L4. In a plain terminal, run `bash tools/build-lane/ship.sh pr -C /nonexistent -m x; echo $?`.
+  - **Expect** a `status=refused` line and exit 2, not exit 127.
+- L5. Record `gh --version`. On a version older than 2.50, `ship.py merge` takes the `statusCheckRollup` fallback (AH-11d). Its first real use is the next PR shipped from this host; record that run when it happens.
+- L6. Ask the orchestrator to dispatch a `packet-coder` for any one-line docs fix.
+  - **Expect** `blocked: no PowerShell (pwsh) on this host` when `pwsh` is absent (D-AH29 keeps the workers PowerShell-only). If `pwsh` is installed, record what happened instead.
+- L7. Record the results in the same worknotes file.
+
+A pass proves the `ops` path. It does not change C7b: Linux and WSL stay "not validated" until a full session (orchestrator, packet workers, review, ship) has run end to end there.
 
 ### AH-16: close-out
 
@@ -208,8 +276,8 @@ Agent: packet-coder. Branch `ai-harness-docs/ah-16-close-out`, worktree name `ah
 
 **Steps:**
 
-1. `docs/guides/unified-uat.md`: add an entry for AH-15 that copies its steps, unless AH-15 is already Done, in which case add its result line. Follow the file's existing entry format (Grep for `CR-13` to see one).
-2. `docs/project-status.md`: Grep for an AI or agent-tooling section. If one exists, add one line: `AI harness: mode banner, py.sh hook launcher, worktree-aware orchestrator guard, generated hook and agent tables (ai-harness-docs, 2026-10).` If none exists, change nothing and say so. `docs/gap-analysis*` doesn't change: this is not game functionality.
+1. `docs/guides/unified-uat.md`: add an entry for AH-15 that copies its steps (the Windows steps and the Linux leg), unless AH-15 is already Done, in which case add its result line. Follow the file's existing entry format (Grep for `CR-13` to see one).
+2. `docs/project-status.md`: Grep for an AI or agent-tooling section. If one exists, add one line: `AI harness: mode banner, py.sh hook launcher, worktree-aware orchestrator guard, generated hook and agent tables, ops bash path on Linux and WSL (ai-harness-docs, 2026-10).` If none exists, change nothing and say so. `docs/gap-analysis*` doesn't change: this is not game functionality.
 3. Run `python tools/docs-gen/regen.py --skip-crate-graph`, and commit only the generated blocks this campaign introduced. Restore the others.
 4. Ledger: set every packet row to its final state, and rewrite RESUME.md to "campaign closed".
 

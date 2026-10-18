@@ -1,6 +1,6 @@
 # ai-harness-docs: explain and harden the AI harness
 
-Ledger for the ai-harness-docs campaign. Packets: [work-packets.md](work-packets.md) (dispatch rules, contract, waves 1-2) and [work-packets-w3.md](work-packets-w3.md) (waves 3-4). Resume card: [RESUME.md](RESUME.md). Survey and the owner's binding decisions: [survey-and-decisions.md](survey-and-decisions.md). Draft reply to Aura's #1797: [pr-1797-reply.md](pr-1797-reply.md).
+Ledger for the ai-harness-docs campaign. Packets: [work-packets.md](work-packets.md) (dispatch rules, contract, waves 1-2), [work-packets-w3b.md](work-packets-w3b.md) (wave 3b, the #1797 takeover and the Linux scripts) and [work-packets-w3.md](work-packets-w3.md) (waves 3, 3c and 4). Resume card: [RESUME.md](RESUME.md). Survey and the owner's binding decisions: [survey-and-decisions.md](survey-and-decisions.md). Closing reply for Aura's #1797: [pr-1797-close.md](pr-1797-close.md); the earlier reply, already posted, is [pr-1797-reply.md](pr-1797-reply.md).
 
 ## Purpose
 
@@ -10,14 +10,15 @@ Contributors who start Claude Code here the usual way get the `orchestrator` per
 - makes the hooks find an interpreter, and say so when there is none;
 - documents the whole AI cycle for humans in the README, with the numbers behind it;
 - aligns the cycle docs, the skill and the agent files with the owner's cycle;
-- reconciles the platform statements and answers Aura's #1797;
+- takes over Aura's #1797 with credit, and reconciles every platform statement with owner decision 4;
+- fixes the build-lane `.sh` scripts so `ops` works on Linux and WSL, and tests them on Linux in CI;
 - adds a drift guard, so the hook and agent tables can't go stale.
 
 Acceptance is a fresh-clone smoke test (AH-15).
 
 ## Findings
 
-Verified against origin/main da1703d01 on 2026-10-18 unless marked otherwise.
+F1-F16 were verified against origin/main da1703d01 on 2026-10-18, and F17-F27 against 81c3c829c the same day, unless marked otherwise.
 
 | # | Finding | Evidence | Packet |
 |---|---|---|---|
@@ -27,16 +28,27 @@ Verified against origin/main da1703d01 on 2026-10-18 unless marked otherwise.
 | F4 | `orchestrator_guard.py` refuses the orchestrator's writes to a worktree's `docs/analysis/**` when its cwd is the main checkout: `under_dirs()` matches only prefixes relative to the root, and a worktree target starts `.claude/worktrees/<name>/...`. That is why the survey had to live in the main checkout. | orchestrator_guard.py:88-123 | AH-01 |
 | F5 | There is no packet-writer agent; the architect writes `work-packets.md`. | .claude/agents (24 files) | AH-07, AH-08 |
 | F6 | The cycle docs conflict with the owner's cycle. "Don't send the implementing worker back for round two" (development-workflow.md:112); one review-fixer per wave with no re-check (SKILL.md §4); packet-coder stops at about 90k with no continuation rule (packet-coder.md:23). The 3-session Haiku cap and the Sonnet escalation exist only in personal memory. | files cited | AH-07, AH-08, AH-09 |
-| F7 | The platform statements disagree with each other and with owner decision 4. Some say "Windows-native" or "No WSL builds", others "PowerShell or Git Bash". | 13 sites, listed in AH-11 | AH-11 |
-| F8 | #1797 calls WSL "not supported for interactive sessions", which conflicts with decision 4. Its content is otherwise accurate and useful, including the ops `blocked` reason. | `gh pr diff 1797` | AH-11, pr-1797-reply.md |
+| F7 | The platform statements disagree with each other and with owner decision 4. Some say "Windows-native" or "No WSL builds", others "PowerShell or Git Bash". Re-checked on 81c3c829c: 8 sites outside #1797's files (CONTRIBUTING, build-system ×2, building, getting-started, copilot-instructions, rust-services instructions, the lane-build skill), plus 5 in #1797's own text. | repo grep 2026-10-18 | AH-11a, AH-11f |
+| F8 | #1797 calls WSL "not supported for interactive sessions", which conflicts with decision 4, and keeps an "open question in the PR" sentence and a link into agent memory. Its content is otherwise accurate and useful: the Linux script failures, the WSL2 loopback hang, the live-DB container, the six excluded crates, the headless-launch subsection, the ops `blocked` reason and the kickoff conflict note. | `gh pr diff 1797` | AH-11a |
 | F9 | #1799 changes only `senpai-review.yml` (the `@login-kun` fix) and doesn't touch anything this campaign changes. | `gh pr view 1799` | none |
-| F10 | No "nopjmp" or "Linux pipeline" text exists in the repo, so there is nothing to drop. AH-11 re-greps to confirm. | repo grep 2026-10-18 | AH-11 |
+| F10 | No "nopjmp" or "Linux pipeline" text exists in the repo, so there is nothing to drop. AH-11f re-greps to confirm. | repo grep 2026-10-18 | AH-11f |
 | F11 | The README is 406 lines, and lines 105-295 are the generated crate graph. A section placed after it is effectively invisible. | README.md | AH-14 |
-| F12 | CLAUDE.md is 3,893 bytes against a cap of 4.5 KB (doc-update-map row 18). #1797 adds about 200 bytes. | file size | AH-06, AH-11 |
+| F12 | CLAUDE.md is 4,194 bytes on 81c3c829c against a cap of 4.5 KB (doc-update-map, the CLAUDE.md row). #1797's pointer adds about 190 bytes, and AH-11a's trims are about neutral. | file size | AH-06, AH-11a |
 | F13 | CodeRabbit runs on the free OSS tier: when the quota is spent it posts "You've used all free OSS reviews for now… Next included review available in N minutes". It auto-pauses after 5 reviewed commits. Senpai is opt-in only, at about $1.50 a run against a budget of about $30. Neither bot is a merge gate. | .coderabbit.yaml:10,43,232; senpai-review.yml; a PR comment | AH-13 |
 | F14 | Several memory-only rules a contributor elsewhere needs are missing from rules-and-gotchas: the Haiku session cap, adversarial review of every PR, no `--target-dir target/desktop`, foreground lanes with `Set-Location <wt>;`, running agents as defined, never rehosting the client archive, and the reasons behind the model roles. | memory audit, survey table | AH-12 |
 | F15 | Generated blocks follow the `GENERATORS` dict pattern in `tools/docs-gen/regen.py`, and a sibling module loads lazily (as `tools_catalog.py` does). regen.py skips `.claude/` when scanning Markdown but can read files there. | regen.py:275-299 | AH-05 |
 | F16 | The numbers in the README must cite repo sources: `docs/analysis/campaign-metrics/findings.md` and the token-usage section of development-workflow. The memory-only #1312 figure isn't cited. | findings.md lines 11-44, 96 | AH-14 |
+| F17 | **WSL probe** (Ubuntu with git 2.43, gh 2.88.1, `python3` only, no `cygpath`, no shellcheck): `mk-worktree.sh` exits 127 at `cygpath` right after `git worktree add`, leaving a worktree with no `external/`. `ship.sh` and `rebase-pr.sh` exit 127 at `python`. `rm-worktree.sh --dry-run` and `--force` both work. | throwaway repo in WSL, 2026-10-18 | AH-11b, AH-11c |
+| F18 | On an old `gh` (Ubuntu apt 2.45), `gh pr checks --json` fails with "unknown flag". `wait_for_checks` (ship.py:332-336) reads the failure as "no checks yet" and polls to its timeout on every code PR. `restack` (ship.py:436) ignores a failed `gh pr edit --base` (the classic-projects GraphQL error), so a child keeps its stale base. | ship.py; #1797's list; gh 2.88 has `--json` | AH-11d |
+| F19 | Linux CI coverage of the build lane is thin. The build-lane Python tests run on Linux only in `build-and-test`, which on a PR needs the `full-ci` label (it always runs in the merge queue). `build-lane-scripts.yml` is Windows-only, and nothing runs shellcheck on `tools/build-lane/`. The precedent for a Linux shell job is launcher-desktop.yml's `release-scripts`. | test.yml, build-lane-scripts.yml, launcher-desktop.yml | AH-11e |
+| F20 | `tools/build-lane/test_ship.py` is at 698 lines (hard cap 700) and `ship.py` at 557. New tests go in new files, and ship.py's fallbacks go in a new module. | line counts | AH-11d |
+| F21 | Three live docs already link `development-workflow.md#wsl-and-linux-hosts`, which does not exist on main: README.md:111, docs/agents/ai-harness.md:9 and rules-and-gotchas.md:74. AH-11a creates it. | grep | AH-11a |
+| F22 | rules-and-gotchas.md:102 (AH-12) says agents don't use the `.sh` twins. It becomes false for `ops` once AH-11g lands. | rules-and-gotchas.md:102 | AH-11h |
+| F23 | #1797 is a same-repo branch (`docs/wsl-host-reality`, maintainerCanModify false), one commit f6f180ef, which merges cleanly onto 81c3c829c. The merge queue squashes, so her authorship survives only as a `Co-authored-by` trailer in the squash message; the cherry-pick keeps it in the PR's history. | `gh pr view 1797`, `git merge-tree`, pre-pr-checks.md:39 | AH-11a |
+| F24 | `lane.sh` and `lane.ps1` keep their slot state under different roots on WSL (`~/.local/share`) and Windows (`LOCALAPPDATA`), so a WSL lane can't clobber a Windows slot. Low risk; no packet. | lane.sh, lane-slots.ps1 | none |
+| F25 | The `.ps1` twins don't work under Linux `pwsh`: `mk-worktree.ps1` makes a Windows junction, and `ship.ps1` calls `python`. So `ops` on Linux runs the `.sh` twins, not the `.ps1`. Fixing the `.ps1` twins for Linux is a follow-up. | mk-worktree.ps1, ship.ps1 | AH-11g (follow-up) |
+| F26 | #1797's bullet "`rm-worktree.sh` is Windows-shaped" is inaccurate: it falls back from `cygpath` and `cmd`, and removes a symlinked `external/` with `rm -f`. What failed was `ship.sh merge --retire`, which stopped at `python` before reaching it. | F17 probe; rm-worktree.sh | AH-11a, AH-11h |
+| F27 | `ops` has no `gh pr comment` or `gh pr close`, so closing #1797 with a reply is an owner action. | ops.md allowed list | AH-11i |
 
 ## Decisions
 
@@ -54,47 +66,65 @@ All rows are decided by the architect except where marked owner. Status: Decided
 | D-AH8 | **Launcher go/no-go:** keep the launcher only if its median added time is at most 5 ms **and** at most 10% per hook call, measured over 30 runs (`measure_hooks.ps1`). Otherwise AH-02 returns `blocked` with the numbers, AH-03 does not wire it, and the question goes to the owner (conditional BlockedDecision). | Owner decision 3 asks for "no meaningful time" and gives baselines of about 50-80 ms for shell_guard and about 44 ms for bare Python. Measurement noise under Git Bash is a few ms, so 5 ms is the smallest difference worth calling real. |
 | D-AH9 | **Banner:** `.claude/hooks/mode_banner.sh` in pure sh, with no Python and no forks. It is the first SessionStart entry, with no matcher, so it also fires after a compaction. It prints `systemMessage` for the user and `additionalContext` for the model. Its wording holds whether or not the payload carries `agent_type`, and it warns when no Python is found. | Owner decision 1. A Python banner would vanish on the very hosts it has to warn. |
 | D-AH10 | No Codex banner. AGENTS.md gets the parity text instead. | Codex has no default persona, so there is no hidden mode to announce. Codex's SessionStart context injection is still unproven (#1742 probe). |
-| D-AH11 | The CLAUDE.md block is about 300 bytes, placed right after the H1 line. The file must stay at or under 4,500 bytes, counting #1797's pointer once AH-11 trims it. | Owner decision 1, and the cap in doc-update-map row 18. |
+| D-AH11 | The CLAUDE.md block is about 300 bytes, placed right after the H1 line. The file must stay at or under 4,500 bytes, counting #1797's pointer once AH-11a trims it. | Owner decision 1, and the cap in the doc-update-map CLAUDE.md row. |
 | D-AH12 | **orchestrator_guard: allow worktree ledgers.** Edit and Write are allowed under `<root>/.claude/worktrees/<name>/` followed by a writable prefix (`docs/analysis`, `.claude/state`, `.claude/reports`). Read gets the same for `docs/analysis`. `realpath` already resolves `..`, so escapes still fail. | F4. The orchestrator's job includes keeping the ledger in the campaign worktree, and denying it pushes ledgers into the stale main checkout. Worktree code stays denied. |
 | D-AH13 | The README section is `## How AI development works here`, between "Tests & CI" and "Quick Start", at most about 80 lines. Full detail goes in a new reference doc, `docs/agents/ai-harness.md`. | F11. The owner asked for a "top-level visible section", and the soft cap of 500 lines applies to the README. |
 | D-AH14 | **Drift guard:** `tools/docs-gen/harness_tables.py` with two generators. `harness-hooks` is the README hooks table: every hook in settings.json, agent frontmatter and .codex/hooks.json, with the first docstring or comment line of its script. `harness-agents` is the agent table in ai-harness.md. There is a test that every hook script states its reason, and a doc-update-map row for harness changes. | Owner open item. A table regenerated from the config files cannot drift, and the docstring test makes "every hook with its reason" enforceable. |
-| D-AH15 | Only AH-13, AH-14 and AH-16 run `regen.py`; AH-14 stacks on AH-13. Each commits regenerated output only for the markers it adds, and restores every other file regen touched (`git restore`). W1 packets that add tools/ scripts leave the tools catalog stale (main's regen-docs workflow refreshes it every 6 h). | The docs-gen README rule (lines 53-55): a PR commits regen output only for a marker it adds. regen.py has no path filter, and two parallel packets that both regenerate `tools/README.md` conflict on the gen block, which ops can't resolve. |
-| D-AH16 | **Platform wording** (exact, contract C7): fully supported is Windows with PowerShell 7. WSL, Linux, and Git Bash on Windows are not validated, but not unsupported. Agents stay on PowerShell, the validated path. An agent with no PowerShell returns `blocked: no PowerShell (pwsh) on this host`. | Owner decision 4. Agent rules choose the validated path; they don't declare the others unsupported. |
-| D-AH17 | **#1797:** ask Aura to change his status line to decision 4 and land it first, with credit to him. AH-11 then stacks on main after it. If #1797 closes without merging, AH-11 carries its content with a `Co-authored-by` line for him. Posting the reply is an owner action (draft: pr-1797-reply.md). | His content is accurate and useful. Only the status sentence conflicts. Landing his PR first avoids conflicting edits to the same section. |
-| D-AH18 | **ops gets no `.sh` path** (Aura's question 2). | One validated path. ops is Haiku at low effort with 30 turns, and a second shell would double its rule surface. The `.sh` twins already exist for humans. Revisit after the WSL smoke run. |
-| D-AH19 | **The orchestrator default stays for all launches** (Aura's question 3). | No setting scopes `agent` by interactivity. Headless and CI runs pass `--agent <name>` or `--setting-sources user`, as Senpai already does. The banner (D-AH9) and the reminder (AH-06) remove the confusion. |
+| D-AH15 | Only AH-13, AH-14 and AH-16 run `regen.py`; AH-14 stacks on AH-13. Each commits regenerated output only for the markers it adds, and restores every other file regen touched (`git restore`). W1 packets that add tools/ scripts leave the tools catalog stale (main's regen-docs workflow refreshes it every 6 h). AH-11g runs only `regen.py --check`. | The docs-gen README rule (lines 53-55): a PR commits regen output only for a marker it adds. regen.py has no path filter, and two parallel packets that both regenerate `tools/README.md` conflict on the gen block, which ops can't resolve. |
+| D-AH16 | **Platform wording** (exact, contract C7; **revised 2026-10-18**): fully supported is Windows with PowerShell 7. WSL, Linux, and Git Bash on Windows are not validated, but not unsupported. AH-11a writes the C7 long form; once `ops` has its bash path, AH-11h writes C7b (work-packets-w3b.md). C7b says exactly what stays "not validated": no full session (orchestrator, packet workers, review, ship) has run end to end on Linux or WSL, and the packet workers still need PowerShell. | Owner decision 4, reconciled with the owner's 2026-10-18 request for first-class `ops` on Linux: the scripts become CI-tested, but a whole session is still unproven, so "validated" would overclaim. |
+| D-AH17 | **Superseded by D-AH26 (2026-10-18).** The earlier plan was to ask Aura to revise #1797 and land it first. | The owner took the PR over instead. |
+| D-AH18 | **Reversed by D-AH27 (2026-10-18).** The earlier answer to Aura's question 2 was "no `.sh` path for ops". | The owner asked for first-class `ops` on Linux and WSL. |
+| D-AH19 | **The orchestrator default stays for all launches** (Aura's question 3; reaffirmed 2026-10-18). AH-11a adds this to #1797's headless subsection. | No setting scopes `agent` by interactivity. Headless and CI runs pass `--agent <name>` or `--setting-sources user`, as Senpai already does. The banner (D-AH9) and the reminder (AH-06) remove the confusion. |
 | D-AH20 | #1799 is independent and can land as it is. | F9. The Senpai docs in AH-13 stay true either way. |
 | D-AH21 | **Review bots:** both stay (owner decision 7). AH-13 documents what each does, when it runs and what it costs. For the CodeRabbit limit: wait for the reset time it names, push in batches (ship pushes once), resume with `@coderabbitai resume` after its 5-commit auto-pause, and request one review with `@coderabbitai review`. Copilot stays unrequested (the 2026-10-04 decision). | F13. |
 | D-AH22 | `docs/guides/autonomous-agent-kickoff.md` gets a status note only. Rewriting or retiring it is a follow-up for its owner. | It describes one operator's WSL host. Rewriting it goes beyond this campaign's evidence. |
-| D-AH23 | **Acceptance:** a fresh-clone smoke test (AH-15) on Windows, required, and on WSL, best effort. It is run by the owner or by a hands-on session the owner approves. | Owner open item. It needs a human-launched Claude Code session with no memory, which no packet agent can be. |
+| D-AH23 | **Acceptance** (revised 2026-10-18): a fresh-clone smoke test (AH-15) on Windows, required, plus a Linux or WSL leg (L1-L7) whose status is D-AH33. It is run by the owner or by a hands-on session the owner approves. | It needs a human-launched Claude Code session with no memory, which no packet agent can be. The Linux leg is the only end-to-end proof of the `ops` bash path. |
 | D-AH24 | Credential extraction is out of scope (owner decision 8). | Owner decision 8. |
 | D-AH25 | The README cites only figures that are in the repo (F16). It leads with the cost per 1,000 changed lines, a 2.5x saving, and states the "work differs" caveat. | findings.md:13 and :25. The per-PR figures overstate the gain. |
+| D-AH26 | **#1797 takeover:** AH-11a cherry-picks Aura's commit f6f180ef unchanged onto main (she stays its author), then adds one trim commit with a `Co-authored-by: aurablacklight` trailer. The PR body ends with the same trailer, so the squash keeps her credit, and says "Supersedes #1797". The trims: the status line becomes decision 4; the "open question" sentence goes; the agent-memory link becomes an inline fact; the by-hand `external/` link points at the existing worktree section (main's symlink line); the `rm-worktree.sh` bullet is corrected (F26); Q3's answer is added to the headless subsection. Everything else stays. | The owner's request. F23: a clean cherry-pick keeps her commit; the trailer survives the squash. |
+| D-AH27 | **ops gets a bash path** (Aura's question 2, now yes). `ops` keys on the `Platform:` line of its environment: on `win32` it runs the `.ps1` with the PowerShell tool, as today; elsewhere it runs the `.sh` twin with the Bash tool and the same arguments; with the needed tool missing it returns `blocked` with the reason. Never a `.ps1` under Linux `pwsh` (F25). | The owner's request. The twins already share options, output and exit codes, so the rule surface is one paragraph and a bracketed twin per line. A deterministic key avoids a Haiku judgment call. |
+| D-AH28 | **Old-`gh` fallbacks** live in a new `tools/build-lane/gh_compat.py`: `checks()` tries `gh pr checks --json` first and falls back to `gh pr view --json statusCheckRollup` only on an "unknown flag" error; `set_base()` tries `gh pr edit --base` first, then `gh api -X PATCH`. | F18, F20. The current `gh` path stays first and unchanged, so the existing test_ship.py suite proves no regression; the module keeps ship.py from growing. |
+| D-AH29 | **BlockedDecision (non-blocking; default no):** should `packet-coder`, `packet-review-fixer` and the build lane also get a bash path? Until the owner says yes, they stay PowerShell-only and return `blocked: no PowerShell (pwsh) on this host`. | Every packet's rules, the lane commands and the review-fixer's rerun steps are PowerShell; a second path doubles the packet rule surface for Haiku. Installing `pwsh` on Linux is the cheap alternative. |
+| D-AH30 | **Linux CI job** (`build-lane shell scripts (Linux)`, in build-lane-scripts.yml): `bash -n` on every script, shellcheck (warnings on the three scripts `ops` runs, errors on all), and the build-lane Python tests on `ubuntu-latest`. ship.py lists it as a conditional check. AH-11e merges first, so the PRs of AH-11b, AH-11c and AH-11d run it. | F19. It is the only place the Linux branches of the `.sh` scripts run before merge without the `full-ci` label. |
+| D-AH31 | **How the `.sh` files are tested without a Linux box:** a Python `unittest` file per script drives the real `.sh` with bash in a temp repo or with shim interpreters on PATH. Locally that runs the Windows branch through Git Bash; the Linux branch runs in D-AH30's job and in the merge queue's `build-and-test`. `bash -n` runs locally through Git Bash; shellcheck runs only in CI (nothing installed). A WSL run is best effort, only where Ubuntu is already installed. | Python tests match the build lane's existing pattern (test_rebase_pr.py, test_ship.py's WrapperTests), and they fail when each fix is reverted. |
+| D-AH32 | **#1797 is closed as superseded, with credit, not merged.** The owner posts pr-1797-close.md and closes it after W3c merges (AH-11i). | Merging her branch directly would need pushes to her branch (maintainerCanModify is false) or a merge of the unrevised status line followed by a fix-up. The posted reply already promised the content would land with her credit. The cherry-pick keeps her commit in the history either way. |
+| D-AH33 | **BlockedDecision:** is AH-15's Linux or WSL leg required or best effort? **Recommendation: required for the `ops` path** (L1-L7), on any WSL Ubuntu with `git`, `gh`, `python3` and Claude Code. Even a pass leaves Linux "not validated" for full sessions (C7b). | CI tests the scripts, but only a human-launched session tests `ops` choosing Bash from its Platform line. The owner decides whether to spend that run. |
+| D-AH34 | **Waves:** W3b = AH-11a to AH-11f, parallel and file-disjoint, merging AH-11e first and AH-11a before AH-11f; W3c = AH-11g and AH-11h after all of W3b; then AH-11i (owner); W4 = AH-15, then AH-16. | AH-11g's doc claims and AH-11h's "fixed" bullets are only true once the script fixes have merged. Six W3b packets fit one review-fixer context. |
 
 ### BlockedDecision (for the orchestrator to ask the owner)
 
-- **None blocks a packet today.**
-- **Conditional, D-AH8:** if AH-02 measures more than 5 ms or 10% added per call, ask whether to wire the launcher anyway. The alternative is to document "install `python` on PATH".
-- **Conditional, D-AH17:** if #1797 is still open when AH-14 merges, ask whether to keep waiting for Aura or have AH-11 carry his content (path B, with a `Co-authored-by` line).
-- **Owner action:** post the #1797 reply (pr-1797-reply.md), or let `ops` post it with the owner's OK.
-- **Owner action:** run the AH-15 smoke test, or approve a hands-on session to run it.
+- **None blocks a W3b or W3c packet.**
+- **D-AH33:** is the AH-15 Linux or WSL leg required (recommended) or best effort? Ask before AH-15.
+- **D-AH29 (non-blocking, default no):** a bash path for `packet-coder`, `packet-review-fixer` and the lane. Ask any time; a yes becomes a new campaign.
+- **Owner action, AH-11i:** after W3c merges, post pr-1797-close.md (PR numbers filled in) on #1797 and close it. `ops` cannot (F27).
+- **Owner action, AH-15:** run the smoke test, or approve a hands-on session to run it.
+- **Closed:** D-AH8 (the launcher passed; AH-03 merged) and D-AH17 (superseded by D-AH26).
 
 ## Packet status
 
 | Packet | Wave | Agent | Title | Depends on | Status |
 |---|---|---|---|---|---|
-| AH-01 | 1 | packet-coder | orchestrator_guard allows worktree ledgers | - | Ready |
-| AH-02 | 1 | packet-coder | `py.sh` launcher, launcher tests, timing harness and measurement | - | Ready |
-| AH-03 | 1 | packet-coder | Wire the launcher into the 4 hook sites, plus the mode banner hook | AH-02 (stack; go result) | BlockedDependency |
-| AH-05 | 1 | packet-coder | `harness_tables.py` generators and tests | - | Ready |
-| AH-06 | 2 | packet-coder | Orchestrator hands-on reminder and routing; CLAUDE.md mode block | W1 merged | BlockedDependency |
-| AH-07 | 2 | packet-coder | packet-coder continuation and review-fixer verdicts | W1 merged | BlockedDependency |
-| AH-08 | 2 | packet-coder | campaign-packet skill: cycle and escalation ladder; ship-pr §5 note | W1 merged | BlockedDependency |
-| AH-09 | 2 | packet-coder | development-workflow worker lifetime, plus AGENTS.md parity | W1 merged | BlockedDependency |
-| AH-11 | 3 | packet-coder | Platform reconciliation, after #1797 | #1797 merged or closed; W2 merged | BlockedDependency |
-| AH-12 | 3 | packet-coder | rules-and-gotchas promotions | W2 merged | BlockedDependency |
-| AH-13 | 3 | documentation-writer | `docs/agents/ai-harness.md` reference, review bots and index row | W2 merged | BlockedDependency |
-| AH-14 | 3 | documentation-writer | README section, doc-update-map row and regen | AH-13 (stack) | BlockedDependency |
-| AH-15 | 4 | owner / hands-on | Fresh-clone smoke test (acceptance) | W3 merged | BlockedDependency |
+| AH-01 | 1 | packet-coder | orchestrator_guard allows worktree ledgers | - | Integrated (#1805) |
+| AH-02 | 1 | packet-coder | `py.sh` launcher, launcher tests, timing harness and measurement | - | Integrated (#1806) |
+| AH-03 | 1 | packet-coder | Wire the launcher into the 4 hook sites, plus the mode banner hook | AH-02 | Integrated (#1808) |
+| AH-05 | 1 | packet-coder | `harness_tables.py` generators and tests | - | Integrated (#1807) |
+| AH-06 | 2 | packet-coder | Orchestrator hands-on reminder and routing; CLAUDE.md mode block | W1 | Integrated (#1809) |
+| AH-07 | 2 | packet-coder | packet-coder continuation and review-fixer verdicts | W1 | Integrated (#1810) |
+| AH-08 | 2 | packet-coder | campaign-packet skill: cycle and escalation ladder; ship-pr §5 note | W1 | Integrated (#1811) |
+| AH-09 | 2 | packet-coder | development-workflow worker lifetime, plus AGENTS.md parity | W1 | Integrated (#1812) |
+| AH-12 | 3 | packet-coder | rules-and-gotchas promotions | W2 | Integrated (#1817) |
+| AH-13 | 3 | documentation-writer | `docs/agents/ai-harness.md` reference, review bots and index row | W2 | Integrated (#1818) |
+| AH-14 | 3 | documentation-writer | README section, doc-update-map row and regen | AH-13 | Integrated (#1819) |
+| AH-11a | 3b | packet-coder | Take over #1797: cherry-pick, then trim to decision 4 | ledger merged | Ready |
+| AH-11b | 3b | packet-coder | `mk-worktree.sh` symlinks `external/` off Windows | ledger merged | Ready |
+| AH-11c | 3b | packet-coder | `ship.sh` and `rebase-pr.sh` find `python3` | ledger merged | Ready |
+| AH-11d | 3b | packet-coder | `gh_compat.py`: old-`gh` fallbacks in ship.py | ledger merged | Ready |
+| AH-11e | 3b | packet-coder | Linux CI job for the build-lane shell scripts (merge first) | ledger merged | Ready |
+| AH-11f | 3b | packet-coder | Platform wording outside #1797's files | AH-11a merged before it | Ready |
+| AH-11g | 3c | packet-coder | `ops` runs the `.sh` twins off Windows | W3b merged | BlockedDependency |
+| AH-11h | 3c | packet-coder | WSL and Linux docs and the agent rule to the new state | W3b merged | BlockedDependency |
+| AH-11i | 3c | owner | Close #1797 with pr-1797-close.md | AH-11g, AH-11h merged | BlockedDependency |
+| AH-15 | 4 | owner / hands-on | Fresh-clone smoke test, Windows plus the Linux leg | W3c merged; D-AH33 | BlockedDependency |
 | AH-16 | 4 | packet-coder | Close-out | AH-15 | BlockedDependency |
 
-AH-04 and AH-10 were folded into AH-03 and AH-06 during slicing; their IDs are not reused.
+AH-04 and AH-10 were folded into AH-03 and AH-06 during slicing; their IDs are not reused. The old AH-11 (platform reconciliation after #1797) is replaced by AH-11a to AH-11i.
