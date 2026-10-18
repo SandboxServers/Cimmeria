@@ -10,10 +10,11 @@ Owner directive, 2026-10-17: agents no longer drive the lab. The owner runs ever
 | Row | Proves | Run after | Unblocks |
 |---|---|---|---|
 | CB-U03 | Relog restores the 638/639 interactions | now (W1b integrated) | CB-N02 Done |
-| CB-U05 | Mess Hall and Hallway05 guards flank and use cover | now | CB-N03, CB-N07 (with D-CC11) |
+| CB-U05 | Mess Hall and Hallway05 guards flank and use cover | now | CB-N03, CB-N07b (with D-CC11) |
 | CB-U08 | The ambient cast stands where sealed and barks once | now (W2 integrated) | CB-N04 Done; a second cluster |
-| CB-U09 | A fresh core escape takes 30-45 minutes, plus the 62050 beat | W3-INT | CB-N06 (with D-CC15), CB-N07 |
+| CB-U09 | A fresh core escape takes 30-45 minutes, plus the 62050 beat | W3-INT | CB-N06 (with D-CC15), CB-N07b (with D-CC11) |
 | CB-U10 | Mission 62050 works in the native client | W3-INT | the campaign PR; CB-N05/CB-N05a Done |
+| CB-U11 | The barracks alarm line plays once, only during 687 step 2355 | W4-INT | CB-N07a Done |
 
 ## Setup (every row)
 
@@ -107,6 +108,19 @@ Run on a fresh Human and a fresh Loyalist Jaffa; setup step 5 first.
 **Blockers (not "pending"):** a blank dialog, a client crash, a missing first-press response, lost progress, or a changed core Marsh briefing blocks the campaign PR.
 
 **Rollback if 60150 crashes the client:** tell the coordinator (a fix packet moves 60150 into the dialog quarantine), and delete `Cache.en-US\CookedDataDialogs.pak` on the client.
+
+## CB-U11 — Barracks alarm bark (chain 11020)
+
+Run after W4-INT, on any fresh character that reaches mission 687. The barracks (`Castle_Cellblock.Region12`) spans about x -149 to -115, z -147 to -94; its guards are `Barracks_Guard1`-`3` (spawns 25, 26, 36). The crate (687 step 2354) sits just north of it at (-130.5, 24.7, -92.1).
+
+1. **During 2354** (before the crate search): walk into the barracks. No alarm line appears.
+2. **Activation.** Search the crate. If you are already inside the barracks when step 2355 starts, one line appears at once; otherwise it appears on your first step into the barracks: `NID Guard: Intruder in the barracks! One of the prisoners got loose. Weapons free!` (chat, say channel), once.
+3. **No repeat.** Leave and re-enter during 2355: no second line. Relog during 2355: at most one more line.
+4. **Fight unchanged.** The three guards fight as before: no extra guard, no guard pulled from another room, objective counts unchanged.
+5. **After.** Clear the barracks (687 completes): re-entering gives no line.
+6. SigNoz: span `content.npc_bark`, INFO `Content: npc bark` with `chain_id` 11020 and `screen_id` 200170; no WARN `screen_not_cached`.
+
+Pass: steps 1-5. If you dislike the line or it fires at the wrong time, say so: the rollback is `enabled = false` on chain 11020, and CB-N07 closes as `Done / omitted`.
 
 ## Rows owned by CB-N08
 

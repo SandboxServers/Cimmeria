@@ -92,6 +92,17 @@ Individual claims for the wave 2 ambient cast (cluster 1) in the [Cellblock ledg
 
 Collision check, 2026-10-17, at Cellblock `0fca3114f`: a `git grep` across all 740 local branches for these IDs as the first value of a `VALUES (` tuple (chains and triggers under `db/resources/Content`, spawns in `spawnlist.sql`, dialogs and screens under `db/resources/Dialogs`) found zero hits. The same patterns found known rows (chain 1177, spawns 400–499, screens 200000–200003, dialog 60102), so the search works. Dialog 60160 sits in the Cimmeria-authored 60100–60199 range, clear of the bank's 60110–60119 and CB-N05's 60150. The screens are at 200000 or above, clear of the client PAK's screens, which run to 120383. Point-in-time; CB-N04s rechecks before it seals.
 
+### CB-N07 claims — 2026-10-17
+
+Individual claims for the wave 4 barracks escape response (CB-N07a) in the [Cellblock ledger](../cellblock-continuation/w4-packets.md). The chain comes from the 11000–11499 Cellblock authored block. Holder dialog 60160 (CB-N04) is reused, not claimed.
+
+| Namespace | Claimed ID | Exact use | Status |
+|---|---|---|---|
+| Content chain | 11020 | `enter_region('Castle_Cellblock.Region12')` during 687 step 2355 -> one NID Guard `npc_bark` | Claimed (W4 architect) |
+| Dialog screen | 200170 | The alarm line, under dialog 60160 at `index` 1 | Claimed (W4 architect) |
+
+Collision check, 2026-10-17, at Cellblock `634b76558`: a `git grep` across all 731 local branches for `VALUES (11020,` under `db/resources/Content` and for a `dialog_screens` tuple with screen 200170 under `db/resources/Dialogs` found zero hits. The same patterns found chain 11010 and screen 200160 on the two branches that carry them, so the search works. Point-in-time; CB-N07s rechecks before it seals, and W4-INT moves the rows to In use.
+
 ### CS-08a individual reservation — 2026-10-14
 
 Owner explicitly approved **chain 1366**, 2026-10-14, reserved exclusively for Castle **CS-08a**, the [Frost's Letter bridge](../castle-continuation/worknotes/CS-08a.md). G-ID is closed for this single claim after collision recheck. The owner's later O14-22 decision delegates the remaining 1367–1400 restoration block to Castle's coordinator for individual audited claims; it does not allocate any particular ID in that block. Recheck live claims immediately before implementation; another packet cannot reuse 1366.
