@@ -11,7 +11,8 @@ name: senpai-review
 #
 # Status: a run that was asked for and did not post a review goes red. Any
 # failed step fails the job: the token mint, the PR lookup, checkout, the stub
-# comment, the Claude step, or a stub Claude never replaced. A failed mint
+# comment, the CLI install, the Claude step (any result but a clean success),
+# or a stub Claude never replaced. A failed mint
 # says which secret to fix. On a failure the last steps rewrite the stub
 # comment (or post one) to say so, with the run link and, when Claude itself
 # failed, its one-line error; only those best-effort steps are
@@ -29,6 +30,17 @@ name: senpai-review
 # an Anthropic service-account key scoped to the owner's workspace (Anthropic
 # recommends service-account keys over a personal key for CI). The key is
 # already workspace-scoped, so no workspace header is passed.
+#
+# Why not claude-code-action: through the action, every request failed with
+# 400 "Credit balance is too low" at $0, although the workspace has paid
+# credit (anthropics/claude-code-action#1901, open, no fixed release as of
+# v1.0.252). The action sets CLAUDE_CODE_ENTRYPOINT=claude-code-github-action
+# and CLAUDE_CODE_ACTION=1; either one alone gets the request billed on a
+# route that rejects API-key credit, and the same key works with plain
+# `claude -p`. So this workflow installs a pinned Claude Code CLI (checked
+# against its npm sha512) and runs `claude -p` itself, with both variables
+# unset. The action's other jobs here (config restore, stub comment, failure
+# reporting) were already done by this workflow's own steps.
 #
 # Identity and permissions: comments post as the Senpai GitHub App (secrets
 # APP_ID and APP_PRIVATE_KEY), with an installation token scoped to
@@ -141,9 +153,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # claude-code-action does this itself on pull_request events, but not on
-      # workflow_dispatch. Doing it here for both keeps one rule: Claude Code
-      # only ever reads config from the base branch.
+      # Claude Code reads config from its working directory, which is the PR
+      # head. Restoring these paths from the base branch keeps one rule for
+      # every trigger: Claude Code only ever reads config from the base branch.
       - name: Restore trusted Claude config from the base branch
         id: restore
         if: steps.pr.outputs.skip == 'false'
@@ -188,46 +200,99 @@ jobs:
           fi
           echo "comment_id=$id" >> "$GITHUB_OUTPUT"
 
+      # The Claude Code CLI at a fixed version: the linux-x64 native build from
+      # the npm registry, checked against that tarball's published
+      # dist.integrity (sha512, written here as hex). No npm, no install
+      # script, nothing fetched unpinned. To bump it, change both values:
+      #   npm view @anthropic-ai/claude-code-linux-x64@<v> dist.integrity
+      # and convert the base64 after `sha512-` to hex (base64 -d | od -An -tx1 | tr -d " \n").
+      - name: Install Claude Code
+        id: claude-install
+        if: steps.pr.outputs.skip == 'false'
+        env:
+          CLAUDE_CODE_VERSION: 2.1.302
+          CLAUDE_CODE_SHA512: f9de1152adc4dcafb7fc9e0ccac077cf8417038ae40cdb7bd156294cb13a9090a751efd9e9207c549b15246fcd5786c40abbe4c642c78d793ebeb801b2d7d993
+        run: |
+          set -euo pipefail
+          [[ "$(uname -sm)" == "Linux x86_64" ]] || { echo "::error title=Claude Code::This step installs the linux-x64 build; the runner is $(uname -sm)."; exit 1; }
+          dir="$RUNNER_TEMP/claude-code"
+          mkdir -p "$dir"
+          curl -fsSL --retry 3 -o "$dir/pkg.tgz" \
+            "https://registry.npmjs.org/@anthropic-ai/claude-code-linux-x64/-/claude-code-linux-x64-${CLAUDE_CODE_VERSION}.tgz"
+          echo "${CLAUDE_CODE_SHA512}  $dir/pkg.tgz" | sha512sum --check --strict -
+          tar -xzf "$dir/pkg.tgz" -C "$dir" package/claude
+          rm -f "$dir/pkg.tgz"
+          got=$("$dir/package/claude" --version)
+          [[ "$got" == "${CLAUDE_CODE_VERSION} "* ]] || { echo "::error title=Claude Code::Expected ${CLAUDE_CODE_VERSION}, got: ${got}"; exit 1; }
+          echo "bin=$dir/package/claude" >> "$GITHUB_OUTPUT"
+
+      # `claude -p` run directly, not through claude-code-action (see the
+      # header: #1901). CLAUDE_CODE_ENTRYPOINT and CLAUDE_CODE_ACTION must
+      # stay unset; `env -u` drops them even if a runner or a later edit sets
+      # them. The settings file is passed with --settings, which loads even
+      # under `--setting-sources user`. Senpai can read the repo and talk to
+      # GitHub; she cannot edit code. Write is checked against Edit rules, and
+      # `./` is the working directory (the workspace), so the one writable path
+      # is .senpai/review.md. In print mode a tool outside the allowlist is
+      # denied, never prompted. bashOutputMaxChars keeps most `gh pr diff`
+      # output inline instead of spilling it to a file outside the workspace.
+      # --strict-mcp-config loads no MCP servers. The prompt comes in through
+      # an env var, so nothing interpolated into it is run as shell. The JSON
+      # result goes to a file, not the public log; only a one-line summary is
+      # printed. The step fails unless the result is a clean success.
       - name: Summon Senpai
         id: senpai
         if: steps.pr.outputs.skip == 'false'
         timeout-minutes: 15
-        uses: anthropics/claude-code-action@f27be6b65a4652f08a2ba3cff79114829b588967 # v1.0.252
-        with:
-          anthropic_api_key: ${{ secrets.ANTHROPIC_SERVICE_ACCOUNT_API_KEY }}
-          github_token: ${{ steps.senpai-token.outputs.token }}
-          claude_args: >-
-            --model claude-sonnet-5-5
-            --max-turns 25
-            --max-budget-usd 1.50
-            --setting-sources user
-          # Written to ~/.claude/settings.json, the only settings source this
-          # run loads. Senpai can read the repo and talk to GitHub; she cannot
-          # edit code. Write is checked against Edit rules, and `./` is the
-          # workspace, so the one writable path is .senpai/review.md.
-          # bashOutputMaxChars keeps most `gh pr diff` output inline instead of
-          # spilling it to a file outside the workspace.
-          settings: |
-            {
-              "bashOutputMaxChars": 80000,
-              "permissions": {
-                "allow": [
-                  "Bash(gh pr view:*)",
-                  "Bash(gh pr diff:*)",
-                  "Bash(gh pr list:*)",
-                  "Bash(gh api:*)",
-                  "Bash(git diff:*)",
-                  "Bash(git log:*)",
-                  "Bash(git show:*)",
-                  "Bash(git shortlog:*)",
-                  "Read",
-                  "Grep",
-                  "Glob",
-                  "Edit(./.senpai/review.md)"
-                ]
-              }
+        run: |
+          set -euo pipefail
+          [[ -n "$ANTHROPIC_API_KEY" ]] || { echo "::error title=Claude error::The ANTHROPIC_SERVICE_ACCOUNT_API_KEY secret is not set."; exit 1; }
+          result="$RUNNER_TEMP/senpai-result.json"
+          settings="$RUNNER_TEMP/senpai-settings.json"
+          prompt="$RUNNER_TEMP/senpai-prompt.md"
+          cat > "$settings" <<'JSON'
+          {
+            "bashOutputMaxChars": 80000,
+            "permissions": {
+              "allow": [
+                "Bash(gh pr view:*)",
+                "Bash(gh pr diff:*)",
+                "Bash(gh pr list:*)",
+                "Bash(gh api:*)",
+                "Bash(git diff:*)",
+                "Bash(git log:*)",
+                "Bash(git show:*)",
+                "Bash(git shortlog:*)",
+                "Read",
+                "Grep",
+                "Glob",
+                "Edit(./.senpai/review.md)"
+              ]
             }
-          prompt: |
+          }
+          JSON
+          jq -e . "$settings" > /dev/null
+          printf '%s\n' "$SENPAI_PROMPT" > "$prompt"
+          rc=0
+          env -u CLAUDE_CODE_ENTRYPOINT -u CLAUDE_CODE_ACTION "$CLAUDE_BIN" -p \
+            --model claude-sonnet-5-5 \
+            --max-turns 25 \
+            --max-budget-usd 1.50 \
+            --setting-sources user \
+            --settings "$settings" \
+            --strict-mcp-config \
+            --output-format json \
+            < "$prompt" > "$result" || rc=$?
+          summary=$(jq -r '"subtype=\(.subtype) is_error=\(.is_error) turns=\(.num_turns) cost_usd=\(.total_cost_usd)"' "$result" 2>/dev/null || echo "no parsable result")
+          echo "Claude Code exited ${rc}: ${summary}"
+          jq -e '.type == "result" and .subtype == "success" and .is_error == false' "$result" > /dev/null 2>&1 || exit 1
+          exit "$rc"
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_SERVICE_ACCOUNT_API_KEY }}
+          GH_TOKEN: ${{ steps.senpai-token.outputs.token }}
+          CLAUDE_BIN: ${{ steps.claude-install.outputs.bin }}
+          DISABLE_AUTOUPDATER: '1'
+          SENPAI_PROMPT: |
             You are **Senpai Reviewer (先輩レビュワー)**, the resident code review agent
             for this repository. You are an elite, slightly unhinged, extremely weeb
             senior engineer. You take code quality VERY seriously and you take the bit
@@ -395,39 +460,45 @@ jobs:
             <sup>*Senpai Reviewer is an automated agent. Senpai is never wrong, but Senpai is occasionally mistaken. Verify fixes yourself.*</sup>
             ```
 
-      # show_full_output stays false: it would print every message, tool
-      # results included, to a public log. This prints only the CLI's final
-      # `result` string (for a run that dies before its first turn, the API
-      # error, such as an invalid key or no credit), key-shaped text redacted,
-      # and the result's `api_error_status` (the HTTP status, or "none").
-      # The action sets `execution_file` on failure too; the fallback is the
-      # path it writes ($RUNNER_TEMP/claude-execution-output.json).
+      # Never prints the whole result: the Summon step keeps the CLI's JSON
+      # in a file. This prints only its `result` string (for a run that dies
+      # on its first API call, the API error, such as an invalid key or no
+      # credit), key-shaped text redacted, plus `api_error_status` (the HTTP
+      # status, or "none"), `is_error` and `subtype`. The jq also reads an
+      # array of messages, in case the output format is ever stream-json.
       - name: Explain a failed Claude run
         id: senpai-error
         if: failure() && steps.senpai.outcome == 'failure'
         continue-on-error: true
-        env:
-          EXECUTION_FILE: ${{ steps.senpai.outputs.execution_file }}
         run: |
           set -euo pipefail
-          f="${EXECUTION_FILE:-$RUNNER_TEMP/claude-execution-output.json}"
-          if [[ ! -f "$f" ]]; then
-            echo "::warning title=Claude error::No execution output file, so no error text to show."
+          f="$RUNNER_TEMP/senpai-result.json"
+          if [[ ! -s "$f" ]]; then
+            echo "::warning title=Claude error::No Claude result file (the CLI never ran, crashed, or the step timed out), so no error text to show."
             exit 0
           fi
-          msg=$(jq -r '[.[]? | select(.type? == "result")] | last
-            | (.result // "") as $r
+          pick='if type == "array" then ([.[]? | select(.type? == "result")] | last) else . end'
+          if ! jq -e "$pick | type == \"object\"" "$f" > /dev/null 2>&1; then
+            echo "::warning title=Claude error::The Claude result file is not a JSON result (the run may have been cut off), so no error text to show."
+            exit 0
+          fi
+          msg=$(jq -r "$pick"' | (.result // "" | tostring) as $r
             | if $r != "" then $r else ((.errors // []) | map(tostring) | join(", ")) end' "$f" 2>/dev/null || true)
           # One line, no key-shaped text, no backticks (it goes in a code span).
           msg=$(printf '%s' "$msg" | tr '\r\n\t`' '    ' \
             | sed -E 's/sk-ant-[A-Za-z0-9_-]*/sk-ant-[redacted]/g; s/sk-[A-Za-z0-9_-]{16,}/sk-[redacted]/g')
           [[ -n "${msg// /}" ]] || msg="(the result message was empty)"
           (( ${#msg} <= 300 )) || msg="${msg:0:300}..."
-          status=$(jq -r '.[] | select(.type=="result") | (.api_error_status // "none")' "$f" 2>/dev/null | tail -n 1 || true)
-          # A status code or "none"; anything else is not trusted into the title.
-          status=$(printf '%s' "$status" | tr -cd 'A-Za-z0-9_-' | cut -c1-32)
-          [[ -n "$status" ]] || status="unknown"
-          echo "::error title=Claude error (API status ${status})::${msg//%/%25}"
+          # Each is a status code, a boolean, a subtype or "none"; anything
+          # else is not trusted into the title.
+          field() {
+            jq -r --arg k "$1" "$pick"' | .[$k] | if . == null then "none" else tostring end' "$f" 2>/dev/null \
+              | tr -cd 'A-Za-z0-9_-' | cut -c1-32
+          }
+          status=$(field api_error_status); [[ -n "$status" ]] || status="unknown"
+          is_error=$(field is_error); [[ -n "$is_error" ]] || is_error="unknown"
+          subtype=$(field subtype); [[ -n "$subtype" ]] || subtype="unknown"
+          echo "::error title=Claude error (API status ${status}, is_error ${is_error}, ${subtype})::${msg//%/%25}"
           echo "message=$msg" >> "$GITHUB_OUTPUT"
           echo "api_status=$status" >> "$GITHUB_OUTPUT"
 
