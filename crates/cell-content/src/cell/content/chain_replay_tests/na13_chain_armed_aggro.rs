@@ -262,10 +262,13 @@ async fn live_db_chain_1008_fires_once_per_player() {
     );
 }
 
-/// #802 acceptance: after a full load, exactly chains 1008 and 1044 are
-/// fire-once — the only two seeded trigger rows with `once = true`.
+/// #802 guard: after a full load, the fire-once chains are exactly the six
+/// seeded trigger rows with `once = true`. 1008 and 1044 are the #802 pair;
+/// 1026/1027 (mission 638 login restore), 11001 (CB-N05 login restore) and
+/// 11010 (CB-N04a cells ambience) are once by design. Change this set only
+/// together with the seed row that earns the change.
 #[tokio::test]
-async fn live_db_only_chains_1008_and_1044_load_as_once() {
+async fn live_db_once_chains_match_the_seeded_set() {
     let pool = require_db_or_skip!();
     let engine = super::super::engine_loader::build_engine(Some(&pool)).await;
     let ids: Vec<i32> =
@@ -280,5 +283,5 @@ async fn live_db_only_chains_1008_and_1044_load_as_once() {
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .collect();
-    assert_eq!(once, vec![1008, 1044]);
+    assert_eq!(once, vec![1008, 1026, 1027, 1044, 11001, 11010]);
 }
