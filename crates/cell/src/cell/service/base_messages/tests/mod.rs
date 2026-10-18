@@ -38,6 +38,7 @@ mod gm_spawn_ready;
 mod identity_propagation;
 mod ignore;
 mod item_events;
+mod item_used_pose;
 mod lab_ability_state;
 mod lab_console;
 mod lab_query;
