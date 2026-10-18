@@ -11,7 +11,7 @@
 # is not the worktree's current branch (compared case-sensitively), -Force is given without a 40 lowercase hex
 # -ExpectRemoteSha, or -ExpectRemoteSha is given without -Force. Git's own refusals (a rejected non-fast-forward,
 # a lease that no longer matches) are a failed push. Prints status=ok branch=<name> sha=<sha>, or
-# status=refused|failed reason=<why> (a failed push adds detail=<git's last output line>). Exit codes: 0 pushed, 2 refused by a guard, 1 the push failed.
+# status=refused|failed reason=<why> (a failed push adds detail="<git's last output line>", quoted, with `%`, `"` and `=` percent-encoded). Exit codes: 0 pushed, 2 refused by a guard, 1 the push failed.
 # A parameter-binding error (a missing or unknown parameter) prints no status= line and exits 1.
 [CmdletBinding(PositionalBinding = $false)]
 param(
@@ -39,15 +39,26 @@ function Get-FullPath([string]$p) {
     [System.IO.Path]::GetFullPath($p).TrimEnd('\', '/').Replace('\', '/')
 }
 
-# One line saying why git failed: the last error-looking line of its output (fatal:, error:, a
-# rejected ref, a CONFLICT), else the last non-empty line. URL credentials are masked.
+# Percent-encodes `%`, `"`, `=` and control characters, so a value taken from git (a message, a
+# ref name) can neither close its quoted field nor plant a `key=value` token such as `status=ok`.
+function ConvertTo-Field([string]$s) {
+    $sb = [System.Text.StringBuilder]::new()
+    foreach ($ch in $s.ToCharArray()) {
+        if ('%"='.IndexOf($ch) -ge 0 -or [int]$ch -lt 0x20 -or [int]$ch -eq 0x7f) { [void]$sb.AppendFormat('%{0:X2}', [int]$ch) } else { [void]$sb.Append($ch) }
+    }
+    $sb.ToString()
+}
+
+# One quoted line saying why git failed: the last error-looking line of its output (fatal:,
+# error:, a rejected ref, a CONFLICT), else the last non-empty line. URL credentials are masked.
 function Get-Detail($lines) {
     $all = @($lines | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
     $errs = @($all | Where-Object { $_ -match '^(?:fatal:|error:|CONFLICT|!\s)' -and $_ -notmatch 'failed to push some refs' })
     $pick = if ($errs.Count -gt 0) { $errs[-1] } else { $all | Select-Object -Last 1 }
     $text = ("$pick" -replace '://[^/@\s]+@', '://' -replace '[\x00-\x1f\x7f]+', ' ').Trim()
     if ($text.Length -gt 200) { $text = $text.Substring(0, 200) }
-    if ($text) { $text } else { 'none' }
+    if (-not $text) { $text = 'none' }
+    '"' + (ConvertTo-Field $text) + '"'
 }
 
 if (-not (Test-Path -LiteralPath $C -PathType Container)) { Stop-Refused "not-a-directory: $C" }

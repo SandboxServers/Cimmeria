@@ -256,6 +256,45 @@ try {
     Check ($r.code -eq 2 -and $r.out -match 'merge-in-progress') "refuses while a merge is in progress (exit $($r.code)): $($r.out.Trim())"
     Check ((& $head) -eq $before -and $mergeStillOpen) 'the merge-in-progress refusal committed nothing and left the merge open'
     & git -C $wt merge --abort *> $null
+
+    # --- a conflicted cherry-pick or revert resolved to HEAD keeps its *_HEAD: still refused -----
+    # Resolving to HEAD leaves an index equal to HEAD, so only the pseudo-ref shows the operation;
+    # a plain `git commit` would then conclude it with the cherry-picked or reverted message.
+    Set-Content -LiteralPath (Join-Path $wt 'a.txt') 'pick side'
+    & git -C $wt commit -q -am 'to pick'
+    $pick = (& $head).Trim()
+    & git -C $wt reset -q --hard 'HEAD~1'
+    Set-Content -LiteralPath (Join-Path $wt 'a.txt') 'head side'
+    & git -C $wt commit -q -am 'head side'
+    & git -C $wt cherry-pick $pick *> $null
+    & git -C $wt checkout -q --ours -- a.txt
+    & git -C $wt add -- a.txt
+    $gitDirWt = (& git -C $wt rev-parse --absolute-git-dir).Trim()
+    Check (Test-Path -LiteralPath (Join-Path $gitDirWt 'CHERRY_PICK_HEAD')) 'setup: the cherry-pick is open with an index equal to HEAD'
+    Set-Content -LiteralPath (Join-Path $wt 'a.txt') 'edited during a cherry-pick'
+    $before = & $head
+    $r = Invoke-Commit $wt @('a.txt')
+    Check ($r.code -eq 2 -and $r.out -match 'merge-in-progress: CHERRY_PICK_HEAD') "refuses while a cherry-pick is in progress (exit $($r.code)): $($r.out.Trim())"
+    Check ((& $head) -eq $before -and (Test-Path -LiteralPath (Join-Path $gitDirWt 'CHERRY_PICK_HEAD'))) 'the cherry-pick refusal committed nothing and left the cherry-pick open'
+    & git -C $wt checkout -q -- a.txt
+    & git -C $wt cherry-pick --abort *> $null
+
+    Set-Content -LiteralPath (Join-Path $wt 'a.txt') 'revert one'
+    & git -C $wt commit -q -am 'to revert'
+    $toRevert = (& $head).Trim()
+    Set-Content -LiteralPath (Join-Path $wt 'a.txt') 'revert two'
+    & git -C $wt commit -q -am 'after revert target'
+    & git -C $wt revert --no-edit $toRevert *> $null
+    & git -C $wt checkout -q --ours -- a.txt
+    & git -C $wt add -- a.txt
+    Check (Test-Path -LiteralPath (Join-Path $gitDirWt 'REVERT_HEAD')) 'setup: the revert is open with an index equal to HEAD'
+    Set-Content -LiteralPath (Join-Path $wt 'a.txt') 'edited during a revert'
+    $before = & $head
+    $r = Invoke-Commit $wt @('a.txt')
+    Check ($r.code -eq 2 -and $r.out -match 'merge-in-progress: REVERT_HEAD') "refuses while a revert is in progress (exit $($r.code)): $($r.out.Trim())"
+    Check ((& $head) -eq $before -and (Test-Path -LiteralPath (Join-Path $gitDirWt 'REVERT_HEAD'))) 'the revert refusal committed nothing and left the revert open'
+    & git -C $wt checkout -q -- a.txt
+    & git -C $wt revert --abort *> $null
 }
 finally {
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue

@@ -81,7 +81,7 @@ try {
     & git -C $wt commit -q --amend -m 'feat one rewritten'
     $rewritten = (& git -C $wt rev-parse HEAD).Trim()
     $r = Invoke-Push $wt 'feat/x'
-    Check ($r.code -eq 1 -and $r.out -match 'status=failed reason=git-push branch=feat/x detail=\S') "a plain push of a rewritten branch fails and says why (exit $($r.code)): $($r.out.Trim())"
+    Check ($r.code -eq 1 -and $r.out -match 'status=failed reason=git-push branch=feat/x detail="! \[rejected\][^"]*"') "a plain push of a rewritten branch fails and says why (exit $($r.code)): $($r.out.Trim())"
     Check ((& $remoteRef) -eq $head) 'the failed plain push left the remote unchanged'
 
     # -Force needs the remote sha the caller last saw: a bare lease is defeated by any fetch.
