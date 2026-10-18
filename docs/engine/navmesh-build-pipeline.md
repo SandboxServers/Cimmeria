@@ -606,7 +606,7 @@ gate and point-set rows, and every replaced mesh is scored against the old
 one on the real player positions in SigNoz's `movement.validation_reject`
 rows (`last_valid_*` as accepted positions, `client_*` as rejected ones,
 round-number teleport points dropped). The `movement.position_sample` rows
-are DEBUG and were not exported, so the accepted set is small.
+export at DEBUG through their own `OTEL_FILTER` row and carry `cimmeria.session_kind`, so the accepted set is there and lab walks can be excluded.
 
 **A fifth unchecked Recast limit.** `rcSpan` stores heights in 13 bits
 (`RC_SPAN_HEIGHT_BITS`), and rasterization clamps every span to 8,191 cells
