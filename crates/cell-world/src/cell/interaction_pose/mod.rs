@@ -10,6 +10,9 @@ mod emit_tests;
 mod geometry;
 #[cfg(test)]
 mod geometry_tests;
+pub mod inbound;
+#[cfg(test)]
+mod inbound_tests;
 
 pub use capture::{capture_interaction_pose, InteractionPose};
 pub use emit::{emit_interaction_pose, emit_interaction_pose_at, PoseExtra, POSE_MIN_INTERVAL};
