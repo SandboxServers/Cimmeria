@@ -102,7 +102,9 @@ shape.
    `git worktree prune`, no `git stash`, no push. They commit locally and
    stop.
 4. On a one-line return, update the ledger row and stop. Open the report file
-   only when the return says `blocked` or `failed`.
+   only when the return says `blocked` or `failed`. A `blocked` return with
+   the reason `context` starts the coder loop in § Sessions, passes and
+   escalation.
 
 **No teammates.** Never use SendMessage to keep an agent alive or to chat
 with a running one. Resume a finished agent only for a fix it can make
@@ -119,7 +121,8 @@ input.
    commits. The orchestrator does not fix findings, and there is no separate
    read-only review followed by a fix worker. Add the matching domain advisor
    or `server-authority-enforcer` as a second read-only pass only when a
-   packet touches their area.
+   packet touches their area. Its return gives a verdict per packet (`ship`,
+   `recheck` or `decision`); see below.
 2. Ship each packet through `ops`: `ship.ps1 pr -C <worktree> -m <msg>`, then
    `ship.ps1 merge <PR> --retire <name>`. The merge queue requires green CI,
    so the packet's lane nextest must be green first. A packet that builds on
@@ -129,6 +132,34 @@ input.
    ([pre-pr-checks.md § Main is red](../../../docs/agents/pre-pr-checks.md#main-is-red)).
 3. Update the packet rows in the ledger, and write
    `worknotes/<packet>.md` only if anything is left over.
+
+### Sessions, passes and escalation
+
+| Count | Limit | Meaning |
+|---|---|---|
+| Fix round | 5 per check | One rerun of a lane check inside one session |
+| Coder session | 3 per packet | One packet-coder run. A context stop leaves a worknote, and the next fresh session continues from it. |
+| Review pass | 3 per packet | One packet-review-fixer session over that packet |
+
+Escalation, one tier at a time:
+
+1. Context stop → a fresh packet-coder with "continuation N of 3" and the
+   worknote. Findings never go back to a coder.
+2. After 3 coder sessions, or 2 sessions that each end at 5 failed fix
+   rounds → one Sonnet implementer (`rust-gameserver-dev` for code and
+   tools, `documentation-writer` for docs) with the worknote → then
+   `architect` re-slices. Opus never implements a packet.
+3. `recheck` → a fresh review-fixer for that packet, naming the pass number
+   and the earlier report. At most 3 passes.
+4. After pass 3 without `ship`, or on `decision` → `architect` (or the Opus
+   advisor for protocol and RE) writes a ruling note in
+   `worknotes/<packet>.md` and no code; a fresh review-fixer applies it. An
+   owner call is BlockedDecision.
+
+Why: Haiku 5.5 bills 5x per request above a 100k prompt, so a fresh session
+is cheaper than a long one; oversteps where Opus wrote code cost $107.43 in
+the Haiku campaigns (docs/analysis/campaign-metrics/findings.md), so
+escalation climbs one tier at a time and Opus only rules.
 
 ## 5. State on disk at every wave boundary
 

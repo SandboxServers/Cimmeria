@@ -89,7 +89,7 @@ when it exits. Alternatively let `ship.py merge` do the waiting (step 6).
 
 ## 5. Adversarial review
 
-Copilot reviews are not requested at the moment (owner decision, 2026-10-04: out of usage). Launch a **fresh, read-only reviewer
+Copilot reviews are not requested at the moment (owner decision, 2026-10-04: out of usage). For a campaign packet, the wave's `packet-review-fixer` pass is this review: it did not write the code and reviews adversarially, so don't run a second reviewer. Otherwise launch a **fresh, read-only reviewer
 subagent** that did not write the code. Give it the PR number and the packet spec. Use the
 `code-review` skill in `.github/skills/code-review/`, or the [`packet-reviewer`](../../agents/packet-reviewer.md) agent (in a harness without subagents, read its definition as the brief). Post its
 verified findings as **one** PR comment. The coordinator routes the fixes, then ships them
