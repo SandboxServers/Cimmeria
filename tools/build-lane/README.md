@@ -11,6 +11,11 @@ The machine-wide build lane every agent `cargo` call goes through, and the workt
 | `reload-db.sh` / `.ps1`, `live-db-test.sh` / `.ps1` | Reload the worktree's `sgw_<worktree>` database; run the live-DB tier against it in a slot |
 | `ship.sh` / `.ps1` (`ship.py`) | `pr -C <worktree> -m <msg>` commits, pushes and opens the PR; `merge <PR> --retire <name>` merges and retires |
 | `rebase-pr.sh` / `.ps1` (`rebase_pr.py`) | Rebase a PR branch onto `origin/main`, resolving only mechanical conflicts |
+| `commit-paths.ps1` | Commit exactly the named files in one worktree for `ops` (`-Paths`, explicit only: refuses `.`, `-A`, globs, directories, other staged files and whitespace errors) |
+| `merge-noff.ps1` | Merge one local branch into the current branch of one worktree with `--no-ff`; a conflict is aborted; `up-to-date` when nothing moves |
+| `branch-at.ps1` | Create one local branch at a full 40-hex SHA for `ops`; never overwrites a branch and never checks out |
+| `push-branch.ps1` | Push the worktree's current branch to origin for `ops` (`-u`; `-Force` uses `--force-with-lease` only); refuses main, master and other branches |
+| `rebase-onto.ps1` | Rebase the current branch onto a commit (`-Upstream` for `--onto`) on a clean tree for `ops`; a conflict is aborted and exits 1 |
 
 `lane_summary.py` writes the agent summary, `lane-slots.ps1` holds the slot protocol, and `test_*.py` / `test-*.ps1` are their tests. The [tools catalog](../README.md#tools-catalog) has every script's summary.
 
