@@ -11,12 +11,14 @@
 #
 # Refuses (exit 2) when -C is not the root of a non-main worktree, HEAD is detached, the branch
 # is not -ExpectBranch (when given), a path is a glob, a directory, `.`, `..`, or starts with `-`
-# or `:`, the index already holds other staged files (a rename counts as both of its paths), or
-# `git diff --cached --check` finds whitespace errors. Git's hooks still run. When the check or
-# the commit fails, the named paths are unstaged again so the index is left as it was found.
+# or `:`, is rooted (a drive, a UNC share or a leading slash: give paths relative to -C) or
+# resolves outside -C, the index already holds ANY staged file (a rename counts as both of its
+# paths; a named path staged earlier counts too), or `git diff --cached --check` finds whitespace
+# errors. Git's hooks still run. Because the index is empty on entry, a failed check or commit
+# unstages the named paths and leaves it empty again, exactly as it was found.
 # Prints one line: status=ok sha=<sha> branch=<branch>, or status=refused|failed reason=<why>.
 # Exit codes: 0 committed, 2 refused by a guard, 1 a git step failed.
-[CmdletBinding()]
+[CmdletBinding(PositionalBinding = $false)]
 param(
     [Parameter(Mandatory)][string]$C,
     [Parameter(Mandatory)][string]$Message,
@@ -60,15 +62,17 @@ foreach ($raw in ($Paths | ForEach-Object { $_ -split ',' })) {
     $q = $raw.Trim().Replace('\', '/')
     if (-not $q) { Stop-Refused 'empty-path' }
     if ($q -match '^[-:]') { Stop-Refused "option-or-magic-pathspec: $q" }
+    if ($q -match '^[A-Za-z]:' -or $q.StartsWith('/') -or [System.IO.Path]::IsPathRooted($q)) { Stop-Refused "rooted-path: $q (give the path relative to -C)" }
     if ($q -match '[*?\[\]]') { Stop-Refused "glob: $q" }
     if ($q.EndsWith('/') -or ($q -split '/' | Where-Object { $_ -in '.', '..' })) { Stop-Refused "not-an-exact-file: $q" }
-    if (Test-Path -LiteralPath (Join-Path $C $q) -PathType Container) { Stop-Refused "directory: $q" }
+    $full = Get-FullPath ([System.IO.Path]::Combine($C, $q))
+    if (-not $full.StartsWith((Get-FullPath $C) + '/', [System.StringComparison]::OrdinalIgnoreCase)) { Stop-Refused "outside-worktree: $q" }
+    if (Test-Path -LiteralPath $full -PathType Container) { Stop-Refused "directory: $q" }
     $clean += $q
 }
 
 $staged = @(& git -C $C diff --cached --name-only --no-renames)
-$extra = @($staged | Where-Object { $clean -notcontains $_ })
-if ($extra.Count -gt 0) { Stop-Refused "other-staged-files: $($extra -join ', ')" }
+if ($staged.Count -gt 0) { Stop-Refused "other-staged-files: $($staged -join ', ') (the index must be empty so a failure can restore it)" }
 
 & git -C $C --literal-pathspecs add -- @clean
 if ($LASTEXITCODE -ne 0) {

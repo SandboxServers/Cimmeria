@@ -24,8 +24,20 @@ function Invoke-Commit([string]$wt, [string[]]$paths, [string[]]$trailers = @(),
     return @{ code = $LASTEXITCODE; out = $out }
 }
 
+# Runs the script with a hand-built command line (no -Paths: joining), for binding checks.
+function Invoke-CommitRaw([string[]]$argv) {
+    $out = (& pwsh -NoProfile -File $script @argv 2>&1 | Out-String)
+    return @{ code = $LASTEXITCODE; out = $out }
+}
+
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("commit-paths-test-" + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory $tmp | Out-Null
+# Isolate git from the developer's global and system config (commit.gpgsign, core.hooksPath,
+# rebase.updateRefs ...): both point at an empty file inside the throwaway directory.
+$emptyConfig = Join-Path $tmp 'empty.gitconfig'
+New-Item -ItemType File $emptyConfig | Out-Null
+$env:GIT_CONFIG_GLOBAL = $emptyConfig
+$env:GIT_CONFIG_SYSTEM = $emptyConfig
 try {
     $main = Join-Path $tmp 'main'
     $wt = Join-Path $tmp 'wt'
@@ -33,6 +45,8 @@ try {
     & git -C $main init -q -b main
     & git -C $main config user.email 'test@example.invalid'
     & git -C $main config user.name 'test'
+    # Set-Content writes CRLF on Windows; the isolated config no longer carries the system autocrlf.
+    & git -C $main config core.whitespace 'cr-at-eol'
     Set-Content -LiteralPath (Join-Path $main 'a.txt') 'one'
     Set-Content -LiteralPath (Join-Path $main 'b.txt') 'one'
     & git -C $main add -- a.txt b.txt
@@ -49,8 +63,20 @@ try {
         $r = Invoke-Commit $wt @($bad)
         Check ($r.code -eq 2 -and $r.out -match 'status=refused') "refused path '$bad' (exit $($r.code))"
     }
+    # A rooted path used to dodge the directory guard: Join-Path put it under -C, found nothing,
+    # and `git add <worktree root>` staged every file below it.
+    foreach ($abs in $wt, (Join-Path $wt 'sub'), (Join-Path $wt 'a.txt'), ($wt -replace '\\', '/'), '/a.txt', '//server/share/a.txt', 'C:a.txt') {
+        $r = Invoke-Commit $wt @($abs)
+        Check ($r.code -eq 2 -and $r.out -match 'rooted-path') "refused rooted path '$abs' (exit $($r.code)): $($r.out.Trim())"
+    }
     Check ((& $head) -eq $before) 'no refusal moved HEAD'
     Check (@(& git -C $wt diff --cached --name-only).Count -eq 0) 'no refusal staged anything'
+
+    # A space-separated list used to bind the second path to -Trailers and commit only the first.
+    $r = Invoke-CommitRaw @('-C', $wt, '-Message', 'subject line', '-Paths', 'a.txt', 'sub/c.txt')
+    Check ($r.code -ne 0 -and $r.out -notmatch 'status=ok') "-Paths a b (space separated) is an error, not a partial commit (exit $($r.code))"
+    Check ((& $head) -eq $before) 'the space-separated list did not commit'
+    Check (@(& git -C $wt diff --cached --name-only).Count -eq 0) 'the space-separated list staged nothing'
 
     $r = Invoke-Commit $main @('a.txt')
     Check ($r.code -eq 2 -and $r.out -match 'main-checkout') 'refuses the main checkout'
@@ -63,6 +89,16 @@ try {
     Check ($r.code -eq 2 -and $r.out -match 'other-staged-files: b.txt') 'refuses when another file is staged'
     & git -C $wt restore --staged -- b.txt
     Check ((& $head) -eq $before) 'the other-staged refusal did not commit'
+
+    # A named path that is already staged is refused too, and stays staged: the failure paths
+    # unstage what they added, so letting it through would drop the caller's staging on failure.
+    Set-Content -LiteralPath (Join-Path $wt 'a.txt') 'bad   '
+    & git -C $wt add -- a.txt
+    $r = Invoke-Commit $wt @('a.txt')
+    Check ($r.code -eq 2 -and $r.out -match 'other-staged-files: a.txt') "refuses a named path that is already staged (exit $($r.code)): $($r.out.Trim())"
+    Check ((@(& git -C $wt diff --cached --name-only) -join ',') -eq 'a.txt') 'the earlier staging of the named path is left as found'
+    & git -C $wt restore --staged -- a.txt
+    Set-Content -LiteralPath (Join-Path $wt 'a.txt') 'two'
 
     & git -C $wt checkout -q --detach
     $r = Invoke-Commit $wt @('a.txt')
@@ -121,6 +157,16 @@ try {
     $r = Invoke-Commit $wt @('r2.txt')
     Check ($r.code -eq 2 -and $r.out -match 'other-staged-files: r\.txt') "refuses a staged rename whose source is unnamed (exit $($r.code)): $($r.out)"
     Check ((& $head) -eq $before) 'the rename refusal did not commit'
+    & git -C $wt reset -q
+    & git -C $wt checkout -q -- r.txt
+    Remove-Item -LiteralPath (Join-Path $wt 'r2.txt') -ErrorAction SilentlyContinue
+
+    # --- a deleted file can be committed by name -----------------------------------------
+    Remove-Item -LiteralPath (Join-Path $wt 'r.txt')
+    $r = Invoke-Commit $wt @('r.txt')
+    Check ($r.code -eq 0 -and $r.out -match 'status=ok') "commits the deletion of a named file (exit $($r.code)): $($r.out.Trim())"
+    $deleted = @(& git -C $wt show --name-status --format= HEAD)
+    Check ($deleted.Count -eq 1 -and $deleted[0] -match '^D\s+r\.txt$') "the commit is the deletion of r.txt: $($deleted -join ';')"
 }
 finally {
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
