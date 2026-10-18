@@ -81,8 +81,23 @@ try {
     Check ($r.code -eq 0 -and $r.out -match "sha=$rewritten") "-Force pushes the rewritten branch (exit $($r.code))"
     Check ((& $remoteRef) -eq $rewritten) 'the remote branch is at the rewritten HEAD'
 
-    $text = Get-Content -Raw -LiteralPath $script
-    Check ($text -match "'--force-with-lease'" -and $text -notmatch "'--force'") 'the script never runs a bare --force'
+    # --- the lease holds: someone else's push to the remote is not overwritten ---------
+    # A second clone advances origin/feat/x after our last push. The lease still expects our tip,
+    # so -Force must be rejected; a bare --force would overwrite it and this check would fail.
+    $other = Join-Path $tmp 'other'
+    & git clone -q $bare $other
+    & git -C $other config user.email 'test@example.invalid'
+    & git -C $other config user.name 'test'
+    & git -C $other checkout -q feat/x
+    Set-Content -LiteralPath (Join-Path $other 'c.txt') 'someone else'
+    & git -C $other add -- c.txt
+    & git -C $other commit -q -m 'remote advances'
+    & git -C $other push -q origin feat/x
+    $theirs = (& git -C $other rev-parse HEAD).Trim()
+    & git -C $wt commit -q --amend -m 'feat one rewritten again'
+    $r = Invoke-Push $wt 'feat/x' -force
+    Check ($r.code -eq 1 -and $r.out -match 'status=failed reason=git-push') "-Force is rejected when the remote moved (exit $($r.code)): $($r.out.Trim())"
+    Check ((& $remoteRef) -eq $theirs) 'the rejected -Force left the other push in place'
 }
 finally {
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
