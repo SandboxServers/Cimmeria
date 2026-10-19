@@ -10,7 +10,7 @@ Every fact below comes from three sources: the `ai-harness-docs` campaign ledger
 
 ## One difference from today's loop
 
-AH-11m ran in wave 3d, before the read-only review loop of contract C12 (D-AH43) landed. Its review was one Sonnet `packet-review-fixer` that both reviewed and fixed. Today a read-only `packet-reviewer` finds problems, a fresh `packet-coder` fixes them, there are at most 3 fix passes, and an architect rules on a dispute. The README explains that loop under [Review loops](../../README.md#review-loops).
+AH-11m ran in wave 3d, before the read-only review loop of contract C12 (D-AH43) landed. Its review was one Sonnet session that both reviewed and fixed (the combined reviewer-fixer role, retired by D-AH43). Today a read-only `packet-reviewer` finds problems, a fresh `packet-coder` fixes them, there are at most 3 fix passes, and an architect rules on a dispute. The README explains that loop under [Review loops](../../README.md#review-loops).
 
 ## 1. The packet exists before any code does
 
@@ -24,7 +24,7 @@ That is the packet's whole scope. The coder edits nothing else. (The PR's head b
 
 ## 2. The brief
 
-The brief is the packet section plus the rules every wave 3d packet shares. This is the whole packet section; it is short because the shared rules carry the detail:
+The packet section is the spec the brief points to; the text of the brief actually dispatched is not recorded. These are the packet's steps and its guard list, quoted from the section (its header, its **Files:** line and its closing checks line are left out), and the shared rules carry the detail:
 
 > **Steps:**
 >
@@ -43,7 +43,7 @@ Three things in that brief are worth noticing:
 
 The shared rules add the rest: bash 3.2 syntax limits, `set -euo pipefail` must not end the script before it prints its status line, create exactly the two named files, and `git update-index --chmod=+x` on the new script.
 
-The coder is a Haiku `packet-coder` (ledger D-AH2) in its own worktree, running its checks through the [build lane](../architecture/build-system.md). See [Agents, tools and models](ai-sdlc.md#agents-tools-and-models) and [One worktree, one database](ai-sdlc.md#one-worktree-one-database).
+The coder is a Haiku `packet-coder` (ledger D-AH2) in its own worktree. See [Agents, tools and models](ai-sdlc.md#agents-tools-and-models) and [One worktree, one database](ai-sdlc.md#one-worktree-one-database).
 
 ## 3. The return line
 
@@ -59,13 +59,13 @@ The orchestrator then sets the ledger row to Review. It opens the report only on
 
 ## 4. The commit
 
-The PR has one commit, authored 2026-10-18 at 19:17:48Z, with the subject the packet fixed in advance and the attribution trailers. The diff is two new files, `tools/build-lane/branch-at.sh` and `tools/build-lane/test_branch_at_sh.py`, 348 added lines in all, and nothing else. A diff that touches only the files the packet named is the first thing a reviewer checks.
+The PR has one commit, authored 2026-10-18 at 19:17:48Z, with the subject the packet fixed in advance and the attribution trailers. The diff is two new files, `tools/build-lane/branch-at.sh` and `tools/build-lane/test_branch_at_sh.py`, 346 added lines in all (136 and 210), and nothing else. A diff that touches only the files the packet named is the first thing a reviewer checks.
 
 ## 5. The review
 
-Wave 3d held six packets (AH-11j to AH-11o) for one Sonnet `packet-review-fixer`; the wave's own header says "Six packets for one packet-review-fixer." The PR body records the result in one sentence: "Reviewed by a Sonnet packet-review-fixer (verdict: ship)."
+Wave 3d held six packets (AH-11j to AH-11o) for one combined Sonnet review session; the wave's own header describes that one session for all six. The PR body records the result in one sentence that gives the verdict, ship.
 
-What the review found, and whether it changed anything, is **not recorded**. The PR has a single commit, so no separate fix commit survived into it, but the review report is not committed and this page cannot say what it checked.
+What the review found, and whether it changed anything, is **not recorded**. The PR has a single commit, so no separate fix commit survived into it, but no review report is linked from the PR or the ledger, and this page cannot say what it checked.
 
 Under today's loop the same packet goes through these steps instead:
 
@@ -89,15 +89,13 @@ The Tests line states what ran on the author's host and which CI job covers the 
 
 PR #1842 merged at 20:27:12Z as `2b4017c030a0059a5e42d7fb7bee4ac51643ec66`, 18 minutes after it opened. The ledger row reads Integrated (#1842). How it was merged and whether the worktree `ah-11m` was retired the same day are **not recorded**; the rule is `ship.ps1 merge <PR> --retire <name>` ([Shipping in detail](ai-sdlc.md#shipping-in-detail)).
 
-A packet merged only into an integration branch, as a wave that must land at once does, has no PR of its own, and `rm-worktree.ps1 --merged` skips its worktree. AH-11m did not take that path.
-
 ## What the example shows
 
 | Step | Who | What stays in the repo |
 |---|---|---|
 | Plan | architect | ledger row, packet section, commit subject |
 | Code | packet-coder (Haiku) | one commit |
-| Review | `packet-review-fixer` here; `packet-reviewer` and fresh coders today | a verdict in the PR body here |
+| Review | the combined reviewer-fixer role here (retired by D-AH43); `packet-reviewer` and fresh coders today | a verdict in the PR body here |
 | Ship | `ship.ps1` | the PR, its body, the merge commit |
 | Close | orchestrator | the ledger row |
 
