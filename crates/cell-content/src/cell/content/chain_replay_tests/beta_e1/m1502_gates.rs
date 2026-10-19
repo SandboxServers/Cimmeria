@@ -98,11 +98,13 @@ async fn live_db_box_buttons_answer_only_at_their_own_step() {
     }
 }
 
-/// Revert: widen or NULL a trigger key: 23240 or 23249's world, 23240's
-/// completed mission (1500), 23243's region, or an NPC or box tag. A Free
-/// Jaffa in the offer or return state must still match nothing when the event
-/// is another world's login, another mission's completion, another region or
-/// another NPC's click.
+/// Revert: NULL the world of 23240 or 23249 (a NULL `player_loaded` key is a
+/// wildcard), or swap another key in: 23240's completed mission 1500 for 1501,
+/// 23243's region for `Beta_Site_Evo_1.FireSite`, 23250's tag for
+/// `BetaE1_Carter`. (A NULL key on the other trigger types drops the chain, so
+/// the swap is the revert there.) A Free Jaffa in the offer or return state
+/// must still match nothing when the event is another world's login, another
+/// mission's completion, another region or another NPC's click.
 #[tokio::test]
 async fn live_db_trigger_keys_are_exact() {
     let pool = require_db_or_skip!();
