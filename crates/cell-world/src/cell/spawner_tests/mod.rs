@@ -37,6 +37,7 @@
 //! template-vs-GM-spawn parity guard drives the base's GM spawn handler and
 //! stays in `cimmeria-services`.
 
+mod beta_e1;
 mod dakara_e1;
 mod live_db_aggression;
 mod live_db_assist;
