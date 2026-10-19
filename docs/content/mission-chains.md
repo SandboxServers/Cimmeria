@@ -1202,7 +1202,7 @@ Chain-replay tests: [`chain_replay_tests/class_start_sgc/`](../../crates/cell-co
 
 Missions 1563-1571, the SGC halves of 1651, 1654 and 1655, and the crossings to Dakara (C1) and Omega (C4). Campaign: `docs/analysis/union-sgc-continuation/`. Each line below belongs to one packet; that packet rewrites only its own line.
 
-- **1563 Virus (US-12, chains 3051-3057):** planned.
+- **1563 Virus (US-12, chains 3051-3057):** Carter (`SGC_W1_SamCarter`) offers it ("?") to a Human who finished 1562, marks it "!" on accept, and on the next press hands over her notes (step 4629), which lights her terminal (`SGC_W1_CarterTerminal`); pressing the terminal completes objective 5369 and the mission, and relog restores each marker.
 
 - **1564 Self-Destruct (US-15, chains 3060-3071):** planned.
 
