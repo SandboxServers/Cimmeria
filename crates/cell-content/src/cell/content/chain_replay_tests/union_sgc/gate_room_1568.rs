@@ -134,6 +134,37 @@ async fn live_db_m1568_terminal_backstop_when_the_room_is_already_clear() {
     assert_eq!(rig.status(1568), COMPLETED, "the backstop completes 1568");
 }
 
+/// **Events on the wrong step do nothing.** A terminal press on 4637 (3102's
+/// `step_status 4638` row), the three Jaffa dying on 4638 and a second entry
+/// into Gate Control on 4639 (3101's `step_status 4637` row) leave 1568 where
+/// it is. Revert proof: drop the `step_status` row of 3102 (the press jumps
+/// 4637 to 4639) or of 3101 (the re-entry rewinds 4639 to 4638). The kills
+/// on 4638 pass either way: `complete_objective 5380` is ignored until 4639
+/// is open, so the `step_status` row of 3103 is belt and braces.
+#[tokio::test]
+async fn live_db_m1568_events_on_the_wrong_step_do_nothing() {
+    let pool = require_db_or_skip!();
+    let mut rig = after_1564(&pool, Some(SOLDIER)).await;
+    rig.press(TERMINAL).await;
+    assert_eq!(rig.step(1568), Some(4637), "a press before Gate Control");
+    assert!(!rig.sent().contains(&Sent::Dialog(5383)), "no shut-off yet");
+
+    rig.enter(GATE_CONTROL).await;
+    assert_eq!(rig.step(1568), Some(4638));
+    for tag in GROOM_JAFFA {
+        rig.kill(tag).await;
+    }
+    assert_eq!(rig.status(1568), ACTIVE, "kills on 4638 do not finish 1568");
+    assert_eq!(rig.step(1568), Some(4638));
+
+    let mut rig = at_4639(&pool).await;
+    let _ = rig.sent();
+    rig.enter(GATE_CONTROL).await;
+    assert_eq!(rig.step(1568), Some(4639), "re-entry does not rewind");
+    assert!(!rig.sent().contains(&Sent::Dialog(5382)), "no second 5382");
+    assert_eq!(rig.flags(TERMINAL) & MISSION_OBJECT, 0, "no second glow");
+}
+
 /// **Completion stages the departure.** Chain 3105. Revert proof: delete 3105.
 #[tokio::test]
 async fn live_db_m1568_completion_stages_the_departure() {
