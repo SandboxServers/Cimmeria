@@ -187,5 +187,6 @@ Not measured yet:
 - [campaign-packet skill](../../.claude/skills/campaign-packet/SKILL.md): the exact campaign rules the orchestrator follows.
 - [development-workflow.md](development-workflow.md): the ticket-to-PR pipeline, the agent roster and the worker-lifetime rules.
 - [ai-harness.md](ai-harness.md): settings, agents, skills, hooks, the board, memory and the review bots.
+- [ai-sdlc-example.md](ai-sdlc-example.md): one real packet, AH-11m, followed from brief to merge.
 - [rules-and-gotchas.md](rules-and-gotchas.md): decisions already made and traps already hit.
 - [campaign-metrics findings](../analysis/campaign-metrics/findings.md) and the [token-usage ledger](../analysis/token-usage/README.md): where the numbers come from.
