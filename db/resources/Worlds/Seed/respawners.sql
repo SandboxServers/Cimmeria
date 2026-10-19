@@ -64,21 +64,14 @@ INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUE
 
 INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (5, 12, 'Level 7: Ring Transporters', -79.2139969, 45.1759987, -163.815002);
 
--- KNOWN GAP (CA00): world 23 `Beta_Site_Evo_1` has the same lost-coordinate
--- problem as the Castle rows above, and no evidence to rebuild from — the
--- recovered data has no Beta Site respawner position, the names give no
--- location ('Respawner_bet_Infirmary' names a room that has no point set,
--- spawn or region in the seed), and no `deprecated/python` script reads or
--- writes them. Deliberately left at the origin rather than invented: the
--- `resolve_respawn_target` origin guard makes them fall through to the
--- in-place fallback, so dying in world 23 respawns the player where they
--- died instead of at (0,0,0). Author them from a `.location` pass if Beta
--- Site ever becomes a playable zone; the live-DB guard
--- `seeded_respawners_are_not_at_the_world_origin` lists them by id as the
--- documented exception.
-INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (6, 23, 'Respawner', 0, 0, 0);
+-- UB-01a (CIMMERIA_RECONSTRUCTION): world 23 `Beta_Site_Evo_1` respawners 6 and 7
+-- take the sealed positions from docs/analysis/union-beta-e1-continuation/placement-seal.md
+-- (RESPAWN_6 and RESPAWN_7, nav component 251, y already on the mesh). Row 7 sits
+-- inside the Infirmary region (INFIRMARY_CENTRE, r 10). The sealed yaws (4.127 and
+-- 1.874) have no column in this table and are not stored.
+INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (6, 23, 'Respawner', 633, -60.83, 399);
 
-INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (7, 23, 'Respawner_bet_Infirmary', 0, 0, 0);
+INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (7, 23, 'Respawner_bet_Infirmary', 953, 16.35, 287.5);
 
 INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (8, 12, 'Stasis Chamber', -334.231, 73.472, -228.026);
 
