@@ -1204,7 +1204,7 @@ Missions 1563-1571, the SGC halves of 1651, 1654 and 1655, and the crossings to 
 
 - **1563 Virus (US-12, chains 3051-3057):** planned.
 
-- **1564 Self-Destruct (US-15, chains 3060-3071):** planned.
+- **1564 Self-Destruct (US-15, chains 3060-3071):** for Human classes, Carter offers 1564 after 1563 (5374), gives the radio report (5375) that moves to step 4631, and the Failsafe room (`SGC_W1.FailsafeRoom`) moves to 4632 and lights the Failsafe Device. The device moves to 4633, Carter's final report (5378) completes objective 5373, and load restores her marker and the glow.
 
 - **1564 escort (US-16, chains 3073-3078):** planned.
 
