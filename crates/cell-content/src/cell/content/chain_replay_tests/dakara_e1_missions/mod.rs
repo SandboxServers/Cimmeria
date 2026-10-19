@@ -119,6 +119,59 @@ fn fire_enter_region(engine: &ChainEngine, ctx: &ExecutionContext, key: &str) ->
     engine.resolve_event(&event, &c)
 }
 
+/// Fire `stargate_crossed` to `destination`, as the cell does when the
+/// player steps through an open gate (`event_dispatch/stargate.rs`).
+#[allow(dead_code)] // used by the wave-6c submodules (work-packets.md C7)
+fn fire_stargate_crossed(
+    engine: &ChainEngine,
+    ctx: &ExecutionContext,
+    destination: &str,
+) -> ResolvedActions {
+    let mut c = ExecutionContext::new();
+    c.world_id = ctx.world_id;
+    c.params = ctx.params.clone();
+    c.set_param(
+        "destination_world".to_string(),
+        serde_json::json!(destination),
+    );
+    let event = TriggerEvent {
+        trigger_type: TriggerType::StargateCrossed,
+        source_entity: None,
+        target_entity: None,
+        params: c.params.clone(),
+    };
+    engine.resolve_event(&event, &c)
+}
+
+/// The actions a Livewire win runs: victory chain `id`, fired by id with no
+/// condition check, as the minigame callback does (Castle 1357). Panics if
+/// the chain is missing or carries a condition (a condition there is never read).
+#[allow(dead_code)] // used by the wave-6c submodules (work-packets.md C7)
+async fn fire_victory(pool: &sqlx::PgPool, id: i32) -> ResolvedActions {
+    let chain = crate::cell::content::engine_loader::load_single_chain_for_test(pool, id)
+        .await
+        .expect("DB query for the victory chain must succeed")
+        .unwrap_or_else(|| panic!("victory chain {id} is not seeded"));
+    assert!(
+        chain.conditions.is_empty(),
+        "victory chain {id} has conditions, which are never evaluated: {:?}",
+        chain.conditions
+    );
+    let mut engine = ChainEngine::new();
+    engine.register_chain(chain);
+    let mut actions = Vec::new();
+    let mut action_delays = Vec::new();
+    for (action, delay) in engine.get_chain_actions(i64::from(id)) {
+        actions.push((i64::from(id), action));
+        action_delays.push(delay);
+    }
+    ResolvedActions {
+        actions,
+        action_delays,
+        ..Default::default()
+    }
+}
+
 /// `"<chain>:<verb>(<args>)"` labels for the chains in `range`, as
 /// `mission_1324::labels` plus the item and bark verbs.
 fn labels_in(resolved: &ResolvedActions, range: RangeInclusive<i64>) -> Vec<String> {
@@ -176,6 +229,16 @@ fn labels_in(resolved: &ResolvedActions, range: RangeInclusive<i64>) -> Vec<Stri
                     format!("destroy_entity({entity_tag})")
                 }
                 Action::PlaySequence { sequence_id } => format!("play_sequence({sequence_id})"),
+                Action::StartMinigame {
+                    minigame_type,
+                    difficulty,
+                    on_victory_chains,
+                } => format!(
+                    "start_minigame({minigame_type},victory={on_victory_chains:?},d={difficulty})"
+                ),
+                Action::GrantStargateAddress { stargate_id } => {
+                    format!("grant_stargate_address({stargate_id})")
+                }
                 other => format!("OTHER({other:?})"),
             };
             format!("{id}:{body}")
