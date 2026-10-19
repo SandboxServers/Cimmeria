@@ -73,17 +73,20 @@ async fn live_db_offer_gives_nothing_without_1645_or_once_1646_is_active() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
     let active_1645 = with_mission(offered(Some(STORY_RM)), 1645, "active");
+    let not_active_1645 = with_mission(offered(Some(STORY_RM)), 1645, "not_active");
     let active_1646 = with_mission(offered(Some(STORY_RM)), 1646, "active");
-    assert!(labels_in(
-        &fire_player_loaded(&engine, &active_1645, STORY_RM_NAME),
-        M1646_OFFER_CHAINS
-    )
-    .is_empty());
-    assert!(labels_in(
-        &fire_dialog_choice(&engine, &active_1645, OFFER_CHOICE),
-        M1646_OFFER_CHAINS
-    )
-    .is_empty());
+    for ctx in [&active_1645, &not_active_1645] {
+        assert!(labels_in(
+            &fire_player_loaded(&engine, ctx, STORY_RM_NAME),
+            M1646_OFFER_CHAINS
+        )
+        .is_empty());
+        assert!(labels_in(
+            &fire_dialog_choice(&engine, ctx, OFFER_CHOICE),
+            M1646_OFFER_CHAINS
+        )
+        .is_empty());
+    }
     assert!(labels_in(
         &fire_player_loaded(&engine, &active_1646, STORY_RM_NAME),
         M1646_OFFER_CHAINS
@@ -101,6 +104,15 @@ async fn live_db_offer_restore_needs_the_tent_world() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
     let on_dakara = fire_player_loaded(&engine, &offered(Some(DAKARA)), DAKARA_NAME);
+    assert!(labels_in(&on_dakara, M1646_OFFER_CHAINS).is_empty());
+}
+
+#[tokio::test]
+async fn live_db_offer_choice_needs_the_tent_world() {
+    let pool = require_db_or_skip!();
+    let engine = build_engine(Some(&pool)).await;
+    // A stale dialog choice from Dakara_E1 must not accept 1646 outside the tent.
+    let on_dakara = fire_dialog_choice(&engine, &offered(Some(DAKARA)), OFFER_CHOICE);
     assert!(labels_in(&on_dakara, M1646_OFFER_CHAINS).is_empty());
 }
 
