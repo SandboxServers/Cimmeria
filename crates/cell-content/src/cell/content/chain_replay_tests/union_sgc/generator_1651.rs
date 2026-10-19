@@ -10,7 +10,9 @@ use sqlx::PgPool;
 
 use crate::cell::spawner::load_step_objectives;
 
-use super::rig::{Rig, Sent, ACTIVE, FREE_JAFFA, SOLDIER, STORY_ACTIVE};
+use cimmeria_content_engine::actions::Action;
+
+use super::rig::{Rig, Sent, ACTIVE, FREE_JAFFA, PLAYER, SOLDIER, STORY_ACTIVE};
 use crate::test_support::require_db_or_skip;
 
 const M1559: i32 = 1559;
@@ -18,6 +20,7 @@ const M1651: i32 = 1651;
 const S4928: i32 = 4928;
 const S4929: i32 = 4929;
 const S4931: i32 = 4931;
+const S5171: i32 = 5171;
 const O5956: i32 = 5956;
 const HAMMOND: &str = "SGCW1_GenHammond";
 const CARTER: &str = "SGC_W1_SamCarter";
@@ -57,6 +60,19 @@ fn within(a: [f32; 3], b: [f32; 3], metres: f32) -> bool {
         .sum::<f32>()
         .sqrt()
         <= metres
+}
+
+/// The player's queued deferred actions, as (cross sequence, advance, crossing)
+/// flags: whether the queue is exactly the cross sequence 10060, the advance to
+/// 5171 and the crossing, in that order.
+fn queue_is_cross_advance_crossing(rig: &Rig) -> bool {
+    matches!(
+        rig.mgr.pending_content_actions.get(&PLAYER).map(Vec::as_slice),
+        Some([a, b, c])
+            if matches!(a.action, Action::PlaySequence { sequence_id: SEQ_CROSS })
+                && matches!(b.action, Action::AdvanceStep { mission_id: M1651, step_id: S5171 })
+                && matches!(c.action, Action::CrossWorldTeleport { .. })
+    )
 }
 
 /// The rig after a relog, with the step-objective roster loaded again: the
@@ -256,6 +272,10 @@ async fn live_db_m1651_harriman_dials_then_crosses_after_three_seconds() {
             3,
             "archetype {archetype}: the cross sequence, the 5171 advance and the crossing are queued"
         );
+        assert!(
+            queue_is_cross_advance_crossing(&rig),
+            "archetype {archetype}: the queue is 10060, the advance to 5171, then the crossing"
+        );
 
         rig.run_due(2500).await;
         let at_2500 = rig.sent();
@@ -362,15 +382,19 @@ async fn live_db_m1651_repress_inside_the_window() {
     let mut rig = holding(&pool, SOLDIER).await;
     rig.sent();
     rig.press(HARRIMAN).await;
+    assert!(
+        !travelled(&rig.sent()),
+        "the first press crosses only at 3000 ms"
+    );
     rig.press(HARRIMAN).await;
-    rig.run_due(3000).await;
-    let travels = rig
-        .sent()
-        .iter()
-        .filter(|s| matches!(s, Sent::Travel(..)))
-        .count();
     assert_eq!(
-        travels, 1,
-        "the re-press inside the window sends one crossing"
+        count(&rig.sent(), &Sent::Travel(DAKARA.to_string(), DAKARA_PIN)),
+        1,
+        "the second press fires recovery chain 3142 and crosses at once"
+    );
+    rig.run_due(3000).await;
+    assert!(
+        !travelled(&rig.sent()),
+        "the first press queued crossing never runs (F4 design expected a second)"
     );
 }
