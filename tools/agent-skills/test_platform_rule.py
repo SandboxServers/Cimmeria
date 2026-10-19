@@ -33,7 +33,14 @@ class PlatformRuleTest(unittest.TestCase):
                 tools = tools_of(front)
                 self.assertIn("PowerShell", tools)
                 self.assertIn("Bash", tools)
-                for phrase in ("Platform:", "win32", "linux", BLOCKED):
+                for phrase in (
+                    "Platform:",
+                    "win32",
+                    "linux",
+                    BLOCKED,
+                    "no PowerShell tool on win32",
+                    "no Bash tool on linux",
+                ):
                     self.assertIn(phrase, body)
 
     def test_packet_coder_names_both_lanes_and_the_host_rule(self):

@@ -218,7 +218,8 @@ def main():
     if cargo:
         sys.stderr.write(
             "Compiling cargo commands go through the build lane: "
-            "`pwsh tools/build-lane/lane.ps1 cargo <args>` (add --exclusive for "
+            "`pwsh tools/build-lane/lane.ps1 cargo <args>` on Windows, or "
+            "`bash tools/build-lane/lane.sh cargo <args>` on Linux and WSL (add --exclusive for "
             "workspace-wide runs). The lane holds the machine-wide slot, picks the "
             "worktree's target dir and summarizes the output. See "
             ".claude/skills/lane-build/SKILL.md. End the command with `# guard-ok` "

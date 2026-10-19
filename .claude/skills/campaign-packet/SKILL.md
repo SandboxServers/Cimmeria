@@ -72,8 +72,8 @@ caps, CRLF docs, no `git stash`). Each packet names:
   crate, through `pwsh tools/build-lane/lane.ps1`; live-DB through
   `live-db-test.ps1`);
 - the docs rows it owes ([doc-update map](../../../docs/agents/doc-update-map.md));
+- its host: `Host: windows` (the default), `linux`, or `both` with each command given as `pwsh:` and `bash:` (the `lane-build` skill § Linux and WSL hosts);
 - the branch, worktree name and commit subject.
-- its host: `Host: windows` (the default), `linux`, or `both` with each command given as `pwsh:` and `bash:` (the `lane-build` skill § Linux and WSL hosts).
 
 Group packets into **waves** of about six small packets, so one packet-reviewer can hold
 the whole wave at the wave review (§ 4). Design-heavy, RE or docs packets

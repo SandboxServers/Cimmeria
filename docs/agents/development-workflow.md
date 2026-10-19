@@ -181,7 +181,7 @@ Tip: `git config rerere.enabled true` makes git remember how you resolved a conf
 
 Development builds are validated on Windows with PowerShell 7; Git Bash, WSL and Linux are not validated, but not unsupported ([WSL and Linux hosts](#wsl-and-linux-hosts)). The tools below live under `tools/build-lane/`, `tools/dev-drive/`, `tools/build-hygiene/` and `tools/build-metrics/`; why they exist and what they measured is in [`docs/architecture/build-system.md`](../architecture/build-system.md).
 
-Every shell script in `tools/build-lane/` has a PowerShell 7 twin next to it (`lane.ps1`, `mk-worktree.ps1`, `rm-worktree.ps1`, `reload-db.ps1`, `live-db-test.ps1`, `ship.ps1`, `rebase-pr.ps1`, and the `ops` git verbs `commit-paths.ps1`, `merge-noff.ps1`, `branch-at.ps1`, `push-branch.ps1` and `rebase-onto.ps1`) with the same options, output and exit codes, so a Windows session never needs bash. Run them as `pwsh tools/build-lane/<script>.ps1 ...`. The `.sh` scripts stay for CI, Linux and macOS, for Git Bash, and for `ops` on a Linux or WSL host. The examples below show both forms.
+Every shell script in `tools/build-lane/` has a PowerShell 7 twin next to it (`lane.ps1`, `mk-worktree.ps1`, `rm-worktree.ps1`, `reload-db.ps1`, `live-db-test.ps1`, `ship.ps1`, `rebase-pr.ps1`, and the `ops` git verbs `commit-paths.ps1`, `merge-noff.ps1`, `branch-at.ps1`, `push-branch.ps1` and `rebase-onto.ps1`) with the same options, output and exit codes, so a Windows session never needs bash. Run them as `pwsh tools/build-lane/<script>.ps1 ...`. The `.sh` scripts stay for CI, Linux and WSL, for Git Bash, and for the agents on a Linux or WSL host. The examples below show both forms.
 
 ### Create a worktree that builds
 
