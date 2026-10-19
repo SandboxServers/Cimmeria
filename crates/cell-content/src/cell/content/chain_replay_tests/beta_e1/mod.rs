@@ -16,6 +16,7 @@ use cimmeria_content_engine::context::ExecutionContext;
 use cimmeria_content_engine::triggers::{TriggerEvent, TriggerType};
 use sqlx::PgPool;
 
+mod m481;
 mod travel;
 
 /// The Beta Site E1 world name, as `worlds.sql` and `player_loaded` key on it.

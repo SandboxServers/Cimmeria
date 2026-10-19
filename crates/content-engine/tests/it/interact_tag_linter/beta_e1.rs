@@ -5,7 +5,33 @@
 //! `set_interaction_type`. Each chain packet appends its own rows.
 
 /// (seed file, chain id, where the interaction bit comes from)
-const BETA_E1: &[(&str, i32, &str)] = &[];
+const BETA_E1: &[(&str, i32, &str)] = &[
+    (
+        "beta_e1_m481_chains.sql",
+        23312,
+        "BetaE1_Carter: per-player bind dsm 2465 (chain 23310)",
+    ),
+    (
+        "beta_e1_m481_chains.sql",
+        23314,
+        "BetaSite_00000007: template 3 static INT_RingNetwork (32)",
+    ),
+    (
+        "beta_e1_m481_chains.sql",
+        23315,
+        "BetaSite_Beam_000007_Ship: template 3 static INT_RingNetwork (32)",
+    ),
+    (
+        "beta_e1_m481_chains.sql",
+        23316,
+        "BetaSite_00000007: template 3 static INT_RingNetwork (32)",
+    ),
+    (
+        "beta_e1_m481_chains.sql",
+        23317,
+        "BetaE1_Mimir: per-player bind dsm 2467 (chain 23312)",
+    ),
+];
 
 /// Whether `chain_id` in `filename` is a Beta chain that has an
 /// `interact_tag` trigger without `set_interaction_type` by design.
