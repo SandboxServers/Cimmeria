@@ -53,8 +53,13 @@ const SITES: [Site; 3] = [
 
 /// Mission 1570 active at `step`, in Dakara_E1, with no counters set.
 fn at_step(step: i32) -> ExecutionContext {
+    at_step_in(DAKARA, step)
+}
+
+/// Mission 1570 active at `step` in world `world`, with no counters set.
+fn at_step_in(world: i32, step: i32) -> ExecutionContext {
     with_step(
-        with_mission(ctx_for(FREE_JAFFA, Some(DAKARA)), 1570, "active"),
+        with_mission(ctx_for(FREE_JAFFA, Some(world)), 1570, "active"),
         1570,
         step,
         "active",
@@ -216,6 +221,12 @@ async fn live_db_first_pickup_per_site() {
             assert_eq!(display_dialog_count(&r), 1);
             assert_no_deferred_actions(&r, site.first);
         }
+        // Off 4901 (4902, 4905) or outside Dakara_E1 (STORY_RM), with the
+        // counters at 0 so that only the step and world guards can block.
+        for ctx in [at_step(4902), at_step(4905), at_step_in(STORY_RM, 4901)] {
+            let r = fire_interact_tag(&engine, &ctx, site.tag);
+            assert!(labels_in(&r, SEARCH_CHAINS).is_empty(), "{}", site.tag);
+        }
         // Not with two remains already collected, nor with this remains visited.
         let full = with_counter(
             with_counter(at_step(4901), "sg18_remains", 2),
@@ -269,6 +280,13 @@ async fn live_db_third_pickup_leaves_4901() {
         );
         let r = fire_interact_tag(&engine, &visited, site.tag);
         assert!(labels_in(&r, SEARCH_CHAINS).is_empty());
+        // Off 4901 (4902, 4905) or outside Dakara_E1 (STORY_RM), with three
+        // remains collected: only the step and world guards can block.
+        for ctx in [at_step(4902), at_step(4905), at_step_in(STORY_RM, 4901)] {
+            let ctx = with_counter(with_counter(ctx, "sg18_remains", 2), site.marker, 0);
+            let r = fire_interact_tag(&engine, &ctx, site.tag);
+            assert!(labels_in(&r, SEARCH_CHAINS).is_empty(), "{}", site.tag);
+        }
     }
 }
 
@@ -290,6 +308,9 @@ async fn live_db_remains_restore_on_load_at_4901_only() {
         let other = fire_player_loaded(&engine, &at_step(step), DAKARA_NAME);
         assert!(labels_in(&other, SEARCH_CHAINS).is_empty());
     }
+    // 4901 in STORY_RM: the world guard (world 61) blocks the restore.
+    let story_rm = fire_player_loaded(&engine, &at_step_in(STORY_RM, 4901), DAKARA_NAME);
+    assert!(labels_in(&story_rm, SEARCH_CHAINS).is_empty());
 }
 
 #[tokio::test]
