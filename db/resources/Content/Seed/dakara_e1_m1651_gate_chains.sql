@@ -1,4 +1,3 @@
-
 -- Dakara_E1 rebuild: mission 1651 "Renewed Attack", step 4930 (real gate travel to SGC_W1, crossing C2),
 -- and the SGC address grant at Bra'tac's 4932 report (chain 8313).
 -- Campaign: docs/analysis/dakara-e1-rebuild/ (packet DK-30b, DK-30b-r).
@@ -24,8 +23,8 @@ VALUES
 
 -- Chain 8313 PROJECT_FINAL_RECONSTRUCTION: Bra'tac's status report at 4932 grants the SGC address (gate 27).
 -- It co-fires with chain 8292 (dialog 5843, advance to 4930), which stays unchanged. A click grant, never
--- player_loaded (F44). The grant is idempotent: a player who already knows gate 27 (from 1654, or a GM skip)
--- is unaffected.
+-- player_loaded (F44). The grant is idempotent: a player who already knows gate 27
+-- (a Tau'ri who has left the SGC by gate, F40, or a GM skip) is unaffected.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (8313, '1651 - Status report to Bra''tac at 4932: grant the SGC address (gate 27)', 'mission', 1651, true, 0);
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
