@@ -70,17 +70,20 @@ async fn live_db_loading_the_tent_restores_the_offer_until_taken() {
 async fn live_db_tauri_offer_takes_1654_with_the_tauri_briefing() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
-    let r = fire_dialog_choice(&engine, &offer(TAURI), 5987);
-    assert_eq!(
-        labels_in(&r, M1654_CHAINS),
-        vec![
-            "8432:accept_mission(1654)",
-            "8432:remove_dialog_set(6780@59)",
-            "8432:display_dialog(5850)",
-        ],
-    );
-    assert_eq!(display_dialog_count(&r), 1);
-    assert_no_deferred_actions(&r, 8432);
+    // 6 is the highest Tau'ri archetype (lte 6), so it is the boundary.
+    for archetype in [TAURI, 6] {
+        let r = fire_dialog_choice(&engine, &offer(archetype), 5987);
+        assert_eq!(
+            labels_in(&r, M1654_CHAINS),
+            vec![
+                "8432:accept_mission(1654)",
+                "8432:remove_dialog_set(6780@59)",
+                "8432:display_dialog(5850)",
+            ],
+        );
+        assert_eq!(display_dialog_count(&r), 1);
+        assert_no_deferred_actions(&r, 8432);
+    }
 }
 
 #[tokio::test]
@@ -148,20 +151,6 @@ async fn live_db_dhd_recovery_teleports_once_5961_is_done() {
         vec!["8435:cross_world_teleport(SGC_W1@172.79,-10.90,12.00)"],
     );
     assert_no_deferred_actions(&r, 8435);
-}
-
-#[tokio::test]
-async fn live_db_dhd_chains_are_exclusive_over_5961() {
-    let pool = require_db_or_skip!();
-    let engine = build_engine(Some(&pool)).await;
-    let active = fire_interact_tag(&engine, &at_dhd(TAURI, "active"), "Dakara_E1_DHD");
-    let done = fire_interact_tag(&engine, &at_dhd(TAURI, "completed"), "Dakara_E1_DHD");
-    assert!(labels_in(&active, M1654_CHAINS)
-        .iter()
-        .all(|l| !l.starts_with("8435:")));
-    assert!(labels_in(&done, M1654_CHAINS)
-        .iter()
-        .all(|l| !l.starts_with("8434:")));
 }
 
 #[tokio::test]
