@@ -106,24 +106,35 @@ async fn run_due_crossing(rig: &mut Rig, within_ms: u64) -> (Vec<Option<i32>>, V
     (steps, crosses)
 }
 
-/// Spawn Woolsey at P02 through the real dispatcher. The rig's sender is
-/// private, so the spawn gets its own channel; the spawn sends nothing back.
+/// Spawn Woolsey at P02 with the "?" offer marker through the real dispatcher
+/// (US-31 chain 3152 does the same). The rig's sender is private, so the spawn
+/// gets its own channel; it sends nothing back.
 async fn spawn_woolsey(rig: &mut Rig) {
     let (tx, _rx) = mpsc::channel(16);
     let resolved = ResolvedActions {
-        actions: vec![(
-            0,
-            Action::SpawnEntity {
-                template_id: WOOLSEY_TEMPLATE,
-                position: P02,
-                heading: 0.0,
-                tag: WOOLSEY.to_string(),
-                is_stationary: None,
-                aggression: None,
-                allow_shared: None,
-            },
-        )],
-        action_delays: vec![0],
+        actions: vec![
+            (
+                0,
+                Action::SpawnEntity {
+                    template_id: WOOLSEY_TEMPLATE,
+                    position: P02,
+                    heading: 0.0,
+                    tag: WOOLSEY.to_string(),
+                    is_stationary: None,
+                    aggression: None,
+                    allow_shared: None,
+                },
+            ),
+            (
+                0,
+                Action::SetInteractionType {
+                    entity_tag: WOOLSEY.to_string(),
+                    operation: "|".to_string(),
+                    mask: OFFER,
+                },
+            ),
+        ],
+        action_delays: vec![0, 0],
         params: HashMap::new(),
     };
     execute_actions(resolved, PLAYER, PLAYER_ID, &tx, &mut rig.mgr, &rig.engine).await;
@@ -178,6 +189,10 @@ async fn live_db_m1655_woolsey_offers_to_a_human() {
     let pool = require_db_or_skip!();
     for archetype in HUMANS {
         let mut rig = after_1654(&pool, Some(archetype)).await;
+        assert!(
+            rig.flags(WOOLSEY) & OFFER != 0,
+            "archetype {archetype}: Woolsey wears the '?' before the offer"
+        );
         rig.press(WOOLSEY).await;
         assert!(
             showed(&mut rig, D5854),
@@ -342,12 +357,18 @@ async fn live_db_m1655_repress_inside_the_window() {
     let mut rig = on_4944(&pool, Some(SOLDIER)).await;
     rig.press(HARRIMAN).await;
     rig.close(D5857).await;
+    rig.sent();
     rig.press(HARRIMAN).await;
-    rig.run_due(3000).await;
     assert_eq!(
         travels(&rig.sent()),
         1,
-        "the re-press inside the window: 3165's cross only, 3161's deferred cross is dropped"
+        "the re-press inside the window crosses at once through 3165"
+    );
+    rig.run_due(3000).await;
+    assert_eq!(
+        travels(&rig.sent()),
+        0,
+        "3161's deferred cross is dropped with the entity"
     );
 }
 
