@@ -74,7 +74,7 @@ fn carter_at(archetype: Option<i64>, step: i32, status: &str) -> ExecutionContex
 /// `step_status` row, or change its archetype away from 7. The whole seed
 /// must then resolve something other than exactly 23220 for this arrival.
 #[tokio::test]
-async fn receiver_free_jaffa_arrival_with_s4369_active_moves_to_carter() {
+async fn live_db_receiver_free_jaffa_arrival_with_s4369_active_moves_to_carter() {
     let pool = require_db_or_skip!();
     let ctx = login_at(BETA, Some(FREE_JAFFA), 4369, "active");
     let engine = engine_for(&pool, RECEIVER as i32).await;
@@ -103,7 +103,7 @@ async fn receiver_free_jaffa_arrival_with_s4369_active_moves_to_carter() {
 /// Every archetype except 7, every other world and every S4369 state that is
 /// not `active` must match nothing in 23220-23239.
 #[tokio::test]
-async fn receiver_ignores_other_races_and_states() {
+async fn live_db_receiver_ignores_other_races_and_states() {
     let pool = require_db_or_skip!();
     let whole = whole_seed(&pool).await;
     for archetype in not_free_jaffa() {
@@ -140,11 +140,12 @@ async fn receiver_ignores_other_races_and_states() {
     );
 }
 
-/// Revert: delete chain 23221's rows, or change its step to S4369 (the
-/// restore would then bind Carter before the receiver has moved the player).
+/// Revert: delete chain 23221's rows, change its step to S4369 (the
+/// restore would then bind Carter before the receiver has moved the player),
+/// or drop its world key (it would then bind Carter on every world).
 /// The restore binds Carter only while S4370 is active, for a Free Jaffa.
 #[tokio::test]
-async fn restore_rebinds_carter_only_while_s4370_is_active() {
+async fn live_db_restore_rebinds_carter_only_while_s4370_is_active() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, RESTORE as i32).await;
     let ctx = login_at(BETA, Some(FREE_JAFFA), 4370, "active");
@@ -178,6 +179,15 @@ async fn restore_rebinds_carter_only_while_s4370_is_active() {
         BTreeSet::from([RECEIVER]),
         "at S4369 only the receiver fires, never the restore",
     );
+    let elsewhere = fire(
+        &whole,
+        TriggerType::PlayerLoaded,
+        &login_at("Omega_Site", Some(FREE_JAFFA), 4370, "active"),
+    );
+    assert!(
+        m1500_matched(&elsewhere).is_empty(),
+        "a Free Jaffa login on Omega_Site at S4370 must not bind Carter",
+    );
     for status in ["completed", "not_active"] {
         let resolved = fire(
             &whole,
@@ -195,7 +205,7 @@ async fn restore_rebinds_carter_only_while_s4370_is_active() {
 /// change its archetype away from 7. Clicking Carter as a Free Jaffa at S4370
 /// must show dialog 5026, unbind it and complete 1500, in that order.
 #[tokio::test]
-async fn carter_welcome_for_free_jaffa_at_s4370() {
+async fn live_db_carter_welcome_for_free_jaffa_at_s4370() {
     let pool = require_db_or_skip!();
     let engine = engine_for(&pool, CARTER as i32).await;
     let resolved = fire(
@@ -219,7 +229,7 @@ async fn carter_welcome_for_free_jaffa_at_s4370() {
 /// Human, an Asgard, a Jaffa or an unset player (or a Free Jaffa at another
 /// step) gets the welcome. Each of those must match no 1500 chain.
 #[tokio::test]
-async fn carter_welcome_gates_on_race_and_step() {
+async fn live_db_carter_welcome_gates_on_race_and_step() {
     let pool = require_db_or_skip!();
     let whole = whole_seed(&pool).await;
     for archetype in not_free_jaffa() {
@@ -251,7 +261,7 @@ async fn carter_welcome_gates_on_race_and_step() {
 /// gets the welcome. The Free Jaffa click alone matches exactly 23222, and the
 /// same state for a Human, an Asgard or a Jaffa matches no 1500 chain.
 #[tokio::test]
-async fn carter_click_is_race_exclusive() {
+async fn live_db_carter_click_is_race_exclusive() {
     let pool = require_db_or_skip!();
     let whole = whole_seed(&pool).await;
     let free_jaffa = fire(
