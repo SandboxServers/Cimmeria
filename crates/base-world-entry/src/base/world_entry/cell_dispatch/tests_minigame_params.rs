@@ -56,8 +56,6 @@ async fn start_minigame_registers_player_params_and_failure_chains() {
     assert_eq!(session.on_failure_chains, vec![200]);
 }
 
-
-
 /// A disabled minigame server (`None` registry) is a WARN naming the game,
 /// not a silent no-op.
 #[tokio::test]
