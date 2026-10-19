@@ -234,6 +234,13 @@ async fn accept_starts_421_and_drops_the_blurb() {
     set_step(&mut active, 1460);
     let resolved = fire(&engine, TriggerType::DialogChoice, &active);
     assert!(m421_matched(&resolved).is_empty());
+    // 420 not finished: the Accept must not start 421 (23362's 420 gate).
+    let mut early = choice(OFFER_DIALOG, Some(ASGARD));
+    with_mission(&mut early, 481, "completed");
+    with_mission(&mut early, 420, "active");
+    with_mission(&mut early, 421, "not_active");
+    let resolved = fire(&engine, TriggerType::DialogChoice, &early);
+    assert!(m421_matched(&resolved).is_empty());
 }
 
 /// Revert: drop 23363's region trigger or its S1460 gate, or drop the
@@ -429,10 +436,15 @@ async fn wrong_race_fires_no_421_chain() {
         let resolved = fire(&engine, TriggerType::RegionEnter, &entered);
         assert!(m421_matched(&resolved).is_empty(), "region {archetype:?}");
 
-        let mut emitter = click(EMITTER, archetype);
-        set_step(&mut emitter, 1461);
-        let resolved = fire(&engine, TriggerType::InteractTag, &emitter);
-        assert!(m421_matched(&resolved).is_empty(), "emitter {archetype:?}");
+        for step in [1460, 1461] {
+            let mut emitter = click(EMITTER, archetype);
+            set_step(&mut emitter, step);
+            let resolved = fire(&engine, TriggerType::InteractTag, &emitter);
+            assert!(
+                m421_matched(&resolved).is_empty(),
+                "emitter S{step} {archetype:?}"
+            );
+        }
 
         let mut drone = click(DRONE_TAG, archetype);
         set_step(&mut drone, 1462);
