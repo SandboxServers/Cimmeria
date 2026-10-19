@@ -152,7 +152,7 @@ Refusals are never silent: an id with no `stargates` row, a non-player actor, an
 
 **Castle mission 708 is the first consumer.** Chain 1357 (the Livewire victory that repairs the DHD) grants `stargate_id = 3`, Harset. Step 4462 — "Use the DHD to dial the Stargate to Harset" — was unreachable before that row existed.
 
-**The Free Jaffa's first address is the second consumer** (Dakara rebuild DK-01). Chain 8001 fires on `player_loaded Dakara_E1` for archetype 7 (`ARCHETYPE_Sholva`, the SGU Jaffa) and grants `stargate_id = 5`, Omega Site, so the DHD on the Dakara gate plaza has somewhere to dial. It has no mission gate and needs none: the grant is a no-op from the second entry on. The trip is two-way because Omega Site has a DHD and the arrival unlock teaches gate 25 on landing there. Which address is granted is owner decision OD-DK02 in the [Dakara ledger](../analysis/dakara-e1-rebuild/README.md#owner-decisions), and it is one seed row. `live_db_every_address_a_player_loaded_chain_grants_has_a_way_back` checks every such chain: the granted gate exists, is not a hub, is on a world this server can enter, and that world has a DHD.
+**The Free Jaffa's first address is the second consumer** (Dakara rebuild DK-01). Chain 8001 fires on `player_loaded Dakara_E1` for archetype 7 (`ARCHETYPE_Sholva`, the SGU Jaffa) and grants `stargate_id = 5`, Omega Site, so the DHD on the Dakara gate plaza has somewhere to dial. It has no mission gate and needs none: the grant is a no-op from the second entry on. The trip is two-way because Omega Site has a DHD and the arrival unlock teaches gate 25 on landing there. Which address is granted is owner decision D-DK2 (formerly OD-DK02) in the [Dakara ledger](../analysis/dakara-e1-rebuild/README.md#decisions), and it is one seed row. `live_db_every_address_a_player_loaded_chain_grants_has_a_way_back` checks every such chain: the granted gate exists, is not a hub, is on a world this server can enter, and that world has a DHD.
 
 A grant on `player_loaded` reaches the client after `setupStargateInfo`, as the Debug Area top-up does: the base forwards `InitPlayerState` from `onClientReady`, which the client sends only after it has processed the map-load bundle that carries its address book.
 
@@ -260,7 +260,7 @@ A GM dialling it lands on the gate row and the client settles them onto the floo
 
 The ring transporter uses an 8-state finite state machine:
 
-```
+```text
 STATE_IDLE
   |-> selectDestination() --> STATE_SEND_WAIT
        |-> regionTriggered() / players present --> STATE_SEND_WARMUP
