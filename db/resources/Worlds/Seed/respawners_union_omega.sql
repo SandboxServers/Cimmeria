@@ -1,6 +1,6 @@
 --
 -- Union Omega (world 18 `Omega_Site`): respawners. Campaign:
--- docs/analysis/union-zone-planning/omega-work-packets.md (UO-).
+-- docs/analysis/union-zone-planning/omega-work-packets.md (packets UO-01 to UO-14).
 --
 -- Id block 63800-63999 (Omega's reservation, D-UO1). Each packet writes only
 -- below its own marker. respawners has no sequence, so there is no footer.

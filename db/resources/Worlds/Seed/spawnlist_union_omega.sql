@@ -1,6 +1,6 @@
 --
 -- Union Omega (worlds 18 `Omega_Site` and 80 `Omega_Site_CmdCenter`): spawns.
--- Campaign: docs/analysis/union-zone-planning/omega-work-packets.md (UO-).
+-- Campaign: docs/analysis/union-zone-planning/omega-work-packets.md (packets UO-01 to UO-14).
 --
 -- Id block 63800-63999 (Omega's reservation, D-UO1). Each packet writes only
 -- below its own marker. Provenance: each block states its own tag

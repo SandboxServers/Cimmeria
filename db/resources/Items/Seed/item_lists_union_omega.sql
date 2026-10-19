@@ -1,6 +1,6 @@
 --
 -- Union Omega (worlds 18 `Omega_Site` and 80 `Omega_Site_CmdCenter`): vendor
--- buy lists. Campaign: docs/analysis/union-zone-planning/omega-work-packets.md (UO-).
+-- buy lists. Campaign: docs/analysis/union-zone-planning/omega-work-packets.md (packets UO-01 to UO-14).
 --
 -- Id block 63800-63999 for lists, 639999 for list rows (Omega's reservation,
 -- D-UO1). Each packet writes only below its own marker. Provenance: each block

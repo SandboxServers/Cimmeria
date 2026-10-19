@@ -1,6 +1,6 @@
 --
 -- Union Omega (worlds 18 `Omega_Site` and 80 `Omega_Site_CmdCenter`): entity
--- templates. Campaign: docs/analysis/union-zone-planning/omega-work-packets.md (UO-).
+-- templates. Campaign: docs/analysis/union-zone-planning/omega-work-packets.md (packets UO-01 to UO-14).
 --
 -- Id block 63800-63999 (Omega's reservation, D-UO1). Each packet writes only
 -- below its own marker. Provenance: each block states its own tag
@@ -9,7 +9,7 @@
 
 SET search_path = resources, pg_catalog;
 
--- [UO-05] Command Center cast templates 63800-63803 (provenance set by UO-05's block)
+-- [UO-05] Command Center cast templates 63800-63803 (CIMMERIA_RECONSTRUCTION; clones of 51, 59, 30, 64)
 
 -- [UO-10] banker 63810, registrars 63811 (Team) and 63830 (Command) (provenance set by UO-10's block)
 
