@@ -20,6 +20,8 @@ use cimmeria_content_engine::triggers::TriggerType;
 
 const M479_CHAINS: std::ops::RangeInclusive<i64> = 23460..=23467;
 const MIMIR: &str = "BetaE1_Mimir";
+/// A world other than Beta, for the `player_loaded` world-key negatives.
+const OTHER_WORLD: &str = "Castle_Cellblock";
 const MACHINE: &str = "BetaE1_AnalyticalMachine";
 const SIMULATOR: &str = "BetaE1_ConsciousnessSimulator";
 const OFFER_DIALOG: i64 = 3228;
@@ -279,6 +281,40 @@ async fn analytical_machine_one_chain_per_step() {
         let resolved = fire(&engine, TriggerType::InteractTag, &ctx);
         let want: BTreeSet<i64> = want.iter().copied().collect();
         assert_eq!(chains_matched(&resolved), want, "{MACHINE} {cur} {step:?}");
+    }
+}
+
+/// Revert: drop 23460's `player_loaded` trigger row and a relog in the offer
+/// state loses the Mimir blurb bind; drop the `Beta_Site_Evo_1` event key from
+/// 23460 or 23466 and another world binds the blurb or the done dialog.
+#[tokio::test]
+async fn login_chains_bind_in_beta_only() {
+    let pool = require_db_or_skip!();
+    let engine = whole_seed(&pool).await;
+    let mut offer = login_ctx(BETA, Some(ASGARD));
+    set_arc(&mut offer, M479, None, 0);
+    let resolved = fire(&engine, TriggerType::PlayerLoaded, &offer);
+    assert_no_deferred_actions(&resolved, 23460);
+    assert_eq!(
+        summarized(&resolved, 23460),
+        vec![format!("add_dialog_set({BLURB_DSM}, slot={MIMIR_SLOT})")]
+    );
+    assert_eq!(m479_matched(&resolved), BTreeSet::from([23460]));
+
+    for (step, label) in [(None, "offer"), (Some(3644), "done")] {
+        let mut ctx = login_ctx(OTHER_WORLD, Some(ASGARD));
+        set_arc(&mut ctx, M479, step, 0);
+        let got = m479_matched(&fire(&engine, TriggerType::PlayerLoaded, &ctx));
+        assert!(got.is_empty(), "{label} login in {OTHER_WORLD}: {got:?}");
+    }
+    for step in [1750, 1751, 1752] {
+        let mut ctx = login_ctx(BETA, Some(ASGARD));
+        set_arc(&mut ctx, M479, Some(step), 0);
+        let got = m479_matched(&fire(&engine, TriggerType::PlayerLoaded, &ctx));
+        assert!(
+            got.is_empty(),
+            "23466 must wait for S3644, S{step}: {got:?}"
+        );
     }
 }
 
