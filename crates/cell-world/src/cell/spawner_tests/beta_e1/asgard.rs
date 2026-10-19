@@ -204,10 +204,10 @@ async fn live_db_beta_beam_pads_stand_on_their_decks() {
     let exterior = mesh("beta_site_evo_1.nav");
 
     // The seal puts each pad 1.5 m from its spawn. The deck pair is 1.49999 m
-    // apart in f32, so the deck floor has 0.05 m of slack.
+    // apart in f32, so the deck floor has 0.001 m of slack.
     let deck_gap = ground_distance(BEAM_DECK_DEST, spawn_position(&pool, 151).await);
     assert!(
-        (1.45..=2.5).contains(&deck_gap),
+        (1.499..=2.5).contains(&deck_gap),
         "BEAM_DECK_DEST is {deck_gap:.3} m from spawn 151"
     );
     standable_and_connected(&exterior, BEAM_DECK_DEST, MIMIR, "BEAM_DECK_DEST");
@@ -289,6 +289,9 @@ fn beta_walk_helper_chains_long_routes_and_refuses_islands() {
     // The addendum's negative control: a standable pocket 12.7 m south of the
     // ring that does not connect to it.
     let pocket = [144.916, 7.811, 415.873];
+    // The control only means something if the pocket is on the mesh: an
+    // off-mesh start would also refuse to walk, for the wrong reason.
+    standable(&exterior, pocket, "island pocket");
     assert!(
         !walks_to(&exterior, pocket, ring_148),
         "the island pocket must not chain to ring 148"
