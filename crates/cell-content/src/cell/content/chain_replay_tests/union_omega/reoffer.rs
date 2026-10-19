@@ -256,3 +256,30 @@ async fn live_db_no_reoffer_crosses_factions() {
         );
     }
 }
+
+/// **Outside the Command Center nothing re-offers.** The world gate sits on all
+/// six chains, not only the abandon pair: a Beta (world 23) load or Accept
+/// resolves no Jackson or Bra'tac re-offer chain.
+#[tokio::test]
+async fn live_db_the_reoffer_world_gate_holds_on_load_and_accept() {
+    let pool = require_db_or_skip!();
+    let engine = build_engine(Some(&pool)).await;
+    let human = done(ARCH_HUMAN, WORLD_BETA, M_1423);
+    let mut seen = human_reoffer(labels(&fire_player_loaded(&engine, &human, CMD_NAME)));
+    seen.extend(human_reoffer(labels(&fire_dialog_choice(
+        &engine,
+        &human,
+        DLG_JACKSON,
+    ))));
+    let jaffa = done(ARCH_JAFFA, WORLD_BETA, M_1500);
+    seen.extend(jaffa_reoffer(labels(&fire_player_loaded(
+        &engine, &jaffa, CMD_NAME,
+    ))));
+    seen.extend(jaffa_reoffer(labels(&fire_dialog_choice(
+        &engine, &jaffa, DLG_BRATAC,
+    ))));
+    assert!(
+        seen.is_empty(),
+        "a re-offer chain resolved outside the Command Center: {seen:?}"
+    );
+}
