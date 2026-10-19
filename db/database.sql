@@ -420,6 +420,7 @@
 -- Beta Site E1 (world 23), Union first visit: 23000-23499 (docs/analysis/union-zone-planning/beta-work-packets.md)
 \ir resources/Content/Seed/beta_e1_travel_chains.sql
 \ir resources/Content/Seed/beta_e1_m481_chains.sql
+\ir resources/Content/Seed/beta_e1_m420_chains.sql
 \ir resources/Content/Seed/dakara_e1_bridge_chains.sql
 \ir resources/Content/Seed/dakara_e1_m1570_entry_chains.sql
 \ir resources/Content/Seed/dakara_e1_m1570_tent_chains.sql
