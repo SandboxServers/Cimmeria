@@ -3,7 +3,7 @@
 > **Type:** How-to (dispatch contract and ledger)
 > **Audience:** the Union Omega coordinator, packet-coders, review-fixers, mission, movement and items advisors
 > **Last updated:** 2026-10-18, against `origin/main` @ `d1bba0400`; developer concept art added the same day @ `eb29b0c2c` (F27-F35, D-UO15..D-UO20)
-> **Status:** Planned. Nothing dispatched. The Union campaigns stay held until FZ-99 (U-D03, an orchestrator gate). This file replaces the 2026-10-14 table (UO-00..UO-08); see § Renumbering.
+> **Status:** Being built. The owner lifted the "held until FZ-99 / U-D03" gate on 2026-10-18; W1 (UO-01, UO-02) merged in PR #1890 and UO-00 is next. The merge holds on U-D04 (UO-04, UO-07, UO-08) and U-D07 (UO-14) remain. This file replaces the 2026-10-14 table (UO-00..UO-08); see § Renumbering.
 > **Companions:** [Omega campaign](omega.md), [Union execution contract](execution-contract.md), [SGC packets](sgc-work-packets.md), [Dakara packets](dakara-work-packets.md), [Beta packets](beta-work-packets.md), [Asgard route](asgard-route.md), [developer concept art](omega-concept-art.md), [packet folder](omega-packets/), [resume card](omega-packets/RESUME.md)
 
 ## Short answer
@@ -135,7 +135,7 @@ Flags are 16777216 = `INT_A_STORY_MISSION_ACTIVE` and 8388608 = `INT_A_STORY_MIS
 |---|---|
 | Departure | SGC US-32: `advance_step 1655 '4941'`, `advance_step 1655 '4940'`, `cross_world_teleport 'Omega_Site'` |
 | State on arrival | 1655 active, S4940 active, O5645 and O5646 open |
-| Arrival point | Published by UO-00 from UO-01's probe (first choice (34.70, -51.86, -142.0), on the gate plaza in front of gate 5) |
+| Arrival point | World 18: x 34.70, y -51.28, z -142.00, heading 3.1409 (faces gate 5), on the gate plaza in front of gate 5 (sealed by UO-01, `nav_inspect` exit 0; [worknote § C4](omega-packets/worknotes/UO-01-placements.md#c4)) |
 | Archetypes | 1-4 (Human, through the SGC) or 7 (Free Jaffa, through Dakara 1654 and then the SGC) |
 | Letter | None required. D-UO11 = D-US11. |
 | Omega's first event | `player_loaded 'Omega_Site'`, which binds Modi (chain 63810) |
@@ -170,9 +170,9 @@ Beta's old "UO-07/08 receiver fixtures" citation now means the departure fixture
 
 | ID | Wave | Role | Size | Scope | Status | File |
 |---|---|---|---|---|---|---|
-| UO-01 | W1 | `movement-teleport-advisor` | ~35k | Nav-probe every coordinate, tag each with its concept-art area, then write the placement worknote | Ready | [UO-01](omega-packets/UO-01.md) |
-| UO-02 | W1 | `packet-coder` | ~40k | Scaffold: empty seed files, includes, test modules and a visitor guard | Ready | [UO-02](omega-packets/UO-02.md) |
-| UO-00 | W1 | `documentation-writer` | ~30k | ID row, C4 arrival point, sibling handoff note | BlockedDependency UO-01 | [UO-00](omega-packets/UO-00.md) |
+| UO-01 | W1 | `movement-teleport-advisor` | ~35k | Nav-probe every coordinate, tag each with its concept-art area, then write the placement worknote | Merged (#1890) | [UO-01](omega-packets/UO-01.md) |
+| UO-02 | W1 | `packet-coder` | ~40k | Scaffold: empty seed files, includes, test modules and a visitor guard | Merged (#1890) | [UO-02](omega-packets/UO-02.md) |
+| UO-00 | W1 | `documentation-writer` | ~30k | ID row, C4 arrival point, sibling handoff note | Ready (UO-01 merged) | [UO-00](omega-packets/UO-00.md) |
 | UO-03 | W2 | `packet-coder` | ~30k | Respawner 180 and the hub placement test | BlockedDependency UO-01, UO-02 | [UO-03](omega-packets/UO-03.md) |
 | UO-04 | W2 | `packet-coder` | ~40k | Beam 63801 and Modi 63810/63811 | BlockedDependency UO-02; merge waits on U-D04 | [UO-04](omega-packets/UO-04.md) |
 | UO-05 | W2 | `packet-coder` | ~40k | Cast templates and spawns 63800-63803, dialog set and maps | BlockedDependency UO-01, UO-02 | [UO-05](omega-packets/UO-05.md) |
@@ -194,7 +194,7 @@ Beta's old "UO-07/08 receiver fixtures" citation now means the departure fixture
 
 | Wave | Packets | Review | Gate |
 |---|---|---|---|
-| W1 | UO-01, UO-02, then UO-00 | one review-fixer for UO-02 and UO-00; UO-01 is a worknote the orchestrator checks for every key | U-D03 (FZ-99) |
+| W1 | UO-01, UO-02, then UO-00 | one review-fixer for UO-02 and UO-00; UO-01 is a worknote the orchestrator checks for every key | none (U-D03 lifted 2026-10-18) |
 | W2 | UO-03, UO-04, UO-05, UO-06, UO-10 | one review-fixer (UO-06 is a worknote) | W1 merged |
 | W3 | UO-07, UO-08, UO-09, UO-14 | one review-fixer | W2 merged; UO-09 after UO-07/08 |
 | W4 | UO-11, UO-12, UO-13 | one review-fixer | W3 merged; D-UO8 option A and D-UO16 option A for UO-11/12 |
@@ -220,7 +220,7 @@ Every packet inlines its rules, the chain contract (chain packets) and its lane 
 | D-UO18 | The art draws a Council Chamber with three combat instances north of the hub. **(a)** Out of scope (the plan; worlds 81/82 and the physical Council stay held). **(b)** It is the venue for the Asgard remote hearing (folds into U-D08 / UO-16). **(c)** A later instance campaign. | owner | nothing planned; the UO-16 seal |
 | D-UO19 | The art draws an Inn, Infirmary, Battlemaster and Auction House in the hub, which § Rejected additions excludes for lack of a moniker. **(a)** Keep them rejected. **(b)** Location only: ambient or set dressing at those buildings, no service NPC. **(c)** Authored service NPCs wherever an engine service exists. | owner | nothing planned; a yes adds a packet |
 | U-D08 / U-D11 | The Asgard route into Omega (1522, the Council, item 3399, 481); see UO-16 for the exact questions. Since the concept art: does the Asgard trainer (27218/27219) stand in the art's west pod, and is the Council Chamber the hearing venue (D-UO18)? | owner | UO-16 |
-| U-D03 | The Union campaigns are held until FZ-99. | orchestrator | W1 dispatch |
+| U-D03 | **Lifted 2026-10-18** by the owner: the Union campaigns were held until FZ-99; Omega is now being built. | owner (answered) | nothing |
 
 These items are HELD and block nothing:
 
@@ -254,6 +254,16 @@ Each of these was rejected for lack of evidence, or because it would break a rul
 - **`interact_tag` chains:** they would display the dialog twice (F4).
 - **`complete_objective` on 1655:** it completes the mission early (F21).
 
+## Overnight autonomous run 2026-10-18
+
+The owner lifted the U-D03 gate the same day, so Omega ran unattended from W1. U-D04 and U-D07 merge holds remain. New decision ids continue after D-UO20.
+
+| Id | Decision | Status | Why |
+|---|---|---|---|
+| D-UO21 | `svc.banker` keeps its navmesh coordinate (-88.06, -48.02, -102.92). UO-01's nearest-anchor rule puts it in the `sgc` area (Ring region 12 Left, 122.55 m), while the concept art draws the Bank in the Common Area (Ring region 10 Center, 125.51 m). Recorded as a known art disagreement. | Decided (D-UO15: art is layout intent, never a coordinate) | The point is the only reachable standing point beside the bank prop. A 3 m margin between two of six anchors is inside the proxy's error. No other placement row disagrees ([worknote § Art conflicts](omega-packets/worknotes/UO-01-placements.md#art-conflicts)). |
+| D-UO22 | Bridges E and W (world 80) have no placement rows. UO-11, UO-12 and UO-14 must not look them up and must not seed `amb.bridge_e.*` or `amb.bridge_w.*`. | Decided | They are separate navmesh components (12 and 26) with no route from pad 17 (component 11): `nav_inspect --gap-pair 11,12` and `11,26` find none, and a probe exits 3. Seeding there needs a nav patch. |
+| D-UO23 | The UO-01 C4 arrival heading is corrected to **3.1409** (it faces gate 5). UO-00 publishes it in § Contracts → Receiving. | Decided | The worknote's table row and § C4 agree on 3.1409. |
+| D-UO24 | Generated Tauri schema files in a build worktree were discarded to unblock the merge. | Done | Build output only; no content or seed impact. |
 ## Provenance and stop conditions
 
 **Provenance labels:**

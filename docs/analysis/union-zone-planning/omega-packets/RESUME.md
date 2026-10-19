@@ -1,9 +1,9 @@
 # Union Omega resume card
 
-- Phase: planned 2026-10-18 against `origin/main` @ `d1bba0400`. Nothing dispatched, no worktrees, no branches.
+- Phase: planned 2026-10-18 against `origin/main` @ `d1bba0400`. Omega is now being built: W1 (UO-01, UO-02) merged in PR #1890; UO-00 (docs seal) is next. See the ledger's § Overnight autonomous run 2026-10-18.
 - Ledger: [omega-work-packets.md](../omega-work-packets.md) (findings F1-F35, decisions D-UO1..20, ID map, contracts, waves). Packets: one file each in this folder.
-- 2026-10-18: owner's developer concept art recorded in [omega-concept-art.md](../omega-concept-art.md). It is RESTORED_SOURCE layout intent, never coordinates (D-UO15). Wired into UO-01 (art-area column, § Art conflicts), UO-05, UO-06, UO-10, UO-11, UO-12, UO-14 and UO-16. Before W2, the orchestrator rules on UO-01's § Art conflicts; `svc.banker` is expected there.
-- Gate before any dispatch: U-D03 holds the Union campaigns until FZ-99 (orchestrator check).
+- 2026-10-18: owner's developer concept art recorded in [omega-concept-art.md](../omega-concept-art.md). It is RESTORED_SOURCE layout intent, never coordinates (D-UO15). Wired into UO-01 (art-area column, § Art conflicts), UO-05, UO-06, UO-10, UO-11, UO-12, UO-14 and UO-16. UO-01's § Art conflicts holds one row, `svc.banker`, ruled keep-the-navmesh-point (D-UO21).
+- Gate: the owner lifted the "held until FZ-99 / U-D03" gate on 2026-10-18. U-D04 and U-D07 merge holds remain.
 - Waves:
   - W1: UO-01 (movement advisor, placement worknote) and UO-02 (scaffold) in parallel; then UO-00 (docs seal, needs UO-01).
   - W2: UO-03, UO-04, UO-05, UO-06 (items advisor worknote), UO-10.
@@ -21,7 +21,7 @@
   - U-D08 / U-D11: the Asgard route through Omega (now also the art's west-pod Asgard trainer).
   - D-UO16: vendor roster, the art's per-area spots against the eight moniker-led templates (options A-C).
   - D-UO17: class and crafting trainers. D-UO18: Council Chamber and combat instances. D-UO19: inn, infirmary, battlemaster and auction house. None of these blocks a planned packet; a yes adds packets.
-- Next action: after U-D03 clears, ops makes worktrees `uo-01`, `uo-02` (one worktree and one `sgw_<name>` test DB each), dispatch UO-01 and UO-02 in one message; UO-00 after UO-01 returns.
+- Next action: UO-00 (docs seal, worktree `uo-00`), then W2 (UO-03, UO-04, UO-05, UO-06, UO-10). Bridges E and W have no placement rows (D-UO22); `svc.banker` keeps its navmesh point (D-UO21).
 - Packet placeholders are expanded: every packet carries its own rules and, for chain packets, the chain contract.
 - Cross-zone notes for the coordinators: the architect report § Cross-zone (SGC F21, Beta imports UO-13 fixtures, Dakara UD-04a `lte 6`).
 - Rules for workers: PowerShell only, cargo only through the lane, CRLF docs, no stash, prune or push, no db/scripts migrations, ask before any lab use.

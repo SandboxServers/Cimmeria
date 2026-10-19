@@ -2,7 +2,7 @@
 
 > **Type:** Candidate campaign and packet families
 > **Scope:** Shared SGU hub, worlds 18 and 80; first arrival of Human, Free Jaffa and Asgard
-> **Status:** Planning only; dispatch waits for the first four-zone continuations and FZ-99
+> **Status:** Being built. The owner lifted the FZ-99 / U-D03 hold on 2026-10-18; W1 (UO-01, UO-02) merged in PR #1890. The U-D04 and U-D07 merge holds remain.
 > **Companions:** [evidence](evidence.md), [execution contract](execution-contract.md), [Omega work packets](omega-work-packets.md), [developer concept art](omega-concept-art.md), [Asgard post-Pertho decision](asgard-post-pertho.md)
 
 ## Playable outcome
