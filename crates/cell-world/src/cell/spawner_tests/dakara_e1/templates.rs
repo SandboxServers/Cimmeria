@@ -1,4 +1,4 @@
-//! DK-03: the Dakara_E1 cast and interactable prop templates (440-459).
+//! DK-03: the Dakara_E1 cast and interactable prop templates (440-461).
 //!
 //! Every test reads the block through the production loader
 //! ([`block_templates`]), which fails when a row is missing, so none of them
@@ -20,7 +20,7 @@ use crate::cell::spawner::class_id_for_class;
 /// `(template id, class, moniker name of its name_id)`: each template is
 /// named by the client's own display-name string for that Dakara_E1 actor.
 /// Pinned by moniker name, not by text id, so the pairing reads as what it is.
-const ROSTER: [(i32, &str, &str); 18] = [
+const ROSTER: [(i32, &str, &str); 22] = [
     (440, "mob", "DN_npc_int_Lothta_DakaraE1"),
     (441, "mob", "DN_npc_int_Raknor_DakaraE1"),
     (442, "mob", "DN_npc_int_JaffaCaptain_DakaraE1"),
@@ -39,6 +39,10 @@ const ROSTER: [(i32, &str, &str); 18] = [
     (455, "being", "DN_ob_DakaraE1_int_RingControl"),
     (456, "being", "DN_ob_DakaraE1_int_TurretPowerSupply"),
     (457, "being", "DN_ob_DakaraE1_int_Vocuum"),
+    (458, "being", "DN_ob_DakaraE1_int_DropLoc"),
+    (459, "being", "DN_ob_DakaraE1_int_DropLoc"),
+    (460, "being", "DN_ob_DakaraE1_int_DropLoc"),
+    (461, "being", "DN_ob_DakaraE1_int_DropLoc"),
 ];
 
 /// The tent flaps' monikers: the four props that are clickable from spawn.
@@ -82,8 +86,9 @@ fn spawned(
     (mgr, PLAYER, npc)
 }
 
-/// The block holds the eighteen DK-03 templates, each of its class and each
-/// named by the client's own string for that actor. Revert proof: remove the
+/// The block holds the twenty-two templates (DK-03's eighteen and DK-09's four
+/// drop-location clones), each of its class and each named by the client's own
+/// string for that actor. Revert proof: remove the
 /// seed file's `\ir` line, or point a row at another moniker, and this fails.
 #[tokio::test]
 async fn live_db_dakara_e1_cast_and_props_match_the_roster() {
