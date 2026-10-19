@@ -159,6 +159,7 @@ An action has to clear **two** hurdles to do anything. It needs a match arm in [
 | `add_item` | `GrantItem` | 14 |
 | `remove_item` | `RemoveItem` | 2 |
 | `grant_xp` | `GrantXP` | 0 |
+| `grant_cash` | `GrantCash` | 0 |
 | `change_stat` | `ChangeStat` | 3 |
 | `increment_counter` | `IncrementCounter` | 9 |
 | `reset_counter` | `ResetCounter` | 3 |
@@ -189,6 +190,8 @@ An action has to clear **two** hurdles to do anything. It needs a match arm in [
 | `grant_ability` | `GrantAbility` | 0 |
 | `show_tutorial` | `ShowTutorial` | 1 |
 | `spawn_set` | `SpawnSet` | 6 |
+
+`grant_cash` grants the chain's player naquadah through the base's `GrantCash` handler (the loot path), shown at once by the client's cash display. `params` is `{"amount": N}`, N 1 to 2147483647; a bad amount drops the row at load. The first users are the Beta reward chains 23480-23496 (U-D07).
 
 `gm_ability_bulk` is the GM bulk ability change, fired from an NPC (Debug
 Area DA-02). Its one param, `change`, is `grant_all` or `reset`; a row

@@ -18,6 +18,8 @@
 //!   `convert_action`'s `"open_loot"` arm
 //! - [`action_mail`] — the `send_system_mail` verb (SS-U3), delegated to
 //!   from `convert_action`'s `"send_system_mail"` arm
+//! - [`action_cash`] — the `grant_cash` verb (UB-50b1), delegated to from
+//!   `convert_action`'s `"grant_cash"` arm; a bad amount drops the row
 //! - [`action_ability`] — the `grant_ability` verb (CS-01a). A bad row
 //!   refuses its whole chain here, not just the row, and
 //!   [`refuse_chains_with_unknown_abilities`] refuses a chain whose ids are
@@ -42,6 +44,7 @@ use crate::triggers::Trigger;
 mod action;
 mod action_ability;
 mod action_bark;
+mod action_cash;
 mod action_loot;
 mod action_mail;
 mod action_spawn;

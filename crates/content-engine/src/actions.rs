@@ -41,6 +41,10 @@ pub enum Action {
     /// Award experience points to the source entity.
     GrantXP { amount: u64 },
 
+    /// Grant naquadah to the acting player (`grant_cash`, UB-50b1). Sent to
+    /// the base as `CellToBaseMsg::GrantCash`; `amount` is 1..=i32::MAX.
+    GrantCash { amount: i32 },
+
     /// Add items to the source entity's inventory.
     GrantItem {
         item_id: i32,
