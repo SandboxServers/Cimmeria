@@ -23,3 +23,4 @@
 - [dhd-dial-telemetry-discriminators.md](dhd-dial-telemetry-discriminators.md) — Stock DHD window: first click eaten, row select auto-dials; 2026-10-05 hub report was not a grant/cache bug
 - [omega-crossings.md](omega-crossings.md) — Omega worlds 18/80: measured arrival pins, native beam pair 14/17, world 80 private per arrival, no world-18 respawner, alias limits
 - [sgc-w1-navmesh-groups.md](sgc-w1-navmesh-groups.md) — SGC_W1 navmesh has 68 components; Gate Room (with requisitions), briefing, Failsafe and terminal need per-group nav_inspect runs
+- [omega-placements.md](omega-placements.md) — Omega placement traps: prop y is a model origin, world-80 bridges unreachable, re-snap probes

@@ -94,6 +94,7 @@ mod region_transition_accepts;
 mod sgc_w1_move_entity;
 mod stargate_triggers;
 mod start_minigame_difficulty;
+mod union_omega;
 mod union_sgc;
 mod world_condition;
 
