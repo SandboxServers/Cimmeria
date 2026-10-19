@@ -97,7 +97,7 @@ VALUES
 -- Gen. Hammond at the SGC" is active and objective 5961 is not yet done completes
 -- 5961 only. Never advance_step: that would also close 5962, which the SGC side
 -- (US-31) completes at Hammond. No teleport: the player arrives by the gate itself
--- (merge held for US-31). No chain matches the Dakara_E1_DHD click (F25), so the
+-- (the SGC side, US-31, completes 5962 at Hammond). No chain matches the Dakara_E1_DHD click (F25), so the
 -- dial window opens.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (8434, '1654 - Step 4939 (crossing C3): crossed to SGC_W1 by gate, complete objective 5961 only', 'mission', 1654, true, 0);
