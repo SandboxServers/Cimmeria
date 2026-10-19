@@ -3,7 +3,7 @@
 > **Type:** How-to (dispatch contract)
 > **Audience:** Union Beta coordinator, Omega and SGC architects, packet workers and reviewers
 > **Last updated:** 2026-10-19 (UB-99 close-out; planning text written 2026-10-18 against `origin/main` @ `d1bba0400`, an ancestor of current `main`; locate each anchor by its text, not its line number)
-> **Status:** Every dispatched code and test packet is merged into `uzp-e1` and reviewed (B0 to B5). The lab rows (UB-90) are UATPending and the close-out (UB-99) is done. Held: UB-22, UB-51 and the UB-50 relays (D-UB5 A); UB-50a/UB-50b wait on the owner approving the U-D07 proposal (2026-10-19). Closed: UB-52. Live state and findings: [continuation ledger](../union-beta-e1-continuation/README.md); [closing summary](#closing-summary).
+> **Status:** Every dispatched code and test packet is merged into `uzp-e1` and reviewed (B0 to B5). The lab rows (UB-90) are UATPending and the close-out (UB-99) is done. Held: UB-22, UB-51 and the UB-50 relays (D-UB5 A); U-D07 Approved 2026-10-19 (XP and naq): reward packets UB-50a and UB-50b1 are Ready (wave R1), UB-50b2 follows them (wave R2). Closed: UB-52. Live state and findings: [continuation ledger](../union-beta-e1-continuation/README.md); [closing summary](#closing-summary).
 > **Companions:** [Beta E1 campaign](beta.md), [Union execution contract](execution-contract.md), [Omega packets](omega-work-packets.md), [route evidence](evidence.md), [Asgard route](asgard-route.md), [Free Jaffa route](free-jaffa-route.md), [packet folder](beta-packets/)
 
 ## Short answer
@@ -19,7 +19,7 @@ Beta_Site_Evo_1 (world 23, gate 6) has a sealed map and almost nothing on the se
 
    Each arc stops at its last **Beta-local** step (D-UB5 A).
 4. **Mission 421 is no longer held for locality.** The infirmary is Beta-local with high confidence (F6). Only its object binding is left, and UB-00b seals it.
-5. **Authored content is a separate packet you can drop (UB-50).** H-LBL is decided (no visible label, 2026-10-19). Its rewards part is UB-50a/UB-50b ([UB-50.md](beta-packets/UB-50.md)), held on owner approval of the U-D07 proposal; its relays stay on Hold (D-UB5 A). The first ship does not need it (D-UB8).
+5. **Authored content is a separate packet you can drop (UB-50).** H-LBL is decided (no visible label, 2026-10-19). Its rewards part is UB-50a, UB-50b1 and UB-50b2 ([UB-50.md](beta-packets/UB-50.md)), Ready since U-D07 was approved (2026-10-19); its relays stay on Hold (D-UB5 A). The first ship did not need it (D-UB8, amended).
 
 ## What other campaigns own (do not touch)
 
@@ -66,7 +66,7 @@ Beta_Site_Evo_1 (world 23, gate 6) has a sealed map and almost nothing on the se
 | D-UB5 | Offworld tails: 1425 S4244 (Jackson), 1427 S4250 (Woolsey), 1503 S4379 (Bra'tac) and S4381 (Heimdall). **A (default the packets implement):** stop each arc at its last Beta-local step; the mission stays open in the journal. **B:** Omega/SGC receivers, owned by those architects. **C:** authored Beta relays (UB-50, CIMMERIA_AUTHORING). | Architect (ARCH-B1) | **Decided: A** (high confidence). B and C need Omega/SGC receivers or authored copy (H-LBL) that do not exist; A strands no one, because each mission stays open at a talk step that names its offworld NPC. UB-22 is not dispatched and UB-51 is held |
 | D-UB6 | 421 is un-held: BETA_LOCAL (F6). UB-32 dispatches once UB-00b seals the object positions. | Architect; orchestrator confirms against the brief's hold | **Decided (confirmed by ARCH-B1)**. UB-00b sealed the infirmary objects inside region `Infirmary`; H-421 is closed |
 | D-UB7 | The FV twins 383, 384 and 1146 are not in P4 rows 121-124. They are left out of the first ship. | Architect (ARCH-B1) | **Decided: out** (high confidence). No first-visit row needs them and they would need a fresh step matrix; templates 2303, 2327 and 2336 stay reserved. UB-52 is closed |
-| D-UB8 | No reward amounts. Missions keep xp 0 / naq 0 until U-D07. | Architect (ARCH-B1) | **Decided: xp 0 / naq 0** (high confidence). `mission-seal-held.md` Q11: all 17 missions already carry 0 and no reward group, so the first ship needs no seed edit. The amounts themselves stay an owner call (U-D07, UB-50) |
+| D-UB8 | No reward amounts. Missions keep xp 0 / naq 0 until U-D07. | Architect (ARCH-B1) | **Decided: xp 0 / naq 0** (high confidence). `mission-seal-held.md` Q11: all 17 missions already carry 0 and no reward group, so the first ship needs no seed edit. The amounts themselves stay an owner call (U-D07, UB-50). **Amended 2026-10-19** (U-D07 Approved, XP and naq): the reward chains pay the approved scale (D-UB16); the columns stay 0 |
 | D-UB9 | ID block: world-prefix ranges for world rows, and 64000-64499 for authored rows (below). The content-chain block 23000-23499 needs a coordinator amendment row in `id-allocation.md`. | Coordinator | **Decided: approved** by the coordinator (the orchestrator), 2026-10-18. ARCH-B1 applied the row to `id-allocation.md`, with the authored screens re-carved to 64124-64193 |
 | D-UB10 | Per-player binds only (`add_dialog_set` with `slot = template`). Beta chains never call `set_interaction_type` on a shared NPC. Objects may carry a static template interaction bit (see the contract). | Architect | Decided |
 | D-UB11 | No phasing (F15). All per-player state is mission state plus per-player binds. No `set_visible` or despawn on a shared actor. | Architect | Decided |
@@ -170,8 +170,9 @@ Template 2303 (Dr. Pierce, 7905) stays reserved and is never spawned: D-UB7 keep
 | UB-40 | `packet-coder` | ~30k | World life: SGC Personnel (7450) and Jaffa non-combatants (7409), templates 2308/2309, spawns 23160-23199, no dialog | Done (merged into `uzp-e1`, reviewed) | [UB-40-52](beta-packets/UB-40-52.md) |
 | UB-45a | `packet-coder` | ~35k | Cross-race guard 1: seed-derived walk states, one dialog per click, race negatives | Done (merged into `uzp-e1`, reviewed) | [UB-40-52](beta-packets/UB-40-52.md) |
 | UB-45b | `testing-validation-engineer` | ~40k | Cross-race guard 2: login binds equal in-session binds on every walk transition | Done (merged into `uzp-e1`, reviewed) | [UB-40-52](beta-packets/UB-40-52.md) |
-| UB-50a | `packet-coder` | about 35k | XP reward chains 23480-23496 on `mission_completed` (D-UB16, Proposed) | BlockedDecision (owner approves U-D07 XP) | [UB-50](beta-packets/UB-50.md) |
-| UB-50b | `packet-coder` x2 | skeleton | Naquadah: `grant_cash` content action, then seed | BlockedDecision (owner approves U-D07 Naq) | [UB-50](beta-packets/UB-50.md) |
+| UB-50a | `packet-coder` | about 35k | XP reward chains 23480-23496 on `mission_completed` (D-UB16) | Ready (R1) | [UB-50](beta-packets/UB-50.md) |
+| UB-50b1 | `packet-coder` (escalation: `rust-gameserver-dev`) | about 40k | `grant_cash` content action: loader, `Action::GrantCash`, executor `cash.rs` | Ready (R1) | [UB-50](beta-packets/UB-50.md) |
+| UB-50b2 | `packet-coder` | about 20k | Naquadah: one `grant_cash` row per reward chain, tests extended | BlockedDependency (UB-50a and UB-50b1 merged; R2) | [UB-50](beta-packets/UB-50.md) |
 | UB-50 relays | `packet-coder` | skeleton | Authored relays (droppable; not needed for the first ship) | Hold (D-UB5 A) | [UB-40-52](beta-packets/UB-40-52.md) |
 | UB-51 | `mission-systems-advisor` | docs, ~20k | Offworld-tail handoff notes for Omega/SGC (D-UB5 B) | Hold (D-UB5 A) | [UB-40-52](beta-packets/UB-40-52.md) |
 | UB-52 | none | closed | FV twins 383/384/1146 | Closed (D-UB7: out) | [UB-40-52](beta-packets/UB-40-52.md) |
@@ -195,8 +196,10 @@ Spawn and region seeds are split per area (`spawnlist_beta_e1_{hub,asgard,ninepe
 | B4 | UB-32 to UB-36 (one stack) | B3 merged. One review-fixer reviews the stack in order |
 | B5 | UB-45a, then UB-45b (stacked) | B4 merged |
 | B6 | UB-90 (lab), then UB-99 | B5 merged; the owner approves lab use before UB-90 |
+| R1 | UB-50a, UB-50b1 in parallel | U-D07 Approved 2026-10-19. Each from `origin/main` in its own worktree (`uzp-ub50a`, `uzp-ub50b1`); no shared file; one packet-review-fixer for both; each ships as its own PR |
+| R2 | UB-50b2 | UB-50a and UB-50b1 both merged on `origin/main`; worktree `uzp-ub50b2` cut after that; its own packet-review-fixer |
 
-Waves run in order; inside a wave every lane runs in parallel. B1a must merge before B1b because UB-01b and UB-02b build on UB-01a and UB-02a. From B2 to B4 the three race lanes are independent, but each wave gets exactly one packet-review-fixer pass, so a lane's next packet waits for its wave's review and merge. UB-22 (D-UB5 A), UB-51 (held) and UB-52 (closed) are never dispatched; UB-50 waits on the owner.
+Waves run in order; inside a wave every lane runs in parallel. B1a must merge before B1b because UB-01b and UB-02b build on UB-01a and UB-02a. From B2 to B4 the three race lanes are independent, but each wave gets exactly one packet-review-fixer pass, so a lane's next packet waits for its wave's review and merge. UB-22 (D-UB5 A), UB-51 (held) and UB-52 (closed) are never dispatched. The reward waves R1 and R2 come after the merged B waves and base on `origin/main`, not `uzp-e1`.
 
 **Naming (ARCH-B1).** Worktree name = branch name = `uzp-ub<id>`, lowercase with no inner dash: `uzp-ub01a`, `uzp-ub02a`, `uzp-ubdp`, `uzp-ub10`, `uzp-ub45b`. Each branches from `uzp-e1`, except a stacked packet, which branches from its parent's branch. Reports go to `<worktree>\.claude\reports\union-beta-e1\<packet>-coder.md`.
 Stacked packets inside a wave touch different seed files and test modules. They share only `db/database.sql`, `chain_replay_tests/mod.rs`, the two linter files and `content-chains.instructions.md`, and each adds its own line. Expect a merge conflict on those lines and keep both sides.
@@ -217,7 +220,7 @@ Stacked packets inside a wave touch different seed files and test modules. They 
 | HELD-B9 | Which camera item serves 1426 (2766/4830/4832), or none | **Answered**: item 4832, granted on accept and removed on upload (`mission-seal-held.md` Q8) | none |
 | HELD-B10 | Who fires the arrival steps | **Answered**: Beta (D-UB2, confirmed by Omega's D-UO2). The Asgard leg's producer is HELD-B16 | none |
 | HELD-B12 | What the executor does on `en=false` steps | **Answered**: works; the server never reads the flag (`mission-seal.md` Q3); journal display is UB-U1b | none |
-| HELD-B13 | Reward amounts | **Owner** (U-D07): a reconstruction is Proposed ([reward-proposal.md](../union-beta-e1-continuation/reward-proposal.md)), awaiting approval. The first ship keeps xp 0 / naq 0 (D-UB8) | UB-50a, UB-50b |
+| HELD-B13 | Reward amounts | **Answered**: U-D07 Approved 2026-10-19, XP and naq ([reward-proposal.md](../union-beta-e1-continuation/reward-proposal.md)). Delivered by reward chains; the columns stay 0 (D-UB8 amended, D-UB16) | UB-50a, UB-50b1, UB-50b2 (no longer held) |
 | HELD-B14 | Mission 443 S1484: is there a transmitter dialog for 443? | **Answered**: none; the step update is the feedback (`mission-seal-held.md` Q13) | none |
 | HELD-B15 | Mission 477 subject bind: is there an interaction-only dsm for 477? | **Answered**: none; keep dsm 2457 (`mission-seal-held.md` Q12); live check UB-U5c | none |
 | HELD-B16 | Which Omega packet delivers an Asgard player to Beta with 481 active at S1760 and item 3399 held? | U-D08/U-D11 **decided by the owner 2026-10-19**. Now BlockedDependency on Omega building UO-16 | Asgard end-to-end reachability only; UB-30 to UB-36 still dispatch (D-UB13) |
@@ -237,7 +240,7 @@ Stacked packets inside a wave touch different seed files and test modules. They 
 | Beta re-offering 1423/1500/481 | Omega owns the offers (D-UB3) |
 | 446 past S5030, 402, 419, 449, 458-461, 854, 1300, 1504, 1525 | LATER content; outside the first visit |
 | Vendors or trainers | No map or source evidence |
-| Reward amounts | U-D07 Proposed, awaiting owner approval (D-UB8 in force) |
+| Reward amounts | No longer rejected: U-D07 Approved 2026-10-19; UB-50a/b1/b2 deliver them |
 
 ## Provenance labels
 
@@ -264,5 +267,5 @@ UB-99 close-out, 2026-10-19. All of waves B0 to B5 are merged into `uzp-e1` with
 
 - **Built:** gate 6 arrival pin and the way back, respawners 6 and 7, cast templates 2300-2309 with objects 2320-2335, hub, Asgard, Nine Peaks and life spawns, the ring pair 2300/2301, the Asgard beam, and 17 chain seed files (16 missions plus the way-back chains, ids 23001-23467) for the Human arc to 1427, the Free Jaffa arc to 1502 and the Asgard arc 481 to 479.
 - **Tested:** live-DB `beta_e1` tests, the interact-tag linter, the dialog-patch agreement test and the cross-race guard (UB-45a, UB-45b). **Never tested:** anything in the lab or the client. UB-U1 to UB-U10 stay UATPending in [unified-uat.md](../../guides/unified-uat.md#beta_site_evo_1).
-- **Stopped on purpose:** 1503 (UB-22) and the offworld tails (UB-51) under D-UB5 A, the FV twins (UB-52) under D-UB7, authored content (UB-50) on the owner.
-- **Owner BlockedDecisions:** U-D07 approval only (H-LBL and U-D08/U-D11 decided 2026-10-19). HELD-B16 is BlockedDependency: the Asgard end-to-end route is unreachable until Omega's UO-16 delivers an Asgard player (D-UB13).
+- **Stopped on purpose:** 1503 (UB-22) and the offworld tails (UB-51) under D-UB5 A, the FV twins (UB-52) under D-UB7, the UB-50 relays (D-UB5 A). The UB-50 rewards are Ready (R1/R2).
+- **Owner BlockedDecisions:** none (H-LBL, U-D08/U-D11 and U-D07 decided 2026-10-19); lab approval for UB-90 is the only owner gate. HELD-B16 is BlockedDependency: the Asgard end-to-end route is unreachable until Omega's UO-16 delivers an Asgard player (D-UB13).
