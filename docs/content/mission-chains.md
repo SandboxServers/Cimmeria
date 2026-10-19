@@ -1220,7 +1220,7 @@ Missions 1563-1571, the SGC halves of 1651, 1654 and 1655, and the crossings to 
 
 - **1570 and crossing C1 (US-24, chains 3123-3131):** planned.
 
-- **1651 SGC half, C2 arrival and C2b (US-30, chains 3133-3142):** planned.
+- **1651 SGC half, C2 arrival and C2b (US-30, chains 3133-3142):** Hammond shows "!" on arrival from Dakara (4928); his briefing (5844) moves to 4931 and puts Carter in the Gate Room; Carter's 5845 grants the naquadah generator (6784) and completes O5956 while O6037 holds the step; Harriman dials (C2b) and after 3 s sends you to Dakara_E1 with 5171 active; relog and recovery chains restore the marker and finish an interrupted dial.
 
 - **1654 turn-in (US-31, chains 3148-3152):** planned.
 
