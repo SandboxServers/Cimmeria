@@ -111,6 +111,7 @@ pub enum PatchError {
 pub const DIALOG_PATCH_TABLES: &[&[DialogPatch]] = &[
     super::patches_cellblock::CELLBLOCK_DIALOG_PATCHES,
     super::patches_castle::CASTLE_DIALOG_PATCHES,
+    super::patches_beta_e1::BETA_E1_DIALOG_PATCHES,
 ];
 
 /// `true` when no zone table holds a row. Used by the caller to skip the
