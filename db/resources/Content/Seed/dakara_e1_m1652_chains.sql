@@ -1,5 +1,5 @@
 -- Dakara_E1 rebuild: mission 1652 "Fireball" (the two ring controls).
--- Campaign: docs/analysis/dakara-e1-rebuild/ (packet DK-31b).
+-- Campaign: docs/analysis/dakara-e1-rebuild/ (packets DK-31b, DK-31c).
 -- Chain ID range: 8320-8349 (work-packets.md, C3). Evidence labels: README.md, "Evidence Labels".
 
 SET search_path = resources, pg_catalog;
@@ -134,3 +134,77 @@ VALUES
   (8326, 'remove_item', 6784, NULL, '{"qty": 1}', 0, 1),
   (8326, 'remove_dialog_set', 6888, NULL, '{"slot": 462}', 0, 2),
   (8326, 'complete_mission', 1652, NULL, '{}', 0, 3);
+
+-- Chain 8327 PROJECT_FINAL_RECONSTRUCTION: step 4933 on Dakara_E1, show both Ha'taks
+-- (unhide sequences 2392 west and 2390 east, ORIGINAL_DATA Kismet, DK-31a). Delayed 3 s so
+-- the map has loaded (precedent: chain 3030). Co-fires with 8323; no accept-time unhide,
+-- because the accept (8322) is in world 62, which has no Ha'tak (D-DK33).
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (8327, '1652 - Step 4933 on Dakara_E1: show both Ha''taks (play 2392 west, 2390 east)', 'mission', 1652, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (8327, 'player_loaded', 'Dakara_E1', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (8327, 'world', 61, NULL, 'eq', NULL, 0),
+  (8327, 'step_status', 1652, '4933', 'eq', 'active', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (8327, 'play_sequence', 2392, NULL, '{}', 3000, 0),
+  (8327, 'play_sequence', 2390, NULL, '{}', 3000, 1);
+
+-- Chain 8328 PROJECT_FINAL_RECONSTRUCTION: step 4934 on Dakara_E1, show the eastern Ha'tak
+-- only (unhide 2390). The map hides both ships on every load, so the western one, destroyed
+-- at 4933, stays gone; there is no explosion replay (D-DK34). Co-fires with 8324.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (8328, '1652 - Step 4934 on Dakara_E1: show the eastern Ha''tak (play 2390)', 'mission', 1652, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (8328, 'player_loaded', 'Dakara_E1', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (8328, 'world', 61, NULL, 'eq', NULL, 0),
+  (8328, 'step_status', 1652, '4934', 'eq', 'active', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (8328, 'play_sequence', 2390, NULL, '{}', 3000, 0);
+
+-- Chain 8329 PROJECT_FINAL_RECONSTRUCTION: click the western control at 4933, explode the
+-- western Ha'tak (2393) 3 s after the bomb dialog 6108. Co-fires with 8325, which advances
+-- the step; conditions are read before either chain acts.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (8329, '1652 - Step 4933 click Dakara_E1_RingControl_XMinus: explode the western Ha''tak (play 2393)', 'mission', 1652, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (8329, 'interact_tag', 'Dakara_E1_RingControl_XMinus', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (8329, 'world', 61, NULL, 'eq', NULL, 0),
+  (8329, 'step_status', 1652, '4933', 'eq', 'active', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (8329, 'play_sequence', 2393, NULL, '{}', 3000, 0);
+
+-- Chain 8330 PROJECT_FINAL_RECONSTRUCTION: click the eastern control at 4934, explode the
+-- eastern Ha'tak (2391) 3 s after the bomb dialog 6109. Co-fires with 8326, which completes
+-- 1652; a delayed action survives the completion (it is dropped only on logout).
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (8330, '1652 - Step 4934 click Dakara_E1_RingControl_XPlus: explode the eastern Ha''tak (play 2391)', 'mission', 1652, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (8330, 'interact_tag', 'Dakara_E1_RingControl_XPlus', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (8330, 'world', 61, NULL, 'eq', NULL, 0),
+  (8330, 'step_status', 1652, '4934', 'eq', 'active', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (8330, 'play_sequence', 2391, NULL, '{}', 3000, 0);
