@@ -10,6 +10,12 @@
 SET search_path = resources, pg_catalog;
 
 -- [UO-05] cast 63800-63803 (provenance set by UO-05's block)
+-- UO-05 (D-UO5, F7): CIMMERIA_RECONSTRUCTION cast spawns in world 80. Coordinates and headings are the UO-01 placements (worknote keys cast.jackson, cast.bratac, cast.tealc, cast.thor), probed on omega_site_cmdcenter.nav.
+-- Each stands on the mesh, keeps 1.5 m from the others, and keeps clear of pad 17 and respawner 26 (live_db_the_cast_stand_in_the_command_center).
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63800, 2.12, 35.09, 9.99, 1.5478, 80, 63800, 'UnionOmega_Jackson', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63801, 10.00, 34.91, 13.50, 3.9848, 80, 63801, 'UnionOmega_Bratac', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63802, 12.00, 35.32, 13.50, 4.7124, 80, 63802, 'UnionOmega_Tealc', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63803, 2.12, 35.09, 13.50, 2.2733, 80, 63803, 'UnionOmega_Thor', NULL, true);
 
 -- [UO-10] spawns 63820, 63821, 63840 (provenance set by UO-10's block)
 
