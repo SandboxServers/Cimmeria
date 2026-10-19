@@ -275,6 +275,7 @@ async fn live_db_terminal_starts_livewire_and_the_win_gives_the_file() {
     let r = fire_interact_tag(&engine, &at_step(Some(DAKARA), 4926), TERMINAL_TAG);
     assert!(labels_in(&r, M1650_CHAINS).is_empty());
 }
+
 #[tokio::test]
 async fn live_db_step_4925_restore_rebinds_bratac() {
     let pool = require_db_or_skip!();

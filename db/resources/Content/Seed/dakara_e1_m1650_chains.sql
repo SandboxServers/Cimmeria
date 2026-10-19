@@ -179,7 +179,7 @@ VALUES
   (8258, 'step_status', 1650, '4926', 'eq', 'active', 1);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (8258, 'start_minigame', NULL, 'Livewire', '{"on_victory_chains": [8261]}', 0, 0);
+VALUES (8258, 'start_minigame', NULL, 'Livewire', '{"on_victory_chains": [8261], "difficulty": 1}', 0, 0);
 
 -- Chain 8259 PROJECT_FINAL_RECONSTRUCTION: 1650 step 4925 restore. After a
 -- relog at step 4925 Bra'tac's turn-in dsm 6771 is bound on slot 59 again.
