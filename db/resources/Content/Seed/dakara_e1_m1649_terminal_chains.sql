@@ -82,9 +82,9 @@ VALUES
   (8222, 'add_dialog_set', 6760, NULL, '{"slot": 460}', 0, 4),
   (8222, 'add_dialog_set', 6760, NULL, '{"slot": 461}', 0, 5);
 
--- Chain 8223 PROJECT_FINAL_RECONSTRUCTION: 1649 step 4922, terminal, objective 5638 open: the hack. Display 5834, give the copy of the orders 6782, complete 5638.
+-- Chain 8223 PROJECT_FINAL_RECONSTRUCTION: 1649 step 4922, terminal, objective 5638 open: the hack starts Livewire (D-DK31, owner 2026-10-19). The click is the launcher; a win fires victory chain 8231, which shows 5834, gives the copy of the orders 6782 and completes 5638. A loss or a closed window does nothing.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (8223, '1649 - 4922: terminal hack, download the orders', 'mission', 1649, true, 0);
+VALUES (8223, '1649 - 4922: terminal hack, start Livewire (victory 8231)', 'mission', 1649, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (8223, 'interact_tag', 'Dakara_E1_CommandTerminal', 'player', false, 0);
@@ -97,9 +97,7 @@ VALUES
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
-  (8223, 'display_dialog', 5834, NULL, '{}', 0, 0),
-  (8223, 'add_item', 6782, NULL, '{"container": 0, "qty": 1}', 0, 1),
-  (8223, 'complete_objective', 1649, '5638', '{}', 0, 2);
+  (8223, 'start_minigame', NULL, 'Livewire', '{"on_victory_chains": [8231], "difficulty": 1}', 0, 0);
 
 -- Chain 8224 PROJECT_FINAL_RECONSTRUCTION: 1649 step 4922, terminal, both 5638 and 5639 done: decode the message. Display 5837, take the encrypted message 6780, give the decoded message 6783, advance 4922 to 4920 (completes 5640), unbind the terminal carrier.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -232,3 +230,13 @@ VALUES
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
   (8230, 'display_dialog', 5836, NULL, '{}', 0, 0);
+
+-- Chain 8231 PROJECT_FINAL_RECONSTRUCTION: 1649 step 4922, the Livewire win on the terminal (victory chain of 8223, D-DK31, owner 2026-10-19): display 5834, give the copy of the orders 6782, complete 5638. No trigger row and no conditions: the Livewire callback fires this chain by id with no condition check (Castle 1357), so the gate is on launcher 8223.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (8231, '1649 - 4922: Livewire victory on the terminal, download the orders', 'mission', 1649, true, 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (8231, 'display_dialog', 5834, NULL, '{}', 0, 0),
+  (8231, 'add_item', 6782, NULL, '{"container": 0, "qty": 1}', 0, 1),
+  (8231, 'complete_objective', 1649, '5638', '{}', 0, 2);

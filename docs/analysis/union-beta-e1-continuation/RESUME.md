@@ -20,7 +20,7 @@ R1: UB-50a and UB-50b1 in parallel (no shared file), one packet-review-fixer for
 
 | Item | Who | Note |
 |---|---|---|
-| UB-90 lab rows UB-U1 to UB-U10 | Orchestrator asks the user first, then `lab-driver` step files | Rows in [unified-uat.md](../../guides/unified-uat.md#beta_site_evo_1); add the reward row (1423 Human: +300 XP, +60 naq) after R2 merges |
+| UB-90 lab rows UB-U1 to UB-U10, UR1 | Steps written, awaiting owner lab approval. Orchestrator asks the user first | Run order, fixtures and stager flow in [uat/README.md](uat/README.md); grades go in [uat-results.md](uat-results.md). UR1's naq half needs UB-50b2; U5, U5b, U5c, U10 wait on UO-16 |
 | HELD-B16 | Omega coordinator (UO-16) | BlockedDependency, not an owner question |
 | Omega/Dakara U-D07, H-LBL, U-D08/U-D11 lines | Their coordinators | Exact lines in the ledger § Omega lines still open |
 

@@ -2,7 +2,7 @@
 
 > **Type:** Reference (campaign ledger)
 > **Audience:** The Union Beta coordinator and the packet coders, reviewers and specialists named in the packet table
-> **Last updated:** 2026-10-19 (U-D07 Approved 2026-10-19, XP and naq; UB-50a and UB-50b1 Ready, UB-50b2 after them. Earlier the same day: H-LBL, U-D08/U-D11 recorded. Before that: UB-99 close-out)
+> **Last updated:** 2026-10-19 (UB-90 lab step files written, awaiting owner lab approval. Earlier: U-D07 Approved 2026-10-19, XP and naq; UB-50a and UB-50b1 Ready, UB-50b2 after them. Earlier the same day: H-LBL, U-D08/U-D11 recorded. Before that: UB-99 close-out)
 > **Index:** [beta-work-packets.md](../union-zone-planning/beta-work-packets.md) (packet text, findings F1-F21, HELD list and waves; this ledger does not copy them)
 > **Companions:** [RESUME.md](RESUME.md), [reward-proposal.md](reward-proposal.md) (U-D07, Approved 2026-10-19), [mission-seal.md](mission-seal.md) (UB-00a1/a2), [placement-seal.md](placement-seal.md) (UB-00b), [receiver-contract.md](receiver-contract.md), [id-amendment-request.md](id-amendment-request.md), [worknotes/](worknotes/README.md), [execution contract](../union-zone-planning/execution-contract.md), [SGC ledger](../union-sgc-continuation/README.md) (the model for this one)
 
@@ -211,7 +211,7 @@ Status vocabulary (as of UB-99 every B-wave row is Done, UATPending, Hold or Clo
 | B4 | UB-36 | `uzp-ub36` (stacked on `uzp-ub35`) | Done (merged into `uzp-e1`, reviewed) | UB-35, UB-DP |
 | B5 | UB-45a | `uzp-ub45a` | Done (merged into `uzp-e1`, reviewed) | UB-16, UB-21, UB-36, UB-40 |
 | B5 | UB-45b | `uzp-ub45b` (stacked on `uzp-ub45a`) | Done (merged into `uzp-e1`, reviewed) | UB-45a |
-| B6 | UB-90 | - (lab) | UATPending: the owner approves lab use; no row has run | rows UB-U1 to UB-U10; B5 merged; ask the user before any lab use |
+| B6 | UB-90 | - (lab) | UATPending: steps written, awaiting owner lab approval; no row has run | rows UB-U1 to UB-U10 and UR1: [uat/](uat/README.md) step files, [uat-results.md](uat-results.md); UB-U5, U5b, U5c, U10 and the Asgard halves of U1b and U9 are not runnable until UO-16; ask the user before any lab use |
 | B6 | UB-99 | `uzp-ub99` | Done (this close-out) | close-out docs, this commit |
 | - | UB-22 | - | Hold: not dispatched (D-UB5 A) | not dispatched (D-UB5 A) |
 | R1 | UB-50a | `uzp-ub50a` (from `origin/main`) | Ready | XP reward chains 23480-23496, [UB-50.md](../union-zone-planning/beta-packets/UB-50.md); CB-N05a does not block it (no new mission) |
