@@ -56,6 +56,51 @@ const BETA_E1: &[(&str, i32, &str)] = &[
         23052,
         "BetaE1_Felger: per-player bind dsm 2304/2302 (chains 23042/23044)",
     ),
+    (
+        "beta_e1_m473_chains.sql",
+        23071,
+        "BetaE1_Felger: per-player bind dsm 2440 (chain 23070)",
+    ),
+    (
+        "beta_e1_m473_chains.sql",
+        23074,
+        "BetaE1_Crate_Arc42: template 2325 static INT_MissionWorldObject",
+    ),
+    (
+        "beta_e1_m473_chains.sql",
+        23075,
+        "BetaE1_Crate_Arc66: template 2325 static INT_MissionWorldObject",
+    ),
+    (
+        "beta_e1_m473_chains.sql",
+        23076,
+        "BetaE1_Crate_Arc42: template 2325 static INT_MissionWorldObject",
+    ),
+    (
+        "beta_e1_m473_chains.sql",
+        23077,
+        "BetaE1_Crate_Arc42: template 2325 static INT_MissionWorldObject",
+    ),
+    (
+        "beta_e1_m473_chains.sql",
+        23078,
+        "BetaE1_Crate_Arc66: template 2325 static INT_MissionWorldObject",
+    ),
+    (
+        "beta_e1_m473_chains.sql",
+        23079,
+        "BetaE1_Crate_Arc66: template 2325 static INT_MissionWorldObject",
+    ),
+    (
+        "beta_e1_m473_chains.sql",
+        23081,
+        "BetaE1_Felger: per-player bind dsm 2439 (chains 23077/23079/23080)",
+    ),
+    (
+        "beta_e1_m473_chains.sql",
+        23083,
+        "BetaE1_Carter: per-player bind dsm 2438 (chains 23081/23082)",
+    ),
 ];
 
 /// Whether `chain_id` in `filename` is a Beta chain that has an
