@@ -1224,7 +1224,7 @@ Missions 1563-1571, the SGC halves of 1651, 1654 and 1655, and the crossings to 
 
 - **1654 turn-in (US-31, chains 3148-3152):** planned.
 
-- **1655 Human and crossing C4 (US-32, chains 3156-3165):** planned.
+- **1655 Human and crossing C4 (US-32, chains 3156-3165):** Woolsey offers 1655 to Humans on 5854, Hammond's 5856 grants letter 6786 (Humans only), Harriman's 5857 dials Omega Site for both races (dial 10047/10060, then 3 s to Omega_Site with step 4940), with relog and recovery chains on 4943, 4944 and 4941.
 
 - **1655 Free Jaffa (US-33, chains 3166-3169):** planned.
 
