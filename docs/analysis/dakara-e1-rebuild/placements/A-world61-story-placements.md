@@ -96,7 +96,7 @@ The strings name "Dakara Superweapon Courtyard" as a discovery area and mission 
 | PL-DK-A-15 | Turret Power Supply 1, beside Ion Cannon 1 | 61 | 56.50 | -12.36 | -73.70 | 1.4724 | MAP-LANDMARK (`Tol-IonCannon00` at (46.5, -12.3, -74.7)) | LOW | on-mesh, component **279**, h 0.10 m, dy -0.95 m; cannon platform floor -12.36 (`obj_slab`); the point is 10 m toward the courtyard from the cannon; heading faces the courtyard centre; path to plaza: **yes** | The cannon at x 46 | DK-03 prop, mission 1653 packet |
 | PL-DK-A-16 | Turret Power Supply 2, beside Ion Cannon 2 | 61 | 202.20 | -12.36 | -59.40 | 4.6152 | same (`Tol-IonCannon00` at (212.2, -12.3, -58.4)) | LOW | on-mesh, component **279**, h 0.60 m, dy -0.60 m; same floor; heading faces the courtyard centre; path to plaza: **yes** | The cannon at x 212 | same |
 
-"Vocuum" (`_int_Vocuum`, the optional objective) has no landmark: it is in the README's No idea list.
+"Vocuum" (`_int_Vocuum`, the optional objective) has no landmark: it is in the README's No idea list. By ruling (D-DK45, owner-delegated 2026-10-19), DK-32c stands a hologram pad on A-14's point (spawn 8098, heading 0). If the pad blocks the bridge walkway, move it 4 to 6 m along the bridge (roughly the x axis), staying on component 279.
 
 ## Drop locations (A-17 to A-21)
 

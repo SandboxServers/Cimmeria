@@ -70,5 +70,5 @@ It decides, for 1647 (steps 4911, 4912, 4910, 4916, 4915, 4913, 4917, 4914) and 
 
 ## Not scheduled
 
-- **The vocuum, 1653 objective O5643 (optional).** Nothing is built for it. It needs a prop and a placement the owner picks; one small packet after that.
+- **The vocuum, 1653 objective O5643 (optional).** Not wave 7 any more: the owner delegated the prop and place (D-DK45, 2026-10-19), and [DK-32c](wave-6c.md#dk-32c-the-vocuum-mission-1653s-optional-objective) builds it in wave 6c. DK-32b's guards must not unbind or gate the pad (6892@457).
 - **DK-31c, the Ha'tak sequences for 1652.** Not blocked by the owner: the architect expands it from DK-31a's note (wave 6) into one small packet that adds `play_sequence` rows to DK-31b's chains.
