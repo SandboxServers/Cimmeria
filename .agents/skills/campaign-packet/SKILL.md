@@ -235,6 +235,6 @@ campaign's state lives on disk, not in the transcript:
   change **once**, in the close-out packet, never per packet.
 - Close-out also updates `docs/guides/unified-uat.md` with the UAT steps the
   owner still has to run, retires every worker worktree through `ops`
-  (`rm-worktree.ps1 --merged`, which skips packet worktrees merged only into an integration branch: list those for the owner), empties `.claude/state/active-campaign` (Write an
+  (`rm-worktree.ps1 --merged`, which skips packet worktrees merged only into an integration branch; retire those with `rm-worktree.ps1 --merged-into <PR> <name>...`), empties `.claude/state/active-campaign` (Write an
   empty file; the orchestrator has no shell to delete it, and an empty pointer
   makes `resume_card.py` print nothing), and posts a handoff to the board.

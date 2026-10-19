@@ -198,6 +198,7 @@ bash tools/build-lane/rm-worktree.sh <name>              # one worktree
 bash tools/build-lane/rm-worktree.sh --dry-run --merged  # show what a sweep would do
 bash tools/build-lane/rm-worktree.sh --merged            # every merged, idle worktree
 pwsh tools/build-lane/rm-worktree.ps1 --merged           # the same from PowerShell, no bash
+bash tools/build-lane/rm-worktree.sh --merged-into <PR> <name>...  # packets merged only into an integration branch
 ```
 
 The script deletes the target dir, unlinks `external/`, removes the worktree, deletes the local branch, and drops the worktree's `sgw_<name>` test database and its live-DB slot clones (`sgw_<name>_0`, `sgw_<name>_1`, ...). It refuses a worktree when:
@@ -205,7 +206,7 @@ The script deletes the target dir, unlinks `external/`, removes the worktree, de
 - a lane job is building in it (nothing overrides this);
 - it has uncommitted changes, or it is locked (an agent may still be using it);
 - its branch's PR is still open or was closed unmerged, or the branch has unpushed commits;
-- `gh` finds no PR for its branch (`NO_PR`): a worker's branch with no commits yet looks merged to git, so a sweep keeps it. Name it with `--force` to retire it; the branch is kept.
+- `gh` finds no PR for its branch (`NO_PR`): a worker's branch with no commits yet looks merged to git, so a sweep keeps it. Name it with `--force` to retire it; the branch is kept. A packet branch that was merged into an integration branch whose PR has merged is retired with `--merged-into <PR>` instead, which deletes the branch and still applies every other check.
 
 `--force` overrides everything except a running build. `--merged` also skips anything committed to, checked out or built in the last 30 minutes, and deletes Dev Drive target dirs whose worktree is already gone. `ship.sh merge <PR> --retire <name>` runs it for you after the merge. It runs `git worktree prune` only when given `--prune`, because a prune deletes the entry of any worktree whose recorded path the pruning git can't resolve ([rules-and-gotchas.md](rules-and-gotchas.md#windows-and-tooling-traps)).
 
