@@ -16,6 +16,10 @@ on:
       - ".codex/agents/**"
       - ".claude/hooks/**"
       - "tools/agent-skills/**"
+      - "docs/agents/**"
+      - "README.md"
+      - "AGENTS.md"
+      - "CLAUDE.md"
       - ".github/workflows/agent-skills.yml"
   push:
     branches: [main]
@@ -26,6 +30,10 @@ on:
       - ".codex/agents/**"
       - ".claude/hooks/**"
       - "tools/agent-skills/**"
+      - "docs/agents/**"
+      - "README.md"
+      - "AGENTS.md"
+      - "CLAUDE.md"
 
 permissions:
   contents: read

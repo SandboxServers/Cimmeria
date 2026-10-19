@@ -46,9 +46,8 @@ The frontmatter of each `.claude/agents/*.md` file sets how the agent runs. `mod
 | npc-ai-spawn-advisor | sonnet | - | - | Advisor for NPC behavior: aiState, threat tables, ability selection, spawn sets, respawn timers, patrols, leash, cover and spawner state. |
 | ops | haiku | low | 30 | Runs one requested git or worktree op via repo scripts (worktree create/remove, PR open/merge/retire, board read/post, explicit-path commit, merge --no-ff, branch at SHA, push, rebase onto a recorded SHA); else refused as blocked. |
 | orchestrator | sonnet | medium | - | Default Cimmeria persona: runs campaigns and requests by dispatching agents, deciding, and keeping the ledger. |
-| packet-coder | haiku | medium | 90 | Implements one prescriptive work packet in a Cimmeria worktree: edits only its named files, runs its lane checks, commits. |
-| packet-review-fixer | sonnet | high | 120 | Adversarial reviewer that also fixes one finished packet: checks it against its spec, fixes verified findings, reruns lane checks and commits. |
-| packet-reviewer | sonnet | high | 60 | Read-only adversarial reviewer for one finished packet: checks the diff against its spec for bugs, drift, theatre tests, rule breaks. |
+| packet-coder | haiku | medium | 90 | Implements one prescriptive work packet, or applies one review's fix notes, in a Cimmeria worktree: edits only the named files, runs the lane checks, commits. |
+| packet-reviewer | sonnet | high | 60 | Read-only adversarial reviewer of one packet, one wave or a whole campaign: checks it against its spec and writes numbered fix notes a packet-coder can apply. |
 | rust-gameserver-dev | sonnet | - | - | Implementation agent turning specs and protocol docs into Rust server code: game systems, Mercury messages, wire (de)serialization, C++ ports. |
 | server-authority-enforcer | sonnet | - | - | Trust-boundary reviewer asking what if the client lies: handlers fed by client data (abilities, movement, trades, GM commands, TOCTOU windows). |
 | social-systems-engineer | sonnet | - | - | Implements and reviews social features: guilds, mail, contacts, trading, duels, black market, auction, and GM commands on social state. |
