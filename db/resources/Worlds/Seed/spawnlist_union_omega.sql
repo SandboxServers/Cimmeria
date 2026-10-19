@@ -12,6 +12,10 @@ SET search_path = resources, pg_catalog;
 -- [UO-05] cast 63800-63803 (provenance set by UO-05's block)
 
 -- [UO-10] spawns 63820, 63821, 63840 (provenance set by UO-10's block)
+-- CIMMERIA_RECONSTRUCTION placements (UO-01 worknote keys svc.banker, svc.registrar, svc.registrar_command, navmesh coordinates, world 18). svc.banker keeps its navmesh point, the only reachable standing point beside the bank prop; its art-area disagreement is recorded in UO-01 Art conflicts and left for the owner to rule (UO-U1).
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63820, -88.06, -48.02, -102.92, 0.0000, 18, 63810, 'UnionOmega_Banker', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63821, 30.00, -51.75, -130.00, 2.7683, 18, 63811, 'UnionOmega_TeamRegistrar', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63840, 28.00, -52.03, -126.00, 2.7450, 18, 63830, 'UnionOmega_CommandRegistrar', NULL, true);
 
 -- [UO-11] spawns 63822-63826 (provenance set by UO-11's block)
 

@@ -130,7 +130,8 @@ mod live_db {
 
     /// No other template is a registrar: a third `INT_Organization` template
     /// with a registrar set would open a founding dialog somewhere nobody
-    /// documented.
+    /// documented. Omega's hub registrars 63811 and 63830 (UO-10) are the only
+    /// others.
     #[tokio::test]
     async fn only_the_hub_templates_are_registrars() {
         let pool = require_db_or_skip!();
@@ -144,7 +145,7 @@ mod live_db {
         .fetch_all(&pool)
         .await
         .expect("registrar template query");
-        assert_eq!(ids, vec![330, 331]);
+        assert_eq!(ids, vec![330, 331, 63811, 63830]);
     }
 
     /// Spawns 430 and 431 are the one placement of each registrar: world 12,
