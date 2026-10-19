@@ -181,7 +181,9 @@ async fn live_db_radio_close_advances_anywhere_and_binds_bratac_in_tent() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
     let advance = "8358:advance_step(1653->4935)";
-    for world in [None, Some(DAKARA), Some(STORY_RM)] {
+    let r = fire_dialog_choice(&engine, &at(None, STEP_RADIO), RADIO);
+    assert_eq!(labels_in(&r, M1653_CHAINS), want(&[advance]));
+    for world in [Some(DAKARA), Some(STORY_RM)] {
         let r = fire_dialog_choice(&engine, &at(world, STEP_RADIO), RADIO);
         assert!(labels_in(&r, M1653_CHAINS).contains(&advance.to_string()));
     }

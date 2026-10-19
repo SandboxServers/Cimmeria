@@ -4,7 +4,7 @@
 
 SET search_path = resources, pg_catalog;
 
--- Chain 8350 ACCEPT_1653_ON_1652: 1652 completes (done 1652), accept 1653 at once (D-DK27, no Accept screen).
+-- Chain 8350 PROJECT_FINAL_RECONSTRUCTION: 1652 completes (done 1652), accept 1653 at once (D-DK27, no Accept screen).
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (8350, '1653 - Accept on done 1652 (no blurb)', 'mission', 1653, true, 0);
 
@@ -20,7 +20,7 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES
   (8350, 'accept_mission', 1653, NULL, '{}', 0, 0);
 
--- Chain 8351 SUPERWEAPON_COURTYARD_ENTER: step 4936 "Get to the Superweapon Courtyard!", enter the region,
+-- Chain 8351 PROJECT_FINAL_RECONSTRUCTION: step 4936 "Get to the Superweapon Courtyard!", enter the region,
 -- advance to 4938 and light both power supplies (carrier 6892 at 456 and 463).
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (8351, '1653 - Step 4936: enter courtyard, advance to 4938, bind supplies 6892@456 and 6892@463', 'mission', 1653, true, 0);
@@ -39,7 +39,7 @@ VALUES
   (8351, 'add_dialog_set', 6892, NULL, '{"slot": 456}', 0, 1),
   (8351, 'add_dialog_set', 6892, NULL, '{"slot": 463}', 0, 2);
 
--- Chain 8352 SUPPLY1_RESTORE_WEST: step 4938, western cannon power supply still open; restore its bind on load.
+-- Chain 8352 PROJECT_FINAL_RECONSTRUCTION: step 4938, western cannon power supply still open; restore its bind on load.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (8352, '1653 - Step 4938: restore western supply bind 6892@456 on load (objective 5642 open)', 'mission', 1653, true, 0);
 
@@ -56,7 +56,7 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES
   (8352, 'add_dialog_set', 6892, NULL, '{"slot": 456}', 0, 0);
 
--- Chain 8353 SUPPLY2_RESTORE_EAST: step 4938, eastern cannon power supply still open; restore its bind on load.
+-- Chain 8353 PROJECT_FINAL_RECONSTRUCTION: step 4938, eastern cannon power supply still open; restore its bind on load.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (8353, '1653 - Step 4938: restore eastern supply bind 6892@463 on load (objective 5641 open)', 'mission', 1653, true, 0);
 
@@ -73,7 +73,7 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES
   (8353, 'add_dialog_set', 6892, NULL, '{"slot": 463}', 0, 0);
 
--- Chain 8354 SUPPLY1_FIRST_WEST: western supply clicked first (5641 still open, so the mission does not complete).
+-- Chain 8354 PROJECT_FINAL_RECONSTRUCTION: western supply clicked first (5641 still open, so the mission does not complete).
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (8354, '1653 - Step 4938: click western supply first, objective 5642, unbind 6892@456', 'mission', 1653, true, 0);
 
@@ -92,7 +92,7 @@ VALUES
   (8354, 'complete_objective', 1653, '5642', '{}', 0, 0),
   (8354, 'remove_dialog_set', 6892, NULL, '{"slot": 456}', 0, 1);
 
--- Chain 8355 SUPPLY1_SECOND_WEST: western supply clicked second (5641 done). Leave 4938 with advance, never objective.
+-- Chain 8355 PROJECT_FINAL_RECONSTRUCTION: western supply clicked second (5641 done). Leave 4938 with advance, never objective.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (8355, '1653 - Step 4938: click western supply second, unbind 6892@456, advance to 4937, radio 5849', 'mission', 1653, true, 0);
 
@@ -112,7 +112,7 @@ VALUES
   (8355, 'advance_step', 1653, '4937', '{}', 0, 1),
   (8355, 'display_radio_dialog', 5849, NULL, '{}', 0, 2);
 
--- Chain 8356 SUPPLY2_FIRST_EAST: eastern supply clicked first (5642 still open, so the mission does not complete).
+-- Chain 8356 PROJECT_FINAL_RECONSTRUCTION: eastern supply clicked first (5642 still open, so the mission does not complete).
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (8356, '1653 - Step 4938: click eastern supply first, objective 5641, unbind 6892@463', 'mission', 1653, true, 0);
 
@@ -131,7 +131,7 @@ VALUES
   (8356, 'complete_objective', 1653, '5641', '{}', 0, 0),
   (8356, 'remove_dialog_set', 6892, NULL, '{"slot": 463}', 0, 1);
 
--- Chain 8357 SUPPLY2_SECOND_EAST: eastern supply clicked second (5642 done). Leave 4938 with advance, never objective.
+-- Chain 8357 PROJECT_FINAL_RECONSTRUCTION: eastern supply clicked second (5642 done). Leave 4938 with advance, never objective.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (8357, '1653 - Step 4938: click eastern supply second, unbind 6892@463, advance to 4937, radio 5849', 'mission', 1653, true, 0);
 
@@ -151,7 +151,7 @@ VALUES
   (8357, 'advance_step', 1653, '4937', '{}', 0, 1),
   (8357, 'display_radio_dialog', 5849, NULL, '{}', 0, 2);
 
--- Chain 8358 RADIO_CLOSED_TO_4935: the call is closed (any place; a radio window can be closed after a flap trip).
+-- Chain 8358 PROJECT_FINAL_RECONSTRUCTION: the call is closed (any place; a radio window can be closed after a flap trip).
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (8358, '1653 - Step 4937: close radio 5849, advance to 4935', 'mission', 1653, true, 0);
 
@@ -166,7 +166,7 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES
   (8358, 'advance_step', 1653, '4935', '{}', 0, 0);
 
--- Chain 8359 RADIO_CLOSED_IN_TENT: the call is closed in the tent; bind Bra'tac now (co-fires with 8358).
+-- Chain 8359 PROJECT_FINAL_RECONSTRUCTION: the call is closed in the tent; bind Bra'tac now (co-fires with 8358).
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (8359, '1653 - Step 4937: radio 5849 closed in the tent, bind Bra''tac 6775@59', 'mission', 1653, true, 0);
 
@@ -182,7 +182,7 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES
   (8359, 'add_dialog_set', 6775, NULL, '{"slot": 59}', 0, 0);
 
--- Chain 8360 RADIO_RESTORE_ON_DAKARA: the call was never closed; replay the radio after a Dakara load.
+-- Chain 8360 PROJECT_FINAL_RECONSTRUCTION: the call was never closed; replay the radio after a Dakara load.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (8360, '1653 - Step 4937: recovery, replay radio 5849 after load on Dakara_E1', 'mission', 1653, true, 0);
 
@@ -198,7 +198,7 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES
   (8360, 'display_radio_dialog', 5849, NULL, '{}', 2000, 0);
 
--- Chain 8361 RADIO_RESTORE_IN_TENT: the same recovery when the player loads in the tent.
+-- Chain 8361 PROJECT_FINAL_RECONSTRUCTION: the same recovery when the player loads in the tent.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (8361, '1653 - Step 4937: recovery, replay radio 5849 after load on Dakara_E1_StoryRm', 'mission', 1653, true, 0);
 
@@ -214,7 +214,7 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES
   (8361, 'display_radio_dialog', 5849, NULL, '{}', 2000, 0);
 
--- Chain 8362 BRATAC_RESTORE_REPORT: step 4935 "Report back to Bra'tac", restore Bra'tac's report bind on load.
+-- Chain 8362 PROJECT_FINAL_RECONSTRUCTION: step 4935 "Report back to Bra'tac", restore Bra'tac's report bind on load.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (8362, '1653 - Step 4935: restore Bra''tac report bind 6775@59 on StoryRm load', 'mission', 1653, true, 0);
 
@@ -230,7 +230,7 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES
   (8362, 'add_dialog_set', 6775, NULL, '{"slot": 59}', 0, 0);
 
--- Chain 8363 BRATAC_REPORT: report to Bra'tac in person (5848); unbind before complete (C5 rule 5).
+-- Chain 8363 PROJECT_FINAL_RECONSTRUCTION: report to Bra'tac in person (5848); unbind before complete (C5 rule 5).
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (8363, '1653 - Step 4935: Bra''tac 5848, unbind 6775@59, complete 1653', 'mission', 1653, true, 0);
 
