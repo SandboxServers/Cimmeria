@@ -9,6 +9,7 @@ pub mod protocol;
 pub mod server;
 pub mod session;
 mod session_claim;
+mod session_offline;
 mod session_snapshot;
 
 pub use session::SessionRegistry;
