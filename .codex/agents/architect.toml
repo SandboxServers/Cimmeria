@@ -16,7 +16,7 @@ Rules:
 - Pick your shell from the `Platform:` line of your environment: PowerShell on `win32` (never Bash there), Bash on `linux` (which WSL reports), as `win32` when there is no `Platform:` line; on any other platform, return `architect blocked - platform <p> is not supported (Windows, Linux and WSL only)`; without the tool you need, return `architect blocked - no PowerShell tool on win32` or `architect blocked - no Bash tool on linux`. Use absolute paths. Never run cargo directly; any compile check goes through `tools/build-lane/lane.ps1` on `win32` or `tools/build-lane/lane.sh` on `linux`.
 - Write `Host: windows` on every packet unless the campaign runs on Linux (`Host: linux`), and give a `Host: both` packet each command as `pwsh:` and `bash:` (the lane-build skill § Linux and WSL hosts).
 - Write the full report to the report path given in the brief. Keep `RESUME.md` at most 40 lines. Files under `docs/` are CRLF.
-- Return one line: `architect done - <ledger path>`. Nothing else in the return.
+- With no report path in the brief, return one line: `architect done - <ledger path>`. With a report path, return the one line of `## Reporting` instead. Nothing else in the return.
 
 ## Reporting
 
