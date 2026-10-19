@@ -10,6 +10,9 @@
 //! - [`asgard`]: UB-02c, the Asgard base, deck and beam pads, infirmary and fire
 //!   site (spawns 23060-23071 and the Infirmary and FireSite regions): the deck
 //!   is beam only, and Satterfield stays outside the fire site.
+//! - [`nine_peaks`]: UB-02d, the Nine Peaks camp (spawns 23110-23115), the
+//!   Nine Peaks region and the ring pair 2300/2301 that links the hub ring to
+//!   the SW ring: rows, positions, the seal's no-walk-route fact and the pair.
 //! - [`templates`]: UB-02a, the cast and object templates of
 //!   `db/resources/Entities/Seed/entity_templates_beta_e1.sql`: the roster, a
 //!   name on each, nothing hostile or attackable, the visual settings, the
@@ -18,6 +21,7 @@
 mod asgard;
 mod hub;
 mod nav;
+mod nine_peaks;
 mod templates;
 
 use crate::cell::spawner::{load_spawn_templates, SpawnRecord};
