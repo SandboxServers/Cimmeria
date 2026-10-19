@@ -8,6 +8,8 @@ use sqlx::PgPool;
 
 use crate::cell::spawner::load_step_objectives;
 
+use cimmeria_content_engine::actions::Action;
+
 use super::rig::{
     Rig, Sent, ACTIVE, HUMANS, NON_HUMANS, OFFER, PLAYER, SOLDIER, STORY_ACTIVE, UNSTAMPED,
 };
@@ -18,6 +20,7 @@ const M1569: i32 = 1569;
 const M1570: i32 = 1570;
 const S4641: i32 = 4641;
 const S4642: i32 = 4642;
+const S4906: i32 = 4906;
 /// Hammond's offer, Teal'c's offer, Hammond's follow-up, Teal'c's follow-up.
 const D5392: i32 = 5392;
 const D5393: i32 = 5393;
@@ -138,10 +141,11 @@ async fn live_db_m1570_hammond_path_accepts_and_lights_harriman() {
     let pool = require_db_or_skip!();
     let mut rig = ready(&pool, Some(SOLDIER)).await;
     press_pinned(&mut rig, HAMMOND).await;
-    // Observed: the press also shows 5354 from chain 3002 (`step_status 1559
-    // active`), which passes for a player who never held 1559. That chain is
-    // owned elsewhere and is not edited here; the assertion is only that 5392
-    // is among the shown dialogs.
+    // The press also shows 5354 from chain 3002: `loaded()` in `ready` runs
+    // chain 3001, which accepts 1559 for a player who holds none, and 3002 fires
+    // on 1559 step 4612. A player who reached 1568 has finished 1559, so this is
+    // a rig artefact, not a leak. The assertion is only that 5392 is among the
+    // shown dialogs.
     assert!(
         rig.sent().contains(&Sent::Dialog(D5392)),
         "Hammond shows 5392"
@@ -211,6 +215,21 @@ async fn live_db_m1570_harriman_dials_then_crosses_after_three_seconds() {
         Some(S4642),
         "the arrival step waits for 3000 ms"
     );
+    // The crossing removes the player, so the 4906 advance cannot be read back
+    // after it; check the queue instead: the advance runs before the crossing.
+    let queued = rig
+        .mgr
+        .pending_content_actions
+        .get(&PLAYER)
+        .expect("the arrival is queued");
+    assert!(
+        matches!(
+            queued.as_slice(),
+            [a, b] if matches!(a.action, Action::AdvanceStep { mission_id: M1570, step_id: S4906 })
+                && matches!(b.action, Action::CrossWorldTeleport { .. })
+        ),
+        "3000 ms queue is the 4906 advance then the crossing"
+    );
     rig.run_due(3000).await;
     assert_eq!(
         rig.sent(),
@@ -259,8 +278,8 @@ async fn live_db_m1570_interrupted_dial_recovers() {
 /// once (the step is already 4642) and then cross again at 3000 ms, so 2
 /// Travel rows. The observed count is 1: the second press's immediate
 /// crossing removes the player, and the first press's queued 3000 ms actions
-/// do not run afterwards. The mechanism is inferred from the count and the
-/// engine's disconnect behaviour, not traced. If the count moves, the design
+/// do not run afterwards. The test checks that the second press crosses at 0 ms (chain 3131) and
+/// that the queued crossing then never runs. If the count moves, the design
 /// or the engine changed: move this assertion with it. No revert proof: the
 /// count is the observation.
 #[tokio::test]
@@ -268,12 +287,22 @@ async fn live_db_m1570_repress_inside_the_window() {
     let pool = require_db_or_skip!();
     let mut rig = accepted_from_hammond(&pool).await;
     rig.press(HARRIMAN).await;
+    assert_eq!(
+        travel_count(&mut rig),
+        0,
+        "the first press crosses only at 3000 ms"
+    );
     rig.press(HARRIMAN).await;
-    rig.run_due(3000).await;
     assert_eq!(
         travel_count(&mut rig),
         1,
-        "observed: one crossing for two presses (the F4 design expected two)"
+        "the second press fires recovery chain 3131 and crosses at once"
+    );
+    rig.run_due(3000).await;
+    assert_eq!(
+        travel_count(&mut rig),
+        0,
+        "observed: the first press queued crossing never runs (F4 design expected a second one)"
     );
 }
 
