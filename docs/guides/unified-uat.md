@@ -52,6 +52,7 @@ This guide gathers every restored system's in-game acceptance test (UAT) into on
 | [Special ammo](#special-ammo) | [ammo session resume, UAT checklist](../analysis/ammo/handoffs/session-resume.md#uat-checklist) |
 | [Debug Area](#debug-area) | [Debug Area ledger](../analysis/debug-area/README.md#packets) (live-client checks: [DA-06](../analysis/debug-area/README.md#da-06-live-client-checks)) |
 | [Dakara_E1](#dakara_e1) | [Dakara_E1 ledger, M1 checklist](../analysis/dakara-e1-rebuild/README.md#m1-checklist-dead-end-removed) |
+| [Union Omega](#union-omega) | [UO-U1 packet](../analysis/union-zone-planning/omega-packets/UO-U1.md) and this section |
 | [Mission data lock](#mission-data-lock) | This section (telemetry-gaps packet TG-DB-12) |
 | [Lab harness](#lab-harness) | [lab-harness close-out](../analysis/lab-harness/closeout.md#what-was-not-tested-live) |
 | [Telemetry gaps](#telemetry-gaps) | [telemetry-gaps ledger](../analysis/telemetry-gaps/README.md#packet-status) and its [close-out handoff](../analysis/telemetry-gaps/handoffs/2026-10-11-closeout.md) |
@@ -1201,7 +1202,7 @@ World 61, the Free Jaffa's world. DK-01 gives a new character a round trip throu
 | DK-U2 | Open your mail | One mail from **Dakara Gate Watch**, subject "Dakara: report to Bra'tac", three sentences (Bra'tac is waiting in the command tent; the DHD dials Omega Site; Omega's DHD brings you back), no cash, no item, and a second mail from **Teal'c**, "Dakara: find SG-18" (see DK-U13) | Whether the mail window is the right place for the notice is an open question: say what you think |
 | DK-U3 | Right-click the DHD in front of the gate | The dialling window lists **Omega Site** with its name and glyphs | A row reading "Unknown" is a fail: note whether reopening the DHD fixes it |
 | DK-U4 | Dial Omega Site and walk into the gate | You arrive at Omega Site, standing, able to walk | |
-| DK-U5 | At Omega Site, right-click the DHD | It lists **Dakara E1** | The arrival taught it. Omega Site has no respawner: do not die there |
+| DK-U5 | At Omega Site, right-click the DHD | It lists **Dakara E1** | The arrival taught it. Respawner 180 (`Omega Site Gate Plaza`) is seeded but not client-tested; see the [Union Omega](#union-omega) section before dying there |
 | DK-U6 | Dial Dakara E1 and walk into the gate | You land on the plaza about 10 m in front of the gate, past the foot of its steps, facing away from the gate toward the DHD, and can walk at once | A landing inside the gate ring, on the steps, in the air or under the floor is a fail: say where you stood. The point is `(96.87, -16.75, 243.23)` |
 | DK-U7 | Log out and back in on Dakara | No second mail and no "has already sent you mail" line. The DHD still lists Omega Site | The repeat is silent on purpose |
 | DK-U8 | Delete the notice, then relog | Still no second mail | Once per character |
@@ -1218,6 +1219,40 @@ World 61, the Free Jaffa's world. DK-01 gives a new character a round trip throu
 | DK-U19 | Relog once on world 61 by Rak'nor and Loth'ta, and once inside world 62 by Bra'tac and Moh'katan | All four static actors are still present in their worlds; the world-62 tent remains usable | Mission dialog and step-gated restore chains arrive in later packets |
 
 Logs: `event = 'content.send_system_mail' AND chain_id = 8002` (`outcome = 'sent'` once per character); `body CONTAINS 'granting stargate address' AND stargate_id = 5`; a refused dial is `onDialGate` with a `reason`.
+
+## Union Omega
+
+The induction route through Omega Site (world 18) and the Omega Command Center (world 80): the beam into the Command Center, Jackson's Human offer (mission 1423), Bra'tac's Free Jaffa offer (mission 1500), the re-offer after an abandon, the services and the ambient crowd. Design, decisions and the packet list: [the Union Omega ledger](../analysis/union-zone-planning/omega-work-packets.md); chains: [mission-chains](../content/mission-chains.md#union-omega-worlds-18-and-80).
+
+**Status:** Pending a client run. The code and seeds have merged (PRs #1902, #1908, #1911) and the executor-level tests pass, but no step below has been run in a client. The live walk is packet UO-U1 and it has not run. The lab is shared, so ask the user before using it. The vendor rows (S3) cannot run: the Omega vendors are not built (D-UO8 and D-UO16 are open).
+
+**Prerequisites:** a server built from `main`, the lab (`lab-uat` skill and [live-research-lab.md](live-research-lab.md)), and four fixtures staged with `server_stage_fixture`: R1 Human (archetype 1-4, mission 1655 `active` at step 4940, in `Omega_Site`), R2 Free Jaffa (archetype 7, same), R3 re-offer (Human, 1655 `completed`, 1423 not held, in `Omega_Site_CmdCenter`) and R4 services (a Human, then a Free Jaffa). The full table is in [UO-U1 § Preparation](../analysis/union-zone-planning/omega-packets/UO-U1.md#preparation-the-lead-before-any-driver). Results go to `omega-packets/worknotes/UO-U1-results.md`, which does not exist yet.
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| UO-H1 | Play a Human into `Omega_Site` | You stand on the hub | Log: `fire_player_loaded: matched`; `Content: adding dialog set` (map 7015, slot 65) |
+| UO-H2 | Click Modi | One dialog on the first click | One `interact: per-player dialog set` line |
+| UO-H3 | Close Modi's dialog | It closes | `fire_dialog_choice: matched`, then `Content: removing dialog set` |
+| UO-H4 | Walk onto transport pad 14 and pick the Command Center | You arrive in world 80 | `fire_teleport_in: matched`; `Content: advancing step` (1655 to 4942); `Content: adding dialog set` with `interactions_count = 1` |
+| UO-H5 | Click Jackson | One dialog (4641) on the first click; Bra'tac, Teal'c and Thor show no use prompt | One `interact:` line |
+| UO-H6 | Log out and back in, in world 80 | Jackson still offers | `Content: adding dialog set` with `interactions_count = 1`, never 2 |
+| UO-H7 | Accept on the last screen of 4641 | The dialog closes and the tracker shows 1423 | `Content: removing dialog set` **before** `Content: completing mission` (1655); then `Content: accepting mission` (1423); `Content: granting stargate address` (6); no `accept_mission refused by offer guard` |
+| UO-H8 | Open the stargate dial list | Beta is listed | The address row in the packet tap |
+| UO-H9 | On a second Human, die on the hub | You respawn on the gate plaza | `respawner_id=180`, `respawner_name="Omega Site Gate Plaza"`. The legacy `.kill` command is not registered, so check `.help` for a self-damage command; with none, record BLOCKED |
+| UO-J1 | As a Free Jaffa in world 80, click Jackson | No dialog, no prompt | No `interact:` line naming slot 63800 |
+| UO-J2 | Click Bra'tac and Accept (same rows as H5-H7 with map 63801, dialog 5025) | The tracker shows 1500, never 1423 | `Content: accepting mission` (1500) only |
+| UO-O1 | Play a Human with 1655 done and 1423 not held into world 80 | Jackson shows an available marker | `fire_player_loaded: matched` (63840); `Content: adding dialog set` (63802) |
+| UO-O2 | Accept 4641 | 1423 is back in the tracker | `fire_dialog_choice: matched` (63842); no `Content: completing mission`; no gate grant |
+| UO-O3 | Abandon 1423 from the mission log, in world 80 | Jackson offers again | `Mission abandoned`, then `fire_mission_abandoned: matched` (63841), then `Content: adding dialog set` (63802) |
+| UO-S1 | Click the banker in the hub | The vault opens on the first click | `bank.banker_interact` span |
+| UO-S2 | Click the Team registrar, then the Command registrar | `CreateTeamWin`, then `CreateCommandWin` | `org.registrar_open` span, twice |
+| UO-S3 | Click each Tau'ri and Jaffa vendor | Not runnable: the vendors are not built | Record NOT RUN |
+| UO-S4 | Click one airman and one Free Jaffa Warrior | A name, no prompt, nothing opens | No `interact:` dialog line for templates 63860 and 63861 |
+| UO-S5 | Read the boot log | The `DB-driven NPC population spawned` count matches the seeds (29 Omega spawns plus the 7 stock hub spawns) | |
+
+Two observations are owed from the executor-level reviews and only a client run can settle them: `interactions_count = 1` on every `Content: adding dialog set` line, and `Content: removing dialog set` before `Content: completing mission`.
+
+Across the whole route, no `Content: completing mission` line for 1655 may appear before UO-H7 (F21).
 
 ## Mission data lock
 

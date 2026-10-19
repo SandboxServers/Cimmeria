@@ -2,8 +2,8 @@
 
 > **Type:** How-to (dispatch contract and ledger)
 > **Audience:** the Union Omega coordinator, packet-coders, review-fixers, mission, movement and items advisors
-> **Last updated:** 2026-10-18, against `origin/main` @ `d1bba0400`; developer concept art added the same day @ `eb29b0c2c` (F27-F35, D-UO15..D-UO20)
-> **Status:** Being built. The owner lifted the "held until FZ-99 / U-D03" gate on 2026-10-18; W1 (UO-01, UO-02) merged in PR #1890 and UO-00 is next. The U-D04 and U-D07 merge holds were lifted overnight by the architect (D-UO25, D-UO26; the owner may overrule); the reward and authored-copy half of U-D07 stays HELD (UO-15). This file replaces the 2026-10-14 table (UO-00..UO-08); see § Renumbering.
+> **Last updated:** 2026-10-19 (close-out), first written 2026-10-18 against `origin/main` @ `d1bba0400`; developer concept art added the same day @ `eb29b0c2c` (F27-F35, D-UO15..D-UO20)
+> **Status:** Built and merged except the vendors and the stubs; never walked in a client. Merged: W1 (PR #1890), W2 (#1902), W3a (#1908), W3b (#1911); UO-13 and UO-99 land in the close-out PR. Not built: the vendors UO-11/UO-12 (BlockedDecision D-UO8, D-UO16). Not run: the UO-U1 lab UAT, which the owner must approve. Stubs: UO-15 (U-D07, H-LBL) and UO-16 (U-D08, U-D11). See § Overnight run 2026-10-18/19 and § Blockers and owner decisions. This file replaces the 2026-10-14 table (UO-00..UO-08); see § Renumbering.
 > **Companions:** [Omega campaign](omega.md), [Union execution contract](execution-contract.md), [SGC packets](sgc-work-packets.md), [Dakara packets](dakara-work-packets.md), [Beta packets](beta-work-packets.md), [Asgard route](asgard-route.md), [developer concept art](omega-concept-art.md), [packet folder](omega-packets/), [resume card](omega-packets/RESUME.md)
 
 ## Short answer
@@ -172,21 +172,21 @@ Beta's old "UO-07/08 receiver fixtures" citation now means the departure fixture
 |---|---|---|---|---|---|---|
 | UO-01 | W1 | `movement-teleport-advisor` | ~35k | Nav-probe every coordinate, tag each with its concept-art area, then write the placement worknote | Merged (#1890) | [UO-01](omega-packets/UO-01.md) |
 | UO-02 | W1 | `packet-coder` | ~40k | Scaffold: empty seed files, includes, test modules and a visitor guard | Merged (#1890) | [UO-02](omega-packets/UO-02.md) |
-| UO-00 | W1 | `documentation-writer` | ~30k | ID row, C4 arrival point, sibling handoff note | Ready (UO-01 merged) | [UO-00](omega-packets/UO-00.md) |
-| UO-03 | W2 | `packet-coder` | ~30k | Respawner 180 and the hub placement test | BlockedDependency UO-01, UO-02 | [UO-03](omega-packets/UO-03.md) |
-| UO-04 | W2 | `packet-coder` | ~40k | Beam 63801 and Modi 63810/63811 | BlockedDependency UO-02 (U-D04 decided, D-UO25) | [UO-04](omega-packets/UO-04.md) |
-| UO-05 | W2 | `packet-coder` | ~40k | Cast templates and spawns 63800-63803, dialog set and maps | BlockedDependency UO-01, UO-02 | [UO-05](omega-packets/UO-05.md) |
-| UO-06 | W2 | `items-systems-advisor` | ~35k | Services seal: the stock proposal for D-UO8 and the roster options for D-UO16 | BlockedDependency UO-01 | [UO-06](omega-packets/UO-06.md) |
-| UO-10 | W2 | `packet-coder` | ~35k | Banker 63810 and registrars 63811 (Team), 63830 (Command) | BlockedDependency UO-01, UO-02 | [UO-10](omega-packets/UO-10.md) |
-| UO-07 | W3 | `packet-coder` | ~40k | Human induction 63820-63822 | BlockedDependency UO-04, UO-05 (U-D04 decided, D-UO25) | [UO-07](omega-packets/UO-07.md) |
-| UO-08 | W3 | `packet-coder` | ~40k | Free Jaffa induction 63830-63832 | BlockedDependency UO-04, UO-05 (U-D04 decided, D-UO25) | [UO-08](omega-packets/UO-08.md) |
-| UO-09 | W3 | `packet-coder` | ~35k | Re-offer 63840-63845 | BlockedDependency UO-07, UO-08 | [UO-09](omega-packets/UO-09.md) |
-| UO-14 | W3 | `packet-coder` | ~35k | Ambient airmen and Free Jaffa warriors (droppable) | BlockedDependency UO-01, UO-02, UO-10 (cap 24 decided, D-UO26) | [UO-14](omega-packets/UO-14.md) |
-| UO-11 | W4 | `packet-coder` | ~40k | Tau'ri vendors 63812-63816 (SGC wing) | BlockedDecision D-UO8, D-UO16; BlockedDependency UO-06, UO-10 | [UO-11](omega-packets/UO-11.md) |
-| UO-12 | W4 | `packet-coder` | ~30k | Jaffa vendors 63817-63819 (Free Jaffa wing) | BlockedDecision D-UO8, D-UO16; BlockedDependency UO-06, UO-10 | [UO-12](omega-packets/UO-12.md) |
-| UO-13 | W4 | `rust-gameserver-dev` (Sonnet) | ~50k | Executed handshake tests and Beta fixtures | BlockedDependency UO-07, UO-08, UO-09 | [UO-13](omega-packets/UO-13.md) |
-| UO-U1 | W5 | Sonnet UAT lead + Haiku `lab-driver` | 4 runs | Client walk of both routes, re-offer, services | UATPending; ask the user first | [UO-U1](omega-packets/UO-U1.md) |
-| UO-99 | W5 | `documentation-writer` | ~35k | Close-out: chains, zone audit, UAT, status (once) | BlockedDependency all, UO-U1 results | [UO-99](omega-packets/UO-99.md) |
+| UO-00 | W1 | `documentation-writer` | ~30k | ID row, C4 arrival point, sibling handoff note | Merged (#1902) | [UO-00](omega-packets/UO-00.md) |
+| UO-03 | W2 | `packet-coder` | ~30k | Respawner 180 and the hub placement test | Merged (#1902) | [UO-03](omega-packets/UO-03.md) |
+| UO-04 | W2 | `packet-coder` | ~40k | Beam 63801 and Modi 63810/63811 | Merged (#1902) | [UO-04](omega-packets/UO-04.md) |
+| UO-05 | W2 | `packet-coder` | ~40k | Cast templates and spawns 63800-63803, dialog set and maps | Merged (#1902) | [UO-05](omega-packets/UO-05.md) |
+| UO-06 | W2 | `items-systems-advisor` | ~35k | Services seal: the stock proposal for D-UO8 and the roster options for D-UO16 | Merged (#1902); a worknote, D-UO8 and D-UO16 stay open | [UO-06](omega-packets/UO-06.md) |
+| UO-10 | W2 | `packet-coder` | ~35k | Banker 63810 and registrars 63811 (Team), 63830 (Command) | Merged (#1902) | [UO-10](omega-packets/UO-10.md) |
+| UO-07 | W3 | `packet-coder` | ~40k | Human induction 63820-63822 | Merged (#1908) | [UO-07](omega-packets/UO-07.md) |
+| UO-08 | W3 | `packet-coder` | ~40k | Free Jaffa induction 63830-63832 | Merged (#1908) | [UO-08](omega-packets/UO-08.md) |
+| UO-09 | W3 | `packet-coder` | ~35k | Re-offer 63840-63845 | Merged (#1911) | [UO-09](omega-packets/UO-09.md) |
+| UO-14 | W3 | `packet-coder` | ~35k | Ambient airmen and Free Jaffa warriors (droppable) | Merged (#1911); 22 spawns, cap 24 (D-UO26) | [UO-14](omega-packets/UO-14.md) |
+| UO-11 | W4 | `packet-coder` | ~40k | Tau'ri vendors 63812-63816 (SGC wing) | Not built: BlockedDecision D-UO8, D-UO16 | [UO-11](omega-packets/UO-11.md) |
+| UO-12 | W4 | `packet-coder` | ~30k | Jaffa vendors 63817-63819 (Free Jaffa wing) | Not built: BlockedDecision D-UO8, D-UO16 | [UO-12](omega-packets/UO-12.md) |
+| UO-13 | W4 | `rust-gameserver-dev` (Sonnet) | ~50k | Executed handshake tests and Beta fixtures | Done in the close-out PR (reviewed, ship) | [UO-13](omega-packets/UO-13.md) |
+| UO-U1 | W5 | Sonnet UAT lead + Haiku `lab-driver` | 4 runs | Client walk of both routes, re-offer, services | UATPending, not run; ask the user first | [UO-U1](omega-packets/UO-U1.md) |
+| UO-99 | W5 | `documentation-writer` | ~35k | Close-out: chains, zone audit, UAT, status (once) | Done in the close-out PR, overnight form (no UO-U1 results, no vendors) | [UO-99](omega-packets/UO-99.md) |
 | UO-15 | none | stub | - | Authored copy and chatter | HELD (U-D07, H-LBL) | [UO-15](omega-packets/UO-15.md) |
 | UO-16 | none | stub | - | Asgard route | BlockedDecision (U-D08, U-D11) | [UO-16](omega-packets/UO-16.md) |
 
@@ -194,13 +194,13 @@ Beta's old "UO-07/08 receiver fixtures" citation now means the departure fixture
 
 | Wave | Packets | Review | Gate |
 |---|---|---|---|
-| W1 | UO-01, UO-02, then UO-00 | one review-fixer for UO-02 and UO-00; UO-01 is a worknote the orchestrator checks for every key | none (U-D03 lifted 2026-10-18) |
-| W2 | UO-03, UO-04, UO-05, UO-06, UO-10 | one review-fixer (UO-06 is a worknote) | W1 merged |
-| W3 | UO-07, UO-08, UO-09, UO-14 | one review-fixer | W2 merged; UO-09 after UO-07/08 |
-| W4 | UO-11, UO-12, UO-13 | one review-fixer | W3 merged; D-UO8 option A and D-UO16 option A for UO-11/12 |
-| W5 | UO-U1, then UO-99 | UO-99 gets one documentation review | W4 merged (or its packets dropped); the user's yes for UO-U1 |
+| W1 (merged #1890, #1902) | UO-01, UO-02, then UO-00 | one review-fixer for UO-02 and UO-00; UO-01 is a worknote the orchestrator checks for every key | none (U-D03 lifted 2026-10-18) |
+| W2 (merged #1902) | UO-03, UO-04, UO-05, UO-06, UO-10 | one review-fixer (UO-06 is a worknote) | W1 merged |
+| W3 (merged #1908, #1911) | UO-07, UO-08, UO-09, UO-14 | one review-fixer | W2 merged; UO-09 after UO-07/08 |
+| W4 (UO-13 done; UO-11/12 not built) | UO-11, UO-12, UO-13 | one review-fixer | W3 merged; UO-11/12 still wait on D-UO8 option A and D-UO16 option A |
+| W5 (UO-99 done; UO-U1 not run) | UO-U1, then UO-99 | UO-99 gets one documentation review | W4 merged (or its packets dropped); the user's yes for UO-U1. UO-99 ran first, in its overnight form |
 
-The U-D04 and U-D07 merge holds are lifted (D-UO25, D-UO26, decided by the architect overnight 2026-10-18). UO-04, UO-07, UO-08 and UO-14 merge on the normal gate. If the owner later overrules D-UO25 and moves the receive state, a follow-up packet rewrites the step ids in those three packets' tests and seeds; nothing else changes. If the owner overrules D-UO26, revert UO-14's one commit (or trim spawns to the new cap); no other packet reads 63860-63903.
+The U-D04 and U-D07 merge holds were lifted (D-UO25, D-UO26, decided by the architect overnight 2026-10-18), and UO-04, UO-07, UO-08 and UO-14 merged on the normal gate. If the owner later overrules D-UO25 and moves the receive state, a follow-up packet rewrites the step ids in those three packets' tests and seeds; nothing else changes. If the owner overrules D-UO26, revert UO-14's one commit (or trim spawns to the new cap); no other packet reads 63860-63903.
 
 Parallel coders never edit the same lines: UO-02 creates every shared file with one `-- [UO-xx]` marker section per packet, and each packet writes only below its own marker. The cell-catalog `tests/mod.rs` gets one `mod` line from each of UO-10, UO-11 and UO-12. That is a trivial merge, which the review-fixer resolves.
 
@@ -220,7 +220,7 @@ Every packet inlines its rules, the chain contract (chain packets) and its lane 
 | D-UO18 | The art draws a Council Chamber with three combat instances north of the hub. **(a)** Out of scope (the plan; worlds 81/82 and the physical Council stay held). **(b)** It is the venue for the Asgard remote hearing (folds into U-D08 / UO-16). **(c)** A later instance campaign. | owner | nothing planned; the UO-16 seal |
 | D-UO19 | The art draws an Inn, Infirmary, Battlemaster and Auction House in the hub, which § Rejected additions excludes for lack of a moniker. **(a)** Keep them rejected. **(b)** Location only: ambient or set dressing at those buildings, no service NPC. **(c)** Authored service NPCs wherever an engine service exists. | owner | nothing planned; a yes adds a packet |
 | U-D08 / U-D11 | The Asgard route into Omega (1522, the Council, item 3399, 481); see UO-16 for the exact questions. Since the concept art: does the Asgard trainer (27218/27219) stand in the art's west pod, and is the Council Chamber the hearing venue (D-UO18)? | owner | UO-16 |
-| U-D03 | **Lifted 2026-10-18** by the owner: the Union campaigns were held until FZ-99; Omega is now being built. | owner (answered) | nothing |
+| U-D03 | **Lifted 2026-10-18** by the owner: the Union campaigns were held until FZ-99; Omega was built overnight. | owner (answered) | nothing |
 
 These items are HELD and block nothing:
 
@@ -289,3 +289,44 @@ Every SQL block carries its label in a comment.
 - Beta cannot consume Omega's departure state.
 
 A green Omega-only suite is a checkpoint, not route completion. The route is done when UO-U1 has walked both factions in the client.
+
+## Overnight run 2026-10-18/19
+
+This is the close-out ledger of every decision made without the owner during the overnight run. Each one carries its reason, and the owner may overrule any of them. D-UO21 to D-UO26 are also in § Overnight autonomous run 2026-10-18 above; the rest are recorded here for the first time. What merged: PRs #1882 (concept art), #1890 (W1), #1902 (W2), #1908 (W3a), #1911 (W3b), and the close-out PR (UO-13 tests and UO-99 docs). None of it has been run in a client.
+
+| Decision | What was decided | Why | Owner may overrule |
+|---|---|---|---|
+| U-D04 (D-UO25) | Omega receives 1655 at S4940 with O6055 done, and owns S4940 to S4942 and the S4942 completion. SGC owns S4943, S4944, S4941 and the departure. This also corrects F21: S4940 requires O5647 and O5644. The SGC ledger carries a matching D-US12 row. | The architect ruled it so Omega's merge did not wait on the SGC ledger. | Yes. A follow-up would re-key the step ids in UO-04, UO-07 and UO-08. |
+| U-D07 (D-UO26) | At most 24 inert ambient spawns (UO-14 shipped 22). The rest of U-D07 stays HELD: authored copy (UO-15), H-LBL, and any reward on authored content. | The ambient crowd carries no copy, chain, loot or XP, so it adds nothing to rule on and drops by deleting the UO-14 blocks. | Yes. Revert UO-14 to drop the crowd. |
+| D-UO21 | `svc.banker` keeps its navmesh point (-88.06, -48.02, -102.92) although the concept art draws the Bank in the Common Area. | The nearest-anchor rule put it in the `sgc` area at 122.55 m against 125.51 m. That 3 m margin is inside the proxy's error, and the art gives layout intent, never coordinates (D-UO15). | Yes. |
+| D-UO22 | Bridges E and W (world 80) get no placement rows. | They are navmesh components 12 and 26; `nav_inspect --gap-pair 11,12` and `11,26` find no route from pad 17. | Yes, if the owner wants unreachable set dressing. |
+| UO-14 nav-guard fix | The UO-02 scaffold helper `reaches()` now follows Detour `Partial` paths hop by hop (16 at most) and still refuses another component. | It took one 256-polygon corridor, so points about 260 m from Modi came back `Partial` and read as another component. The coder had dropped all six Free Jaffa spawns. The fix restored spawns 63892 to 63897, and a follow-up test refuses a hub-island point. | Yes. |
+| UO-14 allowlist deviation | That review fix edited the scaffold test helper in `spawner_tests/union_omega/mod.rs`, which sits outside UO-14's allowlist. | The bug lived in the shared helper, and fixing it in UO-14's own files would have left a wrong guard in place. | Yes. |
+| UO-08 `mission_id` | Chains 63830 to 63832 used `scope_id` and an `add_dialog_set` `mission_id` of 1500. They now use 1655, the mission the delivery runs under, as UO-07 does. A seed comment was corrected separately. | The review found the mismatch against UO-07's pattern. The wrong-state test now covers it. | Yes. |
+| UO-04 spec drift | The spec said both S4940 objectives were optional. The shipped data has required O5647 and O5644 plus optional O5645 and O5646. | D-UO25 corrects F21. UO-04's guard stays, since it keeps Omega safe if the data changes. The UO-04 seed header comment still carries the older wording, which is doc debt (no seed edit in this PR). | Yes. |
+| D-UO24 | Generated Tauri schema files were discarded to unblock the #1908 merge. | They are build output that leaked into the diff (`src-tauri/gen/schemas`, `tools/ContentEditor/gen/schemas`); no content or seed impact. | No effect on content. |
+| Squash-merge retires | The Omega worktrees were force-retired after their PRs squash-merged. | A squash merge leaves the branch commits unmerged by ancestry, so the normal retire check refuses them. | No effect on content. |
+| UO-99 overnight form | UO-99 ran without UO-U1 results and without the vendors. It left `ring-transport-system.md`, `gap-analysis/new-systems.md` and `death-respawn-system.md` untouched. | UO-U1 H4 has not passed, and `death-respawn-system.md` lists no per-zone respawners. | Yes. Rerun the skipped rows after UO-U1. |
+
+## Blockers and owner decisions
+
+In priority order. Each lists the recommended option from UO-06 or the plan.
+
+1. **D-UO8, vendor stock and prices.** Recommend option A: one Tier-1, one-specialty vendor per role (templates 63812 to 63816 with lists 63802 to 63806; Jaffa 63817 to 63819 with lists 63807 to 63809), priced 200/100/25 times the tier constant (UO-06 Q2). Unblocks UO-11 and UO-12.
+2. **D-UO16, vendor roster.** Recommend option A: the plan's eight moniker-led templates, one spawn each. The UO-06 worknote notes that `svc.consumables` and `svc.common_crafting` sit in the SGC wing, so those two points need re-picking in the Common Area. Crafting specialties follow UO-06 Q3: Human Electronics, Common Materials, Jaffa Biomedical.
+3. **D-UO17, trainers.** The plan's default is (a) none. Option (b), class trainers cloned from template 301, is the next step if the owner wants them.
+4. **D-UO18, Council Chamber.** Recommend (a), out of scope.
+5. **D-UO19, inn, infirmary, battlemaster and auction house.** Recommend (a), keep them rejected.
+6. **D-UO11 / D-US11, letter 6786.** Omega works either way. If the SGC grants it, UO-07 adds one `remove_item 6786` row.
+7. **Holds still open.** The rest of U-D07 and H-LBL (UO-15), U-D08 and U-D11 (the Asgard route, UO-16), and owner review of D-UO20, D-UO25 and D-UO26. These HELD items block nothing built: O5646 waypoints, the H1 DHD dial-back, H2, H6, gate 5 under the dais, F35 and F28.
+
+## UO-U1 live UAT
+
+The lab UAT has not run, and the lab is shared, so ask the user before using it. The recipe is the [`lab-uat` skill](../../../.claude/skills/lab-uat/SKILL.md), [live-research-lab.md](../../guides/live-research-lab.md) and the [UO-U1 packet](omega-packets/UO-U1.md) (fixtures R1 to R4 through `server_stage_fixture`). The checklist form is [unified-uat.md § Union Omega](../../guides/unified-uat.md#union-omega). Results go to `omega-packets/worknotes/UO-U1-results.md`, which does not exist yet. The vendor rows cannot run until UO-11 and UO-12 are built.
+
+The lab owes two observations that only a client run can settle. Both came from the UO-13 reviews:
+
+- `interactions_count = 1` on every `Content: adding dialog set` line.
+- `Content: removing dialog set` before `Content: completing mission`.
+
+When UO-U1 passes, rerun the UO-99 rows it gates: `ring-transport-system.md` and `gap-analysis/new-systems.md` (pad 14 to 17, H4).

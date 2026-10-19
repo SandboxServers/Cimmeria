@@ -1479,6 +1479,34 @@ Five client-hinted named regions have point sets: Command Tent, Moh'katan's Tent
 
 ---
 
+### Union Omega (worlds 18 and 80)
+
+**Status:** merged ([#1902](https://github.com/SandboxServers/Cimmeria/pull/1902), [#1908](https://github.com/SandboxServers/Cimmeria/pull/1908), [#1911](https://github.com/SandboxServers/Cimmeria/pull/1911)) and covered by resolve-only and executor-level tests; never walked in a client. The live walk (UO-U1) has not run. Mission 1655 reaches Omega at step S4940 and leaves it at S4942; the Human offer is 1423 and the Free Jaffa offer is 1500. Everything is `CIMMERIA_RECONSTRUCTION`; the decisions behind it are in the [campaign ledger](../analysis/union-zone-planning/omega-work-packets.md#overnight-run-2026-10-1819).
+
+Seeds: [arrival](../../db/resources/Content/Seed/union_omega_arrival_chains.sql), [Human](../../db/resources/Content/Seed/union_omega_human_chains.sql), [Free Jaffa](../../db/resources/Content/Seed/union_omega_jaffa_chains.sql), [re-offer](../../db/resources/Content/Seed/union_omega_reoffer_chains.sql). Every delivery chain carries `mission_status 1655 eq active`; every re-offer chain carries `mission_status 1655 eq completed`.
+
+| Chain | Trigger | World | Effect |
+|---|---|---|---|
+| 63801 | `teleport_in '17'` | 80 | The ring beam into the Command Center: advance 1655 from S4940 to S4942 |
+| 63810 | `player_loaded Omega_Site`, at S4940 | 18 | Bind Modi's shipped Shutdown topic (map 7015, slot 65) |
+| 63811 | `dialog_choice 6168` | 18 | Closing Modi's dialog removes the bind |
+| 63820 | `teleport_in '17'`, at S4940 | 80 | First beam: bind Jackson's delivery map (map 63800, slot 63800) |
+| 63821 | `player_loaded Omega_Site_CmdCenter`, at S4942 | 80 | Relog or second beam: bind the same map again |
+| 63822 | `dialog_choice 4641` | 80 | `remove_dialog_set`, `complete_mission` 1655, `accept_mission` 1423, `grant_stargate_address` 6 |
+| 63830-63832 | the same three triggers, archetype `eq 7` | 80 | Free Jaffa twin: map 63801, dialog 5025, mission 1500 |
+| 63840-63845 | `player_loaded`, `mission_abandoned`, `dialog_choice`, per faction (63840-63842 Jackson and 1423, 63843-63845 Bra'tac and 1500) | 80 | Re-offer after an abandon; maps 63802 and 63803 (flags 8388608); abandon chains 63841 and 63844 require world 80 |
+
+The Human gate is archetype `gte 1` and `lte 4`. The tests are `chain_replay_tests::union_omega` in [`crates/cell-content`](../../crates/cell-content/src/cell/content/chain_replay_tests/union_omega/); `executed.rs` there runs the chains through the executor.
+
+Rules these chains follow:
+
+1. `remove_dialog_set` runs before `add_dialog_set`, because the engine does not dedupe (F3).
+2. `remove_dialog_set` runs before `complete_mission` (F5).
+3. There are no `interact_tag` chains; NPC clicks reach the player's dialog set instead (F4).
+4. No chain calls `complete_objective` on 1655 (F21). S4940 already requires O5647 and O5644, and Omega owns only the S4940 to S4942 move and the S4942 completion.
+
+---
+
 ### Harset (Hub Zone)
 
 **Confidence**: CONFIRMED
@@ -1958,7 +1986,7 @@ These space scripts contain mission accept/advance/complete calls but are NOT re
 | Castle | `deprecated/python/cell/spaces/Castle.py` | 701 (full lifecycle), 702 (accept) |
 | SGC_W1 | `deprecated/python/cell/spaces/SGC_W1.py` | 1559 (full lifecycle) |
 
-Space scripts that exist but contain NO mission logic: `Harset.py`, `Harset_CmdCenter.py`, `Lucia.py`, `Menfa_Dark.py`, `Omega_Site.py`, `Omega_Site_CmdCenter.py`, `SandBox.py`.
+Space scripts that exist but contain NO mission logic: `Harset.py`, `Harset_CmdCenter.py`, `Lucia.py`, `Menfa_Dark.py`, `Omega_Site.py`, `Omega_Site_CmdCenter.py`, `SandBox.py`. Omega's logic now lives in content chains, not in those scripts (see [Union Omega](#union-omega-worlds-18-and-80)).
 
 ---
 
