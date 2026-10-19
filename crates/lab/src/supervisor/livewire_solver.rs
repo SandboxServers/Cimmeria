@@ -357,6 +357,7 @@ mod tests {
                     player_level: 1,
                     ticket: "test".into(),
                     on_victory_chains: vec![],
+                    on_failure_chains: vec![],
                     player_name: None,
                     client_ip: None,
                     created_at: tokio::time::Instant::now(),

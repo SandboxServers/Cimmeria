@@ -22,6 +22,7 @@ impl MinigameSession {
             player_level: 1,
             ticket: String::new(),
             on_victory_chains: vec![],
+            on_failure_chains: vec![],
             player_name: None,
             client_ip: None,
             created_at: Instant::now(),
