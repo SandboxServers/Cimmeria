@@ -207,9 +207,9 @@ async fn accept_starts_477_and_binds_the_subjects() {
     );
 }
 
-/// Revert: drop 23435's `player_loaded` trigger row. Then a relog in the offer
-/// state (443 done, 477 not started) loses the Mimir blurb bind.
-/// Revert: drop the `Beta_Site_Evo_1` event key from it and another world binds it.
+/// Revert: drop 23435's `player_loaded` trigger row and a relog in the offer
+/// state (443 done, 477 not started) loses the Mimir blurb bind; drop its
+/// `Beta_Site_Evo_1` event key and another world binds it.
 #[tokio::test]
 async fn offer_blurb_binds_on_login_in_beta_only() {
     let pool = require_db_or_skip!();
@@ -233,6 +233,7 @@ async fn offer_blurb_binds_on_login_in_beta_only() {
 /// The four relog restores follow the open objectives: in every one of the 16
 /// objective states a login at S1744 matches exactly the restore of each open
 /// subject (23454-23457), and none in another world.
+///
 /// Revert: drop `O<n> active` from one restore and a recorded subject is
 /// re-bound; drop the world key and another world binds the subjects.
 #[tokio::test]
@@ -380,6 +381,73 @@ async fn mimir_turn_in_completes_477() {
             "complete_mission(477)".to_string(),
         ]
     );
+}
+
+/// Whole-seed exclusivity for the Mimir, accept and completion-bind chains: each
+/// event in each state matches exactly the expected 477 chain, and none for a
+/// non-Asgard login at S1745.
+///
+/// Revert: drop `archetype eq 5` from 23458 and a non-Asgard login at S1745
+/// binds the completion dialog; add a sibling on the Mimir tag, dialog 1997 or
+/// the 23458 login and the exact set of one of these states changes.
+#[tokio::test]
+async fn return_leg_matches_exactly_one_chain_per_state() {
+    let pool = require_db_or_skip!();
+    let engine = whole_seed(&pool).await;
+    let none = BTreeSet::new();
+
+    let mut offer = click(MIMIR, Some(ASGARD));
+    set_477(&mut offer, None, [false; 4]);
+    let got = m477_matched(&fire(&engine, TriggerType::InteractTag, &offer));
+    assert_eq!(got, BTreeSet::from([23436]), "Mimir at the offer");
+
+    let mut accept = choice(OFFER_DIALOG, Some(ASGARD));
+    set_477(&mut accept, None, [false; 4]);
+    let got = m477_matched(&fire(&engine, TriggerType::DialogChoice, &accept));
+    assert_eq!(got, BTreeSet::from([23437]), "Accept");
+
+    let mut mid = click(MIMIR, Some(ASGARD));
+    set_477(&mut mid, Some(1744), [true; 4]);
+    let got = m477_matched(&fire(&engine, TriggerType::InteractTag, &mid));
+    assert_eq!(got, none, "Mimir at S1744");
+
+    let mut turn_in = click(MIMIR, Some(ASGARD));
+    set_477(&mut turn_in, Some(1745), [false; 4]);
+    let got = m477_matched(&fire(&engine, TriggerType::InteractTag, &turn_in));
+    assert_eq!(got, BTreeSet::from([23459]), "Mimir at S1745");
+
+    let mut finished = click(MIMIR, Some(ASGARD));
+    set_477(&mut finished, Some(1745), [false; 4]);
+    with_mission(&mut finished, 477, "completed");
+    with_step(&mut finished, 477, 1745, "completed");
+    let got = m477_matched(&fire(&engine, TriggerType::InteractTag, &finished));
+    assert_eq!(got, none, "Mimir after 477");
+
+    for tag in SUBJECT_TAGS {
+        let mut ctx = click(tag, Some(ASGARD));
+        set_477(&mut ctx, Some(1745), [false; 4]);
+        let got = m477_matched(&fire(&engine, TriggerType::InteractTag, &ctx));
+        assert_eq!(got, none, "{tag} at S1745");
+    }
+
+    let mut relog = login_ctx(BETA, Some(ASGARD));
+    set_477(&mut relog, Some(1745), [false; 4]);
+    let got = m477_matched(&fire(&engine, TriggerType::PlayerLoaded, &relog));
+    assert_eq!(got, BTreeSet::from([23458]), "Asgard login at S1745");
+
+    let mut done = login_ctx(BETA, Some(ASGARD));
+    set_477(&mut done, Some(1745), [false; 4]);
+    with_mission(&mut done, 477, "completed");
+    with_step(&mut done, 477, 1745, "completed");
+    let got = m477_matched(&fire(&engine, TriggerType::PlayerLoaded, &done));
+    assert_eq!(got, none, "login after 477");
+
+    for archetype in non_asgard() {
+        let mut ctx = login_ctx(BETA, archetype);
+        set_477(&mut ctx, Some(1745), [false; 4]);
+        let got = m477_matched(&fire(&engine, TriggerType::PlayerLoaded, &ctx));
+        assert_eq!(got, none, "login S1745 {archetype:?}");
+    }
 }
 
 /// Revert: drop `archetype eq 5` from any subject chain and a Human (or an
