@@ -136,6 +136,8 @@ A `queued_command` is classified by the same rules applied to its `prompt` and `
 
 Never store message text in `triggers`. `source_ref` holds the task id, the teammate id or the peer name only, and only when it looks like an id (letters, digits and `_.:@-`, at most 128 characters); anything else is stored as NULL.
 
+**Brief tag (schema version 7).** The only fact taken from a prompt's text is `agents.brief_tag`: `review-fix` when a subagent's first prompt (rule R11) matches `review fix, pass <1-3> of 3`, case-insensitive (a C12 review fix pass), else NULL. Forks are never tagged, because their first prompt is a copy of the parent's history. The text itself is never stored. A version 6 database gets the column on its next open, and the ingest fills it from each subagent transcript's first prompt.
+
 ## Tool-call fingerprints
 
 `tool_calls.fingerprint` is the only place tool input reaches the database, and it is built so a report can show it. Nothing from a command's arguments is kept unless it is on an allowlist, because any argument can carry a credential, a URL or a local path.
