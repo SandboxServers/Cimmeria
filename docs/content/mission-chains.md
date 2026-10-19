@@ -1222,7 +1222,7 @@ Missions 1563-1571, the SGC halves of 1651, 1654 and 1655, and the crossings to 
 
 - **1651 SGC half, C2 arrival and C2b (US-30, chains 3133-3142):** planned.
 
-- **1654 turn-in (US-31, chains 3148-3152):** planned.
+- **1654 turn-in (US-31, chains 3148-3152):** Hammond is the turn-in marker on arrival from Dakara (step 4939); his report, 5852 for a Human or 5853 for a Free Jaffa, closes and completes O5962 and so 1654, and Woolsey then appears beside Hammond with "?" for the 1655 offer.
 
 - **1655 Human and crossing C4 (US-32, chains 3156-3165):** planned.
 
