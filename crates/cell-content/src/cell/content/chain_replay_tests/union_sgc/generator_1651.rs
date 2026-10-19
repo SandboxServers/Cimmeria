@@ -6,13 +6,15 @@
 //! mission state is unreadable after it. Tests check the queue before the
 //! crossing runs and the `Travel` row after it.
 
+use std::collections::HashMap;
+
 use sqlx::PgPool;
 
-use crate::cell::spawner::load_step_objectives;
+use crate::cell::spawner::{load_step_objectives, WorldRow};
 
 use cimmeria_content_engine::actions::Action;
 
-use super::rig::{Rig, Sent, ACTIVE, FREE_JAFFA, PLAYER, SOLDIER, STORY_ACTIVE};
+use super::rig::{Rig, Sent, ACTIVE, FREE_JAFFA, PLAYER, SOLDIER, STORY_ACTIVE, WORLD, WORLD_ID};
 use crate::test_support::require_db_or_skip;
 
 const M1559: i32 = 1559;
@@ -73,6 +75,15 @@ fn queue_is_cross_advance_crossing(rig: &Rig) -> bool {
                 && matches!(b.action, Action::AdvanceStep { mission_id: M1651, step_id: S5171 })
                 && matches!(c.action, Action::CrossWorldTeleport { .. })
     )
+}
+
+/// Make the dispatchers read the player's world as a world other than
+/// SGC_W1 (id `WORLD_ID + 1`), as a client in another world would be read.
+fn leave_sgc_w1(rig: &mut Rig) {
+    rig.mgr.stamp_world_rows(&HashMap::from([(
+        WORLD.to_string(),
+        WorldRow::enforcing(WORLD_ID + 1),
+    )]));
 }
 
 /// The rig after a relog, with the step-objective roster loaded again: the
@@ -397,4 +408,71 @@ async fn live_db_m1651_repress_inside_the_window() {
         !travelled(&rig.sent()),
         "the first press queued crossing never runs (F4 design expected a second)"
     );
+}
+
+/// **Revert proof:** drop the `world 58` row of chain 3134, 3135, 3136, 3137,
+/// 3138 or 3142. Every press and choice here is a client event, so a replay in
+/// another world must do nothing: no briefing, no step move, no generator, no
+/// dial and no recovery crossing.
+#[tokio::test]
+async fn live_db_m1651_chains_only_fire_in_sgc_w1() {
+    let pool = require_db_or_skip!();
+
+    // 3134 and 3135: Hammond's briefing and its close.
+    let mut rig = on_4928(&pool, SOLDIER).await;
+    leave_sgc_w1(&mut rig);
+    rig.press(HAMMOND).await;
+    assert!(
+        !showed(&mut rig, DIALOG_HAMMOND),
+        "3134: no 5844 outside SGC_W1"
+    );
+    rig.close(DIALOG_HAMMOND).await;
+    assert_eq!(
+        rig.step(M1651),
+        Some(S4928),
+        "3135: the close does not advance"
+    );
+
+    // 3136 and 3137: Carter's briefing and the generator.
+    let mut rig = on_4928(&pool, SOLDIER).await;
+    rig.press(HAMMOND).await;
+    rig.close(DIALOG_HAMMOND).await;
+    rig.sent();
+    leave_sgc_w1(&mut rig);
+    rig.press(CARTER).await;
+    assert!(
+        !showed(&mut rig, DIALOG_CARTER),
+        "3136: no 5845 outside SGC_W1"
+    );
+    rig.choose(DIALOG_CARTER, 0).await;
+    assert_eq!(
+        count(&rig.sent(), &Sent::Item(GENERATOR, 2, 1)),
+        0,
+        "3137: no generator outside SGC_W1"
+    );
+    assert!(!rig.objective_done(M1651, O5956), "3137: O5956 stays open");
+
+    // 3138: the dial.
+    let mut rig = holding(&pool, SOLDIER).await;
+    rig.sent();
+    leave_sgc_w1(&mut rig);
+    rig.press(HARRIMAN).await;
+    assert!(
+        rig.sent().is_empty(),
+        "3138: nothing is sent outside SGC_W1"
+    );
+    assert_eq!(rig.step(M1651), Some(S4931), "3138: no dial outside SGC_W1");
+    assert_eq!(rig.pending(), 0, "3138: nothing is queued outside SGC_W1");
+
+    // 3142: the recovery crossing.
+    let mut rig = holding(&pool, SOLDIER).await;
+    rig.press(HARRIMAN).await;
+    rig.sent();
+    leave_sgc_w1(&mut rig);
+    rig.press(HARRIMAN).await;
+    assert!(
+        !travelled(&rig.sent()),
+        "3142: no recovery crossing outside SGC_W1"
+    );
+    assert_eq!(rig.step(M1651), Some(S4929), "3142: the step does not move");
 }

@@ -4,6 +4,8 @@
 -- Every chain comment carries one provenance label: RESTORED_SOURCE,
 -- CIMMERIA_RECONSTRUCTION or CIMMERIA_AUTHORING.
 SET search_path = resources, pg_catalog;
+-- Every press and dialog choice is a client event, so every chain here carries a world 58 row (S3 review 2).
+-- No archetype row on purpose: 1651 is step-gated for both races (spec, US-30 Flow); a non-Human on 1651 is the Free Jaffa route.
 
 -- CIMMERIA_RECONSTRUCTION (H10, F13): O5956 at Carter while O6037 stays open; Harriman advances 4931 -> 4929 -> 5171; no complete_objective on 6037.
 -- Chain 3133: arrival from Dakara on 4928 - Hammond shows "!".
@@ -29,7 +31,9 @@ INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort
 VALUES (3134, 'interact_tag', 'SGCW1_GenHammond', 'player', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
-VALUES (3134, 'step_status', 1651, '4928', 'eq', 'active', 0);
+VALUES
+  (3134, 'step_status', 1651, '4928', 'eq', 'active', 0),
+  (3134, 'world', 58, NULL, 'eq', NULL, 1);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (3134, 'display_dialog', 5844, NULL, '{}', 0, 0);
@@ -42,7 +46,9 @@ INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort
 VALUES (3135, 'dialog_choice', '5844', 'player', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
-VALUES (3135, 'step_status', 1651, '4928', 'eq', 'active', 0);
+VALUES
+  (3135, 'step_status', 1651, '4928', 'eq', 'active', 0),
+  (3135, 'world', 58, NULL, 'eq', NULL, 1);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
@@ -61,7 +67,8 @@ VALUES (3136, 'interact_tag', 'SGC_W1_SamCarter', 'player', false, 0);
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
 VALUES
   (3136, 'step_status', 1651, '4931', 'eq', 'active', 0),
-  (3136, 'objective_status', 1651, '5956', 'neq', 'completed', 1);
+  (3136, 'objective_status', 1651, '5956', 'neq', 'completed', 1),
+  (3136, 'world', 58, NULL, 'eq', NULL, 2);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (3136, 'display_dialog', 5845, NULL, '{}', 0, 0);
@@ -76,7 +83,8 @@ VALUES (3137, 'dialog_choice', '5845', 'player', false, 0);
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
 VALUES
   (3137, 'step_status', 1651, '4931', 'eq', 'active', 0),
-  (3137, 'objective_status', 1651, '5956', 'neq', 'completed', 1);
+  (3137, 'objective_status', 1651, '5956', 'neq', 'completed', 1),
+  (3137, 'world', 58, NULL, 'eq', NULL, 2);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
@@ -96,7 +104,8 @@ VALUES (3138, 'interact_tag', 'SGC_W1_Harriman', 'player', false, 0);
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
 VALUES
   (3138, 'step_status', 1651, '4931', 'eq', 'active', 0),
-  (3138, 'objective_status', 1651, '5956', 'eq', 'completed', 1);
+  (3138, 'objective_status', 1651, '5956', 'eq', 'completed', 1),
+  (3138, 'world', 58, NULL, 'eq', NULL, 2);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
@@ -164,7 +173,9 @@ INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort
 VALUES (3142, 'interact_tag', 'SGC_W1_Harriman', 'player', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
-VALUES (3142, 'step_status', 1651, '4929', 'eq', 'active', 0);
+VALUES
+  (3142, 'step_status', 1651, '4929', 'eq', 'active', 0),
+  (3142, 'world', 58, NULL, 'eq', NULL, 1);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
