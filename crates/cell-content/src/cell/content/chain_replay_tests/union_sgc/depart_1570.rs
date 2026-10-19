@@ -4,14 +4,17 @@
 //! recovery chains that cover an interrupted dial. Human classes only: the
 //! Union Human gate is `archetype gte 1` and `lte 4`.
 
+use std::collections::HashMap;
+
 use sqlx::PgPool;
 
-use crate::cell::spawner::load_step_objectives;
+use crate::cell::spawner::{load_step_objectives, WorldRow};
 
 use cimmeria_content_engine::actions::Action;
 
 use super::rig::{
-    Rig, Sent, ACTIVE, HUMANS, NON_HUMANS, OFFER, PLAYER, SOLDIER, STORY_ACTIVE, UNSTAMPED,
+    Rig, Sent, ACTIVE, HUMANS, NON_HUMANS, OFFER, PLAYER, SOLDIER, STORY_ACTIVE, UNSTAMPED, WORLD,
+    WORLD_ID,
 };
 use crate::test_support::require_db_or_skip;
 
@@ -90,6 +93,15 @@ async fn accepted_from_hammond(pool: &PgPool) -> Rig {
     rig.choose(D5392, 0).await;
     rig.sent();
     rig
+}
+
+/// Make the dispatchers read the player's world as a world other than
+/// SGC_W1 (id `WORLD_ID + 1`), as a client in another world would be read.
+fn leave_sgc_w1(rig: &mut Rig) {
+    rig.mgr.stamp_world_rows(&HashMap::from([(
+        WORLD.to_string(),
+        WorldRow::enforcing(WORLD_ID + 1),
+    )]));
 }
 
 /// How many `cross_world_teleport` rows the rig has sent since the last drain.
@@ -304,6 +316,68 @@ async fn live_db_m1570_repress_inside_the_window() {
         0,
         "observed: the first press queued crossing never runs (F4 design expected a second one)"
     );
+}
+
+/// **Revert proof:** drop the `world 58` row of chain 3128 or 3131. A Harriman
+/// press read in another world neither starts the dial (3128) nor sends the
+/// player through (3131). The client supplies the press, so only the world
+/// row stops a replay outside SGC_W1.
+#[tokio::test]
+async fn live_db_m1570_crossing_chains_only_fire_in_sgc_w1() {
+    let pool = require_db_or_skip!();
+
+    let mut rig = accepted_from_hammond(&pool).await;
+    leave_sgc_w1(&mut rig);
+    rig.press(HARRIMAN).await;
+    assert_eq!(rig.step(M1570), Some(S4641), "3128: no dial outside SGC_W1");
+    assert!(
+        rig.sent().is_empty(),
+        "3128: nothing is sent outside SGC_W1"
+    );
+    assert_eq!(rig.pending(), 0, "3128: nothing is queued outside SGC_W1");
+
+    let mut rig = accepted_from_hammond(&pool).await;
+    rig.press(HARRIMAN).await;
+    rig.sent();
+    leave_sgc_w1(&mut rig);
+    rig.press(HARRIMAN).await;
+    assert_eq!(
+        travel_count(&mut rig),
+        0,
+        "3131: no recovery crossing outside SGC_W1"
+    );
+    assert_eq!(rig.step(M1570), Some(S4642), "3131: the step does not move");
+}
+
+/// **Revert proof:** drop the `1568` or `1569` row from chain 3126 or 3127. A
+/// forged accept (a `dialog_choice` for 5392 or 5393 the offer chain never
+/// produced) must not start 1570 for a player who has not finished both
+/// prerequisites. The offered-dialog gate and the closed native dialog-set
+/// route stop it today; the chain rows keep it stopped if either changes.
+#[tokio::test]
+async fn live_db_m1570_accept_needs_1568_and_1569() {
+    let pool = require_db_or_skip!();
+    for (done_1568, done_1569) in [(false, false), (true, false), (false, true)] {
+        for dialog in [D5392, D5393] {
+            let mut rig = new_rig(&pool, Some(SOLDIER)).await;
+            if done_1568 {
+                rig.accept(M1568).await;
+                rig.complete(M1568).await;
+            }
+            if done_1569 {
+                rig.accept(M1569).await;
+                rig.complete(M1569).await;
+            }
+            rig.loaded().await;
+            rig.sent();
+            rig.choose(dialog, 0).await;
+            assert_eq!(
+                rig.status(M1570),
+                None,
+                "dialog {dialog} with 1568 done={done_1568}, 1569 done={done_1569}: 1570 is not accepted"
+            );
+        }
+    }
 }
 
 /// **Revert proof:** drop the `archetype gte 1` row of chain 3123 and a

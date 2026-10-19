@@ -3,6 +3,8 @@
 -- docs/analysis/union-zone-planning/sgc-work-packets.md).
 -- Every chain comment carries one provenance label: RESTORED_SOURCE,
 -- CIMMERIA_RECONSTRUCTION or CIMMERIA_AUTHORING.
+-- Chains 3126/3127 repeat the 1568/1569 prerequisites and 3128/3131 carry a world 58 row: the
+-- client sends the accept and the press, so the chain checks them itself (S3 review 2).
 SET search_path = resources, pg_catalog;
 
 -- CIMMERIA_RECONSTRUCTION: chain 3123 - 1568 and 1569 done (Human, world 58, 1570 not started): Hammond and Teal'c show "?".
@@ -78,7 +80,9 @@ INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key,
 VALUES
   (3126, 'mission_status', 1570, NULL, 'eq', 'not_active', 0),
   (3126, 'archetype', NULL, NULL, 'gte', '1', 1),
-  (3126, 'archetype', NULL, NULL, 'lte', '4', 2);
+  (3126, 'archetype', NULL, NULL, 'lte', '4', 2),
+  (3126, 'mission_status', 1568, NULL, 'eq', 'completed', 3),
+  (3126, 'mission_status', 1569, NULL, 'eq', 'completed', 4);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
@@ -102,7 +106,9 @@ INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key,
 VALUES
   (3127, 'mission_status', 1570, NULL, 'eq', 'not_active', 0),
   (3127, 'archetype', NULL, NULL, 'gte', '1', 1),
-  (3127, 'archetype', NULL, NULL, 'lte', '4', 2);
+  (3127, 'archetype', NULL, NULL, 'lte', '4', 2),
+  (3127, 'mission_status', 1568, NULL, 'eq', 'completed', 3),
+  (3127, 'mission_status', 1569, NULL, 'eq', 'completed', 4);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
@@ -127,7 +133,8 @@ INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key,
 VALUES
   (3128, 'step_status', 1570, '4641', 'eq', 'active', 0),
   (3128, 'archetype', NULL, NULL, 'gte', '1', 1),
-  (3128, 'archetype', NULL, NULL, 'lte', '4', 2);
+  (3128, 'archetype', NULL, NULL, 'lte', '4', 2),
+  (3128, 'world', 58, NULL, 'eq', NULL, 3);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
@@ -187,7 +194,8 @@ INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key,
 VALUES
   (3131, 'step_status', 1570, '4642', 'eq', 'active', 0),
   (3131, 'archetype', NULL, NULL, 'gte', '1', 1),
-  (3131, 'archetype', NULL, NULL, 'lte', '4', 2);
+  (3131, 'archetype', NULL, NULL, 'lte', '4', 2),
+  (3131, 'world', 58, NULL, 'eq', NULL, 3);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
