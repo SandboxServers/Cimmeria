@@ -85,18 +85,35 @@ const ASGARD: [(i32, i32, &str, [f32; 3]); 12] = [
     (23071, 2329, "BetaE1_FireControlHub", FIRE_CONTROL_HUB),
 ];
 
-/// True when `find_path` walks from `from` to `to`. This is the test `reaches`
-/// applies in `nav.rs`, which is private to that module.
+/// Legs `walks_to` may chain before it gives up.
+const MAX_WALK_LEGS: usize = 8;
+
+/// True when a player could walk from `from` to `to`.
+///
+/// A single `find_path` query stops after 256 polygons (`MAX_POLY_PATH`) and
+/// reports `Partial`, so a route of a few hundred metres on this tiled mesh
+/// reads as "not connected" even when it is. That makes a "must not walk"
+/// assertion pass for the wrong reason. This chains legs, restarting each from
+/// the last waypoint of the one before, until a leg is `Ok` and ends within
+/// 2 m of `to`. A leg that makes no progress (under 0.5 m) is a different
+/// island, so the walk is refused (placement seal addendum UB-00b-2).
 fn walks_to(mesh: &NavMesh, from: [f32; 3], to: [f32; 3]) -> bool {
     let vector = |p: [f32; 3]| Vector3::new(p[0], p[1], p[2]);
-    let path = mesh.find_path(&vector(from), &vector(to));
-    matches!(path.status, PathStatus::Ok)
-        && path
-            .waypoints
-            .last()
-            .is_some_and(|end| end.distance_to(&vector(to)) < 2.0)
+    let goal = vector(to);
+    let mut at = vector(from);
+    for _ in 0..MAX_WALK_LEGS {
+        let path = mesh.find_path(&at, &goal);
+        let Some(end) = path.waypoints.last().cloned() else {
+            return false;
+        };
+        match path.status {
+            PathStatus::Ok => return end.distance_to(&goal) < 2.0,
+            PathStatus::Partial if end.distance_to(&at) >= 0.5 => at = end,
+            _ => return false,
+        }
+    }
+    false
 }
-
 /// Horizontal (x, z) distance between two points, in metres.
 fn ground_distance(a: [f32; 3], b: [f32; 3]) -> f32 {
     ((a[0] - b[0]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
@@ -255,4 +272,64 @@ async fn live_db_beta_fire_site_holds_its_objects_but_not_satterfield() {
         gap >= 2.0,
         "Satterfield is only {gap:.2} m outside FireSite (needs 2 m)"
     );
+}
+
+#[test]
+/// Revert proof: make `walks_to` single-shot (`MAX_WALK_LEGS` of 1); the
+/// ring-148 control then reads "not connected" and this fails.
+fn beta_walk_helper_chains_long_routes_and_refuses_islands() {
+    let exterior = mesh("beta_site_evo_1.nav");
+    // Ring 148 is about 500 m from ARRIVAL: one query is truncated at 256
+    // polygons, three chained legs arrive (addendum UB-00b-2, 2.0 m tolerance).
+    let ring_148 = [146.716, 8.77, 403.273];
+    assert!(
+        walks_to(&exterior, ring_148, ARRIVAL),
+        "chained legs must walk ring 148 to ARRIVAL"
+    );
+    // The addendum's negative control: a standable pocket 12.7 m south of the
+    // ring that does not connect to it.
+    let pocket = [144.916, 7.811, 415.873];
+    assert!(
+        !walks_to(&exterior, pocket, ring_148),
+        "the island pocket must not chain to ring 148"
+    );
+    // The deck is another island entirely.
+    assert!(
+        !walks_to(&exterior, MIMIR, ARRIVAL),
+        "Mimir's deck must not chain to ARRIVAL"
+    );
+}
+
+/// Each Asgard seed file must carry its own sequence footer. The DB-level
+/// checks cannot tell whose footer ran: the other Beta files and the Debug Area
+/// footers re-set the same sequences, so deleting this file's footer leaves
+/// the loaded database looking right. This reads the file text.
+#[test]
+fn beta_asgard_seed_files_carry_their_own_sequence_footers() {
+    // Revert proof: delete the `setval` line from any of the three Asgard seed
+    // files; this fails naming the file.
+    let footers = [
+        (
+            "Worlds/Seed/spawnlist_beta_e1_asgard.sql",
+            "SELECT pg_catalog.setval('spawnlist_spawn_id_seq', GREATEST((SELECT MAX(spawn_id) FROM spawnlist), (SELECT last_value FROM spawnlist_spawn_id_seq), 23199), true);",
+        ),
+        (
+            "Events/Seed/point_sets_beta_e1_asgard.sql",
+            "SELECT pg_catalog.setval('point_sets_set_id_seq', GREATEST((SELECT last_value FROM point_sets_set_id_seq), 23031), true);",
+        ),
+        (
+            "Events/Seed/point_set_points_beta_e1_asgard.sql",
+            "SELECT pg_catalog.setval('point_set_points_point_id_seq', GREATEST((SELECT last_value FROM point_set_points_point_id_seq), 23101), true);",
+        ),
+    ];
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../db/resources");
+    for (file, footer) in footers {
+        let path = root.join(file);
+        let text =
+            std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        assert!(
+            text.lines().any(|line| line.trim() == footer),
+            "{file} is missing its sequence footer: {footer}"
+        );
+    }
 }
