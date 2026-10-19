@@ -1,5 +1,5 @@
 //! Complete authored mission entries, admitted before any mission patches.
-//! Production authoring belongs here only after a mission packet seals its XML.
+//! Production entries are added here only once a content packet seals their XML.
 
 /// One complete authored category-3 entry, validated before batch application.
 #[derive(Debug)]
@@ -10,8 +10,14 @@ pub struct MissionAddition {
     pub xml: &'static str,
 }
 
-/// Production authored entries; empty until a mission packet seals its XML.
-pub const MISSION_ADDITIONS: &[MissionAddition] = &[];
+/// Production authored entries. Each XML lives in its zone's own file.
+pub const MISSION_ADDITIONS: &[MissionAddition] = &[
+    // Dakara_E1 rebuild, D-DK1 F (DK-10fs).
+    MissionAddition {
+        mission_id: 63100,
+        xml: crate::base::mission_additions_dakara::DAKARA_HOME_XML,
+    },
+];
 
 /// Cooked-sync supports at most 256 fragments of 1390 bytes per entry.
 /// Base-session tests cross-check this boundary against its transport constant.

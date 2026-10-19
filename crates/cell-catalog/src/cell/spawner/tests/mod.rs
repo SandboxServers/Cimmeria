@@ -16,6 +16,7 @@
 //!   themselves — column renames, type drift, JOIN breakage.
 //! - [`live_db_content_loaders`]: the same, for the mission / objective /
 //!   dialog-set / monologue loaders.
+//! - [`live_db_dakara_bridge_mission`]: the Dakara bridge mission 63100's seed rows load into the accept and advance caches (DK-10fs).
 //! - [`live_db_castle_seed`]: live-DB guards for Castle (World 8) *seed content*
 //!   that loads fine and is nonetheless wrong — actors outside the box that is
 //!   meant to contain them, missing display names, missing respawn timers.
@@ -109,6 +110,7 @@ mod live_db_castle_seed;
 mod live_db_castle_standoff;
 mod live_db_content_loaders;
 mod live_db_crafting_hub;
+mod live_db_dakara_bridge_mission;
 mod live_db_debug_area_lineup;
 mod live_db_debug_area_lineup_tint;
 mod live_db_debug_area_npcs;

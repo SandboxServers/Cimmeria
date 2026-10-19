@@ -15,8 +15,10 @@ Items (category 4) also have two kinds. The Slappack `ItemOverride` rows patch a
 
 `MissionAddition { mission_id, xml }` in
 `crates/resources/src/base/mission_additions.rs` extends this path to wholly new
-mission IDs. `MISSION_ADDITIONS` stays empty until an authored content packet
-seals production XML. The [CB-N05a seal](../analysis/four-zone-planning/cb-n05a-seal.md)
+mission IDs. `MISSION_ADDITIONS` holds sealed production XML only: the first
+entry is Dakara_E1's mission 63100 (DK-10fs, docs/analysis/dakara-e1-rebuild/),
+whose XML lives in `mission_additions_dakara.rs`. The
+[CB-N05a seal](../analysis/four-zone-planning/cb-n05a-seal.md)
 freezes the supported stock `_1624` schema and exact test-only 61000 fixture.
 The fixture is never seeded, offered or persisted.
 
@@ -53,7 +55,8 @@ use a valid first entry and invalid second entry, pin WARN context, and include
 missing final children and an exactly 355841-byte oversize entry.
 
 Client gSOAP parsing, journal/dialog presentation, progression and relog remain
-**UATPending** until the first real authored quest supplies live evidence.
+**UATPending** until the owner's Dakara_E1 M2 run (DK-U11 to DK-U16 in the campaign
+ledger) supplies live evidence for mission 63100.
 
 ## The problem
 
