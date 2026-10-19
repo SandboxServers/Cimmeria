@@ -121,6 +121,31 @@ async fn receiver_ignores_other_races_and_states() {
     }
 }
 
+/// Revert: drop the world filter on the `player_loaded` trigger of 23020 or
+/// 23021. A Human with S4223 or S4224 active who logs into any other world must
+/// match none of the 1423 chains, while the same states on Beta do match.
+#[tokio::test]
+async fn logins_in_another_world_match_no_1423_chain() {
+    let pool = require_db_or_skip!();
+    let whole = whole_seed(&pool).await;
+    for (step, chain) in [(ARRIVAL_STEP, RECEIVER_CHAIN), (TALK_STEP, RESTORE_CHAIN)] {
+        let mut elsewhere = login_ctx("Some_Other_World", Some(1));
+        with_mission(&mut elsewhere, MISSION, "active");
+        with_step(&mut elsewhere, MISSION, step, "active");
+        let resolved = fire(&whole, TriggerType::PlayerLoaded, &elsewhere);
+        assert!(
+            m1423_matched(&resolved).is_empty(),
+            "step {step} in another world must match no 1423 chain",
+        );
+        let resolved = fire(
+            &whole,
+            TriggerType::PlayerLoaded,
+            &login_state(Some(1), step, "active"),
+        );
+        assert_eq!(m1423_matched(&resolved), BTreeSet::from([chain]));
+    }
+}
+
 /// Revert: change 23021's step gate to S4223, drop its archetype gate, or
 /// delete its rows. A Human relogging on S4224 must re-bind Carter, and only
 /// that; on S4223 the receiver owns the login, so the restore must not fire.
