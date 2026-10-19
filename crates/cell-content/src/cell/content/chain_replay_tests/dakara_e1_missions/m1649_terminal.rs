@@ -89,22 +89,76 @@ async fn live_db_radio_step_load_binds_all_six_and_skips_4922_entry() {
 async fn live_db_terminal_states_are_exclusive() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
-    let cases: [(&[i32], &str); 4] = [
-        (&[], "8223"),
-        (&[OBJ_FIND], "8223"),
-        (&[OBJ_HACK], "8225"),
-        (&[OBJ_HACK, OBJ_FIND], "8224"),
+    let hack = [
+        "8223:display_dialog(5834)",
+        "8223:add_item(6782x1)",
+        "8223:complete_objective(1649/5638)",
     ];
-    for (done, chain) in cases {
+    let decode = [
+        "8224:display_dialog(5837)",
+        "8224:remove_item(6780x1)",
+        "8224:add_item(6783x1)",
+        "8224:advance_step(1649->4920)",
+        "8224:remove_dialog_set(6760@453)",
+    ];
+    // The whole label list per state: the union over 8220-8249 is exact, so
+    // an extra or missing verb on the winning chain, or a second chain, fails.
+    let cases: [(&[i32], &[&str]); 4] = [
+        (&[], &hack),
+        (&[OBJ_FIND], &hack),
+        (&[OBJ_HACK], &["8225:display_dialog(5834)"]),
+        (&[OBJ_HACK, OBJ_FIND], &decode),
+    ];
+    for (done, expected) in cases {
         let r = fire_interact_tag(&engine, &terminal_ctx(done), TERMINAL);
-        let got = terminal_labels(&r);
-        assert!(
-            got.iter().all(|l| l.starts_with(chain)),
-            "done {done:?}: {got:?}"
-        );
-        assert!(!got.is_empty(), "done {done:?}: no terminal chain");
+        assert_eq!(terminal_labels(&r), expected, "done {done:?}");
         assert_eq!(display_dialog_count(&r), 1, "done {done:?}");
     }
+}
+
+#[tokio::test]
+async fn live_db_terminal_chains_need_dakara_and_step_4922() {
+    let pool = require_db_or_skip!();
+    let engine = build_engine(Some(&pool)).await;
+    let tags: Vec<&str> = std::iter::once(TERMINAL)
+        .chain(DROPS.iter().map(|(tag, _)| *tag))
+        .collect();
+    // Load: no chain of this packet may fire (`no_load`). Tags: no chain of
+    // this packet may fire on the terminal or any drop (`no_tag`).
+    let no_load = |ctx: &ExecutionContext, why: &str| {
+        let r = fire_player_loaded(&engine, ctx, DAKARA_NAME);
+        assert!(
+            terminal_labels(&r).is_empty(),
+            "load, {why}: {:?}",
+            terminal_labels(&r)
+        );
+    };
+    let no_tag = |ctx: &ExecutionContext, why: &str| {
+        for &tag in &tags {
+            let r = fire_interact_tag(&engine, ctx, tag);
+            assert!(
+                terminal_labels(&r).is_empty(),
+                "{tag}, {why}: {:?}",
+                terminal_labels(&r)
+            );
+        }
+    };
+    // Wrong world, or no world: Condition::World fails closed.
+    for world in [Some(STORY_RM), None] {
+        let ctx = at(world, STEP_TERMINAL);
+        no_load(&ctx, &format!("world {world:?}"));
+        no_tag(&ctx, &format!("world {world:?}"));
+    }
+    // Wrong step: 4920 is before the step, and 4921 loads only 8222 (see
+    // live_db_radio_step_load_binds_all_six_and_skips_4922_entry).
+    let before = at(Some(DAKARA), 4920);
+    no_load(&before, "step 4920");
+    no_tag(&before, "step 4920");
+    no_tag(&at(Some(DAKARA), STEP_RADIO), "step 4921");
+    // Step 4922 already completed: the chains read the step's status.
+    let left = with_step(terminal_ctx(&[]), MISSION, STEP_TERMINAL, "completed");
+    no_load(&left, "4922 completed");
+    no_tag(&left, "4922 completed");
 }
 
 #[tokio::test]
@@ -180,6 +234,7 @@ async fn live_db_drops_one_to_four_say_taken_and_drops_close_once_found() {
         let r = fire_interact_tag(&engine, &found, tag);
         assert!(terminal_labels(&r).is_empty(), "{tag} after 5639");
     }
+    // Positive on the same context: only the entry bind 8220 is left.
     let r = fire_player_loaded(&engine, &found, DAKARA_NAME);
-    assert!(!terminal_labels(&r).iter().any(|l| l.starts_with("8221")));
+    assert_eq!(terminal_labels(&r), vec!["8220:add_dialog_set(6760@453)"]);
 }
