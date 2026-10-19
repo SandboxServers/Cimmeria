@@ -5,10 +5,10 @@
 # The P10a-f crate centres (y -10.85, XZ in placement.md) are not probed: they sit at the floor edge and
 # nav_inspect picks the poly overhead (comp 45, y -3.75) instead; the _stand points carry the check.
 # Run: pwsh tools/build-lane/lane.ps1 cargo run -p cimmeria-navmesh-extractor --bin nav_inspect -- data/spaces/sgc_w1.nav --probes <group file> --h-tol 1.0 --v-tol 1.0 --gaps
-P01 172.08 -6.40 47.30
-P08 170.50 -10.90 12.50
+P01 172.08 -6.40 46.70
+P08 164.50 -10.80 18.00
 P09 173.00 -6.40 55.00
-P13 170.79 -10.90 11.00
+P13 167.00 -10.80 18.00
 P10a_stand 257.157 -10.85 40.00
 P10b_stand 259.131 -10.85 40.00
 P10c_stand 260.237 -10.85 40.00
