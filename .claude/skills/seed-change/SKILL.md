@@ -6,8 +6,8 @@ description: Change game data (abilities, items, NPC spawns, content chains, dia
 # Seed change
 
 The seed under `db/resources/` is the source of truth. Every database
-(per-worktree test DBs, CI, and the colo, which reloads from the seed on
-every deploy) is built from it via `db/database.sql`.
+(per-worktree test DBs, CI, and the colo, whose resources are reseeded from
+it on every deploy) is built from it via `db/database.sql`.
 
 ## Rules
 

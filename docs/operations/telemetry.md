@@ -280,8 +280,9 @@ No line, or a line with nothing after the `=`, is the switch off: compose
 then hands the server an empty value, and only `1` turns it on.
 
 **Recreating the container is not free.** It restarts the game server, so
-connected players are dropped, and this container reseeds its database on
-every start ([container.md → Volume / persistence](container.md#volume--persistence)).
+connected players are dropped. The container keeps accounts and characters
+across the restart; the resources tables reseed only if the image changed
+([container.md → Volume / persistence](container.md#volume--persistence)).
 A running container's environment cannot be changed, so there is no
 compose form that avoids it. This compose form is written from
 `docker/compose.yml` and has not been run on the colo.
@@ -364,8 +365,8 @@ sed -i '/^CIMMERIA_TELEMETRY_SUMMARY_QUOTA_PER_IP=/d' .env
 docker compose -f compose.yml up -d cimmeria
 ```
 
-Recreating the container restarts the game server and reseeds its
-database, as under [Kill switch](#kill-switch), and this compose form has
+Recreating the container restarts the game server and keeps accounts and
+characters (resources reseed only on a new image), as under [Kill switch](#kill-switch), and this compose form has
 not been run on the colo either.
 
 `docker/compose.yml` passes six telemetry variables to the server:

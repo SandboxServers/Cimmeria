@@ -525,9 +525,10 @@ persist is the most important thing to understand before you use them.
 > **within the current deploy**, and sends them to SigNoz for a developer to
 > merge. `.seedcancel` throws the queue away and nothing is written.
 >
-> **The next deploy rebuilds the database from the seed files in
+> **The next deploy reseeds the `resources` tables from the seed files in
 > `db/resources/` and erases anything that isn't committed there.** A live DB
-> write that you never commit to a seed file **is lost on the next deploy.**
+> write to those tables that you never commit to a seed file **is lost on the
+> next deploy.** Player tables persist.
 >
 > To preserve authored content deploy-over-deploy you **must** copy the
 > generated seed SQL into the right `db/resources/…` file and commit it to git
@@ -586,7 +587,8 @@ restart, never written to the DB):**
 4. **A developer merges the batch (required to survive a deploy).** Hand the
    batch id to a developer. [Placing NPCs and objects](guides/placing-npcs-and-objects.md#for-developers-merging-a-batch)
    says how to turn it into a seed commit. **Until that commit lands, the
-   change lives only in the running DB and the next deploy will wipe it.**
+   change lives only in the running DB and the next resources reseed (the
+   next deploy) will wipe it.**
 
 A new NPC (one you `.spawn`ed) has no spawn id until the server restarts, so
 once its row is confirmed, `.savespawn` on it again is refused rather than
