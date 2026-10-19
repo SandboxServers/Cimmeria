@@ -1,5 +1,6 @@
 //! DK-41 production seed guards: the story props of missions 1649-1653
-//! (spawns 8016-8021) and the clones 462 (Ring Control) and 463 (Power Supply).
+//! (spawns 8016-8021) and the clones 462 (Ring Control) and 463 (Power Supply),
+//! and DK-32c's Vocuum (spawn 8098).
 
 use super::*;
 
@@ -70,6 +71,10 @@ const STORY_PROPS: [(i32, i32, i32, &str, [f32; 3], f32, bool); 6] = [
 /// `(source template, clone template)`: each clone must wear its source's look.
 const CLONES: [(i32, i32); 2] = [(455, 462), (456, 463)];
 
+/// DK-32c (D-DK45): the Vocuum, 1653's optional objective 5643, at PL-DK-A-14.
+const VOCUUM: (i32, i32, i32, &str, [f32; 3]) =
+    (8098, 61, 457, "Dakara_E1_Vocuum", [129.4, -21.53, -66.5]);
+
 #[tokio::test]
 async fn live_db_dakara_story_props_match_the_placement_ledger() {
     let pool = require_db_or_skip!();
@@ -106,6 +111,43 @@ async fn live_db_dakara_story_props_match_the_placement_ledger() {
             travel::standable_and_connected(&exterior, actual, PLAZA, tag);
         }
     }
+}
+
+#[tokio::test]
+async fn live_db_dakara_vocuum_spawn_matches_the_placement_ledger() {
+    let pool = require_db_or_skip!();
+    let exterior = travel::mesh("dakara_e1.nav");
+    let (spawn_id, world, template_id, tag, expected) = VOCUUM;
+
+    let row: (i32, i32, String, bool, Option<i32>, f32, f32, f32) = sqlx::query_as(
+        "SELECT world_id, template_id, tag::text, is_stationary, respawn_secs, x, y, z \
+         FROM resources.spawnlist WHERE spawn_id = $1",
+    )
+    .bind(spawn_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap_or_else(|e| panic!("DK-32c spawn {spawn_id}: {e}"));
+    assert_eq!(
+        (row.0, row.1, row.2.as_str(), row.3, row.4),
+        (world, template_id, tag, true, Some(30))
+    );
+    let actual = [row.5, row.6, row.7];
+    assert_eq!(
+        actual, expected,
+        "spawn {spawn_id} moved: update the ledger"
+    );
+    travel::standable_and_connected(&exterior, actual, PLAZA, tag);
+
+    let spawns: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM resources.spawnlist WHERE template_id = $1")
+            .bind(template_id)
+            .fetch_one(&pool)
+            .await
+            .expect("DK-32c template spawn count");
+    assert_eq!(
+        spawns, 1,
+        "template {template_id} binds per player, so it is the template of one spawn only"
+    );
 }
 
 #[tokio::test]

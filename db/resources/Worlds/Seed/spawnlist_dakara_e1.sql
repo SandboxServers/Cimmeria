@@ -53,3 +53,11 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (8019, 358.03, -16.02, 102.07, 0.0000, 61, 462, 'Dakara_E1_RingControl_XPlus', NULL, true, 30);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (8020, 56.50, -12.36, -73.70, 1.4724, 61, 456, 'Dakara_E1_PowerSupply1', NULL, true, 30);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (8021, 202.20, -12.36, -59.40, 4.6152, 61, 463, 'Dakara_E1_PowerSupply2', NULL, true, 30);
+
+-- DK-32c PROJECT_FINAL_RECONSTRUCTION (D-DK45, owner-delegated 2026-10-19).
+-- The Vocuum, mission 1653's optional objective 5643, at PL-DK-A-14: the
+-- courtyard centre, on the bridge span between the two ion cannons (navmesh
+-- component 279, plaza-connected). The place is LOW-MEDIUM; the owner's UAT
+-- (DK-U34) corrects it. No bind is applied here: its interaction bit is a
+-- per-player bind from chains 8351 and 8364 (D-DK31).
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (8098, 129.40, -21.53, -66.50, 0.0000, 61, 457, 'Dakara_E1_Vocuum', NULL, true, 30);
