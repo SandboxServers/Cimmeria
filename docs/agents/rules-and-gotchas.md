@@ -99,7 +99,7 @@ Files should "do what it says on the tin": a reader, human or LLM, should predic
 
 What AI-assisted work costs here is measured by the token profiler ([how-to](../guides/token-profiling.md), [ledger](../analysis/token-usage/README.md)). The rules it produced are in [development-workflow.md](development-workflow.md#worker-lifetime-and-notifications); the ones contributors miss most:
 
-- **Agents use PowerShell, the validated path.** An agent on a host without `pwsh` returns `blocked` and says why. Humans may use the `.sh` twins; agents don't.
+- **Agents use PowerShell, the validated path; `ops` alone also has a bash path.** On a Linux or WSL host, `ops` runs the `.sh` twins, which CI tests on Linux. Every other agent on a host without `pwsh` returns `blocked` and says why. Humans may use the `.sh` twins too.
 - **Model roles have reasons.** Haiku implements prescriptive packets, Sonnet reviews and fixes, Opus designs and rules but writes no code. Per 1,000 changed lines this cut cost 2.5x ($7.44 to $3.03), and Opus oversteps (coding, implementing a Haiku packet, or researching in the main session) cost $107.43 ([campaign-metrics](../analysis/campaign-metrics/findings.md)).
 - **Run agents as defined.** No model override on a dispatch; the agent file's `model` is the decision. Lab driving through `lab-driver` is the one documented exception.
 - **A packet is about 40k working tokens, and a coder gets at most 3 sessions.** About 35-40k of a Haiku session is fixed overhead, and 9 of 34 sessions hit the 90k cap before packets were re-sliced (0 of 36 after). The ladder: [campaign-packet skill](../../.claude/skills/campaign-packet/SKILL.md#sessions-passes-and-escalation).
