@@ -301,6 +301,7 @@
 \ir resources/Dialogs/Seed/dialog_screens.sql
 \ir resources/Dialogs/Seed/dialog_set_maps.sql
 \ir resources/Dialogs/Seed/dialog_sets.sql
+\ir resources/Dialogs/Seed/dialog_sets_union_omega.sql
 \ir resources/Dialogs/Seed/dialogs.sql
 \ir resources/Dialogs/Seed/speakers.sql
 \ir resources/Dialogs/Seed/special_words.sql
@@ -323,6 +324,7 @@
 \ir resources/Entities/Seed/entity_templates_debug_area_lords.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_npcs.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_plaza.sql
+\ir resources/Entities/Seed/entity_templates_union_omega.sql
 \ir resources/Entities/Seed/monikers.sql
 \ir resources/Entities/Seed/pet_summons.sql
 \ir resources/Entities/Seed/resource_types.sql
@@ -345,6 +347,7 @@
 \ir resources/Items/Seed/item_list_prices.sql
 \ir resources/Items/Seed/item_lists.sql
 \ir resources/Items/Seed/item_lists_debug_area_plaza.sql
+\ir resources/Items/Seed/item_lists_union_omega.sql
 \ir resources/Items/Seed/items.sql
 \ir resources/Items/Seed/items_event_sets.sql
 -- Ammo campaign (AM-F): the reserve items, then their mapping table
@@ -377,6 +380,7 @@
 \ir resources/Worlds/Seed/generic_regions.sql
 \ir resources/Worlds/Seed/interactions.sql
 \ir resources/Worlds/Seed/respawners.sql
+\ir resources/Worlds/Seed/respawners_union_omega.sql
 \ir resources/Worlds/Seed/ring_transport_regions.sql
 \ir resources/Worlds/Seed/spawn_points.sql
 \ir resources/Worlds/Seed/spawn_sets.sql
@@ -388,6 +392,7 @@
 \ir resources/Worlds/Seed/spawnlist_debug_area_lords.sql
 \ir resources/Worlds/Seed/spawnlist_debug_area_npcs.sql
 \ir resources/Worlds/Seed/spawnlist_debug_area_plaza.sql
+\ir resources/Worlds/Seed/spawnlist_union_omega.sql
 \ir resources/Worlds/Seed/stargates.sql
 \ir resources/Worlds/Seed/worlds.sql
 \ir resources/Worlds/Seed/debug_area_rings.sql
@@ -415,6 +420,10 @@
 \ir resources/Content/Seed/dakara_e1_m1646_offer_chains.sql
 \ir resources/Content/Seed/dakara_e1_m1646_drop_chains.sql
 \ir resources/Content/Seed/tutorial_chains.sql
+\ir resources/Content/Seed/union_omega_arrival_chains.sql
+\ir resources/Content/Seed/union_omega_human_chains.sql
+\ir resources/Content/Seed/union_omega_jaffa_chains.sql
+\ir resources/Content/Seed/union_omega_reoffer_chains.sql
 
 \ir resources/_foreign_keys.sql
 
