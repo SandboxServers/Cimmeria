@@ -426,6 +426,7 @@
 \ir resources/Content/Seed/beta_e1_m1425_chains.sql
 \ir resources/Content/Seed/beta_e1_m1426_chains.sql
 \ir resources/Content/Seed/beta_e1_m1427_chains.sql
+\ir resources/Content/Seed/beta_e1_m1500_chains.sql
 \ir resources/Content/Seed/dakara_e1_bridge_chains.sql
 \ir resources/Content/Seed/dakara_e1_m1570_entry_chains.sql
 \ir resources/Content/Seed/dakara_e1_m1570_tent_chains.sql
