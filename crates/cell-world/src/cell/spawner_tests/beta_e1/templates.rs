@@ -362,3 +362,31 @@ async fn live_db_beta_e1_reserved_ids_are_absent() {
     .expect("reserved-id query must succeed");
     assert_eq!(present, 0, "reserved ids {RESERVED:?} must have no row");
 }
+
+/// The `entity_templates` id sequence hands out ids past the whole Beta block
+/// (2349), not just past the last row (2335), so a default-id insert or GM
+/// `.spawn`-created template cannot land in the reserved 2336-2349 tail.
+/// `seeded_sequences_allocate_past_every_seeded_row` cannot see this: the
+/// Debug Area footers loaded after Beta's lift the sequence to the table's
+/// MAX, which hides a missing Beta footer.
+///
+/// Revert proof: delete the footer line of `entity_templates_beta_e1.sql`, and
+/// the next id is 2336 and this fails.
+#[tokio::test]
+async fn live_db_beta_e1_template_sequence_clears_the_whole_block() {
+    let pool = require_db_or_skip!();
+    let (next,): (i64,) = sqlx::query_as(
+        "SELECT CASE WHEN is_called THEN last_value + 1 ELSE last_value END \
+         FROM resources.entity_templates_template_id_seq",
+    )
+    .fetch_one(&pool)
+    .await
+    .expect("sequence query must succeed");
+    assert!(
+        next > i64::from(BLOCK.1),
+        "entity_templates_template_id_seq would hand out {next}, inside the Beta block \
+         {}-{}",
+        BLOCK.0,
+        BLOCK.1
+    );
+}
