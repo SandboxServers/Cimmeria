@@ -226,3 +226,59 @@ component 890 (2623 m^2, 12 polys) <-> 251 (612686 m^2, 15124 polys)
       h= 0.90 m  dy= +0.00 m   (650.8, 19.8, 814.1) -> (651.7, 19.8, 814.1)
     chain: 1 hop(s), widest 0.90 m, total 0.90 m
 ```
+
+## Addendum UB-00b-2 (2026-10-19): ring 148 and SW_RING walk reachability, re-probe for UB-02d
+
+Status: read-only nav probes by movement-teleport-advisor; no seed or code edits, no lab. Evidence classes: RESTORED_SOURCE (the shipped `data/spaces/beta_site_evo_1.nav` and the prefab origin of ring 148), CIMMERIA_RECONSTRUCTION (the server's `NavMesh::find_path` and the 6-of-8 stand method, run through a throwaway example that was deleted afterwards; nothing of it is committed).
+
+### Verdict
+
+Ring 148 is NOT on an island. The seal's ring point is walk-reachable from ARRIVAL, and so is SW_RING from the Nine Peaks camp. UB-02d's failing assertion is a test-helper artefact, not a placement fault. The seed values the coder used are correct.
+
+### Why the test failed (CIMMERIA_RECONSTRUCTION)
+
+`NavMesh::find_path` (`crates/entity/src/navigation/mod.rs:62`, `MAX_POLY_PATH = 256`) truncates the corridor at 256 polygons. The tiled mesh has small polygons, so a route of about 500 m ends early and the status is `Partial` with the last waypoint short of the goal. The `reaches` helper in `crates/cell-world/src/cell/spawner_tests/beta_e1/nav.rs` requires `PathStatus::Ok` and a last waypoint within 2 m, so every long route reads "different component".
+
+Direct `find_path`, ring (146.716, 8.77, 403.273):
+
+| route | status | last waypoint to goal |
+|---|---|---|
+| ARRIVAL -> ring | Partial | 220.07 m short, last (355.0, -62.0, 409.1) |
+| ring -> ARRIVAL | Partial | 172.76 m short |
+| CARTER -> ring | Partial | 435.27 m short |
+| ARRIVAL -> CARTER (about 400 m, fewer polys) | Ok | 0.09 m |
+
+Chaining legs (restart `find_path` from the previous leg's last waypoint) reaches the goal:
+
+- ARRIVAL -> ring: 3 legs, final distance 0.00 m. Hops: ARRIVAL -> W1 (355.00, -62.03, 409.10) Ok; W1 -> W2 (169.60, 7.57, 386.00) Ok; W2 -> ring Ok (6 waypoints).
+- ring -> ARRIVAL: 2 legs, final distance 0.70 m (ARRIVAL's own y is 0.70 above its snapped surface -60.83).
+- Reverse hops are not all symmetric: W2 -> W1 and W1 -> ARRIVAL come back Partial (41 m and 71 m short) because the corridor cap bites again. A test must chain, or use hops, in the direction it needs, and should not assume symmetry.
+
+### Ring 148 stand point (CIMMERIA_RECONSTRUCTION, 6-of-8 method)
+
+- The prefab origin itself is a good stand point: (146.716, 8.770, 403.273), 6-of-8 neighbours at 0.6 m on the same surface with |dy| < 0.4, `is_point_valid` true. Snapped surface y is 8.770 (the coder's 8.77 is right; the seal's raw 8.591 was 0.18 m under the surface).
+- Scan of +-18 m around it at 0.6 m steps: 1047 standable points, 889 walk-reachable from the ring (chain end), 158 not. The nearest unreachable standable point is 12.73 m from the ring, at (144.916, 7.811, 415.873), a separate pocket to the south. Every standable point within 12.7 m of the ring is reachable, which covers a region of r 2.53 + 1.5 check threshold = 4.03 m with a wide margin.
+- Row to use: ring 2300 position (146.716, 8.770, 403.273), nav 251; point 23260 the same; travel set 23080 centre y 8.770, r 2.53, h 1.77 (unchanged from the coder's work).
+
+### SW_RING stand point (CIMMERIA_RECONSTRUCTION)
+
+- (-791.600, -51.430, -92.600): the seal probe reported dy -0.37 at y -51.80, so the snapped surface is -51.43 (seal-table "snapped y"); the coder's -51.43 is right. Use -51.430.
+- camp (Ras'nor, -545.1, 6.77, 141.5) -> SW_RING: Ok, 24 waypoints, 0.00 m short, single leg. SW_RING -> camp: Ok, 20 waypoints. Both directions pass a plain `find_path` with no chaining.
+- Scan of +-18 m: 2965 standable points, all 2965 reachable. No island risk on the SW side.
+
+### What UB-02d should do (test and seeds)
+
+1. Seeds: keep the coder's values (ring 2300 at 146.716, 8.770, 403.273; ring 2301 at -791.600, -51.430, -92.600; point sets and radii as written). No seed change is needed.
+2. Test: replace the single-shot `reaches` for long routes. Two accepted options:
+   - Hop test (preferred, deterministic): assert Ok and end within 2 m for ARRIVAL -> W1, W1 -> W2 and W2 -> ring with W1 (355.00, -62.03, 409.10) and W2 (169.60, 7.57, 386.00), and ring -> ARRIVAL via the ring -> (485.50, -97.23, 465.20) -> ARRIVAL chain. Name the waypoints as authored constants with a comment that `MAX_POLY_PATH` truncates a single query.
+   - Chain helper: restart `find_path` from the last waypoint while the status is Partial and progress is above 0.5 m, cap at 8 legs, require a final Ok within 2 m. The helper must live in the test (nav.rs belongs to UB-02b), and a revert guard must show it fails for a point on an island (use the 12.73 m pocket (144.916, 7.811, 415.873) as the negative control: it must NOT chain to the ring).
+3. The camp -> SW_RING direction needs no chaining; the existing `reaches` is enough.
+4. Do not widen the 2.0 m tolerance and do not drop to a same-component proxy; the point of the test is a real walk.
+
+### Side finding (not part of the ring decision)
+
+RUIN_NOTE (122.2, 27.17, 356.8) is sealed as "yes (same component as ARRIVAL)", but chained `find_path` from ARRIVAL and from ring 148 both stall at (137.61, 7.77, 370.28), 28.2 m from it and about 19 m below it. The seal's proxy (same component, h within 0.3) holds; a real walk does not. It looks like an upper ruin level on component 251 that the corridor search cannot enter from the valley floor (or a gap larger than the agent climb). Whoever places the ruin note must re-probe with chained `find_path` before relying on a walk; this addendum does not decide it. The same chained check has not been run for the other 251 anchors in the seal table; ARRIVAL -> CARTER is confirmed Ok.
+
+### Not decided here
+
+D-UB4 stays ruled A (hub ring 148 <-> SW_RING). Cell ownership and AoI fan-out for ring arrivals: bigworld-engine-advisor and aoi-witness-advisor. The ring FSM timeout path is a separate UB-02d obligation (ring-transport state machine, owned in the ring seed/handler, not this probe).
