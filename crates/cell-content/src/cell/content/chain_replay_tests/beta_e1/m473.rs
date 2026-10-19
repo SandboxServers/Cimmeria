@@ -54,6 +54,19 @@ fn m473_matched(resolved: &ResolvedActions) -> BTreeSet<i64> {
         .collect()
 }
 
+/// Every chain in the seed (not only 473's) that `resolved` matched and that
+/// displays a dialog, so a clash with a UB-11 or other sibling shows up.
+fn dialog_chains(resolved: &ResolvedActions) -> BTreeSet<i64> {
+    chains_matched(resolved)
+        .into_iter()
+        .filter(|&id| {
+            summarized(resolved, id)
+                .iter()
+                .any(|s| s.starts_with("display_dialog("))
+        })
+        .collect()
+}
+
 /// The expected rendered list, from string literals.
 fn expect(list: &[&str]) -> Vec<String> {
     list.iter().map(|s| s.to_string()).collect()
@@ -348,7 +361,9 @@ async fn crate_partition_is_disjoint_and_never_completes_the_last_objective() {
 }
 
 /// Revert: drop the step gate on 23081 or 23083 (a Felger or Carter click then
-/// matches two chains at one step).
+/// matches two chains at one step). The count is over every dialog-displaying
+/// chain in the seed, so a UB-11 or other sibling that also shows on Felger or
+/// Carter in these states fails too.
 #[tokio::test]
 async fn felger_and_carter_one_dialog_chain_per_state() {
     let pool = require_db_or_skip!();
@@ -377,6 +392,53 @@ async fn felger_and_carter_one_dialog_chain_per_state() {
             expected,
             "{tag} at {status} {step:?}"
         );
+        assert_eq!(
+            dialog_chains(&resolved),
+            expected,
+            "whole-seed dialog chains for {tag} at {status} {step:?}"
+        );
+    }
+}
+
+/// Revert: drop the world filter on the `player_loaded` trigger of 23070 or
+/// 23080 or 23082 (the binds then also fire on a login into another world). A
+/// login anywhere but Beta, in a state that would bind on Beta, matches no 473
+/// chain, even for a Human.
+#[tokio::test]
+async fn logins_in_another_world_match_no_473_chain() {
+    let pool = require_db_or_skip!();
+    let whole = whole_seed(&pool).await;
+    let states = [
+        offer_open(login_ctx("Some_Other_World", Some(HUMANS[0]))),
+        done_381(
+            login_ctx("Some_Other_World", Some(HUMANS[0])),
+            "active",
+            Some(MID_STEP),
+        ),
+        done_381(
+            login_ctx("Some_Other_World", Some(HUMANS[0])),
+            "active",
+            Some(DONE_STEP),
+        ),
+    ];
+    for ctx in &states {
+        let resolved = fire(&whole, TriggerType::PlayerLoaded, ctx);
+        assert!(m473_matched(&resolved).is_empty(), "another world");
+    }
+    // The same states on Beta do bind, so the negative above is not vacuous.
+    for (ctx, chain) in [
+        (offer_open(login_ctx(BETA, Some(HUMANS[0]))), OFFER_BIND),
+        (
+            done_381(login_ctx(BETA, Some(HUMANS[0])), "active", Some(MID_STEP)),
+            MID_RESTORE,
+        ),
+        (
+            done_381(login_ctx(BETA, Some(HUMANS[0])), "active", Some(DONE_STEP)),
+            DONE_RESTORE,
+        ),
+    ] {
+        let resolved = fire(&whole, TriggerType::PlayerLoaded, &ctx);
+        assert_eq!(m473_matched(&resolved), BTreeSet::from([chain]));
     }
 }
 
