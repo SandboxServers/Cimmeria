@@ -2,8 +2,8 @@
 
 > **Type:** How-to (dispatch contract)
 > **Audience:** Union Beta coordinator, Omega and SGC architects, packet workers and reviewers
-> **Last updated:** 2026-10-18 (architect pass against `origin/main` @ `d1bba0400`, an ancestor of current `main`; locate each anchor by its text, not its line number)
-> **Status:** Wave B0 integrated (UB-00a1 review pass 2 open). ARCH-B1 (2026-10-18) ruled D-UB4 to D-UB9 and folded the seal findings into the packets; wave B1a (UB-01a, UB-02a, UB-DP) is Ready. Live dispatch state: [continuation ledger](../union-beta-e1-continuation/README.md).
+> **Last updated:** 2026-10-19 (UB-99 close-out; planning text written 2026-10-18 against `origin/main` @ `d1bba0400`, an ancestor of current `main`; locate each anchor by its text, not its line number)
+> **Status:** Every dispatched code and test packet is merged into `uzp-e1` and reviewed (B0 to B5). The lab rows (UB-90) are UATPending and the close-out (UB-99) is done. Held: UB-22, UB-51 (D-UB5 A), UB-50 (owner). Closed: UB-52. Live state and findings: [continuation ledger](../union-beta-e1-continuation/README.md); [closing summary](#closing-summary).
 > **Companions:** [Beta E1 campaign](beta.md), [Union execution contract](execution-contract.md), [Omega packets](omega-work-packets.md), [route evidence](evidence.md), [Asgard route](asgard-route.md), [Free Jaffa route](free-jaffa-route.md), [packet folder](beta-packets/)
 
 ## Short answer
@@ -139,43 +139,44 @@ Template 2303 (Dr. Pierce, 7905) stays reserved and is never spawned: D-UB7 keep
 
 | Packet | Role | Size | Deliverable | Status | File |
 |---|---|---|---|---|---|
-| UB-00a1 | `mission-systems-advisor` | docs, ~30k | Mission seal part 1 (Q1-Q6): per-step matrix, dsm/button/linter table, en=false verdict, F19 trap, quotas, type-4 buttons; change rows C1-C6 | Review (pass 2: the R3 finding C6) | [UB-00](beta-packets/UB-00.md) |
-| UB-00a2 | `mission-systems-advisor` | docs, ~30k | Mission seal part 2 (Q7-Q14): HELD-B1/B1b/B5/B7/B9/B14/B15 verdicts, M2, object-mesh census, mission rows; a2 changes 1-6 | Integrated | [UB-00](beta-packets/UB-00.md) |
-| UB-00b | `movement-teleport-advisor` | docs + nav probes, ~35k | Placement seal: probed anchors, respawners, beam decks, west-valley verdict | Integrated | [UB-00](beta-packets/UB-00.md) |
-| UB-00c | `documentation-writer` | docs, ~25k | Continuation ledger, ID re-check, receiver contract, amendment request | Integrated | [UB-00](beta-packets/UB-00.md) |
-| UB-01a | `packet-coder` | ~40k | Pilot: gate 6 pin, respawners 6/7, exemption removed, gate guard tests | Ready (B1a) | [UB-01a](beta-packets/UB-01a.md) |
-| UB-02a | `packet-coder` | ~40k | Templates 2300-2335 (2303, 2327, 2336 reserved), with the Q10 mesh columns | Ready (B1a) | [UB-02a](beta-packets/UB-02a.md) |
-| UB-DP | `packet-coder` | ~38k | Beta dialog patches: Accept onto the final screen of 1997 and 3228 (C5), undrawable More Info stripped from 1916 and 3905 (C6) | Ready (B1a) | [UB-DP](beta-packets/UB-DP.md) |
-| UB-01b | `packet-coder` | ~38k | Way-back chains 23001-23003 (Omega address), shared Beta test helpers, linter split (F20) | BlockedDependency UB-01a (B1b) | [UB-01b](beta-packets/UB-01b.md) |
-| UB-02b | `packet-coder` | ~35k | Hub/command spawns and regions (Human cast and objects) | BlockedDependency UB-02a (B1b) | [UB-02bcd](beta-packets/UB-02bcd.md) |
-| UB-02c | `packet-coder` | ~35k | Asgard base, infirmary and fire-site spawns and regions | BlockedDependency UB-02b (stack, B1b) | [UB-02bcd](beta-packets/UB-02bcd.md) |
-| UB-02d | `packet-coder` | ~40k | Nine Peaks camp and the ring pair 2300/2301 (D-UB4 = A) | BlockedDependency UB-02b (stack, B1b) | [UB-02bcd](beta-packets/UB-02bcd.md) |
-| UB-10 | `packet-coder` | ~35k | 1423 receiver and Carter (Human fixture) | BlockedDependency B1b (UB-01b, UB-02b) | [UB-10-13](beta-packets/UB-10-13.md) |
-| UB-11 | `packet-coder` | ~40k | 381 Closing Shop | BlockedDependency UB-10 (stack) | [UB-10-13](beta-packets/UB-10-13.md) |
-| UB-12 | `packet-coder` | ~40k | 473 Inventory | BlockedDependency UB-11 (stack) | [UB-10-13](beta-packets/UB-10-13.md) |
-| UB-13 | `packet-coder` | ~35k | 478 Instant IT | BlockedDependency UB-12 (stack) | [UB-10-13](beta-packets/UB-10-13.md) |
-| UB-14 | `packet-coder` | ~35k | 1425 SGU Database, to S4244 | BlockedDependency UB-13 | [UB-14-16](beta-packets/UB-14-16.md) |
-| UB-15 | `packet-coder` | ~35k | 1426 Amateur Photography (camera item 4832) | BlockedDependency UB-14 (stack) | [UB-14-16](beta-packets/UB-14-16.md) |
-| UB-16 | `packet-coder` | ~30k | 1427 The Ruins, to S4250 | BlockedDependency UB-15 (stack) | [UB-14-16](beta-packets/UB-14-16.md) |
-| UB-20 | `packet-coder` | ~30k | 1500 receiver and Carter (Free Jaffa fixture) | BlockedDependency B1b (UB-01b, UB-02b) | [UB-20-22](beta-packets/UB-20-22.md) |
-| UB-21 | `packet-coder` | ~40k | 1502 The Nine Peaks Jaffa | BlockedDependency UB-20, UB-02d | [UB-20-22](beta-packets/UB-20-22.md) |
+| UB-00a1 | `mission-systems-advisor` | docs, ~30k | Mission seal part 1 (Q1-Q6): per-step matrix, dsm/button/linter table, en=false verdict, F19 trap, quotas, type-4 buttons; change rows C1-C6 | Done (integrated; UB-00a1 pass 2 landed in `54e76cbbd`) | [UB-00](beta-packets/UB-00.md) |
+| UB-00a2 | `mission-systems-advisor` | docs, ~30k | Mission seal part 2 (Q7-Q14): HELD-B1/B1b/B5/B7/B9/B14/B15 verdicts, M2, object-mesh census, mission rows; a2 changes 1-6 | Done (integrated) | [UB-00](beta-packets/UB-00.md) |
+| UB-00b | `movement-teleport-advisor` | docs + nav probes, ~35k | Placement seal: probed anchors, respawners, beam decks, west-valley verdict | Done (integrated) | [UB-00](beta-packets/UB-00.md) |
+| UB-00c | `documentation-writer` | docs, ~25k | Continuation ledger, ID re-check, receiver contract, amendment request | Done (integrated) | [UB-00](beta-packets/UB-00.md) |
+| UB-01a | `packet-coder` | ~40k | Pilot: gate 6 pin, respawners 6/7, exemption removed, gate guard tests | Done (merged into `uzp-e1`, reviewed) | [UB-01a](beta-packets/UB-01a.md) |
+| UB-02a | `packet-coder` | ~40k | Templates 2300-2335 (2303, 2327, 2336 reserved), with the Q10 mesh columns | Done (merged into `uzp-e1`, reviewed) | [UB-02a](beta-packets/UB-02a.md) |
+| UB-DP | `packet-coder` | ~38k | Beta dialog patches: Accept onto the final screen of 1997 and 3228 (C5), undrawable More Info stripped from 1916 and 3905 (C6) | Done (merged into `uzp-e1`, reviewed) | [UB-DP](beta-packets/UB-DP.md) |
+| UB-01b | `packet-coder` | ~38k | Way-back chains 23001-23003 (Omega address), shared Beta test helpers, linter split (F20) | Done (merged into `uzp-e1`, reviewed) | [UB-01b](beta-packets/UB-01b.md) |
+| UB-02b | `packet-coder` | ~35k | Hub/command spawns and regions (Human cast and objects) | Done (merged into `uzp-e1`, reviewed) | [UB-02bcd](beta-packets/UB-02bcd.md) |
+| UB-02c | `packet-coder` | ~35k | Asgard base, infirmary and fire-site spawns and regions | Done (merged into `uzp-e1`, reviewed) | [UB-02bcd](beta-packets/UB-02bcd.md) |
+| UB-02d | `packet-coder` | ~40k | Nine Peaks camp and the ring pair 2300/2301 (D-UB4 = A) | Done (merged into `uzp-e1`, reviewed) | [UB-02bcd](beta-packets/UB-02bcd.md) |
+| UB-10 | `packet-coder` | ~35k | 1423 receiver and Carter (Human fixture) | Done (merged into `uzp-e1`, reviewed) | [UB-10-13](beta-packets/UB-10-13.md) |
+| UB-11 | `packet-coder` | ~40k | 381 Closing Shop | Done (merged into `uzp-e1`, reviewed) | [UB-10-13](beta-packets/UB-10-13.md) |
+| UB-12 | `packet-coder` | ~40k | 473 Inventory | Done (merged into `uzp-e1`, reviewed) | [UB-10-13](beta-packets/UB-10-13.md) |
+| UB-13 | `packet-coder` | ~35k | 478 Instant IT | Done (merged into `uzp-e1`, reviewed) | [UB-10-13](beta-packets/UB-10-13.md) |
+| UB-14 | `packet-coder` | ~35k | 1425 SGU Database, to S4244 | Done (merged into `uzp-e1`, reviewed) | [UB-14-16](beta-packets/UB-14-16.md) |
+| UB-15 | `packet-coder` | ~35k | 1426 Amateur Photography (camera item 4832) | Done (merged into `uzp-e1`, reviewed) | [UB-14-16](beta-packets/UB-14-16.md) |
+| UB-16 | `packet-coder` | ~30k | 1427 The Ruins, to S4250 | Done (merged into `uzp-e1`, reviewed) | [UB-14-16](beta-packets/UB-14-16.md) |
+| UB-20 | `packet-coder` | ~30k | 1500 receiver and Carter (Free Jaffa fixture) | Done (merged into `uzp-e1`, reviewed) | [UB-20-22](beta-packets/UB-20-22.md) |
+| UB-21 | `packet-coder` | ~40k | 1502 The Nine Peaks Jaffa | Done (merged into `uzp-e1`, reviewed) | [UB-20-22](beta-packets/UB-20-22.md) |
 | UB-22 | `packet-coder` | ~30k | 1503 The Antidote, S4380 to S4381 | Hold: not dispatched (D-UB5 A) | [UB-20-22](beta-packets/UB-20-22.md) |
-| UB-30 | `packet-coder` | ~40k | 481 receiver, Carter, beam, Mimir (Asgard fixture) | BlockedDependency B1b (UB-01b, UB-02b, UB-02c). End-to-end reachability waits on HELD-B16 (owner); the packet does not | [UB-30-36](beta-packets/UB-30-36.md) |
-| UB-31 | `packet-coder` | ~35k | 420 Reclamation | BlockedDependency UB-30, UB-DP | [UB-30-36](beta-packets/UB-30-36.md) |
-| UB-32 | `packet-coder` | ~35k | 421 Mechanical Error | BlockedDependency UB-31 | [UB-30-36](beta-packets/UB-30-36.md) |
-| UB-33 | `packet-coder` | ~25k | 1147 Intriguing Data | BlockedDependency UB-32 (stack), UB-DP | [UB-30-36](beta-packets/UB-30-36.md) |
-| UB-34 | `packet-coder` | ~40k | 443 Incendiary | BlockedDependency UB-33 (stack) | [UB-30-36](beta-packets/UB-30-36.md) |
-| UB-35 | `packet-coder` | ~40k | 477 Covert Observations (four-subject partition) | BlockedDependency UB-34 (stack), UB-DP | [UB-30-36](beta-packets/UB-30-36.md) |
-| UB-36 | `packet-coder` | ~25k | 479 Process Support (Analytical Machine, Consciousness Simulator) | BlockedDependency UB-35 (stack), UB-DP | [UB-30-36](beta-packets/UB-30-36.md) |
-| UB-40 | `packet-coder` | ~30k | World life: SGC Personnel (7450) and Jaffa non-combatants (7409), templates 2308/2309, spawns 23160-23199, no dialog | BlockedDependency B1b (UB-02a to UB-02d) | [UB-40-52](beta-packets/UB-40-52.md) |
-| UB-45a | `packet-coder` | ~35k | Cross-race guard 1: seed-derived walk states, one dialog per click, race negatives | BlockedDependency UB-16, UB-21, UB-36, UB-40 | [UB-40-52](beta-packets/UB-40-52.md) |
-| UB-45b | `testing-validation-engineer` | ~40k | Cross-race guard 2: login binds equal in-session binds on every walk transition | BlockedDependency UB-45a (stack) | [UB-40-52](beta-packets/UB-40-52.md) |
+| UB-30 | `packet-coder` | ~40k | 481 receiver, Carter, beam, Mimir (Asgard fixture) | Done (merged into `uzp-e1`, reviewed) | [UB-30-36](beta-packets/UB-30-36.md) |
+| UB-31 | `packet-coder` | ~35k | 420 Reclamation | Done (merged into `uzp-e1`, reviewed) | [UB-30-36](beta-packets/UB-30-36.md) |
+| UB-32 | `packet-coder` | ~35k | 421 Mechanical Error | Done (merged into `uzp-e1`, reviewed) | [UB-30-36](beta-packets/UB-30-36.md) |
+| UB-33 | `packet-coder` | ~25k | 1147 Intriguing Data | Done (merged into `uzp-e1`, reviewed) | [UB-30-36](beta-packets/UB-30-36.md) |
+| UB-34 | `packet-coder` | ~40k | 443 Incendiary | Done (merged into `uzp-e1`, reviewed) | [UB-30-36](beta-packets/UB-30-36.md) |
+| UB-35 | `packet-coder` | ~40k | 477 Covert Observations (four-subject partition) | Done (merged into `uzp-e1`, reviewed) | [UB-30-36](beta-packets/UB-30-36.md) |
+| UB-36 | `packet-coder` | ~25k | 479 Process Support (Analytical Machine, Consciousness Simulator) | Done (merged into `uzp-e1`, reviewed) | [UB-30-36](beta-packets/UB-30-36.md) |
+| UB-40 | `packet-coder` | ~30k | World life: SGC Personnel (7450) and Jaffa non-combatants (7409), templates 2308/2309, spawns 23160-23199, no dialog | Done (merged into `uzp-e1`, reviewed) | [UB-40-52](beta-packets/UB-40-52.md) |
+| UB-45a | `packet-coder` | ~35k | Cross-race guard 1: seed-derived walk states, one dialog per click, race negatives | Done (merged into `uzp-e1`, reviewed) | [UB-40-52](beta-packets/UB-40-52.md) |
+| UB-45b | `testing-validation-engineer` | ~40k | Cross-race guard 2: login binds equal in-session binds on every walk transition | Done (merged into `uzp-e1`, reviewed) | [UB-40-52](beta-packets/UB-40-52.md) |
 | UB-50 | `packet-coder` | skeleton | Authored relays/rewards (droppable; not needed for the first ship) | BlockedDecision (owner: H-LBL, U-D07; CB-N05a) | [UB-40-52](beta-packets/UB-40-52.md) |
 | UB-51 | `mission-systems-advisor` | docs, ~20k | Offworld-tail handoff notes for Omega/SGC (D-UB5 B) | Hold (D-UB5 A) | [UB-40-52](beta-packets/UB-40-52.md) |
 | UB-52 | none | closed | FV twins 383/384/1146 | Closed (D-UB7: out) | [UB-40-52](beta-packets/UB-40-52.md) |
-| UB-90 | `lab-driver` steps, owner approval | lab UAT | Rows UB-U1 to UB-U10 | BlockedDependency B5 merged; owner approves lab use | [UB-90-99](beta-packets/UB-90-99.md) |
-| UB-99 | `documentation-writer` | docs, ~30k | Close-out: content docs, unified UAT, ledger, status docs | BlockedDependency all | [UB-90-99](beta-packets/UB-90-99.md) |
+| UB-90 | `lab-driver` steps, owner approval | lab UAT | Rows UB-U1 to UB-U10 | UATPending: the owner approves lab use; no row has run | [UB-90-99](beta-packets/UB-90-99.md) |
+| UB-99 | `documentation-writer` | docs, ~30k | Close-out: content docs, unified UAT, ledger, status docs | Done (this close-out) | [UB-90-99](beta-packets/UB-90-99.md) |
 | UB-L | none | hold | Visit 2 / E2 research note | Hold | [UB-90-99](beta-packets/UB-90-99.md) |
+
 Every chain packet also follows [chain-packet-common.md](beta-packets/chain-packet-common.md): its rules, test skeleton, lane commands and telemetry list.
 
 Spawn and region seeds are split per area (`spawnlist_beta_e1_{hub,asgard,ninepeaks,life}.sql` and matching point-set files), so the spawn packets never share a seed file. The FireSite region is point set 23031 (UB-02c), which UB-34 and UB-40 use. Resume card: [beta-packets/RESUME.md](beta-packets/RESUME.md).
@@ -185,7 +186,7 @@ Spawn and region seeds are split per area (`spawnlist_beta_e1_{hub,asgard,ninepe
 | Wave | Packets | Gate |
 |---|---|---|
 | B0 (pilot) | UB-00a1, UB-00a2, UB-00b, UB-00c | Integrated (UB-00a1 review pass 2 open; it blocks nothing below, because ARCH-B1 already folded C1-C6 into the packets) |
-| B1a | UB-01a, UB-02a, UB-DP | Ready. Three independent worktrees off `uzp-e1`, all in parallel; one review, then merge into `uzp-e1` |
+| B1a | UB-01a, UB-02a, UB-DP | Done. Three independent worktrees off `uzp-e1`, all in parallel; one review, then merge into `uzp-e1` |
 | B1b | UB-01b, UB-02b in parallel; then UB-02c and UB-02d stacked on `uzp-ub02b` | UB-01a and UB-02a merged (UB-DP may merge late, but before B3) |
 | B2 | UB-10 to UB-13 (one stack), UB-20, UB-30 | B1b merged. Three independent lanes (Human, Free Jaffa, Asgard) in parallel |
 | B3 | UB-14 to UB-16 (one stack), UB-21, UB-31, UB-40 | B2 merged and UB-DP merged. Four lanes in parallel |
@@ -221,6 +222,7 @@ Stacked packets inside a wave touch different seed files and test modules. They 
 | H-LBL | Which label does player-facing CIMMERIA_AUTHORING copy carry on Beta? | **Owner**. BlockedDecision | UB-50 |
 | H-RING | Ring routing (D-UB4) | **Ruled**: A, the ring pair (ARCH-B1) | none |
 | H-421 | The brief held 421 pending infirmary proof; F6 supplies it | **Closed**: D-UB6 confirmed | none |
+
 ## Rejected additions
 
 | Addition | Reason |
@@ -253,3 +255,12 @@ Stop the Beta work if:
 - a physical Council or Omega objective is credited on Beta;
 - E2 (world 60) or Visit 2 (1807-1826) state leaks into first-visit chains;
 - a packet needs to edit an Omega, SGC or Dakara file, or `id-allocation.md` (the D-UB9 row was applied once by ARCH-B1 for the coordinator).
+
+## Closing summary
+
+UB-99 close-out, 2026-10-19. All of waves B0 to B5 are merged into `uzp-e1` with review fixes. Reference page: [docs/content/beta-site-e1.md](../../content/beta-site-e1.md). Ledger with the findings and the tested versus untested split: [continuation ledger](../union-beta-e1-continuation/README.md#close-out-ub-99).
+
+- **Built:** gate 6 arrival pin and the way back, respawners 6 and 7, cast templates 2300-2309 with objects 2320-2335, hub, Asgard, Nine Peaks and life spawns, the ring pair 2300/2301, the Asgard beam, and 17 chain seed files (16 missions plus the way-back chains, ids 23001-23467) for the Human arc to 1427, the Free Jaffa arc to 1502 and the Asgard arc 481 to 479.
+- **Tested:** live-DB `beta_e1` tests, the interact-tag linter, the dialog-patch agreement test and the cross-race guard (UB-45a, UB-45b). **Never tested:** anything in the lab or the client. UB-U1 to UB-U10 stay UATPending in [unified-uat.md](../../guides/unified-uat.md#beta_site_evo_1).
+- **Stopped on purpose:** 1503 (UB-22) and the offworld tails (UB-51) under D-UB5 A, the FV twins (UB-52) under D-UB7, authored content (UB-50) on the owner.
+- **Owner BlockedDecisions:** H-LBL, U-D07 and HELD-B16 (the Asgard end-to-end route is unreachable until Omega's UO-16 delivers an Asgard player, D-UB13).

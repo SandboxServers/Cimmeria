@@ -2,12 +2,12 @@
 title: "Game Content Data Audit"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-10-19
 ---
 
 # Game Content Data Audit
 
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-10-19
 >
 > **Path note (2026-07-25).** Several documents in this directory were written
 > when the legacy Python server lived at the repo root and the content dump was a
@@ -54,7 +54,7 @@ Zone × Content-Type grid showing what exists in each zone.
 | Harset_CmdCenter | PARTIAL (transport) | 31 ln | — | 1 | — | — | — | teleport | — |
 | Agnos | SHELL | — | YES | — | — | — | YES | — | — |
 | Tollana | SHELL | — | — | 3 | — | — | YES | — | — |
-| Beta_Site_Evo_1 | SHELL | — | — | 5 | — | — | YES | — | — |
+| Beta_Site_Evo_1 | PARTIAL (Union first visit; code complete, lab pending) | 17 chain seed files | — | ~58 | 16 chained | YES | YES | ring pair and Asgard beam | — |
 | Dakara_E1 | PARTIAL (tent travel) | — | YES | 1 | — | — | YES | two tent flaps | — |
 | Ihpet_Crater_Dark | SHELL | — | — | 1 | — | — | YES | — | — |
 | Ihpet_Crater_Light | SHELL | — | — | 1 | — | — | YES | — | — |
@@ -69,6 +69,8 @@ Zone × Content-Type grid showing what exists in each zone.
 | SandBox | DATA-ONLY | 18 ln | — | 1 | — | — | — | — | — |
 
 Plus 67 DB-only worlds (not in spaces.xml) including 27 planned game zones, 25 MissionTest worlds, and various test maps.
+
+Beta_Site_Evo_1 has a cast, three race arcs, a ring pair and an Asgard beam, all untested in the client; see [beta-site-e1.md](beta-site-e1.md).
 
 Dakara's four flaps, four map-estimated named areas and Med Tent respawner are reconstructed in [DK-04](../analysis/dakara-e1-rebuild/worknotes/DK-04.md). The two exterior tents lead to the one client-shipped interior. [DK-05](../analysis/dakara-e1-rebuild/worknotes/DK-05.md) adds Bra'tac, Moh'katan, Rak'nor and Loth'ta plus a speculative Naquadah Repository discovery area. A distinct Jaffa Command area remains unplaced. The mission arc and client walk are pending.
 
@@ -112,6 +114,7 @@ Dakara's four flaps, four map-estimated named areas and Med Tent respawner are r
 | [equip-from-inventory-pattern.md](equip-from-inventory-pattern.md) | **EXPLANATION** — when a quest grants a weapon, route it through a manual equip step instead of force-equipping into the bandolier. Mission 622 / 641 worked examples. |
 | [consumable-via-onitemuse-pattern.md](consumable-via-onitemuse-pattern.md) | **EXPLANATION** — when `item_use` should pair with `remove_item` (consumables) vs omit it (reusable tools). Ambernol, slappack, radio worked examples + baseline audit table. |
 | [debug-area.md](debug-area.md) | **REFERENCE** — the GM Debug Area, world 1300 on Ihpet_Crater_Light: the services plaza (every hub service, the GM ability granter and reset NPCs, a munitions vendor), the training dummies that never fight back, the faction yard, the AI behaviour slope, the passive enemy gallery, the NPC-vs-NPC arena, the cover course and the death and respawn test, with placement, what each station tests, and their guards. The outbound-only stargate a GM dials every gate from (DA-07), the eight ring transport stations that link the zones (DA-08), and the System Lords' summit, six dressed System Lords squabbling in say chat (DA-09). A "Which station tests what" index maps every restored system to its station and its UAT step (DA-U1 to DA-U47, DA-05). |
+| [beta-site-e1.md](beta-site-e1.md) | **REFERENCE** — Beta_Site_Evo_1 (world 23), the first shared Union field map: the gate pin and way back, cast templates 2300-2309, spawns, regions and the ring pair, the three race arcs (Human 1423 to 1427, Free Jaffa 1500 to 1502, Asgard 481 to 479) with their stop points, the Asgard beam, and the provenance labels. |
 | [ambient-chatter.md](ambient-chatter.md) | **REFERENCE** — ambient chatter: NPC groups that talk among themselves in say chat on a schedule. The `ambient_chatter_groups` / `_lines` seed tables, how a group plays, how to add one, and the `chatter` log events. |
 | [debug-hub.md](debug-hub.md) | **REFERENCE** — the five Castle_CellBlock stasis-room debug NPCs (vendor, trainer, dialog, Livewire terminal, loot crate): what each tests, where it stands, and which systems the hub cannot test. |
 | [proposed-extensions.md](proposed-extensions.md) | **ROADMAP** — justified extensions tied to recent direction or shipped content. Tier 1: wire what's defined. Tier 2: small additions. Tier 3: larger shape changes. |

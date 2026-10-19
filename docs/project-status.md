@@ -2,7 +2,7 @@
 title: "Project Status"
 type: reference
 audience: anyone tracking the project
-last_updated: 2026-10-12
+last_updated: 2026-10-19
 ---
 
 # Project Status
@@ -28,6 +28,8 @@ Where the Cimmeria server emulator stands today and what's ahead.
 > **2026-10-11 update (lab)**: the lab spec vocabulary close-out (SV-16, [ledger](analysis/lab-spec-vocab/README.md)) adds the live research lab's UAT runner to [Development Tooling](#development-tooling) and changes no gap-analysis row: it is tooling, not a game system.
 >
 > **2026-10-12 update (lab)**: the lab-harness close-out (LH-18, [close-out](analysis/lab-harness/closeout.md), #1660) fixes the lab tool defects the Haiku UAT round 1 found and changes no gap-analysis row: it is tooling. Item use and vendor buys now run at N1; drags and splits still land at N3 until CEGUI resolves the drop target. Eight live checks are owed ([unified-uat.md § Lab harness](guides/unified-uat.md#lab-harness)).
+>
+> **2026-10-19 update (Union Beta E1)**: the Union Beta E1 close-out (UB-99, [ledger](analysis/union-beta-e1-continuation/README.md)) built the first visit of world 23 for Human, Free Jaffa and Asgard players on the `uzp-e1` campaign branch. It is not on `main`, so no gap-analysis row changes yet. Database tests cover it; nothing has run in the lab or client ([unified-uat.md § Beta_Site_Evo_1](guides/unified-uat.md#beta_site_evo_1)).
 >
 > **Scope note**: only work merged to `main` is counted. The black-market implementation on `feat/571-black-market-phase1` (PR #586) is real but unmerged, and is counted as missing until it lands.
 
