@@ -31,10 +31,12 @@ pub(super) const GOAULD: i64 = 6;
 pub(super) const FREE_JAFFA: i64 = 7;
 /// `EArchetype` value for Jaffa (Praxis). Not a Union race.
 pub(super) const JAFFA: i64 = 8;
-/// Every archetype outside the Union races, plus 0 (Any): use to prove a race gate.
+/// Every non-Human archetype (5-8: Asgard, Goa'uld, Free Jaffa, Jaffa): use to
+/// prove a Human-only gate.
 #[allow(dead_code)] // used by later Beta packets (UB-10+)
 pub(super) const NON_HUMANS: [i64; 4] = [5, 6, 7, 8];
-/// Every archetype outside a gate, plus 0 (Any): use to prove a race gate.
+/// Every archetype, 0 (Any) through 8: filter out the ones a gate admits to
+/// prove a race gate.
 #[allow(dead_code)] // used by later Beta packets (UB-10+)
 pub(super) const ALL_ARCHETYPES: [i64; 9] = [0, 1, 2, 3, 4, 5, 6, 7, 8];
 
