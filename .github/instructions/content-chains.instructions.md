@@ -285,6 +285,7 @@ beta_e1_m1502_chains.sql    1502 The Nine Peaks Jaffa: 23240-23279 (23240-23250 
 beta_e1_m481_chains.sql     From on High, receiver, beam and Mimir (UB-30): 23310-23339 (23310-23317 used)
 beta_e1_m420_chains.sql     Reclamation, Mimir's five scanners (UB-31): 23340-23359 (23340-23351 used)
 beta_e1_m421_chains.sql     Mechanical Error, the infirmary signal and the drone (UB-32): 23360-23389 (23360-23368 used)
+beta_e1_m1147_chains.sql    Intriguing Data, the Analytical Assistance Machine (UB-33): 23390-23404 (23390-23395 used)
 ```
 
 ## Linked references
