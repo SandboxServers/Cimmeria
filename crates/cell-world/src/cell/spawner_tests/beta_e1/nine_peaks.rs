@@ -60,17 +60,6 @@ fn vector(p: [f32; 3]) -> Vector3 {
     Vector3::new(p[0], p[1], p[2])
 }
 
-/// Whether `find_path` walks from `from` to `to`, as `reaches` in `nav.rs`
-/// does. That helper is private to `nav.rs`, so this guard carries a copy.
-fn walks(mesh: &NavMesh, from: [f32; 3], to: [f32; 3]) -> bool {
-    let path = mesh.find_path(&vector(from), &vector(to));
-    matches!(path.status, PathStatus::Ok)
-        && path
-            .waypoints
-            .last()
-            .is_some_and(|end| end.distance_to(&vector(to)) < 2.0)
-}
-
 /// Longest route one `find_path` call returns. `NavMesh::find_path` caps the
 /// corridor at `MAX_POLY_PATH` (256 polygons), so a route of about 500 m ends
 /// `Partial` short of its goal; the ring leg needs several calls.
@@ -143,9 +132,12 @@ async fn live_db_beta_nine_peaks_spawns_match_the_placement_seal() {
             standable_and_connected(&exterior, expected, RAS_NOR, tag);
         }
         // Seal Q1: no foot route from the camp to ARRIVAL. The ring pair is
-        // the only link, and the ring test below checks it.
+        // the only link, and the ring test below checks it. Walked in legs: a
+        // single find_path call truncates at 256 polygons and ends Partial on
+        // a long route, so a one-shot check would pass even if nav 70 were
+        // joined to nav 251.
         assert!(
-            !walks(&exterior, expected, ARRIVAL),
+            !walks_in_legs(&exterior, expected, ARRIVAL),
             "{tag} walks to ARRIVAL: nav 70 must stay cut off (seal Q1)"
         );
     }
@@ -154,12 +146,13 @@ async fn live_db_beta_nine_peaks_spawns_match_the_placement_seal() {
 #[tokio::test]
 async fn live_db_beta_nine_peaks_region_is_named_at_the_seal_centre() {
     // Revert proof: rename NinePeaks in point_sets_beta_e1_ninepeaks.sql; this
-    // fails naming the region. The centre is a region centre, not a stand
-    // point (the seal measures it 3.50 m off the mesh), so it is not walked.
+    // fails naming the region; change its radius 20 or height 6 and the size
+    // assert fails. The centre is a region centre, not a stand point (the
+    // seal measures it 3.50 m off the mesh), so it is not walked.
     let pool = require_db_or_skip!();
 
-    let row: (String, i32, i32, f32, f32, f32) = sqlx::query_as(
-        "SELECT s.name::text, s.world_id, s.flags, p.x, p.y, p.z \
+    let row: (String, i32, i32, f32, f32, f32, Option<f32>, Option<f32>) = sqlx::query_as(
+        "SELECT s.name::text, s.world_id, s.flags, p.x, p.y, p.z, s.radius, s.height \
          FROM resources.point_sets s JOIN resources.point_set_points p USING (set_id) \
          WHERE s.set_id = 23060",
     )
@@ -169,6 +162,11 @@ async fn live_db_beta_nine_peaks_region_is_named_at_the_seal_centre() {
     assert_eq!(
         (row.0.as_str(), row.1, row.2),
         ("Beta_Site_Evo_1.NinePeaks", 23, 1)
+    );
+    assert_eq!(
+        (row.6, row.7),
+        (Some(20.0), Some(6.0)),
+        "NinePeaks radius or height moved: update the placement seal"
     );
     assert_eq!(
         [row.3, row.4, row.5],
@@ -236,4 +234,47 @@ async fn live_db_beta_ring_pair_links_both_valleys() {
     .expect("UB-02d SW ring spawn");
     assert_eq!((spawn.0, spawn.1.as_str()), (3, "BetaE1_Ring_SW"));
     assert_eq!([spawn.2, spawn.3, spawn.4], SW_RING, "spawn 23115 moved");
+}
+
+/// Text of a seed file under `db/resources/`, for the footer guard below.
+fn seed_text(relative: &str) -> String {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../db/resources")
+        .join(relative);
+    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+}
+
+/// Each Nine Peaks seed file must carry its own sequence footer. The DB-level
+/// sequence checks cannot tell whose footer ran: the other Beta files and the
+/// Debug Area footers re-set the same sequences (the spawn footer is 23199 in
+/// every Beta packet), so deleting this file's footer leaves the loaded
+/// database looking right. This reads the file text.
+#[test]
+fn beta_nine_peaks_seed_files_carry_their_own_sequence_footers() {
+    // Revert proof: delete the `setval` line from any of the four files; this
+    // fails naming the file.
+    let footers = [
+        (
+            "Worlds/Seed/spawnlist_beta_e1_ninepeaks.sql",
+            "SELECT pg_catalog.setval('spawnlist_spawn_id_seq', GREATEST((SELECT MAX(spawn_id) FROM spawnlist), (SELECT last_value FROM spawnlist_spawn_id_seq), 23199), true);",
+        ),
+        (
+            "Events/Seed/point_sets_beta_e1_ninepeaks.sql",
+            "SELECT pg_catalog.setval('point_sets_set_id_seq', GREATEST((SELECT last_value FROM point_sets_set_id_seq), 23081), true);",
+        ),
+        (
+            "Events/Seed/point_set_points_beta_e1_ninepeaks.sql",
+            "SELECT pg_catalog.setval('point_set_points_point_id_seq', GREATEST((SELECT last_value FROM point_set_points_point_id_seq), 23261), true);",
+        ),
+        (
+            "Worlds/Seed/ring_transport_regions_beta_e1.sql",
+            "SELECT pg_catalog.setval('ring_transport_regions_region_id_seq', GREATEST((SELECT MAX(region_id) FROM ring_transport_regions), (SELECT last_value FROM ring_transport_regions_region_id_seq), 2301), true);",
+        ),
+    ];
+    for (file, footer) in footers {
+        assert!(
+            seed_text(file).lines().any(|line| line.trim() == footer),
+            "{file} is missing its sequence footer: {footer}"
+        );
+    }
 }
