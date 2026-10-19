@@ -21,6 +21,8 @@ mod m1425;
 mod m1426;
 mod m1427;
 mod m1500;
+mod m1502;
+mod m1502_gates;
 mod m381;
 mod m473;
 mod m478;

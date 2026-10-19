@@ -281,6 +281,7 @@ beta_e1_m1425_chains.sql    1425 SGU Database: 23130-23159 (23130-23136 used)
 beta_e1_m1426_chains.sql    1426 Amateur Photography: 23160-23189 (23160-23171 used)
 beta_e1_m1427_chains.sql    1427 The Ruins: 23190-23219 (23190-23195 used)
 beta_e1_m1500_chains.sql    1500 receiver and Carter: 23220-23239 (23220-23222 used)
+beta_e1_m1502_chains.sql    1502 The Nine Peaks Jaffa: 23240-23279 (23240-23250 used)
 ```
 
 ## Linked references

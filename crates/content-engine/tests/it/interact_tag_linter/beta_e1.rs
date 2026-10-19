@@ -181,6 +181,31 @@ const BETA_E1: &[(&str, i32, &str)] = &[
         23222,
         "BetaE1_Carter: per-player bind dsm 5871 (chain 23220)",
     ),
+    (
+        "beta_e1_m1502_chains.sql",
+        23241,
+        "BetaE1_RasNor: per-player bind dsm 5885/5887 (chains 23240/23248)",
+    ),
+    (
+        "beta_e1_m1502_chains.sql",
+        23244,
+        "BetaE1_JaffaBox: template 2326 static INT_MissionWorldObject",
+    ),
+    (
+        "beta_e1_m1502_chains.sql",
+        23245,
+        "BetaE1_JaffaBox: template 2326 static INT_MissionWorldObject",
+    ),
+    (
+        "beta_e1_m1502_chains.sql",
+        23247,
+        "BetaE1_JaffaBox: template 2326 static INT_MissionWorldObject",
+    ),
+    (
+        "beta_e1_m1502_chains.sql",
+        23250,
+        "BetaE1_RasNor: per-player bind dsm 5885/5887 (chains 23240/23248)",
+    ),
 ];
 
 /// Whether `chain_id` in `filename` is a Beta chain that has an
