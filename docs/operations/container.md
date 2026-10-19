@@ -50,7 +50,7 @@ docker run -d --name cimmeria \
   ghcr.io/sandboxservers/cimmeria-server:latest-prerelease
 ```
 
-Add `-v cimmeria-server-pgdata:/var/lib/postgresql/data` to keep the database across restarts and image updates; without it Docker makes an anonymous volume that a watchtower swap discards. Create the named volume once with `docker volume create cimmeria-server-pgdata`. See [Volume / persistence](#volume--persistence).
+Add `-v cimmeria-server-pgdata:/var/lib/postgresql/data` to keep the database across restarts and image updates; without it Docker makes an anonymous volume that is lost when you remove and re-run the container by hand. Create the named volume once with `docker volume create cimmeria-server-pgdata`. See [Volume / persistence](#volume--persistence).
 
 | Port | Protocol | Purpose |
 |---|---|---|
@@ -119,7 +119,7 @@ Not baked into the image, but read by the server and worth setting on a real dep
 
 The database lives at `/var/lib/postgresql/data` (declared as a `VOLUME`). On start, the [entrypoint](../../docker/entrypoint.sh) copies the baked database from `/var/lib/postgresql/initial-data` into that path only when it holds no cluster (`PG_VERSION` absent), and keeps an existing cluster as it is.
 
-[`docker/compose.yml`](../../docker/compose.yml) mounts the external named volume `cimmeria-server-pgdata` there. A bare `docker run` with no `-v` gets an anonymous volume, which behaves as a fresh server after a container recreate, because the replacement does not keep the old container's anonymous volume. Pass the named volume to keep the data.
+[`docker/compose.yml`](../../docker/compose.yml) mounts the external named volume `cimmeria-server-pgdata` there. A bare `docker run` with no `-v` gets an anonymous volume, so `docker rm` and `docker run` by hand start a fresh server. (Watchtower's swap attaches the old container's anonymous volume to the replacement, so the data would carry over there, but the volume is then unnamed and easy to lose.) Pass the named volume to keep the data.
 
 After Postgres is up, the s6 oneshot `db-sync` ([`docker/db-sync.sh`](../../docker/db-sync.sh)) decides what to do with the database: `first-boot` for a new volume, `skip` for the same image, `rebuild` for a new image or `CIMMERIA_DB_FORCE_REBUILD`, `adopt` for a database from before this feature, `restore` for `CIMMERIA_DB_RESTORE`. The server starts only when it exits 0. Backups of `sgw` go to `/var/backups/cimmeria` (a `VOLUME`; compose binds `${CIMMERIA_BACKUP_DIR:-./backups}` to it).
 

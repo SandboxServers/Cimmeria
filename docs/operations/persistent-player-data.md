@@ -22,7 +22,7 @@ The colo host is Linux and the commands below are for a shell on it (`docker com
 Three rules sit under that table:
 
 - **Restart keeps everything** (D2). `docker restart cimmeria`, a Docker restart and a host reboot change nothing in the database.
-- **Seed accounts are topped up** (D6). On a rebuild, a seed account that is missing from the database, by id or by name, is inserted again. An existing account row is never changed. If you deleted a seed account on purpose, the next image update brings it back.
+- **Seed accounts are topped up** (D6). On a rebuild, a seed account whose id and name are both absent from the database is inserted again. An existing account row is never changed. A seed account whose id or name is already taken by a different row is not inserted; it is logged as `skip_seed_account`. If you deleted a seed account on purpose, the next image update brings it back.
 - **Nothing here wipes player data** (D3). A forced rebuild and a restore both keep players. The only full wipe is removing the Docker volume by hand ([below](#the-docker-volume)).
 
 A rebuild is blue/green: it builds `sgw_next` from the image's seeds, copies the player tables across, repairs references the new resources broke, checks row counts, and swaps by renaming `sgw` to `sgw_prev` and `sgw_next` to `sgw`. The live `sgw` is renamed, never dropped. A reference to an item or world that the new resources removed is handled by the reconcile step: orphaned rows are deleted with the full row logged to `cimmeria_meta.reconcile_log`, and a player standing in a removed world is moved to `Castle_CellBlock` (D5).
@@ -50,20 +50,13 @@ Compose edits still need `docker compose up -d` ([colo-deploy.md](colo-deploy.md
 
 Files are named `sgw-<UTC yyyymmddThhmmssZ>-<old image id>.dump`, or `...-pre-meta.dump` for a database from before this feature. Each is written as `.part` and renamed when complete, so a `.dump` file is whole.
 
-List them, newest first (**untested on the colo**):
-
-```bash
-cd /opt/cimmeria
-ls -lt "${CIMMERIA_BACKUP_DIR:-./backups}"/sgw-*.dump
-```
-
-Or from inside the container (**untested on the colo**):
+List them, newest first (**untested on the colo**). From inside the container this works whatever `CIMMERIA_BACKUP_DIR` is set to in `.env`:
 
 ```bash
 docker exec cimmeria ls -lt /var/backups/cimmeria
 ```
 
-Copy the newest one off the host now and then. The backup directory sits on the same disk as the volume, so it protects against a bad rebuild, not against losing the disk.
+On the host the same files are in `CIMMERIA_BACKUP_DIR` from `.env` (`/opt/cimmeria/backups` when it is unset). Copy the newest one off the host now and then. The backup directory sits on the same disk as the volume, so it protects against a bad rebuild, not against losing the disk.
 
 During a crash loop on the same failing image, `db-sync` reuses the newest backup (`reusing backup <path>` in the log) instead of writing a new one each time, so the loop does not push your older backups out.
 
@@ -97,7 +90,7 @@ During a crash loop on the same failing image, `db-sync` reuses the newest backu
 
 How it works: `db-sync` first backs up the current `sgw` (a restore never destroys the only copy), restores the file into `sgw_restore`, records the file name in `cimmeria_meta.restore_done` inside it, then swaps it in by rename (`sgw` becomes `sgw_prev`). The marker stops the same file from restoring again on the next start, so step 5 is housekeeping, not a safeguard. The file must exist, or the start stops with `restore file not found`.
 
-A restore does not rebuild the resources. The restored database carries the resources of the image that made the backup. If the running image is newer, set `CIMMERIA_DB_FORCE_REBUILD=1` for one more start ([next section](#forced-resources-rebuild)).
+A restore does not rebuild the resources in the same start. The restored database carries the resources, and the image id, of the image that made the backup, so the server runs on those until the next start. If the running image is newer, that next start (step 5's `docker compose up -d`) sees the different image id and rebuilds the resources by itself, keeping the restored players; you do not need `CIMMERIA_DB_FORCE_REBUILD`. The marker also means that restoring the same file name a second time does nothing: use a copy under another name.
 
 ## Forced resources rebuild
 
@@ -135,7 +128,7 @@ docker logs cimmeria 2>&1 | grep -E '\[db-sync\]|\[db-rebuild\]'
 | `[db-sync] reusing backup <path>` | A retry of a failed rebuild reused the newest backup. | n/a |
 | `[db-sync] ERROR ...` | The start failed closed ([next section](#fail-closed-behavior)). | `sgw` untouched |
 
-A `skip` line may add `(an earlier rebuild to <id> failed; set CIMMERIA_DB_FORCE_REBUILD=1 to retry)`. That is a rebuild that failed on an earlier start and was not retried; the server is running the old resources.
+A `skip` line may add `(an earlier rebuild to <id> failed; set CIMMERIA_DB_FORCE_REBUILD=1 to retry)`. That is the image running now matching the database, while an earlier start failed to rebuild to a different image (for example after you rolled back to the previous image). The server runs on the old resources. The note is reported once and then cleared.
 
 ## Fail-closed behavior
 
@@ -152,6 +145,8 @@ What to do:
    ```
 2. Match it:
    - `bad CIMMERIA_DB_BACKUP_KEEP`: fix the value in `.env`, `docker compose up -d`.
+   - `postgres not ready after 120s`: Postgres did not come up. Read the container log above the line for the Postgres error.
+   - `restore failed, sgw untouched`: the backup file is unreadable or damaged. Try another file. `sgw` is as it was.
    - `backup failed` or `backup rename failed`: the backup directory is full or not writable. Free space or fix permissions on `CIMMERIA_BACKUP_DIR`, then `docker compose up -d`.
    - `restore file not found`: the name in `CIMMERIA_DB_RESTORE` is wrong. Fix or remove it.
    - `[db-rebuild] ERROR <cause>`: a bug in the rebuild or a data problem the reconcile cannot repair. The old database is intact. Pin the previous image tag in `compose.yml` to get players back in, and report the cause line. Do not delete the volume.
@@ -171,7 +166,7 @@ docker volume create cimmeria-server-pgdata
 
 An empty volume starts the first-boot path: the entrypoint copies the image's baked database into it. An existing cluster is kept as it is.
 
-**Never run `docker volume prune` blindly.** It removes every volume no container uses, and a stopped or briefly removed `cimmeria` container makes `cimmeria-server-pgdata` unused. Check what it would take first (**untested on the colo**):
+**Never run `docker volume prune` blindly.** It can remove volumes that no container uses, and a removed `cimmeria` container (for example between `docker compose down` and `up`, or during a hand-run `docker rm`) leaves `cimmeria-server-pgdata` unused. What a prune takes depends on the Docker version (recent engines take anonymous volumes only unless `--all` is given), so do not rely on that. Check what it would take first (**untested on the colo**):
 
 ```bash
 docker volume ls --filter dangling=true
