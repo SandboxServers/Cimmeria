@@ -63,11 +63,23 @@ fn choice(dialog_id: i64, archetype: Option<i64>) -> ExecutionContext {
     ctx
 }
 
-/// A `mission_completed` context on `mission_id` by a player of `archetype`.
-fn completed(mission_id: i64, archetype: i64) -> ExecutionContext {
+/// A `mission_completed` context on `mission_id`. `None` leaves the archetype unset.
+fn completed(mission_id: i64, archetype: Option<i64>) -> ExecutionContext {
     let mut ctx = ExecutionContext::new();
     ctx.set_param("mission_id".to_string(), serde_json::json!(mission_id));
-    ctx.set_param("archetype".to_string(), serde_json::json!(archetype));
+    if let Some(a) = archetype {
+        ctx.set_param("archetype".to_string(), serde_json::json!(a));
+    }
+    ctx
+}
+
+/// An `enter_region` context on `region_key`. `None` leaves the archetype unset.
+fn region(region_key: &str, archetype: Option<i64>) -> ExecutionContext {
+    let mut ctx = ExecutionContext::new();
+    ctx.set_param("region_key".to_string(), serde_json::json!(region_key));
+    if let Some(a) = archetype {
+        ctx.set_param("archetype".to_string(), serde_json::json!(a));
+    }
     ctx
 }
 
@@ -122,7 +134,7 @@ async fn blurb_binds_on_login_and_on_420_completion() {
     assert_no_deferred_actions(&resolved, BLURB);
     assert_eq!(m421_matched(&resolved), BTreeSet::from([BLURB]));
 
-    let mut done = completed(420, ASGARD);
+    let mut done = completed(420, Some(ASGARD));
     set_offer_open(&mut done);
     let resolved = fire(&engine, TriggerType::MissionCompleted, &done);
     assert_eq!(
@@ -258,7 +270,7 @@ async fn region_and_fallback_both_reach_1461() {
     let resolved = fire(&engine, TriggerType::RegionEnter, &elsewhere);
     assert!(m421_matched(&resolved).is_empty());
     for archetype in non_asgard() {
-        let mut ctx = region_ctx(INFIRMARY, archetype.unwrap_or(0));
+        let mut ctx = region(INFIRMARY, archetype);
         set_step(&mut ctx, 1460);
         let resolved = fire(&engine, TriggerType::RegionEnter, &ctx);
         assert!(m421_matched(&resolved).is_empty(), "{archetype:?}");
@@ -372,6 +384,18 @@ async fn mimir_turn_in_completes_421() {
     }
 }
 
+/// Revert: drop the `Beta_Site_Evo_1` event key from 23367. An Asgard who logs
+/// into another world at S1464 then gets the turn-in bind there.
+#[tokio::test]
+async fn relog_restore_ignores_other_worlds() {
+    let pool = require_db_or_skip!();
+    let engine = whole_seed(&pool).await;
+    let mut relog = login_ctx("Castle_Cellblock", Some(ASGARD));
+    set_step(&mut relog, 1464);
+    let resolved = fire(&engine, TriggerType::PlayerLoaded, &relog);
+    assert!(m421_matched(&resolved).is_empty());
+}
+
 /// Revert: any 421 chain that loses its archetype `eq 5` gate matches a
 /// non-Asgard race on the same event. Every positive 421 event is replayed for
 /// each non-Asgard race and must match no 421 chain.
@@ -385,7 +409,7 @@ async fn wrong_race_fires_no_421_chain() {
         let resolved = fire(&engine, TriggerType::PlayerLoaded, &login);
         assert!(m421_matched(&resolved).is_empty(), "login {archetype:?}");
 
-        let mut done = completed(420, archetype.unwrap_or(0));
+        let mut done = completed(420, archetype);
         set_offer_open(&mut done);
         let resolved = fire(&engine, TriggerType::MissionCompleted, &done);
         assert!(m421_matched(&resolved).is_empty(), "420 {archetype:?}");
@@ -400,9 +424,9 @@ async fn wrong_race_fires_no_421_chain() {
         let resolved = fire(&engine, TriggerType::DialogChoice, &accept);
         assert!(m421_matched(&resolved).is_empty(), "accept {archetype:?}");
 
-        let mut region = region_ctx(INFIRMARY, archetype.unwrap_or(0));
-        set_step(&mut region, 1460);
-        let resolved = fire(&engine, TriggerType::RegionEnter, &region);
+        let mut entered = region(INFIRMARY, archetype);
+        set_step(&mut entered, 1460);
+        let resolved = fire(&engine, TriggerType::RegionEnter, &entered);
         assert!(m421_matched(&resolved).is_empty(), "region {archetype:?}");
 
         let mut emitter = click(EMITTER, archetype);
