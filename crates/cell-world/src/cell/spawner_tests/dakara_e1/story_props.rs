@@ -6,16 +6,18 @@ use super::*;
 /// The plaza point every connected Dakara_E1 spawn must reach on foot.
 const PLAZA: [f32; 3] = [100.0, -17.4, 230.0];
 
-/// `(spawn id, world, template id, tag, position, plaza-connected)`.
+/// `(spawn id, world, template id, tag, position, heading, plaza-connected)`.
 /// A-05 sits on the tent table and B-06 on its pedestal, both off-mesh,
-/// so neither gets a mesh check.
-const STORY_PROPS: [(i32, i32, i32, &str, [f32; 3], bool); 6] = [
+/// so neither gets a mesh check. A-12 and A-13 keep the ledger's placeholder
+/// heading 0.0.
+const STORY_PROPS: [(i32, i32, i32, &str, [f32; 3], f32, bool); 6] = [
     (
         8016,
         61,
         453,
         "Dakara_E1_CommandTerminal",
         [137.1, -21.38, 274.2],
+        4.1891,
         false,
     ),
     (
@@ -24,6 +26,7 @@ const STORY_PROPS: [(i32, i32, i32, &str, [f32; 3], bool); 6] = [
         454,
         "Dakara_E1_StoryRm_MohkatanTerminal",
         [62.5, 0.02, 40.5],
+        1.8158,
         false,
     ),
     (
@@ -32,6 +35,7 @@ const STORY_PROPS: [(i32, i32, i32, &str, [f32; 3], bool); 6] = [
         455,
         "Dakara_E1_RingControl_XMinus",
         [-139.33, -16.17, 48.95],
+        0.0,
         true,
     ),
     (
@@ -40,6 +44,7 @@ const STORY_PROPS: [(i32, i32, i32, &str, [f32; 3], bool); 6] = [
         462,
         "Dakara_E1_RingControl_XPlus",
         [358.03, -16.02, 102.07],
+        0.0,
         true,
     ),
     (
@@ -48,6 +53,7 @@ const STORY_PROPS: [(i32, i32, i32, &str, [f32; 3], bool); 6] = [
         456,
         "Dakara_E1_PowerSupply1",
         [56.5, -12.36, -73.7],
+        1.4724,
         true,
     ),
     (
@@ -56,6 +62,7 @@ const STORY_PROPS: [(i32, i32, i32, &str, [f32; 3], bool); 6] = [
         463,
         "Dakara_E1_PowerSupply2",
         [202.2, -12.36, -59.4],
+        4.6152,
         true,
     ),
 ];
@@ -76,9 +83,9 @@ async fn live_db_dakara_story_props_match_the_placement_ledger() {
     .expect("DK-41 spawn count");
     assert_eq!(count, 6);
 
-    for (spawn_id, world, template_id, tag, expected, connected) in STORY_PROPS {
-        let row: (i32, i32, String, bool, Option<i32>, f32, f32, f32) = sqlx::query_as(
-            "SELECT world_id, template_id, tag::text, is_stationary, respawn_secs, x, y, z \
+    for (spawn_id, world, template_id, tag, expected, heading, connected) in STORY_PROPS {
+        let row: (i32, i32, String, bool, Option<i32>, f32, f32, f32, f32) = sqlx::query_as(
+            "SELECT world_id, template_id, tag::text, is_stationary, respawn_secs, x, y, z, heading \
              FROM resources.spawnlist WHERE spawn_id = $1",
         )
         .bind(spawn_id)
@@ -94,6 +101,7 @@ async fn live_db_dakara_story_props_match_the_placement_ledger() {
             actual, expected,
             "spawn {spawn_id} moved: update the ledger"
         );
+        assert_eq!(row.8, heading, "spawn {spawn_id} turned: update the ledger");
         if connected {
             travel::standable_and_connected(&exterior, actual, PLAZA, tag);
         }
