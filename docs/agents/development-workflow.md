@@ -4,7 +4,7 @@
 > **Audience**: Contributors doing AI-assisted work, and their agents
 > **Type**: How-to
 
-How a change moves from ticket to merged PR in this repo when an AI harness is doing the work. It is harness-neutral: the steps apply whether you drive them through Claude Code subagents, another tool's equivalents, or by hand.
+How a change moves from ticket to merged PR in this repo when an AI harness is doing the work. It is harness-neutral: the steps apply whether you drive them through Claude Code subagents, another tool's equivalents, or by hand. New to all of it? Start with the [README's AI section](../../README.md#how-ai-development-works-here), then [How we build with AI](ai-sdlc.md).
 
 The repo already ships the pieces. Anyone who clones it with Claude Code gets them automatically:
 

@@ -2,7 +2,7 @@
 
 ## Start here
 
-These rules apply to every harness: Claude Code, Codex, Copilot and the rest. Read [CLAUDE.md](CLAUDE.md) first. It is the short core: repo invariants, the top project rules, the build-lane rule and the test and doc duty for every PR. It applies to every agent, not only Claude. After that, read only what your task needs. How the AI workflow works, for every harness: [README § How AI development works here](README.md#how-ai-development-works-here) and [docs/agents/ai-harness.md](docs/agents/ai-harness.md).
+These rules apply to every harness: Claude Code, Codex, Copilot and the rest. Read [CLAUDE.md](CLAUDE.md) first. It is the short core: repo invariants, the top project rules, the build-lane rule and the test and doc duty for every PR. It applies to every agent, not only Claude. After that, read only what your task needs. How the AI workflow works, for every harness: [README § How AI development works here](README.md#how-ai-development-works-here), its deeper reference [docs/agents/ai-sdlc.md](docs/agents/ai-sdlc.md), and [docs/agents/ai-harness.md](docs/agents/ai-harness.md).
 
 | Before you... | Read |
 |---|---|
