@@ -7,6 +7,8 @@ Wave 2 starts when DK-06a, DK-08 and DK-12a are merged. DK-09 is unblocked by th
 
 **Architect amendments (2026-10-18, after the DK-08 review).** D-DK18: step 4902's objectives are three client-hinted regions centred on the SG-18 remains, seeded by DK-09 below (point sets 2128-2130, points 2557-2559). D-DK19: DK-10c's range is 8060-8074 and DK-10d's moves to 8160-8179; DK-10a below carries both. DK-08 rules no template change, so DK-09's template rows stand.
 
+**Architect amendment (2026-10-18, D-DK10 ruled).** The wave-2 packets other than DK-06b merged as #1867 (DK-09b), #1869 (DK-09), #1871 (DK-10a), #1875 (DK-10fs) and #1876 (DK-10e). D-DK10 is ruled server-only: a new verb `display_radio_dialog` sends `onDialogDisplay` with `EntityId` 0. DK-06b's full packet text moved to [wave-3b-dk-06b.md](wave-3b-dk-06b.md); it is dispatchable at once. It is reviewed with DK-10d-B as wave 3b.
+
 **Architect amendments (2026-10-18, D-DK1 option F).** The owner can ship new missions to the client, so the recommended answer to D-DK1 is F: an authored level-1 mission 63100 "Home to Dakara" (DK-10fs here, chains 8075-8077 in wave 3's DK-10fc). DK-10a's chain 8040 then fires on `mission_completed 63100` and also completes 1570's optional objective 5936; it scaffolds the bridge seed file and test submodule. DK-10e gains Teal'c's letter (chain 8007), accepted by the owner as written. If the owner answers B instead, DK-10a uses its "fallback B" variant and DK-10fs is not dispatched.
 
 ## Rules for every wave-2 packet
@@ -22,15 +24,9 @@ Wave 2 starts when DK-06a, DK-08 and DK-12a are merged. DK-09 is unblocked by th
 9. No IPs, credentials, tokens or account names in any file.
 10. Report to `<worktree>\.claude\reports\dakara\<packet>-packet-coder.md`: files changed, each check's final `status=` line, the commit hash, every deviation and why. Return exactly one line: `<packet> <done|blocked|failed> <commit-sha|-> <report-path>`. A context stop past about 90k tokens: commit only passing work (subject suffix `(part N)`), write `docs/analysis/dakara-e1-rebuild/worknotes/<packet>.md` (done, left, next step, last `status=` line) and return `blocked` with the reason `context`.
 
-## DK-06b: radio display
+## DK-06b: moved
 
-| Field | Value |
-|---|---|
-| Role | per the D-DK10 ruling: `packet-coder` for a seed-only answer, `rust-gameserver-dev` for a server change |
-| Branch / worktree | `dakara/dk-06b-radio-display` / `dk-06b` |
-| Status | **Stub.** Not dispatchable until the architect replaces this section with full packet text from DK-06a's finding (`docs/reverse-engineering/findings/dialog-display-without-npc.md`). |
-
-Fixed now, whatever the ruling: the answer is server-authoritative and needs no client patch (a client-patch-only answer makes D-DK10 an owner decision and this packet `BlockedDecision`). It ships a test that fails when the change is reverted: an executed test (TESTING.md) that runs `display_dialog` for dialog 5816 with no NPC in range and asserts the client message the ruling names. It names the verb or param in `docs/content/content-engine-vocabulary.md`. It adds no Dakara chain: DK-10d uses it for step 4905.
+DK-06b's full packet text is in [wave-3b-dk-06b.md](wave-3b-dk-06b.md) (D-DK10 ruled 2026-10-18; it runs as wave 3b with DK-10d-B).
 
 ## DK-09: SG-18 remains and drop-location props
 
@@ -42,7 +38,7 @@ Fixed now, whatever the ruling: the answer is server-authoritative and needs no 
 | Report | `<worktree>\.claude\reports\dakara\DK-09-packet-coder.md` |
 | Size | About 38k tokens |
 
-**Contract excerpt** (C2, C6, D-DK11, D-DK16, D-DK18). Templates 440-479 are the campaign's; 440-457 are in use and DK-09 adds 458-461, four clones of 449 (Drop Location), so each drop site holds its own per-player bind. Hostiles start at 462. Spawns 8000-8007 are in use; DK-09 adds 8008-8015, all world 61, `is_stationary` true, `respawn_secs` 30, `set_name` NULL. The SG-18 remains are on the navmesh but not connected to the plaza (D-DK11): they get an on-mesh guard only. The drop locations are in the plaza's component (D-DK13): they get the on-mesh and connected guard. Point sets 2123-2127 and points 2552-2556 are in use; DK-09 adds sets 2128-2130 and points 2557-2559, the three SG-18 search regions of step 4902 (D-DK18): client-hinted (`flags` 1) `AreaSet` cylinders in world 61, radius 8, height 10, each centred on its remains' x and z and 3 m below its y (a region spans its centre's y up to y + height, so the player standing on rough ground near the remains is inside). The region name is the `enter_region` key DK-10c's chains use, byte-exact.
+**Contract excerpt** (C2, C6, D-DK11, D-DK16, D-DK18). Templates 440-479 are the campaign's; 440-457 are in use and DK-09 adds 458-461, four clones of 449 (Drop Location), so each drop site holds its own per-player bind. Hostiles start at 464. Spawns 8000-8007 are in use; DK-09 adds 8008-8015, all world 61, `is_stationary` true, `respawn_secs` 30, `set_name` NULL. The SG-18 remains are on the navmesh but not connected to the plaza (D-DK11): they get an on-mesh guard only. The drop locations are in the plaza's component (D-DK13): they get the on-mesh and connected guard. Point sets 2123-2127 and points 2552-2556 are in use; DK-09 adds sets 2128-2130 and points 2557-2559, the three SG-18 search regions of step 4902 (D-DK18): client-hinted (`flags` 1) `AreaSet` cylinders in world 61, radius 8, height 10, each centred on its remains' x and z and 3 m below its y (a region spans its centre's y up to y + height, so the player standing on rough ground near the remains is inside). The region name is the `enter_region` key DK-10c's chains use, byte-exact.
 
 | Set | Point | Name | Centre (x, y, z) | Objective | Remains |
 |---|---|---|---|---|---|
@@ -66,7 +62,7 @@ Read the A-17 to A-21 coordinates from the `## Drop locations (A-17 to A-21)` se
 **Steps.**
 
 1. `db/resources/Entities/Seed/entity_templates_dakara_e1.sql`:
-   - Line 8: change `-- Id block 440-459 (cast and props). 460-479 is reserved for DK-20's hostiles` to `-- Id block 440-461 (cast and props; DK-09 added 458-461). 462-479 is reserved for DK-20's hostiles`. Keep lines 9-10.
+   - Line 8: change `-- Id block 440-459 (cast and props). 460-479 is reserved for DK-20's hostiles` to `-- Id block 440-461 (cast and props; DK-09 added 458-461). 464-479 is reserved for DK-20's hostiles`. Keep lines 9-10.
    - After the last row (457 Vocuum, the end of the file), add one blank line, this comment, and four rows:
 
      ```sql
@@ -103,7 +99,7 @@ Read the A-17 to A-21 coordinates from the `## Drop locations (A-17 to A-21)` se
    ```
 
    `standable_and_connected` keeps its signature; its body becomes `standable(mesh, point, label);` followed by the existing `reaches` assert.
-4. `crates/cell-world/src/cell/spawner_tests/dakara_e1/mod.rs`: add `mod props;` between `mod population;` and `mod templates;`. Change `const CAST_AND_PROPS: (i32, i32) = (440, 459);` to `(440, 461)` and its doc comment to say "(DK-03, plus DK-09's drop-location clones 458-461). 462-479, the rest of the campaign's block, is DK-20's hostiles". Add a doc bullet after the `templates` one: `` - [`props`]: DK-09, the SG-18 remains and drop-location spawns and the SG-18 search regions: rows, positions, on-mesh and plaza-connectivity guards. ``
+4. `crates/cell-world/src/cell/spawner_tests/dakara_e1/mod.rs`: add `mod props;` between `mod population;` and `mod templates;`. Change `const CAST_AND_PROPS: (i32, i32) = (440, 459);` to `(440, 461)` and its doc comment to say "(DK-03, plus DK-09's drop-location clones 458-461). 464-479, the rest of the campaign's block, is DK-20's hostiles". Add a doc bullet after the `templates` one: `` - [`props`]: DK-09, the SG-18 remains and drop-location spawns and the SG-18 search regions: rows, positions, on-mesh and plaza-connectivity guards. ``
 5. `crates/cell-world/src/cell/spawner_tests/dakara_e1/templates.rs`: line 1 `(440-459)` becomes `(440-461)`; `ROSTER` becomes `[(i32, &str, &str); 22]` with four entries after 457: `(458, "being", "DN_ob_DakaraE1_int_DropLoc")` and the same for 459, 460, 461; the doc at line 85 says "the twenty-two templates (DK-03's eighteen and DK-09's four drop-location clones)". Change nothing else (the look test's `479` bound stays).
 6. New `crates/cell-world/src/cell/spawner_tests/dakara_e1/props.rs` (about 140 lines), in the style of `population.rs`:
 
