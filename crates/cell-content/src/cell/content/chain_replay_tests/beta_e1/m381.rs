@@ -367,6 +367,47 @@ async fn relog_on_checklist_step_rebinds_felger() {
     .is_empty());
 }
 
+/// Revert: drop the world filter on the `player_loaded` trigger of 23040, 23043,
+/// 23050 or 23053. A Human whose state would bind or resync on Beta (offer open,
+/// S1408, S1409) who logs into any other world must match no 381 chain.
+#[tokio::test]
+async fn logins_in_another_world_match_no_381_chain() {
+    let pool = require_db_or_skip!();
+    let whole = whole_seed(&pool).await;
+    // (381 step, the chains that match on Beta in that state).
+    let states: [(Option<i32>, &[i64]); 3] = [
+        (None, &[OFFER_BIND]),
+        (Some(CHECKLIST_STEP), &[FELGER_RESTORE]),
+        (Some(CAGE_STEP), &[TURN_IN_RESTORE, CAGE_RESYNC]),
+    ];
+    for (step, on_beta) in states {
+        let build = |world: &str| match step {
+            None => offer_open(login_ctx(world, Some(1))),
+            Some(id) => state(
+                login_ctx(world, Some(1)),
+                "completed",
+                "active",
+                Some((id, "active")),
+            ),
+        };
+        let resolved = fire(&whole, TriggerType::PlayerLoaded, &build(BETA));
+        assert_eq!(
+            m381_matched(&resolved),
+            on_beta.iter().copied().collect::<BTreeSet<i64>>(),
+            "Beta, step {step:?}",
+        );
+        let resolved = fire(
+            &whole,
+            TriggerType::PlayerLoaded,
+            &build("Some_Other_World"),
+        );
+        assert!(
+            m381_matched(&resolved).is_empty(),
+            "another world, step {step:?}",
+        );
+    }
+}
+
 /// Revert: drop 23044's rows or its S1408 gate. Felger takes the checklist back,
 /// shows the cage dialog 1884, and moves 381 to S1409 with the turn-in talk
 /// bound.
