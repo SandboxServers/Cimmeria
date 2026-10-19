@@ -38,7 +38,7 @@ DK-06b's full packet text is in [wave-3b-dk-06b.md](wave-3b-dk-06b.md) (D-DK10 r
 | Report | `<worktree>\.claude\reports\dakara\DK-09-packet-coder.md` |
 | Size | About 38k tokens |
 
-**Contract excerpt** (C2, C6, D-DK11, D-DK16, D-DK18). Templates 440-479 are the campaign's; 440-457 are in use and DK-09 adds 458-461, four clones of 449 (Drop Location), so each drop site holds its own per-player bind. Hostiles start at 462. Spawns 8000-8007 are in use; DK-09 adds 8008-8015, all world 61, `is_stationary` true, `respawn_secs` 30, `set_name` NULL. The SG-18 remains are on the navmesh but not connected to the plaza (D-DK11): they get an on-mesh guard only. The drop locations are in the plaza's component (D-DK13): they get the on-mesh and connected guard. Point sets 2123-2127 and points 2552-2556 are in use; DK-09 adds sets 2128-2130 and points 2557-2559, the three SG-18 search regions of step 4902 (D-DK18): client-hinted (`flags` 1) `AreaSet` cylinders in world 61, radius 8, height 10, each centred on its remains' x and z and 3 m below its y (a region spans its centre's y up to y + height, so the player standing on rough ground near the remains is inside). The region name is the `enter_region` key DK-10c's chains use, byte-exact.
+**Contract excerpt** (C2, C6, D-DK11, D-DK16, D-DK18). Templates 440-479 are the campaign's; 440-457 are in use and DK-09 adds 458-461, four clones of 449 (Drop Location), so each drop site holds its own per-player bind. Hostiles start at 464. Spawns 8000-8007 are in use; DK-09 adds 8008-8015, all world 61, `is_stationary` true, `respawn_secs` 30, `set_name` NULL. The SG-18 remains are on the navmesh but not connected to the plaza (D-DK11): they get an on-mesh guard only. The drop locations are in the plaza's component (D-DK13): they get the on-mesh and connected guard. Point sets 2123-2127 and points 2552-2556 are in use; DK-09 adds sets 2128-2130 and points 2557-2559, the three SG-18 search regions of step 4902 (D-DK18): client-hinted (`flags` 1) `AreaSet` cylinders in world 61, radius 8, height 10, each centred on its remains' x and z and 3 m below its y (a region spans its centre's y up to y + height, so the player standing on rough ground near the remains is inside). The region name is the `enter_region` key DK-10c's chains use, byte-exact.
 
 | Set | Point | Name | Centre (x, y, z) | Objective | Remains |
 |---|---|---|---|---|---|
@@ -62,7 +62,7 @@ Read the A-17 to A-21 coordinates from the `## Drop locations (A-17 to A-21)` se
 **Steps.**
 
 1. `db/resources/Entities/Seed/entity_templates_dakara_e1.sql`:
-   - Line 8: change `-- Id block 440-459 (cast and props). 460-479 is reserved for DK-20's hostiles` to `-- Id block 440-461 (cast and props; DK-09 added 458-461). 462-479 is reserved for DK-20's hostiles`. Keep lines 9-10.
+   - Line 8: change `-- Id block 440-459 (cast and props). 460-479 is reserved for DK-20's hostiles` to `-- Id block 440-461 (cast and props; DK-09 added 458-461). 464-479 is reserved for DK-20's hostiles`. Keep lines 9-10.
    - After the last row (457 Vocuum, the end of the file), add one blank line, this comment, and four rows:
 
      ```sql
@@ -99,7 +99,7 @@ Read the A-17 to A-21 coordinates from the `## Drop locations (A-17 to A-21)` se
    ```
 
    `standable_and_connected` keeps its signature; its body becomes `standable(mesh, point, label);` followed by the existing `reaches` assert.
-4. `crates/cell-world/src/cell/spawner_tests/dakara_e1/mod.rs`: add `mod props;` between `mod population;` and `mod templates;`. Change `const CAST_AND_PROPS: (i32, i32) = (440, 459);` to `(440, 461)` and its doc comment to say "(DK-03, plus DK-09's drop-location clones 458-461). 462-479, the rest of the campaign's block, is DK-20's hostiles". Add a doc bullet after the `templates` one: `` - [`props`]: DK-09, the SG-18 remains and drop-location spawns and the SG-18 search regions: rows, positions, on-mesh and plaza-connectivity guards. ``
+4. `crates/cell-world/src/cell/spawner_tests/dakara_e1/mod.rs`: add `mod props;` between `mod population;` and `mod templates;`. Change `const CAST_AND_PROPS: (i32, i32) = (440, 459);` to `(440, 461)` and its doc comment to say "(DK-03, plus DK-09's drop-location clones 458-461). 464-479, the rest of the campaign's block, is DK-20's hostiles". Add a doc bullet after the `templates` one: `` - [`props`]: DK-09, the SG-18 remains and drop-location spawns and the SG-18 search regions: rows, positions, on-mesh and plaza-connectivity guards. ``
 5. `crates/cell-world/src/cell/spawner_tests/dakara_e1/templates.rs`: line 1 `(440-459)` becomes `(440-461)`; `ROSTER` becomes `[(i32, &str, &str); 22]` with four entries after 457: `(458, "being", "DN_ob_DakaraE1_int_DropLoc")` and the same for 459, 460, 461; the doc at line 85 says "the twenty-two templates (DK-03's eighteen and DK-09's four drop-location clones)". Change nothing else (the look test's `479` bound stays).
 6. New `crates/cell-world/src/cell/spawner_tests/dakara_e1/props.rs` (about 140 lines), in the style of `population.rs`:
 
