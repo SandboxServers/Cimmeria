@@ -101,7 +101,7 @@ shape.
 3. Workers use PowerShell and the lane only: no bash, no direct `cargo`, no
    `git worktree prune`, no `git stash`, no push. They commit locally and
    stop. On a Linux or WSL host only `ops` has a shell path (the `.sh` twins); a packet worker without PowerShell returns `blocked`.
-4. On a one-line return, update the ledger row; a coder's `done` starts that packet's review loop (§ 4). Open the report file
+4. On a one-line return, update the ledger row; an implementer's `done` (a packet-coder or a domain agent) starts that packet's review loop (§ 4). Open the report file
    only when the return says `blocked`, `failed` or `verdict=decision`. A `blocked` return with
    the reason `context` starts the coder loop in § Sessions, passes and
    escalation.
@@ -117,7 +117,7 @@ Three review loops run. They have the same shape and the same limit:
 
 | Loop | When | Scope | Fix notes go to |
 |---|---|---|---|
-| Packet | as soon as that packet's coder returns `done` | the packet's commit range | a fresh `packet-coder` in that packet's worktree |
+| Packet | as soon as that packet's implementer (packet-coder or domain agent) returns `done` | the packet's commit range | a fresh `packet-coder` in that packet's worktree |
 | Wave | once every packet of the wave has `ship` | every packet of the wave, together | a fresh `packet-coder` for each packet the notes name |
 | Campaign | after the last wave merges, before close-out | everything the campaign merged, on `origin/main` | a fresh `packet-coder` in an `ops` worktree named `<campaign>-review` |
 
@@ -135,7 +135,7 @@ session. It returns `verdict=ship`, `fix` or `decision`:
    escalation, step 3.
 
 A reviewer's brief carries the scope, the worktree, the commit range
-(`<base>..<head>`), the spec (the packet section path, or for a wave or the
+(`<base>..<head>`; when a wave ships one PR per packet, list every packet's branch and range, or point at an integrated tree, so cross-packet callers and callees are in view), the spec (the packet section path, or for a wave or the
 campaign the work-packets file and the ledger README), the pass number, from
 pass 2 the previous report, and the report path
 `<worktree>\.claude\reports\<campaign>\<packet>-review-<N>.md` (a wave:

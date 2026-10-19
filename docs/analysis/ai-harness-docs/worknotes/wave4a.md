@@ -1,6 +1,6 @@
 # wave4a ruling (C12 step 3)
 
-Architect ruling after wave4a review pass 3 returned `fix`. Range a8910a384..19f8c6a08 in `C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\ah-w4a` (branch `ai-harness-docs/w4a`). Inputs: `.claude\reports\ai-harness-docs\wave4a-review-1.md`, `-2.md`, `-3.md`, `wave4a-fix-1.md`, `wave4a-fix-2.md`.
+Architect ruling after wave4a review pass 3 returned `fix`. Range a8910a384..19f8c6a08 in the worktree (`.claude\worktrees\ah-w4a`) (branch `ai-harness-docs/w4a`). Inputs: `.claude\reports\ai-harness-docs\wave4a-review-1.md`, `-2.md`, `-3.md`, `wave4a-fix-1.md`, `wave4a-fix-2.md`.
 
 ## Ruling
 
@@ -8,11 +8,11 @@ Architect ruling after wave4a review pass 3 returned `fix`. Range a8910a384..19f
 
 ## Implementer
 
-One Sonnet `documentation-writer` in the worktree above. Brief: this note's path, report path `C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\ah-w4a\.claude\reports\ai-harness-docs\wave4a-ruling-1.md`, return line `wave4a <done|blocked|failed> <commit-sha|-> <report-path>`.
+One Sonnet `documentation-writer` in the worktree above. Brief: this note's path, report path `.claude\reports\ai-harness-docs\wave4a-ruling-1.md`, return line `wave4a <done|blocked|failed> <commit-sha|-> <report-path>`.
 
 ## Edit 1 (the only hand edit)
 
-- File: `C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\ah-w4a\.claude\agents\orchestrator.md` (the worktree copy, never the root checkout), line 32 (the `- Review loops (campaign-packet skill § 4; ...` bullet).
+- File: `.claude\agents\orchestrator.md` (the worktree copy, never the root checkout), line 32 (the `- Review loops (campaign-packet skill § 4; ...` bullet).
 - Find (exact, once in the file):
   `then one fresh reviewer to check it. The architect decides only what to fix and how`
 - Replace with:
@@ -21,7 +21,7 @@ One Sonnet `documentation-writer` in the worktree above. Brief: this note's path
 
 ## Edit 2 (generated, do not hand edit)
 
-- Run from the worktree: `Set-Location C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\ah-w4a; python tools/agent-skills/sync.py`
+- Run from the worktree: `Set-Location <worktree>; python tools/agent-skills/sync.py`
 - It rewrites `.codex/agents/orchestrator.toml` (line 23 gets the same clause). Do not edit the .toml by hand.
 
 ## Checks (all must pass, in the worktree)
@@ -40,7 +40,7 @@ One commit, explicit paths: `.claude/agents/orchestrator.md`, `.codex/agents/orc
 
 ## Ruling check
 
-Then one fresh `packet-reviewer`, scope wave4a, range `19f8c6a08..<ruling commit>`, no pass number, names this note. Report: `C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\ah-w4a\.claude\reports\ai-harness-docs\wave4a-ruling-check.md`. It checks only that Edit 1 and 2 match this note and checks 1-4 pass. A verdict other than `ship` is BlockedDecision (C12 step 3); do not dispatch another ruling.
+Then one fresh `packet-reviewer`, scope wave4a, range `19f8c6a08..<ruling commit>`, no pass number, names this note. Report: `.claude\reports\ai-harness-docs\wave4a-ruling-check.md`. It checks only that Edit 1 and 2 match this note and checks 1-4 pass. A verdict other than `ship` is BlockedDecision (C12 step 3); do not dispatch another ruling.
 
 ## Pass 3 "Not fixed" items: accepted, with follow-ups
 
