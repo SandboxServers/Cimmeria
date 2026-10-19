@@ -11,8 +11,8 @@ use tokio::sync::mpsc;
 use cimmeria_content_engine::actions::Action;
 
 use super::{
-    ability_grant, ability_granter, bark, black_market, counter, dialog, inventory, loot, mail,
-    mission, spawn, spawn_set, stargate, stats, transport, tutorial, world,
+    ability_grant, ability_granter, bark, black_market, cash, counter, dialog, inventory, loot,
+    mail, mission, spawn, spawn_set, stargate, stats, transport, tutorial, world,
 };
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
@@ -447,6 +447,9 @@ pub(super) async fn execute_one(
                     "GrantXP: cell→base send failed -- player silently loses the chain's XP reward"
                 );
             }
+        }
+        Action::GrantCash { amount } => {
+            cash::grant(amount, entity_id, player_id, chain_id, tx, space_mgr).await;
         }
         Action::GmAbilityBulk { change } => {
             ability_granter::run(change, entity_id, chain_id, params, tx, space_mgr).await;
