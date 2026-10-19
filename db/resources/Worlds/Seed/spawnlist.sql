@@ -122,19 +122,19 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (56, -33.2260017, 1.31099999, 36.4720001, 1.59985006, 58, 33, 'SGC_W1_SamCarter', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (57, -52.0559998, 1.31099999, -44.9900017, 0, 58, 34, NULL, NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (57, -52.0559998, 1.31099999, -44.9900017, 0, 58, 34, 'SGC_W1_TacticsJaffa1', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (58, -69.4560013, 1.31099999, -44.0849991, 0, 58, 34, NULL, NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (58, -69.4560013, 1.31099999, -44.0849991, 0, 58, 34, 'SGC_W1_TacticsJaffa2', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (59, 210.781006, 1.31099999, -273.390015, 0, 58, 35, NULL, NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (59, 210.781006, 1.31099999, -273.390015, 0, 58, 35, 'SGC_W1_ClearJaffa1', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (60, 209.334, 1.31099999, -280.5, 0, 58, 35, NULL, NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (60, 209.334, 1.31099999, -280.5, 0, 58, 35, 'SGC_W1_ClearJaffa2', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (61, 188.104996, 1.31099999, -258.789001, 0, 58, 35, NULL, NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (61, 188.104996, 1.31099999, -258.789001, 0, 58, 35, 'SGC_W1_ClearJaffa3', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (62, 179.442001, 1.31099999, -271.589996, 0, 58, 35, NULL, NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (62, 179.442001, 1.31099999, -271.589996, 0, 58, 35, 'SGC_W1_ClearJaffa4', NULL);
 
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (63, 123.702003, 1.31099999, -215.981995, 0, 58, 35, NULL, NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (63, 123.702003, 1.31099999, -215.981995, 0, 58, 35, 'SGC_W1_ClearJaffa5', NULL);
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (64, 258.118988, -10.8479996, 40.0859985, 0, 58, 36, 'SGC_W1_Crate', NULL);
 

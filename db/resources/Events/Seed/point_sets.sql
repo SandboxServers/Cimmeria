@@ -330,5 +330,8 @@ INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, fla
 -- no-gate-volume fallback that travels on the dial with no gate animation.
 INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (13800, 'DebugArea.Stargate', 'AreaSet', 1300, 2.5, 10, 'Cylinder', 3);
 
+-- SGC_W1 Union regions (US-11, CIMMERIA_RECONSTRUCTION; flags 1 = hinted to the client).
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (15800, 'SGC_W1.FailsafeRoom', 'AreaSet', 58, 8, 6, 'Cylinder', 1);
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (15801, 'SGC_W1.GateControl', 'AreaSet', 58, 10, 6, 'Cylinder', 1);
 SELECT pg_catalog.setval('point_sets_set_id_seq', 2122, true);
 

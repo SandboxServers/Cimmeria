@@ -443,5 +443,8 @@ INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUE
 -- 1011's on the same client map.
 INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (13800, 13800, 251.294998, 10.5959997, -990.02301, 0, 0, 0);
 
+-- SGC_W1 Union region centres (US-11): P07 and P09.
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (15800, 15800, 150.0, 1.3, -196.0, 0, 0, 0);
+INSERT INTO point_set_points (set_id, point_id, x, y, z, yaw, pitch, roll) VALUES (15801, 15801, 173.0, -6.4, 55.0, 0, 0, 0);
 SELECT pg_catalog.setval('point_set_points_point_id_seq', 2551, true);
 
