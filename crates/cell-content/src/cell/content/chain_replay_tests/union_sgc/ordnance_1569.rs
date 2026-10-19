@@ -233,3 +233,45 @@ async fn live_db_m1569_never_offered_to_a_non_human() {
         }
     }
 }
+
+/// **Revert proof:** drop the `player_loaded` trigger of chain 3110 and a
+/// Human who finished 1564 earlier (no `mission_completed` event now) is never
+/// offered 1569 on load; drop its `mission_status 1569 eq not_active` row and a
+/// Human who finished 1569 is offered it again on every load.
+#[tokio::test]
+async fn live_db_m1569_offered_on_load_after_1564_and_never_again_after_1569() {
+    let pool = require_db_or_skip!();
+    let mut rig = Rig::new(&pool, Some(SOLDIER)).await;
+    rig.mgr.step_objectives = load_step_objectives(&pool)
+        .await
+        .expect("load the step objectives");
+    rig.accept(M1564).await;
+    rig.complete(M1564).await;
+    assert_eq!(
+        rig.status(M1569),
+        None,
+        "the quiet completion offers nothing"
+    );
+    rig.loaded().await;
+    assert_eq!(rig.status(M1569), ACTIVE, "load offers 1569 after 1564");
+    for (tag, _, _) in CRATES {
+        assert!(
+            (rig.flags(tag) & MISSION_OBJECT) != 0,
+            "{tag} is lit by the load offer"
+        );
+    }
+
+    for (tag, _, _) in CRATES {
+        rig.press(tag).await;
+    }
+    assert_eq!(rig.status(M1569), COMPLETED);
+    let rig = rig.relog(&pool).await;
+    assert_eq!(
+        rig.status(M1569),
+        COMPLETED,
+        "a completed 1569 is not reoffered"
+    );
+    for (tag, _, _) in CRATES {
+        assert_eq!(rig.flags(tag) & MISSION_OBJECT, 0, "{tag} stays dark");
+    }
+}
