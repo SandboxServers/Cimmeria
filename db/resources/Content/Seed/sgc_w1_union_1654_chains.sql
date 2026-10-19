@@ -88,8 +88,9 @@ VALUES
   (3151, 'complete_objective', 1654, '5962', '{}', 0, 1);
 
 -- Chain 3152: 1654 done (final step, F13). Woolsey appears beside Hammond at
--- P02 with "?" for the 1655 offer. The `dead` row on the Woolsey tag stops a
--- second spawn while he is live (the spawn would log tag_already_live).
+-- P02 with "?" for the 1655 offer. The `dead` row on the Woolsey tag only keeps
+-- a re-fired load quiet: the spawn is a no-op for a live tag but logs WARN
+-- tag_already_live.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
 VALUES (3152, 'SGC_W1 - 1654 done: Woolsey arrives with "?"', 'mission', 1654, true, 0);
 

@@ -136,11 +136,16 @@ async fn live_db_m1654_jaffa_report_completes_the_mission() {
         COMPLETED,
         "the Free Jaffa report completes 1654"
     );
+    assert!(
+        rig.live(WOOLSEY) && rig.flags(WOOLSEY) & OFFER != 0,
+        "Woolsey also appears with the offer for a Free Jaffa"
+    );
 }
 
-/// **Revert proof:** delete chain 3152, or drop its `entity_tag_state` row
-/// (the count becomes 2 on the second load). Woolsey is live with "?" after
-/// the report, one copy per load, and back after a relog.
+/// **Revert proof:** delete chain 3152 and Woolsey never appears. Woolsey is
+/// live with "?" after the report, one copy per load, and back after a relog.
+/// (The `entity_tag_state` row of 3152 only avoids a WARN: a second spawn of a
+/// live tag is a no-op, so the count cannot show it.)
 #[tokio::test]
 async fn live_db_m1654_woolsey_arrives_once() {
     let pool = require_db_or_skip!();
