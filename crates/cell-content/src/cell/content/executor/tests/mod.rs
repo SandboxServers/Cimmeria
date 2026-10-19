@@ -25,6 +25,7 @@
 //! - [`once_gate`]        — `content_triggers.once`: fire once per entity.
 //! - [`open_loot`]        — `Action::OpenLoot`: per-looter rolls on a live chest.
 //! - [`pets`]             — pets PT-02 at the content transport call sites.
+//! - [`radio_dialog`]     — `Action::DisplayRadioDialog` (DK-06b): EntityId 0, no NPC needed.
 //! - [`spawn_set`]        — `Action::SpawnSet` (DA-10): the Lineup
 //!   attendants' GM gate, exclusive groups and Clear.
 //! - [`stargate`]         —`Action::GrantStargateAddress`: the three legs
@@ -58,6 +59,7 @@ mod npc_state;
 mod once_gate;
 mod open_loot;
 mod pets;
+mod radio_dialog;
 mod spawn_set;
 mod stargate;
 mod stats;

@@ -9,6 +9,7 @@ mod chain_loading;
 mod condition_conversion;
 mod grant_ability_conversion;
 mod npc_bark_conversion;
+mod radio_dialog_conversion;
 mod send_system_mail_conversion;
 mod trigger_conversion;
 mod tutorial_conversion;

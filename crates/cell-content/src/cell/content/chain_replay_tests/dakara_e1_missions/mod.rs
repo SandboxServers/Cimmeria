@@ -111,6 +111,9 @@ fn labels_in(resolved: &ResolvedActions, range: RangeInclusive<i64>) -> Vec<Stri
                     objective_id,
                 } => format!("complete_objective({mission_id}/{objective_id})"),
                 Action::DisplayDialog { dialog_id } => format!("display_dialog({dialog_id})"),
+                Action::DisplayRadioDialog { dialog_id } => {
+                    format!("display_radio_dialog({dialog_id})")
+                }
                 Action::AddDialogSet {
                     dialog_set_id,
                     slot,
