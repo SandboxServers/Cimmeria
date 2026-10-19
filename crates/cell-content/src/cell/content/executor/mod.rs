@@ -21,6 +21,7 @@
 //! - [`transport`] — teleport, ring transporter
 //! - [`stargate`]  — `GrantStargateAddress` (cell, client method 66, the base)
 //! - [`mail`]      — `SendSystemMail`, forwarded to the base's mail writer
+//! - [`cash`]      — `GrantCash`, forwarded to the base as a naquadah grant (UB-50b1)
 //! - [`loot`]      — `OpenLoot`, a loot window on a live container
 //! - [`deferred`]  — `content_actions.delay_ms > 0` scheduling/tick-drain (C08a)
 //! - [`once_gate`] — `content_triggers.once`: fire once per entity, then disarm
@@ -44,6 +45,7 @@ mod ability_grant;
 mod ability_granter;
 mod bark;
 mod black_market;
+mod cash;
 mod counter;
 mod deferred;
 mod dialog;
