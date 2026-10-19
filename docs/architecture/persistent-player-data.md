@@ -37,7 +37,7 @@ A live write to a `resources` table (the authoring console, a hand `UPDATE`) las
 | Reseed | every `resources.*` table; `public.shards` | Replaced from the fresh DB |
 | Persistent, seed top-up | `account` | Carried over; seed accounts missing by id **and** name are inserted; existing rows are never changed |
 | Persistent | the other `public` tables listed in `db/persistent/persistent-public-tables.txt` | Carried over; seed rows apply on first load only |
-| Rebuild-owned | `cimmeria_meta.db_state`, `cimmeria_meta.reconcile_log` | Carried over; never in `database.sql` |
+| Rebuild-owned | `cimmeria_meta.db_state`, `cimmeria_meta.reconcile_log`, `cimmeria_meta.restore_done` | Not part of the player tables: `db_state` and `reconcile_log` start fresh in `sgw_next` (`rebuild_count` is carried forward; the previous log stays in `sgw_prev`), `restore_done` is copied across. Never in `database.sql` |
 
 `public` persists by default. The reseed exceptions are in `db/persistent/reseed-public-tables.txt`, and a type 1 lint fails when a `public` table is in neither list or both. Add a table, classify it in the same change.
 
