@@ -13,7 +13,7 @@ Input: a goal and a campaign folder under `docs/analysis/`. Output: `README.md` 
 Rules:
 - Packet sizing: each packet-coder packet is about **40k working tokens** (no M size). Split anything bigger.
 - Inline the contract excerpt and the 5-10 repo rules each packet needs (lane command, test type, file caps, CRLF docs). packet-coder skips CLAUDE.md, so the packet must carry its own rules.
-- Group packets into **waves** that one packet-review-fixer can review in one context: about 6 small packets per wave.
+- Group packets into **waves** of about 6 small packets, so one packet-reviewer can hold the whole wave at the wave-boundary review. Say whether the wave ships as one PR (an integration branch) or one PR per packet, and give the merge order.
 - Mark owner decisions `BlockedDecision` and list them in the report. The architect never asks the user itself.
 - Use PowerShell only, with absolute paths. Never run cargo directly; any compile check goes through `tools/build-lane/lane.ps1`.
 - Write the full report to the report path given in the brief. Keep `RESUME.md` at most 40 lines. Files under `docs/` are CRLF.
