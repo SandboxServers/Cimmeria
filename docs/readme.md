@@ -296,6 +296,7 @@ How the Cimmeria emulator itself is structured. <!-- gen:section-table-rows -->4
 
 | Document | Description | Status |
 |----------|-------------|--------|
+| [persistent-player-data.md](architecture/persistent-player-data.md) | **2026-10 reference and decision summary (D-PP1..D-PP17).** What persists across restarts, releases and forced reseeds and what reseeds: the table classification, the blue/green rebuild, the additive-only schema policy and the owner decisions D1-D8. Ledger in [analysis/persistent-player-data/](analysis/persistent-player-data/README.md) | Accepted |
 | [build-system.md](architecture/build-system.md) | **2026-09 decision record.** How the workspace is built: the pinned toolchain, dev profiles, the build lane, Dev Drive, artifact sweeping, cargo-hakari, test-binary and dependency hygiene, with the measured baseline and results | In progress |
 | [plugin-architecture.md](architecture/plugin-architecture.md) | **2026-09 decision record (#962).** Features as plugins over `CellEntity` and `SpaceManager`, without an ECS: the `CellPlugin` trait, registration order, the method-index startup assertion, the message envelope, the extension map, the client-compatibility boundary, crate layout and migration order (pets first) | Accepted |
 | [services-crate-split.md](architecture/services-crate-split.md) | Splitting `cimmeria-services` into an acyclic set of crates: target crate map and planned dependency graph, every cycle edge and its fix, test-support strategy, migration waves and per-wave status | In progress |
