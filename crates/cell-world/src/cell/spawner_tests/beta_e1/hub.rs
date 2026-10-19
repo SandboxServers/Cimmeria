@@ -60,15 +60,32 @@ const HUB: [(i32, i32, &str, [f32; 3]); 16] = [
     (23021, 2335, "BetaE1_RuinNote", [122.200, 27.17, 356.800]),
 ];
 
-/// Region set id, name and centre (the seal's Storage and AdminBuilding rows).
-const REGIONS: [(i32, &str, [f32; 3]); 2] = [
-    (23000, "Beta_Site_Evo_1.Storage", [1022.327, 13.37, 271.180]),
+/// Region set id, name, centre, radius and height (the seal's "Regions"
+/// table: Storage r 20 / h 6, AdminBuilding r 14 / h 6).
+const REGIONS: [(i32, &str, [f32; 3], f32, f32); 2] = [
+    (
+        23000,
+        "Beta_Site_Evo_1.Storage",
+        [1022.327, 13.37, 271.180],
+        20.0,
+        6.0,
+    ),
     (
         23001,
         "Beta_Site_Evo_1.AdminBuilding",
         [1018.405, 13.90, 506.851],
+        14.0,
+        6.0,
     ),
 ];
+
+/// Text of a seed file under `db/resources/`, for the footer guard below.
+fn seed_text(relative: &str) -> String {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../db/resources")
+        .join(relative);
+    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+}
 
 #[tokio::test]
 async fn live_db_beta_hub_spawns_match_the_placement_seal() {
@@ -139,9 +156,9 @@ async fn live_db_beta_hub_regions_are_named_and_reachable() {
     let pool = require_db_or_skip!();
     let exterior = mesh("beta_site_evo_1.nav");
 
-    for (set_id, name, expected) in REGIONS {
-        let row: (String, i32, i32, f32, f32, f32) = sqlx::query_as(
-            "SELECT s.name::text, s.world_id, s.flags, p.x, p.y, p.z \
+    for (set_id, name, expected, radius, height) in REGIONS {
+        let row: (String, i32, i32, f32, f32, f32, Option<f32>, Option<f32>) = sqlx::query_as(
+            "SELECT s.name::text, s.world_id, s.flags, p.x, p.y, p.z, s.radius, s.height \
              FROM resources.point_sets s JOIN resources.point_set_points p USING (set_id) \
              WHERE s.set_id = $1",
         )
@@ -150,6 +167,11 @@ async fn live_db_beta_hub_regions_are_named_and_reachable() {
         .await
         .unwrap_or_else(|e| panic!("region {set_id}: {e}"));
         assert_eq!((row.0.as_str(), row.1, row.2), (name, 23, 1));
+        assert_eq!(
+            (row.6, row.7),
+            (Some(radius), Some(height)),
+            "{name} radius or height moved: update the placement seal"
+        );
         let centre = [row.3, row.4, row.5];
         assert_eq!(centre, expected, "{name} centre moved");
         standable_and_connected(&exterior, centre, ARRIVAL, name);
@@ -179,4 +201,30 @@ async fn live_db_beta_hub_tags_are_unique_across_worlds() {
     .await
     .expect("UB-02b duplicate tags");
     assert!(duplicates.is_empty(), "duplicate tags: {duplicates:?}");
+}
+
+/// Each hub seed file must carry its own sequence footer. The DB-level
+/// checks cannot tell whose footer ran: the later Beta files and the Debug
+/// Area footers all re-set the same sequences, so deleting this file's footer
+/// leaves the loaded database looking right. This reads the file text.
+#[test]
+fn beta_hub_seed_files_carry_their_own_sequence_footers() {
+    // Revert proof: delete the `setval` line from spawnlist_beta_e1_hub.sql or
+    // point_sets_beta_e1_hub.sql; this fails naming the file.
+    let footers = [
+        (
+            "Worlds/Seed/spawnlist_beta_e1_hub.sql",
+            "SELECT pg_catalog.setval('spawnlist_spawn_id_seq', GREATEST((SELECT MAX(spawn_id) FROM spawnlist), (SELECT last_value FROM spawnlist_spawn_id_seq), 23199), true);",
+        ),
+        (
+            "Events/Seed/point_sets_beta_e1_hub.sql",
+            "SELECT pg_catalog.setval('point_sets_set_id_seq', GREATEST((SELECT last_value FROM point_sets_set_id_seq), 23001), true);",
+        ),
+    ];
+    for (file, footer) in footers {
+        assert!(
+            seed_text(file).lines().any(|line| line.trim() == footer),
+            "{file} is missing its sequence footer: {footer}"
+        );
+    }
 }
