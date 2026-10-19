@@ -74,7 +74,7 @@ packaged UI, signing or game UAT.
 
 ## The full checklist
 
-Agents run the compiling commands below through the build lane, with `--exclusive` for the workspace-wide ones: `bash tools/build-lane/lane.sh --exclusive cargo clippy …`, or from PowerShell with no bash, `pwsh tools/build-lane/lane.ps1 --exclusive cargo clippy …`.
+Agents run the compiling commands below through the build lane, with `--exclusive` for the workspace-wide ones: `pwsh tools/build-lane/lane.ps1 --exclusive cargo clippy …` from PowerShell, or `bash tools/build-lane/lane.sh --exclusive cargo clippy …` on Linux and WSL.
 
 ```bash
 cargo fmt --all -- --check

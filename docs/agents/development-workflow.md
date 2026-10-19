@@ -121,9 +121,9 @@ Every request re-reads the agent's whole context, so a long-lived agent pays for
   pwsh tools/build-lane/ship.ps1 pr -C <its worktree> -m "<message>" [--body-file <file>]
   ```
 
-  It stages every change, commits with the trailers, pushes and opens the PR (or finds the open one), and prints `status=ok branch=... pr=<N> url=... kind=docs|code`. It refuses (exit 2) unless `-C` is a registered worktree on a feature branch, so a worker whose worktree vanished cannot push the main checkout. `ops` merges with `bash tools/build-lane/ship.sh merge <PR> --retire <worktree name>`: a `kind=docs` PR (only `*.md` and `.claude/agent-memory/`) is queued at once; a code PR waits for its PR checks (fmt, clippy, and build + nextest, which skips on a PR push unless the PR has the `full-ci` label), then is queued. Either way `ship.sh` adds it to `main`'s merge queue, waits up to `--queue-timeout` (60m) for it to land, and retires the worktree; a code PR is refused while a `main-red` issue is open. `status=queued` (exit 3) means it is still in the queue and will merge on its own: rerun the merge later to retire the worktree. The queue, the statuses and `--allow-red-main` are in [pre-pr-checks.md § Merge queue](pre-pr-checks.md#merge-queue) and [§ Main is red](pre-pr-checks.md#main-is-red). A failure prints the reason and a log path; the exit codes are in [`ship.py`](../../tools/build-lane/ship.py). Don't poll `gh pr checks`, call `gh pr merge` yourself, or chain `git add`/`commit`/`push` by hand.
+  It stages every change, commits with the trailers, pushes and opens the PR (or finds the open one), and prints `status=ok branch=... pr=<N> url=... kind=docs|code`. It refuses (exit 2) unless `-C` is a registered worktree on a feature branch, so a worker whose worktree vanished cannot push the main checkout. `ops` merges with `pwsh tools/build-lane/ship.ps1 merge <PR> --retire <worktree name>` (`ship.sh` on Linux and WSL): a `kind=docs` PR (only `*.md` and `.claude/agent-memory/`) is queued at once; a code PR waits for its PR checks (fmt, clippy, and build + nextest, which skips on a PR push unless the PR has the `full-ci` label), then is queued. Either way `ship.sh` adds it to `main`'s merge queue, waits up to `--queue-timeout` (60m) for it to land, and retires the worktree; a code PR is refused while a `main-red` issue is open. `status=queued` (exit 3) means it is still in the queue and will merge on its own: rerun the merge later to retire the worktree. The queue, the statuses and `--allow-red-main` are in [pre-pr-checks.md § Merge queue](pre-pr-checks.md#merge-queue) and [§ Main is red](pre-pr-checks.md#main-is-red). A failure prints the reason and a log path; the exit codes are in [`ship.py`](../../tools/build-lane/ship.py). Don't poll `gh pr checks`, call `gh pr merge` yourself, or chain `git add`/`commit`/`push` by hand.
 - **Stack a PR only when it really builds on an open one.** `ship.sh pr -C <worktree> -m <msg> --base <the other PR's branch>` opens it against that branch. `ship.sh merge` refuses it until the base merges; the base's merge then restacks it onto `main` (`rebase-pr.sh --upstream <the base's merged head> --push`, which replays only its own commits) and retargets it, and prints `restacked=<PR>`, or `restack_conflict=<PR>` when the rebase needs a worker.
-- **Rebase only when the PR needs it, and then with the script.** `ship.sh merge` does this for you. Run it when GitHub reports the PR as behind `main` or conflicting (`gh pr view <PR> --json mergeStateStatus` gives `BEHIND` or `DIRTY`), not as a routine step before every merge. `bash tools/build-lane/rebase-pr.sh <PR> --push` rebases the branch onto `origin/main` in a throwaway worktree. It is silent when the rebase is clean, resolves generated doc blocks and `Cargo.lock` by itself, and otherwise aborts, leaves the branch as it was, and prints `status=conflict` with the `semantic` files. Spawn a worker only for those, and give it that summary. In the three weeks to 2026-10-03, 494 of 607 rebases had no conflict at all, yet each cost a median of 4 requests at about 390k tokens of context ([TP-09](../analysis/token-usage/worknotes/TP-09.md)).
+- **Rebase only when the PR needs it, and then with the script.** `ship.sh merge` does this for you. Run it when GitHub reports the PR as behind `main` or conflicting (`gh pr view <PR> --json mergeStateStatus` gives `BEHIND` or `DIRTY`), not as a routine step before every merge. `pwsh tools/build-lane/rebase-pr.ps1 <PR> --push` (`rebase-pr.sh` on Linux and WSL) rebases the branch onto `origin/main` in a throwaway worktree. It is silent when the rebase is clean, resolves generated doc blocks and `Cargo.lock` by itself, and otherwise aborts, leaves the branch as it was, and prints `status=conflict` with the `semantic` files. Spawn a worker only for those, and give it that summary. In the three weeks to 2026-10-03, 494 of 607 rebases had no conflict at all, yet each cost a median of 4 requests at about 390k tokens of context ([TP-09](../analysis/token-usage/worknotes/TP-09.md)).
 - **Leftover work is a worknote.** When a packet ends with work left over, the worker (or the fix session) writes `docs/analysis/<campaign>/worknotes/<packet>.md`: what is done, what is left, the branch and worktree, the commands to rerun, and the open questions. The next worker starts from the worknote, not from the old transcript.
 - **Hand off early.** A packet-coder hands off at about 90k tokens, its context limit. Other workers hand off at about 200 requests or about 250k tokens of context: the worker writes its worknote and stops, and the orchestrator starts a fresh one. Don't wait for an automatic compaction.
 - **Batch mechanical steps, or hand them to a small context.** Every request re-reads the whole context, so `git status`, `git add`, `git fetch`, `ls` or `date` run one per request at 400k tokens costs what a full turn of real work does. In the three weeks to 2026-10-03, requests over 200k tokens of context that ran only such plumbing (git, `gh`, `ls`, `date`, `echo`, `SendMessage`, task tools) cost 11.2% of all spend above what a fresh 70k context would have paid. Ship with `ship.sh` (above), check status and fetch in one call, and don't run `date` to timestamp a step. Workers commit locally and stop; push, PR and merge go to `ops`, which runs in a small context.
@@ -193,12 +193,12 @@ A worktree without `external/` does not build. `external/` is populated by `setu
 
 A worktree holds a target dir (several GB, on the Dev Drive when one is set up), a test database and a junction. On 2026-09-26, target dirs left behind by merged work filled the 150 GB Dev Drive, and every lane build on it failed with "no space left on device". So the session that created a worktree retires it the day its PR merges:
 
-```bash
-bash tools/build-lane/rm-worktree.sh <name>              # one worktree
-bash tools/build-lane/rm-worktree.sh --dry-run --merged  # show what a sweep would do
-bash tools/build-lane/rm-worktree.sh --merged            # every merged, idle worktree
-pwsh tools/build-lane/rm-worktree.ps1 --merged           # the same from PowerShell, no bash
-bash tools/build-lane/rm-worktree.sh --merged-into <PR> <name>...  # packets merged only into an integration branch
+```powershell
+pwsh tools/build-lane/rm-worktree.ps1 <name>              # one worktree
+pwsh tools/build-lane/rm-worktree.ps1 --dry-run --merged  # show what a sweep would do
+pwsh tools/build-lane/rm-worktree.ps1 --merged            # every merged, idle worktree
+pwsh tools/build-lane/rm-worktree.ps1 --merged-into <PR> <name>...  # packets merged only into an integration branch
+# On Linux and WSL, the same arguments with bash tools/build-lane/rm-worktree.sh
 ```
 
 The script deletes the target dir, unlinks `external/`, removes the worktree, deletes the local branch, and drops the worktree's `sgw_<name>` test database and its live-DB slot clones (`sgw_<name>_0`, `sgw_<name>_1`, ...). It refuses a worktree when:
@@ -208,7 +208,7 @@ The script deletes the target dir, unlinks `external/`, removes the worktree, de
 - its branch's PR is still open or was closed unmerged, or the branch has unpushed commits;
 - `gh` finds no PR for its branch (`NO_PR`): a worker's branch with no commits yet looks merged to git, so a sweep keeps it. Name it with `--force` to retire it; the branch is kept. A packet branch that was merged into an integration branch whose PR has merged is retired with `--merged-into <PR>` instead, which deletes the branch and still applies every other check.
 
-`--force` overrides everything except a running build. `--merged` also skips anything committed to, checked out or built in the last 30 minutes, and deletes Dev Drive target dirs whose worktree is already gone. `ship.sh merge <PR> --retire <name>` runs it for you after the merge. It runs `git worktree prune` only when given `--prune`, because a prune deletes the entry of any worktree whose recorded path the pruning git can't resolve ([rules-and-gotchas.md](rules-and-gotchas.md#windows-and-tooling-traps)).
+`--force` overrides everything except a running build. `--merged` also skips anything committed to, checked out or built in the last 30 minutes, and deletes Dev Drive target dirs whose worktree is already gone. `ship.ps1 merge <PR> --retire <name>` (`ship.sh` on Linux and WSL) runs it for you after the merge. It runs `git worktree prune` only when given `--prune`, because a prune deletes the entry of any worktree whose recorded path the pruning git can't resolve ([rules-and-gotchas.md](rules-and-gotchas.md#windows-and-tooling-traps)).
 
 **Orchestrators own their workers' worktrees.** A session that dispatched workers has `ops` retire each worker's worktree when that worker's PR merges (`ship.ps1 merge <PR> --retire <name>`), not at the end of the campaign. That covers `isolation: "worktree"` agents (`agent-*`), workflow worktrees (`wf_*`) and `mk-worktree.sh` packets.
 
@@ -218,12 +218,12 @@ If you ever remove a worktree by hand on Windows, remove the junction first with
 
 Every agent or worker `cargo` call that compiles goes through the build lane:
 
-```bash
-bash tools/build-lane/lane.sh cargo check -p cimmeria-cell
-bash tools/build-lane/lane.sh --exclusive cargo nextest run --profile=ci --workspace ...   # workspace-wide or measurement runs
-# From PowerShell, with no bash:
+```powershell
 pwsh tools/build-lane/lane.ps1 cargo check -p cimmeria-cell
-pwsh tools/build-lane/lane.ps1 --exclusive cargo nextest run --profile=ci --workspace ...
+pwsh tools/build-lane/lane.ps1 --exclusive cargo nextest run --profile=ci --workspace ...   # workspace-wide or measurement runs
+# On Linux and WSL, with bash:
+bash tools/build-lane/lane.sh cargo check -p cimmeria-cell
+bash tools/build-lane/lane.sh --exclusive cargo nextest run --profile=ci --workspace ...
 ```
 
 Call `lane.ps1` through `pwsh`, not with `&` from inside a PowerShell session: the in-session parser drops a bare `--` (as in `cargo test -- --nocapture`).
@@ -313,5 +313,5 @@ Sessions and agents across the SandboxServers repos coordinate on the agent boar
 - The pre-PR checklist passes on the CI toolchain, nextest included: on a PR push CI runs only fmt and clippy, and the full suite first runs in the merge queue.
 - The PR body says what was not tested.
 - For anything with a client UI element: the player gets visible feedback on the first press (see `rules-and-gotchas.md`). Otherwise it is not done, whatever the original server did.
-- After the merge: the worktree is retired with `rm-worktree.sh` (or by `ship.sh merge --retire`), and so is every worker worktree the session dispatched for it.
+- After the merge: the worktree is retired with `rm-worktree.ps1` (or by `ship.ps1 merge --retire`; the `.sh` twins on Linux and WSL), and so is every worker worktree the session dispatched for it.
 - After the merge: the merging agent runs the token-profile ingest, then `python tools/token-profile/pr_stats <PR> --post`, which writes or updates the PR's one stats comment ([how](../../tools/token-profile/README.md#per-pr-stats-comments)). A daily local sweep catches PRs it missed ([token-profiling.md](../guides/token-profiling.md#let-the-scheduled-jobs-keep-it-current)).
