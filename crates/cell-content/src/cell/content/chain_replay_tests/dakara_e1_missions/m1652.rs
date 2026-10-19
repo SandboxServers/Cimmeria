@@ -6,6 +6,10 @@
 //! eastern one (462) are bound by step (8323, 8324). Each click (8325, 8326)
 //! shows its bomb dialog; the eastern click takes the generator (6784) and
 //! completes the mission.
+//!
+//! The Ha'tak sequences (8327-8330, DK-31c) co-fire: both ships are shown on
+//! entering Dakara at 4933, the eastern one at 4934, and each click explodes
+//! its ship 3 s later.
 
 use super::super::assert_no_deferred_actions;
 use super::super::mission_1324::{
@@ -120,13 +124,19 @@ async fn live_db_entering_dakara_binds_the_control_of_the_current_step() {
     let western = fire_player_loaded(&engine, &at_step(Some(DAKARA), 4933), DAKARA_NAME);
     assert_eq!(
         labels_in(&western, M1652_CHAINS),
-        vec!["8323:add_dialog_set(6887@455)"],
+        vec![
+            "8323:add_dialog_set(6887@455)",
+            "8327:play_sequence(2392)",
+            "8327:play_sequence(2390)",
+        ],
     );
+    assert_eq!(delays_of(&western, 8327), vec![3000, 3000]);
     let eastern = fire_player_loaded(&engine, &at_step(Some(DAKARA), 4934), DAKARA_NAME);
     assert_eq!(
         labels_in(&eastern, M1652_CHAINS),
-        vec!["8324:add_dialog_set(6888@462)"],
+        vec!["8324:add_dialog_set(6888@462)", "8328:play_sequence(2390)"],
     );
+    assert_eq!(delays_of(&eastern, 8328), vec![3000]);
 
     // The story room is world 62: the accept is there, the bind waits for Dakara.
     let story_room = fire_player_loaded(&engine, &at_step(Some(STORY_RM), 4933), STORY_RM_NAME);
@@ -146,10 +156,12 @@ async fn live_db_clicking_the_western_control_bombs_it_and_lights_the_east() {
             "8325:advance_step(1652->4934)",
             "8325:remove_dialog_set(6887@455)",
             "8325:add_dialog_set(6888@462)",
+            "8329:play_sequence(2393)",
         ],
     );
     assert_eq!(display_dialog_count(&r), 1);
     assert_no_deferred_actions(&r, 8325);
+    assert_eq!(delays_of(&r, 8329), vec![3000]);
 
     // The eastern control at 4933 resolves nothing, and neither does the
     // western one once the step is 4934 or 1652 is completed.
@@ -182,10 +194,12 @@ async fn live_db_clicking_the_eastern_control_spends_the_generator_and_completes
             "8326:remove_item(6784x1)",
             "8326:remove_dialog_set(6888@462)",
             "8326:complete_mission(1652)",
+            "8330:play_sequence(2391)",
         ],
     );
     assert_eq!(display_dialog_count(&r), 1);
     assert_no_deferred_actions(&r, 8326);
+    assert_eq!(delays_of(&r, 8330), vec![3000]);
 
     // The western control at 4934 resolves nothing, and neither does the
     // eastern one at 4933 or once 1652 is completed.
@@ -206,4 +220,62 @@ async fn live_db_clicking_the_eastern_control_spends_the_generator_and_completes
         M1652_CHAINS
     )
     .is_empty());
+}
+
+#[tokio::test]
+async fn live_db_the_hatak_sequences_stay_silent_outside_the_1652_steps() {
+    let pool = require_db_or_skip!();
+    let engine = build_engine(Some(&pool)).await;
+    let is_sequence = |l: &String| l.contains(":play_sequence(");
+
+    // Not accepted yet, already completed, or loaded into the story room: no sequence.
+    let offered = offer_state(Some(DAKARA));
+    let completed = with_mission(ctx_for(FREE_JAFFA, Some(DAKARA)), 1652, "completed");
+    for ctx in [&offered, &completed] {
+        let r = fire_player_loaded(&engine, ctx, DAKARA_NAME);
+        assert!(!labels_in(&r, M1652_CHAINS).iter().any(is_sequence));
+    }
+    let story_room = fire_player_loaded(&engine, &at_step(Some(STORY_RM), 4933), STORY_RM_NAME);
+    assert!(!labels_in(&story_room, M1652_CHAINS).iter().any(is_sequence));
+
+    // At 4934 the western ship is never shown or exploded again.
+    let eastern = fire_player_loaded(&engine, &at_step(Some(DAKARA), 4934), DAKARA_NAME);
+    let labels = labels_in(&eastern, M1652_CHAINS);
+    assert!(!labels
+        .iter()
+        .any(|l| l.contains("(2392)") || l.contains("(2393)")));
+
+    // The accept in the story room plays no sequence (D-DK33).
+    let accept = fire_dialog_choice(&engine, &offer_state(Some(STORY_RM)), 5986);
+    assert!(!labels_in(&accept, M1652_CHAINS).iter().any(is_sequence));
+}
+
+#[tokio::test]
+async fn live_db_the_hatak_sequences_need_world_61_for_loads_and_clicks() {
+    let pool = require_db_or_skip!();
+    let engine = build_engine(Some(&pool)).await;
+    let is_sequence = |l: &String| l.contains(":play_sequence(");
+
+    // Story room (world 62) with the Dakara_E1 trigger key: the world condition
+    // alone must keep both loads silent at 4933 and 4934.
+    for step in [4933, 4934] {
+        let ctx = at_step(Some(STORY_RM), step);
+        let r = fire_player_loaded(&engine, &ctx, DAKARA_NAME);
+        assert!(!labels_in(&r, M1652_CHAINS).iter().any(is_sequence));
+    }
+
+    // Both ring-control clicks in the story room: the world condition alone
+    // must keep the explosion sequences (8329 at 4933, 8330 at 4934) silent.
+    let west = fire_interact_tag(
+        &engine,
+        &at_step(Some(STORY_RM), 4933),
+        "Dakara_E1_RingControl_XMinus",
+    );
+    assert!(!labels_in(&west, M1652_CHAINS).iter().any(is_sequence));
+    let east = fire_interact_tag(
+        &engine,
+        &at_step(Some(STORY_RM), 4934),
+        "Dakara_E1_RingControl_XPlus",
+    );
+    assert!(!labels_in(&east, M1652_CHAINS).iter().any(is_sequence));
 }
