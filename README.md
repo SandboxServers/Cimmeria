@@ -53,37 +53,119 @@ For the test-type taxonomy (unit / wire-format / live-DB / smoke / concurrency /
 
 ## How AI development works here
 
-Claude Code starts as the `orchestrator` persona, which dispatches agents and has no shell. The session banner says so. `claude --agent hands-on` gives a full-tool session.
+Most of the code and docs in this repo are written by AI agents, under the direction of one human owner. This section explains how that works and why, for someone who has never seen it before. The deeper reference, with every file, count, format and number, is [How we build with AI](docs/agents/ai-sdlc.md). The harness settings, hooks and agent list are in [ai-harness.md](docs/agents/ai-harness.md).
 
-The cycle:
+Claude Code starts here as the `orchestrator` persona: it dispatches agents and has no shell, and the session banner says so. `claude --agent hands-on` starts a full-tool session instead. Codex users read [AGENTS.md](AGENTS.md).
 
-1. `orchestrator` (Sonnet) takes the request.
-2. `architect` (Opus) designs and writes the packets. This is the packet writer step (D-AH1).
-3. `ops` (Haiku) makes the worktrees.
-4. `packet-coder` (Haiku) implements each packet, with at most 3 sessions per packet for the context limit.
-5. `packet-reviewer` (Sonnet) reviews each packet, then each wave, then the campaign, without editing; a fresh `packet-coder` applies its fix notes, with at most 3 passes per loop.
-6. `ops` ships through the merge queue.
+### The short version
 
-Escalation:
+- A big change is a **campaign**: a folder of written decisions and work orders, so the work never depends on one long chat.
+- The strongest model (Opus) **designs** the work and slices it into **packets**, small prescriptive work orders. It never writes the code.
+- The cheapest model (Haiku) **implements** each packet in its own isolated copy of the repo. Packets are grouped into **waves**, and the packets of a wave run in parallel.
+- A mid-tier model (Sonnet) **reviews** every packet without editing it, and writes numbered fix notes. A fresh Haiku session applies them. The review repeats at most 3 times; after that the designer rules on what to fix, and still writes no code.
+- The same review runs again at each **wave boundary** and at the **end of the campaign**, for problems no single packet shows.
+- **Guards** stop agents from running builds, reads and git the expensive or dangerous way. A **ship script** opens and merges every PR through a merge queue that needs green CI.
+- A **human** makes every owner decision, approves every use of the live game client, and runs the final acceptance tests.
 
-- **Coder:** 3 Haiku sessions, then 1 Sonnet implementer (`rust-gameserver-dev` for code and tools, `documentation-writer` for docs), then `architect` re-slices. Opus never implements.
-- **Reviewer:** the verdict is `ship`, `fix` or `decision`, with at most 3 passes per loop. Then `architect` decides only what to fix and how, in a ruling note, and writes no code or fix; a Sonnet implementer applies it, and a fresh reviewer checks it. An owner call is BlockedDecision.
+### Campaigns
 
-**Why it works this way:**
+A campaign is the unit for work too big for one pull request. It is a folder, `docs/analysis/<campaign>/`, that holds the goal, the findings with their evidence, the decisions with a reason for each, the work packets, a table with the status of every packet, and a `RESUME.md` card of at most 40 lines.
 
-| Measure | Opus implements (before 2026-10-10) | Haiku packets, Sonnet review | Source |
+Why: a chat session forgets. When its context fills it is compacted, and whatever was not written down is gone. A session also costs more as it grows, because every request re-reads the whole context: in the three weeks to 2026-10-03, the median main-session request carried 349k tokens. And one chat does one thing at a time. A campaign writes the design down once, lets many cheap sessions work from it in parallel, and lets any fresh session pick the work up from `RESUME.md`.
+
+A campaign starts when the orchestrator dispatches the `architect`, which researches, decides and writes the ledger and the packets. The waves then run one after another. A close-out packet ends it: it updates the status docs (once per campaign, never per packet), lists what the owner still has to test, and retires the worktrees.
+
+### Packets and waves
+
+A **packet** is a work order that a small model can follow without designing anything. It names the exact files and functions to change, the test to add and why that test fails when the change is reverted, the checks to run, the docs it owes, and the commit subject. It also carries the 5 to 10 repo rules it needs, because the coder does not load `CLAUDE.md`. The packet is the contract: the coder has nothing to decide, so the cheapest model can do the work, and the reviewer has something exact to check against.
+
+A packet is sized to about 40k working tokens, because about 35-40k of every Haiku session is fixed overhead. Before packets were cut to that size, 9 of 34 Haiku sessions hit their 90k cap; afterwards, 0 of 36 did. Anything bigger is split: there is no medium size.
+
+A **wave** is a group of about six packets. Its independent packets run in parallel, each in its own git worktree with its own test database, so two agents never race on one checkout. Six is what one reviewer can hold in one context at the wave review. A wave ships as one PR per packet or, when its packets must land together, as one PR from an integration branch.
+
+### Who does what
+
+| Agent | Model | Does | Cannot |
 |---|---|---|---|
-| Cost per 1,000 changed lines | $7.44 | $3.03 (2.5x cheaper) | campaign-metrics findings.md |
-| Cost per accepted change | $18.65 | $2.35 | same |
-| Cost per merged PR, mean / median | $22.01 / $18.18 (248 PRs, $5,727.50) | $2.67 / $0.91 (185 PRs, $594.06) | same |
-| Spend by tier | Opus 93% | Opus 75%, Sonnet 22%, Haiku 2% | same |
+| `orchestrator` | Sonnet | the default persona: dispatches agents, asks the owner, keeps the ledger | run a shell, read source, write code |
+| `architect` | Opus | researches, decides, writes the ledger, the packets and the rulings | write code |
+| `packet-coder` | Haiku | implements one packet, or applies one review's fix notes; runs the checks; commits locally | push, open PRs, design, load `CLAUDE.md` |
+| `packet-reviewer` | Sonnet | reviews a packet, a wave or the campaign, and writes numbered fix notes | edit anything |
+| `ops` | Haiku | one git, worktree, PR, merge or board operation through the repo scripts | anything not on its list |
+| `rust-gameserver-dev`, `documentation-writer` | Sonnet | the next step for a packet Haiku could not finish, and larger docs | - |
+| domain advisors | Sonnet or Opus | read-only review of their subsystem (combat, movement, protocol, trust boundaries...) | - |
+| `lab-driver` | Haiku | drives the live game client from an exact step list | diagnose, edit, build |
+| `hands-on` | Opus | a full-tool session that a human starts with `claude --agent hands-on` | - (never dispatched for packets) |
 
-Source: [campaign-metrics findings](docs/analysis/campaign-metrics/findings.md).
+Each agent has only the tools its job needs, because an agent cannot misuse a tool it does not have. The orchestrator has no shell, so it cannot slip into doing the work itself at its large context. The reviewer has no Edit tool, so it cannot fix something and then approve its own fix. `ops` runs only scripts that check their inputs. Each model does what it is best at: Haiku follows exact steps cheaply, Sonnet finds what is wrong, and Opus judges, at the highest price per token.
 
-- **The caveat:** the work differs. Haiku campaigns implement from a finished spec, and the spec's cost sits in the Opus coordinator. The 2.5x per 1,000 lines is the fair comparison, not the per-PR figures.
-- **Packet size:** 9 of 34 Haiku sessions hit the 90k cap before the re-slice, and 0 of 36 after. About 35-40k of a Haiku session is fixed overhead, so a packet is about 40k working tokens.
-- **Fresh sessions:** Haiku 5.5 bills 5x per request above a 100k prompt, which is why the coder loop starts a fresh session instead of growing one.
-- **Opus doesn't code:** $107.43 went to oversteps, of which $53.72 to $84.20 was recoverable at the intended tier.
+### Review loops
+
+```mermaid
+flowchart TD
+  A["architect: ledger and packets"] --> C["packet-coder: one packet"]
+  C --> R{"packet-reviewer: pass N"}
+  R -->|"ship"| W{"wave review: the same loop"}
+  R -->|"fix, pass 1 or 2"| F["fresh packet-coder applies the fix notes"]
+  F --> R
+  R -->|"fix at pass 3, or decision"| X["architect: ruling note, no code"]
+  X --> I["Sonnet implementer applies the ruling"]
+  I --> K{"fresh reviewer: ruling check"}
+  K -->|"ship"| W
+  K -->|"not ship"| O["owner decides"]
+  W -->|"ship"| S["ops: PR, green CI, merge queue"]
+  S --> M{"campaign review: the same loop"}
+  M -->|"ship"| D["close-out"]
+```
+
+Three loops run, all with the same shape. A **pass** is one fresh, read-only `packet-reviewer` session, and it returns `ship`, `fix` or `decision`. On `fix`, a fresh `packet-coder` applies the report's numbered fix notes exactly as written, reruns the packet's checks and commits, and a fresh reviewer checks again. A loop has at most 3 passes.
+
+- **The packet loop** starts as soon as a packet's coder is done. It checks correctness, drift from the spec, tests that would still pass with the fix reverted, and the repo rules.
+- **The wave loop** starts once every packet of a wave has `ship`. It looks only for what no single packet shows: two packets that describe one thing differently, the same helper written twice, two packets editing one file, and merge-order hazards.
+- **The campaign loop** starts after the last wave merges. It looks for docs that no longer match behaviour, decisions with nothing behind them, broken links and stale generated blocks.
+
+**When a loop runs out.** If pass 3 still says `fix`, or a pass says `decision`, the architect decides only what to fix and how, in a ruling note: re-spec, re-slice, accept with a follow-up packet, or ask the owner. The architect writes no code or fix. A Sonnet implementer applies the ruling, and one fresh reviewer checks it. If that check fails, the owner decides.
+
+Why this shape: Haiku rarely lands a packet first time (only 4.8% of judged Haiku packets were accepted on the first pass), so review is a built-in step, not an exception. A reviewer that never edits stays adversarial on every pass, and the fixing runs on the cheapest model: in one campaign's own 20 packets, the Sonnet reviews cost $13.58 and the Haiku fix rounds $0.72. The fix notes go to a fresh session, not back to the one that wrote the code, because Haiku 5.5 bills 5x per request above a 100k prompt.
+
+### Guards, and what they save
+
+Hooks run before tool calls, and two of them refuse calls. The rest of the protection comes from what each agent is allowed to run.
+
+| Guard | What it stops | Evidence |
+|---|---|---|
+| `cargo` only through the build lane (`shell_guard`) | parallel builds racing on one target directory, and whole build logs in context | 326 direct calls in the profiled week from 2026-10-03; about 254 GB of build output before the lane; a 296-test summary fell from 36,765 to about 270 characters |
+| Reads and searches through Read and Grep (`shell_guard`, Claude Code only) | whole files dumped through the shell | about 10,000 shell reads in the same week; `sed -n` alone returned 38.5M characters |
+| No shell for the orchestrator (its tool list) | the coordinator doing hands-on work at full context | the Opus main session made 3,666 PowerShell calls at 354,545 tokens of average context; one pilot of the Sonnet orchestrator averaged 75,159 |
+| `git` only through `ops` and its scripts (tool lists, not a hook) | lost worktrees, and pushes from the wrong checkout | about 22 worktree registrations lost on 2026-10-03 |
+
+The guards cost time: `shell_guard` takes a median 95.8 ms per shell call, about 1.6 minutes per 1,000 calls ([hook-timing.md](docs/analysis/ai-harness-docs/hook-timing.md)). How much each refused call saves has not been measured. The full guard list and its numbers are in [ai-sdlc.md § Guards in detail](docs/agents/ai-sdlc.md#guards-in-detail).
+
+### Shipping
+
+`ops` ships every PR with two script calls. `ship.ps1 pr` commits, pushes once and opens the PR. `ship.ps1 merge --retire` puts it in `main`'s merge queue, which runs the full build and tests on the merged code and needs green CI, and then retires the worktree. Nothing merges while `main` is red. Every PR also gets an adversarial review by an agent that did not write it.
+
+### When a human decides
+
+Agents never ask the owner on their own. The architect marks the owner's calls as `BlockedDecision` in the ledger, and the orchestrator asks. The owner decides:
+
+- every `BlockedDecision`;
+- every use of the live lab client;
+- anything destructive: deleting data, force operations, wiping a database;
+- client patches, new opcodes, wire crypto and client UI;
+- a change to an agent persona or to the process itself;
+- the final acceptance tests that need a human at the keyboard.
+
+### What it costs
+
+| Measure | Opus implements (before 2026-10-10) | Haiku packets, Sonnet review |
+|---|---|---|
+| Cost per 1,000 changed lines | $7.44 | $3.03 (2.5x cheaper) |
+| Cost per accepted change | $18.65 | $2.35 |
+| Cost per merged PR, mean / median | $22.01 / $18.18 (248 PRs, $5,727.50) | $2.67 / $0.91 (185 PRs, $594.06) |
+| Spend by tier | Opus 93% | Opus 75%, Sonnet 22%, Haiku 2% |
+
+Source: [campaign-metrics findings](docs/analysis/campaign-metrics/findings.md). The work differs: Haiku campaigns implement from a finished spec, and the cost of writing that spec sits in the Opus coordinator. So the fair comparison is the 2.5x per 1,000 changed lines, not the per-PR figures. When Opus wrote code itself, the oversteps cost $107.43, of which $53.72 to $84.20 was recoverable at the intended tier. What the review loop costs against the combined reviewer-and-fixer it replaced has not been measured yet; [ai-sdlc.md § Honest numbers](docs/agents/ai-sdlc.md#honest-numbers) lists everything else that is not measured.
 
 **Hooks:** every hook the harness runs, with its event, matcher, script and reason, is listed below; the bypasses are in [ai-harness.md](docs/agents/ai-harness.md#hooks-and-guards).
 
@@ -105,6 +187,7 @@ Source: [campaign-metrics findings](docs/analysis/campaign-metrics/findings.md).
 
 **Everything else:**
 
+- Every rule, count, format and number behind this section: [How we build with AI](docs/agents/ai-sdlc.md).
 - Settings, agents, skills, board, memory and review bots: [ai-harness.md](docs/agents/ai-harness.md). The workflow and roster: [development-workflow.md](docs/agents/development-workflow.md).
 - The campaign cycle: the [campaign-packet skill](.claude/skills/campaign-packet/SKILL.md). Codex: [AGENTS.md](AGENTS.md).
 
