@@ -13,7 +13,7 @@ companion_docs:
 
 > [!IMPORTANT]
 > Ask a maintainer before adding any file under `db/scripts/`. Seeded-data changes (abilities, effects, NVPs,
-> missions, spawns) never need one: edit `db/resources/<area>/Seed/` directly, because every environment is
+> missions, spawns) never need one: edit `db/resources/<area>/Seed/` directly, because the `resources` schema in every environment is
 > rebuilt from seeds. The maintainers' current preference is to avoid new migrations for schema changes too.
 > See [Project rules and gotchas](../agents/rules-and-gotchas.md#database-and-content).
 
@@ -33,7 +33,7 @@ Three different kinds of SQL change. Pick the right one.
 | **Migration** (apply schema change to an existing DB without dropping data) | `db/scripts/<descriptive_name>.sql` | Manually, or by the operator during an upgrade | **Yes** — must use `IF NOT EXISTS` / `IF EXISTS` |
 | **Seed content** (new row in an existing table) | `db/resources/<system>/Seed/` or `db/scripts/` | Fresh-DB load, or migration | Mostly yes — `ON CONFLICT DO NOTHING` |
 
-The reason we keep both schema and migration is: developers nuke and reload their DBs constantly (the schema is canonical for that), but operators running production servers can't drop their data (so they need an idempotent migration to apply the same change).
+The reason we keep both schema and migration is: developers wipe and reload their DBs constantly with `-WipeDatabase` (the schema is canonical for that), but operators running production servers can't drop their data (so they need an idempotent migration to apply the same change).
 
 **Most schema changes require both.** Update the canonical schema file *and* write a migration script.
 
@@ -132,7 +132,7 @@ For content that should ship to existing databases too, mirror the seed into a m
 
 ### During `setup.ps1`
 
-Canonical schema files in `db/sgw/` and `db/resources/` load automatically on fresh DB init or `-ForceDatabase`. You don't need to register them anywhere.
+Canonical schema files in `db/sgw/` and `db/resources/` load automatically on fresh DB init or `-WipeDatabase`. `-ForceDatabase` loads them into a scratch copy and refreshes only the `resources` tables in `sgw`; accounts and characters are kept. Additive changes to a persistent `public` table (a new column, table or index) carry across that refresh; anything else fails closed and needs a maintainer decision or `-WipeDatabase` ([persistent player data](../architecture/persistent-player-data.md)). You don't need to register the files anywhere.
 
 ### Migrations
 
@@ -185,8 +185,8 @@ The full pattern is in [`docs/architecture/integration-test-infra.md`](../archit
 ## Verify locally before pushing
 
 ```powershell
-# 1. Apply your migration to a clean DB:
-pwsh setup.ps1 -SkipBuild -ForceDatabase -NoLaunch
+# 1. Start from a clean DB (-WipeDatabase backs up, then destroys local accounts and characters):
+pwsh setup.ps1 -SkipBuild -WipeDatabase -NoLaunch
 
 # 2. Apply the migration script (simulating an operator):
 $env:PGPASSWORD = "w-testing"
