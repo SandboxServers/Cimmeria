@@ -2,9 +2,9 @@
 
 > **Type:** Reference (campaign ledger)
 > **Audience:** The Union Beta coordinator and the packet coders, reviewers and specialists named in the packet table
-> **Last updated:** 2026-10-19 (UB-99 close-out: every code packet merged, lab rows UATPending, findings recorded)
+> **Last updated:** 2026-10-19 (U-D07 Approved 2026-10-19, XP and naq; UB-50a and UB-50b1 Ready, UB-50b2 after them. Earlier the same day: H-LBL, U-D08/U-D11 recorded. Before that: UB-99 close-out)
 > **Index:** [beta-work-packets.md](../union-zone-planning/beta-work-packets.md) (packet text, findings F1-F21, HELD list and waves; this ledger does not copy them)
-> **Companions:** [RESUME.md](RESUME.md), [mission-seal.md](mission-seal.md) (UB-00a1/a2), [placement-seal.md](placement-seal.md) (UB-00b), [receiver-contract.md](receiver-contract.md), [id-amendment-request.md](id-amendment-request.md), [worknotes/](worknotes/README.md), [execution contract](../union-zone-planning/execution-contract.md), [SGC ledger](../union-sgc-continuation/README.md) (the model for this one)
+> **Companions:** [RESUME.md](RESUME.md), [reward-proposal.md](reward-proposal.md) (U-D07, Approved 2026-10-19), [mission-seal.md](mission-seal.md) (UB-00a1/a2), [placement-seal.md](placement-seal.md) (UB-00b), [receiver-contract.md](receiver-contract.md), [id-amendment-request.md](id-amendment-request.md), [worknotes/](worknotes/README.md), [execution contract](../union-zone-planning/execution-contract.md), [SGC ledger](../union-sgc-continuation/README.md) (the model for this one)
 
 ## Purpose
 
@@ -16,7 +16,7 @@ Track the Beta_Site_Evo_1 (world 23, gate 6) first-visit campaign packet by pack
 
 Merged, each with at least one review-fix commit: UB-DP, UB-01a, UB-01b, UB-02a, UB-02b, UB-02c, UB-02d, UB-10 to UB-16, UB-20, UB-21, UB-30 to UB-36, UB-40, UB-45a and UB-45b. B0 (UB-00a1, UB-00a2, UB-00b, UB-00c) is integrated; UB-00a1's review pass 2 landed in `54e76cbbd`.
 
-Not dispatched, by ruling: UB-22 and UB-51 are held (D-UB5 A), UB-52 is closed (D-UB7) and UB-50 is held on the owner.
+Not dispatched, by ruling: UB-22 and UB-51 are held (D-UB5 A), UB-52 is closed (D-UB7). UB-50 is split (2026-10-19). The owner approved the [U-D07 reward scale](reward-proposal.md) for XP and naquadah, so UB-50a (XP seed) and UB-50b1 (the `grant_cash` action) are Ready, and UB-50b2 (naquadah seed) follows both. The UB-50 relays stay on Hold.
 
 ## Close-out (UB-99)
 
@@ -40,6 +40,7 @@ UB-14's 1425 offer shows on Carter after 478 completes. UB-13's whole-seed Carte
 3. **The UB-DP shared-infrastructure registration gap also affects the Castle and Cellblock tables.** The shared registration step that UB-DP had to extend is missing for the Castle and Cellblock tables too, so their patch tables are not covered by the same agreement guard. Not fixed here: the Castle and Cellblock owners should check it.
 4. **`find_path` caps at 256 polys.** Navigation tests therefore chain legs instead of asserting one long path. RuinNote 23021 was re-sealed for this reason.
 5. **The Beta decisions D-UB4 to D-UB13 were all ruled at high confidence** (see [§ Decisions](#decisions)): the ring pair, stop-on-Beta tails, the Beta-local infirmary, twins out, xp/naq 0, the ID block, per-player binds, no phasing, the beam via `interact_tag` and `move_entity`, and archetype-5 replays.
+6. **`missions.reward_xp` / `reward_naq` are never read** (2026-10-19, U-D07 research). Mission reward dispatch is unimplemented (#310: `chosenRewards` is a stub, `ON_MISSION_REWARDS_DISPLAY` has no sender), so editing those columns changes nothing. D-UB16 (Decided 2026-10-19) delivers rewards by reward chains (`grant_xp`, then `grant_cash`) instead and keeps the columns at 0, so #310 cannot pay twice.
 
 ### Documentation debt
 
@@ -61,7 +62,7 @@ Wording of D-UB1 to D-UB15 stays in the index § Decisions. This table tracks st
 | D-UB5 | Offworld tails (A stop, B Omega/SGC receivers, C authored relays) | **Decided A: tails stop on Beta** (ARCH-B1) | A is the planned default, needs no sibling receiver and no authored content, and keeps Beta shippable alone. B needs UB-51 notes that Omega/SGC have not planned; C needs UB-50, which is owner-held. UB-22 is not dispatched, UB-51 is held. Either can be reopened by a later campaign without undoing A. **High** | UB-22 (Hold), UB-51 (Hold) |
 | D-UB6 | 421 infirmary is Beta-local | **Confirmed** (ARCH-B1) | UB-00b probed INFIRMARY_CENTRE (961.300, 15.97, 284.900), radius 10, on the Beta navmesh. The brief's hold was only "confirm against the seal", and the seal agrees. **High** | UB-32 (unblocked) |
 | D-UB7 | FV twins 383, 384, 1146 | **Decided: out** (ARCH-B1) | They are not in the P4 first-visit rows 121-124, no first-visit row needs them, and they would need a fresh step matrix. UB-52 closed; templates 2303, 2327 and 2336 stay reserved. **High** | UB-52 (Closed) |
-| D-UB8 | Reward amounts | **Decided: xp 0, naq 0, no reward groups** (ARCH-B1) | UB-00a2 Q11: all 17 Beta missions carry xp/naq 0 and no reward groups in the seed. The packets keep the seed as is; real amounts are U-D07, an owner call held with UB-50. **High** | none for the first ship; U-D07 stays open (UB-50) |
+| D-UB8 | Reward amounts | **Decided: xp 0, naq 0, no reward groups** (ARCH-B1) | UB-00a2 Q11: all 17 Beta missions carry xp/naq 0 and no reward groups in the seed. The packets keep the seed as is; real amounts are U-D07, an owner call held with UB-50. **High**. **Amended 2026-10-19** by U-D07 Approved: the missions pay the [approved scale](reward-proposal.md) through the reward chains (D-UB16); the `missions.reward_xp` / `reward_naq` columns stay 0 and there are still no reward groups | UB-50a, UB-50b1, UB-50b2 deliver the amounts |
 | D-UB9 | ID block: world-prefix ranges plus 64000-64499 authored | **Approved by the coordinator (the orchestrator), applied by ARCH-B1** | The orchestrator's brief approves the amendment. UB-00c's re-check was clear for every planned id; ARCH-B1 found that the authored screens sub-range 64310-64379 holds four stock screens and re-carved it to 64124-64193 (below). The `id-allocation.md` row is added in this commit. **High** | UB-01a (unblocked) |
 | D-UB10 | Per-player binds only | Decided | - | UB-02a and chain packets |
 | D-UB11 | No phasing | Decided | - | all |
@@ -69,18 +70,42 @@ Wording of D-UB1 to D-UB15 stays in the index § Decisions. This table tracks st
 | D-UB13 | Asgard packets replay-tested with archetype 5 | Decided. UB-30 to UB-36 are dispatchable without the Asgard producer | - | UB-30 to UB-36 |
 | D-UB14 | Authored content only in UB-50 | Decided | - | UB-50 |
 | D-UB15 | Strict linear offer order per race | Decided (HELD-B1 kept the order) | - | UB-45a, UB-45b |
+| D-UB16 | Reward delivery: one `grant_xp` reward chain per mission on `mission_completed` (chains 23480-23496, `beta_e1_rewards_chains.sql`); `missions.reward_xp` / `reward_naq` stay 0; naquadah needs a new `grant_cash` content action (UB-50b1), then one `grant_cash` row per reward chain (UB-50b2) | **Decided** 2026-10-19 (architect proposal, accepted with U-D07) | Finding 6: the columns are never read (#310), and `grant_xp` already works. Hanging off `mission_completed` pays on every completion path and keeps rewards in one droppable file (D-UB14). Columns at 0 prevent double pay when #310 lands. **High**; the amounts are the owner's (U-D07 Approved) | UB-50a, UB-50b1, UB-50b2 |
+
+### Owner decisions, 2026-10-19
+
+The orchestrator relayed these owner decisions. The architect records them; it did not ask the user.
+
+| ID | Decision | Status | Effect on Beta |
+|---|---|---|---|
+| H-LBL | Player-facing CIMMERIA_AUTHORING copy carries **no visible label**. Provenance stays in seed comments and evidence labels only. Shared policy for every Union campaign (Beta, Omega UO-15, Dakara UD-01a/c): [union-zone-planning § Shared policy](../union-zone-planning/README.md#shared-policy-all-union-campaigns) | **Decided** (owner) | UB-50's relay copy, if ever revived, has no label. UB-50a/b1/b2 have no player-facing copy |
+| U-D07 | Determine level-appropriate xp and naq for the 17 Beta missions and for authored content generally; evidence first, otherwise a labelled reconstruction for approval | **Decided: U-D07 Approved 2026-10-19** (owner), both XP and naq. No formula evidence exists; the owner approved the [reward-proposal.md](reward-proposal.md) scale unchanged (XP = 50 x level x difficulty factor, naq = 10 x level x factor, CIMMERIA_RECONSTRUCTION). It applies to authored content generally, with non-mission side activity at 50%: the shared-policy row in [union-zone-planning § Shared policy](../union-zone-planning/README.md#shared-policy-all-union-campaigns) is the authority for other campaigns. D-UB8 amended, D-UB16 Decided | UB-50a and UB-50b1 Ready; UB-50b2 BlockedDependency on both |
+| U-D08 / U-D11 | The Asgard extension uses a **remote Council hearing after Pertho's evacuation** and a **databank-recovery prologue that issues item 3399** (the README direction in [asgard-post-pertho.md](../union-zone-planning/asgard-post-pertho.md)) | **Decided** (owner confirmed) | HELD-B16 is no longer an owner question. It is **BlockedDependency** on Omega expanding and building UO-16. No Beta code changes: UB-30 to UB-36 already expect 481 S1760 with item 3399 (D-UB13) |
+
+### Omega lines still open on U-D08/U-D11 (for Omega's coordinator)
+
+Beta does not edit another campaign's ledger. These lines still list U-D08/U-D11 (and UO-15's label question) as open and must be updated by Omega's coordinator (line numbers as of `origin/main` on 2026-10-19):
+
+| File (under `docs/analysis/union-zone-planning/`) | Lines | Says now |
+|---|---|---|
+| `omega-work-packets.md` | 17 | "The Asgard route (1522 and 481) stays a stub until the owner rules on U-D08/U-D11." |
+| `omega-work-packets.md` | 86, 220 | D-UO18 BlockedDecision, folds into U-D08 / UO-16 |
+| `omega-work-packets.md` | 152, 164, 191 | Asgard 481 S1760 item 3399 HELD; UO-16 stub; UO-16 row `BlockedDecision (U-D08, U-D11)` |
+| `omega-work-packets.md` | 222, 321 | U-D08 / U-D11 owner row; "holds still open" |
+| `omega-work-packets.md` | 190, 214, 215, 300 | H-LBL / U-D07 holds. Both are now answered: no label (H-LBL), and U-D07 Approved 2026-10-19 (the shared formula, side activity at 50%) |
+| `omega-packets/UO-16.md` | 3, 11, 36-37 | Status BlockedDecision U-D08, U-D11; "depends on U-D08 and U-D11 answered"; the two questions |
+| `omega-packets/UO-15.md` | 3, 11, 15, 26, 27 | Label hold; line 27 proposes a "[Cimmeria]" suffix, now answered "no label" |
+| `omega-packets/RESUME.md` | 7-8 | Open owner decisions |
+| `omega-packets/UO-99.md` | 60-61 | "Asgard route: blocked on U-D08/U-D11" |
+| `omega-packets/handoff-sgc-beta.md` | 22, 36 | UO-16 HELD on U-D08/U-D11; label hold |
+
+Dakara lines on H-LBL and U-D07 (for Dakara's coordinator): `dakara-packets/UD-01a.md` 34-35 ("Copy is HELD (H-LBL)", "Rewards are HELD (U-D07)"; both are answered: no label, and the U-D07 shared formula applies), `dakara-packets/UD-01bc.md` 10, `dakara-packets/RESUME.md` 30.
+
+U-D07 for Omega and Dakara: their reward rows (Omega UO-15, Dakara UD-01a/c) list a table computed from the shared formula at each mission's own level and difficulty, side activity at 50%. They need no further owner approval for the scale; a reward needs a `grant_cash` action, which UB-50b1 adds to the engine for everyone.
 
 ### Owner questions (BlockedDecision)
 
-The architect does not ask the user. These stay open for the orchestrator to ask:
-
-| ID | Exact question | Holds |
-|---|---|---|
-| H-LBL | "Which label does player-facing CIMMERIA_AUTHORING copy carry on Beta?" | UB-50 |
-| U-D07 | "What xp and naq should each of the 17 Beta missions award?" (today: 0 and 0, D-UB8) | UB-50 |
-| HELD-B16 | "Which Omega packet delivers an Asgard player to Beta at 481 step S1760 holding item 3399? UO-16 is held on U-D08/U-D11; do you want to release it?" | Asgard end-to-end reachability only. UB-30 to UB-36 still dispatch and test with archetype 5 replays (D-UB13) |
-
-Every packet except UB-50 is dispatchable regardless of these three answers.
+None open for Beta's packets. U-D07 (approval and the general rule) was answered on 2026-10-19. HELD-B16 is BlockedDependency on Omega UO-16, not an owner question. The only owner gate left is lab approval for UB-90.
 
 ## ID re-check (UB-00c step 1)
 
@@ -152,7 +177,7 @@ The M3 and M5 labels were never defined in the planning folder. ARCH-B1 retired 
 
 ## Packet table
 
-Status vocabulary (as of UB-99 every row is Done, UATPending, Hold, Closed or BlockedDecision): Ready / BlockedDependency / BlockedDecision / Writing / Review / Integrated / UATPending / Done, plus Hold and Closed for packets the rulings removed. Mirrors the index § Packets as of UB-99. Worktree = branch = the name shown, based on `uzp-e1` unless the note says stacked.
+Status vocabulary (as of UB-99 every B-wave row is Done, UATPending, Hold or Closed; the reward waves R1/R2 were added 2026-10-19): Ready / BlockedDependency / BlockedDecision / Writing / Review / Integrated / UATPending / Done, plus Hold and Closed for packets the rulings removed. Mirrors the index § Packets as of UB-99. Worktree = branch = the name shown, based on `uzp-e1` unless the note says stacked.
 
 | Wave | Packet | Worktree / branch | Status | Note |
 |---|---|---|---|---|
@@ -189,12 +214,15 @@ Status vocabulary (as of UB-99 every row is Done, UATPending, Hold, Closed or Bl
 | B6 | UB-90 | - (lab) | UATPending: the owner approves lab use; no row has run | rows UB-U1 to UB-U10; B5 merged; ask the user before any lab use |
 | B6 | UB-99 | `uzp-ub99` | Done (this close-out) | close-out docs, this commit |
 | - | UB-22 | - | Hold: not dispatched (D-UB5 A) | not dispatched (D-UB5 A) |
-| - | UB-50 | - | BlockedDecision (owner: H-LBL, U-D07; CB-N05a) | owner: H-LBL, U-D07; CB-N05a |
+| R1 | UB-50a | `uzp-ub50a` (from `origin/main`) | Ready | XP reward chains 23480-23496, [UB-50.md](../union-zone-planning/beta-packets/UB-50.md); CB-N05a does not block it (no new mission) |
+| R1 | UB-50b1 | `uzp-ub50b1` (from `origin/main`) | Ready | `grant_cash` content action (code); no file shared with UB-50a |
+| R2 | UB-50b2 | `uzp-ub50b2` (from `origin/main` after R1 merges) | BlockedDependency (UB-50a and UB-50b1 merged) | one `grant_cash` row per reward chain, tests extended |
+| - | UB-50 relays | - | Hold (D-UB5 A) | H-LBL no longer blocks; chain range shrinks to 23497-23499 plus a grant |
 | - | UB-51 | - | Hold (D-UB5 A) | D-UB5 A |
 | - | UB-52 | - | Closed (D-UB7: out) | D-UB7 out |
 | - | UB-L | - | Hold | Visit 2 / E2 research note |
 
-Waves run in order; inside a wave the listed lanes run in parallel. B1a has three independent lanes. UB-DP may merge after the rest of B1a, but it must be merged before B3 starts. B2 has three lanes (Human stack, Free Jaffa, Asgard), B3 four (Human stack, UB-21, UB-31, UB-40), B4 one stack. Each wave gets one packet-review-fixer.
+Waves run in order; inside a wave the listed lanes run in parallel. B1a has three independent lanes. UB-DP may merge after the rest of B1a, but it must be merged before B3 starts. B2 has three lanes (Human stack, Free Jaffa, Asgard), B3 four (Human stack, UB-21, UB-31, UB-40), B4 one stack. Each wave gets one packet-review-fixer. The reward waves are cut from `origin/main` (Beta is merged, #1916) and each packet ships as its own PR: R1 runs UB-50a and UB-50b1 in parallel, then one packet-review-fixer for both; R2 runs UB-50b2 alone once both R1 PRs have merged, then its own packet-review-fixer.
 
 UB-45b now has its own row in the index § Packets (debt from UB-00c, resolved by ARCH-B1).
 
