@@ -14,7 +14,7 @@ Evidence base, all CIMMERIA_RECONSTRUCTION unless noted:
 | Q | Verdict |
 |---|---|
 | Q1 step matrix | 17 missions, every step row `ok` except 4 wording `change:` rows (C1-C4) |
-| Q2 dialogs | 2 R1 violations (dialog 1997, dialog 3228); fallback is a Beta dialog-patch packet (C5) |
+| Q2 dialogs | 2 R1 violations (dialog 1997, dialog 3228) and 2 R3 violations (dialog 1916, dialog 3905); fallback is a Beta dialog-patch packet (C5, C6) |
 | Q3 HELD-B12 `en=false` steps | works; the flag is inert on the server and never on the wire |
 | Q4 F19 trap | confirmed and avoided by every packet; chain 23316 safe |
 | Q5 quota and `remove_item` | counters and `once` reset on relog; `remove_item` is first-stack-only and never fails the chain |
@@ -204,7 +204,7 @@ Rows checked (dsm flag from `dialog_set_maps.sql`):
 
 #### Q2 addendum (B0 review): the remaining dialogs
 
-The table above lists the dialogs that carry a pick key or an R1 finding; the review completed it against `dialogs.sql`, `dialog_screens.sql`, `dialog_screen_buttons.sql` and `dialog_set_maps.sql`. Columns: dsm id, dialog set, flag, UI type, buttons on the FINAL screen (button id / type). R1 holds for every row (a button on the final screen, or none at all).
+The table above lists the offer, blurb and done dialogs plus the two R1 findings; the review completed it against `dialogs.sql`, `dialog_screens.sql`, `dialog_screen_buttons.sql` and `dialog_set_maps.sql`. Columns: dsm id, dialog set, flag, UI type, buttons on the FINAL screen (button id / type). Of these 27, 19 are `pick:`-keyed in the packets (1882, 1886, 1918, 1953, 1987, 2018, 3223, 3224, 3904, 4654, 4655, 4658, 4659, 4662, 5041, 5042, 5043, 5048, 5497); the other 8 (1883, 1884, 1915, 1916, 1917, 1995, 2014, 2015) are only displayed by `show`, so R1 does not apply to them but R3 does (the linter counts displayed dialogs, `seed_model.rs` `referenced()`). R1 holds for every row (a button on the final screen, or none at all). R3 holds for every row except 1916 and 3905, below.
 
 | Dialog | dsm | Set | Flag | UI | Final-screen buttons |
 |---|---|---|---|---|---|
@@ -236,7 +236,9 @@ The table above lists the dialogs that carry a pick key or an R1 finding; the re
 | 5048 | 5895 | 1595 | 0 | Dialog | 8/t2 |
 | 5497 | 6937 | 1478 | 1073741824 | Dialog | 457/t4 |
 
-Dialogs 3057, 3161, 3227, 3722, 3895, 3901, 3905, 4643, 4660, 4663, 4664, 5026, 5044 and 5051 carry no pick key and no or one trailing button (3905's final screen has 9/t1); none is chain-keyed by `dialog_choice`, so R1 does not apply to them. The only violations in the whole set remain 1997 and 3228.
+Dialogs 3057, 3161, 3227, 3722, 3895, 3901, 3905, 4643, 4660, 4663, 4664, 5026, 5044 and 5051 carry no pick key and no or one trailing button (3905's final screen has 9/t1); none is chain-keyed by `dialog_choice`, so R1 does not apply to them. The only R1 violations in the whole set remain 1997 and 3228.
+
+R3 (B0 review pass 2): the DialogWin draws types 2, 4, 5 and 6 only (`rules.rs` `drawable_button_types`), and the linter checks every dialog a chain displays, not only keyed ones. Two displayed DialogWin dialogs carry a type-1 More Info button the window cannot draw: dialog 1916 (screens 95484 and 95485, 9/t1; displayed by UB-31 chain 23317) and dialog 3905 (final screen 49940, 9/t1; displayed by UB-33 chain 23395). Once `beta_e1_*_chains.sql` is in `CHAIN_FILES`, `r3_violations` fails on both (no R3 allowlist exists). Both are `show`-only, so the dead button costs nothing at runtime, but the linter goes red: see C6.
 
 The speaker label is per dialog, not per screen. Dialogs 5040 and 5047 have speaker 0 "Not Set" so the client header is blank; cosmetic, UB-90 row UB-U2b.
 
@@ -249,6 +251,7 @@ Behaviour, CIMMERIA_AUTHORING:
 
 - C5. New packet `UB-DP` (a Beta dialog-patch packet, wave B1, before UB-35 and UB-36): add `DialogPatch` rows in `crates/resources/src/base/dialog_overrides/` moving Accept (button type 2, id 8) onto the final screens 64049 (dialog 1997) and 64068 (dialog 3228), with matching hand edits to `db/resources/Dialogs/Seed/dialog_screen_buttons.sql`. Model: `patches_castle.rs` (`DialogPatch { dialog_id, ui_screen_type: None, buttons: ButtonPlan::OnlyOn { screen_id, button_type, button_id, text } }`). CIMMERIA_AUTHORING.
 - C5a. packet `UB-35` chain 23437 and packet `UB-36` chain 23462: if `UB-DP` is not taken, rekey the trigger from `dialog_choice` to `interact_tag`, so the linter no longer treats the dialog as chain-keyed. Pick one; do not ship both.
+- C6. `UB-DP` (the C5 packet; if C5a replaces C5, UB-DP is still needed for C6): add `DialogPatch` rows with `ButtonPlan::StripAll` for dialogs 1916 and 3905 (`ui_screen_type: None`), with matching hand edits deleting the three type-1 rows from `db/resources/Dialogs/Seed/dialog_screen_buttons.sql` (screens 95484, 95485, 49940). Neither dialog is `dialog_choice`-keyed, so a zero-button close sends `(id, -1)` to no chain. Without C6, UB-31 and UB-33 fail `dialog_button_linter` R3 once their chain files are registered. CIMMERIA_AUTHORING.
 
 ## Q3: HELD-B12, `en=false` steps
 
@@ -295,4 +298,4 @@ Whether the real client sends the Generic 1-3 click for these ids is RESTORED_SO
 
 ## `change:` index
 
-C1, C2 -> UB-11. C3 -> UB-31. C4 -> UB-34. C5b -> UB-35. C5 -> new UB-DP packet. C5a -> UB-35 chain 23437 and UB-36 chain 23462 (alternative to C5).
+C1, C2 -> UB-11. C3 -> UB-31. C4 -> UB-34. C5b -> UB-35. C5 -> new UB-DP packet. C5a -> UB-35 chain 23437 and UB-36 chain 23462 (alternative to C5). C6 -> new UB-DP packet (gates UB-31 and UB-33).
