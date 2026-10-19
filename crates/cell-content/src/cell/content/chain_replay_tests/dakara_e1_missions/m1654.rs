@@ -1,5 +1,5 @@
 //! DK-33: mission 1654 "Aftermath" (dakara_e1_m1654_chains.sql, 8430-8449).
-//! Crossing C3: the Dakara DHD completes objective 5961 and teleports to SGC_W1.
+//! Crossing C3: dialling SGC_W1 by real gate travel completes objective 5961 only.
 
 use super::super::assert_no_deferred_actions;
 use super::super::mission_1324::{
@@ -79,6 +79,7 @@ async fn live_db_tauri_offer_takes_1654_with_the_tauri_briefing() {
                 "8432:accept_mission(1654)",
                 "8432:remove_dialog_set(6780@59)",
                 "8432:display_dialog(5850)",
+                "8432:grant_stargate_address(27)",
             ],
         );
         assert_eq!(display_dialog_count(&r), 1);
@@ -98,6 +99,7 @@ async fn live_db_free_jaffa_offer_takes_1654_with_the_jaffa_briefing() {
                 "8433:accept_mission(1654)",
                 "8433:remove_dialog_set(6780@59)",
                 "8433:display_dialog(5851)",
+                "8433:grant_stargate_address(27)",
             ],
         );
         assert_eq!(display_dialog_count(&r), 1);
@@ -125,44 +127,32 @@ async fn live_db_offer_is_not_taken_outside_its_state() {
 }
 
 #[tokio::test]
-async fn live_db_dhd_completes_5961_then_teleports_to_sgc() {
+async fn live_db_crossing_to_the_sgc_completes_5961_only() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
-    let r = fire_interact_tag(&engine, &at_dhd(TAURI, "active"), "Dakara_E1_DHD");
+    let r = fire_stargate_crossed(&engine, &at_dhd(TAURI, "active"), "SGC_W1");
     assert_eq!(
         labels_in(&r, M1654_CHAINS),
-        vec![
-            "8434:complete_objective(1654/5961)",
-            "8434:cross_world_teleport(SGC_W1@172.79,-10.90,12.00)",
-        ],
+        vec!["8434:complete_objective(1654/5961)"],
+    );
+    assert!(
+        !labels_in(&r, M1654_CHAINS)
+            .iter()
+            .any(|label| label.contains("advance_step")),
+        "5962 belongs to the SGC: never advance_step"
     );
     assert_eq!(display_dialog_count(&r), 0);
     assert_no_deferred_actions(&r, 8434);
 }
 
 #[tokio::test]
-async fn live_db_dhd_recovery_teleports_once_5961_is_done() {
+async fn live_db_crossing_needs_step_4939_and_5961_open() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
+    // 5961 already done: the crossing completes nothing more.
     let done = at_dhd(TAURI, "completed");
-    let r = fire_interact_tag(&engine, &done, "Dakara_E1_DHD");
-    assert_eq!(
-        labels_in(&r, M1654_CHAINS),
-        vec!["8435:cross_world_teleport(SGC_W1@172.79,-10.90,12.00)"],
-    );
-    assert_no_deferred_actions(&r, 8435);
-}
-
-#[tokio::test]
-async fn live_db_dhd_needs_dakara_and_step_4939() {
-    let pool = require_db_or_skip!();
-    let engine = build_engine(Some(&pool)).await;
-    let on_story_rm = with_step(
-        with_mission(ctx_for(TAURI, Some(STORY_RM)), MISSION, "active"),
-        MISSION,
-        4939,
-        "active",
-    );
+    // Crossing back to Dakara is not the SGC crossing.
+    let to_dakara = at_dhd(TAURI, "active");
     // 1654 already completed: its step 4939 is no longer active.
     let completed = with_mission(ctx_for(TAURI, Some(DAKARA)), MISSION, "completed");
     // DK-30b's step 4930 on 1651 is not 1654 at 4939: no 1654 chain may match it.
@@ -172,8 +162,25 @@ async fn live_db_dhd_needs_dakara_and_step_4939() {
         4930,
         "active",
     );
-    for ctx in [&on_story_rm, &completed, &at_4930] {
-        let r = fire_interact_tag(&engine, ctx, "Dakara_E1_DHD");
+    let cases = [
+        (&done, "SGC_W1"),
+        (&to_dakara, DAKARA_NAME),
+        (&completed, "SGC_W1"),
+        (&at_4930, "SGC_W1"),
+    ];
+    for (ctx, destination) in cases {
+        let r = fire_stargate_crossed(&engine, ctx, destination);
         assert!(labels_in(&r, M1654_CHAINS).is_empty());
+    }
+}
+
+#[tokio::test]
+async fn live_db_the_dhd_click_resolves_no_chain_during_1654() {
+    let pool = require_db_or_skip!();
+    let engine = build_engine(Some(&pool)).await;
+    // The DHD click opens the dial window: no chain may resolve on it.
+    for ctx in [&at_dhd(TAURI, "active"), &at_dhd(TAURI, "completed")] {
+        let r = fire_interact_tag(&engine, ctx, "Dakara_E1_DHD");
+        assert!(r.actions.is_empty(), "{:?}", r.actions);
     }
 }
