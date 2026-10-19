@@ -25,9 +25,9 @@ Beta fires the arrival step (D-UB2, confirmed by Omega D-UO2): on `player_loaded
 | Fixture | Owner | Where | What it asserts |
 |---|---|---|---|
 | `human_departure`, `jaffa_departure` | Omega **UO-13** | `chain_replay_tests/union_omega/handoff.rs` | Omega's exact output state (the "departure" side) |
-| `chain_replay_tests::beta_e1::m1423::receiver_*` | Beta **UB-10** | live-DB test | stages the Human row of the table, asserts chain 23020 resolves to S4224 |
-| `chain_replay_tests::beta_e1::m1500::receiver_*` | Beta **UB-20** | live-DB test | stages the Free Jaffa row, asserts chain 23220 resolves to S4370 |
-| `chain_replay_tests::beta_e1::m481::receiver_*` | Beta **UB-30** | live-DB test | stages the Asgard row (archetype 5), asserts chain 23310 resolves to S1761; HELD for reachability, not for the test |
+| `chain_replay_tests::live_db_beta_e1::m1423::receiver_*` | Beta **UB-10** | live-DB test | stages the Human row of the table, asserts chain 23020 resolves to S4224 |
+| `chain_replay_tests::live_db_beta_e1::m1500::receiver_*` | Beta **UB-20** | live-DB test | stages the Free Jaffa row, asserts chain 23220 resolves to S4370 |
+| `chain_replay_tests::live_db_beta_e1::m481::receiver_*` | Beta **UB-30** | live-DB test | stages the Asgard row (archetype 5), asserts chain 23310 resolves to S1761; HELD for reachability, not for the test |
 
 Beta's wave B2 can run before UO-13 (Omega W4) merges, so Beta stages the state itself and never imports `handoff`. It may switch to the import once UO-13 is on `main`. Both sides assert the same table row.
 

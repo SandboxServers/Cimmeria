@@ -274,9 +274,9 @@ async fn live_db_beta_fire_site_holds_its_objects_but_not_satterfield() {
     );
 }
 
-#[test]
 /// Revert proof: make `walks_to` single-shot (`MAX_WALK_LEGS` of 1); the
 /// ring-148 control then reads "not connected" and this fails.
+#[test]
 fn beta_walk_helper_chains_long_routes_and_refuses_islands() {
     let exterior = mesh("beta_site_evo_1.nav");
     // Ring 148 is about 500 m from ARRIVAL: one query is truncated at 256

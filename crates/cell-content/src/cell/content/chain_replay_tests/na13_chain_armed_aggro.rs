@@ -262,8 +262,10 @@ async fn live_db_chain_1008_fires_once_per_player() {
     );
 }
 
-/// #802 acceptance: after a full load, exactly chains 1008 and 1044 are
-/// fire-once — the only two seeded trigger rows with `once = true`.
+/// #802 acceptance: after a full load, exactly the seeded `once = true`
+/// trigger rows are fire-once: Cellblock chains 1008 and 1044, plus the
+/// Beta Site E1 quota pickups (P9), one per object: 381's cages
+/// 23045-23049 and 420's scanners 23343-23347.
 #[tokio::test]
 async fn live_db_only_chains_1008_and_1044_load_as_once() {
     let pool = require_db_or_skip!();
@@ -280,5 +282,8 @@ async fn live_db_only_chains_1008_and_1044_load_as_once() {
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .collect();
-    assert_eq!(once, vec![1008, 1044]);
+    assert_eq!(
+        once,
+        vec![1008, 1044, 23045, 23046, 23047, 23048, 23049, 23343, 23344, 23345, 23346, 23347]
+    );
 }
