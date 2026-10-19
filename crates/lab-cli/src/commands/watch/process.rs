@@ -75,7 +75,16 @@ mod tests {
         let alive_while_running = batch_owner_alive(pid);
         let _ = child.kill();
         let _ = child.wait();
+        // `Child` holds the process handle until dropped, and Windows keeps a
+        // terminated process in the Toolhelp snapshot while any handle (ours,
+        // or a scanner's on a CI runner) is open. Close ours, then allow the
+        // kernel a bounded moment to retire the entry.
+        drop(child);
         assert!(alive_while_running, "pwsh pid {pid} should read as alive");
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while batch_owner_alive(pid) && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
         assert!(!batch_owner_alive(pid), "pwsh pid {pid} has ended");
     }
 }
