@@ -1206,7 +1206,7 @@ Missions 1563-1571, the SGC halves of 1651, 1654 and 1655, and the crossings to 
 
 - **1564 Self-Destruct (US-15, chains 3060-3071):** for Human classes, Carter offers 1564 after 1563 (5374), gives the radio report (5375) that moves to step 4631, and the Failsafe room (`SGC_W1.FailsafeRoom`) moves to 4632 and lights the Failsafe Device. The device moves to 4633, Carter's final report (5378) completes objective 5373, and load restores her marker and the glow.
 
-- **1564 escort (US-16, chains 3073-3078):** planned.
+- **1564 escort (US-16, chains 3073-3078):** Carter follows the player once her radio report (5375) closes on step 4631, stops and walks to the device (P05) when the player enters the Failsafe room, and a relog restores the follow on 4631 and her place at P05 on 4632 and 4633.
 
 - **1571 auxiliary credit (US-13, chains 3080-3081):** a Human who completes 1559 is credited 1571 at once (objective 5354, no second weapon), and a Human who finished 1559 earlier is credited on load.
 
