@@ -3,6 +3,7 @@
 -- Chain ID range: 8310-8319 (work-packets.md, C3). Evidence labels: README.md, "Evidence Labels".
 
 SET search_path = resources, pg_catalog;
+
 -- Chain 8310 PROJECT_FINAL_RECONSTRUCTION: 1651 step 4930, the DHD dials SGC_W1 (crossing C2).
 -- Advance to 4928 first (frozen order), then teleport to the SGC H3 (172.79, -10.9, 12.0). The SGC's
 -- US-30 receives the player at 4928; no stargate address is granted (the SGC has no DHD to dial back).

@@ -75,8 +75,8 @@ async fn live_db_gate_chains_stay_quiet_at_other_steps_worlds_and_tags() {
 async fn live_db_dhd_without_1651_state_resolves_no_gate_chain() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
-    // No 1651 state at all: the DHD click resolves nothing here, so the
-    // dialling window still opens.
+    // No 1651 state at all: no 1651 gate chain resolves for the DHD click.
+    // (The cell then opens the dialling window; that part is DK-U26, not this test.)
     let ctx = ctx_for(TAURI, Some(DAKARA));
     let r = fire_interact_tag(&engine, &ctx, DHD_TAG);
     assert!(labels_in(&r, M1651_GATE_CHAINS).is_empty());
