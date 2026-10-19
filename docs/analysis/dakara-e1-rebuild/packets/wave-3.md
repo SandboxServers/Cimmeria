@@ -3,9 +3,11 @@
 > Type: how-to (work packets). Audience: the packet-coder named in each packet, and the read-only wave-3 packet-reviewer (no packet-review-fixer: the reviewer's findings go to a fresh packet-coder).
 > Written 2026-10-18 against `main` @ `d1bba0400`. Ledger and status: [README](../README.md#packets). Rules and full contract: [work-packets.md](../work-packets.md).
 
-Wave 3 starts when DK-10a, DK-09 and DK-09b are merged (DK-10d also needs DK-06b). The six packets write six different seed files and six different test files that DK-10a created, so all six run in parallel, each in its own worktree. Every packet carries its own rules; you do not need CLAUDE.md.
+Wave 3 starts when DK-10a, DK-09 and DK-09b are merged (DK-10d also needs DK-06b; DK-10fc also needs DK-10fs). The seven packets write seven different seed files and seven different test files that DK-10a created, so all seven run in parallel, each in its own worktree. The reviewer may split the wave into two halves if one context cannot hold seven. Every packet carries its own rules; you do not need CLAUDE.md.
 
 **Status of the sections (architect, 2026-10-18).** DK-10c and DK-12c now carry the rows DK-08 ruled, with the 4902 triggers from D-DK18 (three client-hinted regions that DK-09 seeds) and the ranges from D-DK19 (DK-10c 8060-8074, DK-10d 8160-8179). Only DK-10d's Part A (step 4905) still waits, on D-DK10 and DK-06b; DK-10d is not dispatchable until the architect fills it. DK-10b, DK-10c, DK-11, DK-12b and DK-12c are complete. Under D-DK1 **C**, DK-10b to DK-10d are dropped and DK-11's offer gate changes (see DK-11).
+
+**Architect amendment (2026-10-18, D-DK1 option F, recommended).** A Free Jaffa now starts with the authored mission 63100 "Home to Dakara" (DK-10fs's catalog entry and seed; DK-10fc's chains below). Talking to Rak'nor completes it, and DK-10a's chain 8040 then starts 1570 at 4906 with Rak'nor's optional 5936 already completed. So DK-10b has no 8057 (the bridge binds Rak'nor), and its Rak'nor chains 8045-8048 serve only players who reach 4906 with 5936 open (Tau'ri from the SGC route, a Praxis Jaffa). Under fallback **B**, DK-10fc is not dispatched and DK-10b keeps 8057 (its "Fallback B" note).
 
 ## Rules for every wave-3 packet
 
@@ -14,7 +16,7 @@ Wave 3 starts when DK-10a, DK-09 and DK-09b are merged (DK-10d also needs DK-06b
 3. Never `git stash`, `git worktree prune`, `git push`, `gh pr`, or delete a worktree. Commit once, locally, with the subject below and the attribution lines from your brief.
 4. Edit only your packet's seed file and test file (C3 and C7 of work-packets.md). Do not edit `db/database.sql`, the linter, `dakara_e1_missions/mod.rs` or another packet's file. Files stay under 700 lines (soft cap 500).
 5. The seed files are CRLF; keep them CRLF (check with `[IO.File]::ReadAllText(<abs>).Contains("`r`n")`).
-6. Seeds change in `db/resources/` only; never add a `db/scripts/` migration. Every chain has a comment above it: its evidence label (these are all `PROJECT_FINAL_RECONSTRUCTION`: the client holds the missions, steps, objectives and dialogs but no trigger) and the step, objective or bind it serves.
+6. Seeds change in `db/resources/` only; never add a `db/scripts/` migration. Every chain has a comment above it: its evidence label (these are all `PROJECT_FINAL_RECONSTRUCTION`: the client holds the missions, steps, objectives and dialogs but no trigger; DK-10fc's chains are `NEW CONTENT`, because mission 63100 is) and the step, objective or bind it serves.
 7. No new dialog row, no client patch. Never edit templates 54 or 59 (shared with Harset). No rewards (D-DK7): no XP, cash or reward item.
 8. Never launch the game client, the launcher or any lab tool.
 9. No IPs, credentials, tokens or account names in any file.
@@ -43,7 +45,7 @@ Wave 3 starts when DK-10a, DK-09 and DK-09b are merged (DK-10d also needs DK-06b
 | `give 6779` / `take 6779` | `(id, 'add_item', 6779, NULL, '{"container": 0, "qty": 1}', 0, n)` / `(id, 'remove_item', 6779, NULL, '{"qty": 1}', 0, n)` |
 | `inc sg18_remains` / `reset sg18_remains` | `(id, 'increment_counter', NULL, 'sg18_remains', '{"amount": 1}', 0, n)` / `(id, 'reset_counter', NULL, 'sg18_remains', '{}', 0, n)` |
 
-Triggers: `loaded Dakara_E1` is `('player_loaded', 'Dakara_E1')`; `click <tag>` is `('interact_tag', '<tag>')`; `region <key>` is `('enter_region', '<key>')`, the key byte-exact as the `point_sets.name`; `choice 5980` is `('dialog_choice', '5980')`; `done 1570` is `('mission_completed', '1570')`.
+Triggers: `loaded Dakara_E1` is `('player_loaded', 'Dakara_E1')`; `click <tag>` is `('interact_tag', '<tag>')`; `region <key>` is `('enter_region', '<key>')`, the key byte-exact as the `point_sets.name`; `choice 5980` is `('dialog_choice', '5980')`; `done 1570` is `('mission_completed', '1570')`. Every mission form takes any mission id, for example `m63100 not_active`, `s63100/63101 active`, `complete 63100`.
 
 Counters (DK-10c, DK-12c) follow the Castle precedent (`castle_cellblock_chains.sql` chains 1085-1087) but add **no** `content_counters` row: only the admin editor reads that table, the engine does not. Counters live in memory and reset on relog and on every world change; a missing counter reads 0.
 
@@ -97,11 +99,51 @@ Step 4906 "Speak to Bra'tac at his command tent": optional 5936 (Rak'nor), optio
 | 8054 | loaded `Dakara_E1` | world 61; arch lte 6; s1570/4904 active | bind 6728@440 | Loth'ta, Tau'ri |
 | 8055 | click `Dakara_E1_Lothta` | world 61; arch gte 7; s1570/4904 active | display 5813; advance 1570->4902; unbind 6729@440 | Loth'ta, Jaffa: leave 4904 |
 | 8056 | click `Dakara_E1_Lothta` | world 61; arch lte 6; s1570/4904 active | display 5812; advance 1570->4902; unbind 6728@440 | Loth'ta, Tau'ri |
-| 8057 | loaded `Dakara_E1` | world 61; arch eq 7; m1570 not_active; m1645 not_active | bind 6890@441 | co-fires with DK-10a's 8040 (same trigger and conditions): Rak'nor's bind on the Free Jaffa's first arrival, when 4906 is not active yet |
+
+Under D-DK1 F there is no 8057: DK-10fc's bridge chains bind Rak'nor before 1570 starts, and 8040 completes 5936 itself, so 8045 and 8047 stay quiet for a Free Jaffa. 8057 stays free.
+
+**Fallback B only** (the brief says so): add `| 8057 | loaded Dakara_E1 | world 61; arch eq 7; m1570 not_active; m1645 not_active | bind 6890@441 | co-fires with DK-10a's 8040 (same trigger and conditions): Rak'nor's bind on the Free Jaffa's first arrival, when 4906 is not active yet |`.
 
 Notes: Loth'ta's 4904 click leads into 4902. Step 4902 has no binds (D-DK18: its objectives are regions), so no chain co-fires on that click. Bra'tac and Loth'ta are in different worlds from the chain that moves the player to their step, so their binds come from 8049/8050 and 8053/8054 only.
 
-**Tests** (`tent.rs`), besides the shared rules: a Free Jaffa first arrival (`ctx_for(FREE_JAFFA, Some(DAKARA))`, nothing set) gives `["8057:add_dialog_set(6890@441)"]` in `TENT_CHAINS`; the same player at 1570 step 4906 (mission and step both `active`, see the shared tests) gives `["8047:add_dialog_set(6890@441)"]` (8057 and 8047 never both fire); with `with_objective(ctx, 1570, 5936, "completed")` the Rak'nor restore and click give nothing; a `PRAXIS_JAFFA` at 4906 gets the Jaffa chains; `TAURI` at 4906 on Dakara gets 8048.
+**Tests** (`tent.rs`), besides the shared rules: a Free Jaffa first arrival (`ctx_for(FREE_JAFFA, Some(DAKARA))`, nothing set) gives an empty list in `TENT_CHAINS`; a player at 1570 step 4906 (mission and step both `active`, see the shared tests) with 5936 open gives `["8047:add_dialog_set(6890@441)"]`; with `with_objective(ctx, 1570, 5936, "completed")` (the Free Jaffa's state after 8040) the Rak'nor restore and click give nothing in `TENT_CHAINS`; a `PRAXIS_JAFFA` at 4906 gets the Jaffa chains; `TAURI` at 4906 on Dakara gets 8048. Fallback B: the first arrival gives `["8057:add_dialog_set(6890@441)"]` instead, and 8057 and 8047 never both fire.
+
+## DK-10fc: the bridge mission 63100's chains
+
+| Field | Value |
+|---|---|
+| Role | `packet-coder` |
+| Gate | D-DK1 answered **F**; DK-10a and DK-10fs merged. Not dispatched under any other answer. |
+| Branch / worktree | `dakara/dk-10fc-bridge-chains` / `dk-10fc` |
+| Commit subject | `feat(content): Dakara_E1 bridge mission 63100 chains (DK-10fc)` |
+| Seed file / range | `dakara_e1_bridge_chains.sql`, 8075-8079 (`BRIDGE_CHAINS`); 8075-8077 used, 8078-8079 spare |
+| Test file | `dakara_e1_missions/bridge.rs` |
+| Report | `<worktree>\.claude\reports\dakara\DK-10fc-packet-coder.md` |
+| Size | About 30k tokens |
+
+Mission 63100 "Home to Dakara" (`NEW CONTENT`, level 1): one step 63101 "Speak with Rak'nor at the Stargate.", one required objective 63102, one task 63103. DK-10fs put it in the client's mission catalog and in `resources.missions` / `mission_steps` / `mission_objectives`. A Free Jaffa who arrives on Dakara with no Dakara mission yet gets it, Rak'nor is bound to his Jaffa dialog 6110 (dsm 6890, slot 441), and the click completes it. `complete_mission` fires `mission_completed` inline, so DK-10a's 8040 (`done 63100`) then accepts 1570 at 4906 in the same click. Free Jaffa only (`arch eq 7`): a Praxis Jaffa or a Tau'ri never sees 63100.
+
+| Chain | Trigger | Conditions | Actions | Why |
+|---|---|---|---|---|
+| 8075 | loaded `Dakara_E1` | world 61; arch eq 7; m63100 not_active; m1570 not_active; m1645 not_active | accept 63100; bind 6890@441 | first arrival: the bridge mission and Rak'nor's bind (never again once any of the three is active or completed) |
+| 8076 | loaded `Dakara_E1` | world 61; arch eq 7; s63100/63101 active | bind 6890@441 | restore Rak'nor after a relog or a tent trip; disjoint from 8075 (63100 active vs not active) |
+| 8077 | click `Dakara_E1_Raknor` | world 61; arch eq 7; s63100/63101 active | display 6110; unbind 6890@441; complete 63100 | the conversation; unbind before complete (C5 rule 5) |
+
+Each chain: `scope_type 'mission'`, `scope_id 63100`; descriptions `'63100 - first arrival: accept Home to Dakara, bind Rak''nor'`, `'63100 - 63101: restore Rak''nor'`, `'63100 - 63101: Rak''nor 6110, complete'`; a comment above each naming `NEW CONTENT` (DK-10fc, D-DK1 F) and what it serves. 8077 shows the dialog itself, so the click never falls back to the dsm dialog (one display). 8045 (DK-10b) needs 1570 at 4906, which a Free Jaffa only reaches after 8077, so the two Rak'nor clicks never both fire.
+
+**Tests** (`bridge.rs`), besides the shared rules. "With 63100 at 63101" is `with_step(with_mission(ctx, 63100, "active"), 63100, 63101, "active")`. Imports as `entry.rs`, plus `fire_interact_tag`, `fire_mission_completed`, `with_step`, `display_dialog_count`.
+
+1. `live_db_free_jaffa_first_arrival_accepts_home_to_dakara`: `fire_player_loaded(&engine, &ctx_for(FREE_JAFFA, Some(DAKARA)), DAKARA_NAME)` gives `["8075:accept_mission(63100)", "8075:add_dialog_set(6890@441)"]` in `BRIDGE_CHAINS`; `assert_no_deferred_actions(&r, 8075)`.
+2. `live_db_home_to_dakara_restores_raknor`: the same load with 63100 at 63101 gives `["8076:add_dialog_set(6890@441)"]` only (8075 and 8076 never both fire).
+3. `live_db_raknor_completes_home_to_dakara`: `fire_interact_tag(&engine, &ctx, "Dakara_E1_Raknor")` with 63100 at 63101 gives `["8077:display_dialog(6110)", "8077:remove_dialog_set(6890@441)", "8077:complete_mission(63100)"]`; `display_dialog_count(&r) == 1`; `assert_no_deferred_actions(&r, 8077)`.
+4. `live_db_home_to_dakara_hands_over_to_1570`: `fire_mission_completed(&engine, &with_mission(ctx_for(FREE_JAFFA, Some(DAKARA)), 63100, "completed"), 63100)` gives DK-10a's four 8040 labels in `ENTRY_CHAINS` and nothing in `BRIDGE_CHAINS`.
+5. `live_db_home_to_dakara_is_free_jaffa_only_and_once`: each of these gives an empty `BRIDGE_CHAINS` list on the load and on the Rak'nor click: `PRAXIS_JAFFA` and `TAURI` on Dakara; a Free Jaffa in `Some(STORY_RM)` firing `STORY_RM_NAME`; 63100 `completed`; 1570 `active`; 1570 `completed`; 1645 `active`. A Free Jaffa with nothing set clicking Rak'nor also gives an empty list.
+
+**Checks:** the four shared checks, then 5. `pwsh tools/build-lane/live-db-test.ps1 chain_replay_tests::dakara_e1_space`. 8075 adds actions to a Free Jaffa's arrival; `dakara_e1_space`'s resolve tests give no world id and should not see it, but its executed tests run the real dispatcher. If check 5 fails, do **not** edit `dakara_e1_space.rs` or weaken a test: paste the failure into the report and return `blocked` with the reason `space-test`; the architect writes a ruling note.
+
+**Revert proof.** Tests 1-3 assert non-empty lists, so removing the seed rows fails them; test 5 fails if the archetype, world or mission gates are dropped.
+
+**Docs rows owed.** The shared rule (DK-99 owns `mission-chains.md`). The UAT rows are DK-U11 to DK-U16 in the README already; name them in the report.
 
 ## DK-10c: 1570 steps 4902 and 4901
 
@@ -200,7 +242,7 @@ Moh'katan offers 1645 in the tent (dsm 6736, dialog 5980, "available"). Acceptin
 | 8083 | loaded `Dakara_E1` | world 61; s1645/4907 active | bind 6735@440 | Loth'ta's turn-in |
 | 8084 | click `Dakara_E1_Lothta` | world 61; s1645/4907 active | display 5808; take 6779; unbind 6735@440; complete 1645 | turn-in: unbind before complete |
 
-**Under D-DK1 C** (the architect confirms before dispatch): 8080 is dropped; 8081 and 8082 replace `m1570 completed` with `arch eq 7`.
+**Under D-DK1 C** (the architect confirms before dispatch): 8080 is dropped; 8081 and 8082 replace `m1570 completed` with `arch eq 7`. Under F or B the table stands as written: 1645 still follows 1570.
 
 **Tests** (`m1645.rs`): the shared rules; `fire_mission_completed(&engine, &with_mission(ctx, 1570, "completed"), 1570)` in world 62 gives `["8080:add_dialog_set(6736@54)"]`; with 1645 `active` it gives nothing; `fire_interact_tag` on `Dakara_E1_StoryRm_Mohkatan` with 1570 completed and 1645 not active resolves **no chain at all** in the whole engine (`r.actions.is_empty()`); `fire_dialog_choice(&engine, &ctx, 5980)` gives the five 8082 labels in order; the Loth'ta click at 1645/4907 gives `display_dialog_count == 1`.
 

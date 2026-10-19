@@ -3,7 +3,7 @@
 > Type: ledger. Audience: the owner, the orchestrator, packet workers and reviewers.
 > Opened 2026-10-06 against `main` @ `ddd549797`; re-sliced to the [campaign-packet skill](../../../.claude/skills/campaign-packet/SKILL.md) on 2026-10-18 against `main` @ `d1bba0400`. Packet prefix `DK-`. Companions: [resume card](RESUME.md), [work packets and contract](work-packets.md), [audit](audit.md), [placements](placements/README.md), [Class Start v6 ledger](../class-start-v6/README.md), [Harset rebuild](../harset-rebuild/README.md), [Castle rebuild](../castle-rebuild/README.md), [operator guide](../zone-restoration-operator-guide.md).
 >
-> **Status (2026-10-18): wave 1 is current and Ready (DK-06a, DK-07, DK-08, DK-12a; docs and evidence only).** DK-00 to DK-05 are merged (#1282 to #1288). M1 and M2 UAT are owed; the owner runs them himself, and no agent uses the lab until the campaign ends. The DK-08 review's two calls are ruled (D-DK18, D-DK19). Waves 2 and 3 wait on wave 1 and on owner decision D-DK1. This README is the single status source; [work-packets.md](work-packets.md) holds the rules and packet text, not status.
+> **Status (2026-10-18): wave 1 is Done (DK-06a #1854, DK-07 #1853, DK-08 #1855, DK-12a #1856). Wave 2 is Ready: DK-09, DK-09b, DK-10a, DK-10e, DK-10fs; DK-06b waits on D-DK10.** D-DK1 is decided as option F (owner, 2026-10-18), with D-DK17 and D-DK20 ruled: the bridge mission 63100 "Home to Dakara" leads into 1570 (packets DK-10fs and DK-10fc). DK-00 to DK-05 are merged (#1282 to #1288). M1 and M2 UAT are owed; the owner runs them himself, and no agent uses the lab until the campaign ends. The DK-08 review's two calls are ruled (D-DK18, D-DK19). Wave 3 waits on wave 2 per its dependencies. This README is the single status source; [work-packets.md](work-packets.md) holds the rules and packet text, not status.
 
 ## Why
 
@@ -17,7 +17,7 @@ Class Start v6 moves the Free Jaffa start (char_defs 8 and 18, archetype 7) from
 - **What is missing, everywhere:** where anything stands. No position survives for Bra'tac, Moh'katan, Loth'ta, the tents' entrances, the drop sites, the gates, the Naquadah Repository or the Med Tent. No hostile template, encounter, wave or count exists for the missions that are fights. No offer rule, prerequisite or reward exists for any mission. The seed, the client and the archive agree on this: the archive's spawn, encounter and player-start files for Dakara_E1 are empty.
 - **What the archive adds:** a file manifest that proves our client is its final build, and actor rows we can read from the same maps with the repo's own tools. Its mission list is missing four of the twelve missions ([audit, claims 2 and 3](audit.md#handoff-claims-used-and-their-verdicts)). Nothing in it needs importing.
 - **How much is playable from that:** the dead end is gone (DK-01). Seven of the twelve missions have no fight in their objectives: talk, carry, search, hack and two device steps (1570's Dakara half, 1645, 1646, 1648, 1649, 1650, 1652). They are authorable once positions are estimated from the map and corrected in one playtest pass. In story order the peaceful run is 1570, 1645, 1646; then 1647, a fight, sits in front of the rest. Two missions are fights with no recovered design (1647, 1653) and need the owner's go-ahead to be reconstructed. Three leave for the SGC (1651, 1654, 1655) and wait on a way to dial out of the SGC.
-- **One thing the owner should know before deciding anything:** the recovered arc is not a level-1 start. It is level 3 to 5, and its first Dakara scene tells a Jaffa player "Welcome back, my friend" after the SGC attack. In the client's data the Free Jaffa reaches Dakara from the SGC. A level-1 Dakara start is this project's decision, so its first minutes have to be reconstruction or new content whatever we do (D-DK1; option E offers three bridges).
+- **One thing the owner should know before deciding anything:** the recovered arc is not a level-1 start. It is level 3 to 5, and its first Dakara scene tells a Jaffa player "Welcome back, my friend" after the SGC attack. In the client's data the Free Jaffa reaches Dakara from the SGC. A level-1 Dakara start is this project's decision, so its first minutes have to be reconstruction or new content whatever we do (D-DK1; option F, recommended, adds one authored level-1 mission that leads into 1570).
 
 The four other Dakara worlds in the archive's `MISSING_UNRECOVERED` folder (`Dakara` 24, `Dakara_E2` 63, `Dakara_E3` 64, `Dakara_Superweapon` 65) have no map in the client and none in the archive. Their folders are name-matched asset lists the archive itself grades `CANDIDATE_NOT_PROVEN`. The fifty missions labelled Dakara E2 and E3 cannot be placed in a world and are outside this campaign.
 
@@ -32,7 +32,7 @@ The four other Dakara worlds in the archive's `MISSING_UNRECOVERED` folder (`Dak
 - Vendors, trainers and ambient population. The merchant tent on the map has no vendor data (Harset's D-H09 applies).
 - Mission XP, cash and item rewards. All twelve missions have none seeded; the Cellblock's GC3 gate (formula evidence first) applies unchanged (D-DK7).
 - Changing where Free Jaffa start. That is Class Start v6's decision; this ledger records the evidence and offers it as an option (D-DK1, option D).
-- New client content: no new dialog rows, no cooked-data overrides, no client patch.
+- New client content: no new dialog rows, no cooked dialog or step-text overrides, no client patch. One exception, under D-DK1 F: the authored mission 63100 enters the client's mission catalog as a server-served `MISSION_ADDITIONS` entry (#1734). The client downloads it in the category-3 resync at character select; nothing is installed on the client.
 
 ## Evidence Labels
 
@@ -42,7 +42,7 @@ Seed rows and worknotes in this campaign use the labels the earlier campaigns us
 |---|---|
 | `ORIGINAL_DATA` | The row restates data that is in the client's own cooked files (a mission step, a dialog id, a name string, a map actor). It never means CME server data; the seed is a reconstruction ([rules-and-gotchas](../../agents/rules-and-gotchas.md)). |
 | `RECONSTRUCTION` / `PROJECT_FINAL_RECONSTRUCTION` | Authored by this project to connect recovered pieces: offer rules, step triggers, positions, encounters. |
-| `NEW CONTENT` | Text or behaviour with no recovered counterpart (the arrival notice). |
+| `NEW CONTENT` | Text or behaviour with no recovered counterpart (the arrival notice, Teal'c's letter, mission 63100). |
 | `PROJECT_FINAL_S2C` | Inherited from Class Start v6: the Dakara start, level 1, start gear. |
 | Placement classes | `AUTHORED`, `MAP-LANDMARK`, `MAP-GEOMETRY`, `MAP-MARKER`, `SPEC-DESCRIPTIVE`, `INFERRED`, with HIGH / MEDIUM / LOW / NO-IDEA confidence, exactly as in the [Harset placement method](../harset-rebuild/placements/METHOD.md). |
 
@@ -74,6 +74,8 @@ Handoff claims carry CONFIRMED / CONTRADICTED / UNVERIFIABLE in the [audit](audi
 | F20 | The linter's region check (`every_chain_region_key_matches_a_seeded_point_set`) reads only `db/resources/Events/Seed/point_sets.sql`, so any `enter_region` key from `point_sets_dakara_e1.sql` (2123-2130) fails it. The linter file is also 753 lines, over the 700 hard cap. | `crates/content-engine/tests/it/interact_tag_linter.rs:467` | DK-09b |
 | F21 | The server does not re-check that a player who reports a client-hinted region stands in it. For 4902 a forged report only advances the sender's own step. | `event_dispatch/region.rs` | Accepted (work-packets C5 rule 8) |
 | F22 | DK-08's 4902 and 4901 rows need 12 chain ids; C3 gave DK-10c 10 and DK-10d sat directly after it. | [DK-08 review](worknotes/DK-08.md), finding 8 | D-DK19 |
+| F23 | **The server can ship a new mission to the client without a patch** (owner, 2026-10-18; option E's "cannot add a mission" was wrong). #1734 built the path: a `MissionAddition { mission_id, xml }` entry in `crates/resources/src/base/mission_additions.rs` is appended to the served mission category (3), the metadata version bumps, and the client's `versionInfoRequest` at character select pulls the whole category again (the PAK is 749 KB, about 2-3 s, once per client per build). The journal then shows the mission's name, level, step and objective text from that XML. Production `MISSION_ADDITIONS` is **empty**: 63100 would be the project's first live entry, so client parsing, journal, progression and relog are unproven (`docs/architecture/mission-pak-overrides.md` keeps them UATPending). Ids 63100-63103 are free in the stock catalog, `db/resources`, `crates` and every open campaign. | `mission_additions.rs`, `resources/mod.rs` (`load_all_impl`), `tests/mission_additions.rs`, `mission-pak-overrides.md` | DK-10fs (D-DK1 F, D-DK20) |
+| F24 | Two existing tests break when the first production addition lands, and the bridge packets must fix them exactly: `tests/mission_additions.rs` asserts `MISSION_ADDITIONS.is_empty()` and builds its baseline with `load_all(DIR)` (which now includes 63100), and `chain_replay_tests/dakara_e1_space.rs` asserts the exact chain set on a Free Jaffa arrival (it gains 8007; the world-gated 8075 is expected not to fire there because that harness stamps no world id, which DK-10fc proves by running it). | test sources | DK-10fs, DK-10e, DK-10fc |
 
 ## Decisions
 
@@ -81,7 +83,7 @@ Older files, worknotes and seed comments say `OD-DKn`; that is the same decision
 
 | Id | Decision | Status | Reason and consequence |
 |---|---|---|---|
-| D-DK1 | **What a level-1 Free Jaffa is given first.** **A.** No mission: an address, a notice, a respawn. **B.** After A, accept 1570 on arrival, advance it past its two SGC steps and play its Jaffa dialogs; the log then shows two completed SGC steps the character did not play. **C.** After A, skip 1570 and start at 1645. **D.** Return the Free Jaffa start to SGC_W1 (a v6 decision). **E.** B plus a bridge for the first minutes: E1 a letter, E2 a letter and a hail, E3 the newcomer dialogs ([§ D-DK1 option E](#d-dk1-option-e-a-bridge-for-the-first-minutes)). | **BlockedDecision** (A is Done in DK-01, #1284; the question is B, C, D or B with one of E1 to E3) | Recommended **B with E2** (2026-10-18, after the owner asked whether new content can bridge the gap): 1570 is the client's own first Dakara mission, peaceful, and it sets up 1645 and 1646; E2 tells a level-1 character the backstory the dialogs assume. E1 folds into DK-10e; E2 also adds DK-10f to wave 3. Blocks DK-10a to DK-10d and DK-11. Under C, DK-10a to DK-10d drop and DK-11's offer chain is gated `archetype eq 7` and 1645 `not_active` instead of 1570 `completed`. Under D the campaign stops after wave 2's DK-09 and DK-06b. |
+| D-DK1 | **What a level-1 Free Jaffa is given first.** **A.** No mission: an address, a notice, a respawn. **B.** After A, accept 1570 on arrival, advance it past its two SGC steps and play its Jaffa dialogs; the log then shows two completed SGC steps the character did not play. **C.** After A, skip 1570 and start at 1645. **D.** Return the Free Jaffa start to SGC_W1 (a v6 decision). **E.** B plus a bridge for the first minutes: E1 a letter, E2 a letter and a hail, E3 the newcomer dialogs (superseded). **F.** An authored level-1 mission, 63100 "Home to Dakara", accepted on arrival; talking to Rak'nor completes it and starts 1570 at step 4906, with Teal'c's letter (E1) for the backstory ([§ D-DK1 option F](#d-dk1-option-f-an-authored-level-1-bridge-mission)). | Decided: option F (owner, 2026-10-18) | Recommended **F** (2026-10-18). It replaces E: the owner overruled option E's claim that the server cannot add a mission (F23). A level-1 Free Jaffa gets a level-1 mission in the journal that names the first person to talk to, the letter tells the backstory the shipped dialogs assume, and 1570 then runs as in B. Adds DK-10fs (wave 2) and DK-10fc (wave 3); amends DK-10a (8040 triggers on 63100's completion), DK-10b (drops 8057) and DK-10e (chain 8007, the letter). E2's hail and DK-10f are dropped. It was the blocker for DK-10a to DK-10d, DK-10fs, DK-10fc and DK-11; now lifted. Fallback if the client rejects 63100: B with E1 ([§ option F, fallback](#fallback)). Under C, DK-10a to DK-10d drop and DK-11's offer chain is gated `archetype eq 7` and 1645 `not_active` instead of 1570 `completed`. Under D the campaign stops after wave 2's DK-09 and DK-06b. |
 | D-DK2 | The Dakara start grants **Omega Site (gate 5)** only; the SGC address waits for DK-30. | Decided (shipped in DK-01, #1284); owner confirmation pending, non-blocking | Omega Site has a DHD, so the trip is two-way. Changing it is one seed row. |
 | D-DK3 | Positions are **map estimates** (DK-02), corrected by the owner in one pass after the M2 playtest. | Decided (2026-10-07, for DK-04) | Harset method. MEDIUM: the mission texts' "Eastern" and "Western" are not tied to a map axis. |
 | D-DK4 | **One tent interior**, world 62 (instanced), for both tents. | Decided (2026-10-07, for DK-04) | It is what the four flap names and the single map imply; the instance gives per-player scenes for 1650 (Harset D-H03). |
@@ -97,11 +99,14 @@ Older files, worknotes and seed comments say `OD-DKn`; that is the same decision
 | D-DK14 | **One seed file per packet**; DK-10a creates all seven mission seed files with headers only, their `\ir` lines, the linter range entries and the empty test submodules. | Decided | Lets wave-3 packets run in parallel without touching shared files. |
 | D-DK15 | Archetype gates: Jaffa dialogs `archetype gte 7`, Tau'ri dialogs `archetype lte 6`, the Free Jaffa entry `archetype eq 7`. | Decided | Praxis Jaffa (8) visiting gets the Jaffa lines; the dsm rows ship both variants. |
 | D-DK16 | The five drop props get **distinct templates**: 449 plus clones 458 to 461, so each holds its own bind and glow. Hostiles move to 462 and up. | Decided; DK-09 does it | F9. |
-| D-DK17 | Under D-DK1 B or C, reword the arrival notice to point at the first mission giver (the proposed texts are in [DK-10e](packets/wave-2.md#dk-10e-reword-the-arrival-notice)). | **BlockedDecision** (answered with D-DK1; the owner may also edit the wording) | F19. Under A or D the notice stays and DK-10e is dropped. |
+| D-DK17 | Reword the arrival notice to point at the first mission giver, using the proposed B wording, and send Teal'c's letter (chain 8007) as written ([DK-10e](packets/wave-2.md#dk-10e-reword-the-arrival-notice-and-send-tealcs-letter)). | Decided: proposed wording and Teal'c letter as written (owner, 2026-10-18) | F19. DK-10e runs once D-DK1 is confirmed. Under A or D the notice stays and DK-10e is dropped. |
 | D-DK18 | **Step 4902's three objectives are client-hinted regions on the SG-18 remains sites.** Point sets 2128 `Dakara_E1.SG18Louis` (5632), 2129 `Dakara_E1.SG18Nguyn` (5630), 2130 `Dakara_E1.SG18Waters` (5631, optional): world 61, `Cylinder`, radius 8, height 10, flags 1, centred on the remains spawns' x/z, 3 m below their y. The chain that advances to 4901 shows 5814 ("weak radio signal") and binds the three remains. No 4902 bind, no new template, dsm 6730 unused. | Decided (architect, 2026-10-18, DK-08 review finding 7) | The step text says "search the locations"; the remains are those locations. A region needs no template (the block 462 up is DK-20's) and no bind or restore. A region at the outpost lead was rejected: Loth'ta stands there, so the H52 step replay would fire it on the 4904 click. 5814 is speaker 0, so it shows from a region chain (F6). The M2 position pass moves each region with its remains. DK-09 seeds them; DK-09b makes the linter see them (F20). |
 | D-DK19 | **Chain ranges:** DK-10c gets 8060-8074 (12 used, 3 spare); DK-10d moves to 8160-8179; later missions start at 8180. | Decided (architect, 2026-10-18, DK-08 review finding 8) | F22. Moving DK-10d keeps every other range and gives the radio step room before D-DK10 is ruled. DK-07's id-allocation row and DK-10a's allowlist and constants carry the new ranges. |
+| D-DK20 | **63100 is the project's first production `MISSION_ADDITIONS` entry**, so the owner's M2 run is also the first live proof of the #1734 path (client parsing, journal, progression, relog). Cellblock (CB-N05) and Castle (D-CA16) also plan authored missions. Does Dakara go first, and does a pass at M2 count as the proof for them? Consequence either way: every client re-downloads the mission category once after the deploy that ships it. | Decided: accept being first user of the mission-catalog route (owner, 2026-10-18) | F23. Recommended: Dakara goes first, since 63100 is the smallest possible entry (one step, one objective, one task, the shape of the fixture #1734 already tests). If the owner wants another zone first, DK-10fs waits for it and only its id row and test move. |
 
 ### D-DK1 option E: a bridge for the first minutes
+
+> **Superseded by [option F](#d-dk1-option-f-an-authored-level-1-bridge-mission) (2026-10-18).** The owner overruled this section's first "cannot" bullet: "We can ship new missions to the client just fine" (F23). The analysis of the gap and of the letter still holds and option F reuses it; E2's hail, E3 and DK-10f are dropped.
 
 The owner asked (2026-10-18) whether this is a place to author new content that bridges a level-1 Free Jaffa to an arc that is level 3 to 5 and opens with "Welcome back, my friend". This section answers that. It changes no other decision. D-DK17 is answered: the notice text proposed in DK-10e is used as written, and every option below keeps it.
 
@@ -118,7 +123,7 @@ The owner asked (2026-10-18) whether this is a place to author new content that 
 
 **What it cannot do.**
 
-- Add a mission or an objective. The journal takes names, steps and text from the client's cooked missions, so a mission id that only the server knows needs a cooked-data override.
+- ~~Add a mission or an objective.~~ **Wrong** (owner, 2026-10-18; F23): the server serves the mission catalog, and a `MISSION_ADDITIONS` entry reaches the client at character select without a patch. Option F uses it.
 - Give an NPC a new line or a new dialog. Either one is a new dialog row.
 - Re-level 1570 to 1646. The journal's level comes from the cooked data, and the server never sends `missions.level` (F4).
 - Stage a level-1 practice fight. There is no hostile design (D-DK5).
@@ -135,9 +140,47 @@ Raising the character to level 3 on arrival with `grant_xp` works on the server 
 
 Under C, none of the three works well. 1645's offer (5807, "Master Bra'tac, I need to speak with Loth'ta already") and 1646's (5819, "The death of SG-18 is very serious") both assume 1570 was played. Option E is therefore B plus a bridge.
 
-**Recommendation: B with E2.** It closes the "welcome back" gap with one letter and the client's own greeter line. It keeps 5811's foreshadowing of Moh'katan. It adds one small packet. The level number in the journal stays 3, and nothing reads it.
+~~**Recommendation: B with E2.**~~ Superseded by option F.
 
-**Proposed letter** (`NEW CONTENT`; the owner's wording wins). Sender `Teal'c`, subject `Dakara: find SG-18`, body: `You carried Master Bra'tac's warning to Stargate Command, but Ba'al's Jaffa reached the base first. They came through with SG-18's iris code, and SG-18 has not reported from Dakara since. Now that you are home, tell Master Bra'tac what you saw at the SGC, and find SG-18.` E2 adds one more sentence: `Rak'nor keeps watch at the Stargate.`
+**Letter** (`NEW CONTENT`; accepted by the owner as written, 2026-10-18; kept under F as chain 8007). Sender `Teal'c`, subject `Dakara: find SG-18`, body: `You carried Master Bra'tac's warning to Stargate Command, but Ba'al's Jaffa reached the base first. They came through with SG-18's iris code, and SG-18 has not reported from Dakara since. Now that you are home, tell Master Bra'tac what you saw at the SGC, and find SG-18.` E2's extra sentence is dropped: under F the journal names Rak'nor.
+
+### D-DK1 option F: an authored level-1 bridge mission
+
+**The design.** One new mission, the smallest shape the client is known to accept: the #1734 fixture's one step, one objective and one task, with new names and text. A Free Jaffa arriving on Dakara for the first time gets it; talking to Rak'nor finishes it; finishing it starts 1570 at its first Dakara step. 1570 keeps its own level 3 in the journal (nothing reads it, F4).
+
+| Id | Row | Text (`NEW CONTENT`) |
+|---|---|---|
+| 63100 | Mission, `Level="1"`, `MissionLabel="General"`, `IsAStory="true"`, `CanAbandon="false"`, no reward (D-DK7) | `MissionDefn` and `HistoryText`: `Home to Dakara` |
+| 63101 | Step | `Speak with Rak'nor at the Stargate.` |
+| 63102 | Objective (required) | `Rak'nor keeps watch over the Stargate plaza. Tell him what you saw at Stargate Command.` |
+| 63103 | Task, `TaskType="1"` | none |
+
+**How it reaches the client, with no patch.** DK-10fs adds one `MissionAddition` (mission 63100, a frozen 1206-byte XML) to production `MISSION_ADDITIONS`, the seed rows for the server's loaders in a new `db/resources/Missions/Seed/missions_dakara_e1.sql`, and the tests. The served mission category gains one entry and its version bumps; at character select every client sees the new version and downloads the category again, once. The journal's title, level, step and objective text come from that XML. No dialog row is new: Rak'nor's click plays the shipped 6110, whose first line already fits ("Welcome back to Dakara. Did the Tau'ri listen to Master Bra'tac's warning?"). The other new text is mail: the reworded notice (8002) and Teal'c's letter (8007), both in DK-10e.
+
+**The flow** (chains in `dakara_e1_bridge_chains.sql`, block 8075-8079, DK-10fc; 8040 in DK-10a):
+
+| Chain | Trigger | Conditions | Actions |
+|---|---|---|---|
+| 8075 | `player_loaded Dakara_E1` | world 61; `archetype eq 7`; 63100, 1570 and 1645 all `not_active` (so never again once any of them is active or completed) | `accept_mission 63100`; bind Rak'nor (spawn 8006, tag `Dakara_E1_Raknor`) to dialog set 6890 at 441 |
+| 8076 | `player_loaded Dakara_E1` | world 61; `archetype eq 7`; step 63101 active | the same bind (relog restore; disjoint from 8075) |
+| 8077 | interact `Dakara_E1_Raknor` | world 61; `archetype eq 7`; step 63101 active | `display_dialog 6110`; unbind 6890; `complete_mission 63100` |
+| 8040 | `mission_completed 63100` | world 61; `archetype eq 7`; 1570 `not_active` | `accept_mission 1570`; advance 4641 to 4642 to 4906; `complete_objective 5936` (Rak'nor's optional objective, already done in this conversation) |
+| 8002, 8007 | `player_loaded Dakara_E1` (space chains, once per character) | `archetype eq 7` | the notice and the letter (DK-10e) |
+
+Chain-completed missions fire `mission_completed` inline (`executor/mission.rs`, `event_dispatch::fire_mission_completed`), so 8040 runs in the same click. 5936 is optional and not the step's last required objective, so it completes nothing else (F7), and DK-10b's 4906 chains then take over at Bra'tac.
+
+**What the player sees.** They land on the plaza; the journal shows "Home to Dakara", level 1, "Speak with Rak'nor at the Stargate."; chat shows two mail lines (the notice and Teal'c's letter). Rak'nor stands a few metres away. Clicking him plays 6110, which ends by sending them to Bra'tac in the command tent; the journal moves "Home to Dakara" to completed and shows 1570 "SG-18" at "Speak to Bra'tac at his command tent.", with its two SGC steps marked done (the trip the letter describes) and "(Optional) Speak with Rak'nor to determine the location of Bra'tac's command tent." already ticked.
+
+**Risks.**
+
+- First live use of the #1734 path (D-DK20). The client might reject or misread the entry; the owner's M2 run is the proof (DK-U11 to DK-U16).
+- Every client re-downloads the mission category once (about 2-3 s at character select) after the deploy.
+- An apostrophe in `Rak'nor` is sent raw in the XML, as stock dialog text does; DK-U12 checks the journal shows it.
+- `CanAbandon="false"`: the mission cannot be dropped, so a player who never clicks Rak'nor keeps it. Rak'nor never moves (F18 does not apply: template 441 is Dakara's own).
+
+#### Fallback
+
+If DK-U11 or DK-U12 fails and the cause is not quick to fix, fall back to **B with E1**: revert DK-10fs and DK-10fc (one PR each, so one revert each), set 8040's trigger back to `player_loaded Dakara_E1` with 1570 and 1645 `not_active` conditions and drop its `complete_objective 5936`, and restore DK-10b's 8057 bind. DK-10e's notice and letter stay. The DK-10a packet text keeps both variants so this is a seed edit, not a redesign.
 
 ## Blockers
 
@@ -158,6 +201,7 @@ Legend, as in the Class Start v6 ledger: **BUILD** can be implemented now; **BUI
 
 | Seq | Mission | Where | Status | Packets |
 |---|---|---|---|---|
+| 00 | 63100 Home to Dakara (`NEW CONTENT`, D-DK1 F) | Dakara | BLOCKED (D-DK1, D-DK20) | DK-10fs, DK-10fc |
 | 01 | 1570 SG-18, steps 4641-4642 | SGC | BLOCKED (route campaign) | DK-10a advances past them (D-DK6) |
 | 01 | 1570 SG-18, steps 4906-4903 | Dakara | BLOCKED (D-DK1) | DK-10a, DK-10b, DK-10c (DK-08, D-DK18), DK-10d (DK-06b) |
 | 02 | 1645 Withdrawal Orders | Dakara | BLOCKED (D-DK1) | DK-11 |
@@ -196,7 +240,7 @@ Legend, as in the Class Start v6 ledger: **BUILD** can be implemented now; **BUI
 
 ## Packets
 
-This table is the only packet status. Rules, contract and packet text: [work-packets.md](work-packets.md) and [packets/](packets/). **Current wave: 1.**
+This table is the only packet status. Rules, contract and packet text: [work-packets.md](work-packets.md) and [packets/](packets/). **Current wave: 2.**
 
 | Packet | Wave | Scope | Depends on | Role | Status |
 |---|---|---|---|---|---|
@@ -206,19 +250,21 @@ This table is the only packet status. Rules, contract and packet text: [work-pac
 | DK-03 | - | Templates 440-457 | none | - | Integrated (#1285), UATPending (M2); [worknote](worknotes/DK-03.md) |
 | DK-04 | - | Named areas, tent flaps, Med Tent respawner | DK-02, DK-03 | - | Integrated (#1287), UATPending (M2); [worknote](worknotes/DK-04.md) |
 | DK-05 | - | Static cast spawns 8004-8007, Repository point set 2127 | DK-02, DK-03 | - | Integrated (#1288), UATPending (M2); [worknote](worknotes/DK-05.md) |
-| DK-06a | **1** | Radio evidence: how a speaker-2609 dialog can show with no NPC | none | `game-archaeology-specialist` | Ready |
-| DK-07 | **1** | Register chain block 8001-8499 in the four-zone id allocation | none | packet-coder | Ready |
-| DK-08 | **1** | Any-order objective ruling with exact rows (D-DK12) | none | `mission-systems-advisor` | Ready |
-| DK-12a | **1** | Five drop-location estimates PL-DK-A-17 to A-21 | none | `movement-teleport-advisor` | Ready |
-| DK-06b | 2 | Radio display, per the D-DK10 ruling | DK-06a, D-DK10 | packet-coder or `rust-gameserver-dev` (per ruling) | BlockedDependency |
-| DK-09 | 2 | Remains spawns, drop templates 458-461 and spawns, SG-18 search regions 2128-2130 (D-DK18), on-mesh guards | DK-08, DK-12a | packet-coder | BlockedDependency |
+| DK-06a | **1** | Radio evidence: how a speaker-2609 dialog can show with no NPC | none | `game-archaeology-specialist` | Done (#1854) |
+| DK-07 | **1** | Register chain block 8001-8499 in the four-zone id allocation | none | packet-coder | Done (#1853) |
+| DK-08 | **1** | Any-order objective ruling with exact rows (D-DK12) | none | `mission-systems-advisor` | Done (#1855) |
+| DK-12a | **1** | Five drop-location estimates PL-DK-A-17 to A-21 | none | `movement-teleport-advisor` | Done (#1856) |
+| DK-06b | 2 | Radio display, per the D-DK10 ruling | DK-06a, D-DK10 | packet-coder or `rust-gameserver-dev` (per ruling) | BlockedDecision (D-DK10) |
+| DK-09 | 2 | Remains spawns, drop templates 458-461 and spawns, SG-18 search regions 2128-2130 (D-DK18), on-mesh guards | DK-08, DK-12a | packet-coder | Ready |
 | DK-09b | 2 | Linter: region check moved to its own file, reads every `point_sets*.sql` (F20) | none | packet-coder | Ready |
-| DK-10a | 2 | 1570 entry chain, seed-file and test scaffolding, linter ranges | D-DK1 | packet-coder | BlockedDecision |
-| DK-10e | 2 | Reword the arrival notice for the first mission giver | D-DK1, D-DK17 | packet-coder | BlockedDecision |
-| DK-10b | 3 | 1570 steps 4906 and 4904: Rak'nor, Bra'tac, Loth'ta | DK-10a | packet-coder | BlockedDecision (via DK-10a) |
-| DK-10c | 3 | 1570 steps 4902 (search regions) and 4901 (SG-18 remains), chains 8060-8074 | DK-10a, DK-08, DK-09, DK-09b | packet-coder | BlockedDecision (via DK-10a) |
-| DK-10d | 3 | 1570 steps 4905 and 4903: radio report, Bra'tac turn-in, chains 8160-8179 (D-DK19) | DK-10a, DK-06b | packet-coder | BlockedDecision (via DK-10a) |
-| DK-11 | 3 | Mission 1645 | DK-10a (gate per D-DK1) | packet-coder | BlockedDecision (D-DK1) |
+| DK-10a | 2 | 1570 entry chain 8040 (under F: on 63100's completion), eight seed-file headers incl. the bridge file, test scaffolding, linter ranges | D-DK1 (F, decided) | packet-coder | Ready |
+| DK-10e | 2 | Reword the arrival notice (8002) and send Teal'c's letter (8007) | D-DK1 (F), D-DK17 (decided) | packet-coder | Ready |
+| DK-10fs | 2 | Mission 63100 "Home to Dakara": `MISSION_ADDITIONS` entry, seed rows, tests ([packet](packets/wave-2-dk-10fs.md)) | D-DK1 (F), D-DK20 (decided) | packet-coder | Ready |
+| DK-10b | 3 | 1570 steps 4906 and 4904: Rak'nor, Bra'tac, Loth'ta (under F without the 8057 bind) | DK-10a | packet-coder | BlockedDependency (via DK-10a) |
+| DK-10fc | 3 | Bridge chains 8075-8077: accept 63100, Rak'nor bind and restore, complete on his click | DK-10a, DK-10fs | packet-coder | BlockedDependency (via DK-10a, DK-10fs) |
+| DK-10c | 3 | 1570 steps 4902 (search regions) and 4901 (SG-18 remains), chains 8060-8074 | DK-10a, DK-08, DK-09, DK-09b | packet-coder | BlockedDependency (via DK-10a, DK-09, DK-09b) |
+| DK-10d | 3 | 1570 steps 4905 and 4903: radio report, Bra'tac turn-in, chains 8160-8179 (D-DK19) | DK-10a, DK-06b | packet-coder | BlockedDependency (via DK-10a, DK-06b) |
+| DK-11 | 3 | Mission 1645 | DK-10a (gate per D-DK1) | packet-coder | BlockedDependency (via DK-10a) |
 | DK-12b | 3 | 1646 offer, accept and turn-in | DK-10a, DK-11 contract | packet-coder | BlockedDependency |
 | DK-12c | 3 | 1646 five drops | DK-10a, DK-08, DK-09 | packet-coder | BlockedDependency |
 | GDK1 | 4 | Encounter design gate for 1647, 1652, 1653 | D-DK5, M2 playtest | `npc-ai-spawn-advisor` | BlockedDecision (D-DK5) |
@@ -236,7 +282,7 @@ This table is the only packet status. Rules, contract and packet text: [work-pac
 | DK-33 | 6 | Mission 1654 exit boundary | DK-32, B-DK4 | packet-coder | BlockedDependency |
 | DK-99 | 6 | Close-out | all | `documentation-writer`, ops | BlockedDependency |
 
-Wave 1 has no internal dependencies: dispatch all four at once. Wave 2's DK-09 needs both DK-08 and DK-12a merged; DK-10a needs only D-DK1; DK-09b needs nothing. Every wave is reviewed by one read-only `packet-reviewer`; a `packet-coder` (Haiku) applies its findings. No `packet-review-fixer` (owner, 2026-10-18).
+Wave 1 has no internal dependencies: dispatch all four at once. Wave 2's DK-09 needs both DK-08 and DK-12a merged; DK-10a and DK-10e need only D-DK1; DK-10fs needs D-DK1 (F) and D-DK20; DK-09b needs nothing. Wave 3's DK-10fc needs DK-10a and DK-10fs merged. Every wave is reviewed by one read-only `packet-reviewer`; a `packet-coder` (Haiku) applies its findings. No `packet-review-fixer` (owner, 2026-10-18).
 
 ## The Dead-End Fix, Exactly
 
@@ -269,7 +315,7 @@ The [Harset guardrails](../harset-rebuild/README.md#architecture-guardrails) app
 - `cross_world_teleport` matches `spaces.xml` world names exactly and cannot set facing.
 - Shared NPCs on world 61 are never hidden, destroyed, moved or made hostile by mission content. Per-player scenes go in the instanced tent (D-DK4) or use mission-scoped `spawn_entity` tags.
 - Bra'tac (59) and Moh'katan (54) are shared templates; Harset spawns Moh'katan. A Dakara change to either template is a change to Harset.
-- No new dialog rows and no cooked-data override: the client holds every Dakara dialog already.
+- No new dialog rows and no cooked-data override: the client holds every Dakara dialog already. The one exception is DK-10fs's `MISSION_ADDITIONS` entry for mission 63100 (D-DK1 F), whose XML is frozen and pinned by a test.
 
 ## Validation And UAT Gates
 
@@ -278,7 +324,7 @@ Tests follow [TESTING.md](../../../TESTING.md): a chain-replay test (type 6, liv
 | Milestone | Packets | Acceptance in the lab (all pending) |
 |---|---|---|
 | M1 Dead end removed | DK-01 (with #1273) | New Free Jaffa: the notice arrives once; the DHD lists Omega Site; dial, cross, arrive standing at Omega Site; Omega's DHD lists Dakara E1; return lands on the plaza outside the gate; relog keeps both addresses; a death respawns at the plaza. A Human visitor gets no grant from the chain. Runnable now (B-DK1 resolved); CS-08 covers the arrival only (F12). |
-| M2 Arrival story | DK-02 to DK-05, waves 1 to 3 | Bra'tac, Moh'katan and Loth'ta are where the ledger says and survive a relog; tent flaps work both ways; 1570's Dakara half, 1645 and 1646 complete in order with a relog at every step; the owner corrects positions in one pass; the owner answers D-DK5. |
+| M2 Arrival story | DK-02 to DK-05, waves 1 to 3 | The bridge mission 63100 shows and completes ([M2 bridge checklist](#m2-bridge-checklist-mission-63100), DK-U11 to DK-U16); Bra'tac, Moh'katan and Loth'ta are where the ledger says and survive a relog; tent flaps work both ways; 1570's Dakara half, 1645 and 1646 complete in order with a relog at every step; the owner corrects positions in one pass; the owner answers D-DK5. |
 | M3 Betrayal | wave 4, DK-15a, DK-15b | The gate defence is winnable at the player's level; radio beats show; the terminal hack, the search and the decode work; the tent confrontation plays for one player without changing what another sees. |
 | M4 Climax | DK-30 to DK-32 | SGC round trip with the generators; both Ha'taks appear and explode for the acting player; courtyard objectives complete. |
 | M5 Exit | DK-33, DK-99 | 1654 hands off to the SGC once; final PASS / BLOCKED matrix. |
@@ -290,7 +336,7 @@ DK-01's lab steps, mirrored in the [unified UAT guide](../../guides/unified-uat.
 | # | Do | Expect | Notes / known issues |
 |---|---|---|---|
 | DK-U1 | Create a new Free Jaffa (SGU, Jaffa body) and enter the world | You stand on the Dakara gate plaza. Within a few seconds chat shows "Dakara Gate Watch sent you mail N. Open your mail to read it." and the new-mail notice | `.gotolocation Dakara_E1` on an existing Free Jaffa fires the same chains |
-| DK-U2 | Open your mail | One mail from **Dakara Gate Watch**, subject "Dakara: no orders yet", three sentences (no orders yet; the DHD dials Omega Site; Omega's DHD brings you back), no cash, no item | Whether the mail window is the right place for the notice is an open question: say what you think |
+| DK-U2 | Open your mail | One mail from **Dakara Gate Watch**, subject "Dakara: no orders yet", three sentences (no orders yet; the DHD dials Omega Site; Omega's DHD brings you back), no cash, no item | Whether the mail window is the right place for the notice is an open question: say what you think. After DK-10e ships the subject is "Dakara: report to Bra'tac" and a second mail from **Teal'c** arrives (DK-U13) |
 | DK-U3 | Right-click the DHD in front of the gate | The dialling window lists **Omega Site** with its name and glyphs | A row reading "Unknown" is a fail: note whether reopening the DHD fixes it |
 | DK-U4 | Dial Omega Site and walk into the gate | You arrive at Omega Site, standing, able to walk | |
 | DK-U5 | At Omega Site, right-click the DHD | It lists **Dakara E1** | The arrival taught it. Omega Site has no respawner: do not die there |
@@ -299,6 +345,19 @@ DK-01's lab steps, mirrored in the [unified UAT guide](../../guides/unified-uat.
 | DK-U8 | Delete the notice, then relog | Still no second mail | Once per character |
 | DK-U9 | Die on Dakara and respawn | You respawn on the gate plaza | Respawner 610 comes from #1273. Nothing on Dakara is hostile yet, so it needs a GM kill; if you cannot die, record the step as not run |
 | DK-U10 | As a Human or a Praxis Jaffa (a GM visitor), `.gotolocation Dakara_E1` | The reply ends in `[stargate arrival]` and you stand on the DK-U6 point. No mail arrives, and your DHD list has nothing new from this visit | The chains are for archetype 7 only |
+
+### M2 bridge checklist: mission 63100
+
+Runs after waves 2 and 3 are deployed (DK-10a, DK-10e, DK-10fs, DK-10fc), on a new Free Jaffa. All pending; the owner runs it (D-DK1 F, D-DK20). DK-99 copies it to the unified UAT guide.
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| DK-U11 | Start the client and reach character select after the deploy | Character select takes a few seconds longer once (the mission catalog downloads again); no error, no crash. The next login is as fast as before | The first live use of a `MISSION_ADDITIONS` entry (D-DK20). A crash or a hang here: stop and note the time |
+| DK-U12 | Create a new Free Jaffa, enter the world, open the journal | "Home to Dakara", level 1, step "Speak with Rak'nor at the Stargate.", objective "Rak'nor keeps watch over the Stargate plaza. Tell him what you saw at Stargate Command." Both apostrophes show as `'`. 1570 "SG-18" is not in the journal yet | A blank title, a missing step or a garbled apostrophe is a fail: screenshot the journal |
+| DK-U13 | Open your mail | Two mails: **Dakara Gate Watch**, "Dakara: report to Bra'tac" (Bra'tac in the command tent; the DHD dials Omega Site; Omega's DHD brings you back) and **Teal'c**, "Dakara: find SG-18" (the warning reached the SGC too late; SG-18 is missing; tell Bra'tac) | Say whether the letter reads well before or after the Rak'nor click |
+| DK-U14 | Log out and back in before talking to Rak'nor, then click Rak'nor | "Home to Dakara" is still active and no third mail arrives. Rak'nor plays "Welcome back to Dakara. Did the Tau'ri listen to Master Bra'tac's warning?" (6110) to its end | Checks the relog restore (chain 8076) |
+| DK-U15 | After 6110 closes, open the journal | "Home to Dakara" is completed. 1570 "SG-18" is active at "Speak to Bra'tac at his command tent.", its two SGC steps marked done and "(Optional) Speak with Rak'nor to determine the location of Bra'tac's command tent." ticked. Clicking Rak'nor again plays nothing new from this mission | 1570 then runs as in the rest of M2 |
+| DK-U16 | Relog. Then, as a Praxis Jaffa or a Human (a GM visitor), `.gotolocation Dakara_E1` and click Rak'nor | The Free Jaffa gets no second "Home to Dakara". The visitor gets no "Home to Dakara", no mail and no 1570 from arrival | Chains 8075-8077 are for archetype 7 only |
 
 ## Handoff Validation Record
 

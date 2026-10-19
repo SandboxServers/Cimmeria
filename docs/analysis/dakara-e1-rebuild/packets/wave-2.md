@@ -3,9 +3,11 @@
 > Type: how-to (work packets). Audience: the agent named in each packet, and the wave-2 packet-reviewer (read-only; a packet-coder applies its findings).
 > Written 2026-10-18 against `main` @ `d1bba0400`. Ledger and status: [README](../README.md#packets). Rules and full contract: [work-packets.md](../work-packets.md).
 
-Wave 2 starts when DK-06a, DK-08 and DK-12a are merged. DK-09 is unblocked by that alone. DK-09b has no gate and may be dispatched at once. DK-10a and DK-10e also need the owner's answer to D-DK1 (and D-DK17 for DK-10e). DK-06b needs the architect's D-DK10 ruling first. The five packets touch disjoint files, except that DK-09b and DK-10a both edit `interact_tag_linter.rs` in non-overlapping hunks (DK-09b moves lines 353-712 out, DK-10a adds lines after 176; whichever merges second rebases cleanly). Dispatch every one whose gate is open at once, each in its own worktree. Every packet carries its own rules; you do not need CLAUDE.md.
+Wave 2 starts when DK-06a, DK-08 and DK-12a are merged. DK-09 is unblocked by that alone. DK-09b has no gate and may be dispatched at once. DK-10a and DK-10e also need the owner's answer to D-DK1 (D-DK17 is decided). DK-10fs, the sixth packet, is in its own file ([wave-2-dk-10fs.md](wave-2-dk-10fs.md)) and needs D-DK1 answered F and D-DK20. DK-06b needs the architect's D-DK10 ruling first. The six packets touch disjoint files, except that DK-09b and DK-10a both edit `interact_tag_linter.rs` in non-overlapping hunks (DK-09b moves lines 353-712 out, DK-10a adds lines after 176; whichever merges second rebases cleanly). Dispatch every one whose gate is open at once, each in its own worktree. Every packet carries its own rules; you do not need CLAUDE.md.
 
 **Architect amendments (2026-10-18, after the DK-08 review).** D-DK18: step 4902's objectives are three client-hinted regions centred on the SG-18 remains, seeded by DK-09 below (point sets 2128-2130, points 2557-2559). D-DK19: DK-10c's range is 8060-8074 and DK-10d's moves to 8160-8179; DK-10a below carries both. DK-08 rules no template change, so DK-09's template rows stand.
+
+**Architect amendments (2026-10-18, D-DK1 option F).** The owner can ship new missions to the client, so the recommended answer to D-DK1 is F: an authored level-1 mission 63100 "Home to Dakara" (DK-10fs here, chains 8075-8077 in wave 3's DK-10fc). DK-10a's chain 8040 then fires on `mission_completed 63100` and also completes 1570's optional objective 5936; it scaffolds the bridge seed file and test submodule. DK-10e gains Teal'c's letter (chain 8007), accepted by the owner as written. If the owner answers B instead, DK-10a uses its "fallback B" variant and DK-10fs is not dispatched.
 
 ## Rules for every wave-2 packet
 
@@ -15,7 +17,7 @@ Wave 2 starts when DK-06a, DK-08 and DK-12a are merged. DK-09 is unblocked by th
 4. Edit only the files your packet names. Files stay under 700 lines (soft cap 500). Match the surrounding code: comment density, `foo/mod.rs` module style, doc comments on items.
 5. Markdown under `docs/` is CRLF; the seed files named here are CRLF too. Keep the line endings of every file you edit: check with `[IO.File]::ReadAllText(<abs>).Contains("`r`n")`, and convert a new file with `[IO.File]::WriteAllText(<abs>, ([IO.File]::ReadAllText(<abs>) -replace "(?<!\r)\n", "`r`n"))`.
 6. Seeds change in `db/resources/` only. Never add a `db/scripts/` migration. Every seed row carries an evidence-label comment (`ORIGINAL_DATA`, `PROJECT_FINAL_RECONSTRUCTION`, `RECONSTRUCTION`, `NEW CONTENT`); every spawn sets `respawn_secs`.
-7. No new dialog row, no client patch, no cooked-data override. Never edit templates 54 or 59 (shared with Harset).
+7. No new dialog row, no client patch, no cooked-data override (the one exception is DK-10fs's single `MISSION_ADDITIONS` entry, D-DK1 F). Never edit templates 54 or 59 (shared with Harset).
 8. Never launch the game client, the launcher or any lab tool.
 9. No IPs, credentials, tokens or account names in any file.
 10. Report to `<worktree>\.claude\reports\dakara\<packet>-packet-coder.md`: files changed, each check's final `status=` line, the commit hash, every deviation and why. Return exactly one line: `<packet> <done|blocked|failed> <commit-sha|-> <report-path>`. A context stop past about 90k tokens: commit only passing work (subject suffix `(part N)`), write `docs/analysis/dakara-e1-rebuild/worknotes/<packet>.md` (done, left, next step, last `status=` line) and return `blocked` with the reason `context`.
@@ -250,21 +252,23 @@ Read the A-17 to A-21 coordinates from the `## Drop locations (A-17 to A-21)` se
 | Field | Value |
 |---|---|
 | Role | `packet-coder` |
-| Gate | D-DK1 answered **B** (recommended). Under **C** the architect drops chain 8040 and its tests from this packet first; the scaffolding (steps 1, 2, 4, 5) stays. Under **A** or **D** the packet is not dispatched. |
+| Gate | D-DK1 answered **F** (recommended) or **B**. Under F use the main text; under B use every "Fallback B" note instead and skip the bridge rows. Under **C** the architect drops chain 8040 and its tests from this packet first; the scaffolding (steps 1, 2, 4, 5) stays. Under **A** or **D** the packet is not dispatched. The brief names the answer. |
 | Branch / worktree | `dakara/dk-10a-1570-entry` / `dk-10a` |
 | Commit subject | `feat(content): Dakara_E1 mission 1570 entry chain and seed scaffolding (DK-10a)` |
 | Report | `<worktree>\.claude\reports\dakara\DK-10a-packet-coder.md` |
 | Size | About 40k tokens |
 
-**Contract excerpt** (C3, C4, C5, C7 of [work-packets.md](../work-packets.md); D-DK1 B, D-DK6, D-DK14, D-DK15).
+**Contract excerpt** (C3, C4, C5, C7 of [work-packets.md](../work-packets.md); D-DK1 F, D-DK6, D-DK14, D-DK15).
 
-- A Free Jaffa (`archetype eq 7`) who enters world 61 `Dakara_E1` with 1570 and 1645 both `not_active` accepts 1570 and is moved past its two SGC steps (4641 "Speak to Sgt. Harriman", 4642 "Enter the Stargate") to 4906 "Speak to Bra'tac at his command tent". `accept_mission` and `advance_step` both run inline in the executor (`crates/cell-content/src/cell/content/executor/dispatch.rs`), so the three actions run in order; `advance_step` force-completes the objectives of the step it leaves.
-- Conditions are evaluated before any action runs, and every matching chain fires. Chains 8001 and 8002 also fire on this event; that is intended. Step 4906's binds are **not** added here: DK-10b owns them and adds a co-firing chain on the same trigger (C5 rule 6).
+- **Under F:** when a Free Jaffa (`archetype eq 7`) on world 61 completes mission 63100 "Home to Dakara" (by talking to Rak'nor, DK-10fc's chain 8077), and 1570 is `not_active`, chain 8040 accepts 1570, moves it past its two SGC steps (4641 "Speak to Sgt. Harriman", 4642 "Enter the Stargate") to 4906 "Speak to Bra'tac at his command tent", and completes 4906's optional objective 5936 ("(Optional) Speak with Rak'nor ..."), since that conversation just happened. The trigger is `mission_completed`, key `'63100'`; chain-completed missions fire it inline, with world, archetype and mission context filled.
+- `accept_mission`, `advance_step` and `complete_objective` all run inline in the executor (`crates/cell-content/src/cell/content/executor/dispatch.rs`), so the four actions run in order; `advance_step` force-completes the objectives of the step it leaves. 5936 is optional, so completing it never completes the step or the mission (C5 rule 3).
+- Conditions are evaluated before any action runs, and every matching chain fires. Step 4906's Bra'tac binds live in world 62 and come from DK-10b's own restore chains (C5 rule 6); no co-firing chain is needed under F.
 - A missing `mission_<id>_status` param reads as `not_active`.
+- **Fallback B:** the trigger is `player_loaded`, key `'Dakara_E1'`; the conditions add 1645 `not_active`; there is no `complete_objective`. Chains 8001 and 8002 also fire on that event, which is intended, and DK-10b's 8057 co-fires to bind Rak'nor.
 
 **Steps.**
 
-1. Create the seven seed files of C3 in `db/resources/Content/Seed/` (CRLF). Each holds only a header and the search path; DK-10a fills only the first. Header shape, for example:
+1. Create the eight seed files of C3 in `db/resources/Content/Seed/` (CRLF; seven under fallback B, without the bridge file). Each holds only a header and the search path; DK-10a fills only the entry file. Header shape, for example:
 
    ```sql
    -- Dakara_E1 rebuild: mission 1570, steps 4906 and 4904 (Rak'nor, Bra'tac, Loth'ta).
@@ -276,6 +280,7 @@ Read the A-17 to A-21 coordinates from the `## Drop locations (A-17 to A-21)` se
 
    | File | Packet | Range | Scope line |
    |---|---|---|---|
+   | `dakara_e1_bridge_chains.sql` | DK-10fc | 8075-8079 | mission 63100 "Home to Dakara", the Free Jaffa bridge (`NEW CONTENT`, D-DK1 F) |
    | `dakara_e1_m1570_entry_chains.sql` | DK-10a | 8040-8044 | mission 1570, the Free Jaffa entry |
    | `dakara_e1_m1570_tent_chains.sql` | DK-10b | 8045-8059 | mission 1570, steps 4906 and 4904 |
    | `dakara_e1_m1570_search_chains.sql` | DK-10c | 8060-8074 | mission 1570, steps 4902 and 4901 |
@@ -284,36 +289,39 @@ Read the A-17 to A-21 coordinates from the `## Drop locations (A-17 to A-21)` se
    | `dakara_e1_m1646_offer_chains.sql` | DK-12b | 8120-8139 | mission 1646, offer, accept and turn-in |
    | `dakara_e1_m1646_drop_chains.sql` | DK-12c | 8140-8159 | mission 1646, step 4908 (five drops) |
 
-2. `db/database.sql`: directly after the line `\ir resources/Content/Seed/dakara_e1_space_chains.sql`, add the seven `\ir resources/Content/Seed/<file>` lines in the table's order. Keep the file's line endings.
+2. `db/database.sql`: directly after the line `\ir resources/Content/Seed/dakara_e1_space_chains.sql`, add the eight `\ir resources/Content/Seed/<file>` lines in the table's order (the bridge file first). Keep the file's line endings. The bridge file's chains use mission 63100, whose rows come from `missions_dakara_e1.sql` (DK-10fs), loaded earlier in `database.sql`; an empty file needs nothing.
 3. In `dakara_e1_m1570_entry_chains.sql`, after the search path, add chain 8040 exactly:
 
    ```sql
-   -- Chain 8040 PROJECT_FINAL_RECONSTRUCTION (D-DK1 option B, D-DK6): a Free
-   -- Jaffa arriving on Dakara_E1 accepts 1570 and is moved past its two SGC
+   -- Chain 8040 PROJECT_FINAL_RECONSTRUCTION (D-DK1 option F, D-DK6): when a
+   -- Free Jaffa finishes the bridge mission 63100 "Home to Dakara" (talking to
+   -- Rak'nor, chain 8077), they accept 1570 and are moved past its two SGC
    -- steps, 4641 (Harriman) and 4642 (enter the gate), to 4906 (speak to
    -- Bra'tac). The character never played 4641 or 4642; the mission log shows
-   -- them completed. Step 4906's binds come from DK-10b's co-firing chain on
-   -- this trigger (work-packets.md C5 rule 6). The 1645 gate keeps a character
-   -- that skipped ahead from being given 1570.
+   -- them completed, which Teal'c's letter (chain 8007) explains. Rak'nor's
+   -- optional 5936 is completed here: his 6110 has just played. Step 4906's
+   -- Bra'tac binds are DK-10b's world-62 restore chains (C5 rule 6).
    INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-   VALUES (8040, '1570 - Free Jaffa arrival on Dakara_E1: accept, skip SGC steps 4641 and 4642, start at 4906', 'mission', 1570, true, 0);
+   VALUES (8040, '1570 - Free Jaffa finished 63100 on Dakara_E1: accept, skip SGC steps 4641 and 4642, start at 4906, Rak''nor done', 'mission', 1570, true, 0);
 
    INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
-   VALUES (8040, 'player_loaded', 'Dakara_E1', 'player', false, 0);
+   VALUES (8040, 'mission_completed', '63100', 'player', false, 0);
 
    INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
    VALUES
      (8040, 'world', 61, NULL, 'eq', NULL, 0),
      (8040, 'archetype', NULL, NULL, 'eq', '7', 1),
-     (8040, 'mission_status', 1570, NULL, 'eq', 'not_active', 2),
-     (8040, 'mission_status', 1645, NULL, 'eq', 'not_active', 3);
+     (8040, 'mission_status', 1570, NULL, 'eq', 'not_active', 2);
 
    INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
    VALUES
      (8040, 'accept_mission', 1570, NULL, '{}', 0, 0),
      (8040, 'advance_step', 1570, '4642', '{}', 0, 1),
-     (8040, 'advance_step', 1570, '4906', '{}', 0, 2);
+     (8040, 'advance_step', 1570, '4906', '{}', 0, 2),
+     (8040, 'complete_objective', 1570, '5936', '{}', 0, 3);
    ```
+
+   **Fallback B:** the comment names option B and says "a Free Jaffa arriving on Dakara_E1" and "Step 4906's binds come from DK-10b's co-firing chain on this trigger"; the description is `'1570 - Free Jaffa arrival on Dakara_E1: accept, skip SGC steps 4641 and 4642, start at 4906'`; the trigger is `('player_loaded', 'Dakara_E1')`; add `(8040, 'mission_status', 1645, NULL, 'eq', 'not_active', 3)`; drop the `complete_objective` row.
 
 4. `db/resources/Content/Seed/dakara_e1_space_chains.sql`, header comment lines 4-7 only: replace the sentence that names `dakara_e1_arrival_chains.sql`, `dakara_e1_betrayal_chains.sql` and `dakara_e1_climax_chains.sql` with `The mission chains live in one file per packet, dakara_e1_m*_chains.sql (8040-8179, work-packets.md C3); later missions use 8180-8499.` Change no row.
 5. `crates/content-engine/tests/it/interact_tag_linter.rs`, `fn allowlist`: directly after line 176 (`| ("dakara_e1_space_chains.sql", 8006) // FromMohkatan: template 448`), add:
@@ -328,17 +336,18 @@ Read the A-17 to A-21 coordinates from the `## Drop locations (A-17 to A-21)` se
            | ("dakara_e1_m1570_entry_chains.sql", 8040..=8044)
            | ("dakara_e1_m1570_tent_chains.sql", 8045..=8059)
            | ("dakara_e1_m1570_search_chains.sql", 8060..=8074)
+           | ("dakara_e1_bridge_chains.sql", 8075..=8079)
            | ("dakara_e1_m1645_chains.sql", 8080..=8119)
            | ("dakara_e1_m1646_offer_chains.sql", 8120..=8139)
            | ("dakara_e1_m1646_drop_chains.sql", 8140..=8159)
            | ("dakara_e1_m1570_report_chains.sql", 8160..=8179)
    ```
 
-   The report range sits after the 1646 ranges on purpose (D-DK19 moved it from 8070-8079); 8075-8079 belong to no file. DK-09b moves the region check out of this file in the same wave; it does not touch `fn allowlist`, so the two packets edit separate hunks. If DK-09b merged first, the line number above has moved: find the line by its text.
+   The report range sits after the 1646 ranges on purpose (D-DK19 moved it from 8070-8079); 8075-8079 are the bridge file's (D-DK1 F; drop that line under fallback B). The first comment line names `dakara_e1_m*_chains.sql`; make it `dakara_e1_m*_chains.sql and dakara_e1_bridge_chains.sql`. DK-09b moves the region check out of this file in the same wave; it does not touch `fn allowlist`, so the two packets edit separate hunks. If DK-09b merged first, the line number above has moved: find the line by its text.
 
 6. `crates/cell-content/src/cell/content/chain_replay_tests/mod.rs`: add `mod dakara_e1_missions;` between `mod class_start_sgc;` (line 38) and `mod dakara_e1_space;` (line 39). In the module doc (lines 29-31), after the `[`dakara_e1_space`]` sentence, add: `` [`dakara_e1_missions`] pins the Dakara_E1 mission chains (DK-10a onward), one submodule per seed file. ``
 7. New folder `crates/cell-content/src/cell/content/chain_replay_tests/dakara_e1_missions/`:
-   - `mod.rs` (about 140 lines): a `//!` doc naming the campaign, C7 and the one-file-per-packet rule; `mod entry; mod m1645; mod m1646_drops; mod m1646_offer; mod report; mod search; mod tent;`; and these items, private to the module (children see them):
+   - `mod.rs` (about 140 lines): a `//!` doc naming the campaign, C7 and the one-file-per-packet rule; `mod bridge; mod entry; mod m1645; mod m1646_drops; mod m1646_offer; mod report; mod search; mod tent;` (no `mod bridge;` under fallback B); and these items, private to the module (children see them):
 
      ```rust
      use std::ops::RangeInclusive;
@@ -360,6 +369,7 @@ Read the A-17 to A-21 coordinates from the `## Drop locations (A-17 to A-21)` se
      const STORY_RM_NAME: &str = "Dakara_E1_StoryRm";
 
      /// One range per seed file (work-packets.md C3).
+     const BRIDGE_CHAINS: RangeInclusive<i64> = 8075..=8079;
      const ENTRY_CHAINS: RangeInclusive<i64> = 8040..=8044;
      const TENT_CHAINS: RangeInclusive<i64> = 8045..=8059;
      const SEARCH_CHAINS: RangeInclusive<i64> = 8060..=8074;
@@ -384,13 +394,15 @@ Read the A-17 to A-21 coordinates from the `## Drop locations (A-17 to A-21)` se
      fn labels_in(resolved: &ResolvedActions, range: RangeInclusive<i64>) -> Vec<String> { ... }
      ```
 
-     `with_objective` mirrors `mission_1324::with_step` (`ctx.set_param(format!("mission_{mission}_obj_{objective}_status"), serde_json::json!(status))`). `with_counter` is the same shape: `ctx.set_param(format!("counter_{name}"), serde_json::json!(n)); ctx` (the condition reads it with `as_i64`, `crates/content-engine/src/conditions/mod.rs:359-361`). `fire_enter_region` copies `mission_1324::fire_interact_tag` (lines 153-166) with two changes: the derived context sets `"region_key"` instead of `"entity_tag"`, and `trigger_type` is `TriggerType::RegionEnter`. `derive` is private to `mission_1324`, so inline its body: `let mut c = ExecutionContext::new(); c.world_id = ctx.world_id; c.params = ctx.params.clone(); c.set_param("region_key".to_string(), serde_json::json!(key));`. `labels_in` copies the body of `mission_1324::labels` (lines 211-243) with `range.contains(id)` as the filter, and adds five arms before `other`: `Action::GrantItem { item_id, count, .. } => format!("add_item({item_id}x{count})")`, `Action::RemoveItem { item_id, count } => format!("remove_item({item_id}x{count})")`, `Action::NpcBark { screen_id, .. } => format!("npc_bark({screen_id})")`, `Action::IncrementCounter { counter_name, amount } => format!("increment_counter({counter_name}+{amount})")`, `Action::ResetCounter { counter_name } => format!("reset_counter({counter_name})")`. With the two helpers `mod.rs` is about 140 lines; the packet stays about 40k tokens. Items not used by `entry.rs` yet (the later ranges, `with_objective`, `with_counter`, `fire_enter_region`, `STORY_RM` if unused) carry `#[allow(dead_code)] // used by the wave-3 submodules (work-packets.md C7)`, so clippy stays clean; wave-3 packets do not edit `mod.rs`.
-   - `tent.rs`, `search.rs`, `report.rs`, `m1645.rs`, `m1646_offer.rs`, `m1646_drops.rs`: each one `//!` line, for example `//! DK-10b: mission 1570 steps 4906 and 4904 (dakara_e1_m1570_tent_chains.sql, 8045-8059).`
-   - `entry.rs`, imports: `use super::*;`, `use super::super::assert_no_deferred_actions;`, `use super::super::mission_1324::{ctx_for, fire_player_loaded, with_mission};`, `use crate::cell::content::engine_loader::build_engine;`, `use crate::test_support::require_db_or_skip;` (if a path differs, use the one `mission_1324.rs` resolves to and say so in the report). Tests, each `#[tokio::test] async fn`, `let pool = require_db_or_skip!(); let engine = build_engine(Some(&pool)).await;`:
-     1. `live_db_free_jaffa_arriving_on_dakara_accepts_1570_at_bratac`: `ctx_for(FREE_JAFFA, Some(DAKARA))`, `fire_player_loaded(&engine, &ctx, DAKARA_NAME)`; `labels_in(&r, ENTRY_CHAINS)` equals `["8040:accept_mission(1570)", "8040:advance_step(1570->4642)", "8040:advance_step(1570->4906)"]`; `assert_no_deferred_actions(&r, 8040)`.
-     2. `live_db_no_other_archetype_is_given_1570_on_arrival`: `PRAXIS_JAFFA` and `TAURI` on Dakara each give an empty `labels_in(&r, ENTRY_CHAINS)`.
-     3. `live_db_1570_is_given_once`: Free Jaffa on Dakara with `with_mission(ctx, 1570, "active")`, then `"completed"`, then `with_mission(ctx, 1645, "active")` each give an empty list.
-     4. `live_db_1570_entry_is_dakara_only`: Free Jaffa with `Some(STORY_RM)` firing `STORY_RM_NAME`, and with `None` firing `DAKARA_NAME`, each give an empty list.
+     `with_objective` mirrors `mission_1324::with_step` (`ctx.set_param(format!("mission_{mission}_obj_{objective}_status"), serde_json::json!(status))`). `with_counter` is the same shape: `ctx.set_param(format!("counter_{name}"), serde_json::json!(n)); ctx` (the condition reads it with `as_i64`, `crates/content-engine/src/conditions/mod.rs:359-361`). `fire_enter_region` copies `mission_1324::fire_interact_tag` (lines 153-166) with two changes: the derived context sets `"region_key"` instead of `"entity_tag"`, and `trigger_type` is `TriggerType::RegionEnter`. `derive` is private to `mission_1324`, so inline its body: `let mut c = ExecutionContext::new(); c.world_id = ctx.world_id; c.params = ctx.params.clone(); c.set_param("region_key".to_string(), serde_json::json!(key));`. `labels_in` copies the body of `mission_1324::labels` (lines 211-243) with `range.contains(id)` as the filter, and adds five arms before `other`: `Action::GrantItem { item_id, count, .. } => format!("add_item({item_id}x{count})")`, `Action::RemoveItem { item_id, count } => format!("remove_item({item_id}x{count})")`, `Action::NpcBark { screen_id, .. } => format!("npc_bark({screen_id})")`, `Action::IncrementCounter { counter_name, amount } => format!("increment_counter({counter_name}+{amount})")`, `Action::ResetCounter { counter_name } => format!("reset_counter({counter_name})")`. With the two helpers `mod.rs` is about 140 lines; the packet stays about 40k tokens. Items not used by `entry.rs` yet (`BRIDGE_CHAINS`, the later ranges, `with_objective`, `with_counter`, `fire_enter_region`, `STORY_RM` if unused) carry `#[allow(dead_code)] // used by the wave-3 submodules (work-packets.md C7)`, so clippy stays clean; wave-3 packets do not edit `mod.rs`.
+   - `bridge.rs`, `tent.rs`, `search.rs`, `report.rs`, `m1645.rs`, `m1646_offer.rs`, `m1646_drops.rs`: each one `//!` line, for example `//! DK-10b: mission 1570 steps 4906 and 4904 (dakara_e1_m1570_tent_chains.sql, 8045-8059).` and `//! DK-10fc: the bridge mission 63100 "Home to Dakara" (dakara_e1_bridge_chains.sql, 8075-8079).`
+   - `entry.rs`, imports: `use super::*;`, `use super::super::assert_no_deferred_actions;`, `use super::super::mission_1324::{ctx_for, fire_mission_completed, fire_player_loaded, with_mission};`, `use crate::cell::content::engine_loader::build_engine;`, `use crate::test_support::require_db_or_skip;` (if a path differs, use the one `mission_1324.rs` resolves to and say so in the report). `fire_mission_completed(engine, ctx, mission_id)` expects a context in which that mission already reads `completed`, as the runtime does. Let `done(a, w)` mean `with_mission(ctx_for(a, w), 63100, "completed")` and `fire(ctx)` mean `fire_mission_completed(&engine, &ctx, 63100)`. Tests, each `#[tokio::test] async fn`, `let pool = require_db_or_skip!(); let engine = build_engine(Some(&pool)).await;`:
+     1. `live_db_finishing_home_to_dakara_starts_1570_at_bratac`: `fire(done(FREE_JAFFA, Some(DAKARA)))`; `labels_in(&r, ENTRY_CHAINS)` equals `["8040:accept_mission(1570)", "8040:advance_step(1570->4642)", "8040:advance_step(1570->4906)", "8040:complete_objective(1570/5936)"]`; `assert_no_deferred_actions(&r, 8040)`.
+     2. `live_db_no_other_archetype_is_given_1570`: `done(PRAXIS_JAFFA, ..)` and `done(TAURI, ..)` on Dakara each give an empty `labels_in(&r, ENTRY_CHAINS)`.
+     3. `live_db_1570_is_given_once`: `done(FREE_JAFFA, Some(DAKARA))` with `with_mission(.., 1570, "active")`, then `"completed"`, each give an empty list.
+     4. `live_db_1570_entry_needs_dakara_and_63100`: `done(FREE_JAFFA, Some(STORY_RM))` and `done(FREE_JAFFA, None)` give an empty list; `fire_mission_completed(&engine, &with_mission(ctx_for(FREE_JAFFA, Some(DAKARA)), 1324, "completed"), 1324)` gives an empty list; and `fire_player_loaded(&engine, &ctx_for(FREE_JAFFA, Some(DAKARA)), DAKARA_NAME)` gives an empty `labels_in(&r, ENTRY_CHAINS)` (arrival alone gives no 1570 under F).
+
+     **Fallback B tests** (instead of the four above): 1. `live_db_free_jaffa_arriving_on_dakara_accepts_1570_at_bratac`: `ctx_for(FREE_JAFFA, Some(DAKARA))`, `fire_player_loaded(&engine, &ctx, DAKARA_NAME)`; the first three labels above, `assert_no_deferred_actions(&r, 8040)`. 2. Praxis and Tau'ri on Dakara: empty. 3. 1570 `active`, `completed`, then 1645 `active`: empty. 4. `Some(STORY_RM)` firing `STORY_RM_NAME`, and `None` firing `DAKARA_NAME`: empty.
 
 **Checks, in order** (from the worktree root):
 
@@ -399,41 +411,52 @@ Read the A-17 to A-21 coordinates from the `## Drop locations (A-17 to A-21)` se
 3. `pwsh tools/build-lane/lane.ps1 cargo nextest run -p cimmeria-content-engine interact_tag_linter` (the allowlist, `every_chain_seed_file_is_registered_in_database_sql` and the region check pass)
 4. `pwsh tools/build-lane/live-db-test.ps1 chain_replay_tests::dakara_e1` (the new module and `dakara_e1_space` both pass: 8001 and 8002 are unchanged by 8040)
 
-**Test type and revert proof.** Chain replay, live-DB (TESTING.md type 6): the tests load the real seed through `build_engine(Some(&pool))`. Test 1 fails when chain 8040 is removed or loses an action; tests 2 to 4 fail when the archetype, mission or world condition is dropped (each would then resolve 8040).
+**Test type and revert proof.** Chain replay, live-DB (TESTING.md type 6): the tests load the real seed through `build_engine(Some(&pool))`. Test 1 fails when chain 8040 is removed or loses an action; tests 2 to 4 fail when the archetype, mission or world condition is dropped, or when the trigger is `player_loaded` again (each would then resolve 8040). Mission 63100 need not exist for these tests: the trigger key is text and the context is built by hand.
 
 **Docs rows owed.** "Game systems, content chains, or content-engine actions": the `docs/content/mission-chains.md` row is DK-99's, once for the campaign; say so in the report. The ledger row is the reviewer's.
 
 **Done when** the four checks pass and the report pastes each final `status=` line and the step-1 file list.
 
-## DK-10e: reword the arrival notice
+## DK-10e: reword the arrival notice and send Teal'c's letter
 
 | Field | Value |
 |---|---|
 | Role | `packet-coder` |
-| Gate | D-DK1 answered **B** or **C**, and D-DK17 answered (the owner accepts the text below or gives their own). Not dispatched under A or D. |
+| Gate | D-DK1 answered **F** (recommended) or **B**. D-DK17 is decided: the owner accepted both texts below as written (2026-10-18). Not dispatched under A, C or D. |
 | Branch / worktree | `dakara/dk-10e-arrival-notice` / `dk-10e` |
-| Commit subject | `feat(content): Dakara_E1 arrival notice points at the first mission giver (DK-10e)` |
+| Commit subject | `feat(content): Dakara_E1 arrival notice names Bra'tac, and Teal'c's letter (DK-10e)` |
 | Report | `<worktree>\.claude\reports\dakara\DK-10e-packet-coder.md` |
-| Size | Small (about 15k tokens) |
+| Size | About 22k tokens |
 
-**Why** (F19). Chain 8002 mails every Free Jaffa, once, "The Free Jaffa command on Dakara is not staffed yet". After wave 3 it is staffed. The mail's cooldown is per character and permanent, so only characters created after this merges see the new text; that is accepted.
+**Why** (F19, D-DK1 option F). Chain 8002 mails every Free Jaffa, once, "The Free Jaffa command on Dakara is not staffed yet". After wave 3 it is staffed. The new chain 8007 sends a second one-time mail, Teal'c's letter, which tells the backstory the shipped dialogs assume (the player carried Bra'tac's warning to the SGC). Each mail's cooldown is per character and permanent, so only characters created after this merges see the new notice; every Free Jaffa who arrives after the merge gets the letter once, including older characters (accepted).
 
-**Text** (NEW CONTENT; the owner's wording wins if D-DK17 gives one). Sender unchanged, `Dakara Gate Watch`.
+**Contract excerpt** (C3, C4 of [work-packets.md](../work-packets.md)). `dakara_e1_space_chains.sql` is block 8001-8039 (space and travel); DK-10e edits only chain 8002's mail text and adds chain 8007 after it. A `send_system_mail` action's params are `sender`, `subject` (at most 128 characters each), `body` (at most 1,000), `cooldown_secs`, `quiet_cooldown`; the cooldown key is `send_system_mail/<chain_id>`. Every chain on one trigger fires; 8001, 8002 and 8007 all fire on `player_loaded Dakara_E1` for archetype 7.
 
-| D-DK1 | Subject | Body |
-|---|---|---|
-| B | `Dakara: report to Bra'tac` | `Bra'tac is waiting for you in the command tent beside the Stargate plaza. The DHD in front of the Stargate dials Omega Site. The DHD at Omega Site brings you back to Dakara.` |
-| C | `Dakara: report to Moh'katan` | `Moh'katan is waiting for you in the command tent beside the Stargate plaza. The DHD in front of the Stargate dials Omega Site. The DHD at Omega Site brings you back to Dakara.` |
+**Texts** (`NEW CONTENT`, accepted by the owner). Escape every `'` as `''` in SQL; in Rust strings it stays `'`.
+
+| Chain | Sender | Subject | Body |
+|---|---|---|---|
+| 8002 (edit) | `Dakara Gate Watch` (unchanged) | `Dakara: report to Bra'tac` | `Bra'tac is waiting for you in the command tent beside the Stargate plaza. The DHD in front of the Stargate dials Omega Site. The DHD at Omega Site brings you back to Dakara.` |
+| 8007 (new) | `Teal'c` | `Dakara: find SG-18` | `You carried Master Bra'tac's warning to Stargate Command, but Ba'al's Jaffa reached the base first. They came through with SG-18's iris code, and SG-18 has not reported from Dakara since. Now that you are home, tell Master Bra'tac what you saw at the SGC, and find SG-18.` |
 
 **Steps.**
 
-1. `db/resources/Content/Seed/dakara_e1_space_chains.sql`, chain 8002's action row (line 122): replace the `subject` and `body` values in the params JSON; keep `sender`, `cooldown_secs` and `quiet_cooldown`. In the comment above it (lines 86-100), replace the sentence "World 61 has no mission, no NPC and no dialog for a level-1 Free Jaffa yet (OD-DK01, option A), so the notice says so and says how to leave and come back." with "Under D-DK1 the notice names the first mission giver and says how to leave and come back (DK-10e)." Escape any `'` in SQL as `''`.
-2. `crates/cell-content/src/cell/content/chain_replay_tests/dakara_e1_space.rs` lines 63-64: the expected subject and body match the new text exactly.
-3. `docs/analysis/dakara-e1-rebuild/README.md`, the DK-U2 row of the M1 checklist, and `docs/guides/unified-uat.md`, the DK-U2 row: the expected subject and the three sentences match the new text. Change no other row.
+1. `db/resources/Content/Seed/dakara_e1_space_chains.sql` (CRLF; keep it so):
+   - Chain 8002's action row (line 122): replace the `subject` and `body` values in the params JSON; keep `sender`, `cooldown_secs` and `quiet_cooldown`. In the comment above it (lines 90-93), replace the sentence "World 61 has no mission, no NPC and no dialog for a level-1 Free Jaffa yet (OD-DK01, option A), so the notice says so and says how to leave and come back." with "Since DK-10e the notice names the first mission giver and says how to leave and come back (D-DK17)."
+   - After line 122 and before the `-- DK-04` banner (line 124), add chain 8007 in the same shape as 8002: a comment block (`-- Chain 8007 NEW CONTENT (DK-10e, D-DK1 F, D-DK17): Teal'c's letter, once per character, with the quiet cooldown as 8002. Written by this project; Teal'c is a canon sender, accepted by the owner (2026-10-18).`), then `content_chains` `(8007, 'Dakara_E1 - Free Jaffa arrival: Teal''c''s letter by mail (DK-10e)', 'space', 61, true, 0)`, trigger `(8007, 'player_loaded', 'Dakara_E1', 'player', false, 0)`, condition `(8007, 'archetype', NULL, NULL, 'eq', '7', 0)`, action `(8007, 'send_system_mail', NULL, NULL, '{"sender": "Teal''c", "subject": "Dakara: find SG-18", "body": "<8007 body, every '' doubled>", "cooldown_secs": 2147483647, "quiet_cooldown": true}', 0, 0)`.
+2. `crates/cell-content/src/cell/content/chain_replay_tests/dakara_e1_space.rs` (the file is 400 lines or fewer after this; check):
+   - Add `const LETTER_CHAIN: i64 = 8007;` after `NOTICE_CHAIN`.
+   - `notice_action()` (lines 60-73): the new 8002 subject and body.
+   - Add `letter_action()` (the 8007 action, `sender_name: "Teal'c"`) and `letter_mail(entity_id)` in the shape of `notice_mail` with `chain_id: LETTER_CHAIN` and the cooldown key `send_system_mail/8007`. To avoid a copy, `notice_mail` and `letter_mail` may share one private `mail_for(entity_id, chain_id, action)` helper.
+   - Test 1 (line 182): the exact vec gains `(LETTER_CHAIN, letter_action())` after the notice; add `super::assert_no_deferred_actions(&resolved, LETTER_CHAIN);`. The engine orders actions by chain; if the run shows another order, match the run and say so in the report. Rename the test `..._resolves_exactly_the_grant_the_notice_and_the_letter` and update its doc comment.
+   - Test 2: line 208's `len()` is 3; line 239's list is `[GRANT_CHAIN, NOTICE_CHAIN, LETTER_CHAIN]`.
+   - Test 3: the destructure at lines 267-275 becomes four messages, `[update, grant, notice, letter]`; line 290 asserts both mails (`notice` against `notice_mail`, `letter` against `letter_mail`). Rename `assert_only_the_notice` to `assert_only_the_mails`: `sent` is exactly the two mail requests, notice then letter. The relog (line 313) uses it. Update the doc comments that say "one `ContentSystemMail`" or "the notice alone".
+   - The visitor test (from line 321) is unchanged: a visitor still gets nothing.
+3. `docs/analysis/dakara-e1-rebuild/README.md`, the M1 checklist's DK-U2 row, and `docs/guides/unified-uat.md`, its DK-U2 row: the expected subject and the three sentences match the new 8002 text, and the row adds "and a second mail from **Teal'c**, 'Dakara: find SG-18' (see DK-U13)". Drop the README row's "After DK-10e ships ..." note. Change no other row.
 
-**Checks, in order:** `pwsh tools/build-lane/lane.ps1 cargo fmt -p cimmeria-cell-content`; `pwsh tools/build-lane/lane.ps1 cargo clippy -p cimmeria-cell-content --all-targets -- -D warnings`; `pwsh tools/build-lane/live-db-test.ps1 chain_replay_tests::dakara_e1_space`; `pwsh tools/lint-md.ps1` on the two Markdown files; CRLF check on both.
+**Checks, in order:** `pwsh tools/build-lane/lane.ps1 cargo fmt -p cimmeria-cell-content`; `pwsh tools/build-lane/lane.ps1 cargo clippy -p cimmeria-cell-content --all-targets -- -D warnings`; `pwsh tools/build-lane/live-db-test.ps1 chain_replay_tests::dakara_e1_space`; `pwsh tools/build-lane/lane.ps1 cargo nextest run -p cimmeria-content-engine interact_tag_linter`; `pwsh tools/lint-md.ps1` on the two Markdown files; CRLF check on both and on the seed file.
 
-**Test type and revert proof.** The existing chain-replay test pins the mail text; reverting the seed row without the test (or the reverse) fails it.
+**Test type and revert proof.** Chain replay, resolved and executed, live-DB (TESTING.md type 6). The exact vec and the executed four-message destructure fail when chain 8007 is removed, when either text drifts from the seed, or when the quiet cooldown is dropped.
 
 **Docs rows owed.** "UAT steps for a restored system": the campaign checklist and `docs/guides/unified-uat.md`, both in step 3. List them in the report.
 

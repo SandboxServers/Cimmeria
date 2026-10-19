@@ -6,7 +6,7 @@
 
 | File | Scope | Rows |
 |---|---|---|
-| [A-world61-story-placements.md](A-world61-story-placements.md) | original DK-02 story rows plus DK-05's owner-chosen speculative Repository and Loth'ta point | 16 DK-02 rows + 1 DK-05 row |
+| [A-world61-story-placements.md](A-world61-story-placements.md) | original DK-02 story rows, DK-05's owner-chosen speculative Repository and Loth'ta point, and the five DK-12a drop-location estimates | 16 DK-02 rows + 1 DK-05 row + 5 DK-12a rows (A-17 to A-21) |
 | [B-world62-tent-interior.md](B-world62-tent-interior.md) | the story tent: respawner 25, two exit flaps, Bra'tac, Moh'katan, Moh'katan's Terminal, the Ba'al hologram | 7 (1 HIGH for walkable, 1 MEDIUM, 2 LOW-MEDIUM, 3 LOW) |
 | [C-landmark-census.md](C-landmark-census.md) | evidence pack: conversion check, landmark census, the four furnished camps, tent groups, navmesh components, cover | no rows |
 | [data/](data/) | `Dakara_E1_landmarks.tsv` (763 rows), `Dakara_E1_arch_meshes.tsv` and `_arch_positions.tsv` (the `archetype_census` output), `Dakara_E1_tent_groups.tsv`, `Dakara_E1_StoryRm_props.tsv`, `Dakara_E1_probes.txt` (every row's navmesh probe) | n/a |
@@ -45,20 +45,19 @@ So: **no row in this ledger assumes a compass direction.** The gate rows are nam
 
 ## No idea
 
-These are **unplaced**. Nothing was invented to fill them. Each names what was searched and what was missing.
+These are **unplaced**. Nothing was invented to fill them. Each names what was searched and what was missing. The five mission 1646 drop locations were in this list; they are now LOW map estimates in [A-world61, Drop locations](A-world61-story-placements.md#drop-locations-a-17-to-a-21).
 
 1. **Naquadah Repository and Loth'ta's camp** (missions 1570 step 4902, 1645, 1648). DK-02 found no matching mesh, prefab or actor name; its only lead was an isolated military outpost at x 261 to 341, z 23 to 130. The owner subsequently chose a **speculative** DK-05 placement there, `DK-05-A-01` at `(290, -17, 95)` ([worknote](../worknotes/DK-05.md)). This records an implementation choice, not new map evidence. The true location and mission 1645's optional path still need a client walk.
-2. **The five Drop Locations** (mission 1646, dialog 5821). Nothing in the map is distinguishable as a scout drop. The 96 `HT-Campfire00` and 235 `JF-Brazier00` props are too common to be markers. They need five points of the owner's choosing, ideally inside the walled city (component 279) so the player can reach them.
-3. **The "Eastern tents"** (mission text). 39 tent groups exist ([tent_groups.tsv](data/Dakara_E1_tent_groups.tsv)), none named; with no axis the choice among them is open. The nearest groups (G01 to G05) are camps A to D and the merchant rows.
-4. **Which wall gate is the Western one** and which the Eastern. Placed by sign of x (A-10, A-11); the names wait on [the axis question](#the-axis-question).
-5. **The tents' door sides.** The three camp-A tents are direct static meshes with no visible doorway; the flap rows are approach points on the plaza side, not doors. *Cheapest fix:* the prefab tents carry `DoorwayPrecipitationPlanes` stubs whose offsets, applied to the same mesh, would give the door side; this packet did not extract them (collision-off stubs, outside the standard tools).
-6. **Which of T1, T2, T3 is the command tent, the Med Tent and Moh'katan's tent.** Their contents overlap; the assignment in A-01 to A-03 is the reading with the most evidence and is interchangeable.
-7. **Vocuum** (`_int_Vocuum`, mission 1653's optional objective). No mesh, no cover cluster, no description.
-8. **Ring Control** (`_int_RingControl`). No console mesh stands by either ring prefab; the only extra ring mesh (`GLB-RingTransporterBase_TC00` at (140.2, -2.4, -493.6)) is a lone base with no Kismet and is 540 m from both rings. The ring pad itself (A-12, A-13) is the only place the object can be.
-9. **The third wall arch's role** (72.1, -21.1, 441.7). It is a gate-shaped opening with no mission string.
-10. **Whether the Superweapon courtyard is on world 61 at all.** World 65 `Dakara_Superweapon` has no map in the client (the audit's finding), and "Dakara Superweapon Courtyard" is a discovery string of `DakaraE1`, so A-14 assumes it is on 61. If a later build moves it, A-14 to A-16 are void.
-11. **Hostiles, spawn clusters and encounter anchors for missions 1647 and 1653.** Out of scope for this packet; DK-20 and OD-DK05. The cover data above (cover density at the gates and the courtyard) is the only input found.
-12. **Loth'ta, the Jaffa Captain (dialogs 6106/6107), Ba'al's hologram on world 61.** No evidence places them; the Jaffa Captain, if he stands at the plaza, shares Rak'nor's area (A-06).
+2. **The "Eastern tents"** (mission text). 39 tent groups exist ([tent_groups.tsv](data/Dakara_E1_tent_groups.tsv)), none named; with no axis the choice among them is open. The nearest groups (G01 to G05) are camps A to D and the merchant rows.
+3. **Which wall gate is the Western one** and which the Eastern. Placed by sign of x (A-10, A-11); the names wait on [the axis question](#the-axis-question).
+4. **The tents' door sides.** The three camp-A tents are direct static meshes with no visible doorway; the flap rows are approach points on the plaza side, not doors. *Cheapest fix:* the prefab tents carry `DoorwayPrecipitationPlanes` stubs whose offsets, applied to the same mesh, would give the door side; this packet did not extract them (collision-off stubs, outside the standard tools).
+5. **Which of T1, T2, T3 is the command tent, the Med Tent and Moh'katan's tent.** Their contents overlap; the assignment in A-01 to A-03 is the reading with the most evidence and is interchangeable.
+6. **Vocuum** (`_int_Vocuum`, mission 1653's optional objective). No mesh, no cover cluster, no description.
+7. **Ring Control** (`_int_RingControl`). No console mesh stands by either ring prefab; the only extra ring mesh (`GLB-RingTransporterBase_TC00` at (140.2, -2.4, -493.6)) is a lone base with no Kismet and is 540 m from both rings. The ring pad itself (A-12, A-13) is the only place the object can be.
+8. **The third wall arch's role** (72.1, -21.1, 441.7). It is a gate-shaped opening with no mission string.
+9. **Whether the Superweapon courtyard is on world 61 at all.** World 65 `Dakara_Superweapon` has no map in the client (the audit's finding), and "Dakara Superweapon Courtyard" is a discovery string of `DakaraE1`, so A-14 assumes it is on 61. If a later build moves it, A-14 to A-16 are void.
+10. **Hostiles, spawn clusters and encounter anchors for missions 1647 and 1653.** Out of scope for this packet; DK-20 and OD-DK05. The cover data above (cover density at the gates and the courtyard) is the only input found.
+11. **Loth'ta, the Jaffa Captain (dialogs 6106/6107), Ba'al's hologram on world 61.** No evidence places them; the Jaffa Captain, if he stands at the plaza, shares Rak'nor's area (A-06).
 
 ## Check these first in a playtest
 

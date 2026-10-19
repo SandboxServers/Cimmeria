@@ -68,7 +68,7 @@ These packets change no runtime behaviour, so none ships a test; the reviewer ch
 | Report | `<worktree>\.claude\reports\dakara\DK-07-packet-coder.md` |
 | Size | Small (under 15k tokens) |
 
-**Contract excerpt** (D-DK8): Dakara_E1 owns content chains 8001 to 8499. 8001 to 8006 are in use (`dakara_e1_space_chains.sql`). Sub-ranges: space and travel 8001-8039, mission 1570 8040-8074 and 8160-8179, mission 1645 8080-8119, mission 1646 8120-8159, later missions 8180-8499 (8075-8079 unassigned; D-DK19).
+**Contract excerpt** (D-DK8): Dakara_E1 owns content chains 8001 to 8499. 8001 to 8006 are in use (`dakara_e1_space_chains.sql`). Sub-ranges: space and travel 8001-8039, mission 1570 8040-8074 and 8160-8179, mission 1645 8080-8119, mission 1646 8120-8159, later missions 8180-8499, 8075-8079 reserved for the bridge mission 63100 (D-DK19; D-DK1 F).
 
 **Steps:**
 
@@ -79,7 +79,7 @@ These packets change no runtime behaviour, so none ships a test; the reviewer ch
    - In `## Reserved blocks`, insert this row between the `6001–6800` Harset row and the `9000–9799` Tollana row (the file uses an en dash `–` in ranges; copy it):
 
      ```text
-     | 8001–8499 | Dakara_E1 | Dakara_E1 rebuild ([ledger](../dakara-e1-rebuild/README.md)): space and travel 8001–8039 (8001–8006 in use), mission 1570 8040–8074 and 8160–8179, mission 1645 8080–8119, mission 1646 8120–8159, later missions 8180–8499 (8075–8079 unassigned). Per-file ranges: [Dakara work packets, C3](../dakara-e1-rebuild/work-packets.md#c3-seed-files-and-chain-ranges-d-dk14). |
+     | 8001–8499 | Dakara_E1 | Dakara_E1 rebuild ([ledger](../dakara-e1-rebuild/README.md)): space and travel 8001–8039 (8001–8006 in use), mission 1570 8040–8074 and 8160–8179, mission 1645 8080–8119, mission 1646 8120–8159, later missions 8180–8499, 8075–8079 reserved for the bridge mission 63100 (D-DK1 option F). Per-file ranges: [Dakara work packets, C3](../dakara-e1-rebuild/work-packets.md#c3-seed-files-and-chain-ranges-d-dk14). |
      ```
 
    - Change nothing else: the "in use" table already lists `dakara_e1_space_chains.sql | 6 | 8001–8006`.
