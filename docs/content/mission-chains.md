@@ -1226,7 +1226,7 @@ Missions 1563-1571, the SGC halves of 1651, 1654 and 1655, and the crossings to 
 
 - **1655 Human and crossing C4 (US-32, chains 3156-3165):** Woolsey offers 1655 to Humans on 5854, Hammond's 5856 grants letter 6786 (Humans only), Harriman's 5857 dials Omega Site for both races (dial 10047/10060, then 3 s to Omega_Site with step 4940), with relog and recovery chains on 4943, 4944 and 4941.
 
-- **1655 Free Jaffa (US-33, chains 3166-3169):** planned.
+- **1655 Free Jaffa (US-33, chains 3166-3169):** the Free Jaffa path (archetype 7 only, eq '7' on 3166) runs the letter-free route: Harriman's 5857 is shown after 5875 and the Omega dial (4944) without the letter 6786; the disjointness suite checks that Human and Free Jaffa chains never share a gate.
 
 - **Return state and relogs (US-34, chains 3171-3175):** SGC_W1 is a per-player instance rebuilt on entry; spent story Jaffa are despawned on load; a Free Jaffa sees none; route pairs stay while a mission needs them.
 
