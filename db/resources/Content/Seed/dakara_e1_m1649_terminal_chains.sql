@@ -240,4 +240,3 @@ VALUES
   (8231, 'display_dialog', 5834, NULL, '{}', 0, 0),
   (8231, 'add_item', 6782, NULL, '{"container": 0, "qty": 1}', 0, 1),
   (8231, 'complete_objective', 1649, '5638', '{}', 0, 2);
-
