@@ -106,7 +106,7 @@ VALUES
   (3051, 'spawn_entity',         34,   'SGC_W1_Tactics2Jaffa1', '{"x": 60.0, "y": 1.311, "z": -120.0, "heading": 0}', 0, 6),
   (3051, 'despawn_entity',       NULL, 'SGC_W1_GroomJaffa1', '{}', 0, 7),
   (3051, 'add_item',             6784, NULL,   '{"container": 2, "qty": 1}', 0, 8),
-  (3051, 'move_entity',          NULL, 'SGC_W1_SamCarter', '{"destination": "170.5,-10.9,12.5", "world": "SGC_W1"}', 0, 9),
+  (3051, 'move_entity',          NULL, 'SGC_W1_SamCarter', '{"destination": "164.5,-10.8,18.0", "world": "SGC_W1"}', 0, 9),
   (3051, 'move_entity',          NULL, NULL,   '{"destination": "182.0,1.311,43.5", "world": "SGC_W1", "use_player": true}', 0, 10),
   (3051, 'cross_world_teleport', NULL, 'Dakara_E1', '{"x": 96.87, "y": -16.75, "z": 243.23}', 0, 11);
 ```
@@ -161,12 +161,12 @@ VALUES
 | Row | Mission and step | Direction | Departs | Departure rows, in order | State on arrival | Receiver | Coordinate |
 |---|---|---|---|---|---|---|---|
 | C1 | 1570 4641 → 4642 → 4906 | 58 → Dakara_E1 61 | **SGC US-24** | `advance_step 1570 '4642'` @0, `play_sequence 10047` @0, `play_sequence 10060` @2500, `advance_step 1570 '4906'` @3000, `cross_world_teleport 'Dakara_E1'` @3000 | 1570/4906 active | DK-10b | gate 25 pin (96.87, -16.75, 243.23) |
-| C2 | 1651 4930 | 61 → 58 | DK-30 (D-UD2) | `advance_step 1651 '4928'`, `cross_world_teleport 'SGC_W1'` | 1651/4928 active | **SGC US-30** | **H3 = P13 (172.79, -10.9, 12.0)** |
+| C2 | 1651 4930 | 61 → 58 | DK-30 (D-UD2) | `advance_step 1651 '4928'`, `cross_world_teleport 'SGC_W1'` | 1651/4928 active | **SGC US-30** | **H3 = P13 (167.00, -10.80, 18.00)** |
 | C2b | 1651 4931 → 4929 → 5171 | 58 → 61 | **SGC US-30** | Carter's 5845 grants item 6784 and completes O5956 (safe: O6037 stays open, F13); Harriman's press on 4931 with O5956 done: `advance_step '4929'` @0 (force-completes O6037), sequences @0/@2500, `advance_step '5171'` @3000, teleport @3000; restore and recovery chains on 4929 | 1651/5171 active, item 6784 held | DK-30 | gate 25 pin |
 | C3 | 1654 4939 | 61 → 58 | DK-33 | `complete_objective 1654 '5961'` (never `advance_step`), teleport | 1654/4939 active, O5962 open | **SGC US-31** | H3 |
-| C4 | 1655 4944 → 4941 → 4940 | 58 → Omega_Site 18 | **SGC US-32** | `advance_step 1655 '4941'` @0, sequences @0/@2500, `advance_step 1655 '4940'` @3000, `cross_world_teleport 'Omega_Site'` @3000 | 1655/4940 active; Humans hold 6786 (D-US11) | Omega | Omega-published (UO-00); candidate gate 5 (34.705, -50.634, -149.092) |
+| C4 | 1655 4944 → 4941 → 4940 | 58 → Omega_Site 18 | **SGC US-32** | `advance_step 1655 '4941'` @0, sequences @0/@2500, `advance_step 1655 '4940'` @3000, `cross_world_teleport 'Omega_Site'` @3000 | 1655/4940 active; Humans hold 6786 (D-US11) | Omega | Omega-published (UO-00); published pin x 34.70, y -51.28, z -142.00, heading 3.1409 (UO-01 seal; the engine carries no heading on cross_world_teleport) |
 
-- **H3, the SGC arrival point (CIMMERIA_RECONSTRUCTION):** the Gate Room floor in front of gate 27. The gate row (172.79, -8.47, 6.014) sits 2.4 m above the floor (y -10.9). SGC_W1 is instanced and `validate_gate_arrival` skips instanced worlds, so nothing at runtime catches a bad y. US-01 seals P13 before US-30 uses it.
+- **H3, the SGC arrival point (CIMMERIA_RECONSTRUCTION):** the Gate Room floor in front of gate 27. The gate row (172.79, -8.47, 6.014) sits 2.4 m above the floor (y -10.9; the sealed floor y is -10.80). SGC_W1 is instanced and `validate_gate_arrival` skips instanced worlds, so nothing at runtime catches a bad y. US-01 sealed P13 = (167.00, -10.80, 18.00) in `placement.md`.
 - **C4 step ownership (D-US12 = Omega D-UO25, 2026-10-18):** SGC stops at 1655/4940 plus the teleport. S4940 holds required O5647/O5644, and the engine completes the whole mission once a step's required objectives are all complete, so a `complete_objective` on 1655 at the SGC would end the mission before Omega runs.
 - Telemetry exists for every crossing: INFO `Content: cross-world teleporting entity` (entity, account, player, world, position, chain_id, chain_name) and ERROR `CrossWorldTeleport: cell→base GateTravel send failed` with `reason = "base_channel_closed"`. US-14 adds the tests that pin both rows.
 - Answers to Dakara:
@@ -245,11 +245,11 @@ Packets use the values US-01 records in `docs/analysis/union-sgc-continuation/pl
 | P05 | Carter at the Failsafe, end of the escort | (147.0, 1.30, -197.0) | Failsafe mesh (151.18, 1.28, -193.38) |
 | P06 | Failsafe Device | (151.184, 1.28, -193.376) | EM-SGC_Failsafe00 mesh |
 | P07 | FailsafeRoom region centre (cylinder r 8, h 6) | (150.0, 1.3, -196.0) | Failsafe room |
-| P08 | Carter in the Gate Room (1651) | (170.5, -10.9, 12.5) | Gate Room floor |
+| P08 | Carter in the Gate Room (1651) | (164.50, -10.80, 18.00) | Gate Room floor |
 | P09 | GateControl region centre (cylinder r 10, h 6) | (173.0, -6.4, 55.0) | Control Room x 156-190, z 44-70 |
 | P10a-f | crates, pool A at y -10.95 | (257.157, 41.74), (259.131, 42.326), (260.237, 43.42), (255.923, 43.406), (257.726, 43.679), (254.369, 43.338) | requisitions room |
 | P11, P12 | 1566 Jaffa pair, between rows 57/58 and the Failsafe room | (60.0, 1.311, -120.0), (64.0, 1.311, -124.0) | placeholders: US-01 chooses |
-| P13 | H3 arrival | (172.79, -10.9, 12.0) | K5 |
+| P13 | H3 arrival | (167.00, -10.80, 18.00) | K5 |
 | P14 | Hammond home (spawn 52; no seal needed) | (199.989, 1.311, 43.608) | spawnlist row 52 |
 | P15 | player after 1568 (Hammond's office) | (182.0, 1.311, 43.5) | briefing room floor |
 | P16 | Carter after 1568 | (179.5, 1.311, 45.5) | beside P15 |
@@ -258,24 +258,24 @@ Packets use the values US-01 records in `docs/analysis/union-sgc-continuation/pl
 
 | Wave | Packet | Role | Size | Scope | Depends on | Status | File |
 |---|---|---|---|---|---|---|---|
-| S0 | US-00 | `mission-systems-advisor` | docs ~30k | Ledger, ID check, crossings handshake | dispatch gate | BlockedDependency | [US-00](sgc-packets/US-00.md) |
-| S0 | US-01 | `movement-teleport-advisor` + `npc-ai-spawn-advisor` | docs ~35k | Seal P01-P16 and H3 | US-00 | BlockedDependency | [US-01](sgc-packets/US-01.md) |
-| S0 | US-02 | `game-archaeology-specialist` | docs ~35k | Meshes, name_ids, sequences 10047/10060, crate room | US-00 | BlockedDependency | [US-02](sgc-packets/US-02.md) |
-| S1 | US-10 | `rust-gameserver-dev` (Sonnet; owns the sealed test rig) | ~35k | Scaffold: 14 empty chain files, `\ir`, CHAIN_FILES, test module, docs anchor | US-00 | BlockedDependency | [US-10](sgc-packets/US-10.md) |
-| S1 | US-11 | `packet-coder` | ~35k | Templates, spawns, point sets, Jaffa tags | US-10, US-01, US-02 | BlockedDependency | [US-11](sgc-packets/US-11.md) |
-| S1 | US-14 | `packet-coder` | ~20k | Crossing log tests (`executor/tests/teleport.rs`) | US-00 | BlockedDependency | [US-14](sgc-packets/US-14.md) |
-| S2 | US-12 | `packet-coder` | ~40k | 1563 Virus | US-10, US-11 | BlockedDependency | [US-12](sgc-packets/US-12.md) |
-| S2 | US-13 | `packet-coder` | ~20k | 1571 auxiliary credit | US-10 | BlockedDependency | [US-13](sgc-packets/US-13.md) |
-| S2 | US-15 | `packet-coder` | ~40k | 1564 Self-Destruct, without the walk | US-10, US-11 | BlockedDependency | [US-15](sgc-packets/US-15.md) |
-| S2 | US-20 | `packet-coder` | ~40k | 1565 + 1566 Tactics | US-10, US-11 | BlockedDependency | [US-20](sgc-packets/US-20.md) |
-| S2 | US-21 | `packet-coder` | ~30k | 1567 Clear the Way | US-10, US-11 | BlockedDependency | [US-21](sgc-packets/US-21.md) |
-| S2 | US-22 | `packet-coder` | ~40k | 1568 Gate Room | US-10, US-11 | BlockedDependency | [US-22](sgc-packets/US-22.md) |
-| S3 | US-16 | `rust-gameserver-dev`, movement sign-off | ~40k | 1564 escort on 4631 | US-15 | BlockedDependency | [US-16](sgc-packets/US-16.md) |
-| S3 | US-23 | `packet-coder` | ~35k | 1569 Ordinance crates | US-10, US-11 | BlockedDependency | [US-23](sgc-packets/US-23.md) |
-| S3 | US-24 | `packet-coder`, movement sign-off | ~40k | 1570 offer and C1 | US-10, US-14, US-02, D-US4 default | BlockedDependency | [US-24](sgc-packets/US-24.md) |
-| S3 | US-30 | `packet-coder`, movement + items sign-off | ~40k | 1651 C2 arrival, generator, C2b | US-10, US-11, US-01, UD-00 | BlockedDependency | [US-30](sgc-packets/US-30.md) |
-| S3 | US-31 | `packet-coder` | ~30k | 1654 Hammond turn-in, both races | US-10, UD-00 | BlockedDependency | [US-31](sgc-packets/US-31.md) |
-| S3 | US-32 | `packet-coder`, movement sign-off | ~40k | 1655 Human and C4 | US-10, US-11, UO-00, D-US11 default | BlockedDependency | [US-32](sgc-packets/US-32.md) |
+| S0 | US-00 | `mission-systems-advisor` | docs ~30k | Ledger, ID check, crossings handshake | dispatch gate | Done (merged #1880) | [US-00](sgc-packets/US-00.md) |
+| S0 | US-01 | `movement-teleport-advisor` + `npc-ai-spawn-advisor` | docs ~35k | Seal P01-P16 and H3 | US-00 | Done (merged #1886) | [US-01](sgc-packets/US-01.md) |
+| S0 | US-02 | `game-archaeology-specialist` | docs ~35k | Meshes, name_ids, sequences 10047/10060, crate room | US-00 | Done (merged #1884) | [US-02](sgc-packets/US-02.md) |
+| S1 | US-10 | `rust-gameserver-dev` (Sonnet; owns the sealed test rig) | ~35k | Scaffold: 14 empty chain files, `\ir`, CHAIN_FILES, test module, docs anchor | US-00 | Done (merged #1891) | [US-10](sgc-packets/US-10.md) |
+| S1 | US-11 | `packet-coder` | ~35k | Templates, spawns, point sets, Jaffa tags | US-10, US-01, US-02 | Done (merged #1917) | [US-11](sgc-packets/US-11.md) |
+| S1 | US-14 | `packet-coder` | ~20k | Crossing log tests (`executor/tests/teleport.rs`) | US-00 | Done (merged #1893) | [US-14](sgc-packets/US-14.md) |
+| S2 | US-12 | `packet-coder` | ~40k | 1563 Virus | US-10, US-11 | Done (merged #1919) | [US-12](sgc-packets/US-12.md) |
+| S2 | US-13 | `packet-coder` | ~20k | 1571 auxiliary credit | US-10 | Done (merged #1920) | [US-13](sgc-packets/US-13.md) |
+| S2 | US-15 | `packet-coder` | ~40k | 1564 Self-Destruct, without the walk | US-10, US-11 | Done (merged #1921) | [US-15](sgc-packets/US-15.md) |
+| S2 | US-20 | `packet-coder` | ~40k | 1565 + 1566 Tactics | US-10, US-11 | Done (merged #1922) | [US-20](sgc-packets/US-20.md) |
+| S2 | US-21 | `packet-coder` | ~30k | 1567 Clear the Way | US-10, US-11 | Done (merged #1923) | [US-21](sgc-packets/US-21.md) |
+| S2 | US-22 | `packet-coder` | ~40k | 1568 Gate Room | US-10, US-11 | Done (merged #1924) | [US-22](sgc-packets/US-22.md) |
+| S3 | US-16 | `rust-gameserver-dev`, movement sign-off | ~40k | 1564 escort on 4631 | US-15 | Done (merged #1933) | [US-16](sgc-packets/US-16.md) |
+| S3 | US-23 | `packet-coder` | ~35k | 1569 Ordinance crates | US-10, US-11 | Done (merged #1934) | [US-23](sgc-packets/US-23.md) |
+| S3 | US-24 | `packet-coder`, movement sign-off | ~40k | 1570 offer and C1 | US-10, US-14, US-02, D-US4 default | Done (merged #1936) | [US-24](sgc-packets/US-24.md) |
+| S3 | US-30 | `packet-coder`, movement + items sign-off | ~40k | 1651 C2 arrival, generator, C2b | US-10, US-11, US-01, UD-00 | Done (merged #1937) | [US-30](sgc-packets/US-30.md) |
+| S3 | US-31 | `packet-coder` | ~30k | 1654 Hammond turn-in, both races | US-10, UD-00 | Done (merged #1935) | [US-31](sgc-packets/US-31.md) |
+| S3 | US-32 | `packet-coder`, movement sign-off | ~40k | 1655 Human and C4 | US-10, US-11, UO-00, D-US11 default | Done (merged #1938) | [US-32](sgc-packets/US-32.md) |
 | S4 | US-33 | `packet-coder` | ~35k | 1655 Free Jaffa + disjointness suite | US-31, US-32 | BlockedDependency | [US-33](sgc-packets/US-33.md) |
 | S4 | US-34 | `packet-coder` | ~30k | Return state and relog matrix | US-11, US-20, US-21, US-22, US-30, D-US5 default | BlockedDependency | [US-34](sgc-packets/US-34.md) |
 | S4 | US-U1 | lab UAT (ask the user) | lab | Human 1562 → 1570 → Dakara arrival | S3 integrated | UATPending | [US-U1](sgc-packets/US-U1.md) |
