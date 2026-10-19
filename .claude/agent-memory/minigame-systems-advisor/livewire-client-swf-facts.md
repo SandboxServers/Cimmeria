@@ -34,8 +34,9 @@ See also [[chain-wiring-and-gaps]], [[game-implementation-status]].
 
 ## MG-R6 confirmations (2026-10-19)
 
-- Offline mode: frame-2 code sets `_root.online=false` only when `ipaddress`, `v1` and `ipaddress.value` are all undefined; then the embedded extension runs locally with Math.random. Cimmeria's launch URL always sets host/port, so this never triggers. Keep `ipaddress` in the launch URL.
+- Offline mode: frame-2 code sets `_root.online=false` only when all three hold: `_root.ipaddress == ''` (empty string), `_root.v1` undefined, `_root.ipaddress.value` undefined; then the embedded extension runs locally with Math.random. A launch with no `ipaddress` at all (undefined) stays online. The launcher must pass a non-empty `ipaddress` (MG-R7 owns that check). Not run in the client.
+- GoauldCrystals' extension reads `seed` (initGame, placeGoals, randomizeCrystals), so it needs the java.util.Random port too; the earlier "no client code reads seed" holds only for client code.
 - Client disconnects itself on `victory`/`failure` (`sfs.disconnect()`), then `FSCommand:closewindow` after 2000 ms. Local timer can call `onFailure` at 0 before the server's tick, so the server may see a drop (Canceled) instead of its own timeout (Defeat).
 - Extension host call `__mg.minigameCompleteGame(user, code, timeRatio, numResets, instruments, consumables)`: code 3 = victory, 4 = timeout. These are extension-to-host codes, not cell result ids.
-- Original difficulty table, wire variant range 1-4 (inclusive), goal depth bands 1-25/60-85, obstacleTotal x2, getTime method 2 is bitwise XOR: see `docs/analysis/minigames/spec-livewire-parity.md` (18 deltas vs Rust).
+- Original difficulty table, wire variant range 1-4 (inclusive), goal depth bands 1-25/60-85, obstacleTotal x2, getTime method 2 is bitwise XOR: see `docs/analysis/minigames/spec-livewire-parity.md` (16 deltas, 1 informational and 1 no-delta row, vs Rust).
 - No SWF needs `t='o'`; arrays as `t='a'` are what the client reads.

@@ -2,9 +2,9 @@
 
 Status: draft for review. Compares the original server-side extension embedded in `Livewire.upk` (offset 11232, 410721 bytes, md5 7fbe1510a58b120c7776f4b6d78d62f2; see [spec-protocol-common.md](spec-protocol-common.md) for the evidence table) with `crates/minigame/src/minigame/games/livewire/setup.rs` and `mod.rs`.
 
-Original line numbers refer to a scratch pseudo-decompile outside the repo (`Livewire 6802` and so on); they are locators only. Rust line numbers are in the repo at the time of this audit. Each delta ends with a proposed change for MG-LW1.
+Original locators are function names of the R0 tool (`python -I tools/minigame-swf/list_functions.py <Livewire.gfx> --function <name>`). Rust line numbers are in the repo at the time of this audit. Each delta ends with a proposed change for MG-LW1.
 
-## Original difficulty table (`setGameType`, Livewire 6802-6870)
+## Original difficulty table (`setGameType`)
 
 `tc` is techcomp. Difficulty 1-4:
 
@@ -25,7 +25,7 @@ Original line numbers refer to a scratch pseudo-decompile outside the repo (`Liv
 
 `getTime(method, tc, paramTimer, obsTimer, goalTotal, pclevel)`: method 1 = `(paramTimer*tc)/1.7`; method 2 = `(17 + tc*4.5) ^ 1.25` where AS `^` is bitwise XOR, not a power; method 3 = `6*((obsTimer/10)*goalTotal) + (21+pclevel)`.
 
-## Wire-variant range and library names (`setupWires`, Livewire 6542-6740)
+## Wire-variant range and library names (`setupWires`)
 
 - Playfield and moving wires: lib is a base name plus `randRange(1,4)` (1 to 4 inclusive), for example `pGray3`.
 - Goal wires `gX` and obstacle wires `oX`: also base plus `randRange(1,4)`.

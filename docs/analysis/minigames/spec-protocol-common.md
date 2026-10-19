@@ -1,6 +1,6 @@
 # Minigame common protocol spec (MG-R6)
 
-Status: draft for review. Source: AS2 disassembly and a scratch pseudo-decompile of the ten minigame GFX movies. Nothing here was run in the lab or the client.
+Status: draft for review. Source: AS2 disassembly (R0 tool, `tools/minigame-swf`) of the ten minigame GFX movies. Nothing here was run in the lab or the client.
 
 This answers the six MG-R6 questions. SFS 1.x framing and the login, join, `xtReq` flow are covered by `crates/minigame/src/minigame/protocol.rs` and are not repeated.
 
@@ -21,13 +21,13 @@ Each movie is one uncompressed Scaleform GFX embedded in `CookedPC\UI\Flash\<Gam
 | Converse.upk | 1583 | 55795 | 25931bc75ec2d06289057f530b0af6f8 |
 | Hack.upk | 1551 | 55760 | ab34a898ce64a27f9e783142724aa3b6 |
 
-Line numbers below (for example `Livewire 6111`) refer to a scratch pseudo-decompile of the movie; they are only a locator, not repo content. The md5 values are of the extracted `.gfx`, not of the `.upk`.
+Locators below are function names of the R0 tool: `python -I tools/minigame-swf/list_functions.py <Game.gfx> --function <name>` lists them (the frame-2 script is the exception; read it with `as2dis.py`). The md5 values are of the extracted `.gfx`, not of the `.upk`.
 
-Of the ten movies, five carry a real embedded extension (Livewire, Alignment, CrystalGame, GoauldCrystals, ConverseBasicHumanoid). Activate, Analyze, Bypass, Converse and Hack are near-identical 55 KB shells (about 3081 decompiled lines each) with a `win_btn` and a stub extension.
+Of the ten movies, five carry a real embedded extension (Livewire, Alignment, CrystalGame, GoauldCrystals, ConverseBasicHumanoid). Activate, Analyze, Bypass, Converse and Hack are near-identical 55 KB shells with a `win_btn` and a stub extension.
 
 ## Q1. Does any SWF run its embedded extension locally?
 
-Yes, all ten. It is the same frame-2 code in every movie (Livewire 6111-6116, shells 2885-2889):
+Yes, all ten. It is the same frame-2 code in every movie (the frame-2 script, read with `as2dis.py`):
 
 ```text
 _root.online = true;
@@ -38,34 +38,34 @@ if (_root.ipaddress == '') {
 }
 ```
 
-Condition: no `ipaddress` flash variable and no `v1` variable. Then `online = false`, `_root.sendMessage` calls `_root.handleRequest(cmd, obj, user, 'roomid')` directly and `_server.sendResponse` calls `_root.onResponse(msg, 'xml')`. No socket is opened. In that mode the extension draws all random values from `Math.random`, picks a random techcomp 1-55, difficulty 1-4, CA0..CA4 = 4,3,3,2,2 and a random abilityBitfield.
+Condition: all three hold: `_root.ipaddress` is the empty string, `_root.v1` is undefined, and `_root.ipaddress.value` is undefined (raw disassembly of the frame-2 script, read after `push 'online', True`). A launch that passes no `ipaddress` at all (undefined, not '') does not satisfy the first test (undefined == '' is false in a v8 movie) and stays online; only an empty-string `ipaddress` goes offline. Not run in the client. Then `online = false`, `_root.sendMessage` calls `_root.handleRequest(cmd, obj, user, 'roomid')` directly and `_server.sendResponse` calls `_root.onResponse(msg, 'xml')`. No socket is opened. In that mode the extension draws all random values from `Math.random`, picks a random techcomp 1-55, difficulty 1-4, CA0..CA4 = 4,3,3,2,2 and a random abilityBitfield.
 
 Online path: `sfs.connect(ipaddress.value, port.value)`, `handleConnection` calls `login(gamename.value, playerid.value, ticket.value)`. `loginSucceeded` goes to frame 3, `loginFailed` goes to frame 4 (failure). Messages arriving before frame 3 registers `onResponse` are queued in `pendingMsgs` and replayed.
 
-D-MG2 ruling: not needed. Cimmeria's launch URL always supplies host and port, so the real client never takes the offline branch. Worth noting for MG-R7 (launch spec): the URL must never drop `ipaddress`, otherwise the client silently plays an unauthenticated local game and the server sees nothing.
+D-MG2 ruling: not needed if the launcher always passes a non-empty `ipaddress`; MG-R7 owns that check (see spec-launch-flow.md). If the variable arrives as the empty string the movie plays a local game with no server.
 
 ## Q2. `joinOK` room variables by game
 
-Read with `room.getVariable` in the client after `joinOK`.
+Read by the movie (client code or its embedded extension) from the room or user properties after `joinOK`. `seed` is read by the extension only (see Q3); every other variable is read by client code.
 
-| Game | Variables read |
-|---|---|
-| Livewire | abilityBitfield, CA0..CA4, difficulty, instcc, pclevel, seed, techcomp |
-| Alignment | same set as Livewire |
-| ConverseBasicHumanoid | abilityBitfield, intelligence, pclevel, techcomp |
-| CrystalGame | none |
-| GoauldCrystals | none |
-| Hack | none |
-| Activate | none |
-| Analyze | none |
-| Bypass | none |
-| Converse | none |
+| Game | Variables read | Reader |
+|---|---|---|
+| Livewire | abilityBitfield, CA0..CA4, difficulty, instcc, pclevel, techcomp; seed | client; seed: extension |
+| Alignment | same set as Livewire | client; seed: extension |
+| ConverseBasicHumanoid | abilityBitfield, intelligence, pclevel, techcomp | client |
+| CrystalGame | none | - |
+| GoauldCrystals | seed (extension: initGame, placeGoals, randomizeCrystals) | extension |
+| Hack | none | - |
+| Activate | none | - |
+| Analyze | none | - |
+| Bypass | none | - |
+| Converse | none | - |
 
 Rust `joinOK` (`crates/minigame/src/minigame/server/session_loop.rs` 196-224) sends abilityBitfield, seed, difficulty, techcomp, pclevel, intelligence, instcc=-1 and CA0..CA4=0 for every game. That is a superset of what each game reads, so no change is needed for compatibility. instcc and CA0..CA4 are the item and ability cheat inventory; Rust hardcodes them, so cheats are never offered (see the parity doc).
 
 ## Q3. Does any SWF derive state from `seed`?
 
-No client code does. `seed` is consumed by the server-side extension only (Livewire 6885-6889, 7104-7106, 7330-7332; Alignment 7534-7536 and others), which does `new Packages.java.util.Random()` then `setSeed(seed)`. In online mode the client renders what the server sends (`fullgamestate`, `create`, `destroy`). Offline it uses `Math.random`. CrystalGame, GoauldCrystals, ConverseBasicHumanoid and the shells use `Math.random` only.
+No client code does. `seed` is consumed by the server-side extension only (Livewire `initGame`, `processItemCheat`, `processAbilityCheat`; Alignment `initGame`, `doCascade`, `processItemCheat`, `processAbilityCheat`), which does `new Packages.java.util.Random()` then `setSeed(seed)`. In online mode the client renders what the server sends (`fullgamestate`, `create`, `destroy`). Offline it uses `Math.random`. CrystalGame, ConverseBasicHumanoid and the shells use `Math.random` only. GoauldCrystals' extension also reads `seed` (initGame, placeGoals, randomizeCrystals), so MG-R-series work on that game needs the `java.util.Random` port too.
 
 Answer for MG-25: no PRNG port needed for client compatibility. Only an exact reproduction of the original boards would need a `java.util.Random` LCG port (48-bit LCG, multiplier 0x5DEECE66D, `nextInt(n)`). The original helpers were `randRange(rng,min,max) = floor(rng.nextInt(max-min+1)) + min` and `randomIndex(rng,arr) = arr[rng.nextInt(arr.length)]`. Rust uses `StdRng::seed_from_u64` (`games/livewire/mod.rs` 132), which is fine because no client reproduces the board.
 
@@ -90,9 +90,9 @@ Victory and failure are server-sent in every game. The client never reports comp
 
 ### Client behaviour on victory and failure
 
-Livewire `onVictory` (7810) and `onFailure` (7817) both call `_global.sfs.disconnect()`, stop the timers and go to frame 4. Frame 4 shows the result and after 2000 ms `finalCallback` calls `getURL('FSCommand:closewindow','')` (8802-8821). So the client drops the socket itself right after the result. There is no abort message; closing the window is a socket drop.
+Livewire `onVictory` and `onFailure` both call `_global.sfs.disconnect()`, stop the timers and go to frame 4. Frame 4 shows the result and after 2000 ms `finalCallback` calls `getURL('FSCommand:closewindow','')`. So the client drops the socket itself right after the result. There is no abort message; closing the window is a socket drop.
 
-Race: the client's local timer calls `onFailure()` when `timeRemaining <= 0` (`onTimerUpdate` 8045). That disconnects before the server's own tick declares defeat, so the server can see a drop and report Canceled(0) instead of Defeat(2). MG-R9 or the session code should treat a drop within a small window after the server's computed deadline as a timeout defeat.
+Race: the client's local timer calls `onFailure()` when `timeRemaining <= 0` (`onTimerUpdate`). That disconnects before the server's own tick declares defeat, so the server can see a drop and report Canceled(0) instead of Defeat(2). The session code (MG-25 result path) should treat a drop within a small window after the server's computed deadline as a timeout defeat.
 
 ### Extension to host report
 
@@ -103,7 +103,7 @@ The extension calls `__mg.minigameCompleteGame(user, code, timeRatio, numResets,
 | Victory | `(user, 3, timeRemaining/initialTime, numResets+1, origInstcc != -1, consUsed)` |
 | Timeout | `(user, 4, 0, numResets+1, false, false)` |
 
-Locations: Livewire 6333 and 6744, Alignment 5623 and 6550, ConverseBasicHumanoid 5800 and 5850, GoauldCrystals 3643 and 4760. CrystalGame is a quirk: timeout is `(user, 4, 0, 1, false, false)` but victory is a 5-argument call `(user, 30.5, 1, false, false)` (it omits the code and passes a constant 30.5 as time). A host that reads positional args would mis-read it; the Rust server never calls this, so it only matters if an implementation ports the call.
+Locations (functions containing the call): Livewire `checkForVictory` and `tick`; Alignment `doVictory` and `tick`; ConverseBasicHumanoid `checkForVictory` and `failMessage`; GoauldCrystals `sendVictoryMsgs` and `tick`; CrystalGame `checkForVictory` and `tick`. CrystalGame is a quirk: timeout is `(user, 4, 0, 1, false, false)` but victory is a 5-argument call `(user, 30.5, 1, false, false)` (it omits the code and passes a constant 30.5 as time). A host that reads positional args would mis-read it; the Rust server never calls this, so it only matters if an implementation ports the call.
 
 ### Result codes
 
@@ -117,13 +117,13 @@ The packet's 0-4 mapping and the extension's own codes do not line up:
 | Python Constants | Canceled | Victory | Defeat | NotStarted | - |
 | Extension host call | - | - | - | victory | timeout |
 
-The extension's 3 and 4 are an extension-to-host enum that a host translates; they are not cell result ids. Proposed mapping for MG-25 and the result path: extension 3 maps to cell 1, extension 4 maps to cell 2 (or 4 if the packet's table is authoritative), socket drop before any server verdict maps to 0, never-started (ticket issued, no `opendoor`) maps to 3. Needs a maintainer decision on 2 versus 4 for timeout; the repo currently has no consumer that distinguishes them.
+The extension's 3 and 4 are an extension-to-host enum that a host translates; they are not cell result ids. Proposed mapping for MG-25 and the result path: extension 3 maps to cell 1, extension 4 maps to cell 2, socket drop before any server verdict maps to 0, never-started (ticket issued, no `opendoor`) maps to 3. Timeout maps to cell 2 (Defeat) for the current consumers; C3 code 4 is reserved for a future distinguishing consumer.
 
 ## Q5. Who owns the countdown?
 
 Both, with the server authoritative.
 
-- Server: the extension runs `setInterval('tick', 100)` (Livewire 6264). `timerState` is 0 stopped, 1 counting, 2 stop-time cheat, 3 reverse-time cheat. At zero it sends `failure` and the code 4 host call. `sendTimerUpdate` sends `timeRemaining - 0.25`; the server value starts at countdown + 0.25.
+- Server: the extension runs `setInterval('tick', 100)` (Livewire `startTimer`, `tick`). `timerState` is 0 stopped, 1 counting, 2 stop-time cheat, 3 reverse-time cheat. At zero it sends `failure` and the code 4 host call. `sendTimerUpdate` sends `timeRemaining - 0.25`; the server value starts at countdown + 0.25.
 - Client: Livewire runs a local 50 ms `timerCallback` (using `getTimer` deltas, `timerBeep` each 1000 ms). It resyncs on `timerupdate`, `addtime` (+timeDiff), `cuttime` (x0.75), `reverttime` (= timeTotal) and `countdownupdate` (new countdownRate), and acts locally at 0 (see the Q4 race). The shells run a local 50 ms timer too, with a 12 s default.
 
 Consequence: the server must send `timerupdate` on every state change and a `countdownupdate` when the rate changes (Livewire obstacle and moving wires speed the countdown), or the client display drifts from the server's deadline.
@@ -136,6 +136,5 @@ No SWF was found that needs `t='o'`. MG-01 (list type) should still keep an expl
 
 ## Open items
 
-- Confirm timeout code (cell 2 or 4) with the maintainer.
 - Alignment and Converse server logic were read for command sets and `minigameCompleteGame` sites only; their rules belong to MG-R-series packets.
 - Findings are static analysis of the decompile. The pseudo-decompiler garbles ternaries; the `t='a'`/`'o'` choice and `getTime` were checked against the raw disassembly.
