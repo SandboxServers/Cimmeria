@@ -334,9 +334,11 @@
 \ir resources/Events/Seed/point_set_points.sql
 \ir resources/Events/Seed/point_set_points_dakara_e1.sql
 \ir resources/Events/Seed/point_set_points_beta_e1_hub.sql
+\ir resources/Events/Seed/point_set_points_beta_e1_ninepeaks.sql
 \ir resources/Events/Seed/point_sets.sql
 \ir resources/Events/Seed/point_sets_dakara_e1.sql
 \ir resources/Events/Seed/point_sets_beta_e1_hub.sql
+\ir resources/Events/Seed/point_sets_beta_e1_ninepeaks.sql
 \ir resources/Events/Seed/point_sets_debug_area_npcs.sql
 \ir resources/Events/Seed/sequences.sql
 \ir resources/Events/Seed/sequences_nvp.sql
@@ -381,12 +383,14 @@
 \ir resources/Worlds/Seed/interactions.sql
 \ir resources/Worlds/Seed/respawners.sql
 \ir resources/Worlds/Seed/ring_transport_regions.sql
+\ir resources/Worlds/Seed/ring_transport_regions_beta_e1.sql
 \ir resources/Worlds/Seed/spawn_points.sql
 \ir resources/Worlds/Seed/spawn_sets.sql
 \ir resources/Worlds/Seed/spawn_sets_debug_area_lineup.sql
 \ir resources/Worlds/Seed/spawnlist.sql
 \ir resources/Worlds/Seed/spawnlist_dakara_e1.sql
 \ir resources/Worlds/Seed/spawnlist_beta_e1_hub.sql
+\ir resources/Worlds/Seed/spawnlist_beta_e1_ninepeaks.sql
 \ir resources/Worlds/Seed/spawnlist_debug_area_combat.sql
 \ir resources/Worlds/Seed/spawnlist_debug_area_lineup.sql
 \ir resources/Worlds/Seed/spawnlist_debug_area_lords.sql

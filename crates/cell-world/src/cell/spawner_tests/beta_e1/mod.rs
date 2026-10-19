@@ -7,6 +7,9 @@
 //! - [`hub`]: UB-02b, the hub cast and objects (spawns 23000-23021) and the
 //!   Storage and AdminBuilding regions: rows, positions, standability and tag
 //!   uniqueness.
+//! - [`nine_peaks`]: UB-02d, the Nine Peaks camp (spawns 23110-23115), the
+//!   Nine Peaks region and the ring pair 2300/2301 that links the hub ring to
+//!   the SW ring: rows, positions, the seal's no-walk-route fact and the pair.
 //! - [`templates`]: UB-02a, the cast and object templates of
 //!   `db/resources/Entities/Seed/entity_templates_beta_e1.sql`: the roster, a
 //!   name on each, nothing hostile or attackable, the visual settings, the
@@ -14,6 +17,7 @@
 
 mod hub;
 mod nav;
+mod nine_peaks;
 mod templates;
 
 use crate::cell::spawner::{load_spawn_templates, SpawnRecord};
