@@ -188,12 +188,14 @@ intelligence stat and the player's level.
 
 ### Launch variables in the URL
 
-- **`ipaddress` must be non-empty.** The client's `onStartMinigame` handler
-  sets `_root.ipaddress/port/playerid/ticket/gamename.value` from the URL
-  (`docs/analysis/cellblock-autoplay/livewire-autosolve.md:62-66`). The movie
-  goes offline when `ipaddress` is `''` and `v1` is undefined (MG-R6
-  `spec-protocol-common.md` Q1, which owns the exact test). Offline, the
-  movie plays a local game and the server sees nothing.
+- **The host must set `ipaddress.value`.** The client's `onStartMinigame`
+  handler sets `_root.ipaddress/port/playerid/ticket/gamename.value` from the
+  URL (`docs/analysis/cellblock-autoplay/livewire-autosolve.md:62-66`). The
+  movie goes offline (a local game, no server) only if `_root.ipaddress.value`
+  and `_root.v1` are both undefined when it reaches frame 2 (MG-R6
+  `spec-protocol-common.md` Q1, which owns the test). A set-but-empty host
+  gives `.value == ''`: the movie stays online, its connect fails, and the
+  player sees the failure screen.
 - Rust builds the URL as `http://unused/{host}/{port}/{gameName}/{entityId}/{ticket}`
   from `minigame_external_host` (`cell_dispatch/minigame.rs:115-118`). An
   empty host setting would yield `http://unused//...`. MG-02 must assert a
@@ -594,7 +596,8 @@ The archetype mask (`0xffff`) and `abilityBitfield` are different fields; see
 - Never copy the dialog's archetype mask into it.
 - `intelligence` = the cell's current intelligence stat; `pclevel` = the
   player's level (§ 3).
-- The URL host segment (`ipaddress`) must be non-empty (§ 3).
+- The URL host segment (`ipaddress`) must be non-empty (§ 3)
+  (an empty host fails the connect; it does not go offline).
 
 ### MG-23: item cheats
 
