@@ -49,7 +49,7 @@ fn case(
 }
 
 /// The 1502 chains that `resolved` matched, for the exclusivity checks.
-fn m1502_matched(resolved: &ResolvedActions) -> BTreeSet<i64> {
+pub(super) fn m1502_matched(resolved: &ResolvedActions) -> BTreeSet<i64> {
     chains_matched(resolved)
         .into_iter()
         .filter(|id| M1502_CHAINS.contains(id))
@@ -69,7 +69,11 @@ fn not_free_jaffa() -> Vec<Option<i64>> {
 }
 
 /// A context carrying one event parameter, plus the archetype when it is set.
-fn event_ctx(key: &str, value: serde_json::Value, archetype: Option<i64>) -> ExecutionContext {
+pub(super) fn event_ctx(
+    key: &str,
+    value: serde_json::Value,
+    archetype: Option<i64>,
+) -> ExecutionContext {
     let mut ctx = ExecutionContext::new();
     ctx.set_param(key.to_string(), value);
     if let Some(a) = archetype {
@@ -79,14 +83,14 @@ fn event_ctx(key: &str, value: serde_json::Value, archetype: Option<i64>) -> Exe
 }
 
 /// Stage the offer gate: 1500 completed and 1502 `not_active`.
-fn stage_offer(mut ctx: ExecutionContext) -> ExecutionContext {
+pub(super) fn stage_offer(mut ctx: ExecutionContext) -> ExecutionContext {
     with_mission(&mut ctx, 1500, "completed");
     with_mission(&mut ctx, 1502, "not_active");
     ctx
 }
 
 /// Stage 1500 completed and 1502 active, with `step` at `status`.
-fn stage_step(mut ctx: ExecutionContext, step: i32, status: &str) -> ExecutionContext {
+pub(super) fn stage_step(mut ctx: ExecutionContext, step: i32, status: &str) -> ExecutionContext {
     with_mission(&mut ctx, 1500, "completed");
     with_mission(&mut ctx, 1502, "active");
     with_step(&mut ctx, 1502, step, status);
@@ -231,7 +235,7 @@ fn cases(archetype: Option<i64>) -> Vec<Case> {
 /// a two-trigger chain (23240) loads one engine entry per trigger row, and
 /// `engine_for` registers only the first.
 #[tokio::test]
-async fn each_chain_resolves_its_exact_actions() {
+async fn live_db_each_chain_resolves_its_exact_actions() {
     let pool = require_db_or_skip!();
     let whole = whole_seed(&pool).await;
     for case in cases(Some(FREE_JAFFA)) {
@@ -251,7 +255,7 @@ async fn each_chain_resolves_its_exact_actions() {
 /// Jaffa (a duplicate row, or a dropped `step_status` row). Each positive case
 /// must match exactly its own chain in the whole seed.
 #[tokio::test]
-async fn free_jaffa_case_matches_exactly_its_own_chain() {
+async fn live_db_free_jaffa_case_matches_exactly_its_own_chain() {
     let pool = require_db_or_skip!();
     let whole = whole_seed(&pool).await;
     for case in cases(Some(FREE_JAFFA)) {
@@ -269,7 +273,7 @@ async fn free_jaffa_case_matches_exactly_its_own_chain() {
 /// Asgard, Goa'uld, Jaffa or unset player). Every 1502 positive case with any
 /// archetype but 7 must match nothing in 23240-23279.
 #[tokio::test]
-async fn ras_nor_chains_are_free_jaffa_only() {
+async fn live_db_ras_nor_chains_are_free_jaffa_only() {
     let pool = require_db_or_skip!();
     let whole = whole_seed(&pool).await;
     for archetype in not_free_jaffa() {
@@ -288,7 +292,7 @@ async fn ras_nor_chains_are_free_jaffa_only() {
 /// show before 1500 is done, or again after 1502 is accepted), or the Ras'nor
 /// click gate of 23241. Only the offer state fires the offer chains.
 #[tokio::test]
-async fn offer_waits_for_1500_and_is_not_repeated() {
+async fn live_db_offer_waits_for_1500_and_is_not_repeated() {
     let pool = require_db_or_skip!();
     let whole = whole_seed(&pool).await;
 
@@ -335,7 +339,7 @@ async fn offer_waits_for_1500_and_is_not_repeated() {
 /// Revert: drop 23243's region row or its `step_status` row, so the camp
 /// trigger also fires at S4377. The region matches only while S4376 is active.
 #[tokio::test]
-async fn camp_region_advances_only_from_s4376() {
+async fn live_db_camp_region_advances_only_from_s4376() {
     let pool = require_db_or_skip!();
     let whole = whole_seed(&pool).await;
     let at = |step: i32| {
@@ -366,7 +370,7 @@ async fn camp_region_advances_only_from_s4376() {
 /// a step. A box click matches exactly one chain at each box step, and none
 /// once the medallion is in hand (S4481).
 #[tokio::test]
-async fn box_states_are_disjoint() {
+async fn live_db_box_states_are_disjoint() {
     let pool = require_db_or_skip!();
     let whole = whole_seed(&pool).await;
     for (step, expected) in [
@@ -397,7 +401,7 @@ async fn box_states_are_disjoint() {
 /// 23250's `remove_item` (the player keeps it), or let 23248 or 23250 fire at
 /// the wrong step. The grant is at S4378 only and the return at S4481 only.
 #[tokio::test]
-async fn medallion_granted_once_and_returned() {
+async fn live_db_medallion_granted_once_and_returned() {
     let pool = require_db_or_skip!();
     let whole = whole_seed(&pool).await;
 
@@ -469,7 +473,7 @@ async fn medallion_granted_once_and_returned() {
 /// relog) or its archetype gate. Only a Free Jaffa at S4481 re-binds 5887; a
 /// Free Jaffa at an earlier step, or a finished 1502, gets nothing.
 #[tokio::test]
-async fn restore_rebinds_done_dialog_only_at_s4481() {
+async fn live_db_restore_rebinds_done_dialog_only_at_s4481() {
     let pool = require_db_or_skip!();
     let whole = whole_seed(&pool).await;
     for step in [4376, 4377, 4378] {
