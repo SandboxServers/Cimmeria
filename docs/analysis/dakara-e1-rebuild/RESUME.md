@@ -4,8 +4,7 @@
 
 - **Owner rules (2026-10-18):** no agent lab use until the campaign ends; the owner runs every UAT. One read-only `packet-reviewer` per wave, its findings to a fresh `packet-coder`. Do not touch `.claude/state/active-campaign`.
 - **Merged:** DK-00 to DK-05; waves 1 to 3; 3b (#1894, #1896); 3c #1897; 4 #1898, #1899; 5 #1903 to #1906; 6 DK-31a #1900, DK-30a #1907, DK-31b #1909, DK-32a #1910; 6b DK-31c #1913; DK-99a #1914; docs #1901.
-- **Held (no PR):** `dk-30b` (DK-30b `34abe129b`, DK-30b-n `8b1ac4673`) and `dk-33` (DK-33 `41686b50c`, DK-33-n `ffec26d33`). Both get their wave-6c `-r` commit and ship as one PR each.
-- **Dormant by design (D-DK23):** 1648 to 1654 stay unreachable in play until 1647 (wave 7) ships.
+- **Held (no PR):** `dk-30b` (DK-30b `34abe129b`, DK-30b-n `8b1ac4673`) and `dk-33` (DK-33 `41686b50c`, DK-33-n `ffec26d33`). Both get their wave-6c `-r` commit and ship as one PR each. **Dormant by design (D-DK23):** 1648 to 1654 stay unreachable in play until 1647 (wave 7) ships.
 
 ## Owner answers (2026-10-19)
 
@@ -13,10 +12,9 @@
 - D-DK2 = Omega Site only as the **start** grant; gate 27 is now a story grant (D-DK24). Flagged as a conflict; reading recorded in D-DK2. **Still awaits the owner's answer** (D-DK2 against D-DK24).
 - D-DK24: **real gate travel** for 1651 and 1654, SGC address granted (D-DK43): wave 6c DK-30b-r, DK-33-r.
 - D-DK31: **Livewire required** on the terminal hacks (D-DK42): wave 6c DK-14c, DK-15b. **Owner (2026-10-19): Livewire on both terminals, difficulty 1; D-DK42 accepted.**
-- D-DK25 to D-DK30 accepted (D-DK29 still checked in DK-U27). Vocuum (1653 O5643) is in; prop and place to come (D-DK45).
+- D-DK25 to D-DK30 accepted (D-DK29 still checked in DK-U27). Vocuum (1653 O5643) is in. **Vocuum (D-DK45)** prop and place stay BlockedDecision until the research report lands: `.claude/reports/dakara-e1-rebuild/vocuum-research.md`.
 - **Accepted (owner, 2026-10-19):** all other autonomous decisions, D-DK21 to D-DK23 and D-DK32 to D-DK45, except those marked BlockedDecision on owner input.
 - **Still awaiting the owner:** D-DK2 against D-DK24, **D-DK40** (SGC dial-in with no way back) and **D-DK44** (gate 27 arrival pin).
-- **Vocuum (D-DK45)** is being researched: `.claude/reports/dakara-e1-rebuild/vocuum-research.md`. Its prop and place stay BlockedDecision until that report lands.
 
 ## Next action, in order
 
