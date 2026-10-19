@@ -277,6 +277,7 @@ beta_e1_m1423_chains.sql    1423 receiver and Carter: 23020-23039 (23020-23022 u
 beta_e1_m381_chains.sql     381 Closing Shop: 23040-23069 (23040-23053 used)
 beta_e1_m473_chains.sql     473 Inventory: 23070-23099 (23070-23083 used)
 beta_e1_m478_chains.sql     478 Instant IT: 23100-23129 (23100-23108 used)
+beta_e1_m1425_chains.sql    1425 SGU Database: 23130-23159 (23130-23136 used)
 ```
 
 ## Linked references
