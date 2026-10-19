@@ -27,6 +27,8 @@ const WORKSTATION: i64 = 23105;
 const WORM: i64 = 23106;
 const DONE_RESTORE: i64 = 23107;
 const TURN_IN: i64 = 23108;
+/// UB-14's Carter offer for 1425 (`beta_e1_m1425_chains.sql`), gated on 478 completed.
+const NEXT_OFFER_SHOW_1425: i64 = 23131;
 
 const MISSION: i32 = 478;
 const PREREQ: i32 = 473;
@@ -436,9 +438,16 @@ async fn carter_one_478_chain_per_state() {
             );
             with_mission(&mut as_played, 381, "completed");
             let resolved = fire(&whole, TriggerType::InteractTag, &as_played);
+            // Once 478 is done, Carter's next click is UB-14's 1425 offer (its
+            // only prerequisite is 478), the one non-478 dialog allowed here.
+            let shown: BTreeSet<i64> = if status == "completed" {
+                BTreeSet::from([NEXT_OFFER_SHOW_1425])
+            } else {
+                expected
+            };
             assert_eq!(
                 dialog_chains(&resolved),
-                expected,
+                shown,
                 "whole-seed dialog chains, 478 {status} {step:?}"
             );
         }
