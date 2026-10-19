@@ -132,11 +132,11 @@ Why this shape: Haiku rarely lands a packet first time (only 4.8% of judged Haik
 
 ### Guards, and what the evidence shows
 
-Most hooks run before tool calls; three run at session start. Only `shell_guard` and `orchestrator_guard` refuse anything. The rest of the protection comes from what each agent is allowed to run.
+Of the seven hooks below, four run at session start (three in Claude Code, one in Codex) and three run before tool calls. Only `shell_guard` and `orchestrator_guard` refuse anything. The rest of the protection comes from what each agent is allowed to run.
 
 | Guard | What it stops | Evidence (the problem, not the saving) |
 |---|---|---|
-| `cargo` only through the build lane (`shell_guard`) | parallel builds racing on one target directory, and whole build logs in context | 326 direct calls in the profiled week from 2026-10-03; about 254 GB of disk use from per-worktree target directories on 2026-09-26 (no after figure was measured); a 296-test summary fell from 36,765 to about 270 characters |
+| `cargo` only through the build lane (`shell_guard`) | parallel builds racing on one target directory, and whole build logs in context | 326 direct calls in the profiled week from 2026-10-03; about 254 GB of build output on 2026-09-26 (171 GB in the main checkout's target directory, 62 GB in twelve worktree target directories, 21 GB of sccache; no after figure was measured); a 296-test summary fell from 36,765 to about 270 characters |
 | Reads and searches through Read and Grep (`shell_guard`, Claude Code only) | whole files dumped through the shell | about 10,000 shell reads in the same week; `sed -n` alone returned 38.5M characters |
 | No shell for the orchestrator (its tool list) | the coordinator doing hands-on work at full context | the Opus main session made 3,666 PowerShell calls at 354,545 tokens of average context; one Sonnet-orchestrator pilot averaged 75,159 over 58 requests, but its next wave averaged 122,503 and it missed two of its five targets (not a controlled comparison) |
 | Git hygiene by brief and script, not by a hook | lost worktrees, and a push from the wrong checkout | about 22 worktree registrations vanished on 2026-10-03; the cause is not confirmed, and the two scripts that ran `git worktree prune` no longer do by default. Workers are told never to stash, push, prune or open PRs; `ship` refuses to commit or push outside a registered worktree on a feature branch. No hook blocks raw git. |

@@ -2,7 +2,7 @@
 
 Rewrites the README section "How AI development works here" so that it explains this repo's AI-driven development cycle to someone with no prior knowledge of it, and adds [How we build with AI](docs/agents/ai-sdlc.md) as the deeper reference behind it (ai-harness-docs AH-23a and AH-23b, D-AH50).
 
-The owner decided on 2026-10-18 that the README may be as long as it needs, so the explanation lives where a newcomer looks first. ai-sdlc.md holds the detail; no paragraph appears in both.
+The owner decided on 2026-10-18 that the README may be as long as it needs, so the explanation lives where a newcomer looks first. ai-sdlc.md holds the detail. The README and ai-sdlc.md both state some headline figures (the review and fix costs, the guard evidence, the cost tables), so a figure has two homes and can drift; whether to dedupe is the owner's call, and the AH-24 campaign review checks for drift.
 
 The README section covers:
 

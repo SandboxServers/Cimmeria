@@ -50,7 +50,7 @@ The model numbers behind the roles: 16.9% of Haiku-regime packets escalated (44 
 
 Every agent that writes gets its own git worktree under `.claude/worktrees/<name>/`, made by `mk-worktree.ps1`, and its own test database, `sgw_<name>`. Two writers in one checkout race on git state: one agent's checkout reverts the other's edits. Read-only agents need no worktree.
 
-A worktree is retired the day its PR merges, through `ship.ps1 merge --retire` or `rm-worktree.ps1`. Merged worktrees left behind are not harmless: on 2026-09-26 their build output filled the build drive and stopped every lane build (the build output once reached about 254 GB, [build-system.md](../architecture/build-system.md)). Nobody runs `git worktree prune`: on 2026-10-03 the registrations of about 22 worktrees vanished while their folders stayed, and a worker whose worktree was gone pushed from the main checkout ([rules-and-gotchas.md](rules-and-gotchas.md#windows-and-tooling-traps)).
+A worktree is retired the day its PR merges, through `ship.ps1 merge --retire` or `rm-worktree.ps1`. Merged worktrees left behind are not harmless: on 2026-09-26 their build output filled the build drive and stopped every lane build (the build output once reached about 254 GB, of which worktree target directories were 62 GB, [build-system.md](../architecture/build-system.md)). Nobody runs `git worktree prune`: on 2026-10-03 the registrations of about 22 worktrees vanished while their folders stayed, and a worker whose worktree was gone pushed from the main checkout ([rules-and-gotchas.md](rules-and-gotchas.md#windows-and-tooling-traps)).
 
 ## Reports and one-line returns
 
@@ -180,7 +180,7 @@ Not measured yet:
 
 ## Platforms
 
-**Status: Windows with PowerShell 7 is fully supported. WSL, Linux, and Git Bash on Windows are not validated, but not unsupported.** The build lane, the ship scripts and every agent rule are validated on Windows with PowerShell 7. Every build-lane `.ps1` has a `.sh` twin, and CI runs shellcheck and the twins' tests on Linux, so the `ops` agent uses the `.sh` twins on a Linux or WSL host. "Not validated" means that no full session (orchestrator, packet workers, review, ship) has been run end to end on Linux or WSL, and that the packet workers still need PowerShell: on a host without it they return `blocked: no PowerShell (pwsh) on this host`. The known gaps: [development-workflow.md § WSL and Linux hosts](development-workflow.md#wsl-and-linux-hosts).
+**Status: Windows with PowerShell 7 is fully supported. WSL, Linux, and Git Bash on Windows are not validated, but not unsupported.** The build lane, the ship scripts and every agent rule are validated on Windows with PowerShell 7. Every operational script in tools/build-lane/ (lane, mk-worktree, rm-worktree, ship, rebase-pr and the ops git verbs) has a `.sh` twin, and CI runs shellcheck and the twins' tests on Linux, so the `ops` agent uses the `.sh` twins on a Linux or WSL host. "Not validated" means that no full session (orchestrator, packet workers, review, ship) has been run end to end on Linux or WSL, and that the packet workers still need PowerShell: on a host without it they return `blocked: no PowerShell (pwsh) on this host`. The known gaps: [development-workflow.md § WSL and Linux hosts](development-workflow.md#wsl-and-linux-hosts).
 
 ## Further reading
 
