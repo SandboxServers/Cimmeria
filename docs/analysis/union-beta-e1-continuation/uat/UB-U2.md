@@ -36,7 +36,7 @@ For each area in the table, in order: TP(the stand) (skip the TP for the gate pl
 2. Gate plaza: FIND(2308), camera, SHOT(`u2-gate`).
 3. Command Post: TP, FIND(2300), FIND(2301), FIND(2308), camera on Life_Cmd_1, SHOT(`u2-cmd`).
 4. The life-NPC click: APPROACH(Life_Cmd_1's id), TAP(it). Then `client_ui_state {"lease_id":L}`: record any window that opened. DIALOG.
-5. Barracks: TP, FIND(2308), camera, SHOT(`u2-barracks`).
+5. Barracks: TP, FIND(2308), camera, SHOT(`u2-barracks`). Life_Hut_2 is about 63 m from the stand and may not be streamed yet. If FIND returns nothing, TP to the stand nearest the target and FIND again; if still nothing, record `not found` and mark that item `not-run`, never `pass`.
 6. Barracks south: TP, FIND(2304), camera, SHOT(`u2-debeaux`).
 7. Quartermaster: TP, FIND(2302), FIND(2308), camera on Satterfield, SHOT(`u2-qm`).
 8. Science front: TP, FIND(2308), camera, SHOT(`u2-sci`).

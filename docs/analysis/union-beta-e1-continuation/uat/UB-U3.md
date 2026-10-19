@@ -10,7 +10,7 @@
 | Budget | run A 30, run B 32, run C 42 calls; one fresh driver per run |
 | Piggyback | [UB-U3c](UB-U3c.md) (offers), [UB-U3d](UB-U3d.md) (Carter's marker), [UR1](UR1.md) (the 1423 reward), [UB-U6b](UB-U6b.md) (button 247) |
 
-The arc is three driver runs because one run would pass the 50-turn cap. Do not relog between runs: the 381 login chain 23053 removes the cages. Stands, all in server metres: Carter stand (1009.4, 13.57, 507.85) is 4.5 m from Carter and from Felger. The hub stand (1014.9, 13.57, 508.35) is 3.8 m from the Admin Workstation. Both stands are inside the AdminBuilding region, so 478's enter-region chain 23103 cannot fire and the workstation click (23104) moves the step instead.
+The arc is three driver runs because one run would pass the 50-turn cap. Do not relog between runs: the 381 login chain 23053 removes the cages. Stands, all in server metres: Carter stand (1009.4, 13.57, 507.85) is 4.5 m from Carter and from Felger. The hub stand (1014.9, 13.57, 508.35) is 3.8 m from the Admin Workstation. Both stands are inside the AdminBuilding region, so 478's enter-region chain 23103 need not fire, and the workstation click (23104 from S1746, 23105 from S1747) shows 3224.
 
 ## Orchestrator before the run
 
@@ -35,7 +35,7 @@ The arc is three driver runs because one run would pass the 50-turn cap. Do not 
 ## Driver steps: run B (381 cages, the 473 offer)
 
 1. `lab_ensure_in_world {"lease_id":L,"character":"Uat Fxbetahumdefa"}` (already in the world: no relog). DIALOG.
-2. `client_entity_find {"lease_id":L,"template_id":2320,"fields":["matches","player"]}`. Record all five cage ids with their positions; match each to the cage stands below by the nearest position.
+2. `client_entity_find {"lease_id":L,"template_id":2320,"fields":["matches","player"]}`. Record all five cage ids with their positions; match each to the cage stands below by the nearest position. If FIND returns nothing, TP to the stand nearest the target and FIND again; if still nothing, record `not found` and mark that item `not-run`, never `pass`.
 3. For each cage n = 1 to 5 in order: TP(stand n), then TAP(cage n's id). Stands: 1 (712.4, -65.99, 407.5); 2 (765.9, -62.85, 421.9); 3 (826.3, -35.48, 442.4); 4 (884.8, -15.69, 459.8); 5 (938.3, -3.48, 477.2). If a TAP reports "too far", FIND(2320), APPROACH that cage and TAP once more.
 4. BAG. Record the Xenobiology Cage (3635) stacks and quantities.
 5. TP(1009.4, 13.57, 507.85). FIND(2301). CLICK(Felger). DLGREAD. FINISH. DIALOG.
@@ -75,7 +75,7 @@ The arc is three driver runs because one run would pass the 50-turn cap. Do not 
 | C5 | Felger shows 2015; S1726 | 23081 |
 | C6 | Carter shows 2014; 473 completes | 23083 |
 | C7 | Carter shows the 478 offer (3223); Accept takes 478 | 23101, 23102 |
-| C8 | The workstation shows 3224; the press moves 478 to S1749 | 23104, 23106 |
+| C8 | The workstation shows 3224; the press moves 478 to S1749 | 23104 or 23105, then 23106 |
 | C9 | Carter shows 1995; 478 completes | 23108 |
 
 The row passes when every step above passes, each click opened its dialog on the first press (no CLICK retry needed), and the missions completed in the order 1423, 381, 473, 478.
@@ -91,5 +91,5 @@ The row passes when every step above passes, each click opened its dialog on the
 - B7: no `displaying dialog` 3223 before 473 completes (UB-U3c).
 - C3: whether `enter_region` Storage fired (23073) or the first crate tap advanced the step (23074/23075); record which.
 - C4: `Content: complete objective` 2037 or 2038, then `Content: advancing step` 473 → 1725.
-- C8: `fire_dialog_choice: matched` dialog_id 3224 with its `button_id` (UB-U6b: must be 247, not -1), then `Content: advancing step` 478 → 1749.
+- C8: `fire_dialog_choice: matched` dialog_id 3224 (chain 23104 from S1746 or 23105 from S1747) with its `button_id` (UB-U6b: must be 247, not -1), then `Content: advancing step` 478 → 1749.
 - C9: `Content: completing mission` 478.

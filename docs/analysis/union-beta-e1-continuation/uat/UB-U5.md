@@ -24,7 +24,7 @@
 | 477 | Mimir 1997 (23436, 23437: gives 2646, binds the four subjects) | see [UB-U5c](UB-U5c.md) (23438-23453) | Mimir 1996, takes 2646 (23459) |
 | 479 | Mimir 3228 (23461, 23462) | Machine S1750 → S1751 (23463); Simulator S1752 (23464); Machine S3644, binds 3527 (23465) | Mimir 3227 (23467) |
 
-**Where things are** (server metres): Carter (1011.405, 13.57, 511.851) and Felger from the stand (1009.4, 13.57, 507.85). Ground pad spawn 149 (`BetaSite_00000007`) at (746.555, -19.21, 68.75) with the five scanners 6 to 8.5 m around it; deck pad spawn 151 at (700.48, 157.95, 70.365). Mimir (696.44, 157.77, 67.36), the Analytical Machine (696.44, 157.77, 64.36) and the Consciousness Simulator (699.44, 157.93, 67.36) on the deck. Infirmary stand (960.5, 16.97, 289.5), inside the region (r 10 round the emitter). Satterfield (1004.144, 13.44, 276.69), 18 m outside FireSite (r 12 round (1022.3, 14.5, 271.2)); fire stand (1026.5, 14.37, 268.2), inside it.
+**Where things are** (server metres): Carter (1011.405, 13.57, 511.851) and Felger from the stand (1009.4, 13.57, 507.85). Ground pad spawn 149 (`BetaSite_00000007`) at (746.555, -19.21, 68.75) with the five scanners 6 to 8.5 m around it; deck pad spawn 151 at (700.48, 157.95, 70.365). Mimir (696.44, 157.77, 67.36), the Analytical Machine (696.44, 157.77, 64.36) and the Consciousness Simulator (699.44, 157.93, 67.36) on the deck. Infirmary stand (960.5, 16.97, 289.5), inside the region (r 10 round the emitter). Satterfield (1004.144, 13.44, 276.69), about 7 m outside the FireSite edge (about 19 m from its centre (1022.3, 14.5, 271.2), r 12); fire stand (1026.5, 14.37, 268.2), inside it.
 
 ## Local macros (this file only)
 
