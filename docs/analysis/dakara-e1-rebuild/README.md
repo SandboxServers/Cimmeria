@@ -3,7 +3,7 @@
 > Type: ledger. Audience: the owner, the orchestrator, packet workers and reviewers.
 > Opened 2026-10-06 against `main` @ `ddd549797`; re-sliced to the [campaign-packet skill](../../../.claude/skills/campaign-packet/SKILL.md) on 2026-10-18 against `main` @ `d1bba0400`. Packet prefix `DK-`. Companions: [resume card](RESUME.md), [work packets and contract](work-packets.md), [audit](audit.md), [placements](placements/README.md), [Class Start v6 ledger](../class-start-v6/README.md), [Harset rebuild](../harset-rebuild/README.md), [Castle rebuild](../castle-rebuild/README.md), [operator guide](../zone-restoration-operator-guide.md).
 >
-> **Status (2026-10-19, architect, autonomous): waves 1, 2 and 3 are Done (wave 3: DK-10fc #1881, DK-10b #1883, DK-10c #1885, DK-12c #1887, DK-12b #1889, DK-11 #1892). Wave 3b is shipping (DK-06b PR #1894, DK-10d-B PR #1896); wave 3c (DK-10d-A, with the wave-3b review findings folded in) is dispatched once both merge. Waves 4 to 6 (missions 1648 to 1654 without the fights) are written and need no lab and no owner input: [wave 4](packets/wave-4.md) (DK-41 Ready now), [wave 5](packets/wave-5.md), [wave 6](packets/wave-6.md). The fights (1647 and 1653's guards) are [wave 7](packets/wave-7-blocked.md), BlockedDecision on D-DK5. Decisions D-DK21 to D-DK31 were taken autonomously and are flagged for owner review. Until DK-10d-A merges, 1570 stops at step 4905 in play; until 1647 ships, waves 5 and 6 are built but dormant (D-DK23).** D-DK1 is decided as option F (owner, 2026-10-18), with D-DK17 and D-DK20 ruled: the bridge mission 63100 "Home to Dakara" leads into 1570 (packets DK-10fs and DK-10fc). DK-00 to DK-05 are merged (#1282 to #1288). M1 to M5 UAT are owed; the owner runs them himself, and no agent uses the lab until the campaign ends. The DK-08 review's two calls are ruled (D-DK18, D-DK19). This README is the single status source; [work-packets.md](work-packets.md) holds the rules and packet text, not status.
+> **Status (2026-10-19, late; architect, autonomous): waves 1 to 6 are merged except two held packets.** Merged: waves 1 to 3, 3b (DK-06b #1894, DK-10d-B #1896), 3c (DK-10d-A #1897), 4 (DK-40 #1898, DK-41 #1899), 5 (DK-13 #1903, DK-14a #1904, DK-14b #1905, DK-15 #1906) and 6 (DK-31a #1900, DK-30a #1907, DK-31b #1909, DK-32a #1910; docs #1901). **Held:** DK-30b (`34abe129b`, worktree `dk-30b`) and DK-33 (`41686b50c`, worktree `dk-33`) are committed and reviewed, PRs not opened, merges held for the Union SGC campaign's US-30 and US-31 (F26). **Ready now:** [wave 6b](packets/wave-6b.md): DK-31c (the Ha'tak sequences, worktree `dk-31c`) and the two review-nit packets DK-30b-n and DK-33-n. **Blocked:** [wave 7](packets/wave-7-blocked.md) (GDK1, DK-20, DK-21, DK-32b) on D-DK5. **Close-out:** [DK-99a to DK-99d](packets/wave-99.md); its timing follows D-DK5 (D-DK38). Decisions D-DK21 to D-DK39 were taken autonomously and are flagged for owner review. 1570 to 1646 are playable in story order; 1648 to 1654 are built but dormant until 1647 ships (D-DK23). No step has been run in a client. D-DK1 is decided as option F (owner, 2026-10-18), with D-DK17 and D-DK20 ruled: the bridge mission 63100 "Home to Dakara" leads into 1570 (packets DK-10fs and DK-10fc). DK-00 to DK-05 are merged (#1282 to #1288). M1 to M5 UAT are owed; the owner runs them himself, and no agent uses the lab until the campaign ends. The DK-08 review's two calls are ruled (D-DK18, D-DK19). This README is the single status source; [work-packets.md](work-packets.md) holds the rules and packet text, not status.
 
 ## Why
 
@@ -67,7 +67,7 @@ Handoff claims carry CONFIRMED / CONTRADICTED / UNVERIFIABLE in the [audit](audi
 | F13 | The interact-tag linter (`crates/content-engine/tests/it/interact_tag_linter.rs`) needs an allowlist entry per chain that binds a dialog set from a non-interact trigger. It accepts ranges and has no stale-entry check, so ranges can be added before the chains exist. | linter source | DK-10a |
 | F14 | Every chain replay test in this crate loads the real seed (`build_engine(Some(&pool))`), so mission packets run them through `live-db-test.ps1`, not plain nextest. | `chain_replay_tests/mission_1324.rs` | all mission packets |
 | F15 | No chain on `main` touches mission 1570, and no SGU route campaign exists yet to own its SGC steps 4641 and 4642. | grep of `db/resources/Content/Seed/` | DK-10a (D-DK6) |
-| F16 | Two stale remote branches remain from merged packets: `dakara/dk01-dead-end-fix`, `dakara/dk03-cast-templates`. | `git branch -r` | DK-99 |
+| F16 | Stale remote branches remain from merged packets. On 2026-10-19 there were 22 `origin/dakara/*` branches, from `dk01-dead-end-fix` and `dk03-cast-templates` to every merged wave 3 to 6 packet; the list is in [DK-99d](packets/wave-99.md#dk-99d-operations). | `git branch -r` (2026-10-19, amended) | DK-99d (D-DK39) |
 | F17 | Objective 5937 (step 4904) is seeded `is_optional = false` though its text reads "(Optional) Follow the path...". Completing 5928 alone does not finish the step. | `missions` seed | DK-10b (leave 4904 by `advance_step`) |
 | F18 | Bra'tac (59) and Moh'katan (54) are templates shared with Harset; binds on them are per player, so Dakara binds do not leak, but a template edit would. | DK-03 worknote | all mission packets |
 | F19 | The arrival notice (chain 8002, subject "Dakara: no orders yet") says the Free Jaffa command "is not staffed yet". Under D-DK1 B or C that is false the moment wave 3 merges. The mail is once per character, so characters that already have it keep the old text. | `dakara_e1_space_chains.sql:122`, `chain_replay_tests/dakara_e1_space.rs:63` | DK-10e (D-DK17) |
@@ -89,6 +89,8 @@ Handoff claims carry CONFIRMED / CONTRADICTED / UNVERIFIABLE in the [audit](audi
 | F35 | Point sets 2124 (`Dakara_E1.MohkatanTent`) and 2126 (`Dakara_E1.SuperweaponCourtyard`) already exist (DK-04), so 1650 step 4927 and 1653 step 4936 need no new region. | `point_sets_dakara_e1.sql` | DK-15, DK-32a |
 | F36 | The Command Terminal estimate A-05 is off the navmesh inside tent T1; DK-41's fallback moves spawn 8016 beside the A-01 flap. | placements | DK-41; UAT DK-U22 |
 | F37 | `display_dialog` with no NPC in scope (a `player_loaded` or `dialog_choice` event with no interaction pin) sends nothing and logs a WARN, so every narrator or call with no clicked NPC uses `display_radio_dialog`. | executor | waves 5 and 6 |
+| F38 | The unified UAT guide numbers its DK-04 and DK-05 placement checks DK-U11 to DK-U19, which collide with this ledger's DK-U11 to DK-U31. `mission-pak-overrides.md` (DK-U11, DK-U16) and `content-engine-vocabulary.md` (DK-U17) cite the ledger's meaning. | `docs/guides/unified-uat.md` § Dakara_E1 | DK-99a (D-DK37) |
+| F39 | **The Ha'tak ships are hidden at every level load, and the explosion hides the ship.** West is Kismet root `_Seq_0` (set 1195: 2392 unhide, 2393 explosion); east is `_Seq` (set 1194: 2390, 2391). Each root's `SeqEvent_LevelLoaded` hides the mesh and turns the emitter off; Designer 0 (event 6000) unhides; Designer 1 (6001) hides the mesh and turns the explosion emitter on. No Matinee; whether the emitter loops is not decoded. | offline read of the cooked map, [DK-31a addendum](worknotes/DK-31a.md#addendum-2026-10-19-offline-map-read) | DK-31c (D-DK33 to D-DK36) |
 
 ## Decisions
 
@@ -125,8 +127,16 @@ Older files, worknotes and seed comments say `OD-DKn`; that is the same decision
 | D-DK27 | **1653 is accepted automatically** when 1652 completes. | Decided (architect, autonomous, 2026-10-19); flagged for owner review | F34: no blurb and no Accept. Step 4937 reuses dialog 5849 for its radio beat; the owner checks the text fits (UAT DK-U29). |
 | D-DK28 | **1650 step 4927 "Meet Bra'tac at Moh'katan's tent"** advances on entering the existing region `Dakara_E1.MohkatanTent` (2124). | Decided (architect, autonomous, 2026-10-19); flagged for owner review | F35. A click on Bra'tac was rejected: he stands in the command tent, not at Moh'katan's. |
 | D-DK29 | **DK-41 seeds the story props**: Command Terminal (453), Moh'katan's terminal (454), two ring controls (455, new 462) and two power supplies (456, new 463), spawns 8016-8021. Hostiles move to 464-479. | Decided (architect, autonomous, 2026-10-19); flagged for owner review | Each prop needs its own bind (one template holds one bind and one glow, as F9). West and east follow the map axis estimate; the owner checks the naming (DK-U27). |
-| D-DK30 | **1652 takes item 6784 on the final ring-control click.** DK-31b ships the clicks without the Ha'tak sequences; DK-31a writes a desk note on `play_sequence` (id kind, west/east mapping, hidden state) and DK-31c adds the sequence rows. | Decided (architect, autonomous, 2026-10-19); flagged for owner review | Event sets 1194/1195 ("Unhide Hatak", "Hatak Explosion") exist, but `play_sequence` reaches the acting player only and its id semantics need a read before rows are written. The mission completes either way. |
+| D-DK30 | **1652 takes item 6784 on the final ring-control click.** DK-31b ships the clicks without the Ha'tak sequences; DK-31a writes a desk note on `play_sequence` (id kind, west/east mapping, hidden state) and DK-31c adds the sequence rows. | Decided (architect, autonomous, 2026-10-19); flagged for owner review. DK-31a (#1900) and DK-31b (#1909) merged; DK-31c's rows are D-DK32 to D-DK36 | Event sets 1194/1195 ("Unhide Hatak", "Hatak Explosion") exist, but `play_sequence` reaches the acting player only and its id semantics need a read before rows are written. The mission completes either way. |
 | D-DK31 | **Flag carriers.** Where a step's own dsm row has flags 0 (F33), the chain binds a flagged carrier row instead (6760, 6892 or 6775) so the prop or NPC is clickable, and the click chain displays the step's dialog. No Livewire minigame and no `item_use` decode: the terminal steps are plain clicks. | Decided (architect, autonomous, 2026-10-19); flagged for owner review | F32, F33. No new dialog rows and no template edit. Whether the client shows a carrier's marker as intended is UAT DK-U25. |
+| D-DK32 | **The Ha'tak rows go in four new chains, 8327-8330**, that co-fire beside 8323-8326 on the same triggers; 8320-8326 are not edited. | Decided (architect, autonomous, 2026-10-19); flagged for owner review | Keeps DK-31b's tests and their no-deferred guards on 8323-8326 untouched; a delayed action lives in a chain of its own. Precedent: 3030 co-fires with 3028 (`sgc_w1_chains.sql`). |
+| D-DK33 | **No accept-time unhide.** The ships are shown on `player_loaded Dakara_E1` during 1652: both at step 4933, the east one only at 4934, `delay_ms` 3000. | Decided (architect, autonomous, 2026-10-19); flagged for owner review | Chain 8322 (accept) runs in world 62, the tent, where no Ha'tak exists (DK-31a § 4). The map hides both ships at every load (F39), so the player sees them when they step out of the tent. |
+| D-DK34 | **No explosion replay after a relog, and nothing after 1652 completes.** A destroyed ship is "kept" by not sending its unhide. | Decided (architect, autonomous, 2026-10-19); flagged for owner review | F39: the level hides both ships on load, so a relog after the west click shows only the east one, which is the story state. After 1652 neither ship shows. |
+| D-DK35 | **West = 2392 (unhide) and 2393 (explosion); east = 2390 and 2391.** | Decided (architect, autonomous, 2026-10-19), from the offline map read | F39 settles the mapping by each prefab's `SequenceInstance`. DK-U27 is the client check; [wave 6b](packets/wave-6b.md) names the one swap point if it fails. |
+| D-DK36 | **The explosion fires 3000 ms after the ring-control click**, so it lands after dialog 6108 or 6109 opens. | Decided (architect, autonomous, 2026-10-19); flagged for owner review | Chain 3030's delay. Whether the fire burns on until the next level load (a looping emitter) is not decoded; DK-U27 asks the owner to note it. |
+| D-DK37 | **The ledger's DK-U ids are canonical.** The unified UAT guide's placement rows DK-U11 to DK-U19 become DK-P1 to DK-P9, and the guide gains the ledger's DK-U11 to DK-U31. | Decided (architect, autonomous, 2026-10-19) | F38. Two reference docs already cite the ledger's ids; the guide's rows are only cited inside the guide. DK-99a does it. |
+| D-DK38 | **The close-out is split (DK-99a to DK-99d) and its timing follows D-DK5.** DK-99a (the UAT guide) runs once DK-31c merges. DK-99b and DK-99c run when every code packet that will ship has merged: under D-DK5 A, B or D that includes wave 7; under C it is DK-31c, DK-30b and DK-33. The owner's UAT never blocks the close-out: it stays UATPending. If US-30 or US-31 never land, the close-out may run without DK-30b or DK-33 and keeps their worktrees. | Decided (architect, autonomous, 2026-10-19); flagged for owner review | A single DK-99 would wait for the slowest of D-DK5, US-30, US-31 and the owner's UAT. [Wave 99](packets/wave-99.md). |
+| D-DK39 | **Delete every merged `origin/dakara/*` branch at close-out** (22 on 2026-10-19), not only the two F16 first named. | Decided (architect, autonomous, 2026-10-19) | F16 amended. Each is merged or squash-merged under a PR; DK-99d checks each before deleting and lists any it keeps. |
 
 ### D-DK1 option E: a bridge for the first minutes
 
@@ -214,7 +224,7 @@ If DK-U11 or DK-U12 fails and the cause is not quick to fix, fall back to **B wi
 | B-DK2 | No coordinate for any story actor, object or area. | **Lifted** by DK-02's map estimates; the five drop locations remain | DK-12a (D-DK13) |
 | B-DK3 | No hostile design for Dakara. | Open; blocks wave 7 only | D-DK5, GDK1 |
 | B-DK4 | The SGC cannot be left. | **Partly resolved** (F26): crossings C2, C2b, C3 frozen and arrival H3 sealed by the SGC campaign; its return chains US-30 and US-31 are unbuilt. DK-30b and DK-33 are built now and merge only after US-30 and US-31 | DK-30b, DK-33 |
-| B-DK5 | Radio beats need an NPC speaker with no NPC present. | Resolved by D-DK10 (option B) once DK-06b merges; confirmed by DK-U17 | DK-06a, DK-06b, D-DK10 |
+| B-DK5 | Radio beats need an NPC speaker with no NPC present. | **Resolved** by D-DK10 (option B): DK-06b merged (#1894); the client check is DK-U17 | DK-06a, DK-06b, D-DK10 |
 | B-DK6 | No client map for worlds 24, 63, 64, 65. | Permanent | Non-goal |
 
 ## Matrices
@@ -227,17 +237,17 @@ Legend, as in the Class Start v6 ledger: **BUILD** can be implemented now; **BUI
 |---|---|---|---|---|
 | 00 | 63100 Home to Dakara (`NEW CONTENT`, D-DK1 F) | Dakara | Integrated (DK-10fs, DK-10fc merged); UATPending (M2) | DK-10fs, DK-10fc |
 | 01 | 1570 SG-18, steps 4641-4642 | SGC | BLOCKED (route campaign) | DK-10a advances past them (D-DK6) |
-| 01 | 1570 SG-18, steps 4906-4903 | Dakara | BUILD (wave 3 merged; 4903 in PR #1896; step 4905 waits on DK-10d-A, wave 3c) | DK-10a, DK-10b, DK-10c (DK-08, D-DK18), DK-10d-B, DK-10d-A (DK-06b) |
-| 02 | 1645 Withdrawal Orders | Dakara | Integrated (DK-11); reachable in play only after DK-10d-A | DK-11 |
-| 03 | 1646 Moh'katan's Scouts | Dakara | Integrated (DK-12b, DK-12c) | DK-12a, DK-09, DK-12b, DK-12c |
+| 01 | 1570 SG-18, steps 4906-4903 | Dakara | Integrated (waves 3 to 3c; step 4905 #1897, 4903 #1896); UATPending (M2) | DK-10a, DK-10b, DK-10c (DK-08, D-DK18), DK-10d-B, DK-10d-A (DK-06b) |
+| 02 | 1645 Withdrawal Orders | Dakara | Integrated (DK-11, #1892); UATPending (M2) | DK-11 |
+| 03 | 1646 Moh'katan's Scouts | Dakara | Integrated (DK-12b, DK-12c); UATPending (M2) | DK-12a, DK-09, DK-12b, DK-12c |
 | 04 | 1647 Enemy at the Gates | Dakara | BLOCKED (D-DK5) | GDK1, DK-20, DK-21 (wave 7) |
-| 05 | 1648 Loth'ta's Withdrawal | Dakara | BUILD (wave 5; dormant until 1647, D-DK23) | DK-40, DK-13 |
-| 06 | 1649 Moh'katan | Dakara | BUILD (wave 5) | DK-40, DK-41, DK-14a, DK-14b |
-| 07 | 1650 Confront Moh'katan | Dakara, tent interior | BUILD (wave 5) | DK-40, DK-41, DK-15 |
-| 08 | 1651 Renewed Attack | Dakara, SGC, Dakara | BUILD (wave 6); DK-30b merge held for SGC US-30 | DK-30a, DK-30b |
-| 09 | 1652 Fireball | Dakara | BUILD (wave 6; Ha'tak sequences in 6b) | DK-41, DK-31a, DK-31b, DK-31c |
-| 10 | 1653 Superweapon | Dakara | BUILD without the guards (wave 6); guards BLOCKED (D-DK5); vocuum O5643 unscheduled | DK-41, DK-32a; DK-32b (wave 7) |
-| 11 | 1654 Aftermath | Dakara to SGC | BUILD (wave 6); merge held for SGC US-31 | DK-33 |
+| 05 | 1648 Loth'ta's Withdrawal | Dakara | Integrated (DK-13, #1903); dormant until 1647 (D-DK23); UATPending (M3) | DK-40, DK-13 |
+| 06 | 1649 Moh'katan | Dakara | Integrated (DK-14a #1904, DK-14b #1905); dormant; UATPending (M3) | DK-40, DK-41, DK-14a, DK-14b |
+| 07 | 1650 Confront Moh'katan | Dakara, tent interior | Integrated (DK-15, #1906); dormant; UATPending (M3) | DK-40, DK-41, DK-15 |
+| 08 | 1651 Renewed Attack | Dakara, SGC, Dakara | Dakara steps Integrated (DK-30a, #1907); the DHD crossing DK-30b committed, merge held for SGC US-30 | DK-30a, DK-30b |
+| 09 | 1652 Fireball | Dakara | Integrated without the Ha'tak sequences (DK-31b, #1909); sequences Ready (DK-31c, wave 6b) | DK-41, DK-31a, DK-31b, DK-31c |
+| 10 | 1653 Superweapon | Dakara | Integrated without the guards (DK-32a, #1910); guards BLOCKED (D-DK5); vocuum O5643 unscheduled | DK-41, DK-32a; DK-32b (wave 7) |
+| 11 | 1654 Aftermath | Dakara to SGC | DK-33 committed, merge held for SGC US-31 | DK-33 |
 | 12 | 1655 Shutdown | SGC, Omega Site | BLOCKED | Outside this campaign |
 
 ### Systems
@@ -252,12 +262,12 @@ Legend, as in the Class Start v6 ledger: **BUILD** can be implemented now; **BUI
 | Static population | Integrated (#1288); M2 UAT pending | DK-05 |
 | Chain block registered | Done (#1853) | DK-07 |
 | Any-order objective pattern | Done (ruling, #1855) | DK-08 |
-| Radio dialog | Evidence Done (DK-06a); D-DK10 ruled B; verb shipping (DK-06b, PR #1894); UAT DK-U17 | DK-06a, DK-06b |
+| Radio dialog | Integrated (DK-06a #1854, DK-06b #1894); UATPending (DK-U17) | DK-06a, DK-06b |
 | SG-18 remains, their search regions and drop-location props placed | Done (#1869, #1867); M2 position pass owed | DK-12a, DK-09, DK-09b |
-| Seed files and test scaffolding for 1648-1654 | BUILD (wave 4, after DK-06b) | DK-40 |
-| Story props: terminals, ring controls, power supplies | BUILD (wave 4, Ready) | DK-41 |
+| Seed files and test scaffolding for 1648-1654 | Done (#1898) | DK-40 |
+| Story props: terminals, ring controls, power supplies | Integrated (#1899); UATPending (DK-U22, DK-U25, DK-U27) | DK-41 |
 | Hostile roster, encounters, world-61 cover sets | BlockedDecision (D-DK5) | GDK1, DK-20 |
-| Ha'tak show and explode sequences (event sets 1194, 1195) | BUILD (desk note wave 6, rows wave 6b) | DK-31a, DK-31c |
+| Ha'tak show and explode sequences (event sets 1194, 1195) | Evidence Done (DK-31a #1900, map read F39); rows Ready (DK-31c, wave 6b) | DK-31a, DK-31c |
 | A way out of the SGC | Partly resolved (B-DK4, F26): SGC campaign's US-30, US-31 | SGC campaign |
 | Vendors, trainers, ambient population | BLOCKED (no data) | none |
 | Mission rewards | BLOCKED (GC3, D-DK7) | none |
@@ -266,7 +276,7 @@ Legend, as in the Class Start v6 ledger: **BUILD** can be implemented now; **BUI
 
 ## Packets
 
-This table is the only packet status. Rules, contract and packet text: [work-packets.md](work-packets.md) and [packets/](packets/). **Current wave: 3b (shipping, PR #1894 and PR #1896). Dispatchable now: DK-41 and DK-31a.**
+This table is the only packet status. Rules, contract and packet text: [work-packets.md](work-packets.md) and [packets/](packets/). **Current wave: 6b ([packets](packets/wave-6b.md)). Dispatchable now: DK-31c (new worktree `dk-31c`), DK-30b-n (worktree `dk-30b`) and DK-33-n (worktree `dk-33`). Held: DK-30b and DK-33 (US-30, US-31). Blocked: wave 7 (D-DK5).**
 
 | Packet | Wave | Scope | Depends on | Role | Status |
 |---|---|---|---|---|---|
@@ -291,29 +301,34 @@ This table is the only packet status. Rules, contract and packet text: [work-pac
 | DK-11 | 3 | Mission 1645 | DK-10a (gate per D-DK1) | packet-coder | Done (#1892) |
 | DK-12b | 3 | 1646 offer, accept and turn-in | DK-10a, DK-11 contract | packet-coder | Done (#1889) |
 | DK-12c | 3 | 1646 five drops | DK-10a, DK-08, DK-09 | packet-coder | Done (#1887) |
-| DK-06b | 3b | `display_radio_dialog` verb: `EntityId` 0, no NPC (D-DK10 B) ([packet](packets/wave-3b-dk-06b.md)) | DK-06a, D-DK10 (both met) | packet-coder | Review done; shipping (PR #1894) |
-| DK-10d-B | 3b | 1570 step 4903, Bra'tac turn-in, chains 8164-8165 ([packet](packets/wave-3.md#dk-10d-b-1570-step-4903-bratacs-turn-in)) | DK-10a (met) | packet-coder | Review done; shipping (PR #1896) |
-| DK-10d-A | 3c | 1570 step 4905, radio report, chains 8160-8163 and 8166-8171; wave-3b review findings folded in ([packet](packets/wave-3.md#dk-10d-a-1570-step-4905-the-radio-report)) | DK-06b, DK-10d-B (both merged) | packet-coder | BlockedDependency (PR #1894, PR #1896) |
-| DK-40 | 4 | Seed files, `\ir` lines, linter ranges, test submodules and label arms for 1648-1654 (D-DK21) ([packet](packets/wave-4.md#dk-40-seed-files-and-test-scaffolding-for-missions-1648-1654)) | DK-06b merged | packet-coder | BlockedDependency (PR #1894) |
-| DK-41 | 4 | Story props 453-456, 462, 463; spawns 8016-8021 (D-DK29) ([packet](packets/wave-4.md#dk-41-story-props-terminals-ring-controls-power-supplies)) | none | packet-coder | **Ready** |
-| DK-13 | 5 | Mission 1648, chains 8180-8186 ([packet](packets/wave-5.md#dk-13-mission-1648-lothtas-withdrawal)) | DK-40, DK-41 | packet-coder | BlockedDependency (DK-40, DK-41) |
-| DK-14a | 5 | Mission 1649 offer (radio 5831, D-DK25), Bra'tac, Teal'c radio, turn-in; chains 8200-8208 | DK-40, DK-41 | packet-coder | BlockedDependency (DK-40, DK-41) |
-| DK-14b | 5 | Mission 1649 step 4922: terminal and drops through carrier 6760 (D-DK31); chains 8220-8230 | DK-40, DK-41 | packet-coder | BlockedDependency (DK-40, DK-41) |
-| DK-15 | 5 | Mission 1650: tent region (D-DK28), Ba'al hologram, terminal, turn-in; chains 8250-8260 (was DK-15a/b) | DK-40, DK-41 | packet-coder | BlockedDependency (DK-40, DK-41) |
-| DK-30a | 6 | Mission 1651 Dakara steps (auto-accept, D-DK26); chains 8290-8294 ([packet](packets/wave-6.md#dk-30a-mission-1651-renewed-attack-dakara-side)) | DK-40, DK-41 | packet-coder | BlockedDependency (DK-40, DK-41) |
-| DK-30b | 6 | 1651 DHD crossing C2 to the SGC (D-DK24); chains 8310-8312 | DK-40, DK-41; **merge** after SGC US-30 | packet-coder | BlockedDependency (DK-40, DK-41); merge hold US-30 |
-| DK-31a | 6 | Desk note: `play_sequence` ids, west/east Ha'tak, hidden state, rows for DK-31c (D-DK30) | none | `rust-gameserver-dev` | **Ready** |
-| DK-31b | 6 | Mission 1652 ring controls, item 6784, no sequences (D-DK30); chains 8320-8326 | DK-40, DK-41 | packet-coder | BlockedDependency (DK-40, DK-41) |
-| DK-32a | 6 | Mission 1653 without the guards (auto-accept, D-DK27): courtyard, supplies, radio, report; chains 8350-8363 | DK-40, DK-41 | packet-coder | BlockedDependency (DK-40, DK-41) |
-| DK-33 | 6 | Mission 1654 and the DHD crossing C3 to the SGC; chains 8430-8435 | DK-40, DK-41; **merge** after SGC US-31 | packet-coder | BlockedDependency (DK-40, DK-41); merge hold US-31 |
-| DK-31c | 6b | 1652 Ha'tak `play_sequence` rows in DK-31b's chains; the architect expands it from DK-31a's note | DK-31a, DK-31b | packet-coder | BlockedDependency (DK-31a, DK-31b) |
+| DK-06b | 3b | `display_radio_dialog` verb: `EntityId` 0, no NPC (D-DK10 B) ([packet](packets/wave-3b-dk-06b.md)) | DK-06a, D-DK10 (both met) | packet-coder | Integrated (#1894); UATPending (DK-U17) |
+| DK-10d-B | 3b | 1570 step 4903, Bra'tac turn-in, chains 8164-8165 ([packet](packets/wave-3.md#dk-10d-b-1570-step-4903-bratacs-turn-in)) | DK-10a (met) | packet-coder | Integrated (#1896); UATPending (M2) |
+| DK-10d-A | 3c | 1570 step 4905, radio report, chains 8160-8163 and 8166-8171; wave-3b review findings folded in ([packet](packets/wave-3.md#dk-10d-a-1570-step-4905-the-radio-report)) | DK-06b, DK-10d-B (both merged) | packet-coder | Integrated (#1897); UATPending (DK-U17) |
+| DK-40 | 4 | Seed files, `\ir` lines, linter ranges, test submodules and label arms for 1648-1654 (D-DK21) ([packet](packets/wave-4.md#dk-40-seed-files-and-test-scaffolding-for-missions-1648-1654)) | DK-06b merged | packet-coder | Done (#1898) |
+| DK-41 | 4 | Story props 453-456, 462, 463; spawns 8016-8021 (D-DK29) ([packet](packets/wave-4.md#dk-41-story-props-terminals-ring-controls-power-supplies)) | none | packet-coder | Integrated (#1899); UATPending (DK-U22, DK-U25) |
+| DK-13 | 5 | Mission 1648, chains 8180-8186 ([packet](packets/wave-5.md#dk-13-mission-1648-lothtas-withdrawal)) | DK-40, DK-41 | packet-coder | Integrated (#1903); UATPending (M3) |
+| DK-14a | 5 | Mission 1649 offer (radio 5831, D-DK25), Bra'tac, Teal'c radio, turn-in; chains 8200-8208 | DK-40, DK-41 | packet-coder | Integrated (#1904); UATPending (M3) |
+| DK-14b | 5 | Mission 1649 step 4922: terminal and drops through carrier 6760 (D-DK31); chains 8220-8230 | DK-40, DK-41 | packet-coder | Integrated (#1905); UATPending (M3) |
+| DK-15 | 5 | Mission 1650: tent region (D-DK28), Ba'al hologram, terminal, turn-in; chains 8250-8260 (was DK-15a/b) | DK-40, DK-41 | packet-coder | Integrated (#1906); UATPending (M3) |
+| DK-30a | 6 | Mission 1651 Dakara steps (auto-accept, D-DK26); chains 8290-8294 ([packet](packets/wave-6.md#dk-30a-mission-1651-renewed-attack-dakara-side)) | DK-40, DK-41 | packet-coder | Integrated (#1907); UATPending (DK-U26). Review nit, no fix: the restore tests for 8291 and 8293 skip `assert_no_deferred_actions` (harmless, both chains only bind) |
+| DK-30b | 6 | 1651 DHD crossing C2 to the SGC (D-DK24); chains 8310-8312 | **merge** after SGC US-30 | packet-coder | Review done (static, no lane run); commit `34abe129b` in `dk-30b`; PR not opened; **merge hold US-30**. Nits: DK-30b-n |
+| DK-31a | 6 | Desk note: `play_sequence` ids, west/east Ha'tak, hidden state, rows for DK-31c (D-DK30) | none | `rust-gameserver-dev` | Done (#1900); map-read addendum 2026-10-19 (F39) |
+| DK-31b | 6 | Mission 1652 ring controls, item 6784, no sequences (D-DK30); chains 8320-8326 | DK-40, DK-41 | packet-coder | Integrated (#1909); UATPending (DK-U27) |
+| DK-32a | 6 | Mission 1653 without the guards (auto-accept, D-DK27): courtyard, supplies, radio, report; chains 8350-8363 | DK-40, DK-41 | packet-coder | Integrated (#1910; evidence labels fixed in review before merge); UATPending (DK-U28 to DK-U31) |
+| DK-33 | 6 | Mission 1654 and the DHD crossing C3 to the SGC; chains 8430-8435 | **merge** after SGC US-31 | packet-coder | Review done (static, no lane run); commit `41686b50c` in `dk-33`; PR not opened; **merge hold US-31**. Nits: DK-33-n |
+| DK-31c | 6b | 1652 Ha'tak sequences: chains 8327-8330 (D-DK32 to D-DK36) ([packet](packets/wave-6b.md#dk-31c-the-hatak-sequences-of-mission-1652)) | DK-31a, DK-31b (both merged) | packet-coder | **Ready**; worktree `dk-31c`, branch `dakara/dk-31c-hatak-sequences` |
+| DK-30b-n | 6b | DK-30b review nits: a test comment, a blank line ([packet](packets/wave-6b.md#dk-30b-n-two-review-nits-in-dk-30b)) | none | packet-coder | **Ready**; in worktree `dk-30b`, before its PR |
+| DK-33-n | 6b | DK-33 review nits: drop a redundant test, add the archetype-6 boundary ([packet](packets/wave-6b.md#dk-33-n-two-review-nits-in-dk-33)) | none | packet-coder | **Ready**; in worktree `dk-33`, before its PR |
 | GDK1 | 7 | Encounter design record for 1647 and 1653's guards ([wave 7](packets/wave-7-blocked.md)) | D-DK5, M2 playtest | `npc-ai-spawn-advisor` | BlockedDecision (D-DK5) |
 | DK-20 | 7 | Hostile roster, templates 464-479, spawns from 8022 | GDK1 | packet-coder | BlockedDecision (D-DK5) |
 | DK-21 | 7 | Mission 1647, chains 8390-8429 (likely split a/b); wakes waves 5 and 6 | DK-20 | packet-coder | BlockedDecision (D-DK5) |
 | DK-32b | 7 | 1653 courtyard guards, chains 8450-8479 | GDK1, DK-20, DK-32a | packet-coder | BlockedDecision (D-DK5) |
-| DK-99 | close | Close-out | all | `documentation-writer`, ops | BlockedDependency |
+| DK-99a | close | Unified UAT guide: ledger rows DK-U11 to DK-U31, placement rows renamed DK-P1 to DK-P9 (D-DK37) ([packet](packets/wave-99.md#dk-99a-the-unified-uat-guide)) | DK-31c merged | packet-coder | BlockedDependency (DK-31c) |
+| DK-99b | close | `mission-chains.md` and `zone-audit.md` for Dakara ([packet](packets/wave-99.md#dk-99b-mission-chains-and-zone-audit)) | every shipping code packet merged (D-DK38) | `documentation-writer` | BlockedDependency (D-DK5, US-30, US-31) |
+| DK-99c | close | Status docs once, final ledger ([packet](packets/wave-99.md#dk-99c-status-docs-and-the-final-ledger)) | DK-99b | `documentation-writer` | BlockedDependency (DK-99b) |
+| DK-99d | close | Retire worktrees, delete 22 remote branches, board handoff, empty the active-campaign pointer ([packet](packets/wave-99.md#dk-99d-operations)) | the DK-99 PR merged | ops, orchestrator | BlockedDependency (DK-99c) |
 
-Waves 1 to 3 are Done. **Wave 3c** (DK-10d-A) is dispatched only after DK-06b and DK-10d-B have both merged to `main` (it needs the verb and appends to DK-10d-B's seed and test files); its worktree is created from that `main`. M2 needs waves 3, 3b and 3c merged: until DK-10d-A merges, 1570 stops at step 4905 and 1645/1646 cannot be reached in play. **Order from here:** dispatch DK-41 and DK-31a now; DK-40 once PR #1894 (DK-06b) merges; when DK-40 and DK-41 have both merged, dispatch wave 5 (four packets) and wave 6 (DK-30a, DK-30b, DK-31b, DK-32a, DK-33) together, each in its own worktree; DK-31c once DK-31a and DK-31b are in. DK-30b and DK-33 open PRs but hold the merge for the SGC campaign's US-30 and US-31. Wave 7 waits on D-DK5. Every wave is reviewed by one read-only `packet-reviewer`; a `packet-coder` (Haiku) applies its findings (owner, 2026-10-18).
+Waves 1 to 6 are merged except the two held packets. **Order from here:** dispatch wave 6b now: DK-31c in a new worktree `dk-31c` from `main`, and DK-30b-n and DK-33-n in the existing worktrees `dk-30b` and `dk-33`; one read-only `packet-reviewer` for the three, its findings to a fresh `packet-coder`. Ship DK-31c when reviewed; then DK-99a. DK-30b and DK-33 open their PRs only when the Union SGC campaign's US-30 and US-31 have merged (F26). Wave 7 waits on D-DK5; DK-99b to DK-99d follow D-DK38. Review notes on merged packets: DK-30a's restore tests for 8291 and 8293 skip `assert_no_deferred_actions` (harmless, no fix); DK-32a's evidence labels were fixed in review before #1910. Both held packets were reviewed statically, without a lane run: run their lane checks in DK-30b-n and DK-33-n. Every wave is reviewed by one read-only `packet-reviewer`; a `packet-coder` (Haiku) applies its findings (owner, 2026-10-18).
 
 ## The Dead-End Fix, Exactly
 
@@ -357,7 +372,7 @@ Tests follow [TESTING.md](../../../TESTING.md): a chain-replay test (type 6, liv
 | M1 Dead end removed | DK-01 (with #1273) | New Free Jaffa: the notice arrives once; the DHD lists Omega Site; dial, cross, arrive standing at Omega Site; Omega's DHD lists Dakara E1; return lands on the plaza outside the gate; relog keeps both addresses; a death respawns at the plaza. A Human visitor gets no grant from the chain. Runnable now (B-DK1 resolved); CS-08 covers the arrival only (F12). |
 | M2 Arrival story | DK-02 to DK-05, waves 1 to 3 | The bridge mission 63100 shows and completes ([M2 bridge checklist](#m2-bridge-checklist-mission-63100), DK-U11 to DK-U16); Bra'tac, Moh'katan and Loth'ta are where the ledger says and survive a relog; tent flaps work both ways; 1570's Dakara half, 1645 and 1646 complete in order with a relog at every step; the owner corrects positions in one pass; the owner answers D-DK5. |
 | M3 Betrayal | waves 4 and 5 (DK-40, DK-41, DK-13, DK-14a, DK-14b, DK-15); wave 7 for the gate defence | 1648 to 1650 complete in order with a relog at every step ([M3 checklist](#m3-checklist-missions-1648-to-1650), DK-U18 to DK-U25); radio beats show; the terminal, the drops and the decode work; the tent confrontation plays for one player without changing what another sees. The gate defence (1647) is winnable at the player's level once wave 7 ships. |
-| M4 Climax | wave 6 (DK-30a, DK-30b, DK-31b, DK-32a), wave 6b (DK-31c), DK-32b | SGC round trip (needs SGC US-30); both Ha'taks appear and explode for the acting player (DK-31c); courtyard objectives complete ([M4/M5 checklist](#m4-and-m5-checklist-missions-1651-to-1654), DK-U26 to DK-U31). |
+| M4 Climax | wave 6 (DK-30a, DK-30b, DK-31b, DK-32a), wave 6b (DK-31c), DK-32b | SGC round trip (needs SGC US-30); both Ha'taks show when the player enters world 61 during 1652, and each explodes on its own ring-control click, for the acting player only (DK-31c, D-DK33 to D-DK36); courtyard objectives complete ([M4/M5 checklist](#m4-and-m5-checklist-missions-1651-to-1654), DK-U26 to DK-U31). |
 | M5 Exit | DK-33, DK-99 | 1654 hands off to the SGC once (needs SGC US-31); final PASS / BLOCKED matrix. |
 
 ### M1 checklist: dead end removed
@@ -379,7 +394,7 @@ DK-01's lab steps, mirrored in the [unified UAT guide](../../guides/unified-uat.
 
 ### M2 bridge checklist: mission 63100
 
-Runs after waves 2 and 3 are deployed (DK-10a, DK-10e, DK-10fs, DK-10fc), on a new Free Jaffa. All pending; the owner runs it (D-DK1 F, D-DK20). DK-99 copies it to the unified UAT guide.
+Runs after waves 2 and 3 are deployed (DK-10a, DK-10e, DK-10fs, DK-10fc), on a new Free Jaffa. All pending; the owner runs it (D-DK1 F, D-DK20). DK-99a copies it to the unified UAT guide.
 
 | # | Do | Expect | Notes / known issues |
 |---|---|---|---|
@@ -392,7 +407,7 @@ Runs after waves 2 and 3 are deployed (DK-10a, DK-10e, DK-10fs, DK-10fc), on a n
 
 ### M2 radio check: mission 1570 step 4905
 
-Runs in the same M2 session after DK-06b and DK-10d-A are deployed. Pending; the owner runs it. It is the proof for D-DK10 option B (`EntityId` 0). DK-99 copies it to the unified UAT guide.
+Runs in the same M2 session after DK-06b and DK-10d-A are deployed. Pending; the owner runs it. It is the proof for D-DK10 option B (`EntityId` 0). DK-99a copies it to the unified UAT guide.
 
 | # | Do | Expect | Notes / known issues |
 |---|---|---|---|
@@ -400,7 +415,7 @@ Runs in the same M2 session after DK-06b and DK-10d-A are deployed. Pending; the
 
 ### M3 checklist: missions 1648 to 1650
 
-Runs after waves 4 and 5 are deployed. All pending; the owner runs it. Until wave 7 ships 1647 these missions are dormant (D-DK23): start from a character with 1647 marked completed by a GM (`.missioncomplete 1647` if that command is live; otherwise wait for wave 7). Relog once at every step. DK-99 copies it to the unified UAT guide.
+Runs after waves 4 and 5 are deployed. All pending; the owner runs it. Until wave 7 ships 1647 these missions are dormant (D-DK23): start from a character with 1647 marked completed by a GM (`.missioncomplete 1647` if that command is live; otherwise wait for wave 7). Relog once at every step. DK-99a copies it to the unified UAT guide.
 
 | # | Do | Expect | Notes / known issues |
 |---|---|---|---|
@@ -415,12 +430,12 @@ Runs after waves 4 and 5 are deployed. All pending; the owner runs it. Until wav
 
 ### M4 and M5 checklist: missions 1651 to 1654
 
-Runs after wave 6 is deployed and, for DK-U27 and DK-U31's SGC legs, after the SGC campaign's US-30 and US-31. All pending; the owner runs it.
+Runs after waves 6 and 6b are deployed and, for DK-U26 and DK-U30's SGC legs, after DK-30b and DK-33 merge behind the SGC campaign's US-30 and US-31. Like M3, it needs 1647 GM-completed until wave 7 ships. All pending; the owner runs it.
 
 | # | Do | Expect | Notes / known issues |
 |---|---|---|---|
 | DK-U26 | Complete 1650, play 1651's Dakara steps, then right-click the Dakara DHD at the "Use the Stargate" step | 1651 "Renewed Attack" is accepted on its own (no blurb exists, D-DK26) and Bra'tac's lines follow. At the DHD you cross to the SGC and arrive at its H3 point, standing. The dialling window does not open at that step, and does at any other time | D-DK24, F25. Two-way only once US-30 is merged. If the window opens instead, report it |
-| DK-U27 | Accept 1652 from Bra'tac; click the west ring control, then the east | The X-minus control (6108) then the X-plus control (6109) play; the final click takes 6784 and 1652 completes. After DK-31c both Ha'taks appear on accept and explode on the clicks, for the acting player only | D-DK29, D-DK30: west and east follow a map-axis estimate. Say if the naming is backwards |
+| DK-U27 | Accept 1652 from Bra'tac; click the west ring control, then the east | The X-minus control (6108) then the X-plus control (6109) play; the final click takes 6784 and 1652 completes. With DK-31c: nothing shows on accept (the tent has no Ha'tak). On stepping out into world 61, about 3 s after loading, both Ha'taks appear in the sky, west and east. About 3 s after the west click the west ship vanishes in an explosion; the east click does the same to the east ship. A relog between the clicks shows only the east ship. Only the acting player sees any of it | D-DK29, D-DK33 to D-DK36. Say if the wrong ship explodes (the fix is one id swap, [wave 6b](packets/wave-6b.md)), and whether the fire keeps burning until you relog or leave (the emitter may loop) |
 | DK-U28 | Complete 1652, then walk into the superweapon courtyard | 1653 "Superweapon" is accepted on its own (D-DK27). The step moves on entry and both power supplies become clickable | DK-U31 covers a player already inside |
 | DK-U29 | Click each power supply (either order) | One dialog per click; the second moves the step and the radio call (5849) opens | Step 4937 reuses 5849: say whether the text fits that moment |
 | DK-U30 | Close 5849, report to Bra'tac in the tent, take 1654 from him, then right-click the DHD at its SGC step | 5848 plays and 1653 completes. 1654's offer shows on Bra'tac; the Tau'ri and Jaffa get different lines (5850, 5851). At the DHD you cross to the SGC once (C3, needs US-31); the dialling window does not open at that step | DK-33. The vocuum objective (O5643, optional) has nothing built |

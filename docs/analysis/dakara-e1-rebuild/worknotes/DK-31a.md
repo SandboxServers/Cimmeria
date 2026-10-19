@@ -71,3 +71,20 @@ Steps: 4933 "western" and 4934 "eastern" are confirmed by `db/resources/Missions
 ## Checks
 
 No code changed, so no lane check. The worknote is CRLF (checked before the commit).
+
+## Addendum (2026-10-19): offline map read
+
+Added by the architect when expanding DK-31c, from a read-only decode of the cooked client map `Maps\Dakara_E1\Dakara_E1.umap` and `Packages\GA-Props.upk` with `tools/upk_parser.py` and `extract_kismet --graph` (package version 486). No client, lab or Ghidra. It settles sections 2 and 3 and the pairing in section 4.
+
+| | West (-111.71, 353.92, 78.09) | East (367.16, 359.60, 136.13) |
+|---|---|---|
+| Kismet root | `GA-Hatak00_Pf0_Seq_0` (export 872) | `GA-Hatak00_Pf0_Seq` (export 871) |
+| Prefab instance | `PrefabInstance_1` (export 503), `SequenceInstance` = 872 | `PrefabInstance_4` (export 506), `SequenceInstance` = 871 |
+| Mesh, emitter | `StaticMeshActor_2` (1193), `Emitter_0` (8) | `StaticMeshActor_3` (1194), `Emitter_2` (10) |
+| Sequence ids | 2392 unhide, 2393 explosion | 2390 unhide, 2391 explosion |
+
+- **West is set 1195, east is set 1194.** The link is each prefab instance's `SequenceInstance` property; the toggles' targets point at the matching mesh and emitter. The section 2 hypothesis holds.
+- **Designer 0 = unhide, Designer 1 = explosion, on both roots.** Designer 0 (event 6000) drives `SeqAct_ToggleHidden` UnHide on the mesh. Designer 1 (event 6001) drives Hide on the mesh and Turn On on the explosion emitter in the same step.
+- **Hidden at every load.** No actor carries `bHidden`; instead each root's `SeqEvent_LevelLoaded` hides the mesh and turns the emitter off. So a ship is shown only after event 6000 plays, and the state resets on every level load: a restore re-sends the unhide, and a destroyed ship stays gone by not sending it.
+- **No Matinee.** The explosion is a Toggle On of a particle emitter (`Com-HatakExplosion`), not a clip; whether the emitter is one-shot or loops was not decoded. If it loops, it burns until the next level load. DK-U27 notes what the owner sees.
+- The `SeqEvent_Console` hooks ("Showhatak", "Hatakexplosion") are debug hooks the server cannot reach.
