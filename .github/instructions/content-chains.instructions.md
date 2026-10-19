@@ -289,7 +289,7 @@ beta_e1_m1147_chains.sql    Intriguing Data, the Analytical Assistance Machine (
 beta_e1_m443_chains.sql     Incendiary, Carter, Satterfield and the Quartermaster fire (UB-34): 23405-23434 (23405-23417 used)
 beta_e1_m477_chains.sql     Covert Observations, recording the four subjects (UB-35): 23435-23459 (23435-23459 used)
 beta_e1_m479_chains.sql     Process Support, the parallel simulation (UB-36): 23460-23469 (23460-23467 used)
-beta_e1_rewards_chains.sql  mission XP rewards, one grant_xp chain per mission (UB-50a): 23480-23499 (23480-23496 used)
+beta_e1_rewards_chains.sql  mission XP and naquadah rewards, one chain per mission with grant_xp and grant_cash (UB-50a, UB-50b2): 23480-23499 (23480-23496 used)
 ```
 
 ### Union Omega (worlds 18 and 80) - 63800-63999, four files
