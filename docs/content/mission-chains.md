@@ -1214,7 +1214,7 @@ Missions 1563-1571, the SGC halves of 1651, 1654 and 1655, and the crossings to 
 
 - **1567 Clear the Way (US-21, chains 3095-3099):** offered when 1566 completes (Humans only); the five route Jaffa (`SGC_W1_ClearJaffa1-5`) completing it; Carter's line 5381 on a press; a backstop on accept if they are already dead; Carter's marker restored on relog.
 
-- **1568 Gate Room (US-22, chains 3100-3107):** planned.
+- **1568 Gate Room (US-22, chains 3100-3107):** offered to Humans after 1564 (and on load after it), Gate Control advances to 4638 with monologue 5382 and a lit terminal, the terminal press (5383) shuts the gate, the three Gate Room Jaffa complete the mission (with a terminal backstop when they are already dead), and completion stages the departure (P15, P16, P14, dialog 5384).
 
 - **1569 Ordinance (US-23, chains 3110-3122):** planned.
 
