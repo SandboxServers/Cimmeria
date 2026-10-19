@@ -132,7 +132,7 @@ For content that should ship to existing databases too, mirror the seed into a m
 
 ### During `setup.ps1`
 
-Canonical schema files in `db/sgw/` and `db/resources/` load automatically on fresh DB init or `-WipeDatabase`. `-ForceDatabase` loads them into a scratch copy and refreshes only the `resources` tables in `sgw`; accounts and characters are kept, so a changed `public` table needs a migration or `-WipeDatabase`. You don't need to register the files anywhere.
+Canonical schema files in `db/sgw/` and `db/resources/` load automatically on fresh DB init or `-WipeDatabase`. `-ForceDatabase` loads them into a scratch copy and refreshes only the `resources` tables in `sgw`; accounts and characters are kept. Additive changes to a persistent `public` table (a new column, table or index) carry across that refresh; anything else fails closed and needs a maintainer decision or `-WipeDatabase` ([persistent player data](../architecture/persistent-player-data.md)). You don't need to register the files anywhere.
 
 ### Migrations
 
