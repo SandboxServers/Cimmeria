@@ -23,7 +23,7 @@ Run against `origin/main` (1303888d3, equal to this worktree's base) and every s
 | Dakara: `dakara-work-packets.md`, `dakara-packets/` | Owns 63500-63799. Ends at 63799, so no overlap or gap. |
 | Beta: `beta-work-packets.md:92-100` | Authored rows start at 64000 (D-UB9, 64000-64499). No overlap. |
 | SGC: `sgc-work-packets.md:229` | Lists Omega as 63800-63999. The older Omega ranges (12000-12399, 63000-63099, 64000-64199) appear in no SGC, Beta or Dakara file. |
-| Seeds, 5-digit ids `\b63[89][0-9]{2}\b` under `db/resources/` | Only Omega's own scaffold files (`union_omega_*_chains.sql`, `dialog_sets_union_omega.sql`) plus the **screen** finding below. |
+| Seeds, 5-digit ids `\b63[89][0-9]{2}\b` under `db/resources/` | Only Omega's own scaffold files (the `*union_omega*.sql` seeds) plus the **screen** finding below. |
 | Seeds, 6-digit ids `\b63[89][0-9]{3}\b` | Only `item_lists_union_omega.sql`. The `cover_nodes.sql` hits are float coordinates and node ids 800xxx. |
 | Dialog sets and maps 63800-63803 | `dialog_sets.sql` and `dialog_set_maps.sql` hold no such id. |
 

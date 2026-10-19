@@ -264,6 +264,7 @@ The owner lifted the U-D03 gate the same day, so Omega ran unattended from W1. U
 | D-UO22 | Bridges E and W (world 80) have no placement rows. UO-11, UO-12 and UO-14 must not look them up and must not seed `amb.bridge_e.*` or `amb.bridge_w.*`. | Decided | They are separate navmesh components (12 and 26) with no route from pad 17 (component 11): `nav_inspect --gap-pair 11,12` and `11,26` find none, and a probe exits 3. Seeding there needs a nav patch. |
 | D-UO23 | The UO-01 C4 arrival heading is corrected to **3.1409** (it faces gate 5). UO-00 publishes it in § Contracts → Receiving. | Decided | The worknote's table row and § C4 agree on 3.1409. |
 | D-UO24 | Generated Tauri schema files in a build worktree were discarded to unblock the merge. | Done | Build output only; no content or seed impact. |
+
 ## Provenance and stop conditions
 
 **Provenance labels:**
