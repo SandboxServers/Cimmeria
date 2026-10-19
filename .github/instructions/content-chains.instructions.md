@@ -267,6 +267,25 @@ there because each action is idempotent by itself (`grant_stargate_address`,
 and a `send_system_mail` behind a persisted `quiet_cooldown`). A new
 `player_loaded` chain without a mission gate needs the same property.
 
+### Union Omega (worlds 18 and 80) - 63800-63999, four files
+
+Union Omega reserves `63800-63999` and splits it across four seed files, one
+per theme, each included from `db/database.sql`. Each packet writes only below
+its own `-- [UO-xx]` marker.
+
+```text
+union_omega_arrival_chains.sql  the Command Center beam, Modi:   63801-63819
+union_omega_human_chains.sql    Jackson's induction:             63820-63829
+union_omega_jaffa_chains.sql    Bra'tac's induction:             63830-63839
+union_omega_reoffer_chains.sql  the re-offer after an abandon:   63840-63849
+```
+
+Every bind chain runs `remove_dialog_set` (sort 0) before `add_dialog_set`
+(sort 1). `add_dialog_set` has no dedupe, so a re-fire would otherwise stack a
+second entry. No Omega chain uses `complete_objective` on mission 1655 at step
+4940 (F21): both its objectives are optional, so completing one completes the
+whole mission early. The Human gate is `archetype gte 1` **and** `lte 4`.
+
 ## Linked references
 
 - `docs/content/content-engine.md` — **runtime reference**: architecture, vocabulary, schema, lifecycle, observability, performance.
