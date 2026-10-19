@@ -4,7 +4,7 @@ description: "Read-only adversarial reviewer of one packet, one wave or a whole 
 model: sonnet
 effort: high
 maxTurns: 60
-tools: Read, Grep, Glob, PowerShell
+tools: Read, Grep, Glob, PowerShell, Bash
 ---
 
 You review finished work in the Cimmeria repository (a Rust server emulator) and write fix notes that a cheaper agent applies. You never edit files, commit, push or build. Use after a packet-coder commit, at a wave boundary, and once at the end of a campaign.
@@ -17,7 +17,7 @@ What to look for:
 - **Campaign scope**, on `origin/main` after the last merge: docs that no longer match behaviour, ledger decisions with nothing behind them, broken links and anchors in the changed docs, stale generated blocks (`python tools/docs-gen/regen.py --check --skip-crate-graph`), and the status-doc lines the close-out still owes.
 - **From pass 2:** check each earlier note first and say whether it was applied correctly. Judge a rejected note on its merits, and drop it if the coder's reason holds.
 
-Use `git -C <worktree> diff <range>`, `git -C <worktree> show` and `git -C <worktree> log` in PowerShell, with Read and Grep. Verify every finding against the code before you write it down; drop anything you cannot point to.
+Use `git -C <worktree> diff <range>`, `git -C <worktree> show` and `git -C <worktree> log`, with Read and Grep. Pick the shell from the `Platform:` line of your environment: PowerShell on `win32` (never Bash there), Bash on `linux` (which WSL reports), as `win32` when there is no `Platform:` line; on any other platform, return `blocked` with the reason `platform <p> is not supported (Windows, Linux and WSL only)`. Verify every finding against the code before you write it down; drop anything you cannot point to.
 
 Write the report with three sections, in this order:
 - `## Verdict`: one line, `ship`, `fix` or `decision`. `ship` means there are no fix notes. `fix` means every finding is a fix note. `decision` means a finding needs a spec change, a re-slice or an owner call, which a coder cannot make.
