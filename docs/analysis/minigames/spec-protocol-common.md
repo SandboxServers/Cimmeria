@@ -38,11 +38,11 @@ if (_root.ipaddress == '') {
 }
 ```
 
-Condition: all three hold: `_root.ipaddress` is the empty string, `_root.v1` is undefined, and `_root.ipaddress.value` is undefined (raw disassembly of the frame-2 script, read after `push 'online', True`). A launch that passes no `ipaddress` at all (undefined, not '') does not satisfy the first test (undefined == '' is false in a v8 movie) and stays online; only an empty-string `ipaddress` goes offline. Not run in the client. Then `online = false`, `_root.sendMessage` calls `_root.handleRequest(cmd, obj, user, 'roomid')` directly and `_server.sendResponse` calls `_root.onResponse(msg, 'xml')`. No socket is opened. In that mode the extension draws all random values from `Math.random`, picks a random techcomp 1-55, difficulty 1-4, CA0..CA4 = 4,3,3,2,2 and a random abilityBitfield.
+Condition: the frame-1 script initialises `_root.ipaddress` to an empty String object (`_root.ipaddress = new String('')`), so the first test is always true. The movie goes offline only when `_root.v1` is undefined and `_root.ipaddress.value` is undefined, that is, when the host never ran `SetVariable('_root.ipaddress.value', ...)` before frame 2. The client's `onStartMinigame` handler sets all five `.value` variables (livewire-autosolve.md section 1.1). An empty host string gives `.value == ''`, which is not undefined: the movie stays online and the connect to an empty host fails (frame 4). Not run in the client. Then `online = false`, `_root.sendMessage` calls `_root.handleRequest(cmd, obj, user, 'roomid')` directly and `_server.sendResponse` calls `_root.onResponse(msg, 'xml')`. No socket is opened. In that mode the extension draws all random values from `Math.random`, picks a random techcomp 1-55, difficulty 1-4, CA0..CA4 = 4,3,3,2,2 and a random abilityBitfield.
 
 Online path: `sfs.connect(ipaddress.value, port.value)`, `handleConnection` calls `login(gamename.value, playerid.value, ticket.value)`. `loginSucceeded` goes to frame 3, `loginFailed` goes to frame 4 (failure). Messages arriving before frame 3 registers `onResponse` are queued in `pendingMsgs` and replayed.
 
-D-MG2 ruling: not needed if the launcher always passes a non-empty `ipaddress`; MG-R7 owns that check (see spec-launch-flow.md). If the variable arrives as the empty string the movie plays a local game with no server.
+D-MG2 ruling: not needed while `onStartMinigame` runs; MG-R7 owns the launch-side check (spec-launch-flow.md section 3). If the host never sets `ipaddress.value` the movie plays a local game with no server.
 
 ## Q2. `joinOK` room variables by game
 
@@ -123,7 +123,7 @@ The extension's 3 and 4 are an extension-to-host enum that a host translates; th
 
 Both, with the server authoritative.
 
-- Server: the extension runs `setInterval('tick', 100)` (Livewire `startTimer`, `tick`). `timerState` is 0 stopped, 1 counting, 2 stop-time cheat, 3 reverse-time cheat. At zero it sends `failure` and the code 4 host call. `sendTimerUpdate` sends `timeRemaining - 0.25`; the server value starts at countdown + 0.25.
+- Server: the extension runs `setInterval('tick', 100)` (Livewire extension `init` and `tick`). `timerState` is 0 stopped, 1 counting, 2 stop-time cheat, 3 reverse-time cheat. At zero it sends `failure` and the code 4 host call. `sendTimerUpdate` sends `timeRemaining - 0.25`; the server value starts at countdown + 0.25.
 - Client: Livewire runs a local 50 ms `timerCallback` (using `getTimer` deltas, `timerBeep` each 1000 ms). It resyncs on `timerupdate`, `addtime` (+timeDiff), `cuttime` (x0.75), `reverttime` (= timeTotal) and `countdownupdate` (new countdownRate), and acts locally at 0 (see the Q4 race). The shells run a local 50 ms timer too, with a 12 s default.
 
 Consequence: the server must send `timerupdate` on every state change and a `countdownupdate` when the rate changes (Livewire obstacle and moving wires speed the countdown), or the client display drifts from the server's deadline.
