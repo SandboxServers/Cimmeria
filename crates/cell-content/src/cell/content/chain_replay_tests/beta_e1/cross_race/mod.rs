@@ -6,5 +6,7 @@
 //! race's player.
 
 mod dialog_exclusive;
+mod login_binds;
 mod race_negatives;
+mod transitions;
 mod walk;
