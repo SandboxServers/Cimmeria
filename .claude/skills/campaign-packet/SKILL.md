@@ -139,7 +139,7 @@ A reviewer's brief carries the scope, the worktree, the commit range
 campaign the work-packets file and the ledger README), the pass number, from
 pass 2 the previous report, and the report path
 `<worktree>\.claude\reports\<campaign>\<packet>-review-<N>.md` (a wave:
-`wave<W>-review-<N>.md`; the campaign: `campaign-review-<N>.md`). A fix pass writes `<packet>-fix-<N>.md` (the wave: `wave<W>-fix-<N>.md`). The `<role>` in § 3 is `coder`, `review-<N>` or `fix-<N>`. Dispatch a
+`wave<W>-review-<N>.md`; the campaign: `campaign-review-<N>.md`). A fix pass writes `<packet>-fix-<N>.md` (the wave: `wave<W>-fix-<N>.md`). The `<role>` in § 3 is `coder`, `review-<N>` or `fix-<N>`. The implementer that applies a ruling writes `<packet>-ruling-<N>.md` and a ruling check writes `<packet>-ruling-check.md` (the wave: `wave<W>-ruling-check.md`; the campaign: `campaign-ruling-check.md`); a ruling-check brief names the ruling note and has no pass number. Dispatch a
 packet's first pass as soon as its coder returns; don't wait for the rest of
 the wave. Add the matching domain advisor or `server-authority-enforcer` as a
 parallel read-only pass only when a packet touches their area. Its brief asks for the packet-reviewer's three report sections and verdict words (`ship`, `fix`, `decision`), numbers its notes `A<k>`, and gives its own report path; the fix brief names both reports, and the loop is done only when both say `ship`.
