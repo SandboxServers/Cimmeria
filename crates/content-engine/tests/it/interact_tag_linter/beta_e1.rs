@@ -346,6 +346,96 @@ const BETA_E1: &[(&str, i32, &str)] = &[
         23417,
         "BetaE1_Mimir: per-player bind dsm 4579 (chain 23415)",
     ),
+    (
+        "beta_e1_m477_chains.sql",
+        23436,
+        "BetaE1_Mimir: per-player bind dsm 2457 (chain 23435)",
+    ),
+    (
+        "beta_e1_m477_chains.sql",
+        23438,
+        "BetaE1_Carter: per-player bind dsm 2457 (chain 23437)",
+    ),
+    (
+        "beta_e1_m477_chains.sql",
+        23439,
+        "BetaE1_Carter: per-player bind dsm 2457 (chain 23437)",
+    ),
+    (
+        "beta_e1_m477_chains.sql",
+        23440,
+        "BetaE1_Carter: per-player bind dsm 2457 (chain 23437)",
+    ),
+    (
+        "beta_e1_m477_chains.sql",
+        23441,
+        "BetaE1_Carter: per-player bind dsm 2457 (chain 23437)",
+    ),
+    (
+        "beta_e1_m477_chains.sql",
+        23442,
+        "BetaE1_Debeaux: per-player bind dsm 2457 (chain 23437)",
+    ),
+    (
+        "beta_e1_m477_chains.sql",
+        23443,
+        "BetaE1_Debeaux: per-player bind dsm 2457 (chain 23437)",
+    ),
+    (
+        "beta_e1_m477_chains.sql",
+        23444,
+        "BetaE1_Debeaux: per-player bind dsm 2457 (chain 23437)",
+    ),
+    (
+        "beta_e1_m477_chains.sql",
+        23445,
+        "BetaE1_Debeaux: per-player bind dsm 2457 (chain 23437)",
+    ),
+    (
+        "beta_e1_m477_chains.sql",
+        23446,
+        "BetaE1_Felger: per-player bind dsm 2457 (chain 23437)",
+    ),
+    (
+        "beta_e1_m477_chains.sql",
+        23447,
+        "BetaE1_Felger: per-player bind dsm 2457 (chain 23437)",
+    ),
+    (
+        "beta_e1_m477_chains.sql",
+        23448,
+        "BetaE1_Felger: per-player bind dsm 2457 (chain 23437)",
+    ),
+    (
+        "beta_e1_m477_chains.sql",
+        23449,
+        "BetaE1_Felger: per-player bind dsm 2457 (chain 23437)",
+    ),
+    (
+        "beta_e1_m477_chains.sql",
+        23450,
+        "BetaE1_Satterfield: per-player bind dsm 2457 (chain 23437)",
+    ),
+    (
+        "beta_e1_m477_chains.sql",
+        23451,
+        "BetaE1_Satterfield: per-player bind dsm 2457 (chain 23437)",
+    ),
+    (
+        "beta_e1_m477_chains.sql",
+        23452,
+        "BetaE1_Satterfield: per-player bind dsm 2457 (chain 23437)",
+    ),
+    (
+        "beta_e1_m477_chains.sql",
+        23453,
+        "BetaE1_Satterfield: per-player bind dsm 2457 (chain 23437)",
+    ),
+    (
+        "beta_e1_m477_chains.sql",
+        23459,
+        "BetaE1_Mimir: per-player bind dsm 4408 (chain 23458)",
+    ),
 ];
 
 /// Whether `chain_id` in `filename` is a Beta chain that has an
