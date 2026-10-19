@@ -433,6 +433,15 @@
 \ir resources/Content/Seed/dakara_e1_m1645_chains.sql
 \ir resources/Content/Seed/dakara_e1_m1646_offer_chains.sql
 \ir resources/Content/Seed/dakara_e1_m1646_drop_chains.sql
+\ir resources/Content/Seed/dakara_e1_m1648_chains.sql
+\ir resources/Content/Seed/dakara_e1_m1649_offer_chains.sql
+\ir resources/Content/Seed/dakara_e1_m1649_terminal_chains.sql
+\ir resources/Content/Seed/dakara_e1_m1650_chains.sql
+\ir resources/Content/Seed/dakara_e1_m1651_chains.sql
+\ir resources/Content/Seed/dakara_e1_m1651_gate_chains.sql
+\ir resources/Content/Seed/dakara_e1_m1652_chains.sql
+\ir resources/Content/Seed/dakara_e1_m1653_chains.sql
+\ir resources/Content/Seed/dakara_e1_m1654_chains.sql
 \ir resources/Content/Seed/tutorial_chains.sql
 \ir resources/Content/Seed/union_omega_arrival_chains.sql
 \ir resources/Content/Seed/union_omega_human_chains.sql
