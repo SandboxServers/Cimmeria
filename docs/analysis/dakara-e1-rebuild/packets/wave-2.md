@@ -7,6 +7,8 @@ Wave 2 starts when DK-06a, DK-08 and DK-12a are merged. DK-09 is unblocked by th
 
 **Architect amendments (2026-10-18, after the DK-08 review).** D-DK18: step 4902's objectives are three client-hinted regions centred on the SG-18 remains, seeded by DK-09 below (point sets 2128-2130, points 2557-2559). D-DK19: DK-10c's range is 8060-8074 and DK-10d's moves to 8160-8179; DK-10a below carries both. DK-08 rules no template change, so DK-09's template rows stand.
 
+**Architect amendment (2026-10-18, D-DK10 ruled).** The wave-2 packets other than DK-06b merged as #1867 (DK-09b), #1869 (DK-09), #1871 (DK-10a), #1875 (DK-10fs) and #1876 (DK-10e). D-DK10 is ruled server-only: a new verb `display_radio_dialog` sends `onDialogDisplay` with `EntityId` 0. DK-06b's full packet text moved to [wave-3b-dk-06b.md](wave-3b-dk-06b.md); it is dispatchable at once. It is reviewed with DK-10d-B as wave 3b.
+
 **Architect amendments (2026-10-18, D-DK1 option F).** The owner can ship new missions to the client, so the recommended answer to D-DK1 is F: an authored level-1 mission 63100 "Home to Dakara" (DK-10fs here, chains 8075-8077 in wave 3's DK-10fc). DK-10a's chain 8040 then fires on `mission_completed 63100` and also completes 1570's optional objective 5936; it scaffolds the bridge seed file and test submodule. DK-10e gains Teal'c's letter (chain 8007), accepted by the owner as written. If the owner answers B instead, DK-10a uses its "fallback B" variant and DK-10fs is not dispatched.
 
 ## Rules for every wave-2 packet
@@ -22,15 +24,9 @@ Wave 2 starts when DK-06a, DK-08 and DK-12a are merged. DK-09 is unblocked by th
 9. No IPs, credentials, tokens or account names in any file.
 10. Report to `<worktree>\.claude\reports\dakara\<packet>-packet-coder.md`: files changed, each check's final `status=` line, the commit hash, every deviation and why. Return exactly one line: `<packet> <done|blocked|failed> <commit-sha|-> <report-path>`. A context stop past about 90k tokens: commit only passing work (subject suffix `(part N)`), write `docs/analysis/dakara-e1-rebuild/worknotes/<packet>.md` (done, left, next step, last `status=` line) and return `blocked` with the reason `context`.
 
-## DK-06b: radio display
+## DK-06b: moved
 
-| Field | Value |
-|---|---|
-| Role | per the D-DK10 ruling: `packet-coder` for a seed-only answer, `rust-gameserver-dev` for a server change |
-| Branch / worktree | `dakara/dk-06b-radio-display` / `dk-06b` |
-| Status | **Stub.** Not dispatchable until the architect replaces this section with full packet text from DK-06a's finding (`docs/reverse-engineering/findings/dialog-display-without-npc.md`). |
-
-Fixed now, whatever the ruling: the answer is server-authoritative and needs no client patch (a client-patch-only answer makes D-DK10 an owner decision and this packet `BlockedDecision`). It ships a test that fails when the change is reverted: an executed test (TESTING.md) that runs `display_dialog` for dialog 5816 with no NPC in range and asserts the client message the ruling names. It names the verb or param in `docs/content/content-engine-vocabulary.md`. It adds no Dakara chain: DK-10d uses it for step 4905.
+DK-06b's full packet text is in [wave-3b-dk-06b.md](wave-3b-dk-06b.md) (D-DK10 ruled 2026-10-18; it runs as wave 3b with DK-10d-B).
 
 ## DK-09: SG-18 remains and drop-location props
 

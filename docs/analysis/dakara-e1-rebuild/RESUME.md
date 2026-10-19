@@ -1,34 +1,34 @@
 # Dakara_E1 rebuild: resume card
 
-> Type: how-to. Updated 2026-10-18 (architect; D-DK1 decided as option F, D-DK17 and D-DK20 ruled) against `main` @ `d1bba0400`. Status source: [README § Packets](README.md#packets).
+> Type: how-to. Updated 2026-10-19 (architect, autonomous: waves 4 to 7 written). Status source: [README § Packets](README.md#packets).
 
-- **Owner rules (2026-10-18):** no lab use by any agent until the campaign ends; the owner runs M1, M2 and every UAT himself. No packet-review-fixer: one read-only `packet-reviewer` per wave, its findings to a fresh `packet-coder` (Haiku), the reviewer re-checks; at most 3 passes.
-- **Wave 1 Done:** DK-06a (#1854), DK-07 (#1853), DK-08 (#1855), DK-12a (#1856). DK-08 review: `.claude/worktrees/dk-08/.claude/reports/dakara/DK-08-review.md`.
-- **D-DK1 decided: option F (owner, 2026-10-18):** authored level-1 mission 63100 "Home to Dakara" via `MISSION_ADDITIONS` (catalog resync at character select, no patch) plus seed rows; Rak'nor's shipped 6110 completes it; 8040 then starts 1570 at 4906. Packets DK-10fs (wave 2) and DK-10fc (wave 3); DK-10a, DK-10b, DK-10e, DK-07 amended. Fallback B+E1 kept in the packet text.
-- **D-DK17 decided:** proposed wording and Teal'c's letter as written (DK-10e, chain 8007).
-- **D-DK20 decided:** accept being first user of the mission-catalog route (63100 is the first production `MISSION_ADDITIONS` entry).
-- **Merged so far:** DK-00 to DK-05 (#1282 to #1288); DK-06a, DK-07, DK-08, DK-12a (#1853 to #1856).
-- **Do not touch** `.claude/state/active-campaign`: it points at another campaign.
+- **Owner rules (2026-10-18):** no agent lab use until the campaign ends; the owner runs every UAT. One read-only `packet-reviewer` per wave, its findings to a fresh `packet-coder`. Do not touch `.claude/state/active-campaign`.
+- **Done:** DK-00 to DK-05; waves 1, 2 and 3 (wave 3: #1881, #1883, #1885, #1887, #1889, #1892).
+- **Shipping:** wave 3b, DK-06b PR #1894 and DK-10d-B PR #1896 (reviewed).
+- **Dormant by design (D-DK23):** waves 5 and 6 build now; in play nothing past 1646 is reachable until 1647 (wave 7) ships.
 
-## Next action
+## Next action, in order
 
-1. Dispatch wave 2 now: DK-09b, DK-10a, DK-10e, DK-10fs (packet text in packets/wave-2.md and packets/wave-2-dk-10fs.md), and DK-09 (DK-08 and DK-12a are merged).
-2. Architect: expand DK-06b from DK-06a's finding and rule D-DK10; DK-06b stays BlockedDecision until then.
-3. After wave 2 is reviewed and merged, dispatch wave 3 per its dependencies; DK-10d Part A also waits on DK-06b.
+1. Now: dispatch **DK-41** ([wave 4](packets/wave-4.md)) and **DK-31a** ([wave 6](packets/wave-6.md), desk note), each in its own worktree.
+2. When PR #1894 and PR #1896 have both merged: **DK-10d-A** (wave 3c, findings folded in, [wave 3](packets/wave-3.md)) and **DK-40** (wave 4), worktrees from that `main`.
+3. When DK-40 and DK-41 have merged: wave 5 (**DK-13, DK-14a, DK-14b, DK-15**) and wave 6 (**DK-30a, DK-30b, DK-31b, DK-32a, DK-33**) together, one worktree each; one reviewer per wave.
+4. DK-30b and DK-33: open the PRs, **hold the merge** until the Union SGC campaign's US-30 and US-31 merge (F26).
+5. After DK-31a and DK-31b: the architect expands **DK-31c** (wave 6b).
+6. Wave 7 (GDK1, DK-20, DK-21, DK-32b) waits for D-DK5, then the M2 playtest.
 
-## Waves
+## Morning owner checklist
 
-| Wave | Packets | Gate |
-|---|---|---|
-| 1 | DK-06a, DK-07, DK-08, DK-12a | Done (#1853 to #1856) |
-| 2 | DK-06b, DK-09, DK-09b, DK-10a, DK-10e, DK-10fs | DK-06b: D-DK10; DK-09: DK-08 and DK-12a merged (met); the rest: Ready |
-| 3 | DK-10b, DK-10c, DK-10d, DK-10fc, DK-11, DK-12b, DK-12c | DK-10a + DK-09 + DK-09b; DK-10d also DK-06b and Part A; DK-10fc also DK-10fs |
-| 4-6 | stubs in work-packets.md | D-DK5 after the owner's M2 playtest |
+- [ ] **D-DK5** (blocks wave 7): A Castle-style fights (recommended), B peaceful placeholders, C stop at 1646, D skip the fights. [Options](packets/wave-7-blocked.md#d-dk5-options-owner).
+- [ ] Review the autonomous decisions **D-DK21 to D-DK31** and the D-DK2 amendment (README § Decisions); each can be reversed before its wave merges.
+- [ ] D-DK25: closing the 1649 offer accepts it, whatever button is pressed. OK?
+- [ ] D-DK28: 1650 step 4927 moves on entering Moh'katan's tent area, not on a click. OK?
+- [ ] D-DK26, D-DK27: 1651 and 1653 auto-accept (no blurbs exist). OK?
+- [ ] D-DK27: 1653 step 4937 reuses radio dialog 5849 (check in DK-U29).
+- [ ] D-DK29: west/east naming of the ring controls and supplies is a map-axis guess (DK-U27).
+- [ ] Vocuum (1653 O5643, optional): pick a prop and a place, or leave it out.
+- [ ] Merge holds: DK-30b and DK-33 wait on the Union SGC campaign's US-30 and US-31.
+- [ ] D-DK2: confirm Omega Site as the only granted address (non-blocking).
 
-## Open decisions
+## UAT owed (owner)
 
-- **D-DK10** (architect, after DK-06a): the radio beat. Blocks DK-06b. **D-DK5** (owner, after M2): reconstructed fights. **D-DK2** (owner confirmation, non-blocking).
-
-## UAT owed
-
-- M1 (DK-U1 to DK-U10), M2 with the bridge checklist (DK-U11 to DK-U16): the owner runs them; no agent lab use.
+- M1 DK-U1 to DK-U10; M2 DK-U11 to DK-U17 (after wave 3c); M3 DK-U18 to DK-U25 (after wave 5; GM-complete 1647 first); M4/M5 DK-U26 to DK-U31 (after wave 6 and US-30/US-31). Includes carrier markers (DK-U25), the Command Terminal reach (DK-U22) and the DHD crossings (DK-U26, DK-U30).
