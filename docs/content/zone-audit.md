@@ -730,6 +730,8 @@ development pipeline than Harset_Market — navigation was generated but scripti
 began. Possibly a mission instance where players would explore a storage area (the navmesh
 would enable AI enemies). Without any script or spawns, the navmesh serves no purpose.
 
+> **Union Omega update (2026-10-19).** The audit above is the pre-campaign baseline. Since then the [Union Omega campaign](../analysis/union-zone-planning/omega-work-packets.md) merged (PRs [#1902](https://github.com/SandboxServers/Cimmeria/pull/1902), [#1908](https://github.com/SandboxServers/Cimmeria/pull/1908), [#1911](https://github.com/SandboxServers/Cimmeria/pull/1911)). A navmesh exists (`data/spaces/omega_site.nav`). World 18 now holds the 7 stock spawns, 3 service NPCs (banker 63810, Team registrar 63811 and Command registrar 63830, as spawns 63820, 63821 and 63840) and 18 ambient NPCs, plus respawner 180 `Omega Site Gate Plaza`. Content chains 63801 and 63810/63811 bind the beam and Modi; see [mission-chains](mission-chains.md#union-omega-worlds-18-and-80). The ambient crowd (templates 63860 Airman and 63861 Free Jaffa Warrior) is `CIMMERIA_AUTHORING`, inert, and drops by deleting the UO-14 blocks. All of it is merged but never walked in a client (UO-U1 has not run). Still missing: vendors (blocked on D-UO8 and D-UO16), O5646 waypoints, the H1 DHD dial-back and the Asgard route (UO-16).
+
 ---
 
 ### Zone: Omega_Site_CmdCenter
@@ -758,6 +760,8 @@ The Omega Site Command Center mirrors the Harset_CmdCenter pattern — a small s
 (25 tiles) with a script that exists solely to provide a beam transporter back to the
 parent zone. The Asgard beam transporter (instead of ring transporter) is consistent with
 Omega Site's Earth/Asgard technology theme. No gameplay content beyond transport.
+
+> **Union Omega update (2026-10-19).** World 80 now holds the cast: Jackson (template 63800), Bra'tac (63801), Teal'c (63802) and Thor (63803), as spawns 63800-63803, plus 4 ambient NPCs. Dialog set 63800 with maps 63800-63803 delivers the induction offers (1423 for Humans, 1500 for Free Jaffa); chains 63801 and 63820-63845 own the flow ([mission-chains](mission-chains.md#union-omega-worlds-18-and-80)). The navmesh covers it. Merged, never walked in a client.
 
 ---
 
@@ -1056,8 +1060,8 @@ All 24 defined spaces with their verdicts, sorted by verdict then alphabetically
 | Harset_CmdCenter | Persistent | **PARTIAL** (transport) | 31 lines + 4 nodes | NO | 1 | NO | 17 |
 | Lucia | Persistent | **PARTIAL** (transport) | 101 lines + 41 nodes | NO | 12 | YES | 892 |
 | Menfa_Dark | Persistent | **PARTIAL** (transport) | 37 lines + 45 nodes | NO | 25 | YES | 271 |
-| Omega_Site | Persistent | **PARTIAL** (transport) | 53 lines + 21 nodes | NO | 7 | YES | 133 |
-| Omega_Site_CmdCenter | Instanced | **PARTIAL** (transport) | 21 lines + 21 nodes | NO | 0 | NO | 25 |
+| Omega_Site | Persistent | **PARTIAL** (transport, induction, services; unplayed) | 53 lines + 21 nodes | YES | 28 | YES | 133 |
+| Omega_Site_CmdCenter | Instanced | **PARTIAL** (transport, induction; unplayed) | 21 lines + 21 nodes | YES | 8 | NO | 25 |
 | Agnos | Persistent | **SHELL** | NO | YES | ~few | YES | 692 |
 | Agnos_Library | Persistent | **SHELL** | NO | NO | 0 | NO | 37 |
 | Beta_Site_Evo_1 | Persistent | **PARTIAL** (Union first visit) | NO | chains only | ~58 | YES | 631 |
@@ -1141,7 +1145,7 @@ Zones with functional transport infrastructure:
 | 2 | Castle | PARTIAL |
 | 3 | Harset | PARTIAL |
 | 4 | Tollana | SHELL |
-| 5 | Omega_Site | PARTIAL (transport) |
+| 5 | Omega_Site | PARTIAL (transport, induction, services; unplayed) |
 | 6 | Beta_Site_Evo_1 | PARTIAL (Union first visit) |
 | 7 | Menfa_Dark | PARTIAL (transport) |
 | 8 | Ihpet_Crater_Dark | SHELL |
@@ -1179,7 +1183,7 @@ Based on this audit, zones can be prioritized for future development work:
    mission scripting.
 5. **Lucia** — 12 spawns, 11 transporters, largest art zone. Needs navmesh and mission
    scripting.
-6. **Omega_Site** — 7 spawns, 5 beam transporters. Needs navmesh and mission scripting.
+6. **Omega_Site** — 5 beam transporters. Navmesh, induction chains, services and ambient NPCs merged 2026-10 (unplayed); vendors, O5646 waypoints and the Asgard route remain.
 
 ### Tier 3: Shell zones with significant art investment
 

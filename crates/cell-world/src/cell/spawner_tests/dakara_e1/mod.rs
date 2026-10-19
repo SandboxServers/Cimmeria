@@ -11,8 +11,11 @@
 //!   a name on every one, nothing hostile or attackable, a look some other
 //!   template already wears, and which props are clickable from spawn.
 //! - [props]: DK-09, the SG-18 remains and drop-location spawns and the SG-18 search regions: rows, positions, on-mesh and plaza-connectivity guards.
+//! - [story_props]: DK-41, the six story-prop spawns of missions 1649-1653
+//!   (8016-8021) and the two prop clones 462-463.
 mod population;
 mod props;
+mod story_props;
 mod templates;
 mod travel;
 
@@ -20,7 +23,7 @@ use crate::cell::spawner::{load_spawn_templates, SpawnRecord};
 use crate::test_support::require_db_or_skip;
 
 /// The campaign's template ids for the cast and the interactable props
-/// (DK-03, plus DK-09's drop-location clones 458-461). 462-479, the rest of
-/// the campaign's block, is DK-20's hostiles and defenders, which these
-/// guards deliberately leave out.
-const CAST_AND_PROPS: (i32, i32) = (440, 461);
+/// (DK-03, plus DK-09's drop-location clones 458-461 and DK-41's prop clones
+/// 462-463). 464-479, the rest of the campaign's block, is DK-20's hostiles
+/// and defenders, which these guards deliberately leave out.
+const CAST_AND_PROPS: (i32, i32) = (440, 463);

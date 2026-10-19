@@ -68,6 +68,9 @@ pub(super) async fn execute_one(
         } => {
             dialog::display(dialog_id, entity_id, chain_id, params, tx, space_mgr).await;
         }
+        Action::DisplayRadioDialog { dialog_id } => {
+            dialog::display_radio(dialog_id, entity_id, chain_id, tx, space_mgr).await;
+        }
         Action::PlaySequence { sequence_id } => {
             tracing::info!(
                 entity_id,

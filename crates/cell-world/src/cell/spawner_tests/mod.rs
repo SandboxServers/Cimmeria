@@ -31,6 +31,7 @@
 //! - [`dakara_e1`]: live-DB guards for the Dakara_E1 rebuild's seed, starting
 //!   with DK-03's cast and prop templates (a name on each, nothing hostile or
 //!   attackable, no unproven look).
+//! - [`union_omega`]: seed and navmesh guards for Union Omega (worlds 18 and 80).
 //!
 //! The Harset template guards (`harset/`) drive the NPC AI's ability
 //! selector, so they are `cimmeria-cell-combat`'s `cell::spawner_tests`; the
@@ -49,3 +50,4 @@ mod live_db_vault_scope;
 mod spawn_behaviour_row;
 mod spawn_grounding;
 mod spawn_records;
+mod union_omega;

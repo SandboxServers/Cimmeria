@@ -73,6 +73,7 @@ caps, CRLF docs, no `git stash`). Each packet names:
   crate, through `pwsh tools/build-lane/lane.ps1`; live-DB through
   `live-db-test.ps1`);
 - the docs rows it owes ([doc-update map](../../../docs/agents/doc-update-map.md));
+- its host: `Host: windows` (the default), `linux`, or `both` with each command given as `pwsh:` and `bash:` (the `lane-build` skill § Linux and WSL hosts);
 - the branch, worktree name and commit subject.
 
 Group packets into **waves** of about six small packets, so one packet-reviewer can hold
@@ -99,9 +100,13 @@ shape.
    - the commit message's attribution lines;
    - the return contract, exactly one line:
      `<packet> <done|blocked|failed> <commit-sha|-> <report-path>`.
-3. Workers use PowerShell and the lane only: no bash, no direct `cargo`, no
-   `git worktree prune`, no `git stash`, no push. They commit locally and
-   stop. On a Linux or WSL host only `ops` has a shell path (the `.sh` twins); a packet worker without PowerShell returns `blocked`.
+3. Workers use the shell their platform names (the `lane-build` skill
+   § Linux and WSL hosts): on `win32`, PowerShell and `lane.ps1`; on `linux`,
+   which WSL reports, Bash and the `.sh` twins with the same arguments. Never
+   Bash on Windows. A packet runs only on the host its `Host:` line names
+   (Windows unless it says otherwise); a mismatch returns `blocked`. Always:
+   the lane only, no direct `cargo`, no `git worktree prune`, no `git stash`,
+   no push. They commit locally and stop.
 4. On a one-line return, update the ledger row; an implementer's `done` (a packet-coder or a domain agent) starts that packet's review loop (§ 4). Open the report file
    only when the return says `blocked`, `failed` or `verdict=decision`. A `blocked` return with
    the reason `context` starts the coder loop in § Sessions, passes and

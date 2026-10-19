@@ -4,7 +4,7 @@
 > **Audience:** Future Free Jaffa campaign coordinator, adjacent zone coordinators and reviewers
 > **Last updated:** 2026-10-14
 > **Status:** Planning only; no implementation or lab session is authorized by this file.
-> **Companions:** [campaign index](README.md), [execution contract](execution-contract.md), [source reconciliation](evidence.md), [Dakara rebuild ledger](../dakara-e1-rebuild/README.md), [Asgard route](asgard-route.md)
+> **Companions:** [campaign index](README.md), [execution contract](execution-contract.md), [source reconciliation](evidence.md), [Dakara rebuild ledger](../dakara-e1-rebuild/README.md), [Asgard route](asgard-route.md), [Omega concept art](omega-concept-art.md)
 
 ## Decision and scope
 
@@ -27,6 +27,8 @@ The [Free Jaffa prologue v2](../sgw-handoff-pack-v1.2/pack/references/world_cont
 | First common hub and Beta handoff | Omega world 18/80, then `Beta_Site_Evo_1` world 23. | Omega offers Jaffa **1500 `The SGU`**, step 4369/objective 5080/task 8046 to Beta; Beta consumes step 4370/objective 5081/task 6417 at Carter. Stop this route at accepted Beta arrival; Beta owns mission 1502 and 1503. | Mission IDs/steps are source-backed. Association of dialogue set 1573 with mission 1500 is a strong contextual inference, not a surviving join. |
 
 **Convergence has two meanings.** All three Union paths share the Omega hub before Beta. Their quest states do not collapse into a common mission: Human uses 1423, Free Jaffa 1500 and Asgard 1522/its authored induction. All three later visit Beta E1 world 23, with distinct first assignments. Do not conflate a shared map with a shared grant graph.
+
+**Where a Free Jaffa lands at Omega.** The [Omega developer concept art](omega-concept-art.md) (RESTORED_SOURCE layout intent, 2026-10-18) gives the Free Jaffa their own south-east wing of world 18, east of the river. It is a ring plaza with a Jaffa class trainer at its centre, Weapon, Armor, General and Consumable vendors, and a teleporter (inferred to be the beam network's "Jaffa Plaza"). The [Omega work packets](omega-work-packets.md) own that wing. The Jaffa vendors (UO-12) stand there; the Jaffa trainer and the extra vendor spots wait on owner decisions D-UO16 and D-UO17. Bra'tac's 1655 delivery still happens in the Command Center (world 80), not in the wing.
 
 ## Main-session packet families
 

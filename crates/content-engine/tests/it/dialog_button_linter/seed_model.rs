@@ -11,6 +11,8 @@ use super::sql_scan::{insert_rows, int, sql_statements, text};
 /// dialogs this linter is responsible for: Castle and Castle_CellBlock, the
 /// two zones the dialog UI redesign covers, plus the Cellblock debug hub,
 /// whose dialogs are Cimmeria-authored and so have no shipped shape to trust.
+/// Union Omega's chains key stock dialogs 4641, 5025 and 6168, so a button
+/// change there must be caught.
 pub(crate) const CHAIN_FILES: &[&str] = &[
     "castle_cellblock_chains.sql",
     "castle_701_chains.sql",
@@ -34,6 +36,24 @@ pub(crate) const CHAIN_FILES: &[&str] = &[
     "beta_e1_m443_chains.sql",
     "beta_e1_m477_chains.sql",
     "beta_e1_m479_chains.sql",
+    "sgc_w1_union_1563_chains.sql",
+    "sgc_w1_union_1564_chains.sql",
+    "sgc_w1_union_escort_chains.sql",
+    "sgc_w1_union_1571_chains.sql",
+    "sgc_w1_union_tactics_chains.sql",
+    "sgc_w1_union_1567_chains.sql",
+    "sgc_w1_union_1568_chains.sql",
+    "sgc_w1_union_1569_chains.sql",
+    "sgc_w1_union_1570_chains.sql",
+    "sgc_w1_union_1651_chains.sql",
+    "sgc_w1_union_1654_chains.sql",
+    "sgc_w1_union_1655_human_chains.sql",
+    "sgc_w1_union_1655_jaffa_chains.sql",
+    "sgc_w1_union_return_chains.sql",
+    "union_omega_arrival_chains.sql",
+    "union_omega_human_chains.sql",
+    "union_omega_jaffa_chains.sql",
+    "union_omega_reoffer_chains.sql",
 ];
 
 /// `CARGO_MANIFEST_DIR` is `<workspace>/crates/content-engine`, so two

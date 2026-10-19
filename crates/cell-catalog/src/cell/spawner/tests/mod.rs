@@ -94,6 +94,8 @@
 //!   inserted without an id (`.savespawn`) never takes a reserved one.
 //! - [`live_db_seed_sequences`]: the id sequences of the tables campaigns
 //!   seed explicit id blocks into allocate past every seeded row.
+//! - [`live_db_union_omega_services`]: live-DB guards for Union Omega's hub
+//!   banker and registrars (UO-10).
 //! - [`npc_ability_animation`]: live-DB seed linter (NA43) that every NPC combat
 //!   ability resolves one Ability_End sequence, that 559 resolves the SMG
 //!   burst, and that an armed hostile fires its weapon's ranged attack.
@@ -129,6 +131,7 @@ mod live_db_pet_summons;
 mod live_db_pet_trainer;
 mod live_db_seed_sequences;
 mod live_db_spawnlist_sequence;
+mod live_db_union_omega_services;
 mod live_db_vendor_arbitrage;
 mod live_db_weapon_monikers;
 mod live_db_weapon_ranges;

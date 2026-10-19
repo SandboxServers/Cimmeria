@@ -3,9 +3,9 @@
 > Type: how-to (work packets). Audience: the packet-coder named in each packet, and the read-only wave-3 packet-reviewer (no packet-review-fixer: the reviewer's findings go to a fresh packet-coder).
 > Written 2026-10-18 against `main` @ `d1bba0400`. Ledger and status: [README](../README.md#packets). Rules and full contract: [work-packets.md](../work-packets.md).
 
-Wave 3 starts when DK-10a, DK-09 and DK-09b are merged (DK-10d also needs DK-06b; DK-10fc also needs DK-10fs). The seven packets write seven different seed files and seven different test files that DK-10a created, so all seven run in parallel, each in its own worktree. The reviewer may split the wave into two halves if one context cannot hold seven. Every packet carries its own rules; you do not need CLAUDE.md.
+Wave 3 starts when DK-10a, DK-09 and DK-09b are merged (DK-10fc also needs DK-10fs). DK-10d is split: DK-10d-B runs as wave 3b with DK-06b, and DK-10d-A runs as wave 3c after both merge (see [DK-10d](#dk-10d-1570-steps-4905-and-4903-split-into-dk-10d-b-and-dk-10d-a)). The seven packets write seven different seed files and seven different test files that DK-10a created, so all seven run in parallel, each in its own worktree. The reviewer may split the wave into two halves if one context cannot hold seven. Every packet carries its own rules; you do not need CLAUDE.md.
 
-**Status of the sections (architect, 2026-10-18).** DK-10c and DK-12c now carry the rows DK-08 ruled, with the 4902 triggers from D-DK18 (three client-hinted regions that DK-09 seeds) and the ranges from D-DK19 (DK-10c 8060-8074, DK-10d 8160-8179). Only DK-10d's Part A (step 4905) still waits, on D-DK10 and DK-06b; DK-10d is not dispatchable until the architect fills it. DK-10b, DK-10c, DK-11, DK-12b and DK-12c are complete. Under D-DK1 **C**, DK-10b to DK-10d are dropped and DK-11's offer gate changes (see DK-11).
+**Status of the sections (architect, 2026-10-18).** DK-10c and DK-12c now carry the rows DK-08 ruled, with the 4902 triggers from D-DK18 (three client-hinted regions that DK-09 seeds) and the ranges from D-DK19 (DK-10c 8060-8074, DK-10d 8160-8179). D-DK10 is ruled (option B, server-only: the `display_radio_dialog` verb from DK-06b), and DK-10d is split: DK-10d-B (step 4903) is complete and dispatchable now; DK-10d-A (step 4905) is complete and dispatchable once DK-06b and DK-10d-B have merged. DK-10b, DK-10c, DK-11, DK-12b and DK-12c are complete. Under D-DK1 **C**, DK-10b to DK-10d are dropped and DK-11's offer gate changes (see DK-11).
 
 **Architect amendment (2026-10-18, D-DK1 option F, recommended).** A Free Jaffa now starts with the authored mission 63100 "Home to Dakara" (DK-10fs's catalog entry and seed; DK-10fc's chains below). Talking to Rak'nor completes it, and DK-10a's chain 8040 then starts 1570 at 4906 with Rak'nor's optional 5936 already completed. So DK-10b has no 8057 (the bridge binds Rak'nor), and its Rak'nor chains 8045-8048 serve only players who reach 4906 with 5936 open (Tau'ri from the SGC route, a Praxis Jaffa). Under fallback **B**, DK-10fc is not dispatched and DK-10b keeps 8057 (its "Fallback B" note).
 
@@ -113,13 +113,13 @@ Notes: Loth'ta's 4904 click leads into 4902. Step 4902 has no binds (D-DK18: its
 | Field | Value |
 |---|---|
 | Role | `packet-coder` |
-| Gate | D-DK1 answered **F**; DK-10a and DK-10fs merged. Not dispatched under any other answer. |
+| Gate | D-DK1 answered **F**; DK-10a, DK-10fs and DK-10e merged, and the worktree based on a `main` that has all three. Not dispatched under any other answer. |
 | Branch / worktree | `dakara/dk-10fc-bridge-chains` / `dk-10fc` |
 | Commit subject | `feat(content): Dakara_E1 bridge mission 63100 chains (DK-10fc)` |
 | Seed file / range | `dakara_e1_bridge_chains.sql`, 8075-8079 (`BRIDGE_CHAINS`); 8075-8077 used, 8078-8079 spare |
 | Test file | `dakara_e1_missions/bridge.rs` |
 | Report | `<worktree>\.claude\reports\dakara\DK-10fc-packet-coder.md` |
-| Size | About 30k tokens |
+| Size | About 33k tokens |
 
 Mission 63100 "Home to Dakara" (`NEW CONTENT`, level 1): one step 63101 "Speak with Rak'nor at the Stargate.", one required objective 63102, one task 63103. DK-10fs put it in the client's mission catalog and in `resources.missions` / `mission_steps` / `mission_objectives`. A Free Jaffa who arrives on Dakara with no Dakara mission yet gets it, Rak'nor is bound to his Jaffa dialog 6110 (dsm 6890, slot 441), and the click completes it. `complete_mission` fires `mission_completed` inline, so DK-10a's 8040 (`done 63100`) then accepts 1570 at 4906 in the same click. Free Jaffa only (`arch eq 7`): a Praxis Jaffa or a Tau'ri never sees 63100.
 
@@ -138,10 +138,19 @@ Each chain: `scope_type 'mission'`, `scope_id 63100`; descriptions `'63100 - fir
 3. `live_db_raknor_completes_home_to_dakara`: `fire_interact_tag(&engine, &ctx, "Dakara_E1_Raknor")` with 63100 at 63101 gives `["8077:display_dialog(6110)", "8077:remove_dialog_set(6890@441)", "8077:complete_mission(63100)"]`; `display_dialog_count(&r) == 1`; `assert_no_deferred_actions(&r, 8077)`.
 4. `live_db_home_to_dakara_hands_over_to_1570`: `fire_mission_completed(&engine, &with_mission(ctx_for(FREE_JAFFA, Some(DAKARA)), 63100, "completed"), 63100)` gives DK-10a's four 8040 labels in `ENTRY_CHAINS` and nothing in `BRIDGE_CHAINS`.
 5. `live_db_home_to_dakara_is_free_jaffa_only_and_once`: each of these gives an empty `BRIDGE_CHAINS` list on the load and on the Rak'nor click: `PRAXIS_JAFFA` and `TAURI` on Dakara; a Free Jaffa in `Some(STORY_RM)` firing `STORY_RM_NAME`; 63100 `completed`; 1570 `active`; 1570 `completed`; 1645 `active`. A Free Jaffa with nothing set clicking Rak'nor also gives an empty list.
+6. `live_db_free_jaffa_first_arrival_resolves_exactly_the_space_and_bridge_chains`: the whole-seed guard, unfiltered by range. Add a private helper `fn sorted_ids(r: &ResolvedActions) -> Vec<i64>` (every `r.actions` chain id, sorted; import `ResolvedActions` from `cimmeria_content_engine::chain` if `use super::*;` does not bring it). `fire_player_loaded(&engine, &ctx_for(FREE_JAFFA, Some(DAKARA)), DAKARA_NAME)` gives `vec![8001, 8002, 8007, 8075, 8075]`. The same call with `ctx_for(FREE_JAFFA, None)` (no world id, the context `dakara_e1_space.rs`'s `arrive()` builds) gives `vec![8001, 8002, 8007]`. Its doc comment says, in two sentences, that this is the deliberate addition of 8075 to a Free Jaffa's arrival, and that the second list is why `dakara_e1_space`'s resolve tests do not see it. If the run shows another chain id in either list, do not adjust the list: paste it into the report and return `blocked` with the reason `arrival-set`.
 
-**Checks:** the four shared checks, then 5. `pwsh tools/build-lane/live-db-test.ps1 chain_replay_tests::dakara_e1_space`. 8075 adds actions to a Free Jaffa's arrival; `dakara_e1_space`'s resolve tests give no world id and should not see it, but its executed tests run the real dispatcher. If check 5 fails, do **not** edit `dakara_e1_space.rs` or weaken a test: paste the failure into the report and return `blocked` with the reason `space-test`; the architect writes a ruling note.
+**Ruling on the `space-test` block (architect, 2026-10-18).** The first DK-10fc run blocked before writing anything, saying 8075 breaks three `dakara_e1_space.rs` tests. It does not, and neither option the orchestrator offered applies: `dakara_e1_space.rs` is **not edited** and 8075 gets **no extra condition**. DK-10fc's files stay its seed file and `bridge.rs`. The reasons:
 
-**Revert proof.** Tests 1-3 assert non-empty lists, so removing the seed rows fails them; test 5 fails if the archetype, world or mission gates are dropped.
+- **The two resolve tests** (`..._resolves_exactly_the_grant_...` and `..._fire_for_no_other_archetype_and_on_no_other_world`) build their context with `arrive()`. It sets the `world_name` param, which matches the trigger key `Dakara_E1`, but never the typed `ExecutionContext::world_id`. 8075's `world 61` condition reads only `world_id` and fails closed on `None` (`crates/content-engine/src/conditions/mod.rs`, `Condition::World`). 8001, 8002 and 8007 have no `world` condition, so they still resolve and the exact lists hold.
+- **The two executed tests** (`..._grants_omega_site_once_and_requests_the_notice`, renamed by DK-10e to name the mails, and `..._sends_a_visitor_nothing`) run the real `fire_player_loaded` on a bare `SpaceManager::new(1)` that has only the stargate cache: no world ids stamped from `resources.worlds`, no `mission_defs`, no `dialog_set_maps`. So 8075 either fails its `world` condition or, if it resolves, its `accept_mission` only logs the "No mission_defs entry" WARN and its `add_dialog_set` finds no map. Neither sends a `CellToBaseMsg`, so the exact message destructure and the relog's mails-only assertion hold.
+- The bridge is guarded in `bridge.rs`, with a world id (tests 1-5), and test 6 pins the whole arrival set on purpose, as `dakara_e1_space.rs`'s module doc asks of any new arrival chain.
+
+**Before re-dispatch (orchestrator, through ops).** The `dk-10fc` worktree has no commit and sits on `3840e55ae`, before DK-10e (`a97b61e25`, #1876). Move it to current `main` first, so check 5 runs DK-10e's three-mail tests and test 6 sees chain 8007.
+
+**Checks:** the four shared checks, then 5. `pwsh tools/build-lane/live-db-test.ps1 chain_replay_tests::dakara_e1_space`. Expected: all four tests pass unchanged; copy the final `status=` line and the pass count into the report. If check 5 fails, do **not** edit `dakara_e1_space.rs`, weaken a test or add a condition to 8075: paste the failing test's output into the report and return `blocked` with the reason `space-test`.
+
+**Revert proof.** Tests 1-3 assert non-empty lists, so removing the seed rows fails them; test 5 fails if the archetype, world or mission gates are dropped. Test 6's first list fails if 8075 is removed or another chain starts firing on a Free Jaffa's first arrival; its second list fails if 8075 loses its `world 61` condition, which is the change that would also break the `dakara_e1_space` tests.
 
 **Docs rows owed.** The shared rule (DK-99 owns `mission-chains.md`). The UAT rows are DK-U11 to DK-U16 in the README already; name them in the report.
 
@@ -193,32 +202,106 @@ Notes: 5930 is completed again on the second pickup; `complete_objective` is ide
 
 Dog tags stack to 3 (`max_stack_size` 3, container set 2), so no stacking check is needed; say so in the report.
 
-## DK-10d: 1570 steps 4905 and 4903
+## DK-10d: 1570 steps 4905 and 4903 (split into DK-10d-B and DK-10d-A)
+
+Step 4905 "Use your radio to contact Gen. Hammond": 5934 and 5933, both required; dialogs 5815 (Tau'ri) and 5816 (Jaffa), dsm 6731 / 6732, no NPC. Step 4903 "Speak with Bra'tac to arrange transport": 5935; dsm 6733 (dialog 5817, turn-in). It is the mission's last step.
+
+**Split (architect, 2026-10-18).** DK-10d is two packets that share the seed file `dakara_e1_m1570_report_chains.sql` (`REPORT_CHAINS` 8160-8179; D-DK19 moved it from 8070-8079) and the test file `dakara_e1_missions/report.rs`. **DK-10d-B** (step 4903, Bra'tac's turn-in) needs no radio and is dispatchable now. **DK-10d-A** (step 4905, the radio) needs DK-06b's verb, so it is dispatched only after DK-06b and DK-10d-B have both merged, and it appends to DK-10d-B's files. Until DK-10d-A merges, 1570 stops at step 4905 in play, so 1645 (DK-11 fires on `done 1570`) and 1646 cannot be reached by playing; their chain-replay tests do not depend on it.
+
+### DK-10d-B: 1570 step 4903, Bra'tac's turn-in
 
 | Field | Value |
 |---|---|
 | Role | `packet-coder` |
-| Branch / worktree | `dakara/dk-10d-1570-report` / `dk-10d` |
-| Commit subject | `feat(content): Dakara_E1 mission 1570 radio report and Bra'tac turn-in (DK-10d)` |
-| Seed file / range | `dakara_e1_m1570_report_chains.sql`, 8160-8179 (`REPORT_CHAINS`; D-DK19 moved it from 8070-8079) |
+| Branch / worktree | `dakara/dk-10d-b-1570-turn-in` / `dk-10d-b` |
+| Commit subject | `feat(content): Dakara_E1 mission 1570 Bra'tac turn-in, step 4903 (DK-10d-B)` |
+| Seed file / chains | `dakara_e1_m1570_report_chains.sql`, chains 8164-8165 only (8160-8163 and 8166-8179 are DK-10d-A's) |
 | Test file | `dakara_e1_missions/report.rs` |
-| Report | `<worktree>\.claude\reports\dakara\DK-10d-packet-coder.md` |
-| Size | About 30k tokens |
-
-Step 4905 "Use your radio to contact Gen. Hammond": 5934 and 5933, both required; dialogs 5815 (Tau'ri) and 5816 (Jaffa), dsm 6731 / 6732, no NPC. Step 4903 "Speak with Bra'tac to arrange transport": 5935; dsm 6733 (dialog 5817, turn-in). It is the mission's last step.
-
-**Part A, step 4905 (8160-8163): ARCHITECT FILLS IN BEFORE DISPATCH** from the D-DK10 ruling and DK-06b's merged verb. The rows show 5816 (`arch gte 7`) or 5815 (`arch lte 6`) on the trigger the ruling names, and leave 4905 with `advance 1570->4903`, never with `objective` on 5934 or 5933.
-
-**Part B, step 4903 (complete now):**
+| Report | `<worktree>\.claude\reports\dakara\DK-10d-B-packet-coder.md` |
+| Size | About 15k tokens |
+| Dispatch gate | DK-10a merged (met, #1871). Dispatch now; reviewed with DK-06b as wave 3b. |
+| Merge dependency | None. DK-10d-A needs this packet merged. |
 
 | Chain | Trigger | Conditions | Actions | Why |
 |---|---|---|---|---|
 | 8164 | loaded `Dakara_E1_StoryRm` | world 62; s1570/4903 active | bind 6733@59 | Bra'tac's turn-in; one dialog for both archetypes |
 | 8165 | click `Dakara_E1_StoryRm_Bratac` | world 62; s1570/4903 active | display 5817; unbind 6733@59; complete 1570 | turn-in: unbind before complete |
 
-The player reaches 4903 out on Dakara (the radio), then walks into the tent, so 8164 binds Bra'tac on that entry; no co-firing chain is needed. If D-DK10 makes step 4905 need a bind on entry, Part A adds one co-firing chain per DK-10c "last" chain (8066, 8068, 8070), with the same trigger and conditions and no `display_dialog` (C5 rule 6); those take ids from 8166 up.
+The player reaches 4903 out on Dakara (the radio), then walks into the tent, so 8164 binds Bra'tac on that entry. A player who is already in the tent when 4903 begins gets the bind from DK-10d-A's chains 8170/8171, not from 8164.
 
-**Tests** (`report.rs`): the shared rules for 8160-8165; plus, at 1570 step 4906 (mission and step `active`), the Bra'tac click resolves nothing in `REPORT_CHAINS` (DK-10b's 8051/8052 own that state), and `display_dialog_count == 1` for a Bra'tac click at 4903.
+Write the two chains into the existing file after its `SET search_path` line, each with its evidence comment (`PROJECT_FINAL_RECONSTRUCTION`, step 4903).
+
+**Tests** (`report.rs`, below its `//!` line; the shared rules above apply):
+
+1. 8164: `fire_player_loaded(.., STORY_RM_NAME)` at 1570 step 4903 in world 62 gives exactly `["8164:add_dialog_set(6733@59)"]`, for `FREE_JAFFA` and for `TAURI`. At step 4905: no `8164:` label (filter `8164..=8164`, not all of `REPORT_CHAINS`: DK-10d-A's 8170/8171 fire on this load at 4905 by design, so a `REPORT_CHAINS` negative there breaks the day DK-10d-A merges; wave-3b review finding 1, the shipped test does this). Nothing in `REPORT_CHAINS` at step 4906, with 1570 `completed`, or in world 61.
+2. 8165: a Bra'tac click at 4903 in world 62 gives exactly `["8165:display_dialog(5817)", "8165:remove_dialog_set(6733@59)", "8165:complete_mission(1570)"]`, `display_dialog_count(&r) == 1` and `assert_no_deferred_actions(&r, 8165)`. Nothing in `REPORT_CHAINS` at 4906 (DK-10b's 8051/8052 own that state), at 4905, or in world 61.
+
+Leave the `#[allow(dead_code)]` on `STORY_RM_NAME`: `mod.rs` is not yours (rule 4).
+
+**Checks:** the four shared checks. Name `docs/content/mission-chains.md` as DK-99's in the report.
+
+### DK-10d-A: 1570 step 4905, the radio report
+
+| Field | Value |
+|---|---|
+| Role | `packet-coder` |
+| Branch / worktree | `dakara/dk-10d-a-1570-radio` / `dk-10d-a` |
+| Commit subject | `feat(content): Dakara_E1 mission 1570 radio report, step 4905 (DK-10d-A)` |
+| Seed file / chains | `dakara_e1_m1570_report_chains.sql`, chains 8160-8163 and 8166-8171; 8172-8179 stay spare |
+| Test file | `dakara_e1_missions/report.rs` (append below DK-10d-B's tests; do not change them) |
+| Report | `<worktree>\.claude\reports\dakara\DK-10d-A-packet-coder.md` |
+| Size | About 34k tokens (amended 2026-10-19 with tests 8 and 9 from the wave-3b review) |
+| Dispatch gate | DK-06b merged (the verb, its loader arm and the `labels_in` arm) **and** DK-10d-B merged (the shared files). Create the worktree from `main` after both merges. DK-10c need not be merged: its file and range are disjoint. Wave-3b review (2026-10-18): both verdict `ship`, merge DK-06b first, then DK-10d-B (disjoint files, clean `merge-tree`). |
+| Merge dependency | None after the gate. M2 (the owner's playtest) needs DK-10c and DK-10d-A both merged. |
+
+**The ruling this packet carries (D-DK10, option B).** No NPC speaks the radio call, so the chains use DK-06b's verb `display_radio_dialog`, which sends `onDialogDisplay` with `EntityId` 0: the window opens with Hammond's text and no portrait. Two notation rows join the shared table:
+
+| Written | Row |
+|---|---|
+| `radio 5816` | `(id, 'display_radio_dialog', 5816, NULL, '{}', 0, n)` |
+| `radio 5816 after 2000 ms` | `(id, 'display_radio_dialog', 5816, NULL, '{}', 2000, n)` |
+
+The rows show 5816 for `arch gte 7` (Jaffa) and 5815 for `arch lte 6` (Tau'ri), and leave 4905 with `advance 1570->4903`, never with `objective` on 5934 or 5933.
+
+| Chain | Trigger | Conditions | Actions | Why |
+|---|---|---|---|---|
+| 8160 | choice 6224 | arch gte 7; s1570/4905 active | radio 5816; advance 1570->4903 | Louis's dog-tag dialog closed after the third pickup |
+| 8161 | choice 6224 | arch lte 6; s1570/4905 active | radio 5815; advance 1570->4903 | as 8160, Tau'ri |
+| 8162 | choice 6225 | arch gte 7; s1570/4905 active | radio 5816; advance 1570->4903 | Nguyen's |
+| 8163 | choice 6225 | arch lte 6; s1570/4905 active | radio 5815; advance 1570->4903 | as 8162, Tau'ri |
+| 8166 | choice 6226 | arch gte 7; s1570/4905 active | radio 5816; advance 1570->4903 | Waters's |
+| 8167 | choice 6226 | arch lte 6; s1570/4905 active | radio 5815; advance 1570->4903 | as 8166, Tau'ri |
+| 8168 | loaded `Dakara_E1` | world 61; arch gte 7; s1570/4905 active | radio 5816 after 2000 ms; advance 1570->4903 | restore after a relog or world change at 4905 |
+| 8169 | loaded `Dakara_E1` | world 61; arch lte 6; s1570/4905 active | radio 5815 after 2000 ms; advance 1570->4903 | as 8168, Tau'ri |
+| 8170 | loaded `Dakara_E1_StoryRm` | world 62; arch gte 7; s1570/4905 active | radio 5816 after 2000 ms; advance 1570->4903; bind 6733@59 | restore in the tent; binds Bra'tac too |
+| 8171 | loaded `Dakara_E1_StoryRm` | world 62; arch lte 6; s1570/4905 active | radio 5815 after 2000 ms; advance 1570->4903; bind 6733@59 | as 8170, Tau'ri |
+
+Ids 8164-8165 are DK-10d-B's, so this packet's ids skip them. Append the ten chains after DK-10d-B's, each with its evidence comment (`PROJECT_FINAL_RECONSTRUCTION`, step 4905, and "radio: D-DK10 option B").
+
+**Why these triggers** (put the short form in the chain comments):
+
+- DK-10c's chains 8066, 8068 and 8070 show the dog-tag dialog (6224, 6225 or 6226) and advance to 4905 in the same chain. Those dialogs have no buttons, so closing one fires `dialog_choice` with button -1, and on the third pickup 4905 is already active. A close after the first or second pickup happens at step 4901 and matches nothing.
+- Progress never waits on the radio dialog's own close: the advance runs with the radio, so the step works even if the client never reports a close for an `EntityId` 0 dialog.
+- No world condition on 8160-8167: the player may close the dog-tag dialog after walking into the tent.
+- 8168-8171 cover a relog or world change at 4905 before the close (the #479 offer gate forgets offers across a world change). The 2000 ms delay lets the client finish loading before the window opens; it is the one deliberate exception to "every action has `delay_ms 0`" in this wave (precedent: Castle chain 1172). The advance has no delay, so the step gate closes at once and the chain cannot fire twice.
+- 8170/8171 bind Bra'tac themselves: conditions are read before any action runs, so 8164 (`s1570/4903`) does not fire on the same load, and 8164 and 8170/8171 never both fire.
+- If dog-tag dialogs from earlier pickups are closed late, a second radio window may open; it is harmless and the step has already moved.
+
+**Tests** (`report.rs`, appended). Add two local helpers: `radio_count(&r)`, the number of `Action::DisplayRadioDialog` across the whole engine (as `display_dialog_count` does for `DisplayDialog`), and `delays_of(&r, chain) -> Vec<i32>`, the `action_delays` of that chain's actions in order. The labels read `"8160:display_radio_dialog(5816)"` (DK-06b's `labels_in` arm).
+
+1. For each of `fire_dialog_choice(.., 6224)`, `6225` and `6226` at 1570 step 4905 in world 61: `FREE_JAFFA` and `PRAXIS_JAFFA` give exactly `["<chain>:display_radio_dialog(5816)", "<chain>:advance_step(1570->4903)"]`; `TAURI` gives the 5815 pair from the odd chain. Each with `radio_count == 1`, `display_dialog_count == 0` and `assert_no_deferred_actions(&r, <chain>)`.
+2. The same choice at 4905 in world 62 also fires (8160 for 6224 with `FREE_JAFFA`).
+3. `fire_dialog_choice(.., 6224)` at step 4901, at step 4903, and with 1570 `completed`: nothing in `REPORT_CHAINS`.
+4. `fire_dialog_choice(.., 5816)` and `(.., 5815)` at 4903: nothing in `REPORT_CHAINS` (the radio's own close does nothing).
+5. 8168/8169: `fire_player_loaded(.., DAKARA_NAME)` at 4905 in world 61 gives the radio and advance labels, `delays_of == [2000, 0]`, `radio_count == 1`. Nothing in `REPORT_CHAINS` at 4901 or 4903.
+6. 8170/8171: `fire_player_loaded(.., STORY_RM_NAME)` at 4905 in world 62 gives `[radio, advance, "<chain>:add_dialog_set(6733@59)"]` and `delays_of == [2000, 0, 0]`, with no `8164:` label. At 4903 the same load gives only `["8164:add_dialog_set(6733@59)"]`.
+7. DK-10d-B's tests stay unchanged and pass.
+8. **Seed guard (type 3, live-DB; replaces the old `dialog_button_linter` check).** `live_db_report_radio_rows_and_dialog_shape`, with `sqlx::query_as` / `query_scalar` on `pool` as `dakara_e1_space.rs` does: (a) `SELECT chain_id, target_id FROM resources.content_actions WHERE chain_id BETWEEN 8160 AND 8179 AND action_type::text = 'display_radio_dialog' ORDER BY chain_id` returns exactly the ten rows `(8160, 5816), (8161, 5815), (8162, 5816), (8163, 5815), (8166, 5816), (8167, 5815), (8168, 5816), (8169, 5815), (8170, 5816), (8171, 5815)`; (b) `SELECT count(*) FROM resources.dialog_screen_buttons b JOIN resources.dialog_screens s ON s.screen_id = b.screen_id WHERE s.dialog_id IN (5815, 5816, 6224, 6225, 6226)` is 0 (the radio and dog-tag dialogs have no buttons, so their only response is the close, button -1, which is what 8160-8167 and test 4 rely on; checked 2026-10-19: none has a button); (c) dialog 5815 has 7 screens and 5816 has 10 (`SELECT dialog_id, count(*) ... GROUP BY dialog_id`). Revert proof: (a) fails when this packet's rows are removed. Why not the linter: `dialog_button_linter` scans only five Castle and debug-hub chain files (`crates/content-engine/tests/it/dialog_button_linter/seed_model.rs`, `CHAIN_FILES`) and only `display_dialog` actions, so it can never fail on these chains (wave-3b review, DK-06b finding 2). Do not edit the linter.
+9. **8165 for a Tau'ri (wave-3b review, DK-10d-B finding 2).** A new test, `live_db_report_turn_in_tauri`: the 8165 positive of DK-10d-B's test 2 for `TAURI` (same three labels, `display_dialog_count == 1`, `assert_no_deferred_actions(&r, 8165)`). DK-10d-B tested only `FREE_JAFFA`; the chain has no archetype row, and this catches one being added. Do not edit DK-10d-B's test.
+
+`assert_no_deferred_actions` fails by design on 8168-8171; use `delays_of` there instead. DK-06b ships `Action::DisplayRadioDialog`, the `display_radio_dialog(<id>)` label and `action_delays` (parallel to `actions`), which `radio_count` and `delays_of` read.
+
+**Checks:** the four shared checks only. There is no fifth check: `dialog_button_linter` does not scan the Dakara files (test 8 replaces it). Name `docs/content/mission-chains.md` as DK-99's in the report; the radio row of the UAT checklist (DK-U17) is in the README already. Size with tests 8 and 9: about 34k tokens.
 
 ## DK-11: mission 1645, Loth'ta's withdrawal orders
 

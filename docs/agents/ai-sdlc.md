@@ -180,12 +180,13 @@ Not measured yet:
 
 ## Platforms
 
-**Status: Windows with PowerShell 7 is fully supported. WSL, Linux, and Git Bash on Windows are not validated, but not unsupported.** The build lane, the ship scripts and every agent rule are validated on Windows with PowerShell 7. Every operational script in tools/build-lane/ (lane, mk-worktree, rm-worktree, ship, rebase-pr and the ops git verbs) has a `.sh` twin, and CI runs shellcheck and the twins' tests on Linux, so the `ops` agent uses the `.sh` twins on a Linux or WSL host. "Not validated" means that no full session (orchestrator, packet workers, review, ship) has been run end to end on Linux or WSL, and that the packet workers still need PowerShell: on a host without it they return `blocked: no PowerShell (pwsh) on this host`. The known gaps: [development-workflow.md § WSL and Linux hosts](development-workflow.md#wsl-and-linux-hosts).
+**Status: Windows with PowerShell 7 is fully supported. WSL, Linux, and Git Bash on Windows are not validated, but not unsupported.** The build lane, the ship scripts and every agent rule are validated on Windows with PowerShell 7. Every build-lane `.ps1` has a `.sh` twin, and CI runs shellcheck and the twins' tests on Linux. Agents pick their shell from the `Platform:` line of their environment: PowerShell on `win32` (never Git Bash), Bash and the `.sh` twins on `linux`, which is what WSL reports. A packet runs only on the host its `Host:` line names, Windows unless it says otherwise. "Not validated" means that no full session (orchestrator, packet workers, review, ship) has been run end to end on Linux or WSL, and that the live-DB scripts have not been run there. The known gaps: [development-workflow.md § WSL and Linux hosts](development-workflow.md#wsl-and-linux-hosts).
 
 ## Further reading
 
 - [campaign-packet skill](../../.claude/skills/campaign-packet/SKILL.md): the exact campaign rules the orchestrator follows.
 - [development-workflow.md](development-workflow.md): the ticket-to-PR pipeline, the agent roster and the worker-lifetime rules.
 - [ai-harness.md](ai-harness.md): settings, agents, skills, hooks, the board, memory and the review bots.
+- [ai-sdlc-example.md](ai-sdlc-example.md): one real packet, AH-11m, followed from brief to merge.
 - [rules-and-gotchas.md](rules-and-gotchas.md): decisions already made and traps already hit.
 - [campaign-metrics findings](../analysis/campaign-metrics/findings.md) and the [token-usage ledger](../analysis/token-usage/README.md): where the numbers come from.

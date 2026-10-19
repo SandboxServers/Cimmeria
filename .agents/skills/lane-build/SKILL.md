@@ -7,7 +7,7 @@ description: Run any compiling cargo command in Cimmeria (check, build, test, ne
 # Build through the lane
 
 Several sessions and workers share one workstation. `tools/build-lane/lane.ps1` (twin of
-`lane.sh`; both share the slots) is a machine-wide semaphore that also sets up the target
+`lane.sh`, which shares its slots on the same Windows host) is a machine-wide semaphore that also sets up the target
 dir, incremental builds and sccache. **Every compiling `cargo` call goes through it.** In one
 week of telemetry, 326 direct `cargo` calls bypassed it and competed with every other build.
 Background: [docs/architecture/build-system.md](../../../docs/architecture/build-system.md).
@@ -67,6 +67,21 @@ When stdout is not a terminal, the lane prints a summary instead of cargo's outp
 every failure in full, and the **log path**. Read the failures file or the log. Rerunning to
 "see the output" costs a slot and minutes. Set `LANE_VERBOSE=1` only when you really need
 the whole stream.
+
+## Linux and WSL hosts
+
+Read the `Platform:` line of your environment. On `win32`, everything above holds: PowerShell and `lane.ps1`, never Bash, not even Git Bash. On `linux`, which is what WSL reports, use the Bash tool and the twin with the same arguments:
+
+```bash
+cd <worktree> && bash tools/build-lane/lane.sh cargo check -p cimmeria-cell
+cd <worktree> && bash tools/build-lane/lane.sh --exclusive cargo clippy --workspace <EXCL> --all-targets -- -D warnings
+```
+
+No `Platform:` line: follow `win32`. Any other platform: return `blocked: platform <p> is not supported (Windows, Linux and WSL only)`.
+
+- **A packet runs on the host its `Host:` line names**: `windows` (the default), `linux`, or `both` with each command given as `pwsh:` and `bash:`. A mismatch returns `blocked`; never translate a command, except the lane, whose twins take the same arguments.
+- **One host per checkout.** On Linux the slots live under `~/.local/share/cimmeria-build`, so a Linux lane and a Windows lane never see each other. Never run a Linux session on a `/mnt/c/...` checkout that Windows sessions build in.
+- **Not validated on Linux:** the live-DB scripts below (`live-db-test.sh`, `reload-db.sh`), and a full agent session. CI runs the twins' tests and shellcheck on Linux.
 
 ## Live-DB tests
 

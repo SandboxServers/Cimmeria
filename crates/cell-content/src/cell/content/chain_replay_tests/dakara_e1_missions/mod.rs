@@ -15,9 +15,19 @@ use cimmeria_content_engine::triggers::{TriggerEvent, TriggerType};
 
 mod bridge;
 mod entry;
+mod labels;
 mod m1645;
 mod m1646_drops;
 mod m1646_offer;
+mod m1648;
+mod m1649_offer;
+mod m1649_terminal;
+mod m1650;
+mod m1651;
+mod m1651_gate;
+mod m1652;
+mod m1653;
+mod m1654;
 mod report;
 mod search;
 mod tent;
@@ -50,6 +60,24 @@ const M1645_CHAINS: RangeInclusive<i64> = 8080..=8119;
 const M1646_OFFER_CHAINS: RangeInclusive<i64> = 8120..=8139;
 #[allow(dead_code)] // used by the wave-3 submodules (work-packets.md C7)
 const M1646_DROP_CHAINS: RangeInclusive<i64> = 8140..=8159;
+#[allow(dead_code)] // used by the wave-5 and wave-6 submodules (work-packets.md C7)
+const M1648_CHAINS: RangeInclusive<i64> = 8180..=8199;
+#[allow(dead_code)] // used by the wave-5 and wave-6 submodules (work-packets.md C7)
+const M1649_OFFER_CHAINS: RangeInclusive<i64> = 8200..=8219;
+#[allow(dead_code)] // used by the wave-5 and wave-6 submodules (work-packets.md C7)
+const M1649_TERMINAL_CHAINS: RangeInclusive<i64> = 8220..=8249;
+#[allow(dead_code)] // used by the wave-5 and wave-6 submodules (work-packets.md C7)
+const M1650_CHAINS: RangeInclusive<i64> = 8250..=8289;
+#[allow(dead_code)] // used by the wave-5 and wave-6 submodules (work-packets.md C7)
+const M1651_CHAINS: RangeInclusive<i64> = 8290..=8309;
+#[allow(dead_code)] // used by the wave-5 and wave-6 submodules (work-packets.md C7)
+const M1651_GATE_CHAINS: RangeInclusive<i64> = 8310..=8319;
+#[allow(dead_code)] // used by the wave-5 and wave-6 submodules (work-packets.md C7)
+const M1652_CHAINS: RangeInclusive<i64> = 8320..=8349;
+#[allow(dead_code)] // used by the wave-5 and wave-6 submodules (work-packets.md C7)
+const M1653_CHAINS: RangeInclusive<i64> = 8350..=8389;
+#[allow(dead_code)] // used by the wave-5 and wave-6 submodules (work-packets.md C7)
+const M1654_CHAINS: RangeInclusive<i64> = 8430..=8449;
 
 /// Set `mission_<m>_obj_<o>_status`, the key `Condition::ObjectiveStatus` reads.
 #[allow(dead_code)] // used by the wave-3 submodules (work-packets.md C7)
@@ -111,6 +139,9 @@ fn labels_in(resolved: &ResolvedActions, range: RangeInclusive<i64>) -> Vec<Stri
                     objective_id,
                 } => format!("complete_objective({mission_id}/{objective_id})"),
                 Action::DisplayDialog { dialog_id } => format!("display_dialog({dialog_id})"),
+                Action::DisplayRadioDialog { dialog_id } => {
+                    format!("display_radio_dialog({dialog_id})")
+                }
                 Action::AddDialogSet {
                     dialog_set_id,
                     slot,
@@ -128,9 +159,49 @@ fn labels_in(resolved: &ResolvedActions, range: RangeInclusive<i64>) -> Vec<Stri
                     amount,
                 } => format!("increment_counter({counter_name}+{amount})"),
                 Action::ResetCounter { counter_name } => format!("reset_counter({counter_name})"),
+                Action::CrossWorldTeleport {
+                    world_name,
+                    position: p,
+                } => format!(
+                    "cross_world_teleport({world_name}@{:.2},{:.2},{:.2})",
+                    p[0], p[1], p[2]
+                ),
+                Action::SpawnEntity {
+                    template_id, tag, ..
+                } => {
+                    format!("spawn_entity({template_id}#{tag})")
+                }
+                Action::DespawnEntity { entity_tag } => format!("despawn_entity({entity_tag})"),
+                Action::DestroyTaggedEntity { entity_tag } => {
+                    format!("destroy_entity({entity_tag})")
+                }
+                Action::PlaySequence { sequence_id } => format!("play_sequence({sequence_id})"),
                 other => format!("OTHER({other:?})"),
             };
             format!("{id}:{body}")
         })
         .collect()
+}
+
+/// The `delay_ms` of each action of `chain`, in order (`ResolvedActions`
+/// keeps one delay per action, index for index).
+#[allow(dead_code)] // used by the wave-5 and wave-6 submodules (work-packets.md C7)
+fn delays_of(resolved: &ResolvedActions, chain: i64) -> Vec<i32> {
+    resolved
+        .actions
+        .iter()
+        .zip(resolved.action_delays.iter())
+        .filter(|((id, _), _)| *id == chain)
+        .map(|(_, d)| *d)
+        .collect()
+}
+
+/// How many `display_radio_dialog` actions the whole engine resolved.
+#[allow(dead_code)] // used by the wave-5 and wave-6 submodules (work-packets.md C7)
+fn radio_count(resolved: &ResolvedActions) -> usize {
+    resolved
+        .actions
+        .iter()
+        .filter(|(_, a)| matches!(a, Action::DisplayRadioDialog { .. }))
+        .count()
 }

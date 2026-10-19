@@ -39,3 +39,17 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (8013, 62.00, -16.56, 413.00, 0.0000, 61, 459, 'Dakara_E1_Drop3', NULL, true, 30);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (8014, 26.00, -17.90, 109.00, 0.0000, 61, 460, 'Dakara_E1_Drop4', NULL, true, 30);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (8015, 366.00, -16.26, -31.00, 0.0000, 61, 461, 'Dakara_E1_Drop5', NULL, true, 30);
+
+-- DK-41 PROJECT_FINAL_RECONSTRUCTION. The story props of missions 1649
+-- (Command Terminal, PL-DK-A-05, off-mesh on the tent table), 1650
+-- (Moh'katan's Terminal, PL-DK-B-06, world 62), 1652 (the ring controls on
+-- the two Ha'tak ring pads, PL-DK-A-12 and A-13) and 1653 (the power
+-- supplies by the two ion cannons, PL-DK-A-15 and A-16). No bind is applied
+-- here: every prop's dialog and its interaction bit are a per-player bind
+-- from its mission chain (D-DK31).
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (8016, 137.10, -21.38, 274.20, 4.1891, 61, 453, 'Dakara_E1_CommandTerminal', NULL, true, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (8017, 62.50, 0.02, 40.50, 1.8158, 62, 454, 'Dakara_E1_StoryRm_MohkatanTerminal', NULL, true, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (8018, -139.33, -16.17, 48.95, 0.0000, 61, 455, 'Dakara_E1_RingControl_XMinus', NULL, true, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (8019, 358.03, -16.02, 102.07, 0.0000, 61, 462, 'Dakara_E1_RingControl_XPlus', NULL, true, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (8020, 56.50, -12.36, -73.70, 1.4724, 61, 456, 'Dakara_E1_PowerSupply1', NULL, true, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (8021, 202.20, -12.36, -59.40, 4.6152, 61, 463, 'Dakara_E1_PowerSupply2', NULL, true, 30);

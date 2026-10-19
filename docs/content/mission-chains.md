@@ -1198,7 +1198,37 @@ The Python scripts above are ported to content chains in [db/resources/Content/S
 
 Chain-replay tests: [`chain_replay_tests/class_start_sgc/`](../../crates/cell-content/src/cell/content/chain_replay_tests/class_start_sgc/mod.rs) (gates, pickup, M1562, M1569), [`mission_1562.rs`](../../crates/cell-content/src/cell/content/chain_replay_tests/mission_1562.rs) (chain 3026) and [`sgc_w1_move_entity.rs`](../../crates/cell-content/src/cell/content/chain_replay_tests/sgc_w1_move_entity.rs) (the elevators). None of this has been played on a client yet; the Part D statuses for 1559 and 1562 describe the legacy scripts and are unchanged.
 
-**Unscripted continuation.** Missions 1563-1569 ("Virus", "Self-Destruct", "Tactics", "Tactics pt. 2", "Clear the Way", "Gate Room", "Ordinance") are seeded in `missions.sql` with `mission_label = 'General'`, not SGC_W1. Their step text continues the SGC story ("Take Col. Carter's notes on security protocols.", "Escort Col. Carter to the Failsafe Room on sub-level 28"), so the zone link is inferred from the text (MEDIUM); no script or `.def` evidence exists. The port is tracked in #335.
+#### Union continuation (`sgc_w1_union_*.sql`, chains 3051-3199)
+
+Missions 1563-1571, the SGC halves of 1651, 1654 and 1655, and the crossings to Dakara (C1) and Omega (C4). Campaign: `docs/analysis/union-sgc-continuation/`. Each line below belongs to one packet; that packet rewrites only its own line.
+
+- **1563 Virus (US-12, chains 3051-3057):** planned.
+
+- **1564 Self-Destruct (US-15, chains 3060-3071):** planned.
+
+- **1564 escort (US-16, chains 3073-3078):** planned.
+
+- **1571 auxiliary credit (US-13, chains 3080-3081):** planned.
+
+- **1565/1566 Tactics (US-20, chains 3085-3093):** planned.
+
+- **1567 Clear the Way (US-21, chains 3095-3099):** planned.
+
+- **1568 Gate Room (US-22, chains 3100-3107):** planned.
+
+- **1569 Ordinance (US-23, chains 3110-3122):** planned.
+
+- **1570 and crossing C1 (US-24, chains 3123-3131):** planned.
+
+- **1651 SGC half, C2 arrival and C2b (US-30, chains 3133-3142):** planned.
+
+- **1654 turn-in (US-31, chains 3148-3152):** planned.
+
+- **1655 Human and crossing C4 (US-32, chains 3156-3165):** planned.
+
+- **1655 Free Jaffa (US-33, chains 3166-3169):** planned.
+
+- **Return state and relogs (US-34, chains 3171-3175):** planned.
 
 #### Mission 1559: "Welcome to Stargate Command" [CONFIRMED]
 
@@ -1492,6 +1522,34 @@ Race gates are D-UB1: Human `archetype gte 1` and `lte 4`, Free Jaffa `eq 7`, As
 **F19, the `complete_objective` trap.** Completing the last required objective of the current step completes the whole mission (`crates/cell-content/src/cell/missions/progression.rs:463-506`). Mid-mission chains use `advance_step`, turn-ins use `complete_mission`, and multi-objective steps (473 S1724, 477 S1744) use P6.
 
 **F21, the interact fallback.** A click runs trainer, `interact_tag` and `interact_template` chains first. Only if none handled it does the server auto-open the first per-player bind's dialog for that template (`crates/cell-interactions/src/cell/interactions/dispatch/interact.rs:113-135`). A bound turn-in therefore shows, without completing anything, whenever no chain claims the click. Every quota turn-in needs a "not yet" sibling, one slot never carries two binds, and an NPC template with `interaction_type 0` can be clicked only while a bind is live.
+
+---
+
+### Union Omega (worlds 18 and 80)
+
+**Status:** merged ([#1902](https://github.com/SandboxServers/Cimmeria/pull/1902), [#1908](https://github.com/SandboxServers/Cimmeria/pull/1908), [#1911](https://github.com/SandboxServers/Cimmeria/pull/1911)) and covered by resolve-only and executor-level tests; never walked in a client. The live walk (UO-U1) has not run. Mission 1655 reaches Omega at step S4940 and leaves it at S4942; the Human offer is 1423 and the Free Jaffa offer is 1500. Everything is `CIMMERIA_RECONSTRUCTION`; the decisions behind it are in the [campaign ledger](../analysis/union-zone-planning/omega-work-packets.md#overnight-run-2026-10-1819).
+
+Seeds: [arrival](../../db/resources/Content/Seed/union_omega_arrival_chains.sql), [Human](../../db/resources/Content/Seed/union_omega_human_chains.sql), [Free Jaffa](../../db/resources/Content/Seed/union_omega_jaffa_chains.sql), [re-offer](../../db/resources/Content/Seed/union_omega_reoffer_chains.sql). Every delivery chain carries `mission_status 1655 eq active`; every re-offer chain carries `mission_status 1655 eq completed`.
+
+| Chain | Trigger | World | Effect |
+|---|---|---|---|
+| 63801 | `teleport_in '17'` | 80 | The ring beam into the Command Center: advance 1655 from S4940 to S4942 |
+| 63810 | `player_loaded Omega_Site`, at S4940 | 18 | Bind Modi's shipped Shutdown topic (map 7015, slot 65) |
+| 63811 | `dialog_choice 6168` | 18 | Closing Modi's dialog removes the bind |
+| 63820 | `teleport_in '17'`, at S4940 | 80 | First beam: bind Jackson's delivery map (map 63800, slot 63800) |
+| 63821 | `player_loaded Omega_Site_CmdCenter`, at S4942 | 80 | Relog or second beam: bind the same map again |
+| 63822 | `dialog_choice 4641` | 80 | `remove_dialog_set`, `complete_mission` 1655, `accept_mission` 1423, `grant_stargate_address` 6 |
+| 63830-63832 | the same three triggers, archetype `eq 7` | 80 | Free Jaffa twin: map 63801, dialog 5025, mission 1500 |
+| 63840-63845 | `player_loaded`, `mission_abandoned`, `dialog_choice`, per faction (63840-63842 Jackson and 1423, 63843-63845 Bra'tac and 1500) | 80 | Re-offer after an abandon; maps 63802 and 63803 (flags 8388608); abandon chains 63841 and 63844 require world 80 |
+
+The Human gate is archetype `gte 1` and `lte 4`. The tests are `chain_replay_tests::union_omega` in [`crates/cell-content`](../../crates/cell-content/src/cell/content/chain_replay_tests/union_omega/); `executed.rs` there runs the chains through the executor.
+
+Rules these chains follow:
+
+1. `remove_dialog_set` runs before `add_dialog_set`, because the engine does not dedupe (F3).
+2. `remove_dialog_set` runs before `complete_mission` (F5).
+3. There are no `interact_tag` chains; NPC clicks reach the player's dialog set instead (F4).
+4. No chain calls `complete_objective` on 1655 (F21). S4940 already requires O5647 and O5644, and Omega owns only the S4940 to S4942 move and the S4942 completion.
 
 ---
 
@@ -1974,7 +2032,7 @@ These space scripts contain mission accept/advance/complete calls but are NOT re
 | Castle | `deprecated/python/cell/spaces/Castle.py` | 701 (full lifecycle), 702 (accept) |
 | SGC_W1 | `deprecated/python/cell/spaces/SGC_W1.py` | 1559 (full lifecycle) |
 
-Space scripts that exist but contain NO mission logic: `Harset.py`, `Harset_CmdCenter.py`, `Lucia.py`, `Menfa_Dark.py`, `Omega_Site.py`, `Omega_Site_CmdCenter.py`, `SandBox.py`.
+Space scripts that exist but contain NO mission logic: `Harset.py`, `Harset_CmdCenter.py`, `Lucia.py`, `Menfa_Dark.py`, `Omega_Site.py`, `Omega_Site_CmdCenter.py`, `SandBox.py`. Omega's logic now lives in content chains, not in those scripts (see [Union Omega](#union-omega-worlds-18-and-80)).
 
 ---
 

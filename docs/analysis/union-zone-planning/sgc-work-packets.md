@@ -167,6 +167,7 @@ VALUES
 | C4 | 1655 4944 → 4941 → 4940 | 58 → Omega_Site 18 | **SGC US-32** | `advance_step 1655 '4941'` @0, sequences @0/@2500, `advance_step 1655 '4940'` @3000, `cross_world_teleport 'Omega_Site'` @3000 | 1655/4940 active; Humans hold 6786 (D-US11) | Omega | Omega-published (UO-00); candidate gate 5 (34.705, -50.634, -149.092) |
 
 - **H3, the SGC arrival point (CIMMERIA_RECONSTRUCTION):** the Gate Room floor in front of gate 27. The gate row (172.79, -8.47, 6.014) sits 2.4 m above the floor (y -10.9). SGC_W1 is instanced and `validate_gate_arrival` skips instanced worlds, so nothing at runtime catches a bad y. US-01 seals P13 before US-30 uses it.
+- **C4 step ownership (D-US12 = Omega D-UO25, 2026-10-18):** SGC stops at 1655/4940 plus the teleport. S4940 holds required O5647/O5644, and the engine completes the whole mission once a step's required objectives are all complete, so a `complete_objective` on 1655 at the SGC would end the mission before Omega runs.
 - Telemetry exists for every crossing: INFO `Content: cross-world teleporting entity` (entity, account, player, world, position, chain_id, chain_name) and ERROR `CrossWorldTeleport: cell→base GateTravel send failed` with `reason = "base_channel_closed"`. US-14 adds the tests that pin both rows.
 - Answers to Dakara:
   - **H1:** yes, a visible dial (sequences 10047/10060) before C1, C2b and C4, subject to D-US4.
@@ -301,6 +302,7 @@ Packets use the values US-01 records in `docs/analysis/union-sgc-continuation/pl
 | D-US9 | Edit the gate 27 row, or carry coordinates in the chains | Architect | chains carry H3; the row is untouched | Decided |
 | D-US10 | Static rows 57/58 and 59-63 duplicate the 1565/1567 Jaffa. **A**: chain-spawn story Jaffa beside them. **B**: tag the static rows as the story Jaffa. **C**: delete the rows. Rows 71/77 (1562 attackers) stay in every option. | Owner | **B** | **BlockedDecision**, non-blocking: US-11 step 5, US-20, US-21 |
 | D-US11 | 1655 letter item at departure | Owner + Omega | 6786 to Humans on Hammond's 5856; nothing to the Free Jaffa (H-O6) | **BlockedDecision**, shared with Omega UO-00: US-32 |
+| D-US12 | C4 step ownership (the 1655 slice of U-D04) | Architect (Omega D-UO25) | SGC owns 4943, 4944, 4941 and the C4 departure, ending at `advance_step 1655 '4940'` plus the teleport (O6055 completes as the step advances). Omega owns 4940 → 4942 and the 1655 completion. SGC never runs `complete_objective` on 1655 or `advance_step 1655 '4942'`, and never completes 1655. | Decided by architect overnight 2026-10-18, owner may overrule. It matches K5 C4 and US-32's step table as written, so no SGC packet changes. |
 | D-UD2 | Who owns the 1651/4930 departure | Dakara (D-UD2) | DK-30 | SGC accepts the DK default |
 
 ## HELD items and how they were resolved

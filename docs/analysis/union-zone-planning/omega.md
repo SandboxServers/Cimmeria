@@ -2,14 +2,16 @@
 
 > **Type:** Candidate campaign and packet families
 > **Scope:** Shared SGU hub, worlds 18 and 80; first arrival of Human, Free Jaffa and Asgard
-> **Status:** Planning only; dispatch waits for the first four-zone continuations and FZ-99
-> **Companions:** [evidence](evidence.md), [execution contract](execution-contract.md), [Omega work packets](omega-work-packets.md), [Asgard post-Pertho decision](asgard-post-pertho.md)
+> **Status:** Being built. The owner lifted the FZ-99 / U-D03 hold on 2026-10-18; W1 (UO-01, UO-02) merged in PR #1890. The U-D04 and U-D07 merge holds were settled overnight by the architect (D-UO25, D-UO26 in the ledger; the owner may overrule).
+> **Companions:** [evidence](evidence.md), [execution contract](execution-contract.md), [Omega work packets](omega-work-packets.md), [developer concept art](omega-concept-art.md), [Asgard post-Pertho decision](asgard-post-pertho.md)
 
 ## Playable outcome
 
 Human and Free Jaffa arrive through mission 1655, ride the correct Omega beam connection, deliver distinct letters to Daniel Jackson and Bra'tac, and receive their own `The SGU` missions 1423 and 1500. A new Asgard completes the owner-selected post-Pertho prologue in existing map geometry, receives a remote Council ruling, enters the public Omega hub and receives a Beta-bound Asgard mission. All three can reach Beta E1 without sharing the wrong faction's grant, dialog, reward or tutorial state.
 
 The [Omega master](../sgw-handoff-pack-v1.2/pack/references/world_content/SGW_Omega_Site_Dev_Master_v1.md) describes worlds 18/80, the first-arrival variants, and missions 1423/1500/1522. Its direct mission-to-dialog-set join remains partly inferred. Main and Command Center production maps survive; Ruins 81 and StorageRm 82 have world rows but no named production map in the audited handoff, so this first-convergence campaign does not assume they load. Current Omega runtime is mostly transport; a mission row or speaker name is not an implemented hub service.
+
+The owner-supplied [developer concept art](omega-concept-art.md) (2026-10-18) shows the intended world-18 layout as one map. The Council Chamber is at the north, the Common Area hub in the centre, the SGC (Human) wing to the south-west and the Free Jaffa wing to the south-east, each with proposed vendor, trainer and service spots. It is RESTORED_SOURCE for layout intent and never a coordinate source. Where it goes beyond this plan (trainers, General vendors, inn, infirmary, battlemaster, auction house, the Council Chamber's combat instances), the [work packets](omega-work-packets.md#held-and-blocked) hold owner questions D-UO16..D-UO19 rather than changing scope.
 
 ## Ownership and source boundary
 
