@@ -10,6 +10,7 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
+from ingest.classify import REVIEW_FIX
 from report.stats import percentile
 
 SCHEMA = "cimmeria-campaign-packets/1"
@@ -37,9 +38,21 @@ def _key(agent):
     return agent.get("custom_agent_type") or agent.get("agent_type") or ""
 
 
+def brief_role(role, tag):
+    """A packet-coder session briefed as a review fix pass is a fixer (C12, C19); every other role is unchanged."""
+    return "fixer" if role == "implementer-haiku" and tag == REVIEW_FIX else role
+
+
+def brief_tags(db):
+    """{agent_id: brief_tag} for tagged agents; {} for a database without the column (below schema 7)."""
+    if "brief_tag" not in {row[1] for row in db.execute("PRAGMA table_info(agents)")}:
+        return {}
+    return {row[0]: row[1] for row in db.execute("SELECT agent_id, brief_tag FROM agents WHERE brief_tag IS NOT NULL")}
+
+
 def role_of(agent, roles):
-    """The campaign role of a worker from the config's `roles` map, or `other`."""
-    return roles.get(_key(agent), "other")
+    """The campaign role of a worker from the config's `roles` map, or `other`; a tagged fix pass is a fixer."""
+    return brief_role(roles.get(_key(agent), "other"), agent.get("brief_tag"))
 
 
 def _role_name(agent, roles):
@@ -357,7 +370,7 @@ def load_db(path):
 
     The worktree is the agent's own, else the one its tool calls ran in most often (most agents have none of their own).
     The branch hint is the worktree's latest branch observed by the agent's last record, else its latest branch.
-    `request_model` is the model most of the agent's requests ran on. A database below schema 6 raises ValueError.
+    `request_model` is the model most of the agent's requests ran on. `brief_tag` is the agent's C19 tag, None below schema 7. A database below schema 6 raises ValueError.
     """
     db = sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True)
     db.row_factory = sqlite3.Row
@@ -366,6 +379,7 @@ def load_db(path):
         if int(version) < 6:
             raise ValueError(f"schema_version {version}, re-ingest")
         modal = _modal_worktrees(db)
+        tags = brief_tags(db)
         agents = []
         for row in db.execute(
                 "SELECT a.agent_id, a.agent_type, a.custom_agent_type, a.name, a.model_alias, a.first_ts,"
@@ -377,6 +391,7 @@ def load_db(path):
             last_ts = agent.pop("last_ts")
             agent["worktree"] = agent["worktree"] or modal.get(agent["agent_id"])
             agent["branch_hint"] = _branch_hint(db, agent["worktree"], last_ts)
+            agent["brief_tag"] = tags.get(agent["agent_id"])
             agents.append(agent)
         stops = {r["agent_id"]: dict(r) for r in db.execute("SELECT * FROM agent_stops")}
     finally:

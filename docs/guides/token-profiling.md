@@ -35,7 +35,7 @@ python tools/token-profile/ingest --db ~/token-profile.sqlite --repo . --fetch-p
 - `--repo .` lets the ingest read branch heads and commit ancestry, which attribution needs. `--fetch-prs` loads the PR list from GitHub; without it, nothing is attributed to a PR.
 - The first run takes a minute or two. Later runs read only what is new and take seconds, and they rebuild attribution, so a PR opened today places requests made before it.
 - The run exits 1 when it meets a transcript shape it doesn't know, and 2 when a request's attribution weights don't sum to 1. Both mean the profiler needs a fix, not a retry.
-- **A database of an older schema version is refused.** When a profiler change bumps the schema (it is at version 6), point `--db` at a new file, or delete the old one, and ingest again (a version 5 database takes about two minutes to rebuild).
+- **A database of an older schema version is refused.** When a profiler change bumps the schema (it is at version 7; a version 6 database is upgraded in place), point `--db` at a new file, or delete the old one, and ingest again (a version 5 database takes about two minutes to rebuild).
 
 ## Run a report
 
@@ -138,7 +138,7 @@ The campaign metrics read the profiler database and add what a campaign produced
 
 Each metric, one line:
 
-- Campaign cost: list-price cost of a campaign's requests, by role and PR.
+- Campaign cost: list-price cost of a campaign's requests, by role and PR. A `packet-coder` session briefed as a review fix pass counts as `fixer` (schema 7).
 - Cost per PR: attributed campaign cost divided by the PR count (p50 and p90 per PR too).
 - Cost per accepted change: campaign cost divided by accepted packets.
 - First-pass completion: accepted packets with one implementer session, no review-fix commit and no escalation.
@@ -152,7 +152,7 @@ Each metric, one line:
 
 **Regime.** A packet's regime is the implementer that ran: `haiku` if a Haiku implementer session ran, else `old`. The switch to Haiku workers was `2026-10-10T20:02:54Z`. A campaign is `haiku` at 70% or more Haiku packets, `old` at none, and `mixed` in between; cost compares pure campaigns only, and packet metrics split a mixed campaign by packet.
 
-**Before you start.** `packets` needs a schema v6 database, so re-ingest first. A full `github` run makes roughly 3,500 to 5,500 `gh` API calls (projected from a sample of tagged PRs): pass `--cache`, and expect two sittings.
+**Before you start.** `packets` needs a schema v6 or newer database, and the fixer role of a review fix pass needs v7, so ingest first. A full `github` run makes roughly 3,500 to 5,500 `gh` API calls (projected from a sample of tagged PRs): pass `--cache`, and expect two sittings.
 
 **Rerun in order.** Each step except `registry --check` writes to a scratch directory outside the repository. Copy each command from `python tools/token-profile/metrics <sub> --help`, and check the flags there before you rely on them.
 

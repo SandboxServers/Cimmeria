@@ -6,7 +6,7 @@ Status: **Campaign closed (2026-10-03).** The data contract, ingest, reports, re
 
 | File | What it is |
 |---|---|
-| [`schema.sql`](schema.sql) | The SQLite schema the ingest writes and the reports read. Version 6. |
+| [`schema.sql`](schema.sql) | The SQLite schema the ingest writes and the reports read. Version 7. |
 | [`transcript-format.md`](transcript-format.md) | The transcript shapes the profiler depends on, and the trigger classification rules. |
 | [`attribution.md`](attribution.md) | How a request is charged to a PR or a campaign, and the invariants every attribution keeps. |
 | [`campaigns.json`](campaigns.json) | Which branches, branch prefixes and tracking issues belong to which campaign (a `docs/analysis/<campaign>/` folder). |
@@ -55,7 +55,7 @@ python tools/token-profile/ingest --db ~/token-profile.sqlite --repo . --fetch-p
 | `--campaigns <file>` | Campaign tags; default [`campaigns.json`](campaigns.json). |
 | `--allow-unknown` | Exit 0 although `unknown_shapes` has rows. |
 
-Re-running is cheap: each file is read from where the last run stopped, and a run with nothing new adds nothing. Attribution and campaign tags are rebuilt on every run, so a PR opened later places requests made before it. A database of an older schema version is refused: start a new one (about two minutes). The run prints a JSON summary of counts (never transcript content) and exits 1 when unknown transcript shapes are recorded, 2 when `attribution_imbalance` is not empty.
+Re-running is cheap: each file is read from where the last run stopped, and a run with nothing new adds nothing. Attribution and campaign tags are rebuilt on every run, so a PR opened later places requests made before it. A version 6 database is upgraded in place to version 7 (the brief tag is backfilled from the transcripts); an older one is refused: start a new one (about two minutes). The run prints a JSON summary of counts (never transcript content) and exits 1 when unknown transcript shapes are recorded, 2 when `attribution_imbalance` is not empty.
 
 USD is computed from `price_tables` by the reports, never stored per request; `ingest/prices.py` holds the versioned table and `estimate_usd()`.
 
@@ -185,7 +185,7 @@ Scores the database's PR attribution against ground truth, by estimated USD and 
 
 ## Campaign metrics
 
-The campaign metrics add per-campaign cost, packet, CI, defect and overstep figures to the profile. Run the subcommands in the guide's order, `registry`, `ledger`, `cost`, `github`, `packets`, `overstep`, then `report`, and read each one's flags with `python tools/token-profile/metrics <subcommand> --help`. The method, the regime rule and the caveats are in the guide's [Campaign metrics](../../docs/guides/token-profiling.md#campaign-metrics) section.
+The campaign metrics add per-campaign cost, packet, CI, defect and overstep figures to the profile. Run the subcommands in the guide's order, `registry`, `ledger`, `cost`, `github`, `packets`, `overstep`, then `report`, and read each one's flags with `python tools/token-profile/metrics <subcommand> --help`. The method, the regime rule and the caveats are in the guide's [Campaign metrics](../../docs/guides/token-profiling.md#campaign-metrics) section. A `packet-coder` session whose first prompt is a review fix pass ("review fix, pass N of 3", schema 7 `agents.brief_tag`) counts as `fixer`, not `implementer-haiku`, in the cost, packet and overstep figures.
 
 Intermediate JSON goes to a scratch directory outside the repo and is never committed. The aggregate data goes to `docs/analysis/campaign-metrics/data/` and the Markdown reports to `docs/analysis/campaign-metrics/reports/`; the campaign's ledger is [docs/analysis/campaign-metrics/README.md](../../docs/analysis/campaign-metrics/README.md).
 

@@ -54,7 +54,7 @@ def seed_request(db, request_id="r1", output=100, thinking=50, inp=1, read=2, w5
 class SchemaTest(unittest.TestCase):
     def test_schema_loads_with_version(self):
         db = load_schema()
-        self.assertEqual(db.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0], "6")
+        self.assertEqual(db.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0], "7")
 
     def test_v6_records_stop_reason_and_agent_stops(self):
         db = load_schema()
@@ -64,6 +64,13 @@ class SchemaTest(unittest.TestCase):
         self.assertIn("agent_stops", tables)
         stop_columns = {row[1] for row in db.execute("PRAGMA table_info(agent_stops)")}
         self.assertTrue({"ended_in_api_error", "api_error_kind"} <= stop_columns)
+
+    def test_v7_tags_review_fix_briefs(self):
+        db = load_schema()
+        self.assertIn("brief_tag", {row[1] for row in db.execute("PRAGMA table_info(agents)")})
+        db.execute("INSERT INTO sessions (session_id, project_dir, first_ts, last_ts) VALUES ('s', 'p', 't', 't')")
+        with self.assertRaises(sqlite3.IntegrityError):
+            db.execute("INSERT INTO agents (agent_id, session_id, brief_tag) VALUES ('a', 's', 'brief text')")
 
     def test_thinking_is_a_subset_of_output(self):
         db = load_schema()

@@ -280,7 +280,7 @@ class CliTest(unittest.TestCase):
             record = json.loads(text)
             self.assertAlmostEqual(record["campaigns"]["camp-a"]["cost"]["total_usd"], 0.0592, places=9)
             self.assertEqual(record["stamp"]["price_table"], CURRENT)
-            self.assertEqual(record["stamp"]["profiler_schema"], "6")
+            self.assertEqual(record["stamp"]["profiler_schema"], "7")
             self.assertEqual(record["stamp"]["ledger"], "not passed; PRs without a campaign stay untagged")
 
     def test_ledger_in_the_real_shape_counts_accepted_packets(self):

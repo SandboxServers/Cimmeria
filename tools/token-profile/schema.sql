@@ -1,4 +1,4 @@
--- Token profiler data contract, schema version 6.
+-- Token profiler data contract, schema version 7.
 --
 -- The ingest (TP-01a, tools/token-profile/ingest/) writes these tables from
 -- Claude Code transcripts; the reports (TP-01b, tools/token-profile/report/)
@@ -30,6 +30,9 @@
 -- Version 5: price_tables.long_above and price_tables.long_factor. Haiku 5.5
 -- bills a prompt over 100K tokens at 5x every rate, so a request's price
 -- depends on its context_tokens, not only its model. See ingest/prices.py.
+-- Version 7: agents.brief_tag, 'review-fix' when a subagent's first prompt
+-- names a C12 review fix pass, else NULL; never the prompt text. A version 6
+-- database gains the column in place (ingest/store.py open_db).
 --
 -- Token columns are raw counts. thinking_tokens is a SUBSET of
 -- output_tokens and is never added on top of it.
@@ -40,7 +43,7 @@ CREATE TABLE meta (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
-INSERT INTO meta (key, value) VALUES ('schema_version', '6');
+INSERT INTO meta (key, value) VALUES ('schema_version', '7');
 
 -- One row per ingest run, for version-stamping every report.
 CREATE TABLE profiler_runs (
@@ -116,7 +119,8 @@ CREATE TABLE agents (
     worktree          TEXT,
     first_ts          TEXT,
     last_ts           TEXT,
-    meta_missing      INTEGER NOT NULL DEFAULT 0 CHECK (meta_missing IN (0, 1))
+    meta_missing      INTEGER NOT NULL DEFAULT 0 CHECK (meta_missing IN (0, 1)),
+    brief_tag         TEXT CHECK (brief_tag IS NULL OR brief_tag IN ('review-fix'))  -- version 7: see the header
 );
 
 -- What a request was spent on. Every request belongs to exactly one trigger.

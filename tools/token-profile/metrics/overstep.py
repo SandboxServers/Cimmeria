@@ -17,7 +17,7 @@ from pathlib import Path
 
 from ingest import prices
 
-from .packets import packet_of_session
+from .packets import brief_role, brief_tags, packet_of_session
 
 TIERS = {"haiku": "claude-haiku-5-5", "sonnet": "claude-sonnet-5-5"}
 EDIT_TOOLS = {"Edit", "Write", "NotebookEdit"}
@@ -274,7 +274,8 @@ def detect(requests, packets, cfg, pr_map=None, version=prices.CURRENT):
     fixers = {}
     memo = {}
     for req in reqs:
-        req["role"] = "coordinator" if req["agent_id"] is None else cfg["roles"].get(req["agent_type"])
+        req["role"] = "coordinator" if req["agent_id"] is None \
+            else brief_role(cfg["roles"].get(req["agent_type"]), req.get("brief_tag"))
         req["shares"] = _shares(req, packets, pr_map, memo)
         stream = streams.setdefault((req["session_id"], req["agent_id"]), [])
         req["seq"] = len(stream)
@@ -356,7 +357,9 @@ def load_requests(db_path):
         rows = {}
         for row in db.execute(ROW_SQL):
             rows.setdefault(row["request_id"], []).append(dict(row))
-        return [dict(row, calls=calls.get(row["request_id"], []), rows=rows.get(row["request_id"], []))
+        tags = brief_tags(db)
+        return [dict(row, brief_tag=tags.get(row["agent_id"]), calls=calls.get(row["request_id"], []),
+                     rows=rows.get(row["request_id"], []))
                 for row in db.execute(REQUEST_SQL)]
     finally:
         db.close()
