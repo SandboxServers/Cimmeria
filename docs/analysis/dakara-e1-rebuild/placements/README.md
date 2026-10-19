@@ -84,4 +84,4 @@ Confirmed unchanged: 401 + 2 tiles, the actor census, no `PlayerStart`, 699 and 
 
 After the owner's playtest, send corrected coordinates keyed by row id (`PL-DK-A-nn`, `PL-DK-B-nn`). Nothing is generated and nothing is seeded yet: DK-04 and DK-05 write the seed rows from this ledger, so a correction before they land edits this file, and one after edits the seed row each packet names. Rows are not ids in any seed.
 
-Seeded so far: B-02/B-03 and A-01/A-03 as spawns 8000-8003 (DK-04), B-04, B-05, A-06 and DK-05-A-01 as 8004-8007 (DK-05), A-07 to A-09 as 8008-8010 with search regions 2128-2130 around them, and A-17 to A-21 as 8011-8015 (DK-09).
+Seeded so far: B-02/B-03 and A-01/A-03 as spawns 8000-8003 (DK-04), B-04, B-05, A-06 and DK-05-A-01 as 8004-8007 (DK-05), A-07 to A-09 as 8008-8010 with search regions 2128-2130 around them, and A-17 to A-21 as 8011-8015 (DK-09), and A-05, B-06, A-12, A-13, A-15 and A-16 as 8016-8021 (DK-41).
