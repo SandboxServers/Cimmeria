@@ -35,11 +35,11 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 15,209 |
-| Files with tests | 2,500 |
-| Gated in CI (every crate but CI's exclude list) | 12,702 |
+| Tests (`#[test]` / `#[tokio::test]`) | 15,233 |
+| Files with tests | 2,503 |
+| Gated in CI (every crate but CI's exclude list) | 12,726 |
 | Live-DB tests (`require_db_or_skip!` in the body) | 2,220 |
-| Inventory threshold (5% of the tests) | 760 |
+| Inventory threshold (5% of the tests) | 762 |
 
 <!-- /gen:tests-totals -->
 
@@ -113,10 +113,10 @@ with no file in this directory yet.
 | `crates/cell-effect-scripts` | `cimmeria-cell-effect-scripts` | 162 | 19 | 21 | yes | none |
 | `crates/server` | `cimmeria-server` | 128 | 24 | 0 | yes | [server.md](server.md) |
 | `crates/discord` | `cimmeria-discord` | 116 | 24 | 0 | yes | none |
+| `crates/minigame` | `cimmeria-minigame` | 108 | 15 | 0 | yes | none |
 | `crates/client-patches` | `cimmeria-client-patches` | 99 | 16 | 0 | no | none |
 | `crates/auth` | `cimmeria-auth` | 96 | 17 | 11 | yes | none |
 | `crates/lab-mcp` | `cimmeria-lab-mcp` | 90 | 17 | 10 | yes | none |
-| `crates/minigame` | `cimmeria-minigame` | 84 | 12 | 0 | yes | none |
 | `crates/patchset` | `cimmeria-patchset` | 78 | 14 | 0 | yes | none |
 | `crates/upk-objects` | `cimmeria-upk-objects` | 78 | 9 | 0 | yes | [upk-objects.md](upk-objects.md) |
 | `crates/cell-org` | `cimmeria-cell-org` | 74 | 8 | 0 | yes | none |
