@@ -2,24 +2,23 @@
 
 Ledger: README.md (F1-F56, D-AH1-D-AH58). Packets: work-packets-w4.md (dispatch rule 0, R1-R11, C12-C16, AH-W40, W4a, ship procedure), work-packets-w4b.md (order, AH-23a/b, W5, S2-S6), work-packets-s4.md (C19, S4a-d), work-packets-w4c.md (C17, AH-25..27), work-packets-w3.md (W3c AH-11g/h/i, AH-15, AH-16). Drafts: w4-drafts.md, w4b-drafts.md. Owner answers 2026-10-18: w4-owner-answers-report.md, w4-s1s4-report.md.
 
+**The README packet table is stale until AH-16 (AH-W40, AH-11g/h show Ready; W4 rows show BlockedDependency). Plan from this card, not the table.**
+
 ## State (2026-10-18)
 
-- W1, W2, W3, W3b, W3d merged (#1805-#1843); AH-11p merged as #1850 (retire `ah-11p`). Wave 4 ledger written in the main checkout, uncommitted; nothing of W4 dispatched.
-- Owner answered: README holds the newcomer explanation (D-AH50); architect writes no code or fix (D-AH51); S2/S3/S5/S6 approved (D-AH52); Bash on Linux/WSL only (D-AH53, W4c); S1 vetoed (D-AH57); S4 approved, brief tag design (D-AH58).
-- **Gate (rule 0, D-AH55):** nothing merges while `main` is red. #1844 closed via #1849; recheck before each merge.
-- **Review loop (C12):** never dispatch `packet-review-fixer`; read-only `packet-reviewer`, fresh `packet-coder` per fix pass, up to 3 passes.
+- Merged: W1-W3d (#1805-#1863) incl. W3c (AH-11g #1860, AH-11h #1863); W4a #1865 (+#1866); S6 #1868; S5a #1870; S5b #1872; S4 #1873; W4b #1874; S5c #1877; S3 #1878; W4c #1879 (main 102d15444). AH-11i done (#1797 closed). S1 vetoed (D-AH57); S2 folded into AH-23a.
+- Owner decisions D-AH50..D-AH58 are recorded in the ledger. W4c was the last persona change: the owner relaunches Claude Code before AH-15.
+- AH-24 campaign review runs in worktree `ah-campaign-review`: pass 1 fix beec20088, pass 2 `decision`, ruled in AH-24-ruling.md. Its reports land in `worknotes/AH-24-*.md` with the AH-24 PR.
+- **Gate (rule 0, D-AH55):** nothing merges while `main` is red; recheck before each merge.
+- **Review loop (C12):** never dispatch `packet-review-fixer`. A read-only `packet-reviewer` reviews; a fresh `packet-coder` applies each fix pass; at most 3 passes.
 
-## Next action (order D-AH56, amended)
+## Next action
 
-1. AH-W40: `ops` makes `ah-w4-ledger`; a packet-coder copies the 18 ledger files; `ops` ships and merges it (docs only).
-2. Tell persistent-player-data's coordinator its waves use C12, not "one review-fixer each" (F39).
-3. W3c: AH-11g, AH-11h, each with its packet loop. Then AH-11i (owner closes #1797).
-4. W4a: one PR from `ah-w4a`. Then tell the user to relaunch.
-5. In parallel: W4b (AH-23a then AH-23b, one PR), S6, S5a, S5b, S4 (S4a-d in `ah-s4`, sequential, one PR).
-6. W4c after W4b (one PR from `ah-w4c`; relaunch after); S5c after S5a+S5b; S3 after W4b.
-7. W5: AH-24 after W4b, W4c, AH-11i, S3, S5c, S6, S4; then AH-15 (owner), AH-16.
-8. Retire `ah-17..21` and `ah-25..27` with `--merged-into <PR>` once S5c merged; else owner `--force`.
-
+1. AH-24: one Sonnet implementer applies the ruling edits in `ah-campaign-review`, then a fresh packet-reviewer runs pass 3. On `ship`, `ops` ships the docs PR and retires the worktree.
+2. Owner relaunches Claude Code (personas changed in W4c).
+3. AH-15 (owner): fresh-clone smoke test, Windows W1-W10 and Linux/WSL L1-L7 (D-AH33).
+4. AH-16 close-out: the list in worknotes/AH-24-review-2.md § Open items (regen, README table flip, this card, retire ah-11p, ah-17..21 and ah-25..27, S1/S2/S4 rows, the Not-fixed list, F39 check, board handoff, empty `.claude/state/active-campaign`).
+- Owner, if not done yet: tell persistent-player-data's coordinator that C12 replaced "one review-fixer each" (F39).
 ## Owner questions open
 
 - D-AH33: AH-15 Linux/WSL leg required (recommended) or best effort. (S1 vetoed; S4 approved.)
