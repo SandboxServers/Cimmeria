@@ -12,8 +12,8 @@ Wave 6c has six packets in two steps. Every packet is seed and test code only. N
 | - | `ops` rebase | `dk-30b` and `dk-33` | - | `ops` rebases `dakara/dk-30b` and `dakara/dk-33` onto the `main` SHA that contains DK-40b, and records it. Packet coders never rebase |
 | 2 | [DK-14c](#dk-14c-livewire-on-the-1649-command-terminal) | `dk-14c`, `dakara/dk-14c-livewire-terminal` (new, from `main` after DK-40b) | about 20k tokens | DK-40b merged |
 | 2 | [DK-15b](#dk-15b-livewire-on-mohkatans-terminal) | `dk-15b`, `dakara/dk-15b-livewire-terminal` (new, from `main` after DK-40b) | about 20k tokens | DK-40b merged |
-| 2 | [DK-30b-r](#dk-30b-r-mission-1651-crossing-by-real-gate-travel) | `dk-30b` (existing; branch as created) | about 25k tokens | DK-40b merged and the `ops` rebase done. **Merge hold:** US-30, D-DK40, D-DK44 |
-| 2 | [DK-33-r](#dk-33-r-mission-1654-crossing-by-real-gate-travel) | `dk-33` (existing; branch as created) | about 20k tokens | DK-40b merged and the `ops` rebase done. **Merge hold:** US-31, D-DK44 |
+| 2 | [DK-30b-r](#dk-30b-r-mission-1651-crossing-by-real-gate-travel) | `dk-30b` (existing; branch as created) | about 25k tokens | DK-40b merged and the `ops` rebase done. **Merge hold:** US-30 and the DK-SGC PR (owner option C, 2026-10-19, [plan](../sgc-return-plan.md)) |
+| 2 | [DK-33-r](#dk-33-r-mission-1654-crossing-by-real-gate-travel) | `dk-33` (existing; branch as created) | about 20k tokens | DK-40b merged and the `ops` rebase done. **Merge hold:** US-31 and the DK-SGC PR (owner option C, 2026-10-19) |
 
 One read-only `packet-reviewer` reviews DK-40b and DK-32c together (step 1), and one reviews the four step-2 packets together; its findings go to a fresh `packet-coder`. DK-30b-r ships in one PR with DK-30b (`34abe129b`) and DK-30b-n (`8b1ac4673`); DK-33-r ships in one PR with DK-33 (`41686b50c`) and DK-33-n (`ffec26d33`).
 
@@ -353,4 +353,4 @@ Import `fire_stargate_crossed` from `super::*` (it comes with DK-40b); drop impo
 - `grant_stargate_address` appears only in 8313, 8432 and 8433 among the Dakara chains, never under a `player_loaded` trigger.
 - The negative tests are not weakened; the engine-wide DHD tests use `r.actions.is_empty()`, not a range filter.
 - DK-32c: 8365's conditions keep the `neq completed` gate on 5643 and never test 5641 or 5642; no 1653 chain completes 5643 except 8365; 8355 and 8357 unbind 457 before `advance_step`; template 457 keeps `interaction_type` 0; the look-guard exemption is pinned to the one mesh, not a bare skip.
-- The merge holds stay: DK-30b-r and DK-33-r open no PR (the orchestrator opens them when US-30, US-31, D-DK40 and D-DK44 allow).
+- The merge holds stay: DK-30b-r and DK-33-r open no PR (the orchestrator opens them when US-30 or US-31 and the DK-SGC PR have merged; D-DK40 and D-DK44 are decided by owner option C, 2026-10-19, and built in [wave 6d](../sgc-return-plan.md)).
