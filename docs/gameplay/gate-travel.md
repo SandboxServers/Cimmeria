@@ -62,6 +62,7 @@ Gate 27's row is the gate prefab's origin. It lies inside the gate's own volume 
 | Gate volume | Outside it, 13.3 m from the row. The pin is off the axis strip (x 172-175, z 8-18), which has no floor polygon, so it is 26 degrees off the gate's facing |
 
 Guard: `gate_sgc_w1_tests.rs` in `cimmeria-cell-world`.
+
 ## Implementation Status
 
 | Feature | Status | Notes |
