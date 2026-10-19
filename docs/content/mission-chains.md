@@ -1208,7 +1208,7 @@ Missions 1563-1571, the SGC halves of 1651, 1654 and 1655, and the crossings to 
 
 - **1564 escort (US-16, chains 3073-3078):** planned.
 
-- **1571 auxiliary credit (US-13, chains 3080-3081):** planned.
+- **1571 auxiliary credit (US-13, chains 3080-3081):** a Human who completes 1559 is credited 1571 at once (objective 5354, no second weapon), and a Human who finished 1559 earlier is credited on load.
 
 - **1565/1566 Tactics (US-20, chains 3085-3093):** planned.
 
