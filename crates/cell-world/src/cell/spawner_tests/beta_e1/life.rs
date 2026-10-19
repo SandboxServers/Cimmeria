@@ -163,7 +163,7 @@ async fn live_db_beta_life_templates_are_not_interactive() {
 /// Revert: add a scratch chain with `interact_tag 'BetaE1_Life_Gate_1'`, or a
 /// `add_dialog_set` with `slot` 2308, and this fails.
 #[tokio::test]
-async fn no_chain_or_bind_names_a_life_npc() {
+async fn live_db_beta_life_no_chain_or_bind_names_a_life_npc() {
     let pool = require_db_or_skip!();
     let (triggers,): (i64,) = sqlx::query_as(
         "SELECT count(*) FROM resources.content_triggers \
@@ -186,7 +186,7 @@ async fn no_chain_or_bind_names_a_life_npc() {
 
 /// Revert: put `BetaE1_Life_QM_1` on the fire centre, and this fails.
 #[tokio::test]
-async fn life_npcs_stay_clear_of_the_fire_site() {
+async fn live_db_beta_life_npcs_stay_clear_of_the_fire_site() {
     let pool = require_db_or_skip!();
     let rows: Vec<(String, f32, f32)> = sqlx::query_as(
         "SELECT tag::text, x, z FROM resources.spawnlist \
@@ -213,7 +213,7 @@ async fn life_npcs_stay_clear_of_the_fire_site() {
 
 /// Revert: give a non-life row one of the life tags, and this fails.
 #[tokio::test]
-async fn life_tags_are_unique_across_worlds() {
+async fn live_db_beta_life_tags_are_unique_across_worlds() {
     let pool = require_db_or_skip!();
     let tags: Vec<String> = LIFE.iter().map(|row| row.2.to_string()).collect();
     let (rows,): (i64,) =
