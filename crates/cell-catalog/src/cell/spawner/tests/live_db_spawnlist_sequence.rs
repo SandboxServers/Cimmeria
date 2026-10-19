@@ -9,13 +9,14 @@ mod live_db {
     use crate::test_support::require_db_or_skip;
 
     /// The highest reserved campaign spawn id: debug hub 400-404, black
-    /// market 405-409, crafting
-    /// 410-429, organizations 430-449, pets 450-469, bank 470-489, social
-    /// 490-499, Debug Area 13000-13869 (DA-02..DA-04 by the `spawnlist.sql`
-    /// footer, DA-07/08 by `debug_area_rings.sql`, DA-09's System Lords
-    /// 13850-13869 by `spawnlist_debug_area_lords.sql`). Raise it with the
-    /// seed's `setval` when a block is added.
-    const HIGHEST_RESERVED_SPAWN_ID: i64 = 13869;
+    /// market 405-409, crafting 410-429, organizations 430-449, pets 450-469,
+    /// bank 470-489, social 490-499, Debug Area 13000-13869 (DA-02..DA-04 by
+    /// the `spawnlist.sql` footer, DA-07/08 by `debug_area_rings.sql`, DA-09's
+    /// System Lords 13850-13869 by `spawnlist_debug_area_lords.sql`), and the
+    /// Beta E1 block 23000-23199 (UB-02b, its four `spawnlist_beta_e1_*.sql`
+    /// footers set 23199). Raise it with the seed's `setval` when a block is
+    /// added.
+    const HIGHEST_RESERVED_SPAWN_ID: i64 = 23199;
 
     #[tokio::test]
     async fn spawnlist_sequence_starts_past_every_reserved_spawn_id() {
