@@ -283,6 +283,7 @@ beta_e1_m1427_chains.sql    1427 The Ruins: 23190-23219 (23190-23195 used)
 beta_e1_m1500_chains.sql    1500 receiver and Carter: 23220-23239 (23220-23222 used)
 beta_e1_m1502_chains.sql    1502 The Nine Peaks Jaffa: 23240-23279 (23240-23250 used)
 beta_e1_m481_chains.sql     From on High, receiver, beam and Mimir (UB-30): 23310-23339 (23310-23317 used)
+beta_e1_m420_chains.sql     Reclamation, Mimir's five scanners (UB-31): 23340-23359 (23340-23351 used)
 ```
 
 ## Linked references
