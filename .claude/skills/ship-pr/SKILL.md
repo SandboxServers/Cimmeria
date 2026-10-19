@@ -132,6 +132,7 @@ python tools/build-lane/ship.py merge <PR> --retire <name> --no-wait    # queue 
 ```powershell
 pwsh tools/build-lane/rm-worktree.ps1 <name>          # one worktree
 pwsh tools/build-lane/rm-worktree.ps1 --merged        # every merged, idle (30 min) one
+pwsh tools/build-lane/rm-worktree.ps1 --merged-into <PR> <name>...  # packets merged only into PR <PR>'s branch
 ```
 
 It removes the target dir, the `external/` junction, the branch and the `sgw_<name>` test
