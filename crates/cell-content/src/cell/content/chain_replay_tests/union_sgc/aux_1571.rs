@@ -82,6 +82,31 @@ async fn live_db_m1571_is_credited_once() {
     }
 }
 
+/// A Soldier who already holds 1571 is left alone by both credit chains: the
+/// offer guard refuses a second accept on its own, but `complete_objective`
+/// would still run, so only the `not_active` rows keep 5354 uncredited.
+/// Revert: drop the `not_active` row of chain 3080 (the `finish(1559)` half)
+/// or of chain 3081 (the `loaded()` half), and 5354 is credited.
+#[tokio::test]
+async fn live_db_m1571_credit_chains_leave_a_held_1571_alone() {
+    let pool = require_db_or_skip!();
+
+    let mut rig = Rig::new(&pool, Some(SOLDIER)).await;
+    rig.accept(1559).await;
+    rig.accept(1571).await;
+    rig.finish(1559).await;
+    assert_eq!(rig.status(1571), ACTIVE, "3080 skips a held 1571");
+    assert!(!rig.objective_done(1571, REQUIRED), "3080 credits nothing");
+
+    let mut rig = Rig::new(&pool, Some(SOLDIER)).await;
+    rig.accept(1559).await;
+    rig.complete(1559).await;
+    rig.accept(1571).await;
+    rig.loaded().await;
+    assert_eq!(rig.status(1571), ACTIVE, "3081 skips a held 1571");
+    assert!(!rig.objective_done(1571, REQUIRED), "3081 credits nothing");
+}
+
 /// Non-Humans and an unstamped character never reach 1571, whether they finish
 /// 1559 live or load after it. Revert: drop the `archetype gte '1'` rows; the
 /// UNSTAMPED case (reads -1) then fails.
