@@ -319,6 +319,7 @@
 \ir resources/Entities/Seed/entity_templates.sql
 \ir resources/Entities/Seed/entity_templates_dakara_e1.sql
 \ir resources/Entities/Seed/entity_templates_beta_e1.sql
+\ir resources/Entities/Seed/entity_templates_beta_e1_life.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_combat.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_lineup.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_lords.sql
@@ -394,6 +395,7 @@
 \ir resources/Worlds/Seed/spawnlist_beta_e1_hub.sql
 \ir resources/Worlds/Seed/spawnlist_beta_e1_asgard.sql
 \ir resources/Worlds/Seed/spawnlist_beta_e1_ninepeaks.sql
+\ir resources/Worlds/Seed/spawnlist_beta_e1_life.sql
 \ir resources/Worlds/Seed/spawnlist_debug_area_combat.sql
 \ir resources/Worlds/Seed/spawnlist_debug_area_lineup.sql
 \ir resources/Worlds/Seed/spawnlist_debug_area_lords.sql

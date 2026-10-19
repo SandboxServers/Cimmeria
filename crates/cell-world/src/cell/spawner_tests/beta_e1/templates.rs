@@ -19,7 +19,7 @@ use crate::cell::spawner::class_id_for_class;
 /// `(template id, class, moniker name of its name_id)`: each template is
 /// named by the client's own display-name string. Pinned by moniker name, not
 /// by text id. 2335 has no client moniker: its `name_id` is NULL.
-const ROSTER: [(i32, &str, Option<&str>); 22] = [
+const ROSTER: [(i32, &str, Option<&str>); 24] = [
     (2300, "mob", Some("DN_npc_MG_BetaE1_Admin_Carter")),
     (2301, "mob", Some("DN_npc_MG_BetaE1_Admin_Felger")),
     (2302, "mob", Some("DN_npc_MG_BetaE1_Admin_Satterfield")),
@@ -27,6 +27,12 @@ const ROSTER: [(i32, &str, Option<&str>); 22] = [
     (2305, "mob", Some("DN_npc_MG_BetaE1_AsgardBase_Mimir")),
     (2306, "mob", Some("DN_npc_MG_BetaE1_RasnorsCamp_Rasnor")),
     (2307, "mob", Some("DN_npc_Int_BetaE1_Various_SickJaffa")),
+    (2308, "mob", Some("DN_npc_Int_BetaE1_Admin_SGCPersonnel")),
+    (
+        2309,
+        "mob",
+        Some("DN_npc_Esc_BetaE1_RasNorsCamp_JaffaNonCombatant"),
+    ),
     (2320, "being", Some("DN_Ob_It_Human_BetaE1_XenobiologyCage")),
     (2321, "being", Some("DN_Ob_It_Human_BetaE1_FourPiecesCase")),
     (2322, "being", Some("DN_Ob_D_Human_BetaE1_HubComputer")),

@@ -13,6 +13,8 @@
 //! - [`nine_peaks`]: UB-02d, the Nine Peaks camp (spawns 23110-23115), the
 //!   Nine Peaks region and the ring pair 2300/2301 that links the hub ring to
 //!   the SW ring: rows, positions, the seal's no-walk-route fact and the pair.
+//! - [`life`]: UB-40, the life NPCs (spawns 23160-23172, templates 2308 and
+//!   2309): background figures on sealed anchors, with no dialog and no bind.
 //! - [`templates`]: UB-02a, the cast and object templates of
 //!   `db/resources/Entities/Seed/entity_templates_beta_e1.sql`: the roster, a
 //!   name on each, nothing hostile or attackable, the visual settings, the
@@ -20,6 +22,7 @@
 
 mod asgard;
 mod hub;
+mod life;
 mod nav;
 mod nine_peaks;
 mod templates;
