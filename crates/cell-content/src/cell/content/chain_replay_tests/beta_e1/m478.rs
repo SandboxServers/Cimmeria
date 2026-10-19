@@ -45,6 +45,19 @@ fn m478_matched(resolved: &ResolvedActions) -> BTreeSet<i64> {
         .collect()
 }
 
+/// Every chain in the seed (not only 478's) that `resolved` matched and that
+/// displays a dialog, so a clash with a UB-10, UB-11, UB-12 or other sibling shows up.
+fn dialog_chains(resolved: &ResolvedActions) -> BTreeSet<i64> {
+    chains_matched(resolved)
+        .into_iter()
+        .filter(|&id| {
+            summarized(resolved, id)
+                .iter()
+                .any(|s| s.starts_with("display_dialog("))
+        })
+        .collect()
+}
+
 /// Every archetype outside the Human gate, plus an unstamped player (`None`).
 fn non_human_or_unstamped() -> Vec<Option<i64>> {
     ALL_ARCHETYPES
@@ -390,7 +403,10 @@ async fn carter_restore_and_turn_in_complete_478() {
 }
 
 /// Revert: drop the step or status gate on 23101 or 23108 (Carter then matches
-/// two 478 chains at one state). One Carter click state, one 478 chain at most.
+/// two 478 chains at one state). One Carter click state, one 478 chain at most,
+/// and no other chain in the seed displays a dialog on the same click, with 381
+/// and 473 done as they are in play (so UB-11's and UB-12's Carter chains are in
+/// the count).
 #[tokio::test]
 async fn carter_one_478_chain_per_state() {
     let pool = require_db_or_skip!();
@@ -413,6 +429,42 @@ async fn carter_one_478_chain_per_state() {
             let resolved = fire(&whole, TriggerType::InteractTag, &click);
             let expected: BTreeSet<i64> = expected.into_iter().collect();
             assert_eq!(m478_matched(&resolved), expected, "478 {status} {step:?}");
+            let mut as_played = after_473(
+                event("entity_tag", serde_json::json!(CARTER), Some(archetype)),
+                status,
+                step,
+            );
+            with_mission(&mut as_played, 381, "completed");
+            let resolved = fire(&whole, TriggerType::InteractTag, &as_played);
+            assert_eq!(
+                dialog_chains(&resolved),
+                expected,
+                "whole-seed dialog chains, 478 {status} {step:?}"
+            );
+        }
+    }
+}
+
+/// Revert: drop the world filter on the `player_loaded` trigger of 23100 or
+/// 23107 (the binds then also fire on a login into another world). A login
+/// anywhere but Beta, in a state that would bind on Beta, matches no 478 chain,
+/// even for a Human.
+#[tokio::test]
+async fn logins_in_another_world_match_no_478_chain() {
+    let pool = require_db_or_skip!();
+    let whole = whole_seed(&pool).await;
+    for (world, expected) in [
+        ("Some_Other_World", None),
+        (BETA, Some((OFFER_BIND, DONE_RESTORE))),
+    ] {
+        for (status, step, chain) in [
+            ("not_active", None, expected.map(|c| c.0)),
+            ("active", Some(DONE_STEP), expected.map(|c| c.1)),
+        ] {
+            let login = after_473(login_ctx(world, Some(HUMANS[0])), status, step);
+            let resolved = fire(&whole, TriggerType::PlayerLoaded, &login);
+            let want: BTreeSet<i64> = chain.into_iter().collect();
+            assert_eq!(m478_matched(&resolved), want, "{world} {status} {step:?}");
         }
     }
 }
