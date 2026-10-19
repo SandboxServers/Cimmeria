@@ -14,14 +14,15 @@ use cimmeria_content_engine::chain::ResolvedActions;
 
 use crate::cell::content::execute_actions;
 use crate::cell::messages::CellToBaseMsg;
-use crate::cell::spawner::load_step_objectives;
+use crate::cell::spawner::{load_step_objectives, WorldRow};
 use crate::test_support::require_db_or_skip;
 
 use super::rig::{
     Rig, Sent, ACTIVE, FREE_JAFFA, HUMANS, NON_HUMANS, OFFER, PLAYER, PLAYER_ID, SOLDIER,
-    STORY_ACTIVE, UNSTAMPED,
+    STORY_ACTIVE, UNSTAMPED, WORLD, WORLD_ID,
 };
 
+const M1651: i32 = 1651;
 const M1654: i32 = 1654;
 const M1655: i32 = 1655;
 const S4943: i32 = 4943;
@@ -148,6 +149,15 @@ async fn fresh(pool: &PgPool, archetype: Option<i32>) -> Rig {
         .await
         .expect("load the step objectives");
     rig
+}
+
+/// Make the dispatchers read the player's world as a world other than
+/// SGC_W1 (id `WORLD_ID + 1`), as a client in another world would be read.
+fn leave_sgc_w1(rig: &mut Rig) {
+    rig.mgr.stamp_world_rows(&HashMap::from([(
+        WORLD.to_string(),
+        WorldRow::enforcing(WORLD_ID + 1),
+    )]));
 }
 
 /// A player who has finished 1654 with Woolsey spawned at P02.
@@ -403,4 +413,96 @@ async fn live_db_m1655_human_beats_ignore_other_archetypes() {
             "{archetype:?}: no letter"
         );
     }
+}
+
+/// **Revert proof:** drop the `world 58` row of chain 3156, 3157, 3158, 3159,
+/// 3160, 3161 or 3165. Every press and dialog close here is a client event, so
+/// a replay read in another world must do nothing: no offer, no accept, no
+/// orders, no letter, no 5857, no dial and no recovery crossing.
+#[tokio::test]
+async fn live_db_m1655_chains_only_fire_in_sgc_w1() {
+    let pool = require_db_or_skip!();
+
+    // 3156 and 3157: Woolsey's offer and its accept.
+    let mut rig = after_1654(&pool, Some(SOLDIER)).await;
+    leave_sgc_w1(&mut rig);
+    rig.press(WOOLSEY).await;
+    assert!(!showed(&mut rig, D5854), "3156: no 5854 outside SGC_W1");
+    rig.choose(D5854, 0).await;
+    assert_eq!(rig.status(M1655), None, "3157: no accept outside SGC_W1");
+
+    // 3158 and 3159: Hammond's orders and the letter.
+    let mut rig = fresh(&pool, Some(SOLDIER)).await;
+    rig.accept(M1655).await;
+    rig.loaded().await;
+    rig.sent();
+    leave_sgc_w1(&mut rig);
+    rig.press(HAMMOND).await;
+    assert!(!showed(&mut rig, D5856), "3158: no 5856 outside SGC_W1");
+    rig.close(D5856).await;
+    assert!(rig.sent().is_empty(), "3159: no letter outside SGC_W1");
+    assert_eq!(rig.step(M1655), Some(S4943), "3159: the step does not move");
+
+    // 3160 and 3161: Harriman's orders and the dial.
+    let mut rig = on_4944(&pool, Some(SOLDIER)).await;
+    leave_sgc_w1(&mut rig);
+    rig.press(HARRIMAN).await;
+    assert!(!showed(&mut rig, D5857), "3160: no 5857 outside SGC_W1");
+    rig.close(D5857).await;
+    assert!(rig.sent().is_empty(), "3161: no dial outside SGC_W1");
+    assert_eq!(rig.step(M1655), Some(S4944), "3161: the step does not move");
+    assert_eq!(rig.pending(), 0, "3161: nothing is queued outside SGC_W1");
+
+    // 3165: the recovery crossing.
+    let mut rig = on_4944(&pool, Some(SOLDIER)).await;
+    rig.press(HARRIMAN).await;
+    rig.close(D5857).await;
+    rig.sent();
+    leave_sgc_w1(&mut rig);
+    rig.press(HARRIMAN).await;
+    assert_eq!(
+        travels(&rig.sent()),
+        0,
+        "3165: no recovery crossing outside SGC_W1"
+    );
+    assert_eq!(rig.step(M1655), Some(S4941), "3165: the step does not move");
+}
+
+/// **Revert proof:** drop the `1654` row of chain 3157, or the `1651 neq
+/// active` row of chain 3156 or 3157. A forged 5854 accept (a `dialog_choice`
+/// the offer chain never produced) must not start 1655 before 1654 is done, and
+/// neither offer nor accept may run while 1651 is still active: Harriman's
+/// 3138 and 3161 would then fire from one press and leave both missions past
+/// their crossing with the player in one world.
+#[tokio::test]
+async fn live_db_m1655_offer_needs_1654_done_and_1651_not_active() {
+    let pool = require_db_or_skip!();
+
+    // 1654 not done: a forged accept does nothing.
+    let mut rig = fresh(&pool, Some(SOLDIER)).await;
+    spawn_woolsey(&mut rig).await;
+    rig.loaded().await;
+    rig.sent();
+    rig.choose(D5854, 0).await;
+    assert_eq!(
+        rig.status(M1655),
+        None,
+        "3157: no accept before 1654 is done"
+    );
+
+    // 1654 done but 1651 still active: neither the offer nor the accept runs.
+    let mut rig = after_1654(&pool, Some(SOLDIER)).await;
+    rig.accept(M1651).await;
+    rig.advance(M1651, 4931).await;
+    rig.press(WOOLSEY).await;
+    assert!(
+        !showed(&mut rig, D5854),
+        "3156: no 5854 offer while 1651 is active"
+    );
+    rig.choose(D5854, 0).await;
+    assert_eq!(
+        rig.status(M1655),
+        None,
+        "3157: no accept while 1651 is active"
+    );
 }

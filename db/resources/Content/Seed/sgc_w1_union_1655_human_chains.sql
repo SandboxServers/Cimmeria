@@ -4,6 +4,8 @@
 -- Every chain comment carries one provenance label: RESTORED_SOURCE,
 -- CIMMERIA_RECONSTRUCTION or CIMMERIA_AUTHORING.
 SET search_path = resources, pg_catalog;
+-- Every press and dialog choice is a client event, so every chain here carries a world 58 row; the 3156/3157 offer also
+-- requires 1654 done (3157) and 1651 not active, so Harriman's 3138 (US-30) and 3161 cannot fire from one press (S3 review 2).
 -- Chain 3156: Woolsey announces the closure to a Human (5854), once 1654 is done.
 -- CIMMERIA_RECONSTRUCTION (H9, D-US11 default): Woolsey offers 1655 to Humans; the letter 6786 on Hammond's 5856; no complete_objective on 1655 (F13).
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -17,7 +19,9 @@ VALUES
   (3156, 'mission_status', 1654, NULL, 'eq', 'completed', 0),
   (3156, 'mission_status', 1655, NULL, 'eq', 'not_active', 1),
   (3156, 'archetype', NULL, NULL, 'gte', '1', 2),
-  (3156, 'archetype', NULL, NULL, 'lte', '4', 3);
+  (3156, 'archetype', NULL, NULL, 'lte', '4', 3),
+  (3156, 'mission_status', 1651, NULL, 'neq', 'active', 4),
+  (3156, 'world', 58, NULL, 'eq', NULL, 5);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (3156, 'display_dialog', 5854, NULL, '{}', 0, 0);
@@ -33,7 +37,10 @@ INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key,
 VALUES
   (3157, 'mission_status', 1655, NULL, 'eq', 'not_active', 0),
   (3157, 'archetype', NULL, NULL, 'gte', '1', 1),
-  (3157, 'archetype', NULL, NULL, 'lte', '4', 2);
+  (3157, 'archetype', NULL, NULL, 'lte', '4', 2),
+  (3157, 'mission_status', 1654, NULL, 'eq', 'completed', 3),
+  (3157, 'mission_status', 1651, NULL, 'neq', 'active', 4),
+  (3157, 'world', 58, NULL, 'eq', NULL, 5);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
@@ -52,7 +59,8 @@ INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key,
 VALUES
   (3158, 'step_status', 1655, '4943', 'eq', 'active', 0),
   (3158, 'archetype', NULL, NULL, 'gte', '1', 1),
-  (3158, 'archetype', NULL, NULL, 'lte', '4', 2);
+  (3158, 'archetype', NULL, NULL, 'lte', '4', 2),
+  (3158, 'world', 58, NULL, 'eq', NULL, 3);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (3158, 'display_dialog', 5856, NULL, '{}', 0, 0);
@@ -69,7 +77,8 @@ INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key,
 VALUES
   (3159, 'step_status', 1655, '4943', 'eq', 'active', 0),
   (3159, 'archetype', NULL, NULL, 'gte', '1', 1),
-  (3159, 'archetype', NULL, NULL, 'lte', '4', 2);
+  (3159, 'archetype', NULL, NULL, 'lte', '4', 2),
+  (3159, 'world', 58, NULL, 'eq', NULL, 3);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
@@ -86,7 +95,9 @@ INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort
 VALUES (3160, 'interact_tag', 'SGC_W1_Harriman', 'player', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
-VALUES (3160, 'step_status', 1655, '4944', 'eq', 'active', 0);
+VALUES
+  (3160, 'step_status', 1655, '4944', 'eq', 'active', 0),
+  (3160, 'world', 58, NULL, 'eq', NULL, 1);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (3160, 'display_dialog', 5857, NULL, '{}', 0, 0);
@@ -101,7 +112,9 @@ INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort
 VALUES (3161, 'dialog_choice', '5857', 'player', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
-VALUES (3161, 'step_status', 1655, '4944', 'eq', 'active', 0);
+VALUES
+  (3161, 'step_status', 1655, '4944', 'eq', 'active', 0),
+  (3161, 'world', 58, NULL, 'eq', NULL, 1);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
@@ -167,7 +180,9 @@ INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort
 VALUES (3165, 'interact_tag', 'SGC_W1_Harriman', 'player', false, 0);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
-VALUES (3165, 'step_status', 1655, '4941', 'eq', 'active', 0);
+VALUES
+  (3165, 'step_status', 1655, '4941', 'eq', 'active', 0),
+  (3165, 'world', 58, NULL, 'eq', NULL, 1);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
