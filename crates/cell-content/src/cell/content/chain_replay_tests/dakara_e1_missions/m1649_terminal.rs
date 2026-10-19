@@ -89,11 +89,8 @@ async fn live_db_radio_step_load_binds_all_six_and_skips_4922_entry() {
 async fn live_db_terminal_states_are_exclusive() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
-    let hack = [
-        "8223:display_dialog(5834)",
-        "8223:add_item(6782x1)",
-        "8223:complete_objective(1649/5638)",
-    ];
+    // The click starts Livewire; the win gives the orders (8231, tested below).
+    let hack = ["8223:start_minigame(Livewire,victory=[8231],d=1)"];
     let decode = [
         "8224:display_dialog(5837)",
         "8224:remove_item(6780x1)",
@@ -103,16 +100,17 @@ async fn live_db_terminal_states_are_exclusive() {
     ];
     // The whole label list per state: the union over 8220-8249 is exact, so
     // an extra or missing verb on the winning chain, or a second chain, fails.
-    let cases: [(&[i32], &[&str]); 4] = [
-        (&[], &hack),
-        (&[OBJ_FIND], &hack),
-        (&[OBJ_HACK], &["8225:display_dialog(5834)"]),
-        (&[OBJ_HACK, OBJ_FIND], &decode),
+    // The Livewire click shows no dialog (D-DK31): its count is 0.
+    let cases: [(&[i32], &[&str], usize); 4] = [
+        (&[], &hack, 0),
+        (&[OBJ_FIND], &hack, 0),
+        (&[OBJ_HACK], &["8225:display_dialog(5834)"], 1),
+        (&[OBJ_HACK, OBJ_FIND], &decode, 1),
     ];
-    for (done, expected) in cases {
+    for (done, expected, dialogs) in cases {
         let r = fire_interact_tag(&engine, &terminal_ctx(done), TERMINAL);
         assert_eq!(terminal_labels(&r), expected, "done {done:?}");
-        assert_eq!(display_dialog_count(&r), 1, "done {done:?}");
+        assert_eq!(display_dialog_count(&r), dialogs, "done {done:?}");
     }
 }
 
@@ -162,18 +160,28 @@ async fn live_db_terminal_chains_need_dakara_and_step_4922() {
 }
 
 #[tokio::test]
-async fn live_db_hack_gives_orders_and_completes_objective() {
+async fn live_db_hack_starts_livewire_and_the_win_gives_the_orders() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
+    // The click starts Livewire and shows nothing: the window is the feedback.
     let r = fire_interact_tag(&engine, &terminal_ctx(&[]), TERMINAL);
     assert_eq!(
         terminal_labels(&r),
-        vec![
-            "8223:display_dialog(5834)",
-            "8223:add_item(6782x1)",
-            "8223:complete_objective(1649/5638)",
+        vec!["8223:start_minigame(Livewire,victory=[8231],d=1)"]
+    );
+    assert_eq!(display_dialog_count(&r), 0);
+    assert_no_deferred_actions(&r, 8223);
+    // The win fires victory chain 8231 by id, with no condition check.
+    let v = fire_victory(&pool, 8231).await;
+    assert_eq!(
+        labels_in(&v, M1649_TERMINAL_CHAINS),
+        [
+            "8231:display_dialog(5834)",
+            "8231:add_item(6782x1)",
+            "8231:complete_objective(1649/5638)",
         ]
     );
+    assert_eq!(delays_of(&v, 8231), [0, 0, 0]);
 }
 
 #[tokio::test]
