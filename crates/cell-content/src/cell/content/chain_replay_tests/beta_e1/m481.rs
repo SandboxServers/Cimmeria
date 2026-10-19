@@ -29,6 +29,9 @@ const TELEPORTER_OBJECTIVE: i64 = 23316;
 const MIMIR_TURNIN: i64 = 23317;
 const M481_CHAINS: std::ops::RangeInclusive<i64> = 23310..=23317;
 
+/// A world other than Beta, for the `player_loaded` world-key negatives.
+const OTHER_WORLD: &str = "Castle_Cellblock";
+
 const GROUND_PAD: &str = "BetaSite_00000007";
 const DECK_PAD: &str = "BetaSite_Beam_000007_Ship";
 
@@ -128,6 +131,22 @@ async fn receiver_ignores_other_races_and_states() {
         m481_matched(&resolved).is_empty(),
         "a completed 481 must not re-offer"
     );
+}
+
+/// Revert: drop the `Beta_Site_Evo_1` event key from 23310, 23311 or 23313 and
+/// an Asgard who logs into another world at S1760-S1762 matches it.
+#[tokio::test]
+async fn login_chains_ignore_other_worlds() {
+    let pool = require_db_or_skip!();
+    let engine = whole_seed(&pool).await;
+    for step in [1760, 1761, 1762] {
+        let ctx = at_step(login_ctx(OTHER_WORLD, Some(ASGARD)), step);
+        let resolved = fire(&engine, TriggerType::PlayerLoaded, &ctx);
+        assert!(
+            m481_matched(&resolved).is_empty(),
+            "S{step} in {OTHER_WORLD} must match no 481 chain"
+        );
+    }
 }
 
 /// Revert: delete 23311 or 23313. A relogging Asgard then has no bind on
@@ -277,10 +296,27 @@ async fn teleporter_objective_never_completes_481() {
     with_obj(&mut done, MISSION, 2080, "completed");
     let resolved = fire(&engine, TriggerType::InteractTag, &done);
     assert_eq!(m481_matched(&resolved), BTreeSet::from([BEAM_UP]));
+    // O2080 is active in every negative below, so only the archetype or the
+    // step gate can keep 23316 from matching (a closed objective alone would).
     for archetype in non_asgard() {
-        let ctx = at_step(tag_ctx(GROUND_PAD, archetype), 1762);
+        let mut ctx = at_step(tag_ctx(GROUND_PAD, archetype), 1762);
+        with_obj(&mut ctx, MISSION, 2080, "active");
         let resolved = fire(&engine, TriggerType::InteractTag, &ctx);
-        assert_eq!(m481_matched(&resolved), BTreeSet::from([BEAM_UP]));
+        assert_eq!(
+            m481_matched(&resolved),
+            BTreeSet::from([BEAM_UP]),
+            "archetype {archetype:?} must not close O2080"
+        );
+    }
+    for step in [1760, 1761] {
+        let mut ctx = at_step(tag_ctx(GROUND_PAD, Some(ASGARD)), step);
+        with_obj(&mut ctx, MISSION, 2080, "active");
+        let resolved = fire(&engine, TriggerType::InteractTag, &ctx);
+        assert_eq!(
+            m481_matched(&resolved),
+            BTreeSet::from([BEAM_UP]),
+            "S{step} must not close O2080"
+        );
     }
     let completes_4015: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM resources.content_actions \
