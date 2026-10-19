@@ -1212,7 +1212,7 @@ Missions 1563-1571, the SGC halves of 1651, 1654 and 1655, and the crossings to 
 
 - **1565/1566 Tactics (US-20, chains 3085-3093):** planned.
 
-- **1567 Clear the Way (US-21, chains 3095-3099):** planned.
+- **1567 Clear the Way (US-21, chains 3095-3099):** offered when 1566 completes (Humans only); the five route Jaffa (`SGC_W1_ClearJaffa1-5`) completing it; Carter's line 5381 on a press; a backstop on accept if they are already dead; Carter's marker restored on relog.
 
 - **1568 Gate Room (US-22, chains 3100-3107):** planned.
 
