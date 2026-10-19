@@ -35,13 +35,32 @@ fn vector(p: [f32; 3]) -> Vector3 {
     Vector3::new(p[0], p[1], p[2])
 }
 
+/// Most corridor hops [`reaches`] follows. The hub is about 400 m across and
+/// one Detour corridor holds 256 polygons, so a far point needs a few hops.
+const MAX_HOPS: usize = 16;
+
+/// Whether `to` is reachable from `from` on `mesh`.
+///
+/// One `find_path` corridor is capped at 256 polygons, so a goal on the same
+/// component but far away (Omega's Jaffa wing is about 260 m from Modi)
+/// comes back `Partial`, ending where the corridor ran out. A `Partial` path
+/// is followed from its last waypoint, up to [`MAX_HOPS`] times. A goal on
+/// another component makes no progress between hops, so it still fails.
 fn reaches(mesh: &NavMesh, from: [f32; 3], to: [f32; 3]) -> bool {
-    let path = mesh.find_path(&vector(from), &vector(to));
-    matches!(path.status, PathStatus::Ok)
-        && path
-            .waypoints
-            .last()
-            .is_some_and(|end| end.distance_to(&vector(to)) < 2.0)
+    let goal = vector(to);
+    let mut at = vector(from);
+    for _ in 0..MAX_HOPS {
+        let path = mesh.find_path(&at, &goal);
+        let Some(end) = path.waypoints.last().copied() else {
+            return false;
+        };
+        match path.status {
+            PathStatus::Ok => return end.distance_to(&goal) < 2.0,
+            PathStatus::Partial if end.distance_to(&at) > 1.0 => at = end,
+            _ => return false,
+        }
+    }
+    false
 }
 
 /// On the shipped navmesh, with no claim about which component it is on.
@@ -74,6 +93,34 @@ fn omega_meshes_load_and_the_shipped_anchors_stand_on_them() {
     standable_and_connected(&hub, MODI, MODI, "Modi (spawn 78)");
     let cmd = mesh(CMD_MESH);
     standable_and_connected(&cmd, RESPAWNER_26, RESPAWNER_26, "respawner 26");
+}
+
+/// `reaches` follows a long corridor across the hub, and still refuses a
+/// point on another component. The Jaffa wing is about 260 m from Modi, past
+/// one 256-polygon corridor. Bridge E in world 80 stands on component 12,
+/// with no route from the pad's component 11 (UO-01 worknote). The hub island
+/// point checks the same refusal in the world that needs hops.
+#[test]
+fn reaches_follows_long_corridors_and_refuses_other_components() {
+    let hub = mesh(HUB_MESH);
+    let market = [297.22, -61.16, -106.85];
+    standable(&hub, market, "Jaffa market point");
+    assert!(reaches(&hub, MODI, market), "Modi reaches the Jaffa market");
+    // A hub point beside the arena that is on the mesh but on another component:
+    // the hop loop must stop, not creep to it.
+    let island = [200.0, -62.0, -100.0];
+    standable(&hub, island, "hub island point");
+    assert!(
+        !reaches(&hub, MODI, island),
+        "the hub island point is on another component than Modi"
+    );
+    let cmd = mesh(CMD_MESH);
+    let bridge_e = [144.78, 30.0, 10.22];
+    standable(&cmd, bridge_e, "bridge E");
+    assert!(
+        !reaches(&cmd, RESPAWNER_26, bridge_e),
+        "bridge E is on another component than respawner 26"
+    );
 }
 
 /// Omega's footers lift every sequence it reserves past its block, so a
