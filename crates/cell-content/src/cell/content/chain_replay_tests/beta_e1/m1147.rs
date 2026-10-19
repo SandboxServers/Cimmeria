@@ -58,11 +58,13 @@ fn choice(dialog_id: i64, archetype: Option<i64>) -> ExecutionContext {
     ctx
 }
 
-/// A `mission_completed` context on `mission_id` by a player of `archetype`.
-fn completed(mission_id: i64, archetype: i64) -> ExecutionContext {
+/// A `mission_completed` context on `mission_id`. `None` leaves the archetype unset.
+fn completed(mission_id: i64, archetype: Option<i64>) -> ExecutionContext {
     let mut ctx = ExecutionContext::new();
     ctx.set_param("mission_id".to_string(), serde_json::json!(mission_id));
-    ctx.set_param("archetype".to_string(), serde_json::json!(archetype));
+    if let Some(a) = archetype {
+        ctx.set_param("archetype".to_string(), serde_json::json!(a));
+    }
     ctx
 }
 
@@ -126,7 +128,7 @@ async fn blurb_binds_on_login_and_on_421_completion() {
     assert_no_deferred_actions(&resolved, BLURB);
     assert_eq!(m1147_matched(&resolved), BTreeSet::from([BLURB]));
 
-    let mut done = completed(421, ASGARD);
+    let mut done = completed(421, Some(ASGARD));
     set_offer_open(&mut done);
     let resolved = fire(&engine, TriggerType::MissionCompleted, &done);
     assert_eq!(
@@ -153,7 +155,7 @@ async fn blurb_bind_ignores_other_races_and_states() {
         let resolved = fire(&engine, TriggerType::PlayerLoaded, &login);
         assert!(m1147_matched(&resolved).is_empty(), "login {archetype:?}");
 
-        let mut done = completed(421, archetype.unwrap_or(0));
+        let mut done = completed(421, archetype);
         set_offer_open(&mut done);
         let resolved = fire(&engine, TriggerType::MissionCompleted, &done);
         assert!(m1147_matched(&resolved).is_empty(), "421 {archetype:?}");
@@ -294,6 +296,18 @@ async fn relog_at_s3459_restores_the_turn_in_bind() {
     }
 }
 
+/// Revert: drop the `Beta_Site_Evo_1` event key from 23394. An Asgard who logs
+/// into another world at S3459 then gets the turn-in bind there.
+#[tokio::test]
+async fn relog_restore_ignores_other_worlds() {
+    let pool = require_db_or_skip!();
+    let engine = whole_seed(&pool).await;
+    let mut relog = login_ctx("Castle_Cellblock", Some(ASGARD));
+    set_step(&mut relog, 3459);
+    let resolved = fire(&engine, TriggerType::PlayerLoaded, &relog);
+    assert!(m1147_matched(&resolved).is_empty());
+}
+
 /// Revert: drop 23395's `complete_mission` or its `remove_dialog_set`. Then the
 /// turn-in leaves the mission open, or leaves the bind on Mimir.
 #[tokio::test]
@@ -338,7 +352,7 @@ async fn wrong_race_fires_no_1147_chain() {
         let resolved = fire(&engine, TriggerType::PlayerLoaded, &login);
         assert!(m1147_matched(&resolved).is_empty(), "login {archetype:?}");
 
-        let mut done = completed(421, archetype.unwrap_or(0));
+        let mut done = completed(421, archetype);
         set_offer_open(&mut done);
         let resolved = fire(&engine, TriggerType::MissionCompleted, &done);
         assert!(m1147_matched(&resolved).is_empty(), "421 {archetype:?}");
