@@ -115,11 +115,11 @@ Census of the cooked map (RESTORED_SOURCE, read-only extraction): EM-Infirmary01
 
 ## Q3: HELD-B7 beam destinations
 
-- BEAM_DECK_DEST (698.98, 157.93, 70.36): component 355, 1.50 m from spawn 151 (700.48, 157.91, 70.365), standable, h 0.00.
-- BEAM_GROUND_DEST (745.05, -19.60, 68.75): component 251, 1.50 m from spawn 149 (746.555, -19.67, 68.75), standable, h 0.00.
+- BEAM_DECK_DEST (698.98, 157.93, 70.36): component 355, 1.50 m from spawn 151 (x, z as seeded; seeded y is 157.949997, the 157.91 used in the probe row is the snapped mesh y), standable, h 0.00.
+- BEAM_GROUND_DEST (745.05, -19.60, 68.75): component 251, 1.50 m from spawn 149 (x, z as seeded; seeded y is -19.2099991, the -19.67 used in the probe is the snapped mesh y, so the seed floats 0.46 m above the mesh), standable, h 0.00.
 - Both can be stood on. The deck (355) is not ARRIVAL's component: beam only.
 - Deck walk path: MIMIR (696.44, 157.77, 67.36), ANALYTICAL_MACHINE (696.44, 157.77, 64.36) and CONSCIOUSNESS_SIM (699.44, 157.93, 67.36) are all on 355 with BEAM_DECK_DEST and spawn 151, so a same-component walk exists from the beam arrival to Mimir (proxy; confirm with find_path).
-- Pads (RESTORED_SOURCE, census): ASG-TeleportBase00 ground pad (746.480, -19.920, 68.640), console (742.3, -19.5, 68.6); deck pad (700.440, 157.240, 70.360), console (696.26, 157.66, 70.32); ASG-MedStructure00 (716.0, 39.52, 70.4). These match spawns 149 and 151.
+- Pads (RESTORED_SOURCE, census; values are agent-reported from `archetype_census` and were not re-run in the B0 review, which re-ran only the nav probes): ASG-TeleportBase00 ground pad (746.480, -19.920, 68.640), console (742.3, -19.5, 68.6); deck pad (700.440, 157.240, 70.360), console (696.26, 157.66, 70.32); ASG-MedStructure00 (716.0, 39.52, 70.4). These match spawns 149 and 151.
 
 ## Q4: HELD-B8 Debeaux and the location texts
 
@@ -131,7 +131,7 @@ Census of the cooked map (RESTORED_SOURCE, read-only extraction): EM-Infirmary01
 
 - RESPAWN_6 (gate side): (633.000, -60.83, 399.000), component 251, h 0.00, dy -0.00, reachable from ARRIVAL. Gate pin (617.866, -59.314, 388.971) and DHD pin (629.596, -60.913, 381.289) are both on 251.
 - RESPAWN_7 (infirmary door side): (953.000, 16.35, 287.500), component 251, h 0.00, dy -0.00, about 8.3 m from the interior centre toward ARRIVAL. Door side INFERRED. It is inside the Infirmary region (8.3 < 11.5); intended, but nothing the region triggers may misfire on respawn.
-- Both are seeded at (0,0,0) today; this seal proposes the positions. LIFE_GATE_1/2 are about 9 m off the DHD pin (at least 6 m required).
+- Both are seeded at (0,0,0) today; this seal proposes the positions. LIFE_GATE_1/2 are about 18.1 m and 14.6 m from the DHD pin and about 14.4 m and 15.5 m from ARRIVAL (review re-measure), so both clear the 6 m minimum from either.
 
 ## Other notes for consumers
 

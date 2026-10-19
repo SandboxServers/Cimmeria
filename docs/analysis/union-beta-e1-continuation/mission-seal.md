@@ -22,7 +22,7 @@ Evidence base, all CIMMERIA_RECONSTRUCTION unless noted:
 
 ## Q1: step matrix
 
-Columns: step id, index, objective(s), owning packet, trigger and action (chain ids from the packet), verdict. Objective `en=false` marks listed where present. All tasks are type 1 and enabled; all steps and objectives are `hidden=false`, `optional=false`.
+Columns: step id, index, objective(s), owning packet, trigger and action (chain ids from the packet), verdict. Objective `en=false` marks listed where present. All tasks are type 1 and enabled; all steps and objectives are `hidden=false`, `optional=false`. Caveat (B0 review): the step, objective and task columns were verified row by row against the mission seeds; the trigger / action column is summarised from the packet chain tables and chain-id ranges and was not re-read chain row by row, so the owning packet's coder re-reads its chains.
 
 Engine facts the matrix relies on:
 - `advance_step` force-completes the old step's objectives and does NOT run the mission auto-complete (`crates/cell-content/src/cell/missions/progression.rs:28-172`, loop 161-169). CIMMERIA_AUTHORING.
@@ -172,7 +172,7 @@ The idx order (S4759 before S4381) differs from the step id order; chains must k
 
 ### Q1 `change:` rows
 
-- C1. packet `UB-11` (`beta-packets/UB-10-13.md`), chain 23042: delete the trigger row `pick:1886`. Dialog 1886 is never displayed because the tag chain suppresses bind auto-display, so the row is dead. CIMMERIA_AUTHORING.
+- C1. packet `UB-11` (`beta-packets/UB-10-13.md`), chain 23042: delete the trigger row `pick:1886`. Dialog 1886 is never displayed because the tag chain suppresses bind auto-display, so the row is dead. This is an engine-reachability fix, not an R1 fix: dialog 1886 itself passes R1 (final-screen buttons 8/t2 and 9/t1; see the addendum). CIMMERIA_AUTHORING.
 - C2. packet `UB-11`, the mission note that says the journal shows all three steps done: rewrite. `complete()` pushes only the current step (`crates/entity/src/missions.rs:91-103`), so S1410 is never entered or listed.
 - C3. packet `UB-31` (`beta-packets/UB-30-36.md`), the same note for S1457: rewrite for the same reason.
 - C4. packet `UB-34`, the S1486 row: say the `en=false` applies to O1725 only and the server ignores it (Q3). Wording only.
@@ -184,7 +184,7 @@ Rule R1 (`crates/content-engine/tests/it/dialog_button_linter/rules.rs:62`, allo
 
 Rows checked (dsm flag from `dialog_set_maps.sql`):
 
-| Dialog | dsm (mission) | Flag | UI | Screens / buttons | R1 |
+| Dialog | dsm (set) | Flag | UI | Screens / buttons | R1 |
 |---|---|---|---|---|---|
 | 1999 | 2457 (500) | 134217728 | Blurb | 1 screen (s64039): More Info, Accept | pass |
 | 1994 | 2462 (502) | 134217728 | Blurb | 1 screen (s63518): More Info, Accept | pass |
@@ -202,11 +202,47 @@ Rows checked (dsm flag from `dialog_set_maps.sql`):
 | 1997 | 2456 (500) | 0 | Dialog | button on a non-final screen | VIOLATION (UB-35 chain 23437) |
 | 3228 | 2461 (502) | 0 | Dialog | button on a non-final screen | VIOLATION (UB-36 chain 23462) |
 
+#### Q2 addendum (B0 review): the remaining dialogs
+
+The table above lists the dialogs that carry a pick key or an R1 finding; the review completed it against `dialogs.sql`, `dialog_screens.sql`, `dialog_screen_buttons.sql` and `dialog_set_maps.sql`. Columns: dsm id, dialog set, flag, UI type, buttons on the FINAL screen (button id / type). R1 holds for every row (a button on the final screen, or none at all).
+
+| Dialog | dsm | Set | Flag | UI | Final-screen buttons |
+|---|---|---|---|---|---|
+| 1882 | 2306 | 463 | 16777216 | Dialog | 8/t2 (all 6 screens) |
+| 1883 | 2302 | 463 | 33554432 | Dialog | none |
+| 1884 | 2304 | 463 | 16777216 | Dialog | none |
+| 1886 | 2305 | 463 | 8388608 | Blurb | 8/t2, 9/t1 |
+| 1915 | 2465 | 504 | 16777216 | Dialog | none |
+| 1916 | 2467 | 504 | 33554432 | Dialog | 9/t1 |
+| 1917 | 4579 | 473 | 33554432 | Blurb | none |
+| 1918 | 2352 | 473 | 16777216 | Dialog | 8/t2 |
+| 1953 | 2346 | 471 | 0 | Dialog | 8/t2 |
+| 1987 | 2347 | 472 | 16777216 | Dialog | 8/t2 |
+| 1995 | 3884 | 501 | 536870912 | Dialog | none |
+| 2014 | 2438 | 496 | 536870912 | Dialog | none |
+| 2015 | 2439 | 496 | 268435456 | Dialog | none |
+| 2018 | 2441 | 496 | 0 | Dialog | 8/t2 |
+| 3223 | 3878 | 501 | 0 | Dialog | 8/t2 |
+| 3224 | 3883 | 501 | 1073741824 | Dialog | 247/t4 |
+| 3904 | 4589 | 1174 | 0 | Dialog | 8/t2 |
+| 4654 | 5458 | 1478 | 0 | Dialog | 8/t2 |
+| 4655 | 6936 | 1478 | 1073741824 | Dialog | 456/t4 |
+| 4658 | 5461 | 1479 | 0 | Dialog | 8/t2 |
+| 4659 | 6944 | 1479 | 536870912 | Dialog | 458/t4 |
+| 4662 | 5465 | 1480 | 0 | Dialog | 8/t2 |
+| 5041 | 5886 | 1594 | 0 | Dialog | 8/t2 |
+| 5042 | 7151 | 1594 | 1073741824 | Dialog | 575/t4 |
+| 5043 | 7152 | 1594 | 1073741824 | Dialog | 576/t4 |
+| 5048 | 5895 | 1595 | 0 | Dialog | 8/t2 |
+| 5497 | 6937 | 1478 | 1073741824 | Dialog | 457/t4 |
+
+Dialogs 3057, 3161, 3227, 3722, 3895, 3901, 3905, 4643, 4660, 4663, 4664, 5026, 5044 and 5051 carry no pick key and no or one trailing button (3905's final screen has 9/t1); none is chain-keyed by `dialog_choice`, so R1 does not apply to them. The only violations in the whole set remain 1997 and 3228.
+
 The speaker label is per dialog, not per screen. Dialogs 5040 and 5047 have speaker 0 "Not Set" so the client header is blank; cosmetic, UB-90 row UB-U2b.
 
 Behaviour, CIMMERIA_AUTHORING:
 - A zero-button dialog sends `(id, -1)` on close; a dialog with any button sends nothing on close (`crates/cell-methods/src/cell/cell_methods/player/interaction/dialog.rs:12-124`).
-- `dialog_choice` is rejected unless `open_dialog_id` equals the dialog (#479 gate, `crates/cell-content/src/cell/content/event_dispatch/dialog.rs:94-160`).
+- `dialog_choice` is rejected unless the dialog is in the player's offered-dialog set; the gate consumes the entry once (`take_offered_dialog`, #479 gate, `crates/cell-content/src/cell/content/event_dispatch/dialog.rs:94-160`). It is a one-shot set, not a single `open_dialog_id` pin, so two dialogs can be offered at once but each choice is accepted once per display.
 - Non-interact chains can only display MONOLOGUE dialogs (agent memory `dialog-chain-authoring-rules.md`).
 
 ### Q2 `change:` rows (fallbacks)
