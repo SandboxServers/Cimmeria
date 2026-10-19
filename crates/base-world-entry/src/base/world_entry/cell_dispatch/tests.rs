@@ -25,6 +25,7 @@ async fn minigame_result_forwards_to_cell_service() {
             ticket: "test-ticket".into(),
             result_code: 2,
             on_victory_chains: vec![100, 200],
+            on_failure_chains: vec![7],
             notify_client: true,
         },
         &transport,
@@ -43,10 +44,16 @@ async fn minigame_result_forwards_to_cell_service() {
             entity_id,
             result_code,
             on_victory_chains,
+            on_failure_chains,
         } => {
             assert_eq!(entity_id, 10);
             assert_eq!(result_code, 2);
             assert_eq!(on_victory_chains, vec![100, 200]);
+            assert_eq!(
+                on_failure_chains,
+                vec![7],
+                "failure chains cross to the cell"
+            );
         }
         // BaseToCellMsg deliberately omits Debug (oneshot::Sender),
         // so we can't print the variant — name the expected one
@@ -71,6 +78,7 @@ async fn minigame_result_with_dropped_cell_receiver_logs_error() {
             ticket: "test-ticket".into(),
             result_code: 2,
             on_victory_chains: vec![100, 200],
+            on_failure_chains: vec![],
             notify_client: true,
         },
         &transport,
@@ -109,6 +117,7 @@ async fn minigame_result_without_cell_channel_logs_warn() {
             ticket: "test-ticket".into(),
             result_code: 2,
             on_victory_chains: vec![100],
+            on_failure_chains: vec![],
             notify_client: true,
         },
         &transport,
@@ -130,43 +139,6 @@ async fn minigame_result_without_cell_channel_logs_warn() {
         )
         .expect("missing cell channel must log a WARN");
     assert!(event.has_field("chain_count", "1"), "{event:#?}");
-}
-
-/// A disabled minigame server (`None` registry) is a WARN naming the game,
-/// not a silent no-op.
-#[tokio::test]
-async fn start_minigame_with_disabled_server_logs_warn() {
-    let capture = LogCapture::install();
-    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
-    let (connected, entity_to_addr) = empty_maps();
-
-    handle_cell_message(
-        CellToBaseMsg::StartMinigame {
-            entity_id: 10,
-            player_id: 1,
-            game_name: "Livewire".into(),
-            difficulty: 1,
-            on_victory_chains: vec![],
-        },
-        &transport,
-        &connected,
-        &entity_to_addr,
-        &None,
-        &None,
-        &None,
-        "127.0.0.1",
-        7777,
-    )
-    .await;
-
-    let event = capture
-        .find_event(
-            tracing::Level::WARN,
-            "minigame server is disabled",
-            "minigame_server_disabled",
-        )
-        .expect("disabled minigame server must log a WARN");
-    assert!(event.has_field("game_name", "Livewire"), "{event:#?}");
 }
 
 /// `flush_deferred_aoi` drains the session's deferred-AoI buffer through

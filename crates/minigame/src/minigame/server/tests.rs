@@ -44,6 +44,7 @@ async fn explicit_close_cancels_socket_and_allows_reopen() {
                 0,
                 1,
                 vec![4242],
+                vec![],
                 None,
                 Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
             )
@@ -88,6 +89,7 @@ async fn explicit_close_cancels_socket_and_allows_reopen() {
                 0,
                 0,
                 1,
+                vec![],
                 vec![],
                 None,
                 Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
@@ -187,6 +189,7 @@ pub(super) async fn spawn_placeholder_session_with_idle(
             0,
             1,
             vec![4242],
+            vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
         )
@@ -473,6 +476,7 @@ async fn a_closed_connection_leaves_the_entity_free_to_relaunch() {
             0,
             1,
             vec![],
+            vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
         )
@@ -560,6 +564,7 @@ async fn a_closed_connection_leaves_the_entity_free_to_relaunch() {
                 0,
                 1,
                 vec![],
+                vec![],
                 None,
                 Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST))
             )
@@ -605,6 +610,7 @@ async fn a_send_failure_during_handshake_still_reports_canceled() {
             0,
             0,
             1,
+            vec![],
             vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
@@ -672,6 +678,7 @@ async fn a_send_failure_during_handshake_still_reports_canceled() {
                 0,
                 0,
                 1,
+                vec![],
                 vec![],
                 None,
                 Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST))

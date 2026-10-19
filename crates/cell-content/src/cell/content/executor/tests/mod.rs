@@ -65,6 +65,7 @@ mod pets;
 mod radio_dialog;
 mod spawn_set;
 mod stargate;
+mod start_minigame_params;
 mod stats;
 mod teleport;
 

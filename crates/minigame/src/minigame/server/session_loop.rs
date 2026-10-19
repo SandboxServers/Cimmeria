@@ -151,6 +151,7 @@ pub(super) async fn run_session(
     // Send login success sequence (matching C++ exactly)
     let game_name = session.game_name.clone();
     let on_victory_chains = session.on_victory_chains.clone();
+    let on_failure_chains = session.on_failure_chains.clone();
     // Who the Discord result names: the character's `player_id` and the
     // name the base handed over at registration.
     let player = session.discord_player();
@@ -361,6 +362,7 @@ pub(super) async fn run_session(
                                                     &player,
                                                     RESULT_VICTORY,
                                                     on_victory_chains.clone(),
+                                                    vec![],
                                                     "victory_message",
                                                     true,
                                                 )
@@ -388,6 +390,7 @@ pub(super) async fn run_session(
                                                     &player,
                                                     RESULT_DEFEAT,
                                                     vec![],
+                                                    on_failure_chains.clone(),
                                                     "failure_message",
                                                     true,
                                                 )
@@ -517,6 +520,7 @@ pub(super) async fn run_session(
                                     &player,
                                     RESULT_VICTORY,
                                     on_victory_chains.clone(),
+                                    vec![],
                                     "victory_tick",
                                                     true,
                                 )
@@ -544,6 +548,7 @@ pub(super) async fn run_session(
                                     &player,
                                     RESULT_DEFEAT,
                                     vec![],
+                                    on_failure_chains.clone(),
                                     "failure_tick",
                                                     true,
                                 )
@@ -611,6 +616,7 @@ pub(super) async fn run_session(
             &game_name,
             &player,
             RESULT_CANCELED,
+            vec![],
             vec![],
             "aborted",
             end_reason != EndReason::PlayerCanceled,

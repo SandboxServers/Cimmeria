@@ -730,6 +730,13 @@ pub enum CellToBaseMsg {
         game_name: String,
         difficulty: u32,
         on_victory_chains: Vec<i64>,
+        /// Fired on result codes 2 and 4 (D-MG5).
+        on_failure_chains: Vec<i64>,
+        /// From the player's cell entity; reaches the SWF's `joinOK`.
+        player_level: u32,
+        intelligence: u32,
+        tech_competency: u32,
+        abilities_mask: u32,
     },
 
     /// The session owner closed the minigame window; cancel its SmartFox task.
@@ -743,6 +750,7 @@ pub enum CellToBaseMsg {
         ticket: String,
         result_code: u8,
         on_victory_chains: Vec<i64>,
+        on_failure_chains: Vec<i64>,
         /// Explicit window close already hid the UI. A late onEndMinigame
         /// could close a newly opened board.
         notify_client: bool,

@@ -61,6 +61,8 @@ lab-chaos = ["cimmeria-base-session/lab-chaos"]
 # tools/test-live-db.{sh,ps1}; `live_db_wrapper_lists_every_test_support_crate`
 # enforces it.
 cimmeria-test-support = { workspace = true }
+# Reads a registered minigame session back (the launch-params test).
+cimmeria-minigame = { workspace = true, features = ["test-support"] }
 # `test_default_connected_client_state`, re-exported from the same shim.
 cimmeria-base-session = { workspace = true, features = ["test-support"] }
 # The crafting base plugin (#962 step 5): the crafting tests that run

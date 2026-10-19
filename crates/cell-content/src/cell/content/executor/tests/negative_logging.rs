@@ -68,6 +68,7 @@ async fn start_minigame_warns_when_cell_to_base_channel_closed() {
                 minigame_type: "livewire".to_string(),
                 difficulty: 1,
                 on_victory_chains: vec![],
+                on_failure_chains: vec![],
             },
         )],
     };

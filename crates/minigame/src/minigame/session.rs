@@ -62,6 +62,8 @@ pub struct MinigameSession {
     pub player_level: u32,
     pub ticket: String,
     pub on_victory_chains: Vec<i64>,
+    /// Fired by the cell on result codes 2 and 4 (D-MG5).
+    pub on_failure_chains: Vec<i64>,
     /// The player's character name, from the base session that started the
     /// game. The minigame server only ever sees the entity id; this is what
     /// names the player in the Discord result (NT-10).
@@ -138,6 +140,7 @@ impl SessionRegistry {
         intelligence: u32,
         player_level: u32,
         on_victory_chains: Vec<i64>,
+        on_failure_chains: Vec<i64>,
         player_name: Option<String>,
         client_ip: Option<std::net::IpAddr>,
     ) -> Option<String> {
@@ -155,6 +158,7 @@ impl SessionRegistry {
             player_level,
             ticket: ticket.clone(),
             on_victory_chains,
+            on_failure_chains,
             player_name,
             client_ip,
             created_at: Instant::now(),
@@ -401,6 +405,17 @@ impl SessionRegistry {
     /// behind an address no session recorded.
     pub async fn session_count(&self) -> usize {
         self.inner.lock().await.sessions.len()
+    }
+
+    /// A copy of the entity's registered session, ticket not required.
+    ///
+    /// Read-only and unauthenticated: for a caller in the same process that
+    /// needs to see what the base registered (the base's launch tests read the
+    /// player params back through it). A connection task must still go through
+    /// [`Self::authenticate_and_claim`].
+    #[cfg(any(test, feature = "test-support"))]
+    pub async fn peek_session(&self, entity_id: u32) -> Option<MinigameSession> {
+        self.inner.lock().await.sessions.get(&entity_id).cloned()
     }
 
     /// How many registered sessions are still pending, that is, never had

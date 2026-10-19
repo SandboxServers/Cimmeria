@@ -235,6 +235,10 @@ pub enum Action {
         #[serde(default = "default_minigame_difficulty")]
         difficulty: u32,
         on_victory_chains: Vec<i64>,
+        /// Chains fired on a failed or defeated result (codes 2 and 4,
+        /// D-MG5). Defaulted so payloads serialized before MG-02 still load.
+        #[serde(default)]
+        on_failure_chains: Vec<i64>,
     },
 
     /// Set the aggression override on a tagged NPC (`EMobAggressionLevel`:

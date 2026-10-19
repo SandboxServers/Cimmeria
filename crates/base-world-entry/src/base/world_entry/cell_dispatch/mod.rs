@@ -90,6 +90,8 @@ mod tests_flush_chaos;
 mod tests_flush_default_bytes;
 #[cfg(test)]
 mod tests_flush_fragmentation;
+#[cfg(test)]
+mod tests_minigame_params;
 
 /// Shared per-call context threaded to every family `route` fn.
 ///

@@ -288,6 +288,7 @@ async fn live_db_debug_hub_livewire_terminal_round_trip() {
                 minigame_type: "Livewire".into(),
                 difficulty: 1,
                 on_victory_chains: vec![7005],
+                on_failure_chains: vec![],
             }
         )],
         "chain 7004 must resolve exactly one StartMinigame(Livewire, [7005])",

@@ -138,6 +138,7 @@ async fn live_db_chain_1292_terminal_starts_livewire_naming_the_victory_chain() 
             minigame_type,
             difficulty,
             on_victory_chains,
+            ..
         } => {
             // `difficulty` arrived with #652. Chain 1292's seed row omits it,
             // so it must come through as the loader's default of 1 — asserted

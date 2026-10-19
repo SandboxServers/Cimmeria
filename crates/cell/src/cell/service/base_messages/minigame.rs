@@ -10,11 +10,16 @@ use crate::cell::content;
 use crate::cell::messages::CellToBaseMsg;
 use crate::cell::space_manager::SpaceManager;
 
+/// Server-channel result codes that fire `on_failure_chains` (D-MG5).
+const RESULT_FAILURE: u8 = 2;
+const RESULT_DEFEATED: u8 = 4;
+
 /// Handle `BaseToCellMsg::MinigameResult`.
 pub(super) async fn handle_minigame_result(
     entity_id: u32,
     result_code: u8,
     on_victory_chains: Vec<i64>,
+    on_failure_chains: Vec<i64>,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
     engine: &ChainEngine,
@@ -30,6 +35,7 @@ pub(super) async fn handle_minigame_result(
         result_code,
         result = cimmeria_wire::cell::client_methods::minigame::minigame_result_name(result_code),
         chains = ?on_victory_chains,
+        failure_chains = ?on_failure_chains,
         "Minigame result"
     );
     if result_code == 1 {
@@ -50,6 +56,16 @@ pub(super) async fn handle_minigame_result(
         }
         let player_id = entity.and_then(|e| e.player_id).unwrap_or(0);
         for chain_id in &on_victory_chains {
+            content::fire_chain_by_id(*chain_id, entity_id, player_id, engine, tx, space_mgr).await;
+        }
+    } else if result_code == RESULT_FAILURE || result_code == RESULT_DEFEATED {
+        // Same player-id resolution as the victory path: a missing entity
+        // fires with player 0 rather than dropping the failure chains.
+        let player_id = space_mgr
+            .get_entity(entity_id)
+            .and_then(|e| e.player_id)
+            .unwrap_or(0);
+        for chain_id in &on_failure_chains {
             content::fire_chain_by_id(*chain_id, entity_id, player_id, engine, tx, space_mgr).await;
         }
     }
