@@ -41,6 +41,26 @@ async fn no_443_chain_fires_without_asgard() {
     }
 }
 
+/// An Asgard who logs into another world at any 443 step, or with the offer
+/// open, matches no 443 chain.
+/// Revert: drop the `Beta_Site_Evo_1` event key from 23408, 23410 or 23416.
+#[tokio::test]
+async fn login_chains_ignore_other_worlds() {
+    let pool = require_db_or_skip!();
+    let engine = whole_seed(&pool).await;
+    for stage in
+        std::iter::once(Stage::Offer).chain(STEPS.iter().map(|(step, _)| Stage::Step(*step)))
+    {
+        expect(
+            &engine,
+            stage,
+            TriggerType::PlayerLoaded,
+            login_ctx("Castle_Cellblock", Some(ASGARD)),
+            &[],
+        );
+    }
+}
+
 /// Every Human race, at every 443 state, matches no 443 chain: the Asgard
 /// gate is `eq 5`, so the Human range never reaches Carter, Satterfield or
 /// the fire. Revert: change 23411's gate to a Human range.
