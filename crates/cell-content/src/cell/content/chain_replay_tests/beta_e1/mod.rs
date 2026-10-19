@@ -26,6 +26,7 @@ mod m1502_gates;
 mod m381;
 mod m473;
 mod m478;
+mod m481;
 mod travel;
 
 /// The Beta Site E1 world name, as `worlds.sql` and `player_loaded` key on it.

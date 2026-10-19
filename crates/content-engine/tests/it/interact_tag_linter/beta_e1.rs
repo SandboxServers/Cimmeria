@@ -206,6 +206,31 @@ const BETA_E1: &[(&str, i32, &str)] = &[
         23250,
         "BetaE1_RasNor: per-player bind dsm 5885/5887 (chains 23240/23248)",
     ),
+    (
+        "beta_e1_m481_chains.sql",
+        23312,
+        "BetaE1_Carter: per-player bind dsm 2465 (chain 23310)",
+    ),
+    (
+        "beta_e1_m481_chains.sql",
+        23314,
+        "BetaSite_00000007: template 3 static INT_RingNetwork (32)",
+    ),
+    (
+        "beta_e1_m481_chains.sql",
+        23315,
+        "BetaSite_Beam_000007_Ship: template 3 static INT_RingNetwork (32)",
+    ),
+    (
+        "beta_e1_m481_chains.sql",
+        23316,
+        "BetaSite_00000007: template 3 static INT_RingNetwork (32)",
+    ),
+    (
+        "beta_e1_m481_chains.sql",
+        23317,
+        "BetaE1_Mimir: per-player bind dsm 2467 (chain 23312)",
+    ),
 ];
 
 /// Whether `chain_id` in `filename` is a Beta chain that has an
