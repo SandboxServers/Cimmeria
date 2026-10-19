@@ -45,9 +45,13 @@ AH-11h puts this in place of the C7 long form. It is the reconciled decision 4 (
 
 | Platform line in the agent's environment | Tool | Commands |
 |---|---|---|
-| `win32` | PowerShell | `pwsh tools/build-lane/<script>.ps1 ...` (as today); never Bash |
-| anything else (`linux`, `darwin`) | Bash | `bash tools/build-lane/<script>.sh ...`, same arguments |
-| the needed tool is missing | none | `blocked`, with the reason `no PowerShell tool on win32` or `no Bash tool on <platform>` |
+| `win32` | PowerShell | `pwsh tools/build-lane/<script>.ps1 ...` (as today); never Bash, not even Git Bash |
+| `linux` (WSL reports `linux`) | Bash | `bash tools/build-lane/<script>.sh ...`, same arguments |
+| no `Platform:` line | as `win32` | as `win32` |
+| any other platform (`darwin`, ...) | none | `blocked`, with the reason `platform <p> is not supported (Windows, Linux and WSL only)` |
+| the needed tool is missing | none | `blocked`, with the reason `no PowerShell tool on win32` or `no Bash tool on linux` |
+
+Amended 2026-10-18 (D-AH53): `darwin` moved from the Bash row to the refused row, and a missing `Platform:` line follows `win32`. The same table, for every agent with a shell, is contract C17 in [work-packets-w4c.md](work-packets-w4c.md).
 
 The `.sh` and `.ps1` twins take the same options and print the same output with the same exit codes (tools/build-lane/README.md). This covers every script `ops.md` names: `mk-worktree`, `ship` and `rm-worktree`, plus #1824's five git verbs `commit-paths`, `merge-noff`, `branch-at`, `push-branch` and `rebase-onto`, whose `.sh` twins come from W3d. The twins of the git verbs take full option names only, with no PowerShell abbreviations (D-AH40). On Linux, `ops` never runs a `.ps1` under Linux `pwsh`: `mk-worktree.ps1` makes a junction, and `ship.ps1` calls `python` (F25).
 
