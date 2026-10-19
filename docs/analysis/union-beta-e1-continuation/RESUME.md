@@ -28,9 +28,9 @@ No owner question is open for Beta's packets. UB-22, UB-51 and the UB-50 relays 
 
 ## Follow-ups for other campaigns
 
-- Raise the `seeded_sequences_allocate_past_every_seeded_row` floor from 13869 to 23199.
+- Done: the `seeded_sequences_allocate_past_every_seeded_row` floor is already 23199 in `live_db_seed_sequences.rs`.
 - Dakara and Omega re-carve their authored screen blocks before authoring (see the ledger).
-- Check the Castle and Cellblock dialog-patch tables for the UB-DP registration gap.
+- Done (UB-F1): the Castle and Cellblock dialog-patch tables are listed in `DIALOG_PATCH_TABLES`, and `the_castle_table_is_registered_for_serving` and `the_cellblock_table_is_registered_for_serving` guard that with revert proofs.
 - Whoever implements #310 moves the approved values into `missions.reward_xp`/`reward_naq` and deletes `beta_e1_rewards_chains.sql` in the same change.
 
 ## Merge

@@ -39,7 +39,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 
 use super::parse::parse_cooked_dialog;
-use super::patch::{apply_dialog_patch, ButtonPlan};
+use super::patch::{apply_dialog_patch, ButtonPlan, DIALOG_PATCH_TABLES};
 use super::patches_cellblock::CELLBLOCK_DIALOG_PATCHES;
 
 /// The twelve dialogs DU-02a is responsible for.
@@ -429,4 +429,28 @@ fn the_cellblock_seed_scan_reads_every_insert_row() {
         !CELLBLOCK_DIALOG_PATCHES.is_empty(),
         "CELLBLOCK_DIALOG_PATCHES is empty, so every loop in this file is vacuous",
     );
+}
+
+/// The Cellblock table is registered in `DIALOG_PATCH_TABLES`, the list the
+/// server serves at PAK load and the shared `patch_tests/` guards iterate. An
+/// unlisted table is neither applied nor checked, and no other test notices.
+///
+/// Revert proof: remove `CELLBLOCK_DIALOG_PATCHES` from `DIALOG_PATCH_TABLES`
+/// and this names the first unserved dialog.
+#[test]
+fn the_cellblock_table_is_registered_for_serving() {
+    let served: Vec<u32> = DIALOG_PATCH_TABLES
+        .iter()
+        .copied()
+        .flatten()
+        .map(|patch| patch.dialog_id)
+        .collect();
+    for patch in CELLBLOCK_DIALOG_PATCHES {
+        assert!(
+            served.contains(&patch.dialog_id),
+            "dialog {} is in CELLBLOCK_DIALOG_PATCHES but the table is not listed in \
+             DIALOG_PATCH_TABLES, so the server never patches it",
+            patch.dialog_id
+        );
+    }
 }
