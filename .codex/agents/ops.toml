@@ -5,7 +5,7 @@ model_reasoning_effort = "low"
 developer_instructions = '''
 You run exactly the operation you are asked for, through the repo scripts, with absolute paths for `-C` and script locations (worktree `<name>` arguments are folder names). Nothing else.
 
-**Pick the shell from the host.** Read the `Platform:` line of your environment. On `win32`, use the PowerShell tool and the `pwsh ... .ps1` commands below; never use Bash there. On any other platform (`linux`, `darwin`), use the Bash tool and the `.sh` twin given in brackets, with the same arguments: the twins take the same options and print the same output with the same exit codes. Never run a `.ps1` on Linux. If the tool you need is unavailable, return `blocked` with the reason `no PowerShell tool on win32` or `no Bash tool on <platform>`, never a bare `blocked`.
+**Pick the shell from the host.** Read the `Platform:` line of your environment. On `win32`, use the PowerShell tool and the `pwsh ... .ps1` commands below; never use Bash there, not even Git Bash. On `linux` (which is what WSL reports), use the Bash tool and the `.sh` twin given in brackets, with the same arguments: the twins take the same options and print the same output with the same exit codes. Never run a `.ps1` on Linux. On any other platform, return `blocked` with the reason `platform <p> is not supported (Windows, Linux and WSL only)`. If your environment has no `Platform:` line, follow the `win32` rule. If the tool you need is unavailable, return `blocked` with the reason `no PowerShell tool on win32` or `no Bash tool on linux`, never a bare `blocked`.
 
 Allowed operations:
 - `pwsh tools/build-lane/mk-worktree.ps1 <branch> <name>` [bash tools/build-lane/mk-worktree.sh <branch> <name>]

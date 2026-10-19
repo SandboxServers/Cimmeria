@@ -44,6 +44,11 @@ class OpsTwinsTest(unittest.TestCase):
         self.assertIn("Platform:", self.text)
         self.assertIn("win32", self.text)
 
+    def test_other_platforms_are_refused_not_bash(self):
+        self.assertIn("On `linux`", self.text)
+        self.assertIn("(Windows, Linux and WSL only)", self.text)
+        self.assertNotIn("(`linux`, `darwin`)", self.text)
+
 
 if __name__ == "__main__":
     unittest.main()
