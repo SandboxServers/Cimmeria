@@ -10,6 +10,8 @@
 //!   the tree grant, the cooldown clear and the first-click lines.
 //! - [`effects`]          — `Action::LaunchAbility` / `Action::ApplyEffect`
 //!   (server-initiated effect application, target resolution).
+//! - [`grant_cash`]       — `Action::GrantCash` (UB-50b1): one grant to the
+//!   base per firing, and the refusals with their `reason=` rows.
 //! - [`grant_item`]       — `Action::GrantItem` for a gun leaves the cell
 //!   bandolier to the base (CS-01b).
 //! - [`stats`]            — `Action::ChangeStat` (heal / clamp / damage /
@@ -50,6 +52,7 @@ mod ability_grant;
 mod ability_granter;
 mod deferred;
 mod effects;
+mod grant_cash;
 mod grant_item;
 mod inventory_counter;
 mod mail;
