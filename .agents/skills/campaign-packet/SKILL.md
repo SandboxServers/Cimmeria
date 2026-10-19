@@ -172,8 +172,8 @@ Then ship:
    `ops` merges each packet branch into it with `merge-noff.ps1`, the wave
    loop reviews it there, and one PR ships it. A packet merged only into an
    integration branch has no PR of its own, so `rm-worktree.ps1 --merged`
-   skips its worktree and `ops` may not force it: list those worktrees for
-   the owner.
+   skips its worktree; once the wave PR has merged, `ops` retires those with
+   `rm-worktree.ps1 --merged-into <PR> <name>...`.
 2. Update the packet rows in the ledger, and write
    `worknotes/<packet>.md` only if anything is left over.
 
