@@ -299,6 +299,10 @@ class Transcript:
         kind, rule, ref = cls.classify(
             cls.text_of(content), rec.get("origin"), bool(rec.get("isMeta")), bool(rec.get("isCompactSummary")),
             bool(rec.get("scheduledTaskId")) or st["sched"], first_in_subagent)
+        if first_in_subagent and not self.is_fork:
+            # S4 (C19): tag a review fix pass from the brief; the text itself is never stored.
+            self.db.execute("UPDATE agents SET brief_tag = ? WHERE agent_id = ?",
+                            (cls.brief_tag(cls.text_of(content)), self.agent_id))
         st["sched"] = False
         st["seen_turn"] = True
         st["retry"] = False

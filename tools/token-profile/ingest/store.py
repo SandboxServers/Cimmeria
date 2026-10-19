@@ -13,7 +13,7 @@ from pathlib import Path
 from .transcript import Transcript
 
 SCHEMA = Path(__file__).resolve().parent.parent / "schema.sql"
-SCHEMA_VERSION = "6"
+SCHEMA_VERSION = "7"
 
 
 def now_iso():
@@ -31,11 +31,23 @@ def open_db(path):
     if not has_meta:
         db.executescript(SCHEMA.read_text(encoding="utf-8"))
     version = db.execute("SELECT value FROM meta WHERE key = 'schema_version'").fetchone()[0]
+    if version == "6":
+        _upgrade_6_to_7(db)
+        version = SCHEMA_VERSION
     if version != SCHEMA_VERSION:
         db.close()
         raise SystemExit(f"{path} has schema version {version}, this ingest writes {SCHEMA_VERSION}; "
-                         "start a new database (it is rebuilt from the transcripts).")
+                         "start a new database (it is rebuilt from the transcripts); a version 6 database is upgraded in place.")
     return db
+
+
+def _upgrade_6_to_7(db):
+    """Schema 6 to 7 in place (S4a): add agents.brief_tag. Safe to run twice."""
+    if "brief_tag" not in {row[1] for row in db.execute("PRAGMA table_info(agents)")}:
+        db.execute("ALTER TABLE agents ADD COLUMN brief_tag TEXT"
+                   " CHECK (brief_tag IS NULL OR brief_tag IN ('review-fix'))")
+    db.execute("UPDATE meta SET value = '7' WHERE key = 'schema_version'")
+    db.commit()
 
 
 def project_prefix(repo_root):

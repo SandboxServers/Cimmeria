@@ -13,6 +13,9 @@ FROM_NAME = re.compile(r"<cross-session-message\b[^>]*\bfrom-name=\"([^\"]+)\"")
 AGENT_FROM = re.compile(r"<agent-message\b[^>]*\bfrom=\"([^\"]+)\"")
 IDLE = re.compile(r"\"type\"\s*:\s*\"idle_notification\"")
 SAFE_REF = re.compile(r"^[A-Za-z0-9_.:@-]{1,128}$")
+# S4 (C19): a C12 review fix pass is briefed "review fix, pass N of 3", N a digit. Only the tag is stored.
+REVIEW_FIX = "review-fix"
+REVIEW_FIX_BRIEF = re.compile(r"\breview fix, pass [1-3] of 3\b", re.IGNORECASE)
 
 
 def text_of(content):
@@ -23,6 +26,11 @@ def text_of(content):
         return "\n".join(b.get("text", "") for b in content
                          if isinstance(b, dict) and b.get("type") == "text" and isinstance(b.get("text"), str))
     return ""
+
+
+def brief_tag(text):
+    """'review-fix' when a subagent's first prompt is a C12 review fix pass, else None; never the text."""
+    return REVIEW_FIX if REVIEW_FIX_BRIEF.search(text or "") else None
 
 
 def _ref(value):
