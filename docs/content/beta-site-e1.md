@@ -79,7 +79,8 @@ Chain ids are 23000-23499; the full table is in [mission-chains.md](mission-chai
 | Free Jaffa | 1500 → 1502 The Nine Peaks Jaffa | 1503 The Antidote is not built (UB-22 held). 1502 completes |
 | Asgard | 481 → 420 Reclamation → 421 Mechanical Error → 1147 Intriguing Data, plus 443 Incendiary, 477 Covert Observations, 479 Process Support | 481 and the seven Beta missions complete locally |
 
-Offer order is strictly linear per race (D-UB15), and every Beta mission pays xp 0 and naq 0 (D-UB8).
+Offer order is strictly linear per race (D-UB15), and every Beta mission keeps its reward columns (`reward_xp`, naq) at 0 (D-UB8); XP is paid by `grant_xp` chains 23480-23496 (D-UB16), and naq arrives with UB-50b2.
+UB-50a adds the XP column of the [reward proposal](../analysis/union-beta-e1-continuation/reward-proposal.md) as one `grant_xp` chain per mission on `mission_completed` (chains 23480-23496, `beta_e1_rewards_chains.sql`). `missions.reward_xp` stays 0.
 
 **The Asgard arc cannot be reached by a real player yet.** Omega's UO-16 must deliver an Asgard player with 481 at S1760 and item 3399. It is held behind owner decisions U-D08 and U-D11 (HELD-B16). The arc is tested by archetype-5 replays only (D-UB13).
 
@@ -104,13 +105,13 @@ The 421 infirmary is Beta-local with high confidence (D-UB6). `INFIRMARY_CENTRE`
 |---|---|
 | RESTORED_SOURCE | Rows from the seeds or the client: missions, steps, dialogs, dsm rows, items, text monikers, map pins |
 | CIMMERIA_RECONSTRUCTION | Glue the source implies: every chain, the arrival pin, respawner positions, NPC placements, the beam move, the way-back grant, the ring pair |
-| CIMMERIA_AUTHORING | New content with no source. Only UB-50 may carry it, and UB-50 is held on the owner's label policy (H-LBL), U-D07 and the CB-N05a client proof. **None ships** |
+| CIMMERIA_AUTHORING | New content with no source. Only UB-50 may carry it, and UB-50 is held on the owner's label policy (H-LBL) and the CB-N05a client proof; U-D07 is approved (2026-10-19). **None ships** |
 
 ## What is not built
 
 - 1503 The Antidote (UB-22 held) and the Omega/SGC receiver notes (UB-51 held), both D-UB5 A.
 - Twin missions 383, 384 and 1146 (UB-52 closed, D-UB7).
-- Authored relays and rewards (UB-50). Owner questions H-LBL, U-D07 (xp and naq for the 17 missions) and HELD-B16 stay open.
+- Authored relays and rewards (UB-50). Owner questions H-LBL and HELD-B16 stay open.
 - Closed-Beta Visit 2 (1807-1826) and Beta Site E2 (world 60): research only.
 
 ## Related

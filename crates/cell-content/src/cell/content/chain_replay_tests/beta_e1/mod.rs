@@ -34,6 +34,7 @@ mod m477;
 mod m478;
 mod m479;
 mod m481;
+mod rewards;
 mod travel;
 
 /// The Beta Site E1 world name, as `worlds.sql` and `player_loaded` key on it.
@@ -107,6 +108,21 @@ pub(super) fn chains_matched(resolved: &ResolvedActions) -> std::collections::BT
     resolved.actions.iter().map(|(id, _)| *id).collect()
 }
 
+/// The mission XP reward chains (`beta_e1_rewards_chains.sql`, UB-50a).
+pub(super) const REWARD_CHAINS: std::ops::RangeInclusive<i64> = 23480..=23499;
+
+/// Drop the reward chain ids from `set`. A whole-seed exact-set assertion
+/// that fires a Beta mission completion uses this, so the reward chain does
+/// not fail a test about the mission's own chains.
+#[allow(dead_code)] // no exact-set test fires a reward mission yet (UB-50a Step 4 needed none)
+pub(super) fn without_rewards(
+    set: std::collections::BTreeSet<i64>,
+) -> std::collections::BTreeSet<i64> {
+    set.into_iter()
+        .filter(|id| !REWARD_CHAINS.contains(id))
+        .collect()
+}
+
 /// Render one action as a short stable string.
 ///
 /// Comparing rendered strings rather than matching each variant keeps the
@@ -152,6 +168,7 @@ pub(super) fn summarize(action: &Action) -> String {
             on_victory_chains,
             ..
         } => format!("start_minigame({minigame_type}, victory={on_victory_chains:?})"),
+        Action::GrantXP { amount } => format!("grant_xp({amount})"),
         other => format!("UNEXPECTED({other:?})"),
     }
 }
