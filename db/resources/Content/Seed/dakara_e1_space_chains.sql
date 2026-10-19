@@ -88,9 +88,9 @@ VALUES (8001, 'grant_stargate_address', 5, NULL, '{}', 0, 0);
 -- ============================================================
 --
 -- NEW CONTENT. The sender, the subject and the body are written by this
--- project and have no recovered counterpart. World 61 has no mission, no
--- NPC and no dialog for a level-1 Free Jaffa yet (OD-DK01, option A), so the
--- notice says so and says how to leave and come back. No cash, no item.
+-- project and have no recovered counterpart. Since DK-10e the notice names
+-- the first mission giver and says how to leave and come back (D-DK17).
+-- No cash, no item.
 --
 -- Once per character: `cooldown_secs` is 2147483647 (`i32::MAX`, about 68
 -- years, the longest window the claim honours), and the claim is a row in
@@ -119,7 +119,23 @@ INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key,
 VALUES (8002, 'archetype', NULL, NULL, 'eq', '7', 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (8002, 'send_system_mail', NULL, NULL, '{"sender": "Dakara Gate Watch", "subject": "Dakara: no orders yet", "body": "The Free Jaffa command on Dakara is not staffed yet, so there are no orders for you here. The DHD in front of the Stargate dials Omega Site. The DHD at Omega Site brings you back to Dakara.", "cooldown_secs": 2147483647, "quiet_cooldown": true}', 0, 0);
+VALUES (8002, 'send_system_mail', NULL, NULL, '{"sender": "Dakara Gate Watch", "subject": "Dakara: report to Bra''tac", "body": "Bra''tac is waiting for you in the command tent beside the Stargate plaza. The DHD in front of the Stargate dials Omega Site. The DHD at Omega Site brings you back to Dakara.", "cooldown_secs": 2147483647, "quiet_cooldown": true}', 0, 0);
+
+-- Chain 8007 NEW CONTENT (DK-10e, D-DK1 F, D-DK17): Teal'c's letter, once
+-- per character, with the quiet cooldown as 8002. Written by this project;
+-- Teal'c is a canon sender, accepted by the owner (2026-10-18).
+
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (8007, 'Dakara_E1 - Free Jaffa arrival: Teal''c''s letter by mail (DK-10e)', 'space', 61, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (8007, 'player_loaded', 'Dakara_E1', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (8007, 'archetype', NULL, NULL, 'eq', '7', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (8007, 'send_system_mail', NULL, NULL, '{"sender": "Teal''c", "subject": "Dakara: find SG-18", "body": "You carried Master Bra''tac''s warning to Stargate Command, but Ba''al''s Jaffa reached the base first. They came through with SG-18''s iris code, and SG-18 has not reported from Dakara since. Now that you are home, tell Master Bra''tac what you saw at the SGC, and find SG-18.", "cooldown_secs": 2147483647, "quiet_cooldown": true}', 0, 0);
 
 -- ============================================================
 -- DK-04: two tents, one interior, one shared exterior return point

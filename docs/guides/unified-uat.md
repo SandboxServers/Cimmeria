@@ -1198,7 +1198,7 @@ World 61, the Free Jaffa's world. DK-01 gives a new character a round trip throu
 | # | Do | Expect | Notes / known issues |
 |---|---|---|---|
 | DK-U1 | Create a new Free Jaffa (SGU, Jaffa body) and enter the world | You stand on the Dakara gate plaza. Within a few seconds chat shows "Dakara Gate Watch sent you mail N. Open your mail to read it." and the new-mail notice | Needs #1273 for the Dakara start. Before it, `.gotolocation Dakara_E1` on an existing Free Jaffa fires the same chains |
-| DK-U2 | Open your mail | One mail from **Dakara Gate Watch**, subject "Dakara: no orders yet", three sentences (no orders yet; the DHD dials Omega Site; Omega's DHD brings you back), no cash, no item | Whether the mail window is the right place for the notice is an open question: say what you think |
+| DK-U2 | Open your mail | One mail from **Dakara Gate Watch**, subject "Dakara: report to Bra'tac", three sentences (Bra'tac is waiting in the command tent; the DHD dials Omega Site; Omega's DHD brings you back), no cash, no item, and a second mail from **Teal'c**, "Dakara: find SG-18" (see DK-U13) | Whether the mail window is the right place for the notice is an open question: say what you think |
 | DK-U3 | Right-click the DHD in front of the gate | The dialling window lists **Omega Site** with its name and glyphs | A row reading "Unknown" is a fail: note whether reopening the DHD fixes it |
 | DK-U4 | Dial Omega Site and walk into the gate | You arrive at Omega Site, standing, able to walk | |
 | DK-U5 | At Omega Site, right-click the DHD | It lists **Dakara E1** | The arrival taught it. Omega Site has no respawner: do not die there |
