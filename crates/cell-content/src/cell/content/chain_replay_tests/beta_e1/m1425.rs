@@ -130,6 +130,17 @@ async fn offer_bind_after_478_binds_carter_blurb_per_player() {
             "archetype {archetype:?} must match no 1425 chain on login",
         );
     }
+    // The same Human state on a login into another world must match nothing.
+    let elsewhere = after_478(
+        login_ctx("Some_Other_World", Some(HUMANS[0])),
+        "not_active",
+        None,
+    );
+    let resolved = fire(&whole, TriggerType::PlayerLoaded, &elsewhere);
+    assert!(
+        m1425_matched(&resolved).is_empty(),
+        "another world must match no 1425 chain on login",
+    );
 }
 
 /// Revert: drop 23131's `display_dialog` row (no offer), 23132's `accept_mission`
