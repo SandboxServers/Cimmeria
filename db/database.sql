@@ -327,6 +327,7 @@
 \ir resources/Entities/Seed/entity_templates_debug_area_npcs.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_plaza.sql
 \ir resources/Entities/Seed/entity_templates_union_omega.sql
+\ir resources/Entities/Seed/entity_templates_sgc_w1_union.sql
 \ir resources/Entities/Seed/monikers.sql
 \ir resources/Entities/Seed/pet_summons.sql
 \ir resources/Entities/Seed/resource_types.sql
@@ -406,6 +407,7 @@
 \ir resources/Worlds/Seed/spawnlist_debug_area_npcs.sql
 \ir resources/Worlds/Seed/spawnlist_debug_area_plaza.sql
 \ir resources/Worlds/Seed/spawnlist_union_omega.sql
+\ir resources/Worlds/Seed/spawnlist_sgc_w1_union.sql
 \ir resources/Worlds/Seed/stargates.sql
 \ir resources/Worlds/Seed/worlds.sql
 \ir resources/Worlds/Seed/debug_area_rings.sql
