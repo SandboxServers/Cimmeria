@@ -1210,7 +1210,7 @@ Missions 1563-1571, the SGC halves of 1651, 1654 and 1655, and the crossings to 
 
 - **1571 auxiliary credit (US-13, chains 3080-3081):** a Human who completes 1559 is credited 1571 at once (objective 5354, no second weapon), and a Human who finished 1559 earlier is credited on load.
 
-- **1565/1566 Tactics (US-20, chains 3085-3093):** planned.
+- **1565/1566 Tactics (US-20, chains 3085-3093):** Carter's radio report (dialog 5375) offers 1565 to Humans on step 4630, and the static Jaffa pair (rows 57/58) is the fight; on its completion 1566 follows, with a second pair the server spawns at the sealed points P11/P12, and Carter's lines 5379 and 5380 play on a press while each mission is active. The optional flank objective O5375 is untracked pending D-US8.
 
 - **1567 Clear the Way (US-21, chains 3095-3099):** planned.
 
