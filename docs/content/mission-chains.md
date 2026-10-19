@@ -1228,7 +1228,7 @@ Missions 1563-1571, the SGC halves of 1651, 1654 and 1655, and the crossings to 
 
 - **1655 Free Jaffa (US-33, chains 3166-3169):** planned.
 
-- **Return state and relogs (US-34, chains 3171-3175):** planned.
+- **Return state and relogs (US-34, chains 3171-3175):** SGC_W1 is a per-player instance rebuilt on entry; spent story Jaffa are despawned on load; a Free Jaffa sees none; route pairs stay while a mission needs them.
 
 #### Mission 1559: "Welcome to Stargate Command" [CONFIRMED]
 
