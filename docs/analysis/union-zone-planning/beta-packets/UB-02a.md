@@ -1,14 +1,14 @@
 # UB-02a: Beta cast and object templates 2300-2335
 
-> **Type:** How-to (work packet) · **Index:** [beta-work-packets.md](../beta-work-packets.md) · **Wave:** B1
+> **Type:** How-to (work packet) · **Index:** [beta-work-packets.md](../beta-work-packets.md) · **Wave:** B1a
 
 | Field | Value |
 |---|---|
 | Role | `packet-coder` |
 | Size | about 40k |
-| Branch / worktree | `union-beta-e1/ub-02a-templates` / `ub-02a` |
+| Branch / worktree | `uzp-ub02a` / `uzp-ub02a` (based on `uzp-e1`) |
 | Commit subject | `feat(beta-e1): UB-02a Beta cast and object templates named by the client's own strings` |
-| Depends on | UB-00a2 question 10 (object meshes) and UB-00c (ID block clear). Runs alongside UB-01b |
+| Depends on | Nothing left open: the mesh rows (UB-00a2 Q10) are inlined in step 2 and the ID block is claimed (D-UB9). Runs alongside UB-01a and UB-DP |
 | Ship order | Before UB-02b, UB-02c and UB-02d, which spawn these templates |
 
 ## Why
@@ -19,13 +19,13 @@ Beta has no NPCs. Chains bind dialogs per player using `slot` = the NPC's **temp
 
 - Column list and row style: copy `db/resources/Entities/Seed/entity_templates_dakara_e1.sql`, which uses the long column list ending `use_cover, respawn_secs, display_name`. NPCs are `class 'mob'`; objects are `class 'being'`.
 - NPC look sources (`entity_templates.sql`): 33 Sam Carter (`BS_HumanFemale`, SamCarter head, speaker 708), 31 Airman (`BS_HumanMale`), 64 Thor (`BS_Asgard`). From `entity_templates_dakara_e1.sql`: 440 Loth'ta (`BS_JaffaMale`, armour and staff) and 444 Free Jaffa Warrior.
-- Object look source: 445 (`static_mesh 'GLB-Global.GLB-RingTransporterSwitch_00'`, `body_set 'GLB_Components.WorldObject_WallTerminal'`, `flags 4`, `interaction_type 1073741824` = INT_MissionWorldObject). **Use UB-00a's per-template mesh row where it gives one**, and keep 445's values where it says "default".
+- Object look source: 445 (`static_mesh 'GLB-Global.GLB-RingTransporterSwitch_00'`, `body_set 'GLB_Components.WorldObject_WallTerminal'`, `flags 4`, `interaction_type 1073741824` = INT_MissionWorldObject). Each object row takes the `static_mesh` and `body_set` in step 2 (from UB-00a2 Q10, `docs/analysis/union-beta-e1-continuation/mission-seal-held.md`; you do not need to open it). Every mesh is CIMMERIA_RECONSTRUCTION until UB-90 row UB-U2c checks it. The "alt" meshes are notes for that check; do not seed them.
 - Friendly settings for every row: `faction 1`, `alignment 0`, `event_set_id 570` for NPCs (as 33) and NULL for objects (as 445), `ability_set_id NULL` (Ras'nor and the sick Jaffa drop 440's `4`), `loot_table_id NULL`, no vendor, trainer or weapon lists, `respawn_secs 300`, `use_cover NULL`.
 - Guard precedent: `crates/cell-world/src/cell/spawner_tests/dakara_e1/templates.rs`. Its tests cover the roster, shows-a-name, not hostile, visual and spawn settings, and clickability. It is registered through `spawner_tests/dakara_e1/mod.rs`, with `mod dakara_e1;` at `spawner_tests/mod.rs:40`.
 
 ## Rules (binding)
 
-1. PowerShell only; start every command with `Set-Location C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\ub-02a;`.
+1. PowerShell only; start every command with `Set-Location C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\uzp-ub02a;`.
 2. Never run `cargo` directly; use `pwsh tools/build-lane/lane.ps1` and `pwsh tools/build-lane/live-db-test.ps1`. Run in the foreground and check that test counts are above 0.
 3. Edit only the allowlist.
 4. The new seed file matches its neighbouring seeds in the working tree (CRLF here; never mixed; normalise after writing). Keep `db/database.sql`'s existing line endings.
@@ -62,25 +62,27 @@ Beta has no NPCs. Chains bind dialogs per player using `slot` = the NPC's **temp
 
    Felger's moniker text is empty in the client, so its `display_name` is the speaker 710 name (RESTORED_SOURCE from `speakers.sql`).
 
-2. **Object rows** (`class 'being'`, `flags 4`, `interaction_type 1073741824`, `speaker_id NULL`, `level 1`). The default mesh and body set are 445's unless UB-00a gives a row.
+2. **Object rows** (`class 'being'`, `flags 4`, `interaction_type 1073741824`, `speaker_id NULL`, `level 1`). Seed the `static_mesh` and `body_set` exactly as written (quoted SQL strings). Templates 2327 and 2336 are reserved and get no row.
 
-   | Template | template_name | name_id (moniker_name) | Used by (packet) |
-   |---|---|---|---|
-   | 2320 | `Beta E1 - Xenobiology Sample Cage` | 7376 `DN_Ob_It_Human_BetaE1_XenobiologyCage` | UB-11 |
-   | 2321 | `Beta E1 - Artifact Display Case` | 7377 `DN_Ob_It_Human_BetaE1_FourPiecesCase` | UB-15 |
-   | 2322 | `Beta E1 - Beta Site Hub Computer` | 7383 `DN_Ob_D_Human_BetaE1_HubComputer` | UB-14, UB-15 |
-   | 2323 | `Beta E1 - Admin Hub Workstation` | 8493 `DN_Ob_It_Human_BetaE1_AdminWorkstation` | UB-13 |
-   | 2324 | `Beta E1 - Science Center Computer` | 8489 `DN_Ob_D_Human_BetaE1_ScienceCenterComputer_02SGUDatabase` | UB-14 |
-   | 2325 | `Beta E1 - Wrecked SGC Shipping Crates` | 8490 `DN_Ob_It_Human_BetaE1_CrateWreckage` | UB-12 |
-   | 2326 | `Beta E1 - Box of Jaffa Tools` | 7402 `DN_Ob_D_Jaffa_BetaE1_BoxOfJaffaTools` | UB-21 |
-   | 2328 | `Beta E1 - Asgard Fire Suppressant Manager` | 7397 `DN_Ob_it_Asgard_BetaE1_FireSuppressantManager` | UB-34 |
-   | 2329 | `Beta E1 - Fire Control Hub` | 7957 `DN_Ob_G_Human_BetaE1_SprinklerSystemManularControl` | UB-34 |
-   | 2330 | `Beta E1 - Environmental Reading Device` | 7392 `DN_Ob_It_Asgard_BetaE1_AsgardScanner` | UB-31 |
-   | 2331 | `Beta E1 - Analytical Assistance Machine` | 7909 `DN_Ob_G_ASG_BetaE1_AnalyticalAssistanceMachine` | UB-33, UB-36 |
-   | 2332 | `Beta E1 - Missing Asgard Hologram Emitter` | 8164 `DN_Ob_It_Asgard_BetaE1_MissingAsgardHologramEmitter` | UB-32 |
-   | 2333 | `Beta E1 - Disabled Malfunctioning Drone` | 8211 `DN_Ob_G_Human_BetaE1_DisabledMalfunctioningDrone` | UB-32. Look: body set and components from template 69 `MOB_Goauld_Drone`, with `static_mesh NULL`, but **class `'being'`** and the object interaction bit. This is the one prop that draws a body; the visual test allows it by id |
-   | 2334 | `Beta E1 - Consciousness Simulator` | 8497 `DN_Ob_It_Asgard_BetaE1_ConsciousnessSimulator` | UB-36 |
-   | 2335 | `Beta E1 - Note at the ruins` | name_id NULL; `display_name 'Note'` (CIMMERIA_RECONSTRUCTION: dialog 4663 is the "post-it" object dialog, and the client has no moniker for it) | UB-16 |
+   | Template | template_name | name_id (moniker_name) | static_mesh | body_set | Used by (packet) |
+   |---|---|---|---|---|---|
+   | 2320 | `Beta E1 - Xenobiology Sample Cage` | 7376 `DN_Ob_It_Human_BetaE1_XenobiologyCage` | `Em-Props.EM-Fauna_Cage00` | `GLB_Components.WorldObject_Small` | UB-11 |
+   | 2321 | `Beta E1 - Artifact Display Case` | 7377 `DN_Ob_It_Human_BetaE1_FourPiecesCase` | `LUS-Props.LUS-DisplayCase00` | `GLB_Components.WorldObject_Small` | UB-15 |
+   | 2322 | `Beta E1 - Beta Site Hub Computer` | 7383 `DN_Ob_D_Human_BetaE1_HubComputer` | `SGC_Props.SGC-console05` | `GLB_Components.WorldObject_StandingTerminal_Med` | UB-14, UB-15 |
+   | 2323 | `Beta E1 - Admin Hub Workstation` | 8493 `DN_Ob_It_Human_BetaE1_AdminWorkstation` | `SGC_Props.SGC-console01` | `GLB_Components.WorldObject_StandingTerminal_Low` | UB-13 |
+   | 2324 | `Beta E1 - Science Center Computer` | 8489 `DN_Ob_D_Human_BetaE1_ScienceCenterComputer_02SGUDatabase` | `SGC_Props.SGC-console02` | `GLB_Components.WorldObject_StandingTerminal_Med` | UB-14 |
+   | 2325 | `Beta E1 - Wrecked SGC Shipping Crates` | 8490 `DN_Ob_It_Human_BetaE1_CrateWreckage` | `Em-Props.EM-Wooden_Crate_open00` | `GLB_Components.WorldObject_Small` | UB-12 |
+   | 2326 | `Beta E1 - Box of Jaffa Tools` | 7402 `DN_Ob_D_Jaffa_BetaE1_BoxOfJaffaTools` | `GA-Props.GA-AmmoCrate00` | `GLB_Components.WorldObject_Small` | UB-21 |
+   | 2328 | `Beta E1 - Asgard Fire Suppressant Manager` | 7397 `DN_Ob_it_Asgard_BetaE1_FireSuppressantManager` | `ASG-Props.ASG-ComputerConsole01` | `GLB_Components.WorldObject_StandingTerminal_Low` | UB-34 |
+   | 2329 | `Beta E1 - Fire Control Hub` | 7957 `DN_Ob_G_Human_BetaE1_SprinklerSystemManularControl` | `Em-Props.EM-SGC_Failsafe_Console00` | `GLB_Components.WorldObject_StandingTerminal_Med` | UB-34 |
+   | 2330 | `Beta E1 - Environmental Reading Device` | 7392 `DN_Ob_It_Asgard_BetaE1_AsgardScanner` | `GP-Props.GP-Asgard_Terminal_Console00` (not the misspelt `GP-Agard_...`) | `GLB_Components.WorldObject_StandingTerminal_Low` | UB-31 |
+   | 2331 | `Beta E1 - Analytical Assistance Machine` | 7909 `DN_Ob_G_ASG_BetaE1_AnalyticalAssistanceMachine` | `ASG-Props.ASG-ComputerConsole03` | `GLB_Components.WorldObject_StandingTerminal_Med` | UB-33, UB-36 |
+   | 2332 | `Beta E1 - Missing Asgard Hologram Emitter` | 8164 `DN_Ob_It_Asgard_BetaE1_MissingAsgardHologramEmitter` | `ASG-Props.ASG-Hologram_Platform00` | `GLB_Components.WorldObject_Small` | UB-32 |
+   | 2333 | `Beta E1 - Disabled Malfunctioning Drone` | 8211 `DN_Ob_G_Human_BetaE1_DisabledMalfunctioningDrone` | NULL | template 69's (`MOB_Goauld_Drone`) body set and components | UB-32. **Class `'being'`** and the object interaction bit. This is the one prop that draws a body; the visual test allows it by id |
+   | 2334 | `Beta E1 - Consciousness Simulator` | 8497 `DN_Ob_It_Asgard_BetaE1_ConsciousnessSimulator` | `ASG-Props.ASG-Hologram_Console00` | `GLB_Components.WorldObject_StandingTerminal_Med` | UB-36 |
+   | 2335 | `Beta E1 - Note at the ruins` | name_id NULL; `display_name 'Note'` (CIMMERIA_RECONSTRUCTION: dialog 4663 is the "post-it" object dialog, and the client has no moniker for it) | `SGC_Props.SGC-paper_holder` | `GLB_Components.WorldObject_Small` | UB-16 |
+
+   The meshes come from the cooked packages' name tables, which prove each name exists, not how it looks. If the lab later shows a bad draw, the fallback is 445's `GLB-Global.GLB-RingTransporterSwitch_00` with `GLB_Components.WorldObject_WallTerminal`; that is a follow-up, not part of this packet.
 
 3. **Footer (required).** The Dakara file has no `setval`, but Beta's templates sit at 2300-2349, far above the sequence (about 1600 after the other seeds), so `seeded_sequences_allocate_past_every_seeded_row` (`crates/cell-catalog/src/cell/spawner/tests/live_db_seed_sequences.rs`) fails without one: it asserts the sequence's next value is above the highest seeded `template_id`. End `entity_templates_beta_e1.sql` with exactly this line, copying the form of the footer in `entity_templates_debug_area_lords.sql`, with the top of Beta's whole block 2349 (not the last id used, 2335):
 
@@ -98,7 +100,7 @@ Beta has no NPCs. Chains bind dialogs per player using `slot` = the NPC's **temp
    - `live_db_no_beta_e1_template_is_hostile_or_attackable`: copy it exactly (Union players must never aggro the Beta cast).
    - `live_db_every_beta_e1_template_has_visual_and_spawn_settings`: copy it, with one change. Mob rows draw a body. Object rows draw a mesh, **except 2333**, which draws a body and is pinned by id with a comment.
    - `live_db_beta_e1_objects_are_mission_world_objects_and_npcs_are_not`: each object template has the `INT_MISSION_WORLD_OBJECT` bit (`cimmeria_entity::interaction_flags`), and each NPC template has interaction_type 0. Chains reach NPCs through per-player binds only (D-UB10). Revert: set 2300's `interaction_type` to 1073741824.
-   - `live_db_beta_e1_reserved_ids_are_absent`: 2303, 2327 and 2336 have no row. This stops a coder from placing Pierce before D-UB7.
+   - `live_db_beta_e1_reserved_ids_are_absent`: 2303, 2327 and 2336 have no row. D-UB7 ruled the twins out of the first ship, so these ids stay empty.
 
 6. **Revert proof.** Comment out the `\ir` line and rerun `spawner_tests::beta_e1`; it must fail. Restore it. Then clear 2301's `display_name`; the shows-a-name test must fail. Restore. Then delete the footer line from step 3 and run `seeded_sequences_allocate_past_every_seeded_row`; it must fail with a message naming `entity_templates_template_id_seq` and a seeded `template_id` of 2335. Restore the footer and rerun everything green. Quote all of it in the report.
 
@@ -125,4 +127,4 @@ None. Template seeds have no doc-update-map row. UB-99 adds the cast to the Beta
 
 ## Return
 
-`UB-02a <done|blocked|failed> <sha|-> C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\ub-02a\.claude\reports\union-beta-e1\UB-02a-coder.md`
+`UB-02a <done|blocked|failed> <sha|-> C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\uzp-ub02a\.claude\reports\union-beta-e1\UB-02a-coder.md`

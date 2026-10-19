@@ -2,10 +2,10 @@
 
 > **Type:** Reference (request)
 > **Audience:** The Union coordinator, who owns `docs/analysis/four-zone-planning/id-allocation.md`
-> **Last updated:** 2026-10-18 (UB-00c)
+> **Last updated:** 2026-10-18 (ARCH-B1: approved and applied; screens re-carved)
 > **Companions:** [README.md § ID re-check](README.md#id-re-check-ub-00c-step-1), [beta-work-packets.md § ID block](../union-zone-planning/beta-work-packets.md#id-block-d-ub9)
 
-Request; the coordinator merges into id-allocation.md. Union Beta E1 does not edit that file.
+**Approved** by the coordinator (the orchestrator) on 2026-10-18 and **applied by ARCH-B1**: the chain row below is now in id-allocation.md § reserved blocks, with a link back here for the non-chain tables. ARCH-B1 also re-carved the authored dialog_screens sub-range (see the note under the table).
 
 ## Where the rows go
 
@@ -26,17 +26,19 @@ Request; the coordinator merges into id-allocation.md. Union Beta E1 does not ed
 | `point_set_points` | 23000–23299 | Union Beta E1 | hub 23000–23099; Asgard 23100–23179; Nine Peaks 23180–23259; travel 23260–23299 |
 | `entity_templates` | 2300–2349 | Union Beta E1 | NPCs 2300–2319 (cast 2300–2307, 2303 reserved for UB-52; life 2308–2309); objects 2320–2349 (2320–2335 used, 2327 and 2336 reserved) |
 | `respawners` | 2300–2309 | Union Beta E1 | any new rows; respawners 6 and 7 are re-authored in place |
-| `ring_transport_regions` | 2300–2309 | Union Beta E1 | only if D-UB4 = A |
+| `ring_transport_regions` | 2300–2309 | Union Beta E1 | 2300/2301 = the hub ring 148 to SW_RING pair (D-UB4 = A, decided by ARCH-B1); 2302–2309 reserved |
 | authored `missions` | 64000–64019 | Union Beta E1 (UB-50, HELD) | CIMMERIA_AUTHORING only |
 | authored `mission_steps` | 64020–64099 | Union Beta E1 (UB-50, HELD) | |
 | authored `mission_objectives` | 64100–64179 | Union Beta E1 (UB-50, HELD) | |
 | authored `mission_tasks` | 64180–64259 | Union Beta E1 (UB-50, HELD) | |
 | authored `dialogs` | 64260–64299 | Union Beta E1 (UB-50, HELD) | |
 | authored `dialog_sets` | 64300–64309 | Union Beta E1 (UB-50, HELD) | |
-| authored `dialog_screens` | 64310–64379 | Union Beta E1 (UB-50, HELD) | |
+| authored `dialog_screens` | 64124–64193 | Union Beta E1 (UB-50, HELD) | re-carved by ARCH-B1 from 64310–64379 (see below) |
 | authored `dialog_screen_buttons` | 64380–64419 | Union Beta E1 (UB-50, HELD) | |
 | authored `dialog_set_maps` | 64420–64459 | Union Beta E1 (UB-50, HELD) | |
 | authored `texts` | 64460–64499 | Union Beta E1 (UB-50, HELD) | |
+
+**Screens re-carve (ARCH-B1).** dialog_screens.sql keeps the screen id in its second column (dialog_id, screen_id), so the tuple-head scan below read the dialog id and missed four stock screens in the old 64310–64379: 64341 (dialog 2002) and 64373–64375 (dialog 3122). The new 64124–64193 was scanned on the second column and is free. Each table numbers its own ids, so sharing numbers with the objectives and tasks sub-ranges is harmless.
 
 Authored rows stay at most 65535 and outside the stock pak range 38–1826. They sit directly above Dakara 63500–63799 and Omega 63800–63999.
 
@@ -60,4 +62,4 @@ Scopes: `origin/main` @ `102d15444d15ef8f8113f3edcaa8affd4df69cd8`; all 1047 rem
 
 Not independently verified: the Cellblock, Castle, Harset and Tollana ledgers (owner waiver W-UB1). Their branch seeds were scanned, but their planning documents were not read for planned ids. All their reserved blocks in `id-allocation.md` are below 12999 and so do not overlap.
 
-Re-run the check on the day the coordinator merges this request; a branch pushed after 2026-10-18 is not covered.
+ARCH-B1 applied this request on 2026-10-18, the day of the check. A branch pushed after that is not covered.

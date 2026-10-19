@@ -1,14 +1,14 @@
 # UB-01a: Beta gate 6 arrival pin, respawners 6 and 7, exemption removed (pilot)
 
-> **Type:** How-to (work packet) · **Index:** [beta-work-packets.md](../beta-work-packets.md) · **Wave:** B0
+> **Type:** How-to (work packet) · **Index:** [beta-work-packets.md](../beta-work-packets.md) · **Wave:** B1a
 
 | Field | Value |
 |---|---|
 | Role | `packet-coder` |
 | Size | about 40k |
-| Branch / worktree | `union-beta-e1/ub-01a-gate-pin` / `ub-01a` |
+| Branch / worktree | `uzp-ub01a` / `uzp-ub01a` (based on `uzp-e1`) |
 | Commit subject | `feat(beta-e1): UB-01a gate 6 arrival pin and real respawner positions` |
-| Depends on | UB-00b (ARRIVAL, RESPAWN_6, RESPAWN_7 sealed) and UB-00c (ID ranges clear). Ship after UB-00c's docs PR. |
+| Depends on | Nothing open: UB-00b sealed the anchors (values inlined below) and the ID row is claimed in `id-allocation.md` (D-UB9, ARCH-B1). |
 | Ship order | First code packet of the campaign |
 
 ## Why
@@ -18,15 +18,15 @@ A traveller to Beta_Site_Evo_1 lands on the gate row (617.866, -59.314, 388.971)
 ## Contract excerpt
 
 - Gate 6: `db/resources/Worlds/Seed/stargates.sql:79`, world 23, yaw 1.571, row (617.866, -59.314, 388.971). The `stargates` table has `arrival_x, arrival_y, arrival_z, arrival_yaw` columns (see the Agnos row, gate 15, in the same file).
-- Arrival pin = the map's only PlayerStart (635.761, -60.134, 388.448), yaw 1.571. RESTORED_SOURCE position (map pin), CIMMERIA_RECONSTRUCTION use. It is 17.9 m out on the gate's +X facing axis, on nav component 251. **Use UB-00b's ARRIVAL row if it differs**, and say so in the report.
-- Respawners: `db/resources/Worlds/Seed/respawners.sql`, rows 6 (`Respawner`) and 7 (`Respawner_bet_Infirmary`). Use UB-00b's RESPAWN_6 and RESPAWN_7 values.
+- Arrival pin = the map's only PlayerStart (635.761, -60.134, 388.448), yaw 1.571. RESTORED_SOURCE position (map pin), CIMMERIA_RECONSTRUCTION use. It is 17.9 m out on the gate's +X facing axis, on nav component 251. UB-00b sealed ARRIVAL at exactly this point (nav surface y -60.83, so the pin floats 0.70 m, as every PlayerStart does).
+- Respawners: `db/resources/Worlds/Seed/respawners.sql`, rows 6 (`Respawner`) and 7 (`Respawner_bet_Infirmary`). Sealed values (UB-00b, `placement-seal.md`): RESPAWN_6 = (633.000, -60.83, 399.000), yaw 4.127, nav 251; RESPAWN_7 = (953.000, 16.35, 287.500), yaw 1.874, nav 251 (inside the Infirmary region). The y values are already on the mesh.
 - Exemption: `crates/cell-catalog/src/cell/spawner/tests/live_db_loaders.rs:255-256`, `const UNAUTHORED_BY_DESIGN: [(i32, &str); 2] = [(6, "Beta_Site_Evo_1"), (7, "Beta_Site_Evo_1")];`.
 - Guard precedent: `crates/cell-world/src/cell/gate_dakara_e1_tests.rs`. Its test `live_db_dakara_gate_arrival_pin_is_on_the_plaza_outside_the_gate_volume` is the model. It is registered in `crates/cell-world/src/cell/mod.rs:39-40` as `#[cfg(test)] mod gate_dakara_e1_tests;`.
 
 ## Rules (binding)
 
-1. PowerShell only; start every command with `Set-Location C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\ub-01a;`. Absolute paths.
-2. Never run `cargo` directly; use `pwsh tools/build-lane/lane.ps1 cargo ...`. Live-DB tests go through `pwsh tools/build-lane/live-db-test.ps1 <filter>`, which reloads your `sgw_ub-01a`. Run in the foreground and check the test count is above 0.
+1. PowerShell only; start every command with `Set-Location C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\uzp-ub01a;`. Absolute paths.
+2. Never run `cargo` directly; use `pwsh tools/build-lane/lane.ps1 cargo ...`. Live-DB tests go through `pwsh tools/build-lane/live-db-test.ps1 <filter>`, which reloads your worktree's own `sgw_` test database. Run in the foreground and check the test count is above 0.
 3. Edit only the allowlisted files.
 4. Edit seed files in place and keep each file's existing endings (CRLF here; never mixed, execution-contract.md § Shared definitions); after any rewrite, normalise with `[IO.File]::WriteAllText('<abs>', ([IO.File]::ReadAllText('<abs>') -replace "\r?\n", "\r\n"))`.
 5. Seeds live in `db/resources/` only. No `db/scripts/` and no migrations.
@@ -58,7 +58,7 @@ A traveller to Beta_Site_Evo_1 lands on the gate row (617.866, -59.314, 388.971)
 
 2. **Respawners.** Set rows 6 and 7 to RESPAWN_6 and RESPAWN_7 from `docs/analysis/union-beta-e1-continuation/placement-seal.md`. Replace the comment block above them (it says the room has no point set) with a UB-01a CIMMERIA_RECONSTRUCTION comment that names the seal.
 3. **Exemption.** In `live_db_loaders.rs`, delete `UNAUTHORED_BY_DESIGN` and the branch that skips its rows. Keep the Castle checkpoint logic as it is. The existing test must now pass on its own merits.
-4. **Guard test.** Create `crates/cell-world/src/cell/gate_beta_e1_tests.rs` by copying the helper functions (`repo_file`, the mesh loader, `v`, `disc_off_mesh`, `reaches`, `dist_xz`, `dhd_spawns`) from `gate_dakara_e1_tests.rs`. Point them at `../../data/spaces/beta_site_evo_1.nav`. Constants: `BETA_GATE: i32 = 6`, `PIN = [635.761, -60.134, 388.448]`, `PLAYER_START = PIN`, and a `CONTROL` point that UB-00b names on component 70 (west valley).
+4. **Guard test.** Create `crates/cell-world/src/cell/gate_beta_e1_tests.rs` by copying the helper functions (`repo_file`, the mesh loader, `v`, `disc_off_mesh`, `reaches`, `dist_xz`, `dhd_spawns`) from `gate_dakara_e1_tests.rs`. Point them at `../../data/spaces/beta_site_evo_1.nav`. Constants: `BETA_GATE: i32 = 6`, `PIN = [635.761, -60.134, 388.448]`, `PLAYER_START = PIN`, and `CONTROL = [-545.100, 6.77, 141.500]` (RAS_NOR from UB-00b, nav component 70, the west valley with no walk route from 251).
 
    Tests, each `#[tokio::test]` with `require_db_or_skip!()` and a `///` comment naming the revert it catches:
    - `live_db_beta_gate_arrival_pin_is_on_component_251_outside_the_gate_volume`: copy the Dakara test with these changes. The distance band is `15.0..=20.0`. Instead of `PLAZA_FLOOR_Y`, check `(arrival[1] - PIN[1]).abs() <= 0.25`. Reachability: the pin reaches the gate row and DHD spawn 40, and it does not reach `CONTROL`.
@@ -89,4 +89,4 @@ None. The doc-update-map has no row for per-world seed coordinates, and `docs/ga
 
 ## Return
 
-`UB-01a <done|blocked|failed> <sha|-> C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\ub-01a\.claude\reports\union-beta-e1\UB-01a-coder.md`
+`UB-01a <done|blocked|failed> <sha|-> C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\uzp-ub01a\.claude\reports\union-beta-e1\UB-01a-coder.md`

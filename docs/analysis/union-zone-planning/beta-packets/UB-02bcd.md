@@ -1,6 +1,6 @@
 # UB-02b, UB-02c, UB-02d: Beta spawns and regions
 
-> **Type:** How-to (work packets) · **Index:** [beta-work-packets.md](../beta-work-packets.md) · **Wave:** B1
+> **Type:** How-to (work packets) · **Index:** [beta-work-packets.md](../beta-work-packets.md) · **Wave:** B1b
 
 Three packets, one area each. Each packet owns its own three seed files, so they can run in parallel. They share only `db/database.sql` and `spawner_tests/beta_e1/mod.rs`, and each adds its own lines (keep both sides on a conflict).
 
@@ -55,7 +55,7 @@ None. Per-world seed coordinates have no doc-update-map row. UB-99 writes the Be
 |---|---|
 | Role | `packet-coder` |
 | Size | about 35k |
-| Branch / worktree | `union-beta-e1/ub-02b-hub-spawns` / `ub-02b` |
+| Branch / worktree | `uzp-ub02b` / `uzp-ub02b` (based on `uzp-e1` after UB-02a merges into it) |
 | Commit subject | `feat(beta-e1): UB-02b hub cast, objects and regions on Beta Site` |
 | Depends on | UB-02a merged (templates), UB-00b (anchors) |
 
@@ -110,7 +110,7 @@ Comment out the spawnlist `\ir` line; `live_db_beta_hub_spawns_match_the_placeme
 
 ### Return
 
-`UB-02b <done|blocked|failed> <sha|-> C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\ub-02b\.claude\reports\union-beta-e1\UB-02b-coder.md`
+`UB-02b <done|blocked|failed> <sha|-> C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\uzp-ub02b\.claude\reports\union-beta-e1\UB-02b-coder.md`
 
 ---
 
@@ -120,7 +120,7 @@ Comment out the spawnlist `\ir` line; `live_db_beta_hub_spawns_match_the_placeme
 |---|---|
 | Role | `packet-coder` |
 | Size | about 35k |
-| Branch / worktree | `union-beta-e1/ub-02c-asgard-spawns` / `ub-02c` |
+| Branch / worktree | `uzp-ub02c` / `uzp-ub02c` (stacked on `uzp-ub02b`) |
 | Commit subject | `feat(beta-e1): UB-02c Mimir, Asgard objects, infirmary and fire-site regions` |
 | Depends on | UB-02a merged, UB-00b (anchors, HELD-B3, HELD-B7), UB-02b (for `nav.rs`; stack on its branch if it has not merged) |
 
@@ -150,8 +150,8 @@ Comment out the spawnlist `\ir` line; `live_db_beta_hub_spawns_match_the_placeme
 
 | Set / point | Name | Anchor |
 |---|---|---|
-| 23030 / 23100 | `Beta_Site_Evo_1.Infirmary` | the infirmary interior volume (961.3, 16.9, 284.9), with the seal's radius and height |
-| 23031 / 23101 | `Beta_Site_Evo_1.FireSite` | the Quartermaster fire cluster (1022.3, 14.5, 271.2), radius 12, height 6 unless the seal says otherwise (443 S1484, UB-34) |
+| 23030 / 23100 | `Beta_Site_Evo_1.Infirmary` | INFIRMARY_CENTRE (961.300, 15.97, 284.900), radius 10, height 6 (UB-00b seal) |
+| 23031 / 23101 | `Beta_Site_Evo_1.FireSite` | the Quartermaster fire cluster (1022.3, 14.5, 271.2), radius 12, height 6 (UB-00b seal: manager and hub 3.0 m inside, Satterfield outside by 4.7 m; 443 S1484, UB-34) |
 
 ### Tests (`asgard.rs`)
 
@@ -171,19 +171,19 @@ Remove Mimir's row; the count fails. Move `BEAM_DECK_DEST` 20 m off the deck; th
 
 ### Return
 
-`UB-02c <done|blocked|failed> <sha|-> C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\ub-02c\.claude\reports\union-beta-e1\UB-02c-coder.md`
+`UB-02c <done|blocked|failed> <sha|-> C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\uzp-ub02c\.claude\reports\union-beta-e1\UB-02c-coder.md`
 
 ---
 
-## UB-02d: Nine Peaks camp (plus a ring pair if D-UB4 = A)
+## UB-02d: Nine Peaks camp and the ring pair (D-UB4 = A)
 
 | Field | Value |
 |---|---|
 | Role | `packet-coder` |
-| Size | about 35k (about 40k with part B) |
-| Branch / worktree | `union-beta-e1/ub-02d-nine-peaks` / `ub-02d` |
+| Size | about 40k (parts A and B) |
+| Branch / worktree | `uzp-ub02d` / `uzp-ub02d` (stacked on `uzp-ub02b`) |
 | Commit subject | `feat(beta-e1): UB-02d Ras'nor, sick Jaffa, Jaffa box and the Nine Peaks region` |
-| Depends on | UB-02a merged, UB-00b (west-valley verdict), **D-UB4 recorded by the orchestrator** (BlockedDecision), UB-02b (`nav.rs`) |
+| Depends on | UB-02a merged, UB-00b (west-valley verdict), UB-02b (`nav.rs`). D-UB4 is ruled A (ring pair; ARCH-B1), so part B is in scope |
 
 ### Part A: rows (always)
 
@@ -199,28 +199,25 @@ Remove Mimir's row; the count fails. Move `BEAM_DECK_DEST` 20 m off the deck; th
 
 Allowlist: `spawnlist_beta_e1_ninepeaks.sql`, `point_sets_beta_e1_ninepeaks.sql`, `point_set_points_beta_e1_ninepeaks.sql` (all new), `db/database.sql`, `spawner_tests/beta_e1/nine_peaks.rs` (new), and `mod nine_peaks;` in `spawner_tests/beta_e1/mod.rs`.
 
-Test `live_db_beta_nine_peaks_spawns_match_the_placement_seal`: count 5 in 23110-23159. Each row is standable and connected to Ras'nor's spawn. Reachability from `ARRIVAL` depends on D-UB4:
-- **B (walk route):** assert `reaches(ARRIVAL, RasNor)`.
-- **A (ring pair):** assert it does not reach on foot, and add part B.
-- **C (hold):** do not dispatch this packet.
+Test `live_db_beta_nine_peaks_spawns_match_the_placement_seal`: count 5 in 23110-23159. Each row is standable and connected to Ras'nor's spawn. Reachability: assert each row does **not** reach `ARRIVAL` on foot (UB-00b Q1: no walk route between nav 251 and 70; D-UB4 = A). Part B adds the ring pair that links them.
 
-### Part B: ring pair (only if D-UB4 = A)
+### Part B: ring pair (D-UB4 = A, ruled)
 
-- Two `ring_transport_regions` rows, 2300 at ring 148 `BetaSite_Ring_00040001` (146.716, 8.591, 403.273; nav 251) and 2301 at the SW ring (-791.6, -51.8, -92.6; nav 70, from the seal). Copy the column list and the Omega pattern from `db/resources/Worlds/Seed/ring_transport_regions.sql` (region 10: `height 1.7`, `radius 2.53`, `display_name_id 7508`, `required_mission_id NULL`). `destination_region_ids` are `'{2301}'` and `'{2300}'`. Each row's `point_set_id` is a travel-range AreaSet (23080 and 23081, points 23260 and 23261). `event_set_id`: the seal's Beta ring event set if UB-00b found one, otherwise NULL, with a comment saying the ceremony has no animation (castle_cellblock_chains.sql:2594 note).
+- Two `ring_transport_regions` rows, 2300 at ring 148 `BetaSite_Ring_00040001` (146.716, 8.591, 403.273; nav 251) and 2301 at the SW ring (-791.6, -51.8, -92.6; nav 70, snapped y -51.43, from the seal). The map ships a real ring prefab there: `GLB-RingTransporter00` InterpActor with a five-ring matinee at (-791.57, -51.80, -92.59) in chunk `Beta_Site_Evo_1-fffffff8` (extract_map census, ARCH-B1). Ring 148's prefab is at (149.20, 8.32, 403.04) in chunk `-00040001`. Copy the column list and the Omega pattern from `db/resources/Worlds/Seed/ring_transport_regions.sql` (region 10: `height 1.7`, `radius 2.53`, `display_name_id 7508`, `required_mission_id NULL`). `destination_region_ids` are `'{2301}'` and `'{2300}'`. Each row's `point_set_id` is a travel-range AreaSet (23080 and 23081, points 23260 and 23261). `event_set_id`: NULL (UB-00b found no Beta ring event set), with a comment saying the ceremony has no animation (castle_cellblock_chains.sql:2594 note). The ring matinee the client ships may still play; UB-U8 records what the player sees.
 - A new ring spawn 23115, template 3, tag `BetaE1_Ring_SW`, at the SW ring.
 - Files: `db/resources/Worlds/Seed/ring_transport_regions_beta_e1.sql` (new; its `\ir` line goes directly after the existing `ring_transport_regions.sql` line in `database.sql`), plus the travel-range rows appended to the Nine Peaks point-set files.
 - Test `live_db_beta_ring_pair_links_both_valleys`: both rows exist and name each other. Each centre is standable: 2300 reaches `ARRIVAL`, and 2301 reaches Ras'nor. Revert: drop 2301; the test fails.
-- Label: CIMMERIA_RECONSTRUCTION (the map ships the rings; the routing is lost). Lab UAT row UB-U8 proves the ring UI lists the destination.
+- Label: RESTORED_SOURCE for the two ring positions (map prefabs), CIMMERIA_RECONSTRUCTION for the pairing (the routing is lost). Beta has no `ring_transport_regions` row today, so this is the first. Lab UAT row UB-U8 proves the ring UI lists the destination.
 
 ### Revert proof
 
-Remove the Ras'nor row; the count fails. Under A, remove 2301; the pair test fails. Delete the `setval` footer from `spawnlist_beta_e1_ninepeaks.sql`; `seeded_sequences_allocate_past_every_seeded_row` fails. Restore and rerun green.
+Remove the Ras'nor row; the count fails. Remove 2301; the pair test fails. Delete the `setval` footer from `spawnlist_beta_e1_ninepeaks.sql`; `seeded_sequences_allocate_past_every_seeded_row` fails. Restore and rerun green.
 
 ### Acceptance
 
-- Part A test green (and the part B test under A); `seeded_sequences_allocate_past_every_seeded_row` still green.
-- SigNoz (UB-90 row UB-U8): with A, a ring use logs the transporter event for region 2300 to 2301 (grep `executor/transport.rs` and the ring handler for the exact text). With B, the walk is checked live.
+- Part A and part B tests green; `seeded_sequences_allocate_past_every_seeded_row` still green.
+- SigNoz (UB-90 row UB-U8): a ring use logs the transporter event for region 2300 to 2301 (grep `executor/transport.rs` and the ring handler for the exact text).
 
 ### Return
 
-`UB-02d <done|blocked|failed> <sha|-> C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\ub-02d\.claude\reports\union-beta-e1\UB-02d-coder.md`
+`UB-02d <done|blocked|failed> <sha|-> C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\uzp-ub02d\.claude\reports\union-beta-e1\UB-02d-coder.md`

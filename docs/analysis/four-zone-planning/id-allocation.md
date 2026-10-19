@@ -46,6 +46,7 @@ The planning review's working figure of "castle_cellblock 1001–5030" was a min
 | 10000–10999 | Castle | Castle authored stories and repeatables (CS-04a/b/c, CS-05). |
 | 11000–11499 | Cellblock | Cellblock authored stories (CB-N05, CB-N05b, CB-N06) and any new restoration chain CB-N00 cannot fit beside the existing Cellblock chains. |
 | 11500–12999 | Cross-zone / infrastructure | Reserve. A packet claims IDs here only with the coordinator's amendment to this page. |
+| 23000–23499 | Union Beta E1 | Beta_Site_Evo_1 (world 23) first-visit chains. Claimed 2026-10-18 by the coordinator's amendment (D-UB9); per-mission sub-ranges and the non-chain tables (spawns, point sets, templates 2300–2349, respawners, ring regions 2300–2309, authored 64000–64499) are in [id-amendment-request.md](../union-beta-e1-continuation/id-amendment-request.md). |
 
 13000–14999 holds the debug-area chains listed above; leave it alone.
 

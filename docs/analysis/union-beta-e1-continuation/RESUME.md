@@ -1,36 +1,38 @@
 # Union Beta E1 continuation: resume card
 
-> **Last updated:** 2026-10-18 (UB-00c)
-> **Ledger:** [README.md](README.md) · **Contract:** [receiver-contract.md](receiver-contract.md) · **Amendment:** [id-amendment-request.md](id-amendment-request.md) · **Index:** [beta-work-packets.md](../union-zone-planning/beta-work-packets.md)
+> **Last updated:** 2026-10-18 (ARCH-B1) · **Ledger:** [README.md](README.md) · **Index:** [beta-work-packets.md](../union-zone-planning/beta-work-packets.md) · **Packets:** [beta-packets/](../union-zone-planning/beta-packets/)
 
-## Current wave
+## Current wave: B1a (Ready)
 
-**B0** (seals and pilot). UB-00c is committed on `uzp-ub00c` and not merged. The U-D03 / FZ-99 start gate is waived by the user for Beta (W-UB1). The Cellblock, Castle, Harset and Tollana ledgers were not independently verified.
+B0 is integrated on `uzp-e1` except UB-00a1, which is in review pass 2 (finding C6), owned by the concurrent editor of `mission-seal.md`; B1a does not wait on it. ARCH-B1 ruled D-UB4 A (ring), D-UB5 A, D-UB6 confirmed, D-UB7 out, D-UB8 xp/naq 0, and D-UB9 (approved by the coordinator; screens re-carved to 64124-64193).
 
-## In flight
+## B1a dispatch list (all in parallel, each off `uzp-e1`)
 
-- UB-00c: this commit (docs only; no seed, code or `id-allocation.md` change).
-- UB-00a1, UB-00a2 and UB-00b are Ready under the waiver. This ledger does not know whether they are running.
+| Packet | Worktree = branch | Packet file | Role |
+|---|---|---|---|
+| UB-01a | `uzp-ub01a` | `beta-packets/UB-01a.md` | packet-coder |
+| UB-02a | `uzp-ub02a` | `beta-packets/UB-02a.md` | packet-coder |
+| UB-DP | `uzp-ubdp` | `beta-packets/UB-DP.md` | packet-coder |
 
-## Next action
+Report path: `<worktree>\.claude\reports\union-beta-e1\<packet>-coder.md`. One packet-review-fixer for the wave, then merge each into `uzp-e1`.
 
-1. Coordinator merges the UB-00c commit and the D-UB9 rows from `id-amendment-request.md` into `docs/analysis/four-zone-planning/id-allocation.md`, re-running the ID check that day.
-2. Dispatch UB-01a once that row is merged (the ID re-check found no conflict).
-3. Orchestrator asks the owner D-UB4, D-UB5, D-UB7, D-UB8 and H-LBL before the dependent waves.
-4. Rewrite this card at every wave boundary.
+## Wave order (sequential; lanes inside a wave run in parallel)
 
-## Open decisions
+- **B1b**: UB-01b (`uzp-ub01b`) and UB-02b (`uzp-ub02b`) in parallel; then UB-02c (`uzp-ub02c`) and UB-02d (`uzp-ub02d`), both stacked on `uzp-ub02b`. Needs UB-01a and UB-02a merged. UB-DP may merge late, but before B3.
+- **B2**: the UB-10 to UB-13 stack, UB-20, UB-30 (three lanes).
+- **B3**: the UB-14 to UB-16 stack, UB-21, UB-31, UB-40 (four lanes). Needs UB-DP merged.
+- **B4**: the UB-32 to UB-36 stack.
+- **B5**: UB-45a, then UB-45b stacked.
+- **B6**: UB-90 (lab: ask the user first), then UB-99 close-out.
 
-| Decision | Blocks | Default in the packet |
+## Open owner decisions (BlockedDecision; the orchestrator asks)
+
+| ID | Question | Holds |
 |---|---|---|
-| D-UB4 west-valley route | UB-02d, UB-21, UB-22, UB-40 camp rows | none (UB-00b may find a walk route) |
-| D-UB5 offworld tails | UB-22, UB-50, UB-51 | A: stop at the last Beta-local step |
-| D-UB7 FV twins | UB-52 | leave out |
-| D-UB8 rewards, H-LBL | UB-50 | xp 0 / naq 0 |
-| HELD-B16 Asgard producer (UO-16, U-D08/U-D11) | UB-30 reachability | replay-test with archetype 5 |
+| H-LBL | Which label does player-facing CIMMERIA_AUTHORING copy carry on Beta? | UB-50 |
+| U-D07 | What xp and naq should each of the 17 Beta missions award? | UB-50 |
+| HELD-B16 | Which Omega packet delivers an Asgard player at 481 S1760 with item 3399 (UO-16 held)? | Asgard end-to-end reachability only; UB-30 to UB-36 dispatch (D-UB13) |
 
-## Findings to carry
+## Carry
 
-- ID re-check: every range `clear` on `origin/main` @ `102d15444`, all 1047 remote refs, 185 local trees and 188 worktrees.
-- The planning index defines M1-M9 only partly: M3 and M5 have no text (receiver-contract.md). UB-45b is missing from the index packet table.
-- Receiver fixtures: UO-13 owns the departure side; UB-10, UB-20 and UB-30 ship `beta_e1::m1423`, `m1500` and `m481` `receiver_*` and never import Omega's `handoff`.
+- Hold/closed: UB-22 and UB-51 held (D-UB5 A), UB-52 closed (D-UB7). Stock screens sit in the Dakara and Omega authored screen ranges (README § Screens re-carve); flag it to those campaigns.
