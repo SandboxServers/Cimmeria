@@ -161,8 +161,9 @@ touch it:
   entity that came and went while it was not listening), and starts a new
   dispatch segment at an `EnteredAoI(X)` that follows a `LeftAoI(X)`, so the
   leave reaches the client before the re-introduction. The world-entry burst
-  is introductions only, stays one segment, and keeps its two-bundle packet
-  budget.
+  is introductions only and stays one segment. Its first-login phase-1 send
+  uses one reliable packet per Mercury message; the phase-2 cascade remains
+  a separate bundle.
 - **The hold lifts only when a flush leaves the buffer empty under the same
   lock.** Messages that arrive while a flush is awaiting its sends buffer
   behind it and go out on the next pass. Without this, a live `LeftAoI(X)`
@@ -181,8 +182,25 @@ The flush code moved out of the over-cap `cell_dispatch/aoi.rs` into
 `flush_deferred_aoi` now takes a `trigger: &'static str` — `on_client_ready`
 or `cinematic_hold_release` — and the info line reads "Flushing deferred-AoI
 buffer" with a `trigger` field. `flush_deferred_self_methods` is the
-partial-drain sibling. The two-bundle batching shape is unchanged; only its
-address moved.
+partial-drain sibling. The ordinary pre-ready flush retains its two-bundle
+shape. On a default `cinematic_hold_release`, phase 1 splits each NPC's
+37-byte record into an 11-byte CREATE_ENTITY and a 26-byte UPDATE_AVATAR,
+one reliable packet per message; phase 2 remains a separate cascade bundle
+whose first fragment ends after its first complete message when it fits.
+The client's uninitialized next-request offset can collide with a later
+message cursor in a packet and discard Frost and subsequent introductions
+(see [client-mercury-receive-path.md](../reverse-engineering/findings/client-mercury-receive-path.md#the-iterators-next-request-offset-is-never-initialized-confirmed-live-2026-09-29)).
+With one message per phase-1 packet, its only cursor is 1. A 24-NPC release
+therefore sends 48 phase-1 packets, with the session's deferred-send queue
+retaining reliable bookkeeping past the 32-packet TX window until ACKs
+promote entries. CH-07 lab-chaos Pack and Shift keep their explicit packed
+shapes so those fault probes still exercise the old layout. In the phase-2
+fragmented bundle, only cursor 1 is exposed to the stale offset before the
+first chain crossing clears it. This includes a sparse release whose
+multi-message cascade is at most 1300 bytes: it deliberately uses two
+fragments, cut after the first message. A one-message cascade stays in one
+packet. A first message larger than 1300 bytes keeps the ordinary cut inside
+its body. The short-fragment shape needs live-client validation.
 
 ### What you can see in SigNoz
 
