@@ -267,6 +267,14 @@ there because each action is idempotent by itself (`grant_stargate_address`,
 and a `send_system_mail` behind a persisted `quiet_cooldown`). A new
 `player_loaded` chain without a mission gate needs the same property.
 
+### Beta_Site_Evo_1 (world 23) - 23000-23499, one file per mission
+
+The Union Beta E1 campaign ([docs/analysis/union-zone-planning/beta-work-packets.md](../../docs/analysis/union-zone-planning/beta-work-packets.md)) reserves `23000-23499`. Each mission packet owns one file and its sub-block. Race gates are Human `archetype gte 1` and `lte 4`, Asgard `eq 5`, Free Jaffa `eq 7`. Beta chains bind dialogs per player only (`add_dialog_set` with `slot` = template id) and never call `set_interaction_type` on a shared NPC.
+
+```text
+beta_e1_travel_chains.sql   travel, way back: 23000-23019 (23001-23003 used)
+```
+
 ## Linked references
 
 - `docs/content/content-engine.md` — **runtime reference**: architecture, vocabulary, schema, lifecycle, observability, performance.

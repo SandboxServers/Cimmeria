@@ -32,6 +32,7 @@
 //! [`dakara_e1_missions`] pins the Dakara_E1 mission chains (DK-10a onward),
 //! one submodule per seed file.
 
+mod beta_e1;
 mod black_market_auctioneer;
 mod castle_702_704_executor;
 mod castle_loot_containers;
