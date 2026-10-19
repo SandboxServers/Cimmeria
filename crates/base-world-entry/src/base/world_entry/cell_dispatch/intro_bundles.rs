@@ -135,7 +135,8 @@ pub(super) async fn send_intro_bundles(
             else {
                 tracing::error!(
                     witness_id,
-                    entity_id,
+                    witness_name,
+                    entity_id, // nt:id-only intro record; the NPC's name is not carried in the flush (no session lock here)
                     body_len = body.len(),
                     "AoI tail-safe flush: unexpected create/update body; sending intact"
                 );
