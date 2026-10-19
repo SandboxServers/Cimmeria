@@ -318,7 +318,10 @@ impl ResourceCache {
             let mut entry = archive
                 .by_index(i)
                 .map_err(|e| format!("ZIP entry {i}: {e}"))?;
-            let name = entry.name().to_string();
+            let name = entry
+                .name()
+                .map_err(|e| format!("ZIP entry {i} name: {e}"))?
+                .into_owned();
 
             if name == "MetaData" {
                 let mut buf = [0u8; 4];

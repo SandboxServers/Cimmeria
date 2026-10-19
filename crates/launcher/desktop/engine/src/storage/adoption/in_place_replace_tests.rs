@@ -23,7 +23,7 @@ fn archive_with(name: &str, bytes: &[u8]) -> Vec<u8> {
     let mut out = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
     for index in 0..source.len() {
         let mut entry = source.by_index(index).unwrap();
-        let entry_name = entry.name().to_string();
+        let entry_name = entry.name().unwrap().into_owned();
         out.start_file(entry_name, zip::write::SimpleFileOptions::default())
             .unwrap();
         std::io::copy(&mut entry, &mut out).unwrap();

@@ -347,7 +347,10 @@ mod tests {
         assert_eq!(packed.sha256, hex(&Sha256::digest(&packed.zip)));
 
         let mut archive = zip::ZipArchive::new(std::io::Cursor::new(&packed.zip)).unwrap();
-        let names: Vec<String> = archive.file_names().map(str::to_string).collect();
+        let names: Vec<String> = archive
+            .file_names()
+            .map(|n| n.unwrap().into_owned())
+            .collect();
         assert_eq!(
             names, packed.files,
             "README.md, MANIFEST.txt and test/ never ship"

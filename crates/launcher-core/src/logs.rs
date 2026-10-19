@@ -421,7 +421,7 @@ mod tests {
         let bytes = build_session_log_zip(dir.path(), since).unwrap().unwrap();
         let mut zr = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
         let names: Vec<String> = (0..zr.len())
-            .map(|i| zr.by_index(i).unwrap().name().to_string())
+            .map(|i| zr.by_index(i).unwrap().name().unwrap().into_owned())
             .collect();
         assert_eq!(names.len(), 2, "{names:?}");
         assert!(
@@ -451,7 +451,7 @@ mod tests {
         let mut zr = zip::ZipArchive::new(std::io::Cursor::new(bytes)).unwrap();
         let stamp = |zr: &mut zip::ZipArchive<_>, suffix: &str| {
             let i = (0..zr.len())
-                .find(|&i| zr.by_index(i).unwrap().name().ends_with(suffix))
+                .find(|&i| zr.by_index(i).unwrap().name().unwrap().ends_with(suffix))
                 .unwrap();
             zr.by_index(i).unwrap().last_modified().unwrap()
         };
@@ -498,7 +498,7 @@ mod tests {
         let mut entries: Vec<(String, u64)> = (0..zr.len())
             .map(|i| {
                 let f = zr.by_index(i).unwrap();
-                (f.name().to_string(), f.size())
+                (f.name().unwrap().into_owned(), f.size())
             })
             .collect();
         entries.sort();
@@ -530,7 +530,7 @@ mod tests {
         let cursor = std::io::Cursor::new(bytes);
         let mut zr = zip::ZipArchive::new(cursor).unwrap();
         let names: std::collections::HashSet<String> = (0..zr.len())
-            .map(|i| zr.by_index(i).unwrap().name().to_string())
+            .map(|i| zr.by_index(i).unwrap().name().unwrap().into_owned())
             .collect();
         assert!(names.contains("Binaries/sgwdebuglog"));
         assert!(names.contains("Binaries/sgwdebuglog.txt"));
