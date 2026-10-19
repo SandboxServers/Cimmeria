@@ -7,7 +7,7 @@ description: 'Take a change in Cimmeria from a fresh worktree to a merged PR and
 
 The mechanical path is one script, `tools/build-lane/ship.py` (twins: `ship.ps1`, `ship.sh`).
 It prints one line, `status=... key=value`, and a log path only on failure. Run everything
-from PowerShell; do not use bash.
+from PowerShell on Windows; on a Linux or WSL host, `ops` runs the `.sh` twins with the same arguments.
 
 ## 1. Start in your own worktree
 

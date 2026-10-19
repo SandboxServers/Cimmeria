@@ -99,7 +99,7 @@ shape.
      `<packet> <done|blocked|failed> <commit-sha|-> <report-path>`.
 3. Workers use PowerShell and the lane only: no bash, no direct `cargo`, no
    `git worktree prune`, no `git stash`, no push. They commit locally and
-   stop.
+   stop. On a Linux or WSL host only `ops` has a shell path (the `.sh` twins); a packet worker without PowerShell returns `blocked`.
 4. On a one-line return, update the ledger row and stop. Open the report file
    only when the return says `blocked` or `failed`. A `blocked` return with
    the reason `context` starts the coder loop in § Sessions, passes and
