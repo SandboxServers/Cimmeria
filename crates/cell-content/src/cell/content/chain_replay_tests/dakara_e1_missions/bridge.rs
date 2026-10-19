@@ -15,14 +15,20 @@ const BRIDGE_STEP: i32 = 63101;
 /// Rak'nor's spawn tag (spawnlist_dakara_e1.sql, spawn 8006).
 const RAKNOR_TAG: &str = "Dakara_E1_Raknor";
 
-/// A Free Jaffa on Dakara with 63100 at its step 63101, as the runtime sees it.
-fn at_bridge_step() -> ExecutionContext {
+/// A context with 63100 at its step 63101 for the given archetype and world,
+/// as the runtime sees it.
+fn bridge_ctx(archetype: i64, world_id: Option<i32>) -> ExecutionContext {
     with_step(
-        with_mission(ctx_for(FREE_JAFFA, Some(DAKARA)), BRIDGE_MISSION, "active"),
+        with_mission(ctx_for(archetype, world_id), BRIDGE_MISSION, "active"),
         BRIDGE_MISSION,
         BRIDGE_STEP,
         "active",
     )
+}
+
+/// A Free Jaffa on Dakara with 63100 at its step 63101.
+fn at_bridge_step() -> ExecutionContext {
+    bridge_ctx(FREE_JAFFA, Some(DAKARA))
 }
 
 #[tokio::test]
@@ -95,27 +101,43 @@ async fn live_db_home_to_dakara_is_free_jaffa_only_and_once() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
     // Each of these is off the bridge on the load and on the Rak'nor click.
+    // The first three sit at the bridge step, so only the archetype or world
+    // condition can keep them off it; removing either one makes this fail.
     let wrong_states = vec![
-        ctx_for(PRAXIS_JAFFA, Some(DAKARA)),
-        ctx_for(TAURI, Some(DAKARA)),
-        with_mission(
-            ctx_for(FREE_JAFFA, Some(DAKARA)),
-            BRIDGE_MISSION,
-            "completed",
+        (bridge_ctx(PRAXIS_JAFFA, Some(DAKARA)), DAKARA_NAME),
+        (bridge_ctx(TAURI, Some(DAKARA)), DAKARA_NAME),
+        (bridge_ctx(FREE_JAFFA, Some(STORY_RM)), STORY_RM_NAME),
+        (
+            with_mission(
+                ctx_for(FREE_JAFFA, Some(DAKARA)),
+                BRIDGE_MISSION,
+                "completed",
+            ),
+            DAKARA_NAME,
         ),
-        with_mission(ctx_for(FREE_JAFFA, Some(DAKARA)), 1570, "active"),
-        with_mission(ctx_for(FREE_JAFFA, Some(DAKARA)), 1570, "completed"),
-        with_mission(ctx_for(FREE_JAFFA, Some(DAKARA)), 1645, "active"),
+        (
+            with_mission(ctx_for(FREE_JAFFA, Some(DAKARA)), 1570, "active"),
+            DAKARA_NAME,
+        ),
+        (
+            with_mission(ctx_for(FREE_JAFFA, Some(DAKARA)), 1570, "completed"),
+            DAKARA_NAME,
+        ),
+        (
+            with_mission(ctx_for(FREE_JAFFA, Some(DAKARA)), 1645, "active"),
+            DAKARA_NAME,
+        ),
+        (
+            with_mission(ctx_for(FREE_JAFFA, Some(DAKARA)), 1645, "completed"),
+            DAKARA_NAME,
+        ),
     ];
-    for ctx in &wrong_states {
-        let load = fire_player_loaded(&engine, ctx, DAKARA_NAME);
+    for (ctx, world_name) in &wrong_states {
+        let load = fire_player_loaded(&engine, ctx, world_name);
         let click = fire_interact_tag(&engine, ctx, RAKNOR_TAG);
         assert!(labels_in(&load, BRIDGE_CHAINS).is_empty());
         assert!(labels_in(&click, BRIDGE_CHAINS).is_empty());
     }
-    // A Free Jaffa on Story Room gets no bridge on that world's load.
-    let story_rm = fire_player_loaded(&engine, &ctx_for(FREE_JAFFA, Some(STORY_RM)), STORY_RM_NAME);
-    assert!(labels_in(&story_rm, BRIDGE_CHAINS).is_empty());
     // A Free Jaffa with nothing set gets no bridge from the Rak'nor click.
     let nothing_set = fire_interact_tag(&engine, &ctx_for(FREE_JAFFA, Some(DAKARA)), RAKNOR_TAG);
     assert!(labels_in(&nothing_set, BRIDGE_CHAINS).is_empty());
@@ -132,6 +154,10 @@ fn sorted_ids(r: &ResolvedActions) -> Vec<i64> {
 /// The 8075 bridge is the deliberate addition to a Free Jaffa's arrival, and
 /// the context without a world id is the one `dakara_e1_space`'s `arrive()`
 /// builds, which is why its resolve tests never see 8075.
+///
+/// Owner note: this list is the full Free Jaffa arrival set on Dakara. A later
+/// packet that adds an unconditional `Dakara_E1` `player_loaded` chain changes
+/// it on purpose, so update the expected ids here in the same commit.
 #[tokio::test]
 async fn live_db_free_jaffa_first_arrival_resolves_exactly_the_space_and_bridge_chains() {
     let pool = require_db_or_skip!();
