@@ -23,8 +23,8 @@ SET search_path = resources, pg_catalog;
 -- add_dialog_set (sort 1), since add_dialog_set has no dedupe.
 -- F5: remove_dialog_set (sort 0) runs before complete_mission (sort 1 on 63822),
 -- because complete_mission awaits fire_mission_completed mid-list.
--- F21: no chain here completes an objective of 1655. Omega advances nothing on
--- the beam and completes 1655 only on the Accept.
+-- F21: no chain here completes an objective of 1655. UO-04's 63801 advances the
+-- step on the beam; these chains complete 1655 only on the Accept.
 -- Mission guard: every chain requires mission_status 1655 active, so the Accept
 -- cannot fire again once UO-09's re-offer has completed 1655.
 -- Human gate: archetype gte 1 and lte 4 (Asgard 5 and Free Jaffa 7 never match).
