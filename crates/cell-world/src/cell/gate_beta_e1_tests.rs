@@ -213,15 +213,17 @@ async fn live_db_beta_respawners_stand_on_component_251_and_reach_the_gate() {
     let respawners = load_respawners(&pool)
         .await
         .expect("load_respawners must succeed");
+    // Rows 6 and 7 only: the Beta block also reserves respawner ids
+    // 2300-2309 for later packets, which must not trip this guard.
     let beta: Vec<_> = respawners
         .iter()
-        .filter(|r| r.world_name == "Beta_Site_Evo_1")
+        .filter(|r| r.world_name == "Beta_Site_Evo_1" && BETA_RESPAWNERS.contains(&r.respawner_id))
         .collect();
     let mut ids: Vec<i32> = beta.iter().map(|r| r.respawner_id).collect();
     ids.sort_unstable();
     assert_eq!(
         ids, BETA_RESPAWNERS,
-        "world 23 must ship exactly respawners 6 and 7"
+        "world 23 must ship respawners 6 and 7"
     );
 
     let mesh = beta_mesh();
