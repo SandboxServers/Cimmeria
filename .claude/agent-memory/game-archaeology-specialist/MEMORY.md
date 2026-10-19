@@ -132,3 +132,4 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 ## Move-message rotation (PC-06, 2026-10-18)
 
 - [avatarUpdate rotation source](avatar-update-rotation-source.md) — wire angles = pawn Rotation, never camera; pitch/roll 256/π; server unpack doubles pitch
+- [SGC_W1 Union meshes and sequences](sgc-w1-union-meshes-sequences.md) - Failsafe/ViewScreen02/chair/crate exports, name_id fallbacks, 10047/10060 = 6100/6113 (US-02)
