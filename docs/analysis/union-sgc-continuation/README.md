@@ -1,0 +1,182 @@
+# Union SGC continuation ledger
+
+> **Type:** Reference (campaign ledger)
+> **Audience:** The SGC_W1 Union coordinator and the packet coders, reviewers and specialists named in the packet table
+> **Last updated:** 2026-10-18 (US-00)
+> **Index:** [sgc-work-packets.md](../union-zone-planning/sgc-work-packets.md) (packet text, findings and contract; this ledger does not copy it)
+> **Companions:** [RESUME.md](RESUME.md), [crossings.md](crossings.md), [execution contract](../union-zone-planning/execution-contract.md)
+
+## Purpose
+
+Track the SGC_W1 (world 58) Union campaign packet by packet: which packets are ready, which are blocked and why, which IDs they own, and what US-00 verified before any seed or code packet starts. US-00 changes no seed and no code. It records the ID re-check, the crossings handshake with Dakara and Omega, and the engine facts every SGC packet relies on.
+
+## Status of this ledger
+
+- US-00 (this commit): **Done** when the checks below report no collision and the crossings table reports no unresolved mismatch that blocks US-32. See the findings.
+- The coordinator still has to merge the D-US1 amendment request into `docs/analysis/four-zone-planning/id-allocation.md`. US-00 does not edit that file.
+- Nothing is dispatched by this commit.
+
+## Findings (F1-F13)
+
+Copied as one-line summaries from the index § Findings (verified there at `d1bba0400`). The evidence stays in the index.
+
+| # | Finding | Packets |
+|---|---|---|
+| F1 | No "talk" interaction bit. Each press needs a marker set by an earlier chain or a `player_loaded` restore. | all |
+| F2 | Carter's flavor line 5394 has no press; dropped from the story path and parked in US-40. | US-24, US-40 |
+| F3 | `mission_completed` fires after the state change, so one chain can carry `mission_completed X` and `player_loaded` together. | all |
+| F4 | `delay_ms` runs from fire time; a deferred `advance_step` leaves the old gate open. Departures advance the first step at 0 ms. | US-24, US-30, US-32 |
+| F5 | Point sets with `flags & 1` are hinted to the client, so cylinder regions need no client change. | US-11, US-15, US-22 |
+| F6 | Dialog 5371 is display only (never keyed); 5855 fails linter R1 (never keyed); 5370 passes R1 (keyable). | US-12, US-33 |
+| F7 | `entity_dead_tag` fires once per killer with the killer's context; a DoT kill fires nothing. | US-20, US-21, US-22 |
+| F8 | Chain 3005 moves Hammond to the armory during 1559; US-22 walks him home on the 1568 completion. | US-22, US-24 |
+| F9 | The interact-tag linter is per file: each `interact_tag` key needs a `set_interaction_type` row in the same file. | all |
+| F10 | `dialog_button_linter/seed_model.rs:14` lists only five `CHAIN_FILES`; US-10 adds the 14 new files. | US-10 |
+| F11 | Static rows 57-63 are untagged Jaffa on the 1564 route; 65-67 tagged Gate Room Jaffa; 71 and 77 are 1562 attackers. | US-11, US-20, US-21, US-34 |
+| F12 | Carter hands over her notes herself (5370 screen 9, 5371). Template 5801, spawn 15802 and P03 stay reserved and unused. | US-11, US-12 |
+| F13 | `complete_objective` completes the whole mission once every non-optional active objective of the current step is complete. Verified in § Engine facts below. | US-12, US-15, US-20-US-23, US-30, US-31 |
+
+## Decisions
+
+Status vocabulary: Decided, BlockedDecision (owner or partner must answer), HELD. Non-blocking rows name the packets that carry their default.
+
+| ID | Question | Owner | Default used | Status |
+|---|---|---|---|---|
+| D-US1 | ID blocks (see § ID re-check and the amendment request below) | Architect | blocks as listed | Decided; this ledger records the re-check. Coordinator merges the request |
+| D-US2 | Label policy for reconstructed and authored content shown to players | Owner | none | BlockedDecision: US-40 copy is HELD |
+| D-US3 | Scale of authored content (U-D07) | Owner | none authored | BlockedDecision: US-40 HELD |
+| D-US4 | Visible dial before each crossing (sequences 10047/10060) | Owner (maintainer) | play both sequences; drop the rows if no | BlockedDecision, non-blocking: US-24, US-30, US-32 |
+| D-US5 | Return state seen by a player returning through C2/C3 | Owner | no Gate Room Jaffa once 1568 is done; no story Jaffa for a Free Jaffa; Carter in the Gate Room during 4931 | BlockedDecision, non-blocking: US-34 |
+| D-US6 | Walk into gate 27 instead of crossing on Harriman's interact | Owner | cross on the Harriman interact after the dial | BlockedDecision, non-blocking |
+| D-US7 | Virus hack minigame or plain interact (O5369) | Owner | plain interact | BlockedDecision, non-blocking: US-12 |
+| D-US8 | 1565 flank objective O5375: untracked or credited | Owner | untracked (optional) | BlockedDecision, non-blocking: US-20 |
+| D-US9 | Edit gate 27 row or carry coordinates in chains | Architect | chains carry H3; row untouched | Decided |
+| D-US10 | Static Jaffa rows 57-63 versus the 1565/1567 story Jaffa (options A, B, C) | Owner | B (tag the static rows as story Jaffa) | BlockedDecision, non-blocking: US-11 step 5, US-20, US-21 |
+| D-US11 | 1655 letter item 6786 at departure | Owner + Omega | 6786 to Humans on Hammond's 5856; nothing to Free Jaffa | BlockedDecision, shared with Omega D-UO11: US-32 |
+| D-UD2 | Who owns the 1651/4930 departure | Dakara (D-UD2) | DK-30 | Accepted by SGC; confirmed in Dakara plan (C2 row) |
+
+## ID re-check (US-00 step 2)
+
+Searched every `.sql` under `db/resources/` (394 files), the Dakara, Omega, Beta and four-zone plans, and the seed rows in COPY-free `INSERT` form (first value of each tuple, table-aware for `content_*`, `spawnlist`, `point_sets`, `point_set_points`, `entity_templates` and the dialog tables).
+
+| Kind | Block | Search | Hits |
+|---|---|---|---|
+| chain ids | 3051-3199 | first value of every `content_*` tuple, plus any tuple starting with the number | 0 |
+| spawnlist ids | 15800-15849 | first value of `spawnlist` tuples | 0 |
+| point_sets | 15800-15819 | first value of `point_sets` tuples | 0 |
+| points | 15800-15899 | first value of `point_set_points` tuples | 0 |
+| entity_templates | 5800-5809 | first value of `entity_templates` tuples | 0 |
+| dialogs | 58000-58049 | first value of `dialogs`, `dialog_sets`, `dialog_screens`, `dialog_set_maps`, `dialog_screen_buttons` tuples | 0 |
+
+Result: **no collision.** Zero hits in each block, so no `blocked` return from this step.
+
+Non-hits, recorded so the coordinator does not mistake them for collisions:
+
+- `id-allocation.md:21` lists the existing SGC chains as 3001-3037 and 3041-3044. The block 3051-3199 starts after them.
+- The Beta plan uses `show 3057`, `show 3161` (dialog ids in the `show` action) and item 3165 (Asgard Medical Scanner). These are dialog and item ids, not chain ids, and sit outside the 58000-58049 dialog block. They do not collide with a chain id.
+- The Dakara and Omega plans cite SGC chain 3123-3131 (UD-04a) and nothing in the SGC blocks.
+- `abilities.sql` rows in the 3915-3950 range are ability ids, not chain ids.
+
+## Amendment request for the coordinator (D-US1)
+
+Request; the coordinator merges this into `docs/analysis/four-zone-planning/id-allocation.md`. US-00 does not edit that file.
+
+| Kind | Block | Use |
+|---|---|---|
+| chains | 3051-3199 | SGC_W1 Union packets (US-12 to US-40, per index § ID allocation); 3180-3199 is US-40 (HELD) |
+| spawnlist | 15800-15849 | 15800 Harriman, 15801-15802 reserved (F12), 15803 Carter terminal, 15804 Failsafe Device, 15805-15810 crates |
+| point_sets | 15800-15819 | 15800 `SGC_W1.FailsafeRoom`, 15801 `SGC_W1.GateControl` |
+| points | 15800-15899 | point ids for the same sets |
+| entity_templates | 5800-5809 | 5800 Failsafe Device, 5801 reserved (F12), 5802 pressable crate, 5803 Carter terminal |
+| dialogs | 58000-58049 | US-40 only, HELD |
+
+## Crossings handshake (US-00 step 3)
+
+The frozen C1-C4 rows and their partner checks are in [crossings.md](crossings.md). Summary:
+
+- C1, C2, C2b, C3: **match** the Dakara plan (DK-10b, DK-30, DK-33 and D-UD2).
+- C4: **mismatch on the arrival pin.** SGC K5 uses a candidate gate 5 pin (34.705, -50.634, -149.092). Omega's plan gives a first choice (34.70, -51.86, -142.0) that is a candidate, not a pin: `omega-work-packets.md:121` says "first choice", and `omega-packets/UO-00.md:29` says the pin is copied from UO-01's worknote only if UO-01 confirms it. Expected 1655 state on 4940 matches. The D-US11 letter decision matches D-UO11.
+  - Resolution: **coordinator** aligns the two. Omega publishes the C4 pin from UO-01; SGC then changes K5 to that value. US-32 stays BlockedDependency on the published pin.
+
+## Engine facts (US-00 step 4)
+
+Each row is confirmed with file:line, or the difference is stated.
+
+| Fact | Evidence | Result |
+|---|---|---|
+| F13 `complete_objective` completes the mission when every non-optional active objective of the current step is complete | `crates/cell-content/src/cell/missions/progression.rs:325` (`complete_objective`), `:469` (`all_required_complete`), `:484-505` (vacuous branch and `mission.complete()`) | Confirmed. Difference: a step whose objectives are **all optional** completes the mission on the first completion (`:469`, comment at `:477-483`). This is the F21 trap for 1655 S4940 |
+| 1651 step 4931 has two required objectives, O6037 and O5956 | `db/resources/Missions/Seed/mission_objectives.sql:3102` (6037, step 4931, `is_optional` false), `:3104` (5956, step 4931, `is_optional` false) | Confirmed |
+| 1654 step 4939 has O5961 and O5962, both required | `mission_objectives.sql:3126` (5961), `:3128` (5962), both `is_optional` false | Confirmed |
+| Chains matched by one event share one pre-action snapshot and run in chain-id order | `crates/content-engine/src/chain/mod.rs:284` (`fire_event`) evaluates each chain's conditions and then runs its actions inside the loop. `:423` (`resolve_event`) collects matches before running. Order: `register_chain` (`:152-168`) sorts each bucket by priority descending, stable, so ties keep load order. The `chain_rows` query order was not traced | **Difference.** The order is priority, then load order, not chain id. The snapshot holds only on the `resolve_event` path. Which path mission and kill events use is not traced; the chain-replay tests of the packets that rely on a snapshot must confirm it before they assert it |
+| Trigger rows OR together | `crates/content-engine/src/loader/mod.rs:236-251`: one in-memory `Chain` per trigger row, the same chain id | Confirmed |
+| Condition rows AND together | `crates/content-engine/src/chain/mod.rs:322` (`conditions.iter().all`) | Confirmed |
+| Zero-button dialog sends `dialog_choice (id, -1)` on close; closing a dialog with buttons sends nothing | `crates/cell-content/src/cell/content/event_dispatch/dialog.rs:164-167` names button -1 as "closed" for logging only | **Partly confirmed.** The send-side rule is not in `dialog.rs`; it rests on the K3 rule and the linter notes. Owner lab check before a packet relies on the no-buttons case |
+| `spawn_entity` skips a tag already alive | `crates/cell-content/src/cell/content/executor/spawn/mod.rs:170` (`tag_already_live`, logged and skipped) | Confirmed |
+| `despawn_entity` on an absent tag logs DEBUG and returns | `executor/spawn/mod.rs:300-318` (`despawn_by_tag`, `tracing::debug!` "entity tag not found for despawn", then `return`) | Confirmed |
+| SGC_W1 is a per-player instance | `entities/spaces.xml:39` (`Instanced="true"`); `crates/cell-world/src/cell/arrival.rs:111-113, 201` (instanced destinations have no space until a traveller arrives); `crates/cell-world/src/cell/space_manager/lifecycle.rs:34` (`create_space_instance`) | Confirmed: instanced, and created per arrival |
+
+F13 is already recorded in agent memory (`.claude/agent-memory/mission-systems-advisor/advance-step-vs-complete-objective.md`). No new memory note was needed for it.
+
+## Seal checklist per packet (US-00 step 5)
+
+"Sealed" means the packet's own facts are fixed. "Open" names the item that keeps it BlockedDependency. The allowlist file is the packet's chain or test file from the index § ID allocation.
+
+| Packet | IDs it owns | Allowlist file | Test module | Sealed or open |
+|---|---|---|---|---|
+| US-00 | none | this ledger and crossings.md | none | Sealed by this commit (docs) |
+| US-01 | P01-P16, H3 (no ids) | `union-sgc-continuation/placement.md` | none (docs seal) | Open: not run. Its seal feeds US-30 and US-32 |
+| US-02 | meshes, name_ids, sequences 10047/10060, crate room | per packet file | none (docs seal) | Open: not run |
+| US-10 | 14 empty chain files, CHAIN_FILES registration | `db/resources/Content/Seed/sgc_w1_union_*` (14), `dialog_button_linter` list, `database.sql` `\ir` lines | `chain_replay_tests/union_sgc/` | Open: needs US-00 merged; no IDs of its own |
+| US-11 | spawnlist 15800-15810, templates 5800/5802/5803, point sets 15800/15801, points 15800-15899, Jaffa tags | `Worlds/Seed/spawnlist.sql`, `Events/Seed/point_sets.sql`, `Entities/Seed/entity_templates.sql` | per packet | Open: needs US-10, US-01, US-02 and D-US10 default |
+| US-12 | chains 3051-3057 | `sgc_w1_union_1563_chains.sql` | `virus_1563.rs` | Open: needs US-10, US-11; D-US7 non-blocking |
+| US-13 | chains 3080-3081 | `sgc_w1_union_1571_chains.sql` | `aux_1571.rs` | Open: needs US-10 |
+| US-14 | none (log tests) | per packet | `executor/tests/teleport.rs` | Open: needs US-00 |
+| US-15 | chains 3060-3071 | `sgc_w1_union_1564_chains.sql` | `failsafe_1564.rs` | Open: needs US-10, US-11 |
+| US-16 | chains 3073-3078 | `sgc_w1_union_escort_chains.sql` | `escort_1564.rs` | Open: needs US-15; movement sign-off |
+| US-20 | chains 3085-3093 | `sgc_w1_union_tactics_chains.sql` | `tactics_1565_1566.rs` | Open: needs US-10, US-11; D-US8, D-US10 |
+| US-21 | chains 3095-3099 | `sgc_w1_union_1567_chains.sql` | `clear_way_1567.rs` | Open: needs US-10, US-11; D-US10 |
+| US-22 | chains 3100-3109 | `sgc_w1_union_1568_chains.sql` | `gate_room_1568.rs` | Open: needs US-10, US-11; movement sign-off |
+| US-23 | chains 3110-3122 | `sgc_w1_union_1569_chains.sql` | `ordnance_1569.rs` | Open: needs US-10, US-11; item sign-off |
+| US-24 | chains 3123-3131 | `sgc_w1_union_1570_chains.sql` | `depart_1570.rs` | Open: needs US-10, US-14, US-02; D-US4 default |
+| US-30 | chains 3133-3142 | `sgc_w1_union_1651_chains.sql` | `generator_1651.rs` | Open: needs US-10, US-11, US-01, UD-00 |
+| US-31 | chains 3148-3152 | `sgc_w1_union_1654_chains.sql` | `turnin_1654.rs` | Open: needs US-10, UD-00 |
+| US-32 | chains 3156-3165 | `sgc_w1_union_1655_human_chains.sql` | `letter_1655_human.rs` | Open: C4 pin (crossings.md), UO-00, D-US11 default |
+| US-33 | chains 3166-3169 | `sgc_w1_union_1655_jaffa_chains.sql` | `letter_1655_jaffa.rs`, `disjoint.rs` | Open: needs US-31, US-32 |
+| US-34 | chains 3171-3175 | `sgc_w1_union_return_chains.sql` | `return_state.rs` | Open: needs US-11, US-20, US-21, US-22, US-30; D-US5 default |
+| US-40 | chains 3180-3199, dialogs 58000-58049 | `sgc_w1_union_authored_chains.sql` | `authored.rs` | **BlockedDecision (HELD)**: D-US2, D-US3 |
+| US-99 | none | docs | none | Open: all others |
+| US-U1 | none (lab) | none | lab | UATPending: asks the user |
+| US-U2 | none (lab) | none | lab | UATPending: asks the user |
+
+## Packet table
+
+Status vocabulary: Ready / BlockedDependency / BlockedDecision / Writing / Review / Integrated / UATPending / Done. The packet text stays in the index and its packet files.
+
+| Wave | Packet | Status | Note |
+|---|---|---|---|
+| S0 | US-00 | Writing (this commit) | ledger, ID re-check, crossings |
+| S0 | US-01 | Ready after US-00 merges | placement seal |
+| S0 | US-02 | Ready after US-00 merges | meshes, sequences, crate room |
+| S1 | US-10 | Ready after US-00 merges | scaffold |
+| S1 | US-11 | BlockedDependency | US-10, US-01, US-02 |
+| S1 | US-14 | Ready after US-00 merges | crossing log tests |
+| S2 | US-12 | BlockedDependency | US-10, US-11 |
+| S2 | US-13 | BlockedDependency | US-10 |
+| S2 | US-15 | BlockedDependency | US-10, US-11 |
+| S2 | US-20 | BlockedDependency | US-10, US-11 |
+| S2 | US-21 | BlockedDependency | US-10, US-11 |
+| S2 | US-22 | BlockedDependency | US-10, US-11 |
+| S3 | US-16 | BlockedDependency | US-15 |
+| S3 | US-23 | BlockedDependency | US-10, US-11 |
+| S3 | US-24 | BlockedDependency | US-10, US-14, US-02; D-US4 default |
+| S3 | US-30 | BlockedDependency | US-10, US-11, US-01, UD-00 |
+| S3 | US-31 | BlockedDependency | US-10, UD-00 |
+| S3 | US-32 | BlockedDependency | US-10, US-11, UO-00 pin, D-US11 default |
+| S4 | US-33 | BlockedDependency | US-31, US-32 |
+| S4 | US-34 | BlockedDependency | D-US5 default |
+| S4 | US-40 | BlockedDecision | D-US2, D-US3 (HELD) |
+| S4 | US-U1 | UATPending | lab, asks the user |
+| S4 | US-U2 | UATPending | lab, asks the user |
+| S4 | US-99 | BlockedDependency | close-out |
+
+UD-00 and UO-00 are the Dakara and Omega ID packets. Whether they are dispatched or merged is the coordinator's gate and is not verified here.
