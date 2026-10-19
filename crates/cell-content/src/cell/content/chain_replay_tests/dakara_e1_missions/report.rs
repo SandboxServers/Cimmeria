@@ -194,16 +194,19 @@ async fn live_db_radio_report_on_dog_tag_close_in_the_story_room_too() {
 async fn live_db_radio_report_is_only_for_step_4905() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
-    let at_4901 = fire_dialog_choice(&engine, &at_step(FREE_JAFFA, Some(DAKARA), 4901), 6224);
-    let at_4903 = fire_dialog_choice(&engine, &at_step(FREE_JAFFA, Some(DAKARA), 4903), 6224);
-    let completed = fire_dialog_choice(
-        &engine,
-        &with_mission(ctx_for(FREE_JAFFA, Some(DAKARA)), 1570, "completed"),
-        6224,
-    );
-    assert!(labels_in(&at_4901, REPORT_CHAINS).is_empty());
-    assert!(labels_in(&at_4903, REPORT_CHAINS).is_empty());
-    assert!(labels_in(&completed, REPORT_CHAINS).is_empty());
+    // Every dog tag, so a dropped step row on any of 8162/8163/8166/8167 is caught.
+    for (dialog, _, _) in DOG_TAG_CHAINS {
+        for (archetype, step) in [(FREE_JAFFA, 4901), (FREE_JAFFA, 4903), (TAURI, 4903)] {
+            let r = fire_dialog_choice(&engine, &at_step(archetype, Some(DAKARA), step), dialog);
+            assert!(labels_in(&r, REPORT_CHAINS).is_empty());
+        }
+        let completed = fire_dialog_choice(
+            &engine,
+            &with_mission(ctx_for(FREE_JAFFA, Some(DAKARA)), 1570, "completed"),
+            dialog,
+        );
+        assert!(labels_in(&completed, REPORT_CHAINS).is_empty());
+    }
 }
 
 #[tokio::test]
@@ -250,6 +253,20 @@ async fn live_db_radio_restore_on_dakara_load_at_4905() {
         );
         assert!(labels_in(&r, REPORT_CHAINS).is_empty());
     }
+    // A Dakara-keyed load in the story room (world 62), and a completed
+    // mission, must not restore the radio either.
+    let in_story_room = fire_player_loaded(
+        &engine,
+        &at_step(FREE_JAFFA, Some(STORY_RM), 4905),
+        DAKARA_NAME,
+    );
+    assert!(labels_in(&in_story_room, REPORT_CHAINS).is_empty());
+    let completed = fire_player_loaded(
+        &engine,
+        &with_mission(ctx_for(FREE_JAFFA, Some(DAKARA)), 1570, "completed"),
+        DAKARA_NAME,
+    );
+    assert!(labels_in(&completed, REPORT_CHAINS).is_empty());
 }
 
 #[tokio::test]
@@ -282,6 +299,20 @@ async fn live_db_radio_restore_in_the_story_room_at_4905() {
         labels_in(&at_4903, REPORT_CHAINS),
         vec!["8164:add_dialog_set(6733@59)"],
     );
+    // A story-room-keyed load in Dakara (world 61), and a completed mission,
+    // restore nothing: the world and step rows gate both chains.
+    let in_dakara = fire_player_loaded(
+        &engine,
+        &at_step(FREE_JAFFA, Some(DAKARA), 4905),
+        STORY_RM_NAME,
+    );
+    assert!(labels_in(&in_dakara, REPORT_CHAINS).is_empty());
+    let completed = fire_player_loaded(
+        &engine,
+        &with_mission(ctx_for(FREE_JAFFA, Some(STORY_RM)), 1570, "completed"),
+        STORY_RM_NAME,
+    );
+    assert!(labels_in(&completed, REPORT_CHAINS).is_empty());
 }
 
 #[tokio::test]
