@@ -160,8 +160,9 @@ Keep ops's `description` line unchanged. It is #1824's: `Runs one requested git 
 1. `ops.md` frontmatter: `tools: PowerShell, Read` → `tools: PowerShell, Bash, Read`.
 2. `ops.md` body, the shell rule. After the first paragraph (the one ending `Nothing else.`), insert:
    ```text
-   **Pick the shell from the host.** Read the `Platform:` line of your environment. On `win32`, use the PowerShell tool and the `pwsh ... .ps1` commands below; never use Bash there. On any other platform (`linux`, `darwin`), use the Bash tool and the `.sh` twin given in brackets, with the same arguments: the twins take the same options and print the same output with the same exit codes. Never run a `.ps1` on Linux. If the tool you need is unavailable, return `blocked` with the reason `no PowerShell tool on win32` or `no Bash tool on <platform>`, never a bare `blocked`.
+   **Pick the shell from the host.** Read the `Platform:` line of your environment. On `win32`, use the PowerShell tool and the `pwsh ... .ps1` commands below; never use Bash there, not even Git Bash. On `linux` (which is what WSL reports), use the Bash tool and the `.sh` twin given in brackets, with the same arguments: the twins take the same options and print the same output with the same exit codes. Never run a `.ps1` on Linux. On any other platform, return `blocked` with the reason `platform <p> is not supported (Windows, Linux and WSL only)`. If your environment has no `Platform:` line, follow the `win32` rule. If the tool you need is unavailable, return `blocked` with the reason `no PowerShell tool on win32` or `no Bash tool on linux`, never a bare `blocked`.
    ```
+   (Amended 2026-10-18, D-AH53: `linux` only, `darwin` and other platforms refused, a missing `Platform:` line means `win32`. This is contract C17's table in [work-packets-w4c.md](work-packets-w4c.md); keep the two identical.)
 3. `ops.md`, the allowed list. Append a bracketed twin to each script line, right after its `pwsh ...` command (before the parenthesis or sentence that follows it):
    - mk-worktree: `[bash tools/build-lane/mk-worktree.sh <branch> <name>]`;
    - both ship lines: `[bash tools/build-lane/ship.sh` + the same arguments`]`;
@@ -213,7 +214,7 @@ Agent: packet-coder. Branch `ai-harness-docs/ah-11h-linux-docs`, worktree name `
 1. § WSL and Linux hosts, the status paragraph. Find the sentence from `The build lane, the ship scripts and every agent rule are validated` through `returns \`blocked: no PowerShell (pwsh) on this host\`.` Replace that span with everything in C7b after its bold first sentence. Keep the bold sentence, and keep the building.md sentence that follows the span.
 2. Find the bullet that starts `- **\`ops\` cannot run.**` (the whole line). Replace it with:
    ```text
-   - **`ops` runs the `.sh` twins.** On a host whose `Platform` is not `win32`, [`ops`](../../.claude/agents/ops.md) uses the Bash tool and runs `bash tools/build-lane/<script>.sh` with the same arguments as the `.ps1` commands. The packet workers (`packet-coder`, `packet-review-fixer`) still use PowerShell only, and without it they return `blocked: no PowerShell (pwsh) on this host`.
+   - **`ops` runs the `.sh` twins.** On a host whose `Platform` is not `win32`, [`ops`](../../.claude/agents/ops.md) uses the Bash tool and runs `bash tools/build-lane/<script>.sh` with the same arguments as the `.ps1` commands. The packet workers (`packet-coder`, `packet-reviewer`) still use PowerShell only, and without it they return `blocked: no PowerShell (pwsh) on this host`.
    ```
 3. Find `- **Repo scripts that fail on Linux or WSL:**`. Replace it with `- **Repo scripts on Linux or WSL** (fixed in the scripts; CI tests them on Linux):`. Then replace its five sub-bullets, in order, with:
    ```text
@@ -287,11 +288,12 @@ Agent: **the owner, or a `hands-on` session the owner approves.** No packet agen
 - L4. In a plain terminal, run `bash tools/build-lane/ship.sh pr -C /nonexistent -m x; echo $?`.
   - **Expect** a `status=refused` line and exit 2, not exit 127.
 - L5. Record `gh --version`. On a version older than 2.50, `ship.py merge` takes the `statusCheckRollup` fallback (AH-11d). Its first real use is the next PR shipped from this host; record that run when it happens.
-- L6. Ask the orchestrator to dispatch a `packet-coder` for any one-line docs fix.
-  - **Expect** `blocked: no PowerShell (pwsh) on this host` when `pwsh` is absent (D-AH29 keeps the workers PowerShell-only). If `pwsh` is installed, record what happened instead.
+- L6. Ask the orchestrator to dispatch a `packet-coder` for any one-line docs fix, with a packet that says `Host: linux`.
+  - **Expect, after W4c has merged** (D-AH29 amended, D-AH53): the packet-coder uses the Bash tool, runs any check with `bash tools/build-lane/<script>.sh`, and commits. Repeat with a packet that says `Host: windows` (or has no `Host:` line): **expect** `blocked: packet host windows does not match platform linux`.
+  - **Before W4c has merged**, expect `blocked: no PowerShell (pwsh) on this host` when `pwsh` is absent. If `pwsh` is installed, record what happened instead.
 - L7. Record the results in the same worknotes file.
 
-A pass proves the `ops` path. It does not change C7b: Linux and WSL stay "not validated" until a full session (orchestrator, packet workers, review, ship) has run end to end there.
+A pass proves the `ops` path and, after W4c, the packet-coder's Bash path. It does not change C7b or C7c: Linux and WSL stay "not validated" until a full session (orchestrator, packet workers, review, ship) has run end to end there.
 
 ### AH-16: close-out
 
@@ -309,7 +311,7 @@ Agent: packet-coder. Branch `ai-harness-docs/ah-16-close-out`, worktree name `ah
 The orchestrator then:
 
 - empties `.claude/state/active-campaign`;
-- has ops retire every `ah-*` worktree (`rm-worktree.ps1 --merged`);
+- has ops retire every `ah-*` worktree (`rm-worktree.ps1 --merged`; for packet worktrees merged only into an integration branch, `rm-worktree.ps1 --merged-into <PR> <name>...` once S5 has merged, see work-packets-w4b.md § AH-16 addenda);
 - has ops post the board handoff.
 
 **Checks:** the CRLF check on every edited `.md`.
