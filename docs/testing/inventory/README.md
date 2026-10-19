@@ -35,10 +35,10 @@ many tests also updates the catalogue.
 
 | Metric | Count |
 |---|---:|
-| Tests (`#[test]` / `#[tokio::test]`) | 15,198 |
-| Files with tests | 2,497 |
-| Gated in CI (every crate but CI's exclude list) | 12,691 |
-| Live-DB tests (`require_db_or_skip!` in the body) | 2,215 |
+| Tests (`#[test]` / `#[tokio::test]`) | 15,209 |
+| Files with tests | 2,500 |
+| Gated in CI (every crate but CI's exclude list) | 12,702 |
+| Live-DB tests (`require_db_or_skip!` in the body) | 2,220 |
 | Inventory threshold (5% of the tests) | 760 |
 
 <!-- /gen:tests-totals -->
@@ -86,7 +86,7 @@ with no file in this directory yet.
 | Crate | Package | Tests | Files | Live-DB | In CI | Catalogue |
 |---|---|---:|---:|---:|---|---|
 | `crates/lab` | `cimmeria-lab` | 1,613 | 226 | 0 | no | none |
-| `crates/cell-content` | `cimmeria-cell-content` | 1,329 | 208 | 913 | yes | none |
+| `crates/cell-content` | `cimmeria-cell-content` | 1,338 | 210 | 918 | yes | none |
 | `crates/lab-cli` | `cimmeria-lab-cli` | 1,202 | 108 | 0 | yes | none |
 | `crates/cell-combat` | `cimmeria-cell-combat` | 936 | 170 | 48 | yes | none |
 | `crates/client-telemetry` | `cimmeria-client-telemetry` | 776 | 144 | 0 | no | none |
@@ -101,8 +101,8 @@ with no file in this directory yet.
 | `crates/launcher-core` | `cimmeria-launcher-core` | 334 | 42 | 0 | yes | none |
 | `crates/wire` | `cimmeria-wire` | 325 | 60 | 0 | yes | none |
 | `crates/base-crafting` | `cimmeria-base-crafting` | 323 | 59 | 142 | yes | none |
+| `crates/content-engine` | `cimmeria-content-engine` | 316 | 33 | 1 | yes | [content-engine.md](content-engine.md) |
 | `crates/cell-methods` | `cimmeria-cell-methods` | 315 | 50 | 9 | yes | none |
-| `crates/content-engine` | `cimmeria-content-engine` | 314 | 32 | 1 | yes | [content-engine.md](content-engine.md) |
 | `crates/base` | `cimmeria-base` | 284 | 59 | 20 | yes | none |
 | `crates/base-world-entry` | `cimmeria-base-world-entry` | 278 | 68 | 55 | yes | none |
 | `crates/admin-api` | `cimmeria-admin-api` | 275 | 39 | 0 | yes | none |

@@ -11,7 +11,7 @@ The campaign starts with a research wave. Every port packet consumes a per-game 
 
 ## What the client has
 
-The 11 packages under the client's `CookedPC\UI\Flash\` (the user's own client copy; nothing from it goes in git, D-MG10) each wrap one uncompressed Scaleform GFX movie. The architect scanned them on 2026-10-19 with throwaway scripts. MG-R0 turns that into a repo tool, and the W0 research confirms every row below.
+The 11 packages under the client's `CookedPC\UI\Flash\` (the user's own client copy; nothing from it goes in git, D-MG10) each wrap one uncompressed Scaleform GFX movie. The architect scanned them on 2026-10-19 with throwaway scripts. MG-R0 turns that into a repo tool, and the W0 research confirms every row below. The tool's per-package inventory (offsets, md5s, function counts) is [client-packages.md](client-packages.md).
 
 | Package | GFX movie | What the movie holds | Provisional verdict | Spec (packet) |
 |---|---|---|---|---|
@@ -41,7 +41,7 @@ The 11 packages under the client's `CookedPC\UI\Flash\` (the user's own client c
 | F12 | Seeded content uses only Livewire (10 `start_minigame` rows). Mission 582 step 2307 "Conversation Minigame With Marsh" is `step_enabled = false`, index 0 (Harset, "A Question of Loyalty"). Objective 4203 already runs on Harset's interact-grant-destroy route (D-H13, chain 1032). Objectives 4963 ("add button to dialog for minigame") and 789 ("TODO: Minigame") are authoring stubs. | `mission_steps.sql:5335`; Harset ledger | MG-R5, MG-61, MG-64, MG-65, D-MG6, D-MG7 |
 | F13 | Modifier content exists and nothing reads it. It covers the archaeologist minigame abilities (677-686, 802 "Reveal Mini-Games", 809, 813-815, 1195, 1552, 2507, 2508), the "Trump" passives (778, 779, 792, 793) and about 300 consumable item rows ("Archaeologist Minigame Consumable TC3..15"). It also covers the win container (1661, 2837), despawn mob (585), consume item (586), the success dialogs (1594, 1753) and event set 1132 "Minigame reveal target". | Ability, item and event seeds | MG-R7, MG-22, MG-23 |
 | F14 | The interaction bits 512 (Activate), 1024 (Analyze), 2048 (Bypass) and 4096 (Converse) exist; there is no Hack bit. No seeded template uses them. | [interaction-flags.md](../../content/interaction-flags.md) | MG-R5 |
-| F15 | No repo tool extracts the GFX movies. The cellblock-autoplay spike has an AS2 disassembler (`docs/analysis/cellblock-autoplay/livewire-spike/as2dis.py`). | [tools catalog](../../../tools/README.md) | MG-R0 |
+| F15 | No repo tool extracts the GFX movies. The cellblock-autoplay spike has an AS2 disassembler (`tools/minigame-swf/as2dis.py`). | [tools/minigame-swf](../../../tools/minigame-swf/README.md) | MG-R0 |
 | F16 | `SfsValue` has no list form. Livewire builds arrays as numeric-key objects in a private `array_to_obj` (`livewire/setup.rs:378`), and every new game needs the same helper. | `protocol.rs`, `setup.rs` | MG-01 |
 | F17 | Several minigame files are at or near the 700-line hard cap: `server/tests.rs` 680, `server/listener_tests.rs` 679, `session_tests.rs` 664, `server/session_loop.rs` 638, `session.rs` 589, `protocol.rs` 549. New code and tests go in new files. | line counts 2026-10-19 | contract C2 |
 | F18 | The social layer (cell methods 26-29 and 31-34: spectate, help registration, call accept/decline/abort, contact request) is still stubs. | `cell_methods/minigame.rs` | D-MG4 |
