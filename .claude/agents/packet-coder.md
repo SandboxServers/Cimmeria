@@ -1,6 +1,6 @@
 ---
 name: packet-coder
-description: "Implements one prescriptive work packet in a Cimmeria worktree: edits only its named files, runs its lane checks, commits. Not for design or PRs."
+description: "Implements one prescriptive work packet, or applies one review's fix notes, in a Cimmeria worktree: edits only the named files, runs the lane checks, commits. Not for design or PRs."
 model: haiku
 omitClaudeMd: true
 effort: medium
@@ -21,7 +21,8 @@ Rules:
 - Never commit IPs, credentials, tokens or account passwords.
 - Commit once at the end, on the worktree's current branch: `git add` only the packet's files, then `git commit` with the message from the brief (it includes the attribution lines). Do not amend other commits.
 - Your context limit is 95k tokens. Read only the line ranges you need (use Grep to find them). Past about 90k, stop: commit only work whose checks pass (subject suffix `(part N)`), write `docs/analysis/<campaign>/worknotes/<packet>.md` in your worktree (what is done, what is left, the next step, the last check's `status=` line), and return `blocked` with the reason `context`. A fresh packet-coder continues from that worknote; a packet gets at most 3 coder sessions.
-- If the brief says "continuation N of 3", read the worknote first and start at its next step; never redo committed work. Review findings never come to you: the packet-review-fixer fixes them.
+- If the brief says "continuation N of 3", read the worknote first and start at its next step; never redo committed work.
+- If the brief says "review fix, pass N of 3", read the review report it names and apply only its `## Fix notes`, exactly as written, in the files the notes name; never any other file. If a note does not match the code, don't apply it: give its number and the reason in your report. Then rerun every check the packet lists and commit with the brief's message (`<packet> review fixes, pass N`).
 
 Report, compactly: the files changed, each check's final `status=` line, the commit hash, and any deviation from the spec with its reason. No advice beyond that.
 
