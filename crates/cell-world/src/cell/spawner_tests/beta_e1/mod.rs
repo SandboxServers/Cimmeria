@@ -4,11 +4,16 @@
 //! These are seed-data guards: the rows under test are the production seed,
 //! and each test fails when its rows are removed or changed.
 //!
+//! - [`hub`]: UB-02b, the hub cast and objects (spawns 23000-23021) and the
+//!   Storage and AdminBuilding regions: rows, positions, standability and tag
+//!   uniqueness.
 //! - [`templates`]: UB-02a, the cast and object templates of
 //!   `db/resources/Entities/Seed/entity_templates_beta_e1.sql`: the roster, a
 //!   name on each, nothing hostile or attackable, the visual settings, the
 //!   object and NPC interaction bits, and the reserved ids left empty.
 
+mod hub;
+mod nav;
 mod templates;
 
 use crate::cell::spawner::{load_spawn_templates, SpawnRecord};
