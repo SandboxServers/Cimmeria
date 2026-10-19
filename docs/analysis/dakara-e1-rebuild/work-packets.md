@@ -56,13 +56,13 @@ One packet owns one seed file. DK-10a creates every file below with only its hea
 | `dakara_e1_m1646_drop_chains.sql` | DK-12c | 8140-8159 |
 | `dakara_e1_m1648_chains.sql` | DK-13 | 8180-8199 |
 | `dakara_e1_m1649_offer_chains.sql` | DK-14a | 8200-8219 |
-| `dakara_e1_m1649_terminal_chains.sql` | DK-14b | 8220-8249 |
-| `dakara_e1_m1650_chains.sql` | DK-15 | 8250-8289 |
+| `dakara_e1_m1649_terminal_chains.sql` | DK-14b, then DK-14c (edits 8223, adds victory chain 8231) | 8220-8249 |
+| `dakara_e1_m1650_chains.sql` | DK-15, then DK-15b (edits 8258, adds victory chain 8261) | 8250-8289 |
 | `dakara_e1_m1651_chains.sql` | DK-30a | 8290-8309 |
-| `dakara_e1_m1651_gate_chains.sql` | DK-30b | 8310-8319 |
+| `dakara_e1_m1651_gate_chains.sql` | DK-30b, then DK-30b-r (8310 becomes `stargate_crossed`, 8311 and 8312 deleted, grant chain 8313 added) | 8310-8319 |
 | `dakara_e1_m1652_chains.sql` | DK-31b | 8320-8349 |
 | `dakara_e1_m1653_chains.sql` | DK-32a | 8350-8389 |
-| `dakara_e1_m1654_chains.sql` | DK-33 | 8430-8449 |
+| `dakara_e1_m1654_chains.sql` | DK-33, then DK-33-r (8432/8433 grant gate 27, 8434 becomes `stargate_crossed`, 8435 deleted) | 8430-8449 |
 
 DK-40 (wave 4) creates the nine files from `dakara_e1_m1648_chains.sql` down, header only, with their `\ir` lines after `dakara_e1_m1646_drop_chains.sql`, their linter ranges and their test submodules (D-DK21). 8390-8429 (DK-21, 1647) and 8450-8479 (DK-32b) are reserved and get no file until wave 7. DK-10d's range sits after DK-12c's because 4902 and 4901 need 12 ids (D-DK19); the `\ir` order stays the order of this table.
 
@@ -106,6 +106,7 @@ Vocabulary used by this campaign (all exist today):
 | `counter` | `target_key` = counter name, `value` = integer text, operators `eq`, `lt`, `gte`; reads param `counter_<name>` (`conditions/mod.rs`), a missing counter reads 0. Counters live in memory only: a relog or any world change resets them |
 | Actions | `accept_mission` (target = mission), `advance_step` (target = mission, key = step text), `complete_objective` (target = mission, key = objective text), `complete_mission`, `display_dialog` (target = dialog), `display_radio_dialog` (target = dialog; sends `EntityId` 0, no NPC; from DK-06b, D-DK10), `add_dialog_set` / `remove_dialog_set` (target = dialog_set_map id, params `{"slot": <template_id>}`), `add_item` (target = item, params `{"container": 0, "qty": 1}`; container 0 means the item's own container set), `remove_item` (target = item, params `{"qty": 1}`), `increment_counter` (target NULL, key = name, params `{"amount": 1}`), `reset_counter` (target NULL, key = name, params `{}`) |
 | Actions from wave 5 on | `spawn_entity` (target = template, key = a unique tag, params `{"x", "y", "z", "heading", "is_stationary"}`; refused on world 61 without `"allow_shared": true`, one-shot, no relog restore), `despawn_entity` (target NULL, key = tag; looks in the actor's space), `cross_world_teleport` (target NULL, key = world name, params `{"x", "y", "z"}`; its chain needs a `world` condition). A delayed action (`delay_ms` above 0) does not re-check conditions and is dropped on logout |
+| From wave 6c on (owner rulings D-DK24, D-DK31) | `start_minigame` (target NULL, key `'Livewire'`, params `{"on_victory_chains": [V], "difficulty": 1}`): opens the hack; a win fires chain V by id. **Victory chain V** has a `content_chains` row and actions only: no trigger, no conditions (never evaluated), so every gate sits on the launcher (Castle 1356/1357). `grant_stargate_address` (target = gate id, key NULL, params `{}`): idempotent; Dakara grants only gate 27 in 8313, 8432, 8433, never from `player_loaded` (D-DK43). Trigger `stargate_crossed` (key = destination world name, e.g. `SGC_W1`): fires on the origin cell as the player steps through, with mission state and archetype filled (`event_dispatch/stargate.rs`, Castle 1360) |
 
 ### C5. Authoring rules every chain packet follows
 
@@ -137,7 +138,9 @@ Vocabulary used by this campaign (all exist today):
 | Mission 1646 | steps 4908 (5635, 5939, 5940, 5941, 5942 all required), 4909 (5943) | item 6780 |
 | Story props (DK-41, D-DK29) | 453 `Dakara_E1_CommandTerminal` (61), 454 `Dakara_E1_StoryRm_MohkatanTerminal` (62), 455 `Dakara_E1_RingControl_XMinus` and 462 `_XPlus` (61), 456 `Dakara_E1_PowerSupply1` and 463 `_PowerSupply2` (61); spawns 8016-8021 | X-minus and supply 1 are west, X-plus and supply 2 east |
 | Ba'al hologram | template 443, spawned per player by DK-15 as `Dakara_E1_StoryRm_BaalHologram` at B-07 (66.2, -0.12, 34.3) | world 62 only |
-| DHD | template 1, tag `Dakara_E1_DHD`, spawnlist 38, world 61 | an `interact_tag` chain runs before the dialling handler and suppresses it when it matches |
+| DHD | template 1, tag `Dakara_E1_DHD`, spawnlist 38, world 61 | an `interact_tag` chain runs before the dialling handler and suppresses it when it matches, so **no chain may match it** (wave 6c, D-DK24): the crossings complete on `stargate_crossed SGC_W1` |
+| SGC gate | gate 27 `SGC W1`, world 58 `SGC_W1` | granted by 8313 (1651 report at 4932) and 8432/8433 (1654 offer); arrival on the Gate Room floor is the SGC campaign's to pin (D-DK44) |
+| Livewire terminals (D-DK31) | 453 (1649, launcher 8223, victory 8231), 454 (1650, launcher 8258, victory 8261) | difficulty 1; decode (8224) and replay (8225) stay plain clicks (D-DK42) |
 | Missions 1648 to 1654 | steps, objectives, dialogs, dsm rows and items per mission | inlined in each packet of [wave 5](packets/wave-5.md) and [wave 6](packets/wave-6.md) |
 | Flag carriers (D-DK31) | 6760 (bit 30, no dialog), 6892 (no dialog), 6775 (bit 24) | bound in place of a step's flags-0 dsm so the prop or NPC is clickable |
 
@@ -179,7 +182,7 @@ Dialog set map rows (the `add_dialog_set` target):
 | `m1648.rs`, `m1649_offer.rs`, `m1649_terminal.rs`, `m1650.rs` | DK-13, DK-14a, DK-14b, DK-15 (DK-40 creates them) |
 | `m1651.rs`, `m1651_gate.rs`, `m1652.rs`, `m1653.rs`, `m1654.rs` | DK-30a, DK-30b, DK-31b, DK-32a, DK-33 (DK-40 creates them) |
 
-From wave 5 on, `mod.rs` also gives `delays_of` (the `delay_ms` of each action of one chain) and `radio_count`, and `labels_in` labels `spawn_entity(T#tag)`, `despawn_entity(tag)`, `cross_world_teleport(World@x,y,z)` and `play_sequence(N)` (DK-40).
+From wave 5 on, `mod.rs` also gives `delays_of` (the `delay_ms` of each action of one chain) and `radio_count`, and `labels_in` labels `spawn_entity(T#tag)`, `despawn_entity(tag)`, `cross_world_teleport(World@x,y,z)` and `play_sequence(N)` (DK-40). From wave 6c, DK-40b adds the labels `start_minigame(Livewire,victory=[V],d=1)` and `grant_stargate_address(27)`, and two helpers: `fire_stargate_crossed(&engine, &ctx, "<destination world>")` and `fire_victory(&pool, V).await` (loads victory chain V alone, asserts it has no conditions, returns its actions as a `ResolvedActions`).
 
 - **Shape:** `#[tokio::test] async fn live_db_<what>() { let pool = require_db_or_skip!(); let engine = build_engine(Some(&pool)).await; ... }`. Helpers from `super::super::mission_1324` (`ctx_for`, `with_mission`, `with_step`, `fire_player_loaded`, `fire_interact_tag`, `fire_mission_completed`, `fire_dialog_choice`, `display_dialog_count`) and from `super` (`labels_in`, `with_objective`, `with_counter`, `fire_enter_region`, the constants).
 - **Each chain gets:** the exact `labels_in(&resolved, <own file range constant>)` list for the matching state (each packet filters to its own file's range from `mod.rs`, so a sibling packet's co-firing chain never breaks it); the empty list for the nearest wrong state (other archetype branch, wrong step, wrong world, mission already completed); `display_dialog_count == 1` on every `interact_tag` that displays.
@@ -212,13 +215,14 @@ From wave 5 on, `mod.rs` also gives `delays_of` (the `delay_ms` of each action o
 | 4 | DK-40 (scaffold), DK-41 (story props) | Done (#1898, #1899) | one `packet-reviewer` for the pair |
 | 5 | DK-13, DK-14a, DK-14b, DK-15 | Done (#1903, #1904, #1905, #1906) | one `packet-reviewer` plus `mission-systems-advisor` read-only |
 | 6 | DK-30a, DK-30b, DK-31a, DK-31b, DK-32a, DK-33 | DK-31a #1900, DK-30a #1907, DK-31b #1909, DK-32a #1910 merged (docs #1901). **Held:** DK-30b (`34abe129b`, `dk-30b`) after SGC US-30, DK-33 (`41686b50c`, `dk-33`) after SGC US-31; reviewed, PRs not opened | one `packet-reviewer` plus `mission-systems-advisor` read-only |
-| 6b (current) | DK-31c (Ha'tak sequences), DK-30b-n, DK-33-n (review nits in the held worktrees) | **Ready now**: DK-31c in a new worktree `dk-31c` from `main`; the nit packets in `dk-30b` and `dk-33` | one `packet-reviewer` for the three; fixes by `packet-coder` |
-| 7 | GDK1, DK-20, DK-21, DK-32b | **BlockedDecision D-DK5**, then the M2 playtest | architect expands first |
-| close | DK-99a, DK-99b, DK-99c, DK-99d ([wave 99](packets/wave-99.md)) | DK-99a: DK-31c merged. DK-99b and DK-99c: every shipping code packet merged, which depends on D-DK5 (D-DK38). DK-99d: the DK-99 PR merged | one `packet-reviewer` for DK-99a; one for DK-99b and DK-99c |
+| 6b | DK-31c (Ha'tak sequences), DK-30b-n, DK-33-n (review nits in the held worktrees) | Done: DK-31c #1913; DK-30b-n `8b1ac4673` and DK-33-n `ffec26d33` committed in the held worktrees | one `packet-reviewer` for the three; fixes by `packet-coder` |
+| 6c (current) | DK-40b, then DK-14c, DK-15b, DK-30b-r, DK-33-r ([wave 6c](packets/wave-6c.md)) | **Ready now**: DK-40b from `main`. After it merges, `ops` rebases `dk-30b` and `dk-33`; then the four. DK-30b-r and DK-33-r keep the merge holds (US-30, US-31) plus D-DK40 and D-DK44 | one `packet-reviewer` for DK-40b; one for the four; fixes by `packet-coder` |
+| 7 | GDK1, DK-20, DK-21, DK-32b | D-DK5 decided A (owner, 2026-10-19). **BlockedDependency**: the owner's M2 playtest, then the architect re-slices | architect expands first |
+| close | DK-99a to DK-99e ([wave 99](packets/wave-99.md)) | DK-99a: Done (#1914). DK-99e: DK-14c and DK-15b merged. DK-99b and DK-99c: every shipping code packet merged (D-DK38). DK-99d: the DK-99 PR merged | one `packet-reviewer` for DK-99e; one for DK-99b and DK-99c |
 
-Waves 5 and 6 are dormant in play until DK-21 ships 1647 (D-DK23): 1648 is offered on `done 1647`. Their packets are built and tested now; build order is not story order. Waves 4 to 6 need no lab and no owner input.
+Waves 5 and 6 are dormant in play until DK-21 ships 1647 (D-DK23): 1648 is offered on `done 1647`. Their packets are built and tested now; build order is not story order. Waves 4 to 6c need no lab and no owner input to build; DK-30b-r and DK-33-r need US-30/US-31, D-DK40 and D-DK44 to merge.
 
-Packet text: [packets/wave-1.md](packets/wave-1.md), [packets/wave-2.md](packets/wave-2.md) with [packets/wave-2-dk-10fs.md](packets/wave-2-dk-10fs.md), [packets/wave-3.md](packets/wave-3.md), [packets/wave-3b-dk-06b.md](packets/wave-3b-dk-06b.md), [packets/wave-4.md](packets/wave-4.md), [packets/wave-5.md](packets/wave-5.md), [packets/wave-6.md](packets/wave-6.md), [packets/wave-6b.md](packets/wave-6b.md), [packets/wave-7-blocked.md](packets/wave-7-blocked.md), [packets/wave-99.md](packets/wave-99.md).
+Packet text: [packets/wave-1.md](packets/wave-1.md), [packets/wave-2.md](packets/wave-2.md) with [packets/wave-2-dk-10fs.md](packets/wave-2-dk-10fs.md), [packets/wave-3.md](packets/wave-3.md), [packets/wave-3b-dk-06b.md](packets/wave-3b-dk-06b.md), [packets/wave-4.md](packets/wave-4.md), [packets/wave-5.md](packets/wave-5.md), [packets/wave-6.md](packets/wave-6.md), [packets/wave-6b.md](packets/wave-6b.md), [packets/wave-6c.md](packets/wave-6c.md), [packets/wave-7-blocked.md](packets/wave-7-blocked.md), [packets/wave-99.md](packets/wave-99.md).
 
 ## Historical packets (shipped; do not re-dispatch)
 
@@ -249,15 +253,16 @@ The 2026-10-18 stubs were expanded on 2026-10-19 (architect, autonomous). What c
 | DK-41 | [wave 4](packets/wave-4.md) | New: the six story props the chains click (D-DK29); templates 462 and 463 move the hostile block to 464 |
 | DK-13 | [wave 5](packets/wave-5.md) | As stubbed; no longer waits for DK-21 (D-DK23: dormant until 1647 ships) |
 | DK-14a | [wave 5](packets/wave-5.md) | The offer is a radio dialog on entering world 61 (D-DK25); the Teal'c call is `display_radio_dialog` |
-| DK-14b | [wave 5](packets/wave-5.md) | No Livewire minigame and no `item_use`: plain terminal clicks through the carrier 6760 (D-DK31, F32) |
-| DK-15 | [wave 5](packets/wave-5.md) | DK-15a and DK-15b merged into one 40k packet; step 4927 is the tent region (D-DK28) |
-| DK-30a, DK-30b | [wave 6](packets/wave-6.md) | DK-30 split: Dakara steps, then the DHD crossing C2 (D-DK24). No SGC address grant; the SGC side is US-30's |
+| DK-14b | [wave 5](packets/wave-5.md) | Shipped as plain terminal clicks through the carrier 6760 (no `item_use`, F32). **Owner ruling 2026-10-19 (D-DK31): the hack is Livewire**, so DK-14c (wave 6c) makes 8223 a launcher |
+| DK-15 | [wave 5](packets/wave-5.md) | DK-15a and DK-15b merged into one 40k packet; step 4927 is the tent region (D-DK28). DK-15b (wave 6c) puts Livewire on Moh'katan's terminal (D-DK31) |
+| DK-30a, DK-30b | [wave 6](packets/wave-6.md) | DK-30 split: Dakara steps, then crossing C2. DK-30b built a DHD-click teleport; **owner ruling 2026-10-19 (D-DK24): real gate travel**, so DK-30b-r (wave 6c) replaces it and grants gate 27 at Bra'tac's report |
 | DK-31a, DK-31b | [wave 6](packets/wave-6.md) | DK-31b ships without sequences (D-DK30); DK-31a is a desk note feeding DK-31c |
 | DK-32a | [wave 6](packets/wave-6.md) | The peaceful 1653 path (courtyard, supplies, radio, report); the guards are DK-32b (wave 7) |
-| DK-33 | [wave 6](packets/wave-6.md) | Crossing C3 by DHD click; merge held for US-31 |
+| DK-33 | [wave 6](packets/wave-6.md) | Crossing C3 by DHD click; merge held for US-31. DK-33-r (wave 6c) makes it real gate travel and grants gate 27 on the offer (D-DK24) |
 | DK-31c, DK-30b-n, DK-33-n | [wave 6b](packets/wave-6b.md) | Expanded 2026-10-19 from DK-31a's note and its map-read addendum: four co-firing chains 8327-8330 (D-DK32 to D-DK36). The two nit packets are the wave-6 review's findings on the held packets |
-| GDK1, DK-20, DK-21, DK-32b | [wave 7 (blocked)](packets/wave-7-blocked.md) | Unchanged scope; BlockedDecision D-DK5 with the owner's options |
+| DK-40b, DK-14c, DK-15b, DK-30b-r, DK-33-r | [wave 6c](packets/wave-6c.md) | New 2026-10-19 for the owner's rulings D-DK24 (real gate travel, SGC address) and D-DK31 (Livewire required). DK-40b adds the shared labels and helpers first so the four never share a file |
+| GDK1, DK-20, DK-21, DK-32b | [wave 7 (blocked)](packets/wave-7-blocked.md) | D-DK5 decided A (owner, 2026-10-19); BlockedDependency on the owner's M2 playtest before the re-slice |
 
 ## DK-99 close-out
 
-Split into DK-99a to DK-99d on 2026-10-19 (D-DK38); the packet text is [packets/wave-99.md](packets/wave-99.md). In short: DK-99a puts the ledger's DK-U11 to DK-U31 in the unified UAT guide and renames its placement rows DK-P1 to DK-P9 (D-DK37), once DK-31c merges. DK-99b (`mission-chains.md`, `zone-audit.md`) and DK-99c (gap analysis, project status, final ledger, one PR with DK-99b) wait for every shipping code packet, which depends on D-DK5. DK-99d retires the worktrees, deletes the 22 merged `origin/dakara/*` branches (D-DK39), posts the board handoff and has the orchestrator empty `.claude/state/active-campaign`. The owner's UAT never blocks the close-out.
+Split into DK-99a to DK-99d on 2026-10-19 (D-DK38), plus DK-99e for wave 6c; the packet text is [packets/wave-99.md](packets/wave-99.md). In short: DK-99a put the ledger's DK-U11 to DK-U31 in the unified UAT guide and renamed its placement rows DK-P1 to DK-P9 (D-DK37; merged #1914). DK-99e refreshes the Livewire and gate-travel rows and adds DK-U32 and DK-U33 once DK-14c and DK-15b merge. DK-99b (`mission-chains.md`, `zone-audit.md`) and DK-99c (gap analysis, project status, final ledger, one PR with DK-99b) wait for every shipping code packet, which depends on D-DK5. DK-99d retires the worktrees, deletes the 22 merged `origin/dakara/*` branches (D-DK39), posts the board handoff and has the orchestrator empty `.claude/state/active-campaign`. The owner's UAT never blocks the close-out.

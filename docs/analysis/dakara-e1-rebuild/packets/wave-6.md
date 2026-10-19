@@ -5,7 +5,9 @@
 
 Wave 6 starts when DK-40 and DK-41 are merged, and runs beside wave 5: every packet writes its own seed file and test file. DK-31a is a desk note with no code and no gate: dispatch it now, with wave 4.
 
-**Merge holds.** DK-30b (crossing C2) merges only after SGC packet US-30 has merged, and DK-33 (crossing C3) only after US-31: before that, the teleport lands a player in the SGC with no chain to receive them and no way back (the SGC has no DHD, finding F5). Build, review and open the PRs now; hold the merge. UD-04c tests C2, C2b and C3 once all four are in.
+**Merge holds.** DK-30b (crossing C2) merges only after SGC packet US-30 has merged, and DK-33 (crossing C3) only after US-31: before that, the crossing lands a player in the SGC with no chain to receive them and no way back (the SGC has no DHD, finding F5). Build, review and open the PRs now; hold the merge. UD-04c tests C2, C2b and C3 once all four are in.
+
+> **Amended 2026-10-19 (owner ruling D-DK24).** The crossings are now real gate travel: the DK-30b and DK-33 sections below are superseded in place by [wave 6c DK-30b-r](wave-6c.md#dk-30b-r-mission-1651-crossing-by-real-gate-travel) and [DK-33-r](wave-6c.md#dk-33-r-mission-1654-crossing-by-real-gate-travel), which ship in the same PRs. The merge holds stand, and DK-30b-r also waits on D-DK40 and D-DK44. Rule 7's "no stargate address grant" is lifted for chains 8313, 8432 and 8433 only (gate 27, never from `player_loaded`). The DHD paragraph and the `teleport SGC H3` row below describe the old design.
 
 **Dormant until 1647 ships (D-DK23).** No player reaches 1651 until 1647 to 1650 exist; these chains are built and tested now.
 
@@ -101,6 +103,8 @@ Revert proof: every positive asserts a non-empty list, so removing the seed rows
 **Tests** (`m1651.rs`), besides the shared rules: `fire_mission_completed(.., 1650)` on `STORY_RM` with 1650 `completed` gives `["8290:accept_mission(1651)", "8290:add_dialog_set(6772@59)"]`, and nothing on `DAKARA` or with 1651 active; 8293 gives nothing at 4930, 4928, 4931 or 4929; 8292 and 8294 pass `assert_no_deferred_actions`.
 
 ## DK-30b: mission 1651 step 4930, the DHD to the SGC (crossing C2)
+
+> **Superseded 2026-10-19** by [wave 6c DK-30b-r](wave-6c.md#dk-30b-r-mission-1651-crossing-by-real-gate-travel) (D-DK24, real gate travel). Kept as the record of what `34abe129b` built; DK-30b-r replaces chain 8310, deletes 8311 and 8312, and adds 8313.
 
 | Field | Value |
 |---|---|
@@ -207,6 +211,8 @@ A player already inside the courtyard when 1653 is accepted must step out and ba
 **Tests** (`m1653.rs`), besides the shared rules: 8351 through `fire_enter_region(&engine, &ctx, "Dakara_E1.SuperweaponCourtyard")` at 4936 gives `["8351:advance_step(1653->4938)", "8351:add_dialog_set(6892@456)", "8351:add_dialog_set(6892@463)"]` and nothing at 4938 or with `"Dakara_E1.MohkatanTent"`; one test walks the supplies in both orders (west then east, east then west) through `with_objective` and asserts exactly one supply chain per click with the right labels; a supply whose objective is completed resolves nothing; 8355 and 8357 give `radio_count(&r) == 1` and `assert_no_deferred_actions`; 8358 fires with no world and with `STORY_RM`, and 8359 only on `STORY_RM`; 8360 and 8361 give `delays_of == [2000]`; 8363 passes `assert_no_deferred_actions`.
 
 ## DK-33: mission 1654 "Aftermath" and the DHD to the SGC (crossing C3)
+
+> **Partly superseded 2026-10-19** by [wave 6c DK-33-r](wave-6c.md#dk-33-r-mission-1654-crossing-by-real-gate-travel) (D-DK24): chains 8432 and 8433 also grant gate 27, 8434 completes 5961 on `stargate_crossed SGC_W1` instead of a DHD click and teleport, and 8435 is deleted. 8430 and 8431 stand as written.
 
 | Field | Value |
 |---|---|

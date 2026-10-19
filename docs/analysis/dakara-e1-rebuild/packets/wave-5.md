@@ -132,6 +132,8 @@ The radio and the advance in 8205 and 8206 are separate actions: the advance run
 
 ## DK-14b: mission 1649 step 4922, the Command Terminal and the drops
 
+> **Amended 2026-10-19 (owner ruling D-DK31).** The terminal hack is now the Livewire minigame: [wave 6c DK-14c](wave-6c.md#dk-14c-livewire-on-the-1649-command-terminal) turns chain 8223 into the launcher and moves its three actions to victory chain 8231. Chains 8224 and 8225 stay plain clicks (D-DK42). Merged as written in #1905.
+
 | Field | Value |
 |---|---|
 | Role | `packet-coder` |
@@ -163,6 +165,8 @@ Mission 1646's own drop chains (DK-12c, 8140-8159) gate on 1646 state, so they s
 **Tests** (`m1649_terminal.rs`), besides the shared rules (build every 4922 context with 1648 `completed` and 1646 `completed`): 8222 resolves on a 4921 load and 8220/8221 do not; with `with_objective(.., 1649, 5639, "completed")` 8221 and 8226-8230 give nothing; 8223, 8224 and 8225 are mutually exclusive: one test walks the four combinations of 5638 and 5639 and asserts exactly one terminal chain each time (both open: 8223; 5638 open, 5639 done: 8223; 5638 done, 5639 open: 8225; both done: 8224); 8224 passes `assert_no_deferred_actions`. Assert only your own range (DK-14a may not be merged yet).
 
 ## DK-15: mission 1650 "Confront Moh'katan"
+
+> **Amended 2026-10-19 (owner ruling D-DK31).** Moh'katan's terminal now runs Livewire: [wave 6c DK-15b](wave-6c.md#dk-15b-livewire-on-mohkatans-terminal) turns chain 8258 into the launcher and moves its five actions to victory chain 8261 (D-DK42: the owner may drop DK-15b). Merged as written in #1906.
 
 | Field | Value |
 |---|---|
