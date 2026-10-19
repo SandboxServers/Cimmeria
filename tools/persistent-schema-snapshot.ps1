@@ -4,7 +4,7 @@ Writes db/persistent/persistent-schema.snapshot.json from a live test database.
 .DESCRIPTION
 Records, for every table in db/persistent/persistent-public-tables.txt, its columns
 (name, type, nullability, default), its constraints (name, type) and its index names.
-The PP-11 live-DB test (crates/content-engine/tests/it/persistent_schema_snapshot.rs)
+The PP-11 live-DB test (crates/content-engine/src/persistent_schema_snapshot_tests.rs)
 fails when a committed column, constraint or index is dropped or changed, and when the
 live schema has something the snapshot does not. Regenerate and commit after an additive
 change only (D-PP7).
@@ -37,7 +37,7 @@ if (-not (Test-Path -LiteralPath $Psql)) { $Psql = (Get-Command psql -CommandTyp
 if (-not $env:PGPASSWORD) { $env:PGPASSWORD = 'w-testing' }
 $Port = if ($env:PGPORT) { $env:PGPORT } else { '5433' }
 $arr = "'{" + ($tables -join ',') + "}'::text[]"
-# Same catalog queries as the Rust loader in persistent_schema_snapshot.rs; keep them in step.
+# Same catalog queries as the Rust loader in persistent_schema_snapshot_tests.rs; keep them in step.
 $sql = @"
 SELECT * FROM (
 SELECT 'column', c.table_name::text, c.column_name::text, c.data_type::text, c.is_nullable::text, COALESCE(c.column_default, '')::text

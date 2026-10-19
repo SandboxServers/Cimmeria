@@ -119,7 +119,7 @@ This guide is the playbook for writing tests that survive review and catch real 
 |---|---|
 | [interact_tag_linter.rs](crates/content-engine/tests/it/interact_tag_linter.rs) | Every `interact_tag` chain has a `set_interaction_type` for that tag, every region key byte-matches a `point_sets.name`, every `*_chains.sql` is `\ir`'d from `db/database.sql`. |
 | [dialog_button_linter/](crates/content-engine/tests/it/dialog_button_linter/mod.rs) | A dialog that keys a `dialog_choice` chain has zero buttons or a button on its **final** screen; the never-add-a-button dialogs stay zero-button; every button is one its own window can draw (Blurb 1-2, Dialog/Radio/Realization 2 and 4-6); a chain key is not a Tutorial or type-0 dialog. |
-| [persistent_schema_snapshot.rs](crates/content-engine/tests/it/persistent_schema_snapshot.rs) | The live persistent player-data schema (every table in `db/persistent/persistent-public-tables.txt`) has no dropped or retyped column, constraint or index against `db/persistent/persistent-schema.snapshot.json`; additions need the snapshot regenerated (additive only, D-PP7). |
+| [persistent_schema_snapshot_tests.rs](crates/content-engine/src/persistent_schema_snapshot_tests.rs) | A lib test, so the CI live-DB tier runs it. The live persistent player-data schema (every table in `db/persistent/persistent-public-tables.txt`) has no dropped or retyped column, constraint or index against `db/persistent/persistent-schema.snapshot.json`; additions need the snapshot regenerated (additive only, D-PP7). |
 
 **Patterns to follow:**
 

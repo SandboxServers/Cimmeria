@@ -13,5 +13,4 @@
 mod dialog_button_linter;
 mod interact_tag_linter;
 mod onitemuse_remove_item_pairing;
-mod persistent_schema_snapshot;
 mod table_classification_linter;

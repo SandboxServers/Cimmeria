@@ -32,3 +32,8 @@ pub mod conditions;
 pub mod context;
 pub mod loader;
 pub mod triggers;
+
+// PP-11 schema snapshot guard. A lib test, not a `tests/it` module, because
+// the CI live-DB tier (tools/test-live-db.sh) runs `--lib` only.
+#[cfg(test)]
+mod persistent_schema_snapshot_tests;
