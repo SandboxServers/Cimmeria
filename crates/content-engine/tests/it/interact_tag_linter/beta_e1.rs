@@ -311,6 +311,41 @@ const BETA_E1: &[(&str, i32, &str)] = &[
         23395,
         "BetaE1_Mimir: per-player bind dsm 4590 (chain 23393)",
     ),
+    (
+        "beta_e1_m443_chains.sql",
+        23406,
+        "BetaE1_Mimir: per-player bind dsm 4581 (chain 23405)",
+    ),
+    (
+        "beta_e1_m443_chains.sql",
+        23409,
+        "BetaE1_Carter: per-player bind dsm 3728 (chain 23407)",
+    ),
+    (
+        "beta_e1_m443_chains.sql",
+        23411,
+        "BetaE1_Satterfield: per-player bind dsm 3780 (chain 23409)",
+    ),
+    (
+        "beta_e1_m443_chains.sql",
+        23413,
+        "BetaE1_FireSuppressantManager: template 2328 static INT_MissionWorldObject",
+    ),
+    (
+        "beta_e1_m443_chains.sql",
+        23414,
+        "BetaE1_FireSuppressantManager: template 2328 static INT_MissionWorldObject",
+    ),
+    (
+        "beta_e1_m443_chains.sql",
+        23415,
+        "BetaE1_FireControlHub: template 2329 static INT_MissionWorldObject",
+    ),
+    (
+        "beta_e1_m443_chains.sql",
+        23417,
+        "BetaE1_Mimir: per-player bind dsm 4579 (chain 23415)",
+    ),
 ];
 
 /// Whether `chain_id` in `filename` is a Beta chain that has an

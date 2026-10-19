@@ -413,7 +413,7 @@ async fn mimir_one_dialog_chain_per_state() {
     let mut finished = click(MIMIR, Some(ASGARD));
     set_finished(&mut finished);
     let resolved = fire(&engine, TriggerType::InteractTag, &finished);
-    assert!(chains_matched(&resolved).is_empty());
+    assert!(m1147_matched(&resolved).is_empty());
 
     let mut machine = click(MACHINE_TAG, Some(ASGARD));
     set_step(&mut machine, 3458);
