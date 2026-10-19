@@ -11,7 +11,7 @@ The campaign starts with a research wave. Every port packet consumes a per-game 
 
 ## What the client has
 
-The 11 packages under the client's `CookedPC\UI\Flash\` (the user's own client copy; nothing from it goes in git, D-MG10) each wrap one uncompressed Scaleform GFX movie. The architect scanned them on 2026-10-19 with throwaway scripts. MG-R0 turns that into a repo tool, and the W0 research confirms every row below.
+The 11 packages under the client's `CookedPC\UI\Flash\` (the user's own client copy; nothing from it goes in git, D-MG10) each wrap one uncompressed Scaleform GFX movie. The architect scanned them on 2026-10-19 with throwaway scripts. MG-R0 turns that into a repo tool, and the W0 research confirms every row below. The tool's per-package inventory (offsets, md5s, function counts) is [client-packages.md](client-packages.md).
 
 | Package | GFX movie | What the movie holds | Provisional verdict | Spec (packet) |
 |---|---|---|---|---|
