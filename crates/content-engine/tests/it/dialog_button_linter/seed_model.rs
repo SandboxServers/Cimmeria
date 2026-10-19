@@ -11,12 +11,26 @@ use super::sql_scan::{insert_rows, int, sql_statements, text};
 /// dialogs this linter is responsible for: Castle and Castle_CellBlock, the
 /// two zones the dialog UI redesign covers, plus the Cellblock debug hub,
 /// whose dialogs are Cimmeria-authored and so have no shipped shape to trust.
-pub(crate) const CHAIN_FILES: [&str; 5] = [
+pub(crate) const CHAIN_FILES: [&str; 19] = [
     "castle_cellblock_chains.sql",
     "castle_701_chains.sql",
     "castle_702_704_chains.sql",
     "castle_706_708_chains.sql",
     "debug_hub_chains.sql",
+    "sgc_w1_union_1563_chains.sql",
+    "sgc_w1_union_1564_chains.sql",
+    "sgc_w1_union_escort_chains.sql",
+    "sgc_w1_union_1571_chains.sql",
+    "sgc_w1_union_tactics_chains.sql",
+    "sgc_w1_union_1567_chains.sql",
+    "sgc_w1_union_1568_chains.sql",
+    "sgc_w1_union_1569_chains.sql",
+    "sgc_w1_union_1570_chains.sql",
+    "sgc_w1_union_1651_chains.sql",
+    "sgc_w1_union_1654_chains.sql",
+    "sgc_w1_union_1655_human_chains.sql",
+    "sgc_w1_union_1655_jaffa_chains.sql",
+    "sgc_w1_union_return_chains.sql",
 ];
 
 /// `CARGO_MANIFEST_DIR` is `<workspace>/crates/content-engine`, so two
