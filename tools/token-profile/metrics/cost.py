@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from ingest.prices import CURRENT, SOURCE, estimate_usd, normalize_model
 from report.stats import distribution, share
 
+from .packets import brief_role, brief_tags
+
 TOKEN_KEYS = ("input", "output", "cache_read", "cache_write_5m", "cache_write_1h")
 # Every campaign reports these roles, at 0.0 when it had no spend in them.
 BASE_ROLES = ("coordinator", "implementer-haiku", "reviewer", "fixer", "other")
@@ -64,6 +66,7 @@ def load_requests(conn, since, until, ledger_pr_map=None):
     weight and campaign (None when untagged). `ledger_pr_map` ({pr: campaign}) tags a PR with no campaign."""
     # Timestamps are stored as 2026-09-21T00:00:00.000Z; the bounds come as ...00:00:00Z, so the Z is dropped
     # from both sides and the string comparison keeps the boundary instant inside the window.
+    tags = brief_tags(conn)
     cur = conn.execute(ROWS_SQL, (since.rstrip("Z"), until.rstrip("Z")))
     names = [d[0] for d in cur.description]
     for values in cur:
@@ -74,6 +77,7 @@ def load_requests(conn, since, until, ledger_pr_map=None):
                           "cache_write_1h": row["cache_write_1h"]},
                "is_coordinator": row["agent_id"] is None,
                "agent_key": row["custom_agent_type"] or row["agent_type"],
+               "brief_tag": tags.get(row["agent_id"]),
                "family": family_of(row["worktree"]),
                "pr": row["pr_number"], "pr_merged": row["pr_state"] == "MERGED",
                "method": row["method"], "weight": row["weight"],
@@ -89,7 +93,7 @@ def request_usd(row, price_table=CURRENT):
 def _role(row, roles):
     if row["is_coordinator"]:
         return "coordinator"
-    return roles.get(row["agent_key"], "other") if row["agent_key"] else "other"
+    return brief_role(roles.get(row["agent_key"], "other"), row.get("brief_tag")) if row["agent_key"] else "other"
 
 
 def rollup(requests, price_table=CURRENT, roles=None, accepted=None):
