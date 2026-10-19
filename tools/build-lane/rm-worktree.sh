@@ -4,12 +4,15 @@
 # Usage:
 #   tools/build-lane/rm-worktree.sh [--dry-run] [--force] [--prune] <name> [<name>...]
 #   tools/build-lane/rm-worktree.sh [--dry-run] [--prune] --merged
+#   tools/build-lane/rm-worktree.sh [--dry-run] --merged-into <PR> <name> [<name>...]
 #
 # <name> is the folder under .claude/worktrees/ (mk-worktree.sh names, agent-*, wf_*).
 # --merged retires every worktree there whose branch's PR has merged and that nothing
 # has touched for $RM_WORKTREE_MIN_IDLE minutes (default 30), so a session still sitting
 # in a just-merged worktree keeps it. It then deletes target dirs on the Dev Drive that no
 # registered worktree owns any more.
+# --merged-into <PR> also retires a named worktree whose branch has no PR of its own but
+# is in merged PR <PR>'s head (a packet merged only into an integration branch).
 #
 # For each worktree it deletes the build output ($CIMMERIA_TARGET_ROOT/<name> and
 # <worktree>/target) and its lane job logs ($LANE_ROOT/logs/<name>), unlinks the external/ junction, runs `git worktree remove`,
@@ -33,21 +36,28 @@
 # while their directories stayed; a prune is the first suspect.
 set -uo pipefail
 
-DRY=0; FORCE=0; MERGED=0; PRUNE=0; NAMES=()
-for a in "$@"; do
+DRY=0; FORCE=0; MERGED=0; PRUNE=0; MERGED_INTO=""; NAMES=()
+while [ $# -gt 0 ]; do
+  a="$1"
   case "$a" in
     --dry-run) DRY=1 ;;
     --force) FORCE=1 ;;
     --merged) MERGED=1 ;;
     --prune) PRUNE=1 ;;
     --no-prune) PRUNE=0 ;;
-    -h|--help) sed -n '2,33p' "$0"; exit 0 ;;
+    --merged-into) shift; [ $# -gt 0 ] || { echo "--merged-into needs a PR number" >&2; exit 2; }; MERGED_INTO="$1" ;;
+    -h|--help) sed -n '2,36p' "$0"; exit 0 ;;
     -*) echo "unknown option: $a" >&2; exit 2 ;;
     *) NAMES+=("$a") ;;
   esac
+  shift
 done
+if [ -n "$MERGED_INTO" ]; then
+  case "$MERGED_INTO" in ''|*[!0-9]*) echo "--merged-into needs a PR number, got $MERGED_INTO" >&2; exit 2 ;; esac
+  [ $MERGED -eq 0 ] || { echo "--merged-into names worktrees; it does not combine with --merged" >&2; exit 2; }
+fi
 if [ $MERGED -eq 0 ] && [ ${#NAMES[@]} -eq 0 ]; then
-  echo "usage: rm-worktree.sh [--dry-run] [--force] [--prune] <name>... | --merged" >&2; exit 2
+  echo "usage: rm-worktree.sh [--dry-run] [--force] [--prune] [--merged-into <PR>] <name>... | --merged" >&2; exit 2
 fi
 
 # Paths in the form `git worktree list` prints them (C:/... on Windows), so they compare.
@@ -201,8 +211,9 @@ retire_marked() {
     echo "skip $name: uncommitted changes (commit them, or --force)"; skipped=$((skipped+1)); return
   fi
   if [ -n "$br" ]; then state="$(merge_state "$br")"; else state="DETACHED"; fi
+  if [ -n "$MERGED_INTO" ] && [ -n "$br" ] && { [ "$state" = NO_PR ] || [ "$state" = UNMERGED ]; } && git merge-base --is-ancestor "$br" "$INTO_HEAD" 2>/dev/null; then state=MERGED_INTO; fi
   case "$state" in
-    MERGED|ON_MAIN) ;;
+    MERGED|ON_MAIN|MERGED_INTO) ;;
     *) if [ $FORCE -eq 0 ]; then
          echo "skip $name: branch ${br:-(detached)} is $state (--force to retire anyway)"; skipped=$((skipped+1)); return
        fi ;;
@@ -235,7 +246,7 @@ retire_marked() {
     echo "  git worktree remove failed; keeping the branch and the test database" >&2; skipped=$((skipped+1)); return
   fi
   case "$state" in
-    MERGED|ON_MAIN) [ -n "$br" ] && run git branch -D -q "$br" ;;
+    MERGED|ON_MAIN|MERGED_INTO) [ -n "$br" ] && run git branch -D -q "$br" ;;
   esac
   drop_db "$name"
   retired=$((retired+1))
@@ -245,6 +256,16 @@ cd "$MAIN" || exit 1
 # Without gh, merge state comes from origin/main; a stale one could call unmerged work merged.
 if ! git fetch -q origin; then
   echo "git fetch origin failed; not deciding what has merged from a stale origin/main" >&2; exit 1
+fi
+# --merged-into: the named PR must have merged, and its head is the commit a packet's tip must be in.
+INTO_HEAD=""
+if [ -n "$MERGED_INTO" ]; then
+  command -v gh >/dev/null 2>&1 || { echo "--merged-into needs gh" >&2; exit 1; }
+  st="$(gh pr view "$MERGED_INTO" --json state -q .state 2>/dev/null)"
+  [ "$st" = MERGED ] || { echo "PR $MERGED_INTO is ${st:-unknown}, not merged; nothing retired" >&2; exit 1; }
+  git fetch -q origin "pull/$MERGED_INTO/head" 2>/dev/null || { echo "could not fetch PR $MERGED_INTO's head" >&2; exit 1; }
+  INTO_HEAD="$(git rev-parse --verify -q 'FETCH_HEAD^{commit}')"
+  [ -n "$INTO_HEAD" ] || { echo "could not fetch PR $MERGED_INTO's head" >&2; exit 1; }
 fi
 
 if [ $MERGED -eq 1 ]; then
