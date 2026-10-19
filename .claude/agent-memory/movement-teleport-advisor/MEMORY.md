@@ -22,3 +22,4 @@
 - [ring-rig-stacking-patches.md](ring-rig-stacking-patches.md) — DA-11/014: stack a rig on the prior rig patch's output (one source), _Seq_N continues, per-pad clear radii, walk vs crow-flies
 - [dhd-dial-telemetry-discriminators.md](dhd-dial-telemetry-discriminators.md) — Stock DHD window: first click eaten, row select auto-dials; 2026-10-05 hub report was not a grant/cache bug
 - [omega-crossings.md](omega-crossings.md) — Omega worlds 18/80: measured arrival pins, native beam pair 14/17, world 80 private per arrival, no world-18 respawner, alias limits
+- [omega-placements.md](omega-placements.md) — Omega placement traps: prop y is a model origin, world-80 bridges unreachable, re-snap probes
