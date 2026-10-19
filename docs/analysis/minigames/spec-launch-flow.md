@@ -164,6 +164,41 @@ only to the owner.
 Clamp to 1-55. Rust today hard-codes 1 (`crates/base-world-entry/src/base/world_entry/cell_dispatch/minigame.rs`,
 README F7).
 
+### Launch parameters to `joinOK` variables (Confirmed)
+
+The cell calls `base.startMinigame(gameId, ticket, difficulty, techComp, seed, abilities, intelligence, level)`
+(`deprecated/python/base/SGWPlayer.py:77`; the call is
+`deprecated/python/cell/SGWPlayer.py:1970-1971`). The C++ base writes the
+values into the `joinOK` room variables
+(`deprecated/cpp/src/baseapp/minigame_connection.cpp:424-441`).
+
+| `startMinigame` arg | Original value | `joinOK` variable | Read by |
+| --- | --- | --- | --- |
+| `difficulty` | 1-5 | `difficulty` | every game |
+| `techComp` | 1 (§ 3) | `techcomp` | every game |
+| `seed` | random | `seed` | the extensions (MG-R6 Q2) |
+| `abilities` | 0 | `abilityBitfield` | § 4 |
+| `intelligence` | `getStat(intelligence).cur` | `intelligence` | ConverseBasicHumanoid only (MG-R6 Q2) |
+| `level` | `self.level` | `pclevel` | MG-R6 Q2 |
+| none | -1, 0 × 5 | `instcc`, `CA0`-`CA4` | § 5 |
+
+Rust registers `intelligence = 0` and `player_level = 1` today
+(`cell_dispatch/minigame.rs:104-106`). MG-02 should pass the cell's current
+intelligence stat and the player's level.
+
+### Launch variables in the URL
+
+- **`ipaddress` must be non-empty.** The client's `onStartMinigame` handler
+  sets `_root.ipaddress/port/playerid/ticket/gamename.value` from the URL
+  (`docs/analysis/cellblock-autoplay/livewire-autosolve.md:62-66`). The movie
+  goes offline when `ipaddress` is `''` and `v1` is undefined (MG-R6
+  `spec-protocol-common.md` Q1, which owns the exact test). Offline, the
+  movie plays a local game and the server sees nothing.
+- Rust builds the URL as `http://unused/{host}/{port}/{gameName}/{entityId}/{ticket}`
+  from `minigame_external_host` (`cell_dispatch/minigame.rs:115-118`). An
+  empty host setting would yield `http://unused//...`. MG-02 must assert a
+  non-empty host in its URL builder.
+
 ## 4. `abilityBitfield`
 
 ### What is known (Confirmed)
@@ -181,7 +216,7 @@ README F7).
   into `abilities_mask` would light every cheat in the SWF
   (`docs/analysis/castle-rebuild/worknotes/m701.md:199-207`).
 
-### Candidate abilities (Confirmed as seed rows; their bit positions are Unresolved)
+### Candidate abilities (Confirmed as seed rows; bit positions Inferred below)
 
 | Ability | Name | Seed description |
 | --- | --- | --- |
@@ -203,20 +238,108 @@ README F7).
 | 2507 / 2508 | Reduce / Remove Distractions | +10 / +20 % interruption resistance |
 
 All rows are in `db/resources/Abilities/Seed/abilities.sql`; none has an
-`event_set_id` or an effect that names a bit. 677-686 are the Archaeologist's
-ten in-game cheats; the SWF reads `abilityBitfield` to decide which of its
-cheat buttons to show. 809, 815, 2507 and 2508 act on the player's combat
-stats while bit 4 is set and are not SWF bits. 813, 814 and 1195 are scoring
+`event_set_id` or an effect that names a bit. 677-686 are only the
+Archaeologist's ten. The same file has 18 more "Mini-game:" abilities for
+the other archetypes, 687-704 (Goa'uld 687-689, Asgard 690-695, Commando
+696-697, Jaffa 698-699, Scientist 700-704): 28 in all, every one a passive
+with no effects. 809, 815, 2507 and 2508 act on the player's combat stats
+while bit 4 is set and are not SWF bits. 813, 814 and 1195 are scoring
 modifiers the server applies to the reward, not SWF bits.
 
-### Bit to ability (Unresolved)
+### What the SWFs do with the mask (Confirmed, MG-R0 tools)
 
-No server source in this repo maps a bit to an ability. The map lives in the
-SWFs' `activateabilitycheat` readers, which MG-R0's tools decompile. The most
-likely shape (**Inferred**) is bit `n` = the `n`-th ability of 677-686 for
-Archaeologist cheats, with the Converse Trump passives read by the Converse
-SWF only. MG-22 must not ship a non-zero mask until an MG-R0/R1-R5 spec names
-the bits.
+Derived with `python -I tools/minigame-swf/list_functions.py <movie> --function <name>`
+on the client's Livewire, Alignment, CrystalGame and GoauldCrystals movies,
+functions `setupAbilityCheats`, `updateAbilityCheats`, `setupAbilityCheat`,
+`activateAbilityCheat`, `activateAbilityCheatRequest`, `processAbilityCheat`
+and `sendAbilityCheatInfo`.
+
+- **The mask has 15 bits, 0-14.** All four client `setupAbilityCheats` loop
+  `i` from 0 to 14 and draw button `abilityCheat<i>` when
+  `abilityBitfield & (1 << i)` is set. The offline demo path picks a random
+  mask in 1-32768, the same 15-bit range.
+- **The cheat number on the wire is the bit index.** `activateAbilityCheat`
+  sends `activateabilitycheat` with `cheatNum` = `i`.
+- **Each ability cheat is single-use per game.** The extension's
+  `activateAbilityCheatRequest` runs `processAbilityCheat` only if bit
+  `cheatNum` is set, then clears it (`& ~(1 << cheatNum)`), stores the new
+  mask and sends `abilitycheatstate` with it. The client's
+  `updateAbilityCheats` greys the cleared button (frame `off`, alpha 30).
+- **No server round trip.** The ability path never calls the host bridge
+  (`__mg`); the item path does (§ 5). The original's
+  `onActivateAbilityCheat` stub is not part of the SWF contract.
+- **CrystalGame** sends `activateabilitycheat` and listens for
+  `abilitycheatstate`, but its extension has no `activateAbilityCheatRequest`
+  or `processAbilityCheat`. Whether its `handleRequest` handles the command
+  inline is for MG-R2.
+
+### Bit to cheat category (Confirmed, GoauldCrystals `processAbilityCheat`)
+
+GoauldCrystals' `processAbilityCheat` switches on `cheatNum` 0-14 and plays a
+sound per case whose path names the category. Livewire and Alignment switch
+on the same 0-14, and their cases agree where checked (bit 10 restores
+`instcc` from `origInstcc` in Livewire, Alignment and GoauldCrystals alike).
+
+| Bit | GoauldCrystals sound | Category | Livewire effect (`processAbilityCheat`) |
+| --- | --- | --- | --- |
+| 0 | `crystalMG/time/chng` | timer: add or remove time | `addTime(5)` |
+| 1 | `crystalMG/time/xchng` | timer: trade time for an advantage | `cutTime`, then destroys 2 `o*` pieces and 75 % of the `m*` pieces |
+| 2 | `crystalMG/time/stop` | timer: stop | `revertTime`, `addTime(3)` |
+| 3 | `crystalMG/time/alter` | timer: alter | `revertTime`, `countdownRate` × 2 |
+| 4 | `crystalMG/plyfld/addremSpc` | playfield: add or remove spaces | `addTime(3)`, destroys 1 `me*` and 3 other `m*` pieces |
+| 5 | `crystalMG/plyfld/addremCont` | playfield: add or remove contents | `addTime(3)`, destroys 3 `?e*` pieces |
+| 6 | `crystalMG/plyfld/alter` | playfield: alter | `addTime(3)`, `playfieldActive = true` |
+| 7 | `crystalMG/mvprts/addrem` | moving parts: add or remove | `addTime(3)`, destroys 25 % of the `m*` pieces |
+| 8 | `crystalMG/mvprts/alter` | moving parts: alter | `revertTime`, `countdownRate` × 2 |
+| 9 | `crystalMG/mvprts/xchng` | moving parts: exchange | `addTime(5)`, creates 3 moving electrodes, destroys 3 `o*` pieces |
+| 10 | `crystalMG/tools/alter` | instrument: alter | restores `instcc` from `origInstcc`, resends item-cheat state |
+| 11 | `crystalMG/tools/apply` | instrument: multiple functions | `addTime(3)`, `movingCheat = true` |
+| 12 | `crystalMG/obst/addrem` | obstacles: add or remove | `addTime(3)`, destroys the 2 deepest `o*` pieces, flashes a `g*` piece |
+| 13 | `crystalMG/obst/alter` | obstacles: alter | `addTime(3)`, flashes every `o*` piece |
+| 14 | `crystalMG/obst/xchng` | obstacles: exchange | same as bit 9 |
+
+The `o*`, `m*`, `e*` and `g*` prefixes are the movie's own piece names; what
+each piece is belongs to the per-game specs (MG-R1 to MG-R5). The Livewire
+column is the shape of each case, not a full rules port.
+
+### 10 versus 15: reconciled
+
+The SWF has 15 cheat *categories*, not 15 abilities, and 677-686 are not
+bits 0-9. Each "Mini-game:" ability's seed description names exactly one
+category, and the 28 abilities 677-704 cover 14 of the 15 (no ability names
+bit 5).
+
+### Bit to ability id (Inferred from seed descriptions; the SWF has no ids)
+
+No movie contains an ability id; the bit index is all the SWF knows. The
+mapping below matches each seed description's verb and object to a category
+name. It is **Inferred**.
+
+| Bit | Abilities (seed description) |
+| --- | --- |
+| 0 | 677 Delay, 690 Temporal Extension ("manipulates the timer"), 698 Delay (Jaffa) |
+| 1 | 680 Contextual Guide, 691 Transtemporal Array |
+| 2 | 683 Old Rite, 692 Chronosuppression |
+| 3 | 685 Epiphany, 693 Transmute Time, 699 Second Chance |
+| 4 | 678 In Situ Context |
+| 5 | none |
+| 6 | 684 Re-Survey |
+| 7 | 687 Primal Savvy, 700 Analysis |
+| 8 | 688 Indelicate Alteration, 704 Scientific Law |
+| 9 | 681 Grave Goods, 689 Deft Replacement, 701 Experiment |
+| 10 | 694 Hypersensorium, 702 Instrument Adaptation |
+| 11 | 695 Polyphasic Routine, 703 Instrument Augmentation |
+| 12 | 679 Effigy Transfer, 696 Bypass |
+| 13 | 682 Totem Swap, 697 Shut Down |
+| 14 | 686 Ethnographic Drift |
+
+**Who owns what.** The launch side (cell → base `startMinigame`) builds the
+mask: OR in bit `n` for each of the player's known abilities 677-704 mapped
+to `n`. The minigame service owns the effect (the port of each game's
+`processAbilityCheat`) and the single-use clearing. The Converse Trump
+passives 778, 779, 792 and 793 are not in this mask: ConverseBasicHumanoid has
+no `setupAbilityCheats` (its only cheat function is `checkForCheats`), so how
+they enter is MG-R4's question.
 
 ## 5. Item cheats
 
@@ -238,24 +361,51 @@ the bits.
   (`MinigamePlayer.def:368-375`).
 - `activateitemcheat` reaches the same stub as the ability cheats.
 
-### Semantics (Inferred)
+### Semantics (Confirmed, MG-R0 tools)
 
-Read together, the def describes this flow:
+Derived from Livewire's `setupItemCheats`, `setupItemCheat`,
+`activateItemCheat`, `activateItemCheatRequest`, `processItemCheat`,
+`handleItemCheatInfo`, `sendItemCheatInfo` and `handleInternalRequest`
+(`list_functions.py <Livewire.gfx> --function <name>`; `handleInternalRequest`
+is a frame-level function, found with `as2dis.py`). Alignment and
+GoauldCrystals have the same functions; their `processItemCheat` switch on the
+same 0-4.
 
-1. At launch the base reads the player's equipped or used instrument and sends
-   its cheat class as `instcc` (-1 when there is none).
-2. `CA<n>` is the number of activations available in cheat class `n`: the count
-   of matching consumables the player holds.
-3. When the SWF sends `activateitemcheat` with a class, the minigame service
-   asks the cell to consume one item of that class
-   (`consumeItemByMinigame(ticket, cheatClass, requestId)`); on success it
-   pushes fresh counts with `updateMinigameItemCheats`.
-4. The results report whether an instrument and a consumable were used.
+- **Five item cheats, slots 0-4, one per cheat class.** The client draws
+  `itemCheat0` to `itemCheat4`. `activateItemCheat(i)` sends
+  `activateitemcheat` with `cheatNum` = `i`. Each game's `processItemCheat`
+  has its own five effects (Livewire: slot 0 `addTime(2)` and destroys pieces,
+  slot 1 `addTime(2)` and a flash, slot 2 `addTime(5)` and new pieces, slots 3
+  and 4 `addTime(3)` and more). The rules belong to MG-R1 to MG-R5.
+- **`instcc` is the highest slot the instrument covers.** In
+  `setupItemCheats`, slot `i` gets the instrument border when `instcc >= i`,
+  and `setupItemCheat` then shows `CA<i> + 1` uses. `instcc = -1` means no
+  instrument.
+- **Instrument use: once per game, no item consumed.** In
+  `activateItemCheatRequest`, a `cheatNum <= instcc` runs `processItemCheat`,
+  sets `instcc = -1` and sends `itemcheatstate`. Nothing goes to the server.
+  Ability bit 10 (§ 4) restores `instcc` from `origInstcc`, which is a second
+  instrument use.
+- **Consumable use: one item, validated by the server.** Otherwise, when
+  `CA<cheatNum> > 0`, the online path calls
+  `__mg.minigameValidateItem(user, cheatNum)` (the host bridge). The server
+  answers with internal requests that `handleInternalRequest` routes:
+  `itemCheatActivate` sets `consUsed = true` and runs
+  `processItemCheat(cheatNum)`; `itemCheatInfo` (`handleItemCheatInfo`)
+  stores fresh `CA0`-`CA4` and resends `itemcheatstate`. This is the def's
+  `consumeItemByMinigame(ticket, cheatClass, requestId)` and
+  `updateMinigameItemCheats` round trip. `consUsed` becomes the results'
+  `consumableUsed`.
+- **`CA<n>` is cumulative (Inferred from the offline branch).** The offline
+  branch decrements `CA0` to `CA<cheatNum>` by one per use, then clamps each
+  higher slot to the one below it. Its demo values are 4, 3, 3, 2, 2. So
+  `CA<n>` reads as "consumables usable in slot `n`" = the count with cheat
+  class `>= n`, and a consumable of class `k` can fire any slot up to `k`.
 
-So a consumable is consumed **on activation, during the game**, not at launch
-and not on victory.
+So a consumable is consumed **on activation, during the game, after the
+server validates it**, not at launch and not on victory.
 
-### Slot to item id (Unresolved)
+### Slot to item id (Unresolved: the SWF has no item ids)
 
 The seeds hold 160 instruments (`items.flags & 1`) and 174 consumables
 (`flags & 2`):
@@ -267,10 +417,13 @@ The seeds hold 160 instruments (`items.flags & 1`) and 174 consumables
   Asgard, 6799 Archaeologist, 6800 Commando, 6801 Goa'uld, 6803 Jaffa, 6804
   Soldier, ... at TC3).
 
-There are seven archetype classes plus Generic but only five `CA` slots. No
-seed column carries a cheat class, so the slot to item mapping cannot be
-derived from this repo. It would come from the SWF (`itemCheatInfo`, MG-R1) or
-a CME data table we do not have.
+There are seven archetype classes plus Generic but only five `CA` slots, so a
+slot is a cheat *class* (0-4), not an archetype. The SWF sees only class
+numbers and counts; `itemCheatInfo` is a host-to-extension request carrying
+`CA0`-`CA4`, not an id table. No seed column carries a cheat class either, so
+which item has which class (perhaps a TC band) cannot be derived from this
+repo. That mapping, and the `instcc` of each instrument, are server-owned:
+the base computes them at launch and on each `itemCheatInfo`.
 
 ### Are the consumables obtainable? No (Confirmed, README M8)
 
@@ -434,18 +587,24 @@ The archetype mask (`0xffff`) and `abilityBitfield` are different fields; see
 
 - `techcomp` = the `tech_comp` of the triggering instrument item
   (`pendingItem` / `tcOverride`) when there is one, else 1. Clamp to 1-55.
-- `abilityBitfield` = **0** until an MG-R0 to MG-R5 spec names the SWF bits.
-  The candidate abilities are 677-686 and the Trump passives 778, 779, 792,
-  793 (§ 4). Flag at G1.
+- `abilityBitfield`: 15 bits, bit `n` = cheat category `n` (§ 4, Confirmed).
+  The ability-to-bit table in § 4 is Inferred from seed descriptions; ship it
+  only behind a G1 decision, and keep **0** until the per-game ports
+  (MG-R1 to MG-R5) implement the effects. The Trump passives are not bits.
 - Never copy the dialog's archetype mask into it.
+- `intelligence` = the cell's current intelligence stat; `pclevel` = the
+  player's level (§ 3).
+- The URL host segment (`ipaddress`) must be non-empty (§ 3).
 
 ### MG-23: item cheats
 
 - `instcc` = -1 (no instrument), `CA0`-`CA4` = 0: the original's values.
 - Consumption, if ever implemented: one item per `activateitemcheat`, during
-  the game, through `consumeItemByMinigame(ticket, cheatClass, requestId)`.
-- The slot to item id map is not derivable, and the consumables are
-  unobtainable (M8). **Recommend G1 marks MG-23 not applicable** beyond
+  the game, through `consumeItemByMinigame(ticket, cheatClass, requestId)`,
+  answered with `itemCheatActivate` and `itemCheatInfo` (§ 5). Instrument
+  uses consume nothing and are once per game.
+- The item-to-class map is not in the SWF or the seeds, and the consumables
+  are unobtainable (M8). **Recommend G1 marks MG-23 not applicable** beyond
   keeping `instcc = -1` and the zeros.
 
 ### MG-24: effect-started games
