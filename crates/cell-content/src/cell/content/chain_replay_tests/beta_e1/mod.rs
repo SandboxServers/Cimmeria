@@ -18,6 +18,7 @@ use sqlx::PgPool;
 
 mod m1423;
 mod m1425;
+mod m1426;
 mod m381;
 mod m473;
 mod m478;
