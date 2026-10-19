@@ -16,6 +16,7 @@ use cimmeria_content_engine::context::ExecutionContext;
 use cimmeria_content_engine::triggers::{TriggerEvent, TriggerType};
 use sqlx::PgPool;
 
+mod m1147;
 mod m420;
 mod m421;
 mod m481;
