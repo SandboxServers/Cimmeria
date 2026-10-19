@@ -72,7 +72,7 @@ Every row below was probed with `nav_inspect` against `data/spaces/omega_site.na
 
 The one arrival coordinate for UO-00 to publish (candidate B, outside the gate's event-horizon cylinder, on the +z plaza side where the dais is level):
 
-- World 18: **x 34.70, y -51.28, z -142.00**, heading 3.1416 (faces Gate 5), component 60.
+- World 18: **x 34.70, y -51.28, z -142.00**, heading 3.1409 (faces Gate 5; same value as the table row), component 60.
 - 13.0 m from Modi (39.54, -129.92), 11.0 m from the DHD (42.60, -134.31), 7.1 m from the gate row (34.705, -149.092), 4.0 m from respawner 180 (`hub.respawner`).
 - Probe y -51.86 printed `dy` -0.58 (the floor is 0.58 m above the packet's guess); the y above is the snapped floor.
 
