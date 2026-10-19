@@ -20,6 +20,7 @@ mod m1147;
 mod m420;
 mod m421;
 mod m443;
+mod m477;
 mod m481;
 mod travel;
 
