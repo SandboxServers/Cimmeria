@@ -75,6 +75,7 @@ that way and the placeholder remains in place.
 minigame port — NOT a Mercury `Event_NetOut_*`, but the result of the StartMinigame URL
 the server hands the client
 **Demonstrable / Likely-theoretical**: Demonstrable (server code self-incriminates)
+**Status**: Mitigated for the shell games by MG-04 (5 s minimum play); the ported games are server-validated (D-MG2).
 
 **Trust violation**
 For every minigame type except Livewire (i.e. Hack, Activate, Analyze, Bypass, Converse,

@@ -6,8 +6,9 @@
 //! upstream when the client half goes away versus when the game produced
 //! an outcome of its own. A mock socket would have to model EOF anyway.
 //!
-//! `Hack` is used as the game type: `PlaceholderGame` wins instantly on the
-//! `victory` extension command and reports `needs_tick() == false`, so no
+//! `Hack` is used as the game type: `PlaceholderGame` wins on the `victory`
+//! extension command once 5 s have passed (D-MG13), and reports
+//! `needs_tick() == false`, so no
 //! test here depends on the 250 ms tick timer.
 
 use tokio::net::TcpListener;
@@ -380,14 +381,15 @@ async fn closing_the_swf_reports_canceled_and_runs_aborted() {
 /// Without the `result_reported` flag the teardown would append a bogus
 /// `RESULT_CANCELED` after every victory, and that second message would be
 /// indistinguishable from a real cancel upstream.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_won_game_reports_victory_once_and_never_canceled() {
     let (mut client, mut rx, handle) = spawn_placeholder_session(4302).await;
 
     // Wait until the server is actually in its game loop, then win.
-    // `PlaceholderGame` treats the `victory` extension command as an
-    // instant win.
+    // `PlaceholderGame` treats the `victory` extension command as a win once
+    // the game has run for 5 s (D-MG13).
     read_until_game_begin(&mut client).await;
+    tokio::time::advance(Duration::from_secs(5)).await;
     let victory = "<msg t='xt'><body action='xtReq'>\
          <![CDATA[<dataObj><var n='cmd' t='s'>victory</var></dataObj>]]>\
          </body></msg>";
@@ -411,11 +413,12 @@ async fn a_won_game_reports_victory_once_and_never_canceled() {
 /// TG-MG-07: the victory row names its validator. `Hack` is a placeholder, so
 /// the SWF's own `victory` command is the result and the row must say
 /// `client_declared`. Dropping the field from the row fails the assertion.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_placeholder_victory_row_says_client_declared() {
     let capture = LogCapture::install();
     let (mut client, mut rx, handle) = spawn_placeholder_session(4303).await;
     read_until_game_begin(&mut client).await;
+    tokio::time::advance(Duration::from_secs(5)).await;
     let victory = "<msg t='xt'><body action='xtReq'>\
          <![CDATA[<dataObj><var n='cmd' t='s'>victory</var></dataObj>]]>\
          </body></msg>";
