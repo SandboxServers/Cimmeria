@@ -154,7 +154,7 @@ impl Rig {
         while self.rx.try_recv().is_ok() {}
     }
 
-    /// Give the player `mission_id` on `step_id` quietly: no chain fires.
+    /// Give the player `mission_id` quietly: no chain fires.
     pub(super) async fn accept(&mut self, mission_id: i32) {
         self.exec(Action::AcceptMission { mission_id }, false).await;
     }
@@ -426,9 +426,10 @@ impl Rig {
 }
 
 /// **Guard: the rig builds an instanced SGC_W1 that a chain can spawn
-/// into.** Revert proof: build the space with `Instanced="false"` and the
-/// spawn is refused (`spawn_entity: refusing to spawn into a non-instanced
-/// world`, reason `shared_world_refused`), so `live` is false.
+/// into.** Revert proof: build the space with `Instanced="false"` and
+/// `Rig::new` panics at `find_or_create_space` (`Non-instanced world 'SGC_W1'
+/// has no startup space`), before any spawn; the probe `spawn_entity` is
+/// the same guard one step later (reason `shared_world_refused`).
 #[tokio::test]
 async fn live_db_union_sgc_rig_spawns_static_rows_and_a_chain_npc() {
     let pool = require_db_or_skip!();
