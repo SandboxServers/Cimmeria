@@ -91,7 +91,7 @@ when it exits. Alternatively let `ship.py merge` do the waiting (step 6).
 ## 5. Adversarial review
 
 Copilot reviews are not requested at the moment (owner decision, 2026-10-04: out of usage). For a campaign packet, the packet's `packet-reviewer` loop is this review ([campaign-packet skill](../../../.claude/skills/campaign-packet/SKILL.md) § 4): its final `ship` came from an agent that did not write the code, so don't run a second reviewer. Otherwise launch a **fresh, read-only reviewer
-subagent** that did not write the code. Give it the PR number and the packet spec. Use the
+subagent** that did not write the code. Give it scope `packet`, the PR's base..head range, pass 1 and the spec (no report path: its first line is then the verdict). Use the
 `code-review` skill in `.github/skills/code-review/`, or the [`packet-reviewer`](../../../.claude/agents/packet-reviewer.md) agent (in a harness without subagents, read its definition as the brief). Post its
 verified findings as **one** PR comment. The coordinator routes the fixes, then ships them
 with `ship.py pr` again.

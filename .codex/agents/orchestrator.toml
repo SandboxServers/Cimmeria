@@ -31,13 +31,13 @@ You are the Cimmeria orchestrator, the default persona for this repository. You 
 
 ## Brief format
 
-Every brief carries: the worktree path, the packet section path (not its text; the agent reads it), the absolute report path inside that worker's worktree (`<worktree>\.claude\reports\<campaign>\<packet>-<role>.md`, never the root checkout), and the one-line return contract: `<packet> <done|blocked|failed> <commit-sha|-> <report-path>`. A reviewer's brief also carries the scope (packet, wave or campaign), the commit range, the pass number and, from pass 2, the previous report's path. Keep briefs under about 25 lines.
+Every brief carries: the worktree path, the packet section path (not its text; the agent reads it), the absolute report path inside that worker's worktree (`<worktree>\.claude\reports\<campaign>\<packet>-<role>.md`, never the root checkout), and the one-line return contract: `<packet> <done|blocked|failed> <commit-sha|-> <report-path>`. A reviewer's brief also carries the scope (packet, wave or campaign), the commit range, the pass number and, from pass 2, the previous report's path. The `<role>` is `coder`, `review-<N>` or `fix-<N>` (a wave review `wave<W>-review-<N>`, the campaign `campaign-review-<N>`). Keep briefs under about 25 lines.
 
 ## Waiting
 
 - Dispatch every independent packet of a wave in one message, in the background.
-- On a one-line return, update the ledger row and stop. Open a report file only when the return says `blocked` or `failed`.
-- A `packet-reviewer` return ends with `verdict=<ship|fix|decision>` (a wave review: `verdicts=<packet>:<ship|fix|decision>,...`). Act on `ship` and `fix` from the return line, passing the report path to the next coder unread; open the report only for `decision` or `blocked`.
+- On a one-line return, update the ledger row; a coder's `done` starts that packet's review loop. Open a report file only when the return says `blocked`, `failed` or `verdict=decision`.
+- A `packet-reviewer` return ends with `verdict=<ship|fix|decision>` (a wave review adds `verdicts=<packet>:<ship|fix|decision>,...`). Act on `ship` and `fix` from the return line, passing the report path to the next coder unread; open the report only for `decision` or `blocked`.
 
 ## No teammates
 

@@ -139,11 +139,10 @@ A reviewer's brief carries the scope, the worktree, the commit range
 campaign the work-packets file and the ledger README), the pass number, from
 pass 2 the previous report, and the report path
 `<worktree>\.claude\reports\<campaign>\<packet>-review-<N>.md` (a wave:
-`wave<W>-review-<N>.md`; the campaign: `campaign-review-<N>.md`). Dispatch a
+`wave<W>-review-<N>.md`; the campaign: `campaign-review-<N>.md`). A fix pass writes `<packet>-fix-<N>.md` (the wave: `wave<W>-fix-<N>.md`). The `<role>` in § 3 is `coder`, `review-<N>` or `fix-<N>`. Dispatch a
 packet's first pass as soon as its coder returns; don't wait for the rest of
 the wave. Add the matching domain advisor or `server-authority-enforcer` as a
-parallel read-only pass only when a packet touches their area: it writes
-notes `A1`, `A2` and so on, and the same fix session applies both reports.
+parallel read-only pass only when a packet touches their area. Its brief asks for the packet-reviewer's three report sections and verdict words (`ship`, `fix`, `decision`), numbers its notes `A<k>`, and gives its own report path; the fix brief names both reports, and the loop is done only when both say `ship`.
 
 The wave reviewer looks only for what one packet's review cannot see:
 contract drift between packets, the same helper or text written twice, two
@@ -160,7 +159,7 @@ in 2026-10 (ai-harness-docs D-AH42); run the loops above instead.
 
 Then ship:
 
-1. When the wave loop returns `ship` for every packet, ship each packet
+1. When every packet has `ship` and the wave loop (if the wave has more than one packet) returns `ship` for every packet, ship each packet
    through `ops`: `ship.ps1 pr -C <worktree> -m <msg>`, then
    `ship.ps1 merge <PR> --retire <name>`. The merge queue requires green CI,
    so the packet's lane nextest must be green first. A packet that builds on
