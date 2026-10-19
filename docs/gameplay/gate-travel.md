@@ -260,7 +260,7 @@ A GM dialling it lands on the gate row and the client settles them onto the floo
 
 The ring transporter uses an 8-state finite state machine:
 
-```
+```text
 STATE_IDLE
   |-> selectDestination() --> STATE_SEND_WAIT
        |-> regionTriggered() / players present --> STATE_SEND_WARMUP

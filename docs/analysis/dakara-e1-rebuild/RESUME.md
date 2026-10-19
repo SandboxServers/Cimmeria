@@ -3,7 +3,7 @@
 > Type: how-to. Updated 2026-10-19 (architect, autonomous: waves 4 to 7 written). Status source: [README § Packets](README.md#packets).
 
 - **Owner rules (2026-10-18):** no agent lab use until the campaign ends; the owner runs every UAT. One read-only `packet-reviewer` per wave, its findings to a fresh `packet-coder`. Do not touch `.claude/state/active-campaign`.
-- **Done:** DK-00 to DK-05; waves 1, 2 and 3 (wave 3: #1881, #1883, #1885, #1887, #1889, #1892).
+- **Done:** DK-00 to DK-05 (#1282 to #1288); wave 1 (DK-06a #1854, DK-07 #1853, DK-08 #1855, DK-12a #1856; DK-08 review: `.claude/worktrees/dk-08/.claude/reports/dakara/DK-08-review.md`); waves 2 and 3 (wave 3: #1881, #1883, #1885, #1887, #1889, #1892).
 - **Shipping:** wave 3b, DK-06b PR #1894 and DK-10d-B PR #1896 (reviewed).
 - **Dormant by design (D-DK23):** waves 5 and 6 build now; in play nothing past 1646 is reachable until 1647 (wave 7) ships.
 

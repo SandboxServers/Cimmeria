@@ -7,7 +7,6 @@ DK-06b was planned for wave 2 and waited on D-DK10. The architect ruled D-DK10 o
 
 ## Rules (the wave-2 rules)
 
-
 1. PowerShell only. No bash, WSL or Git Bash. Use absolute paths inside your worktree; never `cd` to the root checkout. Prefix each lane call with `Set-Location <worktree>;` and check that the lane log lands under `logs/<worktree>/`.
 2. Every compiling `cargo` call goes through the lane, run from the worktree root: `pwsh tools/build-lane/lane.ps1 cargo ...`. Never call `cargo` directly; never add `--target-dir`. Live-DB tests run through `pwsh tools/build-lane/live-db-test.ps1 <filter>`, which reloads your own `sgw_<worktree>` database. Run lane checks in the foreground.
 3. Never `git stash`, `git worktree prune`, `git push`, `gh pr`, or delete a worktree. Commit once, locally, with the subject below and the attribution lines from your brief.
@@ -172,7 +171,7 @@ async fn emit(
         }
 ```
 
-**6. `executor/tests/radio_dialog.rs`** (new). The bullet for `mod.rs`'s `//!` list: `//! - [`radio_dialog`]     — `Action::DisplayRadioDialog` (DK-06b): EntityId 0, no NPC needed.`
+**6. `executor/tests/radio_dialog.rs`** (new). The bullet for `mod.rs`'s `//!` list: ``//! - [`radio_dialog`]`` — `Action::DisplayRadioDialog` (DK-06b): EntityId 0, no NPC needed.`
 
 ```rust
 //! `Action::DisplayRadioDialog` (DK-06b, D-DK10): a dialog with no speaker
@@ -282,7 +281,7 @@ If a field or helper name differs from the code (for example `find_message` or `
                 }
 ```
 
-**8. `content-engine-vocabulary.md`.** In the "Authorable and executed" table, after the `display_dialog` row, add `| `display_radio_dialog` | `DisplayRadioDialog` | 0 |`. Directly before the `##### `start_minigame` params` heading, add:
+**8. `content-engine-vocabulary.md`.** In the "Authorable and executed" table, after the `display_dialog` row, add ``| `display_radio_dialog` | `DisplayRadioDialog` | 0 |``. Directly before the ``##### `start_minigame` params`` heading, add:
 
 ```markdown
 ##### `display_radio_dialog`
