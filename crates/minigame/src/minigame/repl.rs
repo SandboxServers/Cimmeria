@@ -140,7 +140,8 @@ fn parse_command(line: &str) -> Result<(String, HashMap<String, SfsValue>), Stri
 /// A number if the text parses as one, `true` or `false` as a bool, and a
 /// string otherwise.
 fn parse_value(text: &str) -> SfsValue {
-    if let Ok(n) = text.parse::<f64>() {
+    // f64::from_str also accepts "inf"/"nan" in any case; those are strings (C6).
+    if let Some(n) = text.parse::<f64>().ok().filter(|n| n.is_finite()) {
         SfsValue::Number(n)
     } else if text == "true" {
         SfsValue::Bool(true)

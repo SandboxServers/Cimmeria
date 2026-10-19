@@ -11,6 +11,14 @@ fn send(cmd: &str, fields: Vec<(&str, SfsValue)>) -> GameOutput {
 }
 
 #[test]
+fn parse_value_keeps_non_finite_words_as_strings() {
+    for word in ["inf", "NaN", "infinity", "-inf"] {
+        assert_eq!(parse_value(word).as_str(), Some(word));
+    }
+    assert!(matches!(parse_value("1.5"), SfsValue::Number(_)));
+}
+
+#[test]
 fn render_sorts_keys_and_nests_objects() {
     let board = SfsValue::list([SfsValue::String("x".into()), SfsValue::Number(0.5)]);
     let out = send(
