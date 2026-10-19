@@ -48,6 +48,10 @@ async fn live_db_offer_completion_in_tent_binds_brat_ac() {
     // 1647 completed on Dakara_E1 is bound by 8181 on entering the tent instead.
     let r = fire_mission_completed(&engine, &base(FREE_JAFFA, Some(DAKARA)), 1647);
     assert!(labels_in(&r, M1648_CHAINS).is_empty());
+    // 1648 already active: the offer is not bound again.
+    let active = with_mission(base(FREE_JAFFA, Some(STORY_RM)), 1648, "active");
+    let r = fire_mission_completed(&engine, &active, 1647);
+    assert!(labels_in(&r, M1648_CHAINS).is_empty());
 }
 
 #[tokio::test]
@@ -68,6 +72,10 @@ async fn live_db_offer_restore_binds_brat_ac_on_tent_entry() {
     assert!(labels_in(&r, M1648_CHAINS).is_empty());
     let r = fire_player_loaded(&engine, &offered(FREE_JAFFA, Some(DAKARA)), DAKARA_NAME);
     assert!(labels_in(&r, M1648_CHAINS).is_empty());
+    // Not restored until 1647 is completed.
+    let before_1647 = with_mission(ctx_for(FREE_JAFFA, Some(STORY_RM)), 1647, "active");
+    let r = fire_player_loaded(&engine, &before_1647, STORY_RM_NAME);
+    assert!(labels_in(&r, M1648_CHAINS).is_empty());
 }
 
 #[tokio::test]
@@ -85,7 +93,10 @@ async fn live_db_offer_choice_accepts_1648_and_unbinds() {
     );
     assert_eq!(display_dialog_count(&r), 1);
     assert_no_deferred_actions(&r, 8182);
-    // Not before 1647 is completed, and not once 1648 is active.
+    // Not in the drops' world, not before 1647 is completed, and not once
+    // 1648 is active.
+    let r = fire_dialog_choice(&engine, &offered(FREE_JAFFA, Some(DAKARA)), OFFER_CHOICE);
+    assert!(labels_in(&r, M1648_CHAINS).is_empty());
     let before_1647 = with_mission(ctx_for(FREE_JAFFA, Some(STORY_RM)), 1647, "active");
     let r = fire_dialog_choice(&engine, &before_1647, OFFER_CHOICE);
     assert!(labels_in(&r, M1648_CHAINS).is_empty());
