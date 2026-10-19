@@ -31,7 +31,9 @@ const M420_CHAINS: std::ops::RangeInclusive<i64> = 23340..=23351;
 /// The Beta block (23310-23359) that the mission 481, 420 and travel chains share.
 const BETA_BLOCK: std::ops::RangeInclusive<i64> = 23310..=23359;
 const MIMIR: &str = "BetaE1_Mimir";
-const TURN_IN_DIALOG: i64 = 1953;
+/// A world other than Beta, for the `player_loaded` world-key negatives.
+const OTHER_WORLD: &str = "Castle_Cellblock";
+const OFFER_DIALOG: i64 = 1953;
 
 /// The Beta block chains that `resolved` matched, for the exclusivity checks.
 fn beta_matched(resolved: &ResolvedActions) -> BTreeSet<i64> {
@@ -193,7 +195,7 @@ async fn offer_pitch_shows_the_offer_to_asgard_only() {
 async fn accept_binds_the_turn_in_and_drops_the_blurb() {
     let pool = require_db_or_skip!();
     let engine = whole_seed(&pool).await;
-    let mut ctx = choice(TURN_IN_DIALOG, Some(ASGARD));
+    let mut ctx = choice(OFFER_DIALOG, Some(ASGARD));
     set_offer_open(&mut ctx);
     let resolved = fire(&engine, TriggerType::DialogChoice, &ctx);
     assert_eq!(
@@ -208,12 +210,12 @@ async fn accept_binds_the_turn_in_and_drops_the_blurb() {
     assert_eq!(beta_matched(&resolved), BTreeSet::from([ACCEPT]));
 
     for archetype in non_asgard() {
-        let mut ctx = choice(TURN_IN_DIALOG, archetype);
+        let mut ctx = choice(OFFER_DIALOG, archetype);
         set_offer_open(&mut ctx);
         let resolved = fire(&engine, TriggerType::DialogChoice, &ctx);
         assert!(summarized(&resolved, ACCEPT).is_empty(), "{archetype:?}");
     }
-    let mut mid_quest = choice(TURN_IN_DIALOG, Some(ASGARD));
+    let mut mid_quest = choice(OFFER_DIALOG, Some(ASGARD));
     set_quota(&mut mid_quest, 0);
     let resolved = fire(&engine, TriggerType::DialogChoice, &mid_quest);
     assert!(summarized(&resolved, ACCEPT).is_empty());
@@ -300,6 +302,23 @@ async fn relog_during_quota_restores_bind_and_clears_scanners() {
     assert!(beta_matched(&resolved).is_empty());
 }
 
+/// Revert: drop the `Beta_Site_Evo_1` event key from 23340, 23348 or 23351. An
+/// Asgard who logs into another world in a state each one accepts (offer open,
+/// or mid-quota) then matches it.
+#[tokio::test]
+async fn login_chains_ignore_other_worlds() {
+    let pool = require_db_or_skip!();
+    let engine = whole_seed(&pool).await;
+    let mut offer = login_ctx(OTHER_WORLD, Some(ASGARD));
+    set_offer_open(&mut offer);
+    let resolved = fire(&engine, TriggerType::PlayerLoaded, &offer);
+    assert!(beta_matched(&resolved).is_empty(), "offer-open login");
+    let mut quota = login_ctx(OTHER_WORLD, Some(ASGARD));
+    set_quota(&mut quota, 3);
+    let resolved = fire(&engine, TriggerType::PlayerLoaded, &quota);
+    assert!(beta_matched(&resolved).is_empty(), "mid-quota login");
+}
+
 /// Revert: lower 23349's counter gate to `gte 4`, or drop 23350's `lt 5`. The
 /// exact list and the matched set both catch it: 4 scanners must never turn in.
 #[tokio::test]
@@ -383,7 +402,7 @@ async fn wrong_race_fires_no_420_chain() {
         let resolved = fire(&engine, TriggerType::InteractTag, &offer);
         assert!(m420_matched(&resolved).is_empty(), "offer {archetype:?}");
 
-        let mut accept = choice(TURN_IN_DIALOG, archetype);
+        let mut accept = choice(OFFER_DIALOG, archetype);
         set_offer_open(&mut accept);
         let resolved = fire(&engine, TriggerType::DialogChoice, &accept);
         assert!(m420_matched(&resolved).is_empty(), "accept {archetype:?}");
