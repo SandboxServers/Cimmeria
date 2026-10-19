@@ -101,6 +101,26 @@ const BETA_E1: &[(&str, i32, &str)] = &[
         23083,
         "BetaE1_Carter: per-player bind dsm 2438 (chains 23081/23082)",
     ),
+    (
+        "beta_e1_m478_chains.sql",
+        23101,
+        "BetaE1_Carter: per-player bind dsm 2460 (chain 23100)",
+    ),
+    (
+        "beta_e1_m478_chains.sql",
+        23104,
+        "BetaE1_AdminWorkstation: template 2323 static INT_MissionWorldObject",
+    ),
+    (
+        "beta_e1_m478_chains.sql",
+        23105,
+        "BetaE1_AdminWorkstation: template 2323 static INT_MissionWorldObject",
+    ),
+    (
+        "beta_e1_m478_chains.sql",
+        23108,
+        "BetaE1_Carter: per-player bind dsm 3884 (chains 23106/23107)",
+    ),
 ];
 
 /// Whether `chain_id` in `filename` is a Beta chain that has an
