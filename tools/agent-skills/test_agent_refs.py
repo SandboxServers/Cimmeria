@@ -46,12 +46,13 @@ class AgentRefsTest(unittest.TestCase):
     def test_retired_review_fixer_is_gone(self):
         for f in scanned():
             text = GEN.sub("", f.read_text(encoding="utf-8")).lower()
-            self.assertNotIn(
-                "review-fixer",
-                text,
-                f"{f} names the retired packet-review-fixer (ai-harness-docs D-AH42); "
-                "describe the packet-reviewer loop instead",
-            )
+            with self.subTest(file=str(f)):
+                self.assertNotIn(
+                    "review-fixer",
+                    text,
+                    f"{f} names the retired packet-review-fixer (ai-harness-docs D-AH42); "
+                    "describe the packet-reviewer loop instead",
+                )
 
 
 if __name__ == "__main__":

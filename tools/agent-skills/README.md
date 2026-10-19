@@ -11,4 +11,4 @@ python tools/agent-skills/sync.py --check   # what CI runs
 python -m unittest discover -s tools/agent-skills -p "test_*.py"
 ```
 
-`test_sync.py` tests the mirror, `test_codex_hook_probe.py` tests the probe offline, and `test_shell_guard.py` tests the `PreToolUse` shell guard in `.claude/hooks/shell_guard.py`, and `test_agent_refs.py` checks that the harness docs name only agents that exist. CI runs every `test_*.py` here in `agent-skills.yml`. See [development-workflow.md](../../docs/agents/development-workflow.md#agent-skills-and-the-shell-guard).
+`test_sync.py` tests the mirror, `test_codex_hook_probe.py` tests the probe offline, `test_shell_guard.py` tests the `PreToolUse` shell guard in `.claude/hooks/shell_guard.py`, and `test_agent_refs.py` checks that the harness docs name only agents that exist. CI runs every `test_*.py` here in `agent-skills.yml`. See [development-workflow.md](../../docs/agents/development-workflow.md#agent-skills-and-the-shell-guard).
