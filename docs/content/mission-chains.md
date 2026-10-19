@@ -1197,7 +1197,37 @@ The Python scripts above are ported to content chains in [db/resources/Content/S
 
 Chain-replay tests: [`chain_replay_tests/class_start_sgc/`](../../crates/cell-content/src/cell/content/chain_replay_tests/class_start_sgc/mod.rs) (gates, pickup, M1562, M1569), [`mission_1562.rs`](../../crates/cell-content/src/cell/content/chain_replay_tests/mission_1562.rs) (chain 3026) and [`sgc_w1_move_entity.rs`](../../crates/cell-content/src/cell/content/chain_replay_tests/sgc_w1_move_entity.rs) (the elevators). None of this has been played on a client yet; the Part D statuses for 1559 and 1562 describe the legacy scripts and are unchanged.
 
-**Unscripted continuation.** Missions 1563-1569 ("Virus", "Self-Destruct", "Tactics", "Tactics pt. 2", "Clear the Way", "Gate Room", "Ordinance") are seeded in `missions.sql` with `mission_label = 'General'`, not SGC_W1. Their step text continues the SGC story ("Take Col. Carter's notes on security protocols.", "Escort Col. Carter to the Failsafe Room on sub-level 28"), so the zone link is inferred from the text (MEDIUM); no script or `.def` evidence exists. The port is tracked in #335.
+#### Union continuation (`sgc_w1_union_*.sql`, chains 3051-3199)
+
+Missions 1563-1571, the SGC halves of 1651, 1654 and 1655, and the crossings to Dakara (C1) and Omega (C4). Campaign: `docs/analysis/union-sgc-continuation/`. Each line below belongs to one packet; that packet rewrites only its own line.
+
+- **1563 Virus (US-12, chains 3051-3057):** planned.
+
+- **1564 Self-Destruct (US-15, chains 3060-3071):** planned.
+
+- **1564 escort (US-16, chains 3073-3078):** planned.
+
+- **1571 auxiliary credit (US-13, chains 3080-3081):** planned.
+
+- **1565/1566 Tactics (US-20, chains 3085-3093):** planned.
+
+- **1567 Clear the Way (US-21, chains 3095-3099):** planned.
+
+- **1568 Gate Room (US-22, chains 3100-3107):** planned.
+
+- **1569 Ordinance (US-23, chains 3110-3122):** planned.
+
+- **1570 and crossing C1 (US-24, chains 3123-3131):** planned.
+
+- **1651 SGC half, C2 arrival and C2b (US-30, chains 3133-3142):** planned.
+
+- **1654 turn-in (US-31, chains 3148-3152):** planned.
+
+- **1655 Human and crossing C4 (US-32, chains 3156-3165):** planned.
+
+- **1655 Free Jaffa (US-33, chains 3166-3169):** planned.
+
+- **Return state and relogs (US-34, chains 3171-3175):** planned.
 
 #### Mission 1559: "Welcome to Stargate Command" [CONFIRMED]
 
