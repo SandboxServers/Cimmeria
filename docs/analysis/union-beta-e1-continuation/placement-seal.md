@@ -282,3 +282,72 @@ RUIN_NOTE (122.2, 27.17, 356.8) is sealed as "yes (same component as ARRIVAL)", 
 ### Not decided here
 
 D-UB4 stays ruled A (hub ring 148 <-> SW_RING). Cell ownership and AoI fan-out for ring arrivals: bigworld-engine-advisor and aoi-witness-advisor. The ring FSM timeout path is a separate UB-02d obligation (ring-transport state machine, owned in the ring seed/handler, not this probe).
+
+## Addendum UB-00b-3 (2026-10-19): UB-02b hub anchors, chained walk re-check from ARRIVAL
+
+Status: read-only nav probes by movement-teleport-advisor; no seed or code edits, no lab. Evidence classes: RESTORED_SOURCE (the shipped `data/spaces/beta_site_evo_1.nav`, the Science door gap and prefab origins quoted in UB-00b), CIMMERIA_RECONSTRUCTION (the server's `NavMesh::find_path`, `is_point_valid` and the 6-of-8 stand method, run through a throwaway example that was deleted afterwards; nothing of it is committed). Trigger: UB-02b review (B1b) reported spawn 23021 RuinNote as standable but not walk-reachable.
+
+### Verdict
+
+- RuinNote (23021) is NOT misplaced. The seal point (122.200, 27.17, 356.800) is walk-reachable from ARRIVAL. The stall at (137.61, 7.77, 370.28) is a property of the greedy chain, not of the placement. UB-00b-2's guess ("an upper ruin level the corridor search cannot enter") was wrong in its conclusion: the upper level is entered by a different route that the greedy chain never takes. No coordinate change; the test needs authored hops.
+- Two anchors genuinely fail: ScienceComputer (23019) and FourPiecesCase (23020). Both sit on nav component 890 behind the 0.90 m door gap (narrower than the 1.2 m agent), so no `find_path` leg crosses it. Replacements below.
+- The other 15 anchors (13 spawns, 2 region centres) pass: one direct `find_path` leg from ARRIVAL, status Ok, end within 0.30 m (Xeno1 0.60 m, see the y note). Nothing needs chaining except RuinNote.
+
+### Why the greedy chain stalls (CIMMERIA_RECONSTRUCTION)
+
+`find_path` returns `Partial` ending at the visited polygon nearest the goal in straight-line distance. Restarting from that endpoint (the UB-00b-2 chain) is greedy: toward the ruin it climbs the valley floor to W1 (355.00, -62.03, 409.10), then to the lower slope at (137.61, 7.77, 370.28), 19 m under the pin and a local minimum. The real route detours away from the goal first. Goal-directed legs exist: chaining toward an intermediate target on the upper level succeeds (ARRIVAL -> (131.80, 27.49, 324.40) in 4 legs), and from there the pin is one Ok leg. A test must therefore use authored hops, not "restart from the last waypoint".
+
+Rule for every future chained test: a chain that stalls is not evidence of an island. Establish reachability with hops that each return Ok, and keep a negative control that really is an island.
+
+### RuinNote hop list (RESTORED_SOURCE nav, CIMMERIA_RECONSTRUCTION hops)
+
+Each leg is a single `find_path` with status Ok and last waypoint within 2.0 m (measured 0.00, 0.00, 0.00, 0.07 m):
+
+| leg | from | to |
+|---|---|---|
+| 1 | ARRIVAL (635.761, -60.134, 388.448) | H1 (394.300, -84.630, 388.700) |
+| 2 | H1 | H2 (169.600, -0.571, 324.400) |
+| 3 | H2 | H3 (131.200, 27.570, 320.300) |
+| 4 | H3 | RUIN_NOTE (122.200, 27.170, 356.800) |
+
+- Standability: (122.200, 27.104, 356.800) passes 6-of-8 and `is_point_valid`; the seed y 27.17 is 0.07 above the surface. All 28 standable points in a 3.6 m box around the pin are Ok from H3.
+- Direct ARRIVAL -> pin is `Partial`, 254.73 m short (corridor cap plus the same local minimum). A single-shot or greedy-chain test cannot pass this anchor whatever the seed is.
+- The reverse is not symmetric: pin -> H3 -> H2 is Ok, but H2 -> H1 (74.47 m short) and H1 -> ARRIVAL (17.66 m short) are Partial. Do not assert the reverse walk.
+- Route sanity: straight-path segments top out at slope 0.92 (about 43 degrees) on legs 2 and 3, 0.21 on leg 4. No off-mesh links were involved in this probe's output; the corridor is plain polygon adjacency.
+- Label: placement RESTORED_SOURCE only to the extent UB-00b already sealed it (prefab-origin census, INFERRED Barak'Ka ruin); the stand point and hops are CIMMERIA_RECONSTRUCTION. Heading 1.249 unchanged.
+
+Test guidance (replaces the "standable only" exemption for 23021): assert the four legs above with `PathStatus::Ok` and a 2.0 m end tolerance; keep the 2.0 m tolerance. Revert guard: the old greedy-chain result (137.605, 7.770, 370.280) is the negative control for "a greedy helper must not be used here" and the Science interior below is the negative control for a real island.
+
+### Science pair: replacements (CIMMERIA_RECONSTRUCTION)
+
+Seal rows SCIENCE_COMPUTER (649.700, 19.77, 814.100) and FOUR_PIECES_CASE (647.700, 19.77, 814.100) are 2.00 m and 4.00 m short of reachable: ARRIVAL -> (675.400, 15.770, 806.600) -> door edge (651.700, 19.770, 814.100) is Ok, the next leg across the 0.90 m gap is not (Partial, 2.00 m and 4.00 m short; the computer sits exactly on the 2.0 m tolerance edge, so it fails `< 2.0`).
+
+Replacement stand points, outside the door on component 251 (each verified: standable 6-of-8, `is_point_valid`, ARRIVAL -> S1 Ok and S1 -> point Ok, end distance 0.00 m):
+
+| Anchor | x | y | z | heading | note |
+|---|---|---|---|---|---|
+| SCIENCE_COMPUTER | 652.900 | 19.770 | 814.100 | 1.571 | 1.20 m east of the gap's 251 edge (651.70), 3.2 m east of the original |
+| FOUR_PIECES_CASE | 654.900 | 19.770 | 814.100 | 1.571 | 2.00 m further east, same 2.0 m spacing as the original pair |
+
+Hops: ARRIVAL (635.761, -60.134, 388.448) -> S1 (675.400, 15.770, 806.600) -> anchor. Leg 1 Ok 0.00 m (33 waypoints); leg 2 Ok 0.00 m (S1 -> 652.900: 12 waypoints, 10 for 654.900).
+
+Radius and region guidance: neither anchor has a region. If a Science trigger is later added, centre it on SCIENCE_COMPUTER's new point with r >= 4.0 so a player standing at either object, or at the door edge (651.7), is inside after the 1.5 m check threshold; keep r under 10 so it does not reach the south wall. The interact range of the two objects was not measured: moving them 3.2 m and 5.2 m out of the building is a fidelity cost, and the interior positions are the better match to the client's prefab (UB-00b Other notes: the 890 interior is the Science facility). Alternative if the owner prefers fidelity: keep the interior rows, keep them standable-only, and assert only that ARRIVAL -> S1 -> door edge (651.700, 19.770, 814.100) is Ok. That is an owner choice (door gap versus strict walk gate); this addendum recommends the exterior rows because the packet gate is a strict `find_path` walk.
+
+Label: the interior seal positions stay RESTORED_SOURCE-derived (prefab census); the exterior rows are CIMMERIA_RECONSTRUCTION and must be recorded as a deviation from the prefab's inside placement.
+
+### Every other UB-02b anchor (direct ARRIVAL -> anchor, one `find_path` leg each)
+
+All Ok, last waypoint distance from the seeded point in brackets: Carter 23000 (0.09), Felger 23001 (0.11), Satterfield 23002 (0.00), Debeaux 23003 (0.01), Xeno1 23010 (0.60), Xeno2 23011 (0.17), Xeno3 23012 (0.00), Xeno4 23013 (0.26), Xeno5 23014 (0.00), CrateArc42 23015 (0.00), CrateArc66 23016 (0.00), HubComputer 23017 (0.00), AdminWorkstation 23018 (0.00), region Storage centre (0.00), region AdminBuilding centre (0.00; same point as HubComputer). Point sets 23000 and 23001 hold one centre point each; both pass. A test can use a plain `reaches` for these; none needs a hop.
+
+Minor y note (not a reachability failure): XENOCAGE_1 23010 is seeded at y -66.99, 0.60 m under the server mesh surface (-66.386 at that x, z), which fails the 6-of-8 stand check and shows as the 0.60 m end distance. `is_point_valid` still accepts it (below-surface tolerance). Optional hardening: y -66.386. Carter, Felger and Xeno4 differ by 0.09 to 0.26 m and need nothing.
+
+### What UB-02b (and the test) should do
+
+1. Seeds: change 23019 to (652.900, 19.770, 814.100) and 23020 to (654.900, 19.770, 814.100), headings 1.571; keep 23021 as seeded. Optionally y -66.386 for 23010. The in-file comments for 23019 to 23021 must say which are CIMMERIA_RECONSTRUCTION deviations.
+2. Test: drop the `23019..=23021` standable-only exemption. the 13 passing spawns plus 2 regions use `standable_and_connected`; RuinNote uses the four-hop assertion; the Science rows use the S1 hop. Update the `HUB` constants to the new coordinates.
+3. Do not widen the 2.0 m tolerance and do not use the greedy restart-from-last-waypoint chain for pass/fail on RuinNote: it fails there and would pass nothing.
+4. Placement-seal table rows RUIN_NOTE, SCIENCE_COMPUTER and FOUR_PIECES_CASE: the "reachable from ARRIVAL" column should read "walk (hops H1..H3)" and "no: 890 behind a 0.90 m gap; exterior replacement" respectively; this addendum supersedes UB-00b-2's RUIN_NOTE side finding.
+
+### Not decided here
+
+Interact range and prefab fidelity of the Science objects (owner and mission-systems-advisor). Cell ownership and AoI of the hub objects (bigworld-engine-advisor, aoi-witness-advisor). Whether the client lets a player through the Science door (needs lab or a client check; the server's `is_point_valid` accepts the interior either way).
