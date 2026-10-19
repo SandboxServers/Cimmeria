@@ -80,6 +80,9 @@ async fn live_db_closing_the_radio_offer_accepts_1649_without_a_world() {
     let active_1649 = with_mission(offered(None), 1649, "active");
     let r = fire_dialog_choice(&engine, &active_1649, OFFER_CHOICE);
     assert!(labels_in(&r, M1649_OFFER_CHAINS).is_empty());
+    let active_1648 = with_mission(offered(None), 1648, "active");
+    let r = fire_dialog_choice(&engine, &active_1648, OFFER_CHOICE);
+    assert!(labels_in(&r, M1649_OFFER_CHAINS).is_empty());
 }
 
 #[tokio::test]
@@ -113,6 +116,9 @@ async fn live_db_bratac_daughter_click_advances_and_unbinds() {
     // At 4921 the daughter talk is already done, so a click does nothing here.
     let r = fire_interact_tag(&engine, &at_step(Some(STORY_RM), 4921), BRATAC_TAG);
     assert!(labels_in(&r, M1649_OFFER_CHAINS).is_empty());
+    // In the radio's world the click is not Bra'tac's tent talk.
+    let r = fire_interact_tag(&engine, &at_step(Some(DAKARA), 4923), BRATAC_TAG);
+    assert!(labels_in(&r, M1649_OFFER_CHAINS).is_empty());
 }
 
 #[tokio::test]
@@ -131,6 +137,9 @@ async fn live_db_closing_the_daughter_talk_makes_the_radio_call() {
     assert_no_deferred_actions(&r, 8204);
     // Closing the talk at 4923 (before the click's advance) does not call Teal'c.
     let r = fire_dialog_choice(&engine, &at_step(Some(STORY_RM), 4923), DAUGHTER_CHOICE);
+    assert!(labels_in(&r, M1649_OFFER_CHAINS).is_empty());
+    // Outside the tent the close does not call Teal'c either.
+    let r = fire_dialog_choice(&engine, &at_step(Some(DAKARA), 4921), DAUGHTER_CHOICE);
     assert!(labels_in(&r, M1649_OFFER_CHAINS).is_empty());
 }
 
@@ -156,8 +165,13 @@ async fn live_db_radio_recovery_on_entry_at_4921_waits_then_advances() {
         ],
     );
     assert_eq!(delays_of(&r, 8206), [2000, 0]);
-    // Past 4921 the recovery is quiet.
+    // Past 4921 the recovery is quiet, in both worlds.
     let r = fire_player_loaded(&engine, &at_step(Some(DAKARA), 4922), DAKARA_NAME);
+    assert!(labels_in(&r, M1649_OFFER_CHAINS).is_empty());
+    let r = fire_player_loaded(&engine, &at_step(Some(STORY_RM), 4922), STORY_RM_NAME);
+    assert!(labels_in(&r, M1649_OFFER_CHAINS).is_empty());
+    // Before 4921 the recovery does not fire (8205 needs 4921).
+    let r = fire_player_loaded(&engine, &at_step(Some(DAKARA), 4920), DAKARA_NAME);
     assert!(labels_in(&r, M1649_OFFER_CHAINS).is_empty());
 }
 
@@ -171,6 +185,9 @@ async fn live_db_turn_in_restore_binds_the_evidence_talk_at_4920() {
         vec!["8207:add_dialog_set(6765@59)"],
     );
     let r = fire_player_loaded(&engine, &at_step(Some(DAKARA), 4920), DAKARA_NAME);
+    assert!(labels_in(&r, M1649_OFFER_CHAINS).is_empty());
+    // At 4922 neither the restore (8207) nor the other restores fire.
+    let r = fire_player_loaded(&engine, &at_step(Some(STORY_RM), 4922), STORY_RM_NAME);
     assert!(labels_in(&r, M1649_OFFER_CHAINS).is_empty());
 }
 
@@ -196,4 +213,7 @@ async fn live_db_turn_in_click_hands_over_the_evidence_and_completes() {
     let labels = labels_in(&r, M1649_OFFER_CHAINS);
     assert!(!labels.is_empty());
     assert!(labels.iter().all(|l| l.starts_with("8203:")));
+    // In the radio's world the turn-in click is silent.
+    let r = fire_interact_tag(&engine, &at_step(Some(DAKARA), 4920), BRATAC_TAG);
+    assert!(labels_in(&r, M1649_OFFER_CHAINS).is_empty());
 }
