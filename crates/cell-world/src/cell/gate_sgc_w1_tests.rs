@@ -1,7 +1,9 @@
 //! Seed guards for the SGC_W1 end of real gate travel (Dakara rebuild
-//! DK-SGC-01): stargate 27's arrival pin on the Gate Room floor.
+//! DK-SGC-01 and DK-SGC-02): stargate 27's arrival pin on the Gate Room
+//! floor, the SGC Gate Control screen that opens the dial window, and the way
+//! back from every address a content chain grants.
 //!
-//! Same pairing as `gate_dakara_e1_tests`: the row comes from the seeded
+//! Same pairing as `gate_dakara_e1_tests`: the rows come from the seeded
 //! database and the real `data/spaces/sgc_w1.nav` judges the coordinate,
 //! loaded by path because the space loader resolves `.nav` files against the
 //! process CWD. `is_point_valid` alone passes on the wrong mesh component, so
@@ -9,9 +11,10 @@
 //! control point the mesh accepts but the Gate Room cannot reach.
 
 use cimmeria_common::Vector3;
+use cimmeria_entity::interaction_flags::INT_DHD;
 use cimmeria_entity::navigation::{NavMesh, PathStatus};
 
-use crate::cell::space_manager::REGION_FLAG_STARGATE;
+use crate::cell::space_manager::{SpaceManager, MAX_INTERACT_DISTANCE, REGION_FLAG_STARGATE};
 use crate::cell::spawner::{is_point_in_region, load_regions_from_db, load_stargates};
 use crate::test_support::require_db_or_skip;
 
@@ -61,6 +64,29 @@ fn reaches(mesh: &NavMesh, from: [f32; 3], to: [f32; 3]) -> bool {
 
 fn dist_xz(a: [f32; 3], b: [f32; 3]) -> f32 {
     ((a[0] - b[0]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
+}
+
+fn repo_file(rel: &str) -> String {
+    let path = format!("{}/../../{rel}", env!("CARGO_MANIFEST_DIR"));
+    std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{path}: {e}"))
+}
+
+/// `(world, position)` of every always-spawned prop whose template carries
+/// `INT_DHD`: the things a player can dial from.
+async fn dhd_spawns(pool: &sqlx::PgPool) -> Vec<(String, [f32; 3])> {
+    let rows: Vec<(String, f32, f32, f32)> = sqlx::query_as(
+        "SELECT w.world::text, s.x, s.y, s.z FROM resources.spawnlist s \
+           JOIN resources.entity_templates t ON t.template_id = s.template_id \
+           JOIN resources.worlds w ON w.world_id = s.world_id \
+          WHERE t.interaction_type & $1 <> 0 AND s.set_name IS NULL",
+    )
+    .bind(INT_DHD)
+    .fetch_all(pool)
+    .await
+    .expect("DHD spawns");
+    rows.into_iter()
+        .map(|(world, x, y, z)| (world, [x, y, z]))
+        .collect()
 }
 
 /// **Guard (DK-SGC-01): gate 27's arrival pin.** The pin is the seeded point,
@@ -152,5 +178,141 @@ async fn live_db_sgc_w1_gate_arrival_pin_is_on_the_gate_room_floor_outside_the_g
     assert!(
         !reaches(&mesh, arrival, CONTROL),
         "control: a point on another component must not count as reachable"
+    );
+}
+
+/// **Guard (DK-SGC-02, D-DK40): SGC_W1 has one dial terminal, beside
+/// Harriman.** The Gate Control screen (spawn 68, template 37) is the only
+/// always-spawned prop on world 58 that carries `INT_DHD`, so a right-click
+/// there opens the dial window. The press is within interact range of
+/// Harriman's Control Room spot, and the arrival pin walks there.
+///
+/// Clear the seed bit and the list is empty. Move the screen, or add a second
+/// prop that carries the bit, and its assertion fails.
+#[tokio::test]
+async fn live_db_sgc_w1_has_one_dial_terminal_beside_harriman() {
+    let pool = require_db_or_skip!();
+
+    let terminals: Vec<(i32, String, i32, f32, f32, f32)> = sqlx::query_as(
+        "SELECT s.spawn_id, s.tag::text, s.template_id, s.x, s.y, s.z \
+           FROM resources.spawnlist s \
+           JOIN resources.entity_templates t ON t.template_id = s.template_id \
+          WHERE s.world_id = 58 AND t.interaction_type & $1 <> 0 AND s.set_name IS NULL \
+          ORDER BY s.spawn_id",
+    )
+    .bind(INT_DHD)
+    .fetch_all(&pool)
+    .await
+    .expect("SGC_W1 dial terminals");
+    assert_eq!(
+        terminals.len(),
+        1,
+        "SGC_W1 has no dial terminal: a player who dials gate 27 cannot dial home (D-DK40): {terminals:?}"
+    );
+    let (spawn, tag, template, x, y, z) = &terminals[0];
+    assert_eq!(
+        (*spawn, tag.as_str(), *template),
+        (68, "SGC_W1_GateTerminal1", 37),
+        "SGC_W1 has no dial terminal: a player who dials gate 27 cannot dial home (D-DK40)"
+    );
+
+    let d = ((x - CONTROL_ROOM[0]).powi(2)
+        + (y - CONTROL_ROOM[1]).powi(2)
+        + (z - CONTROL_ROOM[2]).powi(2))
+    .sqrt();
+    assert!(
+        d <= MAX_INTERACT_DISTANCE,
+        "the dial terminal is {d} m from the Control Room spot, beyond the {MAX_INTERACT_DISTANCE} m interact range"
+    );
+    assert!(
+        reaches(&sgc_mesh(), PIN, CONTROL_ROOM),
+        "the arrival pin does not walk to the Control Room, where the terminal is"
+    );
+
+    // Gate 27 is the only gate a dial from this world can show: one glyph.
+    let gates = load_stargates(&pool).await.expect("load_stargates");
+    let mut offered: Vec<i32> = gates
+        .iter()
+        .filter(|(_, g)| g.world_name == "SGC_W1" && !g.debug_dial_hub)
+        .map(|(id, _)| *id)
+        .collect();
+    offered.sort_unstable();
+    assert_eq!(
+        offered,
+        [SGC_GATE],
+        "SGC_W1's non-hub gates changed: the dial window's glyph is gate 27's"
+    );
+    let gate = gates
+        .get(&SGC_GATE)
+        .expect("stargate 27 (SGC W1) is seeded");
+    assert!(
+        (1..=38).contains(&gate.address_origin),
+        "gate 27's address origin {} is not a gate glyph (1 to 38): the window would have none",
+        gate.address_origin
+    );
+}
+
+/// **Guard (DK-SGC-02, D-DK40): no address grant is a one-way trip.** For
+/// every enabled content chain that grants a stargate address, on any
+/// trigger:
+///
+/// * the granted gate exists, is not a dial hub, and is on a world this
+///   server can enter;
+/// * that world has a DHD (a dial window) to dial home from.
+///
+/// This is the general form of the `player_loaded` guard in
+/// `gate_dakara_e1_tests`. It also covers the click and offer grants of gate
+/// 27 (chains 8313, 8432 and 8433), which that guard does not see (F44).
+/// Point chain 8001 at gate 27 and this fails, with "which has no DHD: a
+/// one-way trip".
+#[tokio::test]
+async fn live_db_every_granted_address_has_a_way_back() {
+    let pool = require_db_or_skip!();
+
+    let grants: Vec<(i32, Option<i32>)> = sqlx::query_as(
+        "SELECT DISTINCT a.chain_id, a.target_id \
+           FROM resources.content_actions a \
+           JOIN resources.content_chains c ON c.chain_id = a.chain_id \
+          WHERE a.action_type::text = 'grant_stargate_address' AND c.enabled \
+          ORDER BY a.chain_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("enabled address grants");
+
+    let mut mgr = SpaceManager::new(1);
+    mgr.parse_spaces_xml(&repo_file("entities/spaces.xml"))
+        .expect("spaces.xml parses");
+    mgr.create_startup_spaces(&repo_file("entities/cell_spaces.xml"))
+        .expect("cell_spaces.xml creates its spaces");
+    let gates = load_stargates(&pool).await.expect("load_stargates");
+    let dhds = dhd_spawns(&pool).await;
+    let has_dhd = |world: &str| dhds.iter().any(|(w, _)| w == world);
+
+    for (chain_id, target) in &grants {
+        let target =
+            target.unwrap_or_else(|| panic!("chain {chain_id} grants no stargate (NULL target)"));
+        let gate = gates.get(&target).unwrap_or_else(|| {
+            panic!("chain {chain_id} grants stargate {target}, which has no row")
+        });
+        assert!(
+            !gate.debug_dial_hub,
+            "chain {chain_id} grants a dial hub, which nobody may hold"
+        );
+        let world = gate.world_name.as_str();
+        assert!(
+            mgr.world_is_enterable(world),
+            "chain {chain_id} grants stargate {target} on {world}, which this server cannot enter"
+        );
+        assert!(
+            has_dhd(world),
+            "chain {chain_id} grants stargate {target} on {world}, which has no DHD: a one-way trip"
+        );
+    }
+
+    // Control, after the loop: the loop must fail first when chain 8001 changes.
+    assert!(
+        grants.contains(&(8001, Some(5))),
+        "control: chain 8001 must grant Omega Site (DK-01), got {grants:?}"
     );
 }

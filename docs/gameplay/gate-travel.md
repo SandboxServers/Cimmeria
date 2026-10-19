@@ -104,6 +104,8 @@ Three things are easy to get wrong here:
 
 Template 1 (`GLB-DHD_00`, every DHD prop but the Castle's) shipped with `interaction_type = 0`, so until DA-07 those props were not right-clickable and only the Castle's template 162 opened the dialling UI. Template 1 now carries `INT_DHD` too, which makes the DHDs at Harset, Tollana, Lucia, Omega Site, Beta Site E1, Dakara E1, both Ihpet Craters, Men'fa (Praxis) and the Debug Area open. A live-DB guard checks that every spawned DHD prop can be clicked and stands on a world with a gate row.
 
+SGC_W1 has no DHD prop on its map, so the Gate Control screen in the Control Room (template 37, spawn 68) carries `INT_DHD` instead (Dakara DK-SGC-02, owner option C). A right-click opens the dial window with gate 27's glyph. At Union SGC mission 1568 step 4638 the same press shuts the gate (chain 3102), because a matching interact chain takes the click first. Two live-DB guards in `gate_sgc_w1_tests.rs` pin this: `live_db_sgc_w1_has_one_dial_terminal_beside_harriman` for the terminal, and `live_db_every_granted_address_has_a_way_back`, which covers every content address grant and not only `player_loaded` ones.
+
 A DHD prop on a world with no `stargates` row logs `reason = "no_stargate_for_world"` and shows the player nothing. The 2009 server sent a free-text `onError` here; Cimmeria's `onErrorCode` is an enum-coded surface with no free-text arm, so there is nowhere for that string to go. Acceptable while every seeded DHD has a gate.
 
 ## Dial authorization
