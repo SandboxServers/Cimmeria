@@ -6,7 +6,7 @@
 **These are skeletons, not dispatchable packets.** The architect fills them from the sealed `bridge-seal.md` (UD-01a) before dispatch. Three gates stay open until then:
 
 1. D-UD1 answered and UD-01a merged.
-2. An authored mission with a dialog override has merged to `main` and passed client journal UAT. Today the only precedent, Cellblock 62050 with dialog override 60150, is on `content/cellblock-campaign`; PR #1795 closed unmerged (F9). The fill copies that precedent's file layout, so it must exist on main first.
+2. An authored mission with a dialog override has merged to `main` and passed client journal UAT. The `MISSION_ADDITIONS` mechanism is on main (PR #1734) but empty apart from the test fixture 61000, and today the only dialog-override precedent, Cellblock 62050 with dialog override 60150, is on `content/cellblock-campaign`; PR #1795 closed unmerged (F9). The fill copies that precedent's file layout, so it must exist on main first.
 3. H-U07 (rewards) and H-LBL (copy labels) answered, or the fill keeps `[REWARD HELD]` and `[COPY HELD]` and ships behind a disabled chain. That choice is the owner's.
 
 Everything in both packets is **CIMMERIA_AUTHORING**. They can be dropped whole without touching any other packet: chain 8001 and the DK chains do not depend on them.

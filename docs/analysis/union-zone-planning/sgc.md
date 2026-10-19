@@ -24,6 +24,8 @@ The existing [Dakara_E1 rebuild](../dakara-e1-rebuild/README.md) explicitly excl
 
 ## Candidate packet families
 
+> **Superseded ids.** The packet ids in these early family names (US-01..US-06; the old-to-new map is at the top of the packet file) are historical. The current, dispatchable packets and ids are in [sgc-work-packets.md](sgc-work-packets.md). Do not cite the ids below from another document.
+
 | Packet | Owner and scope | Ready when / proof |
 |---|---|---|
 | US-00 source, status and route seal | Mission specialist inventories current 1559–1571 and 1651/1654/1655 chains, client mission/step/objective/dialog IDs, actor tags, rewards, source build and SGC map placements. Reconcile Dakara's ledger and Class Start v6. Freeze exact handoff states and ID ranges in a new SGC continuation ledger. | First packet. `activate / reconstruct / hold` per beat; no implementation from a moniker alone. |

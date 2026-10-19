@@ -28,7 +28,7 @@ A traveller to Beta_Site_Evo_1 lands on the gate row (617.866, -59.314, 388.971)
 1. PowerShell only; start every command with `Set-Location C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\ub-01a;`. Absolute paths.
 2. Never run `cargo` directly; use `pwsh tools/build-lane/lane.ps1 cargo ...`. Live-DB tests go through `pwsh tools/build-lane/live-db-test.ps1 <filter>`, which reloads your `sgw_ub-01a`. Run in the foreground and check the test count is above 0.
 3. Edit only the allowlisted files.
-4. Seed files are CRLF. Edit them in place; after any rewrite, normalise with `[IO.File]::WriteAllText('<abs>', ([IO.File]::ReadAllText('<abs>') -replace "\r?\n", "\r\n"))`.
+4. Edit seed files in place and keep each file's existing endings (CRLF here; never mixed, execution-contract.md § Shared definitions); after any rewrite, normalise with `[IO.File]::WriteAllText('<abs>', ([IO.File]::ReadAllText('<abs>') -replace "\r?\n", "\r\n"))`.
 5. Seeds live in `db/resources/` only. No `db/scripts/` and no migrations.
 6. Files stay under 500 lines (the new test file should land at about 200).
 7. Never touch the `sgw` database. No lab and no client.

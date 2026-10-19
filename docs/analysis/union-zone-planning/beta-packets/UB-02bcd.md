@@ -10,6 +10,9 @@ Three packets, one area each. Each packet owns its own three seed files, so they
 - Spawn row shape (copy `db/resources/Worlds/Seed/spawnlist_dakara_e1.sql`):
   `INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (<id>, <x>, <y>, <z>, <heading>, 23, <template>, '<tag>', NULL, true, 30);`
 - Region rows (copy `point_sets_dakara_e1.sql` and `point_set_points_dakara_e1.sql`): `type 'AreaSet'`, `world_id 23`, `shape 'Cylinder'`, `flags 1`, with radius and height from the seal. Each set has one centre point; the loader expands it into a client-hinted box (`crates/cell-catalog/src/cell/spawner/regions.rs`). The region name is the `enter_region` key the chain packets use. End each point-sets file with the Dakara-style `SELECT pg_catalog.setval('point_sets_set_id_seq', GREATEST((SELECT last_value FROM point_sets_set_id_seq), <highest id>), true);`.
+- **Spawn footer (required).** End each spawnlist file with the spawn-sequence footer, using 23199 (the top of Beta's spawn block, not the last id the file uses), the same GREATEST form as `spawnlist_debug_area_lords.sql`:
+  `SELECT pg_catalog.setval('spawnlist_spawn_id_seq', GREATEST((SELECT MAX(spawn_id) FROM spawnlist), (SELECT last_value FROM spawnlist_spawn_id_seq), 23199), true);`
+  Beta's spawns sit at 23000-23199, far above the sequence, so without the footer `seeded_sequences_allocate_past_every_seeded_row` (`crates/cell-catalog/src/cell/spawner/tests/live_db_seed_sequences.rs`) fails. No packet in this file inserts `item_lists` or `item_list_items`; if one ever does, add the matching footer with its block top. UB-40 (`spawnlist_beta_e1_life.sql`) adds the same footer to its own file.
 - `database.sql` order: point-set-points files next to line 334 (`point_set_points_dakara_e1.sql`), point-sets files next to line 336, spawnlist files next to line 384 (`spawnlist_dakara_e1.sql`). Put Beta lines directly after each Dakara line, in the order b, c, d.
 - Interact tags must be unique across all worlds, because `interact_tag` triggers do not filter by world. Every tag starts `BetaE1_`.
 - Provenance comment above each block: `CIMMERIA_RECONSTRUCTION: anchor <NAME> from placement-seal.md (<map pin> on nav <component>)`.
@@ -20,7 +23,7 @@ Three packets, one area each. Each packet owns its own three seed files, so they
 1. PowerShell only; start every command with `Set-Location C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\<wt>;`.
 2. Never run `cargo` directly; use `pwsh tools/build-lane/lane.ps1` and `pwsh tools/build-lane/live-db-test.ps1`. Run in the foreground and check test counts are above 0.
 3. Edit only your allowlist. Never edit `spawnlist.sql`, `point_sets.sql` or the Dakara files.
-4. Seed files are CRLF (normalise after writing). Keep `database.sql`'s line endings.
+4. New seed files match their neighbouring seeds in the working tree (CRLF here; never mixed; normalise after writing). Keep `database.sql`'s line endings.
 5. Seeds in `db/resources/` only; no migrations.
 6. Under 500 lines per file.
 7. Never touch `sgw`; no lab, no client.
@@ -35,9 +38,10 @@ Set-Location <wt>; pwsh tools/build-lane/lane.ps1 cargo fmt -p cimmeria-cell-wor
 Set-Location <wt>; pwsh tools/build-lane/lane.ps1 cargo clippy -p cimmeria-cell-world --all-targets -- -D warnings
 Set-Location <wt>; pwsh tools/build-lane/live-db-test.ps1 spawner_tests::beta_e1
 Set-Location <wt>; pwsh tools/build-lane/live-db-test.ps1 live_db_loaders
+Set-Location <wt>; pwsh tools/build-lane/live-db-test.ps1 seeded_sequences_allocate_past_every_seeded_row
 ```
 
-`live_db_loaders` proves the region loader still accepts every AreaSet, and that no respawner is at the origin.
+`live_db_loaders` proves the region loader still accepts every AreaSet, and that no respawner is at the origin. `seeded_sequences_allocate_past_every_seeded_row` proves the spawn footer: the next `spawnlist` id must be above every seeded spawn and above its floor. Check that each reports a test count above 0.
 
 ## Docs rows
 
@@ -97,11 +101,11 @@ None. Per-world seed coordinates have no doc-update-map row. UB-99 writes the Be
 
 ### Revert proof
 
-Comment out the spawnlist `\ir` line; `live_db_beta_hub_spawns_match_the_placement_seal` fails. Move Carter 50 m into a cliff; the standable check fails. Restore and rerun green. Quote all of it.
+Comment out the spawnlist `\ir` line; `live_db_beta_hub_spawns_match_the_placement_seal` fails. Move Carter 50 m into a cliff; the standable check fails. Delete the `setval` footer from `spawnlist_beta_e1_hub.sql`; `seeded_sequences_allocate_past_every_seeded_row` fails. Restore and rerun green. Quote all of it.
 
 ### Acceptance
 
-- Three tests green; `live_db_loaders` still green.
+- Three tests green; `live_db_loaders` and `seeded_sequences_allocate_past_every_seeded_row` still green.
 - SigNoz (`cimmeria-cell`, UB-90 row UB-U2): on a Beta login, the spawner logs show 16 hub entities created for world 23 with no `spawn` warnings for spawns 23000-23021. Grep the spawner's create and refuse lines in `crates/cell-world/src/cell/spawner/` and quote them.
 
 ### Return
@@ -158,11 +162,11 @@ Comment out the spawnlist `\ir` line; `live_db_beta_hub_spawns_match_the_placeme
 
 ### Revert proof
 
-Remove Mimir's row; the count fails. Move `BEAM_DECK_DEST` 20 m off the deck; the pad test fails. Restore and rerun green.
+Remove Mimir's row; the count fails. Move `BEAM_DECK_DEST` 20 m off the deck; the pad test fails. Delete the `setval` footer from `spawnlist_beta_e1_asgard.sql`; `seeded_sequences_allocate_past_every_seeded_row` fails. Restore and rerun green.
 
 ### Acceptance
 
-- Four tests green.
+- Four tests green; `seeded_sequences_allocate_past_every_seeded_row` still green.
 - SigNoz (UB-90 rows UB-U6, UB-U7): Mimir appears on the deck after a beam, with no spawn refusal for 23060-23071.
 
 ### Return
@@ -210,11 +214,11 @@ Test `live_db_beta_nine_peaks_spawns_match_the_placement_seal`: count 5 in 23110
 
 ### Revert proof
 
-Remove the Ras'nor row; the count fails. Under A, remove 2301; the pair test fails. Restore and rerun green.
+Remove the Ras'nor row; the count fails. Under A, remove 2301; the pair test fails. Delete the `setval` footer from `spawnlist_beta_e1_ninepeaks.sql`; `seeded_sequences_allocate_past_every_seeded_row` fails. Restore and rerun green.
 
 ### Acceptance
 
-- Part A test green (and the part B test under A).
+- Part A test green (and the part B test under A); `seeded_sequences_allocate_past_every_seeded_row` still green.
 - SigNoz (UB-90 row UB-U8): with A, a ring use logs the transporter event for region 2300 to 2301 (grep `executor/transport.rs` and the ring handler for the exact text). With B, the walk is checked live.
 
 ### Return

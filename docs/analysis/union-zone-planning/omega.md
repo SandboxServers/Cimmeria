@@ -23,6 +23,8 @@ Omega is the **first hub convergence**, while Beta E1 is the **first common fiel
 
 ## Candidate packet families
 
+> **Superseded ids.** The packet ids in these 2026-10-14 family names (UO-00..UO-08) are historical. The current, dispatchable packets and ids are in [omega-work-packets.md](omega-work-packets.md#renumbering-for-sibling-ledgers). Do not cite the ids below from another document.
+
 | Packet | Owner and scope | Ready when / proof |
 |---|---|---|
 | UO-00 source and placement seal | Inventory world 18/80 maps, beams, current seed, mission/dialog joins for 1655, 1423, 1500 and 1522, and each faction's exact inbound state. Reconcile `Omega_Site_CmdCenter` with the Capitol Ship wording. Freeze actor tags, entry pins, ID claims and provenance in a new Omega continuation ledger. | Root packet; source mismatch stays open rather than silently relabeling the map. |

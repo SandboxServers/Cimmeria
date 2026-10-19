@@ -2,7 +2,7 @@
 
 > **Type:** How-to (dispatch contract)
 > **Audience:** Union Beta coordinator, Omega and SGC architects, packet workers and reviewers
-> **Last updated:** 2026-10-18 (architect pass against `origin/main` @ `d1bba0400`, tree `pr-1735-rebase` @ `68d4a6097`)
+> **Last updated:** 2026-10-18 (architect pass against `origin/main` @ `d1bba0400`, an ancestor of current `main`; locate each anchor by its text, not its line number)
 > **Status:** Planning. Nothing dispatched. Wave B0 (pilot) is gated on U-D03 (see [Waves](#waves)).
 > **Companions:** [Beta E1 campaign](beta.md), [Union execution contract](execution-contract.md), [Omega packets](omega-work-packets.md), [route evidence](evidence.md), [Asgard route](asgard-route.md), [Free Jaffa route](free-jaffa-route.md), [packet folder](beta-packets/)
 
@@ -23,7 +23,7 @@ Beta_Site_Evo_1 (world 23, gate 6) has a sealed map and almost nothing on the se
 
 ## What other campaigns own (do not touch)
 
-- **Omega (UO-xx)** offers 1423, 1500 and 481. It issues item 3399 (UO-06). It owns every Omega-side chain, plus any Jackson, Bra'tac, Thor, Heimdall or High Council actor. Beta never re-offers those missions (D-UB3).
+- **Omega (UO-xx)** offers 1423, 1500 and 481. It issues item 3399 (UO-16, HELD on U-D08/U-D11). It owns every Omega-side chain, plus any Jackson, Bra'tac, Thor, Heimdall or High Council actor. Beta never re-offers those missions (D-UB3).
 - **SGC (US-xx)** owns Woolsey and Hammond on SGC_W1, and 1180.
 - **Dakara (UD/DK)** owns chains 8001-8499 and 63500-63549, templates 440-479 and the Dakara ID block 63500-63799.
 - `docs/analysis/four-zone-planning/id-allocation.md` belongs to the coordinator. Beta files a request for an amendment row (UB-00c) and never edits the file.
@@ -48,7 +48,7 @@ Beta_Site_Evo_1 (world 23, gate 6) has a sealed map and almost nothing on the se
 | F13 | There are two flag dialects in Beta `dialog_set_maps`. **Old:** 8388608 blurb, 16777216 story, 33554432 turn-in, 1073741824 object. **New (SGU):** 134217728 offer blurb, 0 offer, 268435456 mid, 536870912 completion. Never mix them in one bind. | mission manifest §4 | all chain packets |
 | F14 | `add_dialog_set`'s `slot` is the NPC's **template id**, and the bind is per player (`executor/dialog/mod.rs:166-176`). Beta-only templates keep Beta binds from lighting up Carter or Thor on other worlds. | castle_701 chain 1201 (`slot 149` = Gerschon) | UB-02a, D-UB10 |
 | F15 | Main has no phasing primitive. Tollana PH-01a/b are unmerged and `set_phase` does not exist. A shared NPC cannot be hidden or changed for one player. | `git grep set_phase` empty | D-UB11 |
-| F16 | Asgard char-creation row 9 is `NON_CANONICAL_BLOCKED_LEGACY` and starts in SGC_W1. The Asgard arc on Beta can be tested by replay, but a player can reach it only after Omega UO-04 to UO-06. | `char_creation.sql`; asgard-route.md | D-UB13 |
+| F16 | Asgard char-creation row 9 is `NON_CANONICAL_BLOCKED_LEGACY` and starts in SGC_W1. The Asgard arc on Beta can be tested by replay, but a player can reach it only after Omega UO-16 (BlockedDecision U-D08/U-D11) delivers it. | `char_creation.sql`; asgard-route.md | D-UB13 |
 | F17 | Mismatches with the Omega contract: M1 (who fires the arrival steps), M2 (4643 uses the mid-step flag), M4 (Beta must not re-offer 481), M6 (Heimdall S4381), M7 (446 S1496/S1497), M8 (1425 S4244 Jackson, 1427 S4250 Woolsey), M9 (S4224, S4370 and S1761 are Beta-owned). | mission manifest §9 | [Omega contract](#omega-receiver-contract) |
 | F18 | The fires at the Quartermaster (1022.5, 13.9, 271.1) are static map emitters, and nothing toggles them. Mission 443's "contain the fire" can only be an interact or a region at that cluster. | placement manifest §8.1 | UB-34 |
 | F19 | **complete_objective trap.** Completing the last required objective of the current step completes the **whole mission**. Mid-mission chains use `advance_step`, turn-ins use `complete_mission`, and multi-objective steps (473 S1724, 477 S1744) use the partition pattern P6. | `crates/cell-content/src/cell/missions/progression.rs:463-506` | UB-12, UB-30, UB-35 |
@@ -59,8 +59,8 @@ Beta_Site_Evo_1 (world 23, gate 6) has a sealed map and almost nothing on the se
 
 | ID | Decision | Owner | Status |
 |---|---|---|---|
-| D-UB1 | Race gates: Human `archetype gte 1` **and** `lte 4`; Free Jaffa `eq 7`; Asgard `eq 5` (F4). Resolves HELD-B11. | Architect | Decided |
-| D-UB2 | Beta fires the arrival steps 1423 S4223, 1500 S4369 and 481 S1760, on `player_loaded Beta_Site_Evo_1` gated on that step being active. They are idempotent across relog. Omega departs the player with the step active and fires nothing for it (M1). | Orchestrator, with the Omega architect | **Proposed** (confirm in UO-02/03/06) |
+| D-UB1 | Race gates: Human = the Union Human gate (`execution-contract.md` § Shared definitions): `archetype gte 1` **and** `lte 4`; Free Jaffa `eq 7`; Asgard `eq 5` (F4). Resolves HELD-B11. | Architect | Decided |
+| D-UB2 | Beta fires the arrival steps 1423 S4223, 1500 S4369 and 481 S1760, on `player_loaded Beta_Site_Evo_1` gated on that step being active. They are idempotent across relog. Omega departs the player with the step active and fires nothing for it (M1). | Orchestrator, with the Omega architect | **Decided**: Omega's D-UO2 and its Producing contract (omega-work-packets.md) say the same (it fires no Beta step; Beta's receivers 23020/23220/23310 take over). The Asgard leg stays HELD behind UO-16 (U-D08/U-D11). |
 | D-UB3 | Beta never offers 1423, 1500 or 481. Omega does (M4). | Architect | Decided |
 | D-UB4 | West-valley access for the Nine Peaks camp. **A (recommended if UB-00b finds no walk route):** pair ring 148 (component 251) with a new SW ring row (component 70) as a `ring_transport_regions` pair, CIMMERIA_RECONSTRUCTION. **B:** a walk route that UB-00b's gap scan finds; no seed is needed. **C:** hold 1502/1503 until a lab path test. | Owner (ring routing is a design call) | **BlockedDecision** |
 | D-UB5 | Offworld tails: 1425 S4244 (Jackson), 1427 S4250 (Woolsey), 1503 S4379 (Bra'tac) and S4381 (Heimdall). **A (default the packets implement):** stop each arc at its last Beta-local step; the mission stays open in the journal. **B:** Omega/SGC receivers, owned by those architects. **C:** authored Beta relays (UB-50, CIMMERIA_AUTHORING). | Owner | **BlockedDecision** (A ships unless the owner picks B or C) |
@@ -71,7 +71,7 @@ Beta_Site_Evo_1 (world 23, gate 6) has a sealed map and almost nothing on the se
 | D-UB10 | Per-player binds only (`add_dialog_set` with `slot = template`). Beta chains never call `set_interaction_type` on a shared NPC. Objects may carry a static template interaction bit (see the contract). | Architect | Decided |
 | D-UB11 | No phasing (F15). All per-player state is mission state plus per-player binds. No `set_visible` or despawn on a shared actor. | Architect | Decided |
 | D-UB12 | Asgard beam: `interact_tag` on spawn 149 (ground) and 151 (deck), then `move_entity {"use_player": true}` between the two decks. Destinations come from UB-00b probes. CIMMERIA_RECONSTRUCTION. Whether 481 S1762's "teleporter" is this beam is HELD-B7. | Architect | Decided (structure) |
-| D-UB13 | Asgard packets ship and replay-test with archetype 5. Players can reach them after Omega UO-04 to UO-06 (F16). | Architect | Decided |
+| D-UB13 | Asgard packets ship and replay-test with archetype 5. Players can reach them only after Omega UO-16 (BlockedDecision U-D08/U-D11, F16). | Architect | Decided |
 | D-UB14 | Authored content (relays, rewards, ambient lines) lives only in UB-50 and its own seed file, so it can be dropped. | Architect | Decided |
 | D-UB15 | Strict linear offer order per race, so a shared NPC has at most one live Beta state per player. A cross-race guard proves it (UB-45a, UB-45b). | Architect | Decided (HELD-B1 can reorder) |
 
@@ -103,13 +103,17 @@ The block is valid only after UB-00c re-checks it against every branch and sibli
 
 ## Omega receiver contract
 
-Beta consumes these states. UB-00c freezes this table in `docs/analysis/union-beta-e1-continuation/receiver-contract.md`. UB-10, UB-20 and UB-30 ship the **Beta receiver fixtures** that Omega UO-07/08 need: live-DB tests that stage each inbound state and assert that Beta's receiving chain resolves.
+Beta consumes these states. UB-00c freezes this table in `docs/analysis/union-beta-e1-continuation/receiver-contract.md`. The ids below are Omega's current packet ids (Omega's 2026-10-18 renumbering); an older Beta draft cited UO-02/03/06 and "UO-07/08 fixtures".
+
+**Fixture ownership (settled).** Omega's **UO-13** exports the *departure* fixtures (`human_departure`, `jaffa_departure` in `chain_replay_tests/union_omega/handoff.rs`): Omega's exact output state. Beta's **UB-10, UB-20 and UB-30** build the *receiver* fixtures: live-DB tests that stage each inbound state (written out in the table) and assert that Beta's receiving chain resolves. Beta's wave B2 can run before UO-13 (Omega W4) merges, so Beta stages the state itself and never imports `handoff`; it may switch to the import once UO-13 is on `main`. Both sides assert the same table row, so a drift shows up as a failing test on whichever side changes first.
 
 | Race | Omega producer | State on arrival at Beta | Beta's receiving chain | Beta's first talk step |
 |---|---|---|---|---|
-| Human | UO-02 (1423 offer, Jackson 4640/4641) | 1423 accepted; S4223 active | 23020: `advance_step 1423 → 4224` | S4224 Carter, dialog 4643 (UB-10) |
-| Free Jaffa | UO-03 (1500 offer, Bra'tac 5024/5025) | 1500 accepted; S4369 active | 23220: `advance_step 1500 → 4370` | S4370 Carter, dialog 5026 (UB-20) |
-| Asgard | UO-06 (481 offer, Thor 1913/1912; item 3399 issued) | 481 accepted; S1760 active; item 3399 held | 23310: `advance_step 481 → 1761` | S1761 Carter, dialog 1915 (UB-30) |
+| Human | UO-07 (Jackson 4641, chains 63820-63822) | 1655 completed; 1423 accepted; S4223 active; gate 6 granted | 23020: `advance_step 1423 → 4224` | S4224 Carter, dialog 4643 (UB-10) |
+| Free Jaffa | UO-08 (Bra'tac 5025, chains 63830-63832) | 1655 completed; 1500 accepted; S4369 active; gate 6 granted | 23220: `advance_step 1500 → 4370` | S4370 Carter, dialog 5026 (UB-20) |
+| Asgard | UO-16 (stub, **HELD**: U-D08/U-D11; the Asgard producer, Thor 1913/1912 and item 3399, does not exist yet) | 481 accepted; S1760 active; item 3399 held. Beta's side is built against this state; no Omega packet delivers it. | 23310: `advance_step 481 → 1761` | S1761 Carter, dialog 1915 (UB-30) |
+
+**HELD, exact question (Asgard producer).** Which Omega packet delivers an Asgard player to Beta with 481 active at S1760 and item 3399 held? UO-16 is a BlockedDecision stub waiting on the owner's U-D08/U-D11 (the Asgard route into Omega, the Council, item 3399). Until it is answered, UB-30 can be coded and replay-tested with archetype 5 (D-UB13), but it is not end-to-end reachable and does not count as route completion.
 
 Mismatches for the Omega architect: M1 (D-UB2), M2 (4643's mid-step flag; Beta displays the dialog by chain, so the glyph is cosmetic), M4 (D-UB3), M6/M8 (D-UB5), M7 (446 is LATER; never on Beta past S5030), HELD-B1b (which 481 task consumes 3399: Beta removes it at S1761 unless the seal says otherwise).
 
@@ -135,12 +139,13 @@ Template 2303 (Dr. Pierce, 7905) is reserved for UB-52 (twin 383) and never spaw
 
 | Packet | Role | Size | Deliverable | Status | File |
 |---|---|---|---|---|---|
-| UB-00a | `mission-systems-advisor` | docs, ~35k | Mission seal: per-step matrix, dsm/button/linter table, en=false verdict, quotas, object mechanism | BlockedDependency (U-D03) | [UB-00](beta-packets/UB-00.md) |
+| UB-00a1 | `mission-systems-advisor` | docs, ~30k | Mission seal part 1 (Q1-Q6): per-step matrix, dsm/button/linter table, en=false verdict, F19 trap, quotas, type-4 buttons | BlockedDependency (U-D03) | [UB-00](beta-packets/UB-00.md) |
+| UB-00a2 | `mission-systems-advisor` | docs, ~30k | Mission seal part 2 (Q7-Q14): HELD-B1/B1b/B5/B7/B9/B14/B15 verdicts, M2, object-mesh census, mission rows | BlockedDependency (U-D03) | [UB-00](beta-packets/UB-00.md) |
 | UB-00b | `movement-teleport-advisor` | docs + nav probes, ~35k | Placement seal: probed anchors, respawners, beam decks, west-valley verdict | BlockedDependency (U-D03) | [UB-00](beta-packets/UB-00.md) |
 | UB-00c | `documentation-writer` | docs, ~25k | Continuation ledger, ID re-check, receiver contract, amendment request | BlockedDependency (U-D03) | [UB-00](beta-packets/UB-00.md) |
 | UB-01a | `packet-coder` | ~40k | Pilot: gate 6 pin, respawners 6/7, exemption removed, gate guard tests | BlockedDependency UB-00c (ID row) | [UB-01a](beta-packets/UB-01a.md) |
 | UB-01b | `packet-coder` | ~38k | Way-back chains 23001-23003 (Omega address), shared Beta test helpers, linter split (F20) | BlockedDependency UB-01a | [UB-01b](beta-packets/UB-01b.md) |
-| UB-02a | `packet-coder` | ~40k | Templates 2300-2335 (2303, 2327, 2336 reserved) | BlockedDependency UB-00a | [UB-02a](beta-packets/UB-02a.md) |
+| UB-02a | `packet-coder` | ~40k | Templates 2300-2335 (2303, 2327, 2336 reserved) | BlockedDependency UB-00a2 | [UB-02a](beta-packets/UB-02a.md) |
 | UB-02b | `packet-coder` | ~35k | Hub/command spawns and regions (Human cast and objects) | BlockedDependency UB-02a, UB-00b | [UB-02bcd](beta-packets/UB-02bcd.md) |
 | UB-02c | `packet-coder` | ~35k | Asgard base, infirmary and fire-site spawns and regions | BlockedDependency UB-02a, UB-00b | [UB-02bcd](beta-packets/UB-02bcd.md) |
 | UB-02d | `packet-coder` | ~35k | Nine Peaks spawns and regions (plus a ring pair if D-UB4 = A) | BlockedDecision D-UB4 | [UB-02bcd](beta-packets/UB-02bcd.md) |
@@ -154,7 +159,7 @@ Template 2303 (Dr. Pierce, 7905) is reserved for UB-52 (twin 383) and never spaw
 | UB-20 | `packet-coder` | ~30k | 1500 receiver and Carter (Free Jaffa fixture) | BlockedDependency UB-02b, D-UB2 | [UB-20-22](beta-packets/UB-20-22.md) |
 | UB-21 | `packet-coder` | ~40k | 1502 The Nine Peaks Jaffa | BlockedDependency UB-02d, UB-20 | [UB-20-22](beta-packets/UB-20-22.md) |
 | UB-22 | `packet-coder` | ~40k | 1503 The Antidote, S4380 to S4381 (not dispatched under D-UB5 A) | BlockedDecision D-UB5 | [UB-20-22](beta-packets/UB-20-22.md) |
-| UB-30 | `packet-coder` | ~40k | 481 receiver, Carter, beam, Mimir (Asgard fixture) | BlockedDependency UB-02b/c, D-UB2 | [UB-30-36](beta-packets/UB-30-36.md) |
+| UB-30 | `packet-coder` | ~40k | 481 receiver, Carter, beam, Mimir (Asgard fixture) | BlockedDependency UB-02b/c; **HELD** on the Asgard producer UO-16 (U-D08/U-D11), see § Omega receiver contract | [UB-30-36](beta-packets/UB-30-36.md) |
 | UB-31 | `packet-coder` | ~35k | 420 Reclamation | BlockedDependency UB-30 | [UB-30-36](beta-packets/UB-30-36.md) |
 | UB-32 | `packet-coder` | ~35k | 421 Mechanical Error | BlockedDependency UB-31, D-UB6, HELD-B3 | [UB-30-36](beta-packets/UB-30-36.md) |
 | UB-33 | `packet-coder` | ~25k | 1147 Intriguing Data | BlockedDependency UB-32 (stack) | [UB-30-36](beta-packets/UB-30-36.md) |
@@ -178,7 +183,7 @@ Spawn and region seeds are split per area (`spawnlist_beta_e1_{hub,asgard,ninepe
 
 | Wave | Packets | Gate |
 |---|---|---|
-| B0 (pilot) | UB-00a, UB-00b, UB-00c, UB-01a | U-D03 (or the orchestrator's waiver for docs-only UB-00*). UB-01a stacks on UB-00c's ID row |
+| B0 (pilot) | UB-00a1, UB-00a2, UB-00b, UB-00c, UB-01a | U-D03 (or the orchestrator's waiver for docs-only UB-00*). UB-01a stacks on UB-00c's ID row |
 | B1 | UB-01b, UB-02a, UB-02b, UB-02c, UB-02d | B0 merged; D-UB4 for UB-02d |
 | B2 | UB-10, UB-11, UB-12, UB-13, UB-20, UB-30 | B1 merged; D-UB2 confirmed. The three receivers run in parallel; UB-11 to UB-13 stack in order on their own files |
 | B3 | UB-14, UB-15, UB-16, UB-21, UB-31 (UB-22 only if D-UB5 is B or C) | B2 merged; HELD-B9 and HELD-B12 answered by UB-00a. UB-14 to UB-16 stack in order |
@@ -202,7 +207,8 @@ Stacked packets inside a wave touch different seed files and test modules. They 
 | HELD-B7 | **Narrowed:** O2080 reads "Use the teleporter at the Asgard Base to teleport up to Mimir's hovering vessel", so the teleporter is the beam (D-UB12). Only the two beam destinations remain | UB-00b (seal § beam); UB-00a Q14 rechecks | UB-30 |
 | HELD-B8 | Debeaux position (probe EM-WeaponRange01 at (1055.6, 14.6, 334.3): 477 O2061 names the "Traning Range"); Pierce only for UB-52 | UB-00b | UB-02b |
 | HELD-B9 | Which camera item serves 1426 (2766/4830/4832), or none | UB-00a | UB-15 |
-| HELD-B10 | Who fires the arrival steps | Orchestrator with the Omega architect (D-UB2) | UB-10, UB-20, UB-30 |
+| HELD-B10 | Who fires the arrival steps | **Answered**: Beta (D-UB2, confirmed by Omega's D-UO2). Left open only for the Asgard leg, whose producer UO-16 is HELD (U-D08/U-D11) | UB-30 |
+| HELD-B16 | Which Omega packet delivers an Asgard player to Beta with 481 active at S1760 and item 3399 held? | Owner (U-D08/U-D11, UO-16) | UB-30 end-to-end reachability |
 | HELD-B12 | What the executor does on `en=false` steps | UB-00a (read `missions/progression.rs` plus one replay probe) | UB-10, UB-14 to UB-16, UB-20 to UB-22 |
 | HELD-B13 | Reward amounts | Owner (U-D07, D-UB8) | UB-50 |
 | HELD-B14 | Mission 443 S1484 "Speak with Mimir over your transmitter": is there a transmitter dialog for 443 (speaker 763)? If not, the step update is the only feedback | UB-00a Q13 | UB-34 (chain 23412) |

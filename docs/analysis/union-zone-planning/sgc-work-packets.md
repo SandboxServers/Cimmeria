@@ -92,8 +92,9 @@ VALUES
   (3051, 'step_status',      1564, '4630', 'eq',  'active',     1),
   (3051, 'objective_status', 1651, '5956', 'neq', 'completed',  2),
   (3051, 'world',            58,   NULL,   'eq',  NULL,         3),
-  (3051, 'archetype',        NULL, NULL,   'lt',  '5',          4),
-  (3051, 'entity_tag_state', NULL, 'SGC_W1_TacticsJaffa1', 'eq', 'dead', 5);
+  (3051, 'archetype',        NULL, NULL,   'gte', '1',          4),
+  (3051, 'archetype',        NULL, NULL,   'lte', '4',          5),
+  (3051, 'entity_tag_state', NULL, 'SGC_W1_TacticsJaffa1', 'eq', 'dead', 6);
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
   (3051, 'display_dialog',       5370, NULL,   '{}', 0, 0),
@@ -124,7 +125,7 @@ VALUES
 
 | Guard | Rule |
 |---|---|
-| Human | `archetype lt 5` on every 1563-1571 chain and every Human-only 1654/1655 chain. A missing archetype reads as -1 and passes, as in CS-05. |
+| Human | The Union Human gate (Union execution contract, Human gate): two `archetype` rows, `gte '1'` and `lte '4'`, on every 1563-1571 chain and every Human-only 1654/1655 chain. A missing archetype reads as -1 (`conditions/mod.rs:333-338`) and fails `gte '1'`, so a GM-created, unstamped player never enters the Union Human lines. This replaces the CS-05 form `lt '5'`, which passes -1. |
 | Free Jaffa | `archetype eq 7`. Never widen chain 3029 (`gte 5`). |
 | Both races | 1651, the 1654 marker and the 1655 Harriman beat carry no archetype row. Step state is the gate, because only the holder of the step can match. |
 | World | `world` with target_id 58 on every `player_loaded`, `enter_region` and crossing chain. |
@@ -220,7 +221,15 @@ D-US1 is decided by the architect (Dakara D-UD6 precedent). The coordinator revi
 | US-34 | `sgc_w1_union_return_chains.sql` | 3171-3175 (3176-3177 spare) | `return_state.rs` |
 | US-40 | `sgc_w1_union_authored_chains.sql` (creates and registers its own) | 3180-3199 | `authored.rs` |
 
-These blocks are clear of Dakara (8001-8499, 63500-63799) and Omega (12000-12399, 63000-63099, 64000-64199, templates 1700-1739, spawns 15000-15099, point sets 2300-2329, items 9300-9329).
+These blocks are clear of the other three Union zones. Each zone's own ledger is the source (recheck there; this list is a copy):
+
+| Zone | Blocks | Source |
+|---|---|---|
+| Dakara | the DK campaign's 8001-8499 (chains), templates 440-479, spawns 8000-8099, point sets 2123-2199, respawners 611-619; Union block 63500-63799 for every table | `dakara-work-packets.md` § ID block |
+| Omega | 63800-63999 for every table (chains 63801-63999, templates and spawns 63800-63899 and 63880-63959, dialog sets and maps 63800-63803, item lists 63802-63819, item list items 638000-639999); respawner 180 | `omega-work-packets.md` § ID map (D-UO1) |
+| Beta | chains 23000-23499, spawns 23000-23199, point sets 23000-23099, points 23000-23299, templates 2300-2349, respawners 2300-2309, authored rows 64000-64499 | `beta-work-packets.md` § ID block (D-UB9) |
+
+The older SGC list (Omega 12000-12399, 63000-63099, 64000-64199, templates 1700-1739, spawns 15000-15099, point sets 2300-2329, items 9300-9329) is superseded: its 64000-64199 overlapped Beta's authored block, and its point-set range 2300-2329 overlapped Beta's templates and respawners 2300-2349 and 2300-2309 (different tables, so only a documentation clash). `id-allocation.md` is coordinator-owned; US-00 files a request for these rows and does not edit that file.
 
 ### Placement points (US-01 seals each; all CIMMERIA_RECONSTRUCTION)
 
@@ -251,7 +260,7 @@ Packets use the values US-01 records in `docs/analysis/union-sgc-continuation/pl
 | S0 | US-00 | `mission-systems-advisor` | docs ~30k | Ledger, ID check, crossings handshake | dispatch gate | BlockedDependency | [US-00](sgc-packets/US-00.md) |
 | S0 | US-01 | `movement-teleport-advisor` + `npc-ai-spawn-advisor` | docs ~35k | Seal P01-P16 and H3 | US-00 | BlockedDependency | [US-01](sgc-packets/US-01.md) |
 | S0 | US-02 | `game-archaeology-specialist` | docs ~35k | Meshes, name_ids, sequences 10047/10060, crate room | US-00 | BlockedDependency | [US-02](sgc-packets/US-02.md) |
-| S1 | US-10 | `packet-coder` | ~35k | Scaffold: 14 empty chain files, `\ir`, CHAIN_FILES, test module, docs anchor | US-00 | BlockedDependency | [US-10](sgc-packets/US-10.md) |
+| S1 | US-10 | `rust-gameserver-dev` (Sonnet; owns the sealed test rig) | ~35k | Scaffold: 14 empty chain files, `\ir`, CHAIN_FILES, test module, docs anchor | US-00 | BlockedDependency | [US-10](sgc-packets/US-10.md) |
 | S1 | US-11 | `packet-coder` | ~35k | Templates, spawns, point sets, Jaffa tags | US-10, US-01, US-02 | BlockedDependency | [US-11](sgc-packets/US-11.md) |
 | S1 | US-14 | `packet-coder` | ~20k | Crossing log tests (`executor/tests/teleport.rs`) | US-00 | BlockedDependency | [US-14](sgc-packets/US-14.md) |
 | S2 | US-12 | `packet-coder` | ~40k | 1563 Virus | US-10, US-11 | BlockedDependency | [US-12](sgc-packets/US-12.md) |
@@ -312,6 +321,7 @@ Packets use the values US-01 records in `docs/analysis/union-sgc-continuation/pl
 | H11 | Gate 27 geometry | 2.4 m above the floor; H3 on the floor; D-US9 | architect + US-01 |
 | HELD-A | Hidden optional objectives O5830, O5831, O5355, O5356, and the 1565 flank O5375 | Left uncredited (hidden or optional). No source says what O5830/O5831/O5355/O5356 are. | open; no owner action |
 | HELD-B | All new player-facing text, and Carter's 5394 | US-40 only, behind D-US2/D-US3 | owner |
+| H-REPRESS | A second press of Hammond's 5392/5393 (US-24) inside the 3 s dial window, or any press that lands while the 3131 recovery chain also matches, can run `cross_world_teleport` twice. Is a second `Travel` acceptable, or must the C1 chain be guarded? | US-24 characterises the double teleport in a test and does not fix it. A guard needs a design call: either a once-per-window condition the engine does not have, or a state the first press sets and the second press reads (a new step or objective, which changes the 1570 step ladder). | owner + `movement-teleport-advisor` |
 
 ## Seal each implementation child
 

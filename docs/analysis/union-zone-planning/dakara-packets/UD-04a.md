@@ -10,7 +10,7 @@
 | Branch / worktree | `union-dakara/ud-04a-human-exit-valve` / `ud-04a` |
 | Commit subject | `feat(content): Dakara_E1 Omega address for a Human on mission 1570 (UD-04a)` |
 | Depends on | D-UD3 = A and "Union ships it"; UD-00 merged. If DK absorbs it into DK-10b instead, this packet is dropped. |
-| Ship order | With or before SGC US-03, which is what first puts a Human on Dakara |
+| Ship order | With or before SGC US-24 (chain 3123-3131, the C1 departure), which is what first puts a Human on Dakara |
 
 ## Why
 
@@ -31,6 +31,7 @@ DK-U10 still holds: a Human with **no** 1570 (a GM visitor) gets nothing. DK's t
 - `fire_player_loaded` fills the mission keys from the entity's `missions`, through `populate_mission_context`.
 - `grant_stargate_address` is idempotent. It logs INFO `Content: granting stargate address` (`executor/stargate.rs:181`), sends the client `updateStargateAddress(id, 1, 0)` and sends the base `CellToBaseMsg::GrantStargateAddress`.
 - Archetypes: 7 is the Free Jaffa, 8 the Praxis Jaffa, and 1 to 6 are Tau'ri. DK-10b gates its Tau'ri rows `archetype lte 6`.
+- **The 1..6 range is intentional and differs from the Union Human gate** (`gte '1'` and `lte '4'`, [execution contract](../execution-contract.md), Shared definitions). This chain is a rescue valve that mirrors DK-10b's Tau'ri rows: it admits Asgard (5) and Goa'uld (6) players too, because a Tau'ri-side player standing on Dakara_E1 on 1570 must not be stranded, and 1570 is only reachable through the Human SGC route. Do not narrow it to 1..4 and do not widen it to 7 or 8. The packet pins both ends with tests (archetypes 5 and 6 admitted, 7, 8 and unstamped refused).
 
 ## Rules (binding; packet-coder skips CLAUDE.md)
 
@@ -52,7 +53,7 @@ DK-U10 still holds: a Human with **no** 1570 (a GM visitor) gets nothing. DK's t
 | `db/resources/Content/Seed/union_dakara_e1_chains.sql` | **New**, CRLF. Chain 63500 |
 | `db/database.sql` | Add one line after `\ir resources/Content/Seed/dakara_e1_space_chains.sql` |
 | `crates/cell-content/src/cell/content/chain_replay_tests/union_dakara_e1.rs` | **New**. Tests |
-| `crates/cell-content/src/cell/content/chain_replay_tests/mod.rs` | Add `mod union_dakara_e1;` in alphabetical order (after `mod stargate_triggers;` and before the next `mod` line, so check the order) |
+| `crates/cell-content/src/cell/content/chain_replay_tests/mod.rs` | Add `mod union_dakara_e1;` between `mod start_minigame_difficulty;` and `mod world_condition;` (on `main` at 2026-10-18; if SGC's `mod union_sgc;` is already there, put it before that one, `d` sorts before `s`) |
 | `.github/instructions/content-chains.instructions.md` | Add a § "Union Dakara_E1 - 63500-63549" block after the Dakara_E1 block |
 
 ## Steps
@@ -60,7 +61,7 @@ DK-U10 still holds: a Human with **no** 1570 (a GM visitor) gets nothing. DK's t
 1. **Seed file.** Create `db/resources/Content/Seed/union_dakara_e1_chains.sql`:
    ```sql
    -- Union Dakara_E1 chains (docs/analysis/union-zone-planning/dakara-work-packets.md).
-   -- Block 63500-63549 (id-allocation.md, UD-00). DK owns 8001-8499; never put DK chains here.
+   -- Block 63500-63549 (UD-00 ledger; the coordinator merges it into id-allocation.md). DK owns 8001-8499; never put DK chains here.
 
    -- 63500 - CIMMERIA_RECONSTRUCTION. A Human on mission 1570 (crossing C1 from the SGC)
    -- learns Omega Site, as chain 8001 does for the Free Jaffa. Evidence: free-jaffa-route.md
@@ -91,9 +92,9 @@ DK-U10 still holds: a Human with **no** 1570 (a GM visitor) gets nothing. DK's t
    - `live_db_valve_stays_shut_for_a_visitor_a_jaffa_and_other_worlds`:
      - archetypes 1 to 6 with no missions, and with `(1570, "not_active")`;
      - archetypes 7 and 8, and `None`, with `(1570, "active")`;
-     - archetype 1 with `(1570, "active")` on `"Dakara_E1_StoryRm"`, `"SGC_W1"` and `"Omega_Site"`.
+     - archetype 1 with `(1570, "active")` on `"Dakara_E1_StoryRm"` (world 62), `"SGC_W1"` (58) and `"Omega_Site"` (18). These are the exact `worlds.world` values in `db/resources/Worlds/Seed/worlds.sql`.
 
-     Assert that no action has `chain == CHAIN`. It fails if either archetype row is dropped (the `None` case catches a dropped `gte 1`), the `lte 6` row is flipped to `gte`, the mission condition is dropped or flipped to `eq not_active`, or the trigger's world key is cleared. Check the exact world names against `db/resources` worlds rows before using them.
+     Assert that no action has `chain == CHAIN`. It fails if either archetype row is dropped (the `None` case catches a dropped `gte 1`), the `lte 6` row is flipped to `gte`, the mission condition is dropped or flipped to `eq not_active`, or the trigger's world key is cleared.
    - `live_db_human_on_1570_is_granted_omega_executed`: `staged_space` with archetype `Some(1)` and `with_1570 Some(false)`, then `enter_world`. Assert the sent messages include an `EntityMethodCall` with `method_index == UPDATE_STARGATE_ADDRESS` and args `5i32.to_le_bytes() ++ [1, 0]`, and a `GrantStargateAddress { stargate_id: 5, player_id: PLAYER_ID, .. }`. Assert `known_stargates == vec![5]`. A second `enter_world` sends no second `GrantStargateAddress`. Copy the destructuring style from `dakara_e1_space.rs:265-305`, but match by `iter().any`, not by exact slice, because other DK chains may add messages later.
    - `live_db_human_visitor_without_1570_is_sent_nothing_executed`: archetype `Some(1)`, `with_1570 None`. `enter_world` sends nothing and `known_stargates` stays empty (DK-U10).
 

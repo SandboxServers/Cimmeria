@@ -8,7 +8,7 @@
 | Size | about 40k |
 | Branch / worktree | `union-beta-e1/ub-02a-templates` / `ub-02a` |
 | Commit subject | `feat(beta-e1): UB-02a Beta cast and object templates named by the client's own strings` |
-| Depends on | UB-00a question 10 (object meshes) and UB-00c (ID block clear). Runs alongside UB-01b |
+| Depends on | UB-00a2 question 10 (object meshes) and UB-00c (ID block clear). Runs alongside UB-01b |
 | Ship order | Before UB-02b, UB-02c and UB-02d, which spawn these templates |
 
 ## Why
@@ -28,7 +28,7 @@ Beta has no NPCs. Chains bind dialogs per player using `slot` = the NPC's **temp
 1. PowerShell only; start every command with `Set-Location C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\ub-02a;`.
 2. Never run `cargo` directly; use `pwsh tools/build-lane/lane.ps1` and `pwsh tools/build-lane/live-db-test.ps1`. Run in the foreground and check that test counts are above 0.
 3. Edit only the allowlist.
-4. The seed file is CRLF (normalise after writing). Keep `db/database.sql`'s existing line endings.
+4. The new seed file matches its neighbouring seeds in the working tree (CRLF here; never mixed; normalise after writing). Keep `db/database.sql`'s existing line endings.
 5. Seeds in `db/resources/` only; no migrations; never edit `entity_templates.sql` or the Dakara file.
 6. Under 500 lines per file. If `templates.rs` grows past 450, split it into `templates.rs` and `templates_props.rs`.
 7. Never touch `sgw`; no lab, no client, no Ghidra (UB-00a has already done the mesh census).
@@ -82,7 +82,13 @@ Beta has no NPCs. Chains bind dialogs per player using `slot` = the NPC's **temp
    | 2334 | `Beta E1 - Consciousness Simulator` | 8497 `DN_Ob_It_Asgard_BetaE1_ConsciousnessSimulator` | UB-36 |
    | 2335 | `Beta E1 - Note at the ruins` | name_id NULL; `display_name 'Note'` (CIMMERIA_RECONSTRUCTION: dialog 4663 is the "post-it" object dialog, and the client has no moniker for it) | UB-16 |
 
-3. **Tail:** if the Dakara file ends with a `setval` for a templates sequence, copy that line with `2335`. If it has none, add none.
+3. **Footer (required).** The Dakara file has no `setval`, but Beta's templates sit at 2300-2349, far above the sequence (about 1600 after the other seeds), so `seeded_sequences_allocate_past_every_seeded_row` (`crates/cell-catalog/src/cell/spawner/tests/live_db_seed_sequences.rs`) fails without one: it asserts the sequence's next value is above the highest seeded `template_id`. End `entity_templates_beta_e1.sql` with exactly this line, copying the form of the footer in `entity_templates_debug_area_lords.sql`, with the top of Beta's whole block 2349 (not the last id used, 2335):
+
+   ```sql
+   SELECT pg_catalog.setval('entity_templates_template_id_seq', GREATEST((SELECT MAX(template_id) FROM entity_templates), (SELECT last_value FROM entity_templates_template_id_seq), 2349), true);
+   ```
+
+   Do not edit `live_db_seed_sequences.rs` (outside the allowlist); its template floor of 1409 stays, and the `GREATEST` form keeps every other footer valid in any load order.
 
 4. **database.sql.** One `\ir` line after line 320.
 
@@ -94,7 +100,7 @@ Beta has no NPCs. Chains bind dialogs per player using `slot` = the NPC's **temp
    - `live_db_beta_e1_objects_are_mission_world_objects_and_npcs_are_not`: each object template has the `INT_MISSION_WORLD_OBJECT` bit (`cimmeria_entity::interaction_flags`), and each NPC template has interaction_type 0. Chains reach NPCs through per-player binds only (D-UB10). Revert: set 2300's `interaction_type` to 1073741824.
    - `live_db_beta_e1_reserved_ids_are_absent`: 2303, 2327 and 2336 have no row. This stops a coder from placing Pierce before D-UB7.
 
-6. **Revert proof.** Comment out the `\ir` line and rerun `spawner_tests::beta_e1`; it must fail. Restore it. Then clear 2301's `display_name`; the shows-a-name test must fail. Restore and rerun green. Quote all of it in the report.
+6. **Revert proof.** Comment out the `\ir` line and rerun `spawner_tests::beta_e1`; it must fail. Restore it. Then clear 2301's `display_name`; the shows-a-name test must fail. Restore. Then delete the footer line from step 3 and run `seeded_sequences_allocate_past_every_seeded_row`; it must fail with a message naming `entity_templates_template_id_seq` and a seeded `template_id` of 2335. Restore the footer and rerun everything green. Quote all of it in the report.
 
 ## Lane checks (in order)
 
@@ -103,13 +109,14 @@ Set-Location <wt>; pwsh tools/build-lane/lane.ps1 cargo fmt -p cimmeria-cell-wor
 Set-Location <wt>; pwsh tools/build-lane/lane.ps1 cargo clippy -p cimmeria-cell-world --all-targets -- -D warnings
 Set-Location <wt>; pwsh tools/build-lane/live-db-test.ps1 spawner_tests::beta_e1
 Set-Location <wt>; pwsh tools/build-lane/live-db-test.ps1 spawner_tests::dakara_e1
+Set-Location <wt>; pwsh tools/build-lane/live-db-test.ps1 seeded_sequences_allocate_past_every_seeded_row
 ```
 
-The Dakara rerun proves the shared loader still reads both blocks.
+The Dakara rerun proves the shared loader still reads both blocks. The last command is the sequence guard: it must report one test run and pass.
 
 ## Acceptance
 
-- Six template tests green; the Dakara template tests are still green.
+- Six template tests green; the Dakara template tests are still green; `seeded_sequences_allocate_past_every_seeded_row` passes with the 2349 footer (test count above zero).
 - SigNoz: not reached until UB-02b spawns these templates. UB-90 row UB-U2 checks the nameplates live (Carter shows "Lt. Col. Carter" and Felger shows "Dr. Felger"). This packet adds no log line.
 
 ## Docs rows

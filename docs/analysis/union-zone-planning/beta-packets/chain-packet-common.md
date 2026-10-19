@@ -9,7 +9,7 @@ Every chain packet (UB-01b, UB-10 to UB-16, UB-20 to UB-22, UB-30 to UB-36, UB-4
 1. PowerShell only. Start every command with `Set-Location C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\<wt>;`. Use absolute paths. No bash.
 2. Never run `cargo` directly. Use `pwsh tools/build-lane/lane.ps1 cargo <cmd> -p <crate>`. Live-DB tests run through `pwsh tools/build-lane/live-db-test.ps1 <filter>`, which first reloads your own `sgw_<wt>`. Run everything in the foreground. Check that the lane log lands under your worktree's `logs/`, and that each test count is above zero (a filter that matches nothing passes).
 3. Edit only the files in your packet's allowlist.
-4. Seed `.sql` files and `docs/**/*.md` are CRLF. Write the file, then normalise it: `[IO.File]::WriteAllText('<abs>', ([IO.File]::ReadAllText('<abs>') -replace "\r?\n", "\r\n"))`. For `db/database.sql` and `.github/instructions/*.md`, read the current line endings and keep them.
+4. `docs/**/*.md` is CRLF; a seed `.sql` matches its neighbouring seed files in the working tree (CRLF here; execution-contract.md § Shared definitions, Line endings), never mixed. Write the file, then normalise it: `[IO.File]::WriteAllText('<abs>', ([IO.File]::ReadAllText('<abs>') -replace "\r?\n", "\r\n"))`. For `db/database.sql` and `.github/instructions/*.md`, read the current line endings and keep them.
 5. Seeds live only in `db/resources/`. No `db/scripts/*.sql` and no migrations.
 6. Files stay under 500 lines (hard cap 700). If a test file would pass 500, split it along a natural seam (offer and accept / body / restore), as `mission_701/` does.
 7. Never touch the `sgw` database. No lab, no client, no Ghidra.
@@ -50,7 +50,7 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 | condition | `mission_status` | `target_id` mission, `value` `not_active`/`active`/`completed`. A missing key reads `not_active` |
 | condition | `step_status` | `target_id` mission, `target_key` step id text, `value` `active`/`completed`/`not_active` |
 | condition | `objective_status` | `target_id` mission, `target_key` objective id text, `value` `completed`/`active` (missing reads `not_active`) |
-| condition | `archetype` | `value` text; Human `gte 1` **and** `lte 4`; Asgard `eq 5`; Free Jaffa `eq 7` |
+| condition | `archetype` | `value` text; Human `gte 1` **and** `lte 4` (the Union Human gate, execution-contract.md § Shared definitions); Asgard `eq 5`; Free Jaffa `eq 7` |
 | condition | `counter` | `target_key` counter name, `value` integer text |
 | action | `accept_mission`, `complete_mission` | `target_id` mission, `'{}'` |
 | action | `advance_step` | `target_id` mission, `target_key` the **next** step id |

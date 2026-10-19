@@ -9,10 +9,10 @@ These tests prove that each departure leaves the player in exactly the state the
 
 | X | Departure chain (owner) | State after departure | Receiving chain gate (owner) |
 |---|---|---|---|
-| C1 | SGC US-03 departure | 1570/4906 active | DK-10b rows 8046-8056, `archetype lte 6` + step 4906 |
-| C2 | DK-30 departure | 1651/4928 active | SGC US-03 Hammond chain at 4928 |
-| C2b | SGC US-03 departure | 1651/5171 active, item 6784 held | DK-30 Bra'tac chain at 5171 |
-| C3 | DK-33 departure | 1654/4939 active, objective 5961 complete, 5962 open | SGC US-04 Hammond 5852 (Human) / 5853 (Jaffa) |
+| C1 | SGC US-24 departure | 1570/4906 active | DK-10b rows 8046-8056, `archetype lte 6` + step 4906 |
+| C2 | DK-30 departure | 1651/4928 active | SGC US-30 Hammond chain at 4928 |
+| C2b | SGC US-30 departure | 1651/5171 active, item 6784 held | DK-30 Bra'tac chain at 5171 |
+| C3 | DK-33 departure | 1654/4939 active, objective 5961 complete, 5962 open | SGC US-31 Hammond 5852 (Human) / 5853 (Jaffa) |
 
 Read the frozen contract before starting. If it differs from this excerpt, the contract wins. Note the difference in the report.
 
@@ -39,7 +39,7 @@ Why it fails on revert: if either side changes its step, gate, world name or pos
 
 | Field | Value |
 |---|---|
-| Depends on | DK-10b merged; SGC US-03 merged |
+| Depends on | DK-10b merged; SGC US-24 merged |
 | Branch / worktree | `union-dakara/ud-04b-c1-handshake` / `ud-04b` |
 | Files | New `crates/cell-content/src/cell/content/chain_replay_tests/union_dakara_crossings.rs`; `mod.rs` (one line) |
 | Commit subject | `test(content): 1570 SGC-to-Dakara crossing handshake (UD-04b)` |
@@ -49,7 +49,7 @@ Why it fails on revert: if either side changes its step, gate, world name or pos
 
 | Field | Value |
 |---|---|
-| Depends on | DK-30, DK-33, SGC US-03 and US-04 merged; UD-04b merged (same file) |
+| Depends on | DK-30, DK-33, SGC US-30 and US-31 merged; UD-04b merged (same file) |
 | Branch / worktree | `union-dakara/ud-04c-1651-1654-handshake` / `ud-04c` |
 | Files | `union_dakara_crossings.rs` (extend; stay under 500 lines, or split into a `union_dakara_crossings/` folder with `mod.rs`, `c1.rs`, `c2.rs`, `c3.rs`) |
 | Commit subject | `test(content): 1651 and 1654 crossing handshakes (UD-04c)` |

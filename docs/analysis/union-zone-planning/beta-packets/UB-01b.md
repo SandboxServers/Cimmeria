@@ -32,7 +32,7 @@ A Union player who gates to Beta must be able to dial home. The Dakara precedent
 1. PowerShell only; start every command with `Set-Location C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\ub-01b;`.
 2. Never run `cargo` directly; use `pwsh tools/build-lane/lane.ps1` and `pwsh tools/build-lane/live-db-test.ps1`. Run in the foreground and check test counts are above 0.
 3. Edit only the allowlist.
-4. The seed and docs are CRLF (normalise after writing). In `db/database.sql`, `seed_model.rs`, `interact_tag_linter.rs` and `.github/instructions/*.md`, keep each file's existing line endings.
+4. Docs are CRLF; a new seed matches its neighbouring seeds in the working tree (CRLF here; never mixed). Normalise after writing. In `db/database.sql`, `seed_model.rs`, `interact_tag_linter.rs` and `.github/instructions/*.md`, keep each file's existing line endings.
 5. Seeds in `db/resources/` only; no migrations.
 6. Under 500 lines per file.
 7. Never touch `sgw`; no lab.

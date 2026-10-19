@@ -20,7 +20,7 @@ Everything uses existing engine primitives. Nothing needs a client patch, a new 
 
 ## Findings
 
-Every finding was checked against the tree at `d1bba0400`. The packet column names the packet that acts on it.
+Every finding was checked against the planning baseline `d1bba0400` (an ancestor of `main`); locate each anchor by its text, not its line number. The packet column names the packet that acts on it.
 
 | # | Finding | Evidence | Packet |
 |---|---|---|---|
@@ -42,8 +42,8 @@ Every finding was checked against the tree at `d1bba0400`. The packet column nam
 | F16 | Both navmeshes are committed: `data/spaces/omega_site.nav` and `omega_site_cmdcenter.nav`. `nav_inspect` and the DK `travel.rs` helpers work on them. | `git ls-files data/spaces` | UO-01, UO-03, UO-05 |
 | F17 | Seed sequences: the template floor is 1409 and the spawn floor 13869. The dialog sequences already stand above 100000, so 638xx needs no dialog footer. | `live_db_seed_sequences.rs`, `dialog_set_maps.sql:9355` | UO-02 |
 | F18 | Seven chain-replay helpers in `mission_1324.rs` are `pub(super)`: `ctx_for`, `with_mission`, `with_step`, `fire_player_loaded`, `fire_dialog_choice`, `fire_mission_completed` and `display_dialog_count`. `labels` filters Harset's range, so Omega needs its own. | `mission_1324.rs:97-260` | UO-02 |
-| F19 | SGC's ledger lists stale Omega blocks (12000-12399, 63000-63099, 64000-64199). The last of these overlaps Beta's 64000-64499. | `sgc-work-packets.md:222` | UO-00 |
-| F20 | Dakara UD-04a gates the Tau'ri as `archetype lte 6`, which also admits Asgard (5) and Goa'uld (6). This is a cross-zone note only; Omega uses `gte 1` plus `lte 4`. | `dakara-packets/UD-04a.md` | report |
+| F19 | SGC's ledger listed stale Omega blocks (12000-12399, 63000-63099, 64000-64199); the last overlapped Beta's 64000-64499. **Fixed** by the planning review pass: `sgc-work-packets.md` § ID allocation now carries a per-zone table with Omega at 63800-63999. UO-00's handoff note asks the coordinator to confirm it. | `sgc-work-packets.md` § ID allocation | UO-00 |
+| F20 | Dakara UD-04a gates the Tau'ri as `archetype lte 6`, which also admits Asgard (5) and Goa'uld (6). This is a cross-zone note only; Omega uses the Union Human gate (`gte 1` plus `lte 4`, [execution-contract.md](execution-contract.md) § Shared definitions). | `dakara-packets/UD-04a.md` | report |
 | F21 | O5645 and O5646 (S4940) are both optional, and the engine completes a mission once no required objective is left open on its step. A chain that completes either objective therefore completes all of 1655 early. No Omega chain uses `complete_objective` on 1655. | `mission_objectives.sql:3136,3138`; `crates/content-engine/src/progression.rs:464-506` | UO-04, UO-07..09 |
 | F22 | `mission_abandoned` fires after the mission instance is removed, so the abandoned mission already reads `not_active` on that event. INFO "fire_mission_abandoned: matched". | `event_dispatch/mission.rs:217`; `chain_replay_tests/mission_abandoned.rs:50-67` | UO-09 |
 | F23 | The 1655 guard: every delivery chain (63820-63822, 63830-63832) carries `mission_status 1655 eq active`, every re-offer chain (63840-63845) carries `eq completed`. The two families never both match one event. | design rule; tested in UO-07..09 and UO-13 | UO-07..09 |
@@ -134,7 +134,7 @@ Flags are 16777216 = `INT_A_STORY_MISSION_ACTIVE` and 8388608 = `INT_A_STORY_MIS
 | Free Jaffa | 1655 completed; 1500 active at S4369 | gate 6 | Beta 23220 |
 | Asgard | 481 at S1760 with item 3399 (UO-16, HELD) | gate 6 | Beta 23310 |
 
-Omega fires no Beta step (D-UO2). Beta chain 23001 grants Omega's gate 5 to a player who reaches Beta first. A player who abandons 1423/1500 gets it back from Jackson or Bra'tac in world 80 (UO-09). UO-13 exports `pub(super)` departure-state fixtures in `chain_replay_tests/union_omega/handoff.rs`, so Beta's replay tests start from Omega's exact output. Beta should import those rather than rebuild them.
+Omega fires no Beta step (D-UO2). Beta chain 23001 grants Omega's gate 5 to a player who reaches Beta first. A player who abandons 1423/1500 gets it back from Jackson or Bra'tac in world 80 (UO-09). UO-13 exports `pub(super)` departure-state fixtures in `chain_replay_tests/union_omega/handoff.rs`, so Beta's replay tests start from Omega's exact output. **Fixture ownership (settled with Beta):** UO-13 owns and exports the *departure* fixtures; Beta's UB-10, UB-20 and UB-30 build the *receiver* fixtures (the inbound state staged, Beta's chain asserted). Beta's wave B2 can run before UO-13 merges, so Beta stages the state itself and may switch to the `handoff` import once UO-13 is on `main`. Both sides assert the same table row above.
 
 ## Renumbering (for sibling ledgers)
 
@@ -147,7 +147,7 @@ Omega fires no Beta step (D-UO2). Beta chain 23001 grants Omega's gate 5 to a pl
 | UO-04/05/06 Asgard | UO-16 (stub, BlockedDecision) |
 | UO-07/08 hub life and integration | UO-10..12 (services), UO-13 (handshake and Beta fixtures), UO-14 (ambient) |
 
-Beta's "UO-07/08 receiver fixtures" are now **UO-13**. The Asgard route ledger's "Omega UO-05/06" is now **UO-16**.
+Beta's old "UO-07/08 receiver fixtures" citation now means the departure fixtures of **UO-13**; the receiver fixtures stay with Beta (UB-10/UB-20/UB-30). The Asgard route ledger's "Omega UO-05/06" is now **UO-16**.
 
 ## Packets
 

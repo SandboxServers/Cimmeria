@@ -19,7 +19,7 @@
 | Wave | Packets | Gate |
 |---|---|---|
 | U1 | UD-00, UD-01a, UD-04a | U-D03 waiver; D-UD1; D-UD3 + UD-00 |
-| U2 | UD-01b, UD-01c, UD-04b, UD-04c | UD-01a + authored precedent on main; DK-10b/30/33 + SGC US-03/04 |
+| U2 | UD-01b, UD-01c, UD-04b, UD-04c | UD-01a + authored precedent on main; DK-10b/30/33 + SGC US-24/30/31 |
 | U3 | UD-05, UD-99 | U2 merged; owner approves lab |
 
 ## Open decisions
@@ -27,7 +27,7 @@
 - **D-UD1** (owner + DK): U-D09 settles D-DK1 (bridge replaces chain 8040; DK keeps the Tau'ri rows). BlockedDecision.
 - **D-UD2** (orchestrator + DK): DK-30 owns the 4930 departure as a teleport, with no SGC address. BlockedDecision.
 - **D-UD3** (owner): Human exit valve A/B/C, and who ships it. BlockedDecision.
-- **HELD:** H-U07 rewards, H-LBL copy labels (owner); H1, H3, H5, H-RELOG (SGC architect).
+- **HELD:** H-U07 rewards, H-LBL copy labels (owner); H-RELOG (SGC architect). H1, H3 and H5 are answered by SGC K5.
 
 ## Before U2
 
