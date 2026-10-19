@@ -80,6 +80,7 @@ Chain ids are 23000-23499; the full table is in [mission-chains.md](mission-chai
 | Asgard | 481 → 420 Reclamation → 421 Mechanical Error → 1147 Intriguing Data, plus 443 Incendiary, 477 Covert Observations, 479 Process Support | 481 and the seven Beta missions complete locally |
 
 Offer order is strictly linear per race (D-UB15), and every Beta mission pays xp 0 and naq 0 (D-UB8).
+UB-50a adds the XP column of the [reward proposal](../analysis/union-beta-e1-continuation/reward-proposal.md) as one `grant_xp` chain per mission on `mission_completed` (chains 23480-23496, `beta_e1_rewards_chains.sql`). `missions.reward_xp` stays 0.
 
 **The Asgard arc cannot be reached by a real player yet.** Omega's UO-16 must deliver an Asgard player with 481 at S1760 and item 3399. It is held behind owner decisions U-D08 and U-D11 (HELD-B16). The arc is tested by archetype-5 replays only (D-UB13).
 
@@ -110,7 +111,7 @@ The 421 infirmary is Beta-local with high confidence (D-UB6). `INFIRMARY_CENTRE`
 
 - 1503 The Antidote (UB-22 held) and the Omega/SGC receiver notes (UB-51 held), both D-UB5 A.
 - Twin missions 383, 384 and 1146 (UB-52 closed, D-UB7).
-- Authored relays and rewards (UB-50). Owner questions H-LBL, U-D07 (xp and naq for the 17 missions) and HELD-B16 stay open.
+- Authored relays and rewards (UB-50). Owner questions H-LBL and HELD-B16 stay open.
 - Closed-Beta Visit 2 (1807-1826) and Beta Site E2 (world 60): research only.
 
 ## Related
