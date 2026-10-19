@@ -33,10 +33,16 @@ fn labels_and_delays_cover_the_wave_5_and_6_verbs() {
                     entity_tag: "Dakara_E1_StoryRm_BaalHologram".into(),
                 },
             ),
+            (
+                8290,
+                Action::DestroyTaggedEntity {
+                    entity_tag: "Dakara_E1_StoryRm_BaalHologram".into(),
+                },
+            ),
             (8290, Action::PlaySequence { sequence_id: 1194 }),
             (9999, Action::DisplayRadioDialog { dialog_id: 1 }),
         ],
-        action_delays: vec![2000, 0, 0, 0, 0, 0],
+        action_delays: vec![2000, 0, 0, 0, 0, 0, 0],
         params: HashMap::new(),
     };
     assert_eq!(
@@ -46,9 +52,10 @@ fn labels_and_delays_cover_the_wave_5_and_6_verbs() {
             "8290:cross_world_teleport(SGC_W1@172.79,-10.90,12.00)",
             "8290:spawn_entity(443#Dakara_E1_StoryRm_BaalHologram)",
             "8290:despawn_entity(Dakara_E1_StoryRm_BaalHologram)",
+            "8290:destroy_entity(Dakara_E1_StoryRm_BaalHologram)",
             "8290:play_sequence(1194)",
         ]
     );
-    assert_eq!(delays_of(&r, 8290), [2000, 0, 0, 0, 0]);
+    assert_eq!(delays_of(&r, 8290), [2000, 0, 0, 0, 0, 0]);
     assert_eq!(radio_count(&r), 2);
 }
