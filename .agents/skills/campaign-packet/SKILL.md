@@ -172,8 +172,8 @@ Then ship:
    `ops` merges each packet branch into it with `merge-noff.ps1`, the wave
    loop reviews it there, and one PR ships it. A packet merged only into an
    integration branch has no PR of its own, so `rm-worktree.ps1 --merged`
-   skips its worktree and `ops` may not force it: list those worktrees for
-   the owner.
+   skips its worktree; once the wave PR has merged, `ops` retires those with
+   `rm-worktree.ps1 --merged-into <PR> <name>...`.
 2. Update the packet rows in the ledger, and write
    `worknotes/<packet>.md` only if anything is left over.
 
@@ -235,6 +235,6 @@ campaign's state lives on disk, not in the transcript:
   change **once**, in the close-out packet, never per packet.
 - Close-out also updates `docs/guides/unified-uat.md` with the UAT steps the
   owner still has to run, retires every worker worktree through `ops`
-  (`rm-worktree.ps1 --merged`, which skips packet worktrees merged only into an integration branch: list those for the owner), empties `.claude/state/active-campaign` (Write an
+  (`rm-worktree.ps1 --merged`, which skips packet worktrees merged only into an integration branch; retire those with `rm-worktree.ps1 --merged-into <PR> <name>...`), empties `.claude/state/active-campaign` (Write an
   empty file; the orchestrator has no shell to delete it, and an empty pointer
   makes `resume_card.py` print nothing), and posts a handoff to the board.
