@@ -7,11 +7,15 @@
 //! - [`hub`]: UB-02b, the hub cast and objects (spawns 23000-23021) and the
 //!   Storage and AdminBuilding regions: rows, positions, standability and tag
 //!   uniqueness.
+//! - [`asgard`]: UB-02c, the Asgard base, deck and beam pads, infirmary and fire
+//!   site (spawns 23060-23071 and the Infirmary and FireSite regions): the deck
+//!   is beam only, and Satterfield stays outside the fire site.
 //! - [`templates`]: UB-02a, the cast and object templates of
 //!   `db/resources/Entities/Seed/entity_templates_beta_e1.sql`: the roster, a
 //!   name on each, nothing hostile or attackable, the visual settings, the
 //!   object and NPC interaction bits, and the reserved ids left empty.
 
+mod asgard;
 mod hub;
 mod nav;
 mod templates;
