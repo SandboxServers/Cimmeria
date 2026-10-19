@@ -73,6 +73,10 @@ pub(crate) struct WalkState {
     pub step: Option<(i64, i64)>,
     /// The objectives done, as (mission, objective).
     pub objectives_done: Vec<(i64, i64)>,
+    /// The objectives of an active step that are not done, as (mission,
+    /// objective). The engine reads these as `active`
+    /// (`populate_mission_context`), and chains such as 23438-23446 gate on it.
+    pub objectives_active: Vec<(i64, i64)>,
     /// Extra active steps of other missions (the 1425/1426 overlap only).
     pub overlap: Vec<(i64, i64)>,
     /// Counter values, by counter name.
@@ -96,19 +100,26 @@ pub(crate) async fn walk(pool: &PgPool, race: Race) -> Vec<WalkState> {
             Vec::new(),
         ));
         for step in step_ids(pool, mission).await {
-            for done in objective_subsets(pool, step).await {
+            let all = step_objectives(pool, step).await;
+            for done in objective_subsets(step, &all) {
                 let mut label = format!("{} {mission} S{step}", race.tag());
                 if !done.is_empty() {
                     let names: Vec<String> = done.iter().map(|o| format!("O{o}")).collect();
                     label.push_str(&format!(" {}", names.join("+")));
                 }
-                core.push(state(
+                let mut at_step = state(
                     label,
                     race,
                     statuses(order, i, "active"),
                     Some((mission, step)),
                     done.iter().map(|&o| (mission, o)).collect(),
-                ));
+                );
+                at_step.objectives_active = all
+                    .iter()
+                    .filter(|o| !done.contains(o))
+                    .map(|&o| (mission, o))
+                    .collect();
+                core.push(at_step);
             }
         }
         core.push(state(
@@ -119,7 +130,11 @@ pub(crate) async fn walk(pool: &PgPool, race: Race) -> Vec<WalkState> {
             Vec::new(),
         ));
         if race == Race::Human && mission == OVERLAP_NEXT {
-            let cross: Vec<WalkState> = core[start..].iter().map(overlap_with).collect();
+            let overlap_objectives = step_objectives(pool, OVERLAP_STEP).await;
+            let cross: Vec<WalkState> = core[start..]
+                .iter()
+                .map(|s| overlap_with(s, &overlap_objectives))
+                .collect();
             core.extend(cross);
         }
     }
@@ -149,6 +164,8 @@ pub(crate) struct TriggerKeys {
     pub items: Vec<i64>,
     /// `mission_completed` mission ids.
     pub missions: Vec<i64>,
+    /// `enter_region` region keys.
+    pub regions: Vec<String>,
 }
 
 /// The trigger keys of every chain in the Beta block (23000-23499).
@@ -180,10 +197,12 @@ pub(crate) async fn beta_trigger_keys(pool: &PgPool) -> TriggerKeys {
         dialogs: ids("dialog_choice"),
         items: ids("item_use"),
         missions: ids("mission_completed"),
+        regions: keys("enter_region").into_iter().collect(),
     }
 }
 
-/// Stamp `s` onto `ctx`: mission and step statuses, done objectives, counters.
+/// Stamp `s` onto `ctx`: mission and step statuses, done and active
+/// objectives, counters.
 /// The archetype is the caller's, so one state serves every race it is tried with.
 pub(crate) fn apply(mut ctx: ExecutionContext, s: &WalkState) -> ExecutionContext {
     for &(mission, status) in &s.missions {
@@ -194,6 +213,9 @@ pub(crate) fn apply(mut ctx: ExecutionContext, s: &WalkState) -> ExecutionContex
     }
     for &(mission, obj) in &s.objectives_done {
         with_obj(&mut ctx, mission as i32, obj as i32, "completed");
+    }
+    for &(mission, obj) in &s.objectives_active {
+        with_obj(&mut ctx, mission as i32, obj as i32, "active");
     }
     for (name, value) in &s.counters {
         with_counter(&mut ctx, name, *value);
@@ -215,10 +237,9 @@ async fn step_ids(pool: &PgPool, mission: i64) -> Vec<i64> {
     .collect()
 }
 
-/// Every subset of the step's objectives, as the list of objectives done.
-/// Panics past [`MAX_OBJECTIVES`], since the subsets would explode.
-async fn objective_subsets(pool: &PgPool, step: i64) -> Vec<Vec<i64>> {
-    let objectives: Vec<i64> = sqlx::query_scalar::<_, i32>(
+/// The objective ids of `step`, from `mission_objectives`.
+pub(crate) async fn step_objectives(pool: &PgPool, step: i64) -> Vec<i64> {
+    sqlx::query_scalar::<_, i32>(
         "SELECT objective_id FROM resources.mission_objectives \
          WHERE step_id = $1 ORDER BY objective_id",
     )
@@ -228,7 +249,13 @@ async fn objective_subsets(pool: &PgPool, step: i64) -> Vec<Vec<i64>> {
     .expect("read the step's objectives")
     .into_iter()
     .map(i64::from)
-    .collect();
+    .collect()
+}
+
+/// Every subset of `objectives` (the objectives of `step`), as the list of
+/// objectives done. Panics past [`MAX_OBJECTIVES`], since the subsets would
+/// explode.
+fn objective_subsets(step: i64, objectives: &[i64]) -> Vec<Vec<i64>> {
     assert!(
         objectives.len() <= MAX_OBJECTIVES,
         "step {step} has {} objectives; the done-subsets would explode",
@@ -288,13 +315,15 @@ fn state(
         missions,
         step,
         objectives_done,
+        objectives_active: Vec::new(),
         overlap: Vec::new(),
         counters: Vec::new(),
     }
 }
 
-/// The 1426 state with 1425 also active at S4244 (UB-14-16).
-fn overlap_with(s: &WalkState) -> WalkState {
+/// The 1426 state with 1425 also active at S4244 (UB-14-16), its objectives
+/// (`objectives`) not done.
+fn overlap_with(s: &WalkState, objectives: &[i64]) -> WalkState {
     let mut cross = s.clone();
     cross.label = format!("{} +{OVERLAP_MISSION} S{OVERLAP_STEP}", s.label);
     for (mission, status) in cross.missions.iter_mut() {
@@ -303,6 +332,9 @@ fn overlap_with(s: &WalkState) -> WalkState {
         }
     }
     cross.overlap.push((OVERLAP_MISSION, OVERLAP_STEP));
+    cross
+        .objectives_active
+        .extend(objectives.iter().map(|&o| (OVERLAP_MISSION, o)));
     cross
 }
 

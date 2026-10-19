@@ -19,8 +19,8 @@ const RACE_NEUTRAL: &[(i64, &str)] = &[
 ];
 
 /// Every trigger the Beta chains answer to, stamped with `archetype` (`None`
-/// leaves it unset): a login, an interact click, a dialog choice, an item use
-/// and a mission completion, one per key.
+/// leaves it unset): a login, an interact click, a dialog choice, an item use,
+/// a mission completion and a region entry, one per key.
 fn events(keys: &TriggerKeys, archetype: Option<i64>) -> Vec<(TriggerType, ExecutionContext)> {
     let stamp = |mut ctx: ExecutionContext| {
         if let Some(a) = archetype {
@@ -48,6 +48,11 @@ fn events(keys: &TriggerKeys, archetype: Option<i64>) -> Vec<(TriggerType, Execu
         let mut ctx = ExecutionContext::new();
         ctx.set_param("mission_id".to_string(), serde_json::json!(mission));
         out.push((TriggerType::MissionCompleted, stamp(ctx)));
+    }
+    for region in &keys.regions {
+        let mut ctx = ExecutionContext::new();
+        ctx.set_param("region_key".to_string(), serde_json::json!(region));
+        out.push((TriggerType::RegionEnter, stamp(ctx)));
     }
     out
 }
