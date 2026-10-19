@@ -46,9 +46,8 @@ The frontmatter of each `.claude/agents/*.md` file sets how the agent runs. `mod
 | npc-ai-spawn-advisor | sonnet | - | - | Advisor for NPC behavior: aiState, threat tables, ability selection, spawn sets, respawn timers, patrols, leash, cover and spawner state. |
 | ops | haiku | low | 30 | Runs one requested git or worktree op via repo scripts (worktree create/remove, PR open/merge/retire, board read/post, explicit-path commit, merge --no-ff, branch at SHA, push, rebase onto a recorded SHA); else refused as blocked. |
 | orchestrator | sonnet | medium | - | Default Cimmeria persona: runs campaigns and requests by dispatching agents, deciding, and keeping the ledger. |
-| packet-coder | haiku | medium | 90 | Implements one prescriptive work packet in a Cimmeria worktree: edits only its named files, runs its lane checks, commits. |
-| packet-review-fixer | sonnet | high | 120 | Adversarial reviewer that also fixes one finished packet: checks it against its spec, fixes verified findings, reruns lane checks and commits. |
-| packet-reviewer | sonnet | high | 60 | Read-only adversarial reviewer for one finished packet: checks the diff against its spec for bugs, drift, theatre tests, rule breaks. |
+| packet-coder | haiku | medium | 90 | Implements one prescriptive work packet, or applies one review's fix notes, in a Cimmeria worktree: edits only the named files, runs the lane checks, commits. |
+| packet-reviewer | sonnet | high | 60 | Read-only adversarial reviewer of one packet, one wave or a whole campaign: checks it against its spec and writes numbered fix notes a packet-coder can apply. |
 | rust-gameserver-dev | sonnet | - | - | Implementation agent turning specs and protocol docs into Rust server code: game systems, Mercury messages, wire (de)serialization, C++ ports. |
 | server-authority-enforcer | sonnet | - | - | Trust-boundary reviewer asking what if the client lies: handlers fed by client data (abilities, movement, trades, GM commands, TOCTOU windows). |
 | social-systems-engineer | sonnet | - | - | Implements and reviews social features: guilds, mail, contacts, trading, duels, black market, auction, and GM commands on social state. |
@@ -113,7 +112,7 @@ Hooks are commands the harness runs at an event. The Python hooks run through `.
 - **Senpai** (`.github/workflows/senpai-review.yml`) is opt-in. Add the `senpai` label to a PR, or run `gh workflow run senpai-review.yml -f pr_number=<N>`. It never runs on push. It uses Sonnet, at most 25 turns, and about $1.50 a run against a budget of about $30, so roughly 20 reviews. It runs `claude -p` with `--setting-sources user`, so it never loads the orchestrator persona. Before Claude starts, it restores `.claude/` and CLAUDE.md from the base branch, so a PR cannot change its instructions. It is not a merge gate.
 - **CodeRabbit** (`.coderabbit.yaml`) uses the assertive profile, incremental auto-review, skips drafts, reads CLAUDE.md and AGENTS.md as guidelines, sets `auto_pause_after_reviewed_commits: 5`, and auto-replies in chat. It runs on the free OSS tier and is not a merge gate. When it is rate-limited (it posts "You've used all free OSS reviews for now… Next included review available in N minutes"), wait for the time it names, push in batches (ship pushes once per call), resume after an auto-pause with `@coderabbitai resume`, ask for one review with `@coderabbitai review`, and do not hold a merge for it.
 - **Copilot** is not requested (owner decision, 2026-10-04).
-- **The in-repo adversarial review** is the packet-review-fixer, or the ship-pr §5 reviewer.
+- **The in-repo adversarial review** is the `packet-reviewer` loop for a campaign packet, or the ship-pr §5 reviewer for anything else.
 
 ## Cycle and escalation
 
@@ -122,16 +121,18 @@ Each count has a limit, and the ladder moves up when a limit runs out:
 | Count | Limit | Meaning |
 |---|---|---|
 | Fix round | 5 per check | One rerun of a lane check inside one session |
-| Coder session | 3 per packet | One packet-coder run. A context stop leaves a worknote, and the next fresh session continues from it. |
-| Review pass | 3 per packet | One packet-review-fixer session over that packet |
+| Coder session | 3 per packet, and 3 per fix pass | One packet-coder run. A context stop leaves a worknote, and the next fresh session continues from it. |
+| Review pass | 3 per loop | One fresh, read-only packet-reviewer session over one scope: a packet, a wave or the campaign |
+
+Three review loops run: one per packet as soon as its coder is done; one per wave once every packet in it has `ship`, for contract drift, duplicated helpers and merge-order hazards; and one per campaign after the last merge, for docs against behaviour, links, generated blocks and status docs. A pass returns `ship`, `fix` or `decision`. On `fix`, a fresh packet-coder applies the report's numbered fix notes and commits `<packet> review fixes, pass N`, and a fresh reviewer runs the next pass. The loop, the briefs and the report paths are in the [campaign-packet skill § 4](../../.claude/skills/campaign-packet/SKILL.md#4-review-loops-then-ship).
 
 The ladder:
 
 - **Coder:** 3 Haiku sessions, then 1 Sonnet implementer (`rust-gameserver-dev` for code and tools, `documentation-writer` for docs), then `architect` re-slices. Haiku comes first, and a packet is sized to about 40k working tokens, because about 35-40k of each session is fixed overhead. Nine of 34 Haiku sessions hit the 90k cap before a re-slice, and 0 of 36 did after. A fresh session starts because Haiku 5.5 bills 5x per request above a 100k prompt, so the loop restarts from the worknote instead of growing one session. Sonnet is the next step for packets that still fail: 16.9% of Haiku-regime packets escalated (44 of 261), and each accepted packet needed 0.60 retries. Opus never implements: $107.43 went to Opus oversteps, of which $53.72 to $84.20 was recoverable at the intended tier.
-- **Reviewer:** the verdict is `ship`, `recheck` or `decision`, with at most 3 passes. Review is a built-in step because only 4.8% of judged Haiku packets were accepted on the first pass: almost every packet needed a review fix.
-- **Ruling:** after 3 passes without `ship`, or on `decision`, `architect` (or the Opus advisor for protocol or RE work) writes a ruling note with no code. A fresh Sonnet review-fixer applies it. An owner call is a BlockedDecision.
+- **Reviewer:** the verdict is `ship`, `fix` or `decision`, with at most 3 passes per loop. Review is a built-in step because only 4.8% of judged Haiku packets were accepted on the first pass: almost every packet needed a review fix. The reviewer never edits, so it stays adversarial on every pass, and the fixes run on Haiku. In campaign-metrics' own 20 packets the Sonnet reviews cost $13.58 and the Haiku fix rounds $0.72 ([findings](../analysis/campaign-metrics/findings.md#this-campaigns-own-cost)).
+- **Ruling:** after 3 passes without `ship`, or on `decision`, `architect` (or the Opus advisor for protocol or RE work) decides only what to fix and how, in a ruling note: re-spec, re-slice, accept with a follow-up packet, or BlockedDecision. The architect writes no code or fix. A Sonnet implementer applies it, and one fresh reviewer checks it outside the pass count. If that check fails, or the call is the owner's, it is a BlockedDecision.
 
-The cost is 2.5x lower per 1,000 changed lines ($3.03 against $7.44 for Opus implementing). That is the fair comparison. The per-PR figures are not: Haiku campaigns implement from a finished spec, and the cost of writing that spec sits in the Opus coordinator. The median main-session request carried 349k tokens of context, which is why the harness has no teammates and no parked workers.
+The cost is 2.5x lower per 1,000 changed lines ($3.03 against $7.44 for Opus implementing). That is the fair comparison. The per-PR figures are not: Haiku campaigns implement from a finished spec, and the cost of writing that spec sits in the Opus coordinator. The median main-session request carried 349k tokens of context, which is why the harness has no teammates and no parked workers. What this loop costs against the retired combined reviewer-fixer has not been measured yet.
 
 ## Keeping this page current
 
