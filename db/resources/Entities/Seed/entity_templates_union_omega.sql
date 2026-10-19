@@ -29,6 +29,14 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 -- [UO-12] Jaffa vendors 63817-63819 (provenance set by UO-12's block)
 
 -- [UO-14] ambient 63860-63899 (CIMMERIA_AUTHORING, droppable)
+-- CIMMERIA_AUTHORING (D-UO12): Omega's ambient population. Droppable: delete
+-- this block, the [UO-14] spawn block and spawner_tests/union_omega/ambient.rs.
+-- Cap 24 (D-UO26). Inert: interaction_type 0, no sets, no loot.
+-- RESTORED_SOURCE bodies and monikers: 63860 clones template 31 (moniker 8360
+--   'DN_npc_sc_Airmen_SGCW1'); 63861 clones template 34's body with faction 1
+--   and moniker 26723 ('Free Jaffa Warrior'), INFERRED as template 208 does.
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (63860, NULL, 'BS_HumanMale.BS_HumanMale', '{ACC_HumanMale.ACC_HM_Accessory_09,AR_H_Ballistic00.AR_HM_BT1_BT101,AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SL1_SL100,BS_HumanMale.BS_HM_Boots_00,BS_HumanMale.BS_HM_Hair_01,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_03,BS_HumanMale.BS_HM_Legs_00,BS_HumanMale.BS_HM_Torso_00}', 0, 0, 570, 1, 0, 1, 8360, NULL, NULL, NULL, 'Union Omega - Airman', 'mob', NULL, NULL, NULL, NULL, NULL, 'Bullet_Default', NULL, 0, 0, -340158464, NULL, '{}', NULL, NULL, true, NULL, NULL);
+INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed) VALUES (63861, NULL, 'BS_JaffaMale.BS_JaffaMale', '{BS_JaffaMale.BS_JM_Base_Hands00_00,BS_JaffaMale.BS_JM_Base_Head00_00,BS_JaffaMale.BS_JM_Base_Boots00_00,BS_JaffaMale.BS_JM_Base_Legs00_00,BS_JaffaMale.BS_JM_Base_Torso00_00,BS_JaffaMale.BS_JM_Base_Torso00_00,AR_J_Standard.AR_JM_SB1_SH100,AR_J_Standard.AR_JM_SL1_SS100,AR_J_Standard.AR_JM_ST1_ST100SS100,AR_J_Standard.AR_JM_SH1_SH100,WP-Jaffa.WP_Staff_Plasma_4A}', 0, 0, 570, 1, 0, 1, 26723, NULL, NULL, NULL, 'Union Omega - Free Jaffa Warrior', 'mob', NULL, NULL, NULL, NULL, NULL, 'Bullet_Default', NULL, 0, 0, 0, NULL, '{}', NULL, NULL, true, NULL, NULL);
 
 --
 -- The rows above load after entity_templates.sql's own sequence footer, so
