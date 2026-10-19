@@ -25,3 +25,5 @@
 - [beta-e1-anchors.md](beta-e1-anchors.md) — Beta E1 nav components (251/70/355/890), nav_inspect probe recipe, dy sign trap, beam pads, 251-vs-70 no-route
 - [sgc-w1-navmesh-groups.md](sgc-w1-navmesh-groups.md) — SGC_W1 navmesh has 68 components; Gate Room (with requisitions), briefing, Failsafe and terminal need per-group nav_inspect runs
 - [omega-placements.md](omega-placements.md) — Omega placement traps: prop y is a model origin, world-80 bridges unreachable, re-snap probes
+- [sgc-w1-crossings.md](sgc-w1-crossings.md) — SGC_W1 story crossings: no content dial action, instanced world = unvalidated arrival, dial 100 ms / hold 1.5 s
+- [greedy-chain-local-minimum.md](greedy-chain-local-minimum.md) — Block on sight: restart-from-last-waypoint chains stall at local minima; use authored Ok hops, not stalls, as island evidence
