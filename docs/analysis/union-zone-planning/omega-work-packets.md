@@ -2,9 +2,9 @@
 
 > **Type:** How-to (dispatch contract and ledger)
 > **Audience:** the Union Omega coordinator, packet-coders, review-fixers, mission, movement and items advisors
-> **Last updated:** 2026-10-18, against `origin/main` @ `d1bba0400`
+> **Last updated:** 2026-10-18, against `origin/main` @ `d1bba0400`; developer concept art added the same day @ `eb29b0c2c` (F27-F35, D-UO15..D-UO20)
 > **Status:** Planned. Nothing dispatched. The Union campaigns stay held until FZ-99 (U-D03, an orchestrator gate). This file replaces the 2026-10-14 table (UO-00..UO-08); see § Renumbering.
-> **Companions:** [Omega campaign](omega.md), [Union execution contract](execution-contract.md), [SGC packets](sgc-work-packets.md), [Dakara packets](dakara-work-packets.md), [Beta packets](beta-work-packets.md), [Asgard route](asgard-route.md), [packet folder](omega-packets/), [resume card](omega-packets/RESUME.md)
+> **Companions:** [Omega campaign](omega.md), [Union execution contract](execution-contract.md), [SGC packets](sgc-work-packets.md), [Dakara packets](dakara-work-packets.md), [Beta packets](beta-work-packets.md), [Asgard route](asgard-route.md), [developer concept art](omega-concept-art.md), [packet folder](omega-packets/), [resume card](omega-packets/RESUME.md)
 
 ## Short answer
 
@@ -15,6 +15,8 @@ Omega is the first common hub. A Human or Free Jaffa arrives on public `Omega_Si
 3. Talk to Daniel Jackson (Human, dialog **4641**) or Bra'tac (Free Jaffa, dialog **5025**). Accept completes 1655, offers **1423** or **1500** (`The SGU`), and grants Beta's address (gate **6**).
 
 Beta owns everything after that. The services packets give the hub a personal banker, two registrars (Team and Command) and faction vendors. The ambient packet gives it airmen and Free Jaffa warriors. All of them use shipped monikers on the shipped map. The Asgard route (1522 and 481) stays a stub until the owner rules on U-D08/U-D11.
+
+The owner's [developer concept art](omega-concept-art.md) (RESTORED_SOURCE layout intent, never coordinates) splits world 18 into a Common Area hub, an SGC wing and a Free Jaffa wing, with a Council Chamber to the north. It confirms where the planned services go: banker at the Bank, registrars at the Guild Center, Tau'ri vendors in the SGC wing, Jaffa vendors in the Free Jaffa wing. Its four teleporters match the seeded beam network. It also draws a larger roster than the plan: General vendors, class and crafting trainers, an inn, infirmary, battlemaster, auction house and combat instances. Those are owner questions D-UO16..D-UO19; the plan does not change until they are answered.
 
 Everything uses existing engine primitives. Nothing needs a client patch, a new opcode or a code change: the packets are seeds, chain SQL and tests. The one executed-test packet (UO-13) is a Sonnet `rust-gameserver-dev` packet of about 50k; every other code packet is Haiku-sized (at most 40k working tokens).
 
@@ -50,6 +52,15 @@ Every finding was checked against the planning baseline `d1bba0400` (an ancestor
 | F24 | A registrar's type comes from its single interaction set: 7447 is Team, 7448 is Command. A template with both sets has no type, so the one Omega registrar moniker needs two NPCs. | `org_registrar.rs`; `live_db_debug_registrars.rs:135-148` | UO-10 |
 | F25 | The client names four tiers per Omega weapon and armor vendor (for example 27240-27243 `DN_npc_ven_OmegaSite_HumanWeaponsTier01..04`) and four specialties per crafting vendor. One template per role is a reduction. | `texts.sql:37085-37091` | UO-06, UO-11, UO-12 |
 | F26 | No Omega ambient moniker ships. Shipped bodies exist: template 31 `Airman` (faction 1, name 8360, interaction 0) and template 34 `SGC Jaffa`; moniker 26723 `Free Jaffa Warrior` is already reused by template 208 (INFERRED). | `entity_templates.sql:67,69,741-743` | UO-14 |
+| F27 | The owner supplied developer concept art of world 18 with proposed NPC spots: one overview plus enlargements of the Common Area, the SGC wing and the Free Jaffa wing. It is one map: Council Chamber (north), Common Area hub (centre), SGC (south-west), Free Jaffa (south-east). Labels, kinds (colour) and relative placement are RESTORED_SOURCE; positions are approximate, and the art is undated. | [omega-concept-art.md](omega-concept-art.md) | UO-01 |
+| F28 | The art's four teleporters and its hub Command Center match world 18's seeded beam network. Regions 10/11/12/16 each list the other three as destinations, and region 14 beams only to world-80 region 17. The client ships six destination names for these six regions: 26927 Jaffa Plaza, 26973 Human Plaza, 26981 Bank, 26982 Asgard Platform, 26983 Omega Site and 27423 Command Center. Which name belongs to which region is INFERRED. | `ring_transport_regions.sql` (regions 10-17); `texts.sql:36488-37451` | UO-01 |
+| F29 | Vendors in the art: General 8, Consumable 8, Weapon 5 and Armor 5 across all three areas, plus Adv. Weapon and Adv. Armor in the north-west pod, and **no crafting vendor**. General, Adv. Weapon and Adv. Armor have no Omega moniker; the client's crafting monikers have no art spot. | [omega-concept-art.md](omega-concept-art.md) § Totals, § Joins | UO-06, UO-11, UO-12 (D-UO16) |
+| F30 | Trainers in the art: six class trainers (Asgard in the hub's west pod; Scientist, Archaeologist, Soldier and Commando in the SGC wing; Jaffa in the Free Jaffa wing) and eight crafting trainers (Engineering, Electronics, Biology, Physics and an Adv. of each). The client ships global basic-skill monikers 7988-7990, 7992 and 7993, Omega Asgard trainers 27218/27219, and **no crafting-trainer moniker**. A trainer clone pattern exists: template 301 (`INT_TRAINER` 128, trainer list 1). | `texts.sql` `DN_npc_trn_*`; `entity_templates.sql:1003` | D-UO17 |
+| F31 | Hub locations in the art: Bank, Guild Center, Auction House, Inn, Infirmary, Battlemaster and Science Center. The Bank matches banker 29462 and beam name 26981; the Guild Center matches registrar 29068 (INFERRED); the Science Center matches the Omega master's 1425/1426. The other four have no Omega moniker. | [omega-concept-art.md](omega-concept-art.md) § Joins | UO-10; D-UO19 |
+| F32 | A Council Chamber with three "Combate Instance" (sic) labels stands north of the hub. Its ship-like silhouette may be the Asgard Capitol Ship (INFERRED). It conflicts with U-D08 (remote hearing), the 81/82 scope line and the Rejected list. | [omega-concept-art.md](omega-concept-art.md) § Council Chamber | D-UO18 |
+| F33 | The art draws the Command Center at the hub's north end, directly above the Stargate. Shipped data puts it on world 80 via region 14, which lies on the gate's x (34.6 vs 34.7), 205 m +z of it. | `ring_transport_regions.sql`; F2, F7 | D-UO20, UO-05 |
+| F34 | Orientation, INFERRED, with art up = +z: east and west agree (Human props and region 12 to the west, Jaffa props and region 16 to the east), but north and south only partly. The Jaffa props sit north of the gate, while the art puts the wing south of the hub. | [omega-concept-art.md](omega-concept-art.md) § Orientation | UO-01 |
+| F35 | The Common Area enlargement labels three small pods differently from the overview: the east pod has Armor only, the south-east pod Weapon, the south-west pod General and Consumable. Unresolved; the overview is primary. | [omega-concept-art.md](omega-concept-art.md) § Cross-check | report (non-blocking) |
 
 ## Decisions
 
@@ -69,6 +80,12 @@ Every finding was checked against the planning baseline `d1bba0400` (an ancestor
 | D-UO12 | Ambient life is CIMMERIA_AUTHORING placement of shipped bodies and monikers, in its own droppable packet, capped at 24 spawns. | Decided; the cap is HELD on U-D07 | Faithful extension, removable in one revert (F26). |
 | D-UO13 | This renumbering supersedes UO-00..UO-08 of 2026-10-14. | Decided | § Renumbering. |
 | D-UO14 | The hub banker and the two registrars are clones of the debug-hub rows 370, 330 and 331 (CIMMERIA_RECONSTRUCTION), on the shipped Omega monikers. | Decided | F14, F24. No new code: the existing banker and registrar arms answer the click. |
+| D-UO15 | The concept art is layout intent only. UO-01 tags every placement key with its art area (`common_area`, `sgc`, `free_jaffa`, `council`, `world_80`) and lists each disagreement in its worknote's § Art conflicts. The art never moves a coordinate, and a disagreement goes to the orchestrator, never to a coder. | Decided | F27, F34: the art is schematic and undated. The navmesh stays the coordinate source. |
+| D-UO16 | Vendor roster: the art's per-area General, Consumable, Weapon and Armor spots, against the plan's eight moniker-led templates. | **BlockedDecision** (owner); joins D-UO8 | F29. Options in § HELD and blocked. |
+| D-UO17 | Class and crafting trainers at Omega. | **BlockedDecision** (owner) | F30. The plan has none. Class trainers have shipped global monikers; crafting trainers have none. |
+| D-UO18 | The Council Chamber and its three combat instances. | **BlockedDecision** (owner); touches U-D08 | F32. Out of scope until answered. |
+| D-UO19 | Inn, Infirmary, Battlemaster and Auction House in the hub. | **BlockedDecision** (owner) | F31. Today they are Rejected additions (no moniker). |
+| D-UO20 | The art's hub "Command Center" is read as the region-14 beam. The cast stays in world 80. | Decided (architect; the owner may overrule) | F33: the shipped mission, dialog and ring rows all put the Command Center in world 80. |
 
 ## ID map (D-UO1)
 
@@ -153,20 +170,20 @@ Beta's old "UO-07/08 receiver fixtures" citation now means the departure fixture
 
 | ID | Wave | Role | Size | Scope | Status | File |
 |---|---|---|---|---|---|---|
-| UO-01 | W1 | `movement-teleport-advisor` | ~35k | Nav-probe every coordinate, then write the placement worknote | Ready | [UO-01](omega-packets/UO-01.md) |
+| UO-01 | W1 | `movement-teleport-advisor` | ~35k | Nav-probe every coordinate, tag each with its concept-art area, then write the placement worknote | Ready | [UO-01](omega-packets/UO-01.md) |
 | UO-02 | W1 | `packet-coder` | ~40k | Scaffold: empty seed files, includes, test modules and a visitor guard | Ready | [UO-02](omega-packets/UO-02.md) |
 | UO-00 | W1 | `documentation-writer` | ~30k | ID row, C4 arrival point, sibling handoff note | BlockedDependency UO-01 | [UO-00](omega-packets/UO-00.md) |
 | UO-03 | W2 | `packet-coder` | ~30k | Respawner 180 and the hub placement test | BlockedDependency UO-01, UO-02 | [UO-03](omega-packets/UO-03.md) |
 | UO-04 | W2 | `packet-coder` | ~40k | Beam 63801 and Modi 63810/63811 | BlockedDependency UO-02; merge waits on U-D04 | [UO-04](omega-packets/UO-04.md) |
 | UO-05 | W2 | `packet-coder` | ~40k | Cast templates and spawns 63800-63803, dialog set and maps | BlockedDependency UO-01, UO-02 | [UO-05](omega-packets/UO-05.md) |
-| UO-06 | W2 | `items-systems-advisor` | ~35k | Services seal: the stock proposal for D-UO8 | BlockedDependency UO-01 | [UO-06](omega-packets/UO-06.md) |
+| UO-06 | W2 | `items-systems-advisor` | ~35k | Services seal: the stock proposal for D-UO8 and the roster options for D-UO16 | BlockedDependency UO-01 | [UO-06](omega-packets/UO-06.md) |
 | UO-10 | W2 | `packet-coder` | ~35k | Banker 63810 and registrars 63811 (Team), 63830 (Command) | BlockedDependency UO-01, UO-02 | [UO-10](omega-packets/UO-10.md) |
 | UO-07 | W3 | `packet-coder` | ~40k | Human induction 63820-63822 | BlockedDependency UO-04, UO-05; merge waits on U-D04 | [UO-07](omega-packets/UO-07.md) |
 | UO-08 | W3 | `packet-coder` | ~40k | Free Jaffa induction 63830-63832 | BlockedDependency UO-04, UO-05; merge waits on U-D04 | [UO-08](omega-packets/UO-08.md) |
 | UO-09 | W3 | `packet-coder` | ~35k | Re-offer 63840-63845 | BlockedDependency UO-07, UO-08 | [UO-09](omega-packets/UO-09.md) |
 | UO-14 | W3 | `packet-coder` | ~35k | Ambient airmen and Free Jaffa warriors (droppable) | BlockedDependency UO-01, UO-02, UO-10; merge waits on U-D07 | [UO-14](omega-packets/UO-14.md) |
-| UO-11 | W4 | `packet-coder` | ~40k | Tau'ri vendors 63812-63816 | BlockedDecision D-UO8; BlockedDependency UO-06, UO-10 | [UO-11](omega-packets/UO-11.md) |
-| UO-12 | W4 | `packet-coder` | ~30k | Jaffa vendors 63817-63819 | BlockedDecision D-UO8; BlockedDependency UO-06, UO-10 | [UO-12](omega-packets/UO-12.md) |
+| UO-11 | W4 | `packet-coder` | ~40k | Tau'ri vendors 63812-63816 (SGC wing) | BlockedDecision D-UO8, D-UO16; BlockedDependency UO-06, UO-10 | [UO-11](omega-packets/UO-11.md) |
+| UO-12 | W4 | `packet-coder` | ~30k | Jaffa vendors 63817-63819 (Free Jaffa wing) | BlockedDecision D-UO8, D-UO16; BlockedDependency UO-06, UO-10 | [UO-12](omega-packets/UO-12.md) |
 | UO-13 | W4 | `rust-gameserver-dev` (Sonnet) | ~50k | Executed handshake tests and Beta fixtures | BlockedDependency UO-07, UO-08, UO-09 | [UO-13](omega-packets/UO-13.md) |
 | UO-U1 | W5 | Sonnet UAT lead + Haiku `lab-driver` | 4 runs | Client walk of both routes, re-offer, services | UATPending; ask the user first | [UO-U1](omega-packets/UO-U1.md) |
 | UO-99 | W5 | `documentation-writer` | ~35k | Close-out: chains, zone audit, UAT, status (once) | BlockedDependency all, UO-U1 results | [UO-99](omega-packets/UO-99.md) |
@@ -180,7 +197,7 @@ Beta's old "UO-07/08 receiver fixtures" citation now means the departure fixture
 | W1 | UO-01, UO-02, then UO-00 | one review-fixer for UO-02 and UO-00; UO-01 is a worknote the orchestrator checks for every key | U-D03 (FZ-99) |
 | W2 | UO-03, UO-04, UO-05, UO-06, UO-10 | one review-fixer (UO-06 is a worknote) | W1 merged |
 | W3 | UO-07, UO-08, UO-09, UO-14 | one review-fixer | W2 merged; UO-09 after UO-07/08 |
-| W4 | UO-11, UO-12, UO-13 | one review-fixer | W3 merged; D-UO8 option A for UO-11/12 |
+| W4 | UO-11, UO-12, UO-13 | one review-fixer | W3 merged; D-UO8 option A and D-UO16 option A for UO-11/12 |
 | W5 | UO-U1, then UO-99 | UO-99 gets one documentation review | W4 merged (or its packets dropped); the user's yes for UO-U1 |
 
 UO-04, UO-07 and UO-08 may be coded and reviewed before U-D04 is answered, but they **merge only after** it. If the answer changes the receive state, the review-fixer rewrites the step ids in those three packets' tests and seeds. No other packet changes. UO-14 likewise merges only after U-D07; if the owner rejects ambient life, drop the packet.
@@ -198,7 +215,11 @@ Every packet inlines its rules, the chain contract (chain packets) and its lane 
 | H-LBL | How must authored copy be labelled to players (a provenance tag in the text, a tooltip, or nothing)? | owner | UO-15 |
 | D-UO8 | May Omega's vendors sell UO-06's proposed stock (option A: one moniker per role), option B (every tier, a new template block), or nothing? | owner | UO-11, UO-12 |
 | D-UO11 / D-US11 | Does the SGC grant 6786 `Letter to Daniel Jackson` to Humans, and anything to the Free Jaffa? | owner + SGC | one optional `remove_item` row in UO-07 |
-| U-D08 / U-D11 | The Asgard route into Omega (1522, the Council, item 3399, 481); see UO-16 for the exact questions | owner | UO-16 |
+| D-UO16 | The [concept art](omega-concept-art.md) draws General, Consumable, Weapon and Armor vendors in every area (8/8/5/5), Adv. Weapon and Adv. Armor, and no crafting vendor. Which roster does Omega get? **A:** the plan as written, eight moniker-led templates with one spawn each, standing in their faction's art area (Human in the SGC wing, Jaffa in the Free Jaffa wing, Common Crafting and Consumables in the Common Area). **B:** A, plus extra spawns of the same templates at the art's other spots of that kind; same templates and lists, new spawn ids, and the architect re-slices UO-11/12. **C:** B, plus authored General, Adv. Weapon and Adv. Armor vendors, which have no Omega moniker: new templates, names and stock, CIMMERIA_AUTHORING, scaled under U-D07. In every option: the art draws no crafting vendor, so do the three crafting templates stay, and where? | owner | UO-11, UO-12 (start) |
+| D-UO17 | The art draws six class trainers and eight crafting trainers; the plan has none. **(a)** None. **(b)** Class trainers only: Soldier, Scientist, Commando and Archaeologist in the SGC wing, Jaffa in the Free Jaffa wing, cloned from template 301 on the global monikers 7988/7989/7992/7993/7990. **(c)** Also the eight crafting trainers, which have no moniker anywhere and may need a mechanic the tree lacks. The Asgard trainer waits on UO-16. | owner | nothing planned; a yes adds a packet |
+| D-UO18 | The art draws a Council Chamber with three combat instances north of the hub. **(a)** Out of scope (the plan; worlds 81/82 and the physical Council stay held). **(b)** It is the venue for the Asgard remote hearing (folds into U-D08 / UO-16). **(c)** A later instance campaign. | owner | nothing planned; the UO-16 seal |
+| D-UO19 | The art draws an Inn, Infirmary, Battlemaster and Auction House in the hub, which § Rejected additions excludes for lack of a moniker. **(a)** Keep them rejected. **(b)** Location only: ambient or set dressing at those buildings, no service NPC. **(c)** Authored service NPCs wherever an engine service exists. | owner | nothing planned; a yes adds a packet |
+| U-D08 / U-D11 | The Asgard route into Omega (1522, the Council, item 3399, 481); see UO-16 for the exact questions. Since the concept art: does the Asgard trainer (27218/27219) stand in the art's west pod, and is the Council Chamber the hearing venue (D-UO18)? | owner | UO-16 |
 | U-D03 | The Union campaigns are held until FZ-99. | orchestrator | W1 dispatch |
 
 These items are HELD and block nothing:
@@ -211,21 +232,23 @@ These items are HELD and block nothing:
 - **1425 S4244:** the Jackson tail (D-UB5 / HELD-B4).
 - **1655:** the `step_enabled` flags.
 - **Otin and Heimdall:** no evidence.
-- **Worlds 81/82:** out of scope.
+- **Worlds 81/82:** out of scope (the concept art's combat instances are D-UO18).
+- **Concept-art pod labels (F35):** the Common Area enlargement and the overview disagree on three small pods.
+- **Beam names (F28):** which of the six shipped destination names belongs to which ring region.
 - **UAT death row H9:** the legacy `.kill` GM command is not registered (`docs/guides/unified-uat.md:905`); UO-U1 marks H9 BLOCKED if no self-damage command exists.
 
 ## Rejected additions
 
-Each of these was rejected for lack of evidence, or because it would break a rule.
+Each of these was rejected for lack of evidence, or because it would break a rule. The 2026-10-18 [concept art](omega-concept-art.md) contests three of them. Each of the three stays rejected until the owner answers its decision.
 
 - **Woolsey at Omega:** 5025 says he must not discover the operation.
 - **Mission 631** on Omega.
 - **A "Stargate Plaza" area** from 1513.
 - **Otin** with speaker 2509 (an unnamed speaker).
-- **Any content** in worlds 81/82.
+- **Any content** in worlds 81/82. *Contested:* the art's Council Chamber and combat instances (D-UO18).
 - **Ambient VO or barks** with no shipped line.
-- **An inn, auctioneer, guild registrar or battlemaster** with no Omega moniker.
-- **A medic:** no moniker.
+- **An inn, auctioneer, guild registrar or battlemaster** with no Omega moniker. *Contested:* the art draws an Inn, Auction House and Battlemaster (D-UO19). Its Guild Center is served by the planned registrars (29068, UO-10), so no separate guild registrar is needed.
+- **A medic:** no moniker. *Contested:* the art draws an Infirmary (D-UO19).
 - **Hostile Free Jaffa Attacker (208)** as ambient.
 - **Ambient patrols:** no path data; static spawns only.
 - **`interact_tag` chains:** they would display the dialog twice (F4).
@@ -237,7 +260,7 @@ Each of these was rejected for lack of evidence, or because it would break a rul
 
 | Label | Applies to |
 |---|---|
-| RESTORED_SOURCE | Mission, dialog and moniker rows the client ships: 1655, 4641, 5025, 6168, the speakers, the monikers, templates 31 and 34. |
+| RESTORED_SOURCE | Mission, dialog and moniker rows the client ships: 1655, 4641, 5025, 6168, the speakers, the monikers, templates 31 and 34. The developer concept art's labels, kinds and relative placement ([omega-concept-art.md](omega-concept-art.md)), never its positions. |
 | CIMMERIA_RECONSTRUCTION | Glue that makes shipped content run: the chains, clone templates, maps, respawner, placements, services and re-offer. |
 | CIMMERIA_AUTHORING | Anything new: the ambient placement (UO-14), authored copy (UO-15). |
 

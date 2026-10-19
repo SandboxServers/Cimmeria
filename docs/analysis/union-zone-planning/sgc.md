@@ -11,6 +11,8 @@ A new SGU Human completes the SGC attack, takes mission 1570 to Dakara_E1, retur
 
 The [SGC starter master](../sgw-handoff-pack-v1.2/pack/references/world_content/SGW_Earth_SGC_SGU_Human_Starter_Dev_Master_v1.md) covers the local Human attack; the [full Human prologue v2](../sgw-handoff-pack-v1.2/pack/references/world_content/SGW_SGU_Human_Full_Starter_Prologue_to_Omega_v2.md) restores the Dakara and return links. The [Dakara Free Jaffa master](../sgw-handoff-pack-v1.2/pack/references/world_content/SGW_Dakara_Free_Jaffa_Starter_Dev_Master_v1.md) provides the Jaffa's SGC support and exit context. The recovered SGC_W1 production map and gate/Kismet exist, but original grant edges, some actor placements and reward rules are incomplete. World 86 `SGC` and world 87 `SGC_W2` are separate research candidates and are not silent replacements for world 58.
 
+**Name clash.** The [Omega developer concept art](omega-concept-art.md) labels the south-west wing of Omega Site (world 18) "SGC": the Human wing, with the Soldier, Scientist, Archaeologist and Commando trainers, Human vendors and a teleporter. That is a district of the Omega hub, owned by the [Omega work packets](omega-work-packets.md). It is not `SGC_W1` world 58, world 86 or world 87, and this campaign places nothing there.
+
 ## Ownership and sequence
 
 | Segment | SGC owner | Receiving/producing contract |
