@@ -10,6 +10,8 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
+from . import classify as cls
+from .shapes import unknown_shape
 from .transcript import Transcript
 
 SCHEMA = Path(__file__).resolve().parent.parent / "schema.sql"
@@ -42,12 +44,43 @@ def open_db(path):
 
 
 def _upgrade_6_to_7(db):
-    """Schema 6 to 7 in place (S4a): add agents.brief_tag. Safe to run twice."""
+    """Schema 6 to 7 in place (S4a): add agents.brief_tag and backfill it (S4b). Safe to run twice."""
     if "brief_tag" not in {row[1] for row in db.execute("PRAGMA table_info(agents)")}:
         db.execute("ALTER TABLE agents ADD COLUMN brief_tag TEXT"
                    " CHECK (brief_tag IS NULL OR brief_tag IN ('review-fix'))")
+    backfill_brief_tags(db)
     db.execute("UPDATE meta SET value = '7' WHERE key = 'schema_version'")
     db.commit()
+
+
+def backfill_brief_tags(db):
+    """agents.brief_tag from each ingested subagent transcript's first prompt, as the ingest sets it (C19)."""
+    for (name,) in db.execute("SELECT path FROM ingest_files WHERE kind = 'subagent'").fetchall():
+        path = Path(name)
+        agent_id = path.stem[len("agent-"):]
+        row = db.execute("SELECT agent_type FROM agents WHERE agent_id = ?", (agent_id,)).fetchone()
+        if row is None or row[0] == "fork" or not path.is_file():
+            continue
+        db.execute("UPDATE agents SET brief_tag = ? WHERE agent_id = ?", (_first_prompt_tag(path), agent_id))
+
+
+def _first_prompt_tag(path):
+    """The brief tag of a transcript's first user prompt (not a tool result); None without one. Never the text."""
+    with open(path, "rb") as fh:
+        for raw in fh:
+            try:
+                rec = json.loads(raw)
+            except ValueError:
+                continue
+            if not isinstance(rec, dict) or unknown_shape(rec) is not None or rec.get("type") != "user":
+                continue
+            msg = rec.get("message") if isinstance(rec.get("message"), dict) else {}
+            content = msg.get("content")
+            if isinstance(content, list) and any(isinstance(b, dict) and b.get("type") == "tool_result"
+                                                 for b in content):
+                continue
+            return cls.brief_tag(cls.text_of(content))
+    return None
 
 
 def project_prefix(repo_root):
