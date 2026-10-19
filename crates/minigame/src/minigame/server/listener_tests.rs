@@ -428,7 +428,7 @@ async fn an_oversized_frame_in_session_closes_it() {
 /// frame this server does not handle. It stays WARN, and the row names the
 /// session and the `(t, action)` pair. Before the fix the codec's WARN had
 /// no session fields and the game loop's own WARN had no type fields.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn unknown_type_in_session_warns_with_fields() {
     let capture = LogCapture::install();
     let (mut client, mut rx, handle) = spawn_placeholder_session(4311).await;
@@ -439,6 +439,8 @@ async fn unknown_type_in_session_warns_with_fields() {
     )
     .await
     .expect("send");
+    // A client-declared victory counts only after 5 s of play (D-MG13).
+    tokio::time::advance(Duration::from_secs(5)).await;
     let victory = "<msg t='xt'><body action='xtReq'>\
          <![CDATA[<dataObj><var n='cmd' t='s'>victory</var></dataObj>]]>\
          </body></msg>";
@@ -511,7 +513,7 @@ pub(super) async fn send_handshake(client: &mut TcpStream, entity_id: u32, ticke
 /// plays on to its own result. Without the `connected` check the second
 /// login claims the session again and starts a second game against the
 /// same victory chains.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_second_login_with_a_live_ticket_is_refused() {
     let capture = LogCapture::install();
     let registry = SessionRegistry::new();
@@ -563,7 +565,9 @@ async fn a_second_login_with_a_live_ticket_is_refused() {
     assert!(row.fields.contains_key("peer"), "{row:#?}");
     assert!(row.has_field("entity_id", "4313"), "{row:#?}");
 
-    // The first session is untouched and still wins normally.
+    // The first session is untouched and still wins normally, once it has
+    // played the 5 s minimum (D-MG13).
+    tokio::time::advance(Duration::from_secs(5)).await;
     let victory = "<msg t='xt'><body action='xtReq'>\
          <![CDATA[<dataObj><var n='cmd' t='s'>victory</var></dataObj>]]>\
          </body></msg>";
