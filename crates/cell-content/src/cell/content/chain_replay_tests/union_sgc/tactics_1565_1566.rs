@@ -79,6 +79,22 @@ async fn live_db_m1565_completes_when_both_jaffa_die() {
     );
 }
 
+/// **Guard: a static pair already dead when 1565 is offered completes it on
+/// accept (the 3087 backstop).** Revert proof: delete chain 3087 and 1565 stays
+/// ACTIVE after the radio report closes, so the `COMPLETED` assert fails.
+#[tokio::test]
+async fn live_db_m1565_backstop_credits_a_pair_that_is_already_dead() {
+    let pool = require_db_or_skip!();
+    let mut rig = on_4630(&pool, Some(SOLDIER)).await;
+    finish_1565(&mut rig).await;
+    assert_eq!(rig.status(1565), None, "kills alone do not give 1565");
+
+    rig.close(5375).await;
+    assert!(rig.objective_done(1565, 5374), "accept credits 5374");
+    assert_eq!(rig.status(1565), COMPLETED);
+    assert_eq!(rig.status(1566), ACTIVE, "the completion still offers 1566");
+}
+
 /// **Guard: 1565's completion offers 1566 and spawns its second pair; the
 /// pair completes 1566.** Revert proof: delete chain 3088 or 3089 and the
 /// first assert (or the final COMPLETED) fails.
