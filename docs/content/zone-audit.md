@@ -195,15 +195,15 @@ this is a pure art shell.
 | Client Art | 631 .umap tiles | **HIGH** — Third-largest zone by tile count |
 | Navigation | NO | **HIGH** — No .nav file found |
 | Space Script | NO | **HIGH** — No Python script or .script file |
-| NPCs | 5 spawns | **MEDIUM** — Spawnlist has 5 entries but no script to manage them |
-| Missions | 6 labeled in DB, 0 scripted | **HIGH** — DB has 6 "Beta Site" mission records, none implemented |
-| Dialogs | 0 | **MEDIUM** — No script infrastructure |
+| NPCs | 5 original spawns, ~53 authored (UB-99) | **HIGH** — Cast, objects, Asgard vessel, Nine Peaks camp and life NPCs from the Union Beta campaign |
+| Missions | 16 of 17 Beta missions chained; 17 chain seed files (ids 23001-23467) | **HIGH** — Human, Free Jaffa and Asgard first-visit arcs, tested in the database, never in the client |
+| Dialogs | Per-player binds on Carter, Felger, Satterfield, Debeaux, Mimir, Ras'nor | **HIGH** — chain-driven (D-UB10) |
 | Stargate | YES (gate ID 6) | **HIGH** — DB stargate record exists |
-| Transporters | 0 | **HIGH** — No transporter script |
+| Transporters | Ring pair 2300/2301; Asgard beam | **HIGH** — D-UB4 A and D-UB12 |
 | Loot | 0 tables | **LOW** — No references |
 | Events | 0 event sets | **HIGH** — No script |
 
-**Verdict: SHELL**
+**Verdict: PARTIAL (Union first visit; was SHELL until the Union Beta campaign, 2026-10-19).** The table above describes the state after that campaign; the paragraph below is the original SHELL audit, kept for history. Reference: [beta-site-e1.md](beta-site-e1.md).
 
 The Beta Site is one of the most iconic Stargate locations and the third-largest zone by
 client art volume (631 tiles). It has a stargate entry and 5 spawn records, suggesting early
@@ -1064,7 +1064,7 @@ All 24 defined spaces with their verdicts, sorted by verdict then alphabetically
 | Omega_Site_CmdCenter | Instanced | **PARTIAL** (transport, induction; unplayed) | 21 lines + 21 nodes | YES | 8 | NO | 25 |
 | Agnos | Persistent | **SHELL** | NO | YES | ~few | YES | 692 |
 | Agnos_Library | Persistent | **SHELL** | NO | NO | 0 | NO | 37 |
-| Beta_Site_Evo_1 | Persistent | **SHELL** | NO | NO | 5 | YES | 631 |
+| Beta_Site_Evo_1 | Persistent | **PARTIAL** (Union first visit) | NO | chains only | ~58 | YES | 631 |
 | Dakara_E1 | Persistent | **SHELL** | NO | NO | 0 | YES | 401 |
 | Dakara_E1_StoryRm | Instanced | **SHELL** | NO | NO | 0 | NO | 2 |
 | Harset_Market | Instanced | **SHELL** | NO | NO | 0 | NO | 10 |
@@ -1146,7 +1146,7 @@ Zones with functional transport infrastructure:
 | 3 | Harset | PARTIAL |
 | 4 | Tollana | SHELL |
 | 5 | Omega_Site | PARTIAL (transport, induction, services; unplayed) |
-| 6 | Beta_Site_Evo_1 | SHELL |
+| 6 | Beta_Site_Evo_1 | PARTIAL (Union first visit) |
 | 7 | Menfa_Dark | PARTIAL (transport) |
 | 8 | Ihpet_Crater_Dark | SHELL |
 | 10 | Lucia | PARTIAL (transport) |
@@ -1188,6 +1188,6 @@ Based on this audit, zones can be prioritized for future development work:
 ### Tier 3: Shell zones with significant art investment
 
 7. **Tollana** — 505 tiles, stargate, 3 spawns. Needs everything.
-8. **Beta_Site_Evo_1** — 631 tiles, stargate, 5 spawns. Needs everything.
+8. **Beta_Site_Evo_1** — 631 tiles, stargate. First-visit content built (2026-10-19); needs the lab and client checks in [unified-uat.md](../guides/unified-uat.md#beta_site_evo_1).
 9. **Dakara_E1** — 401 tiles, stargate. Needs everything.
 10. **Ihpet_Crater_Dark/Light** — 155 tiles each, stargates, 22 missions in DB. Needs everything.

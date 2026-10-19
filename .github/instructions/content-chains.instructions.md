@@ -267,6 +267,30 @@ there because each action is idempotent by itself (`grant_stargate_address`,
 and a `send_system_mail` behind a persisted `quiet_cooldown`). A new
 `player_loaded` chain without a mission gate needs the same property.
 
+### Beta_Site_Evo_1 (world 23) - 23000-23499, one file per mission
+
+The Union Beta E1 campaign ([docs/analysis/union-zone-planning/beta-work-packets.md](../../docs/analysis/union-zone-planning/beta-work-packets.md)) reserves `23000-23499`. Each mission packet owns one file and its sub-block. Race gates are Human `archetype gte 1` and `lte 4`, Asgard `eq 5`, Free Jaffa `eq 7`. Beta chains bind dialogs per player only (`add_dialog_set` with `slot` = template id) and never call `set_interaction_type` on a shared NPC.
+
+```text
+beta_e1_travel_chains.sql   travel, way back: 23000-23019 (23001-23003 used)
+beta_e1_m1423_chains.sql    1423 receiver and Carter: 23020-23039 (23020-23022 used)
+beta_e1_m381_chains.sql     381 Closing Shop: 23040-23069 (23040-23053 used)
+beta_e1_m473_chains.sql     473 Inventory: 23070-23099 (23070-23083 used)
+beta_e1_m478_chains.sql     478 Instant IT: 23100-23129 (23100-23108 used)
+beta_e1_m1425_chains.sql    1425 SGU Database: 23130-23159 (23130-23136 used)
+beta_e1_m1426_chains.sql    1426 Amateur Photography: 23160-23189 (23160-23171 used)
+beta_e1_m1427_chains.sql    1427 The Ruins: 23190-23219 (23190-23195 used)
+beta_e1_m1500_chains.sql    1500 receiver and Carter: 23220-23239 (23220-23222 used)
+beta_e1_m1502_chains.sql    1502 The Nine Peaks Jaffa: 23240-23279 (23240-23250 used)
+beta_e1_m481_chains.sql     From on High, receiver, beam and Mimir (UB-30): 23310-23339 (23310-23317 used)
+beta_e1_m420_chains.sql     Reclamation, Mimir's five scanners (UB-31): 23340-23359 (23340-23351 used)
+beta_e1_m421_chains.sql     Mechanical Error, the infirmary signal and the drone (UB-32): 23360-23389 (23360-23368 used)
+beta_e1_m1147_chains.sql    Intriguing Data, the Analytical Assistance Machine (UB-33): 23390-23404 (23390-23395 used)
+beta_e1_m443_chains.sql     Incendiary, Carter, Satterfield and the Quartermaster fire (UB-34): 23405-23434 (23405-23417 used)
+beta_e1_m477_chains.sql     Covert Observations, recording the four subjects (UB-35): 23435-23459 (23435-23459 used)
+beta_e1_m479_chains.sql     Process Support, the parallel simulation (UB-36): 23460-23469 (23460-23467 used)
+```
+
 ### Union Omega (worlds 18 and 80) - 63800-63999, four files
 
 Union Omega reserves `63800-63999` and splits it across four seed files, one

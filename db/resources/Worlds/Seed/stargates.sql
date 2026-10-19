@@ -76,7 +76,9 @@ INSERT INTO stargates (address1, address2, address3, address4, address5, address
 
 INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id) VALUES (4, 13, 5, 6, 7, 33, 10, 7, 'Men''fa (Praxis)', 0, 'Menfa_Dark.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 77, -37.821998999999998, -191.91400100000001, 0, 395.983002, 10008);
 
-INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id) VALUES (4, 7, 28, 38, 10, 2, 21, 6, 'Beta Site E1', 0, 'Beta_Site_Evo_1.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 23, 617.86602800000003, -59.313999000000003, 1.571, 388.97100799999998, 10009);
+-- UB-01a (CIMMERIA_RECONSTRUCTION): arrival pin = the map's only PlayerStart
+-- (635.761, -60.134, 388.448), 17.9 m out on gate 6's +X facing axis, nav component 251.
+INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id, arrival_x, arrival_y, arrival_z, arrival_yaw) VALUES (4, 7, 28, 38, 10, 2, 21, 6, 'Beta Site E1', 0, 'Beta_Site_Evo_1.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 23, 617.86602800000003, -59.313999000000003, 1.571, 388.97100799999998, 10009, 635.761, -60.134, 388.448, 1.571);
 
 INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id) VALUES (5, 2, 19, 12, 15, 24, 34, 5, 'Omega Site', 0, 'Omega_Site.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 18, 34.705002, -50.633999000000003, 0, -149.091995, 10010);
 

@@ -3377,10 +3377,6 @@ INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, butto
 
 INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (1676, 8, 95486, 2, 'Accept');
 
-INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (1677, 9, 95484, 1, 'More Info');
-
-INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (1678, 9, 95485, 1, 'More Info');
-
 INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (1679, 8, 49354, 2, 'Accept');
 
 INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (1680, 8, 49353, 2, 'Accept');
@@ -3497,7 +3493,7 @@ INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, butto
 
 INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (1736, 8, 63518, 2, 'Accept');
 
-INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (1737, 8, 64047, 2, 'Accept');
+INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (1737, 8, 64049, 2, 'Accept');
 
 INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (1738, 9, 98234, 1, 'More Info');
 
@@ -5175,7 +5171,7 @@ INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, butto
 
 INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (2596, 8, 96065, 2, 'Accept');
 
-INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (2597, 8, 64066, 2, 'Accept');
+INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (2597, 8, 64068, 2, 'Accept');
 
 INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (2598, 8, 64741, 2, 'Accept');
 
@@ -5994,8 +5990,6 @@ INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, butto
 INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (3005, 9, 49434, 1, 'More Info');
 
 INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (3006, 8, 49435, 2, 'Accept');
-
-INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (3007, 9, 49940, 1, 'More Info');
 
 INSERT INTO dialog_screen_buttons (screen_button_id, button_id, screen_id, button_type, text) VALUES (3008, 8, 49984, 2, 'Accept');
 

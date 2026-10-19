@@ -14,7 +14,10 @@ mod live_db {
     /// is the top of the highest reserved block (templates: the Debug Area
     /// 1300-1409, DA-02..DA-04 and DA-09's System Lords 1400-1409; spawns: the
     /// Debug Area 13000-13869, DA-02..DA-04, DA-07/08 and DA-09's 13850-13869,
-    /// each reserved by its seed file's footer;
+    /// then the Beta E1 block 23000-23199 (UB-02b), each reserved by its seed
+    /// file's footer. Several files re-set one sequence, so this guard cannot
+    /// tell whose footer ran; the Beta hub footers have a file-text guard in
+    /// cell-world's eta_e1::hub;
     /// item lists and list rows: the crafting blocks 310-329 and 3101-3299).
     /// Raise it with the footer when a block is reserved above it.
     const SEQUENCES: [(&str, &str, &str, i64); 4] = [
@@ -24,7 +27,7 @@ mod live_db {
             "template_id",
             1409,
         ),
-        ("spawnlist_spawn_id_seq", "spawnlist", "spawn_id", 13869),
+        ("spawnlist_spawn_id_seq", "spawnlist", "spawn_id", 23199),
         (
             "item_lists_item_list_id_seq",
             "item_lists",

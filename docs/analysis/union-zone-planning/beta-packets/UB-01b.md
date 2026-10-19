@@ -1,15 +1,15 @@
 # UB-01b: Beta way-back chains, shared Beta test helpers, linter slice
 
-> **Type:** How-to (work packet) · **Index:** [beta-work-packets.md](../beta-work-packets.md) · **Wave:** B1 · **Common:** [chain-packet-common.md](chain-packet-common.md)
+> **Type:** How-to (work packet) · **Index:** [beta-work-packets.md](../beta-work-packets.md) · **Wave:** B1b · **Common:** [chain-packet-common.md](chain-packet-common.md)
 
 | Field | Value |
 |---|---|
 | Role | `packet-coder` |
 | Size | about 38k |
-| Branch / worktree | `union-beta-e1/ub-01b-way-back` / `ub-01b` |
+| Branch / worktree | `uzp-ub01b` / `uzp-ub01b` (based on `uzp-e1` after UB-01a merges into it) |
 | Commit subject | `feat(beta-e1): UB-01b Union arrivals on Beta learn the Omega Site address` |
-| Depends on | UB-01a merged |
-| Ship order | First in wave B1. UB-02a to UB-02d need nothing from it, but every chain packet does |
+| Depends on | UB-01a merged into `uzp-e1` (wave B1a review done) |
+| Ship order | First chain packet (wave B1b). UB-02a to UB-02d need nothing from it, but every chain packet does |
 
 ## Why
 
@@ -29,7 +29,7 @@ A Union player who gates to Beta must be able to dial home. The Dakara precedent
 
 ## Rules (binding)
 
-1. PowerShell only; start every command with `Set-Location C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\ub-01b;`.
+1. PowerShell only; start every command with `Set-Location C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\uzp-ub01b;`.
 2. Never run `cargo` directly; use `pwsh tools/build-lane/lane.ps1` and `pwsh tools/build-lane/live-db-test.ps1`. Run in the foreground and check test counts are above 0.
 3. Edit only the allowlist.
 4. Docs are CRLF; a new seed matches its neighbouring seeds in the working tree (CRLF here; never mixed). Normalise after writing. In `db/database.sql`, `seed_model.rs`, `interact_tag_linter.rs` and `.github/instructions/*.md`, keep each file's existing line endings.
@@ -171,4 +171,4 @@ Set-Location <wt>; pwsh tools/build-lane/live-db-test.ps1 gate_dakara_e1
 
 ## Return
 
-`UB-01b <done|blocked|failed> <sha|-> C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\ub-01b\.claude\reports\union-beta-e1\UB-01b-coder.md`
+`UB-01b <done|blocked|failed> <sha|-> C:\Users\Steve\source\projects\Cimmeria\.claude\worktrees\uzp-ub01b\.claude\reports\union-beta-e1\UB-01b-coder.md`

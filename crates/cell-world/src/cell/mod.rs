@@ -34,6 +34,10 @@ mod dakara_start_tests;
 /// Seed-vs-navmesh guards for the Debug Area gate (stargate 29, DA-07).
 #[cfg(test)]
 mod debug_area_gate_tests;
+/// Seed guards for the Beta_Site_Evo_1 gate round trip (stargate 6's arrival
+/// pin, UB-01a) and the two World 23 respawners placed from the Beta seal.
+#[cfg(test)]
+mod gate_beta_e1_tests;
 /// Seed guards for the Dakara_E1 gate round trip (stargate 25's arrival
 /// pin and the way back from an address granted on arrival, DK-01).
 #[cfg(test)]

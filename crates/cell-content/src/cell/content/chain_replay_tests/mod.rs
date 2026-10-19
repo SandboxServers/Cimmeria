@@ -32,6 +32,8 @@
 //! [`dakara_e1_missions`] pins the Dakara_E1 mission chains (DK-10a onward),
 //! one submodule per seed file.
 
+// Named `live_db_*` so the `ci-live-db` profile gives every Beta test its own
+// slot database (`every_live_db_test_is_in_the_live_db_group`).
 mod black_market_auctioneer;
 mod castle_702_704_executor;
 mod castle_loot_containers;
@@ -48,6 +50,8 @@ mod gc1_escort;
 mod grant_xp;
 mod harset_space;
 mod harset_spawn_entity;
+#[path = "beta_e1/mod.rs"]
+mod live_db_beta_e1;
 mod livewire_pairs;
 mod marsh_barks;
 mod mission_1200;

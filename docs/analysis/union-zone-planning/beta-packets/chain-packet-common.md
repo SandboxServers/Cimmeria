@@ -99,7 +99,7 @@ The four are pairwise disjoint, and a repeat click on a done objective matches n
 - One chain per object tag, `once = true`: `add_item <item> {"container": 0, "qty": 1}`, then `increment_counter <name> {"amount": 1}`.
 - The turn-in on the NPC is gated on `counter <name> gte N`. A "not yet" sibling gated on `counter <name> lt N` re-displays the step's instruction dialog, so the first press always answers.
 - Bind the turn-in dsm when the collect step starts. There is no event for "the Nth object was clicked".
-- **Login resync:** counters live in memory and reset on relog, and `once` re-arms (UB-00a Q5). A `player_loaded` chain, gated on the collect step being `active`, runs `remove_item <item> {"qty": N}`, so the items and the counter restart together. Ship it only if UB-00a Q5 says `remove_item` accepts a short or empty stack. Otherwise drop it and record the caveat.
+- **Login resync:** counters live in memory and reset on relog, and `once` re-arms (UB-00a Q5). A `player_loaded` chain, gated on the collect step being `active`, runs `remove_item <item> {"qty": N}`, so the items and the counter restart together. UB-00a1 Q5 answered this: `remove_item` warns on a missing or short stack and never fails the chain, so the resync ships. Caveat (accepted, UB-U7b): it removes the first stack only.
 
 **P10 Region with an interact fallback.** A "go to X" step advances on `enter_region '<name>'`. A player who already stands inside the region never fires the event, so the first object click in that place, while the go-to step is `active`, also advances it. Both chains `advance_step` to the same next step and are disjoint from the object's own step chain by step status.
 

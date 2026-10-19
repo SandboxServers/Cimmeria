@@ -52,11 +52,14 @@
 pub mod emit;
 pub mod parse;
 pub mod patch;
+mod patches_beta_e1;
 mod patches_castle;
 mod patches_cellblock;
 
 #[cfg(test)]
 mod override_seed_agreement_debug_hub;
+#[cfg(test)]
+mod patch_seed_agreement_beta_e1;
 #[cfg(test)]
 mod patch_seed_agreement_castle;
 #[cfg(test)]

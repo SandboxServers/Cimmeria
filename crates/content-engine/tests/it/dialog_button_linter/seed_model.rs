@@ -13,12 +13,29 @@ use super::sql_scan::{insert_rows, int, sql_statements, text};
 /// whose dialogs are Cimmeria-authored and so have no shipped shape to trust.
 /// Union Omega's chains key stock dialogs 4641, 5025 and 6168, so a button
 /// change there must be caught.
-pub(crate) const CHAIN_FILES: [&str; 23] = [
+pub(crate) const CHAIN_FILES: &[&str] = &[
     "castle_cellblock_chains.sql",
     "castle_701_chains.sql",
     "castle_702_704_chains.sql",
     "castle_706_708_chains.sql",
     "debug_hub_chains.sql",
+    "beta_e1_travel_chains.sql",
+    "beta_e1_m1423_chains.sql",
+    "beta_e1_m381_chains.sql",
+    "beta_e1_m473_chains.sql",
+    "beta_e1_m478_chains.sql",
+    "beta_e1_m1425_chains.sql",
+    "beta_e1_m1426_chains.sql",
+    "beta_e1_m1427_chains.sql",
+    "beta_e1_m1500_chains.sql",
+    "beta_e1_m1502_chains.sql",
+    "beta_e1_m481_chains.sql",
+    "beta_e1_m420_chains.sql",
+    "beta_e1_m421_chains.sql",
+    "beta_e1_m1147_chains.sql",
+    "beta_e1_m443_chains.sql",
+    "beta_e1_m477_chains.sql",
+    "beta_e1_m479_chains.sql",
     "sgc_w1_union_1563_chains.sql",
     "sgc_w1_union_1564_chains.sql",
     "sgc_w1_union_escort_chains.sql",
