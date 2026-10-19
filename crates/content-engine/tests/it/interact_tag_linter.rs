@@ -177,6 +177,21 @@ fn allowlist(filename: &str, chain_id: i32) -> bool {
         | ("dakara_e1_space_chains.sql", 8004) // ToMohkatan: template 446
         | ("dakara_e1_space_chains.sql", 8005) // FromCommand: template 447
         | ("dakara_e1_space_chains.sql", 8006) // FromMohkatan: template 448
+        // dakara_e1_m*_chains.sql and dakara_e1_bridge_chains.sql — the
+        // Dakara_E1 mission chains (DK-10a to DK-12c). reason: every NPC and
+        // prop these chains click gets its interaction bit from the PER-PLAYER
+        // dialog bind (`add_dialog_set` pushes the dialog_set_map row's
+        // `interaction_flags` to the binding player only), as in castle_701
+        // (D-CA15). A `set_interaction_type` would light the prop for every
+        // player in world 61 at once.
+        | ("dakara_e1_m1570_entry_chains.sql", 8040..=8044)
+        | ("dakara_e1_m1570_tent_chains.sql", 8045..=8059)
+        | ("dakara_e1_m1570_search_chains.sql", 8060..=8074)
+        | ("dakara_e1_bridge_chains.sql", 8075..=8079)
+        | ("dakara_e1_m1645_chains.sql", 8080..=8119)
+        | ("dakara_e1_m1646_offer_chains.sql", 8120..=8139)
+        | ("dakara_e1_m1646_drop_chains.sql", 8140..=8159)
+        | ("dakara_e1_m1570_report_chains.sql", 8160..=8179)
         // castle_701_chains.sql — mission 701 (Gerschon / Copplemann).
         // reason: both NPCs' interaction bit comes from the PER-PLAYER
         // dialog bind, not from a zone-wide flag. `add_dialog_set` pushes
