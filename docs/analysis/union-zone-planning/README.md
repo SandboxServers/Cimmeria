@@ -29,7 +29,7 @@ These are **four independent zone-owner main sessions**, not four consecutive Hu
 | Union SGC | `BlockedDependency` | First four-zone close-out, then US-00 source and map seal. |
 | Union Dakara_E1 | `BlockedDependency` | First four-zone close-out and current DK ledger reconciliation, then UD-00. |
 | Union Omega | `BlockedDependency` | First four-zone close-out, then UO-00; runtime packets await upstream receiving contracts. |
-| Union Beta E1 | `BlockedDependency` | First four-zone close-out, then UB-00; runtime packets await Omega producers. |
+| Union Beta E1 | `UATPending` | Code complete on `uzp-e1` (2026-10-19, UB-99): every dispatched packet merged and reviewed. Lab rows UB-U1 to UB-U10 and the owner decisions H-LBL, U-D07 and HELD-B16 remain. See the [ledger](../union-beta-e1-continuation/README.md) and [beta-site-e1.md](../../content/beta-site-e1.md). |
 
 ## Planning decisions and open gates
 

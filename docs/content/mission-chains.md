@@ -7,7 +7,7 @@ last_updated: 2026-09-28
 
 # Mission Chains: Complete Inventory
 
-> **Last updated**: 2026-10-05 (Class Start v6 CS-05: SGC_W1 starter gates, M1559 core grant, M1562 SMG, M1569 rewards)
+> **Last updated**: 2026-10-19 (Union Beta E1 close-out: Beta chains and patterns P1-P10; before that Class Start v6 CS-05)
 > **Scope**: All 1,040 missions in the Stargate Worlds server emulator
 > **Sources**: [db/resources/Missions/Seed/missions.sql](../../db/resources/Missions/Seed/missions.sql) (1,040 mission INSERTs), `deprecated/python/cell/missions/` (20 script files), `deprecated/python/cell/spaces/` (11 space scripts), `deprecated/python/cell/MissionManager.py`
 >
@@ -36,6 +36,7 @@ last_updated: 2026-09-28
   - [Castle_CellBlock (Praxis Starting Zone)](#castle_cellblock-praxis-starting-zone)
   - [Castle (Persistent Zone)](#castle-persistent-zone)
   - [SGC_W1 (SGU Starting Zone)](#sgc_w1-sgu-starting-zone)
+  - [Beta Site E1 (world 23)](#beta-site-e1-world-23)
   - [Harset (Hub Zone)](#harset-hub-zone)
   - [General (Debug/Test)](#general-debugtest)
   - [Missing Chain Links](#missing-chain-links)
@@ -1446,6 +1447,51 @@ The [space seed](../../db/resources/Content/Seed/dakara_e1_space_chains.sql) own
 | 8006 | `interact_tag Dakara_E1_StoryRm_TentFlap_FromMohkatan` | 62 | Return to that same court |
 
 Five client-hinted named regions have point sets: Command Tent, Moh'katan's Tent, Stargate Plaza, Superweapon Courtyard and the speculative Naquadah Repository. A distinct Jaffa Command region remains unplaced. Respawner 611 sits beside the estimated Med Tent; world 62 retains respawner 25 inside the furnished room. [DK-05](../analysis/dakara-e1-rebuild/worknotes/DK-05.md) places Bra'tac and Moh'katan in that room, Rak'nor on the plaza and Loth'ta at the speculative outpost. Static actors reload from spawnlist. Mission packets will add step-gated `player_loaded` dialog restores on both worlds when their binds exist.
+
+---
+
+### Beta Site E1 (world 23)
+
+**Status:** three race arcs authored, tested in the database and never in the client. Reference page: [beta-site-e1.md](beta-site-e1.md). Ledger and findings: [Union Beta continuation ledger](../analysis/union-beta-e1-continuation/README.md). The block is content_chains 23000-23499; each mission has its own seed file `db/resources/Content/Seed/beta_e1_m<id>_chains.sql`. Omega offers 1423, 1500 and 481; Beta fires the arrival steps and never re-offers them.
+
+| Mission | Race | Chain ids (approx.) | Stops at |
+|---|---|---|---|
+| way back (travel) | all | 23001-23003 | n/a |
+| 1423 arrival and Carter | Human | 23020-23022 | n/a |
+| 381 Closing Shop | Human | 23040-23053 | completes |
+| 473 Inventory | Human | 23070-23083 | completes |
+| 478 Instant IT | Human | 23100-23108 | completes |
+| 1425 SGU Database | Human | 23130-23136 | S4244 (Jackson, D-UB5 A) |
+| 1426 Amateur Photography | Human | 23160-23171 | completes |
+| 1427 The Ruins | Human | 23190-23195 | S4250 (Woolsey, D-UB5 A) |
+| 1500 arrival and Carter | Free Jaffa | 23220-23222 | n/a |
+| 1502 The Nine Peaks Jaffa | Free Jaffa | 23240-23250 | completes (1503 not built) |
+| 481 arrival, beam, Mimir | Asgard | 23310-23317 | n/a |
+| 420 Reclamation | Asgard | 23340-23351 | completes |
+| 421 Mechanical Error | Asgard | 23360-23368 | completes |
+| 1147 Intriguing Data | Asgard | 23390-23395 | completes |
+| 443 Incendiary | Asgard | 23405-23417 | completes |
+| 477 Covert Observations | Asgard | 23435-23459 | completes |
+| 479 Process Support | Asgard | 23460-23467 | completes |
+
+Race gates are D-UB1: Human `archetype gte 1` and `lte 4`, Free Jaffa `eq 7`, Asgard `eq 5`. The patterns every Beta chain follows (full text: [chain-packet-common.md](../analysis/union-zone-planning/beta-packets/chain-packet-common.md)):
+
+| Pattern | Rule |
+|---|---|
+| P1 Receiver | On `player_loaded`, race and arrival step `active`: `advance_step` to the talk step and `add_dialog_set`. A restore chain re-adds the bind on login, because binds are not persisted |
+| P2 Offer and accept | Offer on a bind, accept on `dialog_choice`; Accept shows only on the final screen |
+| P3 Turn-in on interact | `interact_tag` while the last step is `active`: `display_dialog`, `remove_dialog_set`, `complete_mission` |
+| P4 Mid-step talk | `interact_tag`, `display_dialog`, `advance_step`, then the next bind if it is a talk step |
+| P5 Object click | `interact_tag` on an object tag, optional `add_item`, `advance_step`. Objects carry `interaction_type 1073741824` from their template |
+| P6 Two-objective step | Four-chain partition so that no chain completes the last open objective (see F19) |
+| P7 Per-player binds | `add_dialog_set` `slot` = the NPC's template id (D-UB10); never `set_interaction_type` on a shared tag |
+| P8 Disjointness | Sibling chains on one trigger fire together, so every chain that shows a dialog on a shared NPC is exclusive by race, mission status or step status |
+| P9 Quota on N objects | No condition reads an item count, so a quota (381 cages, 420 scanners) is a counter |
+| P10 Region with interact fallback | A "go to X" step advances on `enter_region`; a player already inside never fires it, so the first object click there while the step is `active` also advances it |
+
+**F19, the `complete_objective` trap.** Completing the last required objective of the current step completes the whole mission (`crates/cell-content/src/cell/missions/progression.rs:463-506`). Mid-mission chains use `advance_step`, turn-ins use `complete_mission`, and multi-objective steps (473 S1724, 477 S1744) use P6.
+
+**F21, the interact fallback.** A click runs trainer, `interact_tag` and `interact_template` chains first. Only if none handled it does the server auto-open the first per-player bind's dialog for that template (`crates/cell-interactions/src/cell/interactions/dispatch/interact.rs:113-135`). A bound turn-in therefore shows, without completing anything, whenever no chain claims the click. Every quota turn-in needs a "not yet" sibling, one slot never carries two binds, and an NPC template with `interaction_type 0` can be clicked only while a bind is live.
 
 ---
 

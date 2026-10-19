@@ -52,6 +52,7 @@ This guide gathers every restored system's in-game acceptance test (UAT) into on
 | [Special ammo](#special-ammo) | [ammo session resume, UAT checklist](../analysis/ammo/handoffs/session-resume.md#uat-checklist) |
 | [Debug Area](#debug-area) | [Debug Area ledger](../analysis/debug-area/README.md#packets) (live-client checks: [DA-06](../analysis/debug-area/README.md#da-06-live-client-checks)) |
 | [Dakara_E1](#dakara_e1) | [Dakara_E1 ledger, M1 checklist](../analysis/dakara-e1-rebuild/README.md#m1-checklist-dead-end-removed) |
+| [Beta_Site_Evo_1](#beta_site_evo_1) | [Beta E1 ledger](../analysis/union-beta-e1-continuation/README.md) |
 | [Mission data lock](#mission-data-lock) | This section (telemetry-gaps packet TG-DB-12) |
 | [Lab harness](#lab-harness) | [lab-harness close-out](../analysis/lab-harness/closeout.md#what-was-not-tested-live) |
 | [Telemetry gaps](#telemetry-gaps) | [telemetry-gaps ledger](../analysis/telemetry-gaps/README.md#packet-status) and its [close-out handoff](../analysis/telemetry-gaps/handoffs/2026-10-11-closeout.md) |
@@ -1218,6 +1219,42 @@ World 61, the Free Jaffa's world. DK-01 gives a new character a round trip throu
 | DK-U19 | Relog once on world 61 by Rak'nor and Loth'ta, and once inside world 62 by Bra'tac and Moh'katan | All four static actors are still present in their worlds; the world-62 tent remains usable | Mission dialog and step-gated restore chains arrive in later packets |
 
 Logs: `event = 'content.send_system_mail' AND chain_id = 8002` (`outcome = 'sent'` once per character); `body CONTAINS 'granting stargate address' AND stargate_id = 5`; a refused dial is `onDialGate` with a `reason`.
+
+## Beta_Site_Evo_1
+
+World 23, the first shared Union field map. A Human, a Free Jaffa and an Asgard each arrive from Omega on a different mission and play a different arc: Human 1423 to 1427, Free Jaffa 1500 to 1502, Asgard 481 to 479. Row ids are the campaign's UB-U ids. Design and evidence: [reference page](../content/beta-site-e1.md), [ledger](../analysis/union-beta-e1-continuation/README.md), [packet spec](../analysis/union-zone-planning/beta-packets/UB-90-99.md).
+
+**Status:** Pending a client run; none of these rows has been run. The chains, spawns and cross-race guard are covered by live-database tests, so a failing row is a map, client or draw problem first. The lab-driven rows (UB-90) need the owner's approval for lab use. Stage characters with the lab server's `server_stage_fixture` instead of playing the Omega arcs.
+
+**Prerequisites:** a server build from `uzp-e1` or later. Human, Free Jaffa and Asgard fixture characters at the setup state in each row. Stand 4 to 6 m from a target before clicking it, and clear open dialogs first. A row that cannot run is `not-run`, never `pass`.
+
+**Known gaps (not failures):** the Asgard arc is unreachable for a real player until Omega's UO-16 delivers one (HELD-B16), so use a fixture. 1425 and 1427 stay open by design (D-UB5 A). A blank dialog header on speaker 0 "Not Set" is cosmetic (UB-U2b). Mission rewards are xp 0 and naq 0 (D-UB8).
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| UB-U1 | Human fixture on Omega with 1423 accepted and S4223 active: dial gate 6, then dial back | You arrive at (635.761, -60.134, 388.448) facing +X, and the Omega address is granted. Dialing back lands you at the Omega gate | Chains 23001-23003 |
+| UB-U1b | Open the journal before and after a chain advances an SGU step (Human at 1423 S4223; Asgard at 443 S1486) | Record whether the client lists the step and objective and whether the objective text updates | Every SGU step carries `en=false`, which the server never reads; the screenshot is the evidence |
+| UB-U2 | Walk the gate plaza, Command Post, barracks, Quartermaster and Science front | Every cast and life NPC stands on the ground, not in the air or in a wall. Clicking a life NPC does nothing | |
+| UB-U2b | Asgard fixture at the step showing dialog 5040, then 5047: read the header | Speaker 0 "Not Set" gives a blank header. Cosmetic: record it | |
+| UB-U2c | Stand at each object (templates 2320-2326, 2328-2335) and compare its draw with its name | The draw matches. A wrong or missing draw names the template | Fallback mesh is 445's ring switch |
+| UB-U3 | Human fixture at 1423 S4223: arrive, talk to Carter, then do 1423, 381, 473, 478 in order | Each click shows a dialog on the first press; each mission completes in order | Chains 23020, 23040-23052, 23070-23099, 23100-23129 |
+| UB-U3b | Human at 381 S1409: collect 3 cages, relog, collect 5, turn in to Felger | The count survives the relog as designed, Felger takes 5 and the cage stack is right | Record whether a cage clicked before the relog can be clicked again |
+| UB-U3c | Human at 1423 S4223: check each offer before you accept | Carter offers only the next mission: 1423, 381, 473, 478. No later offer shows early | |
+| UB-U3d | Human at 1423's last step: look at Carter's overhead marker while the 4643 bind is live, then after chain 23022 unbinds it | Record the marker before and after | Screenshot evidence |
+| UB-U4 | Human fixture with 478 completed: run to 1425 S4244 and 1427 S4250 | 1425 and 1427 stay open in the journal and 1426 completes | D-UB5 A: no Jackson or Woolsey on Beta |
+| UB-U4b | Human at 1425 S4244: run chains 23165 or 23166, then finish 1426 | Item 4832 (the camera) appears in the bag, then 23169 removes it on 1426 | |
+| UB-U5 | Asgard fixture (archetype 5) at 481 S1760 with item 3399: arrive, talk to Carter, beam up, talk to Mimir, then 420, 421, 1147, 443, 477, 479. Beam down and up again at any point | Every mission completes in order; each beam click moves you to the deck or the ground | Chains 23310-23467 |
+| UB-U5b | Asgard at 420 S1455: collect 3 scanners, relog on the deck, beam down, collect 5. Click Mimir before the 5th | Mimir shows dialog 1954 (not the turn-in) before the 5th, and takes 5 after | |
+| UB-U5c | Asgard at 477 with the four subject binds live: click Carter, Debeaux, Felger and Satterfield | Each click shows that subject's dialog on the first press, and the blurb does not re-show after the objective completes | |
+| UB-U6 | Free Jaffa fixture (archetype 7) at 1500 S4369: arrive, talk to Carter, take the ring pair to the Nine Peaks camp, talk to Ras'nor | 1500 and 1502 complete | 1503 is not built (D-UB5 A) |
+| UB-U6b | Fixtures at steps showing buttons 247, 456, 457, 458, 575 and 576: press each | Each press reaches the server and the keyed chain fires on the first press | |
+| UB-U7 | Die near the gate, then near the infirmary (GM damage command) | You respawn at respawner 6, then 7, never the origin | |
+| UB-U7b | Human holding cages 3635 in two stacks at 381's turn-in | The first stack is removed and the second stays: a known gap, record what is left | |
+| UB-U8 | Free Jaffa at 1502's first step: take ring 148 near the gate to the SW ring and back | The ring UI lists the destination and you arrive and return | Ring regions 2300 and 2301 |
+| UB-U9 | A Human, a Free Jaffa and an Asgard fixture on Beta at once: each clicks Carter in turn | Each sees only their own race's dialog. The Human and Free Jaffa never see the beam objective | Needs lab parallel clients |
+| UB-U10 | Asgard offered 477 (dialog 1997), then 479 (dialog 3228): page through each | Accept shows only on the last screen (64049, 64068), and pressing it accepts on the first press | |
+
+Logs: `Content: advancing step`, `Content: completing mission` and `chain matched` with the chain ids in the notes above (service `cimmeria-cell`). The verifier greps the exact text in `crates/cell-content/` before quoting it.
 
 ## Mission data lock
 

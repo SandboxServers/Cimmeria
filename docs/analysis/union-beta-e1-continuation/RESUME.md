@@ -1,38 +1,30 @@
 # Union Beta E1 continuation: resume card
 
-> **Last updated:** 2026-10-18 (ARCH-B1) · **Ledger:** [README.md](README.md) · **Index:** [beta-work-packets.md](../union-zone-planning/beta-work-packets.md) · **Packets:** [beta-packets/](../union-zone-planning/beta-packets/)
+> **Last updated:** 2026-10-19 (UB-99) · **Ledger:** [README.md](README.md) · **Index:** [beta-work-packets.md](../union-zone-planning/beta-work-packets.md) · **Reference:** [beta-site-e1.md](../../content/beta-site-e1.md)
 
-## Current wave: B1a (Ready)
+## State: code complete, lab pending
 
-B0 is integrated on `uzp-e1` except UB-00a1, which is in review pass 2 (finding C6), owned by the concurrent editor of `mission-seal.md`; B1a does not wait on it. ARCH-B1 ruled D-UB4 A (ring), D-UB5 A, D-UB6 confirmed, D-UB7 out, D-UB8 xp/naq 0, and D-UB9 (approved by the coordinator; screens re-carved to 64124-64193).
+Every dispatched packet (B0 to B5) is merged into `uzp-e1`, with review fixes. UB-99 (close-out docs) is done. Nothing has run in the lab or the client.
 
-## B1a dispatch list (all in parallel, each off `uzp-e1`)
+## What is left
 
-| Packet | Worktree = branch | Packet file | Role |
-|---|---|---|---|
-| UB-01a | `uzp-ub01a` | `beta-packets/UB-01a.md` | packet-coder |
-| UB-02a | `uzp-ub02a` | `beta-packets/UB-02a.md` | packet-coder |
-| UB-DP | `uzp-ubdp` | `beta-packets/UB-DP.md` | packet-coder |
-
-Report path: `<worktree>\.claude\reports\union-beta-e1\<packet>-coder.md`. One packet-review-fixer for the wave, then merge each into `uzp-e1`.
-
-## Wave order (sequential; lanes inside a wave run in parallel)
-
-- **B1b**: UB-01b (`uzp-ub01b`) and UB-02b (`uzp-ub02b`) in parallel; then UB-02c (`uzp-ub02c`) and UB-02d (`uzp-ub02d`), both stacked on `uzp-ub02b`. Needs UB-01a and UB-02a merged. UB-DP may merge late, but before B3.
-- **B2**: the UB-10 to UB-13 stack, UB-20, UB-30 (three lanes).
-- **B3**: the UB-14 to UB-16 stack, UB-21, UB-31, UB-40 (four lanes). Needs UB-DP merged.
-- **B4**: the UB-32 to UB-36 stack.
-- **B5**: UB-45a, then UB-45b stacked.
-- **B6**: UB-90 (lab: ask the user first), then UB-99 close-out.
-
-## Open owner decisions (BlockedDecision; the orchestrator asks)
-
-| ID | Question | Holds |
+| Item | Who | Note |
 |---|---|---|
-| H-LBL | Which label does player-facing CIMMERIA_AUTHORING copy carry on Beta? | UB-50 |
-| U-D07 | What xp and naq should each of the 17 Beta missions award? | UB-50 |
-| HELD-B16 | Which Omega packet delivers an Asgard player at 481 S1760 with item 3399 (UO-16 held)? | Asgard end-to-end reachability only; UB-30 to UB-36 dispatch (D-UB13) |
+| UB-90 lab rows UB-U1 to UB-U10 | Orchestrator asks the user first, then `lab-driver` step files | Rows live in [unified-uat.md](../../guides/unified-uat.md#beta_site_evo_1); results go to `uat-results.md` (not yet created) |
+| H-LBL | Owner | Label for player-facing CIMMERIA_AUTHORING copy; holds UB-50 |
+| U-D07 | Owner | xp and naq for the 17 Beta missions (today 0 and 0, D-UB8); holds UB-50 |
+| HELD-B16 / UO-16 | Owner (U-D08, U-D11) | The Asgard end-to-end route is unreachable until Omega delivers an Asgard player at 481 S1760 with item 3399 (D-UB13) |
 
-## Carry
+## Hold and closed
 
-- Hold/closed: UB-22 and UB-51 held (D-UB5 A), UB-52 closed (D-UB7). Stock screens sit in the Dakara and Omega authored screen ranges (README § Screens re-carve); flag it to those campaigns.
+UB-22 and UB-51 are held (D-UB5 A). UB-52 is closed (D-UB7). UB-50 waits on the owner. UB-L (Visit 2 and E2) is research only.
+
+## Follow-ups for other campaigns
+
+- Raise the `seeded_sequences_allocate_past_every_seeded_row` floor from 13869 to 23199.
+- Dakara and Omega re-carve their authored screen blocks before authoring (stock screens inside them: see the ledger).
+- Check the Castle and Cellblock dialog-patch tables for the UB-DP registration gap.
+
+## Merge
+
+The Beta close-out merges `uzp-e1` onto the Union campaign trunk through the coordinator. Retire the `uzp-ub*` worktrees, branches and test databases on merge.

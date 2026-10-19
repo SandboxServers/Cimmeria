@@ -2,7 +2,7 @@
 
 > **Type:** Reference (campaign ledger)
 > **Audience:** The Union Beta coordinator and the packet coders, reviewers and specialists named in the packet table
-> **Last updated:** 2026-10-18 (ARCH-B1: rulings D-UB4 to D-UB9, seal rows folded into the packets, B1 dispatch list)
+> **Last updated:** 2026-10-19 (UB-99 close-out: every code packet merged, lab rows UATPending, findings recorded)
 > **Index:** [beta-work-packets.md](../union-zone-planning/beta-work-packets.md) (packet text, findings F1-F21, HELD list and waves; this ledger does not copy them)
 > **Companions:** [RESUME.md](RESUME.md), [mission-seal.md](mission-seal.md) (UB-00a1/a2), [placement-seal.md](placement-seal.md) (UB-00b), [receiver-contract.md](receiver-contract.md), [id-amendment-request.md](id-amendment-request.md), [worknotes/](worknotes/README.md), [execution contract](../union-zone-planning/execution-contract.md), [SGC ledger](../union-sgc-continuation/README.md) (the model for this one)
 
@@ -12,9 +12,39 @@ Track the Beta_Site_Evo_1 (world 23, gate 6) first-visit campaign packet by pack
 
 ## Status of this ledger
 
-- Wave B0 is integrated on `uzp-e1`: UB-00a2 (mission seal Q7-Q14), UB-00b (placement seal) and UB-00c (this ledger, ID re-check, receiver contract, amendment request). UB-00a1 (mission seal Q1-Q6) is in **review pass 2** for its R3 finding C6; the concurrent editor owns `mission-seal.md` until that pass closes. Nothing in B1a waits on it: C1-C6 are already folded into the packets.
-- ARCH-B1 (2026-10-18) ruled D-UB4 to D-UB9 (below), applied the D-UB9 amendment to `docs/analysis/four-zone-planning/id-allocation.md`, re-carved the authored screens range (see [§ Screens re-carve](#screens-re-carve-arch-b1)) and folded the UB-00a1/a2/b change rows into the packet files.
-- **Wave B1a is Ready**: UB-01a, UB-02a and UB-DP, in parallel. The dispatch list with worktree and branch names is in [RESUME.md](RESUME.md).
+**Campaign state: code complete, lab pending.** Every dispatched packet from B0 to B5 is merged into `uzp-e1` (tip `f8e9f2f2e` when UB-99 started). The lab rows (UB-90) are UATPending and no lab was used. The close-out docs (UB-99) are done. The packet table below is current; the earlier B0/B1a text is history and lives in git.
+
+Merged, each with at least one review-fix commit: UB-DP, UB-01a, UB-01b, UB-02a, UB-02b, UB-02c, UB-02d, UB-10 to UB-16, UB-20, UB-21, UB-30 to UB-36, UB-40, UB-45a and UB-45b. B0 (UB-00a1, UB-00a2, UB-00b, UB-00c) is integrated; UB-00a1's review pass 2 landed in `54e76cbbd`.
+
+Not dispatched, by ruling: UB-22 and UB-51 are held (D-UB5 A), UB-52 is closed (D-UB7) and UB-50 is held on the owner.
+
+## Close-out (UB-99)
+
+### Tested and never tested
+
+| Tested (automated, in `uzp-e1`) | Never tested |
+|---|---|
+| Live-DB `beta_e1` tests: chain replays per mission (`chain_replay_tests/beta_e1/`), spawner, nav and template tests (`spawner_tests/beta_e1/`), the gate and respawner guards, the dialog-override patch agreement test | Anything in the lab or the game client: UB-U1 to UB-U10 are all UATPending |
+| The interact-tag linter slice `beta_e1.rs` and its allowlist | Whether the client draws each object template (UB-U2c) and shows disabled SGU steps in the journal (UB-U1b) |
+| The cross-race guard (UB-45a one dialog per click, UB-45b login binds equal in-session binds) | The Asgard path for a real player: Omega's UO-16 does not deliver one yet (HELD-B16) |
+| The sequence floor test `seeded_sequences_allocate_past_every_seeded_row` | The D-UB5 tails (1503, Jackson and Woolsey receivers): no content exists |
+
+### Integration fix
+
+UB-14's 1425 offer shows on Carter after 478 completes. UB-13's whole-seed Carter dialog count did not allow it, so the m478 test failed once both packets were in `uzp-e1`. Commit `ac2d5e1a5` corrected the count. The behavior was intended (D-UB15 linear offers).
+
+### Findings
+
+1. **Stock screens sit inside the Dakara and Omega authored blocks.** Beyond the screens already named in [§ Screens re-carve](#screens-re-carve-arch-b1), the Dakara 63500-63799 block holds stock screens 63509-63513, 63517, 63518 and 63644-63647, and the Omega 63800-63999 block holds 63847-63852, 63854, 63874 and 63881-63887. Those campaigns must re-carve (or skip those ids) before they author screens. Beta's own screens range 64124-64193 is clear.
+2. **The UB-02a revert proof (c) was wrong.** A revert-proof that changes footer text in `UB-02bcd.md` is theatre at database level: every Beta footer sets its sequence to 23199 and the Debug Area re-sets sequences. Follow-up for a testing packet: raise the `seeded_sequences_allocate_past_every_seeded_row` floor (currently 13869) to 23199 in `live_db_seed_sequences.rs`.
+3. **The UB-DP shared-infrastructure registration gap also affects the Castle and Cellblock tables.** The shared registration step that UB-DP had to extend is missing for the Castle and Cellblock tables too, so their patch tables are not covered by the same agreement guard. Not fixed here: the Castle and Cellblock owners should check it.
+4. **`find_path` caps at 256 polys.** Navigation tests therefore chain legs instead of asserting one long path. RuinNote 23021 was re-sealed for this reason.
+5. **The Beta decisions D-UB4 to D-UB13 were all ruled at high confidence** (see [§ Decisions](#decisions)): the ring pair, stop-on-Beta tails, the Beta-local infirmary, twins out, xp/naq 0, the ID block, per-player binds, no phasing, the beam via `interact_tag` and `move_entity`, and archetype-5 replays.
+
+### Documentation debt
+
+- `docs/content/mission-chains.md` is over the 500-line soft cap and was already over the 700-line hard cap before UB-99; a split by zone is owed.
+- The doc-update map has no row for per-zone content pages; this close-out used the "Game systems, content chains" row.
 
 ## Decisions
 
@@ -122,46 +152,46 @@ The M3 and M5 labels were never defined in the planning folder. ARCH-B1 retired 
 
 ## Packet table
 
-Status vocabulary: Ready / BlockedDependency / BlockedDecision / Writing / Review / Integrated / UATPending / Done, plus Hold and Closed for packets the rulings removed. Mirrors the index § Packets as of ARCH-B1. Worktree = branch = the name shown, based on `uzp-e1` unless the note says stacked.
+Status vocabulary (as of UB-99 every row is Done, UATPending, Hold, Closed or BlockedDecision): Ready / BlockedDependency / BlockedDecision / Writing / Review / Integrated / UATPending / Done, plus Hold and Closed for packets the rulings removed. Mirrors the index § Packets as of UB-99. Worktree = branch = the name shown, based on `uzp-e1` unless the note says stacked.
 
 | Wave | Packet | Worktree / branch | Status | Note |
 |---|---|---|---|---|
-| B0 | UB-00a1 | (concurrent editor) | Review (pass 2) | mission seal Q1-Q6; R3 finding C6, already folded into UB-DP, UB-31, UB-33 |
-| B0 | UB-00a2 | - | Integrated | mission seal Q7-Q14; a2 changes 1-6 folded |
-| B0 | UB-00b | - | Integrated | placement seal; anchors inlined in UB-02b/c/d, UB-30, UB-40 |
-| B0 | UB-00c | - | Integrated | ledger, ID re-check, receiver contract, amendment request |
-| B1a | UB-01a | `uzp-ub01a` | **Ready** | gate 6 pin, respawners 6/7, exemption removed |
-| B1a | UB-02a | `uzp-ub02a` | **Ready** | templates 2300-2335 (2303, 2327, 2336 reserved) |
-| B1a | UB-DP | `uzp-ubdp` | **Ready** | dialog patches 1997/3228 (C5), 1916/3905 stripped (C6) |
-| B1b | UB-01b | `uzp-ub01b` | BlockedDependency | UB-01a |
-| B1b | UB-02b | `uzp-ub02b` | BlockedDependency | UB-02a |
-| B1b | UB-02c | `uzp-ub02c` (stacked on `uzp-ub02b`) | BlockedDependency | UB-02b |
-| B1b | UB-02d | `uzp-ub02d` (stacked on `uzp-ub02b`) | BlockedDependency | UB-02b; ring pair 2300/2301 (D-UB4 A) |
-| B2 | UB-10 | `uzp-ub10` | BlockedDependency | B1b merged |
-| B2 | UB-11 | `uzp-ub11` (stacked on `uzp-ub10`) | BlockedDependency | UB-10 |
-| B2 | UB-12 | `uzp-ub12` (stacked on `uzp-ub11`) | BlockedDependency | UB-11 |
-| B2 | UB-13 | `uzp-ub13` (stacked on `uzp-ub12`) | BlockedDependency | UB-12 |
-| B2 | UB-20 | `uzp-ub20` | BlockedDependency | B1b merged |
-| B2 | UB-30 | `uzp-ub30` | BlockedDependency | B1b merged; end-to-end reachability waits on HELD-B16, the packet does not |
-| B3 | UB-14 | `uzp-ub14` | BlockedDependency | UB-13 (HELD-B12 answered) |
-| B3 | UB-15 | `uzp-ub15` (stacked on `uzp-ub14`) | BlockedDependency | UB-14 (camera item 4832) |
-| B3 | UB-16 | `uzp-ub16` (stacked on `uzp-ub15`) | BlockedDependency | UB-15 |
-| B3 | UB-21 | `uzp-ub21` | BlockedDependency | UB-20, UB-02d |
-| B3 | UB-31 | `uzp-ub31` | BlockedDependency | UB-30, UB-DP |
-| B3 | UB-40 | `uzp-ub40` | BlockedDependency | B1b merged |
-| B4 | UB-32 | `uzp-ub32` | BlockedDependency | UB-31 (D-UB6 confirmed) |
-| B4 | UB-33 | `uzp-ub33` (stacked on `uzp-ub32`) | BlockedDependency | UB-32, UB-DP |
-| B4 | UB-34 | `uzp-ub34` (stacked on `uzp-ub33`) | BlockedDependency | UB-33 |
-| B4 | UB-35 | `uzp-ub35` (stacked on `uzp-ub34`) | BlockedDependency | UB-34, UB-DP |
-| B4 | UB-36 | `uzp-ub36` (stacked on `uzp-ub35`) | BlockedDependency | UB-35, UB-DP |
-| B5 | UB-45a | `uzp-ub45a` | BlockedDependency | UB-16, UB-21, UB-36, UB-40 |
-| B5 | UB-45b | `uzp-ub45b` (stacked on `uzp-ub45a`) | BlockedDependency | UB-45a |
-| B6 | UB-90 | - (lab) | UATPending | rows UB-U1 to UB-U10; B5 merged; ask the user before any lab use |
-| B6 | UB-99 | `uzp-ub99` | BlockedDependency | close-out, after UB-90 |
-| - | UB-22 | - | Hold | not dispatched (D-UB5 A) |
-| - | UB-50 | - | BlockedDecision | owner: H-LBL, U-D07; CB-N05a |
-| - | UB-51 | - | Hold | D-UB5 A |
-| - | UB-52 | - | Closed | D-UB7 out |
+| B0 | UB-00a1 | (concurrent editor) | Done (integrated; UB-00a1 pass 2 landed in `54e76cbbd`) | mission seal Q1-Q6; R3 finding C6, already folded into UB-DP, UB-31, UB-33 |
+| B0 | UB-00a2 | - | Done (integrated) | mission seal Q7-Q14; a2 changes 1-6 folded |
+| B0 | UB-00b | - | Done (integrated) | placement seal; anchors inlined in UB-02b/c/d, UB-30, UB-40 |
+| B0 | UB-00c | - | Done (integrated) | ledger, ID re-check, receiver contract, amendment request |
+| B1a | UB-01a | `uzp-ub01a` | Done (merged into `uzp-e1`, reviewed) | gate 6 pin, respawners 6/7, exemption removed |
+| B1a | UB-02a | `uzp-ub02a` | Done (merged into `uzp-e1`, reviewed) | templates 2300-2335 (2303, 2327, 2336 reserved) |
+| B1a | UB-DP | `uzp-ubdp` | Done (merged into `uzp-e1`, reviewed) | dialog patches 1997/3228 (C5), 1916/3905 stripped (C6) |
+| B1b | UB-01b | `uzp-ub01b` | Done (merged into `uzp-e1`, reviewed) | UB-01a |
+| B1b | UB-02b | `uzp-ub02b` | Done (merged into `uzp-e1`, reviewed) | UB-02a |
+| B1b | UB-02c | `uzp-ub02c` (stacked on `uzp-ub02b`) | Done (merged into `uzp-e1`, reviewed) | UB-02b |
+| B1b | UB-02d | `uzp-ub02d` (stacked on `uzp-ub02b`) | Done (merged into `uzp-e1`, reviewed) | UB-02b; ring pair 2300/2301 (D-UB4 A) |
+| B2 | UB-10 | `uzp-ub10` | Done (merged into `uzp-e1`, reviewed) | B1b merged |
+| B2 | UB-11 | `uzp-ub11` (stacked on `uzp-ub10`) | Done (merged into `uzp-e1`, reviewed) | UB-10 |
+| B2 | UB-12 | `uzp-ub12` (stacked on `uzp-ub11`) | Done (merged into `uzp-e1`, reviewed) | UB-11 |
+| B2 | UB-13 | `uzp-ub13` (stacked on `uzp-ub12`) | Done (merged into `uzp-e1`, reviewed) | UB-12 |
+| B2 | UB-20 | `uzp-ub20` | Done (merged into `uzp-e1`, reviewed) | B1b merged |
+| B2 | UB-30 | `uzp-ub30` | Done (merged into `uzp-e1`, reviewed) | end-to-end reachability waits on HELD-B16 (owner), not on the packet |
+| B3 | UB-14 | `uzp-ub14` | Done (merged into `uzp-e1`, reviewed) | UB-13 (HELD-B12 answered) |
+| B3 | UB-15 | `uzp-ub15` (stacked on `uzp-ub14`) | Done (merged into `uzp-e1`, reviewed) | UB-14 (camera item 4832) |
+| B3 | UB-16 | `uzp-ub16` (stacked on `uzp-ub15`) | Done (merged into `uzp-e1`, reviewed) | UB-15 |
+| B3 | UB-21 | `uzp-ub21` | Done (merged into `uzp-e1`, reviewed) | UB-20, UB-02d |
+| B3 | UB-31 | `uzp-ub31` | Done (merged into `uzp-e1`, reviewed) | UB-30, UB-DP |
+| B3 | UB-40 | `uzp-ub40` | Done (merged into `uzp-e1`, reviewed) | B1b merged |
+| B4 | UB-32 | `uzp-ub32` | Done (merged into `uzp-e1`, reviewed) | UB-31 (D-UB6 confirmed) |
+| B4 | UB-33 | `uzp-ub33` (stacked on `uzp-ub32`) | Done (merged into `uzp-e1`, reviewed) | UB-32, UB-DP |
+| B4 | UB-34 | `uzp-ub34` (stacked on `uzp-ub33`) | Done (merged into `uzp-e1`, reviewed) | UB-33 |
+| B4 | UB-35 | `uzp-ub35` (stacked on `uzp-ub34`) | Done (merged into `uzp-e1`, reviewed) | UB-34, UB-DP |
+| B4 | UB-36 | `uzp-ub36` (stacked on `uzp-ub35`) | Done (merged into `uzp-e1`, reviewed) | UB-35, UB-DP |
+| B5 | UB-45a | `uzp-ub45a` | Done (merged into `uzp-e1`, reviewed) | UB-16, UB-21, UB-36, UB-40 |
+| B5 | UB-45b | `uzp-ub45b` (stacked on `uzp-ub45a`) | Done (merged into `uzp-e1`, reviewed) | UB-45a |
+| B6 | UB-90 | - (lab) | UATPending: the owner approves lab use; no row has run | rows UB-U1 to UB-U10; B5 merged; ask the user before any lab use |
+| B6 | UB-99 | `uzp-ub99` | Done (this close-out) | close-out docs, this commit |
+| - | UB-22 | - | Hold: not dispatched (D-UB5 A) | not dispatched (D-UB5 A) |
+| - | UB-50 | - | BlockedDecision (owner: H-LBL, U-D07; CB-N05a) | owner: H-LBL, U-D07; CB-N05a |
+| - | UB-51 | - | Hold (D-UB5 A) | D-UB5 A |
+| - | UB-52 | - | Closed (D-UB7: out) | D-UB7 out |
 | - | UB-L | - | Hold | Visit 2 / E2 research note |
 
 Waves run in order; inside a wave the listed lanes run in parallel. B1a has three independent lanes. UB-DP may merge after the rest of B1a, but it must be merged before B3 starts. B2 has three lanes (Human stack, Free Jaffa, Asgard), B3 four (Human stack, UB-21, UB-31, UB-40), B4 one stack. Each wave gets one packet-review-fixer.

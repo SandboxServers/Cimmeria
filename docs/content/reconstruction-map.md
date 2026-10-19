@@ -2,7 +2,7 @@
 title: "Reconstruction Map"
 type: reference
 audience: engineers
-last_updated: 2026-07-25
+last_updated: 2026-10-19
 ---
 
 # Reconstruction Map
@@ -10,7 +10,7 @@ last_updated: 2026-07-25
 What can be rebuilt from existing data, what has gaps requiring guesswork, and what was
 never built and requires new assets or code.
 
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-10-19
 > **Scope**: All gameplay content and server systems in the Cimmeria emulator
 > **Sources**: `db/resources/`, `db/sgw/`, `deprecated/python/` (legacy reference
 > implementation, not the running server), `entities/`, `data/`, and the legacy
@@ -251,6 +251,23 @@ Crafting references 840 unique items -- more than all other systems combined.
 
 **What is needed:** End-to-end testing with a live client. This is a verification task,
 not a reconstruction task. The data and code already exist.
+
+---
+
+### 1.10 Beta Site E1 (rebuilt, 2026-10-19)
+
+**Effort: DONE in the database, untested in the client** | **Confidence: MEDIUM**
+
+The Union Beta campaign rebuilt the first visit of world 23 from the sealed map pins and the client's own text monikers. Every item below is labeled CIMMERIA_RECONSTRUCTION: glue the source implies but does not ship. Details and coordinates: [beta-site-e1.md](beta-site-e1.md).
+
+- **Arrival pin.** Stargate 6 lands on the map's only PlayerStart (635.761, -60.134, 388.448).
+- **Respawners.** 6 at (633, -60.83, 399) and 7 at (953, 16.35, 287.5), replacing two origin rows.
+- **NPC placements.** Carter, Felger, Satterfield, Debeaux, Mimir, Ras'nor, the sick warriors and the life NPCs stand against building pins that were re-probed on the navmesh.
+- **The Asgard beam.** `interact_tag` plus `move_entity` between BEAM_DECK_DEST (698.98, 157.93, 70.36) and BEAM_GROUND_DEST (745.05, -19.60, 68.75).
+- **The ring pair.** Regions 2300 (hub ring 148) and 2301 (SW_RING) link the two nav components that have no walk route (D-UB4 A).
+- **Chains.** All 17 chain seed files in [mission-chains.md](mission-chains.md#beta-site-e1-world-23), plus the way-back grant.
+
+Still a hole: 1503, the Jackson and Woolsey receivers, rewards (U-D07) and any authored content (UB-50, held).
 
 ---
 
