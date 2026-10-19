@@ -35,11 +35,11 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (23017, 1018.405, 13.90, 506.851, 5.482, 23, 2322, 'BetaE1_HubComputer', NULL, true, 30);
 -- CIMMERIA_RECONSTRUCTION: anchor ADMIN_WORKSTATION from placement-seal.md (ADMIN_WORKSTATION pin on nav 251)
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (23018, 1018.405, 13.57, 509.851, 5.262, 23, 2323, 'BetaE1_AdminWorkstation', NULL, true, 30);
--- CIMMERIA_RECONSTRUCTION: anchor SCIENCE_COMPUTER from placement-seal.md (SCIENCE_COMPUTER pin on nav 890)
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (23019, 649.700, 19.77, 814.100, 1.571, 23, 2324, 'BetaE1_ScienceComputer', NULL, true, 30);
--- CIMMERIA_RECONSTRUCTION: anchor FOUR_PIECES_CASE from placement-seal.md (FOUR_PIECES_CASE pin on nav 890)
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (23020, 647.700, 19.77, 814.100, 1.571, 23, 2321, 'BetaE1_FourPiecesCase', NULL, true, 30);
--- CIMMERIA_RECONSTRUCTION: anchor RUIN_NOTE from placement-seal.md (RUIN_NOTE pin on nav 251; INFERRED Barak'Ka ruin)
+-- CIMMERIA_RECONSTRUCTION: anchor SCIENCE_COMPUTER, deviation from the prefab's inside placement (placement-seal.md UB-00b-3): the interior seal point (649.700, 19.77, 814.100) sits behind a 0.90 m door gap, narrower than the 1.2 m agent, so no walk reaches it; this exterior point is on nav 251, 1.20 m east of the gap
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (23019, 652.900, 19.77, 814.100, 1.571, 23, 2324, 'BetaE1_ScienceComputer', NULL, true, 30);
+-- CIMMERIA_RECONSTRUCTION: anchor FOUR_PIECES_CASE, deviation from the prefab's inside placement (placement-seal.md UB-00b-3): exterior point on nav 251, 2.00 m east of SCIENCE_COMPUTER (the interior seal point 647.700 is behind the 0.90 m door gap)
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (23020, 654.900, 19.77, 814.100, 1.571, 23, 2321, 'BetaE1_FourPiecesCase', NULL, true, 30);
+-- CIMMERIA_RECONSTRUCTION: anchor RUIN_NOTE from placement-seal.md (RUIN_NOTE pin on nav 251; INFERRED Barak'Ka ruin; walk-reachable from ARRIVAL only by the authored hops of placement-seal.md UB-00b-3, not by one find_path leg)
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (23021, 122.200, 27.17, 356.800, 1.249, 23, 2335, 'BetaE1_RuinNote', NULL, true, 30);
 
 -- Spawn-sequence footer: Beta's block top (23199), so the next default id

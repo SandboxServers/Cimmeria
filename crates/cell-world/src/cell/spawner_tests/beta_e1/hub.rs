@@ -2,10 +2,13 @@
 //! 23000-23021) and the Storage and AdminBuilding regions on world 23. The
 //! positions are the UB-00b placement seal's snapped stand points.
 
-use super::nav::{mesh, standable, standable_and_connected, ARRIVAL};
+use super::nav::{mesh, standable_and_walkable, walkable_via, ARRIVAL};
 use super::*;
 
-/// Spawn id, template, tag and seal position of each hub spawn.
+/// Spawn id, template, tag and seal position of each hub spawn. The Science
+/// pair (23019, 23020) sits outside the door, not at the prefab's interior
+/// seal point: the interior is on nav 890 behind a 0.90 m gap no `find_path`
+/// crosses (placement seal, UB-00b-3).
 const HUB: [(i32, i32, &str, [f32; 3]); 16] = [
     (23000, 2300, "BetaE1_Carter", [1011.405, 13.57, 511.851]),
     (23001, 2301, "BetaE1_Felger", [1007.405, 13.57, 511.851]),
@@ -49,13 +52,13 @@ const HUB: [(i32, i32, &str, [f32; 3]); 16] = [
         23019,
         2324,
         "BetaE1_ScienceComputer",
-        [649.700, 19.77, 814.100],
+        [652.900, 19.77, 814.100],
     ),
     (
         23020,
         2321,
         "BetaE1_FourPiecesCase",
-        [647.700, 19.77, 814.100],
+        [654.900, 19.77, 814.100],
     ),
     (23021, 2335, "BetaE1_RuinNote", [122.200, 27.17, 356.800]),
 ];
@@ -78,6 +81,28 @@ const REGIONS: [(i32, &str, [f32; 3], f32, f32); 2] = [
         6.0,
     ),
 ];
+
+/// Science hop `S1`: the one hop to the two exterior Science rows.
+const SCIENCE_HOP: [f32; 3] = [675.400, 15.770, 806.600];
+
+/// RuinNote hops `H1`..`H3` (placement seal, UB-00b-3). A direct leg from
+/// `ARRIVAL` is `Partial`, and so is a restart from the last waypoint: the
+/// greedy chain stalls at (137.605, 7.770, 370.280), 19 m under the pin.
+const RUIN_HOPS: [[f32; 3]; 3] = [
+    [394.300, -84.630, 388.700],
+    [169.600, -0.571, 324.400],
+    [131.200, 27.570, 320.300],
+];
+
+/// The authored hops from `ARRIVAL` to a hub spawn; empty means one direct
+/// leg (the other 13 spawns and both region centres).
+fn hops(spawn_id: i32) -> &'static [[f32; 3]] {
+    match spawn_id {
+        23019 | 23020 => &[SCIENCE_HOP],
+        23021 => &RUIN_HOPS,
+        _ => &[],
+    }
+}
 
 /// Text of a seed file under `db/resources/`, for the footer guard below.
 fn seed_text(relative: &str) -> String {
@@ -122,23 +147,16 @@ async fn live_db_beta_hub_spawns_match_the_placement_seal() {
             actual, expected,
             "spawn {spawn_id} moved: update the placement seal"
         );
-        // F8: the two nav-890 interior rows sit behind a 0.90 m door. `reaches`
-        // fails across it to ARRIVAL (placement seal, "gap-linked"), so these
-        // two are checked for standability only. RuinNote (23021) is the same:
-        // the seal's same-component proxy says reachable, but find_path finds
-        // no route (the seal's own caveat), so it is standable-only until the
-        // seal is re-probed.
-        if matches!(spawn_id, 23019..=23021) {
-            standable(&exterior, actual, tag);
-        } else {
-            standable_and_connected(&exterior, actual, ARRIVAL, tag);
-        }
+        // Walk from ARRIVAL, forward, one `find_path` leg per hop (the walk is
+        // not symmetric). Without the hops RuinNote fails; the interior Science
+        // points fail with them (see the negative controls below).
+        standable_and_walkable(&exterior, actual, ARRIVAL, hops(spawn_id), tag);
     }
 
-    // The footer in spawnlist_beta_e1_hub.sql reserves Beta's block: without
-    // it the sequence stops at the highest hub row and the next default id
-    // lands below the block top (the seeded-sequence guard's floor is only
-    // 13869, so it does not catch this).
+    // The footer in spawnlist_beta_e1_hub.sql reserves Beta's block. Later Beta
+    // and Debug Area footers re-set the same sequence, so this value cannot
+    // tell whose footer ran; `beta_hub_seed_files_carry_their_own_sequence_footers`
+    // guards the file text.
     let last: i64 = sqlx::query_scalar("SELECT last_value FROM resources.spawnlist_spawn_id_seq")
         .fetch_one(&pool)
         .await
@@ -174,7 +192,7 @@ async fn live_db_beta_hub_regions_are_named_and_reachable() {
         );
         let centre = [row.3, row.4, row.5];
         assert_eq!(centre, expected, "{name} centre moved");
-        standable_and_connected(&exterior, centre, ARRIVAL, name);
+        standable_and_walkable(&exterior, centre, ARRIVAL, &[], name);
     }
 }
 
@@ -201,6 +219,40 @@ async fn live_db_beta_hub_tags_are_unique_across_worlds() {
     .await
     .expect("UB-02b duplicate tags");
     assert!(duplicates.is_empty(), "duplicate tags: {duplicates:?}");
+}
+
+/// Negative controls for the walk guard. These need the shipped navmesh, not a
+/// database. Revert proof: drop a hop from `RUIN_HOPS` or `SCIENCE_HOP` in
+/// `hops` and `live_db_beta_hub_spawns_match_the_placement_seal` fails; move
+/// the Science rows back inside the door (649.700 / 647.700) or RuinNote back
+/// to a point the hops do not reach, and the same test fails naming the spawn.
+#[test]
+fn walk_guard_rejects_unreachable_and_unhopped_anchors() {
+    let exterior = mesh("beta_site_evo_1.nav");
+    let ruin = [122.200, 27.17, 356.800];
+    let science_interior = [649.700, 19.77, 814.100];
+    let greedy_endpoint = [137.605, 7.770, 370.280];
+
+    // The authored chain reaches the ruin; one direct leg does not, so the
+    // hops carry the test.
+    assert!(walkable_via(&exterior, ARRIVAL, &RUIN_HOPS, ruin));
+    assert!(!walkable_via(&exterior, ARRIVAL, &[], ruin));
+    // A chain that ends at the greedy local minimum is not a route.
+    assert!(!walkable_via(&exterior, ARRIVAL, &[greedy_endpoint], ruin));
+    // The exterior Science rows are reached through S1; the interior seal
+    // point behind the 0.90 m door gap is a real island.
+    assert!(walkable_via(
+        &exterior,
+        ARRIVAL,
+        &[SCIENCE_HOP],
+        [652.900, 19.77, 814.100]
+    ));
+    assert!(!walkable_via(
+        &exterior,
+        ARRIVAL,
+        &[SCIENCE_HOP],
+        science_interior
+    ));
 }
 
 /// Each hub seed file must carry its own sequence footer. The DB-level

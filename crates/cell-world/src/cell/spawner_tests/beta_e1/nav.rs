@@ -39,6 +39,12 @@ pub(super) fn standable(mesh: &NavMesh, point: [f32; 3], label: &str) {
 }
 
 /// On the shipped navmesh and walkable to `anchor` on the same component.
+///
+/// This is the one-leg check from `point` back to `anchor`. A walk is not
+/// symmetric on this mesh, so a hub anchor uses [`standable_and_walkable`]
+/// (forward from `ARRIVAL`) instead; the Asgard and Nine Peaks guards still
+/// use this one.
+#[allow(dead_code)]
 pub(super) fn standable_and_connected(
     mesh: &NavMesh,
     point: [f32; 3],
@@ -49,5 +55,44 @@ pub(super) fn standable_and_connected(
     assert!(
         reaches(mesh, point, anchor),
         "{label} is on a different navmesh component than {anchor:?}"
+    );
+}
+
+/// True when each leg of `from -> hops[0] -> .. -> to` is one `find_path`
+/// that ends `Ok` within 2.0 m of its target. Every leg starts at the
+/// authored hop, never at the previous leg's last waypoint: a `Partial` result
+/// ends at the polygon nearest the goal, and restarting from it is a greedy
+/// walk that stalls in a local minimum (placement seal, UB-00b-3). A chain that
+/// stalls is not evidence of an island; a `false` here means a hop is missing
+/// or the target really is unreachable.
+pub(super) fn walkable_via(
+    mesh: &NavMesh,
+    from: [f32; 3],
+    hops: &[[f32; 3]],
+    to: [f32; 3],
+) -> bool {
+    let mut leg_start = from;
+    for &leg_end in hops.iter().chain(std::iter::once(&to)) {
+        if !reaches(mesh, leg_start, leg_end) {
+            return false;
+        }
+        leg_start = leg_end;
+    }
+    true
+}
+
+/// On the shipped navmesh and walkable from `from` through `hops` (see
+/// [`walkable_via`]); an empty `hops` is one direct leg.
+pub(super) fn standable_and_walkable(
+    mesh: &NavMesh,
+    point: [f32; 3],
+    from: [f32; 3],
+    hops: &[[f32; 3]],
+    label: &str,
+) {
+    standable(mesh, point, label);
+    assert!(
+        walkable_via(mesh, from, hops, point),
+        "{label} is not walkable from {from:?} via {hops:?}"
     );
 }

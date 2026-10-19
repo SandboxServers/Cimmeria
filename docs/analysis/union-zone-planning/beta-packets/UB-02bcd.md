@@ -12,7 +12,7 @@ Three packets, one area each. Each packet owns its own three seed files, so they
 - Region rows (copy `point_sets_dakara_e1.sql` and `point_set_points_dakara_e1.sql`): `type 'AreaSet'`, `world_id 23`, `shape 'Cylinder'`, `flags 1`, with radius and height from the seal. Each set has one centre point; the loader expands it into a client-hinted box (`crates/cell-catalog/src/cell/spawner/regions.rs`). The region name is the `enter_region` key the chain packets use. End each point-sets file with the Dakara-style `SELECT pg_catalog.setval('point_sets_set_id_seq', GREATEST((SELECT last_value FROM point_sets_set_id_seq), <highest id>), true);`.
 - **Spawn footer (required).** End each spawnlist file with the spawn-sequence footer, using 23199 (the top of Beta's spawn block, not the last id the file uses), the same GREATEST form as `spawnlist_debug_area_lords.sql`:
   `SELECT pg_catalog.setval('spawnlist_spawn_id_seq', GREATEST((SELECT MAX(spawn_id) FROM spawnlist), (SELECT last_value FROM spawnlist_spawn_id_seq), 23199), true);`
-  Beta's spawns sit at 23000-23199, far above the sequence, so without the footer `seeded_sequences_allocate_past_every_seeded_row` (`crates/cell-catalog/src/cell/spawner/tests/live_db_seed_sequences.rs`) fails. No packet in this file inserts `item_lists` or `item_list_items`; if one ever does, add the matching footer with its block top. UB-40 (`spawnlist_beta_e1_life.sql`) adds the same footer to its own file.
+  Beta's spawns sit at 23000-23199, far above the sequence. `seeded_sequences_allocate_past_every_seeded_row` (`crates/cell-catalog/src/cell/spawner/tests/live_db_seed_sequences.rs`, floor 23199) fails if every Beta footer is missing, but it cannot tell whose footer ran: each file re-sets the same sequence, so deleting one footer fails nothing there. Each packet's own file-text footer guard (`beta_hub_seed_files_carry_their_own_sequence_footers` for UB-02b) is what proves that file's footer. No packet in this file inserts `item_lists` or `item_list_items`; if one ever does, add the matching footer with its block top. UB-40 (`spawnlist_beta_e1_life.sql`) adds the same footer to its own file.
 - `database.sql` order: point-set-points files next to line 334 (`point_set_points_dakara_e1.sql`), point-sets files next to line 336, spawnlist files next to line 384 (`spawnlist_dakara_e1.sql`). Put Beta lines directly after each Dakara line, in the order b, c, d.
 - Interact tags must be unique across all worlds, because `interact_tag` triggers do not filter by world. Every tag starts `BetaE1_`.
 - Provenance comment above each block: `CIMMERIA_RECONSTRUCTION: anchor <NAME> from placement-seal.md (<map pin> on nav <component>)`.
@@ -41,7 +41,7 @@ Set-Location <wt>; pwsh tools/build-lane/live-db-test.ps1 live_db_loaders
 Set-Location <wt>; pwsh tools/build-lane/live-db-test.ps1 seeded_sequences_allocate_past_every_seeded_row
 ```
 
-`live_db_loaders` proves the region loader still accepts every AreaSet, and that no respawner is at the origin. `seeded_sequences_allocate_past_every_seeded_row` proves the spawn footer: the next `spawnlist` id must be above every seeded spawn and above its floor. Check that each reports a test count above 0.
+`live_db_loaders` proves the region loader still accepts every AreaSet, and that no respawner is at the origin. `seeded_sequences_allocate_past_every_seeded_row` proves the sequence ends past every seeded spawn and past Beta's block (floor 23199); it does not prove this file's footer, since the other Beta and Debug Area footers set the same sequence. Check that each reports a test count above 0.
 
 ## Docs rows
 
@@ -84,7 +84,7 @@ None. Per-world seed coordinates have no doc-update-map row. UB-99 writes the Be
 | 23016 | 2325 | `BetaE1_Crate_Arc66` | Crate_Arc66 |
 | 23017 | 2322 | `BetaE1_HubComputer` | HubComputer (command centre) |
 | 23018 | 2323 | `BetaE1_AdminWorkstation` | AdminWorkstation (inside the AdminBuilding region) |
-| 23019 | 2324 | `BetaE1_ScienceComputer` | ScienceComputer (Science Facility interior, nav 890) |
+| 23019 | 2324 | `BetaE1_ScienceComputer` | ScienceComputer (Science Facility; seeded at the exterior point (652.900, 19.77, 814.100), not the prefab's interior (649.700), because nav 890 is behind a 0.90 m door gap no walk crosses; placement-seal.md UB-00b-3) |
 | 23020 | 2321 | `BetaE1_FourPiecesCase` | FourPiecesCase (Science Facility interior) |
 | 23021 | 2335 | `BetaE1_RuinNote` | RuinNote (Barak'Ka ruin, INFERRED) |
 
@@ -95,13 +95,13 @@ None. Per-world seed coordinates have no doc-update-map row. UB-99 writes the Be
 
 ### Tests (`hub.rs`; each `#[tokio::test]`, `require_db_or_skip!()`, with a `///` revert line)
 
-- `live_db_beta_hub_spawns_match_the_placement_seal`: a `const HUB: [(i32, i32, &str, [f32; 3]); 16]` copied from the seal, plus the Dakara population assertions: count in 23000-23059 = 16; world 23; template; tag; `is_stationary` true; `respawn_secs` `Some(30)`; exact position. Each spawn is `standable_and_connected` to `ARRIVAL`, except the two nav-890 interior rows: assert those are standable on the mesh and reach `ARRIVAL` through the 0.90 m door (if `reaches` fails across the door, record it and assert `standable` only, with a comment citing F8).
-- `live_db_beta_hub_regions_are_named_and_reachable`: both sets have their name, world 23, flags 1, and their centre; each centre is `standable_and_connected` to `ARRIVAL`.
+- `live_db_beta_hub_spawns_match_the_placement_seal`: a `const HUB: [(i32, i32, &str, [f32; 3]); 16]` copied from the seal, plus the Dakara population assertions: count in 23000-23059 = 16; world 23; template; tag; `is_stationary` true; `respawn_secs` `Some(30)`; exact position. Each spawn is `standable_and_walkable` from `ARRIVAL` (forward, one `find_path` leg per authored hop, `Ok` and within 2.0 m; the walk is not symmetric). RuinNote (23021) needs the three hops H1..H3 and the Science pair (23019, 23020) one hop S1, all from placement-seal.md UB-00b-3; the other 13 are one direct leg. A greedy restart-from-the-last-waypoint chain is not used. `walk_guard_rejects_unreachable_and_unhopped_anchors` holds the negative controls (no hops fails, the interior Science point is an island).
+- `live_db_beta_hub_regions_are_named_and_reachable`: both sets have their name, world 23, flags 1, and their centre; each centre is `standable_and_walkable` from `ARRIVAL`.
 - `live_db_beta_hub_tags_are_unique_across_worlds`: no tag in 23000-23059 appears on any other spawn row (`SELECT tag, count(*) ... GROUP BY tag HAVING count(*) > 1`). Revert: duplicate a tag.
 
 ### Revert proof
 
-Comment out the spawnlist `\ir` line; `live_db_beta_hub_spawns_match_the_placement_seal` fails. Move Carter 50 m into a cliff; the standable check fails. Delete the `setval` footer from `spawnlist_beta_e1_hub.sql`; `seeded_sequences_allocate_past_every_seeded_row` fails. Restore and rerun green. Quote all of it.
+Comment out the spawnlist `\ir` line; `live_db_beta_hub_spawns_match_the_placement_seal` fails. Move Carter 50 m into a cliff; the standable check fails. Delete the `setval` footer from `spawnlist_beta_e1_hub.sql` or `point_sets_beta_e1_hub.sql`; `beta_hub_seed_files_carry_their_own_sequence_footers` fails (the DB sequence test does not: other footers re-set the sequence). Restore and rerun green. Quote all of it.
 
 ### Acceptance
 
@@ -162,7 +162,7 @@ Comment out the spawnlist `\ir` line; `live_db_beta_hub_spawns_match_the_placeme
 
 ### Revert proof
 
-Remove Mimir's row; the count fails. Move `BEAM_DECK_DEST` 20 m off the deck; the pad test fails. Delete the `setval` footer from `spawnlist_beta_e1_asgard.sql`; `seeded_sequences_allocate_past_every_seeded_row` fails. Restore and rerun green.
+Remove Mimir's row; the count fails. Move `BEAM_DECK_DEST` 20 m off the deck; the pad test fails. Delete the `setval` footer from `spawnlist_beta_e1_asgard.sql`; only a file-text footer guard for that file fails (the DB sequence test does not: other footers re-set the sequence). Restore and rerun green.
 
 ### Acceptance
 
@@ -211,7 +211,7 @@ Test `live_db_beta_nine_peaks_spawns_match_the_placement_seal`: count 5 in 23110
 
 ### Revert proof
 
-Remove the Ras'nor row; the count fails. Remove 2301; the pair test fails. Delete the `setval` footer from `spawnlist_beta_e1_ninepeaks.sql`; `seeded_sequences_allocate_past_every_seeded_row` fails. Restore and rerun green.
+Remove the Ras'nor row; the count fails. Remove 2301; the pair test fails. Delete the `setval` footer from `spawnlist_beta_e1_ninepeaks.sql`; only a file-text footer guard for that file fails (the DB sequence test does not: other footers re-set the sequence). Restore and rerun green.
 
 ### Acceptance
 
