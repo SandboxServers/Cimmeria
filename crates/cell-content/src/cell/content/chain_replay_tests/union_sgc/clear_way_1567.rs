@@ -106,9 +106,26 @@ async fn live_db_m1567_carter_line_and_relog_marker() {
     );
 }
 
+/// **Guard: Carter's line 5381 needs 1564 on step 4631.** With 1567 active but
+/// 1564 already past it, a press shows nothing. Revert proof: drop the
+/// `step_status 1564 '4631'` row of chain 3098 and the press shows 5381.
+#[tokio::test]
+async fn live_db_m1567_carter_line_needs_1564_on_step_4631() {
+    let pool = require_db_or_skip!();
+    let mut rig = on_1566_done(&pool, Some(SOLDIER)).await;
+    assert_eq!(rig.status(1567), ACTIVE);
+    rig.advance(1564, 4632).await;
+    rig.press(CARTER).await;
+    assert!(
+        !rig.sent().contains(&Sent::Dialog(5381)),
+        "5381 is not shown once 1564 has left step 4631"
+    );
+}
+
 /// **Guard: 1567 is never offered to a non-Human, or to an unstamped player.**
-/// Revert proof: drop the `archetype gte '1'` row of chain 3095; the Free
-/// Jaffa, Goauld, Asgard, Loyalist and unstamped cases then get the mission.
+/// Revert proof: drop the `archetype gte '1'` row of chain 3095; the unstamped
+/// player (reads -1) is then offered 1567. The four non-Humans stay refused by
+/// the `lte '4'` row alone.
 #[tokio::test]
 async fn live_db_m1567_never_offered_to_a_non_human() {
     let pool = require_db_or_skip!();
