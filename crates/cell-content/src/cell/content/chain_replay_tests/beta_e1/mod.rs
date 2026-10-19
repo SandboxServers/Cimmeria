@@ -169,6 +169,7 @@ pub(super) fn summarize(action: &Action) -> String {
             ..
         } => format!("start_minigame({minigame_type}, victory={on_victory_chains:?})"),
         Action::GrantXP { amount } => format!("grant_xp({amount})"),
+        Action::GrantCash { amount } => format!("grant_cash({amount})"),
         other => format!("UNEXPECTED({other:?})"),
     }
 }

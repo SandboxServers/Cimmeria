@@ -1,8 +1,9 @@
-//! Beta Site E1 mission XP rewards (UB-50a): one `grant_xp` chain per Beta
-//! mission on `mission_completed`, chains 23480-23496. Seeded in
-//! `db/resources/Content/Seed/beta_e1_rewards_chains.sql`. The amounts are the
-//! XP column of `reward-proposal.md` (U-D07), and every mission's
-//! `reward_xp` stays 0 so the seed cannot pay twice (D-UB16).
+//! Beta Site E1 mission rewards (UB-50a, UB-50b2): one `grant_xp` action and
+//! one `grant_cash` action per Beta mission on `mission_completed`, chains
+//! 23480-23496. Seeded in `db/resources/Content/Seed/beta_e1_rewards_chains.sql`.
+//! The amounts are the XP and Naq columns of `reward-proposal.md` (U-D07), and
+//! every mission's `reward_xp` and `reward_naq` stay 0 so the seed cannot pay
+//! twice (D-UB16).
 
 use std::collections::BTreeSet;
 
@@ -35,26 +36,26 @@ impl Race {
     }
 }
 
-/// Mission, reward chain, race and XP for the 17 Beta missions, in the
-/// proposal's table order (reward-proposal.md § 3).
-const REWARDS: [(i64, i64, Race, u64); 17] = [
-    (1423, 23480, Race::Human, 300),
-    (381, 23481, Race::Human, 300),
-    (473, 23482, Race::Human, 300),
-    (478, 23483, Race::Human, 400),
-    (1425, 23484, Race::Human, 400),
-    (1426, 23485, Race::Human, 400),
-    (1427, 23486, Race::Human, 750),
-    (1500, 23487, Race::FreeJaffa, 250),
-    (1502, 23488, Race::FreeJaffa, 300),
-    (1503, 23489, Race::FreeJaffa, 350),
-    (481, 23490, Race::Asgard, 300),
-    (420, 23491, Race::Asgard, 300),
-    (421, 23492, Race::Asgard, 300),
-    (1147, 23493, Race::Asgard, 300),
-    (443, 23494, Race::Asgard, 525),
-    (477, 23495, Race::Asgard, 300),
-    (479, 23496, Race::Asgard, 350),
+/// Mission, reward chain, race, XP and naquadah for the 17 Beta missions, in
+/// the proposal's table order (reward-proposal.md § 3).
+const REWARDS: [(i64, i64, Race, u64, u64); 17] = [
+    (1423, 23480, Race::Human, 300, 60),
+    (381, 23481, Race::Human, 300, 60),
+    (473, 23482, Race::Human, 300, 60),
+    (478, 23483, Race::Human, 400, 80),
+    (1425, 23484, Race::Human, 400, 80),
+    (1426, 23485, Race::Human, 400, 80),
+    (1427, 23486, Race::Human, 750, 150),
+    (1500, 23487, Race::FreeJaffa, 250, 50),
+    (1502, 23488, Race::FreeJaffa, 300, 60),
+    (1503, 23489, Race::FreeJaffa, 350, 70),
+    (481, 23490, Race::Asgard, 300, 60),
+    (420, 23491, Race::Asgard, 300, 60),
+    (421, 23492, Race::Asgard, 300, 60),
+    (1147, 23493, Race::Asgard, 300, 60),
+    (443, 23494, Race::Asgard, 525, 105),
+    (477, 23495, Race::Asgard, 300, 60),
+    (479, 23496, Race::Asgard, 350, 70),
 ];
 
 /// A `mission_completed` of `mission` by a player of `archetype` (`None`
@@ -69,22 +70,23 @@ fn finished(mission: i64, archetype: Option<i64>) -> ExecutionContext {
     ctx
 }
 
-/// The rendered `grant_xp(..)` actions in `resolved`, from every chain.
-fn xp_grants(resolved: &ResolvedActions) -> Vec<String> {
+/// The rendered actions in `resolved` whose text starts with `verb` (for
+/// example `grant_xp(`), from every chain.
+fn grants(resolved: &ResolvedActions, verb: &str) -> Vec<String> {
     resolved
         .actions
         .iter()
         .map(|(_, action)| summarize(action))
-        .filter(|s| s.starts_with("grant_xp("))
+        .filter(|s| s.starts_with(verb))
         .collect()
 }
 
-/// Revert: change one amount in the seed (chain 23486 to 700, say) and this
-/// fails on that chain.
+/// Revert: change one amount in the seed (chain 23486's XP or naq to 700 or
+/// 999, say) and this fails on that chain.
 #[tokio::test]
-async fn each_reward_chain_grants_its_xp_once() {
+async fn each_reward_chain_grants_its_xp_and_naq_once() {
     let pool = require_db_or_skip!();
-    for (mission, chain, race, xp) in REWARDS {
+    for (mission, chain, race, xp, naq) in REWARDS {
         let engine = engine_for(&pool, chain as i32).await;
         for &archetype in race.archetypes() {
             let resolved = fire(
@@ -94,8 +96,8 @@ async fn each_reward_chain_grants_its_xp_once() {
             );
             assert_eq!(
                 summarized(&resolved, chain),
-                vec![format!("grant_xp({xp})")],
-                "mission {mission} by archetype {archetype} must grant {xp} XP once"
+                vec![format!("grant_xp({xp})"), format!("grant_cash({naq})")],
+                "mission {mission} by archetype {archetype} must grant {xp} XP and {naq} naq once"
             );
             assert_no_deferred_actions(&resolved, chain);
         }
@@ -107,7 +109,7 @@ async fn each_reward_chain_grants_its_xp_once() {
 #[tokio::test]
 async fn reward_chains_reject_other_races_and_missions() {
     let pool = require_db_or_skip!();
-    for (i, (mission, chain, race, _)) in REWARDS.into_iter().enumerate() {
+    for (i, (mission, chain, race, _, _)) in REWARDS.into_iter().enumerate() {
         let engine = engine_for(&pool, chain as i32).await;
         let outside = ALL_ARCHETYPES
             .into_iter()
@@ -122,11 +124,11 @@ async fn reward_chains_reject_other_races_and_missions() {
             );
             assert!(
                 summarized(&resolved, chain).is_empty(),
-                "mission {mission} by archetype {archetype:?} must not grant XP"
+                "mission {mission} by archetype {archetype:?} must not grant XP or naq"
             );
         }
         // Another Beta mission's completion, by a player of the right race.
-        let (other, _, _, _) = REWARDS[(i + 1) % REWARDS.len()];
+        let (other, _, _, _, _) = REWARDS[(i + 1) % REWARDS.len()];
         let resolved = fire(
             &engine,
             TriggerType::MissionCompleted,
@@ -140,21 +142,27 @@ async fn reward_chains_reject_other_races_and_missions() {
 }
 
 /// Revert: duplicate one reward chain under id 23497 (same mission, same
-/// XP) and this fails on the count of `grant_xp` actions.
+/// XP and naq) and this fails on the count of `grant_xp` and `grant_cash`
+/// actions.
 #[tokio::test]
 async fn whole_seed_pays_each_mission_exactly_once() {
     let pool = require_db_or_skip!();
     let whole = whole_seed(&pool).await;
-    for (mission, chain, race, xp) in REWARDS {
+    for (mission, chain, race, xp, naq) in REWARDS {
         let resolved = fire(
             &whole,
             TriggerType::MissionCompleted,
             &finished(mission, Some(race.archetypes()[0])),
         );
         assert_eq!(
-            xp_grants(&resolved),
+            grants(&resolved, "grant_xp("),
             vec![format!("grant_xp({xp})")],
             "mission {mission} must pay {xp} XP exactly once across the whole seed"
+        );
+        assert_eq!(
+            grants(&resolved, "grant_cash("),
+            vec![format!("grant_cash({naq})")],
+            "mission {mission} must pay {naq} naq exactly once across the whole seed"
         );
         let rewarded: BTreeSet<i64> = chains_matched(&resolved)
             .into_iter()
@@ -173,6 +181,22 @@ async fn only_reward_chains_grant_xp_in_the_beta_block() {
         "SELECT DISTINCT chain_id FROM resources.content_actions \
          WHERE action_type = 'grant_xp' AND chain_id BETWEEN 23000 AND 23499 \
          ORDER BY chain_id",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("resources.content_actions must be readable");
+    let want: Vec<i32> = (23480..=23496).collect();
+    assert_eq!(ids, want);
+}
+
+/// Revert: add a `grant_cash` row under chain 23040 (or any other chain
+/// outside 23480-23496) and this fails with the extra id.
+#[tokio::test]
+async fn only_reward_chains_grant_cash() {
+    let pool = require_db_or_skip!();
+    let ids: Vec<i32> = sqlx::query_scalar(
+        "SELECT DISTINCT chain_id FROM resources.content_actions \
+         WHERE action_type = 'grant_cash' ORDER BY chain_id",
     )
     .fetch_all(&pool)
     .await

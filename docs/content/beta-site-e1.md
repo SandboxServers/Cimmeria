@@ -80,7 +80,7 @@ Chain ids are 23000-23499; the full table is in [mission-chains.md](mission-chai
 | Asgard | 481 → 420 Reclamation → 421 Mechanical Error → 1147 Intriguing Data, plus 443 Incendiary, 477 Covert Observations, 479 Process Support | 481 and the seven Beta missions complete locally |
 
 Offer order is strictly linear per race (D-UB15), and every Beta mission keeps its reward columns (`reward_xp`, naq) at 0 (D-UB8); XP is paid by `grant_xp` chains 23480-23496 (D-UB16), and naq arrives with UB-50b2.
-UB-50a adds the XP column of the [reward proposal](../analysis/union-beta-e1-continuation/reward-proposal.md) as one `grant_xp` chain per mission on `mission_completed` (chains 23480-23496, `beta_e1_rewards_chains.sql`). `missions.reward_xp` stays 0.
+UB-50a adds the XP column of the [reward proposal](../analysis/union-beta-e1-continuation/reward-proposal.md) as one `grant_xp` chain per mission on `mission_completed` (chains 23480-23496, `beta_e1_rewards_chains.sql`). Each mission also pays the Naq column of the reward proposal as one `grant_cash` action on the same chain (UB-50b2). `missions.reward_xp` and `reward_naq` stay 0.
 
 **The Asgard arc cannot be reached by a real player yet.** Omega's UO-16 must deliver an Asgard player with 481 at S1760 and item 3399. It is held behind owner decisions U-D08 and U-D11 (HELD-B16). The arc is tested by archetype-5 replays only (D-UB13).
 
