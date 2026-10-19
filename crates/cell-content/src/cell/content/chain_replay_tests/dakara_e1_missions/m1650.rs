@@ -254,10 +254,12 @@ async fn live_db_terminal_gives_the_file_and_removes_the_hologram() {
     let labels = labels_in(&r, M1650_CHAINS);
     let despawn = labels
         .iter()
-        .position(|l| l == "8258:despawn_entity(Dakara_E1_StoryRm_BaalHologram)");
+        .position(|l| l == "8258:despawn_entity(Dakara_E1_StoryRm_BaalHologram)")
+        .expect("8258 despawns the hologram");
     let bind = labels
         .iter()
-        .position(|l| l == "8258:add_dialog_set(6771@59)");
+        .position(|l| l == "8258:add_dialog_set(6771@59)")
+        .expect("8258 binds Bra'tac");
     assert!(despawn < bind);
     for ctx in [at_step(Some(STORY_RM), 4924), at_step(Some(STORY_RM), 4925)] {
         let r = fire_interact_tag(&engine, &ctx, TERMINAL_TAG);
