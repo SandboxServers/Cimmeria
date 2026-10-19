@@ -21,6 +21,8 @@ use cimmeria_content_engine::triggers::TriggerType;
 
 const M477_CHAINS: std::ops::RangeInclusive<i64> = 23435..=23459;
 const MIMIR: &str = "BetaE1_Mimir";
+/// A world other than Beta, for the `player_loaded` world-key negatives.
+const OTHER_WORLD: &str = "Castle_Cellblock";
 const OFFER_DIALOG: i64 = 1997;
 const COMPLETION_DIALOG: i64 = 1996;
 const RECORDING_DEVICE: i64 = 2646;
@@ -203,6 +205,57 @@ async fn accept_starts_477_and_binds_the_subjects() {
             "add_dialog_set(2457, slot=2302)".to_string(),
         ]
     );
+}
+
+/// Revert: drop 23435's `player_loaded` trigger row. Then a relog in the offer
+/// state (443 done, 477 not started) loses the Mimir blurb bind.
+/// Revert: drop the `Beta_Site_Evo_1` event key from it and another world binds it.
+#[tokio::test]
+async fn offer_blurb_binds_on_login_in_beta_only() {
+    let pool = require_db_or_skip!();
+    let engine = whole_seed(&pool).await;
+    let mut ctx = login_ctx(BETA, Some(ASGARD));
+    set_477(&mut ctx, None, [false; 4]);
+    let resolved = fire(&engine, TriggerType::PlayerLoaded, &ctx);
+    assert_no_deferred_actions(&resolved, 23435);
+    assert_eq!(
+        summarized(&resolved, 23435),
+        vec![format!("add_dialog_set({BLURB_DSM}, slot={MIMIR_SLOT})")]
+    );
+    assert_eq!(m477_matched(&resolved), BTreeSet::from([23435]));
+
+    let mut ctx = login_ctx(OTHER_WORLD, Some(ASGARD));
+    set_477(&mut ctx, None, [false; 4]);
+    let got = m477_matched(&fire(&engine, TriggerType::PlayerLoaded, &ctx));
+    assert!(got.is_empty(), "23435 must stay in Beta: {got:?}");
+}
+
+/// The four relog restores follow the open objectives: in every one of the 16
+/// objective states a login at S1744 matches exactly the restore of each open
+/// subject (23454-23457), and none in another world.
+/// Revert: drop `O<n> active` from one restore and a recorded subject is
+/// re-bound; drop the world key and another world binds the subjects.
+#[tokio::test]
+async fn relog_restores_follow_the_open_objectives_in_beta_only() {
+    let pool = require_db_or_skip!();
+    let engine = whole_seed(&pool).await;
+    for open in all_states() {
+        let mut ctx = login_ctx(BETA, Some(ASGARD));
+        set_477(&mut ctx, Some(1744), open);
+        let want: BTreeSet<i64> = (0..4)
+            .filter(|i| open[*i])
+            .map(|i| 23454 + i as i64)
+            .collect();
+        let got = m477_matched(&fire(&engine, TriggerType::PlayerLoaded, &ctx));
+        assert_eq!(got, want, "{open:?}");
+
+        for step in [1744, 1745] {
+            let mut ctx = login_ctx(OTHER_WORLD, Some(ASGARD));
+            set_477(&mut ctx, Some(step), open);
+            let got = m477_matched(&fire(&engine, TriggerType::PlayerLoaded, &ctx));
+            assert!(got.is_empty(), "{OTHER_WORLD} S{step} {open:?}: {got:?}");
+        }
+    }
 }
 
 /// Revert: drop `archetype eq 5` from 23437 and a Human accepts 477.
