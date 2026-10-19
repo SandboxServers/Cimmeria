@@ -4,10 +4,13 @@
 # Usage:
 #   pwsh tools/build-lane/rm-worktree.ps1 [--dry-run] [--force] [--prune] <name> [<name>...]
 #   pwsh tools/build-lane/rm-worktree.ps1 [--dry-run] [--prune] --merged
+#   pwsh tools/build-lane/rm-worktree.ps1 [--dry-run] --merged-into <PR> <name> [<name>...]
 #
 # <name> is the folder under .claude/worktrees/. --merged retires every worktree there
 # whose branch's PR has merged and that nothing has touched for $RM_WORKTREE_MIN_IDLE
 # minutes (default 30), then deletes Dev Drive target dirs no registered worktree owns.
+# --merged-into <PR> also retires a named worktree whose branch has no PR of its own but
+# is in merged PR <PR>'s head (a packet merged only into an integration branch).
 #
 # For each worktree it deletes the build output ($CIMMERIA_TARGET_ROOT/<name> and
 # <worktree>/target) and its lane job logs, unlinks the external/ junction, runs
@@ -30,25 +33,33 @@ $ErrorActionPreference = 'Continue'
 $PSNativeCommandArgumentPassing = 'Standard'
 . (Join-Path $PSScriptRoot 'lane-slots.ps1')
 
-$Dry = $false; $Force = $false; $Merged = $false; $Prune = $false
+$Dry = $false; $Force = $false; $Merged = $false; $Prune = $false; $MergedInto = ''
 $Names = [System.Collections.Generic.List[string]]::new()
-foreach ($a in $args) {
+for ($i = 0; $i -lt $args.Count; $i++) {
+    $a = $args[$i]
     switch -CaseSensitive ($a) {
         '--dry-run' { $Dry = $true; continue }
         '--force' { $Force = $true; continue }
         '--merged' { $Merged = $true; continue }
         '--prune' { $Prune = $true; continue }
         '--no-prune' { $Prune = $false; continue }
+        '--merged-into' { $i++; if ($i -ge $args.Count) { [Console]::Error.WriteLine('--merged-into needs a PR number'); exit 2 }; $MergedInto = $args[$i]; continue }
         { $_ -in '-h', '--help' } {
-            Get-Content -LiteralPath $PSCommandPath -TotalCount 23 | ForEach-Object { $_ -replace '^# ?', '' }
+            Get-Content -LiteralPath $PSCommandPath -TotalCount 26 | ForEach-Object { $_ -replace '^# ?', '' }
             exit 0
         }
         { $_.StartsWith('-') } { [Console]::Error.WriteLine("unknown option: $a"); exit 2 }
         default { $Names.Add($a) }
     }
 }
+if ($MergedInto -and $MergedInto -notmatch '^[0-9]+$') {
+    [Console]::Error.WriteLine("--merged-into needs a PR number, got $MergedInto"); exit 2
+}
+if ($MergedInto -and $Merged) {
+    [Console]::Error.WriteLine('--merged-into names worktrees; it does not combine with --merged'); exit 2
+}
 if (-not $Merged -and $Names.Count -eq 0) {
-    [Console]::Error.WriteLine('usage: rm-worktree.ps1 [--dry-run] [--force] [--prune] <name>... | --merged'); exit 2
+    [Console]::Error.WriteLine('usage: rm-worktree.ps1 [--dry-run] [--force] [--prune] [--merged-into <PR>] <name>... | --merged'); exit 2
 }
 
 # Paths in the form `git worktree list` prints them (C:/... on Windows), so they compare.
@@ -199,7 +210,11 @@ function Invoke-RetireMarked([string]$n, [string]$mode) {
     $br = git -C $wt symbolic-ref --short -q HEAD 2>$null
     if ((git -C $wt status --porcelain 2>$null) -and -not $Force) { Skip "skip ${n}: uncommitted changes (commit them, or --force)"; return }
     $state = if ($br) { Get-MergeState $br } else { 'DETACHED' }
-    if ($state -notin 'MERGED', 'ON_MAIN' -and -not $Force) {
+    if ($MergedInto -and $br -and $state -in 'NO_PR', 'UNMERGED') {
+        git merge-base --is-ancestor $br $IntoHead 2>$null
+        if ($LASTEXITCODE -eq 0) { $state = 'MERGED_INTO' }
+    }
+    if ($state -notin 'MERGED', 'ON_MAIN', 'MERGED_INTO' -and -not $Force) {
         Skip "skip ${n}: branch $(if ($br) { $br } else { '(detached)' }) is $state (--force to retire anyway)"; return
     }
 
@@ -229,7 +244,7 @@ function Invoke-RetireMarked([string]$n, [string]$mode) {
         git @rmArgs $wt
         if ($LASTEXITCODE -ne 0) { SkipErr '  git worktree remove failed; keeping the branch and the test database'; return }
     }
-    if ($state -in 'MERGED', 'ON_MAIN' -and $br) {
+    if ($state -in 'MERGED', 'ON_MAIN', 'MERGED_INTO' -and $br) {
         if ($Dry) { Write-Output "  would: git branch -D -q $br" } else { git branch -D -q $br }
     }
     Remove-TestDatabase $n
@@ -241,6 +256,21 @@ Set-Location -LiteralPath $Main
 git fetch -q origin
 if ($LASTEXITCODE -ne 0) {
     [Console]::Error.WriteLine('git fetch origin failed; not deciding what has merged from a stale origin/main'); exit 1
+}
+
+# --merged-into: the named PR must have merged; its head is the commit a packet must be in.
+$IntoHead = ''
+if ($MergedInto) {
+    if (-not (Get-Command gh -CommandType Application -ErrorAction SilentlyContinue)) {
+        [Console]::Error.WriteLine('--merged-into needs gh'); exit 1
+    }
+    $prState = "$(gh pr view $MergedInto --json state -q .state 2>$null)".Trim()
+    if ($prState -ne 'MERGED') {
+        [Console]::Error.WriteLine("PR $MergedInto is $prState, not merged; nothing retired"); exit 1
+    }
+    git fetch -q origin "pull/$MergedInto/head"
+    if ($LASTEXITCODE -eq 0) { $IntoHead = (git rev-parse --verify -q 'FETCH_HEAD^{commit}') }
+    if (-not $IntoHead) { [Console]::Error.WriteLine("could not fetch PR $MergedInto's head"); exit 1 }
 }
 
 if ($Merged) {
