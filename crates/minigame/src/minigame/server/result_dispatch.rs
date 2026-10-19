@@ -32,6 +32,7 @@ pub(super) async fn send_minigame_result(
     player: &cimmeria_discord::Named,
     result_code: u8,
     on_victory_chains: Vec<i64>,
+    on_failure_chains: Vec<i64>,
     phase: &'static str,
     notify_client: bool,
 ) {
@@ -60,6 +61,7 @@ pub(super) async fn send_minigame_result(
             ticket: ticket.to_owned(),
             result_code,
             on_victory_chains,
+            on_failure_chains,
             notify_client,
         })
         .await
@@ -127,6 +129,7 @@ mod tests {
             &cimmeria_discord::Named::new(7, Some("Hacker".into())),
             RESULT_VICTORY,
             /* on_victory_chains */ vec![100, 200],
+            /* on_failure_chains */ vec![],
             /* phase */ "victory_message",
             true,
         )
@@ -194,6 +197,7 @@ mod tests {
             &cimmeria_discord::Named::default(),
             RESULT_DEFEAT,
             vec![],
+            vec![7],
             "failure_tick",
             true,
         )
@@ -205,12 +209,14 @@ mod tests {
                 ticket,
                 result_code,
                 on_victory_chains,
+                on_failure_chains,
                 notify_client,
             }) => {
                 assert_eq!(entity_id, 99);
                 assert_eq!(ticket, "first-ticket");
                 assert_eq!(result_code, RESULT_DEFEAT);
                 assert!(on_victory_chains.is_empty());
+                assert_eq!(on_failure_chains, vec![7], "failure chains ride the result");
                 assert!(notify_client);
             }
             other => panic!("expected MinigameResult, got {other:?}"),
@@ -235,6 +241,7 @@ mod tests {
                 0,
                 1,
                 vec![1017],
+                vec![],
                 Some("Hacker".into()),
                 Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
             )

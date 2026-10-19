@@ -33,6 +33,7 @@ async fn livewire_commands_and_abort_are_visible_after_teardown() {
             0,
             1,
             vec![],
+            vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
         )
@@ -162,6 +163,7 @@ async fn livewire_victory_outbound_row_precedes_result() {
             0,
             0,
             1,
+            vec![],
             vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),

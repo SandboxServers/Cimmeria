@@ -128,6 +128,11 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
                 .and_then(|v| v.as_array())
                 .map(|arr| arr.iter().filter_map(|v| v.as_i64()).collect())
                 .unwrap_or_default();
+            let failure_chains = params
+                .get("on_failure_chains")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().filter_map(|v| v.as_i64()).collect())
+                .unwrap_or_default();
             // Optional; defaults to 1 (every seeded row today omits it).
             // Out of range is a hard reject rather than a clamp: the
             // original client asserted 1-5, so a 7 in the seed is an
@@ -153,6 +158,7 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
                 minigame_type,
                 difficulty,
                 on_victory_chains: chains,
+                on_failure_chains: failure_chains,
             })
         }
         "set_aggression" => {

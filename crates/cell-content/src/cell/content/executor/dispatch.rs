@@ -178,7 +178,20 @@ pub(super) async fn execute_one(
             minigame_type,
             difficulty,
             on_victory_chains,
+            on_failure_chains,
         } => {
+            // Level and Intelligence reach the SWF's joinOK; read the live
+            // cell values so a levelled or buffed player is not served 1/0.
+            let (player_level, intelligence) = space_mgr
+                .get_entity(entity_id)
+                .map(|e| {
+                    let int = e
+                        .stats
+                        .get(cimmeria_entity::stats::INTELLIGENCE)
+                        .map_or(0, |s| s.cur.max(0) as u32);
+                    (e.level, int)
+                })
+                .unwrap_or((1, 0));
             tracing::info!(
                 entity_id,
                 entity_name = space_mgr.entity_names(entity_id).entity_name,
@@ -198,6 +211,11 @@ pub(super) async fn execute_one(
                     // the seed default is 1.
                     difficulty,
                     on_victory_chains: on_victory_chains.clone(),
+                    on_failure_chains: on_failure_chains.clone(),
+                    player_level,
+                    intelligence,
+                    tech_competency: 1, // MG-22
+                    abilities_mask: 0,  // MG-22
                 })
                 .await
             {

@@ -82,6 +82,7 @@ async fn spawn_listener(limits: ListenerLimits) -> SocketAddr {
             0,
             1,
             vec![],
+            vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
         )
@@ -165,6 +166,7 @@ async fn listener_closes_peer_when_session_is_for_another_ip() {
             0,
             1,
             vec![],
+            vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 0, 0, 5))),
         )
@@ -209,6 +211,7 @@ async fn refused_peer_row_counts_pending_sessions() {
             0,
             0,
             1,
+            vec![],
             vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 0, 0, 6))),
@@ -527,6 +530,7 @@ async fn a_second_login_with_a_live_ticket_is_refused() {
             0,
             1,
             vec![99],
+            vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
         )
@@ -600,6 +604,7 @@ async fn a_successful_login_logs_the_claimed_row_with_identity() {
             0,
             1,
             vec![],
+            vec![],
             Some("Tester".into()),
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
         )
@@ -643,6 +648,7 @@ async fn crafted_logins_for_a_registered_entity_do_not_warn() {
             0,
             0,
             1,
+            vec![],
             vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),

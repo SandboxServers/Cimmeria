@@ -40,6 +40,15 @@ pub(super) async fn cancel_minigame(
     );
 }
 
+/// Player values the cell reads for the SWF's `joinOK` (contract C3).
+#[derive(Debug, Clone, Copy)]
+pub(super) struct MinigamePlayerParams {
+    pub player_level: u32,
+    pub intelligence: u32,
+    pub tech_competency: u32,
+    pub abilities_mask: u32,
+}
+
 /// `CellToBaseMsg::StartMinigame` — register a session ticket and push
 /// `onStartMinigame(URL)` to the player so the client launches the minigame
 /// browser/iframe pointing at the in-process minigame service.
@@ -49,6 +58,8 @@ pub(super) async fn start_minigame(
     game_name: String,
     difficulty: u32,
     on_victory_chains: Vec<i64>,
+    on_failure_chains: Vec<i64>,
+    params: MinigamePlayerParams,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
@@ -99,12 +110,13 @@ pub(super) async fn start_minigame(
                 player_id,
                 game_name.clone(),
                 difficulty,
-                1, // tech_competency — TODO: read from player entity
+                params.tech_competency,
                 seed,
-                0,
-                0,
-                1, // abilities, intelligence, player_level
+                params.abilities_mask,
+                params.intelligence,
+                params.player_level,
                 on_victory_chains,
+                on_failure_chains,
                 player_name,
                 addr.map(|a| a.ip()),
             )
@@ -206,6 +218,7 @@ pub(super) async fn minigame_result(
     ticket: &str,
     result_code: u8,
     on_victory_chains: Vec<i64>,
+    on_failure_chains: Vec<i64>,
     notify_client: bool,
     registry: &Option<crate::minigame::SessionRegistry>,
     transport: &Arc<dyn Transport>,
@@ -251,6 +264,7 @@ pub(super) async fn minigame_result(
                 entity_id,
                 result_code,
                 on_victory_chains,
+                on_failure_chains,
             })
             .await
         {
@@ -285,6 +299,13 @@ mod tests {
     use crate::test_support::{test_default_connected_client_state, TestTransport};
     use std::net::{IpAddr, Ipv4Addr};
 
+    const TEST_PARAMS: MinigamePlayerParams = MinigamePlayerParams {
+        player_level: 1,
+        intelligence: 0,
+        tech_competency: 1,
+        abilities_mask: 0,
+    };
+
     /// Run `start_minigame` for entity 77 with the given address mapping and
     /// return the registry it registered into.
     async fn start_for_entity(addr: Option<SocketAddr>) -> SessionRegistry {
@@ -309,6 +330,8 @@ mod tests {
             "Livewire".into(),
             1,
             vec![],
+            vec![],
+            TEST_PARAMS,
             &transport,
             &connected,
             &entity_to_addr,
@@ -368,6 +391,8 @@ mod tests {
             "Livewire".into(),
             1,
             vec![],
+            vec![],
+            TEST_PARAMS,
             &(transport.clone() as Arc<dyn Transport>),
             &connected,
             &entity_to_addr,
@@ -383,6 +408,8 @@ mod tests {
             "Livewire".into(),
             1,
             vec![],
+            vec![],
+            TEST_PARAMS,
             &(transport.clone() as Arc<dyn Transport>),
             &connected,
             &entity_to_addr,
@@ -435,6 +462,7 @@ mod tests {
                 0,
                 1,
                 vec![],
+                vec![],
                 None,
                 Some(addr.ip()),
             )
@@ -453,6 +481,7 @@ mod tests {
                 0,
                 1,
                 vec![],
+                vec![],
                 None,
                 Some(addr.ip()),
             )
@@ -464,6 +493,7 @@ mod tests {
             77,
             &old_ticket,
             0,
+            vec![],
             vec![],
             true,
             &Some(registry.clone()),
@@ -490,6 +520,7 @@ mod tests {
             77,
             &new_ticket,
             1,
+            vec![],
             vec![],
             true,
             &Some(registry),

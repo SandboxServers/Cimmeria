@@ -198,8 +198,13 @@ fn start_minigame_deserializes_a_payload_without_difficulty() {
             minigame_type,
             difficulty,
             on_victory_chains,
+            on_failure_chains,
         } => {
             assert_eq!(minigame_type, "Livewire");
+            assert!(
+                on_failure_chains.is_empty(),
+                "omitted failure chains default to none"
+            );
             assert_eq!(difficulty, 1, "the omitted field must default to 1");
             assert_eq!(on_victory_chains, vec![1017]);
         }
@@ -215,11 +220,19 @@ fn start_minigame_round_trips_an_explicit_difficulty() {
         minigame_type: "Livewire".to_string(),
         difficulty: 4,
         on_victory_chains: vec![1042],
+        on_failure_chains: vec![1043],
     };
     let json = serde_json::to_string(&original).unwrap();
     let back: Action = serde_json::from_str(&json).unwrap();
     match back {
-        Action::StartMinigame { difficulty, .. } => assert_eq!(difficulty, 4),
+        Action::StartMinigame {
+            difficulty,
+            on_failure_chains,
+            ..
+        } => {
+            assert_eq!(difficulty, 4);
+            assert_eq!(on_failure_chains, vec![1043]);
+        }
         other => panic!("expected StartMinigame, got {other:?}"),
     }
 }

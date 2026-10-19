@@ -461,6 +461,7 @@ pub enum BaseToCellMsg {
         entity_id: u32,
         result_code: u8,
         on_victory_chains: Vec<i64>,
+        on_failure_chains: Vec<i64>,
     },
 
     /// Client→server `requestEntityUpdate` (msg `0x07`): the client's
