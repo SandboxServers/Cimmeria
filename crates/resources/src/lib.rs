@@ -32,6 +32,7 @@ pub mod base {
     pub mod dialog_overrides;
     pub mod item_overrides;
     pub mod mission_additions;
+    pub mod mission_additions_dakara;
     pub mod mission_overrides;
     pub mod resources;
     pub mod sequence_overrides;

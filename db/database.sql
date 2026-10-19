@@ -365,6 +365,7 @@
 \ir resources/Missions/Seed/mission_steps.sql
 \ir resources/Missions/Seed/mission_tasks.sql
 \ir resources/Missions/Seed/missions.sql
+\ir resources/Missions/Seed/missions_dakara_e1.sql
 \ir resources/Texts/Seed/error_texts.sql
 \ir resources/Texts/Seed/texts.sql
 \ir resources/Visuals/Seed/body_component_visuals.sql

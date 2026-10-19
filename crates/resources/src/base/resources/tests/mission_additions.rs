@@ -122,20 +122,18 @@ fn fixture_is_exact_stock_transform_and_ids_are_test_only() {
             }
         }
     }
-    assert!(MISSION_ADDITIONS.is_empty());
+    assert_eq!(
+        MISSION_ADDITIONS
+            .iter()
+            .map(|a| a.mission_id)
+            .collect::<Vec<_>>(),
+        [63100]
+    );
 }
 
 #[test]
 fn insertion_preserves_served_baseline_and_bumps_once() {
-    let baseline = ResourceCache::load_all(DIR).unwrap();
-    let empty = ResourceCache::load_all_with_mission_additions(DIR, &[]).unwrap();
-    for &(id, _) in CATEGORY_PAKS {
-        assert_eq!(baseline.category(id), empty.category(id));
-        assert_eq!(
-            baseline.overridden_elements(id),
-            empty.overridden_elements(id)
-        );
-    }
+    let baseline = ResourceCache::load_all_with_mission_additions(DIR, &[]).unwrap();
     assert!(!baseline.category(3).unwrap().elements.contains_key(&61000));
     let first =
         ResourceCache::load_all_with_mission_additions(DIR, TEST_MISSION_ADDITIONS).unwrap();
