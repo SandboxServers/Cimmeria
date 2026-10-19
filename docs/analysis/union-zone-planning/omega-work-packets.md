@@ -3,7 +3,7 @@
 > **Type:** How-to (dispatch contract and ledger)
 > **Audience:** the Union Omega coordinator, packet-coders, review-fixers, mission, movement and items advisors
 > **Last updated:** 2026-10-18, against `origin/main` @ `d1bba0400`; developer concept art added the same day @ `eb29b0c2c` (F27-F35, D-UO15..D-UO20)
-> **Status:** Being built. The owner lifted the "held until FZ-99 / U-D03" gate on 2026-10-18; W1 (UO-01, UO-02) merged in PR #1890 and UO-00 is next. The merge holds on U-D04 (UO-04, UO-07, UO-08) and U-D07 (UO-14) remain. This file replaces the 2026-10-14 table (UO-00..UO-08); see § Renumbering.
+> **Status:** Being built. The owner lifted the "held until FZ-99 / U-D03" gate on 2026-10-18; W1 (UO-01, UO-02) merged in PR #1890 and UO-00 is next. The U-D04 and U-D07 merge holds were lifted overnight by the architect (D-UO25, D-UO26; the owner may overrule); the reward and authored-copy half of U-D07 stays HELD (UO-15). This file replaces the 2026-10-14 table (UO-00..UO-08); see § Renumbering.
 > **Companions:** [Omega campaign](omega.md), [Union execution contract](execution-contract.md), [SGC packets](sgc-work-packets.md), [Dakara packets](dakara-work-packets.md), [Beta packets](beta-work-packets.md), [Asgard route](asgard-route.md), [developer concept art](omega-concept-art.md), [packet folder](omega-packets/), [resume card](omega-packets/RESUME.md)
 
 ## Short answer
@@ -27,7 +27,7 @@ Every finding was checked against the planning baseline `d1bba0400` (an ancestor
 | # | Finding | Evidence | Packet |
 |---|---|---|---|
 | F1 | Omega has no chain today. `db/resources/Content/Seed/` has no Omega file, and nothing binds dialog set map 7015 (Modi's 6168, `Shutdown`, flags 16777216). | `git grep 7015 db/resources/Content` is empty | UO-04 |
-| F2 | 1655's world-18 and world-80 steps exist: S4940 (O5645 Modi, O5646 waypoints) and S4942 (O6056 → T7741 Jackson; O6058 → T7743 Bra'tac). | `db/resources/Missions/Seed/` | UO-04, UO-07, UO-08 |
+| F2 | 1655's world-18 and world-80 steps exist: S4940 (optional O5645 Modi and O5646 waypoints; required O5647 beam controls and O5644, blank text) and S4942 (O6056 → T7741 Jackson; O6058 → T7743 Bra'tac). | `db/resources/Missions/Seed/` | UO-04, UO-07, UO-08 |
 | F3 | `add_dialog_set` targets a **dialog_set_map id**, and the slot is the template id. It does not dedupe; `remove_dialog_set` is `retain(dsm_id != id)`. | `executor/dialog/mod.rs:191,195-199,285` | all chain packets |
 | F4 | A bound map whose `dialog_id` is set opens on click through `handle_interact`, with no chain. An `interact_tag` chain would short-circuit that, skip the `last_interaction_target` pin, and show the dialog twice. | `dispatch/interact.rs:113-148`; `chain_replay_tests/mission_1324.rs:17-28` | D-UO4 |
 | F5 | `remove_dialog_set` must run before `complete_mission`, which awaits `fire_mission_completed` mid-list. | `mission_1324.rs:46-53` | UO-07..09 |
@@ -46,7 +46,7 @@ Every finding was checked against the planning baseline `d1bba0400` (an ancestor
 | F18 | Seven chain-replay helpers in `mission_1324.rs` are `pub(super)`: `ctx_for`, `with_mission`, `with_step`, `fire_player_loaded`, `fire_dialog_choice`, `fire_mission_completed` and `display_dialog_count`. `labels` filters Harset's range, so Omega needs its own. | `mission_1324.rs:97-260` | UO-02 |
 | F19 | SGC's ledger listed stale Omega blocks (12000-12399, 63000-63099, 64000-64199); the last overlapped Beta's 64000-64499. **Fixed** by the planning review pass: `sgc-work-packets.md` § ID allocation now carries a per-zone table with Omega at 63800-63999. UO-00's handoff note asks the coordinator to confirm it. | `sgc-work-packets.md` § ID allocation | UO-00 |
 | F20 | Dakara UD-04a gates the Tau'ri as `archetype lte 6`, which also admits Asgard (5) and Goa'uld (6). This is a cross-zone note only; Omega uses the Union Human gate (`gte 1` plus `lte 4`, [execution-contract.md](execution-contract.md) § Shared definitions). | `dakara-packets/UD-04a.md` | report |
-| F21 | O5645 and O5646 (S4940) are both optional, and the engine completes a mission once no required objective is left open on its step. A chain that completes either objective therefore completes all of 1655 early. No Omega chain uses `complete_objective` on 1655. | `mission_objectives.sql:3136,3138`; `crates/content-engine/src/progression.rs:464-506` | UO-04, UO-07..09 |
+| F21 | The engine completes the whole mission once every required objective on its current step is complete (vacuously, on a step with none). S4940 has two required objectives, O5647 and O5644, beside the optional O5645 and O5646. Completing O5645 or O5646 alone completes nothing, but completing O5647 and O5644 completes all of 1655 before the Accept. `advance_step` moves to the next step without completing the mission. So no Omega chain uses `complete_objective` on 1655; the beam uses `advance_step` (D-UO3). *Corrected 2026-10-18 (D-UO25): an earlier text said both S4940 objectives were optional. The rule is unchanged.* | `mission_objectives.sql:3136-3142`; `crates/cell-content/src/cell/missions/progression.rs:463-506`; `crates/entity/src/missions.rs:91` | UO-04, UO-07..09 |
 | F22 | `mission_abandoned` fires after the mission instance is removed, so the abandoned mission already reads `not_active` on that event. INFO "fire_mission_abandoned: matched". | `event_dispatch/mission.rs:217`; `chain_replay_tests/mission_abandoned.rs:50-67` | UO-09 |
 | F23 | The 1655 guard: every delivery chain (63820-63822, 63830-63832) carries `mission_status 1655 eq active`, every re-offer chain (63840-63845) carries `eq completed`. The two families never both match one event. | design rule; tested in UO-07..09 and UO-13 | UO-07..09 |
 | F24 | A registrar's type comes from its single interaction set: 7447 is Team, 7448 is Command. A template with both sets has no type, so the one Omega registrar moniker needs two NPCs. | `org_registrar.rs`; `live_db_debug_registrars.rs:135-148` | UO-10 |
@@ -77,7 +77,7 @@ Every finding was checked against the planning baseline `d1bba0400` (an ancestor
 | D-UO9 | Thor stands in the Command Center as a non-interactive clone (63803). | Decided (revised 2026-10-18) | F7: Thor speaks in 5025. His Asgard role (1522 S4773) stays in UO-16. |
 | D-UO10 | A re-offer path lets a player who abandoned 1423/1500 take it again from the same NPC (CIMMERIA_RECONSTRUCTION). | Decided | Otherwise an abandon soft-locks the route. |
 | D-UO11 | The letter at departure is the same decision as D-US11. | **BlockedDecision** (owner + SGC) | Omega works either way. If SGC grants 6786, UO-07 adds `remove_item 6786`. |
-| D-UO12 | Ambient life is CIMMERIA_AUTHORING placement of shipped bodies and monikers, in its own droppable packet, capped at 24 spawns. | Decided; the cap is HELD on U-D07 | Faithful extension, removable in one revert (F26). |
+| D-UO12 | Ambient life is CIMMERIA_AUTHORING placement of shipped bodies and monikers, in its own droppable packet, capped at 24 spawns. | Decided; the cap of 24 is set by D-UO26 (architect, the owner may overrule) | Faithful extension, removable in one revert (F26). |
 | D-UO13 | This renumbering supersedes UO-00..UO-08 of 2026-10-14. | Decided | § Renumbering. |
 | D-UO14 | The hub banker and the two registrars are clones of the debug-hub rows 370, 330 and 331 (CIMMERIA_RECONSTRUCTION), on the shipped Omega monikers. | Decided | F14, F24. No new code: the existing banker and registrar arms answer the click. |
 | D-UO15 | The concept art is layout intent only. UO-01 tags every placement key with its art area (`common_area`, `sgc`, `free_jaffa`, `council`, `world_80`) and lists each disagreement in its worknote's § Art conflicts. The art never moves a coordinate, and a disagreement goes to the orchestrator, never to a coder. | Decided | F27, F34: the art is schematic and undated. The navmesh stays the coordinate source. |
@@ -134,14 +134,14 @@ Flags are 16777216 = `INT_A_STORY_MISSION_ACTIVE` and 8388608 = `INT_A_STORY_MIS
 | Field | Value |
 |---|---|
 | Departure | SGC US-32: `advance_step 1655 '4941'`, `advance_step 1655 '4940'`, `cross_world_teleport 'Omega_Site'` |
-| State on arrival | 1655 active, S4940 active, O5645 and O5646 open |
+| State on arrival | 1655 active; S4943, S4944 and S4941 completed (O6055 completed by SGC's `advance_step 1655 '4940'`); S4940 active with O5644, O5645, O5646 and O5647 open (D-UO25) |
 | Arrival point | World 18: x 34.70, y -51.28, z -142.00, heading 3.1409 (faces gate 5), on the gate plaza in front of gate 5 (sealed by UO-01, `nav_inspect` exit 0; [worknote § C4](omega-packets/worknotes/UO-01-placements.md#c4)) |
 | Archetypes | 1-4 (Human, through the SGC) or 7 (Free Jaffa, through Dakara 1654 and then the SGC) |
 | Letter | None required. D-UO11 = D-US11. |
 | Omega's first event | `player_loaded 'Omega_Site'`, which binds Modi (chain 63810) |
-| SGC must not | complete O5645 or O5646 by chain (F21); that completes 1655 before Omega runs |
+| SGC must not | run `complete_objective` on 1655 or `advance_step 1655 '4942'`, or complete 1655 (F21, D-UO25): S4940 onward is Omega's |
 | Abandon of 1655 | SGC's re-offer owns it; Omega has no 1655 re-offer |
-| HELD | **U-D04**: whether Omega receives at S4940 with O6055 done, and owns S4940 → S4942 and the S4942 completion |
+| Step ownership | **Decided (D-UO25, U-D04):** Omega receives at S4940 with O6055 done, and owns S4940 → S4942 (63801) and the S4942 completion on the Accept (UO-07, UO-08). SGC owns S4943, S4944, S4941 and the C4 departure. |
 
 ### Producing: to Beta (UB receivers 23020/23220/23310)
 
@@ -174,14 +174,14 @@ Beta's old "UO-07/08 receiver fixtures" citation now means the departure fixture
 | UO-02 | W1 | `packet-coder` | ~40k | Scaffold: empty seed files, includes, test modules and a visitor guard | Merged (#1890) | [UO-02](omega-packets/UO-02.md) |
 | UO-00 | W1 | `documentation-writer` | ~30k | ID row, C4 arrival point, sibling handoff note | Ready (UO-01 merged) | [UO-00](omega-packets/UO-00.md) |
 | UO-03 | W2 | `packet-coder` | ~30k | Respawner 180 and the hub placement test | BlockedDependency UO-01, UO-02 | [UO-03](omega-packets/UO-03.md) |
-| UO-04 | W2 | `packet-coder` | ~40k | Beam 63801 and Modi 63810/63811 | BlockedDependency UO-02; merge waits on U-D04 | [UO-04](omega-packets/UO-04.md) |
+| UO-04 | W2 | `packet-coder` | ~40k | Beam 63801 and Modi 63810/63811 | BlockedDependency UO-02 (U-D04 decided, D-UO25) | [UO-04](omega-packets/UO-04.md) |
 | UO-05 | W2 | `packet-coder` | ~40k | Cast templates and spawns 63800-63803, dialog set and maps | BlockedDependency UO-01, UO-02 | [UO-05](omega-packets/UO-05.md) |
 | UO-06 | W2 | `items-systems-advisor` | ~35k | Services seal: the stock proposal for D-UO8 and the roster options for D-UO16 | BlockedDependency UO-01 | [UO-06](omega-packets/UO-06.md) |
 | UO-10 | W2 | `packet-coder` | ~35k | Banker 63810 and registrars 63811 (Team), 63830 (Command) | BlockedDependency UO-01, UO-02 | [UO-10](omega-packets/UO-10.md) |
-| UO-07 | W3 | `packet-coder` | ~40k | Human induction 63820-63822 | BlockedDependency UO-04, UO-05; merge waits on U-D04 | [UO-07](omega-packets/UO-07.md) |
-| UO-08 | W3 | `packet-coder` | ~40k | Free Jaffa induction 63830-63832 | BlockedDependency UO-04, UO-05; merge waits on U-D04 | [UO-08](omega-packets/UO-08.md) |
+| UO-07 | W3 | `packet-coder` | ~40k | Human induction 63820-63822 | BlockedDependency UO-04, UO-05 (U-D04 decided, D-UO25) | [UO-07](omega-packets/UO-07.md) |
+| UO-08 | W3 | `packet-coder` | ~40k | Free Jaffa induction 63830-63832 | BlockedDependency UO-04, UO-05 (U-D04 decided, D-UO25) | [UO-08](omega-packets/UO-08.md) |
 | UO-09 | W3 | `packet-coder` | ~35k | Re-offer 63840-63845 | BlockedDependency UO-07, UO-08 | [UO-09](omega-packets/UO-09.md) |
-| UO-14 | W3 | `packet-coder` | ~35k | Ambient airmen and Free Jaffa warriors (droppable) | BlockedDependency UO-01, UO-02, UO-10; merge waits on U-D07 | [UO-14](omega-packets/UO-14.md) |
+| UO-14 | W3 | `packet-coder` | ~35k | Ambient airmen and Free Jaffa warriors (droppable) | BlockedDependency UO-01, UO-02, UO-10 (cap 24 decided, D-UO26) | [UO-14](omega-packets/UO-14.md) |
 | UO-11 | W4 | `packet-coder` | ~40k | Tau'ri vendors 63812-63816 (SGC wing) | BlockedDecision D-UO8, D-UO16; BlockedDependency UO-06, UO-10 | [UO-11](omega-packets/UO-11.md) |
 | UO-12 | W4 | `packet-coder` | ~30k | Jaffa vendors 63817-63819 (Free Jaffa wing) | BlockedDecision D-UO8, D-UO16; BlockedDependency UO-06, UO-10 | [UO-12](omega-packets/UO-12.md) |
 | UO-13 | W4 | `rust-gameserver-dev` (Sonnet) | ~50k | Executed handshake tests and Beta fixtures | BlockedDependency UO-07, UO-08, UO-09 | [UO-13](omega-packets/UO-13.md) |
@@ -200,7 +200,7 @@ Beta's old "UO-07/08 receiver fixtures" citation now means the departure fixture
 | W4 | UO-11, UO-12, UO-13 | one review-fixer | W3 merged; D-UO8 option A and D-UO16 option A for UO-11/12 |
 | W5 | UO-U1, then UO-99 | UO-99 gets one documentation review | W4 merged (or its packets dropped); the user's yes for UO-U1 |
 
-UO-04, UO-07 and UO-08 may be coded and reviewed before U-D04 is answered, but they **merge only after** it. If the answer changes the receive state, the review-fixer rewrites the step ids in those three packets' tests and seeds. No other packet changes. UO-14 likewise merges only after U-D07; if the owner rejects ambient life, drop the packet.
+The U-D04 and U-D07 merge holds are lifted (D-UO25, D-UO26, decided by the architect overnight 2026-10-18). UO-04, UO-07, UO-08 and UO-14 merge on the normal gate. If the owner later overrules D-UO25 and moves the receive state, a follow-up packet rewrites the step ids in those three packets' tests and seeds; nothing else changes. If the owner overrules D-UO26, revert UO-14's one commit (or trim spawns to the new cap); no other packet reads 63860-63903.
 
 Parallel coders never edit the same lines: UO-02 creates every shared file with one `-- [UO-xx]` marker section per packet, and each packet writes only below its own marker. The cell-catalog `tests/mod.rs` gets one `mod` line from each of UO-10, UO-11 and UO-12. That is a trivial merge, which the review-fixer resolves.
 
@@ -210,8 +210,8 @@ Every packet inlines its rules, the chain contract (chain packets) and its lane 
 
 | Item | Exact question | Who answers | Blocks |
 |---|---|---|---|
-| **U-D04** | Does Omega receive 1655 at S4940 with O6055 done (SGC fires `advance_step 4941`, then `4940`, before the teleport)? Does Omega own S4940 → S4942 and the S4942 completion? | owner, with the SGC coordinator | the merge of UO-04, UO-07, UO-08 |
-| **U-D07** | What reward and scale may Cimmeria-authored content carry at Omega? How many ambient NPCs (proposed cap 24), and any XP, items or naquadah (proposed none)? | owner | UO-14's merge, UO-15 |
+| U-D04 | **Decided (D-UO25)** by the architect overnight 2026-10-18: yes to both; Omega receives at S4940 with O6055 done and owns S4940 → S4942 and the S4942 completion. The owner may overrule. | architect (owner may overrule) | nothing |
+| **U-D07** (rest) | The ambient cap is **decided (D-UO26: 24 inert spawns, no reward)**. Still open: may Cimmeria-authored *copy* (new lines, barks, chatter) appear at Omega, at what scale, and may any authored content carry XP, items or naquadah (proposed none)? | owner | UO-15 |
 | H-LBL | How must authored copy be labelled to players (a provenance tag in the text, a tooltip, or nothing)? | owner | UO-15 |
 | D-UO8 | May Omega's vendors sell UO-06's proposed stock (option A: one moniker per role), option B (every tier, a new template block), or nothing? | owner | UO-11, UO-12 |
 | D-UO11 / D-US11 | Does the SGC grant 6786 `Letter to Daniel Jackson` to Humans, and anything to the Free Jaffa? | owner + SGC | one optional `remove_item` row in UO-07 |
@@ -252,11 +252,11 @@ Each of these was rejected for lack of evidence, or because it would break a rul
 - **Hostile Free Jaffa Attacker (208)** as ambient.
 - **Ambient patrols:** no path data; static spawns only.
 - **`interact_tag` chains:** they would display the dialog twice (F4).
-- **`complete_objective` on 1655:** it completes the mission early (F21).
+- **`complete_objective` on 1655:** completing S4940's required O5647 and O5644 completes the mission before the Accept (F21).
 
 ## Overnight autonomous run 2026-10-18
 
-The owner lifted the U-D03 gate the same day, so Omega ran unattended from W1. U-D04 and U-D07 merge holds remain. New decision ids continue after D-UO20.
+The owner lifted the U-D03 gate the same day, so Omega ran unattended from W1. The U-D04 and U-D07 merge holds were settled by D-UO25 and D-UO26 below. New decision ids continue after D-UO20.
 
 | Id | Decision | Status | Why |
 |---|---|---|---|
@@ -264,6 +264,8 @@ The owner lifted the U-D03 gate the same day, so Omega ran unattended from W1. U
 | D-UO22 | Bridges E and W (world 80) have no placement rows. UO-11, UO-12 and UO-14 must not look them up and must not seed `amb.bridge_e.*` or `amb.bridge_w.*`. | Decided | They are separate navmesh components (12 and 26) with no route from pad 17 (component 11): `nav_inspect --gap-pair 11,12` and `11,26` find none, and a probe exits 3. Seeding there needs a nav patch. |
 | D-UO23 | The UO-01 C4 arrival heading is corrected to **3.1409** (it faces gate 5). UO-00 publishes it in § Contracts → Receiving. | Decided | The worknote's table row and § C4 agree on 3.1409. |
 | D-UO24 | Generated Tauri schema files in a build worktree were discarded to unblock the merge. | Done | Build output only; no content or seed impact. |
+| D-UO25 | **U-D04 settled.** Omega receives 1655 at S4940 with S4941/O6055 already completed. SGC's C4 chain fires `advance_step 1655 '4941'`, then `advance_step 1655 '4940'`, then `cross_world_teleport 'Omega_Site'`. `advance_step` completes the old step's open objectives, so O6055 arrives completed and O5644-O5647 arrive open. Omega owns S4940 → S4942 (chain 63801 on `teleport_in '17'`, D-UO3) and the S4942 completion: the Jackson or Bra'tac Accept completes 1655 and offers 1423 or 1500 (UO-07, UO-08). SGC owns S4943, S4944, S4941 and the departure, and never fires S4942, `complete_objective` on 1655, or the 1655 completion. The UO-04, UO-07 and UO-08 merge hold is lifted, and no packet text changes. | Decided by architect overnight 2026-10-18, owner may overrule | Every source already agrees, so there is nothing left to choose. (1) The SGC ledger K5 C4 row (`sgc-work-packets.md`) lists exactly these departure rows and "1655/4940 active", with Omega as the receiver. (2) The US-32 step-owner table gives 4943/4944 to SGC, 4941 to the C4 window, and 4940 and 4942 to Omega, and says "never `complete_objective` on 1655 at the SGC". (3) US-33 ends the Free Jaffa at 4940 plus one Travel. (4) `execution-contract.md` § ownership: SGC owns the departure; Omega owns arrival, beam platform, the Jackson or Bra'tac delivery and the onward offer. (5) `free-jaffa-route.md` gives Omega 1655 S4942/O6058/T7743. (6) Shipped rows: 4941 holds only O6055 (travel), 4940 holds the world-18 beam objectives, and 4942 holds the world-80 deliveries O6056/O6058 (`mission_objectives.sql:3134-3146`). (7) `advance_step` (`progression.rs`) completes the old step's objectives. The SGC ledger gets a matching line (`sgc-work-packets.md` D-US12). Cost if the owner overrules: one follow-up packet re-keys the step ids in UO-04/07/08's seeds and tests. |
+| D-UO26 | **U-D07, the ambient cap, settled for UO-14 only.** UO-14 may merge with at most **24** ambient spawns (63880-63903) of templates 63860 (Airman, clone of 31) and 63861 (Free Jaffa Warrior, clone of 34, moniker 26723). They are static, inert (no dialog, chain, interaction, loot, reward or XP), use shipped bodies and monikers only, and carry the CIMMERIA_AUTHORING placement label. The rest of U-D07 stays HELD: any authored copy or barks (UO-15, H-LBL) and any reward on authored content. | Decided by architect overnight 2026-10-18, owner may overrule | (1) The owner's four-zone direction, which U-D07 names as its starting reference, asks for "ambient NPC density" (`four-zone-planning/README.md`, MMO fullness). (2) Precedent: the Castle population campaign merged 24 friendly static spawns in world 8, with no dialog, on the same CIMMERIA_AUTHORING basis (`castle-population/README.md`), and the owner ruled on its follow-up decisions without objecting to the count. (3) UO-14 adds no text, reward, chain or interaction, so none of U-D07's reward or labelling questions apply to it. (4) It is droppable: one revert removes it, and no other packet reads 63860-63903. Cost if the owner overrules: revert UO-14, or trim the spawn rows to the new cap and change `AMBIENT_CAP`. SGC's D-US3 (authored copy, US-40) is a different question and stays BlockedDecision. |
 
 ## Provenance and stop conditions
 

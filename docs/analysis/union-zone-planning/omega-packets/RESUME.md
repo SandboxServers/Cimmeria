@@ -1,9 +1,9 @@
 # Union Omega resume card
 
 - Phase: planned 2026-10-18 against `origin/main` @ `d1bba0400`. Omega is now being built: W1 (UO-01, UO-02) merged in PR #1890; UO-00 (docs seal) is next. See the ledger's § Overnight autonomous run 2026-10-18.
-- Ledger: [omega-work-packets.md](../omega-work-packets.md) (findings F1-F35, decisions D-UO1..20, ID map, contracts, waves). Packets: one file each in this folder.
+- Ledger: [omega-work-packets.md](../omega-work-packets.md) (findings F1-F35, decisions D-UO1..26, ID map, contracts, waves). Packets: one file each in this folder.
 - 2026-10-18: owner's developer concept art recorded in [omega-concept-art.md](../omega-concept-art.md). It is RESTORED_SOURCE layout intent, never coordinates (D-UO15). Wired into UO-01 (art-area column, § Art conflicts), UO-05, UO-06, UO-10, UO-11, UO-12, UO-14 and UO-16. UO-01's § Art conflicts holds one row, `svc.banker`, ruled keep-the-navmesh-point (D-UO21).
-- Gate: the owner lifted the "held until FZ-99 / U-D03" gate on 2026-10-18. U-D04 and U-D07 merge holds remain.
+- Gate: the owner lifted the "held until FZ-99 / U-D03" gate on 2026-10-18. The U-D04 and U-D07 merge holds were settled overnight by the architect: D-UO25 (U-D04) and D-UO26 (the ambient cap of 24); the owner may overrule either.
 - Waves:
   - W1: UO-01 (movement advisor, placement worknote) and UO-02 (scaffold) in parallel; then UO-00 (docs seal, needs UO-01).
   - W2: UO-03, UO-04, UO-05, UO-06 (items advisor worknote), UO-10.
@@ -11,10 +11,10 @@
   - W4: UO-11, UO-12 (need D-UO8 and D-UO16 option A), UO-13 (Sonnet, ~50k).
   - W5: UO-U1 (lab UAT; ask the user first), then UO-99 (close-out, the only status-doc change).
   - Stubs, not dispatchable: UO-15 (U-D07, H-LBL), UO-16 (U-D08, U-D11).
-- Merge holds: UO-04, UO-07, UO-08 merge only after U-D04. UO-14 merges only after U-D07.
+- Merge holds: none. UO-04, UO-07, UO-08 and UO-14 merge on the normal gate. If the owner overrules D-UO25, a follow-up re-keys the step ids in UO-04/07/08; if D-UO26, revert UO-14.
 - Open owner decisions (ask before the packets they block):
-  - U-D04: receive state of 1655 at S4940 and who owns S4942 (owner + SGC coordinator).
-  - U-D07: authored-content scale and rewards; the ambient cap of 24.
+  - Owner review (not blocking): D-UO25 and D-UO26, decided by the architect overnight.
+  - U-D07 (rest): authored copy at Omega and any reward on authored content (UO-15).
   - H-LBL: how authored copy is labelled to players.
   - D-UO8: vendor stock and prices (UO-06 proposes).
   - D-UO11 / D-US11: the departure letter 6786 (owner + SGC).
@@ -23,5 +23,5 @@
   - D-UO17: class and crafting trainers. D-UO18: Council Chamber and combat instances. D-UO19: inn, infirmary, battlemaster and auction house. None of these blocks a planned packet; a yes adds packets.
 - Next action: UO-00 (docs seal, worktree `uo-00`), then W2 (UO-03, UO-04, UO-05, UO-06, UO-10). Bridges E and W have no placement rows (D-UO22); `svc.banker` keeps its navmesh point (D-UO21).
 - Packet placeholders are expanded: every packet carries its own rules and, for chain packets, the chain contract.
-- Cross-zone notes for the coordinators: the architect report § Cross-zone (SGC F21, Beta imports UO-13 fixtures, Dakara UD-04a `lte 6`).
+- Cross-zone notes for the coordinators: the architect report § Cross-zone (SGC F21 corrected 2026-10-18: S4940 has required O5647/O5644; SGC D-US12 records D-UO25; Beta imports UO-13 fixtures, Dakara UD-04a `lte 6`).
 - Rules for workers: PowerShell only, cargo only through the lane, CRLF docs, no stash, prune or push, no db/scripts migrations, ask before any lab use.
