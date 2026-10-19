@@ -79,7 +79,7 @@ A campaign starts when the orchestrator dispatches the `architect`, which resear
 
 A **packet** is a work order that a small model can follow without designing anything. It names the exact files and functions to change, the test to add and why that test fails when the change is reverted, the checks to run, the docs it owes, and the commit subject. It also carries the 5 to 10 repo rules it needs, because the coder does not load `CLAUDE.md`. The packet is the contract: the coder has nothing to decide, so the cheapest model can do the work, and the reviewer has something exact to check against.
 
-A packet is sized to about 40k working tokens, because about 35-40k of every Haiku session is fixed overhead. Before packets were cut to that size, 9 of 34 Haiku sessions hit their 90k cap; afterwards, 0 of 36 did. Anything bigger is split: there is no medium size.
+A packet is sized to about 40k working tokens, because about 35-40k of every Haiku session is fixed overhead. In the campaign-metrics campaign, 9 of its first 34 Haiku sessions hit the 90k cap; after the re-slice, 0 of 36 did. Anything bigger is split: there is no medium size.
 
 A **wave** is a group of about six packets. Its independent packets run in parallel, each in its own git worktree with its own test database, so two agents never race on one checkout. Six is what one reviewer can hold in one context at the wave review. A wave ships as one PR per packet or, when its packets must land together, as one PR from an integration branch.
 
@@ -87,7 +87,7 @@ A **wave** is a group of about six packets. Its independent packets run in paral
 
 | Agent | Model | Does | Cannot |
 |---|---|---|---|
-| `orchestrator` | Sonnet | the default persona: dispatches agents, asks the owner, keeps the ledger | run a shell, read source, write code |
+| `orchestrator` | Sonnet | the default persona: dispatches agents, asks the owner, keeps the ledger | run a shell, write outside the ledger folders, or read a long source file in one go |
 | `architect` | Opus | researches, decides, writes the ledger, the packets and the rulings | write code |
 | `packet-coder` | Haiku | implements one packet, or applies one review's fix notes; runs the checks; commits locally | push, open PRs, design, load `CLAUDE.md` |
 | `packet-reviewer` | Sonnet | reviews a packet, a wave or the campaign, and writes numbered fix notes | edit anything |
@@ -97,7 +97,7 @@ A **wave** is a group of about six packets. Its independent packets run in paral
 | `lab-driver` | Haiku | drives the live game client from an exact step list | diagnose, edit, build |
 | `hands-on` | Opus | a full-tool session that a human starts with `claude --agent hands-on` | - (never dispatched for packets) |
 
-Each agent has only the tools its job needs, because an agent cannot misuse a tool it does not have. The orchestrator has no shell, so it cannot slip into doing the work itself at its large context. The reviewer has no Edit tool, so it cannot fix something and then approve its own fix. `ops` runs only scripts that check their inputs. Each model does what it is best at: Haiku follows exact steps cheaply, Sonnet finds what is wrong, and Opus judges, at the highest price per token.
+Each agent is given only the tools its job needs, which narrows what it can do. The orchestrator has no shell, so it cannot slip into doing the work itself at its large context. The reviewer has no Edit or Write tool and is told never to edit; it does have a shell, so that part rests on its instructions, not on a block. `ops` runs only scripts that check their inputs. Each model does what it is best at: Haiku follows exact steps cheaply, Sonnet finds what is wrong, and Opus judges, at the highest price per token.
 
 ### Review loops
 
@@ -118,6 +118,8 @@ flowchart TD
   M -->|"ship"| D["close-out"]
 ```
 
+A wave of one packet skips the wave review. In the wave and campaign reviews a `fix` sends the notes to a fresh packet-coder, as in the packet loop.
+
 Three loops run, all with the same shape. A **pass** is one fresh, read-only `packet-reviewer` session, and it returns `ship`, `fix` or `decision`. On `fix`, a fresh `packet-coder` applies the report's numbered fix notes exactly as written, reruns the packet's checks and commits, and a fresh reviewer checks again. A loop has at most 3 passes.
 
 - **The packet loop** starts as soon as a packet's coder is done. It checks correctness, drift from the spec, tests that would still pass with the fix reverted, and the repo rules.
@@ -126,24 +128,26 @@ Three loops run, all with the same shape. A **pass** is one fresh, read-only `pa
 
 **When a loop runs out.** If pass 3 still says `fix`, or a pass says `decision`, the architect decides only what to fix and how, in a ruling note: re-spec, re-slice, accept with a follow-up packet, or ask the owner. The architect writes no code or fix. A Sonnet implementer applies the ruling, and one fresh reviewer checks it. If that check fails, the owner decides.
 
-Why this shape: Haiku rarely lands a packet first time (only 4.8% of judged Haiku packets were accepted on the first pass), so review is a built-in step, not an exception. A reviewer that never edits stays adversarial on every pass, and the fixing runs on the cheapest model: in one campaign's own 20 packets, the Sonnet reviews cost $13.58 and the Haiku fix rounds $0.72. The fix notes go to a fresh session, not back to the one that wrote the code, because Haiku 5.5 bills 5x per request above a 100k prompt.
+Why this shape: Haiku rarely lands a packet first time (only 4.8% of judged Haiku packets were accepted on the first pass (6 of 125; 88 of 188 accepted packets could not be judged)), so review is a built-in step, not an exception. A reviewer that never edits stays adversarial on every pass, and the fixing runs on the cheapest model: in one campaign's own 20 packets, the Sonnet reviews cost $13.58 and the Haiku fix rounds $0.72. The fix notes go to a fresh session, not back to the one that wrote the code, because Haiku 5.5 bills 5x per request above a 100k prompt (from the profiler's price table, not re-checked against the price page).
 
-### Guards, and what they save
+### Guards, and what the evidence shows
 
-Hooks run before tool calls, and two of them refuse calls. The rest of the protection comes from what each agent is allowed to run.
+Most hooks run before tool calls; three run at session start. Only `shell_guard` and `orchestrator_guard` refuse anything. The rest of the protection comes from what each agent is allowed to run.
 
-| Guard | What it stops | Evidence |
+| Guard | What it stops | Evidence (the problem, not the saving) |
 |---|---|---|
-| `cargo` only through the build lane (`shell_guard`) | parallel builds racing on one target directory, and whole build logs in context | 326 direct calls in the profiled week from 2026-10-03; about 254 GB of build output before the lane; a 296-test summary fell from 36,765 to about 270 characters |
+| `cargo` only through the build lane (`shell_guard`) | parallel builds racing on one target directory, and whole build logs in context | 326 direct calls in the profiled week from 2026-10-03; about 254 GB of disk use from per-worktree target directories on 2026-09-26 (no after figure was measured); a 296-test summary fell from 36,765 to about 270 characters |
 | Reads and searches through Read and Grep (`shell_guard`, Claude Code only) | whole files dumped through the shell | about 10,000 shell reads in the same week; `sed -n` alone returned 38.5M characters |
-| No shell for the orchestrator (its tool list) | the coordinator doing hands-on work at full context | the Opus main session made 3,666 PowerShell calls at 354,545 tokens of average context; one pilot of the Sonnet orchestrator averaged 75,159 |
-| `git` only through `ops` and its scripts (tool lists, not a hook) | lost worktrees, and pushes from the wrong checkout | about 22 worktree registrations lost on 2026-10-03 |
+| No shell for the orchestrator (its tool list) | the coordinator doing hands-on work at full context | the Opus main session made 3,666 PowerShell calls at 354,545 tokens of average context; one Sonnet-orchestrator pilot averaged 75,159 over 58 requests, but its next wave averaged 122,503 and it missed two of its five targets (not a controlled comparison) |
+| Git hygiene by brief and script, not by a hook | lost worktrees, and a push from the wrong checkout | about 22 worktree registrations vanished on 2026-10-03; the cause is not confirmed, and the two scripts that ran `git worktree prune` no longer do. Workers are told never to stash, push, prune or open PRs; `ship` refuses to commit or push outside a registered worktree on a feature branch. No hook blocks raw git. |
 
-The guards cost time: `shell_guard` takes a median 95.8 ms per shell call, about 1.6 minutes per 1,000 calls ([hook-timing.md](docs/analysis/ai-harness-docs/hook-timing.md)). How much each refused call saves has not been measured. The full guard list and its numbers are in [ai-sdlc.md § Guards in detail](docs/agents/ai-sdlc.md#guards-in-detail).
+Only one saving is measured: the lane's 36,765 to about 270 characters, for one command. How much each refused call saves has not been measured.
+
+The guards cost time: on one Windows machine, for one allowed command (`shell_guard`), a median of about 96 ms per shell call (30 runs; total hook time in a real session has not been measured), about 1.6 minutes per 1,000 calls ([hook-timing.md](docs/analysis/ai-harness-docs/hook-timing.md)). The full guard list and its numbers are in [ai-sdlc.md § Guards in detail](docs/agents/ai-sdlc.md#guards-in-detail).
 
 ### Shipping
 
-`ops` ships every PR with two script calls. `ship.ps1 pr` commits, pushes once and opens the PR. `ship.ps1 merge --retire` puts it in `main`'s merge queue, which runs the full build and tests on the merged code and needs green CI, and then retires the worktree. Nothing merges while `main` is red. Every PR also gets an adversarial review by an agent that did not write it.
+`ops` ships every PR with two script calls. `ship.ps1 pr` commits, pushes once and opens the PR. `ship.ps1 merge --retire` puts it in `main`'s merge queue, which runs the full build and tests on the merged code and needs green CI, and then retires the worktree. Code merges stop while `main` is red; docs-only PRs still merge. Every PR also gets an adversarial review by an agent that did not write it.
 
 ### When a human decides
 
