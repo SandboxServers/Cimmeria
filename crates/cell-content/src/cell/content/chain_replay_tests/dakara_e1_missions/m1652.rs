@@ -134,7 +134,7 @@ async fn live_db_entering_dakara_binds_the_control_of_the_current_step() {
     let eastern = fire_player_loaded(&engine, &at_step(Some(DAKARA), 4934), DAKARA_NAME);
     assert_eq!(
         labels_in(&eastern, M1652_CHAINS),
-        vec!["8324:add_dialog_set(6888@462)", "8328:play_sequence(2390)",],
+        vec!["8324:add_dialog_set(6888@462)", "8328:play_sequence(2390)"],
     );
     assert_eq!(delays_of(&eastern, 8328), vec![3000]);
 
@@ -223,7 +223,7 @@ async fn live_db_clicking_the_eastern_control_spends_the_generator_and_completes
 }
 
 #[tokio::test]
-async fn live_db_the_hatak_sequences_play_only_on_dakara_during_1652() {
+async fn live_db_the_hatak_sequences_stay_silent_outside_the_1652_steps() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
     let is_sequence = |l: &String| l.contains(":play_sequence(");
@@ -248,4 +248,34 @@ async fn live_db_the_hatak_sequences_play_only_on_dakara_during_1652() {
     // The accept in the story room plays no sequence (D-DK33).
     let accept = fire_dialog_choice(&engine, &offer_state(Some(STORY_RM)), 5986);
     assert!(!labels_in(&accept, M1652_CHAINS).iter().any(is_sequence));
+}
+
+#[tokio::test]
+async fn live_db_the_hatak_sequences_need_world_61_for_loads_and_clicks() {
+    let pool = require_db_or_skip!();
+    let engine = build_engine(Some(&pool)).await;
+    let is_sequence = |l: &String| l.contains(":play_sequence(");
+
+    // Story room (world 62) with the Dakara_E1 trigger key: the world condition
+    // alone must keep both loads silent at 4933 and 4934.
+    for step in [4933, 4934] {
+        let ctx = at_step(Some(STORY_RM), step);
+        let r = fire_player_loaded(&engine, &ctx, DAKARA_NAME);
+        assert!(!labels_in(&r, M1652_CHAINS).iter().any(is_sequence));
+    }
+
+    // Both ring-control clicks in the story room: the world condition alone
+    // must keep the explosion sequences (8329 at 4933, 8330 at 4934) silent.
+    let west = fire_interact_tag(
+        &engine,
+        &at_step(Some(STORY_RM), 4933),
+        "Dakara_E1_RingControl_XMinus",
+    );
+    assert!(!labels_in(&west, M1652_CHAINS).iter().any(is_sequence));
+    let east = fire_interact_tag(
+        &engine,
+        &at_step(Some(STORY_RM), 4934),
+        "Dakara_E1_RingControl_XPlus",
+    );
+    assert!(!labels_in(&east, M1652_CHAINS).iter().any(is_sequence));
 }
