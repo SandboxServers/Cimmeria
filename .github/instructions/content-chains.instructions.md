@@ -274,6 +274,7 @@ The Union Beta E1 campaign ([docs/analysis/union-zone-planning/beta-work-packets
 ```text
 beta_e1_travel_chains.sql   travel, way back: 23000-23019 (23001-23003 used)
 beta_e1_m1500_chains.sql    1500 receiver and Carter: 23220-23239 (23220-23222 used)
+beta_e1_m1502_chains.sql    1502 The Nine Peaks Jaffa: 23240-23279 (23240-23250 used)
 ```
 
 ## Linked references
