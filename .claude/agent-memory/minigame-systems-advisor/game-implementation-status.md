@@ -58,3 +58,11 @@ Audio evidence that the placeholder games were at least partly built:
 So Activate was the "search a container" game family.
 
 See also [[converse-minigame-evidence]], [[chain-wiring-and-gaps]].
+
+## SWF extension inventory (MG-R6, 2026-10-19, static analysis of all 10 GFX movies)
+
+- Five movies embed a real server-side extension: Livewire, Alignment, CrystalGame, GoauldCrystals, ConverseBasicHumanoid. Activate/Analyze/Bypass/Converse/Hack are ~55 KB shells with a `win_btn` and no rules.
+- joinOK vars read by the client: Livewire and Alignment read abilityBitfield, CA0-4, difficulty, instcc, pclevel, seed, techcomp; ConverseBasicHumanoid reads abilityBitfield, intelligence, pclevel, techcomp; the rest read none.
+- No client code uses `seed` (only the extension, via java.util.Random). No PRNG port is needed for client compatibility.
+- Alignment's client sends `doscore` and `dovictory`: client-reported, must be ignored by a server-authoritative port.
+- Full detail: `docs/analysis/minigames/spec-protocol-common.md`.

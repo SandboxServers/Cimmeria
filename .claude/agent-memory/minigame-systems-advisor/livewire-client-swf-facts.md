@@ -31,3 +31,11 @@ The SWF exports only suffixed libs (`pGray1..4`, `mYellowStripe1..4`, goal/obsta
 - Mouse into the movie: CEGUI ExternalWindow `onMouseMove` `0x011f4a00` normalises the local position and calls manager `+0x08`, which reaches module `vfunc_4 0x0093abc0` and stores the position. `onMouseButtonDown 0x011f4960` reaches module `vfunc_2 0x0093aa70`, which uses the STORED position. **A click lands where the last CEGUI MouseMove was**, so move, wait a frame, then click. There is no `injectMouse*` Lua binding in the client.
 
 See also [[chain-wiring-and-gaps]], [[game-implementation-status]].
+
+## MG-R6 confirmations (2026-10-19)
+
+- Offline mode: frame-2 code sets `_root.online=false` only when `ipaddress`, `v1` and `ipaddress.value` are all undefined; then the embedded extension runs locally with Math.random. Cimmeria's launch URL always sets host/port, so this never triggers. Keep `ipaddress` in the launch URL.
+- Client disconnects itself on `victory`/`failure` (`sfs.disconnect()`), then `FSCommand:closewindow` after 2000 ms. Local timer can call `onFailure` at 0 before the server's tick, so the server may see a drop (Canceled) instead of its own timeout (Defeat).
+- Extension host call `__mg.minigameCompleteGame(user, code, timeRatio, numResets, instruments, consumables)`: code 3 = victory, 4 = timeout. These are extension-to-host codes, not cell result ids.
+- Original difficulty table, wire variant range 1-4 (inclusive), goal depth bands 1-25/60-85, obstacleTotal x2, getTime method 2 is bitwise XOR: see `docs/analysis/minigames/spec-livewire-parity.md` (18 deltas vs Rust).
+- No SWF needs `t='o'`; arrays as `t='a'` are what the client reads.
