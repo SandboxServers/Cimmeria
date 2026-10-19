@@ -35,5 +35,5 @@
 
 - ID re-check: zero collisions in the five blocks (README § ID re-check).
 - C4 arrival pin differs between SGC K5 and Omega's plan (coordinator).
-- Engine: an all-optional step completes the mission on the first completion (progression.rs:469-505); chain order is priority then load order (chain/mod.rs:152-168), not chain id.
-- Send-side dialog rule (-1 on close) is not in `dialog.rs`; lab check before a packet relies on it.
+- Engine: an all-optional step completes the mission on the first completion (progression.rs:469-505); chains run by priority, then chain id at equal priority (all SGC chains keep priority 0), on the `resolve_event` snapshot path.
+- Dialog rule (-1 on close for zero-button dialogs only) is confirmed by client RE in agent memory; no lab check needed.
