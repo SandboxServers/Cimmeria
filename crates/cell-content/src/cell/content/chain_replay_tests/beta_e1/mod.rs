@@ -17,6 +17,7 @@ use cimmeria_content_engine::triggers::{TriggerEvent, TriggerType};
 use sqlx::PgPool;
 
 mod m420;
+mod m421;
 mod m481;
 mod travel;
 

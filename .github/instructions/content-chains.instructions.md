@@ -275,6 +275,7 @@ The Union Beta E1 campaign ([docs/analysis/union-zone-planning/beta-work-packets
 beta_e1_travel_chains.sql   travel, way back: 23000-23019 (23001-23003 used)
 beta_e1_m481_chains.sql     From on High, receiver, beam and Mimir (UB-30): 23310-23339 (23310-23317 used)
 beta_e1_m420_chains.sql     Reclamation, Mimir's five scanners (UB-31): 23340-23359 (23340-23351 used)
+beta_e1_m421_chains.sql     Mechanical Error, the infirmary signal and the drone (UB-32): 23360-23389 (23360-23368 used)
 ```
 
 ## Linked references

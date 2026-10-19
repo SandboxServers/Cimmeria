@@ -71,6 +71,31 @@ const BETA_E1: &[(&str, i32, &str)] = &[
         23350,
         "BetaE1_Mimir: per-player bind dsm 2344/2343 (chains 23340/23342)",
     ),
+    (
+        "beta_e1_m421_chains.sql",
+        23361,
+        "BetaE1_Mimir: per-player bind dsm 2349 (chain 23360)",
+    ),
+    (
+        "beta_e1_m421_chains.sql",
+        23364,
+        "BetaE1_HologramEmitter: template 2332 static INT_MissionWorldObject",
+    ),
+    (
+        "beta_e1_m421_chains.sql",
+        23365,
+        "BetaE1_HologramEmitter: template 2332 static INT_MissionWorldObject",
+    ),
+    (
+        "beta_e1_m421_chains.sql",
+        23366,
+        "BetaE1_DisabledDrone: template 2333 static INT_MissionWorldObject",
+    ),
+    (
+        "beta_e1_m421_chains.sql",
+        23368,
+        "BetaE1_Mimir: per-player bind dsm 4585 (chain 23366)",
+    ),
 ];
 
 /// Whether `chain_id` in `filename` is a Beta chain that has an
