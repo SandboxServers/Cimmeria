@@ -165,11 +165,25 @@ async fn live_db_bratac_ignores_the_wrong_state() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
-    // The Accept at the hub (world 18) is not the Command Center's.
+    // The hub (world 18) is not the Command Center: none of the three events.
     let hub = at(ARCH_JAFFA, WORLD_HUB, S_4942);
     assert!(
         bratac(labels(&fire_dialog_choice(&engine, &hub, DLG_BRATAC))).is_empty(),
         "the Accept at the hub resolves nothing"
+    );
+    assert!(
+        bratac(labels(&fire_player_loaded(&engine, &hub, CMD_NAME))).is_empty(),
+        "a load at the hub resolves no rebind"
+    );
+    let hub_beam = at(ARCH_JAFFA, WORLD_HUB, S_4940);
+    assert!(
+        bratac(labels(&fire_teleport_in(
+            &engine,
+            &hub_beam,
+            REGION_CMD_PAD
+        )))
+        .is_empty(),
+        "a beam at the hub resolves no bind"
     );
 
     // The Accept at S4940 is too early: the step is still the beam's.
@@ -188,6 +202,18 @@ async fn live_db_bratac_ignores_the_wrong_state() {
     assert!(
         bratac(labels(&fire_player_loaded(&engine, &done, CMD_NAME))).is_empty(),
         "a completed 1655 resolves no Command Center rebind"
+    );
+
+    // 1655 completed with S4940 still active: the beam binds nothing.
+    let done_beam = with_mission(at(ARCH_JAFFA, WORLD_CMD, S_4940), M_1655, "completed");
+    assert!(
+        bratac(labels(&fire_teleport_in(
+            &engine,
+            &done_beam,
+            REGION_CMD_PAD
+        )))
+        .is_empty(),
+        "a completed 1655 resolves no beam bind"
     );
 
     // 1500 already active: neither bind nor Accept fires again.
