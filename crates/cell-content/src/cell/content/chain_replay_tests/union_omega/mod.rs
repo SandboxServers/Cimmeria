@@ -13,9 +13,12 @@
 //! - [`human`]: UO-07, Jackson's induction (63820-63822).
 //! - [`jaffa`]: UO-08, Bra'tac's induction (63830-63832).
 //! - [`reoffer`]: UO-09, the re-offer after an abandon (63840-63845).
+//! - [`executed`]: UO-13, the same chains run through the executor, so a
+//!   relog or ring round trip that stacks a second bind (F3) shows.
 //! - [`handoff`]: UO-13, the departure fixtures Beta's tests start from.
 
 mod arrival;
+mod executed;
 pub(super) mod handoff;
 mod human;
 mod jaffa;
