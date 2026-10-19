@@ -29,6 +29,8 @@
 //! Mail Clerk, SS-U3, the `send_system_mail` verb). [`dakara_e1_space`]
 //! (the Free Jaffa arrival grant and notice, Dakara DK-01) loads the whole
 //! seeded engine and fires the real `player_loaded` dispatcher.
+//! [`dakara_e1_missions`] pins the Dakara_E1 mission chains (DK-10a onward),
+//! one submodule per seed file.
 
 mod black_market_auctioneer;
 mod castle_702_704_executor;
@@ -36,6 +38,7 @@ mod castle_loot_containers;
 mod cellblock_dialog_closes;
 mod class_start_cellblock_scope;
 mod class_start_sgc;
+mod dakara_e1_missions;
 mod dakara_e1_space;
 mod dakara_e1_tent_travel;
 mod debug_hub;

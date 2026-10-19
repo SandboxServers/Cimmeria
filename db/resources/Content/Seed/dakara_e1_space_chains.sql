@@ -3,8 +3,8 @@
 --
 -- Chain ID range: 8001-8039 of the campaign's 8001-8499 block
 -- (work-packets.md, "Worker Input And Ownership"). The mission chains live
--- in dakara_e1_arrival_chains.sql (8040-8159), dakara_e1_betrayal_chains.sql
--- (8160-8339) and dakara_e1_climax_chains.sql (8340-8489).
+-- in one file per packet, dakara_e1_m*_chains.sql (8040-8179, work-packets.md
+-- C3); later missions use 8180-8499.
 --
 --   DK-01  8001  Free Jaffa arriving on Dakara_E1 learns the Omega Site address
 --   DK-01  8002  Free Jaffa arriving on Dakara_E1 gets the arrival notice, once

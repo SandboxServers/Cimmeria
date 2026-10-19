@@ -405,6 +405,14 @@
 \ir resources/Content/Seed/debug_area_lineup_chains.sql
 \ir resources/Content/Seed/debug_area_ring_chains.sql
 \ir resources/Content/Seed/dakara_e1_space_chains.sql
+\ir resources/Content/Seed/dakara_e1_bridge_chains.sql
+\ir resources/Content/Seed/dakara_e1_m1570_entry_chains.sql
+\ir resources/Content/Seed/dakara_e1_m1570_tent_chains.sql
+\ir resources/Content/Seed/dakara_e1_m1570_search_chains.sql
+\ir resources/Content/Seed/dakara_e1_m1570_report_chains.sql
+\ir resources/Content/Seed/dakara_e1_m1645_chains.sql
+\ir resources/Content/Seed/dakara_e1_m1646_offer_chains.sql
+\ir resources/Content/Seed/dakara_e1_m1646_drop_chains.sql
 \ir resources/Content/Seed/tutorial_chains.sql
 
 \ir resources/_foreign_keys.sql
