@@ -33,7 +33,7 @@ Every packet builds against this section. A packet that cannot honour it stops a
 |---|---|---|---|---|
 | Content chains | 8001-8499 | 8001-8006 (`dakara_e1_space_chains.sql`) | 8007 | 8007-8039 space and travel; per-mission files in C3; 8180-8449 missions 1648 to 1654 (D-DK22, C3); 8390-8429 reserved for DK-21 (1647), 8450-8479 for DK-32b; 8480-8499 spare |
 | Entity templates | 440-479 | 440-457 | 458 | 458-461 are the four extra Drop Location props (D-DK16, DK-09); 462 and 463 the second ring control and power supply (DK-41, D-DK29); hostiles 464-479 (DK-20) |
-| Spawnlist | 8000-8099 | 8000-8007 | 8008 | 8008-8015 are DK-09's; 8016-8021 DK-41's six story props; DK-20 from 8022 |
+| Spawnlist | 8000-8099 | 8000-8007 | 8008 | 8008-8015 are DK-09's; 8016-8021 DK-41's six story props; DK-20 from 8022; 8098 DK-32c's Vocuum (wave 6c) |
 | Point sets | 2123-2199 | 2123-2127 | 2128 | 2128-2130 are the three SG-18 search regions (D-DK18, DK-09), with points 2557-2559; next free after DK-09: 2131 |
 | Respawners | 611-619 | 611 | 612 | |
 | Authored mission (D-DK1 F) | 63100-63103 | none | 63100 | Mission 63100, step 63101, objective 63102, task 63103 (DK-10fs). Absent from the stock catalog and from `db/resources`; mission ids stay at or below 65535 |
@@ -61,12 +61,12 @@ One packet owns one seed file. DK-10a creates every file below with only its hea
 | `dakara_e1_m1651_chains.sql` | DK-30a | 8290-8309 |
 | `dakara_e1_m1651_gate_chains.sql` | DK-30b, then DK-30b-r (8310 becomes `stargate_crossed`, 8311 and 8312 deleted, grant chain 8313 added) | 8310-8319 |
 | `dakara_e1_m1652_chains.sql` | DK-31b | 8320-8349 |
-| `dakara_e1_m1653_chains.sql` | DK-32a | 8350-8389 |
+| `dakara_e1_m1653_chains.sql` | DK-32a; then DK-32c (edits 8351, 8355, 8357; adds 8364, 8365) | 8350-8389 |
 | `dakara_e1_m1654_chains.sql` | DK-33, then DK-33-r (8432/8433 grant gate 27, 8434 becomes `stargate_crossed`, 8435 deleted) | 8430-8449 |
 
 DK-40 (wave 4) creates the nine files from `dakara_e1_m1648_chains.sql` down, header only, with their `\ir` lines after `dakara_e1_m1646_drop_chains.sql`, their linter ranges and their test submodules (D-DK21). 8390-8429 (DK-21, 1647) and 8450-8479 (DK-32b) are reserved and get no file until wave 7. DK-10d's range sits after DK-12c's because 4902 and 4901 need 12 ids (D-DK19); the `\ir` order stays the order of this table.
 
-Shared seed files and their single owner per wave: `entity_templates_dakara_e1.sql` and `spawnlist_dakara_e1.sql` (DK-09 in wave 2), `point_sets_dakara_e1.sql` and `point_set_points_dakara_e1.sql` (DK-09: the three SG-18 search regions, D-DK18), `crates/content-engine/tests/it/interact_tag_linter.rs` (DK-10a: `fn allowlist` only; DK-09b: moves the region check to `interact_tag_linter/regions.rs`; the two hunks do not overlap), `dakara_e1_space_chains.sql` (DK-10a edits only its header comment; DK-10e edits only chain 8002's mail text and adds chain 8007 after it). The mission seed `db/resources/Missions/Seed/missions_dakara_e1.sql` and its `\ir` line after `missions.sql` are DK-10fs's alone.
+Shared seed files and their single owner per wave: `entity_templates_dakara_e1.sql` and `spawnlist_dakara_e1.sql` (DK-09 in wave 2; in wave 6c DK-32c edits template 457's mesh and appends spawn 8098), `point_sets_dakara_e1.sql` and `point_set_points_dakara_e1.sql` (DK-09: the three SG-18 search regions, D-DK18), `crates/content-engine/tests/it/interact_tag_linter.rs` (DK-10a: `fn allowlist` only; DK-09b: moves the region check to `interact_tag_linter/regions.rs`; the two hunks do not overlap), `dakara_e1_space_chains.sql` (DK-10a edits only its header comment; DK-10e edits only chain 8002's mail text and adds chain 8007 after it). The mission seed `db/resources/Missions/Seed/missions_dakara_e1.sql` and its `\ir` line after `missions.sql` are DK-10fs's alone.
 
 ### C4. Chain row shape
 
@@ -136,7 +136,7 @@ Vocabulary used by this campaign (all exist today):
 | Mission 1570 (Dakara half) | steps 4906, 4904, 4902, 4901, 4905, 4903 | SGC steps 4641, 4642 (objectives 5382, 5383); 4906's optional Rak'nor objective 5936 |
 | Mission 1645 | steps 5168 (obj 5938), 4907 (5634 optional, 5633) | item 6779 |
 | Mission 1646 | steps 4908 (5635, 5939, 5940, 5941, 5942 all required), 4909 (5943) | item 6780 |
-| Story props (DK-41, D-DK29) | 453 `Dakara_E1_CommandTerminal` (61), 454 `Dakara_E1_StoryRm_MohkatanTerminal` (62), 455 `Dakara_E1_RingControl_XMinus` and 462 `_XPlus` (61), 456 `Dakara_E1_PowerSupply1` and 463 `_PowerSupply2` (61); spawns 8016-8021 | X-minus and supply 1 are west, X-plus and supply 2 east |
+| Story props (DK-41, D-DK29) | 453 `Dakara_E1_CommandTerminal` (61), 454 `Dakara_E1_StoryRm_MohkatanTerminal` (62), 455 `Dakara_E1_RingControl_XMinus` and 462 `_XPlus` (61), 456 `Dakara_E1_PowerSupply1` and 463 `_PowerSupply2` (61); spawns 8016-8021. DK-32c (D-DK45): 457 `Dakara_E1_Vocuum` (61), spawn 8098 | X-minus and supply 1 are west, X-plus and supply 2 east; the Vocuum pad is at the courtyard centre (A-14) |
 | Ba'al hologram | template 443, spawned per player by DK-15 as `Dakara_E1_StoryRm_BaalHologram` at B-07 (66.2, -0.12, 34.3) | world 62 only |
 | DHD | template 1, tag `Dakara_E1_DHD`, spawnlist 38, world 61 | an `interact_tag` chain runs before the dialling handler and suppresses it when it matches, so **no chain may match it** (wave 6c, D-DK24): the crossings complete on `stargate_crossed SGC_W1` |
 | SGC gate | gate 27 `SGC W1`, world 58 `SGC_W1` | granted by 8313 (1651 report at 4932) and 8432/8433 (1654 offer); arrival on the Gate Room floor is the SGC campaign's to pin (D-DK44) |
@@ -216,7 +216,7 @@ From wave 5 on, `mod.rs` also gives `delays_of` (the `delay_ms` of each action o
 | 5 | DK-13, DK-14a, DK-14b, DK-15 | Done (#1903, #1904, #1905, #1906) | one `packet-reviewer` plus `mission-systems-advisor` read-only |
 | 6 | DK-30a, DK-30b, DK-31a, DK-31b, DK-32a, DK-33 | DK-31a #1900, DK-30a #1907, DK-31b #1909, DK-32a #1910 merged (docs #1901). **Held:** DK-30b (`34abe129b`, `dk-30b`) after SGC US-30, DK-33 (`41686b50c`, `dk-33`) after SGC US-31; reviewed, PRs not opened | one `packet-reviewer` plus `mission-systems-advisor` read-only |
 | 6b | DK-31c (Ha'tak sequences), DK-30b-n, DK-33-n (review nits in the held worktrees) | Done: DK-31c #1913; DK-30b-n `8b1ac4673` and DK-33-n `ffec26d33` committed in the held worktrees | one `packet-reviewer` for the three; fixes by `packet-coder` |
-| 6c (current) | DK-40b, then DK-14c, DK-15b, DK-30b-r, DK-33-r ([wave 6c](packets/wave-6c.md)) | **Ready now**: DK-40b from `main`. After it merges, `ops` rebases `dk-30b` and `dk-33`; then the four. DK-30b-r and DK-33-r keep the merge holds (US-30, US-31) plus D-DK40 and D-DK44 | one `packet-reviewer` for DK-40b; one for the four; fixes by `packet-coder` |
+| 6c (current) | DK-40b and DK-32c, then DK-14c, DK-15b, DK-30b-r, DK-33-r ([wave 6c](packets/wave-6c.md)) | **Ready now**: DK-40b and DK-32c from `main`. After DK-40b merges, `ops` rebases `dk-30b` and `dk-33`; then the four. DK-30b-r and DK-33-r keep the merge holds (US-30, US-31) plus D-DK40 and D-DK44 | one `packet-reviewer` for DK-40b and DK-32c; one for the four; fixes by `packet-coder` |
 | 7 | GDK1, DK-20, DK-21, DK-32b | D-DK5 decided A (owner, 2026-10-19). **BlockedDependency**: the owner's M2 playtest, then the architect re-slices | architect expands first |
 | close | DK-99a to DK-99e ([wave 99](packets/wave-99.md)) | DK-99a: Done (#1914). DK-99e: DK-14c and DK-15b merged. DK-99b and DK-99c: every shipping code packet merged (D-DK38). DK-99d: the DK-99 PR merged | one `packet-reviewer` for DK-99e; one for DK-99b and DK-99c |
 
@@ -260,7 +260,7 @@ The 2026-10-18 stubs were expanded on 2026-10-19 (architect, autonomous). What c
 | DK-32a | [wave 6](packets/wave-6.md) | The peaceful 1653 path (courtyard, supplies, radio, report); the guards are DK-32b (wave 7) |
 | DK-33 | [wave 6](packets/wave-6.md) | Crossing C3 by DHD click; merge held for US-31. DK-33-r (wave 6c) makes it real gate travel and grants gate 27 on the offer (D-DK24) |
 | DK-31c, DK-30b-n, DK-33-n | [wave 6b](packets/wave-6b.md) | Expanded 2026-10-19 from DK-31a's note and its map-read addendum: four co-firing chains 8327-8330 (D-DK32 to D-DK36). The two nit packets are the wave-6 review's findings on the held packets |
-| DK-40b, DK-14c, DK-15b, DK-30b-r, DK-33-r | [wave 6c](packets/wave-6c.md) | New 2026-10-19 for the owner's rulings D-DK24 (real gate travel, SGC address) and D-DK31 (Livewire required). DK-40b adds the shared labels and helpers first so the four never share a file |
+| DK-40b, DK-32c, DK-14c, DK-15b, DK-30b-r, DK-33-r | [wave 6c](packets/wave-6c.md) | New 2026-10-19 for the owner's rulings D-DK24 (real gate travel, SGC address) and D-DK31 (Livewire required). DK-40b adds the shared labels and helpers first so the four never share a file. DK-32c (added the same day, D-DK45 owner-delegated) builds 1653's Vocuum beside DK-40b; it needs neither |
 | GDK1, DK-20, DK-21, DK-32b | [wave 7 (blocked)](packets/wave-7-blocked.md) | D-DK5 decided A (owner, 2026-10-19); BlockedDependency on the owner's M2 playtest before the re-slice |
 
 ## DK-99 close-out

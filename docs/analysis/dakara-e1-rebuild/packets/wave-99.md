@@ -8,7 +8,7 @@ The close-out is split in four so that nothing waits longer than it must. The ow
 | Packet | Role | Worktree, branch | Size | Gate |
 |---|---|---|---|---|
 | [DK-99a](#dk-99a-the-unified-uat-guide) | `packet-coder` | `dk-99a`, `dakara/dk-99a-uat-guide` (new, from `main`) | about 25k tokens | **Done** (#1914) |
-| [DK-99e](#dk-99e-uat-guide-refresh-for-wave-6c) | `packet-coder` | `dk-99e`, `dakara/dk-99e-uat-refresh` (new, from `main`) | about 10k tokens | DK-14c and DK-15b merged (wave 6c). Does not wait for DK-30b-r or DK-33-r |
+| [DK-99e](#dk-99e-uat-guide-refresh-for-wave-6c) | `packet-coder` | `dk-99e`, `dakara/dk-99e-uat-refresh` (new, from `main`) | about 10k tokens | DK-14c, DK-15b and DK-32c merged (wave 6c). Does not wait for DK-30b-r or DK-33-r |
 | [DK-99b](#dk-99b-mission-chains-and-zone-audit) | `documentation-writer` | `dk-99`, `dakara/dk-99-closeout` (new, from `main`) | about 35k tokens | the **code gate** below |
 | [DK-99c](#dk-99c-status-docs-and-the-final-ledger) | `documentation-writer` | `dk-99` (same worktree, second commit, same PR as DK-99b) | about 30k tokens | DK-99b committed |
 | [DK-99d](#dk-99d-operations) | `ops`, one dispatch per step | none | small | the DK-99 PR (DK-99b and DK-99c) merged |
@@ -66,23 +66,23 @@ The **code gate** for DK-99b is: every code packet the campaign will ship has me
 
 ## DK-99e: UAT guide refresh for wave 6c
 
-**Goal.** The unified UAT guide matches the ledger after the owner's 2026-10-19 rulings: the terminal hacks are Livewire (D-DK31) and the SGC crossings are real gate travel (D-DK24).
+**Goal.** The unified UAT guide matches the ledger after the owner's 2026-10-19 rulings: the terminal hacks are Livewire (D-DK31), the SGC crossings are real gate travel (D-DK24), and 1653's Vocuum is a hologram pad (D-DK45, DK-32c).
 
-**Gate.** DK-14c and DK-15b merged. If DK-30b-r and DK-33-r have not merged, still copy their rows, and put "(waits on US-30/US-31, D-DK40, D-DK44)" at the end of the DK-U26, DK-U30 and DK-U33 rows' first cell.
+**Gate.** DK-14c, DK-15b and DK-32c merged. If DK-30b-r and DK-33-r have not merged, still copy their rows, and put "(waits on US-30/US-31, D-DK40, D-DK44)" at the end of the DK-U26, DK-U30 and DK-U33 rows' first cell.
 
 **File (only this one):** `docs/guides/unified-uat.md`.
 
 **Steps.**
 
-1. In `## Dakara_E1`, replace rows **DK-U21, DK-U24, DK-U25, DK-U26 and DK-U30** with the README's rows of the same id, copied **verbatim** from `main` when you run (sections "M3 checklist" and "M4 and M5 checklist").
-2. Insert the README's rows **DK-U32** (after DK-U31) and **DK-U33** (after DK-U32), verbatim.
+1. In `## Dakara_E1`, replace rows **DK-U21, DK-U24, DK-U25, DK-U26, DK-U28 and DK-U30** with the README's rows of the same id, copied **verbatim** from `main` when you run (sections "M3 checklist" and "M4 and M5 checklist").
+2. Insert the README's rows **DK-U32** (after DK-U31), **DK-U33** (after DK-U32) and **DK-U34** (after DK-U33), verbatim.
 3. Fix only relative links, as DK-99a step 5 did: `(#anchor)` becomes `(../analysis/dakara-e1-rebuild/README.md#anchor)`.
-4. In the `**Prerequisites:**` sentence for DK-U26 to DK-U31, change "DK-U31" to "DK-U33" and add: "The Livewire steps (DK-U21, DK-U24, DK-U32) need the minigame service running."
-5. In the `## Suggested test order` Dakara row, change `DK-U1 to DK-U31` to `DK-U1 to DK-U33`.
+4. In the `**Prerequisites:**` sentence for DK-U26 to DK-U31, change "DK-U31" to "DK-U34" and add: "The Livewire steps (DK-U21, DK-U24, DK-U32) need the minigame service running."
+5. In the `## Suggested test order` Dakara row, change `DK-U1 to DK-U31` to `DK-U1 to DK-U34`.
 
-**Verify.** The lint check finds nothing in `docs/guides/unified-uat.md`; `DK-U33` appears in the file; `grep -n "Livewire"` finds the DK-U21 and DK-U24 rows; the file is CRLF. No test applies.
+**Verify.** The lint check finds nothing in `docs/guides/unified-uat.md`; `DK-U33` and `DK-U34` appear in the file; `grep -n "Livewire"` finds the DK-U21 and DK-U24 rows; the file is CRLF. No test applies.
 
-**Commit:** `docs(uat): Dakara_E1 Livewire terminals and SGC gate travel in the unified UAT guide (DK-99e)`.
+**Commit:** `docs(uat): Dakara_E1 Livewire terminals, SGC gate travel and the Vocuum in the unified UAT guide (DK-99e)`.
 
 ## DK-99b: mission chains and zone audit
 

@@ -3,18 +3,19 @@
 > Type: how-to (work packets). Audience: the packet-coder named in each packet, and the read-only wave-6c packet-reviewer (its findings go to a fresh packet-coder).
 > Written 2026-10-19 (architect) for the owner's rulings of 2026-10-19 on D-DK24 (real dialling to the SGC, grant the SGC address) and D-DK31 (the Livewire hack is required on the terminal steps), against `origin/main` @ `12edca3e4`. Ledger and status: [README](../README.md#packets). Rules and full contract: [work-packets.md](../work-packets.md). Findings: F40 to F45; decisions: D-DK24, D-DK31, D-DK40 to D-DK44.
 
-Wave 6c has five packets in two steps. Every packet is seed and test code only. None needs the lab, the client or an owner answer to **build**; two need owner and cross-campaign answers to **merge**.
+Wave 6c has six packets in two steps. Every packet is seed and test code only. None needs the lab, the client or an owner answer to **build**; two need owner and cross-campaign answers to **merge**. DK-32c (added 2026-10-19, architect) builds the Vocuum for the owner's delegated D-DK45.
 
 | Step | Packet | Worktree, branch | Size | Gate |
 |---|---|---|---|---|
 | 1 | [DK-40b](#dk-40b-replay-labels-and-helpers-for-wave-6c) | `dk-40b`, `dakara/dk-40b-replay-helpers` (new, from `main`) | about 15k tokens | none. **Ready**. Review, PR and merge before step 2 |
+| 1 | [DK-32c](#dk-32c-the-vocuum-mission-1653s-optional-objective) | `dk-32c`, `dakara/dk-32c-vocuum` (new, from `main`) | about 30k tokens | DK-32a (merged #1910). **Ready**. Shares no file with DK-40b or step 2; step 2 does not wait for it |
 | - | `ops` rebase | `dk-30b` and `dk-33` | - | `ops` rebases `dakara/dk-30b` and `dakara/dk-33` onto the `main` SHA that contains DK-40b, and records it. Packet coders never rebase |
 | 2 | [DK-14c](#dk-14c-livewire-on-the-1649-command-terminal) | `dk-14c`, `dakara/dk-14c-livewire-terminal` (new, from `main` after DK-40b) | about 20k tokens | DK-40b merged |
 | 2 | [DK-15b](#dk-15b-livewire-on-mohkatans-terminal) | `dk-15b`, `dakara/dk-15b-livewire-terminal` (new, from `main` after DK-40b) | about 20k tokens | DK-40b merged |
 | 2 | [DK-30b-r](#dk-30b-r-mission-1651-crossing-by-real-gate-travel) | `dk-30b` (existing; branch as created) | about 25k tokens | DK-40b merged and the `ops` rebase done. **Merge hold:** US-30, D-DK40, D-DK44 |
 | 2 | [DK-33-r](#dk-33-r-mission-1654-crossing-by-real-gate-travel) | `dk-33` (existing; branch as created) | about 20k tokens | DK-40b merged and the `ops` rebase done. **Merge hold:** US-31, D-DK44 |
 
-One read-only `packet-reviewer` reviews DK-40b alone (step 1), and one reviews the four step-2 packets together; its findings go to a fresh `packet-coder`. DK-30b-r ships in one PR with DK-30b (`34abe129b`) and DK-30b-n (`8b1ac4673`); DK-33-r ships in one PR with DK-33 (`41686b50c`) and DK-33-n (`ffec26d33`).
+One read-only `packet-reviewer` reviews DK-40b and DK-32c together (step 1), and one reviews the four step-2 packets together; its findings go to a fresh `packet-coder`. DK-30b-r ships in one PR with DK-30b (`34abe129b`) and DK-30b-n (`8b1ac4673`); DK-33-r ships in one PR with DK-33 (`41686b50c`) and DK-33-n (`ffec26d33`).
 
 **Dormant by design (D-DK23).** Every chain here belongs to missions 1649 to 1654, which stay unreachable in play until wave 7 ships 1647. Do not add a GM shortcut, a `player_loaded` offer or any other way in.
 
@@ -101,6 +102,118 @@ A failing check gets at most five fix rounds; then commit nothing, report, and r
 **Proof.** The new `labels.rs` test fails if either arm is removed (it would print `OTHER(..)`). The two helpers are proved by their first users in step 2.
 
 **Commit subject:** `test(content): Dakara_E1 replay labels for Livewire and address grants, crossed and victory helpers (DK-40b)`
+
+## DK-32c: the Vocuum, mission 1653's optional objective
+
+**Goal.** D-DK45, decided 2026-10-19 (the owner included the Vocuum and delegated the prop and the place). During 1653 step 4938 the player can click a hologram pad at the courtyard centre. The click completes the optional objective O5643 ("Disable the vocuum projecting Ba'al's image to his troops") and the pad stops being clickable. The two power supplies still move the step on their own, whether the pad was clicked or not.
+
+**Worktree.** `dk-32c`, branch `dakara/dk-32c-vocuum`, new from `main`. Size: about 30k tokens. It does not need DK-40b and shares no file with any other wave-6c packet, so it runs beside DK-40b in step 1.
+
+**Files (only these six).** Rule 4's "another packet's file" does not apply to them: DK-03, DK-09, DK-32a and DK-41 are merged, and this packet names each file.
+
+- `db/resources/Content/Seed/dakara_e1_m1653_chains.sql`: edit chains 8351, 8355 and 8357; append chains 8364 and 8365 after chain 8363, at the end of the file.
+- `db/resources/Entities/Seed/entity_templates_dakara_e1.sql`: template 457 only.
+- `db/resources/Worlds/Seed/spawnlist_dakara_e1.sql`: append spawn 8098.
+- `crates/cell-content/src/cell/content/chain_replay_tests/dakara_e1_missions/m1653.rs`
+- `crates/cell-world/src/cell/spawner_tests/dakara_e1/story_props.rs`
+- `crates/cell-world/src/cell/spawner_tests/dakara_e1/templates.rs`
+
+**Ids (checked free on `main`, 2026-10-19).** Chains 8364 and 8365 sit in 1653's block 8350-8389 (8350-8363 are used); leave 8366-8389 free. Spawn 8098 sits in the campaign's block 8000-8099 (8000-8021 are used; DK-20 starts at 8022). The interact-tag linter already allowlists `dakara_e1_m1653_chains.sql` for 8350-8389: do not edit the linter. The carrier dialog set 6892 (flags 1073741824, no dialog) is the one the supplies already use: add no dialog row.
+
+**Template 457.** Change only the `static_mesh` value, from `'Ga-Props.GA-PuzzleStation00'` to `'GA-Props.GA-Hologram_Platform00'` (this exact case; the row is in `db/resources/Visuals/Seed/static_meshes.sql`). Keep every other column: `interaction_type` stays 0 (the bind gives the cursor, per player), flags 4, `respawn_secs` 300. Replace the row's `-- look:` comment line with:
+
+```sql
+-- look: NAME-INFERENCE, D-DK45 (owner-delegated 2026-10-19): the hologram pad
+--   GA-Props.GA-Hologram_Platform00, the map's own pad under Ba'al's image in
+--   the StoryRm (PL-DK-B-07). No other template wears it, so the look guard
+--   exempts 457 by id until the owner's UAT (DK-U34) sees it in a client.
+```
+
+**Spawn 8098.** Append after the last row (8021), with a blank line before it:
+
+```sql
+-- DK-32c PROJECT_FINAL_RECONSTRUCTION (D-DK45, owner-delegated 2026-10-19).
+-- The Vocuum, mission 1653's optional objective 5643, at PL-DK-A-14: the
+-- courtyard centre, on the bridge span between the two ion cannons (navmesh
+-- component 279, plaza-connected). The place is LOW-MEDIUM; the owner's UAT
+-- (DK-U34) corrects it. No bind is applied here: its interaction bit is a
+-- per-player bind from chains 8351 and 8364 (D-DK31).
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (8098, 129.40, -21.53, -66.50, 0.0000, 61, 457, 'Dakara_E1_Vocuum', NULL, true, 30);
+```
+
+**Chains** (C4 shape; notation as in [wave 6](wave-6.md#contract-excerpt-for-wave-6): `bind 6892@457` is `(id, 'add_dialog_set', 6892, NULL, '{"slot": 457}', 0, n)` and `unbind 6892@457` is `(id, 'remove_dialog_set', 6892, NULL, '{"slot": 457}', 0, n)`):
+
+| Chain | Trigger | Conditions | Actions |
+|---|---|---|---|
+| 8351 (edit) | unchanged: `enter_region 'Dakara_E1.SuperweaponCourtyard'` | unchanged: world 61; s1653/4936 active | the three rows unchanged, then `bind 6892@457` (3) |
+| 8355 (edit) | unchanged | unchanged | `unbind 6892@456` (0); **`unbind 6892@457` (1)**; `advance_step 1653 '4937'` (2); `display_radio_dialog 5849` (3) |
+| 8357 (edit) | unchanged | unchanged | `unbind 6892@463` (0); **`unbind 6892@457` (1)**; `advance_step 1653 '4937'` (2); `display_radio_dialog 5849` (3) |
+| 8364 (new) | `player_loaded 'Dakara_E1'` | world 61 (0); s1653/4938 active (1); o1653/5643 neq completed (2) | `bind 6892@457` (0) |
+| 8365 (new) | `interact_tag 'Dakara_E1_Vocuum'` | world 61 (0); s1653/4938 active (1); o1653/5643 neq completed (2) | `complete_objective 1653 '5643'` (0); `unbind 6892@457` (1) |
+
+- File header, line 2: `(packet DK-32a)` becomes `(packets DK-32a and DK-32c)`.
+- 8351's description becomes `'1653 - Step 4936: enter courtyard, advance to 4938, bind supplies 6892@456 and 6892@463 and the Vocuum 6892@457'`. Add to its comment: "and the Vocuum pad (carrier 6892 at 457, DK-32c, D-DK45). The bind rides on this chain because conditions are read before any action runs: a separate chain gated on 4938 would not fire on the same entry."
+- 8355 and 8357 descriptions: insert `and 6892@457` after their first unbind (`unbind 6892@456 and 6892@457, advance ...`). Add one comment line to each: "Also unbind the Vocuum (DK-32c) before the advance; removing a bind the player no longer has is harmless."
+- 8364: description `'1653 - Step 4938: restore Vocuum bind 6892@457 on load (objective 5643 open)'`. Comment: `PROJECT_FINAL_RECONSTRUCTION`; the relog restore, as 8352 and 8353.
+- 8365: description `'1653 - Step 4938: click the Vocuum, objective 5643 (optional), unbind 6892@457'`. Comment: `PROJECT_FINAL_RECONSTRUCTION`, D-DK45; O5643 is optional and the required 5641 and 5642 are still open at 4938, so this never closes the step (C5 rule 3); the `neq completed` gate makes the click one-shot; no dialog, the objective tick is the feedback (D-DK31).
+- `content_chains` rows: `(8364, '<description>', 'mission', 1653, true, 0)` and the same for 8365, as the other chains in the file.
+
+**Tests in `m1653.rs`.** Add two constants under `SUPPLY_EAST`: `const VOCUUM: &str = "Dakara_E1_Vocuum";` and, with a doc line "Optional objective of the Vocuum (DK-32c).", `const VOCUUM_OBJ: i32 = 5643;`. Then:
+
+1. Rename `live_db_courtyard_enter_advances_and_binds_both_supplies` to `live_db_courtyard_enter_advances_and_binds_supplies_and_vocuum`. Its expected vector gains `"8351:add_dialog_set(6892@457)"` as the fourth and last label. The two negative cases stay.
+2. `live_db_supply_restore_binds_only_the_open_supply`: rename it to `live_db_restore_binds_only_the_open_props`. Expected vectors, in this order:
+   - `supplies(&[])`: `["8352:add_dialog_set(6892@456)", "8353:add_dialog_set(6892@463)", "8364:add_dialog_set(6892@457)"]`; add `assert_no_deferred_actions(&r, 8364);`.
+   - `supplies(&[EAST])`: `["8352:add_dialog_set(6892@456)", "8364:add_dialog_set(6892@457)"]`.
+   - `supplies(&[WEST])`: `["8353:add_dialog_set(6892@463)", "8364:add_dialog_set(6892@457)"]`.
+   - `supplies(&[WEST, EAST])`: replace the `is_empty()` assert with `["8364:add_dialog_set(6892@457)"]`.
+   - New case, `supplies(&[VOCUUM_OBJ])`: `["8352:add_dialog_set(6892@456)", "8353:add_dialog_set(6892@463)"]`.
+   - The two "not on Dakara, or not at 4938" cases stay `is_empty()`.
+3. `live_db_supply_clicks_in_both_orders_resolve_one_chain_each`: the 8357 vector becomes `["8357:remove_dialog_set(6892@463)", "8357:remove_dialog_set(6892@457)", "8357:advance_step(1653->4937)", "8357:display_radio_dialog(5849)"]`, and the 8355 vector the same with `8355:` and `6892@456` first. Nothing else changes.
+4. New test `live_db_vocuum_click_completes_5643_once_and_never_moves_the_step`:
+   - For `done` in `[&[][..], &[WEST][..], &[EAST][..]]`: `fire_interact_tag(&engine, &supplies(done), VOCUUM)` gives exactly `["8365:complete_objective(1653/5643)", "8365:remove_dialog_set(6892@457)"]` in `M1653_CHAINS`; `display_dialog_count(&r) == 0`; `radio_count(&r) == 0`; `assert_no_deferred_actions(&r, 8365)`.
+   - No `M1653_CHAINS` label for a `VOCUUM` click at: `supplies(&[VOCUUM_OBJ])`; `at(Some(DAKARA), STEP_COURTYARD)`; `at(Some(DAKARA), STEP_RADIO)`; `at(Some(STORY_RM), STEP_SUPPLIES)`.
+   - The supplies ignore the Vocuum: a `SUPPLY_WEST` click at `supplies(&[VOCUUM_OBJ])` gives exactly the two 8354 labels of test 3, and a `SUPPLY_WEST` click at `supplies(&[VOCUUM_OBJ, EAST])` gives exactly the four 8355 labels of test 3 (the step still advances with the Vocuum done).
+5. Every other test in the file passes unchanged.
+
+**Tests in `story_props.rs`** (cell-world). In the module doc (lines 1-2), add "and DK-32c's Vocuum (spawn 8098)". Add, after `CLONES`:
+
+```rust
+/// DK-32c (D-DK45): the Vocuum, 1653's optional objective 5643, at PL-DK-A-14.
+const VOCUUM: (i32, i32, i32, &str, [f32; 3]) =
+    (8098, 61, 457, "Dakara_E1_Vocuum", [129.4, -21.53, -66.5]);
+```
+
+and a test `live_db_dakara_vocuum_spawn_matches_the_placement_ledger`. Copy the row query and the two `assert_eq!` of the existing story-props test for this one spawn (world, template, tag, `is_stationary` true, `respawn_secs` `Some(30)`, then the position with the message "spawn 8098 moved: update the ledger"), then `travel::standable_and_connected(&exterior, actual, PLAZA, tag)`. Then assert that template 457 has exactly one spawn (`SELECT count(*) FROM resources.spawnlist WHERE template_id = $1`), message "template 457 binds per player, so it is the template of one spawn only". If `standable_and_connected` fails, do not move the spawn: report the output and return `blocked` (moving the pad is the architect's call).
+
+**Tests in `templates.rs`** (cell-world). The look guard `live_db_every_dakara_e1_look_is_one_another_template_wears` would now name 457. Its doc comment already says to exempt an unproven row by id; do it pinned to the ruled mesh:
+
+1. Above the test, add:
+
+   ```rust
+   /// Looks ruled without a client proof yet, `(template id, static mesh)`:
+   /// 457 Vocuum wears the hologram pad (D-DK45, owner-delegated
+   /// 2026-10-19). The owner's UAT DK-U34 is its client proof.
+   const UNPROVEN_LOOK_RULINGS: [(i32, &str); 1] = [(457, "GA-Props.GA-Hologram_Platform00")];
+   ```
+
+2. In the test, drop every `unproven` row whose id is in `UNPROVEN_LOOK_RULINGS` before the existing `assert!`. Then, for each `(id, mesh)` ruling, assert that `SELECT static_mesh::text FROM resources.entity_templates WHERE template_id = $1` is `Some(mesh)`, and that `SELECT count(*) FROM resources.static_meshes WHERE mesh_name = $1` is 1.
+3. Add one sentence to the doc comment: "A row in `UNPROVEN_LOOK_RULINGS` is exempt, but must wear exactly its ruled mesh, and that mesh must exist."
+
+**Proof.** Each seed change has a test that fails without it: drop 8351's fourth row (test 1), chain 8364 (test 2), chain 8365 (test 4), the 457 unbind in 8355 or 8357 (test 3), spawn 8098 (the story-props test) or the mesh edit (the pinned look ruling).
+
+**Checks, in order** (the four wave checks, with cell-world added):
+
+1. `pwsh tools/build-lane/lane.ps1 cargo fmt -p cimmeria-cell-content`
+2. `pwsh tools/build-lane/lane.ps1 cargo fmt -p cimmeria-cell-world`
+3. `pwsh tools/build-lane/lane.ps1 cargo clippy -p cimmeria-cell-content --all-targets -- -D warnings`
+4. `pwsh tools/build-lane/lane.ps1 cargo clippy -p cimmeria-cell-world --all-targets -- -D warnings`
+5. `pwsh tools/build-lane/lane.ps1 cargo nextest run -p cimmeria-content-engine interact_tag_linter`
+6. `pwsh tools/build-lane/live-db-test.ps1 chain_replay_tests::dakara_e1_missions`
+7. `pwsh tools/build-lane/live-db-test.ps1 spawner_tests::dakara_e1`
+
+**Docs rows owed.** None in this packet: the README's UAT rows DK-U28 and DK-U34 are already written, and DK-99e copies them into the unified UAT guide. Say so in the report.
+
+**Commit subject:** `feat(content): Dakara_E1 1653 Vocuum, hologram pad 457 at the courtyard, chains 8364-8365 (DK-32c)`
 
 ## DK-14c: Livewire on the 1649 Command Terminal
 
@@ -239,4 +352,5 @@ Import `fire_stargate_crossed` from `super::*` (it comes with DK-40b); drop impo
 - No chain anywhere matches `Dakara_E1_DHD` after DK-30b-r and DK-33-r (`git grep -n "Dakara_E1_DHD" -- db/resources` shows only spawn and template rows).
 - `grant_stargate_address` appears only in 8313, 8432 and 8433 among the Dakara chains, never under a `player_loaded` trigger.
 - The negative tests are not weakened; the engine-wide DHD tests use `r.actions.is_empty()`, not a range filter.
+- DK-32c: 8365's conditions keep the `neq completed` gate on 5643 and never test 5641 or 5642; no 1653 chain completes 5643 except 8365; 8355 and 8357 unbind 457 before `advance_step`; template 457 keeps `interaction_type` 0; the look-guard exemption is pinned to the one mesh, not a bare skip.
 - The merge holds stay: DK-30b-r and DK-33-r open no PR (the orchestrator opens them when US-30, US-31, D-DK40 and D-DK44 allow).
