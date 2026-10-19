@@ -61,13 +61,13 @@ The cycle:
 2. `architect` (Opus) designs and writes the packets. This is the packet writer step (D-AH1).
 3. `ops` (Haiku) makes the worktrees.
 4. `packet-coder` (Haiku) implements each packet, with at most 3 sessions per packet for the context limit.
-5. `packet-review-fixer` (Sonnet) reviews and fixes each wave, with at most 3 passes.
+5. `packet-reviewer` (Sonnet) reviews each packet, then each wave, then the campaign, without editing; a fresh `packet-coder` applies its fix notes, with at most 3 passes per loop.
 6. `ops` ships through the merge queue.
 
 Escalation:
 
 - **Coder:** 3 Haiku sessions, then 1 Sonnet implementer (`rust-gameserver-dev` for code and tools, `documentation-writer` for docs), then `architect` re-slices. Opus never implements.
-- **Reviewer:** the verdict is `ship`, `recheck` or `decision`, with at most 3 passes. Then `architect` writes a ruling note with no code, and a fresh Sonnet review-fixer applies it. An owner call is BlockedDecision.
+- **Reviewer:** the verdict is `ship`, `fix` or `decision`, with at most 3 passes per loop. Then `architect` decides only what to fix and how, in a ruling note, and writes no code or fix; a Sonnet implementer applies it, and a fresh reviewer checks it. An owner call is BlockedDecision.
 
 **Why it works this way:**
 
