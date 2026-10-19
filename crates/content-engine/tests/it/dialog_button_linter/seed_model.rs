@@ -22,6 +22,7 @@ pub(crate) const CHAIN_FILES: &[&str] = &[
     "beta_e1_m381_chains.sql",
     "beta_e1_m473_chains.sql",
     "beta_e1_m478_chains.sql",
+    "beta_e1_m1425_chains.sql",
 ];
 
 /// `CARGO_MANIFEST_DIR` is `<workspace>/crates/content-engine`, so two
