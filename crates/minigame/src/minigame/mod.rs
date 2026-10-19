@@ -6,6 +6,7 @@
 pub mod game;
 pub mod games;
 pub mod protocol;
+mod protocol_list;
 pub mod server;
 pub mod session;
 mod session_claim;

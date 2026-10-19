@@ -374,25 +374,16 @@ impl LivewireGame {
             .map(|g| SfsValue::String(g.clone()))
             .collect();
 
-        // Pack arrays as objects with numeric keys (SFS convention)
-        fn array_to_obj(arr: Vec<SfsValue>) -> SfsValue {
-            let mut map = HashMap::new();
-            for (i, v) in arr.into_iter().enumerate() {
-                map.insert(i.to_string(), v);
-            }
-            SfsValue::Object(map)
-        }
-
         sfs_vars! {
             "_cmd" => SfsValue::String("fullgamestate".to_string()),
             "abilityBitfield" => SfsValue::String(self.abilities_mask.to_string()),
-            "wireSounds" => array_to_obj(wire_sounds),
-            "wireNames" => array_to_obj(wire_names),
-            "glowPoints" => array_to_obj(glow_points),
-            "wireXs" => array_to_obj(wire_xs),
-            "wireYs" => array_to_obj(wire_ys),
-            "wireDepths" => array_to_obj(wire_depths),
-            "wireLibs" => array_to_obj(wire_libs),
+            "wireSounds" => SfsValue::list(wire_sounds),
+            "wireNames" => SfsValue::list(wire_names),
+            "glowPoints" => SfsValue::list(glow_points),
+            "wireXs" => SfsValue::list(wire_xs),
+            "wireYs" => SfsValue::list(wire_ys),
+            "wireDepths" => SfsValue::list(wire_depths),
+            "wireLibs" => SfsValue::list(wire_libs),
             "gameReadOut" => SfsValue::String(self.read_out.clone()),
             "gameStarted" => SfsValue::String(if self.game_started { "true" } else { "false" }.to_string()),
             "countdownRate" => SfsValue::String(self.countdown_rate.to_string()),
