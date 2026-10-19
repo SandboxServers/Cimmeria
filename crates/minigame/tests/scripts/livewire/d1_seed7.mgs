@@ -1,0 +1,5 @@
+game Livewire difficulty 1 seed 7
+start
+< fullgamestate {CA0=0, CA1=0, CA2=0, CA3=0, CA4=0, abilityBitfield=0, countdownRate=0.05, gameReadOut=I-1, gameStarted=false, glowPoints={0=attach5, 1=attach5}, instcc=-1, playfieldActive=false, timeRemaining=20.25, timeUnits=23.554138918048867, timerState=0.0, wireDepths={0=3, 1=26, 10=95, 11=101, 2=38, 3=39, 4=41, 5=48, 6=50, 7=54, 8=72, 9=85}, wireLibs={0=pGray, 1=pRust, 10=pBronze, 11=pProcessorFan1, 2=gGreenBlack2, 3=gBlackGreen3, 4=mYellowStripe, 5=oGreen3, 6=mYellowStripe, 7=pBronze, 8=pBronze, 9=oRed3}, wireNames={0=p5, 1=p3, 10=p2, 11=pe1, 2=g1, 3=g2, 4=m2, 5=o1, 6=m1, 7=p1, 8=p4, 9=o2}, wireSounds={0=hackMG/play/low, 1=hackMG/play/low, 10=hackMG/play/low, 11=hackMG/play/low, 2=hackMG/goal/high, 3=hackMG/goal/mid, 4=hackMG/move/mid, 5=hackMG/obsta/low, 6=hackMG/move/mid, 7=hackMG/play/low, 8=hackMG/play/mid, 9=hackMG/obsta/high}, wireXs={0=275.6, 1=275.6, 10=275.6, 11=406.8811369562103, 2=275.6, 3=275.6, 4=275.6, 5=275.6, 6=275.6, 7=275.6, 8=275.6, 9=275.6}, wireYs={0=497, 1=497, 10=657, 11=543.3324020621807, 2=783, 3=783, 4=391, 5=497, 6=391, 7=657, 8=497, 9=783}}
+abort
+< failure

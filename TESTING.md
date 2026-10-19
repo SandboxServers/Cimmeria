@@ -38,6 +38,9 @@ This guide is the playbook for writing tests that survive review and catch real 
 
 **Examples**: `crates/mercury/src/unpacker/` (20 tests, byte-level cursor edge cases); `crates/common/src/math.rs` (14 tests, vector/quaternion math); `crates/cell-combat/src/cell/combat/threat/` (27 tests, threat list state machine).
 
+**REPL harness:** `crates/minigame/src/minigame/repl.rs` drives a minigame from typed commands or a C6 script with no network; golden scripts in `crates/minigame/tests/scripts/` are checked by `repl::check_script`.
+Run one with `pwsh tools/build-lane/lane.ps1 cargo run -p cimmeria-minigame --bin minigame_repl -- --script <file>`.
+
 ### 2. Wire-format tests
 
 **Where**: Same module as the serializer; conventionally `crates/mercury/src/**/*.rs` and `crates/wire/src/mercury/protocol/tests.rs`.
