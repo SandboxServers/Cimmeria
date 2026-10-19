@@ -32,6 +32,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 - [reference_codex_worktree_lane_2026_10_15.md](reference_codex_worktree_lane_2026_10_15.md) — Codex packet worktrees need the repo's external junction; sandboxed lane calls can miss the shared lock and require an escalated machine-wide lane call
 
 - [reference_rasa_gui_injection_2026_10_15.md](reference_rasa_gui_injection_2026_10_15.md) — source-only comparison of Rasa's D3D9/ImGui, Python bridge, target-to-editor and save-verification patterns with Cimmeria's lab bridge
+- [project_union_zone_planning_2026_10_14.md](project_union_zone_planning_2026_10_14.md) — Union SGC/Dakara/Omega/Beta E1 plans for three starting races; authored Free Jaffa bridge and post-Pertho Asgard entry; execution deferred behind first four-zone close-out
 
 - [reference_cb_n05a_catalog_seal_2026_10_14.md](reference_cb_n05a_catalog_seal_2026_10_14.md) — authored mission catalog seal: full resync/empty InvalidKeys, conservative key guard, test-only 61000–61003; live new-ID presentation pending
 
