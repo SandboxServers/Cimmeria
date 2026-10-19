@@ -129,11 +129,19 @@ pub(crate) async fn walk(pool: &PgPool, race: Race) -> Vec<WalkState> {
             None,
             Vec::new(),
         ));
-        if race == Race::Human && mission == OVERLAP_NEXT {
+        // 1425 stays at S4244 from the 1426 offer on (UB-14-16), so every
+        // state of 1426 and of the missions after it is paired with it, with
+        // each subset of its objectives done.
+        if race == Race::Human && order[..=i].contains(&OVERLAP_NEXT) {
             let overlap_objectives = step_objectives(pool, OVERLAP_STEP).await;
+            let subsets = objective_subsets(OVERLAP_STEP, &overlap_objectives);
             let cross: Vec<WalkState> = core[start..]
                 .iter()
-                .map(|s| overlap_with(s, &overlap_objectives))
+                .flat_map(|s| {
+                    subsets
+                        .iter()
+                        .map(|done| overlap_with(s, &overlap_objectives, done))
+                })
                 .collect();
             core.extend(cross);
         }
@@ -321,11 +329,14 @@ fn state(
     }
 }
 
-/// The 1426 state with 1425 also active at S4244 (UB-14-16), its objectives
-/// (`objectives`) not done.
-fn overlap_with(s: &WalkState, objectives: &[i64]) -> WalkState {
+/// The state `s` with 1425 also active at S4244 (UB-14-16). Of its objectives
+/// (`objectives`), `done` are done and the rest read as active.
+fn overlap_with(s: &WalkState, objectives: &[i64], done: &[i64]) -> WalkState {
     let mut cross = s.clone();
     cross.label = format!("{} +{OVERLAP_MISSION} S{OVERLAP_STEP}", s.label);
+    for o in done {
+        cross.label.push_str(&format!(" O{o}"));
+    }
     for (mission, status) in cross.missions.iter_mut() {
         if *mission == OVERLAP_MISSION {
             *status = "active";
@@ -333,8 +344,14 @@ fn overlap_with(s: &WalkState, objectives: &[i64]) -> WalkState {
     }
     cross.overlap.push((OVERLAP_MISSION, OVERLAP_STEP));
     cross
-        .objectives_active
-        .extend(objectives.iter().map(|&o| (OVERLAP_MISSION, o)));
+        .objectives_done
+        .extend(done.iter().map(|&o| (OVERLAP_MISSION, o)));
+    cross.objectives_active.extend(
+        objectives
+            .iter()
+            .filter(|o| !done.contains(o))
+            .map(|&o| (OVERLAP_MISSION, o)),
+    );
     cross
 }
 

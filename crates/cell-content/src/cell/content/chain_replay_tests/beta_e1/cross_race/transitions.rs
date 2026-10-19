@@ -294,4 +294,12 @@ async fn transitions_keep_login_binds_consistent() {
     }
     println!("transitions: {checked} checked, {skipped} skipped (next state not in the walk)");
     assert!(checked > 0, "no transition reached a walk state");
+    // A skip is a transition nobody checked. The merged seed has none, so a
+    // model change that sends clicks off the walk must fail here instead of
+    // passing quietly.
+    assert!(
+        skipped == 0,
+        "{skipped} of {} transitions fell off the walk and went unchecked; the transition model no longer tracks the walk",
+        checked + skipped
+    );
 }
