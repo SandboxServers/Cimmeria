@@ -1,6 +1,6 @@
 ---
 name: sgc-w1-navmesh-groups
-description: SGC_W1 navmesh has 68 components; the Gate Room (47), briefing (42), Failsafe (3), requisitions (45) and terminal (26) are separate groups, so nav_inspect same-component checks must run per group
+description: SGC_W1 navmesh has 68 components; the Gate Room with requisitions (47), briefing (42), Failsafe (3) and terminal (26) are separate groups, so nav_inspect same-component checks must run per group
 metadata:
   type: project
 ---
@@ -9,10 +9,10 @@ SGC_W1 (`data/spaces/sgc_w1.nav`, NA26 advisory) has 68 navmesh components. nav_
 
 Groups measured for the US-01 placement seal (2026-10-18):
 
-- Gate Room + Control Room: component 47 (P01 chair z 47.3, P08, P09, P13 arrival (170.79, -10.9, 11.0)).
+- Gate Room + Control Room + requisitions: component 47 (P01 chair z 47.3, P08, P09, P13 arrival (170.79, -10.9, 11.0)).
 - Briefing: component 42 (Woolsey, Hammond home, P15, P16).
 - Failsafe: component 3 (P05, P06, P07, and the 1566 Jaffa pair at (120,-180) and (116,-176)).
-- Requisitions crates: component 45 (floor y -3.7, not -10.95).
+- Requisitions room: floor y -10.85 is part of component 47 (same as the Gate Room); component 45 (y -3.75) is the storey above. Crate centres at the wall edge make nav_inspect pick the overhead poly (dy -7.1), so probe a standing point 2-4 m off the wall, not the crate.
 - Terminal: component 26 (standing point (-47.5, 1.31, 34.4)).
 
 `--gaps` finds no route within 3 m between components 3, 42 and 47. The cross-room route (elevator rows 55/76, unverified) is still owed a lab check.

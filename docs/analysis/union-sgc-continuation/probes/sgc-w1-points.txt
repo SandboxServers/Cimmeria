@@ -1,13 +1,20 @@
 # US-01 sealed probe set for SGC_W1 (values from placement.md, format NAME X Y Z).
 # nav_inspect exits 3 if probes land in different components, so run one group at a time:
-#   group 47 Gate Room: P01 P08 P09 P13      group 42 briefing: P02 P14 P15 P16
-#   group 3 Failsafe:   P05 P06 P07 P11 P12  group 45 requisitions: P10a-f
-#   group 26 terminal:  P04 (standing point)
+#   group 47 Gate Room + requisitions: P01 P08 P09 P13 P10a-f_stand   group 42 briefing: P02 P14 P15 P16
+#   group 3 Failsafe: P05 P06 P07 P11 P12                              group 26 terminal: P04 (standing point)
+# The P10a-f crate centres (y -10.85, XZ in placement.md) are not probed: they sit at the floor edge and
+# nav_inspect picks the poly overhead (comp 45, y -3.75) instead; the _stand points carry the check.
 # Run: pwsh tools/build-lane/lane.ps1 cargo run -p cimmeria-navmesh-extractor --bin nav_inspect -- data/spaces/sgc_w1.nav --probes <group file> --h-tol 1.0 --v-tol 1.0 --gaps
 P01 172.08 -6.40 47.30
 P08 170.50 -10.90 12.50
 P09 173.00 -6.40 55.00
 P13 170.79 -10.90 11.00
+P10a_stand 257.157 -10.85 40.00
+P10b_stand 259.131 -10.85 40.00
+P10c_stand 260.237 -10.85 40.00
+P10d_stand 255.923 -10.85 40.00
+P10e_stand 257.726 -10.85 40.00
+P10f_stand 254.369 -10.85 40.00
 P02 197.50 1.31 43.60
 P14 199.989 1.311 43.608
 P15 182.00 1.31 43.50
@@ -17,10 +24,4 @@ P06 153.20 1.31 -191.40
 P07 150.00 1.30 -196.00
 P11 120.00 1.18 -180.00
 P12 116.00 1.18 -176.00
-P10a 257.157 -3.70 41.74
-P10b 259.131 -3.70 42.326
-P10c 260.237 -3.70 43.42
-P10d 255.923 -3.70 43.406
-P10e 257.726 -3.70 43.679
-P10f 254.369 -3.70 43.338
 P04 -47.50 1.31 34.40
