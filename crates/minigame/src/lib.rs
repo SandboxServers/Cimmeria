@@ -12,7 +12,8 @@
 //! - [`minigame::server`]: the TCP listener, the version/login handshake and
 //!   the per-connection game loop. Every outcome leaves through one seam, as a
 //!   `CellToBaseMsg::MinigameResult` on the wire contract's channel.
-//! - [`minigame::games`]: the game implementations (Livewire, and a
+//! - [`minigame::games`]: the game implementations (Livewire, the scaffolds for
+//!   Alignment, CrystalGame, GoauldCrystals and ConverseBasicHumanoid, and a
 //!   placeholder for the games not yet ported).
 //!
 //! Split out of `cimmeria-services` (wave W3c of
