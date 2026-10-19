@@ -114,6 +114,53 @@ pub(super) async fn display(
     };
 
     tracing::Span::current().record("npc_entity_id", npc_entity_id);
+    emit(dialog_id, entity_id, chain_id, npc_entity_id, tx, space_mgr).await;
+}
+
+/// The wire `EntityId` of a radio dialog: no entity.
+const RADIO_ENTITY_ID: i32 = 0;
+
+/// `Action::DisplayRadioDialog` (D-DK10): show `dialog_id` with no speaker
+/// entity. The wire `EntityId` is always 0, whatever NPC the player last
+/// clicked. The client opens the window and shows every screen's text; the
+/// id only chooses the portrait, so a radio voice gets none (DK-06a,
+/// `docs/reverse-engineering/findings/dialog-display-without-npc.md`).
+/// Unlike [`display`] it never reads chain params or the interaction pin
+/// and never aborts.
+#[tracing::instrument(
+    name = "dialog.display_radio",
+    level = "info",
+    skip_all,
+    fields(entity_id, dialog_id, chain_id)
+)]
+pub(super) async fn display_radio(
+    dialog_id: i32,
+    entity_id: u32,
+    chain_id: i64,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    emit(
+        dialog_id,
+        entity_id,
+        chain_id,
+        RADIO_ENTITY_ID,
+        tx,
+        space_mgr,
+    )
+    .await;
+}
+
+/// The shared tail of [`display`] and [`display_radio`]: the friction
+/// watch, the player journal, the info line and the send.
+async fn emit(
+    dialog_id: i32,
+    entity_id: u32,
+    chain_id: i64,
+    npc_entity_id: i32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
     // Stuck-player detector: a dialog replaced within seconds cannot be read.
     let (replaced_dialog_id, ms_since_previous) =
         crate::cell::playtest_friction_watch::last_dialog(entity_id).unwrap_or((0, 0));

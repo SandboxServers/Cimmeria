@@ -187,6 +187,12 @@ pub enum Action {
     /// Display a specific dialog to the player.
     DisplayDialog { dialog_id: i32 },
 
+    /// Display a dialog with no speaker entity: `onDialogDisplay` carries
+    /// `EntityId` 0, so the window opens without a portrait. For radio
+    /// calls and other remote voices with no NPC near the player (D-DK10,
+    /// `docs/reverse-engineering/findings/dialog-display-without-npc.md`).
+    DisplayRadioDialog { dialog_id: i32 },
+
     /// Add a dialog set entry to an NPC.
     AddDialogSet {
         dialog_set_id: i32,

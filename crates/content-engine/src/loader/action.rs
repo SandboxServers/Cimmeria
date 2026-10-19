@@ -20,6 +20,9 @@ pub(super) fn convert_action(row: &DbActionRow) -> Option<Action> {
         "display_dialog" => Some(Action::DisplayDialog {
             dialog_id: row.target_id?,
         }),
+        "display_radio_dialog" => Some(Action::DisplayRadioDialog {
+            dialog_id: row.target_id?,
+        }),
         "add_dialog_set" => {
             let dialog_set_id = row.target_id?;
             let slot = params.get("slot").and_then(|v| v.as_i64()).unwrap_or(0) as i32;

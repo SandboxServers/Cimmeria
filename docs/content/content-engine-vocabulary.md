@@ -151,6 +151,7 @@ An action has to clear **two** hurdles to do anything. It needs a match arm in [
 | `advance_step` | `AdvanceStep` | 23 |
 | `complete_objective` | `CompleteObjective` | 2 |
 | `display_dialog` | `DisplayDialog` | 33 |
+| `display_radio_dialog` | `DisplayRadioDialog` | 0 |
 | `add_dialog` | `AddDialog` | 10 |
 | `add_dialog_set` | `AddDialogSet` | 6 |
 | `remove_dialog_set` | `RemoveDialogSet` | 2 |
@@ -311,6 +312,10 @@ Three caveats for authors:
   runs nothing — that is the effect definition's own doing, not a failure of
   the action. Effect 1634, the sole effect on the Castle Cellblock wake-up
   ability 1372, is exactly this shape.
+
+##### `display_radio_dialog`
+
+Shows a dialog with no speaker entity: `onDialogDisplay` (client method 105) goes out with `EntityId` 0, so the window opens with every screen's text and no portrait. Use it for a radio call or any voice with no NPC near the player, such as Dakara_E1's General Hammond calls (dialogs 5815 and 5816). `display_dialog` cannot do this: with no NPC in scope it binds the last NPC the player clicked, or sends nothing and logs a WARN. `target_id` is the dialog id; `target_key` and `params` are unused. The dialog is recorded as offered, so a `dialog_choice` chain on it fires when the player closes it. Evidence: [dialog-display-without-npc.md](../reverse-engineering/findings/dialog-display-without-npc.md) (DK-06a). Whether the speaker name label is blank with `EntityId` 0 is an open UAT item (Dakara_E1 DK-U17).
 
 ##### `start_minigame` params
 
