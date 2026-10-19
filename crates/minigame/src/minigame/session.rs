@@ -413,6 +413,7 @@ impl SessionRegistry {
     /// needs to see what the base registered (the base's launch tests read the
     /// player params back through it). A connection task must still go through
     /// [`Self::authenticate_and_claim`].
+    #[cfg(any(test, feature = "test-support"))]
     pub async fn peek_session(&self, entity_id: u32) -> Option<MinigameSession> {
         self.inner.lock().await.sessions.get(&entity_id).cloned()
     }
