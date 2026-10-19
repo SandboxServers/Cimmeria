@@ -82,8 +82,10 @@ async fn live_db_m1569_offered_after_1564_with_six_lit_crates() {
 
 /// **Revert proof:** delete any of chains 3111-3116 and that crate never
 /// credits its objective; drop the `objective_status` row of chain 3112 and the
-/// second press of Crate2 shows 5385 again. Each crate, opened in order,
-/// credits its own objective, clears its glow and shows its dialog once.
+/// repeat press of Crate2 shows 5385 again. The repeat press runs while 1569 is
+/// still active (after Crate2, before Crate6 completes the step), so only the
+/// objective guard stops it. Each crate, opened in order, credits its own
+/// objective, clears its glow and shows its dialog once.
 #[tokio::test]
 async fn live_db_m1569_each_crate_credits_its_objective_once() {
     let pool = require_db_or_skip!();
@@ -101,14 +103,18 @@ async fn live_db_m1569_each_crate_credits_its_objective_once() {
             "{tag}: objective {objective} is done"
         );
         assert_eq!(rig.flags(tag) & MISSION_OBJECT, 0, "{tag}: the glow clears");
-    }
 
-    rig.press("SGC_W1_Crate2").await;
-    assert!(
-        dialogs(&rig.sent()).is_empty(),
-        "a repeat press on Crate2 shows no second 5385"
-    );
-    assert!(rig.objective_done(M1569, 5385), "5385 stays done");
+        if tag == "SGC_W1_Crate2" {
+            // Still active here: Crate3-6 are unopened, so step 4640 holds.
+            assert_eq!(rig.status(M1569), ACTIVE, "1569 is still active");
+            rig.press(tag).await;
+            assert!(
+                dialogs(&rig.sent()).is_empty(),
+                "a repeat press on Crate2 shows no second 5385"
+            );
+            assert!(rig.objective_done(M1569, 5385), "5385 stays done");
+        }
+    }
 }
 
 /// **Revert proof:** delete chain 3116 and the sixth crate never completes
