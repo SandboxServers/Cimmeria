@@ -12,4 +12,13 @@ INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, fla
 INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2126, 'Dakara_E1.SuperweaponCourtyard', 'AreaSet', 61, 20, 8, 'Cylinder', 1);
 INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2127, 'Dakara_E1.NaqRepository', 'AreaSet', 61, 22, 8, 'Cylinder', 1);
 
-SELECT pg_catalog.setval('point_sets_set_id_seq', GREATEST((SELECT last_value FROM point_sets_set_id_seq), 2127), true);
+-- DK-09, D-DK18 RECONSTRUCTION: mission 1570 step 4902 "Search the locations
+-- Loth'ta indicated" names no site; its objectives become one region around
+-- each SG-18 remains (spawns 8008-8010), so the M2 position pass moves a
+-- region with its remains. 2128 completes 5632, 2129 completes 5630,
+-- 2130 completes the optional 5631 (dakara_e1_m1570_search_chains.sql).
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2128, 'Dakara_E1.SG18Louis', 'AreaSet', 61, 8, 10, 'Cylinder', 1);
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2129, 'Dakara_E1.SG18Nguyn', 'AreaSet', 61, 8, 10, 'Cylinder', 1);
+INSERT INTO point_sets (set_id, name, type, world_id, radius, height, shape, flags) VALUES (2130, 'Dakara_E1.SG18Waters', 'AreaSet', 61, 8, 10, 'Cylinder', 1);
+
+SELECT pg_catalog.setval('point_sets_set_id_seq', GREATEST((SELECT last_value FROM point_sets_set_id_seq), 2130), true);

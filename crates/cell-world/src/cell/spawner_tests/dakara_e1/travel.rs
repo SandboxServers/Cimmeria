@@ -74,16 +74,22 @@ fn reaches(mesh: &NavMesh, from: [f32; 3], to: [f32; 3]) -> bool {
             .is_some_and(|end| end.distance_to(&vector(to)) < 2.0)
 }
 
+/// On the shipped navmesh, with no claim about which component it is on.
+/// The SG-18 remains use this alone (D-DK11).
+pub(super) fn standable(mesh: &NavMesh, point: [f32; 3], label: &str) {
+    assert!(
+        mesh.is_point_valid(&vector(point)),
+        "{label} is off the shipped navmesh"
+    );
+}
+
 pub(super) fn standable_and_connected(
     mesh: &NavMesh,
     point: [f32; 3],
     anchor: [f32; 3],
     label: &str,
 ) {
-    assert!(
-        mesh.is_point_valid(&vector(point)),
-        "{label} is off the shipped navmesh"
-    );
+    standable(mesh, point, label);
     assert!(
         reaches(mesh, point, anchor),
         "{label} is on a different navmesh component than {anchor:?}"
