@@ -246,3 +246,109 @@ async fn same_space_teleport_action_preserves_facing() {
         "Action::Teleport must not re-face the entity it moves"
     );
 }
+
+/// The cross-world crossing row carries the destination world and the
+/// chain id, which the SGC UAT filters SigNoz on. Revert proof: drop
+/// `chain_id` (or `world`) from the `Content: cross-world teleporting
+/// entity` row in executor/transport.rs and this fails.
+#[tokio::test]
+async fn cross_world_teleport_row_carries_world_and_chain_id() {
+    use crate::test_support::LogCapture;
+    use tracing::Level;
+
+    let capture = LogCapture::install();
+    let mut mgr = make_space_mgr();
+    mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.is_player = true;
+        e.player_id = Some(42);
+        e.account_id = Some(7);
+    }
+    mgr.connect_entity(1);
+
+    let (tx, _rx) = mpsc::channel(16);
+    let engine = ChainEngine::new();
+    let resolved = ResolvedActions {
+        params: std::collections::HashMap::new(),
+        actions: vec![(
+            3128,
+            Action::CrossWorldTeleport {
+                world_name: "Dakara_E1".to_string(),
+                position: [96.87, -16.75, 243.23],
+            },
+        )],
+        action_delays: Vec::new(),
+    };
+    execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
+
+    let row = capture
+        .find_message(Level::INFO, "Content: cross-world teleporting entity")
+        .expect("Action::CrossWorldTeleport must log the cross-world teleporting row");
+    assert!(
+        row.has_field("world", "Dakara_E1"),
+        "cross-world row must carry the destination world; captured: {row:?}"
+    );
+    assert!(
+        row.has_field("chain_id", "3128"),
+        "cross-world row must carry the chain_id; captured: {row:?}"
+    );
+    assert!(
+        row.has_field("account_id", "7"),
+        "cross-world row must carry the player's account_id; captured: {row:?}"
+    );
+}
+
+/// A closed base channel logs the ERROR row with
+/// `reason = "base_channel_closed"` instead of failing silently, and leaves
+/// the player in place (the teardown runs only after a successful send).
+/// Revert proof: delete the `tracing::error!` in the GateTravel send-failure
+/// arm of executor/transport.rs and this fails.
+#[tokio::test]
+async fn cross_world_teleport_closed_channel_logs_base_channel_closed() {
+    use crate::test_support::LogCapture;
+    use tracing::Level;
+
+    let capture = LogCapture::install();
+    let mut mgr = make_space_mgr();
+    mgr.create_entity(1, "Agnos", [0.0, 0.0, 0.0], [0.0; 3])
+        .unwrap();
+    if let Some(e) = mgr.get_entity_mut(1) {
+        e.is_player = true;
+        e.player_id = Some(42);
+        e.account_id = Some(7);
+    }
+    mgr.connect_entity(1);
+
+    let (tx, rx) = mpsc::channel(16);
+    drop(rx);
+    let engine = ChainEngine::new();
+    let resolved = ResolvedActions {
+        params: std::collections::HashMap::new(),
+        actions: vec![(
+            3128,
+            Action::CrossWorldTeleport {
+                world_name: "Dakara_E1".to_string(),
+                position: [96.87, -16.75, 243.23],
+            },
+        )],
+        action_delays: Vec::new(),
+    };
+    execute_actions(resolved, 1, 42, &tx, &mut mgr, &engine).await;
+
+    let row = capture
+        .find_event(
+            Level::ERROR,
+            "CrossWorldTeleport: cell→base GateTravel send failed",
+            "base_channel_closed",
+        )
+        .expect("closed base channel must log the base_channel_closed ERROR row");
+    assert!(
+        row.has_field("chain_id", "3128"),
+        "send-failure row must carry the chain_id; captured: {row:?}"
+    );
+    assert!(
+        mgr.get_entity(1).is_some(),
+        "player must stay in place when the GateTravel send fails"
+    );
+}
