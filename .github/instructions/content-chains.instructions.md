@@ -279,6 +279,7 @@ beta_e1_m473_chains.sql     473 Inventory: 23070-23099 (23070-23083 used)
 beta_e1_m478_chains.sql     478 Instant IT: 23100-23129 (23100-23108 used)
 beta_e1_m1425_chains.sql    1425 SGU Database: 23130-23159 (23130-23136 used)
 beta_e1_m1426_chains.sql    1426 Amateur Photography: 23160-23189 (23160-23171 used)
+beta_e1_m1427_chains.sql    1427 The Ruins: 23190-23219 (23190-23195 used)
 ```
 
 ## Linked references
