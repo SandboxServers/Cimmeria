@@ -93,7 +93,7 @@ VALUES
   (8433, 'grant_stargate_address', 27, NULL, '{}', 0, 3);
 
 -- Chain 8434 PROJECT_FINAL_RECONSTRUCTION: 1654 step 4939, crossing C3. Dialling
--- SGC_W1 from the Dakara gate (world 61, D-DK24, F41) while 4939 "Report back to
+-- SGC_W1 by gate, from any world (D-DK24, F41) while 4939 "Report back to
 -- Gen. Hammond at the SGC" is active and objective 5961 is not yet done completes
 -- 5961 only. Never advance_step: that would also close 5962, which the SGC side
 -- (US-31) completes at Hammond. No teleport: the player arrives by the gate itself
