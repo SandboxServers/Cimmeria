@@ -150,7 +150,7 @@ A mismatch happens when a client first meets a build whose served version it doe
 | Resync guards (convergence, pacing, disconnect, relog, telemetry) | `crates/base-session/src/base/cooked_sync/tests/` | `no_category_is_ever_invalidated_without_being_repopulated`, … |
 | Dialog full regeneration | `crates/resources/src/base/dialog_overrides/mod.rs` | `DialogOverride`, `DialogScreen`, `DialogButton`, `DIALOG_OVERRIDES`, `generate_dialog_xml` |
 | Dialog patch of a shipped entry | `crates/resources/src/base/dialog_overrides/patch.rs` | `DialogPatch`, `ButtonPlan`, `apply_dialog_patch`, `apply_dialog_patches` |
-| Per-zone dialog patch tables | `crates/resources/src/base/dialog_overrides/patches_cellblock.rs`, `patches_castle.rs` | `CELLBLOCK_DIALOG_PATCHES`, `CASTLE_DIALOG_PATCHES` |
+| Per-zone dialog patch tables | `crates/resources/src/base/dialog_overrides/patches_cellblock.rs`, `patches_castle.rs`, `patches_beta_e1.rs` | `CELLBLOCK_DIALOG_PATCHES`, `CASTLE_DIALOG_PATCHES`, `BETA_E1_DIALOG_PATCHES` |
 | Shared Server-Build dialog emitter | `crates/resources/src/base/dialog_overrides/emit.rs` | `emit_cooked_dialog`, `escape_xml_attr`, `CookedDialog` |
 | Cooked-dialog reader | `crates/resources/src/base/dialog_overrides/parse.rs` | `parse_cooked_dialog` |
 | Apply both dialog kinds + bump | `crates/resources/src/base/resources/apply_overrides.rs` | `ResourceCache::apply_dialog_overrides` |
@@ -295,7 +295,7 @@ Field naming follows [docs/architecture/negative-logging-convention.md](negative
 
 ### Adding a dialog patch
 
-1. Add the `DialogPatch` to the zone table — `patches_cellblock.rs` for Castle_CellBlock, `patches_castle.rs` for Castle. One file per zone so two packets editing different zones never collide.
+1. Add the `DialogPatch` to the zone table — `patches_cellblock.rs` for Castle_CellBlock, `patches_castle.rs` for Castle, `patches_beta_e1.rs` for Beta_Site_Evo_1. One file per zone so two packets editing different zones never collide.
 2. Make `db/resources/Dialogs/Seed/dialog_screen_buttons.sql` agree in the same commit. The client renders from the patch; the seed is the committed record and what the dialog button linter reads. They are kept in sync by hand, exactly as the full-regeneration overrides already require.
 3. Check the two hard rules: a dialog keying a `dialog_choice` chain ends with zero buttons or a button on its final screen; and never add a button to 2300, 5021, 5020, 2574, 2575, 2577, 2581, 5003, 5004, 5008 or 5009.
 
