@@ -29,7 +29,7 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 
 -- [UO-14] ambient 63880-63959 (CIMMERIA_AUTHORING, droppable)
 -- CIMMERIA_AUTHORING (D-UO12, D-UO26): Omega's ambient population, cap 24. Droppable: delete this block, the [UO-14] template block and spawner_tests/union_omega/ambient.rs.
--- Coordinates and headings are the UO-01 placements (worknote keys amb.*, probed on the shipped navmeshes). Spawns 63892 (jaffa_market.1 and .4 both fail UO-02's nav guard) and 63902-63903 (bridge_e.1, bridge_w.1: no UO-01 point) have no row.
+-- Coordinates and headings are the UO-01 placements (worknote keys amb.*, probed on the shipped navmeshes). Spawns 63902-63903 (bridge_e.1, bridge_w.1: no placement, D-UO22) have no row, so 22 of the 24 cap are used.
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63880, -146.25, -38.02, -173.73, 5.7596, 18, 63860, 'UnionOmega_Ambient_cafeteria_1', NULL, true); -- amb.cafeteria.1
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63881, -142.69, -39.23, -165.90, 4.1886, 18, 63860, 'UnionOmega_Ambient_cafeteria_2', NULL, true); -- amb.cafeteria.2
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63882, -150.25, -39.08, -166.80, 2.6183, 18, 63860, 'UnionOmega_Ambient_cafeteria_3', NULL, true); -- amb.cafeteria.3
@@ -42,6 +42,12 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63889, 99.78, -26.62, -237.58, 5.7596, 18, 63860, 'UnionOmega_Ambient_library_1', NULL, true); -- amb.library.1
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63890, 101.61, -26.62, -230.75, 4.1888, 18, 63860, 'UnionOmega_Ambient_library_2', NULL, true); -- amb.library.2
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63891, 95.78, -26.62, -230.65, 2.6183, 18, 63860, 'UnionOmega_Ambient_library_3', NULL, true); -- amb.library.3
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63892, 297.22, -61.16, -106.85, 4.1888, 18, 63861, 'UnionOmega_Ambient_jaffa_market_1', NULL, true); -- amb.jaffa_market.1
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63893, 297.39, -60.82, -117.14, 5.7594, 18, 63861, 'UnionOmega_Ambient_jaffa_market_2', NULL, true); -- amb.jaffa_market.2
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63894, 300.68, -61.23, -104.85, 4.1886, 18, 63861, 'UnionOmega_Ambient_jaffa_market_3', NULL, true); -- amb.jaffa_market.3
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63895, 222.69, -63.63, -27.90, 5.7596, 18, 63861, 'UnionOmega_Ambient_arena_1', NULL, true); -- amb.arena.1
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63896, 215.86, -63.63, -26.07, 1.0472, 18, 63861, 'UnionOmega_Ambient_arena_2', NULL, true); -- amb.arena.2
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63897, 226.25, -63.63, -20.07, 4.1886, 18, 63861, 'UnionOmega_Ambient_arena_3', NULL, true); -- amb.arena.3
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63898, 87.99, 30.82, -21.75, 5.7599, 80, 63860, 'UnionOmega_Ambient_console_ne_1', NULL, true); -- amb.console_ne.1
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63899, -77.81, 30.82, -16.55, 2.6183, 80, 63860, 'UnionOmega_Ambient_console_nw_1', NULL, true); -- amb.console_nw.1
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63900, 85.89, 30.82, 36.63, 5.7599, 80, 63860, 'UnionOmega_Ambient_console_se_1', NULL, true); -- amb.console_se.1

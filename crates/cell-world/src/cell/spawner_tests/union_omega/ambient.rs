@@ -7,6 +7,9 @@ use crate::test_support::require_db_or_skip;
 
 const AMBIENT_TEMPLATES: std::ops::RangeInclusive<i32> = 63_860..=63_899;
 const AMBIENT_SPAWNS: std::ops::RangeInclusive<i32> = 63_880..=63_959;
+/// Omega's id block. A spawn in it that is not ambient is a cast, service or
+/// travel NPC, whatever its interaction_type (the cast templates use 0).
+const OMEGA_BLOCK: std::ops::RangeInclusive<i32> = 63_800..=63_999;
 /// D-UO26: the ambient cap. Change only with an owner ruling.
 const AMBIENT_CAP: usize = 24;
 const HOSTILE_FACTION: i32 = 10;
@@ -173,7 +176,11 @@ async fn live_db_omega_ambient_keeps_clear_of_services_and_travel() {
                 );
             }
         }
-        for o in rows.iter().filter(|o| o.1 == world && o.4 != 0) {
+        let is_service = |o: &&(i32, i32, f32, f32, i64)| {
+            o.1 == world
+                && (o.4 != 0 || (OMEGA_BLOCK.contains(&o.0) && !AMBIENT_SPAWNS.contains(&o.0)))
+        };
+        for o in rows.iter().filter(is_service) {
             let d = xz(x, z, o.2, o.3);
             assert!(
                 d >= MIN_SERVICE_CLEARANCE,
