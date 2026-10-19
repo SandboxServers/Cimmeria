@@ -206,19 +206,19 @@ From wave 5 on, `mod.rs` also gives `delays_of` (the `delay_ms` of each action o
 | 1 | DK-06a, DK-07, DK-08, DK-12a | Done (#1853 to #1856) | one `packet-reviewer`, fixes by `packet-coder` |
 | 2 | DK-09, DK-09b, DK-10a, DK-10e, DK-10fs | Done (#1867, #1869, #1871, #1875, #1876) | one `packet-reviewer` plus `mission-systems-advisor` read-only; fixes by `packet-coder` |
 | 3 | DK-10b, DK-10c, DK-10fc, DK-11, DK-12b, DK-12c | Done (#1881, #1883, #1885, #1887, #1889, #1892) | one `packet-reviewer` plus `mission-systems-advisor` read-only; fixes by `packet-coder` |
-| 3b (current) | DK-06b (text in packets/wave-3b-dk-06b.md), DK-10d-B | reviewed; shipping as PR #1894 and PR #1896 | one `packet-reviewer` for the pair; fixes by `packet-coder` |
-| 3c | DK-10d-A (wave-3b review findings folded in) | DK-06b **and** DK-10d-B merged; worktree from that `main` | one `packet-reviewer`; fixes by `packet-coder` |
-| M2 | owner UAT | waves 3, 3b and 3c merged | the owner, himself (no agent lab use); DK-U11 to DK-U17 |
-| 4 | DK-40 (scaffold), DK-41 (story props) | DK-41: none, dispatch now. DK-40: DK-06b merged (it needs `display_radio_dialog` in `labels_in`); worktree from that `main` | one `packet-reviewer` for the pair |
-| 5 | DK-13, DK-14a, DK-14b, DK-15 | DK-40 and DK-41 merged; all four in parallel | one `packet-reviewer` plus `mission-systems-advisor` read-only |
-| 6 | DK-30a, DK-30b, DK-31a, DK-31b, DK-32a, DK-33 | DK-31a: none, dispatch now with wave 4 (desk note). The rest: DK-40 and DK-41 merged; beside wave 5. **Merge holds:** DK-30b after SGC US-30, DK-33 after SGC US-31 | one `packet-reviewer` plus `mission-systems-advisor` read-only |
-| 6b | DK-31c (Ha'tak sequences) | DK-31a's note and DK-31b merged; the architect expands it | one `packet-reviewer` |
+| 3b | DK-06b (text in packets/wave-3b-dk-06b.md), DK-10d-B | Done (#1894, #1896) | one `packet-reviewer` for the pair; fixes by `packet-coder` |
+| 3c | DK-10d-A (wave-3b review findings folded in) | Done (#1897) | one `packet-reviewer`; fixes by `packet-coder` |
+| M2 | owner UAT | waves 3, 3b and 3c merged: **runnable now** | the owner, himself (no agent lab use); DK-U11 to DK-U17 |
+| 4 | DK-40 (scaffold), DK-41 (story props) | Done (#1898, #1899) | one `packet-reviewer` for the pair |
+| 5 | DK-13, DK-14a, DK-14b, DK-15 | Done (#1903, #1904, #1905, #1906) | one `packet-reviewer` plus `mission-systems-advisor` read-only |
+| 6 | DK-30a, DK-30b, DK-31a, DK-31b, DK-32a, DK-33 | DK-31a #1900, DK-30a #1907, DK-31b #1909, DK-32a #1910 merged (docs #1901). **Held:** DK-30b (`34abe129b`, `dk-30b`) after SGC US-30, DK-33 (`41686b50c`, `dk-33`) after SGC US-31; reviewed, PRs not opened | one `packet-reviewer` plus `mission-systems-advisor` read-only |
+| 6b (current) | DK-31c (Ha'tak sequences), DK-30b-n, DK-33-n (review nits in the held worktrees) | **Ready now**: DK-31c in a new worktree `dk-31c` from `main`; the nit packets in `dk-30b` and `dk-33` | one `packet-reviewer` for the three; fixes by `packet-coder` |
 | 7 | GDK1, DK-20, DK-21, DK-32b | **BlockedDecision D-DK5**, then the M2 playtest | architect expands first |
-| close | DK-99 | every other packet Done, Integrated with its UAT owed, or Blocked with its reason | `packet-reviewer` |
+| close | DK-99a, DK-99b, DK-99c, DK-99d ([wave 99](packets/wave-99.md)) | DK-99a: DK-31c merged. DK-99b and DK-99c: every shipping code packet merged, which depends on D-DK5 (D-DK38). DK-99d: the DK-99 PR merged | one `packet-reviewer` for DK-99a; one for DK-99b and DK-99c |
 
 Waves 5 and 6 are dormant in play until DK-21 ships 1647 (D-DK23): 1648 is offered on `done 1647`. Their packets are built and tested now; build order is not story order. Waves 4 to 6 need no lab and no owner input.
 
-Packet text: [packets/wave-1.md](packets/wave-1.md), [packets/wave-2.md](packets/wave-2.md) with [packets/wave-2-dk-10fs.md](packets/wave-2-dk-10fs.md), [packets/wave-3.md](packets/wave-3.md), [packets/wave-3b-dk-06b.md](packets/wave-3b-dk-06b.md), [packets/wave-4.md](packets/wave-4.md), [packets/wave-5.md](packets/wave-5.md), [packets/wave-6.md](packets/wave-6.md), [packets/wave-7-blocked.md](packets/wave-7-blocked.md).
+Packet text: [packets/wave-1.md](packets/wave-1.md), [packets/wave-2.md](packets/wave-2.md) with [packets/wave-2-dk-10fs.md](packets/wave-2-dk-10fs.md), [packets/wave-3.md](packets/wave-3.md), [packets/wave-3b-dk-06b.md](packets/wave-3b-dk-06b.md), [packets/wave-4.md](packets/wave-4.md), [packets/wave-5.md](packets/wave-5.md), [packets/wave-6.md](packets/wave-6.md), [packets/wave-6b.md](packets/wave-6b.md), [packets/wave-7-blocked.md](packets/wave-7-blocked.md), [packets/wave-99.md](packets/wave-99.md).
 
 ## Historical packets (shipped; do not re-dispatch)
 
@@ -255,25 +255,9 @@ The 2026-10-18 stubs were expanded on 2026-10-19 (architect, autonomous). What c
 | DK-31a, DK-31b | [wave 6](packets/wave-6.md) | DK-31b ships without sequences (D-DK30); DK-31a is a desk note feeding DK-31c |
 | DK-32a | [wave 6](packets/wave-6.md) | The peaceful 1653 path (courtyard, supplies, radio, report); the guards are DK-32b (wave 7) |
 | DK-33 | [wave 6](packets/wave-6.md) | Crossing C3 by DHD click; merge held for US-31 |
+| DK-31c, DK-30b-n, DK-33-n | [wave 6b](packets/wave-6b.md) | Expanded 2026-10-19 from DK-31a's note and its map-read addendum: four co-firing chains 8327-8330 (D-DK32 to D-DK36). The two nit packets are the wave-6 review's findings on the held packets |
 | GDK1, DK-20, DK-21, DK-32b | [wave 7 (blocked)](packets/wave-7-blocked.md) | Unchanged scope; BlockedDecision D-DK5 with the owner's options |
 
 ## DK-99 close-out
 
-**Role:** `documentation-writer` for the docs, `ops` for the operations. **Gate:** every other packet Done, Integrated with its UAT recorded, or recorded as BlockedDecision with the reason. **Branch / worktree:** `dakara/dk-99-closeout`, `dk-99`. **Commit:** `docs(dakara-e1): close out the Dakara_E1 rebuild campaign (DK-99)`.
-
-Docs (one PR):
-
-1. `docs/gap-analysis.md`, its area file under `docs/gap-analysis/`, and `docs/project-status.md`: once, for the whole campaign.
-2. `docs/content/zone-audit.md`: rewrite the Dakara_E1 and Dakara_E1_StoryRm sections from the README matrices.
-3. `docs/content/mission-chains.md`: one row per authored mission (63100 if D-DK1 F shipped, 1570 Dakara half, 1645, 1646 and whatever waves 4-6 shipped).
-4. `docs/guides/unified-uat.md#dakara_e1`: the M1 and M2 steps still owed, by DK-U id.
-5. README: the final PASS / BLOCKED matrix; every packet row Done or the reason it is not.
-
-Operations, each one ops dispatch:
-
-1. `pwsh tools/build-lane/rm-worktree.ps1 --merged` for every `dk-*` worktree.
-2. Delete the stale remote branches `dakara/dk01-dead-end-fix` and `dakara/dk03-cast-templates` (both merged under other names).
-3. If `.claude/state/active-campaign` reads `dakara-e1-rebuild`, the orchestrator writes it as an empty file. If it names another campaign, leave it.
-4. Board: post the handoff in the `dakara-e1-rebuild` subcategory (created at the first dispatch with `board campaign create "dakara-e1-rebuild"`): what shipped, the UAT owed, the open owner decisions.
-
-Checks: `pwsh tools/lint-md.ps1 <each changed file>`; `python tools/docs-gen/regen.py --check` if a generated block is near a changed line.
+Split into DK-99a to DK-99d on 2026-10-19 (D-DK38); the packet text is [packets/wave-99.md](packets/wave-99.md). In short: DK-99a puts the ledger's DK-U11 to DK-U31 in the unified UAT guide and renames its placement rows DK-P1 to DK-P9 (D-DK37), once DK-31c merges. DK-99b (`mission-chains.md`, `zone-audit.md`) and DK-99c (gap analysis, project status, final ledger, one PR with DK-99b) wait for every shipping code packet, which depends on D-DK5. DK-99d retires the worktrees, deletes the 22 merged `origin/dakara/*` branches (D-DK39), posts the board handoff and has the orchestrator empty `.claude/state/active-campaign`. The owner's UAT never blocks the close-out.
