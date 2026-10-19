@@ -98,13 +98,22 @@ fn omega_meshes_load_and_the_shipped_anchors_stand_on_them() {
 /// `reaches` follows a long corridor across the hub, and still refuses a
 /// point on another component. The Jaffa wing is about 260 m from Modi, past
 /// one 256-polygon corridor. Bridge E in world 80 stands on component 12,
-/// with no route from the pad's component 11 (UO-01 worknote).
+/// with no route from the pad's component 11 (UO-01 worknote). The hub island
+/// point checks the same refusal in the world that needs hops.
 #[test]
 fn reaches_follows_long_corridors_and_refuses_other_components() {
     let hub = mesh(HUB_MESH);
     let market = [297.22, -61.16, -106.85];
     standable(&hub, market, "Jaffa market point");
     assert!(reaches(&hub, MODI, market), "Modi reaches the Jaffa market");
+    // A hub point beside the arena that is on the mesh but on another component:
+    // the hop loop must stop, not creep to it.
+    let island = [200.0, -62.0, -100.0];
+    standable(&hub, island, "hub island point");
+    assert!(
+        !reaches(&hub, MODI, island),
+        "the hub island point is on another component than Modi"
+    );
     let cmd = mesh(CMD_MESH);
     let bridge_e = [144.78, 30.0, 10.22];
     standable(&cmd, bridge_e, "bridge E");
@@ -113,6 +122,7 @@ fn reaches_follows_long_corridors_and_refuses_other_components() {
         "bridge E is on another component than respawner 26"
     );
 }
+
 /// Omega's footers lift every sequence it reserves past its block, so a
 /// GM-made row never takes an Omega id.
 #[tokio::test]
