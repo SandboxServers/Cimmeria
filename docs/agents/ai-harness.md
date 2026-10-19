@@ -4,7 +4,7 @@
 > **Audience**: Contributors who change the Claude Code or Codex setup, and agents that need its rules
 > **Type**: Reference
 
-Every customization of the AI harnesses in this repo: the settings, the agent personas, the skills, the hooks and guards, the agent board, project memory, the review bots and the campaign cycle. The [README section](../../README.md#how-ai-development-works-here) summarizes it. The workflow itself is in [development-workflow.md](development-workflow.md).
+Every customization of the AI harnesses in this repo: the settings, the agent personas, the skills, the hooks and guards, the agent board, project memory, the review bots and the campaign cycle. The [README section](../../README.md#how-ai-development-works-here) summarizes it. The workflow itself is in [development-workflow.md](development-workflow.md), and [How we build with AI](ai-sdlc.md) is the reference behind the README's AI section.
 
 Windows with PowerShell 7 is fully supported; WSL, Linux, and Git Bash on Windows are not validated, but not unsupported. See [development-workflow.md](development-workflow.md#wsl-and-linux-hosts).
 

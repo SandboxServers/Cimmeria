@@ -38,9 +38,9 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | Python game logic scripts | 164 |
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
-| Documentation files | <!-- gen:docs-md-count -->1,111<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->14,721<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,416<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->12,214<!-- /gen:tests-ci-gated --> gated in CI) |
-| Live-DB regression guards | <!-- gen:tests-live-db -->1,772<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,135<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->14,729<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,417<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->12,222<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->1,773<!-- /gen:tests-live-db --> |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
 ## Document Map
@@ -293,7 +293,7 @@ See also: [technical/bigworld-version-analysis.md](technical/bigworld-version-an
 
 ### `architecture/` -- Cimmeria Server Architecture
 
-How the Cimmeria emulator itself is structured. <!-- gen:section-table-rows -->49<!-- /gen:section-table-rows --> documents.
+How the Cimmeria emulator itself is structured. <!-- gen:section-table-rows -->50<!-- /gen:section-table-rows --> documents.
 
 | Document | Description | Status |
 |----------|-------------|--------|
@@ -389,6 +389,7 @@ What an AI-assisted contributor (or their agents) needs that the code does not s
 
 | Document | Description | Status |
 |----------|-------------|--------|
+| [ai-sdlc.md](agents/ai-sdlc.md) | How we build with AI: the reference behind the README's AI section (campaign files, packets, tools and models, review-loop detail, guards in detail, shipping, honest numbers) | Complete |
 | [development-workflow.md](agents/development-workflow.md) | Ticket-to-PR pipeline, the roster of domain advisors under `.claude/agents/`, rules for running agents in parallel (worktrees, the build lane, one test DB each, Dev Drive seeding, cleanup), definition of done | Complete |
 | [ai-harness.md](agents/ai-harness.md) | Every customization of the AI harnesses here: settings, agents, skills, hooks and guards, board, memory, review bots, and the campaign cycle with its escalation ladder | Complete |
 | [doc-update-map.md](agents/doc-update-map.md) | The "what changed â†’ what to update" map every PR is reviewed against; moved out of `CLAUDE.md` so it loads only when a PR is being finished or reviewed | Complete |
