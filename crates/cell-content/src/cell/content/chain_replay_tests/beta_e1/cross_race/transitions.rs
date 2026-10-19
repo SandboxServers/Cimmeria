@@ -6,8 +6,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::super::*;
-use super::login_binds::{fold_binds, in_chain_order, login_binds, stamp, step_objectives};
-use super::walk::{archetypes, beta_trigger_keys, walk, Race, TriggerKeys, WalkState};
+use super::login_binds::{fold_binds, in_chain_order, login_binds};
+use super::walk::{apply, archetypes, beta_trigger_keys, walk, Race, TriggerKeys, WalkState};
 use crate::test_support::require_db_or_skip;
 
 /// Binds the walk does not reach yet, as (state label, dialog set, slot). An
@@ -39,8 +39,38 @@ fn key(s: &WalkState) -> Key {
     }
 }
 
+/// `k` without its counters. The walk holds every counter at 0 or 5 only, so a
+/// click that moves a counter by one never lands on a walk state's counters;
+/// matching the shape alone keeps those clicks in the check. The counter values
+/// still carry into the state the login is read at.
+fn shape(k: &Key) -> Key {
+    Key {
+        counters: BTreeMap::new(),
+        ..k.clone()
+    }
+}
+
 /// A walk state rebuilt from its canonical form, for `apply` and the login.
-fn state_of(k: &Key, label: &str, archetype: i64) -> WalkState {
+/// The undone objectives of each active step (`objectives`) read as `active`,
+/// as they do in the walk.
+fn state_of(
+    k: &Key,
+    label: &str,
+    archetype: i64,
+    objectives: &BTreeMap<i64, Vec<i64>>,
+) -> WalkState {
+    let objectives_active = k
+        .active
+        .iter()
+        .flat_map(|&(m, step)| {
+            objectives
+                .get(&step)
+                .into_iter()
+                .flatten()
+                .map(move |&o| (m, o))
+        })
+        .filter(|pair| !k.objectives.contains(pair))
+        .collect();
     WalkState {
         label: label.to_string(),
         archetype,
@@ -51,6 +81,7 @@ fn state_of(k: &Key, label: &str, archetype: i64) -> WalkState {
             .collect(),
         step: None,
         objectives_done: k.objectives.iter().copied().collect(),
+        objectives_active,
         overlap: k.active.iter().copied().collect(),
         counters: k.counters.iter().map(|(n, v)| (n.clone(), *v)).collect(),
     }
@@ -127,7 +158,31 @@ fn trigger_events(keys: &TriggerKeys, archetype: i64) -> Vec<(TriggerType, Execu
                 .iter()
                 .map(|&item| (TriggerType::ItemUse, item_use_ctx(item, archetype))),
         )
+        .chain(
+            keys.regions
+                .iter()
+                .map(|region| (TriggerType::RegionEnter, region_ctx(region, archetype))),
+        )
         .collect()
+}
+
+/// The objectives of each step, from `mission_objectives`, read once per test.
+async fn step_objectives(pool: &PgPool) -> BTreeMap<i64, Vec<i64>> {
+    let rows: Vec<(i32, i32)> = sqlx::query_as(
+        "SELECT step_id, objective_id FROM resources.mission_objectives \
+         ORDER BY step_id, objective_id",
+    )
+    .fetch_all(pool)
+    .await
+    .expect("read the objectives of each step");
+    let mut by_step: BTreeMap<i64, Vec<i64>> = BTreeMap::new();
+    for (step, objective) in rows {
+        by_step
+            .entry(i64::from(step))
+            .or_default()
+            .push(i64::from(objective));
+    }
+    by_step
 }
 
 /// The first step of every mission, by `mission_steps.index`.
@@ -159,8 +214,9 @@ async fn mission_accepted_used(pool: &PgPool) -> bool {
 /// For each walk state `s`, each trigger `e` and each archetype of the race:
 /// the binds `s` gives, plus what the click and its follow-ups bind, must be
 /// the binds a login at `s'` gives (as (dialog set, slot) sets). `s'` is the
-/// state the click leaves; a transition to a state that is not in the walk
-/// (a counter at 3, say) is skipped and counted.
+/// state the click leaves, matched to the walk by missions, steps and
+/// objectives (counters move freely); a transition to a state that is not in
+/// the walk (an objective set no walk state has, say) is skipped and counted.
 /// Revert: delete restore chain 23313 (481 S1762 login bind). The Carter click
 /// at S1761 (chain 23312) then expects (2467, 2305) at S1762, where login has
 /// none, and this test must fail.
@@ -175,24 +231,24 @@ async fn transitions_keep_login_binds_consistent() {
     let (mut checked, mut skipped) = (0usize, 0usize);
     for race in Race::ALL {
         let states = walk(&pool, race).await;
-        let known: BTreeSet<Key> = states.iter().map(key).collect();
+        let known: BTreeSet<Key> = states.iter().map(|s| shape(&key(s))).collect();
         for state in &states {
             for archetype in archetypes(state) {
                 for (trigger, ctx) in trigger_events(&keys, archetype) {
-                    let resolved = fire(&engine, trigger.clone(), &stamp(ctx, state, &objectives));
+                    let resolved = fire(&engine, trigger.clone(), &apply(ctx, state));
                     let clicked = in_chain_order(&resolved);
                     let mut next = key(state);
                     for action in &clicked {
                         move_state(&mut next, action, &first);
                     }
-                    if !known.contains(&next) {
+                    if !known.contains(&shape(&next)) {
                         skipped += 1;
                         continue;
                     }
                     checked += 1;
-                    let after = state_of(&next, &state.label, archetype);
+                    let after = state_of(&next, &state.label, archetype, &objectives);
 
-                    let mut expected = login_binds(&engine, state, archetype, &objectives);
+                    let mut expected = login_binds(&engine, state, archetype);
                     fold_binds(&mut expected, &clicked);
                     for action in &clicked {
                         let follow_up = match action {
@@ -211,12 +267,12 @@ async fn transitions_keep_login_binds_consistent() {
                             _ => None,
                         };
                         if let Some((kind, ctx)) = follow_up {
-                            let followed = fire(&engine, kind, &stamp(ctx, &after, &objectives));
+                            let followed = fire(&engine, kind, &apply(ctx, &after));
                             fold_binds(&mut expected, &in_chain_order(&followed));
                         }
                     }
 
-                    let actual = login_binds(&engine, &after, archetype, &objectives);
+                    let actual = login_binds(&engine, &after, archetype);
                     let diff: Vec<(i64, i64)> = expected
                         .symmetric_difference(&actual)
                         .copied()
