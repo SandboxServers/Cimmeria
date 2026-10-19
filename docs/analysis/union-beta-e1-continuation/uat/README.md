@@ -41,6 +41,8 @@ Each run is one driver dispatch from one fixture. Rows marked "graded from" have
 | 12 | [UB-U6b](UB-U6b.md) fallbacks only | F-B247 ... F-B576 | - | 15 each |
 | - | [UB-U1b](UB-U1b.md), [UB-U2b](UB-U2b.md), [UB-U3c](UB-U3c.md), [UB-U3d](UB-U3d.md), [UB-U4b](UB-U4b.md), [UR1](UR1.md) | - | graded from the runs above | - |
 
+Between two runs of one character: logout (`lab_logout`), restage, then dispatch; the stager is refused with `online` while the character is in the world. When a FIND of a far NPC or cage returns nothing, the step's retry rule applies (TP to the nearest stand, FIND again, else `not found` and `not-run`).
+
 Orders 1 and 2 first: they prove the arrival, the Human arc and the reward, and the rest reuse their stands. Order 12 runs only for a button its arc run did not press.
 
 ## Not runnable until UO-16 (HELD-B16)
@@ -58,7 +60,7 @@ UB-U9 needs two lab clients at once (the lab runs up to five per daemon, #1312; 
 
 ## Notes for the close-out
 
-- The row text for UB-U2b names dialogs 5040 and 5047 on an "Asgard fixture". Both are Free Jaffa dialogs: 5040 is bind-only (never displayed) and 5047 belongs to 1503, which is not built (D-UB5 A). [UB-U2b](UB-U2b.md) grades the speaker-0 dialogs the server does show instead (4663, 5042, 5043). The row text needs a fix at the next status update.
-- unified-uat.md's Beta known-gaps line still says "Mission rewards are xp 0 and naq 0 (D-UB8)". U-D07 (approved 2026-10-19) replaced that, so the line is stale. Not edited here; a follow-up for the next status update (status docs change once per campaign).
-- UB-U5c's row text says each subject click "shows that subject's dialog"; the UB-35 design says the matched chain suppresses the bound blurb, so the objective update is the feedback. [UB-U5c](UB-U5c.md) grades visible feedback on the first press and records which one shows; reconcile the row text when it runs.
+- The row text for UB-U2b names dialogs 5040 and 5047 on an "Asgard fixture". Both are Free Jaffa dialogs: 5040 is bind-only (never displayed) and 5047 belongs to 1503, which is not built (D-UB5 A). [UB-U2b](UB-U2b.md) grades the speaker-0 dialogs the server does show instead (4663, 5042, 5043). The row text is fixed in unified-uat.md.
+- unified-uat.md's Beta known-gaps line still says "Mission rewards are xp 0 and naq 0 (D-UB8)". U-D07 (approved 2026-10-19) replaced that, so the line was stale; unified-uat.md now says so.
+- UB-U5c's row text says each subject click "shows that subject's dialog"; the UB-35 design says the matched chain suppresses the bound blurb, so the objective update is the feedback. [UB-U5c](UB-U5c.md) grades visible feedback on the first press and records which one shows; the row text now says the same.
 - UB-U7b has no fixture of its own: the login resync (chain 23053) removes staged cages, so the run collects them after login and splits the stack in the bag.

@@ -40,7 +40,7 @@ At each stop: TP(the stand) unless the step says otherwise. FIND each template o
 Run A:
 
 1. `lab_ensure_in_world {"lease_id":L,"character":"Uat Fxbetahumdefa"}`. WAIT17. DIALOG.
-2. Cage: TP, FIND(2320), camera, SHOT.
+2. Cage: TP, FIND(2320), camera, SHOT. If FIND returns nothing, TP to the stand nearest the target and FIND again; if still nothing, record `not found` and mark that item `not-run`, never `pass`.
 3. Scanners: TP, FIND(2330), camera, SHOT.
 4. Beam up: FIND(3), take the match nearest (746.6, -19.2, 68.8), APPROACH, TAP(it). Then `client_batch {"lease_id":L,"steps":[{"op":"wait","ms":5000},{"op":"player_state","fields":["world_id","position"]}, UTC]}`. Record the position (expect the deck, y about 158).
 5. Deck (no TP): FIND(2331), FIND(2334), FIND(2305), camera on 2331, SHOT(`u2c-deck`). Then camera on Mimir and SHOT(`u2-mimir`).

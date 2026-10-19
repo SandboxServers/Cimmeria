@@ -22,7 +22,7 @@ Stage F-H3 and dispatch at once.
 
 1. `lab_ensure_in_world {"lease_id":L,"character":"Uat Fxbetahumdefa"}`. WAIT17. DIALOG.
 2. BAG. Expect no Xenobiology Cage.
-3. `client_entity_find {"lease_id":L,"template_id":2320,"fields":["matches","player"]}`. Record the five ids and match them to the stands by position.
+3. `client_entity_find {"lease_id":L,"template_id":2320,"fields":["matches","player"]}`. Record the five ids and match them to the stands by position. If FIND returns nothing, TP to the stand nearest the target and FIND again; if still nothing, record `not found` and mark that item `not-run`, never `pass`.
 4. TAP(cage 1). TP(stand 2). TAP(cage 2). TP(stand 3). TAP(cage 3).
 5. BAG. Record the cage stack (expect 3).
 6. RELOG (character `Uat Fxbetahumdefa`).
