@@ -237,6 +237,11 @@ async fn accept_starts_1147_and_drops_the_blurb() {
     set_step(&mut active, 3458);
     let resolved = fire(&engine, TriggerType::DialogChoice, &active);
     assert!(m1147_matched(&resolved).is_empty());
+    // 421 not finished: the Accept must not start 1147 (23392's 421 gate).
+    let mut early = choice(OFFER_DIALOG, Some(ASGARD));
+    set_421_open(&mut early);
+    let resolved = fire(&engine, TriggerType::DialogChoice, &early);
+    assert!(m1147_matched(&resolved).is_empty());
 }
 
 /// Revert: drop 23393's `advance_step` or its S3458 gate. Then the machine click
