@@ -196,7 +196,7 @@ Source: [campaign-metrics findings](docs/analysis/campaign-metrics/findings.md).
 - One real packet followed from brief to merge: [A day in the life of one packet](docs/agents/ai-sdlc-example.md).
 - The campaign cycle: the [campaign-packet skill](.claude/skills/campaign-packet/SKILL.md). Codex: [AGENTS.md](AGENTS.md).
 
-**Platform:** Windows with PowerShell 7 is fully supported; WSL, Linux, and Git Bash on Windows are not validated, but not unsupported ([details](docs/agents/development-workflow.md#wsl-and-linux-hosts)).
+**Platform:** Windows with PowerShell 7 is fully supported; WSL, Linux, and Git Bash on Windows are not validated, but not unsupported. On Linux and WSL, agents use Bash and the `.sh` twins ([details](docs/agents/development-workflow.md#wsl-and-linux-hosts)).
 
 ## Quick Start
 
