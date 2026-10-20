@@ -16,8 +16,12 @@ use crate::minigame::game::{GameOutput, MinigameInstance};
 use crate::minigame::protocol::SfsValue;
 use crate::minigame::session::MinigameSession;
 
+mod moves;
 mod setup;
 
+#[cfg(test)]
+#[path = "tests_moves.rs"]
+mod tests_moves;
 #[cfg(test)]
 #[path = "tests_setup.rs"]
 mod tests_setup;
@@ -74,6 +78,11 @@ pub(crate) struct ConverseHumanoidGame {
     /// One flag per entry in `setup::PLAYER_VICTORIES`.
     player_victory_used: Vec<bool>,
     outcome: Option<Outcome>,
+    /// The player's play into a container the NPC has not filled: the
+    /// container and the suit the NPC answers (spec section 8).
+    npc_focus: Option<(usize, f64)>,
+    /// Shown in refusal logs, paired with `entity_id`.
+    player_name: Option<String>,
     intelligence: u32,
     tech_competency: u32,
     player_level: u32,
@@ -109,6 +118,8 @@ impl ConverseHumanoidGame {
             num_resets: 0,
             player_victory_used: vec![false; setup::PLAYER_VICTORIES.len()],
             outcome: None,
+            npc_focus: None,
+            player_name: session.player_name.clone(),
             intelligence: session.intelligence,
             tech_competency: session.tech_competency,
             player_level: session.player_level,
