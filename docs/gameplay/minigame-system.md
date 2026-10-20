@@ -67,7 +67,7 @@ Content chain fires Action::StartMinigame { minigame_type, difficulty,
 ### ConverseBasicHumanoid rules
 
 - **Dominance.** Two cards compare by `(p - n + 8) % 9` over the nine suit values: below 4 is the NPC's point, 4 to 7 the player's, 8 a tie (spec section 6).
-- **Deals.** Logic3 deals 3 cards a side with one container, then mediation5 deals 4. A deal ends when both sides have played every card; the timers then hold until the client sends `processreset`.
+- **Deals.** Logic3 deals 3 cards a side with one container, then mediation5 deals 4. A deal ends when a hand ends with every card played (`newdeal`); the timers then hold until the client sends `processreset`, which is refused before that.
 - **Hands.** A hand ends on `newhand`, which is refused until the NPC has answered, or after 6 s. Each container goes to the stronger card, and a sweep of all containers adds one point.
 - **NPC.** Every 1.5 s the NPC plays the card that scores best against the player's hand. It answers a play into an empty NPC container within 0.5 s.
 - **Trump passives.** Ability bits 15-18 add +5, +10, +15 and +25 to the accord bonus (spec section 7).

@@ -7,8 +7,7 @@
 //! dispatch and the [`MinigameInstance`] impl.
 //!
 //! The `contest_total` column of the game-type table is kept for the spec
-//! table and read by no slice, so dead-code is allowed for this folder.
-#![allow(dead_code)]
+//! table; it is the only unread item.
 
 use std::collections::HashMap;
 
@@ -36,7 +35,7 @@ mod tests_setup;
 /// Set by MG-CH3: victory is server-decided and the port is reachable.
 pub(crate) const PORTED: bool = true;
 
-/// The placeholder until `PORTED` is set (C4): the port is not reachable yet.
+/// The real game once `PORTED` is set (C4); the placeholder shell otherwise.
 pub(crate) fn create(session: &MinigameSession) -> Box<dyn MinigameInstance> {
     if PORTED {
         Box::new(ConverseHumanoidGame::new(session))
@@ -94,6 +93,8 @@ pub(crate) struct ConverseHumanoidGame {
     /// One flag per entry in `setup::PLAYER_VICTORIES`.
     player_victory_used: Vec<bool>,
     outcome: Option<Outcome>,
+    /// True from the newdeal reply until processreset: the NPC and hand timers are held.
+    awaiting_reset: bool,
     /// The player's play into a container the NPC has not filled: the
     /// container and the suit the NPC answers (spec section 8).
     npc_focus: Option<(usize, f64)>,
@@ -134,6 +135,7 @@ impl ConverseHumanoidGame {
             num_resets: 0,
             player_victory_used: vec![false; setup::PLAYER_VICTORIES.len()],
             outcome: None,
+            awaiting_reset: false,
             npc_focus: None,
             player_name: session.player_name.clone(),
             intelligence: session.intelligence,

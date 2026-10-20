@@ -47,11 +47,27 @@ fn sent_commands(out: &[GameOutput]) -> Vec<String> {
         .collect()
 }
 
-/// Every play made: the deal is over and the timers are held.
+/// Every play made and `newdeal` sent: the deal is over and the timers are held.
 fn finish_deal(game: &mut ConverseHumanoidGame) {
     let card_total = GAME_TYPES[game.game_type].card_total as u32;
     game.player_total_plays = card_total;
     game.npc_total_plays = card_total;
+    game.awaiting_reset = true;
+}
+
+/// One tick as the session runs it: the player plays the first card of its
+/// hand while its contest has room, then the tick. Returns both outputs.
+fn play_and_tick(game: &mut ConverseHumanoidGame) -> Vec<GameOutput> {
+    let mut out = Vec::new();
+    let container_total = GAME_TYPES[game.game_type].container_total;
+    if let Some(&suit) = game.player_hand.first() {
+        if game.player_contest_plays.len() < container_total {
+            let params = fields(&[("num", 0.0), ("suit", suit)]);
+            out.extend(game.message("playermove", &params));
+        }
+    }
+    out.extend(game.tick());
+    out
 }
 
 #[test]
@@ -61,9 +77,33 @@ fn golden_a_idle_hand_checks_clean() {
 }
 
 #[test]
+fn golden_b_first_deal_checks_clean() {
+    let golden = include_str!("../../../../tests/scripts/converse_humanoid/b_first_deal.mgs");
+    assert_eq!(check_script(golden), Ok(()));
+}
+
+#[test]
 fn golden_c_rejected_inputs_check_clean() {
     let golden = include_str!("../../../../tests/scripts/converse_humanoid/c_rejected.mgs");
     assert_eq!(check_script(golden), Ok(()));
+}
+
+/// A one-off search for golden B's seed (spec section 9): the first seed whose
+/// first deal is NPC `[0, 4, 8]` against player `[0, 4, 8]`. Run it with
+/// `--run-ignored only --no-capture`.
+#[test]
+#[ignore]
+fn find_golden_b_seed() {
+    for seed in 0..100_000 {
+        let mut game =
+            ConverseHumanoidGame::new(&MinigameSession::offline("ConverseBasicHumanoid", 1, seed));
+        game.started();
+        if game.npc_hand == [0.0, 4.0, 8.0] && game.player_hand == [0.0, 4.0, 8.0] {
+            println!("golden B seed {seed}");
+            return;
+        }
+    }
+    panic!("no seed below 100000 deals [0, 4, 8] to both sides");
 }
 
 #[test]
@@ -87,6 +127,63 @@ fn timers_hold_after_newdeal_until_processreset() {
     assert_eq!(game.game_type, 1, "logic3 steps to mediation5");
     assert_eq!(game.npc_last_time, game.time_remaining);
     assert_eq!(game.hand_last_time, game.time_remaining);
+}
+
+#[test]
+fn a_deal_played_by_ticks_ends_in_newdeal_then_holds() {
+    let mut game = started(7);
+    let mut out = Vec::new();
+    for _ in 0..200 {
+        out.extend(play_and_tick(&mut game));
+        if sent_commands(&out).iter().any(|c| c.as_str() == "newdeal") {
+            break;
+        }
+    }
+    assert!(
+        sent_commands(&out).iter().any(|c| c.as_str() == "newdeal"),
+        "the deal ends on the hand timer"
+    );
+    assert!(game.awaiting_reset);
+    assert!(
+        game.player_score + game.npc_score > 0.0,
+        "the last hand was scored before newdeal"
+    );
+    assert!(tick_n(&mut game, 24).is_empty());
+    assert!(game.message("newhand", &HashMap::new()).is_empty());
+    let out = game.message("processreset", &HashMap::new());
+    assert_eq!(sent_commands(&out), ["fullgamestate"]);
+    assert!(!game.awaiting_reset);
+    assert_eq!(game.game_type, 1, "logic3 steps to mediation5");
+}
+
+#[test]
+fn processreset_before_newdeal_is_refused_even_when_all_cards_are_played() {
+    let mut game = started(7);
+    let card_total = GAME_TYPES[game.game_type].card_total as u32;
+    game.player_total_plays = card_total;
+    game.npc_total_plays = card_total;
+    assert!(game.message("processreset", &HashMap::new()).is_empty());
+    assert_eq!(game.num_resets, 0);
+}
+
+#[test]
+fn npc_winning_last_hand_is_scored_by_the_hand_timer() {
+    let mut game = started(7);
+    // The last card of each side: the player's 0 against the NPC's 5, which
+    // wins (spec section 6). The NPC has not answered yet.
+    game.player_hand = vec![0.0];
+    game.npc_hand = vec![5.0];
+    game.player_total_plays = 2;
+    game.npc_total_plays = 2;
+    let fields_play = fields(&[("num", 0.0), ("suit", 0.0)]);
+    assert!(!game.message("playermove", &fields_play).is_empty());
+    // Before the hand ends the deal is not held: processreset is refused.
+    assert!(game.message("processreset", &HashMap::new()).is_empty());
+    let out = tick_n(&mut game, 30);
+    assert!(sent_commands(&out).iter().any(|c| c.as_str() == "newdeal"));
+    assert_eq!(game.npc_score, 2.0, "the NPC's point and its sweep");
+    assert_eq!(game.player_score, 0.0);
+    assert!(game.awaiting_reset);
 }
 
 #[test]

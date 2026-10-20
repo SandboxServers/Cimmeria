@@ -57,18 +57,6 @@ impl ConverseHumanoidGame {
         self.timer_state == 1 && self.outcome.is_none()
     }
 
-    /// Logs a refused command at WARN and gives no output (spec section 5).
-    fn refuse(&self, command: &str, reason: &str) -> Vec<GameOutput> {
-        tracing::warn!(
-            entity_id = self.entity_id,
-            entity_name = self.player_name.as_deref(),
-            command,
-            reason,
-            "ConverseBasicHumanoid command refused"
-        );
-        Vec::new()
-    }
-
     /// The `updatecards` message after a play. `num` is the card's index in
     /// the hand that played, and `container` the container it went into.
     fn update_cards(&self, user: &str, num: f64, suit: f64, container: usize) -> GameOutput {
@@ -94,27 +82,27 @@ impl ConverseHumanoidGame {
         container: Option<f64>,
     ) -> Vec<GameOutput> {
         if !self.is_running() {
-            return self.refuse("playermove", "not_running");
+            return self.reject("playermove", "not_running");
         }
         if !num.is_finite() {
-            return self.refuse("playermove", "num_not_finite");
+            return self.reject("playermove", "num_not_finite");
         }
         let row = &GAME_TYPES[self.game_type];
         // A hand fills each container once, so it holds `container_total` plays.
         if self.player_contest_plays.len() >= row.container_total {
-            return self.refuse("playermove", "contest_full");
+            return self.reject("playermove", "contest_full");
         }
         let Some(index) = self.player_hand.iter().position(|&card| card == suit) else {
-            return self.refuse("playermove", "suit_not_in_hand");
+            return self.reject("playermove", "suit_not_in_hand");
         };
         let c = match container {
             Some(value) => match container_index(value, row.container_total) {
                 Some(c) if self.player_empty[c] => c,
-                _ => return self.refuse("playermove", "container_unavailable"),
+                _ => return self.reject("playermove", "container_unavailable"),
             },
             None => match self.player_empty.iter().position(|&empty| empty) {
                 Some(c) => c,
-                None => return self.refuse("playermove", "no_free_container"),
+                None => return self.reject("playermove", "no_free_container"),
             },
         };
 
@@ -237,14 +225,18 @@ impl ConverseHumanoidGame {
     /// timer calls `end_hand` directly.
     pub(super) fn new_hand(&mut self) -> Vec<GameOutput> {
         if !self.is_running() {
-            return self.refuse("newhand", "not_running");
+            return self.reject("newhand", "not_running");
+        }
+        // The hand already ended with `newdeal`; a repeat must not score again.
+        if self.awaiting_reset {
+            return self.reject("newhand", "awaiting_reset");
         }
         let row = &GAME_TYPES[self.game_type];
         let npc_can_answer =
             self.npc_contest_plays.len() < row.container_total && !self.npc_hand.is_empty();
         let answered = (0..row.container_total).all(|c| self.player_empty[c] || !self.npc_empty[c]);
         if npc_can_answer && !answered {
-            return self.refuse("newhand", "npc_not_answered");
+            return self.reject("newhand", "npc_not_answered");
         }
         self.end_hand()
     }
@@ -269,6 +261,8 @@ impl ConverseHumanoidGame {
         }
         let mut out = self.process_score();
         self.clear_containers();
+        // Held until processreset when the deal ends: the timers and newhand wait.
+        self.awaiting_reset = deal_over;
         let cmd = if deal_over { "newdeal" } else { "emptyhand" };
         out.push(GameOutput::Send(sfs_vars! {
             "_cmd" => SfsValue::String(cmd.to_string()),

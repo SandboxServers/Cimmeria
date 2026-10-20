@@ -1,6 +1,6 @@
 game ConverseBasicHumanoid difficulty 1 seed 7
 start
-< fullgamestate {cardTotal=3, containerTotal=1, gameType=logic3, isSpectator=false, npcCardsArray={0=0, 1=0, 2=4}, npcContestPlays={}, npcScore=0, npcTotalPlays=0, npcType=humanoid, numResets=0, playerCardsArray={0=4, 1=8, 2=8}, playerContestPlays={}, playerScore=0, playerTotalPlays=0, playerVictoryConditions={0=focusdamage1, 1=focusdamage2}, timeRemaining=30, timerState=1}
+< fullgamestate {CA0=0, CA1=0, CA2=0, CA3=0, CA4=0, cardTotal=3, containerTotal=1, gameType=logic3, instcc=-1, isSpectator=false, npcCardsArray={0=0, 1=0, 2=4}, npcContestPlays={}, npcScore=0, npcTotalPlays=0, npcType=humanoid, numResets=0, playerCardsArray={0=4, 1=8, 2=8}, playerContestPlays={}, playerScore=0, playerTotalPlays=0, playerVictoryConditions={0=focusdamage1, 1=focusdamage2}, timeRemaining=30, timerState=1}
 tick 12
 < updatecards {container=0, npcTotalPlays=1, num=2, playerTotalPlays=0, suit=4, user=npc}
 tick 12

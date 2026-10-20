@@ -6,7 +6,7 @@ use crate::minigame::game::GameOutput;
 use crate::minigame::protocol::SfsValue;
 use crate::sfs_vars;
 
-use super::setup::{self, GAME_TYPES, PLAYER_VICTORIES};
+use super::setup::{self, PLAYER_VICTORIES};
 use super::{ConverseHumanoidGame, Outcome, HAND_TIMER, NPC_TIMER};
 
 /// Seconds the countdown loses per tick.
@@ -15,16 +15,9 @@ const TICK_SECONDS: f64 = 0.25;
 const NPC_INTERVAL: f64 = 1.5;
 
 impl ConverseHumanoidGame {
-    /// Whether the deal is over: both sides have made every play. The NPC and
-    /// hand timers are held from `newdeal` until `processreset`.
-    pub(super) fn deal_over(&self) -> bool {
-        let card_total = GAME_TYPES[self.game_type].card_total as u32;
-        self.player_total_plays == card_total && self.npc_total_plays == card_total
-    }
-
     /// One 250 ms tick (spec section 8). The countdown runs first, and at zero
     /// the game ends. Otherwise the NPC moves every 1.5 s and the hand ends
-    /// every 6 s; both are held while the deal is over.
+    /// every 6 s; both are held from `newdeal` until `processreset`.
     pub(super) fn tick_timers(&mut self) -> Vec<GameOutput> {
         if self.outcome.is_some() {
             return Vec::new();
@@ -35,7 +28,7 @@ impl ConverseHumanoidGame {
         if self.time_remaining <= 0.0 && self.timer_state >= 1 {
             return self.check_for_victory();
         }
-        if self.deal_over() {
+        if self.awaiting_reset {
             return Vec::new();
         }
         let mut out = Vec::new();
@@ -73,12 +66,13 @@ impl ConverseHumanoidGame {
     /// timers start again. With under a second left the original ends the game
     /// through `checkForVictory`.
     pub(super) fn process_reset(&mut self) -> Vec<GameOutput> {
-        if !self.deal_over() {
+        if !self.awaiting_reset {
             return self.reject("processreset", "deal_not_over");
         }
         if self.time_remaining.floor() <= 0.0 {
             return self.check_for_victory();
         }
+        self.awaiting_reset = false;
         self.num_resets += 1;
         self.contests_without_accord += 1;
         self.game_type = setup::next_game_type(self.game_type);
