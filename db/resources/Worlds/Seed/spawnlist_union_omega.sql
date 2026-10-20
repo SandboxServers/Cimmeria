@@ -126,6 +126,12 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- [UO-36] end
 
 -- [UO-39] begin: spawns 63809, 63824-63827
+-- CIMMERIA_RECONSTRUCTION, navmesh-sealed (UO-37)
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63809, -39.00, -45.02, 21.00, 1.5708, 18, 63809, 'UnionOmega_AsgardTrainer', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63824, -42.00, -45.02, 24.00, 1.6952, 18, 63843, 'UnionOmega_AsgardProgramsT1', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63825, -42.00, -45.02, 27.00, 1.8158, 18, 63844, 'UnionOmega_AsgardProgramsT2', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63826, -42.00, -45.02, 30.00, 1.9296, 18, 63845, 'UnionOmega_AsgardProgramsT3', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63827, -39.00, -45.02, 30.00, 1.9757, 18, 63846, 'UnionOmega_AsgardProgramsT4', NULL, true);
 -- [UO-39] end
 
 -- [UO-40] begin: spawns 63828-63835
