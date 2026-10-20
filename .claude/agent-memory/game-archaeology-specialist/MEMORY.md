@@ -133,3 +133,7 @@ Each entry tagged with bucket assignment per #264 step 4. Bible chapter targets 
 
 - [avatarUpdate rotation source](avatar-update-rotation-source.md) — wire angles = pawn Rotation, never camera; pitch/roll 256/π; server unpack doubles pitch
 - [SGC_W1 Union meshes and sequences](sgc-w1-union-meshes-sequences.md) - Failsafe/ViewScreen02/chair/crate exports, name_id fallbacks, 10047/10060 = 6100/6113 (US-02)
+
+## Minigames (MG-R3, 2026-10-19)
+
+- [GoauldCrystals extension rules](goauld-crystals-extension-rules.md) — victory = powered finish cell; unseeded RNG; Python is a Livewire copy; no core shared with CrystalGame
