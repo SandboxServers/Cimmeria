@@ -469,7 +469,7 @@ result_code, on_victory_chains }` and unconditionally calls `fire_chain_by_id` f
 chain on victory. `fire_chain_by_id` (`event_dispatch/mod.rs:51-80`) "bypasses trigger
 matching" — it has no mission-state check, no "has this chain already fired for this
 entity" record. The current implementation is safe because the only producer
-(`send` in `crates/minigame/src/minigame/server/session_loop.rs`) sends one message per session and removes the session before
+(`send_minigame_result` in `crates/minigame/src/minigame/server/result_dispatch.rs`) sends one message per session and removes the session before
 exiting. But:
 - A future cell handler implementing client-side `endCurrentMinigame` or
   `minigameContactRequest` may also need to fire chains, and if it routes through the
