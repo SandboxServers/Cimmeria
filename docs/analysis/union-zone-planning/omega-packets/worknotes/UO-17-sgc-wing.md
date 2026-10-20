@@ -31,8 +31,8 @@
 | `sgc.trainer.scientist` | 63805 | 63805 | `UnionOmega_ScientistTrainer` | -80.00 | -48.02 | -128.00 | 4.6464 | 0.00 m from east trainer row target (-80.00, -128.00) | 0 | 0 | 3.00 m (sgc.trainer.soldier) | 115.14 m (180) | 73.26 m (Ambient_cafeteria_2) | Scientist (279,605) | common_area (Ring 11 Bottom) | no |
 | `sgc.trainer.commando` | 63806 | 63806 | `UnionOmega_CommandoTrainer` | -80.00 | -48.02 | -131.00 | 4.8353 | 0.00 m from east trainer row target (-80.00, -131.00) | 0 | 0 | 3.00 m (sgc.trainer.scientist) | 114.91 m (180) | 71.75 m (Ambient_cafeteria_2) | Commando (432,693) | common_area (Ring 11 Bottom) | no |
 | `sgc.trainer.archaeologist` | 63807 | 63807 | `UnionOmega_ArchaeologistTrainer` | -80.00 | -48.02 | -134.00 | 5.0158 | 0.00 m from east trainer row target (-80.00, -134.00) | 0 | 0 | 3.00 m (sgc.trainer.commando) | 114.77 m (180) | 70.34 m (Ambient_cafeteria_2) | Archaeologist (305,678) | common_area (Ring 11 Bottom) | no |
-| `sgc.guide.adv_physics` | 63816 | 63829 | `UnionOmega_Guide_Physics` | -125.00 | -46.57 | -120.00 | 3.6465 | 0.00 m from tent target (-125.00, -120.00) | 0 | 0 | 2.83 m (sgc.guide.adv_biology) | 160.71 m (180) | 49.19 m (Ambient_cafeteria_2) | Adv. Physics (207,605) | sgc (Ring 12 Left) | yes |
-| `sgc.guide.adv_biology` | 63817 | 63829 | `UnionOmega_Guide_Biology` | -123.00 | -46.43 | -122.00 | 2.1377 | 2.83 m from tent target (-125.00, -124.00) | 0 | 0 | 2.83 m (sgc.guide.adv_physics) | 158.51 m (180) | 48.11 m (Ambient_cafeteria_2) | Adv. Biology (231,624) | sgc (Ring 12 Left) | yes |
+| `sgc.guide.adv_physics` | 63816 | 63829 | `UnionOmega_Guide_AdvPhysics` | -125.00 | -46.57 | -120.00 | 3.6465 | 0.00 m from tent target (-125.00, -120.00) | 0 | 0 | 2.83 m (sgc.guide.adv_biology) | 160.71 m (180) | 49.19 m (Ambient_cafeteria_2) | Adv. Physics (207,605) | sgc (Ring 12 Left) | yes |
+| `sgc.guide.adv_biology` | 63817 | 63829 | `UnionOmega_Guide_AdvBiology` | -123.00 | -46.43 | -122.00 | 2.1377 | 2.83 m from tent target (-125.00, -124.00) | 0 | 0 | 2.83 m (sgc.guide.adv_physics) | 158.51 m (180) | 48.11 m (Ambient_cafeteria_2) | Adv. Biology (231,624) | sgc (Ring 12 Left) | yes |
 
 ## § SQL
 
@@ -83,17 +83,19 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 ### For UO-35
 
 ```sql
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63816, -125.00, -46.57, -120.00, 3.6465, 18, 63829, 'UnionOmega_Guide_Physics', NULL, true);
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63817, -123.00, -46.43, -122.00, 2.1377, 18, 63829, 'UnionOmega_Guide_Biology', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63816, -125.00, -46.57, -120.00, 3.6465, 18, 63829, 'UnionOmega_Guide_AdvPhysics', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63817, -123.00, -46.43, -122.00, 2.1377, 18, 63829, 'UnionOmega_Guide_AdvBiology', NULL, true);
 ```
 
 ## § Art conflicts
 
-
-The seven keys below have nearest anchor other than sgc by area (D-UO15 rule); the mesh decided, they are kept:
+The seven keys in the first two bullets have nearest anchor other than sgc by area (D-UO15 rule); the mesh decided, they are kept:
 
 - `sgc.craft.electronics`, `sgc.craft.power`, `sgc.craft.materials`: nearest anchor Ring region 10 Center (common_area) 121.91, 119.55, 114.85 m; sgc anchor (Ring region 12 Left) 125.38, 127.28, 132.32 m. The art draws no crafting vendor here.
 - `sgc.trainer.soldier`, `sgc.trainer.scientist`, `sgc.trainer.commando`, `sgc.trainer.archaeologist`: nearest anchor Ring region 11 Bottom (common_area) 102.88, 100.49, 98.13, 95.81 m; sgc anchor 134.19, 134.95, 135.77, 136.66 m. The east trainer row sits in the Common Area's nearest-anchor cell, so the art's trainer row does not match the mesh side of the wing.
+
+Art-block disagreement (anchor agrees):
+
 - `sgc.hweap.t3`, `sgc.hweap.t4`, `sgc.harmor.t3`, `sgc.harmor.t4`: the art's SE block was matched to the central block (-112..-108, -92..-95) because the calibration is unverified; the nearest anchor agrees (sgc).
 
 ## § Landmarks

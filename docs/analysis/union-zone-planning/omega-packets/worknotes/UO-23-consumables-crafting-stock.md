@@ -221,4 +221,3 @@ For each list, `store_opened` with `buy_count` = the list's row count:
 | 63820 Omega Crafting Materials | 20 |
 
 The proof is a later lab check (UO-U1, run by the owner); this packet runs no lab and no build.
-

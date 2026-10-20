@@ -96,6 +96,8 @@
 //!   seed explicit id blocks into allocate past every seeded row.
 //! - [`live_db_union_omega_services`]: live-DB guards for Union Omega's hub
 //!   banker and registrars (UO-10).
+//! - [`live_db_union_omega_asgard_programs`]: UO-39, the Asgard trainer and Programs vendors (63809, 63843-63846).
+//! - [`live_db_union_omega_asgard_vendors`]: UO-40, the Asgard Armor and Crafting vendors (63847-63854).
 //! - [`live_db_union_omega_consumables`]: UO-30, the consumables vendor (63828).
 //! - [`live_db_union_omega_crafting`]: UO-29, the crafting vendors (63820-63827).
 //! - [`live_db_union_omega_human_armor`]: UO-27, Human Armor (63816-63819).

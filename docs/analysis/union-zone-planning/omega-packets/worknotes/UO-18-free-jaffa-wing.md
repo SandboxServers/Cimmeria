@@ -88,7 +88,7 @@ Scanned the Omega_Site map in the cooked root (`SGW\Stargate Worlds-QA\Working\S
 | Jaffa trainer (819,664) | none named; nearest open walkway (306.00, -104.00) | 306.00, -104.00 | nearest prop `JF-MedBuilding01`, 19.06 m |
 | Crafting group (biomedical, electronics, power, materials) | none named; nearest open walkway (291.14, -109.35) | 291.14, -109.35 | nearest prop `JF-MedBuilding01`, 18.58 m (biomedical); 13.80 m (power) |
 
-Only the weapon row names a landmark within 3 m. No point was moved; the mesh still decides (see § Art conflicts).
+The Weapon and Teleporter rows name a landmark within 3 m. No point was moved; the mesh still decides (see § Art conflicts).
 
 ## Rejected
 

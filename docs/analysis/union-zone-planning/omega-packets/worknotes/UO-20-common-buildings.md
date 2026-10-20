@@ -13,9 +13,9 @@
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
 | `ca.guide.biology` | 63810 | 63829 | `UnionOmega_Guide_Biology` | 32.00 | -35.97 | -22.00 | 0.1132 | UO-19 free spot (32,-22) | ok | ok | 63966 (7.21) | 181: 25.96 (180: 116.0) | 63896 (183.91) | Science Center, Biology (548,676) → (32.26, -21.10) | common_area | yes, 0.94 m |
 | `ca.guide.electronics` | 63811 | 63829 | `UnionOmega_Guide_Electronics` | 80.00 | -31.90 | 24.00 | 4.2270 | e_80_24 | ok | ok | 63813 (3.00) | 181: 46.07 (180: 168.2) | 63896 (144.79) | NE large pod, Electronics (832,410) → (80.54, 24.10) | common_area | yes, 0.54 m |
-| `ca.guide.adv_electronics` | 63812 | 63829 | `UnionOmega_Guide_Electronics` | 11.89 | -43.87 | 45.20 | 2.6778 | advelec_1.5_270 | ok | ok | 135 (25.00) | 181: 50.16 (180: 184.6) | 63896 (216.06) | NW standalone pod (437,286) → (13.39, 45.20) | common_area | yes, 1.50 m |
+| `ca.guide.adv_electronics` | 63812 | 63829 | `UnionOmega_Guide_AdvElectronics` | 11.89 | -43.87 | 45.20 | 2.6778 | advelec_1.5_270 | ok | ok | 135 (25.00) | 181: 50.16 (180: 184.6) | 63896 (216.06) | NW standalone pod (437,286) → (13.39, 45.20) | common_area | yes, 1.50 m |
 | `ca.guide.engineering` | 63813 | 63829 | `UnionOmega_Guide_Engineering` | 80.00 | -32.51 | 27.00 | 4.1768 | e_80_27 | ok | ok | 63811 (3.00) | 181: 47.51 (180: 171.1) | 63896 (145.86) | NE large pod, Engineering (806,368) → (76.12, 31.24) | common_area | no, 5.75 m (2.5-3.5 m from 63811 forces it) |
-| `ca.guide.adv_engineering` | 63814 | 63829 | `UnionOmega_Guide_Engineering` | 63.37 | -44.10 | 43.17 | 3.7310 | adveng_1.5_180 | ok | ok | 63813 (23.20) | 181: 46.98 (180: 183.4) | 63896 (167.47) | NE standalone pod (731,289) → (63.37, 44.67) | common_area | yes, 1.50 m |
+| `ca.guide.adv_engineering` | 63814 | 63829 | `UnionOmega_Guide_AdvEngineering` | 63.37 | -44.10 | 43.17 | 3.7310 | adveng_1.5_180 | ok | ok | 63813 (23.20) | 181: 46.98 (180: 183.4) | 63896 (167.47) | NE standalone pod (731,289) → (63.37, 44.67) | common_area | yes, 1.50 m |
 | `ca.guide.physics` | 63815 | 63829 | `UnionOmega_Guide_Physics` | 44.00 | -36.06 | -22.00 | 5.8756 | UO-19 free spot (44,-22) | ok | ok | 63810 (12.00) | 181: 25.50 (180: 116.4) | 63896 (171.91) | Science Center, Physics (618,676) → (44.16, -21.10) | common_area | yes, 0.91 m |
 | `ca.medic` | 63818 | 63855 | `UnionOmega_Medic` | 39.00 | -44.56 | 7.00 | 3.7129 | g_39_7 | ok | ok | 63823 (2.83) | 181: 4.00 (180: 145.1) | 63896 (179.93) | Infirmary (618,507) → (44.16, 7.60) | common_area | no, 5.19 m (art spot is comp 181) |
 | `ca.inn` | 63822 | 63856 | `UnionOmega_Inn` | 32.00 | -44.45 | 8.00 | 2.8387 | g_32_8 | ok | ok | 63823 (5.10) | 181: 8.60 (180: 146.0) | 63896 (186.99) | Inn (546,507) → (31.92, 7.60) | common_area | yes, 0.41 m |
@@ -47,9 +47,9 @@ INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUE
 ```sql
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63810, 32.00, -35.97, -22.00, 0.1132, 18, 63829, 'UnionOmega_Guide_Biology', NULL, true); -- ca.guide.biology
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63811, 80.00, -31.90, 24.00, 4.2270, 18, 63829, 'UnionOmega_Guide_Electronics', NULL, true); -- ca.guide.electronics
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63812, 11.89, -43.87, 45.20, 2.6778, 18, 63829, 'UnionOmega_Guide_Electronics', NULL, true); -- ca.guide.adv_electronics
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63812, 11.89, -43.87, 45.20, 2.6778, 18, 63829, 'UnionOmega_Guide_AdvElectronics', NULL, true); -- ca.guide.adv_electronics
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63813, 80.00, -32.51, 27.00, 4.1768, 18, 63829, 'UnionOmega_Guide_Engineering', NULL, true); -- ca.guide.engineering
-INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63814, 63.37, -44.10, 43.17, 3.7310, 18, 63829, 'UnionOmega_Guide_Engineering', NULL, true); -- ca.guide.adv_engineering
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63814, 63.37, -44.10, 43.17, 3.7310, 18, 63829, 'UnionOmega_Guide_AdvEngineering', NULL, true); -- ca.guide.adv_engineering
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63815, 44.00, -36.06, -22.00, 5.8756, 18, 63829, 'UnionOmega_Guide_Physics', NULL, true); -- ca.guide.physics
 ```
 

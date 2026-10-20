@@ -14,7 +14,7 @@ Omega is the first common hub. A Human or Free Jaffa arrives on public `Omega_Si
 2. Beam to the Command Center (`Omega_Site_CmdCenter`, world **80**, pad region **17**) on the Asgard transporter, which uses the ring-transport dispatch. The beam advances the mission to step **4942**.
 3. Talk to Daniel Jackson (Human, dialog **4641**) or Bra'tac (Free Jaffa, dialog **5025**). Accept completes 1655, offers **1423** or **1500** (`The SGU`), and grants Beta's address (gate **6**).
 
-Beta owns everything after that. Merged so far: a personal banker, two registrars (Team and Command) and an ambient crowd of airmen and Free Jaffa warriors, all on shipped monikers on the shipped map.
+Beta owns everything after that. Merged on the campaign branch: a personal banker, two registrars, an ambient crowd, five class trainers, the Human and Jaffa vendors, the auctioneer, the medic, the crafting guides and the Asgard trainer and stores (W6-W10).
 
 The owner's [developer concept art](omega-concept-art.md) (RESTORED_SOURCE layout intent, never coordinates) splits world 18 into a Common Area hub, an SGC wing and a Free Jaffa wing, with a Council Chamber to the north. On 2026-10-19 the owner chose the large roster:
 
@@ -299,8 +299,8 @@ Beta's old "UO-07/08 receiver fixtures" citation now means the departure fixture
 | UO-24 | W7 | `packet-coder` | ~40k | Scaffold: seed markers, two new seed files, includes, linter lines, the `interact_tag` guard amendment, stub test files | Merged on the campaign branch (reviewed; PR to `main` pending) | [UO-24](omega-packets/UO-24.md) |
 | UO-25 | W7 | `packet-coder` | ~30k | cell-catalog vendor test helper `live_db_union_omega_vendor_common.rs` | Merged on the campaign branch (reviewed; PR to `main` pending) | [UO-25](omega-packets/UO-25.md) |
 | UO-26 | W7 | `packet-coder` | ~30k | chain-replay services helper `union_omega/services_common.rs` | Merged on the campaign branch (reviewed; PR to `main` pending) | [UO-26](omega-packets/UO-26.md) |
-| UO-11 | W8 | `packet-coder` | ~40k | Human Weapons T1-T4: templates 63812-63815, lists 63800-63803, spawns 63841-63846 | BlockedDependency (W6, W7) | [UO-11](omega-packets/UO-11.md) |
-| UO-12 | W8 | `packet-coder` | ~40k | Jaffa Weapons T1-T4: templates 63831-63834, lists 63808-63811, spawns 63853-63857 | BlockedDependency (W6, W7) | [UO-12](omega-packets/UO-12.md) |
+| UO-11 | W8 | `packet-coder` | ~40k | Human Weapons T1-T4: templates 63812-63815, lists 63800-63803, spawns 63841-63846 | Merged on the campaign branch (reviewed; PR to `main` pending) | [UO-11](omega-packets/UO-11.md) |
+| UO-12 | W8 | `packet-coder` | ~40k | Jaffa Weapons T1-T4: templates 63831-63834, lists 63808-63811, spawns 63853-63857 | Merged on the campaign branch (reviewed; PR to `main` pending) | [UO-12](omega-packets/UO-12.md) |
 | UO-27 | W8 | `packet-coder` | ~40k | Human Armor T1-T4: templates 63816-63819, lists 63804-63807, spawns 63847-63852 | Merged on the campaign branch (reviewed; PR to `main` pending) | [UO-27](omega-packets/UO-27.md) |
 | UO-28 | W8 | `packet-coder` | ~40k | Jaffa Armor T1-T4: templates 63835-63838, lists 63812-63815, spawns 63859-63863 | Merged on the campaign branch (reviewed; PR to `main` pending) | [UO-28](omega-packets/UO-28.md) |
 | UO-29 | W8 | `packet-coder` | ~40k | Crafting: 12 templates (Human, Common, Jaffa × four specialties), lists 63817-63820, spawns 63960-63971 | Merged on the campaign branch (reviewed; PR to `main` pending) | [UO-29](omega-packets/UO-29.md) |

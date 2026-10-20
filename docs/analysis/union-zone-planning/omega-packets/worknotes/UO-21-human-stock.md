@@ -274,4 +274,3 @@ For UO-U1 only, a vendor `INFO store_opened` event for each list should show thi
 | 63805 | 18 |
 | 63806 | 18 |
 | 63807 | 18 |
-
