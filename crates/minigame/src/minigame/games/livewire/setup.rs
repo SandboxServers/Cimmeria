@@ -85,7 +85,8 @@ pub(super) const DIFFICULTY_LEVELS: [DifficultyParams; 4] = [
         goals: 6,
         moving_base: 5.0,
         moving_tech_comp: 0.320755,
-        move_timer_divider: 1.0,
+        // 0 means moving wires do not change the rate on D4.
+        move_timer_divider: 0.0,
         obstacles_base: 3.0,
         obstacles_tech_comp: 0.245283,
         obstacle_timer_base: 9.0,
@@ -137,6 +138,7 @@ impl LivewireGame {
     }
 
     pub(super) fn update_difficulty(&mut self) {
+        // Content difficulty 5 uses difficulty 4's table (the original has no D5 branch).
         let idx = (self.difficulty as usize - 1).min(3);
         let level = &DIFFICULTY_LEVELS[idx];
         let tc = self.tech_competency as f64;
@@ -146,10 +148,18 @@ impl LivewireGame {
         let _playfield_total =
             (level.playfield_base + tc * level.playfield_tech_comp).floor() as u32;
         let _moving_total = (level.moving_base + tc * level.moving_tech_comp).floor() as u32;
-        self.move_timer = tc / level.move_timer_divider;
+        // A divider of 0 is the original's unset value: moving wires leave the rate alone.
+        self.move_timer = if level.move_timer_divider > 0.0 {
+            tc / level.move_timer_divider
+        } else {
+            0.0
+        };
         let _obstacle_total =
-            (level.obstacles_base + tc * level.obstacles_tech_comp).floor() as u32;
-        self.obstacle_timer = level.obstacle_timer_base + (tc / 5.0) * level.obstacle_timer_level;
+            2 * (level.obstacles_base + tc * level.obstacles_tech_comp).floor() as u32;
+        // Integer steps: base + 5 * floor((tc - 1) / 5).
+        let obstacle_steps = self.tech_competency.saturating_sub(1) / 5;
+        self.obstacle_timer =
+            level.obstacle_timer_base + obstacle_steps as f64 * level.obstacle_timer_level;
         self.countdown_rate = 1.0 / level.countdown_rate;
         self.time_remaining = level.countdown_rate + 0.25;
         self.read_out = format!("{}{}", level.read_out, self.tech_competency);
@@ -157,7 +167,9 @@ impl LivewireGame {
         // Random timer type (matching Python)
         let timer_type = self.rng.random_range(0..3u32);
         self.time_units = match timer_type {
-            0 => param_timer + tc / 1.7,
+            0 => (param_timer * tc) / 1.7,
+            // The original computes (17 + tc*4.5) ^ 1.25 as a bitwise XOR on truncated
+            // integers. The port keeps a real power on purpose.
             1 => 17.0 + tc * 4.5f64.powf(1.25),
             _ => {
                 6.0 * (self.obstacle_timer / 10.0 * self.goal_total as f64)
@@ -172,6 +184,28 @@ impl LivewireGame {
             d += 1;
         }
         d
+    }
+
+    /// Goal depth, the port of `twoRandRange(1,25,60,85)`: draw `a` in 1..=25, then `b`
+    /// in 60..=85, then pick one with `random_range(0..2)`. Retries on a taken depth.
+    fn find_goal_depth(&mut self) -> u32 {
+        let mut attempts = 0;
+        loop {
+            let a = self.rng.random_range(1..=25u32);
+            let b = self.rng.random_range(60..=85u32);
+            let d = if self.rng.random_range(0..2u32) == 0 {
+                a
+            } else {
+                b
+            };
+            if !self.wires.contains_key(&d) {
+                return d;
+            }
+            attempts += 1;
+            if attempts >= 1000 {
+                return self.find_available_depth(1);
+            }
+        }
     }
 
     fn find_random_depth(&mut self, min: u32, max: u32) -> u32 {
@@ -210,7 +244,8 @@ impl LivewireGame {
         let playfield_total =
             (level.playfield_base + tc * level.playfield_tech_comp).floor() as u32;
         let moving_total = (level.moving_base + tc * level.moving_tech_comp).floor() as u32;
-        let obstacle_total = (level.obstacles_base + tc * level.obstacles_tech_comp).floor() as u32;
+        let obstacle_total =
+            2 * (level.obstacles_base + tc * level.obstacles_tech_comp).floor() as u32;
 
         // Playfield electrodes (30% of playfield)
         let electrodes = (playfield_total as f64 * 0.3).floor() as u32;
@@ -218,8 +253,8 @@ impl LivewireGame {
             let depth = self.find_available_depth(101);
             let lib = self.random_item(PLAYFIELD_ELECTRODES).to_string();
             let sound = self.random_item(PLAYFIELD_SOUNDS).to_string();
-            let x = self.rng.random_range(375.0..900.0);
-            let y = self.rng.random_range(250.0..700.0);
+            let x = self.rng.random_range(375.0f64..900.0).floor();
+            let y = self.rng.random_range(250.0f64..700.0).floor();
             self.wires.insert(
                 depth,
                 Wire {
@@ -237,7 +272,9 @@ impl LivewireGame {
         // Playfield wires
         for i in 0..(playfield_total - electrodes) {
             let depth = self.find_random_depth(1, 100);
-            let lib = self.random_item(PLAYFIELD_WIRES).to_string();
+            let base = self.random_item(PLAYFIELD_WIRES);
+            let variant = self.rng.random_range(1..=4u32);
+            let lib = format!("{base}{variant}");
             let sound = self.random_item(PLAYFIELD_SOUNDS).to_string();
             let y = self.random_y();
             self.wires.insert(
@@ -256,9 +293,9 @@ impl LivewireGame {
 
         // Goal wires
         for i in 0..self.goal_total {
-            let depth = self.find_random_depth(1, 100);
+            let depth = self.find_goal_depth();
             let base = self.random_item(GOAL_WIRES);
-            let variant = self.rng.random_range(1..4u32);
+            let variant = self.rng.random_range(1..=4u32);
             let lib = format!("{base}{variant}");
             let sound = self.random_item(GOAL_SOUNDS).to_string();
             let y_idx = self.rng.random_range(0..WIRE_LOCATION_Y.len());
@@ -284,8 +321,8 @@ impl LivewireGame {
             let depth = self.find_available_depth(101);
             let lib = self.random_item(MOVING_ELECTRODES).to_string();
             let sound = self.random_item(MOVING_SOUNDS).to_string();
-            let x = self.rng.random_range(375.0..900.0);
-            let y = self.rng.random_range(250.0..700.0);
+            let x = self.rng.random_range(375.0f64..900.0).floor();
+            let y = self.rng.random_range(250.0f64..700.0).floor();
             self.wires.insert(
                 depth,
                 Wire {
@@ -303,7 +340,9 @@ impl LivewireGame {
         // Moving wires
         for i in 0..(moving_total - moving_electrodes) {
             let depth = self.find_random_depth(1, 100);
-            let lib = self.random_item(MOVING_WIRES).to_string();
+            let base = self.random_item(MOVING_WIRES);
+            let variant = self.rng.random_range(1..=4u32);
+            let lib = format!("{base}{variant}");
             let sound = self.random_item(MOVING_SOUNDS).to_string();
             let y = self.random_y();
             self.wires.insert(
@@ -324,7 +363,7 @@ impl LivewireGame {
         for i in 0..obstacle_total {
             let depth = self.find_random_depth(1, 100);
             let base = self.random_item(OBSTACLE_WIRES);
-            let variant = self.rng.random_range(1..4u32);
+            let variant = self.rng.random_range(1..=4u32);
             let lib = format!("{base}{variant}");
             let sound = self.random_item(OBSTACLE_SOUNDS).to_string();
             let y = self.random_y();
@@ -396,7 +435,7 @@ impl LivewireGame {
             "CA4" => SfsValue::String(self.ca[4].to_string()),
             "timeUnits" => SfsValue::String(self.time_units.to_string()),
             "timeRemaining" => SfsValue::Number(self.time_remaining),
-            "timerState" => SfsValue::String("0.0".to_string()),
+            "timerState" => SfsValue::Number(self.timer_state as f64),
         }
     }
 }

@@ -24,6 +24,9 @@ mod setup;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod tests_parity;
+
 const TICK_RATE: f64 = 0.25;
 
 // ── Wire ─────────────────────────────────────────────────────────────────────
@@ -298,29 +301,29 @@ impl MinigameInstance for LivewireGame {
                     );
                     return vec![];
                 }
-                wire.cut = true;
-
                 let mut out = Vec::new();
                 let prefix = wirename.chars().next().unwrap_or(' ');
+
+                // An ignored playfield wire is refused before it is marked cut.
+                if prefix == 'p' && !self.playfield_active {
+                    tracing::warn!(
+                        entity_id = self.entity_id,
+                        entity_name = self.player_name.as_deref(),
+                        player_id = self.player_id,
+                        player_name = self.player_name.as_deref(),
+                        wire = %wirename,
+                        reason = "playfield_inactive",
+                        "Playfield wire cut when inactive"
+                    );
+                    return vec![];
+                }
+                wire.cut = true;
 
                 match prefix {
                     'g' => {
                         self.goal_cut += 1;
                     }
-                    'p' => {
-                        if !self.playfield_active {
-                            tracing::warn!(
-                                entity_id = self.entity_id,
-                                entity_name = self.player_name.as_deref(),
-                                player_id = self.player_id,
-                                player_name = self.player_name.as_deref(),
-                                wire = %wirename,
-                                reason = "playfield_inactive",
-                                "Playfield wire cut when inactive"
-                            );
-                            return vec![];
-                        }
-                    }
+                    'p' => {}
                     'o' => {
                         self.countdown_rate += self.countdown_rate * self.obstacle_timer / 100.0;
                         out.push(GameOutput::Send(sfs_vars! {
@@ -365,8 +368,29 @@ impl MinigameInstance for LivewireGame {
                 out
             }
 
-            "activateitemcheat" | "activateabilitycheat" => {
-                // Stub — cheats acknowledged but no effect yet
+            // No cheats in a server-validated game (D-MG17): instcc and CA stay hardcoded.
+            "activateitemcheat" => {
+                tracing::warn!(
+                    entity_id = self.entity_id,
+                    entity_name = self.player_name.as_deref(),
+                    player_id = self.player_id,
+                    player_name = self.player_name.as_deref(),
+                    cmd,
+                    reason = "item_cheat_unavailable",
+                    "Livewire: item cheats are not available"
+                );
+                vec![]
+            }
+            "activateabilitycheat" => {
+                tracing::warn!(
+                    entity_id = self.entity_id,
+                    entity_name = self.player_name.as_deref(),
+                    player_id = self.player_id,
+                    player_name = self.player_name.as_deref(),
+                    cmd,
+                    reason = "ability_cheat_unavailable",
+                    "Livewire: ability cheats are not available"
+                );
                 vec![]
             }
 
@@ -430,12 +454,11 @@ impl MinigameInstance for LivewireGame {
         vec![]
     }
 
+    /// The client has closed the window: it is gone, so nothing is sent (no `failure`).
     fn aborted(&mut self) -> Vec<GameOutput> {
         self.outcome = Some("canceled");
         self.game_started = false;
-        vec![GameOutput::Send(sfs_vars! {
-            "_cmd" => SfsValue::String("failure".to_string()),
-        })]
+        vec![]
     }
 
     fn needs_tick(&self) -> bool {

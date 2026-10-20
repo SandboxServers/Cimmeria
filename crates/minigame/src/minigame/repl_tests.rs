@@ -78,7 +78,7 @@ fn send_rejects_a_malformed_parameter() {
 fn send_after_the_game_ends_is_ignored() {
     let mut repl = Repl::new("Livewire", 1, 7).unwrap();
     repl.start();
-    assert_eq!(repl.abort(), vec!["< failure".to_string()]);
+    assert!(repl.abort().is_empty(), "an abort sends nothing");
     assert_eq!(
         repl.send("processmove current=12 target=13"),
         Ok(Vec::new())
@@ -111,7 +111,10 @@ fn run_script_echoes_inputs_and_outputs_in_order() {
         run_script("# header\ngame Livewire difficulty 1 seed 7\nstart\nabort\n").unwrap();
     assert!(transcript
         .starts_with("# header\ngame Livewire difficulty 1 seed 7\nstart\n< fullgamestate {"));
-    assert!(transcript.ends_with("abort\n< failure\n"));
+    assert!(
+        transcript.ends_with("abort\n"),
+        "an abort sends nothing: {transcript}"
+    );
 }
 
 #[test]
