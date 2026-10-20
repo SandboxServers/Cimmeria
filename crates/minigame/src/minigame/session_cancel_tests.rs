@@ -13,6 +13,7 @@ async fn register(registry: &SessionRegistry) -> String {
             0,
             1,
             vec![],
+            vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
             1,

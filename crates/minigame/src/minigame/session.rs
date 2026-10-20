@@ -16,10 +16,13 @@ use tokio::time::Instant;
 pub use super::session_claim::ClaimRejection;
 #[path = "session_result.rs"]
 mod session_result;
+#[path = "session_sweep.rs"]
+mod session_sweep;
 use super::session_snapshot::PublishedBoard;
 pub use super::session_snapshot::{BoardSnapshot, WireSnapshot};
 pub(crate) use session_result::DepositOutcome;
 pub use session_result::ResultReceipt;
+use session_sweep::expire_pending_locked;
 
 /// How long a session may sit in the registry after `register` before the
 /// sweep drops it, *if its SWF client never connected*.
@@ -69,6 +72,8 @@ pub struct MinigameSession {
     pub player_level: u32,
     pub ticket: String,
     pub on_victory_chains: Vec<i64>,
+    /// Fired by the cell on result codes 2 and 4 (D-MG5).
+    pub on_failure_chains: Vec<i64>,
     /// The player's character name, from the base session that started the
     /// game. The minigame server only ever sees the entity id; this is what
     /// names the player in the Discord result (NT-10).
@@ -139,6 +144,7 @@ impl SessionRegistry {
     }
 
     /// Register a new minigame session. Returns the generated ticket.
+    #[allow(clippy::too_many_arguments)]
     pub async fn register(
         &self,
         entity_id: u32,
@@ -151,10 +157,12 @@ impl SessionRegistry {
         intelligence: u32,
         player_level: u32,
         on_victory_chains: Vec<i64>,
+        on_failure_chains: Vec<i64>,
         player_name: Option<String>,
         client_ip: Option<std::net::IpAddr>,
         session_instance_id: u64,
     ) -> Option<String> {
+        let abilities_mask = abilities_mask & crate::minigame::games::ability_bits(&game_name);
         let ticket = generate_ticket();
         let (cancel, _) = watch::channel(false);
         let session = MinigameSession {
@@ -170,6 +178,7 @@ impl SessionRegistry {
             player_level,
             ticket: ticket.clone(),
             on_victory_chains,
+            on_failure_chains,
             player_name,
             client_ip,
             created_at: Instant::now(),
@@ -317,32 +326,6 @@ impl SessionRegistry {
         board.read()
     }
 
-    /// Drop every registered-but-never-connected session older than `ttl`.
-    /// Returns the evicted entity ids.
-    pub async fn expire_pending(&self, ttl: Duration) -> Vec<u32> {
-        let mut inner = self.inner.lock().await;
-        inner.expire_receipts(Instant::now());
-        expire_pending_locked(&mut inner, ttl)
-    }
-
-    /// Spawn the background expiry sweep. Called once from
-    /// [`crate::minigame::server::run`]; the task lives as long as the
-    /// process.
-    pub fn spawn_sweep(&self, ttl: Duration, interval: Duration) {
-        let registry = self.clone();
-        tokio::spawn(async move {
-            let mut ticker = tokio::time::interval(interval);
-            // The first `tick()` completes immediately; burn it so the
-            // first real sweep happens one interval in, not at startup
-            // (where there is nothing to sweep anyway).
-            ticker.tick().await;
-            loop {
-                ticker.tick().await;
-                registry.expire_pending(ttl).await;
-            }
-        });
-    }
-
     /// Authenticate a login attempt **and claim the matched session**, in one
     /// locked step. Returns the claimed session if the ticket and game name
     /// match.
@@ -422,6 +405,17 @@ impl SessionRegistry {
         self.inner.lock().await.sessions.len()
     }
 
+    /// A copy of the entity's registered session, ticket not required.
+    ///
+    /// Read-only and unauthenticated: for a caller in the same process that
+    /// needs to see what the base registered (the base's launch tests read the
+    /// player params back through it). A connection task must still go through
+    /// [`Self::authenticate_and_claim`].
+    #[cfg(any(test, feature = "test-support"))]
+    pub async fn peek_session(&self, entity_id: u32) -> Option<MinigameSession> {
+        self.inner.lock().await.sessions.get(&entity_id).cloned()
+    }
+
     /// How many registered sessions are still pending, that is, never had
     /// their SWF client connect. The listener reports it with a refused peer,
     /// since a pending session is the one a real player's connection is
@@ -486,6 +480,14 @@ impl SessionRegistry {
     /// The connection task keeps its ticket and cancel receiver, so its
     /// teardown cannot erase a replacement session registered immediately.
     pub async fn cancel(&self, entity_id: u32) -> bool {
+        self.cancel_reporting_connected(entity_id).await.is_some()
+    }
+
+    /// [`Self::cancel`], also saying whether a connection task exists.
+    /// `None` when no session was registered. `Some(false)` means the SWF
+    /// never connected, so no task will report a result and the caller must
+    /// tell the cell itself (the TTL sweep cannot see a removed session).
+    pub async fn cancel_reporting_connected(&self, entity_id: u32) -> Option<bool> {
         let mut inner = self.inner.lock().await;
         let session = inner.sessions.remove(&entity_id);
         if let Some(ref session) = session {
@@ -493,7 +495,7 @@ impl SessionRegistry {
         }
         inner.boards.remove(&entity_id);
         inner.invalidate_entity_receipts(entity_id);
-        session.is_some()
+        session.map(|session| session.connected)
     }
 
     /// Cancel only the launch that minted this ticket. A stale failed send
@@ -589,40 +591,6 @@ impl SessionRegistry {
     }
 }
 
-/// Expiry pass over an already-locked registry.
-///
-/// Split out so [`SessionRegistry::register`] can sweep inside the lock it
-/// already holds without re-entering `Mutex::lock` (which would deadlock on
-/// the non-reentrant `tokio::sync::Mutex`).
-fn expire_pending_locked(inner: &mut SessionRegistryInner, ttl: Duration) -> Vec<u32> {
-    let now = Instant::now();
-    inner.boards.retain(|_, board| !board.is_expired(now));
-    let expired: Vec<u32> = inner
-        .sessions
-        .iter()
-        .filter(|(_, s)| !s.connected && now.saturating_duration_since(s.created_at) >= ttl)
-        .map(|(id, _)| *id)
-        .collect();
-
-    for entity_id in &expired {
-        if let Some(session) = inner.sessions.remove(entity_id) {
-            inner.boards.remove(entity_id);
-            // info!, not warn!: an abandoned launch is a player closing a
-            // window, not a server fault. It is logged at all because a
-            // "minigame won't start" report correlates directly with
-            // whether this line fired for that entity.
-            tracing::info!(
-                entity_id = *entity_id,
-                entity_name = session.player_name.as_deref(),
-                game = %session.game_name,
-                ttl_secs = ttl.as_secs(),
-                "Minigame: expiring session whose client never connected",
-            );
-        }
-    }
-    expired
-}
-
 /// Generate a 64-character hex ticket (matching C++ implementation).
 fn generate_ticket() -> String {
     const HEX: &[u8] = b"0123456789ABCDEF";
@@ -637,6 +605,10 @@ fn generate_ticket() -> String {
 mod tests;
 
 #[cfg(test)]
+#[path = "session_sweep_tests.rs"]
+mod sweep_tests;
+
+#[cfg(test)]
 #[path = "session_result_tests.rs"]
 mod result_tests;
 
@@ -647,3 +619,7 @@ mod cancel_tests;
 #[cfg(test)]
 #[path = "session_board_tests.rs"]
 mod board_tests;
+
+#[cfg(test)]
+#[path = "session_mask_tests.rs"]
+mod mask_tests;

@@ -123,6 +123,7 @@ fn lock_spec(effect_id: i32) -> TimedEffectSpec {
         state_flags: BSF_MOVEMENT_LOCK,
         invoker_identity: Default::default(),
         invoker_name: None,
+        movement_only: false,
     }
 }
 

@@ -14,9 +14,9 @@ use super::*;
 use crate::cell::client_methods::being::ON_TIMER_UPDATE;
 use crate::mercury::game_clock::{game_time_secs, init};
 
-const PLAYER: u32 = 1;
+pub(super) const PLAYER: u32 = 1;
 
-fn make_mgr() -> SpaceManager {
+pub(super) fn make_mgr() -> SpaceManager {
     let mut mgr = SpaceManager::new(1);
     let xml = r#"<?xml version="1.0"?><Spaces><Space WorldName="W" Instanced="false" MinX="-100" MaxX="100" MinY="-100" MaxY="100" /></Spaces>"#;
     let cxml = r#"<?xml version="1.0"?><Spaces><Space WorldName="W" /></Spaces>"#;
@@ -35,6 +35,7 @@ fn make_mgr() -> SpaceManager {
 
 fn stim(stat_id: i32, delta: i32, effect_id: i32, flags: u32) -> TimedEffectSpec {
     TimedEffectSpec {
+        movement_only: false,
         cast_id: None,
         effect_id,
         ability_id: 2735,
@@ -54,6 +55,7 @@ fn stim(stat_id: i32, delta: i32, effect_id: i32, flags: u32) -> TimedEffectSpec
 /// Aim (effect 700, flags 21) cast by `invoker` on `PLAYER`.
 fn aim(invoker_id: u32) -> TimedEffectSpec {
     TimedEffectSpec {
+        movement_only: false,
         cast_id: None,
         effect_id: 700,
         ability_id: 637,

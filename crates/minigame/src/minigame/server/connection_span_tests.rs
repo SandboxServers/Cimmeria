@@ -192,6 +192,7 @@ async fn a_send_error_row_sits_under_the_connection_span() {
             0,
             1,
             vec![],
+            vec![],
             Some("Tess".into()),
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
             1,

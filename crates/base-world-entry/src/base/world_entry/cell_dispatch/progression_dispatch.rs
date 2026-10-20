@@ -23,6 +23,7 @@ use super::super::methods::progression::{
 use super::super::methods::{
     handle_grant_cash, handle_grant_xp, handle_mail_request, handle_mission_update,
 };
+use super::minigame::MinigamePlayerParams;
 use super::{item_grant_dispatch, minigame, DispatchCtx};
 
 /// Route the mission / grant / console / spawn / mail / minigame family of
@@ -295,6 +296,11 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
             game_name,
             difficulty,
             on_victory_chains,
+            on_failure_chains,
+            player_level,
+            intelligence,
+            tech_competency,
+            abilities_mask,
         } => {
             start_minigame(
                 entity_id,
@@ -302,12 +308,20 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
                 game_name,
                 difficulty,
                 on_victory_chains,
+                on_failure_chains,
+                MinigamePlayerParams {
+                    player_level,
+                    intelligence,
+                    tech_competency,
+                    abilities_mask,
+                },
                 ctx.transport,
                 ctx.connected,
                 ctx.entity_to_addr,
                 ctx.minigame_registry,
                 ctx.minigame_external_host,
                 ctx.minigame_external_port,
+                ctx.cell_tx,
             )
             .await
         }
@@ -317,6 +331,7 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
                 ctx.minigame_registry,
                 ctx.connected,
                 ctx.entity_to_addr,
+                ctx.cell_tx,
             )
             .await
         }
@@ -552,12 +567,15 @@ pub(super) async fn start_minigame(
     game_name: String,
     difficulty: u32,
     on_victory_chains: Vec<i64>,
+    on_failure_chains: Vec<i64>,
+    params: MinigamePlayerParams,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     minigame_registry: &Option<crate::minigame::SessionRegistry>,
     minigame_external_host: &str,
     minigame_external_port: u16,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
 ) {
     minigame::start_minigame(
         entity_id,
@@ -565,12 +583,15 @@ pub(super) async fn start_minigame(
         game_name,
         difficulty,
         on_victory_chains,
+        on_failure_chains,
+        params,
         transport,
         connected,
         entity_to_addr,
         minigame_registry,
         minigame_external_host,
         minigame_external_port,
+        cell_tx,
     )
     .await;
 }

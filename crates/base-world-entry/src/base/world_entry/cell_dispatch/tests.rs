@@ -1,7 +1,7 @@
 //! Tests for the `handle_cell_message` dispatch.
 
 use super::*;
-use crate::test_support::{LogCapture, TestTransport};
+use crate::test_support::TestTransport;
 
 fn empty_maps() -> (
     Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
@@ -11,43 +11,6 @@ fn empty_maps() -> (
         Arc::new(Mutex::new(HashMap::new())),
         Arc::new(Mutex::new(HashMap::new())),
     )
-}
-
-/// A disabled minigame server (`None` registry) is a WARN naming the game,
-/// not a silent no-op.
-#[tokio::test]
-async fn start_minigame_with_disabled_server_logs_warn() {
-    let capture = LogCapture::install();
-    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
-    let (connected, entity_to_addr) = empty_maps();
-
-    handle_cell_message(
-        CellToBaseMsg::StartMinigame {
-            entity_id: 10,
-            player_id: 1,
-            game_name: "Livewire".into(),
-            difficulty: 1,
-            on_victory_chains: vec![],
-        },
-        &transport,
-        &connected,
-        &entity_to_addr,
-        &None,
-        &None,
-        &None,
-        "127.0.0.1",
-        7777,
-    )
-    .await;
-
-    let event = capture
-        .find_event(
-            tracing::Level::WARN,
-            "minigame server is disabled",
-            "minigame_server_disabled",
-        )
-        .expect("disabled minigame server must log a WARN");
-    assert!(event.has_field("game_name", "Livewire"), "{event:#?}");
 }
 
 /// `flush_deferred_aoi` drains the session's deferred-AoI buffer through

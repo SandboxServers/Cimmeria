@@ -35,17 +35,18 @@ async fn wait_for_row(capture: &LogCaptureGuard, message: &str) {
     panic!("the server never logged {message:?}: {:#?}", capture.all());
 }
 
-/// Every inbound frame pushes the idle deadline back. A frame at 50 s of a
-/// 60 s idle timeout keeps the session alive at 100 s. Deleting the
-/// `reset` call ends it at 60 s and fails this.
+/// Every inbound frame pushes the idle deadline back. A frame at 20 s of a
+/// 30 s idle timeout keeps the session alive at 40 s. Deleting the `reset`
+/// call ends it at 30 s and fails this. The idle timeout is kept under the
+/// shell's 60 s countdown (MG-64) so the idle arm is what is being tested.
 #[tokio::test(start_paused = true)]
 async fn an_inbound_frame_resets_the_idle_deadline() {
     let capture = LogCapture::install();
-    let idle = Duration::from_secs(60);
+    let idle = Duration::from_secs(30);
     let start = Instant::now();
     let (mut client, mut rx, handle) = spawn_placeholder_session_with_idle(4320, idle).await;
 
-    tokio::time::sleep_until(start + Duration::from_secs(50)).await;
+    tokio::time::sleep_until(start + Duration::from_secs(20)).await;
     // `PlaceholderGame` ignores unknown commands, at DEBUG.
     let noop = "<msg t='xt'><body action='xtReq'>\
          <![CDATA[<dataObj><var n='cmd' t='s'>noop</var></dataObj>]]>\
@@ -53,10 +54,10 @@ async fn an_inbound_frame_resets_the_idle_deadline() {
     send_null_terminated(&mut client, noop).await.expect("send");
     wait_for_row(&capture, "ignoring unknown command").await;
 
-    tokio::time::sleep_until(start + Duration::from_secs(100)).await;
+    tokio::time::sleep_until(start + Duration::from_secs(40)).await;
     assert!(
         !handle.is_finished(),
-        "a frame at 50 s must keep a 60 s idle session alive at 100 s; \
+        "a frame at 20 s must keep a 30 s idle session alive at 40 s; \
          results so far: {:?}",
         drain_results(&mut rx),
     );
@@ -77,10 +78,11 @@ async fn an_inbound_frame_resets_the_idle_deadline() {
 /// An idle deadline ends the session as `idle_timeout`, which the closing
 /// row reports as `outcome=canceled`. Changing the reason in the idle arm
 /// fails this, and so does dropping the `end_reason` field from the abort row.
+/// The 30 s idle deadline fires before the 60 s shell countdown (MG-64).
 #[tokio::test(start_paused = true)]
 async fn an_idle_session_reports_idle_timeout_as_canceled() {
     let capture = LogCapture::install();
-    let idle = Duration::from_secs(60);
+    let idle = Duration::from_secs(30);
     let (_client, _rx, handle) = spawn_placeholder_session_with_idle(4321, idle).await;
 
     let end = tokio::time::timeout(Duration::from_secs(3600), handle)
@@ -95,6 +97,34 @@ async fn an_idle_session_reports_idle_timeout_as_canceled() {
         .find_message(tracing::Level::INFO, "Minigame aborted without a result")
         .expect("the abort row must be logged");
     assert!(row.has_field("end_reason", "idle_timeout"), "{row:#?}");
+}
+
+/// The shell's 60 s countdown (MG-64) ends a silent placeholder game as a
+/// defeat, well before a 120 s idle deadline. Reverting the countdown lets the
+/// idle arm end the session at 120 s as a cancel, and this fails.
+#[tokio::test(start_paused = true)]
+async fn the_shell_countdown_ends_a_silent_game_as_defeat() {
+    let idle = Duration::from_secs(120);
+    let (_client, mut rx, handle) = spawn_placeholder_session_with_idle(4323, idle).await;
+    // Taken after the helper: its loopback connect can move the paused clock.
+    let start = Instant::now();
+
+    let end = tokio::time::timeout(Duration::from_secs(3600), handle)
+        .await
+        .expect("the countdown must end the game")
+        .expect("session task must not panic");
+
+    // The 240th 250 ms tick lands at 59.75 s; the upper bound is the idle
+    // deadline, so an idle end (a cancel) cannot pass as the countdown.
+    let elapsed = start.elapsed();
+    assert_eq!(end.reason, EndReason::Defeat, "ended after {elapsed:?}");
+    assert!(
+        elapsed >= Duration::from_secs(59) && elapsed < idle,
+        "the countdown runs 60 s, ended after {elapsed:?}",
+    );
+    // The defeat itself is pinned by `end.reason`, which `report_terminal`
+    // derives from the accepted receipt; the wire carries the ticket only.
+    assert_eq!(drain_results(&mut rx).len(), 1, "exactly one result");
 }
 
 /// A client that closes its socket after the game starts (FIN) ends the
@@ -253,4 +283,32 @@ async fn accepted_sockets_get_tcp_keepalive() {
     assert!(socket2::SockRef::from(&server)
         .keepalive()
         .expect("SO_KEEPALIVE readable"));
+}
+
+/// An unparseable frame does not push the idle deadline back: a junk frame at
+/// 20 s of a 30 s idle timeout still ends the session at 30 s. Resetting the
+/// idle timer before the parse ends it at 50 s and fails this.
+#[tokio::test(start_paused = true)]
+async fn an_unparseable_frame_does_not_reset_the_idle_deadline() {
+    let idle = Duration::from_secs(30);
+    let (mut client, _rx, handle) = spawn_placeholder_session_with_idle(4324, idle).await;
+    // Taken after the helper: its loopback connect can move the paused clock.
+    let start = Instant::now();
+
+    tokio::time::sleep_until(start + Duration::from_secs(20)).await;
+    send_null_terminated(&mut client, "junk")
+        .await
+        .expect("send");
+
+    let end = tokio::time::timeout(Duration::from_secs(3600), handle)
+        .await
+        .expect("the idle deadline must end the session")
+        .expect("session task must not panic");
+
+    assert_eq!(end.reason, EndReason::IdleTimeout);
+    assert!(
+        start.elapsed() < Duration::from_secs(40),
+        "a junk frame must not extend the idle deadline; ended at {:?}",
+        start.elapsed(),
+    );
 }

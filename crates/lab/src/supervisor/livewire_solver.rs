@@ -287,9 +287,15 @@ mod tests {
             for variant in 1..=4 {
                 // A 900-stage-unit winding stroke with thickness and crossing
                 // variants, matching the atlas scale without shipping client art.
+                // Each of the 56 libraries gets its own silhouette: a phase in
+                // 0..41, with the sawtooth mirrored past 41. Two libraries with
+                // one shape would let an uncuttable playfield wire hide a goal
+                // in its lane exactly, which real client art never does.
+                let shape = base_index as i32 * 4 + variant - 1;
+                let (phase, slope) = (shape % 41, if shape < 41 { 1 } else { -1 });
                 let points = (0..=180)
                     .flat_map(|x| {
-                        let wave = ((x + base_index as i32 * 7 + variant * 11) % 41 - 20) * 5;
+                        let wave = slope * ((x + phase) % 41 - 20) * 5;
                         [-5, 0, 5].map(move |dy| [x * 5, wave + dy])
                     })
                     .collect();
@@ -359,6 +365,7 @@ mod tests {
                     player_level: 1,
                     ticket: "test".into(),
                     on_victory_chains: vec![],
+                    on_failure_chains: vec![],
                     player_name: None,
                     client_ip: None,
                     created_at: tokio::time::Instant::now(),
@@ -368,7 +375,8 @@ mod tests {
                 let mut game = create_game(&session).unwrap();
                 game.started();
                 let board = serde_json::to_value(game.board_snapshot().unwrap()).unwrap();
-                let result = plan(&board, &atlas).unwrap();
+                let result = plan(&board, &atlas)
+                    .unwrap_or_else(|error| panic!("difficulty={difficulty} seed={seed}: {error}"));
                 let parsed: Board = serde_json::from_value(board).unwrap();
                 let mut cut = BTreeSet::new();
                 for click in &result.clicks {

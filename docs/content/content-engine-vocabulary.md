@@ -322,11 +322,12 @@ Shows a dialog with no speaker entity: `onDialogDisplay` (client method 105) goe
 
 ##### `start_minigame` params
 
-`target_key` names the minigame type (`Livewire`, `Hack`, ...). Two params:
+`target_key` names the minigame type (`Livewire`, `Hack`, ...). Three params:
 
 | Param | Required | Meaning |
 |---|---|---|
 | `on_victory_chains` | no (defaults to `[]`) | Chain ids fired when the player wins. The existing callback invokes them through `fire_chain_by_id`, which does not evaluate conditions; put the gate on the launcher chain until a callback explicitly adopts the guarded path. |
+| `on_failure_chains` | no (defaults to `[]`) | Chain ids fired when the game ends in failure (result 2). The minigame server's result receipt carries them only for that code; the cell also accepts defeat (result 4). A canceled (0) or interrupted (3) game fires neither list. Invoked through `fire_chain_by_id` like `on_victory_chains`, so no conditions on them are evaluated. |
 | `difficulty` | no (defaults to `1`) | Difficulty tier, integer 1-5. |
 
 `difficulty` is **rejected, not clamped**: a row outside 1-5 is dropped at

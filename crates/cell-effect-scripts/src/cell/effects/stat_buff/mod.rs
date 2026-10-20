@@ -133,6 +133,7 @@ pub fn timed_spec(ctx: &EffectContext, stacking: TimedStacking) -> TimedEffectSp
         stats: stat_mods(effect),
         absorb: Vec::new(),
         state_flags: 0,
+        movement_only: false,
         duration_secs: Some(effect.pulse_duration),
         stacking,
         // `SpaceManager::apply_timed_effect` fills it from the invoker.

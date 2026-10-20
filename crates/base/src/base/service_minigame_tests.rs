@@ -73,6 +73,7 @@ async fn deposited_entity(registry: &SessionRegistry, instance: u64, entity_id: 
             0,
             1,
             vec![100],
+            vec![],
             None,
             None,
             instance,
@@ -201,6 +202,11 @@ async fn minigame_route_order_waits_for_real_result_close_before_start() {
         game_name: "Hack".into(),
         difficulty: 1,
         on_victory_chains: vec![],
+        on_failure_chains: vec![],
+        player_level: 1,
+        intelligence: 0,
+        tech_competency: 1,
+        abilities_mask: 0,
     })
     .await
     .unwrap();
@@ -245,6 +251,11 @@ async fn minigame_route_order_start_first_invalidates_undrained_result() {
         game_name: "Hack".into(),
         difficulty: 1,
         on_victory_chains: vec![],
+        on_failure_chains: vec![],
+        player_level: 1,
+        intelligence: 0,
+        tech_competency: 1,
+        abilities_mask: 0,
     })
     .await
     .unwrap();
@@ -301,6 +312,11 @@ async fn minigame_route_order_duplicate_start_preserves_live_ticket() {
         game_name: "Hack".into(),
         difficulty: 1,
         on_victory_chains: vec![],
+        on_failure_chains: vec![],
+        player_level: 1,
+        intelligence: 0,
+        tech_competency: 1,
+        abilities_mask: 0,
     })
     .await
     .unwrap();

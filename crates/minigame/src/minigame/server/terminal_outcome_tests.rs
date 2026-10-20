@@ -115,6 +115,7 @@ async fn terminal_outcome_first_report_wins_on_message_and_tick() {
                     0,
                     1,
                     vec![1017],
+                    vec![],
                     None,
                     None,
                     9,
@@ -188,6 +189,7 @@ async fn terminal_outcome_refusal_and_delivery_failure_never_report_victory() {
                 0,
                 1,
                 vec![1017],
+                vec![],
                 None,
                 None,
                 9,
@@ -276,6 +278,7 @@ async fn terminal_outcome_cancel_first_refusal_uses_lock_time_cancel_state() {
             0,
             1,
             vec![1017],
+            vec![],
             None,
             None,
             9,
@@ -334,6 +337,7 @@ async fn terminal_outcome_cancel_after_victory_keeps_the_message_but_drops_the_r
             0,
             1,
             vec![1017],
+            vec![],
             None,
             None,
             9,
@@ -382,7 +386,7 @@ async fn terminal_outcome_cancel_after_victory_keeps_the_message_but_drops_the_r
     assert!(registry.redeem_result(&ticket).await.is_none());
 }
 
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn terminal_outcome_production_close_logs_failed_results_as_canceled() {
     for refuse in [false, true] {
         let capture = LogCapture::install();
@@ -399,6 +403,7 @@ async fn terminal_outcome_production_close_logs_failed_results_as_canceled() {
                 0,
                 1,
                 vec![1017],
+                vec![],
                 None,
                 None,
                 9,
@@ -425,12 +430,11 @@ async fn terminal_outcome_production_close_logs_failed_results_as_canceled() {
         if refuse {
             registry.remove(4202).await;
         }
+        // A placeholder's `victory` counts only after 5 s of play (D-MG13).
+        tokio::time::advance(Duration::from_secs(5)).await;
         let victory = "<msg t='xt'><body action='xtReq'><![CDATA[<dataObj><var n='cmd' t='s'>victory</var></dataObj>]]></body></msg>";
         send_null_terminated(&mut client, victory).await.unwrap();
-        tokio::time::timeout(Duration::from_secs(5), task)
-            .await
-            .unwrap()
-            .unwrap();
+        task.await.unwrap();
         let row = capture
             .find_message(tracing::Level::INFO, "Minigame session ended")
             .unwrap();

@@ -444,13 +444,21 @@ pub enum CellToBaseMsg {
         game_name: String,
         difficulty: u32,
         on_victory_chains: Vec<i64>,
+        /// Fired on result codes 2 and 4 (D-MG5).
+        on_failure_chains: Vec<i64>,
+        /// From the player's cell entity; reaches the SWF's `joinOK`.
+        player_level: u32,
+        intelligence: u32,
+        tech_competency: u32,
+        abilities_mask: u32,
     },
 
     /// The session owner closed the minigame window; cancel its SmartFox task.
     CancelMinigame { entity_id: u32 },
 
     /// Ticket-only minigame result notification. Base redeems server-owned
-    /// result authority before it emits a client close or Cell callback.
+    /// result authority (code, chains, `notify_client`) from the registry
+    /// receipt before it emits a client close or Cell callback.
     MinigameResult { ticket: String },
 
     /// Create a new contact list for the player.

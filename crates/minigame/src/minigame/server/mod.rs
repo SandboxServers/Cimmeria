@@ -28,7 +28,17 @@ mod terminal_outcome;
 #[cfg(test)]
 mod connection_span_tests;
 #[cfg(test)]
+mod converse_loop_tests;
+#[cfg(test)]
+mod crystal_game_loop_tests;
+#[cfg(test)]
+mod goauld_loop_tests;
+#[cfg(test)]
 mod listener_tests;
+#[cfg(test)]
+mod livewire_abort_tests;
+#[cfg(test)]
+mod ported_games_tests;
 #[cfg(test)]
 mod receipt_deposit_tests;
 #[cfg(test)]

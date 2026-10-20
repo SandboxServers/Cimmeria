@@ -61,6 +61,7 @@ mod tests {
                 0,
                 1,
                 vec![],
+                vec![],
                 None,
                 None,
                 1,

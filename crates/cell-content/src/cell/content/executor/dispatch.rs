@@ -185,6 +185,7 @@ pub(super) async fn execute_one(
             minigame_type,
             difficulty,
             on_victory_chains,
+            on_failure_chains,
         } => {
             tracing::info!(
                 entity_id,
@@ -196,28 +197,31 @@ pub(super) async fn execute_one(
                 chain_name = cimmeria_names::book().chain(chain_id),
                 "Content: starting minigame"
             );
-            if let Err(e) = tx
-                .send(CellToBaseMsg::StartMinigame {
-                    entity_id,
-                    player_id,
-                    game_name: minigame_type.clone(),
-                    // Range-checked 1-5 at load time (loader/action.rs);
-                    // the seed default is 1.
-                    difficulty,
-                    on_victory_chains: on_victory_chains.clone(),
-                })
-                .await
+            let req = cimmeria_cell_world::cell::minigame_launch::MinigameLaunchRequest {
+                entity_id,
+                player_id,
+                game_name: minigame_type.clone(),
+                difficulty,
+                on_victory_chains: on_victory_chains.clone(),
+                on_failure_chains: on_failure_chains.clone(),
+                source: "content_chain",
+            };
+            if !cimmeria_cell_world::cell::minigame_launch::start_or_offer(
+                req,
+                cimmeria_entity::minigame_feature::start_dialog(),
+                tx,
+                space_mgr,
+            )
+            .await
             {
-                // drop here means the minigame never
-                // launches but the player click already fired —
-                // chain stalls with no signal.
                 tracing::warn!(
                     entity_id,
                     entity_name = space_mgr.entity_names(entity_id).entity_name,
                     %minigame_type,
                     chain_id,
                     chain_name = cimmeria_names::book().chain(chain_id),
-                    "StartMinigame: cell→base send failed -- minigame will not launch: {e}"
+                    reason = "launch_failed",
+                    "Content: StartMinigame chain action did not launch"
                 );
             }
         }

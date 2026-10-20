@@ -33,6 +33,7 @@ fn world(victim_is_player: bool) -> SpaceManager {
     v.player_id = victim_is_player.then_some(200);
     v.apply_timed_effect(
         TimedEffectSpec {
+            movement_only: false,
             cast_id: Some(5),
             effect_id: 700,
             ability_id: 637,

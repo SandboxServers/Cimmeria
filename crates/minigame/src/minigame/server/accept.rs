@@ -79,7 +79,9 @@ pub async fn run_with_limits(
     // Defect B4: a session whose SWF never connects has no connection task
     // to clean it up, so without this sweep it pins its entity id in the
     // registry until the player relogs.
-    registry.spawn_sweep(PENDING_SESSION_TTL, SWEEP_INTERVAL);
+    // The sweep also reports each expiry to the cell as result 3, so the
+    // player's minigame hold (D-MG15) is released.
+    registry.spawn_sweep_reporting(PENDING_SESSION_TTL, SWEEP_INTERVAL, result_tx.clone());
 
     serve(listener, external_port, registry, result_tx, limits).await;
 }

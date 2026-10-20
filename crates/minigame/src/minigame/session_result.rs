@@ -30,6 +30,8 @@ pub struct ResultReceipt {
     pub notify_client: bool,
     /// Registered victory chains; empty for non-victory results.
     pub on_victory_chains: Vec<i64>,
+    /// Registered failure chains (D-MG5); empty unless the result is a defeat.
+    pub on_failure_chains: Vec<i64>,
     /// Monotonic issue time used for the receipt TTL.
     pub issued_at: Instant,
 }
@@ -152,28 +154,19 @@ impl SessionRegistry {
             game_name: session.game_name.clone(),
             result_code,
             notify_client,
-            on_victory_chains: if result_code == 1 {
+            on_victory_chains: if result_code == RESULT_CODE_VICTORY {
                 session.on_victory_chains.clone()
+            } else {
+                vec![]
+            },
+            on_failure_chains: if result_code == RESULT_CODE_DEFEAT {
+                session.on_failure_chains.clone()
             } else {
                 vec![]
             },
             issued_at: now,
         };
-        if inner.receipts.len() >= RESULT_RECEIPT_CAP {
-            if let Some(oldest) = inner.receipt_order.pop_front() {
-                if let Some(evicted) = inner.receipts.remove(&oldest) {
-                    tracing::warn!(entity_id = evicted.entity_id,
-                        entity_name = evicted.player_name.as_deref(),
-                        player_id = evicted.player_id,
-                        player_name = evicted.player_name.as_deref(),
-                        game = %evicted.game_name, reason = "receipt_capacity",
-                        age_ms = now.saturating_duration_since(evicted.issued_at).as_millis() as u64,
-                        "Minigame result receipt evicted");
-                }
-            }
-        }
-        inner.receipt_order.push_back(receipt.ticket.clone());
-        inner.receipts.insert(receipt.ticket.clone(), receipt);
+        inner.push_receipt(receipt, now);
         DepositOutcome::Deposited
     }
 
@@ -199,5 +192,53 @@ impl SessionRegistry {
     #[cfg(test)]
     pub(crate) async fn hold_registry_lock_for_test(&self) -> impl Drop + '_ {
         self.inner.lock().await
+    }
+}
+
+/// Server terminal codes as the receipt stores them.
+const RESULT_CODE_VICTORY: u8 = 1;
+const RESULT_CODE_DEFEAT: u8 = 2;
+/// Interrupted or never started: a pending session the TTL sweep evicted.
+pub(super) const RESULT_CODE_NOT_STARTED: u8 = 3;
+
+impl SessionRegistryInner {
+    /// Mint the one-use receipt for a pending session the sweep evicted, so the
+    /// Base can release the cell's minigame hold (D-MG15) through the same
+    /// ticket-only redemption as every other result. No chains ride it.
+    pub(super) fn deposit_expiry_receipt(&mut self, session: &MinigameSession) {
+        let now = Instant::now();
+        let receipt = ResultReceipt {
+            ticket: session.ticket.clone(),
+            entity_id: session.entity_id,
+            player_id: session.player_id,
+            player_name: session.player_name.clone(),
+            session_instance_id: session.session_instance_id,
+            game_name: session.game_name.clone(),
+            result_code: RESULT_CODE_NOT_STARTED,
+            notify_client: true,
+            on_victory_chains: vec![],
+            on_failure_chains: vec![],
+            issued_at: now,
+        };
+        self.push_receipt(receipt, now);
+    }
+
+    fn push_receipt(&mut self, receipt: ResultReceipt, now: Instant) {
+        let inner = self;
+        if inner.receipts.len() >= RESULT_RECEIPT_CAP {
+            if let Some(oldest) = inner.receipt_order.pop_front() {
+                if let Some(evicted) = inner.receipts.remove(&oldest) {
+                    tracing::warn!(entity_id = evicted.entity_id,
+                        entity_name = evicted.player_name.as_deref(),
+                        player_id = evicted.player_id,
+                        player_name = evicted.player_name.as_deref(),
+                        game = %evicted.game_name, reason = "receipt_capacity",
+                        age_ms = now.saturating_duration_since(evicted.issued_at).as_millis() as u64,
+                        "Minigame result receipt evicted");
+                }
+            }
+        }
+        inner.receipt_order.push_back(receipt.ticket.clone());
+        inner.receipts.insert(receipt.ticket.clone(), receipt);
     }
 }

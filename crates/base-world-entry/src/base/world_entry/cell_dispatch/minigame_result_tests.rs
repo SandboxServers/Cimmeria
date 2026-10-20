@@ -73,6 +73,7 @@ async fn result_fixture(
             0,
             1,
             chains,
+            vec![],
             None,
             Some(addr.ip()),
             instance,
@@ -111,14 +112,73 @@ async fn minigame_result_forwards_receipt_to_cell_once() {
     }
     assert!(
         matches!(cell_rx.try_recv(), Ok(BaseToCellMsg::MinigameResult {
-        entity_id: 10, player_id: 1, result_code: 1, on_victory_chains,
-    }) if on_victory_chains == vec![100, 200])
+        entity_id: 10, player_id: 1, result_code: 1, on_victory_chains, on_failure_chains,
+    }) if on_victory_chains == vec![100, 200] && on_failure_chains.is_empty())
     );
     assert!(
         cell_rx.try_recv().is_err(),
         "duplicate ticket must not forward"
     );
     assert!(registry.redeem_result(&ticket).await.is_none());
+}
+
+/// MG-02: a defeat's failure chains ride the receipt to the cell; the
+/// victory chains do not. Dropping `on_failure_chains` from the forward
+/// leaves the cell an empty list and fails this.
+#[tokio::test]
+async fn minigame_defeat_forwards_failure_chains_from_the_receipt() {
+    use crate::test_support::test_default_connected_client_state;
+    let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
+    let addr: SocketAddr = "127.0.0.1:5001".parse().unwrap();
+    let mut state = test_default_connected_client_state();
+    state.player_entity_id = Some(10);
+    state.active_player_id = Some(1);
+    let instance = state.session_instance_id;
+    let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(10, addr)])));
+    let registry = crate::minigame::SessionRegistry::new();
+    let ticket = registry
+        .register(
+            10,
+            1,
+            "Livewire".into(),
+            1,
+            1,
+            0,
+            0,
+            0,
+            1,
+            vec![100],
+            vec![700],
+            None,
+            Some(addr.ip()),
+            instance,
+        )
+        .await
+        .unwrap();
+    let claimed = registry
+        .authenticate_and_claim(10, &ticket, "Livewire")
+        .await
+        .unwrap();
+    assert!(registry.deposit_result(&claimed, 2, false).await);
+    let (cell_tx, mut cell_rx) = mpsc::channel(1);
+    handle_cell_message(
+        CellToBaseMsg::MinigameResult { ticket },
+        &transport,
+        &connected,
+        &entity_to_addr,
+        &Some(cell_tx),
+        &None,
+        &Some(registry),
+        "127.0.0.1",
+        7777,
+    )
+    .await;
+    assert!(
+        matches!(cell_rx.try_recv(), Ok(BaseToCellMsg::MinigameResult {
+        entity_id: 10, player_id: 1, result_code: 2, on_victory_chains, on_failure_chains,
+    }) if on_victory_chains.is_empty() && on_failure_chains == vec![700])
+    );
 }
 
 #[tokio::test]

@@ -43,3 +43,34 @@ async fn a_stunned_player_cannot_use_a_consumable() {
     let sent = use_item(&mut mgr, &ChainEngine::new(), SLAPPACK).await;
     assert_eq!(consumes(&sent).len(), 1, "free again");
 }
+
+/// **Regression guard (the Prison Boot is not incapacitating).** The boot is a
+/// movement-only entry, so a booted player's slappack is consumed and no
+/// feedback line is sent. Reverting the `consumable_use` gate to
+/// `holds_ledger_flag` refuses the use (`a booted use consumes` fails).
+#[tokio::test]
+async fn a_booted_player_can_use_a_consumable() {
+    let mut mgr = mgr();
+    set_pool(&mut mgr, HEALTH, 200);
+    let boot = TimedEffectSpec {
+        effect_id: 1939,
+        ability_id: 1597,
+        invoker_id: PLAYER,
+        state_flags: crate::cell::combat::BSF_MOVEMENT_LOCK,
+        movement_only: true,
+        duration_secs: None,
+        stacking: TimedStacking::PerEffect,
+        ..Default::default()
+    };
+    mgr.apply_timed_effect(PLAYER, boot, Instant::now())
+        .unwrap();
+
+    let sent = use_item(&mut mgr, &ChainEngine::new(), SLAPPACK).await;
+    assert_eq!(consumes(&sent).len(), 1, "a booted use consumes");
+    assert!(
+        method_calls(&sent)
+            .iter()
+            .all(|c| c.1 != &feedback_line(INCAPACITATED_TEXT)),
+        "no incapacitated feedback for a booted player"
+    );
+}

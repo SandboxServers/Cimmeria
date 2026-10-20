@@ -17,6 +17,7 @@ async fn claimed() -> (SessionRegistry, MinigameSession) {
             0,
             1,
             vec![100, 200],
+            vec![700],
             Some("Hacker".into()),
             None,
             9,
@@ -65,6 +66,10 @@ async fn result_dispatch_delivers_ticket_only_and_emits_once() {
         (receipt.result_code, receipt.on_victory_chains),
         (1, vec![100, 200])
     );
+    assert!(
+        receipt.on_failure_chains.is_empty(),
+        "a victory never carries the failure chains"
+    );
     assert!(registry.redeem_result(&session.ticket).await.is_none());
     assert_eq!(
         send_minigame_result_with_sink(
@@ -83,6 +88,35 @@ async fn result_dispatch_delivers_ticket_only_and_emits_once() {
     );
     assert_eq!(events.lock().unwrap().len(), 1);
     assert!(rx.try_recv().is_err());
+}
+
+/// D-MG5: a defeat's receipt carries the registered failure chains (and no
+/// victory chains), so the Base can hand them to the cell after redemption.
+#[tokio::test]
+async fn result_dispatch_defeat_receipt_carries_failure_chains() {
+    let (registry, session) = claimed().await;
+    let (tx, mut rx) = mpsc::channel(1);
+    let sink = |_event| {};
+    assert_eq!(
+        send_minigame_result_with_sink(
+            &registry,
+            &tx,
+            &session,
+            RESULT_DEFEAT,
+            "failure_tick",
+            true,
+            &sink
+        )
+        .await,
+        DispatchOutcome::Delivered
+    );
+    assert!(
+        matches!(rx.try_recv(), Ok(CellToBaseMsg::MinigameResult { ticket }) if ticket == session.ticket)
+    );
+    let receipt = registry.redeem_result(&session.ticket).await.unwrap();
+    assert_eq!(receipt.result_code, RESULT_DEFEAT);
+    assert_eq!(receipt.on_failure_chains, vec![700]);
+    assert!(receipt.on_victory_chains.is_empty());
 }
 
 #[tokio::test]
@@ -180,6 +214,7 @@ async fn result_dispatch_failed_send_revokes_only_its_ticket_after_replacement()
             0,
             1,
             vec![300],
+            vec![],
             None,
             None,
             9,

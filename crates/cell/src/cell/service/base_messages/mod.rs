@@ -316,12 +316,14 @@ pub(super) async fn handle_base_message(
             player_id,
             result_code,
             on_victory_chains,
+            on_failure_chains,
         } => {
             minigame::handle_minigame_result(
                 entity_id,
                 player_id,
                 result_code,
                 on_victory_chains,
+                on_failure_chains,
                 tx,
                 space_mgr,
                 engine,

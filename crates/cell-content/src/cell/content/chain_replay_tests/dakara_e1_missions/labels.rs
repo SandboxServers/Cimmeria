@@ -70,6 +70,7 @@ fn labels_cover_the_wave_6c_verbs() {
                     minigame_type: "Livewire".into(),
                     difficulty: 1,
                     on_victory_chains: vec![8231],
+                    on_failure_chains: vec![],
                 },
             ),
             (8231, Action::GrantStargateAddress { stargate_id: 27 }),

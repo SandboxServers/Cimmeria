@@ -82,6 +82,7 @@ async fn spawn_listener(limits: ListenerLimits) -> SocketAddr {
             0,
             1,
             vec![],
+            vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
             1,
@@ -166,6 +167,7 @@ async fn listener_closes_peer_when_session_is_for_another_ip() {
             0,
             1,
             vec![],
+            vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 0, 0, 5))),
             1,
@@ -211,6 +213,7 @@ async fn refused_peer_row_counts_pending_sessions() {
             0,
             0,
             1,
+            vec![],
             vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 0, 0, 6))),
@@ -431,7 +434,7 @@ async fn an_oversized_frame_in_session_closes_it() {
 /// frame this server does not handle. It stays WARN, and the row names the
 /// session and the `(t, action)` pair. Before the fix the codec's WARN had
 /// no session fields and the game loop's own WARN had no type fields.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn unknown_type_in_session_warns_with_fields() {
     let capture = LogCapture::install();
     let (mut client, mut rx, handle) = spawn_placeholder_session(4311).await;
@@ -442,6 +445,8 @@ async fn unknown_type_in_session_warns_with_fields() {
     )
     .await
     .expect("send");
+    // A client-declared victory counts only after 5 s of play (D-MG13).
+    tokio::time::advance(Duration::from_secs(5)).await;
     let victory = "<msg t='xt'><body action='xtReq'>\
          <![CDATA[<dataObj><var n='cmd' t='s'>victory</var></dataObj>]]>\
          </body></msg>";
@@ -467,9 +472,12 @@ async fn unknown_type_in_session_warns_with_fields() {
 /// A logged-in client that goes silent is closed at the idle deadline and
 /// reported as a cancel, like a closed window. Paused time; the outer guard
 /// fails the test instead of hanging if the deadline is missing.
+///
+/// The idle deadline is 30 s, half the shell's 60 s countdown (MG-64), so
+/// the idle arm fires before the countdown can end the placeholder game.
 #[tokio::test(start_paused = true)]
 async fn an_idle_session_ends_as_canceled() {
-    let idle = Duration::from_secs(60);
+    let idle = Duration::from_secs(30);
     let started = tokio::time::Instant::now();
     // The client never reads: the session's startup frames fit in the
     // socket buffer, and reading would arm timers that race the deadline.
@@ -514,7 +522,7 @@ pub(super) async fn send_handshake(client: &mut TcpStream, entity_id: u32, ticke
 /// plays on to its own result. Without the `connected` check the second
 /// login claims the session again and starts a second game against the
 /// same victory chains.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_second_login_with_a_live_ticket_is_refused() {
     let capture = LogCapture::install();
     let registry = SessionRegistry::new();
@@ -530,6 +538,7 @@ async fn a_second_login_with_a_live_ticket_is_refused() {
             0,
             1,
             vec![99],
+            vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
             1,
@@ -567,7 +576,9 @@ async fn a_second_login_with_a_live_ticket_is_refused() {
     assert!(row.fields.contains_key("peer"), "{row:#?}");
     assert!(row.has_field("entity_id", "4313"), "{row:#?}");
 
-    // The first session is untouched and still wins normally.
+    // The first session is untouched and still wins normally, once it has
+    // played the 5 s minimum (D-MG13).
+    tokio::time::advance(Duration::from_secs(5)).await;
     let victory = "<msg t='xt'><body action='xtReq'>\
          <![CDATA[<dataObj><var n='cmd' t='s'>victory</var></dataObj>]]>\
          </body></msg>";
@@ -600,6 +611,7 @@ async fn a_successful_login_logs_the_claimed_row_with_identity() {
             0,
             0,
             1,
+            vec![],
             vec![],
             Some("Tester".into()),
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
@@ -645,6 +657,7 @@ async fn crafted_logins_for_a_registered_entity_do_not_warn() {
             0,
             0,
             1,
+            vec![],
             vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),

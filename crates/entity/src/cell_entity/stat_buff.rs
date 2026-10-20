@@ -145,6 +145,10 @@ pub struct TimedEffect {
     /// expiry and removal rows join the launch row. `None` outside a cast (a
     /// consumable, a test).
     pub cast_id: Option<i32>,
+    /// A movement-only hold (the Prison Boot, MG-63b): it holds
+    /// `BSF_MovementLock` but leaves item and ability use open, so the
+    /// incapacitated gates skip it (`stat_buff_flags.rs`).
+    pub movement_only: bool,
 }
 
 impl TimedEffect {
@@ -201,6 +205,9 @@ pub struct TimedEffectSpec {
     /// The resolving cast (AB-T1); `SpaceManager::apply_timed_effect` fills
     /// it from the cast scope.
     pub cast_id: Option<i32>,
+    /// Hold `state_flags` for movement only (see [`TimedEffect::movement_only`]).
+    /// `false` for every other entry.
+    pub movement_only: bool,
 }
 
 /// The stat-changing effects on an entity plus the client timer clears the
@@ -364,6 +371,7 @@ impl CellEntity {
             invoker_identity: spec.invoker_identity,
             invoker_name: spec.invoker_name,
             cast_id: spec.cast_id,
+            movement_only: spec.movement_only,
         };
         self.stat_buffs.entries.push(applied.clone());
         // After the replaced entries released theirs: a refresh drops the

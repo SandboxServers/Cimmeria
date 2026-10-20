@@ -233,6 +233,7 @@ fn labels_in(resolved: &ResolvedActions, range: RangeInclusive<i64>) -> Vec<Stri
                     minigame_type,
                     difficulty,
                     on_victory_chains,
+                    ..
                 } => format!(
                     "start_minigame({minigame_type},victory={on_victory_chains:?},d={difficulty})"
                 ),

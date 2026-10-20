@@ -231,8 +231,9 @@ pub(super) fn refusal(
         return Some(Refusal::Dead);
     }
     // A stun's or knockdown's timed-effect entry, not the bare bit: ring
-    // transport sets the lock too.
-    if entity.holds_ledger_flag(crate::cell::combat::BSF_MOVEMENT_LOCK) {
+    // transport sets the lock too. A movement-only hold (the Prison Boot)
+    // leaves item use open.
+    if entity.holds_incapacitating_flag(crate::cell::combat::BSF_MOVEMENT_LOCK) {
         return Some(Refusal::Incapacitated);
     }
     if plan.buffs || plan.heals.is_empty() {

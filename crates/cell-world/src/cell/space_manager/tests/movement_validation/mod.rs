@@ -18,6 +18,7 @@
 //!   layer 4 gates at all, against the real `harset.nav`.
 //! - [`gm_navmesh`] — the GM off-navmesh allowance layered on top of layer 4.
 //! - [`onphysics`] — the `movement_unrestricted` (fly/ghost) bypass.
+//! - [`held`] — the server-side minigame movement hold (`MovementLocked`).
 //! - [`recovery`] — snap-back termination: relocation, correction budget,
 //!   and the terminal-fallback resolver.
 //! - [`telemetry_reject`] — what a reject *reports*: world, the navmesh
@@ -92,6 +93,7 @@ fn seed_clock(mgr: &mut super::super::SpaceManager, entity_id: u32, now: Instant
 mod advisory;
 mod bounds;
 mod gm_navmesh;
+mod held;
 mod kinematics;
 mod navmesh;
 mod onphysics;

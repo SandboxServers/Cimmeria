@@ -50,6 +50,7 @@
 //! | `CIMMERIA_GIT_SHA` | unset | **Build time only**, read by `crates/server/build.rs`, never at runtime. Becomes the OTLP `service.version` resource attribute. The container build sets it from the `CIMMERIA_GIT_SHA` Docker build arg (`release-container.yml` passes `github.sha`); a source build falls back to `git rev-parse HEAD`, then `unknown`. |
 //! | `CIMMERIA_LAB_MCP_BIND` | unset | Bind address for the live-research-lab MCP endpoint (issue #687), e.g. `127.0.0.1:8451`. **No default** — the endpoint stays OFF unless this *and* `CIMMERIA_LAB_MCP_TOKEN` are both set. It runs on its OWN `TcpListener`, never on the admin API router (which defaults to loopback but still has no auth until JWT lands). Keep it off player-facing interfaces. |
 //! | `CIMMERIA_AMMO_FINITE_SPECIAL` | on | The `ammo.finite_special` feature flag (ammo campaign, [docs/analysis/ammo/](../../../docs/analysis/ammo/README.md), D-AM11). Unset or `1`/`true`/`on`/`yes`: reloads of special ammo draw rounds from the bags, and every shot applies its ammo type's `ammo_modifiers` row (damage, penetration, damage type, on-hit effect, support-dart ally targeting). `0`/`false`/`off`/`no` is the rollback lever: free reloads and unmodified shots, as before the campaign. It does not withdraw the pushed ammo item definitions (9000-9014), the loot rows or the GM commands. An unrecognised value logs a WARN (`target: ammo`, `event=feature_flag_invalid`) and turns the flag off. Read once at startup. |
+//! | `CIMMERIA_MINIGAME_START_DIALOG` | off | The `minigame.start_dialog` feature flag (MG-21, D-MG19). Unset or `0`/`false`/`off`/`no`: a minigame launch sends `StartMinigame` at once. `1`/`true`/`on`/`yes`: the player first sees the pre-game dialog (client 53) and Play or Cancel answers it, with a 60 s offer window. An unrecognised value logs a WARN (`target: minigame`, `event=feature_flag_invalid`) and the flag stays off. Read once at startup. |
 //! | `CIMMERIA_LAB_MCP_ALLOWED_HOSTS` | unset | Extra `Host` header values the lab MCP endpoint accepts, comma-separated (`10.0.0.5`, `lab.example:8444`), added to `localhost`, `127.0.0.1` and `::1`. The MCP transport's DNS-rebinding guard answers any other `Host` with 403, so a remote client needs the address it dials listed here. |
 //! | `CIMMERIA_LAB_MCP_TOKEN` | unset | Shared bearer token for the lab MCP endpoint. Must be **≥32 bytes** or the endpoint logs an error and refuses to start. Every request must present `Authorization: Bearer <token>` (constant-time compared). |
 //!
@@ -158,6 +159,9 @@ async fn main() {
 
     // Ammo campaign feature flag, read once before any service starts.
     cimmeria_entity::ammo_feature::init_finite_special_from_env();
+
+    // Minigame start-dialog feature flag (MG-21), read once with the ammo flag.
+    cimmeria_entity::minigame_feature::init_start_dialog_from_env();
 
     tracing::trace!(
         auth_host = %config.auth_host,

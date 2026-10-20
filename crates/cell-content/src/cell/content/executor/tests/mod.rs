@@ -69,6 +69,7 @@ mod radio_dialog;
 mod remove_effect;
 mod spawn_set;
 mod stargate;
+mod start_minigame_params;
 mod stats;
 mod teleport;
 

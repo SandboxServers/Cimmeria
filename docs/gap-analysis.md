@@ -2,7 +2,7 @@
 title: "Gameplay Systems Gap Analysis"
 type: explanation
 audience: engineers
-last_updated: 2026-10-11
+last_updated: 2026-10-20
 ---
 
 # Gameplay Systems Gap Analysis
@@ -71,7 +71,7 @@ Each system's evidence, code paths and feature table live in one file per area. 
 | 26 | [Contact Lists](gap-analysis/stub-only-systems.md#26-contact-lists-----cw-shipped-2026-06-20-was-km) | CW | [stub-only-systems.md](gap-analysis/stub-only-systems.md) |
 | 27 | [Dueling](gap-analysis/stub-only-systems.md#27-dueling-----im-1v1-duels-implemented-end-to-end-awaiting-the-owners-in-client-uat) | IM | [stub-only-systems.md](gap-analysis/stub-only-systems.md) |
 | 28 | [Pets](gap-analysis/stub-only-systems.md#28-pets-----nt-was-km) | NT | [stub-only-systems.md](gap-analysis/stub-only-systems.md) |
-| 29 | [Minigames](gap-analysis/stub-only-systems.md#29-minigames-----im-was-km) | IM | [stub-only-systems.md](gap-analysis/stub-only-systems.md) |
+| 29 | [Minigames](gap-analysis/stub-only-systems.md#29-minigames-----nt-was-im) | NT | [stub-only-systems.md](gap-analysis/stub-only-systems.md) |
 | 30 | [Groups / Parties](gap-analysis/stub-only-systems.md#30-groups--parties-----nt-the-squad-is-the-group-see-23) | NT | [stub-only-systems.md](gap-analysis/stub-only-systems.md) |
 | 31 | [Content Engine](gap-analysis/new-systems.md#31-content-engine-----cw) | CW | [new-systems.md](gap-analysis/new-systems.md) |
 | 32 | [Mercury Bundle / ChannelBundle](gap-analysis/new-systems.md#32-mercury-bundle--channelbundle-----cw) | CW | [new-systems.md](gap-analysis/new-systems.md) |
@@ -125,7 +125,7 @@ Recomputed 2026-09-27 directly from the feature rows, by script: every matrix ro
 | 26 | Contact Lists | 11 | 10 | 1 | 0 | 0 | 0 |
 | 27 | Dueling | 6 | 0 | 0 | 5 | 1 | 0 |
 | 28 | Pets | 7 | 0 | 6 | 1 | 0 | 0 |
-| 29 | Minigames | 9 | 5 | 0 | 1 | 3 | 0 |
+| 29 | Minigames | 11 | 5 | 2 | 1 | 3 | 0 |
 | 30 | Groups / Parties | 7 | 0 | 3 | 1 | 3 | 0 |
 | 31 | Content Engine | 11 | 6 | 2 | 1 | 2 | 0 |
 | 32 | Mercury Bundle / ChannelBundle | 5 | 5 | 0 | 0 | 0 | 0 |
@@ -142,24 +142,24 @@ Recomputed 2026-09-27 directly from the feature rows, by script: every matrix ro
 | -- | Event / Scheduler System | 4 | 0 | 0 | 1 | 3 | 0 |
 | -- | Admin / GM Tools | 14 | 4 | 3 | 5 | 2 | 0 |
 | -- | Metrics / Telemetry | 10 | 4 | 4 | 2 | 0 | 0 |
-| | **TOTALS** | **<!-- gen:gap-count total -->512<!-- /gen:gap-count -->** | **<!-- gen:gap-count CW -->167<!-- /gen:gap-count -->** | **<!-- gen:gap-count NT -->146<!-- /gen:gap-count -->** | **<!-- gen:gap-count IM -->102<!-- /gen:gap-count -->** | **<!-- gen:gap-count KM -->94<!-- /gen:gap-count -->** | **<!-- gen:gap-count NU -->3<!-- /gen:gap-count -->** |
+| | **TOTALS** | **<!-- gen:gap-count total -->514<!-- /gen:gap-count -->** | **<!-- gen:gap-count CW -->167<!-- /gen:gap-count -->** | **<!-- gen:gap-count NT -->148<!-- /gen:gap-count -->** | **<!-- gen:gap-count IM -->102<!-- /gen:gap-count -->** | **<!-- gen:gap-count KM -->94<!-- /gen:gap-count -->** | **<!-- gen:gap-count NU -->3<!-- /gen:gap-count -->** |
 
 ### Summary Percentages
 
-The TOTALS line above and every number in this section are generated from the matrix rows by `tools/docs-gen/regen.py`, which reruns on `main` every six hours; edit the rows, never these numbers. The totals line sums to <!-- gen:gap-count total -->512<!-- /gen:gap-count --> features.
+The TOTALS line above and every number in this section are generated from the matrix rows by `tools/docs-gen/regen.py`, which reruns on `main` every six hours; edit the rows, never these numbers. The totals line sums to <!-- gen:gap-count total -->514<!-- /gen:gap-count --> features.
 
 | Status | Count | Percentage |
 |--------|-------|-----------|
-| Confirmed Working (CW) | <!-- gen:gap-count CW -->167<!-- /gen:gap-count --> | <!-- gen:gap-pct CW -->32.6%<!-- /gen:gap-pct --> |
-| Needs Test (NT) | <!-- gen:gap-count NT -->146<!-- /gen:gap-count --> | <!-- gen:gap-pct NT -->28.5%<!-- /gen:gap-pct --> |
-| Implemented (IM) | <!-- gen:gap-count IM -->102<!-- /gen:gap-count --> | <!-- gen:gap-pct IM -->19.9%<!-- /gen:gap-pct --> |
-| Known/Missing (KM) | <!-- gen:gap-count KM -->94<!-- /gen:gap-count --> | <!-- gen:gap-pct KM -->18.4%<!-- /gen:gap-pct --> |
+| Confirmed Working (CW) | <!-- gen:gap-count CW -->167<!-- /gen:gap-count --> | <!-- gen:gap-pct CW -->32.5%<!-- /gen:gap-pct --> |
+| Needs Test (NT) | <!-- gen:gap-count NT -->148<!-- /gen:gap-count --> | <!-- gen:gap-pct NT -->28.8%<!-- /gen:gap-pct --> |
+| Implemented (IM) | <!-- gen:gap-count IM -->102<!-- /gen:gap-count --> | <!-- gen:gap-pct IM -->19.8%<!-- /gen:gap-pct --> |
+| Known/Missing (KM) | <!-- gen:gap-count KM -->94<!-- /gen:gap-count --> | <!-- gen:gap-pct KM -->18.3%<!-- /gen:gap-pct --> |
 | Needed/Unknown (NU) | <!-- gen:gap-count NU -->3<!-- /gen:gap-count --> | <!-- gen:gap-pct NU -->0.6%<!-- /gen:gap-pct --> |
 
-**Code exists (CW + NT + IM)**: <!-- gen:gap-count CW+NT+IM -->415<!-- /gen:gap-count --> features (<!-- gen:gap-pct CW+NT+IM -->81.1%<!-- /gen:gap-pct -->)
+**Code exists (CW + NT + IM)**: <!-- gen:gap-count CW+NT+IM -->417<!-- /gen:gap-count --> features (<!-- gen:gap-pct CW+NT+IM -->81.1%<!-- /gen:gap-pct -->)
 **Missing (KM + NU)**: <!-- gen:gap-count KM+NU -->97<!-- /gen:gap-count --> features (<!-- gen:gap-pct KM+NU -->18.9%<!-- /gen:gap-pct -->)
 
-**Tested end-to-end (CW)**: <!-- gen:gap-count CW -->167<!-- /gen:gap-count --> features (<!-- gen:gap-pct CW -->32.6%<!-- /gen:gap-pct -->).
+**Tested end-to-end (CW)**: <!-- gen:gap-count CW -->167<!-- /gen:gap-count --> features (<!-- gen:gap-pct CW -->32.5%<!-- /gen:gap-pct -->).
 
 ### Since 2026-09-25
 
@@ -174,10 +174,12 @@ The TOTALS line above and every number in this section are generated from the ma
 | 2026-10-05 (named-telemetry close-out) | 167 | 127 | 102 | 94 | 3 | 493 |
 | 2026-10-05 (Debug Area close-out) | 167 | 138 | 102 | 94 | 3 | 504 |
 | 2026-10-11 (telemetry-gaps close-out) | 167 | 146 | 102 | 94 | 3 | 512 |
-| **Delta** (2026-09-25 to now) | **-2** | **+88** | **+4** | **-48** | **-1** | **+41** |
+| 2026-10-20 (minigames close-out) | 167 | 148 | 102 | 94 | 3 | 514 |
+| **Delta** (2026-09-25 to now) | **-2** | **+90** | **+4** | **-48** | **-1** | **+43** |
 
 - **Social systems (mail, chat, 1v1 duels).** The social-systems campaign ([ledger](analysis/social-systems/README.md), PRs #873 to #937) moved Chat to 7 NT / 1 IM / 3 KM (tells, Ignore, flood limit, GM broadcast, GM mute), Mail to 15 NT / 2 KM with four new rows (server-generated mail, GM mail tools, quarantined-mail recovery, vault and organization aliases), and Dueling to 5 IM / 1 KM. Rate Limiting's chat row also covers the mail and duel buckets. Every one of these rows waits on the owner's [SS-UAT](analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release).
 - **Other campaigns.** Crafting (CR-07 to CR-09), pets, organizations (ORG-03, ORG-04) and the ability-tree campaign changed feature rows in their sections. Four of those sections had been edited without their matrix row: World Entry (10 → 12 rows), XP and Leveling (11 → 12 rows, two CW rows now NT until the ability-tree UAT), Organizations (15 → 17 rows, 3 NT) and Anti-Cheat (7 → 8 rows). The close-out recount brought those matrix rows back in line with their tables.
+- **Minigames.** The minigames campaign ([ledger](analysis/minigames/README.md)) moved section 29 from IM to NT: 11 features (5 CW, 2 NT, 1 IM, 3 KM), with two new NT rows (launch plumbing, server-validated games) and the shells row IM. Livewire stays the only client-proven game.
 - **Organizations (Squads, Teams, Commands).** The organizations campaign ([ledger](analysis/organizations/README.md), PRs #861 to #954) moved §23 from 3 NT / 14 KM to 16 NT / 1 IM / 4 KM, with four new rows (kick, login restore and presence, disband, GM commands); the four KM rows left are the Bank campaign's cash and vault, and the two strike-team responses, which are refused because no strike-team feature exists. §30 now counts the squad as the group (3 NT / 1 IM / 3 KM), and §21's pre-defined channels row is NT now that team, command and officer lines are delivered (ORG-09). Every one of these rows waits on the owner's [ORG-UAT](analysis/organizations/work-packets.md#org-uat-owner-two-client-uat-colo).
 - **Bank and vault.** The Bank and Vault campaign ([ledger](analysis/bank-vault/README.md), PRs #860 to #966) moved §23's two Bank rows, the treasury and the organization vault, from KM to NT (§23: 18 NT / 1 IM / 2 KM). The personal bank changed no row count: §12's bag row already counted the bank. Every one of these rows waits on the owner's bank UAT ([checklist](analysis/bank-vault/handoffs/session-resume.md#uat-checklist)).
 - **Crafting.** The crafting campaign ([ledger](analysis/crafting/README.md), PRs #851 to #979) moved every §19 row to NT: the eight IM rows (craft, research, reverse engineering, alloy, learning, expertise, paradigms, blueprints) and respec (KM). It also changed rows without moving their status: §14's loot take-all and table content (a refused pickup stays on the corpse; the debug crate drops guides and a Blueprint item, CR-16) and §22's item swap (trade from the crafting bag, CR-17). Every §19 row waits on the owner's [CR-14 UAT](analysis/crafting/handoffs/session-resume.md#cr-14-owner-uat-checklist).
@@ -235,7 +237,7 @@ Re-ranked 2026-09-25.
 6. **Multi-zone end-to-end** — Castle Cellblock and Castle have been played in a client (2026-09-18 colo playtest); Harset is rebuilt but unplayed; the other spaces have navmeshes but no content campaign
 7. **Two-client verification** — trading, player-to-player introduction (#737), chat between players, mail and duels have never been exercised with two real clients. The social-systems [SS-UAT](analysis/social-systems/work-packets.md#ss-uat-owner-uat-colo-after-the-release) is the script for the last three
 
-Quality-of-life items (organizations, black market, remaining minigame ports, groups) are still gated on the above but each can be picked up independently. GM tooling and contact lists have left this list, and so have mail, chat and 1v1 duels (the social-systems campaign, merged 2026-09-27, awaiting the owner's UAT) and pets (restored server-side 2026-09-27, awaiting the owner's in-game UAT).
+Quality-of-life items (organizations, black market, minigame lab UAT and the social layer, groups) are still gated on the above but each can be picked up independently. GM tooling and contact lists have left this list, and so have mail, chat and 1v1 duels (the social-systems campaign, merged 2026-09-27, awaiting the owner's UAT) and pets (restored server-side 2026-09-27, awaiting the owner's in-game UAT).
 
 ---
 

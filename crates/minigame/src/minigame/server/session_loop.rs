@@ -299,7 +299,7 @@ pub(super) async fn run_session(
         let mut game_complete = false;
         let mut tick_interval = tick_interval;
 
-        // Reset on every inbound frame. Outbound ticks don't count: a
+        // Reset on every parsed request. Junk frames and outbound ticks don't count: a
         // Livewire board keeps sending timer updates to a client that left.
         let idle = tokio::time::sleep(idle_timeout);
         tokio::pin!(idle);
@@ -313,28 +313,81 @@ pub(super) async fn run_session(
                     end_reason = EndReason::PlayerCanceled;
                     game_complete = true;
                 }
+                // Tick timer. Polled before the reads, so a flood of inbound frames cannot starve the deadline.
+                _ = async {
+                    if let Some(ref mut interval) = tick_interval {
+                        interval.tick().await;
+                    } else {
+                        // No tick needed — sleep forever
+                        std::future::pending::<()>().await;
+                    }
+                } => {
+                    let outputs = game.tick();
+                    if let Some(board) = game.board_snapshot() {
+                        registry.publish_board(entity_id, &session.ticket, board).await;
+                    }
+                    let mut send_failed = false;
+                    for output in outputs {
+                        match output {
+                            GameOutput::Send(vars) => {
+                                // A failed send must not drop the result that follows it in this batch.
+                                if !send_failed && send_extension(&mut out, registry, &session, &vars).await.is_err() {
+                                    send_failed = true;
+                                    if !result_reported {
+                                        end_reason = EndReason::SendFailed;
+                                    }
+                                    game_complete = true;
+                                }
+                            }
+                            GameOutput::Victory => {
+                                if !result_reported {
+                                    result_reported = true;
+                                    end_reason = report_terminal(registry, result_tx, &session,
+                                        RESULT_VICTORY, "victory_tick").await;
+                                }
+                                game_complete = true;
+                                break;
+                            }
+                            GameOutput::Failure => {
+                                if !result_reported {
+                                    result_reported = true;
+                                    end_reason = report_terminal(registry, result_tx, &session,
+                                        RESULT_DEFEAT, "failure_tick").await;
+                                }
+                                game_complete = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
                 // Read incoming messages
                 result = read_null_terminated(&mut out.stream, &mut buf, &mut buf_len) => {
                     match result {
                         Ok(msg) => {
-                            idle.as_mut().reset(tokio::time::Instant::now() + idle_timeout);
                             let parsed = protocol::parse_message(&msg);
                             match parsed {
                                 Ok(SfsMessage::ExtensionRequest { cmd, params }) => {
+                                    // Only a parsed request resets the idle deadline; junk frames do not.
+                                    idle.as_mut().reset(tokio::time::Instant::now() + idle_timeout);
                                     registry.record_traffic(entity_id, &session.ticket, "in", &cmd, tap_params(&params)).await;
                                     let outputs = game.message(&cmd, &params);
                                     if let Some(board) = game.board_snapshot() {
                                         registry.publish_board(entity_id, &session.ticket, board).await;
                                     }
+                                    // A failed send ends the session, but a terminal output after
+                                    // it still reports its result (MG-CG3 F4), so no `break` here.
+                                    let mut send_failed = false;
                                     for output in outputs {
                                         match output {
                                             GameOutput::Send(vars) => {
-                                                if send_extension(&mut out, registry, &session, &vars).await.is_err() {
+                                                // A failed send must not drop the result that follows it in this batch.
+                                                if !send_failed && send_extension(&mut out, registry, &session, &vars).await.is_err() {
+                                                    send_failed = true;
                                                     if !result_reported {
                                                         end_reason = EndReason::SendFailed;
                                                     }
                                                     game_complete = true;
-                                                    break;
                                                 }
                                             }
                                             GameOutput::Victory => {
@@ -432,52 +485,6 @@ pub(super) async fn run_session(
                     end_reason = EndReason::IdleTimeout;
                     game_complete = true;
                 }
-
-                // Tick timer
-                _ = async {
-                    if let Some(ref mut interval) = tick_interval {
-                        interval.tick().await;
-                    } else {
-                        // No tick needed — sleep forever
-                        std::future::pending::<()>().await;
-                    }
-                } => {
-                    let outputs = game.tick();
-                    if let Some(board) = game.board_snapshot() {
-                        registry.publish_board(entity_id, &session.ticket, board).await;
-                    }
-                    for output in outputs {
-                        match output {
-                            GameOutput::Send(vars) => {
-                                if send_extension(&mut out, registry, &session, &vars).await.is_err() {
-                                    if !result_reported {
-                                        end_reason = EndReason::SendFailed;
-                                    }
-                                    game_complete = true;
-                                    break;
-                                }
-                            }
-                            GameOutput::Victory => {
-                                if !result_reported {
-                                    result_reported = true;
-                                    end_reason = report_terminal(registry, result_tx, &session,
-                                        RESULT_VICTORY, "victory_tick").await;
-                                }
-                                game_complete = true;
-                                break;
-                            }
-                            GameOutput::Failure => {
-                                if !result_reported {
-                                    result_reported = true;
-                                    end_reason = report_terminal(registry, result_tx, &session,
-                                        RESULT_DEFEAT, "failure_tick").await;
-                                }
-                                game_complete = true;
-                                break;
-                            }
-                        }
-                    }
-                }
             }
 
             if game_complete {
@@ -496,11 +503,9 @@ pub(super) async fn run_session(
     // (`deprecated/cpp/src/baseapp/minigame.cpp`): `aborted()` first, then
     // the close sequence, and `MinigameCanceled` (0) upstream — *not*
     // `Defeat` (2), which the original reserved for a game the player
-    // actually lost. `handle_minigame_result` on the cell only acts on
-    // victory, so today code 0 is inert there; it matters because the
-    // original's cell handler is what cleared `BSF_PlayingMinigame` and
-    // released the movement lock. When either of those lands, dropping this
-    // report would strand the player.
+    // actually lost. `handle_minigame_result` on the cell releases
+    // `BSF_PlayingMinigame` and the movement lock on every code (D-MG15), so
+    // dropping this report strands the player.
     // FIN may have won the read arm just before the close RPC reached the
     // registry. Recheck the watch before reporting an aborted result.
     if !result_reported && *cancel.borrow() {

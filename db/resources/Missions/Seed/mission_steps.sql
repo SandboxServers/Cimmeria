@@ -5332,7 +5332,7 @@ INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabl
 
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (2284, 581, false, 2, false, 'Hide Whelan''s Disguise in the pile of junk', 2);
 
-INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (2307, 582, false, 2, false, 'Conversation Minigame With Marsh', 0);
+INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (2307, 582, false, 2, true, 'Conversation Minigame With Marsh', 0);
 
 INSERT INTO mission_steps (step_id, mission_id, award_xp, difficulty, step_enabled, step_display_log_text, index) VALUES (3274, 582, false, 2, false, 'Convince Marsh you are innocent.', 1);
 

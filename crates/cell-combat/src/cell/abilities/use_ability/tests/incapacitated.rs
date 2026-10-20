@@ -73,6 +73,34 @@ fn stun(mgr: &mut SpaceManager, eid: u32) {
     mgr.apply_timed_effect(eid, spec, Instant::now()).unwrap();
 }
 
+/// **Regression guard (the Prison Boot is not incapacitating).** The boot is
+/// a movement-only entry: the wearer is not incapacitated and the press fires.
+/// Reverting the `use_ability` gate to `holds_ledger_flag` refuses it
+/// (`a booted press fires` fails).
+#[tokio::test]
+async fn a_booted_player_is_not_incapacitated() {
+    let mut mgr = stun_mgr();
+    let boot = TimedEffectSpec {
+        effect_id: 1939,
+        ability_id: 1597,
+        invoker_id: 1,
+        state_flags: BSF_MOVEMENT_LOCK,
+        movement_only: true,
+        duration_secs: None,
+        stacking: TimedStacking::PerEffect,
+        ..Default::default()
+    };
+    mgr.apply_timed_effect(1, boot, Instant::now()).unwrap();
+    assert!(!super::super::incapacitated::is_incapacitated(
+        mgr.get_entity(1).unwrap()
+    ));
+    let (tx, mut rx) = mpsc::channel(512);
+    let launched = handle_use_ability(1, INSTANT_ABILITY, 2, &tx, &mut mgr).await;
+    assert!(launched, "a booted press fires");
+    let msgs = drain(&mut rx);
+    assert_eq!(effect_results(&msgs, 1), 1, "the ability fired: {msgs:?}");
+}
+
 /// **Regression guard (stunned players could cast).** A stunned player's
 /// press is refused with `onErrorCode(0, ability, 15)` and the feedback
 /// line, charges no cooldown and fires nothing; once the stun is off the

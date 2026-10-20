@@ -6,8 +6,9 @@
 //! upstream when the client half goes away versus when the game produced
 //! an outcome of its own. A mock socket would have to model EOF anyway.
 //!
-//! `Hack` is used as the game type: `PlaceholderGame` wins instantly on the
-//! `victory` extension command and reports `needs_tick() == false`, so no
+//! `Hack` is used as the game type: `PlaceholderGame` wins on the `victory`
+//! extension command once 5 s have passed (D-MG13), and reports
+//! `needs_tick() == false`, so no
 //! test here depends on the 250 ms tick timer.
 
 use tokio::net::TcpListener;
@@ -43,6 +44,7 @@ async fn explicit_close_cancels_socket_and_allows_reopen() {
                 0,
                 1,
                 vec![4242],
+                vec![],
                 None,
                 Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
                 1,
@@ -88,6 +90,7 @@ async fn explicit_close_cancels_socket_and_allows_reopen() {
                 0,
                 0,
                 1,
+                vec![],
                 vec![],
                 None,
                 Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
@@ -183,6 +186,7 @@ pub(super) async fn spawn_placeholder_session_with_idle(
             0,
             1,
             vec![4242],
+            vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
             1,
@@ -326,6 +330,27 @@ pub(super) fn drain_results(rx: &mut mpsc::Receiver<CellToBaseMsg>) -> Vec<Strin
     out
 }
 
+/// [`drain_results`], redeeming each ticket so the caller sees the result
+/// code and the chains the Base would hand the cell.
+pub(super) async fn drain_redeemed(
+    rx: &mut mpsc::Receiver<CellToBaseMsg>,
+    registry: &SessionRegistry,
+) -> Vec<(u8, Vec<i64>, Vec<i64>)> {
+    let mut out = Vec::new();
+    for ticket in drain_results(rx) {
+        let receipt = registry
+            .redeem_result(&ticket)
+            .await
+            .expect("every dispatched result has a receipt to redeem");
+        out.push((
+            receipt.result_code,
+            receipt.on_victory_chains,
+            receipt.on_failure_chains,
+        ));
+    }
+    out
+}
+
 /// **Defect B4 regression guard (abort half).** A client that closes its
 /// socket mid-game must produce exactly one upstream result coded
 /// `RESULT_CANCELED`, *and* the instance's `aborted()` must actually run.
@@ -367,14 +392,15 @@ async fn closing_the_swf_reports_canceled_and_runs_aborted() {
 /// Without the `result_reported` flag the teardown would append a bogus
 /// `RESULT_CANCELED` after every victory, and that second message would be
 /// indistinguishable from a real cancel upstream.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_won_game_reports_victory_once_and_never_canceled() {
     let (mut client, mut rx, handle) = spawn_placeholder_session(4302).await;
 
     // Wait until the server is actually in its game loop, then win.
-    // `PlaceholderGame` treats the `victory` extension command as an
-    // instant win.
+    // `PlaceholderGame` treats the `victory` extension command as a win once
+    // the game has run for 5 s (D-MG13).
     read_until_game_begin(&mut client).await;
+    tokio::time::advance(Duration::from_secs(5)).await;
     let victory = "<msg t='xt'><body action='xtReq'>\
          <![CDATA[<dataObj><var n='cmd' t='s'>victory</var></dataObj>]]>\
          </body></msg>";
@@ -393,11 +419,12 @@ async fn a_won_game_reports_victory_once_and_never_canceled() {
 /// TG-MG-07: the victory row names its validator. `Hack` is a placeholder, so
 /// the SWF's own `victory` command is the result and the row must say
 /// `client_declared`. Dropping the field from the row fails the assertion.
-#[tokio::test]
+#[tokio::test(start_paused = true)]
 async fn a_placeholder_victory_row_says_client_declared() {
     let capture = LogCapture::install();
     let (mut client, mut rx, handle) = spawn_placeholder_session(4303).await;
     read_until_game_begin(&mut client).await;
+    tokio::time::advance(Duration::from_secs(5)).await;
     let victory = "<msg t='xt'><body action='xtReq'>\
          <![CDATA[<dataObj><var n='cmd' t='s'>victory</var></dataObj>]]>\
          </body></msg>";
@@ -451,6 +478,7 @@ async fn a_closed_connection_leaves_the_entity_free_to_relaunch() {
             0,
             0,
             1,
+            vec![],
             vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
@@ -540,6 +568,7 @@ async fn a_closed_connection_leaves_the_entity_free_to_relaunch() {
                 0,
                 1,
                 vec![],
+                vec![],
                 None,
                 Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
                 1
@@ -586,6 +615,7 @@ async fn a_send_failure_during_handshake_still_reports_canceled() {
             0,
             0,
             1,
+            vec![],
             vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
@@ -649,6 +679,7 @@ async fn a_send_failure_during_handshake_still_reports_canceled() {
                 0,
                 0,
                 1,
+                vec![],
                 vec![],
                 None,
                 Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),

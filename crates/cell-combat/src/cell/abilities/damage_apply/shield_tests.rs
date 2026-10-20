@@ -29,6 +29,7 @@ fn shielded(capacity: i32) -> SpaceManager {
     mgr.apply_timed_effect(
         PLAYER,
         TimedEffectSpec {
+            movement_only: false,
             cast_id: None,
             effect_id: SHIELD_EFFECT,
             ability_id: 1013,

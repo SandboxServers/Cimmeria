@@ -9,6 +9,13 @@ use std::net::Ipv4Addr;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+const TEST_PARAMS: MinigamePlayerParams = MinigamePlayerParams {
+    player_level: 1,
+    intelligence: 0,
+    tech_competency: 1,
+    abilities_mask: 0,
+};
+
 struct TakeoverTransport {
     connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     registry: SessionRegistry,
@@ -58,6 +65,7 @@ impl Transport for TakeoverTransport {
                             0,
                             1,
                             vec![],
+                            vec![],
                             None,
                             Some(self.addr.ip()),
                             1,
@@ -103,12 +111,15 @@ async fn minigame_start_tx_refusal_cancels_only_its_ticket() {
             "Livewire".into(),
             1,
             vec![],
+            vec![],
+            TEST_PARAMS,
             &(transport.clone() as Arc<dyn Transport>),
             &connected,
             &entity_to_addr,
             &Some(registry.clone()),
             "unused",
             9339,
+            &None,
         )
         .await;
         assert_eq!(transport.sent.lock().unwrap().len(), 1);
@@ -138,6 +149,7 @@ async fn minigame_start_tx_refusal_cancels_only_its_ticket() {
                         0,
                         0,
                         1,
+                        vec![],
                         vec![],
                         None,
                         Some(addr.ip()),

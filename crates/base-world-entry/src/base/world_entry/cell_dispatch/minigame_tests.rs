@@ -6,6 +6,13 @@ use std::io;
 use std::net::{IpAddr, Ipv4Addr};
 use std::pin::Pin;
 
+const TEST_PARAMS: MinigamePlayerParams = MinigamePlayerParams {
+    player_level: 1,
+    intelligence: 0,
+    tech_competency: 1,
+    abilities_mask: 0,
+};
+
 fn owner_state() -> ConnectedClientState {
     let mut state = test_default_connected_client_state();
     state.player_entity_id = Some(77);
@@ -34,12 +41,15 @@ async fn start_for_entity(addr: Option<SocketAddr>) -> SessionRegistry {
         "Livewire".into(),
         1,
         vec![],
+        vec![],
+        TEST_PARAMS,
         &transport,
         &connected,
         &entity_to_addr,
         &minigame_registry,
         "203.0.113.1",
         9339,
+        &None,
     )
     .await;
     registry
@@ -95,12 +105,15 @@ async fn invalid_start_ownership_registers_nothing_and_sends_no_feedback() {
             "Livewire".into(),
             1,
             vec![],
+            vec![],
+            TEST_PARAMS,
             &(transport.clone() as Arc<dyn Transport>),
             &connected,
             &entity_to_addr,
             &Some(registry.clone()),
             "203.0.113.1",
             9339,
+            &None,
         )
         .await;
         assert_eq!(registry.session_count().await, 0);
@@ -142,12 +155,15 @@ async fn failed_url_send_releases_only_its_ticket() {
         "Livewire".into(),
         1,
         vec![],
+        vec![],
+        TEST_PARAMS,
         &transport,
         &connected,
         &entity_to_addr,
         &Some(registry.clone()),
         "203.0.113.1",
         9339,
+        &None,
     )
     .await;
     assert_eq!(
@@ -166,6 +182,7 @@ async fn failed_url_send_releases_only_its_ticket() {
             0,
             0,
             1,
+            vec![],
             vec![],
             None,
             Some(addr.ip()),
@@ -192,12 +209,15 @@ async fn duplicate_start_sends_feedback_without_replacing_ticket() {
         "Livewire".into(),
         1,
         vec![],
+        vec![],
+        TEST_PARAMS,
         &(transport.clone() as Arc<dyn Transport>),
         &connected,
         &entity_to_addr,
         &configured,
         "203.0.113.1",
         9339,
+        &None,
     )
     .await;
     let first = transport.drain();
@@ -246,12 +266,15 @@ async fn duplicate_start_sends_feedback_without_replacing_ticket() {
         "Livewire".into(),
         1,
         vec![],
+        vec![],
+        TEST_PARAMS,
         &(transport.clone() as Arc<dyn Transport>),
         &connected,
         &entity_to_addr,
         &configured,
         "203.0.113.1",
         9339,
+        &None,
     )
     .await;
     assert_eq!(registry.session_count().await, 1);
@@ -300,6 +323,7 @@ async fn stale_result_does_not_end_a_reopened_board_even_if_fin_won() {
             0,
             1,
             vec![],
+            vec![],
             None,
             Some(addr.ip()),
             instance,
@@ -318,6 +342,7 @@ async fn stale_result_does_not_end_a_reopened_board_even_if_fin_won() {
             0,
             0,
             1,
+            vec![],
             vec![],
             None,
             Some(addr.ip()),

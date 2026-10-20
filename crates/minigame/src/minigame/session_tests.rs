@@ -15,6 +15,7 @@ async fn register_and_authenticate() {
             10,
             5,
             vec![1017],
+            vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
             1,
@@ -41,6 +42,7 @@ async fn wrong_ticket_fails() {
         0,
         1,
         vec![],
+        vec![],
         None,
         Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
         1,
@@ -64,6 +66,7 @@ async fn wrong_game_name_fails() {
             0,
             0,
             1,
+            vec![],
             vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
@@ -89,6 +92,7 @@ async fn duplicate_session_rejected() {
         0,
         1,
         vec![],
+        vec![],
         None,
         Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
         1,
@@ -107,6 +111,7 @@ async fn duplicate_session_rejected() {
             0,
             0,
             1,
+            vec![],
             vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
@@ -130,6 +135,7 @@ async fn remove_allows_re_register() {
         0,
         1,
         vec![],
+        vec![],
         None,
         Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
         1,
@@ -150,6 +156,7 @@ async fn remove_allows_re_register() {
             0,
             0,
             1,
+            vec![],
             vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
@@ -179,6 +186,7 @@ async fn expects_peer_matches_only_registered_ip() {
         0,
         0,
         1,
+        vec![],
         vec![],
         None,
         Some(std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 0, 0, 5))),
@@ -210,6 +218,7 @@ async fn expects_peer_normalises_v4_mapped() {
         0,
         0,
         1,
+        vec![],
         vec![],
         None,
         Some(std::net::IpAddr::V4(std::net::Ipv4Addr::new(10, 0, 0, 5))),
@@ -250,6 +259,7 @@ pub(super) async fn register_livewire(reg: &SessionRegistry, entity_id: u32) -> 
         0,
         0,
         1,
+        vec![],
         vec![],
         None,
         Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
@@ -402,7 +412,7 @@ async fn sweep_only_evicts_the_stale_entity() {
 /// clock before that happens moves the epoch forward with it and the
 /// sweep never fires — which made the first version of these two tests
 /// pass vacuously. Yielding here pins the epoch at `now` first.
-async fn let_spawned_task_start() {
+pub(super) async fn let_spawned_task_start() {
     for _ in 0..4 {
         tokio::task::yield_now().await;
     }

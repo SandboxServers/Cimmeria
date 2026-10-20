@@ -10859,6 +10859,9 @@ INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags
 -- map-load crash (#943) is explained, so the client shows no dialog yet.
 INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (60110, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Banker - Expand vault');
 
+-- Minigames campaign, MG-74: the Debug Area minigame terminals' bark holder. Owns dialog id 60120.
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (60120, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Debug Area - minigame bark holder (never displayed)');
+
 -- Cellblock continuation CB-N04a: holder for the cells ambient barks. Never
 -- displayed; npc_bark reads its screens' text. Seed-only, no override.
 INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (60160, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Cellblock - ambient cast bark holder (never displayed)');

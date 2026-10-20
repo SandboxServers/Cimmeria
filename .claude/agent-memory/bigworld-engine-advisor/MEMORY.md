@@ -11,6 +11,7 @@ All five topic files have been triaged per #264 step 4. Bucket tags below each l
 
 ## Topic files
 
+- [minigame-launch-flow-facts.md](minigame-launch-flow-facts.md) - **[NEW 2026-10-19]** Dialog 53 needs no patch; server 54 echoes cell 30; bit 4/6 client hooks; techcomp 1-55; M7/M8 confirmed.
 - [phasing-as-aoi-membership.md](phasing-as-aoi-membership.md) - **[NEW 2026-10-17]** Phasing = witness-set filter in compute_player_aoi; id-taking handlers need their own gate.
 
 - [voicedata-handler-and-recv-loop-stall.md](voicedata-handler-and-recv-loop-stall.md) - **[NEW 2026-10-11]** SC+0x168 is pHandler_ (voiceData forwards in world, slot 13 unverified); base recv loop is one task, a handler sleep stalls all.

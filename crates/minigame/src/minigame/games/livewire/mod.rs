@@ -24,7 +24,15 @@ mod setup;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+mod tests_parity;
+
 const TICK_RATE: f64 = 0.25;
+/// Refusals logged in full before sampling. Past this, one row in every 256
+/// is logged, so a flood of refused frames cannot fill the log.
+const REFUSAL_LOG_CAP: u32 = 16;
+/// The longest client string (command or wire name) written to a log row.
+const MAX_LOGGED_TEXT: usize = 64;
 
 // ── Wire ─────────────────────────────────────────────────────────────────────
 
@@ -82,6 +90,9 @@ pub(super) struct LivewireGame {
 
     // RNG (seeded, Send-safe)
     pub(super) rng: StdRng,
+
+    /// Every refused command so far, logged or not.
+    refusals: u32,
 }
 
 impl LivewireGame {
@@ -130,7 +141,42 @@ impl LivewireGame {
             stop_time_cheat_time: 0.0,
             up_time_cheat_time: 0.0,
             rng: StdRng::seed_from_u64(session.seed as u64),
+            refusals: 0,
         }
+    }
+}
+
+/// A client string made safe for a log row: at most [`MAX_LOGGED_TEXT`]
+/// characters, with control characters shown as `?` so a frame cannot split
+/// a log line.
+fn log_text(text: &str) -> String {
+    text.chars()
+        .take(MAX_LOGGED_TEXT)
+        .map(|c| if c.is_control() { '?' } else { c })
+        .collect()
+}
+
+impl LivewireGame {
+    /// Counts one refused command and logs it at WARN with the player's
+    /// identity, the `reason` and the client's `cmd` and `wire` text. The
+    /// caller sends nothing.
+    fn refuse(&mut self, cmd: &str, wire: &str, reason: &'static str, message: &'static str) {
+        self.refusals = self.refusals.saturating_add(1);
+        if self.refusals > REFUSAL_LOG_CAP && !self.refusals.is_multiple_of(256) {
+            return;
+        }
+        tracing::warn!(
+            entity_id = self.entity_id,
+            entity_name = self.player_name.as_deref(),
+            player_id = self.player_id,
+            player_name = self.player_name.as_deref(),
+            cmd = %log_text(cmd),
+            wire = %log_text(wire),
+            reason,
+            refusals = self.refusals,
+            "{}",
+            message
+        );
     }
 }
 
@@ -256,71 +302,50 @@ impl MinigameInstance for LivewireGame {
                     .to_string();
 
                 if !self.game_started {
-                    tracing::warn!(
-                        entity_id = self.entity_id,
-                        entity_name = self.player_name.as_deref(),
-                        player_id = self.player_id,
-                        player_name = self.player_name.as_deref(),
-                        wire = %wirename,
-                        reason = "not_started",
-                        "Wire cut when game not started"
+                    self.refuse(
+                        cmd,
+                        &wirename,
+                        "not_started",
+                        "Wire cut when game not started",
                     );
                     return vec![];
                 }
 
                 // Find the wire
-                let wire = self.wires.values_mut().find(|w| w.name == wirename);
-                let wire = match wire {
-                    Some(w) => w,
+                let cut = match self.wires.values().find(|w| w.name == wirename) {
+                    Some(w) => w.cut,
                     None => {
-                        tracing::warn!(
-                            entity_id = self.entity_id,
-                            entity_name = self.player_name.as_deref(),
-                            player_id = self.player_id,
-                            player_name = self.player_name.as_deref(),
-                            wire = %wirename,
-                            reason = "unknown_wire",
-                            "Unknown wire"
-                        );
+                        self.refuse(cmd, &wirename, "unknown_wire", "Unknown wire");
                         return vec![];
                     }
                 };
 
-                if wire.cut {
-                    tracing::warn!(
-                        entity_id = self.entity_id,
-                        entity_name = self.player_name.as_deref(),
-                        player_id = self.player_id,
-                        player_name = self.player_name.as_deref(),
-                        wire = %wirename,
-                        reason = "already_cut",
-                        "Wire already cut"
+                if cut {
+                    self.refuse(cmd, &wirename, "already_cut", "Wire already cut");
+                    return vec![];
+                }
+                let mut out = Vec::new();
+                let prefix = wirename.chars().next().unwrap_or(' ');
+
+                // An ignored playfield wire is refused before it is marked cut.
+                if prefix == 'p' && !self.playfield_active {
+                    self.refuse(
+                        cmd,
+                        &wirename,
+                        "playfield_inactive",
+                        "Playfield wire cut when inactive",
                     );
                     return vec![];
                 }
-                wire.cut = true;
-
-                let mut out = Vec::new();
-                let prefix = wirename.chars().next().unwrap_or(' ');
+                if let Some(wire) = self.wires.values_mut().find(|w| w.name == wirename) {
+                    wire.cut = true;
+                }
 
                 match prefix {
                     'g' => {
                         self.goal_cut += 1;
                     }
-                    'p' => {
-                        if !self.playfield_active {
-                            tracing::warn!(
-                                entity_id = self.entity_id,
-                                entity_name = self.player_name.as_deref(),
-                                player_id = self.player_id,
-                                player_name = self.player_name.as_deref(),
-                                wire = %wirename,
-                                reason = "playfield_inactive",
-                                "Playfield wire cut when inactive"
-                            );
-                            return vec![];
-                        }
-                    }
+                    'p' => {}
                     'o' => {
                         self.countdown_rate += self.countdown_rate * self.obstacle_timer / 100.0;
                         out.push(GameOutput::Send(sfs_vars! {
@@ -336,15 +361,7 @@ impl MinigameInstance for LivewireGame {
                         }));
                     }
                     _ => {
-                        tracing::warn!(
-                            entity_id = self.entity_id,
-                            entity_name = self.player_name.as_deref(),
-                            player_id = self.player_id,
-                            player_name = self.player_name.as_deref(),
-                            wire = %wirename,
-                            reason = "illegal_prefix",
-                            "Illegal wire prefix"
-                        );
+                        self.refuse(cmd, &wirename, "illegal_prefix", "Illegal wire prefix");
                         return vec![];
                     }
                 }
@@ -365,21 +382,28 @@ impl MinigameInstance for LivewireGame {
                 out
             }
 
-            "activateitemcheat" | "activateabilitycheat" => {
-                // Stub — cheats acknowledged but no effect yet
+            // No cheats in a server-validated game (D-MG17): instcc and CA stay hardcoded.
+            "activateitemcheat" => {
+                self.refuse(
+                    cmd,
+                    "",
+                    "item_cheat_unavailable",
+                    "Livewire: item cheats are not available",
+                );
+                vec![]
+            }
+            "activateabilitycheat" => {
+                self.refuse(
+                    cmd,
+                    "",
+                    "ability_cheat_unavailable",
+                    "Livewire: ability cheats are not available",
+                );
                 vec![]
             }
 
             _ => {
-                tracing::warn!(
-                    entity_id = self.entity_id,
-                    entity_name = self.player_name.as_deref(),
-                    player_id = self.player_id,
-                    player_name = self.player_name.as_deref(),
-                    cmd,
-                    reason = "unknown_command",
-                    "Livewire: unknown command"
-                );
+                self.refuse(cmd, "", "unknown_command", "Livewire: unknown command");
                 vec![]
             }
         }
@@ -430,12 +454,11 @@ impl MinigameInstance for LivewireGame {
         vec![]
     }
 
+    /// The client has closed the window: it is gone, so nothing is sent (no `failure`).
     fn aborted(&mut self) -> Vec<GameOutput> {
         self.outcome = Some("canceled");
         self.game_started = false;
-        vec![GameOutput::Send(sfs_vars! {
-            "_cmd" => SfsValue::String("failure".to_string()),
-        })]
+        vec![]
     }
 
     fn needs_tick(&self) -> bool {

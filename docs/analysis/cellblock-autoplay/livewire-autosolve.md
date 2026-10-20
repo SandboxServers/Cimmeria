@@ -11,7 +11,7 @@ Status: research and design, 2026-09-29. No code has been written. Every fact be
 
 Spike tooling, committed under [livewire-spike/](livewire-spike/) for packets MG-L4 and MG-L2 to port (see its README):
 
-- `as2dis.py` is an AS2 bytecode disassembler for GFX/SWF files.
+- `as2dis.py` moved to [tools/minigame-swf](../../../tools/minigame-swf/README.md) (MG-R0); it is an AS2 bytecode disassembler for GFX/SWF files.
 - `bounds.py`, `bounds_core.py` and `shapes.py` parse shapes, compute bounding boxes and hit-test points.
 - `atlas.py` builds `livewire_atlas.json`.
 - `solver_sim.py` and `clearance.py` run the solver simulation.

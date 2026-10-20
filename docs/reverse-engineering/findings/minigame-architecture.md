@@ -1,6 +1,6 @@
 # Minigame Architecture — Client Binary Analysis
 
-> **Last updated**: 2026-03-08
+> **Last updated**: 2026-10-20 (type table corrected in MG-72; the rest is the 2026-03-08 client analysis)
 > **Source**: SGW.exe Ghidra decompilation
 > **Confidence**: HIGH — decompiled handler + data tables + Lua bindings
 
@@ -31,7 +31,8 @@ The game server only needs to:
 - Handle `MinigameComplete` result codes from the client
 - Manage the call/spectate/helper social layer
 - A **separate minigame server** process is needed for actual game logic
-- For the 6 placeholder types, stub handlers are correct — no SWF files exist for them
+- Five types are full games with server-side logic (Livewire, CrystalGame, Alignment, GoauldCrystals, ConverseBasicHumanoid); the other five (Hack, Activate, Analyze, Bypass, Converse) are shell SWFs of about 55.8 kB each that the server answers with a minimal shell session (see [spec-shells.md](../../analysis/minigames/spec-shells.md))
+- How the shipped server implements each game: [minigame-system.md](../../gameplay/minigame-system.md)
 
 ---
 
@@ -45,16 +46,17 @@ The game server only needs to:
 | 2 | `CrystalGame` | "Crystal Game" | Full SWF game |
 | 3 | `Alignment` | "Alignment" | Full SWF game |
 | 4 | `GoauldCrystals` | "Goa'uld Crystals" | Full SWF game |
-| 5 | `Activate` | "Placeholder Activate" | **Placeholder — no SWF** |
-| 6 | `Analyze` | "Placeholder Analyze" | **Placeholder — no SWF** |
-| 7 | `Bypass` | "Placeholder Bypass" | **Placeholder — no SWF** |
-| 8 | `Hack` | "Hack" | Named but no special handling |
-| 9 | `Converse` | "Converse" | Dialog/conversation type |
-| 10 | `ConverseBasicHumanoid` | "Converse: Humanoid Basic" | Sub-type of Converse |
+| 5 | `Activate` | "Placeholder Activate" | Shell SWF (the display name says "Placeholder") |
+| 6 | `Analyze` | "Placeholder Analyze" | Shell SWF (the display name says "Placeholder") |
+| 7 | `Bypass` | "Placeholder Bypass" | Shell SWF (the display name says "Placeholder") |
+| 8 | `Hack` | "Hack" | Shell SWF |
+| 9 | `Converse` | "Converse" | Shell SWF |
+| 10 | `ConverseBasicHumanoid` | "Converse: Humanoid Basic" | Full game: its own SWF with an embedded extension, not a Converse sub-type |
 
-**4 fully implemented** (Livewire, CrystalGame, Alignment, GoauldCrystals) — these get custom Scaleform window titles.
-**3 explicitly placeholder** — Activate, Analyze, Bypass have "Placeholder" prefix in display names.
-**3 other** — Hack, Converse, ConverseBasicHumanoid may be conversation-based rather than Flash games.
+**5 full games** (Livewire, CrystalGame, Alignment, GoauldCrystals, ConverseBasicHumanoid). The first four get custom Scaleform window titles. The server runs all five and validates their results itself.
+**5 shells** (Hack, Activate, Analyze, Bypass, Converse). Each has a small SWF and no server-side game logic; the server accepts a client-declared `victory` only after a minimum play time (D-MG13).
+
+An earlier revision of this table marked rows 5-7 "no SWF", called Hack "named but no special handling" and treated the Converse rows as dialogs. The SWFs exist (see the evidence table in [spec-protocol-common.md](../../analysis/minigames/spec-protocol-common.md)), so that reading was wrong.
 
 ## Result Codes (from `0x00c7d0b0`)
 

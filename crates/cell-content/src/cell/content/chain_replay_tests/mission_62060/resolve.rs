@@ -432,6 +432,7 @@ async fn live_db_mission_62060_panel_stock_chains_disjoint() {
         minigame_type: "Livewire".into(),
         difficulty: 1,
         on_victory_chains: vec![1017],
+        on_failure_chains: vec![],
     };
     assert!(
         resolved.actions.contains(&(1016, minigame)),

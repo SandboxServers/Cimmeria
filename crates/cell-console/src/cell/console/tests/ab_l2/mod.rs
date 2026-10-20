@@ -51,6 +51,7 @@ fn timers(msgs: &[CellToBaseMsg]) -> Vec<(u32, Vec<u8>)> {
 /// Aim (effect 700, ability 637): +200 Accuracy for 15 s, from `invoker`.
 fn aim(invoker: u32) -> TimedEffectSpec {
     TimedEffectSpec {
+        movement_only: false,
         cast_id: Some(41),
         effect_id: 700,
         ability_id: 637,

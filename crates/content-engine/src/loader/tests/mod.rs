@@ -13,5 +13,6 @@ mod letter_turn_in_conversion;
 mod npc_bark_conversion;
 mod radio_dialog_conversion;
 mod send_system_mail_conversion;
+mod start_minigame_failure_chains;
 mod trigger_conversion;
 mod tutorial_conversion;

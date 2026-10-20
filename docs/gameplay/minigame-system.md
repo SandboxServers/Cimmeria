@@ -2,13 +2,14 @@
 title: "Minigame System"
 type: reference
 audience: engineers
-last_updated: 2026-10-14
+last_updated: 2026-10-20
 ---
 
 # Minigame System
 
-> **Last updated**: 2026-10-14
-> **Status**: Content-triggered minigames work end-to-end — SmartFoxServer host, ticket handshake, Livewire, six auto-win placeholders, and victory-chain callback. The player-facing `MinigamePlayer` cell methods (helpers, spectating, manual start) are all stubs.
+> **Last updated**: 2026-10-20
+> **Status**: Content-triggered minigames work end-to-end — SmartFoxServer host, ticket handshake, five server-validated games (Livewire, CrystalGame, Alignment, GoauldCrystals, ConverseBasicHumanoid), five client-declared shells (Hack, Activate, Analyze, Bypass, Converse; 60 s countdown, then defeat), and victory and failure chain callbacks. The pre-game dialog (`startMinigame`, `minigameStartCancel`) and `endCurrentMinigame` work; the helper, spectate, call and debug cell methods are still stubs.
+> **Companions**: [campaign record](../analysis/minigames/README.md), [wire formats](../reverse-engineering/findings/minigame-wire-formats.md), [client architecture](../reverse-engineering/findings/minigame-architecture.md), [security audit CAT-K](../security-audit/2026-05-31-server-authority/findings/CAT-K-minigame.md), [debug-area terminals](../content/debug-area.md#minigame-terminals).
 
 ## Overview
 
@@ -32,8 +33,14 @@ deposits a one-use, server-owned receipt for the claimed ticket. The internal
 message to Base contains only the ticket; Base redeems the receipt and checks
 the original entity, character, and connection instance before it closes the
 minigame UI or forwards to Cell. It repeats that owner check after the awaited
-close. Explicit cancellation or a new launch invalidates an undrained receipt;
-normal SmartFox teardown leaves it available. Receipts expire after 180 seconds
+close. The receipt carries the victory chains only for result 1 and the
+failure chains only for result 2. Explicit cancellation or a new launch
+invalidates an undrained receipt; normal SmartFox teardown leaves it
+available. Because a cancel refuses the connection task's own Canceled
+receipt, Base sends Cell the hold release itself (result 0 once the SWF has
+connected, 3 before), with no chains. A launch Base cannot carry out (no
+owner, server disabled, URL send failed) and a pending session the TTL sweep
+evicts also release the hold with result 3. Receipts expire after 180 seconds
 and the registry keeps at most 4,096. These checks do not validate a game's
 puzzle or bind the Cell launch incarnation. Castle CS-02b2 owns that later
 Cell gate, and Castle callbacks remain disabled.
@@ -44,10 +51,10 @@ The working path is content-driven, not client-driven:
 
 ```text
 Content chain fires Action::StartMinigame { minigame_type, difficulty,
-                                           on_victory_chains }
+                                           on_victory_chains, on_failure_chains }
   |-> Cell: CellToBaseMsg::StartMinigame
   |-> Base: SessionRegistry::register(...) -> ticket (seed, difficulty, tech
-  |         competency, victory chains all captured server-side)
+  |         competency, victory and failure chains all captured server-side)
   |-> Base: onStartMinigame(URL) to the player
   |         URL shape: http://unused/{host}/{port}/{gameName}/{entityId}/{ticket}
   |-> Flash SWF connects to the SmartFox TCP port, presents the ticket
@@ -55,8 +62,36 @@ Content chain fires Action::StartMinigame { minigame_type, difficulty,
   |-> Registry: deposit one terminal receipt for the claimed ticket
   |-> Base: redeem ticket-only MinigameResult, check original Base owner,
   |         notify that owner and forward receipt-derived result to Cell
-  |-> Cell: runs the chain from on_victory_chains
+  |-> Cell: runs on_victory_chains (result 1) or on_failure_chains (2, 4)
 ```
+
+The other two launch paths join this one at `CellToBaseMsg::StartMinigame`: an ability effect (MG-24, below) and the optional pre-game dialog (MG-21, below). Wire detail for every message in the flow: [spec-launch-flow.md](../analysis/minigames/spec-launch-flow.md) and [minigame-wire-formats.md](../reverse-engineering/findings/minigame-wire-formats.md).
+
+### Failure chains and flags
+
+- **Chains.** A `start_minigame` action takes `on_victory_chains` and `on_failure_chains` (both lists of chain ids; the failure list defaults to empty). The cell fires the victory list on result 1 and the failure list on results 2 (Defeat) and 4 (Defeated); results 0 (Canceled) and 3 (not started) fire nothing (D-MG5). Every result code releases the player's minigame hold first, so a chain starts from a free player. See [Result codes](#result-codes).
+- **Load-time check.** A `start_minigame` row whose type is not an exact `GameKind` name is dropped at load (see [Data References](#data-references)).
+- **Flag.** `CIMMERIA_MINIGAME_START_DIALOG` switches launches to the pre-game dialog; it defaults off until the lab UAT confirms the dialog flow, and an invalid value logs WARN `event=feature_flag_invalid` and keeps the default.
+
+### Testing by hand
+
+The Debug Area has one terminal per game, each launching its game through the same chain path as live content, with a win chain (24056) and a loss chain (24057): see [debug-area.md § Minigame terminals](../content/debug-area.md#minigame-terminals). For an offline run with no client, use the REPL harness (`minigame_repl`, `crates/minigame/src/bin/minigame_repl.rs`); the golden transcripts in `crates/minigame/tests/scripts/` run through it.
+
+### Optional pre-game dialog (MG-21)
+
+With `CIMMERIA_MINIGAME_START_DIALOG` on (default off; see the table in `crates/server/src/main.rs`), a launch first shows the pre-game dialog instead of sending `StartMinigame` at once:
+
+- Cell sends client method 53 (`onStartMinigameDialog`) with `Name`, `Difficulty`, `TCLevel`, `Verb`, `ArchetypeBitfield`, `CanPlay`, `CanCall`, `CanSpectate`. The offer waits 60 s.
+- Play sends cell 24 (`startMinigame`). A live offer launches with source `start_dialog`. A missing or expired offer, or a player already in a minigame, sends client 54 (`onStartMinigameDialogClose`) and logs a WARN.
+- Cancel sends cell 30 (`minigameStartCancel`). It drops the offer and sends nothing.
+
+Two deviations from the original flow: the movement and state hold is taken at launch, not when the dialog opens, so an unanswered dialog never locks a player; and expiry is checked lazily when cell 24 arrives.
+
+**From an ability (MG-24).** An effect whose `script_name` is `StartMinigame` (params `minigame_type` and `difficulty`) queues a launch for the caster, and the cell starts it once the ability's effects have resolved. It takes the same path as a content launch, so the dialog switch applies here too. A non-player caster, or one already playing, queues nothing (WARN `reason=npc_caster` or `already_playing`). Script: `start_minigame.rs` in `cimmeria-cell-effect-scripts`.
+
+**The Converse abilities (MG-62).** Ability 1327 (effect 1643) and ability 2089 (effect 2813) carry `script_name` `StartMinigame` with `minigame_type` `ConverseBasicHumanoid` and `difficulty` 1 (`effect_nvps.sql`, ids 25501-25504). The caster plays. No chain follows: the session's own result is the only outcome.
+
+**The Prison Boot (MG-63b).** Chain 1023 casts ability 1597 on the player while mission 689 is open. Its effect 1939 (`MovementHold`) holds the wearer for movement only: item use and abilities stay open, so the wearer can still start the escape game with item 3438. Effect 1942 (`MovementRelease`, `ReleasesEffect` 1939) lifts the boot on victory (chain 1025). A minigame hold taken and released while the boot is on keeps the movement lock until the boot comes off. Death leaves the entry (effect 1939 has no `EF_ClearOnDeath`), and a respawn's hard reset keeps its hold, so the wearer stays held until the minigame's release; this is accepted. Scripts: `movement_hold.rs` in `cimmeria-cell-effect-scripts`.
 
 ## Implementation Status
 
@@ -70,21 +105,76 @@ Content chain fires Action::StartMinigame { minigame_type, difficulty,
 | Abort on SWF close | DONE | `run_session` calls `MinigameInstance::aborted()` and reports result code 0 (Canceled) when the socket drops without an outcome. Explicit player close removes the registration first, so its later canceled report is refused |
 | Content-triggered start | DONE | `Action::StartMinigame` → `CellToBaseMsg::StartMinigame` → `onStartMinigame(URL)` |
 | Victory-chain callback | DONE | `MinigameResult` forwards to the cell, which runs `on_victory_chains` |
-| Livewire | DONE | Fully ported in `minigame/games/livewire/` |
-| Hack, Activate, Analyze, Bypass, Converse, ConverseBasicHumanoid | PLACEHOLDER | `games/placeholder.rs` — the only accepted client message is `victory`, which is an instant win. Matches the original `Placeholder.py`; these game types had no real SWF beyond a shell |
-| Alignment, GoauldCrystals | NOT IMPL | Still Python-only; the factory has commented-out arms awaiting a port. An unrecognised game name silently falls back to the auto-win placeholder |
-| `startMinigame` | STUB | Cell method 24 logs `UNIMPLEMENTED` |
+| Livewire | DONE | Fully ported in `minigame/games/livewire/`; an abort sends nothing, the client has closed |
+| CrystalGame | DONE | Fully ported in `minigame/games/crystal_game/`; validation `server`: the server decides victory and the 16 s timeout, and a client `victory` is refused (WARN `client_victory_refused`). See [CrystalGame rules](#crystalgame-rules) |
+| ConverseBasicHumanoid | SERVER (MG-CH3) | `games/converse_humanoid/`: the server deals, plays, scores and decides victory; a client `victory` is refused and a client `failure` is a defeat. See the rules below |
+| Hack, Activate, Analyze, Bypass, Converse | PLACEHOLDER | `games/placeholder.rs` — the shell shows a 60 s countdown (`fullgamestate` then `timerupdate`, MG-64); a client `victory` counts only after 5 s (D-MG13); when 240 ticks (60 s) pass with no `victory` the server sends `failure` and the game ends as a defeat (result code 2, `on_failure_chains` fire). Matches the original `Placeholder.py`; these game types had no real SWF beyond a shell |
+| Alignment | SERVER (MG-AL3b) | `games/alignment/`: a hex-triangle matching puzzle; validation `server`: the server decides every swap, cascade, score, victory and the timeout, checks each ability cheat bit before it spends it, and refuses `processreset`. Item cheats are not ported. See [Alignment rules](#alignment-rules) |
+| GoauldCrystals | SERVER (MG-GC3b) | `games/goauld_crystals/`: a path-building puzzle; the server decides victory and the clock, checks every ability cheat bit before it spends it, and refuses `processreset`. Item cheats are not ported. See [GoauldCrystals rules](#goauldcrystals-rules) |
+| `startMinigame` | DONE (MG-21) | Cell method 24 accepts a live pre-game offer through `minigame_launch::accept_offer` (WARN and `onStartMinigameDialogClose` when there is none). Only reachable with `CIMMERIA_MINIGAME_START_DIALOG` on |
 | `endCurrentMinigame` | DONE | Cell method 25 cancels the current session and closes SmartFox |
 | Debug start / spectate / join / instance | STUB | Cell methods 20–23 log `UNIMPLEMENTED` |
 | Spectating | STUB | `requestSpectateList` (26), `spectateMinigame` (27) log `UNIMPLEMENTED` |
 | Helper registration | STUB | `registerToMinigameHelp` (28), `updateRegisterToMinigameHelp` (29) log `UNIMPLEMENTED` |
 | Helper call protocol | STUB | `minigameCallAccept` (31), `Decline` (32), `Abort` (33) log `UNIMPLEMENTED` |
 | NPC contacts | STUB | `minigameContactRequest` (34) logs `UNIMPLEMENTED` |
-| Tech competency | PARTIAL | The ticket carries a tech-competency field, but it is hardcoded to `1` — the value is not yet read from the player entity |
-| `endMinigameForPlayer` / `minigameStartCancel` | PARTIAL | Window close is handled by `endCurrentMinigame`; pre-connect start-dialog cancel remains unimplemented |
+| Tech competency | PARTIAL | Sent as `1` on every launch (D-MG18): the original took it from an instrument item and no instrument path exists (M9). Level, intelligence and `abilityBitfield` come from the player at launch (`minigame_launch`, MG-22); the session keeps only the ability bits the game implements (`GameKind::ability_bits`) |
+| `minigameStartCancel` | DONE (MG-21) | Cell method 30 drops the player's pending offer and sends nothing (`cancel_offer`). Closing a running window is `endCurrentMinigame` |
 | Mob/item attempt tracking | NOT IMPL | `minigameMobAttemptTracker`, `minigameItemAttemptTracker` unused |
 | Item integration | NOT IMPL | `addItemToMinigame`, `consumeItemByMinigame` unused |
 | Cheat detection | NOT IMPL | `updateMinigameItemCheats` unused |
+
+### Games at a glance
+
+`GameKind` in `games/kind.rs` is the registry: each kind's validation mode comes from its module's `PORTED` constant, and its ability mask from `ability_bits()`.
+
+| Game | Validation | Difficulty | Ability mask | Cheats | `processreset` |
+|---|---|---|---|---|---|
+| Livewire | server | 1-4 (5 uses the tier 4 table) | `0` | None yet: item and ability cheats are ignored | Accepted: resets the game and sends `resetgame` and `fullgamestate` |
+| CrystalGame | server | One board at every tier | `0` | None | Refused |
+| Alignment | server | 1-4 | `0x7FFF` | Ability cheats only | Refused |
+| GoauldCrystals | server | 1-4 (clamped); tech level 0-10 (clamped) | `0x7FFF` | Ability cheats only | Refused |
+| ConverseBasicHumanoid | server | Ignored: Logic3 then mediation5 | `0x78000` (Trump bits 15-18) | Trump passives | Refused until a deal ends, then accepted after `newdeal` |
+| Hack, Activate, Analyze, Bypass, Converse | client-declared | Not used | `0` | None | n/a |
+
+The Livewire reset is an open parity item, not a finding: it re-runs `init_game` (new board, game not started) and grants no result, but the later ports refuse a reset because it would refill the clock. Whether Livewire's should be refused too is undecided. Per-game rules: [CrystalGame](#crystalgame-rules), [Alignment](#alignment-rules), [ConverseBasicHumanoid](#conversebasichumanoid-rules), [GoauldCrystals](#goauldcrystals-rules); specs in [docs/analysis/minigames/](../analysis/minigames/README.md).
+
+### CrystalGame rules
+
+- Lights-out mod 6 on a fixed 14x13 board at every tier; two scramble clicks are drawn from the session seed. A click adds 2 to its crystal and 1 to each neighbour (mod 6); the goal is every cell 3.
+- The 16 s clock starts on the first valid click (`timerupdate`, then one `updateslot` per changed cell) and loses 0.25 s per 250 ms tick; at 0 the server sends `failure` (defeat). It also ends on the wall clock 16 s after that click, so a stalled client cannot outrun it. A game with no click within 60 s of starting is lost the same way.
+- The server decides victory: a solved board sends `victory` and stops the clock. A client `victory` is refused.
+- `processreset` is ignored (WARN `reset_refused`, no reply), as in the original; a reset would let a player idle a running clock.
+- No cheats: `abilityBitfield` 0, `instcc` -1; both cheat commands get a WARN and no reply. Refusals are logged at WARN for the first 32 per session only.
+- Out-of-range, fractional or missing coordinates, and any click after the end, are dropped with a WARN and no reply.
+
+### Alignment rules
+
+- **Board.** An 8x8 hex board of piece kinds, drawn per tier (1-4) from OS entropy, not the session seed: a 32-bit seed in the client's hands would let it solve the board offline. Only the offline REPL and its goldens (`games::create_seeded`) seed the board from the script's `seed`; the live `create` path cannot be seeded.
+- **Swaps.** `swappieces` names a triangle of three neighbouring cells with the pieces the client believes are there. The server checks bounds, triangle shape, blockers, empties and the types, then rotates the pieces and floods the match. A swap with no match changes nothing (`spinCount` 3).
+- **Cascade.** `cascade` and `checkForCascade` step gravity and re-matching until `cascadecheckcomplete`; `doscore` then scores the server's own tally once, with a multiplier and time bonus that grow with the cascade count (capped at 4).
+- **Goals and timer.** Each tier has three goal icons with totals; the countdown loses 0.25 s per 250 ms tick, and a wall-clock deadline backs it so a late tick cannot hide a timeout. At 0 the server sends `failure`. `callhint` costs 5 s.
+- **Victory.** Meeting every goal sends `activate`; the server sends `victory` on `dovictory` only after that. A client `victory` is refused (WARN `client_victory_refused`).
+- **Ability cheats.** `activateabilitycheat` takes `cheatNum` 0-14 and its bit must still be set in the session mask (`0x7FFF` is implemented). The bit is cleared first, `abilitycheatstate` returns the new mask, and cheat clears never score. Bit 10 has nothing to restore. An unset bit or `cheatNum` 15 is refused with no reply; `activateitemcheat` gets no reply.
+- **Reset.** `processreset` is refused (WARN `reset_refused`, no reply, state unchanged), as for CrystalGame: a reset would refill the clock and the ability bits.
+
+### ConverseBasicHumanoid rules
+
+- **Dominance.** Two cards compare by `(p - n + 8) % 9` over the nine suit values: below 4 is the NPC's point, 4 to 7 the player's, 8 a tie (spec section 6).
+- **Deals.** Logic3 deals 3 cards a side with one container, then mediation5 deals 4. A deal ends when a hand ends with every card played (`newdeal`); the timers then hold until the client sends `processreset`, which is refused before that.
+- **Hands.** A hand ends on `newhand`, which is refused until the NPC has answered, or after 6 s. Each container goes to the stronger card, and a sweep of all containers adds one point.
+- **NPC.** Every 1.5 s the NPC plays the card that scores best against the player's hand. It answers a play into an empty NPC container within 0.5 s.
+- **Trump passives.** Ability bits 15-18 add +5, +10, +15 and +25 to the accord bonus (spec section 7).
+- **Victory.** `activatevictory` spends the points of a listed condition (focusdamage1 costs 3, focusdamage2 costs 4). At zero seconds a tie or a lead is a victory; the NPC ahead is a defeat.
+
+### GoauldCrystals rules
+
+- **Board.** A path-building puzzle: move greens through empty cells until a green path from the start goal powers the finish goal. Yellows and oranges swap with a neighbour; reds stay put. The seed 1, 4x4 tutorial board is kept (spec section 3).
+- **Clock.** The countdown starts on the first click (`timerupdate`) and loses 0.25 s per 250 ms tick. A monotonic deadline is checked in the click handler as well as on the tick, so a late tick cannot hide a timeout. At 0 the server sends `failure` (defeat).
+- **Victory.** After every board change the server recomputes the powered path. A powered finish sends `fullgamestate` and `victory`, stops the clock and ends the game. A client `victory` (and either item cheat) falls into `unknown_command`: a WARN and no reply.
+- **Ability cheats.** `activateabilitycheat` takes `cheatNum` as an integer 0-14, and its bit must still be set in the session mask. The server clears the bit before the effect and returns the new mask in `abilitycheatstate`. A bad number or a bit not held is refused with no reply.
+- **Reset.** `processreset` is refused (WARN `reset_refused`, no reply, state unchanged). A reset would refill the clock and the ability bits: a deliberate deviation from the original, for owner confirmation.
+- **Refusals.** Every refused command is counted; the first eight are logged at WARN, then one in a hundred. Input after the end is dropped.
 
 ## Entity Definition (MinigamePlayer.def)
 
@@ -158,10 +248,12 @@ A ticket is minted by `SessionRegistry::register` when the content chain starts 
 | `entity_id`, `player_id` | The triggering player |
 | `game_name` | `Action::StartMinigame { minigame_type }` |
 | `difficulty` | The `start_minigame` chain action's `difficulty` param, 1-5, default 1 |
-| `tech_competency` | **Hardcoded to `1`** — reading it from the player entity is still a TODO |
-| `seed` | `rand::random::<u32>()` |
-| `abilities`, `intelligence`, `player_level` | Hardcoded to `0`, `0`, `1` |
+| `tech_competency` | `1` on every launch (D-MG18); the original read an instrument item, and no instrument path exists (M9) |
+| `seed` | `rand::random::<u32>()`. Alignment ignores it for live play and draws from OS entropy |
+| `abilities` | The player's known-ability mask (MG-22), filtered to the bits the game implements (`GameKind::ability_bits`) |
+| `intelligence`, `player_level` | Read from the player entity at launch |
 | `on_victory_chains` | The chains to run when the game is won |
+| `on_failure_chains` | The chains to run when the game ends in result 2 or 4 |
 
 ## Session lifecycle
 
@@ -207,9 +299,33 @@ until the player relogged.
 
 The TTL is a **backstop, not a port**. The original had no timeout at all:
 its `MinigameRequestManager::QueueEntry` carries no timestamp. Cimmeria
-now handles window close through `endCurrentMinigame`; pre-connect
-`minigameStartCancel` remains open. The TTL backs up a client that
-crashes without sending either call.
+now handles window close through `endCurrentMinigame` and the
+pre-game dialog's cancel through `minigameStartCancel`. The TTL backs up a
+client that crashes without sending either call.
+
+### While playing
+
+A launch holds the player (D-MG15). When the content action `StartMinigame`
+reaches Base, the cell sets `BSF_PlayingMinigame` (bit 4) and takes one counted
+`BSF_MOVEMENT_LOCK` reference, sent as a single `onStateFieldUpdate`. Every
+result code releases both: the cell's `MinigameResult` handler calls
+`release_minigame_hold` for victory, failure, cancel and the rest. Because the
+lock is ref-counted, a stun taken before the launch keeps its own reference
+through the release. The server rejects horizontal movement while bit 4 is set
+(`reason=movement_locked`): a held player who moves more than 0.5 m from where
+the hold found them is snapped back. The distance is measured from that spot,
+not from the last accepted packet, so small steps cannot add up, and a server
+teleport during the hold moves the spot with the player. A game master is
+exempt, and a stun's lock alone does not trigger the refusal. Two paths that
+never reach a SmartFox connection task report result 3 so they free the player
+too: a launch Base cannot carry out (minigame server disabled, no client
+address) and the expiry sweep. A duplicate-launch refusal sends no result, since
+the first board is still running. A window close before the SmartFox connection
+opens reports result 3 from Base, since no connection task exists to do it. A
+result 0 or 3 for a ticket that a newer launch has replaced is dropped, so the
+old board cannot free the new board's hold. Open items: a `create_game` failure
+after the claim, and a logout or world change while a session is registered, do
+not report yet.
 
 ### Connection limits
 
@@ -297,7 +413,9 @@ throttled to once a minute with a `suppressed` count.
 |---|---|---|
 | 0 | Canceled | The session ended with no outcome — socket dropped, SWF closed, idle timeout, oversized frame. Inert on the cell today, but it is what the original used to clear `BSF_PlayingMinigame` and release the movement lock |
 | 1 | Victory | The game reported a win. The only code that fires `on_victory_chains` |
-| 2 | Defeat | The game reported a loss, including a Livewire timeout. Carries no chains |
+| 2 | Defeat | The game reported a loss, including a Livewire timeout. Fires `on_failure_chains` (D-MG5) |
+| 3 | Interrupted (not started) | The launch never reached a running board: no minigame server, no client address, the expiry sweep, or a window close before the connection opened. Frees the player, fires nothing |
+| 4 | Defeated | Accepted by the cell and fires `on_failure_chains` like 2; the SmartFox host does not send it today |
 
 A cancel does not emit a Discord notification; a win or loss does.
 
@@ -325,21 +443,28 @@ Either player:
 ## Data References
 
 - **Game-name dispatch**: `minigame/games/mod.rs::create` — the authoritative list of which names resolve to real logic versus the placeholder
+- **Load-time name check**: `content-engine/src/loader/action.rs::MINIGAME_TYPE_NAMES` copies `GameKind::name`; a `start_minigame` row whose target is not an exact, case-sensitive match is dropped at load with WARN `reason=unknown_minigame_type` (MG-64). Keep it in step with `games/kind.rs`.
 - **Result codes**: `MINIGAME_RESULT_*` constants
 - **Archetypes**: Bitmask of `EArchetype` values
 
 ## Remaining Work
 
-1. **Port Alignment and GoauldCrystals** — the factory has commented-out arms; today an unknown or unported name silently resolves to the auto-win placeholder, which is indistinguishable from a real win to the rest of the server
-2. **Tech competency** — read it from the player entity instead of the hardcoded `1`; the same applies to `abilities`, `intelligence`, and `player_level`
-3. **Player-initiated start** — `startMinigame` (24) and the debug starts (20–23) are stubs, so a player can only enter a minigame that a content chain launched for them
-4. **Helper call protocol** — the whole request → PhaseTwo → accept/decline flow, including tip cash movement
-5. **Spectating** — `requestSpectateList` / `spectateMinigame`
-6. **NPC contacts** — contact acquisition and expiry mechanics
-7. **Pre-connect cancel** - `minigameStartCancel` (cell method 30) is
-   still a stub. The TTL recovers a pending launch when the SWF never connects.
+1. **Item cheats** — Alignment and GoauldCrystals ignore `activateitemcheat` (no item-validation call into the cell yet, M8); Livewire ignores both cheat kinds (MG-LW1 delta 11)
+2. **Livewire `processreset`** — still accepted, unlike the other ports; decide whether to refuse it for parity
+3. **Tech competency** — still `1` (D-MG18); needs an instrument path (M9)
+4. **Helper call protocol** — the whole request → PhaseTwo → accept/decline flow (cell 31-34), including tip cash movement
+5. **Spectating** — `requestSpectateList` / `spectateMinigame` (26, 27)
+6. **Helper registration and debug methods** — `registerToMinigameHelp` (28, 29) and the debug starts (20-23); see CAT-K-02 before implementing the debug set
+7. **NPC contacts** — contact acquisition and expiry mechanics
+8. **Dialog default** — `CIMMERIA_MINIGAME_START_DIALOG` stays off until the lab UAT of the dialog flow passes (mission 582 offer path included)
+9. **Unreported teardown** — a `create_game` failure after the claim, and a logout or world change while a session is registered, do not report a result yet
 
 ## Related Docs
 
 - [mission-system.md](mission-system.md) - Missions that require minigame completion
 - [inventory-system.md](inventory-system.md) - Items used in minigames
+- [Minigame campaign](../analysis/minigames/README.md) - decisions, packets and the per-game specs: [protocol common](../analysis/minigames/spec-protocol-common.md), [launch flow](../analysis/minigames/spec-launch-flow.md), [shells](../analysis/minigames/spec-shells.md), [Livewire parity](../analysis/minigames/spec-livewire-parity.md), [CrystalGame](../analysis/minigames/spec-crystalgame.md), [Alignment](../analysis/minigames/spec-alignment.md), [GoauldCrystals](../analysis/minigames/spec-goauldcrystals.md), [ConverseBasicHumanoid](../analysis/minigames/spec-conversebasichumanoid.md)
+- [minigame-wire-formats.md](../reverse-engineering/findings/minigame-wire-formats.md) - Mercury and SmartFox message tables
+- [minigame-architecture.md](../reverse-engineering/findings/minigame-architecture.md) - client-side analysis and the game type table
+- [CAT-K-minigame.md](../security-audit/2026-05-31-server-authority/findings/CAT-K-minigame.md) - server-authority findings and their status
+- [debug-area.md](../content/debug-area.md#minigame-terminals) - the six test terminals
