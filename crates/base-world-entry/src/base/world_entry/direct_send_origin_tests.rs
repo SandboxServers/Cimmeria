@@ -430,5 +430,7 @@ fn direct_send_origin_family_census() {
     assert!(gate.contains("send_direct(transport, &pkt, addr, None)"));
     let fit = include_str!("../../../../base-session/src/base/helpers/reliable_fit.rs");
     assert!(fit.contains("send_reliable_to_addr_for_owner"));
-    assert!(fit.contains("kind.ends_with(\"_unproven\")"));
+    // The retransmit scan moved out of reliable_fit.rs (hard line cap).
+    let scan = include_str!("../../../../base-session/src/base/helpers/retransmit_scan.rs");
+    assert!(scan.contains("kind.ends_with(\"_unproven\")"));
 }

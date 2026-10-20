@@ -80,7 +80,7 @@ enum Mesh {
 /// navmesh guard, because a hardcoded literal stops describing the seed the
 /// moment someone corrects the seed, which is exactly what this pass expects
 /// the owner to do after a playtest.
-const PLACED: [(i32, &str, i32, Mesh); 15] = [
+const PLACED: [(i32, &str, i32, Mesh); 16] = [
     (300, "Harset_Hansen", 212, Mesh::On),
     (301, "Harset_Jacobs", 213, Mesh::On),
     (302, "Harset_Lorak", 201, Mesh::On),
@@ -96,6 +96,7 @@ const PLACED: [(i32, &str, i32, Mesh); 15] = [
     (312, "Harset_BankAnchor", 248, Mesh::On),
     (313, "Harset_PetbeQuarters", 244, Mesh::On),
     (314, "Harset_StorageLotaur", 219, Mesh::On),
+    (360, "Harset_Kaerlia", 260, Mesh::On),
 ];
 
 /// Every named region placement pass B adds, as `(set_id, name, shape)`.

@@ -8,3 +8,4 @@
 - [UAT spec authoring traps](reference_uat_spec_authoring.md) — "Ready" = MAIN_TOOLS in the plan test; typable chat; GM steps cost N1; which SigNoz rows carry the spawn tag.
 - [Orchestrator guard leaks into subagents](reference_orchestrator_guard_scope.md) — a frontmatter hook on a persona agent fires in its subagents too; fixed in 6027cf892.
 - [PowerShell alias traps in scripted sweeps](reference_powershell_alias_traps.md) — helpers named Rd/R are aliases (Remove-Item, Invoke-History); `Rd` deleted notes once.
+- 2026-10-14: [Harset letter prerequisite](../../../docs/analysis/harset-continuation/work-packets.md#ha-1360a--authoritative-letter-turn-in-prerequisite) records source evidence that chain 6501 requests item removal then completes without a committed verdict. Owner requires possession; HA-1360a/b remain blocked on atomicity, stale-writer/CAS, recovery and domain signoffs. A proposed compound action/outbox is not a sealed architecture.

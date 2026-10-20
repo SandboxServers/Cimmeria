@@ -28645,11 +28645,44 @@ INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUE
 -- line names it.
 INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (60110, 200010, 'Vault expansion. I can add 10 slots to your vault, up to 100 in all. The price of the next 10 slots is in your chat window.', 0, 0);
 
+-- Cellblock continuation CB-N04a: cells ambient bark lines (CIMMERIA_AUTHORING).
+-- Speaker 0: npc_bark supplies the chat prefix from its own params.
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (60160, 200160, 'Somebody is loose out there. I heard a cell lock give way. Nobody walks out of this block. Nobody.', 0, 0);
+
+-- Cellblock continuation CB-N07a: barracks alarm bark (CIMMERIA_AUTHORING).
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (60160, 200170, 'Intruder in the barracks! One of the prisoners got loose. Weapons free!', 0, 1);
+
+-- Harset mission 1664 step 5226 (FZ-27): debrief bark lines (CIMMERIA_AUTHORING, PROVISIONAL).
+-- Speaker 0: npc_bark supplies the chat prefix from its own params. Order-neutral text.
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (60170, 200180, 'Report received. Good work out there.', 0, 0);
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (60170, 200181, 'Your report is filed.', 0, 1);
+
+-- Cellblock continuation CB-N05: dialog 60150's only screen (CIMMERIA_AUTHORING).
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (60150, 96110, 'Prisoner 329 says there are still people in the other pods. Tell Col. Marsh to check them before you leave.', 0, 0);
+
+-- Cellblock continuation CB-N06: dialog 60151's only screen (CIMMERIA_AUTHORING).
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (60151, 96111, 'The two prisoners are too weak to run, and the patrol is coming back. There is time for one thing: help them hide, or jam the cell-door panel by Prisoner 329 so the guards cannot seal the block.', 0, 0);
+
 --
 -- TOC entry 3309 (class 0 OID 0)
 -- Dependencies: 310
 -- Name: dialog_screens_screen_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('dialog_screens_screen_id_seq', 200010, true);
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (10700, 10800, 'The medic barely glances up from her work. "Every cot is full and more wounded keep coming in. Make your way out to the front courtyard and see who still needs help. Watch yourself out there."', 0, 0);
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (10701, 10801, 'The prisoner slumps against the wall, pale and shaking. "Nobody has come down here since the fighting started. I need a medic, please. Tell the one in the infirmary that I am still here."', 0, 0);
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (10702, 10802, 'The medic nods and pulls a kit from the shelf. "Someone down in the cells, overlooked? I will send help at once. Thank you for telling me."', 0, 0);
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (10709, 10817, 'The sentry keeps his eyes on the approach as he talks. "The watch changes at dusk and again before dawn, two to every post. Tell the infirmary the posts are covered, so nobody has to guess when the guards are thin."', 0, 0);
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (10721, 10841, 'Colonel Marsh looks up from the gate controls. "Back from Harset, and in one piece. Good. Everything you saw out there goes into my report. The gate team is not done with you yet - Moh''katan is waiting at the DHD with questions about the address."', 0, 0);
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (10725, 10849, 'Moh''katan studies the DHD, then turns to you. "The Harset address is in the gate''s memory, but I will not trust it on your word alone. Dial Harset once more, and I will see for myself that the lock holds."', 0, 0);
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (10740, 10900, 'The Ambernol run bought these people time, and I will not forget who made it. Keep your head down out there.', 0, 0);
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (10741, 10901, 'The tank held, and so did the people who depend on it. Rest while you can; the Castle needs every warrior standing.', 0, 0);
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (10717, 10833, 'Sergeant Stanton checks the load in his rifle. "The Bravo officers hold the route and I cannot move a squad past them. Put all four down and the road is ours."', 0, 0);
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (10718, 10834, 'The last officer falls and the Bravo route goes quiet. Sergeant Stanton will hold it until the next wave arrives.', 0, 0);
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (10729, 10857, 'The Op-Core soldier looks up from a pile of requisition slips. If he still has a run on file for you, he hands you the stack and points you to the Castle Infirmary: get the slips signed off there, then bring them back. If not, he only shrugs and goes back to his paperwork.', 0, 0);
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (10730, 10858, 'The Op-Core soldier checks the signatures, stamps the slips and drops them in his tray. That clears this batch.', 0, 0);
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (10733, 10865, 'Behind a stack of dusty ledgers you find a grey folder stamped with Romney''s seal. These are the files Copplemann wants. Get them off the Castle.', 0, 0);
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (10734, 10866, 'The cabinet holds nothing else of use.', 0, 0);
+
+SELECT pg_catalog.setval('dialog_screens_screen_id_seq', 200181, true);
 

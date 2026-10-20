@@ -28,9 +28,10 @@
 -- the shipped 2009 tables and is cited inline. Nothing here invents text,
 -- an item or a coordinate. This file seeds NO coordinates at all.
 --
--- ZERO new dialog_set_maps rows. All ten bindings these two packets need
--- already exist in the shipped data, so the reserved 120101-120200 range
--- is untouched. The evidence tables are in worknotes/H30-H31.md.
+-- ONE new dialog_set_maps row: 120101 (H30b, Marsh letter receipt), added
+-- in the H30 section below. The shipped bindings are still used for the
+-- other chains, and 120102-120200 stays untouched. The evidence tables are
+-- in worknotes/H30-H31.md.
 --
 -- Packets: Harset H30, H31. Base: content/harset-wave2 @ 94e65324.
 
@@ -192,9 +193,22 @@ SET search_path = resources, pg_catalog;
 -- D-H02). That is fine: `add_dialog_set` binds a dsm ROW to a template
 -- slot, not a whole set, and the row's screens are Marsh's own lines.
 
+-- DSM 120101 (H30b): the Marsh letter indicator for 1360 step 4038.
+-- NULL dialog_id means interaction flag only: the "!" bit comes from
+-- `add_dialog_set`, and the screen is shown by chain 6501's receipt result,
+-- not by this bind. Stock row 5356 stays untouched because other templates
+-- may use it. GREATEST keeps the shared 120001+ block from ever lowering.
+INSERT INTO dialog_set_maps (dialog_set_map_id, dialog_set_id, dialog_id, topic_text, interaction_flags, min_level, missions_completed, missions_not_accepted, alignments, factions)
+VALUES (120101, 1432, NULL, 'Letters Home', 268435456, 1, '{}', '{}', '{}', '{}');
+
+SELECT pg_catalog.setval(
+    'dialog_set_maps_dialog_set_map_id_seq',
+    GREATEST(120101, (SELECT last_value FROM dialog_set_maps_dialog_set_map_id_seq)),
+    true);
+
 -- Chain 6501: hand the letter to Marsh.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (6501, '1360 - Marsh interact (step 4038): take Frost''s Letter, complete the mission', 'mission', 1360, true, 0);
+VALUES (6501, '1360 - Marsh interact (step 4038): take Frost''s Letter via the committed receipt', 'mission', 1360, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (6501, 'interact_tag', 'CmdCenter_Marsh', 'player', false, 0);
@@ -205,7 +219,7 @@ VALUES
   -- of its own. Note (G) for the column layout.
   (6501, 'world', 68, NULL, 'eq', NULL, 0),
   -- Offer/turn-in guard. `complete_mission` flips this to 'completed', so
-  -- a second right-click cannot re-run `remove_item 3730`. Paired with the
+  -- a second right-click cannot re-run the receipt (3730). Paired with the
   -- step gate below rather than replacing it: the mission-level gate is
   -- the one that still holds if step bookkeeping ever drifts.
   (6501, 'mission_status', 1360, NULL, 'eq', 'active', 1),
@@ -224,31 +238,22 @@ VALUES
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
-  -- Play Marsh's blurb first. The wire EntityId is resolved from
-  -- `params["target_entity_id"]`, which `fire_interact_tag` stamps, so the
-  -- portrait binds to Marsh correctly (note C).
-  (6501, 'display_dialog', 4576, NULL, '{}', 0, 0),
-  -- Consume the letter. `Action::RemoveItem` takes only the design id and
-  -- a qty — there is NO `container` param on the remove path (the loader
-  -- reads `target_id` + `params.qty` and nothing else), and the by-type
-  -- resolver's query carries no container filter
-  -- (`SELECT ... FROM sgw_inventory WHERE character_id = $1 AND
-  -- type_id = $2 ORDER BY container_id, slot_id LIMIT 1 FOR UPDATE`), so
-  -- it finds the letter wherever chain 1003 actually landed it.
-  --
-  -- If the player no longer holds 3730 this logs a warn and does nothing;
-  -- it does NOT abort the chain, so the mission still completes. That is
-  -- deliberate — the alternative gate, `has_item`, is NOT AUTHORABLE
-  -- (`convert_condition` has no "has_item" arm and nothing populates the
-  -- `item_<id>_count` param it reads), and an unknown condition_type is
-  -- dropped while the chain is KEPT, i.e. it would fail OPEN and look
-  -- authored while enforcing nothing. Never add one.
-  (6501, 'remove_item', 3730, NULL, '{"qty": 1}', 0, 1),
-  -- Clear the "!" from Marsh for this player.
-  (6501, 'remove_dialog_set', 5356, NULL, '{"slot": 10}', 0, 2),
-  -- Terminal step of a 2-step mission, so this closes objective 4651 and
-  -- the mission together (note F).
-  (6501, 'complete_mission', 1360, NULL, '{}', 0, 3);
+  -- ONE strict receipt action (H30b). The executor in
+  -- `crates/content-engine/src/loader/action_letter_turn_in.rs` accepts only
+  -- this exact tuple: zero delay, no target_key, and exactly the six params
+  -- below. It is the only route that consumes 3730, clears DSM 120101 and
+  -- completes 1360, and it runs as one committed result: the receipt refuses
+  -- a missing, foreign or storage-only letter, so a missing letter no longer
+  -- completes the mission. Blurb 4576 is shown from the committed result,
+  -- not from this row. A malformed row refuses the whole chain (A3a).
+  (6501, 'complete_mission_with_item', 1360, NULL,
+   '{"expected_step_id":4038,"item_id":3730,"quantity":1,"dialog_id":4576,"dialog_set_id":120101,"slot":10}',
+   0, 0);
+  -- `has_item` is NOT AUTHORABLE (`convert_condition` has no "has_item" arm
+  -- and nothing populates the `item_<id>_count` param it reads), and an
+  -- unknown condition_type is dropped while the chain is KEPT, i.e. it would
+  -- fail OPEN and look authored while enforcing nothing. Never add one.
+  -- The receipt action above is the only authored gate on the letter.
   -- GC3: grant_xp -- mission 1360 has reward_xp = 0 / reward_naq = 0 like
   -- every Harset mission. The `grant_xp` arm is wired on both sides since
   -- PR #618; only the formula is missing (D-H10). Add the action here when
@@ -282,7 +287,7 @@ VALUES
   -- DISJOINTNESS ON THE BIND SIDE (note D). The same row chain 6501
   -- carries on the interact side. Without it, a player who is on 1360
   -- step 4038 AND 1361 step 4694 at the same world entry gets BOTH 6502
-  -- (dsm 5356) and 6526 (dsm 5253) binding template slot 10, and
+  -- (dsm 120101) and 6526 (dsm 5253) binding template slot 10, and
   -- `handle_interact`'s `find_map` would make the second permanently
   -- unreachable.
   --
@@ -299,12 +304,12 @@ VALUES
   (6502, 'step_status', 1361, '4694', 'neq', 'active', 2);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (6502, 'add_dialog_set', 5356, NULL, '{"slot": 10, "mission_id": 1360}', 0, 0);
+VALUES (6502, 'add_dialog_set', 120101, NULL, '{"slot": 10, "mission_id": 1360}', 0, 0);
 
 -- Chain 6505: hand the letter indicator back when 1361 completes.
 --
 -- This is the other half of 6502's DISJOINTNESS row. `player_loaded` is
--- the only other thing that binds 5356, and it does not fire again when a
+-- the only other thing that binds 120101, and it does not fire again when a
 -- player completes 1361 standing still in the Command Center — so without
 -- this chain the letter "!" would stay dark until the next world crossing
 -- or relog. That is not merely cosmetic: template 10 ships
@@ -331,28 +336,18 @@ VALUES
   (6505, 'step_status', 1360, '4038', 'eq', 'active', 2);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES (6505, 'add_dialog_set', 5356, NULL, '{"slot": 10, "mission_id": 1360}', 0, 0);
+VALUES (6505, 'add_dialog_set', 120101, NULL, '{"slot": 10, "mission_id": 1360}', 0, 0);
 
 -- ============================================================
 -- H30 / MISSION 567 -- Romney's Files, step 4039 (chains 6503-6504)
 -- ============================================================
 --
--- *** BOTH CHAINS DISABLED -- see U17. ***
+-- Both chains ship ENABLED with the Castle leg (FZ-12, decision D-FZ1).
 --
 -- Step 4039 "Deliver Romney's Files to Copplemann" (objective 4652) needs
--- item 2698 "Romney's Files". That item HAS NO GRANT PATH ANYWHERE in the
--- current seed, verified across every table that could source one:
--- `content_actions` (no add_item on 2698), `loot`, `mission_rewards`,
--- `items_event_sets`, `char_creation_choices`, `item_list_items`,
--- `blueprints` / `blueprints_components`. The Castle ledger's CA06
--- explicitly excludes it ("no acquisition evidence"), and steps 2000 and
--- 2012 (the Castle-side retrieve/extract legs) are likewise unauthored.
---
--- So the beat is authored to the same standard as 1360's and parked. When
--- a Castle packet grants 2698, flip `enabled` to true on BOTH rows below
--- and nothing else changes. Keeping the rows (rather than omitting them)
--- is the ledger's stated preference: it preserves the dialog evidence and
--- makes the handoff a one-word edit.
+-- item 2698 "Romney's Files". Castle chain 1397 (`castle_567_chains.sql`,
+-- cabinet click at step 2000) grants it. Disable both legs together or
+-- not at all.
 --
 -- DIALOG EVIDENCE. dialog_set_maps row 2817 -> dialog 2044, set 512
 -- ("Romney's Files"), interaction_flags 536870912
@@ -365,7 +360,7 @@ VALUES (6505, 'add_dialog_set', 5356, NULL, '{"slot": 10, "mission_id": 1360}', 
 
 -- Chain 6503: hand the files to Copplemann.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (6503, '567 - Copplemann interact (step 4039): take Romney''s Files, complete the mission (DISABLED: item 2698 has no grant path, U17)', 'mission', 567, false, 0);
+VALUES (6503, '567 - Copplemann interact (step 4039): take Romney''s Files, complete the mission (CIMMERIA_AUTHORING)', 'mission', 567, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (6503, 'interact_tag', 'CmdCenter_Copplemann', 'player', false, 0);
@@ -387,20 +382,20 @@ VALUES
   (6503, 'complete_mission', 567, NULL, '{}', 0, 3);
   -- GC3: grant_xp -- same as 6501.
 
--- Chain 6504: relog restore for step 4039. Disabled with its sibling so
--- the "?" never appears on Copplemann for a step the player cannot finish.
+-- Chain 6504: relog restore for step 4039. Ships enabled with its sibling
+-- 6503, so the "?" is restored on Copplemann for a step the player can finish.
 --
 -- H9 RESIDUAL, for whoever authors the Castle side. This chain is
 -- `player_loaded`-only, which is correct ONLY while 567's earlier legs
--- (steps 2000 and 2012, both unauthored) stay Castle-side: the step then
--- becomes current in another world and the crossing fires the trigger. If
--- the Castle packet ever makes 4039 current while the player is already in
--- world 68, this chain needs a second trigger row the way 6511 does, or the
--- turn-in indicator never appears. There is no `advance_step` trigger to
--- hang it on today, so the fix would have to be an in-chain bind on
--- whatever advances to 4039.
+-- (steps 2000 and 2012, authored in castle_567_chains.sql) stay
+-- Castle-side: the step then becomes current in another world and the
+-- crossing fires the trigger. If the Castle packet ever makes 4039 current
+-- while the player is already in world 68, this chain needs a second trigger
+-- row the way 6511 does, or the turn-in indicator never appears. There is no
+-- `advance_step` trigger to hang it on today, so the fix would have to be an
+-- in-chain bind on whatever advances to 4039.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (6504, '567 - Restore Copplemann files binding on Command Center load (step 4039) (DISABLED with 6503, U17)', 'mission', 567, false, 0);
+VALUES (6504, '567 - Restore Copplemann files binding on Command Center load (step 4039) (CIMMERIA_AUTHORING)', 'mission', 567, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (6504, 'player_loaded', 'Harset_CmdCenter', 'player', false, 0);
@@ -588,11 +583,20 @@ VALUES (6511, '1361 - Offer indicator on Marsh for Humans', 'mission', 1361, tru
 -- exactly one bind, dsm 5254. Pinned by
 -- `chain_6511_offers_the_praxis_the_moment_the_letter_is_handed_over`.
 --
+-- THIRD AND FOURTH ROWS (FZ-27): `mission_completed '1664'` and `mission_abandoned '1664'`.
+-- 6511 and 6512 stand down while mission 1664 is on step 5226, so a Marsh click there is
+-- the 1664 report (chain 6018, harset_1664_chains.sql), not the Praxis offer. That gate
+-- reopens in world 68, inside the click that completes 1664 (or the abandon), with no
+-- world entry to come: H9 again. These two rows hand the "?" back in the same event.
+-- Both events populate world, archetype and mission context after the mutation.
+--
 -- 6512 needs no second trigger: `interact_tag` re-evaluates on every click.
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES
   (6511, 'player_loaded', 'Harset_CmdCenter', 'player', false, 0),
-  (6511, 'mission_completed', '1360', 'player', false, 1);
+  (6511, 'mission_completed', '1360', 'player', false, 1),
+  (6511, 'mission_completed', '1664', 'player', false, 2),
+  (6511, 'mission_abandoned', '1664', 'player', false, 3);
 
 INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
 VALUES
@@ -611,7 +615,9 @@ VALUES
   -- 6512's `display_dialog 4457` would re-pin `open_dialog_id` and discard
   -- Marsh's letter blurb while 6501's item removal and completion still
   -- ran. Also keeps template slot 10 down to one live bind (note D).
-  (6511, 'step_status', 1360, '4038', 'neq', 'active', 4);
+  (6511, 'step_status', 1360, '4038', 'neq', 'active', 4),
+  -- Stand down during the mission 1664 debrief (FZ-27): a Marsh click on 5226 is 6018's report.
+  (6511, 'step_status', 1664, '5226', 'neq', 'active', 5);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (6511, 'add_dialog_set', 5254, NULL, '{"slot": 10, "mission_id": 1361}', 0, 0);
@@ -630,7 +636,8 @@ VALUES
   (6512, 'archetype', NULL, NULL, 'neq', '8', 1),
   (6512, 'archetype', NULL, NULL, 'neq', '6', 2),
   (6512, 'mission_status', 1361, NULL, 'eq', 'not_active', 3),
-  (6512, 'step_status', 1360, '4038', 'neq', 'active', 4);
+  (6512, 'step_status', 1360, '4038', 'neq', 'active', 4),
+  (6512, 'step_status', 1664, '5226', 'neq', 'active', 5);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (6512, 'display_dialog', 4457, NULL, '{}', 0, 0);

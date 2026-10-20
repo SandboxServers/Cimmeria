@@ -8,7 +8,10 @@
 -- Chain ID ranges (allocated statically to avoid seed-order sensitivity):
 --   Mission 622:  chains 1001-1010
 --   Mission 638:  chains 1011-1030
+--   Mission 638 login restore (2026-10-15): chains 1026-1027, the next free ids in the declared 1011-1030 range.
+--   Mission 638 door-button relog restore (2026-10-16, CB-N02b): chain 1028.
 --   Mission 639:  chains 1031-1040
+--   Mission 639 relog restores (2026-10-16, CB-N02c/d): chains 1036 (vial bit) and 1037 (drone re-arm).
 --   Mission 640:  chains 1041-1050
 --   Mission 641:  chains 1051-1070
 --   Mission 680:  chains 1071-1080
@@ -50,7 +53,11 @@
 --     chain_ids in 1176-1190 existed anywhere under
 --     db/resources/Content/Seed/. 1179-1190 remain free, which leaves
 --     GC1c (lockdown VFX, still BlockedEvidence) its headroom.
---   (next free inside 1001-1111: 1026-1030, 1036-1040, 1047-1050, 1067-1070,
+--   Cellblock ambient cast (CB-N04a, 2026-10-17): chain(s) 11010, individual claims in the 11000-11499 Cellblock authored block (id-allocation.md, CB-N04 claims).
+--   Cellblock authored story CB-N05 (2026-10-17): chains 11000-11005, mission 62050 "The Remaining Pods" (id-allocation.md, CB-N05 individual claims).
+--   Cellblock barracks response CB-N07a (2026-10-17): chain 11020 (id-allocation.md, CB-N07 claims).
+--   Cellblock optional choice CB-N06 (2026-10-17): chains 11030-11041, mission 62060 "Before the Patrol Returns" (id-allocation.md, CB-N06 claims).
+--   (next free inside 1001-1111: 1029-1030, 1038-1040, 1047-1050, 1067-1070,
 --    1075-1080, 1095-1096; next free above 1111 for an unreserved future
 --    packet: 1200+, since 1112-1199 are all pre-allocated per work-packets.md)
 --   Class Start v6, CS-04 (2026-10-05, docs/analysis/class-start-v6/README.md):
@@ -784,6 +791,56 @@ VALUES
   (1019, 'complete_mission', 638, NULL, '{}', 0, 2),
   (1019, 'remove_dialog_set', 2794, NULL, '{"slot": 17}', 0, 3);
 
+-- Chains 1026/1027: available_interactions is cell-local and disappears on
+-- relog. Region2's accept chains cannot restore it because 638 is already
+-- active. Rebind the archetype-specific Prisoner 329 topic for every active
+-- step (2114, 2115, or 2116); completion stops the restore.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1026, '638 - Restore Prisoner 329 Human dialog on login', 'mission', 638, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1026, 'player_loaded', 'Castle_CellBlock', 'player', true, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1026, 'mission_status', 638, NULL, 'eq', 'active', 0),
+  (1026, 'archetype', NULL, NULL, 'neq', '8', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1026, 'add_dialog_set', 2794, NULL, '{"slot": 17}', 0, 0);
+
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1027, '638 - Restore Prisoner 329 Jaffa dialog on login', 'mission', 638, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1027, 'player_loaded', 'Castle_CellBlock', 'player', true, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1027, 'mission_status', 638, NULL, 'eq', 'active', 0),
+  (1027, 'archetype', NULL, NULL, 'eq', '8', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1027, 'add_dialog_set', 5866, NULL, '{"slot": 17}', 0, 0);
+
+-- Chain 1028 (CB-N02b): chains 1014/1015 set the 329_CellDoorButton
+-- Livewire bit (mask 256) only on the step 2114 -> 2115 dialog edge, and
+-- interaction flags live in cell memory. A relog at step 2115 loads the
+-- button with template flags 0, so chain 1016 can never start the Livewire
+-- game and the player is stuck in the cell. Re-paint the bit on login while
+-- 2115 is active; chain 1017 clears it at 2116. Same shape as chain 1045.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1028, '638 - Zone load: step 2115 active -> restore 329_CellDoorButton Livewire bit (relog)', 'mission', 638, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1028, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1028, 'step_status', 638, '2115', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1028, 'set_interaction_type', NULL, '329_CellDoorButton', '{"op": "|", "mask": 256}', 0, 0);
+
 -- ============================================================
 -- MISSION 639 — Find Ambernol
 -- ============================================================
@@ -802,6 +859,24 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES
   (1031, 'advance_step', 639, '2145', '{}', 0, 0),
   (1031, 'set_interaction_type', NULL, 'ArmYourself_AmbernolVial', '{"op": "|", "mask": 1073741824}', 0, 1);
+
+-- Chain 1036 (CB-N02c): chain 1031 sets the vial's interact bit
+-- (mask 1073741824) only on the Region11 edge while step 2117 is active.
+-- A relog at step 2145 loads the vial (spawnlist row 12) with template
+-- flags 0, and 1031 cannot fire again because 2117 is done, so the vial
+-- cannot be used and 639 stalls. Re-paint the bit on login while 2145 is
+-- active; chain 1032 destroys the vial at 2145 -> 2144.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1036, '639 - Zone load: step 2145 active -> restore ArmYourself_AmbernolVial interact bit (relog)', 'mission', 639, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1036, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (1036, 'step_status', 639, '2145', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1036, 'set_interaction_type', NULL, 'ArmYourself_AmbernolVial', '{"op": "|", "mask": 1073741824}', 0, 0);
 
 -- ============================================================
 -- TAKE-COVER OBJECTIVE (C05, replaces the COVER-SYSTEM DEMO chain 1035)
@@ -978,6 +1053,26 @@ VALUES
   (1032, 'display_dialog',  2297, NULL,                                '{}',                             0, 4),
   (1032, 'play_sequence',   10001, NULL,                               '{}',                             0, 5),
   (1032, 'advance_step',    639,  '2144',                              '{}',                             0, 6);
+
+-- Chain 1037 (CB-N02d): chain 1032 arms the drone (set_aggression 1;
+-- spawnlist row 10 seeds it NEUTRAL) when the vial is taken. A relog at
+-- step 2144 builds a fresh instance with the drone NEUTRAL again, so it
+-- never engages. Re-arm it on login while 2144 is active and the kill
+-- objective 2482 is still open. Like chain 1009: aggression level only,
+-- no generate_threat, no replay of sequence 10001.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (1037, '639 - Zone load: step 2144 active, kill open -> re-arm ArmYourself_PrisonerRetrievalUnit (relog)', 'mission', 639, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (1037, 'player_loaded', 'Castle_CellBlock', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (1037, 'step_status', 639, '2144', 'eq', 'active', 0),
+  (1037, 'objective_status', 639, '2482', 'neq', 'completed', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (1037, 'set_aggression', NULL, 'ArmYourself_PrisonerRetrievalUnit', '{"level": 1}', 0, 0);
 
 -- Chain 1033 is now defined above in the "TAKE-COVER OBJECTIVE (C05)"
 -- section (dual-objective gating for step 2144 -> 2343) alongside its
@@ -3372,3 +3467,384 @@ VALUES (5030, 'interact_tag', 'BlackMarket_Auctioneer', 'player', false, 0);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (5030, 'open_black_market', NULL, NULL, '{}', 0, 0);
+
+-- =====================================================================
+-- CB-N04a (2026-10-17): Cellblock ambient cast, cells
+-- =====================================================================
+-- Two friendly Op-CORE prisoners (spawns 520, 521) show the escape is under
+-- way. Chain 11010 speaks one line into the crossing player's chat on the
+-- first entry to Castle_Cellblock.Region2 while mission 639 step 2117 (find
+-- Ambernol in the Med Station) is active. once = true stops the H52
+-- step-activation replay speaking twice in a visit; the step gate stops it
+-- once the vial step is done. Seal: docs/analysis/cellblock-continuation/
+-- worknotes/cb-n04-seal.md. Holder dialog 60160 is never displayed.
+
+-- Chain 11010: Region2 entry during 639/2117 -> Op-CORE prisoner bark
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (11010, 'CB-N04a - cells ambience: enter Region2 during 639 step 2117 -> Op-CORE prisoner bark', 'mission', 639, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (11010, 'enter_region', 'Castle_Cellblock.Region2', 'player', true, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (11010, 'step_status', 639, '2117', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (11010, 'npc_bark', NULL, NULL,
+ '{"screen_id": 200160, "speaker": "Op-CORE Soldier", "channel": "say"}', 0, 0);
+
+-- =====================================================================
+-- CB-N05 (2026-10-17): The Remaining Pods, mission 62050 (CIMMERIA_AUTHORING)
+-- =====================================================================
+-- Optional one-time story after stock 638. Prisoner 329 offers 62050 through
+-- the existing interaction-only dialog-set-map 2795 at slot 17 (per player).
+-- A validated Prisoner click accepts; the nested mission_accepted follow-up
+-- advances A -> B, removes the offer and shows monologue 60150. A validated
+-- Marsh click completes B, which completes the mission. No reward, no
+-- dialog_choice or initialResponse path. Core Marsh chains 1051/1052/1152 are
+-- unchanged. Seal: docs/analysis/cellblock-continuation/worknotes/cb-n05-seal.md.
+
+-- Chain 11000: 638 completed -> offer 62050 at Prisoner 329
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (11000, 'CB-N05 - 638 completed: offer The Remaining Pods at Prisoner 329', 'mission', 62050, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (11000, 'mission_completed', '638', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (11000, 'world', 12, NULL, 'eq', NULL, 0),
+  (11000, 'mission_status', 638, NULL, 'eq', 'completed', 1),
+  (11000, 'mission_status', 641, NULL, 'eq', 'not_active', 2),
+  (11000, 'mission_status', 62050, NULL, 'eq', 'not_active', 3);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (11000, 'add_dialog_set', 2795, NULL, '{"slot": 17}', 0, 0);
+
+-- Chain 11001: login in Castle_CellBlock -> restore the 62050 offer
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (11001, 'CB-N05 - login: restore The Remaining Pods offer at Prisoner 329', 'mission', 62050, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (11001, 'player_loaded', 'Castle_CellBlock', 'player', true, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (11001, 'world', 12, NULL, 'eq', NULL, 0),
+  (11001, 'mission_status', 638, NULL, 'eq', 'completed', 1),
+  (11001, 'mission_status', 641, NULL, 'eq', 'not_active', 2),
+  (11001, 'mission_status', 62050, NULL, 'eq', 'not_active', 3);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (11001, 'add_dialog_set', 2795, NULL, '{"slot": 17}', 0, 0);
+
+-- Chain 11002: 62050 abandoned -> restore the offer
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (11002, 'CB-N05 - 62050 abandoned: restore The Remaining Pods offer', 'mission', 62050, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (11002, 'mission_abandoned', '62050', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (11002, 'world', 12, NULL, 'eq', NULL, 0),
+  (11002, 'mission_status', 638, NULL, 'eq', 'completed', 1),
+  (11002, 'mission_status', 641, NULL, 'eq', 'not_active', 2),
+  (11002, 'mission_status', 62050, NULL, 'eq', 'not_active', 3);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (11002, 'add_dialog_set', 2795, NULL, '{"slot": 17}', 0, 0);
+
+-- Chain 11003: validated Prisoner 329 click -> accept 62050 (no other action)
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (11003, 'CB-N05 - interact Prisoner 329: accept The Remaining Pods', 'mission', 62050, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (11003, 'interact_tag', 'Prisoner_329', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (11003, 'world', 12, NULL, 'eq', NULL, 0),
+  (11003, 'mission_status', 638, NULL, 'eq', 'completed', 1),
+  (11003, 'mission_status', 641, NULL, 'eq', 'not_active', 2),
+  (11003, 'mission_status', 62050, NULL, 'eq', 'not_active', 3);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (11003, 'accept_mission', 62050, NULL, '{}', 0, 0);
+
+-- Chain 11004: nested mission_accepted 62050 -> A to B, drop the offer, report
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (11004, 'CB-N05 - 62050 accepted: advance to 62054, remove offer 2795, show dialog 60150', 'mission', 62050, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (11004, 'mission_accepted', '62050', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (11004, 'world', 12, NULL, 'eq', NULL, 0),
+  (11004, 'step_status', 62050, '62051', 'eq', 'active', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (11004, 'advance_step', 62050, '62054', '{}', 0, 0),
+  (11004, 'remove_dialog_set', 2795, NULL, '{"slot": 17}', 0, 1),
+  (11004, 'display_dialog', 60150, NULL, '{}', 0, 2);
+
+-- Chain 11005: validated Col. Marsh click while B is active -> complete B
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (11005, 'CB-N05 - interact Col. Marsh during 62054: complete objective 62055', 'mission', 62050, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (11005, 'interact_tag', 'Preparation_ColMarsh', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (11005, 'world', 12, NULL, 'eq', NULL, 0),
+  (11005, 'mission_status', 640, NULL, 'eq', 'completed', 1),
+  (11005, 'step_status', 62050, '62054', 'eq', 'active', 2);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (11005, 'complete_objective', 62050, '62055', '{}', 0, 0);
+
+-- =====================================================================
+-- CB-N07a (2026-10-17): Cellblock barracks escape response
+-- =====================================================================
+-- One NID Guard alarm line when the escaping player first enters the
+-- barracks (Castle_Cellblock.Region12) while mission 687 step 2355
+-- (eliminate the guards in the barracks) is active. It adds no spawn,
+-- aggression, threat or objective: the three barracks guards already pull
+-- as one pack. once = true stops the H52 step-activation replay speaking
+-- twice in a visit; the step gate stops it after the fight. Seal:
+-- docs/analysis/cellblock-continuation/worknotes/cb-n07-seal.md. Holder
+-- dialog 60160 is never displayed. Rollback: enabled = false on 11020.
+
+-- Chain 11020: Region12 entry during 687/2355 -> NID guard alarm bark
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (11020, 'CB-N07a - barracks response: enter Region12 during 687 step 2355 -> NID guard alarm bark', 'mission', 687, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (11020, 'enter_region', 'Castle_Cellblock.Region12', 'player', true, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (11020, 'step_status', 687, '2355', 'eq', 'active', 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (11020, 'npc_bark', NULL, NULL,
+ '{"screen_id": 200170, "speaker": "NID Guard", "channel": "say"}', 0, 0);
+
+-- =====================================================================
+-- CB-N06 (2026-10-17): Before the Patrol Returns, mission 62060 (CIMMERIA_AUTHORING)
+-- =====================================================================
+-- New Cimmeria content, not 2009 content (D-CC18). Optional one-time choice
+-- after stock 638. The two ambient prisoners (spawns 520/521, template 176)
+-- offer 62060 through the existing interaction-only dialog-set-map 3862 at
+-- slot 176 (per player). A validated prisoner click accepts; the nested
+-- mission_accepted follow-up binds dialog-set-map 7509 on the
+-- 329_CellDoorButton panel (slot 22) and shows monologue 60151. Exactly one
+-- branch completes objective 62062: a second prisoner click (aid) or a panel
+-- click (sabotage). Both grant two Health Slappacks (item 2893) and unbind
+-- both choices. No dialog_choice or initialResponse path. Stock panel chains
+-- 1016/1017/1028 and Marsh chains 1051/1052/1152 are unchanged.
+-- Literals: docs/analysis/cellblock-continuation/w5-frozen.md (F4).
+
+-- Chain 11030: 638 completed -> offer 62060 at the two prisoners
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (11030, 'CB-N06 - 638 completed: offer Before the Patrol Returns at the two prisoners', 'mission', 62060, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (11030, 'mission_completed', '638', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (11030, 'world', 12, NULL, 'eq', NULL, 0),
+  (11030, 'mission_status', 638, NULL, 'eq', 'completed', 1),
+  (11030, 'mission_status', 641, NULL, 'eq', 'not_active', 2),
+  (11030, 'mission_status', 62060, NULL, 'eq', 'not_active', 3);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (11030, 'add_dialog_set', 3862, NULL, '{"slot": 176}', 0, 0);
+
+-- Chain 11031: login in Castle_CellBlock -> restore the 62060 offer
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (11031, 'CB-N06 - login: restore the Before the Patrol Returns offer', 'mission', 62060, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (11031, 'player_loaded', 'Castle_CellBlock', 'player', true, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (11031, 'world', 12, NULL, 'eq', NULL, 0),
+  (11031, 'mission_status', 638, NULL, 'eq', 'completed', 1),
+  (11031, 'mission_status', 641, NULL, 'eq', 'not_active', 2),
+  (11031, 'mission_status', 62060, NULL, 'eq', 'not_active', 3);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (11031, 'add_dialog_set', 3862, NULL, '{"slot": 176}', 0, 0);
+
+-- Chain 11032: login while step 62061 is active -> restore both choices
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (11032, 'CB-N06 - login during 62061: restore the prisoner and panel choices', 'mission', 62060, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (11032, 'player_loaded', 'Castle_CellBlock', 'player', true, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (11032, 'world', 12, NULL, 'eq', NULL, 0),
+  (11032, 'step_status', 62060, '62061', 'eq', 'active', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (11032, 'add_dialog_set', 3862, NULL, '{"slot": 176}', 0, 0),
+  (11032, 'add_dialog_set', 7509, NULL, '{"slot": 22}', 0, 1);
+
+-- Chain 11033: validated click on prisoner 1 -> accept 62060
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (11033, 'CB-N06 - interact Cellblock_Ambient_Prisoner1: accept Before the Patrol Returns', 'mission', 62060, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (11033, 'interact_tag', 'Cellblock_Ambient_Prisoner1', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (11033, 'world', 12, NULL, 'eq', NULL, 0),
+  (11033, 'mission_status', 638, NULL, 'eq', 'completed', 1),
+  (11033, 'mission_status', 641, NULL, 'eq', 'not_active', 2),
+  (11033, 'mission_status', 62060, NULL, 'eq', 'not_active', 3);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (11033, 'accept_mission', 62060, NULL, '{}', 0, 0);
+
+-- Chain 11034: validated click on prisoner 2 -> accept 62060
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (11034, 'CB-N06 - interact Cellblock_Ambient_Prisoner2: accept Before the Patrol Returns', 'mission', 62060, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (11034, 'interact_tag', 'Cellblock_Ambient_Prisoner2', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (11034, 'world', 12, NULL, 'eq', NULL, 0),
+  (11034, 'mission_status', 638, NULL, 'eq', 'completed', 1),
+  (11034, 'mission_status', 641, NULL, 'eq', 'not_active', 2),
+  (11034, 'mission_status', 62060, NULL, 'eq', 'not_active', 3);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (11034, 'accept_mission', 62060, NULL, '{}', 0, 0);
+
+-- Chain 11035: nested mission_accepted 62060 -> bind the panel choice, show the choice
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (11035, 'CB-N06 - 62060 accepted: bind the cell-door panel choice, show dialog 60151', 'mission', 62060, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (11035, 'mission_accepted', '62060', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (11035, 'world', 12, NULL, 'eq', NULL, 0),
+  (11035, 'step_status', 62060, '62061', 'eq', 'active', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (11035, 'add_dialog_set', 7509, NULL, '{"slot": 22}', 0, 0),
+  (11035, 'display_dialog', 60151, NULL, '{}', 0, 1);
+
+-- Chain 11036: aid branch, prisoner 1 clicked during 62061
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (11036, 'CB-N06 - interact Cellblock_Ambient_Prisoner1 during 62061: aid, grant 2 slappacks, complete 62062', 'mission', 62060, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (11036, 'interact_tag', 'Cellblock_Ambient_Prisoner1', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (11036, 'world', 12, NULL, 'eq', NULL, 0),
+  (11036, 'step_status', 62060, '62061', 'eq', 'active', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (11036, 'add_item', 2893, NULL, '{"container": 0, "qty": 2}', 0, 0),
+  (11036, 'remove_dialog_set', 7509, NULL, '{"slot": 22}', 0, 1),
+  (11036, 'remove_dialog_set', 3862, NULL, '{"slot": 176}', 0, 2),
+  (11036, 'complete_objective', 62060, '62062', '{}', 0, 3);
+
+-- Chain 11037: aid branch, prisoner 2 clicked during 62061
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (11037, 'CB-N06 - interact Cellblock_Ambient_Prisoner2 during 62061: aid, grant 2 slappacks, complete 62062', 'mission', 62060, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (11037, 'interact_tag', 'Cellblock_Ambient_Prisoner2', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (11037, 'world', 12, NULL, 'eq', NULL, 0),
+  (11037, 'step_status', 62060, '62061', 'eq', 'active', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (11037, 'add_item', 2893, NULL, '{"container": 0, "qty": 2}', 0, 0),
+  (11037, 'remove_dialog_set', 7509, NULL, '{"slot": 22}', 0, 1),
+  (11037, 'remove_dialog_set', 3862, NULL, '{"slot": 176}', 0, 2),
+  (11037, 'complete_objective', 62060, '62062', '{}', 0, 3);
+
+-- Chain 11038: sabotage branch, cell-door panel clicked during 62061
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (11038, 'CB-N06 - interact 329_CellDoorButton during 62061: sabotage, grant 2 slappacks, complete 62062', 'mission', 62060, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (11038, 'interact_tag', '329_CellDoorButton', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (11038, 'world', 12, NULL, 'eq', NULL, 0),
+  (11038, 'step_status', 62060, '62061', 'eq', 'active', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (11038, 'add_item', 2893, NULL, '{"container": 0, "qty": 2}', 0, 0),
+  (11038, 'remove_dialog_set', 7509, NULL, '{"slot": 22}', 0, 1),
+  (11038, 'remove_dialog_set', 3862, NULL, '{"slot": 176}', 0, 2),
+  (11038, 'complete_objective', 62060, '62062', '{}', 0, 3);
+
+-- Chain 11039: 62060 abandoned -> unbind the panel choice (the prisoner offer stays)
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (11039, 'CB-N06 - 62060 abandoned: unbind the cell-door panel choice', 'mission', 62060, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (11039, 'mission_abandoned', '62060', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES (11039, 'world', 12, NULL, 'eq', NULL, 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (11039, 'remove_dialog_set', 7509, NULL, '{"slot": 22}', 0, 0);
+
+-- Chain 11040: 641 accepted while 62060 was never taken -> withdraw the offer
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (11040, 'CB-N06 - 641 accepted before 62060: withdraw the prisoner offer', 'mission', 62060, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (11040, 'mission_accepted', '641', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (11040, 'world', 12, NULL, 'eq', NULL, 0),
+  (11040, 'mission_status', 62060, NULL, 'eq', 'not_active', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (11040, 'remove_dialog_set', 3862, NULL, '{"slot": 176}', 0, 0);
+
+-- Chain 11041: 62060 abandoned after 641 was accepted -> withdraw the offer
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (11041, 'CB-N06 - 62060 abandoned after 641: withdraw the prisoner offer', 'mission', 62060, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (11041, 'mission_abandoned', '62060', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (11041, 'world', 12, NULL, 'eq', NULL, 0),
+  (11041, 'mission_status', 641, NULL, 'neq', 'not_active', 1);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES (11041, 'remove_dialog_set', 3862, NULL, '{"slot": 176}', 0, 0);

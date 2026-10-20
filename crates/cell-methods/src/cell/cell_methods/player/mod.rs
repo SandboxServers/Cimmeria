@@ -1,3 +1,5 @@
+#[cfg(test)]
+mod castle_return_range_tests;
 pub mod combat;
 pub use cimmeria_wire::cell::cell_methods::player::constants;
 pub mod crafting;

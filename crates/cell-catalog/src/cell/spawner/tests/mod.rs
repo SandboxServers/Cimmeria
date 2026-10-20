@@ -20,6 +20,9 @@
 //! - [`live_db_castle_seed`]: live-DB guards for Castle (World 8) *seed content*
 //!   that loads fine and is nonetheless wrong — actors outside the box that is
 //!   meant to contain them, missing display names, missing respawn timers.
+//! - [`live_db_castle_hub`]: live-DB guards for the Castle return-hub
+//!   quartermaster (CS-05a): spawn 13804 and template 415 in World 8, the
+//!   sealed stock on list 1300, and the absent hub medic.
 //! - [`live_db_castle_loot`]: live-DB guard for the Castle hostile loot tables 4-6:
 //!   every hostile template rolls one, no row is guaranteed, only items that work
 //!   today drop, and each table's empty-corpse rate stays in its band.
@@ -27,6 +30,24 @@
 //!   (templates 174-186, spawns 189-212 and 247-282): hostile aggro clear of the
 //!   respawners, ring pad and mission actors, friendlies out of aggro range and
 //!   named, the level 2-4 guard templates and the untouched level-1 ones.
+//! - [`live_db_castle_side_defense_q3`]: live-DB guard that the seeded Castle
+//!   `defense_q3` mission (10312) loads with its sealed step and four required
+//!   objectives.
+//! - [`live_db_castle_side_medical_q1`]: live-DB guard that the seeded Castle
+//!   `medical_q1` mission (10300) loads with its sealed steps and objectives.
+//! - [`live_db_castle_side_medical_q2`]: live-DB guards that the seeded Castle
+//!   `medical_q2` mission (10301) loads with its sealed steps and objectives, and
+//!   prisoner 417 is seeded at spawn 13806.
+//! - [`live_db_castle_side_defense_q1`]: live-DB guard that the seeded Castle
+//!   `defense_q1` mission (10310) loads with its sealed steps and objectives, and
+//!   the sentry giver (spawn 13808, template 419) loads at its sealed transform.
+//! - [`live_db_castle_side_return_q1`]: live-DB guard that the seeded Castle
+//!   `return_q1` mission (10320) loads with its sealed step and objective.
+//! - [`live_db_castle_side_return_q2`]: live-DB guard that the seeded Castle
+//!   `return_q2` mission (10321) loads with its sealed steps and objectives.
+//! - [`live_db_castle_side_repeatable_q1`]: live-DB guard that the seeded Castle
+//!   `repeatable_q1` mission (10330) loads with its sealed steps, objectives and cap,
+//!   and its hub giver (template 424, spawn 13809) at the sealed transform.
 //! - [`live_db_castle_standoff`]: live-DB guards for the Castle standoff rows
 //!   and templates 187-189 (NPC-vs-NPC, #1009): faction 3, a hostile in reach,
 //!   and the templates they were cloned from left alone.
@@ -106,9 +127,17 @@ mod live_db_ability_sets;
 mod live_db_ambient_chatter;
 mod live_db_ammo_catalog;
 mod live_db_ammo_loot;
+mod live_db_castle_hub;
 mod live_db_castle_loot;
 mod live_db_castle_population;
 mod live_db_castle_seed;
+mod live_db_castle_side_defense_q1;
+mod live_db_castle_side_defense_q3;
+mod live_db_castle_side_medical_q1;
+mod live_db_castle_side_medical_q2;
+mod live_db_castle_side_repeatable_q1;
+mod live_db_castle_side_return_q1;
+mod live_db_castle_side_return_q2;
 mod live_db_castle_standoff;
 mod live_db_content_loaders;
 mod live_db_crafting_hub;

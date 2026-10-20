@@ -136,6 +136,7 @@ async fn aggro_column_checks_reject_bad_values() {
 /// it is an unkillable container now, Decision (@Cadacious, 2026-09-28).) The only seeded aggro radii are the Castle
 /// population's guard templates: 15 u inside (181-183), 20 u outside (184-186)
 /// (docs/analysis/castle-population/README.md, D-CP04).
+/// The standoff friendlies 187-189 and their Defense Q3 copy 425 use 30 u.
 ///
 /// The Debug Area (world 1300, `docs/content/debug-area.md`) is a GM test map
 /// that tunes both on purpose, station by station, and its own live-DB guards
@@ -175,12 +176,17 @@ async fn seed_overrides_only_the_chain_armed_spawns() {
         (187, 30.0),
         (188, 30.0),
         (189, 30.0),
+        // The side-Defense Q3 giver (CS-04b3s) is a column-for-column copy
+        // of 188, frozen by `castle_side_defense_q3_giver_rows_frozen`.
+        (425, 30.0),
     ]
     .into_iter()
     .map(|(t, r)| (t, r.to_bits()))
     .collect();
     assert_eq!(
         radii, expected,
-        "only the Castle population guard templates (15 u inside, 20 u outside) and the \n         standoff friendlies (30 u) set aggro_radius; update this test when another \n         template tunes it"
+        "only the Castle population guard templates (15 u inside, 20 u outside), the \
+         standoff friendlies (30 u) and their copy 425 set aggro_radius; update this \
+         test when another template tunes it"
     );
 }

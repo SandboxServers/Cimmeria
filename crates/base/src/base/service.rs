@@ -1,6 +1,7 @@
 //! BaseService lifecycle — construction, startup, shutdown, admin API.
 
 use std::collections::HashMap;
+use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -29,6 +30,33 @@ use super::{
     outbox, resources::ResourceCache, session_identity, world_entry::route_cell_message, BaseError,
     ConnectedClientState, OnlinePlayer,
 };
+
+/// Keep each Base route in the receive loop until its awaited sends finish.
+/// Minigame Start, Cancel and Result share this serial path.
+async fn receive_cell_messages<F, Fut>(cell_rx: &mut mpsc::Receiver<CellToBaseMsg>, mut route: F)
+where
+    F: FnMut(CellToBaseMsg) -> Fut,
+    Fut: Future<Output = ()>,
+{
+    let mut slow_throttle = dispatch_timing::SlowDispatchThrottle::default();
+    while let Some(msg) = cell_rx.recv().await {
+        let kind = msg.kind();
+        let started = Instant::now();
+        route(msg).await;
+        let finished = Instant::now();
+        dispatch_timing::note_dispatch(
+            &mut slow_throttle,
+            kind,
+            finished.duration_since(started),
+            cell_rx.len(),
+            finished,
+        );
+    }
+}
+
+#[cfg(test)]
+#[path = "service_minigame_tests.rs"]
+mod minigame_route_order_tests;
 
 #[path = "session_wire_proof.rs"]
 pub(crate) mod session_wire_proof;
@@ -360,10 +388,7 @@ impl BaseService {
         if let Some(mut cell_rx) = cell_rx {
             tokio::spawn(async move {
                 tracing::debug!("Base service CellToBase message handler started");
-                let mut slow_throttle = dispatch_timing::SlowDispatchThrottle::default();
-                while let Some(msg) = cell_rx.recv().await {
-                    let kind = msg.kind();
-                    let started = Instant::now();
+                receive_cell_messages(&mut cell_rx, |msg| {
                     route_cell_message(
                         msg,
                         &transport_for_cell,
@@ -376,16 +401,8 @@ impl BaseService {
                         mg_port_for_cell,
                         &plugins_for_cell,
                     )
-                    .await;
-                    let finished = Instant::now();
-                    dispatch_timing::note_dispatch(
-                        &mut slow_throttle,
-                        kind,
-                        finished.duration_since(started),
-                        cell_rx.len(),
-                        finished,
-                    );
-                }
+                })
+                .await;
                 tracing::debug!("Base service CellToBase message handler exited");
             });
         }

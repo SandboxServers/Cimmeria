@@ -31,6 +31,7 @@
 //! - [`dakara_e1`]: live-DB guards for the Dakara_E1 rebuild's seed, starting
 //!   with DK-03's cast and prop templates (a name on each, nothing hostile or
 //!   attackable, no unproven look).
+//! - [`tollana_world19_cast`]: live-DB guards for the Tollana 568 cast (templates 420-421, spawns 19001-19004; tollana-continuation T-02a).
 //! - [`union_omega`]: seed and navmesh guards for Union Omega (worlds 18 and 80).
 //!
 //! The Harset template guards (`harset/`) drive the NPC AI's ability
@@ -50,4 +51,5 @@ mod live_db_vault_scope;
 mod spawn_behaviour_row;
 mod spawn_grounding;
 mod spawn_records;
+mod tollana_world19_cast;
 mod union_omega;

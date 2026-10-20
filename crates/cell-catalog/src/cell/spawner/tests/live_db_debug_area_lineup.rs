@@ -308,17 +308,21 @@ mod live_db {
     /// Every actor's nameplate and tag trace it (owner requirement 3): the
     /// tag is `DebugArea_VisualLineup_<source id>` and the `display_name`
     /// ends `#<source id> <body set>`, where the source is a template outside
-    /// the block with the same look; a template-less actor is tagged
+    /// the block with the same look. A look more than one template shares
+    /// (Sgt. Kaerlia 260 and the Storage Officer 370 both wear the
+    /// BS_HumanFemale look) may name any of them, so the tag must name one of
+    /// those sources, not a fixed one. A template-less actor is tagged
     /// `..._NoTemplate_<body set>` and reads `(no template) <body set>`.
     /// Every nameplate fits in 40 characters. Revert proof: point a tag at
-    /// another template, or clear a `display_name`, and this names it.
+    /// a template with another look, or clear a `display_name`, and this
+    /// names it.
     #[tokio::test]
     async fn debug_area_lineup_live_db_nameplates_and_tags_name_the_source() {
         let pool = require_db_or_skip!();
-        let rows: Vec<(i32, String, String, Option<String>, Option<i32>)> =
+        let rows: Vec<(i32, String, String, Option<String>, Option<Vec<i32>>)> =
             sqlx::query_as(with_looks!(
                 "SELECT c.template_id, c.body_set, s.tag, t.display_name, \
-                        (SELECT min(o.template_id) FROM look o \
+                        (SELECT array_agg(o.template_id ORDER BY o.template_id) FROM look o \
                           WHERE o.template_id NOT BETWEEN $1 AND $2 \
                             AND (o.body_set, o.comps, o.primary_color_id, \
                                  o.secondary_color_id, o.skin_tint, o.mesh) \
@@ -338,12 +342,19 @@ mod live_db {
         assert_eq!(rows.len() as i64, ACTORS);
         let mut errors = Vec::new();
         let mut plates = BTreeMap::new();
-        for (id, body_set, tag, plate, source) in &rows {
+        for (id, body_set, tag, plate, sources) in &rows {
             let short = body_set.rsplit('.').next().unwrap_or(body_set);
             let plate = plate.as_deref().unwrap_or("");
-            let (want_tag, want_tail) = match source {
-                Some(src) => (format!("{TAG}{src}"), format!(" #{src} {short}")),
-                None => (
+            let named = tag.strip_prefix(TAG).and_then(|s| s.parse::<i32>().ok());
+            let (want_tag, want_tail) = match (sources, named) {
+                (Some(srcs), Some(src)) if srcs.contains(&src) => {
+                    (format!("{TAG}{src}"), format!(" #{src} {short}"))
+                }
+                (Some(srcs), _) => (
+                    format!("{TAG}<one of {srcs:?}>"),
+                    format!(" #<one of {srcs:?}> {short}"),
+                ),
+                (None, _) => (
                     format!("{TAG}NoTemplate_{short}"),
                     format!("(no template) {short}"),
                 ),

@@ -52,6 +52,17 @@ use super::super::session_identity;
 use super::super::ConnectedClientState;
 use super::space_registry::world_for_space;
 
+#[cfg(test)]
+type SeqReservationProbe = (
+    u32,
+    std::sync::mpsc::Sender<()>,
+    std::sync::mpsc::Receiver<()>,
+);
+
+#[cfg(test)]
+static SEQ_RESERVATION_PROBE: std::sync::LazyLock<Mutex<Option<SeqReservationProbe>>> =
+    std::sync::LazyLock::new(|| Mutex::new(None));
+
 /// Build the burst-body bytes: `CREATE_BASE_PLAYER` header + `enter_world_body`.
 ///
 /// Pure function so the wire layout is unit-testable without spinning a
@@ -199,6 +210,7 @@ pub(crate) async fn handle_reanchor_player(
         enc_version,
         pending_acks_arc,
         next_seq,
+        seq_gate,
         appearance_args,
         tint_args,
         class_id,
@@ -214,6 +226,7 @@ pub(crate) async fn handle_reanchor_player(
             c.enc_version,
             Arc::clone(&c.pending_acks),
             Arc::clone(&c.next_seq),
+            Arc::clone(&c.reliable_seq_gate),
             c.cached_appearance_args.clone(),
             c.cached_tint_args.clone(),
             c.player_class_id,
@@ -261,8 +274,26 @@ pub(crate) async fn handle_reanchor_player(
         let mut pending = pending_acks_arc.lock().unwrap();
         cimmeria_mercury::packet::take_piggyback_acks(&mut pending, enc_version)
     };
-    let base_seq =
-        next_seq.fetch_add(total_seqs, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;
+    #[cfg(test)]
+    {
+        // A one-shot checkpoint lets the concurrency regression park the
+        // actual handler after it cloned the counter but before reservation.
+        let probe = {
+            let mut slot = SEQ_RESERVATION_PROBE.lock().unwrap();
+            slot.as_ref()
+                .is_some_and(|(id, _, _)| *id == entity_id)
+                .then(|| slot.take())
+                .flatten()
+        };
+        if let Some((_, entered, release)) = probe {
+            let _ = entered.send(());
+            let _ = release.recv();
+        }
+    }
+    let base_seq = {
+        let _seq_gate = seq_gate.lock().map_err(|_| "sequence gate poisoned")?;
+        next_seq.fetch_add(total_seqs, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK
+    };
 
     let packets = build_reanchor_packets(
         &key,

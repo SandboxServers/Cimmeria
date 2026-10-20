@@ -2,12 +2,12 @@
 title: "Minigame System"
 type: reference
 audience: engineers
-last_updated: 2026-10-10
+last_updated: 2026-10-14
 ---
 
 # Minigame System
 
-> **Last updated**: 2026-10-10
+> **Last updated**: 2026-10-14
 > **Status**: Content-triggered minigames work end-to-end — SmartFoxServer host, ticket handshake, Livewire, six auto-win placeholders, and victory-chain callback. The player-facing `MinigamePlayer` cell methods (helpers, spectating, manual start) are all stubs.
 
 ## Overview
@@ -17,6 +17,26 @@ The minigame system provides puzzle-based mini-activities integrated into the ga
 The `MinigamePlayer` interface in `entities/defs/interfaces/MinigamePlayer.def` is the largest interface by method count (25 properties, 78+ methods).
 
 The original SGW minigames were Flash SWFs that connected to a **SmartFoxServer 1.x** TCP endpoint, separate from the Mercury game channel. [`crates/minigame/src/minigame/`](../../crates/minigame/src/minigame/) reimplements that server in-process: `protocol.rs` speaks the SmartFox XML packet format, `session.rs` owns the ticket registry, `server/` is the TCP listener and connection lifecycle, and `games/` holds the per-game logic behind a `MinigameInstance` trait.
+
+Base accepts a content-triggered launch only while the queued entity and player
+still belong to the current connection. It sends the existing Mercury
+`onStartMinigame(URL)`, launch feedback and `onEndMinigame` methods through an
+opt-in reliable sender bound to that Base connection instance and character.
+An address takeover cannot give the new connection the old packet's key,
+sequence, ACKs or retransmission entry. A post-send connection takeover also
+returns a failed launch outcome, including for a fragmented URL, and stops
+later fragments. Base logs that outcome and whether exact-ticket cancellation
+succeeded, without logging the ticket itself. If the URL cannot be sent, Base
+cancels that exact SmartFox ticket so the player can retry. A terminal result
+deposits a one-use, server-owned receipt for the claimed ticket. The internal
+message to Base contains only the ticket; Base redeems the receipt and checks
+the original entity, character, and connection instance before it closes the
+minigame UI or forwards to Cell. It repeats that owner check after the awaited
+close. Explicit cancellation or a new launch invalidates an undrained receipt;
+normal SmartFox teardown leaves it available. Receipts expire after 180 seconds
+and the registry keeps at most 4,096. These checks do not validate a game's
+puzzle or bind the Cell launch incarnation. Castle CS-02b2 owns that later
+Cell gate, and Castle callbacks remain disabled.
 
 ## How a minigame actually launches
 
@@ -32,7 +52,9 @@ Content chain fires Action::StartMinigame { minigame_type, difficulty,
   |         URL shape: http://unused/{host}/{port}/{gameName}/{entityId}/{ticket}
   |-> Flash SWF connects to the SmartFox TCP port, presents the ticket
   |-> Game plays; result reported back
-  |-> Base: MinigameResult -> notifies client, forwards to the cell
+  |-> Registry: deposit one terminal receipt for the claimed ticket
+  |-> Base: redeem ticket-only MinigameResult, check original Base owner,
+  |         notify that owner and forward receipt-derived result to Cell
   |-> Cell: runs the chain from on_victory_chains
 ```
 
@@ -42,9 +64,10 @@ Content chain fires Action::StartMinigame { minigame_type, difficulty,
 |---------|--------|-------|
 | SmartFoxServer 1.x host | DONE | `minigame/server/` (`mod.rs` lifecycle, `accept.rs`, `limits.rs`, `framing.rs`, `handshake.rs`, `result_dispatch.rs`) + `protocol.rs` |
 | Connection limits | DONE | Total and per-address connection caps, a login deadline, a 4 KiB frame cap and an idle timeout on the public port. See [Connection limits](#connection-limits) |
-| Session / ticket registry | DONE | `minigame/session.rs`; ticket carries seed, difficulty, and the victory chains |
+| Session / ticket registry | DONE | `minigame/session.rs`; registration captures seed, difficulty, victory chains and original Base connection instance |
+| One-use result receipt | DONE | Claimed terminal result deposits once; Base atomically redeems the ticket and checks original owner before client send and Cell forward. Expiry: 180 s; cap: 4,096. Does not prove puzzle success or Cell launch identity |
 | Session expiry | DONE | A registered session whose SWF never connects is swept after `PENDING_SESSION_TTL` (180 s). See [Session lifecycle](#session-lifecycle) |
-| Abort on SWF close | DONE | `run_session` calls `MinigameInstance::aborted()` and reports result code 0 (Canceled) when the socket drops without an outcome |
+| Abort on SWF close | DONE | `run_session` calls `MinigameInstance::aborted()` and reports result code 0 (Canceled) when the socket drops without an outcome. Explicit player close removes the registration first, so its later canceled report is refused |
 | Content-triggered start | DONE | `Action::StartMinigame` → `CellToBaseMsg::StartMinigame` → `onStartMinigame(URL)` |
 | Victory-chain callback | DONE | `MinigameResult` forwards to the cell, which runs `on_victory_chains` |
 | Livewire | DONE | Fully ported in `minigame/games/livewire/` |

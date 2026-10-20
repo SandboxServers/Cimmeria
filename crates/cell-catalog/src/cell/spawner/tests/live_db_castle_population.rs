@@ -69,7 +69,7 @@ mod live_db {
     const RING_PAD_RADIUS: f32 = 3.5;
 
     /// Spawn tags of the actors a player must stand next to on the mission path.
-    const MISSION_ACTORS: [&str; 9] = [
+    const MISSION_ACTORS: [&str; 11] = [
         "Castle_SgtGerschon",
         "Castle_Coppleman",
         "Castle_Zuritska_Cell",
@@ -79,6 +79,8 @@ mod live_db {
         "Castle_ColMarsh",
         "Castle_Mohkatan",
         "Castle_DHD",
+        "Castle_MedDispenser",
+        "Castle_SymbioteTank",
     ];
 
     /// Caged prisoners are the documented exemption from the friendly clearance

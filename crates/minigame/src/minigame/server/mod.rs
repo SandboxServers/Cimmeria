@@ -23,13 +23,18 @@ mod handshake;
 mod limits;
 mod result_dispatch;
 mod session_loop;
+mod terminal_outcome;
 
 #[cfg(test)]
 mod connection_span_tests;
 #[cfg(test)]
 mod listener_tests;
 #[cfg(test)]
+mod receipt_deposit_tests;
+#[cfg(test)]
 mod session_snapshot_tests;
+#[cfg(test)]
+mod terminal_outcome_tests;
 #[cfg(test)]
 mod tests;
 #[cfg(test)]
@@ -56,8 +61,6 @@ use self::session_loop::run_session;
 // before the session loop moved to `session_loop`.
 #[cfg(test)]
 use self::framing::send_null_terminated;
-#[cfg(test)]
-use self::result_dispatch::{RESULT_CANCELED, RESULT_VICTORY};
 use super::session::SessionRegistry;
 
 /// Handle a single minigame connection through the full lifecycle.
@@ -214,6 +217,10 @@ pub(super) enum EndReason {
     ClientClosed,
     /// The authenticated game client closed the minigame window.
     PlayerCanceled,
+    /// A terminal game report had no current claimed registration.
+    ResultRefused,
+    /// A receipt was deposited but its Base notification could not enqueue.
+    ResultDeliveryFailed,
     /// The socket read failed with an I/O error.
     ReadFailed,
     /// A client frame went over the size limit.
@@ -233,6 +240,8 @@ impl EndReason {
             Self::Defeat => "defeat",
             Self::ClientClosed => "client_closed",
             Self::PlayerCanceled => "player_canceled",
+            Self::ResultRefused => "result_refused",
+            Self::ResultDeliveryFailed => "result_delivery_failed",
             Self::ReadFailed => "read_error",
             Self::FrameTooLong => "frame_too_long",
             Self::IdleTimeout => "idle_timeout",

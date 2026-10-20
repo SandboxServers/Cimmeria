@@ -2366,5 +2366,15 @@ INSERT INTO dialog_sets (dialog_set_id, name) VALUES (100001, 'Sandbox Ba''al');
 -- Name: dialog_sets_dialog_set_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
+INSERT INTO dialog_sets (dialog_set_id, name) VALUES (10760, '');
+INSERT INTO dialog_sets (dialog_set_id, name) VALUES (10761, '');
+INSERT INTO dialog_sets (dialog_set_id, name) VALUES (10762, '');
+INSERT INTO dialog_sets (dialog_set_id, name) VALUES (10765, '');
+INSERT INTO dialog_sets (dialog_set_id, name) VALUES (10769, '');
+INSERT INTO dialog_sets (dialog_set_id, name) VALUES (10771, '');
+INSERT INTO dialog_sets (dialog_set_id, name) VALUES (10773, '');
+INSERT INTO dialog_sets (dialog_set_id, name) VALUES (10775, '');
+INSERT INTO dialog_sets (dialog_set_id, name) VALUES (10776, '');
+
 SELECT pg_catalog.setval('dialog_sets_dialog_set_id_seq', 100001, true);
 

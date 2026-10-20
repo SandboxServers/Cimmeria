@@ -37,6 +37,8 @@ pub(super) fn allowlist(filename: &str, chain_id: i32) -> bool {
         // adding the action; if the terminal template already has the bit,
         // remove this entry and document below.
         | ("castle_cellblock_chains.sql", 1060) // Preparation_Terminal: needs verification (see above TODO)
+        | ("castle_cellblock_chains.sql", 11003) // Prisoner_329 (CB-N05): per-player bind, dsm 2795 slot 17 (flags 1073741824) by chains 11000/11001/11002; template 17 interaction_type 0
+        | ("castle_cellblock_chains.sql", 11033 | 11034 | 11036 | 11037) // Cellblock_Ambient_Prisoner1/2 (CB-N06): per-player bind, dsm 3862 slot 176 (flags 1073741824) by chains 11030/11031/11032; template 176 interaction_type 0
         // harset_space_chains.sql — the five Harset ring switches (packet H10).
         // reason: all five spawns (spawnlist.sql rows 4/127/128/129/130) use
         // entity template 3 "Ring Transporter Switch", whose
@@ -170,13 +172,17 @@ pub(super) fn allowlist(filename: &str, chain_id: i32) -> bool {
         // a per-file exemption rule for dialog-set-driven files, or the #97
         // entity-template walker — NOT another nine entries per packet.
         // Filed as a follow-up in docs/analysis/harset-rebuild/worknotes/H30-H31.md.
-        | ("harset_opcore_chains.sql", 6501) // CmdCenter_Marsh: dsm 5356 bound by chain 6502
+        | ("harset_opcore_chains.sql", 6501) // CmdCenter_Marsh: dsm 120101 bound by chain 6502
         | ("harset_opcore_chains.sql", 6503) // CmdCenter_Copplemann: dsm 2817 bound by chain 6504
         | ("harset_opcore_chains.sql", 6512) // CmdCenter_Marsh: dsm 5254 bound by chain 6511
         | ("harset_opcore_chains.sql", 6515) // CmdCenter_Mohkatan: dsm 6397 bound by chains 6513/6514
         | ("harset_opcore_chains.sql", 6520) // CmdCenter_Mohkatan: dsm 6398 bound by chain 6519
         | ("harset_opcore_chains.sql", 6522) // CmdCenter_Baal: dsm 6395 bound by chains 6520/6521
         | ("harset_opcore_chains.sql", 6527) // CmdCenter_Marsh: dsm 5253 bound by chains 6525/6526
+        // harset_1664_chains.sql: mission 1664 (FZ-20). Cursors come from the template and per-player binds.
+        | ("harset_1664_chains.sql", 6008..=6011) // Harset_Kaerlia: template 260's own INT_NonAStoryMissionAvaliable (134217728), as template 390
+        | ("harset_1664_chains.sql", 6012..=6013) // Harset_CmdDoor: per-player dsm 120301 bind (INT_MissionWorldObject) by chains 6008/6015
+        | ("harset_1664_chains.sql", 6018..=6019) // CmdCenter_Marsh / CmdCenter_Mohkatan: per-player dsm 120302/120303 binds (INT_NonAStoryMissionTurnIn) by chains 6033/6034
         // sgc_w1_chains.sql — baseline (dialog NPCs / quest items / lootable bodies)
         | ("sgc_w1_chains.sql", 3002) // SGCW1_GenHammond: dialog NPC template default
         | ("sgc_w1_chains.sql", 3004) // SGC_W1_Tealc: dialog NPC template default
@@ -214,5 +220,9 @@ pub(super) fn allowlist(filename: &str, chain_id: i32) -> bool {
         // space_castle_cellblock_chains.sql — baseline
         | ("space_castle_cellblock_chains.sql", 5014) // Preparation_ColMarsh: dialog NPC template default
         | ("space_castle_cellblock_chains.sql", 5015) // Preparation_ColMarsh: dialog NPC template default
+        // tollana_568_chains.sql — mission 568 (tollana-continuation T-03a1).
+        // reason: Copplemann's bit comes from the per-player dialog bind on slot 420.
+        | ("tollana_568_chains.sql", 9001..=9003) // Tollana_Copplemann: per-player bind (2656/4959/6393), not a zone-wide flag
+        | ("tollana_568_chains.sql", 9011..=9018) // Tollana_FoodUnit_*: template 421 default INT_MissionWorldObject (1073741824), as Dakara templates 445-448
     ) || super::beta_e1::allowed(filename, chain_id)
 }

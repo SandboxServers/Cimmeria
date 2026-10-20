@@ -11,6 +11,7 @@ use std::time::{Duration, Instant};
 
 fn make_connected_state(account_id: u32) -> ConnectedClientState {
     ConnectedClientState {
+        session_instance_id: cimmeria_base_session::base::mint_session_instance_id(),
         enc: MercuryEncryption::from_session_key([0u8; 32]),
         key: [0u8; 32],
         enc_version: cimmeria_mercury::encryption::EncryptionVersion::V1,
@@ -26,6 +27,7 @@ fn make_connected_state(account_id: u32) -> ConnectedClientState {
         pending_player_entity_id: None,
         player_entity_id: None,
         next_seq: Arc::new(AtomicU32::new(1)),
+        reliable_seq_gate: Arc::new(std::sync::Mutex::new(())),
         next_seq_unreliable: Arc::new(AtomicU32::new(0)),
         pending_acks: Arc::new(Mutex::new(Vec::new())),
         last_recv: Arc::new(Mutex::new(Instant::now())),

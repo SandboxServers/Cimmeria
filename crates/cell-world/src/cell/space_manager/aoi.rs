@@ -9,6 +9,7 @@ use crate::cell::duel::DuelResources;
 use std::collections::{HashMap, HashSet};
 
 use cimmeria_common::EntityId;
+use cimmeria_entity::cell_entity::{phase_visible, viewer_phases};
 
 use super::super::messages::CellToBaseMsg;
 use super::{EntityNames, SpaceManager};
@@ -270,7 +271,7 @@ impl SpaceManager {
         let Some(space) = self.spaces.get(&space_id) else {
             return;
         };
-        let (player_pos, enter_radius, leave_radius, player_interactions, previous_aoi) =
+        let (player_pos, enter_radius, leave_radius, player_interactions, previous_aoi, held) =
             match space.entities.get(&player_id) {
                 Some(e) => (
                     e.position,
@@ -281,6 +282,7 @@ impl SpaceManager {
                         .iter()
                         .map(|eid| eid.0 as u32)
                         .collect::<HashSet<u32>>(),
+                    viewer_phases(e),
                 ),
                 None => return,
             };
@@ -307,7 +309,8 @@ impl SpaceManager {
                 // see `CellEntity::is_introducible`. Skipping (rather
                 // than introducing a placeholder) matters because the
                 // witness set below is what makes introduction one-shot.
-                if !other.is_introducible() {
+                // Phase filter: a dropped member of `previous_aoi` leaves below.
+                if !other.is_introducible() || !phase_visible(&held, other) {
                     continue;
                 }
                 let dist_sq = player_pos.distance_squared_to(&other.position);

@@ -328,6 +328,169 @@ fn build_reanchor_packets_uses_consecutive_seqs() {
     );
 }
 
+struct HeldLetterWire {
+    recorder: Arc<crate::test_support::TestTransport>,
+    entered: Mutex<Option<std::sync::mpsc::Sender<()>>>,
+    release: Mutex<std::sync::mpsc::Receiver<()>>,
+    async_send: std::sync::mpsc::Sender<()>,
+}
+
+impl Transport for HeldLetterWire {
+    fn send_to<'life0, 'life1, 'async_trait>(
+        &'life0 self,
+        bytes: &'life1 [u8],
+        addr: SocketAddr,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = std::io::Result<usize>> + Send + 'async_trait>,
+    >
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        Self: 'async_trait,
+    {
+        Box::pin(async move {
+            self.async_send.send(()).unwrap();
+            self.recorder.send_to(bytes, addr).await
+        })
+    }
+
+    fn try_send_to(&self, bytes: &[u8], addr: SocketAddr) -> std::io::Result<usize> {
+        self.entered
+            .lock()
+            .unwrap()
+            .take()
+            .unwrap()
+            .send(())
+            .unwrap();
+        self.release.lock().unwrap().recv().unwrap();
+        self.recorder.try_send_to(bytes, addr)
+    }
+
+    fn local_addr(&self) -> std::io::Result<SocketAddr> {
+        Ok("127.0.0.1:1".parse().unwrap())
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 3)]
+async fn actual_reanchor_reservation_waits_for_held_letter_admission() {
+    use crate::test_support::{test_default_connected_client_state, TestTransport};
+    use cimmeria_base_session::base::helpers::{
+        derive_letter_turn_in_token, send_letter_turn_in_method, ExpectedLetterTurnInEntry,
+        LetterTurnInSendOutcome,
+    };
+    use cimmeria_mercury::channel::{Channel, RxOutcome};
+    use cimmeria_mercury::encryption::MercuryEncryption;
+    use cimmeria_wire::cell::messages::{
+        LetterTurnInAttempt, LetterTurnInEntryEpoch, LetterTurnInRequest,
+    };
+
+    let entity_id = 0x7a36u32;
+    let player_id = 31_360;
+    let addr: SocketAddr = "127.0.0.1:40360".parse().unwrap();
+    let mut state = test_default_connected_client_state();
+    state.key = [9; 32];
+    state.enc = MercuryEncryption::from_session_key(state.key);
+    state.player_entity_id = Some(entity_id);
+    state.active_player_id = Some(player_id);
+    state.world_name = Some("Harset_CmdCenter".to_owned());
+    let epoch = LetterTurnInEntryEpoch::new(1);
+    state.extensions.insert(epoch);
+    let request = LetterTurnInRequest {
+        entity_id,
+        player_id,
+        attempt: LetterTurnInAttempt::from_bytes([6; 16]),
+        token: derive_letter_turn_in_token(&state.key),
+        generation: state.connected_at,
+        epoch,
+    };
+    let expected = ExpectedLetterTurnInEntry::capture(addr, &state, &request).unwrap();
+    let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
+    let mapping = Arc::new(Mutex::new(HashMap::from([(entity_id, addr)])));
+    let recorder = Arc::new(TestTransport::new());
+    let (letter_entered_tx, letter_entered_rx) = std::sync::mpsc::channel();
+    let (letter_release_tx, letter_release_rx) = std::sync::mpsc::channel();
+    let (async_send_tx, async_send_rx) = std::sync::mpsc::channel();
+    let wire: Arc<dyn Transport> = Arc::new(HeldLetterWire {
+        recorder: Arc::clone(&recorder),
+        entered: Mutex::new(Some(letter_entered_tx)),
+        release: Mutex::new(letter_release_rx),
+        async_send: async_send_tx,
+    });
+    let (reanchor_entered_tx, reanchor_entered_rx) = std::sync::mpsc::channel();
+    let (reanchor_release_tx, reanchor_release_rx) = std::sync::mpsc::channel();
+    *SEQ_RESERVATION_PROBE.lock().unwrap() =
+        Some((entity_id, reanchor_entered_tx, reanchor_release_rx));
+    let reanchor_wire = Arc::clone(&wire);
+    let reanchor_connected = Arc::clone(&connected);
+    let reanchor_mapping = Arc::clone(&mapping);
+    let reanchor = tokio::spawn(async move {
+        handle_reanchor_player(
+            entity_id,
+            0x0001_0042,
+            [1.0, 2.0, 3.0],
+            [0.0; 3],
+            &reanchor_wire,
+            &reanchor_connected,
+            &reanchor_mapping,
+        )
+        .await
+        .unwrap();
+    });
+    reanchor_entered_rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .unwrap();
+    let letter_connected = Arc::clone(&connected);
+    let letter_mapping = Arc::clone(&mapping);
+    let letter_wire = Arc::clone(&wire);
+    let letter = std::thread::spawn(move || {
+        send_letter_turn_in_method(
+            &expected,
+            71,
+            &[0; 8],
+            &letter_wire,
+            &letter_connected,
+            &letter_mapping,
+        )
+    });
+    letter_entered_rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .unwrap();
+    reanchor_release_tx.send(()).unwrap();
+    let sent_while_held = async_send_rx
+        .recv_timeout(std::time::Duration::from_millis(100))
+        .is_ok();
+    letter_release_tx.send(()).unwrap();
+    assert_eq!(letter.join().unwrap(), LetterTurnInSendOutcome::Sent);
+    tokio::time::timeout(std::time::Duration::from_secs(5), reanchor)
+        .await
+        .unwrap()
+        .unwrap();
+    if !sent_while_held {
+        assert!(async_send_rx
+            .recv_timeout(std::time::Duration::from_secs(1))
+            .is_ok());
+    }
+    assert!(
+        !sent_while_held,
+        "actual reanchor cannot reserve/send while letter admission holds the gate"
+    );
+    let packets = recorder.filter_to(addr);
+    assert_eq!(packets.len(), 2);
+    let mut receiver = Channel::new(addr);
+    receiver.anchor_rx_seq(0);
+    for (seq, bytes) in packets.iter().enumerate() {
+        let plain = MercuryEncryption::from_session_key([9; 32])
+            .decrypt(bytes)
+            .unwrap();
+        let parsed = cimmeria_mercury::packet::parse_incoming(&plain).unwrap();
+        assert_eq!(parsed.seq_id, Some(seq as u32));
+        assert_eq!(
+            receiver.receive_parsed(parsed).unwrap().outcome,
+            RxOutcome::InOrder
+        );
+    }
+}
+
 /// Domain C (fan-out byte test): `handle_reanchor_player` for a client with
 /// no cached appearance/tint emits exactly **one** packet — the reanchor
 /// burst — to the owner's own addr, byte-exact, with **zero** witness

@@ -37,6 +37,16 @@ mod startup;
 mod startup_report;
 pub(crate) mod ticks;
 
+/// Cross-service tests must restore the same objective roster as world entry.
+#[cfg(feature = "test-support")]
+#[doc(hidden)]
+pub fn build_restored_missions_for_test(
+    saved: &[super::messages::SavedMission],
+    space_mgr: &super::space_manager::SpaceManager,
+) -> Vec<cimmeria_entity::missions::MissionInstance> {
+    base_messages::player_init::mission_restore::build_restored_missions(saved, space_mgr)
+}
+
 #[cfg(test)]
 mod tests;
 

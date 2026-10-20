@@ -76,6 +76,7 @@ pub async fn handle_play_character(
                 Some((
                     Arc::clone(&c.pending_acks),
                     Arc::clone(&c.next_seq),
+                    Arc::clone(&c.reliable_seq_gate),
                     c.access_level,
                     c.enc_version,
                     c.account_name.clone(),
@@ -91,11 +92,19 @@ pub async fn handle_play_character(
         }
     };
 
-    let (pending_acks_arc, next_seq, access_level, enc_version, account_name, owner, origin) =
-        match arcs {
-            Some(a) => a,
-            None => return Ok(()),
-        };
+    let (
+        pending_acks_arc,
+        next_seq,
+        seq_gate,
+        access_level,
+        enc_version,
+        account_name,
+        owner,
+        origin,
+    ) = match arcs {
+        Some(a) => a,
+        None => return Ok(()),
+    };
 
     // A staged lab fixture is written before the first world-entry read
     // below, so the login and the cell's restore chains run on it.
@@ -241,8 +250,10 @@ pub async fn handle_play_character(
         // client tears down all entities, then sends ENABLE_ENTITIES, which
         // triggers the create-player step (CREATE_BASE_PLAYER + viewport +
         // cell + forced position).
-        let seq =
-            next_seq.fetch_add(1, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK;
+        let seq = {
+            let _seq_gate = seq_gate.lock().map_err(|_| "sequence gate poisoned")?;
+            next_seq.fetch_add(1, Ordering::Relaxed) & cimmeria_mercury::packet::SEQUENCE_MASK
+        };
         let pkt = build_reset_entities(&key, seq, &acks, enc_version);
         tracing::trace!(%addr, len = pkt.len(), seq, "UDP_OUT RESET_ENTITIES (entity teardown)");
         super::send_direct(transport, &pkt, addr, None).await?;

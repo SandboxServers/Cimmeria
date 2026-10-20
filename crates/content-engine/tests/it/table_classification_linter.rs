@@ -209,7 +209,7 @@ fn real_tables_are_classified_exactly_once() {
 #[test]
 fn real_lists_have_the_expected_sizes() {
     let (reseed, persistent) = real_lists();
-    assert_eq!(persistent.len(), 24, "persistent list size");
+    assert_eq!(persistent.len(), 25, "persistent list size");
     assert!(persistent.iter().any(|n| n == "account"));
     assert_eq!(reseed, vec!["shards".to_string()]);
 }

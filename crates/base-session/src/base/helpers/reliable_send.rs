@@ -89,6 +89,13 @@ pub(crate) fn shadow_register_reliable_send_for_session(
     );
 }
 
+/// Result of registering a sent datagram in the captured session's TX window.
+pub(super) enum ReliableRegistrationOutcome {
+    Registered,
+    SessionChanged,
+    Rejected,
+}
+
 #[derive(Clone, Copy)]
 pub(super) struct ReliableSendDetails {
     pub(super) kind: &'static str,
@@ -162,7 +169,7 @@ pub(super) fn shadow_register_reliable_send_with_details(
     raw_bytes: cimmeria_mercury::packet::Bytes,
     details: ReliableSendDetails,
     expected_session: Option<(&Arc<AtomicU32>, Option<&SendOrigin>)>,
-) {
+) -> ReliableRegistrationOutcome {
     use cimmeria_mercury::packet::{Bytes, Packet, PacketFlags};
 
     let wire_len = raw_bytes.len();
@@ -171,10 +178,10 @@ pub(super) fn shadow_register_reliable_send_with_details(
     let send_site = format!("{}:{}", caller.file(), caller.line());
     let pkt = Packet::new(PacketFlags::default(), seq, Bytes::new());
     let Ok(clients) = connected.lock() else {
-        return;
+        return ReliableRegistrationOutcome::Rejected;
     };
     let Some(state) = clients.get(&addr) else {
-        return;
+        return ReliableRegistrationOutcome::SessionChanged;
     };
     if expected_session.is_some_and(|(expected_seq, expected_origin)| {
         let origin_matches = match (state.wire_send_origin(), expected_origin) {
@@ -189,10 +196,10 @@ pub(super) fn shadow_register_reliable_send_with_details(
         };
         !Arc::ptr_eq(&state.next_seq, expected_seq) || !origin_matches
     }) {
-        return;
+        return ReliableRegistrationOutcome::SessionChanged;
     }
     let Ok(mut channel) = state.channel.lock() else {
-        return;
+        return ReliableRegistrationOutcome::Rejected;
     };
     if let Err(e) = channel.register_sent_packet(pkt, raw_bytes) {
         // After the deferred-send queue landed, the only paths that
@@ -208,7 +215,7 @@ pub(super) fn shadow_register_reliable_send_with_details(
              (invalid seq or unsent-queue cap exceeded); reliability cannot \
              be tracked for this packet"
         );
-        return;
+        return ReliableRegistrationOutcome::Rejected;
     }
     channel.set_sent_packet_context(
         seq,
@@ -266,4 +273,5 @@ pub(super) fn shadow_register_reliable_send_with_details(
             "encrypted reliable datagram sent"
         );
     }
+    ReliableRegistrationOutcome::Registered
 }

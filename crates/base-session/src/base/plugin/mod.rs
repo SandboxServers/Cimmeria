@@ -38,10 +38,9 @@
 //! time an envelope nobody consumes is dropped with a WARN
 //! (`reason = "no_consumer"`).
 //!
-//! Crafting is the first user (`cimmeria-base-crafting`, #962 step 5): its
-//! seven cell-to-base payloads are the whole envelope list, and it registers
-//! no base method (its verbs 95-100 are cell methods), so the base-method
-//! list is still empty.
+//! Crafting (`cimmeria-base-crafting`, #962 step 5) and Frost letter turn-in
+//! (`cimmeria-base-methods`) consume distinct cell-to-base payloads. Neither
+//! registers a base method, so the base-method list is still empty.
 //!
 //! Three hook kinds are seams the inventory and progression code in
 //! `cimmeria-base-methods` fire, so crafting could leave the session layer
@@ -108,6 +107,7 @@ pub const PLUGIN_CELL_MESSAGES: &[PluginMsgKind] = &[
     PluginMsgKind::of::<cimmeria_wire::crafting::RespecCraftOpen>(),
     PluginMsgKind::of::<cimmeria_wire::crafting::GmGrantExpertise>(),
     PluginMsgKind::of::<cimmeria_wire::crafting::GmGrantAppliedSciencePoints>(),
+    PluginMsgKind::of::<cimmeria_wire::cell::messages::LetterTurnInRequest>(),
 ];
 
 /// A payload type the envelope carries, for the startup checks.

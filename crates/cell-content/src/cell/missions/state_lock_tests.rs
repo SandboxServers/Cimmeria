@@ -142,6 +142,41 @@ async fn locked_tracker_drops_mission_chains_whole() {
     assert!(is_feedback(&sent[0], UNAVAILABLE_LINE));
 }
 
+#[tokio::test]
+async fn pending_hydration_drops_letter_turn_in_chain_whole() {
+    const E: u32 = 109;
+    let mut mgr = mgr_with(E);
+    mark_load_pending(E, &mut mgr);
+    let (tx, mut rx) = mpsc::channel(8);
+    let actions = vec![
+        (
+            6501,
+            Action::IncrementCounter {
+                counter_name: "would_be_success".into(),
+                amount: 1,
+            },
+        ),
+        (
+            6501,
+            Action::CompleteMissionWithItem {
+                mission_id: 1360,
+                expected_step_id: 4038,
+                item_id: 3730,
+                quantity: 1,
+                dialog_id: 4576,
+                dialog_set_id: 120101,
+                slot: 10,
+            },
+        ),
+    ];
+    let (kept, delays) = gate_mission_chains(actions, vec![0, 0], E, &tx, &mgr).await;
+    assert!(kept.is_empty());
+    assert!(delays.is_empty());
+    let sent = drain(&mut rx);
+    assert_eq!(sent.len(), 1);
+    assert!(is_feedback(&sent[0], UNAVAILABLE_LINE));
+}
+
 /// The recovery unlock: the late missions land, the tracker unlocks, the
 /// journal is resent and the player told; a second recovery changes
 /// nothing, so progress made after the first is never overwritten.

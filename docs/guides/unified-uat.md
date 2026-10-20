@@ -2,7 +2,7 @@
 title: Unified In-Game UAT Guide
 type: how-to
 audience: in-game testers (the owner and playtesters) working through the restored systems on the colo; no programming needed
-last_updated: 2026-10-12
+last_updated: 2026-10-18
 companion_docs:
   - organizations-uat.md
   - ../content/debug-hub.md
@@ -18,7 +18,7 @@ companion_docs:
 # Unified In-Game UAT Guide
 
 > Type: how-to. Audience: an in-game tester who is not a programmer.
-> Updated: 2026-10-12. Companions: [debug hub](../content/debug-hub.md), [commands](../commands.md), [organizations UAT](organizations-uat.md), [Cellblock UAT guide](../analysis/castle-cellblock-rebuild/uat-guide.md), [zone operator guide](../analysis/zone-restoration-operator-guide.md), [telemetry runbook](../operations/npc-ai-telemetry-runbook.md).
+> Updated: 2026-10-18. Companions: [debug hub](../content/debug-hub.md), [commands](../commands.md), [organizations UAT](organizations-uat.md), [Cellblock UAT guide](../analysis/castle-cellblock-rebuild/uat-guide.md), [zone operator guide](../analysis/zone-restoration-operator-guide.md), [telemetry runbook](../operations/npc-ai-telemetry-runbook.md).
 
 ## Purpose and how to use it
 
@@ -41,6 +41,7 @@ This guide gathers every restored system's in-game acceptance test (UAT) into on
 | [Castle Cellblock tutorial](#castle-cellblock-tutorial) | [Cellblock UAT guide](../analysis/castle-cellblock-rebuild/uat-guide.md) |
 | [Castle (world 8)](#castle-world-8) | [zone operator guide, runbook B](../analysis/zone-restoration-operator-guide.md#b-castle-world-8-ring-platform-build-current-main-all-of-ca00-ca10-merged) |
 | [Castle population](#castle-population) | [castle-population ledger, UAT checklist](../analysis/castle-population/README.md#uat-checklist) |
+| [Castle continuation](#castle-continuation) | [end-UAT checklist](../analysis/castle-continuation/uat/end-uat.md) |
 | [Harset](#harset) | [zone operator guide, runbook C](../analysis/zone-restoration-operator-guide.md#c-harset-worlds-57-68-69-70) |
 | [Historical cellblocks](#historical-cellblocks) | [historical-cellblocks README](../analysis/historical-cellblocks/README.md#what-the-uat-must-settle) |
 | [Ring transport](#ring-transport) | [ring-transport README, Phase 1](../analysis/ring-transport-cellblock-castle/README.md#phase-1-status) |
@@ -708,14 +709,16 @@ The first zone: the stasis room, Prisoner 329, Col. Marsh's briefing and escort,
 
 Relog checks are part of almost every scenario: the full guide says what must come back after each relog.
 
+Rows CB1-CB7 are the Cellblock continuation: server-side content added after the T rows (relog restores, an ambient cast, two optional missions, a barracks bark, cover tests). The campaign proved them with server tests only; the owner has run none of them in the client, so each is `UNTESTED`. Keep the T rows as they are.
+
 | # | Do | Expect | Notes / known issues |
 |---|---|---|---|
 | T25 | New character: try to walk; check the boots slot; use the worn Prison Boots; win Livewire if it opens. Relog before and after | Mission 689 is hidden: no mission toast, sound, tracker entry or journal flash on load or on Livewire victory (#715). Prison Boots (3438) worn. Record whether you can walk, whether the client offers "use" on a worn item, and whether a Livewire opens. | K7: the lock is inert, so "I could walk" is not a fail. An item named "NO ITEM NAME" is seed data |
 | SK1 | New character (any class), and each seeded character after a colo deploy: open the inventory, the bandolier and the ability list; press Heal Focus, Health Heal and Recuperation with nothing selected; at the first hostile (T26's guard), press Pistol Shot | The SI 3 9mm Pistol is in the first bandolier slot with a full magazine (15); abilities Pistol Shot, Strike, Heal Focus, Health Heal and Recuperation are known; each heal lands on you; the first Pistol Shot draws the holstered pistol (about 1 s), then fires; later presses fire at once. No out-of-ammo error at any point. | New 2026-10-04 (starter kit). The seeded characters restart this tutorial after every deploy (K24). Log: `event=character_created` lists `abilities` and `items`, `armed=true`. [Debug Area](#debug-area) DA-U39 to DA-U42 run the same checks at the training dummies, plus the patch-009 hotbar |
 | T01/T02 | Enter the world; read the dialog; check the quest log and debuff bar | Dialog 2982 ("The last thing you remember..."); mission 622 on step 2113; Frost's body searchable, the Guard's not yet. | K7: no Stasis Sickness icon expected. Record whether one appears |
 | T03/T04 | Search Cpl. Frost's corpse; then the NID Guard's corpse; equip the SI 3 9mm Pistol | Dialog 3995; Frost's Letter (3730) in mission inventory; mission 1360 on step 4037; then dialog 3996, the pistol in your backpack, step 80622; equipping opens the stasis door and completes 622. Human or Loyalist Jaffa (Class Start v6): the Guard search also prints four "You have learned …" lines (Pistol Shot, Strike, Heal Focus, Medical Attention: Recuperation; none for an ability the character already started with) and then opens tutorial 5882 "Equipping a Weapon", once per character; the first NPC attack afterwards opens tutorial 5883 "Combat", once. Goa'uld: the pistol and the step only. | Guard corpse may be invisible (K5). Since 2026-10-04 you already hold a starter pistol in the bandolier: the looted one goes to the backpack, and dragging either pistol into the bandolier from another container completes 622 |
-| T05/T06 | Cross into Region2; right-click Prisoner 329; pick "Free Prisoner 329". Once per archetype | 638 accepted exactly once; exactly one topic: Tau'ri dialog 2300, Jaffa dialog 5021 ("My symbiote will cure me..."). Advances to 2115. | Two topics, or the other archetype's line, is a fail. The "uncomfotable" typo is 2009 data |
-| T07 | Win Livewire on the cell-door button; talk to 329 again; agree | Step 2116, the cell door opens; follow-up 2299 (Tau'ri) or 5020 (Jaffa); blurb 2298; 638 completes; 639 accepted. | |
+| T05/T06 | Cross into Region2; right-click Prisoner 329; pick "Free Prisoner 329". Relog on steps 2114 and 2115, and click again. Once per archetype | 638 accepted exactly once; exactly one topic before and after each relog: Tau'ri dialog 2300, Jaffa dialog 5021 ("My symbiote will cure me..."). Advances to 2115. | Restore chains 1026/1027 rebind the topic on login while 638 is active. Two topics, no dialog after a verified click, or the other archetype's line is a fail. The "uncomfotable" typo is 2009 data |
+| T07 | Win Livewire on the cell-door button; relog on step 2116; talk to 329 again; agree. Also retry after a timed-out Livewire round | Step 2116, the cell door opens; follow-up 2299 (Tau'ri) or 5020 (Jaffa); blurb 2298; 638 completes; 639 accepted. After timeout, the step-2114 prisoner topic works again, including after relog. | A verified click that reaches the server without a dialog is a fail |
 | T26 | Walk into Region8 | The NID guard turns aggressive and comes at you without being shot. | |
 | T08 | Pick up the Ambernol vial; take cover behind the med-station desk; kill the drone. Run twice: cover first, then kill first | The TakeCoverIndicator shows on pickup and hides in cover; step 2144 needs **both** objectives before advancing to 2343. | K8: the second checkbox may not tick. 639 completing outright is a hard fail |
 | T09 | Use the Ambernol Vial from mission inventory; relog | Exactly one vial consumed; 639 completes; 640 accepted; blurb 2305. After the relog, Stasis Sickness is not re-launched. | K7: no visible debuff change |
@@ -736,6 +739,13 @@ Relog checks are part of almost every scenario: the full guide says what must co
 | T21/T22 | Arrive in Castle; open the quest log; find Sgt. Gerschon; check your appearance | You land on the ring platform near Gerschon; 1360 still active; Frost's Letter still in mission inventory; no appearance corruption. | |
 | T23 | Relog at every step boundary above | Each restore chain repaints what it should; no one-shot cinematic or blurb replays on login. | The full restore table is in the guide |
 | T30, T31 | See [Dialog UI](#dialog-ui) | | |
+| CB1 | Relog at 638 step 2114 (Human and Jaffa), 2115, 2116, then 639 steps 2144 and 2145; use the named object on the first press. Continuation | Prisoner 329 offers his dialog, the `329_CellDoorButton` panel opens, the med station answers, the drone is armed again and the vial can be picked up, each on the first press after relog. Detail: [CB-U03](../analysis/cellblock-continuation/owner-lab-checklist.md#cb-u03--relog-restores-chains-1026-1028-1036-1037) | Restore chains 1026-1028, 1036, 1037. UNTESTED: owner lab not run |
+| CB2 | Walk east after Prisoner 329 to the two Op-CORE prisoners; enter Region2 during 639 step 2117; leave and re-enter; relog; use a second client. Continuation | Two friendly stationary `Op-CORE Soldier` NPCs; one bark (chain 11010) once per player; no repeat on re-entry; the second client sees both NPCs but only the crossing player gets the line. Detail: [CB-U08](../analysis/cellblock-continuation/owner-lab-checklist.md#cb-u08--ambient-cast-spawns-520-521-chain-11010) | Spawns 520 and 521. UNTESTED: owner lab not run |
+| CB3 | After 638, click Prisoner 329 for *The Remaining Pods* (62050); repeat the click; relog; report to Col. Marsh; abandon on a second character; skip it. Human and Jaffa. Continuation | The offer is there on the first press; one dialog (60150) closes cleanly; the journal shows the step; nothing doubles; Marsh's normal briefing (4001 or 5022) is unchanged; no reward. Detail: [CB-U10](../analysis/cellblock-continuation/owner-lab-checklist.md#cb-u10--mission-62050-in-the-native-client-after-w3-int) | Zero-reward, itemless. UNTESTED: owner lab not run |
+| CB4 | Reach mission 687; walk into the barracks before and after step 2355; leave and re-enter; relog. Continuation | No line during 2354. One line, "NID Guard: Intruder in the barracks! ...", once during 2355; no repeat; no extra guard; no line after 687 completes. Detail: [CB-U11](../analysis/cellblock-continuation/owner-lab-checklist.md#cb-u11--barracks-alarm-bark-chain-11020) | Chain 11020. UNTESTED: owner lab not run |
+| CB5 | Pull the Mess Hall and Hallway05 guards, hold in front, then step around. Continuation | A guard holds cover while you are in front and leaves it when flanked; objectives 2725 and 2731 complete on the kills; no guard runs through a wall. Detail: [CB-U05](../analysis/cellblock-continuation/owner-lab-checklist.md#cb-u05--flank-and-cover-mess-hall-hallway05) | Extends T29. UNTESTED: owner lab not run |
+| CB6 | Time a fresh Human and a fresh Loyalist Jaffa from the stasis pod to the 688 exit, skipping the optional stories; then time the optional beats alone. Continuation | Core run 30-45 minutes; the two optional beats together at most 10 minutes (O14-14). Detail: [CB-U09](../analysis/cellblock-continuation/owner-lab-checklist.md#cb-u09--core-run-pacing-after-w3-int) | No pacing number exists yet. UNTESTED: owner lab not run |
+| CB7 | After 638, click an Op-CORE prisoner for *Before the Patrol Returns* (62060); choose to hide the prisoners or jam the panel; click again; relog; abandon; skip. Human and Jaffa. Continuation | **New Cimmeria content, not 2009 content.** One dialog (60151); no item on accept; exactly one branch pays two Health Slappacks (item 2893) once; the panel does not open the 638 Livewire; the core route is unchanged. Detail: [CB-U12](../analysis/cellblock-continuation/owner-lab-checklist.md#cb-u12--before-the-patrol-returns-in-the-native-client-after-w5-int) | `CIMMERIA_AUTHORING`; the owner can veto it. UNTESTED: owner lab not run |
 
 **SigNoz:** every scenario in the guide names its evidence as a log string (for example `Content: accepting mission` with `mission_id=622`); those rows reach SigNoz too, so search `body CONTAINS '<string>'` around the time. Chain matching is `scope_name = 'content.resolve'`. For an invisible entity: `scope_name = 'aoi.cinematic_hold'` (did the first-login hold arm and release), `scope_name = 'aoi.create_emit'` filtered to the entity id, and `scope_name = 'mercury.retransmit'` over the first 75 s.
 
@@ -823,6 +833,26 @@ Ambient Castle NPCs added on top of the missions: Op-CORE marines in the Armory,
 
 Source: [castle-population ledger](../analysis/castle-population/README.md#uat-checklist).
 
+## Castle continuation
+
+The continuation campaign's server-built content: the 1520 and 1521 symbiote missions, the hub quartermaster and barks, seven authored side stories (`medical_q1`, `medical_q2`, `defense_q1`, `defense_q3`, `return_q1`, `return_q2`, `repeatable_q1`), mission 567's Castle leg and the 1521 implant chain. Replay and live-DB tests cover the server side; nothing in it has been seen in a client.
+
+**Status:** UATPending. Every row is unrun, because the campaign ran without the lab (D-CA11). Mission 567's Castle leg and its Harset turn-in ship enabled (FZ-12); run row FZ-U1 for the full path.
+
+**FZ-U1: mission 567 full path (lab, owner-approved).** On a server built from the merged branch, with a fresh character who has completed 701 and 703:
+
+1. In Castle, Copplemann offers 567. Accept it: the mission tracker shows 567 at step 2000.
+2. Click the file cabinet: dialog 10733 plays, item 2698 "Romney's Files" appears in the bag, and the step becomes 2012. Click it again: dialog 10734, no second item.
+3. Leave Castle through the gate to Harset: the step becomes 4039.
+4. In the Harset Command Center, Copplemann shows the turn-in mark. Talk to him: dialog 2044 plays, 2698 leaves the bag, and 567 completes.
+5. Relog at step 4039 in the Command Center: the turn-in mark comes back (chain 6504).
+
+Each step needs a screenshot and the matching server log row (`mission`, `content` targets).
+
+**Prerequisites and steps:** the full row list, the character setup and the expected results are in the [Castle end-UAT checklist](../analysis/castle-continuation/uat/end-uat.md). Run it on a Castle build restarted with the CS-01b recipe; the [campaign README](../analysis/castle-continuation/README.md#closeout-state-cs-07a-2026-10-18) lists what is tested, what never was, and the open seal items.
+
+Source: [Castle continuation ledger](../analysis/castle-continuation/README.md).
+
 ## Harset
 
 Harset (world 57) and its interiors (Command Center 68, Market 69, Storage Room 70): gate arrival, rings, doors, respawners, populated NPCs and regions.
@@ -855,6 +885,7 @@ Harset (world 57) and its interiors (Command Center 68, Market 69, Storage Room 
 | C6.3 | Die, respawn, then use a ring switch and the Command Center door | Both still work after the respawn. | |
 | C6.4 | **Non-GM account:** walk (no GM travel) east across the plaza and on to the Command Center door | You reach the door on foot without being yanked back. | Worthless from a GM account: the gate is warn-only for GMs |
 | C6.5 | Same non-GM character: ring out and back, then die and respawn | Rings still arrive; the respawn leaves you somewhere you can walk away from. | |
+| FZ-U2 | Finish Castle 708 so 1664 is granted; travel to Harset. Find Sgt. Kaerlia by the gate (about (-5, -68.95, 30)), click her; then find the Command Center door control and click it; in the Command Center, click Col. Marsh, then Moh'katan (on a second run, the other order); relog once on each step; on a second character, abandon 1664 on each step, including once after reporting to only one of the two; on a Human with 1361 not active, watch Marsh before and after 1664 ends | Kaerlia has a name plate, faces somewhere sensible and shows a mission cue; her click opens her dialog and the journal moves to "Make your way to the Command Center". The door control shows a use cursor, and its click takes you into the Command Center with the journal on "Report for debriefing". Marsh and Moh'katan each show a mission cue; each click puts that NPC's line in chat and ticks one objective, either order works, and the second report completes 1664. Clicking an NPC you already reported to, before the second report, gives nothing new. A relog mid-5226 brings back the cue only on the NPC you have not reported to. A Human with 1361 not active sees Marsh's "?" offer again right after 1664 completes, and after an abandon at 5226 made while standing in the Command Center (abandoned elsewhere, it returns when you next enter the Command Center). A relog keeps the cue on whoever is next. After an abandon every 1664 cue is gone (including the debrief cues), Kaerlia says "Keep moving..." and 1664 is not offered again. | Built, replay-tested, never run on a client. The door control position is a guess: `.bug pin cmd door control` on the real panel. The two debrief lines are provisional text (D-FZ15). "1664 is not offered again" is option P0, the orchestrator's call (O18-02a), made 2026-10-19 under the owner's delegation and reversible by the owner; if the owner picks P3, a re-offer is expected instead |
 
 **SigNoz:** `movement.validation` rows with `reason = "navmesh"` for C6.4 snap-backs; the boot line `reason = "navmesh_mode_summary"` for world 57 must read `navmesh_mode = advisory`; a C1.3 hang may show `arrival_unrecoverable`; C6.3 should show `respawn: re-registered client-hinted regions after reanchor` followed by `region_hint` lines, and `no_region_hints_since_respawn` from `playtest.friction` means the fix did not take.
 

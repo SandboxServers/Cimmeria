@@ -256,3 +256,194 @@ async fn timed_out_tick_loop_does_not_destroy_the_session_that_replaced_it() {
     );
     assert!(!new_flag.load(Ordering::Relaxed));
 }
+
+#[tokio::test]
+async fn cancelled_tick_owner_removes_session_mapping_and_notifies_cell() {
+    let addr: SocketAddr = "127.0.0.1:52507".parse().unwrap();
+    let player_eid = 52_507;
+    let mut state = test_default_connected_client_state();
+    state.player_entity_id = Some(player_eid);
+    state.cancelled.store(true, Ordering::Release);
+    let cancelled = Arc::clone(&state.cancelled);
+    let connected: Connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
+    let mapping = Arc::new(Mutex::new(HashMap::from([(player_eid, addr)])));
+    let (cell_tx, mut cell_rx) = tokio::sync::mpsc::channel(1);
+    tokio::time::timeout(
+        Duration::from_secs(2),
+        crate::base::tick_sync::run_tick_loop(
+            transport(),
+            addr,
+            [0; 32],
+            Default::default(),
+            Arc::new(AtomicU32::new(0)),
+            Arc::new(Mutex::new(Vec::new())),
+            Arc::new(Mutex::new(Instant::now())),
+            cancelled,
+            Arc::clone(&connected),
+            Arc::new(Mutex::new(EntityManager::new())),
+            Some(cell_tx),
+            Arc::clone(&mapping),
+            None,
+        ),
+    )
+    .await
+    .expect("cancelled tick must exit");
+    assert!(!connected.lock().unwrap().contains_key(&addr));
+    assert!(!mapping.lock().unwrap().contains_key(&player_eid));
+    let msg = tokio::time::timeout(Duration::from_secs(2), cell_rx.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    let BaseToCellMsg::DisconnectEntity {
+        entity_id,
+        reply_tx,
+    } = msg
+    else {
+        panic!("expected cell disconnect");
+    };
+    assert_eq!(entity_id, player_eid);
+    reply_tx.send(()).unwrap();
+}
+
+#[tokio::test]
+async fn cancelled_old_tick_leaves_same_address_replacement_and_mapping() {
+    let addr: SocketAddr = "127.0.0.1:52508".parse().unwrap();
+    let new_entity = 52_508;
+    let mut replacement = test_default_connected_client_state();
+    replacement.player_entity_id = Some(new_entity);
+    let new_flag = Arc::clone(&replacement.cancelled);
+    let connected: Connected = Arc::new(Mutex::new(HashMap::from([(addr, replacement)])));
+    let mapping = Arc::new(Mutex::new(HashMap::from([(new_entity, addr)])));
+    let old_flag = Arc::new(AtomicBool::new(true));
+    tokio::time::timeout(
+        Duration::from_secs(2),
+        crate::base::tick_sync::run_tick_loop(
+            transport(),
+            addr,
+            [0; 32],
+            Default::default(),
+            Arc::new(AtomicU32::new(0)),
+            Arc::new(Mutex::new(Vec::new())),
+            Arc::new(Mutex::new(Instant::now())),
+            old_flag,
+            Arc::clone(&connected),
+            Arc::new(Mutex::new(EntityManager::new())),
+            None,
+            Arc::clone(&mapping),
+            None,
+        ),
+    )
+    .await
+    .expect("cancelled old tick must exit");
+    assert!(connected.lock().unwrap().contains_key(&addr));
+    assert_eq!(mapping.lock().unwrap().get(&new_entity), Some(&addr));
+    assert!(!new_flag.load(Ordering::Acquire));
+}
+
+/// Transport whose first send fails fatally and, in the same await, lets a
+/// relaunched client take the address over. This is the race the merged
+/// tick-sync shape guards: the old loop's `send_error` break must not run
+/// teardown against the session that now holds the address.
+struct TakeoverOnSend {
+    connected: Connected,
+    replacement: Mutex<Option<ConnectedClientState>>,
+}
+
+// Hand-expanded `async_trait`: this crate does not depend on the macro.
+impl Transport for TakeoverOnSend {
+    fn send_to<'life0, 'life1, 'async_trait>(
+        &'life0 self,
+        _bytes: &'life1 [u8],
+        addr: SocketAddr,
+    ) -> std::pin::Pin<
+        Box<dyn std::future::Future<Output = std::io::Result<usize>> + Send + 'async_trait>,
+    >
+    where
+        'life0: 'async_trait,
+        'life1: 'async_trait,
+        Self: 'async_trait,
+    {
+        Box::pin(async move {
+            if let Some(state) = self.replacement.lock().unwrap().take() {
+                self.connected.lock().unwrap().insert(addr, state);
+            }
+            Err(std::io::Error::other("fatal send after takeover"))
+        })
+    }
+
+    fn local_addr(&self) -> std::io::Result<SocketAddr> {
+        Ok("127.0.0.1:0".parse().unwrap())
+    }
+}
+
+/// A fatal send on a superseded owner leaves the new session, its entity
+/// mapping and its cell entity alone. Two layers hold this: the loop's own
+/// post-send owner check (which returns without teardown) and the owner check
+/// inside `destroy_owned_client_entities`. The state asserts fail only when
+/// both are gone. The loop check is also pinned alone: with it removed the
+/// loop reaches teardown and the teardown owner check logs
+/// "the address now belongs to a newer session", which this test refuses.
+/// The teardown check alone is pinned by `owned_teardown_leaves_a_session_it_does_not_own`
+/// and the timed-out loop test above.
+#[tokio::test]
+async fn fatal_send_on_superseded_owner_does_not_destroy_the_new_session() {
+    let addr: SocketAddr = "127.0.0.1:52509".parse().unwrap();
+    let (old_entity, new_entity) = (52_509, 52_510);
+    let mut old = test_default_connected_client_state();
+    old.player_entity_id = Some(old_entity);
+    let old_flag = Arc::clone(&old.cancelled);
+    let mut replacement = test_default_connected_client_state();
+    replacement.player_entity_id = Some(new_entity);
+    let new_flag = Arc::clone(&replacement.cancelled);
+    let connected: Connected = Arc::new(Mutex::new(HashMap::from([(addr, old)])));
+    let transport: Arc<dyn Transport> = Arc::new(TakeoverOnSend {
+        connected: Arc::clone(&connected),
+        replacement: Mutex::new(Some(replacement)),
+    });
+    let mapping = Arc::new(Mutex::new(HashMap::from([(new_entity, addr)])));
+    let (cell_tx, mut cell_rx) = tokio::sync::mpsc::channel(4);
+    let capture = crate::test_support::LogCapture::install();
+
+    tokio::time::timeout(
+        Duration::from_secs(2),
+        crate::base::tick_sync::run_tick_loop(
+            transport,
+            addr,
+            [0; 32],
+            Default::default(),
+            Arc::new(AtomicU32::new(0)),
+            Arc::new(Mutex::new(Vec::new())),
+            Arc::new(Mutex::new(Instant::now())),
+            old_flag,
+            Arc::clone(&connected),
+            Arc::new(Mutex::new(EntityManager::new())),
+            Some(cell_tx),
+            Arc::clone(&mapping),
+            None,
+        ),
+    )
+    .await
+    .expect("superseded tick loop must exit");
+
+    assert!(
+        connected.lock().unwrap().contains_key(&addr),
+        "the new session must stay registered"
+    );
+    assert!(!new_flag.load(Ordering::Acquire), "new session cancelled");
+    assert_eq!(mapping.lock().unwrap().get(&new_entity), Some(&addr));
+    assert!(
+        cell_rx.try_recv().is_err(),
+        "no cell disconnect may be sent for the new session"
+    );
+    // The superseded loop must stop before teardown, not rely on teardown's
+    // own owner check to refuse.
+    let reached_teardown: Vec<_> = capture
+        .all()
+        .into_iter()
+        .filter(|c| c.message_contains("the address now belongs to a newer session"))
+        .collect();
+    assert!(
+        reached_teardown.is_empty(),
+        "the superseded loop reached teardown: {reached_teardown:#?}"
+    );
+}

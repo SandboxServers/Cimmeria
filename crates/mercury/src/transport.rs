@@ -82,6 +82,16 @@ pub trait Transport: Send + Sync {
         self.send_to(bytes, addr).await
     }
 
+    /// Admit one bounded datagram without yielding. Implementations that
+    /// cannot guarantee immediate admission fail closed with `Unsupported`.
+    /// This is used while a session mapping is locked, so it must not wait.
+    fn try_send_to(&self, _bytes: &[u8], _addr: SocketAddr) -> io::Result<usize> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "synchronous datagram admission is unsupported",
+        ))
+    }
+
     /// The address this transport is bound to. For
     /// [`crate::test_transport::TestTransport`] this is a synthetic loopback
     /// address chosen at construction.
@@ -126,6 +136,18 @@ impl Transport for UdpTransport {
         // log stream is empty in SigNoz. Since TG-MER-09 it is a firehose:
         // every datagram on disk, a counted sample exported (see
         // `crate::firehose`).
+        log_mercury_packet(
+            &self.sent,
+            Direction::Out,
+            bytes.len(),
+            addr,
+            result.as_ref().err(),
+        );
+        result
+    }
+
+    fn try_send_to(&self, bytes: &[u8], addr: SocketAddr) -> io::Result<usize> {
+        let result = self.socket.try_send_to(bytes, addr);
         log_mercury_packet(
             &self.sent,
             Direction::Out,
@@ -195,6 +217,24 @@ mod tests {
         let (len, from) = receiver.recv_from(&mut buf).await.unwrap();
         assert_eq!(&buf[..len], payload);
         assert_eq!(from, sender_sock.local_addr().unwrap());
+    }
+
+    #[tokio::test]
+    async fn udp_try_send_admits_a_datagram_on_loopback() {
+        let receiver = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let sender = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
+        sender.writable().await.unwrap();
+        let transport = UdpTransport::new(sender);
+        let payload = b"fenced-item";
+        assert_eq!(
+            transport
+                .try_send_to(payload, receiver.local_addr().unwrap())
+                .unwrap(),
+            payload.len()
+        );
+        let mut buf = [0; 32];
+        let (len, _) = receiver.recv_from(&mut buf).await.unwrap();
+        assert_eq!(&buf[..len], payload);
     }
 
     #[tokio::test]

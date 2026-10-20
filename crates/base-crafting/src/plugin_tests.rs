@@ -25,18 +25,20 @@ fn crafting() -> BasePlugins {
     BasePlugins::build(&[&CraftingPlugin]).expect("the crafting plugin builds")
 }
 
-/// Crafting alone completes the production table: it consumes every
-/// declared envelope payload, in the declared order, and registers no base
-/// method (its verbs are cell methods).
+/// Crafting consumes its seven declared payloads in order and registers no
+/// base method (its verbs are cell methods). The services table adds the
+/// independent Harset letter consumer to complete the production registry.
 #[test]
-fn crafting_consumes_every_declared_payload_and_no_base_method() {
+fn crafting_consumes_its_declared_payloads_and_no_base_method() {
     let plugins = crafting();
-    plugins
-        .check_complete()
-        .expect("crafting completes the base table");
     assert_eq!(plugins.plugin_names(), &["crafting"]);
     assert_eq!(plugins.base_method_indices().count(), 0);
-    let declared: Vec<&str> = PLUGIN_CELL_MESSAGES.iter().map(|k| k.type_name()).collect();
+    let declared: Vec<&str> = PLUGIN_CELL_MESSAGES
+        .iter()
+        .map(|k| k.type_name())
+        .filter(|name| name.starts_with("cimmeria_wire::crafting::"))
+        .collect();
+    assert_eq!(declared.len(), 7);
     assert_eq!(plugins.cell_message_types().collect::<Vec<_>>(), declared);
 }
 

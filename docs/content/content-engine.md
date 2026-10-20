@@ -318,13 +318,13 @@ The fire-time logs (`info!` on match, `debug!` on no-match) at every `fire_*` si
 
 ### Defined-but-unhandled actions
 
-Eleven `Action` variants have **no match arm in [executor/mod.rs](../../crates/cell-content/src/cell/content/executor/mod.rs)** and fall through to the `debug!` catch-all:
+Ten `Action` variants have **no match arm in [executor/mod.rs](../../crates/cell-content/src/cell/content/executor/mod.rs)** and fall through to the `debug!` catch-all:
 
-`RemoveEffect`, `PlayAnimation`, `PlaySound`, `ModifyProperty`, `RollLootTable`, `SpawnLootBag`, `StartTimer`, `CancelTimer`, `ExecuteCustom`, `QrCombatDamage`, `FailObjective`.
+`PlayAnimation`, `PlaySound`, `ModifyProperty`, `RollLootTable`, `SpawnLootBag`, `StartTimer`, `CancelTimer`, `ExecuteCustom`, `QrCombatDamage`, `FailObjective`.
 
-Three of those **are authorable from seed data and are used today** — `qr_combat_damage` (2 rows), `remove_effect` (1), `fail_objective` (1). Those 4 `content_actions` rows resolve, log a `debug!`, and do nothing. See the catalog in §3 for the full breakdown.
+Two of those **are authorable from seed data and are used today** — `qr_combat_damage` (2 rows) and `fail_objective` (1). Those 3 `content_actions` rows resolve, log a `debug!`, and do nothing. See the catalog in §3 for the full breakdown.
 
-`launch_ability` and `apply_effect` were in this list until they were wired to [`effect_apply.rs`](../../crates/cell-content/src/cell/content/effect_apply.rs); `grant_xp` and `move_entity` came off it in issues #611 and #613; `spawn_entity` and `despawn_entity` came off it in Harset H03, and `grant_stargate_address` was added whole in Harset H55. Note that wiring the ability arm did not by itself make the Castle Cellblock wake-up debuff visible in play: the only two chains that ever carried `launch_ability 1372` (ids 5000/5001, from an auto-exported seed file) had mutually-exclusive `mission_status` conditions and were deleted outright as duplicate/corrupted junk rather than fixed in place — see the Castle Cellblock rebuild ledger's C01/C03 packets. A correctly-gated replacement chain is C03's job; its effect (1634) is single-shot and script-less regardless. See §3.
+`remove_effect` came off it in Harset HA-03c (self-only and idempotent: it strips the chain entity's pulsing instances and timed-effect ledger entries for one effect id, in `effect_apply.rs`); `launch_ability` and `apply_effect` were in this list until they were wired to [`effect_apply.rs`](../../crates/cell-content/src/cell/content/effect_apply.rs); `grant_xp` and `move_entity` came off it in issues #611 and #613; `spawn_entity` and `despawn_entity` came off it in Harset H03, and `grant_stargate_address` was added whole in Harset H55. Note that wiring the ability arm did not by itself make the Castle Cellblock wake-up debuff visible in play: the only two chains that ever carried `launch_ability 1372` (ids 5000/5001, from an auto-exported seed file) had mutually-exclusive `mission_status` conditions and were deleted outright as duplicate/corrupted junk rather than fixed in place — see the Castle Cellblock rebuild ledger's C01/C03 packets. A correctly-gated replacement chain is C03's job; its effect (1634) is single-shot and script-less regardless. See §3.
 
 Two more arms exist but are log-only: `SystemMessage` (1 seeded row, chain 1013 in `castle_cellblock_chains.sql` — wire format unknown, see below) and `SendMessage` (no seed verb).
 

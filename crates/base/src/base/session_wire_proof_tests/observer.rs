@@ -415,3 +415,19 @@ async fn session_wire_proof_expired_gap_and_row_allow_fresh_window() {
     assert_eq!(snapshot.dropped, 1);
     assert!(snapshot.coverage_complete);
 }
+
+#[tokio::test]
+async fn proof_transport_forwards_try_send_to_instead_of_unsupported() {
+    // Harset's letter turn-in calls try_send_to on the cell transport, whose
+    // outermost layer is ProofTransport; the trait default is Unsupported.
+    let wire = Arc::new(Wire::new());
+    let observer = ProofTransport::new(wire.clone(), &connected(), false);
+    let target = peer(30090);
+    let sent = observer.try_send_to(b"letter", target).unwrap();
+    assert_eq!(sent, 6);
+    assert_eq!(*wire.sent.lock().unwrap(), vec![target]);
+    // No origin travels with it, so it is an honest untagged gap, not a row.
+    let ring = observer.ring.lock().unwrap();
+    assert_eq!(ring.gaps.untagged, 1);
+    assert!(ring.rows.is_empty());
+}

@@ -358,6 +358,21 @@ impl Transport for ProofTransport {
         result
     }
 
+    /// Forward synchronous admission to the wrapped transport. Without this
+    /// override the trait default answers Unsupported, and ProofTransport is the
+    /// outermost layer handed to cells, so every `try_send_to` caller (Harset's
+    /// letter turn-in) would fail in production. The send carries no origin, so
+    /// it is an untagged gap exactly like send_to.
+    fn try_send_to(&self, bytes: &[u8], addr: SocketAddr) -> io::Result<usize> {
+        let result = self.inner.try_send_to(bytes, addr);
+        if result.is_ok() {
+            let mut ring = self.ring.lock().unwrap_or_else(PoisonError::into_inner);
+            ring.gaps.untagged += 1;
+            ring.note_gap(Instant::now());
+        }
+        result
+    }
+
     fn local_addr(&self) -> io::Result<SocketAddr> {
         self.inner.local_addr()
     }

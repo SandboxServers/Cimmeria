@@ -548,7 +548,11 @@ teardown = [{ tool = "g", args = { tag = "TeardownTag" } }]
         assert_eq!(msgs, expected, "{err}");
     }
 
-    /// Fails if the parser misses a file or a column in the committed seed.
+    /// Fails if `load` drops a seed file or the parser misses a column in the
+    /// committed seed. No total is pinned: every zone campaign adds spawn tags
+    /// (608 on 2026-10-10). Instead every tag a single file defines must reach
+    /// the loaded union, and the union holds the first-session targets plus one
+    /// tag from each per-zone spawn file.
     #[test]
     fn the_committed_seed_defines_the_first_session_targets() {
         let dir = Path::new(concat!(
@@ -556,9 +560,37 @@ teardown = [{ tool = "g", args = { tag = "TeardownTag" } }]
             "/../../db/resources/Worlds/Seed"
         ));
         let seed = SeedTags::load(dir).unwrap();
-        // 730 spawnlist rows define 713 distinct tags (counted independently
-        // of this parser, 2026-10-19). Update it with the seed when it changes.
-        assert_eq!(seed.tags.len(), 713, "distinct seeded tags");
+
+        let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("sql")))
+            .collect();
+        files.sort();
+        let mut tagged_files = 0;
+        for f in &files {
+            let one = parse(&std::fs::read_to_string(f).unwrap())
+                .unwrap_or_else(|e| panic!("{}: {e}", f.display()));
+            tagged_files += usize::from(!one.tags.is_empty());
+            for (tag, worlds) in &one.tags {
+                assert!(
+                    seed.tags.get(tag).is_some_and(|w| w.is_superset(worlds)),
+                    "{}: tag {tag} (worlds {worlds:?}) is missing from SeedTags::load",
+                    f.display()
+                );
+            }
+        }
+        assert!(
+            tagged_files >= 3,
+            "only {tagged_files} seed files define tags"
+        );
+
+        assert!(
+            seed.tags.len() >= 608,
+            "distinct seeded tags fell to {}",
+            seed.tags.len()
+        );
         for tag in [
             "ArmYourself_FrostBody",
             "ArmYourself_GuardBody",
@@ -566,6 +598,10 @@ teardown = [{ tool = "g", args = { tag = "TeardownTag" } }]
             "SGC_W1_Tealc",
             "SGC_W1_ElevatorButton1",
             "SGC_W1_FirearmBody",
+            // spawnlist_tollana.sql (four-zone campaign)
+            "Tollana_Copplemann",
+            // spawnlist_dakara_e1.sql (Dakara E1 rebuild)
+            "Dakara_E1_TentFlap_ToCommand",
         ] {
             assert!(seed.contains(tag), "{tag} is not seeded");
         }

@@ -390,6 +390,8 @@ fn scan_finds_known_targets() {
         // Emitted only by crates/base-methods (wave B2).
         ("trade.atomic_swap", Level::DEBUG),
         ("progression", Level::WARN),
+        // Emitted by crates/base-methods and crates/base-session (Harset HA-1360).
+        ("harset.letter_turn_in", Level::DEBUG),
         // Emitted by crates/base-crafting (the crafting request and its
         // rejection, CR-01) and crates/cell-methods (malformed requests).
         ("crafting", Level::INFO),

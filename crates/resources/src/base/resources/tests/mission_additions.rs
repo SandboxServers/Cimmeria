@@ -122,12 +122,18 @@ fn fixture_is_exact_stock_transform_and_ids_are_test_only() {
             }
         }
     }
-    assert_eq!(
-        MISSION_ADDITIONS
-            .iter()
-            .map(|a| a.mission_id)
-            .collect::<Vec<_>>(),
-        [63100]
+    // Appended production entries must not break this fixture guard: check the
+    // registry by id, never as an exact list.
+    let production_ids: Vec<u32> = MISSION_ADDITIONS.iter().map(|a| a.mission_id).collect();
+    assert!(production_ids.contains(&10300));
+    // CB-N05 and CB-N06 added the production entries 62050 and 62060.
+    assert!(production_ids.contains(&62050));
+    assert!(production_ids.contains(&62060));
+    // Dakara_E1 rebuild, D-DK1 F (DK-10fs).
+    assert!(production_ids.contains(&63100));
+    assert!(
+        production_ids.iter().all(|id| !reserved.contains(id)),
+        "production registry carries a fixture id: {production_ids:?}"
     );
 }
 

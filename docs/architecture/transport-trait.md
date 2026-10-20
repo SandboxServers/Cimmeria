@@ -1,6 +1,6 @@
 # ADR: `Transport` trait for the Mercury send side
 
-> **Last updated**: 2026-07-25
+> **Last updated**: 2026-10-14
 > **Audience**: Engineers touching any BaseApp handler that emits wire bytes,
 > or anyone writing a byte-exact fan-out test
 > **Type**: Architecture decision record
@@ -15,8 +15,9 @@ explicitly out of scope (see *Consequences* and *Out of scope*).
 
 ## TL;DR
 
-- New trait `cimmeria_mercury::transport::Transport` with two methods:
-  `async fn send_to(&self, bytes, addr)` and `fn local_addr(&self)`.
+- `cimmeria_mercury::transport::Transport` has the general async send and
+  local-address methods, plus a bounded synchronous `try_send_to` admission
+  method for the fenced Frost letter inventory packet.
 - Production impl `UdpTransport` wraps an `Arc<UdpSocket>`.
 - Test recorder `cimmeria_mercury::test_transport::TestTransport` records every
   `(SocketAddr, Vec<u8>)` send; behind the `test-support` Cargo feature.
@@ -61,11 +62,29 @@ next to `check_timeouts` / `keepalive_due` / `is_timed_out`.
    #[async_trait]
    pub trait Transport: Send + Sync {
        async fn send_to(&self, bytes: &[u8], addr: SocketAddr) -> io::Result<usize>;
+       fn try_send_to(&self, bytes: &[u8], addr: SocketAddr) -> io::Result<usize>;
        fn local_addr(&self) -> io::Result<SocketAddr>;
    }
    ```
 
    `UdpTransport` is the production impl (thin wrapper over `Arc<UdpSocket>`).
+   `try_send_to` is object-safe and never awaits. Its default returns
+   `Unsupported`. `ChaosTransport` passes synchronous sends directly to its
+   inner transport when the destination has no active net profile; an actively
+   shaped destination fails closed with `Unsupported`. `LossyTransport` and
+   any other wrapper without a proven synchronous admission path fail closed.
+   The letter turn-in maps that result, including
+   `WouldBlock`, to uncertain delivery and retries the same receipt attempt;
+   it does not emit a committed cell result. Production `UdpTransport` calls
+   `UdpSocket::try_send_to`, and `TestTransport` records immediately.
+   Reliable sequence admission is serialized per session with the same gate
+   used by all production sequence allocators. A definite no-send keeps its
+   candidate sequence; a fully admitted datagram consumes it before channel
+   registration. An ambiguous transport outcome also retires its candidate;
+   either it or failed registration marks the session cancelled and blocks
+   further letter admission. Encrypted receive rejects that session before
+   channel and method dispatch. The tick loop then runs owner-checked entity,
+   mapping and cell teardown; a same-address replacement is left intact.
 
 2. **Add `TestTransport`** (`test_transport.rs`, behind the `test-support`
    feature) — a `Mutex<Vec<(SocketAddr, Vec<u8>)>>` recorder with

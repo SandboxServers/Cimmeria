@@ -346,6 +346,8 @@ mod tests {
         for difficulty in 1..=4 {
             for seed in 1..=12 {
                 let session = MinigameSession {
+                    session_instance_id: 1,
+                    terminal_reported: false,
                     entity_id: 42,
                     player_id: 17,
                     game_name: "Livewire".into(),

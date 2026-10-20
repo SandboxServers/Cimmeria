@@ -24,6 +24,9 @@ use super::wire::{read_id_quantity_lines, read_item_ids, WireReject};
 /// The feedback line for a store request with no vendor to price it.
 pub(super) const NO_VENDOR_TEXT: &str = "You are not trading with a vendor.";
 
+/// The feedback line for a store request from out of range (finding R1, CS-05S2a).
+pub(super) const TOO_FAR_TEXT: &str = "You are too far from the vendor.";
+
 /// What a store method's payload decoded to.
 enum Lines {
     /// `(ItemIndices | ItemIds, Quantities)` lines (purchase/sell/buyback).
@@ -133,6 +136,51 @@ pub(super) async fn handle_store_op(
             return;
         }
     };
+
+    // Finding R1: the vendor stays open after the player walks away or
+    // dies, so the store ops re-check the actor and the range.
+    let actor_alive = space_mgr
+        .get_entity(entity_id)
+        .is_some_and(|actor| !crate::cell::combat::is_dead_state(actor.state_field));
+    if !actor_alive {
+        log_refusal(
+            Refusal {
+                entity_id,
+                identity,
+                action,
+                op_name,
+                vendor_entity_id: Some(vendor_entity_id),
+                item_count: Some(lines.len()),
+                reason: "actor_dead",
+                detail: None,
+            },
+            args.len(),
+            space_mgr,
+        );
+        return;
+    }
+    if !crate::cell::interactions::interact_target_in_range(
+        entity_id,
+        vendor_entity_id as u32,
+        space_mgr,
+    ) {
+        log_refusal(
+            Refusal {
+                entity_id,
+                identity,
+                action,
+                op_name,
+                vendor_entity_id: Some(vendor_entity_id),
+                item_count: Some(lines.len()),
+                reason: "out_of_range",
+                detail: None,
+            },
+            args.len(),
+            space_mgr,
+        );
+        send_feedback(entity_id, TOO_FAR_TEXT, tx, space_mgr).await;
+        return;
+    }
 
     let msg = match (method_index, lines) {
         (PURCHASE_ITEMS, Lines::Quantified(items)) => CellToBaseMsg::PurchaseVendorItems {

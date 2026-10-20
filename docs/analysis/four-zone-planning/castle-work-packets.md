@@ -197,6 +197,14 @@ CS-04c owns **one-time return stories only**. CS-05 owns repeatables; this preve
 
 **Acceptance:** replay drives each Castle leg through to Harset's receiving chains (6501/6502/6505 for 1360; 6503/6504 for 567 once enabled); wrong-state, wrong-world, relog and duplicate-grant negatives; live-DB proves the 2698 grant happens once and survives the world hop. Removing the new advance or grant chain fails the guard. Telemetry names the step-advance and item-grant events. Client UAT of the full Castle→Harset path waits for owner lab approval.
 
+### CS-08a — sealed Castle bridge, recipient dependency
+
+Owner decision, 2026-10-14: approve **CIMMERIA_RECONSTRUCTION** Castle world 8 `stargate_crossed` key `Harset`, mission 1360 active and step 4037 active → exactly one zero-delay `advance_step 1360/4038`; keep item 3730 until Marsh receives it. All accepted archetypes qualify, with no 708 prerequisite. No Castle item grant/remove/use, new dialog or travel change. The [dated Castle seal](../castle-continuation/worknotes/CS-08a.md) freezes the exact chain shape, metadata, allowlist and checks; it supersedes the unresolved 1360 bridge in CS-00's historical evidence snapshot.
+
+CS-08a branch/worktree: `castle/cs-08a-letter-bridge` / `.claude/worktrees/castle-cs-08a`; commit `feat(castle): bridge Frost's Letter to Harset delivery`. Exact allowlist is the dated seal, including **`crates/services/src/mission_round_trip_tests.rs`**. Extend the existing mission_1360 replay module and services production CellToBase→DB→fresh hydration seam. Execute seeded 1003/1121 and the real crossing dispatcher; never inject 4038 or hand-build the expected update. Assert one letter across the bridge, none removed there, then recipient success exactly once; missing letter must refuse completion. Metadata enables only steps 4037/4038 and objectives 4650/4651, retaining already-enabled tasks 5693/5694. Remove only the bridge and reload to prove reachability fails at 4037; mutate each new guard to prove the adjacent negative fails.
+
+**Status:** BlockedDependency. Chain **1366 is reserved exclusively for CS-08a**, owner-approved 2026-10-14 after four-zone collision recheck; G-ID closes only for that ID, not the rest of 1366–1400. G-REVIEW remains open. Owner requires letter possession at Marsh, so playable handoff depends on Harset/engine **HA-1360a/b**, detailed contracts at `docs/analysis/harset-continuation/work-packets.md`; committed interfaces must be recorded before dispatch. Current 6501 warns on missing removal and still completes; that policy is superseded. Castle does not edit Harset seeds/executor or invent unsupported `has_item` rows. Client journal/crossing/recipient/relog/observer checks are UATPending with separate lab authorization. CS-08b mission 567 remains held on G-567.
+
 ## Open decisions and stop conditions
 
 | Gate | Needed before | Owner / evidence |

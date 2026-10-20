@@ -203,7 +203,7 @@ async fn interact_pins_last_interaction_target_on_player() {
 /// runs its own existence + range gate ahead of the pin, the trainer UI
 /// and the chain dispatch, via
 /// [`super::interact_target_in_range`]; its guards live in
-/// `cell_methods::player::interaction::tests`
+/// `cell_methods::player::interaction::interact_pin_tests`
 /// (`out_of_range_interact_does_not_pin_or_fire_chains` and siblings).
 /// Both checks are wanted: this one keeps `handle_interact` correct for
 /// any future caller that bypasses the outer dispatcher.

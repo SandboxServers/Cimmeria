@@ -28,6 +28,9 @@ mod consume_for_use;
 mod consume_for_use_tests;
 #[cfg(test)]
 mod crafting_tools_tests;
+mod letter_turn_in_sync;
+#[cfg(test)]
+mod letter_turn_in_sync_tests;
 #[cfg(test)]
 mod one_item_select_tests;
 mod remove_by_type;
@@ -48,6 +51,7 @@ mod use_instance_discord_tests;
 mod use_instance_tests;
 
 pub use consume_for_use::handle_consume_item_for_use;
+pub(crate) use letter_turn_in_sync::sync_committed_letter;
 pub use remove_by_type::handle_remove_inventory_item_by_type;
 pub use remove_instance::handle_remove_inventory_item;
 pub use use_instance::handle_use_inventory_item;
@@ -109,6 +113,14 @@ pub(crate) const INVENTORY_ITEM_SELECT: &str = concat!(
 pub(crate) const INVENTORY_ONE_ITEM_SELECT: &str = concat!(
     inventory_item_select_head!(),
     "WHERE inv.character_id = $1 AND inv.item_id = $2 AND inv.container_id <> 18\n",
+);
+
+/// The same single-row projection, locked until the letter sync datagram is
+/// admitted so a concurrent `moveItem` cannot commit a newer slot first.
+pub(crate) const INVENTORY_ONE_ITEM_LOCKED_SELECT: &str = concat!(
+    inventory_item_select_head!(),
+    "WHERE inv.character_id = $1 AND inv.item_id = $2 AND inv.container_id <> 18\n",
+    "FOR UPDATE OF inv\n",
 );
 
 #[derive(sqlx::FromRow)]
