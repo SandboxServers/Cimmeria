@@ -1,6 +1,7 @@
 //! UO-35: the eight crafting guides (template 63829, spawns 63810-63817)
 //! point players to their vendors. Each click speaks one line naming the
 //! vendors of that specialty (D-UO17 c, D-UO31); no reward (D-UO37).
+
 use super::services_common::*;
 
 const TEMPLATE: i32 = 63829;

@@ -1,6 +1,6 @@
 # UO-35 ruling: eight guide tags on four two-trigger chains
 
-> **Type:** Ruling (architect) · **Packet:** [UO-35](../docs/analysis/union-zone-planning/omega-packets/UO-35.md) · **Date:** 2026-10-19
+> **Type:** Ruling (architect) · **Packet:** [UO-35](../UO-35.md) · **Date:** 2026-10-19
 > **Supersedes:** the packet's tag column, its § Allowlist and its § Steps 3, 5 and 6 where they differ. Everything else in the packet stands.
 
 ## Ruling
