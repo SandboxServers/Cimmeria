@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # Cimmeria build lane: run a cargo command inside a machine-wide counting semaphore.
 #
-# Usage:  tools/build-lane/lane.sh [--exclusive] <command> [args...]
+# Usage:  tools/build-lane/lane.sh [--exclusive] [--class heavy|light|db] <command> [args...]
+#
+# Three classes (heavy slot.N, light slot.light.N, db slot.db.N) with their own counts;
+# the classifier, the counts and nesting are in lane-class.sh (design: docs/analysis/
+# lane-classes/design.md). Without --class the command decides. --exclusive: heavy only.
 #
 # Why: a full link of the server or test binaries can use tens of GB of RAM, and several
 # Claude sessions and agents build on one workstation at once. Every cargo call that
@@ -53,11 +57,29 @@ LANE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LANE_ROOT="${LANE_ROOT:-${LOCALAPPDATA:-$HOME/.local/share}/cimmeria-build}"
 LANE_ROOT="$(cygpath -u "$LANE_ROOT" 2>/dev/null || echo "$LANE_ROOT")"
 LOCKDIR="$LANE_ROOT/lane"; mkdir -p "$LOCKDIR"
-SLOTS="${LANE_SLOTS:-$(cat "$LOCKDIR/SLOTS" 2>/dev/null || echo 2)}"
+. "$LANE_DIR/lane-class.sh"
+SLOTS="$(lane_class_count heavy)"
 
-exclusive=0
-if [ "${1:-}" = "--exclusive" ]; then exclusive=1; shift; fi
-if [ $# -eq 0 ]; then echo "usage: lane.sh [--exclusive] <command> [args...]" >&2; exit 2; fi
+usage='usage: lane.sh [--exclusive] [--class heavy|light|db] <command> [args...]'
+exclusive=0; class_flag=""; class_given=0
+# Flags come first, in any order: --exclusive, --class X and --class=X.
+while :; do
+  case "${1:-}" in
+    --exclusive) exclusive=1; shift ;;
+    --class) class_given=1; class_flag="${2:-}"; shift; [ $# -gt 0 ] && shift ;;
+    --class=*) class_given=1; class_flag="${1#--class=}"; shift ;;
+    *) break ;;
+  esac
+done
+bad=0
+if [ $class_given -eq 1 ]; then
+  class_flag="$(printf '%s' "$class_flag" | tr 'A-Z' 'a-z')"
+  case "$class_flag" in heavy|light|db) ;; *) bad=1 ;; esac
+  if [ $exclusive -eq 1 ] && [ "$class_flag" != heavy ]; then bad=1; fi
+fi
+if [ $# -eq 0 ] || [ $bad -eq 1 ]; then echo "$usage" >&2; exit 2; fi
+# The class that runs this job, and the slot count of that class (lane-class.sh).
+lane_resolve $class_given "$class_flag" $exclusive "$@"
 
 # Microseconds since the epoch (EPOCHREALTIME is bash 5; its separator follows the locale).
 now_us() { if [ -n "${EPOCHREALTIME:-}" ]; then echo "${EPOCHREALTIME/[.,]/}"; else echo "$(date +%s)000000"; fi; }
@@ -150,10 +172,7 @@ if [ -n "$SCCACHE_BIN" ] && [ -z "${RUSTC_WRAPPER+set}" ]; then
 fi
 # Split the cores across the slots so a full lane doesn't oversubscribe the CPU
 # (e.g. 32 cores / 4 slots = 8 jobs per build), with a floor of 4.
-if [ -z "${CARGO_BUILD_JOBS:-}" ]; then
-  cores="$(nproc 2>/dev/null || echo 8)"
-  CARGO_BUILD_JOBS=$(( cores / SLOTS )); [ "$CARGO_BUILD_JOBS" -lt 4 ] && CARGO_BUILD_JOBS=4
-fi
+if [ -z "${CARGO_BUILD_JOBS:-}" ]; then CARGO_BUILD_JOBS="$(lane_class_jobs "$class" "$SLOTS")"; fi
 export CARGO_BUILD_JOBS
 
 # --- quiet output (see the header) ---------------------------------------------------
@@ -250,25 +269,35 @@ try_slot() {  # $1 = slot dir, rest = command (for the "what" note); returns 0 i
 
 t_request="$(now_us)"
 waited=0
-while :; do
+# A lane call inside a lane job runs in its parent's slot and takes none (design § 4.6).
+nested_in="$(lane_nested)"; nested=0; [ -n "$nested_in" ] && nested=1
+if [ $nested -eq 1 ]; then echo "[lane] nested in ${nested_in##*/}; not taking a slot" >&2; fi
+while [ $nested -eq 0 ]; do
   if [ $exclusive -eq 1 ]; then
     got=0
     for i in $(seq 1 "$SLOTS"); do
-      if try_slot "$LOCKDIR/slot.$i" "$@"; then held+=("$LOCKDIR/slot.$i"); got=$((got+1)); fi
+      s="$(lane_slot_path heavy "$i")"
+      if try_slot "$s" "$@"; then held+=("$s"); got=$((got+1)); fi
     done
     [ "$got" -eq "$SLOTS" ] && break
     release; held=()
   else
-    for i in $(seq 1 "$SLOTS"); do
-      if try_slot "$LOCKDIR/slot.$i" "$@"; then held+=("$LOCKDIR/slot.$i"); break; fi
+    for i in $(seq 1 "$class_slots"); do
+      s="$(lane_slot_path "$class" "$i")"
+      if try_slot "$s" "$@"; then held+=("$s"); break; fi
     done
     [ ${#held[@]} -gt 0 ] && break
   fi
   if [ $((waited % 60)) -eq 0 ]; then
-    echo "[lane] all $SLOTS slots busy: $(for d in "$LOCKDIR"/slot.*; do [ -f "$d/what" ] && printf '[%s] ' "$(head -c 120 "$d/what")"; done) ... ${waited}s" >&2
+    echo "[lane] all $class_slots $class slots busy: $(while IFS= read -r d; do [ -f "$d/what" ] && printf '[%s] ' "$(head -c 120 "$d/what")"; done < <(lane_class_dirs "$class")) ... ${waited}s" >&2
   fi
   sleep 5; waited=$((waited+5))
 done
+# Nested lane calls find this job's slot and token here (lane-class.sh, lane_nested).
+if [ ${#held[@]} -gt 0 ]; then
+  tok="$(lane_token)"; echo "$tok" > "${held[0]}/token"
+  export CIMMERIA_LANE_SLOT="$(win_path "${held[0]}")" CIMMERIA_LANE_TOKEN="$tok"
+fi
 
 # rm-worktree.sh marks a worktree before it checks the slots; this checks for the mark
 # after taking a slot and writing its `what` (rm-worktree.sh counts a slot without one as
@@ -349,7 +378,9 @@ EOF
 disk_guard
 
 t_start="$(now_us)"
-acquired="[lane] acquired ${#held[@]}/$SLOTS slot(s) after ${waited}s; target=${CARGO_TARGET_DIR:-$TOP/target}; free=${free_start:-?}GB; jobs=$CARGO_BUILD_JOBS; incremental=${CARGO_INCREMENTAL:-default} :: $*"
+slot_note="acquired ${#held[@]}/$class_slots $class slot(s) after ${waited}s"
+[ $nested -eq 1 ] && slot_note="nested, no slot"
+acquired="[lane] $slot_note; target=${CARGO_TARGET_DIR:-$TOP/target}; free=${free_start:-?}GB; jobs=$CARGO_BUILD_JOBS; incremental=${CARGO_INCREMENTAL:-default} :: $*"
 if [ $quiet -eq 1 ]; then
   ensure_job_log   # in case the log went anyway while we waited
   echo "$acquired" > "$job_log"
@@ -384,6 +415,7 @@ if [ "$METRICS" != 0 ]; then
   branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
   busy=0; for d in "$LOCKDIR"/slot.*; do [ -d "$d" ] && busy=$((busy + 1)); done
   busy=$((busy - ${#held[@]}))               # slots other builds held when this one started
+  busy_class="$(lane_class_dirs "$class" | wc -l | tr -d ' ')"; busy_class=$((busy_class - ${#held[@]}))
   h0=""; m0=""; [ $use_sccache -eq 1 ] && read -r h0 m0 <<<"$(sccache_counts)"
   memfile="$METRICS_DIR/.minfree.$$"
   if [ -r /proc/meminfo ]; then                # lowest free RAM during the job, every 2 s
@@ -412,7 +444,9 @@ record_job() {  # $1 = exit code, $2 = wait ms, $3 = run ms
   line="{\"v\":1,\"t\":$(( t_start / 1000000 )),\"start\":$(json_str "$start_iso")"
   line+=",\"worktree\":$(json_str "$NAME"),\"branch\":$(json_str "$branch"),\"commit\":$(json_str "$commit")"
   line+=",\"cmd\":$(json_str "$cmd_str"),\"exit\":$1,\"wait_s\":$(secs "$2"),\"run_s\":$(secs "$3")"
-  line+=",\"exclusive\":$(json_bool $exclusive),\"slots\":${#held[@]},\"slots_total\":$SLOTS,\"busy_at_start\":$busy"
+  line+=",\"exclusive\":$(json_bool $exclusive),\"slots\":${#held[@]},\"slots_total\":$SLOTS"
+  line+=",\"class\":$(json_str "$class"),\"class_req\":$(json_str "$class_req"),\"class_slots_total\":$class_slots"
+  line+=",\"busy_class_at_start\":$busy_class,\"nested\":$(json_bool $nested),\"busy_at_start\":$busy"
   line+=",\"jobs\":$CARGO_BUILD_JOBS,\"incremental\":$(json_str "${CARGO_INCREMENTAL:-default}")"
   line+=",\"dev_drive\":$(json_bool $use_dev_drive),\"target\":$(json_str "${CARGO_TARGET_DIR:-$TOP/target}")"
   line+=",\"sccache\":$(json_bool $use_sccache),\"sccache_hits\":$(json_num "$dh"),\"sccache_misses\":$(json_num "$dm")"
