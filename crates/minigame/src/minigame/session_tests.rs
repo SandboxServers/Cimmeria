@@ -402,7 +402,7 @@ async fn sweep_only_evicts_the_stale_entity() {
 /// clock before that happens moves the epoch forward with it and the
 /// sweep never fires — which made the first version of these two tests
 /// pass vacuously. Yielding here pins the epoch at `now` first.
-async fn let_spawned_task_start() {
+pub(super) async fn let_spawned_task_start() {
     for _ in 0..4 {
         tokio::task::yield_now().await;
     }

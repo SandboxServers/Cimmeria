@@ -26,19 +26,31 @@ pub(super) async fn cancel_minigame(
     registry: &Option<crate::minigame::SessionRegistry>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
 ) {
-    let canceled = match registry {
-        Some(registry) => registry.cancel(entity_id).await,
-        None => false,
+    let outcome = match registry {
+        Some(registry) => registry.cancel_reporting_connected(entity_id).await,
+        None => None,
     };
+    // A session whose SWF never connected has no task to report Canceled, and
+    // the sweep cannot see it once removed: send result 3 here or the cell
+    // keeps BSF_PlayingMinigame and the movement lock until relog.
+    let reported_to_cell = outcome == Some(false);
+    if reported_to_cell {
+        report_not_started(entity_id, connected, entity_to_addr, cell_tx).await;
+    }
     tracing::info!(
         entity_id,
         entity_name = entity_name_for(connected, entity_to_addr, entity_id),
-        canceled,
+        canceled = outcome.is_some(),
+        reported_to_cell,
         reason = "player_closed_window",
         "Minigame cancel handled"
     );
 }
+
+/// Result code 3: interrupted or never started (the minigame result table).
+const RESULT_NOT_STARTED: u8 = 3;
 
 /// Player values the cell reads for the SWF's `joinOK` (contract C3).
 #[derive(Debug, Clone, Copy)]
@@ -66,6 +78,7 @@ pub(super) async fn start_minigame(
     minigame_registry: &Option<crate::minigame::SessionRegistry>,
     minigame_external_host: &str,
     minigame_external_port: u16,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
 ) {
     let player_label = entity_name_for(connected, entity_to_addr, entity_id);
     tracing::info!(
@@ -100,7 +113,15 @@ pub(super) async fn start_minigame(
                 reason = "no_client_addr",
                 "Minigame not started: the player has no client address, so no session was registered"
             );
-            send_launch_failure(entity_id, transport, connected, entity_to_addr).await;
+            send_launch_failure(
+                entity_id,
+                true,
+                transport,
+                connected,
+                entity_to_addr,
+                cell_tx,
+            )
+            .await;
             return;
         }
         let seed = rand::random::<u32>();
@@ -165,7 +186,15 @@ pub(super) async fn start_minigame(
                 reason = "register_refused",
                 "Failed to register minigame session (duplicate?)"
             );
-            send_launch_failure(entity_id, transport, connected, entity_to_addr).await;
+            send_launch_failure(
+                entity_id,
+                false,
+                transport,
+                connected,
+                entity_to_addr,
+                cell_tx,
+            )
+            .await;
         }
     } else {
         tracing::warn!(
@@ -175,16 +204,70 @@ pub(super) async fn start_minigame(
             reason = "minigame_server_disabled",
             "Minigame not started: the minigame server is disabled"
         );
-        send_launch_failure(entity_id, transport, connected, entity_to_addr).await;
+        send_launch_failure(
+            entity_id,
+            true,
+            transport,
+            connected,
+            entity_to_addr,
+            cell_tx,
+        )
+        .await;
     }
 }
 
-async fn send_launch_failure(
+/// Send the cell result 3 so it drops the minigame hold taken at launch.
+async fn report_not_started(
     entity_id: u32,
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
+) {
+    if let Some(cell_tx) = cell_tx {
+        if let Err(e) = cell_tx
+            .send(BaseToCellMsg::MinigameResult {
+                entity_id,
+                result_code: RESULT_NOT_STARTED,
+                on_victory_chains: Vec::new(),
+                on_failure_chains: Vec::new(),
+            })
+            .await
+        {
+            tracing::error!(
+                entity_id,
+                entity_name = entity_name_for(connected, entity_to_addr, entity_id),
+                error = %e,
+                reason = "cell_channel_closed",
+                "Minigame not-started result lost: the player keeps the minigame hold until the cell restarts"
+            );
+        }
+    } else {
+        tracing::warn!(
+            entity_id,
+            entity_name = entity_name_for(connected, entity_to_addr, entity_id),
+            reason = "no_cell_channel",
+            "Minigame not-started result lost: no cell channel, the player keeps the minigame hold"
+        );
+    }
+}
+
+/// Tell the player the launch failed and, when `free_player`, send the cell a
+/// result 3 so it drops the BSF_PlayingMinigame hold it took at launch
+/// (D-MG15). Without it a failed launch would leave the player locked.
+///
+/// A duplicate-registration refusal passes `free_player = false`: the player
+/// already has a running board, so a result here would free that game's hold.
+pub(super) async fn send_launch_failure(
+    entity_id: u32,
+    free_player: bool,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
 ) {
+    if free_player {
+        report_not_started(entity_id, connected, entity_to_addr, cell_tx).await;
+    }
     let args = serialize_on_player_communication(
         "SYSTEM",
         0,
@@ -253,6 +336,21 @@ pub(super) async fn minigame_result(
             },
         )
         .await;
+    }
+    // A result 0 or 3 for a ticket a newer launch replaced must not reach the
+    // cell: hold_for_minigame is idempotent on bit 4, so the new board holds
+    // no reference of its own and this result would free it mid-game. Codes 0
+    // and 3 carry no chains, so nothing is lost.
+    if replaced && matches!(result_code, 0 | 3) {
+        tracing::info!(
+            entity_id,
+            entity_name,
+            result_code,
+            result,
+            reason = "stale_result_for_replaced_board",
+            "Minigame result ignored: a newer board owns the player's hold"
+        );
+        return;
     }
     // Forward to CellApp for victory chain processing
     let chain_count = on_victory_chains.len();
@@ -338,6 +436,7 @@ mod tests {
             &minigame_registry,
             "203.0.113.1",
             9339,
+            &None,
         )
         .await;
         registry
@@ -399,6 +498,7 @@ mod tests {
             &configured,
             "203.0.113.1",
             9339,
+            &None,
         )
         .await;
         assert_eq!(transport.drain().len(), 1, "first click launches Livewire");
@@ -416,6 +516,7 @@ mod tests {
             &configured,
             "203.0.113.1",
             9339,
+            &None,
         )
         .await;
         assert_eq!(registry.session_count().await, 1);
@@ -508,14 +609,10 @@ mod tests {
             0,
             "late onEndMinigame must not close the next board"
         );
-        assert!(matches!(
-            cell_rx.try_recv(),
-            Ok(BaseToCellMsg::MinigameResult {
-                entity_id: 77,
-                result_code: 0,
-                ..
-            })
-        ));
+        assert!(
+            cell_rx.try_recv().is_err(),
+            "a stale cancel must not release the new board's hold"
+        );
         minigame_result(
             77,
             &new_ticket,

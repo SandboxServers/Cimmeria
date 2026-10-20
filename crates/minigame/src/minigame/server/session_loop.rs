@@ -575,11 +575,9 @@ pub(super) async fn run_session(
     // (`deprecated/cpp/src/baseapp/minigame.cpp`): `aborted()` first, then
     // the close sequence, and `MinigameCanceled` (0) upstream — *not*
     // `Defeat` (2), which the original reserved for a game the player
-    // actually lost. `handle_minigame_result` on the cell only acts on
-    // victory, so today code 0 is inert there; it matters because the
-    // original's cell handler is what cleared `BSF_PlayingMinigame` and
-    // released the movement lock. When either of those lands, dropping this
-    // report would strand the player.
+    // actually lost. `handle_minigame_result` on the cell releases
+    // `BSF_PlayingMinigame` and the movement lock on every code (D-MG15), so
+    // dropping this report strands the player.
     // FIN may have won the read arm just before the close RPC reached the
     // registry. Recheck the watch before reporting an aborted result.
     if !result_reported && *cancel.borrow() {

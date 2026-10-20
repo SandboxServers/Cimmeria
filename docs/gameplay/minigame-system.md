@@ -188,6 +188,25 @@ now handles window close through `endCurrentMinigame`; pre-connect
 `minigameStartCancel` remains open. The TTL backs up a client that
 crashes without sending either call.
 
+### While playing
+
+A launch holds the player (D-MG15). When the content action `StartMinigame`
+reaches Base, the cell sets `BSF_PlayingMinigame` (bit 4) and takes one
+counted `BSF_MOVEMENT_LOCK` reference, sent as a single `onStateFieldUpdate`.
+Every result code releases both: the cell's `MinigameResult` handler calls
+`release_minigame_hold` for victory, failure, cancel and the rest. Because
+the lock is ref-counted, a stun taken before the launch keeps its own
+reference through the release. Two paths that never reach a SmartFox
+connection task report result 3 so they free the player too: a launch Base
+cannot carry out (minigame server disabled, no client address) and the expiry
+sweep. A duplicate-launch refusal sends no result, since the first board is
+still running. A window close before the SmartFox connection opens reports
+result 3 from Base, since no connection task exists to do it. A result 0 or 3
+for a ticket that a newer launch has replaced is dropped, so the old board
+cannot free the new board's hold. Open items: a `create_game` failure after
+the claim, and a logout or world change while a session is registered, do not
+report yet.
+
 ### Connection limits
 
 The SmartFox port (TCP 30000 by default) is published on every host

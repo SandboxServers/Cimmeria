@@ -230,6 +230,15 @@ pub(super) async fn execute_one(
                     chain_name = cimmeria_names::book().chain(chain_id),
                     "StartMinigame: cell→base send failed -- minigame will not launch: {e}"
                 );
+            } else {
+                // D-MG15: hold BSF_PlayingMinigame and one counted movement
+                // lock until a MinigameResult of any code releases them. Only
+                // after a successful send: a dropped launch never produces a
+                // result, so holding here would strand the player.
+                cimmeria_cell_world::cell::minigame_hold::hold_for_minigame(
+                    entity_id, tx, space_mgr,
+                )
+                .await;
             }
         }
         Action::SetAggression {

@@ -62,6 +62,13 @@ pub const BSF_CROUCHING: u32 = 1 << 2;
 /// last (single-target) aggro source.
 pub const BSF_IN_COMBAT: u32 = 1 << 3;
 
+/// `BSF_PlayingMinigame` mask. Set at minigame launch together with one
+/// counted `BSF_MOVEMENT_LOCK` reference and cleared, with that reference, on
+/// every minigame result code (D-MG15). The cell's `minigame_hold` module owns
+/// both writes. Not persisted.
+/// From python `Atrea.enums.BSF_PlayingMinigame = 4`.
+pub const BSF_PLAYING_MINIGAME: u32 = 1 << 4;
+
 /// `BSF_MovementLock` mask. Multi-source flag: death applies it,
 /// future stun/fear effects will too. Going through the ref-counted entity
 /// helpers means clearing one source doesn't drop the others.

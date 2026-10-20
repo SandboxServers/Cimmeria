@@ -38,6 +38,10 @@ pub(super) async fn handle_minigame_result(
         failure_chains = ?on_failure_chains,
         "Minigame result"
     );
+    // Any code ends the minigame (D-MG15): victory, failure, cancel, a failed
+    // launch or an expired ticket. Release before the chains fire so a chain
+    // that moves or locks the player starts from a free state.
+    cimmeria_cell_world::cell::minigame_hold::release_minigame_hold(entity_id, tx, space_mgr).await;
     if result_code == 1 {
         // Victory — fire on_victory_chains through the content engine
         let entity = space_mgr.get_entity(entity_id);
