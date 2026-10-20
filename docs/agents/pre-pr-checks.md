@@ -115,7 +115,7 @@ cargo check -p cimmeria-server --features lab-chaos
 DATABASE_URL=postgres://w-testing:w-testing@localhost:5433/sgw \
   tools/test-live-db.sh
 # From a worktree, use the worktree's own database instead: this reloads
-# sgw_<worktree> from db/database.sql and runs the same tier in a lane slot.
+# sgw_<worktree> from db/database.sql and builds the tier in a heavy slot, then runs it in a db slot.
 tools/build-lane/live-db-test.sh <test-name filter>
 # (pwsh tools/build-lane/live-db-test.ps1 <filter> from PowerShell)
 

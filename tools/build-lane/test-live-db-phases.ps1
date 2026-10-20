@@ -106,6 +106,20 @@ try {
     Check ($rc -eq 3) "a failed build exits with the tier's code 3 (got $rc)"
     Check ((Read-Jobs).Count -eq 1) "a failed build writes one jobs.jsonl line (got $((Read-Jobs).Count))"
     Check (-not (Read-Calls | Where-Object { $_ -eq 'reload' })) 'a failed build never calls the reload'
+
+    # --- 4. LANE_DB_SLOTS=0 (kill switch): phase 2 runs in a heavy slot, the tier still runs -
+    Reset-Case
+    $rc = Invoke-Pwsh @('-NoProfile', '-File', $liveDb, 'chain_replay') @{ LANE_DB_SLOTS = '0' } 90
+    Check ($rc -eq 0) "LANE_DB_SLOTS=0 run exits 0 (got $rc)"
+    $jobs = Read-Jobs
+    Check ($jobs.Count -eq 2) "LANE_DB_SLOTS=0 writes two jobs.jsonl lines (got $($jobs.Count))"
+    if ($jobs.Count -eq 2) {
+        Check ($jobs[1].class -eq 'heavy' -and $jobs[1].class_req -eq 'db') `
+            "with no db slots the second job lands in a heavy slot (class $($jobs[1].class), class_req $($jobs[1].class_req))"
+    }
+    $lines = Read-Calls
+    Check ($lines.Count -eq 3 -and $lines[1] -eq 'reload' -and $lines[2] -eq 'tier chain_replay') `
+        "the tier still ran after the reload with no db slots (got: $($lines -join ' | '))"
 } finally {
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
 }

@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import os
 import shutil
@@ -123,6 +124,33 @@ class ReportTests(unittest.TestCase):
                          ["live-db"])
         self.assertEqual(len(lane_stats.select(jobs, None, None, None, None, job_class="light")), 1)
         self.assertIn("Slot-hours by class: db 0.50, heavy 1.00, light 0.02", lane_stats.report(jobs, None))
+
+    def test_cli_old_rows_show_as_heavy_and_class_filter(self):
+        """A log line from before the classes (no class key) prints and exports as heavy,
+        and --class light selects only the new light row."""
+        old = self.job(1000, "cargo build -p a", 3600.0)
+        new = self.job(2000, "cargo check -p b", 60.0)
+        new.update({"class": "light", "class_req": "light"})
+        path = self.write_log([json.dumps(old), json.dumps(new)])
+
+        def run(*args):
+            r = subprocess.run([sys.executable, str(HERE / "lane_stats.py"), "--file", str(path), "--days", "0", *args],
+                               capture_output=True, text=True, check=True)
+            return r.stdout
+
+        out = run("--recent", "5").splitlines()
+        self.assertIn("heavy", next(line for line in out if "build" in line))
+        self.assertIn("light", next(line for line in out if "check" in line))
+
+        light = run("--class", "light", "--recent", "5")
+        self.assertIn("check", light)
+        self.assertNotIn("build", light)
+        self.assertNotIn("heavy", light)
+
+        csv_path = path.with_name("jobs.csv")
+        run("--csv", str(csv_path))
+        with csv_path.open(newline="", encoding="utf-8") as f:
+            self.assertEqual([row["class"] for row in csv.DictReader(f)], ["heavy", "light"])
 
     def test_report_and_html_render(self):
         lines = [json.dumps(self.job(1790000000 + i * 3600, cmd, run, code, dev))
