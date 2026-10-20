@@ -5,7 +5,7 @@
 
 ## State
 
-The campaign is closed on the code side. Packets through US-32 are on `main`. US-33, US-34, the S4 fix pass and this close-out are local commits on `union-sgc/sgc-final`. No PR exists, by the owner's directive. Nothing has been played in a client.
+The campaign is closed on the code side. Packets through US-32 are on `main`. US-33, US-34, the S4 fix pass and this close-out ship in the single Union SGC PR. Nothing has been played in a client.
 
 ## Next action
 

@@ -18,7 +18,7 @@ The SGC_W1 Union continuation is **code-complete and unplayed**. Every chain is 
 
 Packets US-00, US-01, US-02, US-10, US-11, US-12, US-13, US-14, US-15, US-16, US-20, US-21, US-22, US-23, US-24, US-30, US-31 and US-32 merged to `main` before the owner's "no PRs until the restoration is done" directive. The PR numbers are in the packet table below.
 
-### What is on `union-sgc/sgc-final` (local, no PR yet)
+### What the single Union SGC PR carries (branch `union-sgc/sgc-final`)
 
 | Item | Note |
 |---|---|
@@ -35,7 +35,7 @@ Chain tests: the `union_sgc` live-DB module passed 105 tests at the S4 fix pass 
 
 | Item | State |
 |---|---|
-| One PR for `union-sgc/sgc-final` | Held by the owner's directive (no push, PR or merge-queue activity) |
+| One PR for `union-sgc/sgc-final` | Opened by ops after the owner lifts the directive; retire `sgc-final` on merge |
 | UAT U1, U2, U3 | UATPending: [uat-U1.md](uat-U1.md), [uat-U2.md](uat-U2.md), [uat-U3.md](uat-U3.md) |
 | Placement lab checks owed | Listed in [uat-U1.md](uat-U1.md#placement-lab-checks-owed) |
 | US-16 escort walk | Judge the navmesh stall in [uat-U1.md](uat-U1.md#the-1564-escort-walk-judge-it) |
@@ -48,7 +48,7 @@ Chain tests: the `union_sgc` live-DB module passed 105 tests at the S4 fix pass 
 
 - **Arrival heading is not carried.** `Action::CrossWorldTeleport` has no heading field, so a crossing delivers a position only. The Omega pin's heading 3.1409 (and any SGC heading) is dropped, and the player faces whatever the engine gives. [U3](uat-U3.md) checks position and records facing.
 - **The US-16 escort stalls.** The SGC_W1 navmesh has no route between Carter's spawn, the Failsafe room and the Gate Room, so her follow stops at the first gap. The chains still end correctly (she is teleported to the device point). The owner accepted this (D-US13 = a); [U1](uat-U1.md) judges it.
-- **Gate 27 depends on Dakara.** The gate 27 arrival pin (DK-SGC-01) and the `debug_area` test fix live on `dakara/dk-sgc`. Until that branch merges, gate 27 arrival (a GM or dial arrival, not our chain crossings, which carry their own coordinates) stays off the navmesh by 3.4 m. Merge `dakara/dk-sgc` first, or accept that.
+- **Gate 27 depends on Dakara.** The gate 27 arrival pin (DK-SGC-01) and the `debug_area` test fix live on `dakara/dk-sgc`. Until that branch merges, gate 27 arrival (this includes the 1651 and 1654 returns from Dakara, which cross by real gate travel and land on the pin; only the SGC-to-Dakara and SGC-to-Omega crossings carry their own coordinates) stays off the navmesh by 3.4 m. Merge `dakara/dk-sgc` first, or accept that.
 - **US-40 is held.** Authored ambience and Carter's line 5394 wait for the label policy (D-US2, D-US3). Nothing authored ships.
 - **Dakara and Omega receivers.** The returns from Dakara (1651, 1654) and the Omega arrival need Dakara DK-30b, DK-33 and Omega's C4 receiver on the same build. Without them those UAT steps are NOT RUN, not FAIL.
 ## Status of this ledger
@@ -91,7 +91,7 @@ Status vocabulary: Decided, BlockedDecision (owner or partner must answer), HELD
 | D-US6 | Walk into gate 27 instead of crossing on Harriman's interact | Owner | cross on the Harriman interact after the dial | BlockedDecision, non-blocking |
 | D-US7 | Virus hack minigame or plain interact (O5369) | Owner | plain interact | BlockedDecision, non-blocking: US-12 |
 | D-US8 | 1565 flank objective O5375: untracked or credited | Owner | untracked (optional) | BlockedDecision, non-blocking: US-20 |
-| D-US9 | Edit gate 27 row or carry coordinates in chains | Architect | chains carry H3; row untouched | Decided, stays as decided. The gate 27 row pin is Dakara's DK-SGC-01 (D-run7) |
+| D-US9 | Edit gate 27 row or carry coordinates in chains | Architect | chains carry H3; row untouched | Revised by option C (Dakara plan D-DK44/D-DK47): the gate 27 row pin is Dakara's DK-SGC-01 (D-run7); our SGC-to-Dakara and SGC-to-Omega chains still carry coordinates |
 | D-US10 | Static Jaffa rows 57-63 versus the 1565/1567 story Jaffa (options A, B, C) | Owner | B (tag the static rows as story Jaffa) | Decided 2026-10-19: B |
 | D-US11 | 1655 letter item 6786 at departure | Owner + Omega | 6786 to Humans on Hammond's 5856; nothing to Free Jaffa | Decided 2026-10-19: Humans only |
 | D-UD2 | Who owns the 1651/4930 departure | Dakara (D-UD2) | DK-30 | Accepted by SGC; confirmed in Dakara plan (C2 row) |
@@ -188,8 +188,8 @@ F13 is already recorded in agent memory (`.claude/agent-memory/mission-systems-a
 | US-30 | chains 3133-3142 | `sgc_w1_union_1651_chains.sql` | `generator_1651.rs` | Open: needs US-10, US-11, US-01, UD-00 |
 | US-31 | chains 3148-3152 | `sgc_w1_union_1654_chains.sql` | `turnin_1654.rs` | Open: needs US-10, UD-00 |
 | US-32 | chains 3156-3165 | `sgc_w1_union_1655_human_chains.sql` | `letter_1655_human.rs` | Open: C4 pin (crossings.md), UO-00, D-US11 default |
-| US-33 | chains 3166-3169 | `sgc_w1_union_1655_jaffa_chains.sql` | `letter_1655_jaffa.rs`, `disjoint.rs` | Done (local, integrated on union-sgc/sgc-final) |
-| US-34 | chains 3171-3175 | `sgc_w1_union_return_chains.sql` | `return_state.rs` | Done (local, integrated on union-sgc/sgc-final) |
+| US-33 | chains 3166-3169 | `sgc_w1_union_1655_jaffa_chains.sql` | `letter_1655_jaffa.rs`, `disjoint.rs` | Done (ships in the single Union SGC PR) |
+| US-34 | chains 3171-3175 | `sgc_w1_union_return_chains.sql` | `return_state.rs` | Done (ships in the single Union SGC PR) |
 | US-25 | none | none | none | Dropped: gate 27 pin owned by Dakara DK-SGC-01 on dakara/dk-sgc (D-run7) |
 | US-40 | chains 3180-3199, dialogs 58000-58049 | `sgc_w1_union_authored_chains.sql` | `authored.rs` | **BlockedDecision (HELD)**: D-US2, D-US3 |
 | US-99 | none | docs | none | Open: all others |
@@ -220,12 +220,12 @@ Status vocabulary: Done / Dropped / HELD / UATPending. The packet text stays in 
 | S3 | US-30 | Done (merged #1937) | 1651, C2 arrival, C2b |
 | S3 | US-31 | Done (merged #1935) | 1654 |
 | S3 | US-32 | Done (merged #1938) | 1655 Human and C4 |
-| S4 | US-33 | Done (local, on `union-sgc/sgc-final`) | 1655 Free Jaffa and the disjointness suite |
-| S4 | US-34 | Done (local, on `union-sgc/sgc-final`) | return state |
+| S4 | US-33 | Done (ships in the single Union SGC PR) | 1655 Free Jaffa and the disjointness suite |
+| S4 | US-34 | Done (ships in the single Union SGC PR) | return state |
 | S4 | US-25 | Dropped | gate 27 pin owned by Dakara DK-SGC-01 on `dakara/dk-sgc` (D-run7) |
 | S4 | US-40 | HELD | D-US2, D-US3: label policy unset |
 | S4 | US-U1 | UATPending | [uat-U1.md](uat-U1.md), owner-run |
 | S4 | US-U2 | UATPending | [uat-U2.md](uat-U2.md), owner-run |
 | S4 | US-U3 | UATPending | [uat-U3.md](uat-U3.md), owner-run; added by the owner: the Omega arrival |
-| S4 | US-99 | Done (local, on `union-sgc/sgc-final`) | this close-out |
+| S4 | US-99 | Done (ships in the single Union SGC PR) | this close-out |
 UD-00 and UO-00 are the Dakara and Omega ID packets. Whether they are dispatched or merged is the coordinator's gate and is not verified here.

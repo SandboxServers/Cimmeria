@@ -10,7 +10,7 @@ You play a Human through the return to SGC_W1 from Dakara (mission 1651) and bac
 
 ## Preconditions (all steps)
 
-- A local server built from `union-sgc/sgc-final` **with the Dakara packets that send players back** (the 1651 offer and its departure, and the 1654 hand-off), never the colo release. Without them the arrivals from Dakara cannot be staged by play; see [Known limitations](README.md#known-limitations-and-release-notes) for the gate 27 dependency. A database reload deletes your characters.
+- A local server built from `union-sgc/sgc-final` **with the Dakara packets that send players back** (the 1651 offer and its departure, and the 1654 hand-off), never the colo release. Without them the arrivals from Dakara cannot be staged by play; see [Known limitations](README.md#known-limitations-and-release-notes) for the gate 27 dependency. A database reload deletes your characters. The expected arrival position (167.00, -10.80, 18.00) in U2-01, U2-08 and U2-15 needs Dakara's `dakara/dk-sgc` (gate 27 pin) merged on the same build; without it the arrival is the gate row (172.79, -8.47, 6.014) and those three position checks are NOT RUN, not FAIL.
 - **Human:** the U1 Soldier standing on Dakara with 1570 done, or a fresh Soldier played to that point. A Human who has not reached Dakara is never offered 1651.
 - **Free Jaffa:** a new Free Jaffa (archetype 7) with a name of three or more letters, played on Dakara to the 1654 hand-off. If you cannot create that race, record the Free Jaffa steps NOT RUN and say why.
 - Teleport only with `.gotolocation <World> x y z`. Close every dialog before a chat command or a jump.

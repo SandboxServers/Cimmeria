@@ -1275,7 +1275,7 @@ World 58, the Stargate Command tutorial base, after the opening missions. A Huma
 
 **Status:** Not yet run in a client. The chains are covered by database and executor tests only.
 
-**Prerequisites:** a local server build from the SGC branch (not the colo); a fresh Human Soldier; a Free Jaffa for the 1655 rows; the Dakara and Omega arrivals present on the same build.
+**Prerequisites:** a local server build from the SGC branch (not the colo); a fresh Human Soldier; a Free Jaffa for the 1655 rows; the Dakara and Omega arrivals present on the same build. The expected arrival position (167.00, -10.80, 18.00) in SG-7, SG-8 and SG-9 needs Dakara's `dakara/dk-sgc` (gate 27 pin) merged on the same build; without it the arrival is the gate row (172.79, -8.47, 6.014) and those position checks are NOT RUN, not FAIL.
 
 | # | Do | Expect | Report if | Lab result |
 |---|---|---|---|---|

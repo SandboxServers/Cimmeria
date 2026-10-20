@@ -44,7 +44,7 @@ Wave 5 starts when DK-40 and DK-41 are merged. Its four packets write four diffe
 | `give 6781` / `take 6781` | `(id, 'add_item', 6781, NULL, '{"container": 0, "qty": 1}', 0, n)` / `(id, 'remove_item', 6781, NULL, '{"qty": 1}', 0, n)` |
 | `spawn hologram` | `(id, 'spawn_entity', 443, 'Dakara_E1_StoryRm_BaalHologram', '{"x": 66.2, "y": -0.12, "z": 34.3, "heading": 1.5708, "is_stationary": true}', 0, n)` (placement B-07; world 62 is instanced, so no `allow_shared`) |
 | `despawn hologram` | `(id, 'despawn_entity', NULL, 'Dakara_E1_StoryRm_BaalHologram', '{}', 0, n)` |
-| `teleport SGC H3` | `(id, 'cross_world_teleport', NULL, 'SGC_W1', '{"x": 172.79, "y": -10.9, "z": 12.0}', 0, n)` (the frozen Union arrival H3; precedent: chains 8003-8006) |
+| `teleport SGC H3` | `(id, 'cross_world_teleport', NULL, 'SGC_W1', '{"x": 172.79, "y": -10.9, "z": 12.0}', 0, n)` (the frozen Union arrival H3; precedent: chains 8003-8006) (superseded by wave-6c / D-DK44: arrival is the gate 27 pin P13 (167.00, -10.80, 18.00); cross by real travel, no coordinates) |
 
 Triggers: `loaded Dakara_E1` is `('player_loaded', 'Dakara_E1')`, `loaded StoryRm` is `('player_loaded', 'Dakara_E1_StoryRm')`; `click <tag>` is `('interact_tag', '<tag>')`; `region <key>` is `('enter_region', '<key>')`, the key byte-exact as the `point_sets.name`; `choice 5983` is `('dialog_choice', '5983')`; `done 1647` is `('mission_completed', '1647')`.
 

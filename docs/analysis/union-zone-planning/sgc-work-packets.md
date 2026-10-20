@@ -276,14 +276,14 @@ Packets use the values US-01 records in `docs/analysis/union-sgc-continuation/pl
 | S3 | US-30 | `packet-coder`, movement + items sign-off | ~40k | 1651 C2 arrival, generator, C2b | US-10, US-11, US-01, UD-00 | Done (merged #1937) | [US-30](sgc-packets/US-30.md) |
 | S3 | US-31 | `packet-coder` | ~30k | 1654 Hammond turn-in, both races | US-10, UD-00 | Done (merged #1935) | [US-31](sgc-packets/US-31.md) |
 | S3 | US-32 | `packet-coder`, movement sign-off | ~40k | 1655 Human and C4 | US-10, US-11, UO-00, D-US11 default | Done (merged #1938) | [US-32](sgc-packets/US-32.md) |
-| S4 | US-33 | `packet-coder` | ~35k | 1655 Free Jaffa + disjointness suite | US-31, US-32 | Done (local, on `union-sgc/sgc-final`) | [US-33](sgc-packets/US-33.md) |
-| S4 | US-34 | `packet-coder` | ~30k | Return state and relog matrix | US-11, US-20, US-21, US-22, US-30, D-US5 default | Done (local, on `union-sgc/sgc-final`) | [US-34](sgc-packets/US-34.md) |
+| S4 | US-33 | `packet-coder` | ~35k | 1655 Free Jaffa + disjointness suite | US-31, US-32 | Done (ships in the single Union SGC PR) | [US-33](sgc-packets/US-33.md) |
+| S4 | US-34 | `packet-coder` | ~30k | Return state and relog matrix | US-11, US-20, US-21, US-22, US-30, D-US5 default | Done (ships in the single Union SGC PR) | [US-34](sgc-packets/US-34.md) |
 | S4 | US-25 | - | - | Gate 27 arrival pin | - | Dropped (D-run7): gate 27 pin owned by Dakara DK-SGC-01 on `dakara/dk-sgc` | - |
 | S4 | US-U1 | lab UAT (ask the user) | lab | Human 1562 → 1570 → Dakara arrival | S3 integrated | UATPending | [US-U1](sgc-packets/US-U1.md) |
 | S4 | US-U2 | lab UAT (ask the user) | lab | 1651 round trip, 1654, 1655 for both races | US-33, US-34 | UATPending | [US-U2](sgc-packets/US-U2.md) |
 | S4 | US-U3 | owner UAT | owner | Omega C4 arrival (pin, facing), Woolsey "?", letter 6786 split | US-32, US-33 | UATPending | [uat-U3.md](../union-sgc-continuation/uat-U3.md) |
 | S4 | US-40 | `packet-coder` | ~30k | Authored ambience, droppable | **D-US2, D-US3** | **HELD** (D-US2, D-US3: label policy unset) | [US-40](sgc-packets/US-40.md) |
-| S4 | US-99 | `documentation-writer` | docs ~30k | Close-out: status docs, unified UAT | all others | Done (local, on `union-sgc/sgc-final`) | [US-99](sgc-packets/US-99.md) |
+| S4 | US-99 | `documentation-writer` | docs ~30k | Close-out: status docs, unified UAT | all others | Done (ships in the single Union SGC PR) | [US-99](sgc-packets/US-99.md) |
 
 **Specialist vs Haiku.** S0, US-16 and US-99 go to the named domain agents. Every other code packet is a Haiku `packet-coder` packet: the SQL is written out row by row in the packet, and the tests are named with their setup and assertions. One `packet-review-fixer` reviews each wave (S1 three packets, S2 six, S3 six, S4 two or three). Add `server-authority-enforcer` as a read-only second pass on US-23, US-30 and US-32 (item grants), and `movement-teleport-advisor` on US-16, US-22, US-24, US-30 and US-32 (moves and crossings).
 
