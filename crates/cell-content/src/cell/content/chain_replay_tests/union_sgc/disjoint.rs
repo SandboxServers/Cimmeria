@@ -16,6 +16,9 @@ use super::rig::{Rig, Sent, FREE_JAFFA, SOLDIER, WORLD_ID};
 
 const FIRST: i32 = 3051;
 const LAST: i32 = 3199;
+/// Omega's id block (63800-63999): the F13 and F21 guards cover it too.
+const OMEGA_FIRST: i32 = 63800;
+const OMEGA_LAST: i32 = 63999;
 const M1655: i32 = 1655;
 const M1651: i32 = 1651;
 const M1562: i32 = 1562;
@@ -107,29 +110,57 @@ async fn live_db_sgc_union_every_loaded_or_region_chain_has_world_58() {
     );
 }
 
-/// **Revert proof:** drop the `archetype gte '1'` row of chain 3110 and this
-/// lists 3110 as a tutorial chain whose gate is not exactly the Human pair.
+/// Chains selected by what they touch, not by `scope_id` alone: many tutorial
+/// chains are `space`-scoped with a NULL `scope_id` (offers, crates). A chain
+/// is a tutorial chain when it is scoped to, conditions on, or acts on one of
+/// missions 1563-1571.
+///
+/// Chain 3172 (US-34, return as a Free Jaffa) is the one documented exception:
+/// it is gated to the Free Jaffa pair, and the exception is exact (chain id AND
+/// that pair), so dropping its gate still fails.
+///
+/// Chain 3103 (Gate Room Jaffa dead, completes 5380 on mission 1568) is the
+/// other: its triggers are `space`-scoped `entity_dead_tag` rows, and no death
+/// dispatcher sets the `archetype` param, so an archetype gate would read -1
+/// and the chain could never fire. It stays ungated by design; it is only
+/// reachable at step 4639, which the Human-gated terminal chain 3102 opens.
+/// The exception is exact (chain id AND no archetype row).
+///
+/// **Revert proof:** drop the `archetype gte '1'` row of chain 3110 (the
+/// space-scoped 1569 offer) and this lists 3110 as a tutorial chain whose gate
+/// is not exactly the Human pair.
 #[tokio::test]
 async fn live_db_sgc_union_tutorial_chains_are_human_only() {
     let pool = require_db_or_skip!();
-    let scoped: Vec<(i32, Option<i32>)> = sqlx::query_as(
-        "SELECT chain_id, scope_id FROM resources.content_chains \
-         WHERE chain_id BETWEEN $1 AND $2 ORDER BY chain_id",
+    let tutorial: Vec<(i32,)> = sqlx::query_as(
+        "SELECT ch.chain_id FROM resources.content_chains ch \
+         WHERE ch.chain_id BETWEEN $1 AND $2 \
+           AND (ch.scope_id BETWEEN $3 AND $4 \
+             OR EXISTS (SELECT 1 FROM resources.content_conditions c \
+                        WHERE c.chain_id = ch.chain_id \
+                          AND c.condition_type IN ('mission_status', 'step_status') \
+                          AND c.target_id BETWEEN $3 AND $4) \
+             OR EXISTS (SELECT 1 FROM resources.content_actions a \
+                        WHERE a.chain_id = ch.chain_id \
+                          AND a.action_type IN ('accept_mission', 'advance_step', 'complete_objective') \
+                          AND a.target_id BETWEEN $3 AND $4)) \
+         ORDER BY ch.chain_id",
     )
     .bind(FIRST)
     .bind(LAST)
+    .bind(*TUTORIAL.start())
+    .bind(*TUTORIAL.end())
     .fetch_all(&pool)
     .await
-    .expect("chain scopes read");
+    .expect("tutorial chains read");
     let pairs = archetype_pairs(&pool).await;
     let mut bad = Vec::new();
-    for (chain, scope) in &scoped {
-        let Some(scope) = scope.filter(|s| TUTORIAL.contains(s)) else {
-            continue;
-        };
+    for (chain,) in &tutorial {
         let got = pairs.get(chain).cloned().unwrap_or_default();
-        if got != human_pair() {
-            bad.push((*chain, scope, got));
+        let free_jaffa_exception = *chain == 3172 && got == jaffa_pair();
+        let ungated_space_death = *chain == 3103 && got.is_empty();
+        if got != human_pair() && !free_jaffa_exception && !ungated_space_death {
+            bad.push((*chain, got));
         }
     }
     assert!(
@@ -192,11 +223,14 @@ async fn live_db_sgc_union_no_mission_ending_completion_mid_mission() {
     let pool = require_db_or_skip!();
     let rows: Vec<(i32, i32, Option<String>)> = sqlx::query_as(
         "SELECT chain_id, target_id, target_key FROM resources.content_actions \
-         WHERE action_type = 'complete_objective' AND chain_id BETWEEN $1 AND $2 \
+         WHERE action_type = 'complete_objective' \
+           AND (chain_id BETWEEN $1 AND $2 OR chain_id BETWEEN $3 AND $4) \
          ORDER BY chain_id",
     )
     .bind(FIRST)
     .bind(LAST)
+    .bind(OMEGA_FIRST)
+    .bind(OMEGA_LAST)
     .fetch_all(&pool)
     .await
     .expect("complete_objective rows read");
@@ -214,13 +248,15 @@ async fn live_db_sgc_union_no_mission_ending_completion_mid_mission() {
     let at_4940: Vec<(i32,)> = sqlx::query_as(
         "SELECT a.chain_id FROM resources.content_actions a \
          WHERE a.action_type = 'complete_objective' AND a.target_key IN ('5645', '5646') \
-           AND a.chain_id BETWEEN $1 AND $2 \
+           AND (a.chain_id BETWEEN $1 AND $2 OR a.chain_id BETWEEN $3 AND $4) \
            AND EXISTS (SELECT 1 FROM resources.content_conditions c \
                        WHERE c.chain_id = a.chain_id AND c.condition_type = 'step_status' \
                          AND c.target_key = '4940')",
     )
     .bind(FIRST)
     .bind(LAST)
+    .bind(OMEGA_FIRST)
+    .bind(OMEGA_LAST)
     .fetch_all(&pool)
     .await
     .expect("F21 rows read");
