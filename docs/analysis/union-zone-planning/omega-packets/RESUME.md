@@ -1,12 +1,33 @@
 # Union Omega resume card
 
-- Phase: closed for building, 2026-10-19. Everything buildable is merged; nothing has been walked in a client.
-- Ledger: [omega-work-packets.md](../omega-work-packets.md) (findings F1-F35, decisions D-UO1..26, the overnight run ledger, the blockers list).
-- Merged: PR #1882 (concept art), #1890 (UO-01, UO-02), #1902 (UO-00, UO-03, UO-04, UO-05, UO-06, UO-10), #1908 (UO-07, UO-08), #1911 (UO-09, UO-14), and the close-out PR (UO-13 tests, UO-99 docs).
-- What exists: the beam, Modi, Human and Free Jaffa induction, the re-offer, a banker, two registrars, respawner 180 and 22 inert ambient NPCs. Docs: [mission-chains](../../../content/mission-chains.md#union-omega-worlds-18-and-80), [zone-audit](../../../content/zone-audit.md), [unified UAT](../../../guides/unified-uat.md#union-omega).
-- Not built: the vendors UO-11 and UO-12 (BlockedDecision D-UO8, D-UO16). Stubs: UO-15 (U-D07, H-LBL) and UO-16 (U-D08, U-D11).
-- HELD, owner to answer: D-UO8, D-UO16, D-UO17, D-UO18, D-UO19, D-UO11, the rest of U-D07, H-LBL, U-D08 and U-D11. Recommended options are in the ledger's § Blockers and owner decisions. The owner may overrule D-UO25 and D-UO26.
-- Owner UAT left: UO-U1 (both factions, re-offer, services). Ask the user before any lab use. Recipe: [UO-U1.md](UO-U1.md); results go to `worknotes/UO-U1-results.md`, which does not exist yet. Owed observations: `interactions_count = 1` on every "adding dialog set" line, and "removing dialog set" before "completing mission".
-- Next action: ask the owner for the D-UO8 and D-UO16 answers, then dispatch UO-11 and UO-12. After UO-U1 passes, rerun the UO-99 rows it gates (`ring-transport-system.md`, `gap-analysis/new-systems.md`).
-- Doc debt: the UO-04 seed header comment still says O5645 and O5646 are the S4940 objectives to watch (older wording); the union-zone-planning README table still lists Omega as BlockedDependency.
-- Rules for workers: PowerShell only, cargo only through the lane, CRLF docs, no stash, prune or push, no db/scripts migrations, ask before any lab use.
+- Phase: reopened 2026-10-19 for the hub services and the Asgard work (waves W6-W11). W1-W5 are merged; nothing has been walked in a client.
+- Ledger: [omega-work-packets.md](../omega-work-packets.md): findings F1-F44, decisions D-UO1..D-UO38, § ID map (re-carved by D-UO27), § Waves, § HELD and blocked.
+- Merged: PR #1882 (concept art), #1890, #1902, #1908, #1911 and the close-out PR (UO-13 tests, UO-99 docs in overnight form).
+- What exists: the beam, Modi, Human and Free Jaffa induction, the re-offer, a banker, two registrars, respawner 180 and 22 inert ambient NPCs.
+- Owner answers 2026-10-19: D-UO8 B, D-UO16 B, D-UO17 c, D-UO18 b, U-D08/U-D11 (remote hearing plus a databank prologue issuing item 3399), D-UO19 c, D-UO11 default, D-UO20/25/26 accepted, U-D07 rewards, H-LBL no label.
+
+## Waves (each ships as one PR from integration worktree `uo-w<N>`, merge-noff in this order)
+
+| Wave | Packets in merge order | Gate |
+|---|---|---|
+| W6 seals A (docs) | UO-15, UO-16, UO-17, UO-18, UO-19, UO-20 | Ready now; UO-20 starts after UO-19 returns |
+| W7 stock seals + scaffold | UO-24, UO-25, UO-26, UO-21, UO-22, UO-23 | Ready now; UO-25/UO-26 branch at UO-24's commit |
+| W8 vendors | UO-11, UO-12, UO-27, UO-28, UO-29, UO-30 | W6 and W7 merged |
+| W9 services | UO-31, UO-32, UO-33, UO-34, UO-35, UO-36 (only on D-UO32 b) | W6, W7 merged; ships after the W8 PR |
+| W10 Asgard | UO-37, UO-38, UO-39, UO-40 (UO-41, UO-42 stubs) | UO-16 merged; `uo-w10` cut after W8; UO-40 branches at UO-39's commit |
+| W11 close | UO-U1 § R5 (the owner's lab run), then UO-98 | W8 and W9 merged |
+
+## Open owner calls (BlockedDecision)
+
+- D-UO32: inn and battlemaster, (a) build nothing (recommended) or (b) bark-only placeholders (UO-36).
+- D-UO33: medic name; UO-33 uses 6964 `Castle Medic` unless answered before W9.
+- D-UO34: mission 1522 sealed, replaced or offered, and does Otin speak; asked after UO-16 merges. Blocks UO-41, UO-42.
+- Overrulable architect calls: D-UO28..D-UO31, D-UO35..D-UO38.
+
+## Next action
+
+Dispatch W6 and W7 together (12 worktrees). Then W8, W9 and W10 per the gates above.
+
+## Rules for workers
+
+PowerShell only; cargo only through the lane; CRLF docs; no stash, prune or push; no db/scripts migrations; agents never use the lab (the owner runs UO-U1). F42: no playable Asgard start, so the Asgard client rows wait.
