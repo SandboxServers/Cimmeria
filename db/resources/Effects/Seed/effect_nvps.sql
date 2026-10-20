@@ -1641,6 +1641,10 @@ INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (25029, 5308, 'C
 
 -- minigames hand-authored (25500-25509): MG-63b, MG-62
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (25500, 1942, 'ReleasesEffect', '1939');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (25501, 1643, 'minigame_type', 'ConverseBasicHumanoid');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (25502, 1643, 'difficulty', '1');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (25503, 2813, 'minigame_type', 'ConverseBasicHumanoid');
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (25504, 2813, 'difficulty', '1');
 
 --
 -- TOC entry 3313 (class 0 OID 0)
