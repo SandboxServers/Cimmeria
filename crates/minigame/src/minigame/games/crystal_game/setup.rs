@@ -58,6 +58,7 @@ impl Board {
 
     /// One click at `(x, y)`. Returns the changed cells in the order centre,
     /// left, up, right, down, skipping neighbours that fall off the board.
+    /// The caller must have checked `x < w` and `y < h`; this does not.
     pub(super) fn press(&mut self, x: u8, y: u8) -> Vec<(u8, u8, u8)> {
         let (x, y) = (usize::from(x), usize::from(y));
         let mut changed = vec![self.add(x, y, 2)];

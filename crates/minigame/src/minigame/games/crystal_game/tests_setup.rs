@@ -9,6 +9,7 @@ use super::setup::{draw_clicks, fullgamestate, Board, HEIGHT, WIDTH};
 use super::CrystalGame;
 use crate::minigame::game::{GameOutput, MinigameInstance};
 use crate::minigame::protocol::SfsValue;
+use crate::minigame::session::MinigameSession;
 
 /// First seed whose scramble clicks are (0,0) then (6,6) (T1). Found by
 /// [`finds_seed_for_clicks`].
@@ -136,6 +137,27 @@ fn fullgamestate_has_14_columns_of_13_cells() {
 }
 
 #[test]
+fn fullgamestate_game_array_is_indexed_x_then_y() {
+    let mut board = Board::solved();
+    board.press(0, 5);
+    let map = fullgamestate(&board);
+    let SfsValue::Object(columns) = &map["gameArray"] else {
+        panic!("gameArray is not a list");
+    };
+    let cell = |x: &str, y: &str| {
+        let SfsValue::Object(col) = &columns[x] else {
+            panic!("column");
+        };
+        col[y].as_f64().expect("a number")
+    };
+    assert_eq!(cell("0", "5"), 5.0);
+    assert_eq!(cell("0", "4"), 4.0);
+    assert_eq!(cell("1", "5"), 4.0);
+    assert_eq!(cell("0", "6"), 4.0);
+    assert_eq!(cell("5", "0"), 3.0);
+}
+
+#[test]
 fn fullgamestate_carries_the_clock_and_no_cheats() {
     let map = fullgamestate(&Board::solved());
     assert_eq!(map["_cmd"].as_str(), Some("fullgamestate"));
@@ -160,4 +182,15 @@ fn started_sends_one_fullgamestate() {
         panic!("expected GameOutput::Send, got {:?}", outputs[0]);
     };
     assert_eq!(payload["_cmd"].as_str(), Some("fullgamestate"));
+}
+
+#[test]
+fn new_scrambles_the_board_from_the_session_seed() {
+    let game = CrystalGame::new(&MinigameSession::offline("CrystalGame", 1, T1_SEED));
+    let mut expected = Board::solved();
+    expected.press(0, 0);
+    expected.press(6, 6);
+    assert_eq!(game.board, expected);
+    let other = CrystalGame::new(&MinigameSession::offline("CrystalGame", 1, T2_SEED));
+    assert_ne!(other.board, game.board);
 }
