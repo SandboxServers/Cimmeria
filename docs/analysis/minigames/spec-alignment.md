@@ -137,7 +137,9 @@ So the first quarter of the cells, in row-major `x` then `y` order, holds bonus 
 
 **Does the client reproduce anything from `seed`?** No (confirmed). The client renders `gameArray` from `fullgamestate`, and every later change arrives as a message. No `java.util.Random` port is needed for client compatibility.
 
-Under D-MG12 the port draws from one `StdRng::seed_from_u64(session.seed)` for setup, refills and cheats. The original seeded only setup; refills and cheats used `Math.random`, because `doCascade` and both cheat processors force `rng = -1` (confirmed). This is a deliberate and documented divergence that makes REPL transcripts reproducible.
+Under D-MG12 the port draws from one `StdRng` for setup, refills and cheats. The original seeded only setup; refills and cheats used `Math.random`, because `doCascade` and both cheat processors force `rng = -1` (confirmed).
+
+Shipped (authority finding F2): the live game seeds that `StdRng` from OS entropy (`AlignmentGame::new`), so a player cannot predict refills from the ticket's `session.seed`. Only the REPL harness and the golden transcripts use `with_seed` / `create_seeded`, which seed from `session.seed` so transcripts stay reproducible. The other four ports seed from `session.seed`.
 
 ## 4. Difficulty table
 
@@ -320,6 +322,8 @@ else:
 The drop direction therefore rotates 0, 1, 2, 3, 4, 5, 0 once per scored turn. On a cascade step `currentMatches` holds the power-up-expanded set, but on the swap step it holds the flood only (shipped inconsistency). Cells that a swap's power-ups add are therefore never scored; cells that a cascade's power-ups add are.
 
 **`doCascade` gravity**, direction `d = dropDirection[dropIndex]`. Each direction walks lines of cells. Within a line, every non-empty cell after the first gap slides by the number of gaps seen so far, and `{moveTotal, x, y, type}` is pushed at the cell's *original* position.
+
+Re-run locator for the listing: `python -I tools/minigame-swf/list_functions.py <Alignment.gfx|.swf> --function doCascade`, with the output kept outside the repo (D-MG10). The shipped walks are `slide_step` and `gravity` in `alignment/moves_gravity.rs`.
 
 | `d` | Lines walked | One slide step from (x, y) |
 |---|---|---|
@@ -635,5 +639,5 @@ Files:
 4. Resolved (MG-AL3b): not applicable, item cheats are not ported (M8); `activateitemcheat` gets a WARN and no reply. **Cheat 3 with no blockers.** It returns without any message. The client put up its `disable` overlay when it sent the cheat, and it is not clear what removes it; the client may stay locked. The port sends `itemcheatstate` regardless. A lab check is needed once cheats are reachable.
 5. Resolved (MG-AL3b): not applicable, item cheats are not ported (M8); `activateitemcheat` gets a WARN and no reply. **`consUsed` and item validation.** The online path relies on the host (`__mg.minigameValidateItem`) to consume the item. Cimmeria has no item-validation call into the cell yet. AL3 treats a granted `CA` slot as validated. A real consumable spend belongs to the launch-flow and items work (spec-launch-flow section 5).
 6. **The hoisting bug.** Whether board-touching cheats were truly broken online in 2009 needs a run under an AS1 VM; it is inferred from scoping rules only. The port fixes it either way.
-7. **Gravity details for directions 1, 2, 4 and 5.** The section 6 table is a map. AL2 ports the walks line for line from the listing and verifies each with a hand board; any mismatch with the table is a doc fix here.
+7. **Resolved (MG-AL2b):** gravity details for directions 1, 2, 4 and 5. `slide_step` in `alignment/moves_gravity.rs` matches the section 6 table, and `tests_cascade.rs` has one hand-board test per direction (0-5). No mismatch with the table was recorded.
 8. **Activate, Repair and Search as Alignment skins.** The `gameType` strings are the only evidence. Whether the Activate shell's content expects Alignment's goals and timer is a content question for the D-MG3 alias packet.

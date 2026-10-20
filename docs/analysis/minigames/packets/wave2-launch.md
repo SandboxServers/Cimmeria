@@ -133,8 +133,10 @@ Result codes: 0 canceled, 1 victory, 2 failure, 3 interrupted or not started, 4 
   2. `crates/cell-world/src/cell/space_manager/client_move.rs` is 716 lines, over the cap. First move `resolve_recovery_position` (line 620 to its end) unchanged into a new sibling `client_move_recovery.rs` (`impl SpaceManager` block, registered beside `client_move` in the parent `mod.rs`). Then add the gate right after the GM bypass (lines 255-257, `if movement_unrestricted { return self.accept(...) }`) and before the Layer 1 bounds check (259-262):
 
      ```rust
-     if let Some(reason) = movement_lock::check(entity, new_pos, last_valid) {
-         return self.reject_outcome(entity_id, reason, last_valid, space_id, bounds, is_gm);
+     if let Some(anchor) = self.movement_validator.hold_anchor(entity_id, held && !is_gm, last_valid) {
+         if let Some(reason) = movement_lock::check(position, anchor) {
+             return self.reject_outcome(entity_id, reason, last_valid, space_id, bounds, is_gm);
+         }
      }
      ```
 
@@ -144,10 +146,11 @@ Result codes: 0 canceled, 1 victory, 2 failure, 3 interrupted or not started, 4 
      ```rust
      /// Horizontal slack (m) for float noise and the client's last step.
      pub(crate) const HELD_SLACK_M: f32 = 0.5;
-     /// The entity is held in place by the server (a minigame; MG-63b adds the prison boot).
-     pub(crate) fn movement_held(e: &CellEntity) -> bool { e.state_field & BSF_PLAYING_MINIGAME != 0 }
-     /// `Some(MovementLocked)` when held and the x/z displacement from `last_valid` exceeds the slack.
-     pub(crate) fn check(e: &CellEntity, new_pos: [f32; 3], last_valid: [f32; 3]) -> Option<MovementReject>;
+     /// The entity is held in place by the server: a minigame (bit 4) or a movement-only hold (the Prison Boot, MG-63b).
+     pub(crate) fn movement_held(e: &CellEntity) -> bool { e.state_field & BSF_PLAYING_MINIGAME != 0 || e.holds_movement_only_entry() }
+     /// `Some(MovementLocked)` when the x/z displacement of `new_pos` from the hold `anchor` exceeds the slack.
+     /// The caller decides whether the entity is held and exempts game masters.
+     pub(crate) fn check(new_pos: [f32; 3], anchor: [f32; 3]) -> Option<MovementReject>;
      ```
 
      Only x and z count: a held player may still fall or turn. A stun's movement lock (bit 6 alone) is **not** gated here: stuns, knockbacks and roots keep their current paths.
