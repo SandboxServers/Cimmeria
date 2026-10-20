@@ -173,9 +173,7 @@ fn fullgamestate_carries_the_clock_and_no_cheats() {
 
 #[test]
 fn started_sends_one_fullgamestate() {
-    let mut game = CrystalGame {
-        board: Board::solved(),
-    };
+    let mut game = CrystalGame::new(&MinigameSession::offline("CrystalGame", 1, 1));
     let outputs = game.started();
     assert_eq!(outputs.len(), 1);
     let GameOutput::Send(payload) = &outputs[0] else {
