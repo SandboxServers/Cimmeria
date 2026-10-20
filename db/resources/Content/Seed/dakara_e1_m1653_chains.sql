@@ -1,5 +1,5 @@
 -- Dakara_E1 rebuild: mission 1653 "Superweapon" (courtyard, power supplies, radio, Bra'tac).
--- Campaign: docs/analysis/dakara-e1-rebuild/ (packet DK-32a).
+-- Campaign: docs/analysis/dakara-e1-rebuild/ (packets DK-32a and DK-32c).
 -- Chain ID range: 8350-8389 (work-packets.md, C3). Evidence labels: README.md, "Evidence Labels".
 
 SET search_path = resources, pg_catalog;
@@ -21,9 +21,11 @@ VALUES
   (8350, 'accept_mission', 1653, NULL, '{}', 0, 0);
 
 -- Chain 8351 PROJECT_FINAL_RECONSTRUCTION: step 4936 "Get to the Superweapon Courtyard!", enter the region,
--- advance to 4938 and light both power supplies (carrier 6892 at 456 and 463).
+-- advance to 4938, light both power supplies (carrier 6892 at 456 and 463) and the Vocuum pad (carrier 6892 at 457,
+-- DK-32c, D-DK45). The bind rides on this chain because conditions are read before any action runs: a separate chain
+-- gated on 4938 would not fire on the same entry.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (8351, '1653 - Step 4936: enter courtyard, advance to 4938, bind supplies 6892@456 and 6892@463', 'mission', 1653, true, 0);
+VALUES (8351, '1653 - Step 4936: enter courtyard, advance to 4938, bind supplies 6892@456 and 6892@463 and the Vocuum 6892@457', 'mission', 1653, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (8351, 'enter_region', 'Dakara_E1.SuperweaponCourtyard', 'player', false, 0);
@@ -37,7 +39,8 @@ INSERT INTO content_actions (chain_id, action_type, target_id, target_key, param
 VALUES
   (8351, 'advance_step', 1653, '4938', '{}', 0, 0),
   (8351, 'add_dialog_set', 6892, NULL, '{"slot": 456}', 0, 1),
-  (8351, 'add_dialog_set', 6892, NULL, '{"slot": 463}', 0, 2);
+  (8351, 'add_dialog_set', 6892, NULL, '{"slot": 463}', 0, 2),
+  (8351, 'add_dialog_set', 6892, NULL, '{"slot": 457}', 0, 3);
 
 -- Chain 8352 PROJECT_FINAL_RECONSTRUCTION: step 4938, western cannon power supply still open; restore its bind on load.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -93,8 +96,9 @@ VALUES
   (8354, 'remove_dialog_set', 6892, NULL, '{"slot": 456}', 0, 1);
 
 -- Chain 8355 PROJECT_FINAL_RECONSTRUCTION: western supply clicked second (5641 done). Leave 4938 with advance, never objective.
+-- Also unbind the Vocuum (DK-32c) before the advance; removing a bind the player no longer has is harmless.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (8355, '1653 - Step 4938: click western supply second, unbind 6892@456, advance to 4937, radio 5849', 'mission', 1653, true, 0);
+VALUES (8355, '1653 - Step 4938: click western supply second, unbind 6892@456 and 6892@457, advance to 4937, radio 5849', 'mission', 1653, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (8355, 'interact_tag', 'Dakara_E1_PowerSupply1', 'player', false, 0);
@@ -109,8 +113,9 @@ VALUES
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
   (8355, 'remove_dialog_set', 6892, NULL, '{"slot": 456}', 0, 0),
-  (8355, 'advance_step', 1653, '4937', '{}', 0, 1),
-  (8355, 'display_radio_dialog', 5849, NULL, '{}', 0, 2);
+  (8355, 'remove_dialog_set', 6892, NULL, '{"slot": 457}', 0, 1),
+  (8355, 'advance_step', 1653, '4937', '{}', 0, 2),
+  (8355, 'display_radio_dialog', 5849, NULL, '{}', 0, 3);
 
 -- Chain 8356 PROJECT_FINAL_RECONSTRUCTION: eastern supply clicked first (5642 still open, so the mission does not complete).
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -132,8 +137,9 @@ VALUES
   (8356, 'remove_dialog_set', 6892, NULL, '{"slot": 463}', 0, 1);
 
 -- Chain 8357 PROJECT_FINAL_RECONSTRUCTION: eastern supply clicked second (5642 done). Leave 4938 with advance, never objective.
+-- Also unbind the Vocuum (DK-32c) before the advance; removing a bind the player no longer has is harmless.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (8357, '1653 - Step 4938: click eastern supply second, unbind 6892@463, advance to 4937, radio 5849', 'mission', 1653, true, 0);
+VALUES (8357, '1653 - Step 4938: click eastern supply second, unbind 6892@463 and 6892@457, advance to 4937, radio 5849', 'mission', 1653, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (8357, 'interact_tag', 'Dakara_E1_PowerSupply2', 'player', false, 0);
@@ -148,8 +154,9 @@ VALUES
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES
   (8357, 'remove_dialog_set', 6892, NULL, '{"slot": 463}', 0, 0),
-  (8357, 'advance_step', 1653, '4937', '{}', 0, 1),
-  (8357, 'display_radio_dialog', 5849, NULL, '{}', 0, 2);
+  (8357, 'remove_dialog_set', 6892, NULL, '{"slot": 457}', 0, 1),
+  (8357, 'advance_step', 1653, '4937', '{}', 0, 2),
+  (8357, 'display_radio_dialog', 5849, NULL, '{}', 0, 3);
 
 -- Chain 8358 PROJECT_FINAL_RECONSTRUCTION: the call is closed (any place; a radio window can be closed after a flap trip).
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
@@ -247,3 +254,40 @@ VALUES
   (8363, 'display_dialog', 5848, NULL, '{}', 0, 0),
   (8363, 'remove_dialog_set', 6775, NULL, '{"slot": 59}', 0, 1),
   (8363, 'complete_mission', 1653, NULL, '{}', 0, 2);
+
+-- Chain 8364 PROJECT_FINAL_RECONSTRUCTION: the relog restore, as 8352 and 8353: the Vocuum (DK-32c, D-DK45) is open at 4938.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (8364, '1653 - Step 4938: restore Vocuum bind 6892@457 on load (objective 5643 open)', 'mission', 1653, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (8364, 'player_loaded', 'Dakara_E1', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (8364, 'world', 61, NULL, 'eq', NULL, 0),
+  (8364, 'step_status', 1653, '4938', 'eq', 'active', 1),
+  (8364, 'objective_status', 1653, '5643', 'neq', 'completed', 2);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (8364, 'add_dialog_set', 6892, NULL, '{"slot": 457}', 0, 0);
+
+-- Chain 8365 PROJECT_FINAL_RECONSTRUCTION, D-DK45: click the Vocuum, objective 5643 (optional). O5643 is optional and the
+-- required 5641 and 5642 are still open at 4938, so this never closes the step (C5 rule 3); the neq completed gate makes
+-- the click one-shot; no dialog, the objective tick is the feedback (D-DK31).
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (8365, '1653 - Step 4938: click the Vocuum, objective 5643 (optional), unbind 6892@457', 'mission', 1653, true, 0);
+
+INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
+VALUES (8365, 'interact_tag', 'Dakara_E1_Vocuum', 'player', false, 0);
+
+INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key, operator, value, sort_order)
+VALUES
+  (8365, 'world', 61, NULL, 'eq', NULL, 0),
+  (8365, 'step_status', 1653, '4938', 'eq', 'active', 1),
+  (8365, 'objective_status', 1653, '5643', 'neq', 'completed', 2);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (8365, 'complete_objective', 1653, '5643', '{}', 0, 0),
+  (8365, 'remove_dialog_set', 6892, NULL, '{"slot": 457}', 0, 1);
