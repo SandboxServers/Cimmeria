@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # The build lane's job classes, for lane.sh (sourced, not run). The PowerShell twin is
 # lane-class.ps1; both read fixtures/lane-classes.tsv, which holds the rules equal. Design:
 # docs/analysis/lane-classes/design.md (§ 4.1-4.6).
