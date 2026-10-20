@@ -51,6 +51,7 @@ This guide gathers every restored system's in-game acceptance test (UAT) into on
 | [Shutdown save](#shutdown-save) | This section (telemetry-gaps packet TG-DB-02) |
 | [Special ammo](#special-ammo) | [ammo session resume, UAT checklist](../analysis/ammo/handoffs/session-resume.md#uat-checklist) |
 | [Debug Area](#debug-area) | [Debug Area ledger](../analysis/debug-area/README.md#packets) (live-client checks: [DA-06](../analysis/debug-area/README.md#da-06-live-client-checks)) |
+| [Minigames](#minigames) | [minigames ledger](../analysis/minigames/README.md), [REPL UAT](../analysis/minigames/uat-repl.md) and [lab recipes](../analysis/minigames/uat-lab.md) |
 | [Dakara_E1](#dakara_e1) | [Dakara_E1 ledger, M1 to M5 checklists](../analysis/dakara-e1-rebuild/README.md#validation-and-uat-gates) |
 | [Beta_Site_Evo_1](#beta_site_evo_1) | [Beta E1 ledger](../analysis/union-beta-e1-continuation/README.md) |
 | [Union Omega](#union-omega) | [UO-U1 packet](../analysis/union-zone-planning/omega-packets/UO-U1.md) and this section |
@@ -1189,6 +1190,34 @@ A GM-only test map, world 1300 `DebugArea` on the Ihpet_Crater_Light map, with o
 **Things only a human can check:** that the map loads and every station stands on the floor, clear of walls (DA-06); the minimap text (DA-U1); the windows each plaza NPC opens; damage numbers and heal bars (DA-U19 to DA-U21); what the gallery and arena NPCs look like (DA-U29, DA-U32, DA-U34); whether a rifleman crouches in cover (DA-U35); the hotbar icons (DA-U42).
 
 Source: [Debug Area plan and ledger](../analysis/debug-area/README.md), [debug-area.md](../content/debug-area.md), [character-creation.md, Starter kit](../gameplay/character-creation.md).
+
+## Minigames
+
+The minigames campaign ([ledger](../analysis/minigames/README.md)) ported CrystalGame, Alignment, GoauldCrystals and ConverseBasicHumanoid to server-validated games beside Livewire, and added six reusable terminals to the Debug Area. Design: [minigame-system.md](../gameplay/minigame-system.md). The terminals: [debug-area.md](../content/debug-area.md#minigame-terminals).
+
+**Status:** Partly works. Livewire is client-proven (12 sessions in the 2026-09-18 playtest). The four new ports have REPL goldens and a loopback-session test and **have never been played in the client**, so a failure in a lab or hand row is a new finding. The five shells (Hack, Activate, Analyze, Bypass, Converse) have no rules in the client; only `Hack` is reachable, from its Debug Area terminal. Mission 582 has no offer path (M10): a GM sets it active.
+
+**Two kinds of UAT.**
+
+- **REPL logic UAT** ([uat-repl.md](../analysis/minigames/uat-repl.md)) runs the server's game code with no client and no lab, so it needs no permission: `pwsh tools/build-lane/lane.ps1 cargo run -p cimmeria-minigame --bin minigame_repl -- --script <file>`.
+- **Lab recipes** ([uat-lab.md](../analysis/minigames/uat-lab.md)) drive the live client. **Ask the owner before any lab row and wait for a yes**: lab input hooks swallow the owner's own mouse clicks, and another session may hold the lease (D-MG16). The recipes use the ids R1 to R8 on that page.
+
+**Prerequisites:** a GM account for every row but MG-U1; a lab lease for the rows marked ask first.
+
+| # | Do | Expect | Notes / known issues |
+|---|---|---|---|
+| MG-U1 | Run every golden for every game with the REPL command above (the per-game script list is in uat-repl.md) | Each transcript matches its golden; every client `victory` on a server-validated game is refused with a WARN and no result is sent | No client, no ask. The checked-in tests run the same goldens |
+| MG-U2 | Lab recipe R1 (ask first): win the Livewire cellblock pair, chain 1016 then 1017 | The window closes on the win, mission 638 moves to step 2116, the button loses its minigame cursor, you can walk | Livewire regression check |
+| MG-U3 | Lab recipe R3 (ask first): read where the six Debug Area terminals stand, before clicking anything | Each terminal stands on the ground near the plaza's north row (z about -903) and is not in a wall or floating | Open warning: placement is unchecked in the client. Read-only |
+| MG-U4 | Lab recipe R2 (ask first): right-click each terminal (CrystalGame, Alignment, GoauldCrystals, ConverseBasicHumanoid, Livewire), play, then finish or lose | Each window opens on the first click at difficulty 1; a win says "Minigame round trip complete: the server recorded your win." and a loss says "...your loss." (chains 24056 and 24057) | Each terminal's click and game window is unproven in the client. A terminal that shows no cursor is a finding (cursor bit 256 is the only confirmed click path) |
+| MG-U5 | Lab recipe R7 (ask first): at the `Hack` terminal press victory inside 5 s, then wait out 60 s | The early `victory` is refused (server WARN `min_play_time`) and the window stays open; with no press the shell fails by itself at 60 s and says "...your loss." | MG-04 and MG-64 |
+| MG-U6 | Lab recipe R4 (ask first): a GM sets mission 582 active, then right-click Colonel Marsh in world 68 | Chain 24000 launches ConverseBasicHumanoid at difficulty 1; a win runs chain 24001 and the mission advances to step 3274 | No cursor may show on Marsh (step 2307 has no per-player bind), and chain 24000 overlaps Marsh's chain 6512 (allowlist entry stands). A finding only if the click does nothing |
+| MG-U7 | Lab recipe R5 (ask first): a GM grants ability 1327 and then 2089, and the caster uses each | The caster plays ConverseBasicHumanoid at difficulty 1 | No outcome chain by design |
+| MG-U8 | Lab recipe R6 (ask first): Prison Boot, mission 689, abilities 1597 and 1598 | The boot holds its wearer in place; a Livewire win frees them | Movement-only hold. A respawn frees the wearer until the next load (accepted, D-MG22) |
+| MG-U9 | Lab recipe R8 (ask first, needs a server restart): start the server with `CIMMERIA_MINIGAME_START_DIALOG` unset, then set it and restart; do R2 on one terminal each time | Off: the window opens at once. On: the pre-game dialog opens first; Play opens the window, Cancel opens nothing and clears the hold | The result decides D-MG11 (default on). Deviation from the original: the hold flags are set at launch, not when the dialog opens |
+| MG-U10 | Play CrystalGame and leave it idle, no moves | The game ends in defeat after 60 s | Known: an idle CrystalGame player loses after 60 s |
+
+Not run by hand: `processreset` is refused in Alignment and GoauldCrystals (a deviation from the original, which allowed it; Livewire still accepts it), so it is covered by the REPL goldens only. The social layer (spectate, help, contacts) is not built (D-MG4).
 
 ## Dakara_E1
 

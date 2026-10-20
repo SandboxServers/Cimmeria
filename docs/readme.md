@@ -38,8 +38,8 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | Python game logic scripts | 164 |
 | Database rows (game data) | 112,626 |
 | Abilities / Items / Missions / Effects | 1,887 / 6,060 / 1,041 / 3,217 |
-| Documentation files | <!-- gen:docs-md-count -->1,291<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
-| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->15,640<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,546<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->13,133<!-- /gen:tests-ci-gated --> gated in CI) |
+| Documentation files | <!-- gen:docs-md-count -->1,293<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->15,647<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,547<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->13,140<!-- /gen:tests-ci-gated --> gated in CI) |
 | Live-DB regression guards | <!-- gen:tests-live-db -->2,231<!-- /gen:tests-live-db --> |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
@@ -240,7 +240,7 @@ Per-system breakdowns of game mechanics, derived from RE analysis, entity defini
 | [crafting-system.md](gameplay/crafting-system.md) | Blueprints, material requirements, crafting stations, 499 recipes | Complete |
 | [mission-system.md](gameplay/mission-system.md) | Quest objectives, step advancement, rewards, mission scripts | Complete |
 | [gate-travel.md](gameplay/gate-travel.md) | Stargate dialing, 29 defined gates, zone transitions | Complete |
-| [minigame-system.md](gameplay/minigame-system.md) | 10 minigames (3 implemented, 7 remaining), lockpicking, hacking, etc. | Complete |
+| [minigame-system.md](gameplay/minigame-system.md) | 10 minigame types (5 server-validated games, 5 client-declared shells), lockpicking, hacking, etc. | Complete |
 | [organization-system.md](gameplay/organization-system.md) | Guilds/organizations, ranks, permissions, roster management | Complete |
 | [group-system.md](gameplay/group-system.md) | Party formation, loot rules, group chat | Complete |
 | [contact-list.md](gameplay/contact-list.md) | Contact list management, named lists, flags, event notifications | Complete |
