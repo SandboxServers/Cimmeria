@@ -79,6 +79,55 @@ async fn minigame_result_victory_fires_on_victory_chains() {
     }
 }
 
+/// MG-06 / D-MG15: every result code releases the minigame hold, including
+/// the launch-failure and expiry code 3. Revert: drop the
+/// `release_minigame_hold` call from `handle_minigame_result` and the bits
+/// stay set for every code.
+#[tokio::test]
+async fn every_minigame_result_code_releases_the_hold() {
+    use cimmeria_wire::state_field::{BSF_MOVEMENT_LOCK, BSF_PLAYING_MINIGAME};
+    const BOTH: u32 = BSF_PLAYING_MINIGAME | BSF_MOVEMENT_LOCK;
+
+    for code in 0u8..=4 {
+        let mut mgr = SpaceManager::new(1);
+        mgr.parse_spaces_xml(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" Instanced="false" MinX="-800" MaxX="800" MinY="-800" MaxY="800" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.create_startup_spaces(
+            r#"<?xml version="1.0"?><Spaces><Space WorldName="Castle" /></Spaces>"#,
+        )
+        .unwrap();
+        mgr.create_entity(1, "Castle", [0.0; 3], [0.0; 3]).unwrap();
+        mgr.get_entity_mut(1).unwrap().is_player = true;
+        mgr.connect_entity(1);
+        let (tx, mut rx) = mpsc::channel(8);
+        cimmeria_cell_world::cell::minigame_hold::hold_for_minigame(1, &tx, &mut mgr).await;
+        assert_eq!(mgr.get_entity(1).unwrap().state_field & BOTH, BOTH);
+        while rx.try_recv().is_ok() {}
+
+        handle_base_message(
+            BaseToCellMsg::MinigameResult {
+                entity_id: 1,
+                result_code: code,
+                on_victory_chains: vec![],
+                on_failure_chains: vec![],
+            },
+            &tx,
+            &mut mgr,
+            &ChainEngine::new(),
+            &[],
+        )
+        .await;
+
+        assert_eq!(
+            mgr.get_entity(1).unwrap().state_field & BOTH,
+            0,
+            "result code {code} must release the hold"
+        );
+    }
+}
+
 /// Non-victory results must not fire `on_victory_chains`.
 ///
 /// Parameterised over the two real non-victory codes. The fixture used to

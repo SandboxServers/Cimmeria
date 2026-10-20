@@ -40,6 +40,9 @@ pub(super) async fn cancel_minigame(
     );
 }
 
+/// Result code 3: interrupted or never started (the minigame result table).
+const RESULT_NOT_STARTED: u8 = 3;
+
 /// Player values the cell reads for the SWF's `joinOK` (contract C3).
 #[derive(Debug, Clone, Copy)]
 pub(super) struct MinigamePlayerParams {
@@ -66,6 +69,7 @@ pub(super) async fn start_minigame(
     minigame_registry: &Option<crate::minigame::SessionRegistry>,
     minigame_external_host: &str,
     minigame_external_port: u16,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
 ) {
     let player_label = entity_name_for(connected, entity_to_addr, entity_id);
     tracing::info!(
@@ -100,7 +104,15 @@ pub(super) async fn start_minigame(
                 reason = "no_client_addr",
                 "Minigame not started: the player has no client address, so no session was registered"
             );
-            send_launch_failure(entity_id, transport, connected, entity_to_addr).await;
+            send_launch_failure(
+                entity_id,
+                true,
+                transport,
+                connected,
+                entity_to_addr,
+                cell_tx,
+            )
+            .await;
             return;
         }
         let seed = rand::random::<u32>();
@@ -165,7 +177,15 @@ pub(super) async fn start_minigame(
                 reason = "register_refused",
                 "Failed to register minigame session (duplicate?)"
             );
-            send_launch_failure(entity_id, transport, connected, entity_to_addr).await;
+            send_launch_failure(
+                entity_id,
+                false,
+                transport,
+                connected,
+                entity_to_addr,
+                cell_tx,
+            )
+            .await;
         }
     } else {
         tracing::warn!(
@@ -175,16 +195,60 @@ pub(super) async fn start_minigame(
             reason = "minigame_server_disabled",
             "Minigame not started: the minigame server is disabled"
         );
-        send_launch_failure(entity_id, transport, connected, entity_to_addr).await;
+        send_launch_failure(
+            entity_id,
+            true,
+            transport,
+            connected,
+            entity_to_addr,
+            cell_tx,
+        )
+        .await;
     }
 }
 
-async fn send_launch_failure(
+/// Tell the player the launch failed and, when `free_player`, send the cell a
+/// result 3 so it drops the BSF_PlayingMinigame hold it took at launch
+/// (D-MG15). Without it a failed launch would leave the player locked.
+///
+/// A duplicate-registration refusal passes `free_player = false`: the player
+/// already has a running board, so a result here would free that game's hold.
+pub(super) async fn send_launch_failure(
     entity_id: u32,
+    free_player: bool,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
 ) {
+    if free_player {
+        if let Some(cell_tx) = cell_tx {
+            if let Err(e) = cell_tx
+                .send(BaseToCellMsg::MinigameResult {
+                    entity_id,
+                    result_code: RESULT_NOT_STARTED,
+                    on_victory_chains: Vec::new(),
+                    on_failure_chains: Vec::new(),
+                })
+                .await
+            {
+                tracing::error!(
+                    entity_id,
+                    entity_name = entity_name_for(connected, entity_to_addr, entity_id),
+                    error = %e,
+                    reason = "cell_channel_closed",
+                    "Minigame launch failure not reported: the player keeps the minigame hold until the cell restarts"
+                );
+            }
+        } else {
+            tracing::warn!(
+                entity_id,
+                entity_name = entity_name_for(connected, entity_to_addr, entity_id),
+                reason = "no_cell_channel",
+                "Minigame launch failure not reported: no cell channel, the player keeps the minigame hold"
+            );
+        }
+    }
     let args = serialize_on_player_communication(
         "SYSTEM",
         0,
@@ -338,6 +402,7 @@ mod tests {
             &minigame_registry,
             "203.0.113.1",
             9339,
+            &None,
         )
         .await;
         registry
@@ -399,6 +464,7 @@ mod tests {
             &configured,
             "203.0.113.1",
             9339,
+            &None,
         )
         .await;
         assert_eq!(transport.drain().len(), 1, "first click launches Livewire");
@@ -416,6 +482,7 @@ mod tests {
             &configured,
             "203.0.113.1",
             9339,
+            &None,
         )
         .await;
         assert_eq!(registry.session_count().await, 1);
@@ -437,6 +504,119 @@ mod tests {
             cimmeria_mercury::encryption::EncryptionVersion::V1,
         );
         assert_eq!(sent[0], expected, "refused click uses CHAN_FEEDBACK");
+    }
+
+    /// MG-06: the cell took the minigame hold when it sent StartMinigame, so a
+    /// launch the base cannot carry out must send result 3 back or the player
+    /// stays locked with BSF_PlayingMinigame set.
+    #[tokio::test]
+    async fn launch_failure_with_server_disabled_frees_the_player() {
+        let addr: SocketAddr = "10.0.0.5:5000".parse().unwrap();
+        let transport = Arc::new(TestTransport::new());
+        let connected = Arc::new(Mutex::new(HashMap::from([(
+            addr,
+            test_default_connected_client_state(),
+        )])));
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(77u32, addr)])));
+        let (cell_tx, mut cell_rx) = mpsc::channel(2);
+
+        start_minigame(
+            77,
+            1,
+            "Livewire".into(),
+            1,
+            vec![],
+            vec![],
+            TEST_PARAMS,
+            &(transport.clone() as Arc<dyn Transport>),
+            &connected,
+            &entity_to_addr,
+            &None,
+            "203.0.113.1",
+            9339,
+            &Some(cell_tx),
+        )
+        .await;
+
+        assert_eq!(transport.send_count_to(addr), 1, "feedback line still sent");
+        assert!(matches!(
+            cell_rx.try_recv(),
+            Ok(BaseToCellMsg::MinigameResult {
+                entity_id: 77,
+                result_code: 3,
+                ..
+            })
+        ));
+    }
+
+    /// No client address: the same free-the-player result.
+    #[tokio::test]
+    async fn launch_failure_without_client_addr_frees_the_player() {
+        let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
+        let connected = Arc::new(Mutex::new(HashMap::new()));
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::new()));
+        let (cell_tx, mut cell_rx) = mpsc::channel(2);
+
+        start_minigame(
+            77,
+            1,
+            "Livewire".into(),
+            1,
+            vec![],
+            vec![],
+            TEST_PARAMS,
+            &transport,
+            &connected,
+            &entity_to_addr,
+            &Some(SessionRegistry::new()),
+            "203.0.113.1",
+            9339,
+            &Some(cell_tx),
+        )
+        .await;
+
+        assert!(matches!(
+            cell_rx.try_recv(),
+            Ok(BaseToCellMsg::MinigameResult { result_code: 3, .. })
+        ));
+    }
+
+    /// A duplicate refusal must not send result 3: the first board is still
+    /// running, and the cell would free its hold.
+    #[tokio::test]
+    async fn duplicate_refusal_does_not_free_the_running_games_hold() {
+        let addr: SocketAddr = "10.0.0.5:5000".parse().unwrap();
+        let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
+        let connected = Arc::new(Mutex::new(HashMap::from([(
+            addr,
+            test_default_connected_client_state(),
+        )])));
+        let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(77u32, addr)])));
+        let registry = Some(SessionRegistry::new());
+        let (cell_tx, mut cell_rx) = mpsc::channel(2);
+        for _ in 0..2 {
+            start_minigame(
+                77,
+                1,
+                "Livewire".into(),
+                1,
+                vec![],
+                vec![],
+                TEST_PARAMS,
+                &transport,
+                &connected,
+                &entity_to_addr,
+                &registry,
+                "203.0.113.1",
+                9339,
+                &Some(cell_tx.clone()),
+            )
+            .await;
+        }
+        assert!(
+            cell_rx.try_recv().is_err(),
+            "no result for a refused duplicate"
+        );
     }
 
     #[tokio::test]

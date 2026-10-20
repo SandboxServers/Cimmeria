@@ -321,6 +321,7 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
                 ctx.minigame_registry,
                 ctx.minigame_external_host,
                 ctx.minigame_external_port,
+                ctx.cell_tx,
             )
             .await
         }
@@ -585,6 +586,7 @@ pub(super) async fn start_minigame(
     minigame_registry: &Option<crate::minigame::SessionRegistry>,
     minigame_external_host: &str,
     minigame_external_port: u16,
+    cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
 ) {
     minigame::start_minigame(
         entity_id,
@@ -600,6 +602,7 @@ pub(super) async fn start_minigame(
         minigame_registry,
         minigame_external_host,
         minigame_external_port,
+        cell_tx,
     )
     .await;
 }

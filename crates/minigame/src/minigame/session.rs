@@ -8,8 +8,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
+use cimmeria_wire::cell::messages::CellToBaseMsg;
 use rand::RngExt;
-use tokio::sync::{watch, Mutex};
+use tokio::sync::{mpsc, watch, Mutex};
 use tokio::time::Instant;
 
 pub use super::session_claim::ClaimRejection;
@@ -306,14 +307,50 @@ impl SessionRegistry {
     /// Drop every registered-but-never-connected session older than `ttl`.
     /// Returns the evicted entity ids.
     pub async fn expire_pending(&self, ttl: Duration) -> Vec<u32> {
+        self.expire_pending_sessions(ttl)
+            .await
+            .into_iter()
+            .map(|(entity_id, _)| entity_id)
+            .collect()
+    }
+
+    /// [`Self::expire_pending`], with each evicted session's ticket so the
+    /// caller can report it to the cell.
+    pub async fn expire_pending_sessions(&self, ttl: Duration) -> Vec<(u32, String)> {
         let mut inner = self.inner.lock().await;
         expire_pending_locked(&mut inner, ttl)
     }
 
-    /// Spawn the background expiry sweep. Called once from
-    /// [`crate::minigame::server::run`]; the task lives as long as the
-    /// process.
+    /// Spawn the background expiry sweep without reporting to the cell. Tests
+    /// that only care about registry state use this; the server uses
+    /// [`Self::spawn_sweep_reporting`].
     pub fn spawn_sweep(&self, ttl: Duration, interval: Duration) {
+        self.spawn_sweep_inner(ttl, interval, None);
+    }
+
+    /// Spawn the background expiry sweep and report every evicted session to
+    /// the cell as result 3 (D-MG15). The cell took the minigame hold when it
+    /// launched, and a session whose SWF never connected has no connection
+    /// task to send the result, so without this report the player stays
+    /// locked with BSF_PlayingMinigame set.
+    ///
+    /// Called once from [`crate::minigame::server::run`]; the task lives as
+    /// long as the process.
+    pub fn spawn_sweep_reporting(
+        &self,
+        ttl: Duration,
+        interval: Duration,
+        result_tx: mpsc::Sender<CellToBaseMsg>,
+    ) {
+        self.spawn_sweep_inner(ttl, interval, Some(result_tx));
+    }
+
+    fn spawn_sweep_inner(
+        &self,
+        ttl: Duration,
+        interval: Duration,
+        result_tx: Option<mpsc::Sender<CellToBaseMsg>>,
+    ) {
         let registry = self.clone();
         tokio::spawn(async move {
             let mut ticker = tokio::time::interval(interval);
@@ -323,7 +360,13 @@ impl SessionRegistry {
             ticker.tick().await;
             loop {
                 ticker.tick().await;
-                registry.expire_pending(ttl).await;
+                let expired = registry.expire_pending_sessions(ttl).await;
+                let Some(result_tx) = &result_tx else {
+                    continue;
+                };
+                for (entity_id, ticket) in expired {
+                    report_expired(result_tx, entity_id, ticket).await;
+                }
             }
         });
     }
@@ -557,7 +600,11 @@ impl SessionRegistry {
 /// Split out so [`SessionRegistry::register`] can sweep inside the lock it
 /// already holds without re-entering `Mutex::lock` (which would deadlock on
 /// the non-reentrant `tokio::sync::Mutex`).
-fn expire_pending_locked(inner: &mut SessionRegistryInner, ttl: Duration) -> Vec<u32> {
+///
+/// The inline call from `register` discards the evicted list on purpose: that
+/// `register` is a new launch for the same entity, so the cell's hold is still
+/// wanted and the new board's own result releases it.
+fn expire_pending_locked(inner: &mut SessionRegistryInner, ttl: Duration) -> Vec<(u32, String)> {
     let now = Instant::now();
     inner.boards.retain(|_, board| !board.is_expired(now));
     let expired: Vec<u32> = inner
@@ -567,9 +614,11 @@ fn expire_pending_locked(inner: &mut SessionRegistryInner, ttl: Duration) -> Vec
         .map(|(id, _)| *id)
         .collect();
 
+    let mut evicted = Vec::with_capacity(expired.len());
     for entity_id in &expired {
         if let Some(session) = inner.sessions.remove(entity_id) {
             inner.boards.remove(entity_id);
+            evicted.push((*entity_id, session.ticket.clone()));
             // info!, not warn!: an abandoned launch is a player closing a
             // window, not a server fault. It is logged at all because a
             // "minigame won't start" report correlates directly with
@@ -583,7 +632,32 @@ fn expire_pending_locked(inner: &mut SessionRegistryInner, ttl: Duration) -> Vec
             );
         }
     }
-    expired
+    evicted
+}
+
+/// Result code 3: interrupted or never started.
+const RESULT_NOT_STARTED: u8 = 3;
+
+/// Tell the cell an expired session will never run, so it drops the hold.
+async fn report_expired(result_tx: &mpsc::Sender<CellToBaseMsg>, entity_id: u32, ticket: String) {
+    if let Err(e) = result_tx
+        .send(CellToBaseMsg::MinigameResult {
+            entity_id,
+            ticket,
+            result_code: RESULT_NOT_STARTED,
+            on_victory_chains: Vec::new(),
+            on_failure_chains: Vec::new(),
+            notify_client: true,
+        })
+        .await
+    {
+        tracing::error!(
+            entity_id, // nt:id-only the session is already evicted, so its player name is gone
+            error = %e,
+            reason = "result_channel_closed",
+            "Minigame: expiry report failed, the player keeps the minigame hold until the cell restarts"
+        );
+    }
 }
 
 /// Generate a 64-character hex ticket (matching C++ implementation).
