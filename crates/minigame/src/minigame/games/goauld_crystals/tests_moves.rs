@@ -293,6 +293,27 @@ fn reds_to_revert_follows_a_tracked_destination_cell() {
 }
 
 #[test]
+fn reds_to_revert_fires_after_a_refused_click() {
+    let mut game = started();
+    // (0,0) is green and (3,3) is a distant green: the pair is refused, and
+    // step 9 still turns the tracked green (1,1) back to red.
+    game.reds_to_revert = Some(vec![(1, 1)]);
+    click(&mut game, 0.0, 0.0);
+    let out = click(&mut game, 3.0, 3.0);
+    assert_eq!(
+        tags(&out),
+        [
+            "selectedupdate -1,-1",
+            "triggersound invalid",
+            "powerstatus (0,0) (0,1)",
+            "fullgamestate",
+        ]
+    );
+    assert_eq!(game.board[1][1].color, 4);
+    assert_eq!(game.reds_to_revert, None);
+}
+
+#[test]
 fn move_that_powers_the_finish_wins_and_then_ignores_input() {
     let mut game = started();
     // Transcript A's removal, done without the item cheat: the red finish

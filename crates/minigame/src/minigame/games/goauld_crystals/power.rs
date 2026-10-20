@@ -44,7 +44,12 @@ pub(super) fn update_power(board: &mut [Vec<Cell>], start: Goal) -> Vec<(usize, 
 }
 
 /// The in-bounds 4-neighbours of `(x, y)` in the order `x-1, y-1, x+1, y+1`.
-fn neighbours(x: usize, y: usize, w: usize, h: usize) -> impl Iterator<Item = (usize, usize)> {
+pub(super) fn neighbours(
+    x: usize,
+    y: usize,
+    w: usize,
+    h: usize,
+) -> impl Iterator<Item = (usize, usize)> {
     let left = x.checked_sub(1).map(|nx| (nx, y));
     let up = y.checked_sub(1).map(|ny| (x, ny));
     let right = (x + 1 < w).then_some((x + 1, y));
@@ -59,7 +64,6 @@ pub(super) fn finish_powered(board: &[Vec<Cell>], finish: Goal) -> bool {
 }
 
 /// Spec 5 `powerstatus`: `powerArray` lists the powered cells in visit order.
-#[allow(dead_code)] // first sent by the MG-GC2 playfieldclick path; tested here
 pub(super) fn build_power_status(visited: &[(usize, usize)]) -> HashMap<String, SfsValue> {
     let cells = visited.iter().map(|&(x, y)| {
         SfsValue::Object(sfs_vars! {

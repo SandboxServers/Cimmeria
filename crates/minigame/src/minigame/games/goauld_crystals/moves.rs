@@ -5,7 +5,7 @@
 
 use std::collections::{HashMap, VecDeque};
 
-use super::power::{build_power_status, finish_powered, update_power};
+use super::power::{build_power_status, finish_powered, neighbours, update_power};
 use super::{Cell, GoauldCrystalsGame};
 use crate::minigame::game::GameOutput;
 use crate::minigame::protocol::SfsValue;
@@ -86,6 +86,9 @@ impl GoauldCrystalsGame {
             self.selected = None;
             out.push(selected_update(None));
             out.push(trigger_sound("invalid"));
+            // Step 9 runs after every click that reaches step 8, so a refused
+            // click also reverts. The same cell is passed twice: nothing moves.
+            self.revert_reds(sel, sel, &mut out);
             return out;
         }
         self.swap_cells(sel, dst);
@@ -186,8 +189,9 @@ impl GoauldCrystalsGame {
 
     /// Spec 5 step 9 (ability 13): the tracked reds follow the swap just
     /// made, then every tracked cell that is still green turns back to red.
-    /// Called only when the move did not win, so the finish is unpowered and
-    /// the revert (which only removes green) cannot win either.
+    /// Called after any click that reaches step 8 and did not win. A refused
+    /// click passes the same cell twice, so no tracked cell moves. The revert
+    /// only removes green, so it cannot create a win.
     fn revert_reds(&mut self, a: Pos, b: Pos, out: &mut Vec<GameOutput>) {
         let Some(tracked) = self.reds_to_revert.take() else {
             return;
@@ -232,16 +236,6 @@ fn read_coordinate(params: &HashMap<String, SfsValue>, key: &str, limit: usize) 
     }
     let index = value as usize;
     (index < limit).then_some(index)
-}
-
-/// The in-bounds 4-neighbours of `(x, y)` in the order `x-1, y-1, x+1, y+1`.
-/// The same order as the power search in `power.rs`.
-fn neighbours(x: usize, y: usize, w: usize, h: usize) -> impl Iterator<Item = Pos> {
-    let left = x.checked_sub(1).map(|nx| (nx, y));
-    let up = y.checked_sub(1).map(|ny| (x, ny));
-    let right = (x + 1 < w).then_some((x + 1, y));
-    let down = (y + 1 < h).then_some((x, y + 1));
-    [left, up, right, down].into_iter().flatten()
 }
 
 /// `squarestate {xPos, yPos, info}` for one cell.
