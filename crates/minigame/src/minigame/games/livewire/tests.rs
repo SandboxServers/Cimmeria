@@ -270,3 +270,23 @@ fn processmove_unknown_wire_warns_with_player_identity() {
         "the rejection carries its reason: {event:#?}"
     );
 }
+
+#[test]
+fn refusals_are_logged_only_up_to_the_cap() {
+    // Counted through `refuse`, so the WARN rows are what the gate limits.
+    use crate::test_support::LogCapture;
+    use tracing::Level;
+
+    let capture = LogCapture::install();
+    let mut g = LivewireGame::new(&make_session(2, 30, 5));
+    g.init_game();
+    for _ in 0..40 {
+        assert!(g.message("unknown_command", &HashMap::new()).is_empty());
+    }
+    let rows = capture
+        .all()
+        .iter()
+        .filter(|row| row.level == Level::WARN && row.message_contains("Livewire: unknown command"))
+        .count();
+    assert_eq!(rows, REFUSAL_LOG_CAP as usize);
+}

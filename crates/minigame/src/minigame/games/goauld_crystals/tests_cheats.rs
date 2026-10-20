@@ -457,3 +457,18 @@ async fn a_removal_cheat_moves_the_deadline() {
     assert_eq!(game.outcome, None, "{:?}", names(&out));
     assert_eq!(game.time_remaining, 21.0);
 }
+
+/// An ability cheat starts the clock, so it counts as the first click: the
+/// pre-click limit must not end the game 60 s after the join while the clock
+/// has run only 5 s. Bit 10 is spent with no board change.
+/// Removing the `clicked = true` from `start_clock` makes this fail.
+#[tokio::test(start_paused = true)]
+async fn an_ability_cheat_before_the_first_click_stops_the_pre_click_limit() {
+    let mut game = started(ALL_BITS);
+    tokio::time::advance(Duration::from_secs(55)).await;
+    cheat(&mut game, 10.0);
+    tokio::time::advance(Duration::from_secs(6)).await;
+    let out = game.tick();
+    assert_eq!(game.outcome, None, "{:?}", names(&out));
+    assert_ne!(names(&out), ["failure", "Failure"]);
+}

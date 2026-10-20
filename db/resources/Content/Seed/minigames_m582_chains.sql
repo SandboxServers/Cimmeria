@@ -1,6 +1,6 @@
 -- Minigames wave 6 (MG-61): mission 582 step 2307, Converse with Marsh.
 -- Plan: docs/analysis/minigames/packets/wave6-7-content-close.md (MG-61), decision D-MG22.
--- Block 24000-24001 (C7 reserves 24000-24009 for minigame content; 24020-24029 stay unused).
+-- Block 24000-24001 (C7 reserves 24000-24049 for minigame content; 24002-24049 stay unused).
 -- Provenance: mission 582 step 2307 (objective 2675, next step 3274) is RESTORED_SOURCE in
 -- mission_steps.sql and mission_objectives.sql. step_enabled is set to true to match this packet;
 -- no server code reads the flag yet.

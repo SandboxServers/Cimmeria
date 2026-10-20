@@ -84,6 +84,7 @@ impl GoauldCrystalsGame {
     fn start_clock(&mut self, out: &mut Vec<GameOutput>) {
         if self.timer_state == 0 {
             self.timer_state = 1;
+            self.clicked = true;
             out.push(GameOutput::Send(self.build_timer_update()));
         }
     }

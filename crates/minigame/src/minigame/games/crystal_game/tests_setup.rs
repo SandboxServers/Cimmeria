@@ -33,7 +33,7 @@ fn unsolved(board: &Board) -> usize {
 /// Finds the seeds for the T1 and T2 goldens. Run once, by hand:
 /// `pwsh tools/build-lane/lane.ps1 cargo nextest run -p cimmeria-minigame --run-ignored only finds_seed_for_clicks --no-capture`
 #[test]
-#[ignore]
+#[ignore = "one-off seed search; run with --run-ignored only"]
 fn finds_seed_for_clicks() {
     let clicks = |seed: u32| draw_clicks(&mut rng(seed));
     let t1 = (0..100_000u32).find(|&s| clicks(s) == [(0, 0), (6, 6)]);

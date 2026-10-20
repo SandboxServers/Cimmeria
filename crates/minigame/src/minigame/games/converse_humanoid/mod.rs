@@ -53,6 +53,9 @@ const HAND_TIMER: f64 = 6.0;
 /// The longest client command name written to a log row. The client chooses
 /// `cmd`, so an unbounded value would let one connection flood the log.
 const MAX_LOGGED_CMD: usize = 32;
+/// Refusals logged in full before sampling. Past this, one row in every 256
+/// is logged, so a flood of refused frames cannot fill the log.
+const REFUSAL_LOG_CAP: u32 = 16;
 
 /// How the game ended: the player's victory, a defeat (timeout, `failure`), or
 /// the client leaving (`aborted`).
@@ -104,6 +107,8 @@ pub(crate) struct ConverseHumanoidGame {
     tech_competency: u32,
     player_level: u32,
     abilities_mask: u32,
+    /// Every refused command so far, logged or not.
+    refusals: u32,
 }
 
 impl ConverseHumanoidGame {
@@ -142,12 +147,17 @@ impl ConverseHumanoidGame {
             tech_competency: session.tech_competency,
             player_level: session.player_level,
             abilities_mask: session.abilities_mask,
+            refusals: 0,
         }
     }
 
     /// Logs a refused command at WARN with the player's identity and the
     /// `reason` the packet's message rules name. The caller sends nothing.
-    fn reject(&self, cmd: &str, reason: &'static str) -> Vec<GameOutput> {
+    fn reject(&mut self, cmd: &str, reason: &'static str) -> Vec<GameOutput> {
+        self.refusals = self.refusals.saturating_add(1);
+        if self.refusals > REFUSAL_LOG_CAP && !self.refusals.is_multiple_of(256) {
+            return Vec::new();
+        }
         let logged_cmd: String = cmd.chars().take(MAX_LOGGED_CMD).collect();
         tracing::warn!(
             entity_id = self.entity_id,
@@ -156,6 +166,7 @@ impl ConverseHumanoidGame {
             player_name = self.player_name.as_deref(),
             cmd = logged_cmd.as_str(),
             reason,
+            refusals = self.refusals,
             "ConverseBasicHumanoid: command refused"
         );
         Vec::new()

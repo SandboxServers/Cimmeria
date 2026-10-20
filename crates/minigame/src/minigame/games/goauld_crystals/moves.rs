@@ -38,6 +38,7 @@ impl GoauldCrystalsGame {
         let mut out = Vec::new();
         if self.timer_state == 0 {
             self.timer_state = 1;
+            self.clicked = true;
             out.push(GameOutput::Send(self.build_timer_update()));
         }
         self.apply_red_cheats((x, y), &mut out);
