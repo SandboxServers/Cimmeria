@@ -2,7 +2,7 @@
 title: "Consumable via OnItemUse Pattern"
 type: reference
 audience: engineers
-last_updated: 2026-09-28
+last_updated: 2026-10-20
 ---
 
 # Consumable via OnItemUse Pattern
@@ -147,7 +147,7 @@ Every `item_use`-triggered chain in seed data. The content-engine regression lin
 | Chain ID | Item ID | Description | Chain file | Has `remove_item` | Intent |
 |---|---|---|---|---|---|
 | 1034 | 19 | Ambernol vial (mission 639) | `castle_cellblock_chains.sql` | yes | Consumable — correctly removed |
-| 1024 | 3438 | Prison Boots (mission 689 Livewire) | `castle_cellblock_chains.sql` | no (intentional) | Reusable worn equipment |
+| ~~1024~~ | ~~3438~~ | Prison Boots (mission 689 Livewire) | `castle_cellblock_chains.sql` | n/a | Not an `item_use` chain any more: chain 1024 now triggers on `interact_tag 'Cellblock_PrisonBootControl'` (right-click the prop). Item 3438 no longer fires anything |
 | 3021 | 5168 | Radio (bomb defusal step) | `sgc_w1_chains.sql` | no (intentional) | Reusable tool |
 | 3025 | 5168 | Radio (mission complete) | `sgc_w1_chains.sql` | no (intentional) | Reusable tool |
 | 6103 | 2819 | Jaffa Disguise (mission 742) | `harset_goauld_chains.sql` | no (intentional) | Reusable disguise |

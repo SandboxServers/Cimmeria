@@ -2,7 +2,7 @@
 title: "`bStateField` bit map — what the SGW client actually reads"
 type: reference
 audience: engineers
-last_updated: 2026-06-10
+last_updated: 2026-10-20
 ---
 
 # `bStateField` bit map — what the SGW client actually reads
@@ -71,6 +71,31 @@ The actual visual holster mechanism is in the appearance compositor:
 So **holster is a `BeingAppearance` `ComponentList` concern, not a state-flag concern.** To render a player as holstered, omit the weapon visual from `ComponentList`; to render armed, include it. The Cimmeria server tracks this on `CellEntity::weapon_holstered` and filters in `CellEntity::appearance_components()` / `PlayerLoadData::appearance_components()`.
 
 The `BSF_HOLSTER` constant was removed in PR for issues #249 + #333 (consolidated). The dead writes in `use_ability/mod.rs` (clear-on-fire) and `cell_methods/player/world.rs` (clear-on-reload) were removed at the same time — they wrote bit 8 onto the wire, but the client discarded it.
+
+## Who writes `BSF_MOVEMENT_LOCK`
+
+`BSF_MOVEMENT_LOCK` is **ref-counted** on the server (`update_state_flag`): each
+writer sets it once and unsets it once, and the wire bit stays on while any
+writer still holds a reference. A writer that sets it twice, or unsets it
+without having set it, breaks every other writer, so a new writer must pair
+its set with exactly one unset.
+
+| Writer | Where | Notes |
+|---|---|---|
+| Death | `combat/state.rs`, `death/mod.rs` | Set on death, cleared on revive |
+| Stun and other incapacitating holders | `holds_incapacitating_flag` | One reference per holder |
+| Movement-only effect hold | `MovementHold` effect script (`cell-effect-scripts`, `effects/movement_hold.rs`) | Effect 1939 of ability 1597 sets it, effect 1942 of ability 1598 clears it (MG-63b). Chain 1023 launches 1597, so the Prison Boot lock sets the flag through this path today |
+| Ring transport | `ring_transport/dispatch.rs` | Held for the ceremony |
+| Minigame hold | minigame start and end | Held while a minigame is open |
+| `movement_lock` content verb, `client_flag: true` | [`executor/movement_lock.rs`](../../crates/cell-content/src/cell/content/executor/movement_lock.rs) | Counted once on `hold`, cleared on `release` only if that hold set it. **Off in every seed row** (`client_flag: false`) |
+
+The `movement_lock` verb keeps the flag off in the seeds until the lab shows
+what the client does with it (BL-U2, never run): a client that stops sending
+input while the bit is set may also refuse the right-click on the Prison Boot
+Control that releases the hold. Authors turn it on per row with `client_flag`;
+see the [params table](../content/content-engine-vocabulary.md#movement_lock-params).
+The server-side hold needs no client cooperation; the flag only asks an honest
+client to stop sending movement.
 
 ## How to verify a future change
 

@@ -45,6 +45,7 @@ rows because they have different actions.
 
 | Order | Layer | Action | Catches |
 |-------|-------|--------|---------|
+| 0a | **Content hold** (`check_movement_hold`) | reject (`Locked`) | a player pinned by a `movement_lock` hold moving more than 1.0 m horizontally from its fixed anchor. Runs **before** row 0, spends no correction budget and is not counted in `movement_validation_rejects_total` - see [Content movement hold](#content-movement-hold) |
 | 0 | **Minigame hold** (`movement_lock::check`) | reject | a player held by `BSF_PLAYING_MINIGAME` moving more than 0.5 m horizontally from its hold anchor (where the hold found it; reset by an authorized teleport), so small steps cannot add up (`reason=movement_locked`); game masters exempt; a stun's lock alone is not gated |
 | 1 | **Bounds** (`check_bounds`) | reject | NaN / ±∞ / absurd coords, **Z-axis floor-clip** (full X/Y/**Z** AABB test) |
 | 2 | **Navmesh** (`is_position_valid`) | reject | off-walkable-polygon (walls, under-terrain, ceilings); fail-open when no navmesh loaded **or when the world is seeded `navmesh_mode = 'advisory'`** — see [navmesh-containment-modes.md](navmesh-containment-modes.md). Horizontal (X/Z) containment is tight (`agent_radius`-based) in both directions; vertical (Y) containment is asymmetric — up to `JUMP_HEIGHT_TOLERANCE` (4.0 units, physics-derived) *above* the surface so a legitimate jump apex isn't rejected, but only `agent_radius * 2.0` *below* it — see "Jump-height fix" below. |
@@ -263,6 +264,70 @@ and the `.`-console channel gate. The bypass emits a warn-level
 `movement_validation_warns_total{reason="navmesh_gm_bypass"}` counter, so
 it is visible rather than silent.
 
+## Content movement hold
+
+> Added by the cellblock-boot-lock campaign (BL-01..BL-06). Not yet exercised
+> against a real client; see [what is and is not tested](#content-hold-test-status).
+
+A content chain can pin a player to a fixed anchor with the `movement_lock`
+verb ([params](../content/content-engine-vocabulary.md#movement_lock-params)).
+The Cellblock boot lock is the first user: a new character cannot walk away
+from the Prison Boot Control until they win Livewire. The hold is a
+`MovementHold` stored in `CellEntity::extensions` and the gate is
+`SpaceManager::check_movement_hold`
+([client_move_lock.rs](../../crates/cell-world/src/cell/space_manager/client_move_lock.rs)),
+called from `apply_client_position_update_at`.
+
+**Where it sits.** The order inside `apply_client_position_update_at` is:
+
+1. The non-finite reject (always).
+2. The GM bypass (`movement_unrestricted`). `/gmsetfly` therefore frees a stuck
+   player, and completing mission 689 releases the hold through chain 1048.
+3. **The content hold.**
+4. The server hold for a minigame or a movement-only effect (row 0 above).
+5. Layers 1-4.
+
+It sits before the layers on purpose: a held player never reaches the check
+that spends the snap-back budget, so a player who keeps pushing against the
+hold is never "suppressed" into silence and never recovered to a safe point.
+
+| Rule | Value | Why |
+|---|---|---|
+| Slack | `HOLD_RADIUS` = 1.0 u, horizontal (x/z) from the anchor. A move inside falls through to the normal layers. | The player can turn and shuffle without being snapped. Vertical is ignored, so a jump or a fall is not held. |
+| Outcome outside the slack | `ClientMoveOutcome::Locked { anchor, space_id, snap, feedback }`. No position is written, the snap-back budget is untouched. | The same reject-and-snap primitive as every other reject, without its bookkeeping. |
+| Snap throttle | At most one snap per `HOLD_SNAP_INTERVAL` = 500 ms per player. | Each snap is a `TeleportPlayer { position == prev_pos == anchor }`, which the base turns into a database write. |
+| Feedback throttle | The hold `message` repeats at most every `HOLD_FEEDBACK_INTERVAL` = 5 s. The line sent when the hold is taken counts as the first, so a first step does not repeat it at once. | Movement refusals need visible feedback, but a line per packet would flood chat. |
+| Stale hold | The hold records its `space_id`. The first move in a different space removes it and falls through. | GM travel or a world change must not carry a hold into a space it was never taken in. |
+| Persistence | None. A relog rebuilds the entity without the hold and the seed re-applies it. | The mission (689) is the persisted state, not the hold. |
+
+**Telemetry.** A snap (not every refused packet) increments
+`movement_hold_snaps_total{reason="content_hold"}` and writes one INFO row on
+`target: "movement.validation"` with `event = "movement.hold_snap"`. The row
+carries the player and account identity, `space_id`, `world`, the client's
+refused `client_x` / `client_z`, the `anchor_x` / `anchor_z` and
+`reason = "content_hold"`. A hold is a decision the content made, not a
+rejection of bad input, so it is **not** one of the `reason` values of
+`movement_validation_rejects_total` and has no `movement.validation_reject`
+row. The throttled-away packets log nothing.
+
+**Interaction with the Prison Boot effect.** Chain 1023 also launches ability
+1597, whose effect 1939 runs the `MovementHold` effect script (MG-63b): it
+adds a movement-only ledger entry and sets `BSF_MOVEMENT_LOCK`, which row 0
+gates with its own 0.5 m slack measured from where that hold found the player.
+Both holds are live during the boot lock. A move beyond 1.0 m of the content
+anchor is `Locked` first; a move between the older anchor's 0.5 m and the
+content anchor's 1.0 m is refused by row 0 and counted as `movement_locked`.
+The two gates have not been run together against a client (see below).
+
+### Content hold test status
+
+| Covered by a test | Never run |
+|---|---|
+| The gate returns `Locked` outside 1.0 m and falls through inside; a stale-space hold is dropped; the throttles (`tests/movement_validation/locked.rs` in `cell-world`) | A real client walking away from the anchor and being snapped back |
+| The `EntityMove` handler snaps to the anchor, says the line once, and sends nothing on an immediate second move (`base_messages/tests/movement_lock.rs` in `cell`) | Whether the 500 ms snap rate looks smooth or rubber-bands on the client |
+| The `hold` and `release` executor, including the skips, the ref-count and an end-to-end gate check (`executor/tests/movement_lock.rs` in `cell-content`) | Both gates active at once (this hold plus the Prison Boot effect) |
+| The seeded chains 1023, 1025, 1047, 1048 and the prop spawn against the live seed (`chain_replay_tests/mission_689_boot_lock.rs`, `live_db_boot_control_spawn.rs`) | The lab run (BL-U1) that is the ship gate for the campaign |
+
 ## Correction termination (snap-back recovery)
 
 A rejection tells the offending client to snap back to `last_valid` — the
@@ -338,6 +403,9 @@ Defined on `MovementValidator` (see source for full rationale):
 | `TELEPORT_JUMP_UNITS` | `50.0` u | teleport distance gate |
 | `TELEPORT_SPEED_FACTOR` | `10×` | teleport implied-speed gate |
 | `MAX_SNAP_BACK_CORRECTIONS` | `5` | consecutive corrections before the server stops re-issuing them (~0.5 s at the 10 Hz client update rate) |
+| `HOLD_RADIUS` | `1.0` u | content hold: horizontal slack around the fixed anchor |
+| `HOLD_SNAP_INTERVAL` | `500` ms | content hold: minimum gap between snap-backs |
+| `HOLD_FEEDBACK_INTERVAL` | `5` s | content hold: minimum gap between repeats of the hold message |
 
 The client's own hard-snap ceiling (`USGWAvatarFilter::Input`,
 `_DAT_01e69c90 = 2500 u/s`) is the upper bound on what the client

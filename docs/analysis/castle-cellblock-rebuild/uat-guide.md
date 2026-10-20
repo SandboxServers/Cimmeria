@@ -9,7 +9,7 @@ This is the acceptance pass for the Castle Cellblock rebuild. You run it with th
 
 | Packet | What merged | PR |
 |---|---|---|
-| C00 | Prison Boot movement-lock gate at zone entry, cleared by Livewire (mission 689, chains 1022-1025) | #646 |
+| C00 | Prison Boot movement-lock gate at zone entry, cleared by Livewire (mission 689, chains 1022-1025, 1047, 1048; boot-lock rework: the cellblock-boot-lock campaign) | #646 |
 | C01 | Purged the duplicate auto-export; exactly one Prisoner 329 dialog and one Marsh briefing per archetype; Region8 pistol-guard aggro (chain 1008) | #646 |
 | C02 | Chain-replay baseline for 640 / 680 / 681-686 (no behavior change) | #646 |
 | C03 | Stasis Sickness launched on zone load while 639 is uncured (chain 1112); cure path via chain 1034 | #646 |
@@ -104,43 +104,57 @@ Every seed account (`test`, `cady`, `tester`) is access level 2 = GameMaster, so
 
 ## Milestone M1 — Baseline repair (C00, C01, C02, C03)
 
-### T25 — Prison Boot movement lock at zone entry (C00)
+### T25 - Prison Boot hold and right-click release (C00)
 
-**Packets:** C00. **Chains:** 1022, 1023, 1024, 1025. **Mission:** 689 "Prison Boot Lock" (hidden, never shows in the quest log).
+**Packets:** C00, cellblock-boot-lock BL-01..BL-07. **Chains:** 1022, 1023, 1024, 1025, 1047, 1048. **Mission:** 689 "Prison Boot Lock" (hidden, never shows in the quest log). **Companion:** [movement-validation.md](../../architecture/movement-validation.md#content-movement-hold), [movement_lock params](../../content/content-engine-vocabulary.md#movement_lock-params).
 
-**Preconditions:** brand-new character (either archetype except Goa'uld). This is the very first thing that happens, before you can do anything else.
+> **Status: never run.** The server logic is covered by unit and live-DB tests (hold, release, gate, handler, chains 1023/1025/1047/1048, the prop spawn). Nothing here has been seen in a real client. This scenario is the lab gate BL-U1; the client-flag question (BL-U2) is folded into it. The old version of T25 (use the worn boots, item 3438) is gone: item 3438 no longer fires anything.
+
+**Preconditions:** brand-new character, any archetype - **Goa'uld are held too** (owner decision). This is the very first thing that happens, before you can do anything else. Run it twice, once as an ordinary archetype and once as a Goa'uld.
 
 **Steps:**
 
 1. Create a character and enter the world. You spawn in the stasis room at roughly `(-334.23, 73.47, -228.03)`.
-2. Try to walk. Note whether you can.
-3. Open your inventory (`b`) and look at the equipped boots slot. Item 3438 "Prison Boots" should be worn.
-4. Double-click / right-click the worn Prison Boots to use them. Note whether the client offers a "use" action at all for an item in an equipped slot.
-5. If a Livewire minigame opens, complete it.
+2. Read the chat. A system line should appear at once.
+3. Look around the room. A **Prison Boot Control** prop (a Livewire puzzle station, about 1.4 units from you) should stand beside the spawn point, with its nameplate, and glow as interactable.
+4. Walk away from the spawn point. Keep pushing.
+5. Stop pushing and wait ten seconds, then push again.
+6. Right-click the Prison Boot Control. A Livewire game should open.
+7. Lose it on purpose (or close it). Right-click the prop again. It should open again.
+8. Before winning, log out and back in. Walk away again.
+9. Right-click the prop and win Livewire.
+10. Read the chat, then walk away from the spawn point.
+11. Log out and back in after winning. Walk.
 
 **Expected:**
 
-- Mission 689 is accepted server-side on load and stays out of the quest log (`is_hidden = true`).
-- Ability 1597 "Prison Boot" is launched at you on every load until the gate clears.
-- On Livewire victory, ability 1598 fires and mission 689 completes.
-
-**Important caveat before you judge this one.** Effects 1939 (the lock), 1942 (the unlock) and 3081 (the item swap) all have `script_name = NULL` and `pulse_count = 1`, which makes them single-shot and non-pulsing. `register_active_effect` returns early for those *without sending any wire packet at all*. So on the server side, launching 1597 and 1598 is currently a complete no-op: no movement lock, no status icon, no item swap. **The real question this scenario answers is: does the client do anything of its own when the player's boot ability list changes?** If it does not, that is the expected result today and it tells us a follow-up packet needs a server-side movement gate keyed on `mission_status 689 neq completed`. Record what you actually see; do not treat "I could walk" as an automatic fail.
-
-Two things are explicitly unverified and this test is what resolves them:
-
-- Whether the client exposes a "use" action for an item worn in an equipped slot (chain 1024 triggers on `item_use 3438`). If it does not, the fix is swapping chain 1024's trigger to an `interact_tag` on a boot-control-panel spawn — no ability/effect/mission data changes.
-- Whether the item swap to item 5865 renders. Item 5865 is the intended unequippable twin, but **its `name` column is the literal placeholder `NO ITEM NAME`** with the real name sitting in `description`. If the swap ever does fire, you will see an item called "NO ITEM NAME" in your inventory. That is a seed-data defect, not a server bug.
+- Step 2: exactly one SYSTEM line, `Your prison boot is locked to the floor. Right-click the boot control beside you and win the Livewire game to work it loose.`
+- Step 4: you cannot leave. Within about 1 unit of the spawn point you move freely (turn, shuffle); beyond it the server snaps you back to the anchor, at most about twice a second. Your feet may rubber-band; that is expected. The hold line repeats at most once every 5 seconds while you keep pushing, never on every step.
+- Step 5: after you stop, no more snaps and no more lines.
+- Step 6 and 7: the prop is interactable while you are held, and right-clicking it opens Livewire. Losing leaves you held, and the prop works again.
+- Step 8: after the relog you are held again, with the hold line on load. Mission 689 is still not completed.
+- Step 9 and 10: on a win, one SYSTEM line, `The prison boot unlocks. You can move again.`, and you walk freely.
+- Step 11: no hold line, no snap, no Livewire prompt on the prop for a completed mission, no re-accept of 689.
+- The Goa'uld run behaves exactly the same.
 
 **Must NOT happen:**
 
 - Mission 689 appearing in the visible quest log.
 - Any mission feedback for 689 on the client: a "mission accepted" or "mission complete" toast or sound, a tracker entry, a journal flash or an objective popup, either on first load (accept) or on Livewire victory (complete). Since #715 the server sends no mission frames for a hidden mission; if one of these still appears, report it with the time, because it means the client needs one of those frames after all.
+- The hold line on every step, or a snap on every packet (that means the throttles are not working).
+- Being unable to right-click the prop while held. **If this happens it is the BL-U2 finding**: the ability 1597 effect sets the client's movement-lock bit and the client may refuse interaction while it is set. Record exactly what the cursor and the prop do, and stop; do not work around it.
 - The Livewire minigame opening a second time after the gate has cleared (chain 1024 gates on `mission_status 689 neq completed`).
-- Mission 689 being re-accepted on a later login.
+- Mission 689 being re-accepted on a later login, or the hold coming back after the win.
 
-**Relog check:** log out and back in *before* clearing the gate — ability 1597 must be re-launched (`chain 1023` fires on `active`). Log out and back in *after* clearing — 1597 must **not** be re-launched (`completed` stops it). These two are the whole point of the packet.
+**Two holds, one lock.** Chain 1023 launches ability 1597 *and* applies the content hold. Effect 1939 of 1597 also runs the older movement-only hold (0.5 m slack, `BSF_MOVEMENT_LOCK` set on the wire). Moves beyond 1 unit are snapped by the content hold; moves between 0.5 and 1 unit are refused by the older gate and counted as `movement_locked`. Both release on a win (ability 1598 clears the older one). Whether this feels right in a client is part of what this test shows.
 
-**Server evidence:** `logs\content.log`, grep `Content: launched ability` (fields `ability_id=1597`, `chain_id=1023`, and `ability_id=1598`, `chain_id=1025`) and `Content: accepting mission` with `mission_id=689`, `chain_id=1022`. The frame gate logs at DEBUG: in SigNoz, `body CONTAINS 'mission client frames suppressed'` with `mission_id=689` shows `site=accept` on load and `site=complete_mission_direct` on victory (#715).
+**Server evidence:**
+
+- `logs\content.log`, grep `movement_lock.hold`: `decision_outcome=held`, `chain_id=1023` on every load while 689 is not completed. If it says `hold_skipped_no_anchor` the prop is not in the player's space; if `hold_skipped_far_from_anchor` the character spawned more than 3 units from the anchor.
+- grep `movement.hold_snap` (target `movement.validation`): one row per snap, with `client_x/z` and `anchor_x/z`, never faster than 500 ms apart. The counter is `movement_hold_snaps_total{reason="content_hold"}`.
+- grep `movement_lock.release`: `decision_outcome=released`, `chain_id=1025` on the win. A GM-completed mission releases through chain 1048 (silent).
+- grep `Content: launched ability` with `ability_id=1597`, `chain_id=1023` on load and `ability_id=1598`, `chain_id=1025` on the win; `Content: accepting mission` with `mission_id=689`, `chain_id=1022`. The frame gate logs at DEBUG: in SigNoz, `body CONTAINS 'mission client frames suppressed'` with `mission_id=689` shows `site=accept` on load and `site=complete_mission_direct` on victory (#715).
+- `movement_validation_rejects_total` does **not** count content-hold snaps; it counts only the older gate's `movement_locked` rejects.
 
 ### T01 / T02 — Zone entry, mission 622 and Stasis Sickness (C03)
 
@@ -884,7 +898,8 @@ This is not a separate playthrough — it is the discipline of logging out and b
 |---|---|---|
 | 1006 | 622 step 2113 | Frost's dialog binding |
 | 1007 | 622 step 80623 | Guard's dialog binding |
-| 1023 | 689 not completed | Prison Boot lock re-applied |
+| 1023 | 689 not completed | Prison Boot hold re-applied (ability 1597 and the content `movement_lock` hold) |
+| 1047 | 689 not completed | Prison Boot Control click bits (`\|256`, `\|1073741824`) |
 | 1045 | 640 step 2120 | Livewire wrench on the ring switch |
 | 1046 | 640 step 2215 | RingNetwork icon + quest highlight |
 | 1062 | 641 step 2121 | P90 locker highlight |
@@ -1033,7 +1048,7 @@ These are expected absences. Do not file them as bugs from this pass.
 - **GC1c — lockdown VFX, not built.** No energy-field actor and no Kismet event id have been recovered. Sequence 10000 is already bound to the mission-622 stasis door and cannot double as the lockdown route. Dialog 4003 is deliberately not played because it describes a barrier that does not exist. Step 2345's log text still reads "Lockdown!" — that is just the step's text, not a promise of a barrier.
 - **Chain 1153 — mission 680's accept blurb 2308, reserved and not authored.** Held back because its "follow Marsh" text only reads correctly with GC1 in place. GC1 has since merged, so re-adding 1153 is now a small follow-up.
 - **GC3 — mission-completion XP, blocked on design.** No XP is awarded for completing 680 / 681 / 686. The spec's observed 52 XP is an observation, not a DB value; every `reward_xp` is 0 and the formula is unknown.
-- **Effects are inert.** Effects 1634 (Stasis Sickness), 1636 (cure), 1939 (boot lock), 1942 (lock clear) and 3081 (boot item swap) all have `script_name = NULL` and `pulse_count = 1`. `register_active_effect` returns early for non-pulsing effects without sending any wire packet. Server-side, launching any of these abilities is a no-op today. Whether the client renders anything of its own is exactly what T25 and T01 are for.
+- **Effects are mostly inert.** Effects 1634 (Stasis Sickness), 1636 (cure) and 3081 (boot item swap) have `script_name = NULL` and `pulse_count = 1`. `register_active_effect` returns early for non-pulsing effects without sending any wire packet. Server-side, launching any of these abilities is a no-op today. Effects 1939 and 1942 are not inert any more: since MG-63b they run the MovementHold and MovementRelease scripts (see T25). Whether the client renders anything of its own is exactly what T25 and T01 are for.
 - **Objective checkboxes may not tick on implicit completion** — issue **#656**. `advance_step` completes the old step's remaining objectives without emitting `ON_OBJECTIVE_UPDATE`. Affects C05's second objective and mission 688's objective 2734.
 - **`system_message` does not render** — the executor arm is a stub with the wire format unresolved (issue #268). Chain 1013's message 5040 on Region2 entry will not appear.
 - **No ring ceremony on the Cellblock → Castle exit.** Deliberate: neither platform has a wired ring prefab, so chain 1109 does a direct cross-world teleport. Prerelease known issue.
