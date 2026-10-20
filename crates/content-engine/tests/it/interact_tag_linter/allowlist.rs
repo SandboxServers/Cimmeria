@@ -225,4 +225,5 @@ pub(super) fn allowlist(filename: &str, chain_id: i32) -> bool {
         | ("tollana_568_chains.sql", 9001..=9003) // Tollana_Copplemann: per-player bind (2656/4959/6393), not a zone-wide flag
         | ("tollana_568_chains.sql", 9011..=9018) // Tollana_FoodUnit_*: template 421 default INT_MissionWorldObject (1073741824), as Dakara templates 445-448
     ) || super::beta_e1::allowed(filename, chain_id)
+        || super::union_omega::allowed(filename, chain_id)
 }

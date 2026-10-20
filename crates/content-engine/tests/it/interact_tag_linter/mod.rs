@@ -28,6 +28,7 @@ use std::path::PathBuf;
 mod allowlist;
 mod beta_e1;
 mod regions;
+mod union_omega;
 
 /// Resolve the workspace root from the test crate's CARGO_MANIFEST_DIR.
 /// `CARGO_MANIFEST_DIR` is `<workspace>/crates/content-engine`, so two

@@ -158,8 +158,9 @@ mod live_db {
             .iter()
             .filter(|r| r.template_id == AUCTIONEER && r.world_name == "Castle_CellBlock")
             .collect();
-        // Every placement of the template, in any world: the hub's and the
-        // Debug Area plaza's copy (spawn 13012, DA-02), nothing else.
+        // Every placement of the template, in any world: the hub's, the
+        // Debug Area plaza's (13012, DA-02) and the Omega Auction House's
+        // (63819, UO-32), nothing else.
         let mut everywhere: Vec<(i32, &str)> = records
             .iter()
             .filter(|r| r.template_id == AUCTIONEER)
@@ -168,7 +169,11 @@ mod live_db {
         everywhere.sort_unstable();
         assert_eq!(
             everywhere,
-            vec![(AUCTIONEER_SPAWN, "Castle_CellBlock"), (13012, "DebugArea")],
+            vec![
+                (AUCTIONEER_SPAWN, "Castle_CellBlock"),
+                (13012, "DebugArea"),
+                (63819, "Omega_Site"),
+            ],
             "template {} is placed in the hub and the plaza only",
             AUCTIONEER
         );

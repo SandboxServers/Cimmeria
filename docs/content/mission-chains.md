@@ -2051,9 +2051,9 @@ Race gates are D-UB1: Human `archetype gte 1` and `lte 4`, Free Jaffa `eq 7`, As
 
 ### Union Omega (worlds 18 and 80)
 
-**Status:** merged ([#1902](https://github.com/SandboxServers/Cimmeria/pull/1902), [#1908](https://github.com/SandboxServers/Cimmeria/pull/1908), [#1911](https://github.com/SandboxServers/Cimmeria/pull/1911)) and covered by resolve-only and executor-level tests; never walked in a client. The live walk (UO-U1) has not run. Mission 1655 reaches Omega at step S4940 and leaves it at S4942; the Human offer is 1423 and the Free Jaffa offer is 1500. Everything is `CIMMERIA_RECONSTRUCTION`; the decisions behind it are in the [campaign ledger](../analysis/union-zone-planning/omega-work-packets.md#overnight-run-2026-10-1819).
+**Status:** merged ([#1902](https://github.com/SandboxServers/Cimmeria/pull/1902), [#1908](https://github.com/SandboxServers/Cimmeria/pull/1908), [#1911](https://github.com/SandboxServers/Cimmeria/pull/1911)) and covered by resolve-only and executor-level tests; never walked in a client. The live walk (UO-U1) has not run. The hub service chains 63850-63855 (below) are merged on the campaign branch `union-omega/decisions-2026-10-19` and not yet on `main`; they are covered by live-database and executor tests, and no lab UAT has run (UO-U1 § R5 is the owner's and is pending). Mission 1655 reaches Omega at step S4940 and leaves it at S4942; the Human offer is 1423 and the Free Jaffa offer is 1500. Everything is `CIMMERIA_RECONSTRUCTION`; the decisions behind it are in the [campaign ledger](../analysis/union-zone-planning/omega-work-packets.md#overnight-run-2026-10-1819).
 
-Seeds: [arrival](../../db/resources/Content/Seed/union_omega_arrival_chains.sql), [Human](../../db/resources/Content/Seed/union_omega_human_chains.sql), [Free Jaffa](../../db/resources/Content/Seed/union_omega_jaffa_chains.sql), [re-offer](../../db/resources/Content/Seed/union_omega_reoffer_chains.sql). Every delivery chain carries `mission_status 1655 eq active`; every re-offer chain carries `mission_status 1655 eq completed`.
+Seeds: [arrival](../../db/resources/Content/Seed/union_omega_arrival_chains.sql), [Human](../../db/resources/Content/Seed/union_omega_human_chains.sql), [Free Jaffa](../../db/resources/Content/Seed/union_omega_jaffa_chains.sql), [re-offer](../../db/resources/Content/Seed/union_omega_reoffer_chains.sql), [hub services](../../db/resources/Content/Seed/union_omega_services_chains.sql). Every delivery chain carries `mission_status 1655 eq active`; every re-offer chain carries `mission_status 1655 eq completed`.
 
 | Chain | Trigger | World | Effect |
 |---|---|---|---|
@@ -2065,14 +2065,18 @@ Seeds: [arrival](../../db/resources/Content/Seed/union_omega_arrival_chains.sql)
 | 63822 | `dialog_choice 4641` | 80 | `remove_dialog_set`, `complete_mission` 1655, `accept_mission` 1423, `grant_stargate_address` 6 |
 | 63830-63832 | the same three triggers, archetype `eq 7` | 80 | Free Jaffa twin: map 63801, dialog 5025, mission 1500 |
 | 63840-63845 | `player_loaded`, `mission_abandoned`, `dialog_choice`, per faction (63840-63842 Jackson and 1423, 63843-63845 Bra'tac and 1500) | 80 | Re-offer after an abandon; maps 63802 and 63803 (flags 8388608); abandon chains 63841 and 63844 require world 80 |
+| 63850 | `interact_tag UnionOmega_Auctioneer` | 18 | `open_black_market`. A copy of chain 13008 on Omega's tag (`CIMMERIA_RECONSTRUCTION`, D-UO36). The window needs the Cimmeria client patch; the chat line is the first-press feedback |
+| 63851 | `interact_tag UnionOmega_Medic` | 18 | `change_stat` (stat 7, `set_to_max`), then `npc_bark` screen 63905 from "Castle Medic" on `say`. No reward (D-UO37) |
+| 63852-63855 | two `interact_tag` triggers each: the plain and the Adv. guide spot (`UnionOmega_Guide_Biology` / `_AdvBiology`, `_Electronics`, `_Engineering`, `_Physics`) | 18 | `npc_bark` screens 63901-63904 from "SGC Scientist": the Biomedical, Electronics, Power Systems and Materials vendors (D-UO31). Two triggers because `spawnlist.tag` is unique (UO-35 ruling) |
+| 63856-63857 | none | - | Reserved for the inn and battlemaster, never built (UO-36 skipped, D-UO32 (a)) |
 
-The Human gate is archetype `gte 1` and `lte 4`. The tests are `chain_replay_tests::union_omega` in [`crates/cell-content`](../../crates/cell-content/src/cell/content/chain_replay_tests/union_omega/); `executed.rs` there runs the chains through the executor.
+The Human gate is archetype `gte 1` and `lte 4`. The service chains carry no `mission_status` gate and `once` is false: every click answers. The service tests are `live_db_omega_auctioneer_opens_the_black_market`, `live_db_omega_medic_heals_and_speaks`, `live_db_each_omega_guide_speaks_its_specialty` and the seed guards in `arrival.rs` (`live_db_omega_interact_tag_chains_are_services_only`, `live_db_omega_service_tags_name_npcs_with_no_dialog`); the coders ran revert proofs for each packet and the wave reviews checked them (the reviews list two guide proofs and one UO-27 proof as not run). The tests are `chain_replay_tests::union_omega` in [`crates/cell-content`](../../crates/cell-content/src/cell/content/chain_replay_tests/union_omega/); `executed.rs` there runs the chains through the executor. The Asgard hearing chains (63950-63999, UO-41) and the 481 offer (UO-42) are not built: both packets are stubs, and the D-UO34 default (1522 sealed as shipped; Otin does not speak) is what they will follow.
 
 Rules these chains follow:
 
 1. `remove_dialog_set` runs before `add_dialog_set`, because the engine does not dedupe (F3).
 2. `remove_dialog_set` runs before `complete_mission` (F5).
-3. There are no `interact_tag` chains; NPC clicks reach the player's dialog set instead (F4).
+3. Only the hub services (63850-63869) key on `interact_tag`; their NPCs carry no dialog set. Every other Omega NPC click reaches the player's dialog set instead (F4). The guard in `arrival.rs` (UO-24 amended it from "no `interact_tag` chains") fails if an `interact_tag` chain in 63800-63999 falls outside 63850-63869 or keys on a tag outside the service list, and a second test fails if a service-tagged spawn has a dialog set or an `add_dialog_set` binds its template.
 4. No chain calls `complete_objective` on 1655 (F21). S4940 already requires O5647 and O5644, and Omega owns only the S4940 to S4942 move and the S4942 completion.
 
 ---

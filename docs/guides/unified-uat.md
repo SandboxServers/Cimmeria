@@ -1363,7 +1363,7 @@ Logs: `Content: advancing step`, `Content: completing mission` and `chain matche
 
 The induction route through Omega Site (world 18) and the Omega Command Center (world 80): the beam into the Command Center, Jackson's Human offer (mission 1423), Bra'tac's Free Jaffa offer (mission 1500), the re-offer after an abandon, the services and the ambient crowd. Design, decisions and the packet list: [the Union Omega ledger](../analysis/union-zone-planning/omega-work-packets.md); chains: [mission-chains](../content/mission-chains.md#union-omega-worlds-18-and-80).
 
-**Status:** Pending a client run. The code and seeds have merged (PRs #1902, #1908, #1911) and the executor-level tests pass, but no step below has been run in a client. The live walk is packet UO-U1 and it has not run. The lab is shared, so ask the user before using it. The vendor rows (S3) cannot run: the Omega vendors are not built (D-UO8 and D-UO16 are open).
+**Status:** Pending a client run. The induction code and seeds have merged (PRs #1902, #1908, #1911). The hub vendors, trainers, services and the Asgard stores (R5 below) are merged on the campaign branch `union-omega/decisions-2026-10-19` and not yet on `main`. Live-database and executor tests pass, but no step below has been run in a client. The live walk is packet UO-U1 (R1-R5): the owner runs it in the lab and has not yet; agents never use the lab, so there are no results to quote yet (`worknotes/UO-U1-results.md` does not exist). The Asgard rows (A1-A4) need a playable Asgard start, which does not exist (F42).
 
 **Prerequisites:** a server built from `main`, the lab (`lab-uat` skill and [live-research-lab.md](live-research-lab.md)), and four fixtures staged with `server_stage_fixture`: R1 Human (archetype 1-4, mission 1655 `active` at step 4940, in `Omega_Site`), R2 Free Jaffa (archetype 7, same), R3 re-offer (Human, 1655 `completed`, 1423 not held, in `Omega_Site_CmdCenter`) and R4 services (a Human, then a Free Jaffa). The full table is in [UO-U1 § Preparation](../analysis/union-zone-planning/omega-packets/UO-U1.md#preparation-the-lead-before-any-driver). Results go to `omega-packets/worknotes/UO-U1-results.md`, which does not exist yet.
 
@@ -1385,14 +1385,37 @@ The induction route through Omega Site (world 18) and the Omega Command Center (
 | UO-O3 | Abandon 1423 from the mission log, in world 80 | Jackson offers again | `Mission abandoned`, then `fire_mission_abandoned: matched` (63841), then `Content: adding dialog set` (63802) |
 | UO-S1 | Click the banker in the hub | The vault opens on the first click | `bank.banker_interact` span |
 | UO-S2 | Click the Team registrar, then the Command registrar | `CreateTeamWin`, then `CreateCommandWin` | `org.registrar_open` span, twice |
-| UO-S3 | Click each Tau'ri and Jaffa vendor | Not runnable: the vendors are not built | Record NOT RUN |
+| UO-S3 | Click each Tau'ri and Jaffa vendor (R4), then buy one item | The store opens on the first click | Spans `vendor.open_store`, `vendor.purchase`. Selling back is refused by design (S14). The full vendor rows are R5 S12-S13 below |
 | UO-S4 | Click one airman and one Free Jaffa Warrior | A name, no prompt, nothing opens | No `interact:` dialog line for templates 63860 and 63861 |
-| UO-S5 | Read the boot log | The `DB-driven NPC population spawned` count matches the seeds (29 Omega spawns plus the 7 stock hub spawns) | |
+| UO-S5 | Read the boot log | The `DB-driven NPC population spawned` count matches the seeds (99 Omega spawns: 91 in world 18, 8 in world 80; plus the 7 stock hub spawns) | |
 
 Two observations are owed from the executor-level reviews and only a client run can settle them: `interactions_count = 1` on every `Content: adding dialog set` line, and `Content: removing dialog set` before `Content: completing mission`.
 
 Across the whole route, no `Content: completing mission` line for 1655 may appear before UO-H7 (F21).
 
+### R5 hub services (W8, W9 and the Asgard stores)
+
+Run in `Omega_Site` (world 18). No row needs a mission. The points of every NPC, the vendor `buy_count` table and the purchase list are in [UO-U1 § R5](../analysis/union-zone-planning/omega-packets/UO-U1.md#r5-hub-services-w8-w9-and-uo-3740-w11); the spawn id is the entity to click. Stand 3-4 m away and click each NPC once; every row needs visible feedback on that first click. Note the use-prompt icon each NPC shows (D-UO35). A Human covers the SGC wing and the Common Area, a Free Jaffa the Free Jaffa wing; both run S6. **Results: none yet.** Every row is UATPending until the owner runs it; the server side is covered by live-database tests with revert proofs, the client side by nothing.
+
+| # | Do | Expect | Check (exact log text) |
+|---|---|---|---|
+| UO-R5-S6 | Click trainers 63804-63808 as a Human, then as a Free Jaffa | The trainer window opens on the first click and lists the clicker's own tree at all five | INFO target `abilities`, "Sent onTrainerOpen", `event="trainer_open"`, `list_id=1`, `trainer_template_id` = the spawn id; `offered` by archetype: 1 gives 72, 2 gives 64, 3 gives 59, 4 gives 65, 7 gives 51. No WARN `trainer_empty_offering` or `trainer_offered_unbound` |
+| UO-R5-S7 | Click the auctioneer 63819 | Chat: "The auctioneer opens the Black Market. (No window? The Black Market needs the Cimmeria client patch.)"; the window only with the client patch | INFO "fire_interact_tag: matched", `tag=UnionOmega_Auctioneer` (chain 63850); `onBMOpen` in the packet tap. A `bm.open_refused` row within 5 m is a FAIL |
+| UO-R5-S8 | Lose some health if a way exists (no hostile on the hub; check `.help`), click the medic 63818, then click again at full health | Health refills; chat from "Castle Medic": "Your injuries have been seen to, and you are patched up and ready to go." both times | Per click: "fire_interact_tag: matched" `tag=UnionOmega_Medic`; "Content: ChangeStat applied" (`stat_id=7`, `set_to_max=true`, `cur` = `max`, `chain_id=63851`); "Content: npc bark" (`screen_id=63905`, `speaker="Castle Medic"`, `channel=say`). With no way to lose health, grade the refill half BLOCKED |
+| UO-R5-S9 | Die near the Infirmary (BLOCKED if no self-damage command exists, as UO-H9) | Respawn at the Infirmary | INFO target `player.respawn`, `respawner_id=181`, `respawner_name="Omega Infirmary"` (39.00, -44.90, 3.00) |
+| UO-R5-S10 | Click the eight crafting guides (63810-63817) | Chat from "SGC Scientist": "Three vendors sell X Components: Human X Components in the SGC wing, Common X Components in the Common Area, Jaffa X Components in the Free Jaffa wing."; no window | "fire_interact_tag: matched" with the guide's own `tag`, then "Content: npc bark" with the chain (63852-63855) and screen (63901-63904); no `trainer_open` row |
+| UO-R5-S11 | None | The inn and battlemaster were not built (D-UO32 (a)) | Grade N/A; no spawn 63822 or 63823 exists |
+| UO-R5-S12 | Click every vendor in the points table | The store opens on the first click | INFO target `vendor`, "vendor: store opened" (`event=store_opened`), `buy_count` per the vendor table (20 for weapons, crafting and consumables, 18 for Human Armor, 17 / 16 / 14 / 15 for Jaffa Armor T1-T4); span `vendor.open_store`. `sell_count` is 0 for a bag without designs 21, 55 or 3437 |
+| UO-R5-S13 | Buy the six items in the purchase table (Human: AR 21 Assault Rifle 1 000, BDU Boots 100, Health Slappack TC1 25, BMAS-5 Field Crafting Tool 125; Free Jaffa: Serpent Staff 200, Standard Boots 100) | Each item lands in the bag; naquadah drops by its price | INFO "vendor: transaction committed", `action=buy`, `price`, `cash_before` minus `cash_after` = price; span `vendor.purchase` |
+| UO-R5-S14 | Drag one bought item back onto the store that sold it | Chat "This vendor will not buy that item." | INFO "vendor: request refused", `reason=not_sellable`. If the client sends nothing, note it; not a FAIL |
+| UO-R5-A1 | As an Asgard, click the Asgard trainer 63809 | The Asgard tree on the first click | "Sent onTrainerOpen", `trainer_template_id=63809`, `list_id=1`, `archetype_id=5`, `offered=66` |
+| UO-R5-A2 | Click Programs 63824-63827, Armor 63828-63831 and Crafting 63832-63835 | The store opens on the first click | "vendor: store opened", `buy_count` 20 (Programs), 14 (Armor), 20 (Crafting) |
+| UO-R5-A3 | Buy the Warrior Attack Program (600) at 63824 and the Fyrstyr Absorption Vest (500) at 63828 | Naquadah drops by the price | "vendor: transaction committed", `action=buy` |
+| UO-R5-A4 | The Council hearing and the 481 offer | Not built (UO-41, UO-42 are stubs) | Record NOT RUN |
+
+Rows A1-A3 need an Asgard (archetype 5) character. Character creation has no playable Asgard start (F42), so grade them BLOCKED; any tester may click the Asgard NPCs earlier as an S12 store-open check.
+
+**Known issues (not failures).** Nothing bought on the hub sells back: every Omega vendor's sell list is list 2, which buys only designs 21, 55 and 3437, and none of them stocks those (S14 checks the refusal line, not a sale). The Black Market window needs the client patch. The inn and battlemaster do not exist. The Asgard hearing (UO-41, UO-42) is not built, and by the D-UO34 default mission 1522 stays sealed as shipped and Otin does not speak. The `.kill` command is not registered, so S8's refill half and S9 may be BLOCKED. Any FAIL or BLOCKED row from the owner's run is added here when `worknotes/UO-U1-results.md` exists.
 ## Mission data lock
 
 When the server cannot read a character's saved missions at login, it locks their missions instead of treating them as never taken (TG-DB-12, D-TG18). Background: [mission-system.md](../gameplay/mission-system.md#unreadable-saved-missions-tg-db-12).

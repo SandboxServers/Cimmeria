@@ -303,6 +303,7 @@
 \ir resources/Dialogs/Seed/dialog_sets.sql
 \ir resources/Dialogs/Seed/dialog_sets_union_omega.sql
 \ir resources/Dialogs/Seed/dialogs.sql
+\ir resources/Dialogs/Seed/dialogs_union_omega.sql
 \ir resources/Dialogs/Seed/speakers.sql
 \ir resources/Dialogs/Seed/special_words.sql
 \ir resources/Effects/Seed/effect_nvps.sql
@@ -493,6 +494,7 @@
 \ir resources/Content/Seed/union_omega_human_chains.sql
 \ir resources/Content/Seed/union_omega_jaffa_chains.sql
 \ir resources/Content/Seed/union_omega_reoffer_chains.sql
+\ir resources/Content/Seed/union_omega_services_chains.sql
 
 \ir resources/_foreign_keys.sql
 

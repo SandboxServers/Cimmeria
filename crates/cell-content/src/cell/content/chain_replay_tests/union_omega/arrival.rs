@@ -2,10 +2,10 @@
 //!
 //! Resolve-only for the three chains, plus seed-shape guards over Omega's
 //! whole id block. F21 is the load-bearing rule here: no Omega chain completes
-//! an objective of 1655, because O5645 and O5646 are both optional and the
-//! engine would complete the mission on the hub. Each bind runs
-//! `remove_dialog_set` before `add_dialog_set`, and no Omega chain keys on
-//! `interact_tag`.
+//! an objective of 1655: S4940 has required O5647 and O5644 beside optional
+//! O5645 and O5646, and completing the required pair would end 1655 before the
+//! Accept. Each bind runs `remove_dialog_set` before `add_dialog_set`, and only
+//! the hub services (63850-63869) key on `interact_tag`.
 
 use cimmeria_content_engine::actions::Action;
 use cimmeria_content_engine::context::ExecutionContext;
@@ -208,17 +208,97 @@ async fn live_db_every_omega_bind_removes_before_it_adds() {
     assert!(adds >= 1, "Omega binds at least one dialog set");
 }
 
-/// **Omega writes no `interact_tag` chain (F4, seed guard).** An `interact_tag`
-/// trigger would short-circuit `handle_interact` and open a second dialog.
+/// Service tags of the hub services (chains 63850-63869, `interact_tag`). Each
+/// names spawns of a template that carries its interaction bit as a default.
+/// Each crafting guide has its own tag (`spawnlist.tag` is unique), so guide
+/// chains 63852-63855 carry two triggers each, plain and Adv. (UO-35).
+const SERVICE_TAGS: [&str; 12] = [
+    "UnionOmega_Auctioneer",
+    "UnionOmega_Medic",
+    "UnionOmega_Guide_Biology",
+    "UnionOmega_Guide_AdvBiology",
+    "UnionOmega_Guide_Electronics",
+    "UnionOmega_Guide_AdvElectronics",
+    "UnionOmega_Guide_Engineering",
+    "UnionOmega_Guide_AdvEngineering",
+    "UnionOmega_Guide_Physics",
+    "UnionOmega_Guide_AdvPhysics",
+    "UnionOmega_Inn",
+    "UnionOmega_Battlemaster",
+];
+
+/// **Omega's `interact_tag` chains are hub services only (F4, seed guard).** An
+/// `interact_tag` trigger short-circuits `handle_interact` and would open a second
+/// dialog, so only the hub services (63850-63869) may key on it. They carry no
+/// dialog set: `live_db_omega_service_tags_name_npcs_with_no_dialog` proves it.
 #[tokio::test]
-async fn live_db_omega_writes_no_interact_tag_chain() {
+async fn live_db_omega_interact_tag_chains_are_services_only() {
     let pool = require_db_or_skip!();
-    let rows: Vec<i32> = sqlx::query_scalar(
-        "SELECT chain_id FROM resources.content_triggers \
+    let rows: Vec<(i32, Option<String>)> = sqlx::query_as(
+        "SELECT chain_id, event_key FROM resources.content_triggers \
          WHERE chain_id BETWEEN 63800 AND 63999 AND event_type::text = 'interact_tag'",
     )
     .fetch_all(&pool)
     .await
     .expect("content_triggers");
-    assert!(rows.is_empty(), "Omega interact_tag triggers: {rows:?}");
+    for (chain_id, tag) in &rows {
+        assert!(
+            (63850..=63869).contains(chain_id),
+            "Omega interact_tag outside the hub services: chain {chain_id}"
+        );
+        let tag = tag.as_deref().unwrap_or_default();
+        assert!(
+            SERVICE_TAGS.contains(&tag),
+            "Omega interact_tag on a non-service tag {tag:?} (chain {chain_id})"
+        );
+    }
+}
+
+/// **Each service tag names NPCs with no dialog set (F4, seed guard).** A spawn
+/// that carries a service tag must use a template with no static interaction set
+/// and no interaction set, and no `add_dialog_set` may bind its template id. With
+/// no service chain seeded yet, the trigger query returns no rows and this passes.
+#[tokio::test]
+async fn live_db_omega_service_tags_name_npcs_with_no_dialog() {
+    let pool = require_db_or_skip!();
+    let triggers: Vec<(Option<String>,)> = sqlx::query_as(
+        "SELECT DISTINCT event_key FROM resources.content_triggers \
+         WHERE chain_id BETWEEN 63800 AND 63999 AND event_type::text = 'interact_tag'",
+    )
+    .fetch_all(&pool)
+    .await
+    .expect("content_triggers");
+    for (tag,) in triggers {
+        let tag = tag.unwrap_or_default();
+        let spawns: Vec<(i32, i32, bool, bool)> = sqlx::query_as(
+            "SELECT s.spawn_id, t.template_id, t.static_interaction_sets = '{}' AS no_static, \
+                    t.interaction_set_id IS NULL AS no_set \
+             FROM resources.spawnlist s \
+             JOIN resources.entity_templates t ON t.template_id = s.template_id \
+             WHERE s.tag = $1",
+        )
+        .bind(&tag)
+        .fetch_all(&pool)
+        .await
+        .expect("spawnlist join");
+        assert!(!spawns.is_empty(), "no spawn carries service tag {tag}");
+        for &(spawn_id, template_id, no_static, no_set) in &spawns {
+            assert!(
+                no_static && no_set,
+                "spawn {spawn_id} of {tag} (template {template_id}) has a dialog set"
+            );
+            let adds: i64 = sqlx::query_scalar(
+                "SELECT count(*) FROM resources.content_actions \
+                 WHERE action_type::text = 'add_dialog_set' AND (params->>'slot')::int = $1",
+            )
+            .bind(template_id)
+            .fetch_one(&pool)
+            .await
+            .expect("content_actions count");
+            assert_eq!(
+                adds, 0,
+                "add_dialog_set binds template {template_id} of {tag}"
+            );
+        }
+    }
 }
