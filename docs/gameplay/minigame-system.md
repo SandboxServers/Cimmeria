@@ -48,6 +48,8 @@ Two deviations from the original flow: the movement and state hold is taken at l
 
 **From an ability (MG-24).** An effect whose `script_name` is `StartMinigame` (params `minigame_type` and `difficulty`) queues a launch for the caster, and the cell starts it once the ability's effects have resolved. It takes the same path as a content launch, so the dialog switch applies here too. A non-player caster, or one already playing, queues nothing (WARN `reason=npc_caster` or `already_playing`). Script: `start_minigame.rs` in `cimmeria-cell-effect-scripts`.
 
+**The Converse abilities (MG-62).** Ability 1327 (effect 1643) and ability 2089 (effect 2813) carry `script_name` `StartMinigame` with `minigame_type` `ConverseBasicHumanoid` and `difficulty` 1 (`effect_nvps.sql`, ids 25501-25504). The caster plays. No chain follows: the session's own result is the only outcome.
+
 **The Prison Boot (MG-63b).** Chain 1023 casts ability 1597 on the player while mission 689 is open. Its effect 1939 (`MovementHold`) holds the wearer for movement only: item use and abilities stay open, so the wearer can still start the escape game with item 3438. Effect 1942 (`MovementRelease`, `ReleasesEffect` 1939) lifts the boot on victory (chain 1025). A minigame hold taken and released while the boot is on keeps the movement lock until the boot comes off. Death leaves the entry (effect 1939 has no `EF_ClearOnDeath`), and a respawn's hard reset keeps its hold, so the wearer stays held until the minigame's release; this is accepted. Scripts: `movement_hold.rs` in `cimmeria-cell-effect-scripts`.
 
 ## Implementation Status
