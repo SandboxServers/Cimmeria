@@ -111,6 +111,15 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- [UO-33] end
 
 -- [UO-35] begin: spawns 63810-63817
+-- CIMMERIA_RECONSTRUCTION, navmesh-sealed (UO-20, UO-17)
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63810, 32.00, -35.97, -22.00, 0.1132, 18, 63829, 'UnionOmega_Guide_Biology', NULL, true); -- ca.guide.biology
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63811, 80.00, -31.90, 24.00, 4.2270, 18, 63829, 'UnionOmega_Guide_Electronics', NULL, true); -- ca.guide.electronics
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63812, 11.89, -43.87, 45.20, 2.6778, 18, 63829, 'UnionOmega_Guide_AdvElectronics', NULL, true); -- ca.guide.adv_electronics
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63813, 80.00, -32.51, 27.00, 4.1768, 18, 63829, 'UnionOmega_Guide_Engineering', NULL, true); -- ca.guide.engineering
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63814, 63.37, -44.10, 43.17, 3.7310, 18, 63829, 'UnionOmega_Guide_AdvEngineering', NULL, true); -- ca.guide.adv_engineering
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63815, 44.00, -36.06, -22.00, 5.8756, 18, 63829, 'UnionOmega_Guide_Physics', NULL, true); -- ca.guide.physics
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63816, -125.00, -46.57, -120.00, 3.6465, 18, 63829, 'UnionOmega_Guide_AdvPhysics', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63817, -123.00, -46.43, -122.00, 2.1377, 18, 63829, 'UnionOmega_Guide_AdvBiology', NULL, true);
 -- [UO-35] end
 
 -- [UO-36] begin: spawns 63822-63823

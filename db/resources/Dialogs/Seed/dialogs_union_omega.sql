@@ -23,6 +23,11 @@ INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUE
 -- [UO-33] end
 
 -- [UO-35] begin: guide lines, screens 63901-63904
+-- CIMMERIA_AUTHORING (UO-15; H-LBL: no visible label)
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (63900, 63901, 'Three vendors sell Biomedical Components: Human Biomedical Components in the SGC wing, Common Biomedical Components in the Common Area, Jaffa Biomedical Components in the Free Jaffa wing.', 0, 0);
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (63900, 63902, 'Three vendors sell Electronics Components: Human Electronics Components in the SGC wing, Common Electronics Components in the Common Area, Jaffa Electronics Components in the Free Jaffa wing.', 0, 1);
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (63900, 63903, 'Three vendors sell Power Systems Components: Human Power Systems Components in the SGC wing, Common Power Systems Components in the Common Area, Jaffa Power Systems Components in the Free Jaffa wing.', 0, 2);
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (63900, 63904, 'Three vendors sell Materials Components: Human Materials Components in the SGC wing, Common Materials Components in the Common Area, Jaffa Materials Components in the Free Jaffa wing.', 0, 3);
 -- [UO-35] end
 
 -- [UO-36] begin: inn and battlemaster lines, screens 63906-63907
