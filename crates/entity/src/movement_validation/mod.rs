@@ -103,6 +103,9 @@ pub enum MovementReject {
     /// `top_speed × TELEPORT_SPEED_FACTOR` — i.e. a teleport/speed hack
     /// no legitimate lagged client could produce.
     Teleport,
+    /// The entity is held by the server (`BSF_PLAYING_MINIGAME`) and moved
+    /// horizontally farther than the held slack from its last valid position.
+    MovementLocked,
 }
 
 /// Speed/teleport telemetry for a single update, returned by

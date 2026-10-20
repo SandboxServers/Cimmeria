@@ -196,7 +196,10 @@ counted `BSF_MOVEMENT_LOCK` reference, sent as a single `onStateFieldUpdate`.
 Every result code releases both: the cell's `MinigameResult` handler calls
 `release_minigame_hold` for victory, failure, cancel and the rest. Because
 the lock is ref-counted, a stun taken before the launch keeps its own
-reference through the release. Two paths that never reach a SmartFox
+reference through the release. The server rejects horizontal movement while
+bit 4 is set (`reason=movement_locked`): a held player who walks more than
+0.5 m from the last valid position is snapped back. A game master is exempt,
+and a stun's lock alone does not trigger the refusal. Two paths that never reach a SmartFox
 connection task report result 3 so they free the player too: a launch Base
 cannot carry out (minigame server disabled, no client address) and the expiry
 sweep. A duplicate-launch refusal sends no result, since the first board is

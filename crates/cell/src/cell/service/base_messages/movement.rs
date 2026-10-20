@@ -24,6 +24,7 @@ fn movement_reject_label(reason: MovementReject) -> &'static str {
         MovementReject::OutOfBounds => "bounds",
         MovementReject::OffNavmesh => "navmesh",
         MovementReject::Teleport => "teleport",
+        MovementReject::MovementLocked => "movement_locked",
     }
 }
 

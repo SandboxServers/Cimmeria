@@ -71,7 +71,7 @@ client back. Because the cell entity never moved, the next 100 ms AoI
 tick naturally rebroadcasts the last-valid position to witnesses — no
 explicit AoI fan-out is needed. The structured negative log is
 `target: "movement.validation"`, message `movement.validation_reject:`,
-with a low-cardinality `reason` field (`bounds | navmesh | teleport`) and
+with a low-cardinality `reason` field (`bounds | navmesh | teleport | movement_locked`) and
 the `movement_validation_rejects_total{reason, world, gate}` counter.
 
 ## What a reject reports
