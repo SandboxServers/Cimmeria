@@ -19,6 +19,7 @@ fn entity() -> CellEntity {
 
 fn spec(effect_id: i32, invoker_id: u32) -> TimedEffectSpec {
     TimedEffectSpec {
+        movement_only: false,
         cast_id: Some(41),
         effect_id,
         ability_id: 637,

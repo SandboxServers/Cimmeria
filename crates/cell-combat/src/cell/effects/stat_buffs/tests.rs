@@ -35,6 +35,7 @@ pub(super) fn make_mgr() -> SpaceManager {
 
 fn stim(stat_id: i32, delta: i32, effect_id: i32, flags: u32) -> TimedEffectSpec {
     TimedEffectSpec {
+        movement_only: false,
         cast_id: None,
         effect_id,
         ability_id: 2735,
@@ -54,6 +55,7 @@ fn stim(stat_id: i32, delta: i32, effect_id: i32, flags: u32) -> TimedEffectSpec
 /// Aim (effect 700, flags 21) cast by `invoker` on `PLAYER`.
 fn aim(invoker_id: u32) -> TimedEffectSpec {
     TimedEffectSpec {
+        movement_only: false,
         cast_id: None,
         effect_id: 700,
         ability_id: 637,

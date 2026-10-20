@@ -15,10 +15,10 @@ use cimmeria_wire::state_field::BSF_PLAYING_MINIGAME;
 /// Horizontal slack (m) for float noise and the client's last step.
 pub(crate) const HELD_SLACK_M: f32 = 0.5;
 
-/// The entity is held in place by the server (a minigame; MG-63b adds the
-/// prison boot).
+/// The entity is held in place by the server: a minigame (bit 4) or a
+/// movement-only hold such as the Prison Boot (MG-63b).
 pub(crate) fn movement_held(e: &CellEntity) -> bool {
-    e.state_field & BSF_PLAYING_MINIGAME != 0
+    e.state_field & BSF_PLAYING_MINIGAME != 0 || e.holds_movement_only_entry()
 }
 
 /// `Some(MovementLocked)` when the x/z displacement of `new_pos` from the hold

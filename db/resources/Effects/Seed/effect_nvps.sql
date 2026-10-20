@@ -1639,6 +1639,9 @@ INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (25028, 4835, 'C
 INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (25029, 5308, 'CcDuration', '3');
 -- ability-mechanics generated cc end
 
+-- minigames hand-authored (25500-25509): MG-63b, MG-62
+INSERT INTO effect_nvps (nvp_id, effect_id, name, value) VALUES (25500, 1942, 'ReleasesEffect', '1939');
+
 --
 -- TOC entry 3313 (class 0 OID 0)
 -- Dependencies: 305

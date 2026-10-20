@@ -80,6 +80,23 @@ impl CellEntity {
             .any(|e| e.state_flags & mask != 0)
     }
 
+    /// Whether a live ledger entry holds any bit of `mask` that stops item and
+    /// ability use: [`CellEntity::holds_ledger_flag`] without the
+    /// movement-only entries (the Prison Boot, MG-63b), which hold the lock
+    /// for movement alone.
+    pub fn holds_incapacitating_flag(&self, mask: u32) -> bool {
+        self.stat_buffs
+            .entries
+            .iter()
+            .any(|e| !e.movement_only && e.state_flags & mask != 0)
+    }
+
+    /// Whether a live movement-only entry (the Prison Boot) holds the wearer
+    /// in place.
+    pub fn holds_movement_only_entry(&self) -> bool {
+        self.stat_buffs.entries.iter().any(|e| e.movement_only)
+    }
+
     /// Drop every entry's flag holds without touching the counters: the
     /// counters were just reset by [`CellEntity::clear_all_state_flags`].
     pub(super) fn forfeit_ledger_flag_holds(&mut self) {
