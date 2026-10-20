@@ -27,8 +27,14 @@ pub(super) const OMEGA_WORLD: &str = "Omega_Site";
 pub(super) const SELL_LIST: i32 = 2;
 /// The three designs list 2 buys back; never stocked (D-UO29).
 pub(super) const ARBITRAGE_DESIGNS: [i32; 3] = [21, 55, 3437];
-/// Heavy weapons (UO-06 Q4): stocked only at tier 2 or higher.
-pub(super) const HEAVY_WEAPONS: [i32; 6] = [4990, 6491, 6480, 5094, 6617, 4565];
+/// Heavy weapons (UO-06 Q4): stocked only at tier 2 or higher. 4991-4996 are
+/// the Human heavy designs (UO-21 survey).
+pub(super) const HEAVY_WEAPONS: [i32; 12] = [
+    4990, 4991, 4992, 4993, 4994, 4995, 4996, 6491, 6480, 5094, 6617, 4565,
+];
+/// Heavy-class names (UO-22), matched case-insensitively against `ListRow::name`.
+/// Covers the Jaffa Rak'tel and Jaffa Cannon designs, whose ids are not listed.
+pub(super) const HEAVY_NAMES: [&str; 3] = ["rak'tel", "jaffa cannon", "grenade launcher"];
 /// `items.flags` bit CAN_BE_SOLD.
 pub(super) const CAN_BE_SOLD: i32 = 1024;
 pub(super) const HOSTILE_FACTION: i32 = 10;
@@ -60,6 +66,12 @@ pub(super) struct ListRow {
     pub tier: Option<i32>,
     pub tech_comp: Option<i32>,
     pub flags: Option<i32>,
+}
+
+/// True when a design name belongs to a `HEAVY_NAMES` class.
+fn is_heavy_name(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    HEAVY_NAMES.iter().any(|h| lower.contains(h))
 }
 
 /// D-UO29. `None` means "one of CONSUMABLE_T1" (a tier-1 consumable).
@@ -146,7 +158,9 @@ pub(super) fn assert_list(list: i32, rows: &[ListRow], kind: Price, tier: Option
         if let Some(t) = tier {
             assert_eq!(item_tier, t, "list {list} item {id} tier");
         }
-        if HEAVY_WEAPONS.contains(&row.design_id) {
+        let heavy = HEAVY_WEAPONS.contains(&row.design_id)
+            || row.name.as_deref().is_some_and(is_heavy_name);
+        if heavy {
             let t = tier.unwrap_or_else(|| {
                 panic!(
                     "list {list} item {id}: heavy weapon {} needs a tier",
@@ -374,5 +388,13 @@ mod tests {
     #[should_panic(expected = "heavy weapon")]
     fn assert_list_rejects_tier_one_heavy() {
         assert_list(63800, &[list_row(4990, 400)], Price::Weapon, Some(1));
+    }
+
+    #[test]
+    #[should_panic(expected = "heavy weapon")]
+    fn assert_list_rejects_tier_one_named_heavy() {
+        let mut row = list_row(4000, 400);
+        row.name = Some("Rak'tel".to_string());
+        assert_list(63800, &[row], Price::Weapon, Some(1));
     }
 }
