@@ -12,6 +12,7 @@ use cimmeria_entity::navigation::NavMesh;
 use cimmeria_entity::space::Space;
 
 pub use authoring::{AuthoringChange, SpawnRowChange, SpawnRowOp};
+pub use client_move_lock::{MovementHold, HOLD_FEEDBACK_INTERVAL, HOLD_RADIUS, HOLD_SNAP_INTERVAL};
 pub use client_move_outcome::ClientMoveOutcome;
 pub use crossing_hold_state::PendingCrossing;
 pub use deferred_content_actions::PendingContentAction;
@@ -33,6 +34,7 @@ mod chain_debounce;
 pub use chain_debounce::{ChainDebounce, CHAIN_DEBOUNCE};
 mod authoring;
 mod client_move;
+mod client_move_lock;
 mod client_move_outcome;
 mod client_move_recovery;
 mod cover_hit;

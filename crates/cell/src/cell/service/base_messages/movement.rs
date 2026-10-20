@@ -217,6 +217,8 @@ pub(super) async fn handle_entity_move(
                 Instant::now(),
             );
         }
+        // BL-03 replaces this with the snap-back and feedback line.
+        ClientMoveOutcome::Locked { .. } => {}
     }
 }
 

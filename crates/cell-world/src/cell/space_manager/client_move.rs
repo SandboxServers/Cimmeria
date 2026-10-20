@@ -199,6 +199,13 @@ impl SpaceManager {
             return self.accept(now, entity_id, position, direction, velocity);
         }
 
+        // Content movement hold (cellblock-boot-lock D-BL4). After the GM bypass
+        // so `/gmsetfly` frees a stuck player; before the layers so a held player
+        // never spends the snap-back budget.
+        if let Some(locked) = self.check_movement_hold(now, entity_id, space_id, proposed) {
+            return locked;
+        }
+
         // Server hold (minigame, prison boot): the slack is measured from the
         // anchor taken when the hold was first seen, not from `last_valid`, which
         // every accepted packet moves; per-packet slack would let a modified

@@ -55,6 +55,16 @@ pub enum ClientMoveOutcome {
         /// Consecutive rejects for this entity, for the operator log.
         strikes: u32,
     },
+    /// A content hold pins this player near `anchor` (see `client_move_lock`).
+    /// Nothing was written and the snap-back budget is untouched. The caller
+    /// snaps the client to `anchor` when `snap` is true, and sends `feedback`
+    /// as one feedback-channel line when it is `Some`.
+    Locked {
+        anchor: [f32; 3],
+        space_id: u32,
+        snap: bool,
+        feedback: Option<String>,
+    },
     /// The entity is not currently in any space — likely a stale
     /// inbound packet that arrived after destroy / disconnect. The
     /// caller can safely no-op; the original `update_entity_position`

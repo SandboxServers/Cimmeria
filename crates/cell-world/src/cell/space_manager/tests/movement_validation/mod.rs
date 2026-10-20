@@ -95,6 +95,7 @@ mod bounds;
 mod gm_navmesh;
 mod held;
 mod kinematics;
+mod locked;
 mod navmesh;
 mod onphysics;
 mod recovery;
