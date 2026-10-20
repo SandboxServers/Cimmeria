@@ -63,8 +63,8 @@ pub struct HardReject {
     pub space_id: u32,
     pub reason: MovementReject,
     /// Stable low-cardinality token for `reason` (`bounds` | `navmesh` |
-    /// `teleport`), resolved by the caller so the log and the counter
-    /// cannot disagree about it.
+    /// `teleport` | `movement_locked`), resolved by the caller so the log and
+    /// the counter cannot disagree about it.
     pub reason_label: &'static str,
     /// The position the client claimed, and which was refused. **Every**
     /// outcome's navmesh diagnosis describes this point, so `gate`,
@@ -147,7 +147,7 @@ impl SpaceManager {
         let identity = self.player_identity(entity_id);
         let verdict = match reason {
             // Only the navmesh layer has a gate to report. Running the
-            // diagnosis for a bounds/teleport reject would cost two
+            // diagnosis for a bounds/teleport/movement_locked reject would cost two
             // Detour queries per rejected packet to produce a field
             // nobody can act on.
             MovementReject::OffNavmesh => self.diagnose_point(

@@ -36,15 +36,16 @@ writer that never touches `direction` at all, making facing survive by
 construction instead of by each caller capturing and restoring it.
 
 The validator (`cimmeria_entity::movement_validation::MovementValidator`)
-runs four layers. The table is in **execution order** as wired in
+runs five layers. The table is in **execution order** as wired in
 `apply_client_position_update_at` — cheapest spatial gate first, then the
-stateful kinematics. Three layers hard-reject (snap-back); the speed
+stateful kinematics. Four layers hard-reject (snap-back); the speed
 sub-layer is **warn-only** until calibrated. Speed and teleport share one
 `check_kinematics` call (the kinematics layer); they are listed as two
 rows because they have different actions.
 
 | Order | Layer | Action | Catches |
 |-------|-------|--------|---------|
+| 0 | **Minigame hold** (`movement_lock::check`) | reject | a player held by `BSF_PLAYING_MINIGAME` moving more than 0.5 m horizontally from its hold anchor (where the hold found it; reset by an authorized teleport), so small steps cannot add up (`reason=movement_locked`); game masters exempt; a stun's lock alone is not gated |
 | 1 | **Bounds** (`check_bounds`) | reject | NaN / ±∞ / absurd coords, **Z-axis floor-clip** (full X/Y/**Z** AABB test) |
 | 2 | **Navmesh** (`is_position_valid`) | reject | off-walkable-polygon (walls, under-terrain, ceilings); fail-open when no navmesh loaded **or when the world is seeded `navmesh_mode = 'advisory'`** — see [navmesh-containment-modes.md](navmesh-containment-modes.md). Horizontal (X/Z) containment is tight (`agent_radius`-based) in both directions; vertical (Y) containment is asymmetric — up to `JUMP_HEIGHT_TOLERANCE` (4.0 units, physics-derived) *above* the surface so a legitimate jump apex isn't rejected, but only `agent_radius * 2.0` *below* it — see "Jump-height fix" below. |
 | 3 | **Speed** (`check_kinematics`) | **warn-only** | sustained over-tolerance velocity (`implied_speed > top_speed × 1.5`) |
@@ -71,7 +72,7 @@ client back. Because the cell entity never moved, the next 100 ms AoI
 tick naturally rebroadcasts the last-valid position to witnesses — no
 explicit AoI fan-out is needed. The structured negative log is
 `target: "movement.validation"`, message `movement.validation_reject:`,
-with a low-cardinality `reason` field (`bounds | navmesh | teleport`) and
+with a low-cardinality `reason` field (`bounds | navmesh | teleport | movement_locked`) and
 the `movement_validation_rejects_total{reason, world, gate}` counter.
 
 ## What a reject reports

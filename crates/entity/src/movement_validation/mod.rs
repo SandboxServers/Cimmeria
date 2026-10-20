@@ -77,6 +77,7 @@
 //! flat `crate::movement_validation::Item` paths.
 
 mod bounds;
+mod hold_anchor;
 
 pub use bounds::{position_within_bounds, SpaceBounds};
 
@@ -103,6 +104,10 @@ pub enum MovementReject {
     /// `top_speed × TELEPORT_SPEED_FACTOR` — i.e. a teleport/speed hack
     /// no legitimate lagged client could produce.
     Teleport,
+    /// The entity is held by the server (`BSF_PLAYING_MINIGAME`) and moved
+    /// horizontally farther than the held slack from its hold anchor (where
+    /// the hold found it).
+    MovementLocked,
 }
 
 /// Speed/teleport telemetry for a single update, returned by
@@ -153,6 +158,11 @@ pub struct MovementValidator {
     /// [`MovementValidator::MAX_SNAP_BACK_CORRECTIONS`]. Absent means
     /// zero. Released by [`MovementValidator::forget`].
     consecutive_rejects: HashMap<u32, u32>,
+    /// Where a server-held entity (minigame hold, prison boot) was when the
+    /// hold was first seen. The held gate measures its slack from this point,
+    /// not from the last accepted position, so small steps cannot add up.
+    /// Cleared when the hold ends, on an authorized teleport and on `forget`.
+    hold_anchors: HashMap<u32, [f32; 3]>,
 }
 
 impl MovementValidator {
@@ -203,6 +213,7 @@ impl MovementValidator {
         Self {
             move_clock: HashMap::new(),
             consecutive_rejects: HashMap::new(),
+            hold_anchors: HashMap::new(),
         }
     }
 
@@ -342,6 +353,8 @@ impl MovementValidator {
     /// **not** suppress hard rejects — a stale in-flight packet pointing at
     /// the old location *should* be snapped to the new one. See
     /// `.claude/agent-memory/movement-teleport-advisor/authorized-teleport-paths.md`.
+    /// It also drops any hold anchor: the server chose the new spot, so the
+    /// next held packet re-anchors there.
     ///
     /// The budget reset is folded in here rather than left to each caller
     /// because a fresh authoritative placement is exactly the event that
@@ -354,6 +367,7 @@ impl MovementValidator {
     pub fn note_authorized_teleport(&mut self, entity_id: u32, now: Instant) {
         self.touch_clock(entity_id, now);
         self.clear_rejects(entity_id);
+        self.hold_anchors.remove(&entity_id);
     }
 
     /// Release an entity's per-entity validator state. Call on entity
@@ -362,6 +376,7 @@ impl MovementValidator {
     pub fn forget(&mut self, entity_id: u32) {
         self.move_clock.remove(&entity_id);
         self.consecutive_rejects.remove(&entity_id);
+        self.hold_anchors.remove(&entity_id);
     }
 }
 

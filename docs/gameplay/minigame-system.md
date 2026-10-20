@@ -191,21 +191,26 @@ crashes without sending either call.
 ### While playing
 
 A launch holds the player (D-MG15). When the content action `StartMinigame`
-reaches Base, the cell sets `BSF_PlayingMinigame` (bit 4) and takes one
-counted `BSF_MOVEMENT_LOCK` reference, sent as a single `onStateFieldUpdate`.
-Every result code releases both: the cell's `MinigameResult` handler calls
-`release_minigame_hold` for victory, failure, cancel and the rest. Because
-the lock is ref-counted, a stun taken before the launch keeps its own
-reference through the release. Two paths that never reach a SmartFox
-connection task report result 3 so they free the player too: a launch Base
-cannot carry out (minigame server disabled, no client address) and the expiry
-sweep. A duplicate-launch refusal sends no result, since the first board is
-still running. A window close before the SmartFox connection opens reports
-result 3 from Base, since no connection task exists to do it. A result 0 or 3
-for a ticket that a newer launch has replaced is dropped, so the old board
-cannot free the new board's hold. Open items: a `create_game` failure after
-the claim, and a logout or world change while a session is registered, do not
-report yet.
+reaches Base, the cell sets `BSF_PlayingMinigame` (bit 4) and takes one counted
+`BSF_MOVEMENT_LOCK` reference, sent as a single `onStateFieldUpdate`. Every
+result code releases both: the cell's `MinigameResult` handler calls
+`release_minigame_hold` for victory, failure, cancel and the rest. Because the
+lock is ref-counted, a stun taken before the launch keeps its own reference
+through the release. The server rejects horizontal movement while bit 4 is set
+(`reason=movement_locked`): a held player who moves more than 0.5 m from where
+the hold found them is snapped back. The distance is measured from that spot,
+not from the last accepted packet, so small steps cannot add up, and a server
+teleport during the hold moves the spot with the player. A game master is
+exempt, and a stun's lock alone does not trigger the refusal. Two paths that
+never reach a SmartFox connection task report result 3 so they free the player
+too: a launch Base cannot carry out (minigame server disabled, no client
+address) and the expiry sweep. A duplicate-launch refusal sends no result, since
+the first board is still running. A window close before the SmartFox connection
+opens reports result 3 from Base, since no connection task exists to do it. A
+result 0 or 3 for a ticket that a newer launch has replaced is dropped, so the
+old board cannot free the new board's hold. Open items: a `create_game` failure
+after the claim, and a logout or world change while a session is registered, do
+not report yet.
 
 ### Connection limits
 
