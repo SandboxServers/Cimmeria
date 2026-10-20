@@ -111,6 +111,7 @@ try {
 
     # --- lane.ps1: SLOTS respected, retiring mark, dead holder reclaimed --------------
     $env:LANE_ROOT = $tmp; $env:LANE_SLOTS = '2'; $env:LANE_METRICS = '0'
+    Remove-Item Env:CIMMERIA_LANE_SLOT, Env:CIMMERIA_LANE_TOKEN -ErrorAction SilentlyContinue
     $env:LANE_MIN_FREE_GB = '0'; $env:LANE_VERBOSE = '1'; $env:SCCACHE_BIN = ''; $env:LANE_PRUNE = '0'
     Remove-Item Env:SCCACHE_BIN -ErrorAction SilentlyContinue
     $env:RUSTC_WRAPPER = 'none'   # keep the lane from building the sccache wrapper

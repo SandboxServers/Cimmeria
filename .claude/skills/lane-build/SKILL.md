@@ -40,8 +40,10 @@ pwsh tools/build-lane/lane.ps1 --exclusive cargo clippy --workspace <EXCL> --all
 
 ## How the lane works
 
-- **One `cargo` per slot.** The slot count lives in `%LOCALAPPDATA%\cimmeria-build\lane\SLOTS`
-  (currently 4); `--exclusive` takes every slot, and `CARGO_BUILD_JOBS` defaults to cores ÷ slots.
+- **Three slot classes.** Heavy slots (`slot.N`, the count in `%LOCALAPPDATA%\cimmeria-build\lane\SLOTS`)
+  take builds, tests and clippy; light slots (`slot.light.N`, 4 by default) take fmt and `cargo check -p <package>`;
+  db slots (`slot.db.N`, 3 by default) take live-DB runs. `--class heavy|light|db` overrides the classifier;
+  `--exclusive` takes every heavy slot. `CARGO_BUILD_JOBS` defaults to cores ÷ heavy slots (light and db jobs use 4).
 - **It sets up the environment:** a target dir per worktree (on the Dev Drive when one is set
   up), incremental builds for workspace crates, and sccache for third-party crates, shared by
   every worktree. A direct `cargo` call skips all of that and the slot count, which is why a
@@ -88,8 +90,7 @@ No `Platform:` line: follow `win32`. Any other platform: return `blocked: platfo
 pwsh tools/build-lane/live-db-test.ps1 <nextest filter or test-name substring>
 ```
 
-From a worktree root, this reloads the worktree's own `sgw_<worktree>` database and runs the
-`ci-live-db` profile in one lane slot, the same way CI does. Test rules ([TESTING.md](../../../TESTING.md)):
+From a worktree root, this builds the tier in a heavy slot (`--build-only`), then reloads the worktree's own `sgw_<worktree>` database and runs the `ci-live-db` profile in a db slot, the same way CI does. A compile error stops it before the reload. Test rules ([TESTING.md](../../../TESTING.md)):
 
 - Gate with `require_db_or_skip!` and put `live_db` in the fn or module name, or the
   meta-tests fail.
@@ -116,7 +117,7 @@ but a debugger sees no variables; use `dev-debug` for a debugger session.
 |---|---|---|
 | exit 28, "free space" | Disk guard: under `LANE_MIN_FREE_GB` (default 10) free | `pwsh tools/build-lane/rm-worktree.ps1 --merged`, then `pwsh tools/build-hygiene/sweep.ps1` |
 | exit 75 | rm-worktree is retiring this worktree | Stop building there |
-| Long wait before start | All slots busy (count in `%LOCALAPPDATA%\cimmeria-build\lane\SLOTS`) | Wait. A dead holder's slot is freed by the next caller, so there is nothing to kill |
+| Long wait before start | All slots of the job's class busy (heavy count in `%LOCALAPPDATA%\cimmeria-build\lane\SLOTS`) | Wait. A dead holder's slot is freed by the next caller, so there is nothing to kill |
 | "os error 112" mid-build | Someone built outside the lane and filled the disk | As exit 28 |
 
 ## What has the lane been doing?

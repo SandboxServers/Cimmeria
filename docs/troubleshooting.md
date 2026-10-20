@@ -96,11 +96,11 @@ Check free space with `(Get-Volume -DriveLetter B).SizeRemaining / 1GB` in Power
 
 ### A build waits with `[lane] all N slots busy`
 
-**Symptom.** A build started through the lane prints `[lane] all 4 slots busy: [...] ... 60s` once a minute and doesn't start.
+**Symptom.** A build started through the lane prints `[lane] all <n> <class> slots busy: [...] ... 60s` once a minute and doesn't start (class is heavy, light or db).
 
 **Root cause.** Other builds hold every lane slot. The brackets show each slot's worktree and command, so you can see who is building what.
 
-**Fix.** Wait: the lane starts your build as soon as a slot frees. You don't need to clean up after a crashed build, because a slot whose holder died is freed by the next caller (`[lane] breaking stale slot ...`). One exception: `lane.ps1` can't check a bash holder's pid, so while any Git Bash process runs it leaves a dead `lane.sh` holder's slot for the next `lane.sh` job to free. A `lane.sh` from before PR #1294 never frees a dead `lane.ps1` holder's slot; rebase that worktree. Leave other sessions' builds alone. To see which jobs are slow, run `python tools/build-lane/lane_stats.py --recent 20`. Don't raise the slot count in `%LOCALAPPDATA%\cimmeria-build\lane\SLOTS` without measuring first. The job log's lowest-free-RAM figure and `tools/build-metrics/measure-build.ps1` are how you measure; see [`architecture/build-system.md`](architecture/build-system.md) §10.
+**Fix.** Wait: the lane starts your build as soon as a slot frees. You don't need to clean up after a crashed build, because a slot whose holder died is freed by the next caller (`[lane] breaking stale slot ...`). One exception: `lane.ps1` can't check a bash holder's pid, so while any Git Bash process runs it leaves a dead `lane.sh` holder's slot for the next `lane.sh` job to free. A `lane.sh` from before PR #1294 never frees a dead `lane.ps1` holder's slot; rebase that worktree. Leave other sessions' builds alone. To see which jobs are slow, run `python tools/build-lane/lane_stats.py --recent 20`. Don't raise the slot count in `%LOCALAPPDATA%\cimmeria-build\lane\SLOTS`, `LIGHT_SLOTS` or `DB_SLOTS` without measuring first. The job log's lowest-free-RAM figure and `tools/build-metrics/measure-build.ps1` are how you measure; see [`architecture/build-system.md`](architecture/build-system.md) §10.
 
 ---
 
