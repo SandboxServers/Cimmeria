@@ -37,6 +37,8 @@ mod listener_tests;
 #[cfg(test)]
 mod livewire_abort_tests;
 #[cfg(test)]
+mod ported_games_tests;
+#[cfg(test)]
 mod session_snapshot_tests;
 #[cfg(test)]
 mod tests;
