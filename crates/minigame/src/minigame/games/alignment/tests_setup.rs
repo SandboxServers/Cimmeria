@@ -155,13 +155,26 @@ fn generated_boards_have_no_initial_match() {
     }
 }
 
+/// `select_icons` draws the same board from the same RNG seed, and another seed
+/// draws another one. The seeded path is the test and repl path; `new` seeds
+/// from the OS (authority F2).
 #[test]
-fn same_seed_gives_same_board_and_other_seed_differs() {
+fn same_rng_seed_gives_same_board_and_other_seed_differs() {
+    use rand::SeedableRng;
+    let first = setup::select_icons(&mut rand::rngs::StdRng::seed_from_u64(7), 1);
+    let again = setup::select_icons(&mut rand::rngs::StdRng::seed_from_u64(7), 1);
+    let other = setup::select_icons(&mut rand::rngs::StdRng::seed_from_u64(8), 1);
+    assert_eq!(first, again);
+    assert_ne!(first, other);
+}
+
+/// F2: the session seed does not fix the board, so two games of one session
+/// seed draw different boards (an 8x8 board of six types never repeats).
+#[test]
+fn new_boards_are_not_fixed_by_the_session_seed() {
     let first = AlignmentGame::new(&make_session(1, 1, 7));
     let again = AlignmentGame::new(&make_session(1, 1, 7));
-    let other = AlignmentGame::new(&make_session(1, 1, 8));
-    assert_eq!(first.board, again.board);
-    assert_ne!(first.board, other.board);
+    assert_ne!(first.board, again.board);
 }
 
 #[test]

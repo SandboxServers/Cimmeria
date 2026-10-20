@@ -1,9 +1,10 @@
 //! Alignment: the port lands in MG-AL1..3 (docs/analysis/minigames/spec-alignment.md).
 //!
 //! MG-AL1 is the setup and the state shell; MG-AL2a adds the server-validated
-//! swap and matching (`moves.rs`). `create()` still hands the name to the
-//! placeholder: `PORTED` stays `false` until MG-AL3, so nothing here is
-//! reachable from content yet. The shell is exercised by the tests only.
+//! swap and matching (`moves.rs`); MG-AL2b adds the cascade, the gravity and
+//! the refill (`cascade.rs`, `moves_gravity.rs`). `create()` still hands the
+//! name to the placeholder: `PORTED` stays `false` until MG-AL3, so nothing
+//! here is reachable from content yet. The shell is exercised by the tests only.
 #![allow(dead_code)] // unreachable until MG-AL3 flips PORTED; the tests build it
 
 use std::collections::HashMap;
@@ -15,11 +16,17 @@ use crate::minigame::game::{GameOutput, MinigameInstance};
 use crate::minigame::protocol::SfsValue;
 use crate::minigame::session::MinigameSession;
 
+mod cascade;
 mod moves;
+mod moves_gravity;
 mod piece;
 mod setup;
 #[cfg(test)]
+mod tests_cascade;
+#[cfg(test)]
 mod tests_moves;
+#[cfg(test)]
+mod tests_refill;
 #[cfg(test)]
 mod tests_setup;
 
@@ -40,12 +47,16 @@ fn log_text(text: &str) -> &str {
 }
 
 /// Where the game is in the port's phase machine (spec section 5). `Ready`
-/// takes a swap; a match moves to `AwaitCascade` until the cascade slice
-/// (MG-AL2b) takes over. `Ended` is set by `aborted()` and closes the game.
+/// takes a swap; a match moves to `AwaitCascade`, `cascade` moves to
+/// `AwaitCheck`, and `checkForCascade` either loops back to `AwaitCascade` or
+/// moves to `AwaitScore` (`doscore` is MG-AL3a's). `Ended` is set by
+/// `aborted()` and closes the game.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Phase {
     Ready,
     AwaitCascade,
+    AwaitCheck,
+    AwaitScore,
     Ended,
 }
 
@@ -76,17 +87,30 @@ pub(crate) struct AlignmentGame {
     hint_index: u8,
     phase: Phase,
     outcome: Option<&'static str>,
+    /// The cells of the current match, power-up-expanded (spec section 6).
+    current_matches: Vec<(moves::Cell, Piece)>,
+    /// The pieces scored so far in this turn (`currentScores`).
+    current_scores: Vec<Piece>,
+    /// Refused commands so far in this game; only some are logged (F4).
+    refusals: u32,
+    /// Cascade steps taken after the swap; the re-roll pass runs when it is
+    /// above 0.
+    cascade_count: u32,
+    /// The gravity direction index, 0-5 (`dropIndex`).
+    drop_index: u8,
 }
 
 impl AlignmentGame {
-    /// Builds the game for a session and draws its board from the session seed.
+    /// Builds the game for a session and draws its board. The RNG is seeded from
+    /// the OS, not from the session seed: a 32-bit seed would let a client solve
+    /// the board by brute force (authority F2).
     pub(crate) fn new(session: &MinigameSession) -> Self {
         let tier = setup::clamp_tier(
             session.difficulty,
             session.entity_id,
             session.player_name.as_deref(),
         );
-        let mut rng = StdRng::seed_from_u64(u64::from(session.seed));
+        let mut rng = StdRng::from_rng(&mut rand::rng());
         let board = setup::select_icons(&mut rng, tier);
         Self::build(session, rng, board)
     }
@@ -143,6 +167,11 @@ impl AlignmentGame {
             hint_index: 0,
             phase: Phase::Ready,
             outcome: None,
+            current_matches: Vec::new(),
+            current_scores: Vec::new(),
+            refusals: 0,
+            cascade_count: 0,
+            drop_index: 0,
         }
     }
 
@@ -167,6 +196,9 @@ impl AlignmentGame {
             Some((board, outcome)) => {
                 self.board = board;
                 self.phase = Phase::AwaitCascade;
+                self.current_matches = outcome.flood.clone();
+                self.current_scores.clear();
+                self.cascade_count = 0;
                 vec![
                     GameOutput::Send(moves::feedback(&outcome)),
                     GameOutput::Send(moves::hexspinner(
@@ -180,8 +212,79 @@ impl AlignmentGame {
         }
     }
 
-    /// Logs a refused client command at WARN (the board is left as it was).
-    fn refuse(&self, cmd: &str, reason: &str) {
+    /// `cascade` (spec section 6, `doCascade`): the gravity slide and the refill
+    /// of drop direction `dropIndex`, then the re-roll pass after a scored step.
+    /// Replies `hexmove` and waits for `checkForCascade`.
+    fn cascade(&mut self) -> Vec<GameOutput> {
+        if self.phase != Phase::AwaitCascade {
+            self.refuse("cascade", "not_ready");
+            return vec![];
+        }
+        let d = self.drop_index;
+        let slides = moves_gravity::gravity(&mut self.board, d);
+        let mut new_hexes = cascade::refill(
+            &mut self.rng,
+            &mut self.board,
+            &self.current_matches,
+            d,
+            self.tier,
+        );
+        if self.cascade_count > 0 {
+            let goal_icons = setup::tier_spec(self.tier).goal_icons;
+            cascade::reroll(
+                &mut self.rng,
+                &mut self.board,
+                &mut new_hexes,
+                self.cascade_count,
+                goal_icons,
+            );
+        }
+        self.phase = Phase::AwaitCheck;
+        vec![GameOutput::Send(cascade::hexmove(d, &slides, &new_hexes))]
+    }
+
+    /// `checkForCascade` (spec section 6): a board with a match removes it with
+    /// `bypasshexspinner` and waits for the next `cascade`. Without a match the
+    /// drop index moves on and `cascadecheckcomplete` ends the step; the score
+    /// is awaited next.
+    fn check_for_cascade(&mut self) -> Vec<GameOutput> {
+        if self.phase != Phase::AwaitCheck {
+            self.refuse("checkForCascade", "not_ready");
+            return vec![];
+        }
+        let mut scores = self.current_scores.clone();
+        scores.extend(cascade::types(&self.current_matches));
+        let seeds = setup::check_for_matches(&self.board);
+        self.current_scores = scores;
+        if seeds.is_empty() {
+            let turned = !self.current_scores.is_empty();
+            self.drop_index = match self.drop_index {
+                5 => 0,
+                index if turned => index + 1,
+                index => index,
+            };
+            self.phase = Phase::AwaitScore;
+            return vec![GameOutput::Send(cascade::cascadecheckcomplete())];
+        }
+        let matches = cascade::expanded_matches(&self.board, &seeds);
+        for &((x, y), _) in &matches {
+            self.board[x][y] = Piece::plain(0);
+        }
+        self.current_matches = matches;
+        self.cascade_count += 1;
+        self.phase = Phase::AwaitCascade;
+        vec![GameOutput::Send(cascade::bypasshexspinner(
+            &self.current_matches,
+        ))]
+    }
+
+    /// Counts a refused client command and logs it at WARN when `logs_refusal`
+    /// says so (the board is left as it was).
+    fn refuse(&mut self, cmd: &str, reason: &str) {
+        self.refusals = self.refusals.saturating_add(1);
+        if !logs_refusal(self.refusals) {
+            return;
+        }
         tracing::warn!(
             entity_id = self.entity_id,
             entity_name = self.player_name.as_deref(),
@@ -189,9 +292,20 @@ impl AlignmentGame {
             player_name = self.player_name.as_deref(),
             cmd,
             reason,
+            refusals = self.refusals,
             "Alignment: command refused"
         );
     }
+}
+
+/// The first refusals of a game are logged; after that one in every
+/// `REFUSAL_LOG_EVERY` is, so a client cannot flood the log (authority F4).
+const REFUSAL_LOG_FIRST: u32 = 16;
+const REFUSAL_LOG_EVERY: u32 = 256;
+
+/// Whether the refusal numbered `n` (counted from 1) is logged.
+fn logs_refusal(n: u32) -> bool {
+    n <= REFUSAL_LOG_FIRST || n.is_multiple_of(REFUSAL_LOG_EVERY)
 }
 
 impl MinigameInstance for AlignmentGame {
@@ -210,15 +324,7 @@ impl MinigameInstance for AlignmentGame {
         // The command is client text: it is cut before it reaches a log line.
         let logged = log_text(cmd);
         if self.phase == Phase::Ended {
-            tracing::warn!(
-                entity_id = self.entity_id,
-                entity_name = self.player_name.as_deref(),
-                player_id = self.player_id,
-                player_name = self.player_name.as_deref(),
-                cmd = logged,
-                reason = "game_ended",
-                "Alignment: command after the end"
-            );
+            self.refuse(logged, "game_ended");
             return vec![];
         }
         match cmd {
@@ -229,6 +335,8 @@ impl MinigameInstance for AlignmentGame {
                 vec![]
             }
             "swappieces" => self.swap(params),
+            "cascade" => self.cascade(),
+            "checkForCascade" => self.check_for_cascade(),
             // The hint timer (`resethinttimer`) only feeds the hint, which is
             // MG-AL3's; the client expects no reply.
             "resethinttimer" => vec![],
@@ -240,15 +348,7 @@ impl MinigameInstance for AlignmentGame {
                 } else {
                     "unknown_command"
                 };
-                tracing::warn!(
-                    entity_id = self.entity_id,
-                    entity_name = self.player_name.as_deref(),
-                    player_id = self.player_id,
-                    player_name = self.player_name.as_deref(),
-                    cmd = logged,
-                    reason,
-                    "Alignment: command refused"
-                );
+                self.refuse(logged, reason);
                 vec![]
             }
         }
