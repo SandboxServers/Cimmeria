@@ -67,6 +67,43 @@ async fn refused_victory_logs_warn_with_reason() {
     );
 }
 
+#[tokio::test(start_paused = true)]
+async fn victory_after_the_timeout_gives_nothing() {
+    // The 5 s floor is met by now, so only the timed-out guard refuses this.
+    let mut game = PlaceholderGame::new("Hack");
+    game.started();
+    tokio::time::advance(Duration::from_secs(60)).await;
+    for _ in 0..TIMEOUT_TICKS {
+        game.tick();
+    }
+    assert!(game.timed_out, "the countdown must have run out");
+
+    let outputs = game.message("victory", &HashMap::new());
+
+    assert!(outputs.is_empty(), "a victory after the timeout is ignored");
+    assert!(!has_victory(&outputs));
+}
+
+#[tokio::test(start_paused = true)]
+async fn early_victory_refusals_are_logged_only_up_to_the_cap() {
+    // Counted through `message`, so the WARN rows are what the gate limits.
+    let capture = LogCapture::install();
+    let mut game = PlaceholderGame::new("Hack");
+    game.started();
+    for _ in 0..REFUSAL_LOG_CAP + 24 {
+        assert!(game.message("victory", &HashMap::new()).is_empty());
+    }
+    let rows = capture
+        .all()
+        .iter()
+        .filter(|row| {
+            row.level == Level::WARN
+                && row.message_contains("Client-declared minigame victory refused")
+        })
+        .count();
+    assert_eq!(rows, REFUSAL_LOG_CAP as usize);
+}
+
 // ── shell countdown (MG-64) ──────────────────────────────────────────
 
 /// The payload of the `Send` output at `index`, panicking on any other kind.

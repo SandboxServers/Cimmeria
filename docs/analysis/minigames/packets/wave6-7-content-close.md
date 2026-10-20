@@ -29,7 +29,7 @@ Wave 6 ships like every other wave: `ops` merges each packet branch into `miniga
 
 - Agent: packet-coder · Host: windows · Wave 6 · Depends on: MG-CH3 merged into `minigames/integration` · Status BlockedDependency
 - Worktree `mg-61` · Branch `minigames/mg-61-m582-marsh` · Commit `MG-61: mission 582 step 2307 plays the Marsh conversation minigame`
-- **Ids:** chains 24000-24001 (C7 reserves 24000-24009; the rest stay unused).
+- **Ids:** chains 24000-24001 (C7 reserves 24000-24049; the rest stay unused).
 - **Inputs (content-map.md §6 and §10, confirmed at G1):** Marsh is spawn 344 in world 68, interact tag `CmdCenter_Marsh`. Dialog 2433 is the step's prompt. The game is `ConverseBasicHumanoid` at difficulty 1. Step 2307's objective is 2675 and the next step is 3274. Marsh's existing chains 6501 and 6527 fire on the same tag while missions 1360 (step 4038) and 1361 (step 4694) are active; the launcher must not steal those clicks.
 - **Files:**
   1. `db/resources/Missions/Seed/mission_steps.sql:5335`: row 2307 `step_enabled` goes from `false` to `true`. Change nothing else on the row.
@@ -66,7 +66,7 @@ Wave 6 ships like every other wave: `ops` merges each packet branch into `miniga
 
 ## MG-63: Prison Boot 1597 (replaced)
 
-Replaced at G1 by **MG-63a** (movement lock while a minigame or hold is active) and **MG-63b** (the boot's `MovementHold`/`MovementRelease` scripts and seeds), both in wave 2: [wave2-launch.md](wave2-launch.md). Chains 24020-24029 stay unused; chains 1022-1025 already carry the boot.
+Replaced at G1 by **MG-63a** (movement lock while a minigame or hold is active) and **MG-63b** (the boot's `MovementHold`/`MovementRelease` scripts and seeds), both in wave 2: [wave2-launch.md](wave2-launch.md). Chains 1022-1025 already carry the boot.
 
 ## MG-64: shell placeholder timer and unknown-name rejection
 

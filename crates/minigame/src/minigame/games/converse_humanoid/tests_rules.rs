@@ -92,7 +92,7 @@ fn golden_c_rejected_inputs_check_clean() {
 /// first deal is NPC `[0, 4, 8]` against player `[0, 4, 8]`. Run it with
 /// `--run-ignored only --no-capture`.
 #[test]
-#[ignore]
+#[ignore = "one-off seed search; run with --run-ignored only"]
 fn find_golden_b_seed() {
     for seed in 0..100_000 {
         let mut game =
@@ -210,6 +210,22 @@ fn client_failure_is_a_defeat() {
     assert!(has_failure(&out));
     assert_eq!(game.outcome, Some(Outcome::Defeat));
     assert!(!game.needs_tick());
+}
+
+#[test]
+fn refusals_are_logged_only_up_to_the_cap() {
+    // Counted through `reject`, so the WARN rows are what the gate limits.
+    let capture = crate::test_support::LogCapture::install();
+    let mut game = started(7);
+    for _ in 0..REFUSAL_LOG_CAP + 24 {
+        assert!(game.message("unknown_command", &HashMap::new()).is_empty());
+    }
+    let rows = capture
+        .all()
+        .iter()
+        .filter(|row| row.level == tracing::Level::WARN && row.message_contains("command refused"))
+        .count();
+    assert_eq!(rows, REFUSAL_LOG_CAP as usize);
 }
 
 #[test]

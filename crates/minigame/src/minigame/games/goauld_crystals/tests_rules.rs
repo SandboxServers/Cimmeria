@@ -136,6 +136,19 @@ async fn a_tick_past_the_deadline_ends_the_game_even_when_the_countdown_lags() {
 }
 
 #[tokio::test(start_paused = true)]
+async fn a_game_never_clicked_is_lost_after_the_pre_click_limit() {
+    // The clock is stopped before the first click, so only the pre-click
+    // limit can end this game: nothing before 60 s, the loss at 61 s.
+    let mut game = started(0);
+    tokio::time::advance(Duration::from_secs(59)).await;
+    assert!(game.tick().is_empty());
+    assert_eq!(game.outcome, None);
+    tokio::time::advance(Duration::from_secs(2)).await;
+    assert_eq!(names(&game.tick()), ["failure", "Failure"]);
+    assert_eq!(game.outcome, Some("failure"));
+}
+
+#[tokio::test(start_paused = true)]
 async fn a_pause_holds_no_deadline_and_a_resume_sets_a_fresh_one() {
     let mut game = started(0);
     click(&mut game, 0.0, 0.0);

@@ -40,14 +40,14 @@ pub fn create(session: &MinigameSession) -> Option<Box<dyn MinigameInstance>> {
             | GameKind::Analyze
             | GameKind::Bypass
             | GameKind::Converse,
-        ) => Box::new(placeholder::PlaceholderGame::new(&session.game_name)),
+        ) => Box::new(placeholder::PlaceholderGame::for_session(session)),
         None => {
             tracing::warn!(
                 entity_id = session.entity_id, // nt:id-only minigame server holds no entity name
                 game = %session.game_name,
                 "Unknown minigame type, using placeholder",
             );
-            Box::new(placeholder::PlaceholderGame::new(&session.game_name))
+            Box::new(placeholder::PlaceholderGame::for_session(session))
         }
     };
     Some(game)

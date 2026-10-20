@@ -27,6 +27,10 @@ const REFUSAL_LOG_FULL: u32 = 8;
 /// After the full run, one refused command in this many is logged.
 const REFUSAL_LOG_EVERY: u32 = 100;
 
+/// Seconds the player has to make the first click before the game is lost.
+/// Without it the clock never runs and no other deadline would end the game.
+const PRE_CLICK_LIMIT: Duration = Duration::from_secs(60);
+
 impl GoauldCrystalsGame {
     /// Routes one inbound command. After the end nothing is acted on; a clock
     /// past its deadline ends the game before the command is read.
@@ -40,7 +44,7 @@ impl GoauldCrystalsGame {
             self.warn_refused(cmd, "game_over");
             return vec![];
         }
-        if self.timed_out(now) {
+        if self.timed_out(now) || self.pre_click_expired(now) {
             return self.expire();
         }
         match cmd {
@@ -64,10 +68,10 @@ impl GoauldCrystalsGame {
     /// 0.25 s and ends at zero; a pause or a reverse lasts `timer_ticks_left`
     /// ticks, then the clock runs again with one `timerupdate`.
     pub(super) fn clock_tick(&mut self, now: Instant) -> Vec<GameOutput> {
-        if self.outcome.is_some() || self.timer_state == 0 {
+        if self.outcome.is_some() {
             return vec![];
         }
-        if self.timed_out(now) {
+        if self.timed_out(now) || self.pre_click_expired(now) {
             return self.expire();
         }
         match self.timer_state {
@@ -99,6 +103,17 @@ impl GoauldCrystalsGame {
     pub(super) fn timed_out(&self, now: Instant) -> bool {
         self.timer_state == 1
             && (self.time_remaining <= 0.0 || self.deadline.is_some_and(|due| now >= due))
+    }
+
+    /// True before the first click once `PRE_CLICK_LIMIT` has passed since the
+    /// game started. The clock is stopped until then, so `timed_out` cannot
+    /// end such a game.
+    pub(super) fn pre_click_expired(&self, now: Instant) -> bool {
+        !self.clicked
+            && self.outcome.is_none()
+            && self
+                .started_at
+                .is_some_and(|at| now.saturating_duration_since(at) >= PRE_CLICK_LIMIT)
     }
 
     /// Keeps the deadline in step with the clock. A running clock without a

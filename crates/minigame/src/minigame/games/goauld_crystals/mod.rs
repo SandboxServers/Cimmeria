@@ -129,6 +129,11 @@ pub(super) struct GoauldCrystalsGame {
     /// Monotonic end of the running countdown. Set by `sync_deadline` while
     /// the clock runs, cleared otherwise, so a late tick cannot hide a timeout.
     pub(super) deadline: Option<Instant>,
+    /// When the game started. Until the first click the clock is stopped, so
+    /// `PRE_CLICK_LIMIT` bounds the wait from here.
+    pub(super) started_at: Option<Instant>,
+    /// True once a click has started the clock.
+    pub(super) clicked: bool,
 
     // Rule bookkeeping, reset by every game start
     pub(super) yellows_without_orange: u32,
@@ -166,6 +171,8 @@ impl GoauldCrystalsGame {
             timer_state: 0,
             timer_ticks_left: 0,
             deadline: None,
+            started_at: None,
+            clicked: false,
             yellows_without_orange: 0,
             reds_to_yellows: 0,
             reds_to_remove: 0,
@@ -181,6 +188,7 @@ impl GoauldCrystalsGame {
 impl MinigameInstance for GoauldCrystalsGame {
     fn started(&mut self) -> Vec<GameOutput> {
         self.init_game();
+        self.started_at = Some(Instant::now());
         vec![GameOutput::Send(self.build_full_game_state())]
     }
 
