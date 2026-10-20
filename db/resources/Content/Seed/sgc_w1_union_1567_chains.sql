@@ -41,7 +41,9 @@ VALUES
   (3096, 'entity_tag_state', NULL, 'SGC_W1_ClearJaffa2', 'eq', 'dead', 2),
   (3096, 'entity_tag_state', NULL, 'SGC_W1_ClearJaffa3', 'eq', 'dead', 3),
   (3096, 'entity_tag_state', NULL, 'SGC_W1_ClearJaffa4', 'eq', 'dead', 4),
-  (3096, 'entity_tag_state', NULL, 'SGC_W1_ClearJaffa5', 'eq', 'dead', 5);
+  (3096, 'entity_tag_state', NULL, 'SGC_W1_ClearJaffa5', 'eq', 'dead', 5),
+  (3096, 'archetype', NULL, NULL, 'gte', '1', 6),
+  (3096, 'archetype', NULL, NULL, 'lte', '4', 7);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (3096, 'complete_objective', 1567, '5377', '{}', 0, 0);
@@ -60,7 +62,9 @@ VALUES
   (3097, 'entity_tag_state', NULL, 'SGC_W1_ClearJaffa2', 'eq', 'dead', 2),
   (3097, 'entity_tag_state', NULL, 'SGC_W1_ClearJaffa3', 'eq', 'dead', 3),
   (3097, 'entity_tag_state', NULL, 'SGC_W1_ClearJaffa4', 'eq', 'dead', 4),
-  (3097, 'entity_tag_state', NULL, 'SGC_W1_ClearJaffa5', 'eq', 'dead', 5);
+  (3097, 'entity_tag_state', NULL, 'SGC_W1_ClearJaffa5', 'eq', 'dead', 5),
+  (3097, 'archetype', NULL, NULL, 'gte', '1', 6),
+  (3097, 'archetype', NULL, NULL, 'lte', '4', 7);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (3097, 'complete_objective', 1567, '5377', '{}', 0, 0);

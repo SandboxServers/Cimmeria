@@ -31,9 +31,9 @@
 
 | Row | Driver steps | Player sees | Server evidence |
 |---|---|---|---|
-| R1 | On Dakara, take 1651 and trigger its departure (DK-30's flow). | the player loads into SGC_W1 on the Gate Room floor in front of gate 27, not 2.4 m above it | `Content: cross-world teleporting entity` with `world = SGC_W1`, position P13 (172.79, -10.9, 12.0); 1651 step 4928 active |
+| R1 | On Dakara, take 1651 and trigger its departure (DK-30's flow). | the player loads into SGC_W1 on the Gate Room floor in front of gate 27, not 2.4 m above it | `Content: cross-world teleporting entity` with `world = SGC_W1`, position P13 (167.00, -10.80, 18.00); 1651 step 4928 active |
 | R2 | Look at Hammond. | `SGCW1_GenHammond` shows "!" | chain 3133 on `player_loaded` |
-| R3 | Press Hammond; page through 5844 (ten screens, no buttons) and close it. | Carter walks to (or appears at) P08 (170.5, -10.9, 12.5) with "!"; Hammond's "!" clears | chain 3134 then 3135; step 4931 active |
+| R3 | Press Hammond; page through 5844 (ten screens, no buttons) and close it. | Carter walks to (or appears at) P08 (164.50, -10.80, 18.00) with "!"; Hammond's "!" clears | chain 3134 then 3135; step 4931 active |
 | R4 | **Relog** while on 4931. | Carter stands at P08 with "!" | chain 3139 |
 | R5 | Press `SGC_W1_SamCarter`; on 5845 press the item button. | the Naquadah Generator (item 6784) is in the bag; Carter's "!" clears; Harriman shows "!" | chain 3136, 3137; `complete_objective 1651 '5956'`; 1651 still ACTIVE (F13); one item-grant row for 6784 |
 | R6 | Press `SGC_W1_Harriman` at P01. | the gate dials (10047, then 10060); 3 s after the press the player loads into Dakara_E1 at the gate | chain 3138: `advance_step '4929'`, both sequences, `advance_step '5171'`, `Content: cross-world teleporting entity` with `world = Dakara_E1`, (96.87, -16.75, 243.23); 1651 step 5171 active; item 6784 still held (`server_db_query` of the inventory) |

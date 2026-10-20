@@ -44,7 +44,7 @@ Wave 5 starts when DK-40 and DK-41 are merged. Its four packets write four diffe
 | `give 6781` / `take 6781` | `(id, 'add_item', 6781, NULL, '{"container": 0, "qty": 1}', 0, n)` / `(id, 'remove_item', 6781, NULL, '{"qty": 1}', 0, n)` |
 | `spawn hologram` | `(id, 'spawn_entity', 443, 'Dakara_E1_StoryRm_BaalHologram', '{"x": 66.2, "y": -0.12, "z": 34.3, "heading": 1.5708, "is_stationary": true}', 0, n)` (placement B-07; world 62 is instanced, so no `allow_shared`) |
 | `despawn hologram` | `(id, 'despawn_entity', NULL, 'Dakara_E1_StoryRm_BaalHologram', '{}', 0, n)` |
-| `teleport SGC H3` | `(id, 'cross_world_teleport', NULL, 'SGC_W1', '{"x": 172.79, "y": -10.9, "z": 12.0}', 0, n)` (the frozen Union arrival H3; precedent: chains 8003-8006) |
+| `teleport SGC H3` | `(id, 'cross_world_teleport', NULL, 'SGC_W1', '{"x": 172.79, "y": -10.9, "z": 12.0}', 0, n)` (the frozen Union arrival H3; precedent: chains 8003-8006) (superseded by wave-6c / D-DK44: arrival is the gate 27 pin P13 (167.00, -10.80, 18.00); cross by real travel, no coordinates) |
 
 Triggers: `loaded Dakara_E1` is `('player_loaded', 'Dakara_E1')`, `loaded StoryRm` is `('player_loaded', 'Dakara_E1_StoryRm')`; `click <tag>` is `('interact_tag', '<tag>')`; `region <key>` is `('enter_region', '<key>')`, the key byte-exact as the `point_sets.name`; `choice 5983` is `('dialog_choice', '5983')`; `done 1647` is `('mission_completed', '1647')`.
 
@@ -58,7 +58,7 @@ Triggers: `loaded Dakara_E1` is `('player_loaded', 'Dakara_E1')`, `loaded StoryR
 
 **Tests** (C7). Type: chain replay, live-DB (TESTING.md type 6). File: your submodule of `crates/cell-content/src/cell/content/chain_replay_tests/dakara_e1_missions/`. Imports: `use super::*;`, `use super::super::assert_no_deferred_actions;`, the `super::super::mission_1324` helpers you need (`ctx_for`, `with_mission`, `with_step`, `fire_player_loaded`, `fire_interact_tag`, `fire_dialog_choice`, `fire_mission_completed`, `display_dialog_count`), `use crate::cell::content::engine_loader::build_engine;`, `use crate::test_support::require_db_or_skip;` (copy the paths `report.rs` or `m1645.rs` uses). `mod.rs` gives you `labels_in`, `with_objective`, `fire_enter_region`, `delays_of`, `radio_count`, the archetype and world consts and your range const. Each test: `#[tokio::test] async fn live_db_<what>()`, `let pool = require_db_or_skip!(); let engine = build_engine(Some(&pool)).await;`. A missing param reads as `not_active`, and `with_step` sets only the step key, so a player "at step S of mission M" is always `with_step(with_mission(ctx, M, "active"), M, S, "active")`; a later mission's state also sets the earlier missions `completed`. For **every chain**:
 
-- the positive: the matching state gives exactly `labels_in(&r, <YOUR_RANGE>)` equal to the chain's actions in order, in the label format (`"8184:display_dialog(5829)"`, `"8184:add_item(6781x1)"`, `"8186:remove_item(6781x1)"`, `"8182:accept_mission(1648)"`, `"8184:advance_step(1648->4918)"`, `"8223:complete_objective(1649/5638)"`, `"8183:add_dialog_set(6754@440)"`, `"8184:remove_dialog_set(6754@440)"`, `"8204:display_radio_dialog(5833)"`, `"8254:spawn_entity(443#Dakara_E1_StoryRm_BaalHologram)"`, `"8258:despawn_entity(Dakara_E1_StoryRm_BaalHologram)"`, `"8310:cross_world_teleport(SGC_W1@172.79,-10.90,12.00)"`);
+- the positive: the matching state gives exactly `labels_in(&r, <YOUR_RANGE>)` equal to the chain's actions in order, in the label format (`"8184:display_dialog(5829)"`, `"8184:add_item(6781x1)"`, `"8186:remove_item(6781x1)"`, `"8182:accept_mission(1648)"`, `"8184:advance_step(1648->4918)"`, `"8223:complete_objective(1649/5638)"`, `"8183:add_dialog_set(6754@440)"`, `"8184:remove_dialog_set(6754@440)"`, `"8204:display_radio_dialog(5833)"`, `"8254:spawn_entity(443#Dakara_E1_StoryRm_BaalHologram)"`, `"8258:despawn_entity(Dakara_E1_StoryRm_BaalHologram)"`, `"8310:cross_world_teleport(SGC_W1@172.79,-10.90,12.00)"`); (superseded by wave-6c / D-DK44: arrival is the gate 27 pin P13 (167.00, -10.80, 18.00))
 - one negative per condition that a sibling state could pass: the previous and next step, the wrong world, the mission not yet accepted or already completed, the other objective state. Each gives an empty list for that chain;
 - on every `click` that displays: `display_dialog_count(&r) == 1` (unfiltered, across the whole engine); on every chain that shows a radio dialog: `radio_count(&r) == 1`;
 - `assert_no_deferred_actions(&r, <chain>)` on every chain that advances or completes and has no delayed action; on a chain with a delayed action, `delays_of(&r, <chain>)` equals the table's delays in order (for example `[2000, 0]`).
@@ -132,6 +132,8 @@ The radio and the advance in 8205 and 8206 are separate actions: the advance run
 
 ## DK-14b: mission 1649 step 4922, the Command Terminal and the drops
 
+> **Amended 2026-10-19 (owner ruling D-DK31).** The terminal hack is now the Livewire minigame: [wave 6c DK-14c](wave-6c.md#dk-14c-livewire-on-the-1649-command-terminal) turns chain 8223 into the launcher and moves its three actions to victory chain 8231. Chains 8224 and 8225 stay plain clicks (D-DK42). Merged as written in #1905.
+
 | Field | Value |
 |---|---|
 | Role | `packet-coder` |
@@ -163,6 +165,8 @@ Mission 1646's own drop chains (DK-12c, 8140-8159) gate on 1646 state, so they s
 **Tests** (`m1649_terminal.rs`), besides the shared rules (build every 4922 context with 1648 `completed` and 1646 `completed`): 8222 resolves on a 4921 load and 8220/8221 do not; with `with_objective(.., 1649, 5639, "completed")` 8221 and 8226-8230 give nothing; 8223, 8224 and 8225 are mutually exclusive: one test walks the four combinations of 5638 and 5639 and asserts exactly one terminal chain each time (both open: 8223; 5638 open, 5639 done: 8223; 5638 done, 5639 open: 8225; both done: 8224); 8224 passes `assert_no_deferred_actions`. Assert only your own range (DK-14a may not be merged yet).
 
 ## DK-15: mission 1650 "Confront Moh'katan"
+
+> **Amended 2026-10-19 (owner ruling D-DK31).** Moh'katan's terminal now runs Livewire: [wave 6c DK-15b](wave-6c.md#dk-15b-livewire-on-mohkatans-terminal) turns chain 8258 into the launcher and moves its five actions to victory chain 8261 (D-DK42: the owner may drop DK-15b). Merged as written in #1906.
 
 | Field | Value |
 |---|---|

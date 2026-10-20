@@ -66,7 +66,29 @@ INSERT INTO stargates (address1, address2, address3, address4, address5, address
 
 INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id) VALUES (17, 27, 10, 7, 25, 31, 26, 10, 'Lucia', 0, 'Lucia.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 15, 66.718001999999998, -165.574997, -3.1200000000000001, -70.220000999999996, 10003);
 
-INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id) VALUES (28, 26, 5, 36, 11, 30, 1, 27, 'SGC W1', 0, 'SGC_W1.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 58, 172.78999300000001, -8.4700000000000006, 0, 6.0140000000000002, 10004);
+-- Gate 27 (SGC W1, world 58). The row itself is ORIGINAL_DATA: it is the gate
+-- prefab's origin. It lies inside gate volume 1008 `SGC_W1.Stargate` (r 2.5),
+-- and the nearest walkable point is 3.4 m away and 1.3 m lower.
+--
+-- The arrival pin is PROJECT_FINAL_RECONSTRUCTION (Dakara rebuild DK-SGC-01,
+-- owner option C 2026-10-19, D-DK44, D-DK47). It is the Union SGC campaign's
+-- sealed P13 (US-01, `docs/analysis/union-sgc-continuation/placement.md`):
+-- component 47, poly 887, 13.3 m from the row.
+--
+--   * Where: off the gate's axis, because the axis strip (x 172-175, z 8-18)
+--     has no floor polygon. The dot of the out-vector with the gate's facing
+--     is 0.90 (26 degrees). Yaw 0.0 faces into the room, toward the Control
+--     Room.
+--   * World 58 is instanced, so `validate_gate_arrival` returns Unvalidated
+--     and accepts the pin as written. That is why the guard checks the pin
+--     against the mesh.
+--   * `.gotolocation SGC_W1` with no coordinates lands on this point too.
+--   * The three Gate Room Jaffa (spawns 65-67) are 14 m away. The SGC
+--     campaign's US-34 despawns them on return.
+--
+-- Guard: `gate_sgc_w1_tests.rs` in cimmeria-cell-world. To correct the pin,
+-- edit the four arrival_* values here and `PIN` there.
+INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id, arrival_x, arrival_y, arrival_z, arrival_yaw) VALUES (28, 26, 5, 36, 11, 30, 1, 27, 'SGC W1', 0, 'SGC_W1.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 58, 172.78999300000001, -8.4700000000000006, 0, 6.0140000000000002, 10004, 167.00, -10.80, 18.00, 0.0);
 
 INSERT INTO stargates (address1, address2, address3, address4, address5, address6, address_origin, stargate_id, name, pitch, prefab_sequence, roll, world_id, x_pos, y_pos, yaw, z_pos, event_set_id) VALUES (3, 8, 16, 24, 23, 31, 2, 20, 'Ihpet Crater (SGU)', 0, 'Ihpet_Crater_Light.Main_Sequence.Prefabs.GLB-Stargate_Prefab_Seq', 0, 73, 251.25, 10.606, 0, -989.78100600000005, 10005);
 

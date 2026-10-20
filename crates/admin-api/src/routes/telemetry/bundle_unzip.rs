@@ -160,9 +160,15 @@ fn replay_entries<R: std::io::Read + std::io::Seek>(
         let mut entry = zip
             .by_index(i)
             .map_err(|e| IngestError::Zip(e.to_string()))?;
-        let path = capped(entry.name(), MAX_LABEL_BYTES).into_owned();
+        // zip 9 made name() fallible (a non-UTF-8 name without the UTF-8 flag);
+        // a bundle with one is malformed, the same refusal as a bad entry.
+        let name = entry
+            .name()
+            .map_err(|e| IngestError::Zip(e.to_string()))?
+            .into_owned();
+        let path = capped(&name, MAX_LABEL_BYTES).into_owned();
         // Not a log: never read, so a key dump's bytes go nowhere.
-        if !replayable_entry(entry.name()) {
+        if !replayable_entry(&name) {
             counts.skipped_not_log += 1;
             tracing::debug!(
                 target: "launcher.bundle",
@@ -192,11 +198,22 @@ fn replay_entries<R: std::io::Read + std::io::Seek>(
         // replay: the zip is lying, and skipping on would let every lying
         // entry cost another full read of the budget.
         let mut content = Vec::new();
-        (&mut entry as &mut dyn Read)
+        let read = (&mut entry as &mut dyn Read)
             .take(remaining + 1)
-            .read_to_end(&mut content)
-            .map_err(|e| IngestError::Zip(e.to_string()))?;
-        if content.len() as u64 > remaining {
+            .read_to_end(&mut content);
+        // zip 9 itself refuses to read past the declared size, with an
+        // `InvalidData` error rather than handing over the extra bytes. That
+        // is the same lie, so it ends the replay the same way (the library
+        // has no typed error for it, hence the message match; the lying-zip
+        // tests fail if the wording changes).
+        let lied = matches!(&read, Err(e) if e.kind() == std::io::ErrorKind::InvalidData
+            && e.to_string().contains("larger than its declared uncompressed size"));
+        if let Err(e) = read {
+            if !lied {
+                return Err(IngestError::Zip(e.to_string()));
+            }
+        }
+        if lied || content.len() as u64 > remaining {
             counts.truncation = Some(truncation(
                 "expanded bytes",
                 limits.bundle_expanded_bytes,

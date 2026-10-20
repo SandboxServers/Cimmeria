@@ -1,39 +1,28 @@
 # Union SGC continuation: resume card
 
-> **Last updated:** 2026-10-18 (US-00)
-> **Ledger:** [README.md](README.md) · **Crossings:** [crossings.md](crossings.md) · **Index:** [sgc-work-packets.md](../union-zone-planning/sgc-work-packets.md)
+> **Last updated:** 2026-10-19 (US-99)
+> **Ledger:** [README.md](README.md) (release readiness) · **UAT:** [U1](uat-U1.md), [U2](uat-U2.md), [U3](uat-U3.md) · **Index:** [sgc-work-packets.md](../union-zone-planning/sgc-work-packets.md)
 
-## Current wave
+## State
 
-**S0** (specialist seals). US-00 is the ledger and check packet and is committed on `union-sgc/us-00-sgc-start`. It is not yet merged.
-
-## In flight
-
-- US-00: this commit (docs only; no seed or code changed).
-- Nothing else is dispatched by this ledger.
+The campaign is closed on the code side. Packets through US-32 are on `main`. US-33, US-34, the S4 fix pass and this close-out ship in the single Union SGC PR. Nothing has been played in a client.
 
 ## Next action
 
-1. Coordinator merges the US-00 commit and the D-US1 amendment request into `docs/analysis/four-zone-planning/id-allocation.md` (request rows are in README § Amendment request).
-2. Dispatch US-01, US-02, US-10 and US-14 (each depends only on US-00).
-3. Coordinator aligns the C4 arrival pin with Omega (crossings.md § C4 mismatch) before US-32 is dispatched.
+1. Owner lifts the no-PR directive; ops opens one PR for `union-sgc/sgc-final`. Before it merges, decide whether `dakara/dk-sgc` (gate 27 pin) lands first.
+2. Owner runs the three UAT files and records PASS, FAIL or NOT RUN in each; the escort walk and the placement lab checks are in U1.
+3. A FAIL becomes a fix packet; do not fix inside the UAT session.
 
-## Open decisions
+## Owner still owes
 
-| Decision | Blocks | Default in the packet |
-|---|---|---|
-| D-US2, D-US3 (label policy, authored scale) | US-40 (HELD) | none |
-| D-US4 (dial before crossings) | nothing hard | play both sequences |
-| D-US5 (return state) | US-34 | D-US5 default |
-| D-US6 (gate walk) | nothing | cross on the Harriman interact |
-| D-US7 (virus minigame) | nothing | plain interact |
-| D-US8 (1565 flank objective) | nothing | untracked |
-| D-US10 (static Jaffa rows) | US-11 step 5, US-20, US-21 | option B |
-| D-US11 (letter 6786) | US-32 | 6786 to Humans only |
+| Item | Note |
+|---|---|
+| D-US2, D-US3 label policy | US-40 stays HELD until it is set |
+| D-US4 to D-US8, D-US12 | Shipped on their defaults |
+| UAT U1, U2, U3 | Not run |
+| Heading on crossings | `Action::CrossWorldTeleport` has no heading field; decide whether to add one after U3 |
 
-## Findings to carry
+## Carry
 
-- ID re-check: zero collisions in the five blocks (README § ID re-check).
-- C4 arrival pin differs between SGC K5 and Omega's plan (coordinator).
-- Engine: an all-optional step completes the mission on the first completion (progression.rs:469-505); chains run by priority, then chain id at equal priority (all SGC chains keep priority 0), on the `resolve_event` snapshot path.
-- Dialog rule (-1 on close for zero-button dialogs only) is confirmed by client RE in agent memory; no lab check needed.
+- Engine: an all-optional step completes the mission on the first completion; chains of equal priority run in chain-id order (all SGC chains keep priority 0).
+- Retire the `sgc-final` worktree and its test database the day its PR merges.

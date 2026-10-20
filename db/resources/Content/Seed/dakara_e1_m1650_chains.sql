@@ -163,12 +163,12 @@ VALUES
   (8257, 'spawn_entity', 443, 'Dakara_E1_StoryRm_BaalHologram', '{"x": 66.2, "y": -0.12, "z": 34.3, "heading": 1.5708, "is_stationary": true}', 0, 1);
 
 -- Chain 8258 PROJECT_FINAL_RECONSTRUCTION: 1650 terminal. Using the terminal
--- at step 4926 gives the Downloaded File 6787 (no dialog), advances to 4925,
--- unbinds the carrier 6760, despawns the hologram and binds Bra'tac's turn-in
--- dsm 6771 on slot 59 (he is in the same room). The unbind and despawn run
--- before the new bind.
+-- at step 4926 starts Livewire (D-DK31, owner ruling 2026-10-19). A win fires
+-- victory chain 8261 (D-DK42), which gives the Downloaded File 6787, advances
+-- to 4925, unbinds the carrier 6760, despawns the hologram and binds Bra'tac's
+-- turn-in dsm 6771 on slot 59. A defeat runs nothing, so a second click replays.
 INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
-VALUES (8258, '1650 - Terminal: give file 6787, advance to 4925, unbind 6760 on 454, despawn hologram, bind Bra''tac dsm 6771 on 59', 'mission', 1650, true, 0);
+VALUES (8258, '1650 - Terminal: start Livewire (victory 8261)', 'mission', 1650, true, 0);
 
 INSERT INTO content_triggers (chain_id, event_type, event_key, scope, once, sort_order)
 VALUES (8258, 'interact_tag', 'Dakara_E1_StoryRm_MohkatanTerminal', 'player', false, 0);
@@ -179,12 +179,7 @@ VALUES
   (8258, 'step_status', 1650, '4926', 'eq', 'active', 1);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
-VALUES
-  (8258, 'add_item', 6787, NULL, '{"container": 0, "qty": 1}', 0, 0),
-  (8258, 'advance_step', 1650, '4925', '{}', 0, 1),
-  (8258, 'remove_dialog_set', 6760, NULL, '{"slot": 454}', 0, 2),
-  (8258, 'despawn_entity', NULL, 'Dakara_E1_StoryRm_BaalHologram', '{}', 0, 3),
-  (8258, 'add_dialog_set', 6771, NULL, '{"slot": 59}', 0, 4);
+VALUES (8258, 'start_minigame', NULL, 'Livewire', '{"on_victory_chains": [8261], "difficulty": 1}', 0, 0);
 
 -- Chain 8259 PROJECT_FINAL_RECONSTRUCTION: 1650 step 4925 restore. After a
 -- relog at step 4925 Bra'tac's turn-in dsm 6771 is bound on slot 59 again.
@@ -223,3 +218,18 @@ VALUES
   (8260, 'remove_item', 6787, NULL, '{"qty": 1}', 0, 1),
   (8260, 'remove_dialog_set', 6771, NULL, '{"slot": 59}', 0, 2),
   (8260, 'complete_mission', 1650, NULL, '{}', 0, 3);
+
+-- Chain 8261 PROJECT_FINAL_RECONSTRUCTION: 1650 Livewire victory on the
+-- terminal. No trigger row: invoked by id from chain 8258's on_victory_chains
+-- through `fire_chain_by_id`, which evaluates no conditions (the step gate
+-- lives on 8258). The unbind and despawn still run before the new bind.
+INSERT INTO content_chains (chain_id, description, scope_type, scope_id, enabled, priority)
+VALUES (8261, '1650 - Livewire victory on the terminal: give file 6787, advance to 4925, unbind 6760 on 454, despawn hologram, bind Bra''tac dsm 6771 on 59', 'mission', 1650, true, 0);
+
+INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
+VALUES
+  (8261, 'add_item', 6787, NULL, '{"container": 0, "qty": 1}', 0, 0),
+  (8261, 'advance_step', 1650, '4925', '{}', 0, 1),
+  (8261, 'remove_dialog_set', 6760, NULL, '{"slot": 454}', 0, 2),
+  (8261, 'despawn_entity', NULL, 'Dakara_E1_StoryRm_BaalHologram', '{}', 0, 3),
+  (8261, 'add_dialog_set', 6771, NULL, '{"slot": 59}', 0, 4);

@@ -233,33 +233,40 @@ async fn live_db_step_4926_restore_rebinds_the_terminal_and_the_hologram() {
 }
 
 #[tokio::test]
-async fn live_db_terminal_gives_the_file_and_removes_the_hologram() {
+async fn live_db_terminal_starts_livewire_and_the_win_gives_the_file() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
     let r = fire_interact_tag(&engine, &at_step(Some(STORY_RM), 4926), TERMINAL_TAG);
     assert_eq!(
         labels_in(&r, M1650_CHAINS),
-        vec![
-            "8258:add_item(6787x1)",
-            "8258:advance_step(1650->4925)",
-            "8258:remove_dialog_set(6760@454)",
-            "8258:despawn_entity(Dakara_E1_StoryRm_BaalHologram)",
-            "8258:add_dialog_set(6771@59)",
-        ],
+        vec!["8258:start_minigame(Livewire,victory=[8261],d=1)"],
     );
-    // The terminal shows no dialog: the item and the step change are its feedback.
+    // The Livewire window is the click's feedback (D-DK31).
     assert_eq!(display_dialog_count(&r), 0);
     assert_no_deferred_actions(&r, 8258);
+    // The win runs the five actions the click ran before, in the same order.
+    let v = fire_victory(&pool, 8261).await;
+    assert_eq!(
+        labels_in(&v, M1650_CHAINS),
+        vec![
+            "8261:add_item(6787x1)",
+            "8261:advance_step(1650->4925)",
+            "8261:remove_dialog_set(6760@454)",
+            "8261:despawn_entity(Dakara_E1_StoryRm_BaalHologram)",
+            "8261:add_dialog_set(6771@59)",
+        ],
+    );
+    assert_eq!(delays_of(&v, 8261), vec![0, 0, 0, 0, 0]);
     // The despawn comes before Bra'tac's bind, as the packet orders it.
-    let labels = labels_in(&r, M1650_CHAINS);
+    let labels = labels_in(&v, M1650_CHAINS);
     let despawn = labels
         .iter()
-        .position(|l| l == "8258:despawn_entity(Dakara_E1_StoryRm_BaalHologram)")
-        .expect("8258 despawns the hologram");
+        .position(|l| l == "8261:despawn_entity(Dakara_E1_StoryRm_BaalHologram)")
+        .expect("8261 despawns the hologram");
     let bind = labels
         .iter()
-        .position(|l| l == "8258:add_dialog_set(6771@59)")
-        .expect("8258 binds Bra'tac");
+        .position(|l| l == "8261:add_dialog_set(6771@59)")
+        .expect("8261 binds Bra'tac");
     assert!(despawn < bind);
     for ctx in [at_step(Some(STORY_RM), 4924), at_step(Some(STORY_RM), 4925)] {
         let r = fire_interact_tag(&engine, &ctx, TERMINAL_TAG);

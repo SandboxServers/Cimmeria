@@ -53,7 +53,9 @@ INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key,
 VALUES
   (3086, 'step_status',      1565, '4634',                   'eq', 'active', 0),
   (3086, 'entity_tag_state', NULL, 'SGC_W1_TacticsJaffa1',   'eq', 'dead',   1),
-  (3086, 'entity_tag_state', NULL, 'SGC_W1_TacticsJaffa2',   'eq', 'dead',   2);
+  (3086, 'entity_tag_state', NULL, 'SGC_W1_TacticsJaffa2',   'eq', 'dead',   2),
+  (3086, 'archetype', NULL, NULL, 'gte', '1', 3),
+  (3086, 'archetype', NULL, NULL, 'lte', '4', 4);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (3086, 'complete_objective', 1565, '5374', '{}', 0, 0);
@@ -71,7 +73,9 @@ INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key,
 VALUES
   (3087, 'step_status',      1565, '4634',                 'eq', 'active', 0),
   (3087, 'entity_tag_state', NULL, 'SGC_W1_TacticsJaffa1', 'eq', 'dead',   1),
-  (3087, 'entity_tag_state', NULL, 'SGC_W1_TacticsJaffa2', 'eq', 'dead',   2);
+  (3087, 'entity_tag_state', NULL, 'SGC_W1_TacticsJaffa2', 'eq', 'dead',   2),
+  (3087, 'archetype', NULL, NULL, 'gte', '1', 3),
+  (3087, 'archetype', NULL, NULL, 'lte', '4', 4);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (3087, 'complete_objective', 1565, '5374', '{}', 0, 0);
@@ -111,7 +115,9 @@ INSERT INTO content_conditions (chain_id, condition_type, target_id, target_key,
 VALUES
   (3089, 'step_status',      1566, '4635',                    'eq', 'active', 0),
   (3089, 'entity_tag_state', NULL, 'SGC_W1_Tactics2Jaffa1',   'eq', 'dead',   1),
-  (3089, 'entity_tag_state', NULL, 'SGC_W1_Tactics2Jaffa2',   'eq', 'dead',   2);
+  (3089, 'entity_tag_state', NULL, 'SGC_W1_Tactics2Jaffa2',   'eq', 'dead',   2),
+  (3089, 'archetype', NULL, NULL, 'gte', '1', 3),
+  (3089, 'archetype', NULL, NULL, 'lte', '4', 4);
 
 INSERT INTO content_actions (chain_id, action_type, target_id, target_key, params, delay_ms, sort_order)
 VALUES (3089, 'complete_objective', 1566, '5376', '{}', 0, 0);

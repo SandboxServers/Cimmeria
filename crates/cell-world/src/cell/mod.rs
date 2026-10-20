@@ -42,6 +42,10 @@ mod gate_beta_e1_tests;
 /// pin and the way back from an address granted on arrival, DK-01).
 #[cfg(test)]
 mod gate_dakara_e1_tests;
+/// Seed guards for the SGC_W1 end of real gate travel (stargate 27's
+/// arrival pin, DK-SGC-01; the dial terminal and the way-back guard, DK-SGC-02).
+#[cfg(test)]
+mod gate_sgc_w1_tests;
 /// Seed-vs-navmesh guards for the Harset coordinates placed from map data
 /// (`docs/analysis/harset-rebuild/placements/`). Test-only; in
 /// `cimmeria-services` until wave C6 of the services crate split.

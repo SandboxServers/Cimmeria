@@ -121,7 +121,7 @@ async fn accepting_store(puts: u64) -> (MockServer, LogStore) {
 fn zip_names(body: &[u8]) -> Vec<String> {
     let mut zip = zip::ZipArchive::new(std::io::Cursor::new(body.to_vec())).unwrap();
     let mut names: Vec<_> = (0..zip.len())
-        .map(|i| zip.by_index(i).unwrap().name().to_owned())
+        .map(|i| zip.by_index(i).unwrap().name().unwrap().into_owned())
         .collect();
     names.sort();
     names

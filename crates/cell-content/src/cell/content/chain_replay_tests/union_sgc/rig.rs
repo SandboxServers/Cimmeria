@@ -62,7 +62,7 @@ pub(super) const ACTIVE: Option<i8> = Some(MISSION_ACTIVE);
 pub(super) const COMPLETED: Option<i8> = Some(MISSION_COMPLETED);
 
 /// H3 / P13, where the player stands when the rig is built.
-pub(super) const ARRIVAL: [f32; 3] = [172.79, -10.9, 12.0];
+pub(super) const ARRIVAL: [f32; 3] = [167.00, -10.80, 18.00];
 
 /// What a chain asked the base for, reduced to what the SGC packets assert.
 #[derive(Debug, Clone, PartialEq)]

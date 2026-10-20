@@ -111,7 +111,7 @@ Dakara's own rows, which K5 names by receiver or departure owner:
 | K5 row | Dakara's part | Owner | Notes |
 |---|---|---|---|
 | C1 | **Receiver**: 1570/4906 active on arrival at gate 25 pin (96.87, -16.75, 243.23) | DK-10b (Tau'ri rows 8046-8056) | SGC US-24 departs the player. UD-04b tests the handshake |
-| C2 | **Departure** from step 4930 (D-UD2): `advance_step 1651 '4928'`, then `cross_world_teleport 'SGC_W1'` | DK-30 | Arrival is K5's H3 = P13 (172.79, -10.9, 12.0); receiver SGC US-30 |
+| C2 | **Departure** from step 4930 (D-UD2): `advance_step 1651 '4928'`, then `cross_world_teleport 'SGC_W1'` | DK-30 | Arrival is K5's H3 = P13 (167.00, -10.80, 18.00); receiver SGC US-30 |
 | C2b | **Receiver**: 1651/5171 active with item 6784 held, at the gate 25 pin | DK-30 | SGC US-30 departs the player |
 | C3 | **Departure** from step 4939 (D-UD7): `complete_objective 1654 '5961'` (never `advance_step`), then teleport | DK-33 | Arrival is H3; receiver SGC US-31 (Hammond dialogs 5852/5853) |
 | C4 | none | none | SGC US-32 to Omega; out of Dakara scope |
@@ -156,7 +156,7 @@ Three or four packets per wave, so one `packet-review-fixer` reviews each wave.
 | H-U07 | Rewards for the bridge mission (XP, cash, items). U-D07 is open. | Owner | UD-01b reward columns |
 | H-LBL | Label policy for authored player-facing copy (dialog text, journal text) | Owner | UD-01c copy; UD-01a writes placeholders only |
 | H1 | **Answered by SGC K5**: yes, a visible dial (sequences 10047/10060) before C1 and C2b, subject to D-US4. C3 departs from Dakara and has no SGC dial | none (UD-04b/c expectations follow K5) | none |
-| H3 | **Answered by SGC K5**: P13 = (172.79, -10.9, 12.0), the Gate Room floor in front of gate 27 (CIMMERIA_RECONSTRUCTION, sealed by SGC US-01) | none | none (UD-04c reads it from K5) |
+| H3 | **Answered by SGC K5**: P13 = (167.00, -10.80, 18.00), the Gate Room floor in front of gate 27 (CIMMERIA_RECONSTRUCTION, sealed by SGC US-01) | none | none (UD-04c reads it from K5) |
 | H5 | **Answered by SGC K5**: the Gate Room Jaffa are despawned once 1568 is done and for every Free Jaffa (US-34), Hammond is home at spawn 52, and Carter stands in the Gate Room during 1651/4931 | none | none |
 | H-RELOG | Where a relog inside the instanced SGC_W1 puts the player | `movement-teleport-advisor` via the SGC architect | Recovery-chain rule 4 on the SGC side |
 

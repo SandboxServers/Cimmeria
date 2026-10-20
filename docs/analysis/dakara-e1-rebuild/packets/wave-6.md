@@ -5,7 +5,9 @@
 
 Wave 6 starts when DK-40 and DK-41 are merged, and runs beside wave 5: every packet writes its own seed file and test file. DK-31a is a desk note with no code and no gate: dispatch it now, with wave 4.
 
-**Merge holds.** DK-30b (crossing C2) merges only after SGC packet US-30 has merged, and DK-33 (crossing C3) only after US-31: before that, the teleport lands a player in the SGC with no chain to receive them and no way back (the SGC has no DHD, finding F5). Build, review and open the PRs now; hold the merge. UD-04c tests C2, C2b and C3 once all four are in.
+**Merge holds.** DK-30b (crossing C2) merges only after SGC packet US-30 has merged, and DK-33 (crossing C3) only after US-31: before that, the crossing lands a player in the SGC with no chain to receive them and no way back (the SGC has no DHD, finding F5). Build, review and open the PRs now; hold the merge. UD-04c tests C2, C2b and C3 once all four are in.
+
+> **Amended 2026-10-19 (owner ruling D-DK24).** The crossings are now real gate travel: the DK-30b and DK-33 sections below are superseded in place by [wave 6c DK-30b-r](wave-6c.md#dk-30b-r-mission-1651-crossing-by-real-gate-travel) and [DK-33-r](wave-6c.md#dk-33-r-mission-1654-crossing-by-real-gate-travel), which ship in the same PRs. The merge holds stand, and both also wait on the DK-SGC PR ([wave 6d](../sgc-return-plan.md), owner option C, 2026-10-19, for D-DK40 and D-DK44). Rule 7's "no stargate address grant" is lifted for chains 8313, 8432 and 8433 only (gate 27, never from `player_loaded`). The DHD paragraph and the `teleport SGC H3` row below describe the old design.
 
 **Dormant until 1647 ships (D-DK23).** No player reaches 1651 until 1647 to 1650 exist; these chains are built and tested now.
 
@@ -44,7 +46,7 @@ Wave 6 starts when DK-40 and DK-41 are merged, and runs beside wave 5: every pac
 | `accept 1651` / `complete 1651` | `(id, 'accept_mission', 1651, NULL, '{}', 0, n)` / `'complete_mission'` |
 | `bind 6772@59` / `unbind 6772@59` | `(id, 'add_dialog_set', 6772, NULL, '{"slot": 59}', 0, n)` / `'remove_dialog_set'` |
 | `take 6784` | `(id, 'remove_item', 6784, NULL, '{"qty": 1}', 0, n)` |
-| `teleport SGC H3` | `(id, 'cross_world_teleport', NULL, 'SGC_W1', '{"x": 172.79, "y": -10.9, "z": 12.0}', 0, n)` (the frozen Union arrival H3 on the Gate Room floor; precedent: chains 8003-8006) |
+| `teleport SGC H3` | `(id, 'cross_world_teleport', NULL, 'SGC_W1', '{"x": 172.79, "y": -10.9, "z": 12.0}', 0, n)` (the frozen Union arrival H3 on the Gate Room floor; precedent: chains 8003-8006) (superseded by wave-6c / D-DK44: arrival is the gate 27 pin P13 (167.00, -10.80, 18.00); cross by real travel, no coordinates) |
 
 Triggers: `loaded Dakara_E1` is `('player_loaded', 'Dakara_E1')`, `loaded StoryRm` is `('player_loaded', 'Dakara_E1_StoryRm')`; `click <tag>` is `('interact_tag', '<tag>')`; `region <key>` is `('enter_region', '<key>')`, the key byte-exact as the `point_sets.name`; `choice 5986` is `('dialog_choice', '5986')`; `done 1650` is `('mission_completed', '1650')`.
 
@@ -60,7 +62,7 @@ Triggers: `loaded Dakara_E1` is `('player_loaded', 'Dakara_E1')`, `loaded StoryR
 
 **Tests** (C7). Type: chain replay, live-DB (TESTING.md type 6). File: your submodule of `crates/cell-content/src/cell/content/chain_replay_tests/dakara_e1_missions/`. Imports: `use super::*;`, `use super::super::assert_no_deferred_actions;`, the `super::super::mission_1324` helpers you need (`ctx_for`, `with_mission`, `with_step`, `fire_player_loaded`, `fire_interact_tag`, `fire_dialog_choice`, `fire_mission_completed`, `display_dialog_count`), `use crate::cell::content::engine_loader::build_engine;`, `use crate::test_support::require_db_or_skip;` (copy the paths `report.rs` or `m1645.rs` uses). `mod.rs` gives you `labels_in`, `with_objective`, `fire_enter_region`, `delays_of`, `radio_count`, the archetype and world consts and your range const. Each test: `#[tokio::test] async fn live_db_<what>()`, `let pool = require_db_or_skip!(); let engine = build_engine(Some(&pool)).await;`. A missing param reads as `not_active`, and `with_step` sets only the step key, so a player "at step S of mission M" is always `with_step(with_mission(ctx, M, "active"), M, S, "active")`; a later mission's state also sets the earlier missions (1645 to 1650 as needed) `completed`. For **every chain**:
 
-- the positive: the matching state gives exactly `labels_in(&r, <YOUR_RANGE>)` equal to the chain's actions in order, in the label format (`"8292:display_dialog(5843)"`, `"8326:remove_item(6784x1)"`, `"8290:accept_mission(1651)"`, `"8292:advance_step(1651->4930)"`, `"8354:complete_objective(1653/5642)"`, `"8290:add_dialog_set(6772@59)"`, `"8292:remove_dialog_set(6772@59)"`, `"8355:display_radio_dialog(5849)"`, `"8310:cross_world_teleport(SGC_W1@172.79,-10.90,12.00)"`, `"8294:complete_mission(1651)"`);
+- the positive: the matching state gives exactly `labels_in(&r, <YOUR_RANGE>)` equal to the chain's actions in order, in the label format (`"8292:display_dialog(5843)"`, `"8326:remove_item(6784x1)"`, `"8290:accept_mission(1651)"`, `"8292:advance_step(1651->4930)"`, `"8354:complete_objective(1653/5642)"`, `"8290:add_dialog_set(6772@59)"`, `"8292:remove_dialog_set(6772@59)"`, `"8355:display_radio_dialog(5849)"`, `"8310:cross_world_teleport(SGC_W1@172.79,-10.90,12.00)"`, `"8294:complete_mission(1651)"`); (superseded by wave-6c / D-DK44: arrival is the gate 27 pin P13 (167.00, -10.80, 18.00))
 - one negative per condition that a sibling state could pass: the previous and next step, the wrong world, the mission not yet accepted or already completed, the other objective state, the other archetype. Each gives an empty list for that chain;
 - on every `click` that displays: `display_dialog_count(&r) == 1` (unfiltered, across the whole engine); on every chain that shows a radio dialog: `radio_count(&r) == 1`;
 - `assert_no_deferred_actions(&r, <chain>)` on every chain that advances, completes or teleports and has no delayed action; on a chain with a delayed action, `delays_of(&r, <chain>)` equals the table's delays in order.
@@ -102,6 +104,8 @@ Revert proof: every positive asserts a non-empty list, so removing the seed rows
 
 ## DK-30b: mission 1651 step 4930, the DHD to the SGC (crossing C2)
 
+> **Superseded 2026-10-19** by [wave 6c DK-30b-r](wave-6c.md#dk-30b-r-mission-1651-crossing-by-real-gate-travel) (D-DK24, real gate travel). Kept as the record of what `34abe129b` built; DK-30b-r replaces chain 8310, deletes 8311 and 8312, and adds 8313.
+
 | Field | Value |
 |---|---|
 | Role | `packet-coder` |
@@ -113,7 +117,7 @@ Revert proof: every positive asserts a non-empty list, so removing the seed rows
 | Size | About 25k tokens |
 | Merge hold | After SGC US-30 merges (D-DK24) |
 
-Crossing C2, frozen in the Union plan: DK-30 departs from 1651 step 4930 with `advance_step 1651 '4928'`, then `cross_world_teleport 'SGC_W1'` to H3 (172.79, -10.9, 12.0); the SGC's US-30 receives the player at 4928. No address is granted (the SGC has no DHD to dial back with; US-30 sends the player home). Chains 8311 and 8312 are recovery: a player at 4928 or 4931 who is on Dakara (a failed teleport, a GM move) can still reach the SGC.
+Crossing C2, frozen in the Union plan: DK-30 departs from 1651 step 4930 with `advance_step 1651 '4928'`, then `cross_world_teleport 'SGC_W1'` to H3 (172.79, -10.9, 12.0); the SGC's US-30 receives the player at 4928. No address is granted (the SGC has no DHD to dial back with; US-30 sends the player home). Chains 8311 and 8312 are recovery: a player at 4928 or 4931 who is on Dakara (a failed teleport, a GM move) can still reach the SGC. (superseded by wave-6c / D-DK44: arrival is the gate 27 pin P13 (167.00, -10.80, 18.00))
 
 | Chain | Trigger | Conditions | Actions | Why |
 |---|---|---|---|---|
@@ -123,7 +127,7 @@ Crossing C2, frozen in the Union plan: DK-30 departs from 1651 step 4930 with `a
 
 At step 4929 the SGC's own recovery chains (US-30) apply; write none for it.
 
-**Tests** (`m1651_gate.rs`), besides the shared rules: 8310 gives exactly `["8310:advance_step(1651->4928)", "8310:cross_world_teleport(SGC_W1@172.79,-10.90,12.00)"]` and passes `assert_no_deferred_actions`; none of 8310-8312 fires at 4932, 4929 or 5171, on `STORY_RM`, or on another tag (`"Dakara_E1_CommandTerminal"`); with no 1651 state the DHD click resolves no chain in `M1651_GATE_CHAINS` (so the dialling window still opens); `display_dialog_count(&r) == 0` on 8310.
+**Tests** (`m1651_gate.rs`), besides the shared rules: 8310 gives exactly `["8310:advance_step(1651->4928)", "8310:cross_world_teleport(SGC_W1@172.79,-10.90,12.00)"]` and passes `assert_no_deferred_actions`; none of 8310-8312 fires at 4932, 4929 or 5171, on `STORY_RM`, or on another tag (`"Dakara_E1_CommandTerminal"`); with no 1651 state the DHD click resolves no chain in `M1651_GATE_CHAINS` (so the dialling window still opens); `display_dialog_count(&r) == 0` on 8310. (superseded by wave-6c / D-DK44: arrival is the gate 27 pin P13 (167.00, -10.80, 18.00))
 
 ## DK-31a: the Ha'tak sequences for 1652 (desk note, no code)
 
@@ -207,6 +211,8 @@ A player already inside the courtyard when 1653 is accepted must step out and ba
 **Tests** (`m1653.rs`), besides the shared rules: 8351 through `fire_enter_region(&engine, &ctx, "Dakara_E1.SuperweaponCourtyard")` at 4936 gives `["8351:advance_step(1653->4938)", "8351:add_dialog_set(6892@456)", "8351:add_dialog_set(6892@463)"]` and nothing at 4938 or with `"Dakara_E1.MohkatanTent"`; one test walks the supplies in both orders (west then east, east then west) through `with_objective` and asserts exactly one supply chain per click with the right labels; a supply whose objective is completed resolves nothing; 8355 and 8357 give `radio_count(&r) == 1` and `assert_no_deferred_actions`; 8358 fires with no world and with `STORY_RM`, and 8359 only on `STORY_RM`; 8360 and 8361 give `delays_of == [2000]`; 8363 passes `assert_no_deferred_actions`.
 
 ## DK-33: mission 1654 "Aftermath" and the DHD to the SGC (crossing C3)
+
+> **Partly superseded 2026-10-19** by [wave 6c DK-33-r](wave-6c.md#dk-33-r-mission-1654-crossing-by-real-gate-travel) (D-DK24): chains 8432 and 8433 also grant gate 27, 8434 completes 5961 on `stargate_crossed SGC_W1` instead of a DHD click and teleport, and 8435 is deleted. 8430 and 8431 stand as written.
 
 | Field | Value |
 |---|---|

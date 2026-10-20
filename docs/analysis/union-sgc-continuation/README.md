@@ -2,19 +2,60 @@
 
 > **Type:** Reference (campaign ledger)
 > **Audience:** The SGC_W1 Union coordinator and the packet coders, reviewers and specialists named in the packet table
-> **Last updated:** 2026-10-18 (US-00)
+> **Last updated:** 2026-10-19 (US-99 close-out)
 > **Index:** [sgc-work-packets.md](../union-zone-planning/sgc-work-packets.md) (packet text, findings and contract; this ledger does not copy it)
-> **Companions:** [RESUME.md](RESUME.md), [crossings.md](crossings.md), [execution contract](../union-zone-planning/execution-contract.md)
+> **Companions:** [RESUME.md](RESUME.md), [crossings.md](crossings.md), [placement.md](placement.md), UAT steps [U1](uat-U1.md), [U2](uat-U2.md), [U3](uat-U3.md), [unified-uat.md § SGC_W1](../../guides/unified-uat.md#sgc_w1-human-union-start), [execution contract](../union-zone-planning/execution-contract.md)
 
 ## Purpose
 
 Track the SGC_W1 (world 58) Union campaign packet by packet: which packets are ready, which are blocked and why, which IDs they own, and what US-00 verified before any seed or code packet starts. US-00 changes no seed and no code. It records the ID re-check, the crossings handshake with Dakara and Omega, and the engine facts every SGC packet relies on.
 
+## Release readiness (2026-10-19)
+
+The SGC_W1 Union continuation is **code-complete and unplayed**. Every chain is covered by database and executor tests; no step has run in a client. All three UAT files are owner-run, and agents did no lab use.
+
+### What is on `main`
+
+Packets US-00, US-01, US-02, US-10, US-11, US-12, US-13, US-14, US-15, US-16, US-20, US-21, US-22, US-23, US-24, US-30, US-31 and US-32 merged to `main` before the owner's "no PRs until the restoration is done" directive. The PR numbers are in the packet table below.
+
+### What the single Union SGC PR carries (branch `union-sgc/sgc-final`)
+
+| Item | Note |
+|---|---|
+| US-33 | 1655 Free Jaffa chains 3166-3169 and the disjointness suite `disjoint.rs` |
+| US-34 | Return state and relog chains 3171-3175 |
+| S4 fix pass | `disjoint.rs` selector widened to every chain touching missions 1563-1571 (F2), exact documented exceptions for chains 3172 (Free Jaffa only) and 3103 (space-scoped death trigger, no `archetype` parameter on that dispatcher), Omega's chain block 63800-63999 covered (F3); the five tutorial chains that had no Human pair got one (D-run6) |
+| `rig.rs` | The test rig `ARRIVAL` is the sealed P13 (167.00, -10.80, 18.00) |
+| US-25 | Reverted (D-run7): Dakara owns the gate 27 pin |
+| This close-out | UAT files U1, U2, U3, status docs, indices |
+
+Chain tests: the `union_sgc` live-DB module passed 105 tests at the S4 fix pass and `cimmeria-content-engine` passed 316. That is the whole of the testing.
+
+### What remains owner-side
+
+| Item | State |
+|---|---|
+| One PR for `union-sgc/sgc-final` | Opened by ops after the owner lifts the directive; retire `sgc-final` on merge |
+| UAT U1, U2, U3 | UATPending: [uat-U1.md](uat-U1.md), [uat-U2.md](uat-U2.md), [uat-U3.md](uat-U3.md) |
+| Placement lab checks owed | Listed in [uat-U1.md](uat-U1.md#placement-lab-checks-owed) |
+| US-16 escort walk | Judge the navmesh stall in [uat-U1.md](uat-U1.md#the-1564-escort-walk-judge-it) |
+| D-US2, D-US3 | Label policy and authored scale; US-40 stays HELD until the label policy is set |
+| D-US4 to D-US8, D-US12 | Shipped on their defaults; the owner can overrule later |
+| `dakara/dk-sgc` merge | Needed for the gate 27 pin (see below) |
+| HELD-A, H-REPRESS | Hidden objectives left uncredited; a second Harriman press inside the 3 s window can teleport twice (U2-07 characterises it) |
+
+### Known limitations and release notes
+
+- **Arrival heading is not carried.** `Action::CrossWorldTeleport` has no heading field, so a crossing delivers a position only. The Omega pin's heading 3.1409 (and any SGC heading) is dropped, and the player faces whatever the engine gives. [U3](uat-U3.md) checks position and records facing.
+- **The US-16 escort stalls.** The SGC_W1 navmesh has no route between Carter's spawn, the Failsafe room and the Gate Room, so her follow stops at the first gap. The chains still end correctly (she is teleported to the device point). The owner accepted this (D-US13 = a); [U1](uat-U1.md) judges it.
+- **Gate 27 depends on Dakara.** The gate 27 arrival pin (DK-SGC-01) and the `debug_area` test fix live on `dakara/dk-sgc`. Until that branch merges, gate 27 arrival (this includes the 1651 and 1654 returns from Dakara, which cross by real gate travel and land on the pin; only the SGC-to-Dakara and SGC-to-Omega crossings carry their own coordinates) stays off the navmesh by 3.4 m. Merge `dakara/dk-sgc` first, or accept that.
+- **US-40 is held.** Authored ambience and Carter's line 5394 wait for the label policy (D-US2, D-US3). Nothing authored ships.
+- **Dakara and Omega receivers.** The returns from Dakara (1651, 1654) and the Omega arrival need Dakara DK-30b, DK-33 and Omega's C4 receiver on the same build. Without them those UAT steps are NOT RUN, not FAIL.
 ## Status of this ledger
 
-- US-00 (this commit): **Done** when the checks below report no collision and the crossings table reports no unresolved mismatch that blocks US-32. See the findings.
-- The coordinator still has to merge the D-US1 amendment request into `docs/analysis/four-zone-planning/id-allocation.md`. US-00 does not edit that file.
-- Nothing is dispatched by this commit.
+- US-00: **Done** (merged #1880). The ID re-check found no collision and the crossings table has no unresolved mismatch (the C4 pin was published and is in row C4).
+- The D-US1 amendment request below is history; the coordinator owns merging it into `docs/analysis/four-zone-planning/id-allocation.md`.
+- The campaign is closed except for the owner-side items in § Release readiness.
 
 ## Findings (F1-F13)
 
@@ -43,17 +84,21 @@ Status vocabulary: Decided, BlockedDecision (owner or partner must answer), HELD
 | ID | Question | Owner | Default used | Status |
 |---|---|---|---|---|
 | D-US1 | ID blocks (see § ID re-check and the amendment request below) | Architect | blocks as listed | Decided; this ledger records the re-check. Coordinator merges the request |
-| D-US2 | Label policy for reconstructed and authored content shown to players | Owner | none | BlockedDecision: US-40 copy is HELD |
-| D-US3 | Scale of authored content (U-D07) | Owner | none authored | BlockedDecision: US-40 HELD |
+| D-US2 | Label policy for reconstructed and authored content shown to players | Owner | none | Small labelled authored content allowed (2026-10-19); the label policy itself is still unset, so US-40 stays HELD |
+| D-US3 | Scale of authored content (U-D07) | Owner | none authored | Small authored content allowed (2026-10-19); US-40 HELD on the label policy |
 | D-US4 | Visible dial before each crossing (sequences 10047/10060) | Owner (maintainer) | play both sequences; drop the rows if no | BlockedDecision, non-blocking: US-24, US-30, US-32 |
 | D-US5 | Return state seen by a player returning through C2/C3 | Owner | no Gate Room Jaffa once 1568 is done; no story Jaffa for a Free Jaffa; Carter in the Gate Room during 4931 | BlockedDecision, non-blocking: US-34 |
 | D-US6 | Walk into gate 27 instead of crossing on Harriman's interact | Owner | cross on the Harriman interact after the dial | BlockedDecision, non-blocking |
 | D-US7 | Virus hack minigame or plain interact (O5369) | Owner | plain interact | BlockedDecision, non-blocking: US-12 |
 | D-US8 | 1565 flank objective O5375: untracked or credited | Owner | untracked (optional) | BlockedDecision, non-blocking: US-20 |
-| D-US9 | Edit gate 27 row or carry coordinates in chains | Architect | chains carry H3; row untouched | Decided |
-| D-US10 | Static Jaffa rows 57-63 versus the 1565/1567 story Jaffa (options A, B, C) | Owner | B (tag the static rows as story Jaffa) | BlockedDecision, non-blocking: US-11 step 5, US-20, US-21 |
-| D-US11 | 1655 letter item 6786 at departure | Owner + Omega | 6786 to Humans on Hammond's 5856; nothing to Free Jaffa | BlockedDecision, shared with Omega D-UO11: US-32 |
+| D-US9 | Edit gate 27 row or carry coordinates in chains | Architect | chains carry H3; row untouched | Revised by option C (Dakara plan D-DK44/D-DK47): the gate 27 row pin is Dakara's DK-SGC-01 (D-run7); our SGC-to-Dakara and SGC-to-Omega chains still carry coordinates |
+| D-US10 | Static Jaffa rows 57-63 versus the 1565/1567 story Jaffa (options A, B, C) | Owner | B (tag the static rows as story Jaffa) | Decided 2026-10-19: B |
+| D-US11 | 1655 letter item 6786 at departure | Owner + Omega | 6786 to Humans on Hammond's 5856; nothing to Free Jaffa | Decided 2026-10-19: Humans only |
 | D-UD2 | Who owns the 1651/4930 departure | Dakara (D-UD2) | DK-30 | Accepted by SGC; confirmed in Dakara plan (C2 row) |
+| D-US13 | US-16 escort: accept the navmesh stall or re-slice | Owner | (a) accept | Decided 2026-10-19: (a); U1 judges it |
+| D-run6 | The disjointness suite found five tutorial chains (3086, 3087, 3089, 3096, 3097) with no Human pair | Autonomous run | add the Human pair | Decided: added |
+| D-run7 | US-25 duplicated Dakara's DK-SGC-01 gate 27 pin | Autonomous run | revert US-25 | Decided: reverted; release depends on `dakara/dk-sgc` |
+| D-run8 | Chain 3172 is Free Jaffa only but `disjoint.rs` demanded Human only | Autonomous run | exact exception for 3172, selector widened | Decided |
 
 ## ID re-check (US-00 step 2)
 
@@ -95,8 +140,8 @@ Request; the coordinator merges this into `docs/analysis/four-zone-planning/id-a
 The frozen C1-C4 rows and their partner checks are in [crossings.md](crossings.md). Summary:
 
 - C1, C2, C2b, C3: **match** the Dakara plan (DK-10b, DK-30, DK-33 and D-UD2).
-- C4: **mismatch on the arrival pin.** SGC K5 uses a candidate gate 5 pin (34.705, -50.634, -149.092). Omega's plan gives a first choice (34.70, -51.86, -142.0) that is a candidate, not a pin: `omega-work-packets.md:121` says "first choice", and `omega-packets/UO-00.md:29` says the pin is copied from UO-01's worknote only if UO-01 confirms it. Expected 1655 state on 4940 matches. The D-US11 letter decision matches D-UO11.
-  - Resolution: **coordinator** aligns the two. Omega publishes the C4 pin from UO-01; SGC then changes K5 to that value. US-32 stays BlockedDependency on the published pin.
+- C4: **was a mismatch on the arrival pin; resolved 2026-10-19** (Omega published x 34.70, y -51.28, z -142.00, heading 3.1409 and row C4 carries it; the heading is not carried by the engine). The original finding follows as history. SGC K5 used a candidate gate 5 pin (34.705, -50.634, -149.092). Omega's plan gives a first choice (34.70, -51.86, -142.0) that is a candidate, not a pin: `omega-work-packets.md:121` says "first choice", and `omega-packets/UO-00.md:29` says the pin is copied from UO-01's worknote only if UO-01 confirms it. Expected 1655 state on 4940 matches. The D-US11 letter decision matches D-UO11.
+  - Resolution (done): Omega published the pin from UO-01 and SGC changed K5 to that value.
 
 ## Engine facts (US-00 step 4)
 
@@ -118,6 +163,8 @@ Each row is confirmed with file:line, or the difference is stated.
 F13 is already recorded in agent memory (`.claude/agent-memory/mission-systems-advisor/advance-step-vs-complete-objective.md`). No new memory note was needed for it.
 
 ## Seal checklist per packet (US-00 step 5)
+
+> History: the Sealed or open column records the state when US-00 wrote it (2026-10-18). The current status of every packet is in the packet table below.
 
 "Sealed" means the packet's own facts are fixed. "Open" names the item that keeps it BlockedDependency. The allowlist file is the packet's chain or test file from the index § ID allocation.
 
@@ -141,8 +188,9 @@ F13 is already recorded in agent memory (`.claude/agent-memory/mission-systems-a
 | US-30 | chains 3133-3142 | `sgc_w1_union_1651_chains.sql` | `generator_1651.rs` | Open: needs US-10, US-11, US-01, UD-00 |
 | US-31 | chains 3148-3152 | `sgc_w1_union_1654_chains.sql` | `turnin_1654.rs` | Open: needs US-10, UD-00 |
 | US-32 | chains 3156-3165 | `sgc_w1_union_1655_human_chains.sql` | `letter_1655_human.rs` | Open: C4 pin (crossings.md), UO-00, D-US11 default |
-| US-33 | chains 3166-3169 | `sgc_w1_union_1655_jaffa_chains.sql` | `letter_1655_jaffa.rs`, `disjoint.rs` | Open: needs US-31, US-32 |
-| US-34 | chains 3171-3175 | `sgc_w1_union_return_chains.sql` | `return_state.rs` | Open: needs US-11, US-20, US-21, US-22, US-30; D-US5 default |
+| US-33 | chains 3166-3169 | `sgc_w1_union_1655_jaffa_chains.sql` | `letter_1655_jaffa.rs`, `disjoint.rs` | Done (ships in the single Union SGC PR) |
+| US-34 | chains 3171-3175 | `sgc_w1_union_return_chains.sql` | `return_state.rs` | Done (ships in the single Union SGC PR) |
+| US-25 | none | none | none | Dropped: gate 27 pin owned by Dakara DK-SGC-01 on dakara/dk-sgc (D-run7) |
 | US-40 | chains 3180-3199, dialogs 58000-58049 | `sgc_w1_union_authored_chains.sql` | `authored.rs` | **BlockedDecision (HELD)**: D-US2, D-US3 |
 | US-99 | none | docs | none | Open: all others |
 | US-U1 | none (lab) | none | lab | UATPending: asks the user |
@@ -150,33 +198,34 @@ F13 is already recorded in agent memory (`.claude/agent-memory/mission-systems-a
 
 ## Packet table
 
-Status vocabulary: Ready / BlockedDependency / BlockedDecision / Writing / Review / Integrated / UATPending / Done. The packet text stays in the index and its packet files.
+Status vocabulary: Done / Dropped / HELD / UATPending. The packet text stays in the index and its packet files.
 
 | Wave | Packet | Status | Note |
 |---|---|---|---|
-| S0 | US-00 | Writing (this commit) | ledger, ID re-check, crossings |
-| S0 | US-01 | Ready after US-00 merges | placement seal |
-| S0 | US-02 | Ready after US-00 merges | meshes, sequences, crate room |
-| S1 | US-10 | Ready after US-00 merges | scaffold |
-| S1 | US-11 | BlockedDependency | US-10, US-01, US-02 |
-| S1 | US-14 | Ready after US-00 merges | crossing log tests |
-| S2 | US-12 | BlockedDependency | US-10, US-11 |
-| S2 | US-13 | BlockedDependency | US-10 |
-| S2 | US-15 | BlockedDependency | US-10, US-11 |
-| S2 | US-20 | BlockedDependency | US-10, US-11 |
-| S2 | US-21 | BlockedDependency | US-10, US-11 |
-| S2 | US-22 | BlockedDependency | US-10, US-11 |
-| S3 | US-16 | BlockedDependency | US-15 |
-| S3 | US-23 | BlockedDependency | US-10, US-11 |
-| S3 | US-24 | BlockedDependency | US-10, US-14, US-02; D-US4 default |
-| S3 | US-30 | BlockedDependency | US-10, US-11, US-01, UD-00 |
-| S3 | US-31 | BlockedDependency | US-10, UD-00 |
-| S3 | US-32 | BlockedDependency | US-10, US-11, UO-00 pin, D-US11 default |
-| S4 | US-33 | BlockedDependency | US-31, US-32 |
-| S4 | US-34 | BlockedDependency | D-US5 default |
-| S4 | US-40 | BlockedDecision | D-US2, D-US3 (HELD) |
-| S4 | US-U1 | UATPending | lab, asks the user |
-| S4 | US-U2 | UATPending | lab, asks the user |
-| S4 | US-99 | BlockedDependency | close-out |
-
+| S0 | US-00 | Done (merged #1880) | ledger, ID re-check, crossings |
+| S0 | US-01 | Done (merged #1886) | placement seal |
+| S0 | US-02 | Done (merged #1884) | meshes, sequences, crate room |
+| S1 | US-10 | Done (merged #1891) | scaffold |
+| S1 | US-11 | Done (merged #1917) | templates, spawns, point sets, Jaffa tags (D-US10 = B) |
+| S1 | US-14 | Done (merged #1893) | crossing log tests |
+| S2 | US-12 | Done (merged #1919) | 1563 |
+| S2 | US-13 | Done (merged #1920) | 1571 |
+| S2 | US-15 | Done (merged #1921) | 1564 |
+| S2 | US-20 | Done (merged #1922) | 1565, 1566 |
+| S2 | US-21 | Done (merged #1923) | 1567 |
+| S2 | US-22 | Done (merged #1924) | 1568 |
+| S3 | US-16 | Done (merged #1933) | escort; navmesh stall accepted (D-US13 = a) |
+| S3 | US-23 | Done (merged #1934) | 1569 |
+| S3 | US-24 | Done (merged #1936) | 1570 and C1 |
+| S3 | US-30 | Done (merged #1937) | 1651, C2 arrival, C2b |
+| S3 | US-31 | Done (merged #1935) | 1654 |
+| S3 | US-32 | Done (merged #1938) | 1655 Human and C4 |
+| S4 | US-33 | Done (ships in the single Union SGC PR) | 1655 Free Jaffa and the disjointness suite |
+| S4 | US-34 | Done (ships in the single Union SGC PR) | return state |
+| S4 | US-25 | Dropped | gate 27 pin owned by Dakara DK-SGC-01 on `dakara/dk-sgc` (D-run7) |
+| S4 | US-40 | HELD | D-US2, D-US3: label policy unset |
+| S4 | US-U1 | UATPending | [uat-U1.md](uat-U1.md), owner-run |
+| S4 | US-U2 | UATPending | [uat-U2.md](uat-U2.md), owner-run |
+| S4 | US-U3 | UATPending | [uat-U3.md](uat-U3.md), owner-run; added by the owner: the Omega arrival |
+| S4 | US-99 | Done (ships in the single Union SGC PR) | this close-out |
 UD-00 and UO-00 are the Dakara and Omega ID packets. Whether they are dispatched or merged is the coordinator's gate and is not verified here.

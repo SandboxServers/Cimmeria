@@ -59,3 +59,30 @@ fn labels_and_delays_cover_the_wave_5_and_6_verbs() {
     assert_eq!(delays_of(&r, 8290), [2000, 0, 0, 0, 0, 0]);
     assert_eq!(radio_count(&r), 2);
 }
+
+#[test]
+fn labels_cover_the_wave_6c_verbs() {
+    let r = ResolvedActions {
+        actions: vec![
+            (
+                8231,
+                Action::StartMinigame {
+                    minigame_type: "Livewire".into(),
+                    difficulty: 1,
+                    on_victory_chains: vec![8231],
+                },
+            ),
+            (8231, Action::GrantStargateAddress { stargate_id: 27 }),
+            (9999, Action::DisplayDialog { dialog_id: 1 }),
+        ],
+        action_delays: vec![0, 0, 0],
+        params: HashMap::new(),
+    };
+    assert_eq!(
+        labels_in(&r, M1649_TERMINAL_CHAINS),
+        [
+            "8231:start_minigame(Livewire,victory=[8231],d=1)",
+            "8231:grant_stargate_address(27)",
+        ]
+    );
+}

@@ -36,6 +36,7 @@ pub(crate) const CHAIN_FILES: &[&str] = &[
     "beta_e1_m443_chains.sql",
     "beta_e1_m477_chains.sql",
     "beta_e1_m479_chains.sql",
+    "beta_e1_rewards_chains.sql",
     "sgc_w1_union_1563_chains.sql",
     "sgc_w1_union_1564_chains.sql",
     "sgc_w1_union_escort_chains.sql",

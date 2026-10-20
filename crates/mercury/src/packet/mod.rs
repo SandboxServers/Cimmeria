@@ -54,12 +54,14 @@ pub use ack_budget::{
     take_acks_for_plaintext, take_piggyback_acks, MAX_DATA_PLAINTEXT_BEFORE_ACKS,
     TICK_SYNC_PLAINTEXT_BEFORE_ACKS,
 };
+pub(crate) use build::build_fragmented_bundle_with_plan;
 pub use build::{
     build_fragmented_bundle, build_outgoing, build_outgoing_fragmented, FRAGMENT_BODY_SIZE,
 };
 pub use bytes::Bytes;
 pub use fragmenting::{
-    fragment_count, plan_fragments, server_message_framing, FragmentPlan, ServerMessageFraming,
+    fragment_count, plan_fragments, plan_fragments_isolated_first_message, server_message_framing,
+    FragmentPlan, ServerMessageFraming,
 };
 pub use legacy::{Packet, PacketFlags};
 pub use message_head::{first_message_head, MessageHead};

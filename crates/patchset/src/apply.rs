@@ -125,7 +125,7 @@ pub fn apply(
 
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i)?;
-        let name = entry.name().to_string();
+        let name = entry.name()?.into_owned();
         if name == RECIPE_NAME || name.starts_with(DELTA_DIR) || entry.is_dir() {
             continue;
         }
@@ -192,7 +192,8 @@ fn read_entry(archive: &mut zip::ZipArchive<std::fs::File>, index: usize) -> Res
     entry
         .read_to_end(&mut bytes)
         .map_err(|source| PatchsetError::Io {
-            path: entry.name().to_string(),
+            // zip 9 made name() fallible; this is already an error path.
+            path: String::from_utf8_lossy(entry.name_raw()).into_owned(),
             source,
         })?;
     Ok(bytes)

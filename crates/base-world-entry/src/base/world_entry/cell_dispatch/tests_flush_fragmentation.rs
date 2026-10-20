@@ -8,11 +8,16 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 use cimmeria_mercury::client_model::{unpack_packet_bodies, unpack_reliable_stream, ClientUnpack};
+use cimmeria_mercury::consts::TX_WINDOW_SIZE;
 use cimmeria_mercury::encryption::MercuryEncryption;
-use cimmeria_mercury::packet::{parse_incoming, FLAG_FRAGMENTED, FRAGMENT_BODY_SIZE};
+use cimmeria_mercury::packet::{
+    parse_incoming, Bytes, Packet, PacketFlags, FLAG_FRAGMENTED, FLAG_HAS_REQUESTS,
+    FRAGMENT_BODY_SIZE,
+};
 use cimmeria_mercury::transport::Transport;
 
 use crate::base::deferred_aoi::DeferredAoiMsg;
@@ -75,12 +80,16 @@ fn pad_where_raw_split_breaks_the_client() -> usize {
 
 /// Flush 24 buffered introductions and return the decrypted wire packets in
 /// send order.
-async fn flush(pad: usize) -> Vec<Vec<u8>> {
+async fn flush_trigger(pad: usize, trigger: &'static str) -> Vec<Vec<u8>> {
+    flush_trigger_count(pad, trigger, NPC_COUNT).await
+}
+
+async fn flush_trigger_count(pad: usize, trigger: &'static str, count: u32) -> Vec<Vec<u8>> {
     let addr: SocketAddr = "127.0.0.1:54601".parse().unwrap();
     let typed = Arc::new(TestTransport::new());
     let transport: Arc<dyn Transport> = typed.clone();
     let mut state = test_default_connected_client_state();
-    for i in 0..NPC_COUNT {
+    for i in 0..count {
         state.deferred_aoi_msgs.push(DeferredAoiMsg::EnteredAoI {
             entity_id: entity_id(i),
             class_id: CLASS_ID,
@@ -97,7 +106,7 @@ async fn flush(pad: usize) -> Vec<Vec<u8>> {
     super::deferred_flush::flush_deferred_aoi(
         WITNESS,
         addr,
-        "on_client_ready",
+        trigger,
         &transport,
         &connected,
         &entity_to_addr,
@@ -110,6 +119,10 @@ async fn flush(pad: usize) -> Vec<Vec<u8>> {
         .iter()
         .map(|raw| session.decrypt(raw).unwrap())
         .collect()
+}
+
+async fn flush(pad: usize) -> Vec<Vec<u8>> {
+    flush_trigger(pad, "on_client_ready").await
 }
 
 fn messages_of(unpack: &[ClientUnpack]) -> Vec<(u8, Vec<u8>)> {
@@ -172,6 +185,220 @@ async fn flush_reaches_the_client_whole_for_every_cascade_size() {
         );
         assert_eq!(messages_of(&bundles), expected_messages(pad), "pad {pad}");
     }
+}
+
+/// #1341: the first-login cinematic hold cannot put both CREATE_ENTITY and
+/// UPDATE_AVATAR in one packet. The client's stale next-request offset can
+/// collide with any second message cursor and discard Frost and the tail.
+#[tokio::test]
+async fn cinematic_hold_sends_each_create_and_avatar_in_a_separate_packet() {
+    let packets = flush_trigger(0, "cinematic_hold_release").await;
+    assert!(packets.len() > (NPC_COUNT * 2) as usize);
+    let mut seqs = Vec::new();
+    for i in 0..NPC_COUNT {
+        let record = compose_create_entity_base_body(
+            entity_id(i),
+            CLASS_ID,
+            [i as f32 * 3.0, 0.0, 0.0],
+            [0.0; 3],
+        );
+        let create = parse_incoming(&packets[(i * 2) as usize]).unwrap();
+        let avatar = parse_incoming(&packets[(i * 2 + 1) as usize]).unwrap();
+        assert_eq!(create.flags & FLAG_FRAGMENTED, 0, "create {i}");
+        assert_eq!(avatar.flags & FLAG_FRAGMENTED, 0, "avatar {i}");
+        assert_eq!(create.body.as_ref(), &record[..11], "create {i}");
+        assert_eq!(avatar.body.as_ref(), &record[11..], "avatar {i}");
+        seqs.extend([create.seq_id.unwrap(), avatar.seq_id.unwrap()]);
+    }
+    assert!(seqs.windows(2).all(|w| w[1] == w[0] + 1));
+    let bundles = unpack_reliable_stream(&packets);
+    assert!(bundles.iter().all(|b| b.abort.is_none()));
+    for (n, bundle) in bundles.iter().take((NPC_COUNT * 2) as usize).enumerate() {
+        assert_eq!(bundle.messages.len(), 1, "phase-1 packet {n}");
+    }
+    assert_eq!(messages_of(&bundles), expected_messages(0));
+}
+
+/// #1341: only cursor 1 can be exposed to the stale request offset in the
+/// first cascade fragment. The next fragment lacks a request footer, so the
+/// client's chain crossing replaces the stale value with zero.
+#[tokio::test]
+async fn cinematic_hold_cascade_first_fragment_has_one_message_cursor() {
+    let packets = flush_trigger(0, "cinematic_hold_release").await;
+    let cascade_at = (NPC_COUNT * 2) as usize;
+    let first = parse_incoming(&packets[cascade_at]).unwrap();
+    let second = parse_incoming(&packets[cascade_at + 1]).unwrap();
+    let cascade = cascade_body(0);
+    let first_len = 3 + usize::from(u16::from_le_bytes([cascade[1], cascade[2]]));
+    assert!(first_len < FRAGMENT_BODY_SIZE);
+    assert_eq!(first.body.as_ref(), &cascade[..first_len]);
+    assert_ne!(first.flags & FLAG_FRAGMENTED, 0);
+    assert_eq!(first.frag_begin, second.frag_begin);
+    assert_eq!(first.frag_end, second.frag_end);
+    assert_eq!(first.seq_id.unwrap() + 1, second.seq_id.unwrap());
+    assert_eq!(first.flags & FLAG_HAS_REQUESTS, 0);
+    assert_eq!(second.flags & FLAG_HAS_REQUESTS, 0);
+    assert_eq!(second.first_req_offset, None);
+    let first_dispatch = unpack_packet_bodies(&[first.body.as_ref()]);
+    assert_eq!(first_dispatch.abort, None);
+    assert_eq!(first_dispatch.messages.len(), 1, "only cursor 1 is exposed");
+    let bundles = unpack_reliable_stream(&packets);
+    assert!(bundles.iter().all(|bundle| bundle.abort.is_none()));
+    assert_eq!(messages_of(&bundles), expected_messages(0));
+    let pre_ready_packets = flush(0).await;
+    let first_cascade = parse_incoming(&pre_ready_packets[1]).unwrap();
+    assert_ne!(first_cascade.flags & FLAG_FRAGMENTED, 0);
+    assert_eq!(first_cascade.body.len(), FRAGMENT_BODY_SIZE);
+}
+
+/// A sparse cinematic flush also needs a chain crossing: the single NPC's
+/// multi-message cascade fits one datagram, but its later message cursors
+/// would remain vulnerable if sent without fragmentation.
+#[tokio::test]
+async fn cinematic_hold_one_npc_cascade_fragments_despite_fitting_one_packet() {
+    let cascade = compose_create_entity_cascade_body(entity_id(0), CLASS_ID, 1, Some(&npc(0, 0)));
+    assert!(cascade.len() < FRAGMENT_BODY_SIZE);
+    let expected_cascade = unpack_packet_bodies(&[&cascade]);
+    assert!(
+        expected_cascade.messages.len() > 1,
+        "fixture needs later cursors"
+    );
+    let packets = flush_trigger_count(0, "cinematic_hold_release", 1).await;
+    assert_eq!(
+        packets.len(),
+        4,
+        "two phase-1 packets and two cascade fragments"
+    );
+    let first = parse_incoming(&packets[2]).unwrap();
+    let second = parse_incoming(&packets[3]).unwrap();
+    let first_len = 3 + usize::from(u16::from_le_bytes([cascade[1], cascade[2]]));
+    assert_eq!(first.body.as_ref(), &cascade[..first_len]);
+    assert_eq!(second.body.as_ref(), &cascade[first_len..]);
+    assert_ne!(first.flags & FLAG_FRAGMENTED, 0);
+    assert_ne!(second.flags & FLAG_FRAGMENTED, 0);
+    assert_eq!((first.frag_begin, first.frag_end), (Some(2), Some(3)));
+    assert_eq!((second.frag_begin, second.frag_end), (Some(2), Some(3)));
+    assert_eq!(first.seq_id, Some(2));
+    assert_eq!(second.seq_id, Some(3));
+    assert_eq!(first.flags & FLAG_HAS_REQUESTS, 0);
+    assert_eq!(second.first_req_offset, None);
+    assert_eq!(
+        unpack_packet_bodies(&[first.body.as_ref()]).messages.len(),
+        1
+    );
+    let decoded = unpack_reliable_stream(&packets);
+    assert!(decoded.iter().all(|bundle| bundle.abort.is_none()));
+    let expected_base = compose_create_entity_base_body(entity_id(0), CLASS_ID, [0.0; 3], [0.0; 3]);
+    let mut expected = unpack_packet_bodies(&[&expected_base]).messages;
+    expected.extend(expected_cascade.messages);
+    assert_eq!(messages_of(&decoded), expected);
+
+    let pre_ready = flush_trigger_count(0, "on_client_ready", 1).await;
+    assert_eq!(
+        pre_ready.len(),
+        2,
+        "ordinary sparse flush stays two packets"
+    );
+    assert_eq!(
+        parse_incoming(&pre_ready[1]).unwrap().flags & FLAG_FRAGMENTED,
+        0
+    );
+}
+
+/// The 48 single-message introduction packets exceed a nearly full TX
+/// window. Each datagram is still registered for ACK/retransmit, including
+/// the packets held in the deferred queue until an ACK promotes them.
+#[tokio::test]
+async fn cinematic_hold_tail_survives_tx_window_overflow_and_selective_acks() {
+    let addr: SocketAddr = "127.0.0.1:54604".parse().unwrap();
+    let typed = Arc::new(TestTransport::new());
+    let transport: Arc<dyn Transport> = typed.clone();
+    let mut state = test_default_connected_client_state();
+    let prior_count = TX_WINDOW_SIZE - 1;
+    {
+        let mut channel = state.channel.lock().unwrap();
+        for seq in 0..prior_count as u32 {
+            channel
+                .register_sent_packet(
+                    Packet::new(PacketFlags::default(), seq, Bytes::new()),
+                    Bytes::from_static(b"previous reliable packet"),
+                )
+                .unwrap();
+        }
+    }
+    state.next_seq.store(prior_count as u32, Ordering::Relaxed);
+    for i in 0..NPC_COUNT {
+        state.deferred_aoi_msgs.push(DeferredAoiMsg::EnteredAoI {
+            entity_id: entity_id(i),
+            class_id: CLASS_ID,
+            position: [i as f32 * 3.0, 0.0, 0.0],
+            direction: [0.0; 3],
+            level: 1,
+            npc_data: Some(Box::new(npc(i, 0))),
+            player_data: None,
+        });
+    }
+    let connected = Arc::new(Mutex::new(HashMap::from([(addr, state)])));
+    let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(WITNESS, addr)])));
+
+    super::deferred_flush::flush_deferred_aoi(
+        WITNESS,
+        addr,
+        "cinematic_hold_release",
+        &transport,
+        &connected,
+        &entity_to_addr,
+    )
+    .await;
+
+    let sent = typed.filter_to(addr);
+    let session = MercuryEncryption::from_session_key([0u8; 32]);
+    let seqs: Vec<u32> = sent
+        .iter()
+        .map(|raw| {
+            let plaintext = session.decrypt(raw).unwrap();
+            parse_incoming(&plaintext).unwrap().seq_id.unwrap()
+        })
+        .collect();
+    assert!(seqs.len() > TX_WINDOW_SIZE);
+    assert_eq!(
+        seqs,
+        (prior_count as u32..prior_count as u32 + sent.len() as u32).collect::<Vec<_>>()
+    );
+
+    let clients = connected.lock().unwrap();
+    let state = clients.get(&addr).unwrap();
+    assert_eq!(
+        state.next_seq.load(Ordering::Relaxed),
+        prior_count as u32 + sent.len() as u32
+    );
+    let mut channel = state.channel.lock().unwrap();
+    assert_eq!(channel.tx_window.len(), TX_WINDOW_SIZE);
+    assert_eq!(channel.unsent_packets.len(), sent.len() - 1);
+    assert_eq!(
+        channel.tx_window.back().unwrap().raw_bytes.as_ref(),
+        sent[0].as_slice()
+    );
+    assert_eq!(
+        channel.unsent_packets.front().unwrap().raw_bytes.as_ref(),
+        sent[1].as_slice()
+    );
+
+    let previous_acks: Vec<u32> = (0..prior_count as u32).collect();
+    assert_eq!(channel.process_ack_footer(&previous_acks), prior_count);
+    assert_eq!(channel.tx_window.len(), TX_WINDOW_SIZE);
+    assert_eq!(channel.tx_window.front().unwrap().packet.sequence, seqs[0]);
+    assert_eq!(channel.tx_window[1].packet.sequence, seqs[1]);
+
+    // A later ACK may retire a queued packet without consuming a missing
+    // earlier packet. Finish with the gap ACK and an empty channel.
+    assert!(channel.process_ack(*seqs.last().unwrap()));
+    assert_eq!(
+        channel.process_ack_footer(&seqs[..seqs.len() - 1]),
+        seqs.len() - 1
+    );
+    assert!(channel.tx_window.is_empty());
+    assert!(channel.unsent_packets.is_empty());
 }
 
 /// Each flushed bundle names its source on the `AoI bundle: flushed` row: the

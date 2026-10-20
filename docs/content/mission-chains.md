@@ -1200,13 +1200,13 @@ Chain-replay tests: [`chain_replay_tests/class_start_sgc/`](../../crates/cell-co
 
 #### Union continuation (`sgc_w1_union_*.sql`, chains 3051-3199)
 
-Missions 1563-1571, the SGC halves of 1651, 1654 and 1655, and the crossings to Dakara (C1) and Omega (C4). Campaign: `docs/analysis/union-sgc-continuation/`. Each line below belongs to one packet; that packet rewrites only its own line.
+Missions 1563-1571, the SGC halves of 1651, 1654 and 1655, and the crossings to Dakara (C1) and Omega (C4). Campaign: `docs/analysis/union-sgc-continuation/`. **Status (2026-10-19, SGC_W1 close-out):** chains 3051-3175 are authored and covered by database and executor tests; nothing has been played in a client ([UAT steps](../analysis/union-sgc-continuation/uat-U1.md)). Missions 1563 to 1568, 1571, 1654 and 1655 are mission-scoped chains; 1569, 1570 and most of the 1651 chains are space-scoped. Four crossings: C1 to Dakara_E1 (1570), C2 and C2b with Dakara (1651), C3 from Dakara (1654) and C4 to Omega_Site (1655). Human classes (archetype 1 to 4) play the whole tutorial arc; a Free Jaffa (archetype 7) gets none of 1563 to 1571 and only the letter-free 1654 and 1655 route, enforced by the disjointness suite. SGC_W1 is a per-player instance rebuilt on entry, so relogs and returns restore markers and Jaffa from state, not from the world. Shipped under the defaults: D-US4 (dial both sequences), D-US5 (no Gate Room Jaffa after 1568), D-US6 (cross on Harriman's interact), D-US7 (plain interact), D-US8 (flank objective untracked), D-US10 = B, D-US11 = Humans only, D-US13 = escort stall accepted. Not shipped: US-40 authored ambience (HELD on the label policy). Open: D-US2 and D-US3 (label policy and scale), HELD-A (hidden objectives left uncredited), the F4 re-press note. Each line below belongs to one packet.
 
 - **1563 Virus (US-12, chains 3051-3057):** Carter (`SGC_W1_SamCarter`) offers it ("?") to a Human who finished 1562, marks it "!" on accept, and on the next press hands over her notes (step 4629), which lights her terminal (`SGC_W1_CarterTerminal`); pressing the terminal completes objective 5369 and the mission, and relog restores each marker.
 
 - **1564 Self-Destruct (US-15, chains 3060-3071):** for Human classes, Carter offers 1564 after 1563 (5374), gives the radio report (5375) that moves to step 4631, and the Failsafe room (`SGC_W1.FailsafeRoom`) moves to 4632 and lights the Failsafe Device. The device moves to 4633, Carter's final report (5378) completes objective 5373, and load restores her marker and the glow.
 
-- **1564 escort (US-16, chains 3073-3078):** planned.
+- **1564 escort (US-16, chains 3073-3078):** Carter follows the player once her radio report (5375) closes on step 4631, stops and walks to the device (P05) when the player enters the Failsafe room, and a relog restores the follow on 4631 and her place at P05 on 4632 and 4633.
 
 - **1571 auxiliary credit (US-13, chains 3080-3081):** a Human who completes 1559 is credited 1571 at once (objective 5354, no second weapon), and a Human who finished 1559 earlier is credited on load.
 
@@ -1216,19 +1216,19 @@ Missions 1563-1571, the SGC halves of 1651, 1654 and 1655, and the crossings to 
 
 - **1568 Gate Room (US-22, chains 3100-3107):** offered to Humans after 1564 (and on load after it), Gate Control advances to 4638 with monologue 5382 and a lit terminal, the terminal press (5383) shuts the gate, the three Gate Room Jaffa complete the mission (with a terminal backstop when they are already dead), and completion stages the departure (P15, P16, P14, dialog 5384).
 
-- **1569 Ordinance (US-23, chains 3110-3122):** planned.
+- **1569 Ordinance (US-23, chains 3110-3122):** offered on `mission_completed 1564` (Human, `mission_status 1569 eq not_active`) and lights six storage crates, one objective each (5381, 5385-5389, step 4640); each open completes its objective once, shows its dialog and clears its glow; the sixth completes 1569 so chains 3041-3044 pay the class kit; a relog relights the unopened crates.
 
-- **1570 and crossing C1 (US-24, chains 3123-3131):** planned.
+- **1570 and crossing C1 (US-24, chains 3123-3131):** Hammond or Teal'c offers 1570 after 1568 and 1569 (Human classes), either accept lights Harriman; Harriman dials Dakara and crosses to Dakara_E1 three seconds later; a relog or recovery press covers an interrupted dial.
 
-- **1651 SGC half, C2 arrival and C2b (US-30, chains 3133-3142):** planned.
+- **1651 SGC half, C2 arrival and C2b (US-30, chains 3133-3142):** Hammond shows "!" on arrival from Dakara (4928); his briefing (5844) moves to 4931 and puts Carter in the Gate Room; Carter's 5845 grants the naquadah generator (6784) and completes O5956 while O6037 holds the step; Harriman dials (C2b) and after 3 s sends you to Dakara_E1 with 5171 active; relog and recovery chains restore the marker and finish an interrupted dial.
 
-- **1654 turn-in (US-31, chains 3148-3152):** planned.
+- **1654 turn-in (US-31, chains 3148-3152):** Hammond is the turn-in marker on arrival from Dakara (step 4939); his report, 5852 for a Human or 5853 for a Free Jaffa, closes and completes O5962 and so 1654, and Woolsey then appears beside Hammond with "?" for the 1655 offer.
 
-- **1655 Human and crossing C4 (US-32, chains 3156-3165):** planned.
+- **1655 Human and crossing C4 (US-32, chains 3156-3165):** Woolsey offers 1655 to Humans on 5854, Hammond's 5856 grants letter 6786 (Humans only), Harriman's 5857 dials Omega Site for both races (dial 10047/10060, then 3 s to Omega_Site with step 4940), with relog and recovery chains on 4943, 4944 and 4941.
 
-- **1655 Free Jaffa (US-33, chains 3166-3169):** planned.
+- **1655 Free Jaffa (US-33, chains 3166-3169):** the Free Jaffa path (archetype 7 only, eq '7' on 3166) runs the letter-free route: Harriman's 5857 is shown after 5875 and the Omega dial (4944) without the letter 6786; the disjointness suite checks that Human and Free Jaffa chains never share a gate.
 
-- **Return state and relogs (US-34, chains 3171-3175):** planned.
+- **Return state and relogs (US-34, chains 3171-3175):** SGC_W1 is a per-player instance rebuilt on entry; spent story Jaffa are despawned on load; a Free Jaffa sees none; route pairs stay while a mission needs them.
 
 #### Mission 1559: "Welcome to Stargate Command" [CONFIRMED]
 

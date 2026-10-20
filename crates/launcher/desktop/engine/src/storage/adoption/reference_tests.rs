@@ -166,7 +166,10 @@ fn ordinary_explicit_zip_directories_are_supported() {
     for i in 0..original.len() {
         let mut file = original.by_index(i).unwrap();
         writer
-            .start_file(file.name(), zip::write::SimpleFileOptions::default())
+            .start_file(
+                file.name().unwrap(),
+                zip::write::SimpleFileOptions::default(),
+            )
             .unwrap();
         let mut bytes = Vec::new();
         file.read_to_end(&mut bytes).unwrap();

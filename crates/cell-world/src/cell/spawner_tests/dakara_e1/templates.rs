@@ -269,6 +269,11 @@ async fn live_db_every_dakara_e1_cast_and_prop_has_visual_and_spawn_settings() {
     assert_eq!(services, 0, "no vendor list, trainer list or patrol path");
 }
 
+/// Looks ruled without a client proof yet, `(template id, static mesh)`:
+/// 457 Vocuum wears the hologram pad (D-DK45, owner-delegated
+/// 2026-10-19). The owner's UAT DK-U34 is its client proof.
+const UNPROVEN_LOOK_RULINGS: [(i32, &str); 1] = [(457, "GA-Props.GA-Hologram_Platform00")];
+
 /// No look in the block is new: each is worn, whole, by a template outside
 /// the campaign's ids (440-479). The client ships no costume or mesh for
 /// these actors, so each look was copied from one the repo already renders,
@@ -278,7 +283,9 @@ async fn live_db_every_dakara_e1_cast_and_prop_has_visual_and_spawn_settings() {
 ///
 /// Revert proof: change a row's `static_mesh` or a component to a value no
 /// other template uses and this names it. To give a row a look of its own,
-/// prove it in a client first, then exempt the row here by id.
+/// prove it in a client first, then exempt the row here by id. A row in
+/// `UNPROVEN_LOOK_RULINGS` is exempt, but must wear exactly its ruled mesh,
+/// and that mesh must exist.
 #[tokio::test]
 async fn live_db_every_dakara_e1_look_is_one_another_template_wears() {
     let pool = require_db_or_skip!();
@@ -306,10 +313,35 @@ async fn live_db_every_dakara_e1_look_is_one_another_template_wears() {
     .fetch_all(&pool)
     .await
     .expect("look query must succeed");
+    let unproven: Vec<(i32, String)> = unproven
+        .into_iter()
+        .filter(|(id, _)| !UNPROVEN_LOOK_RULINGS.iter().any(|(ruled, _)| ruled == id))
+        .collect();
     assert!(
         unproven.is_empty(),
         "templates whose look no template outside 440-479 wears: {unproven:?}"
     );
+    for (id, mesh) in UNPROVEN_LOOK_RULINGS {
+        let static_mesh: Option<String> = sqlx::query_scalar(
+            "SELECT static_mesh::text FROM resources.entity_templates WHERE template_id = $1",
+        )
+        .bind(id)
+        .fetch_one(&pool)
+        .await
+        .unwrap_or_else(|e| panic!("DK-32c template {id}: {e}"));
+        assert_eq!(
+            static_mesh.as_deref(),
+            Some(mesh),
+            "template {id} must wear its ruled mesh"
+        );
+        let meshes: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM resources.static_meshes WHERE mesh_name = $1")
+                .bind(mesh)
+                .fetch_one(&pool)
+                .await
+                .expect("DK-32c mesh count");
+        assert_eq!(meshes, 1, "ruled mesh {mesh} must exist");
+    }
 }
 
 /// The four tent flaps carry `INT_MissionWorldObject` on the template, so
