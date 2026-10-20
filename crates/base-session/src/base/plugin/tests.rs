@@ -211,11 +211,16 @@ impl World {
 fn the_production_lists_name_crafting_and_an_empty_table_is_incomplete() {
     assert!(PLUGIN_OWNED_BASE_METHODS.is_empty());
     let declared: Vec<&str> = PLUGIN_CELL_MESSAGES.iter().map(|k| k.type_name()).collect();
-    assert_eq!(declared.len(), 7, "{declared:?}");
+    assert_eq!(declared.len(), 8, "{declared:?}");
     assert!(
         declared
             .iter()
-            .all(|t| t.starts_with("cimmeria_wire::crafting::")),
+            .filter(|t| t.starts_with("cimmeria_wire::crafting::"))
+            .count()
+            == 7
+            && declared
+                .iter()
+                .any(|t| t.ends_with("letter_turn_in::LetterTurnInRequest")),
         "{declared:?}"
     );
     let plugins = BasePlugins::build(&[]).expect("an empty table builds");

@@ -35,6 +35,7 @@ async fn livewire_commands_and_abort_are_visible_after_teardown() {
             vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+            1,
         )
         .await
         .unwrap();
@@ -137,10 +138,7 @@ async fn livewire_commands_and_abort_are_visible_after_teardown() {
     assert_eq!(cut.params["wirename"], "g1");
     assert!(matches!(
         rx.try_recv(),
-        Ok(CellToBaseMsg::MinigameResult {
-            result_code: RESULT_CANCELED,
-            ..
-        })
+        Ok(CellToBaseMsg::MinigameResult { .. })
     ));
 }
 
@@ -165,6 +163,7 @@ async fn livewire_victory_outbound_row_precedes_result() {
             vec![],
             None,
             Some(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)),
+            1,
         )
         .await
         .unwrap();
@@ -229,9 +228,6 @@ async fn livewire_victory_outbound_row_precedes_result() {
     assert_eq!(board.goal_cut, 2);
     assert!(matches!(
         rx.try_recv(),
-        Ok(CellToBaseMsg::MinigameResult {
-            result_code: RESULT_VICTORY,
-            ..
-        })
+        Ok(CellToBaseMsg::MinigameResult { .. })
     ));
 }

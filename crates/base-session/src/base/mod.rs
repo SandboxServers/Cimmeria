@@ -9,7 +9,7 @@
 //! items at their old `base::` paths.
 
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicBool, AtomicU32};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -166,6 +166,8 @@ pub struct SessionOriginSeed {
 
 /// State held for each client that has completed the Phase 3 handshake.
 pub struct ConnectedClientState {
+    /// Process-unique Base connection instance; an address can be reused.
+    pub session_instance_id: u64,
     pub enc: MercuryEncryption,
     pub key: [u8; 32],
     /// Wire-encryption version this session speaks, for BOTH directions and
@@ -218,6 +220,10 @@ pub struct ConnectedClientState {
     pub world_entry_sent: bool,
     pub pending_player_entity_id: Option<u32>,
     pub player_entity_id: Option<u32>,
+    /// Shared with every cloned reliable counter reservation. A sender that
+    /// has not admitted a datagram may leave its candidate sequence unused
+    /// only while this gate excludes all other reservers.
+    pub reliable_seq_gate: Arc<Mutex<()>>,
     pub next_seq: Arc<AtomicU32>,
     /// Sequence counter for **unreliable** outbound packets — kept separate
     /// from `next_seq` to preserve the contiguous reliable seq stream the
@@ -373,6 +379,12 @@ pub struct ConnectedClientState {
     /// [`plugin::session_plugins`]. Empty in a session built by a test that
     /// installs no plugin.
     pub plugins: plugin::BasePlugins,
+}
+
+/// Minted once per Phase 3 connection. Zero is reserved for invalid snapshots.
+pub fn mint_session_instance_id() -> u64 {
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    NEXT.fetch_add(1, Ordering::Relaxed)
 }
 
 /// A world as a Discord pair: its `world_id` from the NameBook and its

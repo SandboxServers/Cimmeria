@@ -1,5 +1,5 @@
 //! Complete authored mission entries, admitted before any mission patches.
-//! Production entries are added here only once a content packet seals their XML.
+//! Production entries are added only by a mission packet that sealed its XML (CB-N05: 62050; CB-N06: 62060; DK-10fs: 63100).
 
 /// One complete authored category-3 entry, validated before batch application.
 #[derive(Debug)]
@@ -10,8 +10,57 @@ pub struct MissionAddition {
     pub xml: &'static str,
 }
 
-/// Production authored entries. Each XML lives in its zone's own file.
+/// CB-N05 *The Remaining Pods* (CIMMERIA_AUTHORING): the exact category-3
+/// entry for mission 62050, 1678 bytes, frozen in
+/// docs/analysis/cellblock-continuation/w3-frozen.md (F1).
+pub const REMAINING_PODS_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<COOKED_MISSION xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:CookedData1="SGW" AwardXP="false" ShowFactionChangeIcon="false" ShowInstanceIcon="false" ShowPVPIcon="false" IsShareable="false" NumRepeats="0" CanAbandon="true" CanRepeatOnFail="false" CanFail="false" Level="1" IsHidden="false" IsOverrideMission="false" IsEnabled="true" IsAStory="true" Difficulty="1" MissionLabel="General" MissionDefn="The Remaining Pods" MissionID="62050"><HistoryText>Prisoner 329 heard other captives in nearby pods. Tell Col. Marsh so they are not left behind.</HistoryText><Steps StepEnabled="false" StepID="62051" AwardXP="false" Difficulty="1"><StepDisplayLogText>Ask Prisoner 329 about the other pods.</StepDisplayLogText><Objectives IsOptional="false" ObjectiveID="62052" AwardXP="false" IsHidden="false" IsEnabled="false" Difficulty="1"><DisplayLogText>Speak to Prisoner 329.</DisplayLogText><Tasks TaskType="1" TaskID="62053" AwardXP="false" IsEnabled="true" Difficulty="1"></Tasks></Objectives></Steps><Steps StepEnabled="false" StepID="62054" AwardXP="false" Difficulty="1"><StepDisplayLogText>Tell Col. Marsh there may be prisoners in the other pods.</StepDisplayLogText><Objectives IsOptional="false" ObjectiveID="62055" AwardXP="false" IsHidden="false" IsEnabled="false" Difficulty="1"><DisplayLogText>Warn Col. Marsh.</DisplayLogText><Tasks TaskType="1" TaskID="62056" AwardXP="false" IsEnabled="true" Difficulty="1"></Tasks></Objectives></Steps></COOKED_MISSION>"#;
+
+/// CB-N06 *Before the Patrol Returns* (CIMMERIA_AUTHORING): the exact
+/// category-3 entry for mission 62060, 1369 bytes, frozen in
+/// docs/analysis/cellblock-continuation/w5-frozen.md (F1).
+pub const PRISONER_CHOICE_XML: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+<COOKED_MISSION xmlns:SOAP-ENV="http://schemas.xmlsoap.org/soap/envelope/" xmlns:SOAP-ENC="http://schemas.xmlsoap.org/soap/encoding/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:CookedData1="SGW" AwardXP="false" ShowFactionChangeIcon="false" ShowInstanceIcon="false" ShowPVPIcon="false" IsShareable="false" NumRepeats="0" CanAbandon="true" CanRepeatOnFail="false" CanFail="false" Level="1" IsHidden="false" IsOverrideMission="false" IsEnabled="true" IsAStory="true" Difficulty="1" MissionLabel="General" MissionDefn="Before the Patrol Returns" MissionID="62060"><HistoryText>Two prisoners in the cell block are too weak to escape with you. Before the patrol returns there is time for one thing: help them hide, or jam the cell-door panel so the guards cannot seal the block.</HistoryText><Steps StepEnabled="false" StepID="62061" AwardXP="false" Difficulty="1"><StepDisplayLogText>Help the prisoners hide, or jam the cell-door panel.</StepDisplayLogText><Objectives IsOptional="false" ObjectiveID="62062" AwardXP="false" IsHidden="false" IsEnabled="false" Difficulty="1"><DisplayLogText>Help the prisoners or jam the panel.</DisplayLogText><Tasks TaskType="1" TaskID="62063" AwardXP="false" IsEnabled="true" Difficulty="1"></Tasks></Objectives></Steps></COOKED_MISSION>"#;
+
+/// Production authored entries, one per sealed mission packet, in mission-ID order.
+/// Each XML lives in its zone's own file.
 pub const MISSION_ADDITIONS: &[MissionAddition] = &[
+    MissionAddition {
+        mission_id: 10300,
+        xml: crate::base::mission_additions_castle::CASTLE_MEDICAL_Q1_XML,
+    },
+    MissionAddition {
+        mission_id: 10301,
+        xml: crate::base::mission_additions_castle::CASTLE_MEDICAL_Q2_XML,
+    },
+    MissionAddition {
+        mission_id: 10310,
+        xml: crate::base::mission_additions_castle::CASTLE_DEFENSE_Q1_XML,
+    },
+    MissionAddition {
+        mission_id: 10312,
+        xml: crate::base::mission_additions_castle::CASTLE_DEFENSE_Q3_XML,
+    },
+    MissionAddition {
+        mission_id: 10320,
+        xml: crate::base::mission_additions_castle::CASTLE_RETURN_Q1_XML,
+    },
+    MissionAddition {
+        mission_id: 10321,
+        xml: crate::base::mission_additions_castle::CASTLE_RETURN_Q2_XML,
+    },
+    MissionAddition {
+        mission_id: 10330,
+        xml: crate::base::mission_additions_castle::CASTLE_REPEATABLE_Q1_XML,
+    },
+    MissionAddition {
+        mission_id: 62050,
+        xml: REMAINING_PODS_XML,
+    },
+    MissionAddition {
+        mission_id: 62060,
+        xml: PRISONER_CHOICE_XML,
+    },
     // Dakara_E1 rebuild, D-DK1 F (DK-10fs).
     MissionAddition {
         mission_id: 63100,

@@ -72,8 +72,11 @@ fn load_all_serves_dakara_home_and_changes_nothing_else() {
     }
     let missions = served.category(3).unwrap();
     let baseline = empty.category(3).unwrap();
-    assert_eq!(missions.elements.len(), baseline.elements.len() + 1);
-    assert_eq!(missions.elements.len(), 1041);
+    assert_eq!(
+        missions.elements.len(),
+        baseline.elements.len() + MISSION_ADDITIONS.len()
+    );
+    assert_eq!(missions.elements.len(), 1050);
     assert_eq!(missions.elements[&63100], DAKARA_HOME_XML.as_bytes());
     for (id, bytes) in &baseline.elements {
         assert_eq!(

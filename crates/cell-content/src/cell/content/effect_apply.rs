@@ -13,7 +13,8 @@
 //! caster/target/hostility gates and goes straight to the effect layer.
 //!
 //! It has two callers: `cell::content::executor` (`Action::LaunchAbility`,
-//! `Action::ApplyEffect`) and `cell::content::consumable_use` (a native
+//! `Action::ApplyEffect`, `Action::RemoveEffect`) and
+//! `cell::content::consumable_use` (a native
 //! consumable whose unit the base has just consumed).
 //!
 //! # Reachability is the security boundary
@@ -47,6 +48,8 @@
 use std::time::Instant;
 
 use tokio::sync::mpsc;
+
+use cimmeria_entity::abilities::EffectDef;
 
 use crate::cell::abilities::send_entity_method;
 use crate::cell::effects::{self, EffectContext};
@@ -238,4 +241,169 @@ pub(super) async fn apply_effect(
         tx,
     )
     .await
+}
+
+/// Remove every instance of `effect_id` from `target_id`: its pulsing
+/// instances (each script's `on_remove`, one icon clear queued) and its
+/// timed-effect ledger entries (stats restored, counted flags released).
+/// Backs `Action::RemoveEffect`.
+///
+/// Self-only and idempotent. The chain's entity is the only target, and an
+/// effect that is already gone returns `0` and sends nothing: the yield,
+/// death, abandon and relog chains all call this, in any order.
+///
+/// Returns the number of pulsing instances plus ledger entries removed.
+pub(super) async fn remove_effect(
+    effect_id: i32,
+    target_id: u32,
+    chain_id: i64,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) -> usize {
+    let Some(effect) = space_mgr.effect_defs.get(&effect_id).cloned() else {
+        tracing::warn!(
+            target: "abilities",
+            event = "content_remove_effect_unknown",
+            effect_id,
+            effect_name = cimmeria_names::book().effect(effect_id),
+            entity_id = target_id,
+            entity_name = space_mgr.entity_names(target_id).entity_name,
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
+            "Content remove_effect names an effect with no server def -- \
+             nothing removed; check the seed against resources.effects"
+        );
+        return 0;
+    };
+
+    if space_mgr.get_entity(target_id).is_none() {
+        tracing::debug!(
+            target: "abilities",
+            event = "content_remove_effect_no_target",
+            effect_id,
+            effect_name = cimmeria_names::book().effect(effect_id),
+            target_id,
+            target_name = space_mgr.entity_names(target_id).entity_name,
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
+            "Content remove_effect target entity is gone -- skipped"
+        );
+        return 0;
+    }
+
+    // Pulsing instances first: their `on_remove` runs and their icon clears
+    // are queued for the flush below.
+    let pulses = strip_pulse_instances(effect_id, &effect, target_id, space_mgr);
+    // Ledger entries second. `strip_timed_effects` flushes the queued clears,
+    // the state field and the stats in one pass when it removes anything.
+    let ledger = effects::strip_timed_effects(
+        target_id,
+        effects::stat_buff::StatBuffRemoval::Removed,
+        |b| b.effect_id == effect_id,
+        tx,
+        space_mgr,
+    )
+    .await;
+    if pulses > 0 && ledger == 0 {
+        // Only pulses came off, so nothing has flushed their clears yet.
+        effects::flush_stat_buff_timers(target_id, Instant::now(), tx, space_mgr).await;
+        send_dirty_stats(target_id, tx, space_mgr).await;
+    }
+
+    let removed = pulses + ledger;
+    if removed == 0 {
+        tracing::debug!(
+            target: "abilities",
+            event = "content_remove_effect_noop",
+            chain_id,
+            chain_name = cimmeria_names::book().chain(chain_id),
+            effect_id,
+            effect_name = cimmeria_names::book().effect(effect_id),
+            entity_id = target_id,
+            entity_name = space_mgr.entity_names(target_id).entity_name,
+            "Content remove_effect: effect not on the entity -- nothing to remove"
+        );
+        return 0;
+    }
+
+    tracing::info!(
+        target: "abilities",
+        event = "content_remove_effect",
+        chain_id,
+        chain_name = cimmeria_names::book().chain(chain_id),
+        effect_id,
+        effect_name = cimmeria_names::book().effect(effect_id),
+        entity_id = target_id,
+        entity_name = space_mgr.entity_names(target_id).entity_name,
+        pulses_removed = pulses,
+        ledger_removed = ledger,
+        "Content: removed effect (server-initiated)"
+    );
+    removed
+}
+
+/// Take every pulsing instance of `effect_id` off `target_id`, run the
+/// effect's `on_remove` once per instance and queue its icon clear once.
+/// Returns how many instances came off. The same cleanup as the console's
+/// `strip_pulses`, which is private to `cell-console`.
+fn strip_pulse_instances(
+    effect_id: i32,
+    effect: &EffectDef,
+    target_id: u32,
+    space_mgr: &mut SpaceManager,
+) -> usize {
+    let Some(entity) = space_mgr.get_entity_mut(target_id) else {
+        return 0;
+    };
+    let mut invokers = Vec::new();
+    entity.active_effects.retain(|inst| {
+        if inst.effect_id == effect_id {
+            invokers.push(inst.invoker_id);
+            false
+        } else {
+            true
+        }
+    });
+    for &invoker_id in &invokers {
+        if let Some(script) = effect.script_name.clone() {
+            let mut ctx = EffectContext {
+                source_id: invoker_id,
+                target_id,
+                effect,
+                space_mgr,
+            };
+            effects::dispatch_on_remove(&script, &mut ctx);
+        }
+        if let Some(entity) = space_mgr.get_entity_mut(target_id) {
+            let owed = &mut entity.stat_buffs.pending_timer_clears;
+            if !owed.iter().any(|&(e, _)| e == effect_id) {
+                owed.push((effect_id, invoker_id));
+            }
+        }
+    }
+    invokers.len()
+}
+
+/// Send `target_id`'s dirty stats to it and clear the flags, as the script
+/// path of [`apply_effect`] does.
+async fn send_dirty_stats(
+    target_id: u32,
+    tx: &mpsc::Sender<CellToBaseMsg>,
+    space_mgr: &mut SpaceManager,
+) {
+    let Some(target) = space_mgr.get_entity_mut(target_id) else {
+        return;
+    };
+    let dirty = target.stats.serialize_dirty();
+    target.stats.clear_dirty();
+    if !dirty.is_empty() {
+        send_entity_method(
+            target_id,
+            crate::mercury::method_idx::ON_STAT_UPDATE,
+            dirty,
+            tx,
+            space_mgr,
+        )
+        .await;
+    }
 }

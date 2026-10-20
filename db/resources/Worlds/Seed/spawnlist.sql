@@ -191,6 +191,13 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (80, -87.0400009, 46.2399979, -160.319992, 2.59664607, 12, 3, 'Cellblock_UnusedRingSwitch', NULL);
 
+-- CB-N04a (2026-10-17): Cellblock ambient cast, cells. Friendly Op-CORE
+-- prisoners (faction 1, no ability set), held in place by is_stationary.
+-- Placement, nav probe and guard clearance:
+-- docs/analysis/cellblock-continuation/worknotes/cb-n04-seal.md.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (520, -271.0, 65.45, -135.0, 1.570796, 12, 176, 'Cellblock_Ambient_Prisoner1', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (521, -254.0, 65.45, -135.0, 4.712389, 12, 176, 'Cellblock_Ambient_Prisoner2', NULL, true);
+
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (87, 352.691986, 70.2720032, 952.320007, 0, 8, 48, 'Castle_Coppleman', NULL);
 
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (37, 4.40700006, -68.9570007, 31.5249996, 3.13996291, 57, 1, 'Harset_DHD', NULL);
@@ -588,7 +595,8 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- Faction-1 friendlies carry no respawn timer: they cannot be damaged, so they never
 -- die. The standoff rows can die now and take the same 120 s as the hostiles.
 -- Nothing here is chain-spawned or tagged by a content chain (D-CA06: Castle actors
--- are static spawnlist rows).
+-- are static spawnlist rows), except the Mission 1520/1521 props below (13801, 13802),
+-- which are static rows a chain references by tag.
 
 -- Armory / ring-pad arrival (component 250). Four armed marines at the weapon
 -- lockers around Gerschon (112), two of them on the 3 u wander template 175, and one
@@ -615,6 +623,18 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (197, 362.0, 70.18, 886.0, 4.712389, 8, 179, 'Castle_Ogilvie', NULL);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (198, 352.0, 70.18, 885.0, 1.570796, 8, 177, 'Castle_Pop_Infirmary_Medic1', NULL);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (199, 349.0, 70.48, 883.5, 1.570796, 8, 176, 'Castle_Pop_Infirmary_Sick1', NULL);
+-- Mission 1520 dispenser (CS-02c1, CIMMERIA_AUTHORING): the interact tag chain 1371 uses. Nearest hostile 30.8 u (Castle_PRU1, aggro 18 u).
+-- On navmesh component 250 with Ogilvie (spawn 197); the dispenser template is 412.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13801, 356.0, 70.18, 892.0, 0, 8, 412, 'Castle_MedDispenser', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (13802, 356.0, 70.18, 896.0, 0, 8, 413, 'Castle_SymbioteTank', NULL, true);
+-- Castle hub quartermaster (CS-05S2a, CIMMERIA_AUTHORING)
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (13804, 440.0, 70.22, 992.0, 1.5708, 8, 415, 'Castle_HubQuartermaster', NULL, true);
+-- Romney's file cabinet (CS-08bS, CIMMERIA_AUTHORING)
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13805, 232.0, 66.79, 1036.0, 1.57079637, 8, 416, 'Castle_FileCabinet', NULL);
+-- Castle defense_q1 sentry (CS-04bD2a, CIMMERIA_AUTHORING): front courtyard, east of the Castle.CastleFrontCourtyard box, on navmesh component 250 with the Infirmary.
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (13808, 518.0, 28.18, 640.0, 5.119, 8, 419, 'Castle_DefenseQ1_Sentry', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (13809, 440.0, 70.22, 984.0, 1.5708, 8, 424, 'Castle_HubSupplyOfficer', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (14096, 790.0, 59.7, 530.0, 5.3559, 8, 425, 'Castle_DefenseQ3_Giver', NULL, true);
 
 -- Interrogation Block (accessible wing, component 250 -- never 501, the sealed mirror
 -- wing): four unarmed prisoners inside cells on both sides of the corridor, as set
@@ -623,6 +643,7 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (201, 284.0, 66.98, 1048.0, 3.141593, 8, 176, 'Castle_Pop_Prisoner2', NULL);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (202, 290.0, 66.98, 1050.0, 3.141593, 8, 176, 'Castle_Pop_Prisoner3', NULL);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (203, 236.0, 66.98, 1024.0, 0, 8, 176, 'Castle_Pop_Prisoner4', NULL);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name) VALUES (13806, 270.0, 66.98, 1050.0, 3.141593, 8, 417, 'Castle_Pop_Prisoner5', NULL);
 
 -- Front Courtyard standoff (#1009, D-CP11): Sgt. Stanton and four marines pushed out
 -- from the east barricade onto the slope below it, 18-28 u from Castle_PRU4
@@ -1046,6 +1067,12 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- a tower in the palace forecourt is coherent, and the two regions
 -- deliberately overlap.
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (313, -160.5, -28.25, 232.6, 5.0039, 57, 244, 'Harset_PetbeQuarters', NULL, false, 30);
+
+-- Mission 1664 (FZ-19). 360: Sgt. Kaerlia by the Stargate (nav-probed, HA-01b2; fallback (8, -68.95, 36)).
+-- 380: the Command Center door control. PLACEHOLDER position 3.4 m north of point set 2078
+--      (z -243.52..-238.41); the lab pins the real panel (D-PU6, BlockedEvidence).
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (360, -5.0, -68.95, 30.0, 0.0, 57, 260, 'Harset_Kaerlia', NULL, true, 30);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary, respawn_secs) VALUES (380, 0.0, -67.6, -235.0, 0.0, 57, 261, 'Harset_CmdDoor', NULL, true, 30);
 
 --
 -- NEW CONTENT (debug hub): spawns 400-404, the debug hub in the

@@ -20,6 +20,11 @@ impl Transport for FakeWire {
         Ok(bytes.len())
     }
 
+    fn try_send_to(&self, bytes: &[u8], addr: SocketAddr) -> io::Result<usize> {
+        self.sent.lock().expect("sent").push((addr, bytes.to_vec()));
+        Ok(bytes.len())
+    }
+
     fn local_addr(&self) -> io::Result<SocketAddr> {
         Ok(addr(32_832))
     }
@@ -157,6 +162,35 @@ fn lossy(loss_per_thousand: u32, seed: u64) -> NetChaos {
 
 const A: u16 = 41_001;
 const B: u16 = 41_002;
+
+#[test]
+fn synchronous_admission_passes_only_unshaped_peers() {
+    let rig = Rig::new();
+    assert_eq!(
+        rig.shim.try_send_to(&1u32.to_le_bytes(), addr(A)).unwrap(),
+        4
+    );
+    rig.set(addr(A), lossy(1000, 1), DEFAULT_TTL_S);
+    assert_eq!(
+        rig.shim
+            .try_send_to(&2u32.to_le_bytes(), addr(A))
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::Unsupported
+    );
+    assert_eq!(
+        rig.shim.try_send_to(&3u32.to_le_bytes(), addr(B)).unwrap(),
+        4
+    );
+    assert_eq!(rig.delivered(addr(A)), [1]);
+    assert_eq!(rig.delivered(addr(B)), [3]);
+    assert_eq!(rig.registry.clear(Some(addr(A))), 1);
+    assert_eq!(
+        rig.shim.try_send_to(&4u32.to_le_bytes(), addr(A)).unwrap(),
+        4
+    );
+    assert_eq!(rig.delivered(addr(A)), [1, 4]);
+}
 
 /// Chaos on A at 100% loss, both directions; B, on the same socket, loses
 /// nothing. Fails if the shim stops keying on the peer address. A's 100

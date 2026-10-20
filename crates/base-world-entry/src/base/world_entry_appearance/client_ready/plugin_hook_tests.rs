@@ -45,6 +45,7 @@ fn entries_for(entity_id: u32) -> Vec<(u32, i32, u16)> {
 async fn client_ready(addr: SocketAddr, entity_id: u32, pending: bool) {
     let mut state = test_default_connected_client_state();
     state.player_entity_id = Some(entity_id);
+    state.active_player_id = Some(4700);
     state.plugins = BasePlugins::build(&[&EntryPlugin]).unwrap();
     if pending {
         state.pending_client_ready = Some(crate::base::PendingClientReadyInfo {

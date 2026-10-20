@@ -262,12 +262,17 @@ async fn live_db_chain_1008_fires_once_per_player() {
     );
 }
 
-/// #802 acceptance: after a full load, exactly the seeded `once = true`
-/// trigger rows are fire-once: Cellblock chains 1008 and 1044, plus the
-/// Beta Site E1 quota pickups (P9), one per object: 381's cages
-/// 23045-23049 and 420's scanners 23343-23347.
+/// #802 guard: after a full load, the fire-once chains are exactly the seeded
+/// trigger rows with `once = true`. 1008 and 1044 are the #802 pair;
+/// 1026/1027 (mission 638 login restore), 11001 (CB-N05 login restore),
+/// 11010 (CB-N04a cells ambience), 11020 (CB-N07a barracks bark) and
+/// 11031/11032 (CB-N06 login restores) are once by design, plus the Castle
+/// hub bark chains 10200 and 10201 (CS-05c), and the Beta Site E1 quota
+/// pickups (P9), one per object: 381's cages 23045-23049 and 420's
+/// scanners 23343-23347. Change this set only together with the seed row
+/// that earns the change.
 #[tokio::test]
-async fn live_db_only_chains_1008_and_1044_load_as_once() {
+async fn live_db_once_chains_match_the_seeded_set() {
     let pool = require_db_or_skip!();
     let engine = super::super::engine_loader::build_engine(Some(&pool)).await;
     let ids: Vec<i32> =
@@ -284,6 +289,9 @@ async fn live_db_only_chains_1008_and_1044_load_as_once() {
         .collect();
     assert_eq!(
         once,
-        vec![1008, 1044, 23045, 23046, 23047, 23048, 23049, 23343, 23344, 23345, 23346, 23347]
+        vec![
+            1008, 1026, 1027, 1044, 10200, 10201, 11001, 11010, 11020, 11031, 11032, 23045, 23046,
+            23047, 23048, 23049, 23343, 23344, 23345, 23346, 23347,
+        ]
     );
 }

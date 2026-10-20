@@ -17,6 +17,11 @@ use super::*;
 /// way M0 will. `acceptance_chains_resolve_nothing_while_parked` is the
 /// test that the shipped rows really are inert; this one is the test that
 /// they will be correct when they are not.
+///
+/// Every expansion of the chain with trigger type `tt` is registered, so a
+/// chain with several rows of one type resolves against all of them; 6511
+/// has two `mission_completed` rows (1360 and 1664), and the event's
+/// `mission_id` picks between them.
 async fn resolve_expansion_as_if_enabled(
     pool: &sqlx::PgPool,
     chain_id: i32,
@@ -41,9 +46,9 @@ async fn resolve_expansion_as_if_enabled(
         engine.register_chain(chain);
         registered += 1;
     }
-    assert_eq!(
-        registered, 1,
-        "chain {chain_id} must have exactly one {tt:?} trigger row; found {registered}"
+    assert!(
+        registered >= 1,
+        "chain {chain_id} must have at least one {tt:?} trigger row; found {registered}"
     );
 
     let event = TriggerEvent {
@@ -55,15 +60,18 @@ async fn resolve_expansion_as_if_enabled(
     engine.resolve_event(&event, ctx)
 }
 
-/// Chain 6511 carries **two** trigger rows, and the second is what makes
-/// Meet The Praxis reachable at all on the normal first visit.
+/// Chain 6511 carries **four** trigger rows, and the second is what makes
+/// Meet The Praxis reachable at all on the normal first visit. The third
+/// and fourth (`mission_completed` and `mission_abandoned` on mission 1664)
+/// hand the offer back when the 1664 debrief ends, since 6511 stands down
+/// while 1664 is on step 5226.
 ///
 /// This is playtest finding H9 in its `player_loaded` form: a chain keyed
 /// on an edge never fires when its gate opens while the player is already
 /// past that edge. 6511's gate includes
 /// `step_status 1360/4038 neq active`, which opens the instant chain 6501
 /// completes mission 1360 — inside world 68, with no second world entry
-/// coming. And 6501's own `remove_dialog_set 5356` clears the only bind on
+/// coming. And 6501's receipt result clears DSM 120101, the only bind on
 /// template slot 10 in the same click, so Marsh would go completely
 /// unclickable: `entity_templates` row 10 ships `interaction_type = 0` and
 /// `static_interaction_sets = '{}'`, meaning the client stops registering
@@ -83,9 +91,10 @@ async fn live_db_chain_6511_offers_the_praxis_the_moment_the_letter_is_handed_ov
         .expect("DB query for chain 6511 must succeed");
     assert_eq!(
         expansions.len(),
-        2,
-        "chain 6511 must carry two trigger rows — `player_loaded` for the world entry \
-         and `mission_completed 1360` for the in-place case. Got: {:?}",
+        4,
+        "chain 6511 must carry four trigger rows: `player_loaded` for the world entry, \
+         `mission_completed 1360` for the letter hand-over, and `mission_completed 1664` / \
+         `mission_abandoned 1664` for the end of the 1664 debrief. Got: {:?}",
         expansions.iter().map(|c| &c.trigger).collect::<Vec<_>>()
     );
 
@@ -141,6 +150,119 @@ async fn live_db_chain_6511_offers_the_praxis_the_moment_the_letter_is_handed_ov
         got, expected,
         "the `player_loaded` expansion must bind the same dsm as the \
          `mission_completed` one — they share one action list by construction"
+    );
+}
+
+/// Mission 1664's debrief ends with the Praxis offer handed back (H9).
+///
+/// 6511 stands down while 1664 is on step 5226, so the Marsh click there is
+/// the report (chain 6018) and not the offer. The offer's gate reopens
+/// inside the click that completes 1664 or abandons it, in world 68, with no
+/// world entry to come; the `mission_completed 1664` and `mission_abandoned
+/// 1664` rows bind it again in that same click.
+///
+/// Revert proof: delete 6511's `mission_completed '1664'` row and the first
+/// assertion fails.
+#[tokio::test]
+async fn live_db_chain_6511_hands_the_offer_back_when_1664_ends() {
+    let pool = require_db_or_skip!();
+
+    let expected = vec![Action::AddDialogSet {
+        dialog_set_id: 5254,
+        slot: 10,
+        mission_id: Some(1361),
+    }];
+
+    let base = |world: i32, archetype: i64| {
+        let mut ctx = ExecutionContext::new();
+        ctx.world_id = Some(world);
+        ctx.set_param("archetype".to_string(), serde_json::json!(archetype));
+        ctx.set_param(
+            "mission_1360_step_4038_status".to_string(),
+            serde_json::json!("completed"),
+        );
+        ctx
+    };
+
+    // The debrief completes: the report has been given, 1664 reads completed.
+    let mut ctx = base(CMD_CENTER, ARCHETYPE_SOLDIER);
+    ctx.set_param("mission_id".to_string(), serde_json::json!(1664));
+    ctx.set_param(
+        "mission_1664_status".to_string(),
+        serde_json::json!("completed"),
+    );
+    ctx.set_param(
+        "mission_1664_step_5226_status".to_string(),
+        serde_json::json!("completed"),
+    );
+    let got = actions_of(
+        &resolve_expansion_as_if_enabled(&pool, 6511, TriggerType::MissionCompleted, &ctx).await,
+    );
+    assert_eq!(
+        got, expected,
+        "completing 1664 must hand the Praxis offer back in the same click"
+    );
+
+    // The debrief is abandoned at 5226: 1664 reads not_active.
+    let mut ctx = base(CMD_CENTER, ARCHETYPE_SOLDIER);
+    ctx.set_param("mission_id".to_string(), serde_json::json!(1664));
+    ctx.set_param(
+        "mission_1664_status".to_string(),
+        serde_json::json!("not_active"),
+    );
+    let got = actions_of(
+        &resolve_expansion_as_if_enabled(&pool, 6511, TriggerType::MissionAbandoned, &ctx).await,
+    );
+    assert_eq!(
+        got, expected,
+        "abandoning 1664 must hand the Praxis offer back in the same click"
+    );
+
+    // Negatives. The new step guard: a world entry while 1664 is still on 5226.
+    let mut ctx = base(CMD_CENTER, ARCHETYPE_SOLDIER);
+    ctx.set_param(
+        "world_name".to_string(),
+        serde_json::json!("Harset_CmdCenter"),
+    );
+    ctx.set_param(
+        "mission_1664_step_5226_status".to_string(),
+        serde_json::json!("active"),
+    );
+    let resolved =
+        resolve_expansion_as_if_enabled(&pool, 6511, TriggerType::PlayerLoaded, &ctx).await;
+    assert!(
+        resolved.actions.is_empty(),
+        "a world entry while 1664 is on 5226 must not bind the offer; got {:?}",
+        resolved.actions
+    );
+
+    // Negatives. A Jaffa and a visit from Harset do not get the offer back either.
+    let mut ctx = base(CMD_CENTER, ARCHETYPE_JAFFA);
+    ctx.set_param("mission_id".to_string(), serde_json::json!(1664));
+    ctx.set_param(
+        "mission_1664_status".to_string(),
+        serde_json::json!("completed"),
+    );
+    let resolved =
+        resolve_expansion_as_if_enabled(&pool, 6511, TriggerType::MissionCompleted, &ctx).await;
+    assert!(
+        resolved.actions.is_empty(),
+        "a Jaffa finishing 1664 must not be offered the Praxis; got {:?}",
+        resolved.actions
+    );
+
+    let mut ctx = base(HARSET, ARCHETYPE_SOLDIER);
+    ctx.set_param("mission_id".to_string(), serde_json::json!(1664));
+    ctx.set_param(
+        "mission_1664_status".to_string(),
+        serde_json::json!("completed"),
+    );
+    let resolved =
+        resolve_expansion_as_if_enabled(&pool, 6511, TriggerType::MissionCompleted, &ctx).await;
+    assert!(
+        resolved.actions.is_empty(),
+        "finishing 1664 outside the Command Center must not bind the offer; got {:?}",
+        resolved.actions
     );
 }
 

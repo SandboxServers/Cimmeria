@@ -24,6 +24,12 @@ use super::*;
 /// per-chain test cannot observe a collision by construction. It also
 /// means a *future* chain that keys on Marsh without gating itself will
 /// fail here rather than in a player's log.
+///
+/// Chain 6018 (mission 1664's Marsh report) is the fourth Marsh chain. The
+/// loop runs every state a second time with 1664 on step 5226, where 6511
+/// and 6512 must stand down. Revert proof: drop the 5226 row from 6511 and
+/// 6512, and the `("completed", "completed", "not_active")` state at 5226
+/// resolves 6512 and 6018 together.
 #[tokio::test]
 async fn live_db_marsh_interact_chains_are_pairwise_disjoint() {
     let pool = require_db_or_skip!();
@@ -40,59 +46,90 @@ async fn live_db_marsh_interact_chains_are_pairwise_disjoint() {
         ("active", "active", "active"),             // both at once — the trap
     ];
 
-    for (m1360, s4038, s4694) in states {
-        let mut ctx = ExecutionContext::new();
-        ctx.world_id = Some(CMD_CENTER);
-        ctx.set_param(
-            "entity_tag".to_string(),
-            serde_json::json!("CmdCenter_Marsh"),
-        );
-        ctx.set_param(
-            "archetype".to_string(),
-            serde_json::json!(ARCHETYPE_SOLDIER),
-        );
-        ctx.set_param("mission_1360_status".to_string(), serde_json::json!(m1360));
-        ctx.set_param(
-            "mission_1360_step_4038_status".to_string(),
-            serde_json::json!(s4038),
-        );
-        ctx.set_param(
-            "mission_1361_status".to_string(),
-            serde_json::json!(if s4694 == "active" {
-                "active"
-            } else {
-                "not_active"
-            }),
-        );
-        ctx.set_param(
-            "mission_1361_step_4694_status".to_string(),
-            serde_json::json!(s4694),
-        );
+    for at_5226 in [false, true] {
+        for (m1360, s4038, s4694) in states {
+            let mut ctx = ExecutionContext::new();
+            ctx.world_id = Some(CMD_CENTER);
+            ctx.set_param(
+                "entity_tag".to_string(),
+                serde_json::json!("CmdCenter_Marsh"),
+            );
+            ctx.set_param(
+                "archetype".to_string(),
+                serde_json::json!(ARCHETYPE_SOLDIER),
+            );
+            ctx.set_param("mission_1360_status".to_string(), serde_json::json!(m1360));
+            ctx.set_param(
+                "mission_1360_step_4038_status".to_string(),
+                serde_json::json!(s4038),
+            );
+            ctx.set_param(
+                "mission_1361_status".to_string(),
+                serde_json::json!(if s4694 == "active" {
+                    "active"
+                } else {
+                    "not_active"
+                }),
+            );
+            ctx.set_param(
+                "mission_1361_step_4694_status".to_string(),
+                serde_json::json!(s4694),
+            );
+            // The 1664 debrief at step 5226, the fifth state of the Marsh table.
+            if at_5226 {
+                for key in [
+                    "mission_1664_status",
+                    "mission_1664_step_5226_status",
+                    "mission_1664_obj_6061_status",
+                    "mission_1664_obj_6062_status",
+                ] {
+                    ctx.set_param(key.to_string(), serde_json::json!("active"));
+                }
+            }
 
-        let event = TriggerEvent {
-            trigger_type: TriggerType::InteractTag,
-            source_entity: None,
-            target_entity: None,
-            params: ctx.params.clone(),
-        };
-        let resolved = engine.resolve_event(&event, &ctx);
+            let event = TriggerEvent {
+                trigger_type: TriggerType::InteractTag,
+                source_entity: None,
+                target_entity: None,
+                params: ctx.params.clone(),
+            };
+            let resolved = engine.resolve_event(&event, &ctx);
 
-        let firing: Vec<i64> = {
-            let mut ids: Vec<i64> = resolved.actions.iter().map(|(id, _)| *id).collect();
-            ids.sort_unstable();
-            ids.dedup();
-            ids
-        };
-        assert!(
-            firing.len() <= 1,
-            "a single right-click on Col. Marsh resolved {} chains ({firing:?}) with \
-             1360={m1360}, step4038={s4038}, step4694={s4694}. Exactly one chain may \
-             claim a click: resolve_event appends every match, so two `display_dialog` \
-             actions mean the player sees only the last one while BOTH chains' item \
-             removals and mission completions still run. Re-check the DISJOINTNESS \
-             conditions in harset_opcore_chains.sql note (A).",
-            firing.len()
-        );
+            let firing: Vec<i64> = {
+                let mut ids: Vec<i64> = resolved.actions.iter().map(|(id, _)| *id).collect();
+                ids.sort_unstable();
+                ids.dedup();
+                ids
+            };
+            assert!(
+                firing.len() <= 1,
+                "a single right-click on Col. Marsh resolved {} chains ({firing:?}) with \
+                 1360={m1360}, step4038={s4038}, step4694={s4694}, at_5226={at_5226}. \
+                 Exactly one chain may claim a click: resolve_event appends every match, \
+                 so two `display_dialog` actions mean the player sees only the last one \
+                 while BOTH chains' item removals and mission completions still run. \
+                 Re-check the DISJOINTNESS conditions in harset_opcore_chains.sql note (A).",
+                firing.len()
+            );
+            // Anti-vacuity: with 1664 at 5226 and no Praxis state, the report must
+            // claim the click. If not, the 1664 params are wrong and the 5226 half
+            // proves nothing.
+            if at_5226
+                && matches!(
+                    (m1360, s4038, s4694),
+                    ("not_active", "not_active", "not_active")
+                        | ("completed", "completed", "not_active")
+                )
+            {
+                assert_eq!(
+                    firing,
+                    vec![6018],
+                    "the 1664 report must claim the click at 5226 (1360={m1360}, \
+                     step4038={s4038}); if not, the 1664 params are wrong and the 5226 \
+                     half proves nothing"
+                );
+            }
+        }
     }
 }
 
@@ -100,28 +137,53 @@ async fn live_db_marsh_interact_chains_are_pairwise_disjoint() {
 /// step 4040 and 6520 on step 4042). These are disjoint for free — a
 /// mission has one current step — but "for free" is exactly the kind of
 /// reasoning that stops being true when someone adds a third chain.
+///
+/// Chain 6019 is the third Moh'katan chain, and the loop runs every step a
+/// second time with 1664 on step 5226. Revert proof: drop 6019's `1361/4040`
+/// row, and step 4040 at 5226 resolves 6515 and 6019 together.
 #[tokio::test]
 async fn live_db_mohkatan_interact_chains_are_pairwise_disjoint() {
     let pool = require_db_or_skip!();
     let engine = build_engine(Some(&pool)).await;
 
-    for step in STEPS {
-        let ctx = with_tag(praxis_ctx(CMD_CENTER, step), "CmdCenter_Mohkatan");
-        let event = TriggerEvent {
-            trigger_type: TriggerType::InteractTag,
-            source_entity: None,
-            target_entity: None,
-            params: ctx.params.clone(),
-        };
-        let resolved = engine.resolve_event(&event, &ctx);
-        let mut ids: Vec<i64> = resolved.actions.iter().map(|(id, _)| *id).collect();
-        ids.sort_unstable();
-        ids.dedup();
-        assert!(
-            ids.len() <= 1,
-            "a right-click on Moh'katan at step {step} resolved {ids:?}; at most one \
-             chain may claim it"
-        );
+    for at_5226 in [false, true] {
+        for step in STEPS {
+            let mut ctx = with_tag(praxis_ctx(CMD_CENTER, step), "CmdCenter_Mohkatan");
+            // The 1664 debrief at step 5226, the same four params as the Marsh test.
+            if at_5226 {
+                for key in [
+                    "mission_1664_status",
+                    "mission_1664_step_5226_status",
+                    "mission_1664_obj_6061_status",
+                    "mission_1664_obj_6062_status",
+                ] {
+                    ctx.set_param(key.to_string(), serde_json::json!("active"));
+                }
+            }
+            let event = TriggerEvent {
+                trigger_type: TriggerType::InteractTag,
+                source_entity: None,
+                target_entity: None,
+                params: ctx.params.clone(),
+            };
+            let resolved = engine.resolve_event(&event, &ctx);
+            let mut ids: Vec<i64> = resolved.actions.iter().map(|(id, _)| *id).collect();
+            ids.sort_unstable();
+            ids.dedup();
+            assert!(
+                ids.len() <= 1,
+                "a right-click on Moh'katan at step {step} (at_5226={at_5226}) resolved \
+                 {ids:?}; at most one chain may claim it"
+            );
+            // Anti-vacuity: the Moh'katan step 4041 click at 5226 is 6019's alone.
+            if at_5226 && step == "4041" {
+                assert_eq!(
+                    ids,
+                    vec![6019],
+                    "at 5226 a Moh'katan click on step 4041 must resolve 6019 alone"
+                );
+            }
+        }
     }
 }
 
@@ -132,7 +194,7 @@ async fn live_db_mohkatan_interact_chains_are_pairwise_disjoint() {
 /// entry whose `dialog_id` is non-NULL — so a second live dialog-carrying
 /// bind on one slot makes one of them permanently unreachable. Slot 10
 /// (Col. Marsh, template 10) is the one at risk: mission 1360's letter
-/// bind (dsm 5356), the Praxis offer (5254) and the Praxis turn-in (5253)
+/// bind (dsm 120101), the Praxis offer (5254) and the Praxis turn-in (5253)
 /// all target it, and all three carry a real dialog.
 ///
 /// This walks every `player_loaded` bind chain in the file and asserts
@@ -247,12 +309,12 @@ async fn live_db_chain_6505_hands_the_letter_indicator_back_when_1361_completes(
     assert_eq!(
         got,
         vec![Action::AddDialogSet {
-            dialog_set_id: 5356,
+            dialog_set_id: 120101,
             slot: 10,
             mission_id: Some(1360)
         }],
         "completing 1361 while Frost's letter is still undelivered must re-bind dsm \
-         5356 to template slot 10, or Marsh goes unclickable and mission 1360 \
+         120101 to template slot 10, or Marsh goes unclickable and mission 1360 \
          dead-ends until the player crosses a world boundary"
     );
 

@@ -84,6 +84,7 @@ mod leash_state;
 mod offered_dialogs;
 mod pending_cast;
 mod pet;
+mod phase;
 mod stat_buff;
 mod stat_buff_flags;
 #[cfg(test)]
@@ -111,6 +112,7 @@ pub use leash_state::{ChaseRoute, LeashState};
 pub use offered_dialogs::MAX_OFFERED_DIALOGS;
 pub use pending_cast::PendingCast;
 pub use pet::{PetBuff, PetStance, PetState, UnknownPetStance, ALL_STANCES_MASK};
+pub use phase::{phase_visible, viewer_phases, PhaseKey, PhaseKeyError, PhaseState};
 pub use stat_buff::{
     shift_stat_widening, unshift_stat, AppliedStat, StatBuffLedger, StatShift, TimedEffect,
     TimedEffectApplied, TimedEffectSpec, TimedStacking, EFFECT_BAR_SLOTS_PER_SIDE,

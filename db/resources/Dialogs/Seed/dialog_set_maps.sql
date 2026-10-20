@@ -9352,5 +9352,16 @@ INSERT INTO dialog_set_maps (dialog_set_map_id, dialog_set_id, dialog_id, topic_
 -- Name: dialog_set_maps_dialog_set_map_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
+INSERT INTO dialog_set_maps (dialog_set_map_id, dialog_set_id, dialog_id, topic_text, interaction_flags, min_level, missions_completed, missions_not_accepted, alignments, factions) VALUES (1000001, 10760, NULL, 'Speak with the Medic', 1073741824, 1, '{}', '{}', '{}', '{}');
+INSERT INTO dialog_set_maps (dialog_set_map_id, dialog_set_id, dialog_id, topic_text, interaction_flags, min_level, missions_completed, missions_not_accepted, alignments, factions) VALUES (1000002, 10761, NULL, 'Speak with the Prisoner', 1073741824, 1, '{}', '{}', '{}', '{}');
+INSERT INTO dialog_set_maps (dialog_set_map_id, dialog_set_id, dialog_id, topic_text, interaction_flags, min_level, missions_completed, missions_not_accepted, alignments, factions) VALUES (1000003, 10762, NULL, 'Report to the Medic', 1073741824, 1, '{}', '{}', '{}', '{}');
+INSERT INTO dialog_set_maps (dialog_set_map_id, dialog_set_id, dialog_id, topic_text, interaction_flags, min_level, missions_completed, missions_not_accepted, alignments, factions) VALUES (1000006, 10765, NULL, 'Speak with the Sentry', 1073741824, 1, '{}', '{}', '{}', '{}');
+INSERT INTO dialog_set_maps (dialog_set_map_id, dialog_set_id, dialog_id, topic_text, interaction_flags, min_level, missions_completed, missions_not_accepted, alignments, factions) VALUES (1000010, 10769, NULL, 'Speak with Sergeant Stanton', 1073741824, 1, '{}', '{}', '{}', '{}');
+INSERT INTO dialog_set_maps (dialog_set_map_id, dialog_set_id, dialog_id, topic_text, interaction_flags, min_level, missions_completed, missions_not_accepted, alignments, factions) VALUES (1000012, 10771, NULL, 'Report to Colonel Marsh', 1073741824, 1, '{}', '{}', '{}', '{}');
+INSERT INTO dialog_set_maps (dialog_set_map_id, dialog_set_id, dialog_id, topic_text, interaction_flags, min_level, missions_completed, missions_not_accepted, alignments, factions) VALUES (1000014, 10773, NULL, 'Speak with Moh''katan', 1073741824, 1, '{}', '{}', '{}', '{}');
+INSERT INTO dialog_set_maps (dialog_set_map_id, dialog_set_id, dialog_id, topic_text, interaction_flags, min_level, missions_completed, missions_not_accepted, alignments, factions) VALUES (1000016, 10775, NULL, 'Speak with the Supply Officer', 1073741824, 1, '{}', '{}', '{}', '{}');
+INSERT INTO dialog_set_maps (dialog_set_map_id, dialog_set_id, dialog_id, topic_text, interaction_flags, min_level, missions_completed, missions_not_accepted, alignments, factions) VALUES (1000017, 10776, NULL, 'Report to the Supply Officer', 33554432, 1, '{}', '{}', '{}', '{}');
+INSERT INTO dialog_set_maps (dialog_set_map_id, dialog_set_id, dialog_id, topic_text, interaction_flags, min_level, missions_completed, missions_not_accepted, alignments, factions) VALUES (1000018, 512, 2043, 'Romney''s Files', 134217728, 1, '{}', '{}', '{}', '{}');
+
 SELECT pg_catalog.setval('dialog_set_maps_dialog_set_map_id_seq', 100007, true);
 

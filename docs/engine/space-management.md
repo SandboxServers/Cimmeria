@@ -7,7 +7,7 @@ last_updated: 2026-09-18
 
 # Space Management
 
-> **Last updated**: 2026-09-18
+> **Last updated**: 2026-10-18
 > **RE Status**: Space/extent data verified against `entities/`; C++ sections describe the
 > deprecated server; BigWorld sections unverifiable in this checkout
 > **Sources**: `entities/cell_spaces.xml`, `entities/spaces.xml`, `data/spaces/`,
@@ -1486,6 +1486,16 @@ Key differences:
 - Cimmeria's cache stamp system (`0x11`) is a CME extension not present in standard BW
 
 ---
+
+## Phases
+
+A phased entity is visible only to players who hold its phase key (Tollana campaign, PH-01b; design in `docs/analysis/tollana-continuation/evidence/phasing.md`).
+
+- **Rule.** `phase_visible` (`cimmeria_entity::cell_entity`) is applied in `compute_player_aoi` next to the `is_introducible` gate. A phased entity the viewer does not hold is never entered; one already in the witness set drops out of the candidate set and leaves through the existing leave loop (one `LeftAoI`, witness entry cleared). Re-entry is a fresh create. Players are never phased (D-PH1).
+- **`SpaceManager::set_player_phase(player_id, &PhaseKey, member)`** adds or removes the key in the player's `PhaseState` and returns `compute_aoi_changes_for_player` at once, not on the next tick. An unchanged set returns an empty list without recomputing. Errors: `PlayerMissing`, `NotAPlayer`.
+- **Event.** One INFO line `phase.changed` with `player_id`, `phase`, `member`, `entered`, `left`.
+- **Introduction sites checked.** `compute_player_aoi` is the only path that adds to a witness set (`entity.witnesses = ...`). `introduction_events` is reached only from the NPC respawn tick, over `get_witnesses_of(entity)`, so it rebuilds only for witnesses that already passed the filter. Other `witnesses` writes are removals (`entities.rs` despawn, pet and deployable teardown, ring transport).
+- **Not yet:** persistence, content verbs, spawn column, refusal gates (PH-02..PH-04, owner decisions D-PH1..D-PH7).
 
 ## TODO
 

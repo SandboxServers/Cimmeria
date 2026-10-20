@@ -32,6 +32,7 @@ pub(super) const TEST_PLAYER_BASE: i32 = 0x7000_0100;
 /// `None` for a session that's only acting as the GM-feedback recipient.
 pub(super) fn make_connected_state(active_player_id: Option<i32>) -> ConnectedClientState {
     ConnectedClientState {
+        session_instance_id: cimmeria_base_session::base::mint_session_instance_id(),
         enc: MercuryEncryption::from_session_key([0u8; 32]),
         key: [0u8; 32],
         enc_version: cimmeria_mercury::encryption::EncryptionVersion::V1,
@@ -47,6 +48,7 @@ pub(super) fn make_connected_state(active_player_id: Option<i32>) -> ConnectedCl
         pending_player_entity_id: None,
         player_entity_id: None,
         next_seq: Arc::new(AtomicU32::new(1)),
+        reliable_seq_gate: Arc::new(Mutex::new(())),
         next_seq_unreliable: Arc::new(AtomicU32::new(0)),
         pending_acks: Arc::new(Mutex::new(Vec::new())),
         last_recv: Arc::new(Mutex::new(Instant::now())),

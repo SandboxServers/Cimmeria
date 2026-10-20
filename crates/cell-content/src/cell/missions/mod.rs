@@ -22,6 +22,7 @@ use cimmeria_entity::cell_entity::PlayerIdentity;
 use crate::cell::messages::CellToBaseMsg;
 
 mod complete_direct;
+mod letter_turn_in;
 mod lifecycle;
 mod persist;
 mod progression;
@@ -33,6 +34,8 @@ mod abandon_persist_tests;
 #[cfg(test)]
 mod hidden_frames_tests;
 #[cfg(test)]
+mod letter_turn_in_tests;
+#[cfg(test)]
 mod lifecycle_tests;
 #[cfg(test)]
 mod progression_tests;
@@ -40,6 +43,9 @@ mod progression_tests;
 mod state_lock_tests;
 
 pub use complete_direct::complete_mission_direct;
+pub(crate) use letter_turn_in::{
+    announce_letter_turn_in, install_letter_turn_in, valid_letter_postimage,
+};
 pub use lifecycle::{abandon_mission, accept_mission};
 pub use persist::{mission_update_msg, send_mission_update};
 pub use progression::{advance_step, complete_objective};

@@ -14,7 +14,9 @@ use crate::cell::messages::BaseToCellMsg;
 use crate::credential_redaction::CredentialPrefix;
 use crate::mercury::build_player_entity_method_packet;
 
-use super::super::super::helpers::send_to_witness_reliable;
+use super::super::super::helpers::{
+    send_to_session_bound_reliable, snapshot_recipient, RecipientSnapshot, WitnessSendOutcome,
+};
 use super::super::super::session_identity::entity_name_for;
 use super::super::super::ConnectedClientState;
 
@@ -66,32 +68,36 @@ pub(super) async fn start_minigame(
         difficulty,
         "Starting minigame session"
     );
-    if let Some(registry) = minigame_registry {
-        // The minigame server only sees the entity id; hand it the
-        // character's name so its Discord result names the player.
-        let addr = entity_to_addr
-            .lock()
-            .ok()
-            .and_then(|m| m.get(&entity_id).copied());
-        let player_name = addr.and_then(|a| {
-            connected
-                .lock()
-                .ok()
-                .and_then(|c| c.get(&a).and_then(|s| s.player_name.clone()))
-        });
-        // The listener admits only the game connection's IP, so a session
-        // without one could never be claimed and would hold the entity id
-        // for the whole pending TTL. Do not register it at all.
-        if addr.is_none() {
+    let Some(recipient) = snapshot_recipient(connected, entity_to_addr, entity_id, player_id)
+    else {
+        if minigame_registry.is_none() {
             tracing::warn!(
                 entity_id,
                 entity_name = player_label,
-                reason = "no_client_addr",
-                "Minigame not started: the player has no client address, so no session was registered"
+                %game_name,
+                reason = "minigame_server_disabled",
+                "Minigame not started: the minigame server is disabled"
             );
-            send_launch_failure(entity_id, transport, connected, entity_to_addr).await;
-            return;
         }
+        tracing::warn!(
+            entity_id,
+            entity_name = player_label,
+            player_id,
+            player_name = player_label,
+            reason = "no_current_owner",
+            "Minigame launch refused"
+        );
+        return;
+    };
+    if let Some(registry) = minigame_registry {
+        // The minigame server only sees the entity id; hand it the
+        // character's name so its Discord result names the player.
+        let player_name = {
+            connected
+                .lock()
+                .ok()
+                .and_then(|c| c.get(&recipient.addr).and_then(|s| s.player_name.clone()))
+        };
         let seed = rand::random::<u32>();
         let ticket = registry
             .register(
@@ -106,7 +112,8 @@ pub(super) async fn start_minigame(
                 1, // abilities, intelligence, player_level
                 on_victory_chains,
                 player_name,
-                addr.map(|a| a.ip()),
+                Some(recipient.addr.ip()),
+                recipient.session_instance_id,
             )
             .await;
 
@@ -133,11 +140,12 @@ pub(super) async fn start_minigame(
                 args.extend_from_slice(&ch.to_le_bytes());
             }
             let method = crate::cell::dispatch::CLIENT_MG_ON_START_MINIGAME;
-            send_to_witness_reliable(
+            let outcome = send_to_session_bound_reliable(
                 transport,
                 connected,
                 entity_to_addr,
-                entity_id,
+                recipient,
+                "minigame_start",
                 |key, version, seq, acks| {
                     build_player_entity_method_packet(
                         key, seq, acks, entity_id, method, &args, version,
@@ -145,6 +153,21 @@ pub(super) async fn start_minigame(
                 },
             )
             .await;
+            if !matches!(outcome, WitnessSendOutcome::Sent { .. }) {
+                let ticket_canceled = registry.cancel_if_ticket(entity_id, &ticket).await;
+                tracing::warn!(
+                    entity_id,
+                    entity_name = player_label,
+                    player_id,
+                    player_name = player_label,
+                    %game_name,
+                    send_outcome = ?outcome,
+                    ticket_canceled,
+                    reason = "minigame_url_not_registered",
+                    "Minigame launch failed after ticket registration"
+                );
+                send_launch_failure(recipient, transport, connected, entity_to_addr).await;
+            }
         } else {
             tracing::warn!(
                 entity_id,
@@ -153,7 +176,7 @@ pub(super) async fn start_minigame(
                 reason = "register_refused",
                 "Failed to register minigame session (duplicate?)"
             );
-            send_launch_failure(entity_id, transport, connected, entity_to_addr).await;
+            send_launch_failure(recipient, transport, connected, entity_to_addr).await;
         }
     } else {
         tracing::warn!(
@@ -163,12 +186,12 @@ pub(super) async fn start_minigame(
             reason = "minigame_server_disabled",
             "Minigame not started: the minigame server is disabled"
         );
-        send_launch_failure(entity_id, transport, connected, entity_to_addr).await;
+        send_launch_failure(recipient, transport, connected, entity_to_addr).await;
     }
 }
 
 async fn send_launch_failure(
-    entity_id: u32,
+    recipient: RecipientSnapshot,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
@@ -179,17 +202,18 @@ async fn send_launch_failure(
         CHAN_FEEDBACK,
         "Minigame could not start. Close any open minigame and try again.",
     );
-    send_to_witness_reliable(
+    send_to_session_bound_reliable(
         transport,
         connected,
         entity_to_addr,
-        entity_id,
+        recipient,
+        "minigame_start_failure",
         |key, version, seq, acks| {
             build_player_entity_method_packet(
                 key,
                 seq,
                 acks,
-                entity_id,
+                recipient.entity_id,
                 crate::mercury::method_idx::ON_PLAYER_COMMUNICATION,
                 &args,
                 version,
@@ -202,68 +226,87 @@ async fn send_launch_failure(
 /// `CellToBaseMsg::MinigameResult` — push `onEndMinigame()` to the client
 /// and forward the result to CellApp so it can fire any victory chains.
 pub(super) async fn minigame_result(
-    entity_id: u32,
     ticket: &str,
-    result_code: u8,
-    on_victory_chains: Vec<i64>,
-    notify_client: bool,
     registry: &Option<crate::minigame::SessionRegistry>,
     transport: &Arc<dyn Transport>,
     connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
     entity_to_addr: &Arc<Mutex<HashMap<u32, SocketAddr>>>,
     cell_tx: &Option<mpsc::Sender<BaseToCellMsg>>,
 ) {
-    let entity_name = entity_name_for(connected, entity_to_addr, entity_id);
-    let result = cimmeria_wire::cell::client_methods::minigame::minigame_result_name(result_code);
-    tracing::info!(
-        entity_id,
-        entity_name,
-        result_code,
-        result,
-        "Minigame result received"
-    );
-    // An explicit window close already hid the UI. A late onEndMinigame
-    // would close a new board if the player reopened immediately.
-    let replaced = match registry {
-        Some(registry) => registry.has_replacement_ticket(entity_id, ticket).await,
-        None => false,
+    let Some(registry) = registry else {
+        tracing::warn!(
+            reason = "result_registry_disabled",
+            "Minigame result notification dropped"
+        );
+        return;
     };
-    if notify_client && !replaced {
+    let Some(receipt) = registry.redeem_result(ticket).await else {
+        tracing::warn!(reason = "result_receipt_missing", ticket_prefix = %CredentialPrefix(ticket),
+            "Minigame result notification dropped");
+        return;
+    };
+    let entity_id = receipt.entity_id;
+    let player_id = receipt.player_id;
+    let original_instance = receipt.session_instance_id;
+    let current_owner = || {
+        snapshot_recipient(connected, entity_to_addr, entity_id, player_id)
+            .filter(|owner| owner.session_instance_id == original_instance)
+    };
+    let Some(recipient) = current_owner() else {
+        tracing::warn!(
+            entity_id,
+            entity_name = receipt.player_name.as_deref(),
+            player_id,
+            player_name = receipt.player_name.as_deref(),
+            reason = "result_owner_changed",
+            "Minigame result notification dropped"
+        );
+        return;
+    };
+    if receipt.notify_client {
         let method = crate::cell::dispatch::CLIENT_MG_ON_END_MINIGAME;
-        send_to_witness_reliable(
+        send_to_session_bound_reliable(
             transport,
             connected,
             entity_to_addr,
-            entity_id,
+            recipient,
+            "minigame_end",
             |key, version, seq, acks| {
                 build_player_entity_method_packet(key, seq, acks, entity_id, method, &[], version)
             },
         )
         .await;
     }
-    // Forward to CellApp for victory chain processing
-    let chain_count = on_victory_chains.len();
+    // A close can await transport while the same address is taken over.
+    // Rechecking E/P/I prevents a Cell callback for the successor.
+    if current_owner().is_none() {
+        tracing::warn!(
+            entity_id,
+            entity_name = receipt.player_name.as_deref(),
+            player_id,
+            player_name = receipt.player_name.as_deref(),
+            reason = "result_owner_changed_after_close",
+            "Minigame Cell forward suppressed"
+        );
+        return;
+    }
+    let result_code = receipt.result_code;
+    let chain_count = receipt.on_victory_chains.len();
+    let entity_name = entity_name_for(connected, entity_to_addr, entity_id);
+    let result = cimmeria_wire::cell::client_methods::minigame::minigame_result_name(result_code);
     if let Some(cell_tx) = cell_tx {
-        // A dropped receiver means the cell task is gone and the victory
-        // chains for this result will never run.
         if let Err(e) = cell_tx
             .send(BaseToCellMsg::MinigameResult {
                 entity_id,
+                player_id,
                 result_code,
-                on_victory_chains,
+                on_victory_chains: receipt.on_victory_chains,
             })
             .await
         {
-            tracing::error!(
-                entity_id,
-                entity_name,
-                result_code,
-                result,
-                chain_count,
-                error = %e,
-                reason = "cell_channel_closed",
-                "Minigame result lost: the cell channel is closed, victory chains will not run"
-            );
+            tracing::error!(entity_id, entity_name, result_code, result, chain_count,
+                error = %e, reason = "cell_channel_closed",
+                "Minigame result lost: the cell channel is closed, victory chains will not run");
         }
     } else {
         tracing::warn!(
@@ -279,230 +322,9 @@ pub(super) async fn minigame_result(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::minigame::SessionRegistry;
-    use crate::test_support::{test_default_connected_client_state, TestTransport};
-    use std::net::{IpAddr, Ipv4Addr};
+#[path = "minigame_tests.rs"]
+mod tests;
 
-    /// Run `start_minigame` for entity 77 with the given address mapping and
-    /// return the registry it registered into.
-    async fn start_for_entity(addr: Option<SocketAddr>) -> SessionRegistry {
-        let transport: Arc<dyn Transport> = Arc::new(TestTransport::new());
-        let connected: Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>> =
-            Arc::new(Mutex::new(HashMap::new()));
-        let mut entity_map = HashMap::new();
-        if let Some(addr) = addr {
-            connected
-                .lock()
-                .unwrap()
-                .insert(addr, test_default_connected_client_state());
-            entity_map.insert(77u32, addr);
-        }
-        let entity_to_addr = Arc::new(Mutex::new(entity_map));
-        let registry = SessionRegistry::new();
-        let minigame_registry = Some(registry.clone());
-
-        start_minigame(
-            77,
-            1,
-            "Livewire".into(),
-            1,
-            vec![],
-            &transport,
-            &connected,
-            &entity_to_addr,
-            &minigame_registry,
-            "203.0.113.1",
-            9339,
-        )
-        .await;
-        registry
-    }
-
-    /// The session carries the game connection's IP, so the listener admits
-    /// that address and no other.
-    #[tokio::test]
-    async fn start_minigame_registers_the_game_connection_ip() {
-        let addr: SocketAddr = "10.0.0.5:5000".parse().unwrap();
-        let registry = start_for_entity(Some(addr)).await;
-
-        assert!(
-            registry
-                .expects_peer(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 5)))
-                .await
-        );
-        assert!(
-            !registry
-                .expects_peer(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 6)))
-                .await
-        );
-    }
-
-    /// Without a client address nothing is registered: the entity id is not
-    /// held for the pending TTL by a session no peer could ever claim.
-    #[tokio::test]
-    async fn start_minigame_without_client_addr_registers_nothing() {
-        let registry = start_for_entity(None).await;
-
-        assert_eq!(registry.session_count().await, 0);
-    }
-
-    /// A duplicate start cannot launch a second SWF, but must tell the
-    /// player why the click did not work. The content replay guard separately
-    /// pins that the terminal's interaction bit remains until victory.
-    #[tokio::test]
-    async fn duplicate_start_sends_feedback_without_replacing_ticket() {
-        let addr: SocketAddr = "10.0.0.5:5000".parse().unwrap();
-        let transport = Arc::new(TestTransport::new());
-        let connected = Arc::new(Mutex::new(HashMap::from([(
-            addr,
-            test_default_connected_client_state(),
-        )])));
-        let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(77u32, addr)])));
-        let registry = SessionRegistry::new();
-        let configured = Some(registry.clone());
-        start_minigame(
-            77,
-            1,
-            "Livewire".into(),
-            1,
-            vec![],
-            &(transport.clone() as Arc<dyn Transport>),
-            &connected,
-            &entity_to_addr,
-            &configured,
-            "203.0.113.1",
-            9339,
-        )
-        .await;
-        assert_eq!(transport.drain().len(), 1, "first click launches Livewire");
-        start_minigame(
-            77,
-            1,
-            "Livewire".into(),
-            1,
-            vec![],
-            &(transport.clone() as Arc<dyn Transport>),
-            &connected,
-            &entity_to_addr,
-            &configured,
-            "203.0.113.1",
-            9339,
-        )
-        .await;
-        assert_eq!(registry.session_count().await, 1);
-        let sent = transport.filter_to(addr);
-        assert_eq!(sent.len(), 1, "refused click emits exactly one packet");
-        let args = serialize_on_player_communication(
-            "SYSTEM",
-            0,
-            CHAN_FEEDBACK,
-            "Minigame could not start. Close any open minigame and try again.",
-        );
-        let expected = build_player_entity_method_packet(
-            &[0u8; 32],
-            1,
-            &[],
-            77,
-            crate::mercury::method_idx::ON_PLAYER_COMMUNICATION,
-            &args,
-            cimmeria_mercury::encryption::EncryptionVersion::V1,
-        );
-        assert_eq!(sent[0], expected, "refused click uses CHAN_FEEDBACK");
-    }
-
-    #[tokio::test]
-    async fn stale_result_does_not_end_a_reopened_board_even_if_fin_won() {
-        let addr: SocketAddr = "10.0.0.5:5000".parse().unwrap();
-        let transport = Arc::new(TestTransport::new());
-        let connected = Arc::new(Mutex::new(HashMap::from([(
-            addr,
-            test_default_connected_client_state(),
-        )])));
-        let entity_to_addr = Arc::new(Mutex::new(HashMap::from([(77u32, addr)])));
-        let (cell_tx, mut cell_rx) = mpsc::channel(2);
-        let registry = SessionRegistry::new();
-        let old_ticket = registry
-            .register(
-                77,
-                1,
-                "Livewire".into(),
-                1,
-                1,
-                0,
-                0,
-                0,
-                1,
-                vec![],
-                None,
-                Some(addr.ip()),
-            )
-            .await
-            .unwrap();
-        assert!(registry.cancel(77).await);
-        let new_ticket = registry
-            .register(
-                77,
-                1,
-                "Livewire".into(),
-                1,
-                1,
-                0,
-                0,
-                0,
-                1,
-                vec![],
-                None,
-                Some(addr.ip()),
-            )
-            .await
-            .unwrap();
-        assert_ne!(old_ticket, new_ticket);
-
-        minigame_result(
-            77,
-            &old_ticket,
-            0,
-            vec![],
-            true,
-            &Some(registry.clone()),
-            &(transport.clone() as Arc<dyn Transport>),
-            &connected,
-            &entity_to_addr,
-            &Some(cell_tx.clone()),
-        )
-        .await;
-        assert_eq!(
-            transport.send_count_to(addr),
-            0,
-            "late onEndMinigame must not close the next board"
-        );
-        assert!(matches!(
-            cell_rx.try_recv(),
-            Ok(BaseToCellMsg::MinigameResult {
-                entity_id: 77,
-                result_code: 0,
-                ..
-            })
-        ));
-        minigame_result(
-            77,
-            &new_ticket,
-            1,
-            vec![],
-            true,
-            &Some(registry),
-            &(transport.clone() as Arc<dyn Transport>),
-            &connected,
-            &entity_to_addr,
-            &Some(cell_tx),
-        )
-        .await;
-        assert_eq!(
-            transport.send_count_to(addr),
-            1,
-            "current result still ends its board"
-        );
-    }
-}
+#[cfg(test)]
+#[path = "minigame_takeover_tests.rs"]
+mod takeover_tests;

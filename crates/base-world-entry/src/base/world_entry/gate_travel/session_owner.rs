@@ -67,3 +67,20 @@ pub(super) fn still_owned(
         _ => Ok(true),
     }
 }
+
+/// `true` when the session at `addr` is still the one whose reliable window
+/// (`next_seq`) and send origin this task captured. A recycled entity number
+/// at the same peer must not turn an old packet into a new session's proof or
+/// reliable-window entry.
+pub(super) fn same_send_session(
+    connected: &Arc<Mutex<HashMap<SocketAddr, ConnectedClientState>>>,
+    addr: SocketAddr,
+    next_seq: &Arc<std::sync::atomic::AtomicU32>,
+    origin: Option<&cimmeria_mercury::transport::SendOrigin>,
+) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+    let clients = connected.lock().map_err(|_| "connected lock poisoned")?;
+    Ok(clients.get(&addr).is_some_and(|c| {
+        Arc::ptr_eq(&c.next_seq, next_seq)
+            && super::super::same_direct_origin(c.wire_send_origin().as_ref(), origin)
+    }))
+}

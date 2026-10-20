@@ -326,6 +326,7 @@
 \ir resources/Entities/Seed/entity_templates_debug_area_lords.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_npcs.sql
 \ir resources/Entities/Seed/entity_templates_debug_area_plaza.sql
+\ir resources/Entities/Seed/entity_templates_tollana.sql
 \ir resources/Entities/Seed/entity_templates_union_omega.sql
 \ir resources/Entities/Seed/entity_templates_sgc_w1_union.sql
 \ir resources/Entities/Seed/monikers.sql
@@ -406,6 +407,7 @@
 \ir resources/Worlds/Seed/spawnlist_debug_area_lords.sql
 \ir resources/Worlds/Seed/spawnlist_debug_area_npcs.sql
 \ir resources/Worlds/Seed/spawnlist_debug_area_plaza.sql
+\ir resources/Worlds/Seed/spawnlist_tollana.sql
 \ir resources/Worlds/Seed/spawnlist_union_omega.sql
 \ir resources/Worlds/Seed/spawnlist_sgc_w1_union.sql
 \ir resources/Worlds/Seed/stargates.sql
@@ -415,11 +417,20 @@
 \ir resources/Content/Seed/castle_701_chains.sql
 \ir resources/Content/Seed/castle_706_708_chains.sql
 \ir resources/Content/Seed/castle_702_704_chains.sql
+\ir resources/Content/Seed/castle_carry_in_chains.sql
+\ir resources/Content/Seed/castle_1520_chains.sql
+\ir resources/Content/Seed/castle_symbiote_chains.sql
+\ir resources/Content/Seed/castle_side_stories_chains.sql
+\ir resources/Content/Seed/castle_hub_barks_chains.sql
+\ir resources/Content/Seed/castle_567_chains.sql
+\ir resources/Content/Seed/castle_repeatable_chains.sql
+\ir resources/Content/Seed/castle_1664_chains.sql
 \ir resources/Content/Seed/effects_chains.sql
 \ir resources/Content/Seed/harset_goauld_chains.sql
 \ir resources/Content/Seed/harset_jaffa_chains.sql
 \ir resources/Content/Seed/harset_opcore_chains.sql
 \ir resources/Content/Seed/harset_space_chains.sql
+\ir resources/Content/Seed/harset_1664_chains.sql
 \ir resources/Content/Seed/sgc_w1_chains.sql
 \ir resources/Content/Seed/sgc_w1_union_1563_chains.sql
 \ir resources/Content/Seed/sgc_w1_union_1564_chains.sql
@@ -477,6 +488,7 @@
 \ir resources/Content/Seed/dakara_e1_m1653_chains.sql
 \ir resources/Content/Seed/dakara_e1_m1654_chains.sql
 \ir resources/Content/Seed/tutorial_chains.sql
+\ir resources/Content/Seed/tollana_568_chains.sql
 \ir resources/Content/Seed/union_omega_arrival_chains.sql
 \ir resources/Content/Seed/union_omega_human_chains.sql
 \ir resources/Content/Seed/union_omega_jaffa_chains.sql
@@ -519,6 +531,7 @@
 \ir sgw/Mail/Tables/sgw_gate_mail.sql
 \ir sgw/Mail/Tables/sgw_gate_mail_item.sql
 \ir sgw/Missions/Tables/sgw_mission.sql
+\ir sgw/Missions/Tables/sgw_mission_1360_receipt.sql
 \ir sgw/Players/Tables/sgw_player.sql
 \ir sgw/Players/Tables/sgw_player_discipline_expertise.sql
 \ir sgw/Players/Tables/sgw_player_content_cooldown.sql

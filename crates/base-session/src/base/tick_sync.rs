@@ -140,11 +140,12 @@ async fn run_tick_loop_owned(
     let disconnect_reason: &'static str = loop {
         tokio::time::sleep(game_clock::TICK_SYNC_INTERVAL).await;
 
-        // The cancelled flag is set by `destroy_client_entities` (logOff,
-        // client disconnect, duplicate login, relaunch takeover), which
-        // has already torn the session down — return before the post-loop
-        // cleanup runs so we don't double-stamp a second disconnect event
-        // under a misleading reason.
+        // Cancellation may come from normal teardown (which already removed
+        // the session), a fatal admitted-send failure (session still mapped),
+        // or a relaunch takeover (address now owned by another session). All
+        // fall through to the owner-checked post-loop teardown: it no-ops
+        // for a removed or replaced session and removes the still-mapped
+        // owner after the fatal send.
         if cancelled.load(Ordering::Relaxed) || !owns_current_session(&connected, addr, &cancelled)
         {
             let who = super::session_identity::identity_for_addr(&connected, addr);
@@ -154,9 +155,9 @@ async fn run_tick_loop_owned(
                 account_name = who.account_name,
                 player_id = who.player_id,
                 player_name = who.player_name,
-                "Tick-sync stopping: session cancelled (torn down elsewhere)"
+                "Tick-sync stopping: session cancelled"
             );
-            return;
+            break "send_error";
         }
 
         let idle = last_recv.lock().unwrap().elapsed();
@@ -245,14 +246,16 @@ async fn run_tick_loop_owned(
         // reliable arrivals), no TX window pressure.
         let tick = game_clock::game_ticks();
         let (seq_id, pkt) = tick_sync_packet(&next_seq_unreliable, &key, tick, &acks, enc_version);
-        if cancelled.load(Ordering::Relaxed) || !owns_current_session(&connected, addr, &cancelled)
-        {
+        if !owns_current_session(&connected, addr, &cancelled) {
             return;
         }
+        if cancelled.load(Ordering::Relaxed) {
+            // Fatal admitted-send failure elsewhere: still the owner, so run
+            // the owner-checked teardown instead of returning silently.
+            break "send_error";
+        }
         if let Err(e) = send_with_origin(&transport, &pkt, addr, origin.as_ref()).await {
-            if cancelled.load(Ordering::Relaxed)
-                || !owns_current_session(&connected, addr, &cancelled)
-            {
+            if !owns_current_session(&connected, addr, &cancelled) {
                 return;
             }
             tracing::debug!(%addr, "Tick-sync stopped (send error): {e}");
@@ -280,9 +283,9 @@ async fn run_tick_loop_owned(
                 account_name = who.account_name,
                 player_id = who.player_id,
                 player_name = who.player_name,
-                "Tick-sync stopping: session cancelled (torn down elsewhere)"
+                "Tick-sync stopping: session cancelled"
             );
-            return;
+            break "send_error";
         }
         // Each resend already has its row, `mercury.retransmit` (written by
         // the channel's scan, with the cause fields); only a failed send is
@@ -295,25 +298,22 @@ async fn run_tick_loop_owned(
         for raw in &retransmits {
             // The scan can yield several cached datagrams. A send may await
             // while the peer is replaced; never emit another A packet then.
-            if cancelled.load(Ordering::Relaxed)
-                || !owns_current_session(&connected, addr, &cancelled)
-            {
+            if cancelled.load(Ordering::Relaxed) {
+                break;
+            }
+            if !owns_current_session(&connected, addr, &cancelled) {
                 return;
             }
             if let Err(e) =
                 send_with_origin(&transport, &raw.bytes, addr, raw.origin.as_ref()).await
             {
-                if cancelled.load(Ordering::Relaxed)
-                    || !owns_current_session(&connected, addr, &cancelled)
-                {
+                if !owns_current_session(&connected, addr, &cancelled) {
                     return;
                 }
                 tracing::debug!(%addr, "Retransmit send_to failed: {e}");
                 break;
             }
-            if cancelled.load(Ordering::Relaxed)
-                || !owns_current_session(&connected, addr, &cancelled)
-            {
+            if !owns_current_session(&connected, addr, &cancelled) {
                 return;
             }
         }

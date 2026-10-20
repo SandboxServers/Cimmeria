@@ -38,6 +38,11 @@ impl Transport for Wire {
         }
     }
 
+    fn try_send_to(&self, bytes: &[u8], addr: SocketAddr) -> io::Result<usize> {
+        self.sent.lock().unwrap().push(addr);
+        Ok(bytes.len())
+    }
+
     fn local_addr(&self) -> io::Result<SocketAddr> {
         Ok("127.0.0.1:0".parse().unwrap())
     }

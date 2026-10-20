@@ -81,6 +81,8 @@ pub(crate) use flush_chaos::lend_registry;
 pub(crate) use flush_chaos::{flush_delay, log_flush_delayed, promote_armed, rearm_promotion};
 
 #[cfg(test)]
+mod minigame_result_tests;
+#[cfg(test)]
 mod tests;
 #[cfg(test)]
 mod tests_dispatch_arms;

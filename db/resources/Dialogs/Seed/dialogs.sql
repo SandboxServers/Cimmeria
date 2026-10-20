@@ -10859,11 +10859,42 @@ INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags
 -- map-load crash (#943) is explained, so the client shows no dialog yet.
 INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (60110, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Banker - Expand vault');
 
+-- Cellblock continuation CB-N04a: holder for the cells ambient barks. Never
+-- displayed; npc_bark reads its screens' text. Seed-only, no override.
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (60160, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Cellblock - ambient cast bark holder (never displayed)');
+
+-- Harset mission 1664 step 5226 (FZ-27): holder for the Marsh and Moh'katan debrief barks.
+-- Never displayed; npc_bark reads its screens' text. Seed-only, no override.
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (60170, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Harset - mission 1664 debrief bark holder (never displayed)');
+
+-- Cellblock continuation CB-N05: Prisoner 329's report for mission 62050 (CIMMERIA_AUTHORING).
+-- Speaker-0 monologue, served by DIALOG_OVERRIDES (overrides_cellblock.rs).
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (60150, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Cellblock - The Remaining Pods: Prisoner 329 report');
+
+-- Cellblock continuation CB-N06: the patrol choice for mission 62060 (CIMMERIA_AUTHORING).
+-- Speaker-0 monologue, served by DIALOG_OVERRIDES (overrides_cellblock.rs).
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (60151, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Cellblock - Before the Patrol Returns: the choice');
+
 --
 -- TOC entry 3312 (class 0 OID 0)
 -- Dependencies: 309
 -- Name: dialogs_dialog_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
+
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (10700, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, NULL);
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (10701, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, NULL);
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (10702, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, NULL);
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (10709, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, NULL);
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (10721, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, NULL);
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (10725, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, NULL);
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (10740, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Castle hub - Ogilvie bark holder (never displayed)');
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (10741, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Castle hub - Castle Medic bark holder (never displayed)');
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (10717, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, NULL);
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (10718, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, NULL);
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (10729, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, NULL);
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (10730, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, NULL);
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (10733, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, NULL);
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (10734, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, NULL);
 
 SELECT pg_catalog.setval('dialogs_dialog_id_seq', 100011, true);
 

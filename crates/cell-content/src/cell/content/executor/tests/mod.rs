@@ -28,6 +28,8 @@
 //! - [`open_loot`]        — `Action::OpenLoot`: per-looter rolls on a live chest.
 //! - [`pets`]             — pets PT-02 at the content transport call sites.
 //! - [`radio_dialog`]     — `Action::DisplayRadioDialog` (DK-06b): EntityId 0, no NPC needed.
+//! - [`remove_effect`]    — `Action::RemoveEffect` (HA-03c): the self-only,
+//!   idempotent removal of pulses and ledger entries.
 //! - [`spawn_set`]        — `Action::SpawnSet` (DA-10): the Lineup
 //!   attendants' GM gate, exclusive groups and Clear.
 //! - [`stargate`]         —`Action::GrantStargateAddress`: the three legs
@@ -55,6 +57,7 @@ mod effects;
 mod grant_cash;
 mod grant_item;
 mod inventory_counter;
+mod letter_turn_in;
 mod mail;
 mod mission;
 mod negative_logging;
@@ -63,6 +66,7 @@ mod once_gate;
 mod open_loot;
 mod pets;
 mod radio_dialog;
+mod remove_effect;
 mod spawn_set;
 mod stargate;
 mod stats;

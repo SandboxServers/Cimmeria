@@ -12,6 +12,10 @@ mod service;
 
 pub use service::CellService;
 
+#[cfg(feature = "test-support")]
+#[doc(hidden)]
+pub use service::build_restored_missions_for_test;
+
 /// The content tests that drive the relog hydration,
 /// `service::base_messages::player_init::mission_restore`. Test-only.
 #[cfg(test)]

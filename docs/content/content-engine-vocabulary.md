@@ -326,7 +326,7 @@ Shows a dialog with no speaker entity: `onDialogDisplay` (client method 105) goe
 
 | Param | Required | Meaning |
 |---|---|---|
-| `on_victory_chains` | no (defaults to `[]`) | Chain ids fired when the player wins. They are invoked directly, not through `resolve_event`, so **no conditions on them are evaluated** — put the gate on the launcher chain. |
+| `on_victory_chains` | no (defaults to `[]`) | Chain ids fired when the player wins. The existing callback invokes them through `fire_chain_by_id`, which does not evaluate conditions; put the gate on the launcher chain until a callback explicitly adopts the guarded path. |
 | `difficulty` | no (defaults to `1`) | Difficulty tier, integer 1-5. |
 
 `difficulty` is **rejected, not clamped**: a row outside 1-5 is dropped at
@@ -340,6 +340,8 @@ down to 4 with a `warn!` — 1-4 is the range content should actually use.
 A victory chain needs no `content_triggers` row; the loader gives a
 triggerless chain a never-firing `OnCustomEvent` placeholder so it stays
 reachable only through `on_victory_chains`.
+
+`fire_guarded_minigame_chain_by_id` is an opt-in Cell content callback seam for future minigame victory chains. It derives a nonzero player ID from a present player entity, builds current world and mission context, and resolves only the requested chain against the synthetic `__direct_invoke_<id>` CustomEvent. Normal enabled and condition checks apply. The current minigame result handler still uses `fire_chain_by_id`; this helper does not authenticate a result or redeem a ticket. A future caller must first establish one-use receipt and original player identity, and its seed guard must prove zero explicit trigger rows for the callback. Mission-changing actions also need `delay_ms=0` unless deferred execution revalidates the state.
 
 ##### `npc_bark` params
 
@@ -699,12 +701,11 @@ Because the idempotence guard is per-tag, **wave content needs one tag per spawn
 
 #### Authorable but NOT executed — seeded rows that silently no-op
 
-These have a loader arm, so the seed accepts them and the engine resolves them, but **[executor/mod.rs](../../crates/cell-content/src/cell/content/executor/mod.rs) has no match arm** — every one falls through to the `debug!` catch-all and does nothing. This is a live correctness gap, not a roadmap item: 4 seeded rows are currently dead.
+These have a loader arm, so the seed accepts them and the engine resolves them, but **[executor/mod.rs](../../crates/cell-content/src/cell/content/executor/mod.rs) has no match arm** — every one falls through to the `debug!` catch-all and does nothing. This is a live correctness gap, not a roadmap item: 3 seeded rows are currently dead (`remove_effect` came off this list in Harset HA-03c).
 
 | Seed verb | `Action` variant | Seed rows | Consequence |
 |---|---|---|---|
 | `qr_combat_damage` | `QrCombatDamage` | 2 | Scripted damage is never applied |
-| `remove_effect` | `RemoveEffect` | 1 | No chain can strip an effect |
 | `fail_objective` | `FailObjective` | 1 | Objective-fail branches never fire |
 
 `system_message` (`SystemMessage`, **1 seeded row**: chain 1013, `castle_cellblock_chains.sql`) is a third state: it has an executor arm, but the arm only emits an `info!` log. The client wire format is still unknown — see §10.

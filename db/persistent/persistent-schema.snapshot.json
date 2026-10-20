@@ -941,6 +941,93 @@
         "missions_pkey"
       ]
     },
+    "sgw_mission_1360_receipt": {
+      "columns": [
+        {
+          "name": "attempt_key",
+          "data_type": "text",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "container_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "created_at",
+          "data_type": "timestamp with time zone",
+          "is_nullable": "NO",
+          "column_default": "now()"
+        },
+        {
+          "name": "item_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "mission_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": "1360"
+        },
+        {
+          "name": "player_id",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "session_token",
+          "data_type": "text",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "stack_after",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        },
+        {
+          "name": "stack_before",
+          "data_type": "integer",
+          "is_nullable": "NO",
+          "column_default": ""
+        }
+      ],
+      "constraints": [
+        {
+          "name": "sgw_mission_1360_receipt_attempt_key_check",
+          "type": "c"
+        },
+        {
+          "name": "sgw_mission_1360_receipt_mission_chk",
+          "type": "c"
+        },
+        {
+          "name": "sgw_mission_1360_receipt_pkey",
+          "type": "p"
+        },
+        {
+          "name": "sgw_mission_1360_receipt_player_id_fkey",
+          "type": "f"
+        },
+        {
+          "name": "sgw_mission_1360_receipt_session_token_check",
+          "type": "c"
+        },
+        {
+          "name": "sgw_mission_1360_receipt_stack_chk",
+          "type": "c"
+        }
+      ],
+      "indexes": [
+        "sgw_mission_1360_receipt_pkey"
+      ]
+    },
     "sgw_organization_cash_log": {
       "columns": [
         {

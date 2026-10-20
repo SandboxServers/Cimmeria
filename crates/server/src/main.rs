@@ -19,6 +19,7 @@
 //! | `BASE_PORT` | `32832` | BaseApp UDP port |
 //! | `CELL_PORT` | `50000` | CellApp port |
 //! | `MINIGAME_HOST` | `0.0.0.0` | Minigame SmartFoxServer TCP bind address |
+//! | `MINIGAME_PORT` | `30000` | Minigame SmartFoxServer TCP port; also the port the client is told to dial. Change it only to run a second server on one host. |
 //! | `ADMIN_PORT` | `8443` | Admin REST API port |
 //! | `ADMIN_BIND` | `127.0.0.1` | Admin REST API bind address. Loopback by default because the admin API has **no authentication** (#439); only set `0.0.0.0` with JWT wired and a trusted network path. The container image sets `0.0.0.0` because a published port cannot reach an in-container loopback bind; there the `-p` publish is the exposure control. Launcher telemetry (`/api/auth/dev-session`, `/api/telemetry/*`) is served here and on `LOGON_PORT`; remote launchers use `LOGON_PORT`, so this bind can stay narrow. |
 //! | `DB_URL` | `host=localhost port=5433 user=w-testing password=w-testing dbname=sgw` | PostgreSQL connection string. When set, the server refuses to start (exit 1, `reason=database_connect_failed`) if it cannot connect within 30 s or the credentials are rejected. Empty runs the server with no database, for development only: logins are then refused unless `DEVELOPER_MODE` is on. `cimmeria-server --check-db` connects with it, runs `SELECT 1` and exits 0, or prints a sanitised reason and exits 1, within `PGCONNECT_TIMEOUT` seconds (default 5); the container uses it before start and as its healthcheck. |
@@ -456,6 +457,13 @@ fn config_from_env() -> ServerConfig {
     if let Ok(v) = std::env::var("MINIGAME_HOST") {
         cfg.minigame_host = v;
     }
+    if let Ok(v) = std::env::var("MINIGAME_PORT") {
+        if let Ok(p) = v.parse() {
+            cfg.minigame_port = p;
+        } else {
+            tracing::warn!(value = %v, "MINIGAME_PORT is not a port number; keeping default");
+        }
+    }
     if let Ok(v) = std::env::var("CELL_PORT") {
         if let Ok(p) = v.parse() {
             cfg.cell_port = p;
@@ -512,5 +520,14 @@ mod tests {
             !compiled,
             "lab-chaos is compiled into a build that did not ask for it"
         );
+    }
+
+    #[test]
+    fn minigame_port_env_overrides_default() {
+        std::env::set_var("MINIGAME_PORT", "30100");
+        assert_eq!(super::config_from_env().minigame_port, 30100);
+        std::env::set_var("MINIGAME_PORT", "not-a-port");
+        assert_eq!(super::config_from_env().minigame_port, 30000);
+        std::env::remove_var("MINIGAME_PORT");
     }
 }

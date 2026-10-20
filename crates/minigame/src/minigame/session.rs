@@ -5,6 +5,7 @@
 
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -13,8 +14,12 @@ use tokio::sync::{watch, Mutex};
 use tokio::time::Instant;
 
 pub use super::session_claim::ClaimRejection;
+#[path = "session_result.rs"]
+mod session_result;
 use super::session_snapshot::PublishedBoard;
 pub use super::session_snapshot::{BoardSnapshot, WireSnapshot};
+pub(crate) use session_result::DepositOutcome;
+pub use session_result::ResultReceipt;
 
 /// How long a session may sit in the registry after `register` before the
 /// sweep drops it, *if its SWF client never connected*.
@@ -53,6 +58,8 @@ const DOUBLE_INTERACT_WINDOW: Duration = Duration::from_secs(2);
 pub struct MinigameSession {
     pub entity_id: u32,
     pub player_id: i32,
+    /// Original Base connection, captured when the launch URL was sent.
+    pub session_instance_id: u64,
     pub game_name: String,
     pub difficulty: u32,
     pub tech_competency: u32,
@@ -81,6 +88,8 @@ pub struct MinigameSession {
     /// task removes it when the socket closes, and a long Livewire round can
     /// easily outlive [`PENDING_SESSION_TTL`].
     pub connected: bool,
+    /// Persists while this registration is live even after its receipt is spent.
+    pub terminal_reported: bool,
     /// The cell's explicit close request reaches the connection task even if
     /// the SWF leaves its SmartFox socket open after hiding the window.
     pub cancel: watch::Sender<bool>,
@@ -96,6 +105,8 @@ struct SessionRegistryInner {
     /// entity_id → session
     sessions: HashMap<u32, MinigameSession>,
     boards: HashMap<u32, PublishedBoard>,
+    receipts: HashMap<String, ResultReceipt>,
+    receipt_order: VecDeque<String>,
     /// Next room ID (auto-incrementing from 1001)
     next_room_id: u32,
 }
@@ -120,6 +131,8 @@ impl SessionRegistry {
             inner: Arc::new(Mutex::new(SessionRegistryInner {
                 sessions: HashMap::new(),
                 boards: HashMap::new(),
+                receipts: HashMap::new(),
+                receipt_order: VecDeque::new(),
                 next_room_id: 1001,
             })),
         }
@@ -140,12 +153,14 @@ impl SessionRegistry {
         on_victory_chains: Vec<i64>,
         player_name: Option<String>,
         client_ip: Option<std::net::IpAddr>,
+        session_instance_id: u64,
     ) -> Option<String> {
         let ticket = generate_ticket();
         let (cancel, _) = watch::channel(false);
         let session = MinigameSession {
             entity_id,
             player_id,
+            session_instance_id,
             game_name,
             difficulty,
             tech_competency,
@@ -159,6 +174,7 @@ impl SessionRegistry {
             client_ip,
             created_at: Instant::now(),
             connected: false,
+            terminal_reported: false,
             cancel,
         };
 
@@ -170,6 +186,7 @@ impl SessionRegistry {
         // means the *next* interaction is the one that recovers, rather
         // than the player having to wait out a sweep tick.
         expire_pending_locked(&mut inner, PENDING_SESSION_TTL);
+        inner.expire_receipts(Instant::now());
         if let Some(existing) = inner.sessions.get(&entity_id) {
             // A second interact while the first launch is still loading is a
             // double click: INFO. A live game, or a launch that has sat past
@@ -205,6 +222,7 @@ impl SessionRegistry {
             entity_id,
             PublishedBoard::new(ticket.clone(), session.created_at),
         );
+        inner.invalidate_entity_receipts(entity_id);
         inner
             .boards
             .get_mut(&entity_id)
@@ -303,6 +321,7 @@ impl SessionRegistry {
     /// Returns the evicted entity ids.
     pub async fn expire_pending(&self, ttl: Duration) -> Vec<u32> {
         let mut inner = self.inner.lock().await;
+        inner.expire_receipts(Instant::now());
         expire_pending_locked(&mut inner, ttl)
     }
 
@@ -460,6 +479,7 @@ impl SessionRegistry {
         let mut inner = self.inner.lock().await;
         inner.sessions.remove(&entity_id);
         inner.boards.remove(&entity_id);
+        inner.invalidate_entity_receipts(entity_id);
     }
 
     /// Cancel the entity's current session and release its registration.
@@ -467,11 +487,43 @@ impl SessionRegistry {
     /// teardown cannot erase a replacement session registered immediately.
     pub async fn cancel(&self, entity_id: u32) -> bool {
         let mut inner = self.inner.lock().await;
-        let Some(session) = inner.sessions.remove(&entity_id) else {
-            return false;
-        };
-        session.cancel.send_replace(true);
+        let session = inner.sessions.remove(&entity_id);
+        if let Some(ref session) = session {
+            session.cancel.send_replace(true);
+        }
         inner.boards.remove(&entity_id);
+        inner.invalidate_entity_receipts(entity_id);
+        session.is_some()
+    }
+
+    /// Cancel only the launch that minted this ticket. A stale failed send
+    /// cannot erase a replacement board for the same entity.
+    pub async fn cancel_if_ticket(&self, entity_id: u32, ticket: &str) -> bool {
+        let mut inner = self.inner.lock().await;
+        let matches_session = inner
+            .sessions
+            .get(&entity_id)
+            .is_some_and(|session| session.ticket == ticket);
+        let matches_receipt = inner
+            .receipts
+            .get(ticket)
+            .is_some_and(|receipt| receipt.entity_id == entity_id);
+        if !matches_session && !matches_receipt {
+            return false;
+        }
+        if matches_session {
+            if let Some(session) = inner.sessions.remove(&entity_id) {
+                session.cancel.send_replace(true);
+            }
+        }
+        if inner
+            .boards
+            .get(&entity_id)
+            .is_some_and(|board| board.ticket == ticket)
+        {
+            inner.boards.remove(&entity_id);
+        }
+        inner.invalidate_ticket_receipt(ticket);
         true
     }
 
@@ -583,6 +635,14 @@ fn generate_ticket() -> String {
 #[cfg(test)]
 #[path = "session_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "session_result_tests.rs"]
+mod result_tests;
+
+#[cfg(test)]
+#[path = "session_cancel_tests.rs"]
+mod cancel_tests;
 
 #[cfg(test)]
 #[path = "session_board_tests.rs"]

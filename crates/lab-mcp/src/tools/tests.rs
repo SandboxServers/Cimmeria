@@ -88,6 +88,7 @@ async fn minigame_state_tool_tracks_generated_board_update_and_teardown() {
             vec![],
             None,
             None,
+            1,
         )
         .await
         .unwrap();
