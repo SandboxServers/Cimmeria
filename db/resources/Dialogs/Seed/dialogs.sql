@@ -10859,6 +10859,9 @@ INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags
 -- map-load crash (#943) is explained, so the client shows no dialog yet.
 INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (60110, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Banker - Expand vault');
 
+-- Minigames campaign, MG-74: the Debug Area minigame terminals' bark holder. Owns dialog id 60120.
+INSERT INTO dialogs (dialog_id, dialog_flags, event_set_id, ui_screen_type, tags, accepts_mission_id, name) VALUES (60120, 0, NULL, 'DUIST_DefaultDialog', NULL, NULL, 'Debug Area - minigame bark holder (never displayed)');
+
 --
 -- TOC entry 3312 (class 0 OID 0)
 -- Dependencies: 309

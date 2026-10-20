@@ -28645,11 +28645,15 @@ INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUE
 -- line names it.
 INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (60110, 200010, 'Vault expansion. I can add 10 slots to your vault, up to 100 in all. The price of the next 10 slots is in your chat window.', 0, 0);
 
+-- Minigames campaign, MG-74: the Debug Area minigame terminals' result lines, spoken by `npc_bark` (chains 24056-24057). Owns screen ids 200020-200029.
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (60120, 200020, 'Minigame round trip complete: the server recorded your win.', 0, 0);
+INSERT INTO dialog_screens (dialog_id, screen_id, text, speaker_id, index) VALUES (60120, 200021, 'Minigame round trip complete: the server recorded your loss.', 0, 1);
+
 --
 -- TOC entry 3309 (class 0 OID 0)
 -- Dependencies: 310
 -- Name: dialog_screens_screen_id_seq; Type: SEQUENCE SET; Schema: resources; Owner: -
 --
 
-SELECT pg_catalog.setval('dialog_screens_screen_id_seq', 200010, true);
+SELECT pg_catalog.setval('dialog_screens_screen_id_seq', 200021, true);
 

@@ -211,6 +211,16 @@ pub(super) fn allowlist(filename: &str, chain_id: i32) -> bool {
         // (DA-08, DA-11). Template 3 carries INT_RingNetwork (32) as a template
         // default, exactly as for the Harset ring switches above.
         | ("debug_area_ring_chains.sql", 13810..=13818)
+        // debug_area_minigames_chains.sql (MG-74): reusable minigame terminals
+        // for GM tests, no mission; the cursor bit is a template default.
+        | ("debug_area_minigames_chains.sql", 24050..=24055) // DebugArea_Minigame_*: templates 1600-1605 default INT_MinigameLivewire (MG-74)
+        // minigames_m582_chains.sql (MG-61) — chain 24000 keys on CmdCenter_Marsh,
+        // a shared-hub NPC (spawn 344, world 68, template 10 with interaction_type 0).
+        // reason: NOT a template default; the cursor bit must be supplied per player
+        // (as the Harset Marsh chains 6501/6512/6527 do via add_dialog_set). A
+        // set_interaction_type here would light Marsh for every player in world 68,
+        // so it stays out. OPEN GAP: no per-player bind for step 2307 is wired yet.
+        | ("minigames_m582_chains.sql", 24000) // Converse with Marsh: per-player bind TBD (MG-61 follow-up)
         // space_castle_cellblock_chains.sql — baseline
         | ("space_castle_cellblock_chains.sql", 5014) // Preparation_ColMarsh: dialog NPC template default
         | ("space_castle_cellblock_chains.sql", 5015) // Preparation_ColMarsh: dialog NPC template default
