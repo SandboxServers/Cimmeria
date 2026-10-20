@@ -47,7 +47,7 @@ Content chain fires Action::StartMinigame { minigame_type, difficulty,
 | Abort on SWF close | DONE | `run_session` calls `MinigameInstance::aborted()` and reports result code 0 (Canceled) when the socket drops without an outcome |
 | Content-triggered start | DONE | `Action::StartMinigame` → `CellToBaseMsg::StartMinigame` → `onStartMinigame(URL)` |
 | Victory-chain callback | DONE | `MinigameResult` forwards to the cell, which runs `on_victory_chains` |
-| Livewire | DONE | Fully ported in `minigame/games/livewire/` |
+| Livewire | DONE | Fully ported in `minigame/games/livewire/`; an abort sends nothing, the client has closed |
 | Hack, Activate, Analyze, Bypass, Converse, ConverseBasicHumanoid | PLACEHOLDER | `games/placeholder.rs` — the only accepted client message is `victory`, which is an instant win. Matches the original `Placeholder.py`; these game types had no real SWF beyond a shell |
 | Alignment, GoauldCrystals | NOT IMPL | Still Python-only; the factory has commented-out arms awaiting a port. An unrecognised game name silently falls back to the auto-win placeholder |
 | `startMinigame` | STUB | Cell method 24 logs `UNIMPLEMENTED` |
