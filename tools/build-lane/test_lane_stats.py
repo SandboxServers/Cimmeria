@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import csv
 import json
 import os
 import shutil
@@ -67,6 +68,13 @@ class ClassifyTests(unittest.TestCase):
         self.assertEqual(lane_stats.classify("pwsh -File tools/build-metrics/measure-build.ps1 -Label x")[0], "measure")
         self.assertEqual(lane_stats.classify("true")[0], "true")
 
+    def test_live_db_build_phase_is_its_own_kind(self):
+        self.assertEqual(lane_stats.classify("pwsh -NoProfile -File tools/test-live-db.ps1 --build-only")[0],
+                         "live-db-build")
+        self.assertEqual(lane_stats.classify("pwsh -NoProfile -File tools/test-live-db.ps1 --wireclient --build-only")[0],
+                         "live-db-build")
+        self.assertEqual(lane_stats.classify("pwsh -File tools/build-lane/live-db-test.ps1 chain_replay")[0], "live-db")
+
 
 class ReportTests(unittest.TestCase):
     def job(self, t, kind_cmd, run, exit_code=0, dev=True, wait=0.0):
@@ -102,6 +110,47 @@ class ReportTests(unittest.TestCase):
         self.assertEqual(len(lane_stats.select(jobs, 1, None, None, None, now)), 2)
         self.assertEqual(len(lane_stats.select(jobs, None, "check", None, None, now)), 2)
         self.assertEqual(len(lane_stats.select(jobs, None, None, "B3", "check", now)), 1)
+
+    def test_class_field_default_filter_and_slot_hours(self):
+        old = self.job(1000, "cargo build -p a", 3600.0)  # a line from before the classes
+        old.update(slots=1)
+        light = self.job(2000, "cargo check -p a", 60.0)
+        light.update({"class": "light", "class_req": "light", "slots": 1, "nested": False})
+        db = self.job(3000, "pwsh -NoProfile -File tools/test-live-db.ps1 chain", 1800.0)
+        db.update({"class": "db", "class_req": "db", "slots": 1, "nested": False})
+        jobs, _ = lane_stats.load(self.write_log([json.dumps(old), json.dumps(light), json.dumps(db)]))
+        self.assertEqual([j["class"] for j in jobs], ["heavy", "light", "db"])
+        self.assertEqual([j["kind"] for j in lane_stats.select(jobs, None, None, None, None, job_class="db")],
+                         ["live-db"])
+        self.assertEqual(len(lane_stats.select(jobs, None, None, None, None, job_class="light")), 1)
+        self.assertIn("Slot-hours by class: db 0.50, heavy 1.00, light 0.02", lane_stats.report(jobs, None))
+
+    def test_cli_old_rows_show_as_heavy_and_class_filter(self):
+        """A log line from before the classes (no class key) prints and exports as heavy,
+        and --class light selects only the new light row."""
+        old = self.job(1000, "cargo build -p a", 3600.0)
+        new = self.job(2000, "cargo check -p b", 60.0)
+        new.update({"class": "light", "class_req": "light"})
+        path = self.write_log([json.dumps(old), json.dumps(new)])
+
+        def run(*args):
+            r = subprocess.run([sys.executable, str(HERE / "lane_stats.py"), "--file", str(path), "--days", "0", *args],
+                               capture_output=True, text=True, check=True)
+            return r.stdout
+
+        out = run("--recent", "5").splitlines()
+        self.assertIn("heavy", next(line for line in out if "build" in line))
+        self.assertIn("light", next(line for line in out if "check" in line))
+
+        light = run("--class", "light", "--recent", "5")
+        self.assertIn("check", light)
+        self.assertNotIn("build", light)
+        self.assertNotIn("heavy", light)
+
+        csv_path = path.with_name("jobs.csv")
+        run("--csv", str(csv_path))
+        with csv_path.open(newline="", encoding="utf-8") as f:
+            self.assertEqual([row["class"] for row in csv.DictReader(f)], ["heavy", "light"])
 
     def test_report_and_html_render(self):
         lines = [json.dumps(self.job(1790000000 + i * 3600, cmd, run, code, dev))

@@ -12,6 +12,7 @@ Usage:
     python tools/build-lane/lane_stats.py --days 60 --kind check
     python tools/build-lane/lane_stats.py --match cell-combat --worktree bo-c2
     python tools/build-lane/lane_stats.py --recent 20      # the last 20 jobs
+    python tools/build-lane/lane_stats.py --class db --kind live-db   # db slots, live-DB runs
     python tools/build-lane/lane_stats.py --csv jobs.csv   # every field, for a spreadsheet
     python tools/build-lane/lane_stats.py --html lane.html # run time over time, one chart per kind
 
@@ -36,7 +37,8 @@ from pathlib import Path
 CARGO_ALIASES = {"b": "build", "c": "check", "t": "test", "r": "run", "d": "doc"}
 FIELDS = [
     "start", "worktree", "branch", "commit", "kind", "scope", "profile", "cmd", "exit",
-    "wait_s", "run_s", "exclusive", "slots", "slots_total", "busy_at_start", "jobs",
+    "wait_s", "run_s", "exclusive", "slots", "slots_total", "busy_at_start", "class",
+    "class_req", "nested", "jobs",
     "incremental", "dev_drive", "target", "sccache", "sccache_hits", "sccache_misses",
     "min_free_mb", "mem_total_mb",
 ]
@@ -66,14 +68,15 @@ def classify(cmd: str) -> tuple[str, str, str]:
     """(kind, scope, profile) for a lane command line.
 
     kind is the cargo subcommand (check, build, clippy, test, nextest, doctest, ...) or,
-    for wrapper scripts, what they do (live-db, measure). scope is "workspace", the
+    for wrapper scripts, what they do (live-db, live-db-build for the heavy phase of
+    live-db-test with --build-only, measure). scope is "workspace", the
     packages built (without the "cimmeria-" prefix), or "default".
     """
     low = cmd.lower()
     if "measure-build" in low:
         return "measure", "", ""
     if "test-live-db" in low or "live-db-test" in low:
-        return "live-db", "", ""
+        return ("live-db-build" if "--build-only" in low else "live-db"), "", ""
     toks = cmd.split()
     for i, tok in enumerate(toks):
         if re.sub(r"\.exe$", "", tok.replace("\\", "/").rsplit("/", 1)[-1].lower()) == "cargo":
@@ -132,6 +135,8 @@ def load(path: Path) -> tuple[list[dict], int]:
                 bad += 1
                 continue
             job["kind"], job["scope"], job["profile"] = classify(job.get("cmd", ""))
+            # Lines from before the lane classes ran every job in a heavy slot.
+            job.setdefault("class", "heavy")
             job["day"] = time.strftime("%Y-%m-%d", time.localtime(job["t"]))
             jobs.append(job)
     jobs.sort(key=lambda j: j["t"])
@@ -139,13 +144,15 @@ def load(path: Path) -> tuple[list[dict], int]:
 
 
 def select(jobs: list[dict], days: float | None, kind: str | None, worktree: str | None,
-           match: str | None, now: float | None = None) -> list[dict]:
+           match: str | None, now: float | None = None, job_class: str | None = None) -> list[dict]:
     cutoff = (now or time.time()) - days * 86400 if days else None
     out = []
     for j in jobs:
         if cutoff is not None and j["t"] < cutoff:
             continue
         if kind and j["kind"] != kind:
+            continue
+        if job_class and j.get("class") != job_class:
             continue
         if worktree and worktree.lower() not in j.get("worktree", "").lower():
             continue
@@ -207,6 +214,10 @@ def report(jobs: list[dict], days: float | None) -> str:
     out.append(f"Build lane, {window}: {len(jobs)} jobs, {failed} failed, "
                f"{fmt_dur(sum(j['run_s'] for j in jobs))} running, "
                f"{fmt_dur(sum(j['wait_s'] for j in jobs))} waiting for a slot")
+    by_class: dict[str, list[dict]] = defaultdict(list)
+    for j in jobs:
+        by_class[j["class"]].append(j)
+    out.append("Slot-hours by class: " + ", ".join(f"{c} {slot_hours(js):.2f}" for c, js in sorted(by_class.items())))
 
     by_kind: dict[str, list[dict]] = defaultdict(list)
     for j in jobs:
@@ -251,11 +262,17 @@ def report(jobs: list[dict], days: float | None) -> str:
     return "\n".join(out)
 
 
+def slot_hours(jobs: list[dict]) -> float:
+    """Slot time held: run seconds times slots held, in hours. A nested job holds none."""
+    return sum(j["run_s"] * (j.get("slots") or 0) for j in jobs) / 3600
+
+
 def recent_table(jobs: list[dict]) -> str:
     rows = [[time.strftime("%m-%d %H:%M", time.localtime(j["t"])), j.get("worktree", ""), j["kind"],
-             j["scope"][:40], fmt_dur(j["wait_s"]), fmt_dur(j["run_s"]), j.get("exit"),
+             j.get("class", ""), j["scope"][:40], fmt_dur(j["wait_s"]), fmt_dur(j["run_s"]), j.get("exit"),
              "B:" if j.get("dev_drive") else "local", fmt_gb(j.get("min_free_mb"))] for j in jobs]
-    return table(["started", "worktree", "kind", "scope", "wait", "run", "exit", "target", "free RAM"], rows)
+    return table(["started", "worktree", "kind", "class", "scope", "wait", "run", "exit", "target",
+                  "free RAM"], rows)
 
 
 def write_csv(jobs: list[dict], path: Path) -> None:
@@ -352,7 +369,9 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--file", type=Path, default=None, help="job log (default: the lane's jobs.jsonl)")
     ap.add_argument("--days", type=float, default=14, help="window in days; 0 for everything (default 14)")
-    ap.add_argument("--kind", help="only this kind (check, build, clippy, nextest, test, live-db, ...)")
+    ap.add_argument("--kind", help="only this kind (check, build, clippy, nextest, test, live-db, live-db-build, ...)")
+    ap.add_argument("--class", dest="job_class", choices=["heavy", "light", "db"],
+                    help="only jobs that ran in this class of slot (old log lines count as heavy)")
     ap.add_argument("--worktree", help="only worktrees whose name contains this")
     ap.add_argument("--match", help="only commands containing this text")
     ap.add_argument("--recent", type=int, metavar="N", help="list the last N jobs instead of the summary")
@@ -366,7 +385,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"No job log at {path}. lane.sh writes it once a job has run through the lane.", file=sys.stderr)
         return 1
     days = args.days or None
-    jobs = select(jobs, days, args.kind, args.worktree, args.match)
+    jobs = select(jobs, days, args.kind, args.worktree, args.match, job_class=args.job_class)
     if bad:
         print(f"(skipped {bad} unreadable line(s) in {path})", file=sys.stderr)
 
