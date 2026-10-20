@@ -18,7 +18,7 @@ use cimmeria_wire::cell::client_methods::minigame::{
     ON_START_MINIGAME_DIALOG, ON_START_MINIGAME_DIALOG_CLOSE,
 };
 use cimmeria_wire::mercury::write_wstring;
-use cimmeria_wire::state_field::BSF_PLAYING_MINIGAME;
+use cimmeria_wire::state_field::{BSF_DEAD, BSF_PLAYING_MINIGAME};
 use tokio::sync::mpsc;
 
 use super::{launch_minigame, MinigameLaunchRequest, MINIGAME_TECH_COMPETENCY};
@@ -38,10 +38,12 @@ pub struct MinigameLaunchState {
     pub queue: Vec<MinigameLaunchRequest>,
 }
 
-/// A launch the player has been asked to confirm.
+/// A launch the player has been asked to confirm. `space_id` is the space the
+/// entity was in when the dialog opened; accept refuses if it has moved.
 #[derive(Debug, Clone)]
 pub struct PendingOffer {
     pub req: MinigameLaunchRequest,
+    pub space_id: u32,
     pub expires_at: Instant,
 }
 
@@ -87,16 +89,26 @@ pub async fn start_or_offer(
         return false;
     }
     let expires_at = Instant::now() + OFFER_TTL;
-    space_mgr
-        .minigame_launch
-        .offers
-        .insert(entity_id, PendingOffer { req, expires_at });
+    let space_id = space_mgr
+        .entity_space
+        .get(&entity_id)
+        .copied()
+        .unwrap_or_default();
+    space_mgr.minigame_launch.offers.insert(
+        entity_id,
+        PendingOffer {
+            req,
+            space_id,
+            expires_at,
+        },
+    );
     true
 }
 
 /// Cell 24. A live offer launches with source `"start_dialog"`. A missing or
-/// expired offer, or a player already in a minigame, sends client 54 and logs
-/// a WARN. True only when the launch was sent.
+/// expired offer, an offer whose entity now has another player or is dead or
+/// has left its space, or a player already in a minigame, sends client 54 and
+/// logs a WARN. True only when the launch was sent.
 pub async fn accept_offer(
     entity_id: u32,
     now: Instant,
@@ -108,6 +120,21 @@ pub async fn accept_offer(
     };
     if now >= offer.expires_at {
         return refuse_offer(entity_id, "offer_expired", tx, space_mgr).await;
+    }
+    // Fails closed: an entity with no player id never matches an offer.
+    let same_player = space_mgr
+        .get_entity(entity_id)
+        .and_then(|e| e.player_id)
+        .is_some_and(|pid| pid == offer.req.player_id);
+    if !same_player {
+        return refuse_offer(entity_id, "player_mismatch", tx, space_mgr).await;
+    }
+    let dead = space_mgr
+        .get_entity(entity_id)
+        .is_some_and(|e| e.state_field & BSF_DEAD != 0);
+    let moved = space_mgr.entity_space.get(&entity_id) != Some(&offer.space_id);
+    if dead || moved {
+        return refuse_offer(entity_id, "stale_offer", tx, space_mgr).await;
     }
     let already_playing = space_mgr
         .get_entity(entity_id)
