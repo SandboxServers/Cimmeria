@@ -211,7 +211,7 @@ The final run's target dir was on the Dev Drive. That is part of what is being m
   - The incremental A/B in §3: an edit, then a `check` of content and services, took 17 s with incremental off and 5.5 s with it on.
   - The hakari churn in §6: a `-p` check after a workspace check rebuilt up to 36 third-party crates before, and none after.
   - The lane's job log, in real agent work on the last waves: the median `cargo check` fell from 27.7 s to 17.8 s, and the median scoped `nextest` from 40.6 s to 23.8 s.
-- **Lane slots.** A cold build now peaks at about 3 GB. The job log never saw less than 27 GB free with four builds running, so four slots of `cores / 4` jobs each stay the default. The CPU, not memory, is now the limit on more.
+- **Lane slots.** A cold build now peaks at about 3 GB. The job log never saw less than 27 GB free with four builds running, so memory allowed more heavy slots. The CPU, not memory, is now the limit on more. The heavy count is `LANE_SLOTS`, else the `lane\SLOTS` file, else 2, and the `lane\SLOTS` file is now 6; each heavy build gets `cores / slots` jobs (floor 4). Light slots default to 4 and db slots to 3.
 
 The raw samples, `summary.json` files and cargo `--timings` reports stay in the measuring session's scratchpad. To re-measure, run the harness from a fresh worktree, using the same flags as the table.
 
