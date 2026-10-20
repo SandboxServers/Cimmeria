@@ -3,9 +3,8 @@
 //!
 //! This file holds the [`CrystalGame`] struct and its [`MinigameInstance`]
 //! impl; the board model (the click, the scramble, `fullgamestate`) lives in
-//! [`setup`], and the client commands (click, reset, refusals) in [`moves`].
-//! Until MG-CG3 sets [`PORTED`], [`create`] still hands the name to the
-//! placeholder, so the port is not reachable from content.
+//! [`setup`], the client commands (click, reset, refusals) in [`moves`], and
+//! the clock, victory and timeout in [`rules`].
 
 use std::collections::HashMap;
 
@@ -17,15 +16,18 @@ use crate::minigame::protocol::SfsValue;
 use crate::minigame::session::MinigameSession;
 
 mod moves;
+mod rules;
 mod setup;
 
 #[cfg(test)]
 mod tests_moves;
 #[cfg(test)]
+mod tests_rules;
+#[cfg(test)]
 mod tests_setup;
 
 /// Flipped to `true` by MG-CG3 only, once victory is server-decided.
-pub(crate) const PORTED: bool = false;
+pub(crate) const PORTED: bool = true;
 
 pub(crate) fn create(session: &MinigameSession) -> Box<dyn MinigameInstance> {
     if PORTED {
@@ -46,7 +48,10 @@ struct CrystalGame {
     /// 0 while idle (no click yet), 1 once the first valid click started
     /// the clock.
     timer_state: u32,
-    /// `Some` once the game has ended: `"canceled"` after a disconnect.
+    /// Seconds left on the clock, counted down by [`rules`] while it runs.
+    time_remaining: f64,
+    /// `Some` once the game has ended: `"victory"`, `"defeat"` on timeout, or
+    /// `"canceled"` after a disconnect.
     outcome: Option<&'static str>,
 }
 
@@ -70,6 +75,7 @@ impl CrystalGame {
             player_name: session.player_name.clone(),
             board,
             timer_state: 0,
+            time_remaining: f64::from(setup::TIME_LIMIT),
             outcome: None,
         }
     }
@@ -97,7 +103,10 @@ impl MinigameInstance for CrystalGame {
 
     fn message(&mut self, cmd: &str, params: &HashMap<String, SfsValue>) -> Vec<GameOutput> {
         match cmd {
-            "processmove" => self.process_move(params),
+            "processmove" => {
+                let out = self.process_move(params);
+                self.settle_click(out)
+            }
             "processreset" => self.process_reset(),
             "activateitemcheat" => {
                 // CrystalGame has no item cheats (M8).
@@ -122,16 +131,20 @@ impl MinigameInstance for CrystalGame {
     }
 
     fn tick(&mut self) -> Vec<GameOutput> {
-        vec![]
+        self.tick_clock()
     }
 
     fn aborted(&mut self) -> Vec<GameOutput> {
-        // The client has gone (D-MG17): end the game silently.
+        // The client has gone (D-MG17): end the game silently, clock stopped.
         self.outcome = Some("canceled");
+        self.timer_state = 0;
         vec![]
     }
 
+    /// The session samples this once, before its first tick, so it stays true
+    /// from the start: an idle game's tick does nothing (the clock is off until
+    /// the first click). It is false once the game has ended.
     fn needs_tick(&self) -> bool {
-        false
+        self.outcome.is_none()
     }
 }
