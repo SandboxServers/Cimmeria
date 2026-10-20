@@ -139,6 +139,8 @@ mod live_db_pet_summons;
 mod live_db_pet_trainer;
 mod live_db_seed_sequences;
 mod live_db_spawnlist_sequence;
+mod live_db_union_omega_asgard_programs;
+mod live_db_union_omega_asgard_vendors;
 mod live_db_union_omega_consumables;
 mod live_db_union_omega_crafting;
 mod live_db_union_omega_human_armor;

@@ -478,6 +478,97 @@ INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquada
 -- [UO-30] end
 
 -- [UO-39] begin: lists 63821-63824
+-- CIMMERIA_AUTHORING (D-UO8 B, D-UO29, D-UO38): Asgard Programs tier 1, 200 x tech_comp
+INSERT INTO item_lists (item_list_id, name) VALUES (63821, 'Omega Asgard Programs Tier 1');
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639050, 63821, 3677, 1, 600); -- Warrior Attack Program, Weapon Program, tc 3
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639051, 63821, 5698, 1, 1000); -- Hound Attack Program, Reflex Program, tc 5
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639052, 63821, 5726, 1, 1000); -- Eagle Attack Program, Targeting Program, tc 5
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639053, 63821, 3678, 1, 600); -- Wall Defense Program, Protection Program, tc 3
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639054, 63821, 5782, 1, 1000); -- Guardian Defense Program, Hazard Program, tc 5
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639055, 63821, 5825, 1, 1000); -- Shield Defense Program, Ward Program, tc 5
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639056, 63821, 3679, 1, 600); -- Crow Science Program, Resilience Program, tc 3
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639057, 63821, 5898, 1, 1000); -- Godi Science Program, Diffusion Program, tc 5
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639058, 63821, 3676, 1, 200); -- Workhorse General Purpose Program, General Purpose Program, tc 1
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639059, 63821, 5673, 1, 1000); -- Warrior Attack Program, Weapon Program, tc 5
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639060, 63821, 5699, 1, 1600); -- Hound Attack Program, Reflex Program, tc 8
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639061, 63821, 5727, 1, 1600); -- Eagle Attack Program, Targeting Program, tc 8
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639062, 63821, 5752, 1, 1000); -- Wall Defense Program, Protection Program, tc 5
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639063, 63821, 5783, 1, 1600); -- Guardian Defense Program, Hazard Program, tc 8
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639064, 63821, 5828, 1, 1600); -- Shield Defense Program, Ward Program, tc 8
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639065, 63821, 5856, 1, 1000); -- Crow Science Program, Resilience Program, tc 5
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639066, 63821, 5899, 1, 1600); -- Godi Science Program, Diffusion Program, tc 8
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639067, 63821, 5674, 1, 1600); -- Warrior Attack Program, Weapon Program, tc 8
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639068, 63821, 5700, 1, 2000); -- Hound Attack Program, Reflex Program, tc 10
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639069, 63821, 5728, 1, 2000); -- Eagle Attack Program, Targeting Program, tc 10
+
+-- CIMMERIA_AUTHORING (D-UO8 B, D-UO29, D-UO38): Asgard Programs tier 2, 200 x tech_comp
+INSERT INTO item_lists (item_list_id, name) VALUES (63822, 'Omega Asgard Programs Tier 2');
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639100, 63822, 5680, 1, 4000); -- Rekkr Attack Program, Weapon Program, tc 20
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639101, 63822, 5708, 1, 4000); -- Wolf Attack Program, Reflex Program, tc 20
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639102, 63822, 5733, 1, 4000); -- Ari Attack Program, Targeting Program, tc 20
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639103, 63822, 5759, 1, 4000); -- Husgord Defense Program, Protection Program, tc 20
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639104, 63822, 5790, 1, 4000); -- Varda Defense Program, Hazard Program, tc 20
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639105, 63822, 5837, 1, 4000); -- Lind Defense Program, Ward Program, tc 20
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639106, 63822, 5863, 1, 4000); -- Rook Science Program, Resilience Program, tc 20
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639107, 63822, 5906, 1, 4000); -- Munkr Science Program, Diffusion Program, tc 20
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639108, 63822, 5681, 1, 4600); -- Rekkr Attack Program, Weapon Program, tc 23
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639109, 63822, 5709, 1, 4600); -- Wolf Attack Program, Reflex Program, tc 23
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639110, 63822, 5734, 1, 4600); -- Ari Attack Program, Targeting Program, tc 23
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639111, 63822, 5761, 1, 4600); -- Husgord Defense Program, Protection Program, tc 23
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639112, 63822, 5792, 1, 4600); -- Varda Defense Program, Hazard Program, tc 23
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639113, 63822, 5838, 1, 4600); -- Lind Defense Program, Ward Program, tc 23
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639114, 63822, 5864, 1, 4600); -- Rook Science Program, Resilience Program, tc 23
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639115, 63822, 5907, 1, 4600); -- Munkr Science Program, Diffusion Program, tc 23
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639116, 63822, 5682, 1, 5000); -- Rekkr Attack Program, Weapon Program, tc 25
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639117, 63822, 5710, 1, 5000); -- Wolf Attack Program, Reflex Program, tc 25
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639118, 63822, 5735, 1, 5000); -- Ari Attack Program, Targeting Program, tc 25
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639119, 63822, 5762, 1, 5000); -- Husgord Defense Program, Protection Program, tc 25
+
+-- CIMMERIA_AUTHORING (D-UO8 B, D-UO29, D-UO38): Asgard Programs tier 3, 200 x tech_comp
+INSERT INTO item_lists (item_list_id, name) VALUES (63823, 'Omega Asgard Programs Tier 3');
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639150, 63823, 5686, 1, 6600); -- Valkyrie Attack Program, Weapon Program, tc 33
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639151, 63823, 5714, 1, 6600); -- Skoll Attack Program, Reflex Program, tc 33
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639152, 63823, 5739, 1, 6600); -- Om Attack Program, Targeting Program, tc 33
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639153, 63823, 5768, 1, 6600); -- Veggr Defense Program, Protection Program, tc 33
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639154, 63823, 5797, 1, 6600); -- Tanngnjostr Defense Program, Hazard Program, tc 33
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639155, 63823, 5843, 1, 6600); -- Rond Defense Program, Ward Program, tc 33
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639156, 63823, 5875, 1, 6600); -- Raven Science Program, Resilience Program, tc 33
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639157, 63823, 5912, 1, 6600); -- Prestr Science Program, Diffusion Program, tc 33
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639158, 63823, 5687, 1, 7000); -- Valkyrie Attack Program, Weapon Program, tc 35
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639159, 63823, 5715, 1, 7000); -- Skoll Attack Program, Reflex Program, tc 35
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639160, 63823, 5740, 1, 7000); -- Om Attack Program, Targeting Program, tc 35
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639161, 63823, 5769, 1, 7000); -- Veggr Defense Program, Protection Program, tc 35
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639162, 63823, 5798, 1, 7000); -- Tanngnjostr Defense Program, Hazard Program, tc 35
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639163, 63823, 5844, 1, 7000); -- Rond Defense Program, Ward Program, tc 35
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639164, 63823, 5876, 1, 7000); -- Raven Science Program, Resilience Program, tc 35
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639165, 63823, 5913, 1, 7000); -- Prestr Science Program, Diffusion Program, tc 35
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639166, 63823, 5688, 1, 7600); -- Valkyrie Attack Program, Weapon Program, tc 38
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639167, 63823, 5716, 1, 7600); -- Skoll Attack Program, Reflex Program, tc 38
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639168, 63823, 5741, 1, 7600); -- Om Attack Program, Targeting Program, tc 38
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639169, 63823, 5770, 1, 7600); -- Veggr Defense Program, Protection Program, tc 38
+
+-- CIMMERIA_AUTHORING (D-UO8 B, D-UO29, D-UO38): Asgard Programs tier 4, 200 x tech_comp
+INSERT INTO item_lists (item_list_id, name) VALUES (63824, 'Omega Asgard Programs Tier 4');
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639200, 63824, 5692, 1, 9000); -- Einherjar Attack Program, Weapon Program, tc 45
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639201, 63824, 5720, 1, 9000); -- Garm Attack Program, Reflex Program, tc 45
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639202, 63824, 5746, 1, 9000); -- Vedrfolnir Attack Program, Targeting Program, tc 45
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639203, 63824, 5775, 1, 9000); -- Kastali Defense Program, Protection Program, tc 45
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639204, 63824, 5806, 1, 9000); -- Tanngrisnir Defense Program, Hazard Program, tc 45
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639205, 63824, 5849, 1, 9000); -- Skjoldr Defense Program, Ward Program, tc 45
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639206, 63824, 5885, 1, 9000); -- Muninn Science Program, Resilience Program, tc 45
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639207, 63824, 5918, 1, 9000); -- Vanir Science Program, Diffusion Program, tc 45
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639208, 63824, 5693, 1, 9600); -- Einherjar Attack Program, Weapon Program, tc 48
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639209, 63824, 5721, 1, 9600); -- Garm Attack Program, Reflex Program, tc 48
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639210, 63824, 5747, 1, 9600); -- Vedrfolnir Attack Program, Targeting Program, tc 48
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639211, 63824, 5777, 1, 9600); -- Kastali Defense Program, Protection Program, tc 48
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639212, 63824, 5807, 1, 9600); -- Tanngrisnir Defense Program, Hazard Program, tc 48
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639213, 63824, 5850, 1, 9600); -- Skjoldr Defense Program, Ward Program, tc 48
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639214, 63824, 5887, 1, 9600); -- Muninn Science Program, Resilience Program, tc 48
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639215, 63824, 5919, 1, 9600); -- Vanir Science Program, Diffusion Program, tc 48
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639216, 63824, 5694, 1, 10000); -- Einherjar Attack Program, Weapon Program, tc 50
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639217, 63824, 5722, 1, 10000); -- Garm Attack Program, Reflex Program, tc 50
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639218, 63824, 5748, 1, 10000); -- Vedrfolnir Attack Program, Targeting Program, tc 50
+INSERT INTO item_list_items (item_id, item_list_id, design_id, quantity, naquadah) VALUES (639219, 63824, 5778, 1, 10000); -- Kastali Defense Program, Protection Program, tc 50
 -- [UO-39] end
 
 -- [UO-40] begin: lists 63825-63828
