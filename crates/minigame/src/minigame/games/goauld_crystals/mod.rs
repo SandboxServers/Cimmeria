@@ -14,9 +14,12 @@ use crate::minigame::game::{GameOutput, MinigameInstance};
 use crate::minigame::protocol::SfsValue;
 use crate::minigame::session::MinigameSession;
 
+mod moves;
 mod power;
 mod setup;
 
+#[cfg(test)]
+mod tests_moves;
 #[cfg(test)]
 mod tests_power;
 #[cfg(test)]
@@ -143,8 +146,11 @@ impl MinigameInstance for GoauldCrystalsGame {
         vec![GameOutput::Send(self.build_full_game_state())]
     }
 
-    fn message(&mut self, cmd: &str, _params: &HashMap<String, SfsValue>) -> Vec<GameOutput> {
-        // Click, cheat and reset commands are ported by MG-GC2 and MG-GC3.
+    fn message(&mut self, cmd: &str, params: &HashMap<String, SfsValue>) -> Vec<GameOutput> {
+        if cmd == "playfieldclick" {
+            return self.playfield_click(params);
+        }
+        // Cheat and reset commands are ported by MG-GC3.
         tracing::warn!(
             entity_id = self.entity_id,
             entity_name = self.player_name.as_deref(),
