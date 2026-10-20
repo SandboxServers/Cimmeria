@@ -9,6 +9,7 @@ use std::collections::HashMap;
 
 use rand::rngs::StdRng;
 use rand::SeedableRng;
+use tokio::time::Instant;
 
 use crate::minigame::game::{GameOutput, MinigameInstance};
 use crate::minigame::protocol::SfsValue;
@@ -16,6 +17,7 @@ use crate::minigame::session::MinigameSession;
 
 mod moves;
 mod power;
+mod rules;
 mod setup;
 
 #[cfg(test)]
@@ -24,6 +26,8 @@ mod tests_log;
 mod tests_moves;
 #[cfg(test)]
 mod tests_power;
+#[cfg(test)]
+mod tests_rules;
 #[cfg(test)]
 mod tests_setup;
 
@@ -107,6 +111,11 @@ pub(super) struct GoauldCrystalsGame {
     pub(super) max_time: f64,
     /// 0 stopped, 1 running, 2 paused, 3 running backwards.
     pub(super) timer_state: u32,
+    /// Ticks left in a pause or a reverse; the clock resumes at zero.
+    pub(super) timer_ticks_left: u32,
+    /// Monotonic end of the running countdown. Set by `sync_deadline` while
+    /// the clock runs, cleared otherwise, so a late tick cannot hide a timeout.
+    pub(super) deadline: Option<Instant>,
 
     // Rule bookkeeping, reset by every game start
     pub(super) yellows_without_orange: u32,
@@ -115,7 +124,6 @@ pub(super) struct GoauldCrystalsGame {
     pub(super) reds_to_revert: Option<Vec<(usize, usize)>>,
     pub(super) item_cheats_add_time: bool,
     /// Kept across resets; the reset count is reported on completion.
-    #[allow(dead_code)] // read by the MG-GC3a reset path
     pub(super) num_resets: u32,
     pub(super) outcome: Option<&'static str>,
 
@@ -143,6 +151,8 @@ impl GoauldCrystalsGame {
             time_remaining: 0.0,
             max_time: 0.0,
             timer_state: 0,
+            timer_ticks_left: 0,
+            deadline: None,
             yellows_without_orange: 0,
             reds_to_yellows: 0,
             reds_to_remove: 0,
@@ -162,24 +172,17 @@ impl MinigameInstance for GoauldCrystalsGame {
     }
 
     fn message(&mut self, cmd: &str, params: &HashMap<String, SfsValue>) -> Vec<GameOutput> {
-        if cmd == "playfieldclick" {
-            return self.playfield_click(params);
-        }
-        // Cheat and reset commands are ported by MG-GC3.
-        tracing::warn!(
-            entity_id = self.entity_id,
-            entity_name = self.player_name.as_deref(),
-            player_id = self.player_id,
-            player_name = self.player_name.as_deref(),
-            cmd = %loggable(cmd),
-            reason = "unknown_command",
-            "GoauldCrystals: unknown command"
-        );
-        vec![]
+        let now = Instant::now();
+        let out = self.dispatch(cmd, params, now);
+        self.sync_deadline(now);
+        out
     }
 
     fn tick(&mut self) -> Vec<GameOutput> {
-        vec![]
+        let now = Instant::now();
+        let out = self.clock_tick(now);
+        self.sync_deadline(now);
+        out
     }
 
     fn aborted(&mut self) -> Vec<GameOutput> {
@@ -187,6 +190,6 @@ impl MinigameInstance for GoauldCrystalsGame {
     }
 
     fn needs_tick(&self) -> bool {
-        false
+        self.timer_state != 0 && self.outcome.is_none()
     }
 }
