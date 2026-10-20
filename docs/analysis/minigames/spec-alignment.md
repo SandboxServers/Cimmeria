@@ -190,7 +190,7 @@ The extension's table (confirmed, `initGame`) is shown beside the Python table i
 | `cascade` | none | The last removal tween finishes (`destroyHex`) | `doCascade` | Phase `AwaitCascade` | `hexmove` |
 | `checkForCascade` | none | `hexmove` animation done (`checkForMoreMatches`) | `checkForCascade` | Phase `AwaitCheck` | `bypasshexspinner` or `cascadecheckcomplete` |
 | `doscore` | none | `cascadeCheckComplete` | `doScore` | Phase `AwaitScore` | `updatescore`, `timerupdate`, maybe `activate` |
-| `processreset` | none | Reset button (`resetGame`) | `numResets++`, `initGame(false)` | Phase `Ready` | `fullgamestate` |
+| `processreset` | none | Reset button (`resetGame`) | **Refused in every phase (port deviation).** Original: `numResets++`, `initGame(false)`, which restores the full clock and would let a client get unlimited time. Port: no state change, `numResets` stays 0; server-authoritative, owner to confirm at close-out | Any phase | none |
 | `callhint` | none | Sent by the client: hint bubble click (`onRelease`) | `getHint`, then `timeRemaining -= 5`, `timerupdate` | Phase `Ready` | `hint` (if found), `timerupdate` |
 | `resethinttimer` | none | Sent by the client: end of `hintHelpOut`, so before every `swappieces` | `hintLastTime = timeRemaining`, `hintTimer = 10` | Any phase but `Ended` | none |
 | `processmove` | `cardType`, `target`, `current` | **Never sent by this movie** | Calls `processMove`, which is undefined: a no-op | Reject | none |
@@ -574,7 +574,7 @@ Setup: the plain fixture board.
 
 1. `> resethinttimer`, then `> swappieces row1=1 col1=1 type1=4 row2=1 col2=0 type2=5 row3=0 col3=1 type3=6 ...` gives `< hexspinner` with `spinCount 3`, `matches []` and the echo. The board is unchanged and the phase stays `Ready`.
 2. `> callhint`: the plain board has no move, so there is no `hint`. Then `< timerupdate` with `timeRemaining 115`, `timerState 1`.
-3. `> processreset` gives `< fullgamestate` with `numResets 1`, `timeRemaining 120` and the initial board. The board is the injected fixture, because reset copies `gameArrayInit` back.
+3. `> processreset` is refused in every phase (port deviation from the original): no reply, no state change, `numResets` stays 0. The original would send `fullgamestate` with `numResets 1`, `timeRemaining 120` and the injected board (reset copies `gameArrayInit` back); the port does not restore the clock or the board. Owner to confirm at close-out.
 
 ### Port-only guards for AL2 and AL3
 
@@ -595,7 +595,7 @@ Files:
 
 | File | Contents | Lines |
 |---|---|---|
-| `alignment/mod.rs` | `AlignmentGame`; the `Phase` enum (section 5); `MinigameInstance` with `started` (`fullgamestate`), `needs_tick`, `aborted`; `message` dispatch with `processreset` and every other command rejected as not-yet-ported; `with_board` for tests; `PORTED` stays `false` | ~200 |
+| `alignment/mod.rs` | `AlignmentGame`; the `Phase` enum (section 5); `MinigameInstance` with `started` (`fullgamestate`), `needs_tick`, `aborted`; `message` dispatch with `processreset` refused in every phase (port deviation from the original reset, section 5) and every other command rejected as not-yet-ported; `with_board` for tests; `PORTED` stays `false` | ~200 |
 | `alignment/setup.rs` | Tier table and goal totals (section 4); clamp tier to 1-4 and level to 0-10; `select_icons` (section 3) on `StdRng`; the `fullgamestate` builder; board to `SfsValue` | ~250 |
 | `alignment/tests_setup.rs` | The tables match section 4 (spot rows per tier, level clamping); the first quarter of cells is bonus icons; no initial matches; seed determinism; `fullgamestate` keys and `timeRemaining` minus 0.25; reset returns the initial board and counts `numResets` | ~200 |
 

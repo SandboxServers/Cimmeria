@@ -36,6 +36,16 @@ Content chain fires Action::StartMinigame { minigame_type, difficulty,
   |-> Cell: runs the chain from on_victory_chains
 ```
 
+### Optional pre-game dialog (MG-21)
+
+With `CIMMERIA_MINIGAME_START_DIALOG` on (default off; see the table in `crates/server/src/main.rs`), a launch first shows the pre-game dialog instead of sending `StartMinigame` at once:
+
+- Cell sends client method 53 (`onStartMinigameDialog`) with `Name`, `Difficulty`, `TCLevel`, `Verb`, `ArchetypeBitfield`, `CanPlay`, `CanCall`, `CanSpectate`. The offer waits 60 s.
+- Play sends cell 24 (`startMinigame`). A live offer launches with source `start_dialog`. A missing or expired offer, or a player already in a minigame, sends client 54 (`onStartMinigameDialogClose`) and logs a WARN.
+- Cancel sends cell 30 (`minigameStartCancel`). It drops the offer and sends nothing.
+
+Two deviations from the original flow: the movement and state hold is taken at launch, not when the dialog opens, so an unanswered dialog never locks a player; and expiry is checked lazily when cell 24 arrives.
+
 ## Implementation Status
 
 | Feature | Status | Notes |
@@ -49,7 +59,8 @@ Content chain fires Action::StartMinigame { minigame_type, difficulty,
 | Victory-chain callback | DONE | `MinigameResult` forwards to the cell, which runs `on_victory_chains` |
 | Livewire | DONE | Fully ported in `minigame/games/livewire/`; an abort sends nothing, the client has closed |
 | CrystalGame | DONE | Fully ported in `minigame/games/crystal_game/`; validation `server`: the server decides victory and the 16 s timeout, and a client `victory` is refused (WARN `client_victory_refused`). See [CrystalGame rules](#crystalgame-rules) |
-| Hack, Activate, Analyze, Bypass, Converse, ConverseBasicHumanoid | PLACEHOLDER | `games/placeholder.rs` — the shell shows a 60 s countdown (`fullgamestate` then `timerupdate`, MG-64); a client `victory` counts only after 5 s (D-MG13); when 240 ticks (60 s) pass with no `victory` the server sends `failure` and the game ends as a defeat (result code 2, `on_failure_chains` fire). Matches the original `Placeholder.py`; these game types had no real SWF beyond a shell |
+| ConverseBasicHumanoid | SERVER (MG-CH3) | `games/converse_humanoid/`: the server deals, plays, scores and decides victory; a client `victory` is refused and a client `failure` is a defeat. See the rules below |
+| Hack, Activate, Analyze, Bypass, Converse | PLACEHOLDER | `games/placeholder.rs` — the shell shows a 60 s countdown (`fullgamestate` then `timerupdate`, MG-64); a client `victory` counts only after 5 s (D-MG13); when 240 ticks (60 s) pass with no `victory` the server sends `failure` and the game ends as a defeat (result code 2, `on_failure_chains` fire). Matches the original `Placeholder.py`; these game types had no real SWF beyond a shell |
 | Alignment, GoauldCrystals | NOT IMPL | Still Python-only; the factory has commented-out arms awaiting a port. An unrecognised game name falls back to the placeholder shell (60 s countdown, then defeat) and logs WARN `Unknown minigame type`; a content `start_minigame` row with such a name never reaches it, because the loader drops it (MG-64) |
 | `startMinigame` | STUB | Cell method 24 logs `UNIMPLEMENTED` |
 | `endCurrentMinigame` | DONE | Cell method 25 cancels the current session and closes SmartFox |
@@ -71,6 +82,15 @@ Content chain fires Action::StartMinigame { minigame_type, difficulty,
 - `processreset` is ignored (WARN `reset_refused`, no reply), as in the original; a reset would let a player idle a running clock.
 - No cheats: `abilityBitfield` 0, `instcc` -1; both cheat commands get a WARN and no reply. Refusals are logged at WARN for the first 32 per session only.
 - Out-of-range, fractional or missing coordinates, and any click after the end, are dropped with a WARN and no reply.
+
+### ConverseBasicHumanoid rules
+
+- **Dominance.** Two cards compare by `(p - n + 8) % 9` over the nine suit values: below 4 is the NPC's point, 4 to 7 the player's, 8 a tie (spec section 6).
+- **Deals.** Logic3 deals 3 cards a side with one container, then mediation5 deals 4. A deal ends when a hand ends with every card played (`newdeal`); the timers then hold until the client sends `processreset`, which is refused before that.
+- **Hands.** A hand ends on `newhand`, which is refused until the NPC has answered, or after 6 s. Each container goes to the stronger card, and a sweep of all containers adds one point.
+- **NPC.** Every 1.5 s the NPC plays the card that scores best against the player's hand. It answers a play into an empty NPC container within 0.5 s.
+- **Trump passives.** Ability bits 15-18 add +5, +10, +15 and +25 to the accord bonus (spec section 7).
+- **Victory.** `activatevictory` spends the points of a listed condition (focusdamage1 costs 3, focusdamage2 costs 4). At zero seconds a tie or a lead is a victory; the NPC ahead is a defeat.
 
 ## Entity Definition (MinigamePlayer.def)
 

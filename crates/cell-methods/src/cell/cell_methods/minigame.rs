@@ -63,11 +63,20 @@ pub async fn dispatch(
             true
         }
         START => {
+            // Cell 24: the player pressed Play on the start dialog (MG-21).
+            let launched = cimmeria_cell_world::cell::minigame_launch::accept_offer(
+                entity_id,
+                std::time::Instant::now(),
+                tx,
+                space_mgr,
+            )
+            .await;
             tracing::info!(
                 entity_id,
-                entity_name = mgr.entity_label(entity_id),
+                entity_name = space_mgr.entity_label(entity_id),
                 args_len,
-                "UNIMPLEMENTED: startMinigame"
+                launched,
+                "minigameStart: start dialog answered"
             );
             true
         }
@@ -126,12 +135,8 @@ pub async fn dispatch(
             true
         }
         START_CANCEL => {
-            tracing::info!(
-                entity_id,
-                entity_name = mgr.entity_label(entity_id),
-                args_len,
-                "UNIMPLEMENTED: minigameStartCancel"
-            );
+            // Cell 30: the player pressed Cancel on the start dialog (MG-21).
+            cimmeria_cell_world::cell::minigame_launch::cancel_offer(entity_id, space_mgr);
             true
         }
         CALL_ACCEPT => {
@@ -201,3 +206,7 @@ fn wire_label(mgr: &SpaceManager, entity_id: i32) -> Option<&str> {
 #[cfg(test)]
 #[path = "minigame_names_tests.rs"]
 mod names_tests;
+
+#[cfg(test)]
+#[path = "minigame_start_tests.rs"]
+mod start_tests;

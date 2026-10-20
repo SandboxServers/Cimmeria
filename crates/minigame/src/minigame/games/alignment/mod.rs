@@ -1,7 +1,8 @@
 //! Alignment: the port lands in MG-AL1..3 (docs/analysis/minigames/spec-alignment.md).
 //!
-//! MG-AL1 is the setup and the state shell. `create()` still hands the name to
-//! the placeholder: `PORTED` stays `false` until MG-AL3, so nothing here is
+//! MG-AL1 is the setup and the state shell; MG-AL2a adds the server-validated
+//! swap and matching (`moves.rs`). `create()` still hands the name to the
+//! placeholder: `PORTED` stays `false` until MG-AL3, so nothing here is
 //! reachable from content yet. The shell is exercised by the tests only.
 #![allow(dead_code)] // unreachable until MG-AL3 flips PORTED; the tests build it
 
@@ -14,8 +15,11 @@ use crate::minigame::game::{GameOutput, MinigameInstance};
 use crate::minigame::protocol::SfsValue;
 use crate::minigame::session::MinigameSession;
 
+mod moves;
 mod piece;
 mod setup;
+#[cfg(test)]
+mod tests_moves;
 #[cfg(test)]
 mod tests_setup;
 
@@ -24,11 +28,24 @@ use piece::Piece;
 /// Flipped to `true` by MG-AL3 only, once victory is server-decided.
 pub(crate) const PORTED: bool = false;
 
-/// Where the game is in the port's phase machine (spec section 5). MG-AL1
-/// only reaches `Ready`; `Ended` is set by `aborted()` and closes the game.
+/// The most characters of a client string a log line keeps.
+const LOG_CAP: usize = 64;
+
+/// The first `LOG_CAP` characters of a client string, for a log line.
+fn log_text(text: &str) -> &str {
+    match text.char_indices().nth(LOG_CAP) {
+        Some((end, _)) => &text[..end],
+        None => text,
+    }
+}
+
+/// Where the game is in the port's phase machine (spec section 5). `Ready`
+/// takes a swap; a match moves to `AwaitCascade` until the cascade slice
+/// (MG-AL2b) takes over. `Ended` is set by `aborted()` and closes the game.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Phase {
     Ready,
+    AwaitCascade,
     Ended,
 }
 
@@ -46,8 +63,6 @@ pub(crate) struct AlignmentGame {
     rng: StdRng,
     /// Pieces indexed `[x][y]`.
     board: Vec<Vec<Piece>>,
-    /// The board the copy reset restores.
-    board_init: Vec<Vec<Piece>>,
     goal_scores: Vec<u32>,
     goal_totals: Vec<u32>,
     goal_icons: Vec<u8>,
@@ -116,7 +131,6 @@ impl AlignmentGame {
             tier,
             level,
             rng,
-            board_init: board.clone(),
             board,
             goal_scores: vec![0; goal_totals.len()],
             goal_totals,
@@ -132,17 +146,51 @@ impl AlignmentGame {
         }
     }
 
-    /// `processreset`: restores the initial board, counts the reset and resets
-    /// the clock, then resends `fullgamestate` (spec section 5).
-    fn reset(&mut self) -> Vec<GameOutput> {
-        self.num_resets += 1;
-        self.board = self.board_init.clone();
-        self.time_remaining = f64::from(self.time_limit) + 0.25;
-        self.timer_state = 1;
-        self.hint_index = 0;
-        self.goal_scores = vec![0; self.goal_totals.len()];
-        self.phase = Phase::Ready;
-        vec![GameOutput::Send(self.full_game_state())]
+    /// `swappieces` (spec section 5): validates the triangle (D-MG2), then
+    /// replies `feedback` and `hexspinner` on a match, or a `hexspinner` with
+    /// `spinCount 3` and no cells when no rotation matches.
+    fn swap(&mut self, params: &HashMap<String, SfsValue>) -> Vec<GameOutput> {
+        if self.phase != Phase::Ready {
+            self.refuse("swappieces", "not_ready");
+            return vec![];
+        }
+        let checked = moves::read_cells(params)
+            .and_then(|cells| moves::check_swap(&self.board, cells, params).map(|()| cells));
+        let cells = match checked {
+            Ok(cells) => cells,
+            Err(reject) => {
+                self.refuse("swappieces", reject.reason());
+                return vec![];
+            }
+        };
+        match moves::swap_pieces(&self.board, cells) {
+            Some((board, outcome)) => {
+                self.board = board;
+                self.phase = Phase::AwaitCascade;
+                vec![
+                    GameOutput::Send(moves::feedback(&outcome)),
+                    GameOutput::Send(moves::hexspinner(
+                        params,
+                        &outcome.matches,
+                        outcome.spin_count,
+                    )),
+                ]
+            }
+            None => vec![GameOutput::Send(moves::hexspinner(params, &[], 3))],
+        }
+    }
+
+    /// Logs a refused client command at WARN (the board is left as it was).
+    fn refuse(&self, cmd: &str, reason: &str) {
+        tracing::warn!(
+            entity_id = self.entity_id,
+            entity_name = self.player_name.as_deref(),
+            player_id = self.player_id,
+            player_name = self.player_name.as_deref(),
+            cmd,
+            reason,
+            "Alignment: command refused"
+        );
     }
 }
 
@@ -158,21 +206,32 @@ impl MinigameInstance for AlignmentGame {
         vec![GameOutput::Send(self.full_game_state())]
     }
 
-    fn message(&mut self, cmd: &str, _params: &HashMap<String, SfsValue>) -> Vec<GameOutput> {
+    fn message(&mut self, cmd: &str, params: &HashMap<String, SfsValue>) -> Vec<GameOutput> {
+        // The command is client text: it is cut before it reaches a log line.
+        let logged = log_text(cmd);
         if self.phase == Phase::Ended {
             tracing::warn!(
                 entity_id = self.entity_id,
                 entity_name = self.player_name.as_deref(),
                 player_id = self.player_id,
                 player_name = self.player_name.as_deref(),
-                cmd,
+                cmd = logged,
                 reason = "game_ended",
                 "Alignment: command after the end"
             );
             return vec![];
         }
         match cmd {
-            "processreset" => self.reset(),
+            // The reset is refused, as the CrystalGame ruling does: no reply
+            // and no change, so a reset cannot abort a cascade or add time.
+            "processreset" => {
+                self.refuse("processreset", "reset_refused");
+                vec![]
+            }
+            "swappieces" => self.swap(params),
+            // The hint timer (`resethinttimer`) only feeds the hint, which is
+            // MG-AL3's; the client expects no reply.
+            "resethinttimer" => vec![],
             _ => {
                 // Every other command belongs to a later slice (AL2, AL3). A
                 // client `victory` lands here too: the server decides victory.
@@ -186,7 +245,7 @@ impl MinigameInstance for AlignmentGame {
                     entity_name = self.player_name.as_deref(),
                     player_id = self.player_id,
                     player_name = self.player_name.as_deref(),
-                    cmd,
+                    cmd = logged,
                     reason,
                     "Alignment: command refused"
                 );

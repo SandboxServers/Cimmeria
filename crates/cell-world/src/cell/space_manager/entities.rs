@@ -236,6 +236,7 @@ impl SpaceManager {
         // verdict, not this method's (no `tx` here either).
         self.deployables.forget(entity_id);
         self.deployables.clear_staged(entity_id);
+        self.minigame_launch.offers.remove(&entity_id);
         // #844: nobody keeps an entity that no longer exists selected. Every
         // teardown path runs through here, and the id may be reused.
         self.clear_targets_on(entity_id, "target_destroyed");

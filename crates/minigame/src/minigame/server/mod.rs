@@ -27,6 +27,8 @@ mod session_loop;
 #[cfg(test)]
 mod connection_span_tests;
 #[cfg(test)]
+mod converse_loop_tests;
+#[cfg(test)]
 mod crystal_game_loop_tests;
 #[cfg(test)]
 mod listener_tests;

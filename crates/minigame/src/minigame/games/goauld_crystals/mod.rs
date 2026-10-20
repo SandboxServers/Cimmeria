@@ -14,9 +14,14 @@ use crate::minigame::game::{GameOutput, MinigameInstance};
 use crate::minigame::protocol::SfsValue;
 use crate::minigame::session::MinigameSession;
 
+mod moves;
 mod power;
 mod setup;
 
+#[cfg(test)]
+mod tests_log;
+#[cfg(test)]
+mod tests_moves;
 #[cfg(test)]
 mod tests_power;
 #[cfg(test)]
@@ -33,6 +38,19 @@ pub(crate) fn create(session: &MinigameSession) -> Box<dyn MinigameInstance> {
     } else {
         Box::new(super::placeholder::PlaceholderGame::new(&session.game_name))
     }
+}
+
+/// Longest client text written to a log line, in characters.
+const LOG_TEXT_CAP: usize = 64;
+
+/// Client-supplied text as it may appear in a log line: cut to
+/// [`LOG_TEXT_CAP`] characters, with control characters shown as `?`, so one
+/// frame cannot fill the log or split a line.
+fn loggable(text: &str) -> String {
+    text.chars()
+        .take(LOG_TEXT_CAP)
+        .map(|c| if c.is_control() { '?' } else { c })
+        .collect()
 }
 
 // ── Board types ──────────────────────────────────────────────────────────────
@@ -143,14 +161,17 @@ impl MinigameInstance for GoauldCrystalsGame {
         vec![GameOutput::Send(self.build_full_game_state())]
     }
 
-    fn message(&mut self, cmd: &str, _params: &HashMap<String, SfsValue>) -> Vec<GameOutput> {
-        // Click, cheat and reset commands are ported by MG-GC2 and MG-GC3.
+    fn message(&mut self, cmd: &str, params: &HashMap<String, SfsValue>) -> Vec<GameOutput> {
+        if cmd == "playfieldclick" {
+            return self.playfield_click(params);
+        }
+        // Cheat and reset commands are ported by MG-GC3.
         tracing::warn!(
             entity_id = self.entity_id,
             entity_name = self.player_name.as_deref(),
             player_id = self.player_id,
             player_name = self.player_name.as_deref(),
-            cmd,
+            cmd = %loggable(cmd),
             reason = "unknown_command",
             "GoauldCrystals: unknown command"
         );

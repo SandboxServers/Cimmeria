@@ -199,8 +199,13 @@ pub(super) async fn execute_one(
                 on_failure_chains: on_failure_chains.clone(),
                 source: "content_chain",
             };
-            if !cimmeria_cell_world::cell::minigame_launch::launch_minigame(req, tx, space_mgr)
-                .await
+            if !cimmeria_cell_world::cell::minigame_launch::start_or_offer(
+                req,
+                cimmeria_entity::minigame_feature::start_dialog(),
+                tx,
+                space_mgr,
+            )
+            .await
             {
                 tracing::warn!(
                     entity_id,
