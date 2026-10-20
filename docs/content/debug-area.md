@@ -1022,14 +1022,15 @@ for the trainer beside them.
 
 ### Minigame terminals
 
-Six wall terminals on the plaza's north edge (z -903, facing south) start
-each minigame the minigames campaign ported, plus the Hack shell. A click
-fires the terminal's `interact_tag` chain, which starts the game at
-difficulty 1. A win speaks "Minigame round trip complete: the server
-recorded your win." in chat (chain 24056), a loss or the shell's 60 s
-timeout the matching loss line (chain 24057). The terminals belong to no
-mission; the cursor bit is INT_MinigameLivewire (256) on every one, because
-that is the only minigame bit whose click path is confirmed.
+Six wall terminals in a row 20 m north of the plaza's centre (z -903,
+beyond the ring's north gap, facing south) start each minigame the
+minigames campaign ported, plus the Hack shell. A click fires the
+terminal's `interact_tag` chain, which starts the game at difficulty 1.
+A win speaks "Minigame round trip complete: the server recorded your
+win." in chat (chain 24056), a loss or the shell's 60 s timeout the
+matching loss line (chain 24057). The terminals belong to no mission;
+the cursor bit is INT_MinigameLivewire (256) on every one, because that
+is the only minigame bit whose click path is confirmed.
 
 | Spawn | Position (x, y, z) | Template | Tag | Game | Launcher chain |
 |---|---|---|---|---|---|
@@ -1041,10 +1042,13 @@ that is the only minigame bit whose click path is confirmed.
 | 14105 | (267.0, 6.82, -903.0) | 1605 | `DebugArea_Minigame_Hack` | Hack (shell) | 24055 |
 
 > **Placement is unchecked in the client.** The row was probed on
-> `ihpet_crater_light.nav` (every terminal on the plaza's floor, x 252 left
-> free as the walkway to the dummies), not walked in the client. The
-> `display_name` labels are also unverified on a `being`-class object; the
-> lab recipes check both.
+> `ihpet_crater_light.nav` (every terminal on the courtyard floor north
+> of the plaza ring, x 252 left free as the walkway to the dummies), not
+> walked in the client. The `display_name` labels are also unverified on
+> a `being`-class object. No client has run a terminal either: the
+> launch, each game's window, the win and loss lines in chat and the Hack
+> shell's timeout are covered by the MG-74a seed and chain-replay tests
+> only; the lab recipes check all of it.
 
 ### Services copied from the hub
 
