@@ -1,6 +1,6 @@
 --
 -- Union Omega (world 18 `Omega_Site`): respawners. Campaign:
--- docs/analysis/union-zone-planning/omega-work-packets.md (packets UO-01 to UO-14).
+-- docs/analysis/union-zone-planning/omega-work-packets.md (packets UO-01 to UO-42).
 --
 -- Id block 63800-63999 (Omega's reservation, D-UO1). Each packet writes only
 -- below its own marker. respawners has no sequence, so there is no footer.
@@ -18,3 +18,6 @@ SET search_path = resources, pg_catalog;
 -- `hub.respawner` (candidate A, snapped floor y -51.42), 4.0 m from the C4
 -- arrival point and 9.4 m from Modi (spawn 78).
 INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (180, 18, 'Omega Site Gate Plaza', 34.70, -51.42, -138.00);
+
+-- [UO-34] begin: respawner 181
+-- [UO-34] end

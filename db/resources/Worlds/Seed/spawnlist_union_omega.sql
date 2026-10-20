@@ -1,6 +1,6 @@
 --
 -- Union Omega (worlds 18 `Omega_Site` and 80 `Omega_Site_CmdCenter`): spawns.
--- Campaign: docs/analysis/union-zone-planning/omega-work-packets.md (packets UO-01 to UO-14).
+-- Campaign: docs/analysis/union-zone-planning/omega-work-packets.md (packets UO-01 to UO-42).
 --
 -- Id block 63800-63999 (Omega's reservation, D-UO1). Each packet writes only
 -- below its own marker. Provenance: each block states its own tag
@@ -23,9 +23,47 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63821, 30.00, -51.75, -130.00, 2.7683, 18, 63811, 'UnionOmega_TeamRegistrar', NULL, true);
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63840, 28.00, -52.03, -126.00, 2.7450, 18, 63830, 'UnionOmega_CommandRegistrar', NULL, true);
 
--- [UO-11] spawns 63822-63826 (provenance set by UO-11's block)
+-- [UO-11] begin: spawns 63841-63846
+-- [UO-11] end
 
--- [UO-12] spawns 63827-63829 (provenance set by UO-12's block)
+-- [UO-12] begin: spawns 63853-63857
+-- [UO-12] end
+
+-- [UO-27] begin: spawns 63847-63852
+-- [UO-27] end
+
+-- [UO-28] begin: spawns 63859-63863
+-- [UO-28] end
+
+-- [UO-29] begin: spawns 63960-63971
+-- [UO-29] end
+
+-- [UO-30] begin: spawns 63865-63872
+-- [UO-30] end
+
+-- [UO-31] begin: spawns 63804-63808
+-- [UO-31] end
+
+-- [UO-32] begin: spawns 63819
+-- [UO-32] end
+
+-- [UO-33] begin: spawns 63818
+-- [UO-33] end
+
+-- [UO-35] begin: spawns 63810-63817
+-- [UO-35] end
+
+-- [UO-36] begin: spawns 63822-63823
+-- [UO-36] end
+
+-- [UO-39] begin: spawns 63809, 63824-63827
+-- [UO-39] end
+
+-- [UO-40] begin: spawns 63828-63835
+-- [UO-40] end
+
+-- [UO-42] begin: spawns 63836-63839
+-- [UO-42] end
 
 -- [UO-14] ambient 63880-63959 (CIMMERIA_AUTHORING, droppable)
 -- CIMMERIA_AUTHORING (D-UO12, D-UO26): Omega's ambient population, cap 24. Droppable: delete this block, the [UO-14] template block and spawner_tests/union_omega/ambient.rs.

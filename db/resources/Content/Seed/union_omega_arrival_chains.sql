@@ -1,7 +1,7 @@
 --
 -- Union Omega (worlds 18 `Omega_Site` and 80 `Omega_Site_CmdCenter`): arrival
 -- chains (the Command Center beam, Modi). Campaign:
--- docs/analysis/union-zone-planning/omega-work-packets.md (packets UO-01 to UO-14).
+-- docs/analysis/union-zone-planning/omega-work-packets.md (packets UO-01 to UO-42).
 --
 -- Omega's id block is 63800-63999; this file's chain ids are 63801-63819. Each packet writes only below its own marker.
 -- Provenance: each block states its own tag (RESTORED_SOURCE,
@@ -17,11 +17,10 @@ SET search_path = resources, pg_catalog;
 -- Shutdown topic on hub entry at S4940, 63811 clears that bind when his dialog
 -- closes, and 63801 is the ring beam into the Command Center that advances
 -- S4940 to S4942 (D-UO3).
--- F21 guard: no chain here completes an objective of 1655. O5645 and O5646 are
--- optional, and a step whose objectives are all optional completes the mission on
--- the first objective completed. S4940 also lists required O5647 and O5644, which
--- would hold it open today; the guard keeps Omega safe if that changes. Omega
--- advances the step only, and the mission completes on the Accept.
+-- F21 guard: no chain here completes an objective of 1655. S4940 has required
+-- O5647 and O5644 beside optional O5645 and O5646; completing the required pair
+-- would end 1655 before the Accept, so Omega advances the step only and the
+-- mission completes on the Accept.
 -- Every bind runs remove_dialog_set (sort 0) before add_dialog_set (sort 1), since
 -- add_dialog_set has no dedupe and a re-fire must not stack a second entry.
 

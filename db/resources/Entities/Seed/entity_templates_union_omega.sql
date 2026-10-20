@@ -1,6 +1,6 @@
 --
 -- Union Omega (worlds 18 `Omega_Site` and 80 `Omega_Site_CmdCenter`): entity
--- templates. Campaign: docs/analysis/union-zone-planning/omega-work-packets.md (packets UO-01 to UO-14).
+-- templates. Campaign: docs/analysis/union-zone-planning/omega-work-packets.md (packets UO-01 to UO-42).
 --
 -- Id block 63800-63999 (Omega's reservation, D-UO1). Each packet writes only
 -- below its own marker. Provenance: each block states its own tag
@@ -24,9 +24,44 @@ INSERT INTO entity_templates (template_id, static_mesh, body_set, components, fl
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (63811, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_SGC.AR_HM_SB1_SH100,AR_H_SGC.AR_HM_SL1_SL100SB100,AR_H_SGC.AR_HM_ST1_ST103,BS_HumanMale.BS_HM_Hands_00,BS_HumanMale.BS_HM_Head_04}', 0, 64, 570, 1, 0, 1, 29068, NULL, NULL, NULL, 'Union Omega - Team Registrar', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{7447}', NULL, NULL, true, NULL, NULL, NULL);
 INSERT INTO entity_templates (template_id, static_mesh, body_set, components, flags, interaction_type, event_set_id, level, alignment, faction, name_id, name, patrol_path_id, patrol_point_delay, template_name, class, buy_item_list, sell_item_list, repair_item_list, recharge_item_list, ability_set_id, ammo_type, loot_table_id, primary_color_id, secondary_color_id, skin_tint, weapon_item_id, static_interaction_sets, trainer_ability_list_id, speaker_id, has_dynamic_properties, interaction_set_id, move_speed, respawn_secs) VALUES (63830, NULL, 'BS_HumanMale.BS_HumanMale', '{AR_H_Ablative.AR_HM_AT3_AT300,AR_H_Ballistic00.AR_HM_BG3_BG300,NPC_Human.NPC_HM_Marsh_Head_BC,AR_H_Ablative.AR_HM_AL3_AL300AH300}', 0, 64, 570, 1, 0, 1, 29068, NULL, NULL, NULL, 'Union Omega - Command Registrar', 'mob', NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, NULL, '{7448}', NULL, NULL, true, NULL, NULL, NULL);
 
--- [UO-11] Tau'ri vendors 63812-63816 (provenance set by UO-11's block)
+-- [UO-11] begin: Human Weapons T1-T4 (templates 63812-63815)
+-- [UO-11] end
 
--- [UO-12] Jaffa vendors 63817-63819 (provenance set by UO-12's block)
+-- [UO-12] begin: Jaffa Weapons T1-T4 (templates 63831-63834)
+-- [UO-12] end
+
+-- [UO-27] begin: Human Armor (templates 63816-63819)
+-- [UO-27] end
+
+-- [UO-28] begin: Jaffa Armor (templates 63835-63838)
+-- [UO-28] end
+
+-- [UO-29] begin: crafting (templates 63820-63827, 63839-63842)
+-- [UO-29] end
+
+-- [UO-30] begin: consumables (template 63828)
+-- [UO-30] end
+
+-- [UO-31] begin: class trainers (templates 63804-63808)
+-- [UO-31] end
+
+-- [UO-33] begin: medic (template 63855)
+-- [UO-33] end
+
+-- [UO-35] begin: guide (template 63829)
+-- [UO-35] end
+
+-- [UO-36] begin: inn and battlemaster (templates 63856-63857)
+-- [UO-36] end
+
+-- [UO-39] begin: Asgard trainer and Programs (templates 63809, 63843-63846)
+-- [UO-39] end
+
+-- [UO-40] begin: Asgard Armor and Crafting (templates 63847-63854)
+-- [UO-40] end
+
+-- [UO-42] begin: Thor and Otin (templates 63858-63859)
+-- [UO-42] end
 
 -- [UO-14] ambient 63860-63899 (CIMMERIA_AUTHORING, droppable)
 -- CIMMERIA_AUTHORING (D-UO12): Omega's ambient population. Droppable: delete
