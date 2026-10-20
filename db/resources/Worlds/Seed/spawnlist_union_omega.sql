@@ -39,6 +39,15 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 -- [UO-29] end
 
 -- [UO-30] begin: spawns 63865-63872
+-- CIMMERIA_RECONSTRUCTION, navmesh-sealed (UO-17, UO-18, UO-19); D-UO16 B
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63865, 56.00, -39.68, 20.00, 3.9631, 18, 63828, 'UnionOmega_Consumables_Common1', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63866, 24.00, -44.57, -2.00, 1.3826, 18, 63828, 'UnionOmega_Consumables_Common2', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63867, 52.00, -44.17, -2.00, 4.8262, 18, 63828, 'UnionOmega_Consumables_Common3', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63868, -147.00, -38.88, -169.40, 4.7124, 18, 63828, 'UnionOmega_Consumables_Sgc1', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63869, -104.00, -47.82, -100.00, 0.5493, 18, 63828, 'UnionOmega_Consumables_Sgc2', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63870, -96.00, -48.03, -110.00, 1.0514, 18, 63828, 'UnionOmega_Consumables_Sgc3', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63871, 306.00, -61.23, -100.00, 3.1416, 18, 63828, 'UnionOmega_Consumables_Jaffa1', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63872, 310.00, -61.23, -104.00, 4.7124, 18, 63828, 'UnionOmega_Consumables_Jaffa2', NULL, true);
 -- [UO-30] end
 
 -- [UO-31] begin: spawns 63804-63808
