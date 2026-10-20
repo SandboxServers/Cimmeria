@@ -6,6 +6,7 @@ Dated, sourced facts from top-level sessions, committed with the change that pro
 
 - [reference_dev_workbench_slash_3b_2026_10_16.md](reference_dev_workbench_slash_3b_2026_10_16.md) — DW-27B final 27 patch slash words: all six slices reconciled; pet/ring/queue signature and native binding limits remain
 
+- [reference_dev_workbench_stock_slash_2026_10_16.md](reference_dev_workbench_stock_slash_2026_10_16.md) — DW-24A-S stock XML hashes, 98+4 rows, `/reload Access=qd` QA/Designer and unresolved GM binding
 - [reference_dev_workbench_slash_3a_2026_10_16.md](reference_dev_workbench_slash_3a_2026_10_16.md) — DW-27A 109–135: cover methods lack handlers/readback and safe inverse; fly/ghost share onPhysics, while PvP remains duel-gated
 - [reference_dev_workbench_overlay_2026_10_16.md](reference_dev_workbench_overlay_2026_10_16.md) — DW-16 D3D9 COM slot evidence, lab gate, bounded clear panel and static-only validation
 
