@@ -145,6 +145,7 @@ impl SessionRegistry {
         player_name: Option<String>,
         client_ip: Option<std::net::IpAddr>,
     ) -> Option<String> {
+        let abilities_mask = abilities_mask & crate::minigame::games::ability_bits(&game_name);
         let ticket = generate_ticket();
         let (cancel, _) = watch::channel(false);
         let session = MinigameSession {
@@ -687,3 +688,7 @@ mod sweep_tests;
 #[cfg(test)]
 #[path = "session_board_tests.rs"]
 mod board_tests;
+
+#[cfg(test)]
+#[path = "session_mask_tests.rs"]
+mod mask_tests;

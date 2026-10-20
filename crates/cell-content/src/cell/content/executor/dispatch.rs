@@ -180,18 +180,6 @@ pub(super) async fn execute_one(
             on_victory_chains,
             on_failure_chains,
         } => {
-            // Level and Intelligence reach the SWF's joinOK; read the live
-            // cell values so a levelled or buffed player is not served 1/0.
-            let (player_level, intelligence) = space_mgr
-                .get_entity(entity_id)
-                .map(|e| {
-                    let int = e
-                        .stats
-                        .get(cimmeria_entity::stats::INTELLIGENCE)
-                        .map_or(0, |s| s.cur.max(0) as u32);
-                    (e.level, int)
-                })
-                .unwrap_or((1, 0));
             tracing::info!(
                 entity_id,
                 entity_name = space_mgr.entity_names(entity_id).entity_name,
@@ -202,44 +190,16 @@ pub(super) async fn execute_one(
                 chain_name = cimmeria_names::book().chain(chain_id),
                 "Content: starting minigame"
             );
-            if let Err(e) = tx
-                .send(CellToBaseMsg::StartMinigame {
-                    entity_id,
-                    player_id,
-                    game_name: minigame_type.clone(),
-                    // Range-checked 1-5 at load time (loader/action.rs);
-                    // the seed default is 1.
-                    difficulty,
-                    on_victory_chains: on_victory_chains.clone(),
-                    on_failure_chains: on_failure_chains.clone(),
-                    player_level,
-                    intelligence,
-                    tech_competency: 1, // MG-22
-                    abilities_mask: 0,  // MG-22
-                })
-                .await
-            {
-                // drop here means the minigame never
-                // launches but the player click already fired —
-                // chain stalls with no signal.
-                tracing::warn!(
-                    entity_id,
-                    entity_name = space_mgr.entity_names(entity_id).entity_name,
-                    %minigame_type,
-                    chain_id,
-                    chain_name = cimmeria_names::book().chain(chain_id),
-                    "StartMinigame: cell→base send failed -- minigame will not launch: {e}"
-                );
-            } else {
-                // D-MG15: hold BSF_PlayingMinigame and one counted movement
-                // lock until a MinigameResult of any code releases them. Only
-                // after a successful send: a dropped launch never produces a
-                // result, so holding here would strand the player.
-                cimmeria_cell_world::cell::minigame_hold::hold_for_minigame(
-                    entity_id, tx, space_mgr,
-                )
-                .await;
-            }
+            let req = cimmeria_cell_world::cell::minigame_launch::MinigameLaunchRequest {
+                entity_id,
+                player_id,
+                game_name: minigame_type.clone(),
+                difficulty,
+                on_victory_chains: on_victory_chains.clone(),
+                on_failure_chains: on_failure_chains.clone(),
+                source: "content_chain",
+            };
+            cimmeria_cell_world::cell::minigame_launch::launch_minigame(req, tx, space_mgr).await;
         }
         Action::SetAggression {
             entity_tag,
