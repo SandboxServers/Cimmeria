@@ -346,7 +346,11 @@ fn check_for_cascade_with_a_match_loops_to_cascade() {
 fn check_for_cascade_without_a_match_awaits_the_score() {
     // The spec section 9 fixture has no triangle (transcript B's plain board).
     let plain: Vec<Vec<u8>> = (0..8)
-        .map(|x| (0..8).map(|y| [4, 5, 6][(x + 2 * (y % 2)) % 3] as u8).collect())
+        .map(|x| {
+            (0..8)
+                .map(|y| [4, 5, 6][(x + 2 * (y % 2)) % 3] as u8)
+                .collect()
+        })
         .collect();
     let mut game = AlignmentGame::with_board(&make_session(7), plain);
     game.phase = Phase::AwaitCheck;
@@ -368,7 +372,10 @@ fn swap_over_an_empty_cell_is_refused() {
     board[1][1] = 0;
     let session = make_session(7);
     let mut game = AlignmentGame::with_board(&session, board);
-    let outputs = game.message("swappieces", &swap_params([(1, 1, 0), (2, 1, 5), (2, 0, 6)]));
+    let outputs = game.message(
+        "swappieces",
+        &swap_params([(1, 1, 0), (2, 1, 5), (2, 0, 6)]),
+    );
     assert!(outputs.is_empty());
     assert_eq!(game.phase, Phase::Ready);
     assert_eq!(game.board[1][1], Piece::plain(0));

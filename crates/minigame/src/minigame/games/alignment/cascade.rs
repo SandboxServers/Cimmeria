@@ -53,7 +53,10 @@ fn grant_lists(matches: &[(Cell, Piece)]) -> (Vec<Piece>, Vec<Piece>) {
     let mut a = Vec::new();
     let mut b = Vec::new();
     for kind in 1..=8u8 {
-        let count = matches.iter().filter(|(_, piece)| piece.kind == kind).count();
+        let count = matches
+            .iter()
+            .filter(|(_, piece)| piece.kind == kind)
+            .count();
         if (8..=11).contains(&count) {
             a.push(grant(kind, 8));
         } else if count >= 12 {
@@ -239,11 +242,7 @@ pub(super) fn cascadecheckcomplete() -> HashMap<String, SfsValue> {
 
 /// A list of board cells as `{x, y, type}` objects.
 fn cell_list(cells: &[(Cell, Piece)]) -> SfsValue {
-    SfsValue::list(
-        cells
-            .iter()
-            .map(|&((x, y), piece)| cell_value(x, y, piece)),
-    )
+    SfsValue::list(cells.iter().map(|&((x, y), piece)| cell_value(x, y, piece)))
 }
 
 /// The piece types of `matches`, in order: the `scores` list of spec section 6.
