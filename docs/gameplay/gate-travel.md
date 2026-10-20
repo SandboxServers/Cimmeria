@@ -63,6 +63,10 @@ Gate 27's row is the gate prefab's origin. It lies inside the gate's own volume 
 
 Guard: `gate_sgc_w1_tests.rs` in `cimmeria-cell-world`.
 
+#### Union crossings at SGC_W1
+
+SGC_W1 is an instanced world, and `validate_gate_arrival` skips instanced worlds, so its SGC-to-Dakara and SGC-to-Omega crossings carry their own coordinates in the chain; the returns from Dakara use the gate 27 row (D-US9 was revised by option C); the pinned Gate Room floor point is P13 (167.00, -10.80, 18.00), 2.4 m below the gate row. Arrivals from Dakara (missions 1651 and 1654) cross by real gate travel and land on the gate 27 arrival pin, which is P13 (DK-SGC-01, above); 1651's return trip carries item 6784 and leaves the mission on step 5171; Harriman's press after 1570 is accepted dials and sends the player to the Dakara gate 25 pin, and his 5857 close sends both races to Omega's published pin (34.70, -51.28, -142.00) on step 4940, where only Humans carry letter 6786. None of it has run in a client, and the heading of a crossing is dropped because `cross_world_teleport` carries no heading. The `stargates` row pin for gate 27 is Dakara's DK-SGC-01 (above). Steps: [uat-U1](../analysis/union-sgc-continuation/uat-U1.md), [uat-U2](../analysis/union-sgc-continuation/uat-U2.md), [uat-U3](../analysis/union-sgc-continuation/uat-U3.md).
+
 ## Implementation Status
 
 | Feature | Status | Notes |
