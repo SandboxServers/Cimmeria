@@ -559,6 +559,9 @@ pub enum Action {
     /// player's access level; a non-GM gets a refusal line. Showing a set
     /// first switches off the other sets of its kind in its world.
     SpawnSet(SpawnSetOp),
+    /// Pin the acting player in place, or release them
+    /// (cellblock-boot-lock D-BL3); see [`crate::movement_lock::MovementLockOp`].
+    MovementLock(crate::movement_lock::MovementLockOp),
 }
 
 /// What an [`Action::SpawnSet`] does.
