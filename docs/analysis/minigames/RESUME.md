@@ -34,6 +34,12 @@ Merged since G1: MG-GC1a, MG-CH1, MG-CG1, MG-64, MG-22 (GC1b ship-verdict, merge
 - Next: GC2 coder after GC1b merge; AL2a after AL1; CG3 after CG2; CH3 after CH2; MG-24 after MG-21; MG-63b after 63a+24; then wave 6 (MG-62, MG-61; MG-74a after MG-61, MG-74b after MG-74a: Debug Area terminals, D-MG23) and wave 7 (MG-73 after MG-74b).
 - Carry to campaign review: unported games run PlaceholderGame with the 60 s countdown (ends in defeat); listener_tests.rs at 692 lines (split when next touched); gen-block regen in MG-99.
 
+## Update 2026-10-20
+
+- All five game ports and MG-61, MG-62, MG-63b, MG-64, MG-74a and MG-74b (merge 2715124526) are merged locally. Nothing pushed.
+- Wave 7 in progress: worktrees mg-71, mg-72 and mg-73 are being created. Order: MG-71, MG-73, MG-72, then the campaign review, then MG-99.
+- Lab use stays ask-first (D-MG16). MG-73 only writes recipes.
+
 ## Open owner decisions
 
 None blocking. Follow-ups for the owner at close-out: D-MG11 default on after lab UAT; an offer path for mission 582 (M10).
