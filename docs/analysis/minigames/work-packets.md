@@ -35,7 +35,7 @@ Packet status lives in **one place**: the [README packet table](README.md#packet
 | 3 ports, setup | MG-AL1, MG-CG1, MG-GC1a, MG-GC1b, MG-CH1, MG-LW1 | now (GC1b after GC1a) | merged into `minigames/integration` (disjoint folders) | any; GC1a before GC1b |
 | 4 ports, moves | MG-AL2a, MG-AL2b, MG-CG2, MG-GC2, MG-CH2 | each after its predecessor slice | merged into `minigames/integration` | chain order within a game |
 | 5 ports, rules | MG-AL3a, MG-AL3b, MG-CG3, MG-GC3a, MG-GC3b, MG-CH3 | each after its predecessor slice; AL3b, GC3b and CH3 also after MG-22 | merged into `minigames/integration` | chain order within a game |
-| 6 content | MG-62, MG-61, MG-64 (MG-63 replaced, MG-65 not applicable) | MG-64 now; the rest per row dependencies | merged into `minigames/integration` | MG-62, MG-61, MG-64 |
+| 6 content | MG-62, MG-61, MG-64, MG-74a, MG-74b (MG-63 replaced, MG-65 not applicable) | MG-64 now; the rest per row dependencies (MG-74a after MG-61, MG-74b after MG-74a) | merged into `minigames/integration` | MG-62, MG-61, MG-64, MG-74a, MG-74b |
 | 7 close | MG-71, MG-73, MG-72, campaign review, MG-99 | after wave 6 | merged into `minigames/integration`, then one campaign PR | MG-71, MG-73, MG-72, review fixes, MG-99 |
 
 Waves 0 and 1 dispatched together and are integrated. Waves 3 to 5 run as four per-game chains plus MG-LW1; a game's next slice can start once its predecessor merges, without waiting for the other games. Wave 3 may run beside wave 2: the ports touch only their own game folders.
@@ -179,6 +179,8 @@ abort
 ### C7. Seed ids for content packets
 
 Minigame content chains use **24000-24049** (free on `main` @ `0d71b3b30`). Each packet re-checks its range with Grep before writing. Since G1 only MG-61 takes chains (24000-24001); 24002-24049 stay unused. Hand-authored effect NVPs use **25500-25509**: MG-63b takes 25500, MG-62 25501-25504. One packet owns one seed file (see each packet).
+
+MG-74 (the Debug Area minigame terminals, D-MG23) owns a second block, checked free in `db/resources/` of `minigames/integration` and of `main` @ `0d71b3b30` on 2026-10-20: chains **24050-24069** (MG-74a takes 24050-24057), templates **1600-1609** (1600-1605), spawns **14100-14109** (14100-14105), dialog **60120**, and dialog screens **200020-200029** (200020-200021). They sit outside every Debug Area block (DA-02..DA-11, DA-10 ending at template 1599 and spawn 14099) and outside the debug hub's (dialogs 60100-60104, screens 200000-200005) and the bank's (60110-60119, 200010-200019).
 
 ## Wave 0A: research, cross-cutting
 
