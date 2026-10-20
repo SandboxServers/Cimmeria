@@ -57,7 +57,7 @@ Content chain fires Action::StartMinigame { minigame_type, difficulty,
 | Helper registration | STUB | `registerToMinigameHelp` (28), `updateRegisterToMinigameHelp` (29) log `UNIMPLEMENTED` |
 | Helper call protocol | STUB | `minigameCallAccept` (31), `Decline` (32), `Abort` (33) log `UNIMPLEMENTED` |
 | NPC contacts | STUB | `minigameContactRequest` (34) logs `UNIMPLEMENTED` |
-| Tech competency | DECIDED | Sent as `1` on every launch (D-MG18): the original took it from an instrument item and no instrument path exists (M9). `abilityBitfield` is the player's known-ability mask (`minigame_launch::modifiers`), and the session keeps only the bits the game implements (`GameKind::ability_bits`, 0 until a port flips `PORTED`) |
+| Tech competency | PARTIAL | Sent as `1` on every launch (D-MG18): the original took it from an instrument item and no instrument path exists (M9). `abilityBitfield` is the player's known-ability mask (`minigame_launch::modifiers`), and the session keeps only the bits the game implements (`GameKind::ability_bits`, 0 until a port flips `PORTED`) |
 | `endMinigameForPlayer` / `minigameStartCancel` | PARTIAL | Window close is handled by `endCurrentMinigame`; pre-connect start-dialog cancel remains unimplemented |
 | Mob/item attempt tracking | NOT IMPL | `minigameMobAttemptTracker`, `minigameItemAttemptTracker` unused |
 | Item integration | NOT IMPL | `addItemToMinigame`, `consumeItemByMinigame` unused |

@@ -95,9 +95,12 @@ async fn launch_sends_the_players_ability_mask_and_takes_the_hold() {
     );
 }
 
-/// A player who is gone gets a zero mask and no hold: the send still goes.
+/// A launch for an entity the cell no longer holds fails closed: false, no send,
+/// and no hold is taken on any entity. Its id may be recycled to another player, so a
+/// `StartMinigame` here would register a session against the wrong owner.
+/// Revert: fall back to defaults and send, and the assert fails.
 #[tokio::test]
-async fn launch_for_a_missing_entity_sends_a_zero_mask() {
+async fn launch_for_a_missing_entity_sends_nothing_and_returns_false() {
     let mut mgr = mgr_with_player();
     let (tx, mut rx) = mpsc::channel(8);
     let req = MinigameLaunchRequest {
@@ -110,17 +113,34 @@ async fn launch_for_a_missing_entity_sends_a_zero_mask() {
         source: "effect_script",
     };
 
-    assert!(launch_minigame(req, &tx, &mut mgr).await);
-    match rx.try_recv() {
-        Ok(CellToBaseMsg::StartMinigame {
-            abilities_mask,
-            player_level,
-            intelligence,
-            ..
-        }) => {
-            assert_eq!(abilities_mask, 0);
-            assert_eq!((player_level, intelligence), (1, 0));
-        }
-        other => panic!("expected StartMinigame, got {other:?}"),
-    }
+    assert!(!launch_minigame(req, &tx, &mut mgr).await);
+    assert!(rx.try_recv().is_err());
+    assert_eq!(
+        mgr.get_entity(1).unwrap().state_field & BSF_PLAYING_MINIGAME,
+        0
+    );
+}
+
+/// A dropped launch returns false and takes no hold: no result will ever come
+/// to release it. Revert: take the hold before the send, or ignore the Err.
+#[tokio::test]
+async fn launch_with_a_closed_channel_returns_false_and_takes_no_hold() {
+    let mut mgr = mgr_with_player();
+    let (tx, rx) = mpsc::channel(8);
+    drop(rx);
+    let req = MinigameLaunchRequest {
+        entity_id: 1,
+        player_id: 7,
+        game_name: "Livewire".into(),
+        difficulty: 1,
+        on_victory_chains: vec![],
+        on_failure_chains: vec![],
+        source: "content_chain",
+    };
+
+    assert!(!launch_minigame(req, &tx, &mut mgr).await);
+    assert_eq!(
+        mgr.get_entity(1).unwrap().state_field & BSF_PLAYING_MINIGAME,
+        0
+    );
 }

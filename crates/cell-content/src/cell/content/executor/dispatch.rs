@@ -199,7 +199,19 @@ pub(super) async fn execute_one(
                 on_failure_chains: on_failure_chains.clone(),
                 source: "content_chain",
             };
-            cimmeria_cell_world::cell::minigame_launch::launch_minigame(req, tx, space_mgr).await;
+            if !cimmeria_cell_world::cell::minigame_launch::launch_minigame(req, tx, space_mgr)
+                .await
+            {
+                tracing::warn!(
+                    entity_id,
+                    entity_name = space_mgr.entity_names(entity_id).entity_name,
+                    %minigame_type,
+                    chain_id,
+                    chain_name = cimmeria_names::book().chain(chain_id),
+                    reason = "launch_failed",
+                    "Content: StartMinigame chain action did not launch"
+                );
+            }
         }
         Action::SetAggression {
             entity_tag,

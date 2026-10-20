@@ -37,23 +37,34 @@ pub const MINIGAME_TECH_COMPETENCY: u32 = 1;
 /// Send `CellToBaseMsg::StartMinigame` and take the hold. True when sent.
 ///
 /// The player's level, intelligence and ability mask are read from the live
-/// entity, so a levelled or buffed player is not served 1/0. A player who is
-/// gone gets the defaults `(1, 0, 0)`.
+/// entity, so a levelled or buffed player is not served 1/0. Fails closed: an
+/// entity the cell no longer holds (its id may already be recycled) gets no
+/// send and no hold, and the call returns false.
 pub async fn launch_minigame(
     req: MinigameLaunchRequest,
     tx: &mpsc::Sender<CellToBaseMsg>,
     space_mgr: &mut SpaceManager,
 ) -> bool {
-    let (player_level, intelligence, abilities_mask) = space_mgr
-        .get_entity(req.entity_id)
-        .map(|e| {
+    let Some((player_level, intelligence, abilities_mask)) =
+        space_mgr.get_entity(req.entity_id).map(|e| {
             let int = e
                 .stats
                 .get(cimmeria_entity::stats::INTELLIGENCE)
                 .map_or(0, |s| s.cur.max(0) as u32);
             (e.level, int, modifiers::abilities_mask(e))
         })
-        .unwrap_or((1, 0, 0));
+    else {
+        tracing::warn!(
+            entity_id = req.entity_id,
+            entity_name = space_mgr.entity_names(req.entity_id).entity_name,
+            player_id = req.player_id, // nt:id-only the player's name is not held on this path
+            game_name = %req.game_name,
+            source = req.source,
+            reason = "entity_missing",
+            "StartMinigame: entity not in the cell -- minigame not launched"
+        );
+        return false;
+    };
     if let Err(e) = tx
         .send(CellToBaseMsg::StartMinigame {
             entity_id: req.entity_id,
@@ -77,7 +88,7 @@ pub async fn launch_minigame(
         tracing::warn!(
             entity_id = req.entity_id,
             entity_name = space_mgr.entity_names(req.entity_id).entity_name,
-            player_id = req.player_id,
+            player_id = req.player_id, // nt:id-only the player's name is not held on this path
             game_name = %req.game_name,
             source = req.source,
             reason = "cell_to_base_send_failed",
