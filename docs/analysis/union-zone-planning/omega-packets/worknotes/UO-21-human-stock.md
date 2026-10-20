@@ -1,6 +1,6 @@
 # UO-21: sealed Human weapon and armor stock, four tiers (lists 63800-63807)
 
-> **Type:** Worknote · **Packet:** [UO-21](omega-packets/UO-21.md) · **Decision:** D-UO8 B, D-UO27, D-UO29
+> **Type:** Worknote · **Packet:** [UO-21](../UO-21.md) · **Decision:** D-UO8 B, D-UO27, D-UO29
 
 Provenance of every row: CIMMERIA_AUTHORING (D-UO8 B, D-UO29). No price column exists in `resources.items`, so every price is the formula in rule 5. The picks are reproducible with the survey script kept outside git at `.claude/reports/union-omega/stock/` (`parse.py`, `survey.py`, `stock.py`, `note.py`), run as `python -I stock.py`.
 
