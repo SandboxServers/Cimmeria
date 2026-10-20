@@ -24,6 +24,13 @@ INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, s
 INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63840, 28.00, -52.03, -126.00, 2.7450, 18, 63830, 'UnionOmega_CommandRegistrar', NULL, true);
 
 -- [UO-11] begin: spawns 63841-63846
+-- CIMMERIA_RECONSTRUCTION, navmesh-sealed (UO-17, UO-19); D-UO16 B, D-UO28
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63841, -168.25, -36.42, -166.00, 4.7124, 18, 63812, 'UnionOmega_HumanWeaponsT1', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63842, -166.00, -36.42, -164.00, 5.0644, 18, 63813, 'UnionOmega_HumanWeaponsT2', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63843, -112.00, -47.82, -92.00, 2.7008, 18, 63814, 'UnionOmega_HumanWeaponsT3', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63844, -112.00, -47.82, -95.00, 1.8514, 18, 63815, 'UnionOmega_HumanWeaponsT4', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63845, 82.00, -44.19, -2.00, 4.7545, 18, 63812, 'UnionOmega_HumanWeaponsT1_Common', NULL, true);
+INSERT INTO spawnlist (spawn_id, x, y, z, heading, world_id, template_id, tag, set_name, is_stationary) VALUES (63846, -62.00, -45.84, -64.00, 0.9852, 18, 63815, 'UnionOmega_HumanWeaponsT4_Common', NULL, true);
 -- [UO-11] end
 
 -- [UO-12] begin: spawns 63853-63857
