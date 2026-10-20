@@ -1,0 +1,11 @@
+# processreset is refused: no reply and no change, so the next hint is the first one of seed 7 at the full 120 s clock, and the one after it is the second scan-order hint at 110 s.
+game Alignment difficulty 1 seed 7
+start
+< fullgamestate {CA0=0, CA1=0, CA2=0, CA3=0, CA4=0, abilityBitfield=0, difficulty=1, gameArray={0={0=2.1, 1=1, 2=1, 3=3, 4=2, 5=3, 6=2, 7=3}, 1={0=2, 1=2, 2=2, 3=6, 4=1, 5=1, 6=1, 7=3}, 2={0=5, 1=6, 2=6, 3=5, 4=6, 5=6, 6=4, 7=5}, 3={0=4, 1=5, 2=4, 3=5, 4=4, 5=4, 6=4, 7=5}, 4={0=6, 1=4, 2=6, 3=4, 4=6, 5=6, 6=5, 7=6}, 5={0=5, 1=4, 2=5, 3=5, 4=5, 5=6, 6=5, 7=6}, 6={0=6, 1=4, 2=6, 3=5, 4=6, 5=5, 6=4, 7=4}, 7={0=6, 1=6, 2=4, 3=6, 4=6, 5=5, 6=6, 7=4}}, goalIcons={0=4, 1=5, 2=6}, goalScores={0=0, 1=0, 2=0}, goalTotals={0=45, 1=15, 2=6}, instcc=-1, isSpectator=false, minigamelevel=0, numResets=0, playfieldHeight=8, playfieldWidth=8, techcomp=1, timeRemaining=120, timerState=1}
+> callhint
+< hint {hex1={type=2, x=1, y=0}, hex2={type=2.1, x=0, y=0}, hex3={type=1, x=0, y=1}}
+< timerupdate {timeRemaining=115, timerState=1}
+> processreset
+> callhint
+< hint {hex1={type=1, x=1, y=5}, hex2={type=3, x=0, y=5}, hex3={type=1, x=1, y=6}}
+< timerupdate {timeRemaining=110, timerState=1}

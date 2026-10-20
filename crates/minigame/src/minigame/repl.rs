@@ -22,7 +22,7 @@ impl Repl {
     /// A game named `game_name` at `difficulty`, seeded with `seed`.
     pub fn new(game_name: &str, difficulty: u32, seed: u32) -> Option<Repl> {
         let session = MinigameSession::offline(game_name, difficulty, seed);
-        games::create(&session).map(|game| Repl { game, ended: None })
+        games::create_seeded(&session).map(|game| Repl { game, ended: None })
     }
 
     /// Run the game's `started` hook and render what it sends.

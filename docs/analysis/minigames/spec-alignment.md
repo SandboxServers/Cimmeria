@@ -195,7 +195,7 @@ The extension's table (confirmed, `initGame`) is shown beside the Python table i
 | `resethinttimer` | none | Sent by the client: end of `hintHelpOut`, so before every `swappieces` | `hintLastTime = timeRemaining`, `hintTimer = 10` | Any phase but `Ended` | none |
 | `processmove` | `cardType`, `target`, `current` | **Never sent by this movie** | Calls `processMove`, which is undefined: a no-op | Reject | none |
 | `dovictory` | none | `activate_btn` click after `activate` | `doVictory`, unconditionally | Goals met **and** phase `Ready`. Otherwise ignore it. | `victory`, end code 1 |
-| `activateitemcheat` | `cheatNum` (Number 0-4) | Item cheat button | `activateItemCheatRequest` | Phase `Ready`, slot available (section 7) | per cheat, then `itemcheatstate` |
+| `activateitemcheat` | `cheatNum` (Number 0-4) | Item cheat button | Not ported (M8): item cheats are dropped | none | WARN `unknown_command`, no reply |
 | `activateabilitycheat` | `cheatNum` (Number 0-14) | Ability cheat button | `activateAbilityCheatRequest` | Phase `Ready`, bit set (section 7) | per cheat, then `abilitycheatstate` |
 
 **Port phases** (the D-MG2 state machine; this is a design, not original behaviour):
@@ -215,7 +215,7 @@ any --dovictory (goals met) / timeout / abort--> Ended
 
 | Cmd | Fields | Sent by | Client action |
 |---|---|---|---|
-| `fullgamestate` | `numResets`, `timeRemaining` (minus 0.25), `timerState`, `isSpectator` (Bool), `gameArray` (list of lists of Number), `playfieldWidth`, `playfieldHeight`, `goalIcons` (list), `goalTotals` (list), `goalScores` (list), `techcomp`, `difficulty`, `minigamelevel`, `instcc`, `CA0`-`CA4`, `abilityBitfield` | `initGame` (start and reset); spectator join | Rebuilds the board, scores and cheats. The first one starts the client timer. |
+| `fullgamestate` | `numResets`, `timeRemaining` (minus 0.25), `timerState`, `isSpectator` (Bool), `gameArray` (list of lists of Number), `playfieldWidth`, `playfieldHeight`, `goalIcons` (list), `goalTotals` (list), `goalScores` (list), `techcomp`, `difficulty`, `minigamelevel`, `instcc`, `CA0`-`CA4`, `abilityBitfield` | `initGame` (start only; `processreset` is refused and sends nothing); spectator join | Rebuilds the board, scores and cheats. The first one starts the client timer. |
 | `hexspinner` | `matches` (list of cells), `spinCount` (1, 2 or 3), plus `xPos`, `yPos`, `orientation`, `row1`-`row3`, `col1`-`col3` echoed from the request | `swapPieces` | Animates `spinCount` rotations, applies the rotation locally, removes `matches`. 3 means no match. |
 | `feedback` | `spinCount`, `powerUpValues` (list of Number) | `checkPowerUpMatches`, every call (`powerUpValues` empty when no power-up was in the match) | Power-up popups |
 | `powerupconvert` | `x`, `y`, `powerUp` (Number, e.g. 0.3) | Cheats | Adds `powerUp` to that cell's type |
@@ -595,9 +595,9 @@ Files:
 
 | File | Contents | Lines |
 |---|---|---|
-| `alignment/mod.rs` | `AlignmentGame`; the `Phase` enum (section 5); `MinigameInstance` with `started` (`fullgamestate`), `needs_tick`, `aborted`; `message` dispatch with `processreset` refused in every phase (port deviation from the original reset, section 5) and every other command rejected as not-yet-ported; `with_board` for tests; `PORTED` stays `false` | ~200 |
+| `alignment/mod.rs` | `AlignmentGame`; the `Phase` enum (section 5); `MinigameInstance` with `started` (`fullgamestate`), `needs_tick`, `aborted`; `message` dispatch with `processreset` refused in every phase (port deviation from the original reset, section 5) and every ported command dispatched, others WARN `unknown_command`; `with_board` for tests; `PORTED = true` since MG-AL3b | ~200 |
 | `alignment/setup.rs` | Tier table and goal totals (section 4); clamp tier to 1-4 and level to 0-10; `select_icons` (section 3) on `StdRng`; the `fullgamestate` builder; board to `SfsValue` | ~250 |
-| `alignment/tests_setup.rs` | The tables match section 4 (spot rows per tier, level clamping); the first quarter of cells is bonus icons; no initial matches; seed determinism; `fullgamestate` keys and `timeRemaining` minus 0.25; reset returns the initial board and counts `numResets` | ~200 |
+| `alignment/tests_setup.rs` | The tables match section 4 (spot rows per tier, level clamping); the first quarter of cells is bonus icons; no initial matches; seed determinism; `fullgamestate` keys and `timeRemaining` minus 0.25; `processreset` is refused: no reply, no board change, `numResets` stays 0 | ~200 |
 
 Fits comfortably.
 
@@ -619,9 +619,11 @@ Files:
 
 | File | Contents | Lines |
 |---|---|---|
-| `alignment/rules.rs` | `do_score` and `check_for_victory` (`activate`); `dovictory` gated on goals, giving `victory` and `GameOutput::Victory`; `tick` (countdown, timeout `failure` and `GameOutput::Failure`, the `clicktohint` idle prompt); `get_hint` with the n1 bounds fix; `callhint` and `resethinttimer`; item cheats 0-4 with `instcc`/`CA` bookkeeping (online path: treat a granted slot as validated, set `consUsed`); ability cheats; `check_for_match_cheat`; terminal end state; **flip `PORTED = true`** | ~400 |
-| `alignment/tests_rules.rs` | Multiplier and bonus per `cascadeCount`; power-ups not scored; type 7 not scored; `activate` once at goals; `dovictory` gate; timeout; idle prompt timing; hint order rotation; each cheat's effect and its state message; cheat clears not scored; `stopTimerMatch` pause and resume | ~300 |
-| `crates/minigame/tests/scripts/alignment/{a_scoring_swap,b_reset}.mgs` | Transcripts A and B (C6), with `<rng>` values frozen from the port | ~40 |
+| `alignment/rules.rs` | `do_score` and `check_for_victory` (`activate`); `dovictory` gated on goals, giving `victory` and `GameOutput::Victory`; `tick` (countdown, timeout `failure` and `GameOutput::Failure`, the `clicktohint` idle prompt); `get_hint` with the n1 bounds fix; `callhint` and `resethinttimer`; terminal end state. Scoring and the hint only; **flip `PORTED = true`** | ~400 |
+| `alignment/cheats.rs` | Ability cheats, bits 0-14: `cheatNum` check (integer 0-14), spend-once before the effect, `Ready` gate, `clear_flood`, `power_up_time`, `match_cheats` (bits 2, 3, 8); item cheats not ported | ~250 |
+| `alignment/tests_cheats.rs` | Each cheat's effect and its state message; cheat clears not scored; `stopTimerMatch` pause, its tick cap and resume; `cheatNum` check; spend-once; `Ready` gate | ~350 |
+| `alignment/tests_rules.rs` | Multiplier and bonus per `cascadeCount`; power-ups not scored; type 7 not scored; `activate` once at goals; `dovictory` gate; timeout; idle prompt timing; hint order rotation; golden scripts | ~300 |
+| `crates/minigame/tests/scripts/alignment/{a_scoring_swap,b_reset}.mgs` | Transcripts A and B (C6), with `<rng>` values frozen from the port; `b_reset` ends on a refused `processreset` (no reply, no change) | ~40 |
 
 `GameKind::validation()` reaches Alignment only after AL3. The Activate alias (D-MG3 option B) is a separate content and kind packet; it is not part of AL3.
 
@@ -630,8 +632,8 @@ Files:
 1. **The `getNewType` tier override.** Should refills use the tier tables? The shipped extension forces tier 1, which keeps protocol (7) and cipher (8) out of refills and makes tier 4 cipher totals close to unreachable. The port ships the original behaviour behind `NEW_TYPE_USES_TIER = false`. **Owner decision.**
 2. **Resolved:** `getMatchPower` with `mp = 12` gives 0.6 for types 1-3 (the same branch as type 8; section 6).
 3. **Deadlock reshuffle.** The original has none. Should the port add one, as a server-side improvement, or keep the run-out-the-clock behaviour?
-4. **Cheat 3 with no blockers.** It returns without any message. The client put up its `disable` overlay when it sent the cheat, and it is not clear what removes it; the client may stay locked. The port sends `itemcheatstate` regardless. A lab check is needed once cheats are reachable.
-5. **`consUsed` and item validation.** The online path relies on the host (`__mg.minigameValidateItem`) to consume the item. Cimmeria has no item-validation call into the cell yet. AL3 treats a granted `CA` slot as validated. A real consumable spend belongs to the launch-flow and items work (spec-launch-flow section 5).
+4. Resolved (MG-AL3b): not applicable, item cheats are not ported (M8); `activateitemcheat` gets a WARN and no reply. **Cheat 3 with no blockers.** It returns without any message. The client put up its `disable` overlay when it sent the cheat, and it is not clear what removes it; the client may stay locked. The port sends `itemcheatstate` regardless. A lab check is needed once cheats are reachable.
+5. Resolved (MG-AL3b): not applicable, item cheats are not ported (M8); `activateitemcheat` gets a WARN and no reply. **`consUsed` and item validation.** The online path relies on the host (`__mg.minigameValidateItem`) to consume the item. Cimmeria has no item-validation call into the cell yet. AL3 treats a granted `CA` slot as validated. A real consumable spend belongs to the launch-flow and items work (spec-launch-flow section 5).
 6. **The hoisting bug.** Whether board-touching cheats were truly broken online in 2009 needs a run under an AS1 VM; it is inferred from scoping rules only. The port fixes it either way.
 7. **Gravity details for directions 1, 2, 4 and 5.** The section 6 table is a map. AL2 ports the walks line for line from the listing and verifies each with a hand board; any mismatch with the table is a doc fix here.
 8. **Activate, Repair and Search as Alignment skins.** The `gameType` strings are the only evidence. Whether the Activate shell's content expects Alignment's goals and timer is a content question for the D-MG3 alias packet.

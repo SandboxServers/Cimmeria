@@ -67,7 +67,7 @@ Two deviations from the original flow: the movement and state hold is taken at l
 | CrystalGame | DONE | Fully ported in `minigame/games/crystal_game/`; validation `server`: the server decides victory and the 16 s timeout, and a client `victory` is refused (WARN `client_victory_refused`). See [CrystalGame rules](#crystalgame-rules) |
 | ConverseBasicHumanoid | SERVER (MG-CH3) | `games/converse_humanoid/`: the server deals, plays, scores and decides victory; a client `victory` is refused and a client `failure` is a defeat. See the rules below |
 | Hack, Activate, Analyze, Bypass, Converse | PLACEHOLDER | `games/placeholder.rs` — the shell shows a 60 s countdown (`fullgamestate` then `timerupdate`, MG-64); a client `victory` counts only after 5 s (D-MG13); when 240 ticks (60 s) pass with no `victory` the server sends `failure` and the game ends as a defeat (result code 2, `on_failure_chains` fire). Matches the original `Placeholder.py`; these game types had no real SWF beyond a shell |
-| Alignment | NOT IMPL | Still Python-only; the factory has commented-out arms awaiting a port. An unrecognised game name falls back to the placeholder shell (60 s countdown, then defeat) and logs WARN `Unknown minigame type`; a content `start_minigame` row with such a name never reaches it, because the loader drops it (MG-64) |
+| Alignment | SERVER (MG-AL3b) | `games/alignment/`: a hex-triangle matching puzzle; validation `server`: the server decides every swap, cascade, score, victory and the timeout, checks each ability cheat bit before it spends it, and refuses `processreset`. Item cheats are not ported. See [Alignment rules](#alignment-rules) |
 | GoauldCrystals | SERVER (MG-GC3b) | `games/goauld_crystals/`: a path-building puzzle; the server decides victory and the clock, checks every ability cheat bit before it spends it, and refuses `processreset`. Item cheats are not ported. See [GoauldCrystals rules](#goauldcrystals-rules) |
 | `startMinigame` | STUB | Cell method 24 logs `UNIMPLEMENTED` |
 | `endCurrentMinigame` | DONE | Cell method 25 cancels the current session and closes SmartFox |
@@ -89,6 +89,15 @@ Two deviations from the original flow: the movement and state hold is taken at l
 - `processreset` is ignored (WARN `reset_refused`, no reply), as in the original; a reset would let a player idle a running clock.
 - No cheats: `abilityBitfield` 0, `instcc` -1; both cheat commands get a WARN and no reply. Refusals are logged at WARN for the first 32 per session only.
 - Out-of-range, fractional or missing coordinates, and any click after the end, are dropped with a WARN and no reply.
+
+### Alignment rules
+- **Board.** An 8x8 hex board of piece kinds, drawn per tier (1-4) from OS entropy, not the session seed: a 32-bit seed in the client's hands would let it solve the board offline. Only the offline REPL and its goldens (`games::create_seeded`) seed the board from the script's `seed`; the live `create` path cannot be seeded.
+- **Swaps.** `swappieces` names a triangle of three neighbouring cells with the pieces the client believes are there. The server checks bounds, triangle shape, blockers, empties and the types, then rotates the pieces and floods the match. A swap with no match changes nothing (`spinCount` 3).
+- **Cascade.** `cascade` and `checkForCascade` step gravity and re-matching until `cascadecheckcomplete`; `doscore` then scores the server's own tally once, with a multiplier and time bonus that grow with the cascade count (capped at 4).
+- **Goals and timer.** Each tier has three goal icons with totals; the countdown loses 0.25 s per 250 ms tick, and a wall-clock deadline backs it so a late tick cannot hide a timeout. At 0 the server sends `failure`. `callhint` costs 5 s.
+- **Victory.** Meeting every goal sends `activate`; the server sends `victory` on `dovictory` only after that. A client `victory` is refused (WARN `client_victory_refused`).
+- **Ability cheats.** `activateabilitycheat` takes `cheatNum` 0-14 and its bit must still be set in the session mask (`0x7FFF` is implemented). The bit is cleared first, `abilitycheatstate` returns the new mask, and cheat clears never score. Bit 10 has nothing to restore. An unset bit or `cheatNum` 15 is refused with no reply; `activateitemcheat` gets no reply.
+- **Reset.** `processreset` is refused (WARN `reset_refused`, no reply, state unchanged), as for CrystalGame: a reset would refill the clock and the ability bits.
 
 ### ConverseBasicHumanoid rules
 
@@ -376,7 +385,7 @@ Either player:
 
 ## Remaining Work
 
-1. **Port Alignment** — the factory has a commented-out arm; today an unported name resolves to the placeholder shell, which counts down 60 s and ends as a defeat (an unknown name is dropped earlier, at content load)
+1. **Alignment item cheats** — `activateitemcheat` gets no reply; the item path is not ported
 2. **Tech competency** — read it from the player entity instead of the hardcoded `1`; the same applies to `abilities`, `intelligence`, and `player_level`
 3. **Player-initiated start** — `startMinigame` (24) and the debug starts (20–23) are stubs, so a player can only enter a minigame that a content chain launched for them
 4. **Helper call protocol** — the whole request → PhaseTwo → accept/decline flow, including tip cash movement

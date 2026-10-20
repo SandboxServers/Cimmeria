@@ -1,0 +1,18 @@
+# Scoring swap on seed 7: a power-up swap, two cascade rounds, then doscore.
+game Alignment difficulty 1 seed 7
+start
+< fullgamestate {CA0=0, CA1=0, CA2=0, CA3=0, CA4=0, abilityBitfield=0, difficulty=1, gameArray={0={0=2.1, 1=1, 2=1, 3=3, 4=2, 5=3, 6=2, 7=3}, 1={0=2, 1=2, 2=2, 3=6, 4=1, 5=1, 6=1, 7=3}, 2={0=5, 1=6, 2=6, 3=5, 4=6, 5=6, 6=4, 7=5}, 3={0=4, 1=5, 2=4, 3=5, 4=4, 5=4, 6=4, 7=5}, 4={0=6, 1=4, 2=6, 3=4, 4=6, 5=6, 6=5, 7=6}, 5={0=5, 1=4, 2=5, 3=5, 4=5, 5=6, 6=5, 7=6}, 6={0=6, 1=4, 2=6, 3=5, 4=6, 5=5, 6=4, 7=4}, 7={0=6, 1=6, 2=4, 3=6, 4=6, 5=5, 6=6, 7=4}}, goalIcons={0=4, 1=5, 2=6}, goalScores={0=0, 1=0, 2=0}, goalTotals={0=45, 1=15, 2=6}, instcc=-1, isSpectator=false, minigamelevel=0, numResets=0, playfieldHeight=8, playfieldWidth=8, techcomp=1, timeRemaining=120, timerState=1}
+> swappieces row1=1 col1=0 type1=2 row2=0 col2=0 type2=2.1 row3=0 col3=1 type3=1 xPos=0 yPos=0 orientation=e
+< feedback {powerUpValues={0=1}, spinCount=1}
+< hexspinner {col1=0, col2=0, col3=1, matches={0={type=2.1, x=0, y=1}, 1={type=2, x=1, y=1}, 2={type=2, x=1, y=2}, 3={type=2, x=0, y=0}, 4={type=1, x=0, y=2}, 5={type=1, x=1, y=0}}, orientation=e, row1=1, row2=0, row3=0, spinCount=1, xPos=0, yPos=0}
+> cascade
+< hexmove {direction=0, hexesToMove={}, newHexes={0={type=9, x=1, y=0}, 1={type=1, x=1, y=1}, 2={type=6, x=1, y=2}, 3={type=4, x=0, y=0}, 4={type=5, x=0, y=1}, 5={type=9, x=0, y=2}}}
+> checkForCascade
+< bypasshexspinner {matches={0={type=6, x=1, y=2}, 1={type=6, x=1, y=3}, 2={type=6, x=2, y=2}, 3={type=6, x=2, y=4}, 4={type=6, x=2, y=1}, 5={type=6, x=2, y=5}}}
+> cascade
+< hexmove {direction=0, hexesToMove={0={moveTotal=1, type=1, x=1, y=5}, 1={moveTotal=1, type=3, x=0, y=5}, 2={moveTotal=1, type=1, x=1, y=4}, 3={moveTotal=1, type=2, x=0, y=4}, 4={moveTotal=1, type=3, x=0, y=3}, 5={moveTotal=2, type=9, x=0, y=2}, 6={moveTotal=1, type=1, x=1, y=1}, 7={moveTotal=1, type=5, x=0, y=1}}, newHexes={0={type=4, x=1, y=2}, 1={type=9, x=0, y=1}, 2={type=3, x=0, y=2}, 3={type=4, x=0, y=3}, 4={type=1, x=0, y=4}, 5={type=3, x=0, y=5}}}
+> checkForCascade
+< cascadecheckcomplete
+> doscore
+< updatescore {goalIcons={0=4, 1=5, 2=6}, goalScores={0=0, 1=0, 2=9}, goalTotals={0=45, 1=15, 2=6}}
+< timerupdate {timeRemaining=122, timerState=1}

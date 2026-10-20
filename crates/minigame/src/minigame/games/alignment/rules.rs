@@ -15,6 +15,10 @@ use crate::sfs_vars;
 
 /// One countdown step: the stored time drops by a quarter second per tick.
 const TICK: f64 = 0.25;
+/// The most ticks a bit 2 pause may last (60 s). Past it the game ends as a
+/// Loss, so a client that never answers cannot hold the session open
+/// (authority F1).
+pub(super) const PAUSE_CAP_TICKS: u32 = 240;
 /// The offset of the stored time: every outbound copy subtracts it.
 const TIME_OFFSET: f64 = 0.25;
 /// Seconds the wall clock allows past the countdown, for the client's latency.
@@ -68,13 +72,15 @@ impl AlignmentGame {
         self.clock_budget = self.shown_time() + CLOCK_GRACE;
     }
 
-    /// Whether the server's wall clock has run out, whatever the ticks say.
+    /// Whether the server's wall clock has run out, whatever the ticks say. A
+    /// paused clock (`timerState` 0, bit 2) cannot expire; it is re-anchored on
+    /// resume.
     pub(super) fn clock_expired(&self) -> bool {
-        self.clock_start.elapsed().as_secs_f64() >= self.clock_budget
+        self.timer_state == 1 && self.clock_start.elapsed().as_secs_f64() >= self.clock_budget
     }
 
     /// The `timerupdate` frame: the shown time and the timer state.
-    fn timer_update(&self) -> GameOutput {
+    pub(super) fn timer_update(&self) -> GameOutput {
         GameOutput::Send(sfs_vars! {
             "_cmd" => SfsValue::String("timerupdate".to_string()),
             "timeRemaining" => number(self.shown_time()),
@@ -106,6 +112,11 @@ impl AlignmentGame {
         }
         if self.timer_state == 1 {
             self.time_remaining -= TICK;
+        } else {
+            self.paused_ticks += 1;
+            if self.paused_ticks >= PAUSE_CAP_TICKS {
+                return self.time_out();
+            }
         }
         if self.timer_state >= 1 && self.shown_time() <= 0.0 {
             return self.time_out();
@@ -183,6 +194,12 @@ impl AlignmentGame {
         self.current_matches.clear();
         self.cascade_count = 0;
         self.adjust_time(BONUS[step]);
+        // A pause from bit 2 ends with the score: the clock resumes and is re-anchored.
+        if self.timer_state == 0 {
+            self.timer_state = 1;
+            self.paused_ticks = 0;
+            self.start_clock();
+        }
         out.push(self.timer_update());
         self.reset_hint_timer();
         self.hint_pause = false;

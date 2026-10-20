@@ -15,6 +15,17 @@ mod placeholder;
 use crate::minigame::game::MinigameInstance;
 use crate::minigame::session::MinigameSession;
 
+/// Offline replay only (the REPL and golden scripts): like `create`, but a game
+/// that draws its board from OS entropy on the live path is seeded from the
+/// session seed so a recorded script reproduces. Never call this from a live
+/// ticket or connection path (authority F2).
+pub(crate) fn create_seeded(session: &MinigameSession) -> Option<Box<dyn MinigameInstance>> {
+    match GameKind::from_name(&session.game_name) {
+        Some(GameKind::Alignment) => Some(alignment::create_seeded(session)),
+        _ => create(session),
+    }
+}
+
 /// Create a minigame instance for the given session, dispatching by game name.
 pub fn create(session: &MinigameSession) -> Option<Box<dyn MinigameInstance>> {
     let game: Box<dyn MinigameInstance> = match GameKind::from_name(&session.game_name) {

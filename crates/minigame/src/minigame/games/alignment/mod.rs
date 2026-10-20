@@ -3,10 +3,8 @@
 //! MG-AL1 is the setup and the state shell; MG-AL2a adds the server-validated
 //! swap and matching (`moves.rs`); MG-AL2b adds the cascade, the gravity and
 //! the refill (`cascade.rs`, `moves_gravity.rs`); MG-AL3a adds the score, the
-//! victory, the countdown with its wall clock, and the hints (`rules.rs`).
-//! `create()` still hands the name to the placeholder: `PORTED` stays `false`
-//! until MG-AL3b, so nothing here is reachable from content yet.
-#![allow(dead_code)] // unreachable until MG-AL3 flips PORTED; the tests build it
+//! victory, the countdown with its wall clock, and the hints (`rules.rs`); MG-AL3b
+//! adds the ability cheats (`cheats.rs`) and flips `PORTED`.
 
 use std::collections::HashMap;
 
@@ -18,6 +16,7 @@ use crate::minigame::protocol::SfsValue;
 use crate::minigame::session::MinigameSession;
 
 mod cascade;
+mod cheats;
 mod moves;
 mod moves_gravity;
 mod piece;
@@ -25,6 +24,8 @@ mod rules;
 mod setup;
 #[cfg(test)]
 mod tests_cascade;
+#[cfg(test)]
+mod tests_cheats;
 #[cfg(test)]
 mod tests_moves;
 #[cfg(test)]
@@ -38,8 +39,8 @@ use std::time::Instant;
 
 use piece::Piece;
 
-/// Flipped to `true` by MG-AL3 only, once victory is server-decided.
-pub(crate) const PORTED: bool = false;
+/// Set by MG-AL3b: victory is server-decided and the ability cheats are live.
+pub(crate) const PORTED: bool = true;
 
 /// The most characters of a client string a log line keeps.
 const LOG_CAP: usize = 64;
@@ -55,7 +56,7 @@ fn log_text(text: &str) -> &str {
 /// Where the game is in the port's phase machine (spec section 5). `Ready`
 /// takes a swap; a match moves to `AwaitCascade`, `cascade` moves to
 /// `AwaitCheck`, and `checkForCascade` either loops back to `AwaitCascade` or
-/// moves to `AwaitScore` (`doscore` is MG-AL3a's). `Ended` is set by
+/// moves to `AwaitScore`, where `doscore` is handled by this game. `Ended` is set by
 /// `aborted()` and closes the game.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Phase {
@@ -83,9 +84,6 @@ pub(crate) struct AlignmentGame {
     goal_scores: Vec<u32>,
     goal_totals: Vec<u32>,
     goal_icons: Vec<u8>,
-    bonus_icons: Vec<u8>,
-    /// Time limit of the tier, in seconds.
-    time_limit: u32,
     /// Stored as the time plus 0.25 s; every outbound copy subtracts it.
     time_remaining: f64,
     timer_state: u8,
@@ -118,6 +116,22 @@ pub(crate) struct AlignmentGame {
     /// Enforced with the countdown, so a late tick cannot keep a game alive.
     clock_start: Instant,
     clock_budget: f64,
+    /// Ticks the countdown has been paused by bit 2; the pause ends as a Loss
+    /// once it passes `rules::PAUSE_CAP_TICKS` (authority F1).
+    paused_ticks: u32,
+    /// Ability bit 2: a matching swap pauses the countdown until `doscore`.
+    stop_timer_match: bool,
+    /// Ability bit 3: each matching swap adds 0.5 s.
+    add_timer_match: bool,
+    /// Ability bit 8: each matching swap adds another 0.5 s.
+    add_timer_match_move: bool,
+    /// Ability bit 11: each later ability cheat adds 2 s.
+    ability_add_time: bool,
+    /// Ability bit 13: each power-up matched adds 2 s.
+    power_up_add_time: bool,
+    /// Set by a cheat clear; the next `checkForCascade` does not score the
+    /// cleared types (spec section 7, cheat clears never score).
+    cheat_cleared: bool,
 }
 
 impl AlignmentGame {
@@ -131,6 +145,21 @@ impl AlignmentGame {
             session.player_name.as_deref(),
         );
         let mut rng = StdRng::from_rng(&mut rand::rng());
+        let board = setup::select_icons(&mut rng, tier);
+        Self::build(session, rng, board)
+    }
+
+    /// Offline replay and golden runs only: seeds the RNG from `session.seed`
+    /// so a recorded script reproduces its board. Reached only through
+    /// `create_seeded`, which only the REPL calls; the live path uses `new`,
+    /// whose OS entropy is the F2 guard and must never be weakened.
+    pub(crate) fn with_seed(session: &MinigameSession) -> Self {
+        let tier = setup::clamp_tier(
+            session.difficulty,
+            session.entity_id,
+            session.player_name.as_deref(),
+        );
+        let mut rng = StdRng::seed_from_u64(u64::from(session.seed));
         let board = setup::select_icons(&mut rng, tier);
         Self::build(session, rng, board)
     }
@@ -180,8 +209,6 @@ impl AlignmentGame {
             goal_scores: vec![0; goal_totals.len()],
             goal_totals,
             goal_icons: spec.goal_icons.to_vec(),
-            bonus_icons: setup::BONUS_ICONS.to_vec(),
-            time_limit: spec.time,
             time_remaining: f64::from(spec.time) + 0.25,
             timer_state: 1,
             num_resets: 0,
@@ -199,6 +226,13 @@ impl AlignmentGame {
             hint_timer: rules::FIRST_HINT_GAP,
             clock_start: Instant::now(),
             clock_budget: shown,
+            paused_ticks: 0,
+            stop_timer_match: false,
+            add_timer_match: false,
+            add_timer_match_move: false,
+            ability_add_time: false,
+            power_up_add_time: false,
+            cheat_cleared: false,
         }
     }
 
@@ -227,14 +261,15 @@ impl AlignmentGame {
                 self.current_matches = outcome.flood.clone();
                 self.current_scores.clear();
                 self.cascade_count = 0;
-                vec![
-                    GameOutput::Send(moves::feedback(&outcome)),
-                    GameOutput::Send(moves::hexspinner(
-                        params,
-                        &outcome.matches,
-                        outcome.spin_count,
-                    )),
-                ]
+                let mut out = self.power_up_time(outcome.power_values.len());
+                out.push(GameOutput::Send(moves::feedback(&outcome)));
+                out.push(GameOutput::Send(moves::hexspinner(
+                    params,
+                    &outcome.matches,
+                    outcome.spin_count,
+                )));
+                out.extend(self.match_cheats());
+                out
             }
             None => {
                 // A no-match swap leaves the board alone and unpauses the hints.
@@ -285,7 +320,12 @@ impl AlignmentGame {
             return vec![];
         }
         let mut scores = self.current_scores.clone();
-        scores.extend(cascade::types(&self.current_matches));
+        // A cheat clear's types were never scored; this check consumes the flag.
+        if self.cheat_cleared {
+            self.cheat_cleared = false;
+        } else {
+            scores.extend(cascade::types(&self.current_matches));
+        }
         let seeds = setup::check_for_matches(&self.board);
         self.current_scores = scores;
         if seeds.is_empty() {
@@ -302,12 +342,15 @@ impl AlignmentGame {
         for &((x, y), _) in &matches {
             self.board[x][y] = Piece::plain(0);
         }
+        let power_cells = matches.iter().filter(|(_, piece)| piece.power != 0).count();
         self.current_matches = matches;
         self.cascade_count += 1;
         self.phase = Phase::AwaitCascade;
-        vec![GameOutput::Send(cascade::bypasshexspinner(
+        let mut out = self.power_up_time(power_cells);
+        out.push(GameOutput::Send(cascade::bypasshexspinner(
             &self.current_matches,
-        ))]
+        )));
+        out
     }
 
     /// Counts a refused client command and logs it at WARN when `logs_refusal`
@@ -379,6 +422,7 @@ impl MinigameInstance for AlignmentGame {
             "swappieces" => self.swap(params),
             "cascade" => self.cascade(),
             "checkForCascade" => self.check_for_cascade(),
+            "activateabilitycheat" => self.activate_ability_cheat(params),
             "doscore" => self.do_score(),
             "dovictory" => self.do_victory(),
             "callhint" => self.call_hint(),
@@ -424,8 +468,16 @@ impl MinigameInstance for AlignmentGame {
     }
 }
 
-/// Create a minigame instance for the given session. Alignment is not ported
-/// yet, so this is still the placeholder (C4).
+/// The offline-replay twin of `create`: a seeded board (see `with_seed`).
+pub(crate) fn create_seeded(session: &MinigameSession) -> Box<dyn MinigameInstance> {
+    Box::new(AlignmentGame::with_seed(session))
+}
+
+/// Create a minigame instance for the given session: the real game once
+/// `PORTED` is set (C4), the placeholder until then.
 pub(crate) fn create(session: &MinigameSession) -> Box<dyn MinigameInstance> {
+    if PORTED {
+        return Box::new(AlignmentGame::new(session));
+    }
     Box::new(super::placeholder::PlaceholderGame::new(&session.game_name))
 }
