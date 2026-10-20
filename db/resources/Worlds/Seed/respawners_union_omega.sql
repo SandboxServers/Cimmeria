@@ -20,4 +20,7 @@ SET search_path = resources, pg_catalog;
 INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (180, 18, 'Omega Site Gate Plaza', 34.70, -51.42, -138.00);
 
 -- [UO-34] begin: respawner 181
+--
+-- CIMMERIA_RECONSTRUCTION, navmesh-sealed (UO-20); the art's Infirmary (D-UO19 c)
+INSERT INTO respawners (respawner_id, world_id, name, pos_x, pos_y, pos_z) VALUES (181, 18, 'Omega Infirmary', 39.00, -44.90, 3.00);
 -- [UO-34] end
