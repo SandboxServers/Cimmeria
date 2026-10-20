@@ -1,10 +1,11 @@
 //! Every server-validated game, end to end over a real loopback SFS session
 //! (MG-71). Each game logs in with its ticket, reads `joinOK` and
-//! `onGameBegin`, makes its first golden move from `tests/scripts/`, and then
-//! the client sends its own `victory`. The server refuses that victory, so the
-//! session reports no victory or defeat; only the canceled result that the
-//! socket close produces may follow. The coverage check ties the table to
-//! [`GameKind`]: a new server-validated game without a row fails here.
+//! `onGameBegin`, makes its first move, and waits for the reply that move
+//! gets. Then the client sends its own `victory`. The server refuses that
+//! victory, so the session reports no victory or defeat; only the canceled
+//! result that the socket close produces may follow. The coverage check ties
+//! the table to [`GameKind`]: a new server-validated game without a row fails
+//! here.
 
 use crate::minigame::games::{GameKind, Validation};
 
@@ -17,14 +18,21 @@ const CLIENT_VICTORY: &str = "<msg t='xt'><body action='xtReq'>\
      <![CDATA[<dataObj><var n='cmd' t='s'>victory</var></dataObj>]]>\
      </body></msg>";
 
-/// The first golden move of one server-validated game: the seed its script
-/// starts from, and the first `>` line of that script as a command and
-/// parameters.
+/// The first move of one server-validated game: the seed its script starts
+/// from, the command and parameters of the first client message, and the
+/// `_cmd` of the first reply that message gets. The command is the first `>`
+/// line of the golden script, with two exceptions. Livewire's script has no
+/// `>` line (only `start` and `abort`), so its row is `opendoor`, the first
+/// client message the SWF sends after `start`. Alignment's board is random in
+/// a live session (the OS-entropy path, never the golden seed), so a
+/// `swappieces` cannot be planned; its row is `callhint`, whose reply
+/// (`timerupdate`) does not depend on the board.
 struct GoldenStart {
     game: &'static str,
     seed: u32,
     command: &'static str,
     params: &'static [(&'static str, &'static str)],
+    reply: &'static str,
 }
 
 /// One row per server-validated game, in [`GameKind::ALL`] order.
@@ -32,45 +40,37 @@ const GOLDEN_FIRST_MOVES: [GoldenStart; 5] = [
     GoldenStart {
         game: "Livewire",
         seed: 7,
-        command: "processmove",
-        params: &[("wirename", "g1")],
+        command: "opendoor",
+        params: &[],
+        reply: "opendoor",
     },
     GoldenStart {
         game: "Alignment",
         seed: 7,
-        command: "swappieces",
-        params: &[
-            ("row1", "1"),
-            ("col1", "0"),
-            ("type1", "2"),
-            ("row2", "0"),
-            ("col2", "0"),
-            ("type2", "2.1"),
-            ("row3", "0"),
-            ("col3", "1"),
-            ("type3", "1"),
-            ("xPos", "0"),
-            ("yPos", "0"),
-            ("orientation", "e"),
-        ],
+        command: "callhint",
+        params: &[],
+        reply: "timerupdate",
     },
     GoldenStart {
         game: "CrystalGame",
         seed: 15435,
         command: "processmove",
         params: &[("x", "0"), ("y", "0")],
+        reply: "timerupdate",
     },
     GoldenStart {
         game: "GoauldCrystals",
         seed: 1,
         command: "playfieldclick",
         params: &[("x", "2"), ("y", "1")],
+        reply: "timerupdate",
     },
     GoldenStart {
         game: "ConverseBasicHumanoid",
         seed: 2,
         command: "playermove",
         params: &[("num", "2"), ("suit", "8")],
+        reply: "updatecards",
     },
 ];
 
@@ -117,28 +117,29 @@ async fn login(client: &mut TcpStream, game: &str, entity_id: u32, ticket: &str)
     .expect("login send");
 }
 
-/// Read frames until `onGameBegin` and return everything read, so the caller
-/// can check that `joinOK` came first. Panics on timeout, EOF or I/O error.
-async fn read_join_and_game_begin(client: &mut TcpStream) -> String {
-    const MILESTONE: &str = "<var n='_cmd' t='s'>onGameBegin</var>";
+/// Read frames until one carries `_cmd` = `reply` and return everything read,
+/// so the caller can check the frames before it. Panics on timeout, EOF or
+/// I/O error.
+async fn read_until(client: &mut TcpStream, reply: &str) -> String {
+    let milestone = format!("<var n='_cmd' t='s'>{reply}</var>");
     let mut seen = String::new();
     let mut chunk = vec![0u8; MAX_MESSAGE_LEN];
-    while !seen.contains(MILESTONE) {
+    while !seen.contains(&milestone) {
         let n = tokio::time::timeout(
             Duration::from_secs(5),
             tokio::io::AsyncReadExt::read(client, &mut chunk),
         )
         .await
-        .unwrap_or_else(|_| panic!("no onGameBegin; frames so far:\n{seen}"))
-        .expect("read during the join");
-        assert!(n > 0, "server closed before onGameBegin: {seen}");
+        .unwrap_or_else(|_| panic!("no {reply}; frames so far:\n{seen}"))
+        .expect("read while waiting for a reply");
+        assert!(n > 0, "server closed before {reply}: {seen}");
         seen.push_str(&String::from_utf8_lossy(&chunk[..n]).replace('\0', "\n"));
     }
     seen
 }
 
-/// Log one game in, make its first golden move, send the client's victory,
-/// and check that no result was sent.
+/// Log one game in, make its first move and wait for its reply, send the
+/// client's victory, and check that no result was sent.
 async fn refuses_client_victory(golden: &GoldenStart) {
     let registry = SessionRegistry::new();
     let ticket = registry
@@ -162,7 +163,7 @@ async fn refuses_client_victory(golden: &GoldenStart) {
 
     let (mut client, mut rx, handle) = connect_to(registry, ListenerLimits::default()).await;
     login(&mut client, golden.game, 4400, &ticket).await;
-    let joined = read_join_and_game_begin(&mut client).await;
+    let joined = read_until(&mut client, "onGameBegin").await;
     assert!(
         joined.contains("action='joinOK'"),
         "{}: the join must send joinOK before onGameBegin: {joined}",
@@ -172,6 +173,9 @@ async fn refuses_client_victory(golden: &GoldenStart) {
     send_null_terminated(&mut client, &command_frame(golden.command, golden.params))
         .await
         .unwrap_or_else(|()| panic!("{}: first move send failed", golden.game));
+    // The move must be answered before the victory goes out, so a move the
+    // server silently drops fails here rather than passing the test.
+    read_until(&mut client, golden.reply).await;
     send_null_terminated(&mut client, CLIENT_VICTORY)
         .await
         .unwrap_or_else(|()| panic!("{}: victory send failed", golden.game));
