@@ -24,9 +24,14 @@ Dispatch in one message (each in its own worktree off `minigames/integration`):
 
 Then, as each predecessor merges: MG-21 after MG-22, MG-24 after MG-21, MG-63b after MG-63a and MG-24; GC1b after GC1a; each game's next slice after its last.
 
-## In flight
+## In flight (updated mid-wave 2-5)
 
-None.
+Merged since G1: MG-GC1a, MG-CH1, MG-CG1, MG-64, MG-22 (GC1b ship-verdict, merge pending via ops).
+- MG-63a: fix 0fa97dbce (hold-time anchor); pass 2 review + authority pass 2 running.
+- MG-21 coder; MG-CH2 coder; MG-CG2 coder (CH2/CG2 need authority review too).
+- MG-LW1 and MG-AL1: review-1 fixes being applied; pass 2 next.
+- Next: GC2 coder after GC1b merge; AL2a after AL1; CG3 after CG2; CH3 after CH2; MG-24 after MG-21; MG-63b after 63a+24; then waves 6 (MG-62, MG-61) and 7.
+- Carry to campaign review: unported games run PlaceholderGame with the 60 s countdown (ends in defeat); listener_tests.rs at 692 lines (split when next touched); gen-block regen in MG-99.
 
 ## Open owner decisions
 
