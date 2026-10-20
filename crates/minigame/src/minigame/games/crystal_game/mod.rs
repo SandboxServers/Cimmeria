@@ -42,16 +42,21 @@ struct CrystalGame {
     entity_id: u32,
     player_id: i32,
     player_name: Option<String>,
-    /// Seeded once in the constructor; the scramble and every reset draw
-    /// from it, in order.
-    rng: StdRng,
     board: setup::Board,
     /// 0 while idle (no click yet), 1 once the first valid click started
     /// the clock.
     timer_state: u32,
-    num_resets: u32,
     /// `Some` once the game has ended: `"canceled"` after a disconnect.
     outcome: Option<&'static str>,
+}
+
+/// The longest client command name written to a log row. The client chooses
+/// `cmd`, so an unbounded value would let one connection flood the log.
+const MAX_LOGGED_CMD: usize = 32;
+
+/// `cmd` cut to [`MAX_LOGGED_CMD`] characters for a log row.
+fn capped_cmd(cmd: &str) -> String {
+    cmd.chars().take(MAX_LOGGED_CMD).collect()
 }
 
 impl CrystalGame {
@@ -63,10 +68,8 @@ impl CrystalGame {
             entity_id: session.entity_id,
             player_id: session.player_id,
             player_name: session.player_name.clone(),
-            rng,
             board,
             timer_state: 0,
-            num_resets: 0,
             outcome: None,
         }
     }
@@ -74,12 +77,13 @@ impl CrystalGame {
     /// Logs a refused command at WARN with the player's identity and the
     /// `reason` that the packet's message rules name. The caller sends nothing.
     fn reject(&self, cmd: &str, reason: &'static str) {
+        let logged_cmd = capped_cmd(cmd);
         tracing::warn!(
             entity_id = self.entity_id,
             entity_name = self.player_name.as_deref(),
             player_id = self.player_id,
             player_name = self.player_name.as_deref(),
-            cmd,
+            cmd = logged_cmd.as_str(),
             reason,
             "CrystalGame: command refused"
         );

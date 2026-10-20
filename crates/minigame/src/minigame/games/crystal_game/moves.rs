@@ -1,14 +1,14 @@
 //! CrystalGame client moves: `processmove` (a click, validated on the
-//! server) and `processreset` (the rescramble).
+//! server) and `processreset` (refused, see [`CrystalGame::process_reset`]).
 //!
 //! The first valid click starts the clock with `timerupdate` and then sends
-//! one `updateslot` per changed cell, in the order [`Board::press`] gives
+//! one `updateslot` per changed cell, in the order `Board::press` gives
 //! (docs/analysis/minigames/spec-crystalgame.md, sections 5 and 8). A refused
 //! command logs a WARN and sends nothing.
 
 use std::collections::HashMap;
 
-use super::setup::{self, Board, HEIGHT, TIME_LIMIT, WIDTH};
+use super::setup::{HEIGHT, TIME_LIMIT, WIDTH};
 use super::CrystalGame;
 use crate::minigame::game::GameOutput;
 use crate::minigame::protocol::SfsValue;
@@ -71,23 +71,12 @@ impl CrystalGame {
         out
     }
 
-    /// `processreset`: every cell back to solved, two new scramble clicks
-    /// from the same rng, the clock back to idle, then a fresh `fullgamestate`.
-    pub(super) fn process_reset(&mut self) -> Vec<GameOutput> {
-        if self.outcome.is_some() {
-            self.reject("processreset", "game_over");
-            return vec![];
-        }
-        self.board = Board::solved();
-        self.board.scramble(&mut self.rng);
-        self.timer_state = 0;
-        self.num_resets += 1;
-        tracing::info!(
-            entity_id = self.entity_id,
-            entity_name = self.player_name.as_deref(),
-            num_resets = self.num_resets,
-            "CrystalGame: board rescrambled"
-        );
-        vec![GameOutput::Send(setup::fullgamestate(&self.board))]
+    /// `processreset`: refused with no reply, so the board and the clock stay
+    /// as they are. The original ignores it (spec-crystalgame.md, CG2 row and
+    /// open question 11.3). A reset would let a player idle a running clock or
+    /// re-roll the board without limit.
+    pub(super) fn process_reset(&self) -> Vec<GameOutput> {
+        self.reject("processreset", "reset_unsupported");
+        vec![]
     }
 }

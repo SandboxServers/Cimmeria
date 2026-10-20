@@ -152,24 +152,30 @@ fn refused_coordinates_send_nothing_and_do_not_start_the_clock() {
 }
 
 #[test]
-fn reset_rescrambles_and_idles_the_clock() {
+fn reset_after_first_click_is_refused_and_leaves_clock_and_board() {
     let mut game = game_on(Board::solved());
     game.message("processmove", &click(0.0, 0.0));
     assert_eq!(game.timer_state, 1);
+    let board_before = game.board.clone();
 
-    let out = game.message("processreset", &HashMap::new());
-    let out = sent(&out);
-    assert_eq!(out.len(), 1);
-    assert_eq!(cmd_of(out[0]), "fullgamestate");
-    assert_eq!(number(out[0], "timerState"), 0.0);
-    assert_eq!(number(out[0], "timeRemaining"), 16.0);
-    assert!(!is_solved(&game.board));
-    assert_eq!(game.num_resets, 1);
-    assert_eq!(game.timer_state, 0);
+    // No reply, and neither the running clock nor the board changes.
+    assert!(game.message("processreset", &HashMap::new()).is_empty());
+    assert_eq!(game.timer_state, 1);
+    assert_eq!(game.board, board_before);
 
-    // The next valid click starts the clock again.
+    // A click after the refused reset is a plain click: no second timerupdate.
     let out = game.message("processmove", &click(1.0, 1.0));
-    assert_eq!(cmd_of(sent(&out)[0]), "timerupdate");
+    assert!(sent(&out).iter().all(|m| cmd_of(m) == "updateslot"));
+}
+
+#[test]
+fn logged_command_name_is_capped() {
+    let long = "x".repeat(1000);
+    assert_eq!(super::capped_cmd(&long).chars().count(), 32);
+    assert_eq!(super::capped_cmd("processmove"), "processmove");
+    // Characters, not bytes: a multi-byte name is cut without splitting one.
+    let accented = "é".repeat(40);
+    assert_eq!(super::capped_cmd(&accented), "é".repeat(32));
 }
 
 #[test]
@@ -198,5 +204,4 @@ fn after_abort_moves_and_resets_send_nothing() {
     assert!(game.message("processmove", &click(0.0, 0.0)).is_empty());
     assert!(game.message("processreset", &HashMap::new()).is_empty());
     assert!(is_solved(&game.board));
-    assert_eq!(game.num_resets, 0);
 }
