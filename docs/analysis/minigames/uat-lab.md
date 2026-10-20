@@ -49,7 +49,7 @@ The driver's summary is a claim. Verify each one against the server before you g
 | `min_play_time` | A client `victory` under 5 s on a shell was refused (WARN) | `games/placeholder.rs` |
 | `timeout` | A shell hit its 60 s countdown; sent `failure` (logged at DEBUG, so it may not show at the default level) | `games/placeholder.rs` |
 | `unknown_minigame_type` | Content load dropped a `start_minigame` row with an unknown or wrong-case name (WARN, at server start) | `content-engine` loader |
-| `minigame_launch_refused` (`event=`) with `reason=` | An ability launch was refused: `caster_dead`, `stale_queue`, `already_playing`, `offer_pending`, `player_mismatch` | `start_minigame.rs`, `minigame_launch/state.rs` |
+| `minigame_launch_refused` (`event=`, effect script) or "queued launch refused" (drain), each with `reason=` | An ability launch was refused: `caster_dead`, `stale_queue`, `already_playing`, `offer_pending`, `player_mismatch` | `start_minigame.rs`, `minigame_launch/state.rs` |
 | `player_cancelled`, `no_offer`, `offer_expired`, `stale_offer` | Pre-game dialog answers (D-MG11 on only) | `minigame_launch/state.rs` |
 | `minigame_server_disabled` | The TCP listener is off | `cell_dispatch/minigame.rs` |
 
@@ -59,7 +59,7 @@ The driver's summary is a claim. Verify each one against the server before you g
 
 **Setup**
 
-1. `/gmmissionassign 638 1`, then `/gmmissionadvance 638 2115` (a step id of mission 638).
+1. `/gmmissionassign 638 1`, then `/gmmissionadvance 638 2114` (a step id of mission 638). Talk to the prisoner (object 329) and pick the line that runs dialog choice 2300 (human) or 5021 (Jaffa). That runs chain 1014 or 1015, which advances to step 2115 and puts the Livewire cursor on the button. If you jump straight to 2115 instead, the button has no cursor: skip Step 1 and click it by entity id, and report that.
 2. `.gotolocation Castle_CellBlock` and stand 4 m from the object tagged `329_CellDoorButton`. Confirm its entity id with `client_entity_find`.
 
 **Steps**
@@ -75,13 +75,13 @@ The driver's summary is a claim. Verify each one against the server before you g
 
 **SigNoz:** `body CONTAINS 'minigame'` for the player's session id across the window; one start, one result.
 
-**Fail signs:** no window and a log line `interact_no_effect` means the step was not active or the tag is wrong. The button keeping its cursor after a win means chain 1017's third action did not run.
+**Fail signs:** no window and a repeated `repeat_interact_no_effect` signal after several clicks means the step was not active or the tag is wrong. The button keeping its cursor after a win means chain 1017's third action did not run.
 
 ## R2. The five ported games through the Debug Area terminals
 
 **Goal:** each of CrystalGame, Alignment, GoauldCrystals, ConverseBasicHumanoid and Livewire starts from its terminal, plays, and speaks the right result line. Spawns 14100-14104, tags `DebugArea_Minigame_<Game>`, launcher chains 24050-24054 ([debug-area.md](../../content/debug-area.md#minigame-terminals)).
 
-**Setup:** GM account. `.gotolocation DebugArea`, then walk to the plaza's north row (z about -903). The terminals stand at x 234, 239, 244, 257, 262 and 267. Clear dialogs. Stand about 5 m south of the terminal you are testing, for example `.gotolocation DebugArea 239 6.7 -898` for Alignment. The y value is approximate; correct it from `client_player_state` if you land under or above the floor.
+**Setup:** GM account. `.gotolocation DebugArea`, then walk to the plaza's north row (z about -903). The terminals stand at x 234, 239, 244, 257, 262 and 267. Clear dialogs. Stand about 5 m south of the terminal you are testing, for example `.gotolocation DebugArea 239 6.7 -908` for Alignment. North is +z; the terminals face south, so the driver stands at z -908. The y value is approximate; correct it from `client_player_state` if you land under or above the floor.
 
 **Per game, steps**
 
@@ -90,6 +90,8 @@ The driver's summary is a claim. Verify each one against the server before you g
 3. Click it by entity id. Expected: the named game's window opens at difficulty 1.
 4. Play to a **win**. Expected chat: "Minigame round trip complete: the server recorded your win." (dialog 60120, screen 200020, chain 24056, spoken as `Terminal`).
 5. Click again and **lose** (let the timer run out, or fail the game's loss condition). Expected chat: "Minigame round trip complete: the server recorded your loss." (screen 200021, chain 24057).
+
+Scripted play (`client_minigame_play`) covers Livewire only. For CrystalGame, Alignment, GoauldCrystals and ConverseBasicHumanoid, do steps 1-3, screenshot the window, and report "win and loss not scripted"; a human plays 4-5 only if the user is at the keyboard.
 
 | Game | Terminal spawn | Launcher chain | Server-validated rules |
 | --- | --- | --- | --- |
@@ -113,19 +115,19 @@ Read-only. Do this on the first R2 pass, before clicking anything.
 
 1. From the plaza, `client_entity_table` filtered to the six tags. Expected: six entities.
 2. For each, take one screenshot standing 5 m south. Expected: the terminal stands on the courtyard floor (not floating, not under it, not inside a wall) and x 252 is clear for the walkway.
-3. Read its nameplate. Expected: `Minigame: <Game>`. Report what is shown. The `display_name` on a `being`-class object is **unverified**; "no nameplate" is a valid answer and a finding, not a failure of the lab run.
+3. Read its nameplate. Expected: `Minigame: <Game>` (the Hack one reads `Minigame: Hack (shell)`). Report what is shown. The `display_name` on a `being`-class object is **unverified**; "no nameplate" is a valid answer and a finding, not a failure of the lab run.
 4. Hover each. Expected: the Livewire cursor.
 
 Record the six y values the client reports; a mismatch with the seed's 6.66-6.90 beyond about 0.5 m means the placement needs a fix.
 
 ## R4. Mission 582, step 2307: Converse with Marsh
 
-**Goal:** chain 24000 launches `ConverseBasicHumanoid` at difficulty 1 on Colonel Marsh, and chain 24001 completes objective 2675 and advances to step 3274. Mission 582 has no offer path (M10: giver Blackstock has no spawn and set 530 is unbound), so a GM sets it active.
+**Goal:** chain 24000 launches `ConverseBasicHumanoid` at difficulty 1 on Colonel Marsh, and chain 24001 advances to step 3274, which closes objective 2675. Mission 582 has no offer path (M10: giver Blackstock has no spawn and set 530 is unbound), so a GM sets it active.
 
 **Setup**
 
 1. `/gmmissionassign 582 1`, then `/gmmissionadvance 582 2307`.
-2. Marsh is spawn 344, tag `CmdCenter_Marsh`, world 68 (Harset). `.gotolocation` there and stand 4 m from him. Make sure missions 1360 (step 4038) and 1361 (step 4694) are **not** active: the launcher refuses to fire while they are.
+2. Marsh is spawn 344, tag `CmdCenter_Marsh`, world 68 (Harset). `.gotolocation Harset -45.5 -0.59 -14`, which is about 4 m east of him. The y value is approximate: confirm with `client_entity_find CmdCenter_Marsh` and correct from `client_player_state`. Make sure missions 1360 (step 4038) and 1361 (step 4694) are **not** active: the launcher refuses to fire while they are.
 
 **Steps**
 
@@ -151,7 +153,7 @@ Record the six y values the client reports; a mismatch with the seed's 6.66-6.90
 2. Clear dialogs. Use the ability (`client_use_ability`).
 3. Expected: the Converse window opens for the caster. No target is needed.
 4. Win or lose, then close. Expected: `BSF_PlayingMinigame` clears and you can walk.
-5. Use the ability **while the window is open**. Expected: refused, WARN `event=minigame_launch_refused reason=already_playing` (or `offer_pending` with D-MG11 on).
+5. Use the ability **while the window is open**. Expected: refused, WARN `event=minigame_launch_refused reason=already_playing` (with D-MG11 on and the dialog open, the drain logs WARN "queued launch refused when it came to start" `reason=offer_pending`, with no `event=`).
 6. The dead-caster refusal (`caster_dead`) is covered by a unit test only; do not try to test it in the lab.
 
 **Server log:** `minigame_launch_queued` from the script, then the launch drains after effects resolve and a `StartMinigame` goes to base.
@@ -170,12 +172,12 @@ Record the six y values the client reports; a mismatch with the seed's 6.66-6.90
 **Steps**
 
 1. Wait for the zone to finish loading. Try to walk 3 m. Expected: you cannot (the server holds you within 0.5 m).
-2. Double-click the worn boots (`item_use` 3438). Expected: Livewire opens (chain 1024).
+2. Use item 3438 (`client_item_action`; double-click the worn boots). If the client offers no use action on a worn item, report that, unequip the boots into the backpack, and try again. Expected: Livewire opens (chain 1024).
 3. Confirm a minigame window also holds movement: you still cannot walk.
 4. Win the game. Expected: chain 1025 launches ability 1598, clears the lock and completes mission 689. You can walk.
 5. Relog. Expected: you are **not** held (chain 1023's guard `mission_status 689 neq completed` is false).
 
-**Server log:** chain 1023 launch of ability 1597 on load; a movement rejection while held (grep `MovementLocked`; the exact line is unverified); chain 1024 `StartMinigame`; chain 1025 completes mission 689.
+**Server log:** chain 1023 launch of ability 1597 on load; a movement rejection while held (grep `movement_locked`; it is the reason label of the `movement.validation_reject` event); chain 1024 `StartMinigame`; chain 1025 completes mission 689.
 
 **Reset for a re-run:** a completed mission is left alone by `/gmmissionclear`. Use a fresh character.
 
@@ -187,7 +189,7 @@ Record the six y values the client reports; a mismatch with the seed's 6.66-6.90
 
 **Steps**
 
-1. Stand 5 m south of the terminal at x 267, z -903. Click it by entity id.
+1. Stand 5 m south of the terminal: `.gotolocation DebugArea 267 6.8 -908` (north is +z). Click it by entity id.
 2. Expected: the Hack shell window with a countdown at 60 s.
 3. Press its win button **within 5 s**. Expected: nothing happens; the server logs WARN `reason = "min_play_time"` with `elapsed_ms` under 5000.
 4. Wait the full 60 s without pressing win. Expected: the shell shows its failure state and the chat line "Minigame round trip complete: the server recorded your loss." (screen 200021).
@@ -209,8 +211,8 @@ Record the six y values the client reports; a mismatch with the seed's 6.66-6.90
 
 1. Expected: the pre-game dialog (client message 53) appears first, naming the game, "Difficulty 1", with Play available.
 2. Press **Play**. Expected: the game window opens (cell method 24).
-3. Click the terminal again and press **Cancel**. Expected: no window, `player_cancelled` logged, and the hold clears so you can walk (cell method 30).
-4. Click again and **leave the dialog unanswered for 60 s**. Expected: the offer expires; the next launch works. Expiry is checked lazily when the next answer arrives (D-MG19), so a stale `offer_expired` or `stale_offer` after the wait is expected, not a bug.
+3. Finish step 2's game first (win it, or let a shell run its 60 s out) and confirm the window is closed and you can walk. Click the terminal again and press **Cancel**. Expected: no window, `player_cancelled` logged, and the hold clears so you can walk (cell method 30).
+4. Click again and **leave the dialog unanswered for 60 s**. Expected: the offer expires; the next launch works. Expiry is checked lazily when the next answer arrives (D-MG19), so a stale `offer_expired` or `stale_offer` after the wait is expected, not a bug. To see `offer_expired`, press Play on the old dialog after the 60 s; to see only that the next launch works, click the terminal again instead.
 5. With the dialog open, use ability 1327. Expected: refused with `offer_pending`.
 6. Repeat step 1 with ability 1327 as the launcher: D-MG20 sends ability launches through the same path, so the dialog must appear for them too.
 
