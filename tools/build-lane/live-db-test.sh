@@ -23,10 +23,10 @@ RELOAD="${LIVE_DB_RELOAD_SCRIPT:-$HERE/reload-db.sh}"
 # Leading --wireclient and --llvm-cov go to the tier in both phases; the rest is the filter.
 lead=()
 while [ "${1:-}" = --wireclient ] || [ "${1:-}" = --llvm-cov ]; do lead+=("$1"); shift; done
-FILTER="${1:?filter required}"; shift || true
+if [ $# -eq 0 ] && [ ${#lead[@]} -eq 0 ]; then echo 'live-db-test.sh: filter required' >&2; exit 2; fi
 
 # Phase 1, heavy: compile the test binaries (the same binaries as --no-run; CI builds so too).
-"$HERE/lane.sh" --class heavy bash "$TIER" "${lead[@]}" --build-only || exit $?
+"$HERE/lane.sh" --class heavy bash "$TIER" ${lead[@]+"${lead[@]}"} --build-only || exit $?
 
 # Phase 2, db: reload this worktree's database, then run the tier with the filter.
 exec "$HERE/lane.sh" --class db bash -c '
@@ -34,4 +34,4 @@ exec "$HERE/lane.sh" --class db bash -c '
   out="$(bash "$1")"; echo "$out"
   export "$(echo "$out" | grep ^DATABASE_URL=)"
   shift; bash "$@"
-' _ "$RELOAD" "$TIER" "${lead[@]}" "$FILTER" "$@"
+' _ "$RELOAD" "$TIER" ${lead[@]+"${lead[@]}"} "$@"

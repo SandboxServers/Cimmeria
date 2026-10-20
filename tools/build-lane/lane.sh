@@ -14,6 +14,9 @@
 # What it sets up for the wrapped command:
 #  * Slots: LANE_SLOTS (default: the number in $LANE_ROOT/lane/SLOTS, else 2). `--exclusive`
 #    takes every slot, for full-workspace builds and measurements.
+#  * Light and db slots: slot.light.N and slot.db.N, counted by LANE_LIGHT_SLOTS (default 4)
+#    and LANE_DB_SLOTS (default 3); a count of 0 sends those jobs to a heavy slot. Their
+#    CARGO_BUILD_JOBS comes from LANE_LIGHT_JOBS (default 4). Rules: lane-class.sh.
 #  * CARGO_BUILD_JOBS defaults to cores / slots (floor 4) so a full lane fits the CPU.
 #  * sccache when it is installed, with one shared cache ($CIMMERIA_SCCACHE_DIR, default
 #    $LANE_ROOT/sccache-cache). It caches third-party crates. Workspace crates build
@@ -49,7 +52,8 @@
 #    LANE_LOG_KEEP logs (default 20), none older than LANE_LOG_DAYS days (default 7);
 #    rm-worktree.sh deletes the rest.
 #
-# Lock layout: $LANE_ROOT/lane/slot.N directories (mkdir is atomic). A dead holder pid
+# Lock layout: $LANE_ROOT/lane/slot.N, slot.light.N and slot.db.N directories (mkdir is
+# atomic). A dead holder pid
 # breaks its own slot.
 
 set -u
@@ -289,7 +293,9 @@ while [ $nested -eq 0 ]; do
     [ ${#held[@]} -gt 0 ] && break
   fi
   if [ $((waited % 60)) -eq 0 ]; then
-    echo "[lane] all $class_slots $class slots busy: $(while IFS= read -r d; do [ -f "$d/what" ] && printf '[%s] ' "$(head -c 120 "$d/what")"; done < <(lane_class_dirs "$class")) ... ${waited}s" >&2
+    busy=""
+    while IFS= read -r d; do [ -f "$d/what" ] && busy="$busy${busy:+ }[$(head -c 120 "$d/what")]"; done < <(lane_class_dirs "$class")
+    echo "[lane] all $class_slots $class slots busy: $busy ... ${waited}s" >&2
   fi
   sleep 5; waited=$((waited+5))
 done

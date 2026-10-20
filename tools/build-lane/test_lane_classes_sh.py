@@ -18,7 +18,9 @@ sys.path.insert(0, str(HERE))
 from test_lane_stats import find_bash  # noqa: E402  Git Bash on Windows, PATH bash elsewhere
 
 BASH = find_bash()
+PWSH = shutil.which("pwsh")
 LANE_SH = HERE / "lane.sh"
+LANE_PS1 = HERE / "lane.ps1"
 CLASS_SH = HERE / "lane-class.sh"
 LIVE_DB_SH = HERE / "live-db-test.sh"
 FIXTURE = HERE / "fixtures" / "lane-classes.tsv"
@@ -40,12 +42,12 @@ def lane_env(root, **extra):
     return env
 
 
-def run(args, env, timeout=60):
-    """Runs bash with the given args. Output goes to temp files, not pipes: a lane job left
-    running after a timeout would keep a pipe open and hang the test. On a timeout the whole
-    process tree is killed and the result has returncode -1."""
+def run(args, env, timeout=60, exe=None):
+    """Runs bash (or exe, e.g. pwsh) with the given args. Output goes to temp files, not pipes:
+    a lane job left running after a timeout would keep a pipe open and hang the test. On a
+    timeout the whole process tree is killed and the result has returncode -1."""
     with tempfile.TemporaryFile() as out, tempfile.TemporaryFile() as err:
-        proc = subprocess.Popen([BASH, *args], cwd=str(HERE), env=env, stdout=out, stderr=err)
+        proc = subprocess.Popen([exe or BASH, *args], cwd=str(HERE), env=env, stdout=out, stderr=err)
         try:
             code = proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
@@ -161,6 +163,37 @@ class LaneClassTests(unittest.TestCase):
         job = jobs(self.root)[-1]
         self.assertEqual((job["class"], job["class_req"], job["slots"]), ("heavy", "light", 1))
 
+    def test_exclusive_takes_every_heavy_slot(self):
+        result = self.lane(["--exclusive", "bash", "-c",
+                            'ls "$LANE_ROOT/lane" | grep -c "^slot\\.[0-9]*$"'], LANE_SLOTS="2")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stdout.strip(), "2")
+
+    def test_db_job_takes_a_db_slot(self):
+        result = self.lane(["--class", "db", "bash", "-c",
+                            'test -d "$LANE_ROOT/lane/slot.db.1"'], LANE_SLOTS="1")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(jobs(self.root)[-1]["class"], "db")
+
+    def test_zero_db_count_takes_a_heavy_slot(self):
+        result = self.lane(["--class", "db", "bash", "-c",
+                            'test -d "$LANE_ROOT/lane/slot.1"'], LANE_SLOTS="1", LANE_DB_SLOTS="0")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        job = jobs(self.root)[-1]
+        self.assertEqual((job["class"], job["class_req"], job["slots"]), ("heavy", "db", 1))
+
+    @unittest.skipUnless(PWSH, "no pwsh on PATH")
+    def test_pwsh_lane_nested_in_bash_lane_shares_the_slot(self):
+        # A bash lane job runs the PowerShell lane, which runs a second PowerShell lane call
+        # inside it: the inner call must see the parent's slot (CIMMERIA_LANE_SLOT), not wait.
+        result = self.lane(["pwsh", "-NoProfile", "-File", str(LANE_PS1),
+                            "pwsh", "-NoProfile", "-Command", "exit 7"], timeout=60,
+                           LANE_SLOTS="1")
+        self.assertEqual(result.returncode, 7, result.stdout + result.stderr)
+        self.assertIn("not taking a slot", result.stderr)
+        self.assertEqual(sorted((j["slots"], j["nested"]) for j in jobs(self.root)),
+                         [(0, True), (1, False)])
+
     def test_nested_call_runs_in_parent_slot_and_passes_exit_code(self):
         # The outer job holds the only heavy slot; the inner lane call must not wait for it.
         result = self.lane(["bash", posix(LANE_SH), "bash", "-c", "exit 7"], timeout=60,
@@ -217,10 +250,11 @@ class TwoPhaseLiveDbTests(unittest.TestCase):
             f"for a in \"$@\"; do [ \"$a\" = --build-only ] && exit {build_rc}; done\n"
             "exit 0\n", encoding="utf-8")
 
-    def run_live_db(self):
+    def run_live_db(self, args=(FILTER,), **extra):
         env = lane_env(self.root, LANE_SLOTS="1",
-                       LIVE_DB_TIER_SCRIPT=posix(self.tier), LIVE_DB_RELOAD_SCRIPT=posix(self.reload))
-        return run([posix(LIVE_DB_SH), self.FILTER], env, timeout=120)
+                       LIVE_DB_TIER_SCRIPT=posix(self.tier), LIVE_DB_RELOAD_SCRIPT=posix(self.reload),
+                       **extra)
+        return run([posix(LIVE_DB_SH), *args], env, timeout=120)
 
     def read_calls(self):
         return self.calls.read_text(encoding="utf-8").splitlines() if self.calls.exists() else []
@@ -243,6 +277,27 @@ class TwoPhaseLiveDbTests(unittest.TestCase):
         self.assertEqual(result.returncode, 3, result.stdout + result.stderr)
         self.assertEqual(self.read_calls(), ["tier --build-only db="])
         self.assertEqual(len(jobs(self.root)), 1)
+
+    def test_flags_only_run_reaches_the_tier(self):
+        # `live-db-test.sh --wireclient` with no filter: the flag goes to the tier, not to a filter.
+        self.write_tier(build_rc=0)
+        result = self.run_live_db(args=["--wireclient"])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.read_calls(), [
+            "tier --wireclient --build-only db=",
+            "reload",
+            "tier --wireclient db=postgres://stub"])
+
+    def test_zero_db_count_second_job_falls_back_to_heavy(self):
+        self.write_tier(build_rc=0)
+        result = self.run_live_db(LANE_DB_SLOTS="0")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.read_calls(), [
+            "tier --build-only db=",
+            "reload",
+            f"tier {self.FILTER} db=postgres://stub"])
+        built, ran = jobs(self.root)
+        self.assertEqual((ran["class"], ran["class_req"]), ("heavy", "db"))
 
 
 if __name__ == "__main__":
