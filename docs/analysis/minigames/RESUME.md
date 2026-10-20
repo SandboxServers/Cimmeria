@@ -1,45 +1,20 @@
 # Minigames resume card
 
-> Ledger: [README.md](README.md). Packets: [work-packets.md](work-packets.md) and [packets/](packets/). Updated 2026-10-19 at gate G1.
+> Ledger: [README.md](README.md). Packets: [work-packets.md](work-packets.md) and [packets/](packets/). Closed 2026-10-20 (MG-99).
 
 ## State
 
-- Waves 0A, 0B and 1 are **integrated** into `minigames/integration` (worktree `mg-integration`). Merge shas: R1 `e476cd854`, R4 `026527b36`, R3 `3dffcbab1`, R2 `b9e45cfc2`, R5 `0fe7355ac`, MG-06 `4647624c2`, R7 `e9644d779`, R6 `95756b98b`, MG-02 `8b15eeb0a`. Their packet worktrees are retired.
-- **G1 done.** Decisions D-MG17-D-MG22 in the README; D-MG3 = A, D-MG6 = A, D-MG11 default off. No owner decision blocks a packet.
-- Not applicable: MG-23, MG-25, MG-26, MG-65. MG-63 is replaced by MG-63a and MG-63b (wave 2).
+**Phase closed.** Every packet is merged into `minigames/integration` (worktree `mg-integration`), the campaign review passed after two fix passes, and the status docs changed once in MG-99. Nothing is pushed.
 
-## Owner directives
-
-- Autonomous to release-ready. No push or PR until the campaign is done, then one PR from `minigames/integration`.
-- Every packet branches from `minigames/integration`; ops merges it back with `merge-noff.ps1` after its review says `ship`, then retires the packet worktree and its target dir.
-- Lab use is ask-first (D-MG16). Status docs change only in MG-99.
+- Ported and server-validated: CrystalGame, Alignment, GoauldCrystals, ConverseBasicHumanoid, plus Livewire. Client-declared and hardened: Hack, Activate, Analyze, Bypass, Converse.
+- Not applicable: MG-23, MG-25, MG-26, MG-65. MG-63 was replaced by MG-63a and MG-63b.
+- No lab run happened. Lab use stays ask-first (D-MG16).
 
 ## Next action
 
-Dispatch in one message (each in its own worktree off `minigames/integration`):
+1. Ops: open one PR from `minigames/integration` (the ship skill), list the doc-update-map rows in the body.
+2. After it merges: retire every packet worktree and `mg-integration` (`rm-worktree.ps1 --merged-into <PR> <name>...`), delete branch `backup/mg-al3a-rules-pre-reset`, empty `.claude/state/active-campaign`, post the board handoff.
 
-- wave 2: **MG-22**, **MG-63a** ([packets/wave2-launch.md](packets/wave2-launch.md));
-- wave 3: **MG-AL1**, **MG-CG1**, **MG-GC1a**, **MG-CH1**, **MG-LW1** ([packets/wave3-5-ports.md](packets/wave3-5-ports.md));
-- wave 6: **MG-64** ([packets/wave6-7-content-close.md](packets/wave6-7-content-close.md)).
+## Owner list
 
-Then, as each predecessor merges: MG-21 after MG-22, MG-24 after MG-21, MG-63b after MG-63a and MG-24; GC1b after GC1a; each game's next slice after its last.
-
-## In flight (updated mid-wave 2-5)
-
-Merged since G1: MG-GC1a, MG-CH1, MG-CG1, MG-64, MG-22 (GC1b ship-verdict, merge pending via ops).
-
-- MG-63a: fix 0fa97dbce (hold-time anchor); pass 2 review + authority pass 2 running.
-- MG-21 coder; MG-CH2 coder; MG-CG2 coder (CH2/CG2 need authority review too).
-- MG-LW1 and MG-AL1: review-1 fixes being applied; pass 2 next.
-- Next: GC2 coder after GC1b merge; AL2a after AL1; CG3 after CG2; CH3 after CH2; MG-24 after MG-21; MG-63b after 63a+24; then wave 6 (MG-62, MG-61; MG-74a after MG-61, MG-74b after MG-74a: Debug Area terminals, D-MG23) and wave 7 (MG-73 after MG-74b).
-- Carry to campaign review: unported games run PlaceholderGame with the 60 s countdown (ends in defeat); listener_tests.rs at 692 lines (split when next touched); gen-block regen in MG-99.
-
-## Update 2026-10-20
-
-- All five game ports and MG-61, MG-62, MG-63b, MG-64, MG-74a and MG-74b (merge 2715124526) are merged locally. Nothing pushed.
-- Wave 7 in progress: worktrees mg-71, mg-72 and mg-73 are being created. Order: MG-71, MG-73, MG-72, then the campaign review, then MG-99.
-- Lab use stays ask-first (D-MG16). MG-73 only writes recipes.
-
-## Open owner decisions
-
-None blocking. Follow-ups for the owner at close-out: D-MG11 default on after lab UAT; an offer path for mission 582 (M10).
+The full list, with the reasons, is [README § Open owner items at close-out](README.md#open-owner-items-at-close-out). In short: D-MG11 default on after lab UAT; an offer path for mission 582 (M10); lab UAT of the terminals (placement, click, game window); the social layer; deferred authority finding 3; and two files to split (`listener_tests.rs` at 692 lines, cell-world `entities.rs` at 700).

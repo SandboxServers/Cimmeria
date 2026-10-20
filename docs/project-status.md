@@ -115,7 +115,7 @@ The story of this quarter is the Needs Test column, which tripled from 18 to 58 
 | Black market | KM | 10 (9 KM, 1 NU) | Still 94 lines of stubs **on `main`**. A full Phase 1 is on the unmerged `feat/571-black-market-phase1` (PR #586), and the client window additionally needs a client patch (#587) |
 | Dueling | IM | 6 (5 IM, 1 KM) | **Social-systems campaign, merged 2026-09-27, awaiting the owner's UAT.** Challenge, response, the countdown, the engaged duel and every end implemented (SS-D1 to SS-D3): duelists are PvP-flagged, can damage each other and only each other, and are in combat together. A duel ends on forfeit, on partner damage that would kill (held at 1 HP instead, D-SS20), on death from anyone else, disconnect, teleport or range; the winner hears 879, nothing is awarded (D-SS22). A `sparbot` wireclient partner and GM `.duel_status` / `.duel_end` help testing (SS-U2). The duel marker is not ported (D-SS24); squad duels are refused |
 | Pets | NT | 7 (6 NT, 1 IM) | **Restored server-side 2026-09-27, pending the owner's in-game UAT** (pets campaign, #570; every packet merged). A player summons a Straegis, Jaffa, Prime or Lo'taur by casting its summon ability. The pet follows, fights by stance, takes pet-bar orders behind an ownership guard, and pays its kill XP and credit to its owner; it goes away when its owner logs out, dies or travels. The owner's own pet abilities act on it, and GMs have `.pet`, `.giveability` and a debug-hub pet trainer. Not done: persistence (not planned, D-PT01), turrets (no client model), a Lo'taur that heals, several no-op kit abilities, and pet leveling past the owner's level |
-| Minigames | IM | 9 (5 CW, 1 IM, 3 KM) | **Livewire is client-verified**: 12 in-client sessions in the colo playtest, 11 wins that fired their follow-on chains. The SmartFox server is in-process (about 3,400 lines). Six games still run on an accept-anything placeholder; Alignment and GoauldCrystals are open TODOs |
+| Minigames | NT | 11 (5 CW, 2 NT, 1 IM, 3 KM) | **Ported 2026-10-20 (minigames campaign).** All five games with rules are server-validated: Livewire (client-verified: 12 in-client sessions, 11 wins that fired their follow-on chains) plus CrystalGame, Alignment, GoauldCrystals and ConverseBasicHumanoid, ported from the AS1 extensions in their SWFs. The four new ports have REPL goldens and a loopback-session test and have never been played in the client. The five shells (Hack, Activate, Analyze, Bypass, Converse) have no rules in the client: they stay client-declared with a 5 s minimum play time and a 60 s server timer. Owed: lab UAT through the Debug Area terminals (owner-run, ask first), D-MG11 default-on, an offer path for mission 582, the social layer ([ledger](analysis/minigames/README.md#open-owner-items-at-close-out)) |
 | Groups / parties | NT | 7 (3 NT, 1 IM, 3 KM) | The group is the Squad organization (see Organizations): creation, invite and leave work server-side. The loot mode is set and shown but not yet applied to loot; member info updates and the combat-assist hooks are not ported |
 
 ### Systems New Since the Original Audit
@@ -233,7 +233,7 @@ Re-ranked 2026-09-25.
 6. **Multi-zone end-to-end** — Harset's first playtest; content campaigns for the next zones
 7. **Two-client verification** — trading, player-to-player introduction, chat, mail, duels, squads, Teams and Commands between players
 
-Quality-of-life items (black market merge, remaining minigame ports, group loot and member info) follow the above and can be picked up independently. Contact lists and GM tooling have shipped; mail, chat and 1v1 duels (the social-systems campaign), pets, squads, Teams and Commands (the organizations campaign), the personal and organization vaults with the treasury (the Bank and Vault campaign), crafting, and finite special ammo (the ammo campaign) are restored server-side and waiting for the owner's in-game UAT.
+Quality-of-life items (black market merge, minigame lab UAT and the social layer, group loot and member info) follow the above and can be picked up independently. Contact lists and GM tooling have shipped; mail, chat and 1v1 duels (the social-systems campaign), pets, squads, Teams and Commands (the organizations campaign), the personal and organization vaults with the treasury (the Bank and Vault campaign), crafting, and finite special ammo (the ammo campaign) are restored server-side and waiting for the owner's in-game UAT.
 
 ## Roadmap
 
@@ -256,7 +256,7 @@ Quality-of-life items (black market merge, remaining minigame ports, group loot 
 
 ### Long-term — finish-out
 
-- Group loot by mode, member info updates and the remaining minigame ports (in any order)
+- Group loot by mode, member info updates and the minigame lab UAT (in any order)
 - Social-systems follow-ups after UAT: a GM release for quarantined mail, the owner questions in the [session resume](analysis/social-systems/handoffs/session-resume.md#owner-questions), and vault and organization mail aliases
 - Pets follow-ups after UAT: a Lo'taur that heals (an ally-target pet AI branch), effects for the no-op kit abilities, and turrets once a model is chosen
 - Server infrastructure: rate limiting, damage sanity checking, promoting speed validation from warn-only to enforcing, reconnection grace
