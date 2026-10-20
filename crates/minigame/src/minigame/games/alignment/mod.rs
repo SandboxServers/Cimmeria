@@ -28,6 +28,17 @@ use piece::Piece;
 /// Flipped to `true` by MG-AL3 only, once victory is server-decided.
 pub(crate) const PORTED: bool = false;
 
+/// The most characters of a client string a log line keeps.
+const LOG_CAP: usize = 64;
+
+/// The first `LOG_CAP` characters of a client string, for a log line.
+fn log_text(text: &str) -> &str {
+    match text.char_indices().nth(LOG_CAP) {
+        Some((end, _)) => &text[..end],
+        None => text,
+    }
+}
+
 /// Where the game is in the port's phase machine (spec section 5). `Ready`
 /// takes a swap; a match moves to `AwaitCascade` until the cascade slice
 /// (MG-AL2b) takes over. `Ended` is set by `aborted()` and closes the game.
@@ -52,8 +63,6 @@ pub(crate) struct AlignmentGame {
     rng: StdRng,
     /// Pieces indexed `[x][y]`.
     board: Vec<Vec<Piece>>,
-    /// The board the copy reset restores.
-    board_init: Vec<Vec<Piece>>,
     goal_scores: Vec<u32>,
     goal_totals: Vec<u32>,
     goal_icons: Vec<u8>,
@@ -122,7 +131,6 @@ impl AlignmentGame {
             tier,
             level,
             rng,
-            board_init: board.clone(),
             board,
             goal_scores: vec![0; goal_totals.len()],
             goal_totals,
@@ -136,19 +144,6 @@ impl AlignmentGame {
             phase: Phase::Ready,
             outcome: None,
         }
-    }
-
-    /// `processreset`: restores the initial board, counts the reset and resets
-    /// the clock, then resends `fullgamestate` (spec section 5).
-    fn reset(&mut self) -> Vec<GameOutput> {
-        self.num_resets += 1;
-        self.board = self.board_init.clone();
-        self.time_remaining = f64::from(self.time_limit) + 0.25;
-        self.timer_state = 1;
-        self.hint_index = 0;
-        self.goal_scores = vec![0; self.goal_totals.len()];
-        self.phase = Phase::Ready;
-        vec![GameOutput::Send(self.full_game_state())]
     }
 
     /// `swappieces` (spec section 5): validates the triangle (D-MG2), then
@@ -212,20 +207,27 @@ impl MinigameInstance for AlignmentGame {
     }
 
     fn message(&mut self, cmd: &str, params: &HashMap<String, SfsValue>) -> Vec<GameOutput> {
+        // The command is client text: it is cut before it reaches a log line.
+        let logged = log_text(cmd);
         if self.phase == Phase::Ended {
             tracing::warn!(
                 entity_id = self.entity_id,
                 entity_name = self.player_name.as_deref(),
                 player_id = self.player_id,
                 player_name = self.player_name.as_deref(),
-                cmd,
+                cmd = logged,
                 reason = "game_ended",
                 "Alignment: command after the end"
             );
             return vec![];
         }
         match cmd {
-            "processreset" => self.reset(),
+            // The reset is refused, as the CrystalGame ruling does: no reply
+            // and no change, so a reset cannot abort a cascade or add time.
+            "processreset" => {
+                self.refuse("processreset", "reset_refused");
+                vec![]
+            }
             "swappieces" => self.swap(params),
             // The hint timer (`resethinttimer`) only feeds the hint, which is
             // MG-AL3's; the client expects no reply.
@@ -243,7 +245,7 @@ impl MinigameInstance for AlignmentGame {
                     entity_name = self.player_name.as_deref(),
                     player_id = self.player_id,
                     player_name = self.player_name.as_deref(),
-                    cmd,
+                    cmd = logged,
                     reason,
                     "Alignment: command refused"
                 );

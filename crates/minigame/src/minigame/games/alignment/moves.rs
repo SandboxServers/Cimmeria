@@ -56,12 +56,20 @@ pub(super) fn read_cells(params: &HashMap<String, SfsValue>) -> Result<[Cell; 3]
     Ok(cells)
 }
 
-/// A non-negative integer request field, or `OutOfBounds` when it is missing.
+/// A whole, non-negative request field that fits a board index, or
+/// `OutOfBounds` when it is missing, fractional, non-finite or negative. The
+/// check is exact: `as_i32` would truncate `1.9` to cell 1 and map NaN to 0.
 fn coordinate(params: &HashMap<String, SfsValue>, key: &str) -> Result<usize, SwapReject> {
     params
         .get(key)
-        .and_then(SfsValue::as_i32)
-        .and_then(|value| usize::try_from(value).ok())
+        .and_then(SfsValue::as_f64)
+        .filter(|value| {
+            value.is_finite()
+                && value.fract() == 0.0
+                && *value >= 0.0
+                && *value <= f64::from(u16::MAX)
+        })
+        .map(|value| value as usize)
         .ok_or(SwapReject::OutOfBounds)
 }
 

@@ -216,6 +216,25 @@ fn transcript_a_swap_matches_and_replies_feedback_then_hexspinner() {
 }
 
 #[test]
+fn swap_matching_only_on_rotation_two_reports_spin_count_two() {
+    // Transcript A's triangle with the cells listed in another order: rotation 1
+    // makes no match, rotation 2 does.
+    let session = make_session(1, 1, 7);
+    let mut game = AlignmentGame::with_board(&session, transcript_a_board());
+    let params = swap_params([(1, 1, 4), (2, 0, 6), (2, 1, 5)]);
+    let outputs = game.message("swappieces", &params);
+
+    assert_eq!(outputs.len(), 2);
+    assert_eq!(sent(&outputs, 0)["spinCount"].as_f64(), Some(2.0));
+    assert_eq!(sent(&outputs, 1)["spinCount"].as_f64(), Some(2.0));
+    assert_eq!(
+        match_cells(sent(&outputs, 1)),
+        vec![(1, 3, 4), (2, 1, 4), (2, 2, 4), (3, 0, 4), (3, 2, 4)]
+    );
+    assert_eq!(game.phase, Phase::AwaitCascade);
+}
+
+#[test]
 fn transcript_b_no_match_swap_keeps_the_board() {
     let session = make_session(1, 1, 7);
     let mut game = AlignmentGame::with_pieces(&session, fixture_pieces());
@@ -249,6 +268,15 @@ fn each_swap_reject_reason_is_its_own() {
         reject([(1, 1, 4), (3, 3, 5), (0, 0, 6)]),
         Err(SwapReject::NotTriangle)
     );
+    // Two neighbours of (1, 1) that do not touch each other: the third pair fails.
+    assert_eq!(
+        reject([(1, 1, 4), (0, 1, 6), (2, 2, 6)]),
+        Err(SwapReject::NotTriangle)
+    );
+    // A fractional coordinate is refused, not truncated to cell 1.
+    let mut fractional = swap_params([(1, 1, 4), (2, 1, 5), (2, 0, 6)]);
+    fractional.insert("row1".to_string(), SfsValue::Number(1.5));
+    assert_eq!(moves::read_cells(&fractional), Err(SwapReject::OutOfBounds));
     // Client types that differ from the board.
     assert_eq!(
         reject([(1, 1, 5), (2, 1, 5), (2, 0, 6)]),
@@ -377,4 +405,30 @@ fn reset_hint_timer_is_silent() {
     let mut game = AlignmentGame::with_pieces(&session, fixture_pieces());
     assert!(game.message("resethinttimer", &HashMap::new()).is_empty());
     assert_eq!(game.phase, Phase::Ready);
+}
+
+#[test]
+fn process_reset_is_refused_in_ready_and_mid_cascade() {
+    let session = make_session(1, 1, 7);
+    let mut game = AlignmentGame::with_board(&session, transcript_a_board());
+    let before = kinds(&game);
+    assert!(game.message("processreset", &HashMap::new()).is_empty());
+    assert_eq!(kinds(&game), before);
+    assert_eq!(game.num_resets, 0);
+    assert_eq!(game.phase, Phase::Ready);
+
+    game.message("swappieces", &transcript_a_params());
+    assert_eq!(game.phase, Phase::AwaitCascade);
+    let mid = kinds(&game);
+    assert!(game.message("processreset", &HashMap::new()).is_empty());
+    assert_eq!(kinds(&game), mid);
+    assert_eq!(game.num_resets, 0);
+    assert_eq!(game.phase, Phase::AwaitCascade);
+}
+
+#[test]
+fn logged_client_text_is_cut_at_the_cap() {
+    assert_eq!(log_text(&"x".repeat(1000)).len(), LOG_CAP);
+    assert_eq!(log_text(&"é".repeat(100)).chars().count(), LOG_CAP);
+    assert_eq!(log_text("processreset"), "processreset");
 }
