@@ -365,7 +365,7 @@ pub(super) async fn run_session(
                                     on_victory_chains.clone(),
                                     vec![],
                                     "victory_tick",
-                                                    true,
+                                    true,
                                 )
                                 .await;
                             }
@@ -393,7 +393,7 @@ pub(super) async fn run_session(
                                     vec![],
                                     on_failure_chains.clone(),
                                     "failure_tick",
-                                                    true,
+                                    true,
                                 )
                                 .await;
                             }
