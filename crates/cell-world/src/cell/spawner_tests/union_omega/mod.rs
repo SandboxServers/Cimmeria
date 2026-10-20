@@ -4,6 +4,7 @@
 //! - [`hub`]: UO-03, the hub's gate plaza respawner and placements (world 18).
 //! - [`cmdcenter`]: UO-05, the Command Center's cast and placements (world 80).
 //! - [`ambient`]: UO-14, the droppable ambient spawns (63880-63959).
+//! - [`infirmary`]: UO-34, the infirmary respawner 181 and its placements.
 //!
 //! The helpers below are copied from `dakara_e1/travel.rs`, not imported:
 //! that module's items are private to `dakara_e1`.
@@ -11,6 +12,7 @@
 mod ambient;
 mod cmdcenter;
 mod hub;
+mod infirmary;
 
 use cimmeria_common::Vector3;
 use cimmeria_entity::navigation::{NavMesh, PathStatus};

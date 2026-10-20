@@ -96,6 +96,14 @@
 //!   seed explicit id blocks into allocate past every seeded row.
 //! - [`live_db_union_omega_services`]: live-DB guards for Union Omega's hub
 //!   banker and registrars (UO-10).
+//! - [`live_db_union_omega_consumables`]: UO-30, the consumables vendor (63828).
+//! - [`live_db_union_omega_crafting`]: UO-29, the crafting vendors (63820-63827).
+//! - [`live_db_union_omega_human_armor`]: UO-27, Human Armor (63816-63819).
+//! - [`live_db_union_omega_human_weapons`]: UO-11, Human Weapons T1-T4 (63812-63815).
+//! - [`live_db_union_omega_jaffa_armor`]: UO-28, Jaffa Armor (63835-63838).
+//! - [`live_db_union_omega_jaffa_weapons`]: UO-12, Jaffa Weapons T1-T4 (63831-63834).
+//! - [`live_db_union_omega_trainers`]: UO-31, the class trainers (63804-63808).
+//! - [`live_db_union_omega_vendor_common`]: UO-25, the vendor checks all Omega buy lists share.
 //! - [`npc_ability_animation`]: live-DB seed linter (NA43) that every NPC combat
 //!   ability resolves one Ability_End sequence, that 559 resolves the SMG
 //!   burst, and that an armed hostile fires its weapon's ranged attack.
@@ -131,7 +139,15 @@ mod live_db_pet_summons;
 mod live_db_pet_trainer;
 mod live_db_seed_sequences;
 mod live_db_spawnlist_sequence;
+mod live_db_union_omega_consumables;
+mod live_db_union_omega_crafting;
+mod live_db_union_omega_human_armor;
+mod live_db_union_omega_human_weapons;
+mod live_db_union_omega_jaffa_armor;
+mod live_db_union_omega_jaffa_weapons;
 mod live_db_union_omega_services;
+mod live_db_union_omega_trainers;
+mod live_db_union_omega_vendor_common;
 mod live_db_vendor_arbitrage;
 mod live_db_weapon_monikers;
 mod live_db_weapon_ranges;

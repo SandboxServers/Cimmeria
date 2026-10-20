@@ -215,4 +215,5 @@ pub(super) fn allowlist(filename: &str, chain_id: i32) -> bool {
         | ("space_castle_cellblock_chains.sql", 5014) // Preparation_ColMarsh: dialog NPC template default
         | ("space_castle_cellblock_chains.sql", 5015) // Preparation_ColMarsh: dialog NPC template default
     ) || super::beta_e1::allowed(filename, chain_id)
+        || super::union_omega::allowed(filename, chain_id)
 }
