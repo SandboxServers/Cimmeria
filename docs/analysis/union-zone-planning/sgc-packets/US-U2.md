@@ -31,7 +31,7 @@
 
 | Row | Driver steps | Player sees | Server evidence |
 |---|---|---|---|
-| R1 | On Dakara, take 1651 and trigger its departure (DK-30's flow). | the player loads into SGC_W1 on the Gate Room floor in front of gate 27, not 2.4 m above it | `Content: cross-world teleporting entity` with `world = SGC_W1`, position P13 (172.79, -10.9, 12.0); 1651 step 4928 active |
+| R1 | On Dakara, take 1651 and trigger its departure (DK-30's flow). | the player loads into SGC_W1 on the Gate Room floor in front of gate 27, not 2.4 m above it | `Content: cross-world teleporting entity` with `world = SGC_W1`, position P13 (167.00, -10.80, 18.00); 1651 step 4928 active |
 | R2 | Look at Hammond. | `SGCW1_GenHammond` shows "!" | chain 3133 on `player_loaded` |
 | R3 | Press Hammond; page through 5844 (ten screens, no buttons) and close it. | Carter walks to (or appears at) P08 (164.50, -10.80, 18.00) with "!"; Hammond's "!" clears | chain 3134 then 3135; step 4931 active |
 | R4 | **Relog** while on 4931. | Carter stands at P08 with "!" | chain 3139 |

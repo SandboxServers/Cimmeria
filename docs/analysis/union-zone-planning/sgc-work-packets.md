@@ -276,8 +276,9 @@ Packets use the values US-01 records in `docs/analysis/union-sgc-continuation/pl
 | S3 | US-30 | `packet-coder`, movement + items sign-off | ~40k | 1651 C2 arrival, generator, C2b | US-10, US-11, US-01, UD-00 | Done (merged #1937) | [US-30](sgc-packets/US-30.md) |
 | S3 | US-31 | `packet-coder` | ~30k | 1654 Hammond turn-in, both races | US-10, UD-00 | Done (merged #1935) | [US-31](sgc-packets/US-31.md) |
 | S3 | US-32 | `packet-coder`, movement sign-off | ~40k | 1655 Human and C4 | US-10, US-11, UO-00, D-US11 default | Done (merged #1938) | [US-32](sgc-packets/US-32.md) |
-| S4 | US-33 | `packet-coder` | ~35k | 1655 Free Jaffa + disjointness suite | US-31, US-32 | BlockedDependency | [US-33](sgc-packets/US-33.md) |
-| S4 | US-34 | `packet-coder` | ~30k | Return state and relog matrix | US-11, US-20, US-21, US-22, US-30, D-US5 default | BlockedDependency | [US-34](sgc-packets/US-34.md) |
+| S4 | US-33 | `packet-coder` | ~35k | 1655 Free Jaffa + disjointness suite | US-31, US-32 | Done (local, integrated on union-sgc/sgc-final) | [US-33](sgc-packets/US-33.md) |
+| S4 | US-34 | `packet-coder` | ~30k | Return state and relog matrix | US-11, US-20, US-21, US-22, US-30, D-US5 default | Done (local, integrated on union-sgc/sgc-final) | [US-34](sgc-packets/US-34.md) |
+| S4 | US-25 | - | - | Gate 27 arrival pin | - | Dropped: gate 27 pin owned by Dakara DK-SGC-01 on dakara/dk-sgc (D-run7) | - |
 | S4 | US-U1 | lab UAT (ask the user) | lab | Human 1562 → 1570 → Dakara arrival | S3 integrated | UATPending | [US-U1](sgc-packets/US-U1.md) |
 | S4 | US-U2 | lab UAT (ask the user) | lab | 1651 round trip, 1654, 1655 for both races | US-33, US-34 | UATPending | [US-U2](sgc-packets/US-U2.md) |
 | S4 | US-40 | `packet-coder` | ~30k | Authored ambience, droppable | **D-US2, D-US3** | **BlockedDecision (HELD)** | [US-40](sgc-packets/US-40.md) |

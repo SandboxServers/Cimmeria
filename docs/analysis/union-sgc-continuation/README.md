@@ -141,8 +141,9 @@ F13 is already recorded in agent memory (`.claude/agent-memory/mission-systems-a
 | US-30 | chains 3133-3142 | `sgc_w1_union_1651_chains.sql` | `generator_1651.rs` | Open: needs US-10, US-11, US-01, UD-00 |
 | US-31 | chains 3148-3152 | `sgc_w1_union_1654_chains.sql` | `turnin_1654.rs` | Open: needs US-10, UD-00 |
 | US-32 | chains 3156-3165 | `sgc_w1_union_1655_human_chains.sql` | `letter_1655_human.rs` | Open: C4 pin (crossings.md), UO-00, D-US11 default |
-| US-33 | chains 3166-3169 | `sgc_w1_union_1655_jaffa_chains.sql` | `letter_1655_jaffa.rs`, `disjoint.rs` | Open: needs US-31, US-32 |
-| US-34 | chains 3171-3175 | `sgc_w1_union_return_chains.sql` | `return_state.rs` | Open: needs US-11, US-20, US-21, US-22, US-30; D-US5 default |
+| US-33 | chains 3166-3169 | `sgc_w1_union_1655_jaffa_chains.sql` | `letter_1655_jaffa.rs`, `disjoint.rs` | Done (local, integrated on union-sgc/sgc-final) |
+| US-34 | chains 3171-3175 | `sgc_w1_union_return_chains.sql` | `return_state.rs` | Done (local, integrated on union-sgc/sgc-final) |
+| US-25 | none | none | none | Dropped: gate 27 pin owned by Dakara DK-SGC-01 on dakara/dk-sgc (D-run7) |
 | US-40 | chains 3180-3199, dialogs 58000-58049 | `sgc_w1_union_authored_chains.sql` | `authored.rs` | **BlockedDecision (HELD)**: D-US2, D-US3 |
 | US-99 | none | docs | none | Open: all others |
 | US-U1 | none (lab) | none | lab | UATPending: asks the user |
@@ -172,8 +173,9 @@ Status vocabulary: Ready / BlockedDependency / BlockedDecision / Writing / Revie
 | S3 | US-30 | BlockedDependency | US-10, US-11, US-01, UD-00 |
 | S3 | US-31 | BlockedDependency | US-10, UD-00 |
 | S3 | US-32 | BlockedDependency | US-10, US-11, UO-00 pin, D-US11 default |
-| S4 | US-33 | BlockedDependency | US-31, US-32 |
-| S4 | US-34 | BlockedDependency | D-US5 default |
+| S4 | US-33 | Done (local, integrated on union-sgc/sgc-final) | US-31, US-32 |
+| S4 | US-34 | Done (local, integrated on union-sgc/sgc-final) | D-US5 default |
+| S4 | US-25 | Dropped: gate 27 pin owned by Dakara DK-SGC-01 on dakara/dk-sgc (D-run7) | none |
 | S4 | US-40 | BlockedDecision | D-US2, D-US3 (HELD) |
 | S4 | US-U1 | UATPending | lab, asks the user |
 | S4 | US-U2 | UATPending | lab, asks the user |
