@@ -5,22 +5,31 @@ metadata:
   type: project
 ---
 
-# Minigame implementation status (verified 2026-09-17)
+# Minigame implementation status (verified 2026-10-20, MG-72)
 
-## Rust server side — `crates/minigame/src/minigame/games/mod.rs:10-25`
+## Rust server side: five ports live, five shells
 
-Only **two** dispatch outcomes exist:
+`GameKind` in `crates/minigame/src/minigame/games/kind.rs` is the registry (10 kinds). Validation comes from each module's `PORTED` constant.
 
-- `"Livewire"` → `livewire::LivewireGame` — the ONLY real implementation
-  (`games/livewire/mod.rs` 317 L + `setup.rs` 410 L + `tests.rs` 150 L).
-- `"Hack" | "Activate" | "Analyze" | "Bypass" | "Converse" | "ConverseBasicHumanoid"`
-  → `placeholder::PlaceholderGame` (`games/placeholder.rs:16-22`), which accepts
-  exactly one client command, `victory`, and instantly returns `GameOutput::Victory`.
-- Anything else → falls through to Placeholder with a `warn!`.
+- **Server-validated ports** (all `PORTED`): Livewire (always server), CrystalGame, Alignment, GoauldCrystals, ConverseBasicHumanoid. Each in its own dir under `games/` (`livewire`, `crystal_game`, `alignment`, `goauld_crystals`, `converse_humanoid`).
+- **Client-declared shells**: Hack, Activate, Analyze, Bypass, Converse via `placeholder::PlaceholderGame`. A client `victory` counts only after 5 s (D-MG13); a 60 s countdown (240 ticks) then `failure`.
+- `ability_bits()`: Alignment and GoauldCrystals `0x7FFF`, ConverseBasicHumanoid `0x78000` (Trump bits 15-18), Livewire 0 (cheats deferred, MG-LW1 delta 11), shells 0.
+- `processreset`: refused in CrystalGame, Alignment, GoauldCrystals; Converse refuses until a deal ends; **Livewire still accepts it** (open parity item).
+- Alignment's live RNG is OS entropy (authority F2); only the REPL and goldens seed from `session.seed`. The other ports seed from `session.seed`.
+- Item cheats are not ported anywhere (M8); ability cheats work in Alignment and GoauldCrystals. A client `victory` in GoauldCrystals is WARN `unknown_command`.
 
-`Alignment` and `GoauldCrystals` are **commented-out TODOs** at
-`games/mod.rs:13-15` — they fall into the `_` arm and auto-win as placeholders.
-Do not describe them as "implemented".
+## Launch flow and cell methods (MG-21, 22, 24, 62, 63a/b, 64, 74)
+
+- Cell 24 `startMinigame` and 30 `minigameStartCancel` are implemented offer-based (`minigame_launch::accept_offer`, `cancel_offer`); 25 cancels the caller's own session. Flag `CIMMERIA_MINIGAME_START_DIALOG` (default off, 60 s offer) turns on the pre-game dialog; its default stays off until the lab UAT passes.
+- Still stubs: debug 20-23, spectate 26/27, helper register 28/29, call accept/decline/abort 31-33, contact request 34.
+- Level, intelligence and ability mask come from the player at launch (MG-22); tech competency stays 1 (D-MG18, M9).
+- `on_failure_chains` fire on result 2 and 4; 0 and 3 fire nothing (D-MG5). MG-24: an ability effect `StartMinigame` launches for the caster. MG-62: Converse abilities 1327 and 2089. MG-63a/b: the movement hold (`movement_lock::check(new_pos, anchor)`) and the Prison Boot movement-only hold. MG-64: load-time `MINIGAME_TYPE_NAMES` check. MG-74: six Debug Area terminals (`docs/content/debug-area.md#minigame-terminals`).
+- Sessions: `PENDING_SESSION_TTL` 180 s, sweep every 60 s, one live connection claims a ticket (`ticket_already_claimed`).
+- Docs: `docs/gameplay/minigame-system.md`, `docs/reverse-engineering/findings/minigame-wire-formats.md`, CAT-K statuses, campaign README `docs/analysis/minigames/`.
+
+## Historical note: the Python reference (2026-09-17)
+
+Before the ports landed, only Livewire was real and Alignment and GoauldCrystals were commented-out TODOs that auto-won as placeholders. That is no longer true; keep this only to explain the Python findings below.
 
 ## Correction to a common misreading of the Python reference
 
@@ -45,9 +54,9 @@ implemented **on the client**"* — and its `message()` accepts only `victory`.
 packages: Activate, Alignment, Analyze, Bypass, Converse,
 ConverseBasicHumanoid, CrystalGame, DHD, GoauldCrystals, Hack, Livewire.
 
-This **contradicts** `docs/reverse-engineering/findings/minigame-architecture.md:34`
-("no SWF files exist for them"). The packages exist; what is unverified is
-whether the placeholder ones contain a real game or just a shell with a win
+This contradicted `docs/reverse-engineering/findings/minigame-architecture.md`
+("no SWF files exist for them"; corrected in MG-72). The packages exist; the open
+question was whether the placeholder ones contain a real game or just a shell with a win
 button. **Resolved 2026-09-29:** the Hack/Activate/Analyze/Bypass/Converse
 GFX movies each have a `win_btn` that sends `victory` (see
 [[livewire-client-swf-facts]]).

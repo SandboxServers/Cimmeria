@@ -1,53 +1,58 @@
 # CAT-K — Minigame
 
-> **Status re-verification (2026-07-25)** — every CAT-K finding re-checked
-> as **still open**. Deltas are all in the *worse* direction:
+> **Status re-verification (2026-10-20, MG-72)** — each finding re-checked
+> against the merged minigame campaign (MG-01 to MG-71). Every finding now
+> carries its own **Status** line. In short:
 >
-> - **CAT-K-02 (`debug*` methods on regular SGWPlayer): STILL OPEN — and
->   explicitly NOT covered by the #475 GM gate.** `requires_gm` gates
->   `matches!(index, 2 | 3 | 6 | 92)` plus the SGWGmPlayer tail (≥ 109)
->   (`crates/services/src/cell/dispatch/gm_gate.rs:81`). The four
->   MinigamePlayer debug methods sit at CM **20–23**
->   (`crates/services/src/cell/cell_methods/minigame.rs:7-10`), i.e. inside
->   the inherited SGWPlayer range and outside the allow-list. They are
->   still stubs, so this is latent — but do not assume #475 closed it.
-> - **CAT-K-03 (session has no TTL): STILL OPEN, and now provably so.**
->   `MinigameSession` *has* a `created_at: Instant` field
->   (`crates/services/src/minigame/session.rs:27`), but it is written at
->   `register` (`session.rs:86`) and **never read anywhere** — the only
->   other reference in the tree is a test fixture. `authenticate`
->   (`session.rs:100-121`) checks ticket equality and game name, nothing
->   else. The field reads as an abandoned TTL attempt.
-> - **CAT-K-07 (ticket has no IP / connection binding): STILL OPEN.**
->   `authenticate` also does not *consume* the session on success, so one
->   ticket authenticates an unbounded number of concurrent connections
->   until `remove()` is called. The comparison `session.ticket != password`
->   (`session.rs:107`) is a variable-time `String` compare.
-> - **Minigame SFS DoS (→ #532): STILL OPEN.** The accept loop
->   (`crates/services/src/minigame/server.rs:89-101`) spawns a task per
->   connection with **no connection cap, no per-IP limit, and no accept
->   rate limit**, and `handle_connection` (`server.rs:104-128`) applies
->   **no read timeout** to the version or login phase — a peer that
->   connects and never sends holds a task plus a `MAX_MESSAGE_LEN` buffer
->   indefinitely.
+> | Finding | Status |
+> |---|---|
+> | CAT-K-01 shells instant-victory | Mitigated (5 s minimum play for the shells; the five full games are server-validated) |
+> | CAT-K-02 `debug*` methods on SGWPlayer | Open, latent (still stubs 20-23) |
+> | CAT-K-03 session no TTL | Fixed |
+> | CAT-K-04 cancel/end actor | Fixed (server derives the session from the caller) |
+> | CAT-K-05 spectate | Open, latent (stub) |
+> | CAT-K-06 call request | Open, latent (stub) |
+> | CAT-K-07 ticket binding | Fixed (single claim, expected-peer check, connection caps and timeouts) |
+> | CAT-K-08 result idempotency | Partially mitigated |
+> | CAT-K-09 helper registration | Open, latent (stub) |
 >
-> The good architectural property the posture below credits — the SFS
-> server being the only producer of `CellToBaseMsg::MinigameResult` — is
-> unchanged and still holds.
+> File and line references in the finding bodies are from the 2026-05-31
+> audit snapshot. The minigame code moved from `crates/minigame/src/minigame/`
+> to `crates/minigame/src/minigame/` and the cell methods to
+> `crates/cell-methods/src/cell/cell_methods/minigame.rs`; the paths below use
+> the new locations, but the line numbers are stale. Re-locate by symbol.
+>
+> Campaign record: [docs/analysis/minigames/](../../../analysis/minigames/README.md).
+> Behaviour reference: [minigame-system.md](../../../gameplay/minigame-system.md).
+>
+> **Open item (not a filed finding):** the Livewire port still accepts
+> `processreset` and resets the game (it sends `resetgame` and
+> `fullgamestate`). CrystalGame, Alignment and GoauldCrystals refuse it, and
+> ConverseBasicHumanoid refuses until a deal ends. The reset re-runs
+> `init_game` and grants no result, but the later ports refuse it because a
+> reset would refill the clock. Decide whether Livewire should refuse it too;
+> it is a parity question, not a filed finding.
 
 ## Trust posture
 
+> **Update (2026-10-20):** the placeholder paragraph below describes the
+> 2026-05-31 state. The five full games (Livewire, CrystalGame, Alignment,
+> GoauldCrystals, ConverseBasicHumanoid) are server-validated ports, and only
+> the five shell types (Hack, Activate, Analyze, Bypass, Converse) still take
+> a client-declared `victory`, gated by a 5 s minimum play time (D-MG13,
+> `CLIENT_DECLARED_MIN_PLAY`).
+
 The minigame system has a deliberately **good** architecture for server authority — content
 chains issue 256-bit random tickets, the client connects to an in-process SmartFoxServer-
-compatible TCP server with the ticket, and the SFS server (`crates/services/src/minigame/server.rs`)
+compatible TCP server with the ticket, and the SFS server (`crates/minigame/src/minigame/server.rs`)
 is the **only** producer of `CellToBaseMsg::MinigameResult` that fires victory chains.
 The client never directly asserts "I won." All seventeen `Event_NetOut_Minigame*` and
 `Event_NetOut_debug*Minigame` wire messages currently land in cell-method handlers that
-log `UNIMPLEMENTED` (`crates/services/src/cell/cell_methods/minigame.rs`) — none of them
+log `UNIMPLEMENTED` (`crates/cell-methods/src/cell/cell_methods/minigame.rs`) — none of them
 mutate game state in the current Rust server.
 
 However, the architecture has a **load-bearing hole**: the `PlaceholderGame`
-(`crates/services/src/minigame/games/placeholder.rs`) handles every minigame except Livewire
+(`crates/minigame/src/minigame/games/placeholder.rs`) handles every minigame except Livewire
 (Hack, Activate, Analyze, Bypass, Converse, ConverseBasicHumanoid) and instant-victories
 on receipt of the client SFS message `cmd=victory` with no challenge or validation. For
 those minigame types the SFS server simply rubber-stamps whatever the client claims, which
@@ -97,7 +102,7 @@ directly: the only thing "the minigame server decided" is to trust the client's 
   `cmd=victory`.
 - Client behavioral log: n/a (server-side stub bypass).
 - Cross-ref to Rust handler (for the fix author):
-  `crates/services/src/minigame/games/placeholder.rs:39-47` — the `"victory"` arm.
+  `crates/minigame/src/minigame/games/placeholder.rs:39-47` — the `"victory"` arm.
 
 **Attack scenario**
 1. Player accepts a mission whose advance step uses content action
@@ -126,6 +131,7 @@ Python TCP client, not a debugger session.
 ### CAT-K-02 — MinigamePlayer "debug*" cell methods exposed on regular SGWPlayer
 
 **Severity**: High (latent — currently UNIMPLEMENTED)
+**Status**: Open, latent. Cell methods 20-23 are still `UNIMPLEMENTED` stubs and are not in the GM gate allow-list. Remove the four `<Exposed/>` entries or gate the handlers before anyone implements them.
 **Class**: GM-only command exposed on non-GM entity
 **Wire surface**: `Event_NetOut_debugStartMinigame`, `Event_NetOut_debugSpectateMinigame`,
 `Event_NetOut_debugJoinMinigame`, `Event_NetOut_debugMinigameInstance`
@@ -140,7 +146,7 @@ methods (lines 352–367). Every SGWPlayer implements MinigamePlayer
 `SGWGmPlayer.def:395` has the **parallel** `gmDebugStartMinigame` that is the real GM
 surface. The MinigamePlayer "debug*" versions are a stranded duplicate set that any
 non-GM client can dispatch through the standard cell-method router
-(`crates/services/src/cell/cell_methods/minigame.rs:31-62`, indices 20–23). Currently
+(`crates/cell-methods/src/cell/cell_methods/minigame.rs:31-62`, indices 20–23). Currently
 all four handlers just log `UNIMPLEMENTED: debug*Minigame` and don't mutate state, so
 this is latent. But the wire is open, the dispatch is wired, and the next contributor
 implementing "debugStartMinigame" against the def-driven flat method index will
@@ -152,7 +158,7 @@ implement a non-GM debug surface unless they recognise the duplicate.
   emit points.
 - Client behavioral log: n/a (UI exposure is GM client; wire is unconditional).
 - Cross-ref to Rust handler:
-  `crates/services/src/cell/cell_methods/minigame.rs:31-62` (the four `UNIMPLEMENTED`
+  `crates/cell-methods/src/cell/cell_methods/minigame.rs:31-62` (the four `UNIMPLEMENTED`
   arms at indices 20–23).
 
 **Attack scenario** (presumed if implemented as named)
@@ -179,6 +185,7 @@ interface; the def file is the authority.
 ### CAT-K-03 — Minigame session has no TTL → mission stall via no-connect
 
 **Severity**: Medium
+**Status**: Fixed. `PENDING_SESSION_TTL` (180 s) evicts a session nobody connected to, `spawn_sweep` runs every 60 s, and registering again for the same entity supersedes the stale session. Tests: `session_tests.rs` (`expire_pending`, `spawn_sweep_*`).
 **Class**: DoS / TOCTOU
 **Wire surface**: Any chain action that fires `Action::StartMinigame` (player has no direct
 control over the trigger, but can refuse to follow through)
@@ -186,11 +193,11 @@ control over the trigger, but can refuse to follow through)
 but never reads it)
 
 **Trust violation**
-`SessionRegistry::register` (`crates/services/src/minigame/session.rs:60-96`) rejects a
+`SessionRegistry::register` (`crates/minigame/src/minigame/session.rs:60-96`) rejects a
 second registration for the same `entity_id`, but **never evicts stale sessions**.
 `created_at` is captured but `register()` and `authenticate()` don't consult it. A session
 is removed only when the SFS connection lifecycle completes
-(`crates/services/src/minigame/server.rs:356`). If the player never connects to the
+(`crates/minigame/src/minigame/server.rs:356`). If the player never connects to the
 minigame port — which they can choose to do by simply ignoring the `onStartMinigame(URL)`
 client method — the session lives forever, and every subsequent `StartMinigame` chain
 action for that entity logs `Failed to register minigame session (duplicate?)` and
@@ -202,8 +209,8 @@ silently drops the `on_victory_chains` (`crates/services/src/base/world_entry/ce
   legitimate and out of scope.
 - Client behavioral log: n/a.
 - Cross-ref to Rust handler:
-  `crates/services/src/minigame/session.rs:60-96` (`register`, no TTL check),
-  `crates/services/src/minigame/session.rs:124-127` (`remove`, only called by SFS
+  `crates/minigame/src/minigame/session.rs:60-96` (`register`, no TTL check),
+  `crates/minigame/src/minigame/session.rs:124-127` (`remove`, only called by SFS
   lifecycle exit).
 
 **Attack scenario**
@@ -239,6 +246,7 @@ No — no client-side knowledge required; the server data structure is the witne
 ### CAT-K-04 — `minigameStartCancel` / `endCurrentMinigame` cell methods accept no authentication of the cancel actor
 
 **Severity**: Medium (latent — currently UNIMPLEMENTED)
+**Status**: Fixed for the two methods this finding covers. `minigameStart` (24) and `minigameStartCancel` (30) now act on the caller's own pending offer (`accept_offer`, `cancel_offer`), and `endCurrentMinigame` (25) cancels the caller's own session. None of them reads a client-supplied game id, winner or loser.
 **Class**: Authority — actor identity vs target session
 **Wire surface**: `Event_NetOut_MinigameStartCancel`, `Event_NetOut_EndMinigame`
 (MinigamePlayer cell methods 30 and 25)
@@ -263,9 +271,9 @@ the next contributor toward the wrong design.
   `Event_NetOut_MinigameStartCancel` — real client emits.
 - Client behavioral log: n/a.
 - Cross-ref to Rust handler:
-  `crates/services/src/cell/cell_methods/minigame.rs:76-90` (END_CURRENT — unmarshals 12
+  `crates/cell-methods/src/cell/cell_methods/minigame.rs:76-90` (END_CURRENT — unmarshals 12
   bytes vs def's 0),
-  `crates/services/src/cell/cell_methods/minigame.rs:131-136` (START_CANCEL — unmarshals
+  `crates/cell-methods/src/cell/cell_methods/minigame.rs:131-136` (START_CANCEL — unmarshals
   game_id from client).
 
 **Attack scenario** (presumed if implemented against the current arg unmarshal shape)
@@ -290,6 +298,7 @@ a Ghidra trace of the EventHandler::vfunc_0 serialiser. The def says zero args.
 ### CAT-K-05 — `spectateMinigame(playerId)` accepts client-chosen target with no perception check
 
 **Severity**: Medium (latent — currently UNIMPLEMENTED)
+**Status**: Open, latent. `spectateMinigame` (27) and `requestSpectateList` (26) are still stubs.
 **Class**: Information disclosure / privacy
 **Wire surface**: `Event_NetOut_SpectateMinigame`, `Event_NetOut_RequestSpectateList`
 **Demonstrable / Likely-theoretical**: Likely-theoretical (UNIMPLEMENTED, but the wire
@@ -314,7 +323,7 @@ both a privacy/info-disclosure issue (sees the puzzle state) and a co-op-cheat e
   `Event_NetOut_RequestSpectateList`.
 - Client behavioral log: n/a.
 - Cross-ref to Rust handler:
-  `crates/services/src/cell/cell_methods/minigame.rs:98-104` (SPECTATE, UNIMPLEMENTED).
+  `crates/cell-methods/src/cell/cell_methods/minigame.rs:98-104` (SPECTATE, UNIMPLEMENTED).
 
 **Attack scenario** (presumed if implemented without check)
 1. Attacker queries `RequestSpectateList` for game_id covering all active sessions in
@@ -336,6 +345,7 @@ No — the design constraint is clear from the def; the wire shape is just a sin
 ### CAT-K-06 — `minigameCallRequest` accepts client-named recipient with no contact / rate gate
 
 **Severity**: Medium (latent — currently UNIMPLEMENTED)
+**Status**: Open, latent. The call request, accept, decline and abort methods (31-34) are still stubs.
 **Class**: Spam / griefing / unsolicited interaction
 **Wire surface**: `Event_NetOut_MinigameCallRequest`
 **Demonstrable / Likely-theoretical**: Likely-theoretical (UNIMPLEMENTED, but def shape
@@ -364,7 +374,7 @@ above needs to land before the handler is wired up.
 - Ghidra: `019be4dc` `Event_NetOut_MinigameCallRequest`.
 - Client behavioral log: n/a.
 - Cross-ref to Rust handler:
-  `crates/services/src/cell/cell_methods/minigame.rs:159-170` (CONTACT_REQUEST — note
+  `crates/cell-methods/src/cell/cell_methods/minigame.rs:159-170` (CONTACT_REQUEST — note
   this maps to `minigameContactRequest`, NOT `minigameCallRequest`; the cell-method
   index for the call request itself isn't in the current dispatch table).
 
@@ -389,15 +399,16 @@ the stub unmarshals would help the implementing contributor.
 ### CAT-K-07 — Minigame ticket has no IP / connection binding
 
 **Severity**: Low
+**Status**: Fixed. `authenticate_and_claim` lets one live connection claim a ticket (a second one is refused with `ticket_already_claimed`), the accept loop closes connections from any IP that no registered session expects, and it enforces global and per-IP connection caps plus handshake and idle timeouts. The variable-time ticket compare noted on 2026-07-25 is not part of this fix; treat it as residual.
 **Class**: Session hijack (defense in depth)
 **Wire surface**: SFS TCP login (`<msg t='sys'><body action='login'>`) on the minigame port
 **Demonstrable / Likely-theoretical**: Demonstrable (the auth check only validates
 `(entity_id, ticket, game_name)`)
 
 **Trust violation**
-`SessionRegistry::authenticate` (`crates/services/src/minigame/session.rs:99-121`)
+`SessionRegistry::authenticate` (`crates/minigame/src/minigame/session.rs:99-121`)
 validates the ticket and the requested game name but not the client IP. The `handle_connection`
-function (`crates/services/src/minigame/server.rs:94-358`) accepts the connection's `peer`
+function (`crates/minigame/src/minigame/server.rs:94-358`) accepts the connection's `peer`
 address only for tracing, never for binding. The `onStartMinigame(URL)` push to the player
 goes over UDP Mercury without encryption, so any path that exposes that packet (a MITM,
 shoulder-surfing, debug log, future telemetry stream) lets a third party who learns the
@@ -419,9 +430,9 @@ connection close.
   client side).
 - Client behavioral log: n/a.
 - Cross-ref to Rust handler:
-  `crates/services/src/minigame/session.rs:99-121` (authenticate doesn't burn the ticket,
+  `crates/minigame/src/minigame/session.rs:99-121` (authenticate doesn't burn the ticket,
   doesn't check IP),
-  `crates/services/src/minigame/server.rs:81-90` (peer captured for tracing only).
+  `crates/minigame/src/minigame/server.rs:81-90` (peer captured for tracing only).
 
 **Attack scenario**
 1. Attacker obtains a ticket by any means (intercept the UDP packet carrying
@@ -445,6 +456,7 @@ No — server-side data structure proves the gap.
 
 **Severity**: Low (defense in depth — currently only one producer, but the design is
 fragile)
+**Status**: Partially mitigated. Each session sends one result, a result for a replaced ticket is dropped, and a claimed ticket cannot be reused (CAT-K-07). The cell handler still keeps no per-entity de-duplication record, so a second producer would need its own guard.
 **Class**: Idempotency / double-fire
 **Wire surface**: Internal — `CellToBaseMsg::MinigameResult` (originates from the SFS
 server) → `BaseToCellMsg::MinigameResult`
@@ -494,6 +506,7 @@ No.
 ### CAT-K-09 — `RegisterToMinigameHelp` / `UpdateRegisterToMinigameHelp` accept self-registration with no skill check
 
 **Severity**: Low (latent — UNIMPLEMENTED; minor griefing surface if implemented blindly)
+**Status**: Open, latent. `registerToMinigameHelp` and its update (28, 29) are still stubs.
 **Class**: Authority — claimed-skill vs actual-skill
 **Wire surface**: `Event_NetOut_RegisterToMinigameHelp`, `Event_NetOut_UpdateRegisterToMinigameHelp`
 **Demonstrable / Likely-theoretical**: Likely-theoretical
@@ -515,7 +528,7 @@ Cell-method stub at `cell_methods/minigame.rs:105-117` parses
 - Ghidra: `019be424` `Event_NetOut_RegisterToMinigameHelp`, `019be448`
   `Event_NetOut_UpdateRegisterToMinigameHelp`.
 - Cross-ref to Rust handler:
-  `crates/services/src/cell/cell_methods/minigame.rs:105-130`.
+  `crates/cell-methods/src/cell/cell_methods/minigame.rs:105-130`.
 
 **Attack scenario** (presumed if implemented without skill check)
 1. Low-level griefer registers as a helper for `Hack` minigames with a high

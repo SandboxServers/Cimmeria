@@ -53,7 +53,7 @@ Original locators are function names of the R0 tool (`python -I tools/minigame-s
 | 13 | mod.rs:118, 357-363 | `consUsed` and `origInstcc` not tracked | reported in the victory host call | Track both when delta 11 lands. |
 | 14 | mod.rs:433-439 | `aborted()` sends a `failure` command | The original has no abort message; the client drops the socket (see common spec Q4) | Do not send `failure` on abort; report Canceled(0). Closing the window is a socket drop and the client is gone. |
 | 15 | setup.rs:346-366 | wires sorted by depth | generation order | Informational: the client attaches by explicit depth. Leave. |
-| 16 | setup.rs:408 | `timerState` in `fullgamestate` is the string `"0.0"` | the live numeric state (0-3) | Send an integer; `1` while counting. |
+| 16 | setup.rs:408 | `timerState` in `fullgamestate` is the string `"0.0"` | the live numeric state (0-3) | Send an integer; `1` while counting. **Fixed (MG-LW1):** the port sends `SfsValue::Number(timer_state)`, the live state: 0 at join, 1 once counting, 2 and 3 for the cheat states. |
 | 17 | mod.rs fullgamestate | extra `abilityBitfield`, `instcc`, `CA0..4`, `gameReadOut` | original sends the same user fields and `gameReadOut` | No delta; fields match. |
 | 18 | mod.rs processmove | not verified against the original effects | goal: +1 and destroy; `p`: ignored unless `playfieldActive`; `o`: rate += rate*obsTimer/100; `m`: rate += rate*movTimer/100; each sends `countdownupdate`, then `checkForVictory` | Verify Rust applies rate changes and `countdownupdate`; if not, add (client display depends on it, see common spec Q5). |
 
