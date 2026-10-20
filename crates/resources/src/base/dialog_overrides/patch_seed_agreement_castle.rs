@@ -43,7 +43,7 @@ use std::path::PathBuf;
 
 use super::emit::escape_xml_attr;
 use super::parse::parse_cooked_dialog;
-use super::patch::{apply_dialog_patch, ButtonPlan, DialogPatch};
+use super::patch::{apply_dialog_patch, ButtonPlan, DialogPatch, DIALOG_PATCH_TABLES};
 use super::patches_castle::CASTLE_DIALOG_PATCHES;
 
 /// `CARGO_MANIFEST_DIR` is `<workspace>/crates/resources`, so two hops up
@@ -475,6 +475,30 @@ fn the_castle_agreement_scan_is_reading_real_rows() {
             "dialog {dialog_id} must keep exactly one button row in the seed — zero rows would \
              make the OnlyOn comparison above fail for the right reason but this guard checks \
              the scan found the dialog at all"
+        );
+    }
+}
+
+/// The Castle table is registered in `DIALOG_PATCH_TABLES`, the list the server
+/// serves at PAK load and the shared `patch_tests/` guards iterate. An
+/// unlisted table is neither applied nor checked, and no other test notices.
+///
+/// Revert proof: remove `CASTLE_DIALOG_PATCHES` from `DIALOG_PATCH_TABLES`
+/// and this names the first unserved dialog.
+#[test]
+fn the_castle_table_is_registered_for_serving() {
+    let served: Vec<u32> = DIALOG_PATCH_TABLES
+        .iter()
+        .copied()
+        .flatten()
+        .map(|patch| patch.dialog_id)
+        .collect();
+    for patch in CASTLE_DIALOG_PATCHES {
+        assert!(
+            served.contains(&patch.dialog_id),
+            "dialog {} is in CASTLE_DIALOG_PATCHES but the table is not listed in \
+             DIALOG_PATCH_TABLES, so the server never patches it",
+            patch.dialog_id
         );
     }
 }
