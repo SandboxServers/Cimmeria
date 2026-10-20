@@ -89,6 +89,18 @@ impl GameKind {
             Validation::ClientDeclared
         }
     }
+
+    /// The abilityBitfield bits this game implements; 0 until it is ported.
+    pub fn ability_bits(self) -> u32 {
+        if self.validation() != Validation::Server {
+            return 0;
+        }
+        match self {
+            Self::Alignment | Self::GoauldCrystals => 0x7FFF, // cheat bits 0-14
+            Self::ConverseBasicHumanoid => 0x78000,           // Trump bits 15-18
+            _ => 0, // Livewire cheats deferred (MG-LW1 delta 11)
+        }
+    }
 }
 
 #[cfg(test)]

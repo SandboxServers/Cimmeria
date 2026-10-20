@@ -78,6 +78,7 @@ fn common_for(
             MovementReject::OutOfBounds => "bounds",
             MovementReject::OffNavmesh => "navmesh",
             MovementReject::Teleport => "teleport",
+            MovementReject::MovementLocked => "movement_locked",
         },
         position,
     }

@@ -469,9 +469,12 @@ async fn unknown_type_in_session_warns_with_fields() {
 /// A logged-in client that goes silent is closed at the idle deadline and
 /// reported as a cancel, like a closed window. Paused time; the outer guard
 /// fails the test instead of hanging if the deadline is missing.
+///
+/// The idle deadline is 30 s, half the shell's 60 s countdown (MG-64), so
+/// the idle arm fires before the countdown can end the placeholder game.
 #[tokio::test(start_paused = true)]
 async fn an_idle_session_ends_as_canceled() {
-    let idle = Duration::from_secs(60);
+    let idle = Duration::from_secs(30);
     let started = tokio::time::Instant::now();
     // The client never reads: the session's startup frames fit in the
     // socket buffer, and reading would arm timers that race the deadline.
