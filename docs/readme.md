@@ -44,6 +44,10 @@ Want to start contributing? Read **[../CONTRIBUTING.md](../CONTRIBUTING.md)** â€
 | Documentation files | <!-- gen:docs-md-count -->1,531<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
 | Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->16,319<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,707<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->13,812<!-- /gen:tests-ci-gated --> gated in CI) |
 | Live-DB regression guards | <!-- gen:tests-live-db -->2,637<!-- /gen:tests-live-db --> |
+| Documentation files | <!-- gen:docs-md-count -->1,531<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Documentation files | <!-- gen:docs-md-count -->1,531<!-- /gen:docs-md-count --> (`find docs -name '*.md' \| wc -l`) |
+| Rust tests (`#[test]` / `#[tokio::test]`) | <!-- gen:tests-total -->16,319<!-- /gen:tests-total --> across <!-- gen:tests-files -->2,707<!-- /gen:tests-files --> files (<!-- gen:tests-ci-gated -->13,812<!-- /gen:tests-ci-gated --> gated in CI) |
+| Live-DB regression guards | <!-- gen:tests-live-db -->2,637<!-- /gen:tests-live-db --> |
 | End-to-end PL/pgSQL smoke scripts | 3 |
 
 ## Document Map

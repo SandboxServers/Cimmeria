@@ -55,7 +55,7 @@ it on every deploy) is built from it via `db/database.sql`.
      relationship.
    - The guard must fail when the change is reverted.
    - A content chain gets a replay test, including verbs with zero seed rows.
-4. **Run it in a lane slot** (reloads the DB, then runs the CI live-DB
+4. **Run it through the lane** (heavy build, then db slot) (reloads the DB, then runs the CI live-DB
    profile):
 
    ```powershell
