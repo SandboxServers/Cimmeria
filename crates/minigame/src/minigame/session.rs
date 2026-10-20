@@ -524,13 +524,20 @@ impl SessionRegistry {
     /// The connection task keeps its ticket and cancel receiver, so its
     /// teardown cannot erase a replacement session registered immediately.
     pub async fn cancel(&self, entity_id: u32) -> bool {
+        self.cancel_reporting_connected(entity_id).await.is_some()
+    }
+
+    /// [`Self::cancel`], also saying whether a connection task exists.
+    /// `None` when no session was registered. `Some(false)` means the SWF
+    /// never connected, so no task will report a result and the caller must
+    /// tell the cell itself (the TTL sweep cannot see a removed session).
+    pub async fn cancel_reporting_connected(&self, entity_id: u32) -> Option<bool> {
         let mut inner = self.inner.lock().await;
-        let Some(session) = inner.sessions.remove(&entity_id) else {
-            return false;
-        };
+        let session = inner.sessions.remove(&entity_id)?;
+        let connected = session.connected;
         session.cancel.send_replace(true);
         inner.boards.remove(&entity_id);
-        true
+        Some(connected)
     }
 
     /// Whether the current registration belongs to this SmartFox ticket.
@@ -672,6 +679,10 @@ fn generate_ticket() -> String {
 #[cfg(test)]
 #[path = "session_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "session_sweep_tests.rs"]
+mod sweep_tests;
 
 #[cfg(test)]
 #[path = "session_board_tests.rs"]

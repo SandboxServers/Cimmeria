@@ -331,6 +331,7 @@ pub(super) async fn route(msg: CellToBaseMsg, ctx: &DispatchCtx<'_>) {
                 ctx.minigame_registry,
                 ctx.connected,
                 ctx.entity_to_addr,
+                ctx.cell_tx,
             )
             .await
         }

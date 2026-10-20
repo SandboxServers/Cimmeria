@@ -200,8 +200,13 @@ reference through the release. Two paths that never reach a SmartFox
 connection task report result 3 so they free the player too: a launch Base
 cannot carry out (minigame server disabled, no client address) and the expiry
 sweep. A duplicate-launch refusal sends no result, since the first board is
-still running. Open items: a `create_game` failure after the claim, and a
-logout or world change while a session is registered, do not report yet.
+still running. A window close before the SmartFox connection opens reports
+result 3 from Base, since no connection task exists to do it. A result 0 or 3
+for a ticket that a newer launch has replaced is dropped, so the old board
+cannot free the new board's hold. Open items: a `create_game` failure after
+the claim, and a logout or world change while a session is registered, do not
+report yet.
+
 ### Connection limits
 
 The SmartFox port (TCP 30000 by default) is published on every host
