@@ -122,7 +122,7 @@ impl MinigameInstance for PlaceholderGame {
             return vec![];
         }
         self.timed_out = true;
-        tracing::warn!(
+        tracing::debug!(
             game = %self.game_name,
             reason = "timeout",
             "Placeholder minigame timed out after the 60 s countdown"

@@ -48,7 +48,7 @@ Content chain fires Action::StartMinigame { minigame_type, difficulty,
 | Content-triggered start | DONE | `Action::StartMinigame` → `CellToBaseMsg::StartMinigame` → `onStartMinigame(URL)` |
 | Victory-chain callback | DONE | `MinigameResult` forwards to the cell, which runs `on_victory_chains` |
 | Livewire | DONE | Fully ported in `minigame/games/livewire/` |
-| Hack, Activate, Analyze, Bypass, Converse, ConverseBasicHumanoid | PLACEHOLDER | `games/placeholder.rs` — the only accepted client message is `victory`, which is an instant win. Matches the original `Placeholder.py`; these game types had no real SWF beyond a shell |
+| Hack, Activate, Analyze, Bypass, Converse, ConverseBasicHumanoid | PLACEHOLDER | `games/placeholder.rs` — the shell shows a 60 s countdown (`fullgamestate` then `timerupdate`, MG-64); a client `victory` counts only after 5 s (D-MG13); when 240 ticks (60 s) pass with no `victory` the server sends `failure` and the game ends as a defeat (result code 2, `on_failure_chains` fire). Matches the original `Placeholder.py`; these game types had no real SWF beyond a shell |
 | Alignment, GoauldCrystals | NOT IMPL | Still Python-only; the factory has commented-out arms awaiting a port. An unrecognised game name silently falls back to the auto-win placeholder |
 | `startMinigame` | STUB | Cell method 24 logs `UNIMPLEMENTED` |
 | `endCurrentMinigame` | DONE | Cell method 25 cancels the current session and closes SmartFox |
@@ -321,6 +321,7 @@ Either player:
 ## Data References
 
 - **Game-name dispatch**: `minigame/games/mod.rs::create` — the authoritative list of which names resolve to real logic versus the placeholder
+- **Load-time name check**: `content-engine/src/loader/action.rs::MINIGAME_TYPE_NAMES` copies `GameKind::name`; a `start_minigame` row whose target is not an exact, case-sensitive match is dropped at load with WARN `reason=unknown_minigame_type` (MG-64). Keep it in step with `games/kind.rs`.
 - **Result codes**: `MINIGAME_RESULT_*` constants
 - **Archetypes**: Bitmask of `EArchetype` values
 
