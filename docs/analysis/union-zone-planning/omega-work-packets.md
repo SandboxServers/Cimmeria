@@ -117,6 +117,10 @@ D-UO21..D-UO26 are in § Overnight autonomous run 2026-10-18. D-UO27..D-UO38 fol
 | D-UO20, D-UO25, D-UO26 | Accepted | nothing to build |
 | U-D07 (rest) | Authored content rewards: XP 50 × level × factor, naquadah 10 × level × factor; side activities at 50 % | the Asgard missions (UO-16 seal, W10). Hub services give no reward (D-UO37). |
 | H-LBL | No visible label. Provenance lives in SQL comments only. | UO-15 and every authored row |
+| D-UO32 | **Decided (owner, 2026-10-19): (a).** Build nothing for the inn and the battlemaster. | UO-36 skipped |
+| D-UO33 | **Decided (owner, 2026-10-19):** 6964 `Castle Medic`. | UO-33 |
+| UO-98 | **Accepted (owner, 2026-10-19):** an additional status-doc change, beyond the close-out's one. | UO-98 |
+| D-UO34 | **Still deferred** (BlockedDecision). Default per UO-38 ruling R4 and UO-16 ruling R1: mission 1522 and Otin stay deferred; 63838-63839 stay reserved and unsealed. | UO-41, UO-42 |
 
 Decisions the architect made to slice the work. The owner may overrule each one; the cost is in the last column.
 
@@ -127,13 +131,13 @@ Decisions the architect made to slice the work. The owner may overrule each one;
 | D-UO29 | **Price rule.** Weapons 200 × tc, armor 100 × tc, crafting 25 × tc (UO-06 Q2), where tc is the item's `tech_comp`. Consumables keep 25/50/100 at T1 (Slappack, Antidote, Mark III Stimpack) and 25 × tc above. Heavy weapons (UO-06 Q4) are stocked only at their own tier, and only at tier 2 or higher. Never stock sell-list-2 designs 21, 55 or 3437, and stock only `flags & 1024` designs. | Decided (architect, owner may overrule) | One formula across every tier keeps the economy checkable by a test. | re-price the lists in one seed packet |
 | D-UO30 | **Class trainers use trainer list 1.** It already offers each player its own archetype's tree (F36), so the five templates differ only in body, moniker and place. | Decided (architect, owner may overrule) | No per-class list exists, and splitting list 1 is new authored data. The list is named "Debug ability list"; the name is internal and never shown. | a seed packet with per-class lists |
 | D-UO31 | **Crafting trainers are guides.** No crafting-trainer mechanic exists (F37). Each of the eight art spots gets a guide (moniker 7952 `SGC Scientist`, interaction 128) whose click runs an `npc_bark` chain naming the vendors of that specialty. Mapping (inferred): Biology → Biomedical, Electronics → Electronics, Engineering → Power Systems, Physics → Materials. | Decided (architect, owner may overrule) | The owner asked for crafting trainers; this is the nearest thing the engine serves with first-press feedback and no code. | drop UO-35, or a code campaign for a crafting mechanic |
-| D-UO32 | **Inn and battlemaster.** No engine service and no moniker exists (F39). Recommend **BlockedDependency**: build nothing until a rest or PvP-queue service exists. UO-36 is written for the alternative, a bark-only placeholder on moniker 8360 `Airman` that says what the building is. | **BlockedDecision** (owner) | D-UO19 (c) says "wherever an engine service exists", which excludes both. A placeholder could look like a broken service. | - |
-| D-UO33 | **Medic name.** Default moniker 6964 `Castle Medic` (an existing, shipped name). Alternatives: 7000 `Nurse Collins`, 7952 `SGC Scientist`. | **BlockedDecision** (owner); UO-33 uses 6964 unless the owner answers before W9 | F41. | change one `name_id` |
+| D-UO32 | **Inn and battlemaster.** No engine service and no moniker exists (F39). Recommend **BlockedDependency**: build nothing until a rest or PvP-queue service exists. UO-36 is written for the alternative, a bark-only placeholder on moniker 8360 `Airman` that says what the building is. | **Decided** (owner, 2026-10-19): (a), UO-36 skipped | D-UO19 (c) says "wherever an engine service exists", which excludes both. A placeholder could look like a broken service. | - |
+| D-UO33 | **Medic name.** Default moniker 6964 `Castle Medic` (an existing, shipped name). Alternatives: 7000 `Nurse Collins`, 7952 `SGC Scientist`. | **Decided** (owner, 2026-10-19): 6964 | F41. | change one `name_id` |
 | D-UO34 | **Mission 1522 and Otin.** After the UO-16 seal: is 1522 sealed (left as shipped, unreachable) or replaced by the hearing, and does Otin (28544) speak at the hearing? | **BlockedDecision** (owner), asked after UO-16 merges | F42. The seal lists the options with evidence. | - |
 | D-UO35 | **Service interaction bits.** Medic, inn and battlemaster use `NON_A_STORY_MISSION_AVAILABLE` (134217728), as template 390 does; guides use `TRAINER` (128), as template 1300 does; the auctioneer keeps `AUCTION` (4). UO-U1 checks the icon each one shows. | Decided (architect, owner may overrule) | These bits make the client show a use prompt; the chain answers the click. | change one column |
 | D-UO36 | **The Auction House is the Black Market auctioneer** (a spawn of stock template 305). The Black Market window needs the Cimmeria client patch; without it the chat line is the first-press feedback. | Decided (architect, owner may overrule) | F38: the only auction service the engine has. | drop UO-32 |
 | D-UO37 | **Bodies and rewards.** Every service template copies template 1302's row and column list. Human vendors, trainers, guides, the medic, the inn and the battlemaster keep 1302's body without `,WP-Human.WP_SMG_1A`; only the Human Weapons vendors keep the SMG. Jaffa templates take template 100's `body_set` and `components` with `skin_tint` 0. Asgard templates take template 64's `body_set` and `components` with `skin_tint` 0. Trainers take 301's trainer columns: `interaction_type` 128, `trainer_ability_list_id` 1, all four item lists NULL. Hub services give no XP, items or naquadah. | Decided (architect, owner may overrule; body rule refined 2026-10-19) | One body rule keeps 40-odd templates reviewable. U-D07's numbers apply to quests, not to services. | a seed-only follow-up |
-| D-UO38 | **Asgard Programs.** No vendor bit for programs exists, so the four Asgard Programs vendors (27252-27255) carry `INT_VENDOR_WEAPONS` (16384) and the weapons price, 200 × tc. Asgard Armor carries `INT_VENDOR_ARMOR` (8192) at 100 × tc. The four Asgard crafting vendors carry their specialty's craft bit and share lists 63817-63820. UO-38 defines which items count as Asgard programs and armor (they have no visual component) and records the rule. | Decided (architect, owner may overrule) | The weapons bit is the nearest store type the client already draws; programs are the Asgard's weapons. | change four `interaction_type` values and re-price four lists |
+| D-UO38 | **Asgard Programs.** No vendor bit for programs exists, so the four Asgard Programs vendors (27252-27255) carry `INT_VENDOR_WEAPONS` (16384) and the weapons price, 200 × tc. Asgard Armor carries `INT_VENDOR_ARMOR` (8192) at 100 × tc. The four Asgard crafting vendors carry their specialty's craft bit and share lists 63817-63820. UO-38 defines which items count as Asgard programs and armor (they have no visual component) and records the rule. Asgard armor is the 369 designs named `<Fyrstyr\|Annarr\|Pridi\|Fjordi\|Fimm> <Absorption\|Phasic\|Regeneration> <slot>` (the client's `DN_Armor_Asgard_*` names); Asgard programs are the 205 `DN_Weap_Program_*` designs (UO-38 ruling R1, R2). | Decided (architect, owner may overrule) | The weapons bit is the nearest store type the client already draws; programs are the Asgard's weapons. | change four `interaction_type` values and re-price four lists |
 
 ## ID map (D-UO1)
 
@@ -174,7 +178,8 @@ Re-carved 2026-10-19 (D-UO27). Merged rows are marked (merged); every other row 
 | | 63856, 63857 | inn, battlemaster (UO-36, D-UO32) |
 | | 63858, 63859 | Thor (Hologram) 28128, High Councillor Otin 28544 (UO-42, D-UO34) |
 | | 63860-63861 | ambient Airman (clone of 31), Free Jaffa Warrior (clone of 34, name 26723) (merged) |
-| | 63862-63899 | spare |
+| | 63862 | Thor (Hologram) 28128, hub 481 offer (UO-42, UO-16 ruling R1) |
+| | 63863-63899 | spare |
 | `spawnlist` | 63800-63803 | cast (merged) |
 | | 63804-63808 | class trainers (UO-31) |
 | | 63809 | Asgard trainer (UO-39) |
@@ -184,14 +189,15 @@ Re-carved 2026-10-19 (D-UO27). Merged rows are marked (merged); every other row 
 | | 63820, 63821 | banker, Team registrar (merged) |
 | | 63822, 63823 | inn, battlemaster (UO-36) |
 | | 63824-63835 | Asgard vendors (UO-39, UO-40) |
-| | 63836-63839 | Council cast (UO-42) |
+| | 63836-63839 | Council cast (UO-42): 63836 Thor, 63837 Otin (D-UO34); 63838-63839 reserved, unsealed (UO-38 ruling R4) |
 | | 63840 | Command registrar (merged) |
 | | 63841-63846 | Human Weapons: T1-T4 in the SGC wing, T1 at the east pod Weapon spot, T4 at the NW pod Adv. Weapon spot (UO-11) |
 | | 63847-63852 | Human Armor: the same pattern at the east pod Armor and NW pod Adv. Armor spots (UO-27) |
 | | 63853-63857 | Jaffa Weapons: T1-T4 in the Free Jaffa wing, T1 at the Common Area Weapon spot (UO-12); 63858 spare |
 | | 63859-63863 | Jaffa Armor: the same pattern, T1 at the Common Area Armor spot (UO-28); 63864 spare |
 | | 63865-63872 | Consumables: Common Area 3, SGC wing 3, Free Jaffa wing 2 (UO-30) |
-| | 63873-63879 | spare |
+| | 63873 | Asgard hub Thor, world 18, tag `UnionOmega_AsgardThor` (UO-42, UO-16 ruling R1) |
+| | 63874-63879 | spare |
 | | 63880-63901 | ambient (merged, 22 spawns); **63880-63959 may hold ambient templates only** (F44) |
 | | 63960-63971 | crafting vendors: Human 4 in the SGC wing, Common 4 in the Common Area, Jaffa 4 in the Free Jaffa wing (UO-29) |
 | `respawners` | 180 | `Omega Site Gate Plaza` (merged) |
@@ -201,6 +207,10 @@ Re-carved 2026-10-19 (D-UO27). Merged rows are marked (merged); every other row 
 | | 63801 | Bra'tac delivery: dialog 5025, `The SGU`, flags 16777216 |
 | | 63802 | Jackson re-offer: dialog 4641, flags 8388608 |
 | | 63803 | Bra'tac re-offer: dialog 5025, flags 8388608 |
+| `missions` | 63800-63805 | Asgard prologue P1 63800, P2 63801, P3 63802, P3-S 63803, P4 63804, P5 63805 (UO-16 ruling R2, UO-48) |
+| `mission_steps` | 63810-63829 | 11 steps, in mission then step order (UO-48) |
+| `mission_objectives` | 63830-63849 | one per step, same order (UO-48) |
+| `mission_tasks` | 63850-63869 | one per objective, same order (UO-48) |
 | `dialogs` | 63900 | `Union Omega authored barks (never displayed)`, the holder of the bark screens (UO-24) |
 | `dialog_screens` | 63901-63904 | guide lines Biology, Electronics, Engineering, Physics (UO-35) |
 | | 63905 | medic line (UO-33) |
@@ -297,11 +307,11 @@ Beta's old "UO-07/08 receiver fixtures" citation now means the departure fixture
 | UO-30 | W8 | `packet-coder` | ~30k | Consumables: template 63828, list 63816, spawns 63865-63872 | BlockedDependency (W6, W7) | [UO-30](omega-packets/UO-30.md) |
 | UO-31 | W9 | `packet-coder` | ~35k | Class trainers 63804-63808 on trainer list 1 | BlockedDependency (W6, W7; merges after W8) | [UO-31](omega-packets/UO-31.md) |
 | UO-32 | W9 | `packet-coder` | ~35k | Auctioneer: spawn 63819, chain 63850 `open_black_market` | BlockedDependency (W6, W7; merges after W8) | [UO-32](omega-packets/UO-32.md) |
-| UO-33 | W9 | `packet-coder` | ~40k | Medic: template 63855, spawn 63818, chain 63851 (heal + bark 63905) | BlockedDependency (W6, W7; merges after W8); name per D-UO33 | [UO-33](omega-packets/UO-33.md) |
+| UO-33 | W9 | `packet-coder` | ~40k | Medic: template 63855, spawn 63818, chain 63851 (heal + bark 63905) | BlockedDependency (W6, W7; merges after W8); name 6964 (D-UO33) | [UO-33](omega-packets/UO-33.md) |
 | UO-34 | W9 | `packet-coder` | ~30k | Infirmary respawner 181 and its death-position test | BlockedDependency (W6, W7; merges after W8) | [UO-34](omega-packets/UO-34.md) |
 | UO-35 | W9 | `packet-coder` | ~40k | Crafting guides: template 63829, spawns 63810-63817, chains 63852-63855, screens 63901-63904 | BlockedDependency (W6, W7; merges after W8) | [UO-35](omega-packets/UO-35.md) |
-| UO-36 | W9 | `packet-coder` | ~35k | Inn and battlemaster placeholders: templates 63856/63857, spawns 63822/63823, chains 63856/63857, screens 63906/63907 | **BlockedDecision D-UO32** (recommend BlockedDependency: build nothing) | [UO-36](omega-packets/UO-36.md) |
-| UO-37 | W10 | `movement-teleport-advisor` | ~30k | Asgard placement seal: trainer, 12 vendors, Council cast | BlockedDependency (UO-16) | [UO-37](omega-packets/UO-37.md) |
+| UO-36 | W9 | `packet-coder` | ~35k | Inn and battlemaster placeholders: templates 63856/63857, spawns 63822/63823, chains 63856/63857, screens 63906/63907 | Skipped (D-UO32 (a): build nothing) | [UO-36](omega-packets/UO-36.md) |
+| UO-37 | W10 | `movement-teleport-advisor` | ~30k | Asgard placement seal: trainer, 12 vendors, hub Thor, Council cast | BlockedDependency (UO-16) | [UO-37](omega-packets/UO-37.md) |
 | UO-38 | W10 | `items-systems-advisor` | ~30k | Asgard stock seal: lists 63821-63828 | BlockedDependency (UO-16) | [UO-38](omega-packets/UO-38.md) |
 | UO-39 | W10 | `packet-coder` | ~40k | Asgard trainer 63809 and Programs vendors 63843-63846 | BlockedDependency (UO-37, UO-38) | [UO-39](omega-packets/UO-39.md) |
 | UO-40 | W10 | `packet-coder` | ~40k | Asgard Armor and Crafting vendors 63847-63854 | BlockedDependency (UO-39's commit; W8 merged for lists 63817-63820) | [UO-40](omega-packets/UO-40.md) |
@@ -343,8 +353,8 @@ Every packet inlines its rules, the chain contract (chain packets) and its lane 
 | Item | Exact question | Who answers | Blocks |
 |---|---|---|---|
 | U-D04 | **Decided (D-UO25)** by the architect overnight 2026-10-18: yes to both; Omega receives at S4940 with O6055 done and owns S4940 → S4942 and the S4942 completion. The owner may overrule. | architect (owner may overrule) | nothing |
-| **D-UO32** | **Open.** The inn and the battlemaster have no engine service and no moniker (F39). **(a)** BlockedDependency: build nothing until a rest or PvP-queue service exists (recommended). **(b)** A bark-only placeholder each (UO-36: moniker 8360 `Airman`, one authored line saying what the building is, no service). | owner | UO-36 |
-| **D-UO33** | **Open.** Which shipped name does the Omega medic wear: 6964 `Castle Medic` (default), 7000 `Nurse Collins` or 7952 `SGC Scientist`? | owner | UO-33 (uses 6964 if unanswered when W9 starts) |
+| **D-UO32** | **Decided (a), 2026-10-19.** The inn and the battlemaster have no engine service and no moniker (F39). **(a)** BlockedDependency: build nothing until a rest or PvP-queue service exists (recommended). **(b)** A bark-only placeholder each (UO-36: moniker 8360 `Airman`, one authored line saying what the building is, no service). | owner | UO-36 |
+| **D-UO33** | **Decided: 6964.** Which shipped name does the Omega medic wear: 6964 `Castle Medic` (default), 7000 `Nurse Collins` or 7952 `SGC Scientist`? | owner | UO-33 (uses 6964 if unanswered when W9 starts) |
 | **D-UO34** | **Open, asked after UO-16 merges.** Is mission 1522 sealed (left as shipped and unreachable) or replaced by the hearing, and does High Councillor Otin (28544) speak at the hearing? | owner | UO-41, UO-42 |
 | U-D07 (rest) | **Decided 2026-10-19:** authored copy is allowed; authored missions pay XP 50 × level × factor and naquadah 10 × level × factor, side activities 50 %. Services pay nothing (D-UO37). | owner (answered) | nothing |
 | H-LBL | **Decided 2026-10-19:** no visible label; provenance in SQL comments only. | owner (answered) | nothing |
@@ -449,8 +459,8 @@ This is the close-out ledger of every decision made without the owner during the
 
 The owner answered the 2026-10-18 list on 2026-10-19 (§ Owner decisions 2026-10-19). Open now, in priority order:
 
-1. **D-UO32, inn and battlemaster.** Recommend (a), BlockedDependency: build nothing. Blocks UO-36 only.
-2. **D-UO33, the medic's name.** Default 6964 `Castle Medic`. Blocks nothing: UO-33 uses the default if unanswered.
+1. **D-UO32, inn and battlemaster.** Decided (a), 2026-10-19: build nothing. UO-36 is skipped.
+2. **D-UO33, the medic's name.** Decided: 6964 `Castle Medic`.
 3. **D-UO34, mission 1522 and Otin.** Asked after the UO-16 seal merges, with the seal's options. Blocks UO-41 and UO-42.
 4. **Owner review, optional:** D-UO28 (tier placement), D-UO29 (price rule), D-UO30 (list 1 for class trainers), D-UO31 (crafting guides), D-UO35 (interaction bits), D-UO36 (auction is the Black Market) and D-UO37 (bodies, no service rewards). Each is decided and each lists its cost if overruled.
 5. **External dependency:** a playable Asgard start (character-creation row 9 is `NON_CANONICAL_BLOCKED_LEGACY`, asgard-route AS-E1). Blocks UO-41/UO-42 and any Asgard UAT row.

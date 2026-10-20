@@ -41,7 +41,7 @@ Paths are under the worktree. Line numbers are as read on 2026-10-19.
 - **Probe 2026-10-19 (Pass A, no hits):** 99 points, x -120..180 step 30, z 100..500 step 50, y -45, v-tol 40, anchor `modi_seed78` (`nav_inspect`, output `.claude\reports\union-omega\probes\council-pass-a.log`). 0 confirmed hits on component 60 at z ≥ 200. 0 in-tolerance lines at z ≥ 200 on any component: every such line is out of tolerance, on components 226, 235, 237, 239, 243, 244 and 246, with dy +231 to +429 m. 3 in-tolerance lines at the hub's north edge (z 100: component 60 at x 150 and x 180; component 223 at x -90). Pass B has nothing to confirm.
 - **Decision (Form 1, D-UO20):** The Council Chamber has no reachable geometry, so the world-80 fallback stands (D-UO20). The hearing plays in the existing world-80 Command Center geometry, reached by ring region 14 (beam). The Council is shown as hologram actors on the set. The probe found no reachable chamber, so the fallback is the venue for this design.
 - Label: CIMMERIA_AUTHORING for the staging; the beam is RESTORED_SOURCE (`ring_transport_regions.sql`, see [omega-concept-art.md](../../omega-concept-art.md) line 198).
-- Cast count: the Council cast is four spawns (spawnlist 63836-63839, UO-37 seals their points). Area name only here.
+- Cast count: the Council cast is two named speakers, Thor (63836) and Otin (63837, only if D-UO34 says he speaks); UO-37 sealed both points. 63838-63839 stay reserved for a speaker the owner may add under D-UO34 (UO-38 ruling R4). Area name only here.
 
 ## § Prologue
 
@@ -91,7 +91,7 @@ Evidence for 1522: S1-S6. The stock mission is enabled, but its two steps and ob
 
 - **Trainer:** the art draws one Asgard class trainer in the **west small pod** at overview (338, 520) ([omega-concept-art.md](../../omega-concept-art.md) line 113, table line 186). Trainer template 63809 on spawnlist 63809 (UO-39) carries the shipped trainer 27218 (F14 range 27218-27264).
 - **Vendors:** the art draws no Asgard vendor (line 186 count is 1 Asgard, the trainer). The 12 Asgard vendors (27252-27263) come from the shipped client monikers (F14). The split is RESTORED_SOURCE: texts.sql monikers 27252-27255 (Programs tiers 1-4), 27256-27259 (Armor tiers 1-4) and 27260-27263 (Crafting: Biomedical, Electronics, Power Systems, Materials Components). Spawnlist 63824-63835 (UO-37 seals), templates 63843-63854.
-- **Placement keys UO-37 seals:** trainer (spawnlist 63809), 4 Programs (63824-63827), 4 Armor (63828-63831), 4 Crafting (63832-63835), Council cast (63836-63839), hub Thor `asg.thor` (spawn 63873, template 63862).
+- **Placement keys UO-37 seals:** trainer (spawnlist 63809), 4 Programs (63824-63827), 4 Armor (63828-63831), 4 Crafting (63832-63835), Council cast (63836, 63837; 63838-63839 reserved), hub Thor `asg.thor` (spawn 63873, template 63862).
 - **Art vs shipped:** the art gives positions for the trainer only; the vendor positions are for UO-37 to prove on the navmesh.
 
 ## § Slice
