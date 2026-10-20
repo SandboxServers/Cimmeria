@@ -257,21 +257,17 @@ fn started_sends_full_game_state_with_every_key() {
 }
 
 #[test]
-fn process_reset_resends_the_initial_board() {
+fn process_reset_is_refused_and_changes_nothing() {
     let mut game = AlignmentGame::with_board(&make_session(1, 1, 7), fixture_board());
     game.started();
     game.board[0][0] = Piece::plain(9);
     game.time_remaining = 50.25;
     game.goal_scores = vec![9, 9, 9];
-    let outputs = game.message("processreset", &HashMap::new());
-    let vars = sent(&outputs);
-    assert_eq!(vars["numResets"].as_f64(), Some(1.0));
-    assert_eq!(vars["timeRemaining"].as_f64(), Some(120.0));
-    assert_eq!(numbers(&vars["goalScores"]), vec![0.0, 0.0, 0.0]);
-    assert_eq!(board_of(vars), fixture_board());
-
-    let again = game.message("processreset", &HashMap::new());
-    assert_eq!(sent(&again)["numResets"].as_f64(), Some(2.0));
+    assert!(game.message("processreset", &HashMap::new()).is_empty());
+    assert_eq!(game.num_resets, 0);
+    assert_eq!(game.time_remaining, 50.25);
+    assert_eq!(game.goal_scores, vec![9, 9, 9]);
+    assert_eq!(game.board[0][0].kind, 9);
 }
 
 #[test]
