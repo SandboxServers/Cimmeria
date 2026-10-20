@@ -294,3 +294,41 @@ async fn accept_refuses_an_entity_that_left_its_space() {
 
     assert_refused(&drain(&mut rx));
 }
+
+/// MG-24: two launches queued by effect scripts start in queue order with the
+/// switch off, and the queue is empty after the drain.
+/// Revert: a drain that leaves the queue in place, or sends nothing, fails this.
+#[tokio::test]
+async fn drain_starts_queued_launches_in_order_and_empties_the_queue() {
+    let mut mgr = mgr_with_player();
+    let (tx, mut rx) = mpsc::channel(8);
+    mgr.minigame_launch.queue.push(request());
+    mgr.minigame_launch.queue.push(MinigameLaunchRequest {
+        difficulty: 4,
+        ..request()
+    });
+
+    drain_launch_queue(&tx, &mut mgr).await;
+
+    let sent = drain(&mut rx);
+    let difficulties: Vec<u32> = sent
+        .iter()
+        .filter_map(|m| match m {
+            CellToBaseMsg::StartMinigame { difficulty, .. } => Some(*difficulty),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(difficulties, vec![3, 4], "{sent:?}");
+    assert!(mgr.minigame_launch.queue.is_empty());
+}
+
+/// MG-24: a drain with nothing queued sends nothing.
+#[tokio::test]
+async fn drain_of_an_empty_queue_sends_nothing() {
+    let mut mgr = mgr_with_player();
+    let (tx, mut rx) = mpsc::channel(8);
+
+    drain_launch_queue(&tx, &mut mgr).await;
+
+    assert!(drain(&mut rx).is_empty());
+}

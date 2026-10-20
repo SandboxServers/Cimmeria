@@ -196,6 +196,18 @@ async fn refuse_offer(
     false
 }
 
+/// Start every launch an effect script queued (MG-24), in queue order, through
+/// [`start_or_offer`], so the dialog switch applies to ability launches too.
+/// The queue is taken first: a launch queued while draining waits for the
+/// next drain. Called by combat after the effects of a tick or flush resolve.
+pub async fn drain_launch_queue(tx: &mpsc::Sender<CellToBaseMsg>, space_mgr: &mut SpaceManager) {
+    let queued = std::mem::take(&mut space_mgr.minigame_launch.queue);
+    let start_dialog = cimmeria_entity::minigame_feature::start_dialog();
+    for req in queued {
+        start_or_offer(req, start_dialog, tx, space_mgr).await;
+    }
+}
+
 /// The client 53 arguments in the order `onStartMinigameDialog` declares them:
 /// `Name`, `Difficulty`, `TCLevel`, `Verb`, `ArchetypeBitfield`, `CanPlay`,
 /// `CanCall`, `CanSpectate`. Strings are wide strings, integers little-endian.

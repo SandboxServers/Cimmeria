@@ -89,6 +89,8 @@ pub async fn stat_buff_tick_at(
 ) -> usize {
     // Interrupts a script queued on a path that never flushed (a pulse).
     super::interrupt::resolve_all_interrupts(tx, space_mgr).await;
+    // Minigame launches an ability's effect script queued (MG-24).
+    cimmeria_cell_world::cell::minigame_launch::drain_launch_queue(tx, space_mgr).await;
     let work = space_mgr.entities_with_stat_buff_work();
     if work.is_empty() {
         return 0;
@@ -127,6 +129,7 @@ pub async fn flush_stat_buff_timers(
     flush_duration_timers(entity_id, now, tx, space_mgr).await;
     flush_ledger_state_field(entity_id, tx, space_mgr).await;
     super::interrupt::resolve_interrupts_for(entity_id, tx, space_mgr).await;
+    cimmeria_cell_world::cell::minigame_launch::drain_launch_queue(tx, space_mgr).await;
 }
 
 /// `onStateFieldUpdate` to `entity_id` and its witnesses when ledger entries
