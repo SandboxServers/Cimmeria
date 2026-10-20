@@ -290,7 +290,7 @@ pub(super) fn number_list<T: Into<f64> + Copy>(items: &[T]) -> SfsValue {
 }
 
 impl AlignmentGame {
-    /// The `fullgamestate` message (spec section 5), sent on start and reset.
+    /// The `fullgamestate` message (spec section 5), sent on start.
     /// The item cheats are off (`instcc -1`, `CA0`-`CA4 0`) until AL3b.
     pub(super) fn full_game_state(&self) -> HashMap<String, SfsValue> {
         let size = self.board.len();

@@ -432,3 +432,22 @@ fn logged_client_text_is_cut_at_the_cap() {
     assert_eq!(log_text(&"é".repeat(100)).chars().count(), LOG_CAP);
     assert_eq!(log_text("processreset"), "processreset");
 }
+
+#[test]
+fn long_client_command_is_cut_in_the_refusal_log() {
+    use crate::test_support::LogCapture;
+    use tracing::Level;
+
+    let capture = LogCapture::install();
+    let mut game = AlignmentGame::with_board(&make_session(1, 1, 7), transcript_a_board());
+    assert!(game.message(&"x".repeat(1000), &HashMap::new()).is_empty());
+
+    let event = capture
+        .find_message(Level::WARN, "command refused")
+        .expect("a refusal is logged");
+    // Fields are Debug-quoted, so the cut text is `LOG_CAP` characters plus two quotes.
+    assert!(
+        event.fields["cmd"].chars().count() <= LOG_CAP + 2,
+        "the logged command is cut: {event:#?}"
+    );
+}
