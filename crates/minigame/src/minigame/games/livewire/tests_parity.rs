@@ -1,5 +1,5 @@
 //! MG-LW1 parity tests: one per changed delta in `spec-livewire-parity.md`.
-//! Each test reverts to the old value on the matching line of the port.
+//! Each test fails against the pre-MG-LW1 value of its delta.
 
 use super::*;
 
@@ -124,12 +124,22 @@ fn electrode_positions_are_whole() {
 /// Delta 5: the obstacle count is `floor(..) * 2`, so it is even and not zero.
 #[test]
 fn obstacle_total_is_doubled() {
-    let g = board(0, 4, 30);
-    let obstacles = g.wires.values().filter(|w| w.name.starts_with('o')).count();
-    assert!(
-        obstacles > 0 && obstacles % 2 == 0,
-        "obstacle count {obstacles}"
-    );
+    // (difficulty, tech competency, expected obstacle wires) = 2 * floor(base + tc * coef)
+    for (difficulty, tc, expected) in [
+        (1, 1, 4),
+        (1, 6, 6),
+        (2, 1, 4),
+        (2, 6, 6),
+        (3, 1, 6),
+        (3, 6, 8),
+        (4, 1, 6),
+        (4, 6, 8),
+        (4, 30, 20),
+    ] {
+        let g = board(0, difficulty, tc);
+        let n = g.wires.values().filter(|w| w.name.starts_with('o')).count();
+        assert_eq!(n, expected, "difficulty {difficulty} tc {tc}");
+    }
 }
 
 /// Delta 6: `obstacle_timer = base + 5 * floor((tc - 1) / 5)`, base 5/6/7/9.
@@ -178,7 +188,11 @@ fn item_cheat_is_refused_with_a_warning() {
     use tracing::Level;
 
     let capture = LogCapture::install();
-    let mut g = board(0, 1, 30);
+    let mut session = make_session(1, 30);
+    session.entity_id = 77;
+    session.player_name = Some("Hacker".to_string());
+    let mut g = LivewireGame::new(&session);
+    g.init_game();
     let outputs = g.message("activateitemcheat", &HashMap::new());
     assert!(outputs.is_empty());
     let event = capture
@@ -188,6 +202,8 @@ fn item_cheat_is_refused_with_a_warning() {
         event.has_field("reason", "item_cheat_unavailable"),
         "{event:#?}"
     );
+    assert!(event.has_field("entity_id", "77"), "{event:#?}");
+    assert!(event.has_field("entity_name", "Hacker"), "{event:#?}");
 }
 
 /// Delta 11: `activateabilitycheat` is refused with WARN and no output.
@@ -197,7 +213,11 @@ fn ability_cheat_is_refused_with_a_warning() {
     use tracing::Level;
 
     let capture = LogCapture::install();
-    let mut g = board(0, 1, 30);
+    let mut session = make_session(1, 30);
+    session.entity_id = 77;
+    session.player_name = Some("Hacker".to_string());
+    let mut g = LivewireGame::new(&session);
+    g.init_game();
     let outputs = g.message("activateabilitycheat", &HashMap::new());
     assert!(outputs.is_empty());
     let event = capture
@@ -207,6 +227,8 @@ fn ability_cheat_is_refused_with_a_warning() {
         event.has_field("reason", "ability_cheat_unavailable"),
         "{event:#?}"
     );
+    assert!(event.has_field("entity_id", "77"), "{event:#?}");
+    assert!(event.has_field("entity_name", "Hacker"), "{event:#?}");
 }
 
 /// Delta 14: `aborted()` sends nothing (the client has closed) and cancels the game.
