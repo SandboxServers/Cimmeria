@@ -7,6 +7,7 @@
 //! the clock, victory and timeout in [`rules`].
 
 use std::collections::HashMap;
+use std::time::Instant;
 
 use rand::rngs::StdRng;
 use rand::SeedableRng;
@@ -26,7 +27,7 @@ mod tests_rules;
 #[cfg(test)]
 mod tests_setup;
 
-/// Flipped to `true` by MG-CG3 only, once victory is server-decided.
+/// `true` since MG-CG3: victory and the timeout are server-decided, so [`create`] builds the real game.
 pub(crate) const PORTED: bool = true;
 
 pub(crate) fn create(session: &MinigameSession) -> Box<dyn MinigameInstance> {
@@ -50,6 +51,13 @@ struct CrystalGame {
     timer_state: u32,
     /// Seconds left on the clock, counted down by [`rules`] while it runs.
     time_remaining: f64,
+    /// Wall-clock end of the 16 s, set by the first valid click. Checked
+    /// against the real time, so the tick count alone cannot extend it.
+    clock_deadline: Option<Instant>,
+    /// Wall-clock end of the wait for a first click, set in `started`.
+    idle_deadline: Option<Instant>,
+    /// Refused commands so far; see [`CrystalGame::count_refusal`].
+    refusals: u32,
     /// `Some` once the game has ended: `"victory"`, `"defeat"` on timeout, or
     /// `"canceled"` after a disconnect.
     outcome: Option<&'static str>,
@@ -58,6 +66,11 @@ struct CrystalGame {
 /// The longest client command name written to a log row. The client chooses
 /// `cmd`, so an unbounded value would let one connection flood the log.
 const MAX_LOGGED_CMD: usize = 32;
+
+/// Refusals logged at WARN per session. Later refusals are still answered
+/// with nothing, but are not logged, so a flood of bad frames cannot flood
+/// the log.
+const REFUSAL_LOG_CAP: u32 = 32;
 
 /// `cmd` cut to [`MAX_LOGGED_CMD`] characters for a log row.
 fn capped_cmd(cmd: &str) -> String {
@@ -76,13 +89,26 @@ impl CrystalGame {
             board,
             timer_state: 0,
             time_remaining: f64::from(setup::TIME_LIMIT),
+            clock_deadline: None,
+            idle_deadline: None,
+            refusals: 0,
             outcome: None,
         }
     }
 
+    /// Counts one refused command and says whether it is logged: the first
+    /// [`REFUSAL_LOG_CAP`] are, the rest are only counted.
+    fn count_refusal(&mut self) -> bool {
+        self.refusals = self.refusals.saturating_add(1);
+        self.refusals <= REFUSAL_LOG_CAP
+    }
+
     /// Logs a refused command at WARN with the player's identity and the
     /// `reason` that the packet's message rules name. The caller sends nothing.
-    fn reject(&self, cmd: &str, reason: &'static str) {
+    fn reject(&mut self, cmd: &str, reason: &'static str) {
+        if !self.count_refusal() {
+            return;
+        }
         let logged_cmd = capped_cmd(cmd);
         tracing::warn!(
             entity_id = self.entity_id,
@@ -98,10 +124,18 @@ impl CrystalGame {
 
 impl MinigameInstance for CrystalGame {
     fn started(&mut self) -> Vec<GameOutput> {
+        self.idle_deadline = Some(Instant::now() + rules::PRE_CLICK_LIMIT);
         vec![GameOutput::Send(setup::fullgamestate(&self.board))]
     }
 
     fn message(&mut self, cmd: &str, params: &HashMap<String, SfsValue>) -> Vec<GameOutput> {
+        // Every frame is checked against the deadlines first, the click
+        // included, so a late frame cannot win or act after the end. Only
+        // the frame itself is dropped; junk frames do not extend the wait.
+        let expired = self.expire();
+        if !expired.is_empty() {
+            return expired;
+        }
         match cmd {
             "processmove" => {
                 let out = self.process_move(params);

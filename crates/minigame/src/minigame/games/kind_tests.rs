@@ -16,8 +16,8 @@ fn every_kind_round_trips_through_its_name() {
     }
 }
 
-/// No port has flipped `PORTED`, so every kind (Livewire included) implements
-/// no ability bits yet, and an unknown name has none either.
+/// No kind implements an ability bit yet: Livewire's cheats are deferred and
+/// the ported CrystalGame has none (MG-CG2 ruling). An unknown name has none either.
 #[test]
 fn every_kind_has_no_ability_bits_until_its_port_is_live() {
     for kind in GameKind::ALL {

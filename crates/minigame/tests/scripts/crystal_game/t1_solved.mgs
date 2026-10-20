@@ -54,3 +54,4 @@ start
 < updateslot {num=3, x=6, y=7}
 < victory
 < victory
+tick 100

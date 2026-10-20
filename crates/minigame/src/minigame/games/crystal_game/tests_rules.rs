@@ -2,9 +2,10 @@
 //! server-decided victory, the timeout and the validation flag.
 
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 use super::setup::{Board, HEIGHT};
-use super::CrystalGame;
+use super::{CrystalGame, REFUSAL_LOG_CAP};
 use crate::minigame::game::{GameOutput, MinigameInstance};
 use crate::minigame::protocol::SfsValue;
 use crate::minigame::repl::check_script;
@@ -152,4 +153,49 @@ fn abort_stops_the_clock() {
 fn crystal_game_is_server_validated_with_no_ability_bits() {
     assert_eq!(crate::minigame::games::validation("CrystalGame"), "server");
     assert_eq!(crate::minigame::games::ability_bits("CrystalGame"), 0);
+}
+
+#[test]
+fn a_click_after_the_clock_deadline_loses_and_does_not_win() {
+    // The tick count is still far from zero, but the 16 s of wall time has
+    // passed: the late click is refused and the game is lost, not won.
+    let mut game = game_on(one_click_from_solved());
+    game.timer_state = 1;
+    game.clock_deadline = Some(Instant::now() - Duration::from_secs(1));
+    assert_eq!(
+        labels(&game.message("processmove", &click(0.0, 0.0))),
+        ["failure", "Failure"]
+    );
+    assert_eq!(game.outcome, Some("defeat"));
+    assert!(game.board == one_click_from_solved());
+}
+
+#[test]
+fn a_tick_after_the_clock_deadline_loses_even_with_ticks_left() {
+    let mut game = game_on(Board::solved());
+    game.timer_state = 1;
+    game.time_remaining = 10.0;
+    game.clock_deadline = Some(Instant::now() - Duration::from_secs(1));
+    assert_eq!(labels(&game.tick()), ["failure", "Failure"]);
+}
+
+#[test]
+fn junk_frames_do_not_extend_the_wait_for_a_first_click() {
+    let mut game = game_on(one_click_from_solved());
+    game.started();
+    game.idle_deadline = Some(Instant::now() - Duration::from_secs(1));
+    assert_eq!(
+        labels(&game.message("bogus", &HashMap::new())),
+        ["failure", "Failure"]
+    );
+    assert!(game.board == one_click_from_solved());
+}
+
+#[test]
+fn refusals_are_logged_only_up_to_the_cap() {
+    let mut game = game_on(Board::solved());
+    let logged = (0..REFUSAL_LOG_CAP + 8)
+        .filter(|_| game.count_refusal())
+        .count();
+    assert_eq!(logged, REFUSAL_LOG_CAP as usize);
 }
