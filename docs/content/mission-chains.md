@@ -1584,16 +1584,19 @@ There are **no relog-restore chains** in this file, and the reserved 6008-6020 b
 
 #### Mission 582: "Conversation Minigame With Marsh" (MG-61)
 
-Step 2307 (objective 2675, next step 3274) is enabled by `mission_steps.sql`. Chains live in [`db/resources/Content/Seed/minigames_m582_chains.sql`](../../db/resources/Content/Seed/minigames_m582_chains.sql), block 24000-24001.
+Step 2307 (objective 2675, next step 3274) has `step_enabled` set to true by `mission_steps.sql` to match this packet; no server code reads that flag yet, so it gates nothing. The live gates are `mission 582 active` and `step 2307 active`, which only an offer would set (see the offer gap). Chains live in [`db/resources/Content/Seed/minigames_m582_chains.sql`](../../db/resources/Content/Seed/minigames_m582_chains.sql), block 24000-24001.
 
 | Chain | Trigger | Condition | Action |
 |---|---|---|---|
 | 24000 | `interact_tag` `CmdCenter_Marsh` | `world eq 68`; `mission 582 active`; `step 2307 active`; `step 1360/4038` and `step 1361/4694` not active | `display_dialog 2433`; `start_minigame ConverseBasicHumanoid` (difficulty 1, victory 24001) |
-| 24001 | `on_victory_chains` of 24000 (no trigger) | none | `complete_objective 582 2675`; `advance_step 582 3274` |
+| 24001 | `on_victory_chains` of 24000 (no trigger) | none | `advance_step 582 3274` (closes the open objective 2675 as part of the step change; mission stays active) |
 
 **Offer gap (M10).** Mission 582 cannot be offered today. Its giver Blackstock (NPC 948) has no spawn and set 530 is unbound, so the replay test sets the mission and step active directly. Dialog 2431 (`accepts_mission_id = 582`) stays as is. There is no failure chain: a loss leaves step 2307 active.
 
-**Caveat, objective 2675.** It is the only required objective of step 2307, so `complete_objective` ends the mission rather than only the step (the F19 trap, `progression.rs`). Chain 24001 follows the packet as written; revisit it before mission 582 is offered.
+**Objective 2675.** It is the only required objective of step 2307. Completing it ends the mission rather than only the step (the F19 trap, `progression.rs`), so chain 24001 advances straight to 3274 and never calls `complete_objective`. This amends the MG-61 packet, which named `complete_objective` first.
+
+**Owner follow-up, overlap with Marsh chain 6512.** Chain 24000 is not disjoint from 6512 (`harset_opcore_chains.sql`, the 1361 Praxis offer). With 582 active at step 2307 and 1361 not active, the normal state, both chains match one click: 4457 shows, then 2433, then the minigame starts. No single extra condition on 24000 excludes 6512, because 6512's gate is a conjunction and its negation is not one condition; requiring 1361 active would break the launcher. Options for the owner: add `mission_status 582 neq active` to both 6511 and 6512 (they must stay identical), or sequence the 582 and 1361 offers in the M10 close-out. Not reachable until 582 can be offered.
+
 #### Mission 742: "Giving the Walls Ears" [CONFIRMED]
 
 | Field | Value |

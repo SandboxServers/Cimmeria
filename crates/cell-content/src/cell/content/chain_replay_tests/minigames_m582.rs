@@ -1,6 +1,7 @@
 //! Mission 582 step 2307, Converse with Marsh (MG-61), seeded in
 //! [`db/resources/Content/Seed/minigames_m582_chains.sql`] (launcher 24000,
-//! victory 24001) and enabled in `mission_steps.sql` (step 2307).
+//! victory 24001), with `step_enabled` set to true in `mission_steps.sql`
+//! (step 2307; no server code reads that flag yet).
 //!
 //! Mission 582 cannot be offered yet (its giver has no spawn, M10), so these
 //! tests set the mission and step active directly. The launcher shares the
@@ -12,7 +13,7 @@
 //! exactly one `StartMinigame(ConverseBasicHumanoid, …)` under its step gate;
 //! it resolves nothing off the step or under the Marsh guard; the executor
 //! emits one `CellToBaseMsg::StartMinigame`; the victory chain's action list
-//! matches the seed. A fifth pins the step-enable half of the change.
+//! matches the seed. A fifth pins the seeded `step_enabled` flag as data only.
 
 use cimmeria_content_engine::actions::Action;
 use cimmeria_content_engine::chain::ChainEngine;
@@ -48,6 +49,16 @@ async fn resolve_marsh(
     chain_id: i32,
     params: &[(&str, &str)],
 ) -> Vec<(i64, Action)> {
+    resolve_marsh_in_world(pool, chain_id, MARSH_WORLD_ID, params).await
+}
+
+/// As [`resolve_marsh`], but fire `CmdCenter_Marsh` in `world_id`.
+async fn resolve_marsh_in_world(
+    pool: &PgPool,
+    chain_id: i32,
+    world_id: i32,
+    params: &[(&str, &str)],
+) -> Vec<(i64, Action)> {
     let chain = load_single_chain_for_test(pool, chain_id)
         .await
         .unwrap_or_else(|e| panic!("DB query for chain {chain_id} must succeed: {e}"))
@@ -57,7 +68,7 @@ async fn resolve_marsh(
     engine.register_chain(chain);
 
     let mut ctx = ExecutionContext::new();
-    ctx.world_id = Some(MARSH_WORLD_ID);
+    ctx.world_id = Some(world_id);
     ctx.set_param("entity_tag".to_string(), serde_json::json!(MARSH_TAG));
     for (key, value) in params {
         ctx.set_param(key.to_string(), serde_json::json!(value));
@@ -131,7 +142,8 @@ async fn live_db_chain_24000_starts_converse_and_reaches_base() {
     );
 }
 
-/// The launcher must resolve nothing once step 2307 is completed, and nothing
+/// The launcher must resolve nothing once step 2307 is completed or mission
+/// 582 is no longer active, nothing outside Marsh's world 68, and nothing
 /// while Marsh's mission 1360 (step 4038) or 1361 (step 4694) is active on
 /// its own Marsh step. Either would steal the click from those chains.
 #[tokio::test]
@@ -150,6 +162,28 @@ async fn live_db_chain_24000_resolves_nothing_off_step_or_under_marsh_guard() {
         fired_by(&actions, LAUNCHER_ID),
         0,
         "chain {LAUNCHER_ID} must NOT fire once step 2307 is completed; got {actions:?}",
+    );
+
+    let mission_completed = [
+        ("mission_582_status", "completed"),
+        ("mission_582_step_2307_status", "active"),
+        ("mission_1360_step_4038_status", "not_active"),
+        ("mission_1361_step_4694_status", "not_active"),
+    ];
+    let actions = resolve_marsh(&pool, LAUNCHER_ID, &mission_completed).await;
+    assert_eq!(
+        fired_by(&actions, LAUNCHER_ID),
+        0,
+        "chain {LAUNCHER_ID} must NOT fire once mission 582 is completed (step 2307 still \
+         active); got {actions:?}",
+    );
+
+    let actions = resolve_marsh_in_world(&pool, LAUNCHER_ID, 1, &converse_gate()).await;
+    assert_eq!(
+        fired_by(&actions, LAUNCHER_ID),
+        0,
+        "chain {LAUNCHER_ID} must NOT fire outside world {MARSH_WORLD_ID} (here world 1); \
+         got {actions:?}",
     );
 
     let guard_1360 = [
@@ -181,10 +215,11 @@ async fn live_db_chain_24000_resolves_nothing_off_step_or_under_marsh_guard() {
     );
 }
 
-/// Chain 24001 (Converse victory) must complete objective 2675 and then
-/// advance mission 582 to step 3274, in that order.
+/// Chain 24001 (Converse victory) must only advance mission 582 to step 3274.
+/// A `complete_objective` 2675 action would end the mission, because 2675 is
+/// the only required objective of step 2307.
 #[tokio::test]
-async fn live_db_chain_24001_victory_completes_2675_then_advances_to_3274() {
+async fn live_db_chain_24001_victory_advances_to_3274_without_completing_2675() {
     let pool = require_db_or_skip!();
     let actions = load_single_chain_for_test(&pool, VICTORY_ID as i32)
         .await
@@ -194,38 +229,23 @@ async fn live_db_chain_24001_victory_completes_2675_then_advances_to_3274() {
 
     assert_eq!(
         actions.len(),
-        2,
-        "chain {VICTORY_ID} must resolve exactly 2 actions (complete objective + \
-         advance); got {actions:?}",
+        1,
+        "chain {VICTORY_ID} must resolve exactly 1 action (advance to 3274); got {actions:?}",
     );
     assert!(
         matches!(
             &actions[0],
-            Action::CompleteObjective {
-                mission_id: 582,
-                objective_id: 2675
-            }
-        ),
-        "chain {VICTORY_ID}'s first action must complete objective 2675 of mission \
-         582; got {:?}",
-        actions[0],
-    );
-    assert!(
-        matches!(
-            &actions[1],
             Action::AdvanceStep {
                 mission_id: 582,
                 step_id: 3274
             }
         ),
-        "chain {VICTORY_ID}'s second action must advance mission 582 to step 3274; \
-         got {:?}",
-        actions[1],
+        "chain {VICTORY_ID}'s only action must advance mission 582 to step 3274; got {:?}",
+        actions[0],
     );
 }
-
-/// The seeded step 2307 row is enabled. Without this the step is never
-/// reachable, whatever the chain says.
+/// The seeded step 2307 row carries `step_enabled = true` to match MG-61. No
+/// server code reads the flag yet, so this pins the data only, not reachability.
 #[tokio::test]
 async fn live_db_seeded_step_2307_of_mission_582_is_enabled() {
     let pool = require_db_or_skip!();
