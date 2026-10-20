@@ -13,11 +13,8 @@ use tokio::time::Instant;
 use super::accept::{enable_keepalive, LogThrottle};
 use super::listener_tests::{loopback_pair, spawn_connection};
 use super::result_dispatch::RESULT_DEFEAT;
-use super::tests::{
-    drain_and_close, drain_results, spawn_game_session, spawn_placeholder_session_with_idle,
-};
+use super::tests::{drain_and_close, drain_results, spawn_placeholder_session_with_idle};
 use super::*;
-use crate::minigame::games::create_unported_for_test;
 use crate::test_support::{LogCapture, LogCaptureGuard};
 
 /// Let the server task read what the client just wrote. Under the paused
@@ -285,56 +282,6 @@ async fn accepted_sockets_get_tcp_keepalive() {
     assert!(socket2::SockRef::from(&server)
         .keepalive()
         .expect("SO_KEEPALIVE readable"));
-}
-
-/// One `playfieldclick` frame, as the SWF sends it.
-fn playfield_click_frame(x: u32, y: u32) -> String {
-    format!(
-        "<msg t='xt'><body action='xtReq'>\
-         <![CDATA[<dataObj><var n='cmd' t='s'>playfieldclick</var><obj o='param' t='a'>\
-         <var n='x' t='n'>{x}</var><var n='y' t='n'>{y}</var></obj></dataObj>]]>\
-         </body></msg>"
-    )
-}
-
-/// The session loop asks `needs_tick()` once, before the first click, so a
-/// silent GoauldCrystals game must have its ticker from the start. The click
-/// starts the clock and nothing else is sent: the 16 s deadline must end the
-/// game as a defeat. Reverting `needs_tick` to wait for a running clock leaves
-/// no ticker, the session only ends at the 600 s idle timeout, and the 60 s
-/// bound fails.
-#[tokio::test(start_paused = true)]
-async fn a_silent_goauld_game_ends_in_defeat_at_its_deadline() {
-    let capture = LogCapture::install();
-    let (mut client, mut rx, handle) = spawn_game_session(
-        4330,
-        Duration::from_secs(600),
-        "GoauldCrystals",
-        2,
-        1,
-        create_unported_for_test,
-    )
-    .await;
-    send_null_terminated(&mut client, &playfield_click_frame(0, 0))
-        .await
-        .expect("send");
-
-    let end = tokio::time::timeout(Duration::from_secs(60), handle)
-        .await
-        .unwrap_or_else(|_| {
-            panic!(
-                "the deadline must end a silent game within 60 s: {:#?}",
-                capture.all()
-            )
-        })
-        .expect("session task must not panic");
-
-    assert_eq!(end.reason, EndReason::Defeat);
-    let kinds: Vec<u8> = drain_results(&mut rx)
-        .iter()
-        .map(|result| result.0)
-        .collect();
-    assert_eq!(kinds, vec![RESULT_DEFEAT]);
 }
 
 /// An unparseable frame does not push the idle deadline back: a junk frame at

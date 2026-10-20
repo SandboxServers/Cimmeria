@@ -34,10 +34,8 @@ mod tests_setup;
 /// Flipped to `true` by MG-GC3 only, once victory is server-decided.
 pub(crate) const PORTED: bool = false;
 
-/// Builds the game for a session. Until [`PORTED`] is set the placeholder
-/// answers, so a half-ported game is never reachable from content.
-
-/// The GoauldCrystals game for a session, ported or not. Only loop tests use this, so the session loop can run the real game before [`PORTED`] is set.
+/// The GoauldCrystals game for a session, ported or not. Only loop tests use
+/// this, so the session loop can run the real game before [`PORTED`] is set.
 #[cfg(test)]
 pub(crate) fn create_unported_for_test(
     session: &MinigameSession,
@@ -45,6 +43,8 @@ pub(crate) fn create_unported_for_test(
     Some(Box::new(GoauldCrystalsGame::new(session)))
 }
 
+/// Builds the game for a session. Until [`PORTED`] is set the placeholder
+/// answers, so a half-ported game is never reachable from content.
 pub(crate) fn create(session: &MinigameSession) -> Box<dyn MinigameInstance> {
     if PORTED {
         Box::new(GoauldCrystalsGame::new(session))

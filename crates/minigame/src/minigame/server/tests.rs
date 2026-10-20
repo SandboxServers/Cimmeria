@@ -160,17 +160,10 @@ pub(super) async fn spawn_placeholder_session(
     spawn_placeholder_session_with_idle(entity_id, ListenerLimits::default().idle_timeout).await
 }
 
-/// Stand up a loopback session for `game_name` with an explicit idle timeout.
-/// An unknown name gets the placeholder instance.
-pub(super) async fn spawn_game_session(
+/// [`spawn_placeholder_session`] with an explicit idle timeout.
+pub(super) async fn spawn_placeholder_session_with_idle(
     entity_id: u32,
     idle_timeout: Duration,
-    game_name: &str,
-    difficulty: u32,
-    seed: u32,
-    make: fn(
-        &crate::minigame::session::MinigameSession,
-    ) -> Option<Box<dyn crate::minigame::game::MinigameInstance>>,
 ) -> (
     TcpStream,
     mpsc::Receiver<CellToBaseMsg>,
@@ -188,10 +181,10 @@ pub(super) async fn spawn_game_session(
         .register(
             entity_id,
             7,
-            game_name.into(),
-            difficulty,
+            "Hack".into(),
             1,
-            seed,
+            1,
+            0,
             0,
             0,
             1,
@@ -205,10 +198,10 @@ pub(super) async fn spawn_game_session(
     // Go through the claiming path rather than building a `MinigameSession`
     // by hand, so the test walks the same call the login handler makes.
     let session = registry
-        .authenticate_and_claim(entity_id, &ticket, game_name)
+        .authenticate_and_claim(entity_id, &ticket, "Hack")
         .await
         .expect("session must authenticate and claim");
-    let game = make(&session).expect("game instance");
+    let game = create_game(&session).expect("placeholder instance");
 
     let (tx, rx) = mpsc::channel(16);
     let handle = tokio::spawn(async move {
@@ -224,18 +217,6 @@ pub(super) async fn spawn_game_session(
         .await
     });
     (client, rx, handle)
-}
-
-/// [`spawn_placeholder_session`] with an explicit idle timeout.
-pub(super) async fn spawn_placeholder_session_with_idle(
-    entity_id: u32,
-    idle_timeout: Duration,
-) -> (
-    TcpStream,
-    mpsc::Receiver<CellToBaseMsg>,
-    tokio::task::JoinHandle<SessionEnd>,
-) {
-    spawn_game_session(entity_id, idle_timeout, "Hack", 1, 0, create_game).await
 }
 
 /// Wait until the server is in its game loop, then drop the socket. Reading
