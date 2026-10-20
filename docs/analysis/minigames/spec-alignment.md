@@ -191,8 +191,8 @@ The extension's table (confirmed, `initGame`) is shown beside the Python table i
 | `checkForCascade` | none | `hexmove` animation done (`checkForMoreMatches`) | `checkForCascade` | Phase `AwaitCheck` | `bypasshexspinner` or `cascadecheckcomplete` |
 | `doscore` | none | `cascadeCheckComplete` | `doScore` | Phase `AwaitScore` | `updatescore`, `timerupdate`, maybe `activate` |
 | `processreset` | none | Reset button (`resetGame`) | `numResets++`, `initGame(false)` | Phase `Ready` | `fullgamestate` |
-| `callhint` | none | Sent by the client: hint bubble click (`callhint`); end of `hintHelpOut`, so before every `swappieces` (`resethinttimer`) | `getHint`, then `timeRemaining -= 5`, `timerupdate` | Phase `Ready` | `hint` (if found), `timerupdate` |
-| `resethinttimer` | none | Sent by the client: hint bubble click (`callhint`); end of `hintHelpOut`, so before every `swappieces` (`resethinttimer`) | `hintLastTime = timeRemaining`, `hintTimer = 10` | Any phase but `Ended` | none |
+| `callhint` | none | Sent by the client: hint bubble click (`onRelease`) | `getHint`, then `timeRemaining -= 5`, `timerupdate` | Phase `Ready` | `hint` (if found), `timerupdate` |
+| `resethinttimer` | none | Sent by the client: end of `hintHelpOut`, so before every `swappieces` | `hintLastTime = timeRemaining`, `hintTimer = 10` | Any phase but `Ended` | none |
 | `processmove` | `cardType`, `target`, `current` | **Never sent by this movie** | Calls `processMove`, which is undefined: a no-op | Reject | none |
 | `dovictory` | none | `activate_btn` click after `activate` | `doVictory`, unconditionally | Goals met **and** phase `Ready`. Otherwise ignore it. | `victory`, end code 1 |
 | `activateitemcheat` | `cheatNum` (Number 0-4) | Item cheat button | `activateItemCheatRequest` | Phase `Ready`, slot available (section 7) | per cheat, then `itemcheatstate` |
@@ -253,12 +253,15 @@ if m empty:
     spin = 2; m = checkForMatches(b)
     if m empty:
         send hexspinner{matches: [], spinCount: 3, echo...}; hintTimerPause = false; return
-flood = checkNeighborMatches(m); expanded = checkPowerUpMatches(flood)
-currentMatches = flood; spinCount = spin
+spinCount = spin; flood = checkNeighborMatches(m)
+expanded = checkPowerUpMatches(flood)   # sends feedback{spinCount, powerUpValues} here
+currentMatches = flood
 send hexspinner{matches: expanded, spinCount: spin, echo...}
 for cell in expanded: b[cell] = 0
 gameArray = b; checkForMatchCheat()
 ```
+
+`spinCount` is stored before `checkPowerUpMatches`, so `feedback` carries this swap's `spin`.
 
 Rotation 2 is applied on top of rotation 1's writes, but because all three cells are rewritten from the request's types the result is as if it started from the original board. On a no-match the board is unchanged; the client rotates three times, back to the start.
 
