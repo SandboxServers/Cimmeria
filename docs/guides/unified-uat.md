@@ -225,6 +225,7 @@ Start from a **fresh character**, so the tutorial and every "first time" check r
 | 14. Lab CLI | Owner only; the lab and a terminal | Lab CLI LX-U1 to LX-U16 ([Lab CLI](#lab-cli-labexe)); LX-U13 to LX-U15 drive a client, so ask first | 30 min |
 | 15a. Dakara M1-M2 | New Free Jaffa, then a GM visitor | Dakara DK-U1 to DK-U17, DK-P1 to DK-P9 ([Dakara_E1](#dakara_e1)) | 75 min |
 | 15b. Dakara M3-M5 | A Free Jaffa with the 1647 setup; a Tau'ri for DK-U37 | Dakara DK-U18 to DK-U37 in order ([Dakara_E1](#dakara_e1)) | 150 min |
+| 16. SGC_W1 | New Human Soldier at the end of the SGC tutorial, then a new Free Jaffa for SG-9 | SGC_W1 SG-1 to SG-10 ([SGC_W1](#sgc_w1-human-union-start)); do it after the Dakara session so the returns from Dakara exist | 120 min |
 
 Relog at every step boundary that a section asks for. Most defects these campaigns found were "correct until you relog".
 
@@ -1268,6 +1269,28 @@ The table and column names match `db/sgw/Missions/Tables/sgw_mission.sql`, `db/s
 
 Logs: `event = 'content.send_system_mail' AND chain_id = 8002` (`outcome = 'sent'` once per character); `body CONTAINS 'granting stargate address' AND stargate_id = 5`; a refused dial is `onDialGate` with a `reason`.
 
+## SGC_W1 (Human Union start)
+
+World 58, the Stargate Command tutorial base, after the opening missions. A Human plays Carter's virus, the Failsafe, the route fights, the Gate Room and the requisitions room, then leaves through the gate to Dakara; later a Human comes back from Dakara for the generator and the Omega hand-off, and a Free Jaffa gets a shorter route with no tutorial and no letter. Full steps with the evidence to check: [U1](../analysis/union-sgc-continuation/uat-U1.md) (to the Dakara arrival), [U2](../analysis/union-sgc-continuation/uat-U2.md) (the round trip, 1654 and 1655 for both races) and [U3](../analysis/union-sgc-continuation/uat-U3.md) (the Omega arrival). The ledger stays canonical: [union-sgc-continuation](../analysis/union-sgc-continuation/README.md).
+
+**Status:** Not yet run in a client. The chains are covered by database and executor tests only.
+
+**Prerequisites:** a local server build from the SGC branch (not the colo); a fresh Human Soldier; a Free Jaffa for the 1655 rows; the Dakara and Omega arrivals present on the same build.
+
+| # | Do | Expect | Report if | Lab result |
+|---|---|---|---|---|
+| SG-1 | As a fresh Human, finish "Locate Col. Carter", press Carter, then the glowing terminal, then Carter again | The virus mission is accepted, the terminal glows, then the next mission is offered | A press needs two clicks to show anything | Not yet run |
+| SG-2 | Close the radio report, walk to the Failsafe room with Carter following, press the Failsafe Device | Carter follows (she may stall; say where), the device completes the mission, two new missions appear | The mission cannot finish, or Carter blocks you | Not yet run |
+| SG-3 | Kill the first Jaffa pair, then the second pair, relog, then kill the five route Jaffa | Each mission completes in turn; after the relog the finished pair is gone and the five remain | A pair reappears after a relog, or a mission does not complete | Not yet run |
+| SG-4 | Enter Gate Control, press the gate terminal, kill the three Gate Room Jaffa, then relog | A monologue plays, the Jaffa die, you, Carter and Hammond move for the briefing, and after the relog the Gate Room is empty | The Jaffa attack the moment you enter, or any of the three people is missing | Not yet run |
+| SG-5 | Open the six requisition crates | Five show what you found; the sixth only changes its marker; the mission completes | A crate cannot be pressed or sits inside a wall | Not yet run |
+| SG-6 | Accept the next mission from Hammond or Teal'c, then press Harriman | The gate dials; about 3 s later you load into Dakara at the gate | A crash, a hang or no arrival | Not yet run |
+| SG-7 | Return from Dakara with the generator mission, brief with Hammond, press Carter, then Harriman | You land on the Gate Room floor; you get the generator once; you go back to Dakara still holding it | The generator is lost or doubled | Not yet run |
+| SG-8 | Come back for the turn-in, press Hammond, then Woolsey, then Hammond, then Harriman | One Woolsey with "?"; her mark clears on accept; you get a letter once; the gate sends you to Omega | Two Woolseys, no letter, or two letters | Not yet run |
+| SG-9 | Repeat SG-8 as a Free Jaffa | No tutorial mission appears; no letter; you still reach Omega | A tutorial offer, a story Jaffa in the base, or a letter | Not yet run |
+| SG-10 | On the Omega arrival, read your position and facing | You stand on the gate plaza at x 34.70, y -51.28, z -142.00 | Wrong place, in a wall or in the air. Facing is recorded, not graded (the heading is not carried) | Not yet run |
+
+Known limitations: [release notes](../analysis/union-sgc-continuation/README.md#known-limitations-and-release-notes).
 ## Beta_Site_Evo_1
 
 World 23, the first shared Union field map. A Human, a Free Jaffa and an Asgard each arrive from Omega on a different mission and play a different arc: Human 1423 to 1427, Free Jaffa 1500 to 1502, Asgard 481 to 479. Row ids are the campaign's UB-U ids. Design and evidence: [reference page](../content/beta-site-e1.md), [ledger](../analysis/union-beta-e1-continuation/README.md), [packet spec](../analysis/union-zone-planning/beta-packets/UB-90-99.md).
