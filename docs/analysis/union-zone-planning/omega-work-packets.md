@@ -2,7 +2,7 @@
 
 > **Type:** How-to (dispatch contract and ledger)
 > **Audience:** the Union Omega coordinator, packet-coders, review-fixers, mission, movement and items advisors
-> **Last updated:** 2026-10-19 (owner decisions and the services re-slice, F36-F44, D-UO27..D-UO37), first written 2026-10-18 against `origin/main` @ `d1bba0400`; developer concept art added the same day @ `eb29b0c2c` (F27-F35, D-UO15..D-UO20)
+> **Last updated:** 2026-10-19 (UO-98 close-out 2: packet statuses after W6-W10 merged on the campaign branch; owner decisions and the services re-slice, F36-F44, D-UO27..D-UO37), first written 2026-10-18 against `origin/main` @ `d1bba0400`; developer concept art added the same day @ `eb29b0c2c` (F27-F35, D-UO15..D-UO20)
 > **Status:** W1-W5 merged (PRs #1890, #1902, #1908, #1911 and the close-out PR); never walked in a client. On 2026-10-19 the owner answered D-UO8, D-UO11, D-UO16..D-UO19, U-D07, H-LBL, U-D08 and U-D11 (§ Owner decisions 2026-10-19). The services and Asgard work is re-sliced into waves W6-W11 (§ Packets, § Waves). D-UO32 and D-UO33 are decided (owner); D-UO34 (1522 and Otin) has an architect default the owner may overrule (2026-10-19, W11). W6-W9 and UO-37..UO-40 are merged into the campaign branch; UO-41/UO-42 stay stubs. Not run: the UO-U1 lab UAT, which the owner runs. This file replaces the 2026-10-14 table (UO-00..UO-08); see § Renumbering.
 > **Companions:** [Omega campaign](omega.md), [Union execution contract](execution-contract.md), [SGC packets](sgc-work-packets.md), [Dakara packets](dakara-work-packets.md), [Beta packets](beta-work-packets.md), [Asgard route](asgard-route.md), [developer concept art](omega-concept-art.md), [packet folder](omega-packets/), [resume card](omega-packets/RESUME.md)
 
@@ -287,37 +287,37 @@ Beta's old "UO-07/08 receiver fixtures" citation now means the departure fixture
 | UO-13 | W4 | `rust-gameserver-dev` (Sonnet) | ~50k | Executed handshake tests and Beta fixtures | Done in the close-out PR (reviewed, ship) | [UO-13](omega-packets/UO-13.md) |
 | UO-U1 | W5, W11 | the owner, in the lab (a Sonnet lead may grade the owner's logs afterwards) | 4 runs, then R5 | Client walk of both routes, re-offer, services; § R5 adds the W8-W9 services | UATPending, not run; **the owner runs it** (agents never use the lab) | [UO-U1](omega-packets/UO-U1.md) |
 | UO-99 | W5 | `documentation-writer` | ~35k | Close-out: chains, zone audit, UAT, status (once) | Done in the close-out PR, overnight form (no UO-U1 results, no vendors) | [UO-99](omega-packets/UO-99.md) |
-| UO-15 | W6 | `documentation-writer` | ~25k | Authored copy: the bark lines 63901-63907 and their speaker names, no label (H-LBL) | Ready | [UO-15](omega-packets/UO-15.md) |
-| UO-16 | W6 | `mission-systems-advisor` | ~40k | Asgard design seal: the Council hearing, the databank prologue (item 3399), 481 and gate 6, options for D-UO34 | Ready | [UO-16](omega-packets/UO-16.md) |
-| UO-17 | W6 | `movement-teleport-advisor` | ~35k | Placement seal, SGC wing (21 points) | Ready | [UO-17](omega-packets/UO-17.md) |
-| UO-18 | W6 | `movement-teleport-advisor` | ~30k | Placement seal, Free Jaffa wing (15 points) | Ready | [UO-18](omega-packets/UO-18.md) |
-| UO-19 | W6 | `movement-teleport-advisor` | ~30k | Placement seal, Common Area vendors and auctioneer (14 points) | Ready | [UO-19](omega-packets/UO-19.md) |
-| UO-20 | W6 | `movement-teleport-advisor` | ~30k | Placement seal, Common Area buildings: medic, respawner 181, inn, battlemaster, six guides | Ready; starts after UO-19 returns | [UO-20](omega-packets/UO-20.md) |
-| UO-21 | W7 | `items-systems-advisor` | ~35k | Stock seal: Human Weapons and Armor lists 63800-63807 | Ready (needs no W6 output) | [UO-21](omega-packets/UO-21.md) |
-| UO-22 | W7 | `items-systems-advisor` | ~35k | Stock seal: Jaffa Weapons and Armor lists 63808-63815 | Ready (needs no W6 output) | [UO-22](omega-packets/UO-22.md) |
-| UO-23 | W7 | `items-systems-advisor` | ~30k | Stock seal: Consumables 63816, crafting 63817-63820 | Ready (needs no W6 output) | [UO-23](omega-packets/UO-23.md) |
-| UO-24 | W7 | `packet-coder` | ~40k | Scaffold: seed markers, two new seed files, includes, linter lines, the `interact_tag` guard amendment, stub test files | Ready | [UO-24](omega-packets/UO-24.md) |
-| UO-25 | W7 | `packet-coder` | ~30k | cell-catalog vendor test helper `live_db_union_omega_vendor_common.rs` | after UO-24 | [UO-25](omega-packets/UO-25.md) |
-| UO-26 | W7 | `packet-coder` | ~30k | chain-replay services helper `union_omega/services_common.rs` | after UO-24 | [UO-26](omega-packets/UO-26.md) |
+| UO-15 | W6 | `documentation-writer` | ~25k | Authored copy: the bark lines 63901-63907 and their speaker names, no label (H-LBL) | Merged on the campaign branch (a worknote; reviewed) | [UO-15](omega-packets/UO-15.md) |
+| UO-16 | W6 | `mission-systems-advisor` | ~40k | Asgard design seal: the Council hearing, the databank prologue (item 3399), 481 and gate 6, options for D-UO34 | Merged on the campaign branch (a worknote; reviewed) | [UO-16](omega-packets/UO-16.md) |
+| UO-17 | W6 | `movement-teleport-advisor` | ~35k | Placement seal, SGC wing (21 points) | Merged on the campaign branch (a worknote; reviewed) | [UO-17](omega-packets/UO-17.md) |
+| UO-18 | W6 | `movement-teleport-advisor` | ~30k | Placement seal, Free Jaffa wing (15 points) | Merged on the campaign branch (a worknote; reviewed) | [UO-18](omega-packets/UO-18.md) |
+| UO-19 | W6 | `movement-teleport-advisor` | ~30k | Placement seal, Common Area vendors and auctioneer (14 points) | Merged on the campaign branch (a worknote; reviewed) | [UO-19](omega-packets/UO-19.md) |
+| UO-20 | W6 | `movement-teleport-advisor` | ~30k | Placement seal, Common Area buildings: medic, respawner 181, inn, battlemaster, six guides | Merged on the campaign branch (a worknote; reviewed) | [UO-20](omega-packets/UO-20.md) |
+| UO-21 | W7 | `items-systems-advisor` | ~35k | Stock seal: Human Weapons and Armor lists 63800-63807 | Merged on the campaign branch (a worknote; reviewed) | [UO-21](omega-packets/UO-21.md) |
+| UO-22 | W7 | `items-systems-advisor` | ~35k | Stock seal: Jaffa Weapons and Armor lists 63808-63815 | Merged on the campaign branch (a worknote; reviewed) | [UO-22](omega-packets/UO-22.md) |
+| UO-23 | W7 | `items-systems-advisor` | ~30k | Stock seal: Consumables 63816, crafting 63817-63820 | Merged on the campaign branch (a worknote; reviewed) | [UO-23](omega-packets/UO-23.md) |
+| UO-24 | W7 | `packet-coder` | ~40k | Scaffold: seed markers, two new seed files, includes, linter lines, the `interact_tag` guard amendment, stub test files | Merged on the campaign branch (reviewed; PR to `main` pending) | [UO-24](omega-packets/UO-24.md) |
+| UO-25 | W7 | `packet-coder` | ~30k | cell-catalog vendor test helper `live_db_union_omega_vendor_common.rs` | Merged on the campaign branch (reviewed; PR to `main` pending) | [UO-25](omega-packets/UO-25.md) |
+| UO-26 | W7 | `packet-coder` | ~30k | chain-replay services helper `union_omega/services_common.rs` | Merged on the campaign branch (reviewed; PR to `main` pending) | [UO-26](omega-packets/UO-26.md) |
 | UO-11 | W8 | `packet-coder` | ~40k | Human Weapons T1-T4: templates 63812-63815, lists 63800-63803, spawns 63841-63846 | BlockedDependency (W6, W7) | [UO-11](omega-packets/UO-11.md) |
 | UO-12 | W8 | `packet-coder` | ~40k | Jaffa Weapons T1-T4: templates 63831-63834, lists 63808-63811, spawns 63853-63857 | BlockedDependency (W6, W7) | [UO-12](omega-packets/UO-12.md) |
-| UO-27 | W8 | `packet-coder` | ~40k | Human Armor T1-T4: templates 63816-63819, lists 63804-63807, spawns 63847-63852 | BlockedDependency (W6, W7) | [UO-27](omega-packets/UO-27.md) |
-| UO-28 | W8 | `packet-coder` | ~40k | Jaffa Armor T1-T4: templates 63835-63838, lists 63812-63815, spawns 63859-63863 | BlockedDependency (W6, W7) | [UO-28](omega-packets/UO-28.md) |
-| UO-29 | W8 | `packet-coder` | ~40k | Crafting: 12 templates (Human, Common, Jaffa × four specialties), lists 63817-63820, spawns 63960-63971 | BlockedDependency (W6, W7) | [UO-29](omega-packets/UO-29.md) |
-| UO-30 | W8 | `packet-coder` | ~30k | Consumables: template 63828, list 63816, spawns 63865-63872 | BlockedDependency (W6, W7) | [UO-30](omega-packets/UO-30.md) |
-| UO-31 | W9 | `packet-coder` | ~35k | Class trainers 63804-63808 on trainer list 1 | BlockedDependency (W6, W7; merges after W8) | [UO-31](omega-packets/UO-31.md) |
-| UO-32 | W9 | `packet-coder` | ~35k | Auctioneer: spawn 63819, chain 63850 `open_black_market` | BlockedDependency (W6, W7; merges after W8) | [UO-32](omega-packets/UO-32.md) |
-| UO-33 | W9 | `packet-coder` | ~40k | Medic: template 63855, spawn 63818, chain 63851 (heal + bark 63905) | BlockedDependency (W6, W7; merges after W8); name 6964 (D-UO33) | [UO-33](omega-packets/UO-33.md) |
-| UO-34 | W9 | `packet-coder` | ~30k | Infirmary respawner 181 and its death-position test | BlockedDependency (W6, W7; merges after W8) | [UO-34](omega-packets/UO-34.md) |
-| UO-35 | W9 | `packet-coder` | ~40k | Crafting guides: template 63829, spawns 63810-63817, chains 63852-63855, screens 63901-63904 | BlockedDependency (W6, W7; merges after W8) | [UO-35](omega-packets/UO-35.md) |
+| UO-27 | W8 | `packet-coder` | ~40k | Human Armor T1-T4: templates 63816-63819, lists 63804-63807, spawns 63847-63852 | Merged on the campaign branch (reviewed; PR to `main` pending) | [UO-27](omega-packets/UO-27.md) |
+| UO-28 | W8 | `packet-coder` | ~40k | Jaffa Armor T1-T4: templates 63835-63838, lists 63812-63815, spawns 63859-63863 | Merged on the campaign branch (reviewed; PR to `main` pending) | [UO-28](omega-packets/UO-28.md) |
+| UO-29 | W8 | `packet-coder` | ~40k | Crafting: 12 templates (Human, Common, Jaffa × four specialties), lists 63817-63820, spawns 63960-63971 | Merged on the campaign branch (reviewed; PR to `main` pending) | [UO-29](omega-packets/UO-29.md) |
+| UO-30 | W8 | `packet-coder` | ~30k | Consumables: template 63828, list 63816, spawns 63865-63872 | Merged on the campaign branch (reviewed; PR to `main` pending) | [UO-30](omega-packets/UO-30.md) |
+| UO-31 | W9 | `packet-coder` | ~35k | Class trainers 63804-63808 on trainer list 1 | Merged on the campaign branch (reviewed; PR to `main` pending) | [UO-31](omega-packets/UO-31.md) |
+| UO-32 | W9 | `packet-coder` | ~35k | Auctioneer: spawn 63819, chain 63850 `open_black_market` | Merged on the campaign branch (reviewed; PR to `main` pending) | [UO-32](omega-packets/UO-32.md) |
+| UO-33 | W9 | `packet-coder` | ~40k | Medic: template 63855, spawn 63818, chain 63851 (heal + bark 63905) | Merged on the campaign branch (name 6964, D-UO33) | [UO-33](omega-packets/UO-33.md) |
+| UO-34 | W9 | `packet-coder` | ~30k | Infirmary respawner 181 and its death-position test | Merged on the campaign branch (reviewed; PR to `main` pending) | [UO-34](omega-packets/UO-34.md) |
+| UO-35 | W9 | `packet-coder` | ~40k | Crafting guides: template 63829, spawns 63810-63817, chains 63852-63855, screens 63901-63904 | Merged on the campaign branch (reviewed; PR to `main` pending) | [UO-35](omega-packets/UO-35.md) |
 | UO-36 | W9 | `packet-coder` | ~35k | Inn and battlemaster placeholders: templates 63856/63857, spawns 63822/63823, chains 63856/63857, screens 63906/63907 | Skipped (D-UO32 (a): build nothing) | [UO-36](omega-packets/UO-36.md) |
-| UO-37 | W10 | `movement-teleport-advisor` | ~30k | Asgard placement seal: trainer, 12 vendors, hub Thor, Council cast | BlockedDependency (UO-16) | [UO-37](omega-packets/UO-37.md) |
-| UO-38 | W10 | `items-systems-advisor` | ~30k | Asgard stock seal: lists 63821-63828 | BlockedDependency (UO-16) | [UO-38](omega-packets/UO-38.md) |
-| UO-39 | W10 | `packet-coder` | ~40k | Asgard trainer 63809 and Programs vendors 63843-63846 | BlockedDependency (UO-37, UO-38) | [UO-39](omega-packets/UO-39.md) |
-| UO-40 | W10 | `packet-coder` | ~40k | Asgard Armor and Crafting vendors 63847-63854 | BlockedDependency (UO-39's commit; W8 merged for lists 63817-63820) | [UO-40](omega-packets/UO-40.md) |
-| UO-41 | W10 | stub | - | The hearing chains (63950-63999), sliced by the UO-16 seal | stub, written in the W10 packet pass (needs UO-48's P5 rows); D-UO34 default applied | [UO-41](omega-packets/UO-41.md) |
-| UO-42 | W10 | stub | - | Thor templates (Otin reserved, unused), 481 offer, gate 6, the `asgard_departure` fixture | stub, written in the W10 packet pass (needs UO-41); D-UO34 default applied | [UO-42](omega-packets/UO-42.md) |
-| UO-98 | W11 | `documentation-writer` | ~35k | Close-out 2: chains, zone audit, UAT checklist, status docs (once) | BlockedDependency (W8, W9 merged) | [UO-98](omega-packets/UO-98.md) |
+| UO-37 | W10 | `movement-teleport-advisor` | ~30k | Asgard placement seal: trainer, 12 vendors, hub Thor, Council cast | Merged on the campaign branch (reviewed; PR to `main` pending) | [UO-37](omega-packets/UO-37.md) |
+| UO-38 | W10 | `items-systems-advisor` | ~30k | Asgard stock seal: lists 63821-63828 | Merged on the campaign branch (reviewed; PR to `main` pending) | [UO-38](omega-packets/UO-38.md) |
+| UO-39 | W10 | `packet-coder` | ~40k | Asgard trainer 63809 and Programs vendors 63843-63846 | Merged on the campaign branch (reviewed; PR to `main` pending) | [UO-39](omega-packets/UO-39.md) |
+| UO-40 | W10 | `packet-coder` | ~40k | Asgard Armor and Crafting vendors 63847-63854 | Merged on the campaign branch (reviewed; PR to `main` pending) | [UO-40](omega-packets/UO-40.md) |
+| UO-41 | W10 | stub | - | The hearing chains (63950-63999), sliced by the UO-16 seal | Stub, not built; D-UO34 default applied. Written in the W10 packet pass (UO-43..UO-49 reserved) | [UO-41](omega-packets/UO-41.md) |
+| UO-42 | W10 | stub | - | Thor templates (Otin reserved, unused), 481 offer, gate 6, the `asgard_departure` fixture | Stub, not built; D-UO34 default applied. Written in the W10 packet pass (UO-43..UO-49 reserved) | [UO-42](omega-packets/UO-42.md) |
+| UO-98 | W11 | `documentation-writer` | ~35k | Close-out 2: chains, zone audit, UAT checklist, status docs (once) | Done (this docs commit, campaign branch) | [UO-98](omega-packets/UO-98.md) |
 
 ## Waves
 
@@ -470,6 +470,8 @@ These HELD items block nothing built: O5646 waypoints, the H1 DHD dial-back, H2,
 ## UO-U1 live UAT
 
 The lab UAT has not run, and the lab is shared, so ask the user before using it. The recipe is the [`lab-uat` skill](../../../.claude/skills/lab-uat/SKILL.md), [live-research-lab.md](../../guides/live-research-lab.md) and the [UO-U1 packet](omega-packets/UO-U1.md) (fixtures R1 to R4 through `server_stage_fixture`). The checklist form is [unified-uat.md § Union Omega](../../guides/unified-uat.md#union-omega). Results go to `omega-packets/worknotes/UO-U1-results.md`, which does not exist yet. § R5 (refreshed in W11 from the merged seeds) lists every hub NPC with its point, `buy_count` and log line; its Asgard rows wait on F42. Selling back is refused by design: every Omega vendor's sell list is list 2, which buys only designs 21, 55 and 3437 (R5 S14). UO-U1 stays a lab UAT the owner runs; agents never use the lab.
+
+The state after UO-98: every R5 row is UATPending and no results file exists. Open owner items: run UO-U1 R1-R5; optionally overrule the architect defaults (D-UO34 and D-UO28..D-UO31, D-UO35..D-UO38); a playable Asgard start (F42) before any Asgard row can run. UO-99's deferred rows (`ring-transport-system.md`, `gap-analysis/new-systems.md`) still wait on UO-U1 H4; `death-respawn-system.md` lists no per-zone respawners, so respawner 181 has no line to add there.
 
 The lab owes two observations that only a client run can settle. Both came from the UO-13 reviews:
 

@@ -730,7 +730,29 @@ development pipeline than Harset_Market — navigation was generated but scripti
 began. Possibly a mission instance where players would explore a storage area (the navmesh
 would enable AI enemies). Without any script or spawns, the navmesh serves no purpose.
 
-> **Union Omega update (2026-10-19).** The audit above is the pre-campaign baseline. Since then the [Union Omega campaign](../analysis/union-zone-planning/omega-work-packets.md) merged (PRs [#1902](https://github.com/SandboxServers/Cimmeria/pull/1902), [#1908](https://github.com/SandboxServers/Cimmeria/pull/1908), [#1911](https://github.com/SandboxServers/Cimmeria/pull/1911)). A navmesh exists (`data/spaces/omega_site.nav`). World 18 now holds the 7 stock spawns, 3 service NPCs (banker 63810, Team registrar 63811 and Command registrar 63830, as spawns 63820, 63821 and 63840) and 18 ambient NPCs, plus respawner 180 `Omega Site Gate Plaza`. Content chains 63801 and 63810/63811 bind the beam and Modi; see [mission-chains](mission-chains.md#union-omega-worlds-18-and-80). The ambient crowd (templates 63860 Airman and 63861 Free Jaffa Warrior) is `CIMMERIA_AUTHORING`, inert, and drops by deleting the UO-14 blocks. All of it is merged but never walked in a client (UO-U1 has not run). Still missing: vendors (blocked on D-UO8 and D-UO16), O5646 waypoints, the H1 DHD dial-back and the Asgard route (UO-16).
+> **Union Omega update (2026-10-19).** The audit above is the pre-campaign baseline. Since then the [Union Omega campaign](../analysis/union-zone-planning/omega-work-packets.md) merged the induction route (PRs [#1902](https://github.com/SandboxServers/Cimmeria/pull/1902), [#1908](https://github.com/SandboxServers/Cimmeria/pull/1908), [#1911](https://github.com/SandboxServers/Cimmeria/pull/1911)) and, on the campaign branch `union-omega/decisions-2026-10-19` (a PR to `main` is pending), the hub vendors, trainers and services (waves W6-W9) and the Asgard trainer and stores (UO-37..UO-40). A navmesh exists (`data/spaces/omega_site.nav`). World 18 now holds 98 spawns: the 7 stock ones, 91 Omega rows (spawn ids 63804-63872, 63960-63971 and the 18 ambient NPCs in 63880-63959), plus respawners 180 `Omega Site Gate Plaza` and 181 `Omega Infirmary`. All of it is `CIMMERIA_RECONSTRUCTION` on shipped monikers (`RESTORED_SOURCE`), placed on the navmesh (the UO-17..UO-20 and UO-37 worknotes in [omega-packets/worknotes](../analysis/union-zone-planning/omega-packets/worknotes/)), except the ambient crowd (`CIMMERIA_AUTHORING`, inert; it drops by deleting the UO-14 blocks).
+>
+> **What is tested and what is not.** The seeds are guarded by live-database tests in `crates/cell-catalog/src/cell/spawner/tests/live_db_union_omega_*.rs`, `crates/cell-world/src/cell/spawner_tests/union_omega/` and the chain tests in `crates/cell-content`. The coders ran revert proofs and the wave reviews checked them (a few were not run; the reviews list them). Nobody has stood on the hub in a client: the lab UAT [UO-U1](../analysis/union-zone-planning/omega-packets/UO-U1.md) § R5 is the owner's and has not run, so every placement, icon, store window and chat line below is unwalked.
+>
+> | Role | Templates → spawns | Moniker | Item list | Tier / note |
+> |---|---|---|---|---|
+> | Class trainers (Soldier, Scientist, Commando, Archaeologist, Jaffa) | 63804-63808 → 63804-63808 | 7988, 7989, 7992, 7993, 7990 | trainer list 1 (D-UO30) | each offers the clicker's own tree |
+> | Human Weapons | 63812-63815 → 63841-63844, extras 63845 (T1), 63846 (T4) | 27240-27243 | 63800-63803 | T1-T4 (D-UO28); the SGC wing plus two Common Area spots |
+> | Human Armor | 63816-63819 → 63847-63850, extras 63851 (T1), 63852 (T4) | 27244-27247 | 63804-63807 | T1-T4 |
+> | Jaffa Weapons | 63831-63834 → 63853-63856, extra 63857 (T1) | 27224-27227 | 63808-63811 | T1-T4; the Free Jaffa wing |
+> | Jaffa Armor | 63835-63838 → 63859-63862, extra 63863 (T1) | 27228-27231 | 63812-63815 | T1-T4 |
+> | Crafting, Human / Common / Jaffa | 63820-63823 → 63960-63963; 63824-63827 → 63964-63967; 63839-63842 → 63968-63971 | 27248-27251 / 27236-27239 / 27232-27235 | 63817-63820 (Biomedical, Electronics, Power Systems, Materials) | one per specialty in each area |
+> | Consumables | 63828 → 63865-63872 | 27264 | 63816 | three Common Area, three SGC, two Jaffa spots |
+> | Auctioneer | stock 305 → 63819 | 7133 | none | chain 63850 opens the Black Market |
+> | Medic | 63855 → 63818 | 6964 `Castle Medic` (D-UO33) | none | chain 63851 heals and speaks |
+> | Crafting guides | 63829 → 63810-63817 | 7952 `SGC Scientist` | none | eight spots, chains 63852-63855 |
+> | Banker, Team and Command registrars | 63810, 63811, 63830 → 63820, 63821, 63840 | 29462, 29068 | none | clones of the debug hub rows (D-UO14) |
+> | Asgard trainer | 63809 → 63809 | 27218 | trainer list 1 | needs an Asgard character |
+> | Asgard Programs | 63843-63846 → 63824-63827 | 27252-27255 | 63821-63824 | T1-T4 |
+> | Asgard Armor | 63847-63850 → 63828-63831 | 27256-27259 | 63825-63828 | T1-T4 |
+> | Asgard Crafting | 63851-63854 → 63832-63835 | 27260-27263 | 63817-63820 | shared lists |
+>
+> **Rules.** Every vendor's sell list is list 2, which buys only designs 21, 55 and 3437 (no Omega vendor stocks them), so nothing bought on the hub sells back. Prices follow D-UO29 (weapons 200 x tech comp, armor 100 x, crafting 25 x). D-UO38: there is no vendor bit for programs, so the Asgard Programs vendors carry the weapons store bit and price at the weapons rate, and Asgard Armor carries the armor bit. Respawner 181 is at (39.00, -44.90, 3.00) beside the medic. The inn and battlemaster were skipped (D-UO32 (a): no engine service). The Asgard design seal (UO-16) is merged as a worknote; The Asgard Thor (template 63858, spawns 63836-63839) and the hearing (UO-41, UO-42) are not built, and by the D-UO34 default Otin (63859) never will be, and Asgard has no playable character start (F42), so no Asgard row can run. Content chains 63801, 63810/63811 and 63850-63855 bind the beam, Modi and the services; see [mission-chains](mission-chains.md#union-omega-worlds-18-and-80). Still missing: O5646 waypoints, the H1 DHD dial-back and the Asgard hearing.
 
 ---
 
@@ -1060,7 +1082,7 @@ All 24 defined spaces with their verdicts, sorted by verdict then alphabetically
 | Harset_CmdCenter | Persistent | **PARTIAL** (transport) | 31 lines + 4 nodes | NO | 1 | NO | 17 |
 | Lucia | Persistent | **PARTIAL** (transport) | 101 lines + 41 nodes | NO | 12 | YES | 892 |
 | Menfa_Dark | Persistent | **PARTIAL** (transport) | 37 lines + 45 nodes | NO | 25 | YES | 271 |
-| Omega_Site | Persistent | **PARTIAL** (transport, induction, services; unplayed) | 53 lines + 21 nodes | YES | 28 | YES | 133 |
+| Omega_Site | Persistent | **PARTIAL** (transport, induction, services, vendors, Asgard stores; unplayed) | 53 lines + 21 nodes | YES | 98 | YES | 133 |
 | Omega_Site_CmdCenter | Instanced | **PARTIAL** (transport, induction; unplayed) | 21 lines + 21 nodes | YES | 8 | NO | 25 |
 | Agnos | Persistent | **SHELL** | NO | YES | ~few | YES | 692 |
 | Agnos_Library | Persistent | **SHELL** | NO | NO | 0 | NO | 37 |
@@ -1145,7 +1167,7 @@ Zones with functional transport infrastructure:
 | 2 | Castle | PARTIAL |
 | 3 | Harset | PARTIAL |
 | 4 | Tollana | SHELL |
-| 5 | Omega_Site | PARTIAL (transport, induction, services; unplayed) |
+| 5 | Omega_Site | PARTIAL (transport, induction, services, vendors, Asgard stores; unplayed) |
 | 6 | Beta_Site_Evo_1 | PARTIAL (Union first visit) |
 | 7 | Menfa_Dark | PARTIAL (transport) |
 | 8 | Ihpet_Crater_Dark | SHELL |
@@ -1183,7 +1205,7 @@ Based on this audit, zones can be prioritized for future development work:
    mission scripting.
 5. **Lucia** — 12 spawns, 11 transporters, largest art zone. Needs navmesh and mission
    scripting.
-6. **Omega_Site** — 5 beam transporters. Navmesh, induction chains, services and ambient NPCs merged 2026-10 (unplayed); vendors, O5646 waypoints and the Asgard route remain.
+6. **Omega_Site** — 5 beam transporters. Navmesh, induction chains, services, vendors, trainers, the Asgard stores and ambient NPCs are merged or on the campaign branch (2026-10, unplayed); O5646 waypoints and the Asgard hearing remain.
 
 ### Tier 3: Shell zones with significant art investment
 
