@@ -370,7 +370,7 @@ Either player:
 
 ## Remaining Work
 
-1. **Port Alignment and GoauldCrystals** — the factory has commented-out arms; today an unported name resolves to the placeholder shell, which counts down 60 s and ends as a defeat (an unknown name is dropped earlier, at content load)
+1. **Port Alignment** — the factory has a commented-out arm; today an unported name resolves to the placeholder shell, which counts down 60 s and ends as a defeat (an unknown name is dropped earlier, at content load)
 2. **Tech competency** — read it from the player entity instead of the hardcoded `1`; the same applies to `abilities`, `intelligence`, and `player_level`
 3. **Player-initiated start** — `startMinigame` (24) and the debug starts (20–23) are stubs, so a player can only enter a minigame that a content chain launched for them
 4. **Helper call protocol** — the whole request → PhaseTwo → accept/decline flow, including tip cash movement

@@ -23,20 +23,16 @@ pub(super) type Pos = (usize, usize);
 
 impl GoauldCrystalsGame {
     /// Spec 5 `playfieldclick`. Validates the click, then runs steps 1 and
-    /// 3-9 in order. Input after the end is refused.
+    /// 3-9 in order. Input after the end is refused by dispatch.
     pub(super) fn playfield_click(
         &mut self,
         params: &HashMap<String, SfsValue>,
     ) -> Vec<GameOutput> {
-        if self.outcome.is_some() {
-            self.refuse("game_over");
-            return vec![];
-        }
         let (Some(x), Some(y)) = (
             read_coordinate(params, "x", self.w),
             read_coordinate(params, "y", self.h),
         ) else {
-            self.refuse("bad_coordinates");
+            self.warn_refused("playfieldclick", "bad_coordinates");
             return vec![];
         };
         let mut out = Vec::new();
@@ -211,19 +207,6 @@ impl GoauldCrystalsGame {
         let visited = update_power(&mut self.board, self.start);
         out.push(GameOutput::Send(build_power_status(&visited)));
         out.push(GameOutput::Send(self.build_full_game_state()));
-    }
-
-    /// Warns about a refused `playfieldclick`. Every warning names the
-    /// player, so the line can be traced to a session.
-    fn refuse(&self, reason: &'static str) {
-        tracing::warn!(
-            entity_id = self.entity_id,
-            entity_name = self.player_name.as_deref(),
-            player_id = self.player_id,
-            player_name = self.player_name.as_deref(),
-            reason = reason,
-            "GoauldCrystals: playfieldclick refused"
-        );
     }
 }
 

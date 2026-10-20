@@ -6,6 +6,7 @@
 //! Tests that need a known layout build a hand board instead.
 
 use std::collections::HashMap;
+use std::time::Duration;
 
 use super::setup::goal_on;
 use super::{Cell, GoauldCrystalsGame};
@@ -429,4 +430,30 @@ fn random_greens_fill_empties_then_overwrite_only_when_asked() {
     );
     game.add_random_greens(2, true);
     assert_eq!(greens(&game), 2, "overwrite replaces two red cells");
+}
+
+/// A time cheat moves the monotonic deadline with the clock. At 18 s the game
+/// is still inside the new 21 s limit; the old 16 s deadline would end it.
+/// Removing the `deadline = None` from the bit's arm makes this fail.
+#[tokio::test(start_paused = true)]
+async fn a_time_cheat_moves_the_deadline() {
+    let mut game = started(ALL_BITS);
+    click(&mut game, 0.0, 0.0);
+    cheat(&mut game, 0.0);
+    tokio::time::advance(Duration::from_secs(18)).await;
+    let out = click(&mut game, 1.0, 0.0);
+    assert_eq!(game.outcome, None, "{:?}", names(&out));
+    assert_eq!(game.time_remaining, 21.0);
+}
+
+/// The same for bit 14, which also adds 5 s.
+#[tokio::test(start_paused = true)]
+async fn a_removal_cheat_moves_the_deadline() {
+    let mut game = started(ALL_BITS);
+    click(&mut game, 0.0, 0.0);
+    cheat(&mut game, 14.0);
+    tokio::time::advance(Duration::from_secs(18)).await;
+    let out = click(&mut game, 1.0, 0.0);
+    assert_eq!(game.outcome, None, "{:?}", names(&out));
+    assert_eq!(game.time_remaining, 21.0);
 }

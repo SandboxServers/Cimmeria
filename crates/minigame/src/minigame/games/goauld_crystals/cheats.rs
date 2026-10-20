@@ -94,10 +94,12 @@ impl GoauldCrystalsGame {
     fn run_ability(&mut self, bit: usize, out: &mut Vec<GameOutput>) {
         match bit {
             0 => {
+                self.deadline = None;
                 self.time_remaining += 5.0;
                 out.push(GameOutput::Send(self.build_timer_update()));
             }
             1 => {
+                self.deadline = None;
                 self.time_remaining = (self.time_remaining - 5.0).max(0.0);
                 out.push(GameOutput::Send(self.build_timer_update()));
                 self.add_random_greens(2, false);
@@ -139,6 +141,7 @@ impl GoauldCrystalsGame {
                 self.finish_board_change(out);
             }
             14 => {
+                self.deadline = None;
                 self.time_remaining += 5.0;
                 out.push(GameOutput::Send(self.build_timer_update()));
                 match self.selected_red() {
