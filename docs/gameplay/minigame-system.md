@@ -58,7 +58,8 @@ Two deviations from the original flow: the movement and state hold is taken at l
 | Content-triggered start | DONE | `Action::StartMinigame` → `CellToBaseMsg::StartMinigame` → `onStartMinigame(URL)` |
 | Victory-chain callback | DONE | `MinigameResult` forwards to the cell, which runs `on_victory_chains` |
 | Livewire | DONE | Fully ported in `minigame/games/livewire/`; an abort sends nothing, the client has closed |
-| Hack, Activate, Analyze, Bypass, Converse, ConverseBasicHumanoid | PLACEHOLDER | `games/placeholder.rs` — the shell shows a 60 s countdown (`fullgamestate` then `timerupdate`, MG-64); a client `victory` counts only after 5 s (D-MG13); when 240 ticks (60 s) pass with no `victory` the server sends `failure` and the game ends as a defeat (result code 2, `on_failure_chains` fire). Matches the original `Placeholder.py`; these game types had no real SWF beyond a shell |
+| ConverseBasicHumanoid | SERVER (MG-CH3) | `games/converse_humanoid/`: the server deals, plays, scores and decides victory; a client `victory` is refused and a client `failure` is a defeat. See the rules below |
+| Hack, Activate, Analyze, Bypass, Converse | PLACEHOLDER | `games/placeholder.rs` — the shell shows a 60 s countdown (`fullgamestate` then `timerupdate`, MG-64); a client `victory` counts only after 5 s (D-MG13); when 240 ticks (60 s) pass with no `victory` the server sends `failure` and the game ends as a defeat (result code 2, `on_failure_chains` fire). Matches the original `Placeholder.py`; these game types had no real SWF beyond a shell |
 | Alignment, GoauldCrystals | NOT IMPL | Still Python-only; the factory has commented-out arms awaiting a port. An unrecognised game name falls back to the placeholder shell (60 s countdown, then defeat) and logs WARN `Unknown minigame type`; a content `start_minigame` row with such a name never reaches it, because the loader drops it (MG-64) |
 | `startMinigame` | STUB | Cell method 24 logs `UNIMPLEMENTED` |
 | `endCurrentMinigame` | DONE | Cell method 25 cancels the current session and closes SmartFox |
@@ -72,6 +73,15 @@ Two deviations from the original flow: the movement and state hold is taken at l
 | Mob/item attempt tracking | NOT IMPL | `minigameMobAttemptTracker`, `minigameItemAttemptTracker` unused |
 | Item integration | NOT IMPL | `addItemToMinigame`, `consumeItemByMinigame` unused |
 | Cheat detection | NOT IMPL | `updateMinigameItemCheats` unused |
+
+### ConverseBasicHumanoid rules
+
+- **Dominance.** Two cards compare by `(p - n + 8) % 9` over the nine suit values: below 4 is the NPC's point, 4 to 7 the player's, 8 a tie (spec section 6).
+- **Deals.** Logic3 deals 3 cards a side with one container, then mediation5 deals 4. A deal ends when a hand ends with every card played (`newdeal`); the timers then hold until the client sends `processreset`, which is refused before that.
+- **Hands.** A hand ends on `newhand`, which is refused until the NPC has answered, or after 6 s. Each container goes to the stronger card, and a sweep of all containers adds one point.
+- **NPC.** Every 1.5 s the NPC plays the card that scores best against the player's hand. It answers a play into an empty NPC container within 0.5 s.
+- **Trump passives.** Ability bits 15-18 add +5, +10, +15 and +25 to the accord bonus (spec section 7).
+- **Victory.** `activatevictory` spends the points of a listed condition (focusdamage1 costs 3, focusdamage2 costs 4). At zero seconds a tie or a lead is a victory; the NPC ahead is a defeat.
 
 ## Entity Definition (MinigamePlayer.def)
 

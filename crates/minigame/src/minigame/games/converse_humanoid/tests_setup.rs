@@ -238,7 +238,15 @@ fn started_sends_one_fullgamestate() {
     assert_eq!(map["npcScore"].as_f64(), Some(0.0));
     assert_eq!(map["numResets"].as_f64(), Some(0.0));
     assert!(!map.contains_key("suitTypes"), "suitTypes is never set");
-    assert_eq!(map.len(), 18, "the fullgamestate keys of spec section 5");
+    assert_eq!(
+        map.len(),
+        24,
+        "the fullgamestate keys of spec section 5 and D-MG17"
+    );
+    assert_eq!(map["instcc"].as_f64(), Some(-1.0));
+    for key in ["CA0", "CA1", "CA2", "CA3", "CA4"] {
+        assert_eq!(map[key].as_f64(), Some(0.0), "{key} is zero");
+    }
 
     let SfsValue::Object(victories) = &map["playerVictoryConditions"] else {
         panic!("playerVictoryConditions is an array");
