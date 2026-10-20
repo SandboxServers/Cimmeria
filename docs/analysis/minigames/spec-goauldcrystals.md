@@ -289,7 +289,7 @@ Victory can be reached by a path move, an adjacent swap, item cheats 3 and 4, ab
 
 The client runs its own display timer from `timerupdate` and `fullgamestate`.
 
-**Result codes for the port.** Victory is `GameOutput::Victory` (server result 1). Timeout is `GameOutput::Failure`, which the session loop reports as defeat. Timeout is `GameOutput::Failure`, reported to the cell as result 2 (spec-protocol-common Q4: extension code 4 maps to cell 2).
+**Result codes for the port.** Victory is `GameOutput::Victory` (server result 1). Timeout is `GameOutput::Failure`, which the session loop reports as defeat, cell result 2 (spec-protocol-common Q4: extension code 4 maps to cell 2).
 
 ### Shipped bugs the port does not copy
 
@@ -417,9 +417,9 @@ Layout per C4: `crates/minigame/src/minigame/games/goauld_crystals/`. Estimates 
 | | `setup.rs` | 350 | difficulty table and clamp; `place_goals`; `randomize_crystals` with fractional counts and the capacity loop; tutorial board; `update_power` breadth-first search returning the visit list; builders for `fullgamestate`, `timerupdate`; `init_game(first_time)` |
 | | `tests_setup.rs` | 300 | table spot checks (both ends of every column), tutorial board and power set, generated boards never start solved, goal distance, capacity loop on the smallest and largest tiers, `fullgamestate` field set and types |
 | MG-GC2 | `moves.rs` | 440 | `playfieldclick` steps 1-9: bounds validation, clock start, armed item modes on click, `redsToYellows` and `redsToRemove`, select, path search and swap, adjacent swap with the yellow-to-orange rule, invalid, `redsToRevert` remap and revert; victory hand-off to one `after_board_change()`; builders for `squarestate` and `powerstatus` (first used by `playfieldclick`) |
-| | `tests_moves.rs` | 340 | transcript B steps 1-5; path search reaches through empties only; path mode never falls back to an adjacent swap; yellow to orange with and without `yellowsWithoutOrange`; out-of-bounds and non-integer clicks dropped |
+| | `tests_moves.rs` | 340 | transcripts B steps 1-5 and C steps 1-3; path search reaches through empties only; path mode never falls back to an adjacent swap; yellow to orange with and without `yellowsWithoutOrange`; out-of-bounds and non-integer clicks dropped |
 | MG-GC3 | `rules.rs` | 460 | victory (terminal guard, one `victory` + `GameOutput::Victory`), timer states 0-3 on the 0.25 s tick, timeout, item-cheat payment (`instcc`, `CA` deduction) and `processItemCheat`, ability bits 0-14, one parametrised edge-removal function for the four sides, `add_random_greens`, `processreset`; flips `PORTED` to `true` |
-| | `tests_rules.rs` | 380 | transcript A; timeout at `tick 64`; pause and reverse; each ability bit; CA deduction table; input after victory is ignored; golden `.mgs` script for B (`crates/minigame/tests/scripts/goauld_crystals/b_move_timeout.mgs`); transcript A is a Rust unit test that sets `instcc = 0` on the session before `started()` and becomes an `.mgs` once MG-05 or MG-22 adds an inventory directive (open question 5) |
+| | `tests_rules.rs` | 380 | transcript A; transcript C step 4 (`tick 8` leaves `timeRemaining` at 14); timeout at `tick 64`; pause and reverse; each ability bit; CA deduction table; input after victory is ignored; golden `.mgs` script for B (`crates/minigame/tests/scripts/goauld_crystals/b_move_timeout.mgs`); transcript A is a Rust unit test that sets `instcc = 0` on the session before `started()` and becomes an `.mgs` once MG-05 or MG-22 adds an inventory directive (open question 5) |
 
 Slices are about 880 (GC1), 780 (GC2) and 840 (GC3) lines including tests; GC1 is the largest because it holds the table, generation, power search and two message builders. If `rules.rs` passes 500 lines, split the ability cheats into a `cheats.rs` beside it (open question 4). MG-GC3 also adds `GoauldCrystals` to `kind.rs`'s ported list.
 
